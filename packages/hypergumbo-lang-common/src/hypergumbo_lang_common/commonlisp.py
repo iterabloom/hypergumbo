@@ -258,7 +258,7 @@ def _extract_symbols_from_file(
                     cyclomatic_complexity=compute_cyclomatic_complexity(
                         node, "commonlisp",
                     ),
-                    lines_of_code=end_line - start_line + 1,
+                    line_span=end_line - start_line + 1,
                 ))
 
         # Handle list_lit for defvar, defparameter, defconstant, defclass, etc.
@@ -296,7 +296,7 @@ def _extract_symbols_from_file(
                         compute_cyclomatic_complexity(node, "commonlisp")
                         if is_callable else None
                     ),
-                    lines_of_code=(
+                    line_span=(
                         end_line - start_line + 1 if is_callable else None
                     ),
                 ))

@@ -695,7 +695,7 @@ def _extract_laravel_routes(
                         },
                         origin=run.pass_id,
                         origin_run_id=run.execution_id,
-                        lines_of_code=span.end_line - span.start_line + 1,
+                        line_span=span.end_line - span.start_line + 1,
                         is_exported=True,
                     )
                     route_symbols.append(route_symbol)
@@ -723,7 +723,7 @@ def _extract_laravel_routes(
                 },
                 origin=run.pass_id,
                 origin_run_id=run.execution_id,
-                lines_of_code=span.end_line - span.start_line + 1,
+                line_span=span.end_line - span.start_line + 1,
                 is_exported=True,
             )
             if controller_action:
@@ -832,7 +832,7 @@ def _extract_symbols(
         span=Span(start_line=1, end_line=end_line, start_col=0, end_col=0),
         origin=PASS_ID,
         origin_run_id=run.execution_id,
-        lines_of_code=end_line - 1 + 1,
+        line_span=end_line - 1 + 1,
     )
     symbols.append(module_symbol)
 
@@ -873,7 +873,7 @@ def _extract_symbols(
                     docstring=extract_preceding_doc_comment(node, source, "php"),
                     modifiers=modifiers,
                     shape_id=_analyzer.compute_shape_id(node),
-                    lines_of_code=span.end_line - span.start_line + 1,
+                    line_span=span.end_line - span.start_line + 1,
                     is_exported=True,
                     qualified_name=_make_php_qualified_name(namespace_name, None, name),
                     cyclomatic_complexity=compute_cyclomatic_complexity(node, "php"),
@@ -907,7 +907,7 @@ def _extract_symbols(
                     meta=meta,
                     modifiers=_extract_modifiers_php(node),
                     shape_id=_analyzer.compute_shape_id(node),
-                    lines_of_code=span.end_line - span.start_line + 1,
+                    line_span=span.end_line - span.start_line + 1,
                     is_exported=True,
                     qualified_name=_make_php_qualified_name(namespace_name, None, name),
                 )
@@ -951,7 +951,7 @@ def _extract_symbols(
                     docstring=extract_preceding_doc_comment(node, source, "php"),
                     modifiers=modifiers,
                     shape_id=_analyzer.compute_shape_id(node),
-                    lines_of_code=span.end_line - span.start_line + 1,
+                    line_span=span.end_line - span.start_line + 1,
                     is_exported="private" not in modifiers and "protected" not in modifiers,
                     qualified_name=_make_php_qualified_name(namespace_name, enclosing_class, name),
                     cyclomatic_complexity=compute_cyclomatic_complexity(node, "php"),

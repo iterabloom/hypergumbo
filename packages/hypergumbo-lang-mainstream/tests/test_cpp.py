@@ -2296,7 +2296,7 @@ int main() { return helper(); }
 
 class TestCppComplexityAndLoc:
     """INV-loguk: C++ function and method Symbols populate
-    cyclomatic_complexity and lines_of_code."""
+    cyclomatic_complexity and line_span."""
 
     def test_function_has_cc_and_loc(self, tmp_path: Path) -> None:
         from hypergumbo_lang_mainstream.cpp import analyze_cpp
@@ -2317,7 +2317,7 @@ class TestCppComplexityAndLoc:
         # if + else-if + for + inner-if + || → >= 4 above base
         assert fn.cyclomatic_complexity is not None
         assert fn.cyclomatic_complexity >= 4
-        assert fn.lines_of_code == 5
+        assert fn.line_span == 5
 
     def test_method_has_cc_and_loc(self, tmp_path: Path) -> None:
         from hypergumbo_lang_mainstream.cpp import analyze_cpp
@@ -2336,7 +2336,7 @@ class TestCppComplexityAndLoc:
         assert methods
         for m in methods:
             assert m.cyclomatic_complexity is not None and m.cyclomatic_complexity >= 2
-            assert m.lines_of_code is not None and m.lines_of_code >= 1
+            assert m.line_span is not None and m.line_span >= 1
 
     def test_no_cpp_callable_has_null_cc_or_loc(self, tmp_path: Path) -> None:
         """Property: every C++ function/method Symbol has non-null CC and LOC."""
@@ -2350,5 +2350,5 @@ class TestCppComplexityAndLoc:
         assert funcs
         for fn in funcs:
             assert fn.cyclomatic_complexity is not None, fn.name
-            assert fn.lines_of_code is not None, fn.name
+            assert fn.line_span is not None, fn.name
 

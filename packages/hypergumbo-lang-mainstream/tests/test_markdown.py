@@ -123,7 +123,7 @@ const x = 1;
         assert code is not None
         assert code.name == "code:javascript"
         assert code.meta.get("code_language") == "javascript"
-        assert code.meta.get("lines_of_code") >= 1
+        assert code.meta.get("line_span") >= 1
         assert code.signature == "```javascript"
 
     def test_extracts_code_block_without_language(self, tmp_path: Path) -> None:
@@ -357,7 +357,7 @@ Does something.
         result = analyze_markdown(tmp_path)
         code = next((s for s in result.symbols if s.kind == "code_block"), None)
         assert code is not None
-        assert code.meta.get("lines_of_code") == 0
+        assert code.meta.get("line_span") == 0
         assert code.meta.get("is_example") is False
 
     def test_multiple_links_in_paragraph(self, tmp_path: Path) -> None:

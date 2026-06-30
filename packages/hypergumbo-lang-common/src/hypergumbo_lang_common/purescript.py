@@ -252,7 +252,7 @@ class _PureScriptExtractor:
                     origin=PASS_ID,
                     meta={"module": self._current_module},
                     cyclomatic_complexity=compute_cyclomatic_complexity(node, "purescript"),
-                    lines_of_code=node.end_point[0] - node.start_point[0] + 1,
+                    line_span=node.end_point[0] - node.start_point[0] + 1,
                 )
                 self.symbols.append(sym)
             return  # Don't recurse into function bodies
@@ -289,7 +289,7 @@ class _PureScriptExtractor:
                         signature=type_sig,
                         meta={"module": self._current_module},
                         cyclomatic_complexity=compute_cyclomatic_complexity(node, "purescript"),
-                        lines_of_code=node.end_point[0] - node.start_point[0] + 1,
+                        line_span=node.end_point[0] - node.start_point[0] + 1,
                     )
                     self.symbols.append(sym)
 

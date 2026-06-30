@@ -487,7 +487,7 @@ class TestScssCyclomaticComplexity:
         by = {s.name: s for s in result.symbols if s.kind in ('mixin', 'function')}
         m = by.get('classify') or next(s for n, s in by.items() if n.split('.')[-1] == 'classify' or n.endswith('classify'))
         assert m.cyclomatic_complexity == 6, m.cyclomatic_complexity
-        assert m.lines_of_code is not None
+        assert m.line_span is not None
 
     def test_callables_non_null_non_callables_null(self, tmp_path) -> None:
         from hypergumbo_lang_common.scss import analyze_scss
@@ -497,7 +497,7 @@ class TestScssCyclomaticComplexity:
         assert callables
         for s in callables:
             assert s.cyclomatic_complexity is not None, (s.kind, s.name)
-            assert s.lines_of_code is not None, (s.kind, s.name)
+            assert s.line_span is not None, (s.kind, s.name)
         for s in result.symbols:
             if s.kind not in ('mixin', 'function'):
                 assert s.cyclomatic_complexity is None, (s.kind, s.name)

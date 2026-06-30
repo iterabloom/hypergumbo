@@ -237,7 +237,7 @@ def _extract_symbols_from_tree(
         """Helper to create and register a symbol.
 
         ``complexity=True`` (callable kinds — function / constructor /
-        modifier) populates ``cyclomatic_complexity`` and ``lines_of_code``
+        modifier) populates ``cyclomatic_complexity`` and ``line_span``
         per INV-loguk. It is gated rather than unconditional so a non-callable
         symbol (contract / interface / event) does not silently aggregate
         every branch node in its whole subtree.
@@ -265,7 +265,7 @@ def _extract_symbols_from_tree(
             cyclomatic_complexity=(
                 compute_cyclomatic_complexity(node, "solidity") if complexity else None
             ),
-            lines_of_code=(end_line - start_line + 1) if complexity else None,
+            line_span=(end_line - start_line + 1) if complexity else None,
         )
         analysis.symbols.append(symbol)
         analysis.symbol_by_name[name] = symbol

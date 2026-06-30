@@ -267,7 +267,7 @@ def _extract_cuda_symbols(
                     signature=signature,
                     meta=meta,
                     cyclomatic_complexity=compute_cyclomatic_complexity(node, "cuda"),
-                    lines_of_code=end_line - start_line + 1,
+                    line_span=end_line - start_line + 1,
                 )
                 symbols.append(sym)
                 symbol_registry[func_name.lower()] = sym

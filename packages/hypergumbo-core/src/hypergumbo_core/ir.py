@@ -413,7 +413,12 @@ class Symbol:
         is_exported: True if the symbol is part of the package's public API.
         cyclomatic_complexity: McCabe cyclomatic complexity (decision points + 1).
             Counts if/elif/else, for, while, except, with, and/or, match/case.
-        lines_of_code: Number of source lines in the symbol body (end_line - start_line + 1).
+        line_span: Physical line span of the symbol body — ``end_line -
+            start_line + 1``, INCLUDING blank and comment lines. This is NOT
+            source-lines-of-code (SLOC); the spec's "lines of code" / file-level
+            SLOC convention lives in ``profile.languages[*].loc``. Renamed from
+            ``lines_of_code`` (WI-bozid) so one term no longer names two
+            different counting conventions.
         signature: Function/method signature string, e.g., "(x: int, y: str) -> bool".
             Only populated for callable symbols (functions, methods). None for classes, etc.
         docstring: First-line summary of doc comment (truncated to 80 chars).
@@ -474,7 +479,7 @@ class Symbol:
     is_generated_file: bool = False  # WI-tizij: generated code flag
     is_exported: bool = False  # WI-zimum: public API / externally reachable
     cyclomatic_complexity: Optional[int] = None
-    lines_of_code: Optional[int] = None
+    line_span: Optional[int] = None
     signature: Optional[str] = None  # axis: free-text — callable signature string in source-language grammar; consumers display, never branch on the value itself.
     docstring: Optional[str] = None  # axis: free-text — natural-language summary from the source comment; consumers display/log/hash, never branch on the value itself.
     modifiers: List[str] = field(default_factory=list)
@@ -523,7 +528,7 @@ class Symbol:
                 "is_exported": self.is_exported,
             },
             "cyclomatic_complexity": self.cyclomatic_complexity,
-            "lines_of_code": self.lines_of_code,
+            "line_span": self.line_span,
             "signature": self.signature,
             "docstring": self.docstring,
             "modifiers": self.modifiers,
@@ -560,7 +565,8 @@ class Symbol:
             is_generated_file=supply_chain.get("is_generated_file", False),
             is_exported=supply_chain.get("is_exported", False),
             cyclomatic_complexity=d.get("cyclomatic_complexity"),
-            lines_of_code=d.get("lines_of_code"),
+            # WI-bozid back-compat: pre-rename maps stored this as lines_of_code.
+            line_span=d.get("line_span", d.get("lines_of_code")),
             signature=d.get("signature"),
             docstring=d.get("docstring"),
             modifiers=d.get("modifiers", []),

@@ -852,7 +852,7 @@ end
                   if s.kind in ("function", "method") and s.name == "classify")
         # base 1 + if + elseif + for + while + repeat + and + or = 8
         assert fn.cyclomatic_complexity == 8
-        assert fn.lines_of_code is not None and fn.lines_of_code >= 4
+        assert fn.line_span is not None and fn.line_span >= 4
 
     def test_straight_line_function_cc_is_one(self, tmp_path) -> None:
         from hypergumbo_lang_mainstream.lua import analyze_lua
@@ -861,7 +861,7 @@ end
         fn = next(s for s in result.symbols
                   if s.kind in ("function", "method") and s.name == "g")
         assert fn.cyclomatic_complexity == 1
-        assert fn.lines_of_code is not None
+        assert fn.line_span is not None
 
     def test_all_callables_non_null(self, tmp_path) -> None:
         from hypergumbo_lang_mainstream.lua import analyze_lua
@@ -875,7 +875,7 @@ return M
         assert callables
         for s in callables:
             assert s.cyclomatic_complexity is not None, s.name
-            assert s.lines_of_code is not None, s.name
+            assert s.line_span is not None, s.name
         for s in result.symbols:
             if s.kind not in ("function", "method"):
                 assert s.cyclomatic_complexity is None, (s.kind, s.name)

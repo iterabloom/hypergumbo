@@ -334,7 +334,7 @@ class TestJsonnetCyclomaticComplexity:
         by = {s.name: s for s in result.symbols if s.kind in ('function', 'method')}
         m = by.get('pick') or next(s for n, s in by.items() if n.split('.')[-1] == 'pick' or n.endswith('pick'))
         assert m.cyclomatic_complexity == 7, m.cyclomatic_complexity
-        assert m.lines_of_code is not None
+        assert m.line_span is not None
 
     def test_callables_non_null_non_callables_null(self, tmp_path) -> None:
         from hypergumbo_lang_extended1.jsonnet import analyze_jsonnet
@@ -344,7 +344,7 @@ class TestJsonnetCyclomaticComplexity:
         assert callables
         for s in callables:
             assert s.cyclomatic_complexity is not None, (s.kind, s.name)
-            assert s.lines_of_code is not None, (s.kind, s.name)
+            assert s.line_span is not None, (s.kind, s.name)
         for s in result.symbols:
             if s.kind not in ('function', 'method'):
                 assert s.cyclomatic_complexity is None, (s.kind, s.name)

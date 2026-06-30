@@ -675,7 +675,7 @@ class TestCategorizerIntegration:
                     "name": "MyErr.Error",
                     "path": "pkg/err.go",
                     "language": "go",
-                    "lines_of_code": 3,
+                    "line_span": 3,
                     "cross_language_hits": 0,
                     "path_shape_boost": 0,
                 },

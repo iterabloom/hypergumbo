@@ -226,7 +226,7 @@ def _extract_symbols_from_file(
             meta={"arity": pf["arity"], "base_name": pf["func_name"]},
             signature=pf["signature"],
             cyclomatic_complexity=cc,
-            lines_of_code=pf["end_line"] - pf["start_line"] + 1,
+            line_span=pf["end_line"] - pf["start_line"] + 1,
         ))
 
     for node in tree.root_node.children:

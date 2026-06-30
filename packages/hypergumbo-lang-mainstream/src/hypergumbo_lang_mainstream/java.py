@@ -999,7 +999,7 @@ def _extract_symbols(
                     meta=meta,
                     modifiers=modifiers,
                     shape_id=_java_analyzer.compute_shape_id(node),
-                    lines_of_code=span.end_line - span.start_line + 1,
+                    line_span=span.end_line - span.start_line + 1,
                     is_exported="public" in modifiers,
                     qualified_name=_make_java_qualified_name(package_name, ancestors, name),
                 )
@@ -1042,7 +1042,7 @@ def _extract_symbols(
                     meta=meta,
                     modifiers=modifiers,
                     shape_id=_java_analyzer.compute_shape_id(node),
-                    lines_of_code=span.end_line - span.start_line + 1,
+                    line_span=span.end_line - span.start_line + 1,
                     is_exported="public" in modifiers,
                     qualified_name=_make_java_qualified_name(package_name, ancestors, name),
                 )
@@ -1072,7 +1072,7 @@ def _extract_symbols(
                     origin_run_id=run.execution_id,
                     modifiers=modifiers,
                     shape_id=_java_analyzer.compute_shape_id(node),
-                    lines_of_code=span.end_line - span.start_line + 1,
+                    line_span=span.end_line - span.start_line + 1,
                     is_exported="public" in modifiers,
                     qualified_name=_make_java_qualified_name(package_name, ancestors, name),
                 )
@@ -1162,7 +1162,7 @@ def _extract_symbols(
                     docstring=extract_preceding_doc_comment(node, source, "java"),
                     modifiers=modifiers,
                     shape_id=_java_analyzer.compute_shape_id(node),
-                    lines_of_code=span.end_line - span.start_line + 1,
+                    line_span=span.end_line - span.start_line + 1,
                     is_exported="public" in modifiers,
                     qualified_name=_make_java_qualified_name(package_name, ancestors, name),
                     cyclomatic_complexity=compute_cyclomatic_complexity(node, "java"),
@@ -1210,7 +1210,7 @@ def _extract_symbols(
                     docstring=extract_preceding_doc_comment(node, source, "java"),
                     modifiers=modifiers,
                     shape_id=_java_analyzer.compute_shape_id(node),
-                    lines_of_code=span.end_line - span.start_line + 1,
+                    line_span=span.end_line - span.start_line + 1,
                     is_exported="public" in modifiers,
                     qualified_name=_make_java_qualified_name(package_name, ancestors, name),
                     cyclomatic_complexity=compute_cyclomatic_complexity(node, "java"),
@@ -1278,7 +1278,7 @@ def _extract_symbols(
                         # class/enum fields export only with an explicit `public`.
                         is_exported=("public" in modifiers) or node.type == "constant_declaration",
                         qualified_name=qualified_name,
-                        lines_of_code=span.end_line - span.start_line + 1,
+                        line_span=span.end_line - span.start_line + 1,
                     ))
 
     return symbols
@@ -2453,7 +2453,7 @@ def _analyze_java_impl(repo_root: Path) -> JavaAnalysisResult:
             span=Span(start_line=0, end_line=0, start_col=0, end_col=0),
             origin=PASS_ID,
             origin_run_id=run.execution_id,
-            lines_of_code=1,
+            line_span=1,
         )
         emit_module_attribute_refs(
             pf.tree.root_node,

@@ -249,7 +249,7 @@ class BashAnalyzer(TreeSitterAnalyzer):
                         # convention documented at ir.py:349. Without this,
                         # bash function symbols render as ``? LOC`` in
                         # dead-code-maybe output.
-                        lines_of_code=end_line - start_line + 1,
+                        line_span=end_line - start_line + 1,
                         # INV-loguk: McCabe complexity over the bash grammar's
                         # if/elif/for/while/case decision points.
                         cyclomatic_complexity=compute_cyclomatic_complexity(

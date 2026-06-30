@@ -187,8 +187,21 @@ def generate_behavior_map_schema() -> Dict[str, Any]:
                             "type": "object",
                             "properties": {
                                 "files": {"type": "integer"},
-                                "lines": {"type": "integer"},
-                                "percentage": {"type": "number"}
+                                "loc": {
+                                    "type": "integer",
+                                    "description": (
+                                        "Source-lines-of-code (SLOC) for this "
+                                        "language — the file-level LOC "
+                                        "convention. Distinct from the "
+                                        "per-symbol line_span (physical "
+                                        "end-start+1 span). WI-bozid: the "
+                                        "schema previously declared phantom "
+                                        "`lines`/`percentage` keys the producer "
+                                        "(profile.LanguageStats.to_dict) never "
+                                        "emits; the real emitted shape is "
+                                        "{files, loc}."
+                                    )
+                                }
                             }
                         }
                     },

@@ -418,7 +418,7 @@ sub branchy {
         fn = next(s for s in result.symbols if s.kind == "function" and "branchy" in s.name)
         # base 1 + 2 conditional + 2 for + 1 loop + ternary + postfix-unless + && + || = 10
         assert fn.cyclomatic_complexity == 10
-        assert fn.lines_of_code is not None and fn.lines_of_code >= 4
+        assert fn.line_span is not None and fn.line_span >= 4
 
     def test_straight_line_sub_cc_is_one(self, tmp_path) -> None:
         from hypergumbo_lang_mainstream.perl import analyze_perl
@@ -426,7 +426,7 @@ sub branchy {
         result = analyze_perl(tmp_path)
         fn = next(s for s in result.symbols if s.kind == "function" and "simple" in s.name)
         assert fn.cyclomatic_complexity == 1
-        assert fn.lines_of_code is not None
+        assert fn.line_span is not None
 
     def test_callables_non_null_non_callables_null(self, tmp_path) -> None:
         from hypergumbo_lang_mainstream.perl import analyze_perl
@@ -438,7 +438,7 @@ sub f { my $x = shift; return $x > 0 ? 1 : 0; }
         assert funcs
         for s in funcs:
             assert s.cyclomatic_complexity is not None, s.name
-            assert s.lines_of_code is not None, s.name
+            assert s.line_span is not None, s.name
         for s in result.symbols:
             if s.kind != "function":
                 assert s.cyclomatic_complexity is None, (s.kind, s.name)

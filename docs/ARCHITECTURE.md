@@ -15,14 +15,14 @@ for focused LLM context.
 
 hypergumbo analyzed its own source code and found:
 - **289** Python modules (132 analyzers, 57 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 29, Infrastructure 7; 63 core, 4 CLI, 33 tracker)
-- **35222** symbols (functions, classes, methods)
-- **117567** edges by type:
-  - calls: 61616
-  - contains: 30613
-  - imports: 10787
-  - instantiates: 8261
-  - references: 3841
-  - module_attr_ref: 1206
+- **35304** symbols (functions, classes, methods)
+- **117952** edges by type:
+  - calls: 61824
+  - contains: 30694
+  - imports: 10843
+  - instantiates: 8275
+  - references: 3859
+  - module_attr_ref: 1214
   - other: 1243
 
 ## Package Architecture
@@ -85,7 +85,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 35222 Symbols + 117567 Edges + UsageContexts           │
+│  Output: 35304 Symbols + 117952 Edges + UsageContexts           │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -208,7 +208,7 @@ A code symbol (function, class, etc.) detected by analysis.
 - `is_generated_file`: True if the file is generated code. Independent of the role flags above.
 - `is_exported`: True if the symbol is part of the package's public API.
 - `cyclomatic_complexity`: McCabe cyclomatic complexity (decision points + 1). Counts if/elif/else, for, while, except, with, and/or, match/case.
-- `lines_of_code`: Number of source lines in the symbol body (end_line - start_line + 1).
+- `line_span`: Physical line span of the symbol body — ``end_line - start_line + 1``, INCLUDING blank and comment lines. This is NOT source-lines-of-code (SLOC); the spec's "lines of code" / file-level SLOC convention lives in ``profile.languages[*].loc``. Renamed from ``lines_of_code`` (WI-bozid) so one term no longer names two different counting conventions.
 - `signature`: Function/method signature string, e.g., "(x: int, y: str) -> bool". Only populated for callable symbols (functions, methods). None for classes, etc.
 - `docstring`: First-line summary of doc comment (truncated to 80 chars).
 - `modifiers`: List of semantic modifiers (e.g., ["native", "public", "static"]). Used by linkers for cross-language matching (e.g., JNI needs 'native').
@@ -270,18 +270,18 @@ These symbols have the highest bidirectional centrality
 |--------|------|-------|----------|
 | `Symbol` | class | 5522.1 | ir.py |
 | `Span` | class | 4352.5 | ir.py |
-| `run_behavior_map` | function | 3278.3 | cli.py |
-| `write_text` | external_symbol | 3248.0 | <external> |
+| `run_behavior_map` | function | 3302.2 | cli.py |
+| `write_text` | external_symbol | 3249.0 | <external> |
 | `LinkerContext` | class | 2186.4 | registry.py |
 | `TrackerApp` | class | 1934.9 | tui.py |
 | `load_framework_patterns` | function | 1736.8 | framework_patterns.py |
-| `Edge.create` | method | 1705.7 | ir.py |
+| `Edge.create` | method | 1711.6 | ir.py |
 | `main` | function | 1563.1 | cli.py |
-| `Path` | external_symbol | 1490.0 | <external> |
+| `Path` | external_symbol | 1497.0 | <external> |
 | `clear_pattern_cache` | function | 1336.8 | framework_patterns.py |
-| `append` | external_symbol | 1224.0 | <external> |
+| `append` | external_symbol | 1238.0 | <external> |
 | `find_files` | function | 1004.4 | discovery.py |
-| `get` | external_symbol | 973.0 | <external> |
+| `get` | external_symbol | 976.0 | <external> |
 | `TreeSitterAnalyzer` | class | 961.9 | base.py |
 
 ## Pattern System
@@ -832,7 +832,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: fb9d037b4ccf
+  commit: b4159608dc16
   hypergumbo: 6.1.0
   python: 3.12.3
 -->

@@ -997,7 +997,7 @@ def _extract_symbols_from_file(
                     docstring=extract_preceding_doc_comment(node, source, "rust"),
                     meta=meta,
                     modifiers=modifiers,
-                    lines_of_code=end_line - start_line + 1,
+                    line_span=end_line - start_line + 1,
                     is_exported="pub" in modifiers,
                     qualified_name=_make_rust_qualified_name(mod_path, impl_target, func_name),
                     cyclomatic_complexity=compute_cyclomatic_complexity(node, "rust"),
@@ -1052,7 +1052,7 @@ def _extract_symbols_from_file(
                     origin_run_id=run_id,
                     meta=meta,
                     modifiers=struct_modifiers,
-                    lines_of_code=end_line - start_line + 1,
+                    line_span=end_line - start_line + 1,
                     is_exported="pub" in struct_modifiers,
                     qualified_name=_make_rust_qualified_name(mod_path, None, struct_name),
                 )
@@ -1103,7 +1103,7 @@ def _extract_symbols_from_file(
                             name=fname, qualified_name=f_full,
                             file_stable_id=file_stable_id,
                         ),
-                        lines_of_code=f_end - f_start + 1,
+                        line_span=f_end - f_start + 1,
                         is_exported="pub" in f_modifiers,
                         qualified_name=f_qualified,
                     )
@@ -1148,7 +1148,7 @@ def _extract_symbols_from_file(
                         name=var_name, qualified_name=v_qualified,
                         file_stable_id=file_stable_id,
                     ),
-                    lines_of_code=end_line - start_line + 1,
+                    line_span=end_line - start_line + 1,
                     is_exported="pub" in v_modifiers,
                     qualified_name=v_qualified,
                 )
@@ -1191,7 +1191,7 @@ def _extract_symbols_from_file(
                     origin_run_id=run_id,
                     meta=meta,
                     modifiers=enum_modifiers,
-                    lines_of_code=end_line - start_line + 1,
+                    line_span=end_line - start_line + 1,
                     is_exported="pub" in enum_modifiers,
                     qualified_name=_make_rust_qualified_name(mod_path, None, enum_name),
                 )
@@ -1229,7 +1229,7 @@ def _extract_symbols_from_file(
                     origin=PASS_ID,
                     origin_run_id=run_id,
                     meta=meta,
-                    lines_of_code=end_line - start_line + 1,
+                    line_span=end_line - start_line + 1,
                     is_exported="pub" in trait_modifiers,
                     qualified_name=_make_rust_qualified_name(mod_path, None, trait_name),
                 )
@@ -2194,7 +2194,7 @@ def _extract_edges_from_file(
         span=Span(start_line=0, end_line=0, start_col=0, end_col=0),
         origin=PASS_ID,
         origin_run_id=run_id,
-        lines_of_code=1,
+        line_span=1,
     )
     emit_module_attribute_refs(
         tree.root_node,

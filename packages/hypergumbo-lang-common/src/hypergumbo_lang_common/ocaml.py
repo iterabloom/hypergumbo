@@ -203,7 +203,7 @@ def _extract_symbols_from_tree(
                 compute_cyclomatic_complexity(node, "ocaml")
                 if kind == "function" else None
             ),
-            lines_of_code=(end_line - start_line + 1) if kind == "function" else None,
+            line_span=(end_line - start_line + 1) if kind == "function" else None,
         )
         analysis.symbols.append(sym)
         analysis.symbol_by_name[name] = sym

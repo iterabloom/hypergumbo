@@ -883,7 +883,7 @@ instance Showable Person where
 
 class TestHaskellCyclomaticComplexity:
     """INV-loguk slice C: callable Haskell symbols carry non-null
-    cyclomatic_complexity and lines_of_code. Real-grammar verification of the
+    cyclomatic_complexity and line_span. Real-grammar verification of the
     haskell BRANCH_NODE_TYPES entry (conditional / alternative / guards)."""
 
     def test_branchy_function_has_cc_and_loc(self, tmp_path: Path) -> None:
@@ -905,7 +905,7 @@ classify x y =
                   if s.kind == "function" and s.name == "classify")
         # base 1 + 2 conditional (if + else-if) + 2 alternative (case arms) = 5
         assert fn.cyclomatic_complexity == 5
-        assert fn.lines_of_code is not None and fn.lines_of_code >= 4
+        assert fn.line_span is not None and fn.line_span >= 4
 
     def test_straight_line_function_cc_is_one(self, tmp_path: Path) -> None:
         from hypergumbo_lang_common.haskell import analyze_haskell
@@ -918,7 +918,7 @@ g x = x
         fn = next(s for s in result.symbols
                   if s.kind == "function" and s.name == "g")
         assert fn.cyclomatic_complexity == 1
-        assert fn.lines_of_code is not None
+        assert fn.line_span is not None
 
     def test_callables_non_null_non_callables_null(self, tmp_path: Path) -> None:
         from hypergumbo_lang_common.haskell import analyze_haskell
@@ -934,7 +934,7 @@ f x = if x > 0 then 1 else 0
         assert funcs
         for s in funcs:
             assert s.cyclomatic_complexity is not None, s.name
-            assert s.lines_of_code is not None, s.name
+            assert s.line_span is not None, s.name
         # data / file (non-callable) keep null CC
         for s in result.symbols:
             if s.kind != "function":

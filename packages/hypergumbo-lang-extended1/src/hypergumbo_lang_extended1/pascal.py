@@ -322,7 +322,7 @@ class PascalAnalyzer(TreeSitterAnalyzer):
                     signature=signature,
                     meta={"param_count": len(params), "proc_kind": kind},
                     cyclomatic_complexity=compute_cyclomatic_complexity(node, "pascal"),
-                    lines_of_code=node.end_point[0] - node.start_point[0] + 1,
+                    line_span=node.end_point[0] - node.start_point[0] + 1,
                 )
                 analysis.symbols.append(sym)
                 analysis.symbol_by_name[name] = sym

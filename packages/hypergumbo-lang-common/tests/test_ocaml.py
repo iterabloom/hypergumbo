@@ -366,7 +366,7 @@ let double_length lst =
 
 class TestOCamlCyclomaticComplexity:
     """INV-loguk slice C: callable OCaml symbols carry non-null
-    cyclomatic_complexity and lines_of_code. Real-grammar verification of the
+    cyclomatic_complexity and line_span. Real-grammar verification of the
     ocaml BRANCH_NODE_TYPES entry (if/for/while_expression + match_case)."""
 
     def test_branchy_function_has_cc_and_loc(self, tmp_path: Path) -> None:
@@ -385,7 +385,7 @@ class TestOCamlCyclomaticComplexity:
                   if s.kind == "function" and s.name == "classify")
         # base 1 + 2 if_expression (if + else-if) + 3 match_case = 6
         assert fn.cyclomatic_complexity == 6
-        assert fn.lines_of_code is not None and fn.lines_of_code >= 4
+        assert fn.line_span is not None and fn.line_span >= 4
 
     def test_straight_line_function_cc_is_one(self, tmp_path: Path) -> None:
         from hypergumbo_lang_common.ocaml import analyze_ocaml
@@ -394,7 +394,7 @@ class TestOCamlCyclomaticComplexity:
         fn = next(s for s in result.symbols
                   if s.kind == "function" and s.name == "g")
         assert fn.cyclomatic_complexity == 1
-        assert fn.lines_of_code is not None
+        assert fn.line_span is not None
 
     def test_callables_non_null_non_callables_null(self, tmp_path: Path) -> None:
         from hypergumbo_lang_common.ocaml import analyze_ocaml
@@ -407,7 +407,7 @@ let f x = if x > 0 then 1 else 0
         assert funcs
         for s in funcs:
             assert s.cyclomatic_complexity is not None, s.name
-            assert s.lines_of_code is not None, s.name
+            assert s.line_span is not None, s.name
         for s in result.symbols:
             if s.kind != "function":
                 assert s.cyclomatic_complexity is None, (s.kind, s.name)

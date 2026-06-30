@@ -146,7 +146,7 @@ def _make_gd_symbol(
     """Create a Symbol from a tree-sitter node.
 
     ``complexity=True`` (callable kinds — function) populates
-    cyclomatic_complexity + lines_of_code per INV-loguk. Gated so non-callable
+    cyclomatic_complexity + line_span per INV-loguk. Gated so non-callable
     kinds (variable/signal/class) that flow through this same helper don't
     aggregate their whole subtree.
     """
@@ -175,7 +175,7 @@ def _make_gd_symbol(
         cyclomatic_complexity=(
             compute_cyclomatic_complexity(node, "gdscript") if complexity else None
         ),
-        lines_of_code=(end_line - start_line + 1) if complexity else None,
+        line_span=(end_line - start_line + 1) if complexity else None,
     )
 
 

@@ -364,7 +364,7 @@ class TestNimCyclomaticComplexity:
                   if s.kind in ("function", "method") and s.name == "classify")
         # base 1 + elif + 2 of_branch + except + and + or = 7
         assert fn.cyclomatic_complexity == 7
-        assert fn.lines_of_code is not None and fn.lines_of_code >= 4
+        assert fn.line_span is not None and fn.line_span >= 4
 
     def test_straight_line_proc_cc_is_one(self, tmp_path: Path) -> None:
         (tmp_path / "g.nim").write_text("proc g(x: int): int =\n  return x\n")
@@ -372,7 +372,7 @@ class TestNimCyclomaticComplexity:
         fn = next(s for s in result.symbols
                   if s.kind in ("function", "method") and s.name == "g")
         assert fn.cyclomatic_complexity == 1
-        assert fn.lines_of_code is not None
+        assert fn.line_span is not None
 
     def test_callables_non_null_type_null(self, tmp_path: Path) -> None:
         (tmp_path / "m.nim").write_text("""type
@@ -389,7 +389,7 @@ proc f(x: int): int =
         assert callables
         for s in callables:
             assert s.cyclomatic_complexity is not None, s.name
-            assert s.lines_of_code is not None, s.name
+            assert s.line_span is not None, s.name
         for s in result.symbols:
             if s.kind not in ("function", "method"):
                 assert s.cyclomatic_complexity is None, (s.kind, s.name)

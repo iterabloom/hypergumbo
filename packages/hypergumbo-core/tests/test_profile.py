@@ -440,7 +440,7 @@ def test_profile_empty_when_no_source_files(tmp_path: Path) -> None:
     assert data["profile"]["frameworks"] == []
 
 
-def test_counts_lines_of_code_correctly(tmp_path: Path) -> None:
+def test_counts_line_span_correctly(tmp_path: Path) -> None:
     """Behavior map has correct LOC (non-empty lines only)."""
     (tmp_path / "app.py").write_text("def main():\n    # comment\n    pass\n\n\n")
 

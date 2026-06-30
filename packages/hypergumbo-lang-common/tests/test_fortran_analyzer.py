@@ -435,7 +435,7 @@ end module m
         fn = next(s for s in result.symbols if s.kind == "function" and s.name == "compute")
         # base 1 + if + elseif + 2 do_loop + 3 case + .and. + .or. = 10
         assert fn.cyclomatic_complexity == 10
-        assert fn.lines_of_code is not None and fn.lines_of_code >= 4
+        assert fn.line_span is not None and fn.line_span >= 4
 
     def test_subroutine_has_cc_and_loc(self, tmp_path) -> None:
         (tmp_path / "s.f90").write_text("""module m
@@ -452,7 +452,7 @@ end module m
         sub = next(s for s in result.symbols if s.kind == "subroutine" and s.name == "sideeffect")
         # base 1 + 1 if = 2
         assert sub.cyclomatic_complexity == 2
-        assert sub.lines_of_code is not None
+        assert sub.line_span is not None
 
     def test_callables_non_null_non_callables_null(self, tmp_path) -> None:
         (tmp_path / "p.f90").write_text("""module mymod
@@ -469,7 +469,7 @@ end module mymod
         assert callables
         for s in callables:
             assert s.cyclomatic_complexity is not None, (s.kind, s.name)
-            assert s.lines_of_code is not None, (s.kind, s.name)
+            assert s.line_span is not None, (s.kind, s.name)
         for s in result.symbols:
             if s.kind not in ("function", "subroutine"):
                 assert s.cyclomatic_complexity is None, (s.kind, s.name)

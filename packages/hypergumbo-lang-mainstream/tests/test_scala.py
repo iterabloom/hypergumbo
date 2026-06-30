@@ -1465,7 +1465,7 @@ class TestScalaCyclomaticComplexity:
         fn = next(s for s in result.symbols if s.name == "Demo.classify")
         # base 1 + 2 if_expression + for + while + 3 case_clause = 8
         assert fn.cyclomatic_complexity == 8
-        assert fn.lines_of_code is not None and fn.lines_of_code >= 4
+        assert fn.line_span is not None and fn.line_span >= 4
 
     def test_straight_line_method_cc_is_one(self, tmp_path) -> None:
         from hypergumbo_lang_mainstream.scala import analyze_scala
@@ -1473,7 +1473,7 @@ class TestScalaCyclomaticComplexity:
         result = analyze_scala(tmp_path)
         fn = next(s for s in result.symbols if s.name == "G.plain")
         assert fn.cyclomatic_complexity == 1
-        assert fn.lines_of_code is not None
+        assert fn.line_span is not None
 
     def test_callables_non_null_non_callables_null(self, tmp_path) -> None:
         from hypergumbo_lang_mainstream.scala import analyze_scala
@@ -1488,7 +1488,7 @@ trait Shape { def area(): Double }
         assert callables
         for s in callables:
             assert s.cyclomatic_complexity is not None, (s.kind, s.name)
-            assert s.lines_of_code is not None, (s.kind, s.name)
+            assert s.line_span is not None, (s.kind, s.name)
         for s in result.symbols:
             if s.kind not in callable_kinds:
                 assert s.cyclomatic_complexity is None, (s.kind, s.name)

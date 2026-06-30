@@ -236,7 +236,7 @@ def _extract_method_symbol(
         signature=signature,
         meta=meta if meta else {},
         cyclomatic_complexity=compute_cyclomatic_complexity(node, "apex"),
-        lines_of_code=node.end_point[0] - node.start_point[0] + 1,
+        line_span=node.end_point[0] - node.start_point[0] + 1,
     )
 
 
@@ -294,7 +294,7 @@ def _extract_constructor_symbol(
         signature=signature,
         meta=meta if meta else {},
         cyclomatic_complexity=compute_cyclomatic_complexity(node, "apex"),
-        lines_of_code=node.end_point[0] - node.start_point[0] + 1,
+        line_span=node.end_point[0] - node.start_point[0] + 1,
     )
 
 

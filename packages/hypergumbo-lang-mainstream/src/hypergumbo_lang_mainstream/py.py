@@ -1682,7 +1682,7 @@ def _compute_cyclomatic_complexity(node: ast.AST) -> int:
     return complexity
 
 
-def _compute_lines_of_code(node: ast.AST) -> int:
+def _compute_line_span(node: ast.AST) -> int:
     """Compute lines of code for a function or class.
 
     Returns end_line - start_line + 1.
@@ -2376,7 +2376,7 @@ def _extract_file_analysis(
                 ),
                 shape_id=_compute_shape_id(node),
                 cyclomatic_complexity=_compute_cyclomatic_complexity(node),
-                lines_of_code=_compute_lines_of_code(node),
+                line_span=_compute_line_span(node),
                 meta=class_meta if class_meta else None,
                 docstring=_ds_line,
                 modifiers=_python_visibility_modifiers(node.name),
@@ -2519,7 +2519,7 @@ def _extract_file_analysis(
                         stable_id=stable_id,
                         shape_id=_compute_shape_id(item),
                         cyclomatic_complexity=_compute_cyclomatic_complexity(item),
-                        lines_of_code=_compute_lines_of_code(item),
+                        line_span=_compute_line_span(item),
                         signature=_format_function_signature(item),
                         docstring=_mds_line,
                         meta=method_meta if method_meta else None,
@@ -2663,7 +2663,7 @@ def _extract_file_analysis(
                     shape_id=_compute_shape_id(node),
                     meta=func_meta if func_meta else None,
                     cyclomatic_complexity=_compute_cyclomatic_complexity(node),
-                    lines_of_code=_compute_lines_of_code(node),
+                    line_span=_compute_line_span(node),
                     signature=func_sig,
                     docstring=_fds_line,
                     modifiers=func_modifiers,

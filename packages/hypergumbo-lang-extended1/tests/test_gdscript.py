@@ -305,7 +305,7 @@ class TestGdscriptCyclomaticComplexity:
         assert not result.skipped
         by = {s.name: s for s in result.symbols if s.kind in ('function',)}
         assert by['compute'].cyclomatic_complexity == 11, by['compute'].cyclomatic_complexity
-        assert by['compute'].lines_of_code is not None
+        assert by['compute'].line_span is not None
 
     def test_callables_non_null_non_callables_null(self, tmp_path) -> None:
         from hypergumbo_lang_extended1.gdscript import analyze_gdscript
@@ -315,7 +315,7 @@ class TestGdscriptCyclomaticComplexity:
         assert callables
         for s in callables:
             assert s.cyclomatic_complexity is not None, (s.kind, s.name)
-            assert s.lines_of_code is not None, (s.kind, s.name)
+            assert s.line_span is not None, (s.kind, s.name)
         for s in result.symbols:
             if s.kind not in ('function',):
                 assert s.cyclomatic_complexity is None, (s.kind, s.name)

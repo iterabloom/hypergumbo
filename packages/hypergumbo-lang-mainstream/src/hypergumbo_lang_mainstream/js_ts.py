@@ -3477,7 +3477,7 @@ def _extract_symbols(
         span=module_span,
         origin=PASS_ID,
         origin_run_id=run.execution_id,
-        lines_of_code=module_span.end_line - module_span.start_line + 1,
+        line_span=module_span.end_line - module_span.start_line + 1,
     )
     symbols.append(module_symbol)
 
@@ -3526,7 +3526,7 @@ def _extract_symbols(
                             origin_run_id=run.execution_id,
                             stable_id=make_route_stable_id(http_method, route_path) if route_path else None,
                             meta={"route_path": route_path, "http_method": http_method, "handler_ref": handler_name, "framework_role": "route"},
-                            lines_of_code=span.end_line - span.start_line + 1,
+                            line_span=span.end_line - span.start_line + 1,
                         )
                         symbols.append(symbol)
                     else:
@@ -3565,7 +3565,7 @@ def _extract_symbols(
                             stable_id=make_route_stable_id(http_method, route_path) if route_path else None,
                             meta={"route_path": route_path, "http_method": http_method} if route_path else None,
                             signature=_extract_jsts_signature(handler_node, source),
-                            lines_of_code=span.end_line - span.start_line + 1,
+                            line_span=span.end_line - span.start_line + 1,
                         )
                         symbols.append(symbol)
                     continue  # Skip further processing of this call_expression
@@ -3596,7 +3596,7 @@ def _extract_symbols(
                     origin_run_id=run.execution_id,
                     stable_id=make_route_stable_id("GET", route_path),
                     meta=jsx_route_meta,
-                    lines_of_code=span.end_line - span.start_line + 1,
+                    line_span=span.end_line - span.start_line + 1,
                 )
                 symbols.append(symbol)
                 # Don't continue — let tree walk also process child nodes
@@ -3630,7 +3630,7 @@ def _extract_symbols(
                     origin_run_id=run.execution_id,
                     stable_id=make_route_stable_id("GET", rpath),
                     meta=route_meta,
-                    lines_of_code=span.end_line - span.start_line + 1,
+                    line_span=span.end_line - span.start_line + 1,
                 ))
 
         # Function declarations, incl. generators ``function* g() {}`` (WI-zavad
@@ -3675,7 +3675,7 @@ def _extract_symbols(
                     signature=signature,
                     docstring=extract_preceding_doc_comment(node, source, lang),
                     shape_id=_jsts_analyzer.compute_shape_id(node),
-                    lines_of_code=span.end_line - span.start_line + 1,
+                    line_span=span.end_line - span.start_line + 1,
                     qualified_name=_make_jsts_qualified_name(
                         _get_jsts_class_ancestors(node, source), name, lang,
                     ),
@@ -3749,7 +3749,7 @@ def _extract_symbols(
                             signature=signature,
                             docstring=extract_preceding_doc_comment(node, source, lang),
                             shape_id=_jsts_analyzer.compute_shape_id(value_node),
-                            lines_of_code=span.end_line - span.start_line + 1,
+                            line_span=span.end_line - span.start_line + 1,
                             qualified_name=_make_jsts_qualified_name(
                                 _get_jsts_class_ancestors(node, source), name, lang,
                             ),
@@ -3800,7 +3800,7 @@ def _extract_symbols(
                                 stable_id=make_variable_stable_id(lang, normalize_path(file_name), var_name),
                                 signature=_extract_field_type(child, source),
                                 is_exported=node.parent is not None and node.parent.type == "export_statement",
-                                lines_of_code=vspan.end_line - vspan.start_line + 1,
+                                line_span=vspan.end_line - vspan.start_line + 1,
                             ))
 
         # Class declarations (including abstract classes)
@@ -3836,7 +3836,7 @@ def _extract_symbols(
                     origin_run_id=run.execution_id,
                     meta=meta,
                     shape_id=_jsts_analyzer.compute_shape_id(node),
-                    lines_of_code=span.end_line - span.start_line + 1,
+                    line_span=span.end_line - span.start_line + 1,
                     qualified_name=_make_jsts_qualified_name(
                         _get_jsts_class_ancestors(node, source), name, lang,
                     ),
@@ -3863,7 +3863,7 @@ def _extract_symbols(
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     shape_id=_jsts_analyzer.compute_shape_id(node),
-                    lines_of_code=span.end_line - span.start_line + 1,
+                    line_span=span.end_line - span.start_line + 1,
                     qualified_name=_make_jsts_qualified_name(
                         _get_jsts_class_ancestors(node, source), name, lang,
                     ),
@@ -3890,7 +3890,7 @@ def _extract_symbols(
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     shape_id=_jsts_analyzer.compute_shape_id(node),
-                    lines_of_code=span.end_line - span.start_line + 1,
+                    line_span=span.end_line - span.start_line + 1,
                 )
                 symbols.append(symbol)
 
@@ -3918,7 +3918,7 @@ def _extract_symbols(
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     shape_id=_jsts_analyzer.compute_shape_id(node),
-                    lines_of_code=span.end_line - span.start_line + 1,
+                    line_span=span.end_line - span.start_line + 1,
                     qualified_name=_make_jsts_qualified_name(
                         _get_jsts_class_ancestors(node, source), name, lang,
                     ),
@@ -3993,7 +3993,7 @@ def _extract_symbols(
                     signature=signature,
                     docstring=extract_preceding_doc_comment(node, source, lang),
                     shape_id=_jsts_analyzer.compute_shape_id(node),
-                    lines_of_code=span.end_line - span.start_line + 1,
+                    line_span=span.end_line - span.start_line + 1,
                     qualified_name=_make_jsts_qualified_name(
                         _get_jsts_class_ancestors(node, source), name, lang,
                     ),
@@ -4054,7 +4054,7 @@ def _extract_symbols(
                     signature=field_type,
                     modifiers=_extract_field_modifiers(node, source),
                     qualified_name=qualified_name,
-                    lines_of_code=span.end_line - span.start_line + 1,
+                    line_span=span.end_line - span.start_line + 1,
                 )
                 symbols.append(symbol)
 
@@ -4098,7 +4098,7 @@ def _extract_symbols(
                             signature=signature,
                             docstring=extract_preceding_doc_comment(node, source, lang),
                             shape_id=_jsts_analyzer.compute_shape_id(child),
-                            lines_of_code=span.end_line - span.start_line + 1,
+                            line_span=span.end_line - span.start_line + 1,
                             qualified_name=_make_jsts_qualified_name(
                                 _get_jsts_class_ancestors(child, source), name, lang,
                             ),
@@ -4161,7 +4161,7 @@ def _extract_symbols(
                     signature=signature,
                     docstring=extract_preceding_doc_comment(node, source, lang),
                     shape_id=_jsts_analyzer.compute_shape_id(node),
-                    lines_of_code=span.end_line - span.start_line + 1,
+                    line_span=span.end_line - span.start_line + 1,
                     qualified_name=qualified_name,
                     cyclomatic_complexity=compute_cyclomatic_complexity(node, lang),
                     meta={"anonymous": True},

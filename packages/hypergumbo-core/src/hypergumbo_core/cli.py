@@ -2293,7 +2293,7 @@ def cmd_explain(args: argparse.Namespace) -> int:
 
         # Show complexity and LOC if available
         complexity = node.get("cyclomatic_complexity")
-        loc = node.get("lines_of_code")
+        loc = node.get("line_span")
         if complexity is not None or loc is not None:
             metrics = []
             if complexity is not None:
@@ -5200,7 +5200,7 @@ def cmd_test_coverage(args: argparse.Namespace) -> int:
     for target_id, test_ids in tests_per_target.items():
         target = target_symbols[target_id]
         test_count = len(test_ids)
-        loc = target.get("lines_of_code") or 1  # Default to 1 to avoid division by zero
+        loc = target.get("line_span") or 1  # Default to 1 to avoid division by zero
 
         if test_count == 0:
             # Cold spot - include LOC and complexity for prioritization
@@ -5273,7 +5273,7 @@ def cmd_test_coverage(args: argparse.Namespace) -> int:
                 "path": target.get("path", ""),
                 "span": span,
                 "test_count": test_count,
-                "lines_of_code": loc,
+                "line_span": loc,
                 "test_density": round(density, 2),
                 "tests": sorted(test_names),
             })
@@ -5288,7 +5288,7 @@ def cmd_test_coverage(args: argparse.Namespace) -> int:
                 "test_count": 0,
             }
             if loc:
-                entry["lines_of_code"] = loc
+                entry["line_span"] = loc
             if complexity:
                 entry["cyclomatic_complexity"] = complexity
             output["cold_spots"].append(entry)
@@ -6024,7 +6024,7 @@ def cmd_dead_code_maybe(args: argparse.Namespace) -> int:
                 + shape_boosts.get(n["id"], 0)
                 + (_FFI_RANK_BOOST if ffi_flags.get(n["id"]) else 0)
             ),
-            -(n.get("lines_of_code") or 1),
+            -(n.get("line_span") or 1),
         ),
     )
 
@@ -6078,7 +6078,7 @@ def cmd_dead_code_maybe(args: argparse.Namespace) -> int:
                     "path": n.get("path", ""),
                     "language": n.get("language", ""),
                     "kind": n.get("kind", ""),
-                    "lines_of_code": n.get("lines_of_code"),
+                    "line_span": n.get("line_span"),
                     "span": n.get("span"),
                     "id": n["id"],
                     "cross_language_hits": cross_lang_hits.get(n["id"], 0),
@@ -6110,7 +6110,7 @@ def cmd_dead_code_maybe(args: argparse.Namespace) -> int:
             for n in dead_candidates[:50]:
                 name = n.get("name", "?")
                 path = n.get("path", "?")
-                loc = n.get("lines_of_code") or "?"
+                loc = n.get("line_span") or "?"
                 print(f"  {name:<30} {path:<30} {loc:>5} LOC")
 
             if len(dead_candidates) > 50:  # pragma: no cover

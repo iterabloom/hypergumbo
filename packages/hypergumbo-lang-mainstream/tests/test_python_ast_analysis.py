@@ -10,7 +10,7 @@ from hypergumbo_lang_mainstream.py import (
     _module_name_from_path,
     _resolve_relative_import,
     _compute_cyclomatic_complexity,
-    _compute_lines_of_code,
+    _compute_line_span,
 )
 import ast
 
@@ -3369,7 +3369,7 @@ def complex_function(items, flag):
     assert _compute_cyclomatic_complexity(func) == 7
 
 
-def test_lines_of_code_simple() -> None:
+def test_line_span_simple() -> None:
     """LOC is end_line - start_line + 1."""
     code = """def simple():
     x = 1
@@ -3378,10 +3378,10 @@ def test_lines_of_code_simple() -> None:
     tree = ast.parse(code)
     func = tree.body[0]
     # Lines 1-3
-    assert _compute_lines_of_code(func) == 3
+    assert _compute_line_span(func) == 3
 
 
-def test_lines_of_code_multiline() -> None:
+def test_line_span_multiline() -> None:
     """LOC counts all lines in a function."""
     code = """def multiline():
     a = 1
@@ -3394,7 +3394,7 @@ def test_lines_of_code_multiline() -> None:
     tree = ast.parse(code)
     func = tree.body[0]
     # Lines 1-7
-    assert _compute_lines_of_code(func) == 7
+    assert _compute_line_span(func) == 7
 
 
 def test_cyclomatic_complexity_in_output(tmp_path: Path) -> None:
@@ -3424,7 +3424,7 @@ def branchy(x, y):
     assert functions["branchy"]["cyclomatic_complexity"] == 3
 
 
-def test_lines_of_code_in_output(tmp_path: Path) -> None:
+def test_line_span_in_output(tmp_path: Path) -> None:
     """Lines of code should appear in analysis output."""
     py_file = tmp_path / "example.py"
     py_file.write_text("""def short():
@@ -3445,14 +3445,14 @@ def longer():
     functions = {n["name"]: n for n in data["nodes"] if n["kind"] == "function"}
 
     # short() is 2 lines
-    assert functions["short"]["lines_of_code"] == 2
+    assert functions["short"]["line_span"] == 2
 
     # longer() is 6 lines
-    assert functions["longer"]["lines_of_code"] == 6
+    assert functions["longer"]["line_span"] == 6
 
 
 def test_class_has_complexity_and_loc(tmp_path: Path) -> None:
-    """Classes should also have cyclomatic_complexity and lines_of_code."""
+    """Classes should also have cyclomatic_complexity and line_span."""
     py_file = tmp_path / "example.py"
     py_file.write_text("""class MyClass:
     def __init__(self, x):
@@ -3473,15 +3473,15 @@ def test_class_has_complexity_and_loc(tmp_path: Path) -> None:
     classes = [n for n in data["nodes"] if n["kind"] == "class"]
     assert len(classes) == 1
     cls = classes[0]
-    assert cls["lines_of_code"] == 8  # Lines 1-8
+    assert cls["line_span"] == 8  # Lines 1-8
     # Class complexity includes all methods' branches
     assert cls["cyclomatic_complexity"] >= 1
 
     # Find methods
     methods = {n["name"]: n for n in data["nodes"] if n["kind"] == "method"}
-    assert methods["MyClass.__init__"]["lines_of_code"] == 2
+    assert methods["MyClass.__init__"]["line_span"] == 2
     assert methods["MyClass.__init__"]["cyclomatic_complexity"] == 1
-    assert methods["MyClass.process"]["lines_of_code"] == 4
+    assert methods["MyClass.process"]["line_span"] == 4
     assert methods["MyClass.process"]["cyclomatic_complexity"] == 2  # 1 base + 1 if
 
 

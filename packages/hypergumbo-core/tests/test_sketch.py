@@ -3561,7 +3561,7 @@ class TestFormatSymbols:
         )
         sink.supply_chain_tier = 1
         sink.supply_chain_reason = "tier_1"
-        sink.lines_of_code = 3
+        sink.line_span = 3
 
         # Connector: 50-line body, has outgoing edges, 20 callers
         connector = Symbol(
@@ -3572,7 +3572,7 @@ class TestFormatSymbols:
         )
         connector.supply_chain_tier = 1
         connector.supply_chain_reason = "tier_1"
-        connector.lines_of_code = 50
+        connector.line_span = 50
 
         # Caller symbols
         callers = []

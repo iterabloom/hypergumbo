@@ -77,7 +77,7 @@ def _make_symbol(analyzer: "AdaAnalyzer", rel_path: str, run_id: str, node: "tre
     """Create a Symbol with consistent formatting.
 
     INV-loguk: ``cc_node`` is the subtree to compute cyclomatic_complexity +
-    lines_of_code from — the subprogram BODY for callables (the ``node`` used
+    line_span from — the subprogram BODY for callables (the ``node`` used
     for the id/span is the spec, which is a single line and carries no body).
     Only callable body paths pass it; non-callable kinds (package/type/
     variable) leave it None and keep CC/LOC None.
@@ -114,7 +114,7 @@ def _make_symbol(analyzer: "AdaAnalyzer", rel_path: str, run_id: str, node: "tre
         cyclomatic_complexity=(
             compute_cyclomatic_complexity(cc_node, "ada") if cc_node is not None else None
         ),
-        lines_of_code=(
+        line_span=(
             cc_node.end_point[0] - cc_node.start_point[0] + 1
             if cc_node is not None else None
         ),

@@ -1166,7 +1166,7 @@ def _extract_rails_routes(
                     },
                     origin=PASS_ID,
                     origin_run_id=run_id,
-                    lines_of_code=span.end_line - span.start_line + 1,
+                    line_span=span.end_line - span.start_line + 1,
                     is_exported=True,
                 )
                 route_symbols.append(route_symbol)
@@ -1217,7 +1217,7 @@ def _extract_rails_routes(
                     },
                     origin=PASS_ID,
                     origin_run_id=run_id,
-                    lines_of_code=span.end_line - span.start_line + 1,
+                    line_span=span.end_line - span.start_line + 1,
                     is_exported=True,
                 )
                 route_symbols.append(route_symbol)
@@ -1249,7 +1249,7 @@ def _extract_rails_routes(
                 meta=route_meta,
                 origin=PASS_ID,
                 origin_run_id=run_id,
-                lines_of_code=span.end_line - span.start_line + 1,
+                line_span=span.end_line - span.start_line + 1,
                 is_exported=True,
             )
             route_symbols.append(route_symbol)
@@ -1842,7 +1842,7 @@ def _extract_symbols_from_file(
                         file_stable_id=file_stable_id,
                     ),
                     shape_id=_analyzer.compute_shape_id(node),
-                    lines_of_code=end_line - start_line + 1,
+                    line_span=end_line - start_line + 1,
                     is_exported=not _is_nested_in_method(node),
                     qualified_name=_make_ruby_qualified_name(ruby_chain, method_name),
                     cyclomatic_complexity=compute_cyclomatic_complexity(node, "ruby"),
@@ -1890,7 +1890,7 @@ def _extract_symbols_from_file(
                         file_stable_id=file_stable_id,
                     ),
                     shape_id=_analyzer.compute_shape_id(node),
-                    lines_of_code=end_line - start_line + 1,
+                    line_span=end_line - start_line + 1,
                     is_exported=not _is_nested_in_method(node),
                     qualified_name=_make_ruby_qualified_name(ruby_chain, method_name),
                     cyclomatic_complexity=compute_cyclomatic_complexity(node, "ruby"),
@@ -1955,7 +1955,7 @@ def _extract_symbols_from_file(
                         file_stable_id=file_stable_id,
                     ),
                     shape_id=_analyzer.compute_shape_id(node),
-                    lines_of_code=end_line - start_line + 1,
+                    line_span=end_line - start_line + 1,
                     is_exported=not _is_nested_in_method(node),
                     qualified_name=_make_ruby_qualified_name(ruby_chain, class_name),
                 )
@@ -2002,7 +2002,7 @@ def _extract_symbols_from_file(
                         file_stable_id=file_stable_id,
                     ),
                     shape_id=_analyzer.compute_shape_id(node),
-                    lines_of_code=end_line - start_line + 1,
+                    line_span=end_line - start_line + 1,
                     is_exported=not _is_nested_in_method(node),
                     qualified_name=_make_ruby_qualified_name(ruby_chain, module_name),
                 )

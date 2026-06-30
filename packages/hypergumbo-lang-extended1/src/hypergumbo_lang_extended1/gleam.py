@@ -200,7 +200,7 @@ class GleamAnalyzer(TreeSitterAnalyzer):
                     signature=signature,
                     meta={"is_public": is_pub},
                     cyclomatic_complexity=compute_cyclomatic_complexity(node, "gleam"),
-                    lines_of_code=node.end_point[0] - node.start_point[0] + 1,
+                    line_span=node.end_point[0] - node.start_point[0] + 1,
                 )
                 analysis.symbols.append(sym)
                 analysis.node_for_symbol[sym.id] = node

@@ -69,7 +69,7 @@ def test_cmake_callables_have_non_null_loc(tmp_path: Path) -> None:
     for sym in result.symbols:
         if sym.kind in _CALLABLE_KINDS:
             assert sym.cyclomatic_complexity is not None
-            assert sym.lines_of_code is not None
+            assert sym.line_span is not None
 
 
 def test_cmake_non_callables_stay_null(tmp_path: Path) -> None:
@@ -79,4 +79,4 @@ def test_cmake_non_callables_stay_null(tmp_path: Path) -> None:
     assert non_callables  # project / target symbols present
     for sym in non_callables:
         assert sym.cyclomatic_complexity is None
-        assert sym.lines_of_code is None
+        assert sym.line_span is None

@@ -175,7 +175,7 @@ def _extract_symbols_from_file(
         """Add a symbol if not already seen.
 
         ``complexity=True`` (callable kinds — function / theorem) populates
-        cyclomatic_complexity + lines_of_code per INV-loguk. Gated so
+        cyclomatic_complexity + line_span per INV-loguk. Gated so
         non-callable kinds (structure/inductive/class/instance) that share this
         helper don't aggregate their whole subtree.
         """
@@ -205,7 +205,7 @@ def _extract_symbols_from_file(
             cyclomatic_complexity=(
                 compute_cyclomatic_complexity(node, "lean") if complexity else None
             ),
-            lines_of_code=(end_line - start_line + 1) if complexity else None,
+            line_span=(end_line - start_line + 1) if complexity else None,
         )
         if meta:  # pragma: no cover - meta rarely used
             sym.meta = meta  # pragma: no cover

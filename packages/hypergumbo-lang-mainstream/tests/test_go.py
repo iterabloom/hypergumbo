@@ -5904,10 +5904,10 @@ func main() {
 
 
 class TestGoLinesOfCode:
-    """Tests for lines_of_code on Go symbols."""
+    """Tests for line_span on Go symbols."""
 
-    def test_function_lines_of_code(self, tmp_path: Path) -> None:
-        """Function symbols have lines_of_code set from span."""
+    def test_function_line_span(self, tmp_path: Path) -> None:
+        """Function symbols have line_span set from span."""
         from hypergumbo_lang_mainstream.go import analyze_go
 
         go_file = tmp_path / "main.go"
@@ -5927,11 +5927,11 @@ func medium(x int) int {
         result = analyze_go(tmp_path)
         small = next(s for s in result.symbols if s.name == "small")
         medium = next(s for s in result.symbols if s.name == "medium")
-        assert small.lines_of_code == 3
-        assert medium.lines_of_code == 5
+        assert small.line_span == 3
+        assert medium.line_span == 5
 
-    def test_method_lines_of_code(self, tmp_path: Path) -> None:
-        """Method symbols have lines_of_code set from span."""
+    def test_method_line_span(self, tmp_path: Path) -> None:
+        """Method symbols have line_span set from span."""
         from hypergumbo_lang_mainstream.go import analyze_go
 
         go_file = tmp_path / "main.go"
@@ -5946,10 +5946,10 @@ func (s *Server) Start() error {
 
         result = analyze_go(tmp_path)
         start = next(s for s in result.symbols if s.name == "Server.Start")
-        assert start.lines_of_code == 3
+        assert start.line_span == 3
 
-    def test_struct_lines_of_code(self, tmp_path: Path) -> None:
-        """Struct/interface symbols have lines_of_code set from span."""
+    def test_struct_line_span(self, tmp_path: Path) -> None:
+        """Struct/interface symbols have line_span set from span."""
         from hypergumbo_lang_mainstream.go import analyze_go
 
         go_file = tmp_path / "main.go"
@@ -5964,7 +5964,7 @@ type Config struct {
 
         result = analyze_go(tmp_path)
         config = next(s for s in result.symbols if s.name == "Config")
-        assert config.lines_of_code == 5
+        assert config.line_span == 5
 
 
 class TestGoIsExported:

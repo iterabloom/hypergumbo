@@ -2158,7 +2158,7 @@ class TestCStdioIdentifierRefs:
 
 class TestCComplexityAndLoc:
     """INV-loguk: every C function-kind Symbol populates
-    cyclomatic_complexity and lines_of_code.
+    cyclomatic_complexity and line_span.
 
     Function *definitions* get a real McCabe count and a span-derived LOC;
     function *prototypes* (bodyless ``declaration`` nodes) get CC == 1
@@ -2186,7 +2186,7 @@ class TestCComplexityAndLoc:
         # if + else-if + for + inner-if + && → >= 4 above base
         assert fn.cyclomatic_complexity is not None
         assert fn.cyclomatic_complexity >= 4
-        assert fn.lines_of_code == 5
+        assert fn.line_span == 5
 
     def test_prototype_declaration_has_cc_and_loc(self, tmp_path: Path) -> None:
         from hypergumbo_lang_mainstream.c import analyze_c
@@ -2200,7 +2200,7 @@ class TestCComplexityAndLoc:
         )
         # No body → straight-line → CC == 1; single declaration line → LOC == 1.
         assert proto.cyclomatic_complexity == 1
-        assert proto.lines_of_code == 1
+        assert proto.line_span == 1
 
     def test_no_c_function_has_null_cc_or_loc(self, tmp_path: Path) -> None:
         """Property: every C function-kind Symbol has non-null CC and LOC."""
@@ -2215,5 +2215,5 @@ class TestCComplexityAndLoc:
         assert funcs
         for fn in funcs:
             assert fn.cyclomatic_complexity is not None, fn.name
-            assert fn.lines_of_code is not None, fn.name
+            assert fn.line_span is not None, fn.name
 

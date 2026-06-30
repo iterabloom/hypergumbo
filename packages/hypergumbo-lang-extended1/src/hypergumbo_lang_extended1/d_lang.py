@@ -118,7 +118,7 @@ def _make_symbol(
         cyclomatic_complexity=(
             compute_cyclomatic_complexity(node, "d") if _is_callable else None
         ),
-        lines_of_code=(end_line - start_line + 1) if _is_callable else None,
+        line_span=(end_line - start_line + 1) if _is_callable else None,
     )
 
 

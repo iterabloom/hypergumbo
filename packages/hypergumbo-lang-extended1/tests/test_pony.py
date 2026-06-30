@@ -516,9 +516,9 @@ class TestPonyCyclomaticComplexity:
         assert not result.skipped
         by = {s.name: s for s in result.symbols if s.kind in ('constructor', 'method')}
         assert by['Main.create'].cyclomatic_complexity == 8, by['Main.create'].cyclomatic_complexity
-        assert by['Main.create'].lines_of_code is not None
+        assert by['Main.create'].line_span is not None
         assert by['Main.compute'].cyclomatic_complexity == 3, by['Main.compute'].cyclomatic_complexity
-        assert by['Main.compute'].lines_of_code is not None
+        assert by['Main.compute'].line_span is not None
 
     def test_callables_non_null_non_callables_null(self, tmp_path) -> None:
         from hypergumbo_lang_extended1.pony import analyze_pony
@@ -528,7 +528,7 @@ class TestPonyCyclomaticComplexity:
         assert callables
         for s in callables:
             assert s.cyclomatic_complexity is not None, (s.kind, s.name)
-            assert s.lines_of_code is not None, (s.kind, s.name)
+            assert s.line_span is not None, (s.kind, s.name)
         for s in result.symbols:
             if s.kind not in ('constructor', 'method'):
                 assert s.cyclomatic_complexity is None, (s.kind, s.name)

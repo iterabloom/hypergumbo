@@ -586,7 +586,7 @@ class TestZigCyclomaticComplexity:
                   if s.kind in ("function", "method") and s.name == "complex")
         # base 1 + 2 if + and + or + while + for + 2 switch_case = 9
         assert fn.cyclomatic_complexity == 9
-        assert fn.lines_of_code is not None and fn.lines_of_code >= 4
+        assert fn.line_span is not None and fn.line_span >= 4
 
     def test_straight_line_function_cc_is_one(self, tmp_path: Path) -> None:
         (tmp_path / "g.zig").write_text("fn g(x: i32) i32 { return x; }\n")
@@ -594,7 +594,7 @@ class TestZigCyclomaticComplexity:
         fn = next(s for s in result.symbols
                   if s.kind in ("function", "method") and s.name == "g")
         assert fn.cyclomatic_complexity == 1
-        assert fn.lines_of_code is not None
+        assert fn.line_span is not None
 
     def test_callables_non_null_non_callables_null(self, tmp_path: Path) -> None:
         (tmp_path / "m.zig").write_text("""const Point = struct {
@@ -608,7 +608,7 @@ fn top(x: i32) i32 { return x; }
         assert callables
         for s in callables:
             assert s.cyclomatic_complexity is not None, (s.kind, s.name)
-            assert s.lines_of_code is not None, (s.kind, s.name)
+            assert s.line_span is not None, (s.kind, s.name)
         for s in result.symbols:
             if s.kind not in ("function", "method"):
                 assert s.cyclomatic_complexity is None, (s.kind, s.name)

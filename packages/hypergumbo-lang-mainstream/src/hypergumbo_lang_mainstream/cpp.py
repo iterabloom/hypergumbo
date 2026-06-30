@@ -519,7 +519,7 @@ def _extract_symbols_from_tree(
                     origin_run_id=run.execution_id,
                     signature=signature,
                     # INV-loguk: analytical fields for C++ functions/methods.
-                    lines_of_code=end_line - start_line + 1,
+                    line_span=end_line - start_line + 1,
                     cyclomatic_complexity=compute_cyclomatic_complexity(
                         node, "cpp",
                     ),

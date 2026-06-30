@@ -386,14 +386,14 @@ class TestRCyclomaticComplexity:
         fn = next(s for s in result.symbols if s.kind == "function" and s.name == "f")
         # base 1 + 2 if + for + while + repeat + && + || = 8
         assert fn.cyclomatic_complexity == 8
-        assert fn.lines_of_code is not None and fn.lines_of_code >= 4
+        assert fn.line_span is not None and fn.line_span >= 4
 
     def test_straight_line_function_cc_is_one(self, tmp_path) -> None:
         (tmp_path / "g.R").write_text("g <- function(x) {\n  x * 2\n}\n")
         result = analyze_r_files(tmp_path)
         fn = next(s for s in result.symbols if s.kind == "function" and s.name == "g")
         assert fn.cyclomatic_complexity == 1
-        assert fn.lines_of_code is not None
+        assert fn.line_span is not None
 
     def test_callables_non_null_non_callables_null(self, tmp_path) -> None:
         (tmp_path / "m.R").write_text("""source("helper.R")
@@ -409,7 +409,7 @@ h <- function(x) {
         assert funcs
         for s in funcs:
             assert s.cyclomatic_complexity is not None, s.name
-            assert s.lines_of_code is not None, s.name
+            assert s.line_span is not None, s.name
         for s in result.symbols:
             if s.kind != "function":
                 assert s.cyclomatic_complexity is None, (s.kind, s.name)

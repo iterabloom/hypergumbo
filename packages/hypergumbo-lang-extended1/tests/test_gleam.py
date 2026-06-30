@@ -366,7 +366,7 @@ class TestGleamCyclomaticComplexity:
                   if s.kind == "function" and s.name == "check")
         # base 1 + 7 case_clause + 1 case_clause_guard + && + || = 11
         assert fn.cyclomatic_complexity == 11
-        assert fn.lines_of_code is not None and fn.lines_of_code >= 4
+        assert fn.line_span is not None and fn.line_span >= 4
 
     def test_straight_line_function_cc_is_one(self, tmp_path: Path) -> None:
         (tmp_path / "g.gleam").write_text("pub fn g(x: Int) -> Int {\n  x\n}\n")
@@ -374,7 +374,7 @@ class TestGleamCyclomaticComplexity:
         fn = next(s for s in result.symbols
                   if s.kind == "function" and s.name == "g")
         assert fn.cyclomatic_complexity == 1
-        assert fn.lines_of_code is not None
+        assert fn.line_span is not None
 
     def test_callables_non_null_non_callables_null(self, tmp_path: Path) -> None:
         (tmp_path / "m.gleam").write_text("""pub type Shape {
@@ -394,7 +394,7 @@ pub fn area(s: Int) -> Int {
         assert funcs
         for s in funcs:
             assert s.cyclomatic_complexity is not None, s.name
-            assert s.lines_of_code is not None, s.name
+            assert s.line_span is not None, s.name
         for s in result.symbols:
             if s.kind != "function":
                 assert s.cyclomatic_complexity is None, (s.kind, s.name)

@@ -357,7 +357,7 @@ class TestPascalCyclomaticComplexity:
         assert not result.skipped
         by = {s.name: s for s in result.symbols if s.kind in ('function',)}
         assert by['Score'].cyclomatic_complexity == 7, by['Score'].cyclomatic_complexity
-        assert by['Score'].lines_of_code is not None
+        assert by['Score'].line_span is not None
 
     def test_callables_non_null_non_callables_null(self, tmp_path) -> None:
         from hypergumbo_lang_extended1.pascal import analyze_pascal
@@ -367,7 +367,7 @@ class TestPascalCyclomaticComplexity:
         assert callables
         for s in callables:
             assert s.cyclomatic_complexity is not None, (s.kind, s.name)
-            assert s.lines_of_code is not None, (s.kind, s.name)
+            assert s.line_span is not None, (s.kind, s.name)
         for s in result.symbols:
             if s.kind not in ('function',):
                 assert s.cyclomatic_complexity is None, (s.kind, s.name)

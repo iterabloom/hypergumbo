@@ -382,7 +382,7 @@ class TestLuauCyclomaticComplexity:
         assert not result.skipped
         by = {s.name: s for s in result.symbols if s.kind in ('function',)}
         assert by['classify'].cyclomatic_complexity == 9, by['classify'].cyclomatic_complexity
-        assert by['classify'].lines_of_code is not None
+        assert by['classify'].line_span is not None
 
     def test_callables_non_null_non_callables_null(self, tmp_path) -> None:
         from hypergumbo_lang_extended1.luau import analyze_luau
@@ -392,7 +392,7 @@ class TestLuauCyclomaticComplexity:
         assert callables
         for s in callables:
             assert s.cyclomatic_complexity is not None, (s.kind, s.name)
-            assert s.lines_of_code is not None, (s.kind, s.name)
+            assert s.line_span is not None, (s.kind, s.name)
         for s in result.symbols:
             if s.kind not in ('function',):
                 assert s.cyclomatic_complexity is None, (s.kind, s.name)

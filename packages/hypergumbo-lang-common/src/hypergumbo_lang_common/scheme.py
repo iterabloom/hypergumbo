@@ -159,7 +159,7 @@ def _extract_scheme_symbols(
                     cyclomatic_complexity=compute_cyclomatic_complexity(
                         node, "scheme",
                     ),
-                    lines_of_code=node.end_point[0] - node.start_point[0] + 1,
+                    line_span=node.end_point[0] - node.start_point[0] + 1,
                 )
                 symbols.append(sym)
         else:

@@ -793,7 +793,7 @@ class TestErlangDocstrings:
 class TestErlangCyclomaticComplexity:
     """INV-loguk slice C: callable Erlang symbols carry non-null
     cyclomatic_complexity (aggregated across coalesced clauses) and
-    lines_of_code. Real-grammar verification of the erlang BRANCH_NODE_TYPES
+    line_span. Real-grammar verification of the erlang BRANCH_NODE_TYPES
     entry (cr_clause / if_clause / receive_after) + andalso/orelse short-circuit."""
 
     def test_multi_clause_function_aggregates_cc(self, tmp_path: Path) -> None:
@@ -825,7 +825,7 @@ lookup(K) ->
                         if s.kind == "function" and s.name == "classify/1")
         # base 1 + clause1 case (3 arms) + clause2 if (2 arms) = 6
         assert classify.cyclomatic_complexity == 6
-        assert classify.lines_of_code is not None and classify.lines_of_code >= 4
+        assert classify.line_span is not None and classify.line_span >= 4
         lookup = next(s for s in result.symbols
                       if s.kind == "function" and s.name == "lookup/1")
         # base 1 + andalso + orelse + receive (2 arms) = 5
@@ -841,7 +841,7 @@ id(X) -> X.
         fn = next(s for s in result.symbols
                   if s.kind == "function" and s.name == "id/1")
         assert fn.cyclomatic_complexity == 1
-        assert fn.lines_of_code is not None
+        assert fn.line_span is not None
 
     def test_callables_non_null_non_callables_null(self, tmp_path: Path) -> None:
         make_erl_file(tmp_path, "m.erl", """-module(m).
@@ -857,7 +857,7 @@ f(_) -> nonpos.
         assert funcs
         for s in funcs:
             assert s.cyclomatic_complexity is not None, s.name
-            assert s.lines_of_code is not None, s.name
+            assert s.line_span is not None, s.name
         # module / record / file (non-callable) keep null CC
         for s in result.symbols:
             if s.kind != "function":

@@ -1161,7 +1161,7 @@ def test_symbol_from_dict() -> None:
         "qualified_name": "api.process_request",
         "supply_chain": {"tier": 1, "reason": "first_party"},
         "cyclomatic_complexity": 5,
-        "lines_of_code": 10,
+        "line_span": 10,
         "signature": "(request: Request) -> Response",
         "modifiers": ["async", "public"],
     }
@@ -1179,9 +1179,28 @@ def test_symbol_from_dict() -> None:
     assert symbol.supply_chain_tier == 1
     assert symbol.supply_chain_reason == "first_party"
     assert symbol.cyclomatic_complexity == 5
-    assert symbol.lines_of_code == 10
+    assert symbol.line_span == 10
     assert symbol.signature == "(request: Request) -> Response"
     assert symbol.modifiers == ["async", "public"]
+
+
+def test_symbol_from_dict_line_span_legacy_lines_of_code_key() -> None:
+    """WI-bozid back-compat: a pre-rename behavior map stored the per-symbol
+    physical line span under the key ``lines_of_code``. Symbol.from_dict still
+    reads that legacy key into ``line_span`` so old maps deserialize correctly;
+    the new ``line_span`` key takes precedence when both are present."""
+    legacy = {
+        "id": "python:a.py:1-9:f:function",
+        "name": "f",
+        "kind": "function",
+        "language": "python",
+        "path": "a.py",
+        "lines_of_code": 9,  # pre-rename key
+    }
+    assert Symbol.from_dict(legacy).line_span == 9
+
+    both = {**legacy, "line_span": 42}  # new key wins
+    assert Symbol.from_dict(both).line_span == 42
 
 
 def test_symbol_from_dict_with_defaults() -> None:

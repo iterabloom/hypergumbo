@@ -329,7 +329,7 @@ def _extract_fortran_symbols(
                     origin_run_id=run_id,
                     signature=signature,
                     cyclomatic_complexity=compute_cyclomatic_complexity(node, "fortran"),
-                    lines_of_code=end_line - start_line + 1,
+                    line_span=end_line - start_line + 1,
                 )
                 symbols.append(sym)
                 symbol_registry[name] = sym
@@ -364,7 +364,7 @@ def _extract_fortran_symbols(
                     origin_run_id=run_id,
                     signature=signature,
                     cyclomatic_complexity=compute_cyclomatic_complexity(node, "fortran"),
-                    lines_of_code=end_line - start_line + 1,
+                    line_span=end_line - start_line + 1,
                 )
                 symbols.append(sym)
                 symbol_registry[name] = sym

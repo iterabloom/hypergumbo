@@ -483,9 +483,9 @@ class TestLeanCyclomaticComplexity:
         assert not result.skipped
         by = {s.name: s for s in result.symbols if s.kind in ('function', 'theorem')}
         assert by['classify'].cyclomatic_complexity == 5, by['classify'].cyclomatic_complexity
-        assert by['classify'].lines_of_code is not None
+        assert by['classify'].line_span is not None
         assert by['describe'].cyclomatic_complexity == 4, by['describe'].cyclomatic_complexity
-        assert by['describe'].lines_of_code is not None
+        assert by['describe'].line_span is not None
 
     def test_callables_non_null_non_callables_null(self, tmp_path) -> None:
         from hypergumbo_lang_extended1.lean import analyze_lean
@@ -495,7 +495,7 @@ class TestLeanCyclomaticComplexity:
         assert callables
         for s in callables:
             assert s.cyclomatic_complexity is not None, (s.kind, s.name)
-            assert s.lines_of_code is not None, (s.kind, s.name)
+            assert s.line_span is not None, (s.kind, s.name)
         for s in result.symbols:
             if s.kind not in ('function', 'theorem'):
                 assert s.cyclomatic_complexity is None, (s.kind, s.name)

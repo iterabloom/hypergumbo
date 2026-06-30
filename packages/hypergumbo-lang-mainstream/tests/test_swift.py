@@ -1706,10 +1706,10 @@ struct User {
 
 
 class TestSwiftLinesOfCode:
-    """Tests for lines_of_code on Swift symbols."""
+    """Tests for line_span on Swift symbols."""
 
-    def test_class_lines_of_code(self, tmp_path: Path) -> None:
-        """Class symbols have lines_of_code set from span."""
+    def test_class_line_span(self, tmp_path: Path) -> None:
+        """Class symbols have line_span set from span."""
         from hypergumbo_lang_mainstream.swift import analyze_swift
 
         (tmp_path / "Foo.swift").write_text(
@@ -1721,7 +1721,7 @@ class TestSwiftLinesOfCode:
         )
         result = analyze_swift(tmp_path)
         cls = next(s for s in result.symbols if s.name == "Foo")
-        assert cls.lines_of_code == 5
+        assert cls.line_span == 5
 
 
 class TestSwiftIsExported:

@@ -5156,10 +5156,10 @@ class TestRubyStableShapeId:
 
 
 class TestRubyLinesOfCode:
-    """Tests for lines_of_code on Ruby symbols."""
+    """Tests for line_span on Ruby symbols."""
 
-    def test_class_lines_of_code(self, tmp_path: Path) -> None:
-        """Class symbols have lines_of_code set from span."""
+    def test_class_line_span(self, tmp_path: Path) -> None:
+        """Class symbols have line_span set from span."""
         from hypergumbo_lang_mainstream.ruby import analyze_ruby
 
         (tmp_path / "example.rb").write_text(
@@ -5171,7 +5171,7 @@ class TestRubyLinesOfCode:
         )
         result = analyze_ruby(tmp_path)
         cls = next(s for s in result.symbols if s.kind == "class")
-        assert cls.lines_of_code == 5
+        assert cls.line_span == 5
 
 
 class TestRubyIsExported:

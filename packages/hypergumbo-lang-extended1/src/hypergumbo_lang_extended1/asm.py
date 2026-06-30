@@ -190,7 +190,7 @@ class AsmAnalyzer(TreeSitterAnalyzer):
                             compute_cyclomatic_complexity(node, "asm")
                             if kind == "function" else None
                         ),
-                        lines_of_code=(end_line - start_line + 1) if kind == "function" else None,
+                        line_span=(end_line - start_line + 1) if kind == "function" else None,
                     )
                     analysis.symbols.append(sym)
                     analysis.node_for_symbol[sym.id] = node

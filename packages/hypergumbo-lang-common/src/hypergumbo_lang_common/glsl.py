@@ -191,7 +191,7 @@ def _extract_glsl_symbols(
                     origin_run_id=run_id,
                     signature=_extract_glsl_signature(node, source),
                     cyclomatic_complexity=compute_cyclomatic_complexity(node, "glsl"),
-                    lines_of_code=end_line - start_line + 1,
+                    line_span=end_line - start_line + 1,
                 )
                 symbols.append(sym)
                 local_symbols[func_name.lower()] = sym

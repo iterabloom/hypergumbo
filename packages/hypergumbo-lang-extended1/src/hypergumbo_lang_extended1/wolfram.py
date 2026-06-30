@@ -182,7 +182,7 @@ def _extract_symbols_from_file(
             cyclomatic_complexity=(
                 compute_cyclomatic_complexity(node, "wolfram") if _is_callable else None
             ),
-            lines_of_code=(end_line - start_line + 1) if _is_callable else None,
+            line_span=(end_line - start_line + 1) if _is_callable else None,
         )
         if meta:  # pragma: no cover - meta rarely used
             sym.meta = meta  # pragma: no cover

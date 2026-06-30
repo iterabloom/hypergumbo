@@ -243,7 +243,7 @@ def _extract_symbols_from_file(
 
         ``complexity=True`` (callable kinds) populates cyclomatic_complexity
         (walked from ``def_node`` — the function_body when present, else the
-        signature node) and lines_of_code, per INV-loguk. Gated so non-callable
+        signature node) and line_span, per INV-loguk. Gated so non-callable
         kinds (class/mixin/extension/enum) don't aggregate their whole subtree.
         """
         full_name = f"{prefix}.{name}" if prefix else name
@@ -283,7 +283,7 @@ def _extract_symbols_from_file(
             cyclomatic_complexity=(
                 compute_cyclomatic_complexity(def_node, "dart") if complexity else None
             ),
-            lines_of_code=(end_line - start_line + 1) if complexity else None,
+            line_span=(end_line - start_line + 1) if complexity else None,
         )
 
     for node in iter_tree(tree.root_node):

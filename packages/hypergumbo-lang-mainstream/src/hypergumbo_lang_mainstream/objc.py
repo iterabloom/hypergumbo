@@ -387,7 +387,7 @@ def _extract_symbols_from_file(
                     stable_id=_analyzer.compute_stable_id(node, kind="method", name=full_name, file_stable_id=file_stable_id),
                     shape_id=_analyzer.compute_shape_id(node),
                     cyclomatic_complexity=compute_cyclomatic_complexity(node, "objc"),
-                    lines_of_code=end_line - start_line + 1,
+                    line_span=end_line - start_line + 1,
                 )
                 analysis.symbols.append(symbol)
                 analysis.methods_by_name[method_name] = symbol

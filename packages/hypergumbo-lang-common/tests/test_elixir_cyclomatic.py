@@ -96,7 +96,7 @@ def test_elixir_callables_have_non_null_loc(tmp_path: Path) -> None:
     for sym in result.symbols:
         if sym.kind in _CALLABLE_KINDS:
             assert sym.cyclomatic_complexity is not None
-            assert sym.lines_of_code is not None
+            assert sym.line_span is not None
 
 
 def test_elixir_module_stays_null(tmp_path: Path) -> None:
@@ -106,4 +106,4 @@ def test_elixir_module_stays_null(tmp_path: Path) -> None:
     assert any(s.kind == "module" for s in non_callables)
     for sym in non_callables:
         assert sym.cyclomatic_complexity is None
-        assert sym.lines_of_code is None
+        assert sym.line_span is None

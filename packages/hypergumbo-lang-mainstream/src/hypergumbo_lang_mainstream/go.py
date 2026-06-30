@@ -1106,7 +1106,7 @@ def _extract_symbols_from_file(
                     signature=signature,
                     docstring=extract_preceding_doc_comment(node, source, "go"),
                     modifiers=modifiers,
-                    lines_of_code=end_line - start_line + 1,
+                    line_span=end_line - start_line + 1,
                     shape_id=_analyzer.compute_shape_id(node),
                     is_exported=bool(func_name) and func_name[0].isupper(),
                     qualified_name=_make_go_qualified_name(package_name, None, func_name),
@@ -1171,7 +1171,7 @@ def _extract_symbols_from_file(
                     signature=signature,
                     docstring=extract_preceding_doc_comment(node, source, "go"),
                     modifiers=modifiers,
-                    lines_of_code=end_line - start_line + 1,
+                    line_span=end_line - start_line + 1,
                     shape_id=_analyzer.compute_shape_id(node),
                     is_exported=bool(method_name) and method_name[0].isupper(),
                     qualified_name=_make_go_qualified_name(package_name, receiver_type or None, method_name),
@@ -1258,7 +1258,7 @@ def _extract_symbols_from_file(
                                     origin=PASS_ID,
                                     origin_run_id=run.execution_id,
                                     modifiers=m_modifiers,
-                                    lines_of_code=1,
+                                    line_span=1,
                                     shape_id=_analyzer.compute_shape_id(iface_child),
                                     is_exported=bool(mname) and mname[0].isupper(),
                                     qualified_name=_make_go_qualified_name(package_name, type_name, mname),
@@ -1303,7 +1303,7 @@ def _extract_symbols_from_file(
                             origin_run_id=run.execution_id,
                             modifiers=_go_visibility_modifiers(type_name),
                             meta={"base_classes": embedded_types} if embedded_types else None,
-                            lines_of_code=end_line - start_line + 1,
+                            line_span=end_line - start_line + 1,
                             shape_id=_analyzer.compute_shape_id(child),
                             is_exported=bool(type_name) and type_name[0].isupper(),
                             qualified_name=_make_go_qualified_name(package_name, None, type_name),
@@ -1363,7 +1363,7 @@ def _extract_symbols_from_file(
                                             qualified_name=f_qualified,
                                             file_stable_id=file_stable_id,
                                         ),
-                                        lines_of_code=f_end - f_start + 1,
+                                        line_span=f_end - f_start + 1,
                                         is_exported=bool(fname) and fname[0].isupper(),
                                         qualified_name=f_qualified,
                                     )
@@ -1428,7 +1428,7 @@ def _extract_symbols_from_file(
                         origin=PASS_ID,
                         origin_run_id=run.execution_id,
                         modifiers=modifiers,
-                        lines_of_code=end_line - start_line + 1,
+                        line_span=end_line - start_line + 1,
                         shape_id=_analyzer.compute_shape_id(child),
                         is_exported=bool(vname) and vname[0].isupper(),
                     )
@@ -2854,7 +2854,7 @@ def _extract_edges_from_file(
             span=Span(start_line=0, end_line=0, start_col=0, end_col=0),
             origin=PASS_ID,
             origin_run_id=run.execution_id,
-            lines_of_code=1,
+            line_span=1,
         )
         emit_module_attribute_refs(
             tree.root_node,
@@ -3025,7 +3025,7 @@ def _maybe_create_wrapper_symbol(
         origin=PASS_ID,
         origin_run_id=run.execution_id,
         meta={"concepts": ["middleware"], "is_closure_wrapper": True},
-        lines_of_code=end_line - start_line + 1,
+        line_span=end_line - start_line + 1,
         is_exported=bool(wrapper_name) and wrapper_name[0].isupper(),
         # No AST node available here (the wrapper Symbol is synthesized
         # from positional data tracked in the closure-var pre-pass), so
@@ -3504,7 +3504,7 @@ def _extract_go_routes(
                                     origin=PASS_ID,
                                     origin_run_id=run.execution_id,
                                     meta=route_meta,
-                                    lines_of_code=end_line - start_line + 1,
+                                    line_span=end_line - start_line + 1,
                                     is_exported=bool(handler_name) and handler_name.rsplit(".", 1)[-1][:1].isupper(),
                                 )
                                 routes.append(route_sym)
@@ -3627,7 +3627,7 @@ def _extract_go_routes(
                                     origin=PASS_ID,
                                     origin_run_id=run.execution_id,
                                     meta=route_meta_g,
-                                    lines_of_code=end_line - start_line + 1,
+                                    line_span=end_line - start_line + 1,
                                     is_exported=bool(handler_name) and handler_name.rsplit(".", 1)[-1][:1].isupper(),
                                 )
                                 routes.append(route_sym)
@@ -3675,7 +3675,7 @@ def _extract_go_routes(
                                     "handler_name": handler_name,
                                     "framework_role": "route",
                                 },
-                                lines_of_code=end_line - start_line + 1,
+                                line_span=end_line - start_line + 1,
                                 is_exported=bool(handler_name) and handler_name.rsplit(".", 1)[-1][:1].isupper(),
                             )
                             routes.append(route_sym)
@@ -3734,7 +3734,7 @@ def _extract_go_routes(
                                             "handler_ref": handler_ref,
                                             "framework_role": "route_mount",
                                         },
-                                        lines_of_code=end_line - start_line + 1,
+                                        line_span=end_line - start_line + 1,
                                         is_exported=bool(handler_ref) and handler_ref.rsplit(".", 1)[-1][:1].isupper(),
                                     )
                                     routes.append(mount_sym)
@@ -3896,7 +3896,7 @@ def _extract_go_routes(
                 origin=PASS_ID,
                 origin_run_id=run.execution_id,
                 meta=meta,
-                lines_of_code=end_line - start_line + 1,
+                line_span=end_line - start_line + 1,
             )
             routes.append(route_sym)
 

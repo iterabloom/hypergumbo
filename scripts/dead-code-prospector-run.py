@@ -615,7 +615,9 @@ def run_prospecting(
                 "name": c.get("name", ""),
                 "path": c.get("path", ""),
                 "language": c.get("language", ""),
-                "loc": c.get("lines_of_code", 0),
+                # WI-bozid: Symbol field renamed lines_of_code -> line_span;
+                # read the new key, fall back to the legacy one for old maps.
+                "loc": c.get("line_span", c.get("lines_of_code", 0)),
                 "cross_language_hits": c.get("cross_language_hits", 0),
                 "path_shape_boost": c.get("path_shape_boost", 0),
             })

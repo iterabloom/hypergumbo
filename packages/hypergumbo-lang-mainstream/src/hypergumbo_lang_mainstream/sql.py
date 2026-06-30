@@ -296,7 +296,7 @@ def _extract_sql_symbols(
                     origin=PASS_ID,
                     signature=_extract_sql_signature(node, source),
                     cyclomatic_complexity=compute_cyclomatic_complexity(node, "sql"),
-                    lines_of_code=end_line - start_line + 1,
+                    line_span=end_line - start_line + 1,
                 )
                 symbols.append(sym)
                 if node_for_symbol is not None:
@@ -326,7 +326,7 @@ def _extract_sql_symbols(
                     ),  # pragma: no cover
                     origin=PASS_ID,  # pragma: no cover
                     cyclomatic_complexity=compute_cyclomatic_complexity(node, "sql"),  # pragma: no cover
-                    lines_of_code=end_line - start_line + 1,  # pragma: no cover
+                    line_span=end_line - start_line + 1,  # pragma: no cover
                 )  # pragma: no cover
                 symbols.append(sym)  # pragma: no cover
                 if node_for_symbol is not None:  # pragma: no cover

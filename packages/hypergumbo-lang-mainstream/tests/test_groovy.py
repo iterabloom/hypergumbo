@@ -1307,7 +1307,7 @@ class TestGroovyCyclomaticComplexity:
         fn = next(s for s in result.symbols if s.name == "Calc.classify")
         # base 1 + if x2 + for + while + 3 switch_label + catch + ternary + && + || = 12
         assert fn.cyclomatic_complexity == 12
-        assert fn.lines_of_code is not None and fn.lines_of_code >= 4
+        assert fn.line_span is not None and fn.line_span >= 4
 
     def test_straight_line_top_level_function_cc_is_one(self, tmp_path) -> None:
         from hypergumbo_lang_mainstream.groovy import analyze_groovy
@@ -1315,7 +1315,7 @@ class TestGroovyCyclomaticComplexity:
         result = analyze_groovy(tmp_path)
         fn = next(s for s in result.symbols if s.kind == "function" and s.name == "plain")
         assert fn.cyclomatic_complexity == 1
-        assert fn.lines_of_code is not None
+        assert fn.line_span is not None
 
     def test_callables_non_null_non_callables_null(self, tmp_path) -> None:
         from hypergumbo_lang_mainstream.groovy import analyze_groovy
@@ -1329,7 +1329,7 @@ class TestGroovyCyclomaticComplexity:
         assert callables
         for s in callables:
             assert s.cyclomatic_complexity is not None, (s.kind, s.name)
-            assert s.lines_of_code is not None, (s.kind, s.name)
+            assert s.line_span is not None, (s.kind, s.name)
         for s in result.symbols:
             if s.kind not in callable_kinds:
                 assert s.cyclomatic_complexity is None, (s.kind, s.name)

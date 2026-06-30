@@ -584,14 +584,14 @@ let analyze items threshold =
         fn = next(s for s in result.symbols if s.kind == "function" and s.name == "analyze")
         # base 1 + if + elif + for + while + 3 rule = 8
         assert fn.cyclomatic_complexity == 8
-        assert fn.lines_of_code is not None and fn.lines_of_code >= 4
+        assert fn.line_span is not None and fn.line_span >= 4
 
     def test_straight_line_function_cc_is_one(self, tmp_path: Path) -> None:
         (tmp_path / "g.fs").write_text("module G\n\nlet add a b = a + b\n")
         result = analyze_fsharp(tmp_path)
         fn = next(s for s in result.symbols if s.kind == "function" and s.name == "add")
         assert fn.cyclomatic_complexity == 1
-        assert fn.lines_of_code is not None
+        assert fn.line_span is not None
 
     def test_callables_non_null_non_callables_null(self, tmp_path: Path) -> None:
         (tmp_path / "m.fs").write_text("""module M
@@ -605,7 +605,7 @@ let classify x = if x > 0 then 1 else 0
         assert funcs
         for s in funcs:
             assert s.cyclomatic_complexity is not None, s.name
-            assert s.lines_of_code is not None, s.name
+            assert s.line_span is not None, s.name
         for s in result.symbols:
             if s.kind != "function":
                 assert s.cyclomatic_complexity is None, (s.kind, s.name)

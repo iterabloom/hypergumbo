@@ -431,7 +431,7 @@ def _extract_symbols_from_file(
                     meta=meta,
                     is_exported=is_secondary_ctor,
                     cyclomatic_complexity=compute_cyclomatic_complexity(node, "scala"),
-                    lines_of_code=end_line - start_line + 1,
+                    line_span=end_line - start_line + 1,
                 )
                 analysis.symbols.append(symbol)
                 analysis.node_for_symbol[symbol.id] = node
@@ -482,7 +482,7 @@ def _extract_symbols_from_file(
                     modifiers=modifiers,
                     meta=meta,
                     cyclomatic_complexity=compute_cyclomatic_complexity(node, "scala"),
-                    lines_of_code=end_line - start_line + 1,
+                    line_span=end_line - start_line + 1,
                 )
                 analysis.symbols.append(symbol)
                 analysis.node_for_symbol[symbol.id] = node

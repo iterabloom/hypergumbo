@@ -26,7 +26,7 @@ def test_cmd_explain_shows_symbol_details(tmp_path: Path, capsys) -> None:
                 "path": "src/main.py",
                 "span": {"start_line": 1, "end_line": 10, "start_col": 0, "end_col": 10},
                 "cyclomatic_complexity": 5,
-                "lines_of_code": 10,
+                "line_span": 10,
                 "supply_chain": {
                     "tier": 1,
                     "tier_name": "first_party",

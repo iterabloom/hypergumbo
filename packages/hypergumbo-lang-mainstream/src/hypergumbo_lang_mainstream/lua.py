@@ -230,7 +230,7 @@ def _extract_symbols_from_file(
                     ),
                     shape_id=_analyzer.compute_shape_id(node),
                     cyclomatic_complexity=compute_cyclomatic_complexity(node, "lua"),
-                    lines_of_code=end_line - start_line + 1,
+                    line_span=end_line - start_line + 1,
                 ))
 
     return symbols

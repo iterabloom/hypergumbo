@@ -721,10 +721,10 @@ class TestInvTajapShellScriptConcept:
 
 
 class TestWiPulorFunctionLinesOfCode:
-    """WI-pulor: bash function Symbols must populate lines_of_code.
+    """WI-pulor: bash function Symbols must populate line_span.
 
-    Pre-fix, every bash function Symbol had lines_of_code=None despite valid
-    spans. The convention (see ir.py:349 and py.py:_compute_lines_of_code) is
+    Pre-fix, every bash function Symbol had line_span=None despite valid
+    spans. The convention (see ir.py:349 and py.py:_compute_line_span) is
     end_line - start_line + 1. The dead-code-maybe formatter renders ``?`` when
     LOC is None, so without this fix bash functions appear in the dead-code
     report as ``? LOC`` instead of e.g. ``8 LOC``.
@@ -739,7 +739,7 @@ class TestWiPulorFunctionLinesOfCode:
 
         helper = next((s for s in result.symbols if s.name == "helper"), None)
         assert helper is not None
-        assert helper.lines_of_code == 1
+        assert helper.line_span == 1
 
     def test_multi_line_function_loc(self, tmp_path: Path) -> None:
         from hypergumbo_lang_mainstream.bash import analyze_bash
@@ -758,10 +758,10 @@ class TestWiPulorFunctionLinesOfCode:
         assert section is not None
         assert section.span.start_line == 2
         assert section.span.end_line == 5
-        assert section.lines_of_code == 4
+        assert section.line_span == 4
 
     def test_all_bash_functions_have_non_null_loc(self, tmp_path: Path) -> None:
-        """Property: no bash function Symbol has lines_of_code=None."""
+        """Property: no bash function Symbol has line_span=None."""
         from hypergumbo_lang_mainstream.bash import analyze_bash
 
         bash_file = tmp_path / "many.sh"
@@ -781,17 +781,17 @@ class TestWiPulorFunctionLinesOfCode:
         funcs = [s for s in result.symbols if s.kind == "function"]
         assert len(funcs) == 3
         for func in funcs:
-            assert func.lines_of_code is not None, (
-                f"bash function {func.name!r} has lines_of_code=None; "
+            assert func.line_span is not None, (
+                f"bash function {func.name!r} has line_span=None; "
                 f"WI-pulor regression"
             )
-            assert func.lines_of_code >= 1
+            assert func.line_span >= 1
 
 
 class TestBashCyclomaticComplexity:
     """INV-loguk: bash function Symbols populate cyclomatic_complexity.
 
-    Bash already populated lines_of_code (WI-pulor); this closes the CC half.
+    Bash already populated line_span (WI-pulor); this closes the CC half.
     Short-circuit ``&&``/``||`` between commands are NOT counted (they live in
     ``list`` nodes, outside the shared binary-expression scope) — only
     if/elif/for/while/case decision points contribute.

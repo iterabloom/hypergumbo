@@ -282,7 +282,7 @@ def _extract_symbols(
                     signature=signature,
                     # INV-loguk: analytical fields, uniform with the other
                     # mainstream callable analyzers.
-                    lines_of_code=span.end_line - span.start_line + 1,
+                    line_span=span.end_line - span.start_line + 1,
                     cyclomatic_complexity=compute_cyclomatic_complexity(
                         node, "c",
                     ),
@@ -323,7 +323,7 @@ def _extract_symbols(
                             # INV-loguk: a bodyless prototype is straight-line
                             # (the walker finds no decision points → CC == 1)
                             # spanning its declaration line(s).
-                            lines_of_code=span.end_line - span.start_line + 1,
+                            line_span=span.end_line - span.start_line + 1,
                             cyclomatic_complexity=compute_cyclomatic_complexity(
                                 node, "c",
                             ),

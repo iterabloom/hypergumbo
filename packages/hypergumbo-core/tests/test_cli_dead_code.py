@@ -107,7 +107,7 @@ class TestDeadCodeMaybe:
              "meta": {"route_path": "/api", "http_method": "GET", "framework_role": "route"}},
             {"id": "py:app.py:12-20:orphan:function", "name": "orphan", "kind": "function",
              "language": "python", "path": "app.py", "span": {"start_line": 12, "end_line": 20},
-             "lines_of_code": 9},
+             "line_span": 9},
         ]
         bm_path = _make_behavior_map(tmp_path, nodes, [])
 

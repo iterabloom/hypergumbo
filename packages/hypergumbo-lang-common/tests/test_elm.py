@@ -443,14 +443,14 @@ describe code =
         fn = next(s for s in result.symbols if s.kind == "function" and s.name == "describe")
         # base 1 + 4 case_of_branch + 1 nested if_else_expr = 6
         assert fn.cyclomatic_complexity == 6
-        assert fn.lines_of_code is not None and fn.lines_of_code >= 4
+        assert fn.line_span is not None and fn.line_span >= 4
 
     def test_straight_line_function_cc_is_one(self, tmp_path: Path) -> None:
         (tmp_path / "G.elm").write_text("module G exposing (..)\n\ndouble : Int -> Int\ndouble n =\n    n * 2\n")
         result = analyze_elm(tmp_path)
         fn = next(s for s in result.symbols if s.kind == "function" and s.name == "double")
         assert fn.cyclomatic_complexity == 1
-        assert fn.lines_of_code is not None
+        assert fn.line_span is not None
 
     def test_callables_non_null_non_callables_null(self, tmp_path: Path) -> None:
         (tmp_path / "M.elm").write_text("""module M exposing (..)
@@ -466,7 +466,7 @@ classify n =
         assert funcs
         for s in funcs:
             assert s.cyclomatic_complexity is not None, s.name
-            assert s.lines_of_code is not None, s.name
+            assert s.line_span is not None, s.name
         for s in result.symbols:
             if s.kind != "function":
                 assert s.cyclomatic_complexity is None, (s.kind, s.name)

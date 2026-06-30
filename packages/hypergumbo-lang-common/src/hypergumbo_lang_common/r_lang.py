@@ -192,7 +192,7 @@ def _extract_r_symbols(
                     origin=PASS_ID,
                     signature=_extract_r_signature(right_node, source),
                     cyclomatic_complexity=compute_cyclomatic_complexity(right_node, "r"),
-                    lines_of_code=end_line - start_line + 1,
+                    line_span=end_line - start_line + 1,
                 )
                 symbols.append(sym)
                 symbol_registry[func_name] = sym

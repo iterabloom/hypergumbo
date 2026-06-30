@@ -1106,7 +1106,7 @@ class TestNormalizeDartSignature:
 
 class TestDartCyclomaticComplexity:
     """INV-loguk slice C: callable Dart symbols carry non-null
-    cyclomatic_complexity and lines_of_code. Real-grammar verification of the
+    cyclomatic_complexity and line_span. Real-grammar verification of the
     dart BRANCH_NODE_TYPES entry (if/for/while/do/switch arms/catch/ternary +
     logical_and/or_expression). Short-circuit &&/|| are counted via the
     dedicated logical_*_expression branch nodes."""
@@ -1133,7 +1133,7 @@ class TestDartCyclomaticComplexity:
                   if s.kind == "function" and s.name == "classify")
         # base 1 + if x3 + for + while + 2 case + default + && + || = 11
         assert fn.cyclomatic_complexity == 11
-        assert fn.lines_of_code is not None and fn.lines_of_code >= 4
+        assert fn.line_span is not None and fn.line_span >= 4
 
     def test_methods_getters_setters_have_cc(self, tmp_path: Path) -> None:
         from hypergumbo_lang_common.dart import analyze_dart
@@ -1153,7 +1153,7 @@ class TestDartCyclomaticComplexity:
         assert callables
         for s in callables:
             assert s.cyclomatic_complexity is not None, (s.kind, s.name)
-            assert s.lines_of_code is not None, (s.kind, s.name)
+            assert s.line_span is not None, (s.kind, s.name)
 
     def test_callables_non_null_non_callables_null(self, tmp_path: Path) -> None:
         from hypergumbo_lang_common.dart import analyze_dart
@@ -1172,7 +1172,7 @@ int top(int x) => x;
         assert callables
         for s in callables:
             assert s.cyclomatic_complexity is not None, (s.kind, s.name)
-            assert s.lines_of_code is not None, (s.kind, s.name)
+            assert s.line_span is not None, (s.kind, s.name)
         # class (non-callable) keeps null CC
         for s in result.symbols:
             if s.kind not in callable_kinds:

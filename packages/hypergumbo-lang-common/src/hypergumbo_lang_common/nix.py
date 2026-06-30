@@ -362,7 +362,7 @@ def _extract_nix_symbols(
                         compute_cyclomatic_complexity(value_node, "nix")
                         if kind == "function" and value_node is not None else None
                     ),
-                    lines_of_code=(end_line - start_line + 1) if kind == "function" else None,
+                    line_span=(end_line - start_line + 1) if kind == "function" else None,
                 )
                 symbols.append(sym)
                 # Register functions for call resolution
@@ -395,7 +395,7 @@ def _extract_nix_symbols(
                 origin=PASS_ID,
                 signature=_extract_nix_signature(node, source),
                 cyclomatic_complexity=compute_cyclomatic_complexity(node, "nix"),
-                lines_of_code=end_line - start_line + 1,
+                line_span=end_line - start_line + 1,
             )
             symbols.append(sym)
             symbol_registry[name] = sym

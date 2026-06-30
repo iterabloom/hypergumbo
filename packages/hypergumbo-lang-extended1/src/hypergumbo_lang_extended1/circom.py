@@ -149,7 +149,7 @@ def _extract_symbols_from_file(
                 origin_run_id=run_id,
                 signature=sig,
                 cyclomatic_complexity=compute_cyclomatic_complexity(node, "circom"),
-                lines_of_code=span.end_line - span.start_line + 1,
+                line_span=span.end_line - span.start_line + 1,
             )
             symbols.append(sym)
 

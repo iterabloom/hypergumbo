@@ -496,7 +496,7 @@ def _extract_symbols_from_file(
                     signature=signature,
                     docstring=extract_preceding_doc_comment(node, source, "swift"),
                     modifiers=modifiers,
-                    lines_of_code=end_line - start_line + 1,
+                    line_span=end_line - start_line + 1,
                     is_exported=any(m in modifiers for m in ("public", "open")),
                     qualified_name=_make_swift_qualified_name(type_ancestors, func_name),
                     cyclomatic_complexity=compute_cyclomatic_complexity(node, "swift"),
@@ -555,7 +555,7 @@ def _extract_symbols_from_file(
                     origin_run_id=run_id,
                     meta=meta,
                     modifiers=type_modifiers,
-                    lines_of_code=end_line - start_line + 1,
+                    line_span=end_line - start_line + 1,
                     is_exported=any(m in type_modifiers for m in ("public", "open")),
                     qualified_name=_make_swift_qualified_name(type_ancestors, type_name),
                 )
@@ -593,7 +593,7 @@ def _extract_symbols_from_file(
                     origin_run_id=run_id,
                     meta=meta,
                     modifiers=proto_modifiers,
-                    lines_of_code=end_line - start_line + 1,
+                    line_span=end_line - start_line + 1,
                     is_exported=any(m in proto_modifiers for m in ("public", "open")),
                     qualified_name=_make_swift_qualified_name(type_ancestors, type_name),
                 )
@@ -627,7 +627,7 @@ def _extract_symbols_from_file(
                     ),
                     origin=PASS_ID,
                     origin_run_id=run_id,
-                    lines_of_code=end_line - start_line + 1,
+                    line_span=end_line - start_line + 1,
                     qualified_name=_make_swift_qualified_name(type_ancestors, type_name),
                 )
                 analysis.symbols.append(symbol)
@@ -678,7 +678,7 @@ def _extract_symbols_from_file(
                         origin_run_id=run_id,
                         signature=signature,
                         modifiers=modifiers,
-                        lines_of_code=end_line - start_line + 1,
+                        line_span=end_line - start_line + 1,
                         is_exported=any(m in modifiers for m in ("public", "open")),
                         qualified_name=_make_swift_qualified_name(type_ancestors, prop_name),
                     )
@@ -758,7 +758,7 @@ def _extract_symbols_from_file(
                         name=prop_name, qualified_name=qualified,
                         file_stable_id=file_stable_id,
                     ),
-                    lines_of_code=end_line - start_line + 1,
+                    line_span=end_line - start_line + 1,
                     is_exported=any(m in modifiers for m in ("public", "open")),
                     qualified_name=qualified,
                 )
@@ -794,7 +794,7 @@ def _extract_symbols_from_file(
                 origin_run_id=run_id,
                 signature=signature,
                 modifiers=modifiers,
-                lines_of_code=end_line - start_line + 1,
+                line_span=end_line - start_line + 1,
                 is_exported=any(m in modifiers for m in ("public", "open")),
                 qualified_name=_make_swift_qualified_name(type_ancestors, sub_label),
                 cyclomatic_complexity=compute_cyclomatic_complexity(node, "swift"),
@@ -1225,7 +1225,7 @@ def _extract_vapor_usage_contexts(
             },
             origin=PASS_ID,
             origin_run_id=run_id,
-            lines_of_code=span.end_line - span.start_line + 1,
+            line_span=span.end_line - span.start_line + 1,
             is_exported=True,
         ))
 

@@ -192,7 +192,7 @@ def _extract_method_symbol(
                 "class": current_class,
             },
             cyclomatic_complexity=compute_cyclomatic_complexity(node, "hack"),
-            lines_of_code=node.end_point[0] - node.start_point[0] + 1,
+            line_span=node.end_point[0] - node.start_point[0] + 1,
         )
     return None  # pragma: no cover
 
@@ -341,7 +341,7 @@ def _extract_symbols_recursive(
                 signature=signature,
                 meta={"param_count": len(params)},
                 cyclomatic_complexity=compute_cyclomatic_complexity(node, "hack"),
-                lines_of_code=node.end_point[0] - node.start_point[0] + 1,
+                line_span=node.end_point[0] - node.start_point[0] + 1,
             )
             analysis.symbols.append(sym)
             analysis.node_for_symbol[sym.id] = node

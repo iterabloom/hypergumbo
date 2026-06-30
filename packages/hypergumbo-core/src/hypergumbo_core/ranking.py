@@ -44,7 +44,7 @@ Ranking uses multiple signals combined:
    to ~106.
 
 5. **Trivial Sink Dampening**: Symbols with out_degree <= 1 AND
-   lines_of_code <= 5 get 90% centrality reduction.  These are trivial
+   line_span <= 5 get 90% centrality reduction.  These are trivial
    accessors/stubs that accumulate high in-degree through ubiquitous use
    but have no architectural significance.  Addresses bakeoff cohorts 16-17
    findings: Timer.Duration (in=98, LoC=3), noopMetric.Inc (in=109, LoC=1),
@@ -723,7 +723,7 @@ def apply_trivial_sink_weights(
 
     Args:
         centrality: Centrality scores to weight.
-        symbols: Symbol list (used for lines_of_code).
+        symbols: Symbol list (used for line_span).
         edges: Edge list (used to compute out-degree).
         sink_weight: Multiplier for trivial sinks (default 0.1).
         max_out_degree: Maximum out-degree to qualify as sink (default 1).
@@ -746,7 +746,7 @@ def apply_trivial_sink_weights(
     # Build lines-of-code lookup
     symbol_loc: Dict[str, int] = {}
     for s in symbols:
-        loc = s.lines_of_code
+        loc = s.line_span
         if loc is None and s.span is not None:
             loc = s.span.end_line - s.span.start_line + 1
         symbol_loc[s.id] = loc if loc is not None else 0

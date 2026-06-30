@@ -63,11 +63,9 @@
               "files": {
                 "type": "integer"
               },
-              "lines": {
-                "type": "integer"
-              },
-              "percentage": {
-                "type": "number"
+              "loc": {
+                "type": "integer",
+                "description": "Source-lines-of-code (SLOC) for this language \u2014 the file-level LOC convention. Distinct from the per-symbol line_span (physical end-start+1 span). WI-bozid: the schema previously declared phantom `lines`/`percentage` keys the producer (profile.LanguageStats.to_dict) never emits; the real emitted shape is {files, loc}."
               }
             }
           }
@@ -736,7 +734,7 @@
           ],
           "description": "McCabe cyclomatic complexity (decision points + 1)"
         },
-        "lines_of_code": {
+        "line_span": {
           "oneOf": [
             {
               "type": "integer",
@@ -746,7 +744,7 @@
               "type": "null"
             }
           ],
-          "description": "Number of source lines in the symbol body"
+          "description": "Physical line span of the symbol body (end_line - start_line + 1, including blank/comment lines). NOT source-lines-of-code; file-level SLOC is profile.languages[*].loc. Renamed from lines_of_code (WI-bozid)."
         },
         "signature": {
           "oneOf": [

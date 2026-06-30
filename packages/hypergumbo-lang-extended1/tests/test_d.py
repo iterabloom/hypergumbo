@@ -722,7 +722,7 @@ int compute(int x, int y) {
                   if s.kind in ("function", "method") and s.name == "compute")
         # base 1 + 2 if + && + || + for + while + do + 3 case + ternary = 12
         assert fn.cyclomatic_complexity == 12
-        assert fn.lines_of_code is not None and fn.lines_of_code >= 4
+        assert fn.line_span is not None and fn.line_span >= 4
 
     def test_straight_line_function_cc_is_one(self, tmp_path: Path) -> None:
         (tmp_path / "g.d").write_text("module m;\nint g(int x) { return x; }\n")
@@ -730,7 +730,7 @@ int compute(int x, int y) {
         fn = next(s for s in result.symbols
                   if s.kind in ("function", "method") and s.name == "g")
         assert fn.cyclomatic_complexity == 1
-        assert fn.lines_of_code is not None
+        assert fn.line_span is not None
 
     def test_callables_non_null_non_callables_null(self, tmp_path: Path) -> None:
         (tmp_path / "m.d").write_text("""module m;
@@ -743,7 +743,7 @@ class Box {
         assert callables
         for s in callables:
             assert s.cyclomatic_complexity is not None, (s.kind, s.name)
-            assert s.lines_of_code is not None, (s.kind, s.name)
+            assert s.line_span is not None, (s.kind, s.name)
         for s in result.symbols:
             if s.kind not in ("function", "method"):
                 assert s.cyclomatic_complexity is None, (s.kind, s.name)

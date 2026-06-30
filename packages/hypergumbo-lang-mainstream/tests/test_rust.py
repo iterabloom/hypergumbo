@@ -123,10 +123,10 @@ fn private_helper() {}
 
 
 class TestRustLinesOfCode:
-    """Tests for lines_of_code on Rust symbols."""
+    """Tests for line_span on Rust symbols."""
 
-    def test_function_lines_of_code(self, tmp_path: Path) -> None:
-        """Function symbols have lines_of_code set from span."""
+    def test_function_line_span(self, tmp_path: Path) -> None:
+        """Function symbols have line_span set from span."""
         from hypergumbo_lang_mainstream.rust import analyze_rust
 
         rs_file = tmp_path / "main.rs"
@@ -147,11 +147,11 @@ fn medium(x: i32) -> i32 {
         small = next(s for s in result.symbols if s.name == "small")
         medium = next(s for s in result.symbols if s.name == "medium")
 
-        assert small.lines_of_code == 3  # lines 1-3
-        assert medium.lines_of_code == 5  # lines 5-9
+        assert small.line_span == 3  # lines 1-3
+        assert medium.line_span == 5  # lines 5-9
 
-    def test_struct_lines_of_code(self, tmp_path: Path) -> None:
-        """Struct symbols have lines_of_code set from span."""
+    def test_struct_line_span(self, tmp_path: Path) -> None:
+        """Struct symbols have line_span set from span."""
         from hypergumbo_lang_mainstream.rust import analyze_rust
 
         rs_file = tmp_path / "models.rs"
@@ -165,7 +165,7 @@ struct Point {
         result = analyze_rust(tmp_path)
 
         point = next(s for s in result.symbols if s.name == "Point")
-        assert point.lines_of_code == 4  # lines 1-4
+        assert point.line_span == 4  # lines 1-4
 
 
 class TestRustIsExported:

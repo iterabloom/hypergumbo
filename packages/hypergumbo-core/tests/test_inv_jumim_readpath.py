@@ -46,7 +46,7 @@ def _node(path: str, name: str, start: int, end: int, *, is_test: bool = False,
         "kind": kind,
         "language": language,
         "path": path,
-        "lines_of_code": max(1, end - start + 1),
+        "line_span": max(1, end - start + 1),
         "span": {"start_line": start, "end_line": end, "start_col": 0, "end_col": 0},
         "origin": language,
         "supply_chain": {"tier": 1, "reason": "first_party", "is_test_file": is_test},
@@ -122,7 +122,7 @@ class TestMapSourcePaths:
     def test_skips_node_without_path(self, tmp_path: Path) -> None:
         cached = _map([
             {"id": "x", "name": "n", "kind": "function", "language": "python",
-             "lines_of_code": 1, "span": {}, "origin": "python",
+             "line_span": 1, "span": {}, "origin": "python",
              "supply_chain": {}},                       # no "path" key
             _node("src/a.py", "f", 1, 2),
         ])

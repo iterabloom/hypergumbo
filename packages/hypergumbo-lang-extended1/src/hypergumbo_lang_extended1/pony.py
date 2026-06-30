@@ -152,7 +152,7 @@ def _extract_constructor(
         signature=signature,
         meta={"params": params, "parent_type": current_type},
         cyclomatic_complexity=compute_cyclomatic_complexity(node, "pony"),
-        lines_of_code=node.end_point[0] - node.start_point[0] + 1,
+        line_span=node.end_point[0] - node.start_point[0] + 1,
     )
 
 
@@ -213,7 +213,7 @@ def _extract_method(
         signature=signature,
         meta=meta,
         cyclomatic_complexity=compute_cyclomatic_complexity(node, "pony"),
-        lines_of_code=node.end_point[0] - node.start_point[0] + 1,
+        line_span=node.end_point[0] - node.start_point[0] + 1,
     )
 
 

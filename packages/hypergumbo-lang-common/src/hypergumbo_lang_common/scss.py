@@ -261,7 +261,7 @@ def _extract_mixin(
             "param_count": len(params),
         },
         cyclomatic_complexity=compute_cyclomatic_complexity(node, "scss"),
-        lines_of_code=node.end_point[0] - node.start_point[0] + 1,
+        line_span=node.end_point[0] - node.start_point[0] + 1,
     )
     symbols.append(symbol)
 
@@ -319,7 +319,7 @@ def _extract_function(
             "param_count": len(params),
         },
         cyclomatic_complexity=compute_cyclomatic_complexity(node, "scss"),
-        lines_of_code=node.end_point[0] - node.start_point[0] + 1,
+        line_span=node.end_point[0] - node.start_point[0] + 1,
     )
     symbols.append(symbol)
 

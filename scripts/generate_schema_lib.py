@@ -360,9 +360,15 @@ def _symbol_spec() -> ClassSpec:
                 "oneOf": [{"type": "integer", "minimum": 1}, {"type": "null"}],
                 "description": "McCabe cyclomatic complexity (decision points + 1)",
             },
-            "lines_of_code": {
+            "line_span": {
                 "oneOf": [{"type": "integer", "minimum": 1}, {"type": "null"}],
-                "description": "Number of source lines in the symbol body",
+                "description": (
+                    "Physical line span of the symbol body (end_line - "
+                    "start_line + 1, including blank/comment lines). NOT "
+                    "source-lines-of-code; file-level SLOC is "
+                    "profile.languages[*].loc. Renamed from lines_of_code "
+                    "(WI-bozid)."
+                ),
             },
         },
         decorations={

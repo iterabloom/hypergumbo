@@ -163,7 +163,7 @@ def _extract_symbols_recursive(
                     compute_cyclomatic_complexity(node, "jsonnet")
                     if kind == "function" else None
                 ),
-                lines_of_code=(
+                line_span=(
                     node.end_point[0] - node.start_point[0] + 1
                     if kind == "function" else None
                 ),
@@ -218,7 +218,7 @@ def _extract_symbols_recursive(
                     compute_cyclomatic_complexity(node, "jsonnet")
                     if kind == "method" else None
                 ),
-                lines_of_code=(
+                line_span=(
                     node.end_point[0] - node.start_point[0] + 1
                     if kind == "method" else None
                 ),

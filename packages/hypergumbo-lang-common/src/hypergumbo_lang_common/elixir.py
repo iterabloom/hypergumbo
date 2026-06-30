@@ -808,7 +808,7 @@ def _extract_symbols_from_tree(
                             cyclomatic_complexity=compute_cyclomatic_complexity(
                                 node, "elixir",
                             ),
-                            lines_of_code=end_line - start_line + 1,
+                            line_span=end_line - start_line + 1,
                         )
                         symbols.append(symbol)
                         symbol_by_name[func_name] = symbol  # Store by short name for local calls
@@ -848,7 +848,7 @@ def _extract_symbols_from_tree(
                             cyclomatic_complexity=compute_cyclomatic_complexity(
                                 node, "elixir",
                             ),
-                            lines_of_code=end_line - start_line + 1,
+                            line_span=end_line - start_line + 1,
                         )
                         symbols.append(symbol)
                         symbol_by_name[macro_name] = symbol

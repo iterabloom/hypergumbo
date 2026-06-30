@@ -156,7 +156,7 @@ def _extract_symbols_recursive(
                 signature=signature,
                 meta={"class": class_name} if class_name else None,
                 cyclomatic_complexity=compute_cyclomatic_complexity(node, "matlab"),
-                lines_of_code=node.end_point[0] - node.start_point[0] + 1,
+                line_span=node.end_point[0] - node.start_point[0] + 1,
             )
             symbols.append(sym)
 

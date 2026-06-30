@@ -69,7 +69,7 @@ def test_jupyter_callable_cyclomatic_complexity(tmp_path: Path) -> None:
     by_name = {s.name: s for s in result.symbols if s.kind == "function"}
     # py.py's AST walker: if + and + elif + or + for + nested-if + while = 8.
     assert by_name["classify"].cyclomatic_complexity == 8
-    assert by_name["classify"].lines_of_code == 11
+    assert by_name["classify"].line_span == 11
     # class method (emitted both as "run" and qualified "Calc.run"): for + if = 3.
     assert by_name["Calc.run"].cyclomatic_complexity == 3
     assert by_name["run"].cyclomatic_complexity == 3
@@ -82,4 +82,4 @@ def test_jupyter_class_symbol_stays_null(tmp_path: Path) -> None:
     assert classes  # the Calc class is emitted
     for sym in classes:
         assert sym.cyclomatic_complexity is None
-        assert sym.lines_of_code is None
+        assert sym.line_span is None

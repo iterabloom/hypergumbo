@@ -816,7 +816,7 @@ class TestApexCyclomaticComplexity:
         assert not result.skipped
         by = {s.name: s for s in result.symbols if s.kind in ('method', 'constructor')}
         assert by['Calc.score'].cyclomatic_complexity == 11, by['Calc.score'].cyclomatic_complexity
-        assert by['Calc.score'].lines_of_code is not None
+        assert by['Calc.score'].line_span is not None
 
     def test_callables_non_null_non_callables_null(self, tmp_path) -> None:
         from hypergumbo_lang_extended1.apex import analyze_apex
@@ -826,7 +826,7 @@ class TestApexCyclomaticComplexity:
         assert callables
         for s in callables:
             assert s.cyclomatic_complexity is not None, (s.kind, s.name)
-            assert s.lines_of_code is not None, (s.kind, s.name)
+            assert s.line_span is not None, (s.kind, s.name)
         for s in result.symbols:
             if s.kind not in ('method', 'constructor'):
                 assert s.cyclomatic_complexity is None, (s.kind, s.name)

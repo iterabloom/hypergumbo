@@ -261,7 +261,7 @@ def _extract_symbols_from_tree(
                     origin_run_id=run_id,
                     signature=signature,
                     cyclomatic_complexity=compute_cyclomatic_complexity(node, "julia"),
-                    lines_of_code=end_line - start_line + 1,
+                    line_span=end_line - start_line + 1,
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[func_name] = symbol
@@ -296,7 +296,7 @@ def _extract_symbols_from_tree(
                         origin_run_id=run_id,
                         signature=signature,
                         cyclomatic_complexity=compute_cyclomatic_complexity(node, "julia"),
-                        lines_of_code=end_line - start_line + 1,
+                        line_span=end_line - start_line + 1,
                     )
                     analysis.symbols.append(symbol)
                     analysis.symbol_by_name[func_name] = symbol

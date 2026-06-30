@@ -265,7 +265,7 @@ class _RacketExtractor:
                         cyclomatic_complexity=compute_cyclomatic_complexity(
                             node, "racket",
                         ),
-                        lines_of_code=(
+                        line_span=(
                             node.end_point[0] - node.start_point[0] + 1
                         ),
                     )

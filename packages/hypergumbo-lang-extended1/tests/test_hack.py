@@ -423,12 +423,12 @@ class Calculator {
                   if s.kind == "function" and "classify" in s.name)
         # base 1 + 1 if_statement (flat chain) + && + || = 4
         assert fn.cyclomatic_complexity == 4
-        assert fn.lines_of_code is not None and fn.lines_of_code >= 4
+        assert fn.line_span is not None and fn.line_span >= 4
         m = next(s for s in result.symbols
                  if s.kind == "method" and "compute" in s.name)
         # base 1 + for + while + 2 switch_case + switch_default = 6
         assert m.cyclomatic_complexity == 6
-        assert m.lines_of_code is not None
+        assert m.line_span is not None
 
     def test_straight_line_function_cc_is_one(self, tmp_path: Path) -> None:
         make_hack_file(tmp_path, "g.hack", "<?hh\nfunction g(int $x): int { return $x; }\n")
@@ -436,7 +436,7 @@ class Calculator {
         fn = next(s for s in result.symbols
                   if s.kind == "function" and "g" in s.name)
         assert fn.cyclomatic_complexity == 1
-        assert fn.lines_of_code is not None
+        assert fn.line_span is not None
 
     def test_callables_non_null_non_callables_null(self, tmp_path: Path) -> None:
         make_hack_file(tmp_path, "m.hack", """<?hh
@@ -450,7 +450,7 @@ class Box {
         assert callables
         for s in callables:
             assert s.cyclomatic_complexity is not None, (s.kind, s.name)
-            assert s.lines_of_code is not None, (s.kind, s.name)
+            assert s.line_span is not None, (s.kind, s.name)
         for s in result.symbols:
             if s.kind not in ("function", "method"):
                 assert s.cyclomatic_complexity is None, (s.kind, s.name)

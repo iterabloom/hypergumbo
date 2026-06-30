@@ -372,7 +372,7 @@ fn vs_main(in: VertexInput) -> @builtin(position) vec4<f32> {
         )
 
 
-# --- INV-loguk slice B: cyclomatic_complexity + lines_of_code -----------------
+# --- INV-loguk slice B: cyclomatic_complexity + line_span -----------------
 # Real-grammar verification of the wgsl BRANCH_NODE_TYPES entry relocated to
 # hypergumbo_core.analyze.cyclomatic.
 
@@ -391,8 +391,8 @@ fn classify(x: i32) -> i32 {
     # base 1 + 3 if + 1 for + 1 short-circuit (&&) = 6
     assert fn.cyclomatic_complexity is not None
     assert fn.cyclomatic_complexity >= 5
-    assert fn.lines_of_code is not None
-    assert fn.lines_of_code >= 4
+    assert fn.line_span is not None
+    assert fn.line_span >= 4
 
 
 def test_straight_line_function_cc_is_one(tmp_path):
@@ -406,7 +406,7 @@ fn noop(x: i32) -> i32 {
     fn = next(s for s in result.symbols
               if s.kind == "function" and s.name == "noop")
     assert fn.cyclomatic_complexity == 1
-    assert fn.lines_of_code is not None
+    assert fn.line_span is not None
 
 
 def test_switch_and_loop_count_toward_cc(tmp_path):
@@ -438,4 +438,4 @@ fn helper(x: i32) -> i32 { if (x > 0) { return 1; } return 0; }
     assert functions
     for s in functions:
         assert s.cyclomatic_complexity is not None, s.name
-        assert s.lines_of_code is not None, s.name
+        assert s.line_span is not None, s.name

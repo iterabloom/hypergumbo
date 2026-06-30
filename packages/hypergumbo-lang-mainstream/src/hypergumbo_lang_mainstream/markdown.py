@@ -272,7 +272,7 @@ class MarkdownAnalyzer(TreeSitterAnalyzer):
             signature=f"```{language}" if language else "```",
             meta={
                 "code_language": language,
-                "lines_of_code": loc,
+                "line_span": loc,
                 "is_example": loc > 0,
             },
         )

@@ -163,7 +163,7 @@ def _make_powershell_symbol(
         origin_run_id=run_id,
         signature=signature,
         cyclomatic_complexity=compute_cyclomatic_complexity(node, "powershell"),
-        lines_of_code=end_line - start_line + 1,
+        line_span=end_line - start_line + 1,
     )
 
 

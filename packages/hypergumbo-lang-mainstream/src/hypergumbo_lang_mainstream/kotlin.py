@@ -764,7 +764,7 @@ def _extract_symbols_from_file(
                     meta=func_meta,
                     shape_id=_analyzer.compute_shape_id(node),
                     is_exported=func_is_exported,
-                    lines_of_code=end_line - start_line + 1,
+                    line_span=end_line - start_line + 1,
                     qualified_name=_make_kotlin_qualified_name(package_name, cls_ancestors, func_name),
                     cyclomatic_complexity=compute_cyclomatic_complexity(node, "kotlin"),
                 )
@@ -820,7 +820,7 @@ def _extract_symbols_from_file(
                     meta=meta,
                     modifiers=class_modifiers,
                     shape_id=_analyzer.compute_shape_id(node),
-                    lines_of_code=end_line - start_line + 1,
+                    line_span=end_line - start_line + 1,
                     is_exported=not any(
                         m in class_modifiers
                         for m in ("private", "internal", "protected")
@@ -866,7 +866,7 @@ def _extract_symbols_from_file(
                     modifiers=obj_modifiers,
                     meta=obj_meta,
                     shape_id=_analyzer.compute_shape_id(node),
-                    lines_of_code=end_line - start_line + 1,
+                    line_span=end_line - start_line + 1,
                     is_exported=not any(
                         m in obj_modifiers
                         for m in ("private", "internal", "protected")

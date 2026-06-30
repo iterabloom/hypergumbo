@@ -311,7 +311,7 @@ class TestHlslCyclomaticComplexity:
         by = {s.name: s for s in result.symbols if s.kind in ('function',)}
         m = by.get('compute') or next(s for n, s in by.items() if n.split('.')[-1] == 'compute' or n.endswith('compute'))
         assert m.cyclomatic_complexity == 11, m.cyclomatic_complexity
-        assert m.lines_of_code is not None
+        assert m.line_span is not None
 
     def test_callables_non_null_non_callables_null(self, tmp_path) -> None:
         from hypergumbo_lang_common.hlsl import analyze_hlsl
@@ -321,7 +321,7 @@ class TestHlslCyclomaticComplexity:
         assert callables
         for s in callables:
             assert s.cyclomatic_complexity is not None, (s.kind, s.name)
-            assert s.lines_of_code is not None, (s.kind, s.name)
+            assert s.line_span is not None, (s.kind, s.name)
         for s in result.symbols:
             if s.kind not in ('function',):
                 assert s.cyclomatic_complexity is None, (s.kind, s.name)

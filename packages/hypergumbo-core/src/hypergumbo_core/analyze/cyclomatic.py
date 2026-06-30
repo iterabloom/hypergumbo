@@ -11,7 +11,7 @@ callables are emitted by analyzers in *other* packages too (``solidity`` in
 ``hypergumbo-lang-extended1``, ``wgsl`` in ``hypergumbo-lang-common``), and
 those packages depend only on ``hypergumbo-core`` — they CANNOT import the
 mainstream module. Per INV-loguk ("every function-kind Symbol carries
-non-null ``cyclomatic_complexity`` and ``lines_of_code``, regardless of
+non-null ``cyclomatic_complexity`` and ``line_span``, regardless of
 language"), the walker had to move to the one package every analyzer can
 reach. ``symbol_introspection`` re-exports the names defined here, so the
 13 mainstream analyzers that ``from ...symbol_introspection import

@@ -60,7 +60,7 @@ def test_cmd_test_coverage_basic_hot_cold_spots(tmp_path: Path, capsys) -> None:
                 "language": "python",
                 "path": "src/core.py",
                 "span": {"start_line": 1, "end_line": 50},
-                "lines_of_code": 50,
+                "line_span": 50,
                 "cyclomatic_complexity": 8,
             },
         ],
@@ -143,7 +143,7 @@ def test_cmd_test_coverage_json_output(tmp_path: Path, capsys) -> None:
                 "language": "python",
                 "path": "src/bar.py",
                 "span": {"start_line": 1, "end_line": 20},
-                "lines_of_code": 20,
+                "line_span": 20,
             },
         ],
         "edges": [
@@ -190,7 +190,7 @@ def test_cmd_test_coverage_json_output(tmp_path: Path, capsys) -> None:
     assert len(output["cold_spots"]) == 1
     assert output["cold_spots"][0]["name"] == "bar"
     assert output["cold_spots"][0]["test_count"] == 0
-    assert output["cold_spots"][0]["lines_of_code"] == 20
+    assert output["cold_spots"][0]["line_span"] == 20
 
 
 def test_cmd_test_coverage_no_functions(tmp_path: Path, capsys) -> None:
@@ -304,7 +304,7 @@ def test_cmd_test_coverage_recognises_concept_tagged_tests(
                 "language": "haskell",
                 "path": "src/ShellCheck/Checker.hs",
                 "span": {"start_line": 1, "end_line": 8},
-                "lines_of_code": 8,
+                "line_span": 8,
             },
         ],
         "edges": [
@@ -875,7 +875,7 @@ def test_cmd_test_coverage_cold_spot_without_metrics(tmp_path: Path, capsys) -> 
                 "language": "python",
                 "path": "src/foo.py",
                 "span": {"start_line": 1, "end_line": 10},
-                # No lines_of_code or cyclomatic_complexity
+                # No line_span or cyclomatic_complexity
             },
         ],
         "edges": [],
@@ -929,7 +929,7 @@ def test_cmd_test_coverage_json_includes_test_density(tmp_path: Path, capsys) ->
                 "language": "python",
                 "path": "src/util.py",
                 "span": {"start_line": 1, "end_line": 10},
-                "lines_of_code": 10,
+                "line_span": 10,
             },
         ],
         "edges": [
@@ -964,7 +964,7 @@ def test_cmd_test_coverage_json_includes_test_density(tmp_path: Path, capsys) ->
     assert len(output["test_dense"]) == 1
     hot_spot = output["test_dense"][0]
     assert hot_spot["test_count"] == 2
-    assert hot_spot["lines_of_code"] == 10
+    assert hot_spot["line_span"] == 10
     # test_density = 2 tests / 10 LOC = 0.2
     assert hot_spot["test_density"] == 0.2
 
@@ -1264,7 +1264,7 @@ def test_cmd_test_coverage_section_header_does_not_suggest_redundant_tests(
                 "name": "_glob_chars", "kind": "function", "language": "python",
                 "path": "src/util.py",
                 "span": {"start_line": 1, "end_line": 3, "start_col": 0, "end_col": 10},
-                "lines_of_code": 3,
+                "line_span": 3,
             },
             {
                 "id": "python:tests/test_a.py:1-3:test_a:function",

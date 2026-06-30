@@ -153,7 +153,7 @@ def _make_symbol(analyzer: "TreeSitterAnalyzer", rel_path: str, run_id: str,
         cyclomatic_complexity=(
             compute_cyclomatic_complexity(node, "hlsl") if kind == "function" else None
         ),
-        lines_of_code=(end_line - start_line + 1) if kind == "function" else None,
+        line_span=(end_line - start_line + 1) if kind == "function" else None,
     )
 
 

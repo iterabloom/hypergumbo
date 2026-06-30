@@ -9369,10 +9369,10 @@ class TestAccessModeClassificationOnCallEdges:
 
 
 class TestJsTsLinesOfCode:
-    """Tests for lines_of_code on JS/TS symbols."""
+    """Tests for line_span on JS/TS symbols."""
 
-    def test_function_lines_of_code(self, tmp_path: Path) -> None:
-        """Function symbols have lines_of_code set from span."""
+    def test_function_line_span(self, tmp_path: Path) -> None:
+        """Function symbols have line_span set from span."""
         from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         (tmp_path / "app.js").write_text(
@@ -9382,7 +9382,7 @@ class TestJsTsLinesOfCode:
         )
         result = analyze_javascript(tmp_path)
         func = next(s for s in result.symbols if s.name == "greet")
-        assert func.lines_of_code == 3
+        assert func.line_span == 3
 
 
 class TestJsTsDocstring:
@@ -10435,7 +10435,7 @@ class TestWizavadAnonCallbackFunctionNode:
             cb.cyclomatic_complexity is not None
             and cb.cyclomatic_complexity >= 1
         ), cb.cyclomatic_complexity
-        assert cb.lines_of_code is not None and cb.lines_of_code >= 1
+        assert cb.line_span is not None and cb.line_span >= 1
 
     @pytest.mark.parametrize("ext", ["js", "ts"])
     def test_callback_carries_anonymous_meta(

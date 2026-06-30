@@ -288,10 +288,10 @@ class TestCudaCyclomaticComplexity:
         by = {s.name: s for s in result.symbols if s.kind in ('function',)}
         m = by.get('kernel') or next(s for n, s in by.items() if n.split('.')[-1] == 'kernel' or n.endswith('kernel'))
         assert m.cyclomatic_complexity == 12, m.cyclomatic_complexity
-        assert m.lines_of_code is not None
+        assert m.line_span is not None
         m = by.get('helper') or next(s for n, s in by.items() if n.split('.')[-1] == 'helper' or n.endswith('helper'))
         assert m.cyclomatic_complexity == 2, m.cyclomatic_complexity
-        assert m.lines_of_code is not None
+        assert m.line_span is not None
 
     def test_callables_non_null_non_callables_null(self, tmp_path) -> None:
         from hypergumbo_lang_common.cuda import analyze_cuda_files
@@ -301,7 +301,7 @@ class TestCudaCyclomaticComplexity:
         assert callables
         for s in callables:
             assert s.cyclomatic_complexity is not None, (s.kind, s.name)
-            assert s.lines_of_code is not None, (s.kind, s.name)
+            assert s.line_span is not None, (s.kind, s.name)
         for s in result.symbols:
             if s.kind not in ('function',):
                 assert s.cyclomatic_complexity is None, (s.kind, s.name)

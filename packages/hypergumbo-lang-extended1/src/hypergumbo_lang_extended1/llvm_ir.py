@@ -178,7 +178,7 @@ def _extract_symbols_from_tree(
                         display_label=f"@{name}",
                         signature=signature,
                         cyclomatic_complexity=compute_cyclomatic_complexity(node, "llvm_ir"),
-                        lines_of_code=end_line - start_line + 1,
+                        line_span=end_line - start_line + 1,
                     )
                     analysis.symbols.append(symbol)
                     analysis.symbol_by_name[name] = symbol

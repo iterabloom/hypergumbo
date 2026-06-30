@@ -731,7 +731,7 @@ def _extract_symbols_from_file(
                     origin_run_id=run.execution_id,
                     meta=meta,
                     modifiers=class_modifiers,
-                    lines_of_code=end_line - start_line + 1,
+                    line_span=end_line - start_line + 1,
                     is_exported="public" in class_modifiers,
                     qualified_name=_make_csharp_qualified_name(ns_name, cls_ancestors, name),
                 )
@@ -764,7 +764,7 @@ def _extract_symbols_from_file(
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     modifiers=iface_modifiers,
-                    lines_of_code=end_line - start_line + 1,
+                    line_span=end_line - start_line + 1,
                     is_exported="public" in iface_modifiers,
                     qualified_name=_make_csharp_qualified_name(ns_name, cls_ancestors, name),
                 )
@@ -797,7 +797,7 @@ def _extract_symbols_from_file(
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     modifiers=struct_modifiers,
-                    lines_of_code=end_line - start_line + 1,
+                    line_span=end_line - start_line + 1,
                     is_exported="public" in struct_modifiers,
                     qualified_name=_make_csharp_qualified_name(ns_name, cls_ancestors, name),
                 )
@@ -830,7 +830,7 @@ def _extract_symbols_from_file(
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     modifiers=enum_modifiers,
-                    lines_of_code=end_line - start_line + 1,
+                    line_span=end_line - start_line + 1,
                     is_exported="public" in enum_modifiers,
                     qualified_name=_make_csharp_qualified_name(ns_name, cls_ancestors, name),
                 )
@@ -892,7 +892,7 @@ def _extract_symbols_from_file(
                     signature=signature,
                     docstring=extract_preceding_doc_comment(node, source, "csharp"),
                     modifiers=modifiers,
-                    lines_of_code=end_line - start_line + 1,
+                    line_span=end_line - start_line + 1,
                     is_exported="public" in modifiers,
                     qualified_name=_make_csharp_qualified_name(ns_name, cls_ancestors, name),
                     cyclomatic_complexity=compute_cyclomatic_complexity(node, "csharp"),
@@ -944,7 +944,7 @@ def _extract_symbols_from_file(
                     signature=signature,
                     docstring=extract_preceding_doc_comment(node, source, "csharp"),
                     modifiers=modifiers,
-                    lines_of_code=end_line - start_line + 1,
+                    line_span=end_line - start_line + 1,
                     is_exported="public" in modifiers,
                     qualified_name=_make_csharp_qualified_name(ns_name, cls_ancestors, name),
                     cyclomatic_complexity=compute_cyclomatic_complexity(node, "csharp"),
@@ -982,7 +982,7 @@ def _extract_symbols_from_file(
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     modifiers=prop_modifiers,
-                    lines_of_code=end_line - start_line + 1,
+                    line_span=end_line - start_line + 1,
                     is_exported="public" in prop_modifiers,
                     qualified_name=_make_csharp_qualified_name(ns_name, cls_ancestors, name),
                 )
@@ -1060,7 +1060,7 @@ def _extract_symbols_from_file(
                             ),
                             signature=field_type,
                             modifiers=modifiers,
-                            lines_of_code=end_line - start_line + 1,
+                            line_span=end_line - start_line + 1,
                             is_exported="public" in modifiers,
                             qualified_name=qualified,
                         )

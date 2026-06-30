@@ -234,7 +234,7 @@ def _extract_symbols_from_tree(
                     origin_run_id=run.execution_id,
                     signature=_extract_zig_signature(node, source),
                     cyclomatic_complexity=compute_cyclomatic_complexity(node, "zig"),
-                    lines_of_code=end_line - start_line + 1,
+                    line_span=end_line - start_line + 1,
                 )
                 symbols.append(sym)
                 symbol_table[qualified_name] = sym

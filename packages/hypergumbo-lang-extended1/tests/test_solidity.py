@@ -1415,7 +1415,7 @@ contract Test {
 
 class TestSolidityComplexityAndLoc:
     """INV-loguk slice B: callable Solidity symbols carry non-null
-    cyclomatic_complexity and lines_of_code (CC table relocated to
+    cyclomatic_complexity and line_span (CC table relocated to
     hypergumbo_core.analyze.cyclomatic). Real-grammar verification of the
     solidity BRANCH_NODE_TYPES entry."""
 
@@ -1438,8 +1438,8 @@ contract C {
         # base 1 + 3 if + 1 for + 1 short-circuit (&&) = 6
         assert fn.cyclomatic_complexity is not None
         assert fn.cyclomatic_complexity >= 5
-        assert fn.lines_of_code is not None
-        assert fn.lines_of_code >= 4
+        assert fn.line_span is not None
+        assert fn.line_span >= 4
 
     def test_straight_line_function_cc_is_one(self, temp_repo: Path) -> None:
         (temp_repo / "C.sol").write_text("""
@@ -1456,7 +1456,7 @@ contract C {
         fn = next(s for s in result.symbols
                   if s.kind == "function" and "noop" in s.name)
         assert fn.cyclomatic_complexity == 1
-        assert fn.lines_of_code is not None
+        assert fn.line_span is not None
 
     def test_constructor_and_modifier_have_cc_and_loc(self, temp_repo: Path) -> None:
         (temp_repo / "C.sol").write_text("""
@@ -1479,7 +1479,7 @@ contract C {
             sym = next(s for s in result.symbols if s.kind == kind)
             assert sym.cyclomatic_complexity is not None, kind
             assert sym.cyclomatic_complexity >= 2, kind
-            assert sym.lines_of_code is not None, kind
+            assert sym.line_span is not None, kind
 
     def test_all_callables_have_non_null_cc_and_loc(self, temp_repo: Path) -> None:
         (temp_repo / "C.sol").write_text("""
@@ -1499,7 +1499,7 @@ contract C {
         assert callables
         for s in callables:
             assert s.cyclomatic_complexity is not None, s.name
-            assert s.lines_of_code is not None, s.name
+            assert s.line_span is not None, s.name
 
     def test_non_callable_symbols_have_null_cc(self, temp_repo: Path) -> None:
         # Contracts/events are not callables; CC must stay None (we gate the

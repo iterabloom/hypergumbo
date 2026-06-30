@@ -293,7 +293,7 @@ class PerlAnalyzer(TreeSitterAnalyzer):
                             file_stable_id=self._file_anchor(rel_path),
                         ),
                         cyclomatic_complexity=compute_cyclomatic_complexity(node, "perl"),
-                        lines_of_code=end_line - start_line + 1,
+                        line_span=end_line - start_line + 1,
                     )
                     analysis.symbols.append(symbol)
                     analysis.node_for_symbol[symbol.id] = node

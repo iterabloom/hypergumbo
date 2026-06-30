@@ -106,7 +106,7 @@ Top-level fields are `id`, `name`, `kind`, `language`, `path`, `span`, `origin`,
 `origin_run_id`, `stable_id`, `shape_id`, `fingerprint`, `quality`, `meta`,
 `supply_chain` (nested: `tier`, `tier_name`, `reason`, `is_test_file`,
 `is_example_file`, `is_config_file`, `is_generated_file`, `is_exported`),
-`cyclomatic_complexity`, `lines_of_code`, `signature`, `docstring`, `modifiers`,
+`cyclomatic_complexity`, `line_span`, `signature`, `docstring`, `modifiers`,
 `discovery_language`, `protocol_origin`, `display_label`, `qualified_name`.
 The last four are the ADR-0031 / ADR-0032 axis-split siblings: `language` was
 split into `discovery_language` (host source language) + `protocol_origin`

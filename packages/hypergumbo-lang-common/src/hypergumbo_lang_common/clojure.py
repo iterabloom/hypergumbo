@@ -71,7 +71,7 @@ if TYPE_CHECKING:
 PASS_ID = make_pass_id("clojure")
 
 # INV-loguk: Clojure callable kinds get non-null cyclomatic_complexity /
-# lines_of_code via the homoiconic head-symbol walker. Non-callable def forms
+# line_span via the homoiconic head-symbol walker. Non-callable def forms
 # (variable/protocol/record/type/multimethod) and the ns ``module`` symbol
 # share the emit site and stay None.
 _CLOJURE_CALLABLE_KINDS: frozenset[str] = frozenset({"function", "macro", "method"})
@@ -235,7 +235,7 @@ def _extract_symbols_from_file(
                                 compute_cyclomatic_complexity(node, "clojure")
                                 if is_callable else None
                             ),
-                            lines_of_code=(
+                            line_span=(
                                 end_line - start_line + 1 if is_callable else None
                             ),
                         ))

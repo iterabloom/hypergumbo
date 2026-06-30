@@ -251,7 +251,7 @@ def _extract_wgsl_symbols(
                     meta=meta,
                     signature=_extract_wgsl_signature(node, source),
                     cyclomatic_complexity=compute_cyclomatic_complexity(node, "wgsl"),
-                    lines_of_code=end_line - start_line + 1,
+                    line_span=end_line - start_line + 1,
                 )
                 symbols.append(sym)
                 symbol_by_name[func_name.lower()] = sym

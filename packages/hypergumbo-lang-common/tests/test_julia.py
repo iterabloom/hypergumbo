@@ -488,7 +488,7 @@ end
 
 class TestJuliaCyclomaticComplexity:
     """INV-loguk slice C: callable Julia symbols carry non-null
-    cyclomatic_complexity and lines_of_code. Real-grammar verification of the
+    cyclomatic_complexity and line_span. Real-grammar verification of the
     julia BRANCH_NODE_TYPES entry (if/elseif/for/while/catch/ternary), covering
     both the full-form and short-form (f(x)=...) emit sites."""
 
@@ -520,7 +520,7 @@ end
                   if s.kind == "function" and s.name == "classify")
         # base 1 + if + elseif + for + while + ternary + catch = 7
         assert fn.cyclomatic_complexity == 7
-        assert fn.lines_of_code is not None and fn.lines_of_code >= 4
+        assert fn.line_span is not None and fn.line_span >= 4
 
     def test_short_form_function_has_cc_and_loc(self, tmp_path: Path) -> None:
         from hypergumbo_lang_common.julia import analyze_julia
@@ -530,7 +530,7 @@ end
                   if s.kind == "function" and s.name == "classify2")
         # base 1 + 1 ternary = 2
         assert fn.cyclomatic_complexity == 2
-        assert fn.lines_of_code is not None
+        assert fn.line_span is not None
 
     def test_callables_non_null_non_callables_null(self, tmp_path: Path) -> None:
         from hypergumbo_lang_common.julia import analyze_julia
@@ -548,7 +548,7 @@ end
         assert funcs
         for s in funcs:
             assert s.cyclomatic_complexity is not None, s.name
-            assert s.lines_of_code is not None, s.name
+            assert s.line_span is not None, s.name
         for s in result.symbols:
             if s.kind != "function":
                 assert s.cyclomatic_complexity is None, (s.kind, s.name)

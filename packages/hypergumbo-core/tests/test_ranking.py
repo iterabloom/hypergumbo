@@ -3061,7 +3061,7 @@ class TestTrivialSinkDampening:
     def _make_short_symbol(
         self, name: str, path: str, *, loc: int = 3,
     ) -> Symbol:
-        """Create a symbol with a controlled lines_of_code."""
+        """Create a symbol with a controlled line_span."""
         sym = Symbol(
             id=f"go:{path}:1-{loc}:function:{name}",
             name=name,
@@ -3074,7 +3074,7 @@ class TestTrivialSinkDampening:
         )
         sym.supply_chain_tier = 1
         sym.supply_chain_reason = "tier_1"
-        sym.lines_of_code = loc
+        sym.line_span = loc
         return sym
 
     def test_trivial_sink_ranks_below_connector(self):

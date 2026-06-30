@@ -54,7 +54,7 @@ from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, ma
 # dispatcher operates on tree-sitter nodes, not `ast.AST`). Same package.
 from hypergumbo_lang_mainstream.py import (
     _compute_cyclomatic_complexity,
-    _compute_lines_of_code,
+    _compute_line_span,
 )
 
 PASS_ID = make_pass_id("jupyter")
@@ -227,7 +227,7 @@ def _analyze_notebook_file(
                 origin_run_id="",
                 # INV-loguk: Python-AST CC/LOC over the function node.
                 cyclomatic_complexity=_compute_cyclomatic_complexity(node),
-                lines_of_code=_compute_lines_of_code(node),
+                line_span=_compute_line_span(node),
             )
             symbols.append(symbol)
             symbol_by_name[name] = symbol
@@ -280,7 +280,7 @@ def _analyze_notebook_file(
                         origin_run_id="",
                         # INV-loguk: Python-AST CC/LOC over the method node.
                         cyclomatic_complexity=_compute_cyclomatic_complexity(item),
-                        lines_of_code=_compute_lines_of_code(item),
+                        line_span=_compute_line_span(item),
                     )
                     symbols.append(method_symbol)
                     symbol_by_name[method_name] = method_symbol

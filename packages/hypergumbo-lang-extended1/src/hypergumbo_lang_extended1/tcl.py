@@ -223,7 +223,7 @@ class TclAnalyzer(TreeSitterAnalyzer):
                     signature=signature,
                     meta={"namespace": namespace} if namespace else None,
                     cyclomatic_complexity=compute_cyclomatic_complexity(node, "tcl"),
-                    lines_of_code=node.end_point[0] - node.start_point[0] + 1,
+                    line_span=node.end_point[0] - node.start_point[0] + 1,
                 )
                 analysis.symbols.append(sym)
                 analysis.node_for_symbol[sym.id] = node

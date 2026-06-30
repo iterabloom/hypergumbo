@@ -432,7 +432,7 @@ class TestAdaCyclomaticComplexity:
         assert not result.skipped
         by = {s.name: s for s in result.symbols if s.kind in ('function', 'procedure')}
         assert by['Classify'].cyclomatic_complexity == 8, by['Classify'].cyclomatic_complexity
-        assert by['Classify'].lines_of_code is not None
+        assert by['Classify'].line_span is not None
 
     def test_callables_non_null_non_callables_null(self, tmp_path) -> None:
         from hypergumbo_lang_extended1.ada import analyze_ada
@@ -442,7 +442,7 @@ class TestAdaCyclomaticComplexity:
         assert callables
         for s in callables:
             assert s.cyclomatic_complexity is not None, (s.kind, s.name)
-            assert s.lines_of_code is not None, (s.kind, s.name)
+            assert s.line_span is not None, (s.kind, s.name)
         for s in result.symbols:
             if s.kind not in ('function', 'procedure'):
                 assert s.cyclomatic_complexity is None, (s.kind, s.name)

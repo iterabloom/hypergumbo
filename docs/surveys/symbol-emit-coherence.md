@@ -35,7 +35,7 @@ The audit is **static AST analysis** of `Symbol(...)` constructor calls. Three d
 
 1. **Catalog conformance** (`Symbol.language`, `Symbol.kind`): check whether literal-string emit values appear in `all_known_languages()` / `all_symbol_kind_names()`. Non-members are flagged.
 2. **Format conformance** (`Symbol.id`, `Symbol.stable_id`): classify construction as canonical-factory / f-string / variable / other. F-string templates are captured for shape comparison against the documented 5-segment canonical form.
-3. **Per-language parity** (optional fields): partition emit sites by literal `language=` value (or analyzer-package fallback) and report a coverage matrix for optional Symbol fields (`signature`, `cyclomatic_complexity`, `lines_of_code`, `canonical_name`, `modifiers`, `docstring`, `stable_id`, `fingerprint`, `is_exported`).
+3. **Per-language parity** (optional fields): partition emit sites by literal `language=` value (or analyzer-package fallback) and report a coverage matrix for optional Symbol fields (`signature`, `cyclomatic_complexity`, `line_span`, `canonical_name`, `modifiers`, `docstring`, `stable_id`, `fingerprint`, `is_exported`).
 
 The supplement adds a fourth dimension specifically for linkers: **language= provenance classification** — for each linker `Symbol(...)` emit site, classify the `language=` argument's AST node as LITERAL / PATTERN_VAR / HELPER_CALL / SYMBOL_ATTR / VAR (with backward-trace for VAR cases).
 
@@ -83,7 +83,7 @@ The audit's full per-language matrix has 118 partitions. Headline findings:
 - **`cyclomatic_complexity`**: populated only by the `python` partition (3/9 sites, 33%). 0% across the other 117 partitions.
 - **`docstring`**: same shape — Python 3/9 (33%), 0% elsewhere.
 - **`is_exported`**: Python 3/9 (33%); sparse elsewhere (Scala 1/7, Kotlin 1/3, Haskell 1/1).
-- **`lines_of_code`**: Python 3/9 (33%), Go 5/12 (42%), Rust 4/6 (67%), Bash 1/4 (25%). Otherwise 0%.
+- **`line_span`**: Python 3/9 (33%), Go 5/12 (42%), Rust 4/6 (67%), Bash 1/4 (25%). Otherwise 0%.
 - **`signature`**: ranges from 0% to 100% across partitions with no clear pattern. Vue 5/6 (83%), Robot 5/5 (100%), Twig 5/5 (100%), Pony 4/4 (100%), but Python only 2/9 (22%) and most C-family languages at 17-33%.
 
 The `canonical_name` and `fingerprint` fields show an **inverse pattern**: config-language analyzers (JSON 10/10, CMake 7/7, CSS 6/6, SQL 6/6, TOML 5/5, XML 4/4, VHDL 4/4, GLSL/WGSL 3/3, Make 3/3) populate them at 100%, while code-language analyzers (Python, Go, Rust, Java, JS/TS, C#, Ruby, PHP) populate them at 0% or near-0%. Investigation showed this isn't drift — it's *different semantic uses of the same field name across producer categories*:
