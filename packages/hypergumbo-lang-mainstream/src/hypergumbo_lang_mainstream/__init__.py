@@ -60,6 +60,7 @@ ANALYZER_MODULES = [
     # Config files
     "hypergumbo_lang_mainstream.json_config",
     "hypergumbo_lang_mainstream.yaml_ansible",
+    "hypergumbo_lang_mainstream.yaml",
     "hypergumbo_lang_mainstream.xml_config",
     "hypergumbo_lang_mainstream.toml_config",
     "hypergumbo_lang_mainstream.ini",
