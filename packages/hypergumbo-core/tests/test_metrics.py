@@ -34,6 +34,40 @@ class TestComputeMetrics:
         assert metrics["total_nodes"] == 3
         assert metrics["total_edges"] == 2
 
+    def test_by_tier_edges_src_vs_edges_incident(self) -> None:
+        """WI-modom: per-tier ``edges`` is source-tier (sinks read ~0); the new
+        ``edges_incident`` exposes each tier's graph contribution (either-endpoint).
+        """
+        nodes = [
+            {"id": "a", "language": "python",
+             "supply_chain": {"tier_name": "first_party"}},
+            {"id": "a2", "language": "python",
+             "supply_chain": {"tier_name": "first_party"}},
+            {"id": "dep", "language": "python",
+             "supply_chain": {"tier_name": "external_dep"}},
+        ]
+        # Two first-party -> external_dep calls (dep is a pure SINK), one
+        # first-party -> first-party call.
+        edges = [
+            {"id": "e1", "src": "a", "dst": "dep"},
+            {"id": "e2", "src": "a2", "dst": "dep"},
+            {"id": "e3", "src": "a", "dst": "a2"},
+        ]
+        tiers = compute_metrics(nodes=nodes, edges=edges)["by_supply_chain_tier"]
+
+        # ``edges`` (source-tier): all 3 originate in first_party; external_dep
+        # is a pure sink -> 0 (the misleading "no contribution" reading).
+        assert tiers["first_party"]["edges"] == 3
+        assert tiers["external_dep"]["edges"] == 0
+        # ``edges_incident`` (either-endpoint, distinct): external_dep is incident
+        # on e1+e2 -> 2; first_party on all 3 (e3 same-tier counts once).
+        assert tiers["external_dep"]["edges_incident"] == 2
+        assert tiers["first_party"]["edges_incident"] == 3
+        # ``edges`` reconciles to the source-resolved total; ``edges_incident``
+        # does not (cross-tier edges double-count by design).
+        assert sum(t["edges"] for t in tiers.values()) == 3
+        assert sum(t["edges_incident"] for t in tiers.values()) == 5
+
     def test_computes_avg_confidence(self) -> None:
         """Computes average edge confidence."""
         nodes = [{"id": "1", "language": "python"}]

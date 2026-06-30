@@ -957,7 +957,7 @@ Penalties on the entrypoint `confidence` field: test files −90% (×0.1), vendo
 
 ### metrics — optional counts
 
-Aggregate statistics: `total_nodes`, `total_edges`, `total_files`, `avg_confidence`, per-language breakdowns (`languages.*`), and per-tier breakdowns (`by_supply_chain_tier.*`). Each breakdown includes `nodes` and `edges` counts.
+Aggregate statistics: `total_nodes`, `total_edges`, `total_files`, `avg_confidence`, per-language breakdowns (`languages.*`), and per-tier breakdowns (`by_supply_chain_tier.*`). Each per-tier breakdown includes `nodes`, `edges`, and `edges_incident` counts. `edges` counts each edge once by its **source** node's tier, so the per-tier `edges` sum reconciles to the source-resolved edge total; because external-dependency tiers (2/3) are graph **sinks**, not sources, their `edges` typically reads ~0. `edges_incident` (WI-modom) counts an edge once per **distinct endpoint tier** (either-endpoint), exposing each tier's actual graph contribution (a tier-3 dependency referenced by N edges shows N incident, not 0); it double-counts cross-tier edges by design and so does **not** sum to `total_edges`.
 
 **`total_files`** is the canonical "how many files in this repo?" answer: `sum(profile.languages[L].files)`. It agrees with `profile`'s per-language counts (which in turn agree with `analysis_runs[L].files_analyzed` for languages whose analyzer registered a canonical `find_files`).
 

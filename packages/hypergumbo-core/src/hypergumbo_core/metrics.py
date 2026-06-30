@@ -114,23 +114,31 @@ def compute_metrics(
         node_id_to_tier[node_id] = tier_name
 
         if tier_name not in by_supply_chain_tier:
-            by_supply_chain_tier[tier_name] = {"nodes": 0, "edges": 0}
+            by_supply_chain_tier[tier_name] = {
+                "nodes": 0, "edges": 0, "edges_incident": 0,
+            }
         by_supply_chain_tier[tier_name]["nodes"] += 1
 
-    # Count edges per supply chain tier (based on source node's tier).
-    # INV-jukok: skip edges whose src isn't resolved in node_id_to_tier
-    # rather than minting an "unknown" tier with 0 nodes. The phantom
-    # ``by_supply_chain_tier["unknown"]`` entry (23 edges, 0 nodes on
-    # self-analysis) was the writer-contract sub-pattern-3 symptom of
-    # this gap: tier counts must reference a real classified node.
+    # Count edges per supply chain tier. Two views (WI-modom):
+    # - ``edges``: counted once by the SOURCE node's tier. Each edge counts once,
+    #   so the per-tier ``edges`` sum reconciles to the resolved-src edge total.
+    #   External-dependency tiers (2/3) are graph SINKS, not sources, so their
+    #   ``edges`` legitimately reads ~0 — which read as "no contribution".
+    # - ``edges_incident``: counts an edge once per DISTINCT resolved endpoint
+    #   tier (either-endpoint), so a tier's actual graph contribution is visible
+    #   (a tier-3 dependency referenced by N edges shows N incident, not 0). This
+    #   view double-counts cross-tier edges by design and does NOT sum to the
+    #   total (the src-tier ``edges`` view is the reconciling one).
+    # INV-jukok: an unresolved endpoint (not in node_id_to_tier) is skipped
+    # rather than minting an "unknown" bucket — tier counts reference real nodes.
     for edge in edges:
-        src_id = edge.get("src", "")
-        tier_name = node_id_to_tier.get(src_id)
-        if tier_name is None:
-            continue
-        # Tier was registered when the node was visited above; no new
-        # buckets are minted here, so unresolved srcs simply don't count.
-        by_supply_chain_tier[tier_name]["edges"] += 1
+        src_tier = node_id_to_tier.get(edge.get("src", ""))
+        dst_tier = node_id_to_tier.get(edge.get("dst", ""))
+        if src_tier is not None:
+            by_supply_chain_tier[src_tier]["edges"] += 1
+        for incident_tier in {src_tier, dst_tier}:
+            if incident_tier is not None:
+                by_supply_chain_tier[incident_tier]["edges_incident"] += 1
 
     debug: Dict[str, Any] = {
         "unique_paths_in_analysis": unique_paths,
