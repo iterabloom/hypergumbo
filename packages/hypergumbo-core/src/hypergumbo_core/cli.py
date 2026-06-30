@@ -144,7 +144,7 @@ from .sketch import generate_sketch, ConfigExtractionMode, SketchStats, display_
 from .slice import SliceQuery, slice_graph, AmbiguousEntryError, rank_slice_nodes
 from .selection.filters import is_excluded_kind
 from .limits import Limits
-from .supply_chain import classify_file, detect_package_roots
+from .supply_chain import DERIVED_PATH_PATTERNS, classify_file, detect_package_roots
 from .ranking import (
     rank_symbols, _is_test_path, compute_transitive_test_coverage,
     compute_symbol_mention_centrality_batch, compute_raw_in_degree,
@@ -7811,6 +7811,68 @@ def _make_ecosystem_classifier() -> Callable[[str, str], Optional[str]]:
     return classify
 
 
+# Directory names matching DERIVED_PATH_PATTERNS (supply_chain.py). These are
+# build/cache artifact dirs that discovery gitignore-excludes BEFORE the tier-4
+# derived classifier runs, so they never surface in derived_skipped without the
+# dedicated scan below (WI-jafoz). Kept in sync with the directory-name half of
+# each DERIVED_PATH_PATTERNS entry.
+_DERIVED_DIR_NAMES = frozenset(
+    {
+        "dist",
+        "build",
+        "out",
+        "target",
+        ".next",
+        ".nuxt",
+        ".output",
+        ".svelte-kit",
+        ".build",
+        "__pycache__",
+    }
+)
+
+
+def _find_derived_skipped(repo_root: Path) -> list[str]:
+    """Enumerate files under derived-artifact directories present on disk but
+    excluded from analysis.
+
+    WI-jafoz: ``discovery``'s gitignore-style ``DEFAULT_EXCLUDES`` prune
+    (node_modules, dist, build, __pycache__, ...) fires *before* the tier-4
+    derived classifier (``supply_chain.classify_file``), so derived dirs are
+    skipped silently and ``derived_skipped`` reads ``{files: 0, paths: []}``
+    even when the repo plainly contains them. This scan restores an honest
+    "what did we ignore" accounting: it walks the tree directly, matching the
+    same ``DERIVED_PATH_PATTERNS`` the classifier uses, while pruning the
+    dependency/VCS excludes so we neither descend into huge dep trees nor
+    misattribute a dependency's *own* build output as the project's.
+
+    Returns sorted repo-relative POSIX paths of every file beneath a derived
+    directory.
+    """
+    import re
+
+    from .discovery import DEFAULT_EXCLUDES
+
+    derived_res = [re.compile(p) for p in DERIVED_PATH_PATTERNS]
+    # Prune dep/VCS/cache dirs (so we don't walk or misattribute them) but keep
+    # the derived dirs themselves so the walk can reach and record them.
+    prune = {d for d in DEFAULT_EXCLUDES if d not in _DERIVED_DIR_NAMES}
+    skipped: list[str] = []
+    for dirpath, dirnames, _filenames in os.walk(repo_root):
+        rel = os.path.relpath(dirpath, repo_root)
+        rel_norm = "" if rel == "." else rel.replace(os.sep, "/") + "/"
+        if rel_norm and any(r.search(rel_norm) for r in derived_res):
+            # Derived root: record every file beneath it, then stop the outer
+            # walk from descending (the nested walk already covered it).
+            for sub_dp, _sub_dn, sub_files in os.walk(dirpath):
+                sub_rel = os.path.relpath(sub_dp, repo_root).replace(os.sep, "/")
+                skipped.extend(sub_rel + "/" + f for f in sub_files)
+            dirnames[:] = []
+            continue
+        dirnames[:] = [d for d in dirnames if d not in prune]
+    return sorted(skipped)
+
+
 def _compute_supply_chain_summary(
     symbols: list[Symbol], derived_paths: list[str]
 ) -> Dict[str, Any]:
@@ -8713,10 +8775,12 @@ def run_behavior_map(
     )
     generated_files.extend(handler_slice_files)
 
-    # Compute supply chain summary
-    # Note: derived_paths would be tracked during file discovery in a full implementation
+    # Compute supply chain summary. WI-jafoz: discovery gitignore-excludes
+    # derived dirs (dist/build/__pycache__/...) before the tier-4 classifier
+    # sees them, so we recover them with a direct scan to keep derived_skipped
+    # an honest "what did we ignore" view rather than a silent {files:0}.
     behavior_map["supply_chain_summary"] = _compute_supply_chain_summary(
-        all_symbols, derived_paths=[]
+        all_symbols, derived_paths=_find_derived_skipped(repo_root)
     )
 
     # Pre-extract sketch data (config, vocabulary, readme)

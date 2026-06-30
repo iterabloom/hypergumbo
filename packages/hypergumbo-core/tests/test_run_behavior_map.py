@@ -184,6 +184,70 @@ def test_run_behavior_map_includes_supply_chain_summary(tmp_path):
     assert isinstance(summary["derived_skipped"]["paths"], list)
 
 
+def test_find_derived_skipped_enumerates_derived_dirs_and_prunes_deps(tmp_path):
+    """WI-jafoz: ``_find_derived_skipped`` walks the tree and records files
+    under derived dirs (dist/__pycache__, top-level and nested) while pruning
+    dependency dirs (so a dep's *own* build output is never misattributed)."""
+    from hypergumbo_core.cli import _find_derived_skipped
+
+    repo = tmp_path / "repo"
+    (repo / "src").mkdir(parents=True)
+    (repo / "src" / "a.py").write_text("x = 1\n")
+    # Top-level derived dir, with a nested subdir.
+    (repo / "dist" / "assets").mkdir(parents=True)
+    (repo / "dist" / "bundle.js").write_text("//\n")
+    (repo / "dist" / "assets" / "chunk.js").write_text("//\n")
+    # Top-level and nested __pycache__ (matches both ^__pycache__/ and /__pycache__/).
+    (repo / "__pycache__").mkdir()
+    (repo / "__pycache__" / "mod.pyc").write_text("\n")
+    (repo / "pkg" / "__pycache__").mkdir(parents=True)
+    (repo / "pkg" / "__pycache__" / "x.pyc").write_text("\n")
+    # A dependency dir with its OWN dist/ inside — must be pruned, not recorded.
+    (repo / "node_modules" / "dep" / "dist").mkdir(parents=True)
+    (repo / "node_modules" / "dep" / "dist" / "dep.js").write_text("//\n")
+    (repo / "node_modules" / "dep" / "index.js").write_text("//\n")
+
+    result = _find_derived_skipped(repo)
+
+    # Derived files (top-level + nested) are recorded.
+    assert "dist/bundle.js" in result
+    assert "dist/assets/chunk.js" in result
+    assert "__pycache__/mod.pyc" in result
+    assert "pkg/__pycache__/x.pyc" in result
+    # First-party source is not derived.
+    assert "src/a.py" not in result
+    # node_modules is pruned: neither its files nor its own dist/ are recorded.
+    assert not any(p.startswith("node_modules/") for p in result)
+    # Output is deterministic (sorted).
+    assert result == sorted(result)
+
+
+def test_run_behavior_map_derived_skipped_accounts_for_excluded_dirs(tmp_path):
+    """WI-jafoz behavioral evidence: a repo whose only build artifacts live in a
+    discovery-excluded derived dir previously reported ``derived_skipped`` as
+    ``{files: 0, paths: []}`` (a silent lie). It must now enumerate them."""
+    repo_root = tmp_path / "repo"
+    (repo_root / "src").mkdir(parents=True)
+    (repo_root / "src" / "app.py").write_text("def main(): pass\n")
+    # A derived dir discovery gitignore-excludes before the tier-4 classifier.
+    (repo_root / "build").mkdir()
+    (repo_root / "build" / "artifact.o").write_text("\n")
+    (repo_root / "build" / "artifact.js").write_text("//\n")
+
+    out_path = tmp_path / "hypergumbo.results.json"
+    run_behavior_map(
+        repo_root=repo_root, out_path=out_path, include_sketch_precomputed=False
+    )
+    derived_skipped = json.loads(out_path.read_text())["supply_chain_summary"][
+        "derived_skipped"
+    ]
+
+    # No longer a silent {files: 0, paths: []}: the build/ artifacts are counted.
+    assert derived_skipped["files"] >= 2
+    assert "build/artifact.o" in derived_skipped["paths"]
+    assert "build/artifact.js" in derived_skipped["paths"]
+
+
 def test_make_ecosystem_classifier_stdlib_third_party_and_unknown():
     """ADR-0041 §3: the ecosystem classifier maps stdlib/third_party from the
     single-source io_boundary catalog, and returns None for languages with no
