@@ -37,3 +37,18 @@
     tags: [dogfood_tranche_03]  # 4b20
   remove:  # 4b20
     tags: [dogfood_tranch_03]  # 4b20
+- op: update  # e391
+  at: '2026-06-30T02:48:37Z'  # e391
+  by: agent  # e391
+  actor: jgstern_agent  # e391
+  clock: 4  # e391
+  nonce: e391  # e391
+  set:  # e391
+    status: done  # e391
+- op: discuss  # 3b97
+  at: '2026-06-30T02:48:37Z'  # 3b97
+  by: agent  # 3b97
+  actor: jgstern_agent  # 3b97
+  clock: 5  # 3b97
+  nonce: 3b97  # 3b97
+  message: "Fixed via merged PR (commit on selfh/dev 618ebac056). Behavioral repro on merged code: run_behavior_map over a tree with src/app.py + __pycache__/ + dist/ now emits supply_chain_summary.derived_skipped = {files: 2, paths: ['__pycache__/app.cpython-312.pyc','dist/bundle.min.js']} (was {files: 0, paths: []} — a silent lie). Root cause: discovery's gitignore-style DEFAULT_EXCLUDES prune drops derived dirs before the tier-4 classifier sees them, so the call site passed derived_paths=[] as a stub. Fix: new _find_derived_skipped(repo_root) walk matches the same DERIVED_PATH_PATTERNS, records files beneath derived dirs, prunes dep/VCS excludes so a dependency's own build output isn't misattributed. Production-path test test_run_behavior_map_derived_skipped_accounts_for_excluded_dirs asserts derived_skipped.files>=2; unit test test_find_derived_skipped_enumerates_derived_dirs_and_prunes_deps covers nested derived dirs + node_modules pruning. 100% cov, 3068 tests pass."  # 3b97

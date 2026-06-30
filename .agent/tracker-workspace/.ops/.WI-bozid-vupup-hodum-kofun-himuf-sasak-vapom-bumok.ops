@@ -19,3 +19,18 @@
     pr_ref:  # c8ab
     description: "**Defect.** `Symbol.lines_of_code` counts physical span lines while the spec's \"lines of code\" definition is source-lines-of-code (SLOC), so one term denotes two different counts.\n\n**Evidence.** `Symbol.lines_of_code` (ir.py:358, schema.json:538) is computed as `end_line - start_line + 1` — physical span including blanks and comments. Verified: all 29853 nodes carrying both a span and lines_of_code satisfy loc == end_line - start_line + 1 exactly (0 mismatch), so it is pure span, never SLOC. The spec §775 LOC definition is SLOC (non-empty lines, ~10–20% lower than raw line count), which is the convention the file-level profile.languages[L].loc uses. The same term names two different counting conventions on two surfaces.\n\n**Contract.** A single documented term (\"lines of code\") should denote one counting convention; the per-symbol field should either be renamed or recomputed to match the SLOC definition.\n\n**Consequence.** A consumer reading Symbol.lines_of_code under the spec's SLOC contract over-counts every symbol with internal blank/comment lines; size/complexity metrics built on per-symbol LOC and compared against file-level SLOC mix incompatible counts."  # c8ab
     fields: {}  # c8ab
+- op: update  # 1061
+  at: '2026-06-30T05:01:28Z'  # 1061
+  by: agent  # 1061
+  actor: jgstern_agent  # 1061
+  clock: 2  # 1061
+  nonce: '1061'  # 1061
+  set:  # 1061
+    status: done  # 1061
+- op: discuss  # f70d
+  at: '2026-06-30T05:01:28Z'  # f70d
+  by: agent  # f70d
+  actor: jgstern_agent  # f70d
+  clock: 3  # f70d
+  nonce: f70d  # f70d
+  message: "Fixed via merged PR (dev 1e9c339659). Per the ruling: renamed the per-symbol field lines_of_code -> line_span across ~150 sites + schema (the physical span end-start+1, distinct from file-level SLOC), and reconciled profile.languages. Behavioral evidence: (1) Symbol.from_dict back-compat test (test_symbol_from_dict_line_span_legacy_lines_of_code_key) — a pre-rename map {'lines_of_code': 9} deserializes to line_span==9, new key wins when both present; (2) full suite 19775 passed @ 100% cov across all packages after the rename. ir.py field docstring now states physical span (NOT SLOC) and points to profile.languages[*].loc. Schema reconciliation: profile.languages[*] declared phantom {files, lines, percentage} but the producer (LanguageStats.to_dict) only emits {files, loc}; schema now documents the real {files, loc} with loc = file-level SLOC. dead-code-prospector consumer + fixtures + dogfooding playbook updated; docs/schema.json + docs/ARCHITECTURE.md regenerated."  # f70d
