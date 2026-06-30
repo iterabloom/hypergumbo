@@ -30,3 +30,18 @@
     tags: [dogfood_tranche_03]  # 2628
   remove:  # 2628
     tags: [dogfood_tranch_03]  # 2628
+- op: update  # b293
+  at: '2026-06-30T08:41:17Z'  # b293
+  by: agent  # b293
+  actor: jgstern_agent  # b293
+  clock: 3  # b293
+  nonce: b293  # b293
+  set:  # b293
+    status: done  # b293
+- op: discuss  # 5bb7
+  at: '2026-06-30T08:41:17Z'  # 5bb7
+  by: agent  # 5bb7
+  actor: jgstern_agent  # 5bb7
+  clock: 4  # 5bb7
+  nonce: 5bb7  # 5bb7
+  message: "Resolved via merged PR (dev cf0bca9ab2). Re-verified premise: the original finding (2 spec-extending categories + missing 5) was largely OBE — spec §840 now enumerates exactly CATALOG_BOUNDARY_TYPES (15) + external_potential = io_boundary.KNOWN_IO_BOUNDARIES, the set io-boundaries emits and verify-claims boundary constraints accept (verify_claims.py:364 validates against KNOWN_IO_BOUNDARIES). The 'missing 5' were categories the CLI emits only when edges of that category exist (not a defect). The one real residual: unknown_dynamic — ADR-0016 reserves it for runtime-computed call targets but no producer emits it (grep: 0 src producers) and it's absent from KNOWN_IO_BOUNDARIES; §840 now flags it reserved/not-currently-emitted so the documented vocab matches the emitted/derivable vocab exactly. external_potential/logging first-class status settled by WI-huhit/WI-foduh (external_potential = separate disclosed bucket excluded from total_io_edges; logging = first-class real category). Doc-only."  # 5bb7

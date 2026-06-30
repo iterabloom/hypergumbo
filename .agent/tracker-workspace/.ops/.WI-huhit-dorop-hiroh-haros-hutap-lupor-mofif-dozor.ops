@@ -26,3 +26,20 @@
   clock: 2  # 1328
   nonce: '1328'  # 1328
   message: "Re-confirms external_potential 7097/7949 (89%), ~5134 bare-name builtin FPs; adds: all dst_classification_unreliable=False (flag fires 17/7097), 780 falsely reachable-from-entry-point. (dogfood; blinded sev 4)"  # 1328
+- op: update  # e72f
+  at: '2026-06-30T08:27:42Z'  # e72f
+  by: agent  # e72f
+  actor: jgstern_agent  # e72f
+  clock: 3  # e72f
+  nonce: e72f  # e72f
+  set:  # e72f
+    status: done  # e72f
+  add:  # e72f
+    tags: [awaits_bakeoff_validation]  # e72f
+- op: discuss  # 359d
+  at: '2026-06-30T08:27:42Z'  # 359d
+  by: agent  # 359d
+  actor: jgstern_agent  # 359d
+  clock: 4  # 359d
+  nonce: 359d  # 359d
+  message: "Fixed via merged PR (dev 455a1a187a). Re-measured premise on the current self-corpus default run: total_io_edges 8428, external_potential 8134 = 96.5% (the ~9x/28x over-count REPRODUCES on the default invocation; correctness_strategy's 'external_potential=0' applies only to the tier-filtered build). Fix (WI-foduh sibling): total_io_edges redefined to exclude the external_potential bucket (now 294 real edges); external_potential_edges discloses the 8134 separately so the bucket's receiver-unresolved builtin noise (append/get/split) no longer inflates the headline ~28x. INV-pubom canonical definition amended (2026-06-30): unfiltered/filtered/text paths agree. Test test_total_io_edges_excludes_external_potential_disclosed_separately locks the split. awaits_bakeoff_validation: headline moves ~28x."  # 359d

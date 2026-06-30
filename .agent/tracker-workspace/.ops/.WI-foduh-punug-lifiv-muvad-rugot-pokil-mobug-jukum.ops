@@ -30,3 +30,20 @@
     tags: [dogfood_tranche_03]  # f32a
   remove:  # f32a
     tags: [dogfood_tranch_03]  # f32a
+- op: update  # 7b91
+  at: '2026-06-30T08:27:41Z'  # 7b91
+  by: agent  # 7b91
+  actor: jgstern_agent  # 7b91
+  clock: 3  # 7b91
+  nonce: 7b91  # 7b91
+  set:  # 7b91
+    status: done  # 7b91
+  add:  # 7b91
+    tags: [awaits_bakeoff_validation]  # 7b91
+- op: discuss  # 5d5d
+  at: '2026-06-30T08:27:42Z'  # 5d5d
+  by: agent  # 5d5d
+  actor: jgstern_agent  # 5d5d
+  clock: 4  # 5d5d
+  nonce: 5d5d  # 5d5d
+  message: "Fixed via merged PR (dev 455a1a187a). Text & JSON now report the SAME canonical headline count. Behavioral before→after: on the self-corpus the JSON total_io_edges was 8428 (incl 8134 external_potential = 96.5% receiver-unresolved builtin noise) while text post-suppression showed only real categories — a ~9-28x disagreement with no reconciling disclosure. Now total_io_edges = real/verified categories only (294 on self-corpus) in BOTH modes regardless of --show-external-potential; external_potential disclosed separately as external_potential_edges (JSON) and as a '+N external_potential [unverified, excluded from total]' headline note + suppression line (text). IO_BOUNDARIES_SCHEMA_VERSION 1.0->2.0. Production-path: cmd_io_boundaries JSON + text headline; envelope property tests updated (TestIoBoundariesEnvelopeSchema, test_cmd_io_boundaries_json_envelope_top_level_keys). awaits_bakeoff_validation: the headline number moves ~28x."  # 5d5d
