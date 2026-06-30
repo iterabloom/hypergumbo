@@ -871,7 +871,11 @@ def link_websocket(
             origin=PASS_ID,
             origin_run_id=run.execution_id,
             access_mode="write",
-            channel=ep.event,
+            # WI-pozom: the endpoint identifier (ep.event — a route path for
+            # path-based WS, a consumer class name for Django Channels) is
+            # carried by the dst endpoint symbol. It is neither a dataflow
+            # conduit (channel) nor reliably a URL (url_path), so it is not
+            # duplicated onto this references edge.
             meta={
                 "ref_construct": "websocket_endpoint",
                 "framework_dispatch": _PATTERN_TYPE_TO_FRAMEWORK[ep.pattern_type],
@@ -926,9 +930,10 @@ def link_websocket(
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     access_mode="write",
-                    channel=path_str,
                     meta={
                         "protocol": "ws",
+                        # WI-pozom: WS route path is a route (url_path), not a
+                        # dataflow conduit (channel).
                         "url_path": path_str,
                         "client_framework": _PATTERN_TYPE_TO_FRAMEWORK[
                             client_ep.pattern_type

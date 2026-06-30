@@ -374,7 +374,9 @@ def link_annotations(
                 origin=PASS_ID,
                 origin_run_id=run.execution_id,
                 evidence_type="hg_annotation",
-                channel=target_name,
+                # WI-pozom: the dispatch target is the canonical edge dst;
+                # meta.channel is reserved for the dataflow conduit/topic, so
+                # the (redundant) target-name channel is dropped here.
                 meta=edge_meta,
                 derived_from=[disp_id, target.id],
             ))

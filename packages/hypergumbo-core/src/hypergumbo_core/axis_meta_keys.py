@@ -200,6 +200,19 @@ META_KEYS: Final[tuple[MetaKeySpec, ...]] = (
     MetaKeySpec("channel_kind", AXIS_EDGE_META,
                 "Channel shape on event / message edges "
                 "(e.g. 'websocket', 'message_queue', 'crdt')."),
+    MetaKeySpec("channel", AXIS_EDGE_META,
+                "Logical dataflow channel / conduit the data flows through "
+                "on a dataflow-family edge — a message topic "
+                "(``event_publishes``), IPC channel, CRDT document, crypto "
+                "primitive, etc. The CONDUIT referent ONLY (WI-pozom): a "
+                "WebSocket route path uses ``url_path`` and a dispatch target "
+                "is the edge ``dst`` — never ``channel``. The transport "
+                "family is on the co-occurring ``channel_kind`` key."),
+    MetaKeySpec("url_path", AXIS_EDGE_META,
+                "URL / route path on a protocol-boundary edge (e.g. a "
+                "WebSocket endpoint path, or a cross-language WS "
+                "client→server route). Distinct from ``channel`` (the "
+                "dataflow conduit/topic) per WI-pozom."),
     MetaKeySpec("ffi_mechanism", AXIS_EDGE_META,
                 "FFI mechanism for cross-language bridges where "
                 "``bridge_kind`` is too coarse (e.g. specific "
