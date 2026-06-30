@@ -1958,6 +1958,29 @@ class TestComputeSymbolMentionCentralityBatch:
 
         assert result.normalized_scores[f] == 0.0
 
+    def test_score_is_indegree_density_not_zero_to_one_normalized(self, tmp_path):
+        """WI-sigof: ``normalized_scores`` is in-degree-per-character density
+        (Σ in-degree of mentioned symbols ÷ file length), NOT a [0,1]-normalized
+        centrality. A short file mentioning a high-in-degree symbol scores well
+        above 1.0 — so the field name / schema description must not imply a
+        bounded [0,1] centrality. This characterization test locks the value
+        semantics: if the computation is ever re-normalized to [0,1], it fires
+        and forces the honest label (schema + docstring) to be revisited.
+        """
+        f = tmp_path / "tiny.md"
+        f.write_text("foo")  # 3 characters
+
+        foo = make_symbol("foo")
+        in_degree = {foo.id: 30}
+
+        result = compute_symbol_mention_centrality_batch(
+            [f], [foo], in_degree, min_in_degree=2
+        )
+
+        # 30 in-degree / 3 chars = 10.0 — an order of magnitude outside [0, 1].
+        assert result.normalized_scores[f] == pytest.approx(30 / 3)
+        assert result.normalized_scores[f] > 1.0
+
     def test_progress_callback(self, tmp_path):
         """Progress callback is called during processing."""
         f1 = tmp_path / "a.md"

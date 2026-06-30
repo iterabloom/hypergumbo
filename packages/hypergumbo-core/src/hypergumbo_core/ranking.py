@@ -1522,8 +1522,13 @@ class CentralityResult:
     """Result from symbol mention centrality computation.
 
     Attributes:
-        normalized_scores: Dict mapping file paths to normalized centrality scores
-            (in-degree sum / file size). Used for ranking files.
+        normalized_scores: Dict mapping file paths to a symbol-mention DENSITY
+            score = Σ(in-degree of mentioned symbols) ÷ file length in characters.
+            The name is historical: it is normalized *by file size*, NOT to a
+            [0,1] range — the value is unbounded ≥ 0 (a short file naming
+            high-in-degree symbols exceeds 1.0) and is meaningful only as a
+            relative ranking key within one run, never as a probability or a
+            cross-repo-comparable centrality (WI-sigof). Used for ranking files.
         symbols_per_file: Dict mapping file paths to sets of symbol names mentioned
             in that file. Used for accurate representativeness (unique symbols).
         name_to_in_degree: Dict mapping symbol names to their in-degree values.
@@ -1649,6 +1654,9 @@ def _compute_centrality_with_python(
             name_to_in_degree.get(name, 0) for name in matched_names
         )
 
+        # WI-sigof: density = Σ in-degree of mentioned symbols ÷ file length.
+        # This is normalized by file size, NOT to [0,1] — it is unbounded ≥ 0
+        # and is only a relative ranking key (see CentralityResult docstring).
         score = total_in_degree / len(content) if content else 0.0
         return (f, score, matched_names)
 

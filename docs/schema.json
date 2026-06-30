@@ -341,7 +341,7 @@
               "type": "null"
             }
           ],
-          "description": "Non-source-file-path \u2192 symbol-mention centrality score, for ranking the sketch's Additional Files section. Keys are config/doc files only (NOT whole-graph symbol centrality \u2014 that is the `symbols` command). file-anchor:F1 guarantees every key is also a kind=file node path (WI-rajod)."
+          "description": "Non-source-file-path \u2192 symbol-mention density score, for ranking the sketch's Additional Files section. The score is \u03a3(in-degree of the graph symbols whose names appear in the file) \u00f7 file length in characters \u2014 an in-degree-weighted mention density, NOT a [0,1]-normalized centrality and NOT a probability: it is unbounded \u2265 0 (a short file naming high-in-degree symbols routinely exceeds 1.0), is meaningful only as a relative ranking key within one run, and is not comparable across repos (WI-sigof). Keys are config/doc files only (NOT whole-graph symbol centrality \u2014 that is the `symbols` command). file-anchor:F1 guarantees every key is also a kind=file node path (WI-rajod)."
         },
         "config_info": {
           "oneOf": [

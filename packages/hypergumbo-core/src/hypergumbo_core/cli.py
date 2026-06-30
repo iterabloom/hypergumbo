@@ -8812,11 +8812,13 @@ def run_behavior_map(
         except Exception:  # pragma: no cover - graceful degradation
             sketch_precomputed["readme_description"] = None
 
-        # Pre-compute the Additional-Files centrality scores
-        # (`additional_file_centrality_scores`): the symbol-mention centrality of
+        # Pre-compute the Additional-Files ranking scores
+        # (`additional_file_centrality_scores`): the symbol-mention DENSITY of
         # the NON-SOURCE config/doc files surfaced in the sketch's Additional
-        # Files section. Pre-computing here avoids expensive ripgrep/regex work
-        # during sketch generation.
+        # Files section — Σ in-degree of mentioned symbols ÷ file length, an
+        # unbounded relative ranking key, NOT a [0,1] centrality (WI-sigof; see
+        # CentralityResult). Pre-computing here avoids expensive ripgrep/regex
+        # work during sketch generation.
         #
         # file-anchor:F4 — `content_source_paths` excludes file-kind anchors
         # (only CONTENT nodes count as "source"), so the file-anchor:F1 candidate

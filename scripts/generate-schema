@@ -466,9 +466,17 @@ def generate_behavior_map_schema() -> Dict[str, Any]:
                             {"type": "null"}
                         ],
                         "description": (
-                            "Non-source-file-path → symbol-mention centrality "
+                            "Non-source-file-path → symbol-mention density "
                             "score, for ranking the sketch's Additional Files "
-                            "section. Keys are config/doc files only (NOT "
+                            "section. The score is Σ(in-degree of the graph "
+                            "symbols whose names appear in the file) ÷ file "
+                            "length in characters — an in-degree-weighted "
+                            "mention density, NOT a [0,1]-normalized centrality "
+                            "and NOT a probability: it is unbounded ≥ 0 (a short "
+                            "file naming high-in-degree symbols routinely exceeds "
+                            "1.0), is meaningful only as a relative ranking key "
+                            "within one run, and is not comparable across repos "
+                            "(WI-sigof). Keys are config/doc files only (NOT "
                             "whole-graph symbol centrality — that is the "
                             "`symbols` command). file-anchor:F1 guarantees every "
                             "key is also a kind=file node path (WI-rajod)."
