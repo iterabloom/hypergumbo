@@ -138,6 +138,15 @@ META_KEYS: Final[tuple[MetaKeySpec, ...]] = (
                 "Specialized call type for Cluster E sub-case (a) "
                 "reclassifications (e.g. 'abi', 'subprocess', "
                 "'db_query'). Fold residue per audit-findings 0010."),
+    MetaKeySpec("mechanism", AXIS_EDGE_META,
+                "Dispatch mechanism on a ``dispatches_to`` edge — names "
+                "HOW the dispatch is wired when the canonical ``edge_type`` "
+                "alone is too coarse. Current value space: 'otp_call' / "
+                "'otp_cast' (Elixir/Erlang GenServer synchronous call vs "
+                "asynchronous cast, folded from the former otp_call/otp_cast "
+                "edge_types per WI-rorul). Distinct from ``framework_dispatch`` "
+                "(framework name, e.g. 'otp_genserver') and ``call_construct`` "
+                "(call-edge syntactic shape)."),
     MetaKeySpec("ref_construct", AXIS_EDGE_META,
                 "Source-language construct on a reference-FAMILY "
                 "(non-call) edge where the canonical ``edge_type`` alone "
