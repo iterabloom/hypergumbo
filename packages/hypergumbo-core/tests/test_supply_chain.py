@@ -3,7 +3,10 @@
 
 Tests the classification of files into supply chain tiers:
 - Tier 1 (first_party): Project's own source code
-- Tier 2 (internal_dep): Monorepo packages, local forks
+- Tier 2 (internal_dep): Org-internal dependency packages (e.g. configured
+  ``internal_package_roots``). Per ADR-0041 §1 / INV-naduh, in-repo role
+  files (examples, docs, notebooks, fuzz/bench) are first-party (tier 1),
+  not tier 2 — their role is carried by flags/reason, not by distance
 - Tier 3 (external_dep): Third-party dependencies
 - Tier 4 (derived): Build artifacts, minified/bundled output
 """
@@ -236,7 +239,14 @@ class TestFirstPartyDetection:
 
 
 class TestInternalDepDetection:
-    """Test tier 2 (internal_dep) detection via workspace configs."""
+    """Test workspace-config package detection and role-file classification.
+
+    Workspace members are first-party (the workspace IS the project), so the
+    classifier returns tier 1 for them; only configured
+    ``internal_package_roots`` remain tier 2. Per ADR-0041 §1 / INV-naduh,
+    in-repo example/demo/sample role files are first-party (tier 1) with
+    ``is_example=True`` carrying the role — not tier 2.
+    """
 
     def test_npm_workspaces(self, tmp_path):
         """Detect internal packages from package.json workspaces."""
@@ -490,14 +500,16 @@ members = ["crates/*"]
         assert result.tier == Tier.FIRST_PARTY
         assert result.is_test is True
 
-    def test_workspace_test_dir_drowns_out_real_internal_dep(self, tmp_path):
-        """Regression guard for INV-tisid: a workspace with both real
-        internal-dep code (examples/) and tests should yield tier 2
-        only for the examples, not the tests.
+    def test_workspace_tests_and_examples_are_distinct_first_party_roles(self, tmp_path):
+        """INV-tisid + INV-naduh: in a workspace with both tests and an
+        examples/ dir, BOTH are first-party (tier 1) but carry distinct role
+        flags — tests get is_test=True, examples get is_example=True.
 
-        Self-analysis evidence (2026-05-16): 508 of 509 internal_dep
-        entries were tests, drowning out the single real entry. After
-        the fix, the test ratio drops to 0%.
+        INV-tisid: pre-fix the workspace test branch returned INTERNAL_DEP,
+        making ~99% of self-analysis internal_dep entries tests rather than
+        real internal deps (508 of 509 on 2026-05-16). INV-naduh / ADR-0041
+        §1: examples are the project's own code (distance 0) → first-party,
+        with is_example carrying the role, not tier 2.
         """
         pkg_json = tmp_path / "package.json"
         pkg_json.write_text('{"workspaces": ["packages/*"]}')
@@ -507,7 +519,7 @@ members = ["crates/*"]
         (pkg_dir / "package.json").write_text("{}")
         (pkg_dir / "tests" / "test_core.py").write_text("# test")
 
-        # Real internal-dep: an examples directory outside the workspace.
+        # An examples/ directory outside the workspace (first-party, is_example).
         (tmp_path / "examples").mkdir()
         (tmp_path / "examples" / "demo.py").write_text("# demo")
 
@@ -518,7 +530,7 @@ members = ["crates/*"]
 
         assert test_result.tier == Tier.FIRST_PARTY
         assert test_result.is_test is True
-        assert example_result.tier == Tier.INTERNAL_DEP
+        assert example_result.tier == Tier.FIRST_PARTY
         assert example_result.is_example is True
 
     def test_workspace_test_file_pattern_is_first_party(self, tmp_path):
@@ -538,37 +550,47 @@ members = ["crates/*"]
         assert result.is_test is True
         assert "co-located test" in result.reason
 
-    def test_examples_dir_is_internal_dep(self, tmp_path):
-        """Examples directory is tier 2 (lower priority than workspace source)."""
+    def test_examples_dir_is_first_party(self, tmp_path):
+        """Examples directory is first-party (tier 1) with is_example=True.
+
+        INV-naduh / ADR-0041 §1: in-repo examples are the project's own code
+        (distance 0); the example role is carried by is_example, not by tier.
+        """
         # Create examples directory
         examples_dir = tmp_path / "examples" / "basic"
         examples_dir.mkdir(parents=True)
         (examples_dir / "app.js").write_text("// example")
 
         result = classify_file(examples_dir / "app.js", tmp_path, set())
-        assert result.tier == Tier.INTERNAL_DEP
+        assert result.tier == Tier.FIRST_PARTY
+        assert result.is_example is True
         assert "examples" in result.reason
 
-    def test_demos_dir_is_internal_dep(self, tmp_path):
-        """Demos directory is tier 2."""
+    def test_demos_dir_is_first_party(self, tmp_path):
+        """Demos directory is first-party (tier 1) with is_example=True (INV-naduh)."""
         demos_dir = tmp_path / "demos"
         demos_dir.mkdir()
         (demos_dir / "demo.py").write_text("# demo")
 
         result = classify_file(demos_dir / "demo.py", tmp_path, set())
-        assert result.tier == Tier.INTERNAL_DEP
+        assert result.tier == Tier.FIRST_PARTY
+        assert result.is_example is True
 
-    def test_samples_dir_is_internal_dep(self, tmp_path):
-        """Samples directory is tier 2."""
+    def test_samples_dir_is_first_party(self, tmp_path):
+        """Samples directory is first-party (tier 1) with is_example=True (INV-naduh)."""
         samples_dir = tmp_path / "samples"
         samples_dir.mkdir()
         (samples_dir / "sample.rs").write_text("// sample")
 
         result = classify_file(samples_dir / "sample.rs", tmp_path, set())
-        assert result.tier == Tier.INTERNAL_DEP
+        assert result.tier == Tier.FIRST_PARTY
+        assert result.is_example is True
 
-    def test_examples_lower_priority_than_workspace_source(self, tmp_path):
-        """Examples (tier 2) have lower priority than workspace source (tier 1)."""
+    def test_workspace_source_and_examples_both_first_party(self, tmp_path):
+        """Workspace source and examples are both first-party (tier 1) but
+        carry distinct roles: workspace source has is_example=False, examples
+        have is_example=True (INV-naduh / ADR-0041 §1).
+        """
         # Set up a library monorepo like socket.io
         pkg_json = tmp_path / "package.json"
         pkg_json.write_text('{"workspaces": ["packages/*"]}')
@@ -585,16 +607,15 @@ members = ["crates/*"]
 
         roots = detect_package_roots(tmp_path)
 
-        # Workspace lib/ should be tier 1
+        # Workspace lib/ is first-party production code (not an example).
         lib_result = classify_file(pkg_dir / "lib" / "index.ts", tmp_path, roots)
         assert lib_result.tier == Tier.FIRST_PARTY
+        assert lib_result.is_example is False
 
-        # Examples should be tier 2
+        # Examples are first-party with the example role carried by is_example.
         example_result = classify_file(examples_dir / "app.ts", tmp_path, roots)
-        assert example_result.tier == Tier.INTERNAL_DEP
-
-        # Tier 1 < Tier 2, so workspace source has higher priority
-        assert lib_result.tier < example_result.tier
+        assert example_result.tier == Tier.FIRST_PARTY
+        assert example_result.is_example is True
 
 
 class TestGradleWorkspaces:
@@ -745,30 +766,36 @@ class TestGradleWorkspaces:
 
 
 class TestDocCClassification:
-    """DocC documentation directories should be tier 2 (not first-party)."""
+    """DocC documentation directories are first-party (tier 1), not tier 2.
 
-    def test_docc_tutorial_swift_file_is_tier2(self, tmp_path):
-        """Swift tutorial fragments in Documentation.docc are tier 2."""
+    INV-naduh / ADR-0041 §1: in-repo docs are the project's own artifacts
+    (distance 0); the documentation role is carried by the reason string,
+    not by a tier-2 (internal-dependency) label.
+    """
+
+    def test_docc_tutorial_swift_file_is_first_party(self, tmp_path):
+        """Swift tutorial fragments in Documentation.docc are first-party (tier 1)."""
         docc_dir = tmp_path / "Sources" / "MyLib" / "Documentation.docc" / "Tutorials"
         docc_dir.mkdir(parents=True)
         (docc_dir / "code-0001.swift").write_text("import MyLib\nlet store = Store()")
 
         result = classify_file(docc_dir / "code-0001.swift", tmp_path, set())
-        assert result.tier == Tier.INTERNAL_DEP, (
-            f"DocC tutorial should be tier 2, got {result.tier}: {result.reason}"
+        assert result.tier == Tier.FIRST_PARTY, (
+            f"DocC tutorial should be tier 1, got {result.tier}: {result.reason}"
         )
+        assert "documentation" in result.reason.lower()
 
-    def test_docc_nested_under_sources_not_tier1(self, tmp_path):
-        """DocC under Sources/ should NOT be promoted to tier 1."""
+    def test_docc_nested_under_sources_is_first_party(self, tmp_path):
+        """DocC under Sources/ is first-party (tier 1); the .docc reason records the role."""
         src_dir = tmp_path / "Sources" / "ComposableArchitecture"
         docc_dir = src_dir / "Documentation.docc" / "Tutorials" / "MeetTCA"
         docc_dir.mkdir(parents=True)
         (docc_dir / "code-0003.swift").write_text("struct ContactsFeature {}")
 
-        # Even though it's under Sources/, the .docc path should demote it
+        # Under Sources/, but the .docc path tags it as documentation (still tier 1).
         result = classify_file(docc_dir / "code-0003.swift", tmp_path, set())
-        assert result.tier == Tier.INTERNAL_DEP, (
-            f"DocC tutorial under Sources/ should be tier 2, got {result.tier}: {result.reason}"
+        assert result.tier == Tier.FIRST_PARTY, (
+            f"DocC tutorial under Sources/ should be tier 1, got {result.tier}: {result.reason}"
         )
 
     def test_non_docc_source_stays_tier1(self, tmp_path):
@@ -786,37 +813,39 @@ class TestDocCClassification:
 
 
 class TestNotebookClassification:
-    """Jupyter notebooks are always tier 2 (internal_dep).
+    """Jupyter notebooks are first-party (tier 1), not tier 2.
 
-    Notebooks are exploratory code that lives outside the project's import
-    namespace. They should be analyzed but deprioritized vs. first-party source.
+    Notebooks are exploratory in-repo code; per INV-naduh / ADR-0041 §1 they
+    are the project's own files (distance 0) → first-party, with the
+    "notebook" role carried by the reason string rather than a tier-2
+    (internal-dependency) label.
     """
 
-    def test_notebook_in_root_is_internal_dep(self, tmp_path):
-        """Notebook at repo root is tier 2."""
+    def test_notebook_in_root_is_first_party(self, tmp_path):
+        """Notebook at repo root is first-party (tier 1)."""
         nb = tmp_path / "analysis.ipynb"
         nb.write_text("{}")
         result = classify_file(nb, tmp_path, set())
-        assert result.tier == Tier.INTERNAL_DEP
+        assert result.tier == Tier.FIRST_PARTY
         assert "notebook" in result.reason.lower()
 
-    def test_notebook_in_src_is_internal_dep(self, tmp_path):
-        """Notebook in src/ is still tier 2 (not tier 1)."""
+    def test_notebook_in_src_is_first_party(self, tmp_path):
+        """Notebook in src/ is first-party (tier 1)."""
         src = tmp_path / "src"
         src.mkdir()
         nb = src / "explore.ipynb"
         nb.write_text("{}")
         result = classify_file(nb, tmp_path, set())
-        assert result.tier == Tier.INTERNAL_DEP
+        assert result.tier == Tier.FIRST_PARTY
 
-    def test_notebook_in_notebooks_dir_is_internal_dep(self, tmp_path):
-        """Notebook in notebooks/ subdirectory is tier 2."""
+    def test_notebook_in_notebooks_dir_is_first_party(self, tmp_path):
+        """Notebook in notebooks/ subdirectory is first-party (tier 1)."""
         nb_dir = tmp_path / "notebooks"
         nb_dir.mkdir()
         nb = nb_dir / "experiment.ipynb"
         nb.write_text("{}")
         result = classify_file(nb, tmp_path, set())
-        assert result.tier == Tier.INTERNAL_DEP
+        assert result.tier == Tier.FIRST_PARTY
 
 
 class TestTestFileClassification:
@@ -824,9 +853,11 @@ class TestTestFileClassification:
     (first_party) with is_test=True.
 
     Test code IS first-party code (it lives in the project's repo and is
-    written by the project's authors). Tier 2 (internal_dep) is reserved
-    for in-repo non-test code: monorepo subpackages used as dependencies,
-    fuzz harnesses, examples, vendored-but-in-tree deps. Per INV-tisid,
+    written by the project's authors). Per ADR-0041 §1 / INV-naduh, tier 2
+    (internal_dep) is reserved for org-internal *dependency* packages
+    (configured internal_package_roots); other in-repo role files — tests,
+    examples, fuzz harnesses, notebooks, docs — are first-party (tier 1)
+    with their role carried by flags/reason, not by tier. Per INV-tisid,
     routing tests through tier 2 made tier 2 a synonym for is_test and
     drowned out the real internal-dep signal (~99% of self-analysis
     internal_dep entries were tests).
@@ -1109,80 +1140,83 @@ class TestTestFileClassification:
 
 
 class TestFuzzBenchClassification:
-    """Test that fuzz and benchmark directories are classified as tier 2.
+    """Test that fuzz and benchmark directories are classified as first-party.
 
-    Fuzz targets and benchmarks are non-production code — they exercise the
-    library but are not part of its API surface.  Common across Rust, Go, C/C++.
+    Fuzz targets and benchmarks are in-repo non-production code — they
+    exercise the library but are not part of its API surface. Per INV-naduh /
+    ADR-0041 §1 they are the project's own files (distance 0) → first-party
+    (tier 1); "not production" is carried by the reason string, not by a
+    tier-2 (internal-dependency) label. Common across Rust, Go, C/C++.
 
     - Rust: fuzz/, fuzz_targets/, benches/, criterion/
     - Go: fuzz (in _test.go), benchmarks/ (less common)
     - C/C++: fuzz/, fuzzing/, benchmarks/, benchmark/
     """
 
-    def test_fuzz_dir_is_internal_dep(self, tmp_path):
-        """Top-level fuzz/ directory is tier 2."""
+    def test_fuzz_dir_is_first_party(self, tmp_path):
+        """Top-level fuzz/ directory is first-party (tier 1)."""
         fuzz_dir = tmp_path / "fuzz" / "fuzz_targets"
         fuzz_dir.mkdir(parents=True)
         (fuzz_dir / "fuzz_diff.rs").write_text("fuzz_target!(|data| {})")
 
         result = classify_file(fuzz_dir / "fuzz_diff.rs", tmp_path, set())
-        assert result.tier == Tier.INTERNAL_DEP
+        assert result.tier == Tier.FIRST_PARTY
         assert "fuzz" in result.reason.lower()
 
     def test_fuzz_dir_with_cargo_toml(self, tmp_path):
-        """Fuzz Cargo.toml in fuzz/ is tier 2."""
+        """Fuzz Cargo.toml in fuzz/ is first-party (tier 1)."""
         fuzz_dir = tmp_path / "fuzz"
         fuzz_dir.mkdir()
         (fuzz_dir / "Cargo.toml").write_text('[package]\nname = "fuzz"')
 
         result = classify_file(fuzz_dir / "Cargo.toml", tmp_path, set())
-        assert result.tier == Tier.INTERNAL_DEP
+        assert result.tier == Tier.FIRST_PARTY
 
-    def test_nested_fuzz_dir_is_internal_dep(self, tmp_path):
-        """Nested fuzz/ in a crate workspace is tier 2."""
+    def test_nested_fuzz_dir_is_first_party(self, tmp_path):
+        """Nested fuzz/ in a crate workspace is first-party (tier 1)."""
         fuzz_dir = tmp_path / "crates" / "core" / "fuzz"
         fuzz_dir.mkdir(parents=True)
         (fuzz_dir / "fuzz_parse.rs").write_text("fuzz_target!(|data| {})")
 
         result = classify_file(fuzz_dir / "fuzz_parse.rs", tmp_path, set())
-        assert result.tier == Tier.INTERNAL_DEP
+        assert result.tier == Tier.FIRST_PARTY
 
-    def test_benches_dir_is_internal_dep(self, tmp_path):
-        """Rust benches/ directory is tier 2."""
+    def test_benches_dir_is_first_party(self, tmp_path):
+        """Rust benches/ directory is first-party (tier 1)."""
         bench_dir = tmp_path / "benches"
         bench_dir.mkdir()
         (bench_dir / "pipeline.rs").write_text("fn bench_pipeline() {}")
 
         result = classify_file(bench_dir / "pipeline.rs", tmp_path, set())
-        assert result.tier == Tier.INTERNAL_DEP
+        assert result.tier == Tier.FIRST_PARTY
         assert "bench" in result.reason.lower()
 
-    def test_benchmarks_dir_is_internal_dep(self, tmp_path):
-        """benchmarks/ directory is tier 2."""
+    def test_benchmarks_dir_is_first_party(self, tmp_path):
+        """benchmarks/ directory is first-party (tier 1)."""
         bench_dir = tmp_path / "benchmarks"
         bench_dir.mkdir()
         (bench_dir / "bench_main.cpp").write_text("BENCHMARK(main)")
 
         result = classify_file(bench_dir / "bench_main.cpp", tmp_path, set())
-        assert result.tier == Tier.INTERNAL_DEP
+        assert result.tier == Tier.FIRST_PARTY
 
-    def test_benchmark_singular_dir_is_internal_dep(self, tmp_path):
-        """benchmark/ (singular) directory is tier 2."""
+    def test_benchmark_singular_dir_is_first_party(self, tmp_path):
+        """benchmark/ (singular) directory is first-party (tier 1)."""
         bench_dir = tmp_path / "benchmark"
         bench_dir.mkdir()
         (bench_dir / "bench.go").write_text("func BenchmarkParse(b *testing.B)")
 
         result = classify_file(bench_dir / "bench.go", tmp_path, set())
-        assert result.tier == Tier.INTERNAL_DEP
+        assert result.tier == Tier.FIRST_PARTY
 
-    def test_fuzzing_dir_is_internal_dep(self, tmp_path):
-        """fuzzing/ directory is tier 2 (OSS-Fuzz convention)."""
+    def test_fuzzing_dir_is_first_party(self, tmp_path):
+        """fuzzing/ directory is first-party (tier 1) (OSS-Fuzz convention)."""
         fuzz_dir = tmp_path / "fuzzing"
         fuzz_dir.mkdir()
         (fuzz_dir / "fuzz_harness.c").write_text("int LLVMFuzzerTestOneInput()")
 
         result = classify_file(fuzz_dir / "fuzz_harness.c", tmp_path, set())
-        assert result.tier == Tier.INTERNAL_DEP
+        assert result.tier == Tier.FIRST_PARTY
 
     def test_production_code_unaffected(self, tmp_path):
         """Production code in src/ is not affected by fuzz/bench patterns."""
@@ -2017,13 +2051,13 @@ class TestIsTestFileAxis:
         assert result.is_test is False
 
     def test_fuzz_file_is_not_marked_is_test(self, tmp_path: Path) -> None:
-        """Fuzz/bench files are tier 2 but is_test=False (separate axis)."""
+        """Fuzz/bench files are first-party (tier 1) but is_test=False (separate axis)."""
         fuzz = tmp_path / "fuzz" / "fuzz_targets"
         fuzz.mkdir(parents=True)
         (fuzz / "fuzz_diff.rs").write_text("fuzz_target!(|data| {})")
 
         result = classify_file(fuzz / "fuzz_diff.rs", tmp_path, set())
-        assert result.tier == Tier.INTERNAL_DEP
+        assert result.tier == Tier.FIRST_PARTY
         assert result.is_test is False
 
     def test_classify_symbols_propagates_is_test_flag(
@@ -2593,8 +2627,10 @@ class TestDependencyManifest:
 class TestIsExampleFileAxis:
     """WI-jobuj: is_example flag is set when path matches EXAMPLE_PATTERNS.
 
-    Mirrors the WI-rigun pattern for is_test_file. Within tier 2,
-    is_example is mutually exclusive with is_test and is_config.
+    Mirrors the WI-rigun pattern for is_test_file. is_example is mutually
+    exclusive with is_test and is_config (role flags are XOR-disjoint). Per
+    INV-naduh, example files are first-party (tier 1), with is_example
+    carrying the role.
     """
 
     @pytest.mark.parametrize("path", [
@@ -2608,12 +2644,12 @@ class TestIsExampleFileAxis:
         "tutorial/intro.md",
     ])
     def test_example_paths_set_is_example(self, tmp_path: Path, path: str) -> None:
-        """All EXAMPLE_PATTERNS variants set is_example=True at tier 2."""
+        """All EXAMPLE_PATTERNS variants set is_example=True at tier 1 (INV-naduh)."""
         full = tmp_path / path
         full.parent.mkdir(parents=True, exist_ok=True)
         full.write_text("")
         result = classify_file(full, tmp_path, set())
-        assert result.tier == Tier.INTERNAL_DEP
+        assert result.tier == Tier.FIRST_PARTY
         assert result.is_example is True
         assert result.is_test is False
         assert result.is_config is False
@@ -2672,15 +2708,16 @@ class TestIsConfigFileAxis:
     def test_config_under_examples_is_example_not_config(self, tmp_path: Path) -> None:
         """examples/foo/package.json → is_example=True, is_config=False.
 
-        Mutual exclusion: example detection wins over config detection so
-        within tier 2 the role flags are XOR-disjoint (acceptance criterion
-        for WI-jobuj).
+        Mutual exclusion: example detection wins over config detection so the
+        role flags are XOR-disjoint (acceptance criterion for WI-jobuj). Per
+        INV-naduh the file is first-party (tier 1), with is_example carrying
+        the role.
         """
         f = tmp_path / "examples" / "foo" / "package.json"
         f.parent.mkdir(parents=True)
         f.write_text("{}")
         result = classify_file(f, tmp_path, set())
-        assert result.tier == Tier.INTERNAL_DEP
+        assert result.tier == Tier.FIRST_PARTY
         assert result.is_example is True
         assert result.is_config is False
 
@@ -2701,14 +2738,14 @@ class TestIsConfigFileAxis:
         assert result.is_config is False
 
 
-class TestRoleFlagMutualExclusionInTier2:
-    """WI-jobuj acceptance: every Symbol whose tier=2 has at most one of
-    is_test_file / is_example_file / is_config_file set.
+class TestRoleFlagMutualExclusion:
+    """WI-jobuj acceptance (rescoped per INV-naduh): every Symbol has at most
+    one of is_test_file / is_example_file / is_config_file set.
 
-    This is the headline property the WI calls out:
-    'every Symbol whose tier=2 has at most one of is_test_file /
-    is_example_file / is_config_file set (mutually exclusive within
-    tier 2).'
+    WI-jobuj originally scoped this to tier 2, but per INV-naduh / ADR-0041
+    §1 the role-bearing files (tests, examples, configs) are now first-party
+    (tier 1). The mutual-exclusion property is tier-independent: a file may
+    carry at most one role flag regardless of its supply-chain tier.
     """
 
     def _classify(self, tmp_path: Path, rel: str, content: str = "") -> FileClassification:
@@ -2727,25 +2764,23 @@ class TestRoleFlagMutualExclusionInTier2:
         "demos/widget.ts",
         "samples/intro.go",
         "tutorials/lesson.md",
-        # Config (when not under example/test path)
-        "tools/pyproject.toml",  # tier defaults to first-party here, but check anyway
-        # Pure tier-2 categories with no role flag
+        # Config
+        "tools/pyproject.toml",
+        # First-party role files with no test/example/config flag
         "fuzz/fuzz_diff.rs",
         "benchmarks/bench.py",
         "doc.ipynb",
     ])
-    def test_at_most_one_role_flag_when_tier_is_2(
+    def test_at_most_one_role_flag(
         self, tmp_path: Path, rel: str
     ) -> None:
         result = self._classify(tmp_path, rel)
-        if result.tier != Tier.INTERNAL_DEP:
-            # Property only constrains tier 2; outside tier 2 this test is vacuous.
-            return
         flags_set = sum([result.is_test, result.is_example, result.is_config])
         assert flags_set <= 1, (
-            f"tier-2 file {rel!r} has {flags_set} role flags set "
-            f"(is_test={result.is_test}, is_example={result.is_example}, "
-            f"is_config={result.is_config}); they must be mutually exclusive"
+            f"file {rel!r} (tier {int(result.tier)}) has {flags_set} role "
+            f"flags set (is_test={result.is_test}, "
+            f"is_example={result.is_example}, is_config={result.is_config}); "
+            f"they must be mutually exclusive"
         )
 
 

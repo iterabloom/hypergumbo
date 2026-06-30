@@ -8630,9 +8630,14 @@ def run_behavior_map(
     show_progress("Classifying symbols", 60)
     _classify_symbols(all_symbols, repo_root, package_roots, limits=limits)
 
-    # Promote route-bearing symbols from derived (tier 4) to internal (tier 2).
-    # Routes represent the API surface and are valuable regardless of whether
-    # the code is generated (e.g., go-swagger, protobuf gRPC stubs).
+    # Promote route-bearing symbols out of derived (tier 4) so the API surface
+    # is not excluded by the default tier-4 filter — valuable regardless of
+    # whether the code is generated (e.g., go-swagger, protobuf gRPC stubs).
+    # INV-naduh / ADR-0041 §1: tier names supply-chain DISTANCE only, and these
+    # routes live IN the repo (distance 0), so they promote to tier 1
+    # (first_party) — NOT tier 2 (internal_dep), which is reserved for
+    # org-internal *dependency* packages. The "promoted from derived" reason
+    # records that the source was generated/derived.
     for s in all_symbols:
         if s.supply_chain_tier == 4:
             is_route = (s.meta or {}).get("framework_role") == "route"
@@ -8642,7 +8647,7 @@ def run_behavior_map(
                         is_route = True
                         break
             if is_route:
-                s.supply_chain_tier = 2
+                s.supply_chain_tier = 1
                 s.supply_chain_reason = "route promoted from derived"
 
     # Apply tier filtering: always exclude DERIVED (tier 4) unless --max-tier 4.

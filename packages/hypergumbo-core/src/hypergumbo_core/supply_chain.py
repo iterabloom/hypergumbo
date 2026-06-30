@@ -8,7 +8,8 @@ prioritized) and noise reduction (derived artifacts excluded).
 Tiers
 -----
 - FIRST_PARTY (1): Project's own source code (highest priority)
-- INTERNAL_DEP (2): Internal libraries, monorepo packages
+- INTERNAL_DEP (2): Org-internal dependency packages (configured
+  internal_package_roots only)
 - EXTERNAL_DEP (3): Third-party dependencies in readable form
 - DERIVED (4): Build artifacts, transpiled/bundled output (skip analysis)
 
@@ -19,19 +20,25 @@ checked in order; first match wins:
 
 1. Derived artifact detection (tier 4) - path patterns + content heuristics
 2. External dependency detection (tier 3) - node_modules/, vendor/, etc.
-3. Example/demo detection (tier 2) - examples/, demos/, samples/, tutorials/
+3. Example/demo detection (tier 1, is_example=True) - examples/, demos/,
+   samples/, tutorials/ (in-repo → first-party; the role is on is_example)
 4. Workspace package detection:
    - If file matches a test directory pattern → tier 1 with is_test=True
    - Otherwise → tier 1 (workspace IS the project)
-5. Test code detection (tier 1 with is_test=True) - tests/, spec/,
-   __tests__/, _test.go, .test.js, etc. Tier 2 is reserved for in-repo
-   non-test code (examples, fuzz harnesses, vendored deps); routing
-   tests through tier 2 historically made tier 2 a synonym for is_test
-   and drowned out the real internal-dep signal (INV-tisid).
-6. First-party detection (tier 1) - src/, lib/, app/ or default
+5. Configured internal_package_roots → tier 2 (the only tier-2 producer)
+6. Test code detection (tier 1 with is_test=True) - tests/, spec/,
+   __tests__/, _test.go, .test.js, etc. Routing tests through tier 2
+   historically made tier 2 a synonym for is_test and drowned out the
+   real internal-dep signal (INV-tisid).
+7. Documentation / notebook (.ipynb) / fuzz-bench detection (tier 1) -
+   in-repo role files; the role is carried by the reason string (INV-naduh).
+8. First-party detection (tier 1) - src/, lib/, app/ or default
 
-This ensures library monorepos classify workspace source code as tier 1,
-while examples outside workspaces are tier 2 (lower priority).
+Per INV-naduh / ADR-0041 §1 the tier names supply-chain DISTANCE only: all
+in-repo files are first-party (distance 0), and tier 2 is reserved for
+org-internal *dependency* packages declared via config. Role files
+(examples, docs, notebooks, fuzz/bench, tests) carry their role on a
+separate axis (is_example / is_test / reason), not by tier.
 
 See §14 of the hypergumbo spec for full details.
 """
@@ -185,14 +192,15 @@ class FileClassification:
     WI-jobuj). Per INV-tisid, test code is tier 1 with is_test=True —
     tests are first-party code, and routing them through tier 2 made
     tier 2 a synonym for is_test (~99% of self-analysis tier-2 entries
-    were tests, drowning out actual internal-dep signal). Tier 2 is
-    reserved for in-repo non-test code: examples, fuzz harnesses,
-    vendored-but-in-tree deps, monorepo subpackages used as deps.
+    were tests, drowning out actual internal-dep signal). Per INV-naduh /
+    ADR-0041 §1, tier 2 is reserved for org-internal *dependency* packages
+    (configured ``internal_package_roots`` only); other in-repo role files
+    — examples, docs, notebooks, fuzz/bench harnesses — are first-party
+    (tier 1) with the role carried by the flag/reason, not by tier.
 
-    Within tier 2 (INTERNAL_DEP), at most one of `is_example`,
-    `is_config` is True per file (mutual exclusion preserved by the
-    classifier order). `is_test` is now mutually exclusive with the
-    other tier-2 role flags because is_test routes the file to tier 1.
+    At most one of `is_test`, `is_example`, `is_config` is True per file
+    (mutual exclusion preserved by the classifier order); the property is
+    tier-independent now that role files are first-party.
     """
 
     tier: Tier
@@ -608,17 +616,22 @@ def _classify_file_core(
             pkg = _extract_package_name(rel, label)
             return FileClassification(Tier.EXTERNAL_DEP, f"in {label}", pkg)
 
-    # 4. Check example/demo patterns (lower priority than workspace packages)
+    # 4. Check example/demo patterns (lower priority than workspace packages).
+    # INV-naduh / ADR-0041 §1: tier names supply-chain DISTANCE only. In-repo
+    # example/demo files are the project's OWN code (distance 0) → tier 1
+    # first_party; their role is carried by is_example, NOT by tier 2 (which is
+    # reserved for org-internal *dependency* packages).
     for pattern in EXAMPLE_PATTERNS:
         if re.match(pattern, rel):
             return FileClassification(
-                Tier.INTERNAL_DEP, f"path matches {pattern}", is_example=True
+                Tier.FIRST_PARTY, f"path matches {pattern}", is_example=True
             )
 
-    # 4b. Check documentation patterns (DocC bundles, etc.)
+    # 4b. Check documentation patterns (DocC bundles, etc.). INV-naduh: in-repo
+    # docs are first-party (tier 1); the role is captured by the reason string.
     for pattern in DOCUMENTATION_PATTERNS:
         if re.search(pattern, rel):
-            return FileClassification(Tier.INTERNAL_DEP, f"documentation path matches {pattern}")
+            return FileClassification(Tier.FIRST_PARTY, f"documentation path matches {pattern}")
 
     # 5a. Check custom internal_package_roots from config
     if config and config.internal_package_roots:
@@ -707,12 +720,16 @@ def _classify_file_core(
 
     # 5c. Jupyter notebooks are exploratory, not part of the import namespace
     if rel.endswith(".ipynb"):
-        return FileClassification(Tier.INTERNAL_DEP, "notebook file (.ipynb)")
+        # INV-naduh: in-repo notebooks are first-party (tier 1), not a tier-2
+        # dependency; the role is captured by the reason string.
+        return FileClassification(Tier.FIRST_PARTY, "notebook file (.ipynb)")
 
-    # 5d. Check fuzz/benchmark patterns (not production code)
+    # 5d. Check fuzz/benchmark patterns (not production code). INV-naduh: in-repo
+    # fuzz/bench harnesses are first-party (tier 1); "not production" is captured
+    # by the reason string, not by mislabeling them as a tier-2 dependency.
     for pattern in FUZZ_BENCH_PATTERNS:
         if re.search(pattern, rel):
-            return FileClassification(Tier.INTERNAL_DEP, f"fuzz/bench path matches {pattern}")
+            return FileClassification(Tier.FIRST_PARTY, f"fuzz/bench path matches {pattern}")
 
     # 5e. Check custom first_party_patterns from config
     if config and config.first_party_patterns:

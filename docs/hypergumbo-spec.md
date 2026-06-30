@@ -1277,7 +1277,7 @@ Code is classified into four tiers based on its relationship to the project:
 | Tier | Name | Description | Examples | Status |
 |------|------|-------------|----------|--------|
 | 1 | `first_party` | Project's own source code (including its tests) | `src/`, `lib/`, `app/` | 🟩 |
-| 2 | `internal_dep` | Workspace / org-internal packages **only** | Monorepo siblings, local forks | 🟩 |
+| 2 | `internal_dep` | Org-internal *dependency* packages, declared via `internal_package_roots` **only** (workspace members are tier 1) | Local forks, vendored-but-internal libs | 🟩 |
 | 3 | `external_dep` | **All** third-party code — direct, transitive, undeclared, and stdlib alike | `node_modules/lodash/`, `vendor/`, declared PyPI deps, `os`/`json` | 🟩 |
 | 4 | `derived` | Build artifacts, transpiled/bundled output | `dist/`, `*.min.js`, source-mapped files | 🟩 |
 
@@ -1290,11 +1290,14 @@ closer to the project than an undeclared one. The direct/transitive/undeclared
 distinction lives on the registered `ecosystem` axis (ADR-0041 §3). Both are
 stamped once, at classification time, on boundary/dependency nodes.
 
-(Scope note: ADR-0041 §1 retired the *manifest* direct-dependency → tier-2
-mapping. File classification independently still routes some in-repo non-source
-*role* files — examples, documentation bundles, config-declared internal roots —
-to tier 2; aligning those with the distance-only axiom is a separate follow-up
-outside ADR-0041 §1's manifest-mapping scope.)
+(History: ADR-0041 §1 retired the *manifest* direct-dependency → tier-2
+mapping. File classification independently still routed some in-repo non-source
+*role* files — examples, documentation bundles, notebooks, fuzz/bench harnesses
+— to tier 2 (INV-naduh); these are the project's own code (distance 0) and now
+classify as **tier 1** with their role on the `is_example` / `is_test` / reason
+axis, not by tier. Config-declared `internal_package_roots` remain the sole
+tier-2 producer, and in-repo generated *routes* promote from tier 4 to tier 1,
+not tier 2.)
 
 **Default behavior:**
 - Tiers 1-3: Analyzed, with tier used for ranking/filtering
@@ -1372,45 +1375,42 @@ def extract_package_name(rel_path: str) -> str | None:
 
 #### 3. Internal dependency detection (tier 2)
 
-Detected via workspace/monorepo configuration files.
+Tier 2 (`internal_dep`) is produced **only** by config-declared
+`internal_package_roots` — org-internal *dependency* packages (local forks,
+vendored-but-internal libs). Per ADR-0041 §1 / INV-naduh, no path heuristic
+produces tier 2: workspace members are the project's own code (tier 1), and
+in-repo role files carry their role on a flag/reason, not by tier.
 
-**npm/yarn/pnpm workspaces:**
+**Config-declared internal package roots (the sole tier-2 producer):**
+```yaml
+# capsule plan supply_chain config
+internal_package_roots: ["custom_packages/shared", "libs/common"]
+```
+Files under a declared root are tier 2 (`internal_dep`).
+
+**Workspace / monorepo detection → tier 1.** Workspace configuration files
+(npm/yarn/pnpm `workspaces`, Cargo `[workspace] members`, Maven `<modules>`,
+Python monorepo path-deps) are read to detect package roots, but their member
+files classify as **tier 1** (the workspace IS the project), with `is_test=True`
+on co-located tests (INV-tisid):
 ```json
-// package.json
-{
-  "workspaces": ["packages/*", "apps/*"]
-}
-```
-Files under matched workspace globs are tier 2.
-
-**Cargo workspaces:**
-```toml
-# Cargo.toml
-[workspace]
-members = ["crates/*"]
+// package.json — members of packages/* and apps/* are tier 1
+{ "workspaces": ["packages/*", "apps/*"] }
 ```
 
-**Python monorepos:**
-```toml
-# pyproject.toml (using hatch, pdm, or similar)
-[tool.hatch.envs.default]
-dependencies = ["./packages/core", "./packages/utils"]
+**Role files → tier 1, role on a flag (not tier).** Example/demo, documentation,
+notebook, and fuzz/bench paths classify as **tier 1** (the project's own code),
+with the role carried by `is_example_file` / `is_test_file` / the reason string —
+independent of `supply_chain_tier` (INV-naduh / INV-tisid / ADR-0041 §1):
 ```
-
-**Example/demo, test, and fuzz/bench patterns:**
+examples/, demos/, samples/, tutorials/     # → tier 1, is_example_file=True
+tests/, test/, __tests__/, spec/            # → tier 1, is_test_file=True
+_test.go, .test.js, .spec.ts, _spec.rb     # → tier 1, is_test_file=True
+fuzz/, fuzzing/, fuzz_targets/              # → tier 1 (fuzz/bench role in reason)
+benches/, benchmarks/, benchmark/           # → tier 1 (fuzz/bench role in reason)
+*.ipynb                                     # → tier 1 (notebook role in reason)
+Documentation.docc/ bundles                 # → tier 1 (documentation role in reason)
 ```
-examples/, demos/, samples/, tutorials/     # Example/demo code
-tests/, test/, __tests__/, spec/            # Test directories
-_test.go, .test.js, .spec.ts, _spec.rb     # Test file suffixes
-fuzz/, fuzzing/, fuzz_targets/              # Fuzz targets
-benches/, benchmarks/, benchmark/           # Benchmarks
-```
-
-**Role flags, not tier.** These example/test/fuzz/bench patterns set the
-`is_example_file` / `is_test_file` role flags (and the fuzz/bench role), which
-are **independent of `supply_chain_tier`**. A test or example file co-located in
-first-party source resolves to **tier 1**, not tier 2 (INV-tisid) — the patterns
-appear under tier-2 detection only because role-flagging runs in the same pass.
 
 #### 4. First-party detection (tier 1)
 
