@@ -29,6 +29,7 @@ sys.path.insert(0, str(REPO_ROOT / "src"))
 sys.path.insert(0, str(REPO_ROOT / "scripts"))
 
 from hypergumbo_core.edge_types import AXIS_ENDPOINT_SHAPE, EDGE_TYPES
+from hypergumbo_core.entrypoints import all_known_entrypoint_kinds
 from hypergumbo_core.evidence_types import EVIDENCE_TYPES
 from hypergumbo_core.symbol_kinds import SYMBOL_KINDS
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
@@ -544,8 +545,12 @@ def generate_behavior_map_schema() -> Dict[str, Any]:
             "kind": {
                 "type": "string",
                 "description": (
-                    "Entrypoint category — e.g. main_function, "
-                    "cli_command, http_route, framework_handler"
+                    "Entrypoint category (what the entrypoint IS — distinct "
+                    "from meta.evidence_type, which names HOW it was "
+                    "detected). One of the EntrypointKind catalog "
+                    "(WI-pupiz, single source "
+                    "hypergumbo_core.entrypoints.all_known_entrypoint_kinds): "
+                    + ", ".join(sorted(all_known_entrypoint_kinds()))
                 )
             },
             "label": {

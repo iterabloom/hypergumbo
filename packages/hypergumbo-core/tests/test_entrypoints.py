@@ -6,6 +6,7 @@ from hypergumbo_core.ir import Symbol, Edge, Span
 from hypergumbo_core.entrypoints import (
     _diversity_cap,
     _is_frontend_file,
+    all_known_entrypoint_kinds,
     compute_entrypoint_cap,
     detect_entrypoints,
     Entrypoint,
@@ -2528,6 +2529,28 @@ class TestEntrypointProvenance:
             assert ep.meta["source"] == "connectivity_fallback"
             assert ep.meta["evidence_type"] == "connectivity_heuristic"
             assert ep.meta["id"].startswith("entrypoint:sha256:")
+
+
+class TestEntrypointKindCatalog:
+    """WI-pupiz: entrypoint-kind as a lightweight catalog-derived axis."""
+
+    def test_returns_every_enum_value(self) -> None:
+        assert all_known_entrypoint_kinds() == frozenset(
+            k.value for k in EntrypointKind
+        )
+
+    def test_is_nonempty_frozenset(self) -> None:
+        kinds = all_known_entrypoint_kinds()
+        assert isinstance(kinds, frozenset)
+        assert kinds  # non-empty — a meaningless axis otherwise
+
+    def test_known_canonical_kinds_present(self) -> None:
+        kinds = all_known_entrypoint_kinds()
+        # Spot-check representative kinds across the producer families.
+        assert {
+            "http_route", "cli_command", "main_function", "library_export",
+            "connectivity_based", "websocket_handler",
+        } <= kinds
 
 
 class TestEntrypointRankingPenalties:

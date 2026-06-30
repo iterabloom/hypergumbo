@@ -211,6 +211,28 @@ class EntrypointKind(Enum):
     CONNECTIVITY_BASED = "connectivity_based"  # High-connectivity callable
 
 
+def all_known_entrypoint_kinds() -> frozenset[str]:
+    """Single-source catalog of every entrypoint-kind value (WI-pupiz).
+
+    The canonical vocabulary IS the :class:`EntrypointKind` enum; this
+    resolver exposes it as a lightweight catalog-derived axis (ADR-0024
+    §4 "use judgment" carveout), mirroring ``edge_types.all_edge_type_names``
+    and ``catalog.all_known_languages``. Wired into
+    :func:`hypergumbo_core.multi_value_field_axis._known_axes` under the
+    ``entrypoint-kind`` axis name so any future ``str`` field carrying an
+    entrypoint-kind validates against the catalog, and used as the single
+    source for the schema ``Entrypoint.kind`` enumeration (``generate-schema``).
+
+    Distinct from the ``entrypoint_meta`` ``evidence_type`` axis (WI-rukam):
+    ``kind`` names WHAT the entrypoint is (an HTTP route, a CLI command),
+    while ``evidence_type`` names HOW it was detected. The empirically
+    dark-on-self-corpus kinds (e.g. ``cli_command`` for argparse CLIs —
+    a detection gap tracked under WI-lubap) are still *known* kinds and
+    appear here.
+    """
+    return frozenset(k.value for k in EntrypointKind)
+
+
 # --- Entrypoint provenance vocabularies (WI-rukam) -------------------
 # The Entrypoint record mirrors Edge's provenance shape: a producer pass
 # (``source``, analog of ``Edge.origin``) and an inference pathway
