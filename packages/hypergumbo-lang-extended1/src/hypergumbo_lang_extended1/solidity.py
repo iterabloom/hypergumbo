@@ -562,7 +562,7 @@ def _extract_edges_from_tree(
                         evidence_type="reference",
                         origin=PASS_ID,
                         origin_run_id=run_id,
-                        meta={"construct": "event_emit"},
+                        meta={"ref_construct": "event_emit"},
                     )
                     edges.append(edge)
 

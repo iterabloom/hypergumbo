@@ -853,7 +853,7 @@ def link_websocket(
     # ADR-0023 §6 Phase 3 / audit-findings 0002 (WI-hahap-farid): WebSocket
     # endpoint connections declare connectivity (file → endpoint
     # symbol), they don't carry messages. Canonical 'references' +
-    # meta['construct']='websocket_endpoint'.
+    # meta['ref_construct']='websocket_endpoint'.
     #
     # ADR-0028 Phase 3 / audit-findings 0014: f"{pattern_type}_endpoint" leaked
     # framework identity into evidence_type. Fold to canonical ast_call_direct
@@ -873,7 +873,7 @@ def link_websocket(
             access_mode="write",
             channel=ep.event,
             meta={
-                "construct": "websocket_endpoint",
+                "ref_construct": "websocket_endpoint",
                 "framework_dispatch": _PATTERN_TYPE_TO_FRAMEWORK[ep.pattern_type],
             },
             derived_from=[_make_file_id(ep_language, ep.file_path), ep_id],

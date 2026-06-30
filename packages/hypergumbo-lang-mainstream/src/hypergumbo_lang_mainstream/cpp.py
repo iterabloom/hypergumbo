@@ -1223,7 +1223,7 @@ def _extract_edges_from_tree(
                     # ADR-0023 §6 Phase 3 / audit-findings 0001 (WI-vasik-jofiv):
                     # Same as c.py — function references a dispatch-
                     # table data symbol. Canonical 'references' +
-                    # meta['construct']='dispatch_table'.
+                    # meta['ref_construct']='dispatch_table'.
                     edges.append(Edge.create(
                         src=func_sym.id,
                         dst=dispatch_tables[name],
@@ -1232,7 +1232,7 @@ def _extract_edges_from_tree(
                         origin=PASS_ID,
                         origin_run_id=run.execution_id,
                         evidence_type="dispatch_table_reference",
-                        meta={"construct": "dispatch_table"},
+                        meta={"ref_construct": "dispatch_table"},
                     ))
 
     # WI-zojid: emit module_attr_ref edges for scoped attribute reads on

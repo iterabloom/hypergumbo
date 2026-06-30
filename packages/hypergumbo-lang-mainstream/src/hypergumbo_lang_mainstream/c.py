@@ -742,7 +742,7 @@ def _extract_edges(
                     # ADR-0023 §6 Phase 3 / audit-findings 0001 (WI-vasik-jofiv):
                     # Function references a dispatch-table data
                     # symbol (not dispatcher→target). Canonical
-                    # 'references' + meta['construct']='dispatch_table'.
+                    # 'references' + meta['ref_construct']='dispatch_table'.
                     edges.append(Edge.create(
                         src=func_sym.id,
                         dst=dispatch_tables[name],
@@ -751,7 +751,7 @@ def _extract_edges(
                         origin=PASS_ID,
                         origin_run_id=run.execution_id,
                         evidence_type="dispatch_table_reference",
-                        meta={"construct": "dispatch_table"},
+                        meta={"ref_construct": "dispatch_table"},
                     ))
 
     return edges

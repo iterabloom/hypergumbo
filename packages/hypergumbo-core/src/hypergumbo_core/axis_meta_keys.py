@@ -138,14 +138,19 @@ META_KEYS: Final[tuple[MetaKeySpec, ...]] = (
                 "Specialized call type for Cluster E sub-case (a) "
                 "reclassifications (e.g. 'abi', 'subprocess', "
                 "'db_query'). Fold residue per audit-findings 0010."),
-    MetaKeySpec("construct", AXIS_EDGE_META,
-                "Source-language construct that produced a "
-                "reference-family edge where the canonical ``edge_type`` "
-                "alone is too coarse (e.g. 'script_src' for an HTML "
-                "``<script src=...>`` include folded to a ``references`` "
-                "edge — INV-vavat / ADR-0023 endpoint-shape migration). "
-                "Distinct from ``call_construct`` (which names the call "
-                "SHAPE on ``calls`` edges)."),
+    MetaKeySpec("ref_construct", AXIS_EDGE_META,
+                "Source-language construct on a reference-FAMILY "
+                "(non-call) edge where the canonical ``edge_type`` alone "
+                "is too coarse. Current value space: 'jsx' (JSX render), "
+                "'script_src' (HTML ``<script src=...>`` include), "
+                "'websocket_endpoint' (WebSocket endpoint connectivity), "
+                "'event_emit' (Solidity event emission), 'dispatch_table' "
+                "(C/C++ dispatch-table reference) — all folded to "
+                "``references`` edges (INV-vavat / ADR-0023 endpoint-shape "
+                "migration). Renamed from ``construct`` per INV-lajov to "
+                "disambiguate from the sibling ``call_construct`` (which "
+                "names the call SHAPE on ``calls`` edges): distinct "
+                "vocabularies, distinct edge families, zero overlap."),
     MetaKeySpec("receiver", AXIS_EDGE_META,
                 "Call-site receiver classification "
                 "(e.g. 'bare', 'external', 'typed'). "

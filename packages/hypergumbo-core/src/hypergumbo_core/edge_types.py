@@ -240,12 +240,12 @@ EDGE_TYPES: Final[tuple[EdgeTypeSpec, ...]] = (
     EdgeTypeSpec(
         "association", AXIS_ENDPOINT_SHAPE,
         "Ruby ActiveRecord association declaration (has_many, belongs_to, "
-        "etc.); likely fold to 'references' + meta['construct']='association'.",
+        "etc.); likely fold to 'references' + meta['ref_construct']='association'.",
     ),
     EdgeTypeSpec(
         "build_tag_alternative_of", AXIS_ENDPOINT_SHAPE,
         "Go build-tag-conditional alternative implementation of a symbol; "
-        "likely fold to 'references' + meta['construct']='build_tag_alternative'.",
+        "likely fold to 'references' + meta['ref_construct']='build_tag_alternative'.",
     ),
     EdgeTypeSpec(
         "caller_invokes", AXIS_ENDPOINT_SHAPE,
@@ -261,7 +261,7 @@ EDGE_TYPES: Final[tuple[EdgeTypeSpec, ...]] = (
     EdgeTypeSpec(
         "crypto_flow", AXIS_ENDPOINT_SHAPE,
         "Crypto-related dataflow (key/secret reaches sink); likely fold "
-        "to 'data_flows_to' + meta['construct']='crypto'.",
+        "to 'data_flows_to' + meta['ref_construct']='crypto'.",
     ),
     EdgeTypeSpec(
         "depends", AXIS_ENDPOINT_SHAPE,
@@ -272,18 +272,18 @@ EDGE_TYPES: Final[tuple[EdgeTypeSpec, ...]] = (
     EdgeTypeSpec(
         "extends_template", AXIS_ENDPOINT_SHAPE,
         "Twig/Jinja template extends a parent template; likely fold to "
-        "'extends' + meta['construct']='template' or stay as canonical "
+        "'extends' + meta['ref_construct']='template' or stay as canonical "
         "if templates' extension semantics differ enough.",
     ),
     EdgeTypeSpec(
         "includes_class", AXIS_ENDPOINT_SHAPE,
         "Puppet manifest includes a class declaration; likely fold to "
-        "'includes' (now canonical) + meta['construct']='puppet_class'.",
+        "'includes' (now canonical) + meta['ref_construct']='puppet_class'.",
     ),
     EdgeTypeSpec(
         "includes_template", AXIS_ENDPOINT_SHAPE,
         "Twig/Jinja template includes a partial; likely fold to "
-        "'includes' (now canonical) + meta['construct']='template'.",
+        "'includes' (now canonical) + meta['ref_construct']='template'.",
     ),
     EdgeTypeSpec(
         "invokes_callback", AXIS_ENDPOINT_SHAPE,
@@ -294,7 +294,7 @@ EDGE_TYPES: Final[tuple[EdgeTypeSpec, ...]] = (
     EdgeTypeSpec(
         "links_to", AXIS_ENDPOINT_SHAPE,
         "Markdown link from one document to another; likely fold to "
-        "'references' + meta['construct']='markdown_link'.",
+        "'references' + meta['ref_construct']='markdown_link'.",
     ),
     EdgeTypeSpec(
         "notifies_resource", AXIS_ENDPOINT_SHAPE,
@@ -306,14 +306,14 @@ EDGE_TYPES: Final[tuple[EdgeTypeSpec, ...]] = (
     EdgeTypeSpec(
         "renders", AXIS_ENDPOINT_SHAPE,
         "Controller renders a view template; likely fold to 'references' "
-        "+ meta['construct']='view_render' (parallel to renders_component "
+        "+ meta['ref_construct']='view_render' (parallel to renders_component "
         "for JSX).",
     ),
     EdgeTypeSpec(
         "requires_resource", AXIS_ENDPOINT_SHAPE,
         "Puppet/Chef resource require directive (this resource depends "
         "on another); likely fold to 'depends_on' + "
-        "meta['construct']='puppet_require'.",
+        "meta['ref_construct']='puppet_require'.",
     ),
     EdgeTypeSpec(
         "signal_receiver", AXIS_ENDPOINT_SHAPE,
@@ -330,12 +330,12 @@ EDGE_TYPES: Final[tuple[EdgeTypeSpec, ...]] = (
     EdgeTypeSpec(
         "uses_mixin", AXIS_ENDPOINT_SHAPE,
         "Sass/SCSS @include of a mixin; likely fold to 'references' + "
-        "meta['construct']='sass_mixin'.",
+        "meta['ref_construct']='sass_mixin'.",
     ),
     EdgeTypeSpec(
         "uses_vocabulary", AXIS_ENDPOINT_SHAPE,
         "SPARQL/RDF query references a vocabulary/ontology; likely "
-        "fold to 'references' + meta['construct']='rdf_vocabulary'.",
+        "fold to 'references' + meta['ref_construct']='rdf_vocabulary'.",
     ),
 
     # Per-family audit pending per ADR-0023 §5. The dispatch and

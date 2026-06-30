@@ -270,11 +270,11 @@ def link_react_components(
             # INV-zuhub: simple-name fallback edges carry conf <= 0.5
             # and the disambiguation_fallback flag.
             confidence = 0.5 if is_fallback else 0.80
-            edge_meta: dict[str, object] = {"construct": "jsx"}
+            edge_meta: dict[str, object] = {"ref_construct": "jsx"}
             if is_fallback:
                 edge_meta["disambiguation_fallback"] = True
             # ADR-0023 §6 Phase 3 (WI-mokam-jalig): JSX renders fold to
-            # 'references' + meta['construct']='jsx' — the construct
+            # 'references' + meta['ref_construct']='jsx' — the construct
             # is the differentiating fact, not a separate relationship.
             result_edges.append(Edge.create(
                 src=src_id,
