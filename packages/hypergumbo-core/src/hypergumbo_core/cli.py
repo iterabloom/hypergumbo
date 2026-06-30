@@ -1339,6 +1339,45 @@ def _handle_files_mode(
     return 0
 
 
+def _apply_io_boundary_filter(
+    result: Any, nodes: list, edges: list, category: str
+) -> int:
+    """Filter ``result`` in place to edges reaching the named I/O boundary
+    ``category``, computed ephemerally.
+
+    Per the io-boundary REFRAME (WI-fakuv / WI-puvun), io-boundary is not a
+    persisted field — ``compute_boundary_map`` derives it on demand and stamps
+    ``meta['io_boundary']`` onto the slice's edges *in memory*. We keep only the
+    edges whose stamp equals ``category``, plus their endpoint nodes and the
+    slice's entry nodes, and return the count of kept edges. This is the
+    slice-scoped, on-demand twin of ``hypergumbo io-boundaries``.
+    """
+    from .io_boundary import compute_boundary_map, load_catalog
+
+    catalogs: Dict[str, Any] = {}
+    for node in nodes:
+        lang = node.language
+        if lang and lang not in catalogs:
+            catalog = load_catalog(lang)
+            if catalog.is_supported and catalog.primitives:
+                catalogs[lang] = catalog
+    slice_edge_ids = set(result.edge_ids)
+    slice_edges = [e for e in edges if e.id in slice_edge_ids]
+    # Stamps meta['io_boundary'] on slice_edges in place (consumer-time).
+    compute_boundary_map(slice_edges, catalogs)
+    kept_edge_ids = {
+        e.id for e in slice_edges if (e.meta or {}).get("io_boundary") == category
+    }
+    keep_nodes = set(result.entry_nodes)
+    for edge in slice_edges:
+        if edge.id in kept_edge_ids:
+            keep_nodes.add(edge.src)
+            keep_nodes.add(edge.dst)
+    result.edge_ids = {eid for eid in result.edge_ids if eid in kept_edge_ids}
+    result.node_ids = {nid for nid in result.node_ids if nid in keep_nodes}
+    return len(result.edge_ids)
+
+
 def cmd_slice(args: argparse.Namespace) -> int:
     """Execute the slice command."""
     path_arg = Path(args.path).resolve()
@@ -1540,6 +1579,25 @@ def cmd_slice(args: argparse.Namespace) -> int:
             file=sys.stderr,
         )
         return 1
+
+    # --io-boundary: ephemerally classify the slice's edges by I/O boundary and
+    # keep only those reaching the requested category (WI-fakuv filter half).
+    io_boundary_filter = getattr(args, "io_boundary", None)
+    if io_boundary_filter is not None:
+        from .io_boundary import KNOWN_IO_BOUNDARIES
+
+        if io_boundary_filter not in KNOWN_IO_BOUNDARIES:
+            print(
+                f"Error: unknown --io-boundary category '{io_boundary_filter}'. "
+                f"Valid: {', '.join(sorted(KNOWN_IO_BOUNDARIES))}",
+                file=sys.stderr,
+            )
+            return 2
+        kept = _apply_io_boundary_filter(result, nodes, edges, io_boundary_filter)
+        print(
+            f"[hypergumbo slice] --io-boundary {io_boundary_filter}: "
+            f"{kept} edge(s) reach this boundary"
+        )
 
     # Rank slice nodes by importance (centrality + tier weighting).
     # For reverse slices, downweight test file callers so production callers
@@ -6778,6 +6836,17 @@ Auto-discovers cached results from 'hypergumbo run', or specify --input."""
              "a read at the destination (ADR-0015). Produces tighter slices of "
              "actual data dependencies. Edges without access_mode metadata are "
              "still followed.",
+    )
+    p_slice.add_argument(
+        "--io-boundary",
+        default=None,
+        metavar="CATEGORY",
+        dest="io_boundary",
+        help="Filter the slice to edges that reach the named I/O boundary "
+             "category (e.g. fs_read, fs_write, net_send, subprocess). The "
+             "classification is computed ephemerally from the io_primitives "
+             "catalogs at slice time — there is no persisted io_boundary field "
+             "(see `hypergumbo io-boundaries`, the canonical full-graph view).",
     )
     p_slice.add_argument(
         "--files",

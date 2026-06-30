@@ -204,6 +204,7 @@
     "--hub-threshold",
     "--inline",
     "--input",
+    "--io-boundary",
     "--language",
     "--list-entries",
     "--max-files",
