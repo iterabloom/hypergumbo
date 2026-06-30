@@ -3826,11 +3826,13 @@ class TestModulePseudoNode:
         assert len(files) == 1
         assert files[0]["name"] == "config.py"
 
-    def test_no_analyzer_emitted_file_node_for_docstring_only(self, tmp_path: Path) -> None:
-        """Files with only docstring don't get an analyzer-emitted file
-        pseudo-node (no module-level executable code to anchor). The
-        orchestrator synthesizer may still create one for the import
-        edge — that's a separate producer."""
+    def test_analyzer_emits_file_node_for_docstring_carrying_summary(self, tmp_path: Path) -> None:
+        """WI-kazob: a file whose only module-level content is a docstring (no
+        executable code) NOW gets an analyzer-emitted file node — so the file
+        node can carry the module's one-line summary. Before WI-kazob this
+        file produced no analyzer file node (the docstring was dropped); the
+        emission condition is now ``code OR docstring``. Integration-level
+        complement to test_wi_kazob_module_docstring.py's unit coverage."""
         py_file = tmp_path / "empty.py"
         py_file.write_text(
             '"""This module does nothing."""\n'
@@ -3848,14 +3850,16 @@ class TestModulePseudoNode:
             and n["language"] == "python"
             and n["origin"] != ["orchestrator_file_symbol_synthesis"]
         ]
-        assert len(analyzer_emitted) == 0
+        assert len(analyzer_emitted) == 1
+        assert analyzer_emitted[0]["docstring"] == "This module does nothing."
 
     def test_no_analyzer_emitted_file_node_for_pass_only(self, tmp_path: Path) -> None:
-        """Files with only pass statements don't get an analyzer-emitted
-        file pseudo-node."""
+        """Files with only pass statements (and no module docstring) don't get
+        an analyzer-emitted file pseudo-node. (WI-kazob: a docstring would
+        trigger one — see test_analyzer_emits_file_node_for_docstring_carrying_summary
+        — so this fixture has none, isolating the pass-only branch.)"""
         py_file = tmp_path / "stub.py"
         py_file.write_text(
-            '"""Stub module."""\n'
             "pass\n"
         )
 
@@ -3872,11 +3876,18 @@ class TestModulePseudoNode:
         assert len(analyzer_emitted) == 0
 
     def test_no_analyzer_emitted_file_node_for_type_annotation_only(self, tmp_path: Path) -> None:
-        """Files with only type annotations don't get an analyzer-emitted
-        file pseudo-node."""
+        """Files with only type annotations (and no module docstring) don't
+        get an analyzer-emitted file pseudo-node.
+
+        WI-kazob note: the file-node emission condition is ``code OR
+        docstring``, so a docstring WOULD trigger an analyzer file node (to
+        carry the module summary). This fixture intentionally has no
+        docstring so it isolates the annotation-only branch; the
+        docstring-triggers-emission path is covered in
+        ``test_wi_kazob_module_docstring.py``.
+        """
         py_file = tmp_path / "types.py"
         py_file.write_text(
-            '"""Type stubs."""\n'
             "x: int\n"
             "y: str\n"
         )

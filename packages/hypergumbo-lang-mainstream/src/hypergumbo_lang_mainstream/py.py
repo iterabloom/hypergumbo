@@ -2219,7 +2219,19 @@ def _extract_file_analysis(
     # already established its identity claims (relative path, real
     # end_line). This Symbol provides an enclosing scope for module-level
     # edges so script-only files remain reachable in slice traversal.
-    if _has_module_level_code(tree):
+    # WI-kazob: the file-kind node carries the module's one-line docstring
+    # summary (0/902 file nodes carried one before). py.py is the only
+    # producer that can read a Python module docstring — the orchestrator
+    # file-symbol synthesizer is language-agnostic — so the file node is
+    # emitted whenever the module has executable code OR a docstring. Per
+    # the INV-hojus dedup above, broadening the condition only changes WHICH
+    # producer emits the single file node (py.py vs the synthesizer); it
+    # never doubles it.
+    _module_docstring = ast.get_docstring(tree)
+    _module_docstring_line = (
+        _module_docstring.split("\n")[0].strip()[:80] if _module_docstring else None
+    )
+    if _has_module_level_code(tree) or _module_docstring:
         end_line = _get_file_end_line(source)
         module_span = Span(
             start_line=1,
@@ -2253,6 +2265,7 @@ def _extract_file_analysis(
             span=module_span,
             origin="",
             origin_run_id="",
+            docstring=_module_docstring_line,
             meta=module_meta,
         )
         symbols.append(module_symbol)
