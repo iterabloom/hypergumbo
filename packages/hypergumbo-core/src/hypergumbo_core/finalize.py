@@ -77,7 +77,11 @@ from typing import TYPE_CHECKING, Optional
 from .ir import ExternalRef, _compute_run_signature, _parse_dangling_id
 from .pass_metadata import PassMetadataLookup
 from .repo_fingerprint import compute_repo_fingerprint
-from .visibility import compute_visibility
+from .visibility import (
+    VISIBILITY_MODIFIER_TERMS,
+    VISIBILITY_PUBLIC,
+    compute_visibility,
+)
 from .spec_validator import (
     build_validation_report,
     compute_stable_id_stats,
@@ -300,8 +304,27 @@ def _finalize_compute_visibility(ctx: FinalizeContext) -> None:
     legacy ``meta['visibility']`` term (Apex / Clojure), which wins over the
     Python leading-underscore name convention, which wins over the public
     default. The legacy ``meta['visibility']`` key is removed once folded — the
-    typed field is its canonical home. PR1 is additive: ``is_exported`` and the
-    visibility terms in ``modifiers`` are reconciled in the follow-up.
+    typed field is its canonical home.
+
+    Reconciliation of the two remaining visibility encodings (INV-jusot
+    follow-up):
+
+    - ``is_exported`` — a public API cannot be non-public, so language
+      visibility is a **necessary but not sufficient** condition:
+      ``is_exported`` is downgraded to False for any non-public symbol, but is
+      NOT set True merely because a symbol is language-public. (A pure
+      ``is_exported = visibility=='public'`` alias would flip 58% of the
+      self-corpus — 19k of them test-file symbols — from not-exported to
+      exported, redefining ``is_exported`` from "public API member" (29%) to
+      "language-public" (87%) and turning every public test function into an
+      exported dead-code root. The `and`-with-visibility keeps ``is_exported``'s
+      public-API-membership meaning and only resolves the real disagreement:
+      the 5 self-corpus ``src/_foo`` symbols the path heuristic marked exported
+      despite being private.) The publishedness/test-penalty inputs remain on
+      ``supply_chain`` (``is_test_file`` / ``tier``).
+    - ``modifiers`` — the visibility terms (now on the ``visibility`` field)
+      are stripped, so ``modifiers`` keeps only non-visibility terms
+      (``static`` / ``native`` / ``abstract`` / …).
     """
     for sym in ctx.symbols:
         meta = sym.meta if sym.meta is not None else {}
@@ -316,6 +339,14 @@ def _finalize_compute_visibility(ctx: FinalizeContext) -> None:
             sym.meta = {}
         sym.meta["visibility_signal"] = signal
         sym.meta.pop("visibility", None)
+        # is_exported requires public visibility (necessary, not sufficient).
+        if level != VISIBILITY_PUBLIC:
+            sym.is_exported = False
+        # modifiers keeps only non-visibility terms.
+        if sym.modifiers:
+            sym.modifiers = [
+                m for m in sym.modifiers if m not in VISIBILITY_MODIFIER_TERMS
+            ]
 
 
 def _finalize_commit_dicts(ctx: FinalizeContext) -> None:

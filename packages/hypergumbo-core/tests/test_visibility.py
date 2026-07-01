@@ -27,15 +27,24 @@ class TestVisibilityVocabulary:
     def test_every_modifier_maps_to_a_canonical_level(self) -> None:
         assert set(MODIFIER_TO_VISIBILITY.values()) <= VISIBILITY_LEVELS
 
-    def test_visibility_modifier_terms_are_the_mapping_keys(self) -> None:
-        assert VISIBILITY_MODIFIER_TERMS == frozenset(MODIFIER_TO_VISIBILITY)
-        # The terms actually observed on the self-corpus are all covered.
+    def test_strip_terms_are_the_pure_visibility_subset(self) -> None:
+        # The strip set is a PROPER subset of the visibility mapping — it
+        # excludes re_exported (a re-export marker that only *implies* public
+        # visibility), so the re-export fact survives in modifiers.
+        assert VISIBILITY_MODIFIER_TERMS < frozenset(MODIFIER_TO_VISIBILITY)
+        assert "re_exported" not in VISIBILITY_MODIFIER_TERMS
+        assert "re_exported" in MODIFIER_TO_VISIBILITY  # still a visibility signal
+        # The pure-visibility terms observed on the self-corpus are stripped.
         assert {
-            "private", "public", "exported", "pub", "external",
-            "re_exported", "unexported",
+            "private", "public", "exported", "pub", "external", "unexported",
         } <= VISIBILITY_MODIFIER_TERMS
         # ...and a non-visibility modifier is NOT in the set.
         assert "static" not in VISIBILITY_MODIFIER_TERMS
+
+    def test_reexported_still_computes_public_visibility(self) -> None:
+        assert compute_visibility(
+            modifiers=["re_exported"], name="X", language="python"
+        )[0] == "public"
 
 
 class TestComputeVisibility:

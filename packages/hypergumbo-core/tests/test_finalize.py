@@ -502,3 +502,44 @@ def test_finalize_compute_visibility_handles_none_meta(tmp_path: Path) -> None:
     _finalize_compute_visibility(ctx)
     assert s.visibility == "public"
     assert s.meta == {"visibility_signal": "default"}
+
+
+# --- Sub-step 7b: INV-jusot follow-up (is_exported reconcile + modifiers strip) ---------
+def _sym_ex(name, *, language="python", modifiers=None, is_exported=False, meta=None) -> Symbol:
+    return Symbol(
+        id=f"{language}:m.py:1-1:{name}:function",
+        name=name, kind="function", language=language, path="m.py",
+        span=Span(1, 1, 0, 0), origin="python", origin_run_id="uuid:test",
+        modifiers=list(modifiers or []), is_exported=is_exported, meta=meta,
+    )
+
+
+def test_finalize_downgrades_is_exported_for_non_public(tmp_path: Path) -> None:
+    # The 5-symbol case: path heuristic marked a private _foo exported.
+    s = _sym_ex("_helper", is_exported=True)  # visibility -> private (name)
+    _finalize_compute_visibility(_ctx(tmp_path, symbols=[s]))
+    assert s.visibility == "private"
+    assert s.is_exported is False  # downgraded — private cannot be exported
+
+
+def test_finalize_does_not_upgrade_is_exported_for_public(tmp_path: Path) -> None:
+    # A public test function stays non-exported (necessary-not-sufficient):
+    # visibility=='public' alone must NOT flip is_exported True.
+    s = _sym_ex("test_thing", is_exported=False)  # visibility -> public
+    _finalize_compute_visibility(_ctx(tmp_path, symbols=[s]))
+    assert s.visibility == "public"
+    assert s.is_exported is False  # NOT upgraded
+
+
+def test_finalize_keeps_is_exported_true_for_public(tmp_path: Path) -> None:
+    s = _sym_ex("public_api", is_exported=True)  # visibility -> public
+    _finalize_compute_visibility(_ctx(tmp_path, symbols=[s]))
+    assert s.visibility == "public"
+    assert s.is_exported is True  # public API member, kept
+
+
+def test_finalize_strips_visibility_modifiers_keeps_others(tmp_path: Path) -> None:
+    s = _sym_ex("f", language="java", modifiers=["public", "static", "final"])
+    _finalize_compute_visibility(_ctx(tmp_path, symbols=[s]))
+    assert s.visibility == "public"
+    assert s.modifiers == ["static", "final"]  # visibility term 'public' removed

@@ -76,9 +76,16 @@ MODIFIER_TO_VISIBILITY: Final[dict[str, str]] = {
     "package-private": VISIBILITY_PACKAGE,
 }
 
-#: The ``modifiers`` terms that encode visibility — they move to the typed
-#: ``visibility`` field, leaving ``modifiers`` with only non-visibility terms.
-VISIBILITY_MODIFIER_TERMS: Final[frozenset[str]] = frozenset(MODIFIER_TO_VISIBILITY)
+#: The ``modifiers`` terms that are PURELY visibility and are stripped from
+#: ``modifiers`` in finalize (their level moves to the typed ``visibility``
+#: field). Deliberately NARROWER than :data:`MODIFIER_TO_VISIBILITY`:
+#: ``re_exported`` implies public visibility (so it stays in the visibility
+#: map and computes ``visibility='public'``) but ALSO marks the re-export
+#: mechanism — a fact orthogonal to visibility that library-export detection
+#: consumes — so it is NOT stripped and survives in ``modifiers``.
+VISIBILITY_MODIFIER_TERMS: Final[frozenset[str]] = (
+    frozenset(MODIFIER_TO_VISIBILITY) - {"re_exported"}
+)
 
 #: Values of the legacy ``Symbol.meta['visibility']`` key (written by the Apex
 #: and Clojure analyzers) → canonical level. Apex's ``global`` (the broadest
