@@ -33,3 +33,18 @@
   clock: 3  # d8d0
   nonce: d8d0  # d8d0
   message: "root-cause family member (g1) (connections-sweep 2026-06-08T1900Z)"  # d8d0
+- op: update  # 7149
+  at: '2026-07-01T13:33:55Z'  # 7149
+  by: agent  # 7149
+  actor: jgstern_agent  # 7149
+  clock: 4  # 7149
+  nonce: '7149'  # 7149
+  set:  # 7149
+    status: done  # 7149
+- op: discuss  # 281c
+  at: '2026-07-01T13:33:55Z'  # 281c
+  by: agent  # 281c
+  actor: jgstern_agent  # 281c
+  clock: 5  # 281c
+  nonce: 281c  # 281c
+  message: "Fixed in PR (dev b10e1c3939), Wave-3 Phase-2 §C supply F2. Root cause: framework_patterns naming-conventions concepts (service_by_name/controller_by_name/handler_by_name) fire by class name alone, mislabeling test fixtures. The scout's proposed _check_filters gate on symbol.is_test_file would NOT have worked: enrich_symbols (cli.py:8543, concept attachment) runs BEFORE _classify_symbols (cli.py:8653, sets is_test_file) — classification must follow the linkers so their symbols are classified too. Fix: new post-classification pass strip_test_file_only_concepts (framework_patterns.py) removes any concept whose producing pattern declared is_test_file:false from a symbol the classifier marked is_test_file; the 3 naming-convention patterns carry that marker. Honors the canonical Symbol.is_test_file (META-jotih family principle), not a path heuristic. Distinct from WI-mozum (the TEST_FILE_PATTERNS layer that SETS is_test_file, which works correctly).\n\nBehavioral evidence — re-ran the item's filed repro on merged dev (editable binary): src/app.py (UserController, UserService) + tests/test_app.py (MyService, TestUserController):\n  UserController  is_test_file=False concepts=['controller_by_name']  (production kept)\n  UserService     is_test_file=False concepts=['service_by_name']     (production kept)\n  MyService       is_test_file=True  concepts=[]  (was ['service_by_name'])\n  TestUserController is_test_file=True concepts=[]  (was ['controller_by_name'])\nProduction-path tests: test_framework_patterns.py::TestStripTestFileOnlyConcepts (4 tests: enrich-then-strip, non-test no-op, no-meta/no-concepts no-op, preserves non-excluded concepts). Full affected suite 15621+ passed, framework_patterns.py + cli.py 100% coverage. No bakeoff tag: deterministic precision fix (test classes -> []), not an uncertain bakeoff-corpus metric movement."  # 281c
