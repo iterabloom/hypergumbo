@@ -401,6 +401,44 @@ assignments:
         assert result[0].meta is not None
         assert result[0].meta.get("access_mode") == "write"
 
+    def test_instantiates_edge_gated_tree_sitter(self, tmp_path: Path) -> None:
+        """ADR-0038 ruling 2 / WI-hapab: an ``instantiates`` edge is
+        Declared-N/A — a constructor call is not an access — so the Tier-1
+        classifier must not stamp it, even when it sits in a write position."""
+        yaml_content = """\
+language: python
+
+assignments:
+  - node_type: assignment
+    write: left
+    read: right
+"""
+        yaml_file = tmp_path / "python.yaml"
+        yaml_file.write_text(yaml_content)
+        config = load_dataflow_config(yaml_file)
+
+        edge = Edge.create(
+            src="py:a.py:5:x:variable",
+            dst="py:a.py:5:Foo:class",
+            edge_type="instantiates",
+            line=5,
+            origin="test", origin_run_id="test",
+        )
+        # Same write-position tree as test_assignment_lhs_gets_write — the
+        # LHS identifier would classify 'write' if the edge type were applicable.
+        tree = self._make_positional_tree(
+            line=5,
+            parent_type="assignment",
+            children={
+                "right": ("call_expression", 4, 7),
+                "left": ("identifier", 0, 1),
+            },
+        )
+        result = annotate_dataflow([edge], tree, b"x = Foo()", config)
+
+        assert len(result) == 1
+        assert (result[0].meta or {}).get("access_mode") is None
+
     def test_skips_edges_with_existing_access_mode(self, tmp_path: Path) -> None:
         """Edges that already have access_mode should not be overwritten."""
         yaml_content = "language: python\nassignments:\n  - node_type: assignment\n    write: left\n    read: right\n"
@@ -2426,3 +2464,39 @@ class TestMutatorAccessModePythonYaml:
 
     def test_remove_stays_delete(self) -> None:
         assert self._mode_for_call("items.remove(x)", "remove") == "delete"
+
+
+class TestAccessModeApplicabilityGateAst:
+    """ADR-0038 ruling 2 / WI-hapab (INV-tibob PR 1): the Python-AST Tier-1
+    classifier must skip Declared-N/A edge types (``instantiates`` + the 12
+    structural types) so a constructor call never gets a spurious ``write``,
+    while applicable edge types (``calls``) are unaffected."""
+
+    def test_ast_gate_skips_instantiates(self) -> None:
+        import ast
+
+        tree = ast.parse("x = Foo()")
+        edge = Edge.create(
+            src="py:a.py:1:x:variable",
+            dst="py:a.py:1:Foo:class",
+            edge_type="instantiates",
+            line=1,
+            origin="test", origin_run_id="test",
+        )
+        result = annotate_dataflow_ast([edge], tree)
+        assert (result[0].meta or {}).get("access_mode") is None
+
+    def test_ast_gate_keeps_applicable_calls(self) -> None:
+        import ast
+
+        tree = ast.parse("x = f()")
+        edge = Edge.create(
+            src="py:a.py:1:x:variable",
+            dst="py:a.py:1:f:function",
+            edge_type="calls",
+            line=1,
+            origin="test", origin_run_id="test",
+        )
+        result = annotate_dataflow_ast([edge], tree)
+        # calls on an assignment line is the RHS value being read.
+        assert (result[0].meta or {}).get("access_mode") == "read"

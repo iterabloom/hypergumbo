@@ -37,6 +37,8 @@ from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
 import yaml
 
+from .axis_meta_keys import is_access_mode_not_applicable
+
 if TYPE_CHECKING:
     from .ir import Edge
 
@@ -368,6 +370,12 @@ def annotate_dataflow(
     line_index = _build_line_index(tree.root_node)
 
     for edge in edges:
+        # ADR-0038 ruling 2 (INV-tibob / WI-hapab): N/A edge types (instantiates
+        # + the structural types) carry no access_mode — the "effect of src on
+        # dst" question does not arise for a constructor call or a structural
+        # edge, so the line-granular classifier must not stamp them.
+        if is_access_mode_not_applicable(edge.edge_type):
+            continue
         # Skip edges that already have access_mode (Tier 2 precedence)
         if edge.meta is not None and "access_mode" in edge.meta:
             continue
@@ -564,6 +572,11 @@ def annotate_dataflow_ast(
         return edges
 
     for edge in edges:
+        # ADR-0038 ruling 2 (INV-tibob / WI-hapab): N/A edge types carry no
+        # access_mode — skip instantiates + the structural types (see the
+        # matching gate in ``annotate_dataflow``).
+        if is_access_mode_not_applicable(edge.edge_type):
+            continue
         if edge.meta is not None and "access_mode" in edge.meta:
             continue
         if edge.evidence_type in _READ_EVIDENCE_TYPES:

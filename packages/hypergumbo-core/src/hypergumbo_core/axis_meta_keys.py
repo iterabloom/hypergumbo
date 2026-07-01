@@ -110,6 +110,42 @@ class MetaKeySpec:
     name: str
     axis: str
     description: str
+    # ADR-0038 ruling 2: for an ``edge_meta`` key whose applicability varies by
+    # ``Edge.edge_type``, declare the two edge-type sets — ``applicable`` (a
+    # ``None`` value means "missing data, fix the emitter") and ``na`` (a
+    # ``None`` value means "the question does not arise"). Both stay ``None``
+    # for keys that apply uniformly. Only ``access_mode`` populates these today
+    # (its 17-type census, INV-tibob); the remaining canonical edge types are
+    # UNCLASSIFIED — deferred to the polyglot-census follow-up.
+    applicable_edge_types: frozenset[str] | None = None
+    na_edge_types: frozenset[str] | None = None
+
+
+# ADR-0038 ruling 2: the ``access_mode`` per-edge-type applicability matrix,
+# keyed on INV-tibob's 17-type census. APPLICABLE — a ``None`` value counts as
+# missing data (fix the emitter). DECLARED-N/A — a ``None`` value means the
+# question does not arise (the dataflow annotate passes skip these; a
+# constructor call ``instantiates`` is not an access). The remaining canonical
+# edge types (``edge_types.all_edge_type_names()`` is 54-wide) are UNCLASSIFIED,
+# deferred to the polyglot-census follow-up. Two deliberate deferrals:
+#   * the dataflow-DIRECTION family (``crypto_flow`` / ``data_flows_to``) — it
+#     is PR-2's ``data_direction`` territory (ADR-0038 ruling 3), not access;
+#   * ``script_src`` — a census structural type, but on the mid-fold
+#     ``endpoint_shape`` axis (ADR-0023). Its access_mode N/A declaration is
+#     deferred until that fold settles (it is behaviorally moot: a
+#     ``<script src>`` include never reaches the dataflow classifier, so it is
+#     never stamped regardless). Deferring it also keeps this set axis-pure for
+#     the ``check-edge-type-drift`` strict linter — these are named
+#     ``*_EDGE_TYPES`` on purpose so that linter DOES watch them, so every
+#     member must be a relationship/pending-axis edge type.
+_ACCESS_MODE_APPLICABLE_EDGE_TYPES: Final[frozenset[str]] = frozenset({
+    "calls", "references", "module_attr_ref", "event_publishes",
+})
+_ACCESS_MODE_NA_EDGE_TYPES: Final[frozenset[str]] = frozenset({
+    "contains", "decorated_by", "depends_on", "depends_on_manifest",
+    "dispatches_to", "extends", "implements", "imports", "inherits",
+    "overrides", "uses", "instantiates",
+})
 
 
 META_KEYS: Final[tuple[MetaKeySpec, ...]] = (
@@ -243,9 +279,21 @@ META_KEYS: Final[tuple[MetaKeySpec, ...]] = (
     # axis).
     # ------------------------------------------------------------------
     MetaKeySpec("access_mode", AXIS_EDGE_META,
-                "Dataflow access mode at the edge source "
-                "(e.g. 'read', 'write', 'read_write'). Set by "
-                "``dataflow.apply_access_modes``."),
+                "The effect the edge's source has on its destination, from the "
+                "four-cell vocabulary 'read' / 'write' / 'mutate' / 'delete' "
+                "(ADR-0015 + ADR-0038 ruling 1) — derived per-edge from AST "
+                "role at emission (read-evidence → read; store position "
+                "→ write; augmented-assignment / receiver-mutating call "
+                "→ mutate; delete target → delete), NOT from the line's "
+                "statement kind. Applicability is per-edge-type (ADR-0038 ruling "
+                "2 / INV-tibob): populated on calls / references / "
+                "module_attr_ref / event_publishes; Declared-N/A on the "
+                "structural edge types AND on instantiates (a constructor call "
+                "is not an access). See ``access_mode_applicable_edge_types`` / "
+                "``access_mode_na_edge_types``. Set by the ``dataflow`` "
+                "annotate passes.",
+                applicable_edge_types=_ACCESS_MODE_APPLICABLE_EDGE_TYPES,
+                na_edge_types=_ACCESS_MODE_NA_EDGE_TYPES),
     MetaKeySpec("dest_access_mode", AXIS_EDGE_META,
                 "Dataflow access mode at the edge destination. "
                 "Sibling of ``access_mode``; populated when the "
@@ -564,3 +612,36 @@ def find_meta_key(name: str) -> MetaKeySpec | None:
         if spec.name == name:
             return spec
     return None
+
+
+def access_mode_applicable_edge_types() -> frozenset[str]:
+    """ADR-0038 ruling 2: edge types where ``access_mode`` APPLIES.
+
+    A ``None`` value on one of these edges means missing data (fix the
+    emitter), not "not applicable". The applicable half of INV-tibob's
+    17-type census.
+    """
+    return _ACCESS_MODE_APPLICABLE_EDGE_TYPES
+
+
+def access_mode_na_edge_types() -> frozenset[str]:
+    """ADR-0038 ruling 2: edge types where ``access_mode`` is Declared-N/A.
+
+    A ``None`` value on one of these edges means the question does not arise
+    (a constructor call ``instantiates`` is not an access; the structural
+    edge types carry no access semantics). The dataflow annotate passes skip
+    stamping these — see :func:`is_access_mode_not_applicable`.
+    """
+    return _ACCESS_MODE_NA_EDGE_TYPES
+
+
+def is_access_mode_not_applicable(edge_type: str) -> bool:
+    """ADR-0038 ruling 2: is ``access_mode`` Declared-N/A for *edge_type*?
+
+    The dataflow annotate passes call this to skip stamping ``access_mode`` on
+    N/A edge types. Edge types OUTSIDE the 17-type census (the ~37 uncensused
+    canonical types, incl. the ``crypto_flow`` / ``data_flows_to`` direction
+    family) are UNCLASSIFIED and return ``False`` — their stamping behavior is
+    untouched by this pass, pending the polyglot-census follow-up.
+    """
+    return edge_type in _ACCESS_MODE_NA_EDGE_TYPES

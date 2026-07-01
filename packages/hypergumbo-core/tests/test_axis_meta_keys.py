@@ -27,10 +27,14 @@ from hypergumbo_core.axis_meta_keys import (
     META_KEYS,
     MetaKeySpec,
     VALID_AXES,
+    access_mode_applicable_edge_types,
+    access_mode_na_edge_types,
     all_meta_key_names,
     find_meta_key,
+    is_access_mode_not_applicable,
     meta_keys_on_axis,
 )
+from hypergumbo_core.edge_types import all_edge_type_names
 
 
 # --- Registry invariants ---
@@ -168,3 +172,88 @@ def test_meta_keys_on_axis_entrypoint_meta_includes_provenance():
     ``entrypoint_meta`` axis."""
     entrypoint_keys = {spec.name for spec in meta_keys_on_axis(AXIS_ENTRYPOINT_META)}
     assert {"id", "source", "evidence_type"} <= entrypoint_keys
+
+
+# --- ADR-0038 access_mode applicability matrix (INV-tibob, PR 1) ---
+#
+# ADR-0038 ruling 2 declares a per-edge-type applicability matrix for
+# ``access_mode``, keyed on INV-tibob's 17-type census: 4 APPLICABLE (None =
+# "missing data, fix the emitter") and 13 DECLARED-N/A (None = "the question
+# does not arise"). The remaining canonical edge types are UNCLASSIFIED,
+# deferred to a polyglot-census follow-up. Direction-family edges
+# (``crypto_flow``, ``data_flows_to``) are deliberately left out — they are
+# PR-2's ``data_direction`` territory, not access_mode.
+
+_ADR0038_APPLICABLE = frozenset({
+    "calls", "references", "module_attr_ref", "event_publishes",
+})
+_ADR0038_NA = frozenset({
+    "contains", "decorated_by", "depends_on", "depends_on_manifest",
+    "dispatches_to", "extends", "implements", "imports", "inherits",
+    "overrides", "uses", "instantiates",
+})
+
+
+def test_access_mode_matrix_matches_adr0038_census():
+    assert access_mode_applicable_edge_types() == _ADR0038_APPLICABLE
+    assert access_mode_na_edge_types() == _ADR0038_NA
+
+
+def test_access_mode_matrix_sets_are_disjoint():
+    assert access_mode_applicable_edge_types().isdisjoint(
+        access_mode_na_edge_types()
+    )
+
+
+def test_access_mode_matrix_edge_types_are_canonical():
+    canonical = all_edge_type_names()
+    assert access_mode_applicable_edge_types() <= canonical
+    assert access_mode_na_edge_types() <= canonical
+
+
+def test_access_mode_matrix_defers_direction_family_to_pr2():
+    """``crypto_flow`` / ``data_flows_to`` carry dataflow DIRECTION, not
+    access; ADR-0038 ruling 3 routes them to PR-2's ``data_direction`` key.
+    They must be neither applicable nor N/A here — declaring them N/A in PR 1
+    would pre-empt PR-2's ownership."""
+    both = access_mode_applicable_edge_types() | access_mode_na_edge_types()
+    assert "crypto_flow" not in both
+    assert "data_flows_to" not in both
+
+
+def test_access_mode_matrix_leaves_uncensused_types_unclassified():
+    """The ADR classified only the 17-type census; the rest of the 54-type
+    canonical vocabulary stays UNCLASSIFIED pending the follow-up census."""
+    classified = (
+        access_mode_applicable_edge_types() | access_mode_na_edge_types()
+    )
+    assert classified == (_ADR0038_APPLICABLE | _ADR0038_NA)
+    assert all_edge_type_names() - classified, (
+        "expected some canonical edge types to remain unclassified (deferred)"
+    )
+
+
+def test_is_access_mode_not_applicable_resolver():
+    # Declared-N/A → True (the dataflow gate skips these).
+    assert is_access_mode_not_applicable("instantiates") is True
+    assert is_access_mode_not_applicable("contains") is True
+    assert is_access_mode_not_applicable("dispatches_to") is True
+    # Applicable → False.
+    assert is_access_mode_not_applicable("calls") is False
+    assert is_access_mode_not_applicable("references") is False
+    # Unclassified (deferred) → False: their behavior is untouched by PR 1.
+    assert is_access_mode_not_applicable("crypto_flow") is False
+    assert is_access_mode_not_applicable("http_calls") is False
+    # script_src is a census structural type but deferred (endpoint_shape
+    # mid-fold, ADR-0023); behaviorally moot (never reaches the classifier).
+    assert is_access_mode_not_applicable("script_src") is False
+
+
+def test_access_mode_description_not_stale():
+    """ADR-0038 flags the ``'read_write'`` example in the access_mode
+    description as stale — the four-cell vocabulary is
+    read / write / mutate / delete."""
+    spec = find_meta_key("access_mode")
+    assert spec is not None
+    assert "read_write" not in spec.description
+    assert "mutate" in spec.description
