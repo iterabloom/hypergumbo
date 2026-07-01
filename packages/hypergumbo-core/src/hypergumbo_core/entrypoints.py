@@ -979,6 +979,20 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
             elif concept_type == "library_export":
                 if EntrypointKind.LIBRARY_EXPORT in added_kinds:
                     continue
+                # WI-pikib: a library_export entrypoint must be part of the
+                # package's PUBLIC API — externally importable. The concept
+                # detector also fires on non-public symbols such as a nested
+                # private closure (`fold_string_interpolation._sub`, the
+                # callback passed to `re.sub`) that no consumer can import.
+                # INV-jusot's canonical `Symbol.visibility` axis (computed in
+                # finalize step 7b, which runs before detect_entrypoints — see
+                # cli.run_behavior_map) lets us reject those. Key on the
+                # canonical `visibility` axis (per the Wave-3 §E-5 constraint),
+                # not the older is_exported heuristic. A None visibility
+                # (uncomputed / legacy map) is left permissive so a genuine
+                # export is never suppressed on a missing signal.
+                if sym.visibility is not None and sym.visibility != "public":
+                    continue
                 export_name = concept.get("export_name", sym.name)
                 # Handle is_default as bool or string "true"/"false"
                 is_default_raw = concept.get("is_default", False)

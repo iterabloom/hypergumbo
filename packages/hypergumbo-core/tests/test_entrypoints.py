@@ -29,6 +29,7 @@ def make_symbol(
     decorators: list[str] | None = None,
     meta: dict | None = None,
     supply_chain_tier: int = 1,
+    visibility: str | None = None,
 ) -> Symbol:
     """Helper to create test symbols."""
     span = Span(start_line=start_line, end_line=end_line, start_col=0, end_col=10)
@@ -47,6 +48,7 @@ def make_symbol(
         stable_id=stable_id,
         meta=meta,
         supply_chain_tier=supply_chain_tier,
+        visibility=visibility,
     )
 
 
@@ -1351,6 +1353,72 @@ class TestSemanticEntryDetection:
         assert ep.kind == EntrypointKind.LIBRARY_EXPORT
         assert ep.confidence == 0.75
         assert "doSomething" in ep.label
+
+    def test_library_export_skipped_for_non_public_visibility(self) -> None:
+        """WI-pikib: a non-public symbol matching library_export is NOT an EP.
+
+        The concept detector fires ``library_export`` on a nested private
+        closure (e.g. ``fold_string_interpolation._sub``, the callback passed
+        to ``re.sub``), but such a symbol is not importable — no consumer can
+        reach it as public API. INV-jusot's canonical ``Symbol.visibility``
+        axis (computed in finalize, before ``detect_entrypoints``) lets the
+        gate reject it. ``visibility='private'`` -> no LIBRARY_EXPORT.
+        """
+        sym = make_symbol(
+            "fold._sub",
+            kind="function",
+            path="pkg/__init__.py",
+            language="python",
+            visibility="private",
+            meta={
+                "concepts": [
+                    {
+                        "concept": "library_export",
+                        "framework": "library-exports",
+                        "export_name": "fold._sub",
+                        "is_default": "false",
+                    }
+                ]
+            },
+        )
+
+        entrypoints = detect_entrypoints([sym], [])
+
+        lib_eps = [e for e in entrypoints if e.kind == EntrypointKind.LIBRARY_EXPORT]
+        assert lib_eps == [], (
+            "A private (non-public) symbol must not become a LIBRARY_EXPORT "
+            f"entrypoint, got {lib_eps}"
+        )
+
+    def test_library_export_kept_for_public_visibility(self) -> None:
+        """WI-pikib positive control: a public symbol still becomes an EP.
+
+        The visibility gate must only suppress affirmatively non-public
+        matches; a ``visibility='public'`` library export is retained.
+        """
+        sym = make_symbol(
+            "fold_string_interpolation",
+            kind="function",
+            path="pkg/__init__.py",
+            language="python",
+            visibility="public",
+            meta={
+                "concepts": [
+                    {
+                        "concept": "library_export",
+                        "framework": "library-exports",
+                        "export_name": "fold_string_interpolation",
+                        "is_default": "false",
+                    }
+                ]
+            },
+        )
+
+        entrypoints = detect_entrypoints([sym], [])
+
+        lib_eps = [e for e in entrypoints if e.kind == EntrypointKind.LIBRARY_EXPORT]
+        assert len(lib_eps) == 1
+        assert "fold_string_interpolation" in lib_eps[0].label
 
     def test_library_export_default_export(self) -> None:
         """Default exports have appropriate label."""
