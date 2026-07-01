@@ -60,6 +60,7 @@ from hypergumbo_core.analyze.base import (
     make_symbol_id,
     make_typed_stable_id,
     make_unresolved_edge,
+    make_variable_stable_id,
     node_text,
     visibility_from_modifiers,
 )
@@ -406,6 +407,51 @@ def _get_enclosing_function(
                     return local_symbols[func_name]
         current = current.parent
     return None  # pragma: no cover - defensive
+
+
+# Kotlin body nodes that place a property_declaration in a *local* scope: a
+# val/var here is a function/block/lambda-local binding, not an API surface, and
+# is NOT emitted as a symbol (WI-jusus; the swift/go INV-lanaz/INV-sidab guard —
+# without this a function-local ``val`` would leak into the graph as a module
+# variable). ``block`` covers function bodies, ``if``/``for``/``while`` bodies AND
+# ``init { }`` (anonymous_initializer) bodies — the last is the subtle case: an
+# init-block ``val`` sits under ``block -> anonymous_initializer -> class_body``,
+# so without ``block`` in this set it would wrongly reach ``class_body`` and be
+# emitted as a field. The node-type strings target the analyzer's bundled
+# tree-sitter-kotlin grammar (``identifier``/``block``, not the newer
+# ``simple_identifier``/``control_structure_body``).
+_KOTLIN_LOCAL_SCOPE_TYPES = frozenset(
+    {"function_body", "block", "lambda_literal", "anonymous_function"}
+)
+# Body nodes that place a property_declaration in a *field* scope (class /
+# object / interface / enum body).
+_KOTLIN_FIELD_SCOPE_TYPES = frozenset({"class_body", "enum_class_body"})
+
+
+def _kotlin_property_scope(node: "tree_sitter.Node") -> Optional[str]:
+    """Classify a ``property_declaration`` by its nearest body-defining ancestor.
+
+    Returns ``"field"`` (class/object/interface/enum body), ``"variable"``
+    (top-level — reaches ``source_file`` first), or ``None`` for a function-/
+    block-/lambda-local ``val``/``var``. The *nearest* body-defining ancestor
+    wins, so a local inside a class method classifies as local, not field — this
+    scope walk is the swift/go INV-lanaz/INV-sidab regression guard.
+    """
+    current = node.parent
+    while current is not None:
+        if current.type in _KOTLIN_LOCAL_SCOPE_TYPES:
+            return None
+        if current.type in _KOTLIN_FIELD_SCOPE_TYPES:
+            return "field"
+        if current.type == "source_file":
+            return "variable"
+        # Defensive walk-up for an intermediate wrapper node between the
+        # property and its scope (e.g. a parser ``ERROR`` node in a malformed
+        # parse). In well-formed parses of the bundled grammar a
+        # property_declaration's immediate parent is always the scope node, so
+        # this advance does not run.
+        current = current.parent  # pragma: no cover - immediate parent always resolves
+    return None  # pragma: no cover - every node is under source_file
 
 
 def _extract_kotlin_signature(
@@ -875,6 +921,90 @@ def _extract_symbols_from_file(
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[object_name] = symbol
+
+        # Property declaration (val/var) — WI-jusus (emission-parity F5): emit a
+        # kind="field" Symbol for a class/object/interface/enum-body property and
+        # a kind="variable" Symbol for a top-level (module) property. A function-/
+        # block-local val/var is a local binding, not an API surface, and is
+        # skipped (see _kotlin_property_scope).
+        elif node.type == "property_declaration":
+            scope = _kotlin_property_scope(node)
+            if scope is not None:
+                var_decl = find_child_by_type(node, "variable_declaration")
+                if var_decl is None:  # pragma: no cover - field/variable scope always declares
+                    continue
+                name_node = find_child_by_type(var_decl, "identifier")
+                if name_node is None:  # pragma: no cover - a variable_declaration always names
+                    continue
+                prop_name = node_text(name_node, source)
+                enclosing_class = (
+                    _get_enclosing_class(node, source) if scope == "field" else None
+                )
+                if scope == "field" and enclosing_class is None:
+                    # Anonymous object-literal member: no named owner. Skip
+                    # (mirrors the C# named-enclosing-class field gate).
+                    continue
+
+                start_line = node.start_point[0] + 1
+                end_line = node.end_point[0] + 1
+                type_node = find_child_by_type(var_decl, "user_type")
+                prop_type = (
+                    node_text(type_node, source) if type_node is not None else None
+                )
+                prop_modifiers = _extract_modifiers(node)
+                prop_annotations = _extract_annotations(node, source)
+                prop_meta: dict[str, object] | None = None
+                if prop_annotations:
+                    prop_meta = {"decorators": prop_annotations}
+                cls_ancestors = _get_kotlin_class_ancestors(node, source)
+
+                if scope == "field":
+                    full_name = f"{enclosing_class}.{prop_name}"
+                    stable_id = make_typed_stable_id(
+                        "field", prop_type or "",
+                        visibility_from_modifiers(prop_modifiers),
+                        name=prop_name, qualified_name=full_name,
+                        file_stable_id=file_stable_id,
+                    )
+                else:
+                    full_name = prop_name
+                    stable_id = make_variable_stable_id(
+                        "kotlin", str(file_path), prop_name
+                    )
+
+                symbol = Symbol(
+                    id=make_symbol_id("kotlin", str(file_path), start_line, end_line, full_name, scope),
+                    name=full_name,
+                    kind=scope,
+                    language="kotlin",
+                    path=str(file_path),
+                    span=Span(
+                        start_line=start_line,
+                        end_line=end_line,
+                        start_col=node.start_point[1],
+                        end_col=node.end_point[1],
+                    ),
+                    origin=PASS_ID,
+                    origin_run_id=run.execution_id,
+                    stable_id=stable_id,
+                    signature=prop_type,
+                    docstring=extract_preceding_doc_comment(node, source, "kotlin"),
+                    modifiers=prop_modifiers,
+                    meta=prop_meta,
+                    shape_id=_analyzer.compute_shape_id(node),
+                    is_exported=not any(
+                        m in prop_modifiers
+                        for m in ("private", "internal", "protected")
+                    ),
+                    line_span=end_line - start_line + 1,
+                    qualified_name=_make_kotlin_qualified_name(
+                        package_name, cls_ancestors, prop_name
+                    ),
+                )
+                analysis.symbols.append(symbol)
+                analysis.symbol_by_name[prop_name] = symbol
+                if scope == "field":
+                    analysis.symbol_by_name[full_name] = symbol
 
     populate_docstrings_from_tree(tree.root_node, source, analysis.symbols)
 
