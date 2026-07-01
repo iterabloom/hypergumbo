@@ -95,7 +95,13 @@ PASS_ID = make_pass_id("containment-linker")
 # ``contains`` (it follows calls/dispatches_to/wraps), so this de-orphaning
 # does not move the dead-code-maybe false-positive rate.
 CONTAINABLE_KINDS = frozenset(
-    {"method", "getter", "setter", "message", "function", "variable"}
+    # WI-zajaz: ``field`` (class-body attributes, emitted with dotted names like
+    # ``Widget.size`` by emission-parity F5) roots at its class exactly like
+    # ``method`` — without it, 1862 real field symbols (99.6% of them) were
+    # orphans on self-analysis. The dead-code BFS does not traverse ``contains``
+    # (see the module note above), so this de-orphaning does not move the
+    # dead-code-maybe FP rate; it only gives fields their class-containment edge.
+    {"method", "getter", "setter", "message", "function", "variable", "field"}
 )
 
 # Symbol kinds that can "contain" other symbols.

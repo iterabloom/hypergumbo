@@ -59,6 +59,30 @@ class TestContainmentLinker:
         assert edge.dst == method.id
         assert edge.edge_type == "contains"
 
+    def test_dot_separated_field(self) -> None:
+        """WI-zajaz: a class field (ClassName.field) is rooted at its class.
+
+        Class-body attributes are emitted as kind='field' with dotted names
+        (e.g. 'Widget.size'), exactly like methods, but were never in
+        CONTAINABLE_KINDS — so 1862 real field symbols (99.6% of them) were
+        orphans on self-analysis. Fields must root at their class like methods.
+        """
+        cls = _sym("py:app.py:1-10:Widget:class", "Widget", "class")
+        field = _sym("py:app.py:2-2:Widget.size:field", "Widget.size", "field", start=2, end=2)
+
+        ctx = LinkerContext(
+            repo_root=Path("/test"),
+            symbols=[cls, field],
+            edges=[],
+        )
+        result = link_containment(ctx)
+
+        assert len(result.edges) == 1
+        edge = result.edges[0]
+        assert edge.src == cls.id
+        assert edge.dst == field.id
+        assert edge.edge_type == "contains"
+
     def test_ruby_hash_separated_method(self) -> None:
         """Creates contains edge for Ruby-style ClassName#method."""
         cls = _sym("ruby:app.rb:1-10:User:class", "User", "class", language="ruby", path="app.rb")

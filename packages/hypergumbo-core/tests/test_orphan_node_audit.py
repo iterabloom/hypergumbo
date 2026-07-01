@@ -152,12 +152,19 @@ def use_calculator():
 # top-level members at their file anchor (~8.8k new file->member contains edges),
 # de-orphaning them. Self-analysis dropped function orphans 93->14 and variable
 # orphans 130->0, so those ceilings ratchet down (240->30, 120->15).
-# NOTE (pre-existing, NOT dispatch:F4): the `file` ceiling and ORPHAN_RATIO_CEILING
-# are currently breached on self-analysis (file ~305 vs 20; ratio ~6.3% vs 2.5%)
-# because the file-anchor work (WI-dagif/WI-rajod) mints a kind="file" anchor per
-# discovered path and the nodeless config/doc cohort legitimately has no edges.
-# That breach is tracked under WI-logon (needs an exempt-or-add decision); F4
-# deliberately does not adjust the file ceiling or the ratio.
+# WI-zajaz (2026-07-01): adding `field` to CONTAINABLE_KINDS rooted class-body
+# attributes at their class (1862 field orphans -> ~0), which had dominated the
+# ratio.
+# WI-logon (2026-07-01): `kind="file"` anchors are EXEMPT from the ratchet — the
+# file-anchor work (WI-dagif/WI-rajod) mints a kind="file" anchor per discovered
+# path, and the nodeless config/doc cohort is legitimately edgeless (a config
+# file with no code has an anchor and no edges), the same rationale by which the
+# module docstring already calls external_symbol boundary nodes legitimate. File
+# anchors are dropped from BOTH the per-kind ceilings and the ratio's
+# numerator+denominator (the ratio then measures the orphan rate among
+# *connectable* nodes), via _RATCHET_EXEMPT_KINDS below.
+_RATCHET_EXEMPT_KINDS = frozenset({"file"})
+
 ORPHAN_CEILINGS: dict[str, int] = {
     "function": 30,
     "call_site": 125,
@@ -165,13 +172,12 @@ ORPHAN_CEILINGS: dict[str, int] = {
     "external_symbol": 120,
     "dependency": 75,
     "export": 25,
-    "file": 20,
     "project": 10,
     "class": 5,
     "module": 5,
 }
 
-# Overall orphan ratio ceiling (%)
+# Overall orphan ratio ceiling (%) — measured over connectable (non-exempt) nodes.
 ORPHAN_RATIO_CEILING = 2.5
 
 
@@ -189,8 +195,14 @@ def test_orphan_baseline_ratchet(tmp_path: Path) -> None:
     repo_root = Path(__file__).resolve().parents[4]
     bm = _run_and_load(repo_root, tmp_path / "self-analysis.json")
 
-    total = len(bm.get("nodes", []))
-    orphans = _orphan_nodes(bm)
+    # WI-logon: exempt kind="file" anchors (legitimately edgeless) from both the
+    # ratio numerator and denominator so the ratio measures the orphan rate among
+    # connectable nodes.
+    all_nodes = bm.get("nodes", [])
+    total = sum(1 for n in all_nodes if n.get("kind") not in _RATCHET_EXEMPT_KINDS)
+    orphans = [
+        n for n in _orphan_nodes(bm) if n.get("kind") not in _RATCHET_EXEMPT_KINDS
+    ]
     orphan_count = len(orphans)
 
     ratio = 100 * orphan_count / total if total else 0
