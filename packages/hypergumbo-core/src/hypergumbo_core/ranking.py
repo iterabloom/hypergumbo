@@ -117,7 +117,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Dict, List
 
-from .edge_types import IMPORT_EDGE_TYPES
+from .edge_types import IMPORT_EDGE_TYPES, INHERITANCE_EDGE_TYPES
 from .ir import Symbol, Edge
 from .paths import is_test_file, is_test_node
 from .selection.filters import is_test_path
@@ -1000,9 +1000,11 @@ def filter_edges_for_ranking(
     Returns:
         Filtered list of edges.
     """
-    # Both extends and implements live on the relationship axis (ADR-0023);
-    # this set was audited as already-canonical at Phase 2 (WI-sahab-fatoz).
-    _STRUCTURAL_EDGE_TYPES = {"extends", "implements"}
+    # WI-lobif: class is-a edges come from the registry's INHERITANCE_EDGE_TYPES
+    # (extends/inherits/implements) instead of a hardcoded {extends, implements}
+    # literal that omitted the registered `inherits` edge type — so inherits
+    # edges from test files are now preserved (architectural importance) too.
+    _STRUCTURAL_EDGE_TYPES = INHERITANCE_EDGE_TYPES
 
     if exclude_test_edges:
         symbol_by_id = {s.id: s for s in symbols}

@@ -99,7 +99,7 @@ from dataclasses import dataclass, field
 from pathlib import PurePosixPath
 from typing import Dict, List, Set
 
-from .edge_types import IMPORT_EDGE_TYPES
+from .edge_types import IMPORT_EDGE_TYPES, INHERITANCE_EDGE_TYPES
 from .ir import Symbol, Edge
 from .paths import normalize_path, path_ends_with, is_test_node, is_utility_file
 from .ranking import compute_centrality, apply_tier_weights, apply_test_weights
@@ -121,9 +121,11 @@ from .ranking import compute_centrality, apply_tier_weights, apply_test_weights
 # All three live on the relationship axis (ADR-0023); audited as
 # already-canonical at Phase 2 (WI-sahab-fatoz). Forward-compatible
 # through Phase 4 without change.
-_STRUCTURAL_EDGE_TYPES = frozenset({
-    "extends", "implements", "contains",
-})
+# WI-lobif: the class is-a edges come from the registry's INHERITANCE_EDGE_TYPES
+# (extends/inherits/implements) rather than a hardcoded {extends, implements}
+# literal that omitted `inherits`; `contains` is the file/class membership edge
+# slice also treats structurally.
+_STRUCTURAL_EDGE_TYPES = INHERITANCE_EDGE_TYPES | frozenset({"contains"})
 
 
 class AmbiguousEntryError(Exception):

@@ -1944,6 +1944,58 @@ class TestForwardSliceInheritanceEdges:
         # Other impl should NOT be reachable
         assert other_impl.id not in result.node_ids
 
+    def test_forward_slice_skips_inherits_edge(self) -> None:
+        """WI-lobif: `inherits` (Solidity-style class inheritance) must behave
+        like `extends` in forward slices — skipped, not followed to the parent.
+
+        `inherits` and `extends` are the same relationship axis; the consumer's
+        structural-edge set previously hardcoded {extends, implements} and
+        omitted `inherits`, so it leaked into forward slices as a normal edge.
+        """
+        child = make_symbol(
+            "Token", kind="contract",
+            path="src/Token.sol", start_line=1, end_line=50, language="solidity",
+        )
+        parent = make_symbol(
+            "ERC20", kind="contract",
+            path="src/ERC20.sol", start_line=1, end_line=30, language="solidity",
+        )
+        service = make_symbol(
+            "SafeMath", kind="contract",
+            path="src/SafeMath.sol", start_line=1, end_line=20, language="solidity",
+        )
+
+        edges = [
+            make_edge(child, parent, "inherits"),   # child -> parent (is-a)
+            make_edge(child, service, "calls"),      # child -> service
+        ]
+
+        query = SliceQuery(entrypoint="Token", max_hops=3)
+        result = slice_graph([child, parent, service, ], edges, query)
+
+        # Service reachable via calls; parent NOT reachable (inherits skipped fwd)
+        assert service.id in result.node_ids
+        assert parent.id not in result.node_ids
+
+    def test_reverse_slice_still_follows_inherits(self) -> None:
+        """WI-lobif: reverse slice follows `inherits` (like `extends`) —
+        "who inherits from this contract?"."""
+        parent = make_symbol(
+            "ERC20", kind="contract",
+            path="src/ERC20.sol", start_line=1, end_line=30, language="solidity",
+        )
+        child = make_symbol(
+            "Token", kind="contract",
+            path="src/Token.sol", start_line=1, end_line=50, language="solidity",
+        )
+
+        edges = [make_edge(child, parent, "inherits")]
+
+        query = SliceQuery(entrypoint="ERC20", max_hops=3, reverse=True)
+        result = slice_graph([parent, child], edges, query)
+
+        assert child.id in result.node_ids
+
     def test_reverse_slice_still_follows_extends(self) -> None:
         """Reverse slice should still follow extends edges."""
         parent = make_symbol(

@@ -151,6 +151,23 @@ def test_every_edge_type_named_set_is_a_subset_of_registry():
     )
 
 
+def test_inheritance_edge_types_are_registered_is_a_relationships():
+    """WI-lobif: INHERITANCE_EDGE_TYPES is the canonical class is-a set that the
+    slice and ranking consumers query in place of a hardcoded
+    {extends, implements} literal — which silently omitted the registered
+    `inherits` edge type (Solidity-style inheritance)."""
+    from hypergumbo_core.edge_types import INHERITANCE_EDGE_TYPES
+
+    # The fix: `inherits` is included alongside extends/implements.
+    assert "inherits" in INHERITANCE_EDGE_TYPES
+    assert INHERITANCE_EDGE_TYPES == frozenset({"extends", "inherits", "implements"})
+    # Subset coherence: every member is a registered relationship-axis edge type.
+    assert INHERITANCE_EDGE_TYPES <= all_edge_type_names()
+    for name in INHERITANCE_EDGE_TYPES:
+        spec = find_edge_type(name)
+        assert spec is not None and spec.axis == AXIS_RELATIONSHIP
+
+
 # --- Unit tests for find_axis_drift / _iter_edge_type_set_assignments ---
 
 def _write(p: Path, content: str) -> None:

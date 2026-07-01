@@ -1161,6 +1161,18 @@ class TestFilterEdgesForRanking:
         result = filter_edges_for_ranking([edge], [base, test_sym])
         assert len(result) == 1
 
+    def test_preserves_inherits_edges_from_tests(self):
+        """WI-lobif: `inherits` (Solidity-style class inheritance) from a test
+        file is preserved like `extends` — same is-a relationship. Before the
+        fix the structural set hardcoded {extends, implements}, so an `inherits`
+        edge from a test file was dropped as a test edge."""
+        base = make_symbol("Ownable", path="src/base.sol")
+        test_sym = make_symbol("TestOwnable", path="tests/test_ownable.py")
+        edge = make_edge(test_sym.id, base.id, edge_type="inherits")
+
+        result = filter_edges_for_ranking([edge], [base, test_sym])
+        assert len(result) == 1
+
     def test_includes_import_edges_by_default(self):
         """Import edges are included by default (weighted in centrality)."""
         a = make_symbol("a", path="src/a.py")

@@ -418,6 +418,26 @@ from both the registry and this set; consumers querying by
 component-import-specific behavior directly."""
 
 
+INHERITANCE_EDGE_TYPES: Final[frozenset[str]] = frozenset({
+    "extends",
+    "inherits",
+    "implements",
+})
+"""Class is-a (structural inheritance) edges, regardless of the language's
+spelling. ``extends`` (Python/Java/TypeScript/...) and ``inherits`` (Solidity,
+and any language where "inherits" reads more naturally) are the *same*
+relationship; ``implements`` covers interface is-a. All three are
+``AXIS_RELATIONSHIP``.
+
+Replaces hand-rolled consumer literals like
+``_STRUCTURAL_EDGE_TYPES = {"extends", "implements"}`` (WI-lobif) that silently
+omitted ``inherits`` — making Solidity / ``inherits``-language inheritance
+invisible to slice forward-BFS structural handling and ranking's
+structural-edge preservation. Method-level ``overrides`` is deliberately NOT
+included: it is a distinct method→parent-method relationship, and neither
+consumer treated it as structural before."""
+
+
 PROTOCOL_KINDS: Final[frozenset[str]] = frozenset({
     "ipc",      # Tauri-style command bus, OS-level inter-process channels
     "http",     # HTTP / HTTPS client-server calls
