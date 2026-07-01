@@ -35,3 +35,18 @@
   clock: 3  # f554
   nonce: f554  # f554
   message: "Investigated 2026-06-01 for cluster context. Parent set to INV-numat (P1 pending_validation, META: vocabulary fields mix multiple semantic axes). WI-kadop is the third application of the field-split pattern previously applied in this campaign: ADR-0031 split Symbol.language → discovery_language + protocol_origin; ADR-0032 split Symbol.canonical_name → display_label + qualified_name; WI-kadop splits Symbol.origin → origin (pass-id only) + new synthesis_mechanism field. ~492 Symbols in dogfood-corpus 20260528 carry synthesis-mechanism strings ('inheritance', 'orchestrator_file_symbol_synthesis', 'scip') in the origin field. Phase 6 PR5 added _SYNTHESIS_MECHANISMS frozenset as catalog stopgap; this WI is the architectural fix. Doesn't duplicate any preexisting row — it's a new face of INV-numat."  # f554
+- op: update  # f7b8
+  at: '2026-07-01T05:31:50Z'  # f7b8
+  by: agent  # f7b8
+  actor: jgstern_agent  # f7b8
+  clock: 4  # f7b8
+  nonce: f7b8  # f7b8
+  set:  # f7b8
+    status: done  # f7b8
+- op: discuss  # 410f
+  at: '2026-07-01T05:31:50Z'  # 410f
+  by: agent  # 410f
+  actor: jgstern_agent  # 410f
+  clock: 5  # 410f
+  nonce: 410f  # 410f
+  message: "Re-scoped and resolved via ADR-0044 (squash-merged PR #357, commit deb83c1b8f on dev @54a041c171). The proposed Symbol.synthesis_mechanism field-split is WITHDRAWN: re-verifying the premise showed intervening synthetic:F1 work (WI-dizir/WI-mosil/WI-sijut) made the two high-volume synthesizers (orchestrator_file_symbol_synthesis 518 + boundary_external_symbol_synthesis 1620 self-corpus symbols) emit real AnalysisRuns whose pass_id IS the origin value, with origin_run_id joining — collapsing the 'mechanism vs pass' distinction the split assumed (a synthesized Symbol's HOW is WHICH pass). A field would then store the same string in two fields (a new redundancy), not remove a leak. Of the other two: 'inheritance' is a phantom (ZERO producers set the bare string — the inheritance-linker stamps make_pass_id('inheritance-linker')); 'scip' is off-self-corpus with no owning AnalysisRun on the Symbol side. DECISION (ADR-0044): no new field. catalog._SYNTHESIS_MECHANISMS renamed _SYNTHETIC_PASS_IDS + re-documented as legitimate synthetic pass-ids; 'inheritance' phantom dropped; the SCIP Symbol-side AnalysisRun-join gap split to WI-zabus (cross-package rust-analyzer, off-corpus). No IR shape change, no SCHEMA_VERSION bump. BEHAVIORAL EVIDENCE: whole-suite 15570 passed, 100% coverage; the WI-busij # axis: pass-id live-tree conformance passes with the 3 synthetic pass-ids resolvable and 'inheritance' absent. Precedent: a filed field-split can be correctly withdrawn when intervening work resolves the axis conflation it targeted."  # 410f

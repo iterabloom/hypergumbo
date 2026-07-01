@@ -30,3 +30,18 @@
     tags: [dogfood_tranche_04]  # 835b
   remove:  # 835b
     tags: [dogfood_tranch_04]  # 835b
+- op: update  # 4194
+  at: '2026-07-01T07:37:00Z'  # 4194
+  by: agent  # 4194
+  actor: jgstern_agent  # 4194
+  clock: 3  # 4194
+  nonce: '4194'  # 4194
+  set:  # 4194
+    status: done  # 4194
+- op: discuss  # e37d
+  at: '2026-07-01T07:37:00Z'  # e37d
+  by: agent  # e37d
+  actor: jgstern_agent  # e37d
+  clock: 4  # e37d
+  nonce: e37d  # e37d
+  message: "Done in PR #358 (ff-merged to dev 596a69ab99). Display-layer fix; behavioral evidence via the editable install (.venv/bin/hypergumbo), re-running the item's own repro (was: 'grep of sketch output for docstring text returns no hits; explain references docstring zero times').\n\nBEFORE -> AFTER (same maps, new rendering):\n- explain: `explain greet` printed Location/Language/Origin/Metrics/Supply-chain and NO docstring -> now prints 'Docstring: Return a friendly greeting for the given name.'\n- sketch Entry Points: '- `main` (Python main()) — `mod_b.py`' (path) -> '- `main` (Python main()) — Run the demo: greet the world and hail a user.' (docstring). Applies uniformly to all groups incl. the item-named Library API / Other.\n- sketch Source Files: bare path list -> on packages/hypergumbo-tracker/src/hypergumbo_tracker, 34/34 file lines summarized, e.g. '- `store.py` — Store for the hypergumbo tracker — YAML I/O, compile, CRUD, Lamport clock.'\n- sketch Key Symbols: already rendered docstrings pre-change (not part of the gap; re-measurement corrected the item's premise).\n\nScope: display only. New _file_docstrings helper (relpath->module-summary from kind=file symbols) threaded into _format_source_files; explain reads node.docstring; _format_entrypoints prefers docstring over path. 100% coverage on cli.py (3449) + sketch.py (2412); 15615 tests pass. verify-generated (schema/architecture/security) clean.\n\nPremise correction: the item (filed 2026-06-05, pre-WI-kazob) assumed file-node docstrings needed a data fix (Source Files 'bare path list with zero summaries'). Re-measurement showed WI-kazob already populates file-node docstrings end-to-end (34/34 real, 845/908 self-corpus), so Source Files lights up on real data. An interim data-bug filing (WI-fimun) was withdrawn as a stale-pipx-binary artifact."  # e37d

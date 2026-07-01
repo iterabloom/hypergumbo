@@ -1,0 +1,35 @@
+- op: create  # e5e7
+  at: '2026-07-01T06:03:38Z'  # e5e7
+  by: agent  # e5e7
+  actor: jgstern_agent  # e5e7
+  clock: 1  # e5e7
+  nonce: e5e7  # e5e7
+  data:  # e5e7
+    kind: work_item  # e5e7
+    title: "file-kind Symbol docstrings dropped in aggregation: analyzer emits them, serialized map has none (and orphan file nodes pruned)"  # e5e7
+    status: todo_hard  # e5e7
+    priority: 2  # e5e7
+    parent:  # e5e7
+    tags:  # e5e7
+    - dogfood  # e5e7
+    isbefore: []  # e5e7
+    duplicate_of: []  # e5e7
+    not_duplicate_of: []  # e5e7
+    pr_ref:  # e5e7
+    description: "Re-measurement during WI-kipod (2026-07-01). WI-kazob (done) added module docstrings to file-kind Symbols at construction, and the analyzer DOES emit them: analyze_python(/tmp/kipod_probe) returns kind='file' symbols mod_a.py docstring='Module A: provides the greeting primitives...' and mod_b.py docstring='Module B: the entrypoint...'. But the SERIALIZED behavior map drops them: mod_a.py's file node is ABSENT entirely, and mod_b.py's file node survives (it is the src of an import edge) but its docstring is None. So 0 file-kind nodes carry a module summary in the emitted map despite WI-kazob's construction-side fix.\\n\\nTwo distinct losses: (1) file nodes with no incident edges appear to be pruned as orphans (mod_a.py has classes/functions but no file-level edge -> gone); (2) surviving file nodes lose their docstring somewhere between analyzer output and serialization. create_boundary_nodes (ir.py ~1247-1388) is NOT the culprit -- it only synthesizes kind='external_symbol' nodes for dangling external ids, not first-party file nodes. Suspects: orphan-node pruning + INV-hojus dual-symbol (kind='module' vs kind='file') reconciliation, and/or finalize.\\n\\nRepro: build /tmp/kipod_probe with two py files each having a module docstring; run 'hypergumbo run'; compare analyze_python() file-node docstrings (present) vs bm.json file-node docstrings (None / node absent).\\n\\nImpact: blocks sketch 'Source Files' section from ever showing module summaries (WI-kipod wires the render-when-present display, but the data never arrives). Structural: likely affects every language's file-anchor nodes, not just Python. Related: WI-kazob (done, construction-side), WI-dagif (done, missing file-anchor nodes for 13 files), WI-kipod (display)."  # e5e7
+    fields: {}  # e5e7
+- op: update  # ace8
+  at: '2026-07-01T06:56:20Z'  # ace8
+  by: agent  # ace8
+  actor: jgstern_agent  # ace8
+  clock: 2  # ace8
+  nonce: ace8  # ace8
+  set:  # ace8
+    status: wont_do  # ace8
+- op: discuss  # 6089
+  at: '2026-07-01T06:56:20Z'  # 6089
+  by: agent  # 6089
+  actor: jgstern_agent  # 6089
+  clock: 3  # 6089
+  nonce: '6089'  # 6089
+  message: "Withdrawn — not a real defect. The repro was run against the STALE pipx binary at /home/jgstern_agent/.local/bin/hypergumbo (a pre-WI-kazob 6.1.0 build), which predates this session's Phase 1 file-node-docstring work and so emitted 0 file-node docstrings — exactly the pre-WI-kazob state. Re-measured with the EDITABLE dev install (.venv/bin/hypergumbo = current working tree): file-anchor docstrings are present end-to-end. Behavioral evidence: (1) probe /tmp/kipod_probe map — both mod_a.py and mod_b.py file nodes carry their module docstrings, mod_a.py's file node is NOT pruned; (2) real target packages/hypergumbo-tracker/src/hypergumbo_tracker — 34/34 file-kind nodes carry docstrings (e.g. store.py -> 'Store for the hypergumbo tracker — YAML I/O, compile, CRUD, Lamport clock.'). This matches WI-kazob's own closure evidence (845/908 file nodes). The filing contradicted WI-kazob and should have been caught as a stale-binary measurement error. Lesson: verify CLI behavior with .venv/bin/hypergumbo (which `which hypergumbo` resolves to), never the pipx .local/bin copy."  # 6089
