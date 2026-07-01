@@ -484,6 +484,21 @@ def _symbol_spec() -> ClassSpec:
                     "policy is declared."
                 ),
             },
+            "visibility": {
+                "description": (
+                    "INV-jusot: the single canonical visibility level of the "
+                    "symbol — one of public / private / protected / internal / "
+                    "package (vocabulary in visibility.py). Computed once in "
+                    "finalize from the highest-priority signal (a language "
+                    "modifier, else the legacy Apex/Clojure meta['visibility'], "
+                    "else the Python leading-underscore name convention, else "
+                    "the public default); the deciding signal is recorded in "
+                    "meta['visibility_signal']. Null only on symbols that "
+                    "predate the finalize visibility pass. Supersedes the "
+                    "retired per-language meta['visibility'] key; is_exported "
+                    "is reconciled to visibility=='public' in a follow-up."
+                ),
+            },
         },
         sample_factory=_sample_symbol,
     )

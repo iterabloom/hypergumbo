@@ -21,6 +21,7 @@ from hypergumbo_core.finalize import (
     FinalizedMap,
     _derive_dst_ref_from_id,
     _finalize_commit_dicts,
+    _finalize_compute_visibility,
     _finalize_edge_resolution,
     _finalize_re_relativize,
     _finalize_recompute_run_signature,
@@ -221,6 +222,7 @@ _SUBSTEPS = [
     "_finalize_repo_fingerprint",
     "_finalize_skipped_into_limits",
     "_finalize_edge_resolution",
+    "_finalize_compute_visibility",  # INV-jusot (7b, before commit)
     "_finalize_commit_dicts",
     "_finalize_referential_integrity",
 ]
@@ -440,3 +442,63 @@ def test_edge_resolution_external_sentinel_leaves_dst_ref_none(tmp_path: Path) -
     _finalize_edge_resolution(ctx)
     assert edge.is_resolved is False
     assert edge.dst_ref is None
+
+
+# --- Sub-step 7b: visibility fold (INV-jusot) -------------------------------------------
+def _sym(name: str, *, language: str = "python", modifiers=None, meta=None) -> Symbol:
+    return Symbol(
+        id=f"{language}:m.py:1-1:{name}:function",
+        name=name,
+        kind="function",
+        language=language,
+        path="m.py",
+        span=Span(1, 1, 0, 0),
+        origin="python",
+        origin_run_id="uuid:test",
+        modifiers=list(modifiers or []),
+        meta=meta,
+    )
+
+
+def test_finalize_compute_visibility_language_modifier(tmp_path: Path) -> None:
+    s = _sym("x", language="rust", modifiers=["pub"])
+    ctx = _ctx(tmp_path, symbols=[s])
+    _finalize_compute_visibility(ctx)
+    assert s.visibility == "public"
+    assert s.meta["visibility_signal"] == "language_modifier"
+
+
+def test_finalize_compute_visibility_python_underscore(tmp_path: Path) -> None:
+    s = _sym("_helper")
+    ctx = _ctx(tmp_path, symbols=[s])
+    _finalize_compute_visibility(ctx)
+    assert s.visibility == "private"
+    assert s.meta["visibility_signal"] == "name_convention"
+
+
+def test_finalize_compute_visibility_default_public(tmp_path: Path) -> None:
+    s = _sym("run")
+    ctx = _ctx(tmp_path, symbols=[s])
+    _finalize_compute_visibility(ctx)
+    assert s.visibility == "public"
+    assert s.meta["visibility_signal"] == "default"
+
+
+def test_finalize_compute_visibility_folds_and_removes_legacy_meta(tmp_path: Path) -> None:
+    # Apex/Clojure wrote meta['visibility']; finalize folds it into the field
+    # and REMOVES the legacy key (INV-jusot retires it).
+    s = _sym("Foo", language="apex", meta={"visibility": "global", "other": 1})
+    ctx = _ctx(tmp_path, symbols=[s])
+    _finalize_compute_visibility(ctx)
+    assert s.visibility == "public"
+    assert s.meta["visibility_signal"] == "language_modifier"
+    assert "visibility" not in s.meta  # legacy key removed
+    assert s.meta["other"] == 1        # other meta untouched
+
+
+def test_finalize_compute_visibility_handles_none_meta(tmp_path: Path) -> None:
+    s = _sym("run", meta=None)
+    ctx = _ctx(tmp_path, symbols=[s])
+    _finalize_compute_visibility(ctx)
+    assert s.visibility == "public"
+    assert s.meta == {"visibility_signal": "default"}

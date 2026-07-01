@@ -14,14 +14,14 @@ for focused LLM context.
 ## Self-Analysis Summary (auto)
 
 hypergumbo analyzed its own source code and found:
-- **290** Python modules (133 analyzers, 57 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 29, Infrastructure 7; 63 core, 4 CLI, 33 tracker)
-- **35391** symbols (functions, classes, methods)
-- **118258** edges by type:
-  - calls: 61956
-  - contains: 30773
-  - imports: 10888
-  - instantiates: 8292
-  - references: 3886
+- **291** Python modules (133 analyzers, 57 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 29, Infrastructure 7; 64 core, 4 CLI, 33 tracker)
+- **35436** symbols (functions, classes, methods)
+- **118365** edges by type:
+  - calls: 61992
+  - contains: 30813
+  - imports: 10902
+  - instantiates: 8294
+  - references: 3901
   - module_attr_ref: 1217
   - other: 1246
 
@@ -85,7 +85,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 35391 Symbols + 118258 Edges + UsageContexts           │
+│  Output: 35436 Symbols + 118365 Edges + UsageContexts           │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -268,8 +268,8 @@ These symbols have the highest bidirectional centrality
 
 | Symbol | Kind | Score | Location |
 |--------|------|-------|----------|
-| `Symbol` | class | 5536.1 | ir.py |
-| `Span` | class | 4363.0 | ir.py |
+| `Symbol` | class | 5538.9 | ir.py |
+| `Span` | class | 4365.1 | ir.py |
 | `run_behavior_map` | function | 3307.6 | cli.py |
 | `write_text` | external_symbol | 3250.0 | <external> |
 | `LinkerContext` | class | 2186.4 | registry.py |
@@ -281,7 +281,7 @@ These symbols have the highest bidirectional centrality
 | `clear_pattern_cache` | function | 1336.8 | framework_patterns.py |
 | `append` | external_symbol | 1239.0 | <external> |
 | `find_files` | function | 1004.4 | discovery.py |
-| `get` | external_symbol | 978.0 | <external> |
+| `get` | external_symbol | 980.0 | <external> |
 | `TreeSitterAnalyzer` | class | 961.9 | base.py |
 
 ## Pattern System
@@ -588,6 +588,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 - **`hypergumbo_core.test_masking`**: Slow test masking for smart-test.
 - **`hypergumbo_core.validation_ratchet`**: Shrink-only ratchet comparison for validation-report violation matr...
 - **`hypergumbo_core.verify_claims`**: Security claim verification against I/O boundary and taint-flow ana...
+- **`hypergumbo_core.visibility`**: Canonical visibility axis (INV-jusot).
 - **`hypergumbo_core.yaml_catalogs`**: Canonical registry of YAML catalog directories shipped under hyperg...
 
 ### Analyzers
@@ -833,7 +834,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: b55b5d26168b
+  commit: 855181018bdc
   hypergumbo: 6.1.0
   python: 3.12.3
 -->

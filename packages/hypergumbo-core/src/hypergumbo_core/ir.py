@@ -487,6 +487,7 @@ class Symbol:
     protocol_origin: Optional[str] = None  # axis: protocol-origin
     display_label: Optional[str] = None  # axis: free-text — human-readable UI display string for synthetic linker stand-ins; consumers display, never branch on the value itself.
     qualified_name: Optional[str] = None  # axis: qualified-name (ADR-0032)
+    visibility: Optional[str] = None  # axis: visibility — INV-jusot: one computed canonical visibility level (public/private/protected/internal/package), folded in finalize from the language modifier / legacy meta['visibility'] / Python name convention; None until finalize computes it. The deciding signal is recorded in meta['visibility_signal'].
 
     def __post_init__(self) -> None:
         if isinstance(self.origin, str):
@@ -536,6 +537,7 @@ class Symbol:
             "protocol_origin": self.protocol_origin,
             "display_label": self.display_label,
             "qualified_name": self.qualified_name,  # ADR-0032
+            "visibility": self.visibility,  # INV-jusot
         }
 
     @classmethod
@@ -574,6 +576,7 @@ class Symbol:
             protocol_origin=d.get("protocol_origin"),
             display_label=d.get("display_label"),
             qualified_name=d.get("qualified_name"),  # ADR-0032
+            visibility=d.get("visibility"),  # INV-jusot
         )
 
 

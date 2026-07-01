@@ -77,6 +77,7 @@ from typing import TYPE_CHECKING, Optional
 from .ir import ExternalRef, _compute_run_signature, _parse_dangling_id
 from .pass_metadata import PassMetadataLookup
 from .repo_fingerprint import compute_repo_fingerprint
+from .visibility import compute_visibility
 from .spec_validator import (
     build_validation_report,
     compute_stable_id_stats,
@@ -290,6 +291,33 @@ def _finalize_edge_resolution(ctx: FinalizeContext) -> None:
                 edge.dst_ref = _derive_dst_ref_from_id(edge.dst)
 
 
+def _finalize_compute_visibility(ctx: FinalizeContext) -> None:
+    """INV-jusot: fold the per-symbol visibility signals into one canonical
+    ``Symbol.visibility`` level and record the deciding signal, retiring the
+    legacy ``meta['visibility']`` key.
+
+    Single computation point: a language ``modifiers`` term wins over the
+    legacy ``meta['visibility']`` term (Apex / Clojure), which wins over the
+    Python leading-underscore name convention, which wins over the public
+    default. The legacy ``meta['visibility']`` key is removed once folded — the
+    typed field is its canonical home. PR1 is additive: ``is_exported`` and the
+    visibility terms in ``modifiers`` are reconciled in the follow-up.
+    """
+    for sym in ctx.symbols:
+        meta = sym.meta if sym.meta is not None else {}
+        level, signal = compute_visibility(
+            modifiers=sym.modifiers,
+            name=sym.name,
+            language=sym.language,
+            meta_visibility=meta.get("visibility"),
+        )
+        sym.visibility = level
+        if sym.meta is None:
+            sym.meta = {}
+        sym.meta["visibility_signal"] = signal
+        sym.meta.pop("visibility", None)
+
+
 def _finalize_commit_dicts(ctx: FinalizeContext) -> None:
     """Sub-step 8 — commit the reconciled IR into behavior_map as one view."""
     ctx.behavior_map["analysis_runs"] = ctx.analysis_runs
@@ -347,6 +375,7 @@ def finalize(ctx: FinalizeContext) -> FinalizedMap:
     _finalize_repo_fingerprint(ctx)         # 4  repo_fingerprint stamp
     _finalize_skipped_into_limits(ctx)      # 6  skipped → limits
     _finalize_edge_resolution(ctx)          # 7  edge-resolution verdict (ADR-0037; before 8)
+    _finalize_compute_visibility(ctx)       # 7b visibility fold (INV-jusot; before 8)
     _finalize_commit_dicts(ctx)             # 8  commit reconciled view
     _finalize_referential_integrity(ctx)    # 10 validate_ir — LAST (R3)
     ctx.violations.sort(key=_violation_sort_key)  # §6 determinism: stable serialized order

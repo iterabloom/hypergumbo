@@ -264,6 +264,7 @@ class Symbol:
     # canonical_name removed per ADR-0032; superseded by the typed sibling fields below
     display_label: Optional[str]   # human-readable label
     qualified_name: Optional[str]  # scope-qualified name
+    visibility: Optional[str]      # INV-jusot: one canonical level (public/private/protected/internal/package), computed in finalize; signal in meta['visibility_signal']
     fingerprint: str           # 🟪 code: Optional[str] = None
     kind: str                  # language construct only (function/class/module/method/...): per ADR-0027 the kind axis names the source-language syntactic construct; framework-role / dispatch / entrypoint facts live in meta (see Multi-value field axes below)
     name: str
@@ -686,7 +687,7 @@ Single file: `hypergumbo.results.json`
 ### Top-level structure
 ```json
 {
-  "schema_version": "0.14.3",
+  "schema_version": "0.14.4",
   "confidence_model": "hypergumbo-evidence-v2",
   "stable_id_scheme": "hypergumbo-stableid-v8",
   "shape_id_scheme": "hypergumbo-shapeid-v2",

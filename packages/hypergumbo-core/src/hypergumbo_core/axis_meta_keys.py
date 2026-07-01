@@ -380,11 +380,17 @@ META_KEYS: Final[tuple[MetaKeySpec, ...]] = (
                 "List of decorator names on function / method / "
                 "class Symbols. Used by framework_patterns to "
                 "identify Flask routes, FastAPI handlers, etc."),
-    MetaKeySpec("visibility", AXIS_SYMBOL_META,
-                "Source-language visibility modifier "
-                "(e.g. 'public', 'private', 'protected', "
-                "'package-private'). Set by analyzers whose source "
-                "language has explicit visibility keywords."),
+    MetaKeySpec("visibility_signal", AXIS_SYMBOL_META,
+                "Which signal determined the canonical ``Symbol.visibility`` "
+                "level (INV-jusot) — one of 'language_modifier' (an explicit "
+                "``modifiers`` term or the legacy Apex/Clojure "
+                "``meta['visibility']``), 'name_convention' (Python "
+                "leading-underscore), or 'default' (public). Provenance for the "
+                "computed visibility field; set by the finalize visibility "
+                "pass. Replaces the retired ``meta['visibility']`` key, whose "
+                "language-syntactic value is now folded into the typed "
+                "``Symbol.visibility`` field (the meta key collided with the "
+                "field under the cross-axis hygiene test)."),
     MetaKeySpec("exported", AXIS_SYMBOL_META,
                 "True if the Symbol is exported from its file "
                 "(e.g. ES module ``export``, Go capitalized name). "

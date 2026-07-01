@@ -8,7 +8,7 @@
     "schema_version": {
       "type": "string",
       "description": "Schema version (semver)",
-      "const": "0.14.3"
+      "const": "0.14.4"
     },
     "confidence_model": {
       "type": "string",
@@ -818,6 +818,17 @@
             }
           ],
           "description": "ADR-0032: fully-qualified name including ancestor containers, joined with the per-language separator declared in qualified_name_axis.py. Null when name already encodes the qualified form or no separator policy is declared."
+        },
+        "visibility": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "INV-jusot: the single canonical visibility level of the symbol \u2014 one of public / private / protected / internal / package (vocabulary in visibility.py). Computed once in finalize from the highest-priority signal (a language modifier, else the legacy Apex/Clojure meta['visibility'], else the Python leading-underscore name convention, else the public default); the deciding signal is recorded in meta['visibility_signal']. Null only on symbols that predate the finalize visibility pass. Supersedes the retired per-language meta['visibility'] key; is_exported is reconciled to visibility=='public' in a follow-up."
         }
       },
       "required": [
