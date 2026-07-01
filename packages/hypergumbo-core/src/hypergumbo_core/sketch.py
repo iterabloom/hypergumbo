@@ -5282,6 +5282,7 @@ _ENTRYPOINT_GROUPS: list[tuple[str, set[str]]] = [
         EntrypointKind.CLI_MAIN.value,
         EntrypointKind.CLI_COMMAND.value,
         EntrypointKind.MAIN_FUNCTION.value,
+        EntrypointKind.MAIN_GUARD.value,  # WI-tuvun: module-guard script entry
         EntrypointKind.ELECTRON_MAIN.value,
         EntrypointKind.ELECTRON_PRELOAD.value,
         EntrypointKind.ELECTRON_RENDERER.value,

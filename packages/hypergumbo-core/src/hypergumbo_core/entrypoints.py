@@ -158,6 +158,11 @@ class EntrypointKind(Enum):
     CLI_COMMAND = "cli_command"
     # Language-level main() entry points (detected via YAML patterns)
     MAIN_FUNCTION = "main_function"
+    # Module-level script guard: `if __name__ == "__main__":` with no separate
+    # main() function. Targets the FILE node (not a callable), so it is a
+    # distinct kind from MAIN_FUNCTION — kind alone disambiguates the target
+    # type (function vs file) rather than the free-text label (WI-tuvun).
+    MAIN_GUARD = "main_guard"
     ELECTRON_MAIN = "electron_main"
     ELECTRON_PRELOAD = "electron_preload"
     ELECTRON_RENDERER = "electron_renderer"
@@ -451,7 +456,10 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
     - "app_bootstrap" -> SPA_BOOTSTRAP (createRoot, ReactDOM.render, hydrateRoot)
 
     Detected concepts (language conventions, confidence=0.80):
-    - "main_function" -> MAIN_FUNCTION (Go, Java, Python, C, etc.)
+    - "main_function" -> MAIN_FUNCTION (function target: Go, Java, Python, C, etc.)
+    - "main_guard" -> MAIN_GUARD (file target: Python `if __name__ == "__main__"`
+      with no separate main(); WI-tuvun — kind disambiguates target from
+      MAIN_FUNCTION)
     - "test_function" -> TEST_FUNCTION (pytest, JUnit, Go testing, etc.)
     - "benchmark_function" -> TEST_FUNCTION (Go Benchmark*, Rust #[bench])
     - "example_function" -> TEST_FUNCTION (Go Example*)
@@ -943,20 +951,26 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
                 ))
                 added_kinds.add(EntrypointKind.HTML_ENTRY)
 
-            # Python main guard concept -> MAIN_FUNCTION
-            # Structural entrypoint: `if __name__ == "__main__":` pattern
+            # Python main guard concept -> MAIN_GUARD (WI-tuvun)
+            # Structural entrypoint: `if __name__ == "__main__":` pattern.
+            # Distinct from MAIN_FUNCTION: the guard marks a FILE node
+            # (module-as-script), not a callable. When this symbol already
+            # emitted a MAIN_FUNCTION (a named main() on the same symbol), the
+            # guard is redundant and skipped; the cross-symbol case (guard on
+            # the file node, main() on the function node) is deduped in the
+            # INV-hosuh post-pass below.
             elif concept_type == "main_guard":
                 if EntrypointKind.MAIN_FUNCTION in added_kinds:
                     continue
                 entrypoints.append(Entrypoint.create(
                     symbol_id=sym.id,
-                    kind=EntrypointKind.MAIN_FUNCTION,
+                    kind=EntrypointKind.MAIN_GUARD,
                     confidence=0.85,  # Structural pattern (higher than naming heuristic)
                     label="Python script (if __name__ == '__main__')",
                     source="concept_detector",
                     evidence_type="structural",
                 ))
-                added_kinds.add(EntrypointKind.MAIN_FUNCTION)
+                added_kinds.add(EntrypointKind.MAIN_GUARD)
 
             # Library export concept -> LIBRARY_EXPORT
             # (ADR-3aaa v1.3.x - Library public API detection)
@@ -1461,20 +1475,24 @@ def detect_entrypoints(
             deduped_entrypoints.extend(eps)
     unique_entrypoints = deduped_entrypoints
 
-    # INV-hosuh: collapse module-level main-guard + function-level main()
-    # in the same script to a single entry. The main-guard
-    # (kind=MAIN_FUNCTION on the module/file symbol, from the
-    # ``main_guard`` concept) and the main() function (kind=MAIN_FUNCTION
-    # on the function symbol, from the ``main_function`` concept) both
-    # fire for the same script when both are present. The function-level
-    # entry is the canonical "real" entrypoint; the main-guard marker is
-    # redundant once we have it. Scripts that have only one of the two
-    # (e.g., __main__.py with no separate main(), or a bare main() with
-    # no __main__ block) keep their single entry.
+    # INV-hosuh + WI-tuvun: collapse module-level main-guard + function-level
+    # main() in the same script to a single entry. The main-guard
+    # (kind=MAIN_GUARD on the module/file symbol, from the ``main_guard``
+    # concept) and the main() function (kind=MAIN_FUNCTION on the function
+    # symbol, from the ``main_function`` concept) both fire for the same
+    # script when both are present. The function-level entry is the canonical
+    # "real" entrypoint; the main-guard marker is redundant once we have it
+    # (the ``fn_eps`` filter keeps only function-target entries per path).
+    # Scripts that have only one of the two (e.g., __main__.py with no
+    # separate main() -> lone MAIN_GUARD, or a bare main() with no __main__
+    # block -> lone MAIN_FUNCTION) keep their single entry.
     main_by_path: dict[str, list[Entrypoint]] = defaultdict(list)
     non_main_eps: list[Entrypoint] = []
     for ep in unique_entrypoints:
-        if ep.kind != EntrypointKind.MAIN_FUNCTION:
+        if ep.kind not in (
+            EntrypointKind.MAIN_FUNCTION,
+            EntrypointKind.MAIN_GUARD,
+        ):
             non_main_eps.append(ep)
             continue
         sym = symbol_lookup_for_dedup.get(ep.symbol_id)

@@ -1513,9 +1513,12 @@ class TestSemanticEntryDetection:
         assert "Python CLI" in cli_eps[0].label
 
     def test_main_guard_entrypoint_detection(self) -> None:
-        """Python files with main guard (if __name__ == '__main__') are detected as entrypoints.
+        """A guard-only script (if __name__, no main()) is a MAIN_GUARD entry (WI-tuvun).
 
         INV-hojus: the carrier is the file-kind pseudo-node, not module-kind.
+        WI-tuvun: the ``main_guard`` concept produces the distinct MAIN_GUARD
+        kind (file target), NOT MAIN_FUNCTION (function target), so ``kind``
+        alone disambiguates the target type.
         """
         sym = Symbol(
             id="python:script.py:1-1:file:file",
@@ -1530,10 +1533,43 @@ class TestSemanticEntryDetection:
 
         entrypoints = detect_entrypoints(nodes, [])
 
-        main_eps = [e for e in entrypoints if e.kind == EntrypointKind.MAIN_FUNCTION]
-        assert len(main_eps) == 1
-        assert main_eps[0].confidence == 0.85  # Structural pattern
-        assert "if __name__" in main_eps[0].label
+        guard_eps = [e for e in entrypoints if e.kind == EntrypointKind.MAIN_GUARD]
+        assert len(guard_eps) == 1
+        assert guard_eps[0].confidence == 0.85  # Structural pattern
+        assert "if __name__" in guard_eps[0].label
+        # It is NOT the function-target MAIN_FUNCTION kind.
+        assert not [e for e in entrypoints if e.kind == EntrypointKind.MAIN_FUNCTION]
+
+    def test_main_guard_superseded_by_function_main_cross_symbol(self) -> None:
+        """WI-tuvun/INV-hosuh: a def main() supersedes the same-file MAIN_GUARD.
+
+        Real analyzer shape: the ``main_guard`` concept lands on the FILE
+        symbol while ``main_function`` lands on the FUNCTION symbol — two
+        different symbols on the same path. The named main() is canonical;
+        the guard marker is redundant and dropped.
+        """
+        file_sym = Symbol(
+            id="python:app.py:1-1:file:file", name="app.py", kind="file",
+            path="app.py", language="python", span=Span(1, 20, 0, 0),
+            meta={"concepts": [{"concept": "main_guard", "framework": "python"}]},
+        )
+        fn_sym = Symbol(
+            id="python:app.py:4-6:main:function", name="main", kind="function",
+            path="app.py", language="python", span=Span(4, 6, 0, 0),
+            meta={"concepts": [{"concept": "main_function", "framework": "python"}]},
+        )
+
+        entrypoints = detect_entrypoints([file_sym, fn_sym], [])
+
+        fn_eps = [e for e in entrypoints if e.kind == EntrypointKind.MAIN_FUNCTION]
+        guard_eps = [e for e in entrypoints if e.kind == EntrypointKind.MAIN_GUARD]
+        assert len(fn_eps) == 1
+        assert fn_eps[0].symbol_id == "python:app.py:4-6:main:function"
+        assert guard_eps == []  # guard dropped in favor of the named main()
+
+    def test_main_guard_in_kind_catalog(self) -> None:
+        """WI-tuvun: MAIN_GUARD is a recognized entrypoint-kind axis value."""
+        assert "main_guard" in all_known_entrypoint_kinds()
 
     def test_main_guard_deduplicated_with_main_function(self) -> None:
         """main_guard and main_function concepts on same symbol don't create duplicates."""
@@ -4041,8 +4077,9 @@ class TestInvHosuhMainFunctionDedup:
 
     def test_main_guard_kept_when_no_main_function(self) -> None:
         """When the script has only the main_guard (no separate main() function),
-        keep the module-level entry — this is the canonical entrypoint for
-        __main__.py-style scripts."""
+        keep the module-level entry — the canonical entrypoint for
+        __main__.py-style scripts. WI-tuvun: this now carries the distinct
+        MAIN_GUARD kind (file target), not the overloaded MAIN_FUNCTION."""
         module_sym = make_symbol(
             "<module:scripts/bare.py>", path="scripts/bare.py", kind="module",
             start_line=1, end_line=10,
@@ -4050,9 +4087,10 @@ class TestInvHosuhMainFunctionDedup:
         )
         entrypoints = detect_entrypoints([module_sym], [])
 
-        main_eps = [ep for ep in entrypoints if ep.kind.value == "main_function"]
-        assert len(main_eps) == 1
-        assert main_eps[0].symbol_id == module_sym.id
+        guard_eps = [ep for ep in entrypoints if ep.kind.value == "main_guard"]
+        assert len(guard_eps) == 1
+        assert guard_eps[0].symbol_id == module_sym.id
+        assert not [ep for ep in entrypoints if ep.kind.value == "main_function"]
 
     def test_main_function_kept_when_no_guard(self) -> None:
         """A bare main() function (no __main__ block) still produces an entry."""

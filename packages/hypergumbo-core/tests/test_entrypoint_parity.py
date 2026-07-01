@@ -65,7 +65,7 @@ FIXTURE_DIR: dict[str, str] = {
 # which an exact-kind assertion would brittly pin (and which a future structural
 # detector should be free to replace without tripping this gate).
 EXPECTED_ENTRYPOINT_KINDS: dict[str, "set[str] | None"] = {
-    "python": {"main_function"},          # __main__ guard -> main_function
+    "python": {"main_guard"},              # WI-tuvun: __main__ guard -> main_guard (file target)
     "javascript": {"script_module"},      # top-level executable, no inbound import
     "typescript": {"script_module"},
     "go": {"main_function"},               # func main in package main

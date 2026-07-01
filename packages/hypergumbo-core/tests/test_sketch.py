@@ -2792,6 +2792,24 @@ class TestFormatEntrypoints:
 
         assert "- `main` (CLI main) — `cli.py`" in result
 
+    def test_main_guard_renders_under_cli_and_scripts(self, tmp_path: Path) -> None:
+        """WI-tuvun: MAIN_GUARD entries group under 'CLI & Scripts', not 'Other'."""
+        symbols = [
+            Symbol(id="script.py", name="script.py", kind="file", language="python",
+                   path=str(tmp_path / "script.py"), span=Span(1, 1, 1, 1)),
+        ]
+        entrypoints = [
+            Entrypoint(symbol_id="script.py", kind=EntrypointKind.MAIN_GUARD,
+                       confidence=0.85,
+                       label="Python script (if __name__ == '__main__')"),
+        ]
+
+        result = _format_entrypoints(entrypoints, symbols, tmp_path)
+
+        assert "### CLI & Scripts" in result
+        assert "### Other" not in result
+        assert "script.py" in result
+
     def test_respects_max_entries(self, tmp_path: Path) -> None:
         """Limits output to max_entries per group."""
         symbols = [

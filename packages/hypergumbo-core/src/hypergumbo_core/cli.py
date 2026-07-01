@@ -1498,6 +1498,7 @@ def cmd_slice(args: argparse.Namespace) -> int:
         # in alertmanager had 7 route-node edges but 0 useful call edges).
         _MAIN_KINDS = frozenset({
             EntrypointKind.MAIN_FUNCTION,
+            EntrypointKind.MAIN_GUARD,  # WI-tuvun: a guard-only __main__.py is a root too
             EntrypointKind.CLI_MAIN,
         })
 
