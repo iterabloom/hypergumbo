@@ -25,3 +25,20 @@
   clock: 2  # 59a7
   nonce: 59a7  # 59a7
   message: "Adds two facets on the instantiates/constructor access_mode (blind-severity-derived priority signal: P1). (1) access_mode is assigned non-deterministically per call site for the same target+construct: one class (ArityFlags) is the dst of both a 'read' instantiate (from classify_parameter_flags) and a 'write' instantiate (from compute_stable_id), for the same ast_new construct — so assignment varies per call site, not per construct. (2) Framing: instantiation (a constructor call) is not an access of the target at all, so access_mode on instantiates is semantically meaningless. instantiates edges carry access_mode write 4988 / read 678 / None 2273. Fix should make assignment per-construct deterministic (or stop assigning access_mode to instantiates)."  # 59a7
+- op: update  # e594
+  at: '2026-07-01T23:23:37Z'  # e594
+  by: agent  # e594
+  actor: jgstern_agent  # e594
+  clock: 3  # e594
+  nonce: e594  # e594
+  set:  # e594
+    status: done  # e594
+  add:  # e594
+    tags: [awaits_bakeoff_validation]  # e594
+- op: discuss  # 3adf
+  at: '2026-07-01T23:23:37Z'  # 3adf
+  by: agent  # 3adf
+  actor: jgstern_agent  # 3adf
+  clock: 4  # 3adf
+  nonce: 3adf  # 3adf
+  message: "DONE via ADR-0038 rulings 2+4 (dev 880cb6775a + prior INV-kudug #74). Both facets the item + its discussion flagged are resolved: (facet a / constructors) the access_mode applicability gate makes instantiates Declared-N/A, so the dataflow classifier no longer stamps ANY instantiates edge -> access_mode=None (was 5992 self-corpus stamps). This resolves BOTH sub-facets from the P1 discussion at once: facet-2 'instantiation is not an access, access_mode meaningless on instantiates' (no stamp at all now) and facet-1 'per-call-site nondeterministic assignment for the same construct' (mooted — there is no access_mode on instantiates to be nondeterministic). (facet b / in-memory collection mutations) python.yaml maps .append/.extend/.add -> 'mutate' not 'write' (ruling 4) -> behavioral: items.append(1)/items.extend([2]) now carry access_mode='mutate', so a dataflow-write-position mutation is no longer conflated with an I/O 'write'. Live repro: a 3-line list-mutation file yields mutate; an instantiation yields None. awaits_bakeoff_validation (blast-radius emission change)."  # 3adf

@@ -70,3 +70,19 @@
   clock: 6  # 79ac
   nonce: 79ac  # 79ac
   message: "2026-06-10 design-interview ruling (ADR-0038, merged in PR #4181): the coverage policy this item flagged as undocumented becomes a MetaKeySpec applicability matrix built from this very census — N/A cells are instantiated explicitly, and bridge constants move to a data_direction key instead of riding on access_mode. Stays violated until the matrix and per-edge rebuild land; re-validate then."  # 79ac
+- op: discuss  # 6947
+  at: '2026-07-01T23:23:36Z'  # 6947
+  by: agent  # 6947
+  actor: jgstern_agent  # 6947
+  clock: 7  # 6947
+  nonce: '6947'  # 6947
+  message: "PR 1 of ADR-0038 ruling 2 landed dev 880cb6775a (vocab F4). axis_meta_keys.MetaKeySpec gained applicable_edge_types/na_edge_types; access_mode now DECLARES its 17-type census matrix — applicable = calls/references/module_attr_ref/event_publishes; Declared-N/A = 11 structural + instantiates (resolver is_access_mode_not_applicable). Both dataflow annotate passes gate the N/A set, so the ~6006 spurious stamps stop being emitted (behavioral: instantiates -> access_mode None [was 5992 stamped: write 5065/mutate 152/read 775], dispatches_to -> None [was 14]; calls/references/module_attr_ref unaffected). Registry description de-staled ('read_write' -> read/write/mutate/delete).\n\nSTAYS violated: the interpretability gap is closed only for the census-17. The current canonical vocabulary is 54 edge types; the ~37 uncensused types remain UNCLASSIFIED (matrix declares nothing for them) -> filed WI-pusuv (P3, polyglot census + WI-nibis substrate-wide negative close-check). Also out of this PR by design: crypto_flow/data_flows_to (direction family -> PR-2 data_direction, ruling 3) and script_src (endpoint_shape mid-fold, ADR-0023, behaviorally moot). Re-validate INV-tibob to satisfied once the full 54-type coverage lands (WI-pusuv) — or re-scope this item to 'census-17 matrix declared' and let WI-pusuv carry the 54-type tail. awaits_bakeoff_validation applied (access_mode drops from ~6006 edges; a DEEP cohort should confirm no taint/io-boundary consumer regressed)."  # 6947
+- op: update  # 2cdb
+  at: '2026-07-01T23:23:37Z'  # 2cdb
+  by: agent  # 2cdb
+  actor: jgstern_agent  # 2cdb
+  clock: 8  # 2cdb
+  nonce: 2cdb  # 2cdb
+  set: {}  # 2cdb
+  add:  # 2cdb
+    tags: [awaits_bakeoff_validation]  # 2cdb

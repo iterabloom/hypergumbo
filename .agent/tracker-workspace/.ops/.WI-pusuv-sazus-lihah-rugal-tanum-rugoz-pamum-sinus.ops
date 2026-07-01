@@ -1,0 +1,22 @@
+- op: create  # b90d
+  at: '2026-07-01T23:22:39Z'  # b90d
+  by: agent  # b90d
+  actor: jgstern_agent  # b90d
+  clock: 1  # b90d
+  nonce: b90d  # b90d
+  data:  # b90d
+    kind: work_item  # b90d
+    title: "access_mode applicability matrix: classify the ~37 uncensused edge types (+ script_src) via a polyglot census (ADR-0038 ruling 2 tail)"  # b90d
+    status: todo_soft  # b90d
+    priority: 3  # b90d
+    parent:  # b90d
+    tags:  # b90d
+    - access_mode  # b90d
+    - schema  # b90d
+    - vocab  # b90d
+    isbefore: []  # b90d
+    duplicate_of: []  # b90d
+    not_duplicate_of: []  # b90d
+    pr_ref:  # b90d
+    description: "PR 1 of ADR-0038 ruling 2 (dev 880cb6775a) landed the access_mode applicability matrix for INV-tibob's 17-type census (axis_meta_keys._ACCESS_MODE_APPLICABLE_EDGE_TYPES / _ACCESS_MODE_NA_EDGE_TYPES): 4 applicable (calls/references/module_attr_ref/event_publishes) + 12 Declared-N/A (11 structural + instantiates). But the current canonical vocabulary is 54 edge types (edge_types.all_edge_type_names()), so ~37 remain UNCLASSIFIED — the matrix declares nothing for them, so a consumer reading access_mode=None on e.g. an http_calls edge cannot tell 'does not arise' from 'missing data' (INV-tibob's interpretability gap persists for them).\n\nThe ~37 don't appear in Python self-analysis, so classifying them needs a POLYGLOT census. Known groupings: call-family (http_calls, grpc_calls, abi_call, subprocess_calls, template_calls, caller_invokes, invokes_callback, kernel_launch) — likely applicable by the ADR's 'calls is applicable' logic, but each needs a real emitter check; structural/containment/inheritance/dependency/routing/template (association, base_image, build_tag_alternative_of, constrains, contains_routes, defines_target, depends, extends_template, includes, includes_class, includes_template, links, links_to, module_exports, notifies_resource, openapi_implements, renders, requires_resource, resolver_for_type, resolver_implements, signal_receiver, sources, uses_mixin, uses_vocabulary, wraps, implements_rpc, graphql_calls) — likely N/A. Two EXCLUSIONS that are NOT this item: crypto_flow + data_flows_to carry dataflow DIRECTION and belong to ADR-0038 ruling 3 / PR-2's data_direction key, NOT access_mode; and script_src is a census structural type deferred here because it is on the mid-fold endpoint_shape axis (ADR-0023) — fold it in once endpoint_shape settles.\n\nCLOSE CONDITION (WI-nibis discipline — do NOT close on Python self-analysis alone, the 37 are invisible there): a substrate-wide NEGATIVE close-check over a polyglot cohort confirming (a) every emitted edge type is classified applicable XOR na, and (b) no type declared applicable is silently 0%-populated by a live emitter. Treat as a human-ruled reconciliation (INV-pubom amend-by-explicit-ruling precedent), not agent-discretion axis classification. Parent: INV-tibob."  # b90d
+    fields: {}  # b90d

@@ -100,3 +100,19 @@
   set: {}  # ee6d
   remove:  # ee6d
     tags: [awaits_bakeoff_validation]  # ee6d
+- op: discuss  # 143f
+  at: '2026-07-01T21:39:55Z'  # 143f
+  by: agent  # 143f
+  actor: jgstern_agent  # 143f
+  clock: 13  # 143f
+  nonce: 143f  # 143f
+  message: "F5 Kotlin slice merged dev ee92c5f6e1 (PR #374) — the FIRST non-gated tail-language strip (kotlin is in hypergumbo-lang-mainstream but not one of the 8 FIXTURE_ANALYZER matrix languages). kotlin.py now emits kind='field' for a val/var property_declaration in a class/object/interface/enum body (Class.field name, class-scoped make_typed_stable_id, type annotation as signature, private/internal/protected -> not is_exported; @JvmField etc. flow into meta['decorators']) and kind='variable' for a top-level property (make_variable_stable_id, package-qualified qualified_name).\n\nScope discrimination is the headline: a new _kotlin_property_scope walk classifies each property by its NEAREST body-defining ancestor — function_body/block/lambda_literal -> local (SKIPPED), class_body/enum_class_body -> field, source_file -> variable. This is the exact discipline whose absence produced the swift INV-lanaz (383/407 method-local let leaked as fields) and go INV-sidab regressions the F5 DEEP bakeoff caught. CRITICAL discovery: the analyzer's bundled tree-sitter-kotlin grammar (via _create_parser) diverges from tree_sitter_language_pack — the property NAME node is 'identifier' not 'simple_identifier', and init{}/if/for bodies are 'block' not 'control_structure_body'. An init-block val sits under block->anonymous_initializer->class_body, so WITHOUT 'block' in the local set it would wrongly reach class_body and emit as a field. Caught + fixed + locked with a dedicated regression test (test_init_block_local_not_emitted_as_field).\n\nBehavioral evidence (live 'hypergumbo run' on a sample Kotlin file): BEFORE = 0 field / 0 variable ({class:1, method:1}); AFTER = 4 field (Config.version, Widget.name[sig=String], Widget.secret, Widget.size) + 2 variable (topLevelConst, topLevelVar), with the function-local 'val local' correctly EXCLUDED. 12 dedicated tests + 115 existing kotlin tests green; 100% coverage on kotlin.py; full targeted suite green (19894 passed on the fallback full run).\n\nRe-applying awaits_bakeoff_validation: this is a blast-radius emission change (adds field+variable symbols across the Kotlin corpus, shifting symbol/centrality/dead-code counts) — a DEEP cohort with real Kotlin repos should confirm the field/variable nodes materialize right-reason (locals excluded, like the 5 validated langs) before the tag is stripped.\n\nREMAINING (item stays todo_hard): the non-mainstream analyzer tail — lang-common (scala/dart/haskell/ocaml/...) and lang-extended1 (many). Optional follow-up: promote kotlin into FIXTURE_ANALYZER so the emission-parity matrix gates it (currently guarded only by the dedicated test file)."  # 143f
+- op: update  # 3fe5
+  at: '2026-07-01T21:39:56Z'  # 3fe5
+  by: agent  # 3fe5
+  actor: jgstern_agent  # 3fe5
+  clock: 14  # 3fe5
+  nonce: 3fe5  # 3fe5
+  set: {}  # 3fe5
+  add:  # 3fe5
+    tags: [awaits_bakeoff_validation]  # 3fe5
