@@ -1,0 +1,27 @@
+Original commit body from 375b56ce64c3d8ba0ae87c31b6f4d28fa5e4da6c:
+
+WI-kadop proposed splitting a Symbol.synthesis_mechanism field off Symbol.origin
+(mirroring ADR-0031/0032) because origin carried values naming HOW a symbol was
+synthesized (inheritance / orchestrator_file_symbol_synthesis /
+boundary_external_symbol_synthesis / scip) rather than WHICH registered pass.
+
+Re-verifying the premise showed the ground truth shifted: the intervening
+synthetic:F1 work gave the two high-volume synthesizers (1620 + 518 self-corpus
+symbols) real AnalysisRuns whose pass_id IS the origin value, with the nodes'
+origin_run_id joining to it — so a synthesized symbol's "how" IS "which pass".
+A field-split would then store the same string in two fields (a new redundancy),
+not remove a leak. Of the other two values, `inheritance` is a phantom (zero
+producers; the inheritance-linker stamps make_pass_id("inheritance-linker"),
+not the bare string) and `scip` is off-self-corpus.
+
+ADR-0044 decision: no new field. catalog._SYNTHESIS_MECHANISMS renamed
+_SYNTHETIC_PASS_IDS and re-documented as legitimate synthetic pass-ids; the
+`inheritance` phantom dropped; the SCIP-symbol AnalysisRun-join gap split to
+WI-zabus (cross-package, rust-analyzer). No IR shape change, no SCHEMA_VERSION
+bump. Precedent: a filed field-split can be correctly WITHDRAWN when intervening
+work resolves the axis conflation it targeted — verify the premise before
+applying a campaign pattern mechanically.
+
+Completes WI-kadop (re-scoped; tracker status set post-merge).
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
