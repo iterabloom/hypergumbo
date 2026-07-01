@@ -21222,3 +21222,92 @@ class TestMixedConceptsFormats:
         )
         # Should not crash during enrichment
         enrich_symbols([sym], [], [])
+
+
+class TestFrameworkPatternEcosystemGating:
+    """WI-vuzur / WI-vifun: framework patterns must not fire cross-ecosystem.
+
+    The matcher consults only the per-pattern ``language`` / ``symbol_path``
+    filters, never ``FrameworkPatternDef.language`` (the file-level gate), so a
+    JS-only ``lit`` pattern keyed on a bare ``@property`` decorator fired on a
+    Python ``@property``, and the byte-identical cargo/poetry TOML-dependency
+    patterns both fired on every ``pyproject.toml`` and ``Cargo.toml`` dep.
+    """
+
+    @staticmethod
+    def _concepts(sym: Symbol, framework: str) -> list[str]:
+        return sorted(
+            m["concept"]
+            for m in match_patterns(sym, [load_framework_patterns(framework)])
+        )
+
+    @staticmethod
+    def _decorated(name: str, language: str, decorator: str) -> Symbol:
+        return Symbol(
+            id=f"{language}:x:1-2:{name}:method",
+            name=name,
+            kind="method",
+            language=language,
+            path="x",
+            span=Span(1, 2, 0, 0),
+            meta={"decorators": [{"name": decorator}]},
+        )
+
+    @staticmethod
+    def _dep(path: str, scope: str | None = None) -> Symbol:
+        meta: dict = {}
+        if scope is not None:
+            meta["dependency_scope"] = scope
+        return Symbol(
+            id=f"toml:{path}:1-1:pkg:dependency",
+            name="pkg",
+            kind="dependency",
+            language="toml",
+            path=path,
+            span=Span(1, 1, 0, 0),
+            meta=meta,
+        )
+
+    # ---- WI-vuzur: lit per-pattern language gate ----
+
+    def test_lit_property_does_not_fire_on_python(self) -> None:
+        py = self._decorated("db_path", "python", "property")
+        assert "reactive_property" not in self._concepts(py, "lit")
+
+    def test_lit_property_still_fires_on_javascript(self) -> None:
+        js = self._decorated("dbPath", "javascript", "property")
+        assert "reactive_property" in self._concepts(js, "lit")
+
+    def test_lit_state_and_query_do_not_fire_on_python(self) -> None:
+        state = self._decorated("s", "python", "state")
+        query = self._decorated("q", "python", "query")
+        assert "internal_state" not in self._concepts(state, "lit")
+        assert "dom_query" not in self._concepts(query, "lit")
+
+    def test_lit_state_still_fires_on_typescript(self) -> None:
+        ts = self._decorated("thing", "typescript", "state")
+        assert "internal_state" in self._concepts(ts, "lit")
+
+    # ---- WI-vifun: cargo/poetry symbol_path discriminator ----
+
+    def test_pyproject_dep_is_poetry_not_cargo(self) -> None:
+        c = self._concepts(self._dep("packages/foo/pyproject.toml"), "config-conventions")
+        assert "poetry_dependency" in c
+        assert "cargo_dependency" not in c
+
+    def test_cargo_toml_dep_is_cargo_not_poetry(self) -> None:
+        c = self._concepts(self._dep("crates/bar/Cargo.toml"), "config-conventions")
+        assert "cargo_dependency" in c
+        assert "poetry_dependency" not in c
+
+    def test_pyproject_dev_dep_excludes_cargo_family(self) -> None:
+        c = self._concepts(self._dep("pyproject.toml", scope="dev"), "config-conventions")
+        assert "poetry_dev_dependency" in c
+        assert "cargo_dependency" not in c
+        assert "cargo_dev_dependency" not in c
+
+    def test_cargo_toml_dev_dep_excludes_poetry_family(self) -> None:
+        c = self._concepts(self._dep("Cargo.toml", scope="dev"), "config-conventions")
+        assert "cargo_dev_dependency" in c
+        assert "poetry_dependency" not in c
+        assert "poetry_dev_dependency" not in c
