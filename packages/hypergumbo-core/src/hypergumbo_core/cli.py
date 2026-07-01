@@ -132,7 +132,7 @@ import hypergumbo_core.linkers.rust_trait_dispatch as _rust_trait_dispatch_linke
 from .entrypoints import EntrypointKind, detect_entrypoints
 from .ir import (
     AnalysisRun, PASS_VERSION,
-    Symbol, Edge, apply_external_id_remap, compute_config_fingerprint,
+    Symbol, Edge, ExternalRef, apply_external_id_remap, compute_config_fingerprint,
     create_boundary_nodes,
     deduplicate_edges,
     is_external_boundary,
@@ -1337,6 +1337,50 @@ def _handle_files_mode(
         sys.stdout.write(output_text)
 
     return 0
+
+
+def _rehydrate_io_boundary_edges(raw_edges: list) -> list:
+    """Rebuild lightweight edge objects for the consumer-time io-boundary
+    classification, preserving ``is_resolved`` + ``dst_ref`` (WI-kumol).
+
+    ``compute_boundary_map`` reads ``edge.is_resolved`` (io_boundary.py:1174 —
+    the ADR-0028 F3-Filter-1 unresolved-receiver skip in
+    ``_compute_external_potential``) and ``edge.dst_ref`` (the WI-tihup
+    structured external-target lookup). Both CLI commands that load a *persisted*
+    behavior_map — ``io-boundaries`` and ``verify-claims`` — must reconstruct
+    these from the serialized edge dict. The earlier 4-field facade dropped
+    them, so ``getattr`` fell back to ``is_resolved=True`` / ``dst_ref=None``:
+    the receiver gate never fired on the CLI path and every unresolved bare-name
+    method match (duck-typed ``x.read()`` on an unknown receiver) was
+    (mis)classified into ``external_potential`` — re-inflating exactly the noise
+    ``io-boundary:F3`` (INV-tapat/INV-maluk) suppresses in-process (~26k spurious
+    chains on self-analysis). ``is_resolved`` defaults to True and ``dst_ref`` to
+    None so a pre-ADR-0028 / pre-WI-tihup legacy map (lacking the keys)
+    classifies exactly as it did before. (The ``slice --io-boundary`` path is
+    unaffected — it operates on real ``Edge`` objects, not this facade.)
+    """
+    from dataclasses import dataclass as _dc
+
+    @_dc
+    class _IoBoundaryEdge:
+        src: str
+        dst: str
+        edge_type: str
+        meta: Optional[Dict[str, Any]] = None
+        is_resolved: bool = True
+        dst_ref: Optional[ExternalRef] = None
+
+    return [
+        _IoBoundaryEdge(
+            src=e.get("src", ""),
+            dst=e.get("dst", ""),
+            edge_type=e.get("type", ""),
+            meta=dict(e.get("meta", {})) if e.get("meta") else None,
+            is_resolved=e.get("is_resolved", True),
+            dst_ref=ExternalRef.from_dict(e["dst_ref"]) if e.get("dst_ref") else None,
+        )
+        for e in raw_edges
+    ]
 
 
 def _apply_io_boundary_filter(
@@ -4061,25 +4105,9 @@ def cmd_io_boundaries(args: argparse.Namespace) -> int:
     behavior_map = load_behavior_map(input_path)
     raw_edges = behavior_map.get("edges", [])
 
-    # Build lightweight edge objects for the tagging pass
-    from dataclasses import dataclass as _dc
-
-    @_dc
-    class _Edge:
-        src: str
-        dst: str
-        edge_type: str
-        meta: Optional[Dict[str, Any]] = None
-
-    edges = [
-        _Edge(
-            src=e.get("src", ""),
-            dst=e.get("dst", ""),
-            edge_type=e.get("type", ""),
-            meta=dict(e.get("meta", {})) if e.get("meta") else None,
-        )
-        for e in raw_edges
-    ]
+    # Build lightweight edge objects for the tagging pass. WI-kumol: carry
+    # is_resolved + dst_ref so the ADR-0028 receiver gate / WI-tihup lookup fire.
+    edges = _rehydrate_io_boundary_edges(raw_edges)
 
     # Detect languages in the graph
     from .io_boundary import compute_boundary_map, load_catalog
@@ -4755,24 +4783,9 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
     behavior_map = load_behavior_map(input_path)
     raw_edges = behavior_map.get("edges", [])
 
-    from dataclasses import dataclass as _dc
-
-    @_dc
-    class _Edge:
-        src: str
-        dst: str
-        edge_type: str
-        meta: Optional[dict] = None
-
-    edges = [
-        _Edge(
-            src=e.get("src", ""),
-            dst=e.get("dst", ""),
-            edge_type=e.get("type", ""),
-            meta=dict(e.get("meta", {})) if e.get("meta") else None,
-        )
-        for e in raw_edges
-    ]
+    # WI-kumol: carry is_resolved + dst_ref so the ADR-0028 receiver gate /
+    # WI-tihup lookup fire on the verify-claims boundary classification too.
+    edges = _rehydrate_io_boundary_edges(raw_edges)
 
     from .io_boundary import compute_boundary_map, load_catalog
 

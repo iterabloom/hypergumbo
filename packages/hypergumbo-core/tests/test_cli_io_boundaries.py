@@ -123,6 +123,85 @@ _MULTI_BOUNDARY = {
 }
 
 
+# WI-kumol: the consumer-time io-boundary facade (cmd_io_boundaries /
+# cmd_verify_claims) must carry is_resolved + dst_ref from the serialized map so
+# compute_boundary_map's ADR-0028 unresolved-receiver gate (io_boundary.py:1174)
+# and the WI-tihup structured dst_ref lookup fire on the CLI path. Node/edge
+# shapes lifted from a real `hypergumbo run` of a fixture (os.remove +
+# obj.read() + bus.write()): os.remove is is_resolved=False but resolves via its
+# dst_ref module hint -> fs_write; the two duck-typed method calls are
+# is_resolved=False with NO dst_ref -> speculative, must be suppressed.
+_UNRESOLVED_RECEIVER = {
+    "nodes": [
+        {"id": "python:svc.py:5-6:cleanup:function", "name": "cleanup",
+         "kind": "function", "language": "python", "path": "svc.py",
+         "span": {"start_line": 5, "end_line": 6}},
+        {"id": "python:svc.py:9-10:process:function", "name": "process",
+         "kind": "function", "language": "python", "path": "svc.py",
+         "span": {"start_line": 9, "end_line": 10}},
+        {"id": "python:svc.py:13-14:emit:function", "name": "emit",
+         "kind": "function", "language": "python", "path": "svc.py",
+         "span": {"start_line": 13, "end_line": 14}},
+        {"id": "python:os:0-0:remove:unresolved", "name": "remove",
+         "kind": "external_symbol", "language": "python", "path": "<external>",
+         "span": {"start_line": 0, "end_line": 0},
+         "meta": {"external_boundary": True, "ecosystem": "stdlib"},
+         "supply_chain": {"tier": 3, "tier_name": "external_dep"}},
+        {"id": "python:external:0-0:read:unresolved", "name": "read",
+         "kind": "external_symbol", "language": "python", "path": "<external>",
+         "span": {"start_line": 0, "end_line": 0},
+         "meta": {"external_boundary": True, "ecosystem": "third_party"},
+         "supply_chain": {"tier": 3, "tier_name": "external_dep"}},
+        {"id": "python:external:0-0:write:unresolved", "name": "write",
+         "kind": "external_symbol", "language": "python", "path": "<external>",
+         "span": {"start_line": 0, "end_line": 0},
+         "meta": {"external_boundary": True, "ecosystem": "third_party"},
+         "supply_chain": {"tier": 3, "tier_name": "external_dep"}},
+    ],
+    "edges": [
+        {"src": "python:svc.py:5-6:cleanup:function",
+         "dst": "python:os:0-0:remove:unresolved", "type": "calls",
+         "is_resolved": False,
+         "dst_ref": {"lang": "python", "module_path": "os", "name": "remove"}},
+        {"src": "python:svc.py:9-10:process:function",
+         "dst": "python:external:0-0:read:unresolved", "type": "calls",
+         "is_resolved": False},
+        {"src": "python:svc.py:13-14:emit:function",
+         "dst": "python:external:0-0:write:unresolved", "type": "calls",
+         "is_resolved": False},
+    ],
+}
+
+
+def test_cmd_io_boundaries_suppresses_unresolved_receiver_external_potential(
+    tmp_path: Path, capsys
+) -> None:
+    """WI-kumol: the CLI facade honors is_resolved + dst_ref from the map.
+
+    Duck-typed ``obj.read()`` / ``bus.write()`` on an unknown receiver
+    (``is_resolved=False``, no ``dst_ref``) must NOT be surfaced as
+    external_potential — the previous 4-field facade dropped ``is_resolved``, so
+    the ADR-0028 unresolved-receiver gate never fired on the CLI path and these
+    bare-name matches inflated the external_potential bucket. A
+    resolved-via-``dst_ref`` stdlib call (``os.remove``) must STILL classify as
+    a real ``fs_write`` boundary.
+    """
+    bmap = _make_behavior_map(**_UNRESOLVED_RECEIVER)
+    args = _make_args(tmp_path, bmap, json_output=True)
+
+    rc = cmd_io_boundaries(args)
+
+    assert rc == 0
+    out = json.loads(capsys.readouterr().out)
+    # os.remove: real fs_write boundary preserved (classified via dst_ref).
+    assert out["total_io_edges"] >= 1
+    assert "fs_write" in out["boundaries"]
+    # duck-typed read()/write(): suppressed, NOT external_potential.
+    assert out["external_potential_edges"] == 0
+    ext = out["boundaries"].get("external_potential", {})
+    assert ext.get("chain_count", 0) == 0
+
+
 # ---------------------------------------------------------------------------
 # Original tests (updated with explicit args attributes)
 # ---------------------------------------------------------------------------
