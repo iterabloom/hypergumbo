@@ -32,3 +32,18 @@
     tags: [dogfood]  # 92ae
   remove:  # 92ae
     tags: [dogfooding]  # 92ae
+- op: update  # c395
+  at: '2026-07-01T16:03:56Z'  # c395
+  by: agent  # c395
+  actor: jgstern_agent  # c395
+  clock: 3  # c395
+  nonce: c395  # c395
+  set:  # c395
+    status: done  # c395
+- op: discuss  # 8d31
+  at: '2026-07-01T16:03:56Z'  # 8d31
+  by: agent  # 8d31
+  actor: jgstern_agent  # 8d31
+  clock: 4  # 8d31
+  nonce: 8d31  # 8d31
+  message: "Stale-already-fixed by file-anchor:F1 (WI-dagif/WI-rajod). Premise: markdown analyzer emits no kind=file anchor per .md file. Behavioral evidence (editable binary, re-ran on a 2-file markdown fixture /tmp/mddocs): 2 kind=file markdown anchors emitted (guide.md, readme.md), each with supply_chain.tier=1/first_party. The orchestrator now synthesizes a kind=file anchor per discovered path (base.py synthesize_file_anchors); self-analysis carries 116 markdown file anchors. The 'never emits a file-kind anchor per .md file' premise no longer holds. Closing done."  # 8d31

@@ -32,3 +32,18 @@
     tags: [dogfood]  # 7362
   remove:  # 7362
     tags: [dogfooding]  # 7362
+- op: update  # 69f0
+  at: '2026-07-01T16:03:56Z'  # 69f0
+  by: agent  # 69f0
+  actor: jgstern_agent  # 69f0
+  clock: 3  # 69f0
+  nonce: 69f0  # 69f0
+  set:  # 69f0
+    status: done  # 69f0
+- op: discuss  # 6409
+  at: '2026-07-01T16:03:56Z'  # 6409
+  by: agent  # 6409
+  actor: jgstern_agent  # 6409
+  clock: 4  # 6409
+  nonce: '6409'  # 6409
+  message: "Stale-already-fixed by file-anchor:F1. Premise: tier classifier returns None for 100% of markdown nodes. Behavioral evidence (editable binary, /tmp/mddocs fixture): markdown kind=file anchors carry supply_chain.tier=1/first_party (non-None), and self-analysis shows 116/116 markdown file nodes with non-null tier. The default map represents markdown by classifiable kind=file anchors. (Any residual --include-docs section-kind nodes lacking a tier are default-noise-filtered and outside the item's stated 100%-None premise — a narrow peripheral surface, not this item.) Closing done."  # 6409

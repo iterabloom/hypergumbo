@@ -30,3 +30,18 @@
     tags: [dogfood_tranche_03]  # 664d
   remove:  # 664d
     tags: [dogfood_tranch_03]  # 664d
+- op: update  # 09b2
+  at: '2026-07-01T16:04:38Z'  # 09b2
+  by: agent  # 09b2
+  actor: jgstern_agent  # 09b2
+  clock: 3  # 09b2
+  nonce: 09b2  # 09b2
+  set:  # 09b2
+    priority: 3  # 09b2
+- op: discuss  # 3a2f
+  at: '2026-07-01T16:04:38Z'  # 3a2f
+  by: agent  # 3a2f
+  actor: jgstern_agent  # 3a2f
+  clock: 4  # 3a2f
+  nonce: 3a2f  # 3a2f
+  message: "PREMISE CORRECTION (verified on merged dev 2026-07-01, Wave-3 Phase-2 sweep). The item's headline — '14118 edges silently get 0.0 centrality weight' and '1790 nodes invisible to centrality' — is FACTUALLY WRONG. ranking.py:319 reads `edge_type_weights.get(edge.edge_type, 0.5)` — a 0.5 fallback, NOT 0.0; git-blame shows 0.5 since the feature commit 3b5746e186 (2026-03-18), and `git log -S 'get(edge.edge_type, 0.0)'` returns nothing (it was never 0.0). The correctness-strategy skeptic independently states 'the weight fallback is 0.5, not zero — uncalibrated, not invisible.' So missing edge types get a non-zero 0.5 and nodes reached only by instantiates/references/module_attr_ref are NOT centrality-invisible. SURVIVING (real, lesser) issue: DEFAULT_EDGE_TYPE_WEIGHTS (ranking.py:201-217) covers only 12 of ~54 registered edge types, so the 42 missing types get an UNDIFFERENTIATED 0.5 (calibration gap) and there is no registry-completeness gate to catch drift. Re-scoped: this is a calibration + missing-gate quality item, not a silent-zeroing bug. Downgraded P1->P3 accordingly. Cleanest future fix: (a) assign calibrated weights to high-volume missing types (instantiates/references/module_attr_ref); (b) add a test asserting DEFAULT_EDGE_TYPE_WEIGHTS is total over edge_types.all_edge_type_names() (or lists intentional defaults)."  # 3a2f
