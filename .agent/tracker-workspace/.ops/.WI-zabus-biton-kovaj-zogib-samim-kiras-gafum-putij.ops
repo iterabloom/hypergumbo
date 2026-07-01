@@ -1,0 +1,21 @@
+- op: create  # e831
+  at: '2026-07-01T04:18:26Z'  # e831
+  by: agent  # e831
+  actor: jgstern_agent  # e831
+  clock: 1  # e831
+  nonce: e831  # e831
+  data:  # e831
+    kind: work_item  # e831
+    title: "SCIP-import Symbols carry bare origin='scip' with no AnalysisRun join (finish synthetic:F1 for the SCIP pass)"  # e831
+    status: todo_soft  # e831
+    priority: 3  # e831
+    parent:  # e831
+    tags:  # e831
+    - classification_axes  # e831
+    - analysis_quality  # e831
+    isbefore: []  # e831
+    duplicate_of: []  # e831
+    not_duplicate_of: []  # e831
+    pr_ref:  # e831
+    description: "Split-off from WI-kadop (ADR-0044). The SCIP-index import (rust-analyzer) sets Symbol.origin='scip' (bare) at scip/index.py:202 and Edge.origin='scip' at scip/edges.py:125 / scip/calls.py:178. synthetic:F1 gave the two orchestrator-level synthesizers (orchestrator_file_symbol_synthesis / boundary_external_symbol_synthesis) a real AnalysisRun whose pass_id is the origin value + threaded origin_run_id so nodes join. The SCIP pass was NOT given the same treatment: rust-analyzer translate.py:175 DOES create a scip AnalysisRun (pass_id=make_pass_id('rust-scip-translate')) and threads run_id to edges/calls, but (a) the SYMBOLS (scip_index_to_symbols) don't receive run_id at all, and (b) both symbols and edges use the bare literal 'scip' as origin instead of the run's real pass_id. So SCIP-sourced Symbols have no node->AnalysisRun provenance join. Fix: thread run_id into scip_index_to_symbols, and set origin=[the rust-scip-translate pass_id] on scip symbols + edges (replacing bare 'scip'); ensure that pass_id is in all_known_pass_ids; update the consumer rust_analyzer/analyzer.py:115 (any('scip' in edge.origin)). Then 'scip' can be removed from catalog._SYNTHETIC_PASS_IDS. Off-self-corpus (rust-analyzer SCIP path only) — validate via the rust-analyzer package tests, not self-analysis. Cross-package (touches hypergumbo-lang-rust-analyzer)."  # e831
+    fields: {}  # e831
