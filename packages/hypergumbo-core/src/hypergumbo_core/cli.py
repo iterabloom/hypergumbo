@@ -2341,6 +2341,14 @@ def cmd_explain(args: argparse.Namespace) -> int:
         print(f"  Location: {path}:{start_line}-{end_line}")
         print(f"  Language: {lang}")
 
+        # WI-kipod: surface the captured docstring (the human-written
+        # intent) so `explain` reports what a symbol is for, not only its
+        # location, metrics, and call graph. Absent for symbols the
+        # analyzer captured no doc comment for.
+        docstring = node.get("docstring")
+        if docstring:
+            print(f"  Docstring: {docstring}")
+
         # Show origin passes (PROV wasAttributedTo)
         node_origin = node.get("origin")
         if node_origin:

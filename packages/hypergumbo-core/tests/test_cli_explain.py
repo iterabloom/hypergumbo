@@ -56,6 +56,71 @@ def test_cmd_explain_shows_symbol_details(tmp_path: Path, capsys) -> None:
     assert "lines" in out.lower() or "10" in out
 
 
+def test_cmd_explain_shows_docstring(tmp_path: Path, capsys) -> None:
+    """WI-kipod: explain surfaces the captured docstring (human intent)."""
+    behavior_map = {
+        "schema_version": SCHEMA_VERSION,
+        "nodes": [
+            {
+                "id": "python:src/main.py:1-10:foo:function",
+                "name": "foo",
+                "kind": "function",
+                "language": "python",
+                "path": "src/main.py",
+                "span": {"start_line": 1, "end_line": 10, "start_col": 0, "end_col": 10},
+                "docstring": "Return a friendly greeting for the given name.",
+            },
+        ],
+        "edges": [],
+    }
+    results_file = tmp_path / "hypergumbo.results.json"
+    results_file.write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.symbol = "foo"
+    args.path = str(tmp_path)
+    args.input = None
+
+    result = cmd_explain(args)
+
+    assert result == 0
+    out, _ = capsys.readouterr()
+    assert "Return a friendly greeting for the given name." in out
+
+
+def test_cmd_explain_omits_docstring_line_when_absent(
+    tmp_path: Path, capsys
+) -> None:
+    """WI-kipod: no Docstring label emitted for a symbol without one."""
+    behavior_map = {
+        "schema_version": SCHEMA_VERSION,
+        "nodes": [
+            {
+                "id": "python:src/main.py:1-10:foo:function",
+                "name": "foo",
+                "kind": "function",
+                "language": "python",
+                "path": "src/main.py",
+                "span": {"start_line": 1, "end_line": 10, "start_col": 0, "end_col": 10},
+            },
+        ],
+        "edges": [],
+    }
+    results_file = tmp_path / "hypergumbo.results.json"
+    results_file.write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.symbol = "foo"
+    args.path = str(tmp_path)
+    args.input = None
+
+    result = cmd_explain(args)
+
+    assert result == 0
+    out, _ = capsys.readouterr()
+    assert "Docstring:" not in out
+
+
 def test_cmd_explain_shows_callers_and_callees(tmp_path: Path, capsys) -> None:
     """Explain shows callers (who calls this) and callees (what this calls)."""
     behavior_map = {

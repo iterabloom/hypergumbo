@@ -4233,15 +4233,23 @@ def _format_source_files(
     max_files: int = 50,
     density_scores: dict[str, float] | None = None,
     exclude_tests: bool = False,
+    docstrings: dict[str, str] | None = None,
 ) -> str:
     """Format source files as a Markdown section.
 
     When density_scores is provided, files are sorted by symbol importance
     density (sum of raw in-degrees of symbols / LOC) in descending order.
     Otherwise, files are displayed in their original order.
+
+    WI-kipod: when ``docstrings`` (a relative-path → module-summary map,
+    built by :func:`_file_docstrings` from the file-anchor Symbols) has an
+    entry for a file, its module docstring is rendered after the path so
+    the section reports what each file is for, not just a bare path list.
     """
     if not files:
         return ""
+
+    docstrings = docstrings or {}
 
     # Sort by density if scores are provided
     if density_scores:
@@ -4255,12 +4263,40 @@ def _format_source_files(
 
     for f in files[:max_files]:
         rel_path = f.relative_to(repo_root)
-        lines.append(f"- `{rel_path}`")
+        docstring = docstrings.get(str(rel_path))
+        if docstring:
+            lines.append(f"- `{rel_path}` — {docstring}")
+        else:
+            lines.append(f"- `{rel_path}`")
 
     if len(files) > max_files:
         lines.append(f"- ... and {len(files) - max_files} more files")
 
     return "\n".join(lines)
+
+
+def _file_docstrings(symbols: list[Symbol], repo_root: Path) -> dict[str, str]:
+    """Map relative file path → module docstring for ``kind="file"`` symbols.
+
+    WI-kipod: threads the module summary captured on file-anchor Symbols
+    (WI-kazob, which populates ``kind="file"`` docstrings — 845/908 file
+    nodes on the self-corpus) into the Source Files section. Keyed by the
+    same relative path :func:`_format_source_files` derives from its
+    ``files`` list (``str(Path.relative_to(repo_root))``), so absolute
+    file-node paths are relativized here to match. File nodes without a
+    captured docstring (e.g. non-Python file anchors, whose languages lack
+    a uniform module-docstring construct), and every non-file symbol, are
+    excluded.
+    """
+    repo_root_str = str(repo_root)
+    result: dict[str, str] = {}
+    for sym in symbols:
+        if sym.kind == "file" and sym.docstring:
+            path = sym.path
+            if path.startswith(repo_root_str):
+                path = path[len(repo_root_str) + 1:]
+            result[path] = sym.docstring
+    return result
 
 
 
@@ -5365,10 +5401,17 @@ def _format_entrypoints(
         for ep in shown:
             sym = symbol_by_id.get(ep.symbol_id)
             if sym:
-                rel_path = sym.path
-                if rel_path.startswith(repo_root_str):
-                    rel_path = rel_path[len(repo_root_str) + 1:]
-                lines.append(f"- `{sym.name}` ({ep.label}) — `{rel_path}`")
+                # WI-kipod: prefer the captured docstring (what the entry
+                # point does) over the path (where it lives). The path is
+                # recoverable via `explain` / the Source Files section, but
+                # the human-written intent was previously never surfaced.
+                if sym.docstring:
+                    lines.append(f"- `{sym.name}` ({ep.label}) — {sym.docstring}")
+                else:
+                    rel_path = sym.path
+                    if rel_path.startswith(repo_root_str):
+                        rel_path = rel_path[len(repo_root_str) + 1:]
+                    lines.append(f"- `{sym.name}` ({ep.label}) — `{rel_path}`")
             else:
                 lines.append(f"- `{ep.symbol_id}` ({ep.label})")
 
@@ -6559,6 +6602,7 @@ def _generate_sketch_impl(
             max_files=max_source_files,
             density_scores=density_scores if density_scores else None,
             exclude_tests=exclude_tests,
+            docstrings=_file_docstrings(symbols, repo_root),
         )
         if source_section:
             sections.append(source_section)

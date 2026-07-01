@@ -38,6 +38,7 @@ from hypergumbo_core.sketch import (
     _extract_path_from_forge_url,
     _extract_readme_internal_links,
     _format_file_content_block,
+    _file_docstrings,
     CONFIG_FILES_BY_LANG,
 )
 from hypergumbo_core.ranking import compute_centrality, _is_test_path
@@ -1451,6 +1452,18 @@ class TestFormatSourceFiles:
         result = _format_source_files(tmp_path, [])
         assert result == ""
 
+    def test_renders_docstring_when_present(self, tmp_path: Path) -> None:
+        """WI-kipod: file with a module docstring shows it after the path."""
+        files = [tmp_path / "a.py", tmp_path / "b.py"]
+        docstrings = {"a.py": "Module A: greeting primitives."}
+
+        result = _format_source_files(tmp_path, files, docstrings=docstrings)
+
+        assert "- `a.py` — Module A: greeting primitives." in result
+        # b.py has no docstring entry: bare path line, no dash summary.
+        assert "- `b.py`" in result
+        assert "- `b.py` —" not in result
+
     def test_sorts_by_density_when_provided(self, tmp_path: Path) -> None:
         """Sorts files by density scores when provided."""
         files = [
@@ -1477,6 +1490,45 @@ class TestFormatSourceFiles:
         assert "`medium.py`" in file_lines[1]
         assert "`low.py`" in file_lines[2]
 
+
+class TestFileDocstrings:
+    """WI-kipod: map relative file path -> module docstring for file nodes."""
+
+    def test_maps_file_kind_docstrings_relativizing_absolute_paths(
+        self, tmp_path: Path
+    ) -> None:
+        """Absolute file-node paths are relativized to repo_root."""
+        symbols = [
+            Symbol(id="f1", name="a.py", kind="file", language="python",
+                   path=str(tmp_path / "a.py"), span=Span(1, 1, 1, 1),
+                   docstring="Module A summary."),
+        ]
+        result = _file_docstrings(symbols, tmp_path)
+        assert result == {"a.py": "Module A summary."}
+
+    def test_keeps_already_relative_paths(self, tmp_path: Path) -> None:
+        """A file node whose path is already relative is keyed as-is."""
+        symbols = [
+            Symbol(id="f1", name="a.py", kind="file", language="python",
+                   path="a.py", span=Span(1, 1, 1, 1),
+                   docstring="Module A summary."),
+        ]
+        result = _file_docstrings(symbols, tmp_path)
+        assert result == {"a.py": "Module A summary."}
+
+    def test_skips_files_without_docstring_and_non_file_kinds(
+        self, tmp_path: Path
+    ) -> None:
+        """Non-file kinds and docstring-less file nodes are excluded."""
+        symbols = [
+            Symbol(id="f1", name="a.py", kind="file", language="python",
+                   path="a.py", span=Span(1, 1, 1, 1)),  # no docstring
+            Symbol(id="fn", name="foo", kind="function", language="python",
+                   path="a.py", span=Span(1, 1, 1, 1),
+                   docstring="A function docstring."),  # not kind=file
+        ]
+        result = _file_docstrings(symbols, tmp_path)
+        assert result == {}
 
 
 def _make_test_symbol(
@@ -2706,6 +2758,39 @@ class TestFormatEntrypoints:
         assert "### CLI & Scripts" in result
         assert "`main`" in result
         assert "CLI main" in result
+
+    def test_renders_docstring_when_present(self, tmp_path: Path) -> None:
+        """WI-kipod: entry with a docstring shows it after the dash, not the path."""
+        symbols = [
+            Symbol(id="main", name="main", kind="function", language="python",
+                   path=str(tmp_path / "cli.py"), span=Span(1, 1, 1, 10),
+                   docstring="Run the demo: greet the world and hail a user."),
+        ]
+        entrypoints = [
+            Entrypoint(symbol_id="main", kind=EntrypointKind.CLI_MAIN,
+                       confidence=0.7, label="CLI main"),
+        ]
+
+        result = _format_entrypoints(entrypoints, symbols, tmp_path)
+
+        assert "- `main` (CLI main) — Run the demo: greet the world and hail a user." in result
+        # When a docstring is present the path is not rendered after the dash.
+        assert "— `cli.py`" not in result
+
+    def test_falls_back_to_path_without_docstring(self, tmp_path: Path) -> None:
+        """WI-kipod: entry with no docstring keeps the path after the dash."""
+        symbols = [
+            Symbol(id="main", name="main", kind="function", language="python",
+                   path=str(tmp_path / "cli.py"), span=Span(1, 1, 1, 10)),
+        ]
+        entrypoints = [
+            Entrypoint(symbol_id="main", kind=EntrypointKind.CLI_MAIN,
+                       confidence=0.7, label="CLI main"),
+        ]
+
+        result = _format_entrypoints(entrypoints, symbols, tmp_path)
+
+        assert "- `main` (CLI main) — `cli.py`" in result
 
     def test_respects_max_entries(self, tmp_path: Path) -> None:
         """Limits output to max_entries per group."""
