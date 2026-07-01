@@ -215,6 +215,11 @@ class Pattern:
     modifiers: str | None = None
     modifiers_exclude: str | None = None
     symbol_path: str | None = None
+    # WI-bosab: when set to False, the concept this pattern produces is stripped
+    # from symbols the supply-chain classifier marks as test code (see
+    # ``strip_test_file_only_concepts``). A plain tri-state bool (not a regex),
+    # so no ``__post_init__`` compilation. None = no test-file policy.
+    is_test_file: bool | None = None
     usage: UsagePatternSpec | None = None
     extract: dict[str, str] | None = None
 
@@ -874,6 +879,7 @@ class FrameworkPatternDef:
                 modifiers=p.get("modifiers"),
                 modifiers_exclude=p.get("modifiers_exclude"),
                 symbol_path=p.get("symbol_path"),
+                is_test_file=p.get("is_test_file"),
                 extract_path=p.get("extract_path"),
                 extract_method=p.get("extract_method"),
                 prefix_from_parent=p.get("prefix_from_parent"),
@@ -1300,6 +1306,84 @@ def _apply_subresource_locator_paths(
                         c["path"] = full_class_prefix
 
 
+# Convention pattern YAMLs applied to every repo regardless of framework
+# detection (main() entry points, test frameworks, naming heuristics, library
+# exports, ...). Shared by ``enrich_symbols`` (which applies them) and
+# ``_test_excluded_concepts`` (which scans them for the WI-bosab test-file
+# exclusion markers) so the list has a single source of truth.
+_CONVENTION_PATTERN_IDS: tuple[str, ...] = (
+    "main-functions",
+    "test-frameworks",
+    "language-conventions",
+    "config-conventions",
+    "naming-conventions",
+    "library-exports",
+    "logging-conventions",
+    "go-encoding-callbacks",
+    "node-http",
+)
+
+
+def _test_excluded_concepts() -> frozenset[str]:
+    """Concept names whose pattern declared ``is_test_file: false`` (WI-bosab).
+
+    These concepts are stripped from test-file symbols by
+    ``strip_test_file_only_concepts``. The markers live in the always-loaded
+    convention YAMLs (naming-conventions.yaml today), so this scans that set
+    rather than every framework file. Cheap (the pattern defs are cached) and
+    called once per run, so it is recomputed rather than memoized — memoization
+    would survive across the pattern-cache clears that tests rely on.
+    """
+    excluded: set[str] = set()
+    for convention_id in _CONVENTION_PATTERN_IDS:
+        pattern_def = load_framework_patterns(convention_id)
+        if pattern_def is None:  # pragma: no cover - convention files always exist
+            continue
+        for pattern in pattern_def.patterns:
+            if pattern.is_test_file is False:
+                excluded.add(pattern.concept)
+    return frozenset(excluded)
+
+
+def strip_test_file_only_concepts(symbols: list[Symbol]) -> int:
+    """Drop concepts declared ``is_test_file: false`` from test-file symbols.
+
+    WI-bosab: naming-convention concepts (``service_by_name``,
+    ``controller_by_name``, ``handler_by_name``) fire on a class purely by its
+    name, so a test fixture like ``class MyService`` in ``tests/`` was mislabeled
+    a production service. The concept-enrichment pass (``enrich_symbols``) runs
+    BEFORE supply-chain classification in the pipeline (linker-produced symbols
+    must be classified too), so ``Symbol.is_test_file`` — the canonical
+    test-code verdict — is not yet set when concepts are attached. This
+    post-classification pass honors it: any concept whose producing pattern set
+    ``is_test_file: false`` is removed from a symbol the classifier marked
+    ``is_test_file``. Returns the number of concepts stripped.
+    """
+    excluded = _test_excluded_concepts()
+    if not excluded:  # pragma: no cover - the convention corpus always declares some
+        return 0
+    stripped = 0
+    for symbol in symbols:
+        if not symbol.is_test_file:
+            continue
+        meta = symbol.meta
+        if not meta:
+            continue
+        concepts = meta.get("concepts")
+        if not concepts:
+            continue
+        kept = [
+            c
+            for c in concepts
+            if not (isinstance(c, dict) and c.get("concept") in excluded)
+        ]
+        removed = len(concepts) - len(kept)
+        if removed:
+            stripped += removed
+            meta["concepts"] = kept
+    return stripped
+
+
 def enrich_symbols(
     symbols: list[Symbol],
     detected_frameworks: set[str],
@@ -1340,17 +1424,7 @@ def enrich_symbols(
     # - logging-conventions.yaml: Logger classes, factory methods, log bridges
     # - go-encoding-callbacks.yaml: Go MarshalJSON/UnmarshalYAML/etc. methods (WI-pimig)
     # - node-http.yaml: bare-Node http.createServer / Apollo startStandaloneServer (WI-tisam)
-    for convention_id in (
-        "main-functions",
-        "test-frameworks",
-        "language-conventions",
-        "config-conventions",
-        "naming-conventions",
-        "library-exports",
-        "logging-conventions",
-        "go-encoding-callbacks",
-        "node-http",
-    ):
+    for convention_id in _CONVENTION_PATTERN_IDS:
         convention_patterns = load_framework_patterns(convention_id)
         if convention_patterns:
             pattern_defs.append(convention_patterns)

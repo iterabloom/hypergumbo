@@ -25,8 +25,77 @@ from hypergumbo_core.framework_patterns import (
     match_usage_patterns,
     materialize_route_symbols,
     resolve_deferred_symbol_refs,
+    strip_test_file_only_concepts,
 )
 from hypergumbo_core.ir import Span, Symbol, UsageContext
+
+
+class TestStripTestFileOnlyConcepts:
+    """WI-bosab: naming-convention concepts (service_by_name, controller_by_name,
+    handler_by_name) must not label test code as production services/controllers.
+
+    Concept enrichment runs BEFORE supply-chain classification in the pipeline
+    (linker-produced symbols must be classified too), so ``Symbol.is_test_file``
+    is only known after enrichment; ``strip_test_file_only_concepts`` is the
+    post-classification pass that honors the canonical verdict.
+    """
+
+    @staticmethod
+    def _concepts(sym: Symbol) -> list[str]:
+        return [c["concept"] for c in (sym.meta or {}).get("concepts", [])]
+
+    @staticmethod
+    def _cls(name: str, path: str, is_test: bool) -> Symbol:
+        sym = Symbol(
+            id=f"python:{path}:1-3:{name}:class",
+            name=name,
+            kind="class",
+            language="python",
+            path=path,
+            span=Span(1, 3, 0, 0),
+            meta={},
+        )
+        sym.is_test_file = is_test
+        return sym
+
+    def test_enrich_then_strip_removes_naming_concept_from_test_file(self) -> None:
+        prod = self._cls("UserService", "src/app.py", is_test=False)
+        test = self._cls("MyService", "tests/test_app.py", is_test=True)
+
+        enrich_symbols([prod, test], set(), None)
+        # Enrichment can't see is_test_file yet, so BOTH get the concept.
+        assert self._concepts(prod) == ["service_by_name"]
+        assert self._concepts(test) == ["service_by_name"]
+
+        stripped = strip_test_file_only_concepts([prod, test])
+
+        assert stripped == 1
+        assert self._concepts(prod) == ["service_by_name"]  # production kept
+        assert self._concepts(test) == []  # test-file concept stripped
+
+    def test_strip_noop_on_non_test_symbol(self) -> None:
+        prod = self._cls("UserController", "src/app.py", is_test=False)
+        enrich_symbols([prod], set(), None)
+        assert strip_test_file_only_concepts([prod]) == 0
+        assert self._concepts(prod) == ["controller_by_name"]
+
+    def test_strip_noop_when_no_meta_or_no_concepts(self) -> None:
+        no_meta = self._cls("MyHandler", "tests/t.py", is_test=True)
+        no_meta.meta = None
+        no_concepts = self._cls("MyHandler", "tests/t.py", is_test=True)
+        no_concepts.meta = {"other": 1}
+        assert strip_test_file_only_concepts([no_meta, no_concepts]) == 0
+
+    def test_strip_preserves_non_excluded_concepts_on_test_file(self) -> None:
+        sym = self._cls("MyService", "tests/test_app.py", is_test=True)
+        sym.meta = {
+            "concepts": [
+                {"concept": "service_by_name"},  # test-excluded
+                {"concept": "route"},  # NOT test-excluded
+            ]
+        }
+        assert strip_test_file_only_concepts([sym]) == 1
+        assert self._concepts(sym) == ["route"]
 
 
 @pytest.fixture(autouse=True)

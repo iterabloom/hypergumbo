@@ -22,6 +22,7 @@ patterns:
   - concept: controller_by_name
     symbol_name: "^[A-Z][a-zA-Z0-9_]*Controller$"
     symbol_kind: "^class$"
+    is_test_file: false  # WI-bosab: don't label test classes (TestFooController) as controllers
     # Note: This pattern intentionally does NOT filter by language
     # because controller naming is common across Java, Python, Ruby, PHP, etc.
 
@@ -34,12 +35,14 @@ patterns:
     symbol_name: "^[A-Z][a-zA-Z0-9_]*Handler$"
     symbol_kind: "^class$"
     symbol_path: "(routers?|handlers?|controllers?|endpoints?|api|web|views?|servlets?|resources?)/"
+    is_test_file: false  # WI-bosab: don't label test classes as request handlers
 
   # ====== Service-like classes ======
   # Classes ending in "Service" are often business logic entry points
   - concept: service_by_name
     symbol_name: "^[A-Z][a-zA-Z0-9_]*Service$"
     symbol_kind: "^class$"
+    is_test_file: false  # WI-bosab: don't label test classes (MyService) as services
 
   # ====== C subcommand functions ======
   # Functions named cmd_<name> in C are a common pattern for CLI subcommand

@@ -177,6 +177,7 @@ from .framework_patterns import (
     enrich_symbols,
     get_frameworks_dir,
     resolve_deferred_symbol_refs,
+    strip_test_file_only_concepts,
 )
 from .partial_install_warnings import check_partial_install_warnings
 
@@ -8651,6 +8652,13 @@ def run_behavior_map(
     # Apply supply chain classification to all symbols
     show_progress("Classifying symbols", 60)
     _classify_symbols(all_symbols, repo_root, package_roots, limits=limits)
+
+    # WI-bosab: now that Symbol.is_test_file is set, strip naming-convention
+    # framework concepts (service_by_name / controller_by_name / handler_by_name)
+    # from test-file symbols. enrich_symbols runs earlier (before linkers, so it
+    # cannot see the canonical is_test_file verdict), so a test fixture like
+    # `class MyService` in tests/ was mislabeled a production service until here.
+    strip_test_file_only_concepts(all_symbols)
 
     # Promote route-bearing symbols out of derived (tier 4) so the API surface
     # is not excluded by the default tier-4 filter — valuable regardless of
