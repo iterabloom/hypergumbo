@@ -50,6 +50,7 @@ This directory contains the project's ADRs, documenting significant design decis
 | [0041](0041-supply-tier-purity.md) | Supply-Chain Tier Purity | Accepted | 2026-06-10 |
 | [0042](0042-survey-rename.md) | Survey Rename | Accepted | 2026-06-10 |
 | [0043](0043-stage-ordering-contract.md) | Stage-Ordering Contract for `run_behavior_map` | Accepted | 2026-06-12 |
+| [0044](0044-synthesis-mechanisms-are-synthetic-pass-ids.md) | Symbol-Synthesis Values Are Synthetic Pass IDs (WI-kadop field-split withdrawn) | Accepted | 2026-07-01 |
 
 > ADR numbers 0025 and 0026 were filed under the ADR series in error and have been **reclassified as audit-findings documents** (per-value verdicts under existing law from ADR-0023 and ADR-0024, not new architecture decisions). They now live at [`docs/audits/0001-dispatch-publish-family.md`](../audits/0001-dispatch-publish-family.md) and [`docs/audits/0002-ipc-family.md`](../audits/0002-ipc-family.md). Stubs at the old paths are kept for URL-level discoverability but are not principles. The bucket boundary is documented in the next section.
 
@@ -114,7 +115,7 @@ Each ADR has a unique identifier; number collisions are resolved by renaming the
 
 ## Thematic grouping
 
-**Analysis pipeline:** 0003, 0004, 0005, 0006, 0007, 0012, 0014, 0015, 0016, 0017, 0022, 0023, 0024, 0029, 0030, 0031, 0032, 0033, 0034, 0035, 0036, 0037, 0038, 0039, 0040, 0041, 0042, 0043
+**Analysis pipeline:** 0003, 0004, 0005, 0006, 0007, 0012, 0014, 0015, 0016, 0017, 0022, 0023, 0024, 0029, 0030, 0031, 0032, 0033, 0034, 0035, 0036, 0037, 0038, 0039, 0040, 0041, 0042, 0043, 0044
 
 **Agent infrastructure and governance:** 0001, 0008, 0009, 0013, 0018, 0019, 0020, 0021
 

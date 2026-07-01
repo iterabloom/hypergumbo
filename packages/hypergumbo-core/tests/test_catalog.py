@@ -646,3 +646,31 @@ class TestINVHujogClosureCriterion:
                 if p is None:
                     continue
                 assert isinstance(p.depends_on, list)
+
+
+class TestSyntheticPassIds:
+    """ADR-0044: synthesis/import values in Symbol.origin are legitimate
+    synthetic pass IDs, not a separate synthesis-mechanism axis."""
+
+    def test_synthetic_pass_ids_set(self) -> None:
+        from hypergumbo_core.catalog import _SYNTHETIC_PASS_IDS
+        assert _SYNTHETIC_PASS_IDS == frozenset({
+            "orchestrator_file_symbol_synthesis",
+            "boundary_external_symbol_synthesis",
+            "scip",
+        })
+        # The stale 'inheritance' phantom was dropped (zero producers).
+        assert "inheritance" not in _SYNTHETIC_PASS_IDS
+
+    def test_synthetic_pass_ids_are_known_pass_ids(self) -> None:
+        from hypergumbo_core.catalog import (
+            _SYNTHETIC_PASS_IDS,
+            all_known_pass_ids,
+        )
+        known = all_known_pass_ids()
+        assert _SYNTHETIC_PASS_IDS <= known
+        assert "inheritance" not in known  # no producer → not a known pass id
+
+    def test_old_synthesis_mechanisms_name_is_gone(self) -> None:
+        import hypergumbo_core.catalog as cat
+        assert not hasattr(cat, "_SYNTHESIS_MECHANISMS")
