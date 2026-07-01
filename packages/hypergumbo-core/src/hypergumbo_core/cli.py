@@ -4749,6 +4749,7 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
 
     # Load claims
     from .verify_claims import (
+        VERIFY_CLAIMS_SCHEMA_VERSION,
         ClaimsFileError,
         compute_boundary_coverage,
         load_claims,
@@ -4982,10 +4983,21 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
 
     # Output
     if getattr(args, "json_output", False):
-        # Preserve the legacy flat-list schema for programmatic consumers;
-        # INV-javam's unsupported_taint_languages signal goes to stderr to
-        # avoid breaking existing pipelines that parse verify-claims JSON.
-        print(json.dumps([v.to_dict() for v in verdicts], indent=2))
+        # WI-nulot / INV-gatog: a versioned top-level envelope (was a bare JSON
+        # array), so metadata is extensible without breaking consumers. The
+        # INV-javam taint-coverage signal — previously stderr-only — is now
+        # machine-visible via `unsupported_taint_languages` (empty when there
+        # are no taint claims or every touched language has a catalog),
+        # mirroring the `io-boundaries --json` envelope.
+        output = {
+            "schema_version": VERIFY_CLAIMS_SCHEMA_VERSION,
+            "view": "verify-claims",
+            "verdicts": [v.to_dict() for v in verdicts],
+            "unsupported_taint_languages": (
+                unsupported_taint_languages if has_taint_claims else []
+            ),
+        }
+        print(json.dumps(output, indent=2, sort_keys=True))
     else:
         violated = 0
         inconclusive = 0

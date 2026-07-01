@@ -7,6 +7,7 @@ import yaml
 
 from hypergumbo_core.cli import cmd_verify_claims
 from hypergumbo_core.schema import SCHEMA_VERSION
+from hypergumbo_core.verify_claims import VERIFY_CLAIMS_SCHEMA_VERSION
 
 
 class FakeArgs:
@@ -114,9 +115,58 @@ def test_verify_claims_json_output(tmp_path: Path, capsys) -> None:
 
     rc = cmd_verify_claims(args)
     assert rc == 0
+    # WI-nulot / INV-gatog: --json is a versioned top-level object (envelope),
+    # not a bare array — so metadata can be added without breaking consumers.
     data = json.loads(capsys.readouterr().out)
-    assert len(data) == 1
-    assert data[0]["verdict"] == "confirmed"
+    assert isinstance(data, dict)
+    assert data["schema_version"] == VERIFY_CLAIMS_SCHEMA_VERSION
+    assert data["view"] == "verify-claims"
+    assert len(data["verdicts"]) == 1
+    assert data["verdicts"][0]["verdict"] == "confirmed"
+    # The machine-facing taint-coverage signal is present (empty here — the
+    # single boundary claim is not a taint claim).
+    assert data["unsupported_taint_languages"] == []
+
+
+def test_verify_claims_json_exposes_unsupported_taint_languages(
+    tmp_path: Path, capsys
+) -> None:
+    """WI-nulot: the INV-javam taint-coverage signal (previously stderr-only) is
+    machine-visible in --json. A taint-flow claim evaluated against a repo whose
+    language has no taint catalog (e.g. bash) exposes that language in
+    ``unsupported_taint_languages`` — so a CI gate parsing the JSON can tell a
+    'confirmed' verdict apart from a genuinely-verified one."""
+    bmap = _make_behavior_map(
+        nodes=[
+            {"id": "bash:deploy.sh:1-10:main:function", "name": "main",
+             "kind": "function", "language": "bash", "path": "deploy.sh",
+             "span": {"start_line": 1, "end_line": 10}},
+        ],
+        edges=[],
+    )
+    input_file = tmp_path / "hg.json"
+    input_file.write_text(json.dumps(bmap))
+
+    claims = {
+        "claims": [
+            {"id": "TF-001", "text": "Plaintext must not reach host filesystem",
+             "constraint": {"taint_flow": {"source_taint": "plaintext",
+                                           "prohibited_sink_zone": "host_fs"}}},
+        ],
+    }
+    claims_file = tmp_path / "claims.yaml"
+    claims_file.write_text(yaml.dump(claims))
+
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.input = str(input_file)
+    args.claims = str(claims_file)
+    args.json_output = True
+
+    cmd_verify_claims(args)
+
+    data = json.loads(capsys.readouterr().out)
+    assert "bash" in data["unsupported_taint_languages"]
 
 
 def test_verify_claims_missing_file(tmp_path: Path) -> None:
@@ -245,7 +295,7 @@ def test_verify_claims_typescript_alias_catalog_bridging(tmp_path: Path, capsys)
     # Should FAIL because ObjC fs_write was detected
     assert rc == 1
     data = json.loads(capsys.readouterr().out)
-    violated = [r for r in data if r["verdict"] == "violated"]
+    violated = [r for r in data["verdicts"] if r["verdict"] == "violated"]
     assert len(violated) == 1
 
 
@@ -300,9 +350,9 @@ def test_verify_claims_taint_flow_violated(tmp_path: Path, capsys) -> None:
     rc = cmd_verify_claims(args)
     assert rc == 1
     data = json.loads(capsys.readouterr().out)
-    assert data[0]["verdict"] == "violated"
-    assert data[0]["evidence_count"] >= 1
-    assert "approximate" in data[0]["details"]
+    assert data["verdicts"][0]["verdict"] == "violated"
+    assert data["verdicts"][0]["evidence_count"] >= 1
+    assert "approximate" in data["verdicts"][0]["details"]
 
 
 def test_verify_claims_taint_flow_confirmed(tmp_path: Path, capsys) -> None:
@@ -638,7 +688,7 @@ def test_verify_claims_cli_taint_sources_flag_wires_user_source(
     assert rc == 1  # violation detected via user-declared source
     out, err = capsys.readouterr()
     data = json.loads(out)
-    assert data[0]["verdict"] == "violated"
+    assert data["verdicts"][0]["verdict"] == "violated"
     # Visibility: summary line to stderr names the counts so the user
     # knows the override took effect.
     assert "Loaded project-local taint catalog" in err
@@ -705,7 +755,7 @@ def test_verify_claims_extra_catalogs_claims_file_key(
     assert rc == 1
     out, err = capsys.readouterr()
     data = json.loads(out)
-    assert data[0]["verdict"] == "violated"
+    assert data["verdicts"][0]["verdict"] == "violated"
     assert "Loaded project-local taint catalog" in err
 
 
@@ -1313,7 +1363,7 @@ def test_verify_claims_cli_source_overrides_claims_file_source(
     # Baseline (no CLI override): claims_label seeds entry -> flow to Z -> violated.
     rc = cmd_verify_claims(base)
     assert rc == 1
-    assert json.loads(capsys.readouterr().out)[0]["verdict"] == "violated"
+    assert json.loads(capsys.readouterr().out)["verdicts"][0]["verdict"] == "violated"
 
     # With CLI override: entry is relabeled cli_label, so claims_label no longer
     # seeds -> the claims_label claim is confirmed (the override displaced it).
@@ -1325,4 +1375,4 @@ def test_verify_claims_cli_source_overrides_claims_file_source(
     over.taint_sources = [str(tmp_path / "cli_src.yaml")]
     rc = cmd_verify_claims(over)
     assert rc == 0
-    assert json.loads(capsys.readouterr().out)[0]["verdict"] == "confirmed"
+    assert json.loads(capsys.readouterr().out)["verdicts"][0]["verdict"] == "confirmed"

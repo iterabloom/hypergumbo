@@ -62,6 +62,12 @@ import yaml
 from .io_boundary import KNOWN_IO_BOUNDARIES, BoundaryMap
 
 
+# Schema version for the ``verify-claims --json`` envelope (WI-nulot / INV-gatog).
+# 1.0 introduces the top-level object (schema_version + view + verdicts +
+# unsupported_taint_languages) replacing the legacy bare JSON array.
+VERIFY_CLAIMS_SCHEMA_VERSION = "1.0"
+
+
 # ---------------------------------------------------------------------------
 # Data model
 # ---------------------------------------------------------------------------
