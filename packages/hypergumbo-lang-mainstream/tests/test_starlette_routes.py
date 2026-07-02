@@ -237,6 +237,10 @@ def test_starlette_routes_appear_as_route_kind_nodes(tmp_path: Path) -> None:
     # Framework metadata propagated
     for r in routes:
         assert r["meta"]["framework"] == "starlette"
+        # ADR-0036 Ruling 2: the id kind-slot is the node's own kind
+        # ("function"), not "route"; the role lives on meta.framework_role.
+        assert r["id"].rsplit(":", 1)[-1] == "function"
+        assert r["kind"] == "function"
 
 
 def test_starlette_yaml_attaches_concept_route_to_handler(tmp_path: Path) -> None:

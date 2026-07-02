@@ -2756,7 +2756,9 @@ def _extract_file_analysis(
         if is_cbv:
             meta["is_class_based_view"] = True
         symbol = Symbol(
-            id=_make_symbol_id(str(py_file), ctx.span.start_line, ctx.span.end_line, route_path, "route"),
+            # ADR-0036 Ruling 2: id kind-slot == Symbol.kind ("function"); the
+            # route role lives on meta.framework_role, not the id-slot.
+            id=_make_symbol_id(str(py_file), ctx.span.start_line, ctx.span.end_line, route_path, "function"),
             name=f"django:{view_name or 'unknown'}",
             kind="function",
             language="python",
@@ -2787,7 +2789,8 @@ def _extract_file_analysis(
             symbol = Symbol(
                 id=_make_symbol_id(
                     str(py_file), ctx.span.start_line, ctx.span.end_line,
-                    f"{method} {route_path}", "route",
+                    # ADR-0036 Ruling 2: kind-slot "function" (role on meta).
+                    f"{method} {route_path}", "function",
                 ),
                 name=f"starlette:{view_name or 'unknown'}",
                 kind="function",
@@ -2817,7 +2820,9 @@ def _extract_file_analysis(
         route_path = ctx.metadata.get("route_path", "")
         view_name = ctx.metadata.get("view_name")
         symbol = Symbol(
-            id=_make_symbol_id(str(py_file), ctx.span.start_line, ctx.span.end_line, route_path, "route"),
+            # ADR-0036 Ruling 2: id kind-slot == Symbol.kind ("function"); the
+            # route role lives on meta.framework_role, not the id-slot.
+            id=_make_symbol_id(str(py_file), ctx.span.start_line, ctx.span.end_line, route_path, "function"),
             name=f"{view_name or 'unknown'}",
             kind="function",
             language="python",
