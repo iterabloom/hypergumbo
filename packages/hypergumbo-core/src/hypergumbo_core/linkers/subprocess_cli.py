@@ -357,12 +357,107 @@ def _create_call_symbol(call: SubprocessCall, root: Path) -> Symbol:
     )
 
 
-def link_subprocess(root: Path, cli_symbols: list[Symbol]) -> SubprocessLinkResult:
+def _argparse_add_parser_name(call: "ast.Call") -> str | None:
+    """If *call* is ``<x>.add_parser("name", ...)``, return the subcommand
+    string ``"name"``; otherwise ``None`` (WI-lubap)."""
+    func = call.func
+    if (
+        isinstance(func, ast.Attribute)
+        and func.attr == "add_parser"
+        and call.args
+    ):
+        arg0 = call.args[0]
+        if isinstance(arg0, ast.Constant) and isinstance(arg0.value, str):
+            return arg0.value
+    return None
+
+
+def _argparse_set_defaults_handler(call: "ast.Call") -> tuple[str, str] | None:
+    """If *call* is ``<var>.set_defaults(func=<handler>)``, return
+    ``(parser_var, handler_name)``; otherwise ``None`` (WI-lubap)."""
+    func = call.func
+    if (
+        isinstance(func, ast.Attribute)
+        and func.attr == "set_defaults"
+        and isinstance(func.value, ast.Name)
+    ):
+        for kw in call.keywords:
+            if kw.arg == "func" and isinstance(kw.value, ast.Name):
+                return (func.value.id, kw.value.id)
+    return None
+
+
+def _scan_argparse_commands(
+    root: Path, all_symbols: list[Symbol]
+) -> dict[str, list[Symbol]]:
+    """Detect argparse subcommand definitions and resolve their handlers.
+
+    argparse exposes its command surface as a pair of calls on a subparser
+    variable — ``<p> = <sub>.add_parser("name", ...)`` registers the subcommand
+    *string*, and ``<p>.set_defaults(func=<handler>)`` binds its handler. Neither
+    the subcommand name (a string literal) nor the parser is a Symbol, so the
+    subprocess linker cannot join them the way it joins decorator-based
+    ``concept="command"`` symbols the framework-patterns pass emits (WI-lubap).
+    This scans each Python file's AST for the idiom, pairs add_parser /
+    set_defaults by parser-variable name, and resolves the ``func=`` handler to
+    its module symbol.
+
+    Returns ``{subcommand_name: [handler_symbol, ...]}`` for merging into the
+    linker's ``command_by_name`` index. A subcommand whose handler cannot be
+    resolved (no ``set_defaults(func=...)``, or a handler name with no matching
+    symbol) contributes nothing — there is no join target.
+    """
+    symbols_by_name: dict[str, list[Symbol]] = {}
+    for sym in all_symbols:
+        symbols_by_name.setdefault(sym.name, []).append(sym)
+
+    commands: dict[str, list[Symbol]] = {}
+    for file_path in _find_python_files(root):
+        try:
+            content = read_masked_source(
+                file_path, encoding="utf-8", errors="ignore"
+            )
+            tree = ast.parse(content)
+        except (OSError, IOError, SyntaxError, ValueError):  # pragma: no cover - IO/parse errors hard to force
+            continue
+        # parser-variable → subcommand name (from ``v = X.add_parser("name")``)
+        var_to_subcmd: dict[str, str] = {}
+        # parser-variable → handler name (from ``v.set_defaults(func=handler)``)
+        var_to_handler: dict[str, str] = {}
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Assign) and isinstance(node.value, ast.Call):
+                sub = _argparse_add_parser_name(node.value)
+                if sub is not None:
+                    for tgt in node.targets:
+                        if isinstance(tgt, ast.Name):
+                            var_to_subcmd[tgt.id] = sub
+            elif isinstance(node, ast.Call):
+                pair = _argparse_set_defaults_handler(node)
+                if pair is not None:
+                    var_to_handler[pair[0]] = pair[1]
+        for var, subcmd in var_to_subcmd.items():
+            handler_name = var_to_handler.get(var)
+            if handler_name and handler_name in symbols_by_name:
+                for hsym in symbols_by_name[handler_name]:
+                    commands.setdefault(subcmd, []).append(hsym)
+    return commands
+
+
+def link_subprocess(
+    root: Path,
+    cli_symbols: list[Symbol],
+    all_symbols: list[Symbol] | None = None,
+) -> SubprocessLinkResult:
     """Link subprocess calls to CLI command handlers.
 
     Args:
         root: Repository root path.
-        cli_symbols: CLI command symbols (those with concept="command").
+        cli_symbols: CLI command symbols (those with concept="command", from the
+            framework-patterns pass — Click/Typer/Django/etc.).
+        all_symbols: All repository symbols. When provided, argparse subcommand
+            handlers are additionally resolved (WI-lubap) — argparse CLIs (incl.
+            hypergumbo's own) have no concept="command" symbols, so without this
+            they are dark to the linker.
 
     Returns:
         SubprocessLinkResult with edges and symbols.
@@ -387,6 +482,16 @@ def link_subprocess(root: Path, cli_symbols: list[Symbol]) -> SubprocessLinkResu
     for sym in cli_symbols:
         if _has_command_concept(sym):
             command_by_name.setdefault(sym.name, []).append(sym)
+
+    # WI-lubap: argparse CLIs expose commands as add_parser / set_defaults call
+    # pairs, not concept="command" symbols, so they are otherwise dark to this
+    # linker. Merge the resolved argparse subcommand→handler map (keyed by the
+    # subcommand string, same as command_by_name) so subprocess subcommands can
+    # join their argparse handlers too.
+    if all_symbols:
+        argparse_commands = _scan_argparse_commands(root, all_symbols)
+        for subcmd, handlers in argparse_commands.items():
+            command_by_name.setdefault(subcmd, []).extend(handlers)
 
     # Collect all subprocess calls
     all_calls: list[SubprocessCall] = []
@@ -482,14 +587,27 @@ def _get_cli_command_symbols(ctx: LinkerContext) -> list[Symbol]:
 
 
 def _count_cli_command_symbols(ctx: LinkerContext) -> int:
-    """Count CLI command symbols for requirement check."""
-    return len(_get_cli_command_symbols(ctx))
+    """Count the linker's joinable command sources for the requirement check.
+
+    Two producers feed ``command_by_name``: framework-pattern ``concept=command``
+    symbols (Click/Typer/Django/…) and resolvable argparse subcommand handlers
+    (WI-lubap). Counting both keeps the requirement diagnostic honest on an
+    argparse-only project — otherwise it reports zero command sources while the
+    linker is in fact joining argparse handlers.
+    """
+    count = len(_get_cli_command_symbols(ctx))
+    argparse_commands = _scan_argparse_commands(ctx.repo_root, ctx.symbols)
+    count += sum(len(handlers) for handlers in argparse_commands.values())
+    return count
 
 
 SUBPROCESS_REQUIREMENTS = [
     LinkerRequirement(
         name="cli_command_symbols",
-        description="CLI command symbols (concept=command from framework patterns)",
+        description=(
+            "CLI command sources: concept=command symbols (framework patterns) "
+            "and resolvable argparse subcommand handlers (WI-lubap)"
+        ),
         check=_count_cli_command_symbols,
     ),
 ]
@@ -511,7 +629,7 @@ def subprocess_linker(ctx: LinkerContext) -> LinkerResult:
     Links subprocess calls to CLI command handlers in the same project.
     """
     cli_symbols = _get_cli_command_symbols(ctx)
-    result = link_subprocess(ctx.repo_root, cli_symbols)
+    result = link_subprocess(ctx.repo_root, cli_symbols, all_symbols=ctx.symbols)
 
     return LinkerResult(
         symbols=result.symbols,

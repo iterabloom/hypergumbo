@@ -590,3 +590,211 @@ class TestLinkerRegistration:
         ctx = LinkerContext(repo_root=tmp_path, symbols=[cli_symbol, non_cli_symbol])
         count = _count_cli_command_symbols(ctx)
         assert count == 1  # Only the CLI command, not the route
+
+
+class TestArgparseSubcommandLinking:
+    """WI-lubap: the subprocess linker joins subprocess subcommands to argparse
+    handlers, not just decorator-based (Click/Typer) concept=command symbols.
+
+    argparse exposes its command surface as ``<p> = sub.add_parser("name")`` +
+    ``<p>.set_defaults(func=handler)`` string literals, NOT as per-command
+    symbols — so the linker scans for that idiom and joins the subprocess
+    subcommand to the resolved handler function symbol.
+    """
+
+    def _project(self, tmp_path: Path) -> Symbol:
+        (tmp_path / "pyproject.toml").write_text(
+            '[project]\nname = "myapp"\n'
+        )
+        src = tmp_path / "myapp"
+        src.mkdir()
+        (src / "cli.py").write_text(
+            "import argparse\n"
+            "def cmd_serve(args):\n"
+            "    pass\n"
+            "def main():\n"
+            "    parser = argparse.ArgumentParser()\n"
+            "    sub = parser.add_subparsers()\n"
+            "    p = sub.add_parser('serve')\n"
+            "    p.set_defaults(func=cmd_serve)\n"
+        )
+        tests = tmp_path / "tests"
+        tests.mkdir()
+        (tests / "test_cli.py").write_text(
+            "import subprocess\n"
+            "subprocess.run(['myapp', 'serve'])\n"
+        )
+        return Symbol(
+            id="python:myapp/cli.py:2-3:cmd_serve:function",
+            name="cmd_serve",
+            kind="function",
+            language="python",
+            path="myapp/cli.py",
+            span=Span(2, 3, 0, 0),
+        )
+
+    def test_links_subprocess_to_argparse_handler(self, tmp_path: Path) -> None:
+        handler = self._project(tmp_path)
+        # No concept=command symbols at all — only the plain handler function,
+        # passed via all_symbols (as the registry provides ctx.symbols).
+        result = link_subprocess(tmp_path, [], all_symbols=[handler])
+        edges = [e for e in result.edges if e.edge_type == "subprocess_calls"]
+        assert len(edges) == 1, edges
+        assert edges[0].dst == handler.id
+
+    def test_argparse_command_without_handler_not_linked(self, tmp_path: Path) -> None:
+        """An add_parser without a resolvable set_defaults(func=...) has no
+        join target and must not create an edge — even though the scan runs
+        (all_symbols is non-empty)."""
+        (tmp_path / "pyproject.toml").write_text('[project]\nname = "myapp"\n')
+        src = tmp_path / "myapp"
+        src.mkdir()
+        (src / "cli.py").write_text(
+            "import argparse\n"
+            "def cmd_serve(args):\n"
+            "    pass\n"
+            "def main():\n"
+            "    sub = argparse.ArgumentParser().add_subparsers()\n"
+            "    p = sub.add_parser('serve')\n"
+        )
+        tests = tmp_path / "tests"
+        tests.mkdir()
+        (tests / "test_cli.py").write_text(
+            "import subprocess\n"
+            "subprocess.run(['myapp', 'serve'])\n"
+        )
+        handler = Symbol(
+            id="python:myapp/cli.py:2-3:cmd_serve:function",
+            name="cmd_serve", kind="function", language="python",
+            path="myapp/cli.py", span=Span(2, 3, 0, 0),
+        )
+        result = link_subprocess(tmp_path, [], all_symbols=[handler])
+        edges = [e for e in result.edges if e.edge_type == "subprocess_calls"]
+        assert edges == []
+
+    def test_argparse_handler_name_without_symbol_not_linked(self, tmp_path: Path) -> None:
+        """set_defaults(func=<name>) where <name> resolves to no Symbol has no
+        join target."""
+        (tmp_path / "pyproject.toml").write_text('[project]\nname = "myapp"\n')
+        src = tmp_path / "myapp"
+        src.mkdir()
+        (src / "cli.py").write_text(
+            "import argparse\n"
+            "def main():\n"
+            "    sub = argparse.ArgumentParser().add_subparsers()\n"
+            "    p = sub.add_parser('serve')\n"
+            "    p.set_defaults(func=missing_handler)\n"
+        )
+        tests = tmp_path / "tests"
+        tests.mkdir()
+        (tests / "test_cli.py").write_text(
+            "import subprocess\n"
+            "subprocess.run(['myapp', 'serve'])\n"
+        )
+        unrelated = Symbol(
+            id="python:other.py:1-1:other:function",
+            name="other", kind="function", language="python",
+            path="other.py", span=Span(1, 1, 0, 0),
+        )
+        result = link_subprocess(tmp_path, [], all_symbols=[unrelated])
+        edges = [e for e in result.edges if e.edge_type == "subprocess_calls"]
+        assert edges == []
+
+    def test_argparse_dynamic_and_non_name_forms_ignored(self, tmp_path: Path) -> None:
+        """Non-statically-resolvable forms are skipped: add_parser(<var>) (name
+        not a string literal) with set_defaults(func=<lambda>) (func not a bare
+        Name), and set_defaults(dest=...) (no func kwarg)."""
+        (tmp_path / "pyproject.toml").write_text('[project]\nname = "myapp"\n')
+        src = tmp_path / "myapp"
+        src.mkdir()
+        (src / "cli.py").write_text(
+            "import argparse\n"
+            "def main():\n"
+            "    name = 'serve'\n"
+            "    sub = argparse.ArgumentParser().add_subparsers()\n"
+            "    p = sub.add_parser(name)\n"
+            "    p.set_defaults(func=lambda a: None)\n"
+            "    q = sub.add_parser('deploy')\n"
+            "    q.set_defaults(dest='x')\n"
+        )
+        tests = tmp_path / "tests"
+        tests.mkdir()
+        (tests / "test_cli.py").write_text(
+            "import subprocess\n"
+            "subprocess.run(['myapp', 'serve'])\n"
+            "subprocess.run(['myapp', 'deploy'])\n"
+        )
+        dummy = Symbol(
+            id="python:other.py:1-1:other:function",
+            name="other", kind="function", language="python",
+            path="other.py", span=Span(1, 1, 0, 0),
+        )
+        result = link_subprocess(tmp_path, [], all_symbols=[dummy])
+        edges = [e for e in result.edges if e.edge_type == "subprocess_calls"]
+        assert edges == []
+
+    def test_argparse_and_concept_command_coexist(self, tmp_path: Path) -> None:
+        """A concept=command symbol and an argparse handler both populate the
+        index; each joins its own subcommand."""
+        (tmp_path / "pyproject.toml").write_text('[project]\nname = "myapp"\n')
+        src = tmp_path / "myapp"
+        src.mkdir()
+        (src / "cli.py").write_text(
+            "import argparse\n"
+            "def cmd_serve(args):\n"
+            "    pass\n"
+            "def main():\n"
+            "    sub = argparse.ArgumentParser().add_subparsers()\n"
+            "    p = sub.add_parser('serve')\n"
+            "    p.set_defaults(func=cmd_serve)\n"
+        )
+        tests = tmp_path / "tests"
+        tests.mkdir()
+        (tests / "test_cli.py").write_text(
+            "import subprocess\n"
+            "subprocess.run(['myapp', 'serve'])\n"
+            "subprocess.run(['myapp', 'deploy'])\n"
+        )
+        handler = Symbol(
+            id="python:myapp/cli.py:2-3:cmd_serve:function",
+            name="cmd_serve", kind="function", language="python",
+            path="myapp/cli.py", span=Span(2, 3, 0, 0),
+        )
+        deploy = Symbol(
+            id="python:myapp/cli.py:30-40:deploy:function",
+            name="deploy", kind="function", language="python",
+            path="myapp/cli.py", span=Span(30, 40, 0, 0),
+            meta={"concepts": [{"concept": "command"}]},
+        )
+        result = link_subprocess(tmp_path, [deploy], all_symbols=[handler, deploy])
+        dsts = {e.dst for e in result.edges if e.edge_type == "subprocess_calls"}
+        assert handler.id in dsts
+        assert deploy.id in dsts
+
+    def test_requirement_counts_argparse_commands(self, tmp_path: Path) -> None:
+        """The linker's requirement diagnostic counts argparse subcommand
+        handlers, not just concept=command symbols (WI-lubap)."""
+        from hypergumbo_core.linkers.subprocess_cli import (
+            _count_cli_command_symbols,
+        )
+        from hypergumbo_core.linkers.registry import LinkerContext
+
+        src = tmp_path / "myapp"
+        src.mkdir()
+        (src / "cli.py").write_text(
+            "import argparse\n"
+            "def cmd_serve(a):\n"
+            "    pass\n"
+            "def main():\n"
+            "    sub = argparse.ArgumentParser().add_subparsers()\n"
+            "    p = sub.add_parser('serve')\n"
+            "    p.set_defaults(func=cmd_serve)\n"
+        )
+        handler = Symbol(
+            id="python:myapp/cli.py:2-3:cmd_serve:function",
+            name="cmd_serve", kind="function", language="python",
+            path="myapp/cli.py", span=Span(2, 3, 0, 0),
+        )
+        ctx = LinkerContext(repo_root=tmp_path, symbols=[handler])
+        # No concept=command symbols, but one argparse handler -> count >= 1.
+        assert _count_cli_command_symbols(ctx) >= 1
