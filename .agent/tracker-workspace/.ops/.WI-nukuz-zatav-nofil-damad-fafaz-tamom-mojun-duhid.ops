@@ -26,3 +26,18 @@
   clock: 2  # 0ce4
   nonce: 0ce4  # 0ce4
   message: "Re-confirms per-language profile sub-object: emitter {files,loc} vs schema {files,lines,percentage} - loc rename + percentage never emitted (0/18). WI-nukuz exact. WI-sizis profile totals (distinct). (dogfood; blinded sev 3)"  # 0ce4
+- op: update  # cfa4
+  at: '2026-07-02T15:41:14Z'  # cfa4
+  by: agent  # cfa4
+  actor: jgstern_agent  # cfa4
+  clock: 3  # cfa4
+  nonce: cfa4  # cfa4
+  set:  # cfa4
+    status: done  # cfa4
+- op: discuss  # 2a3c
+  at: '2026-07-02T15:41:14Z'  # 2a3c
+  by: agent  # 2a3c
+  actor: jgstern_agent  # 2a3c
+  clock: 4  # 2a3c
+  nonce: 2a3c  # 2a3c
+  message: "Stale/already-fixed, superseded by WI-bozid (1e9c339659). Filed claim: profile.languages[L] emits {files, loc} vs schema {files, lines, percentage} (needs lines->loc + percentage drop). WI-bozid ruled the opposite: schema's lines/percentage were PHANTOM keys the producer never emitted, so the schema was regenerated to the real {files, loc}. Re-ran repro on merged dev: profile.languages.python keys == ['files','loc']; docs/schema.json declares the same; no lines/percentage anywhere. Schema and producer agree; no discrepancy remains."  # 2a3c

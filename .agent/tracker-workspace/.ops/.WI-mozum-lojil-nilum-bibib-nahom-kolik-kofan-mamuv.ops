@@ -25,3 +25,18 @@
   clock: 2  # 5a54
   nonce: 5a54  # 5a54
   message: "Dogfood finding (member F149.A1, independent), reproduces on the frozen substrate. Mechanism: the supply-chain test-file suffix pattern table (TEST_FILE_PATTERNS) covers Go/JS/TS/Ruby/C/C++/Rust conventions but has no Python (test_*.py, *_test.py) or bash (test_*.sh) suffix entry. Python/bash test files are caught only by directory patterns (tests/, __tests__/, spec/); a real test file living outside such a directory is classified is_test_file=False. Scope: asymmetric gap for Python and bash. Concrete victim in the substrate: .githooks/test_hooks.sh (a real bash test suite) has 7 nodes all is_test_file=False. Affects supply-chain tiering / test exclusion on any repo with out-of-directory Python/bash tests. Exposure/consequence: any consumer using the test/production split to exclude tests from analysis, ranking, or slices, on a repo with out-of-tree Python/bash tests, treats test code as production: it inflates first-party ranking, leaks into slices that requested test exclusion, and pollutes any production-only audit. Expectation: a test file is recognized by its language's conventional suffix regardless of directory, symmetric with the other languages already covered. Distinct from WI-popok (entrypoint detector uses its own test_*.py filename heuristic instead of Symbol.supply_chain.is_test_file) — this is the upstream supply_chain classifier's missing suffix rules. Cross-ref WI-popok."  # 5a54
+- op: update  # e4ea
+  at: '2026-07-02T16:03:40Z'  # e4ea
+  by: agent  # e4ea
+  actor: jgstern_agent  # e4ea
+  clock: 3  # e4ea
+  nonce: e4ea  # e4ea
+  set:  # e4ea
+    status: done  # e4ea
+- op: discuss  # 059a
+  at: '2026-07-02T16:03:40Z'  # 059a
+  by: agent  # 059a
+  actor: jgstern_agent  # 059a
+  clock: 4  # 059a
+  nonce: 059a  # 059a
+  message: "Done via PR #384 (merged FF). supply_chain.TEST_FILE_PATTERNS gained Python test_*.py / *_test.py + bash test_*.sh suffix rules. Behavioral evidence (production-path classify_file, the item's filed gap): mymod/sub/test_thing.py, mymod/sub/thing_test.py, scripts/test_hooks.sh now classify tier=FIRST_PARTY, is_test=True (were is_test=False, reason 'default (no matching pattern)'). Additive — derived/external/generated precedence checks run first (unchanged); mirrors paths.is_test_file (startswith test_ / _test.). Core 100% coverage in isolation; CI passed. Latent on self-corpus (hypergumbo's own tests live under tests/ dirs, already caught by TEST_DIR_PATTERNS); surfaces on repos with co-located python/bash tests."  # 059a

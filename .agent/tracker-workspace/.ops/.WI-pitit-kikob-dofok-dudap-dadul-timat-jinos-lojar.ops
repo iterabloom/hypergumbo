@@ -25,3 +25,18 @@
   clock: 2  # 631b
   nonce: 631b  # 631b
   message: "Dogfood finding (member F159.A1, independent — theme C2 linker FPs), reproduces on the frozen substrate. Mechanism: the event-sourcing linker's Django-signal regex matches any receiver.connect(arg) rather than only Django signal connections, and the scan unconditionally stamps framework=\"django\", role event_subscriber. The .connect( idiom is ubiquitous (db drivers, sockets, Qt, asyncio), so non-Django calls become synthetic Django event nodes. Scope: 4 false Django-framework synthetic nodes in the substrate (e.g. three sqlite3.connect(...) sites stamped sqlite3:event_subscriber framework=django, plus one .send() match), with Django not declared as a dependency anywhere. Fires on sockets too (reproduced). Affects any repo using .connect(. Exposure/consequence: any consumer reading event/framework metadata to learn whether a repo uses Django signals concludes the repo uses Django signals when it uses sqlite3/sockets, and may propose Django-signal-shaped refactors or audits that are entirely inapplicable. Expectation: a framework attribution fires only on that framework's actual API, or is gated on a dependency signal; Django nodes appear only when Django signals are actually used. Theme C2 (test/dep-blind linker false positives) sibling of U19/U20/U21. Related to WI-babun (meta.framework_dispatch names django absent from profile.frameworks) — that is the surface-contradiction symptom; this is the producer-side over-broad-regex + dep-blind root for the false django nodes. Cross-ref WI-babun, WI-napuj."  # 631b
+- op: update  # ca66
+  at: '2026-07-02T16:52:35Z'  # ca66
+  by: agent  # ca66
+  actor: jgstern_agent  # ca66
+  clock: 3  # ca66
+  nonce: ca66  # ca66
+  set:  # ca66
+    status: done  # ca66
+- op: discuss  # 1781
+  at: '2026-07-02T16:52:35Z'  # 1781
+  by: agent  # 1781
+  actor: jgstern_agent  # 1781
+  clock: 4  # 1781
+  nonce: '1781'  # 1781
+  message: "Done via PR #386 (merged FF). event_sourcing_linker now threads ctx.detected_frameworks -> link_events -> _scan_file -> _scan_python_events; the three Django-signal sub-scans (.send / .connect / @receiver) fire only when 'django' is in detected_frameworks (None = permissive for unit callers). Behavioral evidence (production path event_sourcing_linker, the item's filed repro): a sqlite3.connect(db) + sock.send(x) module with detected_frameworks=set() emits 0 framework='django' symbols (was 2: a sqlite3 subscriber and a sock publisher); with {'django'} a genuine post_save.connect still emits its django symbol (gate not over-tight). Mirrors the sibling django linkers' LinkerActivation(frameworks=['django']) pattern. core 100% coverage in isolation; CI passed. Sibling WI-babun is the surface-contradiction symptom; this is its producer-side root."  # 1781
