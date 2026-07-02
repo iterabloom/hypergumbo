@@ -1,0 +1,21 @@
+- op: create  # 48c8
+  at: '2026-07-02T03:20:46Z'  # 48c8
+  by: agent  # 48c8
+  actor: jgstern_agent  # 48c8
+  clock: 1  # 48c8
+  nonce: 48c8  # 48c8
+  data:  # 48c8
+    kind: work_item  # 48c8
+    title: "Java Spring @GetMapping/@RequestMapping emit no concept=route despite spring-boot detected (framework_patterns enrich gap)"  # 48c8
+    status: todo_hard  # 48c8
+    priority: 2  # 48c8
+    parent:  # 48c8
+    tags:  # 48c8
+    - dogfood  # 48c8
+    - framework_dispatch_linkers  # 48c8
+    isbefore: []  # 48c8
+    duplicate_of: []  # 48c8
+    not_duplicate_of: []  # 48c8
+    pr_ref:  # 48c8
+    description: "Found by the WI-tosul re-measure (2026-07-01). On a canonical Spring fixture (pom.xml declaring spring-boot-starter-web + @RestController class with @GetMapping('/users') method), the full pipeline emits NO concept=route / framework_role=route on the handler method — only the class-level library_export + maven_dependency concepts. This is NOT a fixture-idiom or detection-gate artifact: _detect_java_frameworks() returns ['spring-boot'] from the pom (verified live), spring-boot.yaml HAS the route pattern (concept: route, decorator: '^(Get|Post|Put|Delete|Patch)Mapping$'), and the java analyzer extracts the annotation correctly (Ctrl.listUsers meta.decorators=[{name:'GetMapping', args:['/users']}]). So the analyzer extraction + catalog pattern + framework detection are all correct, yet enrich_symbols does not tag the method with concept=route. Likely a framework_patterns matcher gap for java method-level annotations keyed under 'decorator:' (WI-lubap class: decorator-vs-annotation key, or method-annotation matching, possibly interacting with prefix_from_parent from the class-level @RestController). Contrast (same re-measure): python Flask @app.route -> concept:route fires WITH requirements.txt (manifest-detection-gated); rust actix #[get] -> concept:route fires WITH Cargo.toml; go net/http HandleFunc -> framework_role=route (analyzer-level, no manifest); js Express app.get -> analyzer-level route_path meta. Java is the sole top-5 language whose canonical web route is fully dark. Repro fixtures live at packages/hypergumbo-core/tests/fixtures/route-parity/. This is a concrete slice of the WI-tosul 'per-language framework/route detection breadth' residual. Behavioral close-check: the route-parity gate's (java) strict-xfail flips to XPASS when fixed."  # 48c8
+    fields: {}  # 48c8

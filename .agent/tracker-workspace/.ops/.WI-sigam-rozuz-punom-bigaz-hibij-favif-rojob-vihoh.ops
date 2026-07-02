@@ -1,0 +1,21 @@
+- op: create  # 1500
+  at: '2026-07-02T00:44:47Z'  # 1500
+  by: agent  # 1500
+  actor: jgstern_agent  # 1500
+  clock: 1  # 1500
+  nonce: '1500'  # 1500
+  data:  # 1500
+    kind: work_item  # 1500
+    title: "subprocess linker: join fire.Fire() reflective CLI subcommands (WI-lubap fire tail)"  # 1500
+    status: todo_soft  # 1500
+    priority: 3  # 1500
+    parent:  # 1500
+    tags:  # 1500
+    - dogfood  # 1500
+    - framework_dispatch_linkers  # 1500
+    isbefore: []  # 1500
+    duplicate_of: []  # 1500
+    not_duplicate_of: []  # 1500
+    pr_ref:  # 1500
+    description: "WI-lubap (dev 2e9611808f) made the subprocess->CLI linker argparse-aware (add_parser/set_defaults -> handler join). Fire was explicitly deferred: fire.Fire(obj) exposes obj's METHODS as subcommands reflectively — there is no add_parser/set_defaults idiom to scan, so the subcommand->handler mapping must be derived from the class/dict passed to fire.Fire() (its public methods become subcommands, method name = subcommand name). Scope: detect fire.Fire(<name>) calls, resolve <name> to a class/module symbol, and register its public methods as subcommand->handler entries in the subprocess linker's command_by_name (mirroring _scan_argparse_commands). Lower priority than argparse (fire is rarer). Behavioral close-check: a subprocess.run(['tool','method']) against a fire.Fire(Cls) whose Cls has a method 'method' emits a subprocess_calls edge to Cls.method."  # 1500
+    fields: {}  # 1500

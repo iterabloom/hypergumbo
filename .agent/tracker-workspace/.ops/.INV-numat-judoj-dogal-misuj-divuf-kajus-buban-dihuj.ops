@@ -191,3 +191,19 @@
   clock: 22  # 6292
   nonce: '6292'  # 6292
   message: "Residual-audit finding from WI-moliz (no-fold ruling, now closed): beyond the OOP inheritance family (extends/inherits/implements/overrides — KEPT DISTINCT per ADR-0023/INV-vavat), the inheritance-family edge_type grep across packages/*/src surfaced a CONTRACT-IMPLEMENTATION cluster — implements_rpc / openapi_implements / resolver_implements ('an in-code symbol implements an externally-declared gRPC/OpenAPI/GraphQL contract') — 3 protocol-specific vocabularies for arguably one relation. Candidate sibling leak under this umbrella, DISTINCT from OOP class-implements-interface (different domain). Also extends_template (Twig/Jinja) + uses_mixin (Sass) already carry planned 'likely fold to extends/references + meta' docstrings in edge_types.py/concept-axes.md. NOT folded (keep-distinct default); flagged for human triage on whether the contract-implementation family warrants its own ADR-0023-style canonical+meta consolidation. No code action taken."  # 6292
+- op: discuss  # 1418
+  at: '2026-07-02T02:43:05Z'  # 1418
+  by: agent  # 1418
+  actor: jgstern_agent  # 1418
+  clock: 23  # 1418
+  nonce: '1418'  # 1418
+  message: "access_mode axis-purity expression COMPLETE (ADR-0038 rulings 1+2+3; vocab F4). The access_mode field no longer mixes axes: (ruling 1) per-edge AST-role derivation replaced the line-granular classifier; (ruling 2, PR1 dev 880cb6775a) the applicability matrix declares which edge types carry it (instantiates + structural gated N/A); (ruling 3, PR2 dev 16c0817330) the FFI-bridge DIRECTION semantic that access_mode='write'/dest_access_mode='read' smuggled is evicted to the new registered data_direction key, and dest_access_mode is removed. Access lives in access_mode, direction in data_direction — one field, one axis. INV-numat stays pending_validation per its Wave-5 cohort gate (closes only on a zero-axis-violation bakeoff cohort AFTER the folds + new axes land); the access_mode expression is now materially discharged. awaits_bakeoff_validation: the bridge edges' dataflow meta changes shape across the polyglot corpus."  # 1418
+- op: update  # 9365
+  at: '2026-07-02T02:43:06Z'  # 9365
+  by: agent  # 9365
+  actor: jgstern_agent  # 9365
+  clock: 24  # 9365
+  nonce: '9365'  # 9365
+  set: {}  # 9365
+  add:  # 9365
+    tags: [awaits_bakeoff_validation]  # 9365
