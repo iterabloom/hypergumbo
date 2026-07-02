@@ -659,9 +659,14 @@ def _create_event_symbol(pattern: EventPattern, root: Path) -> Symbol:
 
     ADR-0027 Phase 3 / audit-findings 0013: event_publisher / event_subscriber
     are framework-role values that fold to canonical kind="function" +
-    meta["framework_role"]. The role suffix is preserved in the Symbol ID
-    string for stable identity (the ID format `<lang>:<path>:<span>:<name>:<kind>`
-    used :event_publisher / :event_subscriber as the disambiguator).
+    meta["framework_role"]. ADR-0036 Ruling 2 completes the fold: the id
+    kind-slot is the node's own kind ("function"), not the role (which the id
+    format `<lang>:<path>:<span>:<name>:<kind>` used to smuggle as a
+    disambiguator). The role no longer disambiguates in the id —
+    (path, line, event_name) is unique per pattern on all measured corpora (a
+    line publishes XOR subscribes a given event), and cross-run identity lives
+    in ``stable_id`` (``make_protocol_stable_id``), independent of the id-slot;
+    a per-file id-uniqueness validator backstops the rare pub+sub-same-line case.
     """
     try:
         rel_path = Path(pattern.file_path).relative_to(root)
@@ -673,7 +678,9 @@ def _create_event_symbol(pattern: EventPattern, root: Path) -> Symbol:
     )
 
     return Symbol(
-        id=f"{pattern.language}:{rel_path}:{pattern.line}-{pattern.line}:{pattern.event_name}:{framework_role}",
+        # ADR-0036 Ruling 2: kind slot == Symbol.kind ("function"); the role
+        # lives on meta["framework_role"] (stamped below), not the id-slot.
+        id=f"{pattern.language}:{rel_path}:{pattern.line}-{pattern.line}:{pattern.event_name}:function",
         name=f"{pattern.event_name}",
         kind="function",
         path=pattern.file_path,

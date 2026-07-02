@@ -763,7 +763,9 @@ class TestEventSymbolFormat:
 
     Regression: DEEP bakeoff cohort #6 (forgejo) showed malformed IDs using
     file paths as language prefixes (e.g., 'web_src/js/utils/dom.js::event_publisher::42'
-    instead of 'javascript:web_src/js/utils/dom.js:42-42:user_created:event_publisher').
+    instead of 'javascript:web_src/js/utils/dom.js:42-42:user_created:function'
+    — kind-slot is "function" per ADR-0036 Ruling 2; the role is on
+    meta.framework_role).
     """
 
     def test_event_publisher_id_format(self, tmp_path: Path):
@@ -782,10 +784,12 @@ class TestEventSymbolFormat:
         # ID must start with language, not file path
         assert sym.id.startswith("javascript:"), (
             f"Event symbol ID '{sym.id}' uses file path as prefix instead of "
-            f"language. Expected format: javascript:events.js:42-42:user_created:event_publisher"
+            f"language. Expected format: javascript:events.js:42-42:user_created:function"
         )
-        # Verify the full format matches standard convention
-        assert ":event_publisher" in sym.id
+        # ADR-0036 Ruling 2: the id kind-slot is the node's own kind
+        # ("function"); the role lives on meta.framework_role, not the id-slot.
+        assert sym.id.rsplit(":", 1)[-1] == "function"
+        assert sym.meta["framework_role"] == "event_publisher"
 
     def test_event_subscriber_id_format(self, tmp_path: Path):
         """Subscriber symbol ID uses language prefix."""
@@ -803,7 +807,9 @@ class TestEventSymbolFormat:
         assert sym.id.startswith("python:"), (
             f"Event symbol ID '{sym.id}' should start with 'python:'"
         )
-        assert ":event_subscriber" in sym.id
+        # ADR-0036 Ruling 2: kind-slot is "function"; role on meta.framework_role.
+        assert sym.id.rsplit(":", 1)[-1] == "function"
+        assert sym.meta["framework_role"] == "event_subscriber"
 
     def test_link_events_produces_valid_symbol_ids(self, tmp_path: Path):
         """End-to-end: linked event symbols have valid IDs."""
