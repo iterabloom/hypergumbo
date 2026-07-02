@@ -286,7 +286,25 @@ PHP_FRAMEWORKS = {
 
 # Java/Kotlin (pom.xml, build.gradle) detection patterns
 JAVA_FRAMEWORKS = {
-    "spring-boot": ["spring-boot", "org.springframework.boot"],
+    # WI-tolap: Spring's Maven coordinate is org.springframework.boot, but a
+    # Spring MVC controller imports its annotations from a DIFFERENT namespace
+    # family (org.springframework.web.bind.annotation, org.springframework
+    # .stereotype, org.springframework.context.annotation). refine_frameworks'
+    # demote phase validates a manifest-detected framework by matching a prod
+    # import against these patterns; with only the .boot coord, a real
+    # @RestController that never imports org.springframework.boot was demoted to
+    # dev_frameworks, starving enrich_symbols of spring-boot.yaml so no route/
+    # controller concept fired. These extra entries are IMPORT namespaces, not
+    # Maven group coords (spring-web's coord is org.springframework:spring-web),
+    # so _pattern_matches_deps never matches them against a real dependency —
+    # they widen import matching only, adding no manifest-detection FP.
+    "spring-boot": [
+        "spring-boot",
+        "org.springframework.boot",
+        "org.springframework.web",
+        "org.springframework.stereotype",
+        "org.springframework.context",
+    ],
     "micronaut": ["micronaut", "io.micronaut"],
     "quarkus": ["quarkus", "io.quarkus"],
     "dropwizard": ["dropwizard-core", "dropwizard-jersey"],
