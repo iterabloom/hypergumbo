@@ -54,6 +54,11 @@ GAP_PASSES: list[tuple[str, str]] = [
     ("orchestrator_file_symbol_synthesis", "hypergumbo_core.analyze.all_analyzers"),
     ("boundary_external_symbol_synthesis", "hypergumbo_core.cli"),
     ("enclosure-linker", "hypergumbo_core.linkers.registry"),
+    # WI-tufil: the two route-materialization post-passes (see catalog.py
+    # _BUILTIN_PIPELINE_PASS_IDS). Both are defined in framework_patterns and
+    # emit a real AnalysisRun from cli.run_behavior_map.
+    ("route-materializer", "hypergumbo_core.framework_patterns"),
+    ("django-cbv-method-expander", "hypergumbo_core.framework_patterns"),
 ]
 
 

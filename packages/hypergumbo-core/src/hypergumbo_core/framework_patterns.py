@@ -1763,8 +1763,10 @@ def _extract_resolution_hints(ctx: UsageContext) -> dict[str, str | None]:
     return hints
 
 
-def materialize_route_symbols(symbols: list[Symbol]) -> list[Symbol]:
-    """Create kind='route' symbols for enriched route handler methods.
+def materialize_route_symbols(
+    symbols: list[Symbol], origin_run_id: str = ""
+) -> list[Symbol]:
+    """Create route-marker symbols (kind='function') for enriched handlers.
 
     After ``enrich_symbols()`` tags handler methods with ``concept: route``,
     this function creates corresponding route IR nodes that the
@@ -1778,12 +1780,16 @@ def materialize_route_symbols(symbols: list[Symbol]) -> list[Symbol]:
 
     Args:
         symbols: All symbols (already enriched by ``enrich_symbols``).
+        origin_run_id: execution_id of the ``route-materializer`` AnalysisRun
+            the caller minted for this pass. Stamped onto every emitted marker
+            so its node->AnalysisRun provenance join is intact (WI-tufil /
+            WI-mosil). Defaults to "" for unit callers that don't validate.
 
     Returns:
         List of new route Symbol objects to extend the symbol list.
         Does NOT modify the input list.
     """
-    from .analyze.base import make_route_stable_id
+    from .analyze.base import make_route_stable_id, make_symbol_id
     from .ir import Span, Symbol as SymbolCls, make_pass_id
 
     pass_id = make_pass_id("route-materializer")
@@ -1886,10 +1892,15 @@ def materialize_route_symbols(symbols: list[Symbol]) -> list[Symbol]:
 
                 stable_id = make_route_stable_id(method, route_path_normalized)
 
-                # Create route symbol at the same location as the handler
-                route_id = (
-                    f"{sym.language}:{sym.path}:{sym.span.start_line}-"
-                    f"{sym.span.end_line}:{route_name}:route"
+                # Create route symbol at the same location as the handler.
+                # WI-tufil: build the id via make_symbol_id with the symbol's
+                # own kind ("function", the ADR-0027 Phase-3 route->function
+                # fold) so the id kind-slot round-trips against Symbol.kind. The
+                # route signal lives in meta["framework_role"], not the id-slot.
+                route_id = make_symbol_id(
+                    sym.language, sym.path,
+                    sym.span.start_line, sym.span.end_line,
+                    route_name, "function",
                 )
                 route_sym = SymbolCls(
                     id=route_id,
@@ -1904,6 +1915,7 @@ def materialize_route_symbols(symbols: list[Symbol]) -> list[Symbol]:
                         end_col=sym.span.end_col,
                     ),
                     origin=pass_id,
+                    origin_run_id=origin_run_id,
                     stable_id=stable_id,
                     meta={
                         "route_path": route_path_normalized,
@@ -1924,7 +1936,7 @@ _HTTP_METHOD_NAMES: frozenset[str] = frozenset(
 
 
 def expand_class_based_view_routes(
-    symbols: list,
+    symbols: list, origin_run_id: str = "",
 ) -> tuple[list, set[str]]:
     """Expand CBV routes into one route per declared HTTP method.
 
@@ -1956,7 +1968,7 @@ def expand_class_based_view_routes(
           should be dropped (only populated when expansion succeeded for
           that route).
     """
-    from .analyze.base import make_route_stable_id
+    from .analyze.base import make_route_stable_id, make_symbol_id
     from .ir import Span, Symbol as SymbolCls, make_pass_id
 
     # Build view_class_name -> set of declared HTTP method names.
@@ -2007,14 +2019,19 @@ def expand_class_based_view_routes(
                 "expanded_from": sym.id,
                 "framework_role": "route",
             }
-            new_id = (
-                f"{sym.language}:{sym.path}:{sym.span.start_line}-"
-                f"{sym.span.end_line}:{route_path}:{http_method}:route"
+            # WI-tufil: id kind-slot = the symbol's own kind ("function"), name
+            # slot = the symbol's name, so the id round-trips against Symbol.kind
+            # (the route signal is in meta["framework_role"]).
+            new_name = f"{sym.name}.{method_name}"
+            new_id = make_symbol_id(
+                sym.language, sym.path,
+                sym.span.start_line, sym.span.end_line,
+                new_name, "function",
             )
             new_routes.append(
                 SymbolCls(
                     id=new_id,
-                    name=f"{sym.name}.{method_name}",
+                    name=new_name,
                     kind="function",
                     language=sym.language,
                     path=sym.path,
@@ -2025,6 +2042,7 @@ def expand_class_based_view_routes(
                         end_col=sym.span.end_col,
                     ),
                     origin=pass_id,
+                    origin_run_id=origin_run_id,
                     stable_id=make_route_stable_id(http_method, route_path),
                     meta=new_meta,
                 )

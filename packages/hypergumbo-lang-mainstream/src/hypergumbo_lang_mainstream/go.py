@@ -3488,7 +3488,7 @@ def _extract_go_routes(
                                 route_sym = Symbol(
                                     id=make_symbol_id(
                                         "go", str(file_path), start_line, end_line,
-                                        f"{normalized_method} {route_path}", "route"
+                                        f"{normalized_method} {route_path}", "function"
                                     ),
                                     stable_id=make_route_stable_id(normalized_method, route_path),
                                     name=handler_name,
@@ -3609,7 +3609,7 @@ def _extract_go_routes(
                                 route_sym = Symbol(
                                     id=make_symbol_id(
                                         "go", str(file_path), start_line, end_line,
-                                        f"{handle_http_method} {route_path}", "route"
+                                        f"{handle_http_method} {route_path}", "function"
                                     ),
                                     stable_id=make_route_stable_id(
                                         handle_http_method, route_path,
@@ -3654,7 +3654,7 @@ def _extract_go_routes(
                             route_sym = Symbol(
                                 id=make_symbol_id(
                                     "go", str(file_path), start_line, end_line,
-                                    f"{normalized_method} {route_path}", "route"
+                                    f"{normalized_method} {route_path}", "function"
                                 ),
                                 stable_id=make_route_stable_id(normalized_method, route_path),
                                 name=handler_name,
@@ -3880,7 +3880,7 @@ def _extract_go_routes(
             route_sym = Symbol(
                 id=make_symbol_id(
                     "go", str(file_path), start_line, end_line,
-                    f"{normalized_method} {route_path}", "route",
+                    f"{normalized_method} {route_path}", "function",
                 ),
                 stable_id=make_route_stable_id(normalized_method, route_path),
                 name=handler_name,

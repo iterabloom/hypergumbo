@@ -503,6 +503,17 @@ _BUILTIN_PIPELINE_PASS_IDS: frozenset[str] = frozenset({
     # linker-emitted nodes (grpc_stub, mq_publisher, etc.) to their
     # enclosing functions for slice traversal.
     "enclosure-linker",
+    # framework_patterns.py — two orchestrator-level route-materialization
+    # post-passes that mint standalone route-marker Symbols from enriched
+    # concept metadata (they are not @register_* call sites). Like the two
+    # synthetic synthesizers below, each emits a real AnalysisRun whose
+    # pass_id is the value here and whose execution_id the minted markers'
+    # origin_run_id joins to (WI-tufil). ``route-materializer`` handles
+    # annotation-based frameworks (Spring MVC / JAX-RS / Express); the CBV
+    # expander splits a Django ``as_view()`` ANY-route into one route per
+    # declared HTTP method.
+    "route-materializer",
+    "django-cbv-method-expander",
 })
 
 # Synthetic-pass provenance IDs (ADR-0044). A few pipeline-level synthesis /

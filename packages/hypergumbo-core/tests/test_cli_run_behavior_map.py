@@ -432,7 +432,7 @@ def test_run_behavior_map_cbv_expansion(tmp_path: Path, monkeypatch: pytest.Monk
 
     original_expand = None
 
-    def mock_expand(symbols):
+    def mock_expand(symbols, origin_run_id=""):
         return fake_expanded, fake_removed
 
     import hypergumbo_core.framework_patterns as fp_mod

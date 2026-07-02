@@ -8564,19 +8564,44 @@ def run_behavior_map(
         expand_class_based_view_routes,
         materialize_route_symbols,
     )
-    materialized_routes = materialize_route_symbols(all_symbols)
+    # WI-tufil: mint a real AnalysisRun for each route-materialization post-pass
+    # so the route-marker symbols they emit carry a non-empty origin_run_id
+    # joining a run in this artifact's analysis_runs (WI-mosil), mirroring the
+    # boundary-synthesis pass below. The pass_ids are registered in
+    # catalog._BUILTIN_PIPELINE_PASS_IDS / pass_metadata.GAP_PASSES.
+    _route_mat_run = AnalysisRun.create(  # nosec B106 — pass_id is a pass identifier, not a password
+        pass_id="route-materializer", version=PASS_VERSION,
+        config_fingerprint=compute_config_fingerprint(
+            {"pass_id": "route-materializer"}
+        ),
+    )
+    materialized_routes = materialize_route_symbols(
+        all_symbols, origin_run_id=_route_mat_run.execution_id
+    )
     if materialized_routes:
         all_symbols.extend(materialized_routes)
+        _route_mat_run.nodes_emitted = len(materialized_routes)
+        analysis_runs.append(_route_mat_run.to_dict())
 
     # WI-lojoh: expand Django CBV routes (single ANY route per as_view()
     # registration) into one route per declared HTTP method on the view
     # class. Runs after materialize_route_symbols so any newly minted route
     # symbols can also be expanded.
-    cbv_expanded, cbv_removed_ids = expand_class_based_view_routes(all_symbols)
+    _cbv_run = AnalysisRun.create(  # nosec B106 — pass_id is a pass identifier, not a password
+        pass_id="django-cbv-method-expander", version=PASS_VERSION,
+        config_fingerprint=compute_config_fingerprint(
+            {"pass_id": "django-cbv-method-expander"}
+        ),
+    )
+    cbv_expanded, cbv_removed_ids = expand_class_based_view_routes(
+        all_symbols, origin_run_id=_cbv_run.execution_id
+    )
     if cbv_removed_ids:
         all_symbols = [s for s in all_symbols if s.id not in cbv_removed_ids]
     if cbv_expanded:
         all_symbols.extend(cbv_expanded)
+        _cbv_run.nodes_emitted = len(cbv_expanded)
+        analysis_runs.append(_cbv_run.to_dict())
 
     # Run cross-language linkers
     show_progress("Running linkers", 55)
