@@ -1,0 +1,19 @@
+- op: create  # 8123
+  at: '2026-07-02T09:42:14Z'  # 8123
+  by: agent  # 8123
+  actor: jgstern_agent  # 8123
+  clock: 1  # 8123
+  nonce: '8123'  # 8123
+  data:  # 8123
+    kind: work_item  # 8123
+    title: "Route-marker id-slot 'route' fossil + missing provenance across the remaining route producers (WI-tufil fleet tail)"  # 8123
+    status: todo_hard  # 8123
+    priority: 2  # 8123
+    parent:  # 8123
+    tags: []  # 8123
+    isbefore: []  # 8123
+    duplicate_of: []  # 8123
+    not_duplicate_of: []  # 8123
+    pr_ref:  # 8123
+    description: "WI-tufil closed the route-parity trio (go via go.py; js/java via\nframework_patterns.materialize_route_symbols / expand_class_based_view_routes):\nroute-marker symbols (meta.framework_role in {route, route_mount}) now build\ntheir id via make_symbol_id(..., kind=\"function\") so the id kind-slot\nround-trips against Symbol.kind, carry a non-empty origin_run_id joining a real\nAnalysisRun, and name a registered origin pass-id.\n\nThe SAME defect persists in the remaining route-marker producers (fleet tail),\neach building the id with kind-slot \"route\"/\"route_mount\" (or setting literal\nSymbol.kind=\"route\") so the id_format round-trip fails, and several minting via\na direct Symbol(...) constructor with an absent/invalid origin_run_id\n(cross_field ERROR) or an unregistered origin (axis_conformance ERROR):\n\n- js_ts.py direct route synthesis (external/inline/jsx handlers, ~3518/3589/3623)\n- py.py direct route synthesis: Django path(), Starlette Route(), Flask-RESTful\n  add_resource (~2752/2782/2812) — origin/origin_run_id not stamped (likely\n  cross_field errors on real Django/Starlette/Flask-RESTful repos)\n- ruby.py (~1147/1198/1227), php.py (~676/705), elixir.py (~553/581),\n  swift.py (~1206), play_routes.py / scala (~131 route, ~165 route_include) —\n  several set literal kind=\"route\"/\"route_include\" (id-slot matches kind but the\n  kind is unregistered, so id_format still fails)\n- linkers/grpc.py (~940, \"RPC <path>:route\")\n- go route_mount (go.py ~3711, id kind-slot \"route_mount\")\n- annotation_convention.py (@hg:route, id-slot \":annotated_route\" — adjacent;\n  verify whether it needs the same treatment)\n\nInvariant (same as WI-tufil): a route-marker symbol's id kind-slot must equal\nits Symbol.kind (=\"function\" per the ADR-0027 Phase-3 route->function fold;\nnothing consumes the id kind-slot — all consumers key on meta.framework_role),\nit must carry a non-empty origin_run_id joining a real AnalysisRun, and every\nSymbol.origin element must be a registered pass-id.\n\nStructural fix: a shared route-marker minting helper (e.g. make_route_symbol in\nanalyze/base.py) that all producers route through — builds the id via\nmake_symbol_id(kind=\"function\"), sets kind=\"function\", meta[\"framework_role\"],\nand stamps origin + origin_run_id from the producing pass's AnalysisRun. This is\nthe synthetic-node-stamping chokepoint the WI-tufil producer scout found does\nNOT yet exist for routes. Batchable one-producer-per-PR (INV-loguk slice-C\nprecedent). Close-check: run each producer's canonical route fixture through\nrun_behavior_map, assert 0 route-marker id_format/cross_field/axis_conformance\nviolations, and extend test_route_concept_parity's route-marker gate as\nproducers are fixed.\n\nTrio precedent (done): WI-tufil — PR #382, dev 104a2bb491 (fix) + c22d9c11de\n(test-gate robustness)."  # 8123
+    fields: {}  # 8123

@@ -19,3 +19,18 @@
     pr_ref:  # bdd6
     description: "**Mechanism.** The .read()/.write()/.close() calls that DO survive open()-idiom file I/O resolve to bare unresolved placeholders (python:external:0-0:read:unresolved, io_boundary=None), and open/read/write are in python.yaml ambiguous_names (line 54: 'builtins.open vs any .open() method'), so they are suppressed into external_potential rather than classified as fs_read/fs_write.\n\n**Evidence (fixture).** /tmp/iofix/svc.py read_config does 'with open(...) as f: return f.read()', direct_read does 'f=open(path); f.read()', write_log does 'open(...,\"w\").write(msg)'. io-boundaries headline: 'I/O Boundary Map (2 boundary calls)' = net_send + subprocess ONLY; ALL file I/O landed in external_potential (4 chains suppressed). direct_read edges = only calls->read:unresolved + calls->close:unresolved; write_log edges = ZERO. On the full substrate external_potential is 7097/7949 (89%) of all io edges — the suppressed catch-all dominates.\n\n**Consequence.** Real filesystem reads/writes via the open() idiom are invisible to io-boundaries; the bucket that should surface them silently swallows them. This is the suppression half of F126.A1 (the no-edge-for-open() half is the sibling row).\n\n**Related (distinct).** Cross-links to WI-fuvuj (method/bare-receiver Python I/O loses module qualifier -> misclassified into external_potential) and WI-fabup (Python ambiguous_names not wired to receiver disambiguation) — those address resolution; this is the specific open()-idiom fs_read/fs_write suppression. Source: dogfood_tranche_07 F126.A1b, fresh-run reproduced."  # bdd6
     fields: {}  # bdd6
+- op: update  # e588
+  at: '2026-07-02T15:40:49Z'  # e588
+  by: agent  # e588
+  actor: jgstern_agent  # e588
+  clock: 2  # e588
+  nonce: e588  # e588
+  set:  # e588
+    status: done  # e588
+- op: discuss  # 0ade
+  at: '2026-07-02T15:40:49Z'  # 0ade
+  by: agent  # 0ade
+  actor: jgstern_agent  # 0ade
+  clock: 3  # 0ade
+  nonce: 0ade  # 0ade
+  message: "Stale/already-fixed. Filed claim (2026-06-07): io-boundaries suppresses surviving open/read/write/close into external_potential via python.yaml ambiguous_names. Re-ran the item's own repro on merged dev (.venv/bin/hypergumbo): a 'with open(p) as f: f.read()' module -> io-boundaries reports 'I/O Boundary Map (1 boundary calls) / fs_read: 1 / file.read' with dst python:file:0-0:read:unresolved (module=file), NOT suppressed into external_potential (external_potential bucket absent). Fixed by WI-fuvuj (e9be75116b, 2026-06-27): receiver-type inference + synthetic 'file' catalog module so open()-idiom .read()/.write() classify via lookup_with_module, not ambiguous_names suppression. Residual breadth (file.close, immediate-chain .write) tracked distinctly by WI-higaj; not re-opened here."  # 0ade

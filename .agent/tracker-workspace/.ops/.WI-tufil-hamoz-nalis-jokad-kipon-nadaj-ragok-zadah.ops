@@ -1,0 +1,34 @@
+- op: create  # ac78
+  at: '2026-07-02T07:03:10Z'  # ac78
+  by: agent  # ac78
+  actor: jgstern_agent  # ac78
+  clock: 1  # ac78
+  nonce: ac78  # ac78
+  data:  # ac78
+    kind: work_item  # ac78
+    title: "Synthesized route-marker symbols (METHOD /path:route) violate 3 validators: unregistered ':route' kind-slot (id_format), empty origin_run_id (cross_field), invalid Symbol.origin (axis_conformance)"  # ac78
+    status: todo_hard  # ac78
+    priority: 2  # ac78
+    parent:  # ac78
+    tags: []  # ac78
+    isbefore: []  # ac78
+    duplicate_of: []  # ac78
+    not_duplicate_of: []  # ac78
+    pr_ref:  # ac78
+    description: "Surfaced by WI-tolap (route-parity re-measure). When a route surfaces via a synthesized route-marker symbol (id shape '<lang>:<file>:<span>:<METHOD> <path>:route', e.g. 'java:Ctrl.java:5-6:GET /users:route', 'go:main.go:8-8:ANY /users:route', 'javascript:app.js:3-3:GET /users:route'), that symbol violates THREE validators simultaneously in the emitted validation_report: (1) id_format WARNING x2 — the id's kind-slot 'route' does not match Symbol.kind 'function' (round-trip violation) AND 'route' is not a registered symbol-kind (symbol_kinds.all_symbol_kind_names()); (2) cross_field ERROR — empty origin_run_id, breaking node->AnalysisRun referential integrity; (3) axis_conformance ERROR — Symbol.origin contains an invalid element. Reproduced live 2026-07-02 on packages/hypergumbo-core/tests/fixtures/route-parity/{go,javascript,java} via run_behavior_map. PRE-EXISTING and language-agnostic: go and javascript emit the identical triple TODAY (independent of WI-tolap, which only made java join them). python/rust route via concept=route on the function itself and synthesize NO marker, so they do not exhibit it — the 3-mechanism surfacing inconsistency the WI-tosul re-measure documented. Producer is the route-marker synthesis path (http linker / route materialization). Structural fix likely: mint the marker via make_symbol_id with a REGISTERED kind (register 'route' per ADR-0027 or fold to a canonical kind), populate origin_run_id, set a conformant Symbol.origin. Related (do NOT fold): WI-mosil (done — general empty origin_run_id sweep; route-marker synthesizer is an uncovered producer or regression), INV-popop (route stable_id collisions), INV-nubub (route-symbol slice collision). Behavioral close-check: route-parity fixtures' validation_report shows 0 route-marker id_format/cross_field/axis_conformance violations across go/js/java."  # ac78
+    fields: {}  # ac78
+- op: update  # 2667
+  at: '2026-07-02T09:42:51Z'  # 2667
+  by: agent  # 2667
+  actor: jgstern_agent  # 2667
+  clock: 2  # 2667
+  nonce: '2667'  # 2667
+  set:  # 2667
+    status: done  # 2667
+- op: discuss  # 9679
+  at: '2026-07-02T09:42:51Z'  # 9679
+  by: agent  # 9679
+  actor: jgstern_agent  # 9679
+  clock: 3  # 9679
+  nonce: '9679'  # 9679
+  message: "Done via PR #382 (dev 104a2bb491 fix + c22d9c11de test-gate). Behavioral close-check (this item's filed repro) re-run on merged dev: run_behavior_map on fixtures/route-parity/{go,javascript,java} shows 0 route-marker id_format/cross_field/axis_conformance violations across all three. Markers now build the id via make_symbol_id kind=function (id-slot round-trips Symbol.kind=function), carry a non-empty origin_run_id joining a real AnalysisRun, and name a registered origin pass-id (go=[go]; js/java=[route-materializer]). Fix: framework_patterns materializers + the go route pass build the id with kind=function; cli.run_behavior_map mints a real AnalysisRun per materialization pass (route-materializer / django-cbv-method-expander, registered in catalog._BUILTIN_PIPELINE_PASS_IDS + pass_metadata.GAP_PASSES) and threads execution_id into origin_run_id. No new symbol-kind axis: nothing consumes the id kind-slot (all six route consumers key on meta.framework_role). Filed premise that go and js emit the identical triple was REFUTED on re-measure: go already stamped origin/origin_run_id (only the advisory id-slot warning), so the two errors were js/java-materializer-only. Scope = route-parity trio; the remaining route producers (js_ts/py.py-direct, ruby/php/elixir/swift/scala, grpc, go route_mount, annotation_convention) still carry the id-slot fossil, filed as WI-zugob. No awaits_bakeoff_validation: provenance/id-form fix, the id-slot is unconsumed, no bakeoff-metric claim."  # 9679
