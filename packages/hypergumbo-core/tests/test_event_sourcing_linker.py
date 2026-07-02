@@ -207,6 +207,49 @@ class TestPythonEventPatterns:
         assert subscribers[0].event_name == "post_save"
         assert subscribers[1].event_name == "pre_delete"
 
+    def test_django_signals_gated_on_framework_detection(self, tmp_path: Path):
+        """WI-pitit: the Django-signal sub-scans only fire when Django is
+        detected. On a repo where Django is NOT in detected_frameworks, a
+        framework-blind sqlite3.connect / socket.send call must not produce
+        phantom framework='django' event symbols."""
+        (tmp_path / "db.py").write_text(
+            "import sqlite3\n"
+            "import socket\n"
+            "def f(db_path, payload):\n"
+            "    conn = sqlite3.connect(db_path)\n"
+            "    sock = socket.socket()\n"
+            "    sock.send(payload)\n"
+            "    return conn\n"
+        )
+        ctx = LinkerContext(
+            symbols=[], edges=[], repo_root=tmp_path, detected_frameworks=set(),
+        )
+        result = event_sourcing_linker(ctx)
+        django_syms = [
+            s for s in result.symbols if (s.meta or {}).get("framework") == "django"
+        ]
+        assert django_syms == [], (
+            "Django signal patterns fired without Django detected: "
+            f"{[(s.name, (s.meta or {}).get('framework_role')) for s in django_syms]}"
+        )
+
+    def test_django_signals_fire_when_django_detected(self, tmp_path: Path):
+        """WI-pitit: with Django in detected_frameworks the gate is not
+        over-tight — genuine Django signals still produce django symbols."""
+        (tmp_path / "handlers.py").write_text(
+            "from django.db.models.signals import post_save\n"
+            "post_save.connect(on_user_saved, sender=User)\n"
+        )
+        ctx = LinkerContext(
+            symbols=[], edges=[], repo_root=tmp_path,
+            detected_frameworks={"django"},
+        )
+        result = event_sourcing_linker(ctx)
+        django_syms = [
+            s for s in result.symbols if (s.meta or {}).get("framework") == "django"
+        ]
+        assert django_syms, "expected a Django signal symbol when django is detected"
+
     def test_event_bus_publish(self, tmp_path: Path):
         """Detect EventBus.publish() pattern."""
         code = dedent('''

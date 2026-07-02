@@ -365,13 +365,23 @@ def _scan_javascript_events(file_path: Path, content: str) -> list[EventPattern]
     return patterns
 
 
-def _scan_python_events(file_path: Path, content: str) -> list[EventPattern]:
-    """Scan Python file for event patterns."""
+def _scan_python_events(
+    file_path: Path, content: str, detected_frameworks: set[str] | None = None
+) -> list[EventPattern]:
+    """Scan Python file for event patterns.
+
+    WI-pitit: the Django-signal sub-scans (``.send`` / ``.connect`` /
+    ``@receiver``) match framework-blind identifiers (``sqlite3.connect``,
+    ``sock.send``), so they are gated on Django actually being detected.
+    ``detected_frameworks is None`` means "no framework info supplied" and stays
+    permissive (unit callers testing the raw patterns); the production linker
+    passes ``ctx.detected_frameworks`` (a real, possibly-empty set)."""
     patterns: list[EventPattern] = []
+    _django = detected_frameworks is None or "django" in detected_frameworks
 
     # Django signal.send patterns (publishers)
     # Uses identifier matching - signal names are always "variable" type
-    for match in DJANGO_SIGNAL_SEND_PATTERN.finditer(content):
+    for match in (DJANGO_SIGNAL_SEND_PATTERN.finditer(content) if _django else []):
         signal_name = match.group(1)
         line = content[: match.start()].count("\n") + 1
         patterns.append(EventPattern(
@@ -385,7 +395,7 @@ def _scan_python_events(file_path: Path, content: str) -> list[EventPattern]:
         ))
 
     # Django signal.connect patterns (subscribers)
-    for match in DJANGO_SIGNAL_CONNECT_PATTERN.finditer(content):
+    for match in (DJANGO_SIGNAL_CONNECT_PATTERN.finditer(content) if _django else []):
         signal_name = match.group(1)
         line = content[: match.start()].count("\n") + 1
         patterns.append(EventPattern(
@@ -399,7 +409,7 @@ def _scan_python_events(file_path: Path, content: str) -> list[EventPattern]:
         ))
 
     # Django @receiver decorator patterns (subscribers)
-    for match in DJANGO_RECEIVER_DECORATOR_PATTERN.finditer(content):
+    for match in (DJANGO_RECEIVER_DECORATOR_PATTERN.finditer(content) if _django else []):
         signal_name = match.group(1)
         line = content[: match.start()].count("\n") + 1
         patterns.append(EventPattern(
@@ -628,11 +638,13 @@ def _scan_go_events(file_path: Path, content: str) -> list[EventPattern]:
     return patterns
 
 
-def _scan_file(file_path: Path, content: str) -> list[EventPattern]:
+def _scan_file(
+    file_path: Path, content: str, detected_frameworks: set[str] | None = None
+) -> list[EventPattern]:
     """Scan a file for event patterns."""
     language = _detect_language(file_path)
     if language == "python":
-        return _scan_python_events(file_path, content)
+        return _scan_python_events(file_path, content, detected_frameworks)
     elif language == "javascript":
         return _scan_javascript_events(file_path, content)
     elif language == "java":
@@ -696,11 +708,16 @@ def _create_event_symbol(pattern: EventPattern, root: Path) -> Symbol:
     )
 
 
-def link_events(root: Path) -> EventSourcingLinkResult:
+def link_events(
+    root: Path, detected_frameworks: set[str] | None = None
+) -> EventSourcingLinkResult:
     """Link event publishers to subscribers.
 
     Args:
         root: Repository root path.
+        detected_frameworks: frameworks detected for this repo. Threaded to the
+            Python scan so the framework-blind Django-signal patterns only fire
+            when Django is present (WI-pitit). ``None`` = permissive (no info).
 
     Returns:
         EventSourcingLinkResult with edges linking publishers to subscribers.
@@ -716,7 +733,7 @@ def link_events(root: Path) -> EventSourcingLinkResult:
         try:
             content = read_masked_source(file_path, encoding="utf-8", errors="ignore")
             files_scanned += 1
-            patterns = _scan_file(file_path, content)
+            patterns = _scan_file(file_path, content, detected_frameworks)
             all_patterns.extend(patterns)
         except (OSError, IOError):  # pragma: no cover
             pass
@@ -938,7 +955,7 @@ def event_sourcing_linker(ctx: LinkerContext) -> LinkerResult:
     by ``link_events()``. The helper call is preserved as a documented
     no-op so the deprecation rationale stays adjacent to the code.
     """
-    result = link_events(ctx.repo_root)
+    result = link_events(ctx.repo_root, detected_frameworks=ctx.detected_frameworks)
 
     # Tombstone for the dropped subscriber → enclosing-method edge
     # (DEPRECATE-NO-FOLD per audit-findings 0001 / WI-vasik-jofiv;
