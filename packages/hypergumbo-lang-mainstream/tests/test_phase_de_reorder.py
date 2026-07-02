@@ -120,7 +120,9 @@ def _run(tmp_path: Path) -> dict:
 def _first_party_stable_ids(data: dict) -> frozenset:
     return frozenset(
         n["stable_id"] for n in data["nodes"]
-        if "<external>" not in n["id"] and ":unresolved" not in n["id"]
+        # Exclude synthetic boundary nodes; per ADR-0036 Ruling 2 their id
+        # kind-slot is now external_symbol (was :unresolved).
+        if "<external>" not in n["id"] and ":external_symbol" not in n["id"]
     )
 
 

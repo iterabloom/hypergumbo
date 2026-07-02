@@ -335,6 +335,13 @@ META_KEYS: Final[tuple[MetaKeySpec, ...]] = (
                 "(e.g. 'event_publisher', 'route', 'graphql_resolver'). "
                 "Fold residue per audit-findings 0013 / WI-habut "
                 "Wave 5."),
+    MetaKeySpec("reference_syntax", AXIS_SYMBOL_META,
+                "Use-site reference syntax of an external boundary Symbol "
+                "(e.g. 'unresolved', 'attribute', 'module', 'namespace') "
+                "whose canonical ``Symbol.kind`` is 'external_symbol'. Per "
+                "ADR-0036 Ruling 2 the id kind-slot is a pure copy of "
+                "``Symbol.kind``, so the reference syntax that used to live "
+                "there moves to this registered home. WI-pubiv."),
     # ------------------------------------------------------------------
     # Symbol.meta — Wave 6 file/build-shape fold residues.
     # Audit-findings 0005, 0006, 0007 + Wave 6 PR 1-6 introduced

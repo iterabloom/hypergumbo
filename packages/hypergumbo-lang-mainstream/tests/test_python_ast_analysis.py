@@ -4275,7 +4275,7 @@ class TestVariableMethodCalls:
             None
         )
         assert send_request_edge is not None, "Should emit unresolved edge for stub.send_request()"
-        assert "unresolved" in send_request_edge["dst"]
+        assert "external_symbol" in send_request_edge["dst"]
         assert send_request_edge["confidence"] == 0.40
 
     def test_return_type_generic_not_tracked(self, tmp_path: Path) -> None:
@@ -4312,7 +4312,7 @@ class TestVariableMethodCalls:
             None
         )
         assert send_request_edge is not None, "Should emit unresolved edge for stub.send_request()"
-        assert "unresolved" in send_request_edge["dst"]
+        assert "external_symbol" in send_request_edge["dst"]
         assert send_request_edge["confidence"] == 0.40
 
     def test_return_type_local_class(self, tmp_path: Path) -> None:
@@ -4407,7 +4407,7 @@ class TestVariableMethodCalls:
             None
         )
         assert process_edge is not None, "Should emit unresolved edge for t.process()"
-        assert "unresolved" in process_edge["dst"]
+        assert "external_symbol" in process_edge["dst"]
         assert process_edge["confidence"] == 0.40
 
     def test_module_level_module_qualified_call(self, tmp_path: Path) -> None:
@@ -4501,7 +4501,7 @@ class TestVariableMethodCalls:
         call_edges = [e for e in data["edges"] if e["type"] == "calls"]
         assert len(call_edges) == 1, "Should have 1 unresolved call edge"
         assert "unknown_method" in call_edges[0]["dst"]
-        assert "unresolved" in call_edges[0]["dst"]
+        assert "external_symbol" in call_edges[0]["dst"]
         assert call_edges[0]["confidence"] == 0.40
 
     def test_unresolved_constructor_no_type_tracking(self, tmp_path: Path) -> None:
@@ -4521,7 +4521,7 @@ class TestVariableMethodCalls:
         # Should emit unresolved edge for the method call (enables IO/taint analysis)
         call_edges = [e for e in data["edges"] if e["type"] == "calls"]
         inst_edges = [e for e in data["edges"] if e["type"] == "instantiates"]
-        unresolved_calls = [e for e in call_edges if "unresolved" in e["dst"]]
+        unresolved_calls = [e for e in call_edges if "external_symbol" in e["dst"]]
         assert len(unresolved_calls) == 1, "Should have 1 unresolved call edge for do_something"
         assert "do_something" in unresolved_calls[0]["dst"]
         assert len(inst_edges) == 0, "Should not have instantiates edges for unresolved constructor"
@@ -5498,7 +5498,7 @@ class TestUnresolvedEdgeEmission:
         # Should have an unresolved edge to external_lib.process
         unresolved = [
             e for e in call_edges
-            if ":unresolved" in e["dst"] and "process" in e["dst"]
+            if ":external_symbol" in e["dst"] and "process" in e["dst"]
         ]
         assert len(unresolved) == 1, f"Expected unresolved edge, got: {call_edges}"
         edge = unresolved[0]
@@ -5529,7 +5529,7 @@ class TestUnresolvedEdgeEmission:
         # Should have an unresolved edge to Client.create
         unresolved = [
             e for e in call_edges
-            if ":unresolved" in e["dst"] and "Client.create" in e["dst"]
+            if ":external_symbol" in e["dst"] and "Client.create" in e["dst"]
         ]
         assert len(unresolved) == 1, f"Expected unresolved edge, got: {call_edges}"
 

@@ -461,8 +461,9 @@ func main() {
 """)
         data = analyze(tmp_path)
         edges = [e for e in data["edges"] if e["type"] == "calls"]
-        # Should have unresolved edge with grpc path
-        unresolved = [e for e in edges if "unresolved" in e["dst"]]
+        # Should have an unresolved edge to grpc (dst points at the external
+        # boundary node, kind-slot external_symbol per ADR-0036 Ruling 2).
+        unresolved = [e for e in edges if "external_symbol" in e["dst"]]
         assert any("grpc" in e["dst"].lower() for e in unresolved)
 
     def test_unresolved_method_call_without_import(self, tmp_path: Path) -> None:

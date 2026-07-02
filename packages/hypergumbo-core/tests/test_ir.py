@@ -1487,9 +1487,11 @@ class TestCreateBoundaryNodes:
         result, remap = create_boundary_nodes([s1], [e])
         assert len(result) == 1
         node = result[0]
-        # Non-file kind: canonical id == original (no rewrite needed).
-        assert node.id == "go:fmt:0-0:Errorf:unresolved"
+        # ADR-0036 Ruling 2: the id kind-slot is the node's own kind
+        # (external_symbol); the use-site reference syntax moves to meta.
+        assert node.id == "go:fmt:0-0:Errorf:external_symbol"
         assert node.kind == "external_symbol"
+        assert node.meta["reference_syntax"] == "unresolved"
         assert node.language == "go"
         assert node.name == "Errorf"
         assert node.supply_chain_tier == 3
@@ -1497,8 +1499,11 @@ class TestCreateBoundaryNodes:
         # Stable identity is populated for cross-run grouping (WI-fozoh).
         assert node.stable_id is not None
         assert node.display_label == "go:fmt:Errorf:unresolved"
-        # Canonical id == original id, so remap is empty (no rewrite needed).
-        assert remap == {}
+        # The id changed (kind slot unresolved -> external_symbol), so the
+        # inbound edge must be remapped onto the new canonical id.
+        assert remap == {
+            "go:fmt:0-0:Errorf:unresolved": "go:fmt:0-0:Errorf:external_symbol",
+        }
 
     def test_stamps_origin_and_origin_run_id(self):
         """synthetic:F1: boundary external_symbol nodes carry a non-empty
@@ -1550,8 +1555,9 @@ class TestCreateBoundaryNodes:
         )
         result, _ = create_boundary_nodes([s1], [e])
         assert len(result) == 1
-        # Non-file kind: canonical id == original.
-        assert result[0].id == "external:lib:0-0:helper:unresolved"
+        # ADR-0036 Ruling 2: kind slot is external_symbol; ref syntax on meta.
+        assert result[0].id == "external:lib:0-0:helper:external_symbol"
+        assert result[0].meta["reference_syntax"] == "unresolved"
 
     def test_multiple_dangling_deduped(self):
         """Multiple edges to the same dangling target create only one node."""
@@ -1562,7 +1568,8 @@ class TestCreateBoundaryNodes:
         e2 = Edge.create(src=s2.id, dst=dangling_id, edge_type="calls", line=2, origin="test", origin_run_id="test")
         result, _ = create_boundary_nodes([s1, s2], [e1, e2])
         assert len(result) == 1
-        assert result[0].id == dangling_id
+        # ADR-0036 Ruling 2: kind slot uniformly external_symbol.
+        assert result[0].id == "go:fmt:0-0:Println:external_symbol"
 
     def test_distinct_modules_with_same_name_stay_distinct(self):
         """WI-fozoh: ``urllib.request.urlopen`` and ``urllib.parse.urlopen``
@@ -1586,8 +1593,10 @@ class TestCreateBoundaryNodes:
         result, _ = create_boundary_nodes([s1], [e1, e2])
         assert len(result) == 2
         ids = {n.id for n in result}
-        assert "python:urllib.request:0-0:urlopen:unresolved" in ids
-        assert "python:urllib.parse:0-0:urlopen:unresolved" in ids
+        # Distinct modules stay distinct via the path slot; the kind slot is
+        # uniformly external_symbol (ADR-0036 Ruling 2).
+        assert "python:urllib.request:0-0:urlopen:external_symbol" in ids
+        assert "python:urllib.parse:0-0:urlopen:external_symbol" in ids
 
     def test_boundary_node_path_is_external(self):
         """Boundary nodes have path '<external>'."""
@@ -1665,14 +1674,87 @@ class TestCreateBoundaryNodes:
         # Two boundary nodes: 1 collapsed "file" boundary covering both
         # source files, plus 1 click boundary from the shared dst.
         ids = {n.id for n in result}
-        canonical_file = "python:<external>:0-0:file:file"
+        # ADR-0036 Ruling 2: kind slot is uniformly external_symbol; the "file"
+        # reference syntax moves to meta.reference_syntax.
+        canonical_file = "python:<external>:0-0:file:external_symbol"
         assert canonical_file in ids
-        assert "python:click:0-0:click:unresolved" in ids
+        file_node = next(n for n in result if n.id == canonical_file)
+        assert file_node.meta["reference_syntax"] == "file"
+        assert "python:click:0-0:click:external_symbol" in ids
         # Both distinct file-id srcs remap to the canonical "file" id.
         assert remap["python:packages/foo/A.py:1-1:file:file"] == canonical_file
         assert remap["python:packages/bar/B.py:1-1:file:file"] == canonical_file
-        # The click dst is non-file kind: canonical id == original, no remap.
-        assert "python:click:0-0:click:unresolved" not in remap
+        # The click dst's id also changed (kind slot -> external_symbol), so it
+        # is remapped onto its canonical id too.
+        assert (
+            remap["python:click:0-0:click:unresolved"]
+            == "python:click:0-0:click:external_symbol"
+        )
+
+    def test_boundary_id_kind_slot_is_always_external_symbol(self):
+        """ADR-0036 Ruling 2: every boundary node's id kind-slot equals its own
+        ``Symbol.kind`` (``external_symbol``), regardless of the use-site
+        reference syntax, which is preserved on ``meta.reference_syntax``.
+        """
+        s1 = self._make_symbol("python:a.py:1-1:f:function")
+        # A mix of reference syntaxes that used to leak into the kind slot.
+        dsts = {
+            "python:os.path:0-0:join:unresolved": "unresolved",
+            "python:mod:0-0:attr:attribute": "attribute",
+            "go:github.com/x:0-0:pkg:package": "package",
+        }
+        edges = [
+            Edge.create(src=s1.id, dst=d, edge_type="calls", line=i,
+                        origin="test", origin_run_id="test")
+            for i, d in enumerate(dsts)
+        ]
+        result, _ = create_boundary_nodes([s1], edges)
+        assert len(result) == 3
+        for node in result:
+            assert node.kind == "external_symbol"
+            assert node.id.rsplit(":", 1)[-1] == "external_symbol"
+            # the original reference syntax is preserved, never lost
+            assert node.meta["reference_syntax"] in set(dsts.values())
+
+    def test_boundary_ids_are_unique_even_across_reference_syntaxes(self):
+        """ADR-0036 Ruling 2 dedupe-collision guard: two references to the same
+        ``(lang, path, name)`` external via *different* reference syntaxes
+        collapse to a single boundary node with a unique id (the kind slot no
+        longer distinguishes them). Guards against the duplicate ids the
+        kind-slot uniforming could otherwise introduce.
+        """
+        s1 = self._make_symbol("python:a.py:1-1:f:function")
+        e1 = Edge.create(src=s1.id, dst="python:os:0-0:getcwd:unresolved",
+                         edge_type="calls", line=1, origin="test", origin_run_id="test")
+        e2 = Edge.create(src=s1.id, dst="python:os:0-0:getcwd:attribute",
+                         edge_type="calls", line=2, origin="test", origin_run_id="test")
+        result, remap = create_boundary_nodes([s1], [e1, e2])
+        # Collapsed to ONE node — same (lang, path, name).
+        assert len(result) == 1
+        node = result[0]
+        assert node.id == "python:os:0-0:getcwd:external_symbol"
+        # min() picks a deterministic reference syntax; both inbound edges
+        # remap onto the single canonical id.
+        assert node.meta["reference_syntax"] == "attribute"
+        assert remap["python:os:0-0:getcwd:unresolved"] == node.id
+        assert remap["python:os:0-0:getcwd:attribute"] == node.id
+        # ids are globally unique
+        ids = [n.id for n in result]
+        assert len(ids) == len(set(ids))
+
+    def test_boundary_already_external_symbol_kind_slot_gets_no_reference_syntax(self):
+        """When a dangling id's kind slot is already ``external_symbol`` there is
+        no use-site reference syntax to preserve, so ``meta.reference_syntax`` is
+        omitted (the id is already pure) and the id is unchanged (empty remap).
+        """
+        s1 = self._make_symbol("python:a.py:1-1:f:function")
+        e = Edge.create(src=s1.id, dst="python:mod:0-0:thing:external_symbol",
+                        edge_type="calls", line=1, origin="test", origin_run_id="test")
+        result, remap = create_boundary_nodes([s1], [e])
+        node = result[0]
+        assert node.id == "python:mod:0-0:thing:external_symbol"
+        assert "reference_syntax" not in node.meta
+        assert remap == {}
 
     def test_direct_dep_is_tier3_with_directness_direct(self):
         """ADR-0041 §1/§2: a declared (direct) third-party boundary node is

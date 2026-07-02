@@ -1091,18 +1091,22 @@ def is_external_boundary(symbol_or_dict: Any) -> bool:
 _REFERRING_PATHS_CAP = 50
 
 
-def _canonical_external_id(language: str, path: str, name: str, kind: str) -> str:
-    """Canonical id for a deduplicated boundary Symbol (WI-fozoh).
+def _canonical_external_id(language: str, path: str, name: str) -> str:
+    """Canonical id for a deduplicated boundary Symbol (WI-fozoh; ADR-0036 Ruling 2).
 
-    Format mirrors :func:`make_symbol_id` so downstream tooling parses
-    it consistently. The path slot is preserved for kinds where it
-    carries semantic identity (e.g. module name for ``kind="module"``,
-    qualified path for ``kind="unresolved"``); for ``kind="file"``
-    pseudo-IDs the path slot is replaced with ``<external>`` and all
-    per-reference variants collapse into one canonical Symbol per
-    language.
+    The kind slot is fixed at ``external_symbol`` — the boundary node's own
+    ``Symbol.kind`` — per ADR-0036 Ruling 2 (kind-slot purity: the slot is a
+    denormalized copy of ``node.kind``, never use-site reference syntax, a
+    framework role, or a resolution status). The originating reference syntax
+    (``unresolved`` / ``attribute`` / ``module`` / ...) is preserved on
+    ``Symbol.meta['reference_syntax']`` by the caller.
+
+    Format mirrors :func:`make_symbol_id` so downstream tooling parses it
+    consistently. The path slot carries semantic identity (module name for
+    imports, qualified path for unresolved calls); the file-pseudo case has its
+    path collapsed to ``<external>`` upstream in :func:`_dedupe_key`.
     """
-    return f"{language}:{path}:0-0:{name}:{kind}"
+    return f"{language}:{path}:0-0:{name}:external_symbol"
 
 
 _SYNTHETIC_SPAN = "0-0"
@@ -1164,17 +1168,17 @@ def validate_symbol_id_format(symbol_id: str) -> Optional[str]:
 
 
 def _canonical_external_stable_id(
-    language: str, path: str, name: str, kind: str,
+    language: str, path: str, name: str,
 ) -> str:
     """Stable cross-run identity for a boundary Symbol.
 
-    Identity is a function of the dedupe key — ``(language, name, kind)``
-    for collapsed file-id groups (path absent), or
-    ``(language, path, name, kind)`` for full-identity externals. Two
-    runs against equivalent code produce the same stable_id for the
-    same logical boundary.
+    Identity is a function of the dedupe key ``(language, path, name)``
+    (``path`` is ``<external>`` for collapsed file-id groups). Per ADR-0036
+    Ruling 2 the kind slot is uniformly ``external_symbol`` and no longer
+    participates in boundary identity. Two runs against equivalent code produce
+    the same stable_id for the same logical boundary.
     """
-    payload = f"external:{language}:{path}:{name}:{kind}"
+    payload = f"external:{language}:{path}:{name}"
     return f"sha256:{hashlib.sha256(payload.encode()).hexdigest()[:16]}"
 
 
@@ -1221,7 +1225,7 @@ def _parse_dangling_id(dangling_id: str) -> tuple[str, str, str, str]:
 
 def _dedupe_key(
     language: str, path: str, name: str, kind: str,
-) -> tuple[str, str, str, str]:
+) -> tuple[str, str, str]:
     """Compute the dedupe key for an external boundary group.
 
     For ``kind="file"`` pseudo-IDs (produced by ``make_file_id`` in
@@ -1232,10 +1236,17 @@ def _dedupe_key(
     the path slot is meaningful (module name for imports, qualified
     submodule for unresolved calls, etc.) and is kept in the key so
     distinct logical externals stay distinct.
+
+    ``kind`` decides the file-collapse but is **not** part of the returned
+    key — ADR-0036 Ruling 2 makes the boundary id kind-slot uniformly
+    ``external_symbol``, so boundary identity is ``(language, path, name)``
+    only. Two references to the same external via different use-site syntaxes
+    therefore collapse to one node (measured lossless: no external is reached
+    via more than one syntax on any corpus).
     """
     if kind == "file":
-        return (language, "<external>", name, kind)
-    return (language, path, name, kind)
+        return (language, "<external>", name)
+    return (language, path, name)
 
 
 def create_boundary_nodes(
@@ -1333,14 +1344,14 @@ def create_boundary_nodes(
 
     # Group dangling ids by dedupe key. The key collapses file-id
     # pseudo-symbols per language; other kinds keep full identity.
-    groups: Dict[tuple[str, str, str, str], List[str]] = {}
+    groups: Dict[tuple[str, str, str], List[str]] = {}
+    group_ref_kinds: Dict[tuple[str, str, str], set] = {}
     for dangling_id in dangling_ids:
         ref = dangling_refs.get(dangling_id)
         if ref is not None:
             # WI-tihup: structured ref bypasses the colon-split heuristic.
             # ``kind`` is fixed at "unresolved" for ExternalRef-bearing
-            # edges (the producer convention), which matches the dst's
-            # kind slot for the canonical 5-seg shape.
+            # edges (the producer convention).
             language, path, name, kind = (
                 ref.lang, ref.module_path, ref.name, "unresolved",
             )
@@ -1348,14 +1359,24 @@ def create_boundary_nodes(
             language, path, name, kind = _parse_dangling_id(dangling_id)
         key = _dedupe_key(language, path, name, kind)
         groups.setdefault(key, []).append(dangling_id)
+        # ADR-0036 Ruling 2: retain the use-site reference syntax so it can be
+        # stamped on ``meta.reference_syntax``; the id kind-slot is uniform.
+        group_ref_kinds.setdefault(key, set()).add(kind)
 
     boundary_nodes: List[Symbol] = []
     id_remap: Dict[str, str] = {}
     zero_span = Span(start_line=0, end_line=0, start_col=0, end_col=0)
 
     # Iterate groups in sorted order so the output is deterministic.
-    for (language, key_path, name, kind), members in sorted(groups.items()):
-        canonical_id = _canonical_external_id(language, key_path, name, kind)
+    for (language, key_path, name), members in sorted(groups.items()):
+        # ADR-0036 Ruling 2: the id kind-slot is the node's own kind
+        # (external_symbol); the use-site reference syntax moves to
+        # meta.reference_syntax. ``min()`` is deterministic and, in practice,
+        # unambiguous — no (language, path, name) external is reached via more
+        # than one reference syntax on any measured corpus, so the collapse is
+        # lossless (guarded by the boundary-id-uniqueness property test).
+        reference_syntax = min(group_ref_kinds[(language, key_path, name)])
+        canonical_id = _canonical_external_id(language, key_path, name)
 
         # ADR-0041 §1/§2 (supply:F5): tier names supply-chain distance only, so
         # every boundary node is tier 3 (external) — the old tier-min relabel that
@@ -1374,6 +1395,10 @@ def create_boundary_nodes(
         boundary_meta: dict = {"external_boundary": True}
         if directness is not None:
             boundary_meta["directness"] = directness
+        # ADR-0036 Ruling 2: preserve the use-site reference syntax that used to
+        # live (impurely) in the id kind-slot on its registered meta home.
+        if reference_syntax != "external_symbol":
+            boundary_meta["reference_syntax"] = reference_syntax
 
         # ADR-0041 §3: provenance class (stdlib vs third_party) of this
         # tier-3 external, from the single-source language stdlib catalog.
@@ -1386,8 +1411,8 @@ def create_boundary_nodes(
 
         sym = Symbol(
             id=canonical_id,
-            stable_id=_canonical_external_stable_id(language, key_path, name, kind),
-            display_label=f"{language}:{key_path}:{name}:{kind}",
+            stable_id=_canonical_external_stable_id(language, key_path, name),
+            display_label=f"{language}:{key_path}:{name}:{reference_syntax}",
             name=name,
             kind="external_symbol",
             language=language,
