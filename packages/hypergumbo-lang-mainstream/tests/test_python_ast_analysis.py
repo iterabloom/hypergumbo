@@ -7030,6 +7030,31 @@ class TestExternalConstructorReceiverTypeInference:
         assert edge.dst_ref.module_path == "file"
         assert edge.dst_ref.name == "write"
 
+    def test_open_builtin_call_emits_builtins_edge(self, tmp_path: Path) -> None:
+        """WI-mitul: a bare ``open()`` call emits a ``calls`` edge to
+        ``builtins.open`` in every syntactic form, so the io_primitives/
+        python.yaml ``builtins`` rows (fs_read/fs_write functions=[open]) — which
+        were dead because no edge ever targeted them — receive an edge. The
+        receiver ``.read()``/``.write()`` edges (WI-fuvuj, module=file) are
+        orthogonal to this ``open()``-call edge."""
+        from hypergumbo_core.ir import ExternalRef
+
+        forms = {
+            "assign": "def run(p):\n    fh = open(p)\n    return fh\n",
+            "with": "def run(p):\n    with open(p) as fh:\n        pass\n",
+            "chained": "def run(p):\n    return open(p).read()\n",
+            "return": "def run(p):\n    return open(p)\n",
+        }
+        for label, src in forms.items():
+            (tmp_path / f"m_{label}.py").write_text(src)
+            result = extract_nodes(tmp_path / f"m_{label}.py")
+            edge = self._calls_edge(result, "builtins:0-0:open:unresolved")
+            assert edge.dst == "python:builtins:0-0:open:unresolved", label
+            assert edge.is_resolved is False, label
+            assert isinstance(edge.dst_ref, ExternalRef), label
+            assert edge.dst_ref.module_path == "builtins", label
+            assert edge.dst_ref.name == "open", label
+
     def test_with_socket_socket_send_is_module_qualified(
         self, tmp_path: Path
     ) -> None:

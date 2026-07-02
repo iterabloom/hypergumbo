@@ -4051,6 +4051,30 @@ def _process_call(
                     origin=PASS_ID,
                     origin_run_id=run_id,
                 ))
+            elif callee_name in EXTERNAL_CONSTRUCTOR_TYPES:
+                # WI-mitul: a bare builtin I/O constructor (open) — Case 1 found
+                # no import so nothing was emitted, leaving the io_primitives/
+                # python.yaml `builtins` rows (fs_read/fs_write functions=[open])
+                # dead. Emit a calls edge to builtins so open() itself is a
+                # visible I/O call in every syntactic form. (For a bare ast.Name
+                # only the bare EXTERNAL_CONSTRUCTOR_TYPES key `open` can match;
+                # the dotted `socket.socket` entry is an ast.Attribute reached
+                # by a different branch.) The receiver's .read()/.write() edges
+                # (WI-fuvuj, module=file) are orthogonal to this open()-call edge.
+                dst_id = f"python:builtins:0-0:{callee_name}:unresolved"
+                edges.append(Edge.create(
+                    src=caller_symbol.id,
+                    dst=dst_id,
+                    edge_type="calls",
+                    line=call_node.lineno,
+                    evidence_type="ast_call_direct",
+                    is_resolved=False,
+                    dst_ref=ExternalRef(
+                        lang="python", module_path="builtins", name=callee_name
+                    ),
+                    origin=PASS_ID,
+                    origin_run_id=run_id,
+                ))
 
 
 def extract_nodes(py_file: Path, global_symbols: dict[str, Symbol] | None = None) -> AnalysisResult:
