@@ -373,6 +373,10 @@ class TestLinkJsModules:
         npm_packages = [s for s in result.symbols if s.kind == "package" and s.meta and s.meta.get("package_ecosystem") == "npm"]
         assert len(npm_packages) == 1
         assert npm_packages[0].name == "lodash"
+        # ADR-0036 Ruling 2: the id kind-slot is the node's own kind
+        # (``package``), not the ``npm_package`` fold-source.
+        assert npm_packages[0].id.endswith(":package")
+        assert npm_packages[0].id.rsplit(":", 1)[-1] == npm_packages[0].kind
         assert npm_packages[0].supply_chain_tier == 3
         assert npm_packages[0].supply_chain_reason == "npm_package (third-party dependency)"
 

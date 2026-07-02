@@ -227,13 +227,17 @@ def _make_npm_package_id(package_name: str, lang: str) -> str:
 
     Returns:
         Symbol ID in canonical 5-segment form:
-        ``'{lang}:npm:0-0:{package_name}:npm_package'``.
+        ``'{lang}:npm:0-0:{package_name}:package'`` (ADR-0036 Ruling 2: the
+        kind slot is ``package`` — the Symbol's own kind; the npm ecosystem
+        distinction lives on ``meta['package_ecosystem']='npm'``).
     """
     # Sanitize any ``:`` in the name segment (defensive — npm names
     # don't normally contain colons but the canonical schema requires
     # the name segment be colon-free for parse round-tripping).
     safe_name = package_name.replace(":", "_")
-    return f"{lang}:npm:0-0:{safe_name}:npm_package"
+    # ADR-0036 Ruling 2: kind slot == Symbol.kind (``package``), not the
+    # ``npm_package`` fold-source; the ecosystem lives on meta.package_ecosystem.
+    return f"{lang}:npm:0-0:{safe_name}:package"
 
 
 def _is_relative_import(import_path: str) -> bool:

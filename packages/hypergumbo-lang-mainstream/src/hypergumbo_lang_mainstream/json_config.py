@@ -754,8 +754,10 @@ def _process_tsconfig(
     # Create tsconfig symbol. Wave 6 PR 3 DEPRECATE-NO-FOLD per
     # audit-findings 0005: drop the kind="tsconfig" specialisation;
     # consumer queries is_config_file=True + meta["config_format"]=
-    # "tsconfig" instead.
-    config_id = _make_symbol_id(rel_path, start_line, end_line, rel_path, "tsconfig")
+    # "tsconfig" instead. ADR-0036 Ruling 2 completes the fold: the id
+    # kind-slot is the Symbol's own kind ("file"), not the "tsconfig"
+    # fold-source (which survives only on meta["config_format"]).
+    config_id = _make_symbol_id(rel_path, start_line, end_line, rel_path, "file")
 
     sym = Symbol(
         id=config_id,
