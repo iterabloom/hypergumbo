@@ -220,6 +220,7 @@ HIGH_RISK_PRIMITIVES: frozenset[str] = frozenset({
     "os.spawnv", "os.spawnve", "os.spawnvp", "os.spawnvpe",
     # Network outbound — Python
     "urllib.request.urlopen", "urllib.request.Request",
+    "urllib.request.urlretrieve",  # WI-tijos: network egress (net_send)
     "socket.socket.connect", "socket.socket.send", "socket.socket.sendall",
     # Go
     "os/exec.Command", "os/exec.CommandContext",

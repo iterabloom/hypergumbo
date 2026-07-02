@@ -2355,6 +2355,9 @@ class TestHighRiskPrimitives:
 
     def test_is_high_risk_network(self) -> None:
         assert is_high_risk("urllib.request.urlopen") is True
+        # WI-tijos: urlretrieve is a network egress like urlopen / Request
+        # (all three are catalogued net_send in io_primitives/python.yaml).
+        assert is_high_risk("urllib.request.urlretrieve") is True
         assert is_high_risk("socket.socket.send") is True
 
     def test_not_high_risk(self) -> None:
