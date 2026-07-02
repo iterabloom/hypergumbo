@@ -32,10 +32,12 @@ def test_route_call_emits_usage_context(tmp_path: Path) -> None:
     tree = ast.parse(py_file.read_text())
     imports = _imports_for(py_file)
     contexts = _extract_starlette_usage_contexts(tree, str(py_file), {}, imports=imports)
-    assert len(contexts) == 1
+    # WI-kohav: one usage_context per method, each with an http_method STRING.
+    assert len(contexts) == 2
+    assert sorted(c.metadata["http_method"] for c in contexts) == ["GET", "POST"]
     ctx = contexts[0]
     assert ctx.metadata["route_path"] == "/hello"
-    assert ctx.metadata["methods"] == ["GET", "POST"]
+    assert "methods" not in ctx.metadata
     assert ctx.metadata["view_name"] == "hello"
     assert ctx.metadata["receiver"] == "Route"
     assert ctx.position == "view_func"
@@ -56,7 +58,7 @@ def test_websocket_route_uses_synthetic_ws_method(tmp_path: Path) -> None:
     contexts = _extract_starlette_usage_contexts(tree, str(py_file), {}, imports=imports)
     assert len(contexts) == 1
     ctx = contexts[0]
-    assert ctx.metadata["methods"] == ["WS"]
+    assert ctx.metadata["http_method"] == "WS"  # WI-kohav
     assert ctx.metadata["receiver"] == "WebSocketRoute"
 
 

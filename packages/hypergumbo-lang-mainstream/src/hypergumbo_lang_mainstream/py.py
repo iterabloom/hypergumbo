@@ -1355,22 +1355,26 @@ def _extract_flask_usage_contexts(
         # Build full call name (e.g., "app.add_url_rule")
         call_name = f"{receiver_name}.{func_name}" if receiver_name else func_name
 
-        ctx = UsageContext.create(
-            kind="call",
-            context_name=call_name,
-            position="view_func",
-            path=file_path,
-            span=span,
-            symbol_ref=view_ref,
-            metadata={
-                "args": args_values,
-                "route_path": normalized_path,
-                "view_name": view_name,
-                "methods": methods or ["GET"],
-                "receiver": receiver_name,
-            },
-        )
-        contexts.append(ctx)
+        # WI-kohav: spec §9 usage_contexts[].metadata carries a single
+        # http_method STRING (matching every other language's route extractor);
+        # emit one UsageContext per declared method instead of a methods list.
+        for _method in (methods or ["GET"]):
+            ctx = UsageContext.create(
+                kind="call",
+                context_name=call_name,
+                position="view_func",
+                path=file_path,
+                span=span,
+                symbol_ref=view_ref,
+                metadata={
+                    "args": args_values,
+                    "route_path": normalized_path,
+                    "view_name": view_name,
+                    "http_method": _method,
+                    "receiver": receiver_name,
+                },
+            )
+            contexts.append(ctx)
 
     return contexts
 
@@ -1494,22 +1498,25 @@ def _extract_starlette_usage_contexts(
             start_col=getattr(node, "col_offset", 0),
             end_col=getattr(node, "end_col_offset", 0),
         )
-        ctx = UsageContext.create(
-            kind="call",
-            context_name=original_name,
-            position="view_func",
-            path=file_path,
-            span=span,
-            symbol_ref=view_ref,
-            metadata={
-                "args": args_values,
-                "route_path": normalized_path,
-                "view_name": view_name,
-                "methods": methods or ["GET"],
-                "receiver": original_name,
-            },
-        )
-        contexts.append(ctx)
+        # WI-kohav: one UsageContext per method with an http_method STRING
+        # (spec §9; matches every other language's route extractor).
+        for _method in (methods or ["GET"]):
+            ctx = UsageContext.create(
+                kind="call",
+                context_name=original_name,
+                position="view_func",
+                path=file_path,
+                span=span,
+                symbol_ref=view_ref,
+                metadata={
+                    "args": args_values,
+                    "route_path": normalized_path,
+                    "view_name": view_name,
+                    "http_method": _method,
+                    "receiver": original_name,
+                },
+            )
+            contexts.append(ctx)
 
     return contexts
 
@@ -2767,10 +2774,11 @@ def _extract_file_analysis(
     for ctx in starlette_contexts:
         route_path = ctx.metadata.get("route_path", "")
         view_name = ctx.metadata.get("view_name")
-        methods = ctx.metadata.get("methods") or ["GET"]
+        # WI-kohav: each usage_context now carries a single http_method string
+        # (one ctx per method emitted by the producer); wrap in a 1-elem list so
+        # the per-method minting below is unchanged.
+        methods = [ctx.metadata.get("http_method") or "GET"]
         receiver = ctx.metadata.get("receiver", "Route")
-        # Multiple methods → one route symbol per method, matching the
-        # convention used elsewhere in this codebase.
         for method in methods:
             # ADR-0034 / Phase 6 PR6: canonical IDs forbid ``:`` in the
             # name segment (the same character is the segment separator).

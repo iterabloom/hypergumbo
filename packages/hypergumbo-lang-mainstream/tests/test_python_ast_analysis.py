@@ -1582,7 +1582,7 @@ def test_flask_add_url_rule_usage_context(tmp_path: Path) -> None:
     assert ctx.context_name == "app.add_url_rule"
     assert ctx.metadata["route_path"] == "/users"
     assert ctx.metadata["view_name"] == "user_list"
-    assert ctx.metadata["methods"] == ["GET"]  # Default
+    assert ctx.metadata["http_method"] == "GET"  # Default (WI-kohav)
 
 
 def test_flask_add_url_rule_with_view_func_kwarg(tmp_path: Path) -> None:
@@ -1627,9 +1627,12 @@ def test_flask_add_url_rule_with_methods(tmp_path: Path) -> None:
 
     result = analyze_python(tmp_path)
 
-    assert len(result.usage_contexts) == 1
-    ctx = result.usage_contexts[0]
-    assert ctx.metadata["methods"] == ["POST", "PUT"]
+    # WI-kohav: one UsageContext per declared method, each carrying an
+    # http_method STRING (matching every other language's route extractor).
+    assert len(result.usage_contexts) == 2
+    methods = sorted(c.metadata["http_method"] for c in result.usage_contexts)
+    assert methods == ["POST", "PUT"]
+    assert all("methods" not in c.metadata for c in result.usage_contexts)
 
 
 def test_flask_blueprint_add_url_rule(tmp_path: Path) -> None:
@@ -1872,7 +1875,7 @@ def test_fastapi_add_api_route_usage_context(tmp_path: Path) -> None:
     assert ctx["context_name"] == "router.add_api_route"
     assert ctx["metadata"]["route_path"] == "/items"
     assert ctx["metadata"]["view_name"] == "list_items"
-    assert ctx["metadata"]["methods"] == ["GET"]
+    assert ctx["metadata"]["http_method"] == "GET"  # WI-kohav
 
 
 def test_fastapi_add_api_route_second_positional_arg(tmp_path: Path) -> None:
@@ -1897,7 +1900,7 @@ def test_fastapi_add_api_route_second_positional_arg(tmp_path: Path) -> None:
     ctx = usage_contexts[0]
     assert ctx["metadata"]["view_name"] == "infer"
     assert ctx["metadata"]["route_path"] == "/models/{model_name}/infer"
-    assert ctx["metadata"]["methods"] == ["POST"]
+    assert ctx["metadata"]["http_method"] == "POST"  # WI-kohav
 
 
 def test_fastapi_add_api_route_attribute_handler(tmp_path: Path) -> None:
@@ -1943,7 +1946,7 @@ def test_fastapi_add_api_route_no_explicit_methods(tmp_path: Path) -> None:
     assert len(usage_contexts) >= 1
     ctx = usage_contexts[0]
     assert ctx["metadata"]["view_name"] == "root"
-    assert ctx["metadata"]["methods"] == ["GET"]  # default
+    assert ctx["metadata"]["http_method"] == "GET"  # default (WI-kohav)
 
 
 def test_fastapi_apirouter_prefix_composition_literal(tmp_path: Path) -> None:
