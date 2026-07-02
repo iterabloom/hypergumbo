@@ -406,6 +406,9 @@ TEST_FILE_PATTERNS = [
     r"\.spec\.[jt]sx?$",         # JS/TS: service.spec.ts, component.spec.tsx
     r"_spec\.rb$",               # Ruby: user_spec.rb
     r"/test_[^/]+\.(?:cpp|cc|cxx|c|h|hpp)$",  # C/C++: test_utils.cpp (GTest convention)
+    r"(?:^|/)test_[^/]+\.py$",   # Python: test_foo.py (pytest/unittest, WI-mozum)
+    r"_test\.py$",               # Python: foo_test.py (WI-mozum)
+    r"(?:^|/)test_[^/]+\.sh$",   # Bash: test_hooks.sh (WI-mozum)
     r"(?:^|/)tests\.rs$",        # Rust: co-located test module (src/consensus/tests.rs)
     r"(?:^|/)testonly\.rs$",     # Rust: test-only helpers (src/vm_executor/testonly.rs)
 ]

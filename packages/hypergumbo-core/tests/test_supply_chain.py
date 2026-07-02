@@ -1102,6 +1102,37 @@ class TestTestFileClassification:
         assert result.tier == Tier.FIRST_PARTY
         assert result.is_test is True
 
+    def test_python_test_prefix_colocated_is_test(self, tmp_path):
+        """WI-mozum: Python test_*.py co-located with source (not under a
+        tests/ dir) is tier 1 + is_test."""
+        pkg = tmp_path / "mymod" / "sub"
+        pkg.mkdir(parents=True)
+        (pkg / "test_thing.py").write_text("def test_x():\n    assert True\n")
+
+        result = classify_file(pkg / "test_thing.py", tmp_path, set())
+        assert result.tier == Tier.FIRST_PARTY
+        assert result.is_test is True
+
+    def test_python_test_suffix_colocated_is_test(self, tmp_path):
+        """WI-mozum: Python *_test.py co-located with source is is_test."""
+        pkg = tmp_path / "mymod" / "sub"
+        pkg.mkdir(parents=True)
+        (pkg / "thing_test.py").write_text("def test_x():\n    assert True\n")
+
+        result = classify_file(pkg / "thing_test.py", tmp_path, set())
+        assert result.tier == Tier.FIRST_PARTY
+        assert result.is_test is True
+
+    def test_bash_test_prefix_colocated_is_test(self, tmp_path):
+        """WI-mozum: Bash test_*.sh co-located with source is is_test."""
+        scripts = tmp_path / "scripts"
+        scripts.mkdir()
+        (scripts / "test_hooks.sh").write_text("#!/bin/bash\necho ok\n")
+
+        result = classify_file(scripts / "test_hooks.sh", tmp_path, set())
+        assert result.tier == Tier.FIRST_PARTY
+        assert result.is_test is True
+
     def test_cpp_production_code_stays_tier1(self, tmp_path):
         """C++ production code with 'test' in the name stays tier 1."""
         src_dir = tmp_path / "src"
