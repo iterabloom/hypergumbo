@@ -361,9 +361,9 @@ class TestEventSourcingLinker:
         assert result.edges[0].meta["event_name"] == "user:created"
         # INV-forim: dataflow annotations must persist through the linker.
         # Historically edge.meta was reassigned after Edge.create, wiping
-        # the access_mode and dest_access_mode set by the kwargs.
+        # the access_mode set by the kwargs (dest_access_mode was removed, ADR-0038).
         assert result.edges[0].meta["access_mode"] == "write"
-        assert result.edges[0].meta["dest_access_mode"] == "read"
+        assert result.edges[0].meta.get("dest_access_mode") is None
         assert result.edges[0].meta["channel"] == "user:created"
 
     def test_typescript_symbol_discovery_language_and_id(self, tmp_path: Path):

@@ -677,8 +677,7 @@ def link_tauri_ipc(
                 origin=PASS_ID,
                 origin_run_id=run.execution_id,
                 evidence_type="ast_call_direct",
-                access_mode="write",
-                dest_access_mode="read",
+                data_direction="src_to_dst",
                 meta={
                     "protocol": "ipc",
                     "framework_dispatch": "tauri_invoke",
@@ -800,7 +799,7 @@ def link_tauri_ipc(
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     evidence_type="ast_import",
-                    access_mode="write",
+                    data_direction="src_to_dst",
                     meta={"framework_dispatch": "specta_wrapper"},
                     derived_from=[caller_id, publisher_id],
                 ))
@@ -935,7 +934,6 @@ def link_tauri_ipc(
                         origin_run_id=run.execution_id,
                         evidence_type="ast_call_direct",
                         access_mode="write",
-                        dest_access_mode="read",
                         channel=event_name,
                         meta={
                             "channel_kind": "ipc",

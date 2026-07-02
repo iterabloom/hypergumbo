@@ -724,7 +724,8 @@ class TestMessageQueueDataflowAnnotationsPreserved:
     """Regression tests for INV-forim.
 
     The message_queue linker sets access_mode="write" and
-    dest_access_mode="read" on its edges via Edge.create kwargs, then
+    access_mode="write" on its edges via Edge.create kwargs (dest_access_mode
+    was removed, ADR-0038), then
     historically overwrote edge.meta with a dict that wiped both fields.
     These tests assert the annotations now persist through the linker.
     """
@@ -746,7 +747,7 @@ class TestMessageQueueDataflowAnnotationsPreserved:
         assert len(result.edges) == 1
         edge = result.edges[0]
         assert edge.meta["access_mode"] == "write"
-        assert edge.meta["dest_access_mode"] == "read"
+        assert edge.meta.get("dest_access_mode") is None
         # channel (from Edge.create kwarg) and topic (from meta dict) are
         # both present — they are different keys, preserved for downstream
         # consumers that may reference either name.

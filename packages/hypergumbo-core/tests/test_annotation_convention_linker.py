@@ -135,7 +135,7 @@ class TestLinkAnnotations:
         assert edge.confidence == 0.95
         assert edge.meta is not None
         assert edge.meta["access_mode"] == "write"
-        assert edge.meta["dest_access_mode"] == "read"
+        assert edge.meta.get("dest_access_mode") is None
         assert edge.meta["channel"] == "cursor.position"
 
     def test_no_match_different_channels(self, tmp_path: Path) -> None:

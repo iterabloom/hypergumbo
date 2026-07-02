@@ -50,6 +50,23 @@ VALID_ACCESS_MODES: frozenset[str] = frozenset({"read", "write", "mutate", "dele
 - delete: remove binding/key/entry (can cause subsequent reads to fail)
 """
 
+VALID_DATA_DIRECTIONS: frozenset[str] = frozenset({
+    "src_to_dst", "dst_to_src", "bidirectional",
+})
+"""ADR-0038 ruling 3 dataflow-DIRECTION vocabulary for ``Edge.meta['data_direction']``.
+
+The way data moves across a cross-boundary edge — a SEPARATE axis from
+``access_mode`` (how src touches dst's state). This is the post-eviction home of
+the FFI-bridge / protocol-linker direction semantic that ``access_mode="write"``
++ ``dest_access_mode="read"`` used to smuggle (the cgo docstring said it
+outright — "Go caller passes data to C"). ``dest_access_mode`` is removed.
+
+- src_to_dst: data flows from the edge source to the destination (the common
+  bridge case — caller passes args to the native/remote callee)
+- dst_to_src: data flows back from destination to source
+- bidirectional: data flows both ways
+"""
+
 PASS_VERSION: str = __version__
 """Canonical pass version derived from the package version.
 
@@ -662,7 +679,7 @@ class Edge:
         dst_ref: Structured identity for the dst endpoint. Populated on every `is_resolved=False` edge after the finalize edge-resolution sub-step (`None` only for an unidentified dangling reference whose id cannot be parsed); `None` for in-repo (`is_resolved=True`) dsts. Canonical source of truth for external-target identity — the legacy `dst` string is built from the same `ExternalRef`. The fourth cell (`is_resolved=True` + populated `dst_ref`) is never produced (ADR-0037 ruling 1 table).
         derived_from: Symbol (or Edge) IDs the producer consumed to construct this Edge (INV-rukor). Populated by linkers; None for analyzer-originated edges.
         quality: Score and reason dict for quality assessment
-        meta: Optional metadata dict. Dataflow edges (ADR-0015) store access_mode, dest_access_mode, and channel here.
+        meta: Optional metadata dict. Dataflow edges store access_mode (ADR-0015) and channel here; cross-boundary edges store data_direction (ADR-0038 ruling 3).
     """
 
     id: str  # axis: identity
@@ -723,13 +740,15 @@ class Edge:
         derived_from: Optional[List[str]] = None,
         meta: Optional[Dict[str, Any]] = None,
         access_mode: Optional[str] = None,
-        dest_access_mode: Optional[str] = None,
+        data_direction: Optional[str] = None,
         channel: Optional[str] = None,
     ) -> "Edge":
         """Create an Edge with auto-generated ID and edge_key.
 
-        ADR-0015 dataflow kwargs (access_mode, dest_access_mode, channel)
-        are merged into the meta dict when non-None.
+        Dataflow kwargs (access_mode [ADR-0015], data_direction [ADR-0038
+        ruling 3], channel) are merged into the meta dict when non-None.
+        ``dest_access_mode`` was removed (ADR-0038 ruling 3 — the bridge
+        direction it encoded now lives in ``data_direction``).
 
         ``is_resolved`` here is ADVISORY: the finalize edge-resolution sub-step
         (ADR-0037 ruling 1/2) derives the authoritative value from the dst
@@ -740,16 +759,16 @@ class Edge:
             raise ValueError(
                 f"access_mode={access_mode!r} not in {sorted(VALID_ACCESS_MODES)}"
             )
-        if dest_access_mode is not None and dest_access_mode not in VALID_ACCESS_MODES:
+        if data_direction is not None and data_direction not in VALID_DATA_DIRECTIONS:
             raise ValueError(
-                f"dest_access_mode={dest_access_mode!r} not in {sorted(VALID_ACCESS_MODES)}"
+                f"data_direction={data_direction!r} not in {sorted(VALID_DATA_DIRECTIONS)}"
             )
         # Merge dataflow kwargs into meta
         dataflow_meta: Dict[str, str] = {}
         if access_mode is not None:
             dataflow_meta["access_mode"] = access_mode
-        if dest_access_mode is not None:
-            dataflow_meta["dest_access_mode"] = dest_access_mode
+        if data_direction is not None:
+            dataflow_meta["data_direction"] = data_direction
         if channel is not None:
             dataflow_meta["channel"] = channel
         if dataflow_meta:

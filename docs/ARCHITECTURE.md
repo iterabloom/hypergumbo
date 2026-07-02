@@ -15,14 +15,14 @@ for focused LLM context.
 
 hypergumbo analyzed its own source code and found:
 - **291** Python modules (133 analyzers, 57 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 29, Infrastructure 7; 64 core, 4 CLI, 33 tracker)
-- **35492** symbols (functions, classes, methods)
-- **120423** edges by type:
-  - calls: 62111
-  - contains: 32707
-  - imports: 10914
-  - instantiates: 8323
-  - references: 3905
-  - module_attr_ref: 1217
+- **35556** symbols (functions, classes, methods)
+- **120627** edges by type:
+  - calls: 62208
+  - contains: 32763
+  - imports: 10926
+  - instantiates: 8335
+  - references: 3925
+  - module_attr_ref: 1224
   - other: 1246
 
 ## Package Architecture
@@ -85,7 +85,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 35492 Symbols + 120423 Edges + UsageContexts           │
+│  Output: 35556 Symbols + 120627 Edges + UsageContexts           │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -237,7 +237,7 @@ A relationship between two symbols (e.g., function calls).
 - `dst_ref`: Structured identity for the dst endpoint. Populated on every `is_resolved=False` edge after the finalize edge-resolution sub-step (`None` only for an unidentified dangling reference whose id cannot be parsed); `None` for in-repo (`is_resolved=True`) dsts. Canonical source of truth for external-target identity — the legacy `dst` string is built from the same `ExternalRef`. The fourth cell (`is_resolved=True` + populated `dst_ref`) is never produced (ADR-0037 ruling 1 table).
 - `derived_from`: Symbol (or Edge) IDs the producer consumed to construct this Edge (INV-rukor). Populated by linkers; None for analyzer-originated edges.
 - `quality`: Score and reason dict for quality assessment
-- `meta`: Optional metadata dict. Dataflow edges (ADR-0015) store access_mode, dest_access_mode, and channel here.
+- `meta`: Optional metadata dict. Dataflow edges store access_mode (ADR-0015) and channel here; cross-boundary edges store data_direction (ADR-0038 ruling 3).
 
 
 ## Canonical Vocabularies
@@ -268,16 +268,16 @@ These symbols have the highest bidirectional centrality
 
 | Symbol | Kind | Score | Location |
 |--------|------|-------|----------|
-| `Symbol` | class | 9144.1 | ir.py |
-| `Span` | class | 6159.9 | ir.py |
+| `Symbol` | class | 9171.6 | ir.py |
+| `Span` | class | 6177.6 | ir.py |
 | `run_behavior_map` | function | 3315.3 | cli.py |
-| `write_text` | external_symbol | 3252.0 | <external> |
-| `LinkerContext` | class | 2841.0 | registry.py |
+| `write_text` | external_symbol | 3254.0 | <external> |
+| `LinkerContext` | class | 2845.0 | registry.py |
 | `TrackerApp` | class | 1943.0 | tui.py |
+| `Edge.create` | method | 1801.5 | ir.py |
 | `load_framework_patterns` | function | 1743.0 | framework_patterns.py |
-| `Edge.create` | method | 1720.4 | ir.py |
 | `main` | function | 1563.1 | cli.py |
-| `Path` | external_symbol | 1502.0 | <external> |
+| `Path` | external_symbol | 1503.0 | <external> |
 | `clear_pattern_cache` | function | 1336.8 | framework_patterns.py |
 | `Edge` | class | 1239.6 | ir.py |
 | `append` | external_symbol | 1239.0 | <external> |
@@ -834,7 +834,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: 95140c6b5f31
+  commit: 2e9611808f28
   hypergumbo: 6.1.0
   python: 3.12.3
 -->

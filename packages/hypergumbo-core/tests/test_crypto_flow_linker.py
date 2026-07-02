@@ -226,8 +226,8 @@ class TestLinkCryptoFlow:
         edge = result.edges[0]
         assert edge.edge_type == "crypto_flow"
         assert edge.meta is not None
-        assert edge.meta["access_mode"] == "write"
-        assert edge.meta["dest_access_mode"] == "read"
+        assert edge.meta.get("data_direction") == "src_to_dst"
+        assert edge.meta.get("access_mode") is None
 
     def test_links_hkdf_new_to_expand_rust(self, tmp_path: Path) -> None:
         """Rust Hkdf::new in one file + .expand in another creates an edge."""

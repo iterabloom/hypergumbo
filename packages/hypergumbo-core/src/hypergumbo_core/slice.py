@@ -266,10 +266,7 @@ class SliceResult:
             ``admitted_reverse_read`` (reverse-mode read-edge admission),
             ``rejected_read_from_non_writer`` (source is a reader outside any
             writer chain — the case option 3 would catch),
-            ``rejected_other`` (rejected for another mode reason, e.g. delete),
-            ``would_admit_dst_reader`` (subset of rejected edges whose
-            dest_access_mode is read/mutate — predictive counter for option 2
-            impact before it is implemented).
+            ``rejected_other`` (rejected for another mode reason, e.g. delete).
     """
 
     entry_nodes: List[str]
@@ -439,8 +436,8 @@ def slice_graph(
     # one-hop terminals: the edge and the destination node enter the slice
     # but the destination is NOT enqueued (so reader chains don't explode).
     # This implements "data flows OUT (write site → downstream reads of what
-    # was written)" without requiring per-edge dest_access_mode annotation
-    # (which is the option-2/option-3 longer-term direction tracked separately).
+    # was written)" from the source's access_mode alone (ADR-0038 removed the
+    # dest_access_mode annotation the old option-2/option-3 direction relied on).
     writer_node_ids: Set[str] = set()
     if query.dataflow and not query.reverse:
         for edge in edges:
@@ -463,7 +460,6 @@ def slice_graph(
             "admitted_reverse_read": 0,
             "rejected_read_from_non_writer": 0,
             "rejected_other": 0,
-            "would_admit_dst_reader": 0,
         }
 
     # Build file path -> file node IDs mapping for import edge lookup
@@ -699,13 +695,9 @@ def slice_graph(
                         admission_stats["admitted_downstream_read"] += 1
                         terminal = True
                     else:
-                        # Rejected by the dataflow rule. Record whether
-                        # option 2 (dst_mode OR-check) would have admitted
-                        # this edge — this is the predictive counter for
-                        # WI-hukoh Phase C decision gate.
-                        dest_mode = edge.meta.get("dest_access_mode")
-                        if dest_mode in ("read", "mutate"):
-                            admission_stats["would_admit_dst_reader"] += 1
+                        # Rejected by the dataflow rule. (The old
+                        # would_admit_dst_reader predictive counter read
+                        # dest_access_mode, removed in ADR-0038 ruling 3.)
                         if mode == "read":
                             admission_stats["rejected_read_from_non_writer"] += 1
                         else:

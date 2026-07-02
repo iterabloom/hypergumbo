@@ -553,7 +553,7 @@ def link_ipc(repo_root: Path) -> IpcLinkResult:
                 # Canonical 'event_publishes' + meta['channel_kind']='ipc'.
                 # Pass meta via kwarg so Edge.create merges with dataflow
                 # fields — assigning edge.meta afterward would wipe out
-                # access_mode/dest_access_mode (INV-forim).
+                # the dataflow meta fields (INV-forim).
                 edge = Edge.create(
                     src=src_id,
                     dst=dst_id,
@@ -564,7 +564,6 @@ def link_ipc(repo_root: Path) -> IpcLinkResult:
                     origin_run_id=run.execution_id,
                     evidence_type="variable_match" if is_variable_match else "ipc_channel_match",
                     access_mode="write",
-                    dest_access_mode="read",
                     channel=channel,
                     meta={
                         "channel_kind": "ipc",
@@ -719,7 +718,7 @@ def link_ipc(repo_root: Path) -> IpcLinkResult:
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     evidence_type="ast_call_direct",
-                    access_mode="write",
+                    data_direction="src_to_dst",
                     channel=channel,
                     meta={
                         "bridge_kind": "context_bridge",
@@ -823,7 +822,7 @@ def link_ipc(repo_root: Path) -> IpcLinkResult:
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     evidence_type="ast_call_direct",
-                    access_mode="write",
+                    data_direction="src_to_dst",
                     channel=channel,
                     meta={
                         "bridge_kind": "context_bridge",

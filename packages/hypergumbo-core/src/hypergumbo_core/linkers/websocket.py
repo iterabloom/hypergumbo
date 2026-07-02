@@ -819,7 +819,7 @@ def link_websocket(
                     # meta['channel_kind']='websocket'. Pass meta via
                     # Edge.create's meta= kwarg so it merges with
                     # dataflow fields (assigning edge.meta afterward
-                    # would wipe access_mode/dest_access_mode — INV-forim).
+                    # would wipe the dataflow meta fields — INV-forim).
                     edge = Edge.create(
                         src=_make_file_id(
                             _language_for_file(send_pat.file_path, send_pat.pattern_type),
@@ -836,7 +836,6 @@ def link_websocket(
                         origin=PASS_ID,
                         origin_run_id=run.execution_id,
                         access_mode="write",
-                        dest_access_mode="read",
                         channel=event,
                         meta={
                             "channel_kind": "websocket",
@@ -870,7 +869,7 @@ def link_websocket(
             confidence=0.90,
             origin=PASS_ID,
             origin_run_id=run.execution_id,
-            access_mode="write",
+            data_direction="src_to_dst",
             # WI-pozom: the endpoint identifier (ep.event — a route path for
             # path-based WS, a consumer class name for Django Channels) is
             # carried by the dst endpoint symbol. It is neither a dataflow
@@ -929,7 +928,7 @@ def link_websocket(
                     confidence=0.85,
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
-                    access_mode="write",
+                    data_direction="src_to_dst",
                     meta={
                         "protocol": "ws",
                         # WI-pozom: WS route path is a route (url_path), not a

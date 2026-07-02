@@ -528,8 +528,8 @@ def link_message_queues(root: Path) -> MessageQueueLinkResult:
                     confidence = base_confidence - (0.1 if is_cross_language else 0.0)
                     # Pass linker-specific meta via Edge.create's meta= kwarg
                     # so Edge.create merges it with the dataflow fields —
-                    # assigning edge.meta afterward would wipe access_mode
-                    # and dest_access_mode set above (INV-forim).
+                    # assigning edge.meta afterward would wipe the dataflow
+                    # meta fields set above (INV-forim).
                     # ADR-0023 §6 Phase 3 / audit-findings 0002 (WI-hahap-farid):
                     # MQ publisher→subscriber via topic is publish-
                     # family shape; "queue" is the channel kind.
@@ -546,7 +546,6 @@ def link_message_queues(root: Path) -> MessageQueueLinkResult:
                         origin_run_id=run.execution_id,
                         evidence_type="variable_match" if is_variable_match else "topic_match",
                         access_mode="write",
-                        dest_access_mode="read",
                         channel=key[1],
                         meta={
                             "channel_kind": "queue",

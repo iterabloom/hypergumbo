@@ -338,7 +338,6 @@ def link_message_dispatch(
                 origin_run_id=run.execution_id,
                 evidence_type="dispatch_pattern",
                 access_mode="write",
-                dest_access_mode="read",
                 channel=write.channel,
                 meta={"channel_kind": "message_bus"},
                 derived_from=[pub_id, sub_id],

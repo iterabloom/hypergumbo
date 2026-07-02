@@ -776,8 +776,8 @@ def link_events(root: Path) -> EventSourcingLinkResult:
 
                 # Pass linker-specific meta via Edge.create's meta= kwarg so
                 # Edge.create merges it with the dataflow fields — assigning
-                # to edge.meta after construction would wipe access_mode and
-                # dest_access_mode set by the kwargs above (INV-forim).
+                # to edge.meta after construction would wipe the dataflow
+                # meta fields set by the kwargs above (INV-forim).
                 #
                 # ADR-0028 Phase 3 / audit-findings 0014: pattern-detection leak
                 # (event_name_match was a regex/naming-pattern shape).
@@ -793,7 +793,6 @@ def link_events(root: Path) -> EventSourcingLinkResult:
                     origin_run_id=run.execution_id,
                     evidence_type="naming_convention",
                     access_mode="write",
-                    dest_access_mode="read",
                     channel=publisher.event_name,
                     meta={
                         "event_name": publisher.event_name,

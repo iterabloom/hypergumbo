@@ -706,21 +706,21 @@ def test_valid_access_modes_vocabulary() -> None:
 
 
 def test_edge_create_access_mode_kwargs() -> None:
-    """Edge.create should accept access_mode, dest_access_mode, channel kwargs."""
+    """Edge.create should accept access_mode, data_direction, channel kwargs."""
     edge = Edge.create(
         src="py:src/a.py:10:writer:function",
         dst="py:src/b.py:20:reader:function",
         edge_type="data_flows_to",
         line=10,
         access_mode="write",
-        dest_access_mode="read",
+        data_direction="src_to_dst",
         channel="awareness.cursor",
 
         origin="test", origin_run_id="test",
     )
     assert edge.meta is not None
     assert edge.meta["access_mode"] == "write"
-    assert edge.meta["dest_access_mode"] == "read"
+    assert edge.meta["data_direction"] == "src_to_dst"
     assert edge.meta["channel"] == "awareness.cursor"
 
 
@@ -733,7 +733,7 @@ def test_edge_create_access_mode_merges_with_existing_meta() -> None:
         line=10,
         meta={"topic": "user.created"},
         access_mode="write",
-        dest_access_mode="read",
+        data_direction="src_to_dst",
         channel="user.created",
 
         origin="test", origin_run_id="test",
@@ -741,7 +741,7 @@ def test_edge_create_access_mode_merges_with_existing_meta() -> None:
     assert edge.meta is not None
     assert edge.meta["topic"] == "user.created"
     assert edge.meta["access_mode"] == "write"
-    assert edge.meta["dest_access_mode"] == "read"
+    assert edge.meta["data_direction"] == "src_to_dst"
     assert edge.meta["channel"] == "user.created"
 
 
@@ -772,7 +772,7 @@ def test_edge_create_partial_access_mode() -> None:
     )
     assert edge.meta is not None
     assert edge.meta["access_mode"] == "write"
-    assert "dest_access_mode" not in edge.meta
+    assert "data_direction" not in edge.meta
     assert "channel" not in edge.meta
 
 
@@ -791,16 +791,16 @@ def test_edge_create_invalid_access_mode_raises() -> None:
         )
 
 
-def test_edge_create_invalid_dest_access_mode_raises() -> None:
-    """Edge.create should reject invalid dest_access_mode values."""
+def test_edge_create_invalid_data_direction_raises() -> None:
+    """Edge.create should reject invalid data_direction values."""
     import pytest
-    with pytest.raises(ValueError, match="dest_access_mode"):
+    with pytest.raises(ValueError, match="data_direction"):
         Edge.create(
             src="py:src/a.py:10:f:function",
             dst="py:src/b.py:20:g:function",
             edge_type="calls",
             line=10,
-            dest_access_mode="bogus",
+            data_direction="bogus",
 
             origin="test", origin_run_id="test",
         )
@@ -814,14 +814,14 @@ def test_edge_access_mode_survives_to_dict() -> None:
         edge_type="data_flows_to",
         line=10,
         access_mode="write",
-        dest_access_mode="read",
+        data_direction="src_to_dst",
         channel="config.db_url",
 
         origin="test", origin_run_id="test",
     )
     d = edge.to_dict()
     assert d["meta"]["access_mode"] == "write"
-    assert d["meta"]["dest_access_mode"] == "read"
+    assert d["meta"]["data_direction"] == "src_to_dst"
     assert d["meta"]["channel"] == "config.db_url"
 
 

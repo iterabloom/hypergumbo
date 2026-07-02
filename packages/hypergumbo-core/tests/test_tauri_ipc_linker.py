@@ -2173,7 +2173,7 @@ listen('relay-status', (event) => {
         edge = event_edges[0]
         assert edge.meta is not None
         assert edge.meta.get("access_mode") == "write"
-        assert edge.meta.get("dest_access_mode") == "read"
+        assert edge.meta.get("dest_access_mode") is None
         assert edge.meta.get("channel") == "relay-status"
 
     def test_emit_all_detected(self, tmp_path: Path) -> None:

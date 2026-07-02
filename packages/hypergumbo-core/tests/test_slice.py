@@ -2982,7 +2982,7 @@ class TestDataflowSlice:
         reader = make_symbol("reader", path="src/b.py")
         edge = Edge.create(
             src=writer.id, dst=reader.id, edge_type="data_flows_to", line=10,
-            access_mode="write", dest_access_mode="read", channel="config.key",
+            access_mode="write", channel="config.key",
 
             origin="test", origin_run_id="test",
         )
@@ -3358,10 +3358,10 @@ class TestAdmissionStatsTelemetry:
 
     These tests verify that each BFS admission path increments the correct
     counter in ``SliceResult.admission_stats``. The telemetry is the baseline
-    instrumentation for the forward-dataflow option-2-vs-3 decision gate: by
-    comparing per-rule admission counts on real repos, we can measure option
-    2's predictive impact (``would_admit_dst_reader``) before implementing it,
-    and quantify option 1's coverage on the existing corpus.
+    instrumentation for the forward-dataflow option-1 admission law: by
+    comparing per-rule admission counts on real repos, we quantify option 1's
+    coverage on the existing corpus. (The option-2 ``would_admit_dst_reader``
+    predictive counter was retired with ``dest_access_mode`` — ADR-0038 ruling 3.)
     """
 
     def test_stats_empty_when_dataflow_false(self) -> None:
@@ -3392,7 +3392,6 @@ class TestAdmissionStatsTelemetry:
         result = slice_graph([writer, target], [edge], query)
         assert result.admission_stats["admitted_writer_src"] == 1
         assert result.admission_stats["admitted_downstream_read"] == 0
-        assert result.admission_stats["would_admit_dst_reader"] == 0
 
     def test_stats_downstream_read_counter(self) -> None:
         """WI-saful option 1 terminal admissions increment
@@ -3464,51 +3463,6 @@ class TestAdmissionStatsTelemetry:
         result = slice_graph([func_a, func_b], [edge], query)
         assert result.admission_stats["rejected_other"] == 1
         assert result.admission_stats["rejected_read_from_non_writer"] == 0
-
-    def test_stats_would_admit_dst_reader_counter(self) -> None:
-        """Rejected edges with dest_access_mode in {read, mutate} increment
-        the predictive option-2 counter.
-
-        This edge is rejected under option 1 (source is not a writer) but
-        would be admitted under option 2 (dst_mode is read). The counter lets
-        us measure option 2's impact before implementing it.
-        """
-        func_a = make_symbol("func_a", path="src/a.py")
-        func_b = make_symbol("func_b", path="src/b.py")
-        edge = Edge.create(
-            src=func_a.id, dst=func_b.id, edge_type="calls", line=10,
-            access_mode="delete",
-            dest_access_mode="read",
-
-            origin="test", origin_run_id="test",
-        )
-        query = SliceQuery(entrypoint="func_a", dataflow=True, max_hops=3)
-        result = slice_graph([func_a, func_b], [edge], query)
-        assert result.admission_stats["rejected_other"] == 1
-        assert result.admission_stats["would_admit_dst_reader"] == 1
-
-    def test_stats_would_admit_dst_reader_only_on_rejection(self) -> None:
-        """Option-2 predictive counter does not count edges already admitted
-        by option 1.
-
-        A write-mode edge with dest_access_mode=read is admitted by the
-        writer_src rule and should NOT be counted in would_admit_dst_reader
-        (the counter measures option 2's UNIQUE additional contribution, not
-        double-counted overlap).
-        """
-        writer = make_symbol("writer", path="src/a.py")
-        target = make_symbol("target", path="src/b.py")
-        edge = Edge.create(
-            src=writer.id, dst=target.id, edge_type="calls", line=10,
-            access_mode="write",
-            dest_access_mode="read",
-
-            origin="test", origin_run_id="test",
-        )
-        query = SliceQuery(entrypoint="writer", dataflow=True, max_hops=3)
-        result = slice_graph([writer, target], [edge], query)
-        assert result.admission_stats["admitted_writer_src"] == 1
-        assert result.admission_stats["would_admit_dst_reader"] == 0
 
     def test_stats_reverse_read_counter(self) -> None:
         """Reverse-mode read admissions increment admitted_reverse_read."""

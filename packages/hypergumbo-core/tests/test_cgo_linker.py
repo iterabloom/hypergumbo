@@ -223,8 +223,8 @@ class TestCgoLinkerBasic:
         assert len(result.edges) == 1
         bridge = result.edges[0]
         assert bridge.meta is not None
-        assert bridge.meta.get("access_mode") == "write"
-        assert bridge.meta.get("dest_access_mode") == "read"
+        assert bridge.meta.get("data_direction") == "src_to_dst"
+        assert bridge.meta.get("access_mode") is None
 
     def test_multiple_edges_all_have_access_mode(self) -> None:
         """All cgo_bridge edges get access_mode annotation, not just the first."""
@@ -249,8 +249,8 @@ class TestCgoLinkerBasic:
         assert len(result.edges) == 2
         for bridge in result.edges:
             assert bridge.meta is not None
-            assert bridge.meta.get("access_mode") == "write"
-            assert bridge.meta.get("dest_access_mode") == "read"
+            assert bridge.meta.get("data_direction") == "src_to_dst"
+            assert bridge.meta.get("access_mode") is None
 
 
 class TestCgoLinkerEdgeCases:

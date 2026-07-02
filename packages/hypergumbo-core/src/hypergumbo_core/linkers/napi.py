@@ -291,8 +291,7 @@ def link_napi(
             origin=PASS_ID,
             origin_run_id=run.execution_id,
             evidence_type=evidence_type,
-            access_mode="write",
-            dest_access_mode="read",
+            data_direction="src_to_dst",
             meta=edge_meta,
             derived_from=[edge.src, target_sym.id],
         ))

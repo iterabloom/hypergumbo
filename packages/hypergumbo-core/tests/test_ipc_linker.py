@@ -368,8 +368,8 @@ ipcMain.on('test-channel', handler);
             assert 0.0 <= edge.confidence <= 1.0
 
     def test_edge_preserves_dataflow_annotations_send(self, tmp_path: Path) -> None:
-        """INV-forim: message_send edges have access_mode=write and
-        dest_access_mode=read preserved through the linker.
+        """INV-forim: message_send (event_publishes) edges keep access_mode=write
+        through the linker; dest_access_mode was removed (ADR-0038 ruling 3).
 
         Historically edge.meta was reassigned after Edge.create, wiping the
         dataflow fields set by the kwargs.
@@ -385,7 +385,7 @@ ipcMain.on('test-channel', handler);
         assert len(send_edges) >= 1
         for edge in send_edges:
             assert edge.meta["access_mode"] == "write"
-            assert edge.meta["dest_access_mode"] == "read"
+            assert edge.meta.get("dest_access_mode") is None
             assert edge.meta["channel"] == "test-channel"
             assert "channel_type" in edge.meta
 

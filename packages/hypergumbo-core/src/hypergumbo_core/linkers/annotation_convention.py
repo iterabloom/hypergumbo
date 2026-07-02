@@ -266,7 +266,6 @@ def link_annotations(
                     origin_run_id=run.execution_id,
                     evidence_type="hg_annotation",
                     access_mode="write",
-                    dest_access_mode="read",
                     channel=channel,
                     meta={"mechanism": "annotation"},
                     derived_from=[pub_id, sub_id],

@@ -249,8 +249,7 @@ def link_ruby_ffi(
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     evidence_type="ast_call_direct",
-                    access_mode="write",
-                    dest_access_mode="read",
+                    data_direction="src_to_dst",
                     meta=edge_meta,
                     derived_from=[src_sym.id, c_sym.id],
                 ))
@@ -267,8 +266,7 @@ def link_ruby_ffi(
                     origin_run_id=run.execution_id,
                     evidence_type="ast_call_direct",
                     is_resolved=False,
-                    access_mode="write",
-                    dest_access_mode="read",
+                    data_direction="src_to_dst",
                     meta={"bridge_kind": "ffi", "framework_dispatch": "ruby_ffi_attach"},
                     derived_from=[src_sym.id, dst],
                 ))
@@ -318,8 +316,7 @@ def link_ruby_ffi(
                 origin=PASS_ID,
                 origin_run_id=run.execution_id,
                 evidence_type="ast_call_direct",
-                access_mode="write",
-                dest_access_mode="read",
+                data_direction="src_to_dst",
                 meta=edge_meta,
                 derived_from=[c_sym.id, c_sym.id],
             ))

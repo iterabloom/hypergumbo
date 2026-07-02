@@ -161,7 +161,7 @@ class TestLinkYjsCrdt:
         assert edge.edge_type == "event_publishes"
         assert edge.meta is not None
         assert edge.meta["access_mode"] == "write"
-        assert edge.meta["dest_access_mode"] == "read"
+        assert edge.meta.get("dest_access_mode") is None
 
     def test_awareness_writer_links_to_awareness_reader(self, tmp_path: Path) -> None:
         """Awareness write + awareness read creates an edge."""

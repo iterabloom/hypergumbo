@@ -295,8 +295,7 @@ def link_wasm_bindgen(
                 origin=PASS_ID,
                 origin_run_id=run.execution_id,
                 evidence_type="ast_import",
-                access_mode="write",
-                dest_access_mode="read",
+                data_direction="src_to_dst",
                 meta={"bridge_kind": "wasm", "framework_dispatch": "wasm_bindgen_import"},
                 derived_from=[src_id, target_sym.id],
             ))

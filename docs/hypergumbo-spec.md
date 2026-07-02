@@ -1089,7 +1089,7 @@ Entry sources (HTTP routes, CLI mains, IPC handlers, etc.) are detected by the p
 2. **One-hop downstream-read terminal.** Edge terminates at a read site one hop downstream of an admitted writer — captures the immediate read of newly-written state and stops there to avoid the whole-program closure.
 3. **Graceful degradation.** Edges with no `access_mode` annotation are admitted unconditionally so that linker coverage gaps don't silently truncate slices.
 
-Option 2 (symmetric `dst_mode` OR-check) was evaluated and deferred per ADR-0015 §6.1 on empirical evidence (the `SliceResult.admission_stats.would_admit_dst_reader` telemetry counter measured zero additional admissions on the audit corpus); option 3 (full dataflow) is deferred indefinitely. The telemetry counter stays live so the decision is re-evaluable.
+Option 2 (symmetric `dst_mode` OR-check) was evaluated and deferred per ADR-0015 §6.1 on empirical evidence (the former `SliceResult.admission_stats.would_admit_dst_reader` telemetry counter measured zero additional admissions on the audit corpus); option 3 (full dataflow) is deferred indefinitely. That telemetry counter has since been **removed** (ADR-0038 ruling 3 / vocab F4 PR2 deleted the `dest_access_mode` edge-meta key it read); re-evaluating option 2 would require re-deriving destination access from AST role per ADR-0038 ruling 1, not the retired sibling field.
 
 Reverse slices follow read edges (no per-edge admission rule — every read edge backward is admitted).
 

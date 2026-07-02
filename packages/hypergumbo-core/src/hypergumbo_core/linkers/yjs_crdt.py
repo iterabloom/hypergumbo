@@ -474,7 +474,6 @@ def link_yjs_crdt(
                 origin_run_id=run.execution_id,
                 evidence_type="ast_call_direct",
                 access_mode="write",
-                dest_access_mode="read",
                 channel=write.channel,
                 meta={
                     "channel_kind": "crdt",

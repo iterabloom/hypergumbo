@@ -294,10 +294,21 @@ META_KEYS: Final[tuple[MetaKeySpec, ...]] = (
                 "annotate passes.",
                 applicable_edge_types=_ACCESS_MODE_APPLICABLE_EDGE_TYPES,
                 na_edge_types=_ACCESS_MODE_NA_EDGE_TYPES),
-    MetaKeySpec("dest_access_mode", AXIS_EDGE_META,
-                "Dataflow access mode at the edge destination. "
-                "Sibling of ``access_mode``; populated when the "
-                "destination's mode is distinct from the source's."),
+    MetaKeySpec("data_direction", AXIS_EDGE_META,
+                "Dataflow DIRECTION across a cross-boundary edge — the way "
+                "data moves between src and dst, from the closed vocabulary "
+                "'src_to_dst' / 'dst_to_src' / 'bidirectional' "
+                "(``ir.VALID_DATA_DIRECTIONS``). ADR-0038 ruling 3: the "
+                "post-eviction home of the FFI-bridge / protocol-linker "
+                "direction semantic that ``access_mode='write'`` + "
+                "``dest_access_mode='read'`` used to smuggle (the cgo docstring "
+                "said it outright — 'Go caller passes data to C'). DIRECTION, "
+                "not ACCESS — a SEPARATE axis from ``access_mode`` (ADR-0038 "
+                "ruling 1). ``dest_access_mode`` is removed entirely (it was "
+                "observed zero-entropy — 'read' on every populated record). "
+                "``event_publishes`` edges do NOT carry this key: publishing IS "
+                "a genuine write, so they keep ``access_mode='write'`` "
+                "(ADR-0038 §Neutral/acknowledged)."),
     # ------------------------------------------------------------------
     # Edge.meta — INV-zuhub resolution-precision provenance.
     # ------------------------------------------------------------------

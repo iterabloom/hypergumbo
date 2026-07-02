@@ -257,3 +257,24 @@ def test_access_mode_description_not_stale():
     assert spec is not None
     assert "read_write" not in spec.description
     assert "mutate" in spec.description
+
+
+# --- ADR-0038 ruling 3: data_direction declared, dest_access_mode removed ---
+
+def test_data_direction_registered_on_edge_meta():
+    spec = find_meta_key("data_direction")
+    assert spec is not None
+    assert spec.axis == AXIS_EDGE_META
+
+
+def test_dest_access_mode_removed():
+    """ADR-0038 ruling 3 removes dest_access_mode entirely (the bridge
+    direction it encoded now lives in data_direction)."""
+    assert find_meta_key("dest_access_mode") is None
+
+
+def test_valid_data_directions_vocabulary():
+    from hypergumbo_core.ir import VALID_DATA_DIRECTIONS
+    assert VALID_DATA_DIRECTIONS == frozenset(
+        {"src_to_dst", "dst_to_src", "bidirectional"}
+    )

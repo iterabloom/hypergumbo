@@ -588,9 +588,9 @@ class TestLinkWebSocket:
         assert "receiver.js" in message_edges[0].dst
         # INV-forim: dataflow annotations must persist through the linker.
         # Historically edge.meta was reassigned after Edge.create, wiping
-        # the access_mode and dest_access_mode set by the kwargs.
+        # the access_mode set by the kwargs (dest_access_mode was removed, ADR-0038).
         assert message_edges[0].meta["access_mode"] == "write"
-        assert message_edges[0].meta["dest_access_mode"] == "read"
+        assert message_edges[0].meta.get("dest_access_mode") is None
         assert message_edges[0].meta["channel"] == "chat"
         assert message_edges[0].meta["event"] == "chat"
 

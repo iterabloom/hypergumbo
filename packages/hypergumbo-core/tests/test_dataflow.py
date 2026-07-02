@@ -452,7 +452,6 @@ assignments:
             edge_type="event_publishes",
             line=5,
             access_mode="write",
-            dest_access_mode="read",
             channel="user.created",
 
             origin="test", origin_run_id="test",
@@ -2255,14 +2254,12 @@ class TestAnnotateDataflowAst:
             edge_type="event_publishes",
             line=1,
             access_mode="write",
-            dest_access_mode="read",
 
             origin="test", origin_run_id="test",
         )
         result = annotate_dataflow_ast([edge], tree)
-        # Should preserve original
+        # Should preserve original access_mode (Tier-2 precedence)
         assert result[0].meta["access_mode"] == "write"
-        assert result[0].meta["dest_access_mode"] == "read"
 
     def test_empty_edges_returns_empty(self) -> None:
         """Empty edge list should return empty."""
