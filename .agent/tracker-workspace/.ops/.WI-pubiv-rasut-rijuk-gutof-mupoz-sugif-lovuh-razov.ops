@@ -84,3 +84,21 @@
   clock: 9  # ab4c
   nonce: ab4c  # ab4c
   message: "2026-06-10 design-interview ruling (ADR-0036, merged in PR #4181): the node.id kind slot must always equal node.kind; use-site reference syntax moves to a registered meta key instead of overloading the kind slot. That settles the design question here — the ~1645 external_symbol disagreements are nonconforming under the new grammar, not arguably-expected normalization. Item now waits on the implementing fix (emit node.kind in the slot, reference syntax via the meta key)."  # ab4c
+- op: update  # 1310
+  at: '2026-07-02T19:50:13Z'  # 1310
+  by: agent  # 1310
+  actor: jgstern_agent  # 1310
+  clock: 10  # 1310
+  nonce: '1310'  # 1310
+  set: {}  # 1310
+  add:  # 1310
+    isbefore: [WI-popak-gugoz-kibah-dugur-hopif-dutor-zopud-tamak]  # 1310
+- op: update  # 3e08
+  at: '2026-07-02T19:50:13Z'  # 3e08
+  by: agent  # 3e08
+  actor: jgstern_agent  # 3e08
+  clock: 11  # 3e08
+  nonce: '3e08'  # 3e08
+  set: {}  # 3e08
+  add:  # 3e08
+    isbefore: [INV-dulah-kisiz-gobak-jafov-soduj-tomim-dufut-kinil]  # 3e08

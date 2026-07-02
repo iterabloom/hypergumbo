@@ -34,3 +34,21 @@
   clock: 3  # 7ec2
   nonce: 7ec2  # 7ec2
   message: "Recon (2026-06-20), surfaced while fixing the full-suite self-tree-validation gate. QUANTIFICATION — live 'hypergumbo run .' self-analysis now shows validation_report id_format|warning = 3022. Kind-slot -> Symbol.kind mismatch breakdown: unresolved->external_symbol 1365, attribute->external_symbol 222, module->external_symbol 14, namespace->external_symbol 2, function->external_symbol 2, package/script->external_symbol 1 each (the ruling-4 dual-mint family); PLUS tails NOT covered by the :unresolved->:external_symbol fold: event_subscriber->function 9, route->function 8, event_publisher->function 3, npm_package->package 3, tsconfig->file 1. ROOT-CAUSE CONFIRMED: every '*->external_symbol' bucket is ONE family — create_boundary_nodes (ir.py ~1287) forces kind=external_symbol while the id keeps the REFERENCE's original kind-slot (unresolved/attribute/module/namespace/function). The node-id (_canonical_external_id ir.py ~1056/1302) and the inbound edge-dst (format_legacy_dst ir.py ~622, make_unresolved_edge analyze/base.py ~455) are minted by SEPARATE loci, so they MUST flip together or every inbound edge dangles — confirming this item's atomic 3-producer + 3-consumer + ~58-test scope. There is NO clean 'shave-N' partial. CLOSURE CAVEAT: the :unresolved fold alone will NOT zero the id_format cohort — the attribute/module/namespace/function->external_symbol tails (~240) ride the SAME create_boundary_nodes dual-mint and should fold into the same change (rebuild the boundary-node id from its FINAL kind, not the reference's kind-slot); the event_subscriber/route/event_publisher->function + npm_package->package + tsconfig->file tails (~24) are SEPARATE synthetic-node producers whose id-slot != kind (own follow-ups). Consider broadening ruling-4 to 'rebuild every boundary/synthetic id from its emitted kind' rather than only :unresolved. CI CONTEXT: the full-suite self-tree-validation ratchet (WI-jigup) has NEVER actually run — its job invoked the bare 'hypergumbo' command (exit 127; the meta-package providing that console script is never installed in CI; the gate needs 'python -m hypergumbo_core run .', mirroring check-schema-coverage). So baseline id_format|warning=3012 (set 2026-06-18) was a snapshot, never an enforced floor; live count is now 3022 (+10 legitimate growth). A verified CLI fix (full-suite.yml -> 'python -m hypergumbo_core run .' + a workflow-invocation guard test, tests/test_workflow_cli_invocation.py) is ready on local branch jgstern-agent/fix/self-tree-validation-cli-invocation; the ratchet won't pass until this item drives the cohort down (or the baseline is one-time reconciled). DECISION (2026-06-20, human): hold this item until it is deliberately scheduled — do not rush the ~458-node id-shape migration to unblock the periodic ratchet. Recon recorded here for that work."  # 7ec2
+- op: update  # ca6a
+  at: '2026-07-02T19:50:13Z'  # ca6a
+  by: agent  # ca6a
+  actor: jgstern_agent  # ca6a
+  clock: 4  # ca6a
+  nonce: ca6a  # ca6a
+  set: {}  # ca6a
+  add:  # ca6a
+    isbefore: [WI-popak-gugoz-kibah-dugur-hopif-dutor-zopud-tamak]  # ca6a
+- op: update  # 4ade
+  at: '2026-07-02T19:50:13Z'  # 4ade
+  by: agent  # 4ade
+  actor: jgstern_agent  # 4ade
+  clock: 5  # 4ade
+  nonce: 4ade  # 4ade
+  set: {}  # 4ade
+  add:  # 4ade
+    isbefore: [INV-dulah-kisiz-gobak-jafov-soduj-tomim-dufut-kinil]  # 4ade
