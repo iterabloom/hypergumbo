@@ -1,0 +1,21 @@
+- op: create  # c55e
+  at: '2026-07-03T10:22:32Z'  # c55e
+  by: agent  # c55e
+  actor: jgstern_agent  # c55e
+  clock: 1  # c55e
+  nonce: c55e  # c55e
+  data:  # c55e
+    kind: work_item  # c55e
+    title: "Python MRO walker + Site-1/Site-3 hints for inherited_calls: resolve self.method()/typed-receiver inherited calls (WI-noham D1)"  # c55e
+    status: todo_hard  # c55e
+    priority: 2  # c55e
+    parent:  # c55e
+    tags:  # c55e
+    - analysis_quality  # c55e
+    - dispatch  # c55e
+    isbefore: []  # c55e
+    duplicate_of: []  # c55e
+    not_duplicate_of: []  # c55e
+    pr_ref:  # c55e
+    description: "Deferred follow-up of WI-noham Part A (PR #404, dev 3fbdf0d0d3). Part A made py.py emit receiver_type_hint on unresolved method-call edges, which the inherited_calls linker's strict INV-fahub Site-2 mode resolves — but ONLY via Step-1 (method directly on the concrete type). Python is absent from inherited_calls._MRO_WALKERS ({ruby,groovy,java}), so the linker's Step-2 MRO walk and Site-1 (self.method() inherited) / Site-3 (self.field.method()) resolution never fire for Python. This D1 item registers a Python MRO walker in _MRO_WALKERS (Python C3 linearization over the extends chain) AND makes py.py emit enclosing_class (Site 1: self.method()) and inherited_field_receiver (Site 3) hints via make_unresolved_edge, unlocking the typed-receiver-INHERITED and self-inherited method mass — the dominant remaining dead-code FP cohort. PRECONDITION (locked by test_ancestor_only_method_not_resolved_without_python_walker + test_legacy_site2_langs_membership_and_walker_decoupling): adding Python to _MRO_WALKERS does NOT auto-enable the Step-3 type-symbol fallback (that stays gated on _LEGACY_SITE2_LANGS={java}); if D1 wants the fallback it must consciously allowlist the python calls->class runtime_coherence partition first. Needs its own adversarial suite (diamond/C3 which-ancestor precision). Closes part of WI-noham's residual."  # c55e
+    fields: {}  # c55e

@@ -1,0 +1,20 @@
+- op: create  # e5fe
+  at: '2026-07-03T10:22:35Z'  # e5fe
+  by: agent  # e5fe
+  actor: jgstern_agent  # e5fe
+  clock: 1  # e5fe
+  nonce: e5fe  # e5fe
+  data:  # e5fe
+    kind: work_item  # e5fe
+    title: "Resolve @property attribute reads (obj.prop) to the in-repo getter — WI-noham flagship dead-code FPs (Symbol.end_line, ValidationResult.ok)"  # e5fe
+    status: todo_hard  # e5fe
+    priority: 2  # e5fe
+    parent:  # e5fe
+    tags:  # e5fe
+    - analysis_quality  # e5fe
+    isbefore: []  # e5fe
+    duplicate_of: []  # e5fe
+    not_duplicate_of: []  # e5fe
+    pr_ref:  # e5fe
+    description: "Deferred follow-up of WI-noham Part A (PR #404) — the FLAGSHIP dead-code false positives and the gate that lets WI-noham finally close. An @property access (obj.prop) is an ast.Attribute in LOAD context, NOT an ast.Call, so _process_call never sees it and no edge is emitted — Symbol.end_line (ir.py, 260 refs) and ValidationResult.ok (47 refs) are dead for this reason (attribute reads, not calls). This is a genuinely different node type/edge from WI-noham Part A (which handles ast.Call method calls). Proposed: a new attribute-LOAD emitter (mirror _emit_module_attr_refs) that, gated on a var_types / local-class receiver whose target getter carries meta.decorators including 'property', emits a calls-to-getter edge (NOT references/reads — keep the (method,python)-calls->(method,python) single partition, ratchet-safe). Reuse the same INV-fahub scope guard as Part A (suppress when the receiver is a local binding shadowing a class). CLOSURE-EVIDENCE DISCIPLINE: WI-noham MUST NOT be marked satisfied while Symbol.end_line / ValidationResult.ok still reproduce as dead under `dead-code-maybe --seeds all`; those repros belong to THIS item. When D2 (+ D1 for inherited methods) land and the flagship deadness clears, WI-noham can close."  # e5fe
+    fields: {}  # e5fe

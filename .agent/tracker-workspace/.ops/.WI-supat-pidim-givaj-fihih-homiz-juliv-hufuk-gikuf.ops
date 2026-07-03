@@ -1,0 +1,20 @@
+- op: create  # 2d35
+  at: '2026-07-03T10:22:38Z'  # 2d35
+  by: agent  # 2d35
+  actor: jgstern_agent  # 2d35
+  clock: 1  # 2d35
+  nonce: 2d35  # 2d35
+  data:  # 2d35
+    kind: work_item  # 2d35
+    title: "Thread concrete class-id into receiver_type_hint so the same-name-class ambiguity guard recovers recall (WI-noham D3)"  # 2d35
+    status: todo_hard  # 2d35
+    priority: 3  # 2d35
+    parent:  # 2d35
+    tags:  # 2d35
+    - analysis_quality  # 2d35
+    isbefore: []  # 2d35
+    duplicate_of: []  # 2d35
+    not_duplicate_of: []  # 2d35
+    pr_ref:  # 2d35
+    description: "Deferred precision follow-up of WI-noham Part A (PR #404). Part A's receiver_type_hint carries only the class NAME; the inherited_calls linker re-globalizes it via class_ids_by_name and, for non-legacy languages, biases to unresolved when two in-repo classes share that short name (the len(type_class_ids)>1 ambiguity guard — INV-fahub-airtight but sacrifices recall). py.py already holds the concrete class Symbol (var_types[recv].id / .path), so threading a concrete class-id (or (path,name)) alongside the name would let the linker resolve the collision case precisely instead of dropping it — recovering the recall the ambiguity guard sacrifices, and closing the INV-fahub-spirit residual outright (a class-name hint that re-globalizes is a mild information-loss). Requires extending make_unresolved_edge / the Site-2 meta contract to carry a concrete class ref, and the inherited_calls dispatch to prefer it over the name. Lower priority than D1/D2 (precision refinement, not a coverage gap)."  # 2d35
+    fields: {}  # 2d35
