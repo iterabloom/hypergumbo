@@ -2914,6 +2914,59 @@ def _extract_file_analysis(
     ), None
 
 
+def _collect_call_func_attr_ids(block_nodes: list[ast.AST]) -> set[int]:
+    """Return the ``id()``s of Attribute nodes that are the direct callee of a Call.
+
+    An attribute that is a call's ``func`` (``os.getenv(...)``, ``obj.method()``)
+    is handled by the calls pipeline; attribute-READ emitters (``module_attr_ref``
+    and the WI-gubar ``@property``-read producer) must skip these so they never
+    double-emit a read edge for what is really a call callee.
+    """
+    ids: set[int] = set()
+    for root in block_nodes:
+        for sub in ast.walk(root):
+            if isinstance(sub, ast.Call) and isinstance(sub.func, ast.Attribute):
+                ids.add(id(sub.func))
+    return ids
+
+
+def _resolve_property_getter(
+    class_symbol: Symbol,
+    attr_name: str,
+    local_symbols: dict[str, Symbol],
+    sym_by_path_name: dict[tuple[str, str], Symbol] | None,
+) -> Symbol | None:
+    """Return the class's ``@property`` getter Symbol for ``attr_name``, else None.
+
+    Resolution mirrors the Case 2c method lookup surfaces: the full pipeline's
+    ``(path, qualified)`` cross-file index first, then — for single-file
+    ``extract_nodes`` where that index is absent and methods are keyed by SHORT
+    name — a short-name hit accepted only when its qualified name matches this
+    class (guarding the same-short-name-across-classes collision the
+    ``(path, qualified)`` index would otherwise disambiguate). Gates on the
+    resolved symbol being a *method* carrying the bare ``@property`` decorator
+    (``kind == "method"`` and a ``meta['decorators']`` entry whose ``name`` is
+    exactly ``"property"`` — a getter, not a ``@x.setter`` whose recorded name
+    is the dotted ``"x.setter"``). A plain data field, a non-property method, or
+    a missing member returns None, so only a genuine getter invocation (which IS
+    a call) emits a ``calls`` edge.
+    """
+    qualified_name = f"{class_symbol.name}.{attr_name}"
+    getter: Symbol | None = None
+    if sym_by_path_name is not None:
+        getter = sym_by_path_name.get((class_symbol.path, qualified_name))
+    if getter is None:
+        cand = local_symbols.get(attr_name)
+        if cand is not None and cand.name == qualified_name:
+            getter = cand
+    if getter is None or getter.kind != "method":
+        return None
+    for dec in (getter.meta or {}).get("decorators", []):
+        if isinstance(dec, dict) and dec.get("name") == "property":
+            return getter
+    return None
+
+
 def _extract_edges(
     tree: ast.AST,
     local_symbols: dict[str, Symbol],
@@ -3202,11 +3255,7 @@ def _extract_edges(
         # Pre-collect Attribute-node ids that are the direct callee of a Call
         # so we can skip them below — `os.getenv("X")` already produces a
         # `calls` edge and doesn't need a redundant `module_attr_ref`.
-        call_func_attr_ids: set[int] = set()
-        for root in block_nodes:
-            for sub in ast.walk(root):
-                if isinstance(sub, ast.Call) and isinstance(sub.func, ast.Attribute):
-                    call_func_attr_ids.add(id(sub.func))
+        call_func_attr_ids = _collect_call_func_attr_ids(block_nodes)
 
         for root in block_nodes:
             for sub in ast.walk(root):
@@ -3356,6 +3405,56 @@ def _extract_edges(
                 for kw in node.keywords:
                     if isinstance(kw.value, ast.Name):
                         _emit_function_ref(kw.value, caller_symbol, stack=stack)
+
+            # WI-gubar (D2): a @property attribute READ (obj.prop) is an
+            # ast.Attribute in Load context, NOT an ast.Call, so the calls
+            # pipeline never sees it and the getter (Symbol.end_line,
+            # ValidationResult.ok) looks dead. Emit an unresolved `calls` edge
+            # carrying receiver_type_hint — mirroring the WI-noham Part A method
+            # producer — and let the inherited_calls linker mint the resolved
+            # edge (strict Site-2 Step-1 finds the getter, kind 'method', on the
+            # concrete type). Gated on a var_types-typed INSTANCE receiver whose
+            # target attribute is a @property getter; a bare-CLASS receiver
+            # (ClassName.prop yields the descriptor, not the value) is
+            # deliberately excluded, so no INV-fahub scope guard is needed
+            # (var_types is per-function scope-local, unlike the file-global
+            # local_symbols the Part A bare-class branch consults).
+            # call_construct='method' keeps the unresolved edge taint-safe.
+            # Restricted to function/method callers: at MODULE scope
+            # caller_symbol is the <module> pseudo-node (kind='file'), and a
+            # file-kind src emitting a `calls` edge would introduce a NEW
+            # runtime_coherence offender in the (file, python, external_symbol,
+            # python) partition — which already carries `imports` — breaking the
+            # ADR-0023 §3 shrink-only ratchet (module-level property reads are
+            # rare and none of the flagship reads are module-scope).
+            if (
+                caller_symbol.kind in ("function", "method")
+                and isinstance(node, ast.Attribute)
+                and isinstance(node.ctx, ast.Load)
+                and isinstance(node.value, ast.Name)
+                and node.value.id in var_types
+                and id(node) not in _call_func_attr_ids
+            ):
+                _getter = _resolve_property_getter(
+                    var_types[node.value.id], node.attr,
+                    local_symbols, _sym_by_path_name,
+                )
+                if _getter is not None:
+                    edges.append(Edge.create(
+                        src=caller_symbol.id,
+                        dst=f"python:external:0-0:{node.attr}:unresolved",
+                        edge_type="calls",
+                        line=node.lineno,
+                        evidence_type="ast_call",
+                        is_resolved=False,
+                        meta={
+                            "call_construct": "method",
+                            "resolution_quality": "type_inferred",
+                            "receiver_type_hint": var_types[node.value.id].name,
+                        },
+                        origin=PASS_ID,
+                        origin_run_id=run_id,
+                    ))
 
             # Function references in dict values: {"GET": handle_get}
             if isinstance(node, ast.Dict):
@@ -3684,6 +3783,13 @@ def _extract_edges(
         for _al_tgt in _al_node.targets:
             if isinstance(_al_tgt, ast.Name):
                 function_aliases[_al_tgt.id] = _alias_target
+
+    # WI-gubar (D2): whole-tree set of Attribute-node ids that are a call
+    # callee, so the @property-read producer inside process_code_block skips
+    # them (a method-call callee is handled by _process_call, not a read). ids
+    # are unique per-parse, so one whole-tree set covers every function body
+    # AND the module-level block, despite process_code_block recursing per-node.
+    _call_func_attr_ids = _collect_call_func_attr_ids([tree])
 
     # Process functions (including async functions)
     for node in ast.walk(tree):
