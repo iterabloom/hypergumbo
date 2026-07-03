@@ -1,0 +1,23 @@
+- op: create  # 0a4f
+  at: '2026-07-03T16:54:41Z'  # 0a4f
+  by: agent  # 0a4f
+  actor: jgstern_agent  # 0a4f
+  clock: 1  # 0a4f
+  nonce: 0a4f  # 0a4f
+  data:  # 0a4f
+    kind: invariant  # 0a4f
+    title: "py.py var_types leaks into comprehension/lambda/nested-function sub-scope bodies — a sub-scope binding shadowing an outer typed name inherits the stale outer type, producing confidently-wrong receiver_type_hint / resolved edges"  # 0a4f
+    status: violated  # 0a4f
+    priority: 2  # 0a4f
+    parent:  # 0a4f
+    tags:  # 0a4f
+    - analysis_quality  # 0a4f
+    - dispatch  # 0a4f
+    isbefore: []  # 0a4f
+    duplicate_of: []  # 0a4f
+    not_duplicate_of: []  # 0a4f
+    pr_ref:  # 0a4f
+    description: "Surfaced by the WI-gubar (D2) adversarial review (workflow wf_b1e410fd-9d9), but PRE-EXISTING and SHARED with the unchanged _process_call Case 2c method-call producer AND the already-merged WI-noham Part A producer — NOT introduced by D2 (verified: the method-call analogues emit identical wrong hints).\n\nREPRO (producer level, confirmed): with `b: Box` (Box.size a @property) or `c: C` in the enclosing function —\n  [b.size for b in range(3)]        # comprehension target b rebinds; still hint='Box'\n  sum(b.size for b in range(3))     # genexp\n  lambda c: c.val                   # lambda param c shadows outer c: C\neach emits a spurious calls-hint attributed to the enclosing function; the linker mints a false-RESOLVED edge, falsely resurrecting a dead getter/method (the PR-0 confidently-wrong-edge failure mode class). Method-call analogues ([x.m() for x in ...], lambda x: x.m()) reproduce identically from the unchanged _process_call path.\n\nWHY 100% COVERAGE MISSES IT: no test fixture reads a typed name inside a shadowing comprehension/lambda; both the property (WI-gubar) and method (Part A / Case 2c) suites use only straight-line function bodies.\n\nFIX (benefits Case 2c + Part A + WI-gubar together): before recursing into a Lambda/comprehension/genexp/nested-def, prune the names it binds (lambda args, comprehension targets) from a COPY of var_types passed to that sub-recursion. Consider extracting a shared sub-scope-binder collector."  # 0a4f
+    fields:  # 0a4f
+      statement: "py.py var_types MUST be pruned of sub-scope-bound names (lambda params, comprehension/generator targets, nested-function params) before process_code_block recurses into those sub-scope BODIES — otherwise a sub-scope binding that shadows an outer var_types-typed name inherits the stale outer type and the producer emits a confidently-wrong receiver_type_hint (a resolved edge to the wrong method/getter)."  # 0a4f
+      root_cause: "process_code_block recurses into Lambda/ListComp/SetComp/DictComp/GeneratorExp and nested-FunctionDef bodies with an UNPRUNED var_types; only FunctionDef/AsyncFunctionDef/ClassDef DIRECT children are skipped from the generic recursion, so sub-scope expressions inherit the enclosing function's var_types unchanged."  # 0a4f

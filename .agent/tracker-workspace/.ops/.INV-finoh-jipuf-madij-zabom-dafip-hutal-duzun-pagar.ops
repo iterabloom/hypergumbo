@@ -1,0 +1,22 @@
+- op: create  # 18f1
+  at: '2026-07-03T16:54:20Z'  # 18f1
+  by: agent  # 18f1
+  actor: jgstern_agent  # 18f1
+  clock: 1  # 18f1
+  nonce: 18f1  # 18f1
+  data:  # 18f1
+    kind: invariant  # 18f1
+    title: "Taint sanitizer registration lacks the call_construct/is_resolved kind-aware gate that source/sink matching applies — a bare-name unresolved edge colliding with a sanitizer leaf registers a FALSE barrier (flow-suppression false negative)"  # 18f1
+    status: violated  # 18f1
+    priority: 2  # 18f1
+    parent:  # 18f1
+    tags:  # 18f1
+    - analysis_quality  # 18f1
+    isbefore: []  # 18f1
+    duplicate_of: []  # 18f1
+    not_duplicate_of: []  # 18f1
+    pr_ref:  # 18f1
+    description: "Surfaced by the WI-gubar (D2) adversarial review (workflow wf_b1e410fd-9d9), but PRE-EXISTING and SHARED with the already-merged WI-noham Part A method producer (and any unresolved method-CALL edge) — NOT introduced by D2; D2 merely widens the trigger surface to @property reads named like a sanitizer leaf (a strict subset).\n\nREPRO (exact final-graph edge shapes, verified): a function `handler` with an unresolved edge handler -> python:external:0-0:encrypt:external_symbol (is_resolved=False, meta.call_construct='method') — produced by either a `m.encrypt()` method call (pre-existing) OR a `@property def encrypt` read (D2). cryptography.fernet.Fernet.encrypt is a built-in plaintext sanitizer (taint_sanitizers/encryption.yaml) whose leaf 'encrypt' is indexed. propagate_taint_structural: base graph -> 1 finding (correct plaintext->network flow); base + the encrypt edge -> 0 findings (handler falsely registered as a plaintext-sanitizer BARRIER, real flow SUPPRESSED).\n\nWHY 100% COVERAGE MISSES IT: taint tests exercise only the sink gate_named_entry path (TestPropagationKindAwareGate, test_post_remap_external_symbol_sink_survives_scope_stack), never the sanitizer-registration loop.\n\nFIX: in _register_sanitizer_callers (taint.py:1176) and the DDG mirror (taint.py:1497), before accepting a match for an unresolved edge, consult edge.get('is_resolved', True) and meta['call_construct']; an unresolved no-module method-kind bare-name edge must NOT register a sanitizer barrier (mirror gate_named_entry). Ideally reuse _match_propagation_entry so all three propagation roles (source/sink/sanitizer) share one gate. Needs a red-first test asserting the flow is NOT suppressed."  # 18f1
+    fields:  # 18f1
+      statement: "Taint SANITIZER registration MUST apply the same call_construct/is_resolved kind-aware gate as source/sink matching: an unresolved, no-module, method-kind bare-name edge whose short name collides with a sanitizer leaf MUST NOT register a plaintext-sanitizer barrier (else a real flow is silently suppressed — a false negative)."  # 18f1
+      root_cause: "taint.py _register_sanitizer_callers (~1176) and its DDG mirror (~1497) match sanitizer leaves by bare callee_name with no call_construct/is_resolved/module gate; the WI-razol 'fix BOTH loops' kind-gate was applied to source/sink (_match_propagation_entry -> gate_named_entry) but never the third (sanitizer) loop."  # 18f1

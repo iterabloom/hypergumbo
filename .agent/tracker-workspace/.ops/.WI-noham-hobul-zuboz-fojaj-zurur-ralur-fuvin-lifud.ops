@@ -18,3 +18,19 @@
     pr_ref:  # 061d
     description: "Surfaced during dispatch:F8 PR-B. Instance method calls (obj.method()) and @property/@staticmethod/@classmethod access resolve to python:external:0-0:<name>:unresolved instead of the in-repo method/property symbol, so production methods/properties appear unreachable in the call graph and are flagged as dead-code false positives. Measured on the repo under dead-code-maybe --seeds all: @property/@staticmethod/@classmethod methods dead at 34/57 (60%) vs plain undecorated methods 486/909 (53%) — comparable, i.e. the decorator is NOT load-bearing in the deadness; it is the GENERAL short-name method-call resolution gap. Properties like Symbol.end_line (260 refs) / ValidationResult.ok (47 refs) are dead for the same reason undecorated methods are. This is the RESIDUAL after INV-pohik's three named dispatch families (route->handler [F1], closure-factory [F8 PR-A], descriptor-protocol [shown vacuous]) were resolved, and is DISTINCT from them — INV-pohik did not name general method-call resolution as one of its families. Likely shares the py.py call-resolution substrate (the flat last-write-wins symbol_by_name dict / the not-yet-landed scope-stack rewrite identity:F1/F4a) and overlaps dispatch:F3 (alias/builtin/reference resolution, currently BLOCKED on the same rewrite + INV-nilud). Fix requires receiver-type / method resolution so obj.method() edges land on the real in-repo symbol rather than an :unresolved external. Evidence: gate test packages/hypergumbo-core/tests/test_dispatch_closure_gate.py TestDescriptorProtocolFamilyIsVacuousOnCorpus docstring."  # 061d
     fields: {}  # 061d
+- op: update  # 538f
+  at: '2026-07-03T10:23:37Z'  # 538f
+  by: agent  # 538f
+  actor: jgstern_agent  # 538f
+  clock: 2  # 538f
+  nonce: 538f  # 538f
+  set: {}  # 538f
+  add:  # 538f
+    tags: [awaits_bakeoff_validation]  # 538f
+- op: discuss  # bf21
+  at: '2026-07-03T10:23:38Z'  # bf21
+  by: agent  # bf21
+  actor: jgstern_agent  # bf21
+  clock: 3  # bf21
+  nonce: bf21  # bf21
+  message: "WI-noham Part A shipped in PR #404 (dev 3fbdf0d0d3). py.py now stamps meta['receiver_type_hint'] on unresolved method-call edges when the receiver type is inferred (var_types, or a bare local class name — scope-guarded against a local var/param shadowing a module class per INV-fahub); the inherited_calls linker resolves them via a new strict INV-fahub Site-2 mode (Step-3 type-symbol fallback gated off + same-name-class ambiguity guard for non-legacy langs; _LEGACY_SITE2_LANGS={java}, decoupled from _MRO_WALKERS). Taint-safe (analyzer never flips is_resolved; linker is sole minter). Designed + adversarially reviewed via Workflow; the review caught a shadowed-class false-resolution blocker (fixed + locked). Part A closes ONLY the walker-independent recall: local Class.staticmethod()/classmethod() + typed-receiver-DIRECT (linker Step-1). STAYS OPEN — the flagship @property deadness (Symbol.end_line 260 refs, ValidationResult.ok 47 refs — attribute READS, not calls) is deferred to WI-gubar (D2); the inherited-method mass (needs a Python MRO walker) to WI-hiziz (D1); concrete-class-id precision to WI-supat (D3). Per closure-evidence discipline, do NOT mark satisfied until the flagship repros clear under dead-code-maybe --seeds all (that evidence lives on WI-gubar). Tagged awaits_bakeoff_validation: re-measure the INV-nuzas 283-twin residual + the decorated/plain deadness deltas."  # bf21

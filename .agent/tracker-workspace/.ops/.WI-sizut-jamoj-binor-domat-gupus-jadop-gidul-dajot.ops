@@ -1,0 +1,21 @@
+- op: create  # 0bc5
+  at: '2026-07-03T16:55:17Z'  # 0bc5
+  by: agent  # 0bc5
+  actor: jgstern_agent  # 0bc5
+  clock: 1  # 0bc5
+  nonce: 0bc5  # 0bc5
+  data:  # 0bc5
+    kind: work_item  # 0bc5
+    title: "Resolve read-write @property (getter + @x.setter) getter reads — the setter's last-write in global_symbols collapses the getter symbol so _resolve_property_getter misses it (WI-gubar read-write follow-up)"  # 0bc5
+    status: todo_hard  # 0bc5
+    priority: 3  # 0bc5
+    parent:  # 0bc5
+    tags:  # 0bc5
+    - analysis_quality  # 0bc5
+    - dispatch  # 0bc5
+    isbefore: []  # 0bc5
+    duplicate_of: []  # 0bc5
+    not_duplicate_of: []  # 0bc5
+    pr_ref:  # 0bc5
+    description: "Deferred follow-up of WI-gubar (WI-noham D2). WI-gubar resolves READ-ONLY @property reads (obj.prop -> getter) but a read-WRITE property (a @property getter PLUS an @x.setter) yields ZERO edges — the getter still looks dead, which is exactly what D2 claims to fix.\n\nROOT CAUSE (verified single-file AND full-pipeline): global_symbols[(key, symbol.name)] = symbol (py.py ~4554) is LAST-WINS; the setter, defined after the getter and sharing the qualified name C.val, overwrites the getter. _sym_by_path_name (first-wins over the already-collapsed dict, py.py ~4603) then holds the SETTER, whose recorded decorator name is the dotted 'val.setter' (not 'property'), so _resolve_property_getter returns None. In single-file extract_nodes the short-name symbol_by_name['val'] is likewise last-wins -> the setter.\n\nSAFE (emits nothing, never a wrong edge) but the feature delivers materially less than its stated goal: read-write properties are a common mutable-attribute idiom. Surfaced by the WI-gubar adversarial review (workflow wf_b1e410fd-9d9); locked as a known-gap test (test_read_write_property_getter_not_resolved in test_py_property_read.py). The flagship repros (Symbol.end_line, ValidationResult.ok) are read-ONLY, so they are unaffected.\n\nFIX OPTIONS: (a) when resolving C.attr, scan ALL symbols with that qualified name for the one carrying the bare 'property' decorator (requires the symbol tables to retain both getter and setter, not collapse them); (b) key getters/setters distinctly; (c) record on the collapsed symbol that a 'property' decorator was seen on some same-named def. Needs its own adversarial suite (getter/setter/deleter triples, cached_property)."  # 0bc5
+    fields: {}  # 0bc5
