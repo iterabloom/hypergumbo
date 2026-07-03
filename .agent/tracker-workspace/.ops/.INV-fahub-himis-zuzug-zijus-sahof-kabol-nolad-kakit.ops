@@ -1,0 +1,24 @@
+- op: create  # ff7b
+  at: '2026-07-03T03:35:54Z'  # ff7b
+  by: agent  # ff7b
+  actor: jgstern_agent  # ff7b
+  clock: 1  # ff7b
+  nonce: ff7b  # ff7b
+  data:  # ff7b
+    kind: invariant  # ff7b
+    title: "Unresolved method/function calls confidently misbind to arbitrary same-named internal defs (cross-language)"  # ff7b
+    status: violated  # ff7b
+    priority: 2  # ff7b
+    parent:  # ff7b
+    tags:  # ff7b
+    - cross_language_parity  # ff7b
+    - analysis_quality  # ff7b
+    - structural  # ff7b
+    isbefore: []  # ff7b
+    duplicate_of: []  # ff7b
+    not_duplicate_of: []  # ff7b
+    pr_ref:  # ff7b
+    description: ""  # ff7b
+    fields:  # ff7b
+      statement: "A call whose receiver/target type cannot be resolved MUST emit an ambiguous/external edge, not a high-confidence calls edge to an arbitrary same-named internal definition. Observed cross-language on the Apr12 cohort: Scala copy/setTo @0.68, D exists/startsWith/toString @0.85, Swift create/delete/run funnels @0.8. The Python instance is addressed by the scope-stack rewrite (identity:F1/F4a) + WI-noham; this umbrella tracks the cross-language generalization."  # ff7b
+      root_cause: "Call resolution falls back to a global by-short-name index without receiver-type gating, so an unresolvable receiver binds to the first same-named internal definition instead of emitting an ambiguous/external edge. Cross-language manifestation of the Python var_types/flat-dict resolution gap."  # ff7b

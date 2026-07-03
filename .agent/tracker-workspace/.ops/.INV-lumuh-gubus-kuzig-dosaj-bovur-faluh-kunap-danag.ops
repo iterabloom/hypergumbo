@@ -1,0 +1,23 @@
+- op: create  # 923f
+  at: '2026-07-03T03:35:59Z'  # 923f
+  by: agent  # 923f
+  actor: jgstern_agent  # 923f
+  clock: 1  # 923f
+  nonce: 923f  # 923f
+  data:  # 923f
+    kind: invariant  # 923f
+    title: "Nim import edges malformed: module name in name-slot, module_path/src = <unknown>"  # 923f
+    status: violated  # 923f
+    priority: 3  # 923f
+    parent:  # 923f
+    tags:  # 923f
+    - framework_detection  # 923f
+    - analysis_quality  # 923f
+    isbefore: []  # 923f
+    duplicate_of: []  # 923f
+    not_duplicate_of: []  # 923f
+    pr_ref:  # 923f
+    description: ""  # 923f
+    fields:  # 923f
+      statement: "Nim import edges place the module name in the name-slot with module_path and src set to the literal <unknown>, defeating refine_frameworks and is_test_file so all Nim imports are invisible (false-demotes jester/karax on nitter). INV-judod/WI-fozoh family."  # 923f
+      root_cause: "The Nim import-edge producer emits the module name into the name-slot and leaves module_path/src as the literal <unknown> sentinel, so downstream consumers (refine_frameworks, is_test_file) cannot resolve the module."  # 923f

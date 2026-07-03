@@ -1,0 +1,23 @@
+- op: create  # 0789
+  at: '2026-07-03T03:35:57Z'  # 0789
+  by: agent  # 0789
+  actor: jgstern_agent  # 0789
+  clock: 1  # 0789
+  nonce: '0789'  # 0789
+  data:  # 0789
+    kind: invariant  # 0789
+    title: "Nim analyzer drops all exported procs (proc name*): 0/246 extracted"  # 0789
+    status: violated  # 0789
+    priority: 2  # 0789
+    parent:  # 0789
+    tags:  # 0789
+    - analysis_quality  # 0789
+    - emission_parity  # 0789
+    isbefore: []  # 0789
+    duplicate_of: []  # 0789
+    not_duplicate_of: []  # 0789
+    pr_ref:  # 0789
+    description: ""  # 0789
+    fields:  # 0789
+      statement: "The Nim analyzer extracts 0/246 exported procs (the 'proc name*' export-marker syntax) while extracting 106/106 non-exported procs, making the entire public API of the dominant language invisible (nitter)."  # 0789
+      root_cause: "The Nim analyzer's proc extraction does not handle the trailing export-marker '*' on proc names, so exported procs are skipped or mis-parsed."  # 0789
