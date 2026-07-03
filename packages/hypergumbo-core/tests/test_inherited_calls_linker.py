@@ -945,12 +945,12 @@ class TestSite2TypedReceiverResolution:
 
     def test_site2_walker_skipped_for_unregistered_language(self) -> None:
         """If the source language lacks an MRO walker, Site-2 still
-        attempts the *direct* type-method lookup (no MRO walk needed),
-        but doesn't synthesize an MRO-walk edge or a fallback. Falls back
-        to type-symbol-only edge."""
-        # Python is not in _MRO_WALKERS yet. With direct method lookup
-        # and the fallback-to-type both not requiring an MRO walker, the
-        # linker still emits the direct match.
+        attempts the *direct* type-method lookup (no MRO walk needed).
+        Python is a strict INV-fahub language (not in _LEGACY_SITE2_LANGS),
+        so it gets NO Step-3 type-symbol fallback — but the direct match
+        here needs no fallback and resolves via Step 1."""
+        # Python is not in _MRO_WALKERS yet. Direct method lookup does not
+        # require an MRO walker, so the single unambiguous Repo.save resolves.
         repo = Symbol(
             id="sym:py.Repo", name="Repo", kind="class", language="python",
             path="/r.py",
@@ -1243,3 +1243,175 @@ class TestSite3InheritedFieldResolution:
         resolved = [e for e in result.edges if e.src == caller.id]
         assert len(resolved) == 1
         assert resolved[0].evidence_type == "ast_call_inherited_field"
+
+
+def _py_cls(sid: str, name: str, path: str = "/m.py") -> Symbol:
+    return Symbol(
+        id=sid, name=name, kind="class", language="python", path=path,
+        span=Span(start_line=1, end_line=5, start_col=0, end_col=0),
+        origin="test", origin_run_id="test-run", meta=None,
+    )
+
+
+def _py_method(sid: str, qualified_name: str, path: str = "/m.py") -> Symbol:
+    return Symbol(
+        id=sid, name=qualified_name, kind="method", language="python",
+        path=path,
+        span=Span(start_line=2, end_line=4, start_col=0, end_col=0),
+        origin="test", origin_run_id="test-run", meta=None,
+    )
+
+
+def _py_caller(sid: str = "sym:py.Caller.run") -> Symbol:
+    return Symbol(
+        id=sid, name="Caller.run", kind="method", language="python",
+        path="/c.py",
+        span=Span(start_line=1, end_line=2, start_col=0, end_col=0),
+        origin="test", origin_run_id="test-run", meta=None,
+    )
+
+
+def _unresolved_site2_lang(
+    src_id: str, callee_name: str, receiver_type_hint: str,
+    lang: str, line: int = 1,
+) -> Edge:
+    """Site-2 unresolved-call edge for an arbitrary source language."""
+    from hypergumbo_core.analyze.base import make_unresolved_edge
+    return make_unresolved_edge(
+        lang=lang, src_id=src_id, callee_name=callee_name,
+        line=line, pass_id="test-pass", run_id="test-run",
+        module_hint="external",
+        receiver_type_hint=receiver_type_hint,
+    )
+
+
+class TestPythonSite2StrictMode:
+    """WI-noham Part A: Python receiver_type_hint edges (emitted by py.py's
+    final unresolved-emit else) get the STRICT INV-fahub Site-2 mode — the
+    method must be DIRECTLY on the concretely-named, unambiguous type (Step 1).
+    Two gates key off ``_LEGACY_SITE2_LANGS`` (only ``java`` today, which keeps
+    its INV-nilud-validated permissive behavior): the Step-3 type-symbol
+    fallback is OFF, and a same-name-class collision biases to unresolved
+    (INV-fahub: never bind an under-determined receiver to an arbitrary
+    same-named internal def)."""
+
+    def test_direct_method_on_unambiguous_type_resolves(self) -> None:
+        """The in-PR recall path: ``receiver_type_hint='Foo'`` + a single
+        in-repo ``Foo`` with ``Foo.bar`` directly on it → Step-1 resolves
+        (ast_call_type_inferred @0.85). Guards the gate does not break the
+        direct path."""
+        foo = _py_cls("sym:py.Foo", "Foo")
+        bar = _py_method("sym:py.Foo.bar", "Foo.bar")
+        caller = _py_caller()
+        unresolved = _unresolved_site2_lang(
+            src_id=caller.id, callee_name="bar",
+            receiver_type_hint="Foo", lang="python",
+        )
+        ctx = LinkerContext(
+            repo_root=Path("/"),
+            symbols=[foo, bar, caller], edges=[unresolved],
+        )
+        result = link_inherited_calls(ctx)
+        resolved = [e for e in result.edges if e.src == caller.id]
+        assert len(resolved) == 1
+        assert resolved[0].dst == bar.id
+        assert resolved[0].evidence_type == "ast_call_type_inferred"
+        assert resolved[0].is_resolved is True
+
+    def test_step3_type_symbol_fallback_gated_off_for_python(self) -> None:
+        """Method nowhere on the (single, walker-less) type → Python gets NO
+        Step-3 fallback edge (would be a ``calls→class`` edge — a new
+        runtime_coherence partition AND an INV-fahub under-determined bind).
+        Stays unresolved. Java (legacy) still falls back — asserted by the
+        existing ``test_falls_back_to_type_symbol_when_method_not_found``."""
+        foo = _py_cls("sym:py.Foo", "Foo")  # Foo defines NO 'save'
+        caller = _py_caller()
+        unresolved = _unresolved_site2_lang(
+            src_id=caller.id, callee_name="save",
+            receiver_type_hint="Foo", lang="python",
+        )
+        ctx = LinkerContext(
+            repo_root=Path("/"),
+            symbols=[foo, caller], edges=[unresolved],
+        )
+        result = link_inherited_calls(ctx)
+        assert result.edges == []
+
+    def test_same_name_class_collision_biases_to_unresolved(self) -> None:
+        """INV-fahub airtight: two in-repo classes both named ``Foo`` (only
+        one defines ``bar``). The hint carries only the NAME, so the receiver
+        is under-determined → NO resolution (the ambiguity guard), NOT a
+        confident bind to whichever ``Foo`` happens to have ``bar``. D3
+        (concrete class-id) later recovers this recall."""
+        foo_a = _py_cls("sym:py.a.Foo", "Foo", path="/a.py")
+        bar = _py_method("sym:py.a.Foo.bar", "Foo.bar", path="/a.py")
+        foo_b = _py_cls("sym:py.b.Foo", "Foo", path="/b.py")  # no 'bar'
+        caller = _py_caller()
+        unresolved = _unresolved_site2_lang(
+            src_id=caller.id, callee_name="bar",
+            receiver_type_hint="Foo", lang="python",
+        )
+        ctx = LinkerContext(
+            repo_root=Path("/"),
+            symbols=[foo_a, bar, foo_b, caller], edges=[unresolved],
+        )
+        result = link_inherited_calls(ctx)
+        assert result.edges == []
+
+    def test_java_same_name_class_collision_still_resolves(self) -> None:
+        """Legacy guard: the ambiguity guard is scoped to non-legacy langs, so
+        Java's INV-nilud-validated first-match Site-2 behavior is preserved
+        even when two classes share a short name."""
+        foo_a = _java_cls("sym:a.Foo", "Foo", path="/a.java")
+        bar = _java_method("sym:a.Foo.bar", "Foo.bar", path="/a.java")
+        foo_b = _java_cls("sym:b.Foo", "Foo", path="/b.java")
+        caller = _java_caller()
+        unresolved = _unresolved_site2(
+            src_id=caller.id, callee_name="r.bar",
+            receiver_type_hint="Foo",
+        )
+        ctx = LinkerContext(
+            repo_root=Path("/"),
+            symbols=[foo_a, bar, foo_b, caller], edges=[unresolved],
+        )
+        result = link_inherited_calls(ctx)
+        resolved = [e for e in result.edges if e.src == caller.id]
+        assert len(resolved) == 1
+        assert resolved[0].dst == bar.id
+
+    def test_ancestor_only_method_not_resolved_without_python_walker(self) -> None:
+        """Freeze the no-Python-MRO-walker state: a typed receiver whose method
+        lives ONLY on an ancestor (not directly on the concrete type) stays
+        unresolved for Python — Step-1 misses, Step-2 needs a walker Python does
+        not have, Step-3 is gated. If a future PR adds Python to _MRO_WALKERS,
+        this test flips and forces a conscious decision about Step-2 edges."""
+        parent = _py_cls("sym:py.Base", "Base", path="/base.py")
+        save = _py_method("sym:py.Base.save", "Base.save", path="/base.py")
+        sub = _py_cls("sym:py.Sub", "Sub", path="/sub.py")  # defines no 'save'
+        caller = _py_caller()
+        extends_edge = _edge(sub.id, parent.id, "extends")
+        unresolved = _unresolved_site2_lang(
+            src_id=caller.id, callee_name="save",
+            receiver_type_hint="Sub", lang="python",
+        )
+        ctx = LinkerContext(
+            repo_root=Path("/"),
+            symbols=[parent, save, sub, caller],
+            edges=[extends_edge, unresolved],
+        )
+        result = link_inherited_calls(ctx)
+        assert result.edges == []
+
+    def test_legacy_site2_langs_membership_and_walker_decoupling(self) -> None:
+        """``_LEGACY_SITE2_LANGS`` is the explicit opt-in for permissive
+        Site-2 (Step-3 fallback + no ambiguity guard). Only Java qualifies
+        today. It is DELIBERATELY decoupled from ``_MRO_WALKERS`` so that
+        landing a Python MRO walker (deferred D1) does not silently re-enable
+        Python's Step-3 fallback and re-breach the ratchet."""
+        from hypergumbo_core.linkers.inherited_calls import _LEGACY_SITE2_LANGS
+        assert "java" in _LEGACY_SITE2_LANGS
+        assert "python" not in _LEGACY_SITE2_LANGS
+        # Manifest decoupling: the two sets are not equal, and the
+        # walker-equipped ruby/groovy are NOT auto-granted permissive Site-2.
+        assert _LEGACY_SITE2_LANGS != set(_MRO_WALKERS)
+        assert {"ruby", "groovy"} & _LEGACY_SITE2_LANGS == set()

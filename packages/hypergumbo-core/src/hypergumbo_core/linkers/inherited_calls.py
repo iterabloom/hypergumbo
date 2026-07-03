@@ -272,6 +272,28 @@ _MRO_WALKERS: dict[str, Callable[
 }
 
 
+# Languages that get the LEGACY-PERMISSIVE Site-2 typed-receiver resolution:
+# the Step-3 type-symbol fallback fires, and a same-name-class collision
+# resolves by first-match rather than biasing to unresolved. This preserves
+# the Java analyzer's pre-PR-5 behavior and the INV-nilud-validated Java
+# Site-2 edges. Only ``java`` currently emits ``receiver_type_hint`` (Ruby /
+# Groovy emit Site-1/Site-3 hints only), so ``java`` is the sole member.
+#
+# Every OTHER (newly-onboarded) language — Python (WI-noham Part A) and any
+# future emitter — gets the STRICT INV-fahub mode: resolve ONLY when the
+# method is directly on the concretely-named, unambiguous type (linker Step 1
+# / Step 2 MRO), NEVER the Step-3 type-symbol fallback (which would mint a
+# ``calls→class`` edge — a new runtime_coherence partition — and bind an
+# under-determined receiver to a class), and NEVER a same-name-class first
+# match (INV-fahub: an under-determined receiver must stay ambiguous/external).
+#
+# DELIBERATELY DECOUPLED from ``_MRO_WALKERS``: this is NOT ``set(_MRO_WALKERS)``.
+# Adding a Python MRO walker (deferred D1) must NOT silently re-enable Python's
+# permissive Step-3 fallback; a language opts into permissiveness only by being
+# listed HERE, consciously, after allowlisting the ``calls→class`` partition.
+_LEGACY_SITE2_LANGS: frozenset[str] = frozenset({"java"})
+
+
 # ---------------------------------------------------------------------------
 # Site-3 helpers (inherited-field walk).
 # ---------------------------------------------------------------------------
@@ -586,7 +608,7 @@ def _resolve_site2(
 ) -> Edge | None:
     """Site 2: ``var.method()`` typed receiver.
 
-    Three-step resolution preserving Java analyzer's pre-PR-5 behavior:
+    Three-step resolution preserving the Java analyzer's pre-PR-5 behavior:
 
     1. **Direct lookup** — method defined on the type itself →
        ``ast_call_type_inferred`` at 0.85 (matches analyzer's Case 3 if).
@@ -597,11 +619,31 @@ def _resolve_site2(
        ``ast_call_inherited_method`` at 0.70 pointing to the type
        symbol itself (matches analyzer's Case 3 else fallback).
 
-    Steps 2 + 3 require the language to have an MRO walker; steps 1 + 3
-    work without one (used by analyzers whose MRO isn't registered yet).
+    Step 2 requires the language to have an MRO walker; step 1 works
+    without one.
+
+    Two ``src_lang``-gated modes (WI-noham Part A):
+
+    * **Legacy-permissive** (``src_lang in _LEGACY_SITE2_LANGS`` — Java only):
+      steps 1-3 as above, first same-name class wins. Preserves the
+      INV-nilud-validated Java edges.
+    * **Strict INV-fahub** (every other language, e.g. Python): step 3 is
+      DISABLED (no ``calls→class`` under-determined bind / new ratchet
+      partition), and a same-name-class collision (``len(type_class_ids) > 1``)
+      biases to unresolved rather than binding by first match. Only a method
+      DIRECTLY on the single, concretely-named type (step 1 / step 2 MRO)
+      resolves.
     """
     type_class_ids = class_ids_by_name.get(receiver_type_hint, [])
     if not type_class_ids:
+        return None
+
+    # Strict INV-fahub ambiguity guard: the hint carries only a class NAME.
+    # When two in-repo classes share it, the receiver is under-determined —
+    # bias to unresolved instead of binding to whichever same-named class
+    # happens to define the method (deferred D3 threads the concrete class id
+    # to recover this recall precisely).
+    if src_lang not in _LEGACY_SITE2_LANGS and len(type_class_ids) > 1:
         return None
 
     walker = _MRO_WALKERS.get(src_lang)
@@ -647,6 +689,13 @@ def _resolve_site2(
                 )
 
     # Step 3: fallback to the type symbol itself.
+    # Strict INV-fahub gate: only legacy-permissive languages fall back. For
+    # every newly-onboarded language the method was nowhere on the (single)
+    # type's chain, so we leave the call unresolved rather than mint a
+    # low-confidence ``calls→class`` edge (a new runtime_coherence partition
+    # and an under-determined bind).
+    if src_lang not in _LEGACY_SITE2_LANGS:
+        return None
     type_class_id = type_class_ids[0]
     type_sym = class_symbols.get(type_class_id)
     if type_sym is None:  # pragma: no cover

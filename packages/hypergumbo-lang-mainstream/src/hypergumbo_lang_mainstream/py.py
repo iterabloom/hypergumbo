@@ -3745,7 +3745,17 @@ def _extract_edges(
             if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
         ]
         _emit_module_attr_refs(module_level_nodes, module_symbol)
-        process_code_block(module_level_nodes, module_symbol)
+        # A single module frame with EMPTY bindings: behaviorally identical to
+        # stack=None for every resolution surface (immediate/enclosing lookups
+        # return None), but its local_names carry the module-scope rebound names
+        # so the WI-noham receiver_type_hint local-class guard also fires at
+        # module scope (a module-level `X = f(); X.m()` shadowing class `X`).
+        module_stack = ScopeStack(frames=[Scope(
+            owner_id=module_symbol.id,
+            bindings={},
+            local_names=_collect_module_local_names(tree),
+        )])
+        process_code_block(module_level_nodes, module_symbol, stack=module_stack)
         _emit_variable_refs(module_level_nodes, module_symbol)
 
     return edges
@@ -3776,6 +3786,22 @@ def _collect_scope_local_names(
         names.add(func_node.args.vararg.arg)
     if func_node.args.kwarg:
         names.add(func_node.args.kwarg.arg)
+    bound, nonlocals = _collect_bound_names(list(ast.iter_child_nodes(func_node)))
+    names |= bound
+    return frozenset(names - nonlocals)
+
+
+def _collect_bound_names(
+    child_nodes: list[ast.AST],
+) -> tuple[set[str], set[str]]:
+    """Walk a scope's direct children, collecting names bound by assignment /
+    import / ``global`` and, separately, ``nonlocal`` declarations, skipping
+    nested function/class subtrees (their own scopes). Shared by
+    ``_collect_scope_local_names`` (function scope, which additionally adds
+    params) and ``_collect_module_local_names`` (module scope). Returns
+    ``(bound, nonlocal)`` so each caller applies its own params/subtraction.
+    """
+    names: set[str] = set()
     nonlocals: set[str] = set()
     scope_boundary = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
 
@@ -3783,7 +3809,7 @@ def _collect_scope_local_names(
         for node in nodes:
             if isinstance(node, scope_boundary):
                 # A nested function/class is its OWN scope — its locals (and its
-                # def/class name) are not this function's locals. Skip its subtree.
+                # def/class name) are not this scope's locals. Skip its subtree.
                 continue
             if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store):
                 names.add(node.id)
@@ -3800,8 +3826,22 @@ def _collect_scope_local_names(
             for child in ast.iter_child_nodes(node):
                 _walk([child])
 
-    _walk(list(ast.iter_child_nodes(func_node)))
-    return frozenset(names - nonlocals)
+    _walk(child_nodes)
+    return names, nonlocals
+
+
+def _collect_module_local_names(tree: ast.Module) -> frozenset[str]:
+    """Module-scope analog of ``_collect_scope_local_names``: names REBOUND at
+    module level (assignment targets / imports). Feeds the module frame's
+    ``Scope.local_names`` so the WI-noham receiver_type_hint guard suppresses a
+    hint when a module-level variable shadows a same-named class (the
+    module-scope twin of the per-function local-shadow guard). ``global`` at
+    module scope is a no-op and ``nonlocal`` is illegal there, so the nonlocal
+    set is empty; ``def``/``class`` statement names are excluded (they are the
+    genuine class/function symbols a hint legitimately points at).
+    """
+    bound, nonlocals = _collect_bound_names(list(ast.iter_child_nodes(tree)))
+    return frozenset(bound - nonlocals)
 
 
 def _build_scope_stack(
@@ -4189,6 +4229,46 @@ def _process_call(
             # Lower confidence since we don't know the receiver type.
             else:
                 dst_id = f"python:external:0-0:{attr_name}:unresolved"
+                unresolved_meta = {
+                    "call_construct": "method",
+                    "resolution_quality": "type_inferred",
+                }
+                # WI-noham Part A: when the receiver's type is GENUINELY
+                # inferred, stamp a receiver_type_hint so the inherited_calls
+                # linker's strict INV-fahub Site-2 mode can resolve the method
+                # on the concrete type. Two inferred sources: a var_types-tracked
+                # variable (param annotation / constructor / return-type), whose
+                # method Case 2c could not resolve directly (inherited, or a
+                # cross-file miss in single-file analysis); or a bare LOCAL class
+                # name used as a receiver (``Foo.bar()`` — a static/classmethod
+                # call py.py has no direct case for). The edge STAYS
+                # is_resolved=False with an unchanged dst — the linker is the
+                # sole minter of the resolved edge (taint-safe by construction).
+                # An untyped / duck receiver gets NO hint: INV-fahub mandates
+                # biasing to unresolved rather than binding to an arbitrary
+                # same-named internal def.
+                #
+                # SCOPE GUARD (INV-fahub): the local-class branch reads the
+                # FILE-GLOBAL ``local_symbols`` (symbol_by_name), so a bare-name
+                # receiver that is a function-LOCAL binding (param or assignment)
+                # shadowing a module-level class would otherwise resolve to that
+                # class — an under-determined receiver. We suppress the hint when
+                # ``receiver_name`` is bound in the caller's own scope (the same
+                # shadow signal ``_emit_variable_refs`` consults), using the
+                # already-materialized LEGB frame's ``local_names``. The
+                # var_types branch needs no such guard: var_types is built
+                # per-function, so it is already scope-local.
+                _caller_locals = (
+                    stack.frames[-1].local_names
+                    if stack is not None and stack.frames
+                    else frozenset()
+                )
+                if receiver_name in var_types:
+                    unresolved_meta["receiver_type_hint"] = var_types[receiver_name].name
+                elif receiver_name not in _caller_locals:
+                    _recv_sym = local_symbols.get(receiver_name)
+                    if _recv_sym is not None and _recv_sym.kind == "class":
+                        unresolved_meta["receiver_type_hint"] = receiver_name
                 edges.append(Edge.create(
                     src=caller_symbol.id,
                     dst=dst_id,
@@ -4196,7 +4276,7 @@ def _process_call(
                     line=call_node.lineno,
                     evidence_type="ast_call",
                     is_resolved=False,
-                    meta={"call_construct": "method", "resolution_quality": "type_inferred"},
+                    meta=unresolved_meta,
                     origin=PASS_ID,
                     origin_run_id=run_id,
                 ))
