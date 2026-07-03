@@ -74,3 +74,10 @@
   clock: 8  # 6172
   nonce: '6172'  # 6172
   message: "Dominant fix WI-jopil (:unresolved->:external_symbol id-slot fold, ~458 nodes = bulk of this umbrella's id_format count) DEFERRED to Wave 3 item 10 (2026-06-18). Correction: ADR-0036 is Accepted — NOT a blocker (earlier 'blocked on ADR-0036' framing was wrong). INV-kurup stays violated; closes in Wave 5 (§Wave 5 item 2 + vocab item 6 zero-axis-violation cohort) after WI-jopil lands in Wave 3."  # 6172
+- op: discuss  # 2990
+  at: '2026-07-02T19:51:02Z'  # 2990
+  by: agent  # 2990
+  actor: jgstern_agent  # 2990
+  clock: 9  # 2990
+  nonce: '2990'  # 2990
+  message: "ADR-0036 node.id member — sequencing set 2026-07-02 (hold lifted, standalone, patch bump, Option B). Order: Phase 0 prep (register meta.reference_syntax, fix slot-order doc comments, freeze baseline) -> Phase 1 core atomic train (WI-pubiv + WI-jopil, one PR) -> fast-follows (WI-kugaj, WI-zugob, npm_package/tsconfig) -> enforcement (WI-bovoh regex-scope gap, WI-popak advisory->error + ratchet baseline to 0, WI-dipim Ruling-3 sentinel, WI-vodin AST linter) -> closure (INV-dulah, then this umbrella's node.id member; other identifier-field members e.g. Edge.id stay scoped-open). isbefore edges wired on the fold items."  # 2990

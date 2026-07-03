@@ -33,3 +33,12 @@
   clock: 3  # 1396
   nonce: '1396'  # 1396
   message: "root-cause family member (b3) (connections-sweep 2026-06-08T1900Z)"  # 1396
+- op: update  # fe35
+  at: '2026-07-02T19:50:39Z'  # fe35
+  by: agent  # fe35
+  actor: jgstern_agent  # fe35
+  clock: 4  # fe35
+  nonce: fe35  # fe35
+  set: {}  # fe35
+  add:  # fe35
+    isbefore: [WI-popak-gugoz-kibah-dugur-hopif-dutor-zopud-tamak]  # fe35

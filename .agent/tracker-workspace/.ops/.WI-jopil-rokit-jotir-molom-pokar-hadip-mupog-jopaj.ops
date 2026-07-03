@@ -52,3 +52,25 @@
   set: {}  # 4ade
   add:  # 4ade
     isbefore: [INV-dulah-kisiz-gobak-jafov-soduj-tomim-dufut-kinil]  # 4ade
+- op: discuss  # 1773
+  at: '2026-07-02T19:51:02Z'  # 1773
+  by: agent  # 1773
+  actor: jgstern_agent  # 1773
+  clock: 6  # 1773
+  nonce: '1773'  # 1773
+  message: "2026-07-02 HOLD LIFTED (human). The 2026-06-20 scheduling hold on the ADR-0036 node-id-grammar migration is lifted. Approved to proceed STANDALONE (v6 stable_id hash train already landed; nothing to bundle into) with a SCHEMA_VERSION PATCH bump. Diff-scope = Option B: WI-jopil co-ships with WI-pubiv as ONE atomic core train (create_boundary_nodes chokepoint rebuild + :unresolved edge-dst fold at make_unresolved_edge/format_legacy_dst + refactor the 3 suffix-matching consumers cgo.py/taint.py/taint_refine.py to read is_resolved/dst_ref + ~58 :unresolved test updates). Route/event (WI-kugaj, WI-zugob) and npm_package/tsconfig folds land as small independent fast-follows (different producers, no shared remap coupling). Committed baseline id_format|warning=3012 (2026-06-18, 35285 syms); live re-measure in flight."  # 1773
+- op: update  # 57df
+  at: '2026-07-03T01:32:40Z'  # 57df
+  by: agent  # 57df
+  actor: jgstern_agent  # 57df
+  clock: 7  # 57df
+  nonce: 57df  # 57df
+  set:  # 57df
+    status: done  # 57df
+- op: discuss  # e852
+  at: '2026-07-03T01:32:40Z'  # e852
+  by: agent  # e852
+  actor: jgstern_agent  # e852
+  clock: 8  # e852
+  nonce: e852  # e852
+  message: "DONE via PR #395 (dev 2e3d003619, ADR-0037 ruling 4). SCOPE-CORRECTED by WI-pubiv: the id-slot OUTPUT fold (:unresolved->:external_symbol) was already discharged by WI-pubiv + the id_remap (final node ids AND edge dsts are :external_symbol); the remaining structural piece was the CONSUMER refactor (cross-family mechanism #3). BEHAVIORAL EVIDENCE — this fix corrected a LATENT REGRESSION WI-pubiv introduced: the boundary-id remap rewrote unresolved edge dsts :unresolved->:external_symbol, but taint._match_propagation_entry / taint_refine._maybe_rewrite_edge / cgo linker re-derived resolution by string-matching :unresolved. Post-remap the suffix is gone, so verify-claims taint treated EVERY unresolved external edge as RESOLVED, bypassing the WI-razol/INV-tapat ambiguous-name collision guard (empirical repro: _match_propagation_entry on 'py:external:0-0:get:external_symbol' returned a FALSE exact-match where the :unresolved form correctly declined). All three consumers now read Edge.is_resolved; regression test test_post_remap_external_symbol_sink_still_suppressed locks it. 100% coverage core; 193 taint + 135 verify-claims tests pass. Completes ADR-0037 (rulings 1/2/3/5 shipped earlier). Producer :unresolved suffix RETAINED deliberately as an internal pre-remap convention (feeds WI-pubiv reference_syntax; output already :external_symbol)."  # e852
