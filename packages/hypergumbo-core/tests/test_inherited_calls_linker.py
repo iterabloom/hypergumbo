@@ -584,17 +584,18 @@ class TestEndToEndInheritedCalls:
         assert result.edges == []
 
     def test_no_op_for_unregistered_language(self) -> None:
-        """Languages without an MRO walker are silently skipped. PR-3
-        registers ``java``, so this test uses ``python`` (not yet
-        registered) to exercise the ``walker is None`` branch."""
-        a = _cls("sym:A", "A", language="python")
-        a_init = _method("sym:A.foo", "A.foo", language="python")
-        b = _cls("sym:B", "B", language="python")
-        caller = _caller(sid="sym:Caller.bar", language="python")
+        """Languages without an MRO walker are silently skipped. WI-hiziz
+        registered ``python`` (C3 walker), so this test uses ``php`` (still
+        unregistered — the future ``_walk_left_to_right``) to exercise the
+        ``walker is None`` branch."""
+        a = _cls("sym:A", "A", language="php")
+        a_init = _method("sym:A.foo", "A.foo", language="php")
+        b = _cls("sym:B", "B", language="php")
+        caller = _caller(sid="sym:Caller.bar", language="php")
         extends = _edge(b.id, a.id, "extends")
         from hypergumbo_core.analyze.base import make_unresolved_edge
         unresolved = make_unresolved_edge(
-            lang="python", src_id=caller.id, callee_name="foo",
+            lang="php", src_id=caller.id, callee_name="foo",
             line=1, pass_id="test", run_id="test",
             enclosing_class="B",
         )
@@ -1379,12 +1380,14 @@ class TestPythonSite2StrictMode:
         assert len(resolved) == 1
         assert resolved[0].dst == bar.id
 
-    def test_ancestor_only_method_not_resolved_without_python_walker(self) -> None:
-        """Freeze the no-Python-MRO-walker state: a typed receiver whose method
-        lives ONLY on an ancestor (not directly on the concrete type) stays
-        unresolved for Python — Step-1 misses, Step-2 needs a walker Python does
-        not have, Step-3 is gated. If a future PR adds Python to _MRO_WALKERS,
-        this test flips and forces a conscious decision about Step-2 edges."""
+    def test_ancestor_only_method_resolves_via_python_walker(self) -> None:
+        """WI-hiziz (D1): a typed receiver whose method lives ONLY on an ancestor
+        now resolves for Python via Site-2 Step-2 (the C3 MRO walker). Sub
+        extends Base, Base defines ``save``, receiver_type_hint='Sub' → the
+        walker finds Base.save (``ast_call_inherited_method`` @ 0.70). This is
+        the flipped counterpart of the pre-D1 no-walker freeze; the Step-3
+        fallback stays gated off (python not in _LEGACY_SITE2_LANGS), so the
+        resolution is a genuine calls→method MRO hit, never a calls→class."""
         parent = _py_cls("sym:py.Base", "Base", path="/base.py")
         save = _py_method("sym:py.Base.save", "Base.save", path="/base.py")
         sub = _py_cls("sym:py.Sub", "Sub", path="/sub.py")  # defines no 'save'
@@ -1398,6 +1401,135 @@ class TestPythonSite2StrictMode:
             repo_root=Path("/"),
             symbols=[parent, save, sub, caller],
             edges=[extends_edge, unresolved],
+        )
+        result = link_inherited_calls(ctx)
+        resolved = [e for e in result.edges if e.src == caller.id]
+        assert len(resolved) == 1
+        assert resolved[0].dst == save.id
+        assert resolved[0].evidence_type == "ast_call_inherited_method"
+        assert resolved[0].confidence == 0.70
+        assert resolved[0].is_resolved is True
+
+    def test_python_c3_diamond_resolves_correct_ancestor(self) -> None:
+        """WI-hiziz (D1) C3 precision: E(C, D), C(B), B(A), D(A); both B and D
+        define ``save``. Python's C3 MRO is [E, C, B, D, A], so E().save()
+        resolves to B.save — NOT D.save, which the shallower insertion-order BFS
+        would pick. A confidently-wrong ancestor is worse than unresolved, so
+        the Python walker must honor C3, not depth-order."""
+        a = _py_cls("sym:py.A", "A", path="/a.py")
+        b = _py_cls("sym:py.B", "B", path="/b.py")
+        b_save = _py_method("sym:py.B.save", "B.save", path="/b.py")
+        c = _py_cls("sym:py.C", "C", path="/c.py")
+        d = _py_cls("sym:py.D", "D", path="/d.py")
+        d_save = _py_method("sym:py.D.save", "D.save", path="/d.py")
+        e = _py_cls("sym:py.E", "E", path="/e.py")  # defines no 'save'
+        caller = _py_caller()
+        edges = [
+            # E(C, D) — base order matters for C3; C listed before D.
+            _edge(e.id, c.id, "extends"), _edge(e.id, d.id, "extends"),
+            _edge(c.id, b.id, "extends"), _edge(b.id, a.id, "extends"),
+            _edge(d.id, a.id, "extends"),
+            _unresolved_site2_lang(
+                src_id=caller.id, callee_name="save",
+                receiver_type_hint="E", lang="python",
+            ),
+        ]
+        ctx = LinkerContext(
+            repo_root=Path("/"),
+            symbols=[a, b, b_save, c, d, d_save, e, caller], edges=edges,
+        )
+        result = link_inherited_calls(ctx)
+        resolved = [ed for ed in result.edges if ed.src == caller.id]
+        assert len(resolved) == 1
+        assert resolved[0].dst == b_save.id, "C3 must pick B.save, not D.save"
+        assert resolved[0].evidence_type == "ast_call_inherited_method"
+
+    def test_python_c3_respects_source_base_order_over_edge_arrival(
+        self,
+    ) -> None:
+        """WI-hiziz (D1) base-order robustness: a QUALIFIED in-tree base written
+        first (``class D(mod.Bar, Baz)``) has its ``extends`` edge recovered
+        LATE by the inheritance-linker, so it ARRIVES after Baz's. The C3 walker
+        must still honor SOURCE order (from ``meta['base_classes']``) — D().m()
+        resolves to Bar.m (the first base), NOT Baz.m — else the reversed
+        edge-arrival order silently picks the wrong ancestor on a method-name
+        collision. Regression for the adversarial-review base-order blocker."""
+        bar = _py_cls("sym:py.Bar", "Bar", path="/base.py")
+        bar_m = _py_method("sym:py.Bar.m", "Bar.m", path="/base.py")
+        baz = _py_cls("sym:py.Baz", "Baz", path="/main.py")
+        baz_m = _py_method("sym:py.Baz.m", "Baz.m", path="/main.py")
+        # D(Bar, Baz) in SOURCE order, with Bar written qualified as `base.Bar`.
+        d = Symbol(
+            id="sym:py.D", name="D", kind="class", language="python",
+            path="/main.py",
+            span=Span(start_line=1, end_line=5, start_col=0, end_col=0),
+            origin="test", origin_run_id="test-run",
+            meta={"base_classes": ["base.Bar", "Baz"]},
+        )
+        caller = _py_caller()
+        # Edges ARRIVE reversed: Baz (py.py, resolved early) before Bar
+        # (inheritance-linker, recovered late).
+        edges = [
+            _edge(d.id, baz.id, "extends"),
+            _edge(d.id, bar.id, "extends"),
+            _unresolved_site2_lang(
+                src_id=caller.id, callee_name="m",
+                receiver_type_hint="D", lang="python",
+            ),
+        ]
+        ctx = LinkerContext(
+            repo_root=Path("/"),
+            symbols=[bar, bar_m, baz, baz_m, d, caller], edges=edges,
+        )
+        result = link_inherited_calls(ctx)
+        resolved = [e for e in result.edges if e.src == caller.id]
+        assert len(resolved) == 1
+        assert resolved[0].dst == bar_m.id, (
+            "C3 must resolve to Bar.m (first source base), not Baz.m — the "
+            "reversed edge-arrival order was corrected from meta['base_classes']"
+        )
+
+    def test_python_walker_cycle_biases_to_unresolved(self) -> None:
+        """A malformed inheritance CYCLE (Sub extends Base, Base extends Sub)
+        cannot be linearized; the C3 walker biases to unresolved rather than
+        emitting a best-effort (possibly wrong) resolution — and never loops."""
+        sub = _py_cls("sym:py.Sub", "Sub", path="/s.py")
+        base = _py_cls("sym:py.Base", "Base", path="/b.py")
+        base_m = _py_method("sym:py.Base.m", "Base.m", path="/b.py")
+        caller = _py_caller()
+        edges = [
+            _edge(sub.id, base.id, "extends"),
+            _edge(base.id, sub.id, "extends"),  # cycle
+            _unresolved_site2_lang(
+                src_id=caller.id, callee_name="m",
+                receiver_type_hint="Sub", lang="python",
+            ),
+        ]
+        ctx = LinkerContext(
+            repo_root=Path("/"),
+            symbols=[sub, base, base_m, caller], edges=edges,
+        )
+        result = link_inherited_calls(ctx)
+        assert result.edges == []
+
+    def test_python_walker_method_on_unrelated_class_stays_unresolved(
+        self,
+    ) -> None:
+        """The C3 walker returns None when the callee exists on some class but
+        NOT on any class in the receiver's linearization (the walked-the-whole-
+        chain-no-match path). Foo has no bases and no ``save``; ``save`` lives
+        only on an unrelated ``Bar`` → stays unresolved (no wrong bind)."""
+        foo = _py_cls("sym:py.Foo", "Foo", path="/foo.py")  # no bases, no save
+        bar = _py_cls("sym:py.Bar", "Bar", path="/bar.py")
+        bar_save = _py_method("sym:py.Bar.save", "Bar.save", path="/bar.py")
+        caller = _py_caller()
+        unresolved = _unresolved_site2_lang(
+            src_id=caller.id, callee_name="save",
+            receiver_type_hint="Foo", lang="python",
+        )
+        ctx = LinkerContext(
+            repo_root=Path("/"),
+            symbols=[foo, bar, bar_save, caller], edges=[unresolved],
         )
         result = link_inherited_calls(ctx)
         assert result.edges == []

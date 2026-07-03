@@ -68,9 +68,14 @@ ceremony for static language semantics). Initial table (PR-2):
   (``implements``/``includes``) via edge-type priority. Default /
   Kotlin / C# extension still future.
 
+- ``_walk_c3`` (Python; WI-hiziz / D1): true C3 linearization over the
+  in-tree ``extends`` chain. Python's MRO is C3, not insertion-order BFS —
+  the two diverge on uneven-depth diamonds, where BFS picks the wrong
+  ancestor. Registered for ``python`` only; deliberately NOT added to
+  ``_LEGACY_SITE2_LANGS`` (Python keeps strict Site-2, no Step-3 fallback).
+
 Future PRs:
 
-- ``_walk_c3`` (Python): C3 linearization — future.
 - ``_walk_left_to_right`` (PHP/Swift/Obj-C/C++): left-to-right depth
   first — future.
 - ``_walk_linearization`` (Scala traits) — future.
@@ -144,6 +149,51 @@ def _build_typed_inheritance_index(
         if edge.edge_type in edge_types:
             index[edge.src].append((edge.dst, edge.edge_type))
     return index
+
+
+def _reorder_python_bases_by_source(
+    inheritance_index: dict[str, list[tuple[str, str]]],
+    class_symbols: dict[str, Symbol],
+) -> None:
+    """Reorder each Python class's parent list to match SOURCE base order.
+
+    C3 correctness needs the left-to-right base order (``class D(B, C)`` →
+    ``[B, C]``). ``_build_typed_inheritance_index`` preserves edge-ARRIVAL
+    order, which diverges for a QUALIFIED in-tree base: py.py's short-name base
+    resolver misses ``class D(mod.Bar, Mixin)``'s ``mod.Bar``, so that
+    ``extends`` edge is recovered LATE by the inheritance-linker and arrives
+    after ``Mixin`` — reversing the base order and (on a method-name collision)
+    resolving to the wrong ancestor. Each Python child's authoritative source
+    order lives in ``meta['base_classes']`` (``node.bases`` order, dotted names
+    intact); parents are sorted by their short name's position there, with
+    parents whose short name isn't found kept in a stable trailing block. In
+    place; only Python multi-base children are touched, so ruby / groovy / java
+    walkers (which rely on edge-arrival / edge-type order) are unaffected.
+    """
+    for child in class_symbols.values():
+        if child.language != "python":
+            continue
+        parents = inheritance_index.get(child.id)
+        if not parents or len(parents) < 2:
+            continue
+        base_names = [
+            str(b).split(".")[-1]
+            for b in ((child.meta or {}).get("base_classes") or [])
+        ]
+        if not base_names:
+            continue
+        pos = {name: i for i, name in enumerate(base_names)}
+        fallback = len(base_names)
+        decorated: list[tuple[int, int, tuple[str, str]]] = []
+        for arrival, parent_entry in enumerate(parents):
+            psym = class_symbols.get(parent_entry[0])
+            if psym is None:  # pragma: no cover - an extends dst is always an in-tree class
+                short = ""
+            else:
+                short = psym.name.split(".")[-1]
+            decorated.append((pos.get(short, fallback), arrival, parent_entry))
+        decorated.sort()
+        inheritance_index[child.id] = [entry for _, _, entry in decorated]
 
 
 # ---------------------------------------------------------------------------
@@ -259,6 +309,121 @@ def _walk_single_then_interfaces(
     return None
 
 
+def _c3_merge(sequences: list[list[str]]) -> list[str]:
+    """C3 merge: combine linearizations preserving monotonicity + local order.
+
+    Repeatedly takes a *good head* — a class that is the head of some sequence
+    and appears in NO sequence's tail — appends it, and removes it from every
+    sequence. A mathematically-inconsistent hierarchy (real Python raises
+    ``TypeError``) has no good head; a static walker must stay total, so we
+    DEGRADE by taking the first available head instead of raising. The result
+    has no duplicates (each pick is removed from all sequences).
+    """
+    seqs = [list(s) for s in sequences if s]
+    result: list[str] = []
+    while seqs:
+        head: str | None = None
+        for seq in seqs:
+            candidate = seq[0]
+            if not any(candidate in s[1:] for s in seqs):
+                head = candidate
+                break
+        if head is None:  # inconsistent hierarchy — degrade, never raise
+            head = seqs[0][0]
+        result.append(head)
+        seqs = [[c for c in s if c != head] for s in seqs]
+        seqs = [s for s in seqs if s]
+    return result
+
+
+def _linearize_c3(
+    class_id: str,
+    inheritance_index: dict[str, list[tuple[str, str]]],
+    depth_cap: int = _DEFAULT_DEPTH_CAP,
+    _memo: dict[str, list[str] | None] | None = None,
+    _in_progress: frozenset[str] = frozenset(),
+) -> list[str] | None:
+    """Compute the C3 linearization (Python MRO order) of ``class_id``.
+
+    ``L[C] = [C] + merge(L[B1], ..., L[Bn], [B1, ..., Bn])`` over the in-tree
+    ancestor subgraph, using the ORDERED base list from ``inheritance_index``
+    (left-to-right ``extends`` order, which C3's local-precedence rule needs).
+    Results are memoized per class.
+
+    Returns ``None`` — a "cannot linearize reliably, bias to unresolved" signal
+    — rather than a best-effort order in two cases that would otherwise emit a
+    CONFIDENTLY-WRONG resolution: an inheritance **cycle** (``_in_progress``;
+    malformed, can't be valid Python) and **depth exhaustion** (``depth_cap``;
+    a truncated branch would silently drop a precedence edge and reorder two
+    real ancestors). ``None`` propagates: if any base branch is unreliable, the
+    whole linearization is. A final dedup pass keeps the result robust to
+    repeated classes. Never raises.
+    """
+    if _memo is None:
+        _memo = {}
+    if class_id in _memo:
+        return _memo[class_id]
+    if class_id in _in_progress or depth_cap <= 0:
+        return None
+    child_in_progress = _in_progress | {class_id}
+    parents = [parent_id for parent_id, _edge_type in inheritance_index.get(class_id, ())]
+    seqs: list[list[str]] = []
+    for parent_id in parents:
+        parent_lin = _linearize_c3(
+            parent_id, inheritance_index, depth_cap - 1, _memo, child_in_progress,
+        )
+        if parent_lin is None:
+            return None
+        seqs.append(parent_lin)
+    if parents:
+        seqs.append(list(parents))
+    merged = [class_id] + _c3_merge(seqs)
+    seen: set[str] = set()
+    deduped = [c for c in merged if not (c in seen or seen.add(c))]
+    _memo[class_id] = deduped
+    return deduped
+
+
+def _walk_c3(
+    start_class_id: str,
+    callee_short_name: str,
+    inheritance_index: dict[str, list[tuple[str, str]]],
+    method_index: _TypeHierarchyIndex,
+    depth_cap: int = _DEFAULT_DEPTH_CAP,
+) -> Symbol | None:
+    """C3-linearization MRO walk (Python).
+
+    Python's MRO is C3 linearization, NOT the insertion-order BFS the Ruby /
+    Groovy walker uses. They agree on single inheritance and even diamonds but
+    diverge on uneven-depth diamonds, where insertion-order picks the *wrong*
+    ancestor (a confidently-wrong ``calls`` edge). This walker computes the C3
+    order and returns the first class in it that defines ``callee_short_name``;
+    an un-linearizable hierarchy (cycle / too deep) biases to unresolved.
+
+    Scope caveat: the linearization spans only in-tree bases. An EXTERNAL base
+    (``dict`` / ``Enum`` / a 3rd-party class) produces no ``extends`` edge, so
+    it is invisible to the walk — and if such a base sits ahead of the in-tree
+    ancestor in the real MRO *and* defines the same method name, the walk can
+    resolve to the wrong (in-tree) method. This is a confidently-wrong, not
+    merely missing, edge; it is shared with every intra-repo-only walker and
+    tracked as a fast-follow (gate on a fully-in-tree ancestry).
+    """
+    candidates_by_short = method_index.methods_by_short_name.get(
+        callee_short_name, [],
+    )
+    methods_by_class: dict[str, Symbol] = dict(candidates_by_short)
+    if not methods_by_class:
+        return None
+    linearization = _linearize_c3(start_class_id, inheritance_index, depth_cap)
+    if linearization is None:
+        return None
+    for class_id in linearization:
+        candidate = methods_by_class.get(class_id)
+        if candidate is not None:
+            return candidate
+    return None
+
+
 # Per-language MRO dispatch. Hardcoded clauses (no YAML / no decorator
 # hooks) because the table is static language semantics — see ADR-3bbb
 # and the WI-hatip plan discussion at ~/puluf-plan.md.
@@ -269,6 +434,7 @@ _MRO_WALKERS: dict[str, Callable[
     "ruby": _walk_insertion_order,
     "groovy": _walk_insertion_order,
     "java": _walk_single_then_interfaces,
+    "python": _walk_c3,
 }
 
 
@@ -408,6 +574,11 @@ def link_inherited_calls(ctx: LinkerContext) -> LinkerResult:
         if s.kind in ("class", "struct", "module", "interface", "trait", "protocol"):
             class_ids_by_name.setdefault(s.name, []).append(s.id)
             class_symbols[s.id] = s
+    # WI-hiziz (D1): C3 needs left-to-right base order, but a qualified in-tree
+    # base's extends edge arrives out of order (recovered late by the
+    # inheritance-linker). Restore each Python class's source base order from
+    # meta['base_classes'] before the C3 walker consumes the index.
+    _reorder_python_bases_by_source(inheritance_index, class_symbols)
     method_index = build_method_index(
         ctx.symbols, class_ids_by_name, class_symbols,
     )
