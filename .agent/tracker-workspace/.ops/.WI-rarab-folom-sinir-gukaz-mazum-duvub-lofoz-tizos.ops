@@ -1,0 +1,21 @@
+- op: create  # 6187
+  at: '2026-07-03T23:57:31Z'  # 6187
+  by: agent  # 6187
+  actor: jgstern_agent  # 6187
+  clock: 1  # 6187
+  nonce: '6187'  # 6187
+  data:  # 6187
+    kind: work_item  # 6187
+    title: "Site-3 field-declarer walk should honor Python C3 order, not BFS (uneven-depth diamond ambiguity)"  # 6187
+    status: todo_hard  # 6187
+    priority: 3  # 6187
+    parent:  # 6187
+    tags:  # 6187
+    - analysis_quality  # 6187
+    - dispatch  # 6187
+    isbefore: []  # 6187
+    duplicate_of: []  # 6187
+    not_duplicate_of: []  # 6187
+    pr_ref:  # 6187
+    description: "Surfaced by the WI-hiziz PR-3 (Site-3) adversarial review (wf_d812238a-fad, linker-guards finding, is_real=True, reproduced end-to-end). inherited_calls._walk_parents_for_field resolves an inherited FIELD's type by BFS over the enclosing class's parents, returning the FIRST ancestor that declares the field name. For Python multiple inheritance this diverges from the real C3 MRO on an uneven-depth diamond: D(B,C), B(A); A declares field log->LoggerA (depth 2 in D's chain), C declares log->LoggerC (depth 1). Python's real MRO of D is [D,B,A,C,object], so D().log is A's LoggerA — but BFS returns C's LoggerC first, and _resolve_site3 mints a confidently-wrong 0.80 ast_call_inherited_field edge to LoggerC.info instead of LoggerA.info. Narrow (needs an uneven-depth diamond with the SAME field name declared at DIFFERENT depths with DIFFERENT types) but a WRONG POSITIVE, not mere recall loss. The Site-1/Site-2 method walk already uses C3 (_linearize_c3, WI-hiziz PR-1); the FIELD walk (_walk_parents_for_field, shared with java) still BFS. Fix options: (a, cheap, consistent with the _SITE1_STRICT_LANGS ambiguity guards) for strict langs, collect ALL ancestor declarers of the field name and bias to unresolved when >1 distinct field type is found (return a sentinel -> _resolve_site3 returns None); (b, recall-preserving) make the strict-lang field walk C3-aware via _linearize_c3, picking the field from the first ancestor in C3 order. Java stays BFS (single inheritance, gated on _SITE1_STRICT_LANGS). Add an uneven-depth-diamond test with two same-named ancestor fields of divergent types."  # 6187
+    fields: {}  # 6187

@@ -41,3 +41,10 @@
   clock: 4  # a580
   nonce: a580  # a580
   message: "Part B (D2 / WI-gubar) landed in PR #407 (dev 3e11c3ca17): @property attribute reads (obj.prop on a var_types-typed instance) now resolve to the in-repo getter via the receiver_type_hint -> inherited_calls Site-2 chain. Behavioral evidence: ValidationResult.ok (a flagship repro) now has an incoming resolved calls edge (was dead). WI-noham STAYS OPEN — the inherited-method mass still needs the Python MRO walker (WI-hiziz/D1), which is the last piece before the 283-twin residual fully clears; read-write getter+setter properties are deferred to WI-sizut. Session arc: WI-noham Part A (PR #404) + WI-gubar/D2 (PR #407) landed; remaining to close = WI-hiziz/D1 (+ WI-supat/D3 precision)."  # a580
+- op: discuss  # 17e5
+  at: '2026-07-03T23:57:06Z'  # 17e5
+  by: agent  # 17e5
+  actor: jgstern_agent  # 17e5
+  clock: 5  # 17e5
+  nonce: '17e5'  # 17e5
+  message: "WI-hiziz D1 COMPLETE (PR-1/2/3, last landed dev 7109758f92): the full inherited-method + inherited-field resolution mass now lands for Python — Site-2 typed-receiver-inherited (C3 walker, PR-1), Site-1 self.method() inherited (PR-2), Site-3 self.field.method() inherited (PR-3). Combined with Part A (typed-receiver-direct / local static+classmethod) and D2 (WI-gubar @property reads), the walker-independent + walker-dependent recall for obj.method()/self.method()/self.field.method()/@property is all landed. The SOLE remaining WI-noham residual is WI-supat/D3 — concrete-class-id precision (thread a concrete enclosing/receiver class id so the _SITE1_STRICT_LANGS ambiguity guards recover the same-short-name + cross-language recall they currently sacrifice). WI-noham stays OPEN pending WI-supat + bakeoff re-measurement of the INV-nuzas 283-twin residual and the decorated/plain deadness deltas."  # 17e5
