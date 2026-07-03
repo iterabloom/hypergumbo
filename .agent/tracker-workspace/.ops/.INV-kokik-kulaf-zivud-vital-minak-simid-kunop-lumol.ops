@@ -1,0 +1,23 @@
+- op: create  # 95ed
+  at: '2026-07-03T03:36:37Z'  # 95ed
+  by: agent  # 95ed
+  actor: jgstern_agent  # 95ed
+  clock: 1  # 95ed
+  nonce: 95ed  # 95ed
+  data:  # 95ed
+    kind: invariant  # 95ed
+    title: "Vendored static third-party assets counted first_party (INV-nuzas-adjacent)"  # 95ed
+    status: violated  # 95ed
+    priority: 3  # 95ed
+    parent:  # 95ed
+    tags:  # 95ed
+    - supply_chain  # 95ed
+    - analysis_quality  # 95ed
+    isbefore: []  # 95ed
+    duplicate_of: []  # 95ed
+    not_duplicate_of: []  # 95ed
+    pr_ref:  # 95ed
+    description: ""  # 95ed
+    fields:  # 95ed
+      statement: "Third-party JS bundles under src/pretix/static/ are classified supply-chain first_party, inflating JS symbol totals and leaking vendored code into top-ranked symbols (pretix); an INV-nuzas-adjacent tier misclassification."  # 95ed
+      root_cause: "Supply-chain tier classification treats any in-repo path as first_party without excluding vendored/static third-party asset directories, so bundled third-party JS under static/ is counted as first-party source."  # 95ed

@@ -1,0 +1,23 @@
+- op: create  # a1b8
+  at: '2026-07-03T03:36:32Z'  # a1b8
+  by: agent  # a1b8
+  actor: jgstern_agent  # a1b8
+  clock: 1  # a1b8
+  nonce: a1b8  # a1b8
+  data:  # a1b8
+    kind: invariant  # a1b8
+    title: "inherited_calls Site-2 misbinds across languages (class_ids_by_name has no src_lang filter)"  # a1b8
+    status: violated  # a1b8
+    priority: 2  # a1b8
+    parent:  # a1b8
+    tags:  # a1b8
+    - cross_language_parity  # a1b8
+    - analysis_quality  # a1b8
+    isbefore: []  # a1b8
+    duplicate_of: []  # a1b8
+    not_duplicate_of: []  # a1b8
+    pr_ref:  # a1b8
+    description: ""  # a1b8
+    fields:  # a1b8
+      statement: "linkers/inherited_calls.py builds class_ids_by_name globally with no src_lang filter (build ~383-388; _resolve_site2 lookup ~574-663), so a Java receiver typed Property misbinds onto a same-named Scala trait, producing false cross-language ast_call_inherited_method edges at conf 0.70 (docspell). Gate Site-2 candidate lookup on src_lang. INV-nilud family."  # a1b8
+      root_cause: "class_ids_by_name in linkers/inherited_calls.py is built across all languages with no src_lang partition, so Site-2 candidate lookup can match a class/trait of a different language that shares the receiver type name."  # a1b8

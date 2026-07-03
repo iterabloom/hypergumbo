@@ -1,0 +1,23 @@
+- op: create  # d543
+  at: '2026-07-03T03:36:29Z'  # d543
+  by: agent  # d543
+  actor: jgstern_agent  # d543
+  clock: 1  # d543
+  nonce: d543  # d543
+  data:  # d543
+    kind: invariant  # d543
+    title: "Vapor route extractor misses grouped-builder chain (~236 endpoints)"  # d543
+    status: violated  # d543
+    priority: 2  # d543
+    parent:  # d543
+    tags:  # d543
+    - framework_detection  # d543
+    - entrypoint  # d543
+    isbefore: []  # d543
+    duplicate_of: []  # d543
+    not_duplicate_of: []  # d543
+    pr_ref:  # d543
+    description: ""  # d543
+    fields:  # d543
+      statement: "The Swift/Vapor route extractor (swift.py:1104+) matches only bare app/routes/router receivers and misses the RouteCollection grouped(...).verb(use:) and .on(...) grouped-builder chain, so ~236 endpoints go undetected despite vapor detected (VernissageServer EXPECTED_ROUTES_BUT_FOUND_0)."  # d543
+      root_cause: "The Vapor route extractor only recognizes bare app/routes/router receivers and does not walk the grouped-builder chain (grouped(...).verb(use:), .on(...)) that Vapor apps use for nested route groups."  # d543
