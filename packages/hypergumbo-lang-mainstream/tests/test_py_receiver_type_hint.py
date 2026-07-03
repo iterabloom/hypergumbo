@@ -162,9 +162,14 @@ class TestReceiverHintScopeGuard:
         assert len(edges) == 1
         assert (edges[0].meta or {}).get("receiver_type_hint") == "Foo"
 
-    def test_unannotated_self_method_gets_no_hint(self, tmp_path: Path) -> None:
-        # self.method() falling through to the else (no such short-named method
-        # in the file) must not be hinted: 'self' is a local binding, unannotated.
+    def test_self_method_gets_enclosing_class_not_receiver_hint(
+        self, tmp_path: Path
+    ) -> None:
+        # WI-hiziz PR-2: self.method() that falls through to the else gets an
+        # ``enclosing_class`` hint (Site 1), NOT a ``receiver_type_hint`` — a
+        # ``self`` receiver is LEXICAL (the enclosing class), so it dispatches
+        # to the Site-1 MRO walker, not Site-2. (Full producer coverage of the
+        # self-inherited path lives in ``test_py_self_inherited_hint.py``.)
         src = (
             "class C:\n"
             "    def run(self):\n"
@@ -173,6 +178,7 @@ class TestReceiverHintScopeGuard:
         res = _analyze(tmp_path, src)
         edges = _method_call_edges(res, "nonexistent_helper")
         assert len(edges) == 1
+        assert (edges[0].meta or {}).get("enclosing_class") == "C"
         assert "receiver_type_hint" not in (edges[0].meta or {})
 
     def test_module_level_var_shadowing_class_gets_no_hint(
@@ -212,7 +218,9 @@ class TestReceiverHintScopeGuard:
 
     def test_cls_method_gets_no_hint(self, tmp_path: Path) -> None:
         # cls.foo() inside a classmethod — cls is a local binding, not a class
-        # name; no hint (recall deferred to a Python MRO walker).
+        # name; no hint. The WI-hiziz PR-2 self-branch keys on receiver == "self"
+        # only, so cls gets NEITHER receiver_type_hint NOR enclosing_class
+        # (classmethod-inheritance recall is a deferred follow-up gap).
         src = (
             "class C:\n"
             "    @classmethod\n"
@@ -223,6 +231,7 @@ class TestReceiverHintScopeGuard:
         edges = _method_call_edges(res, "build")
         assert len(edges) == 1
         assert "receiver_type_hint" not in (edges[0].meta or {})
+        assert "enclosing_class" not in (edges[0].meta or {})
 
 
 class TestNohamRecallEndToEnd:

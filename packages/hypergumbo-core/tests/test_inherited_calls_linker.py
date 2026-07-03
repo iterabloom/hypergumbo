@@ -1286,6 +1286,22 @@ def _unresolved_site2_lang(
     )
 
 
+def _unresolved_site1_lang(
+    src_id: str, callee_name: str, enclosing_class: str,
+    lang: str, line: int = 1,
+) -> Edge:
+    """Site-1 unresolved-call edge (enclosing_class hint) for an arbitrary
+    source language. Dispatch keys on the SOURCE symbol's language, not the
+    edge's dst prefix, so the caller symbol must carry ``lang``."""
+    from hypergumbo_core.analyze.base import make_unresolved_edge
+    return make_unresolved_edge(
+        lang=lang, src_id=src_id, callee_name=callee_name,
+        line=line, pass_id="test-pass", run_id="test-run",
+        module_hint="external",
+        enclosing_class=enclosing_class,
+    )
+
+
 class TestPythonSite2StrictMode:
     """WI-noham Part A: Python receiver_type_hint edges (emitted by py.py's
     final unresolved-emit else) get the STRICT INV-fahub Site-2 mode — the
@@ -1547,3 +1563,224 @@ class TestPythonSite2StrictMode:
         # walker-equipped ruby/groovy are NOT auto-granted permissive Site-2.
         assert _LEGACY_SITE2_LANGS != set(_MRO_WALKERS)
         assert {"ruby", "groovy"} & _LEGACY_SITE2_LANGS == set()
+
+
+class TestPythonSite1SelfCalls:
+    """WI-hiziz PR-2: Site-1 (``enclosing_class`` hint) resolution for Python
+    ``self.method()`` inherited calls, plus the new INV-fahub ambiguity guard.
+
+    py.py stamps ``enclosing_class`` on the unresolved ``self.method()`` edge;
+    the linker walks the class's C3 MRO (Python walker landed in PR-1) and mints
+    the resolved edge. A same-short-name class collision biases to unresolved
+    (the guard) for non-legacy langs; Java stays permissive.
+    """
+
+    def test_site1_python_self_method_resolves_via_c3(self) -> None:
+        # Sub(Base); Base defines `m`, Sub does not. A python self.m() call
+        # carrying enclosing_class="Sub" resolves to Base.m up the C3 MRO.
+        base = _py_cls("sym:py.Base", "Base", path="/base.py")
+        base_m = _py_method("sym:py.Base.m", "Base.m", path="/base.py")
+        sub = _py_cls("sym:py.Sub", "Sub", path="/sub.py")
+        caller = _py_caller()
+        edges = [
+            _edge(sub.id, base.id, "extends"),
+            _unresolved_site1_lang(
+                src_id=caller.id, callee_name="m",
+                enclosing_class="Sub", lang="python",
+            ),
+        ]
+        ctx = LinkerContext(
+            repo_root=Path("/"),
+            symbols=[base, base_m, sub, caller], edges=edges,
+        )
+        result = link_inherited_calls(ctx)
+        resolved = [e for e in result.edges if e.src == caller.id]
+        assert len(resolved) == 1
+        assert resolved[0].dst == base_m.id
+        assert resolved[0].evidence_type == "ast_call_inherited"
+        assert resolved[0].confidence == 0.90
+        assert resolved[0].is_resolved is True
+        # FM7: the minted edge does NOT inherit the producer's meta payload
+        # (call_construct / resolution_quality live on the surviving unresolved
+        # twin only, never on the resolved edge).
+        assert "call_construct" not in (resolved[0].meta or {})
+        assert "resolution_quality" not in (resolved[0].meta or {})
+
+    def test_site1_python_collision_biases_unresolved(self) -> None:
+        # Two in-tree python classes both named "Worker" make the enclosing
+        # receiver under-determined by NAME → the guard biases to unresolved,
+        # even though one Worker would resolve the method. (WI-supat/D3 recovers
+        # this with a concrete class id.)
+        base = _py_cls("sym:py.Base", "Base", path="/base.py")
+        base_run = _py_method("sym:py.Base.run", "Base.run", path="/base.py")
+        w1 = _py_cls("sym:py.Worker1", "Worker", path="/w1.py")
+        w2 = _py_cls("sym:py.Worker2", "Worker", path="/w2.py")
+        caller = _py_caller()
+        edges = [
+            _edge(w1.id, base.id, "extends"),
+            _unresolved_site1_lang(
+                src_id=caller.id, callee_name="run",
+                enclosing_class="Worker", lang="python",
+            ),
+        ]
+        ctx = LinkerContext(
+            repo_root=Path("/"),
+            symbols=[base, base_run, w1, w2, caller], edges=edges,
+        )
+        result = link_inherited_calls(ctx)
+        assert result.edges == []
+
+    def test_site1_ruby_reopened_class_still_resolves(self) -> None:
+        # Ruby is NOT in _SITE1_STRICT_LANGS: two same-short-name "Worker" class
+        # symbols are a class REOPENING (one logical class in Ruby's single global
+        # namespace — ubiquitous in Rails), NOT a collision. The guard must NOT
+        # fire; Ruby keeps its loop-all-first-match Site-1 resolution, preserving
+        # the INV-nilud-validated `X.new -> inherited #initialize` edges this
+        # linker was built for. (Regression lock for the review-caught Ruby
+        # recall regression from reusing the java-only exemption set.)
+        base = _cls("sym:rb.Base", "Base", path="/base.rb", language="ruby")
+        base_init = _method(
+            "sym:rb.Base#initialize", "Base#initialize",
+            path="/base.rb", language="ruby",
+        )
+        # `class Worker < Base` and a reopen `class Worker` — two symbols, one
+        # logical class. Only one carries the extends edge (mirrors the analyzer).
+        w1 = _cls("sym:rb.Worker1", "Worker", path="/w.rb", language="ruby")
+        w2 = _cls("sym:rb.Worker2", "Worker", path="/w_reopen.rb", language="ruby")
+        caller = _caller(sid="sym:rb.Factory#build", language="ruby")
+        edges = [
+            _edge(w1.id, base.id, "extends"),
+            _unresolved_site1_lang(
+                src_id=caller.id, callee_name="initialize",
+                enclosing_class="Worker", lang="ruby",
+            ),
+        ]
+        ctx = LinkerContext(
+            repo_root=Path("/"),
+            symbols=[base, base_init, w1, w2, caller], edges=edges,
+        )
+        result = link_inherited_calls(ctx)
+        resolved = [e for e in result.edges if e.src == caller.id]
+        assert len(resolved) == 1
+        assert resolved[0].dst == base_init.id
+
+    def test_site1_java_collision_still_loops_all_legacy(self) -> None:
+        # Java is in _LEGACY_SITE2_LANGS: the guard is skipped, so two same-name
+        # "Svc" classes still resolve via loop-all-first-match (preserves the
+        # INV-nilud java edges). Covers the guard's src_lang-not-legacy False arm.
+        base = _cls("sym:jv.Base", "Base", path="/Base.java", language="java")
+        base_do = _method(
+            "sym:jv.Base.doIt", "Base.doIt", path="/Base.java", language="java"
+        )
+        s1 = _cls("sym:jv.Svc1", "Svc", path="/Svc1.java", language="java")
+        s2 = _cls("sym:jv.Svc2", "Svc", path="/Svc2.java", language="java")
+        caller = _caller(sid="sym:jv.Caller.go", language="java")
+        edges = [
+            _edge(s1.id, base.id, "extends"),
+            _unresolved_site1_lang(
+                src_id=caller.id, callee_name="doIt",
+                enclosing_class="Svc", lang="java",
+            ),
+        ]
+        ctx = LinkerContext(
+            repo_root=Path("/"),
+            symbols=[base, base_do, s1, s2, caller], edges=edges,
+        )
+        result = link_inherited_calls(ctx)
+        resolved = [e for e in result.edges if e.src == caller.id]
+        assert len(resolved) == 1
+        assert resolved[0].dst == base_do.id
+
+    def test_site1_python_method_not_on_chain_stays_unresolved(self) -> None:
+        # Sub(Base), neither defines "ghost" → the C3 walk finds nothing →
+        # Site-1 returns None (covers the resolved_target-is-None path).
+        base = _py_cls("sym:py.Base", "Base", path="/base.py")
+        sub = _py_cls("sym:py.Sub", "Sub", path="/sub.py")
+        caller = _py_caller()
+        edges = [
+            _edge(sub.id, base.id, "extends"),
+            _unresolved_site1_lang(
+                src_id=caller.id, callee_name="ghost",
+                enclosing_class="Sub", lang="python",
+            ),
+        ]
+        ctx = LinkerContext(
+            repo_root=Path("/"),
+            symbols=[base, sub, caller], edges=edges,
+        )
+        result = link_inherited_calls(ctx)
+        assert result.edges == []
+
+    def test_site1_python_external_base_mixin_known_gap(self) -> None:
+        # KNOWN LIMITATION (FM1, tracked by INV-guviv): the C3 walker spans only
+        # in-tree ``extends`` edges. Sub subclasses an EXTERNAL base (no edge,
+        # invisible) plus an in-tree mixin; if the external base defined `save`
+        # it would win the real MRO, but the walk sees only the mixin and binds
+        # Mixin.save at 0.90. Asserting the CURRENT behavior ships FM1
+        # eyes-open; INV-guviv's fully-in-tree-ancestry gate will flip it.
+        mixin = _py_cls("sym:py.LogMixin", "LogMixin", path="/mixin.py")
+        mixin_save = _py_method(
+            "sym:py.LogMixin.save", "LogMixin.save", path="/mixin.py"
+        )
+        sub = Symbol(
+            id="sym:py.Repo", name="Repo", kind="class", language="python",
+            path="/repo.py",
+            span=Span(start_line=1, end_line=5, start_col=0, end_col=0),
+            origin="test", origin_run_id="test-run",
+            meta={"base_classes": ["ext.SqlBase", "LogMixin"]},
+        )
+        caller = _py_caller()
+        edges = [
+            # Only the in-tree mixin gets an extends edge; ext.SqlBase is invisible.
+            _edge(sub.id, mixin.id, "extends"),
+            _unresolved_site1_lang(
+                src_id=caller.id, callee_name="save",
+                enclosing_class="Repo", lang="python",
+            ),
+        ]
+        ctx = LinkerContext(
+            repo_root=Path("/"),
+            symbols=[mixin, mixin_save, sub, caller], edges=edges,
+        )
+        result = link_inherited_calls(ctx)
+        resolved = [e for e in result.edges if e.src == caller.id]
+        assert len(resolved) == 1
+        assert resolved[0].dst == mixin_save.id  # FM1: possibly-wrong; documented
+
+    def test_site1_python_crosslang_namesake_over_suppressed(self) -> None:
+        # FM3 (accepted, recovered by WI-supat): class_ids_by_name is
+        # language-agnostic, so a java "Config" inflates the python "Config"
+        # collision count and the guard suppresses a python call whose python
+        # enclosing class is actually UNIQUE. Documents the over-suppression.
+        base = _py_cls("sym:py.PyBase", "PyBase", path="/base.py")
+        base_m = _py_method("sym:py.PyBase.m", "PyBase.m", path="/base.py")
+        py_config = _py_cls("sym:py.Config", "Config", path="/cfg.py")
+        jv_config = _cls(
+            "sym:jv.Config", "Config", path="/Config.java", language="java"
+        )
+        caller = _py_caller()
+        edges = [
+            _edge(py_config.id, base.id, "extends"),
+            _unresolved_site1_lang(
+                src_id=caller.id, callee_name="m",
+                enclosing_class="Config", lang="python",
+            ),
+        ]
+        ctx = LinkerContext(
+            repo_root=Path("/"),
+            symbols=[base, base_m, py_config, jv_config, caller], edges=edges,
+        )
+        result = link_inherited_calls(ctx)
+        assert result.edges == []  # over-suppressed by the cross-language namesake
+
+    def test_site1_strict_langs_membership(self) -> None:
+        # The Site-1 ambiguity guard is opt-in per language via a DEDICATED set,
+        # NOT "all but _LEGACY_SITE2_LANGS". Python (module namespaces → same
+        # short name = distinct classes) is in; Ruby/Groovy (single global
+        # namespace → same short name = class reopening) and Java must be OUT, so
+        # their loop-all-first-match Site-1 resolution is preserved.
+        from hypergumbo_core.linkers.inherited_calls import _SITE1_STRICT_LANGS
+        assert _SITE1_STRICT_LANGS == frozenset({"python"})
+        assert "ruby" not in _SITE1_STRICT_LANGS
+        assert "groovy" not in _SITE1_STRICT_LANGS
+        assert "java" not in _SITE1_STRICT_LANGS

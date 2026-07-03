@@ -4369,7 +4369,54 @@ def _process_call(
                     if stack is not None and stack.frames
                     else frozenset()
                 )
-                if receiver_name in var_types:
+                _caller_decos = {
+                    d.get("name")
+                    for d in (caller_symbol.meta or {}).get("decorators", [])
+                    if isinstance(d, dict)
+                }
+                # WI-hiziz PR-2 (Site 1): a bare ``self.method()`` call that
+                # Case 2a could not resolve in-file is a cross-file INHERITED
+                # method (or an absent one). Stamp the DIRECT enclosing class
+                # short name so the inherited_calls linker's Site-1 resolver
+                # walks the method up the class's C3 MRO (Python walker landed in
+                # PR-1). This is the LEADING branch of a mutually-exclusive elif
+                # chain — it dispatches to Site-1 (enclosing_class), never Site-2
+                # (receiver_type_hint, which _try_resolve checks first). Guards,
+                # each load-bearing:
+                #   * ``kind == "method"`` — crash guard: guarantees a dotted
+                #     qualified_name so ``split(".")[-2]`` cannot IndexError (a
+                #     module-level fn named-param ``self``, or a nested function,
+                #     is kind "function", where the class is unrecoverable).
+                #   * ``receiver_name not in var_types`` — an EXPLICIT ``self: T``
+                #     annotation is a deliberate static-type declaration whose
+                #     methods may live OFF the enclosing class's MRO (the mixin/
+                #     host idiom). It must route to Site-2 on ``T`` (the demoted
+                #     elif), not Site-1 on the enclosing class — else a legit edge
+                #     is lost, or (namesake case) a confidently-wrong 0.90 edge is
+                #     minted. Only an UNANNOTATED ``self`` (not in var_types) is
+                #     lexically the enclosing class.
+                #   * ``"self" in _caller_locals`` — ``self`` must be a bound
+                #     local (param), excluding a classmethod that references
+                #     ``self`` (``self`` undefined; its param is ``cls``) and a
+                #     @staticmethod with no ``self`` param.
+                #   * ``"staticmethod" not in _caller_decos`` — a @staticmethod
+                #     that DOES declare a ``self`` param (anti-pattern) passes the
+                #     locals gate, but its ``self`` is an arbitrary argument, not
+                #     an instance of the enclosing class — an under-determined
+                #     receiver that INV-fahub requires biasing to unresolved.
+                # enclosing_class ONLY — taint-safe (is_resolved stays False, dst
+                # unchanged, the linker is the sole minter).
+                if (
+                    receiver_name == "self"
+                    and caller_symbol.kind == "method"
+                    and receiver_name not in var_types
+                    and "self" in _caller_locals
+                    and "staticmethod" not in _caller_decos
+                ):
+                    unresolved_meta["enclosing_class"] = (
+                        caller_symbol.qualified_name.split(".")[-2]
+                    )
+                elif receiver_name in var_types:
                     unresolved_meta["receiver_type_hint"] = var_types[receiver_name].name
                 elif receiver_name not in _caller_locals:
                     _recv_sym = local_symbols.get(receiver_name)

@@ -460,6 +460,24 @@ _MRO_WALKERS: dict[str, Callable[
 _LEGACY_SITE2_LANGS: frozenset[str] = frozenset({"java"})
 
 
+# ``_SITE1_STRICT_LANGS`` — languages whose Site-1 (``enclosing_class``)
+# resolution applies the INV-fahub same-short-name ambiguity guard (WI-hiziz
+# PR-2). This is DELIBERATELY NOT ``all langs except _LEGACY_SITE2_LANGS``: the
+# guard's premise is that two in-tree classes sharing a short name are DISTINCT
+# classes (true in Python, which has module namespaces — a bare ``enclosing_class``
+# name genuinely under-determines which module's class the caller is in). It is
+# FALSE in Ruby (and any single-global-namespace language): a *reopened* class
+# (``class Worker`` opened in several files — ubiquitous in Rails) emits one class
+# symbol per definition, all sharing the same short name, yet they are ONE logical
+# class. Applying the guard there would suppress the INV-nilud-validated
+# ``X.new → inherited #initialize`` Site-1 resolution this linker was built to
+# preserve. So the guard is opt-in per language, and only Python (whose Site-1
+# WI-hiziz PR-2 onboards) is a member; Ruby/Groovy keep their loop-all-first-match
+# Site-1 behavior. WI-supat (D3) threads a concrete class id to recover Python's
+# guard-sacrificed recall.
+_SITE1_STRICT_LANGS: frozenset[str] = frozenset({"python"})
+
+
 # ---------------------------------------------------------------------------
 # Site-3 helpers (inherited-field walk).
 # ---------------------------------------------------------------------------
@@ -740,6 +758,19 @@ def _resolve_site1(
         return None
     start_class_ids = class_ids_by_name.get(enclosing_class, [])
     if not start_class_ids:
+        return None
+    # WI-hiziz PR-2: INV-fahub ambiguity guard for Site-1. ``enclosing_class``
+    # is a NAME only; in a language with module namespaces (``_SITE1_STRICT_LANGS``
+    # — Python) two in-tree classes sharing that short name are DISTINCT classes,
+    # so the enclosing receiver is under-determined — bias to unresolved rather
+    # than binding whichever namesake the walk hits first. This is scoped to
+    # ``_SITE1_STRICT_LANGS`` (NOT "all but Java"): in Ruby the same short name is
+    # a class REOPENING (one logical class), so applying the guard would suppress
+    # its INV-nilud-validated Site-1 resolution. WI-supat (D3) threads a concrete
+    # enclosing-class id to recover Python's guard-sacrificed recall (incl. the
+    # cross-language-namesake over-suppression, since ``class_ids_by_name`` is
+    # language-agnostic).
+    if src_lang in _SITE1_STRICT_LANGS and len(start_class_ids) > 1:
         return None
     resolved_target: Symbol | None = None
     for start_id in start_class_ids:
