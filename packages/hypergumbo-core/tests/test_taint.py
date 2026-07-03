@@ -2312,6 +2312,33 @@ class TestPropagationAmbiguousAndModule:
         assert propagate_taint_structural(
             edges, [self._SOURCE], [self._PATH_REPLACE], []) == []
 
+    def test_post_remap_external_symbol_sink_survives_scope_stack(self) -> None:
+        """identity:F1/F4a standing gate (armed by the WI-gulot/WI-noham
+        follow-ups): the scope-stack rewrite adds NEW resolved first-party
+        ``calls`` edges (is_resolved=True, real in-repo dst) to the graph. Adding
+        such an edge MUST NOT let the post-remap ambiguous external sink
+        (``:external_symbol``, is_resolved=False) be mis-routed as resolved — the
+        method-kind gate must still suppress the false host_fs flow, and the
+        first-party edge must yield no spurious flow of its own. If a future
+        follow-up mis-marks a still-external edge as resolved, this gate fails."""
+        edges = [
+            _make_edge("py:a.py:1-5:source_func:function",
+                       "py:external:0-0:Fernet.decrypt:unresolved"),
+            _make_edge("py:a.py:1-5:source_func:function",
+                       "py:a.py:10-15:sink_func:function"),
+            # NEW: a scope-stack-resolved first-party call edge (is_resolved=True,
+            # real dst) — the exact shape PR-0 produces. Must not perturb suppression.
+            {"src": "py:a.py:10-15:sink_func:function",
+             "dst": "py:a.py:20-25:enclosing_helper:function",
+             "type": "calls", "is_resolved": True},
+            # POST-remap ambiguous sink: :external_symbol suffix, is_resolved=False.
+            {"src": "py:a.py:10-15:sink_func:function",
+             "dst": "py:external:0-0:replace:external_symbol",
+             "type": "calls", "is_resolved": False},
+        ]
+        assert propagate_taint_structural(
+            edges, [self._SOURCE], [self._PATH_REPLACE], []) == []
+
     def test_structural_ambiguous_with_module_still_found(self) -> None:
         edges = self._edges_to_sink("py:pathlib.Path:0-0:replace:unresolved")
         findings = propagate_taint_structural(

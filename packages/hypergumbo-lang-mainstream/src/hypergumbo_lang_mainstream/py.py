@@ -101,6 +101,7 @@ from hypergumbo_core.analyze.base import (
     visibility_from_modifiers,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_lang_mainstream._pyscope import NestedDef, Scope, ScopeStack
 
 if TYPE_CHECKING:
     from hypergumbo_core.symbol_resolution import SymbolResolver
@@ -1733,6 +1734,16 @@ class FileAnalysis:
     # AST node ids are stable within a single process; this field is only
     # consumed in the same process that produced the tree.
     func_symbol_by_node_id: dict[int, "Symbol"] = field(default_factory=dict)
+    # identity:F1/F4a: maps every function/method Symbol.id to its NEAREST
+    # enclosing FUNCTION Symbol.id (ClassDef ancestors are passed through).
+    # Materializes the lexical scope chain for _build_scope_stack; unlike
+    # nested_by_parent_id it records methods AS CHILDREN (a method's enclosing
+    # function is a real scope) though never as a nested-scope VALUE.
+    enclosing_func_id: dict[str, str] = field(default_factory=dict)
+    # identity:F1/F4a: maps a function/method Symbol.id to the set of names it
+    # binds locally (params/assignments/imports/global, minus nonlocal) — the
+    # LEGB "L" shadow set consulted by ScopeStack.lookup_enclosing.
+    local_names_by_func_id: dict[str, frozenset[str]] = field(default_factory=dict)
 
 
 def _detect_source_roots(repo_root: Path) -> list[Path]:
@@ -2850,33 +2861,43 @@ def _extract_file_analysis(
     # function Symbol whose AST node has an enclosing FunctionDef ancestor,
     # register it under its short name in the parent function's scope.
     nested_by_parent_id: dict[str, dict[str, Symbol]] = {}
+    # identity:F1/F4a: enclosing_func_id maps every func/method Symbol.id to its
+    # nearest enclosing FUNCTION Symbol.id — the SAME parent_map ancestry walk as
+    # nested_by_parent_id, but NOT gated on kind (a method's enclosing function
+    # IS a real lexical scope). Computed here so _build_scope_stack can
+    # materialize the LEGB frame chain without a second walk.
+    enclosing_func_id: dict[str, str] = {}
     for _node_id, _sym in func_symbol_by_node_id.items():
-        # WI-jafat CHANGE B: methods are now in func_symbol_by_node_id (CHANGE A)
-        # so caller resolution finds them by node id, but a method must NOT be
-        # registered as a VALUE in any enclosing function's inner_scope —
-        # otherwise a method inside a class inside a function would shadow that
-        # function's own nested helper of the same short name at callee
-        # resolution (line ~3501). Skipping methods-as-values restores this
-        # map's method-keyed entries to their pre-CHANGE-A (empty) state.
-        #
-        # This does NOT make the whole map identical to pre-CHANGE-A: a method
-        # can still be a PARENT below, so a function nested inside a method now
-        # registers (keyed by the method's id) where the pre-fix parent lookup
-        # returned None. That is a new, correct behavior — such a nested
-        # helper's bare calls now resolve in-scope to the right callee — and is
-        # consistent with the resolution-improving intent (decision #8), not a
-        # regression.
-        if _sym.kind == "method":
-            continue
         _parent = parent_map.get(_node_id)
         while _parent is not None:
             if isinstance(_parent, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 _parent_sym = func_symbol_by_node_id.get(id(_parent))
                 if _parent_sym is not None:
-                    short_name = _sym.name.rsplit(".", 1)[-1]
-                    nested_by_parent_id.setdefault(_parent_sym.id, {})[short_name] = _sym
+                    enclosing_func_id[_sym.id] = _parent_sym.id
+                    # WI-jafat CHANGE B: a method must NOT be registered as a
+                    # VALUE in any enclosing function's inner scope — otherwise a
+                    # method inside a class inside a function would shadow that
+                    # function's own nested helper of the same short name at
+                    # callee resolution. (A method can still be a PARENT: a
+                    # function nested inside a method registers, keyed by the
+                    # method's id — the resolution-improving intent of decision
+                    # #8, not a regression.) So the nested-scope VALUE record is
+                    # gated on kind, but the enclosing_func_id CHILD record above
+                    # is not.
+                    if _sym.kind != "method":
+                        short_name = _sym.name.rsplit(".", 1)[-1]
+                        nested_by_parent_id.setdefault(_parent_sym.id, {})[short_name] = _sym
                 break
             _parent = parent_map.get(id(_parent))
+
+    # identity:F1/F4a: per-function LEGB "L" shadow sets (needs the AST nodes, so
+    # a dedicated walk — func_symbol_by_node_id is keyed by node id only).
+    local_names_by_func_id: dict[str, frozenset[str]] = {}
+    for _fn_node in ast.walk(tree):
+        if isinstance(_fn_node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            _fn_sym = func_symbol_by_node_id.get(id(_fn_node))
+            if _fn_sym is not None:
+                local_names_by_func_id[_fn_sym.id] = _collect_scope_local_names(_fn_node)
 
     return FileAnalysis(
         symbols=symbols,
@@ -2888,6 +2909,8 @@ def _extract_file_analysis(
         source=source,
         nested_by_parent_id=nested_by_parent_id,
         func_symbol_by_node_id=func_symbol_by_node_id,
+        enclosing_func_id=enclosing_func_id,
+        local_names_by_func_id=local_names_by_func_id,
     ), None
 
 
@@ -2903,6 +2926,8 @@ def _extract_edges(
     run_id: str,
     nested_by_parent_id: dict[str, dict[str, Symbol]] | None = None,
     func_symbol_by_node_id: dict[int, Symbol] | None = None,
+    enclosing_func_id: dict[str, str] | None = None,
+    local_names_by_func_id: dict[str, frozenset[str]] | None = None,
 ) -> list[Edge]:
     """Extract call and instantiation edges from an AST.
 
@@ -2938,10 +2963,14 @@ def _extract_edges(
         nested_by_parent_id = {}
     if func_symbol_by_node_id is None:  # pragma: no cover
         func_symbol_by_node_id = {}
+    if enclosing_func_id is None:  # pragma: no cover
+        enclosing_func_id = {}
+    if local_names_by_func_id is None:  # pragma: no cover
+        local_names_by_func_id = {}
 
     edges: list[Edge] = []
 
-    def _emit_function_ref(name_node: ast.Name, caller: Symbol, inner_scope: dict[str, Symbol] | None = None) -> None:
+    def _emit_function_ref(name_node: ast.Name, caller: Symbol, stack: ScopeStack | None = None) -> None:
         """Emit a 'references' edge if *name_node* resolves to a function/method.
 
         Used for function references in non-call contexts: call arguments,
@@ -2949,9 +2978,9 @@ def _extract_edges(
         """
         name = name_node.id
         # INV-mofav: enclosing-function scope wins over module scope, mirroring
-        # Python's LEGB rule for bare names. Without this, a bare-name reference
-        # to a nested helper resolves to a same-named top-level Symbol.
-        symbol = inner_scope.get(name) if inner_scope else None
+        # Python's LEGB rule for bare names (step 1-2). Without this, a bare-name
+        # reference to a nested helper resolves to a same-named top-level Symbol.
+        symbol = stack.lookup_immediate(name) if stack else None
         if symbol is None:
             symbol = local_symbols.get(name)
         if not symbol and name in imports:
@@ -2959,6 +2988,11 @@ def _extract_edges(
             symbol = _lookup_symbol_by_module(
                 global_symbols, mod_name, original_name, resolver=resolver
             )
+        # identity:F1/F4a step-4: last-resort enclosing-scope lookup for a bare
+        # reference to a helper defined in a grandparent enclosing function.
+        # Additive — fires only when unresolved above; returns only functions.
+        if symbol is None and stack is not None:
+            symbol = stack.lookup_enclosing(name)
         if symbol and symbol.kind in ("function", "method"):
             edges.append(Edge.create(
                 src=caller.id,
@@ -3223,15 +3257,17 @@ def _extract_edges(
         block_nodes: list[ast.AST],
         caller_symbol: Symbol,
         var_types: dict[str, Symbol] | None = None,
-        inner_scope: dict[str, Symbol] | None = None,
+        stack: ScopeStack | None = None,
         external_var_types: dict[str, str] | None = None,
     ) -> None:
         """Process AST nodes within a code block, tracking variable types.
 
-        ``inner_scope`` is the enclosing-function scope (INV-mofav) — short
-        names defined as nested functions of ``caller_symbol``. Resolution
-        consults ``inner_scope`` before ``local_symbols`` so bare-name calls
-        to inner helpers don't fall through to a same-named top-level Symbol.
+        ``stack`` is the caller's materialized LEGB frame chain (identity:F1/F4a;
+        ``None`` at module level). Its immediate frame is the enclosing-function
+        inner scope (INV-mofav — nested helpers of ``caller_symbol``, consulted
+        before ``local_symbols``); its outer frames add the last-resort
+        enclosing-scope lookup for bare calls to grandparent helpers. The type
+        inference input (``_resolve_call_target``) sees only the immediate frame.
 
         ``external_var_types`` (WI-fuvuj) maps a local variable name to the
         catalog module string of the I/O object it was assigned from a known
@@ -3253,7 +3289,8 @@ def _extract_edges(
                     if isinstance(target, ast.Name) and isinstance(node.value, ast.Call):
                         assigned_class = _resolve_call_target(
                             node.value, local_symbols, imports, global_symbols,
-                            module_imports, resolver, inner_scope=inner_scope,
+                            module_imports, resolver,
+                            inner_scope=stack.immediate_symbols() if stack else None,
                         )
                         if assigned_class and assigned_class.kind == "class":
                             var_types[target.id] = assigned_class
@@ -3284,7 +3321,7 @@ def _extract_edges(
 
             # Function reference in assignment RHS: callback = my_func
             if isinstance(node, ast.Assign) and isinstance(node.value, ast.Name):
-                _emit_function_ref(node.value, caller_symbol, inner_scope=inner_scope)
+                _emit_function_ref(node.value, caller_symbol, stack=stack)
 
             # WI-fuvuj: ``with open(p) as f:`` / ``with socket.socket() as s:``
             # — the dominant I/O constructor idiom. Type the bound name from
@@ -3308,28 +3345,28 @@ def _extract_edges(
                     module_imports, var_types, edges, resolver,
                     sym_by_path_name=_sym_by_path_name,
                     run_id=run_id,
-                    inner_scope=inner_scope,
+                    stack=stack,
                     external_var_types=external_var_types,
                 )
                 # Function references in call arguments: map(transform, items)
                 for arg in node.args:
                     if isinstance(arg, ast.Name):
-                        _emit_function_ref(arg, caller_symbol, inner_scope=inner_scope)
+                        _emit_function_ref(arg, caller_symbol, stack=stack)
                 for kw in node.keywords:
                     if isinstance(kw.value, ast.Name):
-                        _emit_function_ref(kw.value, caller_symbol, inner_scope=inner_scope)
+                        _emit_function_ref(kw.value, caller_symbol, stack=stack)
 
             # Function references in dict values: {"GET": handle_get}
             if isinstance(node, ast.Dict):
                 for val in node.values:
                     if isinstance(val, ast.Name):
-                        _emit_function_ref(val, caller_symbol, inner_scope=inner_scope)
+                        _emit_function_ref(val, caller_symbol, stack=stack)
 
             # Function references in list/tuple: [func_a, func_b]
             if isinstance(node, (ast.List, ast.Tuple)):
                 for elt in node.elts:
                     if isinstance(elt, ast.Name):
-                        _emit_function_ref(elt, caller_symbol, inner_scope=inner_scope)
+                        _emit_function_ref(elt, caller_symbol, stack=stack)
 
             # Recurse into child nodes (but not into nested function defs —
             # those get their own caller_symbol in the outer FunctionDef loop).
@@ -3337,7 +3374,7 @@ def _extract_edges(
                 if not isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
                     process_code_block(
                         [child], caller_symbol, var_types,
-                        inner_scope=inner_scope,
+                        stack=stack,
                         external_var_types=external_var_types,
                     )
 
@@ -3646,11 +3683,18 @@ def _extract_edges(
                             if fname not in param_types:
                                 param_types[fname] = fsym
                 # INV-mofav: each function's inner_scope contains its nested
-                # function helpers, keyed by short name.
+                # function helpers, keyed by short name. The RAW dict is kept for
+                # closure-factory dispatch (which must see only the caller's OWN
+                # inner closures, never a grandparent's); call/reference
+                # resolution uses the materialized LEGB stack (identity:F1/F4a).
                 inner_scope = nested_by_parent_id.get(caller_symbol.id)
+                stack = _build_scope_stack(
+                    caller_symbol.id, enclosing_func_id, nested_by_parent_id,
+                    local_names_by_func_id,
+                )
                 _emit_closure_factory_dispatch(node, caller_symbol, inner_scope)
                 _emit_module_attr_refs(node.body, caller_symbol)
-                process_code_block(node.body, caller_symbol, param_types, inner_scope=inner_scope)
+                process_code_block(node.body, caller_symbol, param_types, stack=stack)
                 _emit_variable_refs(
                     node.body, caller_symbol,
                     local_bindings=_collect_local_bindings(node),
@@ -3675,6 +3719,100 @@ def _extract_edges(
         _emit_variable_refs(module_level_nodes, module_symbol)
 
     return edges
+
+
+def _collect_scope_local_names(
+    func_node: ast.FunctionDef | ast.AsyncFunctionDef,
+) -> frozenset[str]:
+    """Names bound as a param / assignment / import / ``global`` in *func_node*'s
+    OWN body (nested function/class bodies excluded), minus ``nonlocal`` names.
+
+    Feeds ``Scope.local_names`` so the scope-stack enclosing lookup honors LEGB
+    local shadowing (identity:F1/F4a): a name in this set shadows any same-named
+    def in a further-out scope (Python calls the local/global, not the enclosing
+    def). ``def``/``class`` statement names are excluded — those are the
+    ``NestedDef`` bindings the lookup resolves to directly. Distinct from the
+    nested ``_collect_local_bindings`` (variable-reference shadow suppression,
+    which does not treat ``global``/``nonlocal``).
+    """
+    names: set[str] = set()
+    for arg in (
+        func_node.args.args
+        + func_node.args.posonlyargs
+        + func_node.args.kwonlyargs
+    ):
+        names.add(arg.arg)
+    if func_node.args.vararg:
+        names.add(func_node.args.vararg.arg)
+    if func_node.args.kwarg:
+        names.add(func_node.args.kwarg.arg)
+    nonlocals: set[str] = set()
+    scope_boundary = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
+
+    def _walk(nodes: list[ast.AST]) -> None:
+        for node in nodes:
+            if isinstance(node, scope_boundary):
+                # A nested function/class is its OWN scope — its locals (and its
+                # def/class name) are not this function's locals. Skip its subtree.
+                continue
+            if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store):
+                names.add(node.id)
+            elif isinstance(node, ast.Import):
+                for alias in node.names:
+                    names.add(alias.asname or alias.name.split(".")[0])
+            elif isinstance(node, ast.ImportFrom):
+                for alias in node.names:
+                    names.add(alias.asname or alias.name)
+            elif isinstance(node, ast.Global):
+                names.update(node.names)
+            elif isinstance(node, ast.Nonlocal):
+                nonlocals.update(node.names)
+            for child in ast.iter_child_nodes(node):
+                _walk([child])
+
+    _walk(list(ast.iter_child_nodes(func_node)))
+    return frozenset(names - nonlocals)
+
+
+def _build_scope_stack(
+    caller_id: str,
+    enclosing_func_id: dict[str, str],
+    nested_by_parent_id: dict[str, dict[str, Symbol]],
+    local_names_by_func_id: dict[str, frozenset[str]],
+) -> ScopeStack:
+    """Materialize the caller's LEGB frame chain (identity:F1/F4a).
+
+    Walks ``enclosing_func_id`` from the caller outward to the outermost
+    enclosing function, then builds one :class:`Scope` frame per link
+    (outermost-first, caller last). Each frame's bindings are the enclosing
+    function's nested helpers (``nested_by_parent_id``) wrapped as
+    :class:`NestedDef` — the only Binding variant produced in PR-0 — and its
+    ``local_names`` carry that function's locally-bound names (for LEGB
+    shadowing). A top-level caller yields a single-frame stack, so
+    ``lookup_enclosing`` returns ``None`` for every name and resolution stays
+    byte-identical to the pre-rewrite path.
+    """
+    chain = [caller_id]
+    cur = caller_id
+    while True:
+        nxt = enclosing_func_id.get(cur)
+        if nxt is None:
+            break
+        chain.append(nxt)
+        cur = nxt
+    chain.reverse()  # outermost-first, caller last
+    frames = [
+        Scope(
+            owner_id=fid,
+            bindings={
+                name: NestedDef(sym)
+                for name, sym in nested_by_parent_id.get(fid, {}).items()
+            },
+            local_names=local_names_by_func_id.get(fid, frozenset()),
+        )
+        for fid in chain
+    ]
+    return ScopeStack(frames=frames)
 
 
 def _unwind_attribute_chain(
@@ -3772,7 +3910,7 @@ def _process_call(
     sym_by_path_name: dict[tuple[str, str], Symbol] | None = None,
     *,
     run_id: str,
-    inner_scope: dict[str, Symbol] | None = None,
+    stack: ScopeStack | None = None,
     external_var_types: dict[str, str] | None = None,
 ) -> None:
     """Process a single call expression and emit appropriate edges.
@@ -3784,9 +3922,9 @@ def _process_call(
     - Module-qualified calls: module.ClassName(), module.func()
     - Variable method calls: stub.method() (using var_types for type inference)
 
-    ``inner_scope`` is the enclosing-function scope (INV-mofav): bare-name
-    calls to nested functions resolve through it before falling through to
-    ``local_symbols``.
+    ``stack`` is the caller's materialized LEGB frame chain (identity:F1/F4a):
+    bare-name calls resolve through its immediate frame (INV-mofav) before
+    ``local_symbols``/imports, then via a last-resort enclosing-scope lookup.
 
     ``external_var_types`` (WI-fuvuj) maps a local variable name to the
     catalog module string of the I/O object it was constructed from
@@ -3806,8 +3944,8 @@ def _process_call(
     # Case 1: Simple name calls - helper() or ClassName()
     if isinstance(func, ast.Name):
         callee_name = func.id
-        # INV-mofav: enclosing-function scope wins over module scope.
-        callee_symbol = inner_scope.get(callee_name) if inner_scope else None
+        # INV-mofav: enclosing-function scope wins over module scope (step 1-2).
+        callee_symbol = stack.lookup_immediate(callee_name) if stack else None
         if callee_symbol is None:
             callee_symbol = local_symbols.get(callee_name)
 
@@ -3820,6 +3958,14 @@ def _process_call(
             )
             if callee_symbol and callee_symbol.kind == "class":
                 is_instantiation = True
+
+        # identity:F1/F4a step-4: last-resort enclosing-scope lookup — resolves a
+        # bare call to a helper defined in a GRANDPARENT (or higher) enclosing
+        # function that the flat immediate frame missed. Additive: fires only
+        # when nothing above resolved, and returns only nested FUNCTIONS (never a
+        # class), so is_instantiation stays False and no existing edge changes.
+        if callee_symbol is None and stack is not None:
+            callee_symbol = stack.lookup_enclosing(callee_name)
 
     # Case 2: Attribute calls - self.method(), module.ClassName(), variable.method()
     elif isinstance(func, ast.Attribute):
@@ -4113,6 +4259,8 @@ def extract_nodes(py_file: Path, global_symbols: dict[str, Symbol] | None = None
         run_id=run.execution_id,
         nested_by_parent_id=file_analysis.nested_by_parent_id,
         func_symbol_by_node_id=file_analysis.func_symbol_by_node_id,
+        enclosing_func_id=file_analysis.enclosing_func_id,
+        local_names_by_func_id=file_analysis.local_names_by_func_id,
     )
     return AnalysisResult(
         symbols=file_analysis.symbols,
@@ -4264,6 +4412,8 @@ def analyze_python(
             run_id=run.execution_id,
             nested_by_parent_id=analysis.nested_by_parent_id,
             func_symbol_by_node_id=analysis.func_symbol_by_node_id,
+            enclosing_func_id=analysis.enclosing_func_id,
+            local_names_by_func_id=analysis.local_names_by_func_id,
         )
         # ADR-0015: annotate edges with access_mode from Python AST context.
         # Pass source + python.yaml config so library_patterns (e.g. .append,
