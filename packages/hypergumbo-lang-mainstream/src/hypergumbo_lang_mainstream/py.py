@@ -3330,6 +3330,19 @@ def _extract_edges(
         if external_var_types is None:
             external_var_types = {}
 
+        # WI-hiziz PR-3 (review): the caller method's OWN __init__ field names
+        # (from the closure-visible ``class_own_field_names``). The Site-3 emit
+        # excludes these so an own field re-declared by the caller's class never
+        # resolves against a same-named PARENT field of a different type.
+        _own_field_names = (
+            class_own_field_names.get(
+                caller_symbol.qualified_name.split(".")[-2], frozenset()
+            )
+            if caller_symbol.kind == "method"
+            and "." in (caller_symbol.qualified_name or "")
+            else frozenset()
+        )
+
         for node in block_nodes:
             # Track variable assignments for type inference
             # e.g., stub = EmailServiceStub(channel) -> var_types['stub'] = EmailServiceStub
@@ -3397,6 +3410,7 @@ def _extract_edges(
                     stack=stack,
                     external_var_types=external_var_types,
                     function_aliases=function_aliases,
+                    own_field_names=_own_field_names,
                 )
                 # Function references in call arguments: map(transform, items)
                 for arg in node.args:
@@ -3719,6 +3733,13 @@ def _extract_edges(
     # Scans __init__ methods for self.field = param (typed) and self.field = Class()
     # assignments, building a per-class map of field name -> type Symbol.
     class_field_types: dict[str, dict[str, Symbol]] = {}
+    # WI-hiziz PR-3 (review): the NAMES of ALL __init__ ``self.X`` targets per
+    # class (typed or not), so the Site-3 emit can exclude an OWN field the
+    # child assigns from a factory / untyped param (``self.f = make_conn()``) —
+    # which ``class_field_types`` (typed-only) misses. An own field is never
+    # inherited, so excluding it prevents a confidently-wrong Site-3 resolution
+    # to a same-named PARENT field of a different type.
+    class_own_field_names: dict[str, frozenset[str]] = {}
     for node in ast.walk(tree):
         if not isinstance(node, ast.ClassDef):
             continue
@@ -3731,6 +3752,7 @@ def _extract_edges(
             continue
         init_param_types = _extract_param_types(init_method)
         field_types: dict[str, Symbol] = {}
+        own_field_names: set[str] = set()
         for stmt in ast.walk(init_method):
             if not isinstance(stmt, ast.Assign):
                 continue
@@ -3741,6 +3763,7 @@ def _extract_edges(
                     and target.value.id == "self"
                 ):
                     field_name = target.attr
+                    own_field_names.add(field_name)
                     # self.field = param where param has type annotation
                     if isinstance(stmt.value, ast.Name) and stmt.value.id in init_param_types:
                         field_types[field_name] = init_param_types[stmt.value.id]
@@ -3752,8 +3775,32 @@ def _extract_edges(
                         )
                         if assigned_class and assigned_class.kind == "class":
                             field_types[field_name] = assigned_class
+        if own_field_names:
+            class_own_field_names[node.name] = frozenset(own_field_names)
         if field_types:
             class_field_types[node.name] = field_types
+            # WI-hiziz PR-3 (Site 3): mirror java.py — attach
+            # {field: type_short_name} to the class symbol's meta["fields"] so
+            # inherited_calls._walk_parents_for_field can resolve a
+            # self.field.method() where ``field`` is declared on a PARENT.
+            # ``local_symbols`` IS the file's ``symbol_by_name``, so this mutates
+            # the same Symbol object emitted in the node list (shared reference).
+            # Only ADDS the "fields" key — a class's existing base_classes /
+            # decorators meta survives. ``_ft.name`` is the type's full name,
+            # matching the linker's ``class_ids_by_name`` keys.
+            _cls_sym = local_symbols.get(node.name)
+            # Only attach to a genuine class symbol: a same-name method/function
+            # that shadows the class in the last-write-wins ``local_symbols`` must
+            # not receive a spurious (inert) fields key (review finding). The
+            # same-name-CLASS clobber (two classes, one short name → recall loss,
+            # not a wrong edge) is a deferred id-keyed follow-up.
+            if _cls_sym is None or _cls_sym.kind != "class":  # pragma: no cover
+                continue
+            if _cls_sym.meta is None:
+                _cls_sym.meta = {}
+            _cls_sym.meta["fields"] = {
+                _fn: _ft.name for _fn, _ft in field_types.items()
+            }
 
     # WI-gulot: resolve module-level function aliases (`f = g` where g is a
     # function/method, incl. an imported g). The LHS is extracted as a
@@ -4089,6 +4136,7 @@ def _process_call(
     stack: ScopeStack | None = None,
     external_var_types: dict[str, str] | None = None,
     function_aliases: dict[str, Symbol] | None = None,
+    own_field_names: frozenset[str] = frozenset(),
 ) -> None:
     """Process a single call expression and emit appropriate edges.
 
@@ -4260,6 +4308,19 @@ def _process_call(
         # Emit unresolved edge for attribute calls with known module context
         # This enables cross-language linking and makes the graph more complete
         func = call_node.func
+        # Hoisted (WI-hiziz PR-3): the caller's scope-local names + decorator
+        # names are the shared INV-fahub guard inputs for BOTH the Site-1
+        # self.method() branch and the Site-3 self.field.method() branch below.
+        _caller_locals = (
+            stack.frames[-1].local_names
+            if stack is not None and stack.frames
+            else frozenset()
+        )
+        _caller_decos = {
+            d.get("name")
+            for d in (caller_symbol.meta or {}).get("decorators", [])
+            if isinstance(d, dict)
+        }
         if isinstance(func, ast.Attribute) and isinstance(func.value, ast.Name):
             receiver_name = func.value.id
             attr_name = func.attr
@@ -4364,16 +4425,6 @@ def _process_call(
                 # already-materialized LEGB frame's ``local_names``. The
                 # var_types branch needs no such guard: var_types is built
                 # per-function, so it is already scope-local.
-                _caller_locals = (
-                    stack.frames[-1].local_names
-                    if stack is not None and stack.frames
-                    else frozenset()
-                )
-                _caller_decos = {
-                    d.get("name")
-                    for d in (caller_symbol.meta or {}).get("decorators", [])
-                    if isinstance(d, dict)
-                }
                 # WI-hiziz PR-2 (Site 1): a bare ``self.method()`` call that
                 # Case 2a could not resolve in-file is a cross-file INHERITED
                 # method (or an absent one). Stamp the DIRECT enclosing class
@@ -4430,6 +4481,61 @@ def _process_call(
                     evidence_type="ast_call",
                     is_resolved=False,
                     meta=unresolved_meta,
+                    origin=PASS_ID,
+                    origin_run_id=run_id,
+                ))
+        elif (
+            isinstance(func, ast.Attribute)
+            and isinstance(func.value, ast.Attribute)
+            and isinstance(func.value.value, ast.Name)
+            and func.value.value.id == "self"
+        ):
+            # WI-hiziz PR-3 (Site 3): self.field.method() that Case 2f could not
+            # resolve. An INHERITED field lives in class_field_types[parent] and
+            # is never merged into this method's var_types (only the class's OWN
+            # fields are), so it misses Case 2f and lands here. Stamp
+            # inherited_field_receiver + enclosing_class so the inherited_calls
+            # Site-3 resolver walks the enclosing class's PARENTS for the field's
+            # type and resolves the method there (ast_call_inherited_field @0.80).
+            # Taint-safe: is_resolved stays False, dst is an unchanged external
+            # unresolved id, the linker is the sole minter. Guards mirror the
+            # Site-1 branch (each load-bearing): kind=="method" (dotted
+            # qualified_name for split('.')[-2]); "self" not in var_types (an
+            # annotated ``def m(self: T)`` binds self to T, whose fields differ
+            # from the LEXICAL enclosing class — route away); "self" in
+            # _caller_locals (excludes a classmethod referencing self);
+            # "staticmethod" not in _caller_decos (a staticmethod's declared self
+            # is under-determined); and the OWN-field exclusion the linker's
+            # parent-only walk assumes — ``field_name not in var_types`` (typed
+            # own fields) AND ``field_name not in own_field_names`` (EVERY
+            # __init__ self.X target, incl. an untyped/factory ``self.f =
+            # make_conn()`` that var_types misses). An own field is never
+            # inherited, so this blocks the shadow FP where the child re-declares
+            # a parent field name with a different type.
+            field_name = func.value.attr
+            method_name = func.attr
+            if (
+                caller_symbol.kind == "method"
+                and "self" not in var_types
+                and "self" in _caller_locals
+                and "staticmethod" not in _caller_decos
+                and field_name not in var_types
+                and field_name not in own_field_names
+            ):
+                edges.append(Edge.create(
+                    src=caller_symbol.id,
+                    dst=f"python:external:0-0:{method_name}:unresolved",
+                    edge_type="calls",
+                    line=call_node.lineno,
+                    evidence_type="ast_call",
+                    is_resolved=False,
+                    meta={
+                        "call_construct": "method",
+                        "inherited_field_receiver": field_name,
+                        "enclosing_class": (
+                            caller_symbol.qualified_name.split(".")[-2]
+                        ),
+                    },
                     origin=PASS_ID,
                     origin_run_id=run_id,
                 ))

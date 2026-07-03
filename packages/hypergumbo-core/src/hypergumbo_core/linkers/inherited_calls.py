@@ -939,6 +939,13 @@ def _resolve_site3(
     encl_class_ids = class_ids_by_name.get(enclosing_class, [])
     if not encl_class_ids:  # pragma: no cover
         return None
+    # WI-hiziz PR-3: INV-fahub ambiguity guard on the ENCLOSING class, mirroring
+    # Site-1/Site-2, scoped to _SITE1_STRICT_LANGS (Python — module namespaces
+    # make same-short-name classes distinct). Two same-name enclosing classes
+    # would each expose different parent fields → under-determined → bias to
+    # unresolved. Java/Ruby stay permissive (reopening / legacy first-match).
+    if src_lang in _SITE1_STRICT_LANGS and len(encl_class_ids) > 1:
+        return None
 
     # Find the field's type by walking the enclosing class's parents.
     field_type: str | None = None
@@ -956,6 +963,12 @@ def _resolve_site3(
     # Look up the field's type as a class symbol.
     field_type_class_ids = class_ids_by_name.get(field_type, [])
     if not field_type_class_ids:
+        return None
+    # WI-hiziz PR-3: the SECOND INV-fahub guard — the field's TYPE name is also
+    # re-globalized; two same-short-name types are under-determined for a strict
+    # language. Bias to unresolved rather than resolving the method on an
+    # arbitrary namesake type.
+    if src_lang in _SITE1_STRICT_LANGS and len(field_type_class_ids) > 1:
         return None
 
     # Resolve the method on the field's type (direct or MRO walk).
@@ -982,7 +995,9 @@ def _resolve_site3(
 
     if resolved_target is None:
         return None
-    if (edge.src, resolved_target.id) in existing_call_pairs:  # pragma: no cover
+    # Dedup: the analyzer may already have a resolved calls edge to this target
+    # (Python producer now exercises this — WI-hiziz PR-3 dedup test).
+    if (edge.src, resolved_target.id) in existing_call_pairs:
         return None
     return Edge.create(
         src=edge.src, dst=resolved_target.id, edge_type="calls",

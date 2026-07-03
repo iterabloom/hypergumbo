@@ -388,3 +388,404 @@ class TestSelfInheritedEndToEnd:
             "Widget.render via the receiver_type_hint -> Site-2 chain"
         )
         assert calls[0]["is_resolved"] is True
+
+    def test_self_inherited_field_method_resolves_crossfile(
+        self, tmp_path: Path
+    ) -> None:
+        # Site-3 end-to-end: `log` is declared on a cross-file PARENT Base
+        # (self.log = log, log: Logger); the child Sub's self.log.info()
+        # resolves to Logger.info via the parent-field walk. This is the
+        # dependency-injection deadness-FP fix.
+        import json
+
+        from hypergumbo_core.cli import run_behavior_map
+
+        (tmp_path / "base.py").write_text(
+            "class Logger:\n"
+            "    def info(self):\n"
+            "        return 1\n"
+            "class Base:\n"
+            "    def __init__(self, log: Logger):\n"
+            "        self.log = log\n"
+        )
+        (tmp_path / "child.py").write_text(
+            "from base import Base, Logger\n"
+            "class Sub(Base):\n"
+            "    def run(self):\n"
+            "        return self.log.info()\n"
+        )
+        out_path = tmp_path / "out.json"
+        run_behavior_map(
+            repo_root=tmp_path, out_path=out_path,
+            include_sketch_precomputed=False,
+        )
+        data = json.loads(out_path.read_text())
+        target = next(
+            n["id"] for n in data["nodes"]
+            if n.get("name") == "Logger.info" and n.get("kind") == "method"
+        )
+        run = next(
+            n["id"] for n in data["nodes"]
+            if n.get("name") == "Sub.run" and n.get("kind") == "method"
+        )
+        calls = [
+            e for e in data["edges"]
+            if e["type"] == "calls" and e["src"] == run and e["dst"] == target
+        ]
+        assert calls, (
+            "self.log.info() did not resolve to the cross-file inherited-field "
+            "Logger.info via the Site-3 parent-field walk"
+        )
+        assert calls[0]["is_resolved"] is True
+        assert (calls[0].get("meta") or {}).get(
+            "evidence_type"
+        ) == "ast_call_inherited_field"
+
+    def test_own_field_external_type_stays_unresolved(
+        self, tmp_path: Path
+    ) -> None:
+        # Shadow-safety lock: an OWN field whose type is not an in-tree class
+        # (self.svc = Svc(), Svc undefined) has no parent field of that name, so
+        # the Site-3 walk finds nothing -> NO ast_call_inherited_field edge (no
+        # confidently-wrong resolution). NOTE: evidence_type is nested UNDER
+        # meta in the serialized edge (Edge.to_dict), so the filter must read
+        # (e.get("meta") or {}).get("evidence_type") — a top-level lookup is
+        # always None and would make this lock vacuous (review finding).
+        import json
+
+        from hypergumbo_core.cli import run_behavior_map
+
+        (tmp_path / "m.py").write_text(
+            "class Base:\n"
+            "    def __init__(self):\n"
+            "        self.svc = Svc()\n"
+            "    def run(self):\n"
+            "        return self.svc.process()\n"
+        )
+        out_path = tmp_path / "out.json"
+        run_behavior_map(
+            repo_root=tmp_path, out_path=out_path,
+            include_sketch_precomputed=False,
+        )
+        data = json.loads(out_path.read_text())
+        inherited_field_edges = [
+            e for e in data["edges"]
+            if (e.get("meta") or {}).get("evidence_type")
+            == "ast_call_inherited_field"
+        ]
+        assert inherited_field_edges == []
+
+    def test_own_field_shadowing_parent_field_no_wrong_edge(
+        self, tmp_path: Path
+    ) -> None:
+        # Review regression lock (own-field under-exclusion): Child re-declares
+        # an inherited field name via an UNTYPED factory assignment
+        # (self.handle = make_conn()), so class_field_types (typed-only) misses
+        # it — but class_own_field_names captures the NAME. The Site-3 gate's
+        # `field_name not in own_field_names` excludes it, so self.handle.send()
+        # does NOT resolve to the PARENT's `handle: Logger` (a different type) —
+        # no confidently-wrong ast_call_inherited_field edge to Logger.send.
+        import json
+
+        from hypergumbo_core.cli import run_behavior_map
+
+        (tmp_path / "lib.py").write_text(
+            "class Logger:\n"
+            "    def send(self):\n"
+            "        return 1\n"
+            "class DBConn:\n"
+            "    def send(self):\n"
+            "        return 2\n"
+            "def make_conn():\n"
+            "    return DBConn()\n"
+        )
+        (tmp_path / "app.py").write_text(
+            "from lib import Logger, make_conn\n"
+            "class Base:\n"
+            "    def __init__(self, logger: Logger):\n"
+            "        self.handle = logger\n"
+            "class Child(Base):\n"
+            "    def __init__(self):\n"
+            "        self.handle = make_conn()\n"
+            "    def run(self):\n"
+            "        return self.handle.send()\n"
+        )
+        out_path = tmp_path / "out.json"
+        run_behavior_map(
+            repo_root=tmp_path, out_path=out_path,
+            include_sketch_precomputed=False,
+        )
+        data = json.loads(out_path.read_text())
+        logger_send = next(
+            (n["id"] for n in data["nodes"]
+             if n.get("name") == "Logger.send" and n.get("kind") == "method"),
+            None,
+        )
+        child_run = next(
+            n["id"] for n in data["nodes"]
+            if n.get("name") == "Child.run" and n.get("kind") == "method"
+        )
+        wrong = [
+            e for e in data["edges"]
+            if e["type"] == "calls" and e["src"] == child_run
+            and e["dst"] == logger_send
+        ]
+        assert wrong == [], (
+            "Child.run's own re-declared self.handle wrongly resolved to the "
+            "parent field type Logger.send (own-field exclusion failed)"
+        )
+
+
+def _class_meta(res, class_name: str) -> dict:
+    """meta dict of the named class symbol (empty dict if meta is None)."""
+    sym = next(
+        s for s in res.symbols if s.name == class_name and s.kind == "class"
+    )
+    return sym.meta or {}
+
+
+class TestClassFieldsMetaAttach:
+    """WI-hiziz PR-3 part (a): each class symbol carries
+    meta["fields"] = {field_name: type_short_name} (from the __init__
+    field-type scan), mirroring java.py — the single source of truth the
+    inherited_calls Site-3 resolver's parent-walk reads."""
+
+    def test_meta_fields_typed_param_field(self, tmp_path: Path) -> None:
+        # self.db = db where db: Database (typed param) -> {"db": "Database"}.
+        src = (
+            "class Database:\n"
+            "    pass\n"
+            "class Repo:\n"
+            "    def __init__(self, db: Database):\n"
+            "        self.db = db\n"
+        )
+        res = _analyze(tmp_path, src)
+        assert _class_meta(res, "Repo").get("fields") == {"db": "Database"}
+
+    def test_meta_fields_constructor_field(self, tmp_path: Path) -> None:
+        # self.log = Logger() (constructor) -> {"log": "Logger"}.
+        src = (
+            "class Logger:\n"
+            "    pass\n"
+            "class Svc:\n"
+            "    def __init__(self):\n"
+            "        self.log = Logger()\n"
+        )
+        res = _analyze(tmp_path, src)
+        assert _class_meta(res, "Svc").get("fields") == {"log": "Logger"}
+
+    def test_meta_fields_coexists_with_base_classes(self, tmp_path: Path) -> None:
+        # A class WITH a base (meta already has base_classes) still gets fields
+        # added without clobbering base_classes.
+        src = (
+            "class Foo:\n"
+            "    pass\n"
+            "class Base:\n"
+            "    pass\n"
+            "class Sub(Base):\n"
+            "    def __init__(self, x: Foo):\n"
+            "        self.x = x\n"
+        )
+        res = _analyze(tmp_path, src)
+        meta = _class_meta(res, "Sub")
+        assert meta.get("fields") == {"x": "Foo"}
+        assert "base_classes" in meta
+
+    def test_class_without_typed_field_has_no_fields_key(
+        self, tmp_path: Path
+    ) -> None:
+        # No typed __init__ field -> no "fields" key (class_field_types empty).
+        src = (
+            "class C:\n"
+            "    def __init__(self):\n"
+            "        self.count = 0\n"
+        )
+        res = _analyze(tmp_path, src)
+        assert "fields" not in _class_meta(res, "C")
+
+    def test_meta_fields_multiple_fields(self, tmp_path: Path) -> None:
+        src = (
+            "class A:\n"
+            "    pass\n"
+            "class B:\n"
+            "    pass\n"
+            "class C:\n"
+            "    def __init__(self, a: A, b: B):\n"
+            "        self.a = a\n"
+            "        self.b = b\n"
+        )
+        res = _analyze(tmp_path, src)
+        assert _class_meta(res, "C").get("fields") == {"a": "A", "b": "B"}
+
+
+class TestSelfFieldMethodHint:
+    """WI-hiziz PR-3 part (b): self.field.method() that Case 2f could not
+    resolve (an INHERITED field) gets inherited_field_receiver + enclosing_class
+    hints (Site 3). The linker walks the enclosing class's parents for the
+    field's type and resolves the method there."""
+
+    def test_self_field_inherited_stamps_hints(self, tmp_path: Path) -> None:
+        # self.log.info() where `log` is NOT an own field of Sub (inherited /
+        # unknown) -> Site-3 hints on the unresolved edge.
+        src = (
+            "class Sub:\n"
+            "    def run(self):\n"
+            "        return self.log.info()\n"
+        )
+        res = _analyze(tmp_path, src)
+        edges = _unresolved_method_edges(res, "info")
+        assert len(edges) == 1
+        m = edges[0].meta or {}
+        assert edges[0].is_resolved is False
+        assert m.get("inherited_field_receiver") == "log"
+        assert m.get("enclosing_class") == "Sub"
+        assert m.get("call_construct") == "method"
+
+    def test_self_field_nested_class_enclosing_is_direct_class(
+        self, tmp_path: Path
+    ) -> None:
+        src = (
+            "class Outer:\n"
+            "    class Inner:\n"
+            "        def run(self):\n"
+            "            return self.f.g()\n"
+        )
+        res = _analyze(tmp_path, src)
+        edges = _unresolved_method_edges(res, "g")
+        assert len(edges) == 1
+        assert (edges[0].meta or {}).get("enclosing_class") == "Inner"
+        assert (edges[0].meta or {}).get("inherited_field_receiver") == "f"
+
+    def test_self_field_own_field_method_missing_no_hint(
+        self, tmp_path: Path
+    ) -> None:
+        # `dep` is an OWN typed field (in var_types); the Site-3 gate excludes
+        # it (field_name in var_types) even when its method misses -> no
+        # inherited_field_receiver hint (Case 2f owns own fields).
+        src = (
+            "class Dep:\n"
+            "    pass\n"
+            "class C:\n"
+            "    def __init__(self, dep: Dep):\n"
+            "        self.dep = dep\n"
+            "    def run(self):\n"
+            "        return self.dep.nonexistent()\n"
+        )
+        res = _analyze(tmp_path, src)
+        edges = _unresolved_method_edges(res, "nonexistent")
+        assert all(
+            "inherited_field_receiver" not in (e.meta or {}) for e in edges
+        )
+
+    def test_self_field_untyped_own_field_no_hint(self, tmp_path: Path) -> None:
+        # `conn` is an UNTYPED own field (self.conn = make_conn(), a factory
+        # call — not captured in class_field_types, so NOT in var_types). It IS
+        # captured by NAME in class_own_field_names, so the Site-3 gate's
+        # `field_name not in own_field_names` conjunct excludes it -> no hint.
+        # (Isolates that conjunct: without it, `conn` not in var_types would let
+        # the hint emit.)
+        src = (
+            "class C:\n"
+            "    def __init__(self):\n"
+            "        self.conn = make_conn()\n"
+            "    def run(self):\n"
+            "        return self.conn.query()\n"
+        )
+        res = _analyze(tmp_path, src)
+        edges = _unresolved_method_edges(res, "query")
+        assert all(
+            "inherited_field_receiver" not in (e.meta or {}) for e in edges
+        )
+
+    def test_self_field_non_method_caller_no_hint(self, tmp_path: Path) -> None:
+        # Module-level function with a `self` param -> kind "function" -> no hint.
+        src = (
+            "def f(self):\n"
+            "    return self.x.g()\n"
+        )
+        res = _analyze(tmp_path, src)
+        edges = _unresolved_method_edges(res, "g")
+        assert all("inherited_field_receiver" not in (e.meta or {}) for e in edges)
+
+    def test_self_field_classmethod_no_hint(self, tmp_path: Path) -> None:
+        # @classmethod: self is free/undefined (param is cls) -> no hint.
+        src = (
+            "class C:\n"
+            "    @classmethod\n"
+            "    def make(cls):\n"
+            "        return self.x.g()\n"
+        )
+        res = _analyze(tmp_path, src)
+        edges = _unresolved_method_edges(res, "g")
+        assert all("inherited_field_receiver" not in (e.meta or {}) for e in edges)
+
+    def test_self_field_staticmethod_with_self_param_no_hint(
+        self, tmp_path: Path
+    ) -> None:
+        # @staticmethod declaring a `self` param -> under-determined receiver.
+        src = (
+            "class C:\n"
+            "    @staticmethod\n"
+            "    def foo(self):\n"
+            "        return self.x.g()\n"
+        )
+        res = _analyze(tmp_path, src)
+        edges = _unresolved_method_edges(res, "g")
+        assert all("inherited_field_receiver" not in (e.meta or {}) for e in edges)
+
+    def test_self_field_annotated_self_no_hint(self, tmp_path: Path) -> None:
+        # def run(self: Base) puts self in var_types; enclosing_class is LEXICAL
+        # and may differ from Base -> gate on `"self" not in var_types` excludes.
+        src = (
+            "class Base:\n"
+            "    pass\n"
+            "class C(Base):\n"
+            "    def run(self: Base):\n"
+            "        return self.x.g()\n"
+        )
+        res = _analyze(tmp_path, src)
+        edges = _unresolved_method_edges(res, "g")
+        assert all("inherited_field_receiver" not in (e.meta or {}) for e in edges)
+
+    def test_self_field_non_self_receiver_no_hint(self, tmp_path: Path) -> None:
+        # other.x.g() (receiver root is `other`, not `self`) -> not Site-3.
+        src = (
+            "class C:\n"
+            "    def run(self):\n"
+            "        return other.x.g()\n"
+        )
+        res = _analyze(tmp_path, src)
+        edges = _unresolved_method_edges(res, "g")
+        assert all("inherited_field_receiver" not in (e.meta or {}) for e in edges)
+
+    def test_deeply_nested_self_attr_chain_no_hint(self, tmp_path: Path) -> None:
+        # self.a.b.method(): func.value.value is an Attribute (self.a), NOT a
+        # Name "self" -> the Site-3 elif does not match (guards the isinstance
+        # Name check). Excluded (a 3+-deep chain is out of Site-3 scope).
+        src = (
+            "class C:\n"
+            "    def run(self):\n"
+            "        return self.a.b.method()\n"
+        )
+        res = _analyze(tmp_path, src)
+        edges = _unresolved_method_edges(res, "method")
+        assert all("inherited_field_receiver" not in (e.meta or {}) for e in edges)
+
+    def test_self_field_own_resolved_no_unresolved_edge(
+        self, tmp_path: Path
+    ) -> None:
+        # Own field with an in-file type whose method exists -> Case 2f resolves
+        # it directly; the Site-3 elif never steals a Case-2f hit.
+        src = (
+            "class Dep:\n"
+            "    def process(self):\n"
+            "        return 1\n"
+            "class C:\n"
+            "    def __init__(self, dep: Dep):\n"
+            "        self.dep = dep\n"
+            "    def run(self):\n"
+            "        return self.dep.process()\n"
+        )
+        res = _analyze(tmp_path, src)
+        # No unresolved `process` edge — Case 2f resolved it.
+        assert _unresolved_method_edges(res, "process") == []
