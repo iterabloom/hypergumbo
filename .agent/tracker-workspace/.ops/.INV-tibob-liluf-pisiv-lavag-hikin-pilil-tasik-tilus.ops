@@ -86,3 +86,20 @@
   set: {}  # 2cdb
   add:  # 2cdb
     tags: [awaits_bakeoff_validation]  # 2cdb
+- op: update  # c824
+  at: '2026-07-03T03:33:53Z'  # c824
+  by: agent  # c824
+  actor: jgstern_agent  # c824
+  clock: 9  # c824
+  nonce: c824  # c824
+  set:  # c824
+    priority: 4  # c824
+  remove:  # c824
+    tags: [awaits_bakeoff_validation]  # c824
+- op: discuss  # 6c75
+  at: '2026-07-03T03:33:53Z'  # 6c75
+  by: agent  # 6c75
+  actor: jgstern_agent  # 6c75
+  clock: 10  # 6c75
+  nonce: 6c75  # 6c75
+  message: "Bakeoff confirms the access_mode restriction is the ADR-0038 applicability matrix, consistently applied with zero leakage (docspell). Behavioral half resolved; residual = schema-doc cross-reference of the applicability policy. Downgraded P3->P4; drained."  # 6c75

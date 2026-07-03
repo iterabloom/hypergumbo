@@ -36,3 +36,19 @@
   clock: 3  # 6686
   nonce: '6686'  # 6686
   message: "Done via PR #385 (merged FF). _process_call's terminal bare-Name call branch now emits a calls edge python:builtins:0-0:open:unresolved (dst_ref module=builtins) for bare builtin I/O constructors (open) via EXTERNAL_CONSTRUCTOR_TYPES — the io_primitives/python.yaml builtins rows (fs_read/fs_write functions=[open]) were dead (no edge targeted them). Behavioral evidence (production-path extract_nodes, the item's filed repro): a module with open() in assign / with / chained-.read() / return forms now yields exactly 1 calls edge to python:builtins:0-0:open:unresolved per call (was 0 in every form). Orthogonal to WI-fuvuj's receiver .read()/.write() edges (module=file). core+mainstream 100% coverage in isolation; CI passed. Tagged awaits_bakeoff_validation: adds an edge on every Python open() call corpus-wide (edge / io-boundary / dead-code counts shift)."  # 6686
+- op: update  # 3374
+  at: '2026-07-03T03:33:52Z'  # 3374
+  by: agent  # 3374
+  actor: jgstern_agent  # 3374
+  clock: 4  # 3374
+  nonce: '3374'  # 3374
+  set: {}  # 3374
+  remove:  # 3374
+    tags: [awaits_bakeoff_validation]  # 3374
+- op: discuss  # 5931
+  at: '2026-07-03T03:33:53Z'  # 5931
+  by: agent  # 5931
+  actor: jgstern_agent  # 5931
+  clock: 5  # 5931
+  nonce: '5931'  # 5931
+  message: "Bakeoff-validated (downstream): pretix fs_read/fs_write open-dependent chains correct, no regression. Drained."  # 5931

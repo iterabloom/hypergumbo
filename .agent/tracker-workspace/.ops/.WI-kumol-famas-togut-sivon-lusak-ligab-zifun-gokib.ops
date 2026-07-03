@@ -36,3 +36,19 @@
   clock: 3  # d0cd
   nonce: d0cd  # d0cd
   message: "Fixed in PR (dev c2357b314b), Wave-3 Phase-2 §C io-boundary F1 (facade repair). Root cause: cmd_io_boundaries + cmd_verify_claims rehydrated a 4-field _Edge(src,dst,edge_type,meta) facade from the loaded map, dropping is_resolved + dst_ref; compute_boundary_map reads getattr(edge,'is_resolved',True) (ADR-0028 unresolved-receiver skip in _compute_external_potential) and getattr(edge,'dst_ref',None) (WI-tihup structured lookup), so the receiver gate never fired on the CLI path and unresolved bare-name method matches inflated external_potential. Fix: both facades route through one shared _rehydrate_io_boundary_edges helper carrying is_resolved (default True) + dst_ref (ExternalRef.from_dict, default None). slice --io-boundary unaffected (real Edge objects).\n\nBehavioral evidence — re-ran the item's own filed repro on merged dev (editable binary /home/jgstern_agent/hypergumbo/.venv/bin/hypergumbo):\n  Fixture (os.remove + duck-typed obj.read()/bus.write()): BEFORE external_potential_edges=2 total_io_edges=1; AFTER external_potential_edges=0 total_io_edges=1 (os.remove fs_write preserved).\n  Self-corpus (warm map): BEFORE external_potential_edges=26338 total_io_edges=754 (facade simulation); AFTER external_potential_edges=0 total_io_edges=754 — the real verified-boundary set is UNCHANGED (0 real chains dropped, 0 added; dst_ref module_path is byte-identical to the legacy colon-split hint on this corpus), so no genuine I/O boundary is lost; only the spurious unresolved-receiver external_potential noise is removed.\nProduction-path test: test_cli_io_boundaries.py::test_cmd_io_boundaries_suppresses_unresolved_receiver_external_potential. Full affected suite 15621 passed, cli.py 100% coverage.\n\nTagged awaits_bakeoff_validation for the external_potential 26338->0 quantitative claim (io-boundaries headline movement); the total_io_edges no-movement (754->754) is a verified no-op, not a bakeoff claim."  # d0cd
+- op: update  # de68
+  at: '2026-07-03T03:33:51Z'  # de68
+  by: agent  # de68
+  actor: jgstern_agent  # de68
+  clock: 4  # de68
+  nonce: de68  # de68
+  set: {}  # de68
+  remove:  # de68
+    tags: [awaits_bakeoff_validation]  # de68
+- op: discuss  # 7e95
+  at: '2026-07-03T03:33:52Z'  # 7e95
+  by: agent  # 7e95
+  actor: jgstern_agent  # 7e95
+  clock: 5  # 7e95
+  nonce: '7e95'  # 7e95
+  message: "Bakeoff-validated: ghostfolio DI calls carry is_resolved=true (ast_method_this_property); external_potential_edges=0; receiver gate intact. Drained."  # 7e95

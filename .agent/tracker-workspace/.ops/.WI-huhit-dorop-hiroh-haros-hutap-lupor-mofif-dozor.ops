@@ -43,3 +43,19 @@
   clock: 4  # 359d
   nonce: 359d  # 359d
   message: "Fixed via merged PR (dev 455a1a187a). Re-measured premise on the current self-corpus default run: total_io_edges 8428, external_potential 8134 = 96.5% (the ~9x/28x over-count REPRODUCES on the default invocation; correctness_strategy's 'external_potential=0' applies only to the tier-filtered build). Fix (WI-foduh sibling): total_io_edges redefined to exclude the external_potential bucket (now 294 real edges); external_potential_edges discloses the 8134 separately so the bucket's receiver-unresolved builtin noise (append/get/split) no longer inflates the headline ~28x. INV-pubom canonical definition amended (2026-06-30): unfiltered/filtered/text paths agree. Test test_total_io_edges_excludes_external_potential_disclosed_separately locks the split. awaits_bakeoff_validation: headline moves ~28x."  # 359d
+- op: update  # 1c3d
+  at: '2026-07-03T03:33:51Z'  # 1c3d
+  by: agent  # 1c3d
+  actor: jgstern_agent  # 1c3d
+  clock: 5  # 1c3d
+  nonce: 1c3d  # 1c3d
+  set: {}  # 1c3d
+  remove:  # 1c3d
+    tags: [awaits_bakeoff_validation]  # 1c3d
+- op: discuss  # 30d0
+  at: '2026-07-03T03:33:51Z'  # 30d0
+  by: agent  # 30d0
+  actor: jgstern_agent  # 30d0
+  clock: 6  # 30d0
+  nonce: 30d0  # 30d0
+  message: "Bakeoff-validated (cycle broad-20260702-223919): external_potential_edges=0 post-redefinition; total_io_edges matches io_tagged in all io-emitting repos (ghostfolio 100, pretix 206); no 9x inflation. Drained."  # 30d0
