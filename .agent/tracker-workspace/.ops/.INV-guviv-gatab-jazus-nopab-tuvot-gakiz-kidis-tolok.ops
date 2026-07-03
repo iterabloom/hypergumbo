@@ -1,0 +1,30 @@
+- op: create  # de75
+  at: '2026-07-03T18:32:08Z'  # de75
+  by: agent  # de75
+  actor: jgstern_agent  # de75
+  clock: 1  # de75
+  nonce: de75  # de75
+  data:  # de75
+    kind: invariant  # de75
+    title: "MRO walkers (inherited_calls) can emit a confidently-wrong resolved edge when an EXTERNAL base shadows the in-tree ancestor in the real MRO (external-base blind spot)"  # de75
+    status: violated  # de75
+    priority: 2  # de75
+    parent:  # de75
+    tags:  # de75
+    - analysis_quality  # de75
+    - dispatch  # de75
+    isbefore: []  # de75
+    duplicate_of: []  # de75
+    not_duplicate_of: []  # de75
+    pr_ref:  # de75
+    description: "Surfaced by the WI-hiziz (D1) C3-walker adversarial review (workflow wf_631a95db-7a2, Verdict 4). PRE-EXISTING in kind: SHARED with every intra-repo-only walker (ruby _walk_insertion_order, java _walk_single_then_interfaces); WI-hiziz newly applies it to Python's _walk_c3. The review classified it a documented NOTE (not a D1 blocker) because it is inherent to intra-repo scope, but it is a WRONG POSITIVE, not mere recall loss.\n\nREPRO (verified end-to-end, /tmp/adj_extbase): `class Base: def pop(self): ...` (in-tree) + `class Sub(dict, Base): pass` + `def use_it(s: Sub): return s.pop()`. Real CPython MRO = [Sub, dict, Base, object]; Sub.pop is dict.pop. hypergumbo emits `use_it -> Base.pop` is_resolved=True conf=0.70 ev=ast_call_inherited_method — WRONG (real dispatch is external dict.pop). Direction matters: `class Sub(Base, dict)` (in-tree base first) -> Base.pop IS correct.\n\nFIX (fast-follow, cheap): gate Site-2 Step-2 (and Site-1/Site-3 once py.py emits their hints) to bias to unresolved when the receiver type's ancestry contains an EXTERNAL/unresolved base positioned ahead of the matched in-tree ancestor — i.e. resolve only when the relevant MRO prefix is fully in-tree. py.py already records a class's declared bases in meta['base_classes']; a base with no corresponding in-tree extends edge is external, so the linker can detect \"this class has an external base that could shadow\" from the child symbol's meta vs its extends edges. Needs measurement (recall cost: many classes extend stdlib/framework bases) before choosing how aggressive the gate is. Applies to the C3 walker AND the pre-existing ruby/java walkers."  # de75
+    fields:  # de75
+      statement: "The inherited_calls MRO walkers resolve a receiver's inherited method over the IN-TREE ancestor subgraph only. An EXTERNAL base (builtin/stdlib/3rd-party — dict, Enum, Exception, a framework base) that sits AHEAD of the in-tree ancestor in the real MRO and defines the same method name is invisible to the walk, so the walker resolves to the wrong (in-tree) method — a confidently-wrong resolved calls edge (false reachability of the in-tree method that HIDES the real external dispatch). Resolution MUST bias to unresolved when an external base could shadow the matched in-tree ancestor."  # de75
+      root_cause: "External bases produce no extends edge (py.py _resolve_base_class resolves only in-tree bases), so the inheritance_index the walkers traverse omits them; the C3 / insertion-order / single-then-interfaces walkers linearize the in-tree subgraph only and cannot know an external base precedes the in-tree ancestor in the true MRO."  # de75
+- op: discuss  # 10b1
+  at: '2026-07-03T22:02:16Z'  # 10b1
+  by: agent  # 10b1
+  actor: jgstern_agent  # 10b1
+  clock: 2  # 10b1
+  nonce: 10b1  # 10b1
+  message: "ESCALATION (WI-hiziz PR-2, PR #409): Site-1 (self.method()) is now LIVE for Python, so this external-base blind spot's fix scope now genuinely includes Site-1 — and PR-2 aims Site-1 at the MOST COMMON trigger shape (a class that subclasses a framework base like Model/BaseModel/Enum AND an in-tree mixin, calling self.method()), materially increasing reachability of the wrong-positive. The PR-2 adversarial review (wf_e6f81f04-d63) independently re-confirmed FM1 and it ships documented-eyes-open via test_site1_python_external_base_mixin_known_gap (asserts the current possibly-wrong in-tree bind, ref this item). The fix (bias to unresolved when an external base could shadow the matched in-tree ancestor) should now cover Site-1 + Site-2 Step-2 uniformly across the C3/ruby/java walkers. Recommend raising priority given the increased reachability."  # 10b1

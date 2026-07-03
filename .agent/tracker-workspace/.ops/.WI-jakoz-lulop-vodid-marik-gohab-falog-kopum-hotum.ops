@@ -1,0 +1,21 @@
+- op: create  # 2a17
+  at: '2026-07-03T22:02:50Z'  # 2a17
+  by: agent  # 2a17
+  actor: jgstern_agent  # 2a17
+  clock: 1  # 2a17
+  nonce: 2a17  # 2a17
+  data:  # 2a17
+    kind: work_item  # 2a17
+    title: "Resolve cls.method() classmethod-inherited calls (WI-hiziz cls-gap follow-up)"  # 2a17
+    status: todo_hard  # 2a17
+    priority: 3  # 2a17
+    parent:  # 2a17
+    tags:  # 2a17
+    - analysis_quality  # 2a17
+    - dispatch  # 2a17
+    isbefore: []  # 2a17
+    duplicate_of: []  # 2a17
+    not_duplicate_of: []  # 2a17
+    pr_ref:  # 2a17
+    description: "Follow-up gap surfaced by the WI-hiziz PR-2 (Site-1) adversarial review (wf_e6f81f04-d63) and design premortem. PR-2 stamps meta['enclosing_class'] for self.method() only (receiver == 'self'); a classmethod's inherited call cls.method() (receiver == 'cls') never reaches the self-branch, so it stays python:external:0-0:<attr>:unresolved and the inherited classmethod/method looks dead (a dead-code FP). Mechanical mirror of PR-2's producer branch: add a cls-branch gated on receiver_name == 'cls' AND caller is a @classmethod (its decorators contain 'classmethod') AND 'cls' in _caller_locals, stamping enclosing_class = caller_symbol.qualified_name.split('.')[-2]; the existing _resolve_site1 (Python C3 walker + _SITE1_STRICT_LANGS guard) resolves it. CAVEAT (precision): classmethod polymorphism — cls may be a SUBCLASS at runtime, so binding to the DEFINING class's MRO is an approximation (can miss a subclass override); this is the same soundness posture as self (self may also be a subclass instance), so it is acceptable, but note it. Existing test test_cls_method_gets_no_hint currently locks 'no hint' for cls.build() — it must be updated when this lands. Lower priority than PR-3 (Site-3)."  # 2a17
+    fields: {}  # 2a17
