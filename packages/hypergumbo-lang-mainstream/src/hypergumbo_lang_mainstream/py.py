@@ -3347,6 +3347,7 @@ def _extract_edges(
                     run_id=run_id,
                     stack=stack,
                     external_var_types=external_var_types,
+                    function_aliases=function_aliases,
                 )
                 # Function references in call arguments: map(transform, items)
                 for arg in node.args:
@@ -3655,6 +3656,35 @@ def _extract_edges(
         if field_types:
             class_field_types[node.name] = field_types
 
+    # WI-gulot: resolve module-level function aliases (`f = g` where g is a
+    # function/method, incl. an imported g). The LHS is extracted as a
+    # kind=variable node, so a call through the alias otherwise dead-ends at a
+    # 0-out-degree variable and the target appears uncalled (a dispatch:F3 /
+    # INV-pohik instance). This name->target map is consumed by _process_call to
+    # resolve an alias call straight to the real body (so callers reach it and
+    # the target is genuinely `calls`-reachable — the filed repro's expectation).
+    # Scan MODULE-LEVEL statements only (``tree.body``), NOT ``ast.walk`` — a
+    # function-local ``f = g`` must not pollute this module-scope map, else a
+    # module variable of the same name would wrongly resolve to g (the LHS name
+    # alone can't distinguish the two scopes). The call resolver's own
+    # ``kind == "variable"`` guard means non-variable entries here are inert.
+    function_aliases: dict[str, Symbol] = {}
+    for _al_node in tree.body:
+        if not (isinstance(_al_node, ast.Assign) and isinstance(_al_node.value, ast.Name)):
+            continue
+        _rhs_name = _al_node.value.id
+        _alias_target = local_symbols.get(_rhs_name)
+        if _alias_target is None and _rhs_name in imports:
+            _mod, _orig = imports[_rhs_name]
+            _alias_target = _lookup_symbol_by_module(
+                global_symbols, _mod, _orig, resolver=resolver
+            )
+        if _alias_target is None or _alias_target.kind not in ("function", "method"):
+            continue
+        for _al_tgt in _al_node.targets:
+            if isinstance(_al_tgt, ast.Name):
+                function_aliases[_al_tgt.id] = _alias_target
+
     # Process functions (including async functions)
     for node in ast.walk(tree):
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
@@ -3912,6 +3942,7 @@ def _process_call(
     run_id: str,
     stack: ScopeStack | None = None,
     external_var_types: dict[str, str] | None = None,
+    function_aliases: dict[str, Symbol] | None = None,
 ) -> None:
     """Process a single call expression and emit appropriate edges.
 
@@ -3948,6 +3979,16 @@ def _process_call(
         callee_symbol = stack.lookup_immediate(callee_name) if stack else None
         if callee_symbol is None:
             callee_symbol = local_symbols.get(callee_name)
+        # WI-gulot: a module-level `f = g` function alias resolves as a variable;
+        # chase it to the aliased function so the call reaches the real body
+        # (else it dead-ends at the 0-out-degree variable node).
+        if (
+            callee_symbol is not None
+            and callee_symbol.kind == "variable"
+            and function_aliases
+            and callee_name in function_aliases
+        ):
+            callee_symbol = function_aliases[callee_name]
 
         if callee_symbol and callee_symbol.kind == "class":
             is_instantiation = True
