@@ -280,6 +280,8 @@ def _match_propagation_entry(
     edge_dst: str,
     ambiguous_names: frozenset[str],
     call_construct: str | None = None,
+    *,
+    is_resolved: bool = True,
 ):
     """Match an edge's callee against a propagation source/sink ``index``.
 
@@ -288,18 +290,23 @@ def _match_propagation_entry(
     is a file path, not a dotted module to filter on (so module filtering would
     spuriously reject e.g. a ``cmd_sketch`` source whose declared module is
     ``hypergumbo_core.cli`` against the edge's ``cli.py`` path). An *unresolved*
-    (``:unresolved``) edge is the short-name-collision risk surface, so it goes
-    through :func:`_lookup_named_entry`: a bare ambiguous callee with no module
-    hint, or a module-mismatched hint, is not falsely matched (WI-razol), and
-    an untyped *method* call (``call_construct``, threaded from the edge's
-    ``meta``) never matches a method-kind sink/source (io-boundary:F3,
-    INV-tapat/INV-maluk).
+    edge is the short-name-collision risk surface, so it goes through
+    :func:`_lookup_named_entry`: a bare ambiguous callee with no module hint, or
+    a module-mismatched hint, is not falsely matched (WI-razol), and an untyped
+    *method* call (``call_construct``, threaded from the edge's ``meta``) never
+    matches a method-kind sink/source (io-boundary:F3, INV-tapat/INV-maluk).
+
+    ADR-0037 ruling 4: the resolution verdict is read from ``Edge.is_resolved``,
+    NOT from the ``:unresolved`` dst-string suffix. That suffix is a producer
+    convention that the WI-pubiv boundary-id remap rewrites to ``:external_symbol``
+    on the final graph, so a string check would make every unresolved edge look
+    "resolved" here and silently bypass the collision guard below.
     """
     callee_name = _extract_callee_name(edge_dst)
     hits = index.get(callee_name)
     if not hits:
         return None
-    if edge_dst.rsplit(":", 1)[-1] != "unresolved":
+    if is_resolved:
         # Resolved first-party symbol — exact-name match; the qualified name
         # also keys into the index, so this honors precise resolution.
         return hits[0]
@@ -1235,6 +1242,7 @@ def propagate_taint_structural(
         matched = _match_propagation_entry(
             source_by_callee, edge["dst"], ambiguous_names,
             call_construct=edge.get("meta", {}).get("call_construct"),
+            is_resolved=edge.get("is_resolved", True),
         )
         if matched:
             source_callers.append((edge["src"], edge["dst"], matched))
@@ -1249,6 +1257,7 @@ def propagate_taint_structural(
         matched = _match_propagation_entry(
             sink_by_callee, edge["dst"], ambiguous_names,
             call_construct=edge.get("meta", {}).get("call_construct"),
+            is_resolved=edge.get("is_resolved", True),
         )
         if matched:
             sink_callers[edge["src"]] = (edge["dst"], matched)
@@ -1459,6 +1468,7 @@ def propagate_taint_ddg(
         matched = _match_propagation_entry(
             source_by_callee, edge["dst"], ambiguous_names,
             call_construct=edge.get("meta", {}).get("call_construct"),
+            is_resolved=edge.get("is_resolved", True),
         )
         if matched:
             source_callers.append((edge["src"], edge["dst"], matched))
@@ -1472,6 +1482,7 @@ def propagate_taint_ddg(
         matched = _match_propagation_entry(
             sink_by_callee, edge["dst"], ambiguous_names,
             call_construct=edge.get("meta", {}).get("call_construct"),
+            is_resolved=edge.get("is_resolved", True),
         )
         if matched:
             sink_callers[edge["src"]] = (edge["dst"], matched)

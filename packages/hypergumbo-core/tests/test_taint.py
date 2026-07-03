@@ -315,8 +315,18 @@ class TestTaintCatalogMatching:
 
 
 def _make_edge(src: str, dst: str, edge_type: str = "calls") -> dict:
-    """Create a minimal edge dict for graph construction."""
-    return {"src": src, "dst": dst, "type": edge_type}
+    """Create a minimal edge dict for graph construction.
+
+    ``is_resolved`` mirrors the producer contract (``make_unresolved_edge`` sets
+    ``is_resolved=False`` for ``:unresolved`` dsts): the taint router reads the
+    verdict from this field, not the dst-string suffix (ADR-0037 ruling 4).
+    """
+    return {
+        "src": src,
+        "dst": dst,
+        "type": edge_type,
+        "is_resolved": not dst.endswith(":unresolved"),
+    }
 
 
 class TestStructuralTaintPropagation:
@@ -2282,6 +2292,26 @@ class TestPropagationAmbiguousAndModule:
             edges, [self._SOURCE], [self._PATH_REPLACE], [],
             ambiguous_names=frozenset({"replace"})) == []
 
+    def test_post_remap_external_symbol_sink_still_suppressed(self) -> None:
+        """ADR-0037 ruling 4 regression: WI-pubiv's boundary-id remap rewrites an
+        unresolved edge's dst suffix ``:unresolved`` → ``:external_symbol`` on the
+        final graph. The taint router must decide resolution from
+        ``Edge.is_resolved``, not the suffix — else the post-remap ambiguous sink
+        looks 'resolved', bypasses the WI-razol/INV-tapat method-kind gate, and
+        yields a FALSE host_fs flow (the exact regression this pass fixes)."""
+        edges = [
+            _make_edge("py:a.py:1-5:source_func:function",
+                       "py:external:0-0:Fernet.decrypt:unresolved"),
+            _make_edge("py:a.py:1-5:source_func:function",
+                       "py:a.py:10-15:sink_func:function"),
+            # POST-remap ambiguous sink: :external_symbol suffix, is_resolved=False.
+            {"src": "py:a.py:10-15:sink_func:function",
+             "dst": "py:external:0-0:replace:external_symbol",
+             "type": "calls", "is_resolved": False},
+        ]
+        assert propagate_taint_structural(
+            edges, [self._SOURCE], [self._PATH_REPLACE], []) == []
+
     def test_structural_ambiguous_with_module_still_found(self) -> None:
         edges = self._edges_to_sink("py:pathlib.Path:0-0:replace:unresolved")
         findings = propagate_taint_structural(
@@ -2357,15 +2387,20 @@ class TestPropagationKindAwareGate:
                            module="shutil", name="rmtree", kind="function")
 
     def _edges(self, sink_dst: str, sink_meta: dict | None = None) -> list:
+        # is_resolved mirrors the producer contract — the taint router reads the
+        # verdict from this field, not the dst-string suffix (ADR-0037 ruling 4).
         sink_edge = {"src": "py:a.py:10-15:sink_func:function", "dst": sink_dst,
-                     "type": "calls"}
+                     "type": "calls",
+                     "is_resolved": not sink_dst.endswith(":unresolved")}
         if sink_meta is not None:
             sink_edge["meta"] = sink_meta
         return [
             {"src": "py:a.py:1-5:source_func:function",
-             "dst": "py:external:0-0:Fernet.decrypt:unresolved", "type": "calls"},
+             "dst": "py:external:0-0:Fernet.decrypt:unresolved", "type": "calls",
+             "is_resolved": False},
             {"src": "py:a.py:1-5:source_func:function",
-             "dst": "py:a.py:10-15:sink_func:function", "type": "calls"},
+             "dst": "py:a.py:10-15:sink_func:function", "type": "calls",
+             "is_resolved": True},
             sink_edge,
         ]
 

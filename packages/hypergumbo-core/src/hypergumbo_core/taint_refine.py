@@ -542,11 +542,15 @@ def _maybe_rewrite_edge(
         return dict(edge)
     module = parts[1]
     name = parts[3]
-    kind = parts[-1]
     if module != "external":
         return dict(edge)
-    if kind != "unresolved":
-        return dict(edge)  # pragma: no cover - external-module edges always carry the unresolved kind
+    # ADR-0037 ruling 4: read the resolution verdict from ``Edge.is_resolved``,
+    # not the dst kind-slot — WI-pubiv's boundary-id remap rewrites the
+    # ``:unresolved`` suffix to ``:external_symbol`` on the final graph, so the
+    # old ``kind != "unresolved"`` check skipped every external edge and made
+    # this refinement pass a silent no-op post-remap.
+    if edge.get("is_resolved", False):
+        return dict(edge)  # pragma: no cover - external-module edges are unresolved by construction
     caller = edge.get("src", "")
     caller_hints = hints_by_caller.get(caller)
     if not caller_hints:
