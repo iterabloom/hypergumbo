@@ -48,3 +48,27 @@
   clock: 5  # 17e5
   nonce: '17e5'  # 17e5
   message: "WI-hiziz D1 COMPLETE (PR-1/2/3, last landed dev 7109758f92): the full inherited-method + inherited-field resolution mass now lands for Python — Site-2 typed-receiver-inherited (C3 walker, PR-1), Site-1 self.method() inherited (PR-2), Site-3 self.field.method() inherited (PR-3). Combined with Part A (typed-receiver-direct / local static+classmethod) and D2 (WI-gubar @property reads), the walker-independent + walker-dependent recall for obj.method()/self.method()/self.field.method()/@property is all landed. The SOLE remaining WI-noham residual is WI-supat/D3 — concrete-class-id precision (thread a concrete enclosing/receiver class id so the _SITE1_STRICT_LANGS ambiguity guards recover the same-short-name + cross-language recall they currently sacrifice). WI-noham stays OPEN pending WI-supat + bakeoff re-measurement of the INV-nuzas 283-twin residual and the decorated/plain deadness deltas."  # 17e5
+- op: discuss  # ba6c
+  at: '2026-07-04T04:29:01Z'  # ba6c
+  by: agent  # ba6c
+  actor: jgstern_agent  # ba6c
+  clock: 6  # ba6c
+  nonce: ba6c  # ba6c
+  message: "WI-supat/D3 (the SOLE remaining engineering residual) COMPLETE + CLOSED (done) — PR-A (dev ef2544220c) + PR-B (dev 0ca939118f). So the FULL receiver/self/field-inherited resolution mass is now landed: Part A (typed-receiver-direct + local static/classmethod), D2/WI-gubar (@property reads), D1/WI-hiziz (Site-2 C3 inherited, Site-1 self.method(), Site-3 self.field.method()), D3/WI-supat (concrete-class-id collision precision).\n\nCRITICAL CONTEXT for the bakeoff re-measure: WI-supat's concrete-id path was INERT end-to-end until PR-B's finalize.py fix (_relativize_ir_paths didn't relativize Edge.meta / dict-shaped Symbol.meta, so the ids stayed absolute and missed the relativized class_symbols index -> silent name-path fallback). IMPORTANT: this affected ONLY WI-supat (id-based). The earlier pieces (Part A/B, WI-gubar, WI-hiziz) use NAME hints (receiver_type_hint / enclosing_class / inherited_field_receiver — strings without embedded paths), so they were NEVER affected and fire correctly. So the deadness-delta from the name-based recall is real; WI-supat added collision precision on top (real self-analysis delta +94 calls edges once the finalize fix landed).\n\nWI-noham STAYS OPEN per its own closure-evidence discipline: the flagship deadness repros (Symbol.end_line, ValidationResult.ok) + the INV-nuzas 283-twin residual + the decorated/plain deadness deltas must be re-measured under a bakeoff / dead-code-maybe --seeds all before marking satisfied. All engineering is done; the remaining gate is that quantitative re-measure (awaits_bakeoff_validation)."  # ba6c
+- op: update  # f13e
+  at: '2026-07-04T05:35:09Z'  # f13e
+  by: agent  # f13e
+  actor: jgstern_agent  # f13e
+  clock: 7  # f13e
+  nonce: f13e  # f13e
+  set:  # f13e
+    status: done  # f13e
+  remove:  # f13e
+    tags: [awaits_bakeoff_validation]  # f13e
+- op: discuss  # 4a26
+  at: '2026-07-04T05:35:09Z'  # 4a26
+  by: agent  # 4a26
+  actor: jgstern_agent  # 4a26
+  clock: 8  # 4a26
+  nonce: 4a26  # 4a26
+  message: "DONE — bakeoff re-measure, dev @ 371adbe47c (WI-supat PR-A+PR-B + the finalize relativization fix that made the concrete-id path actually fire). BEHAVIORAL EVIDENCE (re-ran WI-noham's own filed repro, dead-code-maybe --seeds all on hypergumbo self-analysis): the flagship deadness repros CLEAR — Symbol.end_line and ValidationResult.ok are NOT in the dead-code list (both reachable; Symbol.end_line 1 incoming resolved calls edge, ValidationResult.ok 7, all ast_call_type_inferred via the WI-gubar @property->Site-2 chain). Dead python methods ~486->153 (dead_candidates 381/4597, 8.3%); demoted_dispatch_inherited=0 (inherited resolution DIRECT). RECALL fires on two large real-world Python repos: hypergumbo self 243 inherited_calls edges (81 Site-1 + 60 Site-2-MRO + 102 Site-2-direct); pretix (119MB Django) 533 (405 Site-1 + 56 Site-2-direct + 49 Site-2-MRO + 23 Site-3 ast_call_inherited_field). NO REGRESSIONS across 4 cohorts / 19 repos / 9 languages. All pieces landed: Part A + D1/WI-hiziz + D2/WI-gubar + D3/WI-supat. NOTE: INV-nuzas is NOT closed by this — its phantom-workspace-external residual (107) is dispatch:F3 (cross-module function calls + module_attr_ref), a distinct mechanism WI-noham does not own."  # 4a26

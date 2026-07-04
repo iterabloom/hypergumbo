@@ -18,3 +18,27 @@
     pr_ref:  # 2d35
     description: "Deferred precision follow-up of WI-noham Part A (PR #404). Part A's receiver_type_hint carries only the class NAME; the inherited_calls linker re-globalizes it via class_ids_by_name and, for non-legacy languages, biases to unresolved when two in-repo classes share that short name (the len(type_class_ids)>1 ambiguity guard — INV-fahub-airtight but sacrifices recall). py.py already holds the concrete class Symbol (var_types[recv].id / .path), so threading a concrete class-id (or (path,name)) alongside the name would let the linker resolve the collision case precisely instead of dropping it — recovering the recall the ambiguity guard sacrifices, and closing the INV-fahub-spirit residual outright (a class-name hint that re-globalizes is a mild information-loss). Requires extending make_unresolved_edge / the Site-2 meta contract to carry a concrete class ref, and the inherited_calls dispatch to prefer it over the name. Lower priority than D1/D2 (precision refinement, not a coverage gap)."  # 2d35
     fields: {}  # 2d35
+- op: discuss  # 0789
+  at: '2026-07-04T02:37:36Z'  # 0789
+  by: agent  # 0789
+  actor: jgstern_agent  # 0789
+  clock: 2  # 0789
+  nonce: '0789'  # 0789
+  message: "PR-A LANDED — PR merged to dev ef2544220c. Threaded a concrete class id through the inherited_calls Site meta contract for Site-1 (enclosing_class_id), Site-2 (receiver_type_id, all 3 producers), and Site-3-enclosing (enclosing_class_id). Producer: authoritative method->enclosing-class-id map (clobber-immune) + _receiver_type_id_trustworthy gate (file-unique name AND not import-shadowed). Linker: id-preferred selection validated by 'id in class_symbols AND language==src_lang', skipping the len>1 guard; absent/stale/foreign-lang falls back byte-identically to name+guard. Design + adversarial-review workflows; review NO_GO caught+fixed an import-shadow confidently-wrong-edge regression + 3 vacuous foreign-lang-guard tests (all now verified non-vacuous by disabling the guard). Both packages 100% cov; +146 resolved calls edges on self-analysis. Filed WI-masov (deeper _extract_param_types local-first-over-import root cause). STAYS OPEN: PR-B (Site-3 field-TYPE id via parent-symbol meta['field_type_ids'] + _walk_parents_for_field 2-tuple return) is the remaining piece before WI-supat closes and WI-noham can close."  # 0789
+- op: update  # b7e2
+  at: '2026-07-04T04:28:45Z'  # b7e2
+  by: agent  # b7e2
+  actor: jgstern_agent  # b7e2
+  clock: 3  # b7e2
+  nonce: b7e2  # b7e2
+  set:  # b7e2
+    status: done  # b7e2
+  add:  # b7e2
+    tags: [awaits_bakeoff_validation]  # b7e2
+- op: discuss  # f720
+  at: '2026-07-04T04:28:45Z'  # f720
+  by: agent  # f720
+  actor: jgstern_agent  # f720
+  clock: 4  # f720
+  nonce: f720  # f720
+  message: "PR-B LANDED + WI-supat COMPLETE — PR merged to dev 0ca939118f. Site-3 field-TYPE id: class-symbol meta['field_type_ids']={field:type_id} (gated by _receiver_type_id_trustworthy); _walk_parents_for_field returns (name, id_or_None) 2-tuple; _resolve_site3 prefers a validated same-language field_type_id, skipping the field-type len>1 guard (java/legacy (name,None) keeps the byte-identical name path).\n\nCRITICAL FINDING (the pivotal fix): the concrete-id path was INERT end-to-end until this PR's finalize.py fix. _relativize_ir_paths (runs BEFORE the linkers) rewrote symbol.id/edge.src/dst + symbol-meta STRINGS to repo-relative, but did NOT touch Edge.meta (where enclosing_class_id/receiver_type_id live) NOR dict-shaped Symbol.meta (field_type_ids). So EVERY WI-supat id kept its stale ABSOLUTE form, missed the relativized class_symbols index, and silently fell back to the name path. The collision-recovery NEVER fired in the full pipeline — only in linker unit tests with synthetic matching ids; the negative e2e tests passed regardless via that same name-path fallback, masking it. This means PR-A's '+146' was intervening-merge drift, NOT the id path. The fix relativizes edge-meta strings + one-level meta-dict values (same INV-pohik symptom-2 family as the route handler_ref str case, which WAS already handled).\n\nBEHAVIORAL EVIDENCE (e2e via run_behavior_map, now firing — the regression these lock): two same-name Logger classes -> Sub.run self.log.info() resolves to the right log1.Logger.info (field_type_ids); two same-name Worker classes -> w1.Worker.run self.greet() resolves to cross-file BaseA.greet (enclosing_class_id, part-A retroactively activated). BOTH were unresolved before the finalize fix (verified 0->1 resolved). Real self-analysis delta: +94 calls edges (63491->63585) — the true WI-supat recall.\n\nDesign + 2 adversarial-review workflows (PR-B linker/producer GO_WITH_NOTES: import-shadow field-type test + omission tests; finalize fix GO_WITH_NOTES: all over-relativization/idempotency failure modes disproven, docstring/shape-contract hardened + idempotency test). Both packages 100% cov; taint + ratchet green. Tagged awaits_bakeoff_validation (the +94 + deadness-delta need bakeoff confirmation)."  # f720
