@@ -846,7 +846,12 @@ def test_primitive_counts(tmp_path: Path, capsys) -> None:
 
 
 def test_high_risk_marker_in_text(tmp_path: Path, capsys) -> None:
-    """High-risk primitives are highlighted in text output."""
+    """Subprocess primitives are HIGH RISK-marked; destructive-fs is not.
+
+    high_risk is subprocess-scoped (the net/fs curation was retired — see
+    io_boundary.HIGH_RISK_PRIMITIVES); shutil.rmtree still appears as an
+    fs_write primitive but no longer carries the marker.
+    """
     bmap = _make_behavior_map(**_MULTI_BOUNDARY)
     args = _make_args(tmp_path, bmap)
 
@@ -855,6 +860,10 @@ def test_high_risk_marker_in_text(tmp_path: Path, capsys) -> None:
     assert "HIGH RISK" in out
     assert "subprocess.Popen" in out
     assert "shutil.rmtree" in out
+    # rmtree is listed but no longer on a HIGH RISK line.
+    rmtree_lines = [ln for ln in out.splitlines() if "shutil.rmtree" in ln]
+    assert rmtree_lines
+    assert all("HIGH RISK" not in ln for ln in rmtree_lines)
 
 
 def test_no_high_risk_marker_for_safe_primitives(tmp_path: Path, capsys) -> None:

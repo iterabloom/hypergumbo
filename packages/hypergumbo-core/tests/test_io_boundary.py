@@ -2349,16 +2349,19 @@ class TestHighRiskPrimitives:
         assert is_high_risk("subprocess.run") is True
         assert is_high_risk("os.execv") is True
 
-    def test_is_high_risk_destructive_fs(self) -> None:
-        assert is_high_risk("shutil.rmtree") is True
-        assert is_high_risk("os.remove") is True
+    def test_destructive_fs_not_high_risk(self) -> None:
+        # Retired: destructive-fs risk is carried by the taint host_fs sink
+        # (ADR-0017 §2b), not the subprocess-scoped high_risk display flag.
+        assert is_high_risk("shutil.rmtree") is False
+        assert is_high_risk("os.remove") is False
 
-    def test_is_high_risk_network(self) -> None:
-        assert is_high_risk("urllib.request.urlopen") is True
-        # WI-tijos: urlretrieve is a network egress like urlopen / Request
-        # (all three are catalogued net_send in io_primitives/python.yaml).
-        assert is_high_risk("urllib.request.urlretrieve") is True
-        assert is_high_risk("socket.socket.send") is True
+    def test_network_egress_not_high_risk(self) -> None:
+        # Retired: network-egress risk is carried by the taint network sink
+        # + chain dst_tier (WI-gitad / WI-jihuj), not high_risk. This also
+        # reverts WI-tijos Part A's urlretrieve addition.
+        assert is_high_risk("urllib.request.urlopen") is False
+        assert is_high_risk("urllib.request.urlretrieve") is False
+        assert is_high_risk("socket.socket.send") is False
 
     def test_not_high_risk(self) -> None:
         assert is_high_risk("os.listdir") is False

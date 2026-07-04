@@ -203,14 +203,34 @@ def _validate_catalog_dict(
 
 
 # ---------------------------------------------------------------------------
-# High-risk primitives
+# High-risk primitives (subprocess-scoped display refinement)
 # ---------------------------------------------------------------------------
-
+#
+# ``high_risk`` is a DISPLAY-ONLY triage marker on the ``io-boundaries``
+# output (the CLI ``*** HIGH RISK ***`` markers + the ``high_risk`` /
+# ``has_high_risk`` JSON keys). It has NO verify-claims / taint / slice
+# consumer, so a wrong classification is an audit-UX false negative, not a
+# soundness bug.
+#
+# It is deliberately SCOPED TO ``subprocess``: launching an external program
+# is arbitrary code execution, the one boundary with a clean "always risky"
+# invariant (ratcheted by ``TestHighRiskPrimitivesDriftGuard``). It is NOT a
+# net/fs risk taxonomy. The canonical, ADR-backed risk model for I/O
+# boundaries is the taint source/sink model in ``taint.py``
+# (``AUTO_SINK_ZONE_MAP`` / ``AUTO_SOURCE_LABEL_MAP``; ADR-0017 §2b; spec
+# §"Taint sinks/sources") — write-side/egress boundaries are untrusted
+# sinks, read-side sensitive boundaries are untrusted sources — and that is
+# what verify-claims actually consumes. Destructive-filesystem and
+# network-egress risk are carried there (network risk additionally at the
+# chain ``dst_tier`` level), NOT curated here. Curating them here was a
+# deliberately-rejected idea (WI-gitad 2026-05-28, WI-sugav, WI-jihuj): a
+# hand-maintained net/fs ``high_risk`` set duplicated the taint taxonomy,
+# disagreed with it on ``fs_write`` (taint: every write is a sink;
+# ``high_risk``: only destructive writes), and could never be principled.
 HIGH_RISK_PRIMITIVES: frozenset[str] = frozenset({
-    # Destructive filesystem
-    "shutil.rmtree", "os.rmdir", "os.remove", "os.unlink",
-    "pathlib.Path.unlink", "pathlib.Path.rmdir",
-    # Subprocess / code execution — Python
+    # Subprocess / code execution — Python. Every boundary=subprocess
+    # catalog entry across the 14 languages must appear here or in
+    # HIGH_RISK_EXEMPTIONS_SUBPROCESS (TestHighRiskPrimitivesDriftGuard).
     "subprocess.Popen", "subprocess.run", "subprocess.call",
     "subprocess.check_call", "subprocess.check_output",
     "os.system", "os.popen", "os.execv", "os.execve", "os.execvp",
@@ -218,10 +238,6 @@ HIGH_RISK_PRIMITIVES: frozenset[str] = frozenset({
     "os.fork", "os.forkpty",
     "os.spawnl", "os.spawnle", "os.spawnlp", "os.spawnlpe",
     "os.spawnv", "os.spawnve", "os.spawnvp", "os.spawnvpe",
-    # Network outbound — Python
-    "urllib.request.urlopen", "urllib.request.Request",
-    "urllib.request.urlretrieve",  # WI-tijos: network egress (net_send)
-    "socket.socket.connect", "socket.socket.send", "socket.socket.sendall",
     # Go
     "os/exec.Command", "os/exec.CommandContext",
     "os/exec.Cmd.CombinedOutput", "os/exec.Cmd.Output",
@@ -306,15 +322,16 @@ HIGH_RISK_EXEMPTIONS_SUBPROCESS: frozenset[str] = frozenset({
 
 
 def is_high_risk(primitive_name: str) -> bool:
-    """Check whether a primitive is classified as high-risk.
+    """Whether a primitive gets the subprocess ``high_risk`` display marker.
 
-    High-risk primitives include destructive filesystem operations
-    (rmtree, unlink), subprocess / code execution (Popen, exec*, NSTask
-    launch, JVM ProcessBuilder, BEAM Port spawning, Haskell
-    System.Process spawn family, …), and outbound network calls
-    (urlopen, socket.send). The classification covers all 14 catalog
-    languages (Python, Go, Java, Rust, JavaScript, C, C++, Elixir,
-    Erlang, Kotlin, Scala, Swift, Objective-C, Haskell).
+    This is a DISPLAY-ONLY triage flag scoped to ``subprocess`` — launching
+    an external program (Popen, exec*, NSTask launch, JVM ProcessBuilder,
+    BEAM Port spawning, Haskell System.Process spawn family, …) across all
+    14 catalog languages, the one boundary with a clean "always risky"
+    invariant. It is NOT a net/fs risk taxonomy: destructive-filesystem and
+    network-egress risk are carried by the taint source/sink model
+    (``AUTO_SINK_ZONE_MAP`` in ``taint.py``; ADR-0017 §2b) and, for network,
+    the chain ``dst_tier`` — see the ``HIGH_RISK_PRIMITIVES`` module comment.
     """
     return primitive_name in HIGH_RISK_PRIMITIVES
 

@@ -700,6 +700,16 @@ def load_taint_catalog(
 # specific (a config file vs. a credential vault vs. user-uploaded JSON).
 # Projects that want every fs_read tainted can declare their own source
 # catalog entries.
+#
+# This sink/source split IS hypergumbo's canonical I/O-boundary risk
+# taxonomy: write-side/outbound boundaries are untrusted sinks (where
+# tainted data lands or escapes), read-side sensitive boundaries are
+# untrusted sources, and it is what ``verify-claims`` consumes. Do NOT
+# confuse it with ``io_boundary.HIGH_RISK_PRIMITIVES`` — that is a narrow,
+# display-only ``high_risk`` marker scoped to ``subprocess`` alone, not a
+# competing risk axis. Destructive-filesystem and network-egress risk live
+# HERE (and, for network, additionally at the chain ``dst_tier`` level),
+# NOT in a second hand-curated high_risk set.
 AUTO_SINK_ZONE_MAP: dict[str, tuple[str, str]] = {
     # io_primitives boundary -> (taint zone, trust_level)
     "fs_write": ("host_fs", "untrusted"),
