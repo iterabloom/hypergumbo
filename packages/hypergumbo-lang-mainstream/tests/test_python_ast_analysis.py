@@ -7377,3 +7377,238 @@ def test_run_imported_class_unresolved_method_stays_phantom(
         and not e.get("is_resolved")
     ]
     assert calls, "the unresolved calls edge for the class-method call must survive"
+
+
+def test_run_imported_function_via_nonpackage_reexport_resolves(
+    tmp_path: Path,
+) -> None:
+    """WI-hotug CASE A / INV-nuzas: ``from facade import fn; fn()`` where a
+    NON-package facade module re-exports an in-tree module-level FUNCTION
+    (``from authpkg.impl import compute``) must resolve the call to the REAL
+    first-party ``compute`` node, not dead-end at a phantom workspace
+    ``external_symbol`` (``python:authpkg.facade:0-0:compute:external_symbol``).
+
+    The ``__init__.py``-only re-export alias pass left non-package re-export
+    facades unaliased, so the direct imported-function call missed. This test
+    fails RED on current dev (the calls edge points to the phantom facade
+    external and no resolved edge to the real ``impl.compute`` exists).
+    """
+    _build_nuzas_monorepo(tmp_path)
+    auth = tmp_path / "packages" / "auth" / "src" / "authpkg"
+    (auth / "impl.py").write_text("def compute():\n    return 1\n")
+    (auth / "facade.py").write_text("from authpkg.impl import compute\n")
+    (tmp_path / "packages" / "api" / "src" / "apipkg" / "u.py").write_text(
+        "from authpkg.facade import compute\n"
+        "def use():\n"
+        "    return compute()\n"
+    )
+    out_path = tmp_path / "out.json"
+    run_behavior_map(
+        repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False
+    )
+    data = json.loads(out_path.read_text())
+    real_compute = next(
+        n["id"] for n in data["nodes"]
+        if n["kind"] == "function" and n.get("name") == "compute"
+        and "impl.py" in n.get("path", "")
+    )
+    use_fn = next(
+        n["id"] for n in data["nodes"]
+        if n.get("name") == "use" and n["kind"] == "function"
+    )
+    resolved = [
+        e for e in data["edges"]
+        if e["type"] == "calls" and e["src"] == use_fn
+        and e["dst"] == real_compute
+    ]
+    assert len(resolved) == 1 and resolved[0]["is_resolved"] is True, (
+        "the call through the non-package re-export must resolve to the real "
+        f"impl.compute; got calls={[e for e in data['edges'] if e['type']=='calls' and e['src']==use_fn]}"
+    )
+    # No workspace-prefixed phantom external for the facade re-export.
+    ext_ids = [n["id"] for n in data["nodes"] if n["kind"] == "external_symbol"]
+    assert not any("facade" in i and "compute" in i for i in ext_ids), (
+        f"phantom facade compute external minted: {[i for i in ext_ids if 'compute' in i]}"
+    )
+
+
+def test_run_nonpackage_reexport_shadow_guard_local_def_wins(
+    tmp_path: Path,
+) -> None:
+    """WI-hotug CASE A INV-fahub local-def-wins: when a facade module BOTH
+    re-exports (``from authpkg.impl import compute``) AND defines a same-named
+    symbol LOCALLY (``def compute()``), the re-export alias must NOT clobber the
+    local definition — a call through the facade resolves to the facade's own
+    ``compute``, not the re-exported ``impl.compute``. Locks the single
+    ``(module_name, local_name) in global_symbols`` guard (the facade's local
+    ``compute`` is pre-registered under its own module key, so the alias pass
+    skips it); deleting that guard mints the wrong alias and flips this test."""
+    _build_nuzas_monorepo(tmp_path)
+    auth = tmp_path / "packages" / "auth" / "src" / "authpkg"
+    (auth / "impl.py").write_text("def compute():\n    return 1\n")
+    (auth / "facade.py").write_text(
+        "from authpkg.impl import compute\n"
+        "def compute():\n"
+        "    return 2\n"
+    )
+    (tmp_path / "packages" / "api" / "src" / "apipkg" / "u.py").write_text(
+        "from authpkg.facade import compute\n"
+        "def use():\n"
+        "    return compute()\n"
+    )
+    out_path = tmp_path / "out.json"
+    run_behavior_map(
+        repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False
+    )
+    data = json.loads(out_path.read_text())
+    facade_compute = next(
+        n["id"] for n in data["nodes"]
+        if n["kind"] == "function" and n.get("name") == "compute"
+        and "facade.py" in n.get("path", "")
+    )
+    use_fn = next(
+        n["id"] for n in data["nodes"]
+        if n.get("name") == "use" and n["kind"] == "function"
+    )
+    calls = [
+        e for e in data["edges"]
+        if e["type"] == "calls" and e["src"] == use_fn and e.get("is_resolved")
+    ]
+    assert [e["dst"] for e in calls] == [facade_compute], (
+        "a facade's local definition must win over its same-name re-export; "
+        f"got resolved calls={[e['dst'] for e in calls]}"
+    )
+
+
+def test_run_nonpackage_reexport_multihop_chain_resolves_bounded(
+    tmp_path: Path,
+) -> None:
+    """WI-hotug CASE A: an N-hop re-export chain through non-package modules
+    (``impl -> mid -> top``) resolves to the real function within the bounded
+    fixed point, regardless of file-iteration order."""
+    _build_nuzas_monorepo(tmp_path)
+    auth = tmp_path / "packages" / "auth" / "src" / "authpkg"
+    (auth / "impl.py").write_text("def deepfn():\n    return 1\n")
+    (auth / "mid.py").write_text("from authpkg.impl import deepfn\n")
+    (auth / "top.py").write_text("from authpkg.mid import deepfn\n")
+    (tmp_path / "packages" / "api" / "src" / "apipkg" / "u.py").write_text(
+        "from authpkg.top import deepfn\n"
+        "def use():\n"
+        "    return deepfn()\n"
+    )
+    out_path = tmp_path / "out.json"
+    run_behavior_map(
+        repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False
+    )
+    data = json.loads(out_path.read_text())
+    real_deepfn = next(
+        n["id"] for n in data["nodes"]
+        if n["kind"] == "function" and n.get("name") == "deepfn"
+        and "impl.py" in n.get("path", "")
+    )
+    use_fn = next(
+        n["id"] for n in data["nodes"]
+        if n.get("name") == "use" and n["kind"] == "function"
+    )
+    resolved = [
+        e for e in data["edges"]
+        if e["type"] == "calls" and e["src"] == use_fn
+        and e["dst"] == real_deepfn
+    ]
+    assert len(resolved) == 1 and resolved[0]["is_resolved"] is True, (
+        "the 2-hop re-export chain must resolve to the real impl.deepfn; got "
+        f"calls={[e for e in data['edges'] if e['type']=='calls' and e['src']==use_fn]}"
+    )
+
+
+def test_run_nonpackage_reexport_does_not_mark_re_exported_modifier(
+    tmp_path: Path,
+) -> None:
+    """WI-hotug CASE A decouple: generalizing the alias pass to all modules must
+    NOT extend the ``re_exported`` modifier to non-package re-exports — that
+    modifier stays ``__init__.py``-only (visibility.py / library-exports.yaml
+    consume it as a package-surface signal). The alias still RESOLVES the call
+    (locking that decouple != non-resolution)."""
+    _build_nuzas_monorepo(tmp_path)
+    auth = tmp_path / "packages" / "auth" / "src" / "authpkg"
+    (auth / "impl.py").write_text("def widget():\n    return 1\n")
+    (auth / "facade.py").write_text("from authpkg.impl import widget\n")
+    (tmp_path / "packages" / "api" / "src" / "apipkg" / "u.py").write_text(
+        "from authpkg.facade import widget\n"
+        "def use():\n"
+        "    return widget()\n"
+    )
+    out_path = tmp_path / "out.json"
+    run_behavior_map(
+        repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False
+    )
+    data = json.loads(out_path.read_text())
+    widget_node = next(
+        n for n in data["nodes"]
+        if n["kind"] == "function" and n.get("name") == "widget"
+        and "impl.py" in n.get("path", "")
+    )
+    assert "re_exported" not in widget_node.get("modifiers", []), (
+        "a NON-package re-export must not mark the source symbol re_exported; "
+        f"got modifiers={widget_node.get('modifiers', [])}"
+    )
+    # But the alias still resolves the call (decouple != non-resolution).
+    use_fn = next(
+        n["id"] for n in data["nodes"]
+        if n.get("name") == "use" and n["kind"] == "function"
+    )
+    resolved = [
+        e for e in data["edges"]
+        if e["type"] == "calls" and e["src"] == use_fn
+        and e["dst"] == widget_node["id"] and e.get("is_resolved")
+    ]
+    assert len(resolved) == 1, (
+        "the non-package re-export alias must still resolve the call to the real "
+        f"widget; got calls={[e for e in data['edges'] if e['type']=='calls' and e['src']==use_fn]}"
+    )
+
+
+def test_run_nonpackage_reexport_external_module_shadow_not_aliased(
+    tmp_path: Path,
+) -> None:
+    """WI-hotug CASE A INV-fahub: the non-package re-export pass resolves by
+    EXACT module match, never suffix-fuzzy match — so a facade re-exporting a
+    stdlib/third-party name (``from json import dumps``) must NOT bind to a
+    coincidentally same-suffixed in-tree module (``authpkg/json.py`` defining a
+    local ``dumps``). Binding it would mint a confidently-wrong resolved edge to
+    the wrong symbol (the defect the adversarial review flagged). This test fails
+    RED under a suffix-matching alias pass and passes under exact match."""
+    _build_nuzas_monorepo(tmp_path)
+    auth = tmp_path / "packages" / "auth" / "src" / "authpkg"
+    # An in-tree module whose name coincidentally matches the stdlib ``json``.
+    (auth / "json.py").write_text("def dumps(x):\n    return x\n")
+    (auth / "facade.py").write_text("from json import dumps\n")
+    (tmp_path / "packages" / "api" / "src" / "apipkg" / "u.py").write_text(
+        "from authpkg.facade import dumps\n"
+        "def use():\n"
+        "    return dumps({})\n"
+    )
+    out_path = tmp_path / "out.json"
+    run_behavior_map(
+        repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False
+    )
+    data = json.loads(out_path.read_text())
+    # The in-tree authpkg/json.py:dumps IS analyzed (guards against a vacuous test).
+    intree_dumps = next(
+        n["id"] for n in data["nodes"]
+        if n["kind"] == "function" and n.get("name") == "dumps"
+        and "json.py" in n.get("path", "")
+    )
+    use_fn = next(
+        n["id"] for n in data["nodes"]
+        if n.get("name") == "use" and n["kind"] == "function"
+    )
+    wrong = [
+        e for e in data["edges"]
+        if e["type"] == "calls" and e["src"] == use_fn
+        and e["dst"] == intree_dumps
+    ]
+    assert wrong == [], (
+        "an external-shadowing re-export must not bind to a coincidentally "
+        f"same-suffixed in-tree module (exact-match only); got {wrong}"
+    )

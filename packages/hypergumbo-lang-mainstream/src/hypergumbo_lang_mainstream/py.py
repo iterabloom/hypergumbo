@@ -4918,6 +4918,44 @@ def analyze_python(
                 if "re_exported" not in source_symbol.modifiers:
                     source_symbol.modifiers.append("re_exported")
 
+    # WI-hotug PR#2 (CASE A / INV-nuzas): generalize re-export resolution to
+    # NON-package facade modules. A plain module (e.g. ``compact.py`` doing
+    # ``from .tier import parse_tier_spec``) re-exports exactly like a package
+    # ``__init__`` does, so a cross-module ``from compact import parse_tier_spec;
+    # parse_tier_spec()`` must resolve to the real function instead of dead-ending
+    # at a phantom workspace ``external_symbol`` (self-corpus: 10 imported-function
+    # re-export phantoms). Deliberately kept distinct from the __init__ pass above:
+    #   * EXACT module match only (``global_symbols.get((resolved_module, name))``),
+    #     NOT the suffix-matching ``_lookup_symbol_by_module``. Suffix matching is
+    #     the src-layout affordance the __init__ pass needs, but on the newly-opened
+    #     non-package surface it would let a facade's ``from json import dumps``
+    #     re-export bind to a coincidentally-suffixed in-tree ``pkg/json.py``
+    #     (a confidently-wrong INV-fahub violation). Exact match resolves the 10
+    #     intra-repo re-exports (all exact) and fails SAFE (to a phantom) otherwise.
+    #   * the ``re_exported`` modifier stays __init__-only (above) — visibility.py /
+    #     library-exports.yaml consume it as a package-surface signal.
+    # The ``(module_name, local_name) in global_symbols`` skip is a single guard
+    # doing double duty: a locally-DEFINED same-name symbol (already registered by
+    # the build loop) wins over the re-export, and an alias added in a prior
+    # iteration is not re-processed. The bounded fixed point (cap 5) chases N-hop
+    # re-export chains; because ``.get`` reads the live table, a chain often
+    # collapses in one pass, and a chain deeper than the cap fails safe to a phantom.
+    for _ in range(5):
+        changed = False
+        for py_file, analysis in file_analyses.items():
+            if py_file.name == "__init__.py":
+                continue
+            module_name = _module_name_from_path(py_file, repo_root, source_roots)
+            for local_name, (resolved_module, original_name) in analysis.imports.items():
+                if (module_name, local_name) in global_symbols:
+                    continue  # locally defined, or already aliased — leave it
+                source_symbol = global_symbols.get((resolved_module, original_name))
+                if source_symbol is not None:
+                    global_symbols[(module_name, local_name)] = source_symbol
+                    changed = True
+        if not changed:
+            break
+
     # supply:F4 (INV-nuzas) — map every in-tree dotted module name to its
     # first-party file-anchor id, so imports of workspace-sibling modules resolve
     # to real in-repo nodes instead of dangling to phantom external_symbol
