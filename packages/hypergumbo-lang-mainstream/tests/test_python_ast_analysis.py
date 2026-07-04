@@ -7612,3 +7612,371 @@ def test_run_nonpackage_reexport_external_module_shadow_not_aliased(
         "an external-shadowing re-export must not bind to a coincidentally "
         f"same-suffixed in-tree module (exact-match only); got {wrong}"
     )
+
+
+def test_run_module_attr_ref_const_references_in_tree_variable(
+    tmp_path: Path,
+) -> None:
+    """WI-huhum / INV-nuzas: a NON-call attribute read on an imported in-tree
+    module constant (``import authpkg.config as cfg; cfg.CONFIG``) now emits a
+    ``references`` edge to the in-tree ``kind=variable`` instead of a phantom
+    workspace-prefixed ``module_attr_ref`` external. Uses EXACT module match
+    (INV-fahub-safe, mirroring WI-hotug CASE A). Fails RED on current dev (the
+    read minted ``python:authpkg.config:0-0:authpkg.config.CONFIG:external_symbol``
+    and no references edge)."""
+    _build_nuzas_monorepo(tmp_path)
+    auth = tmp_path / "packages" / "auth" / "src" / "authpkg"
+    (auth / "config.py").write_text("CONFIG = {'a': 1}\n")
+    (tmp_path / "packages" / "api" / "src" / "apipkg" / "u.py").write_text(
+        "import authpkg.config as cfg\n"
+        "def use():\n"
+        "    return cfg.CONFIG\n"
+    )
+    out_path = tmp_path / "out.json"
+    run_behavior_map(
+        repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False
+    )
+    data = json.loads(out_path.read_text())
+    config_var = next(
+        n["id"] for n in data["nodes"]
+        if n["kind"] == "variable" and n.get("name") == "CONFIG"
+        and "config.py" in n.get("path", "")
+    )
+    use_fn = next(
+        n["id"] for n in data["nodes"]
+        if n.get("name") == "use" and n["kind"] == "function"
+    )
+    refs = [
+        e for e in data["edges"]
+        if e["type"] == "references" and e["src"] == use_fn
+        and e["dst"] == config_var
+    ]
+    assert len(refs) == 1 and refs[0]["is_resolved"] is True, (
+        "the module-attr read of an in-tree constant must emit a resolved "
+        f"references edge to the in-tree variable; got references="
+        f"{[e for e in data['edges'] if e['type']=='references' and e['src']==use_fn]}"
+    )
+    # No workspace-prefixed phantom module_attr_ref external for CONFIG.
+    ext_ids = [n["id"] for n in data["nodes"] if n["kind"] == "external_symbol"]
+    assert not any("authpkg.config.CONFIG" in i for i in ext_ids), (
+        f"phantom CONFIG module_attr_ref external minted: {[i for i in ext_ids if 'CONFIG' in i]}"
+    )
+
+
+def test_run_module_attr_ref_external_module_stays_phantom(
+    tmp_path: Path,
+) -> None:
+    """WI-huhum negative: a module-attr read on an EXTERNAL module
+    (``import os as o; o.getcwd``) must NOT emit a references edge — os is not
+    in-tree, so exact lookup misses and the read falls through to the unchanged
+    phantom. Locks that the retarget is import-anchored, never fabricated."""
+    _build_nuzas_monorepo(tmp_path)
+    (tmp_path / "packages" / "api" / "src" / "apipkg" / "u.py").write_text(
+        "import os as o\n"
+        "def use():\n"
+        "    return o.getcwd\n"
+    )
+    out_path = tmp_path / "out.json"
+    run_behavior_map(
+        repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False
+    )
+    data = json.loads(out_path.read_text())
+    use_fn = next(
+        n["id"] for n in data["nodes"]
+        if n.get("name") == "use" and n["kind"] == "function"
+    )
+    refs = [
+        e for e in data["edges"]
+        if e["type"] == "references" and e["src"] == use_fn
+    ]
+    assert refs == [], f"external module attr must not emit a references edge, got {refs}"
+
+
+def test_run_module_attr_ref_external_module_name_shadow_not_aliased(
+    tmp_path: Path,
+) -> None:
+    """WI-huhum INV-fahub: exact match, never suffix. A read on an EXTERNAL
+    module (``import json as j; j.SETTINGS``) must NOT bind to a coincidentally
+    same-suffixed in-tree module (``authpkg/json.py`` with a local ``SETTINGS``).
+    Fails RED under a suffix-matching retarget; passes under exact match."""
+    _build_nuzas_monorepo(tmp_path)
+    auth = tmp_path / "packages" / "auth" / "src" / "authpkg"
+    (auth / "json.py").write_text("SETTINGS = {'x': 1}\n")
+    (tmp_path / "packages" / "api" / "src" / "apipkg" / "u.py").write_text(
+        "import json as j\n"
+        "def use():\n"
+        "    return j.SETTINGS\n"
+    )
+    out_path = tmp_path / "out.json"
+    run_behavior_map(
+        repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False
+    )
+    data = json.loads(out_path.read_text())
+    intree_settings = next(
+        n["id"] for n in data["nodes"]
+        if n["kind"] == "variable" and n.get("name") == "SETTINGS"
+        and "json.py" in n.get("path", "")
+    )
+    use_fn = next(
+        n["id"] for n in data["nodes"]
+        if n.get("name") == "use" and n["kind"] == "function"
+    )
+    wrong = [
+        e for e in data["edges"]
+        if e["type"] == "references" and e["src"] == use_fn
+        and e["dst"] == intree_settings
+    ]
+    assert wrong == [], (
+        "an external-module attr read must not bind to a coincidentally "
+        f"same-suffixed in-tree module (exact-match only); got {wrong}"
+    )
+
+
+def test_run_module_attr_ref_alias_shadowed_by_param_no_references(
+    tmp_path: Path,
+) -> None:
+    """WI-huhum INV-fahub scope-shadow guard: a function PARAMETER that shadows a
+    module alias (``import authpkg.config as cfg; def use(cfg): cfg.CONFIG``) must
+    NOT mint a resolved references edge to the module constant — the receiver is
+    the parameter, not the module. Load-bearing: without the guard the retarget
+    would fire on the param, minting a confidently-wrong edge."""
+    _build_nuzas_monorepo(tmp_path)
+    auth = tmp_path / "packages" / "auth" / "src" / "authpkg"
+    (auth / "config.py").write_text("CONFIG = {'a': 1}\n")
+    (tmp_path / "packages" / "api" / "src" / "apipkg" / "u.py").write_text(
+        "import authpkg.config as cfg\n"
+        "def use(cfg):\n"
+        "    return cfg.CONFIG\n"
+    )
+    out_path = tmp_path / "out.json"
+    run_behavior_map(
+        repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False
+    )
+    data = json.loads(out_path.read_text())
+    use_fn = next(
+        n["id"] for n in data["nodes"]
+        if n.get("name") == "use" and n["kind"] == "function"
+    )
+    config_var = next(
+        (n["id"] for n in data["nodes"]
+         if n["kind"] == "variable" and n.get("name") == "CONFIG"
+         and "config.py" in n.get("path", "")), None
+    )
+    refs = [
+        e for e in data["edges"]
+        if e["type"] == "references" and e["src"] == use_fn
+        and e["dst"] == config_var
+    ]
+    assert refs == [], (
+        "a parameter shadowing a module alias must not emit a references edge to "
+        f"the module constant, got {refs}"
+    )
+
+
+def test_run_module_attr_ref_function_target_stays_phantom(
+    tmp_path: Path,
+) -> None:
+    """WI-huhum kind guard: the retarget is variable-only. A module-attr read
+    whose target is a ``kind=function`` (``import authpkg.helpers as h;
+    h.hash_pw``) must NOT emit a references edge — it stays the unchanged
+    phantom. Pins the variable-only scope against a widening drift."""
+    _build_nuzas_monorepo(tmp_path)  # authpkg.helpers defines hash_pw()
+    (tmp_path / "packages" / "api" / "src" / "apipkg" / "u.py").write_text(
+        "import authpkg.helpers as h\n"
+        "def use():\n"
+        "    return h.hash_pw\n"
+    )
+    out_path = tmp_path / "out.json"
+    run_behavior_map(
+        repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False
+    )
+    data = json.loads(out_path.read_text())
+    use_fn = next(
+        n["id"] for n in data["nodes"]
+        if n.get("name") == "use" and n["kind"] == "function"
+    )
+    refs = [
+        e for e in data["edges"]
+        if e["type"] == "references" and e["src"] == use_fn
+    ]
+    assert refs == [], (
+        f"a function-target module-attr read must not emit a references edge "
+        f"(variable-only guard), got {refs}"
+    )
+
+
+def test_run_module_attr_ref_function_local_import_resolves(
+    tmp_path: Path,
+) -> None:
+    """WI-huhum: a FUNCTION-LOCAL module import (``def use(): import
+    authpkg.config as cfg; return cfg.CONFIG``) — the dominant self-corpus shape
+    (a test method importing a module then reading its constant) — must resolve.
+    The local ``import X as Y`` is the module ALIAS, not a shadow, so the shadow
+    guard excludes plain import aliases (only params / assignments / from-import
+    value rebinds shadow). Without the exclusion ~46 of the 52 residual stay
+    phantom (the initial implementation closed only 3)."""
+    _build_nuzas_monorepo(tmp_path)
+    auth = tmp_path / "packages" / "auth" / "src" / "authpkg"
+    (auth / "config.py").write_text("CONFIG = {'a': 1}\n")
+    (tmp_path / "packages" / "api" / "src" / "apipkg" / "u.py").write_text(
+        "def use():\n"
+        "    import authpkg.config as cfg\n"
+        "    return cfg.CONFIG\n"
+    )
+    out_path = tmp_path / "out.json"
+    run_behavior_map(
+        repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False
+    )
+    data = json.loads(out_path.read_text())
+    config_var = next(
+        n["id"] for n in data["nodes"]
+        if n["kind"] == "variable" and n.get("name") == "CONFIG"
+        and "config.py" in n.get("path", "")
+    )
+    use_fn = next(
+        n["id"] for n in data["nodes"]
+        if n.get("name") == "use" and n["kind"] == "function"
+    )
+    refs = [
+        e for e in data["edges"]
+        if e["type"] == "references" and e["src"] == use_fn
+        and e["dst"] == config_var
+    ]
+    assert len(refs) == 1 and refs[0]["is_resolved"] is True, (
+        "a function-local module import is an alias, not a shadow — the retarget "
+        f"must resolve it; got references="
+        f"{[e for e in data['edges'] if e['type']=='references' and e['src']==use_fn]}"
+    )
+
+
+def test_run_module_attr_ref_nested_read_not_attributed_to_enclosing(
+    tmp_path: Path,
+) -> None:
+    """WI-huhum scope-boundary: a module-attr read inside a NESTED function
+    (``def outer(): def inner(): return cfg.CONFIG``) must be attributed to
+    ``inner``, never to the enclosing ``outer`` — the walk is scope-bounded
+    (mirroring _emit_variable_refs), so ``outer`` does not over-walk into
+    ``inner``. Fails RED under a raw ast.walk (which mints a spurious resolved
+    ``outer -> CONFIG`` edge in addition to the correct ``inner -> CONFIG``)."""
+    _build_nuzas_monorepo(tmp_path)
+    auth = tmp_path / "packages" / "auth" / "src" / "authpkg"
+    (auth / "config.py").write_text("CONFIG = {'a': 1}\n")
+    (tmp_path / "packages" / "api" / "src" / "apipkg" / "u.py").write_text(
+        "import authpkg.config as cfg\n"
+        "def outer():\n"
+        "    def inner():\n"
+        "        return cfg.CONFIG\n"
+        "    return inner\n"
+    )
+    out_path = tmp_path / "out.json"
+    run_behavior_map(
+        repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False
+    )
+    data = json.loads(out_path.read_text())
+    config_var = next(
+        n["id"] for n in data["nodes"]
+        if n["kind"] == "variable" and n.get("name") == "CONFIG"
+        and "config.py" in n.get("path", "")
+    )
+    outer_fn = next(
+        n["id"] for n in data["nodes"]
+        if n.get("name") == "outer" and n["kind"] == "function"
+    )
+    inner_fn = next(
+        (n["id"] for n in data["nodes"]
+         if str(n.get("name", "")).endswith("inner")
+         and n["kind"] == "function"), None
+    )
+    # The enclosing `outer` must NOT be credited with the nested read.
+    outer_refs = [
+        e for e in data["edges"]
+        if e["type"] == "references" and e["src"] == outer_fn
+        and e["dst"] == config_var
+    ]
+    assert outer_refs == [], (
+        f"nested read must not be attributed to the enclosing function; got {outer_refs}"
+    )
+    # And `inner` (its own pass) DOES resolve the read.
+    inner_refs = [
+        e for e in data["edges"]
+        if e["type"] == "references" and e["src"] == inner_fn
+        and e["dst"] == config_var
+    ]
+    assert len(inner_refs) == 1, (
+        f"the nested function's own read must resolve to CONFIG; got {inner_refs}"
+    )
+
+
+def test_run_module_attr_ref_nested_param_shadow_no_references(
+    tmp_path: Path,
+) -> None:
+    """WI-huhum scope-boundary + shadow: a nested function PARAMETER that shadows
+    a module alias (``def use(): def inner(cfg): return cfg.CONFIG``) must not
+    mint a resolved references edge from anyone — ``use`` does not over-walk into
+    ``inner`` (scope boundary), and ``inner``'s own pass sees ``cfg`` as its
+    param. Fails RED under a raw ast.walk (spurious ``use -> CONFIG``)."""
+    _build_nuzas_monorepo(tmp_path)
+    auth = tmp_path / "packages" / "auth" / "src" / "authpkg"
+    (auth / "config.py").write_text("CONFIG = {'a': 1}\n")
+    (tmp_path / "packages" / "api" / "src" / "apipkg" / "u.py").write_text(
+        "import authpkg.config as cfg\n"
+        "def use():\n"
+        "    def inner(cfg):\n"
+        "        return cfg.CONFIG\n"
+        "    return inner\n"
+    )
+    out_path = tmp_path / "out.json"
+    run_behavior_map(
+        repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False
+    )
+    data = json.loads(out_path.read_text())
+    config_var = next(
+        (n["id"] for n in data["nodes"]
+         if n["kind"] == "variable" and n.get("name") == "CONFIG"
+         and "config.py" in n.get("path", "")), None
+    )
+    refs = [
+        e for e in data["edges"]
+        if e["type"] == "references" and e["dst"] == config_var
+    ]
+    assert refs == [], (
+        f"a nested param shadowing the module alias must emit no references edge, got {refs}"
+    )
+
+
+def test_run_module_attr_ref_module_scope_read_resolves(
+    tmp_path: Path,
+) -> None:
+    """WI-huhum module scope: a module-level attribute read of an imported
+    in-tree constant (``import authpkg.config as cfg; X = cfg.CONFIG`` at module
+    scope) resolves to the in-tree variable, attributed to the reading file
+    node. Covers the module-scope retarget path (the function-scope tests do
+    not exercise it)."""
+    _build_nuzas_monorepo(tmp_path)
+    auth = tmp_path / "packages" / "auth" / "src" / "authpkg"
+    (auth / "config.py").write_text("CONFIG = {'a': 1}\n")
+    (tmp_path / "packages" / "api" / "src" / "apipkg" / "u.py").write_text(
+        "import authpkg.config as cfg\n"
+        "X = cfg.CONFIG\n"
+    )
+    out_path = tmp_path / "out.json"
+    run_behavior_map(
+        repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False
+    )
+    data = json.loads(out_path.read_text())
+    nodes = {n["id"]: n for n in data["nodes"]}
+    config_var = next(
+        n["id"] for n in data["nodes"]
+        if n["kind"] == "variable" and n.get("name") == "CONFIG"
+        and "config.py" in n.get("path", "")
+    )
+    refs = [
+        e for e in data["edges"]
+        if e["type"] == "references" and e["dst"] == config_var
+    ]
+    assert len(refs) == 1 and refs[0]["is_resolved"] is True, (
+        f"a module-scope module-attr read must resolve to the in-tree variable; got {refs}"
+    )
+    assert "u.py" in nodes[refs[0]["src"]].get("path", ""), (
+        f"the module-scope read must be attributed to u.py; got src={refs[0]['src']}"
+    )

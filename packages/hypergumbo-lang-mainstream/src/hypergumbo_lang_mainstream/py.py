@@ -3097,12 +3097,24 @@ def _extract_edges(
 
     def _collect_local_bindings(
         func_node: ast.FunctionDef | ast.AsyncFunctionDef,
+        include_import_aliases: bool = True,
     ) -> frozenset[str]:
         """Return names bound locally in *func_node* (params + body assignments).
 
         Used to detect shadows that suppress variable-reference edges.
         Walks the immediate scope only — nested function/class bodies are
         excluded so their locals don't mask the enclosing function's view.
+
+        *include_import_aliases* (default True) controls whether a plain
+        ``import X as Y`` alias counts as a binding. For the ``references``
+        edges to module-level VARIABLES (``_emit_variable_refs``) it must — a
+        local ``import foo as bar`` rebinds ``bar`` off a same-named module
+        variable. For the WI-huhum ``module_attr_ref`` retarget it must NOT:
+        there ``local_name`` IS a module alias (that is why it is in
+        ``module_imports``), and a function-local ``import pkg.mod as m`` — the
+        dominant self-corpus shape (``m.CONST`` inside a test method) — is the
+        alias we want to resolve, not a shadow of it. ``from``-import value
+        rebinds and param/assignment shadows are still collected either way.
         """
         names: set[str] = set()
         for arg in func_node.args.args:
@@ -3123,8 +3135,9 @@ def _extract_edges(
                 if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store):
                     names.add(node.id)
                 elif isinstance(node, ast.Import):
-                    for alias in node.names:
-                        names.add(alias.asname or alias.name.split(".")[0])
+                    if include_import_aliases:
+                        for alias in node.names:
+                            names.add(alias.asname or alias.name.split(".")[0])
                 elif isinstance(node, ast.ImportFrom):
                     for alias in node.names:
                         names.add(alias.asname or alias.name)
@@ -3273,6 +3286,7 @@ def _extract_edges(
     def _emit_module_attr_refs(
         block_nodes: list[ast.AST],
         caller_symbol: Symbol,
+        local_bindings: frozenset[str] = frozenset(),
     ) -> None:
         """Emit ``module_attr_ref`` edges for attribute reads on imported modules.
 
@@ -3284,34 +3298,83 @@ def _extract_edges(
         io_primitives YAML catalog, which were previously dead metadata —
         without an edge to match, ``io-boundaries`` silently under-reported
         env_read / ipc_send chains (WI-guhok).
+
+        WI-huhum / INV-nuzas: when the imported module is IN-TREE and the
+        attribute names a first-party module-level VARIABLE (``import
+        authpkg.config as cfg; cfg.CONFIG``), emit a ``references`` edge to the
+        real variable instead of a workspace-prefixed phantom ``external_symbol``
+        (the 52 ``module_attr_ref`` residual of INV-nuzas's acceptance-property
+        failure). *local_bindings* carries the caller's own bound names so a
+        param/local shadowing the module alias stays phantom (INV-fahub).
         """
         # Pre-collect Attribute-node ids that are the direct callee of a Call
         # so we can skip them below — `os.getenv("X")` already produces a
         # `calls` edge and doesn't need a redundant `module_attr_ref`.
         call_func_attr_ids = _collect_call_func_attr_ids(block_nodes)
+        # Scope-bounded walk (mirrors _emit_variable_refs): a nested
+        # function/class body is a DIFFERENT scope with its own alias bindings
+        # and its own _emit_module_attr_refs pass, so descending into it here
+        # would (a) mis-attribute a nested read to THIS caller and (b) apply
+        # this caller's shadow set to a name the nested scope may rebind — under
+        # the WI-huhum retarget that mints a confidently-wrong RESOLVED
+        # ``references`` edge (worse than the pre-change dead-end phantom). Reads
+        # in nested scopes are emitted, correctly attributed, by their own passes.
+        scope_boundary = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
 
-        for root in block_nodes:
-            for sub in ast.walk(root):
-                if not isinstance(sub, ast.Attribute):
-                    continue
-                if id(sub) in call_func_attr_ids:
-                    continue
-                if not isinstance(sub.value, ast.Name):
-                    continue
-                local_name = sub.value.id
-                if local_name not in module_imports:
-                    continue
-                real_module = module_imports[local_name]
-                qname = f"{real_module}.{sub.attr}"
-                edges.append(Edge.create(
-                    src=caller_symbol.id,
-                    dst=f"python:{real_module}:0-0:{qname}:attribute",
-                    edge_type="module_attr_ref",
-                    line=sub.lineno,
-                    evidence_type="module_attribute_reference",
-                    origin=PASS_ID,
-                    origin_run_id=run_id,
-                ))
+        def _emit_one(sub: ast.Attribute) -> None:
+            if id(sub) in call_func_attr_ids:
+                return
+            if not isinstance(sub.value, ast.Name):
+                return
+            local_name = sub.value.id
+            if local_name not in module_imports:
+                return
+            real_module = module_imports[local_name]
+            # WI-huhum retarget: an in-tree module VARIABLE resolves to its
+            # real node. EXACT module match (global_symbols.get) — NOT the
+            # suffix-matching _lookup_symbol_by_module — because on this
+            # imported-module surface a suffix match would bind an external
+            # ``import json as j; j.X`` to a coincidentally-named in-tree
+            # ``pkg/json.py`` (an INV-fahub violation; mirrors WI-hotug CASE A).
+            # ``references`` (not ``module_attr_ref``) keeps this taint-safe:
+            # module_attr_ref IS in TAINT_CALL_EDGE_TYPES, so retargeting to a
+            # live in-tree node would inject a new taint frontier; references is
+            # not, and matches _emit_variable_refs' first-party module-variable
+            # read. Scope-shadow-guarded so a param/local rebinding the alias
+            # stays phantom.
+            if local_name not in local_bindings:
+                target = global_symbols.get((real_module, sub.attr))
+                if target is not None and target.kind == "variable":
+                    edges.append(Edge.create(
+                        src=caller_symbol.id,
+                        dst=target.id,
+                        edge_type="references",
+                        line=sub.lineno,
+                        evidence_type="ast_name_read",
+                        origin=PASS_ID,
+                        origin_run_id=run_id,
+                    ))
+                    return
+            qname = f"{real_module}.{sub.attr}"
+            edges.append(Edge.create(
+                src=caller_symbol.id,
+                dst=f"python:{real_module}:0-0:{qname}:attribute",
+                edge_type="module_attr_ref",
+                line=sub.lineno,
+                evidence_type="module_attribute_reference",
+                origin=PASS_ID,
+                origin_run_id=run_id,
+            ))
+
+        def _walk(nodes: list[ast.AST]) -> None:
+            for node in nodes:
+                if isinstance(node, scope_boundary):
+                    continue  # a nested scope is emitted by its own pass
+                if isinstance(node, ast.Attribute):
+                    _emit_one(node)
+                _walk(list(ast.iter_child_nodes(node)))
+
+        _walk(list(block_nodes))
 
     # Helper to extract edges from a code block (function body, module level, etc.)
     def _external_constructor_module(call: ast.Call) -> str | None:
@@ -3942,7 +4005,12 @@ def _extract_edges(
                     local_names_by_func_id,
                 )
                 _emit_closure_factory_dispatch(node, caller_symbol, inner_scope)
-                _emit_module_attr_refs(node.body, caller_symbol)
+                _emit_module_attr_refs(
+                    node.body, caller_symbol,
+                    local_bindings=_collect_local_bindings(
+                        node, include_import_aliases=False
+                    ),
+                )
                 process_code_block(node.body, caller_symbol, param_types, stack=stack)
                 _emit_variable_refs(
                     node.body, caller_symbol,
