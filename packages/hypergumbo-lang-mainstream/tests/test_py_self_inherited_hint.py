@@ -1124,3 +1124,236 @@ class TestWiSupatImportShadowBlocker:
             "import-shadowed receiver_type_id minted a confidently-wrong "
             "resolved edge f -> LocalBase.compute (should bias to unresolved)"
         )
+
+
+class TestWiSupatFieldTypeIdsProducer:
+    """WI-supat (D3) PR-B producer: each class symbol carries a parallel
+    meta['field_type_ids'] = {field: type_id} alongside meta['fields'], so the
+    inherited_calls Site-3 resolver can disambiguate a same-short-name field
+    TYPE. Per-field gated by the same trustworthiness check as receiver_type_id
+    (file-unique type name AND not import-shadowed)."""
+
+    def test_field_type_ids_typed_param(self, tmp_path: Path) -> None:
+        # self.db = db where db: Database -> field_type_ids['db'] == Database.id.
+        src = (
+            "class Database:\n"
+            "    pass\n"
+            "class Repo:\n"
+            "    def __init__(self, db: Database):\n"
+            "        self.db = db\n"
+        )
+        res = _analyze(tmp_path, src)
+        meta = _class_meta(res, "Repo")
+        assert meta.get("fields") == {"db": "Database"}
+        assert meta.get("field_type_ids") == {"db": _class_id(res, "Database")}
+
+    def test_field_type_ids_constructor_field(self, tmp_path: Path) -> None:
+        # self.log = Logger() -> field_type_ids['log'] == Logger.id.
+        src = (
+            "class Logger:\n"
+            "    pass\n"
+            "class Svc:\n"
+            "    def __init__(self):\n"
+            "        self.log = Logger()\n"
+        )
+        res = _analyze(tmp_path, src)
+        meta = _class_meta(res, "Svc")
+        assert meta.get("field_type_ids") == {"log": _class_id(res, "Logger")}
+
+    def test_untyped_field_has_no_field_type_ids(self, tmp_path: Path) -> None:
+        # A class whose only field is untyped (no resolvable type) gets neither
+        # meta['fields'] nor meta['field_type_ids'].
+        src = (
+            "class Repo:\n"
+            "    def __init__(self, x):\n"
+            "        self.x = x\n"
+        )
+        res = _analyze(tmp_path, src)
+        meta = _class_meta(res, "Repo")
+        assert "field_type_ids" not in meta
+
+    def test_field_type_ids_omitted_on_samename_type_collision(
+        self, tmp_path: Path
+    ) -> None:
+        # Two same-short-name Database classes -> the field's type id is
+        # untrustworthy (bare-name inference could hit the wrong twin) -> the
+        # entry is omitted (fields still present).
+        src = (
+            "class Database:\n"
+            "    pass\n"
+            "class Outer:\n"
+            "    class Database:\n"
+            "        pass\n"
+            "class Repo:\n"
+            "    def __init__(self, db: Database):\n"
+            "        self.db = db\n"
+        )
+        res = _analyze(tmp_path, src)
+        meta = _class_meta(res, "Repo")
+        assert meta.get("fields") == {"db": "Database"}
+        assert "field_type_ids" not in meta
+
+
+class TestWiSupatFieldTypeImportShadow:
+    """WI-supat (D3) PR-B review should_fix: a FIELD type that is a local class
+    shadowed by a same-name in-tree import must be OMITTED from
+    meta['field_type_ids'] at the producer, so the linker never treats the
+    (wrong, shadowed) local class as the authoritative field type.
+
+    Runs via the FULL pipeline (run_behavior_map) DELIBERATELY: the single-file
+    extract_nodes path passes imports={}, so the import-shadow arm of
+    _receiver_type_id_trustworthy never fires there. The assertion is at the
+    PRODUCER (the parent class's meta), not the downstream edge — non-vacuous
+    (bypassing the trustworthiness gate stamps field_type_ids['x'] with the
+    shadowed local class id; the gate omits it)."""
+
+    def test_field_type_import_shadow_omits_field_type_id(
+        self, tmp_path: Path
+    ) -> None:
+        import json
+
+        from hypergumbo_core.cli import run_behavior_map
+
+        (tmp_path / "b.py").write_text(
+            "class Foo:\n"
+            "    def compute(self):\n"
+            "        return 2\n"
+        )
+        # a.py: a LOCAL `class Foo` shadowed by `from b import Foo`, used as the
+        # type of Base's injected field `x`. The local-first annotation
+        # resolution picks a.Foo, but the runtime binding is b.Foo -> the
+        # producer must OMIT field_type_ids['x'] (import-shadowed) so the linker
+        # never binds the field to the wrong (shadowed) local class.
+        (tmp_path / "a.py").write_text(
+            "class Foo:\n"
+            "    def compute(self):\n"
+            "        return 1\n"
+            "from b import Foo\n"
+            "class Base:\n"
+            "    def __init__(self, x: Foo):\n"
+            "        self.x = x\n"
+        )
+        out_path = tmp_path / "out.json"
+        run_behavior_map(
+            repo_root=tmp_path, out_path=out_path,
+            include_sketch_precomputed=False,
+        )
+        data = json.loads(out_path.read_text())
+        base = next(
+            n for n in data["nodes"]
+            if n.get("name") == "Base" and n.get("kind") == "class"
+        )
+        meta = base.get("meta") or {}
+        # The field name is still recorded (fields), but its concrete type id is
+        # omitted because the type name is import-shadowed.
+        assert (meta.get("fields") or {}).get("x") == "Foo"
+        assert "x" not in (meta.get("field_type_ids") or {})
+
+
+class TestWiSupatEndToEndRecall:
+    """WI-supat (D3) e2e RECALL: the concrete-id collision-recovery actually
+    FIRES through the full pipeline. These lock the fix for the finalize
+    relativization gap — before it, the producer-stamped ids kept their
+    absolute-path form while the linker's class_symbols index was relativized, so
+    every concrete id silently fell back to the name path and the recovery never
+    fired (the negative e2e tests passed regardless via that same fallback, which
+    is why this class exists: a POSITIVE recall assertion end-to-end)."""
+
+    def test_field_type_id_recall_fires_e2e(self, tmp_path: Path) -> None:
+        # PR-B: a Base field typed to log1.Logger; a same-name log2.Logger makes
+        # the field-type NAME collide -> without field_type_ids the linker biases
+        # to unresolved. With it, Sub.run's self.log.info() resolves to
+        # log1.Logger.info.
+        import json
+
+        from hypergumbo_core.cli import run_behavior_map
+
+        (tmp_path / "log1.py").write_text(
+            "class Logger:\n    def info(self):\n        return 1\n"
+        )
+        (tmp_path / "log2.py").write_text("class Logger:\n    pass\n")
+        (tmp_path / "app.py").write_text(
+            "from log1 import Logger\n"
+            "class Base:\n"
+            "    def __init__(self, log: Logger):\n"
+            "        self.log = log\n"
+            "class Sub(Base):\n"
+            "    def run(self):\n"
+            "        return self.log.info()\n"
+        )
+        out_path = tmp_path / "out.json"
+        run_behavior_map(
+            repo_root=tmp_path, out_path=out_path,
+            include_sketch_precomputed=False,
+        )
+        data = json.loads(out_path.read_text())
+        sub_run = next(
+            n["id"] for n in data["nodes"]
+            if n.get("name") == "Sub.run" and n.get("kind") == "method"
+        )
+        log1_info = {
+            n["id"] for n in data["nodes"]
+            if n.get("name") == "Logger.info"
+            and (n.get("path") or "").endswith("log1.py")
+        }
+        resolved = [
+            e for e in data["edges"]
+            if e["type"] == "calls" and e["src"] == sub_run
+            and e["dst"] in log1_info and e.get("is_resolved")
+        ]
+        assert len(resolved) == 1, (
+            "field_type_ids collision-recovery did not fire e2e "
+            "(Sub.run -> log1.Logger.info unresolved)"
+        )
+        assert (resolved[0].get("meta") or {}).get("evidence_type") == (
+            "ast_call_inherited_field"
+        )
+
+    def test_enclosing_class_id_recall_fires_e2e(self, tmp_path: Path) -> None:
+        # PR-A (activated by the same finalize fix): two same-name Worker classes;
+        # w1.Worker inherits greet from a cross-file BaseA. Without a concrete
+        # enclosing_class_id the "Worker" name collision biases self.greet() to
+        # unresolved; with it, w1.Worker.run resolves to BaseA.greet.
+        import json
+
+        from hypergumbo_core.cli import run_behavior_map
+
+        (tmp_path / "basea.py").write_text(
+            "class BaseA:\n    def greet(self):\n        return 'a'\n"
+        )
+        (tmp_path / "w1.py").write_text(
+            "from basea import BaseA\n"
+            "class Worker(BaseA):\n"
+            "    def run(self):\n"
+            "        return self.greet()\n"
+        )
+        (tmp_path / "w2.py").write_text(
+            "class Worker:\n    def run(self):\n        return 0\n"
+        )
+        out_path = tmp_path / "out.json"
+        run_behavior_map(
+            repo_root=tmp_path, out_path=out_path,
+            include_sketch_precomputed=False,
+        )
+        data = json.loads(out_path.read_text())
+        w1_run = {
+            n["id"] for n in data["nodes"]
+            if n.get("name") == "Worker.run"
+            and (n.get("path") or "").endswith("w1.py")
+        }
+        basea_greet = {
+            n["id"] for n in data["nodes"]
+            if n.get("name") == "BaseA.greet" and n.get("kind") == "method"
+        }
+        resolved = [
+            e for e in data["edges"]
+            if e["type"] == "calls" and e["src"] in w1_run
+            and e["dst"] in basea_greet and e.get("is_resolved")
+        ]
+        assert len(resolved) == 1, (
+            "enclosing_class_id collision-recovery did not fire e2e "
+            "(w1.Worker.run -> BaseA.greet unresolved)"
+        )
+        assert (resolved[0].get("meta") or {}).get("evidence_type") == (
+            "ast_call_inherited"
+        )

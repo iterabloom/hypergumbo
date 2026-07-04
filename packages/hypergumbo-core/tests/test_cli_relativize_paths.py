@@ -150,6 +150,73 @@ class TestRelativizeIRPaths:
         assert s.meta["handler_ref"] == "userController.list"
         assert s.meta["loader_count"] == 3
 
+    def test_edge_meta_id_values_become_relative(self) -> None:
+        """WI-supat: the concrete-class ids threaded on Edge meta
+        (``enclosing_class_id`` / ``receiver_type_id``) are relativized so the
+        inherited_calls linker (run AFTER this pass) can match them against the
+        relativized class_symbols index. Edge meta was formerly not relativized
+        at all — only src/dst — so these ids went stale and the concrete-id
+        collision-recovery never fired."""
+        repo = Path("/repo/root")
+        e = _edge(
+            src="python:/repo/root/a.py:1-2:Caller.run:method",
+            dst="python:external:0-0:m:unresolved",
+        )
+        e.meta = {
+            "enclosing_class_id": "python:/repo/root/a.py:1-5:Worker:class",
+            "receiver_type_id": "python:/repo/root/b.py:1-5:Foo:class",
+            "enclosing_class": "Worker",  # short name — no prefix, untouched
+        }
+        _relativize_ir_paths(repo, [], [e], [])
+        assert e.meta["enclosing_class_id"] == "python:a.py:1-5:Worker:class"
+        assert e.meta["receiver_type_id"] == "python:b.py:1-5:Foo:class"
+        assert e.meta["enclosing_class"] == "Worker"
+
+    def test_symbol_meta_dict_value_ids_become_relative(self) -> None:
+        """WI-supat: ``field_type_ids`` is a ``{field: id}`` DICT on a class
+        symbol's meta; its id VALUES must be relativized (the str-only meta pass
+        left dict values stale, so the Site-3 field-type collision-recovery never
+        fired). Field-name keys and the parallel name-only ``fields`` dict are
+        untouched."""
+        repo = Path("/repo/root")
+        s = _sym(
+            id="python:/repo/root/base.py:1-5:Base:class",
+            path="/repo/root/base.py",
+        )
+        s.meta = {
+            "fields": {"log": "Logger"},  # short type name — untouched
+            "field_type_ids": {"log": "python:/repo/root/log.py:1-3:Logger:class"},
+        }
+        _relativize_ir_paths(repo, [s], [], [])
+        assert s.meta["field_type_ids"] == {"log": "python:log.py:1-3:Logger:class"}
+        assert s.meta["fields"] == {"log": "Logger"}
+
+    def test_meta_relativization_is_idempotent(self) -> None:
+        """The pass runs TWICE (Phase B + finalize backstop); the second run must
+        be a no-op on the already-relative edge-meta strings and symbol-meta dict
+        values (prefix-guarded replace)."""
+        repo = Path("/repo/root")
+        e = _edge(
+            src="python:/repo/root/a.py:1-2:Caller.run:method",
+            dst="python:external:0-0:m:unresolved",
+        )
+        e.meta = {"enclosing_class_id": "python:/repo/root/a.py:1-5:Worker:class"}
+        s = _sym(
+            id="python:/repo/root/base.py:1-5:Base:class",
+            path="/repo/root/base.py",
+        )
+        s.meta = {"field_type_ids": {"log": "python:/repo/root/log.py:1-3:Logger:class"}}
+        _relativize_ir_paths(repo, [s], [e], [])
+        after_first = (
+            e.meta["enclosing_class_id"], dict(s.meta["field_type_ids"]),
+        )
+        _relativize_ir_paths(repo, [s], [e], [])  # second pass — must be a no-op
+        assert (e.meta["enclosing_class_id"], dict(s.meta["field_type_ids"])) == (
+            after_first
+        )
+        assert e.meta["enclosing_class_id"] == "python:a.py:1-5:Worker:class"
+        assert s.meta["field_type_ids"] == {"log": "python:log.py:1-3:Logger:class"}
+
     def test_route_handler_edge_lands_after_meta_relativization(self) -> None:
         """dispatch:F1 end-to-end (INV-pohik symptom 2): relativizing the route's
         absolute ``handler_ref`` lets the route_handler linker resolve the handler

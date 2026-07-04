@@ -114,33 +114,73 @@ def _relativize_ir_paths(
     ``path:start_line:context_name:position``; because ``path`` is part of the preimage we
     recompute the id from the relativized path so the hash is stable across machines.
 
-    String values in ``Symbol.meta`` that embed a full symbol ID are relativized the same
-    way (dispatch:F1 / INV-pohik symptom 2). The canonical case is a route symbol's
-    ``handler_ref``: the route_handler linker runs *after* this pass and resolves the
-    direct case by ID against the relativized id index, so an un-relativized ``handler_ref``
-    misses every lookup and the route → handler ``dispatches_to`` edge never lands, leaving
-    the route's feature slice empty. Short-name refs (Express ``handler_ref``, ``view_name``)
-    and non-string meta values never carry the prefix and are left untouched.
+    ID-embedding values in ``Symbol.meta`` AND ``Edge.meta`` are relativized the same way
+    (dispatch:F1 / INV-pohik symptom 2), covering both string values and one level of
+    ``dict`` values. The original case is a route symbol's ``handler_ref`` (a string):
+    the route_handler linker runs *after* this pass and resolves the direct case by ID
+    against the relativized id index, so an un-relativized ``handler_ref`` misses every
+    lookup and the route → handler ``dispatches_to`` edge never lands. WI-supat adds two
+    more shapes with the SAME failure mode: the concrete-class ids threaded for
+    inherited-call resolution — ``enclosing_class_id`` / ``receiver_type_id`` on **Edge**
+    meta (which was formerly not relativized at all — only ``src``/``dst`` were), and
+    ``field_type_ids`` (a ``{field: id}`` **dict**) on a class Symbol's meta — are compared
+    against the relativized ``class_symbols`` index by the inherited_calls linker (also run
+    after this pass), so an un-relativized id silently falls back to the name path and the
+    concrete-id collision-recovery never fires. Short-name refs (Express ``handler_ref``,
+    ``view_name``) and values that don't carry the prefix are left untouched.
 
     Runs once at Phase B (``cli``) and again as finalize sub-step 1 — the second call is an
-    idempotent backstop catching any absolute path minted after Phase B (e.g. by a linker
-    or boundary synthesis); on already-relative paths it is a no-op.
+    idempotent backstop (the prefix-guarded ``str.replace`` is a no-op on already-relative
+    values) catching any absolute path minted after Phase B in a *string* or one-level
+    *dict-of-str* meta value (e.g. by a linker or boundary synthesis). SHAPE SCOPE: only
+    ``sym.id``/``sym.path``/``edge.src``/``edge.dst`` and string + one-level dict-of-str
+    ``meta`` values are relativized; **list-valued and nested-dict meta shapes are
+    intentionally out of scope** because no current producer mints a repo-root-absolute path
+    in those shapes (``edge.meta['referring_paths']``, the only list-of-paths meta, is minted
+    AFTER this pass from already-relative ``edge.src`` slots — see ``_relativize_meta``).
     """
     prefix = str(repo_root) + "/"
+
+    def _relativize_meta(meta: "dict | None") -> None:
+        """Relativize prefix-bearing ID strings in a meta dict, in place.
+
+        SHAPE CONTRACT (load-bearing — read before threading a new id-embedding
+        meta key): an id/path-embedding meta value MUST be either a top-level
+        ``str`` (``handler_ref``, ``enclosing_class_id``, ``receiver_type_id``) or
+        a one-level ``{key: id_str}`` ``dict`` (``field_type_ids``). Those two
+        shapes are relativized here; LIST values and NESTED dicts are deliberately
+        NOT (no current producer mints a repo-root-absolute path in them). If you
+        add a concrete symbol id to meta as a list element or a two-level dict,
+        this helper will SILENTLY SKIP it — the stale absolute id then misses the
+        relativized ``class_symbols`` index and the consumer inertly falls back
+        (the exact name-path masking that hid the original WI-supat bug). So:
+        extend this helper to that shape AND add a POSITIVE end-to-end assertion
+        (a resolved edge, not just "no wrong edge") that fails on revert.
+        Non-string / non-dict values and short-name refs are untouched (they never
+        carry the ``repo_root`` prefix).
+        """
+        if not meta:
+            return
+        for key, value in list(meta.items()):
+            if isinstance(value, str) and prefix in value:
+                meta[key] = value.replace(prefix, "")
+            elif isinstance(value, dict):
+                for k2, v2 in list(value.items()):
+                    if isinstance(v2, str) and prefix in v2:
+                        value[k2] = v2.replace(prefix, "")
+
     for sym in symbols:
         if prefix in sym.id:
             sym.id = sym.id.replace(prefix, "")
         if sym.path and prefix in sym.path:
             sym.path = sym.path.replace(prefix, "")
-        if sym.meta:
-            for key, value in list(sym.meta.items()):
-                if isinstance(value, str) and prefix in value:
-                    sym.meta[key] = value.replace(prefix, "")
+        _relativize_meta(sym.meta)
     for edge in edges:
         if prefix in edge.src:
             edge.src = edge.src.replace(prefix, "")
         if prefix in edge.dst:
             edge.dst = edge.dst.replace(prefix, "")
+        _relativize_meta(edge.meta)
     for uc in usage_contexts:
         path_was_absolute = prefix in uc.path
         if path_was_absolute:

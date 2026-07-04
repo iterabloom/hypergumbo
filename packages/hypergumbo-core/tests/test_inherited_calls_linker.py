@@ -1823,12 +1823,22 @@ class TestPythonSite1SelfCalls:
         assert "java" not in _SITE1_STRICT_LANGS
 
 
-def _py_cls_fields(sid: str, name: str, fields: dict, path: str = "/m.py") -> Symbol:
-    """Python class symbol carrying meta['fields'] (mirrors the PR-3 producer)."""
+def _py_cls_fields(
+    sid: str, name: str, fields: dict, path: str = "/m.py",
+    field_ids: dict | None = None,
+) -> Symbol:
+    """Python class symbol carrying meta['fields'] (mirrors the PR-3 producer).
+
+    WI-supat PR-B: an optional ``field_ids`` populates the parallel
+    ``meta['field_type_ids'] = {field: type_id}`` map the field-type-id resolver
+    reads."""
+    meta: dict = {"fields": dict(fields)}
+    if field_ids is not None:
+        meta["field_type_ids"] = dict(field_ids)
     return Symbol(
         id=sid, name=name, kind="class", language="python", path=path,
         span=Span(start_line=1, end_line=5, start_col=0, end_col=0),
-        origin="test", origin_run_id="test-run", meta={"fields": dict(fields)},
+        origin="test", origin_run_id="test-run", meta=meta,
     )
 
 
@@ -2373,3 +2383,233 @@ class TestWiSupatConcreteClassId:
         )
         result = link_inherited_calls(ctx)
         assert result.edges == []
+
+
+class TestWiSupatFieldTypeId:
+    """WI-supat (D3) PR-B: a concrete field-TYPE id, threaded on the PARENT
+    class symbol's meta['field_type_ids'], lets Site-3 resolve a same-short-name
+    field-type collision precisely instead of biasing to unresolved. Absent
+    (java/legacy fields-only), stale, or foreign-language ids fall back to the
+    name+guard path."""
+
+    def test_walk_parents_for_field_returns_type_id_on_hit(self) -> None:
+        # The 2-tuple contract: (type_name, type_id) when the parent carries
+        # field_type_ids.
+        from hypergumbo_core.linkers.inherited_calls import (
+            _walk_parents_for_field,
+        )
+        child = _py_cls("sym:py.Child", "Child", path="/c.py")
+        parent = _py_cls_fields(
+            "sym:py.Parent", "Parent", {"log": "Logger"},
+            path="/p.py", field_ids={"log": "sym:py.Logger"},
+        )
+        inheritance_index = {child.id: [(parent.id, "extends")]}
+        class_symbols = {child.id: child, parent.id: parent}
+        result = _walk_parents_for_field(
+            child.id, "log", inheritance_index, class_symbols,
+        )
+        assert result == ("Logger", "sym:py.Logger")
+
+    def test_walk_parents_for_field_none_id_when_absent(self) -> None:
+        # Legacy / java shape: meta['fields'] present, no field_type_ids ->
+        # (type_name, None). Preserves java Site-3 (falls to the name path).
+        from hypergumbo_core.linkers.inherited_calls import (
+            _walk_parents_for_field,
+        )
+        child = _py_cls("sym:py.Child", "Child", path="/c.py")
+        parent = _py_cls_fields(
+            "sym:py.Parent", "Parent", {"log": "Logger"}, path="/p.py",
+        )
+        inheritance_index = {child.id: [(parent.id, "extends")]}
+        class_symbols = {child.id: child, parent.id: parent}
+        result = _walk_parents_for_field(
+            child.id, "log", inheritance_index, class_symbols,
+        )
+        assert result == ("Logger", None)
+
+    def test_field_type_id_resolves_right_namesake(self) -> None:
+        # Unique enclosing Sub; the field's TYPE name "Logger" resolves to TWO
+        # classes (logger1 has info, logger2 none). field_type_ids picks logger1
+        # -> resolves (was [] under the field-type len>1 guard, B9).
+        logger1 = _py_cls("sym:py.Logger1", "Logger", path="/log1.py")
+        info1 = _py_method("sym:py.Logger1.info", "Logger.info", path="/log1.py")
+        logger2 = _py_cls("sym:py.Logger2", "Logger", path="/log2.py")
+        base = _py_cls_fields(
+            "sym:py.Base", "Base", {"log": "Logger"}, path="/base.py",
+            field_ids={"log": logger1.id},
+        )
+        sub = _py_cls("sym:py.Sub", "Sub", path="/sub.py")
+        caller = _py_caller()
+        edges = [
+            _edge(sub.id, base.id, "extends"),
+            _unresolved_site3_lang(
+                src_id=caller.id, callee_name="info",
+                enclosing_class="Sub", inherited_field_receiver="log",
+                lang="python",
+            ),
+        ]
+        ctx = LinkerContext(
+            repo_root=Path("/"),
+            symbols=[logger1, info1, logger2, base, sub, caller], edges=edges,
+        )
+        result = link_inherited_calls(ctx)
+        resolved = [e for e in result.edges if e.src == caller.id]
+        assert len(resolved) == 1
+        assert resolved[0].dst == info1.id
+        assert resolved[0].evidence_type == "ast_call_inherited_field"
+        assert resolved[0].confidence == 0.80
+
+    def test_field_type_id_wrong_namesake_stays_unresolved(self) -> None:
+        # PAIRED NEGATIVE: field_type_ids points at logger2 (the "Logger" WITHOUT
+        # info) -> resolves nothing on logger2 -> unresolved (the id SELECTS).
+        logger1 = _py_cls("sym:py.Logger1", "Logger", path="/log1.py")
+        info1 = _py_method("sym:py.Logger1.info", "Logger.info", path="/log1.py")
+        logger2 = _py_cls("sym:py.Logger2", "Logger", path="/log2.py")
+        base = _py_cls_fields(
+            "sym:py.Base", "Base", {"log": "Logger"}, path="/base.py",
+            field_ids={"log": logger2.id},
+        )
+        sub = _py_cls("sym:py.Sub", "Sub", path="/sub.py")
+        caller = _py_caller()
+        edges = [
+            _edge(sub.id, base.id, "extends"),
+            _unresolved_site3_lang(
+                src_id=caller.id, callee_name="info",
+                enclosing_class="Sub", inherited_field_receiver="log",
+                lang="python",
+            ),
+        ]
+        ctx = LinkerContext(
+            repo_root=Path("/"),
+            symbols=[logger1, info1, logger2, base, sub, caller], edges=edges,
+        )
+        result = link_inherited_calls(ctx)
+        assert result.edges == []
+
+    def test_field_type_stale_id_falls_back_to_guard(self) -> None:
+        # field_type_ids points at a symbol not in class_symbols -> fall back to
+        # the field-type name path; the "Logger" collision then biases to [].
+        logger1 = _py_cls("sym:py.Logger1", "Logger", path="/log1.py")
+        info1 = _py_method("sym:py.Logger1.info", "Logger.info", path="/log1.py")
+        logger2 = _py_cls("sym:py.Logger2", "Logger", path="/log2.py")
+        base = _py_cls_fields(
+            "sym:py.Base", "Base", {"log": "Logger"}, path="/base.py",
+            field_ids={"log": "sym:py.GhostLogger"},
+        )
+        sub = _py_cls("sym:py.Sub", "Sub", path="/sub.py")
+        caller = _py_caller()
+        edges = [
+            _edge(sub.id, base.id, "extends"),
+            _unresolved_site3_lang(
+                src_id=caller.id, callee_name="info",
+                enclosing_class="Sub", inherited_field_receiver="log",
+                lang="python",
+            ),
+        ]
+        ctx = LinkerContext(
+            repo_root=Path("/"),
+            symbols=[logger1, info1, logger2, base, sub, caller], edges=edges,
+        )
+        result = link_inherited_calls(ctx)
+        assert result.edges == []
+
+    def test_field_type_foreign_language_id_rejected(self) -> None:
+        # A python edge whose field_type_ids points at a JAVA "Logger" (with
+        # info). The language guard rejects it -> name path -> three "Logger"
+        # (1 jv + 2 py) collide -> unresolved.
+        # NON-VACUITY: jv_logger.info is DIRECTLY resolvable, so WITHOUT the
+        # language guard the field-type id path would bind jv.Logger.info.
+        jv_logger = _cls(
+            "sym:jv.Logger", "Logger", path="/Logger.java", language="java"
+        )
+        jv_info = _method(
+            "sym:jv.Logger.info", "Logger.info", path="/Logger.java",
+            language="java",
+        )
+        py_logger1 = _py_cls("sym:py.Logger1", "Logger", path="/log1.py")
+        py_logger2 = _py_cls("sym:py.Logger2", "Logger", path="/log2.py")
+        base = _py_cls_fields(
+            "sym:py.Base", "Base", {"log": "Logger"}, path="/base.py",
+            field_ids={"log": jv_logger.id},
+        )
+        sub = _py_cls("sym:py.Sub", "Sub", path="/sub.py")
+        caller = _py_caller()
+        edges = [
+            _edge(sub.id, base.id, "extends"),
+            _unresolved_site3_lang(
+                src_id=caller.id, callee_name="info",
+                enclosing_class="Sub", inherited_field_receiver="log",
+                lang="python",
+            ),
+        ]
+        ctx = LinkerContext(
+            repo_root=Path("/"),
+            symbols=[jv_logger, jv_info, py_logger1, py_logger2, base, sub,
+                     caller],
+            edges=edges,
+        )
+        result = link_inherited_calls(ctx)
+        assert result.edges == []
+
+    def test_field_type_id_absent_but_unambiguous_name_resolves(self) -> None:
+        # Mixed / backward-compat: no field_type_ids, single "Logger" -> the name
+        # path resolves with no collision (existing python Site-3 edges survive
+        # the walker return-shape change).
+        logger = _py_cls("sym:py.Logger", "Logger", path="/log.py")
+        info = _py_method("sym:py.Logger.info", "Logger.info", path="/log.py")
+        base = _py_cls_fields(
+            "sym:py.Base", "Base", {"log": "Logger"}, path="/base.py",
+        )
+        sub = _py_cls("sym:py.Sub", "Sub", path="/sub.py")
+        caller = _py_caller()
+        edges = [
+            _edge(sub.id, base.id, "extends"),
+            _unresolved_site3_lang(
+                src_id=caller.id, callee_name="info",
+                enclosing_class="Sub", inherited_field_receiver="log",
+                lang="python",
+            ),
+        ]
+        ctx = LinkerContext(
+            repo_root=Path("/"),
+            symbols=[logger, info, base, sub, caller], edges=edges,
+        )
+        result = link_inherited_calls(ctx)
+        resolved = [e for e in result.edges if e.src == caller.id]
+        assert len(resolved) == 1
+        assert resolved[0].dst == info.id
+
+    def test_enclosing_id_and_field_type_id_both_skip_guards(self) -> None:
+        # BOTH id-preference guard-skips active in ONE edge (belt-and-suspenders,
+        # review follow-up): a same-name enclosing 'Sub' collision (PR-A
+        # enclosing_class_id disambiguates) AND a same-name field TYPE 'Logger'
+        # collision (PR-B field_type_ids disambiguates). Resolves iff both skips
+        # compose; dropping either id would bias to unresolved.
+        logger1 = _py_cls("sym:py.Logger1", "Logger", path="/log1.py")
+        info1 = _py_method("sym:py.Logger1.info", "Logger.info", path="/log1.py")
+        logger2 = _py_cls("sym:py.Logger2", "Logger", path="/log2.py")
+        base = _py_cls_fields(
+            "sym:py.Base", "Base", {"log": "Logger"}, path="/base.py",
+            field_ids={"log": logger1.id},
+        )
+        sub1 = _py_cls("sym:py.Sub1", "Sub", path="/s1.py")
+        sub2 = _py_cls("sym:py.Sub2", "Sub", path="/s2.py")
+        caller = _py_caller()
+        edges = [
+            _edge(sub1.id, base.id, "extends"),
+            _unresolved_site3_lang(
+                src_id=caller.id, callee_name="info",
+                enclosing_class="Sub", inherited_field_receiver="log",
+                lang="python", enclosing_class_id=sub1.id,
+            ),
+        ]
+        ctx = LinkerContext(
+            repo_root=Path("/"),
+            symbols=[logger1, info1, logger2, base, sub1, sub2, caller],
+            edges=edges,
+        )
+        result = link_inherited_calls(ctx)
+        resolved = [e for e in result.edges if e.src == caller.id]
+        assert len(resolved) == 1
+        assert resolved[0].dst == info1.id
+        assert resolved[0].evidence_type == "ast_call_inherited_field"

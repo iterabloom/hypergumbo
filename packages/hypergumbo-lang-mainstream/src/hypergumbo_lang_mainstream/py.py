@@ -3848,6 +3848,25 @@ def _extract_edges(
             _cls_sym.meta["fields"] = {
                 _fn: _ft.name for _fn, _ft in field_types.items()
             }
+            # WI-supat (D3) PR-B: parallel {field: type_id} map so
+            # inherited_calls Site-3 can disambiguate a same-short-name field
+            # TYPE precisely instead of biasing to unresolved. Per-field gated by
+            # the SAME trustworthiness check as receiver_type_id (file-unique type
+            # name AND not import-shadowed — the field-type inference is the same
+            # bare-name local-first resolution); an untrustworthy entry is omitted
+            # so the linker keeps the safe field-type name+guard path. Only added
+            # when at least one field type is trustworthy (a java/legacy parent
+            # with no field_type_ids stays name-only, and the linker's
+            # ``.get("field_type_ids") or {}`` tolerates its absence).
+            _field_type_ids = {
+                _fn: _ft.id for _fn, _ft in field_types.items()
+                if _receiver_type_id_trustworthy(
+                    _ft, class_name_counts, imports, module_imports,
+                    local_symbols,
+                )
+            }
+            if _field_type_ids:
+                _cls_sym.meta["field_type_ids"] = _field_type_ids
 
     # WI-gulot: resolve module-level function aliases (`f = g` where g is a
     # function/method, incl. an imported g). The LHS is extracted as a

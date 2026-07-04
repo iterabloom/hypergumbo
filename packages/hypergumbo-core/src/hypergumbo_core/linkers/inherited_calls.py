@@ -489,7 +489,7 @@ def _walk_parents_for_field(
     inheritance_index: dict[str, list[tuple[str, str]]],
     class_symbols: dict[str, Symbol],
     depth_cap: int = _DEFAULT_DEPTH_CAP,
-) -> str | None:
+) -> tuple[str, str | None] | None:
     """BFS the parent chain looking for ``meta["fields"][field_short_name]``.
 
     Used by Site-3 resolution (WI-puvil / PR-5). The Java analyzer
@@ -511,7 +511,12 @@ def _walk_parents_for_field(
         depth_cap: Maximum walk depth.
 
     Returns:
-        First matching field type name (e.g. ``"Logger"``), or ``None``.
+        On a HIT, a ``(type_name, type_id_or_None)`` 2-tuple — the field's type
+        short name plus the concrete type id from the parent's parallel
+        ``meta["field_type_ids"]`` (WI-supat PR-B), or ``None`` when the parent
+        carries only the legacy name-keyed ``meta["fields"]`` (java / pre-PR-B).
+        On a MISS (no ancestor declares the field), bare ``None`` — preserving
+        the depth-cap / cycle negatives that assert ``result is None``.
     """
     visited: set[str] = {start_class_id}
     queue: deque[tuple[str, int]] = deque([(start_class_id, 0)])
@@ -527,7 +532,8 @@ def _walk_parents_for_field(
             if parent_sym is not None and parent_sym.meta:
                 fields = parent_sym.meta.get("fields") or {}
                 if field_short_name in fields:
-                    return fields[field_short_name]
+                    type_ids = parent_sym.meta.get("field_type_ids") or {}
+                    return fields[field_short_name], type_ids.get(field_short_name)
             queue.append((parent_id, depth + 1))
     return None
 
@@ -1015,29 +1021,44 @@ def _resolve_site3(
         if src_lang in _SITE1_STRICT_LANGS and len(encl_class_ids) > 1:
             return None
 
-    # Find the field's type by walking the enclosing class's parents.
+    # Find the field's type (name + optional concrete id) by walking the
+    # enclosing class's parents.
     field_type: str | None = None
+    field_type_id: str | None = None
     for encl_id in encl_class_ids:
-        ft = _walk_parents_for_field(
+        walked = _walk_parents_for_field(
             encl_id, inherited_field_receiver, inheritance_index,
             class_symbols, _DEFAULT_DEPTH_CAP,
         )
-        if ft is not None:
-            field_type = ft
+        if walked is not None:
+            field_type, field_type_id = walked
             break
     if field_type is None:
         return None
 
-    # Look up the field's type as a class symbol.
-    field_type_class_ids = class_ids_by_name.get(field_type, [])
-    if not field_type_class_ids:
-        return None
-    # WI-hiziz PR-3: the SECOND INV-fahub guard — the field's TYPE name is also
-    # re-globalized; two same-short-name types are under-determined for a strict
-    # language. Bias to unresolved rather than resolving the method on an
-    # arbitrary namesake type.
-    if src_lang in _SITE1_STRICT_LANGS and len(field_type_class_ids) > 1:
-        return None
+    # WI-supat (D3) PR-B: prefer the concrete field-TYPE id the producer threaded
+    # on the parent's meta['field_type_ids'] (validated, same-language). It names
+    # exactly one type, so the field's type is not under-determined — skip the
+    # field-type ambiguity guard. Absent (java/legacy) / stale / foreign-language
+    # falls back to the re-globalized name path + guard below.
+    if (
+        field_type_id is not None
+        and field_type_id in class_symbols
+        and class_symbols[field_type_id].language == src_lang
+    ):
+        field_type_class_ids = [field_type_id]
+    else:
+        # Look up the field's type as a class symbol.
+        field_type_class_ids = class_ids_by_name.get(field_type, [])
+        if not field_type_class_ids:
+            return None
+        # WI-hiziz PR-3: the SECOND INV-fahub guard — the field's TYPE name is
+        # also re-globalized; two same-short-name types are under-determined for
+        # a strict language. Bias to unresolved rather than resolving the method
+        # on an arbitrary namesake type (the concrete-id path above recovers this
+        # recall when the producer could stamp an authoritative id).
+        if src_lang in _SITE1_STRICT_LANGS and len(field_type_class_ids) > 1:
+            return None
 
     # Resolve the method on the field's type (direct or MRO walk).
     walker = _MRO_WALKERS.get(src_lang)
