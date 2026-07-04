@@ -1744,6 +1744,13 @@ class FileAnalysis:
     # binds locally (params/assignments/imports/global, minus nonlocal) — the
     # LEGB "L" shadow set consulted by ScopeStack.lookup_enclosing.
     local_names_by_func_id: dict[str, frozenset[str]] = field(default_factory=dict)
+    # WI-supat (D3): AUTHORITATIVE method Symbol.id -> enclosing class Symbol.id.
+    # Built where both symbols are lexically in hand, so it is immune to the
+    # bare-name last-write-wins clobber a symbol_by_name lookup would suffer on
+    # same-short-name / nested classes. Lets the Site-1 / Site-3 producers stamp a
+    # concrete, CORRECT enclosing_class_id (which the inherited_calls linker uses
+    # to resolve a namesake collision precisely instead of biasing to unresolved).
+    method_to_enclosing_class_id: dict[str, str] = field(default_factory=dict)
 
 
 def _detect_source_roots(repo_root: Path) -> list[Path]:
@@ -2307,6 +2314,9 @@ def _extract_file_analysis(
         for _c in ast.iter_child_nodes(_p):
             parent_map[id(_c)] = _p
     func_symbol_by_node_id: dict[int, Symbol] = {}
+    # WI-supat (D3): authoritative method Symbol.id -> enclosing class Symbol.id,
+    # populated at method creation where both symbols are lexically in hand.
+    method_to_enclosing_class_id: dict[str, str] = {}
 
     def _enclosing_function_chain(node: ast.AST) -> list[str]:
         """Return the names of enclosing FunctionDef ancestors, outermost-first.
@@ -2571,6 +2581,12 @@ def _extract_file_analysis(
                     # on id(item) lets each method own its own call lines; the
                     # bare write above is retained for self.method() (Case 2a).
                     func_symbol_by_node_id[id(item)] = method_symbol
+                    # WI-supat (D3): record the AUTHORITATIVE method->enclosing
+                    # class link. ``symbol`` is the ClassDef's own class Symbol
+                    # (this loop iterates that class's body), so this is exact for
+                    # nested / same-short-name classes where a bare-name
+                    # symbol_by_name lookup would clobber.
+                    method_to_enclosing_class_id[method_symbol.id] = symbol.id
                     # Track as processed to avoid duplicate extraction
                     processed_functions.add((item.lineno, item.name))
 
@@ -2911,6 +2927,7 @@ def _extract_file_analysis(
         func_symbol_by_node_id=func_symbol_by_node_id,
         enclosing_func_id=enclosing_func_id,
         local_names_by_func_id=local_names_by_func_id,
+        method_to_enclosing_class_id=method_to_enclosing_class_id,
     ), None
 
 
@@ -2981,6 +2998,7 @@ def _extract_edges(
     func_symbol_by_node_id: dict[int, Symbol] | None = None,
     enclosing_func_id: dict[str, str] | None = None,
     local_names_by_func_id: dict[str, frozenset[str]] | None = None,
+    method_to_enclosing_class_id: dict[str, str] | None = None,
 ) -> list[Edge]:
     """Extract call and instantiation edges from an AST.
 
@@ -3020,6 +3038,21 @@ def _extract_edges(
         enclosing_func_id = {}
     if local_names_by_func_id is None:  # pragma: no cover
         local_names_by_func_id = {}
+    if method_to_enclosing_class_id is None:  # pragma: no cover
+        method_to_enclosing_class_id = {}
+
+    # WI-supat (D3): per-file class SHORT-NAME multiplicity. A receiver-type id
+    # is only trustworthy when its short name resolves to a SINGLE in-file class:
+    # with >=2 same-short-name classes the bare-name inference (symbol_by_name is
+    # last-write-wins) that produced the receiver's type Symbol could have hit
+    # the wrong twin, so the id is omitted and the linker falls back to the safe
+    # name+guard path. Counts ClassDef nodes (nested included) so a nested
+    # namesake also trips the gate. The ENCLOSING id needs no such gate — it comes
+    # from the authoritative method->class map, not a name lookup.
+    class_name_counts: dict[str, int] = {}
+    for _cnode in ast.walk(tree):
+        if isinstance(_cnode, ast.ClassDef):
+            class_name_counts[_cnode.name] = class_name_counts.get(_cnode.name, 0) + 1
 
     edges: list[Edge] = []
 
@@ -3411,6 +3444,8 @@ def _extract_edges(
                     external_var_types=external_var_types,
                     function_aliases=function_aliases,
                     own_field_names=_own_field_names,
+                    method_to_enclosing_class_id=method_to_enclosing_class_id,
+                    class_name_counts=class_name_counts,
                 )
                 # Function references in call arguments: map(transform, items)
                 for arg in node.args:
@@ -3454,6 +3489,22 @@ def _extract_edges(
                     local_symbols, _sym_by_path_name,
                 )
                 if _getter is not None:
+                    _prop_recv = var_types[node.value.id]
+                    _prop_meta: dict[str, str] = {
+                        "call_construct": "method",
+                        "resolution_quality": "type_inferred",
+                        "receiver_type_hint": _prop_recv.name,
+                    }
+                    # WI-supat (D3): stamp the concrete receiver-type id only when
+                    # trustworthy (file-unique short name AND not import-shadowed),
+                    # as in the method-call Site-2 producer. class_name_counts /
+                    # imports / module_imports are closure-visible from
+                    # _extract_edges.
+                    if _receiver_type_id_trustworthy(
+                        _prop_recv, class_name_counts, imports, module_imports,
+                        local_symbols,
+                    ):
+                        _prop_meta["receiver_type_id"] = _prop_recv.id
                     edges.append(Edge.create(
                         src=caller_symbol.id,
                         dst=f"python:external:0-0:{node.attr}:unresolved",
@@ -3461,11 +3512,7 @@ def _extract_edges(
                         line=node.lineno,
                         evidence_type="ast_call",
                         is_resolved=False,
-                        meta={
-                            "call_construct": "method",
-                            "resolution_quality": "type_inferred",
-                            "receiver_type_hint": var_types[node.value.id].name,
-                        },
+                        meta=_prop_meta,
                         origin=PASS_ID,
                         origin_run_id=run_id,
                     ))
@@ -4120,6 +4167,43 @@ def _resolve_call_target(
     return None
 
 
+def _receiver_type_id_trustworthy(
+    recv_sym: Symbol,
+    class_name_counts: dict[str, int],
+    imports: dict[str, tuple[str, str]],
+    module_imports: dict[str, str],
+    local_symbols: dict[str, Symbol],
+) -> bool:
+    """WI-supat (D3): whether a concrete receiver-type id is safe to stamp.
+
+    The Site-2 receiver-type inference is bare-name-based (last-write-wins
+    ``symbol_by_name`` / local-first annotation resolution), so a concrete id is
+    only trustworthy under BOTH conditions:
+
+    1. **File-unique short name** — with >=2 same-short-name ``ClassDef``s in the
+       file the inference could have hit the wrong twin (``class_name_counts``).
+    2. **Not import-shadowed** — when the resolved type IS the in-file class of
+       that name (``local_symbols.get(name) is recv_sym``) but a same-name import
+       exists (``name in imports``/``module_imports``), a later
+       ``from x import Name`` rebinds the name at runtime (Python last-binding-
+       wins), so the local-first-resolved type is the WRONG class. This is
+       *precise*, not blanket: a correctly cross-file-resolved imported type
+       (``recv_sym`` is NOT the local symbol) keeps its id, preserving the
+       cross-file collision-recovery this feature exists for.
+
+    When it returns ``False`` the producer omits the id and the linker falls back
+    to the safe name+ambiguity-guard path (biases to unresolved on a collision).
+    """
+    name = recv_sym.name
+    if class_name_counts.get(name, 0) > 1:
+        return False
+    if local_symbols.get(name) is recv_sym and (
+        name in imports or name in module_imports
+    ):
+        return False
+    return True
+
+
 def _process_call(
     call_node: ast.Call,
     caller_symbol: Symbol,
@@ -4137,6 +4221,8 @@ def _process_call(
     external_var_types: dict[str, str] | None = None,
     function_aliases: dict[str, Symbol] | None = None,
     own_field_names: frozenset[str] = frozenset(),
+    method_to_enclosing_class_id: dict[str, str] | None = None,
+    class_name_counts: dict[str, int] | None = None,
 ) -> None:
     """Process a single call expression and emit appropriate edges.
 
@@ -4160,6 +4246,10 @@ def _process_call(
     """
     if external_var_types is None:  # pragma: no cover - defensive default
         external_var_types = {}
+    if method_to_enclosing_class_id is None:  # pragma: no cover - defensive default
+        method_to_enclosing_class_id = {}
+    if class_name_counts is None:  # pragma: no cover - defensive default
+        class_name_counts = {}
     func = call_node.func
     callee_symbol = None
     is_instantiation = False
@@ -4467,12 +4557,33 @@ def _process_call(
                     unresolved_meta["enclosing_class"] = (
                         caller_symbol.qualified_name.split(".")[-2]
                     )
+                    # WI-supat (D3): stamp the AUTHORITATIVE enclosing class id
+                    # (the lexical method->class map, clobber-immune) so the
+                    # linker resolves a same-short-name / cross-language namesake
+                    # precisely instead of biasing to unresolved.
+                    _encl_id = method_to_enclosing_class_id.get(caller_symbol.id)
+                    if _encl_id is not None:
+                        unresolved_meta["enclosing_class_id"] = _encl_id
                 elif receiver_name in var_types:
-                    unresolved_meta["receiver_type_hint"] = var_types[receiver_name].name
+                    _rt = var_types[receiver_name]
+                    unresolved_meta["receiver_type_hint"] = _rt.name
+                    # WI-supat (D3): stamp the concrete receiver-type id only when
+                    # it is trustworthy (file-unique short name AND not shadowed by
+                    # a same-name import); else omit and fall back to name+guard.
+                    if _receiver_type_id_trustworthy(
+                        _rt, class_name_counts, imports, module_imports,
+                        local_symbols,
+                    ):
+                        unresolved_meta["receiver_type_id"] = _rt.id
                 elif receiver_name not in _caller_locals:
                     _recv_sym = local_symbols.get(receiver_name)
                     if _recv_sym is not None and _recv_sym.kind == "class":
                         unresolved_meta["receiver_type_hint"] = receiver_name
+                        if _receiver_type_id_trustworthy(
+                            _recv_sym, class_name_counts, imports,
+                            module_imports, local_symbols,
+                        ):
+                            unresolved_meta["receiver_type_id"] = _recv_sym.id
                 edges.append(Edge.create(
                     src=caller_symbol.id,
                     dst=dst_id,
@@ -4522,6 +4633,20 @@ def _process_call(
                 and field_name not in var_types
                 and field_name not in own_field_names
             ):
+                _site3_meta: dict[str, str] = {
+                    "call_construct": "method",
+                    "inherited_field_receiver": field_name,
+                    "enclosing_class": (
+                        caller_symbol.qualified_name.split(".")[-2]
+                    ),
+                }
+                # WI-supat (D3): the authoritative enclosing-class id (same
+                # contract as Site-1) lets the linker start the parent-field walk
+                # from exactly the caller's lexical class, skipping the enclosing
+                # ambiguity guard on a same-short-name collision.
+                _encl_id = method_to_enclosing_class_id.get(caller_symbol.id)
+                if _encl_id is not None:
+                    _site3_meta["enclosing_class_id"] = _encl_id
                 edges.append(Edge.create(
                     src=caller_symbol.id,
                     dst=f"python:external:0-0:{method_name}:unresolved",
@@ -4529,13 +4654,7 @@ def _process_call(
                     line=call_node.lineno,
                     evidence_type="ast_call",
                     is_resolved=False,
-                    meta={
-                        "call_construct": "method",
-                        "inherited_field_receiver": field_name,
-                        "enclosing_class": (
-                            caller_symbol.qualified_name.split(".")[-2]
-                        ),
-                    },
+                    meta=_site3_meta,
                     origin=PASS_ID,
                     origin_run_id=run_id,
                 ))
@@ -4641,6 +4760,7 @@ def extract_nodes(py_file: Path, global_symbols: dict[str, Symbol] | None = None
         func_symbol_by_node_id=file_analysis.func_symbol_by_node_id,
         enclosing_func_id=file_analysis.enclosing_func_id,
         local_names_by_func_id=file_analysis.local_names_by_func_id,
+        method_to_enclosing_class_id=file_analysis.method_to_enclosing_class_id,
     )
     return AnalysisResult(
         symbols=file_analysis.symbols,
@@ -4794,6 +4914,7 @@ def analyze_python(
             func_symbol_by_node_id=analysis.func_symbol_by_node_id,
             enclosing_func_id=analysis.enclosing_func_id,
             local_names_by_func_id=analysis.local_names_by_func_id,
+            method_to_enclosing_class_id=analysis.method_to_enclosing_class_id,
         )
         # ADR-0015: annotate edges with access_mode from Python AST context.
         # Pass source + python.yaml config so library_patterns (e.g. .append,

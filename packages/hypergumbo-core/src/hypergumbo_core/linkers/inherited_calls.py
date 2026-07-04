@@ -627,6 +627,13 @@ def link_inherited_calls(ctx: LinkerContext) -> LinkerResult:
         receiver_type_hint = meta.get("receiver_type_hint")
         inherited_field_receiver = meta.get("inherited_field_receiver")
         enclosing_class = meta.get("enclosing_class")
+        # WI-supat (D3): the concrete class ids the producer threaded alongside
+        # the name hints (an AUTHORITATIVE enclosing-class id, and a
+        # within-file-uniqueness-gated receiver-type id). Consumed by the Site
+        # resolvers to skip the same-short-name ambiguity guard precisely. The
+        # Site-3 field-TYPE id rides the parent class symbol's meta, not here.
+        receiver_type_id = meta.get("receiver_type_id")
+        enclosing_class_id = meta.get("enclosing_class_id")
 
         if not (
             receiver_type_hint or inherited_field_receiver
@@ -649,6 +656,8 @@ def link_inherited_calls(ctx: LinkerContext) -> LinkerResult:
             receiver_type_hint=receiver_type_hint,
             inherited_field_receiver=inherited_field_receiver,
             enclosing_class=enclosing_class,
+            receiver_type_id=receiver_type_id,
+            enclosing_class_id=enclosing_class_id,
             class_ids_by_name=class_ids_by_name,
             class_symbols=class_symbols,
             method_index=method_index,
@@ -677,6 +686,8 @@ def _try_resolve(
     receiver_type_hint: str | None,
     inherited_field_receiver: str | None,
     enclosing_class: str | None,
+    receiver_type_id: str | None,
+    enclosing_class_id: str | None,
     class_ids_by_name: dict[str, list[str]],
     class_symbols: dict[str, Symbol],
     method_index: _TypeHierarchyIndex,
@@ -688,6 +699,11 @@ def _try_resolve(
 
     Returns the resolved edge (or ``None`` if no Site matches). Caller
     appends to ``new_edges`` and updates the dedupe set.
+
+    ``receiver_type_id`` / ``enclosing_class_id`` (WI-supat) are the concrete
+    class ids the producer threaded alongside the name hints; a Site resolver
+    prefers a valid, same-language id over the re-globalized name (skipping the
+    ambiguity guard) to recover the recall the guard sacrifices.
     """
     method_short = _extract_method_short_name(callee_short)
 
@@ -697,6 +713,7 @@ def _try_resolve(
             edge=edge, method_short=method_short,
             src_lang=src_lang,
             enclosing_class=enclosing_class,
+            enclosing_class_id=enclosing_class_id,
             inherited_field_receiver=inherited_field_receiver,
             class_ids_by_name=class_ids_by_name,
             class_symbols=class_symbols,
@@ -716,6 +733,7 @@ def _try_resolve(
         return _resolve_site2(
             edge=edge, method_short=method_short,
             receiver_type_hint=receiver_type_hint,
+            receiver_type_id=receiver_type_id,
             src_lang=src_lang,
             class_ids_by_name=class_ids_by_name,
             class_symbols=class_symbols,
@@ -731,7 +749,9 @@ def _try_resolve(
             edge=edge, callee_short=callee_short,
             src_lang=src_lang,
             enclosing_class=enclosing_class,
+            enclosing_class_id=enclosing_class_id,
             class_ids_by_name=class_ids_by_name,
+            class_symbols=class_symbols,
             method_index=method_index,
             inheritance_index=inheritance_index,
             existing_call_pairs=existing_call_pairs,
@@ -746,7 +766,9 @@ def _resolve_site1(
     callee_short: str,
     src_lang: str,
     enclosing_class: str,
+    enclosing_class_id: str | None,
     class_ids_by_name: dict[str, list[str]],
+    class_symbols: dict[str, Symbol],
     method_index: _TypeHierarchyIndex,
     inheritance_index: dict[str, list[tuple[str, str]]],
     existing_call_pairs: set[tuple[str, str]],
@@ -756,22 +778,38 @@ def _resolve_site1(
     walker = _MRO_WALKERS.get(src_lang)
     if walker is None:
         return None
-    start_class_ids = class_ids_by_name.get(enclosing_class, [])
-    if not start_class_ids:
-        return None
-    # WI-hiziz PR-2: INV-fahub ambiguity guard for Site-1. ``enclosing_class``
-    # is a NAME only; in a language with module namespaces (``_SITE1_STRICT_LANGS``
-    # — Python) two in-tree classes sharing that short name are DISTINCT classes,
-    # so the enclosing receiver is under-determined — bias to unresolved rather
-    # than binding whichever namesake the walk hits first. This is scoped to
-    # ``_SITE1_STRICT_LANGS`` (NOT "all but Java"): in Ruby the same short name is
-    # a class REOPENING (one logical class), so applying the guard would suppress
-    # its INV-nilud-validated Site-1 resolution. WI-supat (D3) threads a concrete
-    # enclosing-class id to recover Python's guard-sacrificed recall (incl. the
-    # cross-language-namesake over-suppression, since ``class_ids_by_name`` is
-    # language-agnostic).
-    if src_lang in _SITE1_STRICT_LANGS and len(start_class_ids) > 1:
-        return None
+    # WI-supat (D3): prefer the AUTHORITATIVE concrete enclosing-class id the
+    # producer threaded (an exact lexical method→class map, immune to the
+    # bare-name last-write-wins clobber). A valid, same-language id names exactly
+    # one class, so the receiver is NOT under-determined — resolve it precisely
+    # and SKIP the ambiguity guard, recovering the recall the guard sacrifices
+    # (both same-short-name and cross-language namesakes, since ``class_symbols``
+    # is language-agnostic). ``id in class_symbols`` guards staleness; the
+    # language match guards a foreign-language id keying a same-id class (belt-
+    # and-suspenders: Symbol.id is language-prefixed, so this is always True for a
+    # producer-stamped id — but a future shared stamp helper must not leak one).
+    if (
+        enclosing_class_id is not None
+        and enclosing_class_id in class_symbols
+        and class_symbols[enclosing_class_id].language == src_lang
+    ):
+        start_class_ids = [enclosing_class_id]
+    else:
+        start_class_ids = class_ids_by_name.get(enclosing_class, [])
+        if not start_class_ids:
+            return None
+        # WI-hiziz PR-2: INV-fahub ambiguity guard for Site-1. ``enclosing_class``
+        # is a NAME only; in a language with module namespaces
+        # (``_SITE1_STRICT_LANGS`` — Python) two in-tree classes sharing that short
+        # name are DISTINCT classes, so the enclosing receiver is under-determined
+        # — bias to unresolved rather than binding whichever namesake the walk hits
+        # first. This is scoped to ``_SITE1_STRICT_LANGS`` (NOT "all but Java"): in
+        # Ruby the same short name is a class REOPENING (one logical class), so
+        # applying the guard would suppress its INV-nilud-validated Site-1
+        # resolution. The concrete-id path above recovers Python's guard-sacrificed
+        # recall when the producer could stamp an authoritative id.
+        if src_lang in _SITE1_STRICT_LANGS and len(start_class_ids) > 1:
+            return None
     resolved_target: Symbol | None = None
     for start_id in start_class_ids:
         candidate = walker(
@@ -800,6 +838,7 @@ def _resolve_site2(
     edge: Edge,
     method_short: str,
     receiver_type_hint: str,
+    receiver_type_id: str | None,
     src_lang: str,
     class_ids_by_name: dict[str, list[str]],
     class_symbols: dict[str, Symbol],
@@ -836,17 +875,32 @@ def _resolve_site2(
       DIRECTLY on the single, concretely-named type (step 1 / step 2 MRO)
       resolves.
     """
-    type_class_ids = class_ids_by_name.get(receiver_type_hint, [])
-    if not type_class_ids:
-        return None
+    # WI-supat (D3): prefer the concrete receiver-type id the producer threaded.
+    # It is stamped only when the type's short name is UNIQUE within the file (so
+    # the bare-name inference that produced it could not have hit the wrong
+    # same-file twin) and is validated here as a real, same-language
+    # ``class_symbols`` key. A valid id names exactly one type, so the receiver is
+    # NOT under-determined — resolve it precisely (Step 1/2 only; Step 3 stays
+    # gated below) and SKIP the ambiguity guard, recovering the recall the guard
+    # sacrifices. Absent / stale / foreign-language → the original name path.
+    if (
+        receiver_type_id is not None
+        and receiver_type_id in class_symbols
+        and class_symbols[receiver_type_id].language == src_lang
+    ):
+        type_class_ids = [receiver_type_id]
+    else:
+        type_class_ids = class_ids_by_name.get(receiver_type_hint, [])
+        if not type_class_ids:
+            return None
 
-    # Strict INV-fahub ambiguity guard: the hint carries only a class NAME.
-    # When two in-repo classes share it, the receiver is under-determined —
-    # bias to unresolved instead of binding to whichever same-named class
-    # happens to define the method (deferred D3 threads the concrete class id
-    # to recover this recall precisely).
-    if src_lang not in _LEGACY_SITE2_LANGS and len(type_class_ids) > 1:
-        return None
+        # Strict INV-fahub ambiguity guard: the hint carries only a class NAME.
+        # When two in-repo classes share it, the receiver is under-determined —
+        # bias to unresolved instead of binding to whichever same-named class
+        # happens to define the method (the concrete-id path above recovers this
+        # recall precisely when the producer could stamp an authoritative id).
+        if src_lang not in _LEGACY_SITE2_LANGS and len(type_class_ids) > 1:
+            return None
 
     walker = _MRO_WALKERS.get(src_lang)
     candidates_by_short = method_index.methods_by_short_name.get(
@@ -920,6 +974,7 @@ def _resolve_site3(
     method_short: str,
     src_lang: str,
     enclosing_class: str,
+    enclosing_class_id: str | None,
     inherited_field_receiver: str,
     class_ids_by_name: dict[str, list[str]],
     class_symbols: dict[str, Symbol],
@@ -936,16 +991,29 @@ def _resolve_site3(
     MRO walk if one is registered). Emits ``ast_call_inherited_field``
     at confidence 0.80.
     """
-    encl_class_ids = class_ids_by_name.get(enclosing_class, [])
-    if not encl_class_ids:  # pragma: no cover
-        return None
-    # WI-hiziz PR-3: INV-fahub ambiguity guard on the ENCLOSING class, mirroring
-    # Site-1/Site-2, scoped to _SITE1_STRICT_LANGS (Python — module namespaces
-    # make same-short-name classes distinct). Two same-name enclosing classes
-    # would each expose different parent fields → under-determined → bias to
-    # unresolved. Java/Ruby stay permissive (reopening / legacy first-match).
-    if src_lang in _SITE1_STRICT_LANGS and len(encl_class_ids) > 1:
-        return None
+    # WI-supat (D3): prefer the authoritative concrete enclosing-class id (same
+    # contract as Site-1). A valid, same-language id starts the parent-walk from
+    # exactly the caller's lexical class, so the enclosing receiver is not
+    # under-determined — skip the enclosing ambiguity guard. The field-TYPE
+    # disambiguation below is INDEPENDENT (recovered in PR-B).
+    if (
+        enclosing_class_id is not None
+        and enclosing_class_id in class_symbols
+        and class_symbols[enclosing_class_id].language == src_lang
+    ):
+        encl_class_ids = [enclosing_class_id]
+    else:
+        encl_class_ids = class_ids_by_name.get(enclosing_class, [])
+        if not encl_class_ids:  # pragma: no cover
+            return None
+        # WI-hiziz PR-3: INV-fahub ambiguity guard on the ENCLOSING class,
+        # mirroring Site-1/Site-2, scoped to _SITE1_STRICT_LANGS (Python — module
+        # namespaces make same-short-name classes distinct). Two same-name
+        # enclosing classes would each expose different parent fields →
+        # under-determined → bias to unresolved. Java/Ruby stay permissive
+        # (reopening / legacy first-match).
+        if src_lang in _SITE1_STRICT_LANGS and len(encl_class_ids) > 1:
+            return None
 
     # Find the field's type by walking the enclosing class's parents.
     field_type: str | None = None

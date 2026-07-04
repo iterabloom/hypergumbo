@@ -28,7 +28,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from hypergumbo_lang_mainstream.py import extract_nodes
+from hypergumbo_core.ir import Span, Symbol
+from hypergumbo_lang_mainstream.py import (
+    _receiver_type_id_trustworthy,
+    extract_nodes,
+)
 
 
 def _analyze(tmp_path: Path, src: str):
@@ -789,3 +793,334 @@ class TestSelfFieldMethodHint:
         res = _analyze(tmp_path, src)
         # No unresolved `process` edge — Case 2f resolved it.
         assert _unresolved_method_edges(res, "process") == []
+
+
+def _class_id(res, class_name: str, *, prefer: str = "first") -> str:
+    """Concrete Symbol id of a named class. ``prefer`` selects among same-name
+    classes: 'first' = smallest start_line (top-level / earliest), 'last' =
+    largest (a nested / redefined namesake)."""
+    syms = [s for s in res.symbols if s.kind == "class" and s.name == class_name]
+    assert syms, f"no class named {class_name}"
+    chosen = min(syms, key=lambda s: s.span.start_line) if prefer == "first" \
+        else max(syms, key=lambda s: s.span.start_line)
+    return chosen.id
+
+
+class TestWiSupatProducerIds:
+    """WI-supat (D3) producer: py.py threads a CONCRETE class id alongside the
+    Site name hints. The enclosing-class id comes from an AUTHORITATIVE
+    method->class map (immune to the bare-name last-write-wins clobber); the
+    receiver-type id is stamped only when the type's short name is UNIQUE within
+    the file. Every stamped edge stays is_resolved=False (taint-safe)."""
+
+    # ---- Site-1 enclosing_class_id ----
+
+    def test_self_inherited_stamps_enclosing_class_id(self, tmp_path: Path) -> None:
+        src = (
+            "class Sub:\n"
+            "    def run(self):\n"
+            "        return self.helper()\n"
+        )
+        res = _analyze(tmp_path, src)
+        edges = _unresolved_method_edges(res, "helper")
+        assert len(edges) == 1
+        e = edges[0]
+        assert e.is_resolved is False  # taint-safe: only meta changed
+        assert (e.meta or {}).get("enclosing_class") == "Sub"
+        assert (e.meta or {}).get("enclosing_class_id") == _class_id(res, "Sub")
+
+    def test_nested_class_enclosing_id_is_direct_class(self, tmp_path: Path) -> None:
+        # THE REFUTATION LOCK: a top-level `Inner` + a nested `Outer.Inner`. A
+        # method of the TOP-LEVEL Inner must stamp the TOP-LEVEL Inner's id — a
+        # bare-name local_symbols.get('Inner') would return the BFS-last NESTED
+        # Inner (the clobber), so this pins the authoritative method->class map.
+        src = (
+            "class Inner:\n"
+            "    def run(self):\n"
+            "        return self.top_helper()\n"
+            "class Outer:\n"
+            "    class Inner:\n"
+            "        def deep(self):\n"
+            "            return self.nested_helper()\n"
+        )
+        res = _analyze(tmp_path, src)
+        top_edges = _unresolved_method_edges(res, "top_helper")
+        assert len(top_edges) == 1
+        top_id = _class_id(res, "Inner", prefer="first")
+        nested_id = _class_id(res, "Inner", prefer="last")
+        assert top_id != nested_id
+        assert (top_edges[0].meta or {}).get("enclosing_class_id") == top_id
+        # and the nested Inner's method stamps the NESTED id
+        nested_edges = _unresolved_method_edges(res, "nested_helper")
+        assert len(nested_edges) == 1
+        assert (nested_edges[0].meta or {}).get("enclosing_class_id") == nested_id
+
+    def test_sibling_nested_enclosing_id(self, tmp_path: Path) -> None:
+        # Two sibling nested `Shared` classes (A.Shared, B.Shared). A.Shared's
+        # method must stamp A.Shared's id, not the BFS-last B.Shared.
+        src = (
+            "class A:\n"
+            "    class Shared:\n"
+            "        def run(self):\n"
+            "            return self.helper_a()\n"
+            "class B:\n"
+            "    class Shared:\n"
+            "        def run(self):\n"
+            "            return self.helper_b()\n"
+        )
+        res = _analyze(tmp_path, src)
+        a_edges = _unresolved_method_edges(res, "helper_a")
+        assert len(a_edges) == 1
+        assert (a_edges[0].meta or {}).get("enclosing_class_id") == \
+            _class_id(res, "Shared", prefer="first")
+
+    # ---- Site-2 receiver_type_id (3 producer branches) ----
+
+    def test_property_read_stamps_receiver_type_id(self, tmp_path: Path) -> None:
+        # @property READ on a typed receiver (WI-gubar producer path).
+        src = (
+            "class Cfg:\n"
+            "    @property\n"
+            "    def val(self):\n"
+            "        return 1\n"
+            "def f(c: Cfg):\n"
+            "    return c.val\n"
+        )
+        res = _analyze(tmp_path, src)
+        edges = _unresolved_method_edges(res, "val")
+        assert len(edges) == 1
+        e = edges[0]
+        assert e.is_resolved is False
+        assert (e.meta or {}).get("receiver_type_hint") == "Cfg"
+        assert (e.meta or {}).get("receiver_type_id") == _class_id(res, "Cfg")
+
+    def test_var_typed_receiver_stamps_receiver_type_id(self, tmp_path: Path) -> None:
+        # A var_types-typed receiver whose method is unresolvable in-file (else).
+        src = (
+            "class Cfg:\n"
+            "    pass\n"
+            "def f(c: Cfg):\n"
+            "    return c.compute()\n"
+        )
+        res = _analyze(tmp_path, src)
+        edges = _unresolved_method_edges(res, "compute")
+        assert len(edges) == 1
+        e = edges[0]
+        assert (e.meta or {}).get("receiver_type_hint") == "Cfg"
+        assert (e.meta or {}).get("receiver_type_id") == _class_id(res, "Cfg")
+
+    def test_bare_local_class_receiver_stamps_receiver_type_id(
+        self, tmp_path: Path
+    ) -> None:
+        # Bare local CLASS receiver: Foo.bar() (static/classmethod py.py cannot
+        # resolve directly).
+        src = (
+            "class Foo:\n"
+            "    pass\n"
+            "def f():\n"
+            "    return Foo.bar()\n"
+        )
+        res = _analyze(tmp_path, src)
+        edges = _unresolved_method_edges(res, "bar")
+        assert len(edges) == 1
+        e = edges[0]
+        assert (e.meta or {}).get("receiver_type_hint") == "Foo"
+        assert (e.meta or {}).get("receiver_type_id") == _class_id(res, "Foo")
+
+    def test_receiver_type_id_omitted_on_samename_collision(
+        self, tmp_path: Path
+    ) -> None:
+        # Two same-short-name `Foo` classes in one file (top-level + nested) make
+        # the bare-name inference clobber-prone → the uniqueness gate OMITS the
+        # receiver id (falls back to name+guard), while still stamping the name.
+        src = (
+            "class Foo:\n"
+            "    pass\n"
+            "class Outer:\n"
+            "    class Foo:\n"
+            "        pass\n"
+            "def f(c: Foo):\n"
+            "    return c.compute()\n"
+        )
+        res = _analyze(tmp_path, src)
+        edges = _unresolved_method_edges(res, "compute")
+        assert len(edges) == 1
+        e = edges[0]
+        assert (e.meta or {}).get("receiver_type_hint") == "Foo"
+        assert "receiver_type_id" not in (e.meta or {})
+
+    # ---- Site-3 enclosing_class_id ----
+
+    def test_self_field_inherited_stamps_enclosing_class_id(
+        self, tmp_path: Path
+    ) -> None:
+        src = (
+            "class Sub:\n"
+            "    def run(self):\n"
+            "        return self.log.info()\n"
+        )
+        res = _analyze(tmp_path, src)
+        edges = _unresolved_method_edges(res, "info")
+        assert len(edges) == 1
+        e = edges[0]
+        assert e.is_resolved is False
+        assert (e.meta or {}).get("inherited_field_receiver") == "log"
+        assert (e.meta or {}).get("enclosing_class") == "Sub"
+        assert (e.meta or {}).get("enclosing_class_id") == _class_id(res, "Sub")
+
+
+def _mk_cls(name: str, path: str = "/a.py") -> Symbol:
+    return Symbol(
+        id=f"python:{path}:1-2:{name}:class", name=name, kind="class",
+        language="python", path=path,
+        span=Span(start_line=1, end_line=2, start_col=0, end_col=0),
+        origin="test", origin_run_id="test-run",
+    )
+
+
+class TestReceiverTypeIdTrustworthy:
+    """WI-supat (D3) review blocker: the receiver-type id is trustworthy only
+    when its short name is file-unique AND (when the resolved type is the in-file
+    class) not shadowed by a same-name import."""
+
+    def test_samename_collision_untrusted(self) -> None:
+        foo = _mk_cls("Foo")
+        assert _receiver_type_id_trustworthy(
+            foo, {"Foo": 2}, {}, {}, {"Foo": foo}
+        ) is False
+
+    def test_local_class_import_shadowed_untrusted(self) -> None:
+        # local `class Foo` (recv_sym IS local_symbols["Foo"]) + `from b import
+        # Foo` (name in imports) -> the import rebinds Foo at runtime -> untrusted.
+        foo = _mk_cls("Foo")
+        assert _receiver_type_id_trustworthy(
+            foo, {"Foo": 1}, {"Foo": ("b", "Foo")}, {}, {"Foo": foo}
+        ) is False
+
+    def test_local_class_not_shadowed_trusted(self) -> None:
+        foo = _mk_cls("Foo")
+        assert _receiver_type_id_trustworthy(
+            foo, {"Foo": 1}, {}, {}, {"Foo": foo}
+        ) is True
+
+    def test_imported_type_not_local_stays_trusted(self) -> None:
+        # PRECISION: a correctly cross-file-resolved imported type (recv_sym is
+        # NOT the local symbol of that name) keeps its id even though the name is
+        # in imports -- preserving the cross-file collision-recovery.
+        imported_foo = _mk_cls("Foo", path="/b.py")
+        local_other = _mk_cls("Foo", path="/a.py")
+        assert _receiver_type_id_trustworthy(
+            imported_foo, {"Foo": 1}, {"Foo": ("b", "Foo")}, {},
+            {"Foo": local_other},
+        ) is True
+
+
+class TestWiSupatReceiverIdProducerOmissions:
+    """WI-supat (D3) review should_fix: the uniqueness-gate OMIT branch is
+    behaviorally locked for all three receiver_type_id producers (not just
+    var_types)."""
+
+    def test_property_read_id_omitted_on_collision(self, tmp_path: Path) -> None:
+        # A @property receiver type with a same-name nested twin -> count>1 -> the
+        # id is omitted (hint still stamped).
+        src = (
+            "class Cfg:\n"
+            "    @property\n"
+            "    def val(self):\n"
+            "        return 1\n"
+            "class Outer:\n"
+            "    class Cfg:\n"
+            "        pass\n"
+            "def f(c: Cfg):\n"
+            "    return c.val\n"
+        )
+        res = _analyze(tmp_path, src)
+        edges = _unresolved_method_edges(res, "val")
+        assert len(edges) == 1
+        e = edges[0]
+        assert (e.meta or {}).get("receiver_type_hint") == "Cfg"
+        assert "receiver_type_id" not in (e.meta or {})
+
+    def test_bare_local_class_id_omitted_on_collision(
+        self, tmp_path: Path
+    ) -> None:
+        # Bare local `Foo.bar()` with two same-name Foo classes in one file ->
+        # count>1 -> id omitted.
+        src = (
+            "class Foo:\n"
+            "    pass\n"
+            "class Outer:\n"
+            "    class Foo:\n"
+            "        pass\n"
+            "def f():\n"
+            "    return Foo.bar()\n"
+        )
+        res = _analyze(tmp_path, src)
+        edges = _unresolved_method_edges(res, "bar")
+        assert len(edges) == 1
+        e = edges[0]
+        assert (e.meta or {}).get("receiver_type_hint") == "Foo"
+        assert "receiver_type_id" not in (e.meta or {})
+
+
+class TestWiSupatImportShadowBlocker:
+    """WI-supat (D3) review BLOCKER repro: a local class shadowed by a same-name
+    in-tree import must NOT mint a confidently-wrong resolved edge through the
+    (wrong) local class's MRO."""
+
+    def test_import_shadowed_receiver_no_wrong_edge(
+        self, tmp_path: Path
+    ) -> None:
+        import json
+
+        from hypergumbo_core.cli import run_behavior_map
+
+        (tmp_path / "base.py").write_text(
+            "class LocalBase:\n"
+            "    def compute(self):\n"
+            "        return 1\n"
+        )
+        (tmp_path / "b.py").write_text(
+            "class Foo:\n"
+            "    def compute(self):\n"
+            "        return 2\n"
+        )
+        # a.py defines a LOCAL `class Foo(LocalBase)` then shadows the name with
+        # `from b import Foo`. The runtime receiver of `c: Foo` is b.Foo, but the
+        # local-first annotation resolution picks a.Foo. WI-supat must NOT stamp
+        # a.Foo's id (import-shadowed) -- else the linker binds LocalBase.compute.
+        (tmp_path / "a.py").write_text(
+            "from base import LocalBase\n"
+            "class Foo(LocalBase):\n"
+            "    pass\n"
+            "from b import Foo\n"
+            "def f(c: Foo):\n"
+            "    return c.compute()\n"
+        )
+        out_path = tmp_path / "out.json"
+        run_behavior_map(
+            repo_root=tmp_path, out_path=out_path,
+            include_sketch_precomputed=False,
+        )
+        data = json.loads(out_path.read_text())
+        localbase_compute = next(
+            (n["id"] for n in data["nodes"]
+             if n.get("name") == "LocalBase.compute"
+             and n.get("kind") == "method"),
+            None,
+        )
+        f_id = next(
+            (n["id"] for n in data["nodes"]
+             if n.get("name") == "f" and n.get("kind") == "function"),
+            None,
+        )
+        assert f_id is not None and localbase_compute is not None
+        wrong = [
+            e for e in data["edges"]
+            if e["type"] == "calls" and e["src"] == f_id
+            and e["dst"] == localbase_compute
+        ]
+        assert wrong == [], (
+            "import-shadowed receiver_type_id minted a confidently-wrong "
+            "resolved edge f -> LocalBase.compute (should bias to unresolved)"
+        )

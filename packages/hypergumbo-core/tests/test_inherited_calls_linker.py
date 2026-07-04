@@ -1274,50 +1274,69 @@ def _py_caller(sid: str = "sym:py.Caller.run") -> Symbol:
 
 def _unresolved_site2_lang(
     src_id: str, callee_name: str, receiver_type_hint: str,
-    lang: str, line: int = 1,
+    lang: str, line: int = 1, receiver_type_id: str | None = None,
 ) -> Edge:
-    """Site-2 unresolved-call edge for an arbitrary source language."""
+    """Site-2 unresolved-call edge for an arbitrary source language.
+
+    WI-supat: an optional ``receiver_type_id`` is post-injected into
+    ``edge.meta`` (mirroring how the Python producer builds the meta dict
+    inline — ``make_unresolved_edge`` stays lean and carries no id kwargs since
+    no analyzer routes Site ids through it).
+    """
     from hypergumbo_core.analyze.base import make_unresolved_edge
-    return make_unresolved_edge(
+    edge = make_unresolved_edge(
         lang=lang, src_id=src_id, callee_name=callee_name,
         line=line, pass_id="test-pass", run_id="test-run",
         module_hint="external",
         receiver_type_hint=receiver_type_hint,
     )
+    if receiver_type_id is not None:
+        edge.meta["receiver_type_id"] = receiver_type_id
+    return edge
 
 
 def _unresolved_site1_lang(
     src_id: str, callee_name: str, enclosing_class: str,
-    lang: str, line: int = 1,
+    lang: str, line: int = 1, enclosing_class_id: str | None = None,
 ) -> Edge:
     """Site-1 unresolved-call edge (enclosing_class hint) for an arbitrary
     source language. Dispatch keys on the SOURCE symbol's language, not the
-    edge's dst prefix, so the caller symbol must carry ``lang``."""
+    edge's dst prefix, so the caller symbol must carry ``lang``. WI-supat: an
+    optional ``enclosing_class_id`` is post-injected into ``edge.meta``."""
     from hypergumbo_core.analyze.base import make_unresolved_edge
-    return make_unresolved_edge(
+    edge = make_unresolved_edge(
         lang=lang, src_id=src_id, callee_name=callee_name,
         line=line, pass_id="test-pass", run_id="test-run",
         module_hint="external",
         enclosing_class=enclosing_class,
     )
+    if enclosing_class_id is not None:
+        edge.meta["enclosing_class_id"] = enclosing_class_id
+    return edge
 
 
 def _unresolved_site3_lang(
     src_id: str, callee_name: str, enclosing_class: str,
     inherited_field_receiver: str, lang: str, line: int = 1,
+    enclosing_class_id: str | None = None,
 ) -> Edge:
     """Site-3 unresolved-call edge (inherited_field_receiver + enclosing_class)
     for an arbitrary source language. ``callee_name`` is just the METHOD short
     name (matching the Python producer, which stamps the field in meta, not the
-    dst)."""
+    dst). WI-supat: an optional ``enclosing_class_id`` is post-injected into
+    ``edge.meta`` (the Site-3 ENCLOSING disambiguation; the field-TYPE id rides
+    the parent class symbol's meta, added in PR-B)."""
     from hypergumbo_core.analyze.base import make_unresolved_edge
-    return make_unresolved_edge(
+    edge = make_unresolved_edge(
         lang=lang, src_id=src_id, callee_name=callee_name,
         line=line, pass_id="test-pass", run_id="test-run",
         module_hint="external",
         enclosing_class=enclosing_class,
         inherited_field_receiver=inherited_field_receiver,
     )
+    if enclosing_class_id is not None:
+        edge.meta["enclosing_class_id"] = enclosing_class_id
+    return edge
 
 
 class TestPythonSite2StrictMode:
@@ -1955,3 +1974,402 @@ class TestPythonSite3InheritedField:
         resolved = [e for e in result.edges if e.src == caller.id]
         assert len(resolved) == 1
         assert resolved[0].dst == info.id
+
+
+class TestWiSupatConcreteClassId:
+    """WI-supat (D3): a CONCRETE, authoritative class id threaded through the
+    Site meta contract lets the linker resolve a same-short-name / cross-language
+    namesake PRECISELY instead of biasing to unresolved via the len>1 ambiguity
+    guard. The id is trusted only when it is a real ``class_symbols`` key of the
+    caller's OWN language; absent / stale / foreign-language ids fall back to the
+    name+guard path (byte-identical to pre-WI-supat behavior — the existing
+    ``*_biases_unresolved`` tests stay GREEN as the no-id fallback locks)."""
+
+    # ---- Site-1 (enclosing_class_id) ----
+
+    def test_site1_id_resolves_right_namesake(self) -> None:
+        # Two python "Worker" classes: w1 extends Base (Base.run), w2 unrelated.
+        # NAME-only biases to unresolved (test_site1_python_collision_biases_...);
+        # a concrete enclosing_class_id=w1.id skips the guard and resolves Base.run.
+        base = _py_cls("sym:py.Base", "Base", path="/base.py")
+        base_run = _py_method("sym:py.Base.run", "Base.run", path="/base.py")
+        w1 = _py_cls("sym:py.Worker1", "Worker", path="/w1.py")
+        w2 = _py_cls("sym:py.Worker2", "Worker", path="/w2.py")
+        caller = _py_caller()
+        edges = [
+            _edge(w1.id, base.id, "extends"),
+            _unresolved_site1_lang(
+                src_id=caller.id, callee_name="run",
+                enclosing_class="Worker", lang="python",
+                enclosing_class_id=w1.id,
+            ),
+        ]
+        ctx = LinkerContext(
+            repo_root=Path("/"),
+            symbols=[base, base_run, w1, w2, caller], edges=edges,
+        )
+        result = link_inherited_calls(ctx)
+        resolved = [e for e in result.edges if e.src == caller.id]
+        assert len(resolved) == 1
+        assert resolved[0].dst == base_run.id
+        assert resolved[0].evidence_type == "ast_call_inherited"
+        assert resolved[0].confidence == 0.90
+
+    def test_site1_id_selects_wrong_namesake_stays_unresolved(self) -> None:
+        # PAIRED NEGATIVE: enclosing_class_id=w2.id (the namesake WITHOUT the
+        # inherited method). The linker walks w2's (empty) MRO and finds nothing;
+        # it must NOT fall back to "whichever same-name class resolves". Pins that
+        # the id SELECTS the concrete enclosing class.
+        base = _py_cls("sym:py.Base", "Base", path="/base.py")
+        base_run = _py_method("sym:py.Base.run", "Base.run", path="/base.py")
+        w1 = _py_cls("sym:py.Worker1", "Worker", path="/w1.py")
+        w2 = _py_cls("sym:py.Worker2", "Worker", path="/w2.py")
+        caller = _py_caller()
+        edges = [
+            _edge(w1.id, base.id, "extends"),
+            _unresolved_site1_lang(
+                src_id=caller.id, callee_name="run",
+                enclosing_class="Worker", lang="python",
+                enclosing_class_id=w2.id,
+            ),
+        ]
+        ctx = LinkerContext(
+            repo_root=Path("/"),
+            symbols=[base, base_run, w1, w2, caller], edges=edges,
+        )
+        result = link_inherited_calls(ctx)
+        assert result.edges == []
+
+    def test_site1_crosslang_namesake_id_resolves(self) -> None:
+        # FM3 recovery: a python "Config" + a java "Config" both inflate
+        # class_ids_by_name["Config"] (language-agnostic), so the NAME path
+        # over-suppresses a python call whose python enclosing class is unique.
+        # enclosing_class_id=py_config.id resolves it precisely (sibling of the
+        # existing test_site1_python_crosslang_namesake_over_suppressed no-id lock).
+        base = _py_cls("sym:py.PyBase", "PyBase", path="/base.py")
+        base_m = _py_method("sym:py.PyBase.m", "PyBase.m", path="/base.py")
+        py_config = _py_cls("sym:py.Config", "Config", path="/cfg.py")
+        jv_config = _cls(
+            "sym:jv.Config", "Config", path="/Config.java", language="java"
+        )
+        caller = _py_caller()
+        edges = [
+            _edge(py_config.id, base.id, "extends"),
+            _unresolved_site1_lang(
+                src_id=caller.id, callee_name="m",
+                enclosing_class="Config", lang="python",
+                enclosing_class_id=py_config.id,
+            ),
+        ]
+        ctx = LinkerContext(
+            repo_root=Path("/"),
+            symbols=[base, base_m, py_config, jv_config, caller], edges=edges,
+        )
+        result = link_inherited_calls(ctx)
+        resolved = [e for e in result.edges if e.src == caller.id]
+        assert len(resolved) == 1
+        assert resolved[0].dst == base_m.id
+
+    def test_site1_foreign_language_id_rejected(self) -> None:
+        # A python edge whose enclosing_class_id is a JAVA class id (present in
+        # class_symbols, wrong language). The ``language == src_lang`` guard
+        # rejects it -> name+guard fallback -> two python Config collide (len>1)
+        # -> unresolved. Closes FM3's cross-language leak fully.
+        # NON-VACUITY: jv_config is made RESOLVABLE (extends jv_base which defines
+        # `m`), so WITHOUT the language guard the python C3 walker would bind the
+        # java JBase.m @0.90 — the test's `edges == []` would then FAIL. The guard
+        # is thus load-bearing, not merely asserted against an inert fixture.
+        base = _py_cls("sym:py.PyBase", "PyBase", path="/base.py")
+        base_m = _py_method("sym:py.PyBase.m", "PyBase.m", path="/base.py")
+        py_config = _py_cls("sym:py.Config", "Config", path="/cfg.py")
+        py_config2 = _py_cls("sym:py.Config2", "Config", path="/cfg2.py")
+        jv_config = _cls(
+            "sym:jv.Config", "Config", path="/Config.java", language="java"
+        )
+        jv_base = _cls("sym:jv.JBase", "JBase", path="/JBase.java", language="java")
+        jv_base_m = _method(
+            "sym:jv.JBase.m", "JBase.m", path="/JBase.java", language="java"
+        )
+        caller = _py_caller()
+        edges = [
+            _edge(py_config.id, base.id, "extends"),
+            _edge(jv_config.id, jv_base.id, "extends"),  # makes the java id resolvable
+            _unresolved_site1_lang(
+                src_id=caller.id, callee_name="m",
+                enclosing_class="Config", lang="python",
+                enclosing_class_id=jv_config.id,
+            ),
+        ]
+        ctx = LinkerContext(
+            repo_root=Path("/"),
+            symbols=[base, base_m, py_config, py_config2, jv_config,
+                     jv_base, jv_base_m, caller],
+            edges=edges,
+        )
+        result = link_inherited_calls(ctx)
+        assert result.edges == []
+
+    def test_site1_stale_id_falls_back_to_guard(self) -> None:
+        # enclosing_class_id points at a symbol NOT in class_symbols (removed /
+        # renamed between producer and linker). Falls back to name+guard; the
+        # same-name collision biases to unresolved.
+        base = _py_cls("sym:py.Base", "Base", path="/base.py")
+        base_run = _py_method("sym:py.Base.run", "Base.run", path="/base.py")
+        w1 = _py_cls("sym:py.Worker1", "Worker", path="/w1.py")
+        w2 = _py_cls("sym:py.Worker2", "Worker", path="/w2.py")
+        caller = _py_caller()
+        edges = [
+            _edge(w1.id, base.id, "extends"),
+            _unresolved_site1_lang(
+                src_id=caller.id, callee_name="run",
+                enclosing_class="Worker", lang="python",
+                enclosing_class_id="sym:py.GhostWorker",
+            ),
+        ]
+        ctx = LinkerContext(
+            repo_root=Path("/"),
+            symbols=[base, base_run, w1, w2, caller], edges=edges,
+        )
+        result = link_inherited_calls(ctx)
+        assert result.edges == []
+
+    def test_site1_id_unambiguous_no_regression(self) -> None:
+        # A single "Sub" (no collision). id and name path agree; assert EXACTLY
+        # ONE edge, same evidence/confidence as the name path (no double-emit).
+        base = _py_cls("sym:py.Base", "Base", path="/base.py")
+        base_m = _py_method("sym:py.Base.m", "Base.m", path="/base.py")
+        sub = _py_cls("sym:py.Sub", "Sub", path="/sub.py")
+        caller = _py_caller()
+        edges = [
+            _edge(sub.id, base.id, "extends"),
+            _unresolved_site1_lang(
+                src_id=caller.id, callee_name="m",
+                enclosing_class="Sub", lang="python",
+                enclosing_class_id=sub.id,
+            ),
+        ]
+        ctx = LinkerContext(
+            repo_root=Path("/"),
+            symbols=[base, base_m, sub, caller], edges=edges,
+        )
+        result = link_inherited_calls(ctx)
+        resolved = [e for e in result.edges if e.src == caller.id]
+        assert len(resolved) == 1
+        assert resolved[0].dst == base_m.id
+        assert resolved[0].evidence_type == "ast_call_inherited"
+
+    # ---- Site-2 (receiver_type_id) ----
+
+    def test_site2_id_resolves_right_namesake(self) -> None:
+        # Two python "Foo" (foo_a has Foo.bar, foo_b none). receiver_type_id=
+        # foo_a.id skips the len>1 guard and resolves Step-1 direct @0.85.
+        foo_a = _py_cls("sym:py.FooA", "Foo", path="/a.py")
+        bar = _py_method("sym:py.FooA.bar", "Foo.bar", path="/a.py")
+        foo_b = _py_cls("sym:py.FooB", "Foo", path="/b.py")
+        caller = _py_caller()
+        unresolved = _unresolved_site2_lang(
+            src_id=caller.id, callee_name="bar",
+            receiver_type_hint="Foo", lang="python",
+            receiver_type_id=foo_a.id,
+        )
+        ctx = LinkerContext(
+            repo_root=Path("/"),
+            symbols=[foo_a, bar, foo_b, caller], edges=[unresolved],
+        )
+        result = link_inherited_calls(ctx)
+        resolved = [e for e in result.edges if e.src == caller.id]
+        assert len(resolved) == 1
+        assert resolved[0].dst == bar.id
+        assert resolved[0].evidence_type == "ast_call_type_inferred"
+        assert resolved[0].confidence == 0.85
+
+    def test_site2_id_via_mro_disambiguated(self) -> None:
+        # receiver_type_id points at sub1 (no direct bar); bar is on Base up the
+        # C3 MRO -> Step-2 -> ast_call_inherited_method @0.70. Two "Sub" classes
+        # would collide by name; the id disambiguates.
+        base = _py_cls("sym:py.Base", "Base", path="/base.py")
+        bar = _py_method("sym:py.Base.bar", "Base.bar", path="/base.py")
+        sub1 = _py_cls("sym:py.Sub1", "Sub", path="/s1.py")
+        sub2 = _py_cls("sym:py.Sub2", "Sub", path="/s2.py")
+        caller = _py_caller()
+        edges = [
+            _edge(sub1.id, base.id, "extends"),
+            _unresolved_site2_lang(
+                src_id=caller.id, callee_name="bar",
+                receiver_type_hint="Sub", lang="python",
+                receiver_type_id=sub1.id,
+            ),
+        ]
+        ctx = LinkerContext(
+            repo_root=Path("/"),
+            symbols=[base, bar, sub1, sub2, caller], edges=edges,
+        )
+        result = link_inherited_calls(ctx)
+        resolved = [e for e in result.edges if e.src == caller.id]
+        assert len(resolved) == 1
+        assert resolved[0].dst == bar.id
+        assert resolved[0].evidence_type == "ast_call_inherited_method"
+
+    def test_site2_id_wrong_namesake_no_step3_stays_unresolved(self) -> None:
+        # receiver_type_id=foo_b.id (the "Foo" WITHOUT bar). Not on foo_b directly
+        # nor via MRO. Python is strict -> Step-3 (calls->class type-symbol
+        # fallback) stays OFF -> unresolved. Pins that the id selects the TYPE and
+        # NEVER re-opens the calls->class ratchet partition.
+        foo_a = _py_cls("sym:py.FooA", "Foo", path="/a.py")
+        bar = _py_method("sym:py.FooA.bar", "Foo.bar", path="/a.py")
+        foo_b = _py_cls("sym:py.FooB", "Foo", path="/b.py")
+        caller = _py_caller()
+        unresolved = _unresolved_site2_lang(
+            src_id=caller.id, callee_name="bar",
+            receiver_type_hint="Foo", lang="python",
+            receiver_type_id=foo_b.id,
+        )
+        ctx = LinkerContext(
+            repo_root=Path("/"),
+            symbols=[foo_a, bar, foo_b, caller], edges=[unresolved],
+        )
+        result = link_inherited_calls(ctx)
+        assert result.edges == []
+
+    def test_site2_foreign_language_id_rejected(self) -> None:
+        # python edge, receiver_type_id = a java class id. language guard rejects
+        # -> name+guard fallback -> two python Foo collide -> unresolved.
+        # NON-VACUITY: jv_foo defines `bar` DIRECTLY (jv_bar, same java file), so
+        # WITHOUT the language guard Site-2 Step-1 would resolve jv_foo.bar — the
+        # `edges == []` assertion would then FAIL, proving the guard load-bearing.
+        foo_a = _py_cls("sym:py.FooA", "Foo", path="/a.py")
+        bar = _py_method("sym:py.FooA.bar", "Foo.bar", path="/a.py")
+        foo_b = _py_cls("sym:py.FooB", "Foo", path="/b.py")
+        jv_foo = _cls("sym:jv.Foo", "Foo", path="/Foo.java", language="java")
+        jv_bar = _method(
+            "sym:jv.Foo.bar", "Foo.bar", path="/Foo.java", language="java"
+        )
+        caller = _py_caller()
+        unresolved = _unresolved_site2_lang(
+            src_id=caller.id, callee_name="bar",
+            receiver_type_hint="Foo", lang="python",
+            receiver_type_id=jv_foo.id,
+        )
+        ctx = LinkerContext(
+            repo_root=Path("/"),
+            symbols=[foo_a, bar, foo_b, jv_foo, jv_bar, caller],
+            edges=[unresolved],
+        )
+        result = link_inherited_calls(ctx)
+        assert result.edges == []
+
+    def test_site2_stale_id_falls_back(self) -> None:
+        foo_a = _py_cls("sym:py.FooA", "Foo", path="/a.py")
+        bar = _py_method("sym:py.FooA.bar", "Foo.bar", path="/a.py")
+        foo_b = _py_cls("sym:py.FooB", "Foo", path="/b.py")
+        caller = _py_caller()
+        unresolved = _unresolved_site2_lang(
+            src_id=caller.id, callee_name="bar",
+            receiver_type_hint="Foo", lang="python",
+            receiver_type_id="sym:py.GhostFoo",
+        )
+        ctx = LinkerContext(
+            repo_root=Path("/"),
+            symbols=[foo_a, bar, foo_b, caller], edges=[unresolved],
+        )
+        result = link_inherited_calls(ctx)
+        assert result.edges == []
+
+    # ---- Site-3 enclosing (enclosing_class_id) ----
+
+    def test_site3_enclosing_id_resolves_right_namesake(self) -> None:
+        # Two python "Sub" (sub1 extends Base{fields log:Logger}, sub2 unrelated);
+        # Logger.info exists. enclosing_class_id=sub1.id skips the enclosing guard.
+        logger = _py_cls("sym:py.Logger", "Logger", path="/log.py")
+        info = _py_method("sym:py.Logger.info", "Logger.info", path="/log.py")
+        base = _py_cls_fields(
+            "sym:py.Base", "Base", {"log": "Logger"}, path="/base.py"
+        )
+        sub1 = _py_cls("sym:py.Sub1", "Sub", path="/s1.py")
+        sub2 = _py_cls("sym:py.Sub2", "Sub", path="/s2.py")
+        caller = _py_caller()
+        edges = [
+            _edge(sub1.id, base.id, "extends"),
+            _unresolved_site3_lang(
+                src_id=caller.id, callee_name="info",
+                enclosing_class="Sub", inherited_field_receiver="log",
+                lang="python", enclosing_class_id=sub1.id,
+            ),
+        ]
+        ctx = LinkerContext(
+            repo_root=Path("/"),
+            symbols=[logger, info, base, sub1, sub2, caller], edges=edges,
+        )
+        result = link_inherited_calls(ctx)
+        resolved = [e for e in result.edges if e.src == caller.id]
+        assert len(resolved) == 1
+        assert resolved[0].dst == info.id
+        assert resolved[0].evidence_type == "ast_call_inherited_field"
+        assert resolved[0].confidence == 0.80
+
+    def test_site3_enclosing_id_wrong_namesake_stays_unresolved(self) -> None:
+        # PAIRED NEGATIVE: enclosing_class_id=sub2.id (the Sub WITHOUT the base
+        # carrying the field) -> parent-walk finds no field -> unresolved.
+        logger = _py_cls("sym:py.Logger", "Logger", path="/log.py")
+        info = _py_method("sym:py.Logger.info", "Logger.info", path="/log.py")
+        base = _py_cls_fields(
+            "sym:py.Base", "Base", {"log": "Logger"}, path="/base.py"
+        )
+        sub1 = _py_cls("sym:py.Sub1", "Sub", path="/s1.py")
+        sub2 = _py_cls("sym:py.Sub2", "Sub", path="/s2.py")
+        caller = _py_caller()
+        edges = [
+            _edge(sub1.id, base.id, "extends"),
+            _unresolved_site3_lang(
+                src_id=caller.id, callee_name="info",
+                enclosing_class="Sub", inherited_field_receiver="log",
+                lang="python", enclosing_class_id=sub2.id,
+            ),
+        ]
+        ctx = LinkerContext(
+            repo_root=Path("/"),
+            symbols=[logger, info, base, sub1, sub2, caller], edges=edges,
+        )
+        result = link_inherited_calls(ctx)
+        assert result.edges == []
+
+    def test_site3_enclosing_foreign_language_id_rejected(self) -> None:
+        # python edge, enclosing_class_id = a java "Sub" class id. language guard
+        # rejects -> name+guard fallback -> three "Sub" (2 py + 1 jv) collide by
+        # name (len>1, strict) -> unresolved.
+        # NON-VACUITY: jv_sub is RESOLVABLE (extends jv_base whose meta['fields']
+        # declares log:Logger, and Logger.info exists), so WITHOUT the language
+        # guard the parent-field walk from the java Sub would resolve Logger.info
+        # -> the `edges == []` assertion would FAIL. Guard is load-bearing.
+        logger = _py_cls("sym:py.Logger", "Logger", path="/log.py")
+        info = _py_method("sym:py.Logger.info", "Logger.info", path="/log.py")
+        base = _py_cls_fields(
+            "sym:py.Base", "Base", {"log": "Logger"}, path="/base.py"
+        )
+        sub1 = _py_cls("sym:py.Sub1", "Sub", path="/s1.py")
+        sub2 = _py_cls("sym:py.Sub2", "Sub", path="/s2.py")
+        jv_sub = _cls("sym:jv.Sub", "Sub", path="/Sub.java", language="java")
+        jv_base = Symbol(
+            id="sym:jv.JBase", name="JBase", kind="class", language="java",
+            path="/JBase.java",
+            span=Span(start_line=1, end_line=5, start_col=0, end_col=0),
+            origin="test", origin_run_id="test-run",
+            meta={"fields": {"log": "Logger"}},
+        )
+        caller = _py_caller()
+        edges = [
+            _edge(sub1.id, base.id, "extends"),
+            _edge(jv_sub.id, jv_base.id, "extends"),  # makes the java id resolvable
+            _unresolved_site3_lang(
+                src_id=caller.id, callee_name="info",
+                enclosing_class="Sub", inherited_field_receiver="log",
+                lang="python", enclosing_class_id=jv_sub.id,
+            ),
+        ]
+        ctx = LinkerContext(
+            repo_root=Path("/"),
+            symbols=[logger, info, base, sub1, sub2, jv_sub, jv_base, caller],
+            edges=edges,
+        )
+        result = link_inherited_calls(ctx)
+        assert result.edges == []
