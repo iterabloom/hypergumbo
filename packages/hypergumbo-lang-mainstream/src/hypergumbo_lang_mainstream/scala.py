@@ -56,6 +56,7 @@ from hypergumbo_core.analyze.base import (
     make_symbol_id,
     make_typed_stable_id,
     make_unresolved_edge,
+    make_variable_stable_id,
     node_text,
     visibility_from_modifiers,
 )
@@ -258,6 +259,65 @@ def _get_enclosing_function(
                     return local_symbols[func_name]
         current = current.parent
     return None  # pragma: no cover - defensive
+
+
+# WI-jusus (emission-parity F5): scope discrimination for a val/var, so only a
+# class/object/trait/enum/given-body val becomes a ``field`` and only a
+# top-level val a ``variable``. Any LOCAL binding is NOT an API surface —
+# emitting one would repeat the swift INV-lanaz / go INV-sidab function-local
+# leak regressions. The local set must catch every non-body scope a val can sit
+# directly under: a block/function/lambda, a ``case_clause`` (a braceless
+# ``case _ => val w`` in a partial-function literal / match / try-catch — the
+# *initializer* of a field or top-level val, which would otherwise climb to the
+# body and leak; covers both Scala-2 ``case_block`` and Scala-3 ``indented_cases``
+# chains since the val sits directly under ``case_clause``), and a Scala-3
+# ``indented_block`` (a braceless nested initializer block).
+_SCALA_LOCAL_SCOPE_TYPES = frozenset({
+    "block", "function_definition", "function_declaration", "lambda_expression",
+    "case_clause", "indented_block",
+})
+# Body nodes whose (named) owner makes a directly-contained val a field.
+_SCALA_FIELD_BODY_TYPES = frozenset({
+    "template_body", "enum_body", "with_template_body",
+})
+_SCALA_TYPE_DEF_TYPES = frozenset({
+    "class_definition", "object_definition", "trait_definition",
+    "enum_definition", "given_definition",
+})
+
+
+def _scala_property_scope(
+    node: "tree_sitter.Node", source: bytes
+) -> tuple[Optional[str], Optional[str]]:
+    """Classify a val/var by its nearest scope-defining ancestor (WI-jusus).
+
+    Returns ``("field", owner)`` for a val/var directly in a NAMED
+    class/object/trait/enum/given body, ``("variable", None)`` for a top-level
+    val/var (reaches ``compilation_unit`` first), or ``(None, None)`` for a local
+    binding (block/function/lambda/case/indented) OR an anonymous
+    ``new Foo { val x = ... }`` / anonymous-given member (a body whose parent is
+    not a NAMED type_definition — e.g. an ``instance_expression``). The NEAREST
+    scope wins; the owner is the body's parent identifier (NOT
+    ``_get_enclosing_type``, which would walk past an anonymous body to the outer
+    type and mis-attribute the member).
+    """
+    current = node.parent
+    while current is not None:
+        if current.type in _SCALA_LOCAL_SCOPE_TYPES:
+            return (None, None)
+        if current.type in _SCALA_FIELD_BODY_TYPES:
+            parent = current.parent
+            if (
+                parent is not None
+                and parent.type in _SCALA_TYPE_DEF_TYPES
+                and (nm := find_child_by_type(parent, "identifier")) is not None
+            ):
+                return ("field", node_text(nm, source))
+            return (None, None)
+        if current.type == "compilation_unit":
+            return ("variable", None)
+        current = current.parent  # pragma: no cover - a val's immediate parent is always a scope node in the bundled grammar
+    return (None, None)  # pragma: no cover - every node is under compilation_unit
 
 
 def _extract_scala_signature(
@@ -583,6 +643,84 @@ def _extract_symbols_from_file(
                 analysis.node_for_symbol[symbol.id] = node
                 analysis.symbol_by_name[type_name] = symbol
 
+        elif node.type in (
+            "val_definition", "var_definition",
+            "val_declaration", "var_declaration",
+        ):
+            # WI-jusus (emission-parity F5): emit a kind="field" Symbol for a
+            # class/object/trait/enum/given-body val/var and a kind="variable"
+            # Symbol for a top-level val/var. A local binding / anonymous-object
+            # member is skipped (see _scala_property_scope). Documented fails-safe
+            # deferrals (miss the symbol, never emit a WRONG one): a tuple-pattern
+            # ``val (a, b) = t`` and a multi-name ``val a, b = 0`` (the name is an
+            # ``identifiers`` container, no direct ``identifier`` child -> skipped);
+            # constructor ``val``/``var`` params (``class C(val x: Int)`` — an
+            # ``class_parameter``, not a val_definition); and package-object members.
+            scope, owner = _scala_property_scope(node, source)
+            name_node = find_child_by_type(node, "identifier")
+            if scope is not None and name_node is not None:
+                prop_name = node_text(name_node, source)
+                start_line = node.start_point[0] + 1
+                end_line = node.end_point[0] + 1
+                type_node = find_child_by_type(node, "type_identifier")
+                prop_type = (
+                    node_text(type_node, source) if type_node is not None else None
+                )
+                modifiers = _extract_modifiers_scala(node)
+                annotations = _extract_annotations_scala(node, source)
+                meta = {"decorators": annotations} if annotations else None
+
+                if scope == "field":
+                    full_name = f"{owner}.{prop_name}"
+                    stable_id = make_typed_stable_id(
+                        "field", prop_type or "",
+                        visibility_from_modifiers(modifiers),
+                        name=prop_name, qualified_name=full_name,
+                        file_stable_id=file_stable_id,
+                    )
+                else:
+                    full_name = prop_name
+                    stable_id = make_variable_stable_id(
+                        "scala", str(file_path), prop_name
+                    )
+
+                symbol = Symbol(
+                    id=make_symbol_id("scala", str(file_path), start_line, end_line, full_name, scope),
+                    name=full_name,
+                    kind=scope,
+                    language="scala",
+                    path=str(file_path),
+                    span=Span(
+                        start_line=start_line,
+                        end_line=end_line,
+                        start_col=node.start_point[1],
+                        end_col=node.end_point[1],
+                    ),
+                    origin=PASS_ID,
+                    origin_run_id=run_id,
+                    stable_id=stable_id,
+                    signature=prop_type,
+                    modifiers=modifiers,
+                    meta=meta,
+                    is_exported=not any(
+                        m in modifiers for m in ("private", "protected")
+                    ),
+                    line_span=end_line - start_line + 1,
+                )
+                analysis.symbols.append(symbol)
+                analysis.node_for_symbol[symbol.id] = node
+                # Register a FIELD only under its qualified name (never its bare
+                # short name): symbol_by_name is the edge pass's local_symbols
+                # resolution index, and a short-name field/variable would shadow a
+                # same-named callable (a call mis-resolving to a field, or a field
+                # returned as an enclosing "function"). This mirrors commit
+                # 67b2e14788, which stripped short-name registration from 11 langs
+                # for exactly this call-graph-integrity reason; short-name lookups
+                # go through the NameResolver suffix index. A variable is never a
+                # call target, so it is not registered here at all.
+                if scope == "field":
+                    analysis.symbol_by_name[full_name] = symbol
+
     return analysis
 
 
@@ -727,7 +865,17 @@ def _extract_edges_from_file(
                     elif not edge_added:
                         path_hint = import_aliases.get(callee_name)
                         lookup_result = resolver.lookup(callee_name, path_hint=path_hint, caller_path=_caller_path)
-                        if lookup_result.found and lookup_result.symbol is not None:
+                        # WI-jusus: a call must never resolve to a field/variable
+                        # — the resolver's suffix index now contains the newly
+                        # emitted field/variable symbols, and a same-short-name
+                        # field would otherwise become a confidently-wrong call
+                        # target (a call-graph corruption). Fall through to the
+                        # honest unresolved edge instead.
+                        if (
+                            lookup_result.found
+                            and lookup_result.symbol is not None
+                            and lookup_result.symbol.kind not in ("field", "variable")
+                        ):
                             conf = 0.80 * lookup_result.confidence * _short_name_penalty(callee_name)
                             edges.append(Edge.create(
                                 src=current_function.id,
