@@ -7182,3 +7182,198 @@ class TestExternalConstructorReceiverTypeInference:
         edge = self._calls_edge(result, "send:unresolved")
         assert edge.dst == "python:external:0-0:send:unresolved"
         assert edge.dst_ref is None
+
+
+def test_run_imported_const_method_call_references_in_tree_variable(
+    tmp_path: Path,
+) -> None:
+    """WI-hotug CASE B / INV-nuzas: ``from x import CONST; CONST.items()`` where
+    CONST is an in-tree module-level VARIABLE (a dict/list/regex/cache constant)
+    with a BUILTIN method call on it. The ``.items`` is a builtin (no in-tree
+    target), but the receiver IS a real first-party symbol — emit a
+    ``references`` edge to the in-tree variable, NOT a workspace-prefixed phantom
+    ``external_symbol`` (the INV-nuzas acceptance-property violation).
+    """
+    _build_nuzas_monorepo(tmp_path)
+    auth = tmp_path / "packages" / "auth" / "src" / "authpkg"
+    (auth / "config.py").write_text("CONFIG = {'a': 1}\n")
+    (tmp_path / "packages" / "api" / "src" / "apipkg" / "u.py").write_text(
+        "from authpkg.config import CONFIG\n"
+        "def use():\n"
+        "    return CONFIG.items()\n"
+    )
+    out_path = tmp_path / "out.json"
+    run_behavior_map(
+        repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False
+    )
+    data = json.loads(out_path.read_text())
+    config_var = next(
+        n["id"] for n in data["nodes"]
+        if n["kind"] == "variable" and n.get("name") == "CONFIG"
+    )
+    use_fn = next(
+        n["id"] for n in data["nodes"]
+        if n.get("name") == "use" and n["kind"] == "function"
+    )
+    refs = [
+        e for e in data["edges"]
+        if e["type"] == "references" and e["src"] == use_fn
+        and e["dst"] == config_var
+    ]
+    assert len(refs) == 1, (
+        "imported-const method call must emit a references edge to the in-tree "
+        f"variable; got references={[e for e in data['edges'] if e['type']=='references' and e['src']==use_fn]}"
+    )
+    assert refs[0]["is_resolved"] is True
+    # No workspace-prefixed phantom external for CONFIG.items.
+    ext_ids = [n["id"] for n in data["nodes"] if n["kind"] == "external_symbol"]
+    assert not any("CONFIG.items" in i for i in ext_ids), (
+        f"phantom CONFIG.items external minted: {[i for i in ext_ids if 'CONFIG' in i]}"
+    )
+
+
+def test_run_imported_external_const_method_stays_unresolved(
+    tmp_path: Path,
+) -> None:
+    """WI-hotug CASE B negative: an imported const method call whose receiver is
+    NOT in-tree (a stdlib/external symbol) must NOT emit a references edge — it
+    falls through to the unchanged unresolved-external behavior. Locks that the
+    kind=='variable' guard is import-anchored (allow_ambiguous=False) and never
+    fabricates a resolution."""
+    _build_nuzas_monorepo(tmp_path)
+    (tmp_path / "packages" / "api" / "src" / "apipkg" / "u.py").write_text(
+        "from os import environ\n"
+        "def use():\n"
+        "    return environ.get('X')\n"
+    )
+    out_path = tmp_path / "out.json"
+    run_behavior_map(
+        repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False
+    )
+    data = json.loads(out_path.read_text())
+    use_fn = next(
+        n["id"] for n in data["nodes"]
+        if n.get("name") == "use" and n["kind"] == "function"
+    )
+    # environ is external (os) -> no references edge to any in-tree variable.
+    refs = [
+        e for e in data["edges"]
+        if e["type"] == "references" and e["src"] == use_fn
+    ]
+    assert refs == [], f"external const must not emit a references edge, got {refs}"
+
+
+def test_run_imported_const_shadowed_by_param_no_references(tmp_path: Path) -> None:
+    """WI-hotug CASE B INV-fahub guard: a function PARAMETER that shadows a
+    same-named imported constant must NOT mint a resolved references edge to the
+    module constant — the receiver is the parameter (unknown type), so the call
+    stays honestly unresolved. Reproduces the review-caught scope-shadow false
+    resolution."""
+    _build_nuzas_monorepo(tmp_path)
+    auth = tmp_path / "packages" / "auth" / "src" / "authpkg"
+    (auth / "config.py").write_text("settings = {'a': 1}\n")
+    (tmp_path / "packages" / "api" / "src" / "apipkg" / "u.py").write_text(
+        "from authpkg.config import settings\n"
+        "def handle(settings):\n"
+        "    return settings.get('a')\n"
+    )
+    out_path = tmp_path / "out.json"
+    run_behavior_map(
+        repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False
+    )
+    data = json.loads(out_path.read_text())
+    handle_fn = next(
+        n["id"] for n in data["nodes"]
+        if n.get("name") == "handle" and n["kind"] == "function"
+    )
+    settings_var = next(
+        (n["id"] for n in data["nodes"]
+         if n["kind"] == "variable" and n.get("name") == "settings"), None
+    )
+    refs = [
+        e for e in data["edges"]
+        if e["type"] == "references" and e["src"] == handle_fn
+        and e["dst"] == settings_var
+    ]
+    assert refs == [], (
+        f"parameter shadowing an imported constant must not emit a references "
+        f"edge to the module constant, got {refs}"
+    )
+
+
+def test_run_imported_const_shadowed_by_local_rebind_no_references(
+    tmp_path: Path,
+) -> None:
+    """WI-hotug CASE B INV-fahub guard: a LOCAL rebind shadowing an imported
+    constant must not mint a resolved references edge to the module constant."""
+    _build_nuzas_monorepo(tmp_path)
+    auth = tmp_path / "packages" / "auth" / "src" / "authpkg"
+    (auth / "config.py").write_text("CONFIG = {'a': 1}\n")
+    (tmp_path / "packages" / "api" / "src" / "apipkg" / "u.py").write_text(
+        "from authpkg.config import CONFIG\n"
+        "def handle(raw):\n"
+        "    CONFIG = raw\n"
+        "    return CONFIG.items()\n"
+    )
+    out_path = tmp_path / "out.json"
+    run_behavior_map(
+        repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False
+    )
+    data = json.loads(out_path.read_text())
+    handle_fn = next(
+        n["id"] for n in data["nodes"]
+        if n.get("name") == "handle" and n["kind"] == "function"
+    )
+    module_config = next(
+        (n["id"] for n in data["nodes"]
+         if n["kind"] == "variable" and n.get("name") == "CONFIG"
+         and "config.py" in n.get("path", "")), None
+    )
+    refs = [
+        e for e in data["edges"]
+        if e["type"] == "references" and e["src"] == handle_fn
+        and e["dst"] == module_config
+    ]
+    assert refs == [], (
+        f"local rebind shadowing an imported constant must not emit a references "
+        f"edge to the module constant, got {refs}"
+    )
+
+
+def test_run_imported_class_unresolved_method_stays_phantom(
+    tmp_path: Path,
+) -> None:
+    """WI-hotug CASE B: the ``kind == 'variable'`` guard is load-bearing. An
+    in-tree imported CLASS with an unresolved method (``from x import User;
+    User.nonexistent()``) must NOT emit a references edge — it stays the
+    unchanged unresolved/phantom calls edge (references is only for a variable
+    receiver, never a class). Pins the guard against a drop-mutation."""
+    _build_nuzas_monorepo(tmp_path)  # authpkg.models defines class User
+    (tmp_path / "packages" / "api" / "src" / "apipkg" / "u.py").write_text(
+        "from authpkg.models import User\n"
+        "def use():\n"
+        "    return User.nonexistent_method()\n"
+    )
+    out_path = tmp_path / "out.json"
+    run_behavior_map(
+        repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False
+    )
+    data = json.loads(out_path.read_text())
+    use_fn = next(
+        n["id"] for n in data["nodes"]
+        if n.get("name") == "use" and n["kind"] == "function"
+    )
+    refs = [
+        e for e in data["edges"]
+        if e["type"] == "references" and e["src"] == use_fn
+    ]
+    assert refs == [], (
+        f"class receiver must not emit a references edge (kind guard), got {refs}"
+    )
+    # The unresolved phantom calls edge is preserved (unchanged behavior).
+    calls = [
+        e for e in data["edges"]
+        if e["type"] == "calls" and e["src"] == use_fn
+        and not e.get("is_resolved")
+    ]
+    assert calls, "the unresolved calls edge for the class-method call must survive"

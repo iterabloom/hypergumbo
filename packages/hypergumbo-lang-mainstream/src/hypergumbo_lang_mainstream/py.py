@@ -4453,25 +4453,66 @@ def _process_call(
                     origin_run_id=run_id,
                 ))
             # Case: imported_name.method() where imported_name not resolved
-            elif receiver_name in imports:
+            #
+            # WI-hotug: the ``receiver_name not in _caller_locals`` guard is
+            # LOAD-BEARING (INV-fahub — mirrors the sibling terminal-else
+            # ``elif receiver_name not in _caller_locals`` below and
+            # ``_emit_variable_refs``). ``imports`` is the FILE-level from-import
+            # map, NOT scope-narrowed, so a function PARAMETER or LOCAL rebind that
+            # shadows a same-named imported constant (``def h(settings): ...`` over
+            # ``from x import settings``; ``CONFIG = raw`` over
+            # ``from x import CONFIG``) would otherwise enter this branch and mint
+            # a confidently-wrong RESOLVED ``references``→the-module-constant edge
+            # (the receiver is the local, not the import — an under-determined
+            # bind). Excluding a bound local routes it to the honest generic
+            # ``python:external:0-0:<attr>:unresolved`` terminal else.
+            elif receiver_name in imports and receiver_name not in _caller_locals:
                 module_name, original_name = imports[receiver_name]
-                dst_id = f"python:{module_name}:0-0:{original_name}.{attr_name}:unresolved"
-                edges.append(Edge.create(
-                    src=caller_symbol.id,
-                    dst=dst_id,
-                    edge_type="calls",
-                    line=call_node.lineno,
-                    evidence_type="ast_call",
-                    is_resolved=False,
-                    meta={"call_construct": "method"},
-                    dst_ref=ExternalRef(
-                        lang="python",
-                        module_path=module_name,
-                        name=f"{original_name}.{attr_name}",
-                    ),
-                    origin=PASS_ID,
-                    origin_run_id=run_id,
-                ))
+                # WI-hotug (CASE B / INV-nuzas): the receiver may be an in-tree
+                # module-level VARIABLE imported via ``from x import CONST`` (a
+                # dict/list/regex/cache/instance constant) with a BUILTIN method
+                # call on it (``CONST.items()/.get()/.match()``). ``.items`` etc.
+                # are builtins with no in-tree target, but the RECEIVER is a real
+                # first-party symbol — emit a ``references`` edge to the in-tree
+                # variable (the caller USES the constant) rather than minting a
+                # workspace-prefixed phantom ``external_symbol`` (the INV-nuzas
+                # acceptance-property violation). The lookup is import-anchored on
+                # the concrete ``(module, original_name)`` binding with
+                # ``allow_ambiguous=False`` (biases to unresolved on a same-name
+                # collision — INV-fahub); a class receiver (handled by Case 2d
+                # above), a submodule receiver, or a None/external lookup all fall
+                # through to the unchanged phantom-external emit below.
+                _recv_var = _lookup_symbol_by_module(
+                    global_symbols, module_name, original_name, resolver=resolver
+                )
+                if _recv_var is not None and _recv_var.kind == "variable":
+                    edges.append(Edge.create(
+                        src=caller_symbol.id,
+                        dst=_recv_var.id,
+                        edge_type="references",
+                        line=call_node.lineno,
+                        evidence_type="ast_name_read",
+                        origin=PASS_ID,
+                        origin_run_id=run_id,
+                    ))
+                else:
+                    dst_id = f"python:{module_name}:0-0:{original_name}.{attr_name}:unresolved"
+                    edges.append(Edge.create(
+                        src=caller_symbol.id,
+                        dst=dst_id,
+                        edge_type="calls",
+                        line=call_node.lineno,
+                        evidence_type="ast_call",
+                        is_resolved=False,
+                        meta={"call_construct": "method"},
+                        dst_ref=ExternalRef(
+                            lang="python",
+                            module_path=module_name,
+                            name=f"{original_name}.{attr_name}",
+                        ),
+                        origin=PASS_ID,
+                        origin_run_id=run_id,
+                    ))
             # WI-fuvuj: local_var.method() where the receiver was typed by a
             # known I/O constructor (``f = open(p)`` / ``s = socket.socket()``,
             # incl. the ``with ... as`` form). Emit a MODULE-QUALIFIED dst so
