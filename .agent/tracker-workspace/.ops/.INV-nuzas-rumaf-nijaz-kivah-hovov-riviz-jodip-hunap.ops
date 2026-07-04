@@ -116,3 +116,19 @@
   clock: 13  # d205
   nonce: d205  # d205
   message: "Partial progress (PR #326, dev 04ea7977fd) — the package-__init__ call-resolution facet. _module_name_from_path keys a package __init__.py's symbols under 'pkg.__init__', but callers/imports reference 'pkg', so the (module,name) registry lookup missed every symbol DEFINED in a package __init__ (the existing re-export aliasing only covered names IMPORTED into the __init__; module_to_file_id only resolved import edges to the file node, not calls to the symbol). The registry now also aliases __init__-defined symbols under the importable package name (strictly additive; the dead 'pkg.__init__' key retained -> zero regression, confirmed by 4117-pass affected suite). Behavioral evidence (self-corpus run before->after): in-tree-module 'calls'->external_symbol twins 342->283 (59 recovered); fold_array_join (defined in url_folding/__init__.py) 0->6 callers resolved. STAYS VIOLATED: the 283 residual is OTHER facets — receiver-typed method calls needing type inference (regex.match, dict.items, cache.clear), and non-__init__ cross-package cases. These need dispatch:F3-class receiver/alias resolution (the harder slice). Keeping awaits_bakeoff_validation (342->283 is a quantitative claim)."  # d205
+- op: update  # 4f40
+  at: '2026-07-04T05:42:10Z'  # 4f40
+  by: agent  # 4f40
+  actor: jgstern_agent  # 4f40
+  clock: 14  # 4f40
+  nonce: 4f40  # 4f40
+  set: {}  # 4f40
+  remove:  # 4f40
+    tags: [awaits_bakeoff_validation]  # 4f40
+- op: discuss  # 1684
+  at: '2026-07-04T05:42:10Z'  # 1684
+  by: agent  # 1684
+  actor: jgstern_agent  # 1684
+  clock: 15  # 1684
+  nonce: '1684'  # 1684
+  message: "Bakeoff re-measure of the acceptance property (no external_symbol canonical_name starts with a workspace prefix), self-analysis dev @ 371adbe47c: 107 phantom hypergumbo_* external_symbol nodes (was 116 after supply-verdict:F4). Reached by calls (286) + module_attr_ref (106) — ZERO imports edges, so the IMPORT facet (F3/F4) is CONFIRMED closed (F4's 366->0 imports claim validated; awaits_bakeoff_validation stripped). The 107 residual is dispatch:F3, NOT WI-noham: bare cross-module FUNCTION calls (compute_cyclomatic_complexity, parse_tier_spec via 'from x import fn; fn()') + module-attr refs on constants (CONFIG_FILES_BY_LANG.items, LANGUAGE_ALIASES.get, KAFKA_STREAMS_CALLBACKS.values). WI-noham (obj.method()/self.method()/@property/inherited) landed + closed its own scope (243 self + 533 pretix inherited_calls edges; flagship repros reachable) and reduced this residual only ~9 (116->107) — because the receiver-typed-method portion was small. STAYS VIOLATED: the acceptance property fails on 107 dispatch:F3-owned phantom externals. Remaining owner = a cross-module function-call + module_attr_ref resolution thread (partially helped by WI-gulot alias resolution; 'from x import fn; fn()' + 'mod.CONST.items()' remain). Filed as the next dispatch:F3 target."  # 1684

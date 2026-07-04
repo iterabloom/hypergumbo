@@ -42,3 +42,19 @@
   clock: 4  # f720
   nonce: f720  # f720
   message: "PR-B LANDED + WI-supat COMPLETE — PR merged to dev 0ca939118f. Site-3 field-TYPE id: class-symbol meta['field_type_ids']={field:type_id} (gated by _receiver_type_id_trustworthy); _walk_parents_for_field returns (name, id_or_None) 2-tuple; _resolve_site3 prefers a validated same-language field_type_id, skipping the field-type len>1 guard (java/legacy (name,None) keeps the byte-identical name path).\n\nCRITICAL FINDING (the pivotal fix): the concrete-id path was INERT end-to-end until this PR's finalize.py fix. _relativize_ir_paths (runs BEFORE the linkers) rewrote symbol.id/edge.src/dst + symbol-meta STRINGS to repo-relative, but did NOT touch Edge.meta (where enclosing_class_id/receiver_type_id live) NOR dict-shaped Symbol.meta (field_type_ids). So EVERY WI-supat id kept its stale ABSOLUTE form, missed the relativized class_symbols index, and silently fell back to the name path. The collision-recovery NEVER fired in the full pipeline — only in linker unit tests with synthetic matching ids; the negative e2e tests passed regardless via that same name-path fallback, masking it. This means PR-A's '+146' was intervening-merge drift, NOT the id path. The fix relativizes edge-meta strings + one-level meta-dict values (same INV-pohik symptom-2 family as the route handler_ref str case, which WAS already handled).\n\nBEHAVIORAL EVIDENCE (e2e via run_behavior_map, now firing — the regression these lock): two same-name Logger classes -> Sub.run self.log.info() resolves to the right log1.Logger.info (field_type_ids); two same-name Worker classes -> w1.Worker.run self.greet() resolves to cross-file BaseA.greet (enclosing_class_id, part-A retroactively activated). BOTH were unresolved before the finalize fix (verified 0->1 resolved). Real self-analysis delta: +94 calls edges (63491->63585) — the true WI-supat recall.\n\nDesign + 2 adversarial-review workflows (PR-B linker/producer GO_WITH_NOTES: import-shadow field-type test + omission tests; finalize fix GO_WITH_NOTES: all over-relativization/idempotency failure modes disproven, docstring/shape-contract hardened + idempotency test). Both packages 100% cov; taint + ratchet green. Tagged awaits_bakeoff_validation (the +94 + deadness-delta need bakeoff confirmation)."  # f720
+- op: update  # cbe5
+  at: '2026-07-04T05:41:48Z'  # cbe5
+  by: agent  # cbe5
+  actor: jgstern_agent  # cbe5
+  clock: 5  # cbe5
+  nonce: cbe5  # cbe5
+  set: {}  # cbe5
+  remove:  # cbe5
+    tags: [awaits_bakeoff_validation]  # cbe5
+- op: discuss  # a22c
+  at: '2026-07-04T05:41:49Z'  # a22c
+  by: agent  # a22c
+  actor: jgstern_agent  # a22c
+  clock: 6  # a22c
+  nonce: a22c  # a22c
+  message: "Bakeoff-validated as part of the WI-noham dispatch:F3 cluster re-measure (dev 371adbe47c): inherited_calls recall fires on hypergumbo self (243 edges) + pretix (533, incl. 23 Site-3 ast_call_inherited_field), flagship repros (Symbol.end_line/ValidationResult.ok) reachable under dead-code-maybe --seeds all, no regressions across 19 repos/9 langs. Claim MOVED -> tag stripped. See WI-noham for the full evidence."  # a22c
