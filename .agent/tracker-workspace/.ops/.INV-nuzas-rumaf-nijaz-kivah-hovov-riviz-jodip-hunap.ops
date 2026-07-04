@@ -132,3 +132,17 @@
   clock: 15  # 1684
   nonce: '1684'  # 1684
   message: "Bakeoff re-measure of the acceptance property (no external_symbol canonical_name starts with a workspace prefix), self-analysis dev @ 371adbe47c: 107 phantom hypergumbo_* external_symbol nodes (was 116 after supply-verdict:F4). Reached by calls (286) + module_attr_ref (106) — ZERO imports edges, so the IMPORT facet (F3/F4) is CONFIRMED closed (F4's 366->0 imports claim validated; awaits_bakeoff_validation stripped). The 107 residual is dispatch:F3, NOT WI-noham: bare cross-module FUNCTION calls (compute_cyclomatic_complexity, parse_tier_spec via 'from x import fn; fn()') + module-attr refs on constants (CONFIG_FILES_BY_LANG.items, LANGUAGE_ALIASES.get, KAFKA_STREAMS_CALLBACKS.values). WI-noham (obj.method()/self.method()/@property/inherited) landed + closed its own scope (243 self + 533 pretix inherited_calls edges; flagship repros reachable) and reduced this residual only ~9 (116->107) — because the receiver-typed-method portion was small. STAYS VIOLATED: the acceptance property fails on 107 dispatch:F3-owned phantom externals. Remaining owner = a cross-module function-call + module_attr_ref resolution thread (partially helped by WI-gulot alias resolution; 'from x import fn; fn()' + 'mod.CONST.items()' remain). Filed as the next dispatch:F3 target."  # 1684
+- op: discuss  # 7fac
+  at: '2026-07-04T11:27:17Z'  # 7fac
+  by: agent  # 7fac
+  actor: jgstern_agent  # 7fac
+  clock: 16  # 7fac
+  nonce: 7fac  # 7fac
+  message: "Progress (WI-hotug PR#2 / CASE A, PR #421, dev ebfeb204b2): phantom hypergumbo_* external_symbol nodes 68 -> 58 (the 10 imported-function re-export phantoms now resolve to their real in-tree functions). STAYS violated. Import facet (F3/F4) remains closed. Call/attr facet residual = 58 = 6 calls-reached (5 scip_pb2 submodule-receivers + 1 'copy' WI-zigah, both deferred) + 52 module_attr_ref-reached (WI-huhum, next up)."  # 7fac
+- op: discuss  # 27d0
+  at: '2026-07-04T12:36:51Z'  # 27d0
+  by: agent  # 27d0
+  actor: jgstern_agent  # 27d0
+  clock: 17  # 27d0
+  nonce: 27d0  # 27d0
+  message: "Progress (WI-huhum, PR merged, dev 6d50b100b0): module_attr_ref-reached phantom hypergumbo_* externals 52 -> 18; total INV-nuzas workspace phantoms 58 -> 24. STAYS violated. Call/attr facet residual now 24 = 6 calls-reached (5 scip_pb2 submodule-receivers + 1 'copy' WI-zigah, deferred) + 18 module_attr_ref-reached (kind=function/dunder/re-export targets, not kind=variable — out of WI-huhum's variable-only scope). Import facet remains closed. Cumulative call/attr progress: WI-hotug CASE B 107->68, CASE A 68->58, WI-huhum 58->24."  # 27d0

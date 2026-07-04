@@ -1,0 +1,20 @@
+- op: create  # dbbe
+  at: '2026-07-04T12:02:29Z'  # dbbe
+  by: agent  # dbbe
+  actor: jgstern_agent  # dbbe
+  clock: 1  # dbbe
+  nonce: dbbe  # dbbe
+  data:  # dbbe
+    kind: work_item  # dbbe
+    title: "module_attr_ref/references retarget: enclosing-scope + module-scope shadow-set gaps (shared with _emit_variable_refs)"  # dbbe
+    status: todo_soft  # dbbe
+    priority: 3  # dbbe
+    parent:  # dbbe
+    tags:  # dbbe
+    - analysis_quality  # dbbe
+    isbefore: []  # dbbe
+    duplicate_of: []  # dbbe
+    not_duplicate_of: []  # dbbe
+    pr_ref:  # dbbe
+    description: "Surfaced by the WI-huhum adversarial review (workflow wf_497e0e7f-d7b). The WI-huhum scope-boundary walk in py.py::_emit_module_attr_refs fixes over-attribution (a nested read credited to the enclosing function) and the nested-param shadow. Two residual confidently-wrong-RESOLVED-edge cases remain under the WI-huhum references retarget, BOTH pre-existing and SHARED with the sibling _emit_variable_refs (module-level variable reads):\n\n(1c) ENCLOSING-SCOPE closure-capture shadow: with a module-level 'import config as cfg', 'def outer(cfg): def inner(): return cfg.CONFIG' — inner's own pass retargets cfg.CONFIG to the module CONFIG, but cfg is outer's PARAM captured by closure. inner's local_bindings (immediate scope) excludes outer's param, so the guard misses it. Needs the LEGB enclosing-scope binding UNION (the scope-stack machinery already exists: local_names_by_func_id / _build_scope_stack).\n\n(2) MODULE-SCOPE rebind shadow: 'import config as cfg; cfg = make_cfg(); X = cfg.CONFIG' at module scope — the module-scope caller passes EMPTY local_bindings, so a module-level reassignment of the import alias is unguarded. Needs a module-scope shadow set that EXCLUDES plain import aliases (analogous to _collect_local_bindings(include_import_aliases=False); _collect_module_local_names includes imports so cannot be used as-is). The sibling _emit_variable_refs(module_level_nodes, module_symbol) has the identical empty-bindings gap.\n\nBoth are contrived (require a param/local/module-var named identically to a module-level import alias AND a kind=variable target). Recommended structural fix: extract ONE shared scope-bounded walk + enclosing-union shadow helper and route BOTH _emit_module_attr_refs and _emit_variable_refs through it (DRY), closing both helpers' latent gap in one stroke. INV-fahub."  # dbbe
+    fields: {}  # dbbe
