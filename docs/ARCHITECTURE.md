@@ -15,13 +15,13 @@ for focused LLM context.
 
 hypergumbo analyzed its own source code and found:
 - **291** Python modules (133 analyzers, 57 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 29, Infrastructure 7; 64 core, 4 CLI, 33 tracker)
-- **35943** symbols (functions, classes, methods)
-- **122539** edges by type:
-  - calls: 63585
-  - contains: 33084
+- **35915** symbols (functions, classes, methods)
+- **122565** edges by type:
+  - calls: 63545
+  - contains: 33089
   - imports: 10995
   - instantiates: 8452
-  - references: 3931
+  - references: 3992
   - module_attr_ref: 1243
   - other: 1249
 
@@ -85,7 +85,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 35943 Symbols + 122539 Edges + UsageContexts           │
+│  Output: 35915 Symbols + 122565 Edges + UsageContexts           │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -270,7 +270,7 @@ These symbols have the highest bidirectional centrality
 |--------|------|-------|----------|
 | `Symbol` | class | 9245.0 | ir.py |
 | `Span` | class | 6221.8 | ir.py |
-| `run_behavior_map` | function | 3428.4 | cli.py |
+| `run_behavior_map` | function | 3455.3 | cli.py |
 | `write_text` | external_symbol | 3259.0 | <external> |
 | `LinkerContext` | class | 3016.8 | registry.py |
 | `TrackerApp` | class | 1943.0 | tui.py |
@@ -279,10 +279,10 @@ These symbols have the highest bidirectional centrality
 | `main` | function | 1563.1 | cli.py |
 | `Path` | external_symbol | 1554.0 | <external> |
 | `clear_pattern_cache` | function | 1336.8 | framework_patterns.py |
-| `append` | external_symbol | 1279.0 | <external> |
+| `append` | external_symbol | 1281.0 | <external> |
 | `Edge` | class | 1239.6 | ir.py |
 | `TreeSitterAnalyzer` | class | 1074.7 | base.py |
-| `get` | external_symbol | 1053.0 | <external> |
+| `get` | external_symbol | 1060.0 | <external> |
 
 ## Pattern System
 
@@ -834,7 +834,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: 0ccdcb076c62
+  commit: f335db6ee0fd
   hypergumbo: 6.1.0
   python: 3.12.3
 -->
