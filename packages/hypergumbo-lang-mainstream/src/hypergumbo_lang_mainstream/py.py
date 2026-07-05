@@ -2984,6 +2984,97 @@ def _resolve_property_getter(
     return None
 
 
+# ---------------------------------------------------------------------------
+# Sub-scope binding analysis (INV-ruluv).
+#
+# ``process_code_block`` recurses into comprehension / lambda / nested-def
+# bodies. Those are NEW binding scopes: a comprehension for-target, a lambda
+# parameter, or a nested-def parameter that SHADOWS an outer ``var_types``-typed
+# name must NOT inherit the stale outer type — otherwise the producer emits a
+# confidently-wrong ``receiver_type_hint`` (a resolved edge to the wrong
+# method/getter). These helpers compute the shadow set to prune before
+# descending into a sub-scope. Pruning is applied at scope ENTRY (per node),
+# not at the child-descent site, so a NESTED comprehension's inner target is
+# pruned too (the inner comp reaches the recursion as a block node, not a
+# child).
+# ---------------------------------------------------------------------------
+
+
+def _arg_names(args: ast.arguments) -> set[str]:
+    """Every parameter name bound by an ``ast.arguments`` (all kinds)."""
+    names = {a.arg for a in (*args.posonlyargs, *args.args, *args.kwonlyargs)}
+    if args.vararg:
+        names.add(args.vararg.arg)
+    if args.kwarg:
+        names.add(args.kwarg.arg)
+    return names
+
+
+def _collect_target_names(target: ast.expr, out: set[str]) -> None:
+    """Gather names bound by a comprehension/assignment target, recursing
+    through tuple/list/starred unpacking (``for (a, *rest, (b, c)) in ...``).
+    ``Attribute``/``Subscript`` targets bind no new name."""
+    if isinstance(target, ast.Name):
+        out.add(target.id)
+    elif isinstance(target, ast.Starred):
+        _collect_target_names(target.value, out)
+    elif isinstance(target, (ast.Tuple, ast.List)):
+        for elt in target.elts:
+            _collect_target_names(elt, out)
+
+
+def _subscope_bound_names(node: ast.AST) -> set[str]:
+    """Names bound in ``node``'s OWN nested scope — the shadow set to prune.
+
+    * Lambda: every parameter name.
+    * Comprehension / genexp: every generator for-target name (recursively
+      unpacked). Deliberately EXCLUDES walrus (``:=`` / ``ast.NamedExpr``)
+      targets — PEP 572 binds those in the ENCLOSING scope, so they keep their
+      outer type — and the ``if`` guards / iterables (read positions).
+    """
+    if isinstance(node, ast.Lambda):
+        return _arg_names(node.args)
+    if isinstance(node, (ast.ListComp, ast.SetComp,
+                         ast.GeneratorExp, ast.DictComp)):
+        names: set[str] = set()
+        for gen in node.generators:
+            _collect_target_names(gen.target, names)
+        return names
+    return set()  # pragma: no cover - callers gate on comp/lambda nodes
+
+
+def _comprehension_scope_nodes(node: ast.AST) -> list[ast.AST]:
+    """The direct child expressions of a comprehension evaluated in the
+    COMPREHENSION's own scope — everything except ``generators[0].iter``, which
+    is eagerly evaluated in the ENCLOSING scope before the comp scope exists."""
+    if isinstance(node, ast.DictComp):
+        parts: list[ast.AST] = [node.key, node.value]
+    else:
+        parts = [node.elt]  # type: ignore[attr-defined]
+    for i, gen in enumerate(node.generators):  # type: ignore[attr-defined]
+        parts.append(gen.target)
+        if i != 0:  # generators[0].iter is enclosing-scope
+            parts.append(gen.iter)
+        parts.extend(gen.ifs)
+    return parts
+
+
+def _prune_shadowed(
+    var_types: dict[str, "Symbol"],
+    external_var_types: dict[str, str],
+    shadow: set[str],
+) -> tuple[dict[str, "Symbol"], dict[str, str]]:
+    """Return ``(var_types, external_var_types)`` copies with ``shadow`` names
+    removed (INV-ruluv). Returns the originals unchanged when ``shadow`` is
+    empty (e.g. a no-arg lambda) so no-shadow sub-scopes share the dicts."""
+    if not shadow:
+        return var_types, external_var_types
+    return (
+        {k: v for k, v in var_types.items() if k not in shadow},
+        {k: v for k, v in external_var_types.items() if k not in shadow},
+    )
+
+
 def _extract_edges(
     tree: ast.AST,
     local_symbols: dict[str, Symbol],
@@ -3440,6 +3531,66 @@ def _extract_edges(
         )
 
         for node in block_nodes:
+            # INV-ruluv: skip a directly-body-nested def/class. It is processed
+            # independently by the ast.walk(tree) loop with its OWN caller_symbol
+            # and fresh param_types; recursing into it here would attribute its
+            # edges to the enclosing caller under a stale var_types (and
+            # double-emit). The top-level entry passes the whole ``node.body``,
+            # so such a def/class arrives as a top-level block node the
+            # child-descent guard below would never test (mirrors
+            # ``_emit_module_attr_refs._walk``'s top-of-loop scope-boundary skip).
+            if isinstance(
+                node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
+            ):
+                continue
+
+            # INV-ruluv: a comprehension / lambda is its OWN binding scope. Prune
+            # ``var_types`` of the names it binds before recursing into its
+            # scope-internal parts, so a target/param that SHADOWS an outer typed
+            # name does not inherit the stale outer type (which would emit a
+            # confidently-wrong receiver_type_hint). Pruning at scope ENTRY (per
+            # node) — not at the child-descent site — is what keeps a NESTED
+            # comprehension's inner target pruned: the inner comp arrives here as
+            # a block node (via ``_comprehension_scope_nodes``), not as a child.
+            if isinstance(
+                node, (ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)
+            ):
+                _shadow = _subscope_bound_names(node)
+                _pruned_vt, _pruned_ext = _prune_shadowed(
+                    var_types, external_var_types, _shadow
+                )
+                # generators[0].iter is eagerly evaluated in the ENCLOSING scope.
+                process_code_block(
+                    [node.generators[0].iter], caller_symbol, var_types,
+                    stack=stack, external_var_types=external_var_types,
+                )
+                for _part in _comprehension_scope_nodes(node):
+                    process_code_block(
+                        [_part], caller_symbol, _pruned_vt,
+                        stack=stack, external_var_types=_pruned_ext,
+                    )
+                continue
+
+            if isinstance(node, ast.Lambda):
+                _shadow = _subscope_bound_names(node)
+                _pruned_vt, _pruned_ext = _prune_shadowed(
+                    var_types, external_var_types, _shadow
+                )
+                # default / kw_default exprs are evaluated in the ENCLOSING scope.
+                for _dflt in (
+                    *node.args.defaults,
+                    *(d for d in node.args.kw_defaults if d is not None),
+                ):
+                    process_code_block(
+                        [_dflt], caller_symbol, var_types,
+                        stack=stack, external_var_types=external_var_types,
+                    )
+                process_code_block(
+                    [node.body], caller_symbol, _pruned_vt,
+                    stack=stack, external_var_types=_pruned_ext,
+                )
+                continue
+
             # Track variable assignments for type inference
             # e.g., stub = EmailServiceStub(channel) -> var_types['stub'] = EmailServiceStub
             if isinstance(node, ast.Assign):
