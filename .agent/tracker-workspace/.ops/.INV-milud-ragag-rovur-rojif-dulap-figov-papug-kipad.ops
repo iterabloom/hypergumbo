@@ -21,3 +21,18 @@
     fields:  # a1b8
       statement: "linkers/inherited_calls.py builds class_ids_by_name globally with no src_lang filter (build ~383-388; _resolve_site2 lookup ~574-663), so a Java receiver typed Property misbinds onto a same-named Scala trait, producing false cross-language ast_call_inherited_method edges at conf 0.70 (docspell). Gate Site-2 candidate lookup on src_lang. INV-nilud family."  # a1b8
       root_cause: "class_ids_by_name in linkers/inherited_calls.py is built across all languages with no src_lang partition, so Site-2 candidate lookup can match a class/trait of a different language that shares the receiver type name."  # a1b8
+- op: update  # fcc1
+  at: '2026-07-05T06:29:39Z'  # fcc1
+  by: agent  # fcc1
+  actor: jgstern_agent  # fcc1
+  clock: 2  # fcc1
+  nonce: fcc1  # fcc1
+  set:  # fcc1
+    status: satisfied  # fcc1
+- op: discuss  # 7cfd
+  at: '2026-07-05T06:29:39Z'  # 7cfd
+  by: agent  # 7cfd
+  actor: jgstern_agent  # 7cfd
+  clock: 3  # 7cfd
+  nonce: 7cfd  # 7cfd
+  message: "Fixed in PR #430 (dev ce8dbb2a53). Root cause: inherited_calls Site resolvers turned a receiver/enclosing/field-type NAME into candidate ids via the language-agnostic class_ids_by_name with NO src_lang filter. The Java legacy-permissive Site-2 (_LEGACY_SITE2_LANGS, skips the same-name ambiguity guard) bound a Java receiver to a foreign namesake's method (Step-1) or type symbol (Step-3 fallback) — the docspell Java-Property→Scala-trait ast_call_inherited_method@0.70 case; and for strict languages a foreign-language namesake inflated the len>1 ambiguity count, over-suppressing legit same-language resolutions. Fix: single _same_language_class_ids chokepoint restricts candidates to src_lang at ALL FOUR name-path lookups (Site-1 enclosing L854, Site-2 receiver-type L951, Site-3 enclosing L1066 + field-type L1108) — MRO/typed-receiver dispatch never crosses a language boundary. Structural analogue check: type_hierarchy dispatch is ID-keyed from the within-language inheritance graph (_find_implementing_methods_indexed filters by class_id) — already immune, no sibling fix. Behavioral (production-path) evidence, 5 new tests through link_inherited_calls: Java obj.save() with a Python Shared.save listed first now falls back to the Java Shared type instead of binding the Python method (Site-1 bare-call + Site-3 inherited-field variants likewise stay same-language); a Python w.render() with one in-tree Widget resolves despite a Java Widget namesake that previously over-suppressed it (the ex-'FM3 accepted over-suppression' test flipped to assert the corrected resolution). Core package 100% coverage (inherited_calls.py 298 stmts/0 miss); full affected suite 3584 passed."  # 7cfd

@@ -21,3 +21,18 @@
     fields:  # 0789
       statement: "The Nim analyzer extracts 0/246 exported procs (the 'proc name*' export-marker syntax) while extracting 106/106 non-exported procs, making the entire public API of the dominant language invisible (nitter)."  # 0789
       root_cause: "The Nim analyzer's proc extraction does not handle the trailing export-marker '*' on proc names, so exported procs are skipped or mis-parsed."  # 0789
+- op: update  # 9d49
+  at: '2026-07-05T07:11:11Z'  # 9d49
+  by: agent  # 9d49
+  actor: jgstern_agent  # 9d49
+  clock: 2  # 9d49
+  nonce: 9d49  # 9d49
+  set:  # 9d49
+    status: satisfied  # 9d49
+- op: discuss  # de50
+  at: '2026-07-05T07:11:11Z'  # de50
+  by: agent  # de50
+  actor: jgstern_agent  # de50
+  clock: 3  # de50
+  nonce: de50  # de50
+  message: "Fixed in PR (dev 1b044cbf6f). Root cause: nim.py proc/func/method/type processors resolved the name via find_child_by_type(node,'identifier'), missing Nim's exported form 'proc name*' where tree-sitter wraps the name in an exported_symbol node (identifier + '*') — so every exported declaration hit 'if not name_node: return None' and was dropped (0/246). Fix: shared _declared_name_node helper resolves the inner identifier for both plain and exported_symbol shapes and returns is_exported, threaded through _make_symbol to Symbol(is_exported=). Exported procs/funcs/methods/types now extracted + marked is_exported=True; non-exported stay False (mirrors go.py lexical-case export rule). Structural note: the dispatch handles proc/func/method/type only; template/iterator/const are a separate pre-existing non-extraction. Behavioral evidence (analyze_nim): greet*/double*/speak*/Person* extracted with is_exported=True, plain 'internal' with False (was: only internal extracted). extended package 100% coverage; 26 nim tests pass."  # de50

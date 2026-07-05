@@ -21,3 +21,18 @@
     fields:  # 6da7
       statement: "D import edges show the same <unknown> wrong-slot defect as Nim (vibe.d in the name-slot), causing an unjustified vibe-d framework demote on dub; likely a joint fix with the Nim external_symbol code path."  # 6da7
       root_cause: "The D import-edge producer has the same <unknown>-slot defect as Nim; both likely share the external_symbol code path that fails to populate module_path."  # 6da7
+- op: update  # 3847
+  at: '2026-07-05T08:37:49Z'  # 3847
+  by: agent  # 3847
+  actor: jgstern_agent  # 3847
+  clock: 2  # 3847
+  nonce: '3847'  # 3847
+  set:  # 3847
+    status: satisfied  # 3847
+- op: discuss  # ce3b
+  at: '2026-07-05T08:37:49Z'  # ce3b
+  by: agent  # ce3b
+  actor: jgstern_agent  # ce3b
+  clock: 3  # ce3b
+  nonce: ce3b  # ce3b
+  message: "Fixed jointly with INV-lumuh in PR (dev abf47e01a7). Same malformed-slot defect as Nim: d_lang.py's external/stdlib import fallback (process_import else-branch, when the module is not in module_registry) emitted d:?:{module}:module (4 slots, '?' path, no span), leaving module_path/src=<unknown> and vibe.d invisible to refine_frameworks (reads parts[1]) -> vibe-d false-demote on dub. Fix: emit the canonical d:{module}:0-0:module:module form (module in parts[1]); in-tree imports already resolve to the real module symbol id (module_registry path, unchanged). Behavioral evidence (analyze_d): import vibe.vibe; -> d:vibe.vibe:0-0:module:module (parts[1]='vibe.vibe', was '?'). Extended package 100% coverage."  # ce3b

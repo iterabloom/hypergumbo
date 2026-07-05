@@ -20,3 +20,18 @@
     fields:  # 18f1
       statement: "Taint SANITIZER registration MUST apply the same call_construct/is_resolved kind-aware gate as source/sink matching: an unresolved, no-module, method-kind bare-name edge whose short name collides with a sanitizer leaf MUST NOT register a plaintext-sanitizer barrier (else a real flow is silently suppressed — a false negative)."  # 18f1
       root_cause: "taint.py _register_sanitizer_callers (~1176) and its DDG mirror (~1497) match sanitizer leaves by bare callee_name with no call_construct/is_resolved/module gate; the WI-razol 'fix BOTH loops' kind-gate was applied to source/sink (_match_propagation_entry -> gate_named_entry) but never the third (sanitizer) loop."  # 18f1
+- op: update  # 0f53
+  at: '2026-07-05T08:03:43Z'  # 0f53
+  by: agent  # 0f53
+  actor: jgstern_agent  # 0f53
+  clock: 2  # 0f53
+  nonce: 0f53  # 0f53
+  set:  # 0f53
+    status: satisfied  # 0f53
+- op: discuss  # ab4d
+  at: '2026-07-05T08:03:43Z'  # ab4d
+  by: agent  # ab4d
+  actor: jgstern_agent  # ab4d
+  clock: 3  # ab4d
+  nonce: ab4d  # ab4d
+  message: "Fixed in PR (dev 4d89c28183). Root cause: _register_sanitizer_callers matched edges to sanitizers purely on the bare callee_name, lacking the is_resolved/call_construct kind-aware gate that source/sink matching applies via _match_propagation_entry/gate_named_entry (ADR-0037 ruling 4 / INV-tapat/INV-maluk). So an UNRESOLVED x.encrypt() untyped method call whose leaf collides with a sanitizer (encrypt from Fernet.encrypt, indexed under the bare leaf) registered a phantom barrier -> caller marked sanitized -> a real source->sink violation silently suppressed (flow-suppression false NEGATIVE, worse than a missed barrier for a security tool). Fix: sanitizer registration now mirrors the reliably-derivable gate — a resolved edge trusts its resolution (unchanged); an unresolved edge passes only on an exact qualified_name match (receiver evidence), and a bare untyped method call (call_construct=='method') or an ambiguous bare name is rejected. Over-rejection errs toward REPORTING the flow (safe direction for a security tool). Documented follow-up: the kind-filter for a free-function call matching a method-kind sanitizer needs an explicit kind in the sanitizer YAML (absent today). Behavioral (production-path) evidence: propagate_taint_structural on handler->middle->write_text where middle makes an unrelated unresolved x.encrypt() call now REPORTS the plaintext violation (was: 0 findings, silently sanitized); the real qualified Fernet.encrypt sanitizer still blocks its flow (qualified-name bypass). 4 new production-path tests (2 fail without the gate); core package 100% coverage; 143 taint tests pass."  # ab4d
