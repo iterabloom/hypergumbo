@@ -172,6 +172,79 @@ proc main() =
         assert any("os" in dst for dst in imported)
 
 
+class TestNimExportedSymbols:
+    """INV-bisom: Nim marks a public symbol with a ``*`` export postfix
+    (``proc greet*``), which the tree-sitter grammar wraps in an
+    ``exported_symbol`` node instead of exposing a bare ``identifier`` child.
+    The extractors previously looked only for a direct ``identifier``, so EVERY
+    exported proc / func / method / type was silently dropped (0/246 on the
+    filed corpus). They must be extracted AND marked ``is_exported``."""
+
+    def test_extracts_exported_proc(self, temp_repo: Path) -> None:
+        (temp_repo / "m.nim").write_text('''
+proc greet*(name: string): string =
+  result = "hi " & name
+''')
+        result = analyze_nim(temp_repo)
+        procs = [s for s in result.symbols if s.name == "greet"]
+        assert len(procs) == 1
+        assert procs[0].kind == "function"
+        assert procs[0].is_exported is True
+
+    def test_extracts_exported_func(self, temp_repo: Path) -> None:
+        (temp_repo / "m.nim").write_text('''
+func double*(n: int): int = n * 2
+''')
+        result = analyze_nim(temp_repo)
+        funcs = [s for s in result.symbols if s.name == "double"]
+        assert len(funcs) == 1
+        assert funcs[0].kind == "function"
+        assert funcs[0].is_exported is True
+
+    def test_extracts_exported_method(self, temp_repo: Path) -> None:
+        (temp_repo / "m.nim").write_text('''
+type Animal = ref object of RootObj
+  name: string
+
+method speak*(a: Animal): string =
+  result = "sound"
+''')
+        result = analyze_nim(temp_repo)
+        methods = [
+            s for s in result.symbols
+            if s.name == "speak" and s.kind == "method"
+        ]
+        assert len(methods) == 1
+        assert methods[0].is_exported is True
+
+    def test_extracts_exported_type(self, temp_repo: Path) -> None:
+        (temp_repo / "m.nim").write_text('''
+type Person* = object
+  name: string
+''')
+        result = analyze_nim(temp_repo)
+        types = [
+            s for s in result.symbols
+            if s.name == "Person" and s.kind == "type"
+        ]
+        assert len(types) == 1
+        assert types[0].is_exported is True
+
+    def test_non_exported_symbols_not_marked_exported(
+        self, temp_repo: Path,
+    ) -> None:
+        """Regression: a plain (non-``*``) proc is still extracted and is NOT
+        marked exported."""
+        (temp_repo / "m.nim").write_text('''
+proc internalHelper(x: int): int =
+  result = x + 1
+''')
+        result = analyze_nim(temp_repo)
+        procs = [s for s in result.symbols if s.name == "internalHelper"]
+        assert len(procs) == 1
+        assert procs[0].is_exported is False
+
+
 class TestNimCallResolution:
     """Tests for Nim call resolution."""
 

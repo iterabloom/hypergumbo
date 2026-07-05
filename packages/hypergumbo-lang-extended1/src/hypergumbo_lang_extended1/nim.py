@@ -73,10 +73,34 @@ def is_nim_tree_sitter_available() -> bool:
 # ---------------------------------------------------------------------------
 
 
+def _declared_name_node(
+    parent: "tree_sitter.Node",
+) -> tuple[Optional["tree_sitter.Node"], bool]:
+    """Return ``(name_identifier, is_exported)`` for a Nim declaration.
+
+    A plain declaration exposes its name as a direct ``identifier`` child. An
+    EXPORTED one — Nim's ``*`` postfix, ``proc greet*`` / ``type Person*`` —
+    wraps that identifier in an ``exported_symbol`` node (``identifier`` +
+    ``*``), so a bare ``find_child_by_type(parent, "identifier")`` finds
+    nothing and the whole declaration was silently dropped (INV-bisom, 0/246
+    on the filed corpus). Resolve the inner identifier in either shape, and
+    report whether the ``*`` export marker was present so the caller can set
+    ``Symbol.is_exported`` (mirroring go.py's lexical-case export rule).
+    """
+    ident = find_child_by_type(parent, "identifier")
+    if ident is not None:
+        return ident, False
+    exported = find_child_by_type(parent, "exported_symbol")
+    if exported is not None:
+        return find_child_by_type(exported, "identifier"), True
+    return None, False  # pragma: no cover - defensive: a declaration always names
+
+
 def _make_symbol(
     analyzer: "NimAnalyzer", rel_path: str, run_id: str, node: "tree_sitter.Node",
     name: str, kind: str, source: bytes,
     signature: Optional[str] = None, meta: Optional[dict] = None,
+    is_exported: bool = False,
 ) -> Symbol:
     """Create a Symbol with consistent formatting."""
     start_line = node.start_point[0] + 1
@@ -112,6 +136,7 @@ def _make_symbol(
         ),
         signature=signature,
         meta=meta,
+        is_exported=is_exported,
         cyclomatic_complexity=(
             compute_cyclomatic_complexity(node, "nim") if _is_callable else None
         ),
@@ -123,7 +148,7 @@ def _process_proc_declaration(
     analyzer: "NimAnalyzer", source: bytes, rel_path: str, run_id: str, node: "tree_sitter.Node",
 ) -> Optional[Symbol]:
     """Process a proc declaration."""
-    name_node = find_child_by_type(node, "identifier")
+    name_node, is_exported = _declared_name_node(node)
     if not name_node:
         return None  # pragma: no cover - defensive
 
@@ -131,14 +156,14 @@ def _process_proc_declaration(
     params = find_child_by_type(node, "parameter_declaration_list")
     signature = node_text(params, source) if params else "()"
 
-    return _make_symbol(analyzer, rel_path, run_id, node, proc_name, "function", source, signature=signature)
+    return _make_symbol(analyzer, rel_path, run_id, node, proc_name, "function", source, signature=signature, is_exported=is_exported)
 
 
 def _process_func_declaration(
     analyzer: "NimAnalyzer", source: bytes, rel_path: str, run_id: str, node: "tree_sitter.Node",
 ) -> Optional[Symbol]:
     """Process a func declaration (pure function)."""
-    name_node = find_child_by_type(node, "identifier")
+    name_node, is_exported = _declared_name_node(node)
     if not name_node:
         return None  # pragma: no cover - defensive
 
@@ -146,14 +171,14 @@ def _process_func_declaration(
     params = find_child_by_type(node, "parameter_declaration_list")
     signature = node_text(params, source) if params else "()"
 
-    return _make_symbol(analyzer, rel_path, run_id, node, func_name, "function", source, signature=signature)
+    return _make_symbol(analyzer, rel_path, run_id, node, func_name, "function", source, signature=signature, is_exported=is_exported)
 
 
 def _process_method_declaration(
     analyzer: "NimAnalyzer", source: bytes, rel_path: str, run_id: str, node: "tree_sitter.Node",
 ) -> Optional[Symbol]:
     """Process a method declaration."""
-    name_node = find_child_by_type(node, "identifier")
+    name_node, is_exported = _declared_name_node(node)
     if not name_node:
         return None  # pragma: no cover - defensive
 
@@ -161,7 +186,7 @@ def _process_method_declaration(
     params = find_child_by_type(node, "parameter_declaration_list")
     signature = node_text(params, source) if params else "()"
 
-    return _make_symbol(analyzer, rel_path, run_id, node, method_name, "method", source, signature=signature)
+    return _make_symbol(analyzer, rel_path, run_id, node, method_name, "method", source, signature=signature, is_exported=is_exported)
 
 
 def _process_type_declaration(
@@ -172,12 +197,12 @@ def _process_type_declaration(
     if not type_sym:
         return None  # pragma: no cover - defensive
 
-    name_node = find_child_by_type(type_sym, "identifier")
+    name_node, is_exported = _declared_name_node(type_sym)
     if not name_node:
         return None  # pragma: no cover - defensive
 
     type_name = node_text(name_node, source)
-    return _make_symbol(analyzer, rel_path, run_id, node, type_name, "type", source)
+    return _make_symbol(analyzer, rel_path, run_id, node, type_name, "type", source, is_exported=is_exported)
 
 
 # ---------------------------------------------------------------------------
