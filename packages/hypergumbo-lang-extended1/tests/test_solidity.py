@@ -1520,3 +1520,104 @@ contract C {
         result = analyze_solidity(temp_repo)
         contract = next(s for s in result.symbols if s.kind == "contract")
         assert contract.cyclomatic_complexity is None
+
+
+class TestSolidityFieldVariableEmission:
+    """WI-jusus (emission-parity): Solidity emits kind='field' for contract
+    state variables (the security-critical persistent storage) and struct
+    members, and kind='variable' for file-level constants. Function locals
+    (a distinct grammar node) are not emitted, and field/variable symbols are
+    kept out of the call-resolution registry.
+    """
+
+    def _by_kind(self, result, kind):
+        return [s for s in result.symbols if s.kind == kind]
+
+    def test_state_variables_emitted_as_fields(self, temp_repo: Path) -> None:
+        (temp_repo / "Token.sol").write_text("""
+contract Token {
+    uint256 public totalSupply;
+    mapping(address => uint256) balances;
+    address private _owner;
+}
+""")
+        result = analyze_solidity(temp_repo)
+        fields = {s.name: s for s in self._by_kind(result, "field")}
+        assert "Token.totalSupply" in fields
+        assert "Token.balances" in fields
+        assert "Token._owner" in fields
+        # public state var is exported; private is not
+        assert fields["Token.totalSupply"].is_exported is True
+        assert fields["Token._owner"].is_exported is False
+        # type recorded as signature; stable_id present
+        assert fields["Token.totalSupply"].signature == "uint256"
+        assert fields["Token.totalSupply"].stable_id is not None
+        assert fields["Token.balances"].language == "solidity"
+
+    def test_struct_members_emitted_as_fields(self, temp_repo: Path) -> None:
+        (temp_repo / "S.sol").write_text("""
+contract C {
+    struct Account { uint256 balance; address addr; }
+}
+""")
+        names = {s.name for s in self._by_kind(analyze_solidity(temp_repo), "field")}
+        assert "Account.balance" in names
+        assert "Account.addr" in names
+
+    def test_file_level_constant_emitted_as_variable(self, temp_repo: Path) -> None:
+        (temp_repo / "K.sol").write_text("""
+uint256 constant MAX_SUPPLY = 1000;
+contract C {}
+""")
+        variables = {s.name: s for s in self._by_kind(analyze_solidity(temp_repo), "variable")}
+        assert "MAX_SUPPLY" in variables
+        assert variables["MAX_SUPPLY"].stable_id is not None
+        assert variables["MAX_SUPPLY"].is_exported is True
+
+    def test_contract_level_constant_is_field_not_variable(self, temp_repo: Path) -> None:
+        (temp_repo / "D.sol").write_text("""
+contract C {
+    uint8 constant DECIMALS = 18;
+}
+""")
+        result = analyze_solidity(temp_repo)
+        fields = {s.name for s in self._by_kind(result, "field")}
+        variables = {s.name for s in self._by_kind(result, "variable")}
+        assert "C.DECIMALS" in fields
+        assert "DECIMALS" not in variables
+
+    def test_function_locals_not_emitted(self, temp_repo: Path) -> None:
+        (temp_repo / "L.sol").write_text("""
+contract C {
+    function transfer(address to, uint256 amt) public {
+        uint256 local = amt;
+        address recipient = to;
+    }
+}
+""")
+        leaked = {
+            s.name for s in analyze_solidity(temp_repo).symbols
+            if s.kind in ("field", "variable")
+        }
+        for bad in ("local", "recipient", "amt", "to"):
+            assert not any(bad == n or n.endswith("." + bad) for n in leaked), (
+                bad, leaked
+            )
+
+    def test_state_variable_not_a_call_target(self, temp_repo: Path) -> None:
+        """A state variable must not be a spurious call/resolution target: a
+        function sharing its name is not clobbered, and no calls edge points at
+        the field (register_symbol chokepoint)."""
+        (temp_repo / "a.sol").write_text("""
+contract A {
+    uint256 config;
+    function config2() public { helper(); }
+    function helper() public {}
+}
+""")
+        result = analyze_solidity(temp_repo)
+        field_ids = {s.id for s in result.symbols if s.kind in ("field", "variable")}
+        calls = [e for e in result.edges if e.edge_type == "calls"]
+        assert not any(e.dst in field_ids for e in calls)
+        # the real function->function call still resolves
+        assert any("helper" in e.dst for e in calls)
