@@ -552,3 +552,113 @@ end
         for s in result.symbols:
             if s.kind != "function":
                 assert s.cyclomatic_complexity is None, (s.kind, s.name)
+
+
+class TestJuliaStructFieldEmission:
+    """WI-jusus (emission-parity): Julia emits kind='field' for struct members
+    (typed, untyped, and Julia-1.8 const fields), owner-qualified. Inner
+    constructors and function-body locals are not fields, and field symbols are
+    kept out of the call-resolution registry.
+    """
+
+    def _analyze(self, tmp_path: Path, src: str):
+        from hypergumbo_lang_common.julia import analyze_julia
+
+        (tmp_path / "s.jl").write_text(src)
+        return analyze_julia(tmp_path)
+
+    def _fields(self, result):
+        return [s for s in result.symbols if s.kind == "field"]
+
+    def test_typed_and_untyped_struct_fields(self, tmp_path: Path) -> None:
+        result = self._analyze(tmp_path, """
+struct Point
+    x::Float64
+    y::Float64
+    label
+end
+""")
+        fields = {s.name: s for s in self._fields(result)}
+        assert "Point.x" in fields
+        assert "Point.y" in fields
+        assert "Point.label" in fields
+        assert fields["Point.x"].signature == "Float64"
+        assert fields["Point.label"].signature is None
+        assert fields["Point.x"].stable_id is not None
+        assert fields["Point.x"].language == "julia"
+
+    def test_mutable_struct_field(self, tmp_path: Path) -> None:
+        result = self._analyze(tmp_path, """
+mutable struct Account
+    balance::Int
+    total::Float64
+end
+""")
+        names = {s.name for s in self._fields(result)}
+        assert "Account.balance" in names
+        assert "Account.total" in names
+
+    def test_const_struct_field_deferred(self, tmp_path: Path) -> None:
+        """Julia-1.8 `const x::T` struct fields parse as an ERROR under the
+        bundled tree-sitter-julia grammar (predates the feature); they are
+        deferred fails-safe (miss, never emit a wrong symbol). The sibling
+        non-const field is still emitted."""
+        result = self._analyze(tmp_path, """
+mutable struct Account
+    balance::Int
+    const owner::String
+end
+""")
+        names = {s.name for s in self._fields(result)}
+        assert "Account.balance" in names
+        assert "Account.owner" not in names
+
+    def test_parametric_field_type(self, tmp_path: Path) -> None:
+        result = self._analyze(tmp_path, """
+struct Bag
+    items::Vector{Int}
+end
+""")
+        fields = {s.name: s for s in self._fields(result)}
+        assert "Bag.items" in fields
+        assert fields["Bag.items"].signature == "Vector{Int}"
+
+    def test_inner_constructor_not_a_field(self, tmp_path: Path) -> None:
+        result = self._analyze(tmp_path, """
+struct Widget
+    size::Int
+    Widget(s) = new(s)
+end
+""")
+        names = {s.name for s in self._fields(result)}
+        assert "Widget.size" in names
+        assert "Widget.Widget" not in names
+        assert not any(n.endswith(".new") for n in names)
+
+    def test_function_locals_not_fields(self, tmp_path: Path) -> None:
+        result = self._analyze(tmp_path, """
+function process(a)
+    local temp = a
+    z = temp + 1
+    return z
+end
+""")
+        leaked = {s.name for s in result.symbols if s.kind == "field"}
+        for bad in ("temp", "z", "a"):
+            assert not any(bad == n or n.endswith("." + bad) for n in leaked), (
+                bad, leaked
+            )
+
+    def test_field_not_a_call_target(self, tmp_path: Path) -> None:
+        """A struct field must not clobber or shadow a same-named function in
+        call resolution (register_symbol chokepoint)."""
+        result = self._analyze(tmp_path, """
+struct S
+    value::Int
+end
+value() = 1
+caller() = value()
+""")
+        field_ids = {s.id for s in result.symbols if s.kind == "field"}
+        calls = [e for e in result.edges if e.edge_type == "calls"]
+        assert not any(e.dst in field_ids for e in calls)

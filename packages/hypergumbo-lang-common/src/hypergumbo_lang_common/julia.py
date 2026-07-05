@@ -5,6 +5,7 @@ This analyzer uses tree-sitter to parse Julia files and extract:
 - Module declarations
 - Function declarations (both full and short-form)
 - Struct declarations (mutable and immutable)
+- Struct member fields (kind="field"; WI-jusus)
 - Abstract type declarations
 - Macro declarations
 - Constant declarations
@@ -48,8 +49,11 @@ from hypergumbo_core.analyze.base import (
     find_child_by_type,
     iter_tree,
     make_file_id,
+    make_file_stable_id,
     make_symbol_id,
+    make_typed_stable_id,
     node_text,
+    visibility_from_modifiers,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
@@ -196,6 +200,32 @@ def _extract_julia_signature(
     return signature
 
 
+def _julia_struct_field(
+    node: "tree_sitter.Node", source: bytes
+) -> tuple[Optional[str], Optional[str]]:
+    """(name, type) for a struct-body member (WI-jusus).
+
+    A ``typed_expression`` (``x::Float64``) yields ``("x", "Float64")`` — the
+    identifier before ``::`` is the name, the first named node after ``::`` is
+    the (possibly parametric) type. A bare ``identifier`` field (``label``)
+    yields ``("label", None)``. Julia-1.8 ``const x::T`` fields arrive here
+    already unwrapped from their ``const_statement``.
+    """
+    if node.type == "identifier":
+        return node_text(node, source), None
+    name: Optional[str] = None
+    vtype: Optional[str] = None
+    after_colons = False
+    for child in node.children:
+        if child.type == "::":
+            after_colons = True
+        elif not after_colons and child.type == "identifier" and name is None:
+            name = node_text(child, source)
+        elif after_colons and child.is_named and vtype is None:
+            vtype = node_text(child, source)
+    return name, vtype
+
+
 def _extract_symbols_from_tree(
     tree: "tree_sitter.Tree",
     source: bytes,
@@ -204,6 +234,51 @@ def _extract_symbols_from_tree(
 ) -> FileAnalysis:
     """Extract symbols from a parsed Julia file's tree."""
     analysis = FileAnalysis()
+
+    # WI-jusus (emission-parity): file-identity anchor so same-named struct
+    # fields in different files hash to distinct stable_ids.
+    file_stable_id = make_file_stable_id("julia", file_path)
+
+    def add_struct_field(
+        field_node: "tree_sitter.Node", name: str, vtype: Optional[str], owner: str
+    ) -> None:
+        """Append a ``kind="field"`` struct-member Symbol (WI-jusus).
+
+        Deliberately NOT registered in ``symbol_by_name`` (nor, via
+        ``JuliaAnalyzer.register_symbol``, in the global registry): a struct
+        field is a data anchor, never a call target, so keeping it out of
+        resolution prevents a bare-named field from shadowing a same-named
+        function. It still reaches output/search/centrality because the output
+        symbol set is ``analysis.symbols``.
+        """
+        full_name = f"{owner}.{name}"
+        modifiers = ["private"] if name.startswith("_") else []
+        start_line = field_node.start_point[0] + 1
+        end_line = field_node.end_point[0] + 1
+        analysis.symbols.append(Symbol(
+            id=make_symbol_id(
+                "julia", file_path, start_line, end_line, full_name, "field"
+            ),
+            name=full_name,
+            kind="field",
+            language="julia",
+            path=file_path,
+            span=Span(
+                start_line=start_line,
+                end_line=end_line,
+                start_col=field_node.start_point[1],
+                end_col=field_node.end_point[1],
+            ),
+            origin=PASS_ID,
+            origin_run_id=run_id,
+            stable_id=make_typed_stable_id(
+                "field", vtype or "", visibility_from_modifiers(modifiers),
+                name=name, qualified_name=full_name, file_stable_id=file_stable_id,
+            ),
+            signature=vtype,
+            modifiers=modifiers,
+            is_exported=not name.startswith("_"),
+        ))
 
     for node in iter_tree(tree.root_node):
         # Module definition
@@ -335,6 +410,24 @@ def _extract_symbols_from_tree(
                     )
                     analysis.symbols.append(symbol)
                     analysis.symbol_by_name[struct_name] = symbol
+
+                    # WI-jusus: emit member fields owned by this struct. Fields
+                    # are the struct body's typed_expression (``x::T``) and bare
+                    # identifier (untyped) members; inner constructors
+                    # (function_definition / short-form assignment) are skipped.
+                    # The bundled tree-sitter-julia grammar lists members as
+                    # DIRECT children of struct_definition; the language-pack
+                    # grammar wraps them in a `block` — handle both. Julia-1.8
+                    # `const x::T` fields parse as an ERROR under the bundled
+                    # grammar (predates the feature) and are deferred fails-safe
+                    # (miss, never emit a wrong symbol).
+                    block = find_child_by_type(node, "block")
+                    members = block.children if block is not None else node.children
+                    for member in members:
+                        if member.type in ("typed_expression", "identifier"):
+                            fname, ftype = _julia_struct_field(member, source)
+                            if fname is not None:
+                                add_struct_field(member, fname, ftype, struct_name)
 
         # Abstract type definition
         elif node.type == "abstract_definition":
@@ -564,6 +657,19 @@ class JuliaAnalyzer(TreeSitterAnalyzer):
     lang = "julia"
     file_patterns: ClassVar[list[str]] = ["*.jl"]
     grammar_module = "tree_sitter_julia"
+
+    def register_symbol(self, symbol: Symbol, global_symbols: dict) -> None:
+        """Keep field symbols OUT of the call-resolution registry (WI-jusus).
+
+        A struct field is a data anchor, never a call target — excluding it
+        prevents a bare-named field from clobbering or suffix-shadowing a
+        same-named function. It remains in ``analysis.symbols`` (search /
+        centrality / io-boundaries) since the output set is built independently
+        of this registry.
+        """
+        if symbol.kind == "field":
+            return
+        super().register_symbol(symbol, global_symbols)
 
     def extract_symbols_from_file(
         self, tree: "tree_sitter.Tree", source: bytes,
