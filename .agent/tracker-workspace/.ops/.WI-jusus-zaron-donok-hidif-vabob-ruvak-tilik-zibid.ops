@@ -116,3 +116,10 @@
   set: {}  # 3fe5
   add:  # 3fe5
     tags: [awaits_bakeoff_validation]  # 3fe5
+- op: discuss  # 774d
+  at: '2026-07-04T14:50:33Z'  # 774d
+  by: agent  # 774d
+  actor: jgstern_agent  # 774d
+  clock: 15  # 774d
+  nonce: 774d  # 774d
+  message: "Scala tail-language slice LANDED — PR merged, dev f1782af4a7 (advances WI-jusus by one non-gated tail language; item STAYS todo_hard — the tail dart/haskell/ocaml/... continues). scala.py now emits kind=field for val/var in a named class/object/trait/enum/given body and kind=variable for top-level val/var (was 0 field/0 variable), mirroring the kotlin slice via _scala_property_scope.\n\nAdversarial review (3 refuters) returned NO_GO-as-written -> fixed to GO. It confirmed the swift-INV-lanaz/go-INV-sidab local-leak class was LIVE for scala: case-body vals (partial-function literals / match / try-catch initializing a field or top-level val, immediate parent case_clause) and Scala-3 braceless indented_block leaked as fields/variables. FIXED: _SCALA_LOCAL_SCOPE_TYPES now includes case_clause + indented_block. Also MAJOR-fixed: enum_body + given with_template_body now classify as fields (were wrongly bare top-level variables); and a call-graph-corruption vector (a bare call resolving to a same-short-name field via the resolver suffix index / short-name registration) closed by (a) not registering field/variable short names in symbol_by_name (mirrors commit 67b2e14788) and (b) the resolver call-resolution refusing a field/variable target. Documented fails-safe deferrals (miss, never wrong): primary-ctor val params, multi-name bindings, package objects.\n\n20 dedicated tests (incl. 7 review-fix regressions: partial-fn/match/try-catch case-local, indented_block, enum field, given field, call-graph integrity) + comprehensive re-probe (nested class owner=Inner, anon-given skip, for/while locals, all clean). 100% cov; smart-test 3874 passed. awaits_bakeoff_validation stays (blast-radius scala emission change)."  # 774d

@@ -25,3 +25,18 @@
   clock: 2  # f420
   nonce: f420  # f420
   message: "Dogfood finding (member F156.A2, independent), reproduces on the frozen substrate. Mechanism: io-boundaries JSON output stamps a per-chain high_risk boolean (text mode prints \"*** HIGH RISK ***\"), derived from a HIGH_RISK_PRIMITIVES membership rule (subprocess, destructive fs writes, network sends). The field, its membership rule, and its semantics have zero occurrences in the consumer-facing spec or schema (0 grep hits in spec.md and schema.json each). Scope: high_risk produced on the io-boundaries command; in this run, 64 high-risk chains (subprocess 37, fs_write 18, net_send 9). Exposure/consequence: any consumer keying a CI gate or a security review on io-boundaries output needs to know what high_risk means and which primitives trigger it; a consumer gating on high_risk cannot tell whether a high_risk=false chain is actually safe or merely outside the (undocumented) trigger set. Expectation: a field a consumer would gate CI on is documented — its existence, the set of primitives it covers, and what \"high risk\" asserts. Related but distinct from WI-tijos (the high_risk VALUE is wrong for urlretrieve; drift guard only ratchets subprocess) and WI-datoz (io-boundaries boundary-category vocabulary vs spec) — this is the documentation gap for the high_risk field itself, with its own fix (document existence + membership rule + semantics). Cross-ref WI-tijos, WI-datoz."  # f420
+- op: update  # 1c77
+  at: '2026-07-05T00:06:43Z'  # 1c77
+  by: agent  # 1c77
+  actor: jgstern_agent  # 1c77
+  clock: 3  # 1c77
+  nonce: 1c77  # 1c77
+  set:  # 1c77
+    status: done  # 1c77
+- op: discuss  # 4eb2
+  at: '2026-07-05T00:06:43Z'  # 4eb2
+  by: agent  # 4eb2
+  actor: jgstern_agent  # 4eb2
+  clock: 4  # 4eb2
+  nonce: 4eb2  # 4eb2
+  message: "Done (dev c3a2f6df45). high_risk now documented: spec §'IO-boundary reporting' (existence + membership rule + semantics) + ADR-0016 §1 'Risk classification' clause + the io_boundary.py HIGH_RISK_PRIMITIVES/is_high_risk docstrings + a reciprocal taint.py cross-ref. Stated: subprocess-scoped, display-only, NOT a net/fs taxonomy (net/fs risk = taint model + dst_tier). Correction to the item's 'and schema' framing: high_risk is NOT a docs/schema.json behavior-map field — it lives in the separately-versioned io-boundaries envelope (IO_BOUNDARIES_SCHEMA_VERSION), so it is correctly documented in spec/ADR/code, not schema.json."  # 4eb2

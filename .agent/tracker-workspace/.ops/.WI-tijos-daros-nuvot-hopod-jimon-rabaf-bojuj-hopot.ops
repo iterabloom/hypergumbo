@@ -34,3 +34,18 @@
   clock: 3  # 0086
   nonce: '0086'  # 0086
   message: "SPLIT. Part A (MECHANICAL) LANDED — PR #387: urllib.request.urlretrieve added to io_boundary.HIGH_RISK_PRIMITIVES (is_high_risk('urllib.request.urlretrieve') is now True, was False; catalog python.yaml already had all three urllib fns as net_send). Part B (DECISION-GATED, needs human/ADR) REMAINS: the filed fix also asks to extend the high-risk COMPLETENESS RATCHET (test_io_boundary.py TestHighRiskPrimitivesDriftGuard, currently 'if p.boundary != subprocess: continue') from subprocess to net/fs. Unlike subprocess (clean invariant: subprocess == arbitrary exec == high risk), net/fs has NO clean high-risk invariant — stat/open are benign, urlopen/rmtree are not — so classifying the ~1400 currently-unclassified net_send/net_recv/fs_write/fs_read primitives across the 14 catalogs as high-risk-or-exempt requires an ADR on the net/fs risk taxonomy first, or the ratchet cascades false positives. Awaiting a human ruling on that taxonomy before Part B can be built."  # 0086
+- op: update  # eb51
+  at: '2026-07-05T00:06:43Z'  # eb51
+  by: agent  # eb51
+  actor: jgstern_agent  # eb51
+  clock: 4  # eb51
+  nonce: eb51  # eb51
+  set:  # eb51
+    status: done  # eb51
+- op: discuss  # ae0f
+  at: '2026-07-05T00:06:43Z'  # ae0f
+  by: agent  # ae0f
+  actor: jgstern_agent  # ae0f
+  clock: 5  # ae0f
+  nonce: ae0f  # ae0f
+  message: "Resolved via ruling 1b (dev c3a2f6df45). high_risk RETIRED as a net/fs risk axis: net/fs risk is carried by the taint source/sink model (AUTO_SINK_ZONE_MAP, ADR-0017 §2b) + supply-chain dst_tier — the considered, spec-documented taxonomy that high_risk was an undocumented display-only SHADOW of (0 hits in any ADR/spec/schema; 0 verify-claims/taint consumers). Part B ('extend the ratchet to net/fs') → NOT built, ratifying WI-sugav's deliberate 2026-05-28 non-decision (net/fs has no clean 'always risky' invariant; an exemption list would cascade FPs). Part A's urlretrieve addition REVERTED (net_send->network taint sink carries egress risk). Behavioral evidence: is_high_risk('urllib.request.urlretrieve')/('shutil.rmtree') now False (test_io_boundary.py); subprocess ratchet unchanged; smart-test green (4648 passed). Full provenance: decision_register_06102026.md UPDATE 2026-07-04."  # ae0f

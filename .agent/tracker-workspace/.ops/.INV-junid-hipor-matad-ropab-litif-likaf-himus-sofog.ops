@@ -73,3 +73,18 @@
   clock: 6  # 4e19
   nonce: '4e19'  # 4e19
   message: "Re-scoped per wave3 §A row 9 (tracker hygiene, no code). Original split-premise — framework_dispatch mixing framework names (fastapi/starlette) with mechanism/pattern categories (registry_dispatch 89%, native_websocket, rust_trait_dispatch) — is RESOLVED by audit-findings 0014's meta-key partition: the 9 pattern/mechanism rows fold to meta.detection_pattern, the 56 framework-named rows stay in meta.framework_dispatch, so the field now holds framework names only (shipped Wave 5 of WI-runod, audit 0014 status All RESOLVED). KEEP framework_dispatch. This item now tracks the ADR-0028 Open Question 2 promotion-threshold decision: post-fold framework_dispatch sits at ~30 distinct values × ~30 producers (the ADR-0024 §Fold-residue-discipline rule-3 threshold); whether to promote it from an Edge.meta key to a dedicated Edge.framework: str|None field is a human architectural call gated on diverse-corpus steady-state emission-count confirmation (self-analysis under-counts) → needs_human_review."  # 4e19
+- op: update  # 878d
+  at: '2026-07-05T03:29:24Z'  # 878d
+  by: agent  # 878d
+  actor: jgstern_agent  # 878d
+  clock: 7  # 878d
+  nonce: 878d  # 878d
+  set:  # 878d
+    status: violated  # 878d
+- op: discuss  # 7211
+  at: '2026-07-05T03:29:25Z'  # 7211
+  by: agent  # 7211
+  actor: jgstern_agent  # 7211
+  clock: 8  # 7211
+  nonce: '7211'  # 7211
+  message: "ADR-0028 OQ-2 RESOLVED — DECLINE promotion (adversarially stress-tested; the 'promote to typed Edge.framework field' lean was reversed). Keep framework_dispatch as the registered MetaKeySpec: (1) ADR-0024 fold-residue rules are ORDERED gates — rule 3 promotion bites only after rule 1 (endpoint-property) + rule 2 (axis-leak), and framework survives neither; (2) ADR-0023 classifies framework as an ENDPOINT property (already at meta.concepts[*].framework), so a typed Edge.framework inverts the axiom; (3) Edge-side revealed preference is registry-gate (ADR-0038 data_direction stayed registered meta at ~31 producers), never a typed field; (4) ZERO production consumers read framework_dispatch (pure provenance). Endpoint-reference-concept alternative ALSO rejected (category error: 75% of edges carry framework on neither endpoint, all pass ADR-0023 enforcement green -> the 'endpoints must carry framework' axiom doesn't exist; a node->edge back-pointer adds INV-vomuf-class silent-dangling risk). Escalation to a typed Edge field sanctioned ONLY if a consumer ever materializes (rule 3). Re-scoped to the PARKED low-urgency rule-2 value-space cleanup (mixed non-framework values npm_package/registry_dispatch/middleware_chain/orm_accessor/<fw>_<subtype> -> own registered keys); STAYS violated on the axis-purity residual (zero-urgency, nothing reads the key). Fix the fabricated '>=30/>=30' threshold cited here + in audit-findings 0014 (ADR-0024's real rule = 3 values OR 2 producers). Provenance: decision_register_06102026.md UPDATE 2026-07-04."  # 7211
