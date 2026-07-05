@@ -1784,11 +1784,13 @@ class TestPythonSite1SelfCalls:
         assert len(resolved) == 1
         assert resolved[0].dst == mixin_save.id  # FM1: possibly-wrong; documented
 
-    def test_site1_python_crosslang_namesake_over_suppressed(self) -> None:
-        # FM3 (accepted, recovered by WI-supat): class_ids_by_name is
-        # language-agnostic, so a java "Config" inflates the python "Config"
-        # collision count and the guard suppresses a python call whose python
-        # enclosing class is actually UNIQUE. Documents the over-suppression.
+    def test_site1_python_crosslang_namesake_resolves(self) -> None:
+        # INV-milud (was FM3, "accepted over-suppression"): class_ids_by_name is
+        # language-agnostic, but the name->ids lookup is now filtered to
+        # src_lang, so a java "Config" no longer inflates the python "Config"
+        # collision count. The python enclosing class is actually UNIQUE, so the
+        # call resolves to its inherited python method instead of being
+        # over-suppressed as a false-negative.
         base = _py_cls("sym:py.PyBase", "PyBase", path="/base.py")
         base_m = _py_method("sym:py.PyBase.m", "PyBase.m", path="/base.py")
         py_config = _py_cls("sym:py.Config", "Config", path="/cfg.py")
@@ -1808,7 +1810,9 @@ class TestPythonSite1SelfCalls:
             symbols=[base, base_m, py_config, jv_config, caller], edges=edges,
         )
         result = link_inherited_calls(ctx)
-        assert result.edges == []  # over-suppressed by the cross-language namesake
+        resolved = [e for e in result.edges if e.src == caller.id]
+        assert len(resolved) == 1
+        assert resolved[0].dst == base_m.id
 
     def test_site1_strict_langs_membership(self) -> None:
         # The Site-1 ambiguity guard is opt-in per language via a DEDICATED set,
@@ -2613,3 +2617,156 @@ class TestWiSupatFieldTypeId:
         assert len(resolved) == 1
         assert resolved[0].dst == info1.id
         assert resolved[0].evidence_type == "ast_call_inherited_field"
+
+
+class TestCrossLanguageReceiverFilter:
+    """INV-milud: every Site turns a receiver / enclosing-class / field-type
+    NAME into candidate class ids via the language-agnostic
+    ``class_ids_by_name`` index. Without a source-language filter a call in one
+    language can bind to a same-short-name class (or its method) in ANOTHER
+    language — a confidently-wrong cross-language ``calls`` edge — and a
+    foreign-language namesake also inflates the strict ambiguity guard's
+    candidate count, suppressing a legitimate same-language resolution as a
+    false-negative. MRO / typed-receiver dispatch never crosses a language
+    boundary (that is the FFI/bridge linkers' job), so every name->ids lookup
+    is filtered to ``src_lang`` at one chokepoint (``_same_language_class_ids``).
+    """
+
+    def test_site2_java_fallback_does_not_bind_to_python_namesake_type(
+        self,
+    ) -> None:
+        """Java Site-2 Step-3 fallback (method nowhere on the chain) binds to
+        the JAVA type symbol, not a same-named Python class listed first."""
+        py_shared = _py_cls("sym:py.Shared", "Shared", path="/shared.py")
+        java_shared = _java_cls("sym:java.Shared", "Shared", path="/a.java")
+        caller = _java_caller()
+        unresolved = _unresolved_site2(
+            src_id=caller.id, callee_name="obj.save",
+            receiver_type_hint="Shared",
+        )
+        ctx = LinkerContext(
+            repo_root=Path("/"),
+            # Python namesake FIRST so an unfiltered fallback would pick it.
+            symbols=[py_shared, java_shared, caller],
+            edges=[unresolved],
+        )
+        result = link_inherited_calls(ctx)
+        resolved = [e for e in result.edges if e.src == caller.id]
+        assert len(resolved) == 1
+        assert resolved[0].dst == java_shared.id
+        by_id = {s.id: s for s in [py_shared, java_shared, caller]}
+        assert by_id[resolved[0].dst].language == "java"
+
+    def test_site2_java_does_not_bind_to_python_namesake_method(self) -> None:
+        """Java Site-2 Step-1 direct lookup must NOT resolve to a Python
+        namesake class's method (the confidently-wrong cross-language bind);
+        it falls back to the Java type symbol instead."""
+        py_shared = _py_cls("sym:py.Shared", "Shared", path="/shared.py")
+        py_save = _py_method(
+            "sym:py.Shared.save", "Shared.save", path="/shared.py",
+        )
+        java_shared = _java_cls("sym:java.Shared", "Shared", path="/a.java")
+        caller = _java_caller()
+        unresolved = _unresolved_site2(
+            src_id=caller.id, callee_name="obj.save",
+            receiver_type_hint="Shared",
+        )
+        ctx = LinkerContext(
+            repo_root=Path("/"),
+            symbols=[py_shared, py_save, java_shared, caller],
+            edges=[unresolved],
+        )
+        result = link_inherited_calls(ctx)
+        resolved = [e for e in result.edges if e.src == caller.id]
+        assert all(e.dst != py_save.id for e in result.edges)
+        assert len(resolved) == 1
+        assert resolved[0].dst == java_shared.id
+
+    def test_site2_python_resolves_despite_foreign_language_namesake(
+        self,
+    ) -> None:
+        """A Java namesake must not inflate the Python strict-mode ambiguity
+        count: exactly one Python ``Widget`` exists, so the call resolves."""
+        py_widget = _py_cls("sym:py.Widget", "Widget", path="/w.py")
+        py_render = _py_method(
+            "sym:py.Widget.render", "Widget.render", path="/w.py",
+        )
+        java_widget = _java_cls("sym:java.Widget", "Widget", path="/a.java")
+        caller = _py_caller()
+        unresolved = _unresolved_site2_lang(
+            src_id=caller.id, callee_name="w.render",
+            receiver_type_hint="Widget", lang="python",
+        )
+        ctx = LinkerContext(
+            repo_root=Path("/"),
+            symbols=[py_widget, py_render, java_widget, caller],
+            edges=[unresolved],
+        )
+        result = link_inherited_calls(ctx)
+        resolved = [e for e in result.edges if e.src == caller.id]
+        assert len(resolved) == 1
+        assert resolved[0].dst == py_render.id
+
+    def test_site1_java_does_not_bind_to_python_namesake_method(self) -> None:
+        """Site-1 (bare / ``this`` call) must not walk a Python namesake's MRO
+        for a Java caller and bind to its method."""
+        py_shared = _py_cls("sym:py.Shared", "Shared", path="/shared.py")
+        py_save = _py_method(
+            "sym:py.Shared.save", "Shared.save", path="/shared.py",
+        )
+        java_shared = _java_cls("sym:java.Shared", "Shared", path="/a.java")
+        caller = _java_caller()
+        unresolved = _unresolved_site1_lang(
+            src_id=caller.id, callee_name="save",
+            enclosing_class="Shared", lang="java",
+        )
+        ctx = LinkerContext(
+            repo_root=Path("/"),
+            symbols=[py_shared, py_save, java_shared, caller],
+            edges=[unresolved],
+        )
+        result = link_inherited_calls(ctx)
+        # Java Shared has no ``save`` and no parent -> unresolved; the Python
+        # namesake's ``save`` must never be the target.
+        assert all(e.dst != py_save.id for e in result.edges)
+        assert [e for e in result.edges if e.src == caller.id] == []
+
+    def test_site3_java_does_not_bind_field_method_cross_language(self) -> None:
+        """Site-3 (inherited field receiver) filters the field-TYPE lookup to
+        the source language: a Java field-method call resolves to the Java
+        type's method, never a same-named Python class's method."""
+        py_service = _py_cls("sym:py.Service", "Service", path="/s.py")
+        py_run = _py_method(
+            "sym:py.Service.run", "Service.run", path="/s.py",
+        )
+        java_service = _java_cls(
+            "sym:java.Service", "Service", path="/svc.java",
+        )
+        java_run = _java_method(
+            "sym:java.Service.run", "Service.run", path="/svc.java",
+        )
+        base = _java_cls(
+            "sym:java.Base", "Base", path="/base.java",
+            fields={"dep": "Service"},
+        )
+        sub = _java_cls("sym:java.Sub", "Sub", path="/sub.java")
+        caller = _java_caller()
+        edges = [
+            _edge(sub.id, base.id, "extends"),
+            _unresolved_site3(
+                src_id=caller.id, callee_name="dep.run",
+                enclosing_class="Sub", inherited_field_receiver="dep",
+            ),
+        ]
+        ctx = LinkerContext(
+            repo_root=Path("/"),
+            # Python namesake FIRST so an unfiltered lookup would pick it.
+            symbols=[py_service, py_run, java_service, java_run,
+                     base, sub, caller],
+            edges=edges,
+        )
+        result = link_inherited_calls(ctx)
+        resolved = [e for e in result.edges if e.src == caller.id]
+        assert all(e.dst != py_run.id for e in result.edges)
+        assert len(resolved) == 1
+        assert resolved[0].dst == java_run.id

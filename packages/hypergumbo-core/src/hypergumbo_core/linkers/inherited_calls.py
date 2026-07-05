@@ -83,6 +83,21 @@ Future PRs:
 Languages whose walker isn't registered yet are silently no-op'd; the
 analyzer must opt in by emitting the hint AND the linker must have a
 walker registered for that source language.
+
+Language scoping (INV-milud)
+----------------------------
+``class_ids_by_name`` is a language-AGNOSTIC short-name index — a Python
+``Handler`` and a Java ``Handler`` collide on the same key. But MRO /
+typed-receiver dispatch never crosses a language boundary (cross-language
+edges are the FFI/bridge linkers' job), so every place a Site turns a
+receiver / enclosing-class / field-type NAME into candidate class ids goes
+through ``_same_language_class_ids``, which restricts the candidates to the
+call's own ``src_lang``. This is one chokepoint (not a per-Site sweep) and it
+closes two failures at once: a confidently-wrong cross-language ``calls`` edge
+(the Java legacy-permissive Site-2 skips the same-name ambiguity guard and
+would otherwise bind to a foreign namesake), and a false-negative where a
+foreign namesake inflates the strict ``len(...) > 1`` ambiguity count and
+suppresses a legitimate same-language resolution.
 """
 
 from __future__ import annotations
@@ -684,6 +699,41 @@ def link_inherited_calls(ctx: LinkerContext) -> LinkerResult:
 # ---------------------------------------------------------------------------
 
 
+def _same_language_class_ids(
+    name: str,
+    src_lang: str,
+    class_ids_by_name: dict[str, list[str]],
+    class_symbols: dict[str, Symbol],
+) -> list[str]:
+    """Short-name class-id candidates RESTRICTED to ``src_lang`` (INV-milud).
+
+    ``class_ids_by_name`` is built language-agnostically: a class named
+    ``Handler`` in Python and a ``Handler`` in Java collide on the same short
+    name. But an inherited-/typed-receiver call in a ``src_lang`` source file
+    can only bind to a ``src_lang`` class — MRO and typed-receiver dispatch
+    never cross a language boundary (cross-language edges are the FFI/bridge
+    linkers' job). Applying this filter at the SINGLE point where every Site
+    turns a receiver / enclosing-class / field-type NAME into candidate class
+    ids keeps the name path from two distinct failures:
+
+    * **Confidently-wrong cross-language edge** — the concrete leak was the
+      Java legacy-permissive Site-2 (``_LEGACY_SITE2_LANGS``), which skips the
+      same-name ambiguity guard and so would bind a Java receiver to a Python
+      namesake's method (Step 1) or type symbol (Step 3 fallback).
+    * **False-negative from count pollution** — a foreign-language namesake
+      inflates the strict ``len(...) > 1`` ambiguity guard, suppressing a
+      legitimate same-language resolution that was never actually ambiguous.
+
+    Every id in ``class_ids_by_name`` is a key in ``class_symbols`` (both are
+    built in the same pass over ``ctx.symbols``), so the subscript is total.
+    """
+    return [
+        cid
+        for cid in class_ids_by_name.get(name, [])
+        if class_symbols[cid].language == src_lang
+    ]
+
+
 def _try_resolve(
     *,
     edge: Edge,
@@ -801,7 +851,9 @@ def _resolve_site1(
     ):
         start_class_ids = [enclosing_class_id]
     else:
-        start_class_ids = class_ids_by_name.get(enclosing_class, [])
+        start_class_ids = _same_language_class_ids(
+            enclosing_class, src_lang, class_ids_by_name, class_symbols,
+        )
         if not start_class_ids:
             return None
         # WI-hiziz PR-2: INV-fahub ambiguity guard for Site-1. ``enclosing_class``
@@ -896,7 +948,9 @@ def _resolve_site2(
     ):
         type_class_ids = [receiver_type_id]
     else:
-        type_class_ids = class_ids_by_name.get(receiver_type_hint, [])
+        type_class_ids = _same_language_class_ids(
+            receiver_type_hint, src_lang, class_ids_by_name, class_symbols,
+        )
         if not type_class_ids:
             return None
 
@@ -1009,7 +1063,9 @@ def _resolve_site3(
     ):
         encl_class_ids = [enclosing_class_id]
     else:
-        encl_class_ids = class_ids_by_name.get(enclosing_class, [])
+        encl_class_ids = _same_language_class_ids(
+            enclosing_class, src_lang, class_ids_by_name, class_symbols,
+        )
         if not encl_class_ids:  # pragma: no cover
             return None
         # WI-hiziz PR-3: INV-fahub ambiguity guard on the ENCLOSING class,
@@ -1048,8 +1104,10 @@ def _resolve_site3(
     ):
         field_type_class_ids = [field_type_id]
     else:
-        # Look up the field's type as a class symbol.
-        field_type_class_ids = class_ids_by_name.get(field_type, [])
+        # Look up the field's type as a same-language class symbol.
+        field_type_class_ids = _same_language_class_ids(
+            field_type, src_lang, class_ids_by_name, class_symbols,
+        )
         if not field_type_class_ids:
             return None
         # WI-hiziz PR-3: the SECOND INV-fahub guard — the field's TYPE name is
