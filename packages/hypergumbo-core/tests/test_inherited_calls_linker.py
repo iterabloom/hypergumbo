@@ -2770,3 +2770,71 @@ class TestCrossLanguageReceiverFilter:
         assert all(e.dst != py_run.id for e in result.edges)
         assert len(resolved) == 1
         assert resolved[0].dst == java_run.id
+
+
+class TestSite3FieldWalkC3Order:
+    """WI-rarab: Site-3's field-declarer walk (``_walk_parents_for_field``)
+    must honor Python's C3 MRO order, not insertion-order BFS. On an
+    uneven-depth diamond where the same field name is declared at different
+    depths with DIVERGENT types, BFS returns a direct base's field while C3
+    returns the MRO-earlier ancestor's — the inherited-field method then
+    resolves on the correct type."""
+
+    def test_uneven_diamond_field_resolves_via_c3_not_bfs(self) -> None:
+        # E(C, D); C(B). B and D both declare field ``dep`` with divergent
+        # types. Real MRO of E is [E, C, B, D] -> ``dep`` is B's (BDep). BFS
+        # from E checks the direct bases C, D first and would pick D's (DDep).
+        bdep = _py_cls("sym:py.BDep", "BDep", path="/bdep.py")
+        bdep_run = _py_method("sym:py.BDep.run", "BDep.run", path="/bdep.py")
+        ddep = _py_cls("sym:py.DDep", "DDep", path="/ddep.py")
+        ddep_run = _py_method("sym:py.DDep.run", "DDep.run", path="/ddep.py")
+        b = _py_cls_fields("sym:py.B", "B", {"dep": "BDep"}, path="/b.py",
+                           field_ids={"dep": bdep.id})
+        c = _py_cls("sym:py.C", "C", path="/c.py")
+        d = _py_cls_fields("sym:py.D", "D", {"dep": "DDep"}, path="/d.py",
+                           field_ids={"dep": ddep.id})
+        e = _py_cls("sym:py.E", "E", path="/e.py")
+        caller = _py_caller()
+        edges = [
+            _edge(c.id, b.id, "extends"),
+            _edge(e.id, c.id, "extends"),
+            _edge(e.id, d.id, "extends"),
+            _unresolved_site3_lang(
+                src_id=caller.id, callee_name="run",
+                enclosing_class="E", inherited_field_receiver="dep",
+                lang="python",
+            ),
+        ]
+        ctx = LinkerContext(
+            repo_root=Path("/"),
+            symbols=[bdep, bdep_run, ddep, ddep_run, b, c, d, e, caller],
+            edges=edges,
+        )
+        result = link_inherited_calls(ctx)
+        resolved = [x for x in result.edges if x.src == caller.id]
+        assert len(resolved) == 1
+        assert resolved[0].dst == bdep_run.id   # C3-correct (B), not DDep
+        assert all(x.dst != ddep_run.id for x in result.edges)
+
+    def test_field_walk_cyclic_hierarchy_biases_unresolved(self) -> None:
+        # An un-linearizable (cyclic) hierarchy -> C3 returns None -> the field
+        # walk finds nothing -> no confidently-wrong edge (matches _walk_c3).
+        x = _py_cls_fields("sym:py.X", "X", {"own": "Own"}, path="/x.py")
+        y = _py_cls("sym:py.Y", "Y", path="/y.py")
+        caller = _py_caller()
+        edges = [
+            _edge(x.id, y.id, "extends"),
+            _edge(y.id, x.id, "extends"),   # cycle -> un-linearizable
+            _unresolved_site3_lang(
+                src_id=caller.id, callee_name="run",
+                enclosing_class="X", inherited_field_receiver="dep",
+                lang="python",
+            ),
+        ]
+        ctx = LinkerContext(
+            repo_root=Path("/"),
+            symbols=[x, y, caller],
+            edges=edges,
+        )
+        result = link_inherited_calls(ctx)
+        assert [x2 for x2 in result.edges if x2.src == caller.id] == []

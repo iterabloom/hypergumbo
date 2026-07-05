@@ -504,8 +504,18 @@ def _walk_parents_for_field(
     inheritance_index: dict[str, list[tuple[str, str]]],
     class_symbols: dict[str, Symbol],
     depth_cap: int = _DEFAULT_DEPTH_CAP,
+    src_lang: str | None = None,
 ) -> tuple[str, str | None] | None:
-    """BFS the parent chain looking for ``meta["fields"][field_short_name]``.
+    """Walk the parent chain looking for ``meta["fields"][field_short_name]``.
+
+    WI-rarab: for Python (``src_lang == "python"``) the walk follows the C3
+    linearization, not insertion-order BFS — on an uneven-depth diamond where
+    the same field name is declared at different depths with DIVERGENT types,
+    BFS returns a direct base's field while C3 returns the MRO-earlier
+    ancestor's (the one Python's real attribute lookup would use). An
+    un-linearizable (cyclic / too-deep) Python hierarchy biases to unresolved
+    (``None``), matching ``_walk_c3``. Other languages keep the insertion-order
+    BFS below.
 
     Used by Site-3 resolution (WI-puvil / PR-5). The Java analyzer
     populates each class symbol's ``meta["fields"]`` with the
@@ -533,6 +543,22 @@ def _walk_parents_for_field(
         On a MISS (no ancestor declares the field), bare ``None`` — preserving
         the depth-cap / cycle negatives that assert ``result is None``.
     """
+    if src_lang == "python":
+        # WI-rarab: C3-ordered field walk. Linearize the enclosing class and
+        # take the first ancestor (excluding the class itself — own fields are
+        # not examined) that declares the field.
+        linearization = _linearize_c3(start_class_id, inheritance_index, depth_cap)
+        if linearization is None:
+            return None
+        for class_id in linearization[1:]:
+            sym = class_symbols.get(class_id)
+            if sym is not None and sym.meta:
+                fields = sym.meta.get("fields") or {}
+                if field_short_name in fields:
+                    type_ids = sym.meta.get("field_type_ids") or {}
+                    return fields[field_short_name], type_ids.get(field_short_name)
+        return None
+
     visited: set[str] = {start_class_id}
     queue: deque[tuple[str, int]] = deque([(start_class_id, 0)])
     while queue:
@@ -1084,7 +1110,7 @@ def _resolve_site3(
     for encl_id in encl_class_ids:
         walked = _walk_parents_for_field(
             encl_id, inherited_field_receiver, inheritance_index,
-            class_symbols, _DEFAULT_DEPTH_CAP,
+            class_symbols, _DEFAULT_DEPTH_CAP, src_lang=src_lang,
         )
         if walked is not None:
             field_type, field_type_id = walked
