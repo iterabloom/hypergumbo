@@ -171,6 +171,23 @@ proc main() =
         assert any("sequtils" in dst for dst in imported)
         assert any("os" in dst for dst in imported)
 
+    def test_import_edge_dst_is_well_formed(self, temp_repo: Path) -> None:
+        """INV-lumuh: the import-edge dst must be a well-formed 5-slot
+        ``{lang}:{path}:{span}:{name}:{kind}`` id with the module name in the
+        PATH slot (``parts[1]``) — not the malformed ``nim:?:{name}:module``
+        (4 slots, ``?`` path), which leaves ``module_path``/``src`` at the
+        ``<unknown>`` sentinel and makes the module invisible to
+        ``refine_frameworks`` (reads ``parts[1]``) and ``is_test_file``, so
+        jester/karax get false-demoted."""
+        (temp_repo / "main.nim").write_text("import jester\n")
+        result = analyze_nim(temp_repo)
+        import_edges = [e for e in result.edges if e.edge_type == "imports"]
+        assert len(import_edges) == 1
+        parts = import_edges[0].dst.split(":")
+        assert len(parts) == 5, import_edges[0].dst
+        assert parts[0] == "nim"
+        assert parts[1] == "jester"   # module in the path slot, not "?"
+
 
 class TestNimExportedSymbols:
     """INV-bisom: Nim marks a public symbol with a ``*`` export postfix

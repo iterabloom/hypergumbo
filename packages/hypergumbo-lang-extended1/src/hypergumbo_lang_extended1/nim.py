@@ -265,7 +265,7 @@ def _extract_import_edges(
                 edges.append(
                     Edge.create(
                         src=file_stable_id,
-                        dst=f"nim:?:{import_name}:module",
+                        dst=f"nim:{import_name}:0-0:module:module",
                         edge_type="imports",
                         line=node.start_point[0] + 1,
                         confidence=0.9,
@@ -280,7 +280,7 @@ def _extract_import_edges(
                         edges.append(
                             Edge.create(
                                 src=file_stable_id,
-                                dst=f"nim:?:{import_name}:module",
+                                dst=f"nim:{import_name}:0-0:module:module",
                                 edge_type="imports",
                                 line=node.start_point[0] + 1,
                                 confidence=0.9,

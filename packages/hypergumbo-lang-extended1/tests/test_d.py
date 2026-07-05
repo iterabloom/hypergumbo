@@ -204,6 +204,24 @@ void main() {}
         assert any("std.stdio" in dst for dst in imported)
         assert any("std.string" in dst for dst in imported)
 
+    def test_external_import_edge_dst_is_well_formed(
+        self, temp_repo: Path,
+    ) -> None:
+        """INV-fihur: an external/stdlib import (no in-tree module_registry
+        entry) must emit a well-formed 5-slot ``{lang}:{path}:{span}:{name}:
+        {kind}`` id with the module in the PATH slot (``parts[1]``) — not the
+        malformed ``d:?:{name}:module`` (4 slots, ``?`` path) that leaves
+        ``module_path``/``src`` at ``<unknown>`` and false-demotes vibe.d
+        (``refine_frameworks`` reads ``parts[1]``)."""
+        (temp_repo / "main.d").write_text("import vibe.vibe;\n")
+        result = analyze_d(temp_repo)
+        import_edges = [e for e in result.edges if e.edge_type == "imports"]
+        assert len(import_edges) == 1
+        parts = import_edges[0].dst.split(":")
+        assert len(parts) == 5, import_edges[0].dst
+        assert parts[0] == "d"
+        assert parts[1] == "vibe.vibe"   # module in the path slot, not "?"
+
 
 class TestDCallResolution:
     """Tests for D call resolution."""
@@ -641,7 +659,11 @@ void run() { helper(); }
             )
 
     def test_external_import_stays_unresolved(self, temp_repo: Path) -> None:
-        """Import of a module NOT in the repo stays unresolved (d:?:...)."""
+        """Import of a module NOT in the repo emits the well-formed external
+        id ``d:{module}:0-0:module:module`` (module in the path slot, synthetic
+        ``0-0`` span) — distinct from a resolved in-tree import (which points
+        at the real module symbol id). INV-fihur: this was the malformed
+        ``d:?:{name}:module`` (4 slots) that left module_path=<unknown>."""
         (temp_repo / "main.d").write_text('''
 module main;
 
@@ -656,11 +678,14 @@ void run() {}
         stdio_imports = [e for e in import_edges if "std.stdio" in e.dst]
 
         assert len(stdio_imports) >= 1
-        # External imports should remain unresolved
         for edge in stdio_imports:
-            assert "?" in edge.dst, (
-                f"External import should be unresolved (d:?:...), got: {edge.dst}"
-            )
+            parts = edge.dst.split(":")
+            assert len(parts) == 5, edge.dst
+            assert parts[1] == "std.stdio"   # module in path slot, not "?"
+            # synthetic external marker (no real file span), distinct from an
+            # in-tree module symbol id.
+            assert parts[2] == "0-0"
+            assert parts[3] == "module" and parts[4] == "module"
 
     def test_dotted_module_import_resolved(self, temp_repo: Path) -> None:
         """Import of a dotted module name (pkg.sub) resolves when present."""

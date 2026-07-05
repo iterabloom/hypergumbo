@@ -312,8 +312,9 @@ def _process_import_declaration(
 
     When *module_registry* maps module names to their symbol IDs, the
     dst of the import edge is resolved to the actual module symbol.
-    Otherwise, the dst falls back to the unresolved ``d:?:name:module``
-    format used for external / standard-library imports.
+    Otherwise, the dst is the well-formed external-module id
+    ``d:{module}:0-0:module:module`` (module in the path slot, INV-fihur)
+    used for external / standard-library imports.
     """
     edges: list[Edge] = []
 
@@ -332,7 +333,7 @@ def _process_import_declaration(
         dst = module_registry[import_name]
         confidence = 0.95
     else:
-        dst = f"d:?:{import_name}:module"
+        dst = f"d:{import_name}:0-0:module:module"
         confidence = 0.9
 
     edges.append(
