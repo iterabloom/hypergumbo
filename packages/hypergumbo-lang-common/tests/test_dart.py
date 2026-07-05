@@ -1178,3 +1178,182 @@ int top(int x) => x;
             if s.kind not in callable_kinds:
                 assert s.cyclomatic_complexity is None, (s.kind, s.name)
 
+
+class TestDartFieldVariableEmission:
+    """WI-jusus (emission-parity): dart emits kind='field' for class/mixin/
+    extension/enum-body value declarations and kind='variable' for top-level
+    declarations, mirroring the Kotlin/Scala tail slices. Function-/method-/
+    block-local declarations are NOT emitted (distinct grammar node), and
+    field/variable symbols are kept out of the call-resolution registry so
+    they can never become spurious call/instantiate targets.
+    """
+
+    def _analyze(self, tmp_path: Path, src: str):
+        from hypergumbo_lang_common.dart import analyze_dart
+
+        make_dart_file(tmp_path, "s.dart", src)
+        return analyze_dart(tmp_path)
+
+    def _by_kind(self, result, kind):
+        return [s for s in result.symbols if s.kind == kind]
+
+    def test_class_fields_emitted_owner_qualified(self, tmp_path: Path) -> None:
+        result = self._analyze(tmp_path, """
+class Widget {
+  String name;
+  final int size = 10;
+  int _private = 3;
+}
+""")
+        fields = {s.name: s for s in self._by_kind(result, "field")}
+        assert "Widget.name" in fields
+        assert "Widget.size" in fields
+        assert "Widget._private" in fields
+        # typed field carries the type as signature
+        assert fields["Widget.name"].signature == "String"
+        # underscore-prefixed field is private / not exported
+        assert "private" in fields["Widget._private"].modifiers
+        assert fields["Widget._private"].is_exported is False
+        assert fields["Widget.name"].is_exported is True
+        # stable_id present (typed) and language set
+        assert fields["Widget.name"].stable_id is not None
+        assert fields["Widget.name"].language == "dart"
+
+    def test_multi_name_field_one_symbol_each(self, tmp_path: Path) -> None:
+        result = self._analyze(tmp_path, "class C { int x = 1, y = 2; }\n")
+        names = {s.name for s in self._by_kind(result, "field")}
+        assert {"C.x", "C.y"} <= names
+
+    def test_static_const_field_emitted(self, tmp_path: Path) -> None:
+        result = self._analyze(tmp_path, "class C { static const kMax = 100; }\n")
+        names = {s.name for s in self._by_kind(result, "field")}
+        assert "C.kMax" in names
+
+    def test_field_in_mixin_extension_enum(self, tmp_path: Path) -> None:
+        result = self._analyze(tmp_path, """
+mixin M { int mixinField = 1; }
+extension E on String { static const kExt = 9; }
+enum Season {
+  spring, summer;
+  final int idx = 0;
+}
+""")
+        names = {s.name for s in self._by_kind(result, "field")}
+        assert "M.mixinField" in names
+        assert "E.kExt" in names
+        assert "Season.idx" in names
+
+    def test_top_level_variables_emitted(self, tmp_path: Path) -> None:
+        result = self._analyze(tmp_path, """
+const int maxDelay = 5000;
+var currentItems = 1;
+final String appName = "hg";
+int counter = 0;
+""")
+        variables = {s.name: s for s in self._by_kind(result, "variable")}
+        assert {"maxDelay", "currentItems", "appName", "counter"} <= set(variables)
+        # top-level variable identity via make_variable_stable_id (always present)
+        assert variables["counter"].stable_id is not None
+        assert variables["appName"].is_exported is True
+
+    def test_locals_not_emitted(self, tmp_path: Path) -> None:
+        """The INV-lanaz/INV-sidab local-leak guard: fn/method/for/lambda/if
+        locals use local_variable_declaration, never the field/variable nodes."""
+        result = self._analyze(tmp_path, """
+void doWork() {
+  var localVar = 1;
+  final localFinal = 2;
+  for (var i = 0; i < 3; i++) {}
+  final cb = () { var inLambda = 9; };
+  if (true) { const kIf = 2; }
+}
+class C {
+  void m() {
+    var inMethod = 7;
+  }
+}
+""")
+        leaked = {
+            s.name for s in result.symbols if s.kind in ("field", "variable")
+        }
+        for bad in ("localVar", "localFinal", "i", "inLambda", "kIf", "inMethod"):
+            assert not any(bad == n or n.endswith("." + bad) for n in leaked), (
+                bad, leaked
+            )
+
+    def test_getters_setters_not_fields(self, tmp_path: Path) -> None:
+        result = self._analyze(tmp_path, """
+class C {
+  int _v = 0;
+  int get value => _v;
+  set value(int x) => _v = x;
+}
+""")
+        fields = {s.name for s in self._by_kind(result, "field")}
+        assert "C._v" in fields          # the backing field is captured
+        assert "C.value" not in fields   # get/set are not fields
+
+    def test_destructuring_not_emitted_as_symbol(self, tmp_path: Path) -> None:
+        """A record/list/map pattern declaration mis-parses under this grammar
+        and would salvage the RHS/first-binding as a spurious symbol; the ERROR
+        guard drops it (fails-safe: miss, never emit a wrong symbol)."""
+        result = self._analyze(tmp_path, """
+var (a, b) = pair;
+class C {
+  final [x, y] = list;
+}
+""")
+        bad = {s.name for s in result.symbols if s.kind in ("field", "variable")}
+        # the record-RHS "pair" and the list-pattern bindings must not appear
+        assert "pair" not in bad
+        assert not any(n in ("a", "b", "C.x", "C.y", "x", "y") for n in bad)
+
+    def test_variable_does_not_clobber_function_call_resolution(
+        self, tmp_path: Path
+    ) -> None:
+        """A top-level variable sharing a name with a called function must NOT
+        be registered as a resolvable call target (registry-clobber / bogus-edge
+        guard): the call resolves to the function, and no calls edge targets the
+        variable."""
+        from hypergumbo_lang_common.dart import analyze_dart
+
+        make_dart_file(tmp_path, "a.dart", "int config = 42;\n")
+        make_dart_file(tmp_path, "b.dart", """
+int config() => 1;
+void run() { config(); }
+""")
+        result = analyze_dart(tmp_path)
+        calls = [e for e in result.edges if e.edge_type == "calls"]
+        var_ids = {
+            s.id for s in result.symbols if s.kind == "variable"
+        }
+        # no calls edge points at the variable symbol
+        assert not any(e.dst in var_ids for e in calls)
+        # the real function->function call still resolves
+        assert any("config" in e.dst and "function" in e.dst for e in calls)
+
+    def test_field_not_a_call_target(self, tmp_path: Path) -> None:
+        """A field must not be a suffix-matched spurious call target."""
+        result = self._analyze(tmp_path, """
+class C {
+  int compute = 0;
+  void run() { compute(); }
+}
+""")
+        field_ids = {s.id for s in result.symbols if s.kind == "field"}
+        calls = [e for e in result.edges if e.edge_type == "calls"]
+        assert not any(e.dst in field_ids for e in calls)
+
+    def test_instantiation_edges_preserved(self, tmp_path: Path) -> None:
+        """Adding field/variable symbols must not drop constructor/instantiation
+        edges (the reviewer's regression check)."""
+        result = self._analyze(tmp_path, """
+class Person {
+  String name;
+  Person(this.name);
+}
+void main() { var p = new Person('John'); }
+""")
+        inst = [e for e in result.edges if e.edge_type == "instantiates"]
+        assert len(inst) >= 1
+
