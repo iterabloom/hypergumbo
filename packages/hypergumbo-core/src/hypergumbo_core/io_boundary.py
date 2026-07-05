@@ -58,7 +58,7 @@ import yaml
 #     (1.0 -> 2.0).
 #   - Changes to ``BoundaryMapEntry.to_dict()`` / ``IoChain.to_dict()``
 #     shape are part of this same contract — they share the version.
-IO_BOUNDARIES_SCHEMA_VERSION: str = "2.0"  # WI-huhit/WI-foduh: total_io_edges redefined (real categories only) + external_potential_edges added
+IO_BOUNDARIES_SCHEMA_VERSION: str = "2.1"  # WI-javoh: command_launch_edges added (command-mediated launches disclosed, excluded from total_io_edges). 2.0: WI-huhit/WI-foduh total_io_edges redefined + external_potential_edges added
 
 
 # ---------------------------------------------------------------------------
@@ -98,7 +98,17 @@ CATALOG_BOUNDARY_TYPES: tuple[str, ...] = (
     "browser_storage_read",
 )
 KNOWN_IO_BOUNDARIES: frozenset[str] = frozenset(
-    CATALOG_BOUNDARY_TYPES + ("external_potential",),
+    CATALOG_BOUNDARY_TYPES + ("external_potential", "command_launch"),
+)
+
+# Boundaries that are DISCLOSED but EXCLUDED from the ``total_io_edges``
+# headline (the verified/curated I/O surface). ``external_potential`` is
+# receiver-unresolved speculative noise (WI-huhit/WI-foduh); ``command_launch``
+# is the high-volume, definite-but-uncurated command-mediated launch cohort
+# (WI-javoh). Both are surfaced in their own ``BoundaryMap`` count fields so a
+# consumer sees them without them inflating the headline.
+_DISCLOSED_ONLY_BOUNDARIES: frozenset[str] = frozenset(
+    {"external_potential", "command_launch"},
 )
 
 
@@ -1046,11 +1056,23 @@ class BoundaryMap:
         external_potential_edges: Chain count of the ``external_potential``
             bucket (receiver-unresolved calls — potential, unverified I/O),
             disclosed separately so it does not inflate ``total_io_edges``.
+        command_launch_edges: Chain count of the ``command_launch`` bucket
+            (WI-javoh) — command-mediated external-program launches (a shell
+            ``curl``/``git``/``rm`` etc.). Every launch IS a subprocess crossing
+            (ADR-0016 §1 "all launches risky"), but the population is
+            high-volume-and-low-per-command-signal on devops repos, so — by the
+            same count-vs-disclose doctrine that excludes ``external_potential``
+            — it is DISCLOSED here and EXCLUDED from ``total_io_edges`` rather
+            than inflating the curated stdlib subprocess headline. Unlike
+            ``external_potential`` these are NOT speculative: a lexed ``curl`` is
+            a definite launch, just deliberately not counted in the verified
+            catalog surface.
     """
 
     entries: dict[str, BoundaryMapEntry] = field(default_factory=dict)
     total_io_edges: int = 0
     external_potential_edges: int = 0
+    command_launch_edges: int = 0
 
     def to_dict(self) -> dict:
         """Serialize to JSON-friendly dict.
@@ -1065,6 +1087,7 @@ class BoundaryMap:
             "schema_version": IO_BOUNDARIES_SCHEMA_VERSION,
             "total_io_edges": self.total_io_edges,
             "external_potential_edges": self.external_potential_edges,
+            "command_launch_edges": self.command_launch_edges,
             "boundaries": {
                 k: v.to_dict() for k, v in sorted(self.entries.items())
             },
@@ -1399,12 +1422,19 @@ def compute_boundary_map(
         if "external_potential" in entries
         else 0
     )
+    cl_edges = (
+        len(entries["command_launch"].chains)
+        if "command_launch" in entries
+        else 0
+    )
     bmap = BoundaryMap(
         entries=entries,
         total_io_edges=sum(
-            len(e.chains) for k, e in entries.items() if k != "external_potential"
+            len(e.chains) for k, e in entries.items()
+            if k not in _DISCLOSED_ONLY_BOUNDARIES
         ),
         external_potential_edges=ep_edges,
+        command_launch_edges=cl_edges,
     )
 
     return bmap

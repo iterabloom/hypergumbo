@@ -4232,20 +4232,28 @@ def cmd_io_boundaries(args: argparse.Namespace) -> int:
     # Output
     if getattr(args, "json_output", False):
         if boundary_filter or primitive_filter or exclude_tests:
-            from .io_boundary import IO_BOUNDARIES_SCHEMA_VERSION
+            from .io_boundary import (
+                IO_BOUNDARIES_SCHEMA_VERSION,
+                _DISCLOSED_ONLY_BOUNDARIES,
+            )
 
             # INV-pubom (amended, WI-huhit/WI-foduh): total_io_edges is the
-            # real/verified surface (excl external_potential); external_potential
-            # is disclosed separately — same split as BoundaryMap.to_dict so the
-            # filtered and unfiltered JSON paths agree.
+            # real/verified surface (excl external_potential AND command_launch,
+            # WI-javoh); both are disclosed separately — same split as
+            # BoundaryMap.to_dict so the filtered and unfiltered JSON paths agree.
             filtered_total = sum(
                 len(e.chains)
                 for k, e in filtered_entries.items()
-                if k != "external_potential"
+                if k not in _DISCLOSED_ONLY_BOUNDARIES
             )
             filtered_ep = (
                 len(filtered_entries["external_potential"].chains)
                 if "external_potential" in filtered_entries
+                else 0
+            )
+            filtered_cl = (
+                len(filtered_entries["command_launch"].chains)
+                if "command_launch" in filtered_entries
                 else 0
             )
             output = {
@@ -4255,6 +4263,7 @@ def cmd_io_boundaries(args: argparse.Namespace) -> int:
                 "schema_version": IO_BOUNDARIES_SCHEMA_VERSION,
                 "total_io_edges": filtered_total,
                 "external_potential_edges": filtered_ep,
+                "command_launch_edges": filtered_cl,
                 "boundaries": {
                     k: v.to_dict() for k, v in sorted(filtered_entries.items())
                 },

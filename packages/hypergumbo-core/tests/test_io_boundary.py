@@ -1991,6 +1991,63 @@ class TestComputeBoundaryMap:
         assert "fs_read" in d["boundaries"]
         assert d["boundaries"]["fs_read"]["chain_count"] == 1
 
+    def _prestamped_edge(self, src: str, dst: str, io_boundary: str, primitive: str):
+        """A producer-prestamped edge (meta.io_boundary already set), mirroring
+        bash's command_launch emission that never touches a data-I/O catalog."""
+        from dataclasses import dataclass
+        from typing import Optional, Dict, Any
+
+        @dataclass
+        class MockEdge:
+            src: str
+            dst: str
+            edge_type: str
+            meta: Optional[Dict[str, Any]] = None
+            is_resolved: bool = False
+
+        return MockEdge(
+            src=src,
+            dst=dst,
+            edge_type="calls",
+            meta={"io_boundary": io_boundary, "io_primitive": primitive},
+        )
+
+    def test_command_launch_disclosed_but_excluded_from_total(self) -> None:
+        """WI-javoh: command_launch is aggregated + disclosed in its own cohort
+        (command_launch_edges) but EXCLUDED from the total_io_edges headline,
+        mirroring the external_potential count-vs-disclose doctrine."""
+        catalog = load_catalog("python")
+        edges = [
+            # one verified catalog subprocess crossing -> counts toward total
+            self._make_edge(
+                src="python:/a.py:1:f:function",
+                dst="python:/sub.py:1:subprocess.run:function",
+            ),
+            # two bash program launches, prestamped, deduped upstream
+            self._prestamped_edge(
+                "bash:/s.sh:1:deploy:function",
+                "bash:curl:0-0:curl:unresolved",
+                "command_launch",
+                "curl",
+            ),
+            self._prestamped_edge(
+                "bash:/s.sh:1:deploy:function",
+                "bash:git:0-0:git:unresolved",
+                "command_launch",
+                "git",
+            ),
+        ]
+        bmap = compute_boundary_map(edges, {"python": catalog})
+        assert "command_launch" in bmap.entries
+        assert len(bmap.entries["command_launch"].chains) == 2
+        assert bmap.command_launch_edges == 2
+        # headline counts only the verified subprocess, not the 2 launches
+        assert bmap.total_io_edges == 1
+        d = bmap.to_dict()
+        assert d["command_launch_edges"] == 2
+        assert d["total_io_edges"] == 1
+        assert "command_launch" in d["boundaries"]
+
     def test_empty_edges(self) -> None:
         bmap = compute_boundary_map([], {"python": load_catalog("python")})
         assert bmap.total_io_edges == 0
@@ -2749,10 +2806,11 @@ class TestIoBoundariesEnvelopeSchema:
     """
 
     def test_io_boundaries_schema_version_constant_pinned(self) -> None:
-        """The exported constant pins ``2.0`` (bumped from 1.0 by WI-huhit/
-        WI-foduh: total_io_edges redefined to real categories + the new
-        external_potential_edges key)."""
-        assert IO_BOUNDARIES_SCHEMA_VERSION == "2.0", (
+        """The exported constant pins ``2.1`` (bumped from 2.0 by WI-javoh: the
+        new command_launch_edges disclosure key; 2.0 was WI-huhit/WI-foduh —
+        total_io_edges redefined to real categories + external_potential_edges).
+        """
+        assert IO_BOUNDARIES_SCHEMA_VERSION == "2.1", (
             "io-boundaries schema_version is a wire-format contract. "
             "Do NOT change the value without bumping it deliberately "
             "AND updating the inline schema docs + CHANGELOG."
@@ -2773,7 +2831,7 @@ class TestIoBoundariesEnvelopeSchema:
         # this lock-set; the CLI integration test below covers it.
         expected_keys = {
             "schema_version", "total_io_edges", "external_potential_edges",
-            "boundaries",
+            "command_launch_edges", "boundaries",
         }
         assert set(d.keys()) == expected_keys, (
             f"Unexpected top-level keys in BoundaryMap.to_dict(): "
@@ -2789,6 +2847,7 @@ class TestIoBoundariesEnvelopeSchema:
         assert isinstance(d["schema_version"], str)
         assert isinstance(d["total_io_edges"], int)
         assert isinstance(d["external_potential_edges"], int)
+        assert isinstance(d["command_launch_edges"], int)
         assert isinstance(d["boundaries"], dict)
 
 

@@ -294,6 +294,7 @@ def test_cmd_io_boundaries_json_envelope_top_level_keys(
         "schema_version",
         "total_io_edges",
         "external_potential_edges",
+        "command_launch_edges",
         "boundaries",
         "unsupported_languages",
     }

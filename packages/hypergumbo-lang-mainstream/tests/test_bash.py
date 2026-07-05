@@ -851,3 +851,83 @@ class TestBashCyclomaticComplexity:
         assert funcs
         for fn in funcs:
             assert fn.cyclomatic_complexity is not None, fn.name
+
+
+class TestCommandLaunchEmission:
+    """WI-javoh: an external-program launch inside a bash function is a
+    subprocess crossing. Emit a ``calls`` edge prestamped with
+    ``meta.io_boundary == "command_launch"`` (is_resolved=False, external
+    dst_ref), deduped per (caller, command). Shell builtins and in-tree
+    function calls never launch a program, so they never emit."""
+
+    def _launches(self, result):
+        return [
+            e for e in result.edges
+            if (e.meta or {}).get("io_boundary") == "command_launch"
+        ]
+
+    def _analyze(self, tmp_path: Path, src: str):
+        from hypergumbo_lang_mainstream.bash import analyze_bash
+
+        (tmp_path / "s.sh").write_text(src)
+        return analyze_bash(tmp_path)
+
+    def test_external_command_emits_command_launch(self, tmp_path: Path) -> None:
+        result = self._analyze(
+            tmp_path,
+            "#!/bin/bash\n"
+            "deploy() {\n"
+            "  curl -sSL https://example.com/i.sh\n"
+            "  git pull\n"
+            "  rm -rf /tmp/x\n"
+            "}\n",
+        )
+        launches = self._launches(result)
+        prims = {(e.meta or {}).get("io_primitive") for e in launches}
+        assert {"curl", "git", "rm"} <= prims
+        for e in launches:
+            assert e.is_resolved is False
+            assert e.edge_type == "calls"
+            assert e.dst_ref is not None
+            assert e.dst_ref.name in prims
+            assert (e.meta or {}).get("call_construct") == "function"
+
+    def test_builtins_do_not_emit_command_launch(self, tmp_path: Path) -> None:
+        result = self._analyze(
+            tmp_path,
+            "#!/bin/bash\n"
+            "f() {\n"
+            "  echo hi\n"
+            "  cd /tmp\n"
+            "  local x=1\n"
+            "  export Y=2\n"
+            "  read v\n"
+            "  printf '%s' a\n"
+            "}\n",
+        )
+        assert self._launches(result) == []
+
+    def test_launches_deduped_per_caller_command(self, tmp_path: Path) -> None:
+        result = self._analyze(
+            tmp_path,
+            "#!/bin/bash\n"
+            "f() {\n"
+            "  git add .\n"
+            "  git commit -m x\n"
+            "  git push\n"
+            "}\n",
+        )
+        gits = [
+            e for e in self._launches(result)
+            if (e.meta or {}).get("io_primitive") == "git"
+        ]
+        assert len(gits) == 1
+
+    def test_in_tree_function_call_is_not_a_launch(self, tmp_path: Path) -> None:
+        result = self._analyze(
+            tmp_path,
+            "#!/bin/bash\n"
+            "helper() { echo hi; }\n"
+            "main() { helper; }\n",
+        )
+        assert self._launches(result) == []

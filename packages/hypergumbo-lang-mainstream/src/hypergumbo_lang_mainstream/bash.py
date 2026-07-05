@@ -37,7 +37,14 @@ from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files, is_excluded
-from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol, make_pass_id
+from hypergumbo_core.ir import (
+    AnalysisRun,
+    Edge,
+    ExternalRef,
+    Span,
+    Symbol,
+    make_pass_id,
+)
 from hypergumbo_core.symbol_resolution import NameResolver
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
@@ -58,6 +65,37 @@ if TYPE_CHECKING:
     import tree_sitter
 
 PASS_ID = make_pass_id("bash")
+
+# WI-javoh: shell BUILTINS run in-process — they are NOT external-program
+# launches, so they never emit a ``command_launch`` subprocess edge. A command
+# surviving this denylist that is also neither a defined shell function nor a
+# resolver-resolved symbol is an EXTERNAL PROGRAM launch (curl/rm/git/grep/…),
+# i.e. a subprocess crossing (arbitrary code execution). This is a CLASSIFICATION
+# gate (launch vs builtin), NOT an I/O-relevance curation: every launch is a
+# subprocess crossing per ADR-0016 §1's "all launches risky" invariant, so the
+# gate must not try to distinguish curl from git (no clean invariant separates
+# them — the same hand-curation the high_risk retirement / WI-tijos closed). The
+# high VOLUME of low-signal launches (git/grep/sed) is handled downstream as a
+# COUNT question: ``command_launch`` is a DISCLOSED cohort excluded from
+# ``total_io_edges`` (io_boundary.py), mirroring ``external_potential`` — the
+# established count-vs-disclose doctrine (WI-huhit/WI-foduh), never hidden.
+SHELL_BUILTINS: frozenset[str] = frozenset({
+    # POSIX special builtins + control
+    ":", ".", "source", "break", "continue", "eval", "exec", "exit",
+    "export", "readonly", "return", "set", "shift", "times", "trap", "unset",
+    # test / conditionals
+    "[", "[[", "test", "true", "false",
+    # variable / arithmetic / input
+    "declare", "typeset", "local", "let", "read", "readarray", "mapfile",
+    "getopts", "printf", "echo", "unalias", "alias",
+    # directory / job control
+    "cd", "pwd", "pushd", "popd", "dirs", "jobs", "fg", "bg", "kill",
+    "disown", "suspend", "wait", "umask",
+    # introspection / shell control
+    "command", "builtin", "type", "hash", "enable", "help", "history", "fc",
+    "bind", "caller", "complete", "compgen", "compopt", "logout", "shopt",
+    "time",
+})
 
 
 def is_bash_tree_sitter_available() -> bool:
@@ -382,6 +420,13 @@ class BashAnalyzer(TreeSitterAnalyzer):
                 current = current.parent
             return None  # pragma: no cover - defensive
 
+        # WI-javoh: dedup external-command launches per (caller, command_name).
+        # A script that calls ``git`` 171 times from one function is ONE launch
+        # relationship, not 171 — hygiene that keeps the disclosed
+        # ``command_launch`` cohort honest (an invocation-count multiplicity,
+        # not a distinct boundary each time).
+        seen_launches: set[tuple[str, str]] = set()
+
         for node in iter_tree(tree.root_node):
             if node.type == "command":
                 cmd_name_node = find_child_by_type(node, "command_name")
@@ -456,6 +501,41 @@ class BashAnalyzer(TreeSitterAnalyzer):
                                             origin_run_id=run.execution_id,
                                             meta={"call_locality": "cross_file"},
                                         ))
+                                    elif cmd_name not in SHELL_BUILTINS:
+                                        # WI-javoh: an EXTERNAL PROGRAM launch —
+                                        # neither a defined shell function nor a
+                                        # resolver-resolved symbol nor a builtin.
+                                        # A subprocess crossing (arbitrary code
+                                        # execution). Prestamp io_boundary so it
+                                        # rides the io-boundary aggregation as a
+                                        # DISCLOSED ``command_launch`` chain
+                                        # (excluded from total_io_edges). Opacity
+                                        # is carried by is_resolved=False (the
+                                        # launched program has no in-tree source);
+                                        # dst_ref gives the external identity.
+                                        key = (current_function.id, cmd_name)
+                                        if key not in seen_launches:
+                                            seen_launches.add(key)
+                                            edges.append(Edge.create(
+                                                src=current_function.id,
+                                                dst=f"bash:{cmd_name}:0-0:{cmd_name}:unresolved",
+                                                dst_ref=ExternalRef(
+                                                    lang="bash",
+                                                    module_path=cmd_name,
+                                                    name=cmd_name,
+                                                ),
+                                                edge_type="calls",
+                                                line=line,
+                                                evidence_type="ast_call",
+                                                is_resolved=False,
+                                                origin=PASS_ID,
+                                                origin_run_id=run.execution_id,
+                                                meta={
+                                                    "io_boundary": "command_launch",
+                                                    "io_primitive": cmd_name,
+                                                    "call_construct": "function",
+                                                },
+                                            ))
 
         return edges
 
