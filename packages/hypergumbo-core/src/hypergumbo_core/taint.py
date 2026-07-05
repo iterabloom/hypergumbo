@@ -1176,12 +1176,31 @@ def _register_sanitizer_callers(
     edges: list[dict],
     sanitizer_by_callee: dict[str, list[TaintSanitizer]],
     sanitizer_callers: "dict[str, dict[str, TaintSanitizer]]",
+    ambiguous_names: frozenset[str] = frozenset(),
 ) -> None:
     """Populate sanitizer_callers from edges + multi-sanitizer index.
 
     Each edge whose callee matches one or more sanitizers adds an entry
     per matched sanitizer's input_taint label to the caller's sanitizer
     dict — so a caller of a multi-label barrier picks up every label.
+
+    INV-finoh: sanitizer matching applies the same resolution-/kind-aware
+    gate that source/sink matching does (``_match_propagation_entry`` /
+    ``gate_named_entry``), so a phantom barrier is never registered from a
+    bare-name collision — which would silently SUPPRESS a real taint flow (a
+    false negative, worse than a missed barrier for a security tool). A
+    *resolved* edge trusts its resolution (exact-name match, unchanged). An
+    *unresolved* edge is the short-name-collision surface: a qualified callee
+    carries its own receiver evidence (an exact ``qualified_name`` match wins,
+    parity with ``_lookup_named_entry``'s qualified-first branch), but a bare
+    untyped *method* call (``call_construct == "method"``, threaded from the
+    edge meta) has no receiver evidence and must NOT match — ``x.encrypt()``
+    must not bind ``Fernet.encrypt`` and falsely sanitize a flow (the
+    INV-tapat/INV-maluk rule ``gate_named_entry`` enforces). An
+    ``ambiguous_names`` bare short name is the meta-absent safety net. (The
+    ``kind``-filter for a free-function call matching a method-kind sanitizer
+    is not applied here because the sanitizer catalog carries no explicit
+    ``kind`` — a documented follow-up requiring a sanitizer-YAML schema field.)
     """
     for edge in edges:
         etype = edge.get("type", "")
@@ -1191,6 +1210,16 @@ def _register_sanitizer_callers(
         matched_list = sanitizer_by_callee.get(callee_name)
         if not matched_list:
             continue
+        if not edge.get("is_resolved", True):
+            qualified = any(
+                s.qualified_name == callee_name for s in matched_list
+            )
+            if not qualified:
+                call_construct = edge.get("meta", {}).get("call_construct")
+                if call_construct == "method":
+                    continue
+                if ambiguous_names and callee_name in ambiguous_names:
+                    continue
         for matched in matched_list:
             sanitizer_callers[edge["src"]][matched.input_taint] = matched
 
@@ -1276,7 +1305,9 @@ def propagate_taint_structural(
     # caller of a barrier function picks up every input_taint label it
     # sanitizes.
     sanitizer_callers: dict[str, dict[str, TaintSanitizer]] = defaultdict(dict)
-    _register_sanitizer_callers(edges, sanitizer_by_callee, sanitizer_callers)
+    _register_sanitizer_callers(
+        edges, sanitizer_by_callee, sanitizer_callers, ambiguous_names,
+    )
 
     # Step 4: For each source, BFS forward to find reachable sinks
     # without passing through sanitizers.

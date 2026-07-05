@@ -521,6 +521,122 @@ class TestStructuralTaintPropagation:
         assert d["confidence"] == "approximate"
 
 
+def _make_edge_cc(
+    src: str, dst: str, call_construct: str | None, edge_type: str = "calls",
+) -> dict:
+    """An edge dict carrying ``meta.call_construct`` (mirrors the producer's
+    kind hint that the source/sink gate reads)."""
+    edge = _make_edge(src, dst, edge_type)
+    edge["meta"] = {"call_construct": call_construct}
+    return edge
+
+
+class TestSanitizerKindGate:
+    """INV-finoh: sanitizer registration must apply the same resolution-/
+    kind-aware gate that source/sink matching applies. A bare-name UNRESOLVED
+    edge colliding with a sanitizer leaf (``encrypt`` from ``Fernet.encrypt``)
+    must not register a phantom barrier — otherwise a real source->sink flow
+    through that caller is falsely marked sanitized (a false negative)."""
+
+    _SOURCE = TaintSource(
+        taint_label="plaintext", module="cryptography.fernet",
+        name="Fernet.decrypt", kind="function", return_tainted=True,
+    )
+    _SINK = TaintSink(
+        zone="host_fs", trust_level="untrusted",
+        module="pathlib.Path", name="write_text", kind="method",
+    )
+    _SANITIZER = TaintSanitizer(
+        input_taint="plaintext", output_taint="ciphertext",
+        qualified_name="Fernet.encrypt",
+    )
+
+    def test_unresolved_bare_method_call_does_not_false_sanitize(self) -> None:
+        """A bare untyped ``x.encrypt()`` method call (unresolved) is NOT the
+        ``Fernet.encrypt`` sanitizer, so the real plaintext flow is reported."""
+        edges = [
+            _make_edge("py:a.py:1-5:handler:function",
+                       "py:external:0-0:Fernet.decrypt:unresolved"),
+            _make_edge("py:a.py:1-5:handler:function",
+                       "py:a.py:10-15:middle:function"),
+            # Bare untyped method call — collides with the 'encrypt' leaf key.
+            _make_edge_cc("py:a.py:10-15:middle:function",
+                          "py:external:0-0:encrypt:unresolved", "method"),
+            _make_edge("py:a.py:10-15:middle:function",
+                       "py:pathlib.Path:0-0:write_text:unresolved"),
+        ]
+        findings = propagate_taint_structural(
+            edges, [self._SOURCE], [self._SINK], [self._SANITIZER],
+        )
+        assert len(findings) == 1
+        assert findings[0].taint_label == "plaintext"
+        assert findings[0].sink_zone == "host_fs"
+
+    def test_qualified_sanitizer_still_registers(self) -> None:
+        """Regression: the REAL qualified ``Fernet.encrypt`` (receiver
+        evidence) still sanitizes even as a method call — the qualified-name
+        match bypasses the untyped-method gate."""
+        edges = [
+            _make_edge("py:a.py:1-5:handler:function",
+                       "py:external:0-0:Fernet.decrypt:unresolved"),
+            _make_edge("py:a.py:1-5:handler:function",
+                       "py:a.py:10-15:enc:function"),
+            _make_edge_cc("py:a.py:10-15:enc:function",
+                          "py:external:0-0:Fernet.encrypt:unresolved", "method"),
+            _make_edge("py:a.py:10-15:enc:function",
+                       "py:pathlib.Path:0-0:write_text:unresolved"),
+        ]
+        findings = propagate_taint_structural(
+            edges, [self._SOURCE], [self._SINK], [self._SANITIZER],
+        )
+        assert len(findings) == 0
+
+    def test_ambiguous_bare_name_does_not_false_sanitize(self) -> None:
+        """An unresolved bare callee flagged ambiguous (no receiver evidence)
+        must not register a phantom barrier."""
+        sanitizer = TaintSanitizer(
+            input_taint="plaintext", output_taint="ciphertext",
+            qualified_name="html.escape",
+        )
+        edges = [
+            _make_edge("py:a.py:1-5:handler:function",
+                       "py:external:0-0:Fernet.decrypt:unresolved"),
+            _make_edge("py:a.py:1-5:handler:function",
+                       "py:a.py:10-15:middle:function"),
+            # Bare 'escape' with no call_construct hint but flagged ambiguous.
+            _make_edge("py:a.py:10-15:middle:function",
+                       "py:external:0-0:escape:unresolved"),
+            _make_edge("py:a.py:10-15:middle:function",
+                       "py:pathlib.Path:0-0:write_text:unresolved"),
+        ]
+        findings = propagate_taint_structural(
+            edges, [self._SOURCE], [self._SINK], [sanitizer],
+            ambiguous_names=frozenset({"escape"}),
+        )
+        assert len(findings) == 1
+
+    def test_unresolved_free_function_sanitizer_registers(self) -> None:
+        """A bare non-method, non-ambiguous unresolved sanitizer call still
+        registers (pass-through) — the reported bug is untyped method /
+        ambiguous collisions, not free-function barriers."""
+        edges = [
+            _make_edge("py:a.py:1-5:handler:function",
+                       "py:external:0-0:Fernet.decrypt:unresolved"),
+            _make_edge("py:a.py:1-5:handler:function",
+                       "py:a.py:10-15:middle:function"),
+            # Bare 'encrypt' as a plain function call (not a method), not
+            # ambiguous -> still treated as the sanitizer barrier.
+            _make_edge_cc("py:a.py:10-15:middle:function",
+                          "py:external:0-0:encrypt:unresolved", "function"),
+            _make_edge("py:a.py:10-15:middle:function",
+                       "py:pathlib.Path:0-0:write_text:unresolved"),
+        ]
+        findings = propagate_taint_structural(
+            edges, [self._SOURCE], [self._SINK], [self._SANITIZER],
+        )
+        assert len(findings) == 0
+
+
 # ---------------------------------------------------------------------------
 # Tests — Full catalog loading from directory
 # ---------------------------------------------------------------------------
