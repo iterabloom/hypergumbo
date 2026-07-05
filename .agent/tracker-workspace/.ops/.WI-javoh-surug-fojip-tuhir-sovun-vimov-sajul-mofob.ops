@@ -33,3 +33,58 @@
   clock: 3  # 401d
   nonce: 401d  # 401d
   message: "Re-scoped via ruling A (decision recorded in ADR-0016 implementation-note, dev c3a2f6df45; CODE pending). Investigation: bash external commands are NOT an io-boundary catalog gap — a bash script shelling out to curl/rm/git is a 'subprocess' boundary (launching an external program, ADR-0016's own definition), and the invoked program's I/O is opaque (Opaque tier, is_resolved=False; no in-tree source, no transitive funnel). DROP the bash.yaml net/fs catalog idea (it would mis-attribute curl's network activity to the shell script — a conceptual leak). Emit a 'subprocess' edge for any command that is neither an in-repo function nor a shell BUILTIN (closed denylist = principled stopping point; uniform subprocess classification removes the curated-allow-list treadmill). subprocess is default-high-risk via the existing invariant, so command risk needs no new taxonomy. STAYS todo_hard: the bash.py emission code (fill the empty-else at ~bash.py:458 with is_resolved=False subprocess edges) is unwritten. Separate independent fix: Erlang os:cmd is mis-homed under env_read/env_write in erlang.yaml."  # 401d
+- op: discuss  # 105c
+  at: '2026-07-05T11:15:58Z'  # 105c
+  by: agent  # 105c
+  actor: jgstern_agent  # 105c
+  clock: 4  # 105c
+  nonce: 105c  # 105c
+  message: "Design + adversarial-review workflow (5 agents; full analysis: ~/hypergumbo_lab_notebook/design_analyses/wi-javoh-bash-subprocess-io-design_07052026.json) surfaced a REFUTATION OF RULING A's gate. Mechanism is settled: Design 1 — bash.py's implicit-else (external command, not a local fn, resolver-miss) emits ONE 'calls' edge (is_resolved=False, dst_ref=ExternalRef(bash,cmd,cmd)) that DIRECTLY prestamps edge.meta['io_boundary']='subprocess'; compute_boundary_map's aggregation loop (io_boundary.py:1320-1355) already turns any meta.io_boundary edge into a real subprocess IoChain (the same Path A python subprocess.run rides), so NO io_boundary.py consumer change, is_resolved never consulted, and F3 stays intact (the edge skips Path B at line 1172 because io_boundary is set). Contract-safe: 'subprocess' already in CATALOG_BOUNDARY_TYPES, no schema bump, is_resolved=False is the only FK-legal cell for an external_symbol dst. BUT BOTH designs rated 'floods': ruling A's CLOSED shell-builtin DENYLIST is the WRONG POLARITY — it blocks only ~48-70 builtins, while the subprocess flood is external TOOLS (git/grep/sed/awk/cat/find/head/dirname/…), none of which are builtins. Empirical: the workers ran the exact emission over hypergumbo's OWN ~29 shell scripts -> ~700-823 low-signal subprocess edges (e.g. 171 identical git chains from one file), which would drown curated python/go/rust subprocess entries AND inflate the F3-protected total_io_edges headline; a real CI/devops repo yields thousands. REQUIRED REVISION (contradicts ruling A): (1) replace the closed denylist with a POSITIVE gate — an ALLOWLIST of I/O-relevant external launches (curl/wget/git/docker/ssh/scp/rsync/kubectl/aws/gcloud/psql/mysql/nc/openssl/gpg/package-install verbs) OR the HIGH_RISK_PRIMITIVES set (rm/curl/kubectl/terraform/docker/ssh/…), so the bucket carries signal not census; (2) dedup to ONE edge per (caller, command_name). Needs human ruling: ruling A's 'closed shell-builtin-denylist, every external command -> subprocess' is empirically a flood; adopt the positive-allowlist/high-risk revision, or route bash externals to the EXCLUDED external_potential bucket instead of the counted real category. Setting needs_human_review."  # 105c
+- op: update  # f3a3
+  at: '2026-07-05T11:15:58Z'  # f3a3
+  by: agent  # f3a3
+  actor: jgstern_agent  # f3a3
+  clock: 5  # f3a3
+  nonce: f3a3  # f3a3
+  set:  # f3a3
+    status: needs_human_review  # f3a3
+- op: discuss  # 1a5a
+  at: '2026-07-05T19:18:54Z'  # 1a5a
+  by: agent  # 1a5a
+  actor: jgstern_agent  # 1a5a
+  clock: 6  # 1a5a
+  nonce: 1a5a  # 1a5a
+  message: "HYPERGUMBO-SPIRIT DERIVATION (6-agent ADR/spec precedent workflow + adversarial audit; full analysis: ~/hypergumbo_lab_notebook/design_analyses/wi-javoh-hypergumbo-spirit-derivation_07052026.json). The adversarial audit REFUTED the curated-allowlist answer (my earlier note) as a partial rationalization: an I/O-relevance allowlist re-opens the un-principled hand-curation the high_risk retirement (WI-tijos) closed — there is NO clean invariant separating curl from git (git does more I/O than most of the list). The deadlock dissolves once CLASSIFICATION and COUNTING are separated (ruling A and its refutation conflated them). RESOLUTION (settles the human-ruling fork by precedent): (1) CLASSIFICATION — every bash external-command launch IS a subprocess crossing (arbitrary code exec; ADR-0016 §1 'all launches risky' completeness invariant + the impl-note ruling A added: bash populates subprocess by emitting unresolved external-command edges, NOT via a data-I/O catalog; ADR-0037 identified-external). Do NOT gate classification by an allowlist. (2) HEADLINE HONESTY is a COUNT question, solved by hypergumbo's established count-vs-disclose machinery (external_potential exclusion; WI-huhit/WI-foduh total_io_edges redefinition; dead-code entrypoint_only_dead disclosure): dedup per (caller, command_name) [kills the 171-identical-git artifact]; and IF deduped launches still swamp the curated stdlib subprocess entries on devops repos, SPLIT the headline — count catalog/stdlib subprocess in total_io_edges, DISCLOSE command-mediated launches in a NEW honestly-labeled 'command_launch' cohort (excluded from total_io_edges, NOT hidden, NOT laundered into external_potential's speculative semantics — a lexed curl is definite, unlike the ~96% unresolved-receiver method noise external_potential quarantines). MECHANISM (Design 1, clean): bash.py implicit-else prestamps meta.io_boundary='subprocess' on an is_resolved=False edge with dst_ref=ExternalRef(bash,cmd,cmd); NO bash.yaml (honors ADR-0016 'not via a catalog' + drift-guard contract); NO io_boundary.py consumer change (rides Path A aggregation 1318-1355). Bundle the erlang.yaml os:cmd re-home (mis-classified under env_read L150). REVISES ruling A's gate (denylist -> no classification gate; flood is a count problem) while KEEPING ruling A's correct parts (subprocess classification, no net/fs catalog). awaits_bakeoff_validation (the command_launch-split question is empirical). Ruling A's premise ('closed builtin denylist = principled stopping point') was verified false by the 5-agent flood measurement (~700-823 chains); a filed decision withdrawn on premise re-verification (ADR-0044 L49 precedent). Moving back to todo_hard — classification settled, direction actionable."  # 1a5a
+- op: update  # d395
+  at: '2026-07-05T19:18:55Z'  # d395
+  by: agent  # d395
+  actor: jgstern_agent  # d395
+  clock: 7  # d395
+  nonce: d395  # d395
+  set:  # d395
+    status: todo_hard  # d395
+- op: update  # b904
+  at: '2026-07-05T20:28:44Z'  # b904
+  by: agent  # b904
+  actor: jgstern_agent  # b904
+  clock: 8  # b904
+  nonce: b904  # b904
+  set:  # b904
+    status: done  # b904
+- op: discuss  # 9b94
+  at: '2026-07-05T20:28:44Z'  # 9b94
+  by: agent  # 9b94
+  actor: jgstern_agent  # 9b94
+  clock: 9  # 9b94
+  nonce: 9b94  # 9b94
+  message: "Implemented per the hypergumbo-spirit derivation (CLASSIFICATION vs COUNTING separation) in PR #438 (merged, commit 15c39d628e). Bash external-program launches (name that is neither an in-tree function, resolver-resolved symbol, nor a shell builtin per the comprehensive SHELL_BUILTINS denylist) now emit a calls edge, is_resolved=False with an ExternalRef dst, deduped per (caller, command), prestamping meta.io_boundary='command_launch' — the first producer-persisted io_boundary, an intentional exception to consumer-time derivation per ADR-0016 impl-note ruling A (no catalog to match; only the shell analyzer distinguishes a launch). Classification is never gated by an I/O-relevance allowlist (that would re-open the hand-curation WI-tijos retired); headline honesty is solved by count-vs-disclose: command_launch is a DISCLOSED-only cohort (new command_launch_edges field, added to _DISCLOSED_ONLY_BOUNDARIES) EXCLUDED from total_io_edges, mirroring external_potential (WI-huhit/WI-foduh, INV-pubom). IO_BOUNDARIES_SCHEMA_VERSION 2.0->2.1. BEHAVIORAL EVIDENCE: (a) live end-to-end repro — 'hypergumbo io-boundaries' on a bash script with curl/git(x2)/rm/echo/cd/local reports command_launch_edges=3 (primitives curl,git,rm — git deduped, builtins excluded), total_io_edges=0 (launches held out of headline), schema_version=2.1; (b) production-path TDD tests: TestCommandLaunchEmission (bash producer) + test_command_launch_disclosed_but_excluded_from_total (aggregation). 100% isolation coverage on cli.py/io_boundary.py/bash.py. The original filed repro (42 bash scripts showing 0 I/O chains) is resolved: external launches are now visible while honestly held out of the verified-I/O count. Erlang os:cmd re-home (mis-homed under env_read) deferred to a separate follow-up (out of scope for this bash-focused PR). awaits_bakeoff_validation: the command_launch-cohort split is an empirical blast-radius change across bash-heavy corpora."  # 9b94
+- op: update  # 942b
+  at: '2026-07-05T20:29:04Z'  # 942b
+  by: agent  # 942b
+  actor: jgstern_agent  # 942b
+  clock: 10  # 942b
+  nonce: 942b  # 942b
+  set:  # 942b
+    pr_ref: '#438'  # 942b
+  add:  # 942b
+    tags: [awaits_bakeoff_validation]  # 942b

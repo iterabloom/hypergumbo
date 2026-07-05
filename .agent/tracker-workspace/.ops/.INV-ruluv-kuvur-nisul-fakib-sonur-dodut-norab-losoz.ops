@@ -21,3 +21,18 @@
     fields:  # 0a4f
       statement: "py.py var_types MUST be pruned of sub-scope-bound names (lambda params, comprehension/generator targets, nested-function params) before process_code_block recurses into those sub-scope BODIES — otherwise a sub-scope binding that shadows an outer var_types-typed name inherits the stale outer type and the producer emits a confidently-wrong receiver_type_hint (a resolved edge to the wrong method/getter)."  # 0a4f
       root_cause: "process_code_block recurses into Lambda/ListComp/SetComp/DictComp/GeneratorExp and nested-FunctionDef bodies with an UNPRUNED var_types; only FunctionDef/AsyncFunctionDef/ClassDef DIRECT children are skipped from the generic recursion, so sub-scope expressions inherit the enclosing function's var_types unchanged."  # 0a4f
+- op: update  # 2dfc
+  at: '2026-07-05T10:05:40Z'  # 2dfc
+  by: agent  # 2dfc
+  actor: jgstern_agent  # 2dfc
+  clock: 2  # 2dfc
+  nonce: 2dfc  # 2dfc
+  set:  # 2dfc
+    status: satisfied  # 2dfc
+- op: discuss  # b3ae
+  at: '2026-07-05T10:05:40Z'  # b3ae
+  by: agent  # b3ae
+  actor: jgstern_agent  # b3ae
+  clock: 3  # b3ae
+  nonce: b3ae  # b3ae
+  message: "Fixed in PR (dev 263c8889f6). Root cause: process_code_block recursed into Lambda/ListComp/SetComp/DictComp/GeneratorExp and directly-body-nested FunctionDef bodies with an UNPRUNED var_types — only def/class DIRECT children were skipped, and only in the child-descent loop. So a comprehension for-target / lambda param / nested-def param that SHADOWS an outer var_types-typed name inherited the stale outer type and the producer emitted a confidently-wrong receiver_type_hint. Fix: prune var_types (and external_var_types) of the names a sub-scope BINDS before recursing, applied at scope ENTRY (per node) so a NESTED comprehension's inner target is pruned too. Enclosing-scope positions keep the outer type (comp first iterable, lambda defaults, free reads); walrus (:=) targets not pruned (PEP 572). def/class skip hoisted to top of the block loop (mirrors _emit_module_attr_refs._walk). Design + adversarial-review workflow (analysis saved to lab notebook) caught a NESTED-comp under-prune that a descent-site prune would miss — fixed by entry-level pruning. Behavioral evidence: [conn.send() for conn in socks] with conn: Connection no longer stamps receiver_type_hint=Connection; the free [svc.handle(x) for x in items] still stamps Service. Mainstream package 100% coverage; 15 new tests (Red: 9 must-suppress fail without the fix)."  # b3ae
