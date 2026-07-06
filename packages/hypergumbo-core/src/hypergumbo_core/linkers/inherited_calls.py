@@ -415,13 +415,17 @@ def _walk_c3(
     order and returns the first class in it that defines ``callee_short_name``;
     an un-linearizable hierarchy (cycle / too deep) biases to unresolved.
 
-    Scope caveat: the linearization spans only in-tree bases. An EXTERNAL base
-    (``dict`` / ``Enum`` / a 3rd-party class) produces no ``extends`` edge, so
+    Scope caveat (INV-guviv): the linearization spans only in-tree bases. An
+    EXTERNAL base (``dict`` / a 3rd-party class) produces no ``extends`` edge, so
     it is invisible to the walk — and if such a base sits ahead of the in-tree
-    ancestor in the real MRO *and* defines the same method name, the walk can
-    resolve to the wrong (in-tree) method. This is a confidently-wrong, not
-    merely missing, edge; it is shared with every intra-repo-only walker and
-    tracked as a fast-follow (gate on a fully-in-tree ancestry).
+    ancestor in the real MRO *and* defines the same method name, the walk would
+    resolve to the wrong (in-tree) method. The Site resolvers guard the BUILTIN
+    subset of this via ``_python_stdlib_base_shadows`` (the ``_STDLIB_BASE_METHODS``
+    catalog): a cataloged builtin base declared ahead of the in-tree ancestor and
+    defining the method biases the resolution to unresolved. A generic 3rd-party
+    external base (not cataloged — the catalog is deliberately not open-ended, to
+    avoid over-suppressing the external-mixin-first idiom) remains a documented
+    residual, shared with every intra-repo-only walker.
     """
     candidates_by_short = method_index.methods_by_short_name.get(
         callee_short_name, [],
@@ -451,6 +455,142 @@ _MRO_WALKERS: dict[str, Callable[
     "java": _walk_single_then_interfaces,
     "python": _walk_c3,
 }
+
+
+# INV-guviv: hardcoded stdlib-base-method catalog for the Python C3 walker's
+# external-base shadow guard. Static language semantics — hardcoded over YAML,
+# consistent with ``_MRO_WALKERS`` (ADR-0029) and the sibling framework-base
+# tables (``DJANGO_BASE_METHODS`` in django_orm_dispatch, ``THIRD_PARTY_BASE_METHODS``
+# in _third_party_bases — "the table lives with its consumer"). Maps a builtin
+# container base's short name → the named methods it defines. Scoped to the
+# small, STABLE builtin collision types: a class inheriting one of these plus an
+# in-tree mixin, where the builtin is declared first, has the builtin's method
+# win Python's real MRO — invisible to the in-tree-only C3 walk. Non-stdlib
+# external bases (a 3rd-party ORM base, an auth mixin) are DELIBERATELY not
+# cataloged: that list is open-ended, and the common external-mixin-first idiom
+# must not be over-suppressed (the naive "any external ahead → suppress" gate,
+# rejected in the INV-guviv design workflow, regressed exactly that idiom). They
+# remain a documented residual (fast-follow: extend to well-known ORM bases only
+# if a bakeoff shows real hits).
+_STDLIB_BASE_METHODS: dict[str, frozenset[str]] = {
+    "dict": frozenset({
+        "keys", "values", "items", "get", "pop", "popitem",
+        "setdefault", "update", "clear", "copy", "fromkeys",
+    }),
+    "list": frozenset({
+        "append", "extend", "insert", "remove", "pop", "clear",
+        "index", "count", "sort", "reverse", "copy",
+    }),
+    "set": frozenset({
+        "add", "remove", "discard", "pop", "clear", "copy",
+        "union", "intersection", "difference", "symmetric_difference",
+        "update", "intersection_update", "difference_update",
+        "symmetric_difference_update", "issubset", "issuperset", "isdisjoint",
+    }),
+    "frozenset": frozenset({
+        "copy", "union", "intersection", "difference",
+        "symmetric_difference", "issubset", "issuperset", "isdisjoint",
+    }),
+    "tuple": frozenset({"index", "count"}),
+    "str": frozenset({
+        "capitalize", "casefold", "center", "count", "encode", "endswith",
+        "expandtabs", "find", "format", "format_map", "index", "isalnum",
+        "isalpha", "isascii", "isdecimal", "isdigit", "isidentifier",
+        "islower", "isnumeric", "isprintable", "isspace", "istitle",
+        "isupper", "join", "ljust", "lower", "lstrip", "maketrans",
+        "partition", "removeprefix", "removesuffix", "replace", "rfind",
+        "rindex", "rjust", "rpartition", "rsplit", "rstrip", "split",
+        "splitlines", "startswith", "strip", "swapcase", "title",
+        "translate", "upper", "zfill",
+    }),
+    "bytes": frozenset({
+        "decode", "hex", "count", "find", "index", "rfind", "rindex",
+        "split", "rsplit", "splitlines", "join", "replace", "startswith",
+        "endswith", "strip", "lstrip", "rstrip", "partition", "rpartition",
+        "translate", "center", "ljust", "rjust", "zfill",
+    }),
+    "bytearray": frozenset({
+        "append", "extend", "insert", "remove", "pop", "clear", "reverse",
+        "copy", "decode", "hex", "count", "find", "index", "split", "join",
+        "replace", "startswith", "endswith", "strip",
+    }),
+}
+
+
+def _stdlib_short_base(raw: str) -> str:
+    """Strip generics + dotted qualifier so a declared base name → its short form.
+
+    Mirrors the sibling linkers' ``_short_base_name``. Only the bare builtin
+    names (``dict``/``list``/...) match the catalog; a dotted form takes the
+    last segment.
+    """
+    name = raw.split("[")[0].split("<")[0].strip()
+    if "." in name:
+        name = name.rsplit(".", 1)[-1]
+    return name
+
+
+def _python_stdlib_base_shadows(
+    start_class_id: str,
+    callee_short: str,
+    inheritance_index: dict[str, list[tuple[str, str]]],
+    class_symbols: dict[str, Symbol],
+    method_index: _TypeHierarchyIndex,
+) -> bool:
+    """True when a resolved Python inherited method is shadowed by a builtin base.
+
+    INV-guviv: ``_walk_c3`` spans only in-tree ``extends`` edges, so an external
+    builtin base is invisible. If such a base is declared BEFORE the first
+    in-tree base of ``start_class_id`` AND it defines ``callee_short``, Python's
+    real MRO dispatches to the (unseen) builtin method — the walk's in-tree
+    binding is confidently wrong, so bias to unresolved.
+
+    Sound by construction (never over-suppresses the external-mixin-first idiom):
+    fires only when a CATALOGED builtin that DEFINES the method precedes ANY
+    in-tree base. A non-stdlib external mixin is not cataloged; a builtin that
+    does not define the method is skipped; a class defining the method itself is
+    exempt (its own method is first in the MRO). Scoped to the start class's own
+    declared bases — a builtin declared in an in-tree ANCESTOR is a documented
+    residual. The scan stops at the FIRST in-tree base, so a builtin declared
+    AFTER an in-tree base that lacks the method but BEFORE a LATER in-tree base
+    that has it is a documented UNDER-suppression residual (safe: it leaves the
+    pre-existing edge, never over-suppresses a correct one).
+    """
+    start_sym = class_symbols.get(start_class_id)
+    declared = (
+        ((start_sym.meta or {}).get("base_classes") if start_sym else None) or []
+    )
+    if not declared:
+        return False
+    # The class's own method is first in the MRO — never shadowed.
+    if any(
+        cid == start_class_id
+        for cid, _ in method_index.methods_by_short_name.get(callee_short, [])
+    ):
+        return False
+    # ``str(raw)`` coercion mirrors the sibling ``_reorder_python_bases_by_source``
+    # defense (the producer is typed ``-> str``, so this is belt-and-suspenders).
+    declared_short = [_stdlib_short_base(str(raw)) for raw in declared]
+    in_tree_short = {
+        _stdlib_short_base(class_symbols[pid].name)
+        for pid, _ in inheritance_index.get(start_class_id, ())
+        if pid in class_symbols
+    }
+    # Soundness guard: the shadow reasoning aligns declared base ORDER with the
+    # in-tree parents. If an in-tree parent's name is ABSENT from the declared
+    # bases (e.g. an in-tree class import-aliased to a builtin's exact name, or
+    # any name divergence), the alignment is unreliable — bias to no-shadow
+    # rather than risk over-suppressing a correct resolution.
+    if not in_tree_short.issubset(declared_short):
+        return False
+    for short in declared_short:
+        if short in in_tree_short:
+            # Reached the in-tree resolution path before any shadowing builtin.
+            return False
+        methods = _STDLIB_BASE_METHODS.get(short)
+        if methods is not None and callee_short in methods:
+            return True
+    return False  # pragma: no cover - the subset guard guarantees an in-tree hit
 
 
 # Languages that get the LEGACY-PERMISSIVE Site-2 typed-receiver resolution:
@@ -895,6 +1035,7 @@ def _resolve_site1(
         if src_lang in _SITE1_STRICT_LANGS and len(start_class_ids) > 1:
             return None
     resolved_target: Symbol | None = None
+    resolved_start_id: str | None = None
     for start_id in start_class_ids:
         candidate = walker(
             start_id, callee_short, inheritance_index,
@@ -902,8 +1043,20 @@ def _resolve_site1(
         )
         if candidate is not None:
             resolved_target = candidate
+            resolved_start_id = start_id
             break
     if resolved_target is None:
+        return None
+    # INV-guviv: an external builtin base ahead of the in-tree ancestor shadows
+    # the walk's resolution in Python's real MRO — bias to unresolved.
+    if (
+        src_lang == "python"
+        and resolved_start_id is not None
+        and _python_stdlib_base_shadows(
+            resolved_start_id, callee_short, inheritance_index,
+            class_symbols, method_index,
+        )
+    ):
         return None
     if (edge.src, resolved_target.id) in existing_call_pairs:
         return None
@@ -1018,6 +1171,12 @@ def _resolve_site2(
                 method_index, _DEFAULT_DEPTH_CAP,
             )
             if via_mro is not None:
+                # INV-guviv: skip when a builtin base shadows the resolution.
+                if src_lang == "python" and _python_stdlib_base_shadows(
+                    type_class_id, method_short, inheritance_index,
+                    class_symbols, method_index,
+                ):
+                    continue
                 if (edge.src, via_mro.id) in existing_call_pairs:  # pragma: no cover
                     return None
                 return Edge.create(

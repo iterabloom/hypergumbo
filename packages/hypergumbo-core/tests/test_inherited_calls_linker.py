@@ -1749,12 +1749,17 @@ class TestPythonSite1SelfCalls:
         assert result.edges == []
 
     def test_site1_python_external_base_mixin_known_gap(self) -> None:
-        # KNOWN LIMITATION (FM1, tracked by INV-guviv): the C3 walker spans only
-        # in-tree ``extends`` edges. Sub subclasses an EXTERNAL base (no edge,
-        # invisible) plus an in-tree mixin; if the external base defined `save`
-        # it would win the real MRO, but the walk sees only the mixin and binds
-        # Mixin.save at 0.90. Asserting the CURRENT behavior ships FM1
-        # eyes-open; INV-guviv's fully-in-tree-ancestry gate will flip it.
+        # RESIDUAL (FM1, INV-guviv): the C3 walker spans only in-tree ``extends``
+        # edges. Sub subclasses an EXTERNAL base (no edge, invisible) plus an
+        # in-tree mixin; if the external base defined `save` it would win the
+        # real MRO, but the walk sees only the mixin and binds Mixin.save at 0.90.
+        # INV-guviv's stdlib-base-method catalog gates the BUILTIN subset
+        # (``dict``/``list``/... — see TestInvGuvivStdlibBaseShadow), but a
+        # generic 3rd-party base like ``ext.SqlBase`` is NOT cataloged (the
+        # catalog is deliberately not open-ended, and over-cataloging risks
+        # suppressing the external-mixin-first idiom). So this generic-external
+        # case stays the documented residual — resolution to Mixin.save is
+        # asserted as the current (possibly-wrong) behavior, eyes-open.
         mixin = _py_cls("sym:py.LogMixin", "LogMixin", path="/mixin.py")
         mixin_save = _py_method(
             "sym:py.LogMixin.save", "LogMixin.save", path="/mixin.py"
@@ -2838,3 +2843,271 @@ class TestSite3FieldWalkC3Order:
         )
         result = link_inherited_calls(ctx)
         assert [x2 for x2 in result.edges if x2.src == caller.id] == []
+
+
+def _py_cls_bases(sid: str, name: str, bases: list, path: str = "/m.py") -> Symbol:
+    """Python class symbol carrying meta['base_classes'] (declared base order)."""
+    return Symbol(
+        id=sid, name=name, kind="class", language="python", path=path,
+        span=Span(start_line=1, end_line=5, start_col=0, end_col=0),
+        origin="test", origin_run_id="test-run",
+        meta={"base_classes": list(bases)},
+    )
+
+
+class TestInvGuvivStdlibBaseShadow:
+    """INV-guviv: an external stdlib base (``dict``/``list``/...) is invisible to
+    the in-tree C3 walk. When such a base is declared BEFORE the in-tree ancestor
+    AND defines the called method, Python's real MRO dispatches to the (unseen)
+    stdlib method — so the walk's in-tree binding is confidently wrong. A
+    hardcoded stdlib-base-method catalog (sibling of DJANGO_BASE_METHODS /
+    THIRD_PARTY_BASE_METHODS, per ADR-0029) gates those to unresolved, WITHOUT
+    over-suppressing the external-mixin-first idiom (non-stdlib bases are not
+    cataloged).
+    """
+
+    def test_catalog_has_container_types(self) -> None:
+        from hypergumbo_core.linkers.inherited_calls import _STDLIB_BASE_METHODS
+        assert "pop" in _STDLIB_BASE_METHODS["dict"]
+        assert "keys" in _STDLIB_BASE_METHODS["dict"]
+        assert "append" in _STDLIB_BASE_METHODS["list"]
+        assert "add" in _STDLIB_BASE_METHODS["set"]
+        assert "split" in _STDLIB_BASE_METHODS["str"]
+
+    def test_site1_stdlib_base_shadows_inherited_method(self) -> None:
+        # class Repo(dict, LogMixin): self.pop() — dict (external, invisible)
+        # defines pop and is declared first → Python dispatches dict.pop, not
+        # LogMixin.pop. Bias to unresolved.
+        mixin = _py_cls("sym:py.LogMixin", "LogMixin", path="/mixin.py")
+        mixin_pop = _py_method("sym:py.LogMixin.pop", "LogMixin.pop", path="/mixin.py")
+        repo = _py_cls_bases("sym:py.Repo", "Repo", ["dict", "LogMixin"], path="/repo.py")
+        caller = _py_caller()
+        edges = [
+            _edge(repo.id, mixin.id, "extends"),
+            _unresolved_site1_lang(
+                src_id=caller.id, callee_name="pop",
+                enclosing_class="Repo", lang="python",
+            ),
+        ]
+        ctx = LinkerContext(
+            repo_root=Path("/"), symbols=[mixin, mixin_pop, repo, caller], edges=edges,
+        )
+        result = link_inherited_calls(ctx)
+        assert [e for e in result.edges if e.src == caller.id] == []
+
+    def test_site1_stdlib_base_not_defining_method_resolves(self) -> None:
+        # class Repo(dict, LogMixin): self.log_it() — dict does NOT define
+        # log_it, so LogMixin.log_it is the correct (unshadowed) target.
+        mixin = _py_cls("sym:py.LogMixin", "LogMixin", path="/mixin.py")
+        mixin_m = _py_method("sym:py.LogMixin.log_it", "LogMixin.log_it", path="/mixin.py")
+        repo = _py_cls_bases("sym:py.Repo", "Repo", ["dict", "LogMixin"], path="/repo.py")
+        caller = _py_caller()
+        edges = [
+            _edge(repo.id, mixin.id, "extends"),
+            _unresolved_site1_lang(
+                src_id=caller.id, callee_name="log_it",
+                enclosing_class="Repo", lang="python",
+            ),
+        ]
+        ctx = LinkerContext(
+            repo_root=Path("/"), symbols=[mixin, mixin_m, repo, caller], edges=edges,
+        )
+        result = link_inherited_calls(ctx)
+        resolved = [e for e in result.edges if e.src == caller.id]
+        assert len(resolved) == 1
+        assert resolved[0].dst == mixin_m.id
+
+    def test_site1_stdlib_base_after_intree_base_resolves(self) -> None:
+        # class Repo(LogMixin, dict): self.pop() — dict is AFTER LogMixin, so
+        # LogMixin.pop wins the real MRO (no shadow).
+        mixin = _py_cls("sym:py.LogMixin", "LogMixin", path="/mixin.py")
+        mixin_pop = _py_method("sym:py.LogMixin.pop", "LogMixin.pop", path="/mixin.py")
+        repo = _py_cls_bases("sym:py.Repo", "Repo", ["LogMixin", "dict"], path="/repo.py")
+        caller = _py_caller()
+        edges = [
+            _edge(repo.id, mixin.id, "extends"),
+            _unresolved_site1_lang(
+                src_id=caller.id, callee_name="pop",
+                enclosing_class="Repo", lang="python",
+            ),
+        ]
+        ctx = LinkerContext(
+            repo_root=Path("/"), symbols=[mixin, mixin_pop, repo, caller], edges=edges,
+        )
+        result = link_inherited_calls(ctx)
+        resolved = [e for e in result.edges if e.src == caller.id]
+        assert len(resolved) == 1
+        assert resolved[0].dst == mixin_pop.id
+
+    def test_site1_class_defines_method_itself_not_shadowed(self) -> None:
+        # class Repo(dict, LogMixin) where Repo ITSELF defines pop → Repo.pop
+        # (the class's own method is first in the MRO; never shadowed).
+        mixin = _py_cls("sym:py.LogMixin", "LogMixin", path="/mixin.py")
+        repo = _py_cls_bases("sym:py.Repo", "Repo", ["dict", "LogMixin"], path="/repo.py")
+        repo_pop = _py_method("sym:py.Repo.pop", "Repo.pop", path="/repo.py")
+        caller = _py_caller()
+        edges = [
+            _edge(repo.id, mixin.id, "extends"),
+            _unresolved_site1_lang(
+                src_id=caller.id, callee_name="pop",
+                enclosing_class="Repo", lang="python",
+            ),
+        ]
+        ctx = LinkerContext(
+            repo_root=Path("/"), symbols=[mixin, repo, repo_pop, caller], edges=edges,
+        )
+        result = link_inherited_calls(ctx)
+        resolved = [e for e in result.edges if e.src == caller.id]
+        assert len(resolved) == 1
+        assert resolved[0].dst == repo_pop.id
+
+    def test_site1_nonstdlib_external_mixin_still_resolves(self) -> None:
+        # The external-mixin-first idiom: class C(LoginRequiredMixin, AuditMixin)
+        # calling self.log_action(). LoginRequiredMixin is external but NOT a
+        # stdlib type, so it is not cataloged → no shadow → AuditMixin.log_action
+        # resolves (the exact over-suppression the naive gate would have caused).
+        audit = _py_cls("sym:py.AuditMixin", "AuditMixin", path="/audit.py")
+        audit_m = _py_method("sym:py.AuditMixin.log_action", "AuditMixin.log_action", path="/audit.py")
+        view = _py_cls_bases(
+            "sym:py.UserView", "UserView",
+            ["auth.LoginRequiredMixin", "AuditMixin"], path="/view.py",
+        )
+        caller = _py_caller()
+        edges = [
+            _edge(view.id, audit.id, "extends"),
+            _unresolved_site1_lang(
+                src_id=caller.id, callee_name="log_action",
+                enclosing_class="UserView", lang="python",
+            ),
+        ]
+        ctx = LinkerContext(
+            repo_root=Path("/"), symbols=[audit, audit_m, view, caller], edges=edges,
+        )
+        result = link_inherited_calls(ctx)
+        resolved = [e for e in result.edges if e.src == caller.id]
+        assert len(resolved) == 1
+        assert resolved[0].dst == audit_m.id
+
+    def test_site2_stdlib_base_shadows(self) -> None:
+        # d: MyDict where class MyDict(dict, Base): d.pop() — same shadow at the
+        # typed-receiver site.
+        base = _py_cls("sym:py.Base", "Base", path="/base.py")
+        base_pop = _py_method("sym:py.Base.pop", "Base.pop", path="/base.py")
+        mydict = _py_cls_bases("sym:py.MyDict", "MyDict", ["dict", "Base"], path="/md.py")
+        caller = _py_caller()
+        edges = [
+            _edge(mydict.id, base.id, "extends"),
+            _unresolved_site2_lang(
+                src_id=caller.id, callee_name="pop",
+                receiver_type_hint="MyDict", lang="python",
+            ),
+        ]
+        ctx = LinkerContext(
+            repo_root=Path("/"), symbols=[base, base_pop, mydict, caller], edges=edges,
+        )
+        result = link_inherited_calls(ctx)
+        assert [e for e in result.edges if e.src == caller.id] == []
+
+    def test_site2_stdlib_base_not_defining_method_resolves(self) -> None:
+        base = _py_cls("sym:py.Base", "Base", path="/base.py")
+        base_m = _py_method("sym:py.Base.query", "Base.query", path="/base.py")
+        mydict = _py_cls_bases("sym:py.MyDict", "MyDict", ["dict", "Base"], path="/md.py")
+        caller = _py_caller()
+        edges = [
+            _edge(mydict.id, base.id, "extends"),
+            _unresolved_site2_lang(
+                src_id=caller.id, callee_name="query",
+                receiver_type_hint="MyDict", lang="python",
+            ),
+        ]
+        ctx = LinkerContext(
+            repo_root=Path("/"), symbols=[base, base_m, mydict, caller], edges=edges,
+        )
+        result = link_inherited_calls(ctx)
+        resolved = [e for e in result.edges if e.src == caller.id]
+        assert len(resolved) == 1
+        assert resolved[0].dst == base_m.id
+
+    def test_site1_declared_base_name_mismatch_no_false_shadow(self) -> None:
+        # The declared base name (an import alias "BaseAlias") does not match the
+        # in-tree parent symbol's name ("RealBase"); the walker resolves via the
+        # extends edge regardless, and the shadow scan (which keys on declared
+        # names) must NOT fire — a non-stdlib, non-matching name is not a shadow.
+        base = _py_cls("sym:py.RealBase", "RealBase", path="/base.py")
+        base_m = _py_method("sym:py.RealBase.compute", "RealBase.compute", path="/base.py")
+        sub = _py_cls_bases("sym:py.Sub", "Sub", ["BaseAlias"], path="/sub.py")
+        caller = _py_caller()
+        edges = [
+            _edge(sub.id, base.id, "extends"),
+            _unresolved_site1_lang(
+                src_id=caller.id, callee_name="compute",
+                enclosing_class="Sub", lang="python",
+            ),
+        ]
+        ctx = LinkerContext(
+            repo_root=Path("/"), symbols=[base, base_m, sub, caller], edges=edges,
+        )
+        result = link_inherited_calls(ctx)
+        resolved = [e for e in result.edges if e.src == caller.id]
+        assert len(resolved) == 1
+        assert resolved[0].dst == base_m.id
+
+    def test_site1_intree_base_aliased_to_builtin_name_no_false_shadow(self) -> None:
+        # F1: an in-tree class import-aliased to a builtin's exact name
+        # (`from .m import DictBase as dict; class Repo(dict, Base)`). The extends
+        # edge names the parent "DictBase" but meta['base_classes'] records "dict".
+        # The alignment guard (in-tree parent names must appear among declared
+        # bases) detects the divergence and biases to no-shadow — resolving the
+        # correct DictBase.pop rather than falsely suppressing it.
+        dictbase = _py_cls("sym:py.DictBase", "DictBase", path="/m.py")
+        dictbase_pop = _py_method("sym:py.DictBase.pop", "DictBase.pop", path="/m.py")
+        base = _py_cls("sym:py.Base", "Base", path="/base.py")
+        repo = _py_cls_bases("sym:py.Repo", "Repo", ["dict", "Base"], path="/repo.py")
+        caller = _py_caller()
+        edges = [
+            _edge(repo.id, dictbase.id, "extends"),
+            _edge(repo.id, base.id, "extends"),
+            _unresolved_site1_lang(
+                src_id=caller.id, callee_name="pop",
+                enclosing_class="Repo", lang="python",
+            ),
+        ]
+        ctx = LinkerContext(
+            repo_root=Path("/"),
+            symbols=[dictbase, dictbase_pop, base, repo, caller], edges=edges,
+        )
+        result = link_inherited_calls(ctx)
+        resolved = [e for e in result.edges if e.src == caller.id]
+        assert len(resolved) == 1
+        assert resolved[0].dst == dictbase_pop.id
+
+    def test_site1_builtin_between_intree_bases_is_undersuppression_residual(self) -> None:
+        # F2 (documented UNDER-suppression residual, SAFE direction): class
+        # Repo(FirstMixin, dict, SecondMixin) where FirstMixin lacks pop, dict has
+        # pop, SecondMixin has pop. Real MRO dispatches dict.pop, but the scan
+        # stops at the first in-tree base (FirstMixin) and does not fire — leaving
+        # the pre-existing (possibly-wrong) SecondMixin.pop edge. Never
+        # over-suppresses; asserted to lock the residual eyes-open.
+        first = _py_cls("sym:py.FirstMixin", "FirstMixin", path="/f.py")
+        second = _py_cls("sym:py.SecondMixin", "SecondMixin", path="/s.py")
+        second_pop = _py_method("sym:py.SecondMixin.pop", "SecondMixin.pop", path="/s.py")
+        repo = _py_cls_bases(
+            "sym:py.Repo", "Repo", ["FirstMixin", "dict", "SecondMixin"], path="/repo.py",
+        )
+        caller = _py_caller()
+        edges = [
+            _edge(repo.id, first.id, "extends"),
+            _edge(repo.id, second.id, "extends"),
+            _unresolved_site1_lang(
+                src_id=caller.id, callee_name="pop",
+                enclosing_class="Repo", lang="python",
+            ),
+        ]
+        ctx = LinkerContext(
+            repo_root=Path("/"),
+            symbols=[first, second, second_pop, repo, caller], edges=edges,
+        )
+        result = link_inherited_calls(ctx)
+        resolved = [e for e in result.edges if e.src == caller.id]
+        assert len(resolved) == 1
+        assert resolved[0].dst == second_pop.id
