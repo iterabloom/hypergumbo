@@ -56,3 +56,19 @@
   set: {}  # 2f00
   add:  # 2f00
     tags: [awaits_bakeoff_validation]  # 2f00
+- op: update  # 4cfc
+  at: '2026-07-06T20:06:38Z'  # 4cfc
+  by: agent  # 4cfc
+  actor: jgstern_agent  # 4cfc
+  clock: 6  # 4cfc
+  nonce: 4cfc  # 4cfc
+  set: {}  # 4cfc
+  remove:  # 4cfc
+    tags: [awaits_bakeoff_validation]  # 4cfc
+- op: discuss  # 0967
+  at: '2026-07-06T20:06:38Z'  # 0967
+  by: agent  # 0967
+  actor: jgstern_agent  # 0967
+  clock: 7  # 0967
+  nonce: '0967'  # 0967
+  message: "MOVED via BROAD drain broad-20260706-153915 (cohort-002/pretix). dead-code-maybe --format json summary carries demoted_cross_language=3217 — cross_language_hits consumed as an FP demoter (was populated but unconsumed); demoted_view_func/demoted_dispatch_inherited buckets also present. Verdict moved."  # 0967

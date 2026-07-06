@@ -207,3 +207,10 @@
   set: {}  # 9365
   add:  # 9365
     tags: [awaits_bakeoff_validation]  # 9365
+- op: discuss  # cfac
+  at: '2026-07-06T20:07:01Z'  # cfac
+  by: agent  # cfac
+  actor: jgstern_agent  # cfac
+  clock: 25  # cfac
+  nonce: cfac  # cfac
+  message: "NO_MOVE via BROAD drain broad-20260706-153915. axis_conformance is NOT zero on the cohort: pretix 611, phoenix 515, openzeppelin 519, detekt 9. Distinct unregistered values: Edge.evidence_type=module_qualified_call (x512), pass-id view-template-linker on Edge/Symbol/AnalysisRun origin (x612), Symbol.language=asciidoc (x36)/gradle (x8), and Symbol.language set to a FILE PATH (phoenix priv/static JS, openzeppelin .sol import paths). The zero-axis-violation closure gate is not met; stays pending_validation, tag retained. Blocker sub-items filed: WI-gobip (view-template-linker unregistered pass-id + module_qualified_call evidence_type) and WI-muzuf (Symbol.language axis pollution)."  # cfac

@@ -1,0 +1,21 @@
+- op: create  # a9f0
+  at: '2026-07-06T21:37:56Z'  # a9f0
+  by: agent  # a9f0
+  actor: jgstern_agent  # a9f0
+  clock: 1  # a9f0
+  nonce: a9f0  # a9f0
+  data:  # a9f0
+    kind: work_item  # a9f0
+    title: "Language-axis catalog gap: asciidoc/gradle file-type labels not in all_known_languages()"  # a9f0
+    status: todo_hard  # a9f0
+    priority: 3  # a9f0
+    parent: INV-numat-judoj-dogal-misuj-divuf-kajus-buban-dihuj  # a9f0
+    tags:  # a9f0
+    - vocab_axis  # a9f0
+    - axis_conformance  # a9f0
+    isbefore: []  # a9f0
+    duplicate_of: []  # a9f0
+    not_duplicate_of: []  # a9f0
+    pr_ref:  # a9f0
+    description: "Split from WI-muzuf (which fixed the dominant Symbol.language=file-path boundary bug). Residual language-axis-conformance violations from a DIFFERENT mechanism: file-type discovery labels that are NOT in all_known_languages(). On the BROAD drain cohort (broad-20260706-153915): Symbol.language='asciidoc' x36 (openzeppelin .adoc README file-anchors, origin=orchestrator_file_symbol_synthesis) and 'gradle' (detekt build.gradle file-anchors + a manifest_targets binary + a boundary external). asciidoc IS a taxonomy LanguageSpec (taxonomy.py:456) but has no @register_analyzer, so all_known_languages() (the analyzer/linker union) excludes it — unlike gitignore/make which ARE registered. This is a catalog-registration/consistency question, not a producer bug: either register asciidoc (and decide on gradle — a build-tool label on binary/file targets, murkier) as recognized languages consistent with gitignore/make, OR normalize the file-anchor/manifest language to registered-or-None. Needs a small design decision on whether taxonomy file-types belong in the language axis catalog. Post-WI-muzuf, openzeppelin axis_conformance is 519->36, the 36 being exactly this asciidoc residual."  # a9f0
+    fields: {}  # a9f0

@@ -166,3 +166,10 @@
   clock: 19  # 7a46
   nonce: 7a46  # 7a46
   message: "DEEP cohort deep-20260621-215349/cohort-002/iter-001 verdict: INCONCLUSIVE. metrics.total_files == distinct path-bearing-node count EXACTLY on all 4 repos (apollo 180, jedis 913, pretix 1461, chatwoot 3314) -- no counted-but-nodeless files observed -- and formerly-nodeless extensions (.yaml/.rst/.scss/.html/.erb/.jbuilder) now emit path-bearing nodes, consistent with the original 296-file gap (yaml 174, md 107) closing via analyzer emission gains. BUT cannot distinguish genuine gap-closure from a total_files redefinition (counting only node-bearing files) without the raw discovery-file count (files walked incl. nodeless ones). Tag RETAINED. To unblock: instrument discovery-vs-emission file counts, or expose a metrics field for walked-but-nodeless files, then re-verify the original total_files>distinct-paths direction."  # 7a46
+- op: discuss  # 84e7
+  at: '2026-07-06T20:07:02Z'  # 84e7
+  by: agent  # 84e7
+  actor: jgstern_agent  # 84e7
+  clock: 20  # 84e7
+  nonce: '84e7'  # 84e7
+  message: "BROAD drain broad-20260706-153915: not re-attempted. A BROAD cohort hits the same wall as the prior DEEP inconclusive (2026-06-22): total_files matches the path-bearing-node count on the cohort, but genuine gap-closure cannot be distinguished from a total_files redefinition without a raw walked-but-nodeless file count, which is not instrumented. Tag retained; unblock is the discovery-vs-emission instrumentation (a code change), not a cohort run."  # 84e7
