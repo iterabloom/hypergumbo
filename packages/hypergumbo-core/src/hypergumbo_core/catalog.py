@@ -605,6 +605,7 @@ def all_known_languages() -> frozenset[str]:
     """
     from .analyze.registry import _ANALYZER_REGISTRY, ensure_discovered
     from .linkers.registry import _LINKER_REGISTRY
+    from .taxonomy import LANGUAGES
 
     ensure_discovered()
     langs: set[str] = set()
@@ -612,6 +613,17 @@ def all_known_languages() -> frozenset[str]:
         langs.update(analyzer.languages)
     for linker in _LINKER_REGISTRY.values():
         langs.update(linker.languages)
+    # WI-kunut: the language axis catalog is the analyzer/linker registration
+    # UNION the taxonomy's recognized LanguageSpecs. Discovery and the
+    # orchestrator file-anchor synthesis label file nodes with taxonomy
+    # languages (a ``.adoc`` → ``asciidoc``, a ``Makefile`` → ``makefile``) that
+    # carry a LanguageSpec but no dedicated ``@register_analyzer`` — so a
+    # registration-only catalog wrongly rejected them (axis_conformance). The
+    # two sources genuinely diverge (gitignore/make/scss are registered but not
+    # taxonomy LanguageSpecs; asciidoc/makefile are the reverse), so the axis
+    # catalog is their union — the complete set of languages hypergumbo can
+    # label a symbol with.
+    langs.update(LANGUAGES)
     return frozenset(langs)
 
 

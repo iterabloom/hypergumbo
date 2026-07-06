@@ -690,3 +690,18 @@ class TestSyntheticPassIds:
 
         known = all_known_pass_ids()
         assert "view-template-linker" in known
+
+    def test_known_languages_include_taxonomy_languages(self) -> None:
+        """WI-kunut: the language axis catalog is analyzer/linker languages UNION
+        the taxonomy's recognized LanguageSpecs. Discovery and the orchestrator
+        file-anchor synthesis label file nodes with taxonomy languages (a
+        ``.adoc`` → ``asciidoc``, a ``Makefile`` → ``makefile``) that have a
+        LanguageSpec but no dedicated ``@register_analyzer`` — so they were
+        absent from the registration-only catalog and every such file-anchor
+        tripped axis_conformance. ``all_known_languages()`` now unions the
+        taxonomy names, so the catalog is the complete recognized-language set."""
+        from hypergumbo_core.catalog import all_known_languages
+
+        known = all_known_languages()
+        assert "asciidoc" in known
+        assert "makefile" in known

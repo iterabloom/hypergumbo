@@ -161,8 +161,12 @@ def _extract_gradle(
         class_name = m.group(1)
         # Could be Java or Kotlin — try .java first (more common in Gradle)
         target = _class_to_path(class_name, ".java")
+        # WI-kunut: a Gradle mainClass target is a Java class (target_path is
+        # .java) — its language is 'java', not the build-format 'gradle' (which
+        # is not a registered language → axis_conformance leak). Matches every
+        # sibling extractor mapping manifest→target language (sbt→scala etc.).
         _emit(symbols, edges, rel_path, class_name.rsplit(".", 1)[-1],
-              "binary", line, target, "gradle", run_id=run_id)
+              "binary", line, target, "java", run_id=run_id)
 
 
 # C#: <StartupObject>Namespace.Program</StartupObject>
@@ -182,8 +186,10 @@ def _extract_csproj(
         line = content[:m.start()].count("\n") + 1
         class_name = m.group(1)
         target = _class_to_path(class_name, ".cs")
+        # WI-kunut: a .csproj StartupObject is a C# class (target_path is .cs) —
+        # language 'csharp', not the build-format 'csproj'. Mirrors gradle→java.
         _emit(symbols, edges, rel_path, class_name.rsplit(".", 1)[-1],
-              "binary", line, target, "csproj", run_id=run_id)
+              "binary", line, target, "csharp", run_id=run_id)
 
 
 # Dart: executables:\n  command_name: script_name
