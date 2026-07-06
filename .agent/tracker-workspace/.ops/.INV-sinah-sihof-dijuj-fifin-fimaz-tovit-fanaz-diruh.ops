@@ -1,0 +1,23 @@
+- op: create  # 653b
+  at: '2026-07-06T15:30:59Z'  # 653b
+  by: agent  # 653b
+  actor: jgstern_agent  # 653b
+  clock: 1  # 653b
+  nonce: 653b  # 653b
+  data:  # 653b
+    kind: invariant  # 653b
+    title: "Elixir symbols defined inside a quote block are mis-attributed to the defining module"  # 653b
+    status: violated  # 653b
+    priority: 3  # 653b
+    parent:  # 653b
+    tags:  # 653b
+    - dogfood  # 653b
+    - emission_parity  # 653b
+    isbefore: []  # 653b
+    duplicate_of: []  # 653b
+    not_duplicate_of: []  # 653b
+    pr_ref:  # 653b
+    description: "Analyzer-wide quote-attribution gap surfaced by the WI-jusus elixir defstruct-field review. A def/defstruct inside quote do...end (idiomatic __using__ metaprogramming) is attributed to the DEFINING module (phantom, wrong owner) while the module that actually receives it via 'use' gets nothing (recall miss). The WI-jusus defstruct slice added a narrow _has_quote_ancestor guard to SUPPRESS the phantom field emission (fails-safe: no wrong owner, but the real owner is a recall miss pending cross-module use resolution). The SAME mis-attribution affects the def/defp/defmacro/defmacrop branches (confirmed: 'def injected_fun' inside a quote is attributed to the defining module identically), which do NOT yet have the guard. Options: (a) extend the _has_quote_ancestor guard to all symbol branches (fails-safe suppression, consistent with defstruct); (b) model quote-block metaprogramming properly by resolving 'use' to attribute the injected symbols to the using module (the correct-recall path, larger). Evidence: analyze_elixir on a 'defmodule EventBase do defmacro __using__(_) do quote do def injected_fun, do: :ok end end end' -> EventBase.injected_fun emitted (should be attributed to the using module, not EventBase)."  # 653b
+    fields:  # 653b
+      statement: "A def/defp/defmacro/defmacrop/defstruct inside a quote do ... end block (e.g. an __using__ macro template) is NOT a definition on the syntactically-enclosing module — it is injected into whatever module runs use, so it must not be attributed to the defining module."  # 653b
+      root_cause: "The Elixir symbol emitters key the owner on the syntactic enclosing defmodule (via _get_enclosing_modules) with no awareness that a quote block defers the definition to a different (use-ing) module. Correctly resolving the real owner needs cross-module use/__using__ macro-expansion resolution."  # 653b
