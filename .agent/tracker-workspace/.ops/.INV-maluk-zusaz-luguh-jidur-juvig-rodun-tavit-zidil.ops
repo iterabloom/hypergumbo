@@ -106,3 +106,19 @@
   clock: 12  # 06f6
   nonce: 06f6  # 06f6
   message: "Fixed STRUCTURALLY in PR #4324 (dev c261dde7ab, io-boundary:F3) — across ALL THREE consumers, which is why this was REOPENED 2026-06-05 (the taint.py:match_sink third consumer / WI-razol ~5541-violation cascade had the same ambiguous_names-blind bug).\n\nINV-maluk's statement (a method-kind primitive whose short name collides matches ONLY with discriminating module evidence, never the unfiltered short-name fallback) is now enforced by the shared kind-aware gate (io_boundary.gate_named_entry) rather than the hand-maintained ambiguous_names list. The gate keys on IoPrimitive.kind + the edge call_construct: a method-kind primitive on a bare/untyped receiver is suppressed regardless of whether its name was enumerated in ambiguous_names (so it covers read_text/exists/executeQuery/... that the list missed, and future Path methods automatically).\n\nBehavioral evidence (the literal INV-maluk repro): lookup_with_module('replace', None, call_construct='method') = None (str.replace no longer matches pathlib.Path.replace); lookup_with_module('replace', 'pathlib.Path') = the Path.replace fs_write primitive (real receiver still classifies). Mirrored on the taint consumer: a bare 'replace'/'write' method sink with no module is suppressed in BOTH propagate_taint_structural AND propagate_taint_ddg (the WI-razol PR2 dual-path lesson), without the name needing to be in ambiguous_names — verified by TestPropagationKindAwareGate (structural+ddg). taint _lookup_named_entry gained an exact-qualified-name pre-check so a fully-qualified method callee still matches. ambiguous_names retained as the meta-absent/non-Python safety net. 10823 passed, 100% cov.\n\nTagged awaits_bakeoff_validation. WI-razol (done) stays done — this is the structural upgrade of its band-aid. INV-mivud (P3, bare 'copy') NOT closed by this: copy is function-kind, so the gate only narrows it to the explicit x.copy() method-call case (noted separately)."  # 06f6
+- op: update  # 9bce
+  at: '2026-07-06T20:05:53Z'  # 9bce
+  by: agent  # 9bce
+  actor: jgstern_agent  # 9bce
+  clock: 13  # 9bce
+  nonce: 9bce  # 9bce
+  set: {}  # 9bce
+  remove:  # 9bce
+    tags: [awaits_bakeoff_validation]  # 9bce
+- op: discuss  # 745e
+  at: '2026-07-06T20:05:53Z'  # 745e
+  by: agent  # 745e
+  actor: jgstern_agent  # 745e
+  clock: 14  # 745e
+  nonce: 745e  # 745e
+  message: "MOVED via BROAD drain broad-20260706-153915. Same io-boundary receiver/module-context evidence as INV-tapat: external_potential_edges disclosed separately (0 across cohort), method primitives require module context, no short-name-collision flood in total_io_edges. Verdict moved."  # 745e

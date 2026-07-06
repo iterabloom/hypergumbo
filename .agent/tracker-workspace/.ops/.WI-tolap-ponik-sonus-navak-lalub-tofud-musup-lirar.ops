@@ -36,3 +36,19 @@
   clock: 3  # 12b6
   nonce: 12b6  # 12b6
   message: "Fixed in PR #381 (merged b590c885ed). Root cause: refine_frameworks' AUTO-mode demote phase dropped manifest-detected spring-boot to dev_frameworks because its import patterns (org.springframework.boot only) did not match a Spring MVC controller's actual annotation import (org.springframework.web.bind.annotation); with profile.frameworks=[] enrich_symbols never loaded spring-boot.yaml, so no route/controller concept fired. Fix: broadened spring-boot's JAVA_FRAMEWORKS import patterns to include org.springframework.web/.stereotype/.context — import namespaces, not Maven group coords (spring-web's coord is org.springframework:spring-web), so _pattern_matches_deps adds no manifest-detection FP; only import-edge matching widens. Deliberately NOT autoload-by-convention (Rails) — Spring is imported like Django, so import validation stays active. Behavioral evidence (re-ran the item's OWN repro on merged dev b590c885ed, fixtures/route-parity/java/ via run_behavior_map): BEFORE profile.frameworks=[] and Ctrl.listUsers carried no concept; AFTER profile.frameworks=['spring-boot'], Ctrl class -> concept=controller, Ctrl.listUsers method -> concept=route. Route-parity gate: java moved from strict-xfail into ROUTE_GREEN (5/5 pass). Full local suite 100% (19917 passed). Tagged awaits_bakeoff_validation: flips java-Spring concept=route inert->live and widens spring-boot detection corpus-wide. Surfaced a separate PRE-EXISTING route-marker synthesis validation defect (filed WI-tufil; affects go/js/java equally)."  # 12b6
+- op: update  # f31f
+  at: '2026-07-06T20:06:12Z'  # f31f
+  by: agent  # f31f
+  actor: jgstern_agent  # f31f
+  clock: 4  # f31f
+  nonce: f31f  # f31f
+  set: {}  # f31f
+  remove:  # f31f
+    tags: [awaits_bakeoff_validation]  # f31f
+- op: discuss  # 63b9
+  at: '2026-07-06T20:06:12Z'  # 63b9
+  by: agent  # 63b9
+  actor: jgstern_agent  # 63b9
+  clock: 5  # 63b9
+  nonce: 63b9  # 63b9
+  message: "MOVED via BROAD drain broad-20260706-153915 (cohort-001/spring-petclinic, the item target). profile.frameworks=[spring-boot]; 35 nodes carry framework_role/concept=route (was 0 before the fix). Java @GetMapping/@RequestMapping now surface as concept=route. Verdict moved."  # 63b9

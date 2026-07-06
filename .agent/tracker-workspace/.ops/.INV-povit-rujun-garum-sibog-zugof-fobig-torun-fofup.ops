@@ -39,3 +39,19 @@
   clock: 3  # 31f8
   nonce: 31f8  # 31f8
   message: "Satisfied by PR #445 (dev 7400d7663a). Rewrote the Swift/Vapor route extractor from a bare-receiver-plus-verb scan into a structured, scope-threaded walk (resolve_builder over the receiver chain + bindings threaded forward through the block) that recovers the full grouped-builder surface: method-chained groups (app.grouped(api).grouped(users).get), closure groups (routes.group(todos){ todos in todos.get }, nested), variable-bound builders (let g = routes.grouped(x); g.get), the Application.routes property, a differently-named RoutesBuilder parameter, and the explicit .on(.VERB, path, use:) form. BEHAVIORAL EVIDENCE (live repro, full pipeline): a RouteCollection fixture mixing grouped(api).grouped(accounts) + let-bound builders + a middleware group + a closure group yields 7 of 7 routes via 'hypergumbo routes' end-to-end (GET/POST /api/accounts, GET/PUT/DELETE /api/accounts/:id, GET /api/accounts/search, POST /api/accounts/search/advanced), 7 unique route symbols with no duplicates; the identical fixture returned 0 routes before the fix (matching the filed EXPECTED_ROUTES_BUT_FOUND_0). Production-path tests cover every idiom + the FP guards; 100 percent mainstream package coverage in isolation. Two adversarial reviews ran (pre-design + post-implementation); the post-impl review caught a real regression an inline fix would have shipped (a route captured in a binding RHS, let route = app.get(...), was dropped where the old flat scan caught it) plus a tree-sitter nested-trailing-closure quirk, both fixed. SAFETY: the pass runs only on files that import Vapor/Hummingbird; a reserved name rebound to a non-builder is shadowed so it stops anchoring routes; the .on verb is validated against the HTTP-method set; non-literal path segments and un-tracked aliases fail safe (a miss, never a wrong route). Tagged awaits_bakeoff_validation because the ~236-endpoint VernissageServer figure is the real-repo count and was validated here on a synthetic fixture (the mechanism), not on the original repo. Deferred fail-safe follow-ups (miss, not wrong): webSocket routes, register(collection:) mount-prefix join, .constant()/.pathComponents PathComponent forms, Hummingbird .on arg-order."  # 31f8
+- op: update  # 3cb5
+  at: '2026-07-06T20:06:12Z'  # 3cb5
+  by: agent  # 3cb5
+  actor: jgstern_agent  # 3cb5
+  clock: 4  # 3cb5
+  nonce: 3cb5  # 3cb5
+  set: {}  # 3cb5
+  remove:  # 3cb5
+    tags: [awaits_bakeoff_validation]  # 3cb5
+- op: discuss  # 9c7f
+  at: '2026-07-06T20:06:13Z'  # 9c7f
+  by: agent  # 9c7f
+  actor: jgstern_agent  # 9c7f
+  clock: 5  # 9c7f
+  nonce: 9c7f  # 9c7f
+  message: "MOVED via BROAD drain broad-20260706-153915 (cohort-002/VernissageServer, the Vapor target). 235 route nodes / 64 route entrypoints recovered — the grouped-builder chain the item filed as ~236 endpoints. Verdict moved."  # 9c7f
