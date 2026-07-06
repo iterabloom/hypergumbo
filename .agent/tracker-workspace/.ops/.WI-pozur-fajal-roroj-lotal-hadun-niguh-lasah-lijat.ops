@@ -49,3 +49,19 @@
   clock: 5  # d14f
   nonce: d14f  # d14f
   message: "C5 (run-lifecycle:F1 — the single finalize stage) landed in PR #236. WI-pozur umbrella remaining scope: C3 (entrypoint:F4 noise-filter exemption), C4 (identity:F1 total meta relativization), C1 (validator:F3 two-point validation + FK predicate)."  # d14f
+- op: update  # 567c
+  at: '2026-07-06T19:43:06Z'  # 567c
+  by: agent  # 567c
+  actor: jgstern_agent  # 567c
+  clock: 6  # 567c
+  nonce: 567c  # 567c
+  set: {}  # 567c
+  remove:  # 567c
+    tags: [awaits_bakeoff_validation]  # 567c
+- op: discuss  # 832c
+  at: '2026-07-06T19:43:06Z'  # 832c
+  by: agent  # 832c
+  actor: jgstern_agent  # 832c
+  clock: 7  # 832c
+  nonce: 832c  # 832c
+  message: "Phase-2 anomaly strip (BROAD drain, session broad-20260706-153915), Bucket E (misapplied). WI-pozur is todo_hard and tracks the IMPLEMENTATION of the ADR-0043 stage-ordering contract; the only landed PR is the decision artifact itself (ADR-0043 / PR #4212). Per the tagging-discipline playbook 'What does NOT count', an ADR decision artifact is not a quantitative bakeoff-improvement claim, and the implementation (Wave-2, the actual reorder + finalize-stage routing) has not shipped — so there is nothing for a bakeoff cohort to validate. Tag stripped; it should re-accrue at merge time IF the implementation PR ships with a quantitative movement claim. Item status unchanged (stays todo_hard under META-jalur)."  # 832c

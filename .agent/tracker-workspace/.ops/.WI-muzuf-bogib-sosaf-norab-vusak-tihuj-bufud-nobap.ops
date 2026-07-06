@@ -1,0 +1,22 @@
+- op: create  # 98fc
+  at: '2026-07-06T20:03:32Z'  # 98fc
+  by: agent  # 98fc
+  actor: jgstern_agent  # 98fc
+  clock: 1  # 98fc
+  nonce: 98fc  # 98fc
+  data:  # 98fc
+    kind: work_item  # 98fc
+    title: "Symbol.language set to a file path (+ unregistered asciidoc/gradle) — language-axis pollution"  # 98fc
+    status: todo_hard  # 98fc
+    priority: 2  # 98fc
+    parent: INV-numat-judoj-dogal-misuj-divuf-kajus-buban-dihuj  # 98fc
+    tags:  # 98fc
+    - vocab_axis  # 98fc
+    - axis_conformance  # 98fc
+    - data_quality  # 98fc
+    isbefore: []  # 98fc
+    duplicate_of: []  # 98fc
+    not_duplicate_of: []  # 98fc
+    pr_ref:  # 98fc
+    description: "Surfaced by the BROAD validation drain (session broad-20260706-153915). Real data-quality bug: Symbol.language is set to a FILE PATH instead of a language name on some symbols — openzeppelin-contracts carries relative .sol import paths ('../../../../token/ERC1155/ERC1155.sol' etc.) as the language value (solidity import resolution), and phoenix carries 'priv/static/phoenix.cjs.js' / 'priv/static/phoenix.mjs' / 'index.js' (static JS assets). Separately Symbol.language='asciidoc' (x36) and 'gradle' (x8) are unregistered language values (catalog gap, minor). All are axis_conformance violations blocking INV-numat. Fix the language=path producer bug (highest value); register or reject asciidoc/gradle."  # 98fc
+    fields: {}  # 98fc

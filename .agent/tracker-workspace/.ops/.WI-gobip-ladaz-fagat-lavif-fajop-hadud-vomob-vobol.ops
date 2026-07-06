@@ -1,0 +1,21 @@
+- op: create  # 97c5
+  at: '2026-07-06T20:03:29Z'  # 97c5
+  by: agent  # 97c5
+  actor: jgstern_agent  # 97c5
+  clock: 1  # 97c5
+  nonce: 97c5  # 97c5
+  data:  # 97c5
+    kind: work_item  # 97c5
+    title: "view-template-linker emits unregistered pass-id + 'module_qualified_call' evidence_type (axis_conformance)"  # 97c5
+    status: todo_hard  # 97c5
+    priority: 3  # 97c5
+    parent: INV-numat-judoj-dogal-misuj-divuf-kajus-buban-dihuj  # 97c5
+    tags:  # 97c5
+    - vocab_axis  # 97c5
+    - axis_conformance  # 97c5
+    isbefore: []  # 97c5
+    duplicate_of: []  # 97c5
+    not_duplicate_of: []  # 97c5
+    pr_ref:  # 97c5
+    description: "Surfaced by the BROAD validation drain (session broad-20260706-153915, cohort-002/pretix + cohort-003/phoenix). axis_conformance violations blocking INV-numat's zero-violation closure gate: (1) Edge.evidence_type='module_qualified_call' is not in the evidence-type catalog (124 known) — ~512 edges, dominant on phoenix (elixir); (2) pass-id 'view-template-linker' appears on Edge.origin (~318), Symbol.origin (~292) and AnalysisRun.pass_id (~2) but is not in the pass-id catalog (182 known). Both point at a Phoenix view-template linker that emits an unregistered evidence_type and whose pass_id is uncataloged. Fix: register the evidence_type value (or fold to a canonical one) and register the pass-id. Cohort axis_conformance totals: pretix 611 / phoenix 515 / openzeppelin 519 / detekt 9 (this + the language-pollution sibling)."  # 97c5
+    fields: {}  # 97c5
