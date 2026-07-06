@@ -674,3 +674,19 @@ class TestSyntheticPassIds:
     def test_old_synthesis_mechanisms_name_is_gone(self) -> None:
         import hypergumbo_core.catalog as cat
         assert not hasattr(cat, "_SYNTHESIS_MECHANISMS")
+
+    def test_known_pass_ids_include_divergent_linker_emitted_pass_id(self) -> None:
+        """WI-gobip: a linker's EMITTED pass_id (its module-level ``PASS_ID``)
+        can diverge from its registration name — the view_template family
+        registers under ``view_template`` / ``view_template_phoenix`` / … but all
+        EMIT ``view-template-linker`` via ``_view_template_core.PASS_ID``. The
+        pass-id axis validates the EMITTED value (``Symbol.origin`` /
+        ``Edge.origin`` / ``AnalysisRun.pass_id``), so ``all_known_pass_ids()``
+        must include it, or every view-template edge/symbol trips
+        axis_conformance. Non-divergent linkers add nothing new (``make_pass_id``
+        is identity, so their emitted pass_id equals their registration name)."""
+        import hypergumbo_core.cli  # registers linkers (import side effect)
+        from hypergumbo_core.catalog import all_known_pass_ids
+
+        known = all_known_pass_ids()
+        assert "view-template-linker" in known

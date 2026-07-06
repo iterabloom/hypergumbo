@@ -1277,7 +1277,7 @@ def _handle_dot_call(
     alias_hints: dict[str, str],
     edges: list[Edge],
     run_id: str,
-    evidence_type: str = "module_qualified_call",
+    evidence_type: str = "ast_call",
 ) -> None:
     """Handle module-qualified calls like Helper.greet() or App.Module.func().
 

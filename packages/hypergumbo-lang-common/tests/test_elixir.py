@@ -573,7 +573,10 @@ end
             e for e in call_edges
             if "Main.run" in e.src
             and "greet" in e.dst
-            and e.evidence_type == "module_qualified_call"
+            # WI-gobip: a module-qualified call carries the REGISTERED generic
+            # call pathway ``ast_call`` (was the unregistered
+            # ``module_qualified_call``, an axis_conformance violation).
+            and e.evidence_type == "ast_call"
         ]
         assert len(resolver_edges) == 1, (
             f"Expected 1 resolver-fallback edge, got {len(resolver_edges)}. "

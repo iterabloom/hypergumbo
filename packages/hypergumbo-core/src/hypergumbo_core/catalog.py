@@ -563,11 +563,27 @@ def all_known_pass_ids() -> frozenset[str]:
     """
     from .analyze.registry import _ANALYZER_REGISTRY, ensure_discovered
     from .linkers.registry import _LINKER_REGISTRY
+    from .pass_metadata import _resolve_linker_pass_id
 
     ensure_discovered()
+    # WI-gobip: a linker's EMITTED pass_id is its module-level ``PASS_ID``, which
+    # can diverge from its registration ``name`` — the view_template family
+    # registers under ``view_template`` / ``view_template_phoenix`` / … but all
+    # emit ``view-template-linker`` via ``_view_template_core.PASS_ID``. The
+    # pass-id axis validates the EMITTED value (``Symbol.origin`` /
+    # ``Edge.origin`` / ``AnalysisRun.pass_id``), so the catalog must include it
+    # or every view-template edge/symbol trips axis_conformance. ``make_pass_id``
+    # is identity, so a non-divergent linker's emitted pass_id equals its
+    # registration name (already covered by ``frozenset(_LINKER_REGISTRY)``) —
+    # this union only adds the divergent ones, correct-by-construction and
+    # mirroring ``pass_metadata``'s ``_resolve_linker_pass_id`` keying rule.
+    emitted_linker_pass_ids = frozenset(
+        _resolve_linker_pass_id(linker) for linker in _LINKER_REGISTRY.values()
+    )
     return (
         frozenset(_ANALYZER_REGISTRY)
         | frozenset(_LINKER_REGISTRY)
+        | emitted_linker_pass_ids
         | _BUILTIN_PIPELINE_PASS_IDS
         | _SYNTHETIC_PASS_IDS
     )
