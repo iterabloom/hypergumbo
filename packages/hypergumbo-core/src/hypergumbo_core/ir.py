@@ -1367,6 +1367,21 @@ def create_boundary_nodes(
     id_remap: Dict[str, str] = {}
     zero_span = Span(start_line=0, end_line=0, start_col=0, end_col=0)
 
+    # WI-muzuf: the boundary ``language`` is whatever ``_parse_dangling_id`` /
+    # ``ExternalRef.lang`` yielded, which a malformed producer can leave as a
+    # non-language — a bare import path (``../Governor.sol`` from a Solidity
+    # ``import``) parses via the <5-part fallback to language=the-path, and
+    # manifest producers can stuff a build-tool label (``gradle``) into the lang
+    # slot. Normalize the language FIELD to a registered language or None (the
+    # axis allows None) so external symbols never pollute the language axis
+    # (axis_conformance). The id / stable_id / display_label keep the raw parsed
+    # value — the id lang-slot cleanup is a separate concern (INV-dulah /
+    # WI-zugob). Lazy import breaks the catalog<->ir cycle; ``ensure_discovered``
+    # is cached after the first call (a no-op in the run pipeline).
+    from .catalog import all_known_languages
+
+    known_languages = all_known_languages()
+
     # Iterate groups in sorted order so the output is deterministic.
     for (language, key_path, name), members in sorted(groups.items()):
         # ADR-0036 Ruling 2: the id kind-slot is the node's own kind
@@ -1415,7 +1430,10 @@ def create_boundary_nodes(
             display_label=f"{language}:{key_path}:{name}:{reference_syntax}",
             name=name,
             kind="external_symbol",
-            language=language,
+            # WI-muzuf: registered language or None (never a path / build-tool
+            # label). Raw ``language`` still feeds the id/stable_id/display_label
+            # above (a separate id-slot concern).
+            language=language if language in known_languages else None,
             path="<external>",
             span=zero_span,
             meta=boundary_meta,

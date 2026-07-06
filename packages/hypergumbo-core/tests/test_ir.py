@@ -1536,6 +1536,51 @@ class TestCreateBoundaryNodes:
         assert result[0].origin == ["boundary_external_symbol_synthesis"]
         assert result[0].origin_run_id == ""
 
+    def test_boundary_language_bare_path_normalized_to_none(self):
+        """WI-muzuf: a dangling dst that is a bare import path (e.g. a Solidity
+        ``import "../Governor.sol"``) parses via ``_parse_dangling_id``'s
+        <5-part fallback to language='../Governor.sol' — a file path, never a
+        registered language. The boundary node's ``language`` FIELD must be
+        None (the axis allows None) so it does not pollute the language axis
+        (axis_conformance). The id/display_label keep the raw value (the id
+        kind/lang-slot cleanup is a separate INV-dulah/WI-zugob concern)."""
+        s1 = self._make_symbol("python:a.py:1-1:foo:function")
+        e = Edge.create(
+            src=s1.id, dst="../Governor.sol", edge_type="imports",
+            line=1, origin="test", origin_run_id="test",
+        )
+        result, _ = create_boundary_nodes([s1], [e])
+        assert len(result) == 1
+        node = result[0]
+        assert node.kind == "external_symbol"
+        assert node.language is None
+        # The raw value is preserved on the printable display_label.
+        assert "../Governor.sol" in node.display_label
+
+    def test_boundary_language_unregistered_normalized_to_none(self):
+        """WI-muzuf: a parsed language that is not in ``all_known_languages()``
+        (e.g. a build-tool label like ``gradle`` a manifest producer stuffed
+        into the lang slot) normalizes to None on the FIELD."""
+        s1 = self._make_symbol("python:a.py:1-1:foo:function")
+        e = Edge.create(
+            src=s1.id, dst="gradle:cli/Main.java:0-0:Main:external_symbol",
+            edge_type="calls", line=1, origin="test", origin_run_id="test",
+        )
+        result, _ = create_boundary_nodes([s1], [e])
+        assert len(result) == 1
+        assert result[0].language is None
+
+    def test_boundary_known_language_preserved(self):
+        """WI-muzuf regression guard: a real registered language (go) on a
+        dangling id is unchanged by the field normalization."""
+        s1 = self._make_symbol("python:a.py:1-1:foo:function")
+        e = Edge.create(
+            src=s1.id, dst="go:fmt:0-0:Errorf:unresolved",
+            edge_type="calls", line=1, origin="test", origin_run_id="test",
+        )
+        result, _ = create_boundary_nodes([s1], [e])
+        assert result[0].language == "go"
+
     def test_boundary_synthesis_mechanism_is_a_known_pass_id(self):
         """The boundary synthesis mechanism must be a registered pass-id so both
         ``Symbol.origin`` and the synthetic ``AnalysisRun.pass_id`` pass the
