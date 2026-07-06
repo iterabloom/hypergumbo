@@ -68,6 +68,35 @@ PASS_ID = make_pass_id("fortran")
 # Fortran file extensions
 FORTRAN_EXTENSIONS = ["*.f", "*.f90", "*.f95", "*.f03", "*.f08", "*.F", "*.F90", "*.F95", "*.F03", "*.F08", "*.for", "*.fpp"]
 
+# Program-unit containers whose ``variable_declaration`` children are top-level
+# state -> ``kind="variable"`` (WI-jusus). A ``variable_declaration`` whose
+# effective scope is a ``derived_type_definition`` is a field; one whose scope
+# is a ``subroutine``/``function``/``block_construct``/interface body is a local
+# or parameter-type declaration and is skipped. ``block_data`` is included: its
+# declarations are COMMON-block / global state, not procedure locals.
+# Classification walks past transparent preprocessor conditionals (see
+# ``_effective_scope``) — a ``#ifdef``-guarded module variable is still module
+# state — so it is a scope-WALK, not a bare immediate-parent check.
+_FORTRAN_VARIABLE_SCOPES = frozenset({"module", "program", "submodule", "block_data"})
+
+# The <x>_statement opening a top-level program unit. Used to recover the unit
+# scope when an unparseable trailing statement made the parser emit the whole
+# unit as an ERROR node (see ``_scope_is_variable_unit``).
+_FORTRAN_UNIT_STATEMENTS = frozenset({
+    "module_statement", "program_statement", "submodule_statement",
+})
+
+# Declarator wrapper nodes: a ``variable_declaration`` binds each name through
+# one of these (or a bare ``identifier``). The NAME is invariably the LEFTMOST
+# child of the wrapper; the non-name portion — an array ``size``, a
+# ``coarray_size`` codimension, a pointer-association RHS (``=>`` target), or an
+# initializer (``=`` value) — always follows it. So descending the leftmost
+# child alone reaches the name and never the target/dimensions/value.
+_FORTRAN_DECLARATOR_WRAPPERS = frozenset({
+    "sized_declarator", "pointer_init_declarator",
+    "init_declarator", "coarray_declarator",
+})
+
 
 def find_fortran_files(repo_root: Path) -> Iterator[Path]:
     """Yield all Fortran files in the repository."""
@@ -106,6 +135,206 @@ def _get_statement_name(node: "tree_sitter.Node", source: bytes, stmt_type: str)
                 if grandchild.type == "name":
                     return node_text(grandchild, source).lower()
     return None
+
+
+def _declarator_name(child: "tree_sitter.Node", source: bytes) -> Optional[str]:
+    """Return the lowercased declared name from a single declarator child, or None.
+
+    A ``variable_declaration`` binds each name through one of five declarator
+    shapes (bundled ``tree_sitter_fortran``), which nest arbitrarily:
+    - a bare ``identifier`` (``integer :: x``)
+    - a ``sized_declarator`` — inline-dimensioned array (``real :: grid(nx,ny)``,
+      ``real, allocatable :: w(:)``); the trailing ``size`` holds the dims
+    - a ``coarray_declarator`` — coarray (``real :: field(10)[*]``); the trailing
+      ``coarray_size`` holds the codimensions
+    - a ``pointer_init_declarator`` (``integer, pointer :: q(:) => null()``); the
+      part after ``=>`` is the association TARGET, not the name
+    - an ``init_declarator`` (``PI = 3.14`` / ``arr(3) = [1,2,3]``); the part after
+      ``=`` is the initializer VALUE
+
+    The name is the LEFTMOST child of a wrapper (recursively for nested wrappers
+    such as ``init_declarator`` > ``sized_declarator``), so descending
+    ``children[0]`` alone reaches the name and never the array dimensions,
+    coarray codimensions, pointer target, or initializer value that follow it.
+    Any other child (``::``, ``,``, ``intrinsic_type``, ``type_qualifier``)
+    yields None.
+    """
+    if child.type == "identifier":
+        return node_text(child, source).lower()
+    if child.type in _FORTRAN_DECLARATOR_WRAPPERS:
+        return _declarator_name(child.children[0], source)
+    return None
+
+
+def _effective_scope(node: "tree_sitter.Node") -> Optional["tree_sitter.Node"]:
+    """Walk up past transparent preprocessor conditionals to the enclosing scope.
+
+    The bundled ``tree_sitter_fortran`` grammar does NOT flatten preprocessor
+    conditionals, so in a ``.F``/``.F90``/``.fpp`` file a ``variable_declaration``
+    inside ``#ifdef``/``#ifndef``/``#if``/``#elif``/``#else`` has a ``preproc_*``
+    immediate parent. These are transparent for scope classification — a
+    conditionally-compiled module variable is still module state, a guarded
+    derived-type component is still a field. Returns the nearest non-preproc
+    ancestor (the effective scope), or None.
+    """
+    current = node.parent
+    while current is not None and current.type.startswith("preproc_"):
+        current = current.parent
+    return current
+
+
+def _scope_is_variable_unit(scope: "tree_sitter.Node") -> bool:
+    """True if ``scope`` is a top-level program unit whose direct declarations
+    are module/program/submodule/block_data state.
+
+    Includes an ``ERROR`` node the parser produced IN PLACE OF a unit: an
+    unparseable trailing statement (a standalone F2003 ``asynchronous ::`` /
+    F2008 ``codimension ::`` spec statement) can prevent the parser from
+    recognizing a whole module/program, leaving an ERROR node that still holds
+    the unit's ``<x>_statement`` and its declaration nodes. Recovering the unit
+    scope for those declarations is relaxation-only: it only ADDS valid module
+    variables — it never drops one and never mis-owns (a variable has no owner).
+    A malformed non-unit construct (an ERROR-wrapped subroutine) has no unit
+    statement, so its locals stay excluded.
+    """
+    if scope.type in _FORTRAN_VARIABLE_SCOPES:
+        return True
+    return scope.type == "ERROR" and any(
+        child.type in _FORTRAN_UNIT_STATEMENTS for child in scope.children
+    )
+
+
+def _is_pdt_type_parameter(node: "tree_sitter.Node", source: bytes) -> bool:
+    """True for a parameterized-derived-type KIND/LEN parameter declaration.
+
+    ``type :: matrix(k, n); integer, kind :: k; integer, len :: n; …`` — the
+    ``k``/``n`` declarations carry a bare ``kind``/``len`` ``type_qualifier``.
+    They are parameterization slots (F2003 4.5.2), NOT data components, so they
+    must never become ``field``/``variable`` symbols. A bare ``kind``/``len``
+    qualifier appears only in this position, so the match is PDT-specific.
+    """
+    for child in node.children:
+        if child.type == "type_qualifier" and node_text(child, source).lower() in ("kind", "len"):
+            return True
+    return False
+
+
+def _iter_vardecl_names(node: "tree_sitter.Node", source: bytes) -> list[str]:
+    """Yield the lowercased declared names from a ``variable_declaration``.
+
+    A single declaration may bind several names of mixed declarator shapes
+    (``real :: a, b(3), c`` -> three names via identifier / sized_declarator /
+    identifier). See ``_declarator_name`` for the shapes.
+
+    The firm contract has two halves, and their priority is asymmetric:
+
+    * NEVER drop a valid symbol on compilable code (a recall loss is the worst
+      outcome), and
+    * best-effort suppress phantoms on malformed / non-standard input.
+
+    That priority rules OUT a ``node.has_error`` / ``scope.has_error`` deferral:
+    the bundled ``tree_sitter_fortran`` grammar sets ``has_error`` on VALID
+    F2003 it does not support — ``integer, asynchronous :: buf`` (ubiquitous in
+    MPI-3 nonblocking I/O) parses with an ERROR child around ``asynchronous`` —
+    so any ``has_error`` gate silently drops those valid declarations. Only
+    signals that CANNOT fire on compilable code are used:
+
+    1. An attribute list without the mandatory ``::`` (``real, target dimension(3)``):
+       F90+ requires ``::`` whenever an attribute is present, so this is a
+       misparse that harvests the attribute (``dimension``) as a phantom name.
+       Gate on the ATTR LIST, not the name, so a valid no-attribute F77 array
+       literally named ``dimension`` (Fortran has no reserved words) still emits.
+    2. Harvest only the CLEAN PREFIX of declarator children: stop at the first
+       in-vardecl ``ERROR`` child. On a clean parse this is the full declarator
+       list (no ERROR child). On a grammar-unsupported but COMPILABLE construct
+       it recovers the valid leading name(s) that have clean nodes — a fixed-form
+       column-6 continuation's leading name (``INTEGER COUNT,`` -> ``count``;
+       ``TOTAL`` stays buried in the trailing ERROR) — while suppressing a keyword
+       fragment that FOLLOWS an ERROR child (inline ``asynchronous :: buf`` ->
+       the fragment ``synchronous``) and garbage after a mid-declaration ERROR
+       (``integer :: @#$ broken``). A ``child_count``-based "keyword wrapper"
+       skip is deliberately NOT used: a VALID kind-selected name parses the same
+       way (``real(dp) :: value`` gives ``value`` a child), so it would drop
+       valid symbols. This provably never drops a valid clean-node name on
+       compilable code and never re-admits an after-ERROR fragment.
+
+    A symmetric prev-sibling guard was deliberately NOT kept: the only phantom it
+    caught (a DEC/VAX ``structure`` component) shares its ERROR-node boundary
+    (via a swallowed trailing newline) with a fully-VALID declaration on the next
+    line (a standalone F2003 ``asynchronous ::`` / F2008 ``codimension ::``
+    statement is such an ERROR), so any prev-sibling gate that suppressed the
+    phantom also dropped the valid follower — a recall loss. Dropping it trades
+    that for re-admitting the accepted phantom below.
+
+    Accepted residuals (spurious EXTRA, never a wrong EDGE — field/variable stay
+    out of call resolution; no crash; no VALID symbol dropped):
+    - DEC/VAX ``STRUCTURE``/``RECORD``/``UNION``/``MAP`` (non-standard legacy
+      extensions the bundled grammar cannot parse): inner components may leak a
+      phantom module variable. No safe suppression signal exists (both candidate
+      signals — end-statement-name-mismatch and synthesized-program-unit — fire
+      on VALID constructs: ``END FILE 10``, a valid headerless main).
+    - A name the grammar buries INSIDE an ERROR node (a fixed-form CONTINUED name
+      ``TOTAL``, the inline-async name ``buf``) is unrecoverable — a grammar
+      RECALL limit, not a guard misfire; nothing is emitted for it.
+    """
+    has_qualifier = any(child.type == "type_qualifier" for child in node.children)
+    has_double_colon = any(child.type == "::" for child in node.children)
+    if has_qualifier and not has_double_colon:
+        return []
+    names: list[str] = []
+    for child in node.children:
+        if child.type == "ERROR":
+            break
+        name = _declarator_name(child, source)
+        if name is not None:
+            names.append(name)
+    return names
+
+
+def _extract_vardecl_type(node: "tree_sitter.Node", source: bytes) -> str:
+    """Return the declared type of a ``variable_declaration`` as its signature.
+
+    The type specifier is invariably the FIRST child of the declaration —
+    ``intrinsic_type`` (``integer``/``real``/``character(len=10)``),
+    ``derived_type`` (``type(point)``/``class(shape)``), or ``procedure``
+    (``procedure(iface)`` for a procedure pointer). Returned verbatim so the
+    type name keeps its case. Only ever called for a name-bearing (hence
+    child-bearing) declaration, so ``children[0]`` is safe.
+    """
+    return node_text(node.children[0], source)
+
+
+def _make_data_symbol(
+    name: str,
+    kind: str,
+    decl_node: "tree_sitter.Node",
+    rel_path: str,
+    run_id: str,
+    signature: Optional[str],
+) -> Symbol:
+    """Build a field/variable Symbol anchored on a ``variable_declaration`` node."""
+    start_line = decl_node.start_point[0] + 1
+    end_line = decl_node.end_point[0] + 1
+    symbol_id = make_symbol_id("fortran", rel_path, start_line, end_line, name, kind)
+    return Symbol(
+        id=symbol_id,
+        stable_id=None,
+        shape_id=None,
+        fingerprint=None,  # WI-vudul: central stamp_symbol_fingerprints owns this
+        kind=kind,
+        name=name,
+        path=rel_path,
+        language="fortran",
+        span=Span(
+            start_line=start_line,
+            end_line=end_line,
+            start_col=decl_node.start_point[1],
+            end_col=decl_node.end_point[1],
+        ),
+        origin=PASS_ID,
+        origin_run_id=run_id,
+        signature=signature,
+    )
 
 
 def _extract_fortran_signature(
@@ -398,6 +627,37 @@ def _extract_fortran_symbols(
                 symbols.append(sym)
                 symbol_registry[name] = sym
 
+        # Derived-type fields + module/program/submodule variables (WI-jusus).
+        # These are DATA anchors: appended to ``symbols`` (so they reach
+        # output/search/centrality) but NOT to ``symbol_registry`` and skipped
+        # by ``register_symbol`` (so they never enter call resolution).
+        elif node.type == "variable_declaration":
+            if _is_pdt_type_parameter(node, source):
+                continue  # PDT kind/len parameter -> a type slot, not a data component
+            names = _iter_vardecl_names(node, source)
+            if not names:
+                continue  # ERROR-deferred or nameless
+            signature = _extract_vardecl_type(node, source)
+            scope = _effective_scope(node)
+            if scope is None:
+                continue  # pragma: no cover - a variable_declaration is always within a unit
+            if scope.type == "derived_type_definition":
+                owner = _get_type_name(scope, source)
+                if owner:
+                    for var_name in names:
+                        symbols.append(_make_data_symbol(
+                            f"{owner}.{var_name}", "field",
+                            node, rel_path, run_id, signature,
+                        ))
+            elif _scope_is_variable_unit(scope):
+                for var_name in names:
+                    symbols.append(_make_data_symbol(
+                        var_name, "variable",
+                        node, rel_path, run_id, signature,
+                    ))
+            # else: subroutine/function local, block-construct local, or
+            # interface-body parameter -> skipped.
+
 
 def _extract_use_aliases(
     root_node: "tree_sitter.Node",
@@ -553,6 +813,21 @@ class FortranAnalyzer(TreeSitterAnalyzer):
     file_patterns: ClassVar[list[str]] = FORTRAN_EXTENSIONS
     grammar_module = "tree_sitter_fortran"
     create_file_symbols = False
+
+    def register_symbol(self, symbol: Symbol, global_symbols: dict) -> None:
+        """Keep ``field``/``variable`` data anchors OUT of call resolution (WI-jusus).
+
+        Fortran is imperative, so BOTH kinds must be skipped: a derived-type
+        ``field`` (``box.label``) would let the ``NameResolver`` suffix index
+        mint a wrong ``calls`` edge for a bare ``call label()``, and a module
+        ``variable`` (``compute``) would EXACT-match a bare ``call compute()``
+        and clobber a same-named subroutine. Neither is ever a call target.
+        Both still reach output/search/centrality because the output symbol set
+        is assembled from ``analysis.symbols`` independently of this registry.
+        """
+        if symbol.kind in ("field", "variable"):
+            return
+        super().register_symbol(symbol, global_symbols)
 
     def extract_symbols_from_file(
         self, tree: "tree_sitter.Tree", source: bytes,
