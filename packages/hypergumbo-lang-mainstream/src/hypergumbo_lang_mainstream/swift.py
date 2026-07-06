@@ -1099,6 +1099,164 @@ def _extract_edges_from_file(
 
 _VAPOR_HTTP_METHODS = frozenset({"get", "post", "put", "delete", "patch"})
 _VAPOR_RECEIVERS = frozenset({"app", "routes", "router"})
+# Methods that RETURN a RoutesBuilder (chainable prefix / closure group).
+_VAPOR_GROUP_METHODS = frozenset({"grouped", "group"})
+# Valid HTTP methods for the explicit ``.on(.VERB, …)`` form — gates against
+# generic ``.on(.someEvent)`` DSLs that are not routes.
+_VAPOR_ON_HTTP_METHODS = frozenset({
+    "GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS", "TRACE", "CONNECT",
+})
+# The extractor only runs on files that import a supported web framework —
+# the root anchor is a bare name (`app`/`routes`/`router`), so this import gate
+# is what keeps a same-named non-builder variable from fabricating routes.
+_VAPOR_FRAMEWORK_IMPORTS = frozenset({"Vapor", "Hummingbird"})
+
+
+def _swift_imports_vapor(root_node: "tree_sitter.Node", source: bytes) -> bool:
+    """True when the file imports Vapor or Hummingbird (the route-pass gate)."""
+    for node in iter_tree(root_node):
+        if node.type == "import_declaration":
+            id_node = find_child_by_type(node, "identifier")
+            if id_node is not None and node_text(id_node, source) in _VAPOR_FRAMEWORK_IMPORTS:
+                return True
+    return False
+
+
+def _swift_nav_receiver_method(
+    nav_node: "tree_sitter.Node", source: bytes,
+) -> tuple[Optional["tree_sitter.Node"], Optional[str]]:
+    """Split a ``navigation_expression`` (``RECEIVER.method``) into (receiver, method).
+
+    The receiver is the sole non-suffix child — a ``simple_identifier`` for a
+    bare receiver, or a nested ``call_expression`` / ``navigation_expression``
+    for a grouped chain. The ``.`` token and interleaved comments are skipped.
+    """
+    method: Optional[str] = None
+    suffix = find_child_by_type(nav_node, "navigation_suffix")
+    if suffix is not None:
+        method_id = find_child_by_type(suffix, "simple_identifier")
+        if method_id is not None:
+            method = node_text(method_id, source)
+    receiver = next(
+        (child for child in nav_node.children
+         if child.type not in ("navigation_suffix", ".", "comment", "multiline_comment")),
+        None,
+    )
+    return receiver, method
+
+
+def _swift_string_segments(
+    call_suffix: Optional["tree_sitter.Node"], source: bytes,
+) -> list[str]:
+    """Unlabeled string-literal path segments of a call (skips ``use:``/middleware)."""
+    segments: list[str] = []
+    if call_suffix is None:  # pragma: no cover - well-formed Swift always has one
+        return segments
+    value_args = find_child_by_type(call_suffix, "value_arguments")
+    if value_args is None:
+        return segments
+    for arg in value_args.children:
+        if arg.type != "value_argument":
+            continue
+        if find_child_by_type(arg, "value_argument_label") is not None:
+            continue
+        str_lit = find_child_by_type(arg, "line_string_literal")
+        if str_lit is None:
+            continue
+        text_node = find_child_by_type(str_lit, "line_str_text")
+        if text_node is None:  # pragma: no cover - empty string literal
+            continue
+        seg = node_text(text_node, source).strip("/")
+        if seg:
+            segments.append(seg)
+    return segments
+
+
+def _swift_on_verb_and_segments(
+    call_suffix: Optional["tree_sitter.Node"], source: bytes,
+) -> tuple[Optional[str], list[str]]:
+    """Parse a Vapor ``.on(.VERB, "path"…, use:)`` call into (verb, path segments)."""
+    verb: Optional[str] = None
+    segments: list[str] = []
+    if call_suffix is None:  # pragma: no cover - well-formed Swift always has one
+        return verb, segments
+    value_args = find_child_by_type(call_suffix, "value_arguments")
+    if value_args is None:  # pragma: no cover - `.on()` always has arguments
+        return verb, segments
+    for arg in value_args.children:
+        if arg.type != "value_argument":
+            continue
+        if find_child_by_type(arg, "value_argument_label") is not None:
+            continue
+        prefix_expr = find_child_by_type(arg, "prefix_expression")
+        if prefix_expr is not None:
+            if verb is None:
+                verb_id = find_child_by_type(prefix_expr, "simple_identifier")
+                if verb_id is not None:
+                    verb = node_text(verb_id, source).upper()
+            continue
+        str_lit = find_child_by_type(arg, "line_string_literal")
+        if str_lit is not None:
+            text_node = find_child_by_type(str_lit, "line_str_text")
+            if text_node is not None:
+                seg = node_text(text_node, source).strip("/")
+                if seg:
+                    segments.append(seg)
+    return verb, segments
+
+
+def _swift_lambda_param_name(
+    call_suffix: Optional["tree_sitter.Node"], source: bytes,
+) -> Optional[str]:
+    """Name of a trailing closure's first parameter (the sub-builder), if any."""
+    if call_suffix is None:  # pragma: no cover - callers pass a real suffix
+        return None
+    lam = find_child_by_type(call_suffix, "lambda_literal")
+    if lam is None:
+        return None
+    lft = find_child_by_type(lam, "lambda_function_type")
+    if lft is None:
+        return None
+    for node in iter_tree(lft):
+        if node.type == "lambda_parameter":
+            id_node = find_child_by_type(node, "simple_identifier")
+            if id_node is not None:
+                return node_text(id_node, source)
+    return None  # pragma: no cover - a lambda_parameter always wraps an identifier
+
+
+def _swift_param_name_and_type(
+    param_node: "tree_sitter.Node", source: bytes,
+) -> tuple[Optional[str], Optional[str]]:
+    """Internal parameter name (last identifier before the type) and its type text."""
+    idents = [c for c in param_node.children if c.type == "simple_identifier"]
+    name = node_text(idents[-1], source) if idents else None
+    ptype: Optional[str] = None
+    user_type = find_child_by_type(param_node, "user_type")
+    if user_type is not None:
+        type_id = find_child_by_type(user_type, "type_identifier")
+        ptype = node_text(type_id, source) if type_id is not None else node_text(user_type, source)
+    return name, ptype
+
+
+def _swift_is_builder_type(ptype: Optional[str]) -> bool:
+    """True when a parameter type denotes a Vapor route builder root."""
+    if ptype is None:
+        return False
+    return "RoutesBuilder" in ptype or ptype == "Application"
+
+
+def _swift_rhs_after_equals(
+    node: "tree_sitter.Node",
+) -> Optional["tree_sitter.Node"]:
+    """The initializer expression following the last ``=`` in a binding node."""
+    eq_index: Optional[int] = None
+    for i, child in enumerate(node.children):
+        if child.type == "=":
+            eq_index = i
+    if eq_index is None or eq_index + 1 >= len(node.children):
+        return None
+    return node.children[eq_index + 1]
 
 
 def _extract_vapor_usage_contexts(
@@ -1110,10 +1268,25 @@ def _extract_vapor_usage_contexts(
 ) -> tuple[list[UsageContext], list[Symbol]]:
     """Extract UsageContext records and route symbols for Vapor/Hummingbird routes.
 
-    Detects patterns like:
-    - ``app.get("hello") { req in ... }``
-    - ``routes.post("users") { req in ... }``
-    - ``app.get("users", use: controller.index)``
+    Handles the full grouped-builder surface a RouteCollection controller uses
+    (INV-povit), not just a bare receiver + verb:
+
+    - bare verb: ``app.get("hello") { req in ... }`` / ``routes.post("users", use: h)``
+    - method-chained groups: ``app.grouped("api").grouped("users").get(use: h)``
+      (a ``.grouped(<Middleware>)`` link contributes no path segment)
+    - closure groups: ``routes.group("todos") { todos in todos.get(use: h) }``
+    - variable-bound builders: ``let g = routes.grouped("x"); g.get(use: h)``
+      (tracked forward through the block; reassignment updates/invalidates)
+    - explicit method: ``app.on(.GET, "stream", use: h)``
+    - the ``Application.routes`` property and a differently-named
+      ``RoutesBuilder`` parameter as builder roots.
+
+    The receiver chain is resolved recursively to an accumulated group-path
+    prefix (``resolve_builder``); the root anchor is a reserved receiver name
+    (``app``/``routes``/``router``) or a bound builder variable, and the pass
+    only runs on files that import Vapor/Hummingbird — together these gate out
+    ``.grouped``/``.get`` chains on unrelated types. Non-literal path segments
+    and un-tracked builder aliases fail safe (a miss, never a wrong route).
 
     Creates both UsageContext records (for framework pattern matching) and
     route Symbol objects (kind="route") so routes appear in ``hypergumbo routes``.
@@ -1124,84 +1297,89 @@ def _extract_vapor_usage_contexts(
     contexts: list[UsageContext] = []
     route_symbols: list[Symbol] = []
 
-    for node in iter_tree(root_node):
-        if node.type != "call_expression":
-            continue
+    # Root-anchored on a framework import: the whole extractor is gated so a
+    # same-named non-builder variable (`app`/`routes`/`router`) in a non-web
+    # file cannot fabricate routes.
+    if not _swift_imports_vapor(root_node, source):
+        return contexts, route_symbols
 
-        # Look for navigation_expression (receiver.method pattern)
-        nav_node = find_child_by_type(node, "navigation_expression")
-        if nav_node is None:
-            continue
+    def resolve_builder(
+        node: Optional["tree_sitter.Node"], bindings: dict[str, Optional[list[str]]],
+    ) -> Optional[list[str]]:
+        """Accumulated group-path prefix if ``node`` is a Vapor RoutesBuilder.
 
-        # Extract receiver and method from navigation chain
-        receiver_name: str | None = None
-        method_name: str | None = None
+        Returns ``None`` when ``node`` is not a builder rooted at a reserved
+        receiver / bound builder variable — that ``None`` is the false-positive
+        guard for arbitrary ``.grouped``/``.group`` chains on other types.
+        """
+        if node is None:  # pragma: no cover - defensive
+            return None
+        if node.type == "simple_identifier":
+            name = node_text(node, source)
+            if name in bindings:  # a binding wins over the reserved names
+                # ``None`` is an explicit shadow — the name was rebound to a
+                # non-builder in this scope, so it is no longer a route builder.
+                bound = bindings[name]
+                return list(bound) if bound is not None else None
+            if name in _VAPOR_RECEIVERS:
+                return []
+            return None
+        if node.type == "navigation_expression":
+            # `app.routes` — the Application's RoutesBuilder (no path segment).
+            recv, method = _swift_nav_receiver_method(node, source)
+            if method == "routes":
+                return resolve_builder(recv, bindings)
+            return None
+        if node.type == "call_expression":
+            nav = find_child_by_type(node, "navigation_expression")
+            if nav is None:
+                return None
+            recv, method = _swift_nav_receiver_method(nav, source)
+            if method not in _VAPOR_GROUP_METHODS:
+                return None
+            base = resolve_builder(recv, bindings)
+            if base is None:
+                return None
+            call_suffix = find_child_by_type(node, "call_suffix")
+            return base + _swift_string_segments(call_suffix, source)
+        return None
 
-        id_node = find_child_by_type(nav_node, "simple_identifier")
-        if id_node:
-            receiver_name = node_text(id_node, source)
-
-        nav_suffix = find_child_by_type(nav_node, "navigation_suffix")
-        if nav_suffix:
-            suffix_id = find_child_by_type(nav_suffix, "simple_identifier")
-            if suffix_id:
-                method_name = node_text(suffix_id, source)
-
-        if (
-            receiver_name is None
-            or method_name is None
-            or receiver_name not in _VAPOR_RECEIVERS
-            or method_name not in _VAPOR_HTTP_METHODS
-        ):
-            continue
-
-        # Extract route path segments from string literal arguments
-        call_suffix = find_child_by_type(node, "call_suffix")
-        if call_suffix is None:  # pragma: no cover - well-formed Swift
-            continue
-
-        value_args = find_child_by_type(call_suffix, "value_arguments")
-        if value_args is None:  # pragma: no cover - well-formed Swift
-            continue
-
-        path_segments: list[str] = []
-        for arg in value_args.children:
-            if arg.type != "value_argument":
+    def receiver_display(receiver: Optional["tree_sitter.Node"]) -> str:
+        """A readable ``<name>`` for context_name — the root anchor of a chain."""
+        node = receiver
+        while node is not None:
+            if node.type == "simple_identifier":
+                return node_text(node, source)
+            if node.type == "navigation_expression":
+                node, _ = _swift_nav_receiver_method(node, source)
                 continue
-            # Skip labeled arguments (like use: handler)
-            if find_child_by_type(arg, "value_argument_label") is not None:
+            if node.type == "call_expression":
+                nav = find_child_by_type(node, "navigation_expression")
+                node = nav
                 continue
-            str_lit = find_child_by_type(arg, "line_string_literal")
-            if str_lit:
-                text_node = find_child_by_type(str_lit, "line_str_text")
-                if text_node:
-                    path_segments.append(node_text(text_node, source))
+            return "route"  # pragma: no cover - defensive
+        return "route"  # pragma: no cover - defensive
 
-        route_path = "/".join(path_segments) if path_segments else ""
-        context_name = f"{receiver_name}.{method_name}"
-
+    def emit_route(
+        segments: list[str], http_method: str,
+        receiver: Optional["tree_sitter.Node"], method_name: str,
+        node: "tree_sitter.Node",
+    ) -> None:
+        route_path = "/".join(segments)
         span = Span(
             start_line=node.start_point[0] + 1,
             start_col=node.start_point[1],
             end_line=node.end_point[0] + 1,
             end_col=node.end_point[1],
         )
-        http_method = method_name.upper()
-
-        ctx = UsageContext.create(
+        contexts.append(UsageContext.create(
             kind="call",
-            context_name=context_name,
+            context_name=f"{receiver_display(receiver)}.{method_name}",
             position="args[last]",
             path=str(file_path),
             span=span,
-            metadata={
-                "route_path": route_path,
-                "http_method": http_method,
-            },
-        )
-        contexts.append(ctx)
-
-        # Create route symbol so routes appear in `hypergumbo routes`
+            metadata={"route_path": route_path, "http_method": http_method},
+        ))
         route_name = f"{http_method} /{route_path}" if route_path else f"{http_method} /"
         route_id = make_symbol_id(
             "swift",
@@ -1229,6 +1407,125 @@ def _extract_vapor_usage_contexts(
             is_exported=True,
         ))
 
+    def handle_call(call: "tree_sitter.Node", bindings: dict[str, Optional[list[str]]]) -> None:
+        # A trailing-closure call ``f(args) { }`` parses two ways depending on
+        # position: as one call_expression (nav + call_suffix holding BOTH the
+        # value_arguments and the lambda), or — in an initializer — as a nested
+        # call_expression (inner ``f(args)`` + an outer call_suffix holding just
+        # the lambda). Normalize to (nav, path_suffix, closure_suffix).
+        outer_suffix = find_child_by_type(call, "call_suffix")
+        nav = find_child_by_type(call, "navigation_expression")
+        if nav is not None:
+            path_suffix = outer_suffix
+            closure_suffix = outer_suffix
+        else:
+            inner = find_child_by_type(call, "call_expression")
+            if inner is not None:
+                nav = find_child_by_type(inner, "navigation_expression")
+                path_suffix = find_child_by_type(inner, "call_suffix")
+            else:
+                path_suffix = outer_suffix
+            closure_suffix = outer_suffix
+        # Bindings used when descending into a trailing closure — extended only
+        # for a `.group(...) { param in … }` sub-builder closure.
+        descend_bindings = bindings
+        if nav is not None:
+            receiver, method = _swift_nav_receiver_method(nav, source)
+            if method in _VAPOR_HTTP_METHODS:
+                prefix = resolve_builder(receiver, bindings)
+                if prefix is not None:
+                    emit_route(
+                        prefix + _swift_string_segments(path_suffix, source),
+                        method.upper(), receiver, method, call,
+                    )
+            elif method == "on":
+                prefix = resolve_builder(receiver, bindings)
+                if prefix is not None:
+                    verb, on_segs = _swift_on_verb_and_segments(path_suffix, source)
+                    if verb in _VAPOR_ON_HTTP_METHODS:
+                        emit_route(prefix + on_segs, verb, receiver, method, call)
+            elif method in _VAPOR_GROUP_METHODS:
+                prefix = resolve_builder(receiver, bindings)
+                if prefix is not None:
+                    param = _swift_lambda_param_name(closure_suffix, source)
+                    if param is not None:
+                        this_prefix = prefix + _swift_string_segments(path_suffix, source)
+                        descend_bindings = {**bindings, param: this_prefix}
+        # `handle_call` OWNS this call: descend into its trailing closure exactly
+        # once (with any group binding) so nested route calls are found without
+        # double-processing.
+        if closure_suffix is not None:
+            walk(closure_suffix, descend_bindings)
+
+    def process_stmt(
+        child: "tree_sitter.Node", bindings: dict[str, Optional[list[str]]],
+    ) -> dict[str, list[str]]:
+        """Process one node, returning bindings visible to LATER siblings."""
+        kind = child.type
+        if kind == "property_declaration":
+            result = bindings
+            pattern = find_child_by_type(child, "pattern")
+            name_id = (
+                find_child_by_type(pattern, "simple_identifier")
+                if pattern is not None else None
+            )
+            if name_id is not None:
+                name = node_text(name_id, source)
+                rhs = _swift_rhs_after_equals(child)
+                prefix = resolve_builder(rhs, bindings) if rhs is not None else None
+                if prefix is not None:
+                    result = {**bindings, name: prefix}
+                elif name in bindings or name in _VAPOR_RECEIVERS:
+                    # A `let`/`var` binding a builder-capable name to a
+                    # non-builder shadows it (kills the reserved-name anchor).
+                    result = {**bindings, name: None}
+            # Descend into the initializer/computed body so a route registered
+            # there (e.g. `let route = app.get(...)`) is still found.
+            walk(child, bindings)
+            return result
+        if kind == "assignment":
+            result = bindings
+            target = find_child_by_type(child, "directly_assignable_expression")
+            name_id = (
+                find_child_by_type(target, "simple_identifier")
+                if target is not None else None
+            )
+            if name_id is not None:
+                name = node_text(name_id, source)
+                if name in bindings or name in _VAPOR_RECEIVERS:
+                    rhs = _swift_rhs_after_equals(child)
+                    # ``None`` when reassigned to a non-builder — invalidate /
+                    # shadow (fail safe), never keep a stale prefix.
+                    result = {
+                        **bindings,
+                        name: resolve_builder(rhs, bindings) if rhs is not None else None,
+                    }
+            walk(child, bindings)
+            return result
+        if kind == "function_declaration":
+            # Seed a differently-named RoutesBuilder/Application parameter as a
+            # builder root; seeds are scoped to this function's body.
+            seeds = dict(bindings)
+            for param in child.children:
+                if param.type != "parameter":
+                    continue
+                pname, ptype = _swift_param_name_and_type(param, source)
+                if pname is not None and pname != "_" and _swift_is_builder_type(ptype):
+                    seeds[pname] = []
+            walk(child, seeds)
+            return bindings
+        if kind == "call_expression":
+            handle_call(child, bindings)
+            return bindings
+        walk(child, bindings)
+        return bindings
+
+    def walk(node: "tree_sitter.Node", bindings: dict[str, Optional[list[str]]]) -> None:
+        current = bindings
+        for child in node.children:
+            current = process_stmt(child, current)
+
+    walk(root_node, {})
     return contexts, route_symbols
 
 
