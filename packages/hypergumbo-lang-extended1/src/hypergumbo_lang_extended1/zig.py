@@ -78,6 +78,30 @@ def _get_struct_name_from_variable(
     return None
 
 
+def _is_zig_import_decl(node: "tree_sitter.Node", source: bytes) -> bool:
+    """True when a variable_declaration binds an ``@import(...)`` module alias.
+
+    Import aliases (``const std = @import("std")``) are represented as import
+    edges, not as ``kind="variable"`` data anchors.
+    """
+    builtin = find_child_by_type(node, "builtin_function")
+    if builtin is None:
+        return False
+    builtin_id = find_child_by_type(builtin, "builtin_identifier")
+    return builtin_id is not None and node_text(builtin_id, source) == "@import"
+
+
+def _zig_field_type(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
+    """Extract the declared type text of a ``container_field`` (``x: T``)."""
+    seen_colon = False
+    for child in node.children:
+        if child.type == ":":
+            seen_colon = True
+        elif seen_colon and child.type != ",":
+            return node_text(child, source)
+    return None  # pragma: no cover - a container_field always declares a type
+
+
 def _get_import_module(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
     """Extract module name from @import builtin call."""
     # Pattern: @import("module")
@@ -289,6 +313,67 @@ def _extract_symbols_from_tree(
                         for child in reversed(inner_node.children):
                             stack.append((child, var_name))
                     continue  # Don't process other children
+
+                # WI-jusus: a module-level const/var that is NOT a type
+                # declaration is a variable data anchor. Locals live under a
+                # `block`; aggregate-associated consts under a struct/union/enum
+                # body — only source_file-parented declarations are module
+                # variables. @import aliases are represented as imports.
+                elif (
+                    node.parent is not None
+                    and node.parent.type == "source_file"
+                    and not _is_zig_import_decl(node, source)
+                ):
+                    start_line = node.start_point[0] + 1
+                    end_line = node.end_point[0] + 1
+                    sym = Symbol(
+                        id=make_symbol_id(
+                            "zig", rel_path, start_line, end_line, var_name, "variable"
+                        ),
+                        name=var_name,
+                        kind="variable",
+                        language="zig",
+                        path=rel_path,
+                        span=Span(
+                            start_line=start_line,
+                            start_col=node.start_point[1],
+                            end_line=end_line,
+                            end_col=node.end_point[1],
+                        ),
+                        origin=PASS_ID,
+                        origin_run_id=run.execution_id,
+                    )
+                    symbols.append(sym)
+
+        elif node.type == "container_field":
+            # WI-jusus: struct/union members are data anchors. `container` is
+            # the enclosing type name threaded down when its declaration pushed
+            # the aggregate body onto the stack.
+            field_id = find_child_by_type(node, "identifier")
+            if field_id is not None:
+                fname = node_text(field_id, source)
+                qualified = f"{container}.{fname}" if container else fname
+                start_line = node.start_point[0] + 1
+                end_line = node.end_point[0] + 1
+                sym = Symbol(
+                    id=make_symbol_id(
+                        "zig", rel_path, start_line, end_line, qualified, "field"
+                    ),
+                    name=qualified,
+                    kind="field",
+                    language="zig",
+                    path=rel_path,
+                    span=Span(
+                        start_line=start_line,
+                        start_col=node.start_point[1],
+                        end_line=end_line,
+                        end_col=node.end_point[1],
+                    ),
+                    origin=PASS_ID,
+                    origin_run_id=run.execution_id,
+                    signature=_zig_field_type(node, source),
+                )
+                symbols.append(sym)
 
         elif node.type == "test_declaration":
             # Extract test name from string
@@ -503,6 +588,21 @@ class ZigAnalyzer(TreeSitterAnalyzer):
                 analysis.symbol_by_name[sym.name] = sym
 
         return analysis
+
+    def register_symbol(self, symbol: Symbol, global_symbols: dict) -> None:
+        """Register a symbol for cross-file resolution, skipping data anchors.
+
+        WI-jusus: ``field`` and ``variable`` symbols are data anchors, never
+        call/instantiate targets, so they must not enter the resolution
+        registry — otherwise a bare-name module variable would clobber a
+        same-named function's slot (turning a real call into a false negative)
+        or a call could falsely resolve to a struct field. They still reach
+        output/search/centrality via ``analysis.symbols``, which the base
+        orchestrator collects independently of this registry.
+        """
+        if symbol.kind in ("field", "variable"):
+            return
+        global_symbols[symbol.name] = symbol
 
     def get_import_aliases(
         self, tree: "tree_sitter.Tree", source: bytes,
