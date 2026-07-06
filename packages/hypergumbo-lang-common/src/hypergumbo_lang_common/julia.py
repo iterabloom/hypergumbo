@@ -226,6 +226,104 @@ def _julia_struct_field(
     return name, vtype
 
 
+# A ``module_definition`` (also ``baremodule``) body or ``source_file`` (a
+# top-level file with no module wrapper) is where a direct ``assignment`` is
+# module-level state -> ``kind="variable"`` (WI-jusus).
+_JULIA_MODULE_SCOPES = frozenset({"module_definition", "source_file"})
+
+# Wrappers that do NOT introduce a new scope: an assignment inside one is still
+# in its enclosing scope. Walking through these reaches the real scope: a
+# module-level ``begin…end`` (``compound_statement``), ``if…elseif…else``, and a
+# ``global x = …`` statement are all module-level. Anything NOT here and NOT a
+# module scope (``function_definition`` / ``let_statement`` / ``for``/``while``/``try`` /
+# ``do_clause`` / ``local_statement``) INTRODUCES a scope or opts out, so it stops the
+# walk and the binding is excluded. A chained ``x = y = 5`` link (an ``assignment``
+# ancestor) is transparent ONLY when it is a value binding — a short-form
+# function ``f(x) = …`` is ALSO an ``assignment`` but introduces the function's
+# own scope, so it is handled explicitly in the walk, not via this set.
+_JULIA_SCOPE_TRANSPARENT = frozenset({
+    "global_statement", "compound_statement", "if_statement",
+    "else_clause", "elseif_clause",
+})
+
+
+def _julia_short_form_call_node(
+    assignment: "tree_sitter.Node",
+) -> Optional["tree_sitter.Node"]:
+    """Return the ``call_expression`` of a short-form function ``assignment``
+    (``f(x) = …`` or typed ``f(x)::Int = …``), or None for a plain value binding.
+    """
+    lhs = assignment.children[0] if assignment.children else None
+    if lhs is None:
+        return None  # pragma: no cover - an assignment always has a LHS
+    if lhs.type == "call_expression":
+        return lhs
+    if (lhs.type == "typed_expression" and lhs.children
+            and lhs.children[0].type == "call_expression"):
+        return lhs.children[0]
+    return None
+
+
+def _julia_variable_scope(node: "tree_sitter.Node") -> Optional["tree_sitter.Node"]:
+    """Return the enclosing MODULE scope of an ``assignment``, or None if local.
+
+    Ascends through scope-transparent wrappers to the nearest
+    ``module_definition``/``source_file``; stops and returns None at the first
+    scope-introducing / scope-opt-out ancestor (fails-safe: an unrecognized
+    wrapper excludes rather than risks leaking a local as module state). A
+    crossed ``assignment`` is a transparent chain link (``x = y = 5``) UNLESS it
+    is a short-form function (``f(x) = begin … end``), whose body is its own
+    scope, not module state.
+
+    Fails-safe recall gap (documented, non-blocking): a ``global x = …`` INSIDE a
+    function is module state but is excluded (the walk stops at the enclosing
+    function); the meaningful module-level ``global`` form still emits.
+    """
+    current = node.parent
+    while current is not None:
+        if current.type in _JULIA_MODULE_SCOPES:
+            return current
+        if current.type == "assignment":
+            if _julia_short_form_call_node(current) is not None:
+                return None
+            current = current.parent
+            continue
+        if current.type in _JULIA_SCOPE_TRANSPARENT:
+            current = current.parent
+            continue
+        return None
+    return None  # pragma: no cover - an assignment is always within a scope node
+
+
+def _julia_assignment_target_names(
+    lhs: "tree_sitter.Node", source: bytes
+) -> list[str]:
+    """Return the bound variable name(s) from an ``assignment`` LHS, or [].
+
+    - ``identifier`` (``x = …``)               -> [``x``]
+    - ``typed_expression`` (``y::Int = …``)    -> recurse on the PRE-``::`` target
+      (its first child); the trailing identifier is the TYPE, not a name — so a
+      compound target ``(a,b)::Point`` / ``(x)::Int`` binds the values, never the
+      type. (A ``call_expression`` pre-target — a short-form typed function
+      ``f(x)::Int`` — is routed to the FUNCTION emitter upstream and yields [] here.)
+    - ``open_tuple`` / ``tuple_expression`` / ``parenthesized_expression`` -> recurse
+      into each element (handles nested + typed tuple targets)
+    - ``splat_expression`` (``a, rest... = xs`` -> ``rest``) -> recurse to its identifier
+    - ``field_expression`` (``obj.f = …``) / ``index_expression`` (``arr[i] = …``) /
+      ``call_expression`` are MUTATIONS or function defs, not declarations -> []
+    """
+    if lhs.type == "identifier":
+        return [node_text(lhs, source)]
+    if lhs.type in ("typed_expression", "splat_expression"):
+        return _julia_assignment_target_names(lhs.children[0], source) if lhs.children else []
+    if lhs.type in ("open_tuple", "tuple_expression", "parenthesized_expression"):
+        names: list[str] = []
+        for child in lhs.children:
+            names.extend(_julia_assignment_target_names(child, source))
+        return names
+    return []
+
+
 def _extract_symbols_from_tree(
     tree: "tree_sitter.Tree",
     source: bytes,
@@ -279,6 +377,10 @@ def _extract_symbols_from_tree(
             modifiers=modifiers,
             is_exported=not name.startswith("_"),
         ))
+
+    # (scope-node start byte, name) pairs already emitted as module variables —
+    # de-dupes a rebound binding (x = 5; x = 10) within a module scope.
+    seen_module_vars: set[tuple[int, str]] = set()
 
     for node in iter_tree(tree.root_node):
         # Module definition
@@ -341,12 +443,15 @@ def _extract_symbols_from_tree(
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[func_name] = symbol
 
-        # Short-form function definition: f(x) = expr
+        # Short-form function definition: f(x) = expr  (or typed f(x)::Int = expr)
         elif node.type == "assignment":
-            # Check if left side is a call_expression (function definition)
             left_node = node.children[0] if node.children else None
-            if left_node and left_node.type == "call_expression":
-                id_node = find_child_by_type(left_node, "identifier")
+            # A short-form function has a call_expression LHS (possibly wrapped in
+            # a typed_expression for a return type). Unwrap it so the typed form
+            # emits a FUNCTION, not a phantom variable named after the return type.
+            call_node = _julia_short_form_call_node(node)
+            if call_node is not None:
+                id_node = find_child_by_type(call_node, "identifier")
                 if id_node:
                     func_name = node_text(id_node, source)
                     start_line = node.start_point[0] + 1
@@ -375,6 +480,52 @@ def _extract_symbols_from_tree(
                     )
                     analysis.symbols.append(symbol)
                     analysis.symbol_by_name[func_name] = symbol
+
+            # Module-level variable assignment (WI-jusus). const is handled by the
+            # const_statement branch (its assignment's parent is const_statement,
+            # which is not a scope the walk crosses). The scope walk sees through
+            # module-level begin/if/global wrappers and chained x = y = 5 while
+            # excluding function/loop/let/do/local bindings.
+            else:
+                scope = _julia_variable_scope(node)
+                if scope is not None:
+                    start_line = node.start_point[0] + 1
+                    end_line = node.end_point[0] + 1
+                    for var_name in _julia_assignment_target_names(left_node, source):
+                        # De-dupe a rebound module variable (x = 5; x = 10) within
+                        # the same module scope — one binding, one symbol.
+                        dedup_key = (scope.start_byte, var_name)
+                        if dedup_key in seen_module_vars:
+                            continue
+                        seen_module_vars.add(dedup_key)
+                        symbol = Symbol(
+                            id=make_symbol_id(
+                                "julia", file_path, start_line, end_line, var_name, "variable"
+                            ),
+                            name=var_name,
+                            kind="variable",
+                            language="julia",
+                            path=file_path,
+                            span=Span(
+                                start_line=start_line,
+                                end_line=end_line,
+                                start_col=node.start_point[1],
+                                end_col=node.end_point[1],
+                            ),
+                            origin=PASS_ID,
+                            origin_run_id=run_id,
+                        )
+                        # A module variable is a DATA anchor kept OUT of call
+                        # resolution (not written to symbol_by_name, and skipped by
+                        # register_symbol): resolving it would let a bare
+                        # (unqualified) value name EXACT-match and beat a
+                        # same-named function's module-qualified suffix-match,
+                        # minting a wrong cross-module `calls` edge — and there is
+                        # no existing edge to preserve (variables were unemitted
+                        # before this slice), so excluding them is no regression.
+                        # It still reaches output/search/centrality via
+                        # analysis.symbols.
+                        analysis.symbols.append(symbol)
 
         # Struct definition
         elif node.type == "struct_definition":
@@ -659,15 +810,19 @@ class JuliaAnalyzer(TreeSitterAnalyzer):
     grammar_module = "tree_sitter_julia"
 
     def register_symbol(self, symbol: Symbol, global_symbols: dict) -> None:
-        """Keep field symbols OUT of the call-resolution registry (WI-jusus).
+        """Keep ``field`` and ``variable`` data anchors OUT of call resolution (WI-jusus).
 
-        A struct field is a data anchor, never a call target — excluding it
-        prevents a bare-named field from clobbering or suffix-shadowing a
-        same-named function. It remains in ``analysis.symbols`` (search /
-        centrality / io-boundaries) since the output set is built independently
-        of this registry.
+        Neither a struct ``field`` nor a module ``variable`` is a call target. A
+        module variable's name is bare (unqualified), so registering it would let
+        it EXACT-match a bare ``foo()`` call and beat a same-named function's
+        module-qualified suffix-match — a wrong cross-module ``calls`` edge. And
+        there is no existing edge to preserve (variables were unemitted before
+        this slice), so excluding them is no regression — unlike the F# case where
+        value bindings were already resolvable. Both kinds still reach
+        ``analysis.symbols`` (search / centrality / io-boundaries), which is built
+        independently of this registry.
         """
-        if symbol.kind == "field":
+        if symbol.kind in ("field", "variable"):
             return
         super().register_symbol(symbol, global_symbols)
 
