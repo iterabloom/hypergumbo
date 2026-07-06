@@ -21,3 +21,21 @@
     fields:  # d543
       statement: "The Swift/Vapor route extractor (swift.py:1104+) matches only bare app/routes/router receivers and misses the RouteCollection grouped(...).verb(use:) and .on(...) grouped-builder chain, so ~236 endpoints go undetected despite vapor detected (VernissageServer EXPECTED_ROUTES_BUT_FOUND_0)."  # d543
       root_cause: "The Vapor route extractor only recognizes bare app/routes/router receivers and does not walk the grouped-builder chain (grouped(...).verb(use:), .on(...)) that Vapor apps use for nested route groups."  # d543
+- op: update  # dbc4
+  at: '2026-07-06T01:40:55Z'  # dbc4
+  by: agent  # dbc4
+  actor: jgstern_agent  # dbc4
+  clock: 2  # dbc4
+  nonce: dbc4  # dbc4
+  set:  # dbc4
+    status: satisfied  # dbc4
+    pr_ref: '#445'  # dbc4
+  add:  # dbc4
+    tags: [awaits_bakeoff_validation]  # dbc4
+- op: discuss  # 31f8
+  at: '2026-07-06T01:40:55Z'  # 31f8
+  by: agent  # 31f8
+  actor: jgstern_agent  # 31f8
+  clock: 3  # 31f8
+  nonce: 31f8  # 31f8
+  message: "Satisfied by PR #445 (dev 7400d7663a). Rewrote the Swift/Vapor route extractor from a bare-receiver-plus-verb scan into a structured, scope-threaded walk (resolve_builder over the receiver chain + bindings threaded forward through the block) that recovers the full grouped-builder surface: method-chained groups (app.grouped(api).grouped(users).get), closure groups (routes.group(todos){ todos in todos.get }, nested), variable-bound builders (let g = routes.grouped(x); g.get), the Application.routes property, a differently-named RoutesBuilder parameter, and the explicit .on(.VERB, path, use:) form. BEHAVIORAL EVIDENCE (live repro, full pipeline): a RouteCollection fixture mixing grouped(api).grouped(accounts) + let-bound builders + a middleware group + a closure group yields 7 of 7 routes via 'hypergumbo routes' end-to-end (GET/POST /api/accounts, GET/PUT/DELETE /api/accounts/:id, GET /api/accounts/search, POST /api/accounts/search/advanced), 7 unique route symbols with no duplicates; the identical fixture returned 0 routes before the fix (matching the filed EXPECTED_ROUTES_BUT_FOUND_0). Production-path tests cover every idiom + the FP guards; 100 percent mainstream package coverage in isolation. Two adversarial reviews ran (pre-design + post-implementation); the post-impl review caught a real regression an inline fix would have shipped (a route captured in a binding RHS, let route = app.get(...), was dropped where the old flat scan caught it) plus a tree-sitter nested-trailing-closure quirk, both fixed. SAFETY: the pass runs only on files that import Vapor/Hummingbird; a reserved name rebound to a non-builder is shadowed so it stops anchoring routes; the .on verb is validated against the HTTP-method set; non-literal path segments and un-tracked aliases fail safe (a miss, never a wrong route). Tagged awaits_bakeoff_validation because the ~236-endpoint VernissageServer figure is the real-repo count and was validated here on a synthetic fixture (the mechanism), not on the original repo. Deferred fail-safe follow-ups (miss, not wrong): webSocket routes, register(collection:) mount-prefix join, .constant()/.pathComponents PathComponent forms, Hummingbird .on arg-order."  # 31f8
