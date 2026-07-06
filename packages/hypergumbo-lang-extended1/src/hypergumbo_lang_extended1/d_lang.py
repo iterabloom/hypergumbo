@@ -137,6 +137,11 @@ def _process_module_declaration(
 
 _CONTAINER_NODE_TYPES = frozenset({
     "struct_declaration", "class_declaration", "interface_declaration",
+    # A NAMED union owns its members (a nested type: `U.a`, not `Outer.a`). An
+    # ANONYMOUS union has no ``identifier`` child, so ``_find_parent_container``'s
+    # ``if name_node`` guard skips it and the walk continues to the enclosing
+    # struct — correctly preserving D's anonymous-union member hoisting.
+    "union_declaration",
 })
 
 
@@ -220,6 +225,99 @@ def _process_interface_declaration(
 
     iface_name = node_text(name_node, source)
     return _make_symbol(rel_path, run_id, node, iface_name, "interface", source, analyzer)
+
+
+# ---------------------------------------------------------------------------
+# Field / variable extraction helpers (WI-jusus)
+# ---------------------------------------------------------------------------
+
+_D_VALUE_DECL_NODES = frozenset({"variable_declaration", "auto_declaration"})
+
+
+def _iter_d_declarator_names(
+    node: "tree_sitter.Node",
+) -> Iterator["tree_sitter.Node"]:
+    """Yield the name ``identifier`` node for each declared name.
+
+    A ``variable_declaration`` lists one ``declarator`` per name (multi-name
+    ``int a, b;``); an ``auto_declaration`` (``auto x = …``) carries the name
+    identifier directly.
+    """
+    if node.type == "auto_declaration":
+        ident = find_child_by_type(node, "identifier")
+        if ident is not None:
+            yield ident
+        return
+    for child in node.children:
+        if child.type == "declarator":
+            ident = find_child_by_type(child, "identifier")
+            if ident is not None:
+                yield ident
+
+
+def _process_value_declaration(
+    source: bytes, rel_path: str, run_id: str, node: "tree_sitter.Node",
+    analyzer: "DAnalyzer",
+) -> list[tuple[Symbol, "tree_sitter.Node"]]:
+    """Emit a ``variable_declaration`` / ``auto_declaration`` as field or variable.
+
+    The same node type serves a struct/class field, a module global, AND a
+    function-body local, so classify by the IMMEDIATE parent: ``aggregate_body``
+    → **field** (owner = the enclosing struct/class/interface, via the existing
+    ``_find_parent_container`` — so a nested struct's member is owned by the
+    nearest type, ``Inner.x`` not ``Outer.x``); module scope (``module_def`` when
+    a ``module X;`` declaration is present, else ``source_file`` directly) →
+    **variable**; anything else (``block_statement``/``function_body``) → skipped
+    local. Data anchors only — never call/instantiate targets.
+    """
+    parent = node.parent
+    if parent is None:
+        return []  # pragma: no cover - defensive
+    if parent.type == "aggregate_body":
+        owner = _find_parent_container(node, source)
+        if owner is None:
+            return []  # pragma: no cover - defensive
+        kind = "field"
+        prefix = f"{owner}."
+    elif parent.type in ("module_def", "source_file"):
+        kind = "variable"
+        prefix = ""
+    else:
+        return []  # a function-body local (or other nested scope) — not emitted
+    pairs: list[tuple[Symbol, "tree_sitter.Node"]] = []
+    for name_node in _iter_d_declarator_names(node):
+        name = prefix + node_text(name_node, source)
+        sym = _make_symbol(rel_path, run_id, name_node, name, kind, source, analyzer)
+        pairs.append((sym, name_node))
+    return pairs
+
+
+def _process_enum_member(
+    source: bytes, rel_path: str, run_id: str, node: "tree_sitter.Node",
+    analyzer: "DAnalyzer",
+) -> Optional[Symbol]:
+    """Emit an ``enum_member`` as a ``kind="field"`` anchor (``Color.red``).
+
+    Enum members are type members accessed via ``.`` (dart/zig/nim precedent);
+    the owner is the enclosing ``enum_declaration``'s name. An ANONYMOUS enum
+    (``enum { A, B }``) parses to a distinct ``anonymous_enum_declaration`` node
+    with no owner name, so its members are skipped (a fails-safe recall miss,
+    never a wrong-owner phantom).
+    """
+    enum_decl = node.parent
+    if enum_decl.type != "enum_declaration":
+        return None  # anonymous_enum_declaration (or other) — no owner, skip
+    name_node = find_child_by_type(enum_decl, "identifier")
+    if name_node is None:
+        return None  # pragma: no cover - a named enum_declaration always names
+    ident = find_child_by_type(node, "identifier")
+    if ident is None:
+        return None  # pragma: no cover - defensive
+    owner = node_text(name_node, source)
+    member = node_text(ident, source)
+    return _make_symbol(
+        rel_path, run_id, node, f"{owner}.{member}", "field", source, analyzer,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -513,25 +611,48 @@ class DAnalyzer(TreeSitterAnalyzer):
         self, tree: "tree_sitter.Tree", source: bytes,
         file_path: Path, rel_path: str, run: "AnalysisRun",
     ) -> FileAnalysis:
-        """Extract module, function, struct, class, and interface symbols."""
+        """Extract module, function, struct, class, interface, field, and variable symbols.
+
+        WI-jusus: ``field`` (struct/class/enum members) and ``variable``
+        (module-level globals) are DATA anchors — emitted to ``analysis.symbols``
+        for search/centrality but kept out of the call graph (never added to
+        ``symbol_by_name``; ``register_symbol`` skips them), so a bare-named
+        module ``variable`` can never clobber a same-named ``function``.
+        """
         analysis = FileAnalysis()
 
         for node in iter_tree(tree.root_node):
-            sym: Optional[Symbol] = None
+            pairs: list[tuple[Symbol, "tree_sitter.Node"]] = []
             if node.type == "module_declaration":
                 sym = _process_module_declaration(source, rel_path, run.execution_id, node, self)
+                if sym:
+                    pairs.append((sym, node))
             elif node.type == "function_declaration":
                 sym = _process_function_declaration(source, rel_path, run.execution_id, node, self)
+                if sym:
+                    pairs.append((sym, node))
             elif node.type == "struct_declaration":
                 sym = _process_struct_declaration(source, rel_path, run.execution_id, node, self)
+                if sym:
+                    pairs.append((sym, node))
             elif node.type == "class_declaration":
                 sym = _process_class_declaration(source, rel_path, run.execution_id, node, self)
+                if sym:
+                    pairs.append((sym, node))
             elif node.type == "interface_declaration":
                 sym = _process_interface_declaration(source, rel_path, run.execution_id, node, self)
+                if sym:
+                    pairs.append((sym, node))
+            elif node.type in _D_VALUE_DECL_NODES:
+                pairs.extend(_process_value_declaration(source, rel_path, run.execution_id, node, self))
+            elif node.type == "enum_member":
+                sym = _process_enum_member(source, rel_path, run.execution_id, node, self)
+                if sym:
+                    pairs.append((sym, node))
 
-            if sym:
+            for sym, sym_node in pairs:
                 analysis.symbols.append(sym)
-                analysis.node_for_symbol[sym.id] = node
+                analysis.node_for_symbol[sym.id] = sym_node
                 if sym.kind in ("function", "method"):
                     analysis.symbol_by_name[sym.name] = sym
 
@@ -551,7 +672,17 @@ class DAnalyzer(TreeSitterAnalyzer):
         This prevents name collisions: errors.error and unrelated.error
         both exist in the registry, enabling suffix matching with path
         hint disambiguation when the caller imports one module.
+
+        WI-jusus: ``field``/``variable`` symbols are DATA anchors, never call or
+        instantiation targets — skip them so a bare-named module ``variable``
+        cannot clobber a same-named ``function``'s registry key (a false-negative
+        an edge-site kind-gate cannot recover) and a field cannot shadow a real
+        method. They still reach output/search/centrality because the output
+        symbol set is built from ``analysis.symbols`` independently of this
+        registry.
         """
+        if symbol.kind in ("field", "variable"):
+            return
         file_stem = Path(symbol.path).stem  # "errors.d" -> "errors"
         qualified = f"{file_stem}.{symbol.name}"
         global_symbols[qualified] = symbol
