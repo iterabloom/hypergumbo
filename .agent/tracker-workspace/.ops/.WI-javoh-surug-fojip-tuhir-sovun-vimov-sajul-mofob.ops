@@ -88,3 +88,19 @@
     pr_ref: '#438'  # 942b
   add:  # 942b
     tags: [awaits_bakeoff_validation]  # 942b
+- op: update  # 00db
+  at: '2026-07-06T20:05:27Z'  # 00db
+  by: agent  # 00db
+  actor: jgstern_agent  # 00db
+  clock: 11  # 00db
+  nonce: 00db  # 00db
+  set: {}  # 00db
+  remove:  # 00db
+    tags: [awaits_bakeoff_validation]  # 00db
+- op: discuss  # 5898
+  at: '2026-07-06T20:05:27Z'  # 5898
+  by: agent  # 5898
+  actor: jgstern_agent  # 5898
+  clock: 12  # 5898
+  nonce: '5898'  # 5898
+  message: "MOVED via BROAD drain broad-20260706-153915. command_launch_edges is a separate disclosed field (dub 24, docspell 86, openzeppelin 63, spring-petclinic 30, deduped per caller+command) excluded from total_io_edges (dub total 0 / cmd_launch 24); schema 2.1. Bash external-command launches surface as the disclosed command_launch cohort. Verdict moved."  # 5898

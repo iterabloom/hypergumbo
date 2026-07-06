@@ -75,3 +75,19 @@
   set: {}  # 29ab
   add:  # 29ab
     tags: [awaits_bakeoff_validation]  # 29ab
+- op: update  # ed96
+  at: '2026-07-06T20:05:26Z'  # ed96
+  by: agent  # ed96
+  actor: jgstern_agent  # ed96
+  clock: 9  # ed96
+  nonce: ed96  # ed96
+  set: {}  # ed96
+  remove:  # ed96
+    tags: [awaits_bakeoff_validation]  # ed96
+- op: discuss  # d9c3
+  at: '2026-07-06T20:05:26Z'  # d9c3
+  by: agent  # d9c3
+  actor: jgstern_agent  # d9c3
+  clock: 10  # d9c3
+  nonce: d9c3  # d9c3
+  message: "MOVED via BROAD drain broad-20260706-153915 (cohort-002/pretix). dead-code-maybe on pretix/hg.json with no --seeds prints the production-default note; summary seeds_mode=production, seeds_defaulted=True, dead 11250 (69.1 pct) vs entrypoint_only_dead=15019, with test_only_reachable disclosure. Default is production with both cohorts disclosed. Verdict moved."  # d9c3

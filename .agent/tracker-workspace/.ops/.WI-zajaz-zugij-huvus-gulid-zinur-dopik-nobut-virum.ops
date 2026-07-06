@@ -36,3 +36,19 @@
   clock: 3  # 66c1
   nonce: 66c1  # 66c1
   message: "Fixed in PR (dev f92f26691c), Wave-3 Phase-2 §C. Added 'field' to linkers/containment.py CONTAINABLE_KINDS so class-body attributes (kind=field, dotted names) root at their class via Phase-1 dotted-name parent extraction (same path as method). Behavioral evidence (editable binary): fixture class Widget{name,size} — before both field symbols orphaned; after 'Widget contains Widget.name' + 'Widget contains Widget.size' (orphan=False). Self-analysis (re-warmed map /tmp/warm_logon.json): field orphans 1862 -> 0 (99.6% of all 1870 field symbols were orphaned). Production-path test: test_containment_linker.py::test_dot_separated_field. smart-test 5139 passed, containment.py 100% coverage. Dead-code BFS does not traverse contains (per module note), so no dead-code-maybe FP change. Tagged awaits_bakeoff_validation for the centrality/reverse-slice shift from ~1862 new class->field contains edges + the orphan-count claim."  # 66c1
+- op: update  # 4a4d
+  at: '2026-07-06T20:05:27Z'  # 4a4d
+  by: agent  # 4a4d
+  actor: jgstern_agent  # 4a4d
+  clock: 4  # 4a4d
+  nonce: 4a4d  # 4a4d
+  set: {}  # 4a4d
+  remove:  # 4a4d
+    tags: [awaits_bakeoff_validation]  # 4a4d
+- op: discuss  # 8d47
+  at: '2026-07-06T20:05:27Z'  # 8d47
+  by: agent  # 8d47
+  actor: jgstern_agent  # 8d47
+  clock: 5  # 8d47
+  nonce: 8d47  # 8d47
+  message: "MOVED (original Python/self claim) via BROAD drain broad-20260706-153915. Field nodes rooted by an incoming contains edge: pretix python 5507/5587 (98 pct), java/TS/swift/elixir 100 pct — the 99.6-pct-orphan self-analysis symptom is resolved. Verdict moved. NEW cross-language gap filed WI-sakug: the WI-jusus field slices for solidity (0 pct rooted), nim (8 pct), scala (69 pct), D (78 pct) emit fields the containment linker does not root — a distinct language-coverage gap, not a regression of this Python claim."  # 8d47

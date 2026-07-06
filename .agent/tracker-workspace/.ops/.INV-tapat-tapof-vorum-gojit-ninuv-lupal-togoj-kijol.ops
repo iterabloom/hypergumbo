@@ -140,3 +140,19 @@
   clock: 17  # 9113
   nonce: '9113'  # 9113
   message: "Fixed in PR #4324 (dev c261dde7ab, io-boundary:F3). IO-boundary classification now verifies the receiver before matching a method-kind primitive — the structural fix INV-tapat demanded (match by receiver/module, not method name alone), NOT more ambiguous_names entries.\n\nMechanism: a shared kind-aware gate (io_boundary.gate_named_entry) keys on the previously-unused IoPrimitive.kind + the edge's call_construct. At the no-module-context fallback, an untyped METHOD call (call_construct=method, or method-kind-only hits when meta absent) never matches; a free-FUNCTION call may match a function-kind hit. Module-qualified calls (os.listdir()) take the module-filter branch and never reach the gate. Applied at ALL THREE consumers via one shared function: lookup_with_module (io-boundaries) + taint.py _lookup_named_entry/propagation (both structural + ddg).\n\nBehavioral evidence (lookup_with_module through the real loaded python catalog):\n  replace   hint=external      cc=method -> None      (untyped method suppressed)\n  replace   hint=pathlib.Path  cc=None   -> fs_write  (real receiver classifies)\n  read_text hint=external      cc=method -> None      (INV-tapat: no receiver verification -> no match)\n  read_text hint=pathlib       cc=None   -> fs_read   (verified receiver classifies)\n  listdir   hint=external      cc=None   -> fs_read   (function-kind preserved, no over-suppression)\n  read      hint=file          cc=None   -> fs_read   (WI-fuvuj typed receiver classifies)\nSelf-corpus smoke: a name.replace('-','_') site lands in external_potential (untagged), not fs_write. Production-path tests: TestKindAwareNoModuleGate (io_boundary) incl. a cross-language property test asserting no method-kind primitive returns on the bare path for any of the 14 catalogs. 10823 passed, 100% cov.\n\nTagged awaits_bakeoff_validation (quantitative FP-reduction claim; multi-substrate bakeoff pending — BROAD/DEEP machinery currently unreliable, validate via self-corpus + per-language fixtures). Two catalog kind-mismarks the gate exposed were corrected (kotlin println/print, scala Source.fromFile companion factories -> functions:)."  # 9113
+- op: update  # 32df
+  at: '2026-07-06T20:05:27Z'  # 32df
+  by: agent  # 32df
+  actor: jgstern_agent  # 32df
+  clock: 18  # 32df
+  nonce: 32df  # 32df
+  set: {}  # 32df
+  remove:  # 32df
+    tags: [awaits_bakeoff_validation]  # 32df
+- op: discuss  # 200c
+  at: '2026-07-06T20:05:28Z'  # 200c
+  by: agent  # 200c
+  actor: jgstern_agent  # 200c
+  clock: 19  # 200c
+  nonce: 200c  # 200c
+  message: "MOVED via BROAD drain broad-20260706-153915. The receiver-type/module-context io_boundary gate holds across the cohort: external_potential is a separate disclosed field (0 on all 11 repos) excluded from total_io_edges — no bare-name fs_write flood in the headline. Verdict moved."  # 200c
