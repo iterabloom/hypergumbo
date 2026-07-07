@@ -110,6 +110,27 @@ SYMBOL_KINDS: Final[tuple[SymbolKindSpec, ...]] = (
                    "hypergumbo-lang-extended1/zig.py:259. Zig errors are "
                    "a first-class language construct sibling to "
                    "`struct` / `enum` / `union`."),
+    SymbolKindSpec("list", AXIS_LANGUAGE_CONSTRUCT,
+                   "Smithy `list` shape — a named ordered-collection type "
+                   "declaration (`list Foo { member: Bar }`). A first-class "
+                   "aggregate-shape construct, sibling to the already-"
+                   "registered smithy shapes `union` / `enum` / `simple_type`; "
+                   "no generic collection kind exists to fold to (`type` is too "
+                   "broad, `struct`/`record` are product types). Producer: "
+                   "`smithy.py` `list_statement` -> `_extract_shape(..., "
+                   "\"list\", ...)`. Registered per the WI-zipis producer-sweep "
+                   "drain / ADR-0027 verdict (audit-findings 0015); its emit "
+                   "site is a nested-closure/positional helper the literal-grep "
+                   "diagnostics missed."),
+    SymbolKindSpec("map", AXIS_LANGUAGE_CONSTRUCT,
+                   "Smithy `map` shape — a named key->value associative-type "
+                   "declaration (`map Foo { key: Bar, value: Baz }`). Sibling "
+                   "aggregate shape to `list` / `union` / `enum`; not a "
+                   "`struct` (associative, not fixed named members) and no "
+                   "generic map/dict kind exists to fold to. Producer: "
+                   "`smithy.py` `map_statement` -> `_extract_shape(..., "
+                   "\"map\", ...)`. Registered per the WI-zipis drain / "
+                   "ADR-0027 verdict (audit-findings 0015)."),
     SymbolKindSpec("trait", AXIS_LANGUAGE_CONSTRUCT,
                    "Trait declaration (Rust / Scala / Groovy)."),
     SymbolKindSpec("module", AXIS_LANGUAGE_CONSTRUCT,
@@ -162,6 +183,16 @@ SYMBOL_KINDS: Final[tuple[SymbolKindSpec, ...]] = (
                    "`inductive` / `theorem`)."),
     SymbolKindSpec("mixin", AXIS_LANGUAGE_CONSTRUCT,
                    "Mixin declaration (Ruby / Sass)."),
+    SymbolKindSpec("extension", AXIS_LANGUAGE_CONSTRUCT,
+                   "Dart `extension` declaration (`extension NumberParsing on "
+                   "String { ... }`) — a top-level named construct that adds "
+                   "members to an existing type without subclassing. A genuine "
+                   "peer to `class` / `mixin` / `enum` (own keyword, own "
+                   "`extension_declaration` AST node), NOT a `class` (defines "
+                   "no new type) nor a `mixin` (Dart's distinct "
+                   "`mixin_declaration` already maps to `mixin`). Producer: "
+                   "`dart.py` `extension_declaration`. Registered per the "
+                   "WI-zipis drain / ADR-0027 verdict (audit-findings 0015)."),
     SymbolKindSpec("record", AXIS_LANGUAGE_CONSTRUCT,
                    "Record declaration (Java 14+, Erlang, Haskell)."),
     SymbolKindSpec("abstract", AXIS_LANGUAGE_CONSTRUCT,
@@ -172,6 +203,25 @@ SYMBOL_KINDS: Final[tuple[SymbolKindSpec, ...]] = (
                    "Subroutine / sub declaration (Fortran / Perl)."),
     SymbolKindSpec("procedure", AXIS_LANGUAGE_CONSTRUCT,
                    "Procedure declaration (Pascal / Ada / SQL)."),
+    SymbolKindSpec("filter", AXIS_LANGUAGE_CONSTRUCT,
+                   "PowerShell `filter` declaration — a named callable whose "
+                   "body is an implicit `process` block, run once per pipeline "
+                   "object. A distinct source keyword (own tree-sitter node), "
+                   "sibling to `function` / `workflow`; kept distinct like "
+                   "`subroutine` / `procedure` / `generic` rather than folded "
+                   "to `function`. Producer: `powershell.py` (`function_"
+                   "statement` child `filter`). Registered per the WI-zipis "
+                   "drain / ADR-0027 verdict (audit-findings 0015)."),
+    SymbolKindSpec("workflow", AXIS_LANGUAGE_CONSTRUCT,
+                   "PowerShell `workflow` declaration — a named callable "
+                   "compiled to Windows Workflow Foundation (checkpoint / "
+                   "suspend-resume / parallel semantics), a distinct keyword "
+                   "and AST node sibling to `function` / `filter`. Kept "
+                   "distinct rather than folded to `function` (same rationale "
+                   "as `filter` / `generic`). Producer: `powershell.py` "
+                   "(`function_statement` child `workflow`). Registered per "
+                   "the WI-zipis drain / ADR-0027 verdict (audit-findings "
+                   "0015)."),
     SymbolKindSpec("call_site", AXIS_LANGUAGE_CONSTRUCT,
                    "Call-expression site as a syntactic construct. Cluster E sub-case (a) "
                    "fold target per audit-findings 0010: the call expression is an AST "
@@ -427,6 +477,20 @@ SYMBOL_KINDS: Final[tuple[SymbolKindSpec, ...]] = (
                    "Environment symbol (LaTeX / shell). CANONICAL per audit-findings 0007."),
     SymbolKindSpec("binding", AXIS_LANGUAGE_CONSTRUCT,
                    "Binding symbol (DSL / DI). CANONICAL per audit-findings 0007."),
+    SymbolKindSpec("operator", AXIS_LANGUAGE_CONSTRUCT,
+                   "TLA+ operator definition (`Op(x) == ...`) — the primary "
+                   "TLA+ definitional construct, walked alongside `theorem` / "
+                   "`assumption`. Producer: `tlaplus.py` `operator_definition` "
+                   "via the nested `add_symbol(...)` helper (a literal-grep "
+                   "blind-spot, same class as `message` / `generic`). "
+                   "Registered per the WI-zipis drain / ADR-0027 verdict "
+                   "(audit-findings 0015)."),
+    SymbolKindSpec("assumption", AXIS_LANGUAGE_CONSTRUCT,
+                   "TLA+ `ASSUME` declaration — a named top-level assumption / "
+                   "axiom, sibling to `theorem` / `operator`. Producer: "
+                   "`tlaplus.py` `assumption` node via nested `add_symbol`. "
+                   "Registered per the WI-zipis drain / ADR-0027 verdict "
+                   "(audit-findings 0015)."),
     SymbolKindSpec("id", AXIS_LANGUAGE_CONSTRUCT,
                    "Id symbol (k8s / DSL). CANONICAL per audit-findings 0007."),
     SymbolKindSpec("source", AXIS_LANGUAGE_CONSTRUCT,

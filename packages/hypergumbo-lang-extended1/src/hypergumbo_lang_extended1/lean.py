@@ -248,7 +248,9 @@ def _extract_symbols_from_file(
                     if id_node:
                         name = _get_identifier_text(id_node, source)
                         if name:
-                            add_symbol(child, name, "structure")
+                            # WI-zipis / audit-0015 fold: Lean `structure` is a
+                            # struct (record/product type) -> canonical `struct`.
+                            add_symbol(child, name, "struct")
 
                 elif child.type == "inductive":
                     # inductive name where ...

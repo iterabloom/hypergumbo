@@ -144,6 +144,7 @@ Values that name the source-language syntactic construct the symbol represents. 
 - **`alias`** — Generic alias declaration.
 - **`architecture`** — Architecture symbol (VHDL). CANONICAL per audit-findings 0007.
 - **`arrow_function`** — Arrow-function expression (JS / TS).
+- **`assumption`** — TLA+ `ASSUME` declaration — a named top-level assumption / axiom, sibling to `theorem` / `operator`. Producer: `tlaplus.py` `assumption` node via nested `add_symbol`. Registered per the WI-zipis drain / ADR-0027 verdict (audit-findings 0015).
 - **`attribute`** — Attribute declaration (Python class attribute, etc.).
 - **`base`** — Base symbol (XML / OWL). CANONICAL per audit-findings 0007.
 - **`binding`** — Binding symbol (DSL / DI). CANONICAL per audit-findings 0007.
@@ -177,9 +178,11 @@ Values that name the source-language syntactic construct the symbol represents. 
 - **`executable`** — Executable declaration (CMake `add_executable`, Meson `executable`). CANONICAL per audit-findings 0005.
 - **`export`** — Export declaration (JS / TS / TOML / Rust).
 - **`exposed_port`** — Container exposed-port symbol. CANONICAL per audit-findings 0006.
+- **`extension`** — Dart `extension` declaration (`extension NumberParsing on String { ... }`) — a top-level named construct that adds members to an existing type without subclassing. A genuine peer to `class` / `mixin` / `enum` (own keyword, own `extension_declaration` AST node), NOT a `class` (defines no new type) nor a `mixin` (Dart's distinct `mixin_declaration` already maps to `mixin`). Producer: `dart.py` `extension_declaration`. Registered per the WI-zipis drain / ADR-0027 verdict (audit-findings 0015).
 - **`external_symbol`** — IR-pipeline boundary pseudo-symbol — emitted by ``create_boundary_nodes`` (``ir.py:959``) for every edge endpoint that doesn't resolve to a real Symbol (stdlib calls, npm imports, third-party constructors). CANONICAL per audit-findings 0007 §"Diagnostic findings #3" (Wave 6 PR 6 reclassification): structurally a top-level construct in the IR pipeline's own DSL, parallel to other Cluster H domain-DSL constructs (``playbook``, ``participant``, …). Consumers query boundary status via ``is_external_boundary(sym)`` (meta-key based), so this kind is a label not a discriminator — promotion does not change consumer behavior.
 - **`field`** — Field declaration on a struct / class / record.
 - **`file`** — File-shape symbol — top-level file declaration in build / source DSLs. CANONICAL per audit-findings 0005.
+- **`filter`** — PowerShell `filter` declaration — a named callable whose body is an implicit `process` block, run once per pipeline object. A distinct source keyword (own tree-sitter node), sibling to `function` / `workflow`; kept distinct like `subroutine` / `procedure` / `generic` rather than folded to `function`. Producer: `powershell.py` (`function_statement` child `filter`). Registered per the WI-zipis drain / ADR-0027 verdict (audit-findings 0015).
 - **`font_face`** — CSS @font-face symbol. CANONICAL per audit-findings 0007.
 - **`for_loop`** — For-loop symbol (control-flow). CANONICAL per audit-findings 0007.
 - **`fragment`** — Fragment symbol (GraphQL / template). CANONICAL per audit-findings 0007.
@@ -199,8 +202,10 @@ Values that name the source-language syntactic construct the symbol represents. 
 - **`label`** — Label symbol (assembly / k8s). CANONICAL per audit-findings 0007.
 - **`library`** — Library declaration (CMake `add_library`, Meson `library`, Cargo `[lib]`, etc.). CANONICAL per audit-findings 0005.
 - **`link`** — Link symbol (markdown / yaml-anchor). CANONICAL per audit-findings 0007.
+- **`list`** — Smithy `list` shape — a named ordered-collection type declaration (`list Foo { member: Bar }`). A first-class aggregate-shape construct, sibling to the already-registered smithy shapes `union` / `enum` / `simple_type`; no generic collection kind exists to fold to (`type` is too broad, `struct`/`record` are product types). Producer: `smithy.py` `list_statement` -> `_extract_shape(..., "list", ...)`. Registered per the WI-zipis producer-sweep drain / ADR-0027 verdict (audit-findings 0015); its emit site is a nested-closure/positional helper the literal-grep diagnostics missed.
 - **`local`** — Local symbol (Terraform local). CANONICAL per audit-findings 0007.
 - **`macro`** — Macro definition (Rust / C / Scheme).
+- **`map`** — Smithy `map` shape — a named key->value associative-type declaration (`map Foo { key: Bar, value: Baz }`). Sibling aggregate shape to `list` / `union` / `enum`; not a `struct` (associative, not fixed named members) and no generic map/dict kind exists to fold to. Producer: `smithy.py` `map_statement` -> `_extract_shape(..., "map", ...)`. Registered per the WI-zipis drain / ADR-0027 verdict (audit-findings 0015).
 - **`media`** — CSS @media symbol. CANONICAL per audit-findings 0007.
 - **`message`** — Protobuf ``message`` declaration (``proto.py:260``). CANONICAL per audit-findings 0007 (reclassified Wave 6 PR 4 — the original DEPRECATE-NO-FOLD verdict was a literal-grep blind-spot miss; ``proto.py`` emits via ``_make_proto_symbol(..., 'message', ...)`` indirection).
 - **`method`** — Method on a class / struct / interface.
@@ -211,6 +216,7 @@ Values that name the source-language syntactic construct the symbol represents. 
 - **`namespace`** — Namespace declaration (C++ / TypeScript / C#).
 - **`node`** — Node symbol (k8s / DSL). CANONICAL per audit-findings 0007.
 - **`object`** — Object / singleton declaration (Scala / Kotlin).
+- **`operator`** — TLA+ operator definition (`Op(x) == ...`) — the primary TLA+ definitional construct, walked alongside `theorem` / `assumption`. Producer: `tlaplus.py` `operator_definition` via the nested `add_symbol(...)` helper (a literal-grep blind-spot, same class as `message` / `generic`). Registered per the WI-zipis drain / ADR-0027 verdict (audit-findings 0015).
 - **`output`** — Output symbol (Terraform / shader). CANONICAL per audit-findings 0007.
 - **`package`** — Package declaration (CMake `find_package`, VHDL `package`, Go `package`, JS `package.json` synthesis, etc.). CANONICAL per audit-findings 0005.
 - **`paragraph`** — Paragraph symbol (markdown / docs). CANONICAL per audit-findings 0007.
@@ -268,6 +274,7 @@ Values that name the source-language syntactic construct the symbol represents. 
 - **`value`** — Value symbol (key-value DSLs). CANONICAL per audit-findings 0007.
 - **`variable`** — Variable / let / mutable binding.
 - **`view`** — View declaration (MVC / template languages).
+- **`workflow`** — PowerShell `workflow` declaration — a named callable compiled to Windows Workflow Foundation (checkpoint / suspend-resume / parallel semantics), a distinct keyword and AST node sibling to `function` / `filter`. Kept distinct rather than folded to `function` (same rationale as `filter` / `generic`). Producer: `powershell.py` (`function_statement` child `workflow`). Registered per the WI-zipis drain / ADR-0027 verdict (audit-findings 0015).
 - **`yield`** — Yield-statement symbol. CANONICAL per audit-findings 0007.
 
 ### `pending_classification` — per-cluster audit pending per ADR-0027 §"Migration"

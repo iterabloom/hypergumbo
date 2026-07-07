@@ -97,7 +97,8 @@ structure Person where
         symbols = result.symbols
         struct = next((s for s in symbols if s.name == "Person"), None)
         assert struct is not None
-        assert struct.kind == "structure"
+        # WI-zipis / audit-0015: Lean `structure` folds to canonical `struct`.
+        assert struct.kind == "struct"
         assert struct.language == "lean"
 
 

@@ -455,7 +455,10 @@ class SmithyAnalyzer(TreeSitterAnalyzer):
                     analysis.symbol_by_name[sym.name] = sym
 
             elif node.type == "structure_statement":
-                sym = _extract_shape(node, rel_path, "structure", current_namespace, self)
+                # WI-zipis / audit-0015 fold: a Smithy `structure` shape is a
+                # struct (named-field product type) — emit the canonical
+                # `struct` kind, not the synonym `structure`.
+                sym = _extract_shape(node, rel_path, "struct", current_namespace, self)
                 if sym:
                     analysis.symbols.append(sym)
                     analysis.node_for_symbol[sym.id] = node

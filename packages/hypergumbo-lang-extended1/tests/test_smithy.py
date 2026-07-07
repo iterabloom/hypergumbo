@@ -118,7 +118,8 @@ structure User {
 }
 """)
         result = analyze_smithy(tmp_path)
-        struct = next((s for s in result.symbols if s.kind == "structure"), None)
+        # WI-zipis / audit-0015: Smithy `structure` folds to canonical `struct`.
+        struct = next((s for s in result.symbols if s.kind == "struct"), None)
         assert struct is not None
         assert struct.name == "example#User"
 

@@ -79,7 +79,7 @@ structure GetCurrentTimeOutput {
 }
 """)
         result = analyze_smithy(tmp_path)
-        structures = [s for s in result.symbols if s.kind == "structure"]
+        structures = [s for s in result.symbols if s.kind == "struct"]
         assert any("GetCurrentTimeOutput" in st.name for st in structures)
 
 
