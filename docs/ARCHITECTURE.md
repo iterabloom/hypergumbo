@@ -15,14 +15,14 @@ for focused LLM context.
 
 hypergumbo analyzed its own source code and found:
 - **291** Python modules (133 analyzers, 57 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 29, Infrastructure 7; 64 core, 4 CLI, 33 tracker)
-- **36413** symbols (functions, classes, methods)
-- **123830** edges by type:
-  - calls: 64342
-  - contains: 33591
-  - imports: 11043
+- **36447** symbols (functions, classes, methods)
+- **123980** edges by type:
+  - calls: 64427
+  - contains: 33625
+  - imports: 11047
   - instantiates: 8341
-  - references: 4112
-  - module_attr_ref: 1145
+  - references: 4129
+  - module_attr_ref: 1155
   - other: 1256
 
 ## Package Architecture
@@ -85,7 +85,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 36413 Symbols + 123830 Edges + UsageContexts           │
+│  Output: 36447 Symbols + 123980 Edges + UsageContexts           │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -275,14 +275,14 @@ These symbols have the highest bidirectional centrality
 | `LinkerContext` | class | 3088.7 | registry.py |
 | `TrackerApp` | class | 1943.0 | tui.py |
 | `load_framework_patterns` | function | 1869.3 | framework_patterns.py |
-| `Edge.create` | method | 1804.6 | ir.py |
+| `Edge.create` | method | 1813.8 | ir.py |
 | `Path` | external_symbol | 1575.0 | <external> |
 | `main` | function | 1563.1 | cli.py |
 | `clear_pattern_cache` | function | 1336.8 | framework_patterns.py |
 | `Edge` | class | 1239.6 | ir.py |
 | `append` | external_symbol | 1224.0 | <external> |
 | `TreeSitterAnalyzer` | class | 1074.7 | base.py |
-| `get` | external_symbol | 1067.0 | <external> |
+| `get` | external_symbol | 1069.0 | <external> |
 
 ## Pattern System
 
@@ -834,7 +834,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: c872615fbc8a
+  commit: c34afecddda4
   hypergumbo: 6.1.0
   python: 3.12.3
 -->
