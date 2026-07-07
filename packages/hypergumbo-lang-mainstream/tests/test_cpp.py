@@ -519,6 +519,13 @@ void create() {
         instantiate_edges = [e for e in result.edges if e.edge_type == "instantiates"]
         # create should instantiate Widget
         assert len(instantiate_edges) >= 1
+        # WI-dagih: the `new X()` instantiation edge carries the REGISTERED
+        # evidence_type 'ast_new' (the value js_ts/java already emit for the
+        # identical heap-`new` construct), not the raw tree-sitter node-type
+        # 'new_expression' (which is not in the evidence-type catalog — an
+        # axis_conformance leak).
+        assert any(e.evidence_type == "ast_new" for e in instantiate_edges)
+        assert not any(e.evidence_type == "new_expression" for e in instantiate_edges)
 
     def test_prefers_definition_over_declaration_for_call_edges(
         self, tmp_path: Path

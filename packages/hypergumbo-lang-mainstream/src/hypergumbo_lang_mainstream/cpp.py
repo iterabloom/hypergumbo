@@ -1020,8 +1020,14 @@ def _extract_edges_from_tree(
                         if inner_type:
                             type_name = _node_text(inner_type, source)
                 if type_name:
+                    # WI-dagih: emit the REGISTERED evidence_type 'ast_new' (the
+                    # value js_ts/java already use for the identical heap-`new`
+                    # instantiation), not the raw tree-sitter node-type string
+                    # 'new_expression' (absent from the evidence-type catalog —
+                    # an axis_conformance leak). Stack-construction paths keep
+                    # their own registered 'stack_construction' pathway.
                     _try_instantiation_edge(
-                        type_name, current_function, node, "new_expression",
+                        type_name, current_function, node, "ast_new",
                         0.90, local_symbols, resolver, edges, run,
                     )
 
