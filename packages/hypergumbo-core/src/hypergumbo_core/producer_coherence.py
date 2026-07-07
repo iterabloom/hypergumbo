@@ -586,9 +586,9 @@ def _discover_helper_sinks(
     constructor_names: frozenset[str],
     sink_param: str,
 ) -> dict[str, tuple[str, int]]:
-    """Fixpoint over module-level functions to find transitive sinks.
+    """Fixpoint over the module's functions to find transitive sinks.
 
-    A module-level function ``F`` with parameter ``p`` is a *sink* for the
+    A function ``F`` with parameter ``p`` is a *sink* for the
     ``(constructor_names, sink_param)`` axis if, somewhere in ``F``'s body,
     it passes ``p`` into a known sink's slot — a constructor's
     ``sink_param`` keyword, or an already-discovered helper's sink
@@ -596,13 +596,26 @@ def _discover_helper_sinks(
     captures multi-hop indirection (``_outer`` -> ``_inner`` ->
     ``Symbol(kind=)``).
 
+    Discovery walks **every** function def in the module (``ast.walk``),
+    not just module-level ones, because the dominant emit-helper shape
+    across analyzers is a **nested closure** — ``def make_symbol(...): ...
+    Symbol(kind=kind)`` defined inside the analyzer's ``analyze(...)``
+    function (thrift, ocaml, dart, haskell, solidity, and ~half a dozen
+    more). A module-level-only scan is blind to all of them and silently
+    undercounts. (Cross-*module* helper sinks do not exist for this axis:
+    every Symbol-emitting helper is analyzer-local; the only cross-module
+    ``kind``-taking helper, ``make_symbol_id``, builds the id string, not
+    ``Symbol.kind``.) Sinks are keyed by function name; a same-name
+    collision within one file keeps the last def — acceptable for a
+    detection sweep that errs toward surfacing more.
+
     Returns ``{helper_name: (sink_param_name, positional_index)}``.
     Constructors are excluded from the result — their call sites are
     already covered by the direct path, so surfacing them here would
     double-report.
     """
     funcs: dict[str, _FuncScope] = {}
-    for node in tree.body:
+    for node in ast.walk(tree):
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             funcs[node.name] = node
 

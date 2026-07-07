@@ -760,6 +760,43 @@ def test_helper_constructor_without_sink_kwarg_is_not_a_sink(tmp_path: Path):
     assert result.strict_violations == ()
 
 
+def test_helper_nested_closure_is_discovered(tmp_path: Path):
+    """The dominant emit-helper shape across analyzers is a NESTED closure
+    (``def make_symbol(...)`` inside ``analyze(...)``) — thrift, ocaml, dart,
+    haskell, solidity, and ~half a dozen more. The fixpoint must descend into
+    nested function defs, not just module-level ones, or the census silently
+    undercounts (the INV-numat trap)."""
+    _write(
+        tmp_path / "packages" / "demo" / "src" / "demo.py",
+        'def analyze():\n'
+        '    def make_symbol(name, kind):\n'
+        '        return Symbol(id="i", name=name, kind=kind)\n'
+        '    return make_symbol("Svc", "service")\n',
+    )
+    result = find_producer_coherence_violations(
+        tmp_path, descend_helpers=True, **_SYM,
+    )
+    # Exactly one: the nested make_symbol call site. The enclosing analyze()
+    # must NOT be falsely promoted (it passes literals, not its own param).
+    assert len(result.strict_violations) == 1
+    assert "service" in result.strict_violations[0]
+
+
+def test_helper_nested_closure_registered_kind_is_clean(tmp_path: Path):
+    """A nested helper emitting a registered kind produces no violation."""
+    _write(
+        tmp_path / "packages" / "demo" / "src" / "demo.py",
+        'def analyze():\n'
+        '    def make_symbol(name, kind):\n'
+        '        return Symbol(id="i", name=name, kind=kind)\n'
+        '    return make_symbol("Widget", "class")\n',
+    )
+    result = find_producer_coherence_violations(
+        tmp_path, descend_helpers=True, **_SYM,
+    )
+    assert result.strict_violations == ()
+
+
 def test_assignment_form_annassign_without_value_is_skipped(tmp_path: Path):
     """``label: str`` is a type-annotation declaration with no RHS;
     it does not bind a value and must be skipped during the walk-back.
