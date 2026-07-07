@@ -19,3 +19,18 @@
     pr_ref:  # a54d
     description: "Fresh BROAD cohort (broad-20260706-194844, binaryen) found 244 axis_conformance violations: cpp.py:1024 passes the tree-sitter node-type string 'new_expression' as the evidence_type of an 'instantiates' edge for C++ 'new X()'. Sibling analyzers emit the REGISTERED 'ast_new' for the identical construct (js_ts.py:5158, java.py:1942; ast_new at evidence_types.py:175). MECHANICAL FOLD: change the 4th positional arg at cpp.py:1024 'new_expression'->'ast_new'. Lightweight, no ADR scaffolding, no sign-off. Confidence unaffected (set explicitly). Sole producer."  # a54d
     fields: {}  # a54d
+- op: update  # 3611
+  at: '2026-07-07T00:53:10Z'  # 3611
+  by: agent  # 3611
+  actor: jgstern_agent  # 3611
+  clock: 2  # 3611
+  nonce: '3611'  # 3611
+  set:  # 3611
+    status: done  # 3611
+- op: discuss  # 6046
+  at: '2026-07-07T00:53:10Z'  # 6046
+  by: agent  # 6046
+  actor: jgstern_agent  # 6046
+  clock: 3  # 6046
+  nonce: '6046'  # 6046
+  message: "Fixed + merged to dev. cpp.py heap-new instantiation edge now emits the registered 'ast_new' evidence_type instead of the raw node-type 'new_expression' (folded to the value js_ts/java already use). Behavioral evidence: binaryen axis_conformance 244->0 (all new_expression leaks gone; 0 evidence-type offenders). Mainstream 100% coverage."  # 6046
