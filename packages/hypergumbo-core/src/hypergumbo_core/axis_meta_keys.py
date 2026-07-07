@@ -335,6 +335,41 @@ META_KEYS: Final[tuple[MetaKeySpec, ...]] = (
                 "(e.g. 'event_publisher', 'route', 'graphql_resolver'). "
                 "Fold residue per audit-findings 0013 / WI-habut "
                 "Wave 5."),
+    # ------------------------------------------------------------------
+    # Symbol.meta — ADR-0027 route-marker payload (WI-tosul target-D).
+    # These sit on a ``framework_role == 'route'`` marker; the canonical
+    # accessor is ``routes.route_of`` / ``routes.is_route``. The 2026-07-07
+    # route-surfacing concept audit found route_path / http_method read as
+    # the authoritative payload at ~12 consumer sites yet unregistered —
+    # closed here; route_framework / route_protocol are the additive homes
+    # target-D(ii) mandates (producer emission deferred to INV-vokak/INV-tibap).
+    # ------------------------------------------------------------------
+    MetaKeySpec("route_path", AXIS_SYMBOL_META,
+                "URL path a ``framework_role == 'route'`` marker handler is "
+                "registered at (e.g. '/users', '/api/v1/orders'). Analyzer-"
+                "level (fires with no manifest); normalized by "
+                "``routes.route_of``."),
+    MetaKeySpec("http_method", AXIS_SYMBOL_META,
+                "HTTP method a route marker handles (e.g. 'GET', 'POST', "
+                "'ANY'). Older producers also smuggle transport sentinels "
+                "('WS', 'LIVE', 'RPC') into this key — a mechanism-vs-category "
+                "leak ``routes.route_of`` lifts 'WS' out into ``route_protocol`` "
+                "and INV-tibap folds LIVE/RPC out of."),
+    MetaKeySpec("route_framework", AXIS_SYMBOL_META,
+                "Framework name uniform across a route marker (e.g. 'flask', "
+                "'rails'). The canonical additive home for the framework that "
+                "today lives only on the ``concept == 'route'`` dict (and "
+                "Starlette's legacy ``meta['framework']``); read by "
+                "``routes.route_of`` so the marker branch stops dropping it "
+                "(WI-tosul target-D(ii); producer emission deferred to "
+                "INV-vokak)."),
+    MetaKeySpec("route_protocol", AXIS_SYMBOL_META,
+                "Transport protocol of a route endpoint ('http' | 'websocket' "
+                "| …), split out of the ``http_method`` verb field. A "
+                "producer-persisted value wins in ``routes.route_of`` over the "
+                "'WS'-sentinel derivation (WI-tosul target-D(ii); full "
+                "producer migration + protocol_origin reconciliation deferred "
+                "to INV-tibap)."),
     MetaKeySpec("reference_syntax", AXIS_SYMBOL_META,
                 "Use-site reference syntax of an external boundary Symbol "
                 "(e.g. 'unresolved', 'attribute', 'module', 'namespace') "

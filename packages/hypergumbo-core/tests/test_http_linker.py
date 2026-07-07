@@ -1075,6 +1075,31 @@ class TestConceptMetadataSupport:
         assert path is None
         assert method is None
 
+    def test_get_route_info_from_concept_dual_carry_uses_marker(self):
+        """BUG-2: a marker carrying a path-less concept=route must extract the
+        marker's own route_path/http_method (marker-first), not the concept's
+        empty path. Previously the concept-first extractor returned (None,None)
+        and the route was silently dropped from HTTP client->route matching."""
+        from hypergumbo_core.linkers.http import _get_route_info_from_concept
+
+        symbol = Symbol(
+            id="app.rb::UsersController::method",
+            name="UsersController#index",
+            kind="function",
+            path="app.rb",
+            span=Span(start_line=1, start_col=0, end_line=5, end_col=0),
+            language="ruby",
+            meta={
+                "framework_role": "route",
+                "route_path": "/users",
+                "http_method": "GET",
+                # rails.yaml's def-based `framework_role: ^route$` stamps a
+                # path-less concept carrying only the framework.
+                "concepts": [{"concept": "route", "framework": "rails"}],
+            },
+        )
+        assert _get_route_info_from_concept(symbol) == ("/users", "GET")
+
     def test_get_route_symbols_includes_concept_routes(self, tmp_path):
         """_get_route_symbols finds symbols with route concepts."""
         from hypergumbo_core.linkers.http import _get_route_symbols

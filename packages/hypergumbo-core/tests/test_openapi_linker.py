@@ -10,8 +10,8 @@ from hypergumbo_core.ir import Span, Symbol
 from hypergumbo_core.linkers.openapi import (
     OpenApiOperation,
     _count_openapi_files,
+    _get_route_info_from_concept,
     _get_route_symbols,
-    _has_route_concept,
     _is_openapi_spec,
     _load_yaml,
     _normalize_path,
@@ -563,8 +563,24 @@ paths:
         assert len(symbols) == 1
         assert symbols[0].name == "get_users"
 
-    def test_has_route_concept_with_none_meta(self, tmp_path: Path) -> None:
-        """_has_route_concept returns False for symbol with meta=None."""
+    def test_get_route_info_from_concept_marker_only(self, tmp_path: Path) -> None:
+        """BUG-2: openapi's old concept-first extractor had NO meta-fallback, so
+        a marker-only route (Go net/http, Express — framework_role + route_path/
+        http_method, no concept) returned (None,None) and was dropped from
+        OpenAPI matching. After folding to route_of it extracts the marker."""
+        route = Symbol(
+            id="test:route",
+            name="get_users",
+            kind="function",
+            language="go",
+            path=str(tmp_path / "app.go"),
+            span=Span(start_line=1, end_line=10, start_col=0, end_col=0),
+            meta={"framework_role": "route", "route_path": "/users", "http_method": "GET"},
+        )
+        assert _get_route_info_from_concept(route) == ("/users", "GET")
+
+    def test_get_route_info_from_concept_none_meta(self, tmp_path: Path) -> None:
+        """A non-route symbol (meta=None) yields (None, None)."""
         symbol = Symbol(
             id="test:func",
             name="no_meta",
@@ -574,7 +590,7 @@ paths:
             span=Span(start_line=1, end_line=10, start_col=0, end_col=0),
             meta=None,
         )
-        assert _has_route_concept(symbol) is False
+        assert _get_route_info_from_concept(symbol) == (None, None)
 
     def test_openapi_linker_integration(self, tmp_path: Path) -> None:
         """Tests the full openapi_linker function."""

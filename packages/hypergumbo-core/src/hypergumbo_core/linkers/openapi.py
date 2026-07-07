@@ -53,7 +53,7 @@ from typing import Any, Iterator
 
 from ..discovery import find_non_test_files
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
-from ._concept_utils import get_concept, has_concept
+from ..routes import is_route, route_of
 from ._text_filters import language_from_path
 from .registry import (
     LinkerActivation,
@@ -252,35 +252,30 @@ def _paths_match(openapi_path: str, route_path: str) -> bool:
     return bool(re.match(pattern, norm_route))
 
 
-def _has_route_concept(symbol: Symbol) -> bool:
-    """Check if symbol has a route concept in meta.concepts."""
-    return has_concept(symbol, "route")
-
-
 def _get_route_info_from_concept(symbol: Symbol) -> tuple[str | None, str | None]:
-    """Extract route path and method from concept metadata.
+    """Extract ``(route_path, http_method)`` for OpenAPI operation matching.
 
-    Returns:
-        Tuple of (route_path, http_method) from the first route concept,
-        or (None, None) if no route concept exists.
+    Delegates to the canonical MARKER-FIRST ``routes.route_of`` (WI-tosul
+    Phase-1b-alpha). The prior concept-first duplicate had NO meta-fallback at
+    all, so a marker-only route (Go net/http, Express — ``framework_role`` +
+    ``route_path``/``http_method``, no concept) returned ``(None, None)`` and was
+    silently dropped from OpenAPI matching (BUG-2). The ``'WS'`` sentinel is
+    reconstructed from ``route_of``'s normalized ``protocol``.
     """
-    route = get_concept(symbol, "route")
-    if route is None:
+    info = route_of(symbol)
+    if info is None:
         return None, None
-    return route.get("path"), route.get("method")
+    method = "WS" if info["protocol"] == "websocket" else info["method"]
+    return info["path"], method
 
 
 def _get_route_symbols(ctx: LinkerContext) -> list[Symbol]:
-    """Extract route symbols from context.
+    """Extract route symbols (marker OR ``concept == 'route'``) from context.
 
-    Route symbols are either:
-    - kind="route" (Ruby, Go, Rust, Express analyzers)
-    - have route concept in meta.concepts (FRAMEWORK_PATTERNS enrichment)
+    Exactly ``routes.is_route``'s disjunction, folded onto the canonical
+    accessor (WI-tosul Phase-1b-alpha).
     """
-    return [
-        s for s in ctx.symbols
-        if (s.meta or {}).get("framework_role") == "route" or _has_route_concept(s)
-    ]
+    return [s for s in ctx.symbols if is_route(s)]
 
 
 def link_openapi(root: Path, route_symbols: list[Symbol]) -> OpenApiLinkResult:

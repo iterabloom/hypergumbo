@@ -53,12 +53,56 @@ def test_non_route_concept_is_not_a_route():
 
 def test_marker_wins_over_concept():
     # framework_role marker present AND a concept entry: the marker's own
-    # path/method win, and framework stays None (marker carries no framework).
+    # path/method win (marker-first), but framework is UNIONED from the
+    # co-resident concept — it is NOT dropped (WI-tosul Phase-1b-alpha, BUG-1).
     r = route_of(_sym({
         "framework_role": "route", "route_path": "/m", "http_method": "PUT",
         "concepts": [{"concept": "route", "path": "/c", "method": "GET", "framework": "django"}],
     }))
-    assert r == {"path": "/m", "method": "PUT", "framework": None, "protocol": "http"}
+    assert r == {"path": "/m", "method": "PUT", "framework": "django", "protocol": "http"}
+
+
+# --- marker-first framework UNION (WI-tosul Phase-1b-alpha; BUG-1) ---
+
+def test_marker_dual_carry_concept_supplies_framework():
+    # Rails/Phoenix/Sinatra/Laravel: the analyzer marker carries route_path/
+    # http_method, and a path-less concept=route carries the framework. route_of
+    # must UNION the framework onto the marker result, never drop it.
+    r = route_of(_sym({
+        "framework_role": "route", "route_path": "/users", "http_method": "GET",
+        "concepts": [{"concept": "route", "framework": "rails"}],
+    }))
+    assert r == {"path": "/users", "method": "GET", "framework": "rails", "protocol": "http"}
+
+
+def test_marker_legacy_framework_meta_key():
+    # Starlette stamps meta['framework'] directly on the marker; honor it.
+    r = route_of(_sym({
+        "framework_role": "route", "route_path": "/ws", "http_method": "WS",
+        "framework": "starlette",
+    }))
+    assert r == {"path": "/ws", "method": None, "framework": "starlette", "protocol": "websocket"}
+
+
+def test_marker_route_framework_key_wins():
+    # The canonical additive route_framework key takes precedence over both the
+    # legacy meta['framework'] and the co-resident concept.framework.
+    r = route_of(_sym({
+        "framework_role": "route", "route_path": "/x", "http_method": "GET",
+        "route_framework": "flask", "framework": "legacy",
+        "concepts": [{"concept": "route", "framework": "django"}],
+    }))
+    assert r["framework"] == "flask"
+
+
+def test_persisted_route_protocol_key_wins():
+    # A producer-stamped route_protocol overrides the WS-derivation and strips
+    # method for a websocket endpoint (additive, forward-compat with INV-tibap).
+    r = route_of(_sym({
+        "framework_role": "route", "route_path": "/live", "http_method": "GET",
+        "route_protocol": "websocket",
+    }))
+    assert r == {"path": "/live", "method": None, "framework": None, "protocol": "websocket"}
 
 
 # --- absence / defensiveness ---

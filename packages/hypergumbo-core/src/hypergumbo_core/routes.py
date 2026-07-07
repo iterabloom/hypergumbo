@@ -13,10 +13,13 @@ enrichment layer:
   (manifest-gated, e.g. Flask ``@app.route`` once ``flask`` is a declared dep).
 
 Multiple consumers — ``cmd_routes``, the handler-slice/reverse-slice family,
-supply-chain tier promotion, entrypoint detection, and the ``http`` linker —
-each re-implemented the OR of these two mechanisms (there is even a verbatim
-duplicate accessor pair inside ``linkers/http.py``). :func:`route_of` /
-:func:`is_route` consolidate them behind one chokepoint.
+supply-chain tier promotion, entrypoint detection, and the ``http`` / ``openapi``
+linkers — each re-implemented the OR of these two mechanisms (the ``http`` and
+``openapi`` linkers carried verbatim-duplicate ``_get_route_info_from_concept`` /
+``_get_route_symbols`` pairs, each with a *concept-first* precedence that
+disagreed with the marker-first accessor and silently dropped dual-carry /
+marker-only routes). :func:`route_of` / :func:`is_route` consolidate them behind
+one chokepoint; those linker sites now delegate here.
 
 **Precedence is marker-first.** The ADR-0027 route marker is the producer-side
 authoritative signal; the concept entry is the manifest-gated upstream
@@ -49,25 +52,37 @@ def _route_concept(meta: dict[str, Any]) -> Optional[dict[str, Any]]:
 def route_of(symbol: Symbol) -> Optional[dict[str, Any]]:
     """Return ``{path, method, framework, protocol}`` for a route symbol, else None.
 
-    Marker-first: if the symbol carries the ADR-0027 route marker
-    (``framework_role == 'route'``) its own ``route_path`` / ``http_method`` win;
-    otherwise a ``concept == 'route'`` entry supplies path / method / framework.
-    A symbol that is neither returns ``None``.
+    Marker-first for path/method: if the symbol carries the ADR-0027 route
+    marker (``framework_role == 'route'``) its own ``route_path`` /
+    ``http_method`` win; otherwise a ``concept == 'route'`` entry supplies path /
+    method / framework. A symbol that is neither returns ``None``.
+
+    **The framework is UNIONED, never dropped** (WI-tosul Phase-1b-alpha, BUG-1).
+    A marker carries no framework of its own, so the marker branch falls through
+    to the canonical ``route_framework`` key, then the legacy ``meta['framework']``
+    (Starlette), then a *co-resident* ``concept == 'route'`` — which is how
+    Rails / Phoenix / Sinatra / Laravel dual-carry markers (analyzer marker +
+    the framework-YAML ``framework_role: '^route$'`` concept) still surface their
+    framework. ``framework`` is ``None`` only when no source carries one.
 
     ``method`` is ``None`` when ``protocol == 'websocket'`` (the ``'WS'``
-    sentinel is normalized out). ``framework`` is ``None`` for the marker
-    mechanism (it carries no framework name) and the concept's framework
-    otherwise. ``path`` may be ``None`` for a marker symbol that has no
-    ``route_path`` (still a route by ``is_route``, just without a resolvable
-    path — the caller decides whether to require one).
+    sentinel is normalized out); a producer-persisted ``route_protocol`` key
+    wins over that derivation (additive, forward-compatible with INV-tibap's
+    LIVE/RPC transport fold). ``path`` may be ``None`` for a marker symbol that
+    has no ``route_path`` (still a route by ``is_route``, just without a
+    resolvable path — the caller decides whether to require one).
     """
     meta = symbol.meta or {}
+    concept = _route_concept(meta)
     if meta.get("framework_role") == "route":
         path = meta.get("route_path")
         method = meta.get("http_method")
-        framework: Any = None
+        framework: Any = (
+            meta.get("route_framework")
+            or meta.get("framework")
+            or (concept.get("framework") if concept else None)
+        )
     else:
-        concept = _route_concept(meta)
         if concept is None:
             return None
         path = concept.get("path")
@@ -75,10 +90,10 @@ def route_of(symbol: Symbol) -> Optional[dict[str, Any]]:
         framework = concept.get("framework")
 
     raw_method = str(method) if method is not None else None
-    if raw_method == "WS":
-        protocol, method_out = "websocket", None
-    else:
-        protocol, method_out = "http", raw_method
+    protocol = str(
+        meta.get("route_protocol") or ("websocket" if raw_method == "WS" else "http")
+    )
+    method_out = None if protocol == "websocket" else raw_method
     return {
         "path": str(path) if path is not None else None,
         "method": method_out,
