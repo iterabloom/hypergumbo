@@ -1,0 +1,20 @@
+- op: create  # 72b9
+  at: '2026-07-07T16:17:34Z'  # 72b9
+  by: agent  # 72b9
+  actor: jgstern_agent  # 72b9
+  clock: 1  # 72b9
+  nonce: 72b9  # 72b9
+  data:  # 72b9
+    kind: work_item  # 72b9
+    title: "http_method wildcard/aggregate value-space cleanup (ALL unrecognized, GET,POST list-artifact, MATCH/RESOURCES lossy, phantom *)"  # 72b9
+    status: todo_hard  # 72b9
+    priority: 4  # 72b9
+    parent:  # 72b9
+    tags:  # 72b9
+    - route_surfacing  # 72b9
+    isbefore: []  # 72b9
+    duplicate_of: []  # 72b9
+    not_duplicate_of: []  # 72b9
+    pr_ref:  # 72b9
+    description: "The `http_method` value space carries unrecognized wildcards, un-split list-artifacts, lossy aggregates, and a phantom value — surfaced by the 2026-07-07 route-surfacing concept audit (lab notebook `route_surfacing_concept_audit_07072026.md`, adjacent sweep). Lower-priority cleanup; distinct from the transport-protocol fold.\n\nDefects:\n- `ALL` (node-http.yaml `literal:ALL`, http.createServer catch-all) is a wildcard method NO consumer recognizes — openapi.py:363 knows only `ANY` and `*`, so an ALL route never matches where an equivalent ANY route would.\n- `GET,POST` comma-joined list-artifact (framework_patterns.py:822 `','.join`s list method values) reaches `route_of`/`cmd_routes` directly; only the route-materializer (framework_patterns.py:1864) splits it back. openapi.py:363's `route_method.upper() not in (op.method, ...)` can never equal a single op.method, so YAML-enriched multi-method routes silently fail OpenAPI linking.\n- Phantom `*`: recognized as a wildcard at openapi.py:363 but produced NOWHERE (zero producers) — dead recognition branch.\n- Lossy aggregate tokens persist unexpanded in `http_method`: `MATCH` (php.py:581 Laravel Route::match discards the real `['get','post']` list), `RESOURCES` (elixir.py:506 Phoenix `resources` 7-route macro collapsed to one token), `RESOURCE`/`API_RESOURCE` (laravel.yaml:37 — symbols expand to real verbs at php.py:670-696 but the concept.method keeps the aggregate, double-representing).\n\nFix: teach openapi.py the `ALL` wildcard and the comma-joined-list case; expand or normalize MATCH/RESOURCE(S) aggregates (or document them as accepted lossy); remove the phantom `*` recognition or file its intended producer."  # 72b9
+    fields: {}  # 72b9
