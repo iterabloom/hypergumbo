@@ -1,0 +1,20 @@
+- op: create  # f66e
+  at: '2026-07-07T19:56:08Z'  # f66e
+  by: agent  # f66e
+  actor: jgstern_agent  # f66e
+  clock: 1  # f66e
+  nonce: f66e  # f66e
+  data:  # f66e
+    kind: work_item  # f66e
+    title: "smart-test reverse-slice crashes ('Input file not found: None') on non-source changed files, forcing full-suite manifest -> pre-commit reject"  # f66e
+    status: todo_hard  # f66e
+    priority: 3  # f66e
+    parent:  # f66e
+    tags:  # f66e
+    - infra  # f66e
+    isbefore: []  # f66e
+    duplicate_of: []  # f66e
+    not_duplicate_of: []  # f66e
+    pr_ref:  # f66e
+    description: "smart-test's reverse-slice (`hypergumbo slice --files <changed-file-list>`) crashes with `Error: Input file not found: None` when the changed-file set includes NON-SOURCE files (docs/*, .ci/*, .agent/**/*.ops, CHANGELOG.md, cadence json), forcing a full-suite manifest that the pre-commit \"Test manifest\" check correctly rejects — blocking the commit of any PR that co-changes source + generated-docs (which is most non-trivial PRs).\n\nReproduced 2026-07-07 on the INV-tibap PR: the whole-changed-set slice ran ~417s then errored `Input file not found: None` (see .ci/smart-test-fallback.log); the SAME slice run on the source-only subset (10 `packages/*/src/*.py` files) succeeded (384 dependent files, 260 test files). So the crash is caused by the non-source entries in the input, not the source changes.\n\nROOT: `scripts/smart-test:588` passes the full `$CHANGED_FILES` (via `$CHANGED_FILE_LIST`) to `slice --files`, but the code's own comment at :607 states \"hypergumbo slice --files only reaches packages/*/src/** — it does not know about .agent/hooks/_shared/*.py or scripts/*.\" So the non-source paths are (a) useless to the slice and (b) fatal to it.\n\nFIX (smart-test is NOT a governance file): filter `$CHANGED_FILES` to `^packages/.*/src/.*\\.py$` (plus the top-level-source paths the WI-jozan fold already handles) BEFORE building `$CHANGED_FILE_LIST` for the slice; keep the unfiltered set for the CHANGED_SOURCE_FILES / manifest bookkeeping. Add a regression test with a mixed source+docs+.ops changed set asserting the slice input contains only sliceable paths and the manifest comes out Mode:targeted.\n\nWORKAROUND used for INV-tibap: hand-built the targeted manifest from the source-only slice output (260 tests spanning all 3 changed packages, incl. every changed source file's own test)."  # f66e
+    fields: {}  # f66e

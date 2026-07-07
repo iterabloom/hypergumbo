@@ -1,0 +1,22 @@
+- op: create  # 025c
+  at: '2026-07-07T16:18:21Z'  # 025c
+  by: agent  # 025c
+  actor: jgstern_agent  # 025c
+  clock: 1  # 025c
+  nonce: 025c  # 025c
+  data:  # 025c
+    kind: invariant  # 025c
+    title: "enrich_symbols stamps redundant path-less route concept onto already-marked route markers (no guard) -> dual-carry + orphaned framework"  # 025c
+    status: violated  # 025c
+    priority: 3  # 025c
+    parent:  # 025c
+    tags:  # 025c
+    - route_surfacing  # 025c
+    isbefore: []  # 025c
+    duplicate_of: []  # 025c
+    not_duplicate_of: []  # 025c
+    pr_ref:  # 025c
+    description: "`enrich_symbols` Phase 1 stamps a redundant, path-less, framework-bearing `concept=route` onto symbols that ALREADY carry the `framework_role=='route'` marker — creating a dual-carry state and orphaning the framework. Root cause of the two silent bugs the 2026-07-07 route-surfacing concept audit reproduced (lab notebook `route_surfacing_concept_audit_07072026.md`; WI-tosul Phase-1b-α fixes the SYMPTOMS at the accessor, this is the producer-side ROOT).\n\nINVARIANT: a route symbol carries its route fact in ONE home; the framework enricher does not append a redundant concept to an already-marked marker.\n\nMechanism (confirmed): `rails.yaml:40-41` (`- concept: route` / `framework_role: \"^route$\"`, NO extract_path/extract_method; ditto phoenix.yaml:50-51, sinatra.yaml:31-32, laravel.yaml:51-52) is an ADR-0027 Phase-3 fold pattern that re-tags the analyzer's `kind=function` + `framework_role=route` markers. `enrich_symbols` Phase 1 (framework_patterns.py:1456-1463) unconditionally does `symbol.meta[\"concepts\"]=matches` with NO guard against symbols already carrying `framework_role=='route'` — ASYMMETRIC with the route-materializer's skip at framework_patterns.py:1829. So the Ruby/PHP/Elixir marker gains a path-less concept carrying a framework the marker lacks.\n\nDownstream (fixed symptomatically by WI-tosul Phase-1b-α, but the root persists): `route_of` marker-branch dropped `framework` (BUG-1); http.py concept-first `_get_route_info_from_concept` returned (None,None) and silently dropped the route from HTTP client→route matching (BUG-2, empirically reproduced).\n\nFix options (pick one):\n(a) add an `enrich_symbols` Phase-1 guard symmetric to the fp.py:1829 materializer skip (do not append `concept=route` to a symbol already carrying `framework_role=='route'`); OR\n(b) have the def-based `framework_role:'^route$'` rails/phoenix/sinatra/laravel patterns write `route_framework` onto the EXISTING marker instead of appending a redundant path-less concept.\nGuard with a test asserting a re-enriched marker does not gain a redundant path-less route concept."  # 025c
+    fields:  # 025c
+      statement: "A route symbol carries its route fact in one home; enrich_symbols does not append a redundant path-less concept=route to a symbol already carrying the framework_role=='route' marker."  # 025c
+      root_cause: "enrich_symbols Phase 1 (framework_patterns.py:1456-1463) stamps meta['concepts']=matches with no guard against already-marked symbols, asymmetric with the materializer skip at fp.py:1829; the rails/phoenix/sinatra/laravel def-based framework_role:'^route$' patterns therefore dual-carry a framework-bearing concept onto the analyzer marker."  # 025c

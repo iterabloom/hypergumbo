@@ -20,3 +20,18 @@
     fields:  # 29c2
       statement: "http_method carries only real HTTP verbs (or None); route transport (WS/LIVE/RPC) lives in a dedicated route_protocol axis, not smuggled into the verb field."  # 29c2
       root_cause: "routes.py:77-81 normalizes only WS out of http_method (LIVE/RPC leak as protocol=http); a route_protocol axis was never built and the existing protocol_origin axis is not reconciled (grpc route double-encodes protocol_origin=grpc AND http_method=RPC)."  # 29c2
+- op: update  # 6bca
+  at: '2026-07-07T19:56:10Z'  # 6bca
+  by: agent  # 6bca
+  actor: jgstern_agent  # 6bca
+  clock: 2  # 6bca
+  nonce: 6bca  # 6bca
+  set:  # 6bca
+    status: satisfied  # 6bca
+- op: discuss  # 9300
+  at: '2026-07-07T19:56:11Z'  # 9300
+  by: agent  # 9300
+  actor: jgstern_agent  # 9300
+  clock: 3  # 9300
+  nonce: '9300'  # 9300
+  message: "SATISFIED — merged dev 416f41fe6d (WI-tosul Phase-1b-β). Route transport (WS/LIVE/RPC) folds out of the http_method verb field into the registered route_protocol axis (websocket/liveview/grpc) via the routes.transport_meta chokepoint; route_of derives protocol + nulls method; routes.method_token/protocol_method_token reconstruct the token for bucketing/display (behavior-preserving). BEHAVIORAL EVIDENCE (closure-evidence discipline): live repro — transport_meta('WS'/'LIVE'/'RPC') -> {http_method:None, route_protocol:<transport>}, route_of -> method=None/protocol=<transport>; a real 'GET' verb stays http_method='GET'/protocol='http'. Guarded by a fixture-scoped value-set property test (test_transport_never_leaks_into_http_method) + producer tests (starlette/elixir/grpc assert markers carry route_protocol not the sentinel). protocol_origin reconciliation: grpc keeps protocol_origin='grpc' + stamps route_protocol='grpc' (distinct axes; route_of does NOT derive from protocol_origin — the openapi synthetic proves provenance!=transport). 20482 tests pass, 100% cov. SCOPED to route MARKERS (Symbol.meta the accessor reads authoritatively): the analyzer UsageContext.metadata http_method + phoenix.yaml concept.method='LIVE' intermediates retain the sentinel but are normalized by route_of and read by no routing consumer raw — documented residual, not a queryable-marker leak."  # 9300

@@ -1,0 +1,22 @@
+- op: create  # 9015
+  at: '2026-07-07T20:26:29Z'  # 9015
+  by: agent  # 9015
+  actor: jgstern_agent  # 9015
+  clock: 1  # 9015
+  nonce: '9015'  # 9015
+  data:  # 9015
+    kind: invariant  # 9015
+    title: "Detected route framework whose LANGUAGE_FRAMEWORKS key != YAML basename loads NO route YAML (next/adonis/aspnetcore/vert.x/zio-http) -> routes silently dropped even WITH a manifest"  # 9015
+    status: violated  # 9015
+    priority: 2  # 9015
+    parent:  # 9015
+    tags:  # 9015
+    - route_surfacing  # 9015
+    isbefore: []  # 9015
+    duplicate_of: []  # 9015
+    not_duplicate_of: []  # 9015
+    pr_ref:  # 9015
+    description: "A detected route framework whose LANGUAGE_FRAMEWORKS detection key differs from its YAML basename has NO route YAML loaded — even when the framework IS detected (manifest or import) — so it emits ZERO routes. Surfaced by the WI-tosul Phase-2 manifest-gating scout (2026-07-07, lab notebook phase2_manifest_gating_scout).\n\nINVARIANT: every framework in `profile.frameworks` resolves to a loadable YAML pattern set (`load_framework_patterns(fw) is not None`).\n\nRoot cause: `framework_patterns.py:903` `_FRAMEWORK_ALIASES` is missing key->basename mappings. Dict-keys `next`/`adonis`/`aspnetcore`/`vert.x`/`zio-http` (as they appear in LANGUAGE_FRAMEWORKS / detection) resolve to NO YAML file (the basenames are `nextjs.yaml`/`adonisjs.yaml`/`aspnet.yaml`/`vertx.yaml`/`zio.yaml`), so `load_framework_patterns` returns None and `enrich_symbols` never applies the route patterns. This is a LATENT bug INDEPENDENT of Phase 2: a Next.js/AdonisJS/ASP.NET/Vert.x/ZIO-http app with a proper manifest still gets its routes silently dropped.\n\nFix: add to `_FRAMEWORK_ALIASES`: next->nextjs, adonis->adonisjs, aspnetcore->aspnet, vert.x->vertx, zio-http->zio (verify each detection key against the actual LANGUAGE_FRAMEWORKS keys before mapping). Add a property test asserting every LANGUAGE_FRAMEWORKS key resolves to a non-None `load_framework_patterns` result (catches future key/basename drift structurally)."  # 9015
+    fields:  # 9015
+      statement: "Every framework in profile.frameworks resolves to a loadable YAML (load_framework_patterns(fw) is not None), so a detected route framework's route patterns always apply."  # 9015
+      root_cause: "framework_patterns.py:903 _FRAMEWORK_ALIASES is missing next->nextjs / adonis->adonisjs / aspnetcore->aspnet / vert.x->vertx / zio-http->zio, so those detection keys resolve to no YAML and enrich_symbols never applies their route patterns."  # 9015
