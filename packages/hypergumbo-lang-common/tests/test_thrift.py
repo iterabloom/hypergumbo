@@ -23,6 +23,12 @@ from hypergumbo_lang_common.thrift import (
 )
 
 
+def _role(sym, role: str) -> bool:
+    """A folded framework symbol carries its role in ``meta['framework_role']``
+    (WI-rilal / audit-0013: ``service`` -> ``interface``)."""
+    return (sym.meta or {}).get("framework_role") == role
+
+
 @pytest.fixture
 def temp_repo(tmp_path: Path) -> Path:
     """Create a temporary repository for testing."""
@@ -82,7 +88,10 @@ service UserService {
         result = analyze_thrift(temp_repo)
 
         assert not result.skipped
-        assert any(s.kind == "service" and s.name == "UserService" for s in result.symbols)
+        # WI-rilal / audit-0013 fold: service -> interface + meta['framework_role']='service'
+        svc = next(s for s in result.symbols
+                   if _role(s, "service") and s.name == "UserService")
+        assert svc.kind == "interface"
 
     def test_analyzes_function(self, temp_repo: Path) -> None:
         """Detects function definitions within services."""
@@ -194,7 +203,7 @@ service UserService {
 
         result = analyze_thrift(temp_repo)
 
-        service = next(s for s in result.symbols if s.kind == "service")
+        service = next(s for s in result.symbols if _role(s, "service"))
         func = next(s for s in result.symbols if s.kind == "function")
 
         contains_edges = [e for e in result.edges if e.edge_type == "contains"]
@@ -214,7 +223,7 @@ service ProductService {
 
         result = analyze_thrift(temp_repo)
 
-        services = {s.name for s in result.symbols if s.kind == "service"}
+        services = {s.name for s in result.symbols if _role(s, "service")}
         assert "UserService" in services
         assert "ProductService" in services
 
@@ -230,7 +239,7 @@ service UserService {
 
         result = analyze_thrift(temp_repo)
 
-        service = next(s for s in result.symbols if s.kind == "service")
+        service = next(s for s in result.symbols if _role(s, "service"))
         # Should include namespace in qualified name
         assert "com.example.service" in service.qualified_name
 

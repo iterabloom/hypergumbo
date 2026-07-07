@@ -135,8 +135,15 @@ def _make_proto_symbol(
     kind: str,
     prefix: Optional[str] = None,
     signature: Optional[str] = None,
+    framework_role: Optional[str] = None,
 ) -> Symbol:
-    """Create a Symbol from a tree-sitter node."""
+    """Create a Symbol from a tree-sitter node.
+
+    When *framework_role* is set, the canonical construct kind is recorded in
+    ``kind`` (e.g. ``interface``/``method``) and the framework-participation
+    role in ``meta['framework_role']`` (WI-rilal / audit-0013 Cluster 27D
+    fold: ``service`` -> ``interface``, ``rpc`` -> ``method``).
+    """
     start_line = node.start_point[0] + 1
     end_line = node.end_point[0] + 1
     start_col = node.start_point[1]
@@ -169,6 +176,7 @@ def _make_proto_symbol(
         origin=PASS_ID,
         origin_run_id=run_id,
         signature=signature,
+        meta={"framework_role": framework_role} if framework_role else None,
     )
 
 
@@ -211,7 +219,7 @@ def _extract_symbols_and_edges(
                 service_name = node_text(service_name_node, source).strip()
                 service_sym = _make_proto_symbol(
                     file_path, run_id, package_name, node, source,
-                    service_name, "service"
+                    service_name, "interface", framework_role="service",
                 )
                 symbols.append(service_sym)
                 service_symbols[service_name] = service_sym
@@ -236,9 +244,10 @@ def _extract_symbols_and_edges(
 
                 rpc_sym = _make_proto_symbol(
                     file_path, run_id, package_name, node, source,
-                    rpc_name, "rpc",
+                    rpc_name, "method",
                     prefix=service_name,
-                    signature=rpc_sig
+                    signature=rpc_sig,
+                    framework_role="rpc",
                 )
                 symbols.append(rpc_sym)
 

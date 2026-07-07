@@ -136,8 +136,15 @@ def _extract_symbols_and_edges(
         kind: str,
         prefix: Optional[str] = None,
         signature: Optional[str] = None,
+        framework_role: Optional[str] = None,
     ) -> Symbol:
-        """Create a Symbol from a tree-sitter node."""
+        """Create a Symbol from a tree-sitter node.
+
+        When *framework_role* is set, ``kind`` holds the canonical construct
+        (e.g. ``interface``) and the framework role lives in
+        ``meta['framework_role']`` (WI-rilal / audit-0013: ``service`` ->
+        ``interface``).
+        """
         start_line = node.start_point[0] + 1
         end_line = node.end_point[0] + 1
         start_col = node.start_point[1]
@@ -170,6 +177,7 @@ def _extract_symbols_and_edges(
             origin=PASS_ID,
             origin_run_id=run_id,
             signature=signature,
+            meta={"framework_role": framework_role} if framework_role else None,
         )
 
     # Track service symbols for contains edges - use byte range as key
@@ -183,7 +191,9 @@ def _extract_symbols_and_edges(
             service_name_node = find_child_by_type(node, "identifier")
             if service_name_node:
                 service_name = node_text(service_name_node, source).strip()
-                service_sym = make_symbol(node, service_name, "service")
+                service_sym = make_symbol(
+                    node, service_name, "interface", framework_role="service",
+                )
                 symbols.append(service_sym)
                 service_by_pos[(node.start_byte, node.end_byte)] = service_sym
 

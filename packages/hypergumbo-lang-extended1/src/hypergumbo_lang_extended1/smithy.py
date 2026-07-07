@@ -124,8 +124,14 @@ def _extract_namespace(
 def _extract_shape(
     node: "tree_sitter.Node", rel_path: str, kind: str,
     current_namespace: Optional[str], analyzer: "SmithyAnalyzer",
+    framework_role: Optional[str] = None,
 ) -> Optional[Symbol]:
-    """Extract a shape definition."""
+    """Extract a shape definition.
+
+    When *framework_role* is set, ``kind`` holds the canonical construct
+    (``interface`` for a service) and the framework role is recorded in
+    ``meta['framework_role']`` (WI-rilal / audit-0013 Cluster 27D fold).
+    """
     name = None
     traits: list[str] = []
 
@@ -149,6 +155,11 @@ def _extract_shape(
 
         # WI-bokab (v7): file-identity anchor; ``rel_path`` is repo-relative.
         file_anchor = analyzer._file_anchor(rel_path)
+        meta: dict = {"traits": traits} if traits else {}
+        # WI-rilal / audit-0013 fold: a service shape folds to kind='interface'
+        # with the framework role recorded alongside any traits.
+        if framework_role:
+            meta["framework_role"] = framework_role
         return Symbol(
             id=make_symbol_id("smithy", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, qualified_name, kind),
             stable_id=analyzer.compute_stable_id(node, kind=kind, name=qualified_name, file_stable_id=file_anchor),
@@ -163,7 +174,7 @@ def _extract_shape(
                 end_col=node.end_point[1],
             ),
             origin=PASS_ID,
-            meta={"traits": traits} if traits else {},
+            meta=meta,
         )
     return None  # pragma: no cover
 
@@ -427,7 +438,10 @@ class SmithyAnalyzer(TreeSitterAnalyzer):
                     analysis.import_aliases["__namespace__"] = ns_name or ""
 
             elif node.type == "service_statement":
-                sym = _extract_shape(node, rel_path, "service", current_namespace, self)
+                sym = _extract_shape(
+                    node, rel_path, "interface", current_namespace, self,
+                    framework_role="service",
+                )
                 if sym:
                     analysis.symbols.append(sym)
                     analysis.node_for_symbol[sym.id] = node
