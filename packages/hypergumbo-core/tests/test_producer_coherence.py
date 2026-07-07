@@ -15,6 +15,7 @@ Edge.edge_type — which is the structural guarantee Phase 1 of ADR-0028
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from hypergumbo_core.producer_coherence import (
@@ -26,6 +27,11 @@ from hypergumbo_core.producer_coherence import (
     find_evidence_type_producer_violations,
     find_producer_coherence_violations,
     find_symbol_kind_producer_violations,
+    ratchet_diff,
+    unregistered_edge_types,
+    unregistered_emitted_values,
+    unregistered_evidence_types,
+    unregistered_symbol_kinds,
 )
 
 
@@ -795,6 +801,86 @@ def test_helper_nested_closure_registered_kind_is_clean(tmp_path: Path):
         tmp_path, descend_helpers=True, **_SYM,
     )
     assert result.strict_violations == ()
+
+
+# --- WI-zipis: ratchet gate (descend-aware enumerator + baseline diff) ---
+
+
+def test_find_emitted_literal_values_descend_covers_helper(tmp_path: Path):
+    """The value enumerator gains ``descend_helpers`` so a helper-routed
+    literal is enumerated (feeds the ratchet's live set)."""
+    _write(
+        tmp_path / "packages" / "demo" / "src" / "demo.py",
+        'def _make(name, kind):\n'
+        '    return Symbol(id="i", name=name, kind=kind)\n'
+        '_make("Svc", "wonkytype")\n',
+    )
+    ctors = frozenset({"Symbol", "Symbol.create"})
+    shallow = find_emitted_literal_values(
+        tmp_path, constructor_names=ctors, keyword_arg="kind",
+    )
+    assert "wonkytype" not in shallow
+    deep = find_emitted_literal_values(
+        tmp_path, constructor_names=ctors, keyword_arg="kind",
+        descend_helpers=True,
+    )
+    assert "wonkytype" in deep
+
+
+def test_unregistered_emitted_values_filters_registry(tmp_path: Path):
+    """Only values absent from the registry are returned (descend-aware)."""
+    _write(
+        tmp_path / "packages" / "demo" / "src" / "demo.py",
+        'def _make(name, kind):\n'
+        '    return Symbol(id="i", name=name, kind=kind)\n'
+        '_make("A", "class")\n'
+        '_make("B", "wonkytype")\n',
+    )
+    result = unregistered_emitted_values(
+        tmp_path, constructor_names=frozenset({"Symbol", "Symbol.create"}),
+        keyword_arg="kind", registry_names=frozenset({"class"}),
+    )
+    assert set(result) == {"wonkytype"}
+    assert "demo.py" in result["wonkytype"][0]
+
+
+def test_ratchet_diff_new_and_stale():
+    """New leaks = live not in baseline; stale = baseline not in live."""
+    new_leaks, stale = ratchet_diff({"a", "b", "c"}, {"b", "c", "d"})
+    assert new_leaks == ["a"]
+    assert stale == ["d"]
+
+
+def test_ratchet_diff_clean():
+    new_leaks, stale = ratchet_diff({"a", "b"}, {"a", "b"})
+    assert new_leaks == []
+    assert stale == []
+
+
+def test_live_tree_producer_axis_ratchet():
+    """THE producer-side closure gate for INV-numat: the live tree's
+    unregistered helper-descend emitted values, per axis, must exactly
+    equal the committed baseline. A NEW unregistered value fails
+    (regression); a baselined value since drained must be removed
+    (shrink-only). Replaces per-cohort violation-counting."""
+    baseline = json.loads(
+        (REPO_ROOT / ".ci" / "producer-axis-coherence-baseline.json").read_text()
+    )
+    for axis, finder in (
+        ("Symbol.kind", unregistered_symbol_kinds),
+        ("Edge.evidence_type", unregistered_evidence_types),
+        ("Edge.edge_type", unregistered_edge_types),
+    ):
+        live = set(finder(REPO_ROOT))
+        new_leaks, stale = ratchet_diff(live, set(baseline.get(axis, [])))
+        assert not new_leaks, (
+            f"{axis}: NEW unregistered producer value(s) {new_leaks} — "
+            f"register the value (ADR-0027) or fold the producer (WI-zipis)."
+        )
+        assert not stale, (
+            f"{axis}: baselined value(s) {stale} no longer emitted — remove "
+            f"from .ci/producer-axis-coherence-baseline.json (shrink-only)."
+        )
 
 
 def test_assignment_form_annassign_without_value_is_skipped(tmp_path: Path):

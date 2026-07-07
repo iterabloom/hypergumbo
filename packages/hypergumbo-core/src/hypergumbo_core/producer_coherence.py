@@ -925,11 +925,32 @@ def find_edge_type_producer_violations(
     )
 
 
+def _record_emitted(
+    category: str,
+    payload: str | frozenset[str] | None,
+    site: str,
+    emit_sites: dict[str, list[str]],
+) -> None:
+    """Append *site* to *emit_sites* for a classified literal value.
+
+    Shared by the direct and helper-descent enumeration loops.
+    """
+    if category == "literal":
+        assert isinstance(payload, str)
+        emit_sites.setdefault(payload, []).append(site)
+    elif category == "literals":
+        assert isinstance(payload, frozenset)
+        for v in payload:
+            emit_sites.setdefault(v, []).append(site)
+    # fstring (advisory fallback) + unresolvable: no literal value.
+
+
 def find_emitted_literal_values(
     repo_root: Path,
     *,
     constructor_names: frozenset[str],
     keyword_arg: str,
+    descend_helpers: bool = False,
     search_roots: Iterable[str] = DEFAULT_SEARCH_ROOTS,
     excluded_path_substrings: Iterable[str] = DEFAULT_EXCLUDED_PATH_SUBSTRINGS,
 ) -> dict[str, tuple[str, ...]]:
@@ -962,8 +983,10 @@ def find_emitted_literal_values(
       FormattedValue segments resolve via extension A's walker
       (WI-nubuv ext B; uses ``fstring_mode="expand"``). Unexpandable
       f-strings still don't contribute literal candidates.
-    - helper-call positional/kwarg (no — the walker only descends
-      *constructor_names*, not arbitrary helpers like ``add_symbol``).
+    - helper-call positional/kwarg (covered when ``descend_helpers=True`` —
+      module-level AND nested-closure emit helpers, positional + keyword,
+      via the WI-zipis fixpoint; off by default to preserve the enumerator's
+      original contract for existing callers).
     - dict-subscript-target (no — ext C scope; banning the variable
       form structurally is the corresponding gate, not enumeration).
 
@@ -983,27 +1006,29 @@ def find_emitted_literal_values(
             py_str = str(py_file)
             if any(sub in py_str for sub in excluded_tuple):
                 continue
-            for lineno, value_node, tree, func_scope in _iter_producer_call_sites(
+            try:
+                rel: Path | str = py_file.relative_to(repo_root)
+            except ValueError:  # pragma: no cover
+                rel = py_file
+            site_iters = [_iter_producer_call_sites(
                 py_file,
                 constructor_names=constructor_names,
                 keyword_arg=keyword_arg,
-            ):
-                try:
-                    rel = py_file.relative_to(repo_root)
-                except ValueError:  # pragma: no cover
-                    rel = py_file
-                category, payload = _classify_value(
-                    value_node, tree, func_scope, fstring_mode="expand",
-                )
-                if category == "literal":
-                    assert isinstance(payload, str)
-                    emit_sites.setdefault(payload, []).append(f"{rel}:{lineno}")
-                elif category == "literals":
-                    assert isinstance(payload, frozenset)
-                    for v in payload:
-                        emit_sites.setdefault(v, []).append(f"{rel}:{lineno}")
-                # fstring (advisory fallback) + unresolvable: do not
-                # contribute literal values.
+            )]
+            if descend_helpers:
+                site_iters.append(_iter_helper_producer_call_sites(
+                    py_file,
+                    constructor_names=constructor_names,
+                    keyword_arg=keyword_arg,
+                ))
+            for site_iter in site_iters:
+                for lineno, value_node, tree, func_scope in site_iter:
+                    category, payload = _classify_value(
+                        value_node, tree, func_scope, fstring_mode="expand",
+                    )
+                    _record_emitted(
+                        category, payload, f"{rel}:{lineno}", emit_sites,
+                    )
 
     return {k: tuple(v) for k, v in emit_sites.items()}
 
@@ -1032,4 +1057,102 @@ def find_emitted_edge_types(repo_root: Path) -> dict[str, tuple[str, ...]]:
         repo_root,
         constructor_names=frozenset({"Edge", "Edge.create"}),
         keyword_arg="edge_type",
+    )
+
+
+# --- WI-zipis: producer-side ratchet gate (INV-numat closure mechanism) ---
+#
+# The gate below is the trustworthy producer-side sweep the INV-numat
+# methodology ruling demands, REPLACING per-cohort validation_report
+# counting (which provably undercounts). It enumerates every unregistered
+# axis value emitted through the direct constructor, module-level helpers,
+# and nested-closure helpers (cross-module helper sinks are verified-absent
+# for these axes), then diffs the live set against a committed shrink-only
+# baseline: a NEW unregistered value fails (a regression), and a baselined
+# value that is no longer emitted must be removed (so the baseline can only
+# shrink as the backlog drains). Keyed by VALUE, not file:line, so the
+# baseline survives line drift and collapses a value emitted by multiple
+# producers (e.g. ``structure`` from both smithy and lean) to one entry.
+
+
+def unregistered_emitted_values(
+    repo_root: Path,
+    *,
+    constructor_names: frozenset[str],
+    keyword_arg: str,
+    registry_names: frozenset[str],
+    descend_helpers: bool = True,
+    search_roots: Iterable[str] = DEFAULT_SEARCH_ROOTS,
+    excluded_path_substrings: Iterable[str] = DEFAULT_EXCLUDED_PATH_SUBSTRINGS,
+) -> dict[str, tuple[str, ...]]:
+    """Return ``{value: (file:line, ...)}`` for emitted values NOT in the registry.
+
+    A descend-aware, registry-filtered view over
+    :func:`find_emitted_literal_values` — the live input to the ratchet.
+    Defaults to ``descend_helpers=True`` (the gate wants the full sweep).
+    """
+    emitted = find_emitted_literal_values(
+        repo_root,
+        constructor_names=constructor_names,
+        keyword_arg=keyword_arg,
+        descend_helpers=descend_helpers,
+        search_roots=search_roots,
+        excluded_path_substrings=excluded_path_substrings,
+    )
+    return {v: locs for v, locs in emitted.items() if v not in registry_names}
+
+
+def ratchet_diff(
+    live_values: set[str], baseline_values: set[str],
+) -> tuple[list[str], list[str]]:
+    """Diff a live unregistered-value set against a baseline.
+
+    Returns ``(new_leaks, stale_baseline)`` — both sorted. *new_leaks* are
+    live values absent from the baseline (a regression to block);
+    *stale_baseline* are baselined values no longer emitted (already
+    drained — must be removed so the ratchet only shrinks). The gate fails
+    if either is non-empty.
+    """
+    return sorted(live_values - baseline_values), sorted(baseline_values - live_values)
+
+
+def unregistered_symbol_kinds(
+    repo_root: Path, descend_helpers: bool = True,
+) -> dict[str, tuple[str, ...]]:
+    """Unregistered ``Symbol.kind`` values; see :func:`unregistered_emitted_values`."""
+    from hypergumbo_core.symbol_kinds import all_symbol_kind_names
+    return unregistered_emitted_values(
+        repo_root,
+        constructor_names=frozenset({"Symbol", "Symbol.create"}),
+        keyword_arg="kind",
+        registry_names=all_symbol_kind_names(),
+        descend_helpers=descend_helpers,
+    )
+
+
+def unregistered_evidence_types(
+    repo_root: Path, descend_helpers: bool = True,
+) -> dict[str, tuple[str, ...]]:
+    """Unregistered ``Edge.evidence_type`` values; see :func:`unregistered_emitted_values`."""
+    from hypergumbo_core.evidence_types import all_evidence_type_names
+    return unregistered_emitted_values(
+        repo_root,
+        constructor_names=frozenset({"Edge", "Edge.create"}),
+        keyword_arg="evidence_type",
+        registry_names=all_evidence_type_names(),
+        descend_helpers=descend_helpers,
+    )
+
+
+def unregistered_edge_types(
+    repo_root: Path, descend_helpers: bool = True,
+) -> dict[str, tuple[str, ...]]:
+    """Unregistered ``Edge.edge_type`` values; see :func:`unregistered_emitted_values`."""
+    from hypergumbo_core.edge_types import all_edge_type_names
+    return unregistered_emitted_values(
+        repo_root,
+        constructor_names=frozenset({"Edge", "Edge.create"}),
+        keyword_arg="edge_type",
+        registry_names=all_edge_type_names(),
+        descend_helpers=descend_helpers,
     )

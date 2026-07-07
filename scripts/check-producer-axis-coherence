@@ -28,6 +28,7 @@ Exit codes:
 
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 
@@ -40,9 +41,10 @@ sys.path.insert(0, str(REPO_ROOT / "packages" / "hypergumbo-core" / "src"))
 
 try:
     from hypergumbo_core.producer_coherence import (
-        find_edge_type_producer_violations,
-        find_evidence_type_producer_violations,
-        find_symbol_kind_producer_violations,
+        ratchet_diff,
+        unregistered_edge_types,
+        unregistered_evidence_types,
+        unregistered_symbol_kinds,
     )
 except ImportError as exc:  # pragma: no cover — defensive
     print(
@@ -52,46 +54,60 @@ except ImportError as exc:  # pragma: no cover — defensive
     sys.exit(2)
 
 
+_BASELINE_PATH = REPO_ROOT / ".ci" / "producer-axis-coherence-baseline.json"
+
 _AXES = (
-    ("Edge.evidence_type", find_evidence_type_producer_violations),
-    ("Symbol.kind", find_symbol_kind_producer_violations),
-    ("Edge.edge_type", find_edge_type_producer_violations),
+    ("Edge.evidence_type", unregistered_evidence_types),
+    ("Symbol.kind", unregistered_symbol_kinds),
+    ("Edge.edge_type", unregistered_edge_types),
 )
 
 
 def main() -> int:
-    any_strict = False
-    advisory_count = 0
+    """WI-zipis producer-side ratchet gate (INV-numat closure mechanism).
+
+    Fails on a NEW unregistered axis value emitted by ANY producer — direct
+    constructor, module-level helper, or nested-closure helper (positional
+    or keyword) — or on a baselined value no longer emitted (shrink-only).
+    This replaces the raw strict-0 gate AND per-cohort validation_report
+    counting (which provably undercounts, missing positional-helper and
+    nested-closure producers) as the producer-side closure check.
+    """
+    baseline = json.loads(_BASELINE_PATH.read_text(encoding="utf-8"))
+    failed = False
 
     for axis_name, finder in _AXES:
-        result = finder(REPO_ROOT)
-        if result.strict_violations:
-            any_strict = True
-            print(f"[{axis_name}] strict violations:")
-            for v in result.strict_violations:
-                print(f"  {v}")
-        for a in result.advisory_dynamic_emits:
-            advisory_count += 1
-        if result.advisory_dynamic_emits:
-            print(f"[{axis_name}] advisories ({len(result.advisory_dynamic_emits)} f-string emit(s); Phase-3 fold candidates):")
-            for a in result.advisory_dynamic_emits:
-                print(f"  {a}")
+        live = finder(REPO_ROOT)  # {value: (file:line, ...)}
+        new_leaks, stale = ratchet_diff(
+            set(live), set(baseline.get(axis_name, [])),
+        )
+        if new_leaks:
+            failed = True
+            print(f"[{axis_name}] NEW unregistered producer value(s):")
+            for v in new_leaks:
+                print(f"  {v!r}  emitted at: {', '.join(live[v])}")
+        if stale:
+            failed = True
+            print(
+                f"[{axis_name}] baselined value(s) no longer emitted "
+                f"(remove from {_BASELINE_PATH.name}, shrink-only): "
+                f"{', '.join(repr(s) for s in stale)}"
+            )
 
-    if any_strict:
+    if failed:
         print(
-            "\nProducer-side axis coherence check failed.\n"
-            "Either add the missing literal value(s) to the appropriate\n"
-            "canonical registry (per ADR-0023 / ADR-0027 / ADR-0028 axis\n"
-            "rules), or change the producer to emit a registered value.",
+            "\nProducer-side axis coherence ratchet failed.\n"
+            "NEW value: register it (ADR-0023 / ADR-0027 / ADR-0028) or fold\n"
+            "the producer to a registered value. STALE baseline entry: delete\n"
+            f"it from {_BASELINE_PATH.name} (the ratchet only shrinks).",
             file=sys.stderr,
         )
         return 1
-    if advisory_count > 0:
-        print(
-            f"\nL3 producer-coherence check OK "
-            f"(0 strict violations, {advisory_count} advisory f-string emit(s) "
-            f"surfaced as Phase-3 fold candidates)."
-        )
+    pending = sum(len(v) for v in baseline.values() if isinstance(v, list))
+    print(
+        f"L3 producer-coherence ratchet OK "
+        f"(0 new leaks; {pending} baselined value(s) pending drain)."
+    )
     return 0
 
 
