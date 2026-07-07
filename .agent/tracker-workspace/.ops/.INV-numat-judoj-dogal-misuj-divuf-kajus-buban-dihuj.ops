@@ -214,3 +214,17 @@
   clock: 25  # cfac
   nonce: cfac  # cfac
   message: "NO_MOVE via BROAD drain broad-20260706-153915. axis_conformance is NOT zero on the cohort: pretix 611, phoenix 515, openzeppelin 519, detekt 9. Distinct unregistered values: Edge.evidence_type=module_qualified_call (x512), pass-id view-template-linker on Edge/Symbol/AnalysisRun origin (x612), Symbol.language=asciidoc (x36)/gradle (x8), and Symbol.language set to a FILE PATH (phoenix priv/static JS, openzeppelin .sol import paths). The zero-axis-violation closure gate is not met; stays pending_validation, tag retained. Blocker sub-items filed: WI-gobip (view-template-linker unregistered pass-id + module_qualified_call evidence_type) and WI-muzuf (Symbol.language axis pollution)."  # cfac
+- op: discuss  # 23ef
+  at: '2026-07-06T22:39:53Z'  # 23ef
+  by: agent  # 23ef
+  actor: jgstern_agent  # 23ef
+  clock: 26  # 23ef
+  nonce: 23ef  # 23ef
+  message: "AXIS_CONFORMANCE RESIDUAL UPDATE (post WI-muzuf + WI-gobip, both merged to dev). The two drain-surfaced blockers are fixed and behaviorally validated; re-measuring the BROAD cohort (broad-20260706-153915) axis_conformance: pretix 611->0 (all 611 were the view-template-linker pass-id, WI-gobip), phoenix 515->0 (module_qualified_call evidence_type + view-template-linker, WI-gobip + a path-language via WI-muzuf), openzeppelin 519->36 (WI-muzuf cleared 484 path-languages), detekt 9->6 (WI-muzuf cleared index.js + 2 gradle boundary externals). ~1612 of the cohort's ~1654 axis_conformance violations eliminated. The ENTIRE remaining cohort residual (42: asciidoc x36 on openzeppelin + gradle x6 on detekt) is the file-type-label catalog gap tracked by WI-kunut (asciidoc IS a taxonomy LanguageSpec but unregistered in all_known_languages(); needs the catalog-registration decision). INV-numat stays pending_validation: its zero-axis-violation closure gate is now blocked only on WI-kunut for THIS cohort (a broader all-language/all-repo re-measure may surface other unregistered values). Blockers WI-muzuf + WI-gobip: done."  # 23ef
+- op: discuss  # 1d4a
+  at: '2026-07-06T23:34:43Z'  # 1d4a
+  by: agent  # 1d4a
+  actor: jgstern_agent  # 1d4a
+  clock: 27  # 1d4a
+  nonce: 1d4a  # 1d4a
+  message: "MILESTONE: the BROAD drain cohort (broad-20260706-153915) is now ZERO-axis-violation. All three drain-surfaced blocker classes are fixed + merged: WI-muzuf (Symbol.language=path on boundary externals -> registered-or-None), WI-gobip (elixir module_qualified_call evidence_type -> ast_call; view-template-linker emitted pass_id -> cataloged), WI-kunut (asciidoc/makefile taxonomy union + gradle/csproj producer mislabel -> java/csharp). Per-repo axis_conformance after all three: pretix 611->0, phoenix 515->0, openzeppelin 519->0, detekt 9->0; the other 7 cohort repos were already 0 and the fixes only ever remove/normalize values (never add), so the full 11-repo / 8-language cohort is now 0. INV-numat's closure gate ('a zero-axis-violation bakeoff cohort') is MET on this cohort. Kept pending_validation (conservative for a P1 umbrella): this is a curated 8-language cohort, not the full 86-language taxonomy, so a language not exercised here could still carry an unregistered value. RECOMMEND formal closure on a fresh diverse BROAD/DEEP bakeoff confirming axis_conformance=0."  # 1d4a

@@ -1,0 +1,21 @@
+- op: create  # a54d
+  at: '2026-07-07T00:11:25Z'  # a54d
+  by: agent  # a54d
+  actor: jgstern_agent  # a54d
+  clock: 1  # a54d
+  nonce: a54d  # a54d
+  data:  # a54d
+    kind: work_item  # a54d
+    title: "cpp emits raw node-type 'new_expression' as Edge.evidence_type; fold to registered 'ast_new'"  # a54d
+    status: todo_hard  # a54d
+    priority: 3  # a54d
+    parent: INV-numat-judoj-dogal-misuj-divuf-kajus-buban-dihuj  # a54d
+    tags:  # a54d
+    - vocab_axis  # a54d
+    - axis_conformance  # a54d
+    isbefore: []  # a54d
+    duplicate_of: []  # a54d
+    not_duplicate_of: []  # a54d
+    pr_ref:  # a54d
+    description: "Fresh BROAD cohort (broad-20260706-194844, binaryen) found 244 axis_conformance violations: cpp.py:1024 passes the tree-sitter node-type string 'new_expression' as the evidence_type of an 'instantiates' edge for C++ 'new X()'. Sibling analyzers emit the REGISTERED 'ast_new' for the identical construct (js_ts.py:5158, java.py:1942; ast_new at evidence_types.py:175). MECHANICAL FOLD: change the 4th positional arg at cpp.py:1024 'new_expression'->'ast_new'. Lightweight, no ADR scaffolding, no sign-off. Confidence unaffected (set explicitly). Sole producer."  # a54d
+    fields: {}  # a54d

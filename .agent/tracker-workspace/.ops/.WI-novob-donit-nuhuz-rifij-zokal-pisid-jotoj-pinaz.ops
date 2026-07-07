@@ -1,0 +1,21 @@
+- op: create  # 632e
+  at: '2026-07-07T00:11:28Z'  # 632e
+  by: agent  # 632e
+  actor: jgstern_agent  # 632e
+  clock: 1  # 632e
+  nonce: 632e  # 632e
+  data:  # 632e
+    kind: work_item  # 632e
+    title: "erb/haml/slim Rails view-template languages absent from taxonomy.LANGUAGES (language-axis leak)"  # 632e
+    status: needs_human_review  # 632e
+    priority: 3  # 632e
+    parent: INV-numat-judoj-dogal-misuj-divuf-kajus-buban-dihuj  # 632e
+    tags:  # 632e
+    - vocab_axis  # 632e
+    - axis_conformance  # 632e
+    isbefore: []  # 632e
+    duplicate_of: []  # 632e
+    not_duplicate_of: []  # 632e
+    pr_ref:  # 632e
+    description: "Fresh BROAD cohort (chatwoot) found 19 Symbol.language='erb' violations. _view_template_core.py:251 stamps language from view_template.py's _EXTENSION_LANGUAGE map ('.html.erb'->erb, also 'haml','slim'). erb/haml/slim are real Rails view-template languages (like markdown/asciidoc) but are neither registered analyzer languages nor taxonomy.LANGUAGES LanguageSpecs, so the WI-kunut taxonomy-union does not cover them. FIX: add LanguageSpec(name='erb'|'haml'|'slim', extensions=[...], roles=...) to taxonomy.py. NEEDS HUMAN CALL: the roles= choice (CONFIG like html vs DOCUMENTATION) has file-discovery/LOC side-effects; and confirm batching haml/slim. FOLD-to-ruby rejected (an .html.erb is an HTML template with embedded Ruby, not Ruby source)."  # 632e
+    fields: {}  # 632e

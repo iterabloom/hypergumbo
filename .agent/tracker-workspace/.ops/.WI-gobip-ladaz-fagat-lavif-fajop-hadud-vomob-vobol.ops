@@ -19,3 +19,18 @@
     pr_ref:  # 97c5
     description: "Surfaced by the BROAD validation drain (session broad-20260706-153915, cohort-002/pretix + cohort-003/phoenix). axis_conformance violations blocking INV-numat's zero-violation closure gate: (1) Edge.evidence_type='module_qualified_call' is not in the evidence-type catalog (124 known) — ~512 edges, dominant on phoenix (elixir); (2) pass-id 'view-template-linker' appears on Edge.origin (~318), Symbol.origin (~292) and AnalysisRun.pass_id (~2) but is not in the pass-id catalog (182 known). Both point at a Phoenix view-template linker that emits an unregistered evidence_type and whose pass_id is uncataloged. Fix: register the evidence_type value (or fold to a canonical one) and register the pass-id. Cohort axis_conformance totals: pretix 611 / phoenix 515 / openzeppelin 519 / detekt 9 (this + the language-pollution sibling)."  # 97c5
     fields: {}  # 97c5
+- op: update  # ad65
+  at: '2026-07-06T22:27:17Z'  # ad65
+  by: agent  # ad65
+  actor: jgstern_agent  # ad65
+  clock: 2  # ad65
+  nonce: ad65  # ad65
+  set:  # ad65
+    status: done  # ad65
+- op: discuss  # d704
+  at: '2026-07-06T22:27:19Z'  # d704
+  by: agent  # d704
+  actor: jgstern_agent  # d704
+  clock: 3  # d704
+  nonce: d704  # d704
+  message: "Fixed + merged to dev (fast-forward 83b23f8345, commit 394cbcd88d). Both axis_conformance leaks closed: (1) elixir _handle_dot_call's default evidence_type 'module_qualified_call' (unregistered, ~512 edges) now emits the registered generic 'ast_call' (0 consumers of the old value); (2) all_known_pass_ids() now unions each registered linker's EMITTED PASS_ID via pass_metadata._resolve_linker_pass_id, so the view_template family's divergent 'view-template-linker' (registration name view_template/_phoenix/... but shared _view_template_core.PASS_ID) is cataloged -- correct-by-construction for any future divergence, a no-op for non-divergent linkers (make_pass_id is identity). BEHAVIORAL EVIDENCE (full run on Phoenix repo, both violation classes present): axis_conformance 515 -> 0 (module_qualified_call x512 + view-template-linker eliminated). Core + common 100% coverage (updated test_elixir.py resolver-fallback assertion + new test_catalog.py emitted-pass-id test)."  # d704
