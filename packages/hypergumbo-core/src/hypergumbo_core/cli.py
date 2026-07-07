@@ -130,7 +130,7 @@ import hypergumbo_core.linkers.django_orm_dispatch as _django_orm_dispatch_linke
 import hypergumbo_core.linkers._third_party_bases as _third_party_bases_linker  # noqa: F401
 import hypergumbo_core.linkers.rust_trait_dispatch as _rust_trait_dispatch_linker  # noqa: F401
 from .entrypoints import EntrypointKind, detect_entrypoints
-from .routes import is_route, route_of
+from .routes import is_route, method_token, protocol_method_token, route_of
 from .ir import (
     AnalysisRun, PASS_VERSION,
     Symbol, Edge, ExternalRef, apply_external_id_remap, compute_config_fingerprint,
@@ -1946,7 +1946,7 @@ def _route_json_record(route: dict) -> dict:
     controller_action = None
     if meta.get("framework_role") == "route":
         route_path = meta.get("route_path")
-        method = meta.get("http_method")
+        method = meta.get("http_method") or protocol_method_token(meta.get("route_protocol"))
     if route_path is None:
         for concept in meta.get("concepts", []) or []:
             if isinstance(concept, dict) and concept.get("concept") == "route":
@@ -2039,7 +2039,7 @@ def cmd_routes(args: argparse.Namespace) -> int:
         # concept method would cause dedup collisions.
         if (node.get("meta") or {}).get("framework_role") == "route":
             route_path = meta.get("route_path")
-            method = meta.get("http_method")
+            method = meta.get("http_method") or protocol_method_token(meta.get("route_protocol"))
         if route_path is None:
             for concept in meta.get("concepts", []):
                 if isinstance(concept, dict) and concept.get("concept") == "route":
@@ -2111,7 +2111,7 @@ def cmd_routes(args: argparse.Namespace) -> int:
         # centrality, which previously leaked into the routes display).
         span = route.get("span", {}) or {}
         meta = route.get("meta", {}) or {}
-        method = (meta.get("http_method") or "") if meta.get("framework_role") == "route" else ""
+        method = (meta.get("http_method") or protocol_method_token(meta.get("route_protocol")) or "") if meta.get("framework_role") == "route" else ""
         route_path = meta.get("route_path") or ""
         if not method:
             for concept in meta.get("concepts", []) or []:
@@ -2140,7 +2140,7 @@ def cmd_routes(args: argparse.Namespace) -> int:
             controller_action = None
             if (route.get("meta") or {}).get("framework_role") == "route":
                 route_path = meta.get("route_path")
-                method = meta.get("http_method")
+                method = meta.get("http_method") or protocol_method_token(meta.get("route_protocol"))
             if route_path is None:
                 concepts = meta.get("concepts", [])
                 for concept in concepts:
@@ -8135,7 +8135,7 @@ def _extract_route_info(symbol: Symbol) -> dict | None:
     info = route_of(symbol)
     if info is None:
         return None
-    method = "WS" if info["protocol"] == "websocket" else info["method"]
+    method = method_token(info)
     path = info["path"]
     if method and path:
         return {"method": str(method), "path": str(path)}

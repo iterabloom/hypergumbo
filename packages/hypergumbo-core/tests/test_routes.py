@@ -121,3 +121,68 @@ def test_non_dict_concept_entry_skipped():
     assert route_of(_sym({"concepts": ["route", {"concept": "route", "path": "/y", "method": "GET"}]})) == {
         "path": "/y", "method": "GET", "framework": None, "protocol": "http",
     }
+
+
+# --- INV-tibap: LIVE/RPC transport folded out of http_method into protocol ---
+
+def test_marker_live_becomes_liveview_protocol():
+    r = route_of(_sym({"framework_role": "route", "route_path": "/dash", "http_method": "LIVE"}))
+    assert r == {"path": "/dash", "method": None, "framework": None, "protocol": "liveview"}
+
+
+def test_marker_rpc_becomes_grpc_protocol():
+    r = route_of(_sym({"framework_role": "route", "route_path": "/svc.M", "http_method": "RPC"}))
+    assert r == {"path": "/svc.M", "method": None, "framework": None, "protocol": "grpc"}
+
+
+def test_concept_live_becomes_liveview():
+    # Phoenix phoenix.yaml:45 surfaces LIVE via concept.method.
+    r = route_of(_sym({"concepts": [{"concept": "route", "path": "/live", "method": "LIVE", "framework": "phoenix"}]}))
+    assert r == {"path": "/live", "method": None, "framework": "phoenix", "protocol": "liveview"}
+
+
+def test_method_token_reconstructs_transport():
+    from hypergumbo_core.routes import method_token
+    assert method_token({"protocol": "websocket", "method": None}) == "WS"
+    assert method_token({"protocol": "liveview", "method": None}) == "LIVE"
+    assert method_token({"protocol": "grpc", "method": None}) == "RPC"
+    assert method_token({"protocol": "http", "method": "GET"}) == "GET"
+    assert method_token({"protocol": "http", "method": None}) is None
+
+
+def test_transport_meta():
+    from hypergumbo_core.routes import transport_meta
+    assert transport_meta("WS") == {"http_method": None, "route_protocol": "websocket"}
+    assert transport_meta("LIVE") == {"http_method": None, "route_protocol": "liveview"}
+    assert transport_meta("RPC") == {"http_method": None, "route_protocol": "grpc"}
+    assert transport_meta("GET") == {"http_method": "GET"}
+    assert transport_meta(None) == {"http_method": None}
+
+
+def test_protocol_method_token():
+    from hypergumbo_core.routes import protocol_method_token
+    assert protocol_method_token("websocket") == "WS"
+    assert protocol_method_token("liveview") == "LIVE"
+    assert protocol_method_token("grpc") == "RPC"
+    assert protocol_method_token("http") is None
+    assert protocol_method_token(None) is None
+
+
+def test_transport_never_leaks_into_http_method():
+    """INV-tibap value-set invariant: the chokepoint (transport_meta) never leaves a
+    transport sentinel (WS/LIVE/RPC) in http_method, and route_of never surfaces one
+    as the method. Scoped to hypergumbo's own producer chokepoint — NOT a whole-corpus
+    assertion (a third-party repo may legitimately carry a developer-written
+    ``method: 'ws'`` string; per the census that is a real, weird HTTP verb, not a
+    transport marker)."""
+    from hypergumbo_core.routes import _TRANSPORT_SENTINELS, transport_meta
+    for sentinel, expected_protocol in _TRANSPORT_SENTINELS.items():
+        frag = transport_meta(sentinel)
+        assert frag["http_method"] is None
+        assert frag["route_protocol"] == expected_protocol
+        info = route_of(_sym({"framework_role": "route", "route_path": "/x", "http_method": sentinel}))
+        assert info["method"] is None
+        assert info["protocol"] == expected_protocol
+    # A real HTTP verb is never split out.
+    keep = route_of(_sym({"framework_role": "route", "route_path": "/x", "http_method": "GET"}))
+    assert keep["method"] == "GET" and keep["protocol"] == "http"

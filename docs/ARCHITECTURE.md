@@ -15,13 +15,13 @@ for focused LLM context.
 
 hypergumbo analyzed its own source code and found:
 - **292** Python modules (133 analyzers, 57 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 29, Infrastructure 7; 65 core, 4 CLI, 33 tracker)
-- **36478** symbols (functions, classes, methods)
-- **124089** edges by type:
-  - calls: 64482
-  - contains: 33654
-  - imports: 11064
+- **36490** symbols (functions, classes, methods)
+- **124150** edges by type:
+  - calls: 64511
+  - contains: 33666
+  - imports: 11078
   - instantiates: 8345
-  - references: 4133
+  - references: 4139
   - module_attr_ref: 1155
   - other: 1256
 
@@ -85,7 +85,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 36478 Symbols + 124089 Edges + UsageContexts           │
+│  Output: 36490 Symbols + 124150 Edges + UsageContexts           │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -282,7 +282,7 @@ These symbols have the highest bidirectional centrality
 | `Edge` | class | 1239.6 | ir.py |
 | `append` | external_symbol | 1225.0 | <external> |
 | `TreeSitterAnalyzer` | class | 1074.7 | base.py |
-| `get` | external_symbol | 1068.0 | <external> |
+| `get` | external_symbol | 1071.0 | <external> |
 
 ## Pattern System
 
@@ -835,7 +835,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: bc66c14013d2
+  commit: 1d8eb9f9643c
   hypergumbo: 6.1.0
   python: 3.12.3
 -->

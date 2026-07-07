@@ -1791,6 +1791,7 @@ def materialize_route_symbols(
     """
     from .analyze.base import make_route_stable_id, make_symbol_id
     from .ir import Span, Symbol as SymbolCls, make_pass_id
+    from .routes import transport_meta
 
     pass_id = make_pass_id("route-materializer")
     new_route_symbols: list[SymbolCls] = []
@@ -1919,7 +1920,7 @@ def materialize_route_symbols(
                     stable_id=stable_id,
                     meta={
                         "route_path": route_path_normalized,
-                        "http_method": method,
+                        **transport_meta(method),
                         "handler_ref": sym.name,
                         "materialized_from": sym.id,
                         "framework_role": "route",

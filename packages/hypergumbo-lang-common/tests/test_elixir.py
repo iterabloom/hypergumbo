@@ -1224,7 +1224,9 @@ end
         )
         assert settings_route is not None
         assert settings_route.name == "LIVE /settings"
-        assert settings_route.meta["http_method"] == "LIVE"
+        # INV-tibap: LiveView transport lives in route_protocol, not http_method.
+        assert settings_route.meta["http_method"] is None
+        assert settings_route.meta["route_protocol"] == "liveview"
         assert settings_route.meta["route_path"] == "/settings"
         assert settings_route.meta["controller"] == "SettingsLive"
         # Default action is "mount" for LiveView routes without explicit action
@@ -1272,8 +1274,9 @@ end
         route_symbols = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
         assert len(route_symbols) == 3
 
-        methods = {s.meta["http_method"] for s in route_symbols}
-        assert methods == {"GET", "LIVE", "POST"}
+        # INV-tibap: LiveView transport is in route_protocol ('liveview'), not http_method.
+        methods = {s.meta.get("http_method") or s.meta.get("route_protocol") for s in route_symbols}
+        assert methods == {"GET", "liveview", "POST"}
 
 
 class TestElixirBehaviourCallbacks:

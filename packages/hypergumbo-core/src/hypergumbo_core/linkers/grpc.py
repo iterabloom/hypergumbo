@@ -65,6 +65,7 @@ from typing import Iterator
 
 from ..discovery import find_files, find_non_test_files
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
+from ..routes import transport_meta
 from ._transitive_bases import (
     build_inheritance_index,
     collect_transitive_base_names,
@@ -953,7 +954,7 @@ def link_grpc(
             protocol_origin="grpc",
             meta={
                 "route_path": route_path,
-                "http_method": "RPC",
+                **transport_meta("RPC"),
                 "rpc_service": rpc.service_name,
                 "rpc_method": rpc.rpc_name,
                 "framework_role": "route",

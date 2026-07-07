@@ -92,6 +92,7 @@ from typing import TYPE_CHECKING, Iterator
 from hypergumbo_core.dataflow import annotate_dataflow_ast, get_dataflow_config
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, ExternalRef, PASS_VERSION, Span, Symbol, UsageContext, make_pass_id
+from hypergumbo_core.routes import transport_meta
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     assemble_stable_id,
@@ -2827,7 +2828,7 @@ def _extract_file_analysis(
                 stable_id=make_route_stable_id(method, route_path),
                 meta={
                     "route_path": route_path,
-                    "http_method": method,
+                    **transport_meta(method),
                     "view_name": view_name,
                     "handler_ref": ctx.symbol_ref,
                     "framework": "starlette",

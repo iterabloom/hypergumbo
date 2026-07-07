@@ -604,7 +604,9 @@ def _extract_handler_ref(route: Symbol) -> dict[str, str] | None:
             "controller": meta["controller"],
             "action": meta["action"],
         }
-        if meta.get("http_method") == "LIVE":
+        # INV-tibap: LiveView transport now lives in route_protocol
+        # ('liveview'), not the http_method verb field.
+        if meta.get("route_protocol") == "liveview":
             ref["live"] = "true"
         return ref
 

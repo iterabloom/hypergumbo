@@ -224,15 +224,17 @@ def test_starlette_routes_appear_as_route_kind_nodes(tmp_path: Path) -> None:
     data = json.loads(out_path.read_text())
 
     routes = [n for n in data["nodes"] if (n.get("meta") or {}).get("framework_role") == "route"]
+    # INV-tibap: the WS transport is in route_protocol, not http_method.
     paths_methods = sorted(
-        (n["meta"]["route_path"], n["meta"]["http_method"]) for n in routes
+        (n["meta"]["route_path"], n["meta"].get("http_method") or n["meta"].get("route_protocol"))
+        for n in routes
     )
     # /items has two methods → two route symbols
     assert paths_methods == [
         ("/health", "GET"),
         ("/items", "GET"),
         ("/items", "POST"),
-        ("/ws", "WS"),
+        ("/ws", "websocket"),
     ]
     # Framework metadata propagated
     for r in routes:
@@ -318,10 +320,11 @@ def test_starlette_websocket_route_is_websocket_handler_entrypoint(tmp_path: Pat
         e["kind"] == "http_route" and "WS" in e["label"] for e in data["entrypoints"]
     )
 
-    # RETAIN: the minted route node still carries the synthetic WS method.
+    # INV-tibap: the minted route node carries the WS transport in
+    # route_protocol (split out of the http_method verb field).
     ws_route_nodes = [
         n for n in data["nodes"]
         if (n.get("meta") or {}).get("route_path") == "/ws"
-        and (n.get("meta") or {}).get("http_method") == "WS"
+        and (n.get("meta") or {}).get("route_protocol") == "websocket"
     ]
     assert ws_route_nodes

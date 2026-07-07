@@ -53,7 +53,7 @@ from typing import Any, Iterator
 
 from ..discovery import find_non_test_files
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
-from ..routes import is_route, route_of
+from ..routes import is_route, method_token, route_of
 from ._text_filters import language_from_path
 from .registry import (
     LinkerActivation,
@@ -265,7 +265,7 @@ def _get_route_info_from_concept(symbol: Symbol) -> tuple[str | None, str | None
     info = route_of(symbol)
     if info is None:
         return None, None
-    method = "WS" if info["protocol"] == "websocket" else info["method"]
+    method = method_token(info)
     return info["path"], method
 
 

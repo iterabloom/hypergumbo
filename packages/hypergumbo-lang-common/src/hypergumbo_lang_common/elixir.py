@@ -40,6 +40,7 @@ from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import (
     Edge, ExternalRef, Span, Symbol, UsageContext, make_pass_id,
 )
+from hypergumbo_core.routes import transport_meta
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
@@ -593,7 +594,7 @@ def _extract_phoenix_routes(
                 path=str(file_path),
                 span=span,
                 meta={
-                    "http_method": http_method,
+                    **transport_meta(http_method),
                     "route_path": normalized_path,
                     "framework_role": "route",
                 },

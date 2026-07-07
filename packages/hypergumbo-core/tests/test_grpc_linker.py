@@ -1009,7 +1009,8 @@ class TestGrpcProtoRouteSymbols:
         route = route_symbols[0]
         assert route.meta is not None
         assert route.meta["route_path"] == "/shop.v1.OrderService/PlaceOrder"
-        assert route.meta["http_method"] == "RPC"
+        assert route.meta["http_method"] is None
+        assert route.meta["route_protocol"] == "grpc"
         assert route.meta["rpc_service"] == "OrderService"
 
     def test_proto_rpc_route_without_package(self, tmp_path: Path) -> None:

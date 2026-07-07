@@ -248,7 +248,7 @@ class TestRouteHandlerLinker:
             path="/lib/app_web/router.ex",
             span=Span(start_line=20, end_line=20, start_col=0, end_col=50),
             meta={
-                "http_method": "LIVE",
+                "route_protocol": "liveview",
                 "route_path": "/dashboard",
                 "controller": "DashboardLive",
                 "action": "mount",
@@ -292,7 +292,7 @@ class TestRouteHandlerLinker:
             path="/lib/app_web/router.ex",
             span=Span(start_line=5, end_line=5, start_col=0, end_col=40),
             meta={
-                "http_method": "LIVE",
+                "route_protocol": "liveview",
                 "route_path": "/",
                 "controller": "HomeLive",
                 "action": "page",
@@ -331,7 +331,7 @@ class TestRouteHandlerLinker:
             path="/lib/router.ex",
             span=Span(start_line=5, end_line=5, start_col=0, end_col=40),
             meta={
-                "http_method": "LIVE",
+                "route_protocol": "liveview",
                 "route_path": "/admin",
                 "controller": "AdminLive",
                 "action": "index",
@@ -367,7 +367,7 @@ class TestRouteHandlerLinker:
             path="/lib/app_web/router.ex",
             span=Span(start_line=5, end_line=5, start_col=0, end_col=40),
             meta={
-                "http_method": "LIVE",
+                "route_protocol": "liveview",
                 "route_path": "/dash",
                 "controller": "DashLive",
                 "action": "mount",

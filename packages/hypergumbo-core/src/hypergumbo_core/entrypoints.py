@@ -69,6 +69,7 @@ from typing import List
 import re
 
 from .ir import Symbol, Edge
+from .routes import method_token, route_of
 from .paths import is_infrastructure_path, is_test_file, is_utility_file
 
 
@@ -506,8 +507,10 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
                 # label, and the label-dedup in detect_entrypoints collapsed
                 # all of them to one entrypoint (e.g., chatwoot: 623 routes
                 # -> 1 HTTP_ROUTE entrypoint).
-                method = concept.get("method", "") or sym.meta.get("http_method", "")
-                path = concept.get("path", "") or sym.meta.get("route_path", "")
+                info = route_of(sym)
+                protocol = info["protocol"]
+                method = method_token(info) or ""
+                path = info["path"] or ""
                 # Suppress false-positive route classification on frontend
                 # UI code (WI-ronik).  React/Vue/Angular component event
                 # handlers syntactically resemble Express route handlers
@@ -515,7 +518,7 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
                 confidence = 0.95
                 if _is_frontend_file(sym):
                     confidence = 0.05  # Below MIN_ENTRYPOINT_CONFIDENCE
-                if method == "WS":
+                if protocol == "websocket":
                     if EntrypointKind.WEBSOCKET_HANDLER in added_kinds:
                         continue
                     entrypoints.append(Entrypoint.create(
@@ -1257,18 +1260,19 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
             continue
         if sym.id in route_ep_ids:
             continue
-        meta = sym.meta or {}
-        method = meta.get("http_method", "")
-        path = meta.get("route_path", "")
-        # WI-kuvig: a route whose method is the synthetic "WS" marker is a
-        # WebSocket handler, not an HTTP route. meta.http_method="WS" stays on
-        # the symbol (RETAIN); only the entrypoint kind reflects the protocol.
-        if method == "WS":
+        info = route_of(sym)
+        protocol = info["protocol"]
+        method = method_token(info) or ""
+        path = info["path"] or ""
+        # WI-kuvig: a route whose transport is WebSocket is a WebSocket handler,
+        # not an HTTP route (INV-tibap: the transport now lives in route_protocol,
+        # normalized by route_of; only the entrypoint kind reflects it).
+        if protocol == "websocket":
             entrypoints.append(Entrypoint.create(
                 symbol_id=sym.id,
                 kind=EntrypointKind.WEBSOCKET_HANDLER,
                 confidence=0.90,  # Slightly lower than concept-enriched (0.95)
-                label=_ws_route_label(path, meta.get("framework", "")),
+                label=_ws_route_label(path, info["framework"] or ""),
                 source="concept_detector",
                 evidence_type="framework_pattern",
             ))
