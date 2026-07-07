@@ -14,12 +14,12 @@ for focused LLM context.
 ## Self-Analysis Summary (auto)
 
 hypergumbo analyzed its own source code and found:
-- **291** Python modules (133 analyzers, 57 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 29, Infrastructure 7; 64 core, 4 CLI, 33 tracker)
-- **36458** symbols (functions, classes, methods)
-- **124021** edges by type:
-  - calls: 64447
-  - contains: 33636
-  - imports: 11053
+- **292** Python modules (133 analyzers, 57 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 29, Infrastructure 7; 65 core, 4 CLI, 33 tracker)
+- **36474** symbols (functions, classes, methods)
+- **124075** edges by type:
+  - calls: 64476
+  - contains: 33650
+  - imports: 11064
   - instantiates: 8341
   - references: 4133
   - module_attr_ref: 1155
@@ -85,7 +85,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 36458 Symbols + 124021 Edges + UsageContexts           │
+│  Output: 36474 Symbols + 124075 Edges + UsageContexts           │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -268,7 +268,7 @@ These symbols have the highest bidirectional centrality
 
 | Symbol | Kind | Score | Location |
 |--------|------|-------|----------|
-| `Symbol` | class | 9212.9 | ir.py |
+| `Symbol` | class | 9217.5 | ir.py |
 | `Span` | class | 6204.1 | ir.py |
 | `run_behavior_map` | function | 3497.0 | cli.py |
 | `write_text` | external_symbol | 3260.0 | <external> |
@@ -564,6 +564,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 - **`hypergumbo_core.qualified_name_axis`**: Per-language separator policy for ``Symbol.qualified_name`` (ADR-00...
 - **`hypergumbo_core.ranking`**: Symbol and file ranking utilities for hypergumbo output.
 - **`hypergumbo_core.repo_fingerprint`**: Repository fingerprint: spec-defined hash of analyzed code state.
+- **`hypergumbo_core.routes`**: Canonical route accessor — one place to answer "is this symbol a ro...
 - **`hypergumbo_core.runtime_coherence`**: Runtime corpus-based coherence check for the ADR-0023 edge-type axis.
 - **`hypergumbo_core.rust_analyzer_install`**: Installer + availability helpers for the ``rust-analyzer`` binary (...
 - **`hypergumbo_core.safety_zones`**: Hypergumbo's internal write wrappers — declare each write's safety ...
@@ -834,7 +835,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: 5c37ca91189b
+  commit: 892043a81627
   hypergumbo: 6.1.0
   python: 3.12.3
 -->

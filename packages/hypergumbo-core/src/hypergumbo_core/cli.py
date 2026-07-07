@@ -130,6 +130,7 @@ import hypergumbo_core.linkers.django_orm_dispatch as _django_orm_dispatch_linke
 import hypergumbo_core.linkers._third_party_bases as _third_party_bases_linker  # noqa: F401
 import hypergumbo_core.linkers.rust_trait_dispatch as _rust_trait_dispatch_linker  # noqa: F401
 from .entrypoints import EntrypointKind, detect_entrypoints
+from .routes import is_route, route_of
 from .ir import (
     AnalysisRun, PASS_VERSION,
     Symbol, Edge, ExternalRef, apply_external_id_remap, compute_config_fingerprint,
@@ -8097,18 +8098,12 @@ _HANDLER_SLICE_HUB_THRESHOLD = 100
 def _is_route_symbol(symbol: Symbol) -> bool:
     """Return True if the symbol represents a route/handler.
 
-    Uses the same detector as cmd_routes: symbols with kind='route' (produced
-    by analyzers that materialize routes directly, e.g. Go) OR symbols whose
-    meta.concepts list contains a concept='route' entry (produced by
-    framework-YAML concept enrichment, e.g. FastAPI @app.get).
+    Delegates to the canonical accessor :func:`hypergumbo_core.routes.is_route`
+    (WI-tosul / target-D): a route is either the ADR-0027 marker
+    (``meta.framework_role == 'route'``, e.g. Go) or a ``concept == 'route'``
+    entry (framework-YAML enrichment, e.g. FastAPI ``@app.get``).
     """
-    meta = symbol.meta or {}
-    if meta.get("framework_role") == "route":
-        return True
-    for concept in meta.get("concepts", []) or []:
-        if isinstance(concept, dict) and concept.get("concept") == "route":
-            return True
-    return False
+    return is_route(symbol)
 
 
 def _is_route_marker(symbol: Symbol) -> bool:
@@ -8128,24 +8123,22 @@ def _is_route_marker(symbol: Symbol) -> bool:
 def _extract_route_info(symbol: Symbol) -> dict | None:
     """Pull (method, path) out of a route symbol's metadata.
 
-    Returns None when both lookup sites fail to yield a complete pair —
+    Returns None unless a complete ``(method, path)`` pair is available —
     downstream code uses the return value to decide whether to emit a
-    route-qualified filename or a handler-name fallback. kind='route'
-    symbols prefer their authoritative meta.http_method/route_path; other
-    route symbols fall back to the first matching concept entry.
+    route-qualified filename or a handler-name fallback. Delegates to the
+    canonical accessor :func:`hypergumbo_core.routes.route_of` (marker-first,
+    matching this function's historical framework_role-then-concept
+    precedence). The accessor normalizes the ``'WS'`` sentinel into
+    ``protocol='websocket'``; this wrapper reconstructs the raw ``'WS'``
+    method to preserve its established ``{method, path}`` contract.
     """
-    meta = symbol.meta or {}
-    if meta.get("framework_role") == "route":
-        method = meta.get("http_method")
-        path = meta.get("route_path")
-        if method and path:
-            return {"method": str(method), "path": str(path)}
-    for concept in meta.get("concepts", []) or []:
-        if isinstance(concept, dict) and concept.get("concept") == "route":
-            method = concept.get("method")
-            path = concept.get("path")
-            if method and path:
-                return {"method": str(method), "path": str(path)}
+    info = route_of(symbol)
+    if info is None:
+        return None
+    method = "WS" if info["protocol"] == "websocket" else info["method"]
+    path = info["path"]
+    if method and path:
+        return {"method": str(method), "path": str(path)}
     return None
 
 
