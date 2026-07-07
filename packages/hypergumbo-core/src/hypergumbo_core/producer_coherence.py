@@ -500,6 +500,262 @@ def _iter_producer_call_sites(
         yield call_node.lineno, kw.value, tree, func_scope
 
 
+# --- WI-zipis: transitive helper-sink descent + positional binding ---
+#
+# The direct path above only sees ``Symbol(kind="x")`` / ``Edge.create(
+# evidence_type="x")`` with the axis value as a KEYWORD literal. Producers
+# routinely wrap emission in a module-local helper and pass the axis value
+# POSITIONALLY (the proto ``rpc``/``service`` shape):
+#
+#     def _make_proto_symbol(..., name, kind, ...):   # kind is param #6
+#         return Symbol(id=..., name=name, kind=kind, ...)
+#     _make_proto_symbol(..., service_name, "service")
+#
+# Neither the keyword-only matcher (``kind`` here is a Name param, which
+# classifies as ``unresolvable`` -> silent) nor the constructor-only walker
+# (never descends into ``_make_proto_symbol``) ever sees ``"service"``, so
+# the axis reports a false clean bill. The functions below discover, by a
+# module-local fixpoint, every helper whose parameter flows into a known
+# sink, then bind the positional/keyword argument at each helper call site.
+
+
+def _positional_param_names(func: _FuncScope) -> list[str]:
+    """Return *func*'s positionally-bindable parameter names, in order.
+
+    ``posonlyargs`` then ``args`` — the slots a caller can fill by
+    position. Keyword-only params are excluded (they can never be bound
+    positionally, so they carry no positional index).
+    """
+    return [a.arg for a in func.args.posonlyargs] + [a.arg for a in func.args.args]
+
+
+def _arg_for_sink(
+    call: ast.Call, param_name: str, positional_index: int | None,
+) -> ast.expr | None:
+    """Return the argument expression *call* binds to a sink parameter.
+
+    Prefers the keyword form (``param_name=<expr>``); falls back to the
+    positional slot at *positional_index* when the callee's signature
+    gives one. A ``*args`` splat anywhere at or before the positional
+    slot makes index-based binding unsound, so that case returns
+    ``None`` (skip) rather than mis-binding a later argument. ``None`` is
+    also returned when neither form supplies the argument (default-valued
+    param omitted at the call site).
+    """
+    for kw in call.keywords:
+        if kw.arg == param_name:
+            return kw.value
+    if positional_index is not None:
+        if any(
+            isinstance(a, ast.Starred)
+            for a in call.args[: positional_index + 1]
+        ):
+            return None
+        if len(call.args) > positional_index:
+            return call.args[positional_index]
+    return None
+
+
+def _call_sink_param(
+    call: ast.Call,
+    constructor_names: frozenset[str],
+    sink_param: str,
+    helper_sinks: dict[str, tuple[str, int]],
+) -> tuple[str, int | None] | None:
+    """Return the ``(param_name, positional_index)`` *call* targets, or None.
+
+    A call is a sink if its callee is (a) a discovered helper sink — a
+    bare ``Name`` in *helper_sinks* — or (b) a matched constructor
+    (delegated to :func:`_matches_constructor`, which handles the bare
+    and dotted forms). Constructors bind their axis value by keyword, so
+    their positional index is ``None``; discovered helpers carry the
+    index of their sink parameter.
+    """
+    func = call.func
+    if isinstance(func, ast.Name):
+        hs = helper_sinks.get(func.id)
+        if hs is not None:
+            return hs
+    if _matches_constructor(call, constructor_names):
+        return (sink_param, None)
+    return None
+
+
+def _discover_helper_sinks(
+    tree: ast.Module,
+    constructor_names: frozenset[str],
+    sink_param: str,
+) -> dict[str, tuple[str, int]]:
+    """Fixpoint over module-level functions to find transitive sinks.
+
+    A module-level function ``F`` with parameter ``p`` is a *sink* for the
+    ``(constructor_names, sink_param)`` axis if, somewhere in ``F``'s body,
+    it passes ``p`` into a known sink's slot — a constructor's
+    ``sink_param`` keyword, or an already-discovered helper's sink
+    parameter (positionally or by keyword). Iterating to a fixpoint
+    captures multi-hop indirection (``_outer`` -> ``_inner`` ->
+    ``Symbol(kind=)``).
+
+    Returns ``{helper_name: (sink_param_name, positional_index)}``.
+    Constructors are excluded from the result — their call sites are
+    already covered by the direct path, so surfacing them here would
+    double-report.
+    """
+    funcs: dict[str, _FuncScope] = {}
+    for node in tree.body:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            funcs[node.name] = node
+
+    helper_sinks: dict[str, tuple[str, int]] = {}
+    changed = True
+    while changed:
+        changed = False
+        for fname, fdef in funcs.items():
+            if fname in helper_sinks:
+                continue
+            pnames = _positional_param_names(fdef)
+            for call in ast.walk(fdef):
+                if not isinstance(call, ast.Call):
+                    continue
+                target = _call_sink_param(
+                    call, constructor_names, sink_param, helper_sinks,
+                )
+                if target is None:
+                    continue
+                arg = _arg_for_sink(call, target[0], target[1])
+                if isinstance(arg, ast.Name) and arg.id in pnames:
+                    helper_sinks[fname] = (arg.id, pnames.index(arg.id))
+                    changed = True
+                    break
+    return helper_sinks
+
+
+def _walk_helper_calls(
+    node: ast.AST,
+    func_scope: _FuncScope | None,
+    *,
+    helper_sinks: dict[str, tuple[str, int]],
+    tree: ast.Module,
+) -> Iterator[tuple[int, ast.expr, ast.Module, _FuncScope | None]]:
+    """Yield ``(lineno, sink_arg, tree, enclosing_func)`` per helper call.
+
+    Mirrors :func:`_walk_calls_with_scope` but matches discovered helper
+    sink functions (bare ``Name`` calls) and extracts the argument bound
+    to each helper's sink parameter. Scope tracking lets
+    :func:`_classify_value` resolve a caller-local Name passed into the
+    helper.
+    """
+    if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
+        hs = helper_sinks.get(node.func.id)
+        if hs is not None:
+            arg = _arg_for_sink(node, hs[0], hs[1])
+            if arg is not None:
+                yield node.lineno, arg, tree, func_scope
+
+    new_scope: _FuncScope | None = (
+        node
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        else func_scope
+    )
+    for child in ast.iter_child_nodes(node):
+        yield from _walk_helper_calls(
+            child, new_scope, helper_sinks=helper_sinks, tree=tree,
+        )
+
+
+def _iter_helper_producer_call_sites(
+    path: Path,
+    *,
+    constructor_names: frozenset[str],
+    keyword_arg: str,
+) -> Iterator[tuple[int, ast.expr, ast.Module, _FuncScope | None]]:
+    """Yield helper-routed producer sites in *path* (WI-zipis descent).
+
+    Parses the module, discovers its transitive helper sinks for the
+    ``(constructor_names, keyword_arg)`` axis, and yields every call site
+    that routes a value into one of them. Files that fail to read or
+    parse are silently skipped, matching :func:`_iter_producer_call_sites`.
+    """
+    try:
+        source = path.read_text(encoding="utf-8")
+    except (UnicodeDecodeError, OSError):  # pragma: no cover
+        return
+    try:
+        tree = ast.parse(source, filename=str(path))
+    except SyntaxError:  # pragma: no cover
+        return
+    helper_sinks = _discover_helper_sinks(tree, constructor_names, keyword_arg)
+    if not helper_sinks:
+        return
+    yield from _walk_helper_calls(
+        tree, None, helper_sinks=helper_sinks, tree=tree,
+    )
+
+
+def _report_site(
+    rel: Path | str,
+    lineno: int,
+    value_node: ast.expr,
+    tree: ast.Module,
+    func_scope: _FuncScope | None,
+    *,
+    keyword_arg: str,
+    registry_names: frozenset[str],
+    fstring_mode: FStringMode,
+    variable_form_mode: VariableFormMode,
+    strict: list[str],
+    advisory: list[str],
+) -> None:
+    """Classify one producer site and append to *strict* / *advisory*.
+
+    Shared by the direct-constructor loop and the WI-zipis helper-descent
+    loop so both report identically.
+    """
+    category, payload = _classify_value(
+        value_node, tree, func_scope, fstring_mode=fstring_mode,
+    )
+    if category == "literal":
+        if payload not in registry_names:
+            strict.append(
+                f"{rel}:{lineno} ({keyword_arg}={payload!r}): "
+                f"not in canonical registry"
+            )
+    elif category == "literals":
+        assert isinstance(payload, frozenset)
+        bad = sorted(v for v in payload if v not in registry_names)
+        for v in bad:
+            strict.append(
+                f"{rel}:{lineno} ({keyword_arg}={v!r} via "
+                f"function-local assignment or f-string "
+                f"expansion): not in canonical registry"
+            )
+    elif category == "fstring":
+        advisory.append(
+            f"{rel}:{lineno} ({keyword_arg}=f-string"
+            f"{f' prefix={payload!r}' if payload else ''}): "
+            f"Phase-3 fold candidate"
+        )
+    elif category == "fstring_unexpandable":
+        strict.append(
+            f"{rel}:{lineno} ({keyword_arg}=f-string"
+            f"{f' prefix={payload!r}' if payload else ''}): "
+            f"unexpandable in fstring_mode='strict'"
+        )
+    elif category == "unresolvable":
+        if variable_form_mode == "strict":
+            strict.append(
+                f"{rel}:{lineno} ({keyword_arg}=<{payload}>): "
+                f"variable form banned in "
+                f"variable_form_mode='strict'"
+            )
+        elif variable_form_mode == "advisory":
+            advisory.append(
+                f"{rel}:{lineno} ({keyword_arg}=<{payload}>): "
+                f"variable-form producer (ext C advisory)"
+            )
+        # "silent" -> skip per docstring contract.
+
+
 def find_producer_coherence_violations(
     repo_root: Path,
     *,
@@ -510,6 +766,7 @@ def find_producer_coherence_violations(
     excluded_path_substrings: Iterable[str] = DEFAULT_EXCLUDED_PATH_SUBSTRINGS,
     fstring_mode: FStringMode = "advisory",
     variable_form_mode: VariableFormMode = "silent",
+    descend_helpers: bool = False,
 ) -> ProducerCoherenceResult:
     """Scan producer call sites; return strict and advisory entries.
 
@@ -545,68 +802,44 @@ def find_producer_coherence_violations(
             py_str = str(py_file)
             if any(sub in py_str for sub in excluded_tuple):
                 continue
+            try:
+                rel: Path | str = py_file.relative_to(repo_root)
+            except ValueError:  # pragma: no cover
+                rel = py_file
+
             for lineno, value_node, tree, func_scope in _iter_producer_call_sites(
                 py_file,
                 constructor_names=constructor_names,
                 keyword_arg=keyword_arg,
             ):
-                try:
-                    rel = py_file.relative_to(repo_root)
-                except ValueError:  # pragma: no cover
-                    rel = py_file
-                category, payload = _classify_value(
-                    value_node, tree, func_scope,
+                _report_site(
+                    rel, lineno, value_node, tree, func_scope,
+                    keyword_arg=keyword_arg,
+                    registry_names=registry_names,
                     fstring_mode=fstring_mode,
+                    variable_form_mode=variable_form_mode,
+                    strict=strict, advisory=advisory,
                 )
-                if category == "literal":
-                    if payload not in registry_names:
-                        strict.append(
-                            f"{rel}:{lineno} ({keyword_arg}={payload!r}): "
-                            f"not in canonical registry"
-                        )
-                elif category == "literals":
-                    # WI-nubuv ext A: multi-literal candidate set
-                    # (ternary, if/else chain). Flag every offending
-                    # literal so the operator sees which branch is
-                    # the unregistered one. WI-nubuv ext B: f-string
-                    # expansions route through the same handler.
-                    assert isinstance(payload, frozenset)
-                    bad = sorted(v for v in payload if v not in registry_names)
-                    for v in bad:
-                        strict.append(
-                            f"{rel}:{lineno} ({keyword_arg}={v!r} via "
-                            f"function-local assignment or f-string "
-                            f"expansion): not in canonical registry"
-                        )
-                elif category == "fstring":
-                    advisory.append(
-                        f"{rel}:{lineno} ({keyword_arg}=f-string"
-                        f"{f' prefix={payload!r}' if payload else ''}): "
-                        f"Phase-3 fold candidate"
+
+            # WI-zipis: transitive helper-sink descent (positional +
+            # keyword binding through module-local emission helpers). Opt-in
+            # so the established direct-path gate is unchanged by default.
+            if descend_helpers:
+                for lineno, value_node, tree, func_scope in (
+                    _iter_helper_producer_call_sites(
+                        py_file,
+                        constructor_names=constructor_names,
+                        keyword_arg=keyword_arg,
                     )
-                elif category == "fstring_unexpandable":
-                    # WI-nubuv ext B strict mode: f-string couldn't be
-                    # expanded statically and the axis opts into strict
-                    # gating. Report as a strict violation.
-                    strict.append(
-                        f"{rel}:{lineno} ({keyword_arg}=f-string"
-                        f"{f' prefix={payload!r}' if payload else ''}): "
-                        f"unexpandable in fstring_mode='strict'"
+                ):
+                    _report_site(
+                        rel, lineno, value_node, tree, func_scope,
+                        keyword_arg=keyword_arg,
+                        registry_names=registry_names,
+                        fstring_mode=fstring_mode,
+                        variable_form_mode=variable_form_mode,
+                        strict=strict, advisory=advisory,
                     )
-                elif category == "unresolvable":
-                    # WI-nubuv ext C: opt-in variable-form gate.
-                    if variable_form_mode == "strict":
-                        strict.append(
-                            f"{rel}:{lineno} ({keyword_arg}=<{payload}>): "
-                            f"variable form banned in "
-                            f"variable_form_mode='strict'"
-                        )
-                    elif variable_form_mode == "advisory":
-                        advisory.append(
-                            f"{rel}:{lineno} ({keyword_arg}=<{payload}>): "
-                            f"variable-form producer (ext C advisory)"
-                        )
-                    # "silent" → skip per docstring contract.
 
     return ProducerCoherenceResult(
         strict_violations=tuple(strict),

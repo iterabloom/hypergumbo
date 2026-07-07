@@ -528,6 +528,238 @@ def test_assignment_form_ternary_one_branch_unresolvable_is_silent(tmp_path: Pat
     assert result.advisory_dynamic_emits == ()
 
 
+# --- WI-zipis: transitive helper-sink + positional-arg descent ---
+#
+# Everything above only sees the DIRECT constructor call with the axis
+# KEYWORD present. A producer that routes the value through a module-local
+# helper and passes it POSITIONALLY is invisible — the proto rpc/service
+# shape:
+#
+#     def _make_proto_symbol(..., name, kind, ...):
+#         return Symbol(id=..., name=name, kind=kind, ...)
+#     _make_proto_symbol(..., service_name, "service")   # kind arg #6, positional
+#
+# The literal-kwarg matcher never descends into ``_make_proto_symbol``
+# and never binds the positional ``"service"``/``"rpc"`` to the ``kind``
+# param, so these two unregistered kinds report ``strict=0`` (the false
+# RESOLVED audit-0013 / INV-numat named). ``descend_helpers=True``
+# discovers helper functions whose parameter flows into a known sink
+# (fixpoint) and binds positional AND keyword arguments at their call
+# sites.
+
+_SYM = {
+    "constructor_names": frozenset({"Symbol", "Symbol.create"}),
+    "keyword_arg": "kind",
+    "registry_names": frozenset({"class", "function"}),
+}
+
+
+def test_helper_positional_literal_is_invisible_by_default(tmp_path: Path):
+    """The proto shape: the DEFAULT (non-transitive) linter is blind to a
+    literal routed positionally through a helper. This pins the false
+    RESOLVED that WI-zipis closes."""
+    _write(
+        tmp_path / "packages" / "demo" / "src" / "demo.py",
+        'def _make(name, kind):\n'
+        '    return Symbol(id="i", name=name, kind=kind)\n'
+        '_make("Svc", "service")\n',
+    )
+    result = find_producer_coherence_violations(tmp_path, **_SYM)
+    assert result.strict_violations == ()
+
+
+def test_helper_positional_literal_not_in_registry_is_strict(tmp_path: Path):
+    """With descent, the positional literal bound to the helper's sink
+    param surfaces as a strict violation (proto rpc/service shape)."""
+    _write(
+        tmp_path / "packages" / "demo" / "src" / "demo.py",
+        'def _make(name, kind):\n'
+        '    return Symbol(id="i", name=name, kind=kind)\n'
+        '_make("Svc", "service")\n',
+    )
+    result = find_producer_coherence_violations(
+        tmp_path, descend_helpers=True, **_SYM,
+    )
+    assert len(result.strict_violations) == 1
+    assert "service" in result.strict_violations[0]
+
+
+def test_helper_keyword_literal_not_in_registry_is_strict(tmp_path: Path):
+    """Descent also binds the KEYWORD form at the helper call site."""
+    _write(
+        tmp_path / "packages" / "demo" / "src" / "demo.py",
+        'def _make(name, kind):\n'
+        '    return Symbol(id="i", name=name, kind=kind)\n'
+        '_make("Svc", kind="service")\n',
+    )
+    result = find_producer_coherence_violations(
+        tmp_path, descend_helpers=True, **_SYM,
+    )
+    assert len(result.strict_violations) == 1
+    assert "service" in result.strict_violations[0]
+
+
+def test_helper_positional_literal_in_registry_is_clean(tmp_path: Path):
+    """A registered kind routed through the helper produces no violation."""
+    _write(
+        tmp_path / "packages" / "demo" / "src" / "demo.py",
+        'def _make(name, kind):\n'
+        '    return Symbol(id="i", name=name, kind=kind)\n'
+        '_make("Widget", "class")\n',
+    )
+    result = find_producer_coherence_violations(
+        tmp_path, descend_helpers=True, **_SYM,
+    )
+    assert result.strict_violations == ()
+
+
+def test_helper_param_not_flowing_to_sink_is_not_a_sink(tmp_path: Path):
+    """A helper param that never reaches the constructor's sink slot must
+    NOT be treated as a sink — no false positive on its call sites."""
+    _write(
+        tmp_path / "packages" / "demo" / "src" / "demo.py",
+        'def _make(bogus):\n'
+        '    return Symbol(id="i", name=bogus, kind="class")\n'
+        '_make("service")\n',
+    )
+    result = find_producer_coherence_violations(
+        tmp_path, descend_helpers=True, **_SYM,
+    )
+    assert result.strict_violations == ()
+
+
+def test_helper_multi_hop_fixpoint(tmp_path: Path):
+    """Two-hop indirection: _outer -> _inner -> Symbol(kind=). The fixpoint
+    must promote BOTH helpers to sinks and flag the outer call site."""
+    _write(
+        tmp_path / "packages" / "demo" / "src" / "demo.py",
+        'def _inner(k):\n'
+        '    return Symbol(id="i", name="n", kind=k)\n'
+        'def _outer(kk):\n'
+        '    return _inner(kk)\n'
+        '_outer("service")\n',
+    )
+    result = find_producer_coherence_violations(
+        tmp_path, descend_helpers=True, **_SYM,
+    )
+    assert len(result.strict_violations) == 1
+    assert "service" in result.strict_violations[0]
+
+
+def test_helper_call_with_function_local_name_resolves(tmp_path: Path):
+    """A helper called with a Name bound to a function-local literal
+    resolves via the caller's scope, same as the direct path."""
+    _write(
+        tmp_path / "packages" / "demo" / "src" / "demo.py",
+        'def _make(name, kind):\n'
+        '    return Symbol(id="i", name=name, kind=kind)\n'
+        'def caller():\n'
+        '    k = "service"\n'
+        '    return _make("Svc", k)\n',
+    )
+    result = find_producer_coherence_violations(
+        tmp_path, descend_helpers=True, **_SYM,
+    )
+    assert len(result.strict_violations) == 1
+    assert "service" in result.strict_violations[0]
+
+
+def test_helper_starred_positional_arg_does_not_crash(tmp_path: Path):
+    """A starred call arg (``*args``) makes positional index binding
+    ambiguous; the linter skips it rather than mis-binding."""
+    _write(
+        tmp_path / "packages" / "demo" / "src" / "demo.py",
+        'def _make(name, kind):\n'
+        '    return Symbol(id="i", name=name, kind=kind)\n'
+        'args = ("Svc", "service")\n'
+        '_make(*args)\n',
+    )
+    result = find_producer_coherence_violations(
+        tmp_path, descend_helpers=True, **_SYM,
+    )
+    assert result.strict_violations == ()
+
+
+def test_helper_call_missing_sink_arg_is_skipped(tmp_path: Path):
+    """A helper call that omits the sink arg entirely (relies on a
+    default) has nothing to bind."""
+    _write(
+        tmp_path / "packages" / "demo" / "src" / "demo.py",
+        'def _make(name, kind="class"):\n'
+        '    return Symbol(id="i", name=name, kind=kind)\n'
+        '_make("Widget")\n',
+    )
+    result = find_producer_coherence_violations(
+        tmp_path, descend_helpers=True, **_SYM,
+    )
+    assert result.strict_violations == ()
+
+
+def test_descend_helpers_preserves_direct_constructor_path(tmp_path: Path):
+    """With descent ON, the direct-constructor keyword path still works
+    (a direct unregistered literal is still flagged, exactly once)."""
+    _write(
+        tmp_path / "packages" / "demo" / "src" / "demo.py",
+        'Symbol(id="i", name="n", kind="brand_new_kind")\n',
+    )
+    result = find_producer_coherence_violations(
+        tmp_path, descend_helpers=True, **_SYM,
+    )
+    assert len(result.strict_violations) == 1
+    assert "brand_new_kind" in result.strict_violations[0]
+
+
+def test_helper_with_dotted_constructor(tmp_path: Path):
+    """A helper whose sink is the dotted ``Symbol.create`` form is
+    discovered (exercises the Attribute constructor-match path) and the
+    ``Symbol.create`` call site itself is not double-reported."""
+    _write(
+        tmp_path / "packages" / "demo" / "src" / "demo.py",
+        'def _make(name, kind):\n'
+        '    return Symbol.create(id="i", name=name, kind=kind)\n'
+        '_make("Svc", "service")\n',
+    )
+    result = find_producer_coherence_violations(
+        tmp_path, descend_helpers=True, **_SYM,
+    )
+    assert len(result.strict_violations) == 1
+    assert "service" in result.strict_violations[0]
+
+
+def test_helper_body_unrelated_call_ignored(tmp_path: Path):
+    """A non-sink call in a helper body (neither a constructor nor a
+    known helper) is skipped during discovery without derailing the
+    promotion of the real sink."""
+    _write(
+        tmp_path / "packages" / "demo" / "src" / "demo.py",
+        'def _make(name, kind):\n'
+        '    log("making")\n'
+        '    return Symbol(id="i", name=name, kind=kind)\n'
+        '_make("Svc", "service")\n',
+    )
+    result = find_producer_coherence_violations(
+        tmp_path, descend_helpers=True, **_SYM,
+    )
+    assert len(result.strict_violations) == 1
+    assert "service" in result.strict_violations[0]
+
+
+def test_helper_constructor_without_sink_kwarg_is_not_a_sink(tmp_path: Path):
+    """A helper whose only constructor call omits the sink keyword (and
+    supplies no positional index for it) is never promoted — the arg
+    binding returns None."""
+    _write(
+        tmp_path / "packages" / "demo" / "src" / "demo.py",
+        'def _make(bogus):\n'
+        '    return Symbol(id="i", name=bogus)\n'
+        '_make("service")\n',
+    )
+    result = find_producer_coherence_violations(
+        tmp_path, descend_helpers=True, **_SYM,
+    )
+    assert result.strict_violations == ()
+
+
 def test_assignment_form_annassign_without_value_is_skipped(tmp_path: Path):
     """``label: str`` is a type-annotation declaration with no RHS;
     it does not bind a value and must be skipped during the walk-back.
