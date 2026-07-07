@@ -390,6 +390,40 @@ _AUTOLOAD_BY_CONVENTION_FRAMEWORKS: frozenset[str] = frozenset({
 })
 
 
+# WI-tosul Phase 2: route frameworks whose BARE module name may promote on an
+# EXACT top-level import (not just the compound-submodule prefix arm that the
+# WI-pusad bare-name gate otherwise requires). These are the dead-code
+# route-monoculture root: a manifest-silent web app whose canonical usage is a
+# top-level exact import (`from flask import Flask`, `const app = express()`)
+# produced a bare EXACT import edge that the prefix gate rejected, so the
+# framework's YAML never loaded and its routes stayed dark.
+#
+# INCLUSION RULE: add ONLY a bare module name whose exact import RELIABLY means
+# "this repo is a backend web app defining routes with this framework" — a
+# dedicated web/route framework in a well-tested ecosystem. Do NOT add a
+# broadly-imported library, a dual-purpose token, a common word, a middleware
+# spec, or a frontend/meta-framework. Counter-examples that MUST stay gated:
+# `graphql` (type defs / codegen — WI-rofiz), `react`/`vue`/`solid` (frontend UI
+# — WI-palol), `plug` (Elixir middleware spec, app-wide), `aiohttp` (primarily
+# an HTTP *client*), `next`/`nex` (generic tokens). The `allowed_langs` gate in
+# `_has_prod_import_match` already blocks cross-ecosystem collisions, so the
+# residual FP risk of a member is within-language only.
+#
+# Seeded (WI-tosul Phase-2 scout, 2026-07-07) with the high-confidence dedicated
+# web frameworks the current gate starves; expand only in bakeoff-validated
+# batches (the NEEDS-BAKEOFF middle set — aiohttp/falcon/grape/vapor/etc. — must
+# be measured for FP volume first).
+_BARE_EXACT_PROMOTE_ROUTE_FRAMEWORKS: frozenset[str] = frozenset({
+    # Python
+    "flask", "fastapi", "sanic", "litestar", "quart", "starlette", "bottle",
+    "tornado", "pyramid", "django", "flask-appbuilder",
+    # JavaScript / TypeScript
+    "express", "koa", "fastify",
+    # Ruby
+    "sinatra", "padrino",
+})
+
+
 RUBY_FRAMEWORKS = {
     # Web frameworks
     "rails": ["rails"],
@@ -3273,7 +3307,10 @@ def refine_frameworks(
                 bare_patterns,
                 module_importers,
                 is_test_file,
-                require_prefix_arm=True,
+                # WI-tosul Phase 2: allowlisted route frameworks may promote on a
+                # bare EXACT import (the dead-code monoculture root); all others
+                # keep the WI-pusad compound-submodule prefix requirement.
+                require_prefix_arm=(fw not in _BARE_EXACT_PROMOTE_ROUTE_FRAMEWORKS),
                 module_languages=module_languages,
                 allowed_langs=fw_langs,
             ):

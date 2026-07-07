@@ -389,7 +389,10 @@ def test_wi_himas_requirements_under_venv_is_skipped(tmp_path: Path) -> None:
     vendor/ etc. are NOT part of the project manifest set. Shadowed deps in
     an installed virtualenv would otherwise create framework-detection FPs.
     """
-    (tmp_path / "manage.py").write_text("import django\n")
+    # App code imports a stdlib module, NOT django: WI-tosul Phase 2 promotes an
+    # allowlisted framework on a bare import, which would mask the manifest-skip
+    # this test verifies. Django can only enter via the (skipped) manifest here.
+    (tmp_path / "manage.py").write_text("import os\n")
     # Real project layout: no Django in any project-level manifest.
     venv_req = tmp_path / ".venv" / "site-packages" / "somepkg" / "requirements"
     venv_req.mkdir(parents=True)
@@ -409,7 +412,9 @@ def test_wi_himas_dash_r_outside_repo_does_not_escape(tmp_path: Path) -> None:
     Bounding the resolution at repo_root prevents directory traversal that
     would parse arbitrary host files.
     """
-    (tmp_path / "manage.py").write_text("import django\n")
+    # App code imports stdlib, NOT django (WI-tosul Phase 2 would import-promote
+    # an allowlisted framework and mask the dash-r escape this test verifies).
+    (tmp_path / "manage.py").write_text("import os\n")
     # -r ../outside.txt — would escape repo if followed.
     (tmp_path / "requirements.txt").write_text("-r ../outside.txt\n")
     # Simulate a sibling file that should NOT be read.
@@ -2898,6 +2903,60 @@ def test_refine_frameworks_no_imports_moves_to_dev() -> None:
     result = refine_frameworks(profile, edges, symbols)
     assert "transformers" not in result.frameworks
     assert "transformers" in result.dev_frameworks
+
+
+# --- WI-tosul Phase 2: bare-exact-import promotion for allowlisted route frameworks ---
+
+def test_refine_frameworks_bare_exact_import_promotes_allowlisted() -> None:
+    """A manifest-silent web app (`from flask import Flask` → bare EXACT import edge
+    ``python:flask``) now promotes an allowlisted route framework. Before Phase 2
+    the bare arm required a compound submodule (require_prefix_arm) and this stayed
+    dark — the dead-code route-monoculture root."""
+    from hypergumbo_core.profile import refine_frameworks
+
+    profile = _make_profile([])  # manifest-silent: nothing detected
+    edges = [_make_edge(
+        src="python:src/app.py:1-5:handler:function",
+        dst="python:flask:0-0:module:module",
+    )]
+    symbols = [_make_symbol("python:src/app.py:1-5:handler:function", "src/app.py")]
+
+    result = refine_frameworks(profile, edges, symbols)
+    assert "flask" in result.frameworks
+
+
+def test_refine_frameworks_bare_exact_import_non_allowlisted_stays_gated() -> None:
+    """A NON-allowlisted bare framework must NOT promote on a bare exact import —
+    the WI-rofiz FP guard (``import graphql`` for typedefs; ``import react`` for
+    build tooling) stays intact."""
+    from hypergumbo_core.profile import refine_frameworks
+
+    for fw in ("react", "graphql"):
+        profile = _make_profile([])
+        edges = [_make_edge(
+            src="javascript:src/app.js:1-5:h:function",
+            dst=f"javascript:{fw}:0-0:module:module",
+        )]
+        symbols = [_make_symbol("javascript:src/app.js:1-5:h:function", "src/app.js", language="javascript")]
+        result = refine_frameworks(profile, edges, symbols)
+        assert fw not in result.frameworks, f"{fw} must stay gated on a bare exact import"
+
+
+def test_bare_exact_promote_allowlist_membership() -> None:
+    """The allowlist covers the high-confidence dedicated web frameworks and excludes
+    every FP-prone bare name (WI-tosul Phase-2 scout tiers)."""
+    from hypergumbo_core.profile import (
+        LANGUAGE_FRAMEWORKS,
+        _BARE_EXACT_PROMOTE_ROUTE_FRAMEWORKS,
+    )
+
+    allowlist = _BARE_EXACT_PROMOTE_ROUTE_FRAMEWORKS
+    assert {"flask", "fastapi", "express", "django"} <= allowlist  # highest-confidence core
+    # FP-prone / dual-purpose / frontend / middleware names stay OUT.
+    assert not (allowlist & {"graphql", "plug", "solid", "react", "aiohttp", "nex", "next"})
+    # Every member is a real LANGUAGE_FRAMEWORKS detection key (else it is a no-op).
+    all_keys = {fw for d in LANGUAGE_FRAMEWORKS.values() for fw in d}
+    assert allowlist <= all_keys
 
 
 def test_refine_frameworks_explicit_mode_unchanged() -> None:

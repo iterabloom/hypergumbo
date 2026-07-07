@@ -1226,7 +1226,9 @@ def test_fastapi_get_decorator_metadata(tmp_path: Path) -> None:
     data = json.loads(out_path.read_text())
 
     # Find the route handler function
-    functions = [n for n in data["nodes"] if n["kind"] == "function"]
+    # WI-tosul Phase 2: fastapi now promotes on the bare import even without a
+    # manifest, so a route symbol is materialized alongside the handler — exclude it.
+    functions = [n for n in data["nodes"] if n["kind"] == "function" and (n.get("meta") or {}).get("framework_role") != "route"]
     assert len(functions) == 1
 
     func = functions[0]
@@ -1258,7 +1260,8 @@ def test_fastapi_post_decorator_metadata(tmp_path: Path) -> None:
 
     data = json.loads(out_path.read_text())
 
-    functions = [n for n in data["nodes"] if n["kind"] == "function"]
+    # WI-tosul Phase 2: fastapi promotes on the bare import (no manifest) -> exclude the materialized route.
+    functions = [n for n in data["nodes"] if n["kind"] == "function" and (n.get("meta") or {}).get("framework_role") != "route"]
     assert len(functions) == 1
 
     func = functions[0]
@@ -1286,7 +1289,8 @@ def test_fastapi_router_decorator_metadata(tmp_path: Path) -> None:
 
     data = json.loads(out_path.read_text())
 
-    functions = [n for n in data["nodes"] if n["kind"] == "function"]
+    # WI-tosul Phase 2: fastapi promotes on the bare import (no manifest) -> exclude the materialized route.
+    functions = [n for n in data["nodes"] if n["kind"] == "function" and (n.get("meta") or {}).get("framework_role") != "route"]
     assert len(functions) == 1
 
     func = functions[0]
@@ -1331,7 +1335,8 @@ def test_fastapi_all_http_method_decorators(tmp_path: Path) -> None:
 
     data = json.loads(out_path.read_text())
 
-    functions = [n for n in data["nodes"] if n["kind"] == "function"]
+    # WI-tosul Phase 2: fastapi promotes on the bare import (no manifest) -> exclude the 7 materialized routes.
+    functions = [n for n in data["nodes"] if n["kind"] == "function" and (n.get("meta") or {}).get("framework_role") != "route"]
     assert len(functions) == 7
 
     # Check each function has correct decorator metadata
@@ -1435,7 +1440,8 @@ def test_flask_route_decorator_metadata(tmp_path: Path) -> None:
 
     data = json.loads(out_path.read_text())
 
-    functions = [n for n in data["nodes"] if n["kind"] == "function"]
+    # WI-tosul Phase 2: flask promotes on the bare import (no manifest) -> exclude the materialized route.
+    functions = [n for n in data["nodes"] if n["kind"] == "function" and (n.get("meta") or {}).get("framework_role") != "route"]
     assert len(functions) == 1
 
     func = functions[0]
