@@ -705,3 +705,17 @@ class TestSyntheticPassIds:
         known = all_known_languages()
         assert "asciidoc" in known
         assert "makefile" in known
+
+    def test_known_languages_include_rails_view_templates(self) -> None:
+        """WI-novob: erb/haml/slim are Rails view-template languages that the
+        view-template linker stamps as ``Symbol.language`` (``.html.erb`` →
+        ``erb``), but they had no ``@register_analyzer`` and no LanguageSpec,
+        so every such file-anchor tripped axis_conformance (19 on chatwoot).
+        Registered as taxonomy LanguageSpecs (human ruling: roles=CONFIG, like
+        html), so the language-axis catalog now recognizes them."""
+        from hypergumbo_core.catalog import all_known_languages
+
+        known = all_known_languages()
+        assert "erb" in known
+        assert "haml" in known
+        assert "slim" in known

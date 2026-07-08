@@ -70,6 +70,20 @@ class TestLanguageSpec:
         assert "package.json" in spec.config_files
         assert "*_data.json" in spec.data_patterns
 
+    def test_rails_view_templates_registered_as_config(self) -> None:
+        """WI-novob: erb/haml/slim (Rails view templates) are registered as
+        CONFIG (human ruling: like html/makefile — structural markup with
+        embedded logic, not prose). CONFIG vs DOCUMENTATION give identical
+        LOC/Additional-Files behavior, so CONFIG is the correct semantic label.
+        Not ANALYZABLE (no analyzer), not folded to ruby (an .html.erb is an
+        HTML template with embedded Ruby, not Ruby source)."""
+        for name, ext in (("erb", "*.erb"), ("haml", "*.haml"), ("slim", "*.slim")):
+            assert name in LANGUAGES, f"{name} not registered in taxonomy.LANGUAGES"
+            spec = LANGUAGES[name]
+            assert spec.roles == FileRole.CONFIG, f"{name} role should be CONFIG"
+            assert ext in spec.extensions, f"{name} should match {ext}"
+            assert FileRole.ANALYZABLE not in spec.roles, f"{name} has no analyzer"
+
 
 class TestLanguagesRegistry:
     """Tests for the LANGUAGES registry."""

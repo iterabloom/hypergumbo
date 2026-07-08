@@ -487,6 +487,28 @@ LANGUAGES: dict[str, LanguageSpec] = {
         extensions=["*.html", "*.htm"],
         roles=FileRole.CONFIG,  # HTML is structural config, not really "code"
     ),
+    # WI-novob: Rails view templates (erb/haml/slim). CONFIG, like html — they
+    # are structural HTML markup with embedded logic, not prose (DOCUMENTATION)
+    # and not analyzable source (no dedicated analyzer). The view-template linker
+    # stamps Symbol.language from these extensions (.html.erb → erb); without a
+    # LanguageSpec they were absent from the WI-kunut language-axis union and
+    # tripped axis_conformance. Not folded to ruby: an .html.erb is an HTML
+    # template that embeds Ruby, not Ruby source.
+    "erb": LanguageSpec(
+        name="erb",
+        extensions=["*.erb"],
+        roles=FileRole.CONFIG,
+    ),
+    "haml": LanguageSpec(
+        name="haml",
+        extensions=["*.haml"],
+        roles=FileRole.CONFIG,
+    ),
+    "slim": LanguageSpec(
+        name="slim",
+        extensions=["*.slim"],
+        roles=FileRole.CONFIG,
+    ),
     "css": LanguageSpec(
         name="css",
         extensions=["*.css", "*.scss", "*.sass", "*.less"],
