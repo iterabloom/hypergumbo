@@ -563,9 +563,19 @@ if [[ "$VERBOSE" == "true" ]]; then
     echo "$CHANGED_FILES" | sed 's/^/  /' >&2
 fi
 
-# Write changed files to temp file for slice query
+# Write changed files to temp file for slice query.
+# WI-zufij: `hypergumbo slice --files` only reaches packages/*/src/** (see the
+# WI-jozan comment below). Passing NON-source paths (docs/*, .ci/*,
+# .agent/**/*.ops, CHANGELOG.md, cadence json) is both useless to the slice AND
+# fatal to it (`Error: Input file not found: None`), which forced a full-suite
+# fallback that the pre-commit "Test manifest" check correctly rejects — blocking
+# any PR that co-changes source + generated docs. Filter the slice input to the
+# sliceable source set; top-level sources (scripts/, .agent/hooks/_shared) are
+# folded into AFFECTED_TESTS separately via TOP_LEVEL_MAP_HELPER, not the slice,
+# so nothing is lost. The unfiltered $CHANGED_FILES stays authoritative for the
+# CHANGED_SOURCE_FILES / manifest bookkeeping below.
 CHANGED_FILE_LIST=$(mktemp)
-echo "$CHANGED_FILES" > "$CHANGED_FILE_LIST"
+echo "$CHANGED_FILES" | grep -E '^packages/.*/src/.*\.py$' > "$CHANGED_FILE_LIST" || true
 trap "rm -f $CHANGED_FILE_LIST" EXIT
 
 # Use hypergumbo slice --files to find dependent files
@@ -585,7 +595,17 @@ SLICE_START_S=$SECONDS
 # believes tests passed). Capture the real exit via `||` so the fallback is
 # reachable. The `|| SLICE_EXIT=$?` idiom is not subject to `set -e`.
 SLICE_EXIT=0
-$STABLE_HG slice --files "$CHANGED_FILE_LIST" --output "$SLICE_OUTPUT" 2>"$SLICE_STDERR" || SLICE_EXIT=$?
+if [[ -s "$CHANGED_FILE_LIST" ]]; then
+    $STABLE_HG slice --files "$CHANGED_FILE_LIST" --output "$SLICE_OUTPUT" 2>"$SLICE_STDERR" || SLICE_EXIT=$?
+else
+    # WI-zufij: no sliceable source file changed (a test-only / docs-only PR, or
+    # one whose only changes are non-source paths the filter above dropped).
+    # Running the slice on an empty seed would do a full-repo analysis for a
+    # guaranteed-empty result; skip it. SLICE_OUTPUT stays empty and the
+    # "no affected tests" handling below routes to the TDD test-only / no-source
+    # paths (which already check CHANGED_TEST_FILES / CHANGED_SOURCE_FILES).
+    : > "$SLICE_OUTPUT"
+fi
 SLICE_DURATION_S=$((SECONDS - SLICE_START_S))
 
 if [[ $SLICE_EXIT -ne 0 ]]; then

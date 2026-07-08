@@ -65,6 +65,79 @@ def test_slice_invocation_captures_exit_not_bare() -> None:
         )
 
 
+def test_slice_input_filtered_to_source_files() -> None:
+    """WI-zufij: the reverse-slice input (``CHANGED_FILE_LIST``) must be filtered
+    to sliceable source paths (``^packages/.*/src/.*\\.py$``) before feeding
+    ``hypergumbo slice --files``. That command only reaches ``packages/*/src/**``;
+    a non-source entry (docs, ``.ci/*``, ``.agent/**/*.ops``, ``CHANGELOG.md``)
+    both is useless to the slice AND crashes it (``Input file not found: None``),
+    forcing a full-suite fallback the pre-commit "Test manifest" check rejects —
+    blocking any PR that co-changes source + generated docs. Top-level sources
+    (``scripts/``, ``.agent/hooks``) are folded in separately via the WI-jozan
+    ``TOP_LEVEL_MAP_HELPER``, not the slice, so filtering here loses nothing.
+
+    Static source guard (smart-test is bash — no behavioral harness): assert the
+    region that builds the slice input applies a source-path filter."""
+    lines = _smart_test_lines()
+    starts = [
+        i for i, ln in enumerate(lines) if "CHANGED_FILE_LIST=$(mktemp)" in ln
+    ]
+    assert starts, "could not find CHANGED_FILE_LIST=$(mktemp) in smart-test"
+    start = starts[0]
+    slice_idx = next(
+        (
+            i for i in range(start, len(lines))
+            if "slice --files" in lines[i]
+            and "$SLICE_OUTPUT" in lines[i]
+            and "SLICE_CMD=" not in lines[i]
+            and not lines[i].lstrip().startswith("#")
+        ),
+        None,
+    )
+    assert slice_idx is not None, (
+        "could not find the reverse-slice invocation after CHANGED_FILE_LIST; "
+        "the guard needs updating if the slice call moved"
+    )
+    region = "\n".join(lines[start:slice_idx])
+    assert "grep" in region and "src/" in region, (
+        "the reverse-slice input (CHANGED_FILE_LIST) is not filtered to source "
+        "paths before `hypergumbo slice --files` (WI-zufij). Filter $CHANGED_FILES "
+        "to ^packages/.*/src/.*\\.py$ before writing CHANGED_FILE_LIST so a "
+        "non-source changed file (.ops/docs/.ci/CHANGELOG) cannot crash the slice "
+        "and force a full-suite fallback. Region between CHANGED_FILE_LIST=mktemp "
+        f"and the slice call:\n{region}"
+    )
+
+
+def test_slice_skipped_when_no_source_files() -> None:
+    """WI-zufij: when the source-path filter yields an empty slice input (a
+    test-only / docs-only PR, or one whose only changes are non-source paths),
+    the reverse-slice must be SKIPPED, not run on an empty seed. Running it would
+    do a full-repo analysis for a guaranteed-empty result; the downstream
+    "no affected tests" handling already routes such PRs to the TDD test-only /
+    no-source paths. Static guard: the slice invocation is conditioned on a
+    non-empty ``CHANGED_FILE_LIST``."""
+    lines = _smart_test_lines()
+    slice_idx = next(
+        (
+            i for i, ln in enumerate(lines)
+            if "slice --files" in ln
+            and "$SLICE_OUTPUT" in ln
+            and "SLICE_CMD=" not in ln
+            and not ln.lstrip().startswith("#")
+        ),
+        None,
+    )
+    assert slice_idx is not None, "could not find the reverse-slice invocation"
+    preceding = "\n".join(lines[max(0, slice_idx - 4):slice_idx])
+    assert '-s "$CHANGED_FILE_LIST"' in preceding, (
+        "the reverse-slice invocation is not guarded by a non-empty check on "
+        "CHANGED_FILE_LIST (WI-zufij): after filtering the input to source files, "
+        "an empty result must skip the slice rather than trigger a full-repo "
+        f"analysis of an empty seed. Preceding lines:\n{preceding}"
+    )
+
+
 def test_baseline_detection_is_failover_aware() -> None:
     """Baseline detection must consult the failover marker so the merge-base
     anchors on the authoritative remote (WI-tolil defect 2). Under permanent
