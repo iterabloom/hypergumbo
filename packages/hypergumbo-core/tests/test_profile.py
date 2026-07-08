@@ -301,6 +301,76 @@ def test_detects_express_framework(tmp_path: Path) -> None:
     assert "express" in data["profile"]["frameworks"]
 
 
+def _import_promotes(tmp_path: Path, filename: str, source: str, framework: str) -> bool:
+    """Run analysis on a single import-only source file (NO manifest) and
+    report whether ``framework`` was import-promoted into profile.frameworks."""
+    (tmp_path / filename).write_text(source)
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+    data = json.loads(out_path.read_text())
+    return framework in data["profile"]["frameworks"]
+
+
+def test_detects_scala_play_from_import_namespace(tmp_path: Path) -> None:
+    """Play promotes from the ``play.api`` import namespace, NO manifest (WI-nizuv).
+
+    The build coordinate ``com.typesafe.play`` never matches the real
+    ``play.api.*`` import namespace, so import promotion was dark.
+    """
+    assert _import_promotes(
+        tmp_path, "Routes.scala", "import play.api.mvc._\nimport play.api.routing.Router\n", "play"
+    )
+
+
+def test_detects_scala_akka_http_from_import_namespace(tmp_path: Path) -> None:
+    """akka-http promotes from the ``akka.http`` namespace, NO manifest (WI-nizuv).
+
+    The coordinate ``com.typesafe.akka`` never matches ``akka.http.scaladsl.*``.
+    """
+    assert _import_promotes(
+        tmp_path,
+        "Server.scala",
+        "import akka.http.scaladsl.server.Directives._\nimport akka.http.scaladsl.Http\n",
+        "akka-http",
+    )
+
+
+def test_detects_scala_zio_http_from_import_namespace(tmp_path: Path) -> None:
+    """zio-http promotes from the ``zio.http`` namespace, NO manifest (WI-nizuv).
+
+    The coordinate ``dev.zio`` never matches ``zio.http.*`` (and ``zio.http`` is
+    specific enough not to fire on the base ``zio.*`` library).
+    """
+    assert _import_promotes(
+        tmp_path, "App.scala", "import zio.http._\nimport zio.http.Server\n", "zio-http"
+    )
+
+
+def test_detects_haskell_scotty_from_import_namespace(tmp_path: Path) -> None:
+    """scotty promotes from the ``Web.Scotty`` module import, NO manifest (WI-nizuv).
+
+    The bare pattern ``scotty`` never matches the ``Web.Scotty`` module path.
+    """
+    assert _import_promotes(
+        tmp_path, "Main.hs", "import Web.Scotty\n\nmain = scotty 3000 (get \"/\" (text \"hi\"))\n", "scotty"
+    )
+
+
+def test_akka_http_not_promoted_from_base_akka_import(tmp_path: Path) -> None:
+    """The ``akka.http`` namespace must NOT fire on base-akka (``akka.actor``)
+    imports — the specificity guard the WI-nizuv fix relies on (WI-tolap lesson)."""
+    assert not _import_promotes(
+        tmp_path, "Actor.scala", "import akka.actor.Actor\nimport akka.actor.Props\n", "akka-http"
+    )
+
+
+def test_zio_http_not_promoted_from_base_zio_import(tmp_path: Path) -> None:
+    """The ``zio.http`` namespace must NOT fire on base-ZIO (``zio.ZIO``) imports."""
+    assert not _import_promotes(
+        tmp_path, "Core.scala", "import zio.ZIO\nimport zio.Chunk\n", "zio-http"
+    )
+
+
 def test_detects_django_framework(tmp_path: Path) -> None:
     """Should detect Django from setup.py or pyproject.toml."""
     (tmp_path / "manage.py").write_text("#!/usr/bin/env python\nimport django\n")

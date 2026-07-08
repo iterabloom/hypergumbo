@@ -360,12 +360,18 @@ SWIFT_FRAMEWORKS = {
     "swiftui": ["swiftui"],  # Detected via imports, not SPM
 }
 
-# Scala (build.sbt) detection patterns
+# Scala (build.sbt) detection patterns.
+# WI-nizuv: each carries its real import NAMESPACE alongside the build
+# COORDINATE. The coordinate (com.typesafe.play / com.typesafe.akka / dev.zio)
+# only appears in build.sbt and never matches the code's import path, so
+# import promotion was dark. The namespace is specific enough (dotted, and
+# scoped past the base library — akka.http not akka, zio.http not zio) to
+# promote without a manifest and not fire on the base library.
 SCALA_FRAMEWORKS = {
-    "play": ["com.typesafe.play", "playframework"],
-    "akka-http": ["akka-http", "com.typesafe.akka"],
+    "play": ["com.typesafe.play", "playframework", "play.api"],
+    "akka-http": ["akka-http", "com.typesafe.akka", "akka.http"],
     "http4s": ["http4s", "org.http4s"],
-    "zio-http": ["zio-http", "dev.zio"],
+    "zio-http": ["zio-http", "dev.zio", "zio.http"],
     "finatra": ["finatra", "com.twitter"],
 }
 
@@ -465,7 +471,9 @@ SOLIDITY_FRAMEWORKS = {
 # Haskell framework detection patterns (from *.cabal, stack.yaml, package.yaml)
 HASKELL_FRAMEWORKS = {
     "servant": ["servant", "servant-server"],
-    "scotty": ["scotty"],
+    # WI-nizuv: the bare cabal name "scotty" matches stack's scotty-0.12.1 but
+    # never the "Web.Scotty" module import, so import promotion was dark.
+    "scotty": ["scotty", "Web.Scotty"],
     # Yesod — Rails-inspired Haskell web framework (haskellers et al.)
     "yesod": ["yesod", "yesod-core", "yesod-auth", "yesod-persistent"],
 }
