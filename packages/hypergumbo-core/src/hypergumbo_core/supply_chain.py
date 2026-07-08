@@ -307,6 +307,17 @@ EXTERNAL_DEP_DEEP_PATTERNS = [
     (r"(?:^|/)[^/]+-go-sdk/", "vendored Go SDK"),
     (r"(?:^|/)[^/]+-sdk-golang/", "vendored Go SDK"),
     (r"(?:^|/)vendor-internal/", "vendor-internal/"),
+    # INV-kokik: vendored third-party front-end assets nested under a
+    # first-party root (typically src/.../static/). These marker directory
+    # names are unambiguous vendoring signals (same rationale as
+    # vendor-internal/ above), so they fire even under a src/ prefix and
+    # demote un-minified vendored JS/CSS out of tier-1. Deliberately NOT a
+    # blanket static/ rule — many projects keep first-party JS/CSS under
+    # static/; only explicit vendored-marker dirs are demoted. (Minified
+    # bundles are already caught upstream by the DERIVED filename patterns.)
+    (r"(?:^|/)vendored/", "vendored assets"),
+    (r"(?:^|/)npm_mirror/", "vendored npm mirror"),
+    (r"(?:^|/)bower_components/", "bower_components/"),
 ]
 
 FIRST_PARTY_PATTERNS = [

@@ -204,6 +204,46 @@ class TestVendoredSdkDetection:
         )
 
 
+class TestVendoredStaticAssets:
+    """INV-kokik: un-minified vendored third-party JS/CSS under a first-party
+    root (e.g. ``src/pretix/static/.../vendored/jquery.js``) is EXTERNAL_DEP
+    (tier 3), not first-party — otherwise vendored bundles inflate JS symbol
+    totals and leak into top-ranked symbols. Detected by unambiguous
+    vendored-marker directory segments (``vendored/`` / ``npm_mirror/`` /
+    ``bower_components/``) matched anywhere in the path, NOT a blanket
+    ``static/`` rule (many projects keep first-party JS/CSS under static/).
+    Minified bundles (``*.min.js``) are already demoted upstream."""
+
+    @pytest.mark.parametrize("path", [
+        "src/pretix/static/pretixbase/js/vendored/jquery.js",
+        "src/app/static/npm_mirror/moment/moment.js",
+        "assets/bower_components/select2/select2.js",
+    ])
+    def test_vendored_static_asset_classified_as_external(self, path, tmp_path):
+        """Un-minified vendored assets under a marker dir are tier 3."""
+        file_path = tmp_path / path
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+        file_path.write_text("// vendored library source")
+
+        result = classify_file(file_path, tmp_path)
+        assert result.tier == Tier.EXTERNAL_DEP, (
+            f"{path} should be EXTERNAL_DEP, got {result.tier.name}: {result.reason}"
+        )
+
+    def test_first_party_static_not_misclassified(self, tmp_path):
+        """A first-party static file NOT under a vendored marker dir stays
+        first-party — guards against an over-broad static/-based rule."""
+        path = "src/pretix/static/pretixbase/js/ui/main.js"
+        file_path = tmp_path / path
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+        file_path.write_text("// our own UI code")
+
+        result = classify_file(file_path, tmp_path)
+        assert result.tier != Tier.EXTERNAL_DEP, (
+            f"{path} is first-party static, should NOT be EXTERNAL_DEP: {result.reason}"
+        )
+
+
 class TestFirstPartyDetection:
     """Test tier 1 (first_party) detection."""
 
