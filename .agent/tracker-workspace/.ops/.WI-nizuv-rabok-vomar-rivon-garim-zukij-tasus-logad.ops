@@ -1,0 +1,20 @@
+- op: create  # f41a
+  at: '2026-07-07T20:26:57Z'  # f41a
+  by: agent  # f41a
+  actor: jgstern_agent  # f41a
+  clock: 1  # f41a
+  nonce: f41a  # f41a
+  data:  # f41a
+    kind: work_item  # f41a
+    title: "JVM/Scala/PHP route frameworks carry build-coord import patterns that never match the real import namespace (akka-http/play/zio/scotty/PHP) -> cannot import-promote"  # f41a
+    status: todo_hard  # f41a
+    priority: 3  # f41a
+    parent:  # f41a
+    tags:  # f41a
+    - route_surfacing  # f41a
+    isbefore: []  # f41a
+    duplicate_of: []  # f41a
+    not_duplicate_of: []  # f41a
+    pr_ref:  # f41a
+    description: "Several JVM/Scala/PHP route frameworks carry a build-tool COORDINATE as their only \"specific\" import pattern, which never matches the real import NAMESPACE, so they cannot be import-promoted (they go dark on a manifest-silent repo, and even the WI-tosul Phase-2 bare-exact relaxation can't help them). Surfaced by the WI-tosul Phase-2 manifest-gating scout (2026-07-07, lab notebook phase2_manifest_gating_scout).\n\nExamples (pattern -> real import namespace it fails to match):\n- akka-http: `com.typesafe.akka` coord, but code imports `akka.http.scaladsl.*`.\n- play: `com.typesafe.play` coord, but code imports `play.api.*`.\n- zio(-http): `zio` / a coord, but code imports `zio.http.*`.\n- scotty (Haskell): imports `Web.Scotty`.\n- PHP frameworks (laravel/cakephp/yii/laminas/lumen/masonite): composer coords (`laravel/framework`, `cakephp/cakephp`, `yiisoft/yii2`, ...) never match the `Illuminate\\\\`/`Cake\\\\`/`yii\\\\` namespace imports.\n\nThis is the same class WI-tolap fixed for spring-boot (coord `org.springframework.boot` was insufficient; the fix added the `org.springframework.web` import-namespace pattern). Each affected framework needs its real import-namespace pattern(s) added to LANGUAGE_FRAMEWORKS so import promotion (and the specificity gate) work.\n\nAlso in scope (adjacent, from the same scout): 15 route frameworks (adonisjs, aspnet, flask-restful, go-web, http4k, laminas, lumen, masonite, nextjs, node-http, restify, rust-web, scalatra, vertx, zio) have NO LANGUAGE_FRAMEWORKS import pattern at all -> they can only be reached via manifest or file-convention detection, never import promotion. Adding import patterns for the ones with a real importable namespace is the same fix."  # f41a
+    fields: {}  # f41a

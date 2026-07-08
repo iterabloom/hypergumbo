@@ -1,0 +1,22 @@
+- op: create  # 68ed
+  at: '2026-07-08T01:44:14Z'  # 68ed
+  by: agent  # 68ed
+  actor: jgstern_agent  # 68ed
+  clock: 1  # 68ed
+  nonce: 68ed  # 68ed
+  data:  # 68ed
+    kind: invariant  # 68ed
+    title: "Route-emitting framework YAMLs unreachable from any import detection key (flask-restful/lumen/masonite/restify/scalatra keyless; http4k/node-http via generic 'http' key)"  # 68ed
+    status: violated  # 68ed
+    priority: 3  # 68ed
+    parent:  # 68ed
+    tags:  # 68ed
+    - route_surfacing  # 68ed
+    isbefore: []  # 68ed
+    duplicate_of: []  # 68ed
+    not_duplicate_of: []  # 68ed
+    pr_ref:  # 68ed
+    description: "Sibling of INV-fosam (which fixed the 5 clean alias mismatches adonis/aspnetcore/next/vert.x/zio-http). The structural sweep (test_route_framework_yaml_reachability, 2026-07-07) found 12 route-emitting YAMLs unreachable from any import key; 5 were the INV-fosam mismatches. The other 7 are a DISTINCT class aliases cannot fix: CLASS B keyless (flask-restful/lumen/masonite/restify/scalatra — no LANGUAGE_FRAMEWORKS entry; MAY be manifest-reachable, unverified; if detected via import-only their routes drop); CLASS A' generic 'http' key (http4k/node-http). Currently EXEMPTED in _ROUTE_YAML_NO_IMPORT_KEY so the invariant stays green while catching NEW drift. Fix: verify each keyless YAML is manifest-reachable (add a manifest-detection test) or wire an import key; resolve the 'http' ambiguity with language-scoped keys; remove each from the exemption set as wired. Surfaced by the INV-fosam PR."  # 68ed
+    fields:  # 68ed
+      statement: "Every route-emitting framework YAML is reachable from a detection key (directly or via alias) or is verified reachable via manifest/package-name detection."  # 68ed
+      root_cause: "LANGUAGE_FRAMEWORKS has NO import key for flask-restful/lumen/masonite/restify/scalatra (their route YAMLs are reachable only via manifest/package-name detection, UNVERIFIED), and http4k/node-http both map to the single generic key 'http' (one key cannot alias to two YAMLs). Aliases (the INV-fosam fix) cannot address either class."  # 68ed

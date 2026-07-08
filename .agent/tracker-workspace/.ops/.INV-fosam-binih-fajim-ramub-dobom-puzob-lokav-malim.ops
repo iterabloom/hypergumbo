@@ -20,3 +20,10 @@
     fields:  # 9015
       statement: "Every framework in profile.frameworks resolves to a loadable YAML (load_framework_patterns(fw) is not None), so a detected route framework's route patterns always apply."  # 9015
       root_cause: "framework_patterns.py:903 _FRAMEWORK_ALIASES is missing next->nextjs / adonis->adonisjs / aspnetcore->aspnet / vert.x->vertx / zio-http->zio, so those detection keys resolve to no YAML and enrich_symbols never applies their route patterns."  # 9015
+- op: discuss  # 16c4
+  at: '2026-07-07T23:43:50Z'  # 16c4
+  by: agent  # 16c4
+  actor: jgstern_agent  # 16c4
+  clock: 2  # 16c4
+  nonce: 16c4  # 16c4
+  message: "Prioritization signal from the WI-tosul Phase-2 bakeoff (2026-07-07, lab notebook wi_tosul_phase2_bakeoff_validation_07072026.md): Phase-2's bare-exact-import promotion is corpus-INERT (fires only on manifest-silent AND bare-only-import repos, which are rare; 12-repo/7-lang cohort all delta-zero). THIS item is the higher-yield corpus lever for the multi-language dead-code Python-share monoculture, because the alias-mismatch drops route YAMLs EVEN WITH a manifest — i.e. it fires on the standard corpus where Phase-2 does not. Recommend prioritizing over WI-tosul allowlist expansion."  # 16c4

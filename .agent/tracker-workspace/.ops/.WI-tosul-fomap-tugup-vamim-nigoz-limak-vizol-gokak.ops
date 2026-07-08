@@ -80,3 +80,35 @@
   clock: 9  # 26f7
   nonce: 26f7  # 26f7
   message: "Phase-1b-β DONE + INV-tibap SATISFIED (merged dev 416f41fe6d). The transport-protocol FOLD (audit Pair-C) landed as one atomic ~15-site lockstep PR: WS/LIVE/RPC out of http_method into route_protocol; the entrypoints WS-dispatch (both concept + Pass-2 marker paths) now delegate to route_of + branch on protocol=='websocket' (the deferred Phase-1b-β), route_handler LiveView flag reads route_protocol=='liveview', 4 cmd_routes dict sites use protocol_method_token. Grounded on a 4-agent producer/consumer census + adversarial completeness check (protocol_origin reuse REJECTED — ADR-0031 Class-A/B biconditional; LIVE->liveview per human). So the ENTIRE surfacing-consistency arc (1a accessor + 1b-α framework-union/fold + INV-tibap/1b-β protocol-fold) is complete. REMAINING for WI-tosul: only the COVERAGE-BREADTH monoculture (Phase 2 manifest-gating relaxation in refine_frameworks, bakeoff-FP-calibrated; Phase 3 per-framework ratchet). WI-tosul stays todo_hard for Phase 2/3."  # 26f7
+- op: discuss  # e5ca
+  at: '2026-07-07T21:29:20Z'  # e5ca
+  by: agent  # e5ca
+  actor: jgstern_agent  # e5ca
+  clock: 10  # e5ca
+  nonce: e5ca  # e5ca
+  message: "Phase 2 (manifest-gating relaxation) MERGED (dev 7efc74ec15). The dead-code route-monoculture ROOT is addressed: allowlisted route frameworks now promote on a bare EXACT import (from flask import Flask) even with NO manifest — previously refine_frameworks's bare-name arm required a compound-submodule import (WI-pusad), so a top-level import stayed dark. New _BARE_EXACT_PROMOTE_ROUTE_FRAMEWORKS allowlist (16: flask/fastapi/sanic/litestar/quart/starlette/bottle/tornado/pyramid/django/flask-appbuilder + express/koa/fastify + sinatra/padrino), one-line gate change (require_prefix_arm=(fw not in allowlist)); every FP-prone bare name stays gated (graphql/react/solid/plug/aiohttp/next). Grounded on the 3-agent Phase-2 scout + mini-trial (lab notebook phase2_manifest_gating_scout_07072026); the register's FP-prone hypothesis was corrected (grape/vapor/roda over-flagged; aiohttp/solid/nex were the real misses). Live-verified: Flask route no-manifest 0->1 marker+2 concepts. 7 existing tests updated for the new materialize-without-manifest behavior. 6804 tests pass, 100% cov.\n\nTAGGED awaits_bakeoff_validation: the quantitative claim (dead-code candidate Python-share drops from ~99% as manifest-silent / other-language route entrypoints start anchoring reachability) needs BROAD bakeoff before/after validation. Guard metrics: framework-FP count, WI-ronik http_route-on-frontend regression, route counts UP on manifest-silent web apps. Expand the allowlist (NEEDS-BAKEOFF middle set: aiohttp/falcon/grape/vapor/…) only in validated batches.\n\nWI-tosul REMAINING: Phase 3 (per-framework detection ratchet, WI-tolap-shaped, fixture-gated) + the allowlist expansion. Two independent latent blockers filed: INV-fosam (alias-mismatch, routes drop even WITH a manifest for next/adonis/aspnet/vertx/zio), WI-nizuv (coord-vs-namespace import patterns). WI-tosul stays todo_hard."  # e5ca
+- op: update  # 2a3f
+  at: '2026-07-07T21:29:37Z'  # 2a3f
+  by: agent  # 2a3f
+  actor: jgstern_agent  # 2a3f
+  clock: 11  # 2a3f
+  nonce: 2a3f  # 2a3f
+  set: {}  # 2a3f
+  add:  # 2a3f
+    tags: [awaits_bakeoff_validation]  # 2a3f
+- op: update  # 6e01
+  at: '2026-07-07T23:43:27Z'  # 6e01
+  by: agent  # 6e01
+  actor: jgstern_agent  # 6e01
+  clock: 12  # 6e01
+  nonce: '6e01'  # 6e01
+  set: {}  # 6e01
+  remove:  # 6e01
+    tags: [awaits_bakeoff_validation]  # 6e01
+- op: discuss  # 76d6
+  at: '2026-07-07T23:43:28Z'  # 76d6
+  by: agent  # 76d6
+  actor: jgstern_agent  # 76d6
+  clock: 13  # 76d6
+  nonce: 76d6  # 76d6
+  message: "Phase-2 BROAD before/after bakeoff DONE (pins 7b97443cf2 parent vs 7efc74ec15 Phase-2; profile.py is the ONLY runtime diff, so exact isolation; PYTHONPATH-pinned worktrees, per-run Phase-2-sentinel fingerprint guard; manifest-silent fixtures as positive control). VERDICT: mechanism VALIDATED (flask/fastapi/express/sinatra promote on bare-exact import, routes surface; ms_express JS dead 3->2 = non-Python route now anchors reachability, the WI-tosul thesis). FP guards VALIDATED — graphql/react/solid/aiohttp/next all stayed UNpromoted, frameworks_added=[]. NO collateral: 12 real repos / 7 langs / 1MB-141MB (flask-restful, gin, apollo-server, phoenix, spring-petclinic, vapor, fastapi, django, chatwoot, ...) ALL delta-zero (no wrong promotion, no dead-code regression, no reachability loss, no frontend-route FP). BUT corpus headline 'dead-code Python-share drops from ~99%' NOT demonstrated: Phase-2 fires only when a repo is manifest-silent AND imports the framework bare-ONLY (no submodule import — the pre-existing compound-submodule arm already handled those). Every real repo/subdir tested (incl. the manifest-silent backend/app subdir, which imports fastapi.routing/.security) is moot -> delta-zero. no_move at corpus scale, NOT a regression (change is correct+safe). Real corpus lever is INV-fosam (alias-mismatch drops route YAMLs EVEN WITH a manifest -> fires on the standard corpus, higher yield) + WI-nizuv + Phase-3; allowlist EXPANSION de-prioritized (same rare firing condition). Tag stripped. Full writeup: lab notebook wi_tosul_phase2_bakeoff_validation_07072026.md."  # 76d6
