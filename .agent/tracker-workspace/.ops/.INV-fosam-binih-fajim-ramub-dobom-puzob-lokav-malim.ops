@@ -27,3 +27,18 @@
   clock: 2  # 16c4
   nonce: 16c4  # 16c4
   message: "Prioritization signal from the WI-tosul Phase-2 bakeoff (2026-07-07, lab notebook wi_tosul_phase2_bakeoff_validation_07072026.md): Phase-2's bare-exact-import promotion is corpus-INERT (fires only on manifest-silent AND bare-only-import repos, which are rare; 12-repo/7-lang cohort all delta-zero). THIS item is the higher-yield corpus lever for the multi-language dead-code Python-share monoculture, because the alias-mismatch drops route YAMLs EVEN WITH a manifest — i.e. it fires on the standard corpus where Phase-2 does not. Recommend prioritizing over WI-tosul allowlist expansion."  # 16c4
+- op: update  # 4f99
+  at: '2026-07-08T02:26:24Z'  # 4f99
+  by: agent  # 4f99
+  actor: jgstern_agent  # 4f99
+  clock: 3  # 4f99
+  nonce: 4f99  # 4f99
+  set:  # 4f99
+    status: satisfied  # 4f99
+- op: discuss  # 406c
+  at: '2026-07-08T02:26:24Z'  # 406c
+  by: agent  # 406c
+  actor: jgstern_agent  # 406c
+  clock: 4  # 406c
+  nonce: 406c  # 406c
+  message: "SATISFIED — merged to dev as 2c4c5c1f27 (CI passed, fast-forward). BEHAVIORAL EVIDENCE (re-runs the item's own described scenario — a manifest-bearing app whose routes were silently dropped): an AdonisJS app whose package.json declares @adonisjs/core, with a controller importing @adonisjs/core/http and @Get('/users')/@Post handlers, goes from http_route entrypoints 0 -> 1 across the fix (file-scoped stash A/B on the pinned working tree). Root cause fixed: added 5 _FRAMEWORK_ALIASES entries (adonis->adonisjs, aspnetcore->aspnet, next->nextjs, vert.x->vertx, zio-http->zio) so a detected Next.js/AdonisJS/ASP.NET Core/Vert.x/ZIO-HTTP framework now loads its route YAML. STRUCTURAL GUARD: test_route_framework_yaml_reachability enforces the CORRECT invariant (reverse: every concept=route YAML reachable from a detection key or explicitly exempted) — NOT the item's literal 'every LANGUAGE_FRAMEWORKS key resolves', which is false (140/243 keys are ML/test/ORM/UI/crypto libs with no route YAML by design). The empirical sweep found exactly these 5 alias mismatches; the RED test flagged all 5, the fix made it GREEN. SCOPE: a DISTINCT class of 7 route YAMLs unreachable via import detection (flask-restful/lumen/masonite/restify/scalatra keyless; http4k/node-http via a generic 'http' key) is filed as the follow-up INV-mupuf — aliases cannot fix those (no import key / one key can't alias to two YAMLs). No regression (1133 affected tests pass); core package 100% coverage."  # 406c

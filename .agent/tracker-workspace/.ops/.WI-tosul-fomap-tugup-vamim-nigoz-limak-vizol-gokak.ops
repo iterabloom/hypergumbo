@@ -112,3 +112,18 @@
   clock: 13  # 76d6
   nonce: 76d6  # 76d6
   message: "Phase-2 BROAD before/after bakeoff DONE (pins 7b97443cf2 parent vs 7efc74ec15 Phase-2; profile.py is the ONLY runtime diff, so exact isolation; PYTHONPATH-pinned worktrees, per-run Phase-2-sentinel fingerprint guard; manifest-silent fixtures as positive control). VERDICT: mechanism VALIDATED (flask/fastapi/express/sinatra promote on bare-exact import, routes surface; ms_express JS dead 3->2 = non-Python route now anchors reachability, the WI-tosul thesis). FP guards VALIDATED — graphql/react/solid/aiohttp/next all stayed UNpromoted, frameworks_added=[]. NO collateral: 12 real repos / 7 langs / 1MB-141MB (flask-restful, gin, apollo-server, phoenix, spring-petclinic, vapor, fastapi, django, chatwoot, ...) ALL delta-zero (no wrong promotion, no dead-code regression, no reachability loss, no frontend-route FP). BUT corpus headline 'dead-code Python-share drops from ~99%' NOT demonstrated: Phase-2 fires only when a repo is manifest-silent AND imports the framework bare-ONLY (no submodule import — the pre-existing compound-submodule arm already handled those). Every real repo/subdir tested (incl. the manifest-silent backend/app subdir, which imports fastapi.routing/.security) is moot -> delta-zero. no_move at corpus scale, NOT a regression (change is correct+safe). Real corpus lever is INV-fosam (alias-mismatch drops route YAMLs EVEN WITH a manifest -> fires on the standard corpus, higher yield) + WI-nizuv + Phase-3; allowlist EXPANSION de-prioritized (same rare firing condition). Tag stripped. Full writeup: lab notebook wi_tosul_phase2_bakeoff_validation_07072026.md."  # 76d6
+- op: update  # 69d4
+  at: '2026-07-08T03:40:00Z'  # 69d4
+  by: agent  # 69d4
+  actor: jgstern_agent  # 69d4
+  clock: 14  # 69d4
+  nonce: 69d4  # 69d4
+  set:  # 69d4
+    status: done  # 69d4
+- op: discuss  # 1ad3
+  at: '2026-07-08T03:40:00Z'  # 1ad3
+  by: agent  # 1ad3
+  actor: jgstern_agent  # 1ad3
+  clock: 15  # 1ad3
+  nonce: 1ad3  # 1ad3
+  message: "DONE — the '99% Python dead-code monoculture' symptom is DISCHARGED; it was a self-corpus composition artifact and does NOT reproduce on real polyglot repos. Behavioral evidence (re-measure on current dev 2c4c5c1f27, all fixes; full writeup lab notebook wi_tosul_deadcode_remeasure_07072026.md): per-language dead-rate on 4 polyglot repos — full-stack-fastapi-template py 33%/ts 33% (equal); kserve py 11%/go 1%; prometheus go 9%/ts 37%; killbill java 6% (8756 methods emitted, 94% reachable). The COMPILED languages anchor BEST (go 1-9%, java 6%) — BETTER than Python (11-33%), directly contradicting the item's 'non-Python entrypoints don't anchor' thesis. The self-corpus 99.0% is a confound: hypergumbo is ~95% Python code, so its dead-code is ~Python by construction (re-measure 99.0%->97.8%, Python dead-rate 59.6% ~ the 57.8% overall = proportional, not over-represented). Where a language over-flags (kserve Python vs go) it's ARCHITECTURAL (Python SDK/library code has no in-repo callers), not an analyzer gap. Both fix-sketch parts landed: (a) per-language entrypoint-existence parity (all 8 langs), (b) the cross-language-hits demoter (dispatch:F7); plus the surfacing arc + INV-fosam. RESIDUAL is specific and tracked by children (NOT the monoculture): WI-nizuv (JVM/Scala/PHP import-promotion), INV-vokak, INV-mupuf, WI-zugob, INV-ligiv, + a new no-language-node dead-anchoring bug (filed)."  # 1ad3
