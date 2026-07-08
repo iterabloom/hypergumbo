@@ -169,9 +169,22 @@ class TestCmdConfig:
         """Corrupted YAML produces None for that section."""
         import yaml
 
+        from hypergumbo_core.catalog import all_known_languages
+
         args = FakeArgs()
         args.language = "go"
         args.format = "json"
+
+        # Test-isolation: cmd_config validates args.language against
+        # all_known_languages(), which cold-loads catalog YAMLs via
+        # yaml.safe_load on first use (module-cached thereafter). This test's
+        # mock raises on the FIRST safe_load call, expecting that call to be
+        # cmd_config's dataflow_patterns section load. Warm the catalog loads
+        # BEFORE installing the mock so a *cold* catalog cache (which happens
+        # when this test runs first in a shard/order — the CI failure mode)
+        # cannot consume the raising call ahead of the section load and leave
+        # dataflow_patterns non-None.
+        all_known_languages()
 
         original_safe_load = yaml.safe_load
         call_count = 0
