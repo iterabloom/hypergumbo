@@ -906,7 +906,12 @@ def _extract_symbols_from_tree(
                         symbols.append(symbol)
                         symbol_by_name[full_name] = symbol
 
-                elif target_name in ("def", "defp"):
+                elif (target_name in ("def", "defp")
+                      and not _has_quote_ancestor(node, source)):
+                    # INV-sinah: a def/defp inside a `quote` (an `__using__`
+                    # template) is injected into the module that runs `use`, not
+                    # defined on the defining module — suppress rather than
+                    # mis-attribute (fails-safe, mirroring the defstruct guard).
                     func_name = _get_function_name(node, source)
                     if func_name:
                         enclosing_modules = _get_enclosing_modules(node, source)
@@ -948,7 +953,11 @@ def _extract_symbols_from_tree(
                         # Multi-clause index: all symbols with the same short name
                         symbols_by_name.setdefault(func_name, []).append(symbol)
 
-                elif target_name in ("defmacro", "defmacrop"):
+                elif (target_name in ("defmacro", "defmacrop")
+                      and not _has_quote_ancestor(node, source)):
+                    # INV-sinah: same fails-safe suppression as def/defp above —
+                    # a defmacro inside a `quote` is a template for the using
+                    # module, not a macro on the defining module.
                     macro_name = _get_function_name(node, source)
                     if macro_name:
                         enclosing_modules = _get_enclosing_modules(node, source)

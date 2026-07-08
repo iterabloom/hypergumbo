@@ -122,6 +122,29 @@ end
         fields = _fields(analyze_elixir(tmp_path))
         assert not any(f.startswith("EventBase.") for f in fields)
 
+    def test_def_defmacro_in_quote_not_attributed_to_defining_module(self, tmp_path: Path) -> None:
+        # INV-sinah: a def/defp/defmacro inside a `quote` (an `__using__`
+        # template) is injected into the module that runs `use`, NOT defined on
+        # the defining module — so it must NOT be attributed to the defining
+        # module (fails-safe suppression, mirroring the defstruct-in-quote guard;
+        # correct recall via `use`/`__using__` expansion is deferred per the item).
+        _write(tmp_path, """
+defmodule EventBase do
+  defmacro __using__(_) do
+    quote do
+      def injected_fun(x), do: x
+      defp injected_priv(y), do: y
+      defmacro injected_macro(z), do: z
+    end
+  end
+end
+""")
+        result = analyze_elixir(tmp_path)
+        callables = {s.name for s in result.symbols if s.kind in ("function", "macro")}
+        assert not any(n.startswith("EventBase.injected") for n in callables), (
+            f"quote-block def/defmacro mis-attributed to EventBase: {sorted(callables)}"
+        )
+
     def test_duplicate_field_keys_deduped(self, tmp_path: Path) -> None:
         # Invalid Elixir (`[:a, :a]` is a compile error), but must not mint two
         # colliding-id symbols.

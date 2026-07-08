@@ -600,3 +600,41 @@ end
         bad = [e for e in result.edges
                if e.edge_type == "calls" and e.dst in field_ids]
         assert bad == []
+
+
+class TestJuliaConstEmissionINVvopap:
+    """INV-vopap: the const emitter dropped multi-name / typed const members
+    (emitted ZERO symbols) and could let a const clobber a same-named function
+    in call resolution."""
+
+    def test_multiname_const_emits_all_members(self, tmp_path: Path) -> None:
+        _write(tmp_path, "module M\nconst a, b = 1, 2\nend\n")
+        result = analyze_julia(tmp_path)
+        assert {"a", "b"} <= _names(result, "const")
+
+    def test_typed_const_emitted(self, tmp_path: Path) -> None:
+        _write(tmp_path, "const K::Int = 3\n")
+        result = analyze_julia(tmp_path)
+        assert "K" in _names(result, "const")
+
+    def test_const_does_not_clobber_same_named_function(self, tmp_path: Path) -> None:
+        # A const declared AFTER a same-named function must not clobber it in
+        # the resolver map — a call to the name resolves to the function
+        # (function-preferring tie-break).
+        _write(tmp_path, """
+module M
+function handler()
+    2
+end
+function driver()
+    handler()
+end
+const handler = () -> 1
+end
+""")
+        result = analyze_julia(tmp_path)
+        func = next(s for s in result.symbols if s.kind == "function" and s.name == "handler")
+        call_dsts = {e.dst for e in result.edges if e.edge_type == "calls"}
+        assert func.id in call_dsts, (
+            "call to handler() must resolve to the function, not the clobbering const"
+        )

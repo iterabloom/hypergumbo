@@ -641,15 +641,26 @@ def _extract_symbols_from_tree(
         # Const statement
         elif node.type == "const_statement":
             assign_node = find_child_by_type(node, "assignment")
-            if assign_node:
-                id_node = find_child_by_type(assign_node, "identifier")
-                if id_node:
-                    const_name = node_text(id_node, source)
-                    start_line = node.start_point[0] + 1
-                    end_line = node.end_point[0] + 1
+            if assign_node and assign_node.children:
+                # INV-vopap: emit one const Symbol per bound name. Reusing the
+                # assignment-target extractor (the same helper the module-variable
+                # branch uses) handles multi-name (`const a, b = 1, 2`) and typed
+                # (`const K::Int = 3`) LHS forms that the old single-`identifier`
+                # lookup dropped entirely — those consts emitted ZERO symbols.
+                lhs = assign_node.children[0]
+                current_module = _get_enclosing_module(node, source)
+                start_line = node.start_point[0] + 1
+                end_line = node.end_point[0] + 1
 
+                for const_name in _julia_assignment_target_names(lhs, source):
+                    # Qualify the id with the enclosing module (mirrors the
+                    # function branch) so two module-nested consts sharing a bare
+                    # name get distinct ids; the display name stays bare.
+                    full_name = (
+                        f"{current_module}.{const_name}" if current_module else const_name
+                    )
                     symbol = Symbol(
-                        id=make_symbol_id("julia", file_path, start_line, end_line, const_name, "const"),
+                        id=make_symbol_id("julia", file_path, start_line, end_line, full_name, "const"),
                         name=const_name,
                         kind="const",
                         language="julia",
@@ -664,7 +675,13 @@ def _extract_symbols_from_tree(
                         origin_run_id=run_id,
                     )
                     analysis.symbols.append(symbol)
-                    analysis.symbol_by_name[const_name] = symbol
+                    # INV-vopap: a const IS a legit call target (`const f = () -> …`),
+                    # so keep it resolvable — but never clobber a same-named
+                    # function already in the resolver map (function-preferring
+                    # tie-break for the const-vs-function collision).
+                    existing = analysis.symbol_by_name.get(const_name)
+                    if existing is None or existing.kind != "function":
+                        analysis.symbol_by_name[const_name] = symbol
 
     return analysis
 
