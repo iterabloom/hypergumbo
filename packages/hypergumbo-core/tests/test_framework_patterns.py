@@ -21311,3 +21311,108 @@ class TestFrameworkPatternEcosystemGating:
         assert "cargo_dev_dependency" in c
         assert "poetry_dependency" not in c
         assert "poetry_dev_dependency" not in c
+
+
+class TestRouteMarkerSingleHome:
+    """INV-vokak: a route symbol carries its route fact in exactly ONE home.
+
+    A symbol already carrying the ADR-0027 route marker
+    (``meta['framework_role'] == 'route'``) must NOT also gain a redundant
+    *path-less* ``concept=route`` from a def-based framework pattern
+    (rails/phoenix/sinatra/laravel ``framework_role: '^route$'``). That
+    dual-carry state orphans the concept's framework from the marker (the
+    2026-07-07 route-surfacing audit reproduced two silent bugs on it).
+    ``enrich_symbols`` lifts the concept's framework onto the marker's
+    canonical ``route_framework`` home and drops the redundant concept, so
+    the route fact stays single-homed — the producer-side root that
+    ``route_of``'s framework-UNION only tolerated at the accessor.
+    """
+
+    def _route_marker(self) -> Symbol:
+        return Symbol(
+            id="ruby:app/controllers/users.rb:10-20:index:function",
+            name="index",
+            kind="function",
+            language="ruby",
+            path="app/controllers/users.rb",
+            span=Span(10, 20, 0, 0),
+            meta={
+                "framework_role": "route",
+                "route_path": "/users",
+                "http_method": "GET",
+            },
+        )
+
+    def test_marker_gains_no_redundant_pathless_route_concept(self) -> None:
+        sym = self._route_marker()
+        enrich_symbols([sym], {"rails"})
+        concepts = (sym.meta or {}).get("concepts", []) or []
+        route_concepts = [
+            c for c in concepts
+            if isinstance(c, dict) and c.get("concept") == "route"
+        ]
+        assert route_concepts == [], (
+            "already-marked route symbol gained a redundant route concept "
+            f"(dual-carry): {route_concepts}"
+        )
+
+    def test_marker_framework_lifted_onto_route_framework(self) -> None:
+        sym = self._route_marker()
+        enrich_symbols([sym], {"rails"})
+        assert (sym.meta or {}).get("route_framework") == "rails"
+
+    def test_route_of_framework_preserved_after_dedup(self) -> None:
+        # Behavior-preserving at the accessor: route_of still surfaces the
+        # framework, now via the marker's route_framework home rather than the
+        # co-resident concept it previously had to fall through to.
+        from hypergumbo_core.routes import route_of
+
+        sym = self._route_marker()
+        enrich_symbols([sym], {"rails"})
+        info = route_of(sym)
+        assert info is not None
+        assert info["framework"] == "rails"
+        assert info["path"] == "/users"
+        assert info["method"] == "GET"
+
+    def test_dedup_keeps_non_route_and_pathed_route_concepts(self) -> None:
+        from hypergumbo_core.framework_patterns import (
+            _dedup_route_marker_concepts,
+        )
+
+        meta = {"framework_role": "route"}
+        pathed = {"concept": "route", "framework": "x", "path": "/a"}
+        controller = {"concept": "controller"}
+        kept = _dedup_route_marker_concepts(
+            meta,
+            [
+                {"concept": "route", "framework": "rails"},  # dropped + lifted
+                pathed,       # has a path -> not redundant, kept
+                controller,   # non-route -> kept
+            ],
+        )
+        assert kept == [pathed, controller]
+        assert meta["route_framework"] == "rails"
+
+    def test_dedup_noop_when_not_route_marker(self) -> None:
+        from hypergumbo_core.framework_patterns import (
+            _dedup_route_marker_concepts,
+        )
+
+        meta = {"framework_role": "controller"}
+        matches = [{"concept": "route", "framework": "rails"}]
+        kept = _dedup_route_marker_concepts(meta, matches)
+        assert kept == matches
+        assert "route_framework" not in meta
+
+    def test_dedup_does_not_clobber_existing_route_framework(self) -> None:
+        from hypergumbo_core.framework_patterns import (
+            _dedup_route_marker_concepts,
+        )
+
+        meta = {"framework_role": "route", "route_framework": "sinatra"}
+        kept = _dedup_route_marker_concepts(
+            meta, [{"concept": "route", "framework": "rails"}],
+        )
+        assert kept == []
+        assert meta["route_framework"] == "sinatra"  # first-wins, not clobbered

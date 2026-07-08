@@ -1394,6 +1394,40 @@ def strip_test_file_only_concepts(symbols: list[Symbol]) -> int:
     return stripped
 
 
+def _dedup_route_marker_concepts(
+    meta: dict[str, Any], matches: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """INV-vokak: keep a route symbol's route fact in exactly ONE home.
+
+    When *meta* already carries the ADR-0027 route marker
+    (``framework_role == 'route'``), a def-based framework pattern
+    (rails/phoenix/sinatra/laravel ``framework_role: '^route$'``) would append
+    a redundant *path-less* ``concept=route`` carrying only a framework — a
+    dual-carry state that orphans the framework from the marker (``route_of``'s
+    framework-UNION merely tolerates it at the accessor; the incoherent data
+    persists). This lifts such a concept's framework onto the marker's
+    canonical ``route_framework`` home (first-wins, never clobbering an
+    existing value) and drops the concept, so the route fact stays
+    single-homed. Symbols without the marker, non-route concepts, and route
+    concepts that carry a ``path`` (usage-based, not redundant) are untouched.
+    """
+    if meta.get("framework_role") != "route":
+        return matches
+    kept: list[dict[str, Any]] = []
+    for concept in matches:
+        if (
+            isinstance(concept, dict)
+            and concept.get("concept") == "route"
+            and not concept.get("path")
+        ):
+            framework = concept.get("framework")
+            if framework and not meta.get("route_framework"):
+                meta["route_framework"] = framework
+            continue
+        kept.append(concept)
+    return kept
+
+
 def enrich_symbols(
     symbols: list[Symbol],
     detected_frameworks: set[str],
@@ -1470,7 +1504,14 @@ def enrich_symbols(
             # Add matched concepts to symbol metadata
             if symbol.meta is None:  # pragma: no cover - patterns require meta to match
                 symbol.meta = {}
-            symbol.meta["concepts"] = matches
+            # INV-vokak: keep a route symbol's route fact in ONE home — a
+            # def-based route pattern must not append a redundant path-less
+            # concept=route onto an already-marked marker (dual-carry orphans
+            # the framework). Lift the framework onto route_framework and drop
+            # the redundant concept before stamping.
+            symbol.meta["concepts"] = _dedup_route_marker_concepts(
+                symbol.meta, matches,
+            )
 
     # Phase 1.5: APIRouter prefix composition
     # When a Python function has router_prefix in its metadata (from a prefixed

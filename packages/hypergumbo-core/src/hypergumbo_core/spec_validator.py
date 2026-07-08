@@ -185,6 +185,11 @@ _WIRED_CHECKS: tuple[dict[str, str], ...] = (
                     "step-4 forward regression guard against off-band / "
                     "reserved-ceiling (1.0) per-emitter values (advisory info; "
                     "unregistered/unseeded pathways carry no band)."},
+    {"check": "route_marker_single_home", "validator_class": "cross_field",
+     "description": "An ADR-0027 route marker (meta.framework_role=='route') "
+                    "carries no redundant path-less concept=route alongside it "
+                    "(INV-vokak dual-carry root; the framework belongs on "
+                    "route_framework, not orphaned in a second home)."},
 )
 
 
@@ -241,6 +246,54 @@ def validate_ir(
     violations.extend(_check_dangling_endpoint(symbols, edges, analysis_runs))
     violations.extend(_check_fingerprint_format(symbols, edges, analysis_runs))
     violations.extend(_check_confidence_range(edges))
+    violations.extend(_check_route_marker_single_home(symbols))
+    return violations
+
+
+def _check_route_marker_single_home(
+    symbols: Iterable[Any],
+) -> list[ValidationViolation]:
+    """INV-vokak: a route symbol records its route fact in exactly ONE home.
+
+    A symbol carrying the ADR-0027 route marker (``meta['framework_role'] ==
+    'route'``) must not ALSO carry a redundant *path-less* ``concept ==
+    'route'`` entry in ``meta['concepts']``. That dual-carry state orphans the
+    concept's framework from the marker — ``routes.route_of`` merely tolerates
+    it by unioning the framework at read time (WI-tosul Phase-1b-alpha), but
+    the emitted data is incoherent (one route fact in two homes). The
+    producer-side fix (``framework_patterns._dedup_route_marker_concepts``)
+    lifts such a concept's framework onto the marker's ``route_framework`` home
+    and drops the concept; this predicate is the standing corpus-wide guard
+    that the fix holds — a regression here, or a new route producer that
+    re-introduces the shape, re-fires it and the ratchet gate blocks.
+    """
+    violations: list[ValidationViolation] = []
+    for sym in symbols:
+        meta = getattr(sym, "meta", None) or {}
+        if meta.get("framework_role") != "route":
+            continue
+        for concept in meta.get("concepts", []) or []:
+            if (
+                isinstance(concept, dict)
+                and concept.get("concept") == "route"
+                and not concept.get("path")
+            ):
+                violations.append(ValidationViolation(
+                    severity="error",
+                    validator_class="cross_field",
+                    message=(
+                        "route symbol carries a redundant path-less "
+                        "concept=route alongside its framework_role=='route' "
+                        "marker (INV-vokak dual-carry): the route fact must "
+                        "live in one home and the framework belongs on "
+                        "route_framework"
+                    ),
+                    field_name="meta.concepts",
+                    record_id=getattr(sym, "id", None),
+                    observed=str(concept.get("framework")),
+                    expected="single-homed route marker (no redundant concept)",
+                ))
+                break
     return violations
 
 

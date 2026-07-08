@@ -2312,3 +2312,99 @@ def test_confidence_range_clean_for_in_band_edge() -> None:
         v for v in validate_ir([], [edge], [])
         if v.field_name == "confidence"
     ] == []
+
+
+# ----------------------------------------------------------------------
+# INV-vokak — route-marker single-home coherence check
+# ----------------------------------------------------------------------
+
+
+def test_route_marker_single_home_flags_dual_carry() -> None:
+    """A route marker (framework_role=='route') that ALSO carries a redundant
+    path-less concept=route is the INV-vokak dual-carry — one violation."""
+    from hypergumbo_core import spec_validator
+
+    sym = _FakeSym(
+        id="ruby:app/users.rb:10-20:index:function",
+        meta={
+            "framework_role": "route",
+            "route_path": "/users",
+            "http_method": "GET",
+            "concepts": [{"concept": "route", "framework": "rails"}],
+        },
+    )
+    violations = spec_validator._check_route_marker_single_home([sym])
+    assert len(violations) == 1
+    v = violations[0]
+    assert v.severity == "error"
+    assert v.validator_class == "cross_field"
+    assert v.field_name == "meta.concepts"
+    assert v.record_id == "ruby:app/users.rb:10-20:index:function"
+
+
+def test_route_marker_single_home_clean_on_single_homed_marker() -> None:
+    """A route marker whose framework lives on route_framework (no redundant
+    concept), and a marker carrying only a *pathed* route concept, are both
+    coherent — no violation."""
+    from hypergumbo_core import spec_validator
+
+    single_home = _FakeSym(
+        id="ruby:app/users.rb:10-20:index:function",
+        meta={
+            "framework_role": "route",
+            "route_path": "/users",
+            "http_method": "GET",
+            "route_framework": "rails",
+        },
+    )
+    pathed_concept = _FakeSym(
+        id="python:app.py:1-3:home:function",
+        meta={
+            "framework_role": "route",
+            "concepts": [{"concept": "route", "framework": "flask", "path": "/x"}],
+        },
+    )
+    assert spec_validator._check_route_marker_single_home(
+        [single_home, pathed_concept],
+    ) == []
+
+
+def test_route_marker_single_home_ignores_non_marker_symbols() -> None:
+    """A symbol WITHOUT the route marker is out of scope even if it carries a
+    path-less route concept (that is the legitimate manifest-gated upstream
+    projection, not a dual-carry)."""
+    from hypergumbo_core import spec_validator
+
+    non_marker = _FakeSym(
+        id="python:app.py:1-3:home:function",
+        meta={"concepts": [{"concept": "route", "framework": "flask"}]},
+    )
+    assert spec_validator._check_route_marker_single_home([non_marker]) == []
+
+
+def test_route_marker_single_home_wired_into_validate_ir() -> None:
+    """The predicate flows through validate_ir (so the ratchet gate sees it):
+    a fully axis-conformant symbol carrying the dual-carry meta surfaces the
+    meta.concepts violation among validate_ir's output."""
+    from hypergumbo_core.catalog import all_known_languages
+    from hypergumbo_core.symbol_kinds import all_symbol_kind_names
+
+    a_kind = next(iter(all_symbol_kind_names()))
+    a_lang = next(iter(all_known_languages()))
+    sym = _FakeSym(
+        id=f"python:test/fake.py:1-1:sym:{a_kind}",
+        kind=a_kind,
+        language=a_lang,
+        discovery_language=None,
+        protocol_origin=None,
+        origin=[],
+        qualified_name=None,
+        meta={
+            "framework_role": "route",
+            "concepts": [{"concept": "route", "framework": "rails"}],
+        },
+    )
+    dual_carry = [
+        v for v in validate_ir([sym], [], []) if v.field_name == "meta.concepts"
+    ]
+    assert len(dual_carry) == 1
