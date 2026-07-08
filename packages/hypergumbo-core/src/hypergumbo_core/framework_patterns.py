@@ -928,6 +928,16 @@ _FRAMEWORK_ALIASES: dict[str, str] = {
     "dropwizard": "jax-rs",
     "jersey": "jax-rs",
     "resteasy": "jax-rs",
+    # INV-fosam: route frameworks whose detection key differs from their YAML
+    # basename. Without these, a detected Next.js / AdonisJS / ASP.NET Core /
+    # Vert.x / ZIO-HTTP app loads NO route YAML and emits ZERO routes even with
+    # a manifest. (test_route_framework_yaml_reachability enforces this
+    # structurally.)
+    "adonis": "adonisjs",
+    "aspnetcore": "aspnet",
+    "next": "nextjs",
+    "vert.x": "vertx",
+    "zio-http": "zio",
 }
 
 
