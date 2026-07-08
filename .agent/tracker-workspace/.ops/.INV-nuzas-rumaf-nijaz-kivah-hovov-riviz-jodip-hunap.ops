@@ -146,3 +146,10 @@
   clock: 17  # 27d0
   nonce: 27d0  # 27d0
   message: "Progress (WI-huhum, PR merged, dev 6d50b100b0): module_attr_ref-reached phantom hypergumbo_* externals 52 -> 18; total INV-nuzas workspace phantoms 58 -> 24. STAYS violated. Call/attr facet residual now 24 = 6 calls-reached (5 scip_pb2 submodule-receivers + 1 'copy' WI-zigah, deferred) + 18 module_attr_ref-reached (kind=function/dunder/re-export targets, not kind=variable — out of WI-huhum's variable-only scope). Import facet remains closed. Cumulative call/attr progress: WI-hotug CASE B 107->68, CASE A 68->58, WI-huhum 58->24."  # 27d0
+- op: discuss  # 0ebe
+  at: '2026-07-08T07:42:26Z'  # 0ebe
+  by: agent  # 0ebe
+  actor: jgstern_agent  # 0ebe
+  clock: 18  # 0ebe
+  nonce: 0ebe  # 0ebe
+  message: "HUMAN RULING (2026-07-08): close via option (i) — re-scope + documented scope-out. Fix the ~13-14 statically-resolvable residual nodes (Categories A/B/D/E) as a fresh sub-WI (WI-hotug/WI-huhum pattern); then close INV-nuzas with the acceptance property re-scoped to import+call+attr facets carrying an EXPLICIT documented carve-out for statically-invisible attributes (the 5 scip_pb2 protobuf message classes synthesized at import by _builder.BuildTopDescriptorsAndMessages, and the 3 package dunders __path__/__file__ — none have a static in-tree definition to resolve to). NOT option (ii) route-to-file-node (would change calls-edge semantics for all consumers and misrepresent a protobuf-message call as a file call). Honest-boundary close, consistent with 'explicit gaps over implicit completeness' + closure-evidence discipline."  # 0ebe

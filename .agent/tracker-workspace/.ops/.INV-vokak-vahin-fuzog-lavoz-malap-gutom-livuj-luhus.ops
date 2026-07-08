@@ -20,3 +20,18 @@
     fields:  # 025c
       statement: "A route symbol carries its route fact in one home; enrich_symbols does not append a redundant path-less concept=route to a symbol already carrying the framework_role=='route' marker."  # 025c
       root_cause: "enrich_symbols Phase 1 (framework_patterns.py:1456-1463) stamps meta['concepts']=matches with no guard against already-marked symbols, asymmetric with the materializer skip at fp.py:1829; the rails/phoenix/sinatra/laravel def-based framework_role:'^route$' patterns therefore dual-carry a framework-bearing concept onto the analyzer marker."  # 025c
+- op: update  # 92bb
+  at: '2026-07-08T06:48:52Z'  # 92bb
+  by: agent  # 92bb
+  actor: jgstern_agent  # 92bb
+  clock: 2  # 92bb
+  nonce: 92bb  # 92bb
+  set:  # 92bb
+    status: satisfied  # 92bb
+- op: discuss  # fc68
+  at: '2026-07-08T06:48:52Z'  # fc68
+  by: agent  # fc68
+  actor: jgstern_agent  # fc68
+  clock: 3  # fc68
+  nonce: fc68  # fc68
+  message: "Fixed in PR 8e8a1e42a5. Producer-side root closed: framework_patterns._dedup_route_marker_concepts, called in enrich_symbols Phase 1, lifts a redundant path-less concept=route's framework onto the marker's canonical route_framework home (first-wins) and drops the concept — the route fact is single-homed. BEHAVIORAL EVIDENCE (live repro): a ruby route marker meta={framework_role:route, route_path:/users, http_method:GET} enriched with rails (whose def-based framework_role:'^route$' pattern matches) went from dual-carry [concepts=[{concept:route,framework:rails}], route_framework=None] BEFORE to single-home [route_framework=rails, no route concept] AFTER; route_of still returns framework=rails (now via route_framework, not the co-resident concept — behavior-preserving). STANDING GUARDRAIL: spec_validator._check_route_marker_single_home wired into validate_ir + disclosed in _WIRED_CHECKS (enforced by test_wired_checks_manifest_matches_validate_ir), co-ratcheted by test_validation_report_empty as a shrink-only dimension measured at 0 across all four substrates (default/frameworks_all/include_docs/max_tier_4) — a regression here or a new route producer re-introducing the dual-carry re-fires it and blocks CI. Core package 100% coverage; 9903 passed. Chose fix option (b) over (a): (a) drop-the-concept alone would orphan the framework (route_of's concept fallback returns None); (b) preserves it on route_framework."  # fc68

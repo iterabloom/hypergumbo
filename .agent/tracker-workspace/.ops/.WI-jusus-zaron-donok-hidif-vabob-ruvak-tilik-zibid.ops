@@ -207,3 +207,17 @@
   clock: 27  # 6e8e
   nonce: 6e8e  # 6e8e
   message: "PARTIAL VALIDATION (tag retained) via BROAD drain broad-20260706-153915. Landed per-language field/variable emission confirmed on real repos: scala (docspell 2266 field), D (dub 1511/45), nim (nitter 425/115), swift (VernissageServer 1863/715), typescript (ghostfolio 1531/228 — the TS-emits-zero residual in the title is discharged), elixir (phoenix 176 defstruct field), kotlin (detekt 2081/382), solidity (openzeppelin 523/6). 8 tail languages moved. INCONCLUSIVE (no pool target): julia, dart, fortran, fsharp — including fortran + julia-non-const that shipped this session. Tag RETAINED (todo_hard, open tail; those slices unvalidated for lack of a cohort target). No regression on the validated languages. Related new orphan-field gap for these slices filed WI-sakug."  # 6e8e
+- op: discuss  # 61e2
+  at: '2026-07-08T07:28:39Z'  # 61e2
+  by: agent  # 61e2
+  actor: jgstern_agent  # 61e2
+  clock: 28  # 61e2
+  nonce: '61e2'  # 61e2
+  message: "HUMAN RULING (2026-07-08) — elixir @attributes residual: adopt Option C (positive 'used-as-a-value' signal as the primary fails-safe gate) with the reserved-attribute set moved to a YAML CATALOG rather than hardcoded. Design: base elixir-reserved-attributes.yaml (core set: @moduledoc/@doc/@spec/@type/@behaviour/@impl/@derive/@enforce_keys/...) EXTENDED by framework YAMLs (ecto: @primary_key/@foreign_key_type; phoenix: ...) merged in on framework detection, consistent with frameworks/*.yaml. Emit kind=variable for a module @attr ONLY when (a) it is referenced as @attr in an expression position elsewhere in the module (positive constant signal) AND (b) it is not in the merged reserved-attribute catalog. The positive signal is the primary fails-safe (a directive like @moduledoc is never used as a value, so YAML incompleteness degrades gracefully — never leaks phantoms). Supersedes the 2026-07-06 'deferred, do not guess' stance now that a fails-safe design exists. To be scoped as its own sub-item + built TDD."  # 61e2
+- op: discuss  # 71db
+  at: '2026-07-08T07:35:23Z'  # 71db
+  by: agent  # 71db
+  actor: jgstern_agent  # 71db
+  clock: 29  # 71db
+  nonce: 71db  # 71db
+  message: "HUMAN RULING (2026-07-08) — Haskell field/variable residual: RATIFY UNFIT by semantics. Haskell has no imperative-style field/variable-as-data-anchor: top-level bindings are already emitted as kind=function (haskell.py:299) and record-field accessors ARE functions (name :: Person -> String, a call target). Per the regression-vs-new-feature discriminant, excluding them from resolution would drop existing calls edges. So WI-jusus field/variable emission is CLOSED for Haskell as unfit-by-design (not a punt). GREENLIT SEPARATELY (C): extract Haskell record-field accessors as kind=function (currently only the data-type name is emitted as kind=data; the named field accessors are uncaptured) — a correct-by-semantics recall win, to be filed as its own agent-work item (NOT human-gated)."  # 71db

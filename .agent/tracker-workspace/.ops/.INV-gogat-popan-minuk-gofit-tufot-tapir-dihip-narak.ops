@@ -1,0 +1,23 @@
+- op: create  # 82df
+  at: '2026-07-08T08:45:19Z'  # 82df
+  by: agent  # 82df
+  actor: jgstern_agent  # 82df
+  clock: 1  # 82df
+  nonce: 82df  # 82df
+  data:  # 82df
+    kind: invariant  # 82df
+    title: "cmd_config safe_load-mocking tests must not depend on catalog-cache warmth"  # 82df
+    status: violated  # 82df
+    priority: 3  # 82df
+    parent:  # 82df
+    tags:  # 82df
+    - infra  # 82df
+    - test_isolation  # 82df
+    isbefore: []  # 82df
+    duplicate_of: []  # 82df
+    not_duplicate_of: []  # 82df
+    pr_ref:  # 82df
+    description: "Surfaced when a WI-zufij PR CI ran the full core package (0 source files changed) and hit a cold catalog cache. Fix: warm all_known_languages() before the mock. Only test_cli_config.py mocks safe_load (contained)."  # 82df
+    fields:  # 82df
+      statement: "A test that mocks yaml.safe_load to raise on the Nth call while driving cmd_config must be independent of catalog-cache warmth (warm all_known_languages before installing the mock)."  # 82df
+      root_cause: "cmd_config() validates args.language via all_known_languages(), which cold-loads 4 catalog YAMLs through yaml.safe_load on first use (module-cached after). test_yaml_parse_error_degrades_gracefully raises on the FIRST safe_load call assuming it is cmd_config's dataflow_patterns load; a COLD catalog cache (test-ordering/sharding dependent) consumes the raising call with a catalog load, so dataflow_patterns loads successfully and 'is None' fails. Deterministic in isolation."  # 82df
