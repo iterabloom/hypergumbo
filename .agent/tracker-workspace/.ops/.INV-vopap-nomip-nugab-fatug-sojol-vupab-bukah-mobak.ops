@@ -21,3 +21,18 @@
     fields:  # 44c6
       statement: "Every valid Julia const declaration emits a const symbol for ALL declared names (including multi-name const a,b=1,2 and typed const K::Int=3), and a const value binding never wrongly clobbers a same-named cross-module function in call resolution."  # 44c6
       root_cause: "The const_statement emitter uses find_child_by_type(assignment,identifier) which finds no direct identifier for an open_tuple or typed_expression LHS (dropping multi-name and typed consts), and registers const under its BARE unqualified name so it EXACT-matches a bare foo() call and beats a same-named function module-qualified suffix-match."  # 44c6
+- op: update  # 5611
+  at: '2026-07-08T20:17:54Z'  # 5611
+  by: agent  # 5611
+  actor: jgstern_agent  # 5611
+  clock: 2  # 5611
+  nonce: '5611'  # 5611
+  set:  # 5611
+    status: satisfied  # 5611
+- op: discuss  # f7f5
+  at: '2026-07-08T20:17:54Z'  # f7f5
+  by: agent  # f7f5
+  actor: jgstern_agent  # f7f5
+  clock: 3  # f7f5
+  nonce: f7f5  # f7f5
+  message: "Merged 8f559a33bc (bundle). julia const_statement branch now emits one const per bound name via _julia_assignment_target_names (multi-name const a,b=1,2 and typed const K::Int=3 went 0→N symbols), module-qualified id + bare name, with a function-preferring symbol_by_name tie-break so a const does not clobber a same-named function in resolution (clobber test verified as a valid RED). lang-common 100%."  # f7f5

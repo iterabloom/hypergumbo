@@ -21,3 +21,18 @@
     fields:  # 95ed
       statement: "Third-party JS bundles under src/pretix/static/ are classified supply-chain first_party, inflating JS symbol totals and leaking vendored code into top-ranked symbols (pretix); an INV-nuzas-adjacent tier misclassification."  # 95ed
       root_cause: "Supply-chain tier classification treats any in-repo path as first_party without excluding vendored/static third-party asset directories, so bundled third-party JS under static/ is counted as first-party source."  # 95ed
+- op: update  # fdc3
+  at: '2026-07-08T19:41:52Z'  # fdc3
+  by: agent  # fdc3
+  actor: jgstern_agent  # fdc3
+  clock: 2  # fdc3
+  nonce: fdc3  # fdc3
+  set:  # fdc3
+    status: satisfied  # fdc3
+- op: discuss  # f6ac
+  at: '2026-07-08T19:41:52Z'  # f6ac
+  by: agent  # f6ac
+  actor: jgstern_agent  # f6ac
+  clock: 3  # f6ac
+  nonce: f6ac  # f6ac
+  message: "Merged 40fee8d843. Added vendored/, npm_mirror/, bower_components/ marker-dir patterns to EXTERNAL_DEP_DEEP_PATTERNS so un-minified vendored front-end assets under a first-party root (src/.../static/.../vendored/) classify tier-3 EXTERNAL_DEP. Not a blanket static/ rule (first-party static stays tier-1, guarded). Core 100%."  # f6ac

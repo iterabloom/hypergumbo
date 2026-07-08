@@ -21,3 +21,18 @@
     fields:  # 82df
       statement: "A test that mocks yaml.safe_load to raise on the Nth call while driving cmd_config must be independent of catalog-cache warmth (warm all_known_languages before installing the mock)."  # 82df
       root_cause: "cmd_config() validates args.language via all_known_languages(), which cold-loads 4 catalog YAMLs through yaml.safe_load on first use (module-cached after). test_yaml_parse_error_degrades_gracefully raises on the FIRST safe_load call assuming it is cmd_config's dataflow_patterns load; a COLD catalog cache (test-ordering/sharding dependent) consumes the raising call with a catalog load, so dataflow_patterns loads successfully and 'is None' fails. Deterministic in isolation."  # 82df
+- op: update  # 7236
+  at: '2026-07-08T09:12:01Z'  # 7236
+  by: agent  # 7236
+  actor: jgstern_agent  # 7236
+  clock: 2  # 7236
+  nonce: '7236'  # 7236
+  set:  # 7236
+    status: satisfied  # 7236
+- op: discuss  # b282
+  at: '2026-07-08T09:12:02Z'  # b282
+  by: agent  # b282
+  actor: jgstern_agent  # b282
+  clock: 3  # b282
+  nonce: b282  # b282
+  message: "Merged b0f1e4c101. Warmed all_known_languages() before the yaml.safe_load mock in test_yaml_parse_error_degrades_gracefully. BEHAVIORAL EVIDENCE: the test went from deterministic FAIL in isolation (cold catalog cache -> the 4 catalog cold-loads consume the raising safe_load call -> dataflow_patterns loads non-None) to PASS in isolation; the full-package CI run (PR #495, where it originally surfaced) is green. Only test_cli_config.py mocks safe_load (contained)."  # b282

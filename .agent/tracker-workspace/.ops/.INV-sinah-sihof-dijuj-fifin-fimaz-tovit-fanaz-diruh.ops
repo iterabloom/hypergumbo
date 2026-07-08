@@ -21,3 +21,18 @@
     fields:  # 653b
       statement: "A def/defp/defmacro/defmacrop/defstruct inside a quote do ... end block (e.g. an __using__ macro template) is NOT a definition on the syntactically-enclosing module — it is injected into whatever module runs use, so it must not be attributed to the defining module."  # 653b
       root_cause: "The Elixir symbol emitters key the owner on the syntactic enclosing defmodule (via _get_enclosing_modules) with no awareness that a quote block defers the definition to a different (use-ing) module. Correctly resolving the real owner needs cross-module use/__using__ macro-expansion resolution."  # 653b
+- op: update  # 85f9
+  at: '2026-07-08T20:17:54Z'  # 85f9
+  by: agent  # 85f9
+  actor: jgstern_agent  # 85f9
+  clock: 2  # 85f9
+  nonce: 85f9  # 85f9
+  set:  # 85f9
+    status: satisfied  # 85f9
+- op: discuss  # a5d3
+  at: '2026-07-08T20:17:54Z'  # a5d3
+  by: agent  # a5d3
+  actor: jgstern_agent  # a5d3
+  clock: 3  # a5d3
+  nonce: a5d3  # a5d3
+  message: "Merged 8f559a33bc (bundle). Extended the fails-safe 'not _has_quote_ancestor' guard (already on defstruct) to elixir def/defp and defmacro/defmacrop branches, so a def/macro inside a quote (an __using__ template) is suppressed rather than mis-attributed to the defining module. RED test (EventBase.__using__ with injected def/defp/defmacro) verified. Correct recall via use/__using__ expansion deferred. lang-common 100%."  # a5d3
