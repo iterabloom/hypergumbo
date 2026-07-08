@@ -117,6 +117,15 @@ CONTAINABLE_KINDS = frozenset(
 CONTAINER_KINDS = frozenset({
     "class", "interface", "struct", "trait", "enum", "module",
     "message",
+    # WI-sakug: language-construct container kinds the WI-jusus field-emission
+    # tail produces for a field's enclosing type — solidity `contract`/`library`,
+    # nim/others `type`, scala `object`, D `union`. Without these the container
+    # was never indexed into container_by_name, so dotted-name fields
+    # (`Token.totalSupply` → `Token`) found no owner and stayed orphaned
+    # (solidity 0% rooted, nim 8%, scala 69%, D 78%). All five are registered
+    # SYMBOL_KINDS; `_find_parent`'s same-language + same-file/unique gate bounds
+    # false positives for the widely-emitted `type` kind.
+    "contract", "library", "type", "object", "union",
     # INV-hojus: file-kind Symbols are the canonical file representation
     # (orchestrator synthesis + py.py for Python with module-level code,
     # js_module linker for TS, etc.). Including them here lets Phase 2's

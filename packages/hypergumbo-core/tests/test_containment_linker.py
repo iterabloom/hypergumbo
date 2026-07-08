@@ -1378,3 +1378,38 @@ class TestFindParent:
         )
         # Without language info, returns first candidate (backward compat)
         assert result is go_class
+
+
+class TestWiSakugFieldContainment:
+    """WI-sakug: fields emitted by the WI-jusus tail (solidity/nim/scala/D) were
+    never rooted because their enclosing type's kind (contract/library/type/
+    object/union) was absent from CONTAINER_KINDS — the container was never
+    indexed, so the dotted-name field found no owner and stayed orphaned
+    (solidity 0% rooted, nim 8%, scala 69%, D 78%)."""
+
+    def _root(self, kind: str, lang: str, container: str, field: str) -> bool:
+        c = _sym(f"{lang}:f.src:1-20:{container}:{kind}", container, kind,
+                 language=lang, path="f.src")
+        fld = _sym(f"{lang}:f.src:2-2:{field}:field", field, "field",
+                   language=lang, path="f.src", start=2, end=2)
+        ctx = LinkerContext(repo_root=Path("/test"), symbols=[c, fld], edges=[])
+        result = link_containment(ctx)
+        return any(
+            e.edge_type == "contains" and e.src == c.id and e.dst == fld.id
+            for e in result.edges
+        )
+
+    def test_roots_solidity_contract_field(self) -> None:
+        assert self._root("contract", "solidity", "Token", "Token.totalSupply")
+
+    def test_roots_solidity_library_field(self) -> None:
+        assert self._root("library", "solidity", "SafeMath", "SafeMath.MAX")
+
+    def test_roots_nim_type_field(self) -> None:
+        assert self._root("type", "nim", "Person", "Person.age")
+
+    def test_roots_scala_object_field(self) -> None:
+        assert self._root("object", "scala", "Config", "Config.timeout")
+
+    def test_roots_d_union_field(self) -> None:
+        assert self._root("union", "d", "Value", "Value.i")
