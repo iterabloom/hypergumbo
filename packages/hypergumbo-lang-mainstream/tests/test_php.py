@@ -1768,3 +1768,21 @@ class TestPhpCyclomaticComplexity:
         assert simple.cyclomatic_complexity == 1
         assert branchy.cyclomatic_complexity is not None
         assert branchy.cyclomatic_complexity >= 4
+
+
+class TestPhpUseImports:
+    """INV-naguv: `use Namespace\\Class;` statements emit imports edges (php.py
+    previously emitted zero), so PHP framework namespaces reach the import-promote
+    phase and a manifest-less PHP app surfaces its framework."""
+
+    def test_use_statement_emits_imports_edge(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.php import analyze_php
+        (tmp_path / "routes.php").write_text(
+            "<?php\nuse Illuminate\\Support\\Facades\\Route;\n"
+            "Route::get('/users', 'UserController@index');\n"
+        )
+        result = analyze_php(tmp_path)
+        import_edges = [e for e in result.edges if e.edge_type == "imports"]
+        assert any(
+            "Illuminate\\Support\\Facades\\Route" in e.dst for e in import_edges
+        ), f"expected an imports edge for the use namespace; got {[e.dst for e in import_edges]}"

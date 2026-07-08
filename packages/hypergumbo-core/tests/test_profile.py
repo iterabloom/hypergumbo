@@ -4801,3 +4801,42 @@ class TestInvVunafParserUnits:
     def test_parse_dub_json_deps_non_dict_returns_empty(self) -> None:
         from hypergumbo_core.profile import _parse_dub_json_deps
         assert _parse_dub_json_deps('"just-a-string"') == set()
+
+
+# INV-naguv — PHP namespace (`use ...`) import-promotion chain
+def test_module_match_kind_php_backslash_prefix() -> None:
+    """INV-naguv: the matcher must recognize PHP's `\\` namespace separator so a
+    framework pattern (`illuminate`) prefix-matches an imported namespace
+    (`Illuminate\\Http`)."""
+    from hypergumbo_core.profile import _module_match_kind
+    assert _module_match_kind("Illuminate\\Http\\Request", "illuminate") == "prefix"
+    assert _module_match_kind("illuminate", "illuminate") == "exact"
+
+
+def test_is_specific_pattern_php_backslash() -> None:
+    """INV-naguv: a backslashed namespace pattern is structurally specific
+    (bare-name FP gate)."""
+    from hypergumbo_core.profile import _is_specific_pattern
+    assert _is_specific_pattern("symfony\\component") is True
+
+
+def test_refine_frameworks_promotes_laravel_from_php_use_edge() -> None:
+    """INV-naguv: a prod PHP `imports` edge for an Illuminate namespace promotes
+    laravel into profile.frameworks."""
+    from hypergumbo_core.profile import RepoProfile, refine_frameworks
+    from hypergumbo_core.ir import Edge, Symbol, Span
+
+    profile = RepoProfile()
+    profile.languages = {"php": {"files": 1, "loc": 10}}
+    file_sym = Symbol(
+        id="php:app/Http/routes.php:0-0:file:file", name="routes.php", kind="file",
+        language="php", path="app/Http/routes.php", span=Span(0, 0, 0, 0),
+    )
+    edge = Edge.create(
+        src="php:app/Http/routes.php:0-0:file:file",
+        dst="php:Illuminate\\Support\\Facades\\Route:0-0:package:package",
+        edge_type="imports", line=1, evidence_type="import_statement",
+        origin="test", origin_run_id="test",
+    )
+    result = refine_frameworks(profile, [edge], [file_sym])
+    assert "laravel" in (result.frameworks if hasattr(result, "frameworks") else profile.frameworks)

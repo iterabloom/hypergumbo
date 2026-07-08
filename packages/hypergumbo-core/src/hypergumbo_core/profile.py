@@ -284,13 +284,16 @@ GO_FRAMEWORKS = {
 PHP_FRAMEWORKS = {
     # INV-mupuf: Lumen (Laravel's micro-framework) via its composer package.
     "lumen": ["laravel/lumen-framework", "laravel/lumen"],
-    "laravel": ["laravel/framework"],
-    "symfony": ["symfony/framework-bundle", "symfony/symfony"],
-    "codeigniter": ["codeigniter4/framework"],
-    "cakephp": ["cakephp/cakephp"],
-    "yii": ["yiisoft/yii2"],
-    "phalcon": ["phalcon/devtools"],
-    "slim": ["slim/slim"],
+    # INV-naguv: each framework also carries its PHP import NAMESPACE (matched
+    # against `use Foo\Bar;` imports via the `\` separator), so a source-only
+    # PHP app with no composer manifest still promotes the framework.
+    "laravel": ["laravel/framework", "Illuminate"],
+    "symfony": ["symfony/framework-bundle", "symfony/symfony", "Symfony"],
+    "codeigniter": ["codeigniter4/framework", "CodeIgniter"],
+    "cakephp": ["cakephp/cakephp", "Cake"],
+    "yii": ["yiisoft/yii2", "yii"],
+    "phalcon": ["phalcon/devtools", "Phalcon"],
+    "slim": ["slim/slim", "Slim"],
 }
 
 # Java/Kotlin (pom.xml, build.gradle) detection patterns
@@ -3158,7 +3161,7 @@ def _is_specific_pattern(pattern: str) -> bool:
     Returns:
         True if the pattern is structurally specific.
     """
-    return pattern.startswith("@") or "/" in pattern or "." in pattern
+    return pattern.startswith("@") or "/" in pattern or "." in pattern or "\\" in pattern
 
 
 def _module_match_kind(imported: str, pattern: str) -> str | None:
@@ -3190,7 +3193,9 @@ def _module_match_kind(imported: str, pattern: str) -> str | None:
     imported_lower = imported.lower()
     if imported_lower == pattern:
         return "exact"
-    if imported_lower.startswith(pattern + ".") or imported_lower.startswith(pattern + "/"):
+    if (imported_lower.startswith(pattern + ".")
+            or imported_lower.startswith(pattern + "/")
+            or imported_lower.startswith(pattern + "\\")):  # INV-naguv: PHP namespace separator
         return "prefix"
     return None
 

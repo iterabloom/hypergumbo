@@ -999,6 +999,33 @@ def _extract_edges(
     edges: list[Edge] = []
     _caller_path = str(file_path)
 
+    # INV-naguv: emit an `imports` edge per `use Namespace\Class;` statement.
+    # php.py previously emitted zero imports edges, so PHP framework namespaces
+    # (`Illuminate\...`, `Symfony\...`) never reached profile.refine_frameworks'
+    # import-promote phase and a manifest-less PHP app surfaced no framework.
+    # The dst carries the full backslash namespace path, which _module_match_kind
+    # now prefix-matches against the PHP_FRAMEWORKS namespace patterns.
+    _file_id = make_file_id("php", str(file_path))
+    for _use in iter_tree(tree.root_node):
+        if _use.type != "namespace_use_declaration":
+            continue
+        for _clause in _use.children:
+            if _clause.type != "namespace_use_clause":
+                continue
+            for _sub in _clause.children:
+                if _sub.type == "qualified_name":
+                    _module_path = node_text(_sub, source)
+                    if _module_path:
+                        edges.append(Edge.create(
+                            src=_file_id,
+                            dst=f"php:{_module_path}:0-0:package:package",
+                            edge_type="imports",
+                            line=_use.start_point[0] + 1,
+                            evidence_type="import_statement",
+                            origin=PASS_ID,
+                            origin_run_id=run.execution_id,
+                        ))
+
     for node in iter_tree(tree.root_node):
         # Function calls: func_name()
         if node.type == "function_call_expression":
