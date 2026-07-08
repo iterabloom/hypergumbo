@@ -1901,3 +1901,50 @@ class TestDispatchF7CrossLanguageDemoter:
         dead = {d["name"] for d in out["dead_candidates"]}
         assert "ProcessPayment" in dead
         assert out["summary"]["demoted_cross_language"] == 0
+
+
+class TestProductionCallablesClassBExclusion:
+    """INV-disin: ADR-0031 Class-B synthetic linker stand-ins (protocol_origin
+    populated, language=None) are not real source callables. They must NOT enter
+    the dead-code candidate universe — otherwise they are ~100% flagged dead,
+    since language-scoped seeds/entrypoints can never match a language=None node
+    (kserve/prometheus/killbill each surfaced dozens of these phantom dead nodes)."""
+
+    def test_class_b_synthetic_excluded_from_production_candidates(self) -> None:
+        from hypergumbo_core.cli import production_callables
+
+        synthetic = {
+            "id": "go:events.go:6-6:done:function",
+            "kind": "function",
+            "language": None,
+            "protocol_origin": "event_sourcing",
+            "path": "events.go",
+        }
+        real = {
+            "id": "go:app.go:1-3:main:function",
+            "kind": "function",
+            "language": "go",
+            "path": "app.go",
+        }
+        production, _test, _exported = production_callables([synthetic, real])
+        assert synthetic["id"] not in production, (
+            "Class-B synthetic (protocol_origin set) must not be a dead-code candidate"
+        )
+        assert real["id"] in production, "a real source callable must stay a candidate"
+
+    def test_class_a_route_marker_stays_candidate(self) -> None:
+        # Guard against over-exclusion: a Class-A route marker (framework_role
+        # set, real language, NO protocol_origin) is a legitimate callable and
+        # must remain a candidate — the predicate is protocol_origin, not
+        # framework_role and not language-is-None.
+        from hypergumbo_core.cli import production_callables
+
+        route_marker = {
+            "id": "python:app.py:1-3:home:function",
+            "kind": "function",
+            "language": "python",
+            "framework_role": "route",
+            "path": "app.py",
+        }
+        production, _t, _e = production_callables([route_marker])
+        assert route_marker["id"] in production

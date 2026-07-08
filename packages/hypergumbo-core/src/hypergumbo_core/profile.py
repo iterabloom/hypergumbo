@@ -64,6 +64,11 @@ from .taxonomy import LANGUAGE_EXTENSIONS
 # Framework detection patterns
 # Maps framework name -> (file to check, pattern to look for)
 PYTHON_FRAMEWORKS = {
+    # INV-mupuf: dedicated detection keys equal to the route-YAML basename (no
+    # alias needed) so these route-emitting frameworks are reachable from an
+    # import instead of being exempted from the reachability invariant.
+    "flask-restful": ["flask-restful", "flask_restful", "Flask-RESTful"],
+    "masonite": ["masonite"],
     # Web frameworks
     "fastapi": ["fastapi"],
     "flask": ["flask", "Flask"],
@@ -132,6 +137,8 @@ PYTHON_FRAMEWORKS = {
 }
 
 JS_FRAMEWORKS = {
+    # INV-mupuf: route-emitting framework reachable via its npm package name.
+    "restify": ["restify"],
     # Frontend frameworks
     "react": ["react"],
     "vue": ["vue"],
@@ -275,6 +282,8 @@ GO_FRAMEWORKS = {
 
 # PHP composer.json detection patterns
 PHP_FRAMEWORKS = {
+    # INV-mupuf: Lumen (Laravel's micro-framework) via its composer package.
+    "lumen": ["laravel/lumen-framework", "laravel/lumen"],
     "laravel": ["laravel/framework"],
     "symfony": ["symfony/framework-bundle", "symfony/symfony"],
     "codeigniter": ["codeigniter4/framework"],
@@ -368,6 +377,8 @@ SWIFT_FRAMEWORKS = {
 # scoped past the base library — akka.http not akka, zio.http not zio) to
 # promote without a manifest and not fire on the base library.
 SCALA_FRAMEWORKS = {
+    # INV-mupuf: Scalatra via its sbt artifact / import namespace.
+    "scalatra": ["scalatra", "org.scalatra"],
     "play": ["com.typesafe.play", "playframework", "play.api"],
     "akka-http": ["akka-http", "com.typesafe.akka", "akka.http"],
     "http4s": ["http4s", "org.http4s"],
@@ -517,6 +528,8 @@ FSHARP_FRAMEWORKS = {
 # Kotlin framework detection patterns (from build.gradle.kts)
 # Separate from JAVA_FRAMEWORKS because Ktor is Kotlin-specific
 KOTLIN_FRAMEWORKS = {
+    # INV-mupuf: http4k via its artifact / import namespace.
+    "http4k": ["http4k", "org.http4k"],
     "ktor": ["ktor-server", "io.ktor"],
     "exposed": ["exposed-core", "org.jetbrains.exposed"],
     "koin": ["koin-core", "io.insert-koin"],

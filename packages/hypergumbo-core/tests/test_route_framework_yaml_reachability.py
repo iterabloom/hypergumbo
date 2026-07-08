@@ -46,14 +46,10 @@ from hypergumbo_core.profile import LANGUAGE_FRAMEWORKS
 # invariant stays green while still catching NEW drift.
 _ROUTE_YAML_NO_IMPORT_KEY: frozenset[str] = frozenset(
     {
-        # keyless — reachable only via manifest/package-name detection
-        "flask-restful",  # Flask extension; flask-based apps + pip `Flask-RESTful`
-        "lumen",  # composer laravel/lumen
-        "masonite",  # pip masonite
-        "restify",  # npm restify
-        "scalatra",  # sbt scalatra
-        # generic shared detection key `http` (Zig/std) — cannot alias to one YAML
-        "http4k",
+        # bare-Node `http.createServer` idiom — no dedicated import package name
+        # to key on (the import is Node's built-in `http`, a generic shared name
+        # that must not alias to a single YAML). Reachable only via usage
+        # detection, not an import key. INV-mupuf wired the other six.
         "node-http",
     }
 )

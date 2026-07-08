@@ -5759,6 +5759,17 @@ def production_callables(
         kind = node.get("kind", "")
         if kind not in ("function", "method"):
             continue
+        # INV-disin: ADR-0031 Class-B synthetic linker stand-ins carry a truthy
+        # protocol_origin (and language=None). They are not real source callables
+        # — they are placeholder targets synthesized by linkers — so they must
+        # not enter the dead-code candidate universe. Left in, they are ~100%
+        # flagged dead because language-scoped seeds/entrypoints can never match
+        # a language=None node. Keyed on protocol_origin (the canonical Class-B
+        # marker, biconditional-enforced by the spec validator), NOT framework_role
+        # (which also marks Class-A route callables that must stay candidates) and
+        # NOT language-is-None.
+        if node.get("protocol_origin"):
+            continue
         path = node.get("path", "")
         if _is_test_path(path):
             test_symbols.add(node["id"])
