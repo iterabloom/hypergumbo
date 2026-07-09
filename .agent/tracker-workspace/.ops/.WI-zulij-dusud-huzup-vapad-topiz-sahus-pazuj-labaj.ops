@@ -76,3 +76,20 @@
   clock: 8  # ec60
   nonce: ec60  # ec60
   message: "2026-06-10 design-interview ruling (decision recorded, no ADR): 'important symbols' means centrality-ranked everywhere — spec:1267 stands, and compact's default moves to match sketch. Connectivity-growth survives only behind an explicit --connectivity flag labeled 'connected core', and the change is bakeoff-tagged. Waits on the default-switch implementation."  # ec60
+- op: update  # d8cc
+  at: '2026-07-09T23:00:05Z'  # d8cc
+  by: agent  # d8cc
+  actor: jgstern_agent  # d8cc
+  clock: 9  # d8cc
+  nonce: d8cc  # d8cc
+  set:  # d8cc
+    status: done  # d8cc
+  add:  # d8cc
+    tags: [wave4, awaits_bakeoff_validation]  # d8cc
+- op: discuss  # a955
+  at: '2026-07-09T23:00:05Z'  # a955
+  by: agent  # a955
+  actor: jgstern_agent  # a955
+  clock: 10  # a955
+  nonce: a955  # a955
+  message: "Fixed + merged (selfh/dev 4c8a8f66c1, bundled with WI-kolal + WI-fumut). compact's default selection flipped from connectivity-aware to a GLOBAL centrality-ranked prefix (D12; spec 'Output reproducibility' already declared this the default). --no-connectivity replaced by --connectivity ('connected core') opt-in. 5 cli.py sites (2 flag defs, 2 wirings, run_behavior_map default True->False). Behavioral evidence: main() --connectivity routes both modes to valid compact output; 3467 affected tests pass; core 100%. Bakeoff-tagged (default compact output shape changes across the corpus). Wave-4 projection lynchpin."  # a955
