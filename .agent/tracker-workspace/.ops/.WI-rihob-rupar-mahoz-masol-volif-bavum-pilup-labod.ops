@@ -42,3 +42,19 @@
   clock: 4  # ad67
   nonce: ad67  # ad67
   message: "related-but-distinct cross-link (connections-sweep 2026-06-08T1900Z)"  # ad67
+- op: update  # 48d8
+  at: '2026-07-09T01:42:52Z'  # 48d8
+  by: agent  # 48d8
+  actor: jgstern_agent  # 48d8
+  clock: 5  # 48d8
+  nonce: 48d8  # 48d8
+  set: {}  # 48d8
+  add:  # 48d8
+    tags: [wave5]  # 48d8
+- op: discuss  # 3dee
+  at: '2026-07-09T01:42:52Z'  # 3dee
+  by: agent  # 3dee
+  actor: jgstern_agent  # 3dee
+  clock: 6  # 3dee
+  nonce: 3dee  # 3dee
+  message: "Wave-5 assignment (2026-07-08): identity-hash-coarseness residual (identity:F7 container-kind stable_id, js_ts.py:3322). Empty isbefore, no parent; umbrella INV-tazaj/INV-bazij already satisfied → migrates to the terminal validation-drain wave. Tracked in wave5_remaining_plan_07082026.md."  # 3dee

@@ -1,0 +1,22 @@
+- op: create  # beea
+  at: '2026-07-08T23:11:17Z'  # beea
+  by: agent  # beea
+  actor: jgstern_agent  # beea
+  clock: 1  # beea
+  nonce: beea  # beea
+  data:  # beea
+    kind: work_item  # beea
+    title: "Root D-enum members and scala enum/given fields (WI-sakug Part B remainder)"  # beea
+    status: todo_hard  # beea
+    priority: 4  # beea
+    parent:  # beea
+    tags:  # beea
+    - linker  # beea
+    - containment  # beea
+    - field_emission  # beea
+    isbefore: []  # beea
+    duplicate_of: []  # beea
+    not_duplicate_of: []  # beea
+    pr_ref:  # beea
+    description: "WI-sakug Part A (c3d67eda28) added container kinds to CONTAINER_KINDS, rooting the bulk of WI-jusus tail fields. Remainder: D enum members and scala enum/given fields need per-analyzer OWNER-symbol emission (d_lang.py enum->member, scala.py enum/given) — the containment linker alone can't root them because the owner relationship isn't expressible via a dotted-name + container-kind match. Small precision tail."  # beea
+    fields: {}  # beea

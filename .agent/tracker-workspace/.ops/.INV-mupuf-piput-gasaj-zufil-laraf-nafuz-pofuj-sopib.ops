@@ -20,3 +20,18 @@
     fields:  # 68ed
       statement: "Every route-emitting framework YAML is reachable from a detection key (directly or via alias) or is verified reachable via manifest/package-name detection."  # 68ed
       root_cause: "LANGUAGE_FRAMEWORKS has NO import key for flask-restful/lumen/masonite/restify/scalatra (their route YAMLs are reachable only via manifest/package-name detection, UNVERIFIED), and http4k/node-http both map to the single generic key 'http' (one key cannot alias to two YAMLs). Aliases (the INV-fosam fix) cannot address either class."  # 68ed
+- op: update  # c2af
+  at: '2026-07-08T22:36:34Z'  # c2af
+  by: agent  # c2af
+  actor: jgstern_agent  # c2af
+  clock: 2  # c2af
+  nonce: c2af  # c2af
+  set:  # c2af
+    status: satisfied  # c2af
+- op: discuss  # b923
+  at: '2026-07-08T22:36:34Z'  # b923
+  by: agent  # b923
+  actor: jgstern_agent  # b923
+  clock: 3  # b923
+  nonce: b923  # b923
+  message: "Merged 4f6dade424 (bundle). Added dedicated detection keys (= route-YAML basename, no alias) for flask-restful/masonite (Python), lumen (PHP), restify (JS), scalatra (Scala), http4k (Kotlin) in profile.py, so a manifest/import declaring them now surfaces routes instead of zero. Removed the six from the test_route_framework_yaml_reachability exemption — the structural invariant now enforces them (RED: 6 orphaned; GREEN: reachable). node-http stays the sole exemption (generic bare-Node http builtin, cannot alias to one YAML). Core 100%."  # b923

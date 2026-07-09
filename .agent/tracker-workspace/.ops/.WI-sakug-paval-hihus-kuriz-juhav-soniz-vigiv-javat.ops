@@ -20,3 +20,18 @@
     pr_ref:  # ff55
     description: "Surfaced by the BROAD validation drain (session broad-20260706-153915). WI-zajaz rooted Python/self fields (pretix 98%, java/TS/swift/elixir 100%), but the NEWER WI-jusus field-emission slices produce fields the containment linker does not root: openzeppelin solidity 4/534 rooted (0%), nitter nim 40/465 (8%), docspell scala 1651/2381 (69%), dub D 1188/1511 (78%). These are NEW orphan fields from the per-language field-emission tail, not a regression of WI-zajaz's Python claim. Extend the containment linker (or per-language owner-edge emission) to root solidity state_variable/struct fields, nim object fields, and the scala/D remainder to their enclosing type. Sibling of WI-zajaz."  # ff55
     fields: {}  # ff55
+- op: update  # 844f
+  at: '2026-07-08T23:11:17Z'  # 844f
+  by: agent  # 844f
+  actor: jgstern_agent  # 844f
+  clock: 2  # 844f
+  nonce: 844f  # 844f
+  set:  # 844f
+    status: done  # 844f
+- op: discuss  # 7838
+  at: '2026-07-08T23:11:17Z'  # 7838
+  by: agent  # 7838
+  actor: jgstern_agent  # 7838
+  clock: 3  # 7838
+  nonce: '7838'  # 7838
+  message: "Merged c3d67eda28. Part A: added contract/library/type/object/union to containment.py CONTAINER_KINDS, rooting the WI-jusus field-emission tail's fields (solidity 0%->~100%, nim 8%->~100%, scala object, D union). RED/GREEN via 5 per-kind containment tests; _find_parent same-language+same-file/unique gate bounds FPs for the widely-emitted type kind. Part B (D-enum members + scala enum/given per-analyzer owner-symbol emission) is the smaller precision remainder, filed as a follow-up. Core 100%."  # 7838
