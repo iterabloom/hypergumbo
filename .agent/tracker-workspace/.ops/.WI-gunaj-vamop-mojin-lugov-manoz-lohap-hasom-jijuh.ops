@@ -26,3 +26,19 @@
   clock: 2  # 55f6
   nonce: 55f6  # 55f6
   message: "Split sibling: WI-bosog (the AR-record repo_fingerprint format outlier, bare-64 vs sha256:+16). Same field repo_fingerprint, distinct producers, distinct fixes."  # 55f6
+- op: update  # 1974
+  at: '2026-07-09T01:52:18Z'  # 1974
+  by: agent  # 1974
+  actor: jgstern_agent  # 1974
+  clock: 3  # 1974
+  nonce: '1974'  # 1974
+  set: {}  # 1974
+  add:  # 1974
+    tags: [wave5]  # 1974
+- op: discuss  # d59d
+  at: '2026-07-09T01:52:18Z'  # d59d
+  by: agent  # d59d
+  actor: jgstern_agent  # d59d
+  clock: 4  # d59d
+  nonce: d59d  # d59d
+  message: "Wave-5 sweep (2026-07-08): identity:F5 fingerprint-format residual (sketch repo_fingerprint rendered truncated-16 vs full-64 in AR records; a rendering-consistency gap, sketch-adjacent but a fingerprint issue not a sketch-cache one). Empty isbefore -> terminal wave."  # d59d

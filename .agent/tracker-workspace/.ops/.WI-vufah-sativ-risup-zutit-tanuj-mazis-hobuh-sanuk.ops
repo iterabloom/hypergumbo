@@ -26,3 +26,19 @@
   clock: 2  # 8cae
   nonce: 8cae  # 8cae
   message: "2026-06-10 design-interview ruling (ADR-0035, merged in PR #4181): move/rename tracking is assigned to fingerprint/shape_id (stable_id deliberately churns on moves), which makes this file-vs-function fingerprint collision load-bearing rather than cosmetic. The comment-stripping conflation needs fixing so cross-kind nodes cannot assert content-identity. Waits on the implementing fingerprint fix."  # 8cae
+- op: update  # ebeb
+  at: '2026-07-09T01:52:17Z'  # ebeb
+  by: agent  # ebeb
+  actor: jgstern_agent  # ebeb
+  clock: 3  # ebeb
+  nonce: ebeb  # ebeb
+  set: {}  # ebeb
+  add:  # ebeb
+    tags: [wave5]  # ebeb
+- op: discuss  # 4335
+  at: '2026-07-09T01:52:17Z'  # 4335
+  by: agent  # 4335
+  actor: jgstern_agent  # 4335
+  clock: 4  # 4335
+  nonce: '4335'  # 4335
+  message: "Wave-5 sweep (2026-07-08): identity:F5 fingerprint residual (file node + its sole function collide on one fingerprint; structural walk strips comments; the file-vs-sole-function collision named in the identity:F5/T2 clause). Empty isbefore -> terminal wave."  # 4335
