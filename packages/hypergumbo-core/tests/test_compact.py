@@ -736,6 +736,52 @@ class TestFormatCompactBehaviorMap:
         for edge in result["edges"]:
             assert edge["src"] in included_ids and edge["dst"] in included_ids
 
+    def test_output_closure_preserves_parallel_induced_edges(self):
+        """WI-hakom output-closure: compact edges == the induced subgraph,
+        including parallel edges, in the connectivity-aware path.
+
+        For every source edge whose both endpoints survive into the compact
+        view, that exact edge (by id) must appear in the compact edge array —
+        no induced edge, parallel or otherwise, may be silently dropped.
+        """
+        sym_a = make_symbol("a")
+        sym_b = make_symbol("b")
+        sym_c = make_symbol("c")
+        symbols = [sym_a, sym_b, sym_c]
+
+        # Two parallel A->B edges (distinct types/ids) + A->C for connectivity.
+        e_calls = make_edge(sym_a.id, sym_b.id, edge_type="calls")
+        e_calls.id = "edge:a->b:calls"
+        e_refs = make_edge(sym_a.id, sym_b.id, edge_type="references")
+        e_refs.id = "edge:a->b:references"
+        e_ac = make_edge(sym_a.id, sym_c.id, edge_type="calls")
+        edges = [e_calls, e_refs, e_ac]
+
+        behavior_map = {
+            "nodes": [s.to_dict() for s in symbols],
+            "edges": [e.to_dict() for e in edges],
+            "entrypoints": [],
+        }
+
+        config = CompactConfig(min_symbols=3, max_symbols=3)
+        result = format_compact_behavior_map(
+            behavior_map, symbols, edges, config,
+            connectivity_aware=True, force_include_entrypoints=False,
+        )
+
+        included_ids = {n["id"] for n in result["nodes"]}
+        # The parallel pair must actually be in scope for this to test anything.
+        assert sym_a.id in included_ids and sym_b.id in included_ids
+
+        # Output closure: compact edges == induced subgraph (both directions).
+        expected = {
+            e["id"] for e in behavior_map["edges"]
+            if e["src"] in included_ids and e["dst"] in included_ids
+            and e["src"] != e["dst"]
+        }
+        got = {e["id"] for e in result["edges"]}
+        assert expected == got, f"induced edges dropped: {expected - got}"
+
 
 class TestStopWords:
     """Tests for stop words constant."""
@@ -2370,6 +2416,36 @@ class TestConnectivityAwareSelection:
         assert len(result.included_edges) == 1
         assert result.included_edges[0].src == sym_a.id
         assert result.included_edges[0].dst == sym_b.id
+
+    def test_preserves_parallel_edges(self):
+        """WI-hakom: parallel edges between the same node pair are ALL retained.
+
+        The induced subgraph must be derived from the edge LIST, not a
+        (src, dst)-keyed dict — the latter collapses parallel edges (e.g. a
+        ``calls`` and a ``references`` edge between the same two symbols),
+        dropping every parallel but the last.
+        """
+        from hypergumbo_core.compact import select_by_connectivity
+
+        sym_a = make_symbol("a")
+        sym_b = make_symbol("b")
+        symbols = [sym_a, sym_b]
+
+        e_calls = make_edge(sym_a.id, sym_b.id, edge_type="calls")
+        e_calls.id = "edge:a->b:calls"
+        e_refs = make_edge(sym_a.id, sym_b.id, edge_type="references")
+        e_refs.id = "edge:a->b:references"
+        edges = [e_calls, e_refs]
+
+        result = select_by_connectivity(
+            symbols, edges, {sym_a.id, sym_b.id}, max_additional=0
+        )
+
+        # Both parallel edges are in the induced subgraph.
+        assert len(result.included_edges) == 2
+        assert {e.id for e in result.included_edges} == {
+            "edge:a->b:calls", "edge:a->b:references"
+        }
 
     def test_frontier_expands_via_incoming_edges(self):
         """Frontier includes nodes that have incoming edges to selected nodes."""

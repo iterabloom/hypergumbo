@@ -657,7 +657,6 @@ def select_by_connectivity(
         ConnectivityResult with selected symbols and induced edges.
     """
     symbol_by_id = {s.id: s for s in symbols}
-    edge_set = {(e.src, e.dst): e for e in edges if e.src != e.dst}
 
     # Build adjacency lists
     outgoing, incoming = _build_adjacency_list(edges)
@@ -751,11 +750,17 @@ def select_by_connectivity(
 
         added += 1
 
-    # Compute induced subgraph edges
-    included_edges: List[Edge] = []
-    for (src, dst), edge in edge_set.items():
-        if src in selected_ids and dst in selected_ids:
-            included_edges.append(edge)
+    # Compute induced subgraph edges. Iterate the edge LIST (not a
+    # (src, dst)-keyed dict) so PARALLEL edges between the same node pair are
+    # all retained — a (src, dst) dict collapses them, dropping every parallel
+    # but the last (WI-hakom induced-subgraph leak; the coverage and tiered
+    # branches already iterate the list directly). Self-loops (src == dst) waste
+    # budget without adding connectivity, so they stay excluded, matching those
+    # branches.
+    included_edges: List[Edge] = [
+        e for e in edges
+        if e.src != e.dst and e.src in selected_ids and e.dst in selected_ids
+    ]
 
     # Compute centrality sums
     included_centrality = sum(centrality.get(s.id, 0) for s in selected_symbols)
