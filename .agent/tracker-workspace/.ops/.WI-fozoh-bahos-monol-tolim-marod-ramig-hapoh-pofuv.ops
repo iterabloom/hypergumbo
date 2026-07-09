@@ -102,3 +102,19 @@
   clock: 12  # 8da8
   nonce: 8da8  # 8da8
   message: "root-cause family member (a1) (connections-sweep 2026-06-08T1900Z)"  # 8da8
+- op: update  # df0a
+  at: '2026-07-09T01:43:17Z'  # df0a
+  by: agent  # df0a
+  actor: jgstern_agent  # df0a
+  clock: 13  # df0a
+  nonce: df0a  # df0a
+  set: {}  # df0a
+  add:  # df0a
+    tags: [wave5]  # df0a
+- op: discuss  # b931
+  at: '2026-07-09T01:43:17Z'  # b931
+  by: agent  # b931
+  actor: jgstern_agent  # b931
+  clock: 14  # b931
+  nonce: b931  # b931
+  message: "Wave-5 assignment (2026-07-08): synthetic-node-stamping residual (child of META-nomiz; external_symbol null stable_id/canonical_name + dup file nodes). Empty isbefore → terminal wave. wave5_remaining_plan_07082026.md."  # b931

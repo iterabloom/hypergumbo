@@ -32,3 +32,19 @@
     tags: [dogfood]  # f325
   remove:  # f325
     tags: [dogfooding]  # f325
+- op: update  # 8965
+  at: '2026-07-09T01:43:18Z'  # 8965
+  by: agent  # 8965
+  actor: jgstern_agent  # 8965
+  clock: 3  # 8965
+  nonce: '8965'  # 8965
+  set: {}  # 8965
+  add:  # 8965
+    tags: [wave5]  # 8965
+- op: discuss  # 0374
+  at: '2026-07-09T01:43:18Z'  # 0374
+  by: agent  # 0374
+  actor: jgstern_agent  # 0374
+  clock: 4  # 0374
+  nonce: '0374'  # 0374
+  message: "Wave-5 assignment (2026-07-08): identity-hash-coarseness residual (child of satisfied INV-bazij; markdown heading occurrence-index, INV-bazij 6th mechanism — the markdown stable_id area the v8 SITE-key train deferred). Empty isbefore → terminal wave."  # 0374

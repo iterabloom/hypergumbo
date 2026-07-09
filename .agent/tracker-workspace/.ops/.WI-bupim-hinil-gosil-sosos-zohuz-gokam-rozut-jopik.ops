@@ -83,3 +83,19 @@
   clock: 9  # 96a0
   nonce: 96a0  # 96a0
   message: "[+ tranch_03: anon-card-tranch03-013 F45.A4 — 195 stable_id collisions (bash run, HTTP route variants); typed-tier + linker call_site both covered (folded as duplicate; blind severity 4; new row WI-butis wont_do)]"  # 96a0
+- op: update  # 6430
+  at: '2026-07-09T01:43:17Z'  # 6430
+  by: agent  # 6430
+  actor: jgstern_agent  # 6430
+  clock: 10  # 6430
+  nonce: '6430'  # 6430
+  set: {}  # 6430
+  add:  # 6430
+    tags: [wave5]  # 6430
+- op: discuss  # 9de0
+  at: '2026-07-09T01:43:17Z'  # 9de0
+  by: agent  # 9de0
+  actor: jgstern_agent  # 9de0
+  clock: 11  # 9de0
+  nonce: 9de0  # 9de0
+  message: "Wave-5 assignment (2026-07-08): identity-hash-coarseness residual (child of satisfied INV-bazij; typed-tier stable_id disambiguation + linker call_site design call). Empty isbefore → terminal wave."  # 9de0

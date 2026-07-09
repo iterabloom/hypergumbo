@@ -19,3 +19,19 @@
     pr_ref:  # f4d8
     description: "py.py defines its own _compute_stable_id (py.py:1574-1625), used at py.py:2338/2392/2526, diverging from the canonical stable_id factories in analyze/base.py (make_typed_stable_id etc.). A producer of the identity-hash-coarseness family the original investigation did not list. Must be unified with the canonical formula as part of the STABLE_ID_SCHEME v5->v6 train (ADR-0035/0036); the v6 train plan names this 'B2 producer'. Strategy Wave-0 B2."  # f4d8
     fields: {}  # f4d8
+- op: update  # dadb
+  at: '2026-07-09T01:43:18Z'  # dadb
+  by: agent  # dadb
+  actor: jgstern_agent  # dadb
+  clock: 2  # dadb
+  nonce: dadb  # dadb
+  set: {}  # dadb
+  add:  # dadb
+    tags: [wave5]  # dadb
+- op: discuss  # 3167
+  at: '2026-07-09T01:43:18Z'  # 3167
+  by: agent  # 3167
+  actor: jgstern_agent  # 3167
+  clock: 3  # 3167
+  nonce: '3167'  # 3167
+  message: "Wave-5 assignment (2026-07-08): identity factory-consolidation residual (py.py divergent _compute_stable_id vs base.py factories; Wave-0 B2). Empty isbefore; feeds mypy:F3 NewType 'post factory consolidation' → terminal wave."  # 3167
