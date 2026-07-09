@@ -782,6 +782,48 @@ class TestFormatCompactBehaviorMap:
         got = {e["id"] for e in result["edges"]}
         assert expected == got, f"induced edges dropped: {expected - got}"
 
+    def test_strips_heavy_keys_but_keeps_provenance_and_quality(self):
+        """WI-judun: compact drops the heavy, view-irrelevant blocks but KEEPS
+        the finalize provenance/quality signals.
+
+        ``usage_contexts`` is spec-mandated stripped from compact/tiered views
+        (spec §usage_contexts) and ``sketch_precomputed`` is an internal cache
+        artifact (spec §707) — both are dropped. But ``analysis_runs``
+        (provenance) and ``validation_report`` (the finalize quality signal)
+        are deliberately PRESERVED through the compact projection per
+        ADR-0033/ADR-0043 — unlike the more aggressive tiered view, which drops
+        them too. Applies to BOTH the coverage and connectivity-aware branches.
+        """
+        symbols = [make_symbol("core"), make_symbol("helper")]
+        edges = [make_edge(symbols[1].id, symbols[0].id)]
+        behavior_map = {
+            "nodes": [s.to_dict() for s in symbols],
+            "edges": [e.to_dict() for e in edges],
+            "entrypoints": [],
+            "analysis_runs": [{"analyzer": "py", "files": 3, "symbols": 9}],
+            "usage_contexts": [{"symbol_id": "x", "kind": "call"}],
+            "sketch_precomputed": {"config_info": "x" * 500},
+            "validation_report": {"violations": [], "checks": 12},
+        }
+        config = CompactConfig(min_symbols=2, max_symbols=2)
+
+        for connectivity_aware in (False, True):
+            result = format_compact_behavior_map(
+                behavior_map, symbols, edges, config,
+                connectivity_aware=connectivity_aware,
+                force_include_entrypoints=False,
+            )
+            for stripped in ("usage_contexts", "sketch_precomputed"):
+                assert stripped not in result, (
+                    f"compact (connectivity_aware={connectivity_aware}) should "
+                    f"strip {stripped} to save tokens"
+                )
+            for kept in ("analysis_runs", "validation_report"):
+                assert kept in result, (
+                    f"compact (connectivity_aware={connectivity_aware}) must "
+                    f"preserve {kept} (ADR-0043 provenance/quality signal)"
+                )
+
 
 class TestStopWords:
     """Tests for stop words constant."""

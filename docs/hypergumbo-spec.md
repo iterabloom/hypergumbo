@@ -963,7 +963,7 @@ Penalties on the entrypoint `confidence` field: test files −90% (×0.1), vendo
 
 **Role in the pipeline:** Usage contexts feed into framework pattern matching (`enrich_symbols()`), which adds concepts to symbols, which in turn drive entrypoint detection and linker behavior. Most consumers should use the enriched `nodes` and `entrypoints` rather than processing `usage_contexts` directly.
 
-**Stripped from compact/tiered views** to reduce payload size.
+**Stripped from compact/tiered views** to reduce payload size, alongside `sketch_precomputed` (an internal cache artifact). The two budget-limited projections differ deliberately on provenance/quality signals: the more aggressive **tiered** view additionally drops `analysis_runs` and the `validation_report`, whereas the **compact** view *preserves* those two (finalize provenance + quality signals, per ADR-0033/ADR-0043) while still dropping `usage_contexts` and `sketch_precomputed`.
 
 ### metrics — optional counts
 

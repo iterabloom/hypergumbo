@@ -156,6 +156,29 @@ CROSS_CUTTING_EDGE_TYPES = frozenset({
 })
 
 
+# Top-level blocks dropped from the budget-limited projected views to reduce
+# payload. The two views differ DELIBERATELY on provenance/quality signals:
+#
+#   _COMPACT_STRIP_KEYS — the compact view drops only the heavy, view-irrelevant
+#     blocks: usage_contexts (spec-mandated stripped from compact/tiered,
+#     docs/hypergumbo-spec.md §usage_contexts) and sketch_precomputed (an
+#     internal cache artifact consumers must not depend on, spec §707). It KEEPS
+#     analysis_runs (provenance) and validation_report (the finalize quality
+#     signal) — ADR-0033/ADR-0043 preserve both through the compact projection
+#     (test_compact_preserves_validation_report_and_consistency).
+#   _TIERED_STRIP_KEYS — the tiered view is the more aggressive budget projection
+#     and ALSO drops analysis_runs and validation_report
+#     (test_budget_tier_omits_validation_report).
+_COMPACT_STRIP_KEYS = frozenset({
+    "usage_contexts",
+    "sketch_precomputed",
+})
+_TIERED_STRIP_KEYS = _COMPACT_STRIP_KEYS | frozenset({
+    "analysis_runs",
+    "validation_report",
+})
+
+
 @dataclass
 class CompactConfig:
     """Configuration for compact output mode.
@@ -1107,7 +1130,10 @@ def format_compact_behavior_map(
         )
 
         # Create compact output
-        compact_map = dict(behavior_map)
+        compact_map = {
+            k: v for k, v in behavior_map.items()
+            if k not in _COMPACT_STRIP_KEYS
+        }
         compact_map["view"] = "compact"
         compact_map["nodes"] = [s.to_dict() for s in conn_result.included.symbols]
         compact_map["nodes_summary"] = conn_result.to_dict()
@@ -1132,7 +1158,10 @@ def format_compact_behavior_map(
         result = select_by_coverage(symbols, edges, config, force_include_ids)
 
         # Create compact output
-        compact_map = dict(behavior_map)
+        compact_map = {
+            k: v for k, v in behavior_map.items()
+            if k not in _COMPACT_STRIP_KEYS
+        }
         compact_map["view"] = "compact"
         compact_map["nodes"] = [s.to_dict() for s in result.included.symbols]
         compact_map["nodes_summary"] = result.to_dict()
@@ -1562,10 +1591,10 @@ def format_tiered_behavior_map(
     # so the report's counts wouldn't match the tier's nodes — and it wastes token budget.
     # (Before the ADR-0043 finalize rewire, validate_ir ran after tier generation, so tier
     # files never carried it; stripping preserves that shape now that finalize sets it early.)
-    _TIERED_STRIP_KEYS = {
-        "analysis_runs", "usage_contexts", "sketch_precomputed", "validation_report",
+    tiered_map = {
+        k: v for k, v in behavior_map.items()
+        if k not in _TIERED_STRIP_KEYS
     }
-    tiered_map = {k: v for k, v in behavior_map.items() if k not in _TIERED_STRIP_KEYS}
     tiered_map["view"] = "tiered"
     tiered_map["tier_tokens"] = target_tokens
 

@@ -9133,10 +9133,11 @@ def run_behavior_map(
 
     # ADR-0033/ADR-0043 §6: validate_ir + the validation_report now run inside finalize()
     # (sub-step 10, structurally last over the final substrate). Only the stderr warning
-    # summary remains here (I/O). In compact mode behavior_map was rebound above, but
-    # format_compact_behavior_map does dict(behavior_map) so finalize's validation_report is
-    # preserved. The shrink-only ratchet gate (tests/test_validation_report_empty.py) is
-    # unchanged.
+    # summary remains here (I/O). In compact mode behavior_map was rebound above;
+    # format_compact_behavior_map preserves finalize's validation_report (and analysis_runs)
+    # through the projection — it strips only the heavy usage_contexts / sketch_precomputed
+    # blocks (WI-judun), so the quality signal survives compact. The shrink-only ratchet gate
+    # (tests/test_validation_report_empty.py) is unchanged.
     from .spec_validator import emit_stderr_summary
     emit_stderr_summary(_fin_ctx.violations)
 
