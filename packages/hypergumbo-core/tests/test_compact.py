@@ -970,6 +970,68 @@ class TestFormatCompactBehaviorMap:
                 )
             prev_ids = ids
 
+    def test_output_closure_all_projected_views(self):
+        """INV-fanur (G4): every compact projected view (both selection modes)
+        is self-consistent — edges reference only included nodes, entrypoints
+        and features reference only included nodes/edges, and every summary
+        count matches its array length. The output-closure guardrail for the
+        whole projection-finalize block.
+        """
+        symbols = [make_symbol(f"s{i}") for i in range(12)]
+        edges = [make_edge(symbols[i + 1].id, symbols[0].id) for i in range(5)]
+        entrypoints = [
+            {"symbol_id": s.id, "kind": "function", "confidence": 0.9}
+            for s in symbols
+        ]
+        features = [
+            {"id": "f_hub", "entry_nodes": [symbols[0].id],
+             "node_ids": [s.id for s in symbols[:6]],
+             "edge_ids": [e.id for e in edges]},
+            {"id": "f_orphan", "entry_nodes": [symbols[11].id],
+             "node_ids": [symbols[11].id], "edge_ids": []},
+        ]
+        behavior_map = {
+            "nodes": [s.to_dict() for s in symbols],
+            "edges": [e.to_dict() for e in edges],
+            "entrypoints": entrypoints,
+            "features": features,
+        }
+        config = CompactConfig(min_symbols=3, max_symbols=4)
+
+        for connectivity_aware in (False, True):
+            view = format_compact_behavior_map(
+                behavior_map, symbols, edges, config,
+                connectivity_aware=connectivity_aware,
+                force_include_entrypoints=False,
+            )
+            node_ids = {n["id"] for n in view["nodes"]}
+            edge_ids = {e["id"] for e in view["edges"]}
+
+            # edges ⊆ nodes (both endpoints included)
+            for e in view["edges"]:
+                assert e["src"] in node_ids and e["dst"] in node_ids
+
+            # entrypoints reference only included nodes
+            for ep in view["entrypoints"]:
+                assert ep["symbol_id"] in node_ids
+
+            # features reference only included nodes/edges (INV-titid / F38.C4)
+            for feat in view["features"]:
+                for nid in feat.get("node_ids", []):
+                    assert nid in node_ids
+                for eid in feat.get("edge_ids", []):
+                    assert eid in edge_ids
+                assert any(n in node_ids for n in feat.get("entry_nodes", []))
+
+            # every summary count reconciles with its emitted array
+            ns = view["nodes_summary"]
+            assert ns["included"]["count"] == len(view["nodes"])
+            assert ns["included_edges_count"] == len(view["edges"])
+            assert (view["entrypoints_summary"]["included"]["count"]
+                    == len(view["entrypoints"]))
+            assert (view["features_summary"]["included"]["count"]
+                    == len(view["features"]))
+
 
 class TestStopWords:
     """Tests for stop words constant."""
