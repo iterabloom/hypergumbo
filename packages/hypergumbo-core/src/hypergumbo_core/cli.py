@@ -1065,7 +1065,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     max_file_bytes = getattr(args, "max_file_bytes", None)
     compact = getattr(args, "compact", False)
     coverage = getattr(args, "coverage", 0.8)
-    connectivity = not getattr(args, "no_connectivity", False)
+    connectivity = getattr(args, "connectivity", False)
     budgets = getattr(args, "budgets", None)
     extra_excludes = getattr(args, "extra_excludes", [])
     frameworks = getattr(args, "frameworks", None)
@@ -4064,10 +4064,16 @@ def cmd_compact(args: argparse.Namespace) -> int:
         target_coverage=args.coverage,
         max_symbols=args.max_symbols,
         min_symbols=args.min_symbols,
+        # WI-kolal + D12: the compact default is a GLOBAL centrality-ranked
+        # prefix. language_proportional floors would (a) break --max-symbols
+        # containment monotonicity via non-monotonic remainder redistribution
+        # and (b) diverge from "centrality-ranked" (a global ordering).
+        language_proportional=False,
     )
 
-    # Use connectivity-aware selection if not disabled
-    connectivity_aware = not args.no_connectivity
+    # Centrality-ranked selection is the default (D12); --connectivity opts into
+    # the "connected core" connectivity-aware selection.
+    connectivity_aware = getattr(args, "connectivity", False)
 
     # Generate compact behavior map
     compact_map = format_compact_behavior_map(
@@ -6755,12 +6761,12 @@ Cache location:
         help="Target centrality coverage for --compact mode (0.0-1.0, default: 0.8)",
     )
     p_run.add_argument(
-        "--no-connectivity",
+        "--connectivity",
         action="store_true",
-        dest="no_connectivity",
-        help="Disable connectivity-aware selection for --compact mode. "
-             "Falls back to centrality-based selection (may produce disconnected "
-             "subgraphs where entrypoints have no edges).",
+        dest="connectivity",
+        help="'connected core' for --compact mode: connectivity-aware selection "
+             "that bridges disconnected entrypoints. The default is "
+             "centrality-ranked (most-important-first), matching the sketch.",
     )
     p_run.add_argument(
         "--budgets",
@@ -7702,10 +7708,11 @@ without re-running the full analysis."""
         help="Target centrality coverage 0.0-1.0 (default: 0.8)",
     )
     p_compact.add_argument(
-        "--no-connectivity",
+        "--connectivity",
         action="store_true",
-        dest="no_connectivity",
-        help="Disable connectivity-aware selection (may produce disconnected subgraphs)",
+        dest="connectivity",
+        help="'connected core': connectivity-aware selection that bridges "
+             "disconnected entrypoints (default: centrality-ranked)",
     )
     p_compact.set_defaults(func=cmd_compact)
 
@@ -8463,7 +8470,7 @@ def run_behavior_map(
     max_file_bytes: int | None = None,
     compact: bool = False,
     coverage: float = 0.8,
-    connectivity: bool = True,
+    connectivity: bool = False,
     budgets: str | None = None,
     extra_excludes: list[str] | None = None,
     frameworks: str | None = None,
@@ -9194,7 +9201,10 @@ def run_behavior_map(
 
     # Apply compact mode if requested (modifies main output only)
     if compact:
-        config = CompactConfig(target_coverage=coverage)
+        # WI-kolal + D12: global centrality-ranked prefix (see cmd_compact).
+        config = CompactConfig(
+            target_coverage=coverage, language_proportional=False
+        )
         behavior_map = format_compact_behavior_map(
             behavior_map, all_symbols, all_edges, config,
             connectivity_aware=connectivity,

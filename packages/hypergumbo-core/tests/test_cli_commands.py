@@ -3952,7 +3952,7 @@ def test_cmd_compact_converts_behavior_map(tmp_path: Path) -> None:
     args.max_symbols = 10
     args.min_symbols = 5
     args.coverage = 0.8
-    args.no_connectivity = False
+    args.connectivity = False
 
     result = cmd_compact(args)
 
@@ -4006,7 +4006,7 @@ def test_cmd_compact_accepts_gzipped_input(tmp_path: Path, suffix: str) -> None:
     args.max_symbols = 10
     args.min_symbols = 3
     args.coverage = 0.8
-    args.no_connectivity = False
+    args.connectivity = False
 
     assert cmd_compact(args) == 0
     compact_map = json.loads(output_path.read_text())
@@ -4043,7 +4043,7 @@ def test_cmd_compact_to_stdout(tmp_path: Path, capsys) -> None:
     args.max_symbols = 100
     args.min_symbols = 10
     args.coverage = 0.8
-    args.no_connectivity = False
+    args.connectivity = False
 
     result = cmd_compact(args)
 
@@ -4061,7 +4061,7 @@ def test_cmd_compact_file_not_found(tmp_path: Path) -> None:
     args.max_symbols = 100
     args.min_symbols = 10
     args.coverage = 0.8
-    args.no_connectivity = False
+    args.connectivity = False
 
     result = cmd_compact(args)
 
@@ -4125,11 +4125,35 @@ def test_wi_vusaf_cmd_compact_rejects_max_lt_min(
     args.max_symbols = 50
     args.min_symbols = 100
     args.coverage = 0.8
-    args.no_connectivity = False
+    args.connectivity = False
 
     assert cmd_compact(args) == 2
     _, err = capsys.readouterr()
     assert "max-symbols" in err
+
+
+def test_wi_zulij_connectivity_flag_routes_both_modes(tmp_path: Path) -> None:
+    """WI-zulij: the compact default is centrality-ranked; --connectivity opts
+    into connectivity-aware selection. Both produce a valid compact view."""
+    bm = {
+        "schema_version": SCHEMA_VERSION,
+        "nodes": [
+            {"id": f"python:src/m.py:1-2:function:f{i}", "name": f"f{i}",
+             "kind": "function", "language": "python", "path": "src/m.py",
+             "span": {"start_line": 1, "end_line": 2,
+                      "start_col": 0, "end_col": 0}}
+            for i in range(5)
+        ],
+        "edges": [],
+        "entrypoints": [],
+    }
+    inp = tmp_path / "hg.json"
+    inp.write_text(json.dumps(bm))
+    for extra in ([], ["--connectivity"]):
+        out = tmp_path / "out.json"
+        rc = main(["compact", "--input", str(inp), "--out", str(out)] + extra)
+        assert rc == 0
+        assert json.loads(out.read_text())["view"] == "compact"
 
 
 def test_cmd_slice_auto_entry_exclude_tests(tmp_path: Path, capsys) -> None:

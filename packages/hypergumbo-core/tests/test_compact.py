@@ -921,6 +921,55 @@ class TestFormatCompactBehaviorMap:
             # entrypoints truncation is actually exercised (8 -> <=3 nodes)
             assert result["entrypoints_summary"]["omitted"]["count"] > 0
 
+    def test_default_selection_containment_monotonic_multilang(self):
+        """WI-kolal: with the centrality-ranked default (connectivity_aware=False),
+        a smaller --max-symbols budget selects a SUBSET of a larger budget's
+        selection — including across languages. The language_proportional budget
+        allocation must not let a language's slice SHRINK as the global budget
+        grows (which would break nodes(B1) ⊆ nodes(B2))."""
+        # UNEQUAL language sizes + budgets that are NOT multiples of the language
+        # count, so int(budget * proportion) truncates and the remainder is
+        # redistributed — the exact case that can make a language's slice shrink
+        # as the global budget grows.
+        sizes = {"python": ("py", 8), "javascript": ("js", 4),
+                 "go": ("go", 3), "rust": ("rs", 2), "c": ("c", 1)}
+        symbols = []
+        for lang, (ext, n) in sizes.items():
+            for i in range(n):
+                symbols.append(make_symbol(
+                    f"{lang}_{i}", path=f"src/{lang}/{i}.{ext}", language=lang
+                ))
+        edges = [
+            make_edge(symbols[1].id, symbols[0].id),
+            make_edge(symbols[9].id, symbols[8].id),
+            make_edge(symbols[13].id, symbols[12].id),
+        ]
+        behavior_map = {
+            "nodes": [s.to_dict() for s in symbols],
+            "edges": [e.to_dict() for e in edges],
+            "entrypoints": [],
+        }
+        prev_ids = None
+        for budget in range(2, len(symbols) + 1):
+            # Matches the compact CLI default: a GLOBAL centrality-ranked prefix
+            # (language_proportional disabled), which is monotonic by construction
+            # — unlike the language-stratified allocation, whose remainder
+            # redistribution can be non-monotonic (WI-kolal).
+            config = CompactConfig(
+                min_symbols=1, max_symbols=budget, language_proportional=False,
+            )
+            result = format_compact_behavior_map(
+                behavior_map, symbols, edges, config,
+                connectivity_aware=False, force_include_entrypoints=False,
+            )
+            ids = {n["id"] for n in result["nodes"]}
+            if prev_ids is not None:
+                assert prev_ids <= ids, (
+                    f"containment violated at budget {budget}: "
+                    f"dropped {prev_ids - ids}"
+                )
+            prev_ids = ids
+
 
 class TestStopWords:
     """Tests for stop words constant."""
