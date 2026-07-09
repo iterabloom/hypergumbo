@@ -25,3 +25,19 @@
   clock: 2  # 23de
   nonce: 23de  # 23de
   message: "Re-confirms _compute_shape_id tests ast.FunctionDef so all 2279 async defs hit ClassDef branch -> class shape. WI-linon names sub-fix-2 (add AsyncFunctionDef, py.py:1649) + Exception+async collision. (dogfood; blinded sev 4)"  # 23de
+- op: update  # 3613
+  at: '2026-07-09T01:51:50Z'  # 3613
+  by: agent  # 3613
+  actor: jgstern_agent  # 3613
+  clock: 3  # 3613
+  nonce: '3613'  # 3613
+  set: {}  # 3613
+  add:  # 3613
+    tags: [wave5]  # 3613
+- op: discuss  # 30da
+  at: '2026-07-09T01:51:50Z'  # 30da
+  by: agent  # 30da
+  actor: jgstern_agent  # 30da
+  clock: 4  # 30da
+  nonce: 30da  # 30da
+  message: "Wave-5 sweep (2026-07-08): identity:F5 shape_id residual (Python shape_id collapses class/method/function + mis-hashes async def; node-kind + AsyncFunctionDef absent from hash). Empty isbefore, no parent -> terminal validation-drain wave. Batch-2 of the Theme-I identity/provenance sweep; wave5_remaining_plan_07082026.md."  # 30da

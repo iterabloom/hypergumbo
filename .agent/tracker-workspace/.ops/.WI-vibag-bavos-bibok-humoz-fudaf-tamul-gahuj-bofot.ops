@@ -30,3 +30,19 @@
     tags: [dogfood_tranche_03]  # 2eb6
   remove:  # 2eb6
     tags: [dogfood_tranch_03]  # 2eb6
+- op: update  # aef5
+  at: '2026-07-09T01:44:04Z'  # aef5
+  by: agent  # aef5
+  actor: jgstern_agent  # aef5
+  clock: 3  # aef5
+  nonce: aef5  # aef5
+  set: {}  # aef5
+  add:  # aef5
+    tags: [wave4]  # aef5
+- op: discuss  # a56d
+  at: '2026-07-09T01:44:05Z'  # a56d
+  by: agent  # a56d
+  actor: jgstern_agent  # a56d
+  clock: 4  # a56d
+  nonce: a56d  # a56d
+  message: "Wave-4 assignment (2026-07-08): schema/docs version-contract drift (stable_id scheme documented stale). Attaches to Wave-4 schema:F3/F4 ('one version contract' + spec-conformance gate that forces sync at each scheme bump); parent INV-rotup (docs-prose-drift umbrella). NOTE: statement is STALE — impl now emits v8, not v5; needs a re-verify of the current scheme-vs-spec delta before work. Empty isbefore."  # a56d

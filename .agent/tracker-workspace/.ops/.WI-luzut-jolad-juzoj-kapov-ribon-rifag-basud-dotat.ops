@@ -25,3 +25,19 @@
   clock: 2  # 0cf9
   nonce: 0cf9  # 0cf9
   message: "Dogfood finding (member F141.A1), reproduces on the frozen substrate. Mechanism: the Python shape-id helper _compute_shape_id (py.py:1642) is typed (node: ast.FunctionDef | ast.ClassDef) and is invoked only on the function/class construction path; the variable-symbol emission path never calls it. So every module- and class-level `variable` symbol is serialized with shape_id=null even though it carries a real stable_id. Scope: 1609/1610 Python variable nodes carry shape_id=null (the lone populated case is a Go MyVar via the tree-sitter base path). Spec §341 marks Python shape_id 🟩 done (\"implemented via _compute_shape_id()\") and §781 allows null, so 0% on variables is schema-valid but the 🟩 coverage claim is function/class-only. Exposure/consequence: any consumer diffing structural fingerprints to detect \"implementation changed but signature stayed the same\" on Python module-level state gets null and silently loses signal for ~99.9% of the variable population. FRESH-RUN REPRODUCED (/tmp mod.py: MAX_RETRIES=5 + def helper -> variable shape_id None, function populated). Distinct from WI-lutob (shape_id None on csharp/solidity/wgsl BODY-bearing symbols via analyze()-override bypass) — here kind=variable, lang=python, root cause = FunctionDef|ClassDef-only signature. Cross-ref WI-lutob. Substrate evidence: probe_1_shapeid.log / probe_1_varshape.log."  # 0cf9
+- op: update  # 9bb2
+  at: '2026-07-09T01:51:51Z'  # 9bb2
+  by: agent  # 9bb2
+  actor: jgstern_agent  # 9bb2
+  clock: 3  # 9bb2
+  nonce: 9bb2  # 9bb2
+  set: {}  # 9bb2
+  add:  # 9bb2
+    tags: [wave5]  # 9bb2
+- op: discuss  # 28a4
+  at: '2026-07-09T01:51:51Z'  # 28a4
+  by: agent  # 28a4
+  actor: jgstern_agent  # 28a4
+  clock: 4  # 28a4
+  nonce: 28a4  # 28a4
+  message: "Wave-5 sweep (2026-07-08): identity:F5 shape_id residual (Python variable-kind shape_id null; _compute_shape_id is FunctionDef|ClassDef-only). Empty isbefore -> terminal wave."  # 28a4

@@ -19,3 +19,19 @@
     pr_ref:  # bafb
     description: "**Mechanism.** C#, Solidity, WGSL populate shape_id=None on every body-bearing symbol (function/method/class/struct/interface/enum/contract), while bash/go/java/python/rust/swift/typescript all populate it. The spec lists C# among ~20 mainstream analyzers with shape_id done. Root cause (structural): go.py calls self.compute_shape_id(node) directly at symbol construction ('path 2'). csharp.py instead populates analysis.node_for_symbol[symbol.id] ('path 1') which should yield automatic base-class shape_id — BUT the base-class auto-stamp loop runs only inside TreeSitterAnalyzer.analyze() (base.py:2553-2560). csharp.py OVERRIDES analyze() (csharp.py:1639) with its own pipeline and never invokes that stamp loop, so csharp's populated node_for_symbol is dead for shape_id. wgsl.py hardcodes shape_id=None at construction (wgsl.py:235/265/324).\n\n**Evidence.** Frozen substrate shape_id coverage on body-bearing kinds: csharp None=6 has=0 (100%), solidity None=7 has=0 (100%), wgsl None=5 has=0 (100%); bash/go/java/python/rust/swift/typescript all 0% None. Fresh hypergumbo run on /tmp csharp Program.cs -> all csharp nodes shape_id=None. REPRODUCED.\n\n**Consequence.** A consumer using shape_id to detect 'implementation changed but signature stayed same' (spec §337) cannot do so for any C#/Solidity/WGSL symbol — the structural-diff capability the spec marks done for C# silently does not exist.\n\n**Related (distinct).** Same analyze()-override-bypasses-base-stamping mechanism WI-mipul names for pass_version/config_fingerprint, applied to shape_id — a NEW field facet (csharp is in WI-mipul's override-analyze list). Distinct from WI-rihob (stable_id=None on containers; it asserted shape_id was fine, which is false for these three langs). Source: dogfood_tranche_07 F139.A1, fresh-run reproduced."  # bafb
     fields: {}  # bafb
+- op: update  # be61
+  at: '2026-07-09T01:51:51Z'  # be61
+  by: agent  # be61
+  actor: jgstern_agent  # be61
+  clock: 2  # be61
+  nonce: be61  # be61
+  set: {}  # be61
+  add:  # be61
+    tags: [wave5]  # be61
+- op: discuss  # b060
+  at: '2026-07-09T01:51:51Z'  # b060
+  by: agent  # b060
+  actor: jgstern_agent  # b060
+  clock: 3  # b060
+  nonce: b060  # b060
+  message: "Wave-5 sweep (2026-07-08): identity:F5 shape_id residual (csharp/solidity/wgsl shape_id=None on 100% body-bearing symbols; analyze()-override bypasses the base-class stamp loop). Empty isbefore -> terminal wave."  # b060
