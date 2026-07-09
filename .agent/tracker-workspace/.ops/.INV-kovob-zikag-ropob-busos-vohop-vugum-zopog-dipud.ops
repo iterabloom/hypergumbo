@@ -53,3 +53,19 @@
     tags: [dogfood]  # 433c
   remove:  # 433c
     tags: [dogfooding]  # 433c
+- op: update  # 292e
+  at: '2026-07-09T01:53:52Z'  # 292e
+  by: agent  # 292e
+  actor: jgstern_agent  # 292e
+  clock: 5  # 292e
+  nonce: 292e  # 292e
+  set: {}  # 292e
+  add:  # 292e
+    tags: [wave5]  # 292e
+- op: discuss  # 5a85
+  at: '2026-07-09T01:53:52Z'  # 5a85
+  by: agent  # 5a85
+  actor: jgstern_agent  # 5a85
+  clock: 6  # 5a85
+  nonce: 5a85  # 5a85
+  message: "Wave-5 sweep (2026-07-08): identity residual (node.canonical_name format dual-mode); child of INV-kurup (id-format umbrella, a Wave-5 closure gate). Empty isbefore -> terminal wave."  # 5a85

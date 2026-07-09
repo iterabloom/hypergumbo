@@ -52,3 +52,19 @@
   clock: 5  # 8290
   nonce: '8290'  # 8290
   message: "Reopen: child INV-vaguj reproduces (492 file-kind nodes cite orchestrator_file_symbol_synthesis pass-id absent from analysis_runs). (tracker-hygiene-sweep 2026-06-08T174504Z)"  # 8290
+- op: update  # 2030
+  at: '2026-07-09T01:53:51Z'  # 2030
+  by: agent  # 2030
+  actor: jgstern_agent  # 2030
+  clock: 6  # 2030
+  nonce: '2030'  # 2030
+  set: {}  # 2030
+  add:  # 2030
+    tags: [wave5]  # 2030
+- op: discuss  # edb9
+  at: '2026-07-09T01:53:51Z'  # edb9
+  by: agent  # edb9
+  actor: jgstern_agent  # edb9
+  clock: 7  # edb9
+  nonce: edb9  # edb9
+  message: "Wave-5 sweep (2026-07-08): META identity umbrella (Symbol identity must be honest about uncertainty across write/read/edge/provenance/representation). Empty isbefore -> terminal validation-drain / umbrella-closure wave."  # edb9

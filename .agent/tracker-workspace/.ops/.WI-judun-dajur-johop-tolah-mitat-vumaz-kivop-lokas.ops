@@ -46,3 +46,20 @@
   clock: 4  # 9c28
   nonce: 9c28  # 9c28
   message: "compact finalize-after-shrink family cross-link (connections-sweep 2026-06-08T1900Z)"  # 9c28
+- op: update  # 3240
+  at: '2026-07-09T15:27:36Z'  # 3240
+  by: agent  # 3240
+  actor: jgstern_agent  # 3240
+  clock: 5  # 3240
+  nonce: '3240'  # 3240
+  set:  # 3240
+    status: done  # 3240
+  add:  # 3240
+    tags: [wave4]  # 3240
+- op: discuss  # 2907
+  at: '2026-07-09T15:27:37Z'  # 2907
+  by: agent  # 2907
+  actor: jgstern_agent  # 2907
+  clock: 6  # 2907
+  nonce: '2907'  # 2907
+  message: "Fixed + merged (selfh/dev 038d4c4a3a). Compact now strips usage_contexts (spec-mandated, §966) + sketch_precomputed (internal artifact, §707) via a _COMPACT_STRIP_KEYS constant applied to both selection branches. RESCOPED from the item's literal statement: validation_report + analysis_runs are DELIBERATELY preserved in compact (ADR-0033/ADR-0043 finalize provenance/quality signals, locked by test_compact_preserves_validation_report_and_consistency in hypergumbo-lang-mainstream) — only the tiered view drops all four. The item conflated those signals with the strippable heavy blocks; the full affected-set validation surfaced the conflict. Behavioral evidence: new test asserts compact strips {usage_contexts, sketch_precomputed} + keeps {analysis_runs, validation_report} across both branches; finalize roundtrip + tiered-omits tests both green; 3405 affected tests pass; core 100%. Wave-4 crush item 2."  # 2907
