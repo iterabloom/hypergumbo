@@ -79,6 +79,14 @@ from datetime import datetime, timezone
 from typing import Any, Dict
 
 SCHEMA_VERSION = "0.14.4"
+# Canonical ``view`` field values a behavior map (or its budget-limited
+# projections) may carry: the base analysis emits ``behavior_map``; the compact
+# and tiered projections emit their own view name. Single-sourced here so the
+# schema generator enumerates them in one place — future projection views append
+# here (WI-tagaj). The published schema pins ``view`` to this enum, so every
+# projected view validates (it previously pinned a ``const`` of "behavior_map",
+# which rejected the compact/tiered projections).
+VIEW_NAMES = ("behavior_map", "compact", "tiered")
 CONFIDENCE_MODEL = "hypergumbo-evidence-v2"
 STABLE_ID_SCHEME = "hypergumbo-stableid-v8"
 SHAPE_ID_SCHEME = "hypergumbo-shapeid-v2"

@@ -86,6 +86,23 @@ class TestSchemaValidation:
         # Should not raise
         jsonschema.validate(behavior_map, schema)
 
+    def test_view_enum_accepts_all_projected_views(self):
+        """WI-tagaj: the published schema pins ``view`` to an enum of all
+        projected view names, so compact/tiered outputs validate (it was a
+        ``const`` of 'behavior_map', which rejected the projections)."""
+        from hypergumbo_core.schema import VIEW_NAMES
+
+        schema = load_schema()
+        view_schema = schema["properties"]["view"]
+        assert "const" not in view_schema, "view must be an enum, not a const"
+        assert set(view_schema["enum"]) == set(VIEW_NAMES)
+        # every projected view name validates against the view sub-schema
+        for name in ("behavior_map", "compact", "tiered"):
+            jsonschema.validate(name, view_schema)
+        # a bogus view is rejected
+        with pytest.raises(jsonschema.ValidationError):
+            jsonschema.validate("bogus_view", view_schema)
+
     @pytest.mark.skipif(
         not _has_hypergumbo_meta(),
         reason="requires hypergumbo meta-package"

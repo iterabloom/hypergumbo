@@ -32,8 +32,12 @@
     },
     "view": {
       "type": "string",
-      "const": "behavior_map",
-      "description": "Output view type"
+      "enum": [
+        "behavior_map",
+        "compact",
+        "tiered"
+      ],
+      "description": "Output view type: 'behavior_map' for the base analysis, 'compact'/'tiered' for the budget-limited projections"
     },
     "generated_at": {
       "type": "string",

@@ -33,7 +33,7 @@ from hypergumbo_core.entrypoints import all_known_entrypoint_kinds
 from hypergumbo_core.evidence_types import EVIDENCE_TYPES
 from hypergumbo_core.symbol_kinds import SYMBOL_KINDS
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
-from hypergumbo_core.schema import SCHEMA_VERSION
+from hypergumbo_core.schema import SCHEMA_VERSION, VIEW_NAMES
 
 from generate_schema_lib import build_all_defs
 
@@ -161,8 +161,10 @@ def generate_behavior_map_schema() -> Dict[str, Any]:
             },
             "view": {
                 "type": "string",
-                "const": "behavior_map",
-                "description": "Output view type"
+                "enum": list(VIEW_NAMES),
+                "description": "Output view type: 'behavior_map' for the base "
+                               "analysis, 'compact'/'tiered' for the "
+                               "budget-limited projections"
             },
             "generated_at": {
                 "type": "string",
