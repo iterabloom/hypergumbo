@@ -868,6 +868,59 @@ class TestFormatCompactBehaviorMap:
             # analyzer-scope flag untouched by view truncation (spec §726)
             assert result["analysis_incomplete"] is False
 
+    def test_per_node_centrality_edge_count_and_summary_companions(self):
+        """WI-zotam + WI-kulan: compact annotates each node with its centrality,
+        reports included_edges_count in BOTH selection modes, and emits
+        entrypoints_summary / features_summary companions for the truncated
+        arrays. Invariant assertions, robust to selection nondeterminism.
+        """
+        symbols = [make_symbol(f"s{i}") for i in range(8)]
+        edges = [
+            make_edge(symbols[1].id, symbols[0].id),
+            make_edge(symbols[2].id, symbols[0].id),
+        ]
+        entrypoints = [
+            {"symbol_id": s.id, "kind": "function", "confidence": 0.9}
+            for s in symbols
+        ]
+        features = [
+            {"id": "feat1", "entry_nodes": [symbols[7].id],
+             "node_ids": [symbols[7].id], "edge_ids": []},
+        ]
+        behavior_map = {
+            "nodes": [s.to_dict() for s in symbols],
+            "edges": [e.to_dict() for e in edges],
+            "entrypoints": entrypoints,
+            "features": features,
+        }
+        config = CompactConfig(min_symbols=3, max_symbols=3)
+
+        for connectivity_aware in (False, True):
+            result = format_compact_behavior_map(
+                behavior_map, symbols, edges, config,
+                connectivity_aware=connectivity_aware,
+                force_include_entrypoints=False,
+            )
+            # WI-zotam (a): every retained node carries a centrality score
+            for n in result["nodes"]:
+                assert isinstance(n["centrality"], float)
+            # WI-zotam (b): included_edges_count present in BOTH modes == array
+            assert (
+                result["nodes_summary"]["included_edges_count"]
+                == len(result["edges"])
+            )
+            # WI-kulan: companion summaries mirror nodes_summary's shape and
+            # reconcile with the emitted/source arrays
+            for skey, akey in (("entrypoints_summary", "entrypoints"),
+                               ("features_summary", "features")):
+                summ = result[skey]
+                assert summ["included"]["count"] == len(result[akey])
+                assert summ["omitted"]["count"] == (
+                    len(behavior_map[akey]) - len(result[akey])
+                )
+            # entrypoints truncation is actually exercised (8 -> <=3 nodes)
+            assert result["entrypoints_summary"]["omitted"]["count"] > 0
+
 
 class TestStopWords:
     """Tests for stop words constant."""

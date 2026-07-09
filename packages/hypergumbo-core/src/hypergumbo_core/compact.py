@@ -280,6 +280,11 @@ class CompactResult:
     included: IncludedSummary
     omitted: OmittedSummary
     config: CompactConfig = field(default_factory=CompactConfig)
+    # Per-node centrality (id -> score) for the SELECTED symbols, on THIS
+    # selection mode's own centrality basis. Internal — surfaced onto the
+    # compact node dicts by format_compact_behavior_map (WI-zotam); NOT
+    # serialized in to_dict.
+    centrality: Dict[str, float] = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         """Serialize to dictionary."""
@@ -299,6 +304,11 @@ class ConnectivityResult:
     included: IncludedSummary
     omitted: OmittedSummary
     included_edges: List[Edge] = field(default_factory=list)
+    # Per-node centrality (id -> score) for the SELECTED symbols, on the
+    # connectivity mode's own centrality basis. Internal — surfaced onto the
+    # compact node dicts by format_compact_behavior_map (WI-zotam); NOT
+    # serialized in to_dict.
+    centrality: Dict[str, float] = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         """Serialize to dictionary."""
@@ -841,6 +851,7 @@ def select_by_connectivity(
             tiers=tier_dist,
         ),
         included_edges=included_edges,
+        centrality=centrality,
     )
 
 
@@ -880,6 +891,7 @@ def select_by_coverage(
                 top_words=[], top_paths=[], kinds={}, tiers={}
             ),
             config=config,
+            centrality={},
         )
 
     # WI-tahum: shared helper applies rank_symbols' tuned
@@ -994,6 +1006,7 @@ def select_by_coverage(
             tiers=tier_dist,
         ),
         config=config,
+        centrality=centrality,
     )
 
 
@@ -1045,6 +1058,31 @@ def _reproject_features(
             }
         reprojected.append(new_feat)
     return reprojected
+
+
+def _annotate_node_centrality(nodes: list, centrality: Dict[str, float]) -> None:
+    """Stamp each projected node dict with its centrality score (WI-zotam).
+
+    A budget-limited projection previously emitted no per-node centrality, so a
+    consumer could not rank the retained nodes or cross-check them against the
+    summary's aggregate. Each node now carries the selection mode's own
+    centrality (rounded), so ``nodes`` and ``nodes_summary`` agree.
+    """
+    for n in nodes:
+        n["centrality"] = round(centrality.get(n.get("id"), 0.0), 4)
+
+
+def _array_projection_summary(original_len: int, emitted_len: int) -> dict:
+    """Included/omitted counts for a top-level array truncated by the compact
+    projection — the entrypoints/features analogue of ``nodes_summary``
+    (WI-kulan). The compact view filters entrypoints to retained nodes and drops
+    features whose anchors were all pruned, so without a companion summary a
+    consumer cannot tell how much of each array was omitted.
+    """
+    return {
+        "included": {"count": emitted_len},
+        "omitted": {"count": max(0, original_len - emitted_len)},
+    }
 
 
 def format_compact_behavior_map(
@@ -1158,6 +1196,7 @@ def format_compact_behavior_map(
         }
         compact_map["view"] = "compact"
         compact_map["nodes"] = [s.to_dict() for s in conn_result.included.symbols]
+        _annotate_node_centrality(compact_map["nodes"], conn_result.centrality)
         compact_map["nodes_summary"] = conn_result.to_dict()
 
         # Use the induced edges from connectivity selection
@@ -1165,15 +1204,23 @@ def format_compact_behavior_map(
 
         # Filter entrypoints to only those whose symbol_id exists in included nodes
         included_ids = {s.id for s in conn_result.included.symbols}
+        all_entrypoints = behavior_map.get("entrypoints", [])
         compact_map["entrypoints"] = [
-            ep for ep in behavior_map.get("entrypoints", [])
+            ep for ep in all_entrypoints
             if ep.get("symbol_id") in included_ids
         ]
+        compact_map["entrypoints_summary"] = _array_projection_summary(
+            len(all_entrypoints), len(compact_map["entrypoints"])
+        )
 
         # Re-project features onto the compacted graph (INV-titid).
         included_edge_ids = {e.get("id") for e in compact_map["edges"]}
+        all_features = behavior_map.get("features", [])
         compact_map["features"] = _reproject_features(
-            behavior_map.get("features", []), included_ids, included_edge_ids
+            all_features, included_ids, included_edge_ids
+        )
+        compact_map["features_summary"] = _array_projection_summary(
+            len(all_features), len(compact_map["features"])
         )
     else:
         # Use original coverage-based selection
@@ -1186,6 +1233,7 @@ def format_compact_behavior_map(
         }
         compact_map["view"] = "compact"
         compact_map["nodes"] = [s.to_dict() for s in result.included.symbols]
+        _annotate_node_centrality(compact_map["nodes"], result.centrality)
         compact_map["nodes_summary"] = result.to_dict()
 
         # Keep only edges where BOTH endpoints exist in the included set and
@@ -1196,17 +1244,31 @@ def format_compact_behavior_map(
             if e.get("src") in included_ids and e.get("dst") in included_ids
             and e.get("src") != e.get("dst")
         ]
+        # Symmetry with the connectivity branch (WI-zotam): the coverage-shaped
+        # summary (CompactResult.to_dict) omits included_edges_count, so add it
+        # here from the emitted edges — both compact modes now report it.
+        compact_map["nodes_summary"]["included_edges_count"] = len(
+            compact_map["edges"]
+        )
 
         # Filter entrypoints to only those whose symbol_id exists in included nodes
+        all_entrypoints = behavior_map.get("entrypoints", [])
         compact_map["entrypoints"] = [
-            ep for ep in behavior_map.get("entrypoints", [])
+            ep for ep in all_entrypoints
             if ep.get("symbol_id") in included_ids
         ]
+        compact_map["entrypoints_summary"] = _array_projection_summary(
+            len(all_entrypoints), len(compact_map["entrypoints"])
+        )
 
         # Re-project features onto the compacted graph (INV-titid).
         included_edge_ids = {e.get("id") for e in compact_map["edges"]}
+        all_features = behavior_map.get("features", [])
         compact_map["features"] = _reproject_features(
-            behavior_map.get("features", []), included_ids, included_edge_ids
+            all_features, included_ids, included_edge_ids
+        )
+        compact_map["features_summary"] = _array_projection_summary(
+            len(all_features), len(compact_map["features"])
         )
 
     _recompute_view_metrics(compact_map)
