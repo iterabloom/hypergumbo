@@ -18,3 +18,19 @@
     pr_ref:  # 5519
     description: "**Defect.** The enclosure-linker's `uses` edges propagate phantom message-queue / websocket / event-sourcing synthetic linker nodes into the real call graph; 102/119 are rooted in test files.\n\n**Mechanic.** All 119 `uses` edges (origin=enclosure-linker, evidence_type=enclosing_scope, conf 0.9) connect a real enclosing function/method to a SYNTHETIC linker node. The enclosure-linker finds the function enclosing each synthetic's emit line (span-inside check passes 119/119) and emits a `uses` edge. dst framework_role split: mq_publisher 44 + mq_subscriber 31 + websocket_endpoint 30 + event_subscriber 11 + event_publisher 3 = 119. 102/119 (85.7%) have their src in a test file, so the phantom-from-test synthetics (WI-nitob / WI-zurig populations) get materialized as real call-graph edges.\n\n**Scope.** 119 `uses` edges, 102 test-rooted.\n\n**Expectation.** The enclosure-linker's `uses` emission does not pull phantom-from-test synthetic nodes into the reachable graph.\n\n**Consequence.** A consumer doing reachability/slice from a test method now reaches a phantom kafka/ws/event synthetic via `uses`. Mixed effect: enclosure-linker connecting these 119 otherwise-orphaned synthetics REDUCES the WI-mutug orphan count, but at the cost of injecting phantom-from-test linkage into the real graph.\n\n**Unifying fix.** Gate enclosure-linker `uses` emission to exclude phantom-from-test synthetic nodes (and/or respect Symbol.supply_chain.is_test_file).\n\n**Cross-refs (related, not duplicate).** WI-nitob (message-queue linker synthesizes the 103 phantom event_publishes from test-file MQ strings — the SOURCE of many synthetics; this item is the SEPARATE enclosure-linker propagation surface with its own fix); WI-zurig (websocket-linker phantom calls); WI-mutug (orphaned synthetic nodes); WI-zadot (synthetic nodes mislabeled kind=function).\n\nMember: F182.A2. Found via dogfooding tranche 10. Severity 3."  # 5519
     fields: {}  # 5519
+- op: update  # 2bb9
+  at: '2026-07-09T01:53:06Z'  # 2bb9
+  by: agent  # 2bb9
+  actor: jgstern_agent  # 2bb9
+  clock: 2  # 2bb9
+  nonce: 2bb9  # 2bb9
+  set: {}  # 2bb9
+  add:  # 2bb9
+    tags: [wave5]  # 2bb9
+- op: discuss  # 0a97
+  at: '2026-07-09T01:53:06Z'  # 0a97
+  by: agent  # 0a97
+  actor: jgstern_agent  # 0a97
+  clock: 3  # 0a97
+  nonce: 0a97  # 0a97
+  message: "Wave-5 sweep (2026-07-08): synthetic-node residual (enclosure-linker 'uses' edges propagate phantom MQ/WS/event synthetic nodes into the call graph; 102/119 test-rooted). Empty isbefore -> terminal wave."  # 0a97

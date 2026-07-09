@@ -57,3 +57,19 @@
   clock: 6  # 8eae
   nonce: 8eae  # 8eae
   message: "related-but-distinct cross-link (connections-sweep 2026-06-08T1900Z)"  # 8eae
+- op: update  # aaf7
+  at: '2026-07-09T01:53:04Z'  # aaf7
+  by: agent  # aaf7
+  actor: jgstern_agent  # aaf7
+  clock: 7  # aaf7
+  nonce: aaf7  # aaf7
+  set: {}  # aaf7
+  add:  # aaf7
+    tags: [wave5]  # aaf7
+- op: discuss  # 8625
+  at: '2026-07-09T01:53:04Z'  # 8625
+  by: agent  # 8625
+  actor: jgstern_agent  # 8625
+  clock: 8  # 8625
+  nonce: '8625'  # 8625
+  message: "Wave-5 sweep (2026-07-08): identity:F5 axis-legibility residual (stable_id + shape_id share the sha256:+16-hex shape -> a bare value is unclassifiable by axis; the identity:F5 domain-tag work targets this). Empty isbefore -> terminal wave."  # 8625

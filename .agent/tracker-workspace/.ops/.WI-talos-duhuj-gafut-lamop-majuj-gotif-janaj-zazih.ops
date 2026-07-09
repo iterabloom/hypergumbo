@@ -25,3 +25,19 @@
   clock: 2  # 33bd
   nonce: 33bd  # 33bd
   message: "Dogfood finding (member F144.A1-a, split from F144.A1), reproduces on the frozen substrate. Mechanism: the output declares four top-level scheme fields with versioned names — stable_id_scheme=hypergumbo-stableid-v5, shape_id_scheme=hypergumbo-shapeid-v2, symbol_fingerprint_scheme=hypergumbo-symbol-fp-v1, repo_fingerprint_scheme=hypergumbo-repofp-v1 — but the corresponding values carry only opaque prefixes (sha256: for stable_id and shape_id, hgfp1: for symbol fingerprint, bare 64-hex for repo fingerprint) and never the scheme name/version. None of the declared scheme strings ever appears in any emitted value. Scope: 4 declared scheme fields; affects every run output. Exposure/consequence: a consumer holding a bare identity/fingerprint value detached from the document cannot recover which scheme/version produced it, defeating the point of versioned scheme declarations (letting a consumer know which algorithm produced a stored value when diffing across tool versions); cross-version identity comparison cannot trust a bare value's provenance. Expectation: either the value embeds enough to recover its scheme/version, or the declarations are unambiguously the single binding for every value of that kind AND value prefixes do not collide across schemes (see sibling WI-tisar sha256: overlap). Distinct from WI-vibag (stableid v5-vs-v2 DOC drift) and INV-hunup (stable_id 5+ FORMATS on 176 nodes); this is the cross-scheme NAME-vs-value-PREFIX disconnect across all four declarations. Cross-ref WI-vibag, INV-hunup, sibling WI-tisar. Substrate evidence: probe_2_schemes.log."  # 33bd
+- op: update  # 9d4f
+  at: '2026-07-09T01:53:05Z'  # 9d4f
+  by: agent  # 9d4f
+  actor: jgstern_agent  # 9d4f
+  clock: 3  # 9d4f
+  nonce: 9d4f  # 9d4f
+  set: {}  # 9d4f
+  add:  # 9d4f
+    tags: [wave5]  # 9d4f
+- op: discuss  # 647e
+  at: '2026-07-09T01:53:05Z'  # 647e
+  by: agent  # 647e
+  actor: jgstern_agent  # 647e
+  clock: 4  # 647e
+  nonce: 647e  # 647e
+  message: "Wave-5 sweep (2026-07-08): identity:F5 scheme-legibility residual (none of the four *_scheme names/versions is encoded in any emitted identity/fingerprint value). Empty isbefore -> terminal wave."  # 647e

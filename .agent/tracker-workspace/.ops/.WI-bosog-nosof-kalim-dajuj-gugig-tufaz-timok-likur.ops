@@ -42,3 +42,19 @@
   clock: 4  # 252a
   nonce: 252a  # 252a
   message: "related-but-distinct cross-link (connections-sweep 2026-06-08T1900Z)"  # 252a
+- op: update  # c896
+  at: '2026-07-09T01:53:04Z'  # c896
+  by: agent  # c896
+  actor: jgstern_agent  # c896
+  clock: 5  # c896
+  nonce: c896  # c896
+  set: {}  # c896
+  add:  # c896
+    tags: [wave5]  # c896
+- op: discuss  # 4bfa
+  at: '2026-07-09T01:53:04Z'  # 4bfa
+  by: agent  # 4bfa
+  actor: jgstern_agent  # 4bfa
+  clock: 6  # 4bfa
+  nonce: 4bfa  # 4bfa
+  message: "Wave-5 sweep (2026-07-08): identity:F5 fingerprint-format residual (repo_fingerprint bare-64-hex vs sha256:+16 AR-record non-uniformity); child of INV-kurup (id-format umbrella, itself a Wave-5 closure gate). Empty isbefore -> terminal wave."  # 4bfa
