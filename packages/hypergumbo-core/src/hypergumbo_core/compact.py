@@ -94,6 +94,7 @@ from .selection.filters import (
     is_example_path as _is_example_path,
 )
 from .paths import is_test_node as _is_test_node
+from .metrics import compute_metrics
 from .selection.language_proportional import (
     allocate_language_budget,
     find_underrepresented_language_seeds,
@@ -177,6 +178,27 @@ _TIERED_STRIP_KEYS = _COMPACT_STRIP_KEYS | frozenset({
     "analysis_runs",
     "validation_report",
 })
+
+
+def _recompute_view_metrics(view_map: dict) -> None:
+    """Recompute a projected view's ``metrics`` block from its OWN nodes/edges.
+
+    A budget-limited projection (compact/tiered) shallow-copies the source map,
+    so without this it would echo the FULL-repo ``metrics`` (total_nodes,
+    total_edges, total_files, by_supply_chain_tier) that ``compute_metrics``
+    produced BEFORE projection — a view that lies about itself (WI-pizat).
+    Recompute in place so the counts describe the projected arrays. Only fires
+    when the source carried a ``metrics`` block (the projection mirrors the
+    source's structure — it does not invent one). Deliberately does NOT touch
+    ``analysis_incomplete``: per spec §726 that flag is analyzer-scope (set only
+    on early termination / errors / resource limits), not a view-truncation
+    signal.
+    """
+    if "metrics" in view_map:
+        view_map["metrics"] = compute_metrics(
+            view_map["nodes"], view_map["edges"],
+            profile=view_map.get("profile"),
+        )
 
 
 @dataclass
@@ -1187,6 +1209,7 @@ def format_compact_behavior_map(
             behavior_map.get("features", []), included_ids, included_edge_ids
         )
 
+    _recompute_view_metrics(compact_map)
     return compact_map
 
 
@@ -1700,6 +1723,7 @@ def format_tiered_behavior_map(
     recompute_view_summary(
         tiered_map, eligible_symbols, selection_centrality, emit_edge_count=True
     )
+    _recompute_view_metrics(tiered_map)
     return tiered_map
 
 

@@ -824,6 +824,50 @@ class TestFormatCompactBehaviorMap:
                     f"preserve {kept} (ADR-0043 provenance/quality signal)"
                 )
 
+    def test_metrics_describe_projection_not_source(self):
+        """WI-pizat: compact recomputes its metrics block from the PROJECTED
+        arrays instead of echoing the source (full-repo) totals.
+
+        ``analysis_incomplete`` is left untouched — per spec §726 it is an
+        analyzer-scope flag (early termination / errors / resource limits),
+        NOT a view-truncation signal. Applies to both selection branches.
+        """
+        symbols = [make_symbol(f"s{i}") for i in range(8)]
+        edges = [
+            make_edge(symbols[1].id, symbols[0].id),
+            make_edge(symbols[2].id, symbols[0].id),
+        ]
+        behavior_map = {
+            "nodes": [s.to_dict() for s in symbols],
+            "edges": [e.to_dict() for e in edges],
+            "entrypoints": [],
+            "analysis_incomplete": False,
+            "metrics": {
+                "total_nodes": 9999,
+                "total_edges": 9999,
+                "total_files": 999,
+                "by_supply_chain_tier": {
+                    "first_party": {
+                        "nodes": 9999, "edges": 9999, "edges_incident": 9999,
+                    },
+                },
+            },
+        }
+        config = CompactConfig(min_symbols=3, max_symbols=3)
+
+        for connectivity_aware in (False, True):
+            result = format_compact_behavior_map(
+                behavior_map, symbols, edges, config,
+                connectivity_aware=connectivity_aware,
+                force_include_entrypoints=False,
+            )
+            m = result["metrics"]
+            # metrics describe the projected arrays, not the 9999 source totals
+            assert m["total_nodes"] == len(result["nodes"]) < 9999
+            assert m["total_edges"] == len(result["edges"]) < 9999
+            # analyzer-scope flag untouched by view truncation (spec §726)
+            assert result["analysis_incomplete"] is False
+
 
 class TestStopWords:
     """Tests for stop words constant."""
@@ -2998,6 +3042,31 @@ class TestTieredTokenBudget:
         assert "sketch_precomputed" not in result, (
             "Tiered output should strip sketch_precomputed to save tokens"
         )
+
+    def test_tiered_metrics_describe_projection_not_source(self):
+        """WI-pizat: tiered recomputes its metrics block from the projected
+        arrays instead of echoing the source (full-repo) totals."""
+        symbols = [make_symbol("a"), make_symbol("b")]
+        edges = [make_edge(symbols[1].id, symbols[0].id)]
+        behavior_map = {
+            "nodes": [s.to_dict() for s in symbols],
+            "edges": [e.to_dict() for e in edges],
+            "entrypoints": [],
+            "metrics": {
+                "total_nodes": 9999,
+                "total_edges": 9999,
+                "total_files": 999,
+                "by_supply_chain_tier": {},
+            },
+        }
+
+        result = format_tiered_behavior_map(
+            behavior_map, symbols, edges, target_tokens=4000
+        )
+
+        m = result["metrics"]
+        assert m["total_nodes"] == len(result["nodes"]) < 9999
+        assert m["total_edges"] == len(result["edges"]) < 9999
 
     def test_tiered_low_confidence_entrypoints_dont_crowd_bridge_nodes(self):
         """Low-confidence entrypoints should not crowd out bridge nodes.

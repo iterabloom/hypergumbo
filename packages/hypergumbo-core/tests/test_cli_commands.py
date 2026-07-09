@@ -4068,6 +4068,70 @@ def test_cmd_compact_file_not_found(tmp_path: Path) -> None:
     assert result == 1
 
 
+def test_wi_vusaf_compact_arg_validators() -> None:
+    """WI-vusaf: the compact flag validators accept valid values and reject
+    out-of-range ones with argparse.ArgumentTypeError (→ CLI exit 2)."""
+    import argparse
+    from hypergumbo_core.cli import (
+        _positive_int_arg, _nonneg_int_arg, _unit_interval_arg,
+    )
+    assert _positive_int_arg("--max-symbols")("5") == 5
+    assert _positive_int_arg("--max-symbols")("1") == 1
+    for bad in ("0", "-1", "abc"):
+        with pytest.raises(argparse.ArgumentTypeError):
+            _positive_int_arg("--max-symbols")(bad)
+
+    assert _nonneg_int_arg("--min-symbols")("0") == 0
+    assert _nonneg_int_arg("--min-symbols")("7") == 7
+    for bad in ("-1", "abc"):
+        with pytest.raises(argparse.ArgumentTypeError):
+            _nonneg_int_arg("--min-symbols")(bad)
+
+    assert _unit_interval_arg("--coverage")("0.0") == 0.0
+    assert _unit_interval_arg("--coverage")("1.0") == 1.0
+    assert _unit_interval_arg("--coverage")("0.5") == 0.5
+    for bad in ("1.5", "-0.5", "abc"):
+        with pytest.raises(argparse.ArgumentTypeError):
+            _unit_interval_arg("--coverage")(bad)
+
+
+@pytest.mark.parametrize("flag,val", [
+    ("--max-symbols", "0"),
+    ("--min-symbols", "-1"),
+    ("--coverage", "1.5"),
+    ("--coverage", "-0.5"),
+])
+def test_wi_vusaf_main_rejects_bad_compact_flags(
+    tmp_path: Path, flag: str, val: str
+) -> None:
+    """WI-vusaf: numerically invalid compact flags are rejected at the CLI
+    boundary (exit 2), not silently accepted."""
+    bm = {"schema_version": SCHEMA_VERSION, "nodes": [], "edges": []}
+    inp = tmp_path / "hg.json"
+    inp.write_text(json.dumps(bm))
+    with pytest.raises(SystemExit) as exc:
+        main(["compact", "--input", str(inp), flag, val])
+    assert exc.value.code == 2
+
+
+def test_wi_vusaf_cmd_compact_rejects_max_lt_min(
+    tmp_path: Path, capsys
+) -> None:
+    """WI-vusaf: --max-symbols < --min-symbols is a cross-flag config error
+    (rc=2 with a clear message), caught before any file load."""
+    args = FakeArgs()
+    args.input = str(tmp_path / "unused.json")
+    args.out = None
+    args.max_symbols = 50
+    args.min_symbols = 100
+    args.coverage = 0.8
+    args.no_connectivity = False
+
+    assert cmd_compact(args) == 2
+    _, err = capsys.readouterr()
+    assert "max-symbols" in err
+
+
 def test_cmd_slice_auto_entry_exclude_tests(tmp_path: Path, capsys) -> None:
     """--entry auto with --exclude-tests skips test file entrypoints.
 

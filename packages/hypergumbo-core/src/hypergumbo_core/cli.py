@@ -4034,6 +4034,16 @@ def cmd_compact(args: argparse.Namespace) -> int:
     This is useful for post-processing large behavior maps into LLM-friendly
     formats without re-running the full analysis.
     """
+    # WI-vusaf: cross-flag numeric coherence (single-flag ranges are enforced
+    # by the argparse type= validators). max < min is a configuration error.
+    if args.max_symbols < args.min_symbols:
+        print(
+            f"Error: --max-symbols ({args.max_symbols}) must be >= "
+            f"--min-symbols ({args.min_symbols})",
+            file=sys.stderr,
+        )
+        return 2
+
     input_path = Path(args.input).resolve()
 
     if not input_path.exists():
@@ -6321,6 +6331,65 @@ def _positive_result_limit(raw: str) -> int:
     return value
 
 
+def _positive_int_arg(label: str):
+    """argparse ``type=`` factory: require a positive integer (>= 1) for ``label``.
+
+    WI-vusaf: ``compact --max-symbols 0`` / negative was silently accepted and
+    produced a degenerate view. A bounded validator fails fast with rc=2.
+    """
+    def _parse(raw: str) -> int:
+        try:
+            value = int(raw)
+        except (TypeError, ValueError) as exc:
+            raise argparse.ArgumentTypeError(
+                f"{label} must be a positive integer, got {raw!r}"
+            ) from exc
+        if value < 1:
+            raise argparse.ArgumentTypeError(
+                f"{label} must be a positive integer (>= 1), got {value}"
+            )
+        return value
+    return _parse
+
+
+def _nonneg_int_arg(label: str):
+    """argparse ``type=`` factory: require a non-negative integer (>= 0) for ``label``."""
+    def _parse(raw: str) -> int:
+        try:
+            value = int(raw)
+        except (TypeError, ValueError) as exc:
+            raise argparse.ArgumentTypeError(
+                f"{label} must be a non-negative integer, got {raw!r}"
+            ) from exc
+        if value < 0:
+            raise argparse.ArgumentTypeError(
+                f"{label} must be a non-negative integer (>= 0), got {value}"
+            )
+        return value
+    return _parse
+
+
+def _unit_interval_arg(label: str):
+    """argparse ``type=`` factory: require a float in the inclusive range [0.0, 1.0].
+
+    WI-vusaf: ``compact --coverage 1.5`` / negative was silently accepted.
+    0.0 and 1.0 are valid (module tests use both).
+    """
+    def _parse(raw: str) -> float:
+        try:
+            value = float(raw)
+        except (TypeError, ValueError) as exc:
+            raise argparse.ArgumentTypeError(
+                f"{label} must be a number in [0.0, 1.0], got {raw!r}"
+            ) from exc
+        if not (0.0 <= value <= 1.0):
+            raise argparse.ArgumentTypeError(
+                f"{label} must be in the range [0.0, 1.0], got {value}"
+            )
+        return value
+    return _parse
+
+
 def _add_path_argument(parser: argparse.ArgumentParser) -> None:
     """Standard repo-path argument shared by all subcommands (WI-munuv).
 
@@ -6681,7 +6750,7 @@ Cache location:
     )
     p_run.add_argument(
         "--coverage",
-        type=float,
+        type=_unit_interval_arg("--coverage"),
         default=0.8,
         help="Target centrality coverage for --compact mode (0.0-1.0, default: 0.8)",
     )
@@ -7614,21 +7683,21 @@ without re-running the full analysis."""
     )
     p_compact.add_argument(
         "--max-symbols",
-        type=int,
+        type=_positive_int_arg("--max-symbols"),
         default=100,
         dest="max_symbols",
         help="Maximum symbols to include (default: 100)",
     )
     p_compact.add_argument(
         "--min-symbols",
-        type=int,
+        type=_nonneg_int_arg("--min-symbols"),
         default=10,
         dest="min_symbols",
         help="Minimum symbols to include (default: 10)",
     )
     p_compact.add_argument(
         "--coverage",
-        type=float,
+        type=_unit_interval_arg("--coverage"),
         default=0.8,
         help="Target centrality coverage 0.0-1.0 (default: 0.8)",
     )
