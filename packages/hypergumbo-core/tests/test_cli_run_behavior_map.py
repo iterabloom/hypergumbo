@@ -372,9 +372,8 @@ def test_run_behavior_map_stores_sketch_precomputed(tmp_path: Path) -> None:
     assert "config_info" in precomputed
     assert "testproj" in precomputed["config_info"]
 
-    # Check vocabulary (should be a list)
-    assert "vocabulary" in precomputed
-    assert isinstance(precomputed["vocabulary"], list)
+    # INV-padoz: the consumer-less `vocabulary` field is deleted.
+    assert "vocabulary" not in precomputed
 
     # Check readme_description (should have extracted text)
     assert "readme_description" in precomputed

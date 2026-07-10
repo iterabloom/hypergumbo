@@ -23,7 +23,6 @@ from hypergumbo_core.sketch import (
     _format_structure_tree,
     _format_structure_tree_fallback,
     _collect_important_files,
-    _extract_domain_vocabulary,
     _analyze_test_files,
     _format_test_summary,
     _estimate_test_coverage,
@@ -38,6 +37,7 @@ from hypergumbo_core.sketch import (
     _extract_path_from_forge_url,
     _extract_readme_internal_links,
     _format_file_content_block,
+    _content_is_binary,
     _file_docstrings,
     CONFIG_FILES_BY_LANG,
 )
@@ -1578,6 +1578,24 @@ class TestFormatFileContentBlock:
         assert "START of src/app.py" in lines[0]
         assert "END of src/app.py" in lines[4]
 
+    def test_binary_content_omitted_with_placeholder(self) -> None:
+        """WI-pubar: content with NUL bytes is omitted with an explanatory
+        placeholder instead of being embedded verbatim, at the single render
+        chokepoint every content section funnels through."""
+        lines = _format_file_content_block("data.bin", "prefix\x00\x00binary")
+        joined = "\n".join(lines)
+        assert "\x00" not in joined
+        assert "[binary content omitted]" in joined
+        # START/END markers still frame the omitted file.
+        assert "START of data.bin" in lines[0]
+        assert "END of data.bin" in lines[2]
+
+    def test_content_is_binary_predicate(self) -> None:
+        """The NUL-byte binary sniff distinguishes text from binary content."""
+        assert _content_is_binary("plain text\nsecond line") is False
+        assert _content_is_binary("") is False
+        assert _content_is_binary("has a \x00 nul") is True
+
 
 class TestFormatAdditionalFiles:
     """Tests for additional files formatting (hybrid semantic + centrality)."""
@@ -2088,6 +2106,37 @@ class TestFormatAdditionalFiles:
         # With such a small budget, we may not be able to include anything
         # but header should still be present
         assert "## Additional Files" in result
+
+    def test_content_mode_omits_binary_file_no_nul_bytes(self, tmp_path: Path) -> None:
+        """WI-pubar: a selected file containing NUL bytes must not leak raw
+        control bytes into 'Additional Files Content'.
+
+        ``read_text(errors="replace")`` only substitutes *invalid* encoding
+        sequences; U+0000 is a valid code point, so a binary file's NULs pass
+        through verbatim. Before the fix a cold-cache ``sketch -t 4000`` emitted
+        12,792 NUL bytes into the rendered section. The file is now omitted with
+        an explanatory placeholder instead, at any token budget.
+        """
+        text_file = tmp_path / "GUIDE.md"
+        text_file.write_text("# Guide\n\nReal readable documentation content.\n")
+        nul_file = tmp_path / "NOTES.md"
+        nul_file.write_bytes(b"# Notes\n" + b"\x00" * 12792 + b"\nend\n")
+
+        result, _, _ = _format_additional_files(
+            tmp_path,
+            source_files=[],
+            symbols=[],
+            in_degree={},
+            token_budget=4000,
+            include_content=True,
+            section_title="Additional Files Content",
+            preselected_files=[text_file, nul_file],
+        )
+
+        assert "\x00" not in result, "binary NUL bytes leaked into rendered sketch"
+        assert "[binary content omitted]" in result
+        # The real text file still renders its content.
+        assert "Real readable documentation content." in result
 
 
 class TestExtractMarkdownLinks:
@@ -5107,166 +5156,6 @@ class TestCollectImportantFiles:
         assert result[0] == "file0.c"
 
 
-class TestExtractDomainVocabulary:
-    """Tests for domain vocabulary extraction."""
-
-    def test_extracts_domain_terms(self, tmp_path: Path) -> None:
-        """Extracts domain-specific terms from source code."""
-        (tmp_path / "server.py").write_text(
-            "def handleAuthentication(user, token):\n"
-            "    validateToken(token)\n"
-            "    authenticateUser(user)\n"
-        )
-        profile = detect_profile(tmp_path)
-
-        terms = _extract_domain_vocabulary(tmp_path, profile)
-
-        assert "authentication" in terms or "authenticate" in terms
-        assert "token" in terms or "validate" in terms
-
-    def test_filters_common_terms(self, tmp_path: Path) -> None:
-        """Filters out common programming terms."""
-        (tmp_path / "app.py").write_text(
-            "def get_value():\n"
-            "    result = process_data(input_value)\n"
-            "    return result\n"
-            "\n"
-            "def calculatePaymentTotal(invoice):\n"
-            "    total = invoice.amount\n"
-            "    return total\n"
-        )
-        profile = detect_profile(tmp_path)
-
-        terms = _extract_domain_vocabulary(tmp_path, profile)
-
-        # Common terms should be filtered
-        assert "value" not in terms
-        assert "result" not in terms
-        # Domain terms should be included
-        assert "payment" in terms or "invoice" in terms or "calculate" in terms
-
-    def test_splits_camel_case(self, tmp_path: Path) -> None:
-        """Splits camelCase and PascalCase identifiers."""
-        (tmp_path / "service.py").write_text(
-            "class UserAuthenticationService:\n"
-            "    def validateCredentials(self):\n"
-            "        pass\n"
-        )
-        profile = detect_profile(tmp_path)
-
-        terms = _extract_domain_vocabulary(tmp_path, profile)
-
-        assert "authentication" in terms or "validate" in terms or "credentials" in terms
-
-    def test_splits_snake_case(self, tmp_path: Path) -> None:
-        """Splits snake_case identifiers."""
-        (tmp_path / "handler.py").write_text(
-            "def process_payment_request(payment_details):\n"
-            "    validate_payment_amount(payment_details)\n"
-        )
-        profile = detect_profile(tmp_path)
-
-        terms = _extract_domain_vocabulary(tmp_path, profile)
-
-        assert "payment" in terms
-
-    def test_respects_max_terms(self, tmp_path: Path) -> None:
-        """Respects max_terms limit."""
-        # Create file with many unique terms
-        (tmp_path / "app.py").write_text(
-            "def alpha(): pass\n"
-            "def bravo(): pass\n"
-            "def charlie(): pass\n"
-            "def delta(): pass\n"
-            "def echo(): pass\n"
-        )
-        profile = detect_profile(tmp_path)
-
-        terms = _extract_domain_vocabulary(tmp_path, profile, max_terms=3)
-
-        assert len(terms) <= 3
-
-    def test_excludes_node_modules(self, tmp_path: Path) -> None:
-        """Excludes node_modules directory."""
-        (tmp_path / "node_modules").mkdir()
-        (tmp_path / "node_modules" / "lib.js").write_text(
-            "function excludedTerm() {}\n"
-        )
-        (tmp_path / "app.py").write_text(
-            "def includedTerm():\n"
-            "    pass\n"
-        )
-        profile = detect_profile(tmp_path)
-
-        terms = _extract_domain_vocabulary(tmp_path, profile)
-
-        assert "excluded" not in terms
-
-    def test_handles_empty_project(self, tmp_path: Path) -> None:
-        """Returns empty list for project with no source files."""
-        (tmp_path / "README.md").write_text("# Project\n")
-        profile = detect_profile(tmp_path)
-
-        terms = _extract_domain_vocabulary(tmp_path, profile)
-
-        assert terms == []
-
-    def test_handles_unreadable_files(self, tmp_path: Path) -> None:
-        """Gracefully handles unreadable files."""
-        (tmp_path / "good.py").write_text("def validFunction(): pass\n")
-        profile = detect_profile(tmp_path)
-
-        # Just verify no exception is raised
-        terms = _extract_domain_vocabulary(tmp_path, profile)
-        assert isinstance(terms, list)
-
-    def test_handles_pure_snake_case(self, tmp_path: Path) -> None:
-        """Handles pure snake_case identifiers without uppercase letters."""
-        (tmp_path / "handler.py").write_text(
-            "def process_customer_payment_request():\n"
-            "    validate_invoice_amount()\n"
-        )
-        profile = detect_profile(tmp_path)
-
-        terms = _extract_domain_vocabulary(tmp_path, profile)
-
-        assert "customer" in terms or "payment" in terms or "invoice" in terms
-
-    def test_handles_all_uppercase_constants(self, tmp_path: Path) -> None:
-        """Handles ALL_UPPERCASE_CONSTANTS (snake_case fallback path)."""
-        (tmp_path / "constants.py").write_text(
-            "MAX_CUSTOMER_LIMIT = 100\n"
-            "DEFAULT_PAYMENT_TIMEOUT = 30\n"
-        )
-        profile = detect_profile(tmp_path)
-
-        terms = _extract_domain_vocabulary(tmp_path, profile)
-
-        assert "customer" in terms or "payment" in terms or "limit" in terms or "timeout" in terms
-
-    def test_handles_file_read_error(self, tmp_path: Path) -> None:
-        """Gracefully handles file read errors (OSError)."""
-        from unittest.mock import patch
-
-        (tmp_path / "good.py").write_text("def validTerm(): pass\n")
-        profile = detect_profile(tmp_path)
-
-        # Mock file reading to raise OSError
-        original_read_text = Path.read_text
-
-        def mock_read_text(self, *args, **kwargs):
-            if "good.py" in str(self):
-                raise OSError("Mocked read error")
-            return original_read_text(self, *args, **kwargs)
-
-        with patch.object(Path, "read_text", mock_read_text):
-            # This should not raise even when files can't be read
-            terms = _extract_domain_vocabulary(tmp_path, profile)
-
-        assert isinstance(terms, list)
-
-
-
 class TestConfigExtraction:
     """Tests for config file extraction with different modes."""
 
@@ -7549,7 +7438,6 @@ class TestCachedResults:
             "edges": [],
             "sketch_precomputed": {
                 "config_info": 'name = "cached_project_name"\nversion = "1.2.3"',
-                "vocabulary": ["token", "semantic", "embedding"],
                 "readme_description": "A cached project description from README.",
             },
         }
@@ -7576,7 +7464,6 @@ class TestCachedResults:
             "edges": [],
             "sketch_precomputed": {
                 "config_info": "",
-                "vocabulary": [],
                 "readme_description": "Cached README description here.",
             },
         }
@@ -7635,7 +7522,6 @@ class TestCachedResults:
             "edges": [],
             "sketch_precomputed": {
                 "config_info": 'name = "auto_discovered_project"',
-                "vocabulary": ["autodiscovered"],
                 "readme_description": "Auto-discovered README description.",
             },
         }

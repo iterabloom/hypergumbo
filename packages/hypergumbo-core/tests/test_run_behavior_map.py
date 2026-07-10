@@ -64,6 +64,35 @@ def test_run_behavior_map_stamps_repo_fingerprint_on_every_run(tmp_path):
     assert data["repo_fingerprint_scheme"] == "hypergumbo-repofp-v1"
 
 
+def test_sketch_precomputed_omits_vocabulary(tmp_path):
+    """INV-padoz: the sketch_precomputed cache must not carry a ``vocabulary``
+    field.
+
+    It had no consumer anywhere (``compact`` strips ``sketch_precomputed``
+    entirely; no reader in any package's ``src``) and, per the Wave-4
+    typed-SketchPrecomputed direction, was resolved by DELETION rather than
+    lemmatization. The retained cache fields stay populated — the deletion is
+    surgical, not a removal of the whole precompute payload.
+    """
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    (repo_root / "a.py").write_text("def helper(): return 1\n")
+
+    out_path = tmp_path / "hypergumbo.results.json"
+    run_behavior_map(
+        repo_root=repo_root, out_path=out_path,
+        include_sketch_precomputed=True,
+    )
+    data = json.loads(out_path.read_text())
+    sp = data["sketch_precomputed"]
+
+    assert "vocabulary" not in sp, "deleted sketch_precomputed.vocabulary reappeared"
+    # Retained cache fields remain (surgical deletion).
+    assert "config_info" in sp
+    assert "readme_description" in sp
+    assert "additional_file_centrality_scores" in sp
+
+
 def test_run_behavior_map_no_symbol_has_absolute_path_in_name(tmp_path):
     """INV-vaguj: no Symbol may have an absolute filesystem path in its ``name``.
 

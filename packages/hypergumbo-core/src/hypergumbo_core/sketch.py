@@ -2407,6 +2407,20 @@ def _demote_markdown_headings(content: str, levels: int = 2) -> str:
     return "\n".join(out_lines)
 
 
+def _content_is_binary(content: str) -> bool:
+    """Return True if ``content`` looks like binary (non-text) data.
+
+    Uses the presence of a NUL byte (U+0000) as the sniff — the same heuristic
+    git uses to classify a blob as binary. Text files never contain NUL, so
+    this has no false positives on real source/docs. It matters because file
+    content is read with ``read_text(errors="replace")``, which substitutes
+    only *invalid* encoding sequences; U+0000 is a valid code point, so a
+    binary file's NULs survive the read and would otherwise flow verbatim into
+    rendered markdown (WI-pubar).
+    """
+    return "\x00" in content
+
+
 def _format_file_content_block(rel_path: str, content: str) -> list[str]:
     """Format file content with visible START/END markers.
 
@@ -2420,7 +2434,26 @@ def _format_file_content_block(rel_path: str, content: str) -> list[str]:
 
     Returns:
         List of lines including START marker, code block, and END marker.
+        Binary content is omitted with an explanatory placeholder instead.
     """
+    # Build visually distinctive markers (shared by the normal and the
+    # binary-omitted return paths). Pad to ~60 chars for visual balance.
+    start_marker = f"------------------- START of {rel_path} "
+    start_marker += "-" * max(0, 60 - len(start_marker))
+    end_marker = f"------------------- END of {rel_path} "
+    end_marker += "-" * max(0, 60 - len(end_marker))
+
+    # WI-pubar: never embed binary/NUL content into rendered markdown. A file
+    # with NUL bytes has no useful text to show, and read via
+    # ``read_text(errors="replace")`` it carries its NULs straight through — a
+    # cold-cache ``sketch -t 4000`` once emitted 12,792 raw NULs here, choking
+    # tokenizers and JSON wrappers. This is the single render chokepoint every
+    # content section (Additional Files, Source Files) funnels through, so
+    # guarding here omits binary content with an explanatory note across all of
+    # them, at any token budget.
+    if _content_is_binary(content):
+        return [start_marker, "[binary content omitted]", end_marker, ""]
+
     # WI-bilul: demote ATX headings inside markdown-like content so the
     # embedded ``## Section`` lines don't read as structural sections of
     # the sketch itself. Code-fenced markdown content is technically
@@ -2429,13 +2462,6 @@ def _format_file_content_block(rel_path: str, content: str) -> list[str]:
     rel_lower = rel_path.lower()
     if any(rel_lower.endswith(ext) for ext in _MARKDOWN_HEADING_BLEED_EXTS):
         content = _demote_markdown_headings(content)
-
-    # Build visually distinctive markers
-    # Pad to ~60 chars total for visual balance
-    start_marker = f"------------------- START of {rel_path} "
-    start_marker += "-" * max(0, 60 - len(start_marker))
-    end_marker = f"------------------- END of {rel_path} "
-    end_marker += "-" * max(0, 60 - len(end_marker))
 
     # Choose a fence delimiter longer than any backtick run in the content
     # so inner code blocks don't close the outer fence.
@@ -4053,120 +4079,6 @@ def _extract_readme_internal_links(
             resolved.append(target)
 
     return resolved
-
-
-# Common programming terms to exclude from domain vocabulary
-_COMMON_TERMS = frozenset({
-    # English stopwords
-    "the", "and", "for", "not", "with", "this", "that", "from", "have", "has",
-    "are", "was", "were", "been", "being", "will", "would", "could", "should",
-    "all", "any", "each", "every", "both", "few", "more", "most", "other",
-    "some", "such", "than", "too", "very", "when", "where", "which", "while",
-    "who", "why", "how", "what", "then", "also", "just", "only",
-    # Generic programming terms
-    "get", "set", "add", "remove", "delete", "update", "create", "read", "write",
-    "init", "start", "stop", "open", "close", "run", "call", "return", "value",
-    "name", "type", "data", "item", "items", "list", "array", "object",
-    "key", "keys", "val", "var", "vars", "arg", "args", "param", "params",
-    "result", "results", "output", "input", "index", "idx", "len", "length",
-    "count", "num", "number", "str", "string", "int", "integer", "float", "bool",
-    "true", "false", "null", "none", "void", "use", "using", "used",
-    "new", "old", "first", "last", "next", "prev", "current", "default",
-    "error", "errors", "log", "console", "print", "debug", "info", "warn",
-    "text", "msg", "message", "callback", "handler", "listener", "event",
-    "async", "await", "promise", "resolve", "reject", "load", "save", "fetch",
-    "send", "receive", "process", "handle", "path", "file", "config", "option",
-    "options", "state", "props", "ref", "self", "super", "base", "parent",
-    "child", "node", "tree", "root", "body", "head", "main", "temp", "util",
-    "helper", "wrapper", "manager", "service", "factory", "builder", "module",
-    "component", "context", "scope", "global", "local", "instance", "static",
-    "public", "private", "protected", "virtual", "abstract", "final", "const",
-    # Testing-related terms
-    "test", "tests", "expect", "mock", "stub", "spy", "fixture",
-    "logger", "logging", "describe", "spec", "suite", "setup",
-    "teardown", "before", "after", "given", "verify",
-})
-
-# Programming language keywords to exclude
-_KEYWORDS = frozenset({
-    "class", "function", "return", "import", "export", "const", "else", "elif",
-    "while", "break", "continue", "finally", "catch", "throw", "extends",
-    "implements", "interface", "static", "public", "private", "protected",
-    "super", "switch", "case", "yield", "assert", "raise", "pass", "lambda",
-    "struct", "enum", "impl", "match", "trait", "package", "include", "define",
-    "ifdef", "ifndef", "endif", "extern", "typedef", "sizeof", "typeof",
-})
-
-
-def _extract_domain_vocabulary(
-    repo_root: Path, profile: "RepoProfile", max_terms: int = 12
-) -> list[str]:
-    """Extract domain-specific vocabulary from source code.
-
-    Analyzes identifiers in source files to find domain-specific terms.
-    Filters out common programming terms and language keywords to highlight
-    terms unique to this codebase's domain.
-
-    Args:
-        repo_root: Path to the repository root.
-        profile: Repository profile with language info.
-        max_terms: Maximum number of domain terms to return (default 12).
-
-    Returns:
-        List of domain-specific terms, ordered by frequency.
-    """
-    import re
-    from collections import Counter
-
-    word_counts: Counter[str] = Counter()
-
-    # File extensions to analyze
-    extensions = ["*.py", "*.js", "*.ts", "*.jsx", "*.tsx", "*.java", "*.c", "*.h",
-                  "*.go", "*.rs", "*.rb", "*.php", "*.cpp", "*.cc", "*.hpp"]
-
-    # Directories to exclude
-    excludes = {"node_modules", "__pycache__", "dist", "build", ".venv", "vendor",
-                ".git", "target", "coverage", "htmlcov", ".pytest_cache"}
-
-    from hypergumbo_core.discovery import get_file_index
-    file_index = get_file_index()
-    for ext in extensions:
-        if file_index is not None and file_index.repo_root == repo_root:
-            ext_files = file_index.match_pattern(ext)
-        else:
-            ext_files = repo_root.rglob(ext)
-        for f in ext_files:
-            # Skip excluded directories
-            if any(excl in f.parts for excl in excludes):
-                continue
-            try:
-                text = f.read_text(encoding="utf-8", errors="replace")
-                # Extract identifiers
-                for match in re.finditer(r'\b[a-zA-Z_][a-zA-Z0-9_]*\b', text):
-                    word = match.group()
-                    if len(word) <= 3:
-                        continue
-                    if word.lower() in _KEYWORDS:
-                        continue
-                    # Split compound words (camelCase, PascalCase, snake_case)
-                    # First try to find camelCase/PascalCase parts
-                    parts = re.findall(r'[A-Z]?[a-z]+|[A-Z]+(?=[A-Z]|$)', word)
-                    if parts:
-                        for p in parts:
-                            p_lower = p.lower()
-                            if len(p_lower) > 3 and p_lower not in _COMMON_TERMS:
-                                word_counts[p_lower] += 1
-                    # Also split by underscore for snake_case (including UPPER_CASE)
-                    for part in word.split('_'):
-                        p_lower = part.lower()
-                        if len(p_lower) > 3 and p_lower not in _COMMON_TERMS:
-                            word_counts[p_lower] += 1
-            except OSError:
-                continue
-
-    # Return top terms by frequency
-    return [word for word, _ in word_counts.most_common(max_terms)]
-
 
 
 # SOURCE_EXTENSIONS is imported from taxonomy module (ADR-0004 Phase 3)

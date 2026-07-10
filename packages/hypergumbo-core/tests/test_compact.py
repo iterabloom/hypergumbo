@@ -3250,7 +3250,6 @@ class TestTieredTokenBudget:
             "entrypoints": [],
             "sketch_precomputed": {
                 "config_info": "x" * 1000,
-                "vocabulary": ["word"] * 100,
                 "additional_file_centrality_scores": {"file.py": 0.5},
             },
         }

@@ -159,6 +159,8 @@ Alongside: the CLI standardizes on `--format {text,json}` across all read views 
 #### Sketch
 
 - **Warm-cache & input fidelity.** Warm `hypergumbo sketch` reads the 4×/16× comparison sketches from `.stats.json` sidecars instead of regenerating them (~27s vs 155s on the self-corpus); `sketch --input <map>` summarizes the map's file universe instead of re-walking the repo; and `sketch -t N` no longer dies with exit 141 (SIGPIPE) on large budgets. `additional_file_centrality_scores` is relabeled as an unbounded density (in-degree ÷ file size), not a `[0,1]` score.
+- **Binary content no longer leaks into rendered sketches.** A file containing NUL bytes is now omitted with a `[binary content omitted]` placeholder at the single content-render chokepoint (covering both the Additional Files and Source Files sections) instead of being embedded verbatim — a cold-cache `sketch -t 4000` previously emitted 12,792 raw NUL bytes that choke tokenizers and JSON-wrapping consumers (WI-pubar).
+- **Removed the consumer-less `sketch_precomputed.vocabulary` cache field.** It had no reader in any package (`compact` strips `sketch_precomputed` entirely) and was resolved by deletion rather than lemmatization, per the Wave-4 typed-precompute direction; the field is dropped from the producer and from the (`x-internal`) schema, with no `SCHEMA_VERSION` bump (INV-padoz).
 
 #### Containment & file anchors
 

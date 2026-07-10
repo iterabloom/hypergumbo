@@ -8839,8 +8839,8 @@ def run_behavior_map(
             config (setting, config, table), and CSS structural nodes
             (class_selector, id_selector, rule_set, property, media, keyframes,
             font_face) to reduce degree-0 noise.
-        include_sketch_precomputed: If True (default), pre-extract config_info,
-            vocabulary, and readme_description for fast sketch generation.
+        include_sketch_precomputed: If True (default), pre-extract config_info
+            and readme_description for fast sketch generation.
             Set False to skip this (avoids loading embedding model).
         progress: If True, show progress indicator with ETA to stderr.
 
@@ -9380,13 +9380,13 @@ def run_behavior_map(
         all_symbols, derived_paths=_find_derived_skipped(repo_root)
     )
 
-    # Pre-extract sketch data (config, vocabulary, readme)
+    # Pre-extract sketch data (config, readme)
     # This avoids needing to load the embedding model later in sketch mode
     from .sketch import (
-        _extract_config_info, _extract_domain_vocabulary, _extract_readme_description,
+        _extract_config_info, _extract_readme_description,
         ConfigExtractionMode,
     )
-    # Pre-extract sketch data (config, vocabulary, readme) if requested
+    # Pre-extract sketch data (config, readme) if requested
     # This avoids reloading the embedding model when generating sketches later
     if include_sketch_precomputed:
         show_progress("Pre-computing sketch data", 80)
@@ -9399,9 +9399,6 @@ def run_behavior_map(
             )
         except Exception:  # pragma: no cover - graceful degradation
             sketch_precomputed["config_info"] = ""
-
-        # Extract domain vocabulary
-        sketch_precomputed["vocabulary"] = _extract_domain_vocabulary(repo_root, profile)
 
         # Extract README description (uses embedding model)
         try:

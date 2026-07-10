@@ -465,9 +465,9 @@ def generate_behavior_map_schema() -> Dict[str, Any]:
                 "description": (
                     "INTERNAL cache artifact (NOT a stability contract; "
                     "consumers should not depend on its presence or shape — "
-                    "spec.md). Pre-computed sketch payload (vocabulary, "
-                    "additional-file centrality, readme description, config "
-                    "info) reused by the `sketch` step. Optional; omitted when "
+                    "spec.md). Pre-computed sketch payload (additional-file "
+                    "centrality, readme description, config info) reused by the "
+                    "`sketch` step. Optional; omitted when "
                     "--no-sketch-precomputed. Each sub-field is nullable "
                     "because small repos may not surface a README, license, or "
                     "any centrality signal."
@@ -505,13 +505,6 @@ def generate_behavior_map_schema() -> Dict[str, Any]:
                     "readme_description": {
                         "oneOf": [{"type": "string"}, {"type": "null"}],
                         "description": "Extracted README description"
-                    },
-                    "vocabulary": {
-                        "oneOf": [
-                            {"type": "array", "items": {"type": "string"}},
-                            {"type": "null"}
-                        ],
-                        "description": "Repo-derived vocabulary terms"
                     }
                 }
             }
