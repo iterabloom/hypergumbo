@@ -2724,13 +2724,16 @@ def cmd_catalog(args: argparse.Namespace) -> int:
     """
     catalog = get_default_catalog()
     cwd = Path.cwd()
+    fmt = getattr(args, "format", "text")
 
     # Check if this is a very large directory (e.g., $HOME) to avoid slow scans
     detected_languages: set[str] = set()
-    if _is_large_directory(cwd):
-        print("Note: Large directory detected - skipping language suggestions.")
-        print("      Run from a specific project directory for suggestions.")
-        print()
+    large_dir = _is_large_directory(cwd)
+    if large_dir:
+        if fmt != "json":
+            print("Note: Large directory detected - skipping language suggestions.")
+            print("      Run from a specific project directory for suggestions.")
+            print()
     else:
         # Detect repo profile using existing language detection
         # Use max_file_size to skip large files - catalog is just for quick hints,
@@ -2740,6 +2743,36 @@ def cmd_catalog(args: argparse.Namespace) -> int:
 
     # Show suggested passes based on detected languages
     suggested = suggest_passes_for_languages(detected_languages)
+
+    if fmt == "json":
+        frameworks_dir = get_frameworks_dir()
+        framework_patterns = (
+            [
+                {"name": f.stem, "path": str(f)}
+                for f in sorted(frameworks_dir.glob("*.yaml"))
+            ]
+            if frameworks_dir.exists()
+            else []
+        )
+        print(json.dumps(add_schema_envelope(
+            {
+                "passes": [
+                    {
+                        "id": p.id,
+                        "availability": p.availability,
+                        "description": p.description,
+                        "available": is_available(p),
+                    }
+                    for p in catalog.passes
+                ],
+                "framework_patterns": framework_patterns,
+                "suggested": [p.id for p in suggested],
+                "large_directory": large_dir,
+            },
+            view="catalog", schema_version="0.1.0",
+        ), indent=2))
+        return 0
+
     if suggested:
         print("Suggested for current repo:")
         for p in suggested:
@@ -3348,14 +3381,27 @@ def cmd_cache_status(args: argparse.Namespace) -> int:
 
     cache_dir = _get_cache_base()
     per_repo = getattr(args, "per_repo", False)
+    fmt = getattr(args, "format", "text")
 
     if args.quiet:
         return 0
 
     if not cache_dir.exists():
-        print(f"Cache directory: {cache_dir}")
-        print("Status: empty (directory does not exist)")
-        print("0 entries, 0 B")
+        if fmt == "json":
+            print(json.dumps(add_schema_envelope(
+                {
+                    "cache_dir": str(cache_dir),
+                    "total_entries": 0,
+                    "total_size_bytes": 0,
+                    "entries": [],
+                    "honk_threshold_bytes": _get_honk_threshold_bytes(),
+                },
+                view="cache_status", schema_version="0.1.0",
+            ), indent=2))
+        else:
+            print(f"Cache directory: {cache_dir}")
+            print("Status: empty (directory does not exist)")
+            print("0 entries, 0 B")
         return 0
 
     # Count entries and compute size
@@ -3373,6 +3419,31 @@ def cmd_cache_status(args: argparse.Namespace) -> int:
         newest_age = int((now - newest[1]) / 86400)
     else:
         oldest_age = newest_age = 0
+
+    if fmt == "json":
+        now = time.time()
+        rows = _list_repo_breakdown(cache_dir)
+        entries_json = [
+            {
+                "fingerprint": row["fingerprint"],
+                "size_bytes": row["size"],
+                "entry_count": row["entries"],
+                "age_days": int((now - row["last_used"]) / 86400),
+            }
+            for row in rows
+        ]
+        print(json.dumps(add_schema_envelope(
+            {
+                "cache_dir": str(cache_dir),
+                "total_entries": entry_count,
+                "total_size_bytes": total_size,
+                "entries": entries_json,
+                "honk_threshold_bytes": _get_honk_threshold_bytes(),
+            },
+            view="cache_status", schema_version="0.1.0",
+        ), indent=2))
+        _maybe_honk_cache(cache_dir, total_size=total_size)
+        return 0
 
     print(f"Cache directory: {cache_dir}")
     print(f"Entries: {entry_count}")
@@ -7244,6 +7315,12 @@ The output begins with passes suggested for your current directory."""
         epilog=catalog_epilog,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
+    p_catalog.add_argument(
+        "--format",
+        choices=["text", "json"],
+        default="text",
+        help="Output format (default: text)",
+    )
     p_catalog.set_defaults(func=cmd_catalog)
 
     # hypergumbo build-grammars
@@ -7344,6 +7421,12 @@ Configure via HYPERGUMBO_CACHE_HONK_GB=<N> (set to 0 to silence)."""
         "--quiet",
         action="store_true",
         help="Suppress output",
+    )
+    p_cache_status.add_argument(
+        "--format",
+        choices=["text", "json"],
+        default="text",
+        help="Output format (default: text)",
     )
     p_cache_status.set_defaults(func=cmd_cache_status)
 

@@ -67,6 +67,48 @@ class TestCacheStatus:
         captured = capsys.readouterr()
         assert captured.out == ""
 
+    def test_cache_status_json_empty(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+        """WI-dulul: --format json on a nonexistent cache emits a zeroed envelope."""
+        import json
+        args = FakeArgs()
+        args.quiet = False
+        args.format = "json"
+        with patch("hypergumbo_core.cli._get_cache_base", return_value=tmp_path / "nope"):
+            assert cmd_cache_status(args) == 0
+        data = json.loads(capsys.readouterr().out)
+        assert data["schema_version"] == "0.1.0"
+        assert data["view"] == "cache_status"
+        assert data["total_entries"] == 0
+        assert data["total_size_bytes"] == 0
+        assert data["entries"] == []
+
+    def test_cache_status_json_with_entries(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+        """WI-dulul: --format json emits per-repo breakdown + totals."""
+        import json
+        cache_dir = tmp_path / "cache"
+        cache_dir.mkdir()
+        for i in range(2):
+            entry = cache_dir / f"fingerprint_{i}"
+            entry.mkdir()
+            (entry / "embeddings").mkdir()
+            (entry / "results").mkdir()
+            (entry / "embeddings" / "data.json").write_text('{"data": "test"}')
+        args = FakeArgs()
+        args.quiet = False
+        args.format = "json"
+        with patch("hypergumbo_core.cli._get_cache_base", return_value=cache_dir):
+            assert cmd_cache_status(args) == 0
+        data = json.loads(capsys.readouterr().out)
+        assert data["view"] == "cache_status"
+        assert data["total_entries"] == 2
+        assert data["total_size_bytes"] > 0
+        assert len(data["entries"]) == 2
+        assert all(
+            "fingerprint" in e and "size_bytes" in e and "entry_count" in e
+            and "age_days" in e
+            for e in data["entries"]
+        )
+
     def test_cache_status_empty_existing_dir(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
         """Status reports zero entries when cache dir exists but is empty."""
         cache_dir = tmp_path / "cache"

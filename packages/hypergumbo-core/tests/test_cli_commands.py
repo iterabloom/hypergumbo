@@ -4178,6 +4178,47 @@ def test_add_schema_envelope_spread_shape() -> None:
     )["schema_version"] == "1.0"
 
 
+def test_cmd_catalog_json_format(tmp_path: Path, capsys, monkeypatch) -> None:
+    """WI-soroz: catalog --format json emits a passes / framework_patterns /
+    suggested envelope."""
+    from hypergumbo_core.cli import cmd_catalog
+
+    monkeypatch.chdir(tmp_path)  # empty dir -> not large, no suggestions
+    args = FakeArgs()
+    args.format = "json"
+
+    assert cmd_catalog(args) == 0
+    data = json.loads(capsys.readouterr().out)
+    assert data["schema_version"] == "0.1.0"
+    assert data["view"] == "catalog"
+    assert isinstance(data["passes"], list) and len(data["passes"]) > 0
+    assert all("id" in p and "available" in p for p in data["passes"])
+    assert isinstance(data["framework_patterns"], list)
+    assert isinstance(data["suggested"], list)
+    assert data["large_directory"] is False
+
+
+def test_cmd_catalog_json_large_directory(
+    tmp_path: Path, capsys, monkeypatch
+) -> None:
+    """WI-soroz: in a large directory, catalog --format json sets
+    large_directory=True and skips language detection (no suggestions)."""
+    from hypergumbo_core.cli import cmd_catalog
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(
+        "hypergumbo_core.cli._is_large_directory", lambda p: True
+    )
+    args = FakeArgs()
+    args.format = "json"
+
+    assert cmd_catalog(args) == 0
+    data = json.loads(capsys.readouterr().out)
+    assert data["view"] == "catalog"
+    assert data["large_directory"] is True
+    assert data["suggested"] == []
+
+
 def test_cmd_slice_auto_entry_exclude_tests(tmp_path: Path, capsys) -> None:
     """--entry auto with --exclude-tests skips test file entrypoints.
 

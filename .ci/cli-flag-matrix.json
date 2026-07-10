@@ -29,12 +29,14 @@
     "-h"
   ],
   "cache-status": [
+    "--format",
     "--help",
     "--per-repo",
     "--quiet",
     "-h"
   ],
   "catalog": [
+    "--format",
     "--help",
     "-h"
   ],
