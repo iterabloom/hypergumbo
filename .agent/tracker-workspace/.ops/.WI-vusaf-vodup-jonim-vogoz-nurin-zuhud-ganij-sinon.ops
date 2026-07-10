@@ -92,3 +92,20 @@
   clock: 9  # adba
   nonce: adba  # adba
   message: "Fixed + merged (selfh/dev c4f87c6a77, bundled with WI-pizat). compact now rejects numerically invalid flags at the argparse boundary (exit 2): --max-symbols<1, --min-symbols<0, --coverage outside [0,1] via reusable _positive_int_arg/_nonneg_int_arg/_unit_interval_arg factories (also wired onto run --coverage, structural analogue), plus a cross-flag max<min guard in cmd_compact. 0.0/1.0 coverage stay valid. Behavioral evidence: validator unit tests + main() SystemExit(2) tests for each bad value + a cross-flag rc=2 test; existing cmd_compact tests (coherent values) stay green; core 100%. cli-input-validation sub-B (INV-dunof); the shared factories are reusable for INV-jibof/INV-fapid/INV-votop. Wave-4 projection."  # adba
+- op: update  # c459
+  at: '2026-07-10T09:53:05Z'  # c459
+  by: agent  # c459
+  actor: jgstern_agent  # c459
+  clock: 10  # c459
+  nonce: c459  # c459
+  set:  # c459
+    status: done  # c459
+  add:  # c459
+    tags: [wave4]  # c459
+- op: discuss  # 4a96
+  at: '2026-07-10T09:53:06Z'  # 4a96
+  by: agent  # 4a96
+  actor: jgstern_agent  # 4a96
+  clock: 11  # 4a96
+  nonce: 4a96  # 4a96
+  message: "DONE (already resolved in-code; stale audit premise — no PR needed). compact's flag validation is fully wired: --max-symbols uses _positive_int_arg (rejects <1), --min-symbols uses _nonneg_int_arg (rejects <0), --coverage uses _unit_interval_arg (rejects outside [0.0,1.0]) — all three factories the audit noted as 'created for WI-vusaf' are now on the flags — plus a runtime max<min guard at cli.py:4253. BEHAVIORAL EVIDENCE (live @ dev 1386628b52, compact --input <bm>): '--max-symbols 0' -> rc=2 'must be a positive integer (>= 1), got 0'; '--max-symbols=-5' -> rc=2; '--coverage 1.5' -> rc=2 'must be in the range [0.0, 1.0], got 1.5'; '--coverage=-0.1' -> rc=2; '--max-symbols 5 --min-symbols 10' -> rc=2 'Error: --max-symbols (5) must be >= --min-symbols (10)'; valid '--max-symbols 50 --coverage 0.9' -> rc=0. The wiring + max<min check are at 100% coverage (CI gate). cli-input sub-B (INV-dunof) member."  # 4a96

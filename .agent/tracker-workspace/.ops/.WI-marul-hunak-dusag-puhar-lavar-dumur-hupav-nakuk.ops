@@ -30,3 +30,20 @@
     tags: [dogfood_tranche_04]  # 8602
   remove:  # 8602
     tags: [dogfood_tranch_04]  # 8602
+- op: update  # e388
+  at: '2026-07-10T08:58:26Z'  # e388
+  by: agent  # e388
+  actor: jgstern_agent  # e388
+  clock: 3  # e388
+  nonce: e388  # e388
+  set:  # e388
+    status: done  # e388
+  add:  # e388
+    tags: [wave4]  # e388
+- op: discuss  # 301a
+  at: '2026-07-10T08:58:26Z'  # 301a
+  by: agent  # 301a
+  actor: jgstern_agent  # 301a
+  clock: 4  # 301a
+  nonce: 301a  # 301a
+  message: "DONE — PR #538 (selfh/dev 8711a6c935). load_substrate adds a warn-first schema_version gate: an absent OR mismatched schema_version prints a stderr Warning but the map still loads (an older/newer map is usually still readable; rejecting would be over-strict). BEHAVIORAL EVIDENCE (live): 'symbols --input oldver.json' (schema_version='0.0.1-ancient') -> rc=0, stderr 'Warning: ...: substrate schema_version '0.0.1-ancient' differs from this build's '0.14.4'; field presence may not match.', AND symbols still emitted (12 lines stdout) (WAS: read silently with no signal). Control: a current-version map -> rc=0, empty stderr. Absent-version path warns 'no schema_version field; cannot verify ...'. Core 100% coverage."  # 301a

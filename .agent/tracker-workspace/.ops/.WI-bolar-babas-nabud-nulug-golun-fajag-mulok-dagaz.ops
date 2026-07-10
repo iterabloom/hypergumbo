@@ -30,3 +30,20 @@
     tags: [dogfood_tranche_04]  # 5582
   remove:  # 5582
     tags: [dogfood_tranch_04]  # 5582
+- op: update  # 913e
+  at: '2026-07-10T09:51:32Z'  # 913e
+  by: agent  # 913e
+  actor: jgstern_agent  # 913e
+  clock: 3  # 913e
+  nonce: 913e  # 913e
+  set:  # 913e
+    status: done  # 913e
+  add:  # 913e
+    tags: [wave4]  # 913e
+- op: discuss  # f4fb
+  at: '2026-07-10T09:51:32Z'  # f4fb
+  by: agent  # f4fb
+  actor: jgstern_agent  # f4fb
+  clock: 4  # f4fb
+  nonce: f4fb  # f4fb
+  message: "DONE — PR #541 (selfh/dev, slice fix 4240a7a4e1). --hub-threshold now uses the shared _nonneg_int_arg factory (was type=int), rejecting <0 at parse time; the 'raw if raw else None' truthiness guard (which passed negatives) is now unreachable for negatives, and 0 stays the documented disable sentinel. BEHAVIORAL EVIDENCE (live @ dev): 'slice --hub-threshold=-5' -> rc=2, stderr 'hypergumbo slice: error: argument --hub-threshold: --hub-threshold must be a non-negative integer (>= 0), got -5' (WAS: silently coerced, collapsing the slice). Control: '--hub-threshold=0' -> rc=0 (disable sentinel preserved). Unit test test_slice_negative_hub_threshold_rejected (SystemExit code 2). cli-input sub-B (INV-dunof) member. Core 100% coverage."  # f4fb

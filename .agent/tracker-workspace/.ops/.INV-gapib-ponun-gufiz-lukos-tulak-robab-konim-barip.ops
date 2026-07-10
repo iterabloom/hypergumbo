@@ -63,3 +63,20 @@
     tags: [dogfood]  # 7940
   remove:  # 7940
     tags: [dogfooding]  # 7940
+- op: update  # f9f1
+  at: '2026-07-10T08:58:26Z'  # f9f1
+  by: agent  # f9f1
+  actor: jgstern_agent  # f9f1
+  clock: 6  # f9f1
+  nonce: f9f1  # f9f1
+  set:  # f9f1
+    status: satisfied  # f9f1
+  add:  # f9f1
+    tags: [wave4]  # f9f1
+- op: discuss  # f679
+  at: '2026-07-10T08:58:26Z'  # f679
+  by: agent  # f679
+  actor: jgstern_agent  # f679
+  clock: 7  # f679
+  nonce: f679  # f679
+  message: "SATISFIED — PR #538 (selfh/dev 8711a6c935). load_substrate reads the 'view' discriminator: a document whose view is PRESENT and different from the consumer's expected view (default 'behavior_map') is rejected with SubstrateError -> rc=2. A MISSING view is accepted (legacy/minimal maps omit it; the guard rejects a wrong view, not an absent one). BEHAVIORAL EVIDENCE (live): 'symbols --input tieredview.json' (a real behavior map with view rewritten to 'tiered') -> rc=2, stderr 'Error: ...: wrong view — expected 'behavior_map', got 'tiered'. Feed a 'behavior_map' behavior map, not a 'tiered' projection.' (WAS: silently consumed as a behavior map). Unit test test_load_substrate_wrong_view_raises (nodes-bearing wrong-view doc, so the view guard fires — not the shape guard). Core 100% coverage."  # f679
