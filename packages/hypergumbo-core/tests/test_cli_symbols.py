@@ -695,6 +695,20 @@ def test_main_wrong_shape_input_exits_2_via_dispatch_guard(
     assert "nodes" in err
 
 
+def test_main_non_directory_path_exits_2(tmp_path: Path, capsys) -> None:
+    """INV-jibof: a positional path that is a non-directory file (not a repo,
+    no --input, no cached results) fails with rc=2 + guidance instead of
+    silently running analysis on a non-repo and printing "No symbols found"
+    with rc=0. Exercises the _get_or_run_analysis directory guard end-to-end."""
+    notadir = tmp_path / "notadir.txt"
+    notadir.write_text("hello\n")
+
+    rc = main(["symbols", str(notadir)])
+
+    assert rc == 2
+    assert "not a directory" in capsys.readouterr().err
+
+
 def test_cmd_symbols_auto_runs_analysis(tmp_path: Path, capsys) -> None:
     """Symbols auto-runs analysis if no results file exists."""
     args = FakeArgs()

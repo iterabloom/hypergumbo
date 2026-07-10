@@ -499,6 +499,17 @@ def _get_or_run_analysis(
     if cached_path is not None:
         return cached_path, True, []
 
+    # INV-jibof: a positional path that is not a directory (with no --input and
+    # no cached results) is not a repository to analyze — running analysis on a
+    # non-directory silently yields empty output and a "No X found" with rc=0.
+    # Fail loudly with guidance instead. (A behavior-map file belongs on
+    # --input; the SubstrateError is caught by main()'s dispatch → rc=2.)
+    if not repo_root.is_dir():
+        raise SubstrateError(
+            f"{repo_root}: not a directory. Pass a repository directory, or "
+            f"pass a behavior map via --input."
+        )
+
     # No cached results - run analysis
     print(
         "[hypergumbo] No cached results found, running analysis...",

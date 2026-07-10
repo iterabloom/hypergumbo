@@ -30,15 +30,17 @@ from .schema import SCHEMA_VERSION
 
 
 class SubstrateError(Exception):
-    """A ``--input`` substrate could not be loaded as a usable behavior map.
+    """A usable behavior-map substrate could not be obtained from the input.
 
-    Raised by :func:`load_substrate` when the input is not parseable JSON,
-    is not a top-level object, lacks the structural ``nodes`` key, or
-    carries the wrong ``view`` discriminator. The CLI's top-level dispatch
-    (``cli.main``) catches this and converts it to a clean ``rc=2`` +
-    stderr message, so every ``--input`` consumer gets a typed failure
-    instead of a raw traceback (INV-sozop) or a silent ``rc=0`` "No X
-    found" on wrong-shape input (WI-jukah).
+    Raised by :func:`load_substrate` when a ``--input`` file is not parseable
+    JSON, is not a top-level object, lacks the structural ``nodes`` key, or
+    carries the wrong ``view`` discriminator; and by ``cli._get_or_run_analysis``
+    when the positional path is not a directory to analyze and there is no
+    ``--input`` / cached map (INV-jibof). The CLI's top-level dispatch
+    (``cli.main``) catches this and converts it to a clean ``rc=2`` + stderr
+    message, so every consumer gets a typed failure instead of a raw traceback
+    (INV-sozop) or a silent ``rc=0`` "No X found" on wrong-shape/non-repo input
+    (WI-jukah / INV-jibof).
     """
 
 
