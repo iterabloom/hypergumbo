@@ -74,3 +74,20 @@
     tags: [dogfood]  # 3f94
   remove:  # 3f94
     tags: [dogfooding]  # 3f94
+- op: update  # c7a5
+  at: '2026-07-10T04:48:12Z'  # c7a5
+  by: agent  # c7a5
+  actor: jgstern_agent  # c7a5
+  clock: 8  # c7a5
+  nonce: c7a5  # c7a5
+  set:  # c7a5
+    status: satisfied  # c7a5
+  add:  # c7a5
+    tags: [wave4]  # c7a5
+- op: discuss  # 1554
+  at: '2026-07-10T04:48:12Z'  # 1554
+  by: agent  # 1554
+  actor: jgstern_agent  # 1554
+  clock: 9  # 1554
+  nonce: '1554'  # 1554
+  message: "Satisfied — behavioral evidence, not a re-fix (cli-output F4 leg C). Statement: 'Route data extracted by analyzers is reachable via the hypergumbo routes subcommand.' Live repro (this build, synthetic bm.json with one http_route node meta.framework_role=route): 'routes --input bm.json <repo>' → text 'Found 1 API route(s): [GET] health', exit 0; '--format json' → {view:routes, schema_version:0.1.0, routes:[1]}. The recorded root_cause is STALE: routes reads nodes via _get_or_run_analysis(explicit_input=args.input) and surfaces entrypoints[kind=http_route], NOT a never-populated top-level bm.routes field — the pass-13 'prints No API routes' was a positional-arg misuse, retracted in INV-pomol's own pass-14 discussion. Two residuals, neither a violation of THIS statement: (a) schema-org observation — route data lives in entrypoints[kind=http_route]/usage_contexts rather than a top-level bm.routes field (reachability holds regardless); (b) sketch-on-read side effect on the AUTO-RUN path (not the --input path shown above) — a distinct sketch-read-path concern, LOW, not re-filed. No usage_contexts→routes promotion built (would be redundant)."  # 1554

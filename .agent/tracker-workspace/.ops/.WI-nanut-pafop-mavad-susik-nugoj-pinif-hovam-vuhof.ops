@@ -37,3 +37,20 @@
     tags: [dogfood_tranche_03]  # 4692
   remove:  # 4692
     tags: [dogfood_tranch_03]  # 4692
+- op: update  # 0fea
+  at: '2026-07-10T04:45:42Z'  # 0fea
+  by: agent  # 0fea
+  actor: jgstern_agent  # 0fea
+  clock: 4  # 0fea
+  nonce: 0fea  # 0fea
+  set:  # 0fea
+    status: done  # 0fea
+  add:  # 0fea
+    tags: [wave4]  # 0fea
+- op: discuss  # 10db
+  at: '2026-07-10T04:45:42Z'  # 10db
+  by: agent  # 10db
+  actor: jgstern_agent  # 10db
+  clock: 5  # 10db
+  nonce: 10db  # 10db
+  message: "Done in PR #529 (selfh/dev fbdfe8c77a), cli-output F3. Added --language/--file/--first/--limit to explain (parity with symbols). --language/--file narrow the match pool (like find_entry_nodes); --first accepts the top match; --limit caps sections for non-ambiguous same-file duplicates. These are the disambiguation escapes INV-nogof's error message names. Flag-matrix baseline regenerated (+4). The 15,713-line 'explain main' dump is bounded: an ambiguous name now errors with escapes rather than dumping every section."  # 10db
