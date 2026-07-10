@@ -1469,7 +1469,7 @@ def _read_view_wants_json(args: argparse.Namespace) -> bool:
 def cmd_slice(args: argparse.Namespace) -> int:
     """Execute the slice command."""
     path_arg = Path(args.path).resolve()
-    out_path_arg = args.out  # Keep as string to detect if default was used
+    out_path_arg = args.out  # None when --out omitted → auto-name (INV-fapid)
 
     # Smart detection: if path is a .json file, treat it as --input automatically
     # This provides better UX: `hypergumbo slice results.json` just works
@@ -1613,9 +1613,11 @@ def cmd_slice(args: argparse.Namespace) -> int:
         if out_edges > 0:
             print(f"  (selected for connectivity: {out_edges} outgoing edges)")
 
-    # Generate output path with entry name if using default
-    # This prevents accidental overwrites when slicing different symbols
-    if out_path_arg == "slice.json":
+    # Generate output path with entry name when --out is omitted (INV-fapid:
+    # keyed on the None default sentinel, NOT the literal "slice.json" string —
+    # an explicit `--out slice.json` was previously indistinguishable from the
+    # default and got silently overridden by this auto-detection).
+    if out_path_arg is None:
         # Extract short name from entry (e.g., "main" from "python:src/main.py:1-5:main:function")
         entry_parts = entry.split(":")
         short_name = entry_parts[-2] if len(entry_parts) >= 2 else entry_parts[0]
@@ -7135,7 +7137,7 @@ Auto-discovers cached results from 'hypergumbo run', or specify --input."""
     )
     p_slice.add_argument(
         "--out",
-        default="slice.json",
+        default=None,
         help="Output JSON path (default: slice.<entry-name>.json)",
     )
     p_slice.add_argument(
@@ -7187,7 +7189,7 @@ Auto-discovers cached results from 'hypergumbo run', or specify --input."""
     )
     p_slice.add_argument(
         "--hub-threshold",
-        type=int,
+        type=_nonneg_int_arg("--hub-threshold"),
         default=50,
         dest="hub_threshold",
         help="Prune hub nodes: nodes with more outgoing (forward) or incoming "

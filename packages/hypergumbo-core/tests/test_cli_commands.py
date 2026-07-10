@@ -762,6 +762,77 @@ def test_cmd_slice_creates_slice(tmp_path: Path, capsys) -> None:
     assert "[hypergumbo slice]" in out
 
 
+_SLICE_FIXTURE_MAP = {
+    "schema_version": SCHEMA_VERSION,
+    "nodes": [
+        {
+            "id": "python:src/main.py:1-2:hello:function",
+            "name": "hello",
+            "kind": "function",
+            "language": "python",
+            "path": "src/main.py",
+            "span": {"start_line": 1, "end_line": 2, "start_col": 0, "end_col": 10},
+        }
+    ],
+    "edges": [],
+}
+
+
+def _slice_args(tmp_path: Path, out) -> "FakeArgs":
+    (tmp_path / "hypergumbo.results.json").write_text(json.dumps(_SLICE_FIXTURE_MAP))
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.entry = "hello"
+    args.out = out
+    args.input = None
+    args.max_hops = 3
+    args.max_files = 20
+    args.min_confidence = 0.0
+    args.exclude_tests = False
+    args.list_entries = False
+    args.reverse = False
+    args.language = None
+    return args
+
+
+def test_slice_negative_hub_threshold_rejected(tmp_path: Path, capsys) -> None:
+    """WI-bolar: a negative --hub-threshold is rejected at parse time (rc=2),
+    not silently coerced through the ``raw if raw else None`` truthiness guard
+    (which passed negatives through) into a collapsed slice. ``0`` stays the
+    documented disable sentinel — that path is unchanged."""
+    with pytest.raises(SystemExit) as exc:
+        main(["slice", str(tmp_path), "--hub-threshold=-5"])
+    assert exc.value.code == 2
+    assert "non-negative" in capsys.readouterr().err
+
+
+def test_cmd_slice_explicit_out_slice_json_is_honored(
+    tmp_path: Path, monkeypatch, capsys,
+) -> None:
+    """INV-fapid: an explicit ``--out slice.json`` is written to that literal
+    path, no longer silently overridden by entry-name auto-detection (the
+    default sentinel is now ``None``, so the collision with a user's
+    ``slice.json`` is gone)."""
+    args = _slice_args(tmp_path, "slice.json")
+    monkeypatch.chdir(tmp_path)
+
+    assert cmd_slice(args) == 0
+    assert (tmp_path / "slice.json").exists()
+
+
+def test_cmd_slice_omitted_out_auto_generates_from_entry(
+    tmp_path: Path, capsys,
+) -> None:
+    """INV-fapid: with ``--out`` omitted (``None``), the output name is
+    auto-generated from the entry (into the cache dir) to avoid accidental
+    overwrites — the default-name path, now keyed on ``out is None`` rather
+    than the ``== 'slice.json'`` string collision."""
+    args = _slice_args(tmp_path, None)
+
+    assert cmd_slice(args) == 0
+    assert "slice.hello" in capsys.readouterr().out
+
+
 def test_cmd_slice_with_input_file(tmp_path: Path) -> None:
     """Test slice command reading from existing behavior map."""
     # Create a behavior map file
@@ -3345,7 +3416,7 @@ def test_cmd_slice_default_output_includes_entry_name(tmp_path: Path, capsys) ->
     args = FakeArgs()
     args.path = str(tmp_path)
     args.entry = "my_func"
-    args.out = "slice.json"  # Default value
+    args.out = None  # --out omitted → auto-name from entry (INV-fapid)
     args.input = None
     args.max_hops = 3
     args.max_files = 20
@@ -3395,7 +3466,7 @@ def test_cmd_slice_reverse_uses_distinct_filename(tmp_path: Path, capsys) -> Non
     args_fwd = FakeArgs()
     args_fwd.path = str(tmp_path)
     args_fwd.entry = "my_func"
-    args_fwd.out = "slice.json"
+    args_fwd.out = None  # --out omitted → auto-name (INV-fapid)
     args_fwd.input = None
     args_fwd.max_hops = 3
     args_fwd.max_files = 20
@@ -3413,7 +3484,7 @@ def test_cmd_slice_reverse_uses_distinct_filename(tmp_path: Path, capsys) -> Non
     args_rev = FakeArgs()
     args_rev.path = str(tmp_path)
     args_rev.entry = "my_func"
-    args_rev.out = "slice.json"
+    args_rev.out = None  # --out omitted → auto-name (INV-fapid)
     args_rev.input = None
     args_rev.max_hops = 3
     args_rev.max_files = 20
