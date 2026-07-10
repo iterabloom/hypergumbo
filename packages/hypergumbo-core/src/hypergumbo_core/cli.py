@@ -4092,7 +4092,15 @@ def cmd_symbols(args: argparse.Namespace) -> int:
         # fold — synthetic post-fold nodes (kind=function|method +
         # meta.framework_role=<excluded role>) are excluded the same as
         # their pre-fold legacy-kind counterparts.
-        if is_excluded_kind(kind, node.get("meta")):
+        #
+        # WI-sufuh: the default silent kind-exclusion (file / variable / CSS
+        # kinds / npm packages — low-value for a connectivity table) must NOT
+        # override an EXPLICIT `--kind file` / `--kind variable`. Suppress the
+        # pre-filter only when the user did not ask for this exact kind; the
+        # `--kind` mismatch filter below still hides everything else.
+        if is_excluded_kind(kind, node.get("meta")) and not (
+            args.kind and kind == args.kind
+        ):
             continue
         if args.kind and kind != args.kind:
             continue
@@ -7813,9 +7821,15 @@ Examples:
   hypergumbo symbols --max-per-file 5       # Max 5 symbols per file
   hypergumbo symbols --max-per-file 3 --all # All files, 3 symbols each
   hypergumbo symbols --kind function        # Only functions
+  hypergumbo symbols --kind file            # Surface file nodes (else hidden)
   hypergumbo symbols --language python      # Only Python symbols
   hypergumbo symbols --col-width 200        # Wider Symbol/File columns
   hypergumbo symbols --wrap                 # Wrap long names instead of truncating
+
+By default (and with --all) low-value kinds are hidden from the connectivity
+table — file/dependency/project/package nodes and CSS class/id/variable/
+keyframes/media/font-face/markdown kinds. Request one of these explicitly with
+`--kind <k>` (e.g. `--kind file`, `--kind variable`) to surface it (WI-sufuh).
 
 Output: Rich table with columns Symbol, Kind, In (in-degree), Out (out-degree),
 Deg (total degree), File. Symbol and File columns default to 60 / 80 chars
@@ -7853,7 +7867,11 @@ Auto-discovers cached results from 'hypergumbo run', or specify --input."""
     p_symbols.add_argument(
         "--kind",
         default=None,
-        help="Filter by symbol kind (e.g., function, class, method)",
+        help=(
+            "Filter by symbol kind (e.g., function, class, method). Low-value "
+            "kinds hidden by default (file, variable, package, CSS/markdown "
+            "kinds) are surfaced when requested explicitly, e.g. --kind file"
+        ),
     )
     p_symbols.add_argument(
         "--language",
@@ -7870,7 +7888,10 @@ Auto-discovers cached results from 'hypergumbo run', or specify --input."""
         "--all",
         action="store_true",
         dest="all",
-        help="Show all symbols (ignore --limit)",
+        help=(
+            "Show all symbols (ignore --limit). Low-value kinds are still "
+            "hidden unless requested via --kind (WI-sufuh)"
+        ),
     )
     p_symbols.add_argument(
         "--col-width",

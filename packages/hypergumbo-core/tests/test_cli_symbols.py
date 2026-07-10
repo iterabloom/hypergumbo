@@ -1299,6 +1299,101 @@ def test_cmd_symbols_excludes_excluded_kinds(tmp_path: Path, capsys) -> None:
     assert "utils" not in out
 
 
+def _excluded_kind_map() -> dict:
+    """A function plus two default-excluded kinds (file, CSS variable)."""
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "nodes": [
+            {
+                "id": "python:src/main.py:1-10:main_func:function",
+                "name": "main_func",
+                "kind": "function",
+                "language": "python",
+                "path": "src/main.py",
+                "span": {"start_line": 1, "end_line": 10, "start_col": 0, "end_col": 10},
+            },
+            {
+                "id": "javascript:src/utils.js:file:1:utils_file",
+                "name": "utils_file",
+                "kind": "file",
+                "language": "javascript",
+                "path": "src/utils.js",
+                "span": {"start_line": 0, "end_line": 0, "start_col": 0, "end_col": 0},
+                "meta": {"module_system": "esm"},
+            },
+            {
+                "id": "css:src/styles.css:1-5:--brand-color:variable",
+                "name": "--brand-color",
+                "kind": "variable",
+                "language": "css",
+                "path": "src/styles.css",
+                "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
+            },
+        ],
+        "edges": [],
+    }
+
+
+def _symbols_args(tmp_path: Path, **overrides) -> "FakeArgs":
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.input = None
+    args.kind = None
+    args.language = None
+    args.limit = 200
+    args.all = False
+    args.exclude_tests = False
+    args.max_per_file = None
+    for k, v in overrides.items():
+        setattr(args, k, v)
+    return args
+
+
+def test_cmd_symbols_kind_file_surfaces_file_nodes(tmp_path: Path, capsys) -> None:
+    """WI-sufuh: `--kind file` surfaces file nodes despite the default exclusion."""
+    (tmp_path / "hypergumbo.results.json").write_text(json.dumps(_excluded_kind_map()))
+
+    result = cmd_symbols(_symbols_args(tmp_path, kind="file"))
+
+    assert result == 0
+    out, _ = capsys.readouterr()
+    assert "utils_file" in out
+    # Only file-kind requested → the function and variable are filtered out.
+    assert "main_func" not in out
+    assert "--brand-color" not in out
+
+
+def test_cmd_symbols_kind_variable_surfaces_variable_nodes(
+    tmp_path: Path, capsys
+) -> None:
+    """WI-sufuh: `--kind variable` surfaces variable nodes (else hidden)."""
+    (tmp_path / "hypergumbo.results.json").write_text(json.dumps(_excluded_kind_map()))
+
+    result = cmd_symbols(_symbols_args(tmp_path, kind="variable"))
+
+    assert result == 0
+    out, _ = capsys.readouterr()
+    assert "--brand-color" in out
+    assert "utils_file" not in out
+
+
+def test_cmd_symbols_kind_function_still_excludes_low_value_kinds(
+    tmp_path: Path, capsys
+) -> None:
+    """WI-sufuh regression fence: asking for a non-excluded kind keeps the
+    silent exclusion active for the OTHER kinds (the bypass is scoped to the
+    exact kind requested)."""
+    (tmp_path / "hypergumbo.results.json").write_text(json.dumps(_excluded_kind_map()))
+
+    result = cmd_symbols(_symbols_args(tmp_path, kind="function"))
+
+    assert result == 0
+    out, _ = capsys.readouterr()
+    assert "main_func" in out
+    assert "utils_file" not in out
+    assert "--brand-color" not in out
+
+
 def test_cmd_symbols_extreme_sink_dampened(tmp_path: Path, capsys) -> None:
     """Extreme pure sinks (in=100, out=0) rank below architectural connectors.
 
