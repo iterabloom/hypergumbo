@@ -18,3 +18,20 @@
     pr_ref:  # 20f3
     description: "The behavior map carries several version fields under inconsistent names across surfaces: limits.analyzer_version, top-level schema_version, a hypergumbo_version, and validation_report.schema_version (which is '0.1' vs the bm 0.13.0). No documented relationship/vocabulary ties them. Fix: harmonize and document the version-field naming across surfaces. Overlaps WI-kutas (schema-generator drift) and WI-vibag (stable_id_scheme version drift) but is its own cross-surface naming-harmonization fix. Surfaced via dogfooding; blinded severity 3/5."  # 20f3
     fields: {}  # 20f3
+- op: update  # edda
+  at: '2026-07-10T06:42:02Z'  # edda
+  by: agent  # edda
+  actor: jgstern_agent  # edda
+  clock: 2  # edda
+  nonce: edda  # edda
+  set:  # edda
+    status: done  # edda
+  add:  # edda
+    tags: [wave4]  # edda
+- op: discuss  # 00c0
+  at: '2026-07-10T06:42:03Z'  # 00c0
+  by: agent  # 00c0
+  actor: jgstern_agent  # 00c0
+  clock: 3  # 00c0
+  nonce: 00c0  # 00c0
+  message: "Done in PR (selfh/dev 24b44a1d0d), cli-output F4 leg B / schema:F4. The complaint — 'version-field naming inconsistent across surfaces (schema_version / analyzer_version / hypergumbo_version / validation_report.schema_version)' — resolved by DOCUMENTING the three deliberately-independent version axes (schema.py Version Distinction docstring + spec Appendix C 'Version fields: three independent axes'): (1) top-level format version schema_version; (2) tool version __version__, aliased as hypergumbo_version/analyzer_version (NOT schema versions); (3) per-view/per-sub-schema versions. Mechanism: the six read-view envelope placeholders (routes/test-coverage/config/catalog/cache-status/dead-code-maybe) single-sourced onto schema.READ_VIEW_SCHEMA_VERSION (was 7 scattered '0.1.0' literals; byte-identical value; a view promotes to its own constant when it diverges, as io-boundaries/verify-claims have). Deliberately did NOT consolidate the independent sub-schema versions or rename the wire fields (analyzer_version/hypergumbo_version have spec text + consumers — a rename is a covert wire-break needing a major bump). Provenance guards: routes schema_version assertion added (was test-silent), test-coverage asserts the constant. No SCHEMA_VERSION bump; core 100% coverage. verify-generated (generate-schema --check) clean."  # 00c0

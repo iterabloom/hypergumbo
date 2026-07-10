@@ -61,3 +61,20 @@
   clock: 6  # dc09
   nonce: dc09  # dc09
   message: "related-but-distinct cross-link (connections-sweep 2026-06-08T1900Z)"  # dc09
+- op: update  # 6f6b
+  at: '2026-07-10T06:42:03Z'  # 6f6b
+  by: agent  # 6f6b
+  actor: jgstern_agent  # 6f6b
+  clock: 7  # 6f6b
+  nonce: 6f6b  # 6f6b
+  set:  # 6f6b
+    status: done  # 6f6b
+  add:  # 6f6b
+    tags: [wave4]  # 6f6b
+- op: discuss  # 92e7
+  at: '2026-07-10T06:42:03Z'  # 92e7
+  by: agent  # 92e7
+  actor: jgstern_agent  # 92e7
+  clock: 8  # 92e7
+  nonce: '92e7'  # 92e7
+  message: "Done in PR (selfh/dev 24b44a1d0d), bundled with WI-bobog (F4 leg B). Statement: 'validation_report.schema_version vs bm.schema_version; independent sub-schema versioning with undocumented mapping.' Resolution = Option 2/3 (document, NOT consolidate): spec Appendix C 'Version fields' now states validation_report carries VALIDATION_REPORT_SCHEMA_VERSION (currently 0.3, already a named constant with its own changelog in spec_validator.py:114) as an INDEPENDENT sub-schema version — so it legitimately differs from the enclosing map's top-level schema_version; they are different schemas. The stale '0.1' in the item title is outdated (it's 0.3 now). Consolidating would discard the independent changelogs; that landmine avoided. Doc-only; no code change beyond the shared WI-bobog refactor."  # 92e7

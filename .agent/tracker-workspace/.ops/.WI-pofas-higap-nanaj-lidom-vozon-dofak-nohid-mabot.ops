@@ -67,3 +67,18 @@
     tags: [dogfood]  # 4f16
   remove:  # 4f16
     tags: [dogfooding]  # 4f16
+- op: update  # dc8b
+  at: '2026-07-10T07:15:45Z'  # dc8b
+  by: agent  # dc8b
+  actor: jgstern_agent  # dc8b
+  clock: 7  # dc8b
+  nonce: dc8b  # dc8b
+  set:  # dc8b
+    status: wont_do  # dc8b
+- op: discuss  # d01f
+  at: '2026-07-10T07:15:45Z'  # d01f
+  by: agent  # d01f
+  actor: jgstern_agent  # d01f
+  clock: 8  # d01f
+  nonce: d01f  # d01f
+  message: "WONT_DO (fold into parent WI-gogif) — true duplicate framing: empty body AND shares WI-gogif's exact dogfood_anon_id ITEM-e5ca58 (literally the same dogfood finding as the umbrella, not an independent sub-scope). No distinct invariant or fix-site. Actionable scope lives on the umbrella WI-gogif + its sub-metas (INV-fivar/pikob/rugah) + WI-kitud (the flag-spelling residual)."  # d01f

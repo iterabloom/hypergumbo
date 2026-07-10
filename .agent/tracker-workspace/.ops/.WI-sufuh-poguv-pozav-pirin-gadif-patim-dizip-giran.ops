@@ -38,3 +38,20 @@
     tags: [dogfood]  # adcc
   remove:  # adcc
     tags: [dogfooding]  # adcc
+- op: update  # 3ab5
+  at: '2026-07-10T05:22:20Z'  # 3ab5
+  by: agent  # 3ab5
+  actor: jgstern_agent  # 3ab5
+  clock: 4  # 3ab5
+  nonce: 3ab5  # 3ab5
+  set:  # 3ab5
+    status: done  # 3ab5
+  add:  # 3ab5
+    tags: [wave4]  # 3ab5
+- op: discuss  # 6de8
+  at: '2026-07-10T05:22:20Z'  # 6de8
+  by: agent  # 6de8
+  actor: jgstern_agent  # 6de8
+  clock: 5  # 6de8
+  nonce: 6de8  # 6de8
+  message: "Fixed in PR #531 (selfh/dev d09e394a02), cli-output F4 leg A. Root cause: cmd_symbols ran the silent is_excluded_kind pre-filter BEFORE the explicit --kind filter, so --kind file / --kind variable matched the pre-filter and returned empty. Fix (path 2, obvious --kind reading): suppress the exclusion for the exact requested kind — is_excluded_kind(...) and not (args.kind and kind == args.kind). Behavioral evidence (live CLI, this build): a 2-node fixture (function 'run' + file node 'u_mod') → 'symbols --kind file' surfaces u_mod (grep 1); default 'symbols' still hides it (grep 0). Default/--all exclusion regression-fenced by the pre-existing test_cmd_symbols_excludes_excluded_kinds; requesting a non-excluded kind still hides the others. Default-hidden set now disclosed in --kind/--all help + symbols epilog. No flag added (no flag-matrix regen), no schema change. Core package 100% coverage."  # 6de8
