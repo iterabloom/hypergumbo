@@ -1448,6 +1448,24 @@ def add_schema_envelope(
     return {"schema_version": schema_version, "view": view, **payload}
 
 
+def _read_view_wants_json(args: argparse.Namespace) -> bool:
+    """True when a read subcommand should emit JSON rather than text.
+
+    Unifies the two flag spellings a JSON-capable read view may carry
+    (WI-kitud): the canonical ``--format json`` shared with the other read
+    views (``cache-status`` / ``catalog`` / ``config`` / ``dead-code-maybe`` /
+    ``routes`` / ``test-coverage``) and the pre-existing ``--json`` boolean,
+    kept as a back-compat alias on ``io-boundaries`` / ``verify-claims``.
+    Either selects JSON; ``--json`` wins when both are present (it has always
+    meant JSON). ``getattr`` defaults keep this safe for the many in-process
+    tests that build a bare ``FakeArgs`` without a ``format`` attribute.
+    """
+    return (
+        getattr(args, "format", "text") == "json"
+        or getattr(args, "json_output", False)
+    )
+
+
 def cmd_slice(args: argparse.Namespace) -> int:
     """Execute the slice command."""
     path_arg = Path(args.path).resolve()
@@ -4441,7 +4459,7 @@ def cmd_io_boundaries(args: argparse.Namespace) -> int:
             filtered_entries[btype] = entry
 
     # Output
-    if getattr(args, "json_output", False):
+    if _read_view_wants_json(args):
         if boundary_filter or primitive_filter or exclude_tests:
             from .io_boundary import (
                 IO_BOUNDARIES_SCHEMA_VERSION,
@@ -5202,7 +5220,7 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
     )
 
     # Output
-    if getattr(args, "json_output", False):
+    if _read_view_wants_json(args):
         # WI-nulot / INV-gatog: a versioned top-level envelope (was a bare JSON
         # array), so metadata is extensible without breaking consumers. The
         # INV-javam taint-coverage signal — previously stderr-only — is now
@@ -7982,7 +8000,7 @@ without re-running the full analysis."""
 Examples:
   hypergumbo io-boundaries .                          # Production-only IO map
   hypergumbo io-boundaries . --include-tests          # Also include test files
-  hypergumbo io-boundaries . --json                   # JSON output
+  hypergumbo io-boundaries . --format json            # JSON output (--json alias)
   hypergumbo io-boundaries . --input hg.json          # From existing analysis
   hypergumbo io-boundaries . --by-file                # Group by file
   hypergumbo io-boundaries . --boundary subprocess    # Filter to subprocess calls
@@ -8005,10 +8023,16 @@ are excluded by default — pass --include-tests to see them. See ADR-0016."""
         help="Input behavior map file (default: auto-discover or run analysis)",
     )
     p_io.add_argument(
+        "--format",
+        choices=["text", "json"],
+        default="text",
+        help="Output format (default: text). The canonical read-view spelling.",
+    )
+    p_io.add_argument(
         "--json",
         action="store_true",
         dest="json_output",
-        help="Output as JSON",
+        help="Alias for --format json (back-compat)",
     )
     p_io.add_argument(
         "--by-file",
@@ -8143,10 +8167,16 @@ inconclusive, or the claims file failed validation.
         help="Input behavior map file (default: auto-discover or run analysis)",
     )
     p_vc.add_argument(
+        "--format",
+        choices=["text", "json"],
+        default="text",
+        help="Output format (default: text). The canonical read-view spelling.",
+    )
+    p_vc.add_argument(
         "--json",
         action="store_true",
         dest="json_output",
-        help="Output as JSON",
+        help="Alias for --format json (back-compat)",
     )
     p_vc.add_argument(
         "--taint-sources",

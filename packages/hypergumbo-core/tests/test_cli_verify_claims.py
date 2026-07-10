@@ -128,6 +128,64 @@ def test_verify_claims_json_output(tmp_path: Path, capsys) -> None:
     assert data["unsupported_taint_languages"] == []
 
 
+def _make_json_claims_args(tmp_path: Path) -> FakeArgs:
+    """Build a verify-claims FakeArgs over a single-confirmed-claim fixture."""
+    bmap = _make_behavior_map(
+        nodes=[{"id": "python:a.py:1:f:function", "name": "f", "kind": "function",
+                "language": "python", "path": "a.py",
+                "span": {"start_line": 1, "end_line": 5}}],
+        edges=[{"src": "python:a.py:1:f:function",
+                "dst": "python:b.py:1:g:function", "type": "calls",
+                "confidence": 0.9}],
+    )
+    input_file = tmp_path / "hg.json"
+    input_file.write_text(json.dumps(bmap))
+    claims = {"claims": [
+        {"id": "SC-001", "text": "No net",
+         "constraint": {"boundary": "net_send", "must_not_exist": True}},
+    ]}
+    claims_file = tmp_path / "claims.yaml"
+    claims_file.write_text(yaml.dump(claims))
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.input = str(input_file)
+    args.claims = str(claims_file)
+    args.json_output = False
+    return args
+
+
+def test_verify_claims_format_json_matches_json_flag(
+    tmp_path: Path, capsys,
+) -> None:
+    """WI-kitud: ``--format json`` emits the same versioned envelope as the
+    ``--json`` back-compat alias, bringing verify-claims onto the shared
+    ``--format text|json`` read-view convention."""
+    args = _make_json_claims_args(tmp_path)
+    args.format = "json"
+
+    rc = cmd_verify_claims(args)
+    assert rc == 0
+    data = json.loads(capsys.readouterr().out)
+    assert data["schema_version"] == VERIFY_CLAIMS_SCHEMA_VERSION
+    assert data["view"] == "verify-claims"
+    assert data["verdicts"][0]["verdict"] == "confirmed"
+
+
+def test_verify_claims_json_alias_overrides_format_text(
+    tmp_path: Path, capsys,
+) -> None:
+    """WI-kitud: the ``--json`` alias forces JSON even when ``--format`` is the
+    default ``text`` — back-compat: ``--json`` has always meant JSON."""
+    args = _make_json_claims_args(tmp_path)
+    args.format = "text"
+    args.json_output = True
+
+    rc = cmd_verify_claims(args)
+    assert rc == 0
+    data = json.loads(capsys.readouterr().out)
+    assert data["view"] == "verify-claims"
+
+
 def test_verify_claims_json_exposes_unsupported_taint_languages(
     tmp_path: Path, capsys
 ) -> None:

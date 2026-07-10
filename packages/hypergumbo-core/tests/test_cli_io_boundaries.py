@@ -10,6 +10,8 @@ filtering.
 import json
 from pathlib import Path
 
+import pytest
+
 from hypergumbo_core.cli import cmd_io_boundaries
 from hypergumbo_core.schema import SCHEMA_VERSION
 
@@ -249,6 +251,74 @@ def test_cmd_io_boundaries_json_output(tmp_path: Path, capsys) -> None:
     data = json.loads(out)
     assert data["total_io_edges"] == 1
     assert "subprocess" in data["boundaries"]
+
+
+def test_cmd_io_boundaries_format_json_matches_json_flag(
+    tmp_path: Path, capsys,
+) -> None:
+    """WI-kitud: ``--format json`` (the canonical read-view spelling) emits the
+    same JSON envelope as the ``--json`` back-compat alias.
+
+    io-boundaries historically used ``--json``; WI-kitud brings it onto the
+    shared ``--format text|json`` convention so a consumer driving multiple
+    read subcommands need learn only one flag spelling.
+    """
+    bmap = _make_behavior_map(
+        nodes=[
+            {
+                "id": "python:src/app.py:1-5:app:function",
+                "name": "app",
+                "kind": "function",
+                "language": "python",
+                "path": "src/app.py",
+                "span": {"start_line": 1, "end_line": 5},
+            },
+        ],
+        edges=[
+            {
+                "src": "python:src/app.py:1-5:app:function",
+                "dst": "python:stdlib/sub.py:1-2:subprocess.run:function",
+                "type": "calls",
+                "confidence": 0.9,
+            },
+        ],
+    )
+    args = _make_args(tmp_path, bmap, format="json")
+
+    rc = cmd_io_boundaries(args)
+    assert rc == 0
+    data = json.loads(capsys.readouterr().out)
+    assert data["total_io_edges"] == 1
+    assert "subprocess" in data["boundaries"]
+
+
+def test_cmd_io_boundaries_json_alias_overrides_format_text(
+    tmp_path: Path, capsys,
+) -> None:
+    """WI-kitud: the ``--json`` alias forces JSON even when ``--format`` is the
+    default ``text`` — ``--json`` has always meant JSON, so it wins."""
+    bmap = _make_behavior_map(**_SINGLE_FS_READ)
+    args = _make_args(tmp_path, bmap, format="text", json_output=True)
+
+    rc = cmd_io_boundaries(args)
+    assert rc == 0
+    data = json.loads(capsys.readouterr().out)
+    assert "boundaries" in data
+
+
+def test_cmd_io_boundaries_format_text_emits_text(
+    tmp_path: Path, capsys,
+) -> None:
+    """WI-kitud: ``--format text`` (the default) emits human text, not JSON."""
+    bmap = _make_behavior_map(**_SINGLE_FS_READ)
+    args = _make_args(tmp_path, bmap, format="text")
+
+    rc = cmd_io_boundaries(args)
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "fs_read" in out
+    with pytest.raises(json.JSONDecodeError):
+        json.loads(out)
 
 
 def test_cmd_io_boundaries_json_envelope_top_level_keys(

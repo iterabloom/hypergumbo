@@ -106,6 +106,7 @@
     "--boundary",
     "--by-file",
     "--exclude-tests",
+    "--format",
     "--help",
     "--include-tests",
     "--input",
@@ -266,6 +267,7 @@
   ],
   "verify-claims": [
     "--claims",
+    "--format",
     "--help",
     "--input",
     "--json",
