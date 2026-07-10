@@ -9782,8 +9782,9 @@ def main(argv=None) -> int:
         # A --input substrate failed the strict load (INV-sozop / WI-jukah /
         # INV-gapib): convert the typed failure to a clean rc=2 + message for
         # every consumer at one chokepoint, rather than a raw traceback or a
-        # silent rc=0 "No X found". (Narrowly scoped to SubstrateError — the
-        # general top-level exception handler is the separate WI-himas item.)
+        # silent rc=0 "No X found". (Typed rc=2 for input problems; the general
+        # unexpected-error safety net is the `except Exception` handler below,
+        # WI-himas.)
         print(f"Error: {exc}", file=sys.stderr)
         return 2
     except BrokenPipeError:
@@ -9793,5 +9794,25 @@ def main(argv=None) -> int:
         # mid-output is not a clean completion; under a shell pipeline the
         # reader's own exit status dominates anyway).
         _suppress_broken_stdout_pipe()
+        return 1
+    except Exception as exc:  # deliberate top-level safety net (WI-himas)
+        # WI-himas: a top-level catch-all so an *unanticipated* error surfaces
+        # as a clean message + rc=1 instead of a raw Python traceback dumped at
+        # the user. Under --debug the original exception is re-raised so the
+        # full traceback is available for diagnosis. Expected/typed failures are
+        # handled by the specific excepts above; this catches only the genuinely
+        # unexpected. `except Exception` (not BaseException) deliberately lets
+        # SystemExit (argparse --help / parse errors) and KeyboardInterrupt
+        # (Ctrl-C) propagate normally.
+        if debug_flag or getattr(args, "debug", False):
+            raise
+        print(
+            f"hypergumbo: internal error: {type(exc).__name__}: {exc}",
+            file=sys.stderr,
+        )
+        print(
+            "This is a bug; re-run with --debug for a full traceback.",
+            file=sys.stderr,
+        )
         return 1
 

@@ -833,6 +833,37 @@ def test_cmd_slice_omitted_out_auto_generates_from_entry(
     assert "slice.hello" in capsys.readouterr().out
 
 
+def test_main_unexpected_exception_exits_1_with_clean_message(
+    monkeypatch, capsys,
+) -> None:
+    """WI-himas: an unexpected exception in a command surfaces through main()'s
+    top-level handler as a clean 'internal error' message + rc=1, not a raw
+    Python traceback dumped at the user."""
+    def _boom(_args):
+        raise RuntimeError("kaboom")
+    monkeypatch.setattr("hypergumbo_core.cli.cmd_catalog", _boom)
+
+    rc = main(["catalog"])
+
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "internal error" in err
+    assert "RuntimeError" in err
+    assert "kaboom" in err
+    assert "--debug" in err
+
+
+def test_main_unexpected_exception_reraises_under_debug(monkeypatch) -> None:
+    """WI-himas: under --debug the original exception propagates so the full
+    traceback is available for diagnosis (no clean-swallow)."""
+    def _boom(_args):
+        raise RuntimeError("kaboom-debug")
+    monkeypatch.setattr("hypergumbo_core.cli.cmd_catalog", _boom)
+
+    with pytest.raises(RuntimeError, match="kaboom-debug"):
+        main(["catalog", "--debug"])
+
+
 def test_cmd_slice_with_input_file(tmp_path: Path) -> None:
     """Test slice command reading from existing behavior map."""
     # Create a behavior map file
