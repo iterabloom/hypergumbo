@@ -37,3 +37,20 @@
   clock: 3  # 97e2
   nonce: '97e2'  # 97e2
   message: "Cross-link (mirror): WI-madal (run crashes on unreadable file, uncaught PermissionError) is RELATED_BUT_DISTINCT, not a member. The top-level OSError handler proposed here makes that crash GRACEFUL (clean exit), but WI-madal additionally requires fail-OPEN (skip the file, emit partial JSON per section 17). HAZARD: landing this handler will erase WI-madal traceback symptom without satisfying section 17 — do NOT close WI-madal on the strength of this item. See WI-madal discussion for the full three-level (leaf-read / fingerprint-prepass / orchestrator) analysis."  # 97e2
+- op: update  # 5cfc
+  at: '2026-07-10T17:58:29Z'  # 5cfc
+  by: agent  # 5cfc
+  actor: jgstern_agent  # 5cfc
+  clock: 4  # 5cfc
+  nonce: 5cfc  # 5cfc
+  set:  # 5cfc
+    status: done  # 5cfc
+  add:  # 5cfc
+    tags: [wave4]  # 5cfc
+- op: discuss  # 094e
+  at: '2026-07-10T17:58:29Z'  # 094e
+  by: agent  # 094e
+  actor: jgstern_agent  # 094e
+  clock: 5  # 094e
+  nonce: 094e  # 094e
+  message: "DONE — PR #546 (selfh/dev 6f1279d6c2). main()'s dispatch gains a top-level 'except Exception as exc' safety net after the typed SubstrateError (rc=2) + BrokenPipeError handlers: an unanticipated error becomes a clean 'hypergumbo: internal error: <Type>: <msg>' + 're-run with --debug for a full traceback' on stderr + rc=1, instead of a raw Python traceback. Under --debug the original exception is re-raised (traceback preserved). Catches Exception (not BaseException), so argparse SystemExit (--help/parse errors) + KeyboardInterrupt (Ctrl-C) propagate normally. EVIDENCE (production-path, in-process main() dispatch): test_main_unexpected_exception_exits_1_with_clean_message (monkeypatched cmd raising RuntimeError -> rc=1, stderr has 'internal error'/'RuntimeError'/'kaboom'/'--debug') + test_main_unexpected_exception_reraises_under_debug (--debug -> RuntimeError propagates). The audit note's hazard respected: WI-madal (§17 fail-open) is NOT closed on this — it is separate and already done. Last standalone of the cli-input block. Core 100% coverage."  # 094e

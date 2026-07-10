@@ -62,3 +62,20 @@
   clock: 6  # 47e1
   nonce: '47e1'  # 47e1
   message: "Reusable fix-shape now exists (from INV-toniv, commit 5306050b96): _positive_result_limit(raw) in cli.py — an argparse type factory that rejects <=0 and non-numeric result limits with exit 2 + a clear message. Applied to 'search --limit'. Remaining bare-'type=int' result/count flags that share the same silent-accept-negative pattern and can reuse this factory: 'symbols --limit' (cli.py ~7002, default 200), 'symbols --max-per-file' (~6984, default None), 'compact --max-symbols' (~7069, default 100 — overlaps INV-nonag). Each is a small follow-up: swap type=int -> _positive_result_limit (or a sibling for the None-default ones) and confirm the consuming slice/limit logic. Captured here rather than as new items to avoid fragmenting the INV-fabov umbrella."  # 47e1
+- op: update  # 165e
+  at: '2026-07-10T16:01:44Z'  # 165e
+  by: agent  # 165e
+  actor: jgstern_agent  # 165e
+  clock: 7  # 165e
+  nonce: 165e  # 165e
+  set:  # 165e
+    status: satisfied  # 165e
+  add:  # 165e
+    tags: [wave4]  # 165e
+- op: discuss  # b062
+  at: '2026-07-10T16:01:44Z'  # b062
+  by: agent  # b062
+  actor: jgstern_agent  # b062
+  clock: 8  # b062
+  nonce: b062  # b062
+  message: "SATISFIED — UMBRELLA closes: 'CLI args & config values silently accepted without validation' is resolved across all three axes. Every read subcommand now validates its inputs at the parser/loader layer and fails fast (rc=2) instead of silently accepting garbage: (sub-A INV-somut) verify-claims verdict/shape validation; (sub-B INV-dunof) argparse type/range — numeric flags reject <0/>1/max<min via the shared _positive_int_arg/_nonneg_int_arg/_unit_interval_arg/_positive_result_limit factories, and non-directory positionals reject (INV-jibof); (sub-C INV-murig) registry-membership — language/kind/section/boundary/view flags reject non-registry values with did-you-mean. Direct leaves also done: WI-bolar (slice --hub-threshold), WI-bopoz (verify-claims YAML unknown-field), INV-nonag (folded into WI-vusaf). All closures carry live behavioral rc=2 repros (see member notes). The separate cli-input substrate-loader keystone (INV-sozop/WI-jukah/INV-gapib/WI-marul, PR #538) and the standalone UX items (WI-runos/WI-kopon/WI-libog/WI-himas) are tracked outside this umbrella."  # b062

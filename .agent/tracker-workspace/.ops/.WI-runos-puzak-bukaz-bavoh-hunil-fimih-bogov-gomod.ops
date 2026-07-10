@@ -31,3 +31,20 @@
     tags: [dogfood]  # 1893
   remove:  # 1893
     tags: [dogfooding]  # 1893
+- op: update  # 2699
+  at: '2026-07-10T17:09:16Z'  # 2699
+  by: agent  # 2699
+  actor: jgstern_agent  # 2699
+  clock: 3  # 2699
+  nonce: '2699'  # 2699
+  set:  # 2699
+    status: done  # 2699
+  add:  # 2699
+    tags: [wave4]  # 2699
+- op: discuss  # e450
+  at: '2026-07-10T17:09:17Z'  # e450
+  by: agent  # e450
+  actor: jgstern_agent  # e450
+  clock: 4  # e450
+  nonce: e450  # e450
+  message: "DONE — PR #545 (selfh/dev 6177668c7b). cmd_search now folds --language/--kind to the registry's canonical lowercase before validation + comparison, making them case-insensitive and UNIFORM with the documented case-insensitive positional pattern (the WI-runos asymmetry). BEHAVIORAL EVIDENCE (live @ 6177668c7b): 'search load ... --language PYTHON' -> rc=0, 2 'load' hits; '--kind FUNCTION' -> rc=0 (WAS: rejected as 'not a known language'/'not a known symbol kind'); control '--language python' -> rc=0. cli-input standalone. Core 100% coverage."  # e450

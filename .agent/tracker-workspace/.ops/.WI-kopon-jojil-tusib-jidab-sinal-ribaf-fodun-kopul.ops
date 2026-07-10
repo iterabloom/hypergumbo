@@ -38,3 +38,20 @@
   clock: 3  # 20d2
   nonce: 20d2  # 20d2
   message: "[Wave-0 hygiene re-verify] The specified [:3] slicing bug does NOT exist in current code (confirmed by grep and code inspection). However, the core issue—undocumented empty-pattern behavior—remains valid and reproducible. Current behavior: empty pattern \"\" matches all symbols, respects --limit (default 20), no error raised, behavior completely undocumented in help or README. Fix requires either: (a) add validation to reject empty/whitespace-only patterns with rc=2 + error message, OR (b) update help text at cli.py:6389-6391 to document that empty pattern matches all symbols. This is P4 (documentation/UX issue, not behavioral bug per se)."  # 20d2
+- op: update  # c065
+  at: '2026-07-10T17:09:17Z'  # c065
+  by: agent  # c065
+  actor: jgstern_agent  # c065
+  clock: 4  # c065
+  nonce: c065  # c065
+  set:  # c065
+    status: done  # c065
+  add:  # c065
+    tags: [wave4]  # c065
+- op: discuss  # bf0b
+  at: '2026-07-10T17:09:18Z'  # bf0b
+  by: agent  # bf0b
+  actor: jgstern_agent  # bf0b
+  clock: 5  # bf0b
+  nonce: bf0b  # bf0b
+  message: "DONE — PR #545 (selfh/dev 6177668c7b). Chose option (a) reject (over the audit's option (b) document) for consistency with the just-closed cli-input validation umbrella: cmd_search rejects an empty / whitespace-only pattern with rc=2 up front, instead of silently matching every symbol (an empty pattern is a substring of every name). BEHAVIORAL EVIDENCE (live): 'search \"\"' and 'search \"   \"' -> rc=2 'Error: search pattern cannot be empty.'. cli-input standalone (P4). Core 100% coverage."  # bf0b
