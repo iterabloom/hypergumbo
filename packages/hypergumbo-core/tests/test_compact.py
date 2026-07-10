@@ -1032,6 +1032,62 @@ class TestFormatCompactBehaviorMap:
             assert (view["features_summary"]["included"]["count"]
                     == len(view["features"]))
 
+    def test_connectivity_selection_deterministic_across_hash_seeds(self):
+        """WI-nivuj: connectivity selection is PYTHONHASHSEED-independent.
+
+        The seed/frontier iteration was over sets, so a connectivity-score TIE
+        resolved to an arbitrary (hash-seed-dependent) node. This runs an
+        identical selection with a deliberate tie under several hash seeds and
+        asserts the output is identical. A subprocess test (the fix's sorted()
+        lines are covered by the many in-process select_by_connectivity tests);
+        it is what makes the determinism reliably testable — an in-process test
+        cannot vary PYTHONHASHSEED, which is fixed per interpreter.
+        """
+        import os
+        import subprocess
+        import sys
+        import textwrap
+
+        script = textwrap.dedent('''
+            from hypergumbo_core.compact import select_by_connectivity
+            from hypergumbo_core.ir import Symbol, Edge, Span
+
+            def sym(name):
+                return Symbol(
+                    id=f"python:src/m.py:1-2:function:{name}", name=name,
+                    kind="function", language="python", path="src/m.py",
+                    span=Span(start_line=1, end_line=2,
+                              start_col=0, end_col=0),
+                )
+
+            # seed S; A..E are symmetric frontier nodes (each connects only to
+            # S) -> identical connectivity scores -> a tie the budget can't fit.
+            s = sym("seed")
+            others = [sym(n) for n in ("aaa", "bbb", "ccc", "ddd", "eee")]
+            edges = [
+                Edge(id=f"e{i}", src=o.id, dst=s.id, edge_type="calls",
+                     line=1, confidence=0.9, origin="t", origin_run_id="t")
+                for i, o in enumerate(others)
+            ]
+            r = select_by_connectivity(
+                [s, *others], edges, {s.id}, max_additional=2,
+            )
+            print(",".join(x.id for x in r.included.symbols))
+        ''')
+
+        outputs = set()
+        for seed in ("0", "1", "2", "3", "7", "13"):
+            env = {**os.environ, "PYTHONHASHSEED": seed}
+            res = subprocess.run(
+                [sys.executable, "-c", script], env=env,
+                capture_output=True, text=True, check=True,
+            )
+            outputs.add(res.stdout.strip())
+        assert len(outputs) == 1, (
+            f"connectivity selection non-deterministic across hash seeds: "
+            f"{outputs}"
+        )
+
 
 class TestStopWords:
     """Tests for stop words constant."""

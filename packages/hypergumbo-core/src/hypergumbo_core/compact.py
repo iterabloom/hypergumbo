@@ -728,7 +728,10 @@ def select_by_connectivity(
     selected_ids: set = set()
     selected_symbols: List[Symbol] = []
 
-    for sid in seed_ids:
+    # WI-nivuj: iterate seeds in sorted order so the seed prefix of the output
+    # node list is reproducible (seed_ids is a set — its iteration order is
+    # PYTHONHASHSEED-dependent).
+    for sid in sorted(seed_ids):
         if sid in symbol_by_id:
             selected_ids.add(sid)
             selected_symbols.append(symbol_by_id[sid])
@@ -769,7 +772,10 @@ def select_by_connectivity(
         best_node = None
         best_score = (-1, -1, -1.0)
 
-        for node_id in frontier:
+        # WI-nivuj: iterate the frontier in sorted order so a SCORE TIE resolves
+        # to the lexicographically-smallest node deterministically (frontier is a
+        # set; without sorting the winner depends on PYTHONHASHSEED).
+        for node_id in sorted(frontier):
             score = _compute_connectivity_score(
                 node_id, selected_ids, uf, outgoing, incoming, centrality
             )
@@ -948,7 +954,7 @@ def select_by_coverage(
     # These are semantically important and should always be included
     if force_include_ids:
         symbol_by_id = {s.id: s for s in symbols}
-        for sid in force_include_ids:
+        for sid in sorted(force_include_ids):  # WI-nivuj: reproducible order
             if sid in symbol_by_id and sid not in included_ids:
                 sym = symbol_by_id[sid]
                 included.append(sym)
