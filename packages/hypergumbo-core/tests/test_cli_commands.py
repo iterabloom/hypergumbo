@@ -4156,6 +4156,28 @@ def test_wi_zulij_connectivity_flag_routes_both_modes(tmp_path: Path) -> None:
         assert json.loads(out.read_text())["view"] == "compact"
 
 
+def test_add_schema_envelope_spread_shape() -> None:
+    """WI-gogif: the shared read-view envelope spreads schema_version + view +
+    payload at top level (spec Appendix C) — NOT nested under 'data' — and
+    preserves per-view schema_version and key order."""
+    from hypergumbo_core.cli import add_schema_envelope
+
+    env = add_schema_envelope(
+        {"routes": [1, 2], "extra": "x"}, view="routes", schema_version="0.1.0"
+    )
+    assert env == {
+        "schema_version": "0.1.0", "view": "routes",
+        "routes": [1, 2], "extra": "x",
+    }
+    # spread, not nested; schema_version + view lead, then payload
+    assert "data" not in env
+    assert list(env.keys()) == ["schema_version", "view", "routes", "extra"]
+    # per-view schema_version is passed through verbatim (not unified)
+    assert add_schema_envelope(
+        {}, view="verify-claims", schema_version="1.0"
+    )["schema_version"] == "1.0"
+
+
 def test_cmd_slice_auto_entry_exclude_tests(tmp_path: Path, capsys) -> None:
     """--entry auto with --exclude-tests skips test file entrypoints.
 

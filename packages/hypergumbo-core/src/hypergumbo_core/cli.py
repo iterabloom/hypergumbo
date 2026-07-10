@@ -1424,6 +1424,27 @@ def _apply_io_boundary_filter(
     return len(result.edge_ids)
 
 
+def add_schema_envelope(
+    payload: dict, *, view: str, schema_version: str
+) -> dict:
+    """Wrap a read-view JSON payload in the canonical top-level envelope.
+
+    The single source of the CLI read-view wire shape (WI-gogif / cli-output
+    F1). Per spec Appendix C ("Schema compatibility contract") the envelope is
+    ``schema_version`` + ``view`` with the payload **spread at top level** — NOT
+    nested under a ``data`` key. ``schema_version`` is per-view (each read view
+    carries its own: a substrate echo, a wire constant, or a placeholder), so
+    the caller passes the value that view emits; this helper does not unify them
+    (that is a separate, breaking version-policy change — WI-bobog). Key order
+    is ``schema_version``, ``view``, then payload keys — byte-identical to the
+    inline idiom it replaces.
+
+    (The ``io-boundaries`` view is deliberately NOT wrapped here: its frozen
+    wire contract omits ``view`` and carries its own ``IO_BOUNDARIES_SCHEMA_VERSION``.)
+    """
+    return {"schema_version": schema_version, "view": view, **payload}
+
+
 def cmd_slice(args: argparse.Namespace) -> int:
     """Execute the slice command."""
     path_arg = Path(args.path).resolve()
@@ -1746,11 +1767,11 @@ def cmd_slice(args: argparse.Namespace) -> int:
             "edges": feature_dict["edges"],
         }
     else:
-        output = {
-            "schema_version": behavior_map.get("schema_version", "0.1.0"),
-            "view": "slice",
-            "feature": feature_dict,
-        }
+        output = add_schema_envelope(
+            {"feature": feature_dict},
+            view="slice",
+            schema_version=behavior_map.get("schema_version", "0.1.0"),
+        )
 
     # Write output
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -2058,11 +2079,11 @@ def cmd_routes(args: argparse.Namespace) -> int:
     # Handles empty and non-empty uniformly; the run summary goes to stderr so
     # stdout stays pure JSON.
     if getattr(args, "format", "text") == "json":
-        output = {
-            "schema_version": "0.1.0",
-            "view": "routes",
-            "routes": [_route_json_record(r) for r in routes],
-        }
+        output = add_schema_envelope(
+            {"routes": [_route_json_record(r) for r in routes]},
+            view="routes",
+            schema_version="0.1.0",
+        )
         print(json.dumps(output, indent=2))
         cached_set = {input_path} if was_cached else set()
         artifacts = (generated_files + [input_path]) if not was_cached else [input_path]
@@ -5015,14 +5036,16 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
         # machine-visible via `unsupported_taint_languages` (empty when there
         # are no taint claims or every touched language has a catalog),
         # mirroring the `io-boundaries --json` envelope.
-        output = {
-            "schema_version": VERIFY_CLAIMS_SCHEMA_VERSION,
-            "view": "verify-claims",
-            "verdicts": [v.to_dict() for v in verdicts],
-            "unsupported_taint_languages": (
-                unsupported_taint_languages if has_taint_claims else []
-            ),
-        }
+        output = add_schema_envelope(
+            {
+                "verdicts": [v.to_dict() for v in verdicts],
+                "unsupported_taint_languages": (
+                    unsupported_taint_languages if has_taint_claims else []
+                ),
+            },
+            view="verify-claims",
+            schema_version=VERIFY_CLAIMS_SCHEMA_VERSION,
+        )
         print(json.dumps(output, indent=2, sort_keys=True))
     else:
         violated = 0
@@ -5413,20 +5436,22 @@ def cmd_test_coverage(args: argparse.Namespace) -> int:
     # Output
     if args.format == "json":
         # JSON output
-        output = {
-            "schema_version": "0.1.0",
-            "view": "test-coverage",
-            "caveats": caveats,
-            "summary": {
-                "total_functions": total_functions,
-                "tested_functions": tested_functions,
-                "untested_functions": untested_functions,
-                "coverage_percent": round(coverage_percent, 1),
-                "total_tests": total_tests,
+        output = add_schema_envelope(
+            {
+                "caveats": caveats,
+                "summary": {
+                    "total_functions": total_functions,
+                    "tested_functions": tested_functions,
+                    "untested_functions": untested_functions,
+                    "coverage_percent": round(coverage_percent, 1),
+                    "total_tests": total_tests,
+                },
+                "test_dense": [],
+                "cold_spots": [],
             },
-            "test_dense": [],
-            "cold_spots": [],
-        }
+            view="test-coverage",
+            schema_version="0.1.0",
+        )
 
         for density, test_count, loc, target, test_names in test_dense[:top_n] if top_n else test_dense:
             span = target.get("span", {})
@@ -8425,11 +8450,11 @@ def _emit_handler_slices(
             },
         }
 
-        output = {
-            "schema_version": behavior_map.get("schema_version", "0.1.0"),
-            "view": "slice",
-            "feature": feature_dict,
-        }
+        output = add_schema_envelope(
+            {"feature": feature_dict},
+            view="slice",
+            schema_version=behavior_map.get("schema_version", "0.1.0"),
+        )
         user_out_open_json_dump(out_path, output)
 
         entry["emitted"] = True
@@ -8443,12 +8468,14 @@ def _emit_handler_slices(
     user_out_write(
         index_path,
         json.dumps(
-            {
-                "schema_version": behavior_map.get("schema_version", "0.1.0"),
-                "view": "handler_slice_index",
-                "max_handler_slices": max_handler_slices,
-                "handlers": index_entries,
-            },
+            add_schema_envelope(
+                {
+                    "max_handler_slices": max_handler_slices,
+                    "handlers": index_entries,
+                },
+                view="handler_slice_index",
+                schema_version=behavior_map.get("schema_version", "0.1.0"),
+            ),
             indent=2,
             sort_keys=True,
         )
