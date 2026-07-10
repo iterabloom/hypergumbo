@@ -677,6 +677,24 @@ def test_cmd_symbols_input_not_found(tmp_path: Path) -> None:
     assert result == 1
 
 
+def test_main_wrong_shape_input_exits_2_via_dispatch_guard(
+    tmp_path: Path, capsys,
+) -> None:
+    """A wrong-shape ``--input`` (no ``nodes``) surfaces through ``main()``'s
+    dispatch as a clean ``rc=2`` + stderr message (WI-jukah / INV-sozop), not
+    a raw traceback or a silent ``rc=0`` "No symbols found". Exercises the
+    top-level ``except SubstrateError`` guard end-to-end."""
+    bad = tmp_path / "wrongshape.json"
+    bad.write_text(json.dumps({"schema_version": SCHEMA_VERSION, "no_nodes": 1}))
+
+    rc = main(["symbols", str(tmp_path), "--input", str(bad)])
+
+    assert rc == 2
+    err = capsys.readouterr().err
+    assert "Error" in err
+    assert "nodes" in err
+
+
 def test_cmd_symbols_auto_runs_analysis(tmp_path: Path, capsys) -> None:
     """Symbols auto-runs analysis if no results file exists."""
     args = FakeArgs()

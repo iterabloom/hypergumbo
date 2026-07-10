@@ -1842,6 +1842,14 @@ This appendix defines the **technical contract** for output consumers: which fie
 - `view: "behavior_map"` schema remains stable across v0.x, v1.x
 - Consumers check `view` field, skip unknown views
 
+**Consumer-side substrate loading (`--input`).** Every read subcommand that consumes a `--input` behavior map routes through one strict loader (`behavior_map_io.load_substrate`), which enforces four guards so a bad input fails loudly instead of silently (INV-sozop / WI-jukah / INV-gapib / WI-marul):
+- **Parse:** malformed or empty JSON, or a non-object root, raises a typed `SubstrateError` → clean exit code `2` + stderr message (was an unhandled traceback).
+- **Shape:** a dict lacking the structural `nodes` key is rejected → exit `2` (was a silent `rc=0` "No X found", because a `nodes`-less dict reads as an empty map).
+- **View discriminator:** a document whose `view` field is *present and different* from the consumer's expected view (e.g. feeding a `slice`/`tiered` projection to a behavior-map consumer) is rejected → exit `2`. A *missing* `view` is accepted (legacy/minimal maps omit it — the guard rejects a *wrong* view, not an absent one).
+- **Version (warn-first):** an absent or mismatched `schema_version` prints a stderr `Warning:` but still loads — an older/newer map is usually still readable, so rejecting would be over-strict. (The `nodes` key, not `schema_version`, is the hard-required structural discriminator; `schema_version` is a compatibility *signal*.)
+
+`load_behavior_map` remains the permissive low-level reader for auxiliary artifacts (e.g. compact outputs) that are not the main behavior map.
+
 ### Breaking Changes (only in major version bumps)
 
 **1. Changing field semantics without renaming:**

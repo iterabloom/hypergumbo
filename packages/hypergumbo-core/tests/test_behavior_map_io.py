@@ -14,7 +14,13 @@ from pathlib import Path
 
 import pytest
 
-from hypergumbo_core.behavior_map_io import find_behavior_map, load_behavior_map
+from hypergumbo_core.behavior_map_io import (
+    SubstrateError,
+    find_behavior_map,
+    load_behavior_map,
+    load_substrate,
+)
+from hypergumbo_core.schema import SCHEMA_VERSION
 
 
 SAMPLE_MAP = {
@@ -22,6 +28,18 @@ SAMPLE_MAP = {
     "edges": [{"src": "sym1", "dst": "sym2", "type": "calls"}],
     "metrics": {"total_files": 3},
 }
+
+WELL_FORMED = {
+    "schema_version": SCHEMA_VERSION,
+    "view": "behavior_map",
+    "nodes": [{"id": "sym1", "kind": "function"}],
+    "edges": [],
+}
+
+
+def _write(path, obj):
+    path.write_text(json.dumps(obj))
+    return path
 
 
 def test_load_plain_json(tmp_path):
@@ -89,6 +107,112 @@ def test_find_behavior_map_custom_basename(tmp_path):
     custom = tmp_path / "results.json.gz"
     custom.write_bytes(b"")
     assert find_behavior_map(tmp_path, basename="results.json") == custom
+
+
+# ---------------------------------------------------------------------------
+# load_substrate — the strict consumer-side loader (cli-input substrate-loader
+# keystone: INV-sozop parse-guard, WI-jukah shape-guard, INV-gapib view
+# discriminator, WI-marul schema_version warn-first gate).
+# ---------------------------------------------------------------------------
+
+
+def test_load_substrate_valid_returns_dict(tmp_path):
+    p = _write(tmp_path / "bm.json", WELL_FORMED)
+    assert load_substrate(p) == WELL_FORMED
+
+
+def test_load_substrate_gzip_round_trips(tmp_path):
+    p = tmp_path / "bm.json.gz"
+    with gzip.open(p, "wt") as f:
+        json.dump(WELL_FORMED, f)
+    assert load_substrate(p) == WELL_FORMED
+
+
+def test_load_substrate_malformed_json_raises(tmp_path):
+    p = tmp_path / "bad.json"
+    p.write_text("{ not valid json ")
+    with pytest.raises(SubstrateError):
+        load_substrate(p)
+
+
+def test_load_substrate_empty_file_raises(tmp_path):
+    p = tmp_path / "empty.json"
+    p.write_text("")
+    with pytest.raises(SubstrateError):
+        load_substrate(p)
+
+
+def test_load_substrate_non_dict_root_raises(tmp_path):
+    p = _write(tmp_path / "arr.json", [1, 2, 3])
+    with pytest.raises(SubstrateError):
+        load_substrate(p)
+
+
+def test_load_substrate_missing_nodes_raises(tmp_path):
+    """WI-jukah: a dict lacking the structural ``nodes`` key is not a
+    behavior map — reject it rather than silently emitting empty output."""
+    p = _write(tmp_path / "noshape.json", {"schema_version": SCHEMA_VERSION})
+    with pytest.raises(SubstrateError):
+        load_substrate(p)
+
+
+def test_load_substrate_wrong_view_raises(tmp_path):
+    """INV-gapib: a document whose ``view`` differs from the expected view is
+    rejected. Includes ``nodes`` so the *view* guard fires (not the shape
+    guard) — a nodes-bearing doc with the wrong view is the case the view
+    discriminator uniquely catches."""
+    p = _write(
+        tmp_path / "wrongview.json",
+        {"schema_version": SCHEMA_VERSION, "view": "tiered", "nodes": []},
+    )
+    with pytest.raises(SubstrateError, match="wrong view"):
+        load_substrate(p)
+
+
+def test_load_substrate_absent_view_accepted(tmp_path):
+    """A minimal/legacy map with no ``view`` field (but the right shape) is
+    accepted — INV-gapib rejects a *wrong* view, not a *missing* one."""
+    p = _write(
+        tmp_path / "legacy.json",
+        {"schema_version": SCHEMA_VERSION, "nodes": [], "edges": []},
+    )
+    assert load_substrate(p) == {
+        "schema_version": SCHEMA_VERSION, "nodes": [], "edges": [],
+    }
+
+
+def test_load_substrate_expected_view_param(tmp_path):
+    p = _write(
+        tmp_path / "compact.json",
+        {"schema_version": SCHEMA_VERSION, "view": "compact", "nodes": []},
+    )
+    assert load_substrate(p, expected_view="compact")["view"] == "compact"
+
+
+def test_load_substrate_schema_version_mismatch_warns(tmp_path, capsys):
+    """WI-marul: a differing schema_version warns (warn-first) but still loads."""
+    p = _write(
+        tmp_path / "old.json",
+        {"schema_version": "0.0.1-ancient", "nodes": [], "edges": []},
+    )
+    result = load_substrate(p)
+    assert result["schema_version"] == "0.0.1-ancient"
+    err = capsys.readouterr().err
+    assert "0.0.1-ancient" in err
+    assert SCHEMA_VERSION in err
+
+
+def test_load_substrate_absent_schema_version_warns(tmp_path, capsys):
+    """WI-marul: an absent schema_version warns (cannot verify) but loads."""
+    p = _write(tmp_path / "nover.json", {"nodes": [], "edges": []})
+    load_substrate(p)
+    assert "schema_version" in capsys.readouterr().err
+
+
+def test_load_substrate_matching_version_is_silent(tmp_path, capsys):
+    _write(tmp_path / "bm.json", WELL_FORMED)
+    load_substrate(tmp_path / "bm.json")
+    assert capsys.readouterr().err == ""
 
 
 def test_cli_has_no_raw_behavior_map_reads():

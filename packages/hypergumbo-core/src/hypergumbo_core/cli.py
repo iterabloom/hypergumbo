@@ -56,7 +56,7 @@ from .analyze.base import (
     split_within_file_stable_id_collisions,
     widen_route_stable_ids,
 )
-from .behavior_map_io import load_behavior_map
+from .behavior_map_io import SubstrateError, load_substrate
 from .catalog import get_default_catalog, is_available, suggest_passes_for_languages
 # ADR-0043 §6: finalize() is the single pre-serialization reconcile point. _relativize_ir_paths
 # lives there now (finalize sub-step 1 owns it); re-exported here for the Phase B call below
@@ -809,7 +809,7 @@ def cmd_sketch(args: argparse.Namespace) -> int:
         if not input_file.exists():
             print(f"Error: Input file not found: {input_path}", file=sys.stderr)
             return 1
-        cached_results = load_behavior_map(input_file)
+        cached_results = load_substrate(input_file)
 
         # Warn if results file is older than any source files in repo.
         # NOTE: this freshness check intentionally walks the working tree
@@ -1490,7 +1490,7 @@ def cmd_slice(args: argparse.Namespace) -> int:
         print(f"Error: Input file not found: {args.input}", file=sys.stderr)
         return 1
 
-    behavior_map = load_behavior_map(input_path)
+    behavior_map = load_substrate(input_path)
 
     # Reconstruct Symbol and Edge objects from the behavior map
     nodes = [Symbol.from_dict(n) for n in behavior_map.get("nodes", [])]
@@ -1854,7 +1854,7 @@ def cmd_search(args: argparse.Namespace) -> int:
         return 1
 
     # Load behavior map
-    behavior_map = load_behavior_map(input_path)
+    behavior_map = load_substrate(input_path)
     nodes = behavior_map.get("nodes", [])
 
     # Search pattern (case-insensitive substring match)
@@ -2025,7 +2025,7 @@ def cmd_routes(args: argparse.Namespace) -> int:
         return 1
 
     # Load behavior map
-    behavior_map = load_behavior_map(input_path)
+    behavior_map = load_substrate(input_path)
     nodes = behavior_map.get("nodes", [])
 
     from .paths import is_test_file
@@ -2397,7 +2397,7 @@ def cmd_explain(args: argparse.Namespace) -> int:
         return 1
 
     # Load behavior map
-    behavior_map = load_behavior_map(input_path)
+    behavior_map = load_substrate(input_path)
     nodes = behavior_map.get("nodes", [])
     edges = behavior_map.get("edges", [])
 
@@ -4032,7 +4032,7 @@ def cmd_symbols(args: argparse.Namespace) -> int:
         return 1
 
     # Load behavior map
-    behavior_map = load_behavior_map(input_path)
+    behavior_map = load_substrate(input_path)
     nodes = behavior_map.get("nodes", [])
     edges_raw = behavior_map.get("edges", [])
 
@@ -4263,7 +4263,7 @@ def cmd_compact(args: argparse.Namespace) -> int:
         return 1
 
     # Load behavior map
-    behavior_map = load_behavior_map(input_path)
+    behavior_map = load_substrate(input_path)
     nodes = behavior_map.get("nodes", [])
     edges_data = behavior_map.get("edges", [])
 
@@ -4332,7 +4332,7 @@ def cmd_io_boundaries(args: argparse.Namespace) -> int:
         )
         return 1
 
-    behavior_map = load_behavior_map(input_path)
+    behavior_map = load_substrate(input_path)
     raw_edges = behavior_map.get("edges", [])
 
     # Build lightweight edge objects for the tagging pass. WI-kumol: carry
@@ -5020,7 +5020,7 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
         )
         return 1
 
-    behavior_map = load_behavior_map(input_path)
+    behavior_map = load_substrate(input_path)
     raw_edges = behavior_map.get("edges", [])
 
     # WI-kumol: carry is_resolved + dst_ref so the ADR-0028 receiver gate /
@@ -5504,7 +5504,7 @@ def cmd_test_coverage(args: argparse.Namespace) -> int:
         return 1
 
     # Load behavior map
-    behavior_map = load_behavior_map(input_path)
+    behavior_map = load_substrate(input_path)
     nodes = behavior_map.get("nodes", [])
     edges = behavior_map.get("edges", [])
 
@@ -6066,7 +6066,7 @@ def cmd_dead_code_maybe(args: argparse.Namespace) -> int:
         print(f"Error: Input file not found: {args.input}", file=sys.stderr)
         return 1
 
-    behavior_map = load_behavior_map(input_path)
+    behavior_map = load_substrate(input_path)
     nodes = behavior_map.get("nodes", [])
     edges = behavior_map.get("edges", [])
     # Identify production callable symbols (exclude test files); docs-prose:F4.
@@ -9748,6 +9748,14 @@ def main(argv=None) -> int:
         # 120 exit instead of being caught here (INV-vopuh, the `| head` UX).
         sys.stdout.flush()
         return result
+    except SubstrateError as exc:
+        # A --input substrate failed the strict load (INV-sozop / WI-jukah /
+        # INV-gapib): convert the typed failure to a clean rc=2 + message for
+        # every consumer at one chokepoint, rather than a raw traceback or a
+        # silent rc=0 "No X found". (Narrowly scoped to SubstrateError — the
+        # general top-level exception handler is the separate WI-himas item.)
+        print(f"Error: {exc}", file=sys.stderr)
+        return 2
     except BrokenPipeError:
         # The downstream reader closed the pipe (e.g. ``... | head``). Redirect
         # the stdout fd to /dev/null so Python's shutdown flush does not
