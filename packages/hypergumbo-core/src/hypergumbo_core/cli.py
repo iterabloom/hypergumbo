@@ -142,7 +142,10 @@ from .metrics import compute_metrics
 from .profile import detect_profile
 from .schema import new_behavior_map
 from .sketch import generate_sketch, ConfigExtractionMode, SketchStats, display_representativeness_table
-from .slice import SliceQuery, slice_graph, AmbiguousEntryError, rank_slice_nodes
+from .slice import (
+    SliceQuery, slice_graph, AmbiguousEntryError, raise_if_ambiguous,
+    rank_slice_nodes,
+)
 from .selection.filters import is_excluded_kind
 from .limits import Limits
 from .supply_chain import DERIVED_PATH_PATTERNS, classify_file, detect_package_roots
@@ -2268,6 +2271,30 @@ _EXPLAIN_EDGE_LABELS: Dict[str, tuple] = {
 }
 
 
+def _explain_edge_labels(etype: str) -> tuple:
+    """Return ``(incoming_label, outgoing_label)`` for an edge type (WI-dazob).
+
+    Three cases, in order: a hand-curated friendly label wins; a type that is
+    absent from the friendly table but registered in the edge-type registry
+    falls back to a direction-qualified canonical-name label (legitimate but
+    unstyled); a type registered nowhere is flagged ``unrecognized`` so a
+    renamed/old-substrate edge type is not silently presented as a valid
+    relationship (the pre-WI-dazob behavior printed ``Incoming '<type>'`` for
+    both cases, giving no signal that the type was unknown).
+    """
+    labels = _EXPLAIN_EDGE_LABELS.get(etype)
+    if labels is not None:
+        return labels
+    from .edge_types import find_edge_type
+
+    if find_edge_type(etype) is not None:
+        return (f"Incoming '{etype}'", f"Outgoing '{etype}'")
+    return (
+        f"Incoming (unrecognized edge type '{etype}')",
+        f"Outgoing (unrecognized edge type '{etype}')",
+    )
+
+
 def _render_explain_edge_sections(
     items: list,
     direction: str,
@@ -2293,11 +2320,19 @@ def _render_explain_edge_sections(
         by_type.setdefault(it[6] or "", []).append(it)
     for etype in sorted(by_type):
         group = by_type[etype]
-        inc_label, out_label = _EXPLAIN_EDGE_LABELS.get(
-            etype, (f"Incoming '{etype}'", f"Outgoing '{etype}'")
-        )
+        inc_label, out_label = _explain_edge_labels(etype)
         label = inc_label if direction == "in" else out_label
         print(f"  {label} ({len(group)}):")
+        # WI-dazob: for a registered-but-unstyled edge type, surface the
+        # registry description so its meaning is not left implicit behind a
+        # bare quoted type name (F80.A1: EdgeTypeSpec.description exists but was
+        # never rendered). Friendly-labelled and unrecognized types are skipped.
+        if etype not in _EXPLAIN_EDGE_LABELS:
+            from .edge_types import find_edge_type
+
+            spec = find_edge_type(etype)
+            if spec is not None:
+                print(f"    ({spec.description})")
         for item in group:
             print(f"    - {item[1]} ({item[2]}:{item[3]})")
             if show_provenance:
@@ -2348,6 +2383,25 @@ def cmd_explain(args: argparse.Namespace) -> int:
     nodes = behavior_map.get("nodes", [])
     edges = behavior_map.get("edges", [])
 
+    # WI-dazob: field-presence guard. A substrate emitted by a different schema
+    # version may legitimately lack consumer fields (supply_chain, origin,
+    # docstring) that this renderer reads — which otherwise looks identical to a
+    # symbol for which the field is genuinely inapplicable. Signal the schema
+    # drift once so a consumer diffing explain output can tell "code changed"
+    # from "substrate schema changed". Gated on the version (not per-node
+    # absence, which would false-fire on nearly every real symbol).
+    from .schema import SCHEMA_VERSION
+
+    substrate_version = behavior_map.get("schema_version")
+    if substrate_version is not None and substrate_version != SCHEMA_VERSION:
+        print(
+            f"Warning: substrate schema_version {substrate_version!r} differs "
+            f"from this build's {SCHEMA_VERSION!r}; consumer fields "
+            f"(supply_chain, origin, docstring) may be absent due to schema "
+            f"drift rather than genuine inapplicability.",
+            file=sys.stderr,
+        )
+
     # Build lookup tables
     nodes_by_id = {n["id"]: n for n in nodes}
 
@@ -2363,36 +2417,76 @@ def cmd_explain(args: argparse.Namespace) -> int:
     with_source = getattr(args, "with_source", False)
     token_budget = getattr(args, "tokens", None)
     show_provenance = getattr(args, "provenance", False)
+    # WI-nanut: disambiguation / bounding flags (parity with `symbols`).
+    language_filter = getattr(args, "language", None)
+    file_filter = getattr(args, "file", None)
+    first_only = getattr(args, "first", False)
+    section_limit = getattr(args, "limit", None)
+
+    # WI-nanut: restrict the *matching* pool (not the graph) by language/file so
+    # a spec that would be ambiguous across the whole map can be pinned to one
+    # symbol. The full `nodes`/`nodes_by_id`/`in_degree` still back the
+    # caller/callee display — filtering the match pool, like find_entry_nodes.
+    match_pool = nodes
+    if language_filter:
+        match_pool = [
+            n for n in match_pool if n.get("language") == language_filter
+        ]
+    if file_filter:
+        match_pool = [
+            n for n in match_pool
+            if n.get("path", "").endswith(file_filter)
+            or n.get("path", "").endswith("/" + file_filter)
+        ]
 
     # Find matching symbols using priority-based matching (same rules as
     # slice --entry for consistency — WI-gipop).
     # Priority: exact ID → exact path → path suffix → exact name → partial name
     spec = args.symbol
-    matches = [n for n in nodes if n.get("id") == spec]
+    matches = [n for n in match_pool if n.get("id") == spec]
     if not matches:
-        matches = [n for n in nodes if n.get("path") == spec]
+        matches = [n for n in match_pool if n.get("path") == spec]
     if not matches and ("/" in spec or "\\" in spec):
         matches = [
-            n for n in nodes
+            n for n in match_pool
             if n.get("path", "").endswith(spec)
             or n.get("path", "").endswith("/" + spec)
         ]
     if not matches:
-        matches = [n for n in nodes if n.get("name") == spec]
+        matches = [n for n in match_pool if n.get("name") == spec]
     if not matches:
-        # Case-insensitive name match (original behavior)
+        # Case-insensitive name match (original behavior; NOT present in slice's
+        # find_entry_nodes — kept here deliberately, WI-dazob landmine #2).
         pattern = spec.lower()
-        matches = [n for n in nodes if n.get("name", "").lower() == pattern]
+        matches = [n for n in match_pool if n.get("name", "").lower() == pattern]
     if not matches:
         # Partial name match (contains)
-        matches = [n for n in nodes if spec in n.get("name", "")]
+        matches = [n for n in match_pool if spec in n.get("name", "")]
 
     if not matches:
         print(f"Error: No symbol found matching '{args.symbol}'", file=sys.stderr)
         return 1
 
+    # INV-nogof: enforce the SAME ambiguity policy as `slice` — a name-based
+    # spec resolving to symbols in >1 file is ambiguous. `--first` is the opt-in
+    # escape that picks the top match; `--language`/`--file` (applied above)
+    # narrow the pool so the spec resolves unambiguously. The error message
+    # already names those flags (AmbiguousEntryError → "filter with --language").
+    if first_only:
+        matches = matches[:1]
+    else:
+        try:
+            raise_if_ambiguous(spec, [Symbol.from_dict(n) for n in matches])
+        except AmbiguousEntryError as e:
+            print(f"Error: {e}", file=sys.stderr)
+            return 1
+
+    # WI-nanut: --limit caps how many sections print for a non-ambiguous
+    # multi-match (same-file duplicate definitions); None shows all.
+    display_matches = matches if section_limit is None else matches[:section_limit]
+
     # Display each match
-    for i, node in enumerate(matches):
+    for i, node in enumerate(display_matches):
         if i > 0:
             print("\n" + "=" * 60 + "\n")
 
@@ -7249,10 +7343,17 @@ Examples:
   hypergumbo explain "UserService"        # Explain a class
   hypergumbo explain "parse_config"       # Explain a specific function
   hypergumbo explain "foo" --provenance   # Include derivation chains per edge
+  hypergumbo explain "main" --first       # Pick the first match if ambiguous
+  hypergumbo explain "main" --language go # Disambiguate by language
+  hypergumbo explain "main" --file cmd/server.go  # Disambiguate by file suffix
 
 Shows: Symbol location, origin passes, callers (what calls it), callees (what it calls).
 Edge types are shown inline. Use --provenance to see which symbols each linker
 consumed to construct each edge (PROV wasDerivedFrom).
+
+A name matching symbols in more than one file is AMBIGUOUS: explain errors and
+lists the candidates (matching `slice`). Use --language / --file to narrow, or
+--first to accept the top match.
 
 Auto-discovers cached results from 'hypergumbo run', or specify --input."""
 
@@ -7306,6 +7407,29 @@ Auto-discovers cached results from 'hypergumbo run', or specify --input."""
         default=False,
         dest="provenance",
         help="Show derivation chains (derived_from) for each edge",
+    )
+    # WI-nanut: disambiguation / bounding flags (parity with `symbols`).
+    p_explain.add_argument(
+        "--language",
+        default=None,
+        help="Filter matches to this language (e.g., python, go)",
+    )
+    p_explain.add_argument(
+        "--file",
+        default=None,
+        help="Filter matches to files whose path ends with this suffix",
+    )
+    p_explain.add_argument(
+        "--first",
+        action="store_true",
+        default=False,
+        help="Show only the first match instead of erroring on ambiguity",
+    )
+    p_explain.add_argument(
+        "--limit",
+        type=_positive_int_arg("--limit"),
+        default=None,
+        help="Maximum number of symbol sections to show (default: all)",
     )
     p_explain.set_defaults(func=cmd_explain)
 

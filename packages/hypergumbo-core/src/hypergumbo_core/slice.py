@@ -157,6 +157,31 @@ class AmbiguousEntryError(Exception):
         super().__init__("\n".join(lines))
 
 
+def raise_if_ambiguous(entry_spec: str, candidates: List[Symbol]) -> None:
+    """Enforce the shared ambiguity policy for a resolved entry spec (INV-nogof).
+
+    A name-based ``entry_spec`` that resolves to symbols spanning more than one
+    file is ambiguous: the caller must disambiguate. An exact node-ID match is
+    never ambiguous (a full ID names one identity), and same-file duplicates are
+    not ambiguous (they are distinct definitions in a single location the caller
+    already pinned). Raises :class:`AmbiguousEntryError` in the ambiguous case,
+    returns ``None`` otherwise.
+
+    This was previously an inline block inside :func:`slice_graph`; ``explain``
+    silently picked *every* match instead, so identical input produced an error
+    from ``slice`` but an unbounded dump from ``explain``. Extracting the policy
+    to one function lets both read subcommands enforce it identically.
+    """
+    if len(candidates) <= 1:
+        return
+    # An exact ID match names a single identity — never ambiguous.
+    if any(sym.id == entry_spec for sym in candidates):
+        return
+    # Multiple matches in one file are distinct definitions, not ambiguity.
+    if len({sym.path for sym in candidates}) > 1:
+        raise AmbiguousEntryError(entry_spec, candidates)
+
+
 @dataclass
 class SliceQuery:
     """Configuration for a graph slice operation.
@@ -485,16 +510,9 @@ def slice_graph(
             limits_hit=[],
         )
 
-    # Check for ambiguous entry: multiple matches in different files
-    # This is only an issue for name-based matches, not exact ID matches
-    if len(entry_nodes) > 1:
-        # Check if the entry was an exact ID match (not ambiguous)
-        is_exact_id = any(n.id == query.entrypoint for n in entry_nodes)
-        if not is_exact_id:
-            # Check if matches are in different files
-            unique_files = {n.path for n in entry_nodes}
-            if len(unique_files) > 1:
-                raise AmbiguousEntryError(query.entrypoint, entry_nodes)
+    # Check for ambiguous entry: multiple name-based matches in different files
+    # (shared policy — INV-nogof; explain enforces the same via raise_if_ambiguous).
+    raise_if_ambiguous(query.entrypoint, entry_nodes)
 
     # Track results
     visited_nodes: Set[str] = set()

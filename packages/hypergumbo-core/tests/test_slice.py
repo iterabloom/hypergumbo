@@ -11,6 +11,7 @@ from hypergumbo_core.slice import (
     SliceQuery,
     find_entry_nodes,
     AmbiguousEntryError,
+    raise_if_ambiguous,
     rank_slice_nodes,
     SliceResult,
 )
@@ -274,6 +275,23 @@ class TestAmbiguousEntryDetection:
         assert "src/app.py" in error_msg
         assert "web/client.ts" in error_msg
         assert "cmd/server.go" in error_msg
+
+    def test_raise_if_ambiguous_exact_id_among_multiple(self) -> None:
+        """INV-nogof: an exact-ID entry spec is NOT ambiguous even when multiple
+        candidates (spanning files) are passed — the ID names one identity.
+
+        This branch is unreachable via slice_graph (find_entry_nodes returns a
+        single node for a unique exact-ID match), so it is exercised directly on
+        the shared helper that `explain` also consumes."""
+        py_ping = make_symbol("ping", path="src/app.py", language="python")
+        ts_ping = make_symbol("ping", path="web/client.ts", language="typescript")
+        # entry_spec is py_ping's exact id; the presence of a >1-file candidate
+        # list must NOT raise because an exact ID is unambiguous.
+        raise_if_ambiguous(py_ping.id, [py_ping, ts_ping])  # no raise
+
+    def test_raise_if_ambiguous_single_candidate_noop(self) -> None:
+        """A single candidate is never ambiguous."""
+        raise_if_ambiguous("ping", [make_symbol("ping")])  # no raise
 
 
 class TestSliceGraph:

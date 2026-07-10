@@ -69,8 +69,12 @@
   ],
   "explain": [
     "--exclude-tests",
+    "--file",
+    "--first",
     "--help",
     "--input",
+    "--language",
+    "--limit",
     "--no-source",
     "--path",
     "--provenance",

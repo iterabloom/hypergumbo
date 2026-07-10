@@ -85,7 +85,7 @@ Generates a token-budgeted Markdown sketch to stdout. Optimized for pasting into
 * `-t N` limits output to approximately N tokens.
 * `--with-source` appends full source file contents after the sketch (ordered by symbol importance density, skips files under 5 LOC)
 
-🟩 **`hypergumbo explain <symbol> [--with-source] [-t tokens] [-x] [--provenance]`**
+🟩 **`hypergumbo explain <symbol> [--with-source] [-t tokens] [-x] [--provenance] [--language L] [--file SUFFIX] [--first] [--limit N]`**
 Shows detailed info about a symbol (function, class, etc.) and its callers/callees.
 * Always shows `Origin:` line with the pass(es) that created the symbol (PROV wasAttributedTo)
 * Caller/callee lines annotated with edge type (e.g., `[imported_call]`, `[calls]`)
@@ -98,6 +98,8 @@ Shows detailed info about a symbol (function, class, etc.) and its callers/calle
   - Deduplicates when same symbol appears as both caller and callee
 * `-t N` limits source output to approximately N tokens. When budget exceeded, omits sources one-at-a-time in priority order: module-level first, then ascending in-degree (least important first)
 * `-x` excludes callers/callees from test files
+* A name matching symbols in more than one file is **ambiguous**: `explain` errors and lists the candidates on stderr (matching `slice`'s policy, INV-nogof), instead of silently dumping every match. `--language L` / `--file SUFFIX` narrow the match pool to disambiguate; `--first` accepts the top match; `--limit N` caps how many sections print for non-ambiguous same-file duplicates (WI-nanut)
+* Registered-but-unstyled edge types surface their registry description; an edge type registered nowhere is labelled `unrecognized edge type '<type>'`; a substrate whose `schema_version` differs from this build prints a field-presence drift warning (WI-dazob)
 
 🟩 **`hypergumbo run [path] [--out hypergumbo.results.json]`**
 Analyzes the repo and emits a behavior map. No initialization required—works directly on any repo.
