@@ -24,3 +24,20 @@
     fields:  # f39b
       statement: "Every read-only subcommand whose output is structured data must expose a --format json flag using the shared envelope helper; no subcommand may have text-only output by default with no JSON pathway."  # f39b
       root_cause: "Three subcommands grew text-only and never had --format json retrofitted. cache-status (WI-dulul, cli.py:6543), catalog (WI-soroz, cli.py:6452), routes (INV-jutuj, cli.py:6341) all need the shared add_schema_envelope() helper wired in."  # f39b
+- op: update  # 74c2
+  at: '2026-07-10T02:10:59Z'  # 74c2
+  by: agent  # 74c2
+  actor: jgstern_agent  # 74c2
+  clock: 2  # 74c2
+  nonce: 74c2  # 74c2
+  set:  # 74c2
+    status: satisfied  # 74c2
+  add:  # 74c2
+    tags: [wave4]  # 74c2
+- op: discuss  # e787
+  at: '2026-07-10T02:10:59Z'  # e787
+  by: agent  # e787
+  actor: jgstern_agent  # e787
+  clock: 3  # e787
+  nonce: e787  # e787
+  message: "SATISFIED — cli-output sub-A (JSON output missing --format flag) closed. All members done: WI-dulul (cache-status --format json), WI-soroz (catalog --format json), and the third face INV-jutuj (routes --format json, already satisfied). All three flag-less read subcommands now emit JSON through the add_schema_envelope gateway (WI-gogif F1). Advances WI-gogif (closes when sub-B INV-pikob + sub-C INV-rugah also close)."  # e787

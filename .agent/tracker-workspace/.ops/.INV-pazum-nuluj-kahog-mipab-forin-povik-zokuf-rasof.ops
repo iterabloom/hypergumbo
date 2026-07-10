@@ -70,3 +70,20 @@
     tags: [dogfood]  # b078
   remove:  # b078
     tags: [dogfooding]  # b078
+- op: update  # 113e
+  at: '2026-07-10T02:43:56Z'  # 113e
+  by: agent  # 113e
+  actor: jgstern_agent  # 113e
+  clock: 7  # 113e
+  nonce: 113e  # 113e
+  set:  # 113e
+    status: satisfied  # 113e
+  add:  # 113e
+    tags: [wave4]  # 113e
+- op: discuss  # 0015
+  at: '2026-07-10T02:43:56Z'  # 0015
+  by: agent  # 0015
+  actor: jgstern_agent  # 0015
+  clock: 8  # 0015
+  nonce: '0015'  # 0015
+  message: "SATISFIED + merged (selfh/dev 503db65283). config --format json now carries the schema envelope (schema_version=0.1.0, view=config) via add_schema_envelope; dataflow_patterns/io_primitives spread top-level (membership tests unchanged). Behavioral evidence: test asserts data['schema_version'] + data['view']. cli-output sub-B."  # 0015

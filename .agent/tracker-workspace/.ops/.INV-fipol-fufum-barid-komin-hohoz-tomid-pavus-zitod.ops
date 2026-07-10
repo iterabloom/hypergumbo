@@ -71,3 +71,20 @@
     tags: [dogfood]  # a0db
   remove:  # a0db
     tags: [dogfooding]  # a0db
+- op: update  # f79b
+  at: '2026-07-10T02:43:56Z'  # f79b
+  by: agent  # f79b
+  actor: jgstern_agent  # f79b
+  clock: 7  # f79b
+  nonce: f79b  # f79b
+  set:  # f79b
+    status: satisfied  # f79b
+  add:  # f79b
+    tags: [wave4]  # f79b
+- op: discuss  # a440
+  at: '2026-07-10T02:43:56Z'  # a440
+  by: agent  # a440
+  actor: jgstern_agent  # a440
+  clock: 8  # a440
+  nonce: a440  # a440
+  message: "SATISFIED + merged (selfh/dev 503db65283). dead-code-maybe --format json now carries the schema envelope (schema_version=0.1.0, view=dead_code_maybe) via add_schema_envelope; summary/dead_candidates spread top-level (additive). Behavioral evidence: test asserts output['schema_version'] + output['view']. cli-output sub-B."  # a440

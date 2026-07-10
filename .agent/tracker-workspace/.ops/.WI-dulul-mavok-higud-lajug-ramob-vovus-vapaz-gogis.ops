@@ -67,3 +67,20 @@
     tags: [dogfood]  # 7cf9
   remove:  # 7cf9
     tags: [dogfooding]  # 7cf9
+- op: update  # 31b1
+  at: '2026-07-10T02:10:58Z'  # 31b1
+  by: agent  # 31b1
+  actor: jgstern_agent  # 31b1
+  clock: 7  # 31b1
+  nonce: 31b1  # 31b1
+  set:  # 31b1
+    status: done  # 31b1
+  add:  # 31b1
+    tags: [wave4]  # 31b1
+- op: discuss  # 3401
+  at: '2026-07-10T02:10:58Z'  # 3401
+  by: agent  # 3401
+  actor: jgstern_agent  # 3401
+  clock: 8  # 3401
+  nonce: '3401'  # 3401
+  message: "Fixed + merged (selfh/dev 4d4cbefcae). cache-status gains --format json via add_schema_envelope: {cache_dir, total_entries, total_size_bytes, entries:[{fingerprint,size_bytes,entry_count,age_days}], honk_threshold_bytes}. Covers empty/populated/per-repo paths; --quiet still suppresses all output. Behavioral evidence: json-empty + json-with-entries tests; core 100%. cli-output sub-A."  # 3401
