@@ -80,3 +80,20 @@
     tags: [dogfood]  # cd52
   remove:  # cd52
     tags: [dogfooding]  # cd52
+- op: update  # ea0a
+  at: '2026-07-10T08:55:57Z'  # ea0a
+  by: agent  # ea0a
+  actor: jgstern_agent  # ea0a
+  clock: 8  # ea0a
+  nonce: ea0a  # ea0a
+  set:  # ea0a
+    status: satisfied  # ea0a
+  add:  # ea0a
+    tags: [wave4]  # ea0a
+- op: discuss  # 3a07
+  at: '2026-07-10T08:55:57Z'  # 3a07
+  by: agent  # 3a07
+  actor: jgstern_agent  # 3a07
+  clock: 9  # 3a07
+  nonce: 3a07  # 3a07
+  message: "SATISFIED — PR #538 (selfh/dev 8711a6c935). New behavior_map_io.load_substrate wraps json.load and raises typed SubstrateError on JSONDecodeError / non-object root; main()'s dispatch converts it to clean rc=2 + stderr message. All 11 --input consumers in cli.py route through it. BEHAVIORAL EVIDENCE (live @ 8711a6c935): 'symbols --input bad.json' (contents '{ not json') -> rc=2, stderr 'Error: ...: not valid JSON (Expecting property name ...)' (was: unhandled Python traceback). In-process coverage via test_main_wrong_shape_input_exits_2_via_dispatch_guard (main() dispatch guard) + load_substrate parse-guard unit tests. Core 100% coverage."  # 3a07

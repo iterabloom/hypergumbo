@@ -44,3 +44,27 @@
   clock: 4  # a03c
   nonce: a03c  # a03c
   message: "F1 MECHANISM LANDED (not yet closed) — selfh/dev 1bf612d7bf. Extracted add_schema_envelope(payload, view=, schema_version=) single-sourcing the read-view JSON envelope across ~6 inline sites (slice x2/routes/verify-claims/test-coverage/handler-slice-index), producing the canonical SPREAD envelope per spec Appendix C (schema_version+view+payload at top level, NOT data-nested, no query field). SCOPE CORRECTION (scope-audit wf_fe9840e9): the tracker/strategy's {schema_version,view,query,data} data-nested shape CONTRADICTS spec Appendix C + 5 frozen per-view tests — the true contract is additive-spread with per-view schema_version (NOT unified; unification is WI-bobog). Byte-identical refactor (frozen tests green). WI-pofas/WI-kitud are DUPLICATE F1 framings (fold in). WI-gogif closes when the sub-metas resolve: INV-fivar (sub-A missing --format: WI-dulul cache-status + WI-soroz catalog), INV-pikob (sub-B envelope: INV-fipol dead-code-maybe + INV-pazum config), INV-rugah (sub-C wire-format). Next: sub-A leaves retrofit --format json onto cache-status/catalog via the new gateway."  # a03c
+- op: discuss  # 0e94
+  at: '2026-07-10T07:16:34Z'  # 0e94
+  by: agent  # 0e94
+  actor: jgstern_agent  # 0e94
+  clock: 5  # 0e94
+  nonce: '0e94'  # 0e94
+  message: "NOT YET CLOSEABLE (correction to the 2026-07-10 F1 note's fold assumption). Three sub-metas now resolved: INV-fivar (sub-A) satisfied, INV-pikob (sub-B) satisfied, INV-rugah (sub-C) satisfied this pass. WI-pofas folded (true duplicate: empty body + shared dogfood_anon_id ITEM-e5ca58). BUT WI-gogif's OWN stated expectation — 'Read subcommands should follow one consistent convention for JSON output (such as a --format text|json flag pair)' — is measurably UNMET: io-boundaries + verify-claims still expose --json (not --format json), slice uses --flat. WI-kitud captures this residual flag-spelling gap precisely — verified NOT a duplicate (see its updated entry; the prior scoping's 'fold WI-kitud as F1 dup' was falsified by the flag audit). Closing WI-gogif now would false-satisfy against its statement (INV-nufob-style). Envelope contract (F1 add_schema_envelope) + JSON-availability (INV-fivar) + wire-format documentation (INV-rugah) are all DONE; only flag-spelling uniformity (WI-kitud) remains. WI-gogif closes when WI-kitud closes."  # 0e94
+- op: update  # 1ea5
+  at: '2026-07-10T07:54:01Z'  # 1ea5
+  by: agent  # 1ea5
+  actor: jgstern_agent  # 1ea5
+  clock: 6  # 1ea5
+  nonce: 1ea5  # 1ea5
+  set:  # 1ea5
+    status: done  # 1ea5
+  add:  # 1ea5
+    tags: [wave4]  # 1ea5
+- op: discuss  # 7e90
+  at: '2026-07-10T07:54:01Z'  # 7e90
+  by: agent  # 7e90
+  actor: jgstern_agent  # 7e90
+  clock: 7  # 7e90
+  nonce: '7e90'  # 7e90
+  message: "DONE (work_item; the invariant closure clauses are on the sub-metas) — cli-output block COMPLETE. Umbrella 'multiple JSON output conventions / no unified contract' resolved across all dimensions: (F1) add_schema_envelope single-sources the read-view wire shape; (sub-A INV-fivar satisfied) JSON pathway on every structured-data read subcommand; (sub-B INV-pikob satisfied) standard envelope, no bare arrays; (sub-C INV-rugah satisfied) JSON keys/presence agree with bm.json schema (check-schema-coverage gate green) + pass->pass_id documented in machine schema + spec §289/§742; (flag-spelling uniformity WI-kitud done, PR #537 / dev 4d933c251f) all 8 text-defaulting read views now use --format text|json, --json a back-compat alias. WI-gogif's expectation — 'one consistent convention for JSON output (such as a --format text|json flag pair) with consistent envelope fields' — met for the text-defaulting read views; slice/compact are a distinct JSON-only category (no text mode), out of scope. WI-pofas folded (duplicate, anon_id ITEM-e5ca58). Final-piece behavioral evidence: live --format json / --json / --format text repros on io-boundaries + verify-claims (WI-kitud closure)."  # 7e90
