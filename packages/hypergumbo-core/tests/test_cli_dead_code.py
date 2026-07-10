@@ -61,6 +61,9 @@ class TestDeadCodeMaybe:
         assert "orphan" in dead_names
         # helper IS reachable from main → NOT dead
         assert "helper" not in dead_names
+        # INV-fipol: dead-code-maybe JSON now carries the schema envelope
+        assert output["schema_version"] == "0.1.0"
+        assert output["view"] == "dead_code_maybe"
 
     def test_all_reachable_returns_empty(self, tmp_path: Path) -> None:
         """When all functions are reachable, dead list is empty."""

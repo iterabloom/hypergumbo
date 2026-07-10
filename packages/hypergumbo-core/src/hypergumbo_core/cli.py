@@ -5243,7 +5243,10 @@ def cmd_config(args: argparse.Namespace) -> int:
         )
 
     if fmt == "json":
-        print(json.dumps(merged, indent=2, default=str))
+        print(json.dumps(
+            add_schema_envelope(merged, view="config", schema_version="0.1.0"),
+            indent=2, default=str,
+        ))
     elif fmt == "yaml":
         print(_yaml.dump(merged, default_flow_style=False, sort_keys=False))
     else:
@@ -6358,7 +6361,12 @@ def cmd_dead_code_maybe(args: argparse.Namespace) -> int:
                 for n in dead_candidates
             ],
         }
-        print(json.dumps(output, indent=2))
+        print(json.dumps(
+            add_schema_envelope(
+                output, view="dead_code_maybe", schema_version="0.1.0"
+            ),
+            indent=2,
+        ))
     else:
         # Text format
         print(f"Dead Code Analysis (seeds: {seeds_mode})")

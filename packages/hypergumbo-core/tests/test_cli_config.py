@@ -31,6 +31,10 @@ class TestCmdConfig:
         data = json.loads(buf.getvalue())
         assert "dataflow_patterns" in data
         assert data["dataflow_patterns"] is not None
+        # INV-pazum: config JSON now carries the schema envelope (spread, so
+        # dataflow_patterns / io_primitives stay top-level)
+        assert data["schema_version"] == "0.1.0"
+        assert data["view"] == "config"
 
     def test_known_language_io_primitives(self) -> None:
         """Config for go includes io_primitives section."""
