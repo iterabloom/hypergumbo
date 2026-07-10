@@ -54,3 +54,20 @@
   clock: 5  # 6902
   nonce: '6902'  # 6902
   message: "2026-06-10 design-interview ruling (decision recorded, no ADR): compact's default becomes centrality-ranked, under which --max-symbols selection is a ranked prefix and containment monotonicity across budgets holds by construction; the connectivity-growth path keeps its own semantics behind explicit --connectivity. Waits on the default switch; re-check monotonicity afterwards."  # 6902
+- op: update  # 89d1
+  at: '2026-07-09T23:02:44Z'  # 89d1
+  by: agent  # 89d1
+  actor: jgstern_agent  # 89d1
+  clock: 6  # 89d1
+  nonce: 89d1  # 89d1
+  set:  # 89d1
+    status: done  # 89d1
+  add:  # 89d1
+    tags: [wave4, awaits_bakeoff_validation]  # 89d1
+- op: discuss  # c47d
+  at: '2026-07-09T23:02:44Z'  # c47d
+  by: agent  # c47d
+  actor: jgstern_agent  # c47d
+  clock: 7  # c47d
+  nonce: c47d  # c47d
+  message: "Fixed + merged (selfh/dev 4c8a8f66c1, with WI-zulij). Containment monotonicity for compact --max-symbols: NOT resolved 'by construction' by the flip alone — I traced a real non-monotonicity in allocate_language_budget (selection/language_proportional.py): when a budget step grows >=2 language bases at once, 'remaining' drops and the last bonus-receiving language loses its +1 while its base is unchanged (a shrink), breaking nodes(B1) subset nodes(B2). Structural fix: the compact default disables language_proportional -> a GLOBAL centrality-ranked prefix, monotonic BY CONSTRUCTION (top-N subset top-M) AND the correct reading of D12's 'centrality-ranked' (a global order, which language floors violate). Behavioral evidence: multi-language stress monotonicity test (unequal sizes 8/4/3/2/1, ALL budgets 2..18, subset assertion at every step) with language_proportional=False; disabling it broke NO test (961 passed across compact/cli/sketch/selection/gitleaks). core 100%. Wave-4 projection."  # c47d

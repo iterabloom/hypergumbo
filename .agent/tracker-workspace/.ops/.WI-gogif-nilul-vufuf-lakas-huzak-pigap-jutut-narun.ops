@@ -28,3 +28,19 @@
   clock: 2  # f8d8
   nonce: f8d8  # f8d8
   message: "Cross-ref backfill (2026-05-30, deeper-issue investigation): umbrella enrolled 8 members; six further active items instantiate JSON-output / wire-format-vs-schema gaps and should be folded or cross-referenced: INV-rakot (slice JSON feature.query echo incomplete), INV-pomol (routes top-level field absent from bm.json — wire-format-vs-schema gap), INV-subak (config --format json function_summaries empty for all 281 langs), WI-lonoz (Edge.quality 100% null; 🟪 placeholder spec gap), INV-nuzal (edge.provenance + node.quality 100% empty), INV-pazur (tiered behavior maps: nodes_summary pre-shrink vs on-disk arrays). Deeper hypothesis: distinct from the INV-fabov/numat/kurup \"no validator gate\" cluster — WI-gogif is \"no shared output-shape convention across independently-grown subcommands\"; structural fix is a single JSON-output factory + envelope contract."  # f8d8
+- op: update  # 707d
+  at: '2026-07-10T01:31:57Z'  # 707d
+  by: agent  # 707d
+  actor: jgstern_agent  # 707d
+  clock: 3  # 707d
+  nonce: 707d  # 707d
+  set: {}  # 707d
+  add:  # 707d
+    tags: [wave4]  # 707d
+- op: discuss  # a03c
+  at: '2026-07-10T01:31:57Z'  # a03c
+  by: agent  # a03c
+  actor: jgstern_agent  # a03c
+  clock: 4  # a03c
+  nonce: a03c  # a03c
+  message: "F1 MECHANISM LANDED (not yet closed) — selfh/dev 1bf612d7bf. Extracted add_schema_envelope(payload, view=, schema_version=) single-sourcing the read-view JSON envelope across ~6 inline sites (slice x2/routes/verify-claims/test-coverage/handler-slice-index), producing the canonical SPREAD envelope per spec Appendix C (schema_version+view+payload at top level, NOT data-nested, no query field). SCOPE CORRECTION (scope-audit wf_fe9840e9): the tracker/strategy's {schema_version,view,query,data} data-nested shape CONTRADICTS spec Appendix C + 5 frozen per-view tests — the true contract is additive-spread with per-view schema_version (NOT unified; unification is WI-bobog). Byte-identical refactor (frozen tests green). WI-pofas/WI-kitud are DUPLICATE F1 framings (fold in). WI-gogif closes when the sub-metas resolve: INV-fivar (sub-A missing --format: WI-dulul cache-status + WI-soroz catalog), INV-pikob (sub-B envelope: INV-fipol dead-code-maybe + INV-pazum config), INV-rugah (sub-C wire-format). Next: sub-A leaves retrofit --format json onto cache-status/catalog via the new gateway."  # a03c
