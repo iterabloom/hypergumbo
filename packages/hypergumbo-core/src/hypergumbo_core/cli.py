@@ -1834,6 +1834,23 @@ def cmd_search(args: argparse.Namespace) -> int:
     """Search for symbols by name pattern."""
     repo_root = Path(args.path).resolve()
 
+    # WI-kopon: reject an empty / whitespace-only pattern (e.g. a shell-eaten
+    # arg like an unquoted `|`) up front. An empty pattern is a substring of
+    # every name, so it would silently match all symbols — a degenerate input
+    # that should fail fast (exit 2) per the cli-input validation umbrella.
+    if not args.pattern.strip():
+        print("Error: search pattern cannot be empty.", file=sys.stderr)
+        return 2
+
+    # WI-runos: --language / --kind are case-insensitive, uniform with the
+    # documented case-insensitive positional pattern. Fold to the registry's
+    # canonical lowercase before validation + comparison so `--language PYTHON`
+    # matches `python` instead of rejecting as "not a known language".
+    if args.language:
+        args.language = args.language.lower()
+    if args.kind:
+        args.kind = args.kind.lower()
+
     # WI-furop (INV-fabov): reject invalid --language / --kind filter values
     # up front -- before the (potentially auto-running) analysis -- so a typo
     # or non-language/non-kind errors loudly (exit 2) instead of silently

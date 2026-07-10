@@ -66,6 +66,78 @@ def test_cmd_search_finds_exact_match(tmp_path: Path, capsys) -> None:
     assert "src/main.py" in out
 
 
+_SEARCH_FIXTURE = {
+    "schema_version": SCHEMA_VERSION,
+    "nodes": [
+        {
+            "id": "python:src/main.py:1-5:load_config:function",
+            "name": "load_config",
+            "kind": "function",
+            "language": "python",
+            "path": "src/main.py",
+            "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
+        },
+    ],
+    "edges": [],
+}
+
+
+def _search_args(tmp_path: Path, pattern, **over) -> "FakeArgs":
+    (tmp_path / "hypergumbo.results.json").write_text(json.dumps(_SEARCH_FIXTURE))
+    args = FakeArgs()
+    args.pattern = pattern
+    args.path = str(tmp_path)
+    args.input = None
+    args.kind = None
+    args.language = None
+    args.limit = 20
+    for k, v in over.items():
+        setattr(args, k, v)
+    return args
+
+
+def test_cmd_search_language_filter_case_insensitive(
+    tmp_path: Path, capsys,
+) -> None:
+    """WI-runos: --language is now case-insensitive (uniform with the
+    documented case-insensitive positional pattern) — an upper-case value is
+    folded to the registry's canonical lowercase and matches, rather than
+    rejecting as 'not a known language'."""
+    args = _search_args(tmp_path, "load", language="PYTHON")
+
+    assert cmd_search(args) == 0
+    assert "load_config" in capsys.readouterr().out
+
+
+def test_cmd_search_kind_filter_case_insensitive(
+    tmp_path: Path, capsys,
+) -> None:
+    """WI-runos: --kind is likewise case-insensitive."""
+    args = _search_args(tmp_path, "load", kind="FUNCTION")
+
+    assert cmd_search(args) == 0
+    assert "load_config" in capsys.readouterr().out
+
+
+def test_cmd_search_empty_pattern_rejected(tmp_path: Path, capsys) -> None:
+    """WI-kopon: an empty search pattern is rejected with rc=2, not silently
+    matched against every symbol (consistent with the cli-input validation
+    umbrella — fail fast on a degenerate input)."""
+    args = _search_args(tmp_path, "")
+
+    assert cmd_search(args) == 2
+    assert "empty" in capsys.readouterr().err.lower()
+
+
+def test_cmd_search_whitespace_pattern_rejected(tmp_path: Path, capsys) -> None:
+    """WI-kopon: a whitespace-only pattern (e.g. a shell-eaten arg) is also
+    rejected with rc=2."""
+    args = _search_args(tmp_path, "   ")
+
+    assert cmd_search(args) == 2
+    assert "empty" in capsys.readouterr().err.lower()
+
+
 def test_cmd_search_excludes_external_boundary_nodes(tmp_path: Path, capsys) -> None:
     """Search must skip synthetic boundary nodes (kind=external_symbol).
 
