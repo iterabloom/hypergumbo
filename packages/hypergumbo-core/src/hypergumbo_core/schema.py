@@ -17,10 +17,30 @@ Version Distinction
 
 - **__version__** (in __init__.py): The tool/package version. This increments
   with every release (new analyzers, bug fixes, performance improvements,
-  CLI changes, etc.). It does NOT indicate output format changes.
+  CLI changes, etc.). It does NOT indicate output format changes. It surfaces
+  in output under TWO field names that are both aliases of it, not schema
+  versions: `reproducibility_context.hypergumbo_version` and
+  `limits.analyzer_version` (`f"hypergumbo-{__version__}"`).
 
-These versions evolve independently. The tool can have many releases while
-the schema stays stable if the output format doesn't change.
+- **Per-view / per-sub-schema versions** (the third axis — WI-bobog / WI-romup):
+  several JSON surfaces carry their OWN version, independent of both of the
+  above. The CLI read-view envelopes (`routes` / `test-coverage` / `config` /
+  `catalog` / `cache-status` / `dead-code-maybe`) share
+  `READ_VIEW_SCHEMA_VERSION` — one placeholder until a view needs to evolve its
+  wire shape independently, at which point it promotes to its own named
+  constant, as `io-boundaries` (`io_boundary.IO_BOUNDARIES_SCHEMA_VERSION`),
+  `verify-claims` (`verify_claims.VERIFY_CLAIMS_SCHEMA_VERSION`), and the
+  embedded `validation_report` block
+  (`spec_validator.VALIDATION_REPORT_SCHEMA_VERSION`) already have. A change to
+  one view's wire shape bumps only that view's version, NOT the top-level
+  `schema_version`.
+
+These three axes are deliberately independent. Do NOT consolidate them onto a
+single number, and do NOT rename the wire fields (`hypergumbo_version`,
+`analyzer_version`, the per-view `schema_version`) — each has spec text and
+consumers, so a rename is a covert wire-break requiring a major bump. The tool
+can have many releases while the schema stays stable if the output format
+doesn't change.
 
 How It Works
 ------------
@@ -87,6 +107,18 @@ SCHEMA_VERSION = "0.14.4"
 # projected view validates (it previously pinned a ``const`` of "behavior_map",
 # which rejected the compact/tiered projections).
 VIEW_NAMES = ("behavior_map", "compact", "tiered")
+# Wire-format version carried by the CLI *read-view* JSON envelopes that project
+# or summarize a behavior map without BEING the behavior map (routes /
+# test-coverage / config / catalog / cache-status / dead-code-maybe). These
+# share one placeholder version until a view needs to evolve its wire shape
+# independently — at which point it promotes to its own named constant, as
+# io-boundaries (IO_BOUNDARIES_SCHEMA_VERSION) and verify-claims
+# (VERIFY_CLAIMS_SCHEMA_VERSION) already have. Single-sourced here (WI-bobog) so
+# the six view sites cannot drift; DISTINCT from the top-level bm.json
+# SCHEMA_VERSION (a read view is not the behavior map) and from __version__ (the
+# tool version). See the "Version Distinction" module docstring for the three
+# version axes.
+READ_VIEW_SCHEMA_VERSION = "0.1.0"
 CONFIDENCE_MODEL = "hypergumbo-evidence-v2"
 STABLE_ID_SCHEME = "hypergumbo-stableid-v8"
 SHAPE_ID_SCHEME = "hypergumbo-shapeid-v2"

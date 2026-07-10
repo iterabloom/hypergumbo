@@ -7,7 +7,7 @@ test path exclusion, and output formatting.
 import json
 from pathlib import Path
 
-from hypergumbo_core.schema import SCHEMA_VERSION
+from hypergumbo_core.schema import SCHEMA_VERSION, READ_VIEW_SCHEMA_VERSION
 from hypergumbo_core.cli import cmd_routes, main
 
 
@@ -118,6 +118,11 @@ def test_cmd_routes_format_json_emits_records(tmp_path: Path, capsys) -> None:
     out, _ = capsys.readouterr()
     data = json.loads(out)  # stdout must be pure JSON
     assert data["view"] == "routes"
+    # WI-bobog: the routes view-envelope version is single-sourced from
+    # READ_VIEW_SCHEMA_VERSION (was a bare "0.1.0" literal, previously
+    # test-silent). Distinct from the top-level bm SCHEMA_VERSION.
+    assert data["schema_version"] == READ_VIEW_SCHEMA_VERSION
+    assert data["schema_version"] != SCHEMA_VERSION
     rec = {r["route_path"]: r for r in data["routes"]}
     assert set(rec) == {"/users/{id}", "/users"}
     assert rec["/users/{id}"]["method"] == "GET"

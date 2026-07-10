@@ -140,7 +140,7 @@ from .ir import (
 )
 from .metrics import compute_metrics
 from .profile import detect_profile
-from .schema import new_behavior_map
+from .schema import new_behavior_map, READ_VIEW_SCHEMA_VERSION
 from .sketch import generate_sketch, ConfigExtractionMode, SketchStats, display_representativeness_table
 from .slice import (
     SliceQuery, slice_graph, AmbiguousEntryError, raise_if_ambiguous,
@@ -2085,7 +2085,7 @@ def cmd_routes(args: argparse.Namespace) -> int:
         output = add_schema_envelope(
             {"routes": [_route_json_record(r) for r in routes]},
             view="routes",
-            schema_version="0.1.0",
+            schema_version=READ_VIEW_SCHEMA_VERSION,
         )
         print(json.dumps(output, indent=2))
         cached_set = {input_path} if was_cached else set()
@@ -2863,7 +2863,7 @@ def cmd_catalog(args: argparse.Namespace) -> int:
                 "suggested": [p.id for p in suggested],
                 "large_directory": large_dir,
             },
-            view="catalog", schema_version="0.1.0",
+            view="catalog", schema_version=READ_VIEW_SCHEMA_VERSION,
         ), indent=2))
         return 0
 
@@ -3490,7 +3490,7 @@ def cmd_cache_status(args: argparse.Namespace) -> int:
                     "entries": [],
                     "honk_threshold_bytes": _get_honk_threshold_bytes(),
                 },
-                view="cache_status", schema_version="0.1.0",
+                view="cache_status", schema_version=READ_VIEW_SCHEMA_VERSION,
             ), indent=2))
         else:
             print(f"Cache directory: {cache_dir}")
@@ -3534,7 +3534,7 @@ def cmd_cache_status(args: argparse.Namespace) -> int:
                 "entries": entries_json,
                 "honk_threshold_bytes": _get_honk_threshold_bytes(),
             },
-            view="cache_status", schema_version="0.1.0",
+            view="cache_status", schema_version=READ_VIEW_SCHEMA_VERSION,
         ), indent=2))
         _maybe_honk_cache(cache_dir, total_size=total_size)
         return 0
@@ -5346,7 +5346,7 @@ def cmd_config(args: argparse.Namespace) -> int:
 
     if fmt == "json":
         print(json.dumps(
-            add_schema_envelope(merged, view="config", schema_version="0.1.0"),
+            add_schema_envelope(merged, view="config", schema_version=READ_VIEW_SCHEMA_VERSION),
             indent=2, default=str,
         ))
     elif fmt == "yaml":
@@ -5626,7 +5626,7 @@ def cmd_test_coverage(args: argparse.Namespace) -> int:
                 "cold_spots": [],
             },
             view="test-coverage",
-            schema_version="0.1.0",
+            schema_version=READ_VIEW_SCHEMA_VERSION,
         )
 
         for density, test_count, loc, target, test_names in test_dense[:top_n] if top_n else test_dense:
@@ -6465,7 +6465,7 @@ def cmd_dead_code_maybe(args: argparse.Namespace) -> int:
         }
         print(json.dumps(
             add_schema_envelope(
-                output, view="dead_code_maybe", schema_version="0.1.0"
+                output, view="dead_code_maybe", schema_version=READ_VIEW_SCHEMA_VERSION
             ),
             indent=2,
         ))

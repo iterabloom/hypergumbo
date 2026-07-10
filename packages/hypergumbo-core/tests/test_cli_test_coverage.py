@@ -4,7 +4,7 @@
 import json
 from pathlib import Path
 
-from hypergumbo_core.schema import SCHEMA_VERSION
+from hypergumbo_core.schema import SCHEMA_VERSION, READ_VIEW_SCHEMA_VERSION
 from hypergumbo_core.cli import cmd_test_coverage, main
 
 
@@ -172,7 +172,10 @@ def test_cmd_test_coverage_json_output(tmp_path: Path, capsys) -> None:
     out, _ = capsys.readouterr()
     output = json.loads(out)
 
-    assert output["schema_version"] == "0.1.0"
+    # WI-bobog: single-sourced from READ_VIEW_SCHEMA_VERSION (== "0.1.0"),
+    # not the top-level bm SCHEMA_VERSION.
+    assert output["schema_version"] == READ_VIEW_SCHEMA_VERSION
+    assert READ_VIEW_SCHEMA_VERSION == "0.1.0"
     assert output["view"] == "test-coverage"
     assert output["summary"]["total_functions"] == 2
     assert output["summary"]["tested_functions"] == 1

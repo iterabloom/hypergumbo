@@ -1857,6 +1857,16 @@ This appendix defines the **technical contract** for output consumers: which fie
 **4. Changing confidence semantics:**
 - Example: Redefining what evidence types mean or changing the scoring algorithm
 
+### Version fields: three independent axes
+
+Output carries version numbers along **three deliberately independent axes** (WI-bobog / WI-romup). Consumers must not conflate them, and producers must not consolidate them onto one number or rename the wire fields (each has consumers, so a rename is a breaking change):
+
+1. **Top-level format version** — `schema_version` (currently `0.14.4`, the `SCHEMA_VERSION` constant). The version of the behavior-map (`view: "behavior_map"`) JSON format. Breaking output changes bump minor.
+2. **Tool/package version** — `__version__`, surfaced under two aliases that are **not** schema versions: `reproducibility_context.hypergumbo_version` and `limits.analyzer_version` (`hypergumbo-<__version__>`). Increments every release; says nothing about output format.
+3. **Per-view / per-sub-schema versions** — several JSON surfaces version their own wire shape independently of axes 1–2:
+   - The CLI **read-view** envelopes (`routes`, `test-coverage`, `config`, `catalog`, `cache-status`, `dead-code-maybe`) share `READ_VIEW_SCHEMA_VERSION` (currently `0.1.0`), a single placeholder until one view needs to evolve independently — at which point it promotes to its own named constant.
+   - `io-boundaries` carries `IO_BOUNDARIES_SCHEMA_VERSION` (`2.1`), `verify-claims` carries `VERIFY_CLAIMS_SCHEMA_VERSION` (`1.0`), and the embedded `validation_report` block carries `VALIDATION_REPORT_SCHEMA_VERSION` (`0.3`) — each with its own changelog. A change to one of these bumps only that surface's version, **not** the top-level `schema_version`. (So `validation_report.schema_version` legitimately differs from the enclosing map's `schema_version` — they are different schemas.)
+
 ### Algorithm-identification fields and `stable_id_scheme` version history
 
 `stable_id_scheme`, `shape_id_scheme`, and `repo_fingerprint_scheme` (top-level fields in the behavior map) identify the algorithm used to compute the corresponding hash. They are **not** schema-version fields; the schema-version is `schema_version` and changes independently.
