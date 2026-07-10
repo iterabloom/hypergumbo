@@ -63,3 +63,20 @@
     tags: [dogfood]  # fedb
   remove:  # fedb
     tags: [dogfooding]  # fedb
+- op: update  # 235e
+  at: '2026-07-10T09:54:51Z'  # 235e
+  by: agent  # 235e
+  actor: jgstern_agent  # 235e
+  clock: 6  # 235e
+  nonce: 235e  # 235e
+  set:  # 235e
+    status: satisfied  # 235e
+  add:  # 235e
+    tags: [wave4]  # 235e
+- op: discuss  # 120b
+  at: '2026-07-10T09:54:51Z'  # 120b
+  by: agent  # 120b
+  actor: jgstern_agent  # 120b
+  clock: 7  # 120b
+  nonce: 120b  # 120b
+  message: "SATISFIED (already resolved in-code; stale audit premise — no PR). search's three input faces all validate: --limit via _positive_result_limit (sub-B type), --kind + --language via registry-membership with did-you-mean (sub-C). BEHAVIORAL EVIDENCE (live @ dev 1386628b52): 'search foo <bm> --limit=-5' -> rc=2 'argument --limit: --limit must be a positive integer'; '--kind boguskind' -> rc=2 \"'boguskind' is not a known symbol kind. Did you mean...\"; '--language bipbop' -> rc=2 \"'bipbop' is not a known language. Did you mean: bibt...\" (WAS: all silently accepted). Dual-parented: sub-B (INV-dunof, --limit face) + sub-C (INV-murig, --kind/--language faces). All reject paths at 100% coverage (CI gate)."  # 120b

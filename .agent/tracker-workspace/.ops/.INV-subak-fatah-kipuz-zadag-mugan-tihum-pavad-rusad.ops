@@ -72,3 +72,20 @@
     tags: [dogfood]  # 9e71
   remove:  # 9e71
     tags: [dogfooding]  # 9e71
+- op: update  # 3d21
+  at: '2026-07-10T09:54:50Z'  # 3d21
+  by: agent  # 3d21
+  actor: jgstern_agent  # 3d21
+  clock: 7  # 3d21
+  nonce: 3d21  # 3d21
+  set:  # 3d21
+    status: satisfied  # 3d21
+  add:  # 3d21
+    tags: [wave4]  # 3d21
+- op: discuss  # 1b9b
+  at: '2026-07-10T09:54:50Z'  # 1b9b
+  by: agent  # 1b9b
+  actor: jgstern_agent  # 1b9b
+  clock: 8  # 1b9b
+  nonce: 1b9b  # 1b9b
+  message: "SATISFIED (already resolved in-code; stale audit premise — no PR). config's language argument is now registry-validated: a non-language id rejects instead of returning empty function_summaries. BEHAVIORAL EVIDENCE (live @ dev 1386628b52): 'config notalanguage --format json' -> rc=2, stderr \"hypergumbo config: error: 'notalanguage' is not a known language.\" (WAS: silently accepted -> empty function_summaries for all 281 'languages'). cli-input sub-C (INV-murig) registry-membership member; sibling of the already-done INV-gufod. Reject path at 100% coverage (CI gate)."  # 1b9b
