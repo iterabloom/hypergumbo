@@ -39,7 +39,10 @@ jobs:
         run: |
           SHA="${{ github.sha }}"
           REPO="${{ github.repository }}"
-          API="https://codeberg.org/api/v1/repos/${REPO}/statuses/${SHA}"
+          # WI-kalub Step 2: target the running server (selfh under failover), not
+          # a dead hardcoded codeberg endpoint. Consumed by the SHA-already-tested
+          # skip read (above) and the stop-the-line-adjacent status write (below).
+          API="${{ github.server_url }}/api/v1/repos/${REPO}/statuses/${SHA}"
 
           if [ -z "$FORGEJO_TOKEN" ]; then
             echo "FORGEJO_TOKEN not set, skipping SHA check"
@@ -1121,7 +1124,10 @@ jobs:
         run: |
           SHA="${{ github.sha }}"
           REPO="${{ github.repository }}"
-          API="https://codeberg.org/api/v1/repos/${REPO}/statuses/${SHA}"
+          # WI-kalub Step 2: target the running server (selfh under failover), not
+          # a dead hardcoded codeberg endpoint. Consumed by the SHA-already-tested
+          # skip read (above) and the stop-the-line-adjacent status write (below).
+          API="${{ github.server_url }}/api/v1/repos/${REPO}/statuses/${SHA}"
 
           if [ -z "$FORGEJO_TOKEN" ]; then
             echo "::warning::FORGEJO_TOKEN not set, skipping commit status update"

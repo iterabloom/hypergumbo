@@ -101,9 +101,14 @@ jobs:
     steps:
       - name: Check full-suite status
         run: |
-          # Use commit status API (works unauthenticated for public repos)
-          # This is more reliable than the workflow runs API on Forgejo
-          API_BASE="https://codeberg.org/api/v1/repos/${{ github.repository }}"
+          # Use commit status API (works unauthenticated for public repos).
+          # WI-kalub Step 2: anchor on the RUNNING server (github.server_url), not
+          # a hardcoded codeberg.org. The Full Test Suite / aggregate auto-status
+          # lives on whichever Forgejo the full-suite ran on (selfh under CI
+          # failover); reading a dead codeberg endpoint silently disables
+          # stop-the-line. Mirrors the failover-correct form already at
+          # the "Set commit status" step below.
+          API_BASE="${{ github.server_url }}/api/v1/repos/${{ github.repository }}"
 
           # Get the base branch HEAD SHA (the branch we're merging into)
           BASE_SHA="${{ github.event.pull_request.base.sha }}"
