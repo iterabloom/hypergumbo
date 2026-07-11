@@ -1169,31 +1169,58 @@ def _extract_config_heuristic(repo_root: Path) -> list[str]:
             pass  # pragma: no cover
         return result
 
-    # Scan config files in root and common subdirectories
+    # Manifest-name → structured extractor. Defined once and reused by both
+    # the flat root/subdir scan and the monorepo glob below, so a new manifest
+    # kind is wired in exactly one place (and the two scans can't drift).
+    _extractors: dict[str, Callable[[Path, str], list[str]]] = {
+        "package.json": _extract_package_json,
+        "go.mod": _extract_go_mod,
+        "pom.xml": _extract_pom_xml,
+        "Cargo.toml": _extract_cargo_toml,
+        "pyproject.toml": _extract_pyproject_toml,
+        "mix.exs": _extract_mix_exs,
+        "build.gradle": _extract_build_gradle,
+        "build.gradle.kts": _extract_build_gradle,
+        "Gemfile": _extract_gemfile,
+    }
+    seen_manifest_paths: set[Path] = set()
+
+    # Scan config files in root and common subdirectories.
     for config_name in CONFIG_FILES:
+        extractor = _extractors.get(config_name)
+        if extractor is None:
+            continue
         for subdir in CONFIG_SUBDIRS:
             config_path = repo_root / subdir / config_name if subdir else repo_root / config_name
             if not config_path.exists():
                 continue
-
             prefix = f"{subdir}/" if subdir else ""
+            lines.extend(extractor(config_path, prefix))
+            seen_manifest_paths.add(config_path.resolve())
 
-            if config_name == "package.json":
-                lines.extend(_extract_package_json(config_path, prefix))
-            elif config_name == "go.mod":
-                lines.extend(_extract_go_mod(config_path, prefix))
-            elif config_name == "pom.xml":
-                lines.extend(_extract_pom_xml(config_path, prefix))
-            elif config_name == "Cargo.toml":
-                lines.extend(_extract_cargo_toml(config_path, prefix))
-            elif config_name == "pyproject.toml":
-                lines.extend(_extract_pyproject_toml(config_path, prefix))
-            elif config_name == "mix.exs":
-                lines.extend(_extract_mix_exs(config_path, prefix))
-            elif config_name in ("build.gradle", "build.gradle.kts"):
-                lines.extend(_extract_build_gradle(config_path, prefix))
-            elif config_name == "Gemfile":
-                lines.extend(_extract_gemfile(config_path, prefix))
+    # Monorepo discovery: scan depth 1-2 for the same manifest kinds under
+    # arbitrary sub-package dirs (packages/core/pyproject.toml,
+    # services/api/package.json, …) that the flat CONFIG_SUBDIRS set misses.
+    # Mirrors _collect_config_content's glob so heuristic (and HYBRID-fallback)
+    # config_info reports every sub-package's identity on a monorepo (WI-lirub).
+    # Matches are sorted and grouped by manifest kind for deterministic output.
+    _manifest_exclude = _CONFIG_EXCLUDE_DIRS | frozenset(DEFAULT_EXCLUDES)
+    for manifest_name, extractor in _extractors.items():
+        matches: list[Path] = []
+        for pattern in (f"*/{manifest_name}", f"*/*/{manifest_name}"):
+            matches.extend(repo_root.glob(pattern))
+        for match in sorted(matches):
+            if not match.is_file():
+                continue  # pragma: no cover - glob rarely yields a dir named like a manifest
+            resolved = match.resolve()
+            if resolved in seen_manifest_paths:
+                continue
+            rel = match.relative_to(repo_root)
+            if any(p.startswith(".") or p in _manifest_exclude for p in rel.parts[:-1]):
+                continue
+            prefix = f"{rel.parent.as_posix()}/"
+            lines.extend(extractor(match, prefix))
+            seen_manifest_paths.add(resolved)
 
     # Detect license type(s) from LICENSE files at the repo root AND in monorepo
     # package dirs (depth 1-2). A dual-licensed monorepo — e.g. an AGPL root plus

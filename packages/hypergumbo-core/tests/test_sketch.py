@@ -5528,6 +5528,49 @@ gem "puma"
         assert "server-app" in result
         assert "client-app" in result
 
+    def test_monorepo_packages_dir_manifests(self, tmp_path: Path) -> None:
+        """WI-lirub: the heuristic scan surfaces per-package manifest identity
+        for monorepo layouts under packages/ (depth 1-2), not only the flat
+        CONFIG_SUBDIRS set (server/client/...). Mirrors _collect_config_content's
+        monorepo glob so heuristic (and HYBRID-fallback) config_info covers every
+        sub-package's name/version, deterministically, on any monorepo.
+        """
+        from hypergumbo_core.sketch import _extract_config_info, ConfigExtractionMode
+
+        (tmp_path / "pyproject.toml").write_text(
+            '[project]\nname = "root-umbrella"\nversion = "9.9.9"\n'
+        )
+        core = tmp_path / "packages" / "core"
+        core.mkdir(parents=True)
+        (core / "pyproject.toml").write_text(
+            '[project]\nname = "acme-core"\nversion = "1.2.3"\n'
+        )
+        web = tmp_path / "packages" / "web-app"
+        web.mkdir(parents=True)
+        (web / "package.json").write_text(
+            '{"name": "acme-web", "version": "4.5.6"}'
+        )
+        # A manifest under an excluded dir (node_modules) must NOT leak in.
+        vendored = tmp_path / "node_modules" / "dep"
+        vendored.mkdir(parents=True)
+        (vendored / "package.json").write_text(
+            '{"name": "vendored-dep", "version": "0.0.1"}'
+        )
+
+        result = _extract_config_info(
+            tmp_path, mode=ConfigExtractionMode.HEURISTIC, max_chars=4000
+        )
+
+        # Root manifest still present.
+        assert "root-umbrella" in result
+        # Sub-package identity now surfaced, each with its path prefix.
+        assert "packages/core/pyproject.toml" in result
+        assert "acme-core" in result
+        assert "packages/web-app/package.json" in result
+        assert "acme-web" in result
+        # Excluded-dir manifest ignored.
+        assert "vendored-dep" not in result
+
     def test_truncates_long_output(self, tmp_path: Path) -> None:
         """Truncates output when exceeding max_chars."""
         from hypergumbo_core.sketch import _extract_config_info, ConfigExtractionMode
