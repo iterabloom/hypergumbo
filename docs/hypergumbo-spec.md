@@ -992,6 +992,8 @@ Documents what the analysis *didn't* capture. Key arrays:
 
 **partial_results_reason** (string, optional): Present only when `analysis_incomplete: true`. Human-readable explanation (e.g., `"Timeout: Analysis exceeded 300 seconds"`, `"User interrupted: Ctrl-C received"`).
 
+**max_tier_applied** (integer, optional): The supply-chain tier ceiling that was in effect for this run, recorded when a `--max-tier N` filter was applied (e.g. `--max-tier 1` restricts analysis to first-party code). `null`/absent when no tier filter was applied and every tier was analyzed. See [§14](#14-supply-chain-classification) for the tier definitions and [§3](#3-user-experience-cli) for the `--max-tier` flag. (`analyzer_version` — the other scalar recorded in this block — is documented under [Version fields: three independent axes](#version-fields-three-independent-axes); it carries a `hypergumbo-` prefix and is a tool/package version, not a schema version.)
+
 ## 10) Sketch output
 
 Markdown output to stdout (not a file). This is the default output mode. Designed for pasting into LLM chat interfaces. See [ADR-0005](adr/0005-sketch-budget-allocation.md) for detailed budget allocation and section composition.
