@@ -167,19 +167,26 @@
     },
     "supply_chain_summary": {
       "type": "object",
-      "description": "Summary of supply chain classification",
-      "properties": {
-        "by_tier": {
-          "type": "object",
-          "additionalProperties": {
+      "description": "Supply-chain classification summary, keyed by tier name (first_party / internal_dep / external_dep) plus derived_skipped. Each tier carries {files, symbols}; external_dep also an `ecosystem` sub-bucket and derived_skipped a {files, paths} shape. WI-vafid: the producer emits these at the top level, not under a by_tier wrapper.",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "files": {
+            "type": "integer"
+          },
+          "symbols": {
+            "type": "integer"
+          },
+          "ecosystem": {
             "type": "object",
-            "properties": {
-              "files": {
-                "type": "integer"
-              },
-              "symbols": {
-                "type": "integer"
-              }
+            "additionalProperties": {
+              "type": "integer"
+            }
+          },
+          "paths": {
+            "type": "array",
+            "items": {
+              "type": "string"
             }
           }
         }

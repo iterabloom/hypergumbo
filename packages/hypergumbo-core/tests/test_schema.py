@@ -672,6 +672,28 @@ class TestTopLevelBlockTyping:
         validator = make_validator(schema, "Limits")
         validator.validate(lim.to_dict())
 
+    def test_supply_chain_summary_has_no_phantom_by_tier(self):
+        """WI-vafid: supply_chain_summary must not declare a `by_tier` wrapper the
+        producer never emits — `_compute_supply_chain_summary` keys tiers
+        (first_party / internal_dep / external_dep, plus derived_skipped) at the
+        top level, each carrying {files, symbols} (external_dep also an
+        `ecosystem` sub-bucket)."""
+        schema = load_schema()
+        scs = schema["properties"]["supply_chain_summary"]
+        assert "by_tier" not in scs.get("properties", {}), (
+            "phantom by_tier wrapper: producer emits tier names at the top level"
+        )
+        # A real producer-shaped summary validates against the declared schema.
+        real = {
+            "first_party": {"files": 3, "symbols": 10},
+            "internal_dep": {"files": 0, "symbols": 0},
+            "external_dep": {
+                "files": 1, "symbols": 2, "ecosystem": {"stdlib": 2},
+            },
+            "derived_skipped": {"files": 0, "paths": []},
+        }
+        jsonschema.Draft202012Validator(scs).validate(real)
+
     def test_metrics_properties_match_compute_metrics(self):
         """The metrics block's property set equals compute_metrics() output."""
         from hypergumbo_core.metrics import compute_metrics
