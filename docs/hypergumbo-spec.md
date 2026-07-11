@@ -981,7 +981,7 @@ When the headline `total_files` is computed without a profile (e.g., by callers 
 
 ### supply_chain_summary — classification overview
 
-Per-tier file and symbol counts (`first_party`, `internal_dep`, `external_dep`), plus a `derived_skipped` object listing files excluded from analysis. `derived_skipped.paths` is capped at 10 entries; full list available via `--verbose`. The `external_dep` tier carries an `ecosystem` sub-object counting tier-3 symbols by provenance class (`stdlib` / `third_party` / `unknown`), per the ADR-0041 §3 ecosystem axis.
+Per-tier file and symbol counts (`first_party`, `internal_dep`, `external_dep`), plus a `derived_skipped` object listing files excluded from analysis. Each tier's `files` counts distinct paths of that tier's **`kind=="file"` nodes only** (not distinct paths across all tier nodes — a symbol-level count would fold in function paths and the `<external>` sentinel path of `external_symbol` nodes, inflating the count with phantom "files"; WI-mutuv); `symbols` counts every node of the tier regardless of kind. `derived_skipped.paths` is capped at 10 entries; full list available via `--verbose`. The `external_dep` tier carries an `ecosystem` sub-object counting tier-3 symbols by provenance class (`stdlib` / `third_party` / `unknown`), per the ADR-0041 §3 ecosystem axis.
 
 ### limits — explicit gaps
 

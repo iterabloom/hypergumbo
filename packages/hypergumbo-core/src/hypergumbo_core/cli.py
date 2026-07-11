@@ -8456,7 +8456,14 @@ def _compute_supply_chain_summary(
 
     for symbol in symbols:
         tier = symbol.supply_chain_tier
-        tier_files[tier].add(symbol.path)
+        # WI-mutuv: the per-tier `files` count is the number of distinct
+        # kind=='file' node paths for that tier. Counting paths from *all* tier
+        # nodes double-counted function paths and, worse, folded in
+        # external_symbol nodes whose path is the ``<external>`` sentinel —
+        # phantom "files" that no file node backs. `symbols` still counts every
+        # node of the tier.
+        if symbol.kind == "file":
+            tier_files[tier].add(symbol.path)
         tier_symbols[tier] += 1
         if tier == 3:
             eco = (symbol.meta or {}).get("ecosystem") or "unknown"

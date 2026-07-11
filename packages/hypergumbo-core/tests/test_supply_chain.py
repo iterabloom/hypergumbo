@@ -2952,3 +2952,49 @@ class TestClassifySymbolsPropagatesNewFlags:
         assert sym.is_config_file is True
         assert sym.is_example_file is False
         assert sym.is_test_file is False
+
+
+class TestSupplyChainSummaryFileScoping:
+    """WI-mutuv: supply_chain_summary.<tier>.files counts only kind=='file' nodes."""
+
+    @staticmethod
+    def _sym(name, kind, path, tier):
+        from hypergumbo_core.ir import Symbol, Span
+        return Symbol(
+            id=f"python:{path}:1-1:{name}:{kind}",
+            name=name, kind=kind, language="python", path=path,
+            span=Span(1, 1, 0, 0), supply_chain_tier=tier,
+        )
+
+    def test_files_counts_only_file_kind_nodes(self) -> None:
+        """The per-tier `files` count must be the number of distinct kind=='file'
+        node paths for that tier — not distinct paths across *all* tier nodes,
+        which double-counted function paths and external_symbol '<external>'
+        sentinels (phantom inflation)."""
+        from hypergumbo_core.cli import _compute_supply_chain_summary
+
+        syms = [
+            self._sym("a.py", "file", "a.py", 1),
+            self._sym("f", "function", "a.py", 1),
+            self._sym("h", "function", "other.py", 1),   # non-file path (phantom)
+            self._sym("req", "external_symbol", "<external>", 3),  # sentinel (phantom)
+            self._sym("lib.py", "file", "site-packages/lib.py", 3),
+        ]
+        scs = _compute_supply_chain_summary(syms, [])
+
+        # first_party: one file node (a.py); the two function nodes do not count.
+        assert scs["first_party"]["files"] == 1
+        # external_dep: one file node (lib.py); the '<external>' node does not count.
+        assert scs["external_dep"]["files"] == 1
+        # symbols still count every node of the tier.
+        assert scs["first_party"]["symbols"] == 3
+        assert scs["external_dep"]["symbols"] == 2
+
+    def test_files_zero_when_tier_has_no_file_nodes(self) -> None:
+        """A tier reachable only via non-file nodes reports files == 0."""
+        from hypergumbo_core.cli import _compute_supply_chain_summary
+
+        syms = [self._sym("req", "external_symbol", "<external>", 3)]
+        scs = _compute_supply_chain_summary(syms, [])
+        assert scs["external_dep"]["files"] == 0
+        assert scs["external_dep"]["symbols"] == 1
