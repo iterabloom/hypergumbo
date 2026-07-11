@@ -640,6 +640,52 @@ META_KEYS: Final[tuple[MetaKeySpec, ...]] = (
                 "overlap edge inference pathways. Value space is "
                 "``entrypoints.ENTRYPOINT_EVIDENCE_TYPES``; aligns 1:1 with "
                 "the spec §8/§9 confidence tiers."),
+    # ------------------------------------------------------------------
+    # Edge.meta — cross-language / framework linker vocabularies (WI-mulub).
+    # WebSocket / message-queue / database-query / route linkers plus the
+    # analyzer receiver-inference and the ir.py edge-dedup pass stamp these;
+    # they were emitted but unregistered, so the writer-contract and
+    # registry-drift checks could not police them.
+    # ------------------------------------------------------------------
+    MetaKeySpec("client_framework", AXIS_EDGE_META,
+                "Client-side framework of a WebSocket edge, from the websocket "
+                "linker's pattern→framework map (e.g. 'socketio', 'ws', "
+                "'native_websocket', 'django_channels', 'fastapi', "
+                "'starlette')."),
+    MetaKeySpec("server_framework", AXIS_EDGE_META,
+                "Server-side framework of a WebSocket edge — same vocabulary as "
+                "``client_framework``, naming the endpoint that accepts the "
+                "connection."),
+    MetaKeySpec("topic", AXIS_EDGE_META,
+                "Message-queue / pub-sub topic (or channel) a message_publish / "
+                "message_subscribe edge targets — the literal topic string, or "
+                "the variable's identifier name when the topic is dynamic (see "
+                "``topic_type``)."),
+    MetaKeySpec("topic_type", AXIS_EDGE_META,
+                "Whether the message-queue ``topic`` was a string 'literal' or "
+                "a 'variable' reference resolved to its identifier name."),
+    MetaKeySpec("queue_type", AXIS_EDGE_META,
+                "Message-queue family/pattern that produced a publish/subscribe "
+                "edge, from the message_queue linker's queue classification."),
+    MetaKeySpec("query_type", AXIS_EDGE_META,
+                "SQL operation of a database-query edge: 'SELECT', 'INSERT', "
+                "'UPDATE', or 'DELETE' (database_query linker)."),
+    MetaKeySpec("table_name", AXIS_EDGE_META,
+                "Database table a database-query edge reads or writes, extracted "
+                "from the query by the database_query linker."),
+    MetaKeySpec("handler_name", AXIS_EDGE_META,
+                "Handler function name a route/command edge dispatches to "
+                "(route_handler and go_cobra linkers) — the callable servicing "
+                "the route or CLI subcommand."),
+    MetaKeySpec("receiver_type_hint", AXIS_EDGE_META,
+                "Inferred type of a call edge's receiver, stamped by the "
+                "analyzer receiver-type inference to aid cross-file method "
+                "resolution (e.g. an external constructor's return type)."),
+    MetaKeySpec("referring_paths", AXIS_EDGE_META,
+                "The list of source file paths that referred to a deduplicated "
+                "edge — the only list-of-paths meta value, minted at the "
+                "edge-dedup merge in ir.py so one canonical edge retains every "
+                "referring site."),
 )
 
 

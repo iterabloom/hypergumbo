@@ -107,6 +107,22 @@ def test_meta_keys_on_axis_edge_meta_includes_fold_residues():
     } <= edge_keys
 
 
+def test_linker_vocabulary_keys_registered_on_edge_meta():
+    """WI-mulub: the cross-language / framework vocabularies emitted on
+    ``Edge.meta`` by their linkers must be registered so the writer-contract
+    and registry-drift checks can police them. These were emitted but absent
+    from ``MetaKeySpec`` — websocket (client/server_framework), message_queue
+    (topic/topic_type/queue_type), database_query (query_type/table_name),
+    route_handler + go_cobra (handler_name), the analyzer receiver-inference
+    (receiver_type_hint), and the ir.py edge-dedup pass (referring_paths)."""
+    edge_keys = {spec.name for spec in meta_keys_on_axis(AXIS_EDGE_META)}
+    assert {
+        "client_framework", "server_framework", "topic", "topic_type",
+        "queue_type", "query_type", "table_name", "handler_name",
+        "receiver_type_hint", "referring_paths",
+    } <= edge_keys
+
+
 def test_meta_keys_on_axis_unknown_returns_empty():
     assert meta_keys_on_axis("not-an-axis") == ()
 
