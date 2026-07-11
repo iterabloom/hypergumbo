@@ -25,3 +25,18 @@
   clock: 2  # bacb
   nonce: bacb  # bacb
   message: "Re-confirms schema declares supply_chain_summary.by_tier wrapper producer never emits (tiers flat: first_party/internal_dep/external_dep/derived_skipped). WI-vafid exact. WI-lalip distinct. (dogfood; blinded sev 3)"  # bacb
+- op: update  # 5d06
+  at: '2026-07-11T01:35:23Z'  # 5d06
+  by: agent  # 5d06
+  actor: jgstern_agent  # 5d06
+  clock: 3  # 5d06
+  nonce: 5d06  # 5d06
+  set:  # 5d06
+    status: done  # 5d06
+- op: discuss  # e660
+  at: '2026-07-11T01:35:23Z'  # e660
+  by: agent  # e660
+  actor: jgstern_agent  # e660
+  clock: 4  # e660
+  nonce: e660  # e660
+  message: "Fixed (PR merged as 5852b05178). Root cause: docs/schema.json declared supply_chain_summary.by_tier — an object wrapper the producer never emits. _compute_supply_chain_summary (cli.py) keys tiers (first_party/internal_dep/external_dep) plus derived_skipped at the TOP LEVEL of supply_chain_summary, each carrying {files, symbols} (external_dep also an ecosystem sub-bucket; derived_skipped a {files, paths} shape). A schema-driven consumer reading by_tier.* got nothing. Fix: removed the phantom by_tier wrapper from the hand-authored schema block in scripts/generate-schema and declared the actual top-level shape via additionalProperties of {files, symbols, ecosystem, paths}; regenerated docs/schema.json. Behavioral evidence: (1) load_schema()['properties']['supply_chain_summary'] no longer has a 'by_tier' property; (2) a real producer-shaped summary validates against the declared sub-schema (test_supply_chain_summary_has_no_phantom_by_tier); (3) test_schema_compliance validates real run_behavior_map output against the regenerated schema. No SCHEMA_VERSION bump — permissive additive shape correction of a phantom (0 real readers). Part of the schema-emission-drift block; sibling supply_chain count fix WI-mutuv remains."  # e660

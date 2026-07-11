@@ -1,0 +1,24 @@
+- op: create  # fc2b
+  at: '2026-07-11T03:51:20Z'  # fc2b
+  by: agent  # fc2b
+  actor: jgstern_agent  # fc2b
+  clock: 1  # fc2b
+  nonce: fc2b  # fc2b
+  data:  # fc2b
+    kind: invariant  # fc2b
+    title: "smart-test reverse-slice full-suite-falls-back on cold cache ('Input file not found: None')"  # fc2b
+    status: violated  # fc2b
+    priority: 2  # fc2b
+    parent:  # fc2b
+    tags:  # fc2b
+    - dogfood  # fc2b
+    - dev_workflow  # fc2b
+    - smart_test  # fc2b
+    isbefore: []  # fc2b
+    duplicate_of: []  # fc2b
+    not_duplicate_of: []  # fc2b
+    pr_ref:  # fc2b
+    description: "# File post-merge: smart-test reverse-slice cold-cache full-suite fallback\n\n**Symptom:** On a working-tree state with no pre-existing discoverable cache,\n`BASE_BRANCH=selfh/dev pytest` (smart-test) falls back to `# Mode: full-suite`\n(pre-commit-rejected) with fallback reason \"slice command failed\":\n`hypergumbo slice --files <list> --output <out>` prints\n`No cached results found, running analysis...` then `Error: Input file not found: None`.\n\n**Root cause (cli.py):** `_get_or_run_analysis` (cli.py:~513-530) on a cache miss\ncalls `run_behavior_map(out_path=None)` (writes to the default cache dir) and then\nre-calls `_discover_input_file(repo_root)` (cli.py:434) to locate the freshly\nwritten map. `_discover_input_file` looks at `_get_results_cache_dir(repo_root) /\n\"hypergumbo.results.json\"` (sketch_embeddings.py:1435) then the repo-root fallback\n`<repo>/hypergumbo.results.json`. After the self-analysis, the first lookup returns\nNone (the write location `run_behavior_map(out_path=None)` chose and the path\n`_get_results_cache_dir` computes disagree), and the repo-root fallback file doesn't\nexist either -> `_discover_input_file` returns None -> `_get_or_run_analysis` returns\n`(None, ...)` (the cli.py:527 `# pragma: no cover - shouldn't happen` branch is\nactually reachable) -> caller reports \"Input file not found: None\".\n\n**Impact:** any PR whose source edits change the repo-state hash (i.e. every\nsubstantive PR) cold-misses and full-suite-falls-back unless a discoverable cache\nwas pre-warmed. Structural: the WRITE side (run_behavior_map out_path=None) and the\nREAD side (_discover_input_file / _get_results_cache_dir) must agree on the path.\n`# pragma: no cover` on cli.py:527 is now falsified (the branch fires in prod).\n\n**Workaround used for bundle 6:** placed a valid behavior map at the repo-root\nfallback `<repo>/hypergumbo.results.json` (gitignored) so `_discover_input_file`\nfinds it -> slice cache-hits -> targeted manifest.\n\n**Suggested tracker item (kind=invariant/bug, P2, tags dogfood,dev_workflow,smart_test):**\n\"smart-test reverse-slice full-suite-falls-back on cold cache: _get_or_run_analysis\nruns analysis to a location _discover_input_file cannot then find (write/read path\ndisagreement), emitting 'Input file not found: None'; cli.py:527 pragma:no-cover\nbranch is reachable in prod.\""  # fc2b
+    fields:  # fc2b
+      statement: "smart-test's reverse-slice must not fall back to a (pre-commit-rejected) full-suite manifest on a cold analysis cache: after run_behavior_map(out_path=None), _get_or_run_analysis must be able to re-discover the freshly written map via _discover_input_file."  # fc2b
+      root_cause: "The write side (run_behavior_map default cache location) and the read side (_discover_input_file -> _get_results_cache_dir cache-dir path, then the repo-root hypergumbo.results.json fallback) disagree, so after a cold-cache self-analysis _discover_input_file returns None (cli.py:527 '# pragma: no cover - shouldn't happen' branch actually fires in prod) and 'hypergumbo slice --files' reports 'Input file not found: None', forcing smart-test to a full-suite fallback that the pre-commit Test-manifest check rejects. Every PR whose source edits change the repo-state hash cold-misses unless a discoverable cache is pre-warmed."  # fc2b

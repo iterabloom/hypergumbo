@@ -38,3 +38,18 @@
   clock: 3  # 24a5
   nonce: 24a5  # 24a5
   message: "NOT addressed by the file-anchor:F1+F4 co-release (commit 037a3730de), despite the WI-rajod implementation spec's aspirational 'Closes WI-mutuv' line. This is a distinct bug in the supply_chain_summary metrics-AGGREGATION step (scs.<tier>.files counts paths from ALL tier nodes incl. external_symbol nodes with '<external>' sentinel paths -> phantom counts), which F1+F4 did not touch. F1 added file-kind anchors for config/doc files but did not change how scs.<tier>.files is computed. Remains todo_hard: the fix is still to filter the counted nodes to kind=='file' at the metrics-aggregation step."  # 24a5
+- op: update  # 18b6
+  at: '2026-07-11T02:07:13Z'  # 18b6
+  by: agent  # 18b6
+  actor: jgstern_agent  # 18b6
+  clock: 4  # 18b6
+  nonce: 18b6  # 18b6
+  set:  # 18b6
+    status: done  # 18b6
+- op: discuss  # 425a
+  at: '2026-07-11T02:07:14Z'  # 425a
+  by: agent  # 425a
+  actor: jgstern_agent  # 425a
+  clock: 5  # 425a
+  nonce: 425a  # 425a
+  message: "Fixed (PR merged as 14846954b5). Root cause: _compute_supply_chain_summary (cli.py) built tier_files[tier] by adding symbol.path for EVERY symbol of the tier, so the per-tier 'files' count was distinct paths across ALL tier nodes — folding in function paths and, worse, external_symbol nodes whose path is the '<external>' sentinel — producing phantom 'files' no file node backs (item's evidence: external_dep.files=10 vs 8 real). Fix: gate tier_files[tier].add(symbol.path) on symbol.kind=='file', so scs.<tier>.files counts distinct kind=='file' node paths only; 'symbols' still counts every node of the tier. Documented the derivation rule in spec.md §982. Behavioral evidence (test_files_counts_only_file_kind_nodes / _zero_when_tier_has_no_file_nodes): a tier with 1 file node + 2 function nodes reports files==1 (was 2); a tier reached only via an external_symbol '<external>' node reports files==0 (was 1). Existing consumers unaffected — derived_skipped.files counts via derived_paths, and max_tier's filtering test checks .symbols not .files. 100% coverage. (Parent INV-napap: this closes the supply_chain_summary attribution-gap facet, distinct from the file-anchor F1/F4 work.)"  # 425a

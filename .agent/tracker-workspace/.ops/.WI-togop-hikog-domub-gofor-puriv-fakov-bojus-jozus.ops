@@ -33,3 +33,18 @@
   clock: 3  # 344e
   nonce: 344e  # 344e
   message: "Re-surfaced in dogfooding tranche 10 (U10, F191.A3 split, severity 2). limits.not_captured is a static 6-element KNOWN_LIMITATIONS.copy() disclaimer posing as per-run data — exactly this item's hardcoded universal 6-string constant. Fix: make not_captured measured per-run, or relabel as a static disclaimer."  # 344e
+- op: update  # 4ee3
+  at: '2026-07-11T03:50:37Z'  # 4ee3
+  by: agent  # 4ee3
+  actor: jgstern_agent  # 4ee3
+  clock: 4  # 4ee3
+  nonce: 4ee3  # 4ee3
+  set:  # 4ee3
+    status: done  # 4ee3
+- op: discuss  # 7c27
+  at: '2026-07-11T03:50:37Z'  # 7c27
+  by: agent  # 7c27
+  actor: jgstern_agent  # 7c27
+  clock: 5  # 7c27
+  nonce: 7c27  # 7c27
+  message: "Fixed (PR merged as c31fea4459). Premise CONFIRMED: limits.not_captured is emitted as KNOWN_LIMITATIONS.copy() (limits.py:199) — a fixed 6-string constant, not a per-repo analysis result. Resolution = DOCUMENT (not POPULATE, not RENAME): the list is categorical-by-design (a universal disclaimer of what static analysis never captures anywhere — dynamic imports, eval, metaprogramming, …), exactly parallel to the accepted static reproducibility_context.not_captured. POPULATE was rejected (a genuine per-repo 'constructs present but skipped' signal needs cross-analyzer instrumentation with no existing producer); RENAME was rejected as out-of-scope — the not_captured name-collision with reproducibility_context.not_captured is owned by WI-latip/WI-tubim, and a rename would step on them and force a schema bump. Fix strengthens the semantics at three doc surfaces so a consumer never misreads it as a repo-specific finding: (1) KNOWN_LIMITATIONS module comment (limits.py) — states it is universal/identical-per-repo/emitted-verbatim + the WI-latip/WI-tubim collision note; (2) schema description (generate_schema_lib.py -> regenerated docs/schema.json) — 'Universal static disclaimer … NOT a per-repo measurement …'; (3) spec §989. BEHAVIORAL EVIDENCE: test_limits.py::test_not_captured_is_static_disclaimer_not_per_repo locks the static contract (two Limits with divergent per-repo state — added skipped language + failed file — serialize the SAME not_captured == KNOWN_LIMITATIONS); test_schema.py::test_not_captured_description_marks_it_universal_static asserts the published schema description now says 'universal'/'not a per-repo' (was RED on the old 'static list' wording). No SCHEMA_VERSION bump (description-only). 100% coverage."  # 7c27
