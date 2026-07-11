@@ -512,3 +512,68 @@ def test_run_behavior_map_tolerates_unreadable_file_end_to_end(
     assert len(py_failed) == 1
     assert py_failed[0]["path"].endswith("bad.py")
     assert "PermissionError" in py_failed[0]["reason"]
+
+
+def test_get_or_run_analysis_returns_generated_main_map_on_cold_cache(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """INV-somup: on a cold cache, ``_get_or_run_analysis`` runs the analysis and
+    must return the map ``run_behavior_map`` actually WROTE (from
+    ``generated_files``), not re-derive it via ``_discover_input_file``. That
+    helper recomputes the ``<state_hash>`` cache-dir segment from live git-dirty
+    content, so if the repo's dirty content changes during the multi-second run
+    (concurrent tracker ``.ops`` / ``.ci`` writes in the self-analysis +
+    smart-test scenario) the recomputed segment drifts from the write-time value,
+    the freshly written map becomes undiscoverable, and the caller reported
+    "Input file not found: None" (smart-test then fell back to a full-suite
+    manifest). The main map is selected BY NAME so a budget side-output
+    (``hypergumbo.results.<tier>.json``) or a handler-slice file is never returned
+    in its place."""
+    from hypergumbo_core import cli
+
+    # Empty XDG cache + a bare non-git dir => _discover_input_file misses both
+    # before AND after the run (cold cache; the fake writes the map to a dir
+    # _discover_input_file never checks, mimicking the state_hash drift).
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "xdg"))
+    repo = tmp_path / "repo"
+    repo.mkdir()
+
+    written = tmp_path / "written"
+    (written / "hypergumbo.results.slices").mkdir(parents=True)
+    main_map = written / "hypergumbo.results.json"
+    side_4k = written / "hypergumbo.results.4k.json"
+    slice_idx = written / "hypergumbo.results.slices" / "slice.handler.index.json"
+    for p in (main_map, side_4k, slice_idx):
+        p.write_text("{}")
+
+    def fake_run(*args: object, **kwargs: object) -> list[Path]:
+        # main map deliberately NOT last -> proves name-based (not positional) select
+        return [slice_idx, side_4k, main_map]
+
+    monkeypatch.setattr(cli, "run_behavior_map", fake_run)
+
+    path, was_cached, generated = cli._get_or_run_analysis(repo, show_progress=False)
+
+    assert path == main_map
+    assert was_cached is False
+    assert generated == [slice_idx, side_4k, main_map]
+
+
+def test_discover_input_file_returns_cache_dir_hit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``_discover_input_file`` returns the cache-dir map when one exists there
+    (the warm-cache-hit path). This branch used to be covered incidentally by
+    ``_get_or_run_analysis``'s now-removed post-run re-discovery (INV-somup); it
+    is exercised directly here so the warm cache-dir hit stays covered."""
+    from hypergumbo_core import cli
+    from hypergumbo_core.sketch_embeddings import _get_results_cache_dir
+
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "xdg"))
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    cache_dir = _get_results_cache_dir(repo)  # materializes the cache dir tree
+    cached = cache_dir / "hypergumbo.results.json"
+    cached.write_text("{}")
+
+    assert cli._discover_input_file(repo) == cached

@@ -522,9 +522,23 @@ def _get_or_run_analysis(
         progress=show_progress,
     )
 
-    # Now discover the newly created results
-    new_path = _discover_input_file(repo_root)
-    if new_path is None:  # pragma: no cover - shouldn't happen
+    # INV-somup: use the map path run_behavior_map ACTUALLY wrote (out_path is
+    # appended to generated_files at the write site) rather than re-deriving it
+    # via _discover_input_file. That helper recomputes the ``<state_hash>``
+    # cache-dir segment from live git-dirty content (compute_repo_fingerprint);
+    # if the repo's dirty content changes during the multi-second analysis
+    # (concurrent tracker .ops / .ci writes in the self-analysis + smart-test
+    # scenario), the recomputed segment drifts from the write-time value and the
+    # freshly written map becomes undiscoverable — the caller then reported
+    # "Input file not found: None" and smart-test fell back to a full-suite
+    # manifest. Select the main map BY NAME so a budget side-output
+    # (hypergumbo.results.<tier>.json) or a handler-slice file is never returned
+    # in its place.
+    new_path = next(
+        (p for p in generated_files if p.name == "hypergumbo.results.json"),
+        None,
+    )
+    if new_path is None:  # pragma: no cover - run_behavior_map always appends the main map
         return None, False, generated_files
 
     return new_path, False, generated_files
