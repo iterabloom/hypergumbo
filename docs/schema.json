@@ -1494,7 +1494,7 @@
         },
         "test_files_excluded": {
           "type": "boolean",
-          "description": "Present (true) when test files were excluded"
+          "description": "Whether test files were excluded from analysis \u2014 always emitted so the state is observable (true when excluded, false otherwise)"
         },
         "supply_chain": {
           "$ref": "#/$defs/SupplyChainLimits",

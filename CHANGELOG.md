@@ -168,6 +168,11 @@ Alongside: the CLI standardizes on `--format {text,json}` across all read views 
 
 - **Every content-bearing path gets a `kind="file"` anchor**, and class-body fields, top-level functions, and module-level variables are rooted at their enclosing class/file via `contains` edges (~8.8k new edges, restoring subgraph closure); `kind="file"` anchors are exempt from the orphan ratchet. Containment now also roots fields for Solidity/Nim/Scala/D container constructs.
 
+#### Limits (honesty signals)
+
+- **`limits.partial_results_reason` now follows its conditional-presence contract.** It is emitted only when the analysis is actually incomplete (a reason is set), not as an always-present empty string — so a consumer can use key presence as the incompleteness signal, per spec §994 (WI-tamop).
+- **`limits.test_files_excluded` is now always observable.** It is emitted as `false` when tests were not excluded rather than being omitted, so absence is no longer indistinguishable from "tests included" (WI-miron).
+
 #### Documentation
 
 - **Spec §9 I/O-boundary contract corrected** — the vocabulary aligns to the actually-emitted set (`unknown_dynamic` flagged reserved-but-unimplemented), and `io_boundary` / `io_primitive` are reframed as consumer-time derived, not producer-stamped.

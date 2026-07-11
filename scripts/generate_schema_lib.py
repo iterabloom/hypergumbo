@@ -823,6 +823,7 @@ def _limits_sample():
         max_tier_applied=2,
         max_files_per_analyzer=10,
         test_files_excluded=True,
+        partial_results_reason="one or more passes crashed; results are partial",
     )
 
 
@@ -858,7 +859,7 @@ def _limits_spec() -> ClassSpec:
                 "description": "Supply chain classification issues",
             },
             "test_files_excluded": {
-                "description": "Present (true) when test files were excluded",
+                "description": "Whether test files were excluded from analysis — always emitted so the state is observable (true when excluded, false otherwise)",
             },
         },
         overrides={
@@ -883,7 +884,12 @@ def _limits_spec() -> ClassSpec:
                 "description": "hypergumbo version string that produced this analysis",
             },
         },
-        conditional={"max_tier_applied", "max_files_per_analyzer", "test_files_excluded"},
+        conditional={
+            "max_tier_applied", "max_files_per_analyzer",
+            # test_files_excluded is now always emitted (WI-miron); partial_results_reason
+            # is emitted only when the analysis is incomplete (WI-tamop, spec §960/§994).
+            "partial_results_reason",
+        },
         sample_factory=_limits_sample,
     )
 

@@ -650,6 +650,7 @@ class TestTopLevelBlockTyping:
             max_tier_applied=2,
             max_files_per_analyzer=10,
             test_files_excluded=True,
+            partial_results_reason="one or more passes crashed; results are partial",
         )
         assert set(lim.to_dict()) == set(limits_def["properties"])
 

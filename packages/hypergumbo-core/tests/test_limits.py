@@ -109,12 +109,28 @@ class TestLimits:
 
         assert d["test_files_excluded"] is True
 
-    def test_test_files_excluded_not_in_output_when_false(self) -> None:
-        """test_files_excluded not included in output when False."""
+    def test_test_files_excluded_present_false_when_not_excluded(self) -> None:
+        """WI-miron: test_files_excluded is always observable — present and
+        False when tests were not excluded, so absence is never confused with
+        'tests included'."""
         limits = Limits()  # Default is False
         d = limits.to_dict()
 
-        assert "test_files_excluded" not in d
+        assert d["test_files_excluded"] is False
+
+    def test_partial_results_reason_omitted_when_empty(self) -> None:
+        """WI-tamop: partial_results_reason follows the spec §960/§994
+        conditional-presence contract — present only when the analysis is
+        incomplete (a reason is set), absent otherwise."""
+        d = Limits().to_dict()
+        assert "partial_results_reason" not in d
+
+    def test_partial_results_reason_present_when_set(self) -> None:
+        """A set reason is emitted verbatim."""
+        limits = Limits()
+        limits.partial_results_reason = "one or more passes crashed; results are partial"
+        d = limits.to_dict()
+        assert d["partial_results_reason"] == "one or more passes crashed; results are partial"
 
 
 class TestFailedFile:

@@ -201,15 +201,22 @@ class Limits:
             "skipped_languages": self.skipped_languages,
             "skipped_passes": self.skipped_passes,
             "failed_files": [f.to_dict() for f in self.failed_files],
-            "partial_results_reason": self.partial_results_reason,
             "analyzer_version": f"hypergumbo-{__version__}",
             "analysis_depth": self.analysis_depth,
+            # WI-miron: always observable — present as False when tests were not
+            # excluded, so absence is never confused with "tests included".
+            "test_files_excluded": self.test_files_excluded,
             "supply_chain": self.supply_chain.to_dict(),
         }
+        # WI-tamop: partial_results_reason follows the spec §960/§994
+        # conditional-presence contract — present only when the analysis is
+        # incomplete (a reason has been set), so a consumer can use key presence
+        # as the incompleteness signal rather than getting a false positive from
+        # an always-present empty string.
+        if self.partial_results_reason:
+            result["partial_results_reason"] = self.partial_results_reason
         if self.max_tier_applied is not None:
             result["max_tier_applied"] = self.max_tier_applied
         if self.max_files_per_analyzer is not None:
             result["max_files_per_analyzer"] = self.max_files_per_analyzer
-        if self.test_files_excluded:
-            result["test_files_excluded"] = True
         return result
