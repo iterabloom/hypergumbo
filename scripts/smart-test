@@ -235,40 +235,31 @@ write_fallback_diagnostic() {
 get_baseline() {
     local base_branch="${1:-origin/dev}"
 
-    # WI-tolil / INV-bifud: failover-aware remote selection. Under permanent CI
-    # failover the authoritative remote is selfh and origin/dev is stale —
-    # anchoring the merge-base on origin/dev would span the whole tree and force
-    # a slow, failure-prone whole-repo slice on every run. Mirror the
-    # auto-pr/pre-work failover detection. Guarded on selfh/dev resolving so a
-    # missing ref can never drop us to a HEAD~1 under-select.
-    local remote="origin"
+    # WI-tolil / INV-bifud: failover-aware baseline. Under permanent CI failover
+    # the authoritative remote is selfh and origin/dev is stale — anchoring the
+    # merge-base on origin/dev would span the whole tree and force a slow,
+    # failure-prone whole-repo slice on every run. Mirror the auto-pr/pre-work
+    # failover detection. Guarded on selfh/dev resolving so a missing ref can
+    # never drop us to a HEAD~1 under-select.
     if [[ -f "$REPO_ROOT/.git/CI_FAILOVER_ACTIVE" ]] && \
        git rev-parse --verify selfh/dev &>/dev/null; then
-        remote="selfh"
         base_branch="selfh/dev"
     fi
 
-    # Try the last-green-sha marker on the authoritative remote's badges branch.
-    # WI-tolil note: the CI write side (.github/workflows/full-suite.yml) only
-    # writes this marker inside an exact-100%-coverage branch that currently
-    # never fires, so on BOTH remotes the badges branch carries only
-    # coverage.json and this lookup is inert today — the merge-base below is the
-    # live path. Kept (failover-corrected) so the optimization activates for
-    # free once the write side is fixed.
-    if git fetch "$remote" "badges:refs/remotes/$remote/badges" 2>/dev/null; then
-        local last_green
-        last_green=$(git show "$remote/badges:last-green-sha.txt" 2>/dev/null || echo "")
-        if [[ -n "$last_green" ]] && git rev-parse --verify "$last_green^{commit}" &>/dev/null; then
-            log "Using last-green-sha marker: $last_green"
-            echo "$last_green"
-            return 0
-        fi
-    fi
-
-    # Fall back to merge-base with the authoritative dev.
+    # WI-kalub (Step 1a/1d): anchor the per-PR baseline on the MERGE-BASE with the
+    # authoritative dev — i.e. the branch's OWN changes. We deliberately do NOT
+    # consult the last-green-sha marker. It is routinely tens of commits stale
+    # (its full-suite write side only fires on an all-packages-exactly-100% run,
+    # and its codeberg push no-ops under failover), and anchoring on a stale
+    # marker inflates the changed set with already-merged files whose full test
+    # sets the affected slice does not select — the root cause of BOTH the
+    # false-red scoped-coverage failures AND the ~whole-suite-every-PR runtime.
+    # Branch-own files are guaranteed to be exercised by the affected slice;
+    # whole-codebase coverage is enforced separately (full-suite --cov-fail-under
+    # teeth + nightly), not by the per-PR scoped gate.
     local merge_base
     merge_base=$(git merge-base HEAD "$base_branch" 2>/dev/null || echo "HEAD~1")
-    log "No last-green-sha marker found, using merge-base: $merge_base"
+    log "Baseline (branch-own, merge-base with $base_branch): $merge_base"
     echo "$merge_base"
 }
 
@@ -405,7 +396,11 @@ run_pytest() {
             exit_code=1
         elif grep -qE "^FAILED " "$PYTEST_LOG"; then
             exit_code=1
-        elif grep -qE "[0-9]+ passed" "$PYTEST_LOG" && ! grep -q "failed" "$PYTEST_LOG"; then
+        elif grep -qE "[0-9]+ passed" "$PYTEST_LOG" && ! grep -qE "[0-9]+ failed" "$PYTEST_LOG"; then
+            # WI-kalub (Step 1b): word/count-bound the failed match. The bare
+            # `grep -q "failed"` matched the always-present "N xfailed" summary
+            # token, so this affirmative green re-confirmation never fired (it was
+            # masked only by the PIPESTATUS default of 0 above; a latent landmine).
             exit_code=0
         fi
         summarize_pytest_output "$PYTEST_LOG" "$exit_code"
@@ -945,24 +940,46 @@ if [[ $TEST_EXIT -eq 0 ]] && [[ -n "$CHANGED_SOURCE_FILES" ]]; then
     # have to filter here too.
     COVERABLE_CHANGED_FILES=$(echo "$CHANGED_SOURCE_FILES" | grep -v '/_generated/' || echo "")
     if [[ -z "$COVERABLE_CHANGED_FILES" ]]; then
-        echo "✅ No coverable changed source files (all are auto-generated)"
+        _cov_verdict="✅ No coverable changed source files (all are auto-generated)"
+        echo "$_cov_verdict"; echo "$_cov_verdict" >> "$PYTEST_LOG"
         exit 0
     fi
 
     # Build --include pattern for changed files
     INCLUDE_PATTERN=$(echo "$COVERABLE_CHANGED_FILES" | tr '\n' ',' | sed 's/,$//')
 
-    # Run coverage report for just the changed files
-    if ! coverage report --include="$INCLUDE_PATTERN" --fail-under=100 2>/dev/null; then
-        echo ""
-        echo "❌ Changed source files are not at 100% coverage:"
-        coverage report --include="$INCLUDE_PATTERN" --show-missing 2>/dev/null || true
-        echo ""
-        echo "Run the full suite to see overall coverage: pytest --full"
-        exit 1
+    # Run the scoped coverage report and DISTINGUISH three outcomes (WI-kalub
+    # Step 1c) instead of collapsing them all into a false-red:
+    #   rc 0                       -> every included changed file at 100%   (PASS)
+    #   "No data to report" (rc 1) -> the affected-test slice did not exercise
+    #       these files (e.g. subprocess-only coverage). With the branch-own
+    #       baseline (Step 1a/1d) the changed files are normally exercised, but a
+    #       subprocess-only file legitimately has no data. This is NOT a coverage
+    #       regression — do not false-red; whole-codebase 100% is enforced by the
+    #       full-suite teeth + nightly.                                     (WARN)
+    #   real <100% (rc 2)          -> a changed file is genuinely under-covered (FAIL)
+    # The `if coverage …; then … elif … else` form keeps this `set -e`-safe (the
+    # condition consumes coverage's non-zero exit). Verdicts are also appended to
+    # $PYTEST_LOG (Step 1e) so the captured .ci/pytest-output.log carries the
+    # scoped signal, not just smart-test's stdout.
+    _cov_out=$(mktemp)
+    if coverage report --include="$INCLUDE_PATTERN" --fail-under=100 > "$_cov_out" 2>&1; then
+        _cov_verdict="✅ All changed source files are at 100% coverage"
+        echo "$_cov_verdict"; echo "$_cov_verdict" >> "$PYTEST_LOG"
+    elif grep -q "No data to report" "$_cov_out"; then
+        _cov_verdict="⚠️  No coverage data for changed source files under the affected-test slice (not exercised, e.g. subprocess-only) — not gating; full-suite + nightly enforce whole-codebase 100%."
+        echo "$_cov_verdict"; echo "$_cov_verdict" >> "$PYTEST_LOG"
     else
-        echo "✅ All changed source files are at 100% coverage"
+        {
+            echo ""
+            echo "❌ Changed source files are not at 100% coverage:"
+            cat "$_cov_out"
+            echo "Run the full suite to see overall coverage: pytest --full"
+        } | tee -a "$PYTEST_LOG"
+        rm -f "$_cov_out"
+        exit 1
     fi
+    rm -f "$_cov_out"
 fi
 
 exit $TEST_EXIT

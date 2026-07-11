@@ -185,6 +185,10 @@ Alongside: the CLI standardizes on `--format {text,json}` across all read views 
 
 - **Spec §9 I/O-boundary contract corrected** — the vocabulary aligns to the actually-emitted set (`unknown_dynamic` flagged reserved-but-unimplemented), and `io_boundary` / `io_primitive` are reframed as consumer-time derived, not producer-stamped.
 
+#### CI & smart-test
+
+- **`smart-test` scopes per-PR selection and coverage to branch-own changes (WI-kalub).** The reverse-slice baseline was the `last-green-sha` marker, whose full-suite write side fires only on an all-packages-exactly-100% run and whose codeberg push no-ops under CI failover — so it routinely sat tens of commits stale, inflating the "changed files" set with already-merged work. That produced two compounding failures: (1) the scoped coverage gate false-red-ed on a genuinely-green branch (`coverage report --fail-under=100` exit 2) because the affected slice under-covers integration-covered drifted files, and it conflated coverage.py's "No data to report" (exit 1) with a real <100% failure; (2) the inflated changed set expanded the slice to ~the entire suite (459/436 test files, 16338/16342 tests, ~15.5 min), erasing the smart-test speedup. `get_baseline` now returns `merge-base(HEAD, <authoritative-dev>)` (failover-aware), the scoped gate distinguishes "No data" from a real <100%, the pass/fail re-derivation word-bounds its `failed` match (it had matched the always-present "N xfailed" summary token), and the scoped-coverage verdict is written into `.ci/pytest-output.log`. Whole-codebase coverage is enforced separately by `nightly.yml` (and full-suite `--cov-fail-under` teeth, companion change). See ADR-0011.
+
 ## [6.1.0] - 2026-06-18
 
 ### Added
