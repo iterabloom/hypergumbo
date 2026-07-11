@@ -1,0 +1,22 @@
+- op: create  # fb33
+  at: '2026-07-11T09:26:25Z'  # fb33
+  by: agent  # fb33
+  actor: jgstern_agent  # fb33
+  clock: 1  # fb33
+  nonce: fb33  # fb33
+  data:  # fb33
+    kind: work_item  # fb33
+    title: "smart-test exits 1 on fully-green runs (all tests pass + all changed source at 100%): false-red + scoped-coverage verdict absent from captured (non-tty) output"  # fb33
+    status: todo_hard  # fb33
+    priority: 3  # fb33
+    parent:  # fb33
+    tags:  # fb33
+    - dogfood  # fb33
+    - tooling  # fb33
+    - test_infra  # fb33
+    isbefore: []  # fb33
+    duplicate_of: []  # fb33
+    not_duplicate_of: []  # fb33
+    pr_ref:  # fb33
+    description: "smart-test (scripts/smart-test, the `pytest` shim per ADR-0010) exits 1 on a\nFULLY GREEN run, producing a false-red indistinguishable from a real failure\nwithout manual forensics.\n\nObserved (two runs this session, WI-lirub and WI-sapaj branches):\n- pytest result: 16333 passed, 5 skipped, 4 xfailed, 0 failed, 0 errors\n  (ground truth from .ci/pytest-output.log, ANSI-stripped).\n- All changed source files at 100% coverage (verified via\n  `coverage report --data-file=.coverage` on the 10 baseline-drifted files —\n  every one at 100%).\n- Yet the wrapper's overall exit status is 1.\n\nTwo compounding problems:\n1. FALSE EXIT CODE. Candidate cause: the exit-code re-derivation in run_pytest\n   (scripts/smart-test ~line 404-410) uses `grep -qE \"[0-9]+ passed\" && ! grep -q\n   \"failed\"` to reset exit_code to 0 — but `grep -q \"failed\"` MATCHES \"xfailed\",\n   so whenever the run has any xfailed tests (there are always 4), the reset to 0\n   is skipped and a non-zero exit_code survives. (Note: PIPESTATUS after\n   `pytest ... || true` should already be 0, so the true root cause may be\n   elsewhere — the scoped-coverage check at ~line 938-964, gated on \"tests\n   passed\", or the pytest-shim/background-capture path. Needs a focused repro.)\n2. MISSING GREEN SIGNAL IN CAPTURED OUTPUT. When smart-test is run with stdout\n   redirected to a file (non-tty, e.g. background job), the summarize section and\n   the scoped-coverage verdict (\"✅ All changed source files are at 100%\n   coverage\", ~line 964) are ABSENT from the captured log — it jumps from\n   \"Running tests...\" + one divider straight to the end. So even the\n   handoff-recommended signal (\"All changed source files at 100%\") isn't\n   visible, forcing manual `coverage report` forensics to confirm green.\n\nImpact: every local smart-test run this session reported exit=1 despite being\ngreen, costing ~15-30 min of investigation per occurrence to distinguish from a\nreal failure. CI is unaffected (uses its own baseline + full coverage). This is a\ndev-loop reliability issue, not a correctness issue in the tool under test.\n\nRepro: `BASE_BRANCH=selfh/dev pytest > /tmp/st.log 2>&1; echo $?` on a branch with\na green, 100%-covered change → prints 1; `.ci/pytest-output.log` shows 0 failed.\n\nscripts/smart-test is NOT a governance file, so this is fixable without human\napproval. Fix direction: (a) make the \"failed\" grep word-boundary-safe so\n\"xfailed\" doesn't match (e.g. `grep -qE \"[0-9]+ failed\"`); (b) ensure the scoped\nverdict prints to the captured log; (c) add a focused test reproducing a green +\n100% run and asserting exit 0.\n\nDiscovered while landing WI-lirub / WI-sapaj."  # fb33
+    fields: {}  # fb33

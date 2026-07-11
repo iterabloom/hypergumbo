@@ -1,0 +1,36 @@
+- op: create  # f55c
+  at: '2026-07-11T08:54:21Z'  # f55c
+  by: agent  # f55c
+  actor: jgstern_agent  # f55c
+  clock: 1  # f55c
+  nonce: f55c  # f55c
+  data:  # f55c
+    kind: work_item  # f55c
+    title: "Two cmd_symbols render tests are non-hermetic: fail under ambient FORCE_COLOR (Rich ANSI codes split the asserted substring)"  # f55c
+    status: todo_hard  # f55c
+    priority: 3  # f55c
+    parent:  # f55c
+    tags:  # f55c
+    - dogfood  # f55c
+    - test_hermeticity  # f55c
+    isbefore: []  # f55c
+    duplicate_of: []  # f55c
+    not_duplicate_of: []  # f55c
+    pr_ref:  # f55c
+    description: "Two CLI-rendering tests are non-hermetic: they pass or fail based on the ambient\ncolor environment (FORCE_COLOR), not on code correctness.\n\nAffected (packages/hypergumbo-core/tests/test_cli_symbols.py):\n- test_cmd_symbols_truncates_with_message — asserts\n  `'40 additional symbols omitted for brevity' in out`\n- test_cmd_symbols_wrap_flag_renders_full_long_path — asserts the full long path\n  is recoverable from `''.join(out.split())`\n\nRoot cause: cmd_symbols renders via Rich. When color is enabled (this dev\nenvironment exports FORCE_COLOR=3), Rich styles the truncation COUNT separately\nfrom the message text, inserting ANSI reset codes between '40' and ' additional'\n(captured: `\\x1b[1;2;36m40\\x1b[0m\\x1b[2m additional symbols omitted for brevity...`).\nThe test asserts on a contiguous substring, which the interleaved ANSI codes\nbreak. Likewise the wrapped-path test's whitespace-flatten leaves ANSI codes\nembedded, so the long path is not a contiguous substring of the flattened output.\n\nRepro:\n  python3 -m pytest tests/test_cli_symbols.py -q                    -> 2 failed (FORCE_COLOR=3 ambient)\n  env -u FORCE_COLOR -u COLORTERM TERM=dumb python3 -m pytest ...   -> 41 passed\n\nScope/impact: CI is UNAFFECTED — CI stdout is non-tty and does not set\nFORCE_COLOR, so Rich emits no color and both assertions pass; dev is green on CI.\nThis only bites local dev/agents in environments with FORCE_COLOR set, where it\nproduces spurious smart-test failures (exit=1) that can mask real failures and\nwaste investigation time (observed this session while landing WI-lirub).\n\nFix direction (test-hermeticity, NOT a product change — the CLI correctly honors\nFORCE_COLOR): strip ANSI from captured output before the substring assertions, or\nrender the two tests under a forced no-color Rich console. A structural option is\na conftest autouse fixture neutralizing color for CLI-output tests; scope which\nother tests are affected before choosing the layer (only these 2 confirmed in\ntest_cli_symbols.py; a broader CLI-render sweep has not been done).\n\nDiscovered while landing WI-lirub (config_info monorepo heuristic); unrelated to\nthat change."  # f55c
+    fields: {}  # f55c
+- op: update  # e99b
+  at: '2026-07-11T09:26:25Z'  # e99b
+  by: agent  # e99b
+  actor: jgstern_agent  # e99b
+  clock: 2  # e99b
+  nonce: e99b  # e99b
+  set:  # e99b
+    status: done  # e99b
+- op: discuss  # b6fd
+  at: '2026-07-11T09:26:25Z'  # b6fd
+  by: agent  # b6fd
+  actor: jgstern_agent  # b6fd
+  clock: 3  # b6fd
+  nonce: b6fd  # b6fd
+  message: "Fixed in PR (jgstern-agent/fix/cmd-symbols-test-hermeticity). Root cause: the two tests asserted on Rich-rendered output as contiguous text; under ambient FORCE_COLOR=3 Rich interleaves SGR ANSI reset codes within the text (\\x1b[1;2;36m40\\x1b[0m\\x1b[2m additional symbols...), breaking the substring/whitespace-flatten checks. Fix: local _strip_ansi helper (module _ANSI_SGR regex) applied to captured output before the two assertions. LOCALIZED on purpose — a global no-color conftest fixture was rejected because packages/hypergumbo-tracker/tests/test_preview.py legitimately asserts on ANSI output (SVG->PNG->ANSI Chafa pipeline, WI-kulul). BEHAVIORAL EVIDENCE: 'python3 -m pytest tests/test_cli_symbols.py -q' => 41 passed under ambient FORCE_COLOR=3 (was 2 failed) AND 41 passed under 'env -u FORCE_COLOR -u COLORTERM TERM=dumb'. Product behavior unchanged — CLI correctly honors FORCE_COLOR; only the tests were non-hermetic. CI was always green (non-tty)."  # b6fd
