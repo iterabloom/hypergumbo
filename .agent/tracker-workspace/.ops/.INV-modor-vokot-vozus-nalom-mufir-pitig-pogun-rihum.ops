@@ -62,3 +62,18 @@
     tags: [dogfood]  # e99d
   remove:  # e99d
     tags: [dogfooding]  # e99d
+- op: update  # 6d99
+  at: '2026-07-11T00:12:21Z'  # 6d99
+  by: agent  # 6d99
+  actor: jgstern_agent  # 6d99
+  clock: 6  # 6d99
+  nonce: 6d99  # 6d99
+  set:  # 6d99
+    status: satisfied  # 6d99
+- op: discuss  # e2a5
+  at: '2026-07-11T00:12:22Z'  # e2a5
+  by: agent  # e2a5
+  actor: jgstern_agent  # e2a5
+  clock: 7  # e2a5
+  nonce: e2a5  # e2a5
+  message: "Fixed (bundled PR, merged as ed2d17de35). Root cause (per the item's own discussion): the paragraph skip-prefix list in _extract_readme_description_heuristic omitted '>', so a markdown blockquote continuation line was concatenated raw into readme_description with its '> ' prefix; the visible cut then landed mid-blockquote. Fix: skip '>' blockquote lines in BOTH the paragraph-collection loop and the sentence-completion next-line check (a '> ' aside is a callout, not description prose). Reproduced first: _extract_readme_description_heuristic on a README whose paragraph is immediately followed by '> Requires Python 3.10+...' returned '...codebase. > Requires...'; after the fix it returns the clean, complete first sentence with no '> '. Both facets resolved because skipping the aside leaves a period-terminated sentence (no mid-blockquote cut). Tests: test_skips_blockquote_note_in_paragraph + test_sentence_completion_skips_blockquote. 100% coverage."  # e2a5

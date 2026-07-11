@@ -70,3 +70,18 @@
   clock: 6  # 9c09
   nonce: 9c09  # 9c09
   message: "Re-verified 2026-06-24 (Option-B spirit audit): sketch_precomputed.vocabulary is PRODUCED (cli.py:8226) but read by ZERO consumers -- no reader anywhere; compact.py strips sketch_precomputed entirely. The fundamental-correctness plan resolves vocabulary by DELETION, not lemmatization: correctness_strategy_06102026.md:194 (sketch-cache:F1) = \"vocabulary field deleted after no-consumer re-verification.\" So the lemmatization/stop-list improvement this item describes is likely MOOT -- the planned resolution is to REMOVE the field as part of the Wave-4 typed SketchPrecomputed contract. At fix time: confirm no-consumer, then delete rather than improve."  # 9c09
+- op: update  # 7cc0
+  at: '2026-07-10T23:12:17Z'  # 7cc0
+  by: agent  # 7cc0
+  actor: jgstern_agent  # 7cc0
+  clock: 7  # 7cc0
+  nonce: 7cc0  # 7cc0
+  set:  # 7cc0
+    status: satisfied  # 7cc0
+- op: discuss  # d256
+  at: '2026-07-10T23:12:17Z'  # d256
+  by: agent  # d256
+  actor: jgstern_agent  # d256
+  clock: 8  # d256
+  nonce: d256  # d256
+  message: "Resolved by DELETION per the 2026-06-24 discussion + Wave-4 typed-precompute direction (merged as c7f5ffdff5). Re-confirmed zero consumers (no reader of the sketch_precomputed 'vocabulary' key in any package src; compact strips sketch_precomputed). Removed: the field write (cli.py), the orphaned _extract_domain_vocabulary extractor + its _COMMON_TERMS/_KEYWORDS tables (sketch.py), the 11 direct tests, and the x-internal schema declaration (regenerated docs/schema.json). No SCHEMA_VERSION bump (internal cache artifact; consumers must not depend on shape). Behavioral evidence: test_sketch_precomputed_omits_vocabulary runs run_behavior_map(include_sketch_precomputed=True) and asserts 'vocabulary' not in sketch_precomputed while the retained fields remain; test_run_behavior_map_stores_sketch_precomputed (embeddings-gated) updated to assert absence. 100% coverage."  # d256

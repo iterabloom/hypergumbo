@@ -30,3 +30,18 @@
     tags: [dogfood_tranche_03]  # 758b
   remove:  # 758b
     tags: [dogfood_tranch_03]  # 758b
+- op: update  # 34da
+  at: '2026-07-10T23:12:16Z'  # 34da
+  by: agent  # 34da
+  actor: jgstern_agent  # 34da
+  clock: 3  # 34da
+  nonce: 34da  # 34da
+  set:  # 34da
+    status: done  # 34da
+- op: discuss  # c4a1
+  at: '2026-07-10T23:12:17Z'  # c4a1
+  by: agent  # c4a1
+  actor: jgstern_agent  # c4a1
+  clock: 4  # c4a1
+  nonce: c4a1  # c4a1
+  message: "Fixed (bundled PR, merged as c7f5ffdff5). Root cause: _format_additional_files/_format_source_files read file content with read_text(errors='replace'), which leaves valid NUL bytes (U+0000) intact, so a binary file's NULs flowed verbatim into rendered markdown. Reproduced byte-exact: _format_additional_files with a 12792-NUL file emitted 12792 NUL bytes into 'Additional Files Content' (matches the filed count). Fix: a _content_is_binary NUL sniff guards the single render chokepoint _format_file_content_block (every content section funnels through it), emitting a '[binary content omitted]' placeholder instead. Behavioral test test_content_mode_omits_binary_file_no_nul_bytes asserts no NUL at -t 4000; also a direct renderer/predicate unit test. End-to-end CLI repro of the item's exact scenario: 'hypergumbo <repo> -t 4000' (cold cache) on a repo with a 12792-NUL file now emits 0 NUL bytes (was 12792), renders a '[binary content omitted]' placeholder, and still shows real doc content. Holds at any token budget (the item's 'at any budget' acceptance). 100% coverage."  # c4a1
