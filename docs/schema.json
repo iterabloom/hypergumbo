@@ -1469,10 +1469,6 @@
           },
           "description": "Files truncated or skipped due to size"
         },
-        "analysis_depth": {
-          "type": "string",
-          "description": "Depth of analysis performed (e.g. syntax_only)"
-        },
         "partial_results_reason": {
           "type": "string",
           "description": "Why results are partial, when they are"

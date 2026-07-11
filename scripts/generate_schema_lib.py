@@ -849,9 +849,6 @@ def _limits_spec() -> ClassSpec:
             "truncated_files": {
                 "description": "Files truncated or skipped due to size",
             },
-            "analysis_depth": {
-                "description": "Depth of analysis performed (e.g. syntax_only)",
-            },
             "partial_results_reason": {
                 "description": "Why results are partial, when they are",
             },

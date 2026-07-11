@@ -176,6 +176,7 @@ Alongside: the CLI standardizes on `--format {text,json}` across all read views 
 - **`limits.test_files_excluded` is now always observable.** It is emitted as `false` when tests were not excluded rather than being omitted, so absence is no longer indistinguishable from "tests included" (WI-miron).
 - **`limits.skipped_languages` is now populated.** Its `add_skipped_language` setter had zero callers, so the field was always `[]` even when a detected language had no analyzer (grammar unavailable/unsupported) or its pass crashed. A finalize chokepoint now drains the "detected (profile) minus analyzed (`analysis_runs`)" difference — e.g. a repo with a `Makefile` but no makefile analyzer reports `skipped_languages: ["makefile"]` (WI-nihir).
 - **`limits.not_captured` is documented as a universal static disclaimer.** Its module comment, schema description, and spec entry now state it is a fixed list identical for every repo — the construct categories static analysis never captures *anywhere* — not a per-repo measurement of constructs this repo contains-but-skipped (WI-togop).
+- **`limits.analysis_depth` removed.** It was a hardcoded `"syntax_only"` constant — never reassigned, false for the semantic maps hypergumbo produces, and read by no consumer. Removed rather than populated: a single map-level depth scalar cannot honestly represent per-language depth, and "is the call graph semantic?" is answerable from the presence of `calls`/`dispatches_to` edges. No SCHEMA_VERSION bump (non-required field) (WI-muzus, WI-zusok).
 
 #### Documentation
 

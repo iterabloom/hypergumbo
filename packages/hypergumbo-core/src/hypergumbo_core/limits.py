@@ -8,8 +8,8 @@ Tracks known limitations and failures during analysis:
 - Files truncated or skipped due to size
 - Supply chain classification failures and ambiguous tier assignments
 - Fundamental limitations of static analysis (dynamic imports, eval, etc.)
-Plus scalar honesty signals: analysis_depth, partial_results_reason,
-max_tier_applied, max_files_per_analyzer, test_files_excluded.
+Plus scalar honesty signals: partial_results_reason, max_tier_applied,
+max_files_per_analyzer, test_files_excluded.
 
 This explicit acknowledgment of gaps helps agents understand what
 the analysis does NOT capture, preventing false confidence.
@@ -108,7 +108,6 @@ class Limits:
     skipped_languages: List[str] = field(default_factory=list)
     skipped_passes: List[Dict[str, str]] = field(default_factory=list)
     truncated_files: List[Dict[str, Any]] = field(default_factory=list)
-    analysis_depth: str = "syntax_only"
     partial_results_reason: str = ""
     max_tier_applied: int | None = None
     max_files_per_analyzer: int | None = None
@@ -191,7 +190,6 @@ class Limits:
             skipped_languages=list(set(self.skipped_languages + other.skipped_languages)),
             skipped_passes=self.skipped_passes + other.skipped_passes,
             truncated_files=self.truncated_files + other.truncated_files,
-            analysis_depth=self.analysis_depth,
             partial_results_reason=self.partial_results_reason or other.partial_results_reason,
             max_tier_applied=self.max_tier_applied or other.max_tier_applied,
             max_files_per_analyzer=self.max_files_per_analyzer or other.max_files_per_analyzer,
@@ -209,7 +207,6 @@ class Limits:
             "skipped_passes": self.skipped_passes,
             "failed_files": [f.to_dict() for f in self.failed_files],
             "analyzer_version": f"hypergumbo-{__version__}",
-            "analysis_depth": self.analysis_depth,
             # WI-miron: always observable — present as False when tests were not
             # excluded, so absence is never confused with "tests included".
             "test_files_excluded": self.test_files_excluded,

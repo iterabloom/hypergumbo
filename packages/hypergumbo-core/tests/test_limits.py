@@ -1,6 +1,8 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for limits tracking."""
 
+import pytest
+
 from hypergumbo_core.limits import KNOWN_LIMITATIONS, Limits, FailedFile
 
 
@@ -86,12 +88,16 @@ class TestLimits:
         assert len(d["failed_files"]) == 2
         assert "go" in d["skipped_languages"]
 
-    def test_analysis_depth(self) -> None:
-        """Tracks analysis depth."""
-        limits = Limits(analysis_depth="syntax_only")
-        d = limits.to_dict()
-
-        assert d["analysis_depth"] == "syntax_only"
+    def test_analysis_depth_field_removed(self) -> None:
+        """analysis_depth was a dead hardcoded "syntax_only" constant — never
+        reassigned in any production path, factually false for the semantic maps
+        hypergumbo produces, and read by zero consumers. Removed per the D9b
+        delete-zero-entropy-field precedent (WI-muzus / its duplicate WI-zusok).
+        The key must no longer be emitted and the dataclass must reject the
+        kwarg, so a stale writer can't silently reintroduce it."""
+        assert "analysis_depth" not in Limits().to_dict()
+        with pytest.raises(TypeError):
+            Limits(analysis_depth="syntax_only")  # type: ignore[call-arg]
 
     def test_not_captured_is_static_disclaimer_not_per_repo(self) -> None:
         """WI-togop: not_captured is a fixed universal disclaimer — identical
