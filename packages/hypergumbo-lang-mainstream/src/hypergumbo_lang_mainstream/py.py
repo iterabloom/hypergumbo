@@ -3436,7 +3436,15 @@ def _extract_edges(
             # stays phantom.
             if local_name not in local_bindings:
                 target = global_symbols.get((real_module, sub.attr))
-                if target is not None and target.kind == "variable":
+                # INV-nuzas category A: a non-call read of an in-tree
+                # module-level FUNCTION (``import pkg.helpers as h; h.compute``
+                # used as a value) resolves to the real function, extending
+                # WI-huhum's kind=variable retarget. Same exact-match + shadow
+                # guards apply; ``references`` stays taint-safe for functions
+                # too (references not in TAINT_CALL_EDGE_TYPES; a call
+                # ``h.compute()`` is skipped above and handled by the calls
+                # pipeline, so this only fires on function-object reads).
+                if target is not None and target.kind in ("variable", "function"):
                     edges.append(Edge.create(
                         src=caller_symbol.id,
                         dst=target.id,

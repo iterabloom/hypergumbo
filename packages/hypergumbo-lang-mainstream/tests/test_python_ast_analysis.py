@@ -7669,6 +7669,57 @@ def test_run_module_attr_ref_const_references_in_tree_variable(
     )
 
 
+def test_run_module_attr_ref_function_references_in_tree_function(
+    tmp_path: Path,
+) -> None:
+    """INV-nuzas category A: a NON-call attribute read on an imported
+    in-tree module FUNCTION (``import authpkg.helpers as h; h.compute`` used as a
+    value, not called) now emits a ``references`` edge to the in-tree
+    ``kind=function`` instead of a phantom workspace-prefixed ``module_attr_ref``
+    external. Extends WI-huhum's ``kind=variable`` retarget to ``kind=function``,
+    reusing its EXACT-module-match (INV-fahub), ``references`` edge (taint-safe),
+    and scope-shadow guards. Fails RED on current dev (the read minted
+    ``python:authpkg.helpers:0-0:authpkg.helpers.compute:external_symbol``)."""
+    _build_nuzas_monorepo(tmp_path)
+    auth = tmp_path / "packages" / "auth" / "src" / "authpkg"
+    (auth / "helpers.py").write_text("def compute():\n    return 1\n")
+    (tmp_path / "packages" / "api" / "src" / "apipkg" / "u.py").write_text(
+        "import authpkg.helpers as h\n"
+        "def use():\n"
+        "    return h.compute\n"
+    )
+    out_path = tmp_path / "out.json"
+    run_behavior_map(
+        repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False
+    )
+    data = json.loads(out_path.read_text())
+    compute_fn = next(
+        n["id"] for n in data["nodes"]
+        if n["kind"] == "function" and n.get("name") == "compute"
+        and "helpers.py" in n.get("path", "")
+    )
+    use_fn = next(
+        n["id"] for n in data["nodes"]
+        if n.get("name") == "use" and n["kind"] == "function"
+    )
+    refs = [
+        e for e in data["edges"]
+        if e["type"] == "references" and e["src"] == use_fn
+        and e["dst"] == compute_fn
+    ]
+    assert len(refs) == 1 and refs[0]["is_resolved"] is True, (
+        "the module-attr read of an in-tree function must emit a resolved "
+        f"references edge to the in-tree function; got references="
+        f"{[e for e in data['edges'] if e['type']=='references' and e['src']==use_fn]}"
+    )
+    # No workspace-prefixed phantom module_attr_ref external for compute.
+    ext_ids = [n["id"] for n in data["nodes"] if n["kind"] == "external_symbol"]
+    assert not any("authpkg.helpers.compute" in i for i in ext_ids), (
+        f"phantom compute module_attr_ref external minted: "
+        f"{[i for i in ext_ids if 'compute' in i]}"
+    )
+
+
 def test_run_module_attr_ref_external_module_stays_phantom(
     tmp_path: Path,
 ) -> None:
@@ -7779,13 +7830,17 @@ def test_run_module_attr_ref_alias_shadowed_by_param_no_references(
     )
 
 
-def test_run_module_attr_ref_function_target_stays_phantom(
+def test_run_module_attr_ref_function_target_resolves(
     tmp_path: Path,
 ) -> None:
-    """WI-huhum kind guard: the retarget is variable-only. A module-attr read
-    whose target is a ``kind=function`` (``import authpkg.helpers as h;
-    h.hash_pw``) must NOT emit a references edge — it stays the unchanged
-    phantom. Pins the variable-only scope against a widening drift."""
+    """INV-nuzas category A (2026-07-08 human ruling): the module-attr
+    retarget now covers ``kind=function`` in addition to WI-huhum's ``kind=
+    variable``. A module-attr read whose target is an in-tree ``kind=function``
+    (``import authpkg.helpers as h; h.hash_pw`` used as a value) resolves to the
+    real function via a ``references`` edge. This deliberately supersedes
+    WI-huhum's earlier variable-only pin (that scope was residual-driven — the 52
+    it closed were variables — not a function-specific safety exclusion; the
+    ruling authorizes the widening)."""
     _build_nuzas_monorepo(tmp_path)  # authpkg.helpers defines hash_pw()
     (tmp_path / "packages" / "api" / "src" / "apipkg" / "u.py").write_text(
         "import authpkg.helpers as h\n"
@@ -7797,6 +7852,11 @@ def test_run_module_attr_ref_function_target_stays_phantom(
         repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False
     )
     data = json.loads(out_path.read_text())
+    hash_pw_fn = next(
+        n["id"] for n in data["nodes"]
+        if n["kind"] == "function" and n.get("name") == "hash_pw"
+        and "helpers.py" in n.get("path", "")
+    )
     use_fn = next(
         n["id"] for n in data["nodes"]
         if n.get("name") == "use" and n["kind"] == "function"
@@ -7804,10 +7864,11 @@ def test_run_module_attr_ref_function_target_stays_phantom(
     refs = [
         e for e in data["edges"]
         if e["type"] == "references" and e["src"] == use_fn
+        and e["dst"] == hash_pw_fn
     ]
-    assert refs == [], (
-        f"a function-target module-attr read must not emit a references edge "
-        f"(variable-only guard), got {refs}"
+    assert len(refs) == 1 and refs[0]["is_resolved"] is True, (
+        "an in-tree function-target module-attr read must resolve to a "
+        f"references edge (INV-nuzas category A), got {refs}"
     )
 
 
