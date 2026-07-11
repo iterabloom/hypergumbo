@@ -925,6 +925,34 @@ def _section_header(title: str, exclude_tests: bool = False) -> str:
     return f"## {title}"
 
 
+def _detect_license_type(content_upper: str) -> Optional[str]:
+    """Classify a LICENSE file's (upper-cased, head-truncated) text into a short
+    license tag, or None if unrecognized.
+
+    Order matters: AGPL is checked before GPL, and LGPL (GPL + LESSER) before
+    plain GPL, so the most specific family wins.
+    """
+    if "AGPL" in content_upper or "AFFERO" in content_upper:
+        return "AGPL"
+    if "GPL" in content_upper and "LESSER" in content_upper:
+        return "LGPL"
+    if "GPL" in content_upper:
+        return "GPL"
+    if "MIT LICENSE" in content_upper or "PERMISSION IS HEREBY GRANTED" in content_upper:
+        return "MIT"
+    if "APACHE LICENSE" in content_upper:
+        return "Apache"
+    if "BSD" in content_upper:
+        return "BSD"
+    if "MOZILLA PUBLIC LICENSE" in content_upper:
+        return "MPL"
+    if "ISC LICENSE" in content_upper:
+        return "ISC"
+    if "UNLICENSE" in content_upper:
+        return "Unlicense"
+    return None
+
+
 def _extract_config_heuristic(repo_root: Path) -> list[str]:
     """Extract config metadata using heuristic pattern matching.
 
@@ -1167,41 +1195,48 @@ def _extract_config_heuristic(repo_root: Path) -> list[str]:
             elif config_name == "Gemfile":
                 lines.extend(_extract_gemfile(config_path, prefix))
 
-    # Detect license type from LICENSE files
+    # Detect license type(s) from LICENSE files at the repo root AND in monorepo
+    # package dirs (depth 1-2). A dual-licensed monorepo — e.g. an AGPL root plus
+    # an MPL sub-package — must report every distinct license rather than
+    # collapsing to the first file found (WI-gojuz).
+    _license_exclude = _CONFIG_EXCLUDE_DIRS | frozenset(DEFAULT_EXCLUDES)
+    license_paths: list[Path] = []
+    seen_license_paths: set[Path] = set()
     for license_name in LICENSE_FILES:
-        license_path = repo_root / license_name
-        if license_path.exists():
-            try:
-                # Read just enough to detect license type
-                content = license_path.read_text(encoding="utf-8", errors="replace")[:500]
-                license_type = None
+        root_license = repo_root / license_name
+        if root_license.exists():
+            license_paths.append(root_license)
+            seen_license_paths.add(root_license.resolve())
+        for pattern in (f"*/{license_name}", f"*/*/{license_name}"):
+            for match in repo_root.glob(pattern):
+                if not match.is_file():
+                    continue  # pragma: no cover
+                resolved = match.resolve()
+                if resolved in seen_license_paths:
+                    continue  # pragma: no cover
+                if any(
+                    p.startswith(".") or p in _license_exclude
+                    for p in match.relative_to(repo_root).parts[:-1]
+                ):
+                    continue
+                license_paths.append(match)
+                seen_license_paths.add(resolved)
 
-                # Check for common license types (order matters: AGPL before GPL)
-                content_upper = content.upper()
-                if "AGPL" in content_upper or "AFFERO" in content_upper:
-                    license_type = "AGPL"
-                elif "GPL" in content_upper and "LESSER" in content_upper:
-                    license_type = "LGPL"
-                elif "GPL" in content_upper:
-                    license_type = "GPL"
-                elif "MIT LICENSE" in content_upper or "PERMISSION IS HEREBY GRANTED" in content_upper:
-                    license_type = "MIT"
-                elif "APACHE LICENSE" in content_upper:
-                    license_type = "Apache"
-                elif "BSD" in content_upper:
-                    license_type = "BSD"
-                elif "MOZILLA PUBLIC LICENSE" in content_upper:
-                    license_type = "MPL"
-                elif "ISC LICENSE" in content_upper:
-                    license_type = "ISC"
-                elif "UNLICENSE" in content_upper:
-                    license_type = "Unlicense"
+    detected_licenses: list[str] = []
+    for license_path in license_paths:
+        try:
+            # Read just enough to detect license type
+            content_upper = license_path.read_text(
+                encoding="utf-8", errors="replace"
+            )[:500].upper()
+        except OSError:  # pragma: no cover
+            continue  # pragma: no cover
+        license_type = _detect_license_type(content_upper)
+        if license_type and license_type not in detected_licenses:
+            detected_licenses.append(license_type)
 
-                if license_type:
-                    lines.append(f"LICENSE: {license_type}")
-                break  # Only process first found license file
-            except OSError:  # pragma: no cover
-                pass  # pragma: no cover
+    if detected_licenses:
+        lines.append(f"LICENSE: {', '.join(sorted(detected_licenses))}")
 
     return lines
 
@@ -3512,6 +3547,11 @@ def _extract_readme_description_heuristic(
         # Skip lines that are just links (often badge URLs)
         if re.match(r"^\[.*\]\(https?://.*\)$", stripped):
             continue
+        # Skip markdown blockquote notes/callouts (INV-modor): a '> ' aside is
+        # not description prose; embedding it leaks the raw '> ' prefix and can
+        # leave the visible text cut mid-blockquote.
+        if stripped.startswith(">"):
+            continue
         if stripped:
             paragraph_lines.append(stripped)
 
@@ -3538,8 +3578,9 @@ def _extract_readme_description_heuristic(
             next_line = lines[next_line_idx].strip()
             # Strip HTML tags from the line
             next_line = re.sub(r"<[^>]+>", "", next_line)
-            # Only continue if it's a regular text line (not a header/image/etc)
-            if next_line and not next_line.startswith(("#", "!", "[", "<", "-")):
+            # Only continue if it's a regular text line (not a header/image/
+            # blockquote/etc)
+            if next_line and not next_line.startswith(("#", "!", "[", "<", "-", ">")):
                 # Append words until we hit a period or end of line
                 words = next_line.split()
                 for word in words:

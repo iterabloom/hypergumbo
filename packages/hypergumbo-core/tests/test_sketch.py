@@ -1070,6 +1070,34 @@ class TestExtractReadmeDescriptionHeuristic:
         result = _extract_readme_description_heuristic(readme)
         assert result == "Real description."
 
+    def test_skips_blockquote_note_in_paragraph(self, tmp_path: Path) -> None:
+        """INV-modor: a '> ' blockquote note (a callout/aside) that continues a
+        paragraph is skipped, not embedded raw with its markdown prefix. Before
+        the fix the '> ' prefix leaked into readme_description and the cut landed
+        mid-blockquote; skipping the aside leaves a clean, complete sentence."""
+        from hypergumbo_core.sketch import _extract_readme_description_heuristic
+        readme = tmp_path / "README.md"
+        readme.write_text(
+            "# Proj\n\nProj is a tool to understand a codebase.\n"
+            "> Requires Python 3.10+. Run setup after installing.\n"
+        )
+        result = _extract_readme_description_heuristic(readme)
+        assert "> " not in (result or "")
+        assert result == "Proj is a tool to understand a codebase."
+
+    def test_sentence_completion_skips_blockquote(self, tmp_path: Path) -> None:
+        """INV-modor: sentence-completion (which pulls the next line to finish an
+        incomplete sentence) must not pull in a blockquote note either."""
+        from hypergumbo_core.sketch import _extract_readme_description_heuristic
+        readme = tmp_path / "README.md"
+        readme.write_text(
+            "# Proj\n\nProj is a local-first tool\n\n"
+            "> Requires Python 3.10+.\n"
+        )
+        result = _extract_readme_description_heuristic(readme)
+        assert "> " not in (result or "")
+        assert result == "Proj is a local-first tool"
+
     def test_extracts_title_subtitle(self, tmp_path: Path) -> None:
         """Falls back to title subtitle if no paragraph."""
         from hypergumbo_core.sketch import _extract_readme_description_heuristic
@@ -5274,6 +5302,47 @@ license = "GPL-3.0"
         result = _extract_config_info(tmp_path, mode=ConfigExtractionMode.HEURISTIC)
 
         assert "LICENSE: AGPL" in result
+
+    def test_license_aggregates_all_distinct_including_packages(
+        self, tmp_path: Path
+    ) -> None:
+        """WI-gojuz: license aggregation reports every distinct license present,
+        including per-package LICENSE files in a monorepo — not just the first
+        root file (which collapsed a dual-licensed AGPL+MPL repo to AGPL alone).
+        """
+        from hypergumbo_core.sketch import _extract_config_info, ConfigExtractionMode
+
+        (tmp_path / "LICENSE").write_text(
+            "GNU AFFERO GENERAL PUBLIC LICENSE\nVersion 3, 19 November 2007\n"
+        )
+        pkg = tmp_path / "packages" / "tracker"
+        pkg.mkdir(parents=True)
+        (pkg / "LICENSE").write_text("Mozilla Public License Version 2.0\n")
+        # A dependency's license under a hidden/excluded dir must be ignored.
+        vendored = tmp_path / ".vendor" / "dep"
+        vendored.mkdir(parents=True)
+        (vendored / "LICENSE").write_text(
+            "MIT License\nPermission is hereby granted\n"
+        )
+
+        result = _extract_config_info(tmp_path, mode=ConfigExtractionMode.HEURISTIC)
+
+        assert "AGPL" in result
+        assert "MPL" in result
+        assert "MIT" not in result  # excluded-dir license not aggregated
+
+    def test_unrecognized_license_yields_no_tag(self, tmp_path: Path) -> None:
+        """An unrecognized LICENSE produces no LICENSE line — the classifier
+        returns None rather than mislabeling it."""
+        from hypergumbo_core.sketch import _extract_config_info, ConfigExtractionMode
+
+        (tmp_path / "LICENSE").write_text(
+            "Custom proprietary terms. All rights reserved.\n"
+        )
+
+        result = _extract_config_info(tmp_path, mode=ConfigExtractionMode.HEURISTIC)
+
+        assert "LICENSE:" not in result
 
     def test_extract_lgpl_license(self, tmp_path: Path) -> None:
         """Detects LGPL license."""
