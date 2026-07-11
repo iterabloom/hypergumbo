@@ -44,3 +44,18 @@
     tags: [dogfood_tranche_03]  # 12fa
   remove:  # 12fa
     tags: [dogfood_tranch_03]  # 12fa
+- op: update  # 063e
+  at: '2026-07-11T04:43:27Z'  # 063e
+  by: agent  # 063e
+  actor: jgstern_agent  # 063e
+  clock: 5  # 063e
+  nonce: 063e  # 063e
+  set:  # 063e
+    status: done  # 063e
+- op: discuss  # 581a
+  at: '2026-07-11T04:43:27Z'  # 581a
+  by: agent  # 581a
+  actor: jgstern_agent  # 581a
+  clock: 6  # 581a
+  nonce: 581a  # 581a
+  message: "Registered the linker-emitted edge.meta vocabularies in MetaKeySpec (PR merged as a1ac8d1ab7). Root cause: 10 keys stamped on Edge.meta by their linkers were absent from the axis_meta_keys.META_KEYS registry, so neither the writer-contract validator nor the registry-drift check could police them. LIVE-CODE CENSUS (the item's original '5 keys' and its 2026-06-07 discussion's '11 keys' were both stale): grepping current emitters confirmed exactly 10 currently-emitted-unregistered edge.meta keys — websocket linker client_framework/server_framework (websocket.py:937/940, _PATTERN_TYPE_TO_FRAMEWORK), message_queue linker topic/topic_type/queue_type (message_queue.py:444-554), database_query linker query_type/table_name (database_query.py:378/455), route_handler+go_cobra handler_name (route_handler.py:629, go_cobra.py:248), analyzer receiver-inference receiver_type_hint (analyze/base.py:669), and the ir.py edge-dedup pass referring_paths (ir.py:1504/1515). Fix: added all 10 as MetaKeySpec(name, AXIS_EDGE_META, description) with accurate value-semantics descriptions. STALE-SUSPECT RECONCILIATION: the substrate self-map also showed cross_language/dest_access_mode/construct on edge.meta, but current code does NOT emit these (only dead comments remain: dest_access_mode has test_axis_meta_keys.py::test_dest_access_mode_removed asserting its removal per ADR-0038; construct was renamed to ref_construct by WI-lajov; cross_language was dropped by INV-zigup) — they are stale analysis-cache artifacts, NOT regressions, so they were correctly NOT registered. BEHAVIORAL EVIDENCE: test_axis_meta_keys.py::test_linker_vocabulary_keys_registered_on_edge_meta asserts the 10 keys are a subset of the registered edge_meta keys (was RED). No schema change (docs/schema.json does not enumerate META_KEYS; regen produced no diff). No collision with Edge typed fields (test_no_meta_key_collides_with_typed_field still green). 100% coverage. (Scope = edge.meta linker keys; a fresh no-cache substrate census to confirm completeness beyond the emitter-grep is a cheap follow-up.)"  # 581a
