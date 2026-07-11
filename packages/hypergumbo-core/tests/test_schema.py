@@ -86,6 +86,16 @@ class TestSchemaValidation:
         # Should not raise
         jsonschema.validate(behavior_map, schema)
 
+    def test_not_captured_description_marks_it_universal_static(self):
+        """WI-togop: limits.not_captured is a universal static disclaimer, NOT a
+        per-repo measurement of constructs THIS repo contains-but-skipped. Its
+        schema description must say so, so a consumer never misreads it as a
+        repo-specific finding."""
+        schema = load_schema()
+        desc = schema["$defs"]["Limits"]["properties"]["not_captured"]["description"]
+        low = desc.lower()
+        assert "universal" in low or "not a per-repo" in low, desc
+
     def test_view_enum_accepts_all_projected_views(self):
         """WI-tagaj: the published schema pins ``view`` to an enum of all
         projected view names, so compact/tiered outputs validate (it was a

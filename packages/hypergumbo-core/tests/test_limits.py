@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for limits tracking."""
 
-from hypergumbo_core.limits import Limits, FailedFile
+from hypergumbo_core.limits import KNOWN_LIMITATIONS, Limits, FailedFile
 
 
 class TestLimits:
@@ -92,6 +92,19 @@ class TestLimits:
         d = limits.to_dict()
 
         assert d["analysis_depth"] == "syntax_only"
+
+    def test_not_captured_is_static_disclaimer_not_per_repo(self) -> None:
+        """WI-togop: not_captured is a fixed universal disclaimer — identical
+        regardless of this repo's per-analysis state (skipped languages, failed
+        files). Two divergent Limits must serialize the SAME not_captured list,
+        locking the static-by-design contract the docs describe."""
+        loaded = Limits()
+        loaded.add_skipped_language("go")
+        loaded.add_failed_file("x.py", "boom", "python")
+        bare = Limits()
+
+        assert loaded.to_dict()["not_captured"] == bare.to_dict()["not_captured"]
+        assert loaded.to_dict()["not_captured"] == KNOWN_LIMITATIONS
 
     def test_max_files_per_analyzer(self) -> None:
         """Tracks max_files_per_analyzer in output."""

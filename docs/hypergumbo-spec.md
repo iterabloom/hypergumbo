@@ -986,7 +986,7 @@ Per-tier file and symbol counts (`first_party`, `internal_dep`, `external_dep`),
 ### limits — explicit gaps
 
 Documents what the analysis *didn't* capture. Key arrays:
-- `not_captured[]`: Categories of constructs not analyzed (e.g., dynamic imports, eval, complex decorators)
+- `not_captured[]`: A **universal static disclaimer** — the fixed set of construct categories static analysis never captures anywhere (e.g., dynamic imports, eval, complex decorators). Identical for every repo; NOT a per-repo measurement of constructs this repo contains-but-skipped. (Distinct from `reproducibility_context.not_captured`, which lists reproducibility factors.)
 - `truncated_files[]`: Files skipped due to size, with path, size, and reason
 - `skipped_languages[]`: Languages with unavailable grammars
 - `failed_files[]`: Files that caused parse errors, with path, reason, and analyzer ID

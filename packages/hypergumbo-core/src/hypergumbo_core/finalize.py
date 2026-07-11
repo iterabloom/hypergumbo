@@ -270,15 +270,60 @@ def _finalize_repo_fingerprint(ctx: FinalizeContext) -> None:
             run["repo_fingerprint"] = repo_fp
 
 
-def _finalize_skipped_into_limits(ctx: FinalizeContext) -> None:
-    """Sub-step 6 — drain skipped-file counts into limits.partial_results_reason.
+def _detected_unanalyzed_languages(ctx: FinalizeContext) -> list[str]:
+    """Code languages the profile detected but no analyzer pass covered (WI-nihir).
 
-    Don't clobber a reason already set by ``record_crashed_pass`` (WI-madal L3): a crashed
-    pass is the more severe signal; the file-skip note only fills an otherwise-empty summary.
+    Detected = ``behavior_map["profile"]["languages"]`` keys minus the config-only
+    languages (JSON/YAML/… have no code analyzer by design, so they are never
+    "skipped"). Analyzed = the union of languages covered by the analyzer whose
+    ``pass`` id appears in ``analysis_runs`` — a skipped or grammar-failed analyzer
+    never appends a run (``all_analyzers.collect_analyzer_result`` routes it to
+    ``limits.skipped_passes`` instead), so its language falls out of this set and
+    surfaces as skipped. The pass_id→languages map mirrors the analyzer's own
+    ``set(languages) if languages else {name}`` convention (all_analyzers.py:202);
+    non-analyzer passes (linkers, synthesis) simply don't appear in the map and
+    contribute nothing. The difference is returned sorted for deterministic output.
+    """
+    from .analyze.registry import ensure_discovered, get_all_analyzers
+    from .catalog import CONFIG_LANGUAGES
+
+    profile = ctx.behavior_map.get("profile", {})
+    detected = set(profile.get("languages", {})) - CONFIG_LANGUAGES
+    if not detected:
+        return []
+    ensure_discovered()
+    pass_to_langs = {
+        a.name: (set(a.languages) if a.languages else {a.name})
+        for a in get_all_analyzers()
+    }
+    analyzed: set[str] = set()
+    for run in ctx.analysis_runs:
+        analyzed.update(pass_to_langs.get(run.get("pass", ""), ()))
+    return sorted(detected - analyzed)
+
+
+def _finalize_skipped_into_limits(ctx: FinalizeContext) -> None:
+    """Sub-step 6 — drain skipped-file counts + unanalyzed languages into limits.
+
+    Two honesty signals are reconciled at this single pre-serialization chokepoint:
+
+    * ``partial_results_reason`` — set from any run's ``files_skipped`` count, but
+      never clobbering a reason already set by ``record_crashed_pass`` (WI-madal L3):
+      a crashed pass is the more severe signal; the file-skip note only fills an
+      otherwise-empty summary.
+    * ``skipped_languages`` (WI-nihir) — the ``add_skipped_language`` setter had zero
+      callers, so a language the profile DETECTED but for which no analyzer pass ran
+      (grammar unavailable / unsupported / crashed) was silently absent. This is the
+      one stage holding both the detected set (profile) and the analyzed set
+      (analysis_runs), so the "detected minus analyzed" diff is drained here once —
+      covering every cause without any per-analyzer edit. See
+      ``_detected_unanalyzed_languages``.
     """
     for run in ctx.analysis_runs:
         if run.get("files_skipped", 0) > 0 and not ctx.limits.partial_results_reason:
             ctx.limits.partial_results_reason = "some files skipped during analysis"
+    for language in _detected_unanalyzed_languages(ctx):
+        ctx.limits.add_skipped_language(language)
     ctx.behavior_map["limits"] = ctx.limits.to_dict()
 
 

@@ -21,7 +21,14 @@ from typing import Any, Dict, List
 
 from . import __version__
 
-# Known limitations of static analysis that apply universally
+# Known limitations of static analysis that apply UNIVERSALLY — a fixed
+# disclaimer, identical for every repo, emitted verbatim as ``limits.not_captured``.
+# It is NOT a per-repo measurement of which constructs THIS repo contains but the
+# analyzer skipped; deriving that would need cross-analyzer instrumentation that
+# has no producer today (WI-togop). Consumers must read it as "static analysis
+# never captures these categories anywhere", not as a repo-specific finding.
+# (Distinct from ``reproducibility_context.not_captured``, which names repro
+# factors — the shared field name is tracked separately by WI-latip/WI-tubim.)
 KNOWN_LIMITATIONS = [
     "dynamic imports (importlib, __import__, require with variables)",
     "eval() and exec() calls",

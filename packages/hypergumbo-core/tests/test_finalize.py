@@ -143,6 +143,52 @@ def test_skipped_into_limits_does_not_clobber_crash_reason(tmp_path: Path) -> No
     assert ctx.limits.partial_results_reason == "pass X crashed"
 
 
+# --- Sub-step 6: skipped_languages population (WI-nihir) --------------------------------
+def test_skipped_languages_populated_for_detected_unanalyzed_language(
+    tmp_path: Path,
+) -> None:
+    # go is DETECTED by the profile but no analyzer pass ran for it (e.g. its
+    # grammar failed to load) -> it must surface in limits.skipped_languages;
+    # python is analyzed (a run exists) so it must not. Before WI-nihir the
+    # add_skipped_language setter had zero callers and this was always [].
+    ctx = _ctx(
+        tmp_path,
+        behavior_map={
+            "profile": {"languages": {"go": {"files": 2}, "python": {"files": 5}}}
+        },
+        analysis_runs=[_ar("python")],
+    )
+    _finalize_skipped_into_limits(ctx)
+    assert ctx.behavior_map["limits"]["skipped_languages"] == ["go"]
+
+
+def test_skipped_languages_empty_when_all_detected_languages_analyzed(
+    tmp_path: Path,
+) -> None:
+    ctx = _ctx(
+        tmp_path,
+        behavior_map={"profile": {"languages": {"python": {"files": 5}}}},
+        analysis_runs=[_ar("python")],
+    )
+    _finalize_skipped_into_limits(ctx)
+    assert ctx.behavior_map["limits"]["skipped_languages"] == []
+
+
+def test_skipped_languages_excludes_config_only_languages(tmp_path: Path) -> None:
+    # json is config-only (no code analyzer by design) so it is never "skipped";
+    # haskell is a code language the profile detected but no run covered -> it IS
+    # skipped. Proves the config-language filter without masking a real skip.
+    ctx = _ctx(
+        tmp_path,
+        behavior_map={
+            "profile": {"languages": {"json": {"files": 3}, "haskell": {"files": 2}}}
+        },
+        analysis_runs=[],
+    )
+    _finalize_skipped_into_limits(ctx)
+    assert ctx.behavior_map["limits"]["skipped_languages"] == ["haskell"]
+
+
 # --- Sub-step 8: commit_dicts -----------------------------------------------------------
 class _FakeRecord:
     def __init__(self, d: dict) -> None:

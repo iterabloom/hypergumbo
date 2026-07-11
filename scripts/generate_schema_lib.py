@@ -877,7 +877,12 @@ def _limits_spec() -> ClassSpec:
             "not_captured": {
                 "type": "array",
                 "items": {"type": "string"},
-                "description": "Known analysis limitations (static list)",
+                "description": (
+                    "Universal static disclaimer: the fixed categories of "
+                    "constructs static analysis never captures anywhere (dynamic "
+                    "imports, eval, etc.). Identical across all analyses — NOT a "
+                    "per-repo measurement of constructs this repo contains-but-skipped."
+                ),
             },
             "analyzer_version": {
                 "type": "string",

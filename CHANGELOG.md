@@ -174,6 +174,8 @@ Alongside: the CLI standardizes on `--format {text,json}` across all read views 
 
 - **`limits.partial_results_reason` now follows its conditional-presence contract.** It is emitted only when the analysis is actually incomplete (a reason is set), not as an always-present empty string — so a consumer can use key presence as the incompleteness signal, per spec §994 (WI-tamop).
 - **`limits.test_files_excluded` is now always observable.** It is emitted as `false` when tests were not excluded rather than being omitted, so absence is no longer indistinguishable from "tests included" (WI-miron).
+- **`limits.skipped_languages` is now populated.** Its `add_skipped_language` setter had zero callers, so the field was always `[]` even when a detected language had no analyzer (grammar unavailable/unsupported) or its pass crashed. A finalize chokepoint now drains the "detected (profile) minus analyzed (`analysis_runs`)" difference — e.g. a repo with a `Makefile` but no makefile analyzer reports `skipped_languages: ["makefile"]` (WI-nihir).
+- **`limits.not_captured` is documented as a universal static disclaimer.** Its module comment, schema description, and spec entry now state it is a fixed list identical for every repo — the construct categories static analysis never captures *anywhere* — not a per-repo measurement of constructs this repo contains-but-skipped (WI-togop).
 
 #### Documentation
 
