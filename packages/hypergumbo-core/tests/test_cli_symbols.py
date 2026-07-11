@@ -1,10 +1,25 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for the hypergumbo symbols command."""
 import json
+import re
 from pathlib import Path
 
 from hypergumbo_core.schema import SCHEMA_VERSION
 from hypergumbo_core.cli import cmd_symbols, main, _symbols_column_config
+
+# SGR (color/style) ANSI escape sequences. Rich emits these when color is
+# enabled — which happens even for a non-tty capsys capture when the ambient
+# environment sets FORCE_COLOR (as this dev environment does). The codes
+# interleave with rendered text (e.g. a styled count `40` is separated from
+# ` additional…` by a reset code), which breaks any assertion that treats the
+# rendered output as contiguous text. Stripping them makes text assertions
+# hermetic w.r.t. the ambient color environment (WI-sapaj).
+_ANSI_SGR = re.compile(r"\x1b\[[0-9;]*m")
+
+
+def _strip_ansi(text: str) -> str:
+    """Remove SGR ANSI style codes so text assertions don't depend on color."""
+    return _ANSI_SGR.sub("", text)
 
 
 class FakeArgs:
@@ -456,6 +471,7 @@ def test_cmd_symbols_truncates_with_message(tmp_path: Path, capsys) -> None:
     assert result == 0
 
     out, _ = capsys.readouterr()
+    out = _strip_ansi(out)
     # Should show truncation message
     assert "40 additional symbols omitted for brevity" in out
     assert "--all" in out
@@ -2004,6 +2020,7 @@ def test_cmd_symbols_wrap_flag_renders_full_long_path(
     assert result == 0
 
     out, _ = capsys.readouterr()
+    out = _strip_ansi(out)
     assert "…" not in out, "Wrap mode should not produce ellipsis truncation"
     # Fold-wrap can split a segment at the column boundary
     # (`seg_11/se` ends one line, `g_12/...` begins the next), so the path
