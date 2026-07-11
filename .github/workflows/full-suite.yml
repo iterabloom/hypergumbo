@@ -234,6 +234,14 @@ jobs:
             --cov=packages/hypergumbo-core/src $COV_CONFIG --cov-report=term | tee coverage-output.txt
           COV=$(grep "^TOTAL" coverage-output.txt | awk '{print $NF}' | tr -d '%')
           echo "coverage=${COV:-0}" >> "$GITHUB_OUTPUT"
+          # WI-kalub Step 3 (full-suite coverage teeth): fail this package's job
+          # unless its whole-codebase coverage is exactly 100% — the same bar the
+          # last-green-marker write already applies. Historically full-suite only
+          # scraped COV for the badge and never gated on it, so a cross-cutting
+          # regression on an *unchanged* file rested entirely on nightly. Now it
+          # reds full-suite too. Reuses the already-extracted COV (badge value);
+          # pre-verified no current debt (WI-kalub option-b: all 6 pkgs at 100%).
+          [ "${COV:-0}" = "100" ] || { echo "❌ coverage ${COV:-0}% < 100% (WI-kalub full-suite teeth)"; exit 1; }
 
   # WI-jigup: full-suite-only self-tree validation ratchet. Runs the full
   # analysis on hypergumbo's OWN tree (the substrate the per-PR fixture corpus
@@ -350,6 +358,14 @@ jobs:
             --cov=packages/hypergumbo-lang-mainstream/src $COV_CONFIG --cov-report=term | tee coverage-output.txt
           COV=$(grep "^TOTAL" coverage-output.txt | awk '{print $NF}' | tr -d '%')
           echo "coverage=${COV:-0}" >> "$GITHUB_OUTPUT"
+          # WI-kalub Step 3 (full-suite coverage teeth): fail this package's job
+          # unless its whole-codebase coverage is exactly 100% — the same bar the
+          # last-green-marker write already applies. Historically full-suite only
+          # scraped COV for the badge and never gated on it, so a cross-cutting
+          # regression on an *unchanged* file rested entirely on nightly. Now it
+          # reds full-suite too. Reuses the already-extracted COV (badge value);
+          # pre-verified no current debt (WI-kalub option-b: all 6 pkgs at 100%).
+          [ "${COV:-0}" = "100" ] || { echo "❌ coverage ${COV:-0}% < 100% (WI-kalub full-suite teeth)"; exit 1; }
 
   # Retry jobs for heavy packages that may hit Codeberg's 5-min deadline.
   # These run when the primary job fails OR is cancelled (Codeberg's infra
@@ -425,6 +441,14 @@ jobs:
             --cov=packages/hypergumbo-core/src $COV_CONFIG --cov-report=term | tee coverage-output.txt
           COV=$(grep "^TOTAL" coverage-output.txt | awk '{print $NF}' | tr -d '%')
           echo "coverage=${COV:-0}" >> "$GITHUB_OUTPUT"
+          # WI-kalub Step 3 (full-suite coverage teeth): fail this package's job
+          # unless its whole-codebase coverage is exactly 100% — the same bar the
+          # last-green-marker write already applies. Historically full-suite only
+          # scraped COV for the badge and never gated on it, so a cross-cutting
+          # regression on an *unchanged* file rested entirely on nightly. Now it
+          # reds full-suite too. Reuses the already-extracted COV (badge value);
+          # pre-verified no current debt (WI-kalub option-b: all 6 pkgs at 100%).
+          [ "${COV:-0}" = "100" ] || { echo "❌ coverage ${COV:-0}% < 100% (WI-kalub full-suite teeth)"; exit 1; }
 
   test-mainstream-retry:
     needs: [changes, prep, test-mainstream]
@@ -494,6 +518,14 @@ jobs:
             --cov=packages/hypergumbo-lang-mainstream/src $COV_CONFIG --cov-report=term | tee coverage-output.txt
           COV=$(grep "^TOTAL" coverage-output.txt | awk '{print $NF}' | tr -d '%')
           echo "coverage=${COV:-0}" >> "$GITHUB_OUTPUT"
+          # WI-kalub Step 3 (full-suite coverage teeth): fail this package's job
+          # unless its whole-codebase coverage is exactly 100% — the same bar the
+          # last-green-marker write already applies. Historically full-suite only
+          # scraped COV for the badge and never gated on it, so a cross-cutting
+          # regression on an *unchanged* file rested entirely on nightly. Now it
+          # reds full-suite too. Reuses the already-extracted COV (badge value);
+          # pre-verified no current debt (WI-kalub option-b: all 6 pkgs at 100%).
+          [ "${COV:-0}" = "100" ] || { echo "❌ coverage ${COV:-0}% < 100% (WI-kalub full-suite teeth)"; exit 1; }
 
   test-common:
     needs: [changes, prep]
@@ -560,6 +592,14 @@ jobs:
             --cov=packages/hypergumbo-lang-common/src $COV_CONFIG --cov-report=term | tee coverage-output.txt
           COV=$(grep "^TOTAL" coverage-output.txt | awk '{print $NF}' | tr -d '%')
           echo "coverage=${COV:-0}" >> "$GITHUB_OUTPUT"
+          # WI-kalub Step 3 (full-suite coverage teeth): fail this package's job
+          # unless its whole-codebase coverage is exactly 100% — the same bar the
+          # last-green-marker write already applies. Historically full-suite only
+          # scraped COV for the badge and never gated on it, so a cross-cutting
+          # regression on an *unchanged* file rested entirely on nightly. Now it
+          # reds full-suite too. Reuses the already-extracted COV (badge value);
+          # pre-verified no current debt (WI-kalub option-b: all 6 pkgs at 100%).
+          [ "${COV:-0}" = "100" ] || { echo "❌ coverage ${COV:-0}% < 100% (WI-kalub full-suite teeth)"; exit 1; }
 
   test-extended:
     needs: [changes, prep]
@@ -626,6 +666,14 @@ jobs:
             --cov=packages/hypergumbo-lang-extended1/src $COV_CONFIG --cov-report=term | tee coverage-output.txt
           COV=$(grep "^TOTAL" coverage-output.txt | awk '{print $NF}' | tr -d '%')
           echo "coverage=${COV:-0}" >> "$GITHUB_OUTPUT"
+          # WI-kalub Step 3 (full-suite coverage teeth): fail this package's job
+          # unless its whole-codebase coverage is exactly 100% — the same bar the
+          # last-green-marker write already applies. Historically full-suite only
+          # scraped COV for the badge and never gated on it, so a cross-cutting
+          # regression on an *unchanged* file rested entirely on nightly. Now it
+          # reds full-suite too. Reuses the already-extracted COV (badge value);
+          # pre-verified no current debt (WI-kalub option-b: all 6 pkgs at 100%).
+          [ "${COV:-0}" = "100" ] || { echo "❌ coverage ${COV:-0}% < 100% (WI-kalub full-suite teeth)"; exit 1; }
 
   # Small package (~25 tests, 5 files); no retry variant — matches the
   # test-common / test-extended pattern rather than the test-core /
@@ -694,6 +742,14 @@ jobs:
             --cov=packages/hypergumbo-lang-rust-analyzer/src $COV_CONFIG --cov-report=term | tee coverage-output.txt
           COV=$(grep "^TOTAL" coverage-output.txt | awk '{print $NF}' | tr -d '%')
           echo "coverage=${COV:-0}" >> "$GITHUB_OUTPUT"
+          # WI-kalub Step 3 (full-suite coverage teeth): fail this package's job
+          # unless its whole-codebase coverage is exactly 100% — the same bar the
+          # last-green-marker write already applies. Historically full-suite only
+          # scraped COV for the badge and never gated on it, so a cross-cutting
+          # regression on an *unchanged* file rested entirely on nightly. Now it
+          # reds full-suite too. Reuses the already-extracted COV (badge value);
+          # pre-verified no current debt (WI-kalub option-b: all 6 pkgs at 100%).
+          [ "${COV:-0}" = "100" ] || { echo "❌ coverage ${COV:-0}% < 100% (WI-kalub full-suite teeth)"; exit 1; }
 
   test-tracker:
     needs: [changes, prep]
@@ -749,6 +805,14 @@ jobs:
             --cov=packages/hypergumbo-tracker/src $COV_CONFIG --cov-report=term | tee coverage-output.txt
           COV=$(grep "^TOTAL" coverage-output.txt | awk '{print $NF}' | tr -d '%')
           echo "coverage=${COV:-0}" >> "$GITHUB_OUTPUT"
+          # WI-kalub Step 3 (full-suite coverage teeth): fail this package's job
+          # unless its whole-codebase coverage is exactly 100% — the same bar the
+          # last-green-marker write already applies. Historically full-suite only
+          # scraped COV for the badge and never gated on it, so a cross-cutting
+          # regression on an *unchanged* file rested entirely on nightly. Now it
+          # reds full-suite too. Reuses the already-extracted COV (badge value);
+          # pre-verified no current debt (WI-kalub option-b: all 6 pkgs at 100%).
+          [ "${COV:-0}" = "100" ] || { echo "❌ coverage ${COV:-0}% < 100% (WI-kalub full-suite teeth)"; exit 1; }
 
   test-tracker-retry:
     needs: [changes, prep, test-tracker]
@@ -808,6 +872,14 @@ jobs:
             --cov=packages/hypergumbo-tracker/src $COV_CONFIG --cov-report=term | tee coverage-output.txt
           COV=$(grep "^TOTAL" coverage-output.txt | awk '{print $NF}' | tr -d '%')
           echo "coverage=${COV:-0}" >> "$GITHUB_OUTPUT"
+          # WI-kalub Step 3 (full-suite coverage teeth): fail this package's job
+          # unless its whole-codebase coverage is exactly 100% — the same bar the
+          # last-green-marker write already applies. Historically full-suite only
+          # scraped COV for the badge and never gated on it, so a cross-cutting
+          # regression on an *unchanged* file rested entirely on nightly. Now it
+          # reds full-suite too. Reuses the already-extracted COV (badge value);
+          # pre-verified no current debt (WI-kalub option-b: all 6 pkgs at 100%).
+          [ "${COV:-0}" = "100" ] || { echo "❌ coverage ${COV:-0}% < 100% (WI-kalub full-suite teeth)"; exit 1; }
 
   # Runs the top-level tests/ directory, which exercises agent infrastructure
   # (.agent/hooks/_shared/**, scripts/**) that is not owned by any package and

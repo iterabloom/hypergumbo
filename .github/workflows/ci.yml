@@ -908,13 +908,21 @@ jobs:
 
               # Use no-embeddings rcfile so exclude_also patterns are respected
               COV_RCFILE="--rcfile=.coveragerc.no-embeddings"
-              if ! coverage report $COV_RCFILE --include="$INCLUDE_PATTERN" --fail-under=100; then
+              # WI-kalub Step 1c parity: distinguish coverage.py's "No data to
+              # report" (exit 1 — the affected slice didn't exercise the changed
+              # file, e.g. subprocess-only; NOT a regression) from a real <100%
+              # failure (exit 2). The if/elif/else form is exit-safe.
+              if coverage report $COV_RCFILE --include="$INCLUDE_PATTERN" --fail-under=100 > /tmp/ci-cov.txt 2>&1; then
+                cat /tmp/ci-cov.txt
+                echo "✅ All changed source files are at 100% coverage"
+              elif grep -q "No data to report" /tmp/ci-cov.txt; then
+                echo "⚠️  No coverage data for changed source files under the affected-test slice (not exercised, e.g. subprocess-only) — not gating; full-suite + nightly enforce whole-codebase 100%."
+              else
                 echo ""
                 echo "❌ Changed source files are not at 100% coverage:"
+                cat /tmp/ci-cov.txt
                 coverage report $COV_RCFILE --include="$INCLUDE_PATTERN" --show-missing
                 exit 1
-              else
-                echo "✅ All changed source files are at 100% coverage"
               fi
             fi
           fi
@@ -1153,13 +1161,21 @@ jobs:
               INCLUDE_PATTERN=$(echo "$EXISTING_FILES" | tr ' ' ',' | sed 's/,$//')
               # Use no-embeddings rcfile so exclude_also patterns are respected
               COV_RCFILE="--rcfile=.coveragerc.no-embeddings"
-              if ! coverage report $COV_RCFILE --include="$INCLUDE_PATTERN" --fail-under=100; then
+              # WI-kalub Step 1c parity: distinguish coverage.py's "No data to
+              # report" (exit 1 — the affected slice didn't exercise the changed
+              # file, e.g. subprocess-only; NOT a regression) from a real <100%
+              # failure (exit 2). The if/elif/else form is exit-safe.
+              if coverage report $COV_RCFILE --include="$INCLUDE_PATTERN" --fail-under=100 > /tmp/ci-cov.txt 2>&1; then
+                cat /tmp/ci-cov.txt
+                echo "✅ All changed source files are at 100% coverage"
+              elif grep -q "No data to report" /tmp/ci-cov.txt; then
+                echo "⚠️  No coverage data for changed source files under the affected-test slice (not exercised, e.g. subprocess-only) — not gating; full-suite + nightly enforce whole-codebase 100%."
+              else
                 echo ""
                 echo "❌ Changed source files are not at 100% coverage:"
+                cat /tmp/ci-cov.txt
                 coverage report $COV_RCFILE --include="$INCLUDE_PATTERN" --show-missing
                 exit 1
-              else
-                echo "✅ All changed source files are at 100% coverage"
               fi
             fi
           fi
