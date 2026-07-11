@@ -60,7 +60,7 @@ from ..ir import PASS_VERSION, AnalysisRun, Edge, make_pass_id
 from .registry import LinkerContext, LinkerResult, register_linker
 
 if TYPE_CHECKING:
-    from ..ir import Symbol
+    from ..ir import Span, Symbol
 
 PASS_ID = make_pass_id("containment-linker")
 
@@ -171,12 +171,17 @@ def _find_parent(
     child_path: str,
     container_by_name: dict[str, list[Symbol]],
     child_language: str | None = None,
+    child_span: Span | None = None,
 ) -> Symbol | None:
     """Find the best parent container for a given parent name.
 
     When multiple containers share a name (e.g., Django's 238 Model classes),
     uses a priority cascade:
-      1. Same file (most specific, always correct)
+      1. Same file (most specific). When more than one same-name container
+         lives in the child's file, disambiguate by SPAN — the true parent is
+         the one whose span encloses the child (tightest wins). If none
+         encloses the child, the naming match is to the wrong same-name class,
+         so refuse rather than emit a provably-false containment (WI-vakuh).
       2. Same language, different file (structural match)
       3. No match (returns None — prevents cross-language false positives)
 
@@ -194,9 +199,30 @@ def _find_parent(
         return candidates[0]
 
     # Priority 1: same file
-    for c in candidates:
-        if c.path == child_path:
-            return c
+    same_file = [c for c in candidates if c.path == child_path]
+    if len(same_file) == 1:
+        return same_file[0]
+    if len(same_file) > 1:
+        # Multiple same-name containers in one file (e.g. a real class plus a
+        # same-named test stub). The first-match heuristic could bind a method
+        # to the wrong class, whose span does not even enclose it. Disambiguate
+        # by span: pick the enclosing container, tightest first.
+        if child_span is not None:
+            enclosing = [
+                (c.span.end_line - c.span.start_line, c)
+                for c in same_file
+                if c.span is not None
+                and c.span.start_line <= child_span.start_line
+                and child_span.end_line <= c.span.end_line
+            ]
+            if enclosing:
+                return min(enclosing, key=lambda item: item[0])[1]
+            # No same-name container in this file encloses the child → the
+            # name match is to the wrong class; refuse (Phase 2 span_overlap
+            # only serves unqualified names, so this yields no edge here).
+            return None
+        # No span to disambiguate with: preserve the legacy first-match.
+        return same_file[0]
 
     # Priority 2: same language (any file)
     if child_language:
@@ -276,6 +302,7 @@ def link_containment(ctx: LinkerContext) -> LinkerResult:
 
         parent_sym = _find_parent(
             parent_name, sym.path, container_by_name, sym.language,
+            child_span=sym.span,
         )
         if parent_sym is None:
             continue
@@ -325,6 +352,7 @@ def link_containment(ctx: LinkerContext) -> LinkerResult:
 
         parent_sym = _find_parent(
             parent_name, sym.path, container_by_name, sym.language,
+            child_span=sym.span,
         )
         if parent_sym is None:
             continue

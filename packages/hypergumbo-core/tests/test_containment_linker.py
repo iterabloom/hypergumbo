@@ -564,6 +564,111 @@ class TestContainmentNameCollision:
         # Should still create an edge (fallback to some match)
         assert len(result.edges) == 1
 
+    def test_same_file_same_name_classes_disambiguate_by_span(self) -> None:
+        """WI-vakuh: two classes with the SAME name in ONE file — a method
+        links to the class whose span ENCLOSES it, not merely the first
+        same-file candidate. _find_parent previously returned the first
+        same-file match, producing provably-false containments where the
+        method span lies outside the matched class span."""
+        # First _FakeMetadata (a small earlier stub).
+        first = _sym(
+            "py:t.py:205-207:_FakeMetadata:class", "_FakeMetadata", "class",
+            path="t.py", start=205, end=207,
+        )
+        # Second _FakeMetadata (the real one) later, enclosing the method.
+        second = _sym(
+            "py:t.py:230-280:_FakeMetadata:class", "_FakeMetadata", "class",
+            path="t.py", start=230, end=280,
+        )
+        method = _sym(
+            "py:t.py:234-235:_FakeMetadata.get:method", "_FakeMetadata.get",
+            "method", path="t.py", start=234, end=235,
+        )
+
+        ctx = LinkerContext(
+            repo_root=Path("/test"),
+            symbols=[first, second, method],
+            edges=[],
+        )
+        result = link_containment(ctx)
+
+        assert len(result.edges) == 1
+        edge = result.edges[0]
+        assert edge.src == second.id, (
+            "method (234-235) must be contained by the enclosing class "
+            f"second (230-280), not the first same-file match (205-207); "
+            f"got src={edge.src}"
+        )
+        assert edge.dst == method.id
+
+    def test_same_file_same_name_no_enclosing_class_refuses(self) -> None:
+        """WI-vakuh: when a method's span lies outside EVERY same-name same-file
+        class, the naming match is to the wrong class — no contains edge is
+        emitted rather than a provably-false one."""
+        first = _sym(
+            "py:t.py:1-5:Foo:class", "Foo", "class", path="t.py", start=1, end=5,
+        )
+        second = _sym(
+            "py:t.py:10-15:Foo:class", "Foo", "class", path="t.py", start=10, end=15,
+        )
+        # Method at 30-31 — outside both Foo spans.
+        method = _sym(
+            "py:t.py:30-31:Foo.bar:method", "Foo.bar", "method",
+            path="t.py", start=30, end=31,
+        )
+        ctx = LinkerContext(
+            repo_root=Path("/test"),
+            symbols=[first, second, method],
+            edges=[],
+        )
+        result = link_containment(ctx)
+
+        assert result.edges == [], (
+            "no same-name class encloses the method — expected no (false) "
+            f"containment edge, got {result.edges}"
+        )
+
+    def test_find_parent_multi_same_file_without_span_keeps_legacy_first(
+        self,
+    ) -> None:
+        """Without a child span, _find_parent keeps the legacy first-match among
+        multiple same-file same-name containers — span disambiguation needs the
+        child span, which the link_containment callers always supply."""
+        a = _sym(
+            "py:t.py:1-5:Foo:class", "Foo", "class", path="t.py", start=1, end=5,
+        )
+        b = _sym(
+            "py:t.py:10-20:Foo:class", "Foo", "class", path="t.py", start=10, end=20,
+        )
+        container_by_name = {"Foo": [a, b]}
+        result = _find_parent(
+            "Foo", "t.py", container_by_name, "python", child_span=None,
+        )
+        assert result is a
+
+    def test_non_containable_symbols_are_skipped(self) -> None:
+        """Symbols whose kind is neither containable nor a container (e.g.
+        imports) are skipped by every phase's kind guard, contributing no
+        contains edges."""
+        cls = _sym("py:app.py:1-10:User:class", "User", "class")
+        method = _sym(
+            "py:app.py:3-5:User.save:method", "User.save", "method",
+            start=3, end=5,
+        )
+        imp = _sym("py:app.py:1-1:os:import", "os", "import", start=1, end=1)
+
+        ctx = LinkerContext(
+            repo_root=Path("/test"),
+            symbols=[cls, method, imp],
+            edges=[],
+        )
+        result = link_containment(ctx)
+
+        # Only the class→method edge; the import contributes nothing.
+        assert len(result.edges) == 1
+        assert result.edges[0].src == cls.id
+        assert result.edges[0].dst == method.id
+
     def test_many_duplicate_classes_correct_linkage(self) -> None:
         """Simulates Django: 1 real Model + many test Models, methods link correctly."""
         # Real Model class with methods
