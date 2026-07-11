@@ -1,6 +1,9 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for the internal representation (IR) layer."""
+import dataclasses
 from pathlib import Path
+
+import pytest
 
 from hypergumbo_core.ir import (
     VALID_ACCESS_MODES,
@@ -642,32 +645,14 @@ def test_edge_has_evidence_lang() -> None:
     assert edge.evidence_lang == "python"
 
 
-def test_edge_has_evidence_spans() -> None:
-    """Edge should have evidence_spans in meta."""
-    evidence_spans = [{"file": "a.py", "span": {"start_line": 5, "end_line": 5}}]
-    edge = Edge.create(
-        src="python:a.py:1-2:foo:function",
-        dst="python:b.py:3-4:bar:function",
-        edge_type="calls",
-        line=5,
-        evidence_spans=evidence_spans,
-
-        origin="test", origin_run_id="test",
-    )
-
-    assert edge.evidence_spans == evidence_spans
-
-
 def test_edge_to_dict_includes_new_fields() -> None:
     """Edge.to_dict should include all spec fields."""
-    evidence_spans = [{"file": "a.py", "span": {"start_line": 5, "end_line": 5}}]
     edge = Edge.create(
         src="python:a.py:1-2:foo:function",
         dst="python:b.py:3-4:bar:function",
         edge_type="calls",
         line=5,
         evidence_lang="python",
-        evidence_spans=evidence_spans,
 
         origin="test", origin_run_id="test",
     )
@@ -677,7 +662,90 @@ def test_edge_to_dict_includes_new_fields() -> None:
     assert "edge_key" in d
     assert "quality" in d
     assert "evidence_lang" in d["meta"]
-    assert "evidence_spans" in d["meta"]
+
+
+def test_edge_create_central_stamps_evidence_lang_from_src() -> None:
+    """WI-kuluh / ADR-0040: Edge.create central-stamps evidence_lang from the
+    src id's language slot (ADR-0036 grammar: lang = up to the first colon) when
+    the producer did not pass one, so the field is no longer null on ~100% of
+    mainstream analyzer + linker edges."""
+    edge = Edge.create(
+        src="python:a.py:1-2:foo:function",
+        dst="python:b.py:3-4:bar:function",
+        edge_type="calls",
+        line=5,
+        origin="test", origin_run_id="test",
+    )
+    assert edge.evidence_lang == "python"
+
+
+def test_central_stamp_does_not_clobber_explicit_evidence_lang() -> None:
+    """The central stamp must not override a value a producer passed explicitly
+    (ADR-0040 ruling 2) — guards the ~25 long-tail analyzers that set it."""
+    edge = Edge.create(
+        src="python:a.py:1-2:foo:function",
+        dst="python:b.py:3-4:bar:function",
+        edge_type="calls",
+        line=5,
+        evidence_lang="go",
+        origin="test", origin_run_id="test",
+    )
+    assert edge.evidence_lang == "go"
+
+
+def test_central_stamp_yields_none_for_non_catalog_src() -> None:
+    """A non-canonical src whose first slot is not a known language (e.g. a
+    latex ``rel_path:file`` id) yields None, not a garbage stamp — the catalog
+    guard keeps evidence_lang validator-clean rather than emitting a path
+    segment as a bogus language."""
+    edge = Edge.create(
+        src="chapters/intro.tex:file",
+        dst="python:b.py:3-4:bar:function",
+        edge_type="references",
+        line=1,
+        origin="test", origin_run_id="test",
+    )
+    assert edge.evidence_lang is None
+
+
+def test_stamped_evidence_lang_round_trips() -> None:
+    """A centrally-stamped evidence_lang survives to_dict/from_dict."""
+    edge = Edge.create(
+        src="python:a.py:1-2:foo:function",
+        dst="python:b.py:3-4:bar:function",
+        edge_type="calls",
+        line=5,
+        origin="test", origin_run_id="test",
+    )
+    d = edge.to_dict()
+    assert d["meta"]["evidence_lang"] == "python"
+    assert Edge.from_dict(d).evidence_lang == "python"
+
+
+def test_edge_has_no_evidence_spans_field() -> None:
+    """WI-vozar / ADR-0040: evidence_spans (dead — 0/110533 populated) is removed
+    from the Edge dataclass and the Edge.create kwarg, so a stale writer cannot
+    silently reintroduce it."""
+    assert "evidence_spans" not in {f.name for f in dataclasses.fields(Edge)}
+    with pytest.raises(TypeError):
+        Edge.create(
+            src="python:a.py:1-2:foo:function",
+            dst="python:b.py:3-4:bar:function",
+            edge_type="calls", line=5,
+            evidence_spans=[{"line": 1}],  # type: ignore[call-arg]
+            origin="test", origin_run_id="test",
+        )
+
+
+def test_to_dict_meta_has_no_evidence_spans() -> None:
+    """evidence_spans no longer appears in the serialized edge meta."""
+    edge = Edge.create(
+        src="python:a.py:1-2:foo:function",
+        dst="python:b.py:3-4:bar:function",
+        edge_type="calls", line=5,
+        origin="test", origin_run_id="test",
+    )
+    assert "evidence_spans" not in edge.to_dict()["meta"]
 
 
 def test_edge_with_custom_meta() -> None:

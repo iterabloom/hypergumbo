@@ -15,15 +15,15 @@ for focused LLM context.
 
 hypergumbo analyzed its own source code and found:
 - **292** Python modules (133 analyzers, 57 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 29, Infrastructure 7; 65 core, 4 CLI, 33 tracker)
-- **36647** symbols (functions, classes, methods)
-- **124770** edges by type:
-  - calls: 64876
-  - contains: 33817
-  - imports: 11116
-  - instantiates: 8381
-  - references: 4159
+- **36665** symbols (functions, classes, methods)
+- **124838** edges by type:
+  - calls: 64915
+  - contains: 33833
+  - imports: 11124
+  - instantiates: 8386
+  - references: 4158
   - module_attr_ref: 1162
-  - other: 1259
+  - other: 1260
 
 ## Package Architecture
 
@@ -85,7 +85,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 36647 Symbols + 124770 Edges + UsageContexts           │
+│  Output: 36665 Symbols + 124838 Edges + UsageContexts           │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -232,7 +232,6 @@ A relationship between two symbols (e.g., function calls).
 - `origin_run_id`: Unique execution ID of the analysis run
 - `evidence_type`: Type of evidence (e.g., ast_call_direct)
 - `evidence_lang`: Language for confidence scoring
-- `evidence_spans`: Structured locations of evidence
 - `is_resolved`: Whether `dst` is a real, in-repo (first-party) symbol node present in the graph (ADR-0037 ruling 1 — resolution names in-repo-ness, NOT target-identification). External/stdlib targets are materialized as `external_symbol` placeholder nodes and are always `is_resolved=False` even though the dst node exists (present-but-synthetic, not absent). The producer-time value (Edge.create default True) is ADVISORY; the finalize edge-resolution sub-step's verdict is what serializes.
 - `dst_ref`: Structured identity for the dst endpoint. Populated on every `is_resolved=False` edge after the finalize edge-resolution sub-step (`None` only for an unidentified dangling reference whose id cannot be parsed); `None` for in-repo (`is_resolved=True`) dsts. Canonical source of truth for external-target identity — the legacy `dst` string is built from the same `ExternalRef`. The fourth cell (`is_resolved=True` + populated `dst_ref`) is never produced (ADR-0037 ruling 1 table).
 - `derived_from`: Symbol (or Edge) IDs the producer consumed to construct this Edge (INV-rukor). Populated by linkers; None for analyzer-originated edges.
@@ -268,20 +267,20 @@ These symbols have the highest bidirectional centrality
 
 | Symbol | Kind | Score | Location |
 |--------|------|-------|----------|
-| `Symbol` | class | 9235.8 | ir.py |
-| `Span` | class | 6215.9 | ir.py |
-| `run_behavior_map` | function | 3502.3 | cli.py |
-| `write_text` | external_symbol | 3278.0 | <external> |
+| `Symbol` | class | 9240.4 | ir.py |
+| `Span` | class | 6218.8 | ir.py |
+| `run_behavior_map` | function | 3498.9 | cli.py |
+| `write_text` | external_symbol | 3283.0 | <external> |
 | `LinkerContext` | class | 3092.7 | registry.py |
+| `Edge.create` | method | 1965.0 | ir.py |
 | `TrackerApp` | class | 1943.0 | tui.py |
 | `load_framework_patterns` | function | 1875.9 | framework_patterns.py |
-| `Edge.create` | method | 1816.9 | ir.py |
 | `Path` | external_symbol | 1576.0 | <external> |
 | `main` | function | 1563.1 | cli.py |
 | `clear_pattern_cache` | function | 1336.8 | framework_patterns.py |
-| `Edge` | class | 1239.6 | ir.py |
 | `append` | external_symbol | 1228.0 | <external> |
-| `get` | external_symbol | 1080.0 | <external> |
+| `Edge` | class | 1225.5 | ir.py |
+| `get` | external_symbol | 1082.0 | <external> |
 | `TreeSitterAnalyzer` | class | 1074.7 | base.py |
 
 ## Pattern System
@@ -835,7 +834,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: 6177668c7b7d
+  commit: d79bc37f4550
   hypergumbo: 6.1.0
   python: 3.12.3
 -->

@@ -821,7 +821,7 @@ Each edge carries `id`, `edge_key`, `type`, `src`, `dst`, `confidence`, provenan
 
 **derived_from (INV-rukor):** `derived_from: list[str] | null` records which Symbol (or Edge) IDs the producer consumed to construct this Edge. Populated by linkers (always non-null); null for analyzer-originated edges whose derivation is the AST itself. Enables answering "why does this edge exist?" without re-reading linker source code.
 
-**Multi-pass evidence (optional):** When multiple analysis passes observe the same relationship, `meta.evidence[]` accumulates their individual observations. The top-level `meta.evidence_type`, `meta.evidence_lang`, and `meta.evidence_spans` always reflect the primary (highest-confidence) record.
+**Evidence provenance:** Each edge's `meta` carries the primary inference record via `meta.evidence_type` (the inference pathway, ADR-0028) and `meta.evidence_lang` (the source language, central-stamped at `Edge.create` per ADR-0040). (The `meta.evidence[]` multi-pass accumulator and `meta.evidence_spans` were descoped per ADR-0040 — never populated by any producer.)
 
 **edge_key:**
 - `edge_key` is a canonical identity used to deduplicate/merge multiple observations of the “same” relationship across passes.
@@ -834,7 +834,6 @@ Each edge carries `id`, `edge_key`, `type`, `src`, `dst`, `confidence`, provenan
 
 **Meta fields**:
 - `evidence_lang` (optional): Language used for confidence scoring. Defaults to `src` node's language if omitted. Required for cross-language edges (HTTP, IPC) where src/dst languages differ.
-- `evidence_spans[]`: Structured locations of evidence. Each span includes file path and line/column range.
 - `protocol` (optional): Wire protocol for cross-language linker edges — `"http"`, `"grpc"`, `"graphql"`, etc. Set by Protocol-subcategory linkers (see [§7](#7-linkers)).
 - `bridge_kind` (optional): FFI/bridge mechanism for Bridge-subcategory linker edges — `"native"` (JNI), `"wasm_bindgen"`, `"tauri_ipc"`, etc.
 - `channel_kind` (optional): Channel discriminator for `event_publishes` edges — `"ipc"`, `"websocket"`, `"queue"`, `"message_bus"`, `"crdt"`. See [§7 IPC/Message Channel Detection](#ipcmessage-channel-detection).
@@ -1564,7 +1563,7 @@ Tier and Role compose for analysis decisions:
 ### Schema validation tests
 * 🟩 Output validates against published JSON Schema
 * 🟩 Forward compatibility: v0.1 output readable by v0.2+ (if backward compatible)
-* 🟩 Required field presence (execution_id, run_signature, evidence_lang, evidence_spans)
+* 🟩 Required field presence (execution_id, run_signature, evidence_lang)
 * 🟩 ID format conformance (both `id` and `stable_id` when present)
 * 🟩 Evidence type presence in all edges
 * 🟩 Toolchain capture in analysis_runs

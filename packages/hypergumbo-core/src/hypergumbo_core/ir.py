@@ -29,6 +29,7 @@ Provenance Fields
 - repo_fingerprint: Hash of git state for cache invalidation
 - origin_run_signature: *Removed in 0.9.x (WI-gapin); never stamped by any producer.*
 """
+import functools
 import hashlib
 import inspect
 import json
@@ -657,6 +658,18 @@ def format_legacy_dst(ref: ExternalRef) -> str:
     return f"{ref.lang}:{ref.module_path}:0-0:{ref.name}:unresolved"
 
 
+@functools.lru_cache(maxsize=1)
+def _known_languages_for_evidence() -> "frozenset[str]":
+    """Memoized language catalog for central-stamping ``evidence_lang`` at
+    ``Edge.create`` (WI-kuluh / ADR-0040). ``all_known_languages()`` rebuilds its
+    union set on every call, so it is cached here — the stamp only ever yields
+    ``None`` or a real catalog member and ``spec_validator`` re-checks the live
+    catalog, so a stale cache stays correctness-safe (the analyzer/linker registry
+    is not mutated after discovery)."""
+    from hypergumbo_core.catalog import all_known_languages
+    return all_known_languages()
+
+
 # RCT-pinned surface — see tests/test_rct_public_api_pinned.py before changing field names, types, or defaults.
 @dataclass
 class Edge:
@@ -674,7 +687,6 @@ class Edge:
         origin_run_id: Unique execution ID of the analysis run
         evidence_type: Type of evidence (e.g., ast_call_direct)
         evidence_lang: Language for confidence scoring
-        evidence_spans: Structured locations of evidence
         is_resolved: Whether `dst` is a real, in-repo (first-party) symbol node present in the graph (ADR-0037 ruling 1 — resolution names in-repo-ness, NOT target-identification). External/stdlib targets are materialized as `external_symbol` placeholder nodes and are always `is_resolved=False` even though the dst node exists (present-but-synthetic, not absent). The producer-time value (Edge.create default True) is ADVISORY; the finalize edge-resolution sub-step's verdict is what serializes.
         dst_ref: Structured identity for the dst endpoint. Populated on every `is_resolved=False` edge after the finalize edge-resolution sub-step (`None` only for an unidentified dangling reference whose id cannot be parsed); `None` for in-repo (`is_resolved=True`) dsts. Canonical source of truth for external-target identity — the legacy `dst` string is built from the same `ExternalRef`. The fourth cell (`is_resolved=True` + populated `dst_ref`) is never produced (ADR-0037 ruling 1 table).
         derived_from: Symbol (or Edge) IDs the producer consumed to construct this Edge (INV-rukor). Populated by linkers; None for analyzer-originated edges.
@@ -693,7 +705,6 @@ class Edge:
     origin_run_id: str = ""  # axis: identity
     evidence_type: str = "ast_call_direct"  # axis: evidence-type
     evidence_lang: Optional[str] = None  # axis: language
-    evidence_spans: Optional[List[Dict[str, Any]]] = None
     is_resolved: bool = True
     dst_ref: Optional[ExternalRef] = None
     derived_from: Optional[List[str]] = None  # axis: identity
@@ -734,7 +745,6 @@ class Edge:
         evidence_type: str = "ast_call_direct",
         confidence: float | None = None,
         evidence_lang: Optional[str] = None,
-        evidence_spans: Optional[List[Dict[str, Any]]] = None,
         is_resolved: bool = True,
         dst_ref: Optional[ExternalRef] = None,
         derived_from: Optional[List[str]] = None,
@@ -788,6 +798,18 @@ class Edge:
             confidence = derive_confidence(evidence_type, is_resolved=is_resolved)
             if confidence is None:
                 confidence = 0.85
+        # WI-kuluh / ADR-0040: central-stamp evidence_lang from the src id's
+        # language slot (ADR-0036: lang = everything up to the first colon; src is
+        # the producer's own well-formed node) when the producer did not pass one,
+        # so it stops being null on ~100% of mainstream analyzer + linker edges.
+        # Catalog-guarded so a non-canonical src (e.g. a latex ``rel_path:file``
+        # id) yields None rather than a bogus path-segment "language". This is the
+        # future ``lang`` input to the (language, evidence_type) confidence matrix
+        # (ADR-0039); no consumer keys on it yet, so it changes no current value.
+        if evidence_lang is None:
+            cand = src.split(":", 1)[0] if ":" in src else None
+            if cand in _known_languages_for_evidence():
+                evidence_lang = cand
         # Generate deterministic edge ID from src, dst, type, AND line
         # Line is included to ensure uniqueness for multiple call sites
         edge_hash = hashlib.sha256(f"{src}:{dst}:{edge_type}:{line}".encode()).hexdigest()[:16]
@@ -805,7 +827,6 @@ class Edge:
             origin_run_id=origin_run_id,
             evidence_type=evidence_type,
             evidence_lang=evidence_lang,
-            evidence_spans=evidence_spans,
             is_resolved=is_resolved,
             dst_ref=dst_ref,
             derived_from=derived_from,
@@ -831,8 +852,6 @@ class Edge:
         }
         if self.evidence_lang is not None:
             meta["evidence_lang"] = self.evidence_lang
-        if self.evidence_spans is not None:
-            meta["evidence_spans"] = self.evidence_spans
         # Merge any additional metadata (e.g., channel for IPC edges)
         if self.meta is not None:
             meta.update(self.meta)
@@ -885,7 +904,6 @@ class Edge:
             origin_run_id=d.get("origin_run_id") or LEGACY_DESERIALIZED_SENTINEL,
             evidence_type=meta.get("evidence_type", "ast_call_direct"),
             evidence_lang=meta.get("evidence_lang"),
-            evidence_spans=meta.get("evidence_spans"),
             is_resolved=d.get("is_resolved", True),
             dst_ref=ExternalRef.from_dict(dst_ref_raw) if dst_ref_raw else None,
             derived_from=d.get("derived_from"),

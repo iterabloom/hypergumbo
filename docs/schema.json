@@ -1098,7 +1098,7 @@
         },
         "meta": {
           "type": "object",
-          "description": "Edge metadata including evidence",
+          "description": "Edge metadata",
           "properties": {
             "evidence_type": {
               "type": "string",
@@ -1233,9 +1233,6 @@
             },
             "evidence_lang": {
               "type": "string"
-            },
-            "evidence_spans": {
-              "type": "array"
             }
           }
         }

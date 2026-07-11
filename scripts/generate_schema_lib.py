@@ -265,7 +265,6 @@ def _sample_edge() -> Edge:
         origin="python",
         origin_run_id="uuid:sample",
         evidence_lang="python",
-        evidence_spans=[{"line": 1}],
         dst_ref=ExternalRef(lang="python", module_path="os", name="getcwd"),
         derived_from=["sym:1"],
     )
@@ -516,13 +515,12 @@ def _edge_spec() -> ClassSpec:
         folded={
             "evidence_type": "meta",
             "evidence_lang": "meta",
-            "evidence_spans": "meta",
             "meta": "meta",
         },
         composites={
             "meta": {
                 "type": "object",
-                "description": "Edge metadata including evidence",
+                "description": "Edge metadata",
                 "properties": {
                     "evidence_type": {
                         "type": "string",
@@ -565,7 +563,6 @@ def _edge_spec() -> ClassSpec:
                         ],
                     },
                     "evidence_lang": {"type": "string"},
-                    "evidence_spans": {"type": "array"},
                 },
             },
         },

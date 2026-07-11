@@ -96,6 +96,15 @@ class TestSchemaValidation:
         low = desc.lower()
         assert "universal" in low or "not a per-repo" in low, desc
 
+    def test_edge_meta_has_no_evidence_spans_property(self):
+        """WI-vozar / ADR-0040: the published schema drops the evidence_spans
+        sub-property under Edge.meta (a dead, never-populated field); evidence_lang
+        stays (kept + central-stamped)."""
+        schema = load_schema()
+        meta_props = schema["$defs"]["Edge"]["properties"]["meta"]["properties"]
+        assert "evidence_spans" not in meta_props
+        assert "evidence_lang" in meta_props
+
     def test_view_enum_accepts_all_projected_views(self):
         """WI-tagaj: the published schema pins ``view`` to an enum of all
         projected view names, so compact/tiered outputs validate (it was a
@@ -225,7 +234,6 @@ class TestSchemaValidation:
             evidence_type="ast_call_direct",
             confidence=0.95,
             evidence_lang="python",
-            evidence_spans=[{"line": 3, "col": 4}],
         )
         edge.meta = {"call_style": "direct"}
 
@@ -541,7 +549,7 @@ class TestSchemaDataclassSync:
             "Edge": Edge.create(
                 src="a", dst="b", edge_type="calls", line=1,
                 origin="python", origin_run_id="uuid:1",
-                evidence_lang="python", evidence_spans=[{"line": 1}],
+                evidence_lang="python",
                 dst_ref=ExternalRef(lang="python", module_path="os", name="getcwd"),
                 derived_from=["sym:1"],
             ),
