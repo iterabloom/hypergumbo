@@ -45,3 +45,19 @@
   clock: 4  # 29a5
   nonce: 29a5  # 29a5
   message: "Centrality face (member INV-napap) resolved in commit 037a3730de: centrality_scores renamed to additional_file_centrality_scores (accurate name) and the whole sketch_precomputed block marked x-internal in docs/schema.json (declaring it NOT a public stability contract, per spec.md). That addresses face (c) 'accurate name' plus the schema-status gap for the centrality member. The META stays OPEN: the readme_description face (INV-modor, blockquote-prefix concat) and vocabulary face (INV-padoz, no lemmatization) remain, and there is still no typed SketchPrecomputed dataclass owning per-field invariants (the full Wave-4 sketch-cache:F1 contract)."  # 29a5
+- op: update  # ef89
+  at: '2026-07-12T06:54:35Z'  # ef89
+  by: agent  # ef89
+  actor: jgstern_agent  # ef89
+  clock: 5  # ef89
+  nonce: ef89  # ef89
+  set: {}  # ef89
+  add:  # ef89
+    tags: [wave5]  # ef89
+- op: discuss  # 9586
+  at: '2026-07-12T06:54:35Z'  # 9586
+  by: agent  # 9586
+  actor: jgstern_agent  # 9586
+  clock: 6  # 9586
+  nonce: '9586'  # 9586
+  message: "Owner disposition 2026-07-12 (option C): MIGRATE the typed-dataclass residual to Wave 5; concrete work is done. Live-verified: all 3 member faces satisfied -- INV-modor (readme_description blockquote concat), INV-padoz (vocabulary lemmatization; field deleted), INV-napap (centrality_scores renamed additional_file_centrality_scores + block marked x-internal); the config_info blob face addressed (WI-lirub/WI-gojuz); the generate-schema-vs-spec doc-conflict reconciled (WI-rajod 2026-06-24, generate-schema:325-332). The surface is now honestly schema-d in docs/schema.json with x-internal:true, so the statement \"sketch_precomputed has no schema\" is literally stale -- it HAS one. SOLE residual = prevention-only: no typed @dataclass SketchPrecomputed, so the schema entry is a hand-written overlay with a theoretical drift risk (unguarded by test -- schema-compliance skips it via include_sketch_precomputed=False), on an x-internal cache with ZERO external consumers (sketch.py reads it, compact.py strips it, dropped from compact/tiered views). The 2026-06-24 audit already scoped F1 to a lean dataclass + introspected-schema chokepoint and ruled the heavyweight full-axis-governance + runtime-validation version over-engineering. A typed SketchPrecomputed dataclass is a PREVENTION mechanism -> belongs in Wave 5 beside the mypy/typed-contract ramp (NewType -> TypedDict -> typed Protocol), NOT a Wave-4 blocker. Tagged wave5; status stays violated (enforcing mechanism not built). Clears the sole remaining Wave-4 block keystone; Wave-4 completion now needs only leaf-disposition + the owner ruling."  # 9586
