@@ -98,7 +98,7 @@ import platform
 from datetime import datetime, timezone
 from typing import Any, Dict
 
-SCHEMA_VERSION = "0.14.4"
+SCHEMA_VERSION = "0.14.5"
 # Canonical ``view`` field values a behavior map (or its budget-limited
 # projections) may carry: the base analysis emits ``behavior_map``; the compact
 # and tiered projections emit their own view name. Single-sourced here so the

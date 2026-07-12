@@ -564,7 +564,22 @@ def generate_behavior_map_schema() -> Dict[str, Any]:
                 "type": "number",
                 "minimum": 0.0,
                 "maximum": 1.0,
-                "description": "Detection confidence"
+                "description": (
+                    "Detection reliability (0.0-1.0) — how sure the detector "
+                    "is that this symbol IS an entrypoint. NOT prominence; "
+                    "ADR-0039 ruling 3 relocates ranking to rank_score."
+                )
+            },
+            "rank_score": {
+                "type": "number",
+                "minimum": 0.0,
+                "maximum": 1.0,
+                "description": (
+                    "Ranking prominence (0.0-1.0), ADR-0039 ruling 3. "
+                    "Initializes from confidence and accumulates the entrypoint "
+                    "ranking adjustments; entrypoint ordering and the "
+                    "MIN_ENTRYPOINT_CONFIDENCE filter key on this."
+                )
             },
             "meta": {
                 "type": "object",

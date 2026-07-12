@@ -64,7 +64,7 @@ import math
 from collections import defaultdict
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import List
+from typing import List, Optional
 
 import re
 
@@ -283,7 +283,16 @@ class Entrypoint:
     Attributes:
         symbol_id: ID of the symbol that is an entrypoint.
         kind: Type of entrypoint detected.
-        confidence: Confidence score (0.0-1.0).
+        confidence: Detection reliability (0.0-1.0) — how sure the detector
+            is that this symbol IS an entrypoint. NOT a prominence value;
+            ADR-0039 ruling 3 relocates the ranking boosts/penalties to
+            ``rank_score``.
+        rank_score: Ranking prominence (0.0-1.0). Initializes from
+            ``confidence`` and accumulates the multiplicative penalties,
+            library-export demotion, and degree boosts (ADR-0039 ruling 3).
+            Entrypoint ordering + the ``MIN_ENTRYPOINT_CONFIDENCE`` filter
+            key on this; equal to ``confidence`` until those adjustments
+            relocate.
         label: Human-readable label for the entrypoint.
         meta: Provenance dict mirroring ``Edge.meta`` (WI-rukam). Carries
             ``id`` (auto-stamped content hash), and — when built via
@@ -297,6 +306,7 @@ class Entrypoint:
     confidence: float
     label: str
     meta: dict = field(default_factory=dict)
+    rank_score: Optional[float] = None
 
     def __post_init__(self) -> None:
         # ``id`` is a pure function of (kind, symbol_id, label); stamp it
@@ -304,6 +314,10 @@ class Entrypoint:
         # directly (e.g. in tests) rather than via ``create`` — carries a
         # stable identity. ``setdefault`` lets a caller pre-seed it.
         self.meta.setdefault("id", _entrypoint_id(self.kind, self.symbol_id, self.label))
+        # ADR-0039 ruling 3: ``rank_score`` mirrors detection ``confidence``
+        # until the ranking adjustments relocate onto it.
+        if self.rank_score is None:
+            self.rank_score = self.confidence
 
     @classmethod
     def create(
@@ -348,6 +362,7 @@ class Entrypoint:
             "symbol_id": self.symbol_id,
             "kind": self.kind.value,
             "confidence": self.confidence,
+            "rank_score": self.rank_score,
             "label": self.label,
             "meta": dict(self.meta),
         }

@@ -8,7 +8,7 @@
     "schema_version": {
       "type": "string",
       "description": "Schema version (semver)",
-      "const": "0.14.4"
+      "const": "0.14.5"
     },
     "confidence_model": {
       "type": "string",
@@ -1022,7 +1022,7 @@
           "type": "number",
           "minimum": 0.0,
           "maximum": 1.0,
-          "description": "Confidence score"
+          "description": "Detection reliability (0.0-1.0) \u2014 the producer's evidence-derived estimate that the relationship exists (ADR-0039 ruling 1). NOT a ranking value; ranking prominence lives in rank_score."
         },
         "origin": {
           "type": "array",
@@ -1084,6 +1084,28 @@
           ],
           "default": null,
           "description": "Symbol (or Edge) IDs the producer consumed to construct this Edge (INV-rukor). Populated by linkers; null for analyzer-originated edges."
+        },
+        "confidence_source": {
+          "type": "string",
+          "enum": [
+            "evidence_derived",
+            "emitter_constant",
+            "composite"
+          ],
+          "description": "Provenance of the confidence value (ADR-0039 ruling 2): evidence_derived (from the evidence_type registry base), emitter_constant (a declared hardcoded producer value), or composite (still fuses a ranking adjustment ruling 3 relocates to rank_score)."
+        },
+        "rank_score": {
+          "oneOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "minimum": 0.0,
+          "maximum": 1.0,
+          "description": "Ranking prominence (0.0-1.0), ADR-0039 ruling 3. Initializes from confidence and accumulates the ranking adjustments relocated off confidence; equal to confidence until a producer relocates its adjustment."
         },
         "quality": {
           "oneOf": [
@@ -1772,7 +1794,13 @@
           "type": "number",
           "minimum": 0.0,
           "maximum": 1.0,
-          "description": "Detection confidence"
+          "description": "Detection reliability (0.0-1.0) \u2014 how sure the detector is that this symbol IS an entrypoint. NOT prominence; ADR-0039 ruling 3 relocates ranking to rank_score."
+        },
+        "rank_score": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 1.0,
+          "description": "Ranking prominence (0.0-1.0), ADR-0039 ruling 3. Initializes from confidence and accumulates the entrypoint ranking adjustments; entrypoint ordering and the MIN_ENTRYPOINT_CONFIDENCE filter key on this."
         },
         "meta": {
           "type": "object",

@@ -408,6 +408,37 @@ def test_axis_conformance_run_pass_id_required() -> None:
     assert matched[0].axis == "pass-id"
 
 
+def test_axis_conformance_confidence_source_bounded_enum() -> None:
+    """ADR-0039 R2: Edge.confidence_source is checked against the bounded enum."""
+    from hypergumbo_core.catalog import all_known_pass_ids
+    from hypergumbo_core.evidence_types import all_evidence_type_names
+
+    a_pass = next(iter(all_known_pass_ids()))
+    an_evidence = next(iter(all_evidence_type_names()))
+
+    good = _FakeSym(
+        id="edge:good", edge_type="calls", evidence_type=an_evidence,
+        evidence_lang=None, origin=[a_pass], confidence_source="evidence_derived",
+    )
+    bad = _FakeSym(
+        id="edge:bad", edge_type="calls", evidence_type=an_evidence,
+        evidence_lang=None, origin=[a_pass], confidence_source="bogus_source",
+    )
+    violations = validate_ir([], [good, bad], [])
+    matched = [v for v in violations if v.field_name == "Edge.confidence_source"]
+    assert len(matched) == 1
+    assert matched[0].record_id == "edge:bad"
+    assert matched[0].axis == "bounded-enum"
+
+
+def test_confidence_source_bounded_enum_matches_ir_vocabulary() -> None:
+    """Drift guard: the validator's bounded-enum set == ir.VALID_CONFIDENCE_SOURCES."""
+    from hypergumbo_core.ir import VALID_CONFIDENCE_SOURCES
+    from hypergumbo_core.spec_validator import _BOUNDED_ENUMS
+
+    assert _BOUNDED_ENUMS[("Edge", "confidence_source")] == VALID_CONFIDENCE_SOURCES
+
+
 def test_axis_conformance_none_for_required_field_emits_violation() -> None:
     """A required (allow_none=False) axis-tagged field being None emits
     a violation. Symbol.kind is the canonical example — None is illegal

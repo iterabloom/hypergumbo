@@ -14,7 +14,12 @@ no published edge value changes here. See
 
 from __future__ import annotations
 
-from hypergumbo_core.confidence import confidence_within_band, derive_confidence
+from hypergumbo_core.confidence import (
+    confidence_within_band,
+    derive_confidence,
+    find_constant_confidence_violations,
+)
+from hypergumbo_core.ir import Edge
 from hypergumbo_core.evidence_types import (
     EVIDENCE_TYPES,
     _CONFIDENCE_SEEDS,
@@ -192,3 +197,84 @@ def test_confidence_within_band_unseeded_or_unregistered_is_in_band():
     assert confidence_within_band("naming_convention", 1.0) is True
     # unregistered type -> no band -> in-band (caller's literal stands).
     assert confidence_within_band("not-a-real-evidence-type", 0.5) is True
+
+
+# --- ADR-0039 ruling 2 guard: find_constant_confidence_violations ---
+
+def _edges(n, *, src, confidence, evidence_type, confidence_source=None, is_resolved=True):
+    return [
+        Edge.create(
+            src=f"{src}:{i}", dst="d", edge_type="calls", line=i,
+            origin=src, origin_run_id="u",
+            confidence=confidence, evidence_type=evidence_type,
+            confidence_source=confidence_source, is_resolved=is_resolved,
+        )
+        for i in range(n)
+    ]
+
+
+def test_guard_empty_is_clean():
+    assert find_constant_confidence_violations([]) == []
+
+
+def test_guard_group_at_or_below_threshold_is_ignored():
+    # 100 edges (== default threshold) at one composite constant -> not > threshold.
+    edges = _edges(100, src="emit", confidence=0.5,
+                   evidence_type="naming_convention", confidence_source="composite")
+    assert find_constant_confidence_violations(edges) == []
+
+
+def test_guard_emitter_constant_declared_is_clean():
+    edges = _edges(150, src="emit", confidence=1.0, evidence_type="naming_convention")
+    # explicit confidence -> emitter_constant, declared -> legitimate.
+    assert all(e.confidence_source == "emitter_constant" for e in edges)
+    assert find_constant_confidence_violations(edges) == []
+
+
+def test_guard_evidence_derived_at_registry_base_is_clean():
+    # ast_call_direct is seeded 0.85 (resolved) -> derived value matches base.
+    edges = _edges(150, src="emit", confidence=None, evidence_type="ast_call_direct")
+    assert all(e.confidence_source == "evidence_derived" for e in edges)
+    assert all(e.confidence == 0.85 for e in edges)
+    assert find_constant_confidence_violations(edges) == []
+
+
+def test_guard_composite_constant_is_flagged():
+    edges = _edges(150, src="emit", confidence=0.5,
+                   evidence_type="naming_convention", confidence_source="composite")
+    violations = find_constant_confidence_violations(edges)
+    assert len(violations) == 1
+    v = violations[0]
+    assert v["count"] == 150
+    assert v["confidence"] == 0.5
+    assert v["sources"] == ["composite"]
+    assert "emitter_constant" in v["reason"]
+
+
+def test_guard_evidence_derived_masquerade_is_flagged():
+    # Claim evidence_derived but ship a constant that is NOT the registry base
+    # for the pathway (ast_call_direct base is 0.85, we ship 0.42).
+    edges = _edges(150, src="emit", confidence=0.42,
+                   evidence_type="ast_call_direct", confidence_source="evidence_derived")
+    violations = find_constant_confidence_violations(edges)
+    assert len(violations) == 1
+    assert violations[0]["sources"] == ["evidence_derived"]
+
+
+def test_guard_respects_custom_threshold():
+    edges = _edges(60, src="emit", confidence=0.5,
+                   evidence_type="naming_convention", confidence_source="composite")
+    assert find_constant_confidence_violations(edges, threshold=100) == []
+    assert len(find_constant_confidence_violations(edges, threshold=50)) == 1
+
+
+def test_guard_partitions_by_emitter_and_value():
+    # Two emitters, each 150 emitter_constant edges at distinct values -> clean;
+    # a third emitter with 150 composite -> exactly one violation.
+    a = _edges(150, src="emitA", confidence=0.9, evidence_type="naming_convention")
+    b = _edges(150, src="emitB", confidence=0.8, evidence_type="naming_convention")
+    c = _edges(150, src="emitC", confidence=0.5,
+               evidence_type="naming_convention", confidence_source="composite")
+    violations = find_constant_confidence_violations(a + b + c)
+    assert len(violations) == 1
+    assert violations[0]["emitter"] == ("emitC",)

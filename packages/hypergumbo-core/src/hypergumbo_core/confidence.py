@@ -39,6 +39,9 @@ its pathway — a forward regression guard surfaced as an advisory
 
 from __future__ import annotations
 
+from collections import defaultdict
+from typing import Any, Iterable
+
 from hypergumbo_core.evidence_types import find_evidence_type
 
 
@@ -88,3 +91,65 @@ def confidence_within_band(evidence_type: str, confidence: float) -> bool:
         else _BAND_FLOOR
     )
     return low - 1e-9 <= confidence <= spec.base_confidence + 1e-9
+
+
+def find_constant_confidence_violations(
+    edges: Iterable[Any],
+    *,
+    threshold: int = 100,
+) -> list[dict[str, Any]]:
+    """ADR-0039 ruling 2 guard: flag an emitter shipping an UNDECLARED flat constant.
+
+    The pathology INV-suvil names — a modal published confidence (0.85 on
+    ~41.7k edges) that is modal only because the largest emit path passes
+    nothing and inherits the flat dataclass default — is now machine-detectable
+    via ``Edge.confidence_source``. This guard groups emitted edges by
+    ``(emitter, confidence value)`` (emitter = the ``origin`` pass tuple) and
+    reports any group larger than ``threshold`` that is not a legitimately
+    declared constant.
+
+    A large constant group is LEGITIMATE only when it is either:
+
+    - entirely ``confidence_source='emitter_constant'`` (a declared hardcoded
+      producer value — the legal transitional state), or
+    - entirely ``confidence_source='evidence_derived'`` with the value equal to
+      the registry ``base_confidence`` for each edge's ``evidence_type`` (a
+      genuine derivation; every edge of one pathway shares its seeded base).
+
+    Anything else — a ``composite`` value (ranking still fused; ruling 3 has not
+    yet relocated it) held constant across >100 edges, or an ``evidence_derived``
+    value that does NOT match its registry base (a hardcoded constant
+    masquerading as derived) — is reported. Returns one descriptor per offending
+    group (``emitter``, ``confidence``, ``count``, ``sources``, ``reason``);
+    empty list means clean. Expressible as a property test over any behavior map.
+    """
+    groups: dict[tuple[tuple[str, ...], float], list[Any]] = defaultdict(list)
+    for edge in edges:
+        origin = getattr(edge, "origin", None) or []
+        key = (tuple(origin), round(float(edge.confidence), 9))
+        groups[key].append(edge)
+
+    violations: list[dict[str, Any]] = []
+    for (emitter, value), group in groups.items():
+        if len(group) <= threshold:
+            continue
+        sources = {getattr(e, "confidence_source", None) for e in group}
+        if sources == {"emitter_constant"}:
+            continue
+        if sources == {"evidence_derived"} and all(
+            derive_confidence(e.evidence_type, is_resolved=e.is_resolved) == e.confidence
+            for e in group
+        ):
+            continue
+        violations.append({
+            "emitter": emitter,
+            "confidence": value,
+            "count": len(group),
+            "sources": sorted(s for s in sources if s is not None),
+            "reason": (
+                "constant confidence across >{} edges without "
+                "confidence_source='emitter_constant' or a matching "
+                "evidence-derived base".format(threshold)
+            ),
+        })
+    return violations

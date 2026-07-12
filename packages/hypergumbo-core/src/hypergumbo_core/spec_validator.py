@@ -378,7 +378,12 @@ def _check_confidence_range(edges: Iterable[Any]) -> list[ValidationViolation]:
 _BOUNDED_ENUMS: dict[tuple[str, str], frozenset[str]] = {
     # (record_class, field) -> legal value set documented in the
     # dataclass docstring. Mirrors ADR-0024 "bounded-enum" category.
-    # Currently empty; new bounded-enum fields register here.
+    # ADR-0039 ruling 2: Edge.confidence_source provenance discriminator.
+    # Kept in lockstep with ir.VALID_CONFIDENCE_SOURCES by
+    # test_spec_validator's drift guard.
+    ("Edge", "confidence_source"): frozenset({
+        "evidence_derived", "emitter_constant", "composite",
+    }),
 }
 
 
@@ -460,6 +465,11 @@ def _check_axis_conformance(
             edge_id, "Edge.evidence_lang", "language",
             getattr(edge, "evidence_lang", None), languages,
             allow_none=True,
+        ))
+        violations.extend(_check_value(
+            edge_id, "Edge.confidence_source", "bounded-enum",
+            getattr(edge, "confidence_source", None),
+            _BOUNDED_ENUMS[("Edge", "confidence_source")], allow_none=False,
         ))
         for v in _check_list(
             edge_id, "Edge.origin", "pass-id",

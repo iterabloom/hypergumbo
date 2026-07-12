@@ -2441,16 +2441,41 @@ class TestEntrypointSerialization:
         result = ep.to_dict()
 
         assert set(result.keys()) == {
-            "symbol_id", "kind", "confidence", "label", "meta",
+            "symbol_id", "kind", "confidence", "rank_score", "label", "meta",
         }
         assert result["symbol_id"] == "python:app.py:1-5:handler:function"
         assert result["kind"] == "http_route"
         assert result["confidence"] == 0.95
+        # ADR-0039 R3: rank_score mirrors confidence until adjustments relocate.
+        assert result["rank_score"] == 0.95
         assert result["label"] == "HTTP GET /users"
         # Direct construction stamps only the derived id (no source /
         # evidence_type — those come from the producer via .create()).
         assert result["meta"]["id"].startswith("entrypoint:sha256:")
         assert set(result["meta"].keys()) == {"id"}
+
+    def test_rank_score_defaults_to_confidence(self) -> None:
+        """ADR-0039 R3: Entrypoint.rank_score syncs to confidence via __post_init__."""
+        ep = Entrypoint(
+            symbol_id="python:app.py:1-5:handler:function",
+            kind=EntrypointKind.MAIN_FUNCTION,
+            confidence=0.65,
+            label="main",
+        )
+        assert ep.rank_score == 0.65
+
+    def test_rank_score_explicit_is_preserved(self) -> None:
+        """A producer may set rank_score independently of confidence."""
+        ep = Entrypoint(
+            symbol_id="python:app.py:1-5:handler:function",
+            kind=EntrypointKind.LIBRARY_EXPORT,
+            confidence=0.95,
+            label="export",
+            rank_score=0.10,
+        )
+        assert ep.confidence == 0.95
+        assert ep.rank_score == 0.10
+        assert ep.to_dict()["rank_score"] == 0.10
 
     def test_to_dict_all_kinds(self) -> None:
         """to_dict() correctly serializes all EntrypointKind values."""

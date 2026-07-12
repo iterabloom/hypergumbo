@@ -642,7 +642,32 @@ def _edge_spec() -> ClassSpec:
             "confidence": {
                 "minimum": 0.0,
                 "maximum": 1.0,
-                "description": "Confidence score",
+                "description": (
+                    "Detection reliability (0.0-1.0) — the producer's "
+                    "evidence-derived estimate that the relationship exists "
+                    "(ADR-0039 ruling 1). NOT a ranking value; ranking "
+                    "prominence lives in rank_score."
+                ),
+            },
+            "confidence_source": {
+                "enum": ["evidence_derived", "emitter_constant", "composite"],
+                "description": (
+                    "Provenance of the confidence value (ADR-0039 ruling 2): "
+                    "evidence_derived (from the evidence_type registry base), "
+                    "emitter_constant (a declared hardcoded producer value), "
+                    "or composite (still fuses a ranking adjustment ruling 3 "
+                    "relocates to rank_score)."
+                ),
+            },
+            "rank_score": {
+                "minimum": 0.0,
+                "maximum": 1.0,
+                "description": (
+                    "Ranking prominence (0.0-1.0), ADR-0039 ruling 3. "
+                    "Initializes from confidence and accumulates the ranking "
+                    "adjustments relocated off confidence; equal to confidence "
+                    "until a producer relocates its adjustment."
+                ),
             },
             "origin": {
                 "description": "Pass IDs that contributed to this edge (INV-jidat)",

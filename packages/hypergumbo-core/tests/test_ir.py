@@ -7,6 +7,7 @@ import pytest
 
 from hypergumbo_core.ir import (
     VALID_ACCESS_MODES,
+    VALID_CONFIDENCE_SOURCES,
     AnalysisRun, Edge, ExternalRef, Span, Symbol, UsageContext, create_boundary_nodes,
     _default_config_fingerprint, compute_config_fingerprint,
     format_legacy_dst, is_external_boundary, validate_symbol_id_format,
@@ -319,6 +320,120 @@ def test_edge_has_edge_key() -> None:
     assert hasattr(edge, "edge_key")
     assert edge.edge_key is not None
     assert edge.edge_key.startswith("edgekey:sha256:")
+
+
+def test_edge_confidence_source_derived_when_confidence_omitted() -> None:
+    """ADR-0039 R2: an omitted confidence derives from evidence -> evidence_derived."""
+    edge = Edge.create(
+        src="python:a.py:1-2:foo:function",
+        dst="python:b.py:3-4:bar:function",
+        edge_type="calls",
+        line=5,
+        origin="test", origin_run_id="test",
+        evidence_type="ast_call_direct",  # seeded -> derive returns a value
+    )
+    assert edge.confidence_source == "evidence_derived"
+    # rank_score mirrors detection confidence until a producer relocates it.
+    assert edge.rank_score == edge.confidence
+
+
+def test_edge_confidence_source_emitter_constant_when_explicit() -> None:
+    """ADR-0039 R2: an explicit producer constant -> emitter_constant."""
+    edge = Edge.create(
+        src="a", dst="b", edge_type="contains", line=1,
+        origin="containment-linker", origin_run_id="test",
+        confidence=1.0, evidence_type="naming_convention",
+    )
+    assert edge.confidence_source == "emitter_constant"
+    assert edge.confidence == 1.0
+    assert edge.rank_score == 1.0
+
+
+def test_edge_confidence_source_emitter_constant_on_unseeded_fallback() -> None:
+    """An unseeded pathway derives None -> 0.85 fallback -> emitter_constant."""
+    edge = Edge.create(
+        src="a", dst="b", edge_type="calls", line=1,
+        origin="test", origin_run_id="test",
+        evidence_type="a_totally_unregistered_pathway",
+    )
+    assert edge.confidence == 0.85
+    assert edge.confidence_source == "emitter_constant"
+
+
+def test_edge_confidence_source_explicit_override() -> None:
+    """A producer may declare confidence_source=composite while migrating."""
+    edge = Edge.create(
+        src="a", dst="b", edge_type="calls", line=1,
+        origin="test", origin_run_id="test",
+        confidence=0.5, confidence_source="composite",
+    )
+    assert edge.confidence_source == "composite"
+
+
+def test_edge_rank_score_explicit_diverges_from_confidence() -> None:
+    """ADR-0039 R3: a producer may set rank_score independently of confidence."""
+    edge = Edge.create(
+        src="a", dst="b", edge_type="dispatches_to", line=1,
+        origin="test", origin_run_id="test",
+        confidence=0.85, rank_score=0.30,
+    )
+    assert edge.confidence == 0.85
+    assert edge.rank_score == 0.30
+
+
+def test_edge_create_rejects_invalid_confidence_source() -> None:
+    """An invalid confidence_source is a construction-time error."""
+    with pytest.raises(ValueError, match="confidence_source"):
+        Edge.create(
+            src="a", dst="b", edge_type="calls", line=1,
+            origin="test", origin_run_id="test",
+            confidence_source="not_a_source",
+        )
+
+
+def test_edge_raw_construction_syncs_rank_score() -> None:
+    """Directly-constructed Edge: rank_score defaults to confidence via __post_init__."""
+    edge = Edge(
+        id="edge:x", src="a", dst="b", edge_type="calls", line=1,
+        origin=["test"], origin_run_id="test", confidence=0.7,
+    )
+    assert edge.rank_score == 0.7
+    # No confidence_source passed -> honest default for a hand-set constant.
+    assert edge.confidence_source == "emitter_constant"
+
+
+def test_edge_to_dict_and_from_dict_roundtrip_new_fields() -> None:
+    """confidence_source + rank_score survive the to_dict/from_dict round-trip."""
+    edge = Edge.create(
+        src="a", dst="b", edge_type="calls", line=1,
+        origin="test", origin_run_id="test",
+        confidence=0.6, confidence_source="composite", rank_score=0.42,
+    )
+    d = edge.to_dict()
+    assert d["confidence_source"] == "composite"
+    assert d["rank_score"] == 0.42
+    back = Edge.from_dict(d)
+    assert back.confidence_source == "composite"
+    assert back.rank_score == 0.42
+
+
+def test_edge_from_dict_defaults_new_fields_for_legacy_artifact() -> None:
+    """A legacy artifact lacking the new keys deserializes with safe defaults."""
+    legacy = {
+        "id": "edge:x", "src": "a", "dst": "b", "type": "calls", "line": 1,
+        "confidence": 0.9, "origin": ["test"], "origin_run_id": "test",
+        "meta": {"evidence_type": "ast_call_direct"},
+    }
+    edge = Edge.from_dict(legacy)
+    assert edge.confidence_source == "emitter_constant"
+    # rank_score absent -> __post_init__ syncs it to confidence.
+    assert edge.rank_score == 0.9
+
+
+def test_valid_confidence_sources_vocabulary() -> None:
+    assert VALID_CONFIDENCE_SOURCES == {
+        "evidence_derived", "emitter_constant", "composite",
+    }
 
 
 def test_edge_id_unique_per_line() -> None:

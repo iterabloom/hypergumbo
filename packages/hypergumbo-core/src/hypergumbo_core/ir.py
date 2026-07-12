@@ -68,6 +68,31 @@ outright — "Go caller passes data to C"). ``dest_access_mode`` is removed.
 - bidirectional: data flows both ways
 """
 
+VALID_CONFIDENCE_SOURCES: frozenset[str] = frozenset({
+    "evidence_derived", "emitter_constant", "composite",
+})
+"""ADR-0039 ruling 2 provenance discriminator for ``Edge.confidence_source``.
+
+Names *how* the published ``confidence`` value was produced, so the migration
+off hardcoded per-emitter constants (ADR-0039 ruling 1) onto the evidence
+derivation layer is machine-readable rather than an audit:
+
+- evidence_derived: the value came through ``confidence.derive_confidence``
+  (the ``EvidenceTypeSpec.base_confidence`` registry seed for the edge's
+  ``evidence_type``). The honest, target state.
+- emitter_constant: a hardcoded producer constant (the legacy state of the
+  ~566 ``confidence=`` call sites, and the last-resort 0.85 fallback for an
+  unseeded pathway). A legal, declared transitional state.
+- composite: ``confidence`` still fuses a ranking adjustment that ruling 3
+  relocates to ``rank_score``; a producer stamps this explicitly while its
+  ranking migration is pending.
+
+Re-evaluation trigger (ADR-0024 bounded-enum discipline): if ``composite``
+ever needs to split into sub-kinds (per-adjustment provenance), or a consumer
+needs to filter edges by source programmatically across the codebase, promote
+to a heavyweight registry-backed axis per ADR-0024's seven-step workflow.
+"""
+
 PASS_VERSION: str = __version__
 """Canonical pass version derived from the package version.
 
@@ -690,6 +715,9 @@ class Edge:
         is_resolved: Whether `dst` is a real, in-repo (first-party) symbol node present in the graph (ADR-0037 ruling 1 — resolution names in-repo-ness, NOT target-identification). External/stdlib targets are materialized as `external_symbol` placeholder nodes and are always `is_resolved=False` even though the dst node exists (present-but-synthetic, not absent). The producer-time value (Edge.create default True) is ADVISORY; the finalize edge-resolution sub-step's verdict is what serializes.
         dst_ref: Structured identity for the dst endpoint. Populated on every `is_resolved=False` edge after the finalize edge-resolution sub-step (`None` only for an unidentified dangling reference whose id cannot be parsed); `None` for in-repo (`is_resolved=True`) dsts. Canonical source of truth for external-target identity — the legacy `dst` string is built from the same `ExternalRef`. The fourth cell (`is_resolved=True` + populated `dst_ref`) is never produced (ADR-0037 ruling 1 table).
         derived_from: Symbol (or Edge) IDs the producer consumed to construct this Edge (INV-rukor). Populated by linkers; None for analyzer-originated edges.
+        confidence: Detection-reliability score (0.0-1.0) — the producer's evidence-derived estimate that the relationship EXISTS (ADR-0039 ruling 1). NOT a ranking value; post-detection ranking boosts/penalties live in ``rank_score``.
+        confidence_source: Provenance of the ``confidence`` value (ADR-0039 ruling 2), one of ``VALID_CONFIDENCE_SOURCES`` — ``evidence_derived`` / ``emitter_constant`` / ``composite``. See ``VALID_CONFIDENCE_SOURCES`` for the enumeration and re-evaluation trigger.
+        rank_score: Ranking prominence (0.0-1.0). Initializes from ``confidence`` and accumulates the ranking adjustments ADR-0039 ruling 3 relocates off ``confidence`` (e.g. the type-hierarchy fan-out dampener). Equal to ``confidence`` until a producer relocates its adjustment. Ranking consumers key on this; reliability consumers key on ``confidence``.
         quality: Score and reason dict for quality assessment
         meta: Optional metadata dict. Dataflow edges store access_mode (ADR-0015) and channel here; cross-boundary edges store data_direction (ADR-0038 ruling 3).
     """
@@ -708,6 +736,8 @@ class Edge:
     is_resolved: bool = True
     dst_ref: Optional[ExternalRef] = None
     derived_from: Optional[List[str]] = None  # axis: identity
+    confidence_source: str = "emitter_constant"  # axis: bounded-enum
+    rank_score: Optional[float] = None
     quality: Optional[Dict[str, Any]] = None
     meta: Optional[Dict[str, Any]] = None
 
@@ -727,6 +757,13 @@ class Edge:
                 f"edge_type={self.edge_type!r}). Stamp from AnalysisRun.create()"
                 "'s execution_id at the producer; see WI-higap.",
             )
+        # ADR-0039 ruling 3: ``rank_score`` initializes from detection
+        # ``confidence`` and only diverges once a producer relocates a
+        # ranking adjustment onto it. Syncing here (not just in ``create``)
+        # keeps directly-constructed edges — e.g. in tests or ``from_dict``
+        # of a legacy artifact — internally consistent.
+        if self.rank_score is None:
+            self.rank_score = self.confidence
         # WI-lonoz / Phase 6 PR2: populate ``quality`` at construction so
         # the field is never None on the in-memory IR. Producers that
         # need a custom quality block pass it explicitly.
@@ -744,6 +781,8 @@ class Edge:
         origin_run_id: str = "",
         evidence_type: str = "ast_call_direct",
         confidence: float | None = None,
+        confidence_source: str | None = None,
+        rank_score: float | None = None,
         evidence_lang: Optional[str] = None,
         is_resolved: bool = True,
         dst_ref: Optional[ExternalRef] = None,
@@ -773,6 +812,11 @@ class Edge:
             raise ValueError(
                 f"data_direction={data_direction!r} not in {sorted(VALID_DATA_DIRECTIONS)}"
             )
+        if confidence_source is not None and confidence_source not in VALID_CONFIDENCE_SOURCES:
+            raise ValueError(
+                f"confidence_source={confidence_source!r} not in "
+                f"{sorted(VALID_CONFIDENCE_SOURCES)}"
+            )
         # Merge dataflow kwargs into meta
         dataflow_meta: Dict[str, str] = {}
         if access_mode is not None:
@@ -793,11 +837,26 @@ class Edge:
         # (Edge.evidence_type), conditioned on is_resolved. Unseeded pathways
         # fall back to the historical 0.85 default, so unmigrated producers are
         # unaffected; producers that pass an explicit confidence keep it.
+        confidence_derived = False
         if confidence is None:
             from hypergumbo_core.confidence import derive_confidence
-            confidence = derive_confidence(evidence_type, is_resolved=is_resolved)
-            if confidence is None:
+            derived = derive_confidence(evidence_type, is_resolved=is_resolved)
+            if derived is None:
                 confidence = 0.85
+            else:
+                confidence = derived
+                confidence_derived = True
+        # ADR-0039 ruling 2: stamp the provenance discriminator. A value that
+        # came through ``derive_confidence`` is ``evidence_derived``; an
+        # explicit producer constant (or the unseeded 0.85 fallback) is
+        # ``emitter_constant``. A producer can override (e.g. ``composite``
+        # while its ranking migration is pending).
+        if confidence_source is None:
+            confidence_source = "evidence_derived" if confidence_derived else "emitter_constant"
+        # ADR-0039 ruling 3: ``rank_score`` mirrors detection ``confidence``
+        # until a producer relocates a ranking adjustment onto it.
+        if rank_score is None:
+            rank_score = confidence
         # WI-kuluh / ADR-0040: central-stamp evidence_lang from the src id's
         # language slot (ADR-0036: lang = everything up to the first colon; src is
         # the producer's own well-formed node) when the producer did not pass one,
@@ -830,6 +889,8 @@ class Edge:
             is_resolved=is_resolved,
             dst_ref=dst_ref,
             derived_from=derived_from,
+            confidence_source=confidence_source,
+            rank_score=rank_score,
             meta=meta,
         )
 
@@ -866,6 +927,8 @@ class Edge:
             "type": self.edge_type,
             "line": self.line,
             "confidence": self.confidence,
+            "confidence_source": self.confidence_source,
+            "rank_score": self.rank_score,
             "origin": self.origin,
             "origin_run_id": self.origin_run_id,
             "is_resolved": self.is_resolved,
@@ -907,6 +970,8 @@ class Edge:
             is_resolved=d.get("is_resolved", True),
             dst_ref=ExternalRef.from_dict(dst_ref_raw) if dst_ref_raw else None,
             derived_from=d.get("derived_from"),
+            confidence_source=d.get("confidence_source", "emitter_constant"),
+            rank_score=d.get("rank_score"),
             quality=d.get("quality"),
             meta=meta,
         )
