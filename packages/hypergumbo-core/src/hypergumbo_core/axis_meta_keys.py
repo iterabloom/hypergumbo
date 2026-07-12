@@ -210,10 +210,19 @@ META_KEYS: Final[tuple[MetaKeySpec, ...]] = (
                 "fold-residue label (audit-findings 0012) emitted only by "
                 "analyzers whose call syntax carries receiver flavor "
                 "(Ruby / Go / C# / Rust / C++), hence ABSENT on corpora that "
-                "lack those languages (e.g. a pure-Python tree). Producer "
-                "values e.g. 'bare', 'external', 'field_chain', 'typed_field'. "
-                "Disambiguates ``ast_call`` + ``call_construct=method`` "
-                "edges."),
+                "lack those languages (e.g. a pure-Python tree). Complete "
+                "current producer vocabulary (no consumer branches on it yet): "
+                "'bare' (implicit / self receiver), 'external' / "
+                "'constant_external' / 'stdlib' (receiver resolves outside the "
+                "module), 'typed_field' / 'typed_var' (receiver has a known "
+                "type), 'field_chain' (chained field-access receiver), "
+                "'generic' (receiver present but unclassified). NOTE: this key "
+                "mixes a resolution CLASS (bare / external / typed / generic) "
+                "with an expression SHAPE (field_chain); kept as one key "
+                "because no consumer distinguishes them — re-evaluate (split "
+                "into receiver_class + receiver_shape) if one ever needs to "
+                "query them independently. Disambiguates ``ast_call`` + "
+                "``call_construct=method`` edges."),
     MetaKeySpec("resolution_quality", AXIS_EDGE_META,
                 "Pathway-quality label on ``ast_call`` edges "
                 "(e.g. 'recovery', 'ambiguous'), ORTHOGONAL to "
