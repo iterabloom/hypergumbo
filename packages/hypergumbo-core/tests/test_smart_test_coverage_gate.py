@@ -132,3 +132,45 @@ def test_scoped_coverage_verdict_written_to_pytest_log() -> None:
         "log (.ci/pytest-output.log) — the file the ADR/handoff tell you to read — "
         "will not contain the green signal (WI-kalub Step 1e)."
     )
+
+
+def test_captured_pytest_run_neutralizes_forced_color() -> None:
+    """The captured (non-raw) pytest run must neutralize FORCE_COLOR/COLORTERM so
+    the log written to $PYTEST_LOG is plain text.
+
+    Under a FORCE_COLOR dev shell, pytest colorizes even a redirected file. The
+    summary line then starts with an ANSI escape, so summarize's anchored
+    ``^=+ …`` result-line grep (and the ``^FAILED`` re-derivation grep) fail to
+    match; the unguarded result-line grep aborts smart-test under
+    ``set -e + pipefail`` with a false exit 1 on a *green* run (the WI-kalub
+    dev-loop symptom — CI is unaffected, it has no FORCE_COLOR). Neutralizing the
+    color-forcing env for the captured run aligns the local dev loop with CI."""
+    cap = [
+        ln for ln in _text().splitlines()
+        if "pytest " in ln
+        and '"$PYTEST_LOG" 2>&1' in ln
+        and not ln.lstrip().startswith("#")
+    ]
+    assert cap, "could not find the captured pytest invocation (writes $PYTEST_LOG)"
+    for ln in cap:
+        assert "env -u FORCE_COLOR" in ln, (
+            "the captured pytest run does not neutralize FORCE_COLOR, so under a "
+            "FORCE_COLOR dev shell $PYTEST_LOG is ANSI-colorized and summarize's "
+            "anchored greps abort smart-test (false exit 1 on green). Prefix the "
+            f"run with `env -u FORCE_COLOR -u COLORTERM` (WI-kalub). Line:\n  {ln}"
+        )
+
+
+def test_summarize_result_grep_cannot_abort() -> None:
+    """Defense in depth: summarize's result-line grep must be guarded (``|| true``)
+    so a non-matching log (e.g. still colorized) can never abort smart-test under
+    ``set -e + pipefail`` — the exit code must reflect the tests, not a summary
+    formatting mismatch."""
+    grep_lines = [ln for ln in _text().splitlines() if "result_line=$(grep" in ln]
+    assert grep_lines, "could not find summarize's result_line grep"
+    for ln in grep_lines:
+        assert "|| true" in ln, (
+            "summarize's result_line grep lacks a `|| true` guard; a non-matching "
+            "log aborts smart-test under set -e+pipefail before it can report the "
+            f"result (WI-kalub). Line:\n  {ln}"
+        )

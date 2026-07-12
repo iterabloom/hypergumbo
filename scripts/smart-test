@@ -312,8 +312,11 @@ summarize_pytest_output() {
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
     # Extract and show the result line (e.g., "=== 5770 passed, 79 warnings in 275.79s ===")
+    # WI-kalub: `|| true` so a non-matching log (e.g. still colorized under an
+    # exotic color source) can never abort smart-test under `set -e + pipefail` —
+    # the exit code must reflect the tests, not a summary formatting mismatch.
     local result_line
-    result_line=$(grep -E "^=+ .*(passed|failed|error).* =+$" "$logfile" | tail -1)
+    result_line=$(grep -E "^=+ .*(passed|failed|error).* =+$" "$logfile" | tail -1 || true)
     if [[ -n "$result_line" ]]; then
         if [[ "$exit_code" -eq 0 ]]; then
             echo "✅ $result_line"
@@ -388,8 +391,16 @@ run_pytest() {
         # Capture output, then summarize
         echo "Running tests... (output saved to $PYTEST_LOG)"
         # shellcheck disable=SC2086
-        # Use || true to prevent set -e from exiting on test failure
-        pytest $test_targets "${COV_PATHS[@]}" --junit-xml="$JUNIT_XML" "${extra_args[@]}" > "$PYTEST_LOG" 2>&1 || true
+        # Use || true to prevent set -e from exiting on test failure.
+        # WI-kalub: neutralize FORCE_COLOR / COLORTERM so the captured $PYTEST_LOG
+        # is PLAIN TEXT. A FORCE_COLOR dev shell otherwise makes pytest colorize
+        # even this redirected file; the summary line then begins with an ANSI
+        # escape, so summarize's anchored `^=+ …` result-line grep (and the
+        # `^FAILED` re-derivation grep) fail to match — the unguarded result-line
+        # grep aborts smart-test under `set -e + pipefail` with a false exit 1 on a
+        # GREEN run. CI has no FORCE_COLOR, so this only bit the local dev loop;
+        # neutralizing here aligns local with CI.
+        env -u FORCE_COLOR -u COLORTERM pytest $test_targets "${COV_PATHS[@]}" --junit-xml="$JUNIT_XML" "${extra_args[@]}" > "$PYTEST_LOG" 2>&1 || true
         local exit_code=${PIPESTATUS[0]}
         # Re-check exit code from log file if PIPESTATUS doesn't work
         if grep -q "FAIL Required test coverage" "$PYTEST_LOG"; then
