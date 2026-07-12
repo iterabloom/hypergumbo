@@ -61,3 +61,18 @@
   clock: 6  # 43cd
   nonce: 43cd  # 43cd
   message: "RELATED_BUT_DISTINCT to WI-ninaj: metrics.languages aggregation gaps: ninaj=files unpopulated, movah=nodes double-count synthetic linker nodes; distinct sub-fields/fixes. Distinct fix; cross-link not fold. (tracker-hygiene-sweep 2026-06-08T174504Z)"  # 43cd
+- op: update  # 0e42
+  at: '2026-07-12T08:27:46Z'  # 0e42
+  by: agent  # 0e42
+  actor: jgstern_agent  # 0e42
+  clock: 7  # 0e42
+  nonce: '0e42'  # 0e42
+  set:  # 0e42
+    status: done  # 0e42
+- op: discuss  # 2d2f
+  at: '2026-07-12T08:27:46Z'  # 2d2f
+  by: agent  # 2d2f
+  actor: jgstern_agent  # 2d2f
+  clock: 8  # 2d2f
+  nonce: 2d2f  # 2d2f
+  message: "Documented in PR (selfh dev a4bad5897e): spec metrics.languages now states the per-language attribution rule (language -> discovery_language -> unknown; ADR-0031 Class-B synth nodes attributed to host), so .nodes may exceed count of node.language==<lang>. Option-1 (documentation-only) chosen per triage; matches metrics.py:84-104. Wave-4 contract-accuracy."  # 2d2f

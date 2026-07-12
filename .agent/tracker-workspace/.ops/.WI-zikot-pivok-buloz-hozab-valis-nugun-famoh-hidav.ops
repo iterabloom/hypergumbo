@@ -31,3 +31,18 @@
     tags: [dogfood]  # 1356
   remove:  # 1356
     tags: [dogfooding]  # 1356
+- op: update  # 82db
+  at: '2026-07-12T08:27:45Z'  # 82db
+  by: agent  # 82db
+  actor: jgstern_agent  # 82db
+  clock: 3  # 82db
+  nonce: 82db  # 82db
+  set:  # 82db
+    status: done  # 82db
+- op: discuss  # f11b
+  at: '2026-07-12T08:27:45Z'  # f11b
+  by: agent  # f11b
+  actor: jgstern_agent  # f11b
+  clock: 4  # f11b
+  nonce: f11b  # f11b
+  message: "Documented in PR (selfh dev a4bad5897e): dropped phantom feature.summary (never emitted; absent from schema.json too), documented node_depths/node_tiers/admission_stats and the full query echo set (matches slice.py:242-330). All 3 drift directions resolved. Wave-4 contract-accuracy."  # f11b
