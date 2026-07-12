@@ -47,3 +47,18 @@
   clock: 5  # b95c
   nonce: b95c  # b95c
   message: "[Wave-0 hygiene re-verify] Schema and population halves are fixed. Remaining work is spec documentation only. The three sub-fields (analyzer_version, max_tier_applied, supply_chain) now have proper schema properties with descriptions (schema.json lines 1398-1438) and are correctly emitted by limits.to_dict() (limits.py lines 179, 181, 183-184). The spec section §9 limits (docs/hypergumbo-spec.md lines 967-975) needs to be expanded to document these three fields alongside the four that are already mentioned (not_captured, truncated_files, skipped_languages, failed_files)."  # b95c
+- op: update  # b4c5
+  at: '2026-07-11T09:32:25Z'  # b4c5
+  by: agent  # b4c5
+  actor: jgstern_agent  # b4c5
+  clock: 6  # b4c5
+  nonce: b4c5  # b4c5
+  set:  # b4c5
+    status: done  # b4c5
+- op: discuss  # 4301
+  at: '2026-07-11T09:32:25Z'  # 4301
+  by: agent  # 4301
+  actor: jgstern_agent  # 4301
+  clock: 7  # 4301
+  nonce: '4301'  # 4301
+  message: "Resolved. Per-field verification (2026-07-11): (1) max_tier_applied — the one genuine gap; now documented in spec section-9 limits block (PR jgstern-agent/docs/limits-max-tier-applied); already present in schema. (2) analyzer_version — STALE premise: already documented under 'Version fields: three independent axes' (surfaced as limits.analyzer_version = hypergumbo-<__version__>) and present in schema (1 hit). (3) supply_chain — STALE premise: 12 spec hits (section 14 + supply-chain sections) + 4 schema hits, well documented. All three subfields are now documented in both spec and schema; the only action needed was the max_tier_applied spec entry."  # 4301

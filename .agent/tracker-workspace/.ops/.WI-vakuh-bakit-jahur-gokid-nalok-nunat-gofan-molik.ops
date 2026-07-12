@@ -55,3 +55,10 @@
   clock: 6  # 29ca
   nonce: 29ca  # 29ca
   message: "root-cause family member (b2) (connections-sweep 2026-06-08T1900Z)"  # 29ca
+- op: discuss  # 782d
+  at: '2026-07-11T10:20:28Z'  # 782d
+  by: agent  # 782d
+  actor: jgstern_agent  # 782d
+  clock: 7  # 782d
+  nonce: 782d  # 782d
+  message: "Progress (2026-07-11 pt.2, PR jgstern-agent/fix/containment-span-disambiguation): the '30 provably-false class->method contains' face is FIXED. Root cause: _find_parent Priority 1 returned the FIRST same-file same-name container WITHOUT checking spans — so with two same-named classes in one file (e.g. two _FakeMetadata in test_analyzer_identity.py), a method bound to the wrong one whose span does not enclose it. Fix: _find_parent now takes the child span and, when >1 same-name container shares the child's file, picks the one whose span ENCLOSES the child (tightest); if none encloses, it refuses (no edge) rather than emitting to the arbitrary first. BEHAVIORAL EVIDENCE (production-path link_containment, RED->GREEN): tests/test_containment_linker.py::TestContainmentNameCollision::test_same_file_same_name_classes_disambiguate_by_span (method now binds to the ENCLOSING class, not the first same-file match) + ::test_same_file_same_name_no_enclosing_class_refuses (no false containment when nothing encloses) + coverage guard tests; containment.py at 100%. STILL OPEN — the confidence-INVERSION face (naming_convention 1.0 > span_overlap 0.9; 18388 edges above the 0.95 linker ceiling) is NOT addressed here: it is governed by ADR-0039 (confidence separation / rank_score split), which explicitly cites containment.py's 1.0 naming_convention edges above the 0.95 linker ceiling and pairs with WI-lutad (which 'closes jointly via ADR-0039 rulings 1 and 3'). Changing containment confidence in isolation would conflict with that coordinated rollout, so the inversion is deferred to the ADR-0039 implementation. WI-vakuh remains open (todo_hard) for that confidence face."  # 782d
