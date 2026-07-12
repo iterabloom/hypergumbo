@@ -589,3 +589,37 @@ def test_finalize_strips_visibility_modifiers_keeps_others(tmp_path: Path) -> No
     _finalize_compute_visibility(_ctx(tmp_path, symbols=[s]))
     assert s.visibility == "public"
     assert s.modifiers == ["static", "final"]  # visibility term 'public' removed
+
+
+# --- Sub-step 8: commit_dicts analysis_runs ordering (WI-haguz) -------------------------
+
+
+def test_commit_dicts_sorts_analysis_runs_by_started_at(tmp_path: Path) -> None:
+    """WI-haguz: analysis_runs is committed in ascending ``started_at`` order, so the
+    serialized array carries a documented, deterministic ordering contract instead of
+    pass-completion order."""
+    runs = [
+        _ar("go", started_at="2026-01-01T00:00:03Z"),
+        _ar("python", started_at="2026-01-01T00:00:01Z"),
+        _ar("rust", started_at="2026-01-01T00:00:02Z"),
+    ]
+    ctx = _ctx(tmp_path, analysis_runs=runs)
+    _finalize_commit_dicts(ctx)
+    order = [r["started_at"] for r in ctx.behavior_map["analysis_runs"]]
+    assert order == [
+        "2026-01-01T00:00:01Z",
+        "2026-01-01T00:00:02Z",
+        "2026-01-01T00:00:03Z",
+    ]
+
+
+def test_commit_dicts_analysis_runs_tiebreak_by_pass_when_no_started_at(
+    tmp_path: Path,
+) -> None:
+    """WI-haguz: runs with missing (or equal) ``started_at`` fall back to a pass-id
+    tiebreak, keeping the total order stable and deterministic."""
+    runs = [_ar("zeta"), _ar("alpha")]  # no started_at -> both sort as ""
+    ctx = _ctx(tmp_path, analysis_runs=runs)
+    _finalize_commit_dicts(ctx)
+    order = [r["pass"] for r in ctx.behavior_map["analysis_runs"]]
+    assert order == ["alpha", "zeta"]

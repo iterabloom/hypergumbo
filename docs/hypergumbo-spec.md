@@ -111,7 +111,7 @@ Produces a reduced subgraph suitable for LLM context. Default output filename in
 Shows available language analyzers and which ones are suggested for the current repo. Useful for discovering what hypergumbo can analyze.
 
 🟩 **`hypergumbo test-coverage [path] [--format text|json]`**
-Estimates test coverage via static analysis (no code execution). Reports hot spots (functions called by many tests, ranked by tests/LOC) and cold spots (untested functions). Filter with `--min-tests`, `--max-tests`, `--top`.
+Estimates test coverage via static analysis (no code execution). Reports hot spots (functions called by many tests, ranked by tests/LOC) and cold spots (untested functions). Filter with `--min-tests`, `--max-tests`, `--top`. The candidate universe is the *production functions* — non-test function/method symbols, excluding ADR-0031 synthetic linker stand-ins — the same `production_callables` denominator `dead-code-maybe` uses (`dead = production - reachable`).
 
 🟩 **`hypergumbo io-boundaries [path] [--format text|json]`** (ADR-0016)
 Identifies call edges that reach I/O primitives (filesystem, network, subprocess, environment) and groups them by boundary type. Loads a cached behavior map or auto-runs analysis if needed. Supports 16 languages (14 dedicated catalogs + 2 via aliases) with 150+ framework IO entries. When entrypoints are available, traces backward from IO edges to show which entrypoints can reach each IO operation. Output format is `--format text|json` (default `text`), the canonical read-view spelling shared with `routes` / `catalog` / `config` / `cache-status` / `dead-code-maybe` / `test-coverage`; the historical `--json` boolean is kept as a back-compat alias (WI-kitud).
@@ -314,6 +314,8 @@ class AnalysisIR:
     relationships: List[Relationship]  # typed edges with quality scores
 ```
 🟪 `AnalysisIR`, `Reference`, `Relationship` are spec names; code uses `AnalysisResult`, `Symbol`, `Edge`.
+
+🟩 The serialized `analysis_runs[]` array is ordered by ascending `started_at`, ties broken by `pass` id (WI-haguz) — a deterministic ordering contract, so consumers can rely on chronological pass order and the array is byte-stable across runs.
 
 ### Multi-value field axes
 

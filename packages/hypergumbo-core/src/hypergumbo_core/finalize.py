@@ -436,6 +436,12 @@ def _finalize_compute_visibility(ctx: FinalizeContext) -> None:
 
 def _finalize_commit_dicts(ctx: FinalizeContext) -> None:
     """Sub-step 8 — commit the reconciled IR into behavior_map as one view."""
+    # WI-haguz: serialize analysis_runs in a documented, deterministic order —
+    # ascending started_at, ties broken by pass id — rather than the accidental
+    # pass-completion order, so the array has a stable ordering contract. Sort
+    # in place so behavior_map["analysis_runs"] stays the same list object as
+    # ctx.analysis_runs (an identity other sub-steps and tests rely on).
+    ctx.analysis_runs.sort(key=lambda r: (r.get("started_at") or "", r.get("pass") or ""))
     ctx.behavior_map["analysis_runs"] = ctx.analysis_runs
     ctx.behavior_map["nodes"] = [s.to_dict() for s in ctx.symbols]
     ctx.behavior_map["edges"] = [e.to_dict() for e in ctx.edges]

@@ -7766,6 +7766,17 @@ Clearing it forces re-analysis on next run (slower but ensures fresh results).""
     p_remove_extras.set_defaults(func=cmd_remove_extras)
 
     # hypergumbo test-coverage
+    # WI-rakol: the "production functions" denominator is shared by
+    # test-coverage and dead-code-maybe (both derive it from
+    # ``production_callables``); document it once, in both epilogs.
+    production_fn_doc = (
+        '"Production functions" (the shared denominator for both '
+        "test-coverage and\n"
+        "dead-code-maybe) are the non-test function/method symbols, "
+        "excluding\n"
+        "ADR-0031 synthetic linker stand-ins.  dead = production - reachable."
+    )
+
     test_coverage_epilog = """\
 Examples:
   hypergumbo test-coverage .                  # Show coverage summary
@@ -7786,7 +7797,9 @@ a footer, and in JSON output under the 'caveats' field. Treat
 'untested' as 'unreached by static call graph', not 'definitely
 untested', before taking action on the cold-spot list.
 
-Auto-discovers cached results from 'hypergumbo run', or specify --input."""
+Auto-discovers cached results from 'hypergumbo run', or specify --input.
+
+""" + production_fn_doc
 
     p_test_cov = sub.add_parser(
         "test-coverage",
@@ -7830,6 +7843,7 @@ Auto-discovers cached results from 'hypergumbo run', or specify --input."""
     p_dead_code = sub.add_parser(
         "dead-code-maybe",
         help="Find potentially dead code unreachable from entrypoints",
+        epilog=production_fn_doc,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     _add_path_argument(p_dead_code)
