@@ -805,13 +805,66 @@ Field semantics (`id`, `stable_id`, `shape_id`, `fingerprint`, `origin`, `qualit
 
 **Presence rule:** `stable_id` and `shape_id` keys MUST be present on every node. If unavailable, they MUST be set to `null` (not omitted). This supports forward-compatible consumers without forcing every pass to compute every field.
 
-**supply_chain** (object, required): Compiled from the IR's flat `supply_chain_tier` and `supply_chain_reason` fields into a nested object with an added `tier_name` field (e.g., `first_party`, `internal_dep`), computed from the numeric `tier` at serialization time. See [§14 Supply chain classification](#14-supply-chain-classification) for tier definitions.
+**supply_chain** (object, required): Compiled from the IR's flat `supply_chain_tier` and `supply_chain_reason` fields into a nested object with an added `tier_name` field (e.g., `first_party`, `internal_dep`), computed from the numeric `tier` at serialization time. `Symbol.to_dict()` also **relocates** five top-level boolean flags into this object: `is_test_file`, `is_example_file`, `is_config_file`, and `is_generated_file` (file-role classifications, each independent of `tier`), plus `is_exported` (whether the symbol is part of the package's public API). See [§14 Supply chain classification](#14-supply-chain-classification) for tier definitions.
 
 ```json
-"supply_chain": {"tier": 1, "tier_name": "first_party", "reason": "matches ^src/"}
+"supply_chain": {"tier": 1, "tier_name": "first_party", "reason": "matches ^src/", "is_test_file": false, "is_example_file": false, "is_config_file": false, "is_generated_file": false, "is_exported": true}
 ```
 
 **Node kinds:** `file`, `module`, `function` (function/method), `class`, plus the rest of the canonical language-construct vocabulary (`method`, `interface`, `struct`, `enum`, `trait`, `contract`, …). Per ADR-0027, `Symbol.kind` names the source-language syntactic construct **only**; framework-endpoint participation (HTTP route, IPC handler, CLI entrypoint, etc.) is queried from `entrypoints[]` (see [§8](#8-entrypoint-detection)) and from `meta.concepts` on the node, not from `kind` itself. The pre-closure `endpoint` kind was retired in the SCHEMA_VERSION 0.6.0 fold (audit-findings 0009).
+
+**Node.meta (`Symbol.meta`) fields.** Analyzer- and linker-emitted attributes of a node whose canonical `Symbol.kind` names only the source-language construct (ADR-0027). The registered vocabulary is the `symbol_meta` axis in `axis_meta_keys.py` (47 keys); language analyzers may additionally stamp unregistered per-language keys (sustained use of one is an ADR-0024 promotion signal). Values are strings unless noted; boolean-flag keys are present only when true. The dominant semantic key, `meta.concepts`, is documented separately at [§ meta.concepts Structure](#metaconcepts-structure).
+
+*Framework role & routing:*
+- `framework_role` (optional): framework-specific role of a generic-kind symbol (e.g. `event_publisher`, `route`, `graphql_resolver`); stamped by analyzers and framework-dispatch linkers (audit-findings 0013 fold residue).
+- `route_path` (optional): URL path a `framework_role == "route"` handler registers (e.g. `/users`).
+- `http_method` (optional): HTTP method of a route marker (`GET`, `POST`, `ANY`); some producers also carry transport sentinels (`WS`, `LIVE`, `RPC`) that `routes.route_of` lifts into `route_protocol`.
+- `route_framework` (optional): framework name of a route marker (`flask`, `rails`); additive home read by `routes.route_of` (direct emission deferred, INV-vokak).
+- `route_protocol` (optional): transport of a route endpoint (`http` | `websocket` | …), split from `http_method` (producer migration deferred, INV-tibap).
+- `is_class_based_view` (optional, bool): Django class-based-view marker; set by the Django dispatch linker.
+
+*External-boundary & supply-chain provenance:*
+- `reference_syntax` (optional): use-site reference syntax of an `external_symbol` boundary node (`unresolved` / `attribute` / `module` / `namespace`; ADR-0036).
+- `external_boundary` (optional, bool): `True` on synthetic boundary nodes minted for unresolved-but-referenced names.
+- `ecosystem` (optional): distribution provenance of a tier-3 boundary dependency — `stdlib` vs `third_party` (ADR-0041 §3); absent when the language has no enumerated stdlib.
+- `directness` (optional): manifest declaration relationship of an external dependency — `direct` / `transitive` / `undeclared` (ADR-0041 §2).
+
+*File / build shape (synthetic file / package / dependency nodes):*
+- `module_system` (optional): `esm` / `commonjs` (JS/TS).
+- `component_framework` (optional): single-file-component framework (`vue`, `svelte`, `astro`).
+- `package_ecosystem` (optional): package-manager registry on package nodes (`npm`, `composer`) — distinct from the `ecosystem` provenance key above.
+- `entry_role` (optional): entry-point role on file nodes (`main`, `script`).
+- `dependency_scope` (optional): dependency scope (`dev`).
+- `install_mode` / `install_source` (optional): requirement install mode (`editable`) / source (`url`).
+- `config_format` (optional): config-shape format (`tsconfig`).
+- `task_implementation` (optional): task implementation language.
+- `test_dialect` (optional): test-framework dialect (`robot`).
+- `block_type` (optional): sub-classification of a generic `block` node (`datasource`, `generator`).
+
+*Declaration & visibility shape:*
+- `base_classes` / `parent_base_classes` (optional, list): direct / transitive ancestor base-class names (the latter from the `type_hierarchy` linker).
+- `decorators` / `annotations` (optional, list): Python-style decorators / Java-Kotlin annotations (kept distinct).
+- `visibility_signal` (optional): which signal set the typed `Symbol.visibility` — `language_modifier` / `name_convention` / `default` (INV-jusot).
+- `exported` (optional, bool): exported from its file (ES `export`, Go capitalized name).
+- `export_scope` (optional): finer export visibility (`module` / `package` / `public`) — **reserved; not currently emitted by any producer.**
+- `export_source` (optional): originating source for re-exported symbols (resolves ES re-export chains).
+- `override` / `virtual` / `abstract` / `static` (optional, bool): method/class modifiers (`static` affects call resolution — no implicit receiver).
+- `is_local` / `is_recursive` / `is_native` (optional, bool): locally-scoped / recursive / native-bridge (JNI, N-API) markers.
+
+*Signature & language annotations:*
+- `parameters` (optional, list): structured parameter list (name/type/default); `params` is the short-form name-only variant.
+- `return_type` / `inferred_return_type` (optional): declared / inferred return type.
+- `display_name` (optional): human-readable name overriding the default.
+- `scope` (optional): lexical scope qualifier (`workgroup`, `thread_local`), distinct from `visibility` / `static`.
+- `import_path` (optional): source-language import path when it differs from the identifier.
+- `documentation` (optional): docstring / leading-comment text.
+
+*SCIP index round-trip (`scip/`):*
+- `symbol_roles` (optional, int bitset): SCIP symbol-role bitset.
+- `scip_kind` (optional): SCIP-native kind label kept alongside canonical `Symbol.kind`.
+
+*Escape hatch:*
+- `tags` (optional, list): free-form annotations not yet promoted to a named key.
 
 ### edges[] — relationships
 
@@ -875,7 +928,7 @@ The axis is open: the registry at `packages/hypergumbo-core/src/hypergumbo_core/
 
 ### features[] — named slices
 
-Each feature contains `id`, `name`, `entry_nodes[]`, `node_ids[]`, `edge_ids[]`, a `query` object (method, entrypoint, hops, max_files, exclude_tests), `limits_hit[]`, and `summary`. See `docs/schema.json` for the full structure.
+Each feature contains `id`, `name`, `entry_nodes[]`, `node_ids[]`, `edge_ids[]`, a `query` object, `limits_hit[]`, and — when non-empty — `node_depths`, `node_tiers`, and `admission_stats` (per-node BFS depth/tier maps and, for dataflow slices, edge-admission counters). The `query` object echoes the slice spec that produced the feature: `method`, `entrypoint`, `hops`, `max_files`, `exclude_tests`, `exclude_utility`, and `reverse` are always present, and `min_confidence`, `max_tier`, `language`, `hub_threshold`, `exclude_imports`, `pass_through_kinds`, and `dataflow` are echoed only when set to a non-default value (so the feature is reproducible from its JSON and its `id` hash stays stable). See `docs/schema.json` for the full structure.
 
 **Feature ID:** Stable identifier based on query spec: `sha256(json.dumps(query, sort_keys=True))`. Same query on same code → same feature ID → enables diff across commits.
 
@@ -969,6 +1022,8 @@ Penalties on the entrypoint `confidence` field: test files −90% (×0.1), vendo
 ### metrics — optional counts
 
 Aggregate statistics: `total_nodes`, `total_edges`, `total_files`, `avg_confidence`, per-language breakdowns (`languages.*`), and per-tier breakdowns (`by_supply_chain_tier.*`). Each per-tier breakdown includes `nodes`, `edges`, and `edges_incident` counts. `edges` counts each edge once by its **source** node's tier, so the per-tier `edges` sum reconciles to the source-resolved edge total; because external-dependency tiers (2/3) are graph **sinks**, not sources, their `edges` typically reads ~0. `edges_incident` (WI-modom) counts an edge once per **distinct endpoint tier** (either-endpoint), exposing each tier's actual graph contribution (a tier-3 dependency referenced by N edges shows N incident, not 0); it double-counts cross-tier edges by design and so does **not** sum to `total_edges`.
+
+**Per-language attribution (`languages.<lang>`).** Each node is bucketed by `node.language`, falling back to its `discovery_language` when `node.language` is `None`: ADR-0031 Class-B synthetic stand-ins (linker-emitted protocol/host symbols) carry no primary language and are attributed to their host discovery language so cross-language metrics stay meaningful; a node with neither falls to `unknown`. Consequently `languages.<lang>.nodes` counts both native-`<lang>` nodes and these heuristically-attributed synthetic nodes, so its value can exceed the number of nodes whose `node.language == <lang>`. `languages.<lang>.edges` counts each edge once by its source node's so-attributed language.
 
 **`total_files`** is the canonical "how many files in this repo?" answer: `sum(profile.languages[L].files)`. It agrees with `profile`'s per-language counts (which in turn agree with `analysis_runs[L].files_analyzed` for languages whose analyzer registered a canonical `find_files`).
 
