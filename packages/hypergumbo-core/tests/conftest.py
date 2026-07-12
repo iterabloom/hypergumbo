@@ -16,6 +16,36 @@ from pathlib import Path
 import pytest
 
 
+@pytest.fixture(scope="session", autouse=True)
+def _hg_discover_analyzers_before_any_test() -> None:
+    """Populate the analyzer registry once per (xdist worker) session, before
+    any test can snapshot an incomplete copy of it.
+
+    Root cause (INV-tajik): ``analyze.registry._ANALYZER_REGISTRY`` is filled by
+    import-time ``@register_analyzer`` decorators, which do NOT re-fire on
+    cached re-imports. So once ``clear_registry()`` runs, a decorator-registered
+    analyzer is recoverable only from a saved snapshot — ``ensure_discovered()``
+    cannot repopulate it (the modules are already in ``sys.modules``). Tests
+    that clear+save+restore the registry (``test_analyzer_registry``,
+    ``test_orchestrator_fail_open``) capture an INCOMPLETE (sometimes empty)
+    snapshot when full discovery has not run yet, and restore that incomplete
+    state; a later consumer's ``ensure_discovered()`` then no-ops on the stale
+    ``_discovered`` flag, so ``test_emission_parity_matrix``'s
+    ``run_analyzer('python'/'go')`` raises ``KeyError: ... none registered``
+    under some pytest-xdist orderings.
+
+    Forcing full discovery here — as a session-scoped autouse fixture, which
+    instantiates before any function-scoped clearing fixture on the first
+    test — guarantees the registry is fully populated before the first
+    snapshot, so every save/restore round-trips the complete set. Mirrored in
+    the repo-root ``conftest.py`` for cross-package runs whose rootdir is the
+    repo root rather than this package.
+    """
+    from hypergumbo_core.analyze.registry import ensure_discovered
+
+    ensure_discovered()
+
+
 def _find_repo_root() -> Path | None:
     """Find the repo root by looking for .git directory."""
     current = Path(__file__).resolve().parent
