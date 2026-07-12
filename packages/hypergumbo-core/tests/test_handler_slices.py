@@ -278,6 +278,28 @@ def test_emit_handler_slices_fallback_filename_without_route(tmp_path: Path) -> 
     assert (tmp_path / "slice.handler.mystery.json").exists()
 
 
+def test_emit_handler_slices_excludes_degenerate_route_markers_from_features(
+    tmp_path: Path,
+) -> None:
+    """WI-rijop: a framework route marker (framework_role='route') whose forward
+    slice recovers nothing beyond itself is a content-free twin of the real
+    concept-handler feature, so it is kept OUT of behavior_map['features'] — while
+    the real concept handler stays in. The per-slice file is still written."""
+    handler = _concept_handler("get_user", "src/api.py", "GET", "/users")
+    marker = _kind_route_handler("health", "src/routes.py", "GET", "/health")
+    symbols = [handler, marker]
+    bmap = _behavior_map(symbols, [])
+
+    _emit_handler_slices(bmap, symbols, [], tmp_path, tmp_path, enabled=True)
+
+    feature_names = {f["name"] for f in bmap.get("features", [])}
+    assert handler.id in feature_names  # real concept handler kept
+    assert marker.id not in feature_names  # degenerate route marker excluded
+    # The marker is still discoverable — its per-slice file is written.
+    written_names = {p.name for p in tmp_path.glob("slice.handler.*.json")}
+    assert any("health" in n for n in written_names)
+
+
 def test_emit_handler_slices_disabled_writes_nothing(tmp_path: Path) -> None:
     h = _concept_handler("h", "src/api.py", "GET", "/x")
     bmap = _behavior_map([h], [])

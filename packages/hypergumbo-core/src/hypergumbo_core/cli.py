@@ -8764,7 +8764,18 @@ def _emit_handler_slices(
         # below; features[] holds just IDs + query + summary so consumers
         # can discover what slices exist via the behavior map alone, and
         # diff across commits using the query-derived stable id.
-        behavior_map.setdefault("features", []).append(result.to_dict())
+        #
+        # WI-rijop: but keep a degenerate route *marker* (framework_role=
+        # "route" whose forward slice recovers nothing beyond itself) OUT of
+        # features[] — it is a content-free twin of the real concept-handler
+        # feature and would double-populate the array. The per-slice file and
+        # index entry below are still written for completeness.
+        if not (
+            _is_route_marker(handler)
+            and len(result.node_ids) <= 1
+            and not result.edge_ids
+        ):
+            behavior_map.setdefault("features", []).append(result.to_dict())
 
         feature_dict = result.to_dict()
         feature_dict["nodes"] = inline_nodes
