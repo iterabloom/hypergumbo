@@ -61,3 +61,19 @@
   clock: 6  # 5b04
   nonce: 5b04  # 5b04
   message: "RELATED_BUT_DISTINCT to WI-ziror: profile.languages vs metrics.languages mismatch family; ninaj=files key absent on metrics side, ziror=disjoint language SETS; complementary shared fix-site. Distinct fix; cross-link not fold. (tracker-hygiene-sweep 2026-06-08T174504Z)"  # 5b04
+- op: update  # 4a39
+  at: '2026-07-12T08:14:49Z'  # 4a39
+  by: agent  # 4a39
+  actor: jgstern_agent  # 4a39
+  clock: 7  # 4a39
+  nonce: 4a39  # 4a39
+  set: {}  # 4a39
+  add:  # 4a39
+    tags: [wave5]  # 4a39
+- op: discuss  # 4c7c
+  at: '2026-07-12T08:14:49Z'  # 4c7c
+  by: agent  # 4c7c
+  actor: jgstern_agent  # 4c7c
+  clock: 8  # 4c7c
+  nonce: 4c7c  # 4c7c
+  message: "Wave-4 triage 2026-07-12: MIGRATE to Wave 5. metrics.languages never contracted a files key (spec sec 971 = nodes/edges only); profile.languages already carries files (spec sec 798). Wiring a 3rd file-count risks new semantics divergence -- low value."  # 4c7c

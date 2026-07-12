@@ -46,3 +46,18 @@
   clock: 4  # a56d
   nonce: a56d  # a56d
   message: "Wave-4 assignment (2026-07-08): schema/docs version-contract drift (stable_id scheme documented stale). Attaches to Wave-4 schema:F3/F4 ('one version contract' + spec-conformance gate that forces sync at each scheme bump); parent INV-rotup (docs-prose-drift umbrella). NOTE: statement is STALE — impl now emits v8, not v5; needs a re-verify of the current scheme-vs-spec delta before work. Empty isbefore."  # a56d
+- op: update  # 3220
+  at: '2026-07-12T08:14:46Z'  # 3220
+  by: agent  # 3220
+  actor: jgstern_agent  # 3220
+  clock: 5  # 3220
+  nonce: '3220'  # 3220
+  set:  # 3220
+    status: done  # 3220
+- op: discuss  # fd60
+  at: '2026-07-12T08:14:46Z'  # fd60
+  by: agent  # fd60
+  actor: jgstern_agent  # fd60
+  clock: 6  # fd60
+  nonce: fd60  # fd60
+  message: "Wave-4 triage 2026-07-12: acceptance conditions met. Spec documents stable_id_scheme current value v8 AND the full v1->v8 per-transition history (spec sec 395 + sec 1879); impl schema.py emits v8. Item own 2026-07-09 note already flagged stale. Resolved by prior spec work."  # fd60

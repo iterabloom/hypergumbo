@@ -31,3 +31,19 @@
     tags: [dogfood]  # 3adc
   remove:  # 3adc
     tags: [dogfooding]  # 3adc
+- op: update  # c959
+  at: '2026-07-12T08:14:51Z'  # c959
+  by: agent  # c959
+  actor: jgstern_agent  # c959
+  clock: 3  # c959
+  nonce: c959  # c959
+  set: {}  # c959
+  add:  # c959
+    tags: [wave5]  # c959
+- op: discuss  # 8b57
+  at: '2026-07-12T08:14:51Z'  # 8b57
+  by: agent  # 8b57
+  actor: jgstern_agent  # 8b57
+  clock: 4  # 8b57
+  nonce: 8b57  # 8b57
+  message: "Wave-4 triage 2026-07-12: MIGRATE to Wave 5. usage_contexts is documented (spec:934-965) and steers consumers to nodes/entrypoints (spec:965); the monoculture is a producer-breadth concern (expensive broadening or cosmetic rename). P4."  # 8b57

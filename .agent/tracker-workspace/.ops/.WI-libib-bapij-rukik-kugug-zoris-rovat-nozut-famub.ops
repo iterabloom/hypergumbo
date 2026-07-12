@@ -53,3 +53,19 @@
   clock: 5  # 195d
   nonce: 195d  # 195d
   message: "REFRAMED (2026-06-18 cost interview). REJECT the full 312-cell enforced applicability matrix: upfront cost is dominated by adjudicating ~194 empty cells (most legitimately empty), and an enforced expected/forbidden matrix carries irreducible false-positive risk (paid in human trust + CI-signal erosion) that cheap agent labor does NOT remove. Sound, cheaper design = POPULATION RATCHET: auto-snapshot the (kind,field) cells populated above a threshold, assert in CI they never drop to null — sound by construction (no subjective judgments), catches the load-bearing regression class (WI-lisog fingerprint-on-method), regenerated on intentional population changes. Empty-cell discovery stays with dogfooding. BUILD DEFERRED per Zeno-scope decision — not Wave 2; pick up as a scoped ratchet item later. Downgraded todo_hard -> todo_soft."  # 195d
+- op: update  # e61c
+  at: '2026-07-12T08:14:49Z'  # e61c
+  by: agent  # e61c
+  actor: jgstern_agent  # e61c
+  clock: 6  # e61c
+  nonce: e61c  # e61c
+  set: {}  # e61c
+  add:  # e61c
+    tags: [wave5]  # e61c
+- op: discuss  # 2427
+  at: '2026-07-12T08:14:49Z'  # 2427
+  by: agent  # 2427
+  actor: jgstern_agent  # 2427
+  clock: 7  # 2427
+  nonce: '2427'  # 2427
+  message: "Wave-4 triage 2026-07-12: MIGRATE to Wave 5. Own 2026-06-18 discussion already REJECTED the full 312-cell matrix and DEFERRED the scoped population-ratchet -- an explicit prevention item (Wave-5 theme), not Wave-4 correctness."  # 2427

@@ -1,0 +1,22 @@
+- op: create  # d3d3
+  at: '2026-07-12T08:14:43Z'  # d3d3
+  by: agent  # d3d3
+  actor: jgstern_agent  # d3d3
+  clock: 1  # d3d3
+  nonce: d3d3  # d3d3
+  data:  # d3d3
+    kind: work_item  # d3d3
+    title: "features[] double-populated: 8 degenerate route-synthetic twins (node_count=1) alongside 8 rich handler features"  # d3d3
+    status: todo_hard  # d3d3
+    priority: 2  # d3d3
+    parent:  # d3d3
+    tags:  # d3d3
+    - analysis_quality  # d3d3
+    - dogfood  # d3d3
+    - features_array  # d3d3
+    isbefore: []  # d3d3
+    duplicate_of: []  # d3d3
+    not_duplicate_of: []  # d3d3
+    pr_ref:  # d3d3
+    description: "Split from WI-tovap during the 2026-07-12 Wave-4 triage (WI-tovap's doc-drift face closed; this producer face is distinct and still live). The top-level features[] array holds 16 entries against 8 http_route entrypoints: 8 RICH handler-keyed features (node_count 5-17, edge_count 4-19) PLUS 8 DEGENERATE route-synthetic features (the :route registration nodes, ALL node_count=1, edge_count=0, zero behavioral info), all first-class entries with distinct ids. A consumer iterating features double-counts each route and must filter out the content-free twins -- half the inventory is empty. Fix shape: suppress the degenerate route-synthetic feature entries at the producer (or fold them into their rich handler sibling), OR document them as intentional index rows. Blind-severity-derived priority P2."  # d3d3
+    fields: {}  # d3d3

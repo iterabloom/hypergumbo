@@ -18,3 +18,19 @@
     pr_ref:  # 2186
     description: "**Defect (two-part, config_info-specific).** (1) `sketch_precomputed.config_info` is undocumented in the spec, and (2) its raw manifest previews are truncated mid-token rather than to token/line boundaries.\n\n**Mechanic.** spec.md:684 declares `sketch_precomputed` an \"internal cache artifact — not part of the public schema\" — yet `config_info` IS present in docs/schema.json:166, a contradiction, and `config_info` itself is documented nowhere. The raw-preview half: config_info renders one embedding-selected chunk per manifest, and the chunk window cuts mid-token (e.g. starting at a stray `]` or breaking inside a key/value), so the preview is not a clean, readable snippet.\n\n**Expectation.** config_info is documented in the spec (or the schema/spec contradiction resolved), and raw previews are clipped to token/line boundaries so a consumer reading config_info sees coherent fragments.\n\n**Consequence.** A consumer (LLM/human) reading config_info to learn the repo's packages gets undocumented, mid-token-truncated fragments and cannot rely on the field's meaning.\n\n**Cross-refs (related, not duplicate).** WI-gupod (config_info embedding-chunk selection DROPS name/version/license — the chunk-content defect; this item is the spec-documentation + token-boundary-truncation surface); INV-jifus (META: sketch_precomputed has no schema); WI-vurom (schema omits top-level keys); INV-modor (the same mid-token-truncation pattern on `readme_description` — sibling field).\n\nMember: F185.A2. Found via dogfooding tranche 10. Severity 2."  # 2186
     fields: {}  # 2186
+- op: update  # 2c4d
+  at: '2026-07-12T08:14:48Z'  # 2c4d
+  by: agent  # 2c4d
+  actor: jgstern_agent  # 2c4d
+  clock: 2  # 2c4d
+  nonce: 2c4d  # 2c4d
+  set: {}  # 2c4d
+  add:  # 2c4d
+    tags: [wave5]  # 2c4d
+- op: discuss  # 428f
+  at: '2026-07-12T08:14:48Z'  # 428f
+  by: agent  # 428f
+  actor: jgstern_agent  # 428f
+  clock: 3  # 428f
+  nonce: 428f  # 428f
+  message: "Wave-4 triage 2026-07-12: MIGRATE to Wave 5. The spec-contradiction half is already reconciled (schema.json x-internal:true); residual is a mid-token truncation on the embedding-only, x-internal sketch_precomputed cache -- low value, non-default mode."  # 428f

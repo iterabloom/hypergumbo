@@ -93,3 +93,19 @@
   clock: 11  # b010
   nonce: b010  # b010
   message: "related-but-distinct cross-link (connections-sweep 2026-06-08T1900Z)"  # b010
+- op: update  # c049
+  at: '2026-07-12T08:14:48Z'  # c049
+  by: agent  # c049
+  actor: jgstern_agent  # c049
+  clock: 12  # c049
+  nonce: c049  # c049
+  set: {}  # c049
+  add:  # c049
+    tags: [wave5]  # c049
+- op: discuss  # 1ebe
+  at: '2026-07-12T08:14:48Z'  # 1ebe
+  by: agent  # 1ebe
+  actor: jgstern_agent  # 1ebe
+  clock: 13  # 1ebe
+  nonce: 1ebe  # 1ebe
+  message: "Wave-4 triage 2026-07-12: MIGRATE to Wave 5. config_info identity defect lives only in embedding mode (non-default; default HEURISTIC) on the x-internal sketch_precomputed cache (schema.json x-internal:true) -- not an output-contract surface. Sibling of the migrated INV-jifus sketch-cache prevention residual."  # 1ebe

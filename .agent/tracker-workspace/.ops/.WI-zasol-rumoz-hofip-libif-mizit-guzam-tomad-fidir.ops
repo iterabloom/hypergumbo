@@ -38,3 +38,18 @@
   clock: 3  # 1ed1
   nonce: 1ed1  # 1ed1
   message: "Folds in WI-janob (TRUE_DUPLICATE): same AnalysisRun execution_id<->origin_run_id naming asymmetry; zasol subsumes. (tracker-hygiene-sweep 2026-06-08T174504Z)"  # 1ed1
+- op: update  # 3c9b
+  at: '2026-07-12T08:14:46Z'  # 3c9b
+  by: agent  # 3c9b
+  actor: jgstern_agent  # 3c9b
+  clock: 4  # 3c9b
+  nonce: 3c9b  # 3c9b
+  set:  # 3c9b
+    status: done  # 3c9b
+- op: discuss  # 8e54
+  at: '2026-07-12T08:14:46Z'  # 8e54
+  by: agent  # 8e54
+  actor: jgstern_agent  # 8e54
+  clock: 5  # 8e54
+  nonce: '8e54'  # 8e54
+  message: "Wave-4 triage 2026-07-12: core symptom resolved. AR alias pairs documented -- execution_id at spec:277/286, pass_id a documented field (spec:215/287). The producer/JSON asymmetry is documented-intentional. Residual (single consolidated table) is low-value doc tidying, not a defect."  # 8e54

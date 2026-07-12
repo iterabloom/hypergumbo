@@ -48,3 +48,18 @@
   clock: 4  # 608a
   nonce: 608a  # 608a
   message: "root-cause family cross-link (g2); keeps existing parent (connections-sweep 2026-06-08T1900Z)"  # 608a
+- op: update  # 9808
+  at: '2026-07-12T08:14:47Z'  # 9808
+  by: agent  # 9808
+  actor: jgstern_agent  # 9808
+  clock: 5  # 9808
+  nonce: '9808'  # 9808
+  set:  # 9808
+    status: done  # 9808
+- op: discuss  # 4f1b
+  at: '2026-07-12T08:14:47Z'  # 4f1b
+  by: agent  # 4f1b
+  actor: jgstern_agent  # 4f1b
+  clock: 6  # 4f1b
+  nonce: 4f1b  # 4f1b
+  message: "Wave-4 triage 2026-07-12: the fixed-9-value framing predates ADR-0028. The evidence_type registry (evidence_types.py, open enum) IS the source-of-truth doc, backed by a CI drift gate (scripts/check-evidence-type-drift). The N-undocumented-values model no longer applies."  # 4f1b

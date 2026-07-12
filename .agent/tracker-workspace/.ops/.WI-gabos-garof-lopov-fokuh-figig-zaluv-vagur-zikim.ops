@@ -45,3 +45,19 @@
     tags: [dogfood]  # cd94
   remove:  # cd94
     tags: [dogfooding]  # cd94
+- op: update  # 3450
+  at: '2026-07-12T08:14:50Z'  # 3450
+  by: agent  # 3450
+  actor: jgstern_agent  # 3450
+  clock: 5  # 3450
+  nonce: '3450'  # 3450
+  set: {}  # 3450
+  add:  # 3450
+    tags: [wave5]  # 3450
+- op: discuss  # b145
+  at: '2026-07-12T08:14:51Z'  # b145
+  by: agent  # b145
+  actor: jgstern_agent  # b145
+  clock: 6  # b145
+  nonce: b145  # b145
+  message: "Wave-4 triage 2026-07-12: MIGRATE to Wave 5. The {files,paths} vs {files,symbols} divergence is intentional (paths = capped sample list, not a symbol count), so rename is inapplicable; residual is spec-doc acknowledgment only. P4, low value."  # b145

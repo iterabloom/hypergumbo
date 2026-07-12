@@ -55,3 +55,18 @@
   clock: 5  # 57cb
   nonce: 57cb  # 57cb
   message: "RELATED_BUT_DISTINCT to WI-kanuj: general-named surface populated only from narrow HTTP producer: tovap=features=http_route projection; kanuj=usage_contexts monocultural HTTP/WS; same fix family, distinct surfaces. Distinct fix; cross-link not fold. (tracker-hygiene-sweep 2026-06-08T174504Z)"  # 57cb
+- op: update  # b8cf
+  at: '2026-07-12T08:14:47Z'  # b8cf
+  by: agent  # b8cf
+  actor: jgstern_agent  # b8cf
+  clock: 6  # b8cf
+  nonce: b8cf  # b8cf
+  set:  # b8cf
+    status: done  # b8cf
+- op: discuss  # 5136
+  at: '2026-07-12T08:14:47Z'  # 5136
+  by: agent  # 5136
+  actor: jgstern_agent  # 5136
+  clock: 7  # 5136
+  nonce: '5136'  # 5136
+  message: "Wave-4 triage 2026-07-12: doc-drift resolved -- spec:876-884 documents features[] as the route-handler-slice projection (_emit_handler_slices; other entrypoint kinds not yet wired). The still-live P2 double-population facet (16 features for 8 routes: 8 rich + 8 degenerate node_count=1 route twins) is a DISTINCT producer concern, re-filed separately as WI-rijop-tumud-lavob-hunog-fupug-davuh-sunuv-nitan so it is not lost."  # 5136

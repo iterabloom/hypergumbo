@@ -20,3 +20,19 @@
     pr_ref:  # d3fc
     description: "Surfaced 2026-06-29 while attempting the WI-zipoj at-scale validation. 'hypergumbo run --path <flink>' (flink = ~14.6k Java source files, deep package hierarchies) timed out at BOTH a 30-minute and a 60-minute bound (rc=124). Both runs reached the SAME late stage — past the dependency-linker (UserWarning at cli.py:8434, 193430 Import edges) — and were killed during/after, i.e. in the finalization/sketch_precomputed phase. run_behavior_map's include_sketch_precomputed (cli.py:~8696) pre-extracts config_info, vocabulary, readme_description, AND additional_file_centrality_scores; the last involves a per-file EMBEDDING pass that is the suspected hot spot at 14.6k files. Because run never completed, no cache was written, so a subsequent 'sketch' auto-discovered no cache and re-ran analysis from scratch (also timed out). NEEDS ROOT-CAUSE: is the embedding/precompute pass O(files) but just expensive (~tens of min on 14.6k files) or super-linear? Profile run_behavior_map on flink (or kubernetes/Go for a faster-analyzing large repo). Distinct from WI-zipoj (sketch RENDERING at scale, now addressed by PR #321's comparison-sketch cache-read) and from INV-papuj (read-path cache reuse) — this is the ANALYSIS/precompute phase throughput at >1M LOC. Repro: 'hypergumbo run --path /home/jgstern_agent/ALL_REPOS/whole_bunch_of_repos/flink' under 'timeout 3600'."  # d3fc
     fields: {}  # d3fc
+- op: update  # c352
+  at: '2026-07-12T08:14:48Z'  # c352
+  by: agent  # c352
+  actor: jgstern_agent  # c352
+  clock: 2  # c352
+  nonce: c352  # c352
+  set: {}  # c352
+  add:  # c352
+    tags: [wave5]  # c352
+- op: discuss  # 9f60
+  at: '2026-07-12T08:14:49Z'  # 9f60
+  by: agent  # 9f60
+  actor: jgstern_agent  # 9f60
+  clock: 3  # 9f60
+  nonce: 9f60  # 9f60
+  message: "Wave-4 triage 2026-07-12: MIGRATE to Wave 5. Perf/scale item (>1M-LOC / large-Java throughput; tags performance,large_repo) -- orthogonal to output/contract surfaces. Belongs to the Wave-5 perf theme."  # 9f60
