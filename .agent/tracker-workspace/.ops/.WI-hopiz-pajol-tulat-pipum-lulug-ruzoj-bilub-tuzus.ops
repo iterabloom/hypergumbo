@@ -19,3 +19,18 @@
     pr_ref:  # e7ee
     description: "**Mechanism.** Python Symbol.signature is truncated at exactly 60 characters with a trailing '...'; 2071/25170 python function/method signatures (8.2%) hit the cap (every truncated one is exactly length 60; max length over all 25170 is 60). SEPARATELY, every parameter default VALUE is replaced by a literal '...' regardless of length — 2343/25170 (9.3%) python sigs contain '=...'.\n\n**Evidence.** register_analyzer (registry.py:140-217): real source sig has 13 params + '-> Callable[...]' return; emitted sig is '(name: str, priority: int=..., supports_max_files: bool=..., ca...' (60 chars, cut mid-word inside capture_symbols_as). Only 3 of 13 params survive; return type dropped; defaults 50/False/None all become '...'. Fresh hypergumbo run on /tmp: 'def f(a:int,b:str=\"hello\",c:int=50)' -> '(a: int, b: str=..., c: int=...)'; 7-param '-> None' -> 60-char cut dropping zeta/eta + return type. Live producer behavior, reproduces.\n\n**Consequence.** An LLM agent or human reading signature to understand call semantics is told (a) a param HAS a default but never WHAT it is, and (b) for any sig >60 chars sees a wrong/short param list with no return type, with no flag beyond the '...'. The 60-char cap and default-elision are undocumented in docs/hypergumbo-spec.md (no hits near §789/§817).\n\n**Related (distinct).** Parallel to WI-puzuk (docstring first-line-only / 80-char cap) but a DIFFERENT field (signature), DIFFERENT cap (60 not 80), plus a second mechanism (per-default '...' elision) WI-puzuk lacks. Source: dogfood_tranche_07 F122.A1, fresh-run reproduced."  # e7ee
     fields: {}  # e7ee
+- op: update  # 7876
+  at: '2026-07-12T10:56:27Z'  # 7876
+  by: agent  # 7876
+  actor: jgstern_agent  # 7876
+  clock: 2  # 7876
+  nonce: '7876'  # 7876
+  set:  # 7876
+    status: done  # 7876
+- op: discuss  # ddac
+  at: '2026-07-12T10:56:27Z'  # ddac
+  by: agent  # ddac
+  actor: jgstern_agent  # ddac
+  clock: 3  # ddac
+  nonce: ddac  # ddac
+  message: "Fixed in PR #598 (selfh dev 766e813290). Python display Symbol.signature now renders real default values (bounded per value; over-long/unparseable -> ellipsis) and uses a 240-char cap with graceful truncation that preserves the return type, instead of a bare =ellipsis for every default + a 60-char blind mid-content cut. STRUCTURAL: the display signature also feeds normalize_python_signature -> make_typed_stable_id (normalize keeps default values AND truncation flips typed->untyped), so a naive widening would have churned every Python stable_id (verified empirically). Decoupled: _format_function_signature gains render_defaults + wide max_len used ONLY for the display field; the stable_id/normalize input keeps the byte-identical legacy 60-char/=ellipsis form -> zero identity churn. 6 tests (4 updated incl a decoupling assertion, 2 added); spec nodes[] signature field documented. Wave-5 P1."  # ddac
