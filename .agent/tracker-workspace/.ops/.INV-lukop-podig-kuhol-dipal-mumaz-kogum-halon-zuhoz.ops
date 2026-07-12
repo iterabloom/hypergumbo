@@ -1,0 +1,24 @@
+- op: create  # e2dc
+  at: '2026-07-12T18:33:21Z'  # e2dc
+  by: agent  # e2dc
+  actor: jgstern_agent  # e2dc
+  clock: 1  # e2dc
+  nonce: e2dc  # e2dc
+  data:  # e2dc
+    kind: invariant  # e2dc
+    title: "Python file with a long function signature (>~250 chars) silently emits 0 nodes for the WHOLE file"  # e2dc
+    status: violated  # e2dc
+    priority: 1  # e2dc
+    parent:  # e2dc
+    tags:  # e2dc
+    - python  # e2dc
+    - analysis_quality  # e2dc
+    - wave5  # e2dc
+    isbefore: []  # e2dc
+    duplicate_of: []  # e2dc
+    not_duplicate_of: []  # e2dc
+    pr_ref:  # e2dc
+    description: "Discovered 2026-07-12 during WI-hopiz (Python signature display). Confirmed on selfh/dev = PRE-EXISTING (unrelated to WI-hopiz). EVIDENCE via run_behavior_map on a single-file repo: 16 short params (~208-char sig) -> 1 function node; 4 long-annotation params (~225 char) -> 1 node; 6 long-annotation params (~370 char) -> 0 nodes; 20 short params (~520 char) -> 0 nodes. Threshold is signature LENGTH (~250-370 char band), not param count. SEVERITY: silent whole-file data loss -- long generic/Callable/Union annotations routinely exceed 250 chars, so a real module with one long-signature function loses ALL symbols+edges with no diagnostic. REPRO: file with def huge(20 str params) -> None: return 1, run hypergumbo run ., observe 0 nodes. analyze_python() in isolation returns [] even for trivial fns (bad lens); run_behavior_map is the definitive repro."  # e2dc
+    fields:  # e2dc
+      statement: "Every syntactically-valid Python source file emits its symbols (functions / classes / module node); a function signature LENGTH must never determine whether the file nodes are produced."  # e2dc
+      root_cause: "Not yet root-caused. A function whose rendered signature exceeds roughly 250 chars (long type annotations OR ~15+ params) causes the analyzer to emit zero nodes for the WHOLE file (fail-open, no exception / warning / skipped-pass entry). Likely a downstream filter tied to signature length / stable_id normalization / a size guard."  # e2dc
