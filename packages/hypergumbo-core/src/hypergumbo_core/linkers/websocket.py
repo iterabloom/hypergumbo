@@ -608,6 +608,41 @@ def _detect_python_patterns(file_path: Path) -> list[WebSocketPattern]:
     return patterns
 
 
+# _PATTERN_TYPE_TO_FRAMEWORK maps the linker's internal pattern_type slug to the
+# framework name (the framework_dispatch value prescribed by audit-findings 0014):
+# pattern_type "native" -> "native_websocket"; all other pattern_types pass through
+# as their own framework name.
+_PATTERN_TYPE_TO_FRAMEWORK = {
+    "django_channels": "django_channels",
+    "fastapi": "fastapi",
+    "native": "native_websocket",
+    "socketio": "socketio",
+    "starlette": "starlette",
+    "ws": "ws",
+}
+
+
+def _resolve_ws_framework(pattern_type: str, declared_python_deps: set[str]) -> str:
+    """Map a websocket ``pattern_type`` to a framework name, dependency-gated.
+
+    WI-fizir: the pattern matcher cannot tell FastAPI from Starlette — they share
+    the ``@app.websocket(...)`` route syntax and FastAPI is built on Starlette, so a
+    Starlette app's endpoints match the ``fastapi`` pattern. When the guess is
+    ``fastapi`` but ``fastapi`` is not a declared Python dependency and ``starlette``
+    is, correct the attribution to ``starlette`` rather than assert a framework the
+    repo does not use. Every other case — including a repo that genuinely depends on
+    fastapi, or one where neither is resolvable — passes through unchanged.
+    """
+    framework = _PATTERN_TYPE_TO_FRAMEWORK[pattern_type]
+    if (
+        framework == "fastapi"
+        and "fastapi" not in declared_python_deps
+        and "starlette" in declared_python_deps
+    ):
+        return "starlette"
+    return framework
+
+
 def link_websocket(
     repo_root: Path,
     existing_symbol_ids: "set[str] | None" = None,
@@ -700,19 +735,14 @@ def link_websocket(
     # ADR-0028 Phase 3 / audit-findings 0014: the dynamic f-string emits
     # f"{pattern_type}_emit" and f"{pattern_type}_endpoint" leak framework
     # identity into evidence_type. Fold to canonical inference label
-    # ast_call_direct + meta["framework_dispatch"]=<framework_name>.
-    # _PATTERN_TYPE_TO_FRAMEWORK maps the linker's internal pattern_type slug
-    # to the framework_dispatch value prescribed by audit-findings 0014:
-    #   pattern_type "native"  →  framework_dispatch "native_websocket"
-    #   (all other pattern_types pass through as their own framework name)
-    _PATTERN_TYPE_TO_FRAMEWORK = {
-        "django_channels": "django_channels",
-        "fastapi": "fastapi",
-        "native": "native_websocket",
-        "socketio": "socketio",
-        "starlette": "starlette",
-        "ws": "ws",
-    }
+    # ast_call_direct + meta["framework_dispatch"]=<framework_name>. The
+    # pattern_type->framework map now lives at module level
+    # (_PATTERN_TYPE_TO_FRAMEWORK) with the dependency-gated _resolve_ws_framework.
+    #
+    # WI-fizir: collect the repo's declared Python dependencies once so framework
+    # attribution can be gated on them (the fastapi-vs-starlette disambiguation).
+    from ..profile import _collect_python_deps
+    declared_python_deps = {d.lower() for d in _collect_python_deps(repo_root)}
 
     # Create symbols for endpoints
     symbols: list[Symbol] = []
@@ -841,9 +871,9 @@ def link_websocket(
                             "channel_kind": "websocket",
                             "event": event,
                             "event_type": "variable" if is_variable_match else "literal",
-                            "framework_dispatch": _PATTERN_TYPE_TO_FRAMEWORK[
-                                send_pat.pattern_type
-                            ],
+                            "framework_dispatch": _resolve_ws_framework(
+                                send_pat.pattern_type, declared_python_deps
+                            ),
                         },
                         derived_from=[_make_file_id(_language_for_file(send_pat.file_path, send_pat.pattern_type), send_pat.file_path), _make_file_id(_language_for_file(recv_pat.file_path, recv_pat.pattern_type), recv_pat.file_path)],
                     )
@@ -877,7 +907,7 @@ def link_websocket(
             # duplicated onto this references edge.
             meta={
                 "ref_construct": "websocket_endpoint",
-                "framework_dispatch": _PATTERN_TYPE_TO_FRAMEWORK[ep.pattern_type],
+                "framework_dispatch": _resolve_ws_framework(ep.pattern_type, declared_python_deps),
             },
             derived_from=[_make_file_id(ep_language, ep.file_path), ep_id],
         ))
@@ -934,12 +964,12 @@ def link_websocket(
                         # WI-pozom: WS route path is a route (url_path), not a
                         # dataflow conduit (channel).
                         "url_path": path_str,
-                        "client_framework": _PATTERN_TYPE_TO_FRAMEWORK[
-                            client_ep.pattern_type
-                        ],
-                        "server_framework": _PATTERN_TYPE_TO_FRAMEWORK[
-                            server_ep.pattern_type
-                        ],
+                        "client_framework": _resolve_ws_framework(
+                            client_ep.pattern_type, declared_python_deps
+                        ),
+                        "server_framework": _resolve_ws_framework(
+                            server_ep.pattern_type, declared_python_deps
+                        ),
                     },
                     derived_from=[_make_file_id(client_lang, client_ep.file_path), server_ep_id],
                 ))

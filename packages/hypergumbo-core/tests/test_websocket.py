@@ -1717,3 +1717,75 @@ class TestWiZolotCrossLanguageBridge:
             if e.edge_type == "calls" and (e.meta or {}).get("protocol") == "ws"
         ]
         assert len(bridge_edges) == 1
+
+
+class TestWebSocketFrameworkDependencyGating:
+    """WI-fizir: WS framework attribution is gated on declared Python deps.
+
+    FastAPI and Starlette share the ``@app.websocket(...)`` route syntax, so the
+    pattern matcher can guess ``fastapi`` for a Starlette app. The linker corrects
+    that to the framework the repo actually declares.
+    """
+
+    def test_resolve_corrects_fastapi_to_starlette_when_only_starlette_declared(
+        self,
+    ) -> None:
+        from hypergumbo_core.linkers.websocket import _resolve_ws_framework
+
+        assert _resolve_ws_framework("fastapi", {"starlette"}) == "starlette"
+
+    def test_resolve_keeps_fastapi_when_fastapi_declared(self) -> None:
+        from hypergumbo_core.linkers.websocket import _resolve_ws_framework
+
+        assert _resolve_ws_framework("fastapi", {"fastapi", "starlette"}) == "fastapi"
+
+    def test_resolve_keeps_fastapi_when_neither_declared(self) -> None:
+        from hypergumbo_core.linkers.websocket import _resolve_ws_framework
+
+        # No dependency signal at all → do not invent a correction.
+        assert _resolve_ws_framework("fastapi", set()) == "fastapi"
+
+    def test_resolve_passes_through_non_fastapi_frameworks(self) -> None:
+        from hypergumbo_core.linkers.websocket import _resolve_ws_framework
+
+        assert _resolve_ws_framework("native", {"starlette"}) == "native_websocket"
+        assert _resolve_ws_framework("starlette", {"starlette"}) == "starlette"
+        assert _resolve_ws_framework("socketio", set()) == "socketio"
+
+    def test_link_websocket_attributes_starlette_on_starlette_repo(
+        self, tmp_path: Path
+    ) -> None:
+        """End-to-end: a Starlette repo whose @app.websocket endpoint matches the
+        FastAPI pattern is attributed to starlette (its declared dep), not fastapi."""
+        (tmp_path / "pyproject.toml").write_text(
+            '[project]\nname = "x"\nversion = "0"\ndependencies = ["starlette>=1.0"]\n'
+        )
+        (tmp_path / "app.py").write_text(
+            '@app.websocket("/ws")\n'
+            "async def ws_endpoint(websocket):\n"
+            "    await websocket.accept()\n"
+        )
+        result = link_websocket(tmp_path)
+        frameworks = {
+            (e.meta or {}).get("framework_dispatch")
+            for e in result.edges
+            if (e.meta or {}).get("framework_dispatch")
+        }
+        assert frameworks == {"starlette"}
+
+    def test_link_websocket_keeps_fastapi_when_declared(self, tmp_path: Path) -> None:
+        (tmp_path / "pyproject.toml").write_text(
+            '[project]\nname = "x"\nversion = "0"\ndependencies = ["fastapi>=0.1"]\n'
+        )
+        (tmp_path / "app.py").write_text(
+            '@app.websocket("/ws")\n'
+            "async def ws_endpoint(websocket):\n"
+            "    await websocket.accept()\n"
+        )
+        result = link_websocket(tmp_path)
+        frameworks = {
+            (e.meta or {}).get("framework_dispatch")
+            for e in result.edges
+            if (e.meta or {}).get("framework_dispatch")
+        }
+        assert frameworks == {"fastapi"}

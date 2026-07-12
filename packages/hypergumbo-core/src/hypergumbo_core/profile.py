@@ -1874,6 +1874,25 @@ def _is_dsl_marker(pattern: str) -> bool:
     return any(tok in pattern for tok in ("{", "+="))
 
 
+def _collect_python_deps(repo_root: Path) -> set[str]:
+    """Union the declared Python dependency names across every manifest kind
+    under ``repo_root`` — pyproject.toml, the pip-requirements closure, setup.py,
+    and Pipfile. Names are the structured (PEP 503-style) distribution names the
+    per-manifest parsers return. Shared by :func:`_detect_python_frameworks` and
+    the websocket linker's dependency-gated framework attribution (WI-fizir).
+    """
+    deps: set[str] = set()
+    deps |= _collect_parsed_deps(repo_root, "pyproject.toml", _parse_pyproject_deps)
+    # WI-himas: pip requirements use a layered manifest set (requirements.txt,
+    # requirements/*.txt, requirements-*.txt) with -r/-c includes between
+    # files. Resolve the full closure instead of matching only the literal
+    # "requirements.txt" filename.
+    deps |= _collect_pip_requirements_deps(repo_root)
+    deps |= _collect_parsed_deps(repo_root, "setup.py", _parse_setup_py_deps)
+    deps |= _collect_parsed_deps(repo_root, "Pipfile", _parse_pipfile_deps)
+    return deps
+
+
 def _detect_python_frameworks(repo_root: Path) -> list[str]:
     """Detect Python frameworks from dependency files.
 
@@ -1885,15 +1904,7 @@ def _detect_python_frameworks(repo_root: Path) -> list[str]:
     produce false positives.
     """
     detected = []
-    deps: set[str] = set()
-    deps |= _collect_parsed_deps(repo_root, "pyproject.toml", _parse_pyproject_deps)
-    # WI-himas: pip requirements use a layered manifest set (requirements.txt,
-    # requirements/*.txt, requirements-*.txt) with -r/-c includes between
-    # files. Resolve the full closure instead of matching only the literal
-    # "requirements.txt" filename.
-    deps |= _collect_pip_requirements_deps(repo_root)
-    deps |= _collect_parsed_deps(repo_root, "setup.py", _parse_setup_py_deps)
-    deps |= _collect_parsed_deps(repo_root, "Pipfile", _parse_pipfile_deps)
+    deps = _collect_python_deps(repo_root)
 
     for framework, patterns in PYTHON_FRAMEWORKS.items():
         for pattern in patterns:
