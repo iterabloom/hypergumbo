@@ -807,6 +807,8 @@ Field semantics (`id`, `stable_id`, `shape_id`, `fingerprint`, `origin`, `qualit
 
 **Presence rule:** `stable_id` and `shape_id` keys MUST be present on every node. If unavailable, they MUST be set to `null` (not omitted). This supports forward-compatible consumers without forcing every pass to compute every field.
 
+**signature** (string, optional — functions/methods): a human-readable *display* rendering of the parameter list and return type, e.g. `(a: int, b: str='hello') -> None`. Default values are shown verbatim (bounded per value so a pathological default cannot blow up the line — over-long or unparseable defaults render as `…`); for a rare over-length signature the parameter list is truncated with a `…)` marker while the **return type is preserved** (WI-hopiz). This display string is distinct from the structural signature that feeds `stable_id` (param count / arity flags — see [§6](#6-internal-representation)), so its width never affects identity.
+
 **supply_chain** (object, required): Compiled from the IR's flat `supply_chain_tier` and `supply_chain_reason` fields into a nested object with an added `tier_name` field (e.g., `first_party`, `internal_dep`), computed from the numeric `tier` at serialization time. `Symbol.to_dict()` also **relocates** five top-level boolean flags into this object: `is_test_file`, `is_example_file`, `is_config_file`, and `is_generated_file` (file-role classifications, each independent of `tier`), plus `is_exported` (whether the symbol is part of the package's public API). See [§14 Supply chain classification](#14-supply-chain-classification) for tier definitions.
 
 ```json

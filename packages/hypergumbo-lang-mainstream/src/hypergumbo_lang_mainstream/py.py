@@ -633,15 +633,56 @@ def _format_arg(arg: ast.arg) -> str:
     return result
 
 
-def _format_function_signature(node: ast.FunctionDef | ast.AsyncFunctionDef, max_len: int = 60) -> str:
-    """Format a function signature from AST node.
+# WI-hopiz: the DISPLAY Symbol.signature uses real default values and this
+# generous cap; the stable_id / typed-normalize input keeps the legacy
+# max_len=60 + "=…" form (default args of _format_function_signature) so
+# identities do not churn.
+_DISPLAY_SIGNATURE_MAX_LEN = 240
+
+
+def _format_default(node: ast.expr, max_len: int = 32) -> str:
+    """Render a parameter default value for the DISPLAY signature (WI-hopiz).
+
+    Unparses the default expression so a consumer sees the real value (``50``,
+    ``'hello'``, ``None``) instead of a bare ``…``, bounded to ``max_len`` so a
+    pathological default (a big dict / lambda) cannot blow up the line; an
+    over-long or unparseable default falls back to ``…``.
+    """
+    try:
+        rendered = ast.unparse(node)
+    except Exception:  # pragma: no cover - defensive; unparse is total on valid AST
+        return "…"
+    return rendered if len(rendered) <= max_len else "…"
+
+
+def _format_function_signature(
+    node: ast.FunctionDef | ast.AsyncFunctionDef,
+    max_len: int = 60,
+    render_defaults: bool = False,
+) -> str:
+    """Format a function signature from an AST node.
+
+    Serves two callers with opposite needs (WI-hopiz):
+
+    * **stable_id / typed-normalize input** — the default call (``max_len=60``,
+      ``render_defaults=False``). Its output feeds ``normalize_python_signature``
+      → ``make_typed_stable_id``, so it MUST stay byte-stable: any change here
+      churns Python identities. Defaults render as a bare ``=…`` and the
+      over-length cut is deliberately blind (it drops the closing paren, so
+      ``normalize_python_signature`` returns ``None`` and the symbol falls back
+      to the untyped stable_id — an established behavior).
+    * **display ``Symbol.signature``** — called with ``render_defaults=True`` and
+      a wide ``max_len``. Renders real default values and, when still over
+      length, truncates the parameter list while PRESERVING the return type
+      instead of a blind mid-content cut.
 
     Args:
         node: AST FunctionDef or AsyncFunctionDef node.
-        max_len: Maximum length of signature (default 60).
+        max_len: Maximum length of the rendered signature.
+        render_defaults: When True, unparse real default values (display mode).
 
     Returns:
-        Formatted signature string like "(x: int, y: str) -> bool".
+        Formatted signature string like ``"(x: int, y: str='a') -> bool"``.
     """
     args = node.args
     all_args: list[str] = []
@@ -658,7 +699,11 @@ def _format_function_signature(node: ast.FunctionDef | ast.AsyncFunctionDef, max
         num_args = len(args.args)
         default_idx = i - (num_args - num_defaults)
         if 0 <= default_idx < num_defaults:
-            arg_str += "=…"
+            arg_str += (
+                "=" + _format_default(args.defaults[default_idx])
+                if render_defaults
+                else "=…"
+            )
         all_args.append(arg_str)
 
     # *args
@@ -669,24 +714,36 @@ def _format_function_signature(node: ast.FunctionDef | ast.AsyncFunctionDef, max
     for i, arg in enumerate(args.kwonlyargs):
         arg_str = _format_arg(arg)
         if i < len(args.kw_defaults) and args.kw_defaults[i] is not None:
-            arg_str += "=…"
+            arg_str += (
+                "=" + _format_default(args.kw_defaults[i])
+                if render_defaults
+                else "=…"
+            )
         all_args.append(arg_str)
 
     # **kwargs
     if args.kwarg:
         all_args.append(f"**{args.kwarg.arg}")
 
-    sig = "(" + ", ".join(all_args) + ")"
+    args_str = "(" + ", ".join(all_args) + ")"
 
     # Add return type annotation if present
+    ret_str = ""
     if node.returns:
         ret_type = _format_annotation(node.returns)
         if ret_type:
-            sig += f" -> {ret_type}"
+            ret_str = f" -> {ret_type}"
+    sig = args_str + ret_str
 
     # Truncate if too long
     if len(sig) > max_len:
-        sig = sig[:max_len - 1] + "…"
+        if render_defaults:
+            # Display mode: keep the return type and mark the elision instead of
+            # a blind cut that would drop it (WI-hopiz).
+            keep = max(max_len - len(ret_str) - 2, 1)
+            sig = args_str[:keep] + "…)" + ret_str
+        else:
+            sig = sig[:max_len - 1] + "…"
 
     return sig
 
@@ -2562,7 +2619,9 @@ def _extract_file_analysis(
                         shape_id=_compute_shape_id(item),
                         cyclomatic_complexity=_compute_cyclomatic_complexity(item),
                         line_span=_compute_line_span(item),
-                        signature=_format_function_signature(item),
+                        signature=_format_function_signature(
+                            item, max_len=_DISPLAY_SIGNATURE_MAX_LEN, render_defaults=True
+                        ),
                         docstring=_mds_line,
                         meta=method_meta if method_meta else None,
                         modifiers=_python_visibility_modifiers(method_name),
@@ -2712,7 +2771,9 @@ def _extract_file_analysis(
                     meta=func_meta if func_meta else None,
                     cyclomatic_complexity=_compute_cyclomatic_complexity(node),
                     line_span=_compute_line_span(node),
-                    signature=func_sig,
+                    signature=_format_function_signature(
+                        node, max_len=_DISPLAY_SIGNATURE_MAX_LEN, render_defaults=True
+                    ),
                     docstring=_fds_line,
                     modifiers=func_modifiers,
                     is_exported=func_is_exported,

@@ -3532,7 +3532,7 @@ class TestPythonSignatureExtraction:
 
         funcs = [n for n in data["nodes"] if n["kind"] == "function"]
         assert len(funcs) == 1
-        assert funcs[0]["signature"] == "(name: str, greeting: str=…) -> str"
+        assert funcs[0]["signature"] == "(name: str, greeting: str='hello') -> str"
 
     def test_signature_with_varargs(self, tmp_path: Path) -> None:
         """Extract signature for function with *args."""
@@ -3581,7 +3581,7 @@ class TestPythonSignatureExtraction:
         funcs = [n for n in data["nodes"] if n["kind"] == "function"]
         assert len(funcs) == 1
         # Note: the bare * is not captured as vararg, but kwonly args follow
-        assert funcs[0]["signature"] == "(key: str, value: int=…) -> None"
+        assert funcs[0]["signature"] == "(key: str, value: int=0) -> None"
 
     def test_signature_with_posonly_args(self, tmp_path: Path) -> None:
         """Extract signature for function with positional-only args (PEP 570)."""
@@ -3666,17 +3666,22 @@ class TestPythonSignatureExtraction:
         funcs = [n for n in data["nodes"] if n["kind"] == "function"]
         assert len(funcs) == 1
         sig = funcs[0]["signature"]
-        # Signature should be truncated to max_len (60 by default) + ellipsis
-        assert len(sig) <= 60
-        assert sig.endswith("…")
+        # WI-hopiz: the display signature is no longer capped at 60 — the full
+        # 7-param list and the return type are rendered.
+        assert len(sig) > 60
+        assert not sig.endswith("…")
+        assert "param_seven: str" in sig
+        assert sig.endswith("-> str")
 
     def test_method_long_signature_untyped_fallback(self, tmp_path: Path) -> None:
-        """Class method with truncated signature falls back to untyped stable_id.
+        """Long class method: display signature is full, stable_id still falls back.
 
-        When ``_format_function_signature`` truncates the signature (>60 chars),
-        ``normalize_python_signature`` returns None because the closing paren is
-        missing.  The analyzer must fall back to the untyped ``_compute_stable_id``
-        (ADR-0014 §2) rather than crash.
+        WI-hopiz decoupling — the DISPLAY ``Symbol.signature`` is now rendered in
+        full (wide cap), while the stable_id path keeps the legacy ``max_len=60``
+        identity signature. That identity signature truncates (no closing paren),
+        so ``normalize_python_signature`` returns None and the analyzer falls back
+        to the untyped ``_compute_stable_id`` (ADR-0014 §2) — unchanged, so no
+        identity churn.
         """
         py_file = tmp_path / "test.py"
         py_file.write_text(
@@ -3693,10 +3698,52 @@ class TestPythonSignatureExtraction:
         methods = [n for n in data["nodes"] if n["kind"] == "method"]
         assert len(methods) == 1
         method = methods[0]
-        # Signature is truncated (no closing paren)
-        assert method["signature"].endswith("…")
-        # stable_id still assigned via untyped fallback
+        # WI-hopiz: the display signature is now rendered in full (not truncated)
+        assert not method["signature"].endswith("…")
+        assert "param_f: str" in method["signature"]
+        # …while the stable_id is still the untyped fallback (identity signature
+        # is max_len=60 → truncated → normalize returns None). No churn.
         assert method["stable_id"].startswith("sha256:")
+
+    def test_signature_graceful_truncation_preserves_return_type(self) -> None:
+        """WI-hopiz: a signature still over the display cap truncates the parameter
+        list but preserves the return type + a marker (not a blind mid-content cut).
+
+        Exercised as a direct unit call because routing a >240-char signature
+        through the full analyzer would hit a *separate*, pre-existing "long
+        signature drops the whole file" limitation, tracked apart from WI-hopiz.
+        """
+        from hypergumbo_lang_mainstream.py import (
+            _DISPLAY_SIGNATURE_MAX_LEN,
+            _format_function_signature,
+        )
+
+        params = ", ".join(
+            f"param_{i}: VeryLongTypeAnnotationNumber{i}Padding" for i in range(20)
+        )
+        node = ast.parse(f"def huge({params}) -> SomeReturnType: pass").body[0]
+        sig = _format_function_signature(
+            node, max_len=_DISPLAY_SIGNATURE_MAX_LEN, render_defaults=True
+        )
+        assert len(sig) <= _DISPLAY_SIGNATURE_MAX_LEN
+        assert sig.endswith("…) -> SomeReturnType")  # return type preserved
+
+    def test_signature_over_long_default_falls_back_to_ellipsis(
+        self, tmp_path: Path
+    ) -> None:
+        """WI-hopiz: a pathologically long parameter default is bounded to '…' so a
+        single default cannot blow up the rendered signature."""
+        long_default = "'" + ("x" * 60) + "'"
+        py_file = tmp_path / "test.py"
+        py_file.write_text(f"def g(a: str = {long_default}) -> None:\n    pass\n")
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+        data = json.loads(out_path.read_text())
+
+        funcs = [n for n in data["nodes"] if n["kind"] == "function"]
+        assert len(funcs) == 1
+        assert funcs[0]["signature"] == "(a: str=…) -> None"
 
     def test_signature_constant_annotation(self, tmp_path: Path) -> None:
         """Extract signature with constant type like Literal['a', 'b']."""
