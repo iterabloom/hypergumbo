@@ -20,3 +20,19 @@
     pr_ref:  # 5906
     description: "Sweep `hg.json`, `bm.json`, `behavior_map.json` references across docs/ and .agent/agent_playbooks_protocols_sops_skills/ and replace with `survey.json` (or keep the historical name with a footnote where it documents history vs current state). 106 `hg.json` refs + 3 `behavior_map.json` refs per the May-30 audit. README is the single highest-leverage file. USE-CASES.md walks users through invocations; needs the verb settled (S9) before its examples land cleanly."  # 5906
     fields: {}  # 5906
+- op: update  # 1d61
+  at: '2026-07-12T05:43:02Z'  # 1d61
+  by: agent  # 1d61
+  actor: jgstern_agent  # 1d61
+  clock: 2  # 1d61
+  nonce: 1d61  # 1d61
+  set: {}  # 1d61
+  add:  # 1d61
+    tags: [wave5]  # 1d61
+- op: discuss  # 01af
+  at: '2026-07-12T05:43:02Z'  # 01af
+  by: agent  # 01af
+  actor: jgstern_agent  # 01af
+  clock: 3  # 01af
+  nonce: 01af  # 01af
+  message: "Deferred to end of Wave 5 per owner decision 2026-07-12 (see INV-firuh discussion for full rationale: ADR-0042 campaign blocks zero P1s transitively; execute last to avoid cli.py resolver-merge overlap with P1 structural work). Tagged wave5; status stays todo_soft per project future-wave convention. ADR-0042 remains Accepted."  # 01af

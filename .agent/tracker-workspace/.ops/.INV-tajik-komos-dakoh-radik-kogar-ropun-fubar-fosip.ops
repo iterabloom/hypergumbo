@@ -1,0 +1,38 @@
+- op: create  # a436
+  at: '2026-07-12T03:36:49Z'  # a436
+  by: agent  # a436
+  actor: jgstern_agent  # a436
+  clock: 1  # a436
+  nonce: a436  # a436
+  data:  # a436
+    kind: invariant  # a436
+    title: "Analyzer registry leaks empty/incomplete state across tests under pytest-xdist (decorator no-refire after clear_registry)"  # a436
+    status: violated  # a436
+    priority: 2  # a436
+    parent:  # a436
+    tags:  # a436
+    - test_isolation  # a436
+    - dev_infra  # a436
+    isbefore: []  # a436
+    duplicate_of: []  # a436
+    not_duplicate_of: []  # a436
+    pr_ref:  # a436
+    description: "**Defect.** The global analyzer registry (`analyze.registry._ANALYZER_REGISTRY`) can be left empty or incomplete across tests under pytest-xdist, causing spurious `KeyError: \"Unknown analyzer: '<lang>'. Available: none registered\"` in tests that call `run_analyzer()` (e.g. `test_emission_parity_matrix`), and AssertionErrors in language-analyzer branch tests (`BRANCHES_test_scala`/`swift`/`rust`).\n\n**Root cause.** The registry is populated by import-time `@register_analyzer` decorators, which do NOT re-fire on cached re-imports. Once `clear_registry()` runs, a decorator-registered analyzer is recoverable only from a saved snapshot — `ensure_discovered()` cannot repopulate it (the modules are already in `sys.modules`, so `_load_entry_point_modules`' `import_module` calls are no-ops). Tests that clear+save+restore the registry (`test_analyzer_registry`, `test_orchestrator_fail_open`) capture an INCOMPLETE (sometimes empty) snapshot when full entry-point discovery has not yet run in that worker, and restore that incomplete state; a later consumer's `ensure_discovered()` then no-ops on the stale `_discovered=True` flag. Under some xdist orderings this cascades to an empty registry.\n\n**Trigger.** Only manifests on WIDE affected-slices (e.g. any PR touching a high-fan-in core module like `axis_meta_keys.py`) whose slice co-schedules the registry-clearing tests with `emission_parity_matrix` on the same xdist worker. The affected test files pass 80/80 in isolation. This blocked PR #579 (a docs-only receiver-vocab change) in CI `pytest`/`pytest-retry` — the change itself was runtime-inert.\n\n**Fix.** A session-scoped autouse fixture (in `packages/hypergumbo-core/tests/conftest.py`, mirrored in the repo-root `conftest.py` for cross-package runs whose rootdir is the repo root) that calls `ensure_discovered()` once per worker session, before any function-scoped clearing fixture can snapshot an incomplete registry. Guarantees every save/restore round-trips the complete set.\n\n**Reproduction (deterministic, ~11s under `-n auto`):**\n`python3 -m pytest packages/hypergumbo-core/tests/{test_analyzer_registry,test_orchestrator_fail_open,test_run_behavior_map,test_catalog,test_linker_registry,test_producer_coherence,test_emission_parity_matrix}.py -n auto`\n→ pre-fix: 9 failed + 79 errors (`KeyError ... none registered`); post-fix: 401 passed (stable across 4 runs).\n\n**Residual (No-Weasel).** The fix prevents incomplete SNAPSHOTS. A hypothetical test that destructively `clear_registry()`s and leaves `_discovered=True` WITHOUT restoring would still leak (a session-scoped pre-populate cannot prevent a later test from tearing the registry down). None such exists in the current suite — the reproduced mechanism is fully addressed — but the deeper structural fix would be to make `ensure_discovered()` recover a cleared registry from a persistent known-set rather than rely on decorator re-fire."  # a436
+    fields:  # a436
+      statement: "The global analyzer registry _ANALYZER_REGISTRY is left empty or incomplete across tests under pytest-xdist, producing spurious KeyError none-registered in run_analyzer consumers such as test_emission_parity_matrix on wide affected-slices (this blocked PR 579, a runtime-inert docs change, in CI pytest)."  # a436
+      root_cause: "register_analyzer decorators do not re-fire on cached re-imports, so after clear_registry a decorator-registered analyzer is recoverable only from a saved snapshot; the clear+save+restore fixtures capture an incomplete or empty snapshot when full discovery has not run yet in that worker, and a later ensure_discovered no-ops on the stale _discovered flag."  # a436
+- op: update  # 87bc
+  at: '2026-07-12T04:01:31Z'  # 87bc
+  by: agent  # 87bc
+  actor: jgstern_agent  # 87bc
+  clock: 2  # 87bc
+  nonce: 87bc  # 87bc
+  set:  # 87bc
+    status: satisfied  # 87bc
+- op: discuss  # 3cff
+  at: '2026-07-12T04:01:31Z'  # 3cff
+  by: agent  # 3cff
+  actor: jgstern_agent  # 3cff
+  clock: 3  # 3cff
+  nonce: 3cff  # 3cff
+  message: "Fixed in PR #581 (session-scoped autouse ensure_discovered fixture; core + repo-root conftest); deployed dev 4091f00ffd. Behavioral evidence: the deterministic repro (7 core test files incl. test_emission_parity_matrix under -n auto) went 9 failed + 79 errors (KeyError none-registered) -> 401 passed, stable across 4 runs. END-TO-END: the same wide 90-file affected-slice that blocked PR #579 with 81 failed + 34 errors now passes 3735 passed / 0 failed / 0 errors with 100% changed-source coverage on dev, fixture present (PR #579 merged 349d932003). Residual (per description, No-Weasel): a destructive clear_registry-without-restore test would still leak _discovered=True + empty; none exists in the current suite; deeper fix = ensure_discovered recovers a cleared registry from a persistent known-set."  # 3cff

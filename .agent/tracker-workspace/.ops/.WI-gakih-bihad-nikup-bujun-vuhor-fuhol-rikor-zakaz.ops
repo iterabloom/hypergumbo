@@ -20,3 +20,19 @@
     pr_ref:  # c5b8
     description: "Sweep tests under packages/hypergumbo-core/tests/ that use `bm.json` or `behavior_map.json` as fixture paths: rename fixture paths to `survey.json`. Update the test file names where the test file itself encodes the old name (test_behavior_map_io.py → test_survey_io.py). 9+ existing references per the May-30 audit; double-check with grep before the rename PR."  # c5b8
     fields: {}  # c5b8
+- op: update  # a355
+  at: '2026-07-12T05:43:00Z'  # a355
+  by: agent  # a355
+  actor: jgstern_agent  # a355
+  clock: 2  # a355
+  nonce: a355  # a355
+  set: {}  # a355
+  add:  # a355
+    tags: [wave5]  # a355
+- op: discuss  # 289c
+  at: '2026-07-12T05:43:00Z'  # 289c
+  by: agent  # 289c
+  actor: jgstern_agent  # 289c
+  clock: 3  # 289c
+  nonce: 289c  # 289c
+  message: "Deferred to end of Wave 5 per owner decision 2026-07-12 (see INV-firuh discussion for full rationale: ADR-0042 campaign blocks zero P1s transitively; execute last to avoid cli.py resolver-merge overlap with P1 structural work). Tagged wave5; status stays todo_soft per project future-wave convention. ADR-0042 remains Accepted."  # 289c

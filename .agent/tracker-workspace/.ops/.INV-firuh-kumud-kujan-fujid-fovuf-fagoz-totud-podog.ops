@@ -29,3 +29,19 @@
   clock: 2  # cbf6
   nonce: cbf6  # cbf6
   message: "2026-06-10 design-interview ruling (ADR-0042, merged in PR #4181): survey.json is confirmed as the canonical artifact name, with the concept renamed behavior map -> survey, the verb migrating to hypergumbo survey (run as deprecated alias for one minor version), and a loader alias list for legacy filenames. Stays violated until the implementing rename PRs land across CLI, code, tests, docs, and tracker; re-validate then."  # cbf6
+- op: update  # d6a1
+  at: '2026-07-12T05:36:58Z'  # d6a1
+  by: agent  # d6a1
+  actor: jgstern_agent  # d6a1
+  clock: 3  # d6a1
+  nonce: d6a1  # d6a1
+  set: {}  # d6a1
+  add:  # d6a1
+    tags: [wave5]  # d6a1
+- op: discuss  # d76a
+  at: '2026-07-12T05:36:58Z'  # d76a
+  by: agent  # d76a
+  actor: jgstern_agent  # d76a
+  clock: 4  # d76a
+  nonce: d76a  # d76a
+  message: "Owner decision 2026-07-12 (design walkthrough): DEFER the entire ADR-0042 survey-rename campaign (S2-S8: constant+import shim, WI-vatuf CLI default+verb, docs sweep, test/scripts sweep, tracker sweep) to the END of Wave 5. Rationale: (1) the campaign full forward isbefore-closure blocks ZERO P1 items -- verified, the closure is 5 self-contained P2/P3 nodes with nothing outside the campaign -- so deferring has no critical-path cost. (2) Ratified-but-unstarted P3 mechanical churn (~65 script refs + docs + fixtures + ~52 tracker items); payoff is naming coherence, not correctness. (3) Executing it LAST is strictly better than now: ADR-0042 sec.4 merges the two divergent resolvers (_discover_input_file + find_behavior_map) and touches cli.py heavily, which would collide with the P1 cli.py/resolver structural work; doing it after that settles avoids the overlap. The 7 todo_soft leaves set to someday + tagged wave5. ADR-0042 stays Accepted and banked; INV-firuh stays violated until S1-S8 land at end of Wave 5."  # d76a

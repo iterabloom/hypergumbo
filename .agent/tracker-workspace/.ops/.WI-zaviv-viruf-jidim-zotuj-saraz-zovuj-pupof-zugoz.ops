@@ -20,3 +20,19 @@
     pr_ref:  # 871c
     description: "Update docs/hypergumbo-spec.md:1842 (currently \"No breaking changes to `behavior_map.json` view within v0.x series.\") to reference `survey.json`. Reframe the commitment as schema-level not filename-level: the JSON schema is what's stable; the filename can be renamed in a non-breaking way per the ADR (S1). Add an explicit rename-is-not-a-schema-break clause."  # 871c
     fields: {}  # 871c
+- op: update  # 3a09
+  at: '2026-07-12T05:43:01Z'  # 3a09
+  by: agent  # 3a09
+  actor: jgstern_agent  # 3a09
+  clock: 2  # 3a09
+  nonce: 3a09  # 3a09
+  set: {}  # 3a09
+  add:  # 3a09
+    tags: [wave5]  # 3a09
+- op: discuss  # 620e
+  at: '2026-07-12T05:43:01Z'  # 620e
+  by: agent  # 620e
+  actor: jgstern_agent  # 620e
+  clock: 3  # 620e
+  nonce: 620e  # 620e
+  message: "Deferred to end of Wave 5 per owner decision 2026-07-12 (see INV-firuh discussion for full rationale: ADR-0042 campaign blocks zero P1s transitively; execute last to avoid cli.py resolver-merge overlap with P1 structural work). Tagged wave5; status stays todo_soft per project future-wave convention. ADR-0042 remains Accepted."  # 620e

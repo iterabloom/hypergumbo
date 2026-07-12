@@ -57,3 +57,19 @@
   set: {}  # f9c5
   add:  # f9c5
     isbefore: [WI-zaviv-viruf-jidim-zotuj-saraz-zovuj-pupof-zugoz]  # f9c5
+- op: update  # a307
+  at: '2026-07-12T05:38:04Z'  # a307
+  by: agent  # a307
+  actor: jgstern_agent  # a307
+  clock: 6  # a307
+  nonce: a307  # a307
+  set: {}  # a307
+  add:  # a307
+    tags: [wave5]  # a307
+- op: discuss  # df9a
+  at: '2026-07-12T05:38:04Z'  # df9a
+  by: agent  # df9a
+  actor: jgstern_agent  # df9a
+  clock: 7  # df9a
+  nonce: df9a  # df9a
+  message: "Deferred to end of Wave 5 per owner decision 2026-07-12 (see INV-firuh discussion for full rationale: ADR-0042 campaign blocks zero P1s transitively; execute last to avoid cli.py resolver-merge overlap with P1 structural work). Tagged wave5; status stays todo_soft per project future-wave convention. ADR-0042 remains Accepted."  # df9a

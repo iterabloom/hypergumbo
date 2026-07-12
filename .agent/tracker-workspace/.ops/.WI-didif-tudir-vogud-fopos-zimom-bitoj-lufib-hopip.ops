@@ -21,3 +21,19 @@
     pr_ref:  # d4be
     description: "Backward-compatibility layer: every `--input` consumer accepts `hypergumbo.results.json`, `hg.json`, `bm.json`, `behavior_map.json` as legacy aliases with a one-line deprecation warning to stderr. Warning text references the ADR (S1) and indicates the deprecation removal version (next major bump). Removes friction for users with scripts pinned to the old names. Document the deprecation in CHANGELOG.md."  # d4be
     fields: {}  # d4be
+- op: update  # 372e
+  at: '2026-07-12T05:42:59Z'  # 372e
+  by: agent  # 372e
+  actor: jgstern_agent  # 372e
+  clock: 2  # 372e
+  nonce: 372e  # 372e
+  set: {}  # 372e
+  add:  # 372e
+    tags: [wave5]  # 372e
+- op: discuss  # 1064
+  at: '2026-07-12T05:42:59Z'  # 1064
+  by: agent  # 1064
+  actor: jgstern_agent  # 1064
+  clock: 3  # 1064
+  nonce: '1064'  # 1064
+  message: "Deferred to end of Wave 5 per owner decision 2026-07-12 (see INV-firuh discussion for full rationale: ADR-0042 campaign blocks zero P1s transitively; execute last to avoid cli.py resolver-merge overlap with P1 structural work). Tagged wave5; status stays todo_soft per project future-wave convention. ADR-0042 remains Accepted."  # 1064

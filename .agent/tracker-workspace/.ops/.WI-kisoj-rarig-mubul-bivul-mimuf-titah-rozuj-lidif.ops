@@ -20,3 +20,19 @@
     pr_ref:  # 7334
     description: "Internal function and module renames so the codebase concept name matches the artifact: `run_behavior_map` → `run_survey` (or whatever the ADR chooses); `packages/hypergumbo-core/src/hypergumbo_core/behavior_map_io.py` → `survey_io.py`; any internal `behavior_map` variable / parameter names. Sweep symbol names across the codebase. Test names (test_behavior_map_io.py → test_survey_io.py) follow."  # 7334
     fields: {}  # 7334
+- op: update  # d621
+  at: '2026-07-12T05:43:00Z'  # d621
+  by: agent  # d621
+  actor: jgstern_agent  # d621
+  clock: 2  # d621
+  nonce: d621  # d621
+  set: {}  # d621
+  add:  # d621
+    tags: [wave5]  # d621
+- op: discuss  # 7659
+  at: '2026-07-12T05:43:00Z'  # 7659
+  by: agent  # 7659
+  actor: jgstern_agent  # 7659
+  clock: 3  # 7659
+  nonce: '7659'  # 7659
+  message: "Deferred to end of Wave 5 per owner decision 2026-07-12 (see INV-firuh discussion for full rationale: ADR-0042 campaign blocks zero P1s transitively; execute last to avoid cli.py resolver-merge overlap with P1 structural work). Tagged wave5; status stays todo_soft per project future-wave convention. ADR-0042 remains Accepted."  # 7659

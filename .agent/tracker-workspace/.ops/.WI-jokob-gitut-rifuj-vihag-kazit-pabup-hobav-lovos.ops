@@ -26,3 +26,18 @@
   clock: 2  # a6df
   nonce: a6df  # a6df
   message: "[Wave-0 hygiene] WI-lodaz-dorug-vifab-kijas-pidom-kotif-liton-litik folded in as a TRUE_DUPLICATE (marked wont_do, duplicate_of this item). Both describe the same defect: meta.receiver is documented as a call-shape fact (spec ~817/823) but emitted on 0/110533 edges — method_call_recovery.py creates edges with call_construct + resolution_quality meta but omits receiver. This item remains the canonical tracker for that unpopulated-field work."  # a6df
+- op: update  # 4d25
+  at: '2026-07-12T04:01:31Z'  # 4d25
+  by: agent  # 4d25
+  actor: jgstern_agent  # 4d25
+  clock: 3  # 4d25
+  nonce: 4d25  # 4d25
+  set:  # 4d25
+    status: wont_do  # 4d25
+- op: discuss  # fca9
+  at: '2026-07-12T04:01:31Z'  # fca9
+  by: agent  # fca9
+  actor: jgstern_agent  # fca9
+  clock: 4  # fca9
+  nonce: fca9  # fca9
+  message: "WONT_DO: the stated premise (receiver None on 100% of edges = unpopulated field) is a single-language-corpus artifact, not a defect. Behavioral evidence: analysing a Ruby file emits edge.meta.receiver=constant_external on a SomeModule.run call (ruby.py:2293). receiver is a fold-residue key (audit-findings 0012) emitted only by ruby/go/csharp/rust/cpp; hypergumbo's own Python/JS tree exercises none of them, and the dominant Python method-call fold omits receiver BY DESIGN (audit-findings 0012 addendum line 335). ADR-0040 classifies this as the evidence_lang shape (real producers, 0-on-self-corpus) -> keep, not populate/deprecate. Real minor issue surfaced + fixed in PR #579: stale documented vocabulary (spec said bare/external/typed; producers emit bare/external/stdlib/generic/constant_external/field_chain/typed_field/typed_var) -> spec 841 + MetaKeySpec now accurate. WI-lodaz already folded here as duplicate. Optional follow-up (R2): normalize/enumerate the 8-value producer vocabulary across the 5 emitters."  # fca9
