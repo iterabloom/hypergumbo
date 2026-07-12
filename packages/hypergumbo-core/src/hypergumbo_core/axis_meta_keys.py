@@ -206,10 +206,14 @@ META_KEYS: Final[tuple[MetaKeySpec, ...]] = (
                 "names the call SHAPE on ``calls`` edges): distinct "
                 "vocabularies, distinct edge families, zero overlap."),
     MetaKeySpec("receiver", AXIS_EDGE_META,
-                "Call-site receiver classification "
-                "(e.g. 'bare', 'external', 'typed'). "
+                "Call-site receiver classification: a per-language "
+                "fold-residue label (audit-findings 0012) emitted only by "
+                "analyzers whose call syntax carries receiver flavor "
+                "(Ruby / Go / C# / Rust / C++), hence ABSENT on corpora that "
+                "lack those languages (e.g. a pure-Python tree). Producer "
+                "values e.g. 'bare', 'external', 'field_chain', 'typed_field'. "
                 "Disambiguates ``ast_call`` + ``call_construct=method`` "
-                "edges per audit-findings 0012."),
+                "edges."),
     MetaKeySpec("resolution_quality", AXIS_EDGE_META,
                 "Pathway-quality label on ``ast_call`` edges "
                 "(e.g. 'recovery', 'ambiguous'), ORTHOGONAL to "
