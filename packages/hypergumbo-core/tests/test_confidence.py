@@ -31,9 +31,10 @@ from hypergumbo_core.evidence_types import (
 # The single-valued, in-band inference pathways seeded in this first slice.
 # Each value was verified behavior-preserving against the live self-corpus
 # behavior map (exactly one observed confidence per type). Multimodal types
-# (ast_call / ast_call_direct, driven by is_resolved), ranking-contaminated
-# types (type_hierarchy), and ceiling-breaching producers (naming_convention
-# at 1.0) are deliberately deferred to later F1 / F2 / producer-fix slices.
+# (ast_call / ast_call_direct, driven by is_resolved) and ranking-contaminated
+# types (type_hierarchy) are deferred to later F1 / F2 slices.
+# (naming_convention was the ceiling-breaching 1.0 producer; ADR-0039 R1
+# seeded it 0.85 and dropped the containment literal — WI-vakuh / WI-lutad.)
 _SEEDED = {
     "ast_import": 0.95,
     "ast_new": 0.95,
@@ -76,8 +77,8 @@ def test_all_base_confidence_within_unit_interval():
 
 def test_seeded_base_confidence_within_analyzer_linker_band():
     # Floor/ceiling guard (spec section 12: analyzer 0.30-0.95 / linker
-    # 0.40-0.95). Rejects enshrining a ceiling-breach like
-    # naming_convention=1.0 (which is why it is deferred to a producer fix).
+    # 0.40-0.95). Rejects enshrining a ceiling-breach like the old
+    # naming_convention=1.0 (now seeded 0.85 by ADR-0039 R1).
     # Entrypoint-band pathways (0.70-0.99) are not yet seeded; widen this
     # per-axis when they are.
     for spec in EVIDENCE_TYPES:
@@ -192,11 +193,25 @@ def test_confidence_within_band_out_of_band():
 
 
 def test_confidence_within_band_unseeded_or_unregistered_is_in_band():
-    # naming_convention is registered but deliberately NOT seeded (1.0
-    # ceiling-breach deferred to a producer fix) -> no band -> in-band.
-    assert confidence_within_band("naming_convention", 1.0) is True
+    # A registered-but-unseeded pathway has no band -> in-band (caller's
+    # literal stands). Discover one dynamically so the test is stable as
+    # seeds are added (naming_convention was seeded by ADR-0039 R1).
+    unseeded = next(s.name for s in EVIDENCE_TYPES if s.base_confidence is None)
+    assert confidence_within_band(unseeded, 1.0) is True
     # unregistered type -> no band -> in-band (caller's literal stands).
     assert confidence_within_band("not-a-real-evidence-type", 0.5) is True
+
+
+def test_naming_convention_seeded_below_span_overlap():
+    """ADR-0039 R1 (WI-vakuh / WI-lutad): the name-parse containment heuristic
+    seeds below the structurally-certain span_overlap, and 1.0 now breaches
+    the band ceiling."""
+    assert derive_confidence("naming_convention") == 0.85
+    assert derive_confidence("span_overlap") == 0.90
+    assert derive_confidence("naming_convention") < derive_confidence("span_overlap")
+    assert confidence_within_band("naming_convention", 1.0) is False   # ceiling breach
+    assert confidence_within_band("naming_convention", 0.85) is True    # == base
+    assert confidence_within_band("naming_convention", 0.30) is True    # floor
 
 
 # --- ADR-0039 ruling 2 guard: find_constant_confidence_violations ---

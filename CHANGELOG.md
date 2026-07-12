@@ -63,6 +63,7 @@ Alongside: the CLI standardizes on `--format {text,json}` across all read views 
 #### Confidence derivation (ADR-0039)
 
 - **Analyzer edge `confidence` is now derived from the inference pathway, not hardcoded.** The derivation table grew from 10 to 75 pathways in one authoritative `_CONFIDENCE_SEEDS`; `Edge.create` derives from `evidence_type` when `confidence=` is omitted; and 218 analyzer sites dropped their hardcoded values, so all 9,638 seeded analyzer edges now carry the derived value. Linker edges keep explicit confidences (a separate match-quality model). `confidence_model` v1 → v2.
+- **Containment `naming_convention` edges now derive in-band confidence, ending the reliability inversion (ADR-0039 ruling 1; WI-vakuh, WI-lutad).** The containment linker's Phase-1 name-parse heuristic hardcoded `confidence=1.0` on ~18,388 `contains` edges (16.6% of all edges) — above the 0.95 linker ceiling, and *outranking* the structurally-certain `span_overlap` (0.90), so a consumer trusting confidence treated the error-prone heuristic as gold. `naming_convention` is now seeded at **0.85** in the registry (below `span_overlap`, in-band) and the producer derives it instead of the literal, so those edges carry 0.85 with `confidence_source=evidence_derived` and reliability ordering is restored (certain span_overlap 0.90 > heuristic naming_convention 0.85).
 
 #### CLI read-view contract
 

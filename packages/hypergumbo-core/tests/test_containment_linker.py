@@ -371,7 +371,12 @@ class TestContainmentLinker:
         assert result.run.pass_id == "containment-linker"
 
     def test_edge_confidence(self) -> None:
-        """Contains edges have high confidence since naming is deterministic."""
+        """Contains edges derive naming_convention confidence (ADR-0039 R1).
+
+        The old hardcoded 1.0 breached the 0.95 band ceiling and outranked the
+        structurally-certain span_overlap (0.90); the name-parse heuristic now
+        derives 0.85 from the registry and is stamped evidence_derived.
+        """
         cls = _sym("py:app.py:1-10:User:class", "User", "class")
         method = _sym("py:app.py:3-5:User.save:method", "User.save", "method", start=3, end=5)
 
@@ -382,7 +387,11 @@ class TestContainmentLinker:
         )
         result = link_containment(ctx)
 
-        assert result.edges[0].confidence == 1.0
+        assert result.edges[0].evidence_type == "naming_convention"
+        assert result.edges[0].confidence == 0.85
+        assert result.edges[0].confidence_source == "evidence_derived"
+        # Reliability ordering restored: the certain span_overlap outranks it.
+        assert result.edges[0].confidence < 0.90
 
     def test_struct_contains_method(self) -> None:
         """Struct symbols (Rust, Go, C) should contain their methods."""

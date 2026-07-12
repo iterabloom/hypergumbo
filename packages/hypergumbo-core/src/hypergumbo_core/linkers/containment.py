@@ -10,9 +10,11 @@ orphan rates and hides hierarchical structure from slice traversal.
 
 How It Works
 ------------
-Three phases, tried in order of decreasing confidence:
+Three phases, tried in order of precedence:
 
-**Phase 1 — Naming convention** (confidence=1.0):
+**Phase 1 — Naming convention** (confidence=0.85, ADR-0039-derived from the
+``naming_convention`` evidence seed — a name-parse heuristic, so BELOW the
+structurally-certain span_overlap 0.90):
 Extracts the parent name from the symbol's ``name`` field using
 language-specific separators (``.``, ``#``, ``::``).  For example,
 ``User.save`` → parent ``User``.
@@ -321,7 +323,10 @@ def link_containment(ctx: LinkerContext) -> LinkerResult:
             dst=sym.id,
             edge_type="contains",
             line=sym.span.start_line if sym.span else 0,
-            confidence=1.0,
+            # ADR-0039 R1: derive from the naming_convention registry seed
+            # (0.85 — below the certain span_overlap 0.90) instead of the old
+            # hardcoded 1.0 that breached the 0.95 band ceiling and inverted
+            # reliability vs span_overlap (WI-vakuh / WI-lutad).
             origin=PASS_ID,
             origin_run_id=run.execution_id,
             evidence_type="naming_convention",

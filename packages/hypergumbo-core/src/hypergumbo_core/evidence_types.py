@@ -547,6 +547,11 @@ _CONFIDENCE_SEEDS: dict[str, float] = {
     "method_reference": 0.85,
     "module_identifier_reference": 0.85,
     "module_source": 0.95,
+    # ADR-0039 R1 (WI-vakuh / WI-lutad): a name-parse containment heuristic —
+    # reliable but structurally weaker than the certain span_overlap (0.90), so
+    # it seeds BELOW it to restore reliability ordering, and in-band (the old
+    # literal 1.0 breached the 0.95 ceiling on ~18k edges).
+    "naming_convention": 0.85,
     "notify": 0.9,
     "object_field_reference": 0.8,
     "open": 0.95,
