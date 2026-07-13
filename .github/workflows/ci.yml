@@ -343,6 +343,12 @@ jobs:
           # the advisory rather than ignoring it, matching the requests /
           # pygments / urllib3 / idna pin pattern above.
           pip install "msgpack>=1.2.1"
+          # PYSEC-2026-2132: click <8.3.3 — fix in 8.3.3. Transitive through
+          # uvicorn (hypergumbo-tracker) and typer-slim -> huggingface_hub ->
+          # transformers (via sentence-transformers). Surfaced 2026-07-13; a
+          # fixed release EXISTS, so pin past it rather than ignore, matching the
+          # requests / pygments / urllib3 / idna / msgpack bump pattern above.
+          pip install "click>=8.3.3"
       - name: Run pip-audit (dependency vulnerabilities)
         run: |
           # CVE-2025-71176: pytest /tmp/pytest-of-{user} TOCTOU on UNIX.
@@ -417,6 +423,19 @@ jobs:
           # 5.3.0), so the preferred exit is to bump sentence-transformers to a
           # version pulling transformers>=5.3.0 and drop this key (tracked with
           # the WI-totak re-audit cadence) — this ignore is the stopgap.
+          #
+          # PYSEC-2026-2289 / PYSEC-2026-2290: transformers 5.0.0 — same
+          # transitive ML-stack carve-out as CVE-2026-4372 above (via
+          # sentence-transformers~=5.2.2; pinned MiniLM embedding model, no
+          # --model / --checkpoint CLI surface, trust_remote_code / auto_map never
+          # enabled, single-tenant self-hosted runner — no untrusted bytes reach a
+          # transformers code path). Surfaced 2026-07-13. PYSEC-2026-2290 has no
+          # fixed release; PYSEC-2026-2289's fix (transformers 5.3.0) is
+          # transitively capped by sentence-transformers~=5.2.2, so bumping
+          # requires a sentence-transformers bump (WI-totak re-audit cadence) —
+          # these ignores are the stopgap. Per-CVE upstream detail was not fetched
+          # offline; they ride the general ML-stack threat-model carve-out, to be
+          # re-audited online per the WI-totak cadence.
           pip-audit --skip-editable \
             --ignore-vuln CVE-2025-71176 --ignore-vuln CVE-2026-3219 \
             --ignore-vuln PYSEC-2025-211 --ignore-vuln PYSEC-2025-212 \
@@ -429,7 +448,8 @@ jobs:
             --ignore-vuln PYSEC-2025-195 --ignore-vuln PYSEC-2025-196 \
             --ignore-vuln PYSEC-2025-197 --ignore-vuln PYSEC-2025-210 \
             --ignore-vuln PYSEC-2026-139 --ignore-vuln PYSEC-2024-277 \
-            --ignore-vuln CVE-2025-3000 --ignore-vuln CVE-2026-4372
+            --ignore-vuln CVE-2025-3000 --ignore-vuln CVE-2026-4372 \
+            --ignore-vuln PYSEC-2026-2289 --ignore-vuln PYSEC-2026-2290
 
   verify-generated:
     needs: [changes, stop-the-line]
