@@ -40,3 +40,10 @@
   clock: 4  # c69c
   nonce: c69c  # c69c
   message: "2026-06-10 design-interview ruling (ADR-0039, merged in PR #4181): quality.reason (and quality.score) are deleted via a one-version deprecation; the emitter-provenance role reason was smuggling moves to the new confidence_source enum. This item resolves through the deletion/migration, not by documenting the old taxonomy. Waits on the deprecation implementation."  # c69c
+- op: discuss  # 4bdc
+  at: '2026-07-13T02:30:35Z'  # 4bdc
+  by: agent  # 4bdc
+  actor: jgstern_agent  # 4bdc
+  clock: 5  # 4bdc
+  nonce: 4bdc  # 4bdc
+  message: "ADR-0039 ruling 4 DEPRECATION step landed (PR: deprecate Edge.quality; SCHEMA_VERSION 0.14.5->0.14.6). Edge.quality now carries deprecated:true in docs/schema.json + a spec deprecation note; still emitted this release. This item CLOSES when the field is removed next release (the one-version window's removal step)."  # 4bdc

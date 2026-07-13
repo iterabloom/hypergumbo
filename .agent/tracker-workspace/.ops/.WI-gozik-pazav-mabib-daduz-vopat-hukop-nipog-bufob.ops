@@ -1,0 +1,21 @@
+- op: create  # 0283
+  at: '2026-07-13T02:39:47Z'  # 0283
+  by: agent  # 0283
+  actor: jgstern_agent  # 0283
+  clock: 1  # 0283
+  nonce: '0283'  # 0283
+  data:  # 0283
+    kind: work_item  # 0283
+    title: "DataModel.confidence carries the same ranking-injection pattern as entrypoints but was scoped out of ADR-0039 R3 (which names only entrypoints + type_hierarchy); relocate its centrality_boost/dedup/sort to a rank_score analogue"  # 0283
+    status: todo_hard  # 0283
+    priority: 3  # 0283
+    parent:  # 0283
+    tags:  # 0283
+    - confidence  # 0283
+    - vocab  # 0283
+    isbefore: []  # 0283
+    duplicate_of: []  # 0283
+    not_duplicate_of: []  # 0283
+    pr_ref:  # 0283
+    description: ""  # 0283
+    fields: {}  # 0283

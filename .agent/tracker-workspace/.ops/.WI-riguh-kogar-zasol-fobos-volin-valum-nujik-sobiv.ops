@@ -39,3 +39,10 @@
   clock: 4  # f4c8
   nonce: f4c8  # f4c8
   message: "2026-06-10 design-interview ruling (ADR-0039, merged in PR #4181): quality.score is deleted via a one-version deprecation, so the score-vs-confidence divergence on the 257 dispatches_to/type_hierarchy edges disappears with the field; confidence_source and rank_score absorb the legitimate roles. Waits on the deprecation implementation."  # f4c8
+- op: discuss  # 5910
+  at: '2026-07-13T02:30:35Z'  # 5910
+  by: agent  # 5910
+  actor: jgstern_agent  # 5910
+  clock: 5  # 5910
+  nonce: '5910'  # 5910
+  message: "ADR-0039 ruling 4 DEPRECATION step landed (PR: deprecate Edge.quality; SCHEMA_VERSION 0.14.5->0.14.6). Edge.quality now carries deprecated:true in docs/schema.json + a spec deprecation note; still emitted this release. This item CLOSES when the field is removed next release (the one-version window's removal step)."  # 5910
