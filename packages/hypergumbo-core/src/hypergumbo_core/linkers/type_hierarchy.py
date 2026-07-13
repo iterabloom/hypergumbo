@@ -535,13 +535,17 @@ def link_type_hierarchy(ctx: LinkerContext) -> LinkerResult:
                 index=hierarchy_index,
             )
 
-            # Scale confidence by 1/sqrt(N) for fan-out dampening
-            # (WI-kabom).  Interfaces with many implementors (e.g., 19
-            # Notifier impls) create N edges per method; without scaling,
-            # these dominate ranking and pollute reverse slices.  Matches
-            # the precedent in symbol_resolution.py for ambiguous lookups.
+            # ADR-0039 ruling 3 (WI-botif): the 1/sqrt(N) fan-out dampener
+            # (WI-kabom) is a RANKING adjustment, not detection reliability —
+            # a dispatch to an override is a real relationship (0.85) however
+            # many siblings exist. Interfaces with many implementors create N
+            # edges per method; without the dampener they dominate ranking and
+            # pollute reverse slices. So the dampener moves INTACT to
+            # ``rank_score`` (the ranking filter keys on it), while published
+            # ``confidence`` derives the flat in-band 0.85 base. Matches the
+            # precedent in symbol_resolution.py for ambiguous lookups.
             num_overrides = len(overrides)
-            base_confidence = 0.85 / math.sqrt(max(1, num_overrides))
+            dampened_rank = 0.85 / math.sqrt(max(1, num_overrides))
 
             for override in overrides:
                 # Skip self-dispatch: a method cannot dispatch to itself.
@@ -558,20 +562,24 @@ def link_type_hierarchy(ctx: LinkerContext) -> LinkerResult:
                     continue
                 seen_pairs.add(pair)
 
-                # Apply confidence penalty for test-file overrides (WI-supok).
-                # Test overrides (e.g., TestImpl.method → base.method) inflate
-                # centrality and pollute reverse slices.  Penalty matches the
-                # precedent in ranking.py for test-tier downweighting.
-                confidence = base_confidence
+                # Test-file override RANKING penalty (WI-supok) — also ADR-0039
+                # ruling 3: test overrides (e.g. TestImpl.method → base.method)
+                # inflate centrality and pollute reverse slices, so the penalty
+                # relocates to ``rank_score`` alongside the fan-out dampener,
+                # leaving detection confidence at the derived in-band base.
+                rank = dampened_rank
                 if override.path and is_test_file(override.path):
-                    confidence = 0.30
+                    rank = 0.30
 
                 edge = Edge.create(
                     src=parent_method.id,
                     dst=override.id,
                     edge_type="dispatches_to",
                     line=parent_method.span.start_line if parent_method.span else 0,
-                    confidence=confidence,
+                    # confidence omitted -> derives the in-band 0.85 type_hierarchy
+                    # base (confidence_source=evidence_derived); the dampened/
+                    # penalized ranking value lives on rank_score.
+                    rank_score=rank,
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     evidence_type="type_hierarchy",

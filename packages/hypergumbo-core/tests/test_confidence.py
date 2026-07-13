@@ -31,10 +31,11 @@ from hypergumbo_core.evidence_types import (
 # The single-valued, in-band inference pathways seeded in this first slice.
 # Each value was verified behavior-preserving against the live self-corpus
 # behavior map (exactly one observed confidence per type). Multimodal types
-# (ast_call / ast_call_direct, driven by is_resolved) and ranking-contaminated
-# types (type_hierarchy) are deferred to later F1 / F2 slices.
-# (naming_convention was the ceiling-breaching 1.0 producer; ADR-0039 R1
-# seeded it 0.85 and dropped the containment literal — WI-vakuh / WI-lutad.)
+# (ast_call / ast_call_direct, driven by is_resolved) are deferred to a later
+# F1 slice. (naming_convention was the ceiling-breaching 1.0 producer; ADR-0039
+# R1 seeded it 0.85 and dropped the containment literal — WI-vakuh / WI-lutad.
+# type_hierarchy was the ranking-contaminated 0.85/sqrt(N) producer; ADR-0039
+# R1/R3 seeded it 0.85 and relocated the dampener to rank_score — WI-botif.)
 _SEEDED = {
     "ast_import": 0.95,
     "ast_new": 0.95,
@@ -212,6 +213,15 @@ def test_naming_convention_seeded_below_span_overlap():
     assert confidence_within_band("naming_convention", 1.0) is False   # ceiling breach
     assert confidence_within_band("naming_convention", 0.85) is True    # == base
     assert confidence_within_band("naming_convention", 0.30) is True    # floor
+
+
+def test_type_hierarchy_seeded_in_band():
+    """ADR-0039 R1/R3 (WI-botif): the dispatch pathway seeds a flat in-band 0.85
+    base; the fan-out dampener that undershot the 0.40 floor lives on rank_score."""
+    assert derive_confidence("type_hierarchy") == 0.85
+    assert confidence_within_band("type_hierarchy", 0.85) is True
+    assert confidence_within_band("type_hierarchy", 0.094) is False   # old dampened floor-breach
+    assert confidence_within_band("type_hierarchy", 0.30) is True     # old test-penalty, in band
 
 
 # --- ADR-0039 ruling 2 guard: find_constant_confidence_violations ---

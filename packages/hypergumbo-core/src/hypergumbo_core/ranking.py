@@ -1040,9 +1040,17 @@ def filter_edges_for_ranking(
         ]
 
     if min_edge_confidence > 0:
+        # ADR-0039 ruling 3: this is a RANKING filter (filter_edges_for_RANKING),
+        # so it keys on ``rank_score`` — the ranking-prominence quantity — not the
+        # detection-reliability ``confidence``. For every edge whose producer has
+        # not relocated a ranking adjustment, rank_score == confidence, so the
+        # filtered set is unchanged; the one edge family that differs is the
+        # type_hierarchy ``dispatches_to`` fan-out (rank_score carries the 1/sqrt(N)
+        # dampener + test penalty), which is exactly the WI-kabom demotion this
+        # filter is meant to apply.
         filtered = [
             e for e in filtered
-            if e.confidence >= min_edge_confidence
+            if e.rank_score >= min_edge_confidence
         ]
 
     return filtered

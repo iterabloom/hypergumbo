@@ -66,8 +66,10 @@ def make_edge(
     dst_id: str,
     edge_type: str = "calls",
     confidence: float = 0.9,
+    rank_score: float | None = None,
 ) -> Edge:
-    """Helper to create test edges."""
+    """Helper to create test edges. rank_score defaults to confidence (via
+    __post_init__) unless a diverging value is passed."""
     return Edge(
         id=f"edge:{src_id}->{dst_id}",
         src=src_id,
@@ -75,7 +77,7 @@ def make_edge(
         edge_type=edge_type,
         line=1,
         confidence=confidence,
-
+        rank_score=rank_score,
         origin="test", origin_run_id="test",
     )
 
@@ -1211,6 +1213,28 @@ class TestFilterEdgesForRanking:
         )
         assert len(result) == 1
         assert result[0].confidence == 0.8
+
+    def test_min_edge_confidence_keys_on_rank_score(self):
+        """ADR-0039 ruling 3: the ranking filter keys on rank_score, not
+        confidence — a high-confidence dispatch that a producer dampened for
+        ranking (e.g. type_hierarchy fan-out, confidence 0.85 / rank_score 0.30)
+        is still demoted out (WI-kabom preserved), while an un-dampened edge
+        (rank_score == confidence) is unaffected."""
+        a = make_symbol("a", path="src/a.py")
+        b = make_symbol("b", path="src/b.py")
+        # High detection confidence but low ranking prominence (fan-out damped).
+        damped = make_edge(a.id, b.id, edge_type="dispatches_to",
+                           confidence=0.85, rank_score=0.30)
+        # Un-dampened edge: rank_score defaults to confidence.
+        normal = make_edge(a.id, b.id, edge_type="calls", confidence=0.85)
+
+        result = filter_edges_for_ranking(
+            [damped, normal], [a, b], min_edge_confidence=0.5
+        )
+        # The damped dispatch is excluded despite confidence 0.85 >= 0.5;
+        # keying on confidence (the pre-ADR-0039 behavior) would have kept it.
+        assert len(result) == 1
+        assert result[0].edge_type == "calls"
 
     def test_no_filtering(self):
         """All filters disabled passes through all edges."""

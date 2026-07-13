@@ -567,6 +567,11 @@ _CONFIDENCE_SEEDS: dict[str, float] = {
     "static": 0.95,
     "struct_field_reference": 0.7,
     "trait_impl": 0.95,
+    # ADR-0039 R1/R3 (WI-botif): a real dispatch relationship — reliably 0.85;
+    # the 1/sqrt(N) fan-out dampener + test-file penalty are RANKING signals that
+    # relocate to Edge.rank_score (type_hierarchy.py), so published confidence is
+    # the flat in-band base, not the dampened value that undershot the 0.40 floor.
+    "type_hierarchy": 0.85,
     "typeclass_instance": 0.9,
     "use": 0.95,
     "use-package": 0.95,
