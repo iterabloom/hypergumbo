@@ -15,12 +15,12 @@ for focused LLM context.
 
 hypergumbo analyzed its own source code and found:
 - **292** Python modules (133 analyzers, 57 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 29, Infrastructure 7; 65 core, 4 CLI, 33 tracker)
-- **36753** symbols (functions, classes, methods)
-- **125267** edges by type:
-  - calls: 63226
-  - contains: 33930
+- **36763** symbols (functions, classes, methods)
+- **125306** edges by type:
+  - calls: 63250
+  - contains: 33940
   - imports: 11150
-  - instantiates: 10312
+  - instantiates: 10317
   - references: 4195
   - module_attr_ref: 1142
   - other: 1312
@@ -85,7 +85,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 36753 Symbols + 125267 Edges + UsageContexts           │
+│  Output: 36763 Symbols + 125306 Edges + UsageContexts           │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -270,8 +270,8 @@ These symbols have the highest bidirectional centrality
 
 | Symbol | Kind | Score | Location |
 |--------|------|-------|----------|
-| `Symbol` | class | 9240.4 | ir.py |
-| `Span` | class | 6221.8 | ir.py |
+| `Symbol` | class | 9249.5 | ir.py |
+| `Span` | class | 6227.7 | ir.py |
 | `run_behavior_map` | function | 3589.0 | cli.py |
 | `write_text` | external_symbol | 3285.0 | <external> |
 | `LinkerContext` | class | 3104.7 | registry.py |
@@ -281,7 +281,7 @@ These symbols have the highest bidirectional centrality
 | `Path` | external_symbol | 1581.0 | <external> |
 | `main` | function | 1563.1 | cli.py |
 | `clear_pattern_cache` | function | 1336.8 | framework_patterns.py |
-| `Edge` | class | 1261.3 | ir.py |
+| `Edge` | class | 1265.5 | ir.py |
 | `append` | external_symbol | 1229.0 | <external> |
 | `get` | external_symbol | 1088.0 | <external> |
 | `TreeSitterAnalyzer` | class | 1074.7 | base.py |
@@ -837,7 +837,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: 41f3a0e9302c
+  commit: 50137d1fc921
   hypergumbo: 6.1.0
   python: 3.12.3
 -->

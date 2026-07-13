@@ -113,6 +113,10 @@ Alongside: the CLI standardizes on `--format {text,json}` across all read views 
 
 - **Dense non-web source files are no longer silently dropped as minified (INV-lukop).** The average-line-length minification heuristic (>150 chars) now fires only for web-asset extensions (JS/CSS/HTML bundles). A dense-but-real source file in another language — a Python data/lookup module, a very long function signature, generated protobuf lacking a `@generated` header — was misclassified as minified, classified tier-4 (derived), and had its **whole file** (every symbol and edge) dropped by the default tier filter with no diagnostic. The `@generated` / sourcemap / webpack heuristics stay universal (they are language-agnostic generation signals).
 
+#### Dependency linking
+
+- **`depends_on_manifest` edges attribute to the importer's own package manifest in monorepos (WI-timon).** When the same dependency name is declared in several package manifests (e.g. `rich` in both `hypergumbo-core` and `hypergumbo-tracker`), the dependency lookup was a global flat `name → Symbol` map, so every importer's edge pointed to whichever manifest was processed last. The lookup is now `name → [Symbol]` and each import edge is attributed to the **nearest enclosing manifest** of the importing file; an importer under no candidate manifest (or unresolvable to a path) falls back deterministically and carries the registered `disambiguation_fallback` flag with confidence 0.5 (INV-zuhub) instead of a confident-but-wrong 0.9.
+
 #### Symbol-kind emission correctness
 
 - **Per-language emission fixes.** Go module-variable emission gates on package scope (no more function-locals); Swift field emission requires a direct type-body parent (SwiftyJSON: 383 of 407 "fields" were method-locals); Julia `const` no longer drops multi-name/typed members or clobbers a same-named function; Elixir `def`s inside `quote` blocks attribute to the `use`-ing module; and Nim now extracts EXPORTED (`*`-marked) procs/funcs/methods/types instead of dropping them.
