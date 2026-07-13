@@ -463,6 +463,218 @@ def test_run_workspace_sibling_import_is_first_party_not_external(
     )
 
 
+# ---------------------------------------------------------------------------
+# WI-jubag: extends edges to EXTERNAL bases must be emitted (not dropped).
+# The relationship-edge producer previously emitted an ``extends`` edge only when
+# the base resolved to a first-party class; external/stdlib bases (``Enum``,
+# ``Exception``, ...) yielded ``base_sym is None`` and the loop dropped them —
+# so 24.8% of base-bearing Python classes appeared base-less BY OMISSION. This
+# slice adds the unresolved-external fallback (mirroring the landed JS/TS A2
+# change, WI-dutov) for from-imported and builtin bases, with an in-tree guard
+# that keeps a not-yet-extracted in-tree base from leaking as a workspace-
+# prefixed phantom (INV-nuzas). Dotted/qualified bases (``argparse.X``) are
+# deferred to the Approach-C core-linker chokepoint.
+# ---------------------------------------------------------------------------
+
+
+def test_run_extends_external_from_import_base_emits_unresolved_edge(
+    tmp_path: Path,
+) -> None:
+    """A class extending a from-imported external base (``from enum import Enum;
+    class Color(Enum)``) emits a module-qualified unresolved ``extends`` edge —
+    not a silent drop. Confidence stays evidence-derived (ADR-0039): the extends
+    DETECTION is AST-certain; ``is_resolved=False`` carries the unresolved target.
+    """
+    (tmp_path / "m.py").write_text(
+        "from enum import Enum\n"
+        "class Color(Enum):\n"
+        "    RED = 1\n"
+    )
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+    data = json.loads(out_path.read_text())
+
+    extends = [e for e in data["edges"] if e["type"] == "extends"]
+    ext = [e for e in extends if not e["is_resolved"]]
+    assert len(ext) == 1, extends
+    # The unresolved dst is remapped to its canonical external_symbol node id
+    # (WI-fozoh boundary synthesis: ``:unresolved`` -> ``:external_symbol``).
+    assert ext[0]["dst"] == "python:enum:0-0:Enum:external_symbol", ext[0]
+    # evidence-derived (ast_extends -> 0.95), NOT a 0.5 emitter-constant.
+    assert ext[0]["confidence"] == 0.95, ext[0]
+    ext_ids = [n["id"] for n in data["nodes"] if n["kind"] == "external_symbol"]
+    assert any(i == "python:enum:0-0:Enum:external_symbol" for i in ext_ids), ext_ids
+
+
+def test_run_extends_builtin_base_emits_external_edge(tmp_path: Path) -> None:
+    """A builtin base (``class MyError(Exception)`` — not imported) emits an
+    ``extends`` edge to the generic ``python:external:...`` placeholder."""
+    (tmp_path / "m.py").write_text("class MyError(Exception):\n    pass\n")
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+    data = json.loads(out_path.read_text())
+
+    ext = [
+        e for e in data["edges"]
+        if e["type"] == "extends" and not e["is_resolved"]
+    ]
+    assert len(ext) == 1, ext
+    assert ext[0]["dst"] == "python:external:0-0:Exception:external_symbol", ext[0]
+
+
+def test_run_extends_intree_base_still_resolved(tmp_path: Path) -> None:
+    """Regression guard: an in-repo base still resolves to a RESOLVED extends
+    edge (the external fallback must not disturb the resolved path)."""
+    (tmp_path / "m.py").write_text(
+        "class Base:\n    pass\n"
+        "class Derived(Base):\n    pass\n"
+    )
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+    data = json.loads(out_path.read_text())
+
+    extends = [e for e in data["edges"] if e["type"] == "extends"]
+    assert len(extends) == 1, extends
+    assert extends[0]["is_resolved"] is True
+    assert extends[0]["dst"].endswith(":Base:class"), extends[0]
+
+
+def test_run_extends_intree_nonclass_base_dropped_not_external(
+    tmp_path: Path,
+) -> None:
+    """INV-nuzas guard: a base naming an IN-TREE module symbol that was not
+    extracted as a class (here a module-level VARIABLE) must be DROPPED, never
+    minted as a workspace-prefixed external_symbol."""
+    pkg = tmp_path / "pkg"
+    pkg.mkdir()
+    (pkg / "__init__.py").write_text("")
+    (pkg / "consts.py").write_text("THING = object\n")
+    (tmp_path / "m.py").write_text(
+        "from pkg.consts import THING\n"
+        "class C(THING):\n    pass\n"
+    )
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+    data = json.loads(out_path.read_text())
+
+    ext_ids = [n["id"] for n in data["nodes"] if n["kind"] == "external_symbol"]
+    assert not any("pkg" in i for i in ext_ids), (
+        f"in-tree base must not leak as external_symbol: {ext_ids}"
+    )
+    bad = [
+        e for e in data["edges"]
+        if e["type"] == "extends" and not e["is_resolved"] and "pkg" in e["dst"]
+    ]
+    assert bad == [], bad
+
+
+def test_run_extends_aliased_intree_base_resolves(tmp_path: Path) -> None:
+    """An aliased in-tree base (``from base import RealBase as RB; class C(RB)``)
+    re-resolves on the ORIGINAL name to the in-repo class — a RESOLVED extends
+    edge, not an external placeholder."""
+    (tmp_path / "base.py").write_text("class RealBase:\n    pass\n")
+    (tmp_path / "m.py").write_text(
+        "from base import RealBase as RB\n"
+        "class C(RB):\n    pass\n"
+    )
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+    data = json.loads(out_path.read_text())
+
+    resolved = [
+        e for e in data["edges"]
+        if e["type"] == "extends" and e["is_resolved"]
+        and e["dst"].endswith(":RealBase:class")
+    ]
+    assert len(resolved) == 1, [
+        e for e in data["edges"] if e["type"] == "extends"
+    ]
+
+
+def test_run_extends_aliased_external_base_uses_original_name(
+    tmp_path: Path,
+) -> None:
+    """An aliased EXTERNAL base (``from enum import Enum as E; class C(E)``) emits
+    the unresolved external edge under the ORIGINAL name (``Enum``), not the
+    alias — the re-resolution finds no in-tree class and falls through."""
+    (tmp_path / "m.py").write_text(
+        "from enum import Enum as E\n"
+        "class C(E):\n    pass\n"
+    )
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+    data = json.loads(out_path.read_text())
+
+    ext = [
+        e for e in data["edges"]
+        if e["type"] == "extends" and not e["is_resolved"]
+    ]
+    assert len(ext) == 1, ext
+    assert ext[0]["dst"] == "python:enum:0-0:Enum:external_symbol", ext[0]
+
+
+def test_run_extends_dotted_qualified_base_deferred(tmp_path: Path) -> None:
+    """WI-jubag scope boundary: a dotted/qualified base
+    (``class C(argparse.RawDescriptionHelpFormatter)``) is NOT yet emitted as
+    external — naming its module needs module_imports, deferred to the Approach-C
+    core-linker chokepoint. It stays dropped rather than mis-hinted."""
+    (tmp_path / "m.py").write_text(
+        "import argparse\n"
+        "class C(argparse.RawDescriptionHelpFormatter):\n    pass\n"
+    )
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+    data = json.loads(out_path.read_text())
+
+    assert [e for e in data["edges"] if e["type"] == "extends"] == [], (
+        [e for e in data["edges"] if e["type"] == "extends"]
+    )
+
+
+def test_run_extends_self_referential_base_emits_no_edge(tmp_path: Path) -> None:
+    """A syntactically self-referential base (``class Foo(Foo)`` — parseable
+    though a runtime NameError) resolves to the class itself; no extends edge
+    (resolved or external) is emitted."""
+    (tmp_path / "m.py").write_text("class Foo(Foo):\n    pass\n")
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+    data = json.loads(out_path.read_text())
+
+    assert [e for e in data["edges"] if e["type"] == "extends"] == []
+
+
+class TestBaseModuleIsInTree:
+    """Direct unit coverage of ``_base_module_is_in_tree`` (the external-fallback
+    in-tree guard) — each of its four resolution paths."""
+
+    def test_exact_module_match(self) -> None:
+        from hypergumbo_lang_mainstream.py import _base_module_is_in_tree
+        assert _base_module_is_in_tree(
+            "pkg.mod", "X", frozenset({"pkg.mod"})
+        ) is True
+
+    def test_submodule_match(self) -> None:
+        from hypergumbo_lang_mainstream.py import _base_module_is_in_tree
+        # ``from pkg import sub`` where ``pkg.sub`` is an in-tree submodule.
+        assert _base_module_is_in_tree(
+            "pkg", "sub", frozenset({"pkg.sub"})
+        ) is True
+
+    def test_suffix_match_relative_import_form(self) -> None:
+        from hypergumbo_lang_mainstream.py import _base_module_is_in_tree
+        # Relative imports store a repo-root-relative superset path; the
+        # source-root-relative in-tree key is a suffix of it.
+        assert _base_module_is_in_tree(
+            "packages.auth.src.authpkg.base", "X", frozenset({"authpkg.base"})
+        ) is True
+
+    def test_external_module_no_match(self) -> None:
+        from hypergumbo_lang_mainstream.py import _base_module_is_in_tree
+        assert _base_module_is_in_tree(
+            "enum", "Enum", frozenset({"pkg.mod"})
+        ) is False
+
+
 def test_run_namespace_package_bare_import_stays_external(tmp_path: Path) -> None:
     """supply:F4 documented scope-out: a PEP-420 namespace package (no
     ``__init__.py``) bare ``import nspkg`` has no file anchor for the package
@@ -6328,8 +6540,12 @@ class TestPythonInheritanceEdges:
         edge = child_extends[0]
         assert "Base" in edge.dst
 
-    def test_no_extends_edge_for_external_base_class(self, tmp_path: Path) -> None:
-        """No extends edge created when base class is external (not in repo)."""
+    def test_extends_edge_for_external_base_class_is_unresolved(
+        self, tmp_path: Path
+    ) -> None:
+        """WI-jubag: an external base class emits an UNRESOLVED-external extends
+        edge (not a silent drop). ``analyze_python`` returns the raw edge before
+        boundary synthesis, so the dst is the ``:unresolved`` placeholder."""
         from hypergumbo_lang_mainstream.py import analyze_python
 
         py_file = tmp_path / "models.py"
@@ -6348,9 +6564,12 @@ class TestPythonInheritanceEdges:
         assert "base_classes" in (user_class.meta or {})
         assert "BaseModel" in user_class.meta["base_classes"]
 
-        # But no extends edge since BaseModel is external
+        # BaseModel is external (pydantic) -> exactly one unresolved extends edge.
         extends_edges = [e for e in result.edges if e.edge_type == "extends"]
-        assert len(extends_edges) == 0
+        assert len(extends_edges) == 1
+        edge = extends_edges[0]
+        assert edge.is_resolved is False
+        assert edge.dst == "python:pydantic:0-0:BaseModel:unresolved", edge.dst
 
 
 class TestPythonVisibilityModifiers:

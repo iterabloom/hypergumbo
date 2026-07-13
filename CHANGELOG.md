@@ -43,6 +43,7 @@ Alongside: the CLI standardizes on `--format {text,json}` across all read views 
 
 - **Subprocess→CLI joins expand.** The linker now joins Python Fire class methods and argparse subcommands to their handlers, not just decorator-registered commands.
 - **Python nested-function resolution walks the full LEGB scope chain** via a new `ScopeStack`, resolving calls from grandparent-or-higher enclosures (additive; fires only after local/import misses).
+- **External base classes emit `extends` edges (Python).** A Python class whose base is external/stdlib (`Enum`, `Exception`, `Protocol`, `ABC`, …) now emits an unresolved-external `extends` edge to a boundary placeholder instead of dropping the relationship by omission — so type-hierarchy / "what is this a subclass of" queries no longer answer "nothing" for the ~1-in-4 Python classes whose bases are all external. Confidence stays evidence-derived (`ast_extends` → 0.95, same as a resolved extends); `is_resolved=False` carries the unresolved target. An in-tree guard keeps a not-yet-extracted in-tree base from leaking as a workspace-prefixed phantom (INV-nuzas), and aliased in-tree bases re-resolve to their real class; dotted/qualified bases (`argparse.X`) are deferred to the core-linker chokepoint. (WI-jubag Python slice; mirrors the landed JS/TS A2 fallback.)
 
 #### Symbol identity, introspection & axes
 

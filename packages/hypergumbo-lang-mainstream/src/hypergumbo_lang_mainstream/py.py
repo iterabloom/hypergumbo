@@ -2168,17 +2168,56 @@ def _resolve_base_class(
     return candidates_sorted[0]
 
 
+def _base_module_is_in_tree(
+    module_path: str,
+    submodule_name: str,
+    intree_modules: frozenset[str],
+) -> bool:
+    """Return True if ``module_path`` (or ``module_path.submodule_name``) names an
+    in-tree module.
+
+    Mirrors the import-edge resolver's in-tree test (``_extract_import_edges``),
+    but tolerates the module-name-form difference between the two import maps:
+    ``analysis.imports`` stores a *repo-root-relative* dotted path for RELATIVE
+    imports (``_collect_module_constants`` line ~1035), whereas
+    ``module_to_file_id`` keys are *source-root-relative* (``_module_name_from_path``).
+    The former is a suffix superset of the latter, so a suffix match catches a
+    relative-imported in-tree base whose form otherwise would not equal any key.
+
+    Biases to True on any suffix hit by design: a false positive merely DROPS an
+    external ``extends`` edge (a small recall loss), whereas a false negative
+    would mint a workspace-prefixed phantom ``external_symbol`` — an INV-nuzas
+    regression, the failure mode this guard exists to prevent.
+    """
+    if module_path in intree_modules:
+        return True
+    if f"{module_path}.{submodule_name}" in intree_modules:
+        return True
+    parts = module_path.split(".")
+    for i in range(1, len(parts)):
+        if ".".join(parts[i:]) in intree_modules:
+            return True
+    return False
+
+
 def _extract_inheritance_edges(
     symbols: list[Symbol],
     class_by_name: dict[str, list[Symbol]],
     sym_file_imports: dict[str, dict[str, tuple[str, str]]],
     run: AnalysisRun,
+    module_to_file_id: dict[str, str],
 ) -> list[Edge]:
     """Extract extends edges from class inheritance.
 
     For each class with base_classes metadata, creates extends edges to
-    base classes that exist in the analyzed codebase. This enables the
-    type hierarchy linker to create dispatches_to edges for polymorphic dispatch.
+    base classes. First-party bases resolve to their in-repo class node; a base
+    that resolves to no first-party class (an external/stdlib base like ``Enum``,
+    ``Exception``, ``Protocol``) gets an UNRESOLVED-EXTERNAL fallback edge
+    (WI-jubag) rather than being dropped by omission — mirroring the landed JS/TS
+    A2 change (WI-dutov). Resolved edges enable the type hierarchy linker to
+    create dispatches_to edges for polymorphic dispatch; the external edges make
+    the type hierarchy honest ("what is this a subclass of" no longer answers
+    "nothing" for the 24.8% of Python classes whose bases are all external).
 
     When multiple classes share the same name (common in large repos like Django
     where 238 test stubs are named 'Model'), uses import-aware disambiguation
@@ -2188,12 +2227,17 @@ def _extract_inheritance_edges(
         symbols: All extracted symbols
         class_by_name: Multi-value lookup: class name -> list of Symbol candidates
         sym_file_imports: Maps symbol ID -> file-level imports dict
+            (imported local name -> (module_name, original_name))
         run: Current analysis run for provenance
+        module_to_file_id: in-tree dotted module name -> file-anchor id; used to
+            guard the external fallback so a not-yet-extracted IN-TREE base is
+            dropped rather than minted as a workspace-prefixed phantom (INV-nuzas).
 
     Returns:
         List of extends edges for inheritance relationships
     """
     edges: list[Edge] = []
+    intree_modules = frozenset(module_to_file_id)
 
     for sym in symbols:
         if sym.kind != "class":
@@ -2203,6 +2247,7 @@ def _extract_inheritance_edges(
         if not base_classes:
             continue
 
+        child_imports = sym_file_imports.get(sym.id, {})
         for base_class_name in base_classes:
             # Strip generics from base class name (e.g., "Generic[T]" -> "Generic")
             base_name = base_class_name.split("[")[0]
@@ -2212,7 +2257,7 @@ def _extract_inheritance_edges(
                 base_name, sym, class_by_name, sym_file_imports
             )
             if base_sym is not None and base_sym.id != sym.id:
-                edge = Edge.create(
+                edges.append(Edge.create(
                     src=sym.id,
                     dst=base_sym.id,
                     edge_type="extends",
@@ -2220,8 +2265,76 @@ def _extract_inheritance_edges(
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     evidence_type="ast_extends",
+                ))
+                continue
+            if base_sym is not None:
+                # base_sym.id == sym.id: a syntactically self-referential base
+                # (``class Foo(Foo)`` — parseable though a runtime NameError).
+                # Skip it so it does not fall through to the external fallback.
+                continue
+
+            # WI-jubag: the base resolves to no first-party class. Emit an
+            # unresolved-external ``extends`` edge so external/stdlib bases are
+            # represented rather than dropped. Confidence stays EVIDENCE-DERIVED
+            # (ADR-0039): the extends DETECTION is AST-certain (0.95, same as a
+            # resolved extends); ``is_resolved=False`` carries the unresolved
+            # TARGET. Dotted/qualified bases (``argparse.RawDescriptionHelpFormatter``)
+            # need module_imports to name their module and are deferred to the
+            # Approach-C core-linker chokepoint — keep the current drop for them.
+            if "." in base_name:
+                continue
+
+            imported = child_imports.get(base_name)
+            if imported is not None:
+                module_path, original_name = imported
+                # Aliased import (``from x import Base as B``): re-resolve on the
+                # ORIGINAL name so an aliased IN-TREE base binds to its real class
+                # instead of being declared external.
+                if original_name != base_name:
+                    re_sym = _resolve_base_class(
+                        original_name, sym, class_by_name, sym_file_imports
+                    )
+                    if re_sym is not None and re_sym.id != sym.id:
+                        edges.append(Edge.create(
+                            src=sym.id,
+                            dst=re_sym.id,
+                            edge_type="extends",
+                            line=sym.span.start_line if sym.span else 0,
+                            origin=PASS_ID,
+                            origin_run_id=run.execution_id,
+                            evidence_type="ast_extends",
+                        ))
+                        continue
+                # In-tree guard (INV-nuzas): a base imported from an in-tree module
+                # that was simply not extracted as a class (a module-level
+                # variable, a failed-parse file) must be DROPPED, not minted as a
+                # workspace-prefixed phantom external.
+                if _base_module_is_in_tree(
+                    module_path, original_name, intree_modules
+                ):
+                    continue
+                module_hint = module_path
+                canonical = original_name
+                dst_ref: ExternalRef | None = ExternalRef(
+                    lang="python", module_path=module_hint, name=canonical
                 )
-                edges.append(edge)
+            else:
+                # Not imported: a builtin base (Exception, str, ValueError, ...).
+                module_hint = "external"
+                canonical = base_name
+                dst_ref = None
+
+            edges.append(Edge.create(
+                src=sym.id,
+                dst=f"python:{module_hint}:0-0:{canonical}:unresolved",
+                edge_type="extends",
+                line=sym.span.start_line if sym.span else 0,
+                origin=PASS_ID,
+                origin_run_id=run.execution_id,
+                evidence_type="ast_extends",
+                is_resolved=False,
+                dst_ref=dst_ref,
+            ))
 
     return edges
 
@@ -5343,7 +5456,7 @@ def analyze_python(
 
     # Create extends edges with import-aware disambiguation
     inheritance_edges = _extract_inheritance_edges(
-        all_symbols, class_by_name, sym_file_imports, run
+        all_symbols, class_by_name, sym_file_imports, run, module_to_file_id
     )
     all_edges.extend(inheritance_edges)
 
