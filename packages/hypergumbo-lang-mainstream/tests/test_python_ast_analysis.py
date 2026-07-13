@@ -614,11 +614,12 @@ def test_run_extends_aliased_external_base_uses_original_name(
     assert ext[0]["dst"] == "python:enum:0-0:Enum:external_symbol", ext[0]
 
 
-def test_run_extends_dotted_qualified_base_deferred(tmp_path: Path) -> None:
-    """WI-jubag scope boundary: a dotted/qualified base
-    (``class C(argparse.RawDescriptionHelpFormatter)``) is NOT yet emitted as
-    external — naming its module needs module_imports, deferred to the Approach-C
-    core-linker chokepoint. It stays dropped rather than mis-hinted."""
+def test_run_extends_dotted_qualified_base_emitted_by_chokepoint(tmp_path: Path) -> None:
+    """WI-jubag Approach C: a dotted/qualified base
+    (``class C(argparse.RawDescriptionHelpFormatter)``) — which py.py DEFERS
+    (naming its module needs module_imports) — is now recovered by the core
+    inheritance-linker chokepoint as an unresolved-external ``extends`` edge on
+    the last segment, instead of being dropped."""
     (tmp_path / "m.py").write_text(
         "import argparse\n"
         "class C(argparse.RawDescriptionHelpFormatter):\n    pass\n"
@@ -627,9 +628,15 @@ def test_run_extends_dotted_qualified_base_deferred(tmp_path: Path) -> None:
     run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
     data = json.loads(out_path.read_text())
 
-    assert [e for e in data["edges"] if e["type"] == "extends"] == [], (
-        [e for e in data["edges"] if e["type"] == "extends"]
-    )
+    ext = [
+        e for e in data["edges"]
+        if e["type"] == "extends" and not e["is_resolved"]
+    ]
+    assert len(ext) == 1, [e for e in data["edges"] if e["type"] == "extends"]
+    assert ext[0]["dst"] == (
+        "python:external:0-0:RawDescriptionHelpFormatter:external_symbol"
+    ), ext[0]
+    assert ext[0]["confidence"] == 0.95, ext[0]
 
 
 def test_run_extends_self_referential_base_emits_no_edge(tmp_path: Path) -> None:

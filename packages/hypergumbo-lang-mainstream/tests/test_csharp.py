@@ -365,8 +365,11 @@ public class User : IEntity {
         assert implements_edges[0].src == user.id
         assert implements_edges[0].dst == entity.id
 
-    def test_no_edge_for_external_base_class(self, tmp_path: Path) -> None:
-        """No edge created when base class is not in analyzed codebase."""
+    def test_external_base_class_emits_unresolved_extends(self, tmp_path: Path) -> None:
+        """WI-jubag Approach C: an external C# base class (``Controller``, not in
+        the analyzed codebase) now emits an unresolved-external ``extends`` edge
+        from the core inheritance-linker chokepoint instead of dropping — C# is
+        one of the OO languages the chokepoint generalization sweeps in."""
         from hypergumbo_lang_mainstream.csharp import analyze_csharp
         from hypergumbo_core.linkers.inheritance import link_inheritance
         from hypergumbo_core.linkers.registry import LinkerContext
@@ -389,9 +392,14 @@ public class UserController : Controller {
         assert controller.meta is not None
         assert controller.meta.get("base_classes") == ["Controller"]
 
-        # No edges (Controller is external)
+        # Controller is external -> an unresolved-external extends edge (was: dropped).
         extends_edges = [e for e in linker_result.edges if e.edge_type in ("extends", "implements")]
-        assert len(extends_edges) == 0
+        assert len(extends_edges) == 1
+        e = extends_edges[0]
+        assert e.edge_type == "extends"
+        assert e.dst == "csharp:external:0-0:Controller:unresolved"
+        assert e.is_resolved is False
+        assert e.dst_ref is None
 
 
 class TestCSharpEdgeExtraction:
