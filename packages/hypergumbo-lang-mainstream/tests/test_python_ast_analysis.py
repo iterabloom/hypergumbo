@@ -675,6 +675,40 @@ class TestBaseModuleIsInTree:
         ) is False
 
 
+def test_run_module_attr_ref_to_intree_submodule_resolves_not_phantom(
+    tmp_path: Path,
+) -> None:
+    """WI-tanot category B (INV-nuzas): reading an in-tree SUBMODULE as a value
+    (``import pkg; ... pkg.sub``) — where ``sub`` is a first-party subpackage/
+    module, not a variable/function — resolves to the submodule's file node via a
+    ``references`` edge, instead of minting a workspace-prefixed external_symbol
+    phantom (``python:pkg:0-0:pkg.sub:attribute``)."""
+    pkg = tmp_path / "pkg"
+    pkg.mkdir()
+    (pkg / "__init__.py").write_text("")
+    (pkg / "sub.py").write_text("VALUE = 1\n")
+    (tmp_path / "mod.py").write_text(
+        "import pkg\n"
+        "def f():\n"
+        "    return pkg.sub\n"
+    )
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+    data = json.loads(out_path.read_text())
+
+    ext_ids = [n["id"] for n in data["nodes"] if n["kind"] == "external_symbol"]
+    assert not any("pkg.sub" in i for i in ext_ids), (
+        f"in-tree submodule read must not leak as external: {ext_ids}"
+    )
+    refs = [
+        e for e in data["edges"]
+        if e["type"] == "references" and e["dst"].endswith("pkg/sub.py:1-1:file:file")
+    ]
+    assert len(refs) >= 1, [
+        e for e in data["edges"] if e["type"] == "references"
+    ]
+
+
 def test_run_namespace_package_bare_import_stays_external(tmp_path: Path) -> None:
     """supply:F4 documented scope-out: a PEP-420 namespace package (no
     ``__init__.py``) bare ``import nspkg`` has no file anchor for the package

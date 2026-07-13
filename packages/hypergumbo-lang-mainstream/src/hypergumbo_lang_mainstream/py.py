@@ -3265,6 +3265,7 @@ def _extract_edges(
     enclosing_func_id: dict[str, str] | None = None,
     local_names_by_func_id: dict[str, frozenset[str]] | None = None,
     method_to_enclosing_class_id: dict[str, str] | None = None,
+    module_to_file_id: dict[str, str] | None = None,
 ) -> list[Edge]:
     """Extract call and instantiation edges from an AST.
 
@@ -3629,6 +3630,30 @@ def _extract_edges(
                         origin_run_id=run_id,
                     ))
                     return
+                # INV-nuzas category B (WI-tanot): the attribute names an in-tree
+                # SUBMODULE / subpackage of the imported module (``import
+                # hypergumbo_core as hc; hc.linkers``), not a variable/function —
+                # resolve it to the submodule's first-party file/package node via
+                # ``module_to_file_id`` (the supply-verdict:F4 import mechanism)
+                # instead of a workspace-prefixed phantom external. EXACT dotted
+                # match only (no suffix), and ``references`` (not module_attr_ref)
+                # keeps it taint-safe. The shadow guard (local_bindings) already
+                # applied above.
+                if module_to_file_id is not None:
+                    submodule_fid = module_to_file_id.get(
+                        f"{real_module}.{sub.attr}"
+                    )
+                    if submodule_fid is not None:
+                        edges.append(Edge.create(
+                            src=caller_symbol.id,
+                            dst=submodule_fid,
+                            edge_type="references",
+                            line=sub.lineno,
+                            evidence_type="ast_name_read",
+                            origin=PASS_ID,
+                            origin_run_id=run_id,
+                        ))
+                        return
             qname = f"{real_module}.{sub.attr}"
             edges.append(Edge.create(
                 src=caller_symbol.id,
@@ -5428,6 +5453,7 @@ def analyze_python(
             enclosing_func_id=analysis.enclosing_func_id,
             local_names_by_func_id=analysis.local_names_by_func_id,
             method_to_enclosing_class_id=analysis.method_to_enclosing_class_id,
+            module_to_file_id=module_to_file_id,
         )
         # ADR-0015: annotate edges with access_mode from Python AST context.
         # Pass source + python.yaml config so library_patterns (e.g. .append,
