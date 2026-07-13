@@ -79,3 +79,19 @@
   clock: 9  # 1b05
   nonce: 1b05  # 1b05
   message: "Confidence face FIXED in PR #608 (ADR-0039 ruling 1). Root cause: containment Phase-1 hardcoded confidence=1.0 on naming_convention 'contains' edges — above the 0.95 linker ceiling and outranking the structurally-certain span_overlap (0.90), so a consumer trusting confidence treated the error-prone name heuristic as gold. Fix: seeded naming_convention=0.85 in the evidence registry (below span_overlap, in-band) + dropped the containment literal so Phase-1 DERIVES it (confidence_source=evidence_derived). Behavioral evidence (self-analysis, 134,017 edges; hypergumbo run . then bucket 'contains' by confidence/evidence_type): naming_convention 21,787 @ 0.85 evidence_derived; span_overlap 14,271 @ 0.90 now OUTRANKS them -> inversion resolved; canonical_name 7 @ 0.95. The 30 provably-false out-of-span containments (the false-EDGE face) were already eliminated 2026-07-11 by span-disambiguation; this closes the remaining confidence face. Tagged awaits_bakeoff_validation (confidence shifted on 16.6% of edges)."  # 1b05
+- op: update  # bc3f
+  at: '2026-07-13T03:18:32Z'  # bc3f
+  by: agent  # bc3f
+  actor: jgstern_agent  # bc3f
+  clock: 10  # bc3f
+  nonce: bc3f  # bc3f
+  set: {}  # bc3f
+  remove:  # bc3f
+    tags: [awaits_bakeoff_validation]  # bc3f
+- op: discuss  # 6435
+  at: '2026-07-13T03:18:33Z'  # 6435
+  by: agent  # 6435
+  actor: jgstern_agent  # 6435
+  clock: 11  # 6435
+  nonce: '6435'  # 6435
+  message: "BAKEOFF-VALIDATED: moved -> tag stripped. DEEP cohort deep-20260623-134237 iter-003 (schema 0.14.6 / confidence_model evidence-v2, post-thread-A), 8 repos: express/caddy/spring-petclinic/zoxide/SwiftyJSON/sherpa-csharp/apollo-server/pretix. On real repos, containment 'contains' naming_convention edges = confidence 0.85 confidence_source=evidence_derived (caddy 2800, apollo 464, pretix 15215, spring 241, zoxide 101, SwiftyJSON 185, sherpa 80; express 0=n/a); span_overlap 'contains' stays 0.90 so reliability ordering is restored (0.90>0.85); 0 evidence_derived edges exceed the 0.95 ceiling in all 8 repos. No regression."  # 6435

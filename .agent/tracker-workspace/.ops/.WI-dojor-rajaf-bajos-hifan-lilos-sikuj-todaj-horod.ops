@@ -43,3 +43,19 @@
   clock: 4  # bacb
   nonce: bacb  # bacb
   message: "FIXED (ADR-0039 ruling 3). The undocumented additive in-degree connectivity boost (cap +0.35, library_export) at entrypoints.py mutated ep.confidence in place. It now mutates ep.rank_score instead (ranking prominence, not detection reliability), documented inline as WI-dojor + ADR-0039 R3. Behavioral evidence: self-analysis shows entrypoint confidence values are all clean construction-tier bases (no boost-inflated confidence), while rank_score carries the boost (range [0.318, 1.000]). awaits_bakeoff_validation."  # bacb
+- op: update  # c20d
+  at: '2026-07-13T03:18:34Z'  # c20d
+  by: agent  # c20d
+  actor: jgstern_agent  # c20d
+  clock: 5  # c20d
+  nonce: c20d  # c20d
+  set: {}  # c20d
+  remove:  # c20d
+    tags: [awaits_bakeoff_validation]  # c20d
+- op: discuss  # 2e1a
+  at: '2026-07-13T03:18:34Z'  # 2e1a
+  by: agent  # 2e1a
+  actor: jgstern_agent  # 2e1a
+  clock: 6  # 2e1a
+  nonce: 2e1a  # 2e1a
+  message: "BAKEOFF-VALIDATED: moved -> tag stripped. DEEP cohort deep-20260623-134237 iter-003 (schema 0.14.6 / confidence_model evidence-v2, post-thread-A), 8 repos: express/caddy/spring-petclinic/zoxide/SwiftyJSON/sherpa-csharp/apollo-server/pretix. Entrypoint rank_score present on every entrypoint and carries the in-degree connectivity boost: rank_score>confidence for in-degree entrypoints (pretix 365, sherpa 48, spring 11); the few with rank==conf are zero-in-degree entrypoints. Confidence untouched by the boost."  # 2e1a
