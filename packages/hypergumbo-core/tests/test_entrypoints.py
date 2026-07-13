@@ -2119,8 +2119,9 @@ class TestConnectivityBasedRanking:
 
         route_eps = {ep.symbol_id: ep for ep in entrypoints if ep.kind == EntrypointKind.HTTP_ROUTE}
 
-        # Connected route should have higher confidence than isolated one
-        assert route_eps[route_connected.id].confidence > route_eps[route_isolated.id].confidence
+        # Connected route should have higher ranking prominence than isolated
+        # one (ADR-0039 ruling 3: the connectivity boost lives on rank_score).
+        assert route_eps[route_connected.id].rank_score > route_eps[route_isolated.id].rank_score
 
     def test_all_entrypoints_still_returned(self) -> None:
         """Connectivity ranking should not filter out any entrypoints."""
@@ -2787,17 +2788,52 @@ class TestEntrypointRankingPenalties:
         # Both should be detected
         assert len(entrypoints) == 2
 
-        # First-party should have higher confidence
+        # First-party should have higher ranking prominence (ADR-0039 ruling 3:
+        # the vendor penalty lives on rank_score; detection confidence is the base).
         fp_ep = next(e for e in entrypoints if "src/main.go" in e.symbol_id)
         vendor_ep = next(e for e in entrypoints if "vendor/" in e.symbol_id)
 
-        # Base confidence is 0.80 for main_function
-        # Vendor gets 70% penalty: 0.80 * 0.3 = 0.24
+        # Base confidence is 0.80 for main_function (both); the 70% vendor
+        # penalty (0.80 * 0.3 = 0.24) is a ranking signal -> rank_score.
         assert fp_ep.confidence == pytest.approx(0.80, rel=0.01)
-        assert vendor_ep.confidence == pytest.approx(0.24, rel=0.01)
+        assert vendor_ep.confidence == pytest.approx(0.80, rel=0.01)
+        assert fp_ep.rank_score == pytest.approx(0.80, rel=0.01)
+        assert vendor_ep.rank_score == pytest.approx(0.24, rel=0.01)
 
         # First-party should rank first
         assert entrypoints[0].symbol_id == first_party.id
+
+    def test_adr0039_confidence_in_band_ranking_on_rank_score(self) -> None:
+        """ADR-0039 ruling 3 (WI-lutad, WI-dojor): entrypoint detection
+        confidence stays at the in-band construction base [0.70, 0.99] — no
+        ceiling breach from boosts, no sub-floor from penalties — while every
+        ranking adjustment lives on rank_score, which the sort and the
+        MIN_ENTRYPOINT_CONFIDENCE filter key on."""
+        prod = make_symbol(
+            "main", path="src/main.go", language="go",
+            meta={"concepts": [{"concept": "main_function"}]}, supply_chain_tier=1,
+        )
+        vendor = make_symbol(
+            "main", path="vendor/x/main.go", language="go", start_line=10,
+            meta={"concepts": [{"concept": "main_function"}]}, supply_chain_tier=3,
+        )
+        test_main = make_symbol(
+            "main", path="tests/main_test.go", language="go", start_line=20,
+            meta={"concepts": [{"concept": "main_function"}]}, supply_chain_tier=1,
+        )
+        entrypoints = detect_entrypoints([prod, vendor, test_main], [])
+
+        by_id = {e.symbol_id: e for e in entrypoints}
+        # The test main (base 0.80 * 0.1 = rank 0.08 < MIN 0.10) is filtered out
+        # BY rank_score, even though its detection confidence (0.80) is high.
+        assert test_main.id not in by_id
+        # Surviving entrypoints: confidence is the in-band base for BOTH...
+        for ep in entrypoints:
+            assert 0.70 <= ep.confidence <= 0.99, ep.symbol_id
+        # ...and the vendor penalty shows up only on rank_score.
+        assert by_id[prod.id].confidence == pytest.approx(0.80, rel=0.01)
+        assert by_id[vendor.id].confidence == pytest.approx(0.80, rel=0.01)
+        assert by_id[prod.id].rank_score > by_id[vendor.id].rank_score
 
     def test_test_and_vendor_penalties_stack(self) -> None:
         """Stacked penalties filter out vendor test entries entirely.
@@ -2884,8 +2920,10 @@ class TestEntrypointRankingPenalties:
         derived_ep = next(e for e in entrypoints if "dist/main.js" in e.symbol_id)
 
         # Derived (tier 4) should also get the vendor penalty (tier >= 3)
-        assert source_ep.confidence > derived_ep.confidence
-        assert derived_ep.confidence == pytest.approx(0.80 * 0.3, rel=0.01)
+        # ADR-0039 ruling 3: the derived/vendor penalty lives on rank_score.
+        assert source_ep.rank_score > derived_ep.rank_score
+        assert derived_ep.confidence == pytest.approx(0.80, rel=0.01)
+        assert derived_ep.rank_score == pytest.approx(0.80 * 0.3, rel=0.01)
 
     def test_test_file_main_no_connectivity_boost(self) -> None:
         """MAIN_FUNCTION in test files skips connectivity boost.
@@ -3020,7 +3058,8 @@ class TestGoUtilityMainDemotion:
         plugin_ep = next(e for e in entrypoints if "builtin" in e.symbol_id)
 
         # Server main should rank higher than plugin shim main
-        assert server_ep.confidence > plugin_ep.confidence
+        # ADR-0039 ruling 3: the nested-cmd demotion lives on rank_score.
+        assert server_ep.rank_score > plugin_ep.rank_score
 
     def test_pkg_cmd_not_demoted(self) -> None:
         """Main in pkg/cmd/grafana/ is NOT demoted (standard Go layout)."""
@@ -3070,9 +3109,11 @@ class TestGoUtilityMainDemotion:
         server_ep = next(e for e in entrypoints if "cmd/server" in e.symbol_id)
 
         # Codegen should be demoted below server
-        assert server_ep.confidence > codegen_ep.confidence
+        # ADR-0039 ruling 3: the utility/codegen demotion lives on rank_score.
+        assert server_ep.rank_score > codegen_ep.rank_score
         # Utility penalty: 0.80 * 0.5 = 0.40
-        assert codegen_ep.confidence == pytest.approx(0.40, rel=0.01)
+        assert codegen_ep.confidence == pytest.approx(0.80, rel=0.01)
+        assert codegen_ep.rank_score == pytest.approx(0.40, rel=0.01)
 
     def test_non_go_main_not_affected_by_nested_cmd(self) -> None:
         """The nested-cmd penalty only applies to Go main_function entries."""

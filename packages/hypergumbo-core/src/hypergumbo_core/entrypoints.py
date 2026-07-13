@@ -1576,7 +1576,10 @@ def detect_entrypoints(
         else:
             non_route_eps.append(ep)
     for _label, eps in route_label_groups.items():
-        eps.sort(key=lambda e: e.confidence, reverse=True)
+        # ADR-0039 ruling 3: dedup keeps the most PROMINENT entrypoint per route
+        # label — a ranking decision, so key on rank_score (== confidence until
+        # the adjustments below relocate onto it).
+        eps.sort(key=lambda e: e.rank_score, reverse=True)
         non_route_eps.append(eps[0])
     unique_entrypoints = non_route_eps
 
@@ -1590,8 +1593,11 @@ def detect_entrypoints(
     # Build lookup from symbol_id to Symbol for penalty calculations
     symbol_lookup: dict[str, Symbol] = {node.id: node for node in nodes}
 
-    # Apply penalties for test files and vendor code
-    # This deprioritizes them without removing them from the list
+    # Apply penalties for test files and vendor code (ADR-0039 ruling 3: these
+    # are RANKING adjustments — they deprioritize an entrypoint without making
+    # it less certainly an entrypoint — so they mutate ``rank_score``, leaving
+    # detection ``confidence`` at the construction base. rank_score initialized
+    # from confidence, so the accumulated ranking value is unchanged).
     for ep in unique_entrypoints:
         sym = symbol_lookup.get(ep.symbol_id)
         if sym is None:
@@ -1604,17 +1610,17 @@ def detect_entrypoints(
         # auto-slicing selections.  0.1 pushes them to 0.08, well below
         # any production entrypoint.
         if sym.path and is_test_file(sym.path):
-            ep.confidence *= 0.1
+            ep.rank_score *= 0.1
 
         # Penalty for utility/example/docs files (50% reduction)
         # These are demonstration code, not production entrypoints
         if sym.path and is_utility_file(sym.path):
-            ep.confidence *= 0.5
+            ep.rank_score *= 0.5
 
         # Penalty for vendor/external dependencies (70% reduction)
         # Tier 3 = external deps, Tier 4 = derived/build artifacts
         if sym.supply_chain_tier >= 3:
-            ep.confidence *= 0.3
+            ep.rank_score *= 0.3
 
         # Penalty for Go main()s in deeply nested cmd/ directories (50%).
         # In Go repos, top-level cmd/<name>/ holds the primary application
@@ -1630,7 +1636,7 @@ def detect_entrypoints(
             parts = sym.path.split("/")
             for i, part in enumerate(parts):
                 if part == "cmd" and i >= 2:
-                    ep.confidence *= 0.5
+                    ep.rank_score *= 0.5
                     break
 
     # Application demotion: when real semantic entrypoints exist (routes,
@@ -1707,7 +1713,7 @@ def detect_entrypoints(
                 sym = symbol_lookup.get(ep.symbol_id)
                 lang = sym.language if sym else None
                 if lang and lang in langs_with_semantic:
-                    ep.confidence *= 0.1  # 90% reduction, same as test penalty
+                    ep.rank_score *= 0.1  # 90% ranking reduction, same as test penalty
                     # Infrastructure-path exports (telemetry/, metrics/, logging/)
                     # are internal plumbing, not developer-facing API.  Track
                     # them so connectivity boost skips them (like tests).
@@ -1793,9 +1799,11 @@ def detect_entrypoints(
         # (higher than the 0.25 out-degree cap) because in-degree directly
         # measures architectural importance.
         if ep.kind == EntrypointKind.LIBRARY_EXPORT and in_degree > 0:
+            # WI-dojor + ADR-0039 ruling 3: the additive in-degree connectivity
+            # boost (cap +0.35) is a ranking-prominence signal -> rank_score.
             in_boost = min(0.35, math.log(1 + in_degree) / 8)
             lang_scale = 0.5 + 0.5 * _language_weight(ep.symbol_id)
-            ep.confidence = min(1.0, ep.confidence + in_boost * lang_scale)
+            ep.rank_score = min(1.0, ep.rank_score + in_boost * lang_scale)
 
         if effective_edges > 0:
             # Logarithmic boost: diminishing returns for very high counts
@@ -1807,7 +1815,7 @@ def detect_entrypoints(
             # Formula: 0.5 + 0.5 * weight → range [0.5, 1.0]
             lang_scale = 0.5 + 0.5 * _language_weight(ep.symbol_id)
             connectivity_boost = raw_boost * lang_scale
-            ep.confidence = min(1.0, ep.confidence + connectivity_boost)
+            ep.rank_score = min(1.0, ep.rank_score + connectivity_boost)
 
     # Sort by confidence (highest first) for better --entry auto behavior.
     # Tiebreakers (in order):
@@ -1816,22 +1824,26 @@ def detect_entrypoints(
     #    the Python script has higher connectivity.
     # 2. Effective out-degree: when two entrypoints from the same language
     #    tie on confidence, prefer the one with higher transitive reach.
+    # ADR-0039 ruling 3: order by rank_score (ranking prominence — base
+    # confidence plus the relocated penalties/demotions/boosts), NOT the
+    # detection ``confidence`` which now stays at the construction base.
     unique_entrypoints.sort(
         key=lambda ep: (
-            ep.confidence,
+            ep.rank_score,
             _language_weight(ep.symbol_id),
             _effective_out_degree(ep.symbol_id),
         ),
         reverse=True,
     )
 
-    # Filter out entries below minimum confidence threshold.
-    # After all adjustments (test penalty, vendor penalty, library demotion),
-    # entries with very low confidence are noise — e.g., library_export
-    # entries demoted from 0.80 to 0.08 when semantic entries exist.
+    # Filter out entries below the minimum RANKING threshold (ADR-0039 ruling 3:
+    # re-keyed from confidence to rank_score). After all adjustments (test
+    # penalty, vendor penalty, library demotion), entries with very low
+    # prominence are noise — e.g. library_export demoted from 0.80 to 0.08 when
+    # semantic entries exist. MIN_ENTRYPOINT_CONFIDENCE is a rank floor.
     unique_entrypoints = [
         ep for ep in unique_entrypoints
-        if ep.confidence >= MIN_ENTRYPOINT_CONFIDENCE
+        if ep.rank_score >= MIN_ENTRYPOINT_CONFIDENCE
     ]
 
     # Cap the number of returned entrypoints.

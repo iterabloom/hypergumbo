@@ -1616,7 +1616,7 @@ def cmd_slice(args: argparse.Namespace) -> int:
         })
 
         def entry_score(ep: Any) -> float:
-            """Score = confidence * connectivity_boost * kind_boost.
+            """Score = rank_score * connectivity_boost * kind_boost.
 
             connectivity_boost = 1 + log(1 + outgoing_edges)
             kind_boost = 2.0 for main functions, 1.0 otherwise
@@ -1624,11 +1624,15 @@ def cmd_slice(args: argparse.Namespace) -> int:
             Main functions get a 2x boost because they are the canonical
             application root.  Route handlers with more edges often point
             to dead-end route nodes rather than useful call chains.
+
+            ADR-0039 ruling 3: keys on rank_score (ranking prominence) — the
+            slice auto-entry wants the most prominent entrypoint, not the most
+            reliably-detected one.
             """
             out_edges = edge_src_counts.get(ep.symbol_id, 0)
             connectivity_boost = 1 + math.log(1 + out_edges)
             kind_boost = 2.0 if ep.kind in _MAIN_KINDS else 1.0
-            return ep.confidence * connectivity_boost * kind_boost
+            return ep.rank_score * connectivity_boost * kind_boost
 
         best = max(entrypoints, key=entry_score)
         entry = best.symbol_id
@@ -6177,7 +6181,10 @@ def cmd_dead_code_maybe(args: argparse.Namespace) -> int:
 
         min_conf = getattr(args, "min_confidence", 0.0)
         for ep in detect_entrypoints(ir_nodes, ir_edges):
-            if ep.confidence >= min_conf:
+            # ADR-0039 ruling 3: --min-confidence on entrypoint seeds is a
+            # prominence filter (historically the post-adjustment value), so it
+            # keys on rank_score, matching the entrypoint list's own ordering.
+            if ep.rank_score >= min_conf:
                 entrypoint_seed_ids.add(ep.symbol_id)
 
     # WI-vuton heuristic 2: usage_contexts cross-reference. A symbol that

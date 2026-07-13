@@ -3305,10 +3305,10 @@ def _collect_important_files(
         test_files.sort(key=get_file_size, reverse=True)
         add_file(test_files[0])
 
-    # 3. Entry point files (highest confidence)
+    # 3. Entry point files (highest ranking prominence — ADR-0039 ruling 3)
     symbol_by_id = {s.id: s for s in symbols}
     if entrypoints:
-        sorted_eps = sorted(entrypoints, key=lambda e: -e.confidence)
+        sorted_eps = sorted(entrypoints, key=lambda e: -e.rank_score)
         for ep in sorted_eps[:3]:  # Top 3 entry points
             sym = symbol_by_id.get(ep.symbol_id)
             if sym and sym.path:
@@ -5353,7 +5353,7 @@ def _format_entrypoints(
     # Bucket entrypoints by group
     grouped: dict[str, list[Entrypoint]] = {}
     ungrouped: list[Entrypoint] = []
-    for ep in sorted(non_test_eps, key=lambda e: -e.confidence):
+    for ep in sorted(non_test_eps, key=lambda e: -e.rank_score):
         placed = False
         for group_name, kinds in _ENTRYPOINT_GROUPS:
             if ep.kind.value in kinds:
@@ -6481,9 +6481,11 @@ def _generate_sketch_impl(
             )
             if ep_section:
                 sections.append(ep_section)
-                # Track stats: compute confidence sum of selected entrypoints
+                # Track stats: the SELECTION of top entrypoints is a ranking
+                # decision (rank_score, ADR-0039 ruling 3); the summed mass is
+                # their detection reliability (confidence).
                 if stats_out is not None:
-                    sorted_eps = sorted(entrypoints, key=lambda e: -e.confidence)
+                    sorted_eps = sorted(entrypoints, key=lambda e: -e.rank_score)
                     stats_out.entrypoints_confidence = sum(
                         ep.confidence for ep in sorted_eps[:max_eps]
                     )
