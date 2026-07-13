@@ -359,7 +359,7 @@ class AnalysisRun:
         )
 
     def to_dict(self) -> dict:
-        return {
+        result: dict = {
             "execution_id": self.execution_id,
             "run_signature": self.run_signature,
             "repo_fingerprint": self.repo_fingerprint,
@@ -369,9 +369,6 @@ class AnalysisRun:
             "config_fingerprint": self.config_fingerprint,
             "files_analyzed": self.files_analyzed,
             "files_skipped": self.files_skipped,
-            "skipped_passes": self.skipped_passes,
-            "failed_files": self.failed_files,
-            "warnings": self.warnings,
             "started_at": self.started_at,
             # INV-gizik: a pass that emitted output cannot serialize duration_ms=0
             # ("324 edges in 0ms is impossible"). The timer is now wired on every
@@ -386,6 +383,18 @@ class AnalysisRun:
             "nodes_emitted": self.nodes_emitted,
             "edges_emitted": self.edges_emitted,
         }
+        # INV-virik: the per-run reporting lists are present ONLY when non-empty,
+        # so a consumer reads their ABSENCE as "nothing to report" instead of a
+        # misleading always-empty list on every one of the (many) runs (which read
+        # as "pipeline clean"). Matches the partial_results_reason / max_tier_applied
+        # omit-when-empty precedent; these fields are optional in the schema.
+        if self.skipped_passes:
+            result["skipped_passes"] = self.skipped_passes
+        if self.failed_files:
+            result["failed_files"] = self.failed_files
+        if self.warnings:
+            result["warnings"] = self.warnings
+        return result
 
 
 # Supply chain tier names for JSON output

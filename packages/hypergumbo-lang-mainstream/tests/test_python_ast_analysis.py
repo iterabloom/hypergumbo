@@ -167,8 +167,9 @@ def test_run_analyzes_bom_prefixed_python_file(tmp_path: Path) -> None:
     assert len(content) == 1
     assert content[0]["name"] == "boom"
     assert content[0]["kind"] == "function"
-    # And the file must not be recorded as failed.
-    assert data["limits"]["failed_files"] == []
+    # And the file must not be recorded as failed (INV-virik: an empty
+    # failed_files list is omitted, so its absence means "no failures").
+    assert "failed_files" not in data["limits"]
 
 
 def test_run_detects_python_class(tmp_path: Path) -> None:

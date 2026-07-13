@@ -199,7 +199,8 @@ def test_analysis_run_to_dict_includes_failed_files() -> None:
 
 
 def test_analysis_run_to_dict_includes_new_fields() -> None:
-    """AnalysisRun.to_dict should include all spec fields."""
+    """AnalysisRun.to_dict includes the always-present spec fields; the per-run
+    reporting lists are omitted when empty (INV-virik)."""
     run = AnalysisRun.create(pass_id="python", version="0.5.0")
     d = run.to_dict()
 
@@ -207,10 +208,26 @@ def test_analysis_run_to_dict_includes_new_fields() -> None:
     assert "toolchain" in d
     assert "config_fingerprint" in d
     assert "repo_fingerprint" in d
-    assert "skipped_passes" in d
-    assert "warnings" in d
     assert "nodes_emitted" in d
     assert "edges_emitted" in d
+    # INV-virik: empty reporting lists are OMITTED, not present-as-[].
+    assert "skipped_passes" not in d
+    assert "warnings" not in d
+    assert "failed_files" not in d
+
+
+def test_analysis_run_to_dict_keeps_populated_reporting_lists() -> None:
+    """INV-virik: skipped_passes / failed_files / warnings are present ONLY when
+    non-empty (present-when-populated)."""
+    run = AnalysisRun.create(pass_id="python", version="0.5.0")
+    run.warnings = ["a warning"]
+    run.failed_files = [{"path": "x.py", "reason": "boom"}]
+    run.skipped_passes = [{"pass": "p", "reason": "r"}]
+    d = run.to_dict()
+
+    assert d["warnings"] == ["a warning"]
+    assert d["failed_files"] == [{"path": "x.py", "reason": "boom"}]
+    assert d["skipped_passes"] == [{"pass": "p", "reason": "r"}]
 
 
 def test_analysis_run_to_dict_duration_floor_on_emission() -> None:

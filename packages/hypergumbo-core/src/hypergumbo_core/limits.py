@@ -202,16 +202,25 @@ class Limits:
         """Serialize to dict for JSON output."""
         result: Dict[str, Any] = {
             "not_captured": KNOWN_LIMITATIONS.copy(),
-            "truncated_files": self.truncated_files,
-            "skipped_languages": self.skipped_languages,
             "skipped_passes": self.skipped_passes,
-            "failed_files": [f.to_dict() for f in self.failed_files],
             "analyzer_version": f"hypergumbo-{__version__}",
             # WI-miron: always observable — present as False when tests were not
             # excluded, so absence is never confused with "tests included".
             "test_files_excluded": self.test_files_excluded,
             "supply_chain": self.supply_chain.to_dict(),
         }
+        # INV-virik: the diagnostic reporting lists are present ONLY when non-empty
+        # (present-when-populated), so their absence honestly reads as "nothing
+        # dropped/failed" rather than an always-empty list that masks the signal.
+        # (skipped_passes stays unconditional — it is the populated provenance
+        # surface per INV-nihug; test_files_excluded stays always-present per
+        # WI-miron.)
+        if self.truncated_files:
+            result["truncated_files"] = self.truncated_files
+        if self.skipped_languages:
+            result["skipped_languages"] = self.skipped_languages
+        if self.failed_files:
+            result["failed_files"] = [f.to_dict() for f in self.failed_files]
         # WI-tamop: partial_results_reason follows the spec §960/§994
         # conditional-presence contract — present only when the analysis is
         # incomplete (a reason has been set), so a consumer can use key presence

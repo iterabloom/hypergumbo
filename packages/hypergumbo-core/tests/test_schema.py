@@ -539,6 +539,12 @@ class TestSchemaDataclassSync:
 
         schema = load_schema()
         span = Span(start_line=1, end_line=2, start_col=0, end_col=1)
+        # INV-virik: the AnalysisRun reporting lists are conditional (omitted when
+        # empty), so populate them for the fully-populated key-set comparison.
+        run_sample = AnalysisRun.create(pass_id="python", version="1.0")
+        run_sample.skipped_passes = [{"pass": "p", "reason": "r"}]
+        run_sample.failed_files = [{"path": "x.py", "reason": "boom"}]
+        run_sample.warnings = ["w"]
         samples = {
             "Span": span,
             "Symbol": Symbol(
@@ -553,7 +559,7 @@ class TestSchemaDataclassSync:
                 dst_ref=ExternalRef(lang="python", module_path="os", name="getcwd"),
                 derived_from=["sym:1"],
             ),
-            "AnalysisRun": AnalysisRun.create(pass_id="python", version="1.0"),
+            "AnalysisRun": run_sample,
         }
         for def_name, instance in samples.items():
             schema_keys = set(schema["$defs"][def_name]["properties"])
@@ -669,7 +675,12 @@ class TestTopLevelBlockTyping:
             max_files_per_analyzer=10,
             test_files_excluded=True,
             partial_results_reason="one or more passes crashed; results are partial",
+            # INV-virik: the diagnostic reporting lists are conditional (omitted
+            # when empty), so populate them for the fully-populated comparison.
+            truncated_files=["big.py"],
+            skipped_languages=["haskell"],
         )
+        lim.add_failed_file(path="broken.py", reason="SyntaxError", analyzer="python")
         assert set(lim.to_dict()) == set(limits_def["properties"])
 
     def test_limits_block_validates_real_output(self):

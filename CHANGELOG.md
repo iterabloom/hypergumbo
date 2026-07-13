@@ -62,6 +62,10 @@ Alongside: the CLI standardizes on `--format {text,json}` across all read views 
 
 ### Changed
 
+#### Meta-layer honesty
+
+- **Per-run and limits reporting lists are present only when non-empty (INV-virik).** `analysis_runs[].{skipped_passes, failed_files, warnings}` and `limits.{failed_files, skipped_languages, truncated_files}` are now omitted when empty instead of serialized as an always-`[]` list on every record — so their **absence** honestly reads as "nothing to report" rather than a hollow empty list that reads as "clean" on a pipeline-health consumer. Matches the existing `partial_results_reason` / `max_tier_applied` omit-when-empty precedent; the fields were already optional in the schema (no version bump). `limits.skipped_passes` (the populated provenance surface) and `limits.test_files_excluded` stay always-present.
+
 #### Confidence derivation (ADR-0039)
 
 - **Analyzer edge `confidence` is now derived from the inference pathway, not hardcoded.** The derivation table grew from 10 to 75 pathways in one authoritative `_CONFIDENCE_SEEDS`; `Edge.create` derives from `evidence_type` when `confidence=` is omitted; and 218 analyzer sites dropped their hardcoded values, so all 9,638 seeded analyzer edges now carry the derived value. Linker edges keep explicit confidences (a separate match-quality model). `confidence_model` v1 → v2.

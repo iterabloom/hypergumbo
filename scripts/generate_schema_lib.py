@@ -271,7 +271,13 @@ def _sample_edge() -> Edge:
 
 
 def _sample_analysis_run() -> AnalysisRun:
-    return AnalysisRun.create(pass_id="python", version="0.0.0")
+    run = AnalysisRun.create(pass_id="python", version="0.0.0")
+    # Populate the conditional reporting lists so the schema-drift check sees a
+    # fully-populated instance (INV-virik — these are omitted when empty).
+    run.skipped_passes = [{"pass": "somepass", "reason": "not applicable"}]
+    run.failed_files = [{"path": "broken.py", "reason": "SyntaxError"}]
+    run.warnings = ["a warning"]
+    return run
 
 
 # ---------------------------------------------------------------------------
@@ -771,6 +777,9 @@ def _analysis_run_spec() -> ClassSpec:
                 ),
             },
         },
+        # INV-virik: the per-run reporting lists are present ONLY when non-empty
+        # (present-when-populated), so they are conditional keys.
+        conditional={"skipped_passes", "failed_files", "warnings"},
         sample_factory=_sample_analysis_run,
     )
 
@@ -852,12 +861,18 @@ def _supply_chain_limits_spec() -> ClassSpec:
 def _limits_sample():
     from hypergumbo_core.limits import Limits
 
-    return Limits(
+    lim = Limits(
         max_tier_applied=2,
         max_files_per_analyzer=10,
         test_files_excluded=True,
         partial_results_reason="one or more passes crashed; results are partial",
+        truncated_files=["big.py"],
+        skipped_languages=["haskell"],
     )
+    # Populate the conditional reporting lists so the schema-drift check sees a
+    # fully-populated instance (INV-virik — these are omitted when empty).
+    lim.add_failed_file(path="broken.py", reason="SyntaxError", analyzer="python")
+    return lim
 
 
 def _limits_spec() -> ClassSpec:
@@ -924,6 +939,10 @@ def _limits_spec() -> ClassSpec:
             # test_files_excluded is now always emitted (WI-miron); partial_results_reason
             # is emitted only when the analysis is incomplete (WI-tamop, spec §960/§994).
             "partial_results_reason",
+            # INV-virik: the diagnostic reporting lists are present ONLY when
+            # non-empty (present-when-populated). skipped_passes stays always-
+            # emitted (the populated provenance surface, INV-nihug).
+            "failed_files", "skipped_languages", "truncated_files",
         },
         sample_factory=_limits_sample,
     )

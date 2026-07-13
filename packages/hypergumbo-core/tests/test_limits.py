@@ -17,9 +17,11 @@ class TestLimits:
         # Known limitations always included (static analysis gaps)
         assert len(d["not_captured"]) > 0
         assert any("dynamic" in item.lower() for item in d["not_captured"])
-        assert d["truncated_files"] == []
-        assert d["skipped_languages"] == []
-        assert d["failed_files"] == []
+        # INV-virik: empty diagnostic reporting lists are OMITTED, not present-as-[]
+        # (their absence reads as "nothing dropped/failed").
+        assert "truncated_files" not in d
+        assert "skipped_languages" not in d
+        assert "failed_files" not in d
         assert "hypergumbo" in d["analyzer_version"]
 
     def test_add_failed_file(self) -> None:

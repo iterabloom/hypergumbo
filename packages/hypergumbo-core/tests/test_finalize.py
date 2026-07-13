@@ -171,7 +171,8 @@ def test_skipped_languages_empty_when_all_detected_languages_analyzed(
         analysis_runs=[_ar("python")],
     )
     _finalize_skipped_into_limits(ctx)
-    assert ctx.behavior_map["limits"]["skipped_languages"] == []
+    # INV-virik: no skipped languages -> the field is omitted, not present-as-[].
+    assert "skipped_languages" not in ctx.behavior_map["limits"]
 
 
 def test_skipped_languages_excludes_config_only_languages(tmp_path: Path) -> None:
