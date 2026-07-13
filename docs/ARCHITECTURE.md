@@ -15,15 +15,15 @@ for focused LLM context.
 
 hypergumbo analyzed its own source code and found:
 - **292** Python modules (133 analyzers, 57 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 29, Infrastructure 7; 65 core, 4 CLI, 33 tracker)
-- **36681** symbols (functions, classes, methods)
-- **124931** edges by type:
-  - calls: 64962
-  - contains: 33857
-  - imports: 11130
-  - instantiates: 8389
-  - references: 4190
+- **36739** symbols (functions, classes, methods)
+- **125237** edges by type:
+  - calls: 65134
+  - contains: 33917
+  - imports: 11144
+  - instantiates: 8394
+  - references: 4194
   - module_attr_ref: 1142
-  - other: 1261
+  - other: 1312
 
 ## Package Architecture
 
@@ -85,7 +85,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 36681 Symbols + 124931 Edges + UsageContexts           │
+│  Output: 36739 Symbols + 125237 Edges + UsageContexts           │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -235,6 +235,9 @@ A relationship between two symbols (e.g., function calls).
 - `is_resolved`: Whether `dst` is a real, in-repo (first-party) symbol node present in the graph (ADR-0037 ruling 1 — resolution names in-repo-ness, NOT target-identification). External/stdlib targets are materialized as `external_symbol` placeholder nodes and are always `is_resolved=False` even though the dst node exists (present-but-synthetic, not absent). The producer-time value (Edge.create default True) is ADVISORY; the finalize edge-resolution sub-step's verdict is what serializes.
 - `dst_ref`: Structured identity for the dst endpoint. Populated on every `is_resolved=False` edge after the finalize edge-resolution sub-step (`None` only for an unidentified dangling reference whose id cannot be parsed); `None` for in-repo (`is_resolved=True`) dsts. Canonical source of truth for external-target identity — the legacy `dst` string is built from the same `ExternalRef`. The fourth cell (`is_resolved=True` + populated `dst_ref`) is never produced (ADR-0037 ruling 1 table).
 - `derived_from`: Symbol (or Edge) IDs the producer consumed to construct this Edge (INV-rukor). Populated by linkers; None for analyzer-originated edges.
+- `confidence`: Detection-reliability score (0.0-1.0) — the producer's evidence-derived estimate that the relationship EXISTS (ADR-0039 ruling 1). NOT a ranking value; post-detection ranking boosts/penalties live in ``rank_score``.
+- `confidence_source`: Provenance of the ``confidence`` value (ADR-0039 ruling 2), one of ``VALID_CONFIDENCE_SOURCES`` — ``evidence_derived`` / ``emitter_constant`` / ``composite``. See ``VALID_CONFIDENCE_SOURCES`` for the enumeration and re-evaluation trigger.
+- `rank_score`: Ranking prominence (0.0-1.0). Initializes from ``confidence`` and accumulates the ranking adjustments ADR-0039 ruling 3 relocates off ``confidence`` (e.g. the type-hierarchy fan-out dampener). Equal to ``confidence`` until a producer relocates its adjustment. Ranking consumers key on this; reliability consumers key on ``confidence``.
 - `quality`: Score and reason dict for quality assessment
 - `meta`: Optional metadata dict. Dataflow edges store access_mode (ADR-0015) and channel here; cross-boundary edges store data_direction (ADR-0038 ruling 3).
 
@@ -269,18 +272,18 @@ These symbols have the highest bidirectional centrality
 |--------|------|-------|----------|
 | `Symbol` | class | 9240.4 | ir.py |
 | `Span` | class | 6221.8 | ir.py |
-| `run_behavior_map` | function | 3504.2 | cli.py |
-| `write_text` | external_symbol | 3283.0 | <external> |
+| `run_behavior_map` | function | 3578.3 | cli.py |
+| `write_text` | external_symbol | 3284.0 | <external> |
 | `LinkerContext` | class | 3104.7 | registry.py |
-| `Edge.create` | method | 1965.0 | ir.py |
-| `TrackerApp` | class | 1943.0 | tui.py |
+| `Edge.create` | method | 2048.9 | ir.py |
+| `TrackerApp` | class | 1946.9 | tui.py |
 | `load_framework_patterns` | function | 1875.9 | framework_patterns.py |
 | `Path` | external_symbol | 1581.0 | <external> |
 | `main` | function | 1563.1 | cli.py |
 | `clear_pattern_cache` | function | 1336.8 | framework_patterns.py |
-| `append` | external_symbol | 1228.0 | <external> |
-| `Edge` | class | 1225.5 | ir.py |
-| `get` | external_symbol | 1086.0 | <external> |
+| `Edge` | class | 1261.3 | ir.py |
+| `append` | external_symbol | 1229.0 | <external> |
+| `get` | external_symbol | 1087.0 | <external> |
 | `TreeSitterAnalyzer` | class | 1074.7 | base.py |
 
 ## Pattern System
@@ -834,7 +837,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: c22752f498c0
+  commit: 5d787c925041
   hypergumbo: 6.1.0
   python: 3.12.3
 -->
