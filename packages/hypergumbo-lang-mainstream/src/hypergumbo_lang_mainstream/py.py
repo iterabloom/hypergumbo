@@ -4840,14 +4840,19 @@ def _process_call(
             if receiver_name in module_imports:
                 module_name = module_imports[receiver_name]
                 dst_id = f"python:{module_name}:0-0:{attr_name}:unresolved"
+                # WI-jubag (instantiates half): module.ClassName() where the member
+                # is PascalCase is an external construction (argparse.ArgumentParser,
+                # …) — type it ``instantiates`` (``ast_new``, no call_construct meta);
+                # snake_case module functions (os.getcwd) stay ``calls``.
+                _is_ctor = attr_name[:1].isupper()
                 edges.append(Edge.create(
                     src=caller_symbol.id,
                     dst=dst_id,
-                    edge_type="calls",
+                    edge_type="instantiates" if _is_ctor else "calls",
                     line=call_node.lineno,
-                    evidence_type="ast_call",
+                    evidence_type="ast_new" if _is_ctor else "ast_call",
                     is_resolved=False,
-                    meta={"call_construct": "method"},
+                    meta=None if _is_ctor else {"call_construct": "method"},
                     dst_ref=ExternalRef(
                         lang="python", module_path=module_name, name=attr_name
                     ),
@@ -5158,12 +5163,20 @@ def _process_call(
             if callee_name in imports:
                 module_name, original_name = imports[callee_name]
                 dst_id = f"python:{module_name}:0-0:{original_name}:unresolved"
+                # WI-jubag (instantiates half): a bare call to an imported EXTERNAL
+                # name whose original name is PascalCase (Python's strong class-
+                # naming convention: Path, MagicMock, Popen, ...) is a CONSTRUCTION,
+                # not a plain call. Type it ``instantiates`` (evidence ``ast_new``)
+                # so external constructions are recorded rather than misfiled as
+                # ``calls``; snake_case/lower callables (helpers, factories) stay
+                # ``calls``. The target is external/unresolved either way.
+                _is_ctor = original_name[:1].isupper()
                 edges.append(Edge.create(
                     src=caller_symbol.id,
                     dst=dst_id,
-                    edge_type="calls",
+                    edge_type="instantiates" if _is_ctor else "calls",
                     line=call_node.lineno,
-                    evidence_type="ast_call_direct",
+                    evidence_type="ast_new" if _is_ctor else "ast_call_direct",
                     is_resolved=False,
                     dst_ref=ExternalRef(
                         lang="python", module_path=module_name, name=original_name

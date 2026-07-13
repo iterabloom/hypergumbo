@@ -6572,6 +6572,100 @@ class TestPythonInheritanceEdges:
         assert edge.dst == "python:pydantic:0-0:BaseModel:unresolved", edge.dst
 
 
+class TestPythonInstantiatesExternal:
+    """WI-jubag (instantiates half): external constructor calls must type as
+    ``instantiates``, not misfile as plain ``calls``. Previously ``instantiates``
+    recorded 0 external constructions out of thousands, while ~2,333 external
+    constructor calls (``Path``, ``MagicMock``, ``argparse.ArgumentParser`` …)
+    were emitted as ``calls`` to an external placeholder. An unresolved imported
+    name whose original name is PascalCase (Python's strong class-naming
+    convention) is treated as a construction (``evidence_type='ast_new'``);
+    snake_case callables stay ``calls``."""
+
+    def test_instantiates_edge_for_external_bare_constructor(
+        self, tmp_path: Path
+    ) -> None:
+        """``from pathlib import Path; Path(p)`` -> an unresolved ``instantiates``
+        edge (not ``calls``)."""
+        from hypergumbo_lang_mainstream.py import analyze_python
+
+        (tmp_path / "m.py").write_text(
+            "from pathlib import Path\n"
+            "def f(p):\n"
+            "    return Path(p)\n"
+        )
+        result = analyze_python(tmp_path)
+
+        inst = [e for e in result.edges if e.edge_type == "instantiates"]
+        assert len(inst) == 1, [(e.edge_type, e.dst) for e in result.edges]
+        edge = inst[0]
+        assert edge.is_resolved is False
+        assert edge.dst == "python:pathlib:0-0:Path:unresolved", edge.dst
+        assert edge.evidence_type == "ast_new", edge.evidence_type
+        # Not also misfiled as a calls edge.
+        assert not any(
+            e.edge_type == "calls" and "Path" in e.dst for e in result.edges
+        )
+
+    def test_external_bare_snake_case_call_stays_calls(
+        self, tmp_path: Path
+    ) -> None:
+        """A snake_case imported callable (``from os.path import join; join(...)``)
+        stays a ``calls`` edge — not every external call is a construction."""
+        from hypergumbo_lang_mainstream.py import analyze_python
+
+        (tmp_path / "m.py").write_text(
+            "from os.path import join\n"
+            "def f():\n"
+            "    return join('a', 'b')\n"
+        )
+        result = analyze_python(tmp_path)
+
+        assert [e for e in result.edges if e.edge_type == "instantiates"] == []
+        calls = [
+            e for e in result.edges
+            if e.edge_type == "calls" and "join" in e.dst
+        ]
+        assert len(calls) == 1, [(e.edge_type, e.dst) for e in result.edges]
+
+    def test_instantiates_edge_for_external_module_attr_constructor(
+        self, tmp_path: Path
+    ) -> None:
+        """``import argparse; argparse.ArgumentParser()`` -> an unresolved
+        ``instantiates`` edge (the module-qualified constructor case)."""
+        from hypergumbo_lang_mainstream.py import analyze_python
+
+        (tmp_path / "m.py").write_text(
+            "import argparse\n"
+            "def f():\n"
+            "    return argparse.ArgumentParser()\n"
+        )
+        result = analyze_python(tmp_path)
+
+        inst = [e for e in result.edges if e.edge_type == "instantiates"]
+        assert len(inst) == 1, [(e.edge_type, e.dst) for e in result.edges]
+        assert inst[0].dst == "python:argparse:0-0:ArgumentParser:unresolved", (
+            inst[0].dst
+        )
+        assert inst[0].evidence_type == "ast_new", inst[0].evidence_type
+
+    def test_external_module_attr_snake_case_call_stays_calls(
+        self, tmp_path: Path
+    ) -> None:
+        """``import os; os.getcwd()`` stays a ``calls`` edge (snake_case function,
+        not a constructor)."""
+        from hypergumbo_lang_mainstream.py import analyze_python
+
+        (tmp_path / "m.py").write_text(
+            "import os\n"
+            "def f():\n"
+            "    return os.getcwd()\n"
+        )
+        result = analyze_python(tmp_path)
+
+        assert [e for e in result.edges if e.edge_type == "instantiates"] == []
+
+
 class TestPythonVisibilityModifiers:
     """Tests for Python visibility modifier extraction (underscore convention)."""
 
