@@ -72,3 +72,34 @@
   clock: 8  # 5528
   nonce: '5528'  # 5528
   message: "2026-06-10 design-interview ruling (ADR-0039, merged in PR #4181): floors and ceilings get re-grounded by the confidence rework — confidence = pure detection reliability, with ranking adjustments relocated to rank_score — so the 0.95-ceiling and 0.70-floor breaches are resolved by the re-derivation, not by clamping. Waits on the implementation."  # 5528
+- op: update  # 1791
+  at: '2026-07-12T23:24:08Z'  # 1791
+  by: agent  # 1791
+  actor: jgstern_agent  # 1791
+  clock: 9  # 1791
+  nonce: '1791'  # 1791
+  set: {}  # 1791
+  add:  # 1791
+    tags: [awaits_bakeoff_validation]  # 1791
+- op: discuss  # 6d2c
+  at: '2026-07-12T23:24:08Z'  # 6d2c
+  by: agent  # 6d2c
+  actor: jgstern_agent  # 6d2c
+  clock: 10  # 6d2c
+  nonce: 6d2c  # 6d2c
+  message: "Containment half FIXED in PR #608 (ADR-0039 ruling 1): the ~18,388 naming_convention 'contains' edges at 1.0 (above the 0.95 linker ceiling) now derive 0.85. Behavioral evidence (self-analysis, 134,017 edges): 0 edges in the WHOLE map exceed the 0.95 ceiling (was 18,388+). The ENTRYPOINT half (81/104 entrypoints below the 0.70 floor + 13 above the 0.99 ceiling) is ADR-0039 ruling-3 work — lands with the entrypoint rank_score relocation (PR-4). Item STAYS open (todo_hard) pending that half. awaits_bakeoff_validation."  # 6d2c
+- op: update  # 8afa
+  at: '2026-07-13T00:59:12Z'  # 8afa
+  by: agent  # 8afa
+  actor: jgstern_agent  # 8afa
+  clock: 11  # 8afa
+  nonce: 8afa  # 8afa
+  set:  # 8afa
+    status: done  # 8afa
+- op: discuss  # f5e9
+  at: '2026-07-13T00:59:12Z'  # f5e9
+  by: agent  # f5e9
+  actor: jgstern_agent  # f5e9
+  clock: 12  # f5e9
+  nonce: f5e9  # f5e9
+  message: "BOTH halves now FIXED (ADR-0039 rulings 1 & 3). CONTAINMENT half (PR #608, ADR-0039 R1): the 18,388 naming_convention 'contains' edges at 1.0 now derive 0.85 -> 0 edges exceed the 0.95 ceiling. ENTRYPOINT half (this PR, ADR-0039 R3): all entrypoint ranking adjustments (test/utility/vendor/nested-cmd penalties, library-export demotion, in/out-degree boosts) relocated from confidence to the new Entrypoint.rank_score; the entrypoint sort + MIN_ENTRYPOINT_CONFIDENCE filter + sketch sorts + slice auto-entry re-key to rank_score. Published entrypoint confidence is now the construction-tier detection reliability. Behavioral evidence (self-analysis, hypergumbo run .): 112 entrypoints, ALL confidence in [0.75, 0.95]; 0 below the 0.70 floor (was 81/104); 0 above the 0.99 ceiling (was 13); all 112 carry rank_score != confidence (range [0.318, 1.000]) — the ranking signal relocated intact. Documented exception (carried to the R5 spec-reconciliation PR): the deliberate low-confidence connectivity_based (0.50) and frontend-suppression (0.05) kinds sit below the 4-tier floor by design (frontend is filtered out by the rank floor; connectivity_based only fires when no concept entrypoints exist and does not appear on the self-corpus). awaits_bakeoff_validation."  # f5e9

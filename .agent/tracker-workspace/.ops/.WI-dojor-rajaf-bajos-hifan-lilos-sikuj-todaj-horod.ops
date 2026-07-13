@@ -26,3 +26,20 @@
   clock: 2  # c295
   nonce: c295  # c295
   message: "2026-06-10 design-interview ruling (ADR-0039, merged in PR #4181): the undocumented additive in-degree boost at entrypoints.py:1504-1507 is exactly the class of ranking adjustment the ruling relocates out of confidence into the new rank_score field. The fix is to move the boost to rank_score and document it, leaving confidence as pure detection reliability. Waits on the implementation."  # c295
+- op: update  # bc52
+  at: '2026-07-13T00:59:12Z'  # bc52
+  by: agent  # bc52
+  actor: jgstern_agent  # bc52
+  clock: 3  # bc52
+  nonce: bc52  # bc52
+  set:  # bc52
+    status: done  # bc52
+  add:  # bc52
+    tags: [awaits_bakeoff_validation]  # bc52
+- op: discuss  # bacb
+  at: '2026-07-13T00:59:12Z'  # bacb
+  by: agent  # bacb
+  actor: jgstern_agent  # bacb
+  clock: 4  # bacb
+  nonce: bacb  # bacb
+  message: "FIXED (ADR-0039 ruling 3). The undocumented additive in-degree connectivity boost (cap +0.35, library_export) at entrypoints.py mutated ep.confidence in place. It now mutates ep.rank_score instead (ranking prominence, not detection reliability), documented inline as WI-dojor + ADR-0039 R3. Behavioral evidence: self-analysis shows entrypoint confidence values are all clean construction-tier bases (no boost-inflated confidence), while rank_score carries the boost (range [0.318, 1.000]). awaits_bakeoff_validation."  # bacb
