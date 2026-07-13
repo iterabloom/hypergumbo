@@ -16,7 +16,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 This cycle hardens the analysis substrate and the CLI contract. Two large threads dominate. **Symbol-kind emission parity**: field- and variable-kind `Symbol`s now emit across ~20 languages (Go, Rust, Java, C#, Kotlin, Swift, Scala, Dart, Python, TS/JS, Elixir, Julia, Fortran, Zig, Nim, D, F#, Solidity, and more), locked by a shrink-only emission-parity gate. **Python call-graph resolution** is overhauled — C3-linearization MRO for inherited methods, cross-file `self.method()` / `self.field.method()` (dependency-injection) resolution, module-constant / re-export / workspace-sibling resolution to real first-party nodes, function aliases, and closure-factory reachability — collapsing a large class of dead-code false positives.
 
-Alongside: the CLI standardizes on `--format {text,json}` across all read views behind one schema-envelope gateway, with strict input validation (loud `rc=2` / `rc=1` errors) and self-describing `compact` / `tiered` projections; confidence becomes evidence-derived from a 75-pathway table (ADR-0039); supply-chain tiers are redefined as pure distance with `directness` / `ecosystem` stamps and rigorous test / role / workspace-file classification (ADR-0041); and edge/vocabulary axes are canonicalized and de-overloaded (ADR-0023/0027/0028), including a dedicated `route_protocol` axis (ADR-0031). SCHEMA_VERSION advances 0.14.2 → 0.14.5.
+Alongside: the CLI standardizes on `--format {text,json}` across all read views behind one schema-envelope gateway, with strict input validation (loud `rc=2` / `rc=1` errors) and self-describing `compact` / `tiered` projections; confidence becomes evidence-derived from a 75-pathway table (ADR-0039); supply-chain tiers are redefined as pure distance with `directness` / `ecosystem` stamps and rigorous test / role / workspace-file classification (ADR-0041); and edge/vocabulary axes are canonicalized and de-overloaded (ADR-0023/0027/0028), including a dedicated `route_protocol` axis (ADR-0031). SCHEMA_VERSION advances 0.14.2 → 0.14.6.
 
 ### Added
 
@@ -91,6 +91,10 @@ Alongside: the CLI standardizes on `--format {text,json}` across all read views 
 #### Dev workflow
 
 - **`auto-pr` / `merge-pr` recover from Codeberg DB desync.** A branch-push fallback and a merge resync-retry recover from AGit `refs/for/` hook failures, verifying success by PR record or git ground truth; the failure points also print a terse recovery recipe.
+
+### Deprecated
+
+- **`Edge.quality` (`{score, reason}`) is deprecated (ADR-0039 ruling 4; WI-humok / WI-riguh).** It carries zero independent signal — `quality.score` is `round(clamp(confidence), 3)` on 110,533/110,533 verification-corpus edges and `quality.reason` encodes the emitter mechanism, not a confidence tier. The `deprecated` annotation lands in `docs/schema.json` now (SCHEMA_VERSION 0.14.5 → 0.14.6); the field is still emitted for this release and will be removed the next, per the one-version deprecation window. Read `confidence` + `confidence_source` + `is_resolved` instead. (`Symbol.quality` is a separate field, not in scope.)
 
 ### Fixed
 

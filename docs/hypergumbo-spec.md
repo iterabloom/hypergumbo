@@ -872,7 +872,7 @@ Field semantics (`id`, `stable_id`, `shape_id`, `fingerprint`, `origin`, `qualit
 
 ### edges[] — relationships
 
-Each edge carries `id`, `edge_key`, `type`, `src`, `dst`, `confidence`, provenance fields (`origin`, `origin_run_id`, `derived_from`), `quality`, and a `meta` object with structured evidence. See `docs/schema.json` for the full field list.
+Each edge carries `id`, `edge_key`, `type`, `src`, `dst`, `confidence` (evidence-derived detection reliability), `confidence_source`, `rank_score` (ranking prominence), provenance fields (`origin`, `origin_run_id`, `derived_from`), `quality` (DEPRECATED — ADR-0039 ruling 4), and a `meta` object with structured evidence. See `docs/schema.json` for the full field list.
 
 **origin (INV-jidat):** `origin: list[str]` records which pass IDs contributed to this Edge (or Symbol), ordered chronologically. Single-element lists are the common case; multi-element lists support multi-pass attribution. Schema-breaking change from scalar string (SCHEMA_VERSION 0.10.0). `from_dict()` auto-normalizes legacy scalar JSON to single-element list for backward compatibility.
 
@@ -913,7 +913,7 @@ Each edge carries `id`, `edge_key`, `type`, `src`, `dst`, `confidence`, provenan
 
 The axis is open: the registry at `packages/hypergumbo-core/src/hypergumbo_core/evidence_types.py` is the live source of truth. See [§6 Multi-value field axes](#multi-value-field-axes).
 
-**quality.reason** remains for human debugging but is NOT relied upon for programmatic logic.
+**quality (`{score, reason}`) is DEPRECATED** (ADR-0039 ruling 4; WI-humok / WI-riguh). It carries zero independent signal: `quality.score` is `round(clamp(confidence), 3)` on 110,533/110,533 verification-corpus edges, and `quality.reason` encodes the emitter mechanism, not a confidence tier. Read `confidence` + `confidence_source` + `is_resolved` instead. The field is still emitted for one deprecation release and removed the next; `quality.reason` remains for human debugging in the interim but is NOT relied upon for programmatic logic.
 
 **Edge types** — per ADR-0023, `Edge.edge_type` names the **relationship** that produced the edge (canonical: `calls`, `imports`, `renders`, `event_publishes`, …), not the endpoint shape. Evidence-type and meta-key facts are queried separately (see Evidence types above and Meta fields above):
 

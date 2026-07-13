@@ -8,7 +8,7 @@
     "schema_version": {
       "type": "string",
       "description": "Schema version (semver)",
-      "const": "0.14.5"
+      "const": "0.14.6"
     },
     "confidence_model": {
       "type": "string",
@@ -1116,7 +1116,8 @@
               "type": "null"
             }
           ],
-          "description": "Quality assessment"
+          "deprecated": true,
+          "description": "DEPRECATED (ADR-0039 ruling 4; WI-humok / WI-riguh). quality.score is a pure function of confidence (round(clamp(confidence), 3)) and quality.reason encodes the emitter mechanism, not a confidence tier \u2014 it carries zero independent signal. Read confidence + confidence_source + is_resolved instead. Still emitted for one deprecation release; removed the next."
         },
         "meta": {
           "type": "object",
