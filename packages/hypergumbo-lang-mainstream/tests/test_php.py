@@ -1786,3 +1786,66 @@ class TestPhpUseImports:
         assert any(
             "Illuminate\\Support\\Facades\\Route" in e.dst for e in import_edges
         ), f"expected an imports edge for the use namespace; got {[e.dst for e in import_edges]}"
+
+
+class TestPHPFieldAndConstantEmission:
+    """WI-fosuh (WI-jusus slice): PHP class properties and constants emit as
+    kind='field' anchored to their type; top-level constants emit as
+    kind='variable'; method-body locals do NOT leak as fields."""
+
+    def test_class_properties_and_constants_emit_as_fields(
+        self, tmp_path: Path
+    ) -> None:
+        from hypergumbo_lang_mainstream.php import analyze_php
+
+        (tmp_path / "Widget.php").write_text("""<?php
+class Widget {
+    const MAX = 10;
+    private int $count = 0;
+    public string $name;
+    public function tick(): void { $local = 1; }
+}
+const GLOBAL_C = 5;
+?>""")
+        result = analyze_php(tmp_path)
+
+        fields = {s.name for s in result.symbols if s.kind == "field"}
+        assert "Widget.MAX" in fields, fields
+        assert "Widget.count" in fields, fields
+        assert "Widget.name" in fields, fields
+        # A method-body local must NOT leak as a field (INV-lanaz/INV-sidab).
+        assert not any(
+            s.kind == "field" and s.name.endswith(".local")
+            for s in result.symbols
+        ), [s.name for s in result.symbols if s.kind == "field"]
+        # A top-level (global) constant is a variable, not a field.
+        variables = {s.name for s in result.symbols if s.kind == "variable"}
+        assert "GLOBAL_C" in variables, variables
+
+    def test_multiple_properties_in_one_declaration(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.php import analyze_php
+
+        (tmp_path / "Multi.php").write_text("""<?php
+class Multi {
+    public $a, $b;
+}
+?>""")
+        result = analyze_php(tmp_path)
+        fields = {s.name for s in result.symbols if s.kind == "field"}
+        assert "Multi.a" in fields and "Multi.b" in fields, fields
+
+    def test_interface_and_enum_constants_are_fields(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.php import analyze_php
+
+        (tmp_path / "Types.php").write_text("""<?php
+interface HasLimit {
+    const LIMIT = 100;
+}
+enum Suit {
+    const WILD = 'joker';
+}
+?>""")
+        result = analyze_php(tmp_path)
+        fields = {s.name for s in result.symbols if s.kind == "field"}
+        assert "HasLimit.LIMIT" in fields, fields
+        assert "Suit.WILD" in fields, fields

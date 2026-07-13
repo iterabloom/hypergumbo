@@ -222,6 +222,88 @@ def _get_enclosing_class(node: "tree_sitter.Node", source: bytes) -> Optional[st
     return None  # pragma: no cover - defensive
 
 
+# WI-fosuh (WI-jusus): PHP type-declaration containers whose bodies hold the
+# ``field``-kind members (properties, constants) emitted below. Constants are
+# also legal at file scope (a global constant → a ``variable``).
+_PHP_TYPE_CONTAINERS = (
+    "class_declaration",
+    "interface_declaration",
+    "trait_declaration",
+    "enum_declaration",
+)
+
+
+def _enclosing_type_name(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
+    """Walk up to the enclosing type declaration (class/interface/trait/enum)."""
+    current = node.parent
+    while current is not None:
+        if current.type in _PHP_TYPE_CONTAINERS:
+            name = _find_name_in_children(current, source)
+            if name:
+                return name
+        current = current.parent
+    return None
+
+
+def _php_property_element_name(
+    el: "tree_sitter.Node", source: bytes
+) -> Optional[str]:
+    """The property name (without the ``$``) from a ``property_element``."""
+    for vn in el.children:
+        if vn.type == "variable_name":
+            for nm in vn.children:
+                if nm.type == "name":
+                    return node_text(nm, source)
+    return None  # pragma: no cover - defensive: a property always names a var
+
+
+def _php_const_element_name(
+    el: "tree_sitter.Node", source: bytes
+) -> Optional[str]:
+    """The constant name from a ``const_element``."""
+    for nm in el.children:
+        if nm.type == "name":
+            return node_text(nm, source)
+    return None  # pragma: no cover - defensive: a const_element always names
+
+
+def _php_member_symbol(
+    file_path: Path,
+    el: "tree_sitter.Node",
+    full_name: str,
+    kind: str,
+    qualified_name: Optional[str],
+    modifiers: list[str],
+    exported: bool,
+    run: AnalysisRun,
+) -> Symbol:
+    """Build a ``field`` / ``variable`` Symbol for a PHP property or constant,
+    spanning the individual property/const ``element`` node (so ``$a, $b`` in one
+    declaration emit two distinctly-spanned fields)."""
+    span = Span(
+        start_line=el.start_point[0] + 1,
+        end_line=el.end_point[0] + 1,
+        start_col=el.start_point[1],
+        end_col=el.end_point[1],
+    )
+    return Symbol(
+        id=make_symbol_id(
+            "php", str(file_path), span.start_line, span.end_line, full_name, kind
+        ),
+        name=full_name,
+        kind=kind,
+        language="php",
+        path=str(file_path),
+        span=span,
+        origin=PASS_ID,
+        origin_run_id=run.execution_id,
+        modifiers=modifiers,
+        line_span=span.end_line - span.start_line + 1,
+        is_exported=exported,
+        qualified_name=qualified_name,
+    )
+
+
 def _extract_php_namespace(
     root: "tree_sitter.Node", source: bytes
 ) -> Optional[str]:
@@ -957,6 +1039,51 @@ def _extract_symbols(
                     cyclomatic_complexity=compute_cyclomatic_complexity(node, "php"),
                 )
                 symbols.append(symbol)
+
+        # Class/trait properties -> kind="field" anchored to the type
+        # (WI-fosuh / WI-jusus). property_declaration only occurs in a type body,
+        # so a method-body local (an assignment_expression) can never reach here.
+        elif node.type == "property_declaration":
+            enclosing = _enclosing_type_name(node, source)
+            if enclosing is not None:
+                modifiers = _extract_modifiers_php(node)
+                exported = (
+                    "private" not in modifiers and "protected" not in modifiers
+                )
+                for el in node.children:
+                    if el.type != "property_element":
+                        continue
+                    pname = _php_property_element_name(el, source)
+                    if pname is None:  # pragma: no cover - defensive
+                        continue
+                    symbols.append(_php_member_symbol(
+                        file_path, el, f"{enclosing}.{pname}", "field",
+                        _make_php_qualified_name(namespace_name, enclosing, pname),
+                        modifiers, exported, run,
+                    ))
+
+        # Constants: a class/interface/trait/enum constant is a ``field``; a
+        # top-level (global) constant is a ``variable``.
+        elif node.type == "const_declaration":
+            enclosing = _enclosing_type_name(node, source)
+            for el in node.children:
+                if el.type != "const_element":
+                    continue
+                cname = _php_const_element_name(el, source)
+                if cname is None:  # pragma: no cover - defensive
+                    continue
+                if enclosing is not None:
+                    symbols.append(_php_member_symbol(
+                        file_path, el, f"{enclosing}.{cname}", "field",
+                        _make_php_qualified_name(namespace_name, enclosing, cname),
+                        [], True, run,
+                    ))
+                else:
+                    symbols.append(_php_member_symbol(
+                        file_path, el, cname, "variable",
+                        _make_php_qualified_name(namespace_name, None, cname),
+                        [], True, run,
+                    ))
 
     # INV-jahiv Phase 4 PR3: post-pass for symbols (e.g. classes) whose
     # emit site does not call extract_preceding_doc_comment inline. PHP
