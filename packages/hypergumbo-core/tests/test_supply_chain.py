@@ -1334,6 +1334,41 @@ function goodbye() {
 """)
         assert is_likely_minified(normal) is False
 
+    def test_line_length_heuristic_gated_to_web_assets(self, tmp_path):
+        """INV-lukop: the average-line-length heuristic (>150) is a MINIFICATION
+        signal that fires ONLY for web-asset extensions (JS/CSS/HTML bundles).
+        A dense-but-real source file in a non-web language (a Python data/lookup
+        module, a very long function signature, generated protobuf) legitimately
+        has long lines and must NOT be misclassified as minified — otherwise its
+        WHOLE file is silently dropped as tier-4 with no diagnostic."""
+        long_line = "x = " + "a" * 200  # ~204 chars, avg > 150
+        py = tmp_path / "dense.py"
+        py.write_text(long_line + "\n" + long_line + "\n")
+        assert is_likely_minified(py) is False
+        # ...but a web asset with the same shape is still minified.
+        js = tmp_path / "dense.js"
+        js.write_text(long_line + "\n" + long_line + "\n")
+        assert is_likely_minified(js) is True
+
+    def test_dense_python_file_not_silently_dropped(self, tmp_path):
+        """INV-lukop behavioral repro: a Python file whose average line length
+        exceeds 150 (here a long function signature) must emit its symbols, not
+        0 nodes from a tier-4 minified-misclassification drop."""
+        import json
+        from hypergumbo_core.cli import run_behavior_map
+
+        long_sig = "def wide(" + ", ".join(
+            f"parameter_number_{i}: int = {i}" for i in range(30)
+        ) + "):\n    return 0\n"
+        (tmp_path / "m.py").write_text(long_sig)
+        out = tmp_path / "out.json"
+        run_behavior_map(
+            repo_root=tmp_path, out_path=out, include_sketch_precomputed=False
+        )
+        data = json.loads(out.read_text())
+        fns = [n for n in data["nodes"] if n.get("name") == "wide"]
+        assert len(fns) == 1, [n.get("name") for n in data["nodes"]]
+
     def test_source_map_reference_detected(self, tmp_path):
         """Files with sourceMappingURL are detected as derived."""
         transpiled = tmp_path / "app.js"

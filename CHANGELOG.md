@@ -109,6 +109,10 @@ Alongside: the CLI standardizes on `--format {text,json}` across all read views 
 - **Aliases, closures, and shadowing.** Module-level function aliases (`f = g`) resolve through to the real body; closure-factory decorators' returned inner closures become reachable via a `dispatches_to` edge; and comprehension / lambda / nested-def bindings no longer inherit stale types from a shadowed outer variable.
 - **`@property` reads resolve to the in-repo getter**, closing dead-code false positives where getters looked unread.
 
+#### File classification
+
+- **Dense non-web source files are no longer silently dropped as minified (INV-lukop).** The average-line-length minification heuristic (>150 chars) now fires only for web-asset extensions (JS/CSS/HTML bundles). A dense-but-real source file in another language — a Python data/lookup module, a very long function signature, generated protobuf lacking a `@generated` header — was misclassified as minified, classified tier-4 (derived), and had its **whole file** (every symbol and edge) dropped by the default tier filter with no diagnostic. The `@generated` / sourcemap / webpack heuristics stay universal (they are language-agnostic generation signals).
+
 #### Symbol-kind emission correctness
 
 - **Per-language emission fixes.** Go module-variable emission gates on package scope (no more function-locals); Swift field emission requires a direct type-body parent (SwiftyJSON: 383 of 407 "fields" were method-locals); Julia `const` no longer drops multi-name/typed members or clobbers a same-named function; Elixir `def`s inside `quote` blocks attribute to the `use`-ing module; and Nim now extracts EXPORTED (`*`-marked) procs/funcs/methods/types instead of dropping them.
