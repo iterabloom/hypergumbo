@@ -1,0 +1,37 @@
+- op: create  # f10f
+  at: '2026-07-13T16:41:53Z'  # f10f
+  by: agent  # f10f
+  actor: jgstern_agent  # f10f
+  clock: 1  # f10f
+  nonce: f10f  # f10f
+  data:  # f10f
+    kind: work_item  # f10f
+    title: "PHP analyzer emits zero field/constant symbols (WI-jusus slice)"  # f10f
+    status: todo_hard  # f10f
+    priority: 2  # f10f
+    parent: WI-jusus-zaron-donok-hidif-vabob-ruvak-tilik-zibid  # f10f
+    tags:  # f10f
+    - dogfood  # f10f
+    - emission_parity  # f10f
+    - wave5  # f10f
+    isbefore: []  # f10f
+    duplicate_of: []  # f10f
+    not_duplicate_of: []  # f10f
+    pr_ref:  # f10f
+    description: "Discrete high-corpus-share slice of the WI-jusus var/field emission-parity umbrella. The PHP analyzer emits only file+class+method symbols — class-body typed PROPERTIES (private int $count;) and class CONSTANTS (const FOO = 1;) get no kind=field Symbol, so PHP class state is invisible to search/centrality/dead-code. Fix: emit kind=field for property_declaration + const_declaration in a class/interface/trait/enum body, anchored to the class (dotted name Class.prop); apply the register_symbol skip-set recipe (fields excluded from call-resolution so a data anchor never clobbers a same-named function) and a scope-walk guard so method-body locals do NOT leak as fields (the INV-lanaz/INV-sidab landmine — requires adversarial ground-truth review). Advances INV-jahiv. awaits_bakeoff_validation (corpus-wide symbol/centrality shift)."  # f10f
+    fields: {}  # f10f
+- op: update  # b481
+  at: '2026-07-13T17:27:15Z'  # b481
+  by: agent  # b481
+  actor: jgstern_agent  # b481
+  clock: 2  # b481
+  nonce: b481  # b481
+  set:  # b481
+    status: done  # b481
+- op: discuss  # 21f1
+  at: '2026-07-13T17:27:15Z'  # 21f1
+  by: agent  # 21f1
+  actor: jgstern_agent  # 21f1
+  clock: 3  # 21f1
+  nonce: 21f1  # 21f1
+  message: "DONE (merged 89778cc7df). PHP _extract_symbols now emits kind=field for property_declaration + const_declaration members anchored to the enclosing type (class/interface/trait/enum) and kind=variable for a top-level const. Per-element spans (public $a,$b -> 2 fields). No local-leak: property_declaration only occurs in a type body (method-body locals are assignment_expression), so INV-lanaz/INV-sidab does not apply. Dotted Type.member names stay out of the call-resolution registries. BEHAVIORAL: 3 tests (class prop+const, multi-prop, interface+enum const); php.py 100% cov; smart-test 3877 passed, no resolution regression. awaits_bakeoff_validation."  # 21f1

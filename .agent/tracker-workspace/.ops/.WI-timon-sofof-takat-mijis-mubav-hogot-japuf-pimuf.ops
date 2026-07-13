@@ -33,3 +33,18 @@
   clock: 3  # c5f5
   nonce: c5f5  # c5f5
   message: "2026-06-10 design-interview ruling (ADR-0035, merged in PR #4181): dependencies become N per-manifest nodes with the manifest path in the hash, so depends_on_manifest lookups become manifest-scoped instead of a global flat map; (ecosystem, name) aggregation happens in views, not in node identity. Waits on the per-manifest node implementation."  # c5f5
+- op: update  # c95d
+  at: '2026-07-13T15:56:44Z'  # c95d
+  by: agent  # c95d
+  actor: jgstern_agent  # c95d
+  clock: 4  # c95d
+  nonce: c95d  # c95d
+  set:  # c95d
+    status: done  # c95d
+- op: discuss  # c922
+  at: '2026-07-13T15:56:44Z'  # c922
+  by: agent  # c922
+  actor: jgstern_agent  # c922
+  clock: 5  # c922
+  nonce: c922  # c922
+  message: "DONE (merged 4d1fdfa2f0). depends_on_manifest now attributes to the importer's NEAREST enclosing manifest instead of a global flat last-writer-wins lookup. dependency.py: _build_dependency_lookup returns dict[name, list[Symbol]]; _select_nearest_manifest_dep picks the manifest whose dir is the longest prefix of the importing file path (via the already-threaded code_symbols); ambiguous fallback (no enclosing manifest / unresolvable path) is deterministic first-by-id + carries the registered disambiguation_fallback flag at confidence 0.5 (INV-zuhub contract) instead of a confident-wrong 0.9. BEHAVIORAL EVIDENCE (self-corpus): cross-package rich misattributions 3 -> 0; total depends_on_manifest unchanged (26); single-manifest repos unchanged. 6 new tests, smart-test 3491 passed / 100% cov. WI-rilin was UNBUNDLED (separate lookup, already gated) and closed separately."  # c922

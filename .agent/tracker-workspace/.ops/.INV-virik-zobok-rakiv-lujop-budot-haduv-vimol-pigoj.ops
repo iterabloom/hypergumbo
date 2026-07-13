@@ -223,3 +223,18 @@
   clock: 26  # 142c
   nonce: 142c  # 142c
   message: "Drain audit: E-misapplied. No quantitative bakeoff-improvement claim -- this is a writer-contract wiring gap (reserved provenance fields / evidence_spans / from_dict declared but never populated; 0/110533 edges). A violation measurement, not a metric-movement claim a cohort can confirm. Tracked by violated status; stripping misapplied tag."  # 142c
+- op: update  # 4892
+  at: '2026-07-13T18:37:36Z'  # 4892
+  by: agent  # 4892
+  actor: jgstern_agent  # 4892
+  clock: 27  # 4892
+  nonce: '4892'  # 4892
+  set:  # 4892
+    priority: 3  # 4892
+- op: discuss  # 1b66
+  at: '2026-07-13T18:37:36Z'  # 1b66
+  by: agent  # 1b66
+  actor: jgstern_agent  # 1b66
+  clock: 28  # 1b66
+  nonce: 1b66  # 1b66
+  message: "ADVANCED (merged 6e7e48bf42). The residual always-[] meta-layer reporting lists now follow present-when-populated (omitted when empty): analysis_runs[].{skipped_passes,failed_files,warnings} + limits.{failed_files,skipped_languages,truncated_files}. A pipeline-health consumer reading failed_files=[] on all 84 runs no longer reads a hollow 'clean' — absence now honestly means 'nothing to report'. Matches the partial_results_reason/max_tier_applied precedent; schema unchanged (fields already optional, no version bump); no production consumer reads them via ['...']. limits.skipped_passes (populated provenance, INV-nihug) + test_files_excluded (WI-miron) stay always-present. NOT CLOSED: supply_chain.{classification_failures,ambiguous_paths} remain always-[] (a minor follow-up) and closure-evidence discipline for this invariant wants a self-corpus sweep confirming NO reserved field is always-empty. Downgraded P1->P3 (accounting tier; the assessment found ~7/12 cataloged fields already fixed and this touches zero graph nodes)."  # 1b66

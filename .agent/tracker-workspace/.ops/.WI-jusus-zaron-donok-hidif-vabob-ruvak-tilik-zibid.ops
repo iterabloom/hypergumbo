@@ -221,3 +221,10 @@
   clock: 29  # 71db
   nonce: 71db  # 71db
   message: "HUMAN RULING (2026-07-08) — Haskell field/variable residual: RATIFY UNFIT by semantics. Haskell has no imperative-style field/variable-as-data-anchor: top-level bindings are already emitted as kind=function (haskell.py:299) and record-field accessors ARE functions (name :: Person -> String, a call target). Per the regression-vs-new-feature discriminant, excluding them from resolution would drop existing calls edges. So WI-jusus field/variable emission is CLOSED for Haskell as unfit-by-design (not a punt). GREENLIT SEPARATELY (C): extract Haskell record-field accessors as kind=function (currently only the data-type name is emitted as kind=data; the named field accessors are uncaptured) — a correct-by-semantics recall win, to be filed as its own agent-work item (NOT human-gated)."  # 71db
+- op: discuss  # 5295
+  at: '2026-07-13T17:30:21Z'  # 5295
+  by: agent  # 5295
+  actor: jgstern_agent  # 5295
+  clock: 30  # 5295
+  nonce: '5295'  # 5295
+  message: "PROGRESS: the PHP high-corpus-share slice landed as sub-WI WI-fosuh (merged 89778cc7df) — PHP class/interface/trait/enum properties+constants now emit kind=field, top-level const kind=variable. WI-jusus stays todo_hard for the remaining high-corpus-share tail flagged by the 2026-07-12 impact assessment: RUBY (const / attr_accessor / @@class-var / @instance-var — trickier: metaprogramming + instance-vars-assigned-in-methods, needs the register_symbol skip-set + a scope guard) and C++ (struct/class members). Each is a discrete M sub-item per the 'pull ONE slice' verdict."  # 5295
