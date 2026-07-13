@@ -1256,18 +1256,33 @@ pathway's producers historically hardcoded, so the migration that dropped the
 per-emitter outliers to the single canonical value (the INV-suvil fix).
 
 **Bands.** Base confidences live in the analyzer/linker band **0.30–0.95**;
-1.0 is a reserved ceiling (a detection method is never *certain*). Four
-pathways whose producers still emit 1.0 (`naming_convention`,
-`build_dependency`, `subdir_include`, `tree_sitter`) are not yet derived —
-that over-claim is a pending producer-side fix, so those sites retain an
-explicit `confidence=`.
+1.0 is a reserved ceiling (a detection method is never *certain*). Three
+pathways whose producers still emit 1.0 (`build_dependency`, `subdir_include`,
+`tree_sitter`) are not yet derived — that over-claim is a pending producer-side
+fix, so those sites retain an explicit `confidence=`. (`naming_convention` was
+the fourth; ADR-0039 ruling 1 seeded it at 0.85 and the containment producer now
+derives it — see [ADR-0039](adr/0039-confidence-separation.md).)
 
 **Not yet derived (retain explicit `confidence=`):** sites that *compute*
-confidence dynamically (linker match-strength scores, the `type_hierarchy`
-ranking dampener) and the four ceiling-breach pathways above. Only literal
-hardcoded constants on seeded inference pathways were migrated. The
-`confidence_source` discriminator and the `rank_score` separation specified in
-[ADR-0039](adr/0039-confidence-separation.md) remain later stages.
+confidence dynamically (linker match-strength scores) and the three ceiling-breach
+pathways above. Only literal hardcoded constants on seeded inference pathways were
+migrated. The `type_hierarchy` linker no longer retains an explicit dynamic
+confidence: ADR-0039 ruling 3 relocated its `1/√N` fan-out dampener + test penalty
+to `rank_score`, so its detection confidence now derives the flat in-band 0.85
+`type_hierarchy` base.
+
+**Confidence provenance & ranking separation (ADR-0039 rulings 2 & 3, implemented).**
+Every `Edge` carries a `confidence_source` discriminator — `evidence_derived` (the
+value came through `derive_confidence`), `emitter_constant` (a declared hardcoded
+producer value, incl. the unseeded 0.85 fallback), or `composite` (still fuses a
+ranking adjustment) — so the migration off per-emitter constants is machine-readable.
+Post-detection **ranking** adjustments (the type-hierarchy fan-out dampener, the
+entrypoint penalties/demotions/degree-boosts) no longer contaminate `confidence`;
+they accumulate on a sibling `Edge.rank_score` / `Entrypoint.rank_score` field
+(ranking prominence, 0.0–1.0, initialized from `confidence`). Ranking consumers
+(centrality edge-filter `filter_edges_for_ranking`, entrypoint sort +
+`MIN_ENTRYPOINT_CONFIDENCE` filter, sketch entrypoint ordering, slice auto-entry)
+key on `rank_score`; `confidence` is now purely detection reliability.
 
 ### Edge confidence: linker edges
 
@@ -1288,9 +1303,9 @@ Linkers (Tier 2 passes — all four subcategories) produce their own confidence 
 
 ### Entrypoint confidence tiers
 
-Entrypoint confidence scores how reliably a symbol was identified as an entry point (route, CLI main, task handler, etc.). This is independent of edge confidence — a function detected as a route at 0.95 confidence may have call edges at any confidence level.
+Entrypoint confidence scores how reliably a symbol was identified as an entry point (route, CLI main, task handler, etc.). This is independent of edge confidence — a function detected as a route at 0.95 confidence may have call edges at any confidence level. Per ADR-0039 ruling 3, entrypoint `confidence` is now **pure detection reliability** (the construction-time tier); the ranking penalties, library-export demotion, and connectivity boosts that used to move it off-tier live on `Entrypoint.rank_score`, which the entrypoint ordering and the `MIN_ENTRYPOINT_CONFIDENCE` filter key on.
 
-See [§8 Entrypoint detection](#8-entrypoint-detection) for the detection architecture and the full tier table. The four tiers: Declared (0.99), Decorator/Annotation (0.95), Structural (0.85), Naming (0.70).
+See [§8 Entrypoint detection](#8-entrypoint-detection) for the detection architecture and the full tier table. The four standard tiers span [0.70, 0.99]: Declared (0.99), Decorator/Annotation (0.95), Structural (0.85), Naming (0.70). Two deliberate low-confidence kinds sit **below** that band by design and are not among the four tiers: `connectivity_based` (0.50 — a last-resort fallback used only when no concept-based entrypoint is found; §8 lists it as the `connectivity_heuristic` tier) and frontend-route suppression (0.05, filtered out by `MIN_ENTRYPOINT_CONFIDENCE`).
 
 ## 13) Output reproducibility
 
@@ -1878,7 +1893,7 @@ This appendix defines the **technical contract** for output consumers: which fie
 
 **4. Confidence scoring:**
 - `confidence_model` field identifies the scoring algorithm (`hypergumbo-evidence-v2`)
-- `confidence` is detection reliability (0.0–1.0); there is no normative default for unknown `evidence_type` (the deterministic evidence→confidence model is planned, not implemented — [ADR-0039](adr/0039-confidence-separation.md))
+- `confidence` is detection reliability (0.0–1.0); there is no normative default for unknown `evidence_type` (the deterministic evidence→confidence model is **implemented** for seeded pathways — [ADR-0039](adr/0039-confidence-separation.md) / WI-nurun; unseeded/dynamically-computed sites fall back to the caller's value). Ranking prominence lives in the sibling `rank_score` field, and `confidence_source` records how each `confidence` was produced.
 
 ### Extensible Contracts (can add in minor versions)
 
