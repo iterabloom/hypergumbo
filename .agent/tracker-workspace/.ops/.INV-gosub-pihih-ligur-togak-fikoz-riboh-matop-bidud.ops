@@ -62,3 +62,18 @@
   clock: 6  # eb1e
   nonce: eb1e  # eb1e
   message: "related-but-distinct cross-link (connections-sweep 2026-06-08T1900Z)"  # eb1e
+- op: update  # ea19
+  at: '2026-07-13T15:09:57Z'  # ea19
+  by: agent  # ea19
+  actor: jgstern_agent  # ea19
+  clock: 7  # ea19
+  nonce: ea19  # ea19
+  set:  # ea19
+    priority: 3  # ea19
+- op: discuss  # 466a
+  at: '2026-07-13T15:09:58Z'  # 466a
+  by: agent  # 466a
+  actor: jgstern_agent  # 466a
+  clock: 8  # 466a
+  nonce: 466a  # 466a
+  message: "RE-SCOPED (2026-07-13, hygiene sweep). Both filed headline symptoms are STALE/false on dev 8eef2da94d — VERIFIED on a fresh docs/adr slice: (1) 'zero file/section nodes for markdown' is FALSE — 47 markdown file nodes emit for 47 .md files (via the orchestrator file-symbol-synthesis chokepoint added after the 2026-05-30 filing); (2) '102 orphan doc_link externals' is FALSE — 0 external_symbol nodes, 0 orphans in the default map. The DATA-LOSS face is closed. Downgraded P1->P3: the genuine RESIDUAL is confined to the opt-in --include-docs docs graph — internal doc links resolve to synthetic <external> placeholders instead of the real in-repo file/section nodes, and identical targets duplicate for lack of path canonicalization (no markdown-link-resolver linker exists). No default-map consumer harm. A separately-found pipeline dropout (docs/adr/0037 yields 19 section symbols from the analyzer but 0 nodes even under --include-docs) is filed as its own follow-up. INV-mozaf's stale root_cause ('markdown only emits external :doc_link nodes') should be corrected."  # 466a

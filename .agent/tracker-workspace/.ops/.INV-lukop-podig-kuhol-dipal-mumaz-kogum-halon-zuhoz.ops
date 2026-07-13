@@ -22,3 +22,18 @@
     fields:  # e2dc
       statement: "Every syntactically-valid Python source file emits its symbols (functions / classes / module node); a function signature LENGTH must never determine whether the file nodes are produced."  # e2dc
       root_cause: "Not yet root-caused. A function whose rendered signature exceeds roughly 250 chars (long type annotations OR ~15+ params) causes the analyzer to emit zero nodes for the WHOLE file (fail-open, no exception / warning / skipped-pass entry). Likely a downstream filter tied to signature length / stable_id normalization / a size guard."  # e2dc
+- op: update  # f8f5
+  at: '2026-07-13T14:54:37Z'  # f8f5
+  by: agent  # f8f5
+  actor: jgstern_agent  # f8f5
+  clock: 2  # f8f5
+  nonce: f8f5  # f8f5
+  set:  # f8f5
+    status: satisfied  # f8f5
+- op: discuss  # 5ed0
+  at: '2026-07-13T14:54:37Z'  # 5ed0
+  by: agent  # 5ed0
+  actor: jgstern_agent  # 5ed0
+  clock: 3  # 5ed0
+  nonce: 5ed0  # 5ed0
+  message: "SATISFIED via the minified-heuristic gate (supply_chain.py). ROOT CAUSE (corrected from the filing's 'signature length' framing): is_likely_minified() Heuristic 1 (avg line length >150) is language-agnostic, so a dense-but-real Python file — a data/lookup module, a very long function signature, generated protobuf without a @generated header — was classified tier-4 DERIVED and the default tier filter dropped its WHOLE file (0 nodes, no diagnostic). Fix: gate Heuristic 1 to _MINIFIABLE_WEB_EXTENSIONS (JS/CSS/HTML/TS/vue/svelte); the @generated/sourcemap/webpack heuristics stay universal. BEHAVIORAL EVIDENCE (re-ran the item's own repro): a Python file with a 30-param signature (avg line >150) previously emitted 0 nodes for the whole file; now emits its symbols (test_dense_python_file_not_silently_dropped: 0->1 'wide' node). Self-corpus: scip_pb2.py stays DERIVED (via its 'DO NOT EDIT' header, Heuristic 3); _embedding_data.py (base64 blob, no header) correctly reclassified first-party (+5 variable nodes). smart-test 4092 passed / 100% cov. The generalized 'record tier-filtered drops in limits' honesty half is beyond this item's statement — filed as follow-up WI-tulit."  # 5ed0
