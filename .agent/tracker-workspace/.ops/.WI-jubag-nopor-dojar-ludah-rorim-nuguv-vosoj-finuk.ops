@@ -61,3 +61,18 @@
   clock: 7  # 0ed3
   nonce: 0ed3  # 0ed3
   message: "PROGRESS (Python INSTANTIATES half): external constructor calls now type as `instantiates` (evidence ast_new, is_resolved=False) instead of misfiling as plain `calls`. PascalCase heuristic (Python's strong class-naming convention) at the two unresolved-external emit sites — bare `Path()`/`MagicMock()` (py.py:5158) and `module.ClassName()` e.g. argparse.ArgumentParser() (py.py:4727); snake_case callables (join, os.getcwd) stay `calls`. Full self-analysis: calls 65134->63220, instantiates 8394->10312 (~1918 external constructions recovered, was 0-external). Confidence 0.95 evidence-derived. Targets stay external/unresolved so in-repo reachability/dead-code unaffected; shifts edge_type counts + centrality weights -> awaits_bakeoff_validation. 4 new tests, smart-test 20673 passed / 100% cov. REMAINING (item stays todo_hard): Kotlin+Ruby extends/instantiates analogues + the framework-agnostic core inheritance-linker chokepoint (Approach C, also handles dotted/qualified extends bases like argparse.X). Non-PascalCase external constructors (rare) + other call forms (~415 of the est. 2333) also remain."  # 0ed3
+- op: update  # 8bcb
+  at: '2026-07-13T23:45:28Z'  # 8bcb
+  by: agent  # 8bcb
+  actor: jgstern_agent  # 8bcb
+  clock: 8  # 8bcb
+  nonce: 8bcb  # 8bcb
+  set:  # 8bcb
+    priority: 3  # 8bcb
+- op: discuss  # 8088
+  at: '2026-07-13T23:45:29Z'  # 8088
+  by: agent  # 8088
+  actor: jgstern_agent  # 8088
+  clock: 9  # 8088
+  nonce: '8088'  # 8088
+  message: "Approach-C core-linker chokepoint DONE (PR 70d0cc067e, dev). The framework-agnostic inheritance-linker (hypergumbo_core/linkers/inheritance.py) no longer drops a base that resolves to no in-tree symbol — it mints an is_resolved=False external extends edge to an external_symbol boundary node ({lang}:external:0-0:{name}:unresolved, the INV-nuzas-safe 'external' sentinel, dst_ref=None), evidence-derived 0.95 (ADR-0039). Generalizes the external-base fallback (previously Python+JS/TS per-analyzer only) to EVERY OO language and recovers Python dotted bases (class C(argparse.X)) py.py defers. Ownership split prevents double-emission: a per-analyzer fallback owns a class's BARE external bases (resolves import aliases to the ORIGINAL name, invisible to the chokepoint), so when an analyzer already emitted an external edge for a class the chokepoint defers its bare bases and adds only the dotted ones + all bases for languages with no analyzer fallback (Kotlin/Ruby/etc). Self-contained in inheritance.py, 100% cov.\n\nEXTENDS external-drop bug (the 23.4%-base-less-classes headline) FULLY FIXED for all OO languages. Evidence — production-path full-pipeline tests: test_python_ast_analysis::test_run_extends_dotted_qualified_base_emitted_by_chokepoint, test_csharp::test_external_base_class_emits_unresolved_extends; 4-language dogfood (Kotlin UserController->AbstractController, Ruby User->ActiveRecord::Base, Python-dotted GroupedFmt->argparse.RawDescriptionHelpFormatter recover, Python-bare Color->Enum stays py.py precise, 0 dup edges). Real case: cli.py:253 GroupedSubcommandHelpFormatter(argparse.RawDescriptionHelpFormatter) was dropped, now emits.\n\nRESIDUALS (P1->P3, not closed — separate mechanisms, NOT the extends drop): (1) external INSTANTIATES for non-Python is GREENFIELD — Kotlin/Ruby emit NO instantiates edges (Ruby .new is a calls edge; Kotlin emits nothing), so no dropped constructor to recover — new constructor-detection feature work; Python instantiates external already fixed in the campaign. (2) Retiring the now-redundant per-analyzer _extract_inheritance_edges resolvers is a refactor. Both distinct from this item's drop bug."  # 8088
