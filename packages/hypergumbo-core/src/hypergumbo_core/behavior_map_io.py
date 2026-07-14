@@ -68,6 +68,23 @@ LEGACY_SURVEY_FILENAMES = (
 SURVEY_FILENAMES = (CANONICAL_SURVEY_FILENAME, *LEGACY_SURVEY_FILENAMES)
 
 
+def _warn_if_legacy_survey_name(path: Union[Path, str]) -> None:
+    """ADR-0042 (WI-didif): warn to stderr when a survey substrate is read under
+    a deprecated legacy basename. The canonical name is ``survey.json``; the
+    aliases are accepted for one minor version and then removed. A ``.gz`` suffix
+    is stripped before matching, so gzipped legacy files warn too."""
+    name = Path(path).name
+    if name.endswith(".gz"):
+        name = name[: -len(".gz")]
+    if name in LEGACY_SURVEY_FILENAMES:
+        print(
+            f"Warning: {path}: '{name}' is a deprecated survey filename "
+            f"(ADR-0042); rename to '{CANONICAL_SURVEY_FILENAME}'. The legacy "
+            f"aliases are accepted for one minor version, then removed.",
+            file=sys.stderr,
+        )
+
+
 def load_substrate(
     path: Union[Path, str], *, expected_view: str = "behavior_map"
 ) -> Dict[str, Any]:
@@ -103,6 +120,9 @@ def load_substrate(
         raise SubstrateError(
             f"{path}: not valid JSON ({exc})"
         ) from exc
+    # ADR-0042 (WI-didif): a legacy alias still loads, but warn the caller to
+    # migrate to survey.json (the aliases are removed at window-close).
+    _warn_if_legacy_survey_name(path)
     if not isinstance(data, dict):
         raise SubstrateError(
             f"{path}: expected a JSON object at the top level, got "

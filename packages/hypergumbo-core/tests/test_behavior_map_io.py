@@ -274,9 +274,56 @@ def test_load_substrate_absent_schema_version_warns(tmp_path, capsys):
 
 
 def test_load_substrate_matching_version_is_silent(tmp_path, capsys):
-    _write(tmp_path / "bm.json", WELL_FORMED)
-    load_substrate(tmp_path / "bm.json")
+    # ADR-0042: the canonical name + a matching schema_version is truly silent
+    # (a legacy basename would now emit a deprecation warning — see below).
+    _write(tmp_path / CANONICAL_SURVEY_FILENAME, WELL_FORMED)
+    load_substrate(tmp_path / CANONICAL_SURVEY_FILENAME)
     assert capsys.readouterr().err == ""
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# WI-didif (ADR-0042): legacy survey-filename acceptance + deprecation warning
+# ─────────────────────────────────────────────────────────────────────────
+
+
+def test_load_substrate_legacy_name_warns(tmp_path, capsys):
+    """A survey substrate loaded under a legacy basename still loads, but warns
+    to stderr, naming the alias found and the canonical survey.json."""
+    p = _write(tmp_path / "hg.json", WELL_FORMED)
+    assert load_substrate(p) == WELL_FORMED
+    err = capsys.readouterr().err
+    assert "deprecated" in err.lower()
+    assert "hg.json" in err
+    assert CANONICAL_SURVEY_FILENAME in err
+
+
+def test_load_substrate_canonical_name_no_deprecation_warning(tmp_path, capsys):
+    """The canonical survey.json loads without a deprecation warning."""
+    p = _write(tmp_path / CANONICAL_SURVEY_FILENAME, WELL_FORMED)
+    load_substrate(p)
+    assert "deprecated" not in capsys.readouterr().err.lower()
+
+
+@pytest.mark.parametrize("name", list(LEGACY_SURVEY_FILENAMES))
+def test_load_substrate_each_legacy_name_warns(tmp_path, capsys, name):
+    """Every declared legacy alias triggers the deprecation warning."""
+    p = _write(tmp_path / name, WELL_FORMED)
+    load_substrate(p)
+    err = capsys.readouterr().err
+    assert "deprecated" in err.lower()
+    assert name in err
+
+
+def test_load_substrate_legacy_gzip_name_warns(tmp_path, capsys):
+    """A gzipped legacy alias (hg.json.gz) warns — the .gz suffix is stripped
+    before matching against the alias list."""
+    p = tmp_path / "hg.json.gz"
+    with gzip.open(p, "wt") as f:
+        json.dump(WELL_FORMED, f)
+    load_substrate(p)
+    err = capsys.readouterr().err
+    assert "deprecated" in err.lower()
+    assert "hg.json" in err
 
 
 def test_cli_has_no_raw_behavior_map_reads():
