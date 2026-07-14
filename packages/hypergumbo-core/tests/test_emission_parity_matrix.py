@@ -279,7 +279,7 @@ def test_fixture_languages_are_analyzed_with_real_output(tmp_path: Path) -> None
     silently regresses to emitting nothing for its language. Runs the full
     pipeline once over the whole corpus."""
     ensure_discovered()
-    out = tmp_path / "bm.json"
+    out = tmp_path / "survey.json"
     run_behavior_map(
         repo_root=CORPUS,
         out_path=out,

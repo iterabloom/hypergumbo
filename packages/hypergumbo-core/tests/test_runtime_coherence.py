@@ -311,7 +311,7 @@ def _write_bm(path: Path, behavior_map: dict) -> Path:
 
 
 def test_cli_exit_0_on_clean(tmp_path: Path, capsys: pytest.CaptureFixture):
-    bm_path = _write_bm(tmp_path / "bm.json", {
+    bm_path = _write_bm(tmp_path / "survey.json", {
         "nodes": [
             _node("a", "function", "python"),
             _node("b", "function", "python"),
@@ -328,7 +328,7 @@ def test_cli_exit_0_on_clean(tmp_path: Path, capsys: pytest.CaptureFixture):
 def test_cli_exit_1_on_offenders(
     tmp_path: Path, capsys: pytest.CaptureFixture,
 ):
-    bm_path = _write_bm(tmp_path / "bm.json", {
+    bm_path = _write_bm(tmp_path / "survey.json", {
         "nodes": [
             _node("a", "function", "python"),
             _node("b", "type", "python"),
@@ -347,7 +347,7 @@ def test_cli_exit_1_on_offenders(
 def test_cli_exit_0_when_allowlist_covers_all_offenders(
     tmp_path: Path, capsys: pytest.CaptureFixture,
 ):
-    bm_path = _write_bm(tmp_path / "bm.json", {
+    bm_path = _write_bm(tmp_path / "survey.json", {
         "nodes": [
             _node("a", "function", "python"),
             _node("b", "type", "python"),

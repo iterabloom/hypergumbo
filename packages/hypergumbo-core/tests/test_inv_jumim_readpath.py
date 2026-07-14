@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Behavioral tests for INV-jumim: map-driven sketch read-path (``--input``).
 
-When ``sketch --input <bm.json>`` is given, :func:`generate_sketch` must
+When ``sketch --input <survey.json>`` is given, :func:`generate_sketch` must
 summarize the MAP's file universe — deriving test-file counts, languages,
 source files, and the Structure tree from the loaded behavior map's node
 paths — instead of re-walking the current working directory via
