@@ -577,3 +577,37 @@ def test_discover_input_file_returns_cache_dir_hit(
     cached.write_text("{}")
 
     assert cli._discover_input_file(repo) == cached
+
+
+def test_discover_input_file_finds_canonical_survey_json_at_repo_root(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """ADR-0042: ``_discover_input_file`` (now on the merged ``find_survey_in_dir``
+    resolver) discovers the canonical ``survey.json`` at the repo root, not only
+    the legacy ``hypergumbo.results.json``."""
+    from hypergumbo_core import cli
+
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "xdg"))
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    survey = repo / "survey.json"
+    survey.write_text("{}")
+
+    assert cli._discover_input_file(repo) == survey
+
+
+def test_discover_input_file_still_finds_legacy_results_json_at_repo_root(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Backward compat: the legacy ``hypergumbo.results.json`` at the repo root is
+    still discovered after the resolver merge (the merged resolver widens, never
+    narrows, discovery)."""
+    from hypergumbo_core import cli
+
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "xdg"))
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    legacy = repo / "hypergumbo.results.json"
+    legacy.write_text("{}")
+
+    assert cli._discover_input_file(repo) == legacy

@@ -15,8 +15,12 @@ from pathlib import Path
 import pytest
 
 from hypergumbo_core.behavior_map_io import (
+    CANONICAL_SURVEY_FILENAME,
+    LEGACY_SURVEY_FILENAMES,
+    SURVEY_FILENAMES,
     SubstrateError,
     find_behavior_map,
+    find_survey_in_dir,
     load_behavior_map,
     load_substrate,
 )
@@ -107,6 +111,66 @@ def test_find_behavior_map_custom_basename(tmp_path):
     custom = tmp_path / "results.json.gz"
     custom.write_bytes(b"")
     assert find_behavior_map(tmp_path, basename="results.json") == custom
+
+
+# --- ADR-0042 survey-rename S2/S3 foundation: constant + merged resolver -----
+
+def test_survey_filename_constants():
+    """ADR-0042: `survey.json` is the one canonical artifact name; the four
+    historical names are accepted aliases; the search tuple is canonical-first."""
+    assert CANONICAL_SURVEY_FILENAME == "survey.json"
+    assert LEGACY_SURVEY_FILENAMES == (
+        "hypergumbo.results.json", "hg.json", "bm.json", "behavior_map.json",
+    )
+    assert SURVEY_FILENAMES == (CANONICAL_SURVEY_FILENAME, *LEGACY_SURVEY_FILENAMES)
+
+
+def test_find_survey_in_dir_finds_canonical(tmp_path):
+    survey = tmp_path / "survey.json"
+    survey.write_text("{}")
+    assert find_survey_in_dir(tmp_path) == survey
+
+
+def test_find_survey_in_dir_finds_each_legacy_alias(tmp_path):
+    for name in LEGACY_SURVEY_FILENAMES:
+        d = tmp_path / name.replace(".", "_")
+        d.mkdir()
+        legacy = d / name
+        legacy.write_text("{}")
+        assert find_survey_in_dir(d) == legacy
+
+
+def test_find_survey_in_dir_prefers_canonical_over_legacy(tmp_path):
+    (tmp_path / "hg.json").write_text("{}")
+    survey = tmp_path / "survey.json"
+    survey.write_text("{}")
+    assert find_survey_in_dir(tmp_path) == survey
+
+
+def test_find_survey_in_dir_prefers_plain_over_gz(tmp_path):
+    plain = tmp_path / "survey.json"
+    plain.write_text("{}")
+    (tmp_path / "survey.json.gz").write_bytes(b"")
+    assert find_survey_in_dir(tmp_path) == plain
+
+
+def test_find_survey_in_dir_falls_back_to_gz(tmp_path):
+    gz = tmp_path / "survey.json.gz"
+    gz.write_bytes(b"")
+    assert find_survey_in_dir(tmp_path) == gz
+
+
+def test_find_survey_in_dir_canonical_gz_beats_legacy_plain(tmp_path):
+    """Name-major precedence: the canonical name wins entirely, even compressed,
+    over a legacy plain file — the canonical name signals current intent."""
+    (tmp_path / "hg.json").write_text("{}")  # legacy plain
+    canon_gz = tmp_path / "survey.json.gz"
+    canon_gz.write_bytes(b"")                 # canonical gz
+    assert find_survey_in_dir(tmp_path) == canon_gz
+
+
+def test_find_survey_in_dir_returns_none_when_empty(tmp_path):
+    assert find_survey_in_dir(tmp_path) is None
 
 
 # ---------------------------------------------------------------------------

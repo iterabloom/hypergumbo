@@ -56,7 +56,7 @@ from .analyze.base import (
     split_within_file_stable_id_collisions,
     widen_route_stable_ids,
 )
-from .behavior_map_io import SubstrateError, load_substrate
+from .behavior_map_io import SubstrateError, find_survey_in_dir, load_substrate
 from .catalog import get_default_catalog, is_available, suggest_passes_for_languages
 # ADR-0043 §6: finalize() is the single pre-serialization reconcile point. _relativize_ir_paths
 # lives there now (finalize sub-step 1 owns it); re-exported here for the Phase B call below
@@ -432,38 +432,37 @@ def _find_git_root(start_path: Path) -> Optional[Path]:
 
 
 def _discover_input_file(repo_root: Path) -> Optional[Path]:
-    """Auto-discover behavior map file from cache or repo root.
+    """Auto-discover a survey artifact from cache or repo root.
 
     Search order:
     1. Cache directory: ~/.cache/hypergumbo/<fingerprint>/results/<state>/<analyzer_identity>/
-    2. Repo root: <repo>/hypergumbo.results.json
+    2. Repo root: <repo>/
 
-    This enables seamless workflow where 'hypergumbo run .' (which caches results)
-    is automatically discovered by search/explain/routes/slice/symbols commands.
+    This enables the seamless workflow where 'hypergumbo run .' (which caches
+    results) is automatically discovered by search/explain/routes/slice/symbols
+    commands. Both locations are searched via the merged ``find_survey_in_dir``
+    resolver (ADR-0042 §4), so the canonical ``survey.json`` and every legacy
+    alias (``hypergumbo.results.json`` / ``hg.json`` / ``bm.json`` /
+    ``behavior_map.json``), plain or ``.gz``, are all discovered.
 
     Args:
         repo_root: Repository root path.
 
     Returns:
-        Path to behavior map file if found, None otherwise.
+        Path to a survey artifact if found, None otherwise.
     """
     # First, check cache directory (where 'hypergumbo run' saves by default)
     try:
         from .sketch_embeddings import _get_results_cache_dir
 
-        cache_dir = _get_results_cache_dir(repo_root)
-        cached_file = cache_dir / "hypergumbo.results.json"
-        if cached_file.exists():
-            return cached_file
+        cached = find_survey_in_dir(_get_results_cache_dir(repo_root))
+        if cached is not None:
+            return cached
     except Exception:  # pragma: no cover - cache discovery errors
         pass
 
     # Fall back to repo root (for explicit --out or legacy workflows)
-    repo_file = repo_root / "hypergumbo.results.json"
-    if repo_file.exists():
-        return repo_file
-
-    return None
+    return find_survey_in_dir(repo_root)
 
 
 def _get_or_run_analysis(

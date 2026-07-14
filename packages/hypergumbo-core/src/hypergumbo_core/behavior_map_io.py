@@ -53,6 +53,21 @@ class SubstrateError(Exception):
 _REQUIRED_SUBSTRATE_KEYS = ("nodes",)
 
 
+# ADR-0042: hypergumbo's primary output artifact has one canonical filename,
+# ``survey.json``, with four historical names accepted as read-time aliases
+# during the deprecation window. Defined once here and imported everywhere so no
+# resolver, script, or help string hardcodes a basename again.
+CANONICAL_SURVEY_FILENAME = "survey.json"
+LEGACY_SURVEY_FILENAMES = (
+    "hypergumbo.results.json",  # the pre-release CLI-polish default
+    "hg.json",                  # docs shorthand / bakeoff convention
+    "bm.json",                  # test / dogfood substrate convention
+    "behavior_map.json",        # the original Dec-2025 MVP spec name
+)
+# Discovery search order: canonical first, then legacy (name-major).
+SURVEY_FILENAMES = (CANONICAL_SURVEY_FILENAME, *LEGACY_SURVEY_FILENAMES)
+
+
 def load_substrate(
     path: Union[Path, str], *, expected_view: str = "behavior_map"
 ) -> Dict[str, Any]:
@@ -164,4 +179,33 @@ def find_behavior_map(directory: Union[Path, str], basename: str = "hg.json") ->
     gz = d / (basename + ".gz")
     if gz.exists():
         return gz
+    return None
+
+
+def find_survey_in_dir(directory: Union[Path, str]) -> Optional[Path]:
+    """Locate a hypergumbo survey artifact inside ``directory`` (ADR-0042).
+
+    The merged discovery primitive: searches the canonical ``survey.json`` and
+    every legacy alias (``hypergumbo.results.json`` / ``hg.json`` / ``bm.json`` /
+    ``behavior_map.json``), plain then ``.gz``, **name-major** — so the canonical
+    name wins entirely (even compressed) over a legacy plain file, and within a
+    single name a plain file wins over its ``.gz`` (the freshly-written-copy
+    convention, mirroring :func:`find_behavior_map`). Returns the first match, or
+    ``None`` if the directory holds no recognizable survey.
+
+    This is the shared search primitive the survey-rename campaign collapses the
+    two divergent resolvers onto (cli ``_discover_input_file`` and bakeoff
+    ``find_behavior_map``, ADR-0042 §4). It is forward- and backward-compatible:
+    it finds the new canonical name and every historical name, so it works
+    before, during, and after the rename regardless of which name a producer
+    last wrote.
+    """
+    d = Path(directory)
+    for name in SURVEY_FILENAMES:
+        plain = d / name
+        if plain.exists():
+            return plain
+        gz = d / (name + ".gz")
+        if gz.exists():
+            return gz
     return None

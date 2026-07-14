@@ -33,6 +33,10 @@ Alongside: the CLI standardizes on `--format {text,json}` across all read views 
 - **`explain` disambiguation flags.** `--language`, `--file`, `--first`, and `--limit` disambiguate matches in multi-target repos; unrecognized edge types are flagged and registered edge-type descriptions surfaced.
 - **`sketch --no-comparison-sketches`** opts out of the 4×/16× comparison sketches and representativeness table for scripted/batch runs.
 
+#### Survey rename foundation (ADR-0042)
+
+- **One canonical artifact name + a merged discovery resolver (survey-rename S2/S3, internal, no behavior change).** `behavior_map_io` now defines the single canonical output filename `CANONICAL_SURVEY_FILENAME = "survey.json"` plus the four historical aliases (`hypergumbo.results.json`, `hg.json`, `bm.json`, `behavior_map.json`) and a `find_survey_in_dir()` primitive that discovers any of them (canonical-first, plain-over-`.gz`, name-major). The CLI's `_discover_input_file` is rewired onto it, widening auto-discovery to the canonical name and every legacy alias while still finding today's `hypergumbo.results.json` — no user-facing change. This is the shim-first foundation the rest of the ADR-0042 rename (CLI default filename, `survey` verb, docs/tests/tracker sweeps) builds on.
+
 #### Route detection & entrypoints
 
 - **Manifest-silent route promotion.** Route frameworks (Flask, Express, FastAPI, Sinatra, …) now import-promote on bare exact imports without a manifest, fixing dead-code route-monoculture in manifest-silent apps via a curated allowlist.
