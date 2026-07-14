@@ -49,7 +49,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from .behavior_map_io import load_behavior_map
+from .survey_io import load_behavior_map
 
 
 PartitionKey = tuple[str, str, str, str]

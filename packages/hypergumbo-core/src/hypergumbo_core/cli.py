@@ -56,7 +56,7 @@ from .analyze.base import (
     split_within_file_stable_id_collisions,
     widen_route_stable_ids,
 )
-from .behavior_map_io import (
+from .survey_io import (
     CANONICAL_SURVEY_FILENAME,
     SubstrateError,
     find_survey_in_dir,

@@ -14,16 +14,16 @@ for focused LLM context.
 ## Self-Analysis Summary (auto)
 
 hypergumbo analyzed its own source code and found:
-- **292** Python modules (133 analyzers, 57 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 29, Infrastructure 7; 65 core, 4 CLI, 33 tracker)
-- **36772** symbols (functions, classes, methods)
-- **125339** edges by type:
-  - calls: 63268
-  - contains: 33951
-  - imports: 11150
-  - instantiates: 10319
-  - references: 4199
-  - module_attr_ref: 1140
-  - other: 1312
+- **293** Python modules (133 analyzers, 57 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 29, Infrastructure 7; 66 core, 4 CLI, 33 tracker)
+- **36886** symbols (functions, classes, methods)
+- **125827** edges by type:
+  - calls: 63515
+  - contains: 34055
+  - imports: 11195
+  - instantiates: 10362
+  - references: 4232
+  - module_attr_ref: 1154
+  - other: 1314
 
 ## Package Architecture
 
@@ -85,7 +85,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 36772 Symbols + 125339 Edges + UsageContexts           │
+│  Output: 36886 Symbols + 125827 Edges + UsageContexts           │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -270,20 +270,20 @@ These symbols have the highest bidirectional centrality
 
 | Symbol | Kind | Score | Location |
 |--------|------|-------|----------|
-| `Symbol` | class | 9254.1 | ir.py |
-| `Span` | class | 6230.6 | ir.py |
-| `run_behavior_map` | function | 3594.4 | cli.py |
-| `write_text` | external_symbol | 3285.0 | <external> |
-| `LinkerContext` | class | 3104.7 | registry.py |
-| `Edge.create` | method | 2048.9 | ir.py |
+| `Symbol` | class | 9290.8 | ir.py |
+| `Span` | class | 6254.2 | ir.py |
+| `run_behavior_map` | function | 3637.2 | cli.py |
+| `write_text` | external_symbol | 3292.0 | <external> |
+| `LinkerContext` | class | 3156.6 | registry.py |
+| `Edge.create` | method | 2065.9 | ir.py |
 | `TrackerApp` | class | 1946.9 | tui.py |
 | `load_framework_patterns` | function | 1875.9 | framework_patterns.py |
-| `Path` | external_symbol | 1581.0 | <external> |
+| `Path` | external_symbol | 1597.0 | <external> |
 | `main` | function | 1563.1 | cli.py |
 | `clear_pattern_cache` | function | 1336.8 | framework_patterns.py |
 | `Edge` | class | 1265.5 | ir.py |
-| `append` | external_symbol | 1229.0 | <external> |
-| `get` | external_symbol | 1088.0 | <external> |
+| `append` | external_symbol | 1232.0 | <external> |
+| `get` | external_symbol | 1101.0 | <external> |
 | `TreeSitterAnalyzer` | class | 1074.7 | base.py |
 
 ## Pattern System
@@ -532,7 +532,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 - **`hypergumbo_core.audit_findings`**: Parser and validator for the audit-findings document format.
 - **`hypergumbo_core.axis_drift`**: Field-agnostic AST drift detector for axis-bearing canonical regist...
 - **`hypergumbo_core.axis_meta_keys`**: Canonical registry of ``Symbol.meta`` and ``Edge.meta`` key names.
-- **`hypergumbo_core.behavior_map_io`**: Consumer-side helper for reading hypergumbo behavior maps (WI-mokim).
+- **`hypergumbo_core.behavior_map_io`**: Deprecation shim: ``behavior_map_io`` was renamed to ``survey_io`` ...
 - **`hypergumbo_core.build_grammars`**: Build tree-sitter grammars from source for languages not available ...
 - **`hypergumbo_core.catalog`**: Catalog of available analysis passes (registry-derived).
 - **`hypergumbo_core.cfg`**: Language-parameterized CFG builder using fringe-based recursive alg...
@@ -582,6 +582,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 - **`hypergumbo_core.slice`**: Graph slicing for LLM context extraction.
 - **`hypergumbo_core.spec_validator`**: Spec-vs-data validator stage (ADR-0033, INV-sugat).
 - **`hypergumbo_core.supply_chain`**: Supply chain classification for code analysis.
+- **`hypergumbo_core.survey_io`**: Consumer-side helper for reading hypergumbo survey maps (WI-mokim).
 - **`hypergumbo_core.symbol_indexes`**: Multi-value Symbol-name indexes for analyzers and linkers (WI-sofaf).
 - **`hypergumbo_core.symbol_kinds`**: Canonical registry of Symbol.kind values in hypergumbo's behavior map.
 - **`hypergumbo_core.symbol_resolution`**: Unified symbol resolution with pluggable matching strategies.
@@ -837,7 +838,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: 89778cc7dfc5
+  commit: 4ed8d66b1bbb
   hypergumbo: 6.1.0
   python: 3.12.3
 -->

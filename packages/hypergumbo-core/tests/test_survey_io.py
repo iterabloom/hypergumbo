@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""Tests for behavior_map_io.load_behavior_map (WI-mokim).
+"""Tests for survey_io.load_behavior_map (WI-mokim; renamed from behavior_map_io per ADR-0042).
 
 Covers the symmetric consumer-side helper for the producer-side --gzip
 output introduced by WI-kojob. The helper must round-trip both plain
@@ -9,12 +9,13 @@ producer's path-suffix routing in cli.cmd_run).
 """
 
 import gzip
+import importlib
 import json
 from pathlib import Path
 
 import pytest
 
-from hypergumbo_core.behavior_map_io import (
+from hypergumbo_core.survey_io import (
     CANONICAL_SURVEY_FILENAME,
     LEGACY_SURVEY_FILENAMES,
     SURVEY_FILENAMES,
@@ -47,21 +48,21 @@ def _write(path, obj):
 
 
 def test_load_plain_json(tmp_path):
-    path = tmp_path / "bm.json"
+    path = tmp_path / "survey.json"
     path.write_text(json.dumps(SAMPLE_MAP))
     assert load_behavior_map(path) == SAMPLE_MAP
 
 
 def test_load_gzipped_json(tmp_path):
-    path = tmp_path / "bm.json.gz"
+    path = tmp_path / "survey.json.gz"
     with gzip.open(path, "wt") as f:
         json.dump(SAMPLE_MAP, f)
     assert load_behavior_map(path) == SAMPLE_MAP
 
 
 def test_plain_and_gzip_round_trip_equivalent(tmp_path):
-    plain = tmp_path / "bm.json"
-    gz = tmp_path / "bm.json.gz"
+    plain = tmp_path / "survey.json"
+    gz = tmp_path / "survey.json.gz"
     plain.write_text(json.dumps(SAMPLE_MAP))
     with gzip.open(gz, "wt") as f:
         json.dump(SAMPLE_MAP, f)
@@ -75,7 +76,7 @@ def test_missing_file_raises_filenotfound(tmp_path):
 
 
 def test_accepts_string_path(tmp_path):
-    path = tmp_path / "bm.json"
+    path = tmp_path / "survey.json"
     path.write_text(json.dumps(SAMPLE_MAP))
     assert load_behavior_map(str(path)) == SAMPLE_MAP
 
@@ -84,7 +85,7 @@ def test_gzip_suffix_match_is_case_sensitive_lowercase(tmp_path):
     """Producer always writes lowercase `.gz`; consumer matches that
     literal suffix. A `.GZ` upper-case path is treated as plain text
     (mirrors the producer side which never emits upper-case suffixes)."""
-    path = tmp_path / "bm.json.GZ"
+    path = tmp_path / "survey.json.GZ"
     path.write_text(json.dumps(SAMPLE_MAP))
     assert load_behavior_map(path) == SAMPLE_MAP
 
@@ -181,12 +182,12 @@ def test_find_survey_in_dir_returns_none_when_empty(tmp_path):
 
 
 def test_load_substrate_valid_returns_dict(tmp_path):
-    p = _write(tmp_path / "bm.json", WELL_FORMED)
+    p = _write(tmp_path / "survey.json", WELL_FORMED)
     assert load_substrate(p) == WELL_FORMED
 
 
 def test_load_substrate_gzip_round_trips(tmp_path):
-    p = tmp_path / "bm.json.gz"
+    p = tmp_path / "survey.json.gz"
     with gzip.open(p, "wt") as f:
         json.dump(WELL_FORMED, f)
     assert load_substrate(p) == WELL_FORMED
@@ -340,4 +341,42 @@ def test_cli_has_no_raw_behavior_map_reads():
     source = cli_path.read_text()
     assert "json.loads(input_path.read_text())" not in source
     assert "json.loads(input_file.read_text())" not in source
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# ADR-0042 (WI-kisoj): behavior_map_io is a deprecation shim for survey_io.
+# Lives here (not a separate module) so it stays inside the change-detection
+# manifest CI runs — the shim is the ONLY importer of behavior_map_io, so a
+# test in an un-selected file would leave the shim at 0% coverage in CI.
+# ─────────────────────────────────────────────────────────────────────────
+
+
+def test_behavior_map_io_shim_reexports_survey_io_and_warns() -> None:
+    import hypergumbo_core.behavior_map_io as shim
+    from hypergumbo_core import survey_io
+
+    # A fresh (re)import fires the module-level DeprecationWarning, regardless
+    # of whether an earlier test already imported (and cached) the shim.
+    with pytest.warns(DeprecationWarning, match="survey_io"):
+        importlib.reload(shim)
+
+    # Every re-exported name is the exact object from the new home.
+    assert shim.CANONICAL_SURVEY_FILENAME == survey_io.CANONICAL_SURVEY_FILENAME
+    assert shim.LEGACY_SURVEY_FILENAMES == survey_io.LEGACY_SURVEY_FILENAMES
+    assert shim.SURVEY_FILENAMES == survey_io.SURVEY_FILENAMES
+    assert shim.SubstrateError is survey_io.SubstrateError
+    assert shim.load_substrate is survey_io.load_substrate
+    assert shim.load_behavior_map is survey_io.load_behavior_map
+    assert shim.find_behavior_map is survey_io.find_behavior_map
+    assert shim.find_survey_in_dir is survey_io.find_survey_in_dir
+    assert set(shim.__all__) == {
+        "CANONICAL_SURVEY_FILENAME",
+        "LEGACY_SURVEY_FILENAMES",
+        "SURVEY_FILENAMES",
+        "SubstrateError",
+        "find_behavior_map",
+        "find_survey_in_dir",
+        "load_behavior_map",
+        "load_substrate",
+    }
 

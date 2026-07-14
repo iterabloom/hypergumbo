@@ -93,7 +93,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
 import pool_utils  # noqa: E402
 
 # WI-mokim: consumer-side .gz handling for `hypergumbo run --gzip` outputs.
-from hypergumbo_core.behavior_map_io import find_behavior_map, load_behavior_map  # noqa: E402
+from hypergumbo_core.survey_io import find_behavior_map, load_behavior_map  # noqa: E402
 
 
 # =============================================================================

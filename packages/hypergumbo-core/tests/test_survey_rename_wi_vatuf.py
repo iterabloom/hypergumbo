@@ -18,7 +18,7 @@ from unittest.mock import patch
 
 import pytest
 
-from hypergumbo_core.behavior_map_io import CANONICAL_SURVEY_FILENAME
+from hypergumbo_core.survey_io import CANONICAL_SURVEY_FILENAME
 from hypergumbo_core.cli import build_parser, cmd_run, main
 from hypergumbo_core.sketch import _peek_cached_results
 from hypergumbo_core.sketch_embeddings import _get_results_cache_dir

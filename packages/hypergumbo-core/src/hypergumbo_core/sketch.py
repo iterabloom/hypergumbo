@@ -5986,7 +5986,7 @@ def _peek_cached_results(repo_root: Path) -> Optional[dict]:
     cache exists. Never triggers ``run_behavior_map`` (the impl owns the
     cold-cache auto-run). Returns ``None`` on any miss/error.
     """
-    from .behavior_map_io import find_survey_in_dir
+    from .survey_io import find_survey_in_dir
     from .sketch_embeddings import _get_results_cache_dir
 
     try:
@@ -6178,7 +6178,7 @@ def _generate_sketch_impl(
     # Auto-discover cached results from cache directory if not explicitly provided
     # If no cache exists, run analysis first to populate it
     if cached_results is None:
-        from .behavior_map_io import find_survey_in_dir
+        from .survey_io import find_survey_in_dir
         from .sketch_embeddings import _get_results_cache_dir
         try:
             cache_dir = _get_results_cache_dir(repo_root)

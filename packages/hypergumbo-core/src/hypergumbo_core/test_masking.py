@@ -36,7 +36,7 @@ import sys
 from pathlib import Path
 from typing import TextIO
 
-from .behavior_map_io import find_survey_in_dir
+from .survey_io import find_survey_in_dir
 
 
 # Default threshold: tests with mean duration above this are candidates
