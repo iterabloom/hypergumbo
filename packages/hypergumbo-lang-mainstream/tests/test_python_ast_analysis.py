@@ -8430,6 +8430,273 @@ def test_run_module_attr_ref_coreferent_guard_different_module_stays_phantom(
     )
 
 
+def test_run_module_attr_ref_enclosing_param_shadow_no_references(
+    tmp_path: Path,
+) -> None:
+    """WI-luhah (1c) INV-fahub enclosing-scope closure-capture shadow: with a
+    module-level ``import authpkg.config as cfg`` and ``def outer(cfg): def
+    inner(): return cfg.CONFIG``, ``inner``'s ``cfg`` is ``outer``'s PARAMETER
+    captured by closure, NOT the module alias — so the module-attr retarget must
+    NOT mint a resolved references edge from ``inner`` to the module CONFIG.
+    ``inner``'s immediate local_bindings exclude ``outer``'s param, so the guard
+    needs the enclosing-scope binding union. Fails RED before the union (inner ->
+    CONFIG confidently-wrong resolved edge)."""
+    _build_nuzas_monorepo(tmp_path)
+    auth = tmp_path / "packages" / "auth" / "src" / "authpkg"
+    (auth / "config.py").write_text("CONFIG = {'a': 1}\n")
+    (tmp_path / "packages" / "api" / "src" / "apipkg" / "u.py").write_text(
+        "import authpkg.config as cfg\n"
+        "def outer(cfg):\n"
+        "    def inner():\n"
+        "        return cfg.CONFIG\n"
+        "    return inner\n"
+    )
+    out_path = tmp_path / "out.json"
+    run_behavior_map(
+        repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False
+    )
+    data = json.loads(out_path.read_text())
+    config_var = next(
+        (n["id"] for n in data["nodes"]
+         if n["kind"] == "variable" and n.get("name") == "CONFIG"
+         and "config.py" in n.get("path", "")), None
+    )
+    inner_fn = next(
+        (n["id"] for n in data["nodes"]
+         if n.get("name") == "outer.inner" and n["kind"] == "function"), None
+    )
+    assert config_var is not None and inner_fn is not None, (
+        f"fixture nodes must exist: config_var={config_var}, inner_fn={inner_fn}"
+    )
+    refs = [
+        e for e in data["edges"]
+        if e["type"] == "references" and e["src"] == inner_fn
+        and e["dst"] == config_var
+    ]
+    assert refs == [], (
+        "an enclosing param shadowing a module alias must not emit a references "
+        f"edge from the nested function to the module constant; got {refs}"
+    )
+
+
+def test_run_module_attr_ref_module_scope_rebind_no_references(
+    tmp_path: Path,
+) -> None:
+    """WI-luhah (2) INV-fahub module-scope rebind shadow: with ``import
+    authpkg.config as cfg; cfg = make_cfg(); X = cfg.CONFIG`` at MODULE scope, the
+    module-level reassignment rebinds ``cfg`` off the import alias, so the read
+    ``cfg.CONFIG`` must NOT retarget to the module CONFIG. The module-scope
+    _emit_module_attr_refs caller passes EMPTY local_bindings, so a module-level
+    reassignment of the import alias is unguarded. Fails RED before the
+    module-scope shadow set (<module> -> CONFIG confidently-wrong resolved
+    edge)."""
+    _build_nuzas_monorepo(tmp_path)
+    auth = tmp_path / "packages" / "auth" / "src" / "authpkg"
+    (auth / "config.py").write_text("CONFIG = {'a': 1}\n")
+    (tmp_path / "packages" / "api" / "src" / "apipkg" / "u.py").write_text(
+        "import authpkg.config as cfg\n"
+        "def make_cfg():\n"
+        "    return object()\n"
+        "cfg = make_cfg()\n"
+        "X = cfg.CONFIG\n"
+    )
+    out_path = tmp_path / "out.json"
+    run_behavior_map(
+        repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False
+    )
+    data = json.loads(out_path.read_text())
+    config_var = next(
+        (n["id"] for n in data["nodes"]
+         if n["kind"] == "variable" and n.get("name") == "CONFIG"
+         and "config.py" in n.get("path", "")), None
+    )
+    assert config_var is not None, "fixture CONFIG variable node must exist"
+    refs = [
+        e for e in data["edges"]
+        if e["type"] == "references" and e.get("dst") == config_var
+    ]
+    assert refs == [], (
+        "a module-scope reassignment of an import alias must not emit a "
+        f"references edge to the module constant; got {refs}"
+    )
+
+
+def test_run_variable_ref_enclosing_param_shadow_no_references(
+    tmp_path: Path,
+) -> None:
+    """WI-luhah (1c) sibling _emit_variable_refs: with a module-level variable
+    ``COUNTER`` and ``def outer(COUNTER): def inner(): return COUNTER``,
+    ``inner``'s bare ``COUNTER`` read is ``outer``'s PARAMETER (closure capture),
+    NOT the module variable — so no references edge from ``inner`` to the module
+    variable. Same enclosing-scope-union gap as the module_attr_ref sibling."""
+    _build_nuzas_monorepo(tmp_path)
+    (tmp_path / "packages" / "api" / "src" / "apipkg" / "u.py").write_text(
+        "COUNTER = 0\n"
+        "def outer(COUNTER):\n"
+        "    def inner():\n"
+        "        return COUNTER\n"
+        "    return inner\n"
+    )
+    out_path = tmp_path / "out.json"
+    run_behavior_map(
+        repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False
+    )
+    data = json.loads(out_path.read_text())
+    counter_var = next(
+        (n["id"] for n in data["nodes"]
+         if n["kind"] == "variable" and n.get("name") == "COUNTER"
+         and "u.py" in n.get("path", "")), None
+    )
+    inner_fn = next(
+        (n["id"] for n in data["nodes"]
+         if n.get("name") == "outer.inner" and n["kind"] == "function"), None
+    )
+    assert counter_var is not None and inner_fn is not None, (
+        f"fixture nodes must exist: counter_var={counter_var}, inner_fn={inner_fn}"
+    )
+    refs = [
+        e for e in data["edges"]
+        if e["type"] == "references" and e["src"] == inner_fn
+        and e["dst"] == counter_var
+    ]
+    assert refs == [], (
+        "an enclosing param shadowing a module variable must not emit a "
+        f"references edge from the nested function to the module variable; "
+        f"got {refs}"
+    )
+
+
+def test_run_variable_ref_module_scope_import_over_var_no_references(
+    tmp_path: Path,
+) -> None:
+    """WI-luhah (2) sibling _emit_variable_refs: a module-level ``import`` (plain
+    or ``from``) that rebinds a name off a same-named module-level VARIABLE must
+    suppress the bare-name references retarget — the read is the import, not the
+    variable. The module-scope caller passes EMPTY local_bindings, leaving the
+    import-over-variable shadow unguarded. Covers both plain and ``from`` import
+    aliases. Fails RED before the module-scope import-alias shadow."""
+    _build_nuzas_monorepo(tmp_path)  # authpkg.helpers exists
+    (tmp_path / "packages" / "api" / "src" / "apipkg" / "u.py").write_text(
+        "PLAINV = 1\n"
+        "import authpkg.helpers as PLAINV\n"
+        "FROMV = 2\n"
+        "from authpkg import helpers as FROMV\n"
+        "a = PLAINV\n"
+        "b = FROMV\n"
+    )
+    out_path = tmp_path / "out.json"
+    run_behavior_map(
+        repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False
+    )
+    data = json.loads(out_path.read_text())
+    plain_var = next(
+        (n["id"] for n in data["nodes"]
+         if n["kind"] == "variable" and n.get("name") == "PLAINV"
+         and "u.py" in n.get("path", "")), None
+    )
+    from_var = next(
+        (n["id"] for n in data["nodes"]
+         if n["kind"] == "variable" and n.get("name") == "FROMV"
+         and "u.py" in n.get("path", "")), None
+    )
+    assert plain_var is not None and from_var is not None, (
+        f"fixture vars must exist: plain_var={plain_var}, from_var={from_var}"
+    )
+    wrong = [
+        e for e in data["edges"]
+        if e["type"] == "references" and e.get("dst") in {plain_var, from_var}
+    ]
+    assert wrong == [], (
+        "a module-level import shadowing a same-named module variable must not "
+        f"emit a references edge to the variable; got {wrong}"
+    )
+
+
+def test_run_module_attr_ref_module_scope_comprehension_target_not_shadowed(
+    tmp_path: Path,
+) -> None:
+    """WI-luhah gap 2 precision: a module-level comprehension for-target is
+    comprehension-scoped (Python-3) and does NOT rebind a same-named module
+    import alias, so ``_collect_module_rebound_names`` must NOT descend into the
+    comprehension and collect it — the ``cfg.CONFIG`` retarget must still
+    resolve. Guards against the over-suppression the naive walk would cause."""
+    _build_nuzas_monorepo(tmp_path)
+    auth = tmp_path / "packages" / "auth" / "src" / "authpkg"
+    (auth / "config.py").write_text("CONFIG = {'a': 1}\n")
+    (tmp_path / "packages" / "api" / "src" / "apipkg" / "u.py").write_text(
+        "import authpkg.config as cfg\n"
+        "data = [cfg for cfg in range(3)]\n"
+        "X = cfg.CONFIG\n"
+    )
+    out_path = tmp_path / "out.json"
+    run_behavior_map(
+        repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False
+    )
+    data = json.loads(out_path.read_text())
+    config_var = next(
+        (n["id"] for n in data["nodes"]
+         if n["kind"] == "variable" and n.get("name") == "CONFIG"
+         and "config.py" in n.get("path", "")), None
+    )
+    assert config_var is not None, "fixture CONFIG variable node must exist"
+    refs = [
+        e for e in data["edges"]
+        if e["type"] == "references" and e.get("dst") == config_var
+    ]
+    assert len(refs) == 1 and refs[0]["is_resolved"] is True, (
+        "a module-level comprehension for-target must not shadow a same-named "
+        f"import alias; cfg.CONFIG must still resolve; got {refs}"
+    )
+
+
+def test_run_module_attr_ref_enclosing_param_shadow_transitive_no_references(
+    tmp_path: Path,
+) -> None:
+    """WI-luhah gap 1c transitive: a 3-level nest where the INNERMOST function
+    reads ``cfg.CONFIG`` and ``cfg`` is the GRANDPARENT's param must not resolve
+    — ``_enclosing_shadow`` must walk the FULL enclosing chain, not just the
+    immediate parent. A 1-hop-only regression would keep the 2-level tests green
+    while re-minting the wrong ``a.b.c -> CONFIG`` edge."""
+    _build_nuzas_monorepo(tmp_path)
+    auth = tmp_path / "packages" / "auth" / "src" / "authpkg"
+    (auth / "config.py").write_text("CONFIG = {'a': 1}\n")
+    (tmp_path / "packages" / "api" / "src" / "apipkg" / "u.py").write_text(
+        "import authpkg.config as cfg\n"
+        "def a(cfg):\n"
+        "    def b():\n"
+        "        def c():\n"
+        "            return cfg.CONFIG\n"
+        "        return c\n"
+        "    return b\n"
+    )
+    out_path = tmp_path / "out.json"
+    run_behavior_map(
+        repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False
+    )
+    data = json.loads(out_path.read_text())
+    config_var = next(
+        (n["id"] for n in data["nodes"]
+         if n["kind"] == "variable" and n.get("name") == "CONFIG"
+         and "config.py" in n.get("path", "")), None
+    )
+    c_fn = next(
+        (n["id"] for n in data["nodes"]
+         if n.get("name") == "a.b.c" and n["kind"] == "function"), None
+    )
+    assert config_var is not None and c_fn is not None, (
+        f"fixture nodes must exist: config_var={config_var}, c_fn={c_fn}"
+    )
+    refs = [
+        e for e in data["edges"]
+        if e["type"] == "references" and e["src"] == c_fn
+        and e["dst"] == config_var
+    ]
+    assert refs == [], (
+        "a grandparent param shadowing a module alias must not emit a references "
+        f"edge from the deeply-nested function; got {refs}"
+    )
+
+
 def test_run_module_attr_ref_nested_read_not_attributed_to_enclosing(
     tmp_path: Path,
 ) -> None:

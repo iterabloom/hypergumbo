@@ -3449,6 +3449,37 @@ def _extract_edges(
         _walk_scope(list(ast.iter_child_nodes(func_node)))
         return frozenset(names)
 
+    def _enclosing_shadow(caller_id: str) -> frozenset[str]:
+        """WI-luhah gap 1c / INV-fahub: the union of every STRICT enclosing
+        function's locally-bound names (the existing LEGB ``local_names_by_func_id``
+        set — params / assignments / imports).
+
+        A read ``m.attr`` (``_emit_module_attr_refs``) or bare ``m``
+        (``_emit_variable_refs``) inside a NESTED function whose ``m`` is a
+        closure-captured enclosing PARAM or local (a value, not the module alias)
+        must not retarget to a module symbol. The nested scope's own
+        ``_collect_local_bindings`` sees only its immediate bindings and misses
+        the enclosing param, so thread the ``enclosing_func_id`` chain and union
+        each ancestor's local names (the WI-luhah plan names this set as the
+        intended union source). The set also carries an enclosing plain-``import``
+        alias, so a nested read of an enclosing *function-local* in-tree import
+        stays phantom rather than resolving — an accepted, INV-fahub-safe
+        over-approximation (a missed retarget, never a confidently-wrong edge).
+        The union also over-shadows an enclosing ``global``/``nonlocal``-declared
+        name (another INV-fahub-safe missed retarget). Documented residual: this
+        set (``_collect_scope_local_names``) omits enclosing ``def``/``class``
+        statement names and ``except E as X`` handler names, so the pathological
+        case of one of those *colliding with a module import alias* keeps its
+        confidently-wrong retarget — closing it would require a dedicated
+        per-function shadow collector distinct from the LEGB local_names set.
+        """
+        names: set[str] = set()
+        cur = enclosing_func_id.get(caller_id)
+        while cur is not None:
+            names |= local_names_by_func_id.get(cur, frozenset())
+            cur = enclosing_func_id.get(cur)
+        return frozenset(names)
+
     def _emit_variable_refs(
         body_nodes: list[ast.AST],
         caller_symbol: Symbol,
@@ -4398,16 +4429,20 @@ def _extract_edges(
                     local_names_by_func_id,
                 )
                 _emit_closure_factory_dispatch(node, caller_symbol, inner_scope)
+                # WI-luhah gap 1c: add the enclosing-scope binding union so a
+                # closure-captured enclosing param/local shadowing a module alias
+                # suppresses the (otherwise confidently-wrong) retarget.
+                _enclosing = _enclosing_shadow(caller_symbol.id)
                 _emit_module_attr_refs(
                     node.body, caller_symbol,
                     local_bindings=_collect_local_bindings(
                         node, include_import_aliases=False
-                    ),
+                    ) | _enclosing,
                 )
                 process_code_block(node.body, caller_symbol, param_types, stack=stack)
                 _emit_variable_refs(
                     node.body, caller_symbol,
-                    local_bindings=_collect_local_bindings(node),
+                    local_bindings=_collect_local_bindings(node) | _enclosing,
                 )
 
         # Process class decorators
@@ -4424,7 +4459,13 @@ def _extract_edges(
             node for node in tree.body
             if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
         ]
-        _emit_module_attr_refs(module_level_nodes, module_symbol)
+        # WI-luhah gap 2: guard the module-scope retarget with the module-level
+        # reassignment set so a module-level `import config as cfg; cfg = ...`
+        # rebind suppresses the (otherwise confidently-wrong) `cfg.attr` retarget.
+        _emit_module_attr_refs(
+            module_level_nodes, module_symbol,
+            local_bindings=_collect_module_rebound_names(tree),
+        )
         # A single module frame with EMPTY bindings: behaviorally identical to
         # stack=None for every resolution surface (immediate/enclosing lookups
         # return None), but its local_names carry the module-scope rebound names
@@ -4436,7 +4477,13 @@ def _extract_edges(
             local_names=_collect_module_local_names(tree),
         )])
         process_code_block(module_level_nodes, module_symbol, stack=module_stack)
-        _emit_variable_refs(module_level_nodes, module_symbol)
+        # WI-luhah gap 2 (references sibling): a module-level import that rebinds
+        # a same-named module VARIABLE shadows the bare-name read, so it must not
+        # resolve to the variable.
+        _emit_variable_refs(
+            module_level_nodes, module_symbol,
+            local_bindings=_collect_module_import_aliases(tree),
+        )
 
     return edges
 
@@ -4522,6 +4569,95 @@ def _collect_module_local_names(tree: ast.Module) -> frozenset[str]:
     """
     bound, nonlocals = _collect_bound_names(list(ast.iter_child_nodes(tree)))
     return frozenset(bound - nonlocals)
+
+
+def _collect_module_rebound_names(tree: ast.Module) -> frozenset[str]:
+    """Module-level names REASSIGNED via an assignment target (``ast.Store``),
+    skipping nested function/class scopes.
+
+    Feeds the module-scope ``module_attr_ref`` retarget shadow (WI-luhah gap 2 /
+    INV-fahub): a module-level ``import config as cfg`` followed by ``cfg =
+    make_cfg()`` rebinds the alias off its module, so a later ``cfg.CONFIG`` read
+    must NOT retarget to the module ``CONFIG``. The module-scope caller otherwise
+    passes EMPTY local_bindings, leaving that reassignment unguarded.
+
+    Only reassignment targets are collected — plain ``import config as cfg``
+    aliases are deliberately excluded (they are the resolvable alias, the
+    load-bearing ``include_import_aliases=False`` distinction from
+    ``_collect_local_bindings``; ``_collect_module_local_names`` includes imports
+    and so cannot be reused). ``from``-imports need no handling: they populate
+    ``symbol_imports`` not ``module_imports``, so a ``from``-imported name never
+    reaches the module_attr_ref retarget gate.
+
+    Nested function / class / comprehension / lambda scopes are skipped: a
+    comprehension for-target (``[cfg for cfg in ...]``) is comprehension-local
+    under Python-3 scoping and must NOT be treated as a module-scope rebind (it
+    would over-suppress a valid ``cfg.attr`` retarget). Documented residual (not
+    a rebind form handled here — matching the assignment/param scope of the
+    WI-luhah gaps): a ``def cfg(): ...`` / ``class cfg: ...`` / ``except E as
+    cfg:`` whose statement name *collides with an import alias* is not collected,
+    so that pathological case keeps its confidently-wrong retarget (a walrus
+    ``:=`` target that leaks from a comprehension is likewise not caught).
+    """
+    own_scopes = (
+        ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef,
+        ast.Lambda, ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp,
+    )
+    names: set[str] = set()
+
+    def _walk(nodes: list[ast.AST]) -> None:
+        for node in nodes:
+            if isinstance(node, own_scopes):
+                continue  # nested function/class/comprehension/lambda: own scope
+            if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store):
+                names.add(node.id)
+            for child in ast.iter_child_nodes(node):
+                _walk([child])
+
+    _walk(list(ast.iter_child_nodes(tree)))
+    return frozenset(names)
+
+
+def _collect_module_import_aliases(tree: ast.Module) -> frozenset[str]:
+    """Module-level names bound by an ``import`` / ``from`` import, skipping
+    nested function/class scopes.
+
+    Feeds the module-scope ``references`` retarget shadow (WI-luhah gap 2, the
+    ``_emit_variable_refs`` sibling / INV-fahub): a module-level ``import mod as
+    X`` (or ``from pkg import mod as X``) rebinds the bare name ``X`` off a
+    same-named module-level VARIABLE, so a bare ``X`` read must NOT resolve to
+    that variable. This is the *opposite direction* from
+    ``_collect_module_rebound_names`` (assignment targets, for the
+    ``module_attr_ref`` sibling, where an assignment shadows an import alias):
+    the variable-reference retarget's wrong case is an import shadowing a var.
+
+    Flow-insensitive (like the function-scope ``_collect_local_bindings``): a
+    name that is *both* an import alias and later reassigned to a value
+    (``import os as x; x = f(); use(x)``) is shadowed unconditionally, so the
+    read stays phantom instead of resolving to the reassigned variable. That is
+    the INV-fahub-safe direction — the opposite choice (drop the shadow when the
+    name is also assigned) would re-mint a confidently-wrong edge for the
+    ``x = 1; import mod as x; use(x)`` order, which no flow-insensitive walk can
+    distinguish.
+    """
+    scope_boundary = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
+    names: set[str] = set()
+
+    def _walk(nodes: list[ast.AST]) -> None:
+        for node in nodes:
+            if isinstance(node, scope_boundary):
+                continue  # nested scope: its imports are not module-level
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    names.add(alias.asname or alias.name.split(".")[0])
+            elif isinstance(node, ast.ImportFrom):
+                for alias in node.names:
+                    names.add(alias.asname or alias.name)
+            for child in ast.iter_child_nodes(node):
+                _walk([child])
+
+    _walk(list(ast.iter_child_nodes(tree)))
+    return frozenset(names)
 
 
 def _build_scope_stack(
