@@ -2359,3 +2359,141 @@ class TestCppComplexityAndLoc:
             assert fn.cyclomatic_complexity is not None, fn.name
             assert fn.line_span is not None, fn.name
 
+
+
+class TestCppFieldVariableSymbols:
+    """WI-jusus: C++ class/struct member fields (kind='field') and top-level /
+    namespace variables (kind='variable'). Fields are the structurally-distinct
+    ``field_declaration`` node (no scope walk); variables share the
+    ``declaration`` node with function-body locals and so need a module-scope
+    gate (INV-sidab/INV-lanaz). Member-function declarations, nested types, and
+    function prototypes must NOT leak as fields/variables."""
+
+    @staticmethod
+    def _fields(result: object) -> dict:
+        return {s.name: s for s in result.symbols if s.kind == "field"}
+
+    @staticmethod
+    def _vars(result: object) -> dict:
+        return {s.name: s for s in result.symbols if s.kind == "variable"}
+
+    def test_class_public_field_emitted_and_exported(self, tmp_path: Path) -> None:
+        (tmp_path / "a.cpp").write_text("class Widget {\npublic:\n  int width;\n};\n")
+        fields = self._fields(analyze_cpp(tmp_path))
+        assert "Widget::width" in fields
+        f = fields["Widget::width"]
+        assert f.is_exported is True
+        assert f.signature == "int"
+
+    def test_struct_field_default_public(self, tmp_path: Path) -> None:
+        (tmp_path / "a.cpp").write_text("struct Point {\n  int x;\n  int y;\n};\n")
+        fields = self._fields(analyze_cpp(tmp_path))
+        assert "Point::x" in fields and "Point::y" in fields
+        assert fields["Point::x"].is_exported is True
+
+    def test_class_field_default_private_not_exported(self, tmp_path: Path) -> None:
+        (tmp_path / "a.cpp").write_text("class C {\n  int secret;\n};\n")
+        fields = self._fields(analyze_cpp(tmp_path))
+        assert "C::secret" in fields
+        assert fields["C::secret"].is_exported is False
+
+    def test_protected_field_not_exported(self, tmp_path: Path) -> None:
+        (tmp_path / "a.cpp").write_text(
+            "class C {\nprotected:\n  int mid;\npublic:\n  int shown;\n};\n"
+        )
+        fields = self._fields(analyze_cpp(tmp_path))
+        assert fields["C::mid"].is_exported is False
+        assert fields["C::shown"].is_exported is True
+
+    def test_member_function_declaration_not_field(self, tmp_path: Path) -> None:
+        (tmp_path / "a.cpp").write_text(
+            "class W {\npublic:\n  void move();\n  W* clone() const;\n  int width;\n};\n"
+        )
+        fields = self._fields(analyze_cpp(tmp_path))
+        assert "W::move" not in fields
+        assert "W::clone" not in fields
+        assert "W::width" in fields  # the real field still emits
+
+    def test_nested_type_not_field(self, tmp_path: Path) -> None:
+        (tmp_path / "a.cpp").write_text(
+            "class W {\npublic:\n  struct Inner { int z; };\n  enum Mode { A, B };\n};\n"
+        )
+        fields = self._fields(analyze_cpp(tmp_path))
+        assert "W::Inner" not in fields
+        assert "W::Mode" not in fields
+        assert "Inner::z" in fields  # the nested struct's own field IS emitted
+
+    def test_multi_declarator_pointer_array_fields(self, tmp_path: Path) -> None:
+        (tmp_path / "a.cpp").write_text(
+            "class C {\npublic:\n  double x_, y_;\n  char* name;\n  int arr[4];\n};\n"
+        )
+        fields = self._fields(analyze_cpp(tmp_path))
+        assert "C::x_" in fields and "C::y_" in fields
+        assert "C::name" in fields
+        assert "C::arr" in fields
+
+    def test_static_member_field(self, tmp_path: Path) -> None:
+        (tmp_path / "a.cpp").write_text(
+            "class C {\npublic:\n  static int count;\n};\n"
+        )
+        fields = self._fields(analyze_cpp(tmp_path))
+        assert "C::count" in fields
+        assert "static" in fields["C::count"].modifiers
+
+    def test_toplevel_variable_emitted(self, tmp_path: Path) -> None:
+        (tmp_path / "a.cpp").write_text(
+            'int g_counter = 0;\nconst char* NAME = "x";\n'
+        )
+        vars_ = self._vars(analyze_cpp(tmp_path))
+        assert "g_counter" in vars_
+        assert "NAME" in vars_
+        assert vars_["g_counter"].is_exported is True
+
+    def test_namespace_global_is_variable(self, tmp_path: Path) -> None:
+        (tmp_path / "a.cpp").write_text("namespace ns {\n  int nsGlobal = 1;\n}\n")
+        vars_ = self._vars(analyze_cpp(tmp_path))
+        assert "nsGlobal" in vars_
+
+    def test_static_global_not_exported(self, tmp_path: Path) -> None:
+        (tmp_path / "a.cpp").write_text("static int s_count = 0;\n")
+        vars_ = self._vars(analyze_cpp(tmp_path))
+        assert "s_count" in vars_
+        assert vars_["s_count"].is_exported is False
+        assert "static" in vars_["s_count"].modifiers
+
+    def test_function_local_not_variable(self, tmp_path: Path) -> None:
+        """INV-sidab: function-body locals must NOT leak as module variables."""
+        (tmp_path / "a.cpp").write_text(
+            "void fn() {\n  int local = 3;\n  const int k = 4;\n}\n"
+        )
+        vars_ = self._vars(analyze_cpp(tmp_path))
+        assert "local" not in vars_
+        assert "k" not in vars_
+
+    def test_function_prototype_not_variable(self, tmp_path: Path) -> None:
+        (tmp_path / "a.cpp").write_text("int forward_proto(int);\n")
+        vars_ = self._vars(analyze_cpp(tmp_path))
+        assert "forward_proto" not in vars_
+
+    def test_register_symbol_skips_field_and_variable(self) -> None:
+        """The chokepoint: field/variable data anchors never enter the
+        call-resolution registry, so a bare-named global/member cannot clobber a
+        same-named function's flat key (a function stays the call target)."""
+        from hypergumbo_core.ir import Symbol, Span
+        from hypergumbo_lang_mainstream.cpp import _analyzer
+
+        def _sym(name: str, kind: str) -> Symbol:
+            return Symbol(
+                id=f"cpp:/a.cpp:1-1:{name}:{kind}", name=name, kind=kind,
+                language="cpp", path="/a.cpp",
+                span=Span(start_line=1, end_line=1, start_col=0, end_col=0),
+                origin="test", origin_run_id="r",
+            )
+
+        registry: dict = {}
+        _analyzer.register_symbol(_sym("C::x", "field"), registry)
+        _analyzer.register_symbol(_sym("g", "variable"), registry)
+        assert registry == {}  # neither data anchor registered
+        _analyzer.register_symbol(_sym("g", "function"), registry)
+        assert registry.get("g") is not None
+        assert registry["g"].kind == "function"
