@@ -1778,6 +1778,139 @@ def _extract_ruby_delegates(
 # Ruby's require_hints are stored in FileAnalysis.import_aliases.
 
 
+_RUBY_ATTR_MACROS = frozenset({"attr_accessor", "attr_reader", "attr_writer"})
+
+
+def _emit_ruby_data_symbol(
+    analysis: FileAnalysis,
+    node: "tree_sitter.Node",
+    full_name: str,
+    member: str,
+    kind: str,
+    is_exported: bool,
+    source: bytes,
+    file_path: str,
+    file_stable_id: str,
+    run_id: str,
+) -> None:
+    """Append one WI-jusus field/variable Symbol.
+
+    Mirrors the class/method symbol shape (canonical ``compute_stable_id`` with a
+    ``::``-qualified ``qualified_name``). The symbol is added to
+    ``analysis.symbols`` only — NOT ``symbol_by_name`` — so a data anchor never
+    shadows a same-named method during per-file resolution; the
+    ``register_symbol`` chokepoint likewise keeps it out of the global registry.
+    """
+    start_line = node.start_point[0] + 1
+    end_line = node.end_point[0] + 1
+    ruby_chain = _get_ruby_class_or_module_chain(node, source)
+    qualified = _make_ruby_qualified_name(ruby_chain, member)
+    symbol = Symbol(
+        id=make_symbol_id(
+            "ruby", str(file_path), start_line, end_line, full_name, kind,
+        ),
+        name=full_name,
+        kind=kind,
+        language="ruby",
+        path=str(file_path),
+        span=Span(
+            start_line=start_line,
+            end_line=end_line,
+            start_col=node.start_point[1],
+            end_col=node.end_point[1],
+        ),
+        origin=PASS_ID,
+        origin_run_id=run_id,
+        is_exported=is_exported,
+        line_span=end_line - start_line + 1,
+        qualified_name=qualified,
+        stable_id=_analyzer.compute_stable_id(
+            node, kind=kind, name=full_name,
+            qualified_name=qualified, file_stable_id=file_stable_id,
+        ),
+        shape_id=_analyzer.compute_shape_id(node),
+    )
+    analysis.symbols.append(symbol)
+    analysis.node_for_symbol[symbol.id] = node
+
+
+def _emit_ruby_data_symbols(
+    analysis: FileAnalysis,
+    tree: "tree_sitter.Tree",
+    source: bytes,
+    file_path: str,
+    file_stable_id: str,
+    run_id: str,
+) -> None:
+    """Emit kind="field" / kind="variable" data anchors for Ruby (WI-jusus).
+
+    Ruby has no lexical field declaration, so the statically-recoverable declared
+    data members are: class/module-body CONSTANTS and ``@@`` class variables
+    (kind=field, owner = the enclosing class/module), top-level CONSTANTS
+    (kind=variable), and ``attr_accessor`` / ``attr_reader`` / ``attr_writer``
+    attributes (kind=field). Members assigned inside a method body — instance
+    variables (``@x``) and method-local constants — are deferred: attributing
+    them to the enclosing class needs a distinct mechanism, so they are skipped
+    via ``_is_nested_in_method``.
+    """
+    for node in iter_tree(tree.root_node):
+        if node.type == "assignment":
+            left = _find_child_by_field(node, "left")
+            if left is None or left.type not in ("constant", "class_variable"):
+                continue
+            if _is_nested_in_method(node):
+                continue
+            member = node_text(left, source)
+            enclosing_name, _enclosing_type = _get_enclosing_class_or_module(
+                node, source,
+            )
+            if enclosing_name is not None:
+                # A class/module-body constant or ``@@`` class variable is a
+                # field of that type. Constants are public by convention; ``@@``
+                # class variables are class-internal state.
+                _emit_ruby_data_symbol(
+                    analysis, left, f"{enclosing_name}::{member}", member,
+                    "field", left.type == "constant",
+                    source, file_path, file_stable_id, run_id,
+                )
+            elif left.type == "constant":
+                # Top-level constant -> module-level variable. (A top-level
+                # ``@@`` class variable is not valid Ruby, so only constants
+                # reach this branch.)
+                _emit_ruby_data_symbol(
+                    analysis, left, member, member, "variable", True,
+                    source, file_path, file_stable_id, run_id,
+                )
+        elif node.type == "call":
+            method_node = _find_child_by_field(node, "method")
+            if (
+                method_node is None
+                or node_text(method_node, source) not in _RUBY_ATTR_MACROS
+            ):
+                continue
+            if _is_nested_in_method(node):
+                continue
+            enclosing_name, _enclosing_type = _get_enclosing_class_or_module(
+                node, source,
+            )
+            if enclosing_name is None:
+                continue
+            args_node = _find_child_by_field(node, "arguments")
+            if args_node is None:  # pragma: no cover - a call always has an argument_list field
+                continue
+            for arg in args_node.children:
+                if arg.type != "simple_symbol":
+                    continue
+                attr = node_text(arg, source).lstrip(":")
+                if not attr:  # pragma: no cover - a simple_symbol always names an attribute
+                    continue
+                _emit_ruby_data_symbol(
+                    analysis, arg, f"{enclosing_name}#{attr}", attr,
+                    "field", True,
+                    source, file_path, file_stable_id, run_id,
+                )
+
+
 def _extract_symbols_from_file(
     tree: "tree_sitter.Tree",
     source: bytes,
@@ -2012,6 +2145,13 @@ def _extract_symbols_from_file(
 
     # Extract require hints for disambiguation (stored in import_aliases)
     analysis.import_aliases = _extract_require_hints(tree, source)
+
+    # WI-jusus: emit kind=field/variable data anchors (constants, attr_*
+    # attributes, class variables). Kept out of symbol_by_name / the call
+    # registry (see _emit_ruby_data_symbols and register_symbol).
+    _emit_ruby_data_symbols(
+        analysis, tree, source, file_path, file_stable_id, run_id,
+    )
 
     return analysis
 
@@ -2897,7 +3037,16 @@ class RubyAnalyzer(TreeSitterAnalyzer):
 
         The ``NameResolver`` suffix index handles short-name lookups
         across ``#`` and ``.`` separators.
+
+        WI-jusus chokepoint: field/variable data anchors (constants, attr_*
+        attributes, class variables) are kept OUT of the call-resolution
+        registry — a data anchor is never a call target, so registering it would
+        let it clobber or suffix-shadow a same-named method. They remain in
+        ``analysis.symbols`` (search / centrality) since the output set is built
+        independently of this registry.
         """
+        if symbol.kind in ("field", "variable"):
+            return
         global_symbols[symbol.name] = symbol
 
     def analyze(

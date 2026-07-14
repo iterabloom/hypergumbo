@@ -5369,3 +5369,133 @@ class TestRubyCyclomaticComplexity:
         sym = next(s for s in result.symbols if s.name == "C.classy")
         assert sym.cyclomatic_complexity is not None
         assert sym.cyclomatic_complexity >= 2
+
+
+class TestRubyFieldVariableSymbols:
+    """WI-jusus: Ruby constants (class/module body -> kind='field'; top level ->
+    kind='variable'), attr_accessor/attr_reader/attr_writer attributes
+    (-> field), and class-body @@class variables (-> field). Members assigned
+    inside method bodies (instance variables, method-local constants) are
+    deferred in this slice, so no method-body scope walk is needed."""
+
+    @staticmethod
+    def _fields(result: object) -> dict:
+        return {s.name: s for s in result.symbols if s.kind == "field"}
+
+    @staticmethod
+    def _vars(result: object) -> dict:
+        return {s.name: s for s in result.symbols if s.kind == "variable"}
+
+    def test_toplevel_constant_is_variable(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+        (tmp_path / "a.rb").write_text("MAX_SIZE = 100\n")
+        vars_ = self._vars(analyze_ruby(tmp_path))
+        assert "MAX_SIZE" in vars_
+        assert vars_["MAX_SIZE"].is_exported is True
+
+    def test_class_constant_is_field(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+        (tmp_path / "a.rb").write_text('class User\n  ROLE = "admin"\nend\n')
+        fields = self._fields(analyze_ruby(tmp_path))
+        assert "User::ROLE" in fields
+        assert fields["User::ROLE"].is_exported is True
+
+    def test_module_constant_is_field(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+        (tmp_path / "a.rb").write_text('module Config\n  VERSION = "1.0"\nend\n')
+        fields = self._fields(analyze_ruby(tmp_path))
+        assert "Config::VERSION" in fields
+
+    def test_attr_accessor_reader_writer_fields(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+        (tmp_path / "a.rb").write_text(
+            "class User\n"
+            "  attr_accessor :name, :email\n"
+            "  attr_reader :id\n"
+            "  attr_writer :secret\n"
+            "end\n"
+        )
+        fields = self._fields(analyze_ruby(tmp_path))
+        assert "User#name" in fields
+        assert "User#email" in fields
+        assert "User#id" in fields
+        assert "User#secret" in fields
+        assert fields["User#name"].is_exported is True
+
+    def test_class_variable_is_field_not_exported(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+        (tmp_path / "a.rb").write_text("class Counter\n  @@count = 0\nend\n")
+        fields = self._fields(analyze_ruby(tmp_path))
+        assert "Counter::@@count" in fields
+        assert fields["Counter::@@count"].is_exported is False
+
+    def test_instance_var_in_method_deferred(self, tmp_path: Path) -> None:
+        """@ivars are assigned inside method bodies (the tricky attribute-to-
+        enclosing-class case) and are deferred in this slice — none emit."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+        (tmp_path / "a.rb").write_text(
+            "class User\n  def initialize\n    @created_at = Time.now\n  end\nend\n"
+        )
+        result = analyze_ruby(tmp_path)
+        assert not [s for s in result.symbols if s.kind in ("field", "variable")]
+
+    def test_method_local_constant_not_emitted(self, tmp_path: Path) -> None:
+        """A constant assigned inside a method body is method-scoped, not a
+        class-body member — it must not emit."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+        (tmp_path / "a.rb").write_text(
+            "class C\n  def build\n    local = 3\n    INNER = 1\n  end\nend\n"
+        )
+        result = analyze_ruby(tmp_path)
+        names = {s.name for s in result.symbols if s.kind in ("field", "variable")}
+        assert "local" not in names
+        assert "C::INNER" not in names and "INNER" not in names
+
+    def test_nested_class_constant_qualified_name(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+        (tmp_path / "a.rb").write_text(
+            "module App\n  class User\n    ROLE = 1\n  end\nend\n"
+        )
+        fields = self._fields(analyze_ruby(tmp_path))
+        assert "User::ROLE" in fields
+        assert fields["User::ROLE"].qualified_name == "App::User::ROLE"
+
+    def test_attr_accessor_in_method_deferred(self, tmp_path: Path) -> None:
+        """A dynamic attr_accessor call inside a method body is method-scoped —
+        it must not emit a class field (deferred like @ivars)."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+        (tmp_path / "a.rb").write_text(
+            "class C\n  def setup\n    attr_accessor :dynamic\n  end\nend\n"
+        )
+        fields = self._fields(analyze_ruby(tmp_path))
+        assert "C#dynamic" not in fields
+
+    def test_attr_accessor_at_top_level_skipped(self, tmp_path: Path) -> None:
+        """A top-level attr_accessor (no enclosing class/module) has no owner —
+        no field is emitted."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+        (tmp_path / "a.rb").write_text("attr_accessor :x\n")
+        result = analyze_ruby(tmp_path)
+        assert not [s for s in result.symbols if s.kind == "field"]
+
+    def test_register_symbol_skips_field_and_variable(self) -> None:
+        """The chokepoint: field/variable data anchors never enter the
+        call-resolution registry, so a same-named method stays the call target."""
+        from hypergumbo_core.ir import Symbol, Span
+        from hypergumbo_lang_mainstream.ruby import _analyzer
+
+        def _sym(name: str, kind: str) -> Symbol:
+            return Symbol(
+                id=f"ruby:/a.rb:1-1:{name}:{kind}", name=name, kind=kind,
+                language="ruby", path="/a.rb",
+                span=Span(start_line=1, end_line=1, start_col=0, end_col=0),
+                origin="test", origin_run_id="r",
+            )
+
+        registry: dict = {}
+        _analyzer.register_symbol(_sym("User#name", "field"), registry)
+        _analyzer.register_symbol(_sym("MAX", "variable"), registry)
+        assert registry == {}
+        _analyzer.register_symbol(_sym("greet", "method"), registry)
+        assert registry.get("greet") is not None
+        assert registry["greet"].kind == "method"
