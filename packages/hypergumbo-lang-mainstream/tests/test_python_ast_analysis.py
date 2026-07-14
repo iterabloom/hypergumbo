@@ -8318,6 +8318,118 @@ def test_run_module_attr_ref_function_local_import_resolves(
     )
 
 
+def test_run_module_attr_ref_coreferent_from_import_alias_resolves(
+    tmp_path: Path,
+) -> None:
+    """INV-nuzas / INV-fahub: a function-local ``from pkg import sub as m`` that
+    binds the SAME in-tree submodule already recorded as a module alias in the
+    FILE-scoped ``module_imports`` (via a SIBLING scope's plain ``import pkg.sub
+    as m``) is a CO-REFERENT module alias, not a value shadow. The read
+    ``m.CONST`` must retarget to the real in-tree variable via a ``references``
+    edge, not mint a workspace-prefixed phantom ``external_symbol``.
+
+    Root cause of the phantom (pre-fix): ``module_imports`` is FILE-scoped (built
+    by an ``ast.walk`` over the whole tree), so a plain ``import authpkg.config
+    as cfg`` in ``pollute()`` makes ``cfg`` a resolvable module alias in
+    ``read()`` too; but ``_collect_local_bindings`` added ``read()``'s own
+    ``from authpkg import config as cfg`` to the INV-fahub shadow set
+    unconditionally, so the retarget guard suppressed the (correct) resolution
+    and emitted ``python:authpkg.config:0-0:authpkg.config.CONFIG:attribute``
+    (later remapped to a workspace-prefixed ``external_symbol``). This is the
+    self-corpus ``rust._analyzer`` / ``prisma._analyzer`` shape (a test method
+    plain-imports the analyzer module while a sibling method from-imports it).
+    Fails RED before the co-referent exclusion in ``_collect_local_bindings``."""
+    _build_nuzas_monorepo(tmp_path)
+    auth = tmp_path / "packages" / "auth" / "src" / "authpkg"
+    (auth / "config.py").write_text("CONFIG = {'a': 1}\n")
+    (tmp_path / "packages" / "api" / "src" / "apipkg" / "u.py").write_text(
+        "def pollute():\n"
+        "    import authpkg.config as cfg\n"
+        "    return cfg\n"
+        "def read():\n"
+        "    from authpkg import config as cfg\n"
+        "    return cfg.CONFIG\n"
+    )
+    out_path = tmp_path / "out.json"
+    run_behavior_map(
+        repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False
+    )
+    data = json.loads(out_path.read_text())
+    config_var = next(
+        n["id"] for n in data["nodes"]
+        if n["kind"] == "variable" and n.get("name") == "CONFIG"
+        and "config.py" in n.get("path", "")
+    )
+    read_fn = next(
+        n["id"] for n in data["nodes"]
+        if n.get("name") == "read" and n["kind"] == "function"
+    )
+    refs = [
+        e for e in data["edges"]
+        if e["type"] == "references" and e["src"] == read_fn
+        and e["dst"] == config_var
+    ]
+    assert len(refs) == 1 and refs[0]["is_resolved"] is True, (
+        "a co-referent from-import module alias must retarget to the in-tree "
+        f"variable; got references="
+        f"{[e for e in data['edges'] if e['type']=='references' and e['src']==read_fn]}"
+    )
+    ext_ids = [n["id"] for n in data["nodes"] if n["kind"] == "external_symbol"]
+    assert not any("authpkg.config.CONFIG" in i for i in ext_ids), (
+        "phantom CONFIG module_attr_ref external minted: "
+        f"{[i for i in ext_ids if 'CONFIG' in i]}"
+    )
+
+
+def test_run_module_attr_ref_coreferent_guard_different_module_stays_phantom(
+    tmp_path: Path,
+) -> None:
+    """INV-fahub safety lock for the co-referent exclusion: the exclusion fires
+    ONLY when the function-local ``from``-import binds the SAME module as the
+    polluting plain-import alias. Here ``read()`` does ``from authpkg import
+    other as cfg`` while the sibling ``pollute()`` plain-imports ``authpkg.config
+    as cfg`` — DIFFERENT modules — so ``cfg`` stays a genuine shadow and the read
+    must NOT mint a confidently-wrong ``references`` edge to
+    ``authpkg.config.CONFIG`` (the polluting module's variable, which
+    ``real_module`` erroneously points at). Locks that a same-name /
+    different-module collision is never over-retargeted."""
+    _build_nuzas_monorepo(tmp_path)
+    auth = tmp_path / "packages" / "auth" / "src" / "authpkg"
+    (auth / "config.py").write_text("CONFIG = {'a': 1}\n")
+    (auth / "other.py").write_text("CONFIG = {'b': 2}\n")
+    (tmp_path / "packages" / "api" / "src" / "apipkg" / "u.py").write_text(
+        "def pollute():\n"
+        "    import authpkg.config as cfg\n"
+        "    return cfg\n"
+        "def read():\n"
+        "    from authpkg import other as cfg\n"
+        "    return cfg.CONFIG\n"
+    )
+    out_path = tmp_path / "out.json"
+    run_behavior_map(
+        repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False
+    )
+    data = json.loads(out_path.read_text())
+    config_var = next(
+        n["id"] for n in data["nodes"]
+        if n["kind"] == "variable" and n.get("name") == "CONFIG"
+        and "config.py" in n.get("path", "")
+    )
+    read_fn = next(
+        n["id"] for n in data["nodes"]
+        if n.get("name") == "read" and n["kind"] == "function"
+    )
+    wrong = [
+        e for e in data["edges"]
+        if e["type"] == "references" and e["src"] == read_fn
+        and e["dst"] == config_var
+    ]
+    assert wrong == [], (
+        "a different-module from-import alias must not over-retarget to the "
+        f"polluting module's variable; got {wrong}"
+    )
+
+
 def test_run_module_attr_ref_nested_read_not_attributed_to_enclosing(
     tmp_path: Path,
 ) -> None:

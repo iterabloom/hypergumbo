@@ -3381,7 +3381,14 @@ def _extract_edges(
         ``module_imports``), and a function-local ``import pkg.mod as m`` — the
         dominant self-corpus shape (``m.CONST`` inside a test method) — is the
         alias we want to resolve, not a shadow of it. ``from``-import value
-        rebinds and param/assignment shadows are still collected either way.
+        rebinds and param/assignment shadows are still collected either way —
+        EXCEPT that on the retarget path (``include_import_aliases=False``) a
+        ``from``-import that is a *co-referent module alias* (its absolute target
+        equals the same name's ``module_imports`` binding) is excluded, since it
+        names the very in-tree module the read resolves against, not a value
+        shadowing it (INV-nuzas: the ``rust._analyzer`` self-corpus phantom,
+        where a sibling method plain-imports the analyzer module and this one
+        from-imports it under the same name).
         """
         names: set[str] = set()
         for arg in func_node.args.args:
@@ -3407,7 +3414,34 @@ def _extract_edges(
                             names.add(alias.asname or alias.name.split(".")[0])
                 elif isinstance(node, ast.ImportFrom):
                     for alias in node.names:
-                        names.add(alias.asname or alias.name)
+                        bound = alias.asname or alias.name
+                        # INV-nuzas / INV-fahub (co-referent module alias): on
+                        # the module_attr_ref retarget path
+                        # (include_import_aliases=False), a ``from pkg import sub
+                        # as m`` that binds the SAME in-tree module already
+                        # recorded as a module alias in the FILE-scoped
+                        # ``module_imports`` (via a sibling scope's plain
+                        # ``import pkg.sub as m`` — module_imports is built by an
+                        # ast.walk over the whole tree, so a sibling method's
+                        # plain import is visible here) is a co-referent alias,
+                        # NOT a value shadow. Excluding it lets the read
+                        # ``m.attr`` retarget to the real in-tree symbol instead
+                        # of a workspace-prefixed phantom external. A genuine
+                        # value rebind (``from pkg import CONST as m``) does not
+                        # match ``module_imports[m]`` and still shadows; a later
+                        # ``m = ...`` reassignment re-adds ``m`` via the Store
+                        # branch above, so it too correctly stays a shadow.
+                        # Absolute imports only (level == 0): the node-derived
+                        # target is exact per-alias; a relative co-referent
+                        # import stays phantom (a safe miss, never a wrong edge).
+                        if (
+                            not include_import_aliases
+                            and node.level == 0
+                            and module_imports.get(bound)
+                            == f"{node.module}.{alias.name}"
+                        ):
+                            continue
+                        names.add(bound)
                 for child in ast.iter_child_nodes(node):
                     if not isinstance(child, scope_boundary):
                         _walk_scope([child])
