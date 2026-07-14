@@ -36,6 +36,8 @@ import sys
 from pathlib import Path
 from typing import TextIO
 
+from .behavior_map_io import find_survey_in_dir
+
 
 # Default threshold: tests with mean duration above this are candidates
 # for masking.  100ms chosen because ~90% of tests are below this.
@@ -46,9 +48,10 @@ def find_latest_behavior_map(repo_root: Path) -> Path | None:
     """Find the most recent cached behavior map for a repository.
 
     Searches ``~/.cache/hypergumbo/<fingerprint>/results/*/*/`` for
-    the newest ``hypergumbo.results.json``. The two glob segments
-    are ``<state_hash>/<analyzer_identity>`` per WI-panih's cache
-    layout. Uses the same fingerprinting as
+    the newest survey map (ADR-0042: canonical ``survey.json`` or any
+    legacy alias, resolved per analyzer dir via ``find_survey_in_dir``).
+    The two glob segments are ``<state_hash>/<analyzer_identity>`` per
+    WI-panih's cache layout. Uses the same fingerprinting as
     ``sketch_embeddings._get_repo_fingerprint``.
 
     A slightly stale behavior map is acceptable — graph structure
@@ -68,15 +71,16 @@ def find_latest_behavior_map(repo_root: Path) -> Path | None:
     newest: Path | None = None
     newest_mtime = 0.0
 
-    # Walk <state_hash>/<analyzer_identity>/hypergumbo.results.json.
+    # Walk <state_hash>/<analyzer_identity>/ for the survey map (ADR-0042:
+    # canonical survey.json, or any legacy alias in a pre-rename cache).
     for state_dir in results_dir.iterdir():
         if not state_dir.is_dir():
             continue
         for analyzer_dir in state_dir.iterdir():
             if not analyzer_dir.is_dir():
                 continue
-            candidate = analyzer_dir / "hypergumbo.results.json"
-            if candidate.is_file():
+            candidate = find_survey_in_dir(analyzer_dir)
+            if candidate is not None:
                 try:
                     mtime = candidate.stat().st_mtime
                     if mtime > newest_mtime:
@@ -175,7 +179,7 @@ def compute_deselections(
     """Compute pytest --deselect arguments for slow unconnected tests.
 
     Args:
-        behavior_map_path: Path to ``hypergumbo.results.json``.
+        behavior_map_path: Path to the survey map (e.g. ``survey.json``).
         changed_files: List of changed source file paths (relative).
         timings_path: Path to ``test_timings.json``.
         affected_test_files: List of test file paths selected by

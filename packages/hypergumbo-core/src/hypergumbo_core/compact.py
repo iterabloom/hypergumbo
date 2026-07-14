@@ -1799,11 +1799,11 @@ def generate_tier_filename(base_path: str, tier_spec: str) -> str:
     """Generate filename for a tier output file.
 
     Args:
-        base_path: Base output path like "hypergumbo.results.json"
+        base_path: Base output path like "survey.json"
         tier_spec: Tier spec like "4k", "16k"
 
     Returns:
-        Tier-specific filename like "hypergumbo.results.4k.json"
+        Tier-specific filename like "survey.4k.json"
     """
     import os
     base, ext = os.path.splitext(base_path)

@@ -24,6 +24,22 @@ def test_is_excluded_returns_false_for_normal_paths(tmp_path: Path) -> None:
     assert is_excluded(src_file, tmp_path) is False
 
 
+def test_is_excluded_survey_artifacts(tmp_path: Path) -> None:
+    """ADR-0042: the survey map + budget-tier side-outputs (canonical
+    ``survey*.json``) and the legacy ``hypergumbo.results*.json`` names are
+    excluded from the analysis walk, so a warm cache under the repo root is
+    never ingested as source. A non-artifact ``.json`` is still walked."""
+    for name in (
+        "survey.json",
+        "survey.4k.json",
+        "survey.64k.json",
+        "hypergumbo.results.json",
+        "hypergumbo.results.16k.json",
+    ):
+        assert is_excluded(tmp_path / name, tmp_path) is True, name
+    assert is_excluded(tmp_path / "data.json", tmp_path) is False
+
+
 def test_is_excluded_with_custom_patterns(tmp_path: Path) -> None:
     """Should respect custom exclude patterns."""
     third_party = tmp_path / "third_party" / "lib.py"

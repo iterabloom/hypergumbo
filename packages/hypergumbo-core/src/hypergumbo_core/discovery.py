@@ -450,7 +450,8 @@ DEFAULT_EXCLUDES = [
     # Hypergumbo output artifacts and agent governance
     ".hypergumbo",
     ".agent",  # Agent tracker ops, hooks, config — not source code
-    "hypergumbo.results*.json",  # Matches .json, .4k.json, .16k.json, .64k.json, etc.
+    "survey*.json",  # ADR-0042 canonical: survey.json + survey.<tier>.json side-outputs
+    "hypergumbo.results*.json",  # legacy: .json, .4k.json, .16k.json, .64k.json, etc.
     # Lock files - generated, inflate LOC counts
     "package-lock.json",
     "yarn.lock",
@@ -539,8 +540,9 @@ def _bucket_default_excludes() -> tuple[
 
 
 # Pre-classify DEFAULT_EXCLUDES at module load time for fast matching.
-# Exact names (no glob chars) use O(1) frozenset lookup; only the 2 glob
-# patterns (*.egg-info, hypergumbo.results*.json) fall back to fnmatch.
+# Exact names (no glob chars) use O(1) frozenset lookup; only the 3 glob
+# patterns (*.egg-info, survey*.json, hypergumbo.results*.json) fall back to
+# fnmatch.
 (
     _EXACT_DEFAULT_EXCLUDES,
     _GLOB_DEFAULT_EXCLUDES,

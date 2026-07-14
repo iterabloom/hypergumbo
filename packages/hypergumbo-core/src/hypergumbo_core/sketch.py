@@ -310,7 +310,9 @@ ADDITIONAL_FILES_EXCLUDES = [
     "PATENTS",
     "NOTICE",
     "NOTICE.*",
-    # Hypergumbo output artifacts
+    # Hypergumbo output artifacts (canonical survey.json + legacy names, ADR-0042)
+    "survey.json",
+    "survey.*.json",
     "hypergumbo.results.json",
     "hypergumbo.results.*.json",
     ".hypergumbo_cache",
@@ -5984,12 +5986,15 @@ def _peek_cached_results(repo_root: Path) -> Optional[dict]:
     cache exists. Never triggers ``run_behavior_map`` (the impl owns the
     cold-cache auto-run). Returns ``None`` on any miss/error.
     """
+    from .behavior_map_io import find_survey_in_dir
     from .sketch_embeddings import _get_results_cache_dir
 
     try:
         cache_dir = _get_results_cache_dir(repo_root)
-        cached_path = cache_dir / "hypergumbo.results.json"
-        if cached_path.exists():
+        # ADR-0042: resolve the canonical survey.json (or any legacy alias) in
+        # the cache dir instead of hardcoding the pre-rename basename.
+        cached_path = find_survey_in_dir(cache_dir)
+        if cached_path is not None:
             import json
             return json.loads(cached_path.read_text())
     except Exception:  # pragma: no cover - cache discovery errors shouldn't block
@@ -6113,7 +6118,7 @@ def _generate_sketch_impl(
             to ensure multi-language projects have proportional representation.
         progress: If True, show progress indicator with ETA to stderr.
         cached_results: If provided, use this behavior map instead of running
-            analysis. Should be the parsed JSON from hypergumbo.results.json.
+            analysis. Should be the parsed JSON from the survey map (survey.json).
             Skips profile detection and analysis phases for faster generation.
             If None, auto-discovers cached results from ~/.cache/hypergumbo/.
         with_source: If True, append full source file contents after the sketch.
@@ -6173,11 +6178,13 @@ def _generate_sketch_impl(
     # Auto-discover cached results from cache directory if not explicitly provided
     # If no cache exists, run analysis first to populate it
     if cached_results is None:
+        from .behavior_map_io import find_survey_in_dir
         from .sketch_embeddings import _get_results_cache_dir
         try:
             cache_dir = _get_results_cache_dir(repo_root)
-            cached_path = cache_dir / "hypergumbo.results.json"
-            if cached_path.exists():
+            # ADR-0042: canonical survey.json (or a legacy alias) in the cache.
+            cached_path = find_survey_in_dir(cache_dir)
+            if cached_path is not None:
                 import json
                 _log(f"Auto-discovered cached results: {cached_path}")
                 cached_results = json.loads(cached_path.read_text())
@@ -6186,11 +6193,17 @@ def _generate_sketch_impl(
                 _log("No cached results found, running analysis...")
                 from .cli import run_behavior_map
                 run_behavior_map(repo_root)
-                # Now load the freshly generated cache
-                if cached_path.exists():
+                # Now load the freshly generated cache. RE-DISCOVER: the pre-run
+                # lookup returned None (nothing existed yet), so we must resolve
+                # the just-written survey.json rather than reuse the None handle
+                # (ADR-0042 — an earlier `cached_path.exists()` here NPE'd on the
+                # None, silently falling back to a full re-walk of the now-
+                # populated cache dir and mis-reporting it as source).
+                fresh_path = find_survey_in_dir(cache_dir)
+                if fresh_path is not None:
                     import json
-                    _log(f"Using freshly generated results: {cached_path}")
-                    cached_results = json.loads(cached_path.read_text())
+                    _log(f"Using freshly generated results: {fresh_path}")
+                    cached_results = json.loads(fresh_path.read_text())
         except Exception:  # pragma: no cover - cache discovery errors shouldn't block sketch
             pass
 

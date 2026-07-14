@@ -3207,8 +3207,8 @@ def test_cmd_sketch_prints_output_summary(tmp_path: Path, capsys) -> None:
     assert "[hypergumbo sketch]" in out
     assert "Generated" in out
     assert "Output: stdout" in out
-    # Should show path to cached results
-    assert "hypergumbo.results.json" in out
+    # Should show path to cached results (ADR-0042: canonical survey.json)
+    assert "survey.json" in out
 
 
 def test_cmd_sketch_input_file_not_found(tmp_path: Path, capsys) -> None:
@@ -3335,7 +3335,7 @@ def test_cmd_sketch_input_staleness_warning(tmp_path: Path, capsys) -> None:
     _, err = capsys.readouterr()
     # Should warn about stale results
     assert "may be stale" in err
-    assert "Run 'hypergumbo run' to regenerate" in err
+    assert "Run 'hypergumbo survey' to regenerate" in err
 
 
 def test_cmd_sketch_input_no_staleness_warning_when_fresh(tmp_path: Path, capsys) -> None:

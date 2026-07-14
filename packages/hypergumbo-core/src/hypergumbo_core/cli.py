@@ -56,7 +56,12 @@ from .analyze.base import (
     split_within_file_stable_id_collisions,
     widen_route_stable_ids,
 )
-from .behavior_map_io import SubstrateError, find_survey_in_dir, load_substrate
+from .behavior_map_io import (
+    CANONICAL_SURVEY_FILENAME,
+    SubstrateError,
+    find_survey_in_dir,
+    load_substrate,
+)
 from .catalog import get_default_catalog, is_available, suggest_passes_for_languages
 # ADR-0043 §6: finalize() is the single pre-serialization reconcile point. _relativize_ir_paths
 # lives there now (finalize sub-step 1 owns it); re-exported here for the Phase B call below
@@ -184,6 +189,19 @@ from .framework_patterns import (
     strip_test_file_only_concepts,
 )
 from .partial_install_warnings import check_partial_install_warnings
+
+# ADR-0042: glob patterns for the survey map + its budget-tier side-outputs in a
+# cache dir, canonical (``survey.json`` / ``survey.<tier>.json``) and legacy
+# (``hypergumbo.results*.json``), used for artifact reporting and the
+# pre-existing-vs-freshly-generated diff in cmd_sketch.
+_SURVEY_ARTIFACT_GLOBS = ("survey*.json", "hypergumbo.results*.json")
+
+
+def _glob_survey_artifacts(cache_dir: Path) -> set[Path]:
+    """Return the survey map + tier artifacts in ``cache_dir`` (canonical and
+    legacy names). Non-recursive: excludes per-route slice files under
+    ``survey.slices/`` and sketch ``.md`` side-outputs."""
+    return {p for pat in _SURVEY_ARTIFACT_GLOBS for p in cache_dir.glob(pat)}
 
 
 def _setup_locale_filtering(
@@ -438,7 +456,7 @@ def _discover_input_file(repo_root: Path) -> Optional[Path]:
     1. Cache directory: ~/.cache/hypergumbo/<fingerprint>/results/<state>/<analyzer_identity>/
     2. Repo root: <repo>/
 
-    This enables the seamless workflow where 'hypergumbo run .' (which caches
+    This enables the seamless workflow where 'hypergumbo survey .' (which caches
     results) is automatically discovered by search/explain/routes/slice/symbols
     commands. Both locations are searched via the merged ``find_survey_in_dir``
     resolver (ADR-0042 §4), so the canonical ``survey.json`` and every legacy
@@ -451,7 +469,7 @@ def _discover_input_file(repo_root: Path) -> Optional[Path]:
     Returns:
         Path to a survey artifact if found, None otherwise.
     """
-    # First, check cache directory (where 'hypergumbo run' saves by default)
+    # First, check cache directory (where 'hypergumbo survey' saves by default)
     try:
         from .sketch_embeddings import _get_results_cache_dir
 
@@ -473,7 +491,7 @@ def _get_or_run_analysis(
     """Get cached behavior map or run analysis if needed.
 
     Provides seamless auto-analysis: commands that need a behavior map will
-    automatically run 'hypergumbo run' if no cached results exist.
+    automatically run 'hypergumbo survey' if no cached results exist.
 
     Args:
         repo_root: Repository root path.
@@ -531,10 +549,10 @@ def _get_or_run_analysis(
     # freshly written map becomes undiscoverable — the caller then reported
     # "Input file not found: None" and smart-test fell back to a full-suite
     # manifest. Select the main map BY NAME so a budget side-output
-    # (hypergumbo.results.<tier>.json) or a handler-slice file is never returned
+    # (survey.<tier>.json) or a handler-slice file is never returned
     # in its place.
     new_path = next(
-        (p for p in generated_files if p.name == "hypergumbo.results.json"),
+        (p for p in generated_files if p.name == CANONICAL_SURVEY_FILENAME),
         None,
     )
     if new_path is None:  # pragma: no cover - run_behavior_map always appends the main map
@@ -556,7 +574,7 @@ def _print_output_summary(
     Always prints as the last thing, even if no artifacts generated.
 
     Args:
-        command: The hypergumbo subcommand name (e.g., "sketch", "run")
+        command: The hypergumbo subcommand name (e.g., "sketch", "survey")
         artifacts: List of generated file paths (None or empty for stdout-only)
         stdout_output: If True, indicate output went to stdout
         file: Output file (default: sys.stdout). Use sys.stderr for JSON output
@@ -856,7 +874,7 @@ def cmd_sketch(args: argparse.Namespace) -> int:
         if newest_source_mtime > results_mtime:
             print(
                 f"NOTE: {input_path} may be stale (source files modified since).\n"
-                f"      Run 'hypergumbo run' to regenerate.\n",
+                f"      Run 'hypergumbo survey' to regenerate.\n",
                 file=sys.stderr,
             )
 
@@ -894,7 +912,7 @@ def cmd_sketch(args: argparse.Namespace) -> int:
     pre_existing_results: set[Path] = set()
     if cache_dir is not None:
         try:
-            pre_existing_results = set(cache_dir.glob("hypergumbo.results*.json"))
+            pre_existing_results = _glob_survey_artifacts(cache_dir)
         except Exception:  # pragma: no cover - cache discovery errors
             pass
 
@@ -1033,8 +1051,8 @@ def cmd_sketch(args: argparse.Namespace) -> int:
 
     if cache_dir is not None:
         try:
-            # Find all results files in cache (both new and existing)
-            results_after = set(cache_dir.glob("hypergumbo.results*.json"))
+            # Find all survey map/tier files in cache (both new and existing)
+            results_after = _glob_survey_artifacts(cache_dir)
             for f in sorted(results_after):
                 artifacts.append(f)
 
@@ -1068,7 +1086,17 @@ def cmd_sketch(args: argparse.Namespace) -> int:
 
 
 def cmd_run(args: argparse.Namespace) -> int:
-    # The positional argument for `run` is called `path` in the parser below.
+    # ADR-0042 (WI-vatuf): ``hypergumbo run`` is a deprecated alias for
+    # ``hypergumbo survey``. Warn once on stderr when invoked under the old
+    # verb; ``command`` is absent when cmd_run is called directly (e.g. tests),
+    # in which case the getattr guard reports None and no warning is emitted.
+    if getattr(args, "command", None) == "run":
+        print(
+            "warning: 'hypergumbo run' is deprecated and will be removed in a "
+            "future release; use 'hypergumbo survey' instead.",
+            file=sys.stderr,
+        )
+    # The positional argument for `survey`/`run` is called `path` in the parser.
     repo_root = Path(args.path).resolve()
 
     # WI-zujum: same single-file guard as cmd_sketch — analysing a single
@@ -1081,7 +1109,7 @@ def cmd_run(args: argparse.Namespace) -> int:
         print(
             f"Error: {repo_root} is a file, not a directory.\n"
             f"hypergumbo analyses repositories. Try its parent directory:\n"
-            f"  hypergumbo run {parent}",
+            f"  hypergumbo survey {parent}",
             file=sys.stderr,
         )
         return 1
@@ -1137,8 +1165,11 @@ def cmd_run(args: argparse.Namespace) -> int:
         no_sketch_fan_out=no_sketch_fan_out,
     )
 
-    # Output summary (always at the end)
-    _print_output_summary("run", artifacts=generated_files)
+    # Output summary (always at the end) — label with the actually-typed verb
+    # (survey, or the deprecated run alias) so the summary matches invocation.
+    _print_output_summary(
+        getattr(args, "command", None) or "survey", artifacts=generated_files
+    )
 
     # INV-padum: surface cache footprint after every run. The cache just
     # grew (a new state-hash entry was written), so this is when the user
@@ -2171,7 +2202,7 @@ def cmd_routes(args: argparse.Namespace) -> int:
                 print(f"  - {count} {kind} node(s)")
             print()
             print(
-                "To inspect them, view the JSON output (`hypergumbo run`) "
+                "To inspect them, view the JSON output (`hypergumbo survey`) "
                 "or use `hypergumbo explain <name>`."
             )
         cached_set = {input_path} if was_cached else set()
@@ -6708,11 +6739,11 @@ Generate codebase summaries for AI assistants and coding agents.
 Quick start:
   hypergumbo .              Generate Markdown sketch (~8000 tokens default)
   hypergumbo . -t 16000     Larger sketch with more detail
-  hypergumbo run .          Full JSON analysis for tooling
+  hypergumbo survey .       Full JSON analysis for tooling
 
 Workflow:
   Most users only need 'sketch' (the default). For deeper analysis:
-  1. hypergumbo run .       → creates hypergumbo.results.json
+  1. hypergumbo survey .    → creates survey.json
   2. hypergumbo search X    → find symbols matching "X"
   3. hypergumbo explain X   → show callers/callees of symbol "X"
   4. hypergumbo slice       → extract subgraph from entry point"""
@@ -6722,7 +6753,7 @@ Examples:
   hypergumbo ~/myproject                    # Sketch with auto token budget
   hypergumbo ~/myproject -t 8000            # Sketch sized for 8k context
   hypergumbo . -t 4000 -x                   # Exclude test files
-  hypergumbo run . --compact                # LLM-friendly JSON output
+  hypergumbo survey . --compact                # LLM-friendly JSON output
   hypergumbo slice --entry main --reverse   # Find what calls main()
   hypergumbo routes                         # List API endpoints
 
@@ -6927,15 +6958,15 @@ Output is Markdown, printed to stdout. Pipe to a file or clipboard:
     )
     p_sketch.set_defaults(func=cmd_sketch, first_party_priority=True, language_proportional=True)
 
-    # hypergumbo run
+    # hypergumbo survey (aka the deprecated `run` alias)
     run_epilog = """\
 Examples:
-  hypergumbo run .                      # Full analysis → cached in ~/.cache/hypergumbo/
-  hypergumbo run . --out analysis.json  # Custom output file (plus side-outputs, see below)
-  hypergumbo run . --out analysis.json --budgets none --no-handler-slices
+  hypergumbo survey .                      # Full analysis → cached in ~/.cache/hypergumbo/
+  hypergumbo survey . --out analysis.json  # Custom output file (plus side-outputs, see below)
+  hypergumbo survey . --out analysis.json --budgets none --no-handler-slices
                                         # Single output file (no side-outputs)
-  hypergumbo run . --compact            # LLM-friendly: top symbols + summary
-  hypergumbo run . --first-party-only   # Exclude vendored/external code
+  hypergumbo survey . --compact            # LLM-friendly: top symbols + summary
+  hypergumbo survey . --first-party-only   # Exclude vendored/external code
 
 Side-outputs alongside --out:
   In addition to the path you pass, `run` writes:
@@ -6963,9 +6994,14 @@ Cache location:
   dev edits and stable releases don't poison each other's cache).
   Auto-invalidated when files change."""
 
+    # ADR-0042 (WI-vatuf): ``survey`` is the primary verb; ``run`` is a
+    # deprecated one-minor-version alias (fully functional, warns on use). Under
+    # ``aliases=``, argparse records the actually-typed verb in ``args.command``,
+    # so cmd_run gates the deprecation warning on ``command == "run"``.
     p_run = sub.add_parser(
-        "run",
-        help="Run full analysis and save behavior map to JSON",
+        "survey",
+        aliases=["run"],
+        help="Survey the repository; save the full analysis to survey.json",
         epilog=run_epilog,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
@@ -7162,7 +7198,7 @@ Use cases:
   - Extract a focused subgraph for debugging or review
   - Smart test selection: find tests affected by changed files
 
-Auto-discovers cached results from 'hypergumbo run', or specify --input."""
+Auto-discovers cached results from 'hypergumbo survey', or specify --input."""
 
     p_slice = sub.add_parser(
         "slice",
@@ -7322,7 +7358,7 @@ Examples:
   hypergumbo search "test" --limit 50     # Show more results
   hypergumbo search "handle" --language python
 
-Auto-discovers cached results from 'hypergumbo run', or specify --input."""
+Auto-discovers cached results from 'hypergumbo survey', or specify --input."""
 
     p_search = sub.add_parser(
         "search",
@@ -7338,7 +7374,7 @@ Auto-discovers cached results from 'hypergumbo run', or specify --input."""
     p_search.add_argument(
         "--input",
         default=None,
-        help="Input behavior map file (default: hypergumbo.results.json)",
+        help="Input behavior map file (default: survey.json)",
     )
     p_search.add_argument(
         "--kind",
@@ -7367,7 +7403,7 @@ Examples:
 
 Detects: Flask routes, FastAPI endpoints, Express routes, Django URLs, etc.
 
-Auto-discovers cached results from 'hypergumbo run', or specify --input."""
+Auto-discovers cached results from 'hypergumbo survey', or specify --input."""
 
     p_routes = sub.add_parser(
         "routes",
@@ -7379,7 +7415,7 @@ Auto-discovers cached results from 'hypergumbo run', or specify --input."""
     p_routes.add_argument(
         "--input",
         default=None,
-        help="Input behavior map file (default: hypergumbo.results.json)",
+        help="Input behavior map file (default: survey.json)",
     )
     p_routes.add_argument(
         "--language",
@@ -7431,7 +7467,7 @@ A name matching symbols in more than one file is AMBIGUOUS: explain errors and
 lists the candidates (matching `slice`). Use --language / --file to narrow, or
 --first to accept the top match.
 
-Auto-discovers cached results from 'hypergumbo run', or specify --input."""
+Auto-discovers cached results from 'hypergumbo survey', or specify --input."""
 
     p_explain = sub.add_parser(
         "explain",
@@ -7447,7 +7483,7 @@ Auto-discovers cached results from 'hypergumbo run', or specify --input."""
     p_explain.add_argument(
         "--input",
         default=None,
-        help="Input behavior map file (default: hypergumbo.results.json)",
+        help="Input behavior map file (default: survey.json)",
     )
     p_explain.add_argument(
         "-x",
@@ -7803,7 +7839,7 @@ a footer, and in JSON output under the 'caveats' field. Treat
 'untested' as 'unreached by static call graph', not 'definitely
 untested', before taking action on the cold-spot list.
 
-Auto-discovers cached results from 'hypergumbo run', or specify --input.
+Auto-discovers cached results from 'hypergumbo survey', or specify --input.
 
 """ + production_fn_doc
 
@@ -7817,7 +7853,7 @@ Auto-discovers cached results from 'hypergumbo run', or specify --input.
     p_test_cov.add_argument(
         "--input",
         default=None,
-        help="Input behavior map file (default: hypergumbo.results.json)",
+        help="Input behavior map file (default: survey.json)",
     )
     p_test_cov.add_argument(
         "--format",
@@ -7918,7 +7954,7 @@ Deg (total degree), File. Symbol and File columns default to 60 / 80 chars
 (use --col-width to override, --wrap to fold long content across lines).
 Sorted by file connectivity (hottest files first), then filename, then degree.
 
-Auto-discovers cached results from 'hypergumbo run', or specify --input."""
+Auto-discovers cached results from 'hypergumbo survey', or specify --input."""
 
     p_symbols = sub.add_parser(
         "symbols",
@@ -7930,7 +7966,7 @@ Auto-discovers cached results from 'hypergumbo run', or specify --input."""
     p_symbols.add_argument(
         "--input",
         default=None,
-        help="Input behavior map file (default: hypergumbo.results.json)",
+        help="Input behavior map file (default: survey.json)",
     )
     p_symbols.add_argument(
         "-x", "--exclude-tests",
@@ -8279,7 +8315,7 @@ inconclusive, or the claims file failed validation.
 
     # Assign subcommands to groups for help formatting
     # Core analysis commands (group_order=0) - ordered by suborder
-    core_cmds = ["sketch", "run", "slice", "search", "routes", "explain",
+    core_cmds = ["sketch", "survey", "slice", "search", "routes", "explain",
                  "catalog", "config", "test-coverage", "dead-code-maybe",
                  "symbols", "compact", "io-boundaries", "verify-claims"]
     for i, cmd in enumerate(core_cmds):
@@ -8863,7 +8899,7 @@ def run_behavior_map(
     Args:
         repo_root: Root directory of the repository
         out_path: Path to write the behavior map JSON. If None, defaults to
-            ~/.cache/hypergumbo/<fingerprint>/results/<state_hash>/hypergumbo.results.json
+            ~/.cache/hypergumbo/<fingerprint>/results/<state_hash>/survey.json
         max_tier: Optional maximum supply chain tier (1-4). Symbols with
             tier > max_tier are filtered out. None means no filtering.
         max_files: Optional maximum files per language analyzer. Limits
@@ -8933,7 +8969,7 @@ def run_behavior_map(
     if out_path is None:
         from .sketch_embeddings import _get_results_cache_dir
         cache_dir = _get_results_cache_dir(repo_root)
-        out_path = cache_dir / "hypergumbo.results.json"
+        out_path = cache_dir / CANONICAL_SURVEY_FILENAME
 
     generated_files: list[Path] = []
     behavior_map = new_behavior_map()
@@ -9702,7 +9738,7 @@ def main(argv=None) -> int:
         print_all_help(parser)
         return 0
 
-    subcommands = {"run", "slice", "search", "routes", "explain", "catalog", "config", "sketch", "build-grammars", "install-gitleaks", "uninstall-gitleaks", "cache-status", "cache-clear", "install-embeddings", "uninstall-embeddings", "install-rust-analyzer", "uninstall-rust-analyzer", "add-extras", "remove-extras", "test-coverage", "dead-code-maybe", "symbols", "compact", "io-boundaries", "verify-claims"}
+    subcommands = {"survey", "run", "slice", "search", "routes", "explain", "catalog", "config", "sketch", "build-grammars", "install-gitleaks", "uninstall-gitleaks", "cache-status", "cache-clear", "install-embeddings", "uninstall-embeddings", "install-rust-analyzer", "uninstall-rust-analyzer", "add-extras", "remove-extras", "test-coverage", "dead-code-maybe", "symbols", "compact", "io-boundaries", "verify-claims"}
 
     # WI-balij (UAT UX-04): accept --debug in any position. Strip it here so
     # `hypergumbo sketch . --debug` and `hypergumbo --debug sketch .` both
@@ -9716,8 +9752,8 @@ def main(argv=None) -> int:
     # WI-vozof: accept --backend in any position and translate it to the
     # HYPERGUMBO_RUST_ANALYZER env var that the gate reads. The gate itself
     # already knows how to honour either signal; this path is CLI-side sugar
-    # so `hypergumbo run . --backend rust-analyzer` works identically to
-    # `HYPERGUMBO_RUST_ANALYZER=1 hypergumbo run .`. Matches the --debug
+    # so `hypergumbo survey . --backend rust-analyzer` works identically to
+    # `HYPERGUMBO_RUST_ANALYZER=1 hypergumbo survey .`. Matches the --debug
     # stripping pattern so the flag works in any position relative to the
     # subcommand.
     #

@@ -527,7 +527,7 @@ def test_get_or_run_analysis_returns_generated_main_map_on_cold_cache(
     the freshly written map becomes undiscoverable, and the caller reported
     "Input file not found: None" (smart-test then fell back to a full-suite
     manifest). The main map is selected BY NAME so a budget side-output
-    (``hypergumbo.results.<tier>.json``) or a handler-slice file is never returned
+    (``survey.<tier>.json``) or a handler-slice file is never returned
     in its place."""
     from hypergumbo_core import cli
 
@@ -539,10 +539,10 @@ def test_get_or_run_analysis_returns_generated_main_map_on_cold_cache(
     repo.mkdir()
 
     written = tmp_path / "written"
-    (written / "hypergumbo.results.slices").mkdir(parents=True)
-    main_map = written / "hypergumbo.results.json"
-    side_4k = written / "hypergumbo.results.4k.json"
-    slice_idx = written / "hypergumbo.results.slices" / "slice.handler.index.json"
+    (written / "survey.slices").mkdir(parents=True)
+    main_map = written / "survey.json"
+    side_4k = written / "survey.4k.json"
+    slice_idx = written / "survey.slices" / "slice.handler.index.json"
     for p in (main_map, side_4k, slice_idx):
         p.write_text("{}")
 

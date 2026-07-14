@@ -1057,7 +1057,7 @@ def test_help_all_shows_all_subcommands(capsys) -> None:
     assert "DETAILED SUBCOMMAND HELP" in out
     # Each subcommand should have its own section
     assert "hypergumbo sketch" in out
-    assert "hypergumbo run" in out
+    assert "hypergumbo survey" in out
     assert "hypergumbo test-coverage" in out
     assert "hypergumbo slice" in out
     assert "hypergumbo catalog" in out
