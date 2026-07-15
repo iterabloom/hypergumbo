@@ -28,7 +28,7 @@ Why This Design
 ---------------
 - Subcommand dispatch keeps each operation isolated and testable
 - Default sketch mode optimizes for the common "quick overview" use case
-- run_behavior_map() is separate from cmd_run() for testability
+- run_survey() is separate from cmd_run() for testability
 - Helper functions (Symbol.from_dict, _edge_from_dict) enable slice
   to work with previously-generated JSON files
 """
@@ -533,13 +533,13 @@ def _get_or_run_analysis(
         file=sys.stderr,
     )
 
-    generated_files = run_behavior_map(
+    generated_files = run_survey(
         repo_root=repo_root,
         out_path=None,  # Use default cache location
         progress=show_progress,
     )
 
-    # INV-somup: use the map path run_behavior_map ACTUALLY wrote (out_path is
+    # INV-somup: use the map path run_survey ACTUALLY wrote (out_path is
     # appended to generated_files at the write site) rather than re-deriving it
     # via _discover_input_file. That helper recomputes the ``<state_hash>``
     # cache-dir segment from live git-dirty content (compute_repo_fingerprint);
@@ -555,7 +555,7 @@ def _get_or_run_analysis(
         (p for p in generated_files if p.name == CANONICAL_SURVEY_FILENAME),
         None,
     )
-    if new_path is None:  # pragma: no cover - run_behavior_map always appends the main map
+    if new_path is None:  # pragma: no cover - run_survey always appends the main map
         return None, False, generated_files
 
     return new_path, False, generated_files
@@ -1145,7 +1145,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     # Detect and filter locale documentation directories
     _setup_locale_filtering(repo_root, locale)
 
-    generated_files = run_behavior_map(
+    generated_files = run_survey(
         repo_root=repo_root,
         out_path=out_path,
         max_tier=max_tier,
@@ -8679,7 +8679,7 @@ def _emit_handler_slices(
     from .slice import AmbiguousEntryError, SliceQuery, slice_graph
 
     # Step 1: collect route symbols, excluding test-file handlers. Order is
-    # preserved from all_symbols, which run_behavior_map passes in already
+    # preserved from all_symbols, which run_survey passes in already
     # ranked by centrality — so first-seen is most prominent.
     handlers: list[Symbol] = []
     for sym in all_symbols:
@@ -8873,7 +8873,7 @@ def _emit_handler_slices(
 
 
 # RCT-pinned surface — see tests/test_rct_public_api_pinned.py before changing parameter names or defaults.
-def run_behavior_map(
+def run_survey(
     repo_root: Path,
     out_path: Path | None = None,
     max_tier: int | None = None,
@@ -9518,7 +9518,7 @@ def run_behavior_map(
         }
         if file_index is not None:
             _all_repo_files = file_index.all_files()
-        else:  # pragma: no cover - file_index always set in run_behavior_map
+        else:  # pragma: no cover - file_index always set in run_survey
             _all_repo_files = [f for f in repo_root.rglob("*") if f.is_file()]
         candidate_files = additional_file_candidates(
             repo_root, _all_repo_files, content_source_paths,
@@ -9652,6 +9652,14 @@ def run_behavior_map(
 
     complete_progress()
     return generated_files
+
+
+# ADR-0042 (WI-kisoj): ``run_behavior_map`` is a deprecated alias for
+# ``run_survey`` (the "survey" concept rename). Kept for the one-minor-version
+# window so existing call-sites (~56 tests + a few src modules) resolve without
+# a mass rename; removed at window-close. Assignment (not a wrapper) so the
+# signature and introspection stay identical.
+run_behavior_map = run_survey
 
 
 def print_all_help(parser: argparse.ArgumentParser) -> None:

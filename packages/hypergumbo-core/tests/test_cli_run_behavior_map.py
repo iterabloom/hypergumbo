@@ -550,7 +550,7 @@ def test_get_or_run_analysis_returns_generated_main_map_on_cold_cache(
         # main map deliberately NOT last -> proves name-based (not positional) select
         return [slice_idx, side_4k, main_map]
 
-    monkeypatch.setattr(cli, "run_behavior_map", fake_run)
+    monkeypatch.setattr(cli, "run_survey", fake_run)
 
     path, was_cached, generated = cli._get_or_run_analysis(repo, show_progress=False)
 
