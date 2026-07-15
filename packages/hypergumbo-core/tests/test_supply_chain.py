@@ -1793,13 +1793,15 @@ class TestSupplyChainLimits:
         assert entry["note"] == "could be tier 2 or 3"
 
     def test_empty_supply_chain_section(self) -> None:
-        """Empty limits has empty supply_chain section."""
+        """Empty limits serializes supply_chain as {} (INV-virik: the two
+        diagnostic lists are omitted when empty, not present as always-[])."""
         from hypergumbo_core.limits import Limits
 
         limits = Limits()
         result = limits.to_dict()
-        assert result["supply_chain"]["classification_failures"] == []
-        assert result["supply_chain"]["ambiguous_paths"] == []
+        assert result["supply_chain"] == {}
+        assert "classification_failures" not in result["supply_chain"]
+        assert "ambiguous_paths" not in result["supply_chain"]
 
     def test_merge_preserves_supply_chain(self) -> None:
         """Merging limits preserves supply_chain data."""
@@ -1873,7 +1875,8 @@ class TestClassifySymbolsRecordsClassificationFailures:
         limits = Limits()
         _classify_symbols([sym], tmp_path, set(), limits=limits)
         d = limits.to_dict()
-        assert d["supply_chain"]["classification_failures"] == []
+        # INV-virik: no failure recorded → the list is omitted (not present-as-[]).
+        assert "classification_failures" not in d["supply_chain"]
 
     def test_failure_dedup_per_path(self, tmp_path: Path) -> None:
         """Multiple symbols on the same failed path record one failure."""

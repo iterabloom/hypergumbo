@@ -67,6 +67,37 @@ class TestLimits:
         assert d["truncated_files"][0]["size_bytes"] == 10_000_000
         assert "5MB" in d["truncated_files"][0]["reason"]
 
+    def test_supply_chain_diagnostic_lists_omitted_when_empty(self) -> None:
+        """INV-virik: limits.supply_chain.classification_failures /
+        ambiguous_paths are present ONLY when non-empty — an empty
+        ``supply_chain`` serializes as ``{}``, not as two always-empty lists
+        that would falsely read as 'classification checked, no failures'."""
+        d = Limits().to_dict()
+        assert d["supply_chain"] == {}
+        assert "classification_failures" not in d["supply_chain"]
+        assert "ambiguous_paths" not in d["supply_chain"]
+
+    def test_classification_failure_present_when_populated(self) -> None:
+        """A recorded classification failure appears under supply_chain."""
+        limits = Limits()
+        limits.add_classification_failure(path="weird.xyz", reason="no rule matched")
+        d = limits.to_dict()
+        assert len(d["supply_chain"]["classification_failures"]) == 1
+        assert d["supply_chain"]["classification_failures"][0]["path"] == "weird.xyz"
+        assert "no rule matched" in d["supply_chain"]["classification_failures"][0]["reason"]
+        # the sibling list stays absent while empty
+        assert "ambiguous_paths" not in d["supply_chain"]
+
+    def test_ambiguous_path_present_when_populated(self) -> None:
+        """A recorded ambiguous path appears under supply_chain."""
+        limits = Limits()
+        limits.add_ambiguous_path(path="edge.case", assigned_tier=2, note="two rules matched")
+        d = limits.to_dict()
+        assert len(d["supply_chain"]["ambiguous_paths"]) == 1
+        assert d["supply_chain"]["ambiguous_paths"][0]["path"] == "edge.case"
+        assert d["supply_chain"]["ambiguous_paths"][0]["assigned"] == 2
+        assert "classification_failures" not in d["supply_chain"]
+
     def test_not_captured_includes_known_limitations(self) -> None:
         """Not captured includes known analyzer limitations."""
         limits = Limits()

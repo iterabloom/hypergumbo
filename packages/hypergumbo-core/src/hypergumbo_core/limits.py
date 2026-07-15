@@ -72,11 +72,26 @@ class SupplyChainLimits:
     ambiguous_paths: List["AmbiguousPath"] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
-        """Serialize to dict."""
-        return {
-            "classification_failures": [f.to_dict() for f in self.classification_failures],
-            "ambiguous_paths": [p.to_dict() for p in self.ambiguous_paths],
-        }
+        """Serialize to dict.
+
+        INV-virik: the two diagnostic reporting lists are present ONLY when
+        non-empty (present-when-populated), so their absence honestly reads as
+        "no classification failures / no ambiguous paths" rather than an
+        always-empty ``[]`` that a consumer could misread as "classification
+        ran and found nothing". An empty ``SupplyChainLimits`` therefore
+        serializes as ``{}`` — matching the ``Limits.to_dict``
+        truncated_files / skipped_languages / failed_files contract. Both
+        fields are optional in the schema (no ``required`` entry), so omission
+        is schema-valid.
+        """
+        result: Dict[str, Any] = {}
+        if self.classification_failures:
+            result["classification_failures"] = [
+                f.to_dict() for f in self.classification_failures
+            ]
+        if self.ambiguous_paths:
+            result["ambiguous_paths"] = [p.to_dict() for p in self.ambiguous_paths]
+        return result
 
 
 @dataclass

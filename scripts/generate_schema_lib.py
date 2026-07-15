@@ -838,6 +838,18 @@ def _ambiguous_path_spec() -> ClassSpec:
     )
 
 
+def _supply_chain_limits_sample():
+    from hypergumbo_core.limits import SupplyChainLimits, ClassificationFailure, AmbiguousPath
+
+    # Populate both conditional reporting lists so the schema-drift check sees a
+    # fully-populated instance (INV-virik — these are omitted when empty, so an
+    # empty SupplyChainLimits serializes as {}).
+    return SupplyChainLimits(
+        classification_failures=[ClassificationFailure(path="weird.xyz", reason="no rule matched")],
+        ambiguous_paths=[AmbiguousPath(path="edge.case", assigned=2, note="two rules matched")],
+    )
+
+
 def _supply_chain_limits_spec() -> ClassSpec:
     from hypergumbo_core.limits import SupplyChainLimits
 
@@ -852,9 +864,9 @@ def _supply_chain_limits_spec() -> ClassSpec:
                 "description": "Files whose classification was ambiguous",
             },
         },
-        sample_factory=lambda: __import__(
-            "hypergumbo_core.limits", fromlist=["SupplyChainLimits"]
-        ).SupplyChainLimits(),
+        # INV-virik: present-when-populated (omitted when empty).
+        conditional={"classification_failures", "ambiguous_paths"},
+        sample_factory=_supply_chain_limits_sample,
     )
 
 
