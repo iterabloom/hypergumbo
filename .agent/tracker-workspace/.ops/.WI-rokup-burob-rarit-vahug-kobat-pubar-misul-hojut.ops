@@ -31,3 +31,11 @@
   set: {}  # bc21
   add:  # bc21
     isbefore: [WI-gapig-dujab-pipiz-kitaj-koniz-zakur-bonih-fajub]  # bc21
+- op: update  # 11bb
+  at: '2026-07-15T03:42:53Z'  # 11bb
+  by: agent  # 11bb
+  actor: jgstern_agent  # 11bb
+  clock: 3  # 11bb
+  nonce: 11bb  # 11bb
+  set:  # 11bb
+    description: "Escalate the [tool.mypy] config to strict + pyright-resonant error codes. Add: strict=true, warn_unreachable=true, warn_unused_ignores=true, warn_redundant_casts=true, strict_equality=true, extra_checks=true. enable_error_code = [redundant-expr, truthy-bool, truthy-iterable, ignore-without-code, possibly-undefined, explicit-override, mutable-override, unused-awaitable, narrowed-type-not-subtype, redundant-self, unimported-reveal]. Per-package override blocks may be needed initially for packages that haven't been cleaned. The pyright-resonant rationale: this combination closes ~6-8% of the dogfood-66 corpus categories that the super-META INV-sugat names as a missing validator stage, at the code (not data) layer. Complementary to WI-rolol Phase B (survey.json property tests) — different abstraction layer."  # 11bb

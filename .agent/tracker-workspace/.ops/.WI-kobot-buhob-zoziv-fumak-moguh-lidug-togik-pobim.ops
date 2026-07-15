@@ -23,3 +23,11 @@
     pr_ref:  # 66a0
     description: "Declare TypedDict classes for each bm.json schema sub-structure: AnalysisRunDict, SymbolDict, EdgeDict, MetricsDict, LimitsDict, SketchPrecomputedDict, etc. Consumers that read bm.json get keys-checked at member access. Closes some WI-gogif envelope-incomplete sub-cases (the new D.3b sub-axis) at type-check time: missing required envelope fields become type errors when constructing the dict, not runtime gaps. Use total=False where appropriate; document required-key sets explicitly. Cross-ref bakeoff-validation tag if the change is claimed to reduce missing-field defects on real-repo runs."  # 66a0
     fields: {}  # 66a0
+- op: update  # 2a25
+  at: '2026-07-15T03:42:52Z'  # 2a25
+  by: agent  # 2a25
+  actor: jgstern_agent  # 2a25
+  clock: 2  # 2a25
+  nonce: 2a25  # 2a25
+  set:  # 2a25
+    description: "Declare TypedDict classes for each survey.json schema sub-structure: AnalysisRunDict, SymbolDict, EdgeDict, MetricsDict, LimitsDict, SketchPrecomputedDict, etc. Consumers that read survey.json get keys-checked at member access. Closes some WI-gogif envelope-incomplete sub-cases (the new D.3b sub-axis) at type-check time: missing required envelope fields become type errors when constructing the dict, not runtime gaps. Use total=False where appropriate; document required-key sets explicitly. Cross-ref bakeoff-validation tag if the change is claimed to reduce missing-field defects on real-repo runs."  # 2a25

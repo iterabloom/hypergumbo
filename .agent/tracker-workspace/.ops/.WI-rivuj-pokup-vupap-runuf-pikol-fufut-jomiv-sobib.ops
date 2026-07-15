@@ -58,3 +58,18 @@
   clock: 6  # 00a3
   nonce: 00a3  # 00a3
   message: "Governance PR opened for the .agent/ portion: PR #652 (branch jgstern-agent/docs/survey-concept-agent-playbooks, commit 965b5f9398). 3 files — self-analysis-dogfooding-playbook.md + docstring-staleness-audit-playbook.md (behavior map->survey, hypergumbo run->hypergumbo survey) + on_transcript_change.py (injected summary string). Pushed via agit (NOT self-merged, touches .agent/hooks/); awaiting human review + merge. Hook-tests 38/0 locally. Once #652 merges, the S4 docs sweep is complete and WI-goril (tracker-item bm.json sweep) + the INV-firuh violated->satisfied flip run together (owner chose to bundle them with this .agent/ resolution)."  # 00a3
+- op: update  # 03ba
+  at: '2026-07-15T03:44:14Z'  # 03ba
+  by: agent  # 03ba
+  actor: jgstern_agent  # 03ba
+  clock: 7  # 03ba
+  nonce: 03ba  # 03ba
+  set:  # 03ba
+    status: done  # 03ba
+- op: discuss  # 10ff
+  at: '2026-07-15T03:44:14Z'  # 10ff
+  by: agent  # 10ff
+  actor: jgstern_agent  # 10ff
+  clock: 8  # 10ff
+  nonce: 10ff  # 10ff
+  message: "Done — both portions merged. Non-governance docs: PR #651 (README/spec/USE-CASES/CACHE/concept-axes concept rename + verb/filename). Governance .agent/ portion: PR #652 (self-analysis-dogfooding + docstring-staleness playbooks + on_transcript_change hook), human-reviewed + manually merged. behavior_map CODE refs + the schema view VALUE preserved. Deferred (documented, non-blocking): docs/example-output.md (captured/generated example) + docs/governance-case-critiques.md (point-in-time case study); historical/migration docs keep vocabulary per ADR-0042 §Neutral."  # 10ff
