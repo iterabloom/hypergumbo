@@ -323,6 +323,30 @@ def test_symbol_to_dict_includes_new_fields() -> None:
     assert "quality" in d
 
 
+def test_symbol_to_dict_omits_quality_when_none() -> None:
+    """INV-nuzal: node ``quality`` has no producer (0/N populated on
+    self-analysis) — a declared-but-empty field. Following the INV-virik
+    omit-when-empty pattern, ``Symbol.to_dict()`` omits ``quality`` when None
+    rather than emitting a universally-null key, and includes it only when a
+    (future) producer sets it."""
+    span = Span(start_line=1, end_line=2, start_col=0, end_col=10)
+    symbol = Symbol(
+        id="python:test.py:1-2:greet:function",
+        name="greet",
+        kind="function",
+        language="python",
+        path="test.py",
+        span=span,
+    )
+    # No node-level producer sets quality -> key omitted, not null.
+    assert symbol.quality is None
+    assert "quality" not in symbol.to_dict()
+
+    # When a producer does populate it, the key is present with its value.
+    symbol.quality = {"score": 0.9, "reason": "sample"}
+    assert symbol.to_dict()["quality"] == {"score": 0.9, "reason": "sample"}
+
+
 def test_edge_has_edge_key() -> None:
     """Edge should have edge_key for canonical identity."""
     edge = Edge.create(

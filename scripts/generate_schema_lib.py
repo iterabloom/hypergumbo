@@ -242,7 +242,7 @@ def _sample_span() -> Span:
 
 
 def _sample_symbol() -> Symbol:
-    return Symbol(
+    sym = Symbol(
         id="python:a.py:1-2:f:function",
         name="f",
         kind="function",
@@ -252,6 +252,10 @@ def _sample_symbol() -> Symbol:
         origin=["python"],
         origin_run_id="uuid:sample",
     )
+    # quality is a conditional key (omitted when None per INV-nuzal) — populate
+    # it so the schema-drift round-trip sees a fully-populated instance.
+    sym.quality = {"score": 0.9, "reason": "sample"}
+    return sym
 
 
 def _sample_edge() -> Edge:
@@ -442,7 +446,12 @@ def _symbol_spec() -> ClassSpec:
                 "symbol_fingerprint_scheme. Null when the span has no "
                 "parseable content or no grammar is available."
             )},
-            "quality": {"description": "Quality assessment"},
+            "quality": {"description": (
+                "Node-level quality assessment ({score, reason}). Has no "
+                "producer (INV-nuzal): unlike edge.quality it is not derived "
+                "from confidence, so it is omitted when null (INV-virik omit-"
+                "when-empty) and appears only if a future pass populates it."
+            )},
             "meta": {"description": "Language-specific metadata"},
             "signature": {
                 "description": (
@@ -506,6 +515,7 @@ def _symbol_spec() -> ClassSpec:
             },
         },
         sample_factory=_sample_symbol,
+        conditional={"quality"},
     )
 
 

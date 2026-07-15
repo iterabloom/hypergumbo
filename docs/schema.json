@@ -659,7 +659,7 @@
               "type": "null"
             }
           ],
-          "description": "Quality assessment"
+          "description": "Node-level quality assessment ({score, reason}). Has no producer (INV-nuzal): unlike edge.quality it is not derived from confidence, so it is omitted when null (INV-virik omit-when-empty) and appears only if a future pass populates it."
         },
         "meta": {
           "oneOf": [

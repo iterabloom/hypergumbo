@@ -545,13 +545,17 @@ class TestSchemaDataclassSync:
         run_sample.skipped_passes = [{"pass": "p", "reason": "r"}]
         run_sample.failed_files = [{"path": "x.py", "reason": "boom"}]
         run_sample.warnings = ["w"]
+        # INV-nuzal: node.quality is conditional (omitted when None), so populate
+        # it for the fully-populated key-set comparison.
+        symbol_sample = Symbol(
+            id="python:a.py:1-2:f:function", name="f", kind="function",
+            language="python", path="a.py", span=span,
+            origin=["python"], origin_run_id="uuid:1",
+        )
+        symbol_sample.quality = {"score": 0.9, "reason": "sample"}
         samples = {
             "Span": span,
-            "Symbol": Symbol(
-                id="python:a.py:1-2:f:function", name="f", kind="function",
-                language="python", path="a.py", span=span,
-                origin=["python"], origin_run_id="uuid:1",
-            ),
+            "Symbol": symbol_sample,
             "Edge": Edge.create(
                 src="a", dst="b", edge_type="calls", line=1,
                 origin="python", origin_run_id="uuid:1",

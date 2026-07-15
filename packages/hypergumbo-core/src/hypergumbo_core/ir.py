@@ -556,7 +556,7 @@ class Symbol:
 
     def to_dict(self) -> dict:
         """Convert to dictionary for JSON serialization."""
-        return {
+        result = {
             "id": self.id,
             "name": self.name,
             "kind": self.kind,
@@ -568,7 +568,6 @@ class Symbol:
             "stable_id": self.stable_id,
             "shape_id": self.shape_id,
             "fingerprint": self.fingerprint,
-            "quality": self.quality,
             "meta": self.meta,
             "supply_chain": {
                 "tier": self.supply_chain_tier,
@@ -591,6 +590,13 @@ class Symbol:
             "qualified_name": self.qualified_name,  # ADR-0032
             "visibility": self.visibility,  # INV-jusot
         }
+        # INV-nuzal: node ``quality`` has no producer (declared-but-empty,
+        # 0/N populated on self-analysis). Omit it when None — the INV-virik
+        # omit-when-empty pattern — rather than emit a universally-null key;
+        # present only when a producer sets it.
+        if self.quality is not None:
+            result["quality"] = self.quality
+        return result
 
     @classmethod
     def from_dict(cls, d: dict) -> "Symbol":
