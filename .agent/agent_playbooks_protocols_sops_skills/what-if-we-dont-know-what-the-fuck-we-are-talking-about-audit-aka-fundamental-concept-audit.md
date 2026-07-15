@@ -661,6 +661,36 @@ runs can find prior work:
   mappings), INV-zivah (drift guard invariant), WI-gitad
   (HIGH_RISK_PRIMITIVES sync test).
 
+- **2026-07-15 — `supply_chain_tier` (the tier axis).** Trigger: cadence
+  overdue (100+ commits) + having just shipped PR #655 (workspace-sibling
+  dependency declarations → tier-2), which surfaced a live tension with
+  ADR-0041 §1's "tier = distance, nothing else" axiom. Outcome: **confirmed
+  structural leak** (multiple, pre-existing; PR #655 vindicated as clean).
+  Findings: (F1) the §1 axiom never fixes the reference frame — a workspace
+  member's *source* is tier-1 but a *declaration naming* it is tier-2 —
+  resolvable by sharpening the axiom to "distance of the package a node
+  *represents*" (DOCUMENT); (F2, dominant) `internal_dep` (tier-2) is read as
+  project-priority code by `ranking.py:162`/`cfg.py:1655` DDG/`entrypoints.py:1622`/
+  `sketch.py:5747` but as an "external-dependency graph sink" by
+  `metrics.py:122-141` — the same value playing two contradictory roles across
+  consumers (apex/peer overloading); (F3) six linkers (`tauri_ipc`,
+  `wasm_bindgen`, `message_dispatch`, `annotation_convention`, `yjs_crdt`,
+  `solidity_abi`) overload `tier=2` as a *don't-reclassify-me* sentinel chosen
+  for `_classify_symbols`'s `tier!=1` skip (mechanism-vs-category leak, confirmed
+  by the `tauri_ipc.py:660` comment); (F4) `directness` is write-only (stamped
+  `ir.py:1504`, registered axis, zero readers — the ADR-0041 §2 extraction
+  purified `tier` but its extracted half is dead); (F5) `analysis_tiers` is dead
+  config; (F6/F7) tier-2 is near-phantom in the default file classifier and its
+  docstrings/comments describe a tier-2 "source code" concept that rarely exists.
+  Explore-agent-assisted producer/consumer trace. Five tracker items filed:
+  INV-higop (F2 semantic split), INV-bonup (F3 synthetic sentinel), WI-bojok
+  (F4 dead axis), WI-josad (F5/F6/F7 cleanup); F1 axiom-sharpening → ADR-0041
+  addendum follow-up. Full write-up:
+  `~/hypergumbo_lab_notebook/concept-audit-supply_chain_tier_07152026.md`.
+  Note: the leaks are orthogonal to the INV-nuzas closure that motivated the
+  audit (that property is about `external_symbol` naming, not tier semantics),
+  so the audit cleared the closure rather than blocking it.
+
 (Future audits append here.)
 
 ## Relationship to other playbooks
