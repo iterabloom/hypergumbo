@@ -42,3 +42,18 @@
   clock: 4  # 4335
   nonce: '4335'  # 4335
   message: "Wave-5 sweep (2026-07-08): identity:F5 fingerprint residual (file node + its sole function collide on one fingerprint; structural walk strips comments; the file-vs-sole-function collision named in the identity:F5/T2 clause). Empty isbefore -> terminal wave."  # 4335
+- op: update  # 161f
+  at: '2026-07-15T21:18:07Z'  # 161f
+  by: agent  # 161f
+  actor: jgstern_agent  # 161f
+  clock: 5  # 161f
+  nonce: 161f  # 161f
+  set:  # 161f
+    status: done  # 161f
+- op: discuss  # c429
+  at: '2026-07-15T21:18:07Z'  # c429
+  by: agent  # c429
+  actor: jgstern_agent  # c429
+  clock: 6  # c429
+  nonce: c429  # c429
+  message: "Done — stale (v5, 2026-07-15). 0 file-vs-function fingerprint collisions on v5; the two named cases no longer collide (both file nodes now fp=None, functions carry distinct hgfp2: values). HONEST CAVEAT: the collision was eliminated by file-node fp going NULL (scheme reworked hgfp1→hgfp2), not by a demonstrated comment-stripping fix — that residual (file-node fp null) is now tracked by WI-sijug, which absorbs it."  # c429

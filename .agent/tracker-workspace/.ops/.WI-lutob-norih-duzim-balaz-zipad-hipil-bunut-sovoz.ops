@@ -35,3 +35,19 @@
   clock: 3  # b060
   nonce: b060  # b060
   message: "Wave-5 sweep (2026-07-08): identity:F5 shape_id residual (csharp/solidity/wgsl shape_id=None on 100% body-bearing symbols; analyze()-override bypasses the base-class stamp loop). Empty isbefore -> terminal wave."  # b060
+- op: update  # 7fce
+  at: '2026-07-15T21:18:34Z'  # 7fce
+  by: agent  # 7fce
+  actor: jgstern_agent  # 7fce
+  clock: 4  # 7fce
+  nonce: 7fce  # 7fce
+  set: {}  # 7fce
+  add:  # 7fce
+    isbefore: [WI-vogij-jubit-podog-galug-humag-rovuh-jahan-rozug]  # 7fce
+- op: discuss  # e050
+  at: '2026-07-15T21:18:34Z'  # e050
+  by: agent  # e050
+  actor: jgstern_agent  # e050
+  clock: 5  # e050
+  nonce: e050  # e050
+  message: "Identity triage 2026-07-15: shape_id-coverage prerequisite for WI-vogij (clone/refactoring-lead feature). Re-run: csharp 16/16, solidity 11/11, wgsl 6/6 shape_id=null (100%) — analyze()-override bypasses the base stamp loop (base.py:3226-3232); wgsl hardcodes shape_id=None. A clone detector needs these populated."  # e050

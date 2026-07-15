@@ -36,3 +36,20 @@
   clock: 3  # ef49
   nonce: ef49  # ef49
   message: "Wave-5 sweep (2026-07-08): identity:F5 shape_id parity residual (Python variable-kind never gets shape_id while Go variable does). Empty isbefore -> terminal wave. Also a strategy-doc load-bearing item (per-(kind,field) coverage is emergent per code path)."  # ef49
+- op: update  # 2036
+  at: '2026-07-15T21:18:08Z'  # 2036
+  by: agent  # 2036
+  actor: jgstern_agent  # 2036
+  clock: 4  # 2036
+  nonce: '2036'  # 2036
+  set:  # 2036
+    status: wont_do  # 2036
+  add:  # 2036
+    duplicate_of: [WI-luzut-jolad-juzoj-kapov-ribon-rifag-basud-dotat]  # 2036
+- op: discuss  # 0d12
+  at: '2026-07-15T21:18:08Z'  # 0d12
+  by: agent  # 0d12
+  actor: jgstern_agent  # 0d12
+  clock: 5  # 0d12
+  nonce: 0d12  # 0d12
+  message: "TRUE_DUPLICATE of WI-luzut (identity concept-audit triage, 2026-07-15). Same root cause and measurement: Python variable-kind nodes carry shape_id=null (1854/1854 on v5) because py.py:1678 _compute_shape_id is typed FunctionDef|ClassDef-only. WI-luzut is the canonical row (P2, earlier). This item's Go-parity evidence (go/swift variable shape_id populated 2/2, 1/1) folded onto WI-luzut."  # 0d12

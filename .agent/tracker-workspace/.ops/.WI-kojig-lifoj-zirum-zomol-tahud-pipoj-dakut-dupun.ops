@@ -25,3 +25,18 @@
   clock: 2  # 6f31
   nonce: 6f31  # 6f31
   message: "Related to WI-mosil (distinct fix; dogfood)."  # 6f31
+- op: update  # 9492
+  at: '2026-07-15T21:17:46Z'  # 9492
+  by: agent  # 9492
+  actor: jgstern_agent  # 9492
+  clock: 3  # 9492
+  nonce: '9492'  # 9492
+  set:  # 9492
+    status: done  # 9492
+- op: discuss  # 3c8e
+  at: '2026-07-15T21:17:46Z'  # 3c8e
+  by: agent  # 3c8e
+  actor: jgstern_agent  # 3c8e
+  clock: 4  # 3c8e
+  nonce: 3c8e  # 3c8e
+  message: "Done — stale (v5, 2026-07-15). Re-ran the item's own measurement: the origin-productive / origin_run_id-no-FK contradiction is a 0-pass gap (was 3: sql/toml/wgsl). sql=3, toml=85, wgsl=5 nodes all carry a non-empty origin_run_id resolving to a real run; global origin-productive − origin_run_id-reachable = ∅."  # 3c8e

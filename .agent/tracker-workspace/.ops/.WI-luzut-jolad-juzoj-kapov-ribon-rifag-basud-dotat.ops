@@ -41,3 +41,10 @@
   clock: 4  # 28a4
   nonce: 28a4  # 28a4
   message: "Wave-5 sweep (2026-07-08): identity:F5 shape_id residual (Python variable-kind shape_id null; _compute_shape_id is FunctionDef|ClassDef-only). Empty isbefore -> terminal wave."  # 28a4
+- op: discuss  # e0f4
+  at: '2026-07-15T21:18:08Z'  # e0f4
+  by: agent  # e0f4
+  actor: jgstern_agent  # e0f4
+  clock: 5  # e0f4
+  nonce: e0f4  # e0f4
+  message: "Canonical row for the Python-variable shape_id=null defect (WI-zidal folded in as TRUE_DUPLICATE, 2026-07-15). Ported parity evidence: go/swift variable-kind nodes DO get shape_id (2/2, 1/1) — it's a py.py analyzer-parity gap (_compute_shape_id typed FunctionDef|ClassDef-only, py.py:1678; _emit_module_level_assign_symbols builds kind='variable' with no shape_id call). Now a WI-vogij prerequisite: the clone/refactoring-lead feature needs shape_id populated on variable nodes."  # e0f4
