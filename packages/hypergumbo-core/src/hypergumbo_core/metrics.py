@@ -120,7 +120,15 @@ def compute_metrics(
             languages[lang] = {"nodes": 0, "edges": 0, "files": 0}
         languages[lang]["edges"] += 1
 
-    # Group by supply chain tier
+    # Group by supply chain tier. Populated by iterating the ANALYZED node
+    # set below, so it enumerates only tiers that carry >=1 analyzed node —
+    # in practice the analyzed tiers 1-3 (first_party / internal_dep /
+    # external_dep). Tier 4 (derived) is excluded from analysis (spec §14),
+    # emits no nodes, and therefore never gets a bucket here; it surfaces
+    # solely as ``supply_chain_summary.derived_skipped``. The resulting
+    # tier-set disagreement between the two summary surfaces is intentional,
+    # not an omission (WI-nibul): an always-empty ``derived`` bucket here
+    # would be a structurally-always-0 field, which ADR-0040 forbids.
     by_supply_chain_tier: Dict[str, Dict[str, int]] = {}
     node_id_to_tier: Dict[str, str] = {}
 

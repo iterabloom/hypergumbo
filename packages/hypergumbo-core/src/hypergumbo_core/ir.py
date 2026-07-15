@@ -454,13 +454,27 @@ class Symbol:
             the dogfood corpus that promise produced a 60% collision rate
             (155 zero-param bash functions in one file shared one ID),
             so name + qualified_name are now part of the hash inputs.
+            Serialized as ``sha256:<16hex>``; the ``sha256:`` prefix names
+            the hash *algorithm*, not the identity axis — the scheme/version
+            lives in the top-level ``stable_id_scheme`` descriptor.
+            ``shape_id`` shares this exact surface; the two are discriminated
+            by field identity (and their ``*_scheme`` descriptors), NOT by an
+            in-value prefix, and their value-spaces are disjoint (0 overlap on
+            the dogfood corpus). This is by design (WI-tisar): unlike
+            ``fingerprint``'s ``hgfp2:`` *version* tag or the edges'
+            ``edge:``/``edgekey:`` *namespace* tags, these two need no in-value
+            discriminator because they are always field-qualified. Consumers
+            must therefore retain field context — do NOT join on bare hash
+            values across the stable_id/shape_id axes.
         shape_id: Structural *skeleton* hash — the parse subtree with
             identifiers, literals, comments, and punctuation STRIPPED
             (ADR-0014 §1 compute_shape_id), so two symbols with the same
             code shape but different names/values collide. Compared
             within-language only (Python uses an ast-based variant).
             Contrast ``fingerprint``, which KEEPS identifiers/literals —
-            ``shape_id`` is a strict coarsening of it.
+            ``shape_id`` is a strict coarsening of it. Serialized as
+            ``sha256:<16hex>`` — the same surface as ``stable_id`` (see that
+            field's note on cross-axis bare-hash joins; WI-tisar).
         fingerprint: Structural *content* hash of the symbol's parse
             subtree — shape PLUS identifiers and literals, whitespace/
             comment-invariant, tagged with the scheme in
@@ -737,8 +751,20 @@ class Edge:
     """A relationship between two symbols (e.g., function calls).
 
     Attributes:
-        id: Unique identifier for this edge instance
-        edge_key: Canonical identity for deduplication across passes
+        id: Unique identifier for this edge instance (per-instance identity,
+            line-inclusive; the Edge counterpart of ``Symbol.id``). Surfaced
+            as ``edge:sha256:<16hex>``.
+        edge_key: Canonical identity for deduplication across passes —
+            structural identity computed line-insensitively from
+            (src, dst, edge_type), so it is stable across regenerations. This
+            is the Edge counterpart of ``Symbol.stable_id`` (structural
+            identity that survives regeneration); ``edge.id`` is the
+            per-instance counterpart of ``Symbol.id``. Named ``edge_key``
+            rather than ``stable_id`` for historical reasons — the rename
+            would be a breaking schema change and is not worth the churn
+            (WI-niboh). Surfaced as ``edgekey:sha256:<16hex>``; the
+            ``edgekey:`` namespace distinguishes it from ``edge:``-prefixed
+            edge ids in a shared lookup space.
         src: ID of the source symbol (e.g., the caller)
         dst: ID of the target symbol (e.g., the callee)
         edge_type: Type of relationship (calls, imports, inherits, etc.)

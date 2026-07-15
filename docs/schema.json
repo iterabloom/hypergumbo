@@ -626,7 +626,7 @@
               "type": "null"
             }
           ],
-          "description": "Structural identity hash within a (qualified_name, module_path) scope (ADR-0014 as amended by Phase 6 / INV-bazij): survives body edits, NOT rename or move"
+          "description": "Structural identity hash within a (qualified_name, module_path) scope (ADR-0014 as amended by Phase 6 / INV-bazij): survives body edits, NOT rename or move. Serialized as sha256:<16hex> and shares this exact surface with shape_id; the two are discriminated by field name (and the top-level stable_id_scheme / shape_id_scheme descriptors), NOT by an in-value prefix, and their value-spaces are disjoint. Do not join on bare hash values across the two axes (WI-tisar)."
         },
         "shape_id": {
           "oneOf": [
@@ -637,7 +637,7 @@
               "type": "null"
             }
           ],
-          "description": "Structural *skeleton* hash \u2014 the parse subtree with identifiers, literals, comments, and punctuation STRIPPED (ADR-0014 \u00a71), so same-shape / different-name symbols collide. Within-language only. Contrast fingerprint, which KEEPS identifiers/literals; shape_id is a strict coarsening of it. (Currently a serialized output-boundary field with no internal consumer.)"
+          "description": "Structural *skeleton* hash \u2014 the parse subtree with identifiers, literals, comments, and punctuation STRIPPED (ADR-0014 \u00a71), so same-shape / different-name symbols collide. Within-language only. Contrast fingerprint, which KEEPS identifiers/literals; shape_id is a strict coarsening of it. Serialized as sha256:<16hex>, the same surface as stable_id (see WI-tisar). (Currently a serialized output-boundary field with no internal consumer.)"
         },
         "fingerprint": {
           "oneOf": [
