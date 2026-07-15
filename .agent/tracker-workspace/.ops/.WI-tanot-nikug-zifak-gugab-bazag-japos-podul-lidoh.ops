@@ -47,3 +47,19 @@
   clock: 5  # 0aaf
   nonce: 0aaf  # 0aaf
   message: "NEW residual phantom surfaced (self-analysis, PR #655 session, dev @ 830f8bd426): hypergumbo_core.behavior_map_io.SubstrateError -- a module_attr_ref phantom introduced by the ADR-0042 survey-rename deprecation shim (behavior_map_io re-exports SubstrateError from survey_io). A Category-A-like re-export read that the WI-hotug CASE A / Category A aliasing does not resolve for this shim. It will disappear when the deprecation shim is removed at the window close (WI-sudin). Current workspace-prefix external_symbol phantom set (self-analysis): 6 = 3 dunder carve-outs (hypergumbo_core.__path__/__file__, linkers.__path__) + Category D cli.shutil + store.datetime + this SubstrateError. NOTE: the 5 scip_pb2 protobuf classes + Category E bash:hypergumbo no longer surface under the hypergumbo_-prefix filter -- re-measure the full residual before the acceptance-property re-scope. (This session's PR #655 fixed the ORTHOGONAL tier-classifier dependency-declaration facet, not the call/attr facet this item owns.)"  # 0aaf
+- op: update  # 74a5
+  at: '2026-07-15T07:14:17Z'  # 74a5
+  by: agent  # 74a5
+  actor: jgstern_agent  # 74a5
+  clock: 6  # 74a5
+  nonce: 74a5  # 74a5
+  set:  # 74a5
+    status: todo_soft  # 74a5
+    priority: 4  # 74a5
+- op: discuss  # acad
+  at: '2026-07-15T07:14:17Z'  # acad
+  by: agent  # acad
+  actor: jgstern_agent  # acad
+  clock: 7  # acad
+  nonce: acad  # acad
+  message: "DOWNGRADED to optional cleanup (2026-07-15). INV-nuzas closed via a human-approved re-scoped acceptance property that CARVES OUT the remaining Category D + E residual (all test/script-reached, so consumer-invisible). WI-tanot therefore no longer gates INV-nuzas. Remaining scope = Category D (cli.shutil / store.datetime: stdlib-thru-module relabel) + Category E (bash:hypergumbo: a 9th carve-out or cross-language console-script bridge). Both are test/script-reached ONLY (zero consumer-facing impact) and the D fix touches the shared taint-adjacent WI-huhum/WI-zigah module-attr-ref emitters (which also serve legit stdlib dotted chains + third-party re-exports -> bakeoff-gated regression risk). So: risk > benefit. Kept OPEN as todo_soft/P4 rather than wont_do (owner did not explicitly elect wont_do; reversible). Note behavior_map_io.SubstrateError (a NEW phantom this residual acquired) self-clears when the ADR-0042 shim is removed at WI-sudin (window-close)."  # acad
