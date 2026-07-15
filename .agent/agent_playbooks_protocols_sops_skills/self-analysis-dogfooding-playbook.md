@@ -7,7 +7,7 @@ Use hypergumbo on itself to find bugs, validate Python analysis quality, and bui
 
 - **Before refactoring shared modules** — understand cross-package dependencies, high-centrality symbols, and call-graph structure before touching code that multiple packages import.
 - **After adding or modifying analyzers** — verify the new analyzer produces expected edges, entrypoints, and framework patterns by running against hypergumbo itself (which uses many Python patterns: decorators, dataclasses, abstract classes, dynamic dispatch, entry points).
-- **After changing linkers or IR** — run `hypergumbo run .` and diff the behavior map against a prior baseline to catch regressions in edge count, orphan rate, or confidence distribution.
+- **After changing linkers or IR** — run `hypergumbo survey .` and diff the survey against a prior baseline to catch regressions in edge count, orphan rate, or confidence distribution.
 - **When investigating bakeoff signals** — use `slice`, `explain`, or `io-boundaries` on hypergumbo's own code to trace how data flows through the analysis pipeline and understand what the tool sees vs. what it should see.
 - **Periodically** — hypergumbo is a non-trivial Python project (~130K non-test LOC). Running it on itself is one of the cheapest smoke tests available.
 
@@ -32,8 +32,8 @@ If hypergumbo can't analyze itself well, it has a problem.
 Run hypergumbo on its own repo and save the outputs for inspection:
 
 ```bash
-# Full behavior map
-hypergumbo run . --out /tmp/hg-self-analysis.json
+# Full survey
+hypergumbo survey . --out /tmp/hg-self-analysis.json
 
 # Sketch (what an LLM would see)
 hypergumbo . -t 8000 > /tmp/hg-self-sketch.md
@@ -124,7 +124,7 @@ Common mistakes: `lang` (use `language`), `type` on a node (use `kind`), `file`
 **Tier label trap.** On a workspace package, `supply_chain.tier_name=internal_dep` is the default for everything *outside* `src/`/`lib/`/`app/` — including tests. On a self-analysis where the codebase is mostly first-party, a "78 % internal_dep" summary stat is not anomalous; it is the documented classification algorithm (`supply_chain.py` step 4: src/lib/app → tier 1, otherwise tier 2). Use the role flags (`is_test_file`, `is_example_file`, `is_config_file`, `is_generated_file`) to recover what kind of code a tier-2 node holds — not the tier label alone.
 
 **Expected:** Orphan rate below 30%. If higher, the Python analyzer or linkers may be missing edges.
-Edge type distribution should include `calls`, `contains`, `imports`, `instantiates`, etc. If most edges show `MISSING`, the behavior map schema may have changed.
+Edge type distribution should include `calls`, `contains`, `imports`, `instantiates`, etc. If most edges show `MISSING`, the survey schema may have changed.
 Node language distribution should be dominated by `python` on a hypergumbo self-analysis; significant `MISSING` means nodes are missing the `language` field.
 
 ### Key symbols check
@@ -148,7 +148,7 @@ Expected IO boundaries for hypergumbo itself:
 
 If any of these categories are missing, the Python IO catalog or call-graph tracing has a gap.
 
-**Network during `hypergumbo run` is a known defect, not an expected boundary.** The `runtime-cli-no-network` claim in `docs/hypergumbo.claims.yaml` (and the `SECURITY.md` generated from it) promises that analysis subcommands never send over the network — only `install-embeddings` may. In practice `hypergumbo run` still makes HTTPS calls to `huggingface.co` for model metadata on every invocation, even with the model fully cached locally and even when `install-embeddings` was not run this session: `local_files_only=True` is bypassed by HF Hub metadata calls plus a background `safetensors_conversion` thread. This is tracked as **INV-dasig (P0, violated)**. So if you observe HuggingFace traffic during `run` / sketch / any non-`install-embeddings` subcommand, treat it as a *confirmation of INV-dasig*, not as a normal net_send boundary. Caveat to the caveat: `HF_HUB_OFFLINE=1` masks the traffic, so an environment with that env var set may show zero net_send even though the bug is live.
+**Network during `hypergumbo survey` is a known defect, not an expected boundary.** The `runtime-cli-no-network` claim in `docs/hypergumbo.claims.yaml` (and the `SECURITY.md` generated from it) promises that analysis subcommands never send over the network — only `install-embeddings` may. In practice `hypergumbo survey` still makes HTTPS calls to `huggingface.co` for model metadata on every invocation, even with the model fully cached locally and even when `install-embeddings` was not run this session: `local_files_only=True` is bypassed by HF Hub metadata calls plus a background `safetensors_conversion` thread. This is tracked as **INV-dasig (P0, violated)**. So if you observe HuggingFace traffic during `run` / sketch / any non-`install-embeddings` subcommand, treat it as a *confirmation of INV-dasig*, not as a normal net_send boundary. Caveat to the caveat: `HF_HUB_OFFLINE=1` masks the traffic, so an environment with that env var set may show zero net_send even though the bug is live.
 
 The same chains feed `verify-claims`: every fs_write/net_send/subprocess primitive becomes a taint sink at `trust_level=untrusted` in zone `host_fs` / `network` / `host_fs` respectively, and every env_read primitive becomes a taint source at label `host_secret`. So a missing category here implies a missing taint-flow coverage too.
 
@@ -178,7 +178,7 @@ hypergumbo slice --entry link_middleware_chain
 hypergumbo slice --entry Symbol --reverse
 ```
 
-The slice CLI prints `nodes: N · edges: N · limits_hit: [...]` and writes a JSON file alongside the analysis cache. **The slice JSON is referential, not standalone.** Its top-level keys are `feature`, `schema_version`, `view`; the slice contents live under `feature.node_ids[]` and `feature.edge_ids[]` as ID strings — not under `nodes` / `edges` like the behavior map. To answer "does the slice include file X?", join the IDs back against the parent behavior-map JSON:
+The slice CLI prints `nodes: N · edges: N · limits_hit: [...]` and writes a JSON file alongside the analysis cache. **The slice JSON is referential, not standalone.** Its top-level keys are `feature`, `schema_version`, `view`; the slice contents live under `feature.node_ids[]` and `feature.edge_ids[]` as ID strings — not under `nodes` / `edges` like the survey. To answer "does the slice include file X?", join the IDs back against the parent survey JSON:
 
 ```python
 import json
