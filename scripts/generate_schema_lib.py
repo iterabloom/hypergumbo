@@ -381,7 +381,13 @@ def _symbol_spec() -> ClassSpec:
             },
         },
         decorations={
-            "id": {"description": "Unique identifier within analysis"},
+            "id": {"description": (
+                "Unique, location-addressed node identifier (ADR-0036 "
+                "grammar: lang:path:span:name:kind). Because it encodes "
+                "location it CHURNS on file move / rename / signature "
+                "change; for an edits-surviving identity use stable_id, "
+                "and for cross-run rename tracking use fingerprint."
+            )},
             "name": {"description": "Symbol name"},
             "kind": {
                 "description": (
@@ -438,7 +444,15 @@ def _symbol_spec() -> ClassSpec:
                     "INV-bazij): survives body edits, NOT rename or move"
                 ),
             },
-            "shape_id": {"description": "Structural implementation fingerprint"},
+            "shape_id": {"description": (
+                "Structural *skeleton* hash — the parse subtree with "
+                "identifiers, literals, comments, and punctuation "
+                "STRIPPED (ADR-0014 §1), so same-shape / different-name "
+                "symbols collide. Within-language only. Contrast "
+                "fingerprint, which KEEPS identifiers/literals; shape_id "
+                "is a strict coarsening of it. (Currently a serialized "
+                "output-boundary field with no internal consumer.)"
+            )},
             "fingerprint": {"description": (
                 "Structural content hash of the symbol's parse subtree "
                 "(shape + identifiers + literals; whitespace/comment-"

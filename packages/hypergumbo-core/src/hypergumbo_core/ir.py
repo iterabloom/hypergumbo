@@ -259,6 +259,15 @@ class AnalysisRun:
     Tracks which pass ran, when, and what it analyzed. Includes fields
     for cache keying (run_signature, repo_fingerprint) and runtime info
     (toolchain).
+
+    Readership note (concept-audit 2026-07-15): ``run_signature``,
+    ``repo_fingerprint``, ``config_fingerprint``, and ``pass_version``
+    have no *internal* consumers — hypergumbo never reads them back to
+    key a cache or branch a decision. They are computed and serialized
+    for EXTERNAL cache-keying / PROV-DM tooling only (``run_signature``
+    is additionally recomputed at finalize). By contrast ``execution_id``
+    and the ``origin_run_id`` FK on Symbol/Edge ARE load-bearing
+    internally (spec-validator referential-integrity).
     """
 
     execution_id: str  # axis: identity
@@ -445,8 +454,20 @@ class Symbol:
             the dogfood corpus that promise produced a 60% collision rate
             (155 zero-param bash functions in one file shared one ID),
             so name + qualified_name are now part of the hash inputs.
-        shape_id: Structural implementation fingerprint
-        fingerprint: Content hash of source bytes (sha256)
+        shape_id: Structural *skeleton* hash — the parse subtree with
+            identifiers, literals, comments, and punctuation STRIPPED
+            (ADR-0014 §1 compute_shape_id), so two symbols with the same
+            code shape but different names/values collide. Compared
+            within-language only (Python uses an ast-based variant).
+            Contrast ``fingerprint``, which KEEPS identifiers/literals —
+            ``shape_id`` is a strict coarsening of it.
+        fingerprint: Structural *content* hash of the symbol's parse
+            subtree — shape PLUS identifiers and literals, whitespace/
+            comment-invariant, tagged with the scheme in
+            ``symbol_fingerprint_scheme`` (``hgfp2:``). NOT a raw
+            source-byte hash — that was the ADR-0032-demolished Format-1
+            scheme. ``None`` for grammarless languages / parse errors /
+            synthetic spans. Producer: fingerprint.py.
         quality: Score and reason dict for quality assessment
         meta: Optional metadata dict for language-specific information
         supply_chain_tier: Position in dependency graph (1=first_party, 2=internal_dep,
@@ -729,7 +750,7 @@ class Edge:
         evidence_lang: Language for confidence scoring
         is_resolved: Whether `dst` is a real, in-repo (first-party) symbol node present in the graph (ADR-0037 ruling 1 — resolution names in-repo-ness, NOT target-identification). External/stdlib targets are materialized as `external_symbol` placeholder nodes and are always `is_resolved=False` even though the dst node exists (present-but-synthetic, not absent). The producer-time value (Edge.create default True) is ADVISORY; the finalize edge-resolution sub-step's verdict is what serializes.
         dst_ref: Structured identity for the dst endpoint. Populated on every `is_resolved=False` edge after the finalize edge-resolution sub-step (`None` only for an unidentified dangling reference whose id cannot be parsed); `None` for in-repo (`is_resolved=True`) dsts. Canonical source of truth for external-target identity — the legacy `dst` string is built from the same `ExternalRef`. The fourth cell (`is_resolved=True` + populated `dst_ref`) is never produced (ADR-0037 ruling 1 table).
-        derived_from: Symbol (or Edge) IDs the producer consumed to construct this Edge (INV-rukor). Populated by linkers; None for analyzer-originated edges.
+        derived_from: Symbol (or Edge) IDs the producer consumed to construct this Edge (INV-rukor). Populated by linkers; None for analyzer-originated edges. Axis note: this is PROVENANCE (PROV wasDerivedFrom, ADR-0030), not identity-*of-this-edge*; it carries ``# axis: identity`` because it holds identity *references* to other records (the same rationale as ``src``/``dst``), and it does NOT participate in ``edge_key``/dedup.
         confidence: Detection-reliability score (0.0-1.0) — the producer's evidence-derived estimate that the relationship EXISTS (ADR-0039 ruling 1). NOT a ranking value; post-detection ranking boosts/penalties live in ``rank_score``.
         confidence_source: Provenance of the ``confidence`` value (ADR-0039 ruling 2), one of ``VALID_CONFIDENCE_SOURCES`` — ``evidence_derived`` / ``emitter_constant`` / ``composite``. See ``VALID_CONFIDENCE_SOURCES`` for the enumeration and re-evaluation trigger.
         rank_score: Ranking prominence (0.0-1.0). Initializes from ``confidence`` and accumulates the ranking adjustments ADR-0039 ruling 3 relocates off ``confidence`` (e.g. the type-hierarchy fan-out dampener). Equal to ``confidence`` until a producer relocates its adjustment. Ranking consumers key on this; reliability consumers key on ``confidence``.

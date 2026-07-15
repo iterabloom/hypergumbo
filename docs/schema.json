@@ -423,7 +423,7 @@
       "properties": {
         "id": {
           "type": "string",
-          "description": "Unique identifier within analysis"
+          "description": "Unique, location-addressed node identifier (ADR-0036 grammar: lang:path:span:name:kind). Because it encodes location it CHURNS on file move / rename / signature change; for an edits-surviving identity use stable_id, and for cross-run rename tracking use fingerprint."
         },
         "name": {
           "type": "string",
@@ -637,7 +637,7 @@
               "type": "null"
             }
           ],
-          "description": "Structural implementation fingerprint"
+          "description": "Structural *skeleton* hash \u2014 the parse subtree with identifiers, literals, comments, and punctuation STRIPPED (ADR-0014 \u00a71), so same-shape / different-name symbols collide. Within-language only. Contrast fingerprint, which KEEPS identifiers/literals; shape_id is a strict coarsening of it. (Currently a serialized output-boundary field with no internal consumer.)"
         },
         "fingerprint": {
           "oneOf": [
