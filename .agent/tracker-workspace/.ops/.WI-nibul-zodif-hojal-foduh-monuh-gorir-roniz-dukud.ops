@@ -1,0 +1,23 @@
+- op: create  # c349
+  at: '2026-07-15T19:35:54Z'  # c349
+  by: agent  # c349
+  actor: jgstern_agent  # c349
+  clock: 1  # c349
+  nonce: c349  # c349
+  data:  # c349
+    kind: work_item  # c349
+    title: "metrics.by_supply_chain_tier omits the derived tier that supply_chain_summary carries (tier-set disagreement)"  # c349
+    status: todo_soft  # c349
+    priority: 4  # c349
+    parent: INV-luhur-sital-lonar-tagiv-kuzab-mokol-jikot-fosug  # c349
+    tags:  # c349
+    - schema_drift  # c349
+    - wave5  # c349
+    - dogfood  # c349
+    - tier_axis  # c349
+    isbefore: []  # c349
+    duplicate_of: []  # c349
+    not_duplicate_of: []  # c349
+    pr_ref:  # c349
+    description: "## Origin\n\nRe-filed 2026-07-15 when closing **WI-gabos** (the `derived_skipped` shape question). WI-gabos carried a *folded second facet* (2026-06-06 discussion) that is a **distinct defect** from the shape question and is NOT resolved by WI-gabos's spec-doc closure. Surfaced during the tier-axis investigation and re-filed per the honest-gaps discipline so it is not silently dropped.\n\n## Symptom\n\nThe two top-level supply-chain summary blocks enumerate **different tier sets**:\n\n- `metrics.by_supply_chain_tier` → `{first_party, internal_dep, external_dep}` (3 tiers)\n- `supply_chain_summary` → `{first_party, internal_dep, external_dep, derived_skipped}` (4)\n\nVerified on the current self-survey (hg-self, 2026-07-15): `by_supply_chain_tier` keys = `['external_dep', 'first_party', 'internal_dep']`; `supply_chain_summary` keys = `['derived_skipped', 'external_dep', 'first_party', 'internal_dep']`.\n\nA consumer iterating `metrics.by_supply_chain_tier` to enumerate \"all tiers\" never sees the tier-4/derived bucket that `supply_chain_summary` carries. The two writers disagree on whether tier 4 exists in the summary surface.\n\n## Invariant\n\nThe two supply-chain summary surfaces should agree on the tier set, OR the difference should be documented. Tier 4 (derived) is *excluded from analysis* (spec §14), so `by_supply_chain_tier` legitimately has 0 nodes/edges for it — which is exactly why it's omitted. Two candidate dispositions:\n\n1. **DOCUMENT** — spec states that `by_supply_chain_tier` covers only the *analyzed* tiers (1-3) and that tier 4 (derived) appears only as `supply_chain_summary.derived_skipped` (an exclusion-disclosure bucket, not an analyzed tier). Likely the correct call (adding an always-empty `derived` tier to `by_supply_chain_tier` would be an always-0 field, cf. ADR-0040).\n2. **NORMALIZE** — add a `derived` entry to `by_supply_chain_tier` for shape-uniformity. Rejected-leaning: it would be a structurally-always-0 tier (derived nodes are excluded, emit no nodes/edges), which ADR-0040 forbids.\n\nMost likely DOCUMENT (mirrors the WI-gabos resolution).\n\n## Related rows\n\n- Sibling / parent context: **WI-gabos** (shape facet, closed satisfied 2026-07-15) and parent **INV-luhur**.\n- Tier-axis concept-audit family (INV-higop / INV-bonup / WI-bojok / WI-josad)."  # c349
+    fields: {}  # c349

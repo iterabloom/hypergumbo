@@ -140,3 +140,18 @@
   clock: 15  # 50e7
   nonce: '50e7'  # 50e7
   message: "Drain audit: E-misapplied. No quantitative bakeoff-improvement claim -- AnalysisRun.skipped_passes is declared (ir.py:204) but never populated by any code path (empty across 84 runs); a writer-contract wiring gap, not a cohort-measurable improvement. Correctly re-verified violated 2026-06-11. Tracked by violated status; stripping misapplied tag."  # 50e7
+- op: update  # 051d
+  at: '2026-07-15T19:36:50Z'  # 051d
+  by: agent  # 051d
+  actor: jgstern_agent  # 051d
+  clock: 16  # 051d
+  nonce: 051d  # 051d
+  set:  # 051d
+    status: satisfied  # 051d
+- op: discuss  # 3b78
+  at: '2026-07-15T19:36:50Z'  # 3b78
+  by: agent  # 3b78
+  actor: jgstern_agent  # 3b78
+  clock: 17  # 3b78
+  nonce: 3b78  # 3b78
+  message: "Satisfied via re-scope + documentation (PR #665). The literal two-place statement was structurally impossible: a pass-level skip (no files matched / missing grammar / contained crash) never produces an analysis_runs[] entry, so it cannot appear in analysis_runs[].skipped_passes. limits.skipped_passes is the single authoritative pass-level skip channel (66 entries on self-analysis); the per-run field is an unpopulated legacy mirror, omit-when-empty (INV-virik). The genuine defect was documentation: spec §9/§17 and the AnalysisRun schema description routed readers to the per-run field for outputs that land in limits. PR #665 moved the pass-level detail to the §9 limits section, fixed the two §17 cross-refs, the §6 sketch comment, and the false schema description. Skip provenance is now complete and honest via one documented channel. Matches the same-day INV-virik satisfied precedent. Human-ratified re-scope 2026-07-15."  # 3b78

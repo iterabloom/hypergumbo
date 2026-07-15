@@ -77,3 +77,18 @@
     tags: [dogfood]  # e42e
   remove:  # e42e
     tags: [dogfooding]  # e42e
+- op: update  # dfba
+  at: '2026-07-15T19:36:41Z'  # dfba
+  by: agent  # dfba
+  actor: jgstern_agent  # dfba
+  clock: 8  # dfba
+  nonce: dfba  # dfba
+  set:  # dfba
+    status: satisfied  # dfba
+- op: discuss  # 9373
+  at: '2026-07-15T19:36:41Z'  # 9373
+  by: agent  # 9373
+  actor: jgstern_agent  # 9373
+  clock: 9  # 9373
+  nonce: '9373'  # 9373
+  message: "Satisfied (PR #664; verified on a v5 self-survey of current dev). All three faces resolved: node/edge.provenance dropped (0 keys present on 39831 nodes / 134805 edges), edge.quality derived+populated (134805/134805), and the last residual node.quality (declared-but-always-null, was 0/39830 populated) now omitted-when-null via the INV-virik pattern — 0/39831 nodes carry the key on the production-path survey. The invariant's own disposition ('reserved-and-documented OR drop') is met by the drop; schema description updated to state it is unpopulated."  # 9373
