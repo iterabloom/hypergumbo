@@ -36,3 +36,25 @@
   clock: 3  # 01af
   nonce: 01af  # 01af
   message: "Deferred to end of Wave 5 per owner decision 2026-07-12 (see INV-firuh discussion for full rationale: ADR-0042 campaign blocks zero P1s transitively; execute last to avoid cli.py resolver-merge overlap with P1 structural work). Tagged wave5; status stays todo_soft per project future-wave convention. ADR-0042 remains Accepted."  # 01af
+- op: update  # 337e
+  at: '2026-07-15T03:08:24Z'  # 337e
+  by: agent  # 337e
+  actor: jgstern_agent  # 337e
+  clock: 4  # 337e
+  nonce: 337e  # 337e
+  set:  # 337e
+    status: needs_human_review  # 337e
+- op: discuss  # 2cfc
+  at: '2026-07-15T03:08:24Z'  # 2cfc
+  by: agent  # 2cfc
+  actor: jgstern_agent  # 2cfc
+  clock: 5  # 2cfc
+  nonce: 2cfc  # 2cfc
+  message: "ADVANCED — non-governance portion MERGED (PR #651, 3b065bbf99): README (+ meta-package sync), docs/hypergumbo-spec.md, USE-CASES.md, CACHE.md, and concept-axes (via its generator scripts/generate-concept-axes) concept-renamed 'behavior map'->'survey'; stale 'hypergumbo run' / legacy-filename doc examples -> 'hypergumbo survey' / survey.json. The schema-stable view VALUE ('view':'behavior_map') and code symbols (load_behavior_map, the view field) are untouched. GOVERNANCE PORTION (needs approval): the .agent/ playbook sweep. SCOPE CORRECTION — this is SMALL, ~3 editable files, NOT the 215-file figure (that was inflated by never-edited tracker .ops op-logs + behavior_map CODE refs in hooks): (a) .agent/agent_playbooks_protocols_sops_skills/self-analysis-dogfooding-playbook.md (2 concept refs + a 'hypergumbo run .' example), (b) .agent/agent_playbooks_protocols_sops_skills/docstring-staleness-audit-playbook.md (1 concept ref: 'behavior map reports'), (c) 1 hook file with a 'behavior map' concept ref. Proposed change: rename the concept prose 'behavior map'->'survey' + the 'hypergumbo run' example -> 'hypergumbo survey' in those 3 files, keeping any behavior_map CODE/value refs. DEFERRED (low-value/ambiguous, non-governance): docs/example-output.md (captured/generated example — regenerates with the new concept) + docs/governance-case-critiques.md (point-in-time case study). Historical/migration docs keep vocabulary per ADR-0042 Neutral. Requesting human approval for the .agent/ 3-file governance change."  # 2cfc
+- op: discuss  # 00a3
+  at: '2026-07-15T03:32:03Z'  # 00a3
+  by: agent  # 00a3
+  actor: jgstern_agent  # 00a3
+  clock: 6  # 00a3
+  nonce: 00a3  # 00a3
+  message: "Governance PR opened for the .agent/ portion: PR #652 (branch jgstern-agent/docs/survey-concept-agent-playbooks, commit 965b5f9398). 3 files — self-analysis-dogfooding-playbook.md + docstring-staleness-audit-playbook.md (behavior map->survey, hypergumbo run->hypergumbo survey) + on_transcript_change.py (injected summary string). Pushed via agit (NOT self-merged, touches .agent/hooks/); awaiting human review + merge. Hook-tests 38/0 locally. Once #652 merges, the S4 docs sweep is complete and WI-goril (tracker-item bm.json sweep) + the INV-firuh violated->satisfied flip run together (owner chose to bundle them with this .agent/ resolution)."  # 00a3

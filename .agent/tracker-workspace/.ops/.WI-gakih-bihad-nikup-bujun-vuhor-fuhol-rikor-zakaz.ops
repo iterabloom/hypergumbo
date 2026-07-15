@@ -36,3 +36,18 @@
   clock: 3  # 289c
   nonce: 289c  # 289c
   message: "Deferred to end of Wave 5 per owner decision 2026-07-12 (see INV-firuh discussion for full rationale: ADR-0042 campaign blocks zero P1s transitively; execute last to avoid cli.py resolver-merge overlap with P1 structural work). Tagged wave5; status stays todo_soft per project future-wave convention. ADR-0042 remains Accepted."  # 289c
+- op: update  # 4f02
+  at: '2026-07-14T21:28:22Z'  # 4f02
+  by: agent  # 4f02
+  actor: jgstern_agent  # 4f02
+  clock: 4  # 4f02
+  nonce: 4f02  # 4f02
+  set:  # 4f02
+    status: done  # 4f02
+- op: discuss  # 8ae4
+  at: '2026-07-14T21:28:22Z'  # 8ae4
+  by: agent  # 8ae4
+  actor: jgstern_agent  # 8ae4
+  clock: 5  # 8ae4
+  nonce: 8ae4  # 8ae4
+  message: "Done — merged PR #646 (4ed8d66b1b), ADR-0042. Renamed incidental bm.json substrate-fixture paths to canonical survey.json in the 3 non-loader test files: test_runtime_coherence (×3 CLI fixtures), test_emission_parity_matrix (output path), test_inv_jumim_readpath (docstring). Loader-mechanics fixtures + the legacy-alias-list refs in test_behavior_map_io.py deliberately KEEP their legacy names (the loader legitimately loads legacy names). SCOPE SPLIT: WI-gakih's statement also names test_behavior_map_io.py -> test_survey_io.py; that file rename + its incidental-fixture cleanup rides with the behavior_map_io.py->survey_io.py MODULE rename under WI-kisoj (avoids double-touching the same file). 131 affected tests green (test-only; no source coverage gate)."  # 8ae4

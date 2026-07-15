@@ -36,3 +36,18 @@
   clock: 3  # 620e
   nonce: 620e  # 620e
   message: "Deferred to end of Wave 5 per owner decision 2026-07-12 (see INV-firuh discussion for full rationale: ADR-0042 campaign blocks zero P1s transitively; execute last to avoid cli.py resolver-merge overlap with P1 structural work). Tagged wave5; status stays todo_soft per project future-wave convention. ADR-0042 remains Accepted."  # 620e
+- op: update  # c786
+  at: '2026-07-15T03:08:23Z'  # c786
+  by: agent  # c786
+  actor: jgstern_agent  # c786
+  clock: 4  # c786
+  nonce: c786  # c786
+  set:  # c786
+    status: done  # c786
+- op: discuss  # b41b
+  at: '2026-07-15T03:08:24Z'  # b41b
+  by: agent  # b41b
+  actor: jgstern_agent  # b41b
+  clock: 5  # b41b
+  nonce: b41b  # b41b
+  message: "Done — merged in the WI-rivuj docs PR #651 (3b065bbf99). The spec's v0.x stability commitment (spec ~L1985) is rephrased to name the survey view: 'No breaking changes to the survey view within the v0.x series', plus an explicit note that the on-disk 'view' discriminator VALUE stays 'behavior_map' for schema compatibility (consumers parsing the JSON see no change) — only the concept name and default filename became survey / survey.json (ADR-0042). The view:'behavior_map' value at spec:699/1919 is preserved verbatim."  # b41b
