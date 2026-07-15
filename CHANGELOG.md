@@ -99,6 +99,7 @@ Alongside: the CLI standardizes on `--format {text,json}` across all read views 
 
 #### Metrics & introspection
 
+- **`metrics.languages.<lang>.files` is now populated (WI-ninaj).** The per-language dict carried `{nodes, edges}` but never a `files` count, so `metrics.languages.<lang>.files` read `0`/absent on every language despite a non-zero `metrics.total_files`. It now counts file-kind nodes per language (`== count(node.kind=='file' AND node.language==lang)`), node-derived and consistent with `total_files` (the distinct node-path count) rather than the over-counting `profile.languages` sum. The per-language `files` sum reconciles to the total file-kind node count.
 - **`io-boundaries` `total_io_edges` redefined to the verified surface** — it excludes `external_potential` (which over-counted ~28×), disclosed separately as `external_potential_edges`; text and JSON now agree (io-boundaries view schema 1.0 → 2.0).
 - **`is_exported` now requires public `visibility`** and `modifiers` drops its visibility terms, so consumers read exportedness and visibility from one field each without per-language polarity logic.
 - **`sketch_precomputed.centrality_scores` renamed `additional_file_centrality_scores`** to reflect that it measures additional-file symbol-mention frequency, not graph centrality (internal cache; no public-schema change).

@@ -92,15 +92,22 @@ def compute_metrics(
         node_id_to_lang[node_id] = lang
 
         if lang not in languages:
-            languages[lang] = {"nodes": 0, "edges": 0}
+            languages[lang] = {"nodes": 0, "edges": 0, "files": 0}
         languages[lang]["nodes"] += 1
+        # WI-ninaj: per-language file rollup — count file-kind nodes per
+        # language so ``metrics.languages.<lang>.files`` reads the real count
+        # instead of an always-0 placeholder. Node-derived (file-kind node
+        # count), consistent with ``total_files`` being the distinct node-path
+        # count rather than the over-counting profile-language sum.
+        if node.get("kind") == "file":
+            languages[lang]["files"] += 1
 
     # Count edges per language (based on source node's language)
     for edge in edges:
         src_id = edge.get("src", "")
         lang = node_id_to_lang.get(src_id, "unknown")
         if lang not in languages:
-            languages[lang] = {"nodes": 0, "edges": 0}
+            languages[lang] = {"nodes": 0, "edges": 0, "files": 0}
         languages[lang]["edges"] += 1
 
     # Group by supply chain tier

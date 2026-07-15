@@ -99,6 +99,24 @@ class TestComputeMetrics:
         assert metrics["languages"]["python"]["nodes"] == 2
         assert metrics["languages"]["javascript"]["nodes"] == 1
 
+    def test_files_counted_per_language(self) -> None:
+        """WI-ninaj: metrics.languages.<lang>.files == count of file-kind nodes
+        for that language (per-language rollup of the node-derived total_files),
+        not an always-0 placeholder."""
+        nodes = [
+            {"id": "1", "language": "python", "kind": "file", "path": "a.py"},
+            {"id": "2", "language": "python", "kind": "function", "path": "a.py"},
+            {"id": "3", "language": "python", "kind": "file", "path": "b.py"},
+            {"id": "4", "language": "javascript", "kind": "file", "path": "c.js"},
+            {"id": "5", "language": "javascript", "kind": "class", "path": "c.js"},
+        ]
+        metrics = compute_metrics(nodes=nodes, edges=[])
+
+        assert metrics["languages"]["python"]["files"] == 2  # a.py, b.py
+        assert metrics["languages"]["javascript"]["files"] == 1  # c.js
+        # per-language files sum to the total file-kind node count
+        assert sum(l["files"] for l in metrics["languages"].values()) == 3
+
     def test_handles_missing_confidence(self) -> None:
         """Handles edges without confidence field."""
         nodes = [{"id": "1", "language": "python"}]
