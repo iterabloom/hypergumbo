@@ -355,6 +355,9 @@ def _external_base_edge(
         origin_run_id=run.execution_id,
         evidence_type="ast_extends",
         is_resolved=False,
+        # INV-rukor: this edge is derived solely from the subclass symbol
+        # (the base is external/unresolved, not an in-tree Symbol).
+        derived_from=[sym.id],
     )
 
 
