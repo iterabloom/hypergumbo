@@ -52,3 +52,18 @@
   set: {}  # ad69
   add:  # ad69
     isbefore: [INV-dulah-kisiz-gobak-jafov-soduj-tomim-dufut-kinil]  # ad69
+- op: update  # fc17
+  at: '2026-07-15T21:17:20Z'  # fc17
+  by: agent  # fc17
+  actor: jgstern_agent  # fc17
+  clock: 6  # fc17
+  nonce: fc17  # fc17
+  set:  # fc17
+    status: done  # fc17
+- op: discuss  # 18b8
+  at: '2026-07-15T21:17:20Z'  # 18b8
+  by: agent  # 18b8
+  actor: jgstern_agent  # 18b8
+  clock: 7  # 18b8
+  nonce: 18b8  # 18b8
+  message: "Done — stale (v5, 2026-07-15). 0 nodes carry a kind-slot in {route, event_subscriber, event_publisher}; node.id kind-slot == node.kind on all 39831 nodes. ADR-0036's ruling (kind-slot is the real kind; role → meta key) is implemented; no role survives in the id kind-slot. The 22-node cohort is 0."  # 18b8

@@ -35,3 +35,18 @@
   clock: 3  # 3167
   nonce: '3167'  # 3167
   message: "Wave-5 assignment (2026-07-08): identity factory-consolidation residual (py.py divergent _compute_stable_id vs base.py factories; Wave-0 B2). Empty isbefore; feeds mypy:F3 NewType 'post factory consolidation' → terminal wave."  # 3167
+- op: update  # 8f26
+  at: '2026-07-15T21:17:19Z'  # 8f26
+  by: agent  # 8f26
+  actor: jgstern_agent  # 8f26
+  clock: 4  # 8f26
+  nonce: 8f26  # 8f26
+  set:  # 8f26
+    status: done  # 8f26
+- op: discuss  # 6217
+  at: '2026-07-15T21:17:20Z'  # 6217
+  by: agent  # 6217
+  actor: jgstern_agent  # 6217
+  clock: 5  # 6217
+  nonce: '6217'  # 6217
+  message: "Done — stale (2026-07-15). py.py:1607 _compute_stable_id now delegates to the shared assemble_stable_id (ADR-0035 §1) — byte-identical formula to BaseAnalyzer.compute_stable_id; the function's own docstring states 'the v5 divergence is gone (WI-gitun/INV-tazaj)'. The premise (a divergent local hasher) no longer holds; 0 collisions corroborates. INV-bazij family."  # 6217

@@ -69,3 +69,18 @@
   clock: 6  # 5a85
   nonce: 5a85  # 5a85
   message: "Wave-5 sweep (2026-07-08): identity residual (node.canonical_name format dual-mode); child of INV-kurup (id-format umbrella, a Wave-5 closure gate). Empty isbefore -> terminal wave."  # 5a85
+- op: update  # c8b0
+  at: '2026-07-15T21:05:18Z'  # c8b0
+  by: agent  # c8b0
+  actor: jgstern_agent  # c8b0
+  clock: 7  # c8b0
+  nonce: c8b0  # c8b0
+  set:  # c8b0
+    status: satisfied  # c8b0
+- op: discuss  # 6ded
+  at: '2026-07-15T21:05:18Z'  # 6ded
+  by: agent  # 6ded
+  actor: jgstern_agent  # 6ded
+  clock: 8  # 6ded
+  nonce: 6ded  # 6ded
+  message: "Satisfied — stale (verified on v5 self-survey of current dev, 2026-07-15). The field this invariant is about, node.canonical_name, was DEMOLISHED by ADR-0032 (it found 'three uses pretending to be one field' and split them into typed siblings display_label + qualified_name). v5 confirms 0/39831 nodes carry a canonical_name key (the item's own measurement was '99 bare + 1623 external_symbol 3-colon + 1 seven-colon'). The 3-format-multiplexing problem cannot recur on a removed field; its concepts now have typed homes. Re-verified during the identity-vocabulary concept audit (2026-07-15), which independently confirmed the demolition is complete with no residual field."  # 6ded
