@@ -94,6 +94,7 @@ def collect_analyzer_result(
     all_edges: list[Edge],
     all_usage_contexts: list[UsageContext],
     limits: Limits,
+    analyzer_name: str = "",
 ) -> None:
     """Collect results from an analyzer into the aggregated lists.
 
@@ -107,12 +108,40 @@ def collect_analyzer_result(
         all_edges: List to append edges to
         all_usage_contexts: List to append usage contexts to
         limits: Limits object to track skipped passes
+        analyzer_name: The dispatching analyzer's registration name, used to
+            record a ``skipped_passes`` entry when the result carries no run
+            (WI-didil). Optional for backward compatibility; when empty, a
+            ``run=None`` result is drained but not recorded as a skip.
     """
-    # Handle results without run (shouldn't happen but be defensive)
-    if result.run is None:  # pragma: no cover
+    # A result with no run is an analyzer that produced nothing (WI-didil).
+    # It reaches here — rather than being short-circuited by the file-presence
+    # pre-filter (_filter_by_file_presence) — when its declared language is
+    # absent from the taxonomy (matlab/meson/puppet/racket/robot/scheme/scss)
+    # or it is an opt-in backend that stayed off (rust_analyzer). Formerly this
+    # branch silently returned, recording NEITHER an AnalysisRun NOR a skip, so
+    # those passes violated the "every catalog pass → AR or skip" invariant.
+    # Now it records a skip so coverage of the catalog stays complete. The
+    # reason honours a self-declared ``skip_reason`` (e.g. rust_analyzer's
+    # "backend not enabled") and otherwise falls back to "no files matched" —
+    # the same wording the pre-filter uses (a bare ``run=None`` result is a
+    # no-input analyzer). Symbols/edges are still drained fail-open.
+    if result.run is None:
         all_symbols.extend(result.symbols)
         all_edges.extend(result.edges)
         all_usage_contexts.extend(getattr(result, "usage_contexts", []))
+        # Only a genuinely-empty result (no run, no output) is a skip. A
+        # producer that emitted symbols/edges without a run is a distinct
+        # anomaly (e.g. rust_analyzer's success path returns run=None with
+        # SCIP output) — keep its output, don't mislabel it a skip.
+        produced_nothing = not result.symbols and not result.edges
+        if analyzer_name and produced_nothing:
+            reason = (
+                getattr(result, "skip_reason", "")
+                if getattr(result, "skipped", False)
+                and getattr(result, "skip_reason", "")
+                else "no files matched"
+            )
+            limits.skipped_passes.append({"pass": analyzer_name, "reason": reason})
         return
 
     # Check if analyzer was skipped (optional deps missing)
@@ -310,7 +339,8 @@ def run_all_analyzers(
             stamp_analyzer_config_fingerprint(result, analyzer)
 
             collect_analyzer_result(
-                result, analysis_runs, all_symbols, all_edges, all_usage_contexts, limits
+                result, analysis_runs, all_symbols, all_edges, all_usage_contexts,
+                limits, analyzer_name=analyzer.name,
             )
 
             # Capture symbols for linkers (e.g., JNI needs c_symbols and java_symbols)

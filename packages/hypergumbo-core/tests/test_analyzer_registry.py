@@ -981,6 +981,83 @@ class TestCollectAnalyzerResult:
         assert limits.failed_files[0].path == "main.ts"
         assert limits.failed_files[0].analyzer == "ipc-linker"
 
+    def test_run_none_records_no_files_matched_skip(self) -> None:
+        """WI-didil: a dispatched analyzer that produced no run (``run=None``)
+        must not silently vanish — it records a ``skipped_passes`` entry.
+
+        This is the taxonomy-bypass cohort (matlab/meson/puppet/racket/robot/
+        scheme/scss): their languages are absent from the taxonomy, so the
+        file-presence pre-filter dispatches them; with no matching files each
+        returns a bare ``AnalysisResult()`` (``run=None``). Before this fix the
+        orchestrator dropped them, producing neither an AnalysisRun nor a skip
+        record — violating the "every catalog pass → AR or skip" invariant."""
+        from hypergumbo_core.ir import Symbol
+        from hypergumbo_core.limits import Limits
+
+        result = AnalysisResult()  # run=None, skipped=False, no symbols
+        analysis_runs: list[dict] = []
+        all_symbols: list[Symbol] = []
+        limits = Limits()
+
+        collect_analyzer_result(
+            result, analysis_runs, all_symbols, [], [], limits, analyzer_name="matlab"
+        )
+
+        assert analysis_runs == []
+        assert limits.skipped_passes == [
+            {"pass": "matlab", "reason": "no files matched"}
+        ]
+
+    def test_run_none_uses_declared_skip_reason(self) -> None:
+        """WI-didil: when a ``run=None`` result declares ``skipped=True`` with a
+        ``skip_reason``, the recorded skip uses that reason verbatim — not the
+        generic "no files matched". Covers rust_analyzer (opt-in SCIP backend
+        disabled: it self-declares "rust-analyzer backend not enabled") and the
+        latent grammar-unavailable path (a skipped result whose ``run`` is None
+        was formerly dropped by the same silent early-return)."""
+        from hypergumbo_core.ir import Symbol
+        from hypergumbo_core.limits import Limits
+
+        result = AnalysisResult(
+            skipped=True, skip_reason="rust-analyzer backend not enabled"
+        )
+        all_symbols: list[Symbol] = []
+        limits = Limits()
+
+        collect_analyzer_result(
+            result, [], all_symbols, [], [], limits, analyzer_name="rust_analyzer"
+        )
+
+        assert limits.skipped_passes == [
+            {"pass": "rust_analyzer", "reason": "rust-analyzer backend not enabled"}
+        ]
+
+    def test_run_none_without_analyzer_name_records_nothing(self) -> None:
+        """Defensive: a ``run=None`` result with no ``analyzer_name`` (legacy callers)
+        extends symbols/edges but records no skip — a skip record with an empty
+        pass id would be meaningless. Symbols are still drained fail-open."""
+        from hypergumbo_core.ir import Span, Symbol
+        from hypergumbo_core.limits import Limits
+
+        sym = Symbol(
+            id="x:f.py:1-2:g:function",
+            name="g",
+            kind="function",
+            language="x",
+            path="f.py",
+            span=Span(start_line=1, end_line=2, start_col=0, end_col=0),
+            origin="x",
+            origin_run_id="r",
+        )
+        result = AnalysisResult(symbols=[sym])  # run=None, no pass_name
+        all_symbols: list[Symbol] = []
+        limits = Limits()
+
+        collect_analyzer_result(result, [], all_symbols, [], [], limits)
+
+        assert all_symbols == [sym]
+        assert limits.skipped_passes == []
+
 
 # ---------------------------------------------------------------------------
 # Path normalization in run_all_analyzers (facade)

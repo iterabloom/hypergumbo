@@ -143,13 +143,24 @@ def analyze_rust_with_scip(repo_root: Path) -> AnalysisResult:
     scip`` expect.
     """
     if not should_use_rust_analyzer_backend():
-        return AnalysisResult()
+        # Opt-in SCIP backend disabled (the default). Self-declare the skip so
+        # the orchestrator records an honest ``skipped_passes`` entry with this
+        # reason rather than the generic "no files matched" (which would be
+        # wrong — the repo may well contain .rs files; the backend simply did
+        # not run). WI-didil.
+        return AnalysisResult(
+            skipped=True, skip_reason="rust-analyzer backend not enabled",
+        )
 
     result = try_analyze_with_rust_analyzer(
         repo_root, _disk_source_reader, log=_emit_user_warning,
     )
     if result is None:
-        return AnalysisResult()
+        # Backend on but SCIP invoke/translate produced nothing (WI-nohah
+        # fall-through). Self-declare so this surfaces as a reasoned skip.
+        return AnalysisResult(
+            skipped=True, skip_reason="rust-analyzer backend produced no output",
+        )
 
     symbols, edges = result
     if not _has_scip_origin_edge(edges) and _repo_has_rs_files(repo_root):

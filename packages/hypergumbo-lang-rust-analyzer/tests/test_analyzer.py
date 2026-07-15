@@ -49,6 +49,11 @@ class TestAnalyzeRustWithScip:
         assert isinstance(result, AnalysisResult)
         assert result.symbols == []
         assert result.edges == []
+        # WI-didil: self-declare the skip so the orchestrator records an honest
+        # skipped_passes entry (not the generic "no files matched", which would
+        # be wrong — the repo may contain .rs files; the backend just stayed off).
+        assert result.skipped is True
+        assert result.skip_reason == "rust-analyzer backend not enabled"
 
     def test_gate_false_does_not_call_try_analyze(
         self, tmp_path: Path,
@@ -77,6 +82,10 @@ class TestAnalyzeRustWithScip:
             result = analyze_rust_with_scip(tmp_path)
         assert result.symbols == []
         assert result.edges == []
+        # WI-didil: backend on but SCIP produced nothing (WI-nohah fall-through)
+        # → self-declare a reasoned skip rather than vanishing silently.
+        assert result.skipped is True
+        assert result.skip_reason == "rust-analyzer backend produced no output"
 
     def test_gate_true_and_backend_succeeds_returns_symbols_and_edges(
         self, tmp_path: Path,
