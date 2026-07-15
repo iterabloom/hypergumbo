@@ -66,7 +66,17 @@ def compute_metrics(
     # discovered but couldn't fully analyze (e.g., over the size cap, or
     # syntax-error fail) and now rides in ``debug.profile_files_sum``
     # for introspection.
-    unique_paths = len({n.get("path") for n in nodes if n.get("path")})
+    # INV-mozaf: the ``<external>`` sentinel path on external_symbol boundary
+    # nodes is a placeholder, not a real file — exclude it so total_files
+    # counts only path-bearing source files (the invariant is "total_files ==
+    # number of files that contributed at least one node"). Without this, the
+    # single ``<external>`` bucket inflates the count by 1 on any repo with
+    # external references.
+    unique_paths = len({
+        n.get("path")
+        for n in nodes
+        if n.get("path") and n.get("path") != "<external>"
+    })
     file_kind_count = sum(1 for n in nodes if n.get("kind") == "file")
     total_files = unique_paths
     profile_files_sum: int | None = None

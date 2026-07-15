@@ -175,6 +175,22 @@ class TestComputeMetrics:
         metrics = compute_metrics(nodes=nodes, edges=[])
 
         assert metrics["total_files"] == 2
+
+    def test_total_files_excludes_external_sentinel(self) -> None:
+        """INV-mozaf: the ``<external>`` sentinel path carried by
+        external_symbol boundary nodes is not a real file — total_files (and
+        debug.unique_paths_in_analysis) count only path-bearing source files,
+        not the external placeholder."""
+        nodes = [
+            {"id": "1", "language": "python", "path": "src/a.py", "kind": "file"},
+            {"id": "2", "language": "python", "path": "src/b.py", "kind": "file"},
+            {"id": "3", "language": "python", "path": "<external>", "kind": "external_symbol"},
+            {"id": "4", "language": "python", "path": "<external>", "kind": "external_symbol"},
+        ]
+        metrics = compute_metrics(nodes=nodes, edges=[])
+
+        assert metrics["total_files"] == 2  # a.py, b.py — NOT <external>
+        assert metrics["debug"]["unique_paths_in_analysis"] == 2
         # Debug block is still populated so consumers can introspect.
         assert metrics["debug"]["unique_paths_in_analysis"] == 2
 
