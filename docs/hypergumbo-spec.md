@@ -47,7 +47,7 @@ Status: living document.
 | D | [Capsule system history](#appendix-d-capsule-system-history) |
 
 ## 0) One-sentence summary
-A local-first CLI that helps developers and AI agents understand an unfamiliar codebase by analyzing its structure and emitting a **repo behavior map**—a JSON graph of symbols, call edges, routes, and framework patterns with confidence scores and provenance tracking.
+A local-first CLI that helps developers and AI agents understand an unfamiliar codebase by analyzing its structure and emitting a **repo survey**—a JSON graph of symbols, call edges, routes, and framework patterns with confidence scores and provenance tracking.
 
 ## 1) Goals
 * 🟩 **Internal IR with views**: Parsers emit to an internal representation; public outputs are compiled views (enables future typed passes without breaking schema).
@@ -101,8 +101,8 @@ Shows detailed info about a symbol (function, class, etc.) and its callers/calle
 * A name matching symbols in more than one file is **ambiguous**: `explain` errors and lists the candidates on stderr (matching `slice`'s policy, INV-nogof), instead of silently dumping every match. `--language L` / `--file SUFFIX` narrow the match pool to disambiguate; `--first` accepts the top match; `--limit N` caps how many sections print for non-ambiguous same-file duplicates (WI-nanut)
 * Registered-but-unstyled edge types surface their registry description; an edge type registered nowhere is labelled `unrecognized edge type '<type>'`; a substrate whose `schema_version` differs from this build prints a field-presence drift warning (WI-dazob)
 
-🟩 **`hypergumbo run [path] [--out hypergumbo.results.json]`**
-Analyzes the repo and emits a behavior map. No initialization required—works directly on any repo.
+🟩 **`hypergumbo survey [path] [--out survey.json]`**
+Analyzes the repo and emits a survey. No initialization required—works directly on any repo.
 
 🟩 **`hypergumbo slice --entry <symbol|file|route> [--out slice.<entry>.json]`**
 Produces a reduced subgraph suitable for LLM context. Default output filename includes a sanitized entry name to prevent overwrites when slicing different symbols.
@@ -114,7 +114,7 @@ Shows available language analyzers and which ones are suggested for the current 
 Estimates test coverage via static analysis (no code execution). Reports hot spots (functions called by many tests, ranked by tests/LOC) and cold spots (untested functions). Filter with `--min-tests`, `--max-tests`, `--top`. The candidate universe is the *production functions* — non-test function/method symbols, excluding ADR-0031 synthetic linker stand-ins — the same `production_callables` denominator `dead-code-maybe` uses (`dead = production - reachable`).
 
 🟩 **`hypergumbo io-boundaries [path] [--format text|json]`** (ADR-0016)
-Identifies call edges that reach I/O primitives (filesystem, network, subprocess, environment) and groups them by boundary type. Loads a cached behavior map or auto-runs analysis if needed. Supports 16 languages (14 dedicated catalogs + 2 via aliases) with 150+ framework IO entries. When entrypoints are available, traces backward from IO edges to show which entrypoints can reach each IO operation. Output format is `--format text|json` (default `text`), the canonical read-view spelling shared with `routes` / `catalog` / `config` / `cache-status` / `dead-code-maybe` / `test-coverage`; the historical `--json` boolean is kept as a back-compat alias (WI-kitud).
+Identifies call edges that reach I/O primitives (filesystem, network, subprocess, environment) and groups them by boundary type. Loads a cached survey or auto-runs analysis if needed. Supports 16 languages (14 dedicated catalogs + 2 via aliases) with 150+ framework IO entries. When entrypoints are available, traces backward from IO edges to show which entrypoints can reach each IO operation. Output format is `--format text|json` (default `text`), the canonical read-view spelling shared with `routes` / `catalog` / `config` / `cache-status` / `dead-code-maybe` / `test-coverage`; the historical `--json` boolean is kept as a back-compat alias (WI-kitud).
 
 🟩 **`hypergumbo verify-claims --claims <file> [--format text|json]`** (ADR-0016, ADR-0017)
 Verifies security claims against the IO boundary map and taint-flow analysis. Supports boundary constraints (e.g., "no network I/O", "max 3 filesystem chains") and taint-flow constraints (e.g., "plaintext data must not reach host_fs zone"). Claims are specified in YAML format (`hypergumbo verify-claims --help` documents the shape). The claims file is validated up front: a malformed YAML, an unexpected root/claim/constraint shape, an unknown field name, or a `constraint.boundary` outside the io-boundaries vocabulary produces a clear error rather than a traceback or a silent false "confirmed". A `must_not_exist` / `max_chains` boundary claim is only `confirmed` when the I/O analysis could actually have seen the I/O: if the analysis produced no call edges at all, or a supported language was analyzed but produced none (so its I/O is invisible), the verdict is `inconclusive` rather than a false clean (WI-kajil / INV-bitig). Exit codes: `0` = all confirmed; `1` = at least one violated; `2` = at least one inconclusive, or the claims file failed validation. Output format is `--format text|json` (default `text`), the canonical read-view spelling; the historical `--json` boolean is kept as a back-compat alias (WI-kitud). Useful for CI enforcement of IO and data-flow security policies.
@@ -226,7 +226,7 @@ def analyze_go(repo_root: Path, max_files: int | None = None) -> AnalysisResult:
 Each analyzer returns an `AnalysisResult` containing symbols, edges, and usage contexts — the data types defined in [§6 Internal representation](#6-internal-representation). Analyzers are embarrassingly parallel — each scans the repo independently and returns a bag of symbols and edges. They do not see each other's output.
 
 **Tier 2 — Linkers and enrichment (context-dependent refiners):**
-After all analyzers run, the orchestrator (`run_behavior_map`) collects the unified symbol graph and runs post-processing:
+After all analyzers run, the orchestrator (`run_survey`) collects the unified symbol graph and runs post-processing:
 1. Deferred symbol reference resolution (cross-file call targets)
 2. Framework pattern enrichment (YAML-driven concept metadata)
 3. Linkers (registered via `@register_linker` decorator, receiving `LinkerContext` with the full symbol graph; see [LINKERS.md](LINKERS.md) for the full list, grouped by subcategory — Protocol, Bridge, Framework, Infrastructure — per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md))
@@ -684,9 +684,9 @@ where `kind_boost` is 2.0 for main/CLI-main entrypoints (the canonical applicati
 
 ## 9) Behavior map JSON
 
-The behavior map is a JSON file produced by `hypergumbo run`. It is a compiled view of the IR (see [§6 Output views](#output-views)) designed for programmatic consumption by agents and tooling. Field *semantics* (`id`, `stable_id`, `origin`, etc.) are defined once in [§6 Internal representation](#6-internal-representation) and not repeated here; this section covers serialization rules and output-specific fields.
+The survey is a JSON file produced by `hypergumbo survey`. It is a compiled view of the IR (see [§6 Output views](#output-views)) designed for programmatic consumption by agents and tooling. Field *semantics* (`id`, `stable_id`, `origin`, etc.) are defined once in [§6 Internal representation](#6-internal-representation) and not repeated here; this section covers serialization rules and output-specific fields.
 
-Single file: `hypergumbo.results.json`
+Single file: `survey.json`
 
 ### Top-level structure
 ```json
@@ -751,7 +751,7 @@ Each entry records provenance for one analyzer pass. Field semantics are defined
 
 ### reproducibility_context — what's captured, what's explicitly not
 
-Top-level block introduced in INV-morag (option B) that documents the level of reproducibility this behavior map asserts. Reproducibility is a spectrum, not a yes/no claim; this block captures the L2 level (direct dependencies + runtime identity) and explicitly disclaims higher levels.
+Top-level block introduced in INV-morag (option B) that documents the level of reproducibility this survey asserts. Reproducibility is a spectrum, not a yes/no claim; this block captures the L2 level (direct dependencies + runtime identity) and explicitly disclaims higher levels.
 
 ```json
 {
@@ -782,7 +782,7 @@ Top-level block introduced in INV-morag (option B) that documents the level of r
 
 **Cache correctness:** any change to a captured field invalidates the run signature. Diffs not explained by captured fields suggest a not_captured factor — file as a tracker item if isolatable.
 
-**Consumer guidance:** when comparing two behavior maps, attribute differences along this priority: (1) `pass_version` change → analyzer logic changed; (2) `grammars[*]` change → grammar upgrade; (3) `tree_sitter_version` / `python_version` change → runtime upgrade; (4) unexplained → likely a not_captured factor.
+**Consumer guidance:** when comparing two surveys, attribute differences along this priority: (1) `pass_version` change → analyzer logic changed; (2) `grammars[*]` change → grammar upgrade; (3) `tree_sitter_version` / `python_version` change → runtime upgrade; (4) unexplained → likely a not_captured factor.
 
 ### profile — repo characteristics
 
@@ -896,8 +896,8 @@ Each edge carries `id`, `edge_key`, `type`, `src`, `dst`, `confidence` (evidence
 - `channel_kind` (optional): Channel discriminator for `event_publishes` edges — `"ipc"`, `"websocket"`, `"queue"`, `"message_bus"`, `"crdt"`. See [§7 IPC/Message Channel Detection](#ipcmessage-channel-detection).
 - `framework_dispatch` (optional): Framework-dispatch convention name when the inference was driven by a framework rather than language semantics (e.g., `"django_third_party"`, `"phoenix_view"`). Replaces the per-framework `evidence_type` peers retired in ADR-0028 (audit-findings 0008/0012).
 - `call_construct` / `receiver` / `resolution_quality` (optional): For Cluster-27C call-shape facts on `ast_call`-family edges. `call_construct` names the source-language call construct under `ast_call` (e.g. `method` / `function` / `pipe` / `application`); `receiver` classifies the call-site receiver — a per-language fold-residue label emitted only by analyzers whose call syntax carries receiver flavor (Ruby / Go / C# / Rust / C++), so it is absent on corpora that lack those languages (e.g. a pure-Python tree); the complete current producer vocabulary is `bare` / `external` / `constant_external` / `stdlib` / `typed_field` / `typed_var` / `field_chain` / `generic` (no consumer branches on it, and it mixes a resolution class with the `field_chain` expression shape — see `MetaKeySpec` for the re-evaluation trigger); `resolution_quality` is a pathway-quality label (e.g. `recovery` / `ambiguous`) orthogonal to `Edge.is_resolved`.
-- `io_boundary` (optional, ADR-0016): IO category a call reaches, drawn from the controlled vocabulary `fs_read` / `fs_write` / `net_send` / `net_recv` / `ipc_send` / `ipc_recv` / `env_read` / `env_write` / `subprocess` / `browser_storage_read` / `browser_storage_write` / `db_read` / `db_write` / `process_send` / `logging` (with `external_potential` and `command_launch` as known boundaries). The source of truth is `io_boundary.CATALOG_BOUNDARY_TYPES`. **Derived at consumer time, not persisted by producers — with one command-mediated exception:** the behavior map's catalog `calls` edges carry no `io_boundary` key; that classification is computed on demand from the `io_primitives/*.yaml` catalogs by `io_boundary.compute_boundary_map`, which the canonical surface `hypergumbo io-boundaries` invokes (see [§11 Slicing behavior](#11-slicing-behavior)). The exception is `command_launch` (WI-javoh): a command-mediated language like bash has no data-I/O catalog to match at consumer time — only the analyzer knows the shell grammar well enough to tell a program launch (`curl`, `git`) from a builtin (`echo`, `cd`) or an in-tree function call — so the bash producer *prestamps* `meta["io_boundary"] = "command_launch"` on each launch edge (`is_resolved=False`, an `ExternalRef` dst; deduped per caller/command), and the consumer-time aggregation loop picks it up structurally. This is the ADR-0016 impl-note ruling-A shape ("command-mediated languages populate the subprocess boundary by emitting unresolved external-command edges — not via an io_primitives data-I/O catalog"). The emitted/derivable vocabulary is exactly `io_boundary.KNOWN_IO_BOUNDARIES` (the 15 `CATALOG_BOUNDARY_TYPES` above + `external_potential` + `command_launch`); `hypergumbo io-boundaries` and `verify-claims` boundary constraints accept these and nothing else. `unknown_dynamic` is **reserved** by [ADR-0016](adr/0016-io-boundary-analysis.md) for runtime-computed call targets (`getattr(obj, name)()`) but is **not currently emitted** by any producer and is **not** in `KNOWN_IO_BOUNDARIES` — it is documented here only as the ADR-sanctioned name should that classification later be implemented (WI-datoz). (WI-fakuv / WI-puvun: the earlier "stamped on every call edge" contract was never realized in any producer — 0 of 110,533 self-corpus edges carried the key — so the consumer-time CLI, not a persisted field, is canonical for catalog boundaries. The key still appears on the *derived* edges that consumer-time views emit, and on `command_launch` producer edges per the exception above.)
-- `io_primitive` (optional, ADR-0016): Fully-qualified primitive name (e.g., `"pathlib.Path.read_text"`) when `io_boundary` is set. Used for fine-grained provenance — exactly which built-in primitive a derived boundary funnels through. Like `io_boundary`, it is computed at consumer time, not persisted on the behavior map's edges.
+- `io_boundary` (optional, ADR-0016): IO category a call reaches, drawn from the controlled vocabulary `fs_read` / `fs_write` / `net_send` / `net_recv` / `ipc_send` / `ipc_recv` / `env_read` / `env_write` / `subprocess` / `browser_storage_read` / `browser_storage_write` / `db_read` / `db_write` / `process_send` / `logging` (with `external_potential` and `command_launch` as known boundaries). The source of truth is `io_boundary.CATALOG_BOUNDARY_TYPES`. **Derived at consumer time, not persisted by producers — with one command-mediated exception:** the survey's catalog `calls` edges carry no `io_boundary` key; that classification is computed on demand from the `io_primitives/*.yaml` catalogs by `io_boundary.compute_boundary_map`, which the canonical surface `hypergumbo io-boundaries` invokes (see [§11 Slicing behavior](#11-slicing-behavior)). The exception is `command_launch` (WI-javoh): a command-mediated language like bash has no data-I/O catalog to match at consumer time — only the analyzer knows the shell grammar well enough to tell a program launch (`curl`, `git`) from a builtin (`echo`, `cd`) or an in-tree function call — so the bash producer *prestamps* `meta["io_boundary"] = "command_launch"` on each launch edge (`is_resolved=False`, an `ExternalRef` dst; deduped per caller/command), and the consumer-time aggregation loop picks it up structurally. This is the ADR-0016 impl-note ruling-A shape ("command-mediated languages populate the subprocess boundary by emitting unresolved external-command edges — not via an io_primitives data-I/O catalog"). The emitted/derivable vocabulary is exactly `io_boundary.KNOWN_IO_BOUNDARIES` (the 15 `CATALOG_BOUNDARY_TYPES` above + `external_potential` + `command_launch`); `hypergumbo io-boundaries` and `verify-claims` boundary constraints accept these and nothing else. `unknown_dynamic` is **reserved** by [ADR-0016](adr/0016-io-boundary-analysis.md) for runtime-computed call targets (`getattr(obj, name)()`) but is **not currently emitted** by any producer and is **not** in `KNOWN_IO_BOUNDARIES` — it is documented here only as the ADR-sanctioned name should that classification later be implemented (WI-datoz). (WI-fakuv / WI-puvun: the earlier "stamped on every call edge" contract was never realized in any producer — 0 of 110,533 self-corpus edges carried the key — so the consumer-time CLI, not a persisted field, is canonical for catalog boundaries. The key still appears on the *derived* edges that consumer-time views emit, and on `command_launch` producer edges per the exception above.)
+- `io_primitive` (optional, ADR-0016): Fully-qualified primitive name (e.g., `"pathlib.Path.read_text"`) when `io_boundary` is set. Used for fine-grained provenance — exactly which built-in primitive a derived boundary funnels through. Like `io_boundary`, it is computed at consumer time, not persisted on the survey's edges.
 - `taint_labels` (optional, ADR-0017): List of active taint tags on this edge (e.g., `["plaintext", "host_secret"]`). Populated only when `verify-claims` runs taint propagation.
 - `taint_sanitized_by` (optional, ADR-0017): Name of the sanitizer that transformed taint on this edge (e.g., `"aes_gcm_encrypt"`). Present only when a sanitizer-categorized call sits on this edge.
 
@@ -936,11 +936,11 @@ Each feature contains `id`, `name`, `entry_nodes[]`, `node_ids[]`, `edge_ids[]`,
 
 **Feature ID:** Stable identifier based on query spec: `sha256(json.dumps(query, sort_keys=True))`. Same query on same code → same feature ID → enables diff across commits.
 
-**Index, not content (WI-bujim).** The `node_ids[]` and `edge_ids[]` arrays are graph-ID pointers into the top-level `nodes[]` and `edges[]` arrays, NOT inline denormalized symbols/edges. This keeps the behavior map agent-readable in a single file without duplicating slice content. Full denormalized slice payloads (with `nodes`, `edges`, and `meta` keys per feature) are written separately as `slice.handler.<METHOD>.<path>.json` files under the `<out-stem>.slices/` subdirectory, plus a `slice.handler.index.json` companion. Consumers wanting just the discovery view read `features[]`; consumers wanting per-handler portability read the individual slice files.
+**Index, not content (WI-bujim).** The `node_ids[]` and `edge_ids[]` arrays are graph-ID pointers into the top-level `nodes[]` and `edges[]` arrays, NOT inline denormalized symbols/edges. This keeps the survey agent-readable in a single file without duplicating slice content. Full denormalized slice payloads (with `nodes`, `edges`, and `meta` keys per feature) are written separately as `slice.handler.<METHOD>.<path>.json` files under the `<out-stem>.slices/` subdirectory, plus a `slice.handler.index.json` companion. Consumers wanting just the discovery view read `features[]`; consumers wanting per-handler portability read the individual slice files.
 
 **Compact-view re-projection (INV-titid).** Because the pointers index the same view's `nodes[]`/`edges[]`, the `compact` view re-projects `features[]` onto its budget-limited selection rather than copying them wholesale: each surviving feature's `entry_nodes[]`/`node_ids[]`/`edge_ids[]` (and `node_depths`/`node_tiers`) are filtered to the retained sets, and a feature whose every entry node was pruned is dropped — mirroring how the compact view filters `entrypoints[]`. The index-pointer invariant therefore holds in *every* view: a feature's id pointers always resolve within that view's own `nodes[]`/`edges[]` (no dangling references).
 
-**Producer (default).** `hypergumbo run` populates `features[]` from `_emit_handler_slices`: one entry per detected route handler, forward-slice with `exclude_tests=True` / `exclude_imports=True` / `hub_threshold=50`. Handlers over the cap (default 25) do not contribute to `features[]` but still appear in the index file with `emitted=False` so consumers can re-derive on demand. A framework route *marker* (`meta.framework_role == "route"`) whose forward slice recovers nothing beyond itself is likewise excluded from `features[]` as a content-free twin of its concept-handler feature (WI-rijop); its per-slice file and index entry are still written. Other entrypoint kinds (CLI, main, websocket, etc.) are not yet wired in but follow the same shape when added.
+**Producer (default).** `hypergumbo survey` populates `features[]` from `_emit_handler_slices`: one entry per detected route handler, forward-slice with `exclude_tests=True` / `exclude_imports=True` / `hub_threshold=50`. Handlers over the cap (default 25) do not contribute to `features[]` but still appear in the index file with `emitted=False` so consumers can re-derive on demand. A framework route *marker* (`meta.framework_role == "route"`) whose forward slice recovers nothing beyond itself is likewise excluded from `features[]` as a content-free twin of its concept-handler feature (WI-rijop); its per-slice file and index entry are still written. Other entrypoint kinds (CLI, main, websocket, etc.) are not yet wired in but follow the same shape when added.
 
 ### entrypoints[] — detected entry points
 
@@ -1037,7 +1037,7 @@ Aggregate statistics: `total_nodes`, `total_edges`, `total_files`, `avg_confiden
 - `unique_paths_in_analysis` — distinct `node.path` values across every symbol kind. Excludes files that contributed no symbols (binary, unparseable, unsupported language), so it under-counts repos with many file types relative to `total_files`.
 - `analyzed_file_symbols` — count of `nodes[*]` with `kind == "file"`. Only analyzers that emit file pseudo-nodes contribute, so this can lag the true file count if some language analyzers don't yet stamp them.
 
-When the headline `total_files` is computed without a profile (e.g., by callers outside the full `run_behavior_map` pipeline), it falls back to `unique_paths_in_analysis` for backward compatibility — the same value still rides in `metrics.debug` so consumers can tell which definition they're looking at.
+When the headline `total_files` is computed without a profile (e.g., by callers outside the full `run_survey` pipeline), it falls back to `unique_paths_in_analysis` for backward compatibility — the same value still rides in `metrics.debug` so consumers can tell which definition they're looking at.
 
 ### supply_chain_summary — classification overview
 
@@ -1322,7 +1322,7 @@ Reproducibility has two dimensions: **caching** ensures that re-running analysis
       └── results/
           └── <state-hash>/
               └── <analyzer-identity>/
-                  └── hypergumbo.results.json
+                  └── survey.json
   ```
 * Keying strategy:
   * **Repo fingerprint** (stable identity): hash of remote origin URL + first commit SHA (git repos) or absolute path (non-git). Shared across checkouts of the same repo.
@@ -1334,7 +1334,7 @@ Reproducibility has two dimensions: **caching** ensures that re-running analysis
 * Management:
   * `hypergumbo cache-status [--per-repo]` — total size, age range, and (with `--per-repo`) per-repo size / entry-count / last-used breakdown sorted by size desc.
   * `hypergumbo cache-clear [--older-than N] [--dry-run] [--repo FINGERPRINT [--keep-latest N]]` — `--repo` restricts deletion to one repo's subtree; `--repo` + `--keep-latest N` keeps the N newest state-hash entries under `<repo>/results/` and prunes the rest.
-* Lifecycle policy (INV-padum): **honk-threshold-with-retention.** No automatic eviction at any size. When total cache size exceeds the configured threshold (default 1.0 GiB), `cache-status` and `hypergumbo run` emit a loud stderr warning naming the top consumer and the prune commands. Configure or silence via the `HYPERGUMBO_CACHE_HONK_GB` environment variable (set to `0` / `off` / `none` / `false` to silence). The user owns the prune decision; hypergumbo never throws away cache entries unprompted.
+* Lifecycle policy (INV-padum): **honk-threshold-with-retention.** No automatic eviction at any size. When total cache size exceeds the configured threshold (default 1.0 GiB), `cache-status` and `hypergumbo survey` emit a loud stderr warning naming the top consumer and the prune commands. Configure or silence via the `HYPERGUMBO_CACHE_HONK_GB` environment variable (set to `0` / `off` / `none` / `false` to silence). The user owns the prune decision; hypergumbo never throws away cache entries unprompted.
 
 ### Deterministic ordering
 
@@ -1647,7 +1647,7 @@ Tier and Role compose for analysis decisions:
 * 🟩 Toolchain capture in analysis_runs
 
 ### Smoke test
-* 🟩 `hypergumbo run` on a fixture repo yields valid JSON schema
+* 🟩 `hypergumbo survey` on a fixture repo yields valid JSON schema
 * 🟩 All expected nodes/edges present
 * 🟩 No crashes, warnings logged appropriately
 * 🟩 `hypergumbo catalog` displays available passes
@@ -1919,13 +1919,13 @@ This appendix defines the **technical contract** for output consumers: which fie
 - `view: "behavior_map"` schema remains stable across v0.x, v1.x
 - Consumers check `view` field, skip unknown views
 
-**Consumer-side substrate loading (`--input`).** Every read subcommand that consumes a `--input` behavior map routes through one strict loader (`survey_io.load_substrate`), which enforces four guards so a bad input fails loudly instead of silently (INV-sozop / WI-jukah / INV-gapib / WI-marul):
+**Consumer-side substrate loading (`--input`).** Every read subcommand that consumes a `--input` survey routes through one strict loader (`survey_io.load_substrate`), which enforces four guards so a bad input fails loudly instead of silently (INV-sozop / WI-jukah / INV-gapib / WI-marul):
 - **Parse:** malformed or empty JSON, or a non-object root, raises a typed `SubstrateError` → clean exit code `2` + stderr message (was an unhandled traceback).
 - **Shape:** a dict lacking the structural `nodes` key is rejected → exit `2` (was a silent `rc=0` "No X found", because a `nodes`-less dict reads as an empty map).
 - **View discriminator:** a document whose `view` field is *present and different* from the consumer's expected view (e.g. feeding a `slice`/`tiered` projection to a behavior-map consumer) is rejected → exit `2`. A *missing* `view` is accepted (legacy/minimal maps omit it — the guard rejects a *wrong* view, not an absent one).
 - **Version (warn-first):** an absent or mismatched `schema_version` prints a stderr `Warning:` but still loads — an older/newer map is usually still readable, so rejecting would be over-strict. (The `nodes` key, not `schema_version`, is the hard-required structural discriminator; `schema_version` is a compatibility *signal*.)
 
-`load_behavior_map` remains the permissive low-level reader for auxiliary artifacts (e.g. compact outputs) that are not the main behavior map.
+`load_behavior_map` remains the permissive low-level reader for auxiliary artifacts (e.g. compact outputs) that are not the main survey.
 
 ### Breaking Changes (only in major version bumps)
 
@@ -1946,7 +1946,7 @@ This appendix defines the **technical contract** for output consumers: which fie
 
 Output carries version numbers along **three deliberately independent axes** (WI-bobog / WI-romup). Consumers must not conflate them, and producers must not consolidate them onto one number or rename the wire fields (each has consumers, so a rename is a breaking change):
 
-1. **Top-level format version** — `schema_version` (currently `0.14.4`, the `SCHEMA_VERSION` constant). The version of the behavior-map (`view: "behavior_map"`) JSON format. Breaking output changes bump minor.
+1. **Top-level format version** — `schema_version` (currently `0.14.4`, the `SCHEMA_VERSION` constant). The version of the survey (`view: "behavior_map"`) JSON format. Breaking output changes bump minor.
 2. **Tool/package version** — `__version__`, surfaced under two aliases that are **not** schema versions: `reproducibility_context.hypergumbo_version` and `limits.analyzer_version` (`hypergumbo-<__version__>`). Increments every release; says nothing about output format.
 3. **Per-view / per-sub-schema versions** — several JSON surfaces version their own wire shape independently of axes 1–2:
    - The CLI **read-view** envelopes (`routes`, `test-coverage`, `config`, `catalog`, `cache-status`, `dead-code-maybe`) share `READ_VIEW_SCHEMA_VERSION` (currently `0.1.0`), a single placeholder until one view needs to evolve independently — at which point it promotes to its own named constant.
@@ -1954,7 +1954,7 @@ Output carries version numbers along **three deliberately independent axes** (WI
 
 ### Algorithm-identification fields and `stable_id_scheme` version history
 
-`stable_id_scheme`, `shape_id_scheme`, and `repo_fingerprint_scheme` (top-level fields in the behavior map) identify the algorithm used to compute the corresponding hash. They are **not** schema-version fields; the schema-version is `schema_version` and changes independently.
+`stable_id_scheme`, `shape_id_scheme`, and `repo_fingerprint_scheme` (top-level fields in the survey) identify the algorithm used to compute the corresponding hash. They are **not** schema-version fields; the schema-version is `schema_version` and changes independently.
 
 * Current value: `stable_id_scheme = "hypergumbo-stableid-v8"`.
 
@@ -1982,7 +1982,7 @@ Bumping a scheme identifier is not by itself a major-version event — the outpu
 - New `evidence_type` values
 - New `kind` values for nodes
 
-**Commitment:** No breaking changes to `behavior_map.json` view within v0.x series.
+**Commitment:** No breaking changes to the survey view within the v0.x series. (The on-disk `view` discriminator value stays `"behavior_map"` for schema compatibility — only the concept name and default filename became "survey"/`survey.json` per ADR-0042; consumers parsing the JSON see no change.)
 
 ## Appendix D: Capsule system history
 

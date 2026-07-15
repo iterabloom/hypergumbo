@@ -6,7 +6,7 @@
 [![License](https://img.shields.io/pypi/l/hypergumbo.svg)](https://pypi.org/project/hypergumbo/)
 [![Coverage](https://img.shields.io/endpoint?url=https://codeberg.org/iterabloom/hypergumbo/raw/branch/badges/coverage.json)](https://codeberg.org/iterabloom/hypergumbo)
 
-hypergumbo is a local-first CLI that generates behavior maps and sketches from source code. The goal of this project is to efficiently help developers and LLMs understand a codebase.
+hypergumbo is a local-first CLI that generates surveys and sketches from source code. The goal of this project is to efficiently help developers and LLMs understand a codebase.
 
 ```bash
 pip install hypergumbo
@@ -26,7 +26,7 @@ Output:
 ```bash
 # hypergumbo
 
-hypergumbo is a local-first CLI that generates behavior maps and sketches from source code. The goal of this project is to efficiently help developers and LLMs understand a codebase. > Requires Python 3.10+. For optional extras (embeddings, gitleaks, grammars), run `hypergumbo add-extras` after installing. > Intel Mac users:
+hypergumbo is a local-first CLI that generates surveys and sketches from source code. The goal of this project is to efficiently help developers and LLMs understand a codebase. > Requires Python 3.10+. For optional extras (embeddings, gitleaks, grammars), run `hypergumbo add-extras` after installing. > Intel Mac users:
 
 > **Audited IO surface.** hypergumbo's own filesystem / network / subprocess activity is enumerated per CLI subcommand category in [SECURITY.md](SECURITY.md), with machine-verifiable claims authored at `docs/hypergumbo.claims.yaml`. Re-run the audit locally via `hypergumbo verify-claims --claims docs/hypergumbo.claims.yaml`. The wrapper-function discipline used to make path-bounded claims structurally verifiable is documented as the recommended pattern for any hypergumbo user (any language) wanting the same precision.
 
@@ -114,13 +114,13 @@ hypergumbo . -t 8000   # detailed with many symbols
 
 **Sketch** (`hypergumbo .`) — Token-budgeted Markdown sized for LLM context windows. Ranks symbols by graph centrality (★ = most connected).
 
-**Behavior map** (`hypergumbo run`) — Full JSON with all symbols, edges, and provenance tracking. Use this for programmatic analysis.
+**Survey** (`hypergumbo survey`) — Full JSON with all symbols, edges, and provenance tracking. Use this for programmatic analysis.
 
 ## CLI Commands
 
 ```bash
 hypergumbo [path]              # Markdown sketch (default)
-hypergumbo run [path]          # Full JSON behavior map
+hypergumbo survey [path]       # Full JSON survey
 hypergumbo slice --entry X     # Subgraph from entry point
 hypergumbo io-boundaries       # Find all I/O (filesystem, network, subprocess, env, IPC, browser storage)
 hypergumbo verify-claims ...   # Verify security claims against analysis
@@ -180,7 +180,7 @@ See `hypergumbo --help` for all options.
 4. **Enrich**: Detect frameworks via YAML pattern matching
 5. **Classify**: Assign supply chain tiers (first-party, internal, external, derived)
 6. **Trace I/O**: Map call chains to I/O boundaries; run taint-flow analysis
-7. **Output**: Generate Markdown sketch or JSON behavior map
+7. **Output**: Generate Markdown sketch or JSON survey
 
 ### The Internal Representation
 

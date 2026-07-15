@@ -8,7 +8,7 @@
 
 # Concept Axes
 
-Typing axes maintained in hypergumbo's behavior map. Each axis names a
+Typing axes maintained in hypergumbo's survey. Each axis names a
 dimension along which a multi-value field's values must be classified.
 New axes are introduced via ADR following ADR-0024's four-part
 declaration template (axis name, axiom, consumer pattern, enforcement);

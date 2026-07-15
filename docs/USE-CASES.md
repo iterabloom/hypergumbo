@@ -239,8 +239,8 @@ hypergumbo io-boundaries
 Hypergumbo emits `renders` edges from controllers to templates for Rails, Django, Phoenix, Spring MVC, and Laravel Blade.
 
 ```bash
-# Get the JSON behavior map
-hypergumbo run --out hg.json
+# Get the JSON survey
+hypergumbo survey --out survey.json
 
 # Extract every renders edge
 jq '.edges[] | select(.edge_type=="renders")' hg.json
@@ -298,7 +298,7 @@ For repos with vendored dependencies or lots of test files:
 hypergumbo . -x
 
 # First-party code only (skip node_modules, vendor, etc.)
-hypergumbo run . --first-party-only
+hypergumbo survey . --first-party-only
 hypergumbo .  # Uses the filtered results
 
 # Skip specific directories
@@ -320,7 +320,7 @@ hypergumbo . -x        # Instant: uses cache, excludes tests in output
 Force a fresh analysis:
 
 ```bash
-hypergumbo run .
+hypergumbo survey .
 ```
 
 ---
