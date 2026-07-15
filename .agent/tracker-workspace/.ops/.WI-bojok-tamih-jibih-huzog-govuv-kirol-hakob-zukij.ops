@@ -1,0 +1,22 @@
+- op: create  # 14e9
+  at: '2026-07-15T07:07:09Z'  # 14e9
+  by: agent  # 14e9
+  actor: jgstern_agent  # 14e9
+  clock: 1  # 14e9
+  nonce: '14e9'  # 14e9
+  data:  # 14e9
+    kind: work_item  # 14e9
+    title: "Tier-axis (F4): directness meta key is write-only (stamped ir.py:1504, registered axis, 0 readers) — wire a consumer, mark x-internal, or remove"  # 14e9
+    status: todo_soft  # 14e9
+    priority: 3  # 14e9
+    parent:  # 14e9
+    tags:  # 14e9
+    - wave5  # 14e9
+    - tier_axis  # 14e9
+    - concept_audit  # 14e9
+    isbefore: []  # 14e9
+    duplicate_of: []  # 14e9
+    not_duplicate_of: []  # 14e9
+    pr_ref:  # 14e9
+    description: "The `directness` meta key (values: direct / transitive / undeclared) is WRITE-ONLY. Tier-axis concept audit (2026-07-15): stamped at ir.py:1504 (create_boundary_nodes, gated to go/java/kotlin/python + a non-None DependencyManifest), classified by DependencyManifest.classify_directness (supply_chain.py:107), and registered as a MetaKeySpec axis (axis_meta_keys.py:469) — but has ZERO readers (grep for .get(\"directness\") / meta[\"directness\"] read = 0). ADR-0041 §2 extracted directness FROM tier so \"the direct/transitive knowledge the classifier was burning into the tier is re-emitted as the directness stamp\" — the extraction correctly purified tier, but nothing consumes the re-emitted stamp. (Contrast: `ecosystem`, the ADR-0041 §3 extraction, has one report-only reader at cli.py:8562.)\n\nOPTIONS: (a) wire a consumer — surface directness in explain / supply_chain_summary; (b) mark it an explicit x-internal extension point in the schema (like AnalysisRun.run_signature, kept for external PROV-DM tooling); (c) remove the stamp + classifier if genuinely unwanted. Parallels the provenance-audit dead field origin_run_signature (WI-gapin). Evidence: ~/hypergumbo_lab_notebook/concept-audit-supply_chain_tier_07152026.md (F4)."  # 14e9
+    fields: {}  # 14e9
