@@ -41,3 +41,19 @@
   clock: 4  # 30da
   nonce: 30da  # 30da
   message: "Wave-5 sweep (2026-07-08): identity:F5 shape_id residual (Python shape_id collapses class/method/function + mis-hashes async def; node-kind + AsyncFunctionDef absent from hash). Empty isbefore, no parent -> terminal validation-drain wave. Batch-2 of the Theme-I identity/provenance sweep; wave5_remaining_plan_07082026.md."  # 30da
+- op: update  # 8ce6
+  at: '2026-07-15T20:56:53Z'  # 8ce6
+  by: agent  # 8ce6
+  actor: jgstern_agent  # 8ce6
+  clock: 5  # 8ce6
+  nonce: 8ce6  # 8ce6
+  set: {}  # 8ce6
+  add:  # 8ce6
+    isbefore: [WI-vogij-jubit-podog-galug-humag-rovuh-jahan-rozug]  # 8ce6
+- op: discuss  # 8fa4
+  at: '2026-07-15T20:56:53Z'  # 8fa4
+  by: agent  # 8fa4
+  actor: jgstern_agent  # 8fa4
+  clock: 6  # 8fa4
+  nonce: 8fa4  # 8fa4
+  message: "Cross-link (identity concept-audit 2026-07-15): this shape_id-correctness bug is a PREREQUISITE for WI-vogij (build structural-clone / refactoring-lead detection on shape_id). A clone-detector built on a hash that collapses class/method/function and mis-hashes async def would emit false clones — fix the hash first. Set isbefore WI-vogij."  # 8fa4

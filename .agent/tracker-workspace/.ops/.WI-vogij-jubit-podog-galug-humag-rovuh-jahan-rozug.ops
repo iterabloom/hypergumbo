@@ -1,0 +1,40 @@
+- op: create  # 0272
+  at: '2026-07-15T20:40:06Z'  # 0272
+  by: agent  # 0272
+  actor: jgstern_agent  # 0272
+  clock: 1  # 0272
+  nonce: '0272'  # 0272
+  data:  # 0272
+    kind: work_item  # 0272
+    title: "shape_id is read-dead (write-only, dominated by fingerprint): deprecate or build the cross-run consumer?"  # 0272
+    status: todo_soft  # 0272
+    priority: 3  # 0272
+    parent:  # 0272
+    tags:  # 0272
+    - concept_audit  # 0272
+    - identity_axis  # 0272
+    - wave5  # 0272
+    - schema_drift  # 0272
+    isbefore: []  # 0272
+    duplicate_of: []  # 0272
+    not_duplicate_of: []  # 0272
+    pr_ref:  # 0272
+    description: "## Origin\n\nFiled 2026-07-15 as finding **F7** of the identity-vocabulary Fundamental Concept Audit (full write-up: `~/hypergumbo_lab_notebook/concept-audit-identity-vocabulary_07152026.md`). This is the one open **decision** the audit surfaced; the audit's other findings (F1–F6, documentation drift) were fixed in a docs PR. Human deprecate-vs-keep decision pending (walk-through in progress).\n\n## The situation\n\n`Symbol.shape_id` is a **read-dead** field: written but never read for any decision.\n\n- **Write side is alive:** ~10 analyzers set it (literal kwarg + the `analyze/base.py` auto-stamp `sym.shape_id = self.compute_shape_id(ts_node)`); 83.0% of nodes (33,054/39,831 on self-analysis) carry a value.\n- **Read side is dead:** a 5-shape indirection producer/consumer trace + a full `packages/` + `scripts/` read sweep found **zero logic consumers**. Every `.shape_id` / `[\"shape_id\"]` reference is either serialization (`to_dict`/`from_dict`) or a producer-guard (`if sym.shape_id is None`). No code branches on a shape_id *value*.\n- **Dominated by `fingerprint`:** empirically `fingerprint → shape_id` is a pure function over 33,053 nodes (0 fingerprints map to >1 shape_id). shape_id is a strict *coarsening* of fingerprint (it hashes the parse skeleton with identifiers/literals STRIPPED; fingerprint keeps them). So for *discrimination* shape_id adds nothing fingerprint doesn't already provide.\n- **Its distinct capability is unbuilt:** shape_id's one non-redundant power is clustering structural clones (same skeleton, different names) — but nothing in-repo exercises it, and its documented intended consumer (cross-run structural-refactor tracking) does not exist.\n\n## The decision\n\n`shape_id` is a **serialized output-boundary field** with a documented (if unbuilt) external purpose, so it is not removable on a whim. Two paths:\n\n1. **KEEP with a re-eval trigger (audit's default under the Step-6 KEEP rule).** Leave shape_id emitted; record the re-eval trigger: *at the next identity-family audit, if shape_id still has zero consumers AND no structural-clone-clustering feature has shipped, deprecate it.* Lowest-risk; preserves a field an external consumer might (in principle) join on.\n2. **DEPRECATE now** (one-version window, mirroring `edge.quality`/ADR-0039): mark deprecated in schema pointing readers to `fingerprint`, remove producers + field the next release. More decisive; removes a write-only field that is dominated by fingerprint. Cost: a schema-version bump + removing the `compute_shape_id` producers; risk that a hypothetical external clone-clustering consumer loses the coarser-equivalence signal fingerprint can't reconstruct.\n\nCurrent disposition: **path 1 (KEEP + re-eval trigger)** unless the human elects to deprecate now.\n\n## Re-eval trigger (if KEEP)\n\nRe-open at the next identity-family concept audit if BOTH hold: (a) `shape_id` still has zero logic consumers in `packages/` + `scripts/`, and (b) no structural-clone-clustering / cross-run refactor-tracking feature has shipped that reads it. If both still true, escalate to DEPRECATE (the KEEP rationale will have decayed).\n\n## Evidence pointers\n- Producer: `analyze/base.py:3232` (auto-stamp), literal-kwarg sites in py.py / java.py / kotlin.py / js_ts.py / ruby.py / go.py / lua.py / objc.py; compute fns `analyze/base.py:2744`, `py.py:1679`.\n- No consumers: full-sweep evidence in the audit write-up.\n- Definition (post-audit): `ir.py` Symbol docstring (shape_id = skeleton, identifiers/literals stripped) + schema.json shape_id description.\n- Dominance: `fingerprint → shape_id` pure-function check on hg-self-v5.json.\n\n## Related\n- Identity-vocabulary concept audit (this session): sibling doc fixes F1–F6 (shipped).\n- Analogous to the tier-axis audit's `directness` dead-axis finding (WI-bojok) — a registered field with producers but no readers."  # 0272
+    fields: {}  # 0272
+- op: update  # 8e3a
+  at: '2026-07-15T20:56:46Z'  # 8e3a
+  by: agent  # 8e3a
+  actor: jgstern_agent  # 8e3a
+  clock: 2  # 8e3a
+  nonce: 8e3a  # 8e3a
+  set:  # 8e3a
+    title: "Build structural-clone / refactoring-lead detection — activate the already-computed shape_id (spec §367, ADR-0035 §1)"  # 8e3a
+  add:  # 8e3a
+    tags: [feature]  # 8e3a
+- op: discuss  # 7107
+  at: '2026-07-15T20:56:46Z'  # 7107
+  by: agent  # 7107
+  actor: jgstern_agent  # 7107
+  clock: 3  # 7107
+  nonce: '7107'  # 7107
+  message: "DECISION 2026-07-15 (human-ratified, walked through step-by-step): KEEP shape_id, do NOT deprecate. Grounding in the ADRs+spec: spec §6 line 367 lists shape_id's Purpose as 'duplicate-code detection'; ADR-0035 §1 line 54 names shape_id + fingerprint 'the refactor-tracking instruments'; ADR-0014 defines it to detect structural changes (within-language). So shape_id is NOT a purposeless dead field — it is a populated (83%), fully-specified, spec-and-ADR-blessed field whose CONSUMER was never built. The honest fix for a write-only field with a documented, valuable purpose is to build the reader, not delete the field. Reframed from a deprecate-watch into this feature seed. Re-eval trigger flips to 'build-it-or-reconsider': revisit deprecation only if a future identity audit finds it still has no consumer AND the clone/refactoring-lead feature was affirmatively dropped from the roadmap. Prerequisite: WI-linon (Python shape_id collapses class/method/function + mis-hashes async def) must land first — a clone-detector on a buggy hash produces false clones. Parked feature sketch (not yet built): group nodes by (language, shape_id), surface the largest same-shape clusters as candidate copy-paste / extract-helper refactoring leads; within-language only per ADR-0014."  # 7107
