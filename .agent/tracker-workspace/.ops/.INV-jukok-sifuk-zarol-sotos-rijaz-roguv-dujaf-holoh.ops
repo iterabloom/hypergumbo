@@ -162,3 +162,18 @@
   clock: 18  # 44a6
   nonce: 44a6  # 44a6
   message: "Drain audit (deep-20260621-215349), human-authorized strip. no_move/violated: validation already ran conclusively (pass-22, tranch-03, tranch-04 all reproduced exactly 23 dangling-src edges; PR2 commit 98533c0fff did not resolve). This is a deterministic structural defect (dangling src IDs in generated scip_pb2.py), NOT cohort-re-runnable — a fresh DEEP cohort cannot move it. Stripping awaits_bakeoff_validation (it does no work and re-pollutes every drain); the live tracking signal remains the violated status, surfaced via `tracker ready`. Re-tag only if a future fix ships a fresh quantitative claim."  # 44a6
+- op: update  # dc45
+  at: '2026-07-15T07:39:56Z'  # dc45
+  by: agent  # dc45
+  actor: jgstern_agent  # dc45
+  clock: 19  # dc45
+  nonce: dc45  # dc45
+  set:  # dc45
+    status: satisfied  # dc45
+- op: discuss  # dced
+  at: '2026-07-15T07:39:56Z'  # dced
+  by: agent  # dced
+  actor: jgstern_agent  # dced
+  clock: 20  # dced
+  nonce: dced  # dced
+  message: "SATISFIED (2026-07-15). Graph integrity restored: the dangling-src defect is gone. BEHAVIORAL EVIDENCE (production-path, self-analysis `hypergumbo survey .` on current dev): across all 134,782 edges, 0 edges have a src ID absent from the nodes list (and 0 dangling dst) — a clean re-run of this item's own repro (which found 23 dangling-src `calls` edges from the scip_pb2.py phantom file-src to google.protobuf targets). scip_pb2.py still carries no file-level node, but the phantom-src edges it used to emit are no longer produced, so every edge's src and dst now resolves to a real node. The metrics.by_supply_chain_tier \"unknown tier: 23 edges / 0 nodes\" inconsistency the item cited is correspondingly gone. Umbrella INV-luhur member; the graph-integrity face this item tracks holds."  # dced
