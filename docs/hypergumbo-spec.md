@@ -1366,7 +1366,7 @@ Code is classified into four tiers based on its relationship to the project:
 | Tier | Name | Description | Examples | Status |
 |------|------|-------------|----------|--------|
 | 1 | `first_party` | Project's own source code (including its tests) | `src/`, `lib/`, `app/` | 🟩 |
-| 2 | `internal_dep` | Org-internal *dependency* packages, declared via `internal_package_roots` **only** (workspace members are tier 1) | Local forks, vendored-but-internal libs | 🟩 |
+| 2 | `internal_dep` | Org-internal *dependency* packages: config-declared `internal_package_roots`, **and** a workspace-sibling *dependency declaration* (a monorepo package that another workspace member lists as a dependency). Workspace member *source files* stay tier 1. | Local forks; `hypergumbo-core` listed in a sibling package's `pyproject.toml` | 🟩 |
 | 3 | `external_dep` | **All** third-party code — direct, transitive, undeclared, and stdlib alike | `node_modules/lodash/`, `vendor/`, declared PyPI deps, `os`/`json` | 🟩 |
 | 4 | `derived` | Build artifacts, transpiled/bundled output | `dist/`, `*.min.js`, source-mapped files | 🟩 |
 
@@ -1384,9 +1384,14 @@ mapping. File classification independently still routed some in-repo non-source
 *role* files — examples, documentation bundles, notebooks, fuzz/bench harnesses
 — to tier 2 (INV-naduh); these are the project's own code (distance 0) and now
 classify as **tier 1** with their role on the `is_example` / `is_test` / reason
-axis, not by tier. Config-declared `internal_package_roots` remain the sole
-tier-2 producer, and in-repo generated *routes* promote from tier 4 to tier 1,
-not tier 2.)
+axis, not by tier. Tier 2 has **two** producers: config-declared
+`internal_package_roots`, and a workspace-sibling *dependency declaration* — a
+`kind=dependency` symbol naming an in-repo package that another workspace member
+lists as a dependency (INV-nuzas / ADR-0041 §1 tier table + D8a; this is the
+"populate tier 2 with the workspace packages" end-state ADR-0041 §1 anticipated
+for the workspace-resolution fix, not a re-admission of the retired *third-party*
+direct-dependency → tier-2 mapping). Workspace member *source* stays tier 1, and
+in-repo generated *routes* promote from tier 4 to tier 1, not tier 2.)
 
 **Default behavior:**
 - Tiers 1-3: Analyzed, with tier used for ranking/filtering
@@ -1464,13 +1469,26 @@ def extract_package_name(rel_path: str) -> str | None:
 
 #### 3. Internal dependency detection (tier 2)
 
-Tier 2 (`internal_dep`) is produced **only** by config-declared
-`internal_package_roots` — org-internal *dependency* packages (local forks,
-vendored-but-internal libs). Per ADR-0041 §1 / INV-naduh, no path heuristic
-produces tier 2: workspace members are the project's own code (tier 1), and
-in-repo role files carry their role on a flag/reason, not by tier.
+Tier 2 (`internal_dep`) has **two** producers, both representing an org-internal
+*dependency* (never the project's own source, which is tier 1):
 
-**Config-declared internal package roots (the sole tier-2 producer):**
+1. **Config-declared `internal_package_roots`** — org-internal dependency
+   packages (local forks, vendored-but-internal libs). No *path* heuristic
+   produces tier 2 for source files: workspace member source is tier 1, and
+   in-repo role files carry their role on a flag/reason (ADR-0041 §1 / INV-naduh).
+2. **Workspace-sibling dependency declarations** — a `kind=dependency` symbol
+   whose PEP 503-normalized name matches an in-repo package's distribution name
+   (`collect_workspace_package_names` reads every `pyproject.toml`'s
+   `[project].name` / `[tool.poetry].name`). A monorepo sibling that another
+   workspace package lists as a dependency is a workspace-**internal** dependency
+   (tier 2), not a third-party external (tier 3) — INV-nuzas / ADR-0041 §1 (tier
+   table + the anticipated "populate tier 2 with the workspace packages"
+   end-state) / D8a. This is orthogonal to the retired *third-party*
+   direct-dependency → tier-2 mapping (§1): a genuine third-party declaration
+   stays tier 3. Python `pyproject.toml`-scoped; Cargo/npm sibling analogues are
+   a documented follow-up (still tier 3).
+
+**Config-declared internal package roots:**
 ```yaml
 # capsule plan supply_chain config
 internal_package_roots: ["custom_packages/shared", "libs/common"]

@@ -153,7 +153,13 @@ from .slice import (
 )
 from .selection.filters import is_excluded_kind
 from .limits import Limits
-from .supply_chain import DERIVED_PATH_PATTERNS, classify_file, detect_package_roots
+from .supply_chain import (
+    DERIVED_PATH_PATTERNS,
+    _normalize_pep503,
+    classify_file,
+    collect_workspace_package_names,
+    detect_package_roots,
+)
 from .ranking import (
     rank_symbols, _is_test_path, compute_transitive_test_coverage,
     compute_symbol_mention_centrality_batch, compute_raw_in_degree,
@@ -8367,7 +8373,12 @@ def _classify_symbols(
 
     Dependency-kind symbols (from Cargo.toml, package.json, etc.) are
     classified as tier 3 (EXTERNAL_DEP) since they represent references
-    to external packages, not first-party code.
+    to external packages, not first-party code — EXCEPT a declaration
+    naming an in-repo workspace sibling, which is workspace-internal
+    (tier 2 INTERNAL_DEP) per INV-nuzas / ADR-0041 D8a. Workspace-sibling
+    recognition uses ``collect_workspace_package_names`` (Python pyproject
+    distribution names); Cargo/npm workspace-sibling analogues are a
+    documented cross-language follow-up and still fall through to tier 3.
 
     INV-virik: when ``limits`` is supplied, ``classify_file`` failures
     (the default-fallback "outside repo" classification, or any uncaught
@@ -8377,13 +8388,25 @@ def _classify_symbols(
     declared this field but no producer ever wrote to it.
     """
     seen_failures: set[str] = set()
+    # INV-nuzas / ADR-0041 D8a: recognize in-repo workspace-sibling package
+    # names so a sibling declared as a dependency is tiered workspace-internal
+    # (tier 2), not external (tier 3). Empty set on a non-Python repo → the
+    # dependency branch below is unchanged (all deps tier 3).
+    workspace_names = collect_workspace_package_names(repo_root)
     for symbol in symbols:
         if symbol.supply_chain_tier != 1 or symbol.supply_chain_reason:
             continue
-        # Dependency declarations are external references, not source code
+        # Dependency declarations are external references, not source code —
+        # unless the declared name is an in-repo workspace sibling (tier 2).
         if symbol.kind in _DEPENDENCY_KINDS:
-            symbol.supply_chain_tier = 3
-            symbol.supply_chain_reason = "dependency declaration (external)"
+            if _normalize_pep503(symbol.name or "") in workspace_names:
+                symbol.supply_chain_tier = 2
+                symbol.supply_chain_reason = (
+                    "workspace-internal dependency declaration"
+                )
+            else:
+                symbol.supply_chain_tier = 3
+                symbol.supply_chain_reason = "dependency declaration (external)"
             continue
         file_path = repo_root / symbol.path
         classification = classify_file(file_path, repo_root, package_roots)

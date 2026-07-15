@@ -25,7 +25,10 @@ checked in order; first match wins:
 4. Workspace package detection:
    - If file matches a test directory pattern → tier 1 with is_test=True
    - Otherwise → tier 1 (workspace IS the project)
-5. Configured internal_package_roots → tier 2 (the only tier-2 producer)
+5. Configured internal_package_roots → tier 2 (the only tier-2 producer
+   *within* ``classify_file``; ``cli._classify_symbols`` additionally tiers a
+   workspace-sibling *dependency declaration* tier-2 via
+   :func:`collect_workspace_package_names` — INV-nuzas / ADR-0041 D8a)
 6. Test code detection (tier 1 with is_test=True) - tests/, spec/,
    __tests__/, _test.go, .test.js, etc. Routing tests through tier 2
    historically made tier 2 a synonym for is_test and drowned out the
@@ -968,3 +971,94 @@ def _extract_package_name(rel_path: str, pattern_label: str) -> Optional[str]:
         return parts[0]
 
     return None
+
+
+# INV-nuzas / ADR-0041 D8a — workspace-sibling dependency recognition.
+#
+# A monorepo sibling that another workspace member declares as a *dependency*
+# is workspace-INTERNAL (tier 2 ``internal_dep``), not a third-party external
+# (tier 3). ``cli._classify_symbols`` stamps every ``kind='dependency'`` symbol
+# tier-3 by default; consulting the set of in-repo package distribution names
+# below lets it tier a matching declaration tier-2 instead. This parallels the
+# workspace-member *subtraction* in
+# ``hypergumbo_lang_mainstream.py_deps.parse_python_dependencies`` (same
+# ADR-0041 D8a rule, applied there to imported boundary nodes). The two cannot
+# share code: ``hypergumbo-core`` is the base package and must not import a
+# language-analyzer package, so the small name-collection logic is duplicated.
+_WORKSPACE_NAME_NORMALIZE_RE = re.compile(r"[-_.]+")
+
+
+def _normalize_pep503(name: str) -> str:
+    """PEP 503 distribution-name normalization: lower-case and collapse runs
+    of ``-``/``_``/``.`` into a single ``-`` (so ``My_Cool.Pkg`` and
+    ``my-cool-pkg`` compare equal)."""
+    return _WORKSPACE_NAME_NORMALIZE_RE.sub("-", name).lower()
+
+
+def _own_distribution_name(data: dict) -> Optional[str]:
+    """Read a package's OWN distribution name from parsed ``pyproject.toml``
+    data. PEP 621 ``[project].name`` is preferred; Poetry
+    ``[tool.poetry].name`` is the fallback. Returns ``None`` when neither is
+    a non-empty string."""
+    project = data.get("project")
+    if isinstance(project, dict):
+        name = project.get("name")
+        if isinstance(name, str) and name.strip():
+            return name.strip()
+    tool = data.get("tool")
+    if isinstance(tool, dict):
+        poetry = tool.get("poetry")
+        if isinstance(poetry, dict):
+            name = poetry.get("name")
+            if isinstance(name, str) and name.strip():
+                return name.strip()
+    return None
+
+
+def collect_workspace_package_names(repo_root: Path) -> set:
+    """Collect the PEP 503-normalized distribution names of every in-repo
+    Python package (workspace member).
+
+    Walks ``repo_root`` for every ``pyproject.toml`` (the root manifest and any
+    ``packages/<pkg>/pyproject.toml`` at any depth), skipping
+    ``discovery.DEFAULT_EXCLUDES`` and dot-prefixed directories so a vendored
+    ``.venv/site-packages/<pkg>/pyproject.toml`` cannot leak in, and reads each
+    package's own distribution name (``[project].name`` /
+    ``[tool.poetry].name``).
+
+    The result is the workspace-sibling recognizer for
+    :func:`cli._classify_symbols`: a ``kind='dependency'`` symbol whose
+    normalized name is in this set is a workspace-internal dependency
+    declaration (tier 2), not a third-party external (tier 3) —
+    INV-nuzas / ADR-0041 D8a. Returns an empty set when no ``pyproject.toml``
+    is present (non-Python repo → all deps stay tier 3, unchanged behavior).
+    """
+    from .profile import _load_toml
+    from .discovery import DEFAULT_EXCLUDES
+
+    skip = set(DEFAULT_EXCLUDES)
+    names: set = set()
+    stack = [repo_root]
+    while stack:
+        cur = stack.pop()
+        try:
+            entries = list(cur.iterdir())
+        except (PermissionError, OSError):  # pragma: no cover - unreadable dir
+            continue
+        for entry in entries:
+            if entry.is_file() and entry.name == "pyproject.toml":
+                try:
+                    content = entry.read_text(encoding="utf-8", errors="ignore")
+                except (OSError, IOError):  # pragma: no cover - unreadable file
+                    continue
+                data = _load_toml(content)
+                if not isinstance(data, dict):
+                    continue
+                own = _own_distribution_name(data)
+                if own:
+                    names.add(_normalize_pep503(own))
+            elif entry.is_dir():
+                if entry.name in skip or entry.name.startswith("."):
+                    continue
+                stack.append(entry)
+    return names
