@@ -48,3 +48,12 @@
   clock: 5  # e0f4
   nonce: e0f4  # e0f4
   message: "Canonical row for the Python-variable shape_id=null defect (WI-zidal folded in as TRUE_DUPLICATE, 2026-07-15). Ported parity evidence: go/swift variable-kind nodes DO get shape_id (2/2, 1/1) — it's a py.py analyzer-parity gap (_compute_shape_id typed FunctionDef|ClassDef-only, py.py:1678; _emit_module_level_assign_symbols builds kind='variable' with no shape_id call). Now a WI-vogij prerequisite: the clone/refactoring-lead feature needs shape_id populated on variable nodes."  # e0f4
+- op: update  # 6cdf
+  at: '2026-07-15T21:18:59Z'  # 6cdf
+  by: agent  # 6cdf
+  actor: jgstern_agent  # 6cdf
+  clock: 6  # 6cdf
+  nonce: 6cdf  # 6cdf
+  set: {}  # 6cdf
+  add:  # 6cdf
+    isbefore: [WI-vogij-jubit-podog-galug-humag-rovuh-jahan-rozug]  # 6cdf

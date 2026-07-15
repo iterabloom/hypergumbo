@@ -35,3 +35,19 @@
   clock: 3  # 4b9e
   nonce: 4b9e  # 4b9e
   message: "Wave-5 sweep (2026-07-08): identity:F5 shape_id residual (22 null-shape_id nodes on structural kinds in real languages: csharp/solidity/wgsl/py route-synth). Empty isbefore -> terminal wave."  # 4b9e
+- op: update  # 8a3f
+  at: '2026-07-15T21:18:59Z'  # 8a3f
+  by: agent  # 8a3f
+  actor: jgstern_agent  # 8a3f
+  clock: 4  # 8a3f
+  nonce: 8a3f  # 8a3f
+  set: {}  # 8a3f
+  add:  # 8a3f
+    isbefore: [WI-vogij-jubit-podog-galug-humag-rovuh-jahan-rozug]  # 8a3f
+- op: discuss  # 26cb
+  at: '2026-07-15T21:18:59Z'  # 26cb
+  by: agent  # 26cb
+  actor: jgstern_agent  # 26cb
+  clock: 5  # 26cb
+  nonce: 26cb  # 26cb
+  message: "Identity triage 2026-07-15: shape_id-coverage prerequisite for WI-vogij. Re-run: 27 real-language structural-kind shape_id nulls on v5 (csharp 10 + solidity 4 + wgsl 5 + python route-synth 8), 9 with BOTH stable_id and shape_id null. Union of WI-lutob + route-synth; falsifies 'nulls only on non-structural kinds'."  # 26cb
