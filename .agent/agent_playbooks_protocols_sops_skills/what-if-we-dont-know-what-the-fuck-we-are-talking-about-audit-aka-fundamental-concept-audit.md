@@ -691,6 +691,44 @@ runs can find prior work:
   audit (that property is about `external_symbol` naming, not tier semantics),
   so the audit cleared the closure rather than blocking it.
 
+- **2026-07-15 — identity vocabulary (`# axis: identity`).** Trigger: chosen as
+  the sharpest next Wave-5 audit (the identity tail is 22+ items on the
+  shape_id / stable_id / fingerprint / canonical_name vocabulary). Method: three
+  parallel read-only sub-agent evidence traces (structural-identity trio /
+  name-addressable identity / run-provenance) + orchestrator synthesis, each
+  applying the four leakage tests + the Step 4.5 five-shape producer trace.
+  Outcome: **partially confirmed — the axis is conceptually CLEAN (no
+  concept-smuggling); the findings are a documentation-drift cluster + one dead
+  read-side field.** A cleaner result than the tier-axis audit (which found real
+  cross-consumer semantic splits). Findings: (F1, a real bug) `Symbol.fingerprint`
+  docstring read "Content hash of source bytes (sha256)" — wrong; the producer
+  (fingerprint.py, `hgfp2:` scheme) computes a whitespace/comment-invariant
+  *structural parse-subtree* hash; "source bytes" was the ADR-0032-demolished
+  Format-1 scheme. (F2) ADR-0032 labels the retained Format-2 `hgfp1:`/70-char
+  throughout; shipped is `hgfp2:`/16-hex — added a scheme-drift note (historical
+  refs left; git is the record). (F3) `shape_id` was defined circularly as
+  "Structural implementation fingerprint" (its sibling's name); empirically a
+  strict coarsening of `fingerprint` (fingerprint→shape_id is a pure function
+  over 33,053 nodes; shape_id→fingerprint is not) — docstring fixed to state the
+  strip-vs-keep rule. (F4) schema `Symbol.id` description gained its
+  location-addressedness caveat, symmetric with stable_id's. (F5) `Edge.derived_from`
+  is provenance (PROV wasDerivedFrom), not identity-of-record — within axis
+  precedent (identity covers FK-refs), docstring note only. (F6)
+  run_signature / repo_fingerprint / config_fingerprint / pass_version have zero
+  internal readers (external cache/PROV tooling only) — AnalysisRun docstring says
+  so. (F7, DEPRECATE-watch) `shape_id` is read-dead (5-shape trace + full
+  packages/+scripts/ sweep: only serialization + producer-guards), dominated by
+  fingerprint, intended cross-run refactor-tracking consumer unbuilt — filed as a
+  human deprecate-vs-keep decision item (kept for now with a written re-eval
+  trigger per the Step-6 KEEP rule). Clean/KEEP: `qualified_name` (correctly axed
+  as a name — 34,615 non-unique values, all consumers collision-tolerant),
+  `id`×`stable_id`, `edge_key`×`Edge.id`, the run/provenance quartet,
+  `version`×`pass_version`. Adjacent: `canonical_name` already demolished by
+  ADR-0032 (no residual field). Prior 2026-05-27 provenance-audit items
+  re-verified all closed (INV-kohat satisfied, WI-gapin done, WI-hupoz done).
+  F1–F6 fixed in one docs PR; no axis declaration / new ADR needed. Full
+  write-up: `~/hypergumbo_lab_notebook/concept-audit-identity-vocabulary_07152026.md`.
+
 (Future audits append here.)
 
 ## Relationship to other playbooks
