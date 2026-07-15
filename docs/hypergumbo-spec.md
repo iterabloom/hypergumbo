@@ -301,7 +301,7 @@ class AnalysisRun:
     config_fingerprint: str    # sha256 of effective config
     files_analyzed: int
     files_skipped: int
-    skipped_passes: List[Dict] # passes that couldn't run
+    skipped_passes: List[Dict] # legacy per-run mirror (unpopulated); pass-level skips live in limits.skipped_passes
     warnings: List[str]
     started_at: str
     duration_ms: int
@@ -743,7 +743,7 @@ Each entry records provenance for one analyzer pass. Field semantics are defined
 
 **Output-specific note:** The IR field `pass_id` is serialized as `pass` in JSON output.
 
-**skipped_passes** (array, optional): Lists passes that did not run. Each entry includes pass ID and reason. Two reasons are emitted today: missing optional dependencies (e.g., `{"pass": "lean", "reason": "tree-sitter-lean grammar not available"}`) and the WI-jadig file-presence pre-filter — an analyzer whose declared languages all have `files == 0` in `profile.languages` is short-circuited at the dispatcher with `{"pass": "<lang>", "reason": "no files matched"}`, saving the wall-clock cost of opening a parser for a pass that has no input.
+**skipped_passes** (array, optional; per-run): a legacy field mirroring the top-level `limits.skipped_passes` shape. Pass-level skips never appear here — a skipped pass never ran, so it has no `analysis_runs[]` record — so this per-run field has no current producer and is omitted when empty (INV-virik). For skip provenance, read the authoritative `limits.skipped_passes` (documented under [§9 limits — explicit gaps](#limits--explicit-gaps)). (INV-nihug.)
 
 **pass_version** (string, INV-morag option A): real per-pass version derived from `sha256(inspect.getsource(<pass module>))`. Replaces the fake `-v1` suffix that previously lived inside `pass_id` with a value that actually changes when the pass implementation changes. INV-morag PR 2 propagated non-empty values to every registration site automatically via the `@register_analyzer` / `@register_linker` decorators and dropped the `-v1` / `-ts-v1` suffix from `pass_id` entirely.
 
@@ -800,6 +800,8 @@ Top-level block introduced in INV-morag (option B) that documents the level of r
 **File-count definition:** `languages[L].files` is the count of files the language-L analyzer would enumerate on this repo. When an analyzer registers a canonical `find_files` callable, that callable's output is the count — so extensionless shebang scripts (e.g., `.githooks/pre-commit`, `scripts/auto-pr`) appear in `languages.bash.files`, matching `analysis_runs[bash].files_analyzed`. Otherwise the count falls back to the language's extension globs (e.g., `*.py` / `*.pyi` for Python).
 
 **LOC definition:** Lines of code counts non-empty lines in files matching language extensions — the SLOC convention shared with `cloc` and `tokei`'s "code" tally. Whitespace-only lines are excluded; comments are NOT stripped. Expect the number to run ~10-20% lower than raw `wc -l` for typical source files (the gap is blank lines). Lock files (poetry.lock, package-lock.json, etc.) are excluded. See [§15 File role classification](#15-file-role-classification) for the proposed taxonomy that would also exclude pure data files from LOC counts.
+
+This per-file `loc` is the **authoritative** lines-of-code figure, counted once per file. It is distinct from the per-symbol `line_span` field on `nodes[]` (a physical `end_line - start_line + 1` span, blank/comment lines included, attached to each function/class/method). Because nested symbols overlap — a method span sits inside its class span sits inside its file span — `line_span` is **not summable**: `Σ(node.line_span)` overcounts physical lines (empirically ~1.66× the per-file total) and is not a meaningful quantity. Use `profile.languages[L].loc` for repo/language LOC; use `line_span` only per symbol (centrality dampening, test-density, dead-code ranking, slicing). (WI-palon.)
 
 ### nodes[] — definitions, files, endpoints
 
@@ -1041,7 +1043,7 @@ When the headline `total_files` is computed without a profile (e.g., by callers 
 
 ### supply_chain_summary — classification overview
 
-Per-tier file and symbol counts (`first_party`, `internal_dep`, `external_dep`), plus a `derived_skipped` object listing files excluded from analysis. Each tier's `files` counts distinct paths of that tier's **`kind=="file"` nodes only** (not distinct paths across all tier nodes — a symbol-level count would fold in function paths and the `<external>` sentinel path of `external_symbol` nodes, inflating the count with phantom "files"; WI-mutuv); `symbols` counts every node of the tier regardless of kind. `derived_skipped.paths` is capped at 10 entries; full list available via `--verbose`. The `external_dep` tier carries an `ecosystem` sub-object counting tier-3 symbols by provenance class (`stdlib` / `third_party` / `unknown`), per the ADR-0041 §3 ecosystem axis.
+Per-tier file and symbol counts (`first_party`, `internal_dep`, `external_dep`), plus a `derived_skipped` object listing files excluded from analysis. Each tier's `files` counts distinct paths of that tier's **`kind=="file"` nodes only** (not distinct paths across all tier nodes — a symbol-level count would fold in function paths and the `<external>` sentinel path of `external_symbol` nodes, inflating the count with phantom "files"; WI-mutuv); `symbols` counts every node of the tier regardless of kind. `derived_skipped.paths` is capped at 10 entries; full list available via `--verbose`. Unlike the analyzed tiers, `derived_skipped` intentionally carries `{files, paths}` rather than `{files, symbols}`: tier-4 derived artifacts are excluded from analysis entirely (§14), so they emit no symbols and a `symbols` count would be a structurally-always-0 field carrying no signal (cf. ADR-0040's declared-⇒-populated discipline). In its place `paths` is a genuinely different quantity — a capped sample of *which* derived files were skipped, a diagnostic for spotting a source file misclassified as derived — and per ADR-0039 ("a new quantity gets a new name") it is named for what it is rather than forced into the sibling shape. `derived_skipped` is thus an exclusion-disclosure bucket, not a peer tier: its `files` counts files *excluded from* analysis, not files *classified into* a tier (WI-gabos). The `external_dep` tier carries an `ecosystem` sub-object counting tier-3 symbols by provenance class (`stdlib` / `third_party` / `unknown`), per the ADR-0041 §3 ecosystem axis.
 
 ### limits — explicit gaps
 
@@ -1050,6 +1052,7 @@ Documents what the analysis *didn't* capture. Key arrays:
 - `truncated_files[]`: Files skipped due to size, with path, size, and reason
 - `skipped_languages[]`: Languages with unavailable grammars
 - `failed_files[]`: Files that caused parse errors, with path, reason, and analyzer ID
+- `skipped_passes[]`: the single authoritative record of **pass-level** skips — a pass that did not run at all. Three reasons are emitted: missing optional dependencies (e.g., `{"pass": "lean", "reason": "tree-sitter-lean grammar not available"}`); the WI-jadig file-presence pre-filter — an analyzer whose declared languages all have `files == 0` in `profile.languages` is short-circuited at the dispatcher with `{"pass": "<lang>", "reason": "no files matched"}`, saving the wall-clock cost of opening a parser for a pass with no input; and a contained pass crash, recorded as `{"pass": "<lang>", "reason": "crashed: <ExcType>: <msg>"}` (§17). Because a skipped pass produces no `analysis_runs[]` entry, this top-level list — not the per-run `analysis_runs[].skipped_passes` — is where pass-level skips live; it is always present (empty list = "no pass was skipped"). (INV-nihug.)
 
 **partial_results_reason** (string, optional): Present only when `analysis_incomplete: true`. Human-readable explanation (e.g., `"Timeout: Analysis exceeded 300 seconds"`, `"User interrupted: Ctrl-C received"`).
 
@@ -1697,12 +1700,12 @@ Tier and Role compose for analysis decisions:
 ### Missing dependencies
 
 * 🟩 **Behavior**: If pass requires unavailable grammar (e.g., tree-sitter), skip pass
-* 🟩 **Output**: Add to `analysis_runs[].skipped_passes[]` (see [§9 Behavior map JSON](#9-behavior-map-json) for field format)
+* 🟩 **Output**: Add to `limits.skipped_passes[]` (see [§9 limits — explicit gaps](#limits--explicit-gaps) for field format — pass-level skips live in top-level `limits`, not the per-run record)
 
 ### Analyzer crashes
 
-* 🟩 **Behavior**: Catch the exception per-pass, record a `skipped_passes[]` entry with reason `crashed: <ExcType>: <msg>`, set top-level `partial_results_reason`, and continue (fail-open, WI-madal L3). No stack-trace file is written.
-* 🟩 **Output**: `skipped_passes[]` entry + `partial_results_reason`; `analysis_incomplete` is not set and no entry is added to `warnings[]`.
+* 🟩 **Behavior**: Catch the exception per-pass, record a `limits.skipped_passes[]` entry with reason `crashed: <ExcType>: <msg>`, set top-level `partial_results_reason`, and continue (fail-open, WI-madal L3). No stack-trace file is written.
+* 🟩 **Output**: `limits.skipped_passes[]` entry + `partial_results_reason`; `analysis_incomplete` is not set and no entry is added to `warnings[]`.
 
 ### File size limits
 

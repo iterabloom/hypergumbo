@@ -114,6 +114,13 @@ Alongside: the CLI standardizes on `--format {text,json}` across all read views 
 
 - **`Edge.quality` (`{score, reason}`) is deprecated (ADR-0039 ruling 4; WI-humok / WI-riguh).** It carries zero independent signal — `quality.score` is `round(clamp(confidence), 3)` on 110,533/110,533 verification-corpus edges and `quality.reason` encodes the emitter mechanism, not a confidence tier. The `deprecated` annotation lands in `docs/schema.json` now (SCHEMA_VERSION 0.14.5 → 0.14.6); the field is still emitted for this release and will be removed the next, per the one-version deprecation window. Read `confidence` + `confidence_source` + `is_resolved` instead. (`Symbol.quality` is a separate field, not in scope.)
 
+### Documentation
+
+- **Documented three intentional schema divergences, closing INV-nihug / WI-gabos / WI-palon (INV-luhur children).** All three are correct-by-design, not bugs; the spec/schema now say so explicitly rather than leaving readers to infer or (in one case) mis-routing them:
+  - **`skipped_passes` two-channel semantics (INV-nihug).** `limits.skipped_passes` is the single authoritative record of pass-level skips (a pass that never ran — no files matched, missing grammar, or crashed); the per-run `analysis_runs[].skipped_passes` is an unpopulated legacy mirror (a skipped pass has no `analysis_runs[]` entry to attach to). Corrected the spec §9/§17 prose and the schema description, which previously routed readers to the per-run field for outputs that actually land in `limits`.
+  - **`supply_chain_summary.derived_skipped` carries `{files, paths}` not `{files, symbols}` (WI-gabos).** Tier-4 derived artifacts are excluded from analysis and emit no symbols, so a `symbols` count would be a structurally-always-0 field (cf. ADR-0040); `paths` (a capped sample of *which* files were skipped) is a distinct quantity named per ADR-0039. Documented in spec §14.
+  - **`profile.languages[L].loc` vs `node.line_span` (WI-palon).** `profile.loc` is the authoritative per-file SLOC (counted once); `node.line_span` is a per-symbol span that overlaps across nesting and is not summable (`Σ` ≈ 1.66× the file total). Documented in spec §profile.
+
 ### Fixed
 
 #### Python call-graph resolution

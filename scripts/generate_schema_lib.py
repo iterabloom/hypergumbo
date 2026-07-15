@@ -753,7 +753,15 @@ def _analysis_run_spec() -> ClassSpec:
             "files_analyzed": {"description": "Number of files analyzed by this pass"},
             "files_skipped": {"description": "Number of files skipped by this pass"},
             "skipped_passes": {
-                "description": "Passes skipped at dispatch time or crashed mid-run, with reasons (a 'crashed: ' prefix marks a contained pass crash)",
+                "description": (
+                    "Legacy per-run mirror of limits.skipped_passes. Pass-level "
+                    "skips (a pass that did not run: no files matched, missing "
+                    "grammar, or crashed) have no analysis_runs[] entry and "
+                    "appear only in top-level limits.skipped_passes; this "
+                    "per-run field has no current producer and is omitted when "
+                    "empty (INV-virik / INV-nihug). Read limits.skipped_passes "
+                    "for skip provenance."
+                ),
             },
             "failed_files": {
                 "description": (
