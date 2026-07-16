@@ -123,6 +123,58 @@ fs_write:
       module so f.write()/f.writelines() classify here via the module-filter
       path (untyped receivers stay suppressed by ambiguous_names).
 
+# WI-harin: stdlib database / key-value-store primitives. STRICT STDLIB
+# only (sqlite3 / dbm / shelve) — third-party ORMs (Django ORM, SQLAlchemy)
+# are deliberately NOT catalogued here. Their calls arrive as bare untyped
+# unresolved method calls (``.save()`` / ``.filter()`` / ``.get()`` on a
+# receiver hypergumbo cannot type), which the matcher correctly refuses
+# (INV-tapat/INV-maluk); matching them by short name would false-positive on
+# every ``dict.get()`` / ``.save()`` in the corpus. Making third-party ORM
+# calls visible is a receiver-type-inference problem, tracked separately.
+# The free-function datastore opens (connect / open) are the reliably-
+# matchable anchors; the DB-API method surface is catalogued for
+# completeness + taint even though untyped receivers keep it latent (the
+# same shape as the JDBC method surface in java.yaml). db_read/db_write are
+# already members of CATALOG_BOUNDARY_TYPES and populated in 6 other
+# language catalogs; Python was the gap.
+db_read:
+  - module: sqlite3
+    functions: [connect]
+    notes: |
+      Opens/creates a SQLite database file — the DB-API datastore boundary
+      anchor and the reliably-matchable free-function entry (``connect`` is
+      ambiguous with socket.socket.connect, disambiguated by the sqlite3
+      module hint).
+  - module: sqlite3.Connection
+    methods: [iterdump, backup]
+    notes: "Whole-database export / online backup (read path)"
+  - module: sqlite3.Cursor
+    methods: [fetchone, fetchmany, fetchall]
+    notes: |
+      DB-API result retrieval. Latent: untyped cursor receivers stay
+      suppressed by the no-module gate (fires only when py.py types the
+      cursor, mirroring the WI-fuvuj `file` synthetic module).
+  - module: dbm
+    functions: [open]
+    notes: |
+      Opens a Unix key-value db file. Dual read/write by flag; catalogued as
+      the datastore boundary (``open`` is ambiguous with builtins.open,
+      disambiguated by the dbm module hint).
+  - module: shelve
+    functions: [open]
+    notes: "Persistent dict backed by dbm (module-hint-disambiguated open)"
+
+db_write:
+  - module: sqlite3.Connection
+    methods: [execute, executemany, executescript, commit]
+    notes: |
+      SQL execution + transaction flush. ``execute`` is ambiguous (may
+      mutate), so it is classified as a write — matching how
+      java.sql.Statement.execute is treated. Latent for untyped receivers.
+  - module: sqlite3.Cursor
+    methods: [execute, executemany, executescript]
+    notes: "SQL execution via a cursor (latent — untyped receivers suppressed)"
+
 net_send:
   - module: socket.socket
     methods: [send, sendto, sendall, sendmsg, connect, connect_ex]
@@ -175,9 +227,13 @@ net_recv:
   - module: flask.Flask
     methods: [run]
     notes: "Flask development server"
-  - module: django.core.management
-    functions: [execute_from_command_line]
-    notes: "Django management command (includes runserver)"
+  # WI-harin: django.core.management.execute_from_command_line was here as
+  # net_recv — a false positive. It is a CLI dispatcher (the manage.py entry
+  # routing to migrate / collectstatic / runserver / …), not itself a
+  # network receive, and it is third-party framework code (out of scope
+  # under the same Plan-C strict-stdlib rule the net_send side enforces).
+  # Removed. A framework's server-start (runserver) surfaces via the
+  # external_potential bucket, not a mislabeled stdlib-catalog entry.
   - module: uvicorn
     functions: [run]
     notes: "ASGI server (used by FastAPI, Starlette)"

@@ -164,6 +164,70 @@ class TestLoadCatalog:
         assert any(p.module == "http.client.HTTPConnection"
                    for p in catalog.primitives)
 
+    def test_python_catalog_has_db_read_write(self) -> None:
+        # WI-harin: the db_read/db_write boundary categories exist in
+        # CATALOG_BOUNDARY_TYPES and are populated in 6 other language
+        # catalogs (java JDBC, erlang ets/mnesia, swift/objc Core Data,
+        # haskell IORef, elixir Ecto) but were absent from Python. Python's
+        # stdlib db surface is sqlite3 + dbm + shelve. The reliably-matchable
+        # anchors are the free-function opens (sqlite3.connect / dbm.open /
+        # shelve.open); the DB-API method surface (execute/fetch*) is
+        # catalogued for completeness/taint even though untyped receivers
+        # keep it latent (see test_unresolved_bare_db_method_not_tagged).
+        catalog = load_catalog("python")
+        db = {
+            p.qualified_name: p.boundary
+            for p in catalog.primitives
+            if p.boundary in ("db_read", "db_write")
+        }
+        assert db, "Python catalog must populate db_read/db_write (WI-harin)"
+        # Free-function datastore-open anchors (matchable with a module hint).
+        assert db.get("sqlite3.connect") == "db_read"
+        assert db.get("dbm.open") == "db_read"
+        assert db.get("shelve.open") == "db_read"
+        # DB-API method surface (latent until receivers are typed).
+        assert db.get("sqlite3.Cursor.execute") == "db_write"
+        assert db.get("sqlite3.Cursor.fetchall") == "db_read"
+        assert db.get("sqlite3.Connection.commit") == "db_write"
+
+    def test_python_db_primitives_are_all_stdlib(self) -> None:
+        # WI-harin scope discipline: the db_* additions are STRICT STDLIB
+        # (sqlite3 / dbm / shelve) — NOT third-party ORMs. Django ORM /
+        # SQLAlchemy cannot be catalogued here: their calls arrive as bare
+        # untyped unresolved method calls (`.save()`/`.filter()`/`.get()`)
+        # that the matcher correctly refuses (INV-tapat), and matching them
+        # by short name would be a massive false-positive regression
+        # (`dict.get` dwarfs the ORM `get`s). This guards the Plan-C
+        # strict-stdlib boundary against future ORM creep; making Django
+        # ORM visible is a receiver-inference problem tracked separately.
+        catalog = load_catalog("python")
+        _STDLIB_DB_MODULE_ROOTS = ("sqlite3", "dbm", "shelve")
+        for p in catalog.primitives:
+            if p.boundary not in ("db_read", "db_write"):
+                continue
+            root = p.module.split(".")[0]
+            assert root in _STDLIB_DB_MODULE_ROOTS, (
+                f"Python db_* catalog must be strict-stdlib "
+                f"(sqlite3/dbm/shelve); third-party module {p.module!r} "
+                f"found ({p.qualified_name}). Third-party ORMs belong to "
+                f"receiver-inference, not the catalog."
+            )
+
+    def test_python_catalog_drops_execute_from_command_line_fp(self) -> None:
+        # WI-harin: django.core.management.execute_from_command_line was
+        # classified net_recv — a false positive. It is a CLI dispatcher
+        # (manage.py entry that routes to migrate/collectstatic/runserver/…),
+        # not itself a network receive; and it is third-party framework code
+        # (out of scope under the Plan-C strict-stdlib rule the net_send side
+        # already enforces). Removed outright.
+        catalog = load_catalog("python")
+        assert not any(
+            p.name == "execute_from_command_line" for p in catalog.primitives
+        ), "execute_from_command_line net_recv FP must be removed (WI-harin)"
+        assert not any(
+            p.module == "django.core.management" for p in catalog.primitives
+        )
+
     def test_java_catalog_excludes_third_party_wrappers(self) -> None:
         # Plan C, PR A: strict-stdlib rule. Java's stdlib is the JDK
         # (java.*) plus the historically-bundled javax.* and the
@@ -1522,6 +1586,54 @@ class TestTagIoBoundaries:
         count = tag_io_boundaries([edge], {"python": catalog})
         assert count == 1
         assert edge.meta["io_boundary"] == "subprocess"
+
+    def test_tags_sqlite3_connect_as_db_read(self) -> None:
+        # WI-harin: sqlite3.connect is the reliably-matchable stdlib db
+        # anchor. `connect` is ambiguous (socket.socket.connect is net_send),
+        # so the module hint ``sqlite3`` disambiguates it to db_read.
+        catalog = load_catalog("python")
+        edge = self._make_edge(
+            src="python:/app/store.py:10-12:open_db:function",
+            dst="python:sqlite3:0-0:connect:unresolved",
+        )
+        count = tag_io_boundaries([edge], {"python": catalog})
+        assert count == 1
+        assert edge.meta["io_boundary"] == "db_read"
+        assert edge.meta["io_primitive"] == "sqlite3.connect"
+
+    def test_tags_dbm_open_as_db_read(self) -> None:
+        # WI-harin: dbm.open / shelve.open are stdlib key-value datastore
+        # opens. `open` is ambiguous (builtins.open is fs_read), so the
+        # ``dbm`` module hint disambiguates to db_read.
+        catalog = load_catalog("python")
+        edge = self._make_edge(
+            src="python:/app/cache.py:5-7:load:function",
+            dst="python:dbm:0-0:open:unresolved",
+        )
+        count = tag_io_boundaries([edge], {"python": catalog})
+        assert count == 1
+        assert edge.meta["io_boundary"] == "db_read"
+        assert edge.meta["io_primitive"] == "dbm.open"
+
+    def test_unresolved_bare_db_method_not_tagged(self) -> None:
+        # WI-harin feasibility guard: Django-ORM-style calls arrive as bare
+        # untyped unresolved method calls (`.execute()` / `.save()` on a
+        # receiver hypergumbo cannot type). The DB-API method entries
+        # (sqlite3.Cursor.execute, ...) must NOT match such an edge — doing
+        # so by short name would false-positive on every `.execute()` /
+        # `.save()` in the corpus. This is the same INV-tapat/INV-maluk
+        # discipline that keeps bare `.replace()` from matching Path.replace,
+        # and it is precisely why Django ORM visibility needs receiver
+        # inference rather than catalog entries.
+        catalog = load_catalog("python")
+        edge = self._make_edge(
+            src="python:/app/models.py:20-30:save_row:function",
+            dst="python:external:0-0:execute:unresolved",
+        )
+        edge.meta = {"call_construct": "method"}
+        count = tag_io_boundaries([edge], {"python": catalog})
+        assert count == 0
+        assert edge.meta.get("io_boundary") is None
 
     def test_multiple_edges_mixed(self) -> None:
         catalog = load_catalog("python")
