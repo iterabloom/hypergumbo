@@ -286,7 +286,19 @@ META_KEYS: Final[tuple[MetaKeySpec, ...]] = (
     MetaKeySpec("io_boundary", AXIS_EDGE_META,
                 "Boundary classification on edges that cross an IO "
                 "primitive (e.g. 'net_send', 'fs_read', "
-                "'process_spawn'). Set by io_boundary catalog."),
+                "'process_spawn'). Two-source field per the WI-fakuv / "
+                "WI-puvun io-boundary REFRAME: the full value-space is "
+                "CONSUMER-TIME-derived by ``io_boundary.compute_boundary_map`` "
+                "from the ``io_primitives`` YAML catalogs and is NOT persisted "
+                "(it is stamped in memory only by the ``io-boundaries`` / "
+                "``verify-claims`` / ``slice --io-boundary`` paths). What "
+                "survives into a persisted behavior map is only the analyzer "
+                "producer-hints — currently just bash's ``command_launch`` "
+                "(``bash.py``; bash has no ``io_primitives`` catalog so the "
+                "analyzer stamps it directly), which is why the persisted "
+                "field reads as ``command_launch``-only. Consumers that need "
+                "the full classification must run ``compute_boundary_map`` "
+                "rather than read the persisted meta key."),
     # ------------------------------------------------------------------
     # Edge.meta — dataflow access modes (per the WI-vehur dataflow
     # axis).
