@@ -49,3 +49,18 @@
   clock: 5  # 4fcf
   nonce: 4fcf  # 4fcf
   message: "Rolled into Wave 5 (owner, 2026-07-16) with the per-language emission-gap cohort surfaced by the DEEP iter-004 dogfood (WI-kodap/WI-fagit/WI-kudir/WI-zizig)."  # 4fcf
+- op: update  # 67bb
+  at: '2026-07-16T10:21:24Z'  # 67bb
+  by: agent  # 67bb
+  actor: jgstern_agent  # 67bb
+  clock: 6  # 67bb
+  nonce: 67bb  # 67bb
+  set:  # 67bb
+    status: satisfied  # 67bb
+- op: discuss  # 457e
+  at: '2026-07-16T10:21:24Z'  # 457e
+  by: agent  # 457e
+  actor: jgstern_agent  # 457e
+  clock: 7  # 457e
+  nonce: 457e  # 457e
+  message: "Satisfied on EMISSION with behavioral evidence, and the filed root_cause is empirically FALSE. Owner-directed disposition (2026-07-16): satisfy-on-emission + file the real defect separately. Live probe (analyze_csharp on the exact sherpa-csharp shapes WaveHeader.cs:159/161 + option-class auto-properties): EVERY property shape emits kind=property — expression-bodied (int/array/user-typed => expr), accessor-list auto-properties ({get;set;}, {get;}). The existing production-path test test_handles_properties (auto-properties) already passed, contradicting the filing's '0 property nodes' claim. The filed mechanism ('property detection only handles accessor-list, not arrow/expression-bodied') is therefore false — emission was never the gap. The REAL defect the cohort's name-based search was detecting: user-typed properties were misnamed with their TYPE (public WaveInfo Info -> symbol 'C.WaveInfo', not 'C.Info'), so a search for expected property names found 0. That naming defect is fixed in PR #689 and filed as its own item (see below)."  # 457e

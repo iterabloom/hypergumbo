@@ -19,3 +19,18 @@
     pr_ref:  # 5e6c
     description: "Found in DEEP bakeoff deep-20260623-134237 cohort-001 iter-004 (SwiftyJSON). Two Swift structural gaps make the central type look hollow: (1) all 6 'subscript' nodes have ZERO contains edges and ZERO incoming edges — 'json[\"key\"]' / 'json[0]', the flagship SwiftyJSON API, is invisible in the graph; (2) members declared in 'extension JSON { ... }' blocks (rawData, rawString, operators — the whole public API) become flat 'function' nodes contained by the FILE, not by the JSON struct; only the two in-body methods (merge/merged) get correct 'JSON.' attribution. Related to WI-lojil (DONE — 'extract computed properties and subscript accessors as nodes'): the subscript nodes ARE now emitted, but they are edge-orphaned (a distinct connectivity facet beyond emission). Evidence: reflect/cohort-001/iter-004/SwiftyJSON.assessment.yaml."  # 5e6c
     fields: {}  # 5e6c
+- op: update  # 11e0
+  at: '2026-07-16T10:22:37Z'  # 11e0
+  by: agent  # 11e0
+  actor: jgstern_agent  # 11e0
+  clock: 2  # 11e0
+  nonce: '11e0'  # 11e0
+  set:  # 11e0
+    status: done  # 11e0
+- op: discuss  # c99e
+  at: '2026-07-16T10:22:37Z'  # c99e
+  by: agent  # c99e
+  actor: jgstern_agent  # c99e
+  clock: 3  # c99e
+  nonce: c99e  # c99e
+  message: "Fixed in PR #689 (dev b8e4d675a1). Swift extension members now attribute to their type. Root cause: tree-sitter-swift parses 'extension T {...}' as class_declaration whose extended type name is wrapped in a user_type node, so _get_enclosing_type / _get_swift_type_ancestors (which scanned direct children for a type_identifier) returned None and demoted every extension member. Now read the grammar's 'name' field. Behavioral evidence: live analyze_swift probe — 'func rawData()' in an extension now emits method 'JSON.rawData' (was function 'rawData'); 'var rawString' emits property 'JSON.rawString'; and an extension-declared 'subscript(index:)' emits 'JSON.subscript(index:)' (was bare 'subscript(index:)'). Tests: test_swift.py::TestSwiftExtensionMemberAttribution (4 tests). Resolves facet 2 (extension demotion) entirely and the EXTENSION-DECLARED portion of facet 1 (SwiftyJSON's flagship subscripts are declared in extensions, so they were demoted to bare unattached nodes — now they attach to JSON). RESIDUAL: struct-BODY subscripts were already correctly named ('JSON.subscript(key:)'); if those still show 0 contains edges in the full pipeline, that is a downstream core-graph containment-builder concern (the Swift analyzer emits no contains edges at all — containment is built downstream), NOT the analyzer. Filed separately as a follow-up."  # c99e
