@@ -15,14 +15,14 @@ for focused LLM context.
 
 hypergumbo analyzed its own source code and found:
 - **293** Python modules (133 analyzers, 57 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 29, Infrastructure 7; 66 core, 4 CLI, 33 tracker)
-- **36920** symbols (functions, classes, methods)
-- **125940** edges by type:
-  - calls: 63567
-  - contains: 34089
-  - imports: 11200
-  - instantiates: 10383
-  - references: 4234
-  - module_attr_ref: 1153
+- **36999** symbols (functions, classes, methods)
+- **126209** edges by type:
+  - calls: 63740
+  - contains: 34167
+  - imports: 11207
+  - instantiates: 10389
+  - references: 4238
+  - module_attr_ref: 1154
   - other: 1314
 
 ## Package Architecture
@@ -85,7 +85,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 36920 Symbols + 125940 Edges + UsageContexts           │
+│  Output: 36999 Symbols + 126209 Edges + UsageContexts           │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -274,17 +274,17 @@ These symbols have the highest bidirectional centrality
 |--------|------|-------|----------|
 | `Symbol` | class | 9318.3 | ir.py |
 | `Span` | class | 6271.8 | ir.py |
-| `write_text` | external_symbol | 3292.0 | <external> |
+| `write_text` | external_symbol | 3293.0 | <external> |
 | `LinkerContext` | class | 3156.6 | registry.py |
-| `Edge.create` | method | 2065.9 | ir.py |
+| `Edge.create` | method | 2072.7 | ir.py |
 | `TrackerApp` | class | 1946.9 | tui.py |
 | `load_framework_patterns` | function | 1875.9 | framework_patterns.py |
-| `Path` | external_symbol | 1598.0 | <external> |
+| `Path` | external_symbol | 1600.0 | <external> |
 | `main` | function | 1563.1 | cli.py |
 | `clear_pattern_cache` | function | 1336.8 | framework_patterns.py |
 | `Edge` | class | 1265.5 | ir.py |
-| `append` | external_symbol | 1233.0 | <external> |
-| `get` | external_symbol | 1102.0 | <external> |
+| `append` | external_symbol | 1234.0 | <external> |
+| `get` | external_symbol | 1113.0 | <external> |
 | `TreeSitterAnalyzer` | class | 1074.7 | base.py |
 | `find_files` | function | 997.1 | discovery.py |
 
@@ -840,7 +840,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: 621ff6f5fde0
+  commit: 24dc9544df78
   hypergumbo: 6.1.0
   python: 3.12.3
 -->
