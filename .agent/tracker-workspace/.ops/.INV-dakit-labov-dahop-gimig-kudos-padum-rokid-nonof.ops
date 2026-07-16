@@ -26,3 +26,26 @@
   clock: 2  # 42c6
   nonce: 42c6  # 42c6
   message: "Deferred (human decision, 2026-06-23). Distinct from the F5 field/variable emission work (this is C# PROPERTY emission), lower priority (P3), and not a regression. Unblock condition: a richer C# application repo than the sherpa-onnx dotnet-examples (which are thin ONNX example programs) to validate property emission against — the cohort could only confirm the field side. Stays violated (live gap); fix shape recorded above (extend C# property detection to arrow/expression-bodied member declarations)."  # 42c6
+- op: discuss  # a694
+  at: '2026-07-16T05:14:42Z'  # a694
+  by: agent  # a694
+  actor: jgstern_agent  # a694
+  clock: 3  # a694
+  nonce: a694  # a694
+  message: "REINFORCED + BROADENED by DEEP bakeoff deep-20260623-134237 cohort-001 iter-004 (sherpa-csharp): 108 in-repo C# property declarations emit 0 property nodes — and this is NOT limited to expression-bodied properties (the 2 in WaveReader). 106 of the 108 are ordinary auto-properties ('{ get; set; }' in 5 option classes). There is no 'property' kind emitted at all. So the fix should cover both auto-properties AND expression-bodied; the option-class properties are the dominant case. Evidence: reflect/cohort-001/iter-004/sherpa-csharp.assessment.yaml. Stays violated."  # a694
+- op: update  # 4e44
+  at: '2026-07-16T05:24:25Z'  # 4e44
+  by: agent  # 4e44
+  actor: jgstern_agent  # 4e44
+  clock: 4  # 4e44
+  nonce: '4e44'  # 4e44
+  set: {}  # 4e44
+  add:  # 4e44
+    tags: [wave5]  # 4e44
+- op: discuss  # 4fcf
+  at: '2026-07-16T05:24:26Z'  # 4fcf
+  by: agent  # 4fcf
+  actor: jgstern_agent  # 4fcf
+  clock: 5  # 4fcf
+  nonce: 4fcf  # 4fcf
+  message: "Rolled into Wave 5 (owner, 2026-07-16) with the per-language emission-gap cohort surfaced by the DEEP iter-004 dogfood (WI-kodap/WI-fagit/WI-kudir/WI-zizig)."  # 4fcf

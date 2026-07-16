@@ -32,3 +32,10 @@
   clock: 3  # cbef
   nonce: cbef  # cbef
   message: "Implemented in PR (pending). Computed properties extracted as 'property' kind, subscripts as 'subscript' kind. Call edges inside bodies attributed correctly."  # cbef
+- op: discuss  # 2b00
+  at: '2026-07-16T05:14:42Z'  # 2b00
+  by: agent  # 2b00
+  actor: jgstern_agent  # 2b00
+  clock: 4  # 2b00
+  nonce: 2b00  # 2b00
+  message: "Partial reproduction found in DEEP bakeoff deep-20260623-134237 cohort-001 iter-004 (SwiftyJSON): subscript nodes ARE now emitted (this item's emission goal met), but all 6 are edge-ORPHANED — 0 contains edges (not attached to the JSON struct) and 0 incoming edges ('json[\"key\"]' invisible in the graph). Also 'extension JSON' members are demoted to file-level function nodes. Filed the connectivity/attribution facet (distinct from emission) as WI-kudir-tituk-vuzon-moziz-ripog-davaz-husif-dojar. No re-open needed here — emission per this item's scope holds."  # 2b00
