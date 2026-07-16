@@ -100,3 +100,10 @@
   clock: 11  # ced6
   nonce: ced6  # ced6
   message: "NO_MOVE (plurality) via DEEP bakeoff deep-20260623-134237 cohort-001 iter-004 (8 repos, code e5a019c2): 4 no_move (apollo/spring/sherpa/pretix), 2 moved (SwiftyJSON/zoxide), 2 inconclusive-leaning-connectivity (caddy/express). Compact SELECTS by centrality (nodes_summary coverage high on small repos) but its visible ORDERING is source-path/containment-grouped, and on repos with build-wrappers (spring mvnw/pom), generated (.d.ts), vendored JS (pretix pdf.worker/d3/vue) or entrypoint-tier nodes the ranking surfaces that noise ABOVE centrality-top real code (spring: mvnw:die over OwnerController deg29; sherpa: Main entrypoints over WaveReader deg29; pretix: 83 selected nodes hold 1.3% of total centrality). Shares a root cause with the seed-ranking item WI-batit (reproduces) + the compact-representation finding. Keeping tag."  # ced6
+- op: discuss  # 2823
+  at: '2026-07-16T05:12:47Z'  # 2823
+  by: agent  # 2823
+  actor: jgstern_agent  # 2823
+  clock: 12  # 2823
+  nonce: '2823'  # 2823
+  message: "The WI-pohuf compact-node fix (PR de2fb3717c) directly improves the centrality-coverage face flagged in iter-004: the tiered views now fit far more symbols per budget (apollo 4k/16k/64k 1/1/59 -> 4/31/142; pretix 1/1/83 -> 5/38/190), so the compact selection covers much more of the centrality mass. The ORDERING/noise-contamination face (compact leading with build-wrappers/generated/entrypoint nodes over centrality-top real code) is the seed-ranking issue tracked on WI-batit (reproduces) — orthogonal to compact-node size. Keep tag; re-validate ordering after WI-batit."  # 2823

@@ -1,0 +1,21 @@
+- op: create  # 5e6c
+  at: '2026-07-16T05:13:43Z'  # 5e6c
+  by: agent  # 5e6c
+  actor: jgstern_agent  # 5e6c
+  clock: 1  # 5e6c
+  nonce: 5e6c  # 5e6c
+  data:  # 5e6c
+    kind: work_item  # 5e6c
+    title: "Swift subscript nodes fully orphaned (0 contains + 0 incoming edges) and 'extension' members demoted to file-level functions"  # 5e6c
+    status: todo_hard  # 5e6c
+    priority: 2  # 5e6c
+    parent:  # 5e6c
+    tags:  # 5e6c
+    - dogfood  # 5e6c
+    - wave5  # 5e6c
+    isbefore: []  # 5e6c
+    duplicate_of: []  # 5e6c
+    not_duplicate_of: []  # 5e6c
+    pr_ref:  # 5e6c
+    description: "Found in DEEP bakeoff deep-20260623-134237 cohort-001 iter-004 (SwiftyJSON). Two Swift structural gaps make the central type look hollow: (1) all 6 'subscript' nodes have ZERO contains edges and ZERO incoming edges — 'json[\"key\"]' / 'json[0]', the flagship SwiftyJSON API, is invisible in the graph; (2) members declared in 'extension JSON { ... }' blocks (rawData, rawString, operators — the whole public API) become flat 'function' nodes contained by the FILE, not by the JSON struct; only the two in-body methods (merge/merged) get correct 'JSON.' attribution. Related to WI-lojil (DONE — 'extract computed properties and subscript accessors as nodes'): the subscript nodes ARE now emitted, but they are edge-orphaned (a distinct connectivity facet beyond emission). Evidence: reflect/cohort-001/iter-004/SwiftyJSON.assessment.yaml."  # 5e6c
+    fields: {}  # 5e6c

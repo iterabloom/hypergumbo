@@ -1,0 +1,21 @@
+- op: create  # 572c
+  at: '2026-07-16T05:13:46Z'  # 572c
+  by: agent  # 572c
+  actor: jgstern_agent  # 572c
+  clock: 1  # 572c
+  nonce: 572c  # 572c
+  data:  # 572c
+    kind: work_item  # 572c
+    title: "Go plugin-registry dispatch (RegisterModule -> global map -> Context.LoadModule) is not a static call edge — forward slice from main() misses all HTTP handlers"  # 572c
+    status: todo_hard  # 572c
+    priority: 3  # 572c
+    parent:  # 572c
+    tags:  # 572c
+    - dogfood  # 572c
+    - wave5  # 572c
+    isbefore: []  # 572c
+    duplicate_of: []  # 572c
+    not_duplicate_of: []  # 572c
+    pr_ref:  # 572c
+    description: "Found in DEEP bakeoff deep-20260623-134237 cohort-001 iter-004 (caddy, Go). Caddy's module architecture dispatches via a global registry: 'RegisterModule' populates a map, and 'Context.LoadModule' looks up + instantiates by string ID at runtime. Hypergumbo emits no static edge across this indirection, so the forward slice from 'main()' reaches only 13 nodes and never touches an HTTP handler / module Provision/ServeHTTP method. This is the dominant reason caddy's forward-slice usefulness is limited despite an otherwise strong Go call graph (9441 resolved cross-file calls). A registry-linker (recognize RegisterModule(id, ctor) + LoadModule(id) pairs, emit dispatches_to) would recover the plugin dispatch. Evidence: reflect/cohort-001/iter-004/caddy.assessment.yaml; slice.0.json (13 nodes from main)."  # 572c
+    fields: {}  # 572c

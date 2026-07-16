@@ -1,0 +1,21 @@
+- op: create  # 8bbc
+  at: '2026-07-16T05:13:37Z'  # 8bbc
+  by: agent  # 8bbc
+  actor: jgstern_agent  # 8bbc
+  clock: 1  # 8bbc
+  nonce: 8bbc  # 8bbc
+  data:  # 8bbc
+    kind: work_item  # 8bbc
+    title: "Rust trait-method dispatch disconnected: ~69% of Rust calls resolve to external stubs; match-arm .run() dispatch dropped"  # 8bbc
+    status: todo_hard  # 8bbc
+    priority: 2  # 8bbc
+    parent:  # 8bbc
+    tags:  # 8bbc
+    - dogfood  # 8bbc
+    - wave5  # 8bbc
+    isbefore: []  # 8bbc
+    duplicate_of: []  # 8bbc
+    not_duplicate_of: []  # 8bbc
+    pr_ref:  # 8bbc
+    description: "Found in DEEP bakeoff deep-20260623-134237 cohort-001 iter-004 (zoxide, Rust CLI). The Rust call graph leaves the subcommand tree as disconnected islands: main()'s 'Cmd::parse().run()' resolves '.run()' to an external stub ('rust:external:0-0:run:external_symbol') even though 'Cmd.run:method' exists as a node; 'Cmd.run' has 0 outgoing edges (the match-arm 'cmd.run()' calls are dropped); and all six variant '.run()' methods have 0 incoming calls. Broadly, 404/589 (69%) of Rust 'calls' edges land on external/unresolved stubs, so the forward slice from main() reaches only 4 nodes and never enters the subcommand handlers. Distinct from the adjacent DONE items WI-gahuk (cross-file call resolution) and WI-tulid (trait-impl relationship EDGES) — this is trait-METHOD-CALL dispatch through enum match arms + trait objects not resolving to the in-tree impl. Evidence: reflect/cohort-001/iter-004/zoxide.assessment.yaml; slice.0.json (4 nodes from main)."  # 8bbc
+    fields: {}  # 8bbc
