@@ -1481,6 +1481,49 @@ class TestRustEnumMatchDispatch:
         assert "x" not in var_types              # Option::Some not indexed
 
 
+class TestRustChainedReturnDispatch:
+    """WI-lohup: a method call whose receiver is itself a chained call —
+    ``Cmd::parse().run()`` — resolves the outer method against the receiver
+    call's inferred return type, so main's forward slice reaches the correct
+    dispatcher (``Cmd::run``) instead of a short-name-ambiguous sibling.
+
+    Left unfixed, ``Cmd::parse().run()`` typed nothing for the receiver
+    (no intermediate variable for the let-binding var_types walker), so
+    ``.run()`` fell to short-name resolution and bound to the last-registered
+    ``run`` — leaving the forward slice from main stranded at the parse call.
+    """
+
+    def test_chained_associated_fn_call_resolves_to_receiver_type_method(
+        self, tmp_path: Path
+    ) -> None:
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+        (tmp_path / "main.rs").write_text(
+            "pub enum Cmd { Query(Query), Add(Add) }\n"
+            "impl Cmd {\n"
+            "    pub fn parse() -> Cmd { Cmd::Query(Query) }\n"
+            "    pub fn run(self) {}\n"
+            "}\n"
+            "pub struct Query;\n"
+            "impl Query { pub fn run(self) {} }\n"
+            "pub struct Add;\n"
+            "impl Add { pub fn run(self) {} }\n"
+            "fn main() { Cmd::parse().run(); }\n"
+        )
+        result = analyze_rust(tmp_path)
+        by_id = {s.id: s for s in result.symbols}
+        mainf = next(s for s in result.symbols if s.name == "main")
+        dsts = {
+            by_id[e.dst].name
+            for e in result.edges
+            if e.edge_type == "calls" and e.src == mainf.id and e.dst in by_id
+        }
+        # The chained .run() resolves against Cmd (Cmd::parse's inferred type).
+        assert "Cmd::run" in dsts
+        # ...and not to a same-short-name sibling.
+        assert "Add::run" not in dsts
+        assert "Query::run" not in dsts
+
+
 class TestRustReturnTypeRegistryIntegration:
     """End-to-end tests for the WI-titor return-type registry chain.
 

@@ -2083,6 +2083,57 @@ def _extract_edges_from_file(
                                         ))
                                         resolved = True
 
+                        # Strategy 1.9: receiver is itself a call expression —
+                        # infer its return type and resolve the outer method
+                        # against it. `Cmd::parse().run()`: the receiver
+                        # `Cmd::parse()` yields `Cmd` (associated-fn path), so
+                        # `.run()` resolves to `Cmd::run` (WI-lohup). Reuses the
+                        # let-binding RHS type-inference helper, so it also
+                        # covers `obj.foo().bar()` when foo's return type is
+                        # known. These chained calls leave no intermediate
+                        # variable for the var_types walker to type, so the
+                        # typed_var strategy above misses them.
+                        if not resolved and is_method_call:
+                            chained_recv = inner.child_by_field_name("value")
+                            if (
+                                chained_recv is not None
+                                and chained_recv.type == "call_expression"
+                            ):
+                                recv_type = _infer_type_from_rust_rhs(
+                                    chained_recv, source, _var_types,
+                                    getattr(
+                                        analyzer,
+                                        "_method_return_type_registry", None,
+                                    ) or {},
+                                )
+                                if recv_type:
+                                    # The inferred receiver type is a concrete
+                                    # in-tree type, so its method is keyed by the
+                                    # qualified `Type::method` name in the local
+                                    # (same-file) or global registry — no resolver
+                                    # disambiguation needed (unlike the typed_var
+                                    # strategy, which may face short-name ambiguity).
+                                    typed_name = f"{recv_type}::{callee_name}"
+                                    target = (
+                                        local_symbols.get(typed_name)
+                                        or global_symbols.get(typed_name)
+                                    )
+                                    if target is not None:
+                                        edges.append(Edge.create(
+                                            src=current_function.id,
+                                            dst=target.id,
+                                            edge_type="calls",
+                                            line=node.start_point[0] + 1,
+                                            evidence_type="ast_call_type_inferred",
+                                            origin=PASS_ID,
+                                            origin_run_id=run_id,
+                                            meta={
+                                                "call_construct": "method",
+                                                "receiver": "typed_var",
+                                            },
+                                        ))
+                                        resolved = True
+
                         # Strategy 2: Fall back to short name
                         if not resolved:
                             if callee_name in local_symbols:
