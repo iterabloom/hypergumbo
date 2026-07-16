@@ -1313,6 +1313,87 @@ class TestSwiftSubscriptDeclarations:
         assert "Multi.subscript(key:)" in sub_names
 
 
+class TestSwiftExtensionMemberAttribution:
+    """WI-kudir: members declared in ``extension T { ... }`` must attribute to T.
+
+    tree-sitter-swift parses ``extension T`` as a ``class_declaration`` whose
+    type name is wrapped in a ``user_type`` node (not a direct
+    ``type_identifier``), so the enclosing-type resolution returned None and
+    demoted extension functions / computed-properties / subscripts to bare
+    file-level symbols — losing the ``T.`` prefix and, for functions, the
+    ``method`` kind. This hides the whole public API of extension-heavy
+    libraries (SwiftyJSON's operators, rawData/rawString, and the flagship
+    ``json[...]`` subscripts are all declared in extensions).
+    """
+
+    def test_extension_function_is_method_of_type(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.swift import analyze_swift
+
+        (tmp_path / "JSON.swift").write_text(
+            "public struct JSON {}\n"
+            "extension JSON {\n"
+            "    public func rawData() -> Data { return Data() }\n"
+            "}\n"
+        )
+        result = analyze_swift(tmp_path)
+        assert any(
+            s.kind == "method" and s.name == "JSON.rawData"
+            for s in result.symbols
+        )
+        # Not demoted to a bare file-level function.
+        assert not any(
+            s.kind == "function" and s.name == "rawData"
+            for s in result.symbols
+        )
+
+    def test_extension_computed_property_attributed(
+        self, tmp_path: Path
+    ) -> None:
+        from hypergumbo_lang_mainstream.swift import analyze_swift
+
+        (tmp_path / "JSON.swift").write_text(
+            "public struct JSON {}\n"
+            "extension JSON {\n"
+            "    public var rawString: String { return \"\" }\n"
+            "}\n"
+        )
+        result = analyze_swift(tmp_path)
+        props = [s for s in result.symbols if s.kind == "property"]
+        assert "JSON.rawString" in {s.name for s in props}
+        assert "JSON.rawString" in {s.qualified_name for s in props}
+
+    def test_extension_subscript_attributed_to_type(
+        self, tmp_path: Path
+    ) -> None:
+        from hypergumbo_lang_mainstream.swift import analyze_swift
+
+        (tmp_path / "JSON.swift").write_text(
+            "public struct JSON {}\n"
+            "extension JSON {\n"
+            "    public subscript(index: Int) -> JSON { return JSON() }\n"
+            "}\n"
+        )
+        result = analyze_swift(tmp_path)
+        subs = [s for s in result.symbols if s.kind == "subscript"]
+        assert len(subs) == 1
+        assert subs[0].name == "JSON.subscript(index:)"
+
+    def test_struct_body_method_unchanged(self, tmp_path: Path) -> None:
+        """Control: a method in the struct body stays attributed (no regression)."""
+        from hypergumbo_lang_mainstream.swift import analyze_swift
+
+        (tmp_path / "JSON.swift").write_text(
+            "public struct JSON {\n"
+            "    public func merge() -> JSON { return self }\n"
+            "}\n"
+        )
+        result = analyze_swift(tmp_path)
+        assert any(
+            s.kind == "method" and s.name == "JSON.merge"
+            for s in result.symbols
+        )
+
+
 class TestSwiftShortNameCollision:
     """Tests for short-name collision prevention (AMB-METHOD invariant).
 

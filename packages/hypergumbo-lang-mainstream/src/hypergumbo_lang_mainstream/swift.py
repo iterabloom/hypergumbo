@@ -243,11 +243,21 @@ _STORED_PROPERTY_BODY_TYPES = frozenset({"class_body", "enum_class_body"})
 
 
 def _get_enclosing_type(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
-    """Walk up the tree to find the enclosing class/struct/enum/protocol name."""
+    """Walk up the tree to find the enclosing type name.
+
+    tree-sitter-swift models struct/class/enum/actor AND ``extension`` all as
+    ``class_declaration``. Read the grammar's ``name`` field rather than
+    scanning direct children for a ``type_identifier``: an ``extension``'s
+    extended type is wrapped in a ``user_type`` node, so a direct-child
+    ``type_identifier`` search returns None (WI-kudir) — which silently demoted
+    every extension member to a bare file-level symbol (method->function, and
+    names/qualified-names lost their ``Type.`` prefix). The ``name`` field
+    points at the right node for both plain types and extensions.
+    """
     current = node.parent
     while current is not None:
         if current.type in ("class_declaration", "protocol_declaration"):
-            name_node = find_child_by_type(current, "type_identifier")
+            name_node = current.child_by_field_name("name")
             if name_node:
                 return node_text(name_node, source)
         current = current.parent
@@ -266,7 +276,9 @@ def _get_swift_type_ancestors(
     current = node.parent
     while current is not None:
         if current.type in ("class_declaration", "protocol_declaration"):
-            name_node = find_child_by_type(current, "type_identifier")
+            # ``name`` field (not a direct ``type_identifier`` scan) so that
+            # ``extension T``'s user_type-wrapped name resolves (WI-kudir).
+            name_node = current.child_by_field_name("name")
             if name_node:
                 chain.append(node_text(name_node, source))
         current = current.parent
