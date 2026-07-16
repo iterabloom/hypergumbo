@@ -47,3 +47,10 @@
   clock: 5  # b7a8
   nonce: b7a8  # b7a8
   message: "Closing as done (P4 backlog). The ambiguous_names fix (PR #2628) addresses the most impactful part of this issue — false-positive IO chains inflating slice results. The remaining seed-selection ranking improvement is tracked implicitly via the bakeoff assessment findings in deep-20260330-035757, -043124, -044609. Reopen if prioritized."  # b7a8
+- op: discuss  # 5450
+  at: '2026-07-16T04:12:38Z'  # 5450
+  by: agent  # 5450
+  actor: jgstern_agent  # 5450
+  clock: 6  # 5450
+  nonce: '5450'  # 5450
+  message: "REPRODUCES on the cohort (DEEP bakeoff deep-20260623-134237 cohort-001 iter-004) despite status=done — flagging for re-verification (closure-evidence discipline: do not close on non-repro, and this IS reproducing). The slice/compact seed selection still picks trivial build-wrappers / vendored / test code over real API surfaces: spring-petclinic seeds slice.0/1 from mvnw/gradlew (rank_score 0.98) over HTTP controllers (0.725, conf 0.95) — a rank-score INVERSION; pretix picks vendored JS (pdf.worker.js/d3/vue.js) as slice+rslice seeds; express's #1 symbol is a test-file example callback createApp (in=202). This is HIGH impact — it's the dominant driver of the LOW_AVG_SLICE_NODES WARNs AND the WI-zulij compact-not-centrality no_move. Recommend re-open + re-prioritize (P4->P2?). Per-repo evidence in reflect/cohort-001/iter-004/{spring-petclinic,pretix,express}.assessment.yaml."  # 5450

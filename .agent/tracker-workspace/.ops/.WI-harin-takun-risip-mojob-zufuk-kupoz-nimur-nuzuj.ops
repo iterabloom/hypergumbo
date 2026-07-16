@@ -1,0 +1,21 @@
+- op: create  # 9422
+  at: '2026-07-16T04:12:06Z'  # 9422
+  by: agent  # 9422
+  actor: jgstern_agent  # 9422
+  clock: 1  # 9422
+  nonce: '9422'  # 9422
+  data:  # 9422
+    kind: work_item  # 9422
+    title: "io-boundary taxonomy has no db_* category: Django ORM / cache / most net I/O invisible (io_tag_rate 0.5%)"  # 9422
+    status: todo_hard  # 9422
+    priority: 1  # 9422
+    parent:  # 9422
+    tags:  # 9422
+    - dogfood  # 9422
+    - wave5  # 9422
+    isbefore: []  # 9422
+    duplicate_of: []  # 9422
+    not_duplicate_of: []  # 9422
+    pr_ref:  # 9422
+    description: "Found in DEEP bakeoff deep-20260623-134237 cohort-001 iter-004 (pretix, Django/Celery). io-boundaries reports total_io_edges=191/101342 (0.19%) because the boundary taxonomy (env_read, logging, fs_read/write, subprocess, net_send/recv, browser_storage, command_launch) has NO db_* category and weak net/cache primitives. Source reality invisible to the detector: 4991 '.objects.', 2632 '.save()', 305 'transaction.atomic', 305 cursor.execute/.raw (DB); 128 'cache.*' + 1005 redis refs (cache); 23 'requests.*' + 58 send_mail/smtplib (net_send=2, only socket.connect caught). Drives the LOW_IO_TAG_RATE WARNs across the whole cohort (express/apollo/caddy/pretix all flagged). Also a FALSE POSITIVE: net_recv tags django.core.management.execute_from_command_line (a CLI dispatcher, not network I/O). FIX: add db_read/db_write boundary categories + Django-ORM / SQLAlchemy / cache(redis) / requests / smtplib entries to the io_primitives catalogs; fix the execute_from_command_line net_recv FP. Repro: hypergumbo io-boundaries on a Django repo."  # 9422
+    fields: {}  # 9422
