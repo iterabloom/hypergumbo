@@ -1473,8 +1473,35 @@ def _extract_edges_from_file(
             type_name = node_text(type_node, source) if type_node else None
 
             if current_function is not None and type_name:
-                # Check if it's a known class
-                if type_name in local_symbols:
+                # WI-fagit: `new X(...)` invokes the CONSTRUCTOR, so the
+                # 'instantiates' edge must land on the ctor node — not the class
+                # node, which conflates 'referenced as a type' with
+                # 'instantiated' and leaves a reverse-slice on the ctor
+                # ('who constructs this?') with zero callers. Prefer the
+                # `Type.Type` constructor symbol (same-file map first, then the
+                # global registry for cross-file); C# forbids a non-ctor member
+                # named the same as its enclosing type (CS0542), so this key
+                # only ever resolves to a constructor. Fall back to the class
+                # node when the type declares no explicit constructor (the
+                # implicit default ctor has no node to anchor on).
+                # NOTE: overloaded constructors collapse to the last-registered
+                # ctor in the global registry, so all instantiations of an
+                # overloaded type share one ctor anchor (arity-precise overload
+                # matching is a follow-up).
+                ctor_key = f"{type_name}.{type_name}"
+                ctor = local_symbols.get(ctor_key) or global_symbols.get(ctor_key)
+                if ctor is not None:
+                    edges.append(Edge.create(
+                        src=current_function.id,
+                        dst=ctor.id,
+                        edge_type="instantiates",
+                        line=node.start_point[0] + 1,
+                        evidence_type="ast_call",
+                        origin=PASS_ID,
+                        origin_run_id=run.execution_id,
+                        meta={"call_construct": "constructor"},
+                    ))
+                elif type_name in local_symbols:
                     target = local_symbols[type_name]
                     edges.append(Edge.create(
                         src=current_function.id,

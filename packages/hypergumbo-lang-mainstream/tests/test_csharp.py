@@ -1326,6 +1326,109 @@ public class Factory
         ]
         assert len(same_file_creates) >= 1
 
+    def test_cross_file_instantiation_targets_constructor(
+        self, tmp_path: Path
+    ) -> None:
+        """WI-fagit: ``new X(...)`` from another file must land its
+        ``instantiates`` edge on X's CONSTRUCTOR node, not the class node.
+
+        The class node conflates 'referenced as a type' with 'instantiated'; a
+        reverse-slice seeded on the constructor ('who constructs this?') found 0
+        callers because cross-file instantiations resolved to the class via
+        ``resolver.lookup`` (csharp.py) rather than the ctor.
+        """
+        (tmp_path / "WaveReader.cs").write_text(
+            """namespace N
+{
+    public class WaveReader
+    {
+        public WaveReader(string path) { }
+    }
+}
+"""
+        )
+        (tmp_path / "Consumer.cs").write_text(
+            """namespace N
+{
+    public class Consumer
+    {
+        public void Load()
+        {
+            var r = new WaveReader("a.wav");
+        }
+    }
+}
+"""
+        )
+
+        result = analyze_csharp(tmp_path)
+        by_id = {s.id: s for s in result.symbols}
+        inst = [e for e in result.edges if e.edge_type == "instantiates"]
+        assert len(inst) == 1
+        dst = by_id[inst[0].dst]
+        assert dst.kind == "constructor"
+        assert dst.name == "WaveReader.WaveReader"
+
+    def test_same_file_instantiation_targets_constructor(
+        self, tmp_path: Path
+    ) -> None:
+        """Same-file ``new X(...)`` also lands on the constructor when X has an
+        explicit ctor (previously relied on symbol_by_name shadowing; now
+        resolved explicitly via the ``X.X`` key)."""
+        (tmp_path / "S.cs").write_text(
+            """namespace N
+{
+    public class Foo
+    {
+        public Foo(int x) { }
+    }
+
+    public class Bar
+    {
+        public void M()
+        {
+            var f = new Foo(1);
+        }
+    }
+}
+"""
+        )
+
+        result = analyze_csharp(tmp_path)
+        by_id = {s.id: s for s in result.symbols}
+        inst = [e for e in result.edges if e.edge_type == "instantiates"]
+        assert len(inst) == 1
+        assert by_id[inst[0].dst].kind == "constructor"
+
+    def test_instantiation_without_explicit_ctor_targets_class(
+        self, tmp_path: Path
+    ) -> None:
+        """A class with no explicit constructor has no ctor node, so the
+        ``instantiates`` edge correctly falls back to the class node."""
+        (tmp_path / "Plain.cs").write_text(
+            """namespace N { public class Plain { } }
+"""
+        )
+        (tmp_path / "User.cs").write_text(
+            """namespace N
+{
+    public class User
+    {
+        public void M()
+        {
+            var p = new Plain();
+        }
+    }
+}
+"""
+        )
+
+        result = analyze_csharp(tmp_path)
+        by_id = {s.id: s for s in result.symbols}
+        inst = [e for e in result.edges if e.edge_type == "instantiates"]
+        assert len(inst) == 1
+        assert by_id[inst[0].dst].kind == "class"
+
     def test_direct_function_call(self, tmp_path: Path) -> None:
         """Should handle direct function calls without member access."""
         (tmp_path / "Helpers.cs").write_text(
