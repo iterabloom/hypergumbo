@@ -1,0 +1,22 @@
+- op: create  # 21bc
+  at: '2026-07-16T10:23:37Z'  # 21bc
+  by: agent  # 21bc
+  actor: jgstern_agent  # 21bc
+  clock: 1  # 21bc
+  nonce: 21bc  # 21bc
+  data:  # 21bc
+    kind: work_item  # 21bc
+    title: "Swift struct-body subscripts: verify contains-edge attachment in full pipeline (WI-kudir residual)"  # 21bc
+    status: todo_hard  # 21bc
+    priority: 4  # 21bc
+    parent:  # 21bc
+    tags:  # 21bc
+    - dogfood  # 21bc
+    - wave5  # 21bc
+    - swift  # 21bc
+    isbefore: []  # 21bc
+    duplicate_of: []  # 21bc
+    not_duplicate_of: []  # 21bc
+    pr_ref:  # 21bc
+    description: "WI-kudir (PR #689) fixed extension-declared Swift members (incl. extension subscripts) to attribute to their type. But struct-BODY subscripts were ALREADY correctly named (e.g. 'JSON.subscript(key:)') before that fix, yet WI-kudir's original evidence claimed all 6 SwiftyJSON subscripts had 0 contains + 0 incoming. The Swift analyzer emits NO contains edges directly — containment is built by a downstream core pass from symbol names. UNVERIFIED (low-confidence WATCH): whether the downstream containment builder attaches a correctly-named 'Type.subscript(key:)' node under its type, or whether the '(key:)'/'(index:)' parenthesized name-suffix format breaks its parent-name extraction. Action: run the full hypergumbo pipeline on SwiftyJSON post-#689 and check contains/incoming on the struct-body subscripts; if still 0, the defect is in the core containment builder for subscript-kind or the parenthesized-name parse, not the Swift analyzer."  # 21bc
+    fields: {}  # 21bc

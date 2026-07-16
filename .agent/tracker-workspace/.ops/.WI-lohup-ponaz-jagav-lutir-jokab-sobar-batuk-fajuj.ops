@@ -1,0 +1,22 @@
+- op: create  # d7f9
+  at: '2026-07-16T11:36:46Z'  # d7f9
+  by: agent  # d7f9
+  actor: jgstern_agent  # d7f9
+  clock: 1  # d7f9
+  nonce: d7f9  # d7f9
+  data:  # d7f9
+    kind: work_item  # d7f9
+    title: "Rust chained return-position dispatch (Cmd::parse().run()) unresolved — forward slice from main still misses dispatcher"  # d7f9
+    status: todo_hard  # d7f9
+    priority: 2  # d7f9
+    parent:  # d7f9
+    tags:  # d7f9
+    - dogfood  # d7f9
+    - wave5  # d7f9
+    - rust  # d7f9
+    isbefore: []  # d7f9
+    duplicate_of: []  # d7f9
+    not_duplicate_of: []  # d7f9
+    pr_ref:  # d7f9
+    description: "Rust chained return-position dispatch (`Cmd::parse().run()`) does not resolve to the receiver's method.\n\nBehavioral evidence (live analyze_rust probe, post-WI-kodap): with `impl Cmd { pub fn parse() -> Cmd {...} pub fn run(self) {...} }` and `fn main() { Cmd::parse().run(); }`, main's outgoing calls resolve to `['Add::run', 'Cmd::parse']` — the `.run()` on the value returned by `Cmd::parse()` mis-resolves to a short-name-ambiguous `Add::run` instead of `Cmd::run`. So the forward slice from main() still does not enter the correct dispatcher (`Cmd::run`), even though WI-kodap fixed the match-arm dispatch INSIDE `Cmd::run` (Cmd::run -> Query::run/Add::run now resolve).\n\nDistinct mechanism from WI-kodap (match-arm binding): this needs return-type inference on a chained associated-function call — `Cmd::parse()` returns `Cmd`, so the immediately-chained `.run()` should resolve against `Cmd`. The WI-titor `_method_return_type_registry` already infers return types for `let x = obj.method()` let-bindings; the gap is the chained (no-let) `Type::assoc_fn().method()` form. This is the residual of WI-kodap symptom #1 (main's `Cmd::parse().run()` -> external/wrong).\n\nFix shape: in the method-call resolution, when the receiver is itself a call expression `Type::assoc_fn(...)` (or `expr.method(...)`) whose return type is known from the return-type registry, resolve the outer `.method()` against that return type. Zoxide is the canonical repro (its real `main` uses `Cmd::parse().run()`)."  # d7f9
+    fields: {}  # d7f9

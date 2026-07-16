@@ -1,0 +1,22 @@
+- op: create  # 7f16
+  at: '2026-07-16T10:23:22Z'  # 7f16
+  by: agent  # 7f16
+  actor: jgstern_agent  # 7f16
+  clock: 1  # 7f16
+  nonce: 7f16  # 7f16
+  data:  # 7f16
+    kind: work_item  # 7f16
+    title: "C# instantiates: match overloaded constructors by arity (WI-fagit follow-up)"  # 7f16
+    status: todo_hard  # 7f16
+    priority: 3  # 7f16
+    parent:  # 7f16
+    tags:  # 7f16
+    - dogfood  # 7f16
+    - wave5  # 7f16
+    - csharp  # 7f16
+    isbefore: []  # 7f16
+    duplicate_of: []  # 7f16
+    not_duplicate_of: []  # 7f16
+    pr_ref:  # 7f16
+    description: "PR #689 (WI-fagit) retargets C# 'new X(...)' instantiation edges to the constructor node via the Type.Type key, but register_symbol keys the global registry by name, so overloaded constructors (all named Type.Type) collapse to the last-registered one. Every 'new X(...)' of an overloaded type therefore shares one ctor anchor; a reverse-slice on a NON-last overload still misses its callers. Single-ctor classes (the dominant case) are fully correct. Fix: build a class->[ctors] multi-map (like global_methods) and match the object_creation_expression's argument count against each ctor's parameter count; fall back to the first ctor on no arity match."  # 7f16
+    fields: {}  # 7f16
