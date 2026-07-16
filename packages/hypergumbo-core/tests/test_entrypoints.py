@@ -2803,6 +2803,97 @@ class TestEntrypointRankingPenalties:
         # First-party should rank first
         assert entrypoints[0].symbol_id == first_party.id
 
+    def _bash_helpers(self, host_path: str, n: int = 15):
+        """N bash function symbols in ``host_path`` (out-degree fodder)."""
+        return [
+            make_symbol(
+                f"step{i}", path=host_path, kind="function", language="bash",
+                start_line=10 + i, end_line=11 + i,
+            )
+            for i in range(n)
+        ]
+
+    def test_build_wrapper_shell_script_demoted(self) -> None:
+        """WI-batit: Maven/Gradle build-wrapper scripts (mvnw/gradlew) are
+        demoted so they don't seed forward slices over the real API surface.
+
+        A checked-in mvnw/gradlew sits at the repo root at tier 1, so NONE of
+        the existing penalties (test / utility-dir / vendor-tier) fire — its
+        0.85 base plus a large out-degree connectivity boost climbs to ~0.98,
+        outranking the actual controllers in ``--entry auto``. The build-wrapper
+        demotion (x0.1) plus a connectivity-boost skip pushes it below the noise
+        floor.
+        """
+        mvnw = make_symbol(
+            "mvnw", path="mvnw", kind="file", language="bash",
+            meta={"concepts": [{"concept": "shell_script"}]},
+            supply_chain_tier=1,
+        )
+        helpers = self._bash_helpers("mvnw")
+        nodes = [mvnw, *helpers]
+        edges = [
+            Edge.create(src=mvnw.id, dst=h.id, edge_type="calls", line=2,
+                        origin="test", origin_run_id="test")
+            for h in helpers
+        ]
+        entrypoints = detect_entrypoints(nodes, edges)
+        # Demoted 0.85 * 0.1 = 0.085 with the connectivity boost skipped, so it
+        # lands below MIN_ENTRYPOINT_CONFIDENCE (0.10) instead of climbing back
+        # toward ~0.98 — and is filtered out, exactly the treatment test-file
+        # entrypoints get. It never seeds --entry auto. (A genuine, non-wrapper
+        # shell script is NOT demoted — see
+        # test_non_build_wrapper_shell_script_not_demoted.)
+        assert mvnw.id not in {e.symbol_id for e in entrypoints}
+
+    def test_route_outranks_build_wrapper(self) -> None:
+        """WI-batit: after the demotion a real HTTP route (the API surface)
+        outranks a mvnw/gradlew wrapper, so ``slice --entry auto`` seeds from
+        the controller, not the build script."""
+        gradlew = make_symbol(
+            "gradlew", path="gradlew", kind="file", language="bash",
+            meta={"concepts": [{"concept": "shell_script"}]},
+            supply_chain_tier=1,
+        )
+        # Non-"samples" controller path so is_utility_file does NOT fire.
+        route = make_symbol(
+            "checkout",
+            path="src/main/java/com/app/web/CheckoutController.java",
+            language="java",
+            meta={"concepts": [
+                {"concept": "route", "method": "POST", "path": "/checkout"},
+            ]},
+            supply_chain_tier=1,
+        )
+        helpers = self._bash_helpers("gradlew")
+        nodes = [gradlew, route, *helpers]
+        edges = [
+            Edge.create(src=gradlew.id, dst=h.id, edge_type="calls", line=2,
+                        origin="test", origin_run_id="test")
+            for h in helpers
+        ]
+        entrypoints = detect_entrypoints(nodes, edges)
+        # The wrapper is demoted below the floor and filtered out; the route
+        # survives and is the top-ranked auto-slice seed (was: gradlew at ~1.0
+        # outranked the route at 0.95 before the WI-batit demotion).
+        assert gradlew.id not in {e.symbol_id for e in entrypoints}
+        assert entrypoints[0].symbol_id == route.id
+
+    def test_non_build_wrapper_shell_script_not_demoted(self) -> None:
+        """WI-batit precision: only mvnw/gradlew wrappers are demoted; a genuine
+        repo-root tool/CLI shell script keeps its full ranking (a shell-first
+        repo's real entrypoint must not be suppressed)."""
+        tool = make_symbol(
+            "run.sh", path="run.sh", kind="file", language="bash",
+            meta={"concepts": [{"concept": "shell_script"}]},
+            supply_chain_tier=1,
+        )
+        entrypoints = detect_entrypoints([tool], [])
+        shell_ep = next(
+            e for e in entrypoints if e.kind == EntrypointKind.SHELL_SCRIPT
+        )
+        # Not a build wrapper -> no demotion; rank_score stays at the 0.85 base.
+        assert shell_ep.rank_score == pytest.approx(0.85, rel=0.01)
+
     def test_adr0039_confidence_in_band_ranking_on_rank_score(self) -> None:
         """ADR-0039 ruling 3 (WI-lutad, WI-dojor): entrypoint detection
         confidence stays at the in-band construction base [0.70, 0.99] — no

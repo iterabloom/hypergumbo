@@ -1432,6 +1432,19 @@ def _detect_script_modules(
     return entrypoints
 
 
+# WI-batit: Maven/Gradle build-wrapper scripts. These are checked-in repo-root
+# shell scripts that ARE executable entrypoints structurally, but are build
+# tooling — never the developer-facing API surface a forward slice should seed
+# from. Because they sit at the repo root at tier 1 (not a test/utility/vendor
+# path), none of the ranking penalties in ``detect_entrypoints`` fire, and their
+# large out-degree lets the connectivity boost climb their 0.85 base to ~0.98 —
+# outranking real routes/controllers in ``slice --entry auto``. They are demoted
+# explicitly (basename match, gated on SHELL_SCRIPT) so the real API surface wins.
+_BUILD_WRAPPER_BASENAMES: frozenset[str] = frozenset({
+    "mvnw", "mvnw.cmd", "gradlew", "gradlew.bat",
+})
+
+
 def detect_entrypoints(
     nodes: List[Symbol],
     edges: List[Edge],
@@ -1598,6 +1611,7 @@ def detect_entrypoints(
     # it less certainly an entrypoint — so they mutate ``rank_score``, leaving
     # detection ``confidence`` at the construction base. rank_score initialized
     # from confidence, so the accumulated ranking value is unchanged).
+    build_wrapper_ids: set[str] = set()
     for ep in unique_entrypoints:
         sym = symbol_lookup.get(ep.symbol_id)
         if sym is None:
@@ -1621,6 +1635,21 @@ def detect_entrypoints(
         # Tier 3 = external deps, Tier 4 = derived/build artifacts
         if sym.supply_chain_tier >= 3:
             ep.rank_score *= 0.3
+
+        # WI-batit: demote Maven/Gradle build-wrapper scripts (mvnw/gradlew).
+        # A checked-in wrapper is a tier-1 repo-root shell script, so none of
+        # the penalties above fire and its large out-degree would otherwise
+        # boost it above the real API surface, making it the default
+        # --entry auto seed. It is build tooling, never the code a developer
+        # wants to slice from. Tracked so the connectivity boost skips it too
+        # (same pattern as infra_export_ids), otherwise the boost re-inflates it.
+        if (
+            ep.kind == EntrypointKind.SHELL_SCRIPT
+            and sym.path
+            and sym.path.rsplit("/", 1)[-1] in _BUILD_WRAPPER_BASENAMES
+        ):
+            ep.rank_score *= 0.1
+            build_wrapper_ids.add(ep.symbol_id)
 
         # Penalty for Go main()s in deeply nested cmd/ directories (50%).
         # In Go repos, top-level cmd/<name>/ holds the primary application
@@ -1788,6 +1817,11 @@ def detect_entrypoints(
         # the confidence threshold.  In gemini-cli, 77 telemetry exports
         # survived at ~0.14 confidence via connectivity boost.
         if ep.symbol_id in infra_export_ids:
+            continue
+        # WI-batit: skip the connectivity boost for demoted build wrappers
+        # (mvnw/gradlew) — their large out-degree would otherwise re-inflate
+        # the x0.1 demotion above, same rationale as infra_export_ids.
+        if ep.symbol_id in build_wrapper_ids:
             continue
         effective_edges = _effective_out_degree(ep.symbol_id)
         in_degree = incoming_counts.get(ep.symbol_id, 0)
