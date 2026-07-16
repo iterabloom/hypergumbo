@@ -395,7 +395,7 @@ def authenticate(username: str, password: str) -> User:
 
 The exact algorithms for identity and provenance fields are governed by scheme identifiers in the output:
 * `stable_id_scheme`: identifies the algorithm/normalization used to compute `stable_id`. Current value: `hypergumbo-stableid-v8`. The scheme has shipped eight values (`v1 → v2 → v3 → v4 → v5 → v6 → v7 → v8`); each transition changed every affected `stable_id` value with no in-place migration, so outputs from an older hypergumbo must be re-analyzed against the current binary before they can be compared. See [§ Algorithm-identification fields and `stable_id_scheme` version history](#algorithm-identification-fields-and-stable_id_scheme-version-history) for the per-transition record (driver, hash-basis change, and collision impact).
-* `shape_id_scheme`: identifies the algorithm used to compute `shape_id`
+* `shape_id_scheme`: identifies the algorithm used to compute `shape_id`. Current value: `hypergumbo-shapeid-v3`. v3 (WI-linon) folds the symbol kind (`class`/`method`/`function`) and the concrete AST node type into the Python shape hash, so structurally-trivial symbols of different kinds no longer share a `shape_id` — a module-level function vs a class method (both `ast.FunctionDef`, with `self` absent from the body), and — via the node type — an `async def` vs a `class` (`ast.AsyncFunctionDef` previously mis-branched into the ClassDef path). Every Python `shape_id` value changed relative to v2; the tree-sitter path (other languages) is unchanged but the identifier is global, so it bumps per the mandate below.
 * `repo_fingerprint_scheme`: identifies the algorithm used to compute `analysis_runs[].repo_fingerprint`
 
 Any change that would alter computed values MUST bump the corresponding scheme identifier.
@@ -694,7 +694,7 @@ Single file: `survey.json`
   "schema_version": "0.14.4",
   "confidence_model": "hypergumbo-evidence-v2",
   "stable_id_scheme": "hypergumbo-stableid-v8",
-  "shape_id_scheme": "hypergumbo-shapeid-v2",
+  "shape_id_scheme": "hypergumbo-shapeid-v3",
   "repo_fingerprint_scheme": "hypergumbo-repofp-v1",
   "view": "behavior_map",
   "generated_at": "2026-01-15T10:30:00Z",

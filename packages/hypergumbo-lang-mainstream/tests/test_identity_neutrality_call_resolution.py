@@ -64,10 +64,13 @@ WIJAFAT_FIXTURE = (
 )
 
 # Golden identity sets for the fixture above, via run_behavior_map (repo-relative,
-# deterministic, tmp_path-independent). GOLDEN_IDS (node ids) and GOLDEN_SHAPE_IDS were
-# captured on dev 7f8e72a22e and are UNCHANGED by the stable_id v6 bump (it touched only the
-# stable_id hash); GOLDEN_STABLE_IDS was regenerated for v6 (ADR-0035 full scope-chain hash),
-# same 6 symbols, new hash values. A reader-only fix cannot change any of these.
+# deterministic, tmp_path-independent). GOLDEN_IDS (node ids) are UNCHANGED since dev
+# 7f8e72a22e. GOLDEN_STABLE_IDS was regenerated for the stable_id v6 bump (ADR-0035 full
+# scope-chain hash); GOLDEN_SHAPE_IDS was regenerated for the shape_id v3 bump (WI-linon —
+# the Python shape hash now folds the symbol kind + AST node type into its inputs). Both
+# re-baselines are producer-side *algorithm* bumps, orthogonal to the WI-jafat reader fix
+# this gate guards: under a reader-only fix, stable_id and node.id stay byte-for-byte
+# invariant (recapture with scratchpad/gen_golden_shape.py, which asserts that invariance).
 GOLDEN_STABLE_IDS = frozenset({
     "sha256:0fcbb9c686c93dae",  # helper_a
     "sha256:6d07134c1021d31f",  # Alpha
@@ -95,9 +98,9 @@ GOLDEN_IDS = frozenset({
 # file anchor is synthesized without a shape_id (None), at parity with the
 # WI-ramuv dangling-edge file synthesizer.
 GOLDEN_SHAPE_IDS = frozenset({
-    "sha256:74fe678ff5ffc768",  # both classes
-    "sha256:c58a7ab960984f1c",  # both methods
-    "sha256:c891ef58de2d7715",  # both functions
+    "sha256:d1120c9e03c93625",  # both classes (shape_id v3, WI-linon)
+    "sha256:15c309444812a90d",  # both methods (shape_id v3, WI-linon)
+    "sha256:cd7f012340749ecd",  # both functions (shape_id v3, WI-linon)
     None,  # WI-dagif file anchor (synthesized; no shape_id)
 })
 

@@ -121,7 +121,15 @@ VIEW_NAMES = ("behavior_map", "compact", "tiered")
 READ_VIEW_SCHEMA_VERSION = "0.1.0"
 CONFIDENCE_MODEL = "hypergumbo-evidence-v2"
 STABLE_ID_SCHEME = "hypergumbo-stableid-v8"
-SHAPE_ID_SCHEME = "hypergumbo-shapeid-v2"
+# v3 (WI-linon): the Python shape_id hash now folds the symbol kind
+# (class/method/function) and the concrete AST node type into its prefix, so
+# structurally-trivial symbols of different kinds no longer collide — a
+# module-level function vs a class method (both ``ast.FunctionDef``), and an
+# ``async def`` vs a ``class`` (``ast.AsyncFunctionDef`` had mis-branched into
+# the ClassDef path). Every Python shape_id value changed relative to v2; the
+# global scheme bumps because the spec mandate is "any change that alters
+# computed values bumps the scheme" (§6), the tree-sitter path is unchanged.
+SHAPE_ID_SCHEME = "hypergumbo-shapeid-v3"
 REPO_FINGERPRINT_SCHEME = "hypergumbo-repofp-v1"
 # WI-fanun: scheme tag for Symbol.fingerprint, populated by the
 # orchestrator post-pass in ``hypergumbo_core.fingerprint`` (the sole

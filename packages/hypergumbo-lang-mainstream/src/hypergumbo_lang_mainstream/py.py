@@ -1675,21 +1675,30 @@ def _ast_structure(node: ast.AST) -> str:
     return f"({','.join(parts)})"
 
 
-def _compute_shape_id(node: ast.FunctionDef | ast.ClassDef) -> str:
+def _compute_shape_id(
+    node: ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef,
+    kind: str,
+) -> str:
     """Compute shape_id based on AST structure (ignores variable names/literals).
 
-    sha256(ast_structure) where structure is a normalized representation
-    of the control flow and nesting.
-    """
-    # For functions, analyze the body structure
-    if isinstance(node, ast.FunctionDef):
-        body_parts = [_ast_structure(stmt) for stmt in node.body]
-        structure = f"FunctionDef({','.join(body_parts)})"
-    else:
-        # For classes, analyze class body
-        body_parts = [_ast_structure(stmt) for stmt in node.body]
-        structure = f"ClassDef({','.join(body_parts)})"
+    ``sha256(kind:NodeType(ast_structure))`` where the body structure is a
+    normalized representation of the control flow and nesting.
 
+    The symbol ``kind`` (``class`` / ``method`` / ``function``) and the concrete
+    AST node type are folded into the hashed prefix so that structurally-trivial
+    symbols of *different* kinds do not collide (WI-linon). Two defects made this
+    necessary: (1) a module-level function and a class method are both
+    ``ast.FunctionDef`` with ``self`` absent from the body, so they hashed
+    identically; (2) ``ast.AsyncFunctionDef`` is not a subclass of
+    ``ast.FunctionDef``, so an async def previously mis-branched into the class
+    path and a docstring-only ``async def`` collided with a docstring-only
+    ``class``. Using ``type(node).__name__`` in the prefix also discriminates
+    sync from async defs of the same kind. Same-kind, same-structure symbols
+    still share a shape_id — the one non-redundant capability shape_id adds over
+    ``fingerprint`` (clustering structural clones, spec §337/§342).
+    """
+    body_parts = [_ast_structure(stmt) for stmt in node.body]
+    structure = f"{kind}:{type(node).__name__}({','.join(body_parts)})"
     hash_val = hashlib.sha256(structure.encode()).hexdigest()[:16]
     return f"sha256:{hash_val}"
 
@@ -2586,7 +2595,7 @@ def _extract_file_analysis(
                     node, containing_stable_id=file_containing_id,
                     name=node.name, qualified_name=class_scoped_name,
                 ),
-                shape_id=_compute_shape_id(node),
+                shape_id=_compute_shape_id(node, "class"),
                 cyclomatic_complexity=_compute_cyclomatic_complexity(node),
                 line_span=_compute_line_span(node),
                 meta=class_meta if class_meta else None,
@@ -2729,7 +2738,7 @@ def _extract_file_analysis(
                         path=str(py_file),
                         span=method_span,
                         stable_id=stable_id,
-                        shape_id=_compute_shape_id(item),
+                        shape_id=_compute_shape_id(item, "method"),
                         cyclomatic_complexity=_compute_cyclomatic_complexity(item),
                         line_span=_compute_line_span(item),
                         signature=_format_function_signature(
@@ -2880,7 +2889,7 @@ def _extract_file_analysis(
                     path=str(py_file),
                     span=span,
                     stable_id=func_stable_id,
-                    shape_id=_compute_shape_id(node),
+                    shape_id=_compute_shape_id(node, "function"),
                     meta=func_meta if func_meta else None,
                     cyclomatic_complexity=_compute_cyclomatic_complexity(node),
                     line_span=_compute_line_span(node),
