@@ -6117,6 +6117,243 @@ def _bfs_reachable(
     return reachable
 
 
+# -- repeat-finder: structural-clone / refactoring-lead detection (WI-vogij) ---
+
+# Symbol kinds that carry a shape_id and form the clone-clustering universe.
+_CLONE_KINDS = ("function", "method", "class")
+
+
+def _repeat_span_start(node: dict) -> int:
+    """Best-effort start line for deterministic member ordering.
+
+    ``span`` is always a ``{start_line, end_line}`` dict in the survey schema
+    (verified: 39,831/39,831 self-corpus nodes), so no non-dict guard is needed.
+    """
+    return (node.get("span") or {}).get("start_line") or 0
+
+
+def _build_repeat_cluster(
+    language: str, shape_id: str, members: list[dict], prod: list[dict]
+) -> dict:
+    """Assemble one structural-clone cluster record.
+
+    All members share a ``shape_id`` and therefore an identical control-flow
+    skeleton, so ``cyclomatic_complexity`` is invariant across the cluster (it
+    counts only structural, name/literal-independent nodes) and is read from a
+    representative. ``line_span`` is formatting-sensitive (blank lines, wrapped
+    expressions), so the representative size is the *largest* member — the
+    widest extraction scope. ``duplication_burden`` = the count of the relevant
+    members (production members for a production cluster, else all members) *
+    that representative size, i.e. roughly how much duplicated code a single
+    extract-helper would remove.
+    """
+    kinds = sorted({m.get("kind") for m in members if m.get("kind")})
+    cc = members[0].get("cyclomatic_complexity")
+    rep_line_span = max((m.get("line_span") or 0) for m in members) or 1
+    is_test_only = len(prod) < 2
+    burden_count = len(members) if is_test_only else len(prod)
+    ordered = sorted(members, key=lambda m: (m.get("path") or "", _repeat_span_start(m)))
+    return {
+        "shape_id": shape_id,
+        "language": language,
+        "kinds": kinds,
+        "member_count": len(members),
+        "production_member_count": len(prod),
+        "cyclomatic_complexity": cc,
+        "line_span": rep_line_span,
+        "duplication_burden": burden_count * rep_line_span,
+        "is_test_only": is_test_only,
+        "members": [
+            {
+                "id": m.get("id"),
+                "name": m.get("name"),
+                "kind": m.get("kind"),
+                "path": m.get("path"),
+                "span": m.get("span"),
+                "line_span": m.get("line_span"),
+            }
+            for m in ordered
+        ],
+    }
+
+
+def _cluster_repeats(
+    nodes: list[dict], min_complexity: int
+) -> tuple[list[dict], list[dict]]:
+    """Group clone-relevant nodes into structural-clone clusters (WI-vogij).
+
+    Returns ``(production_clusters, test_clusters)``, each ranked by descending
+    duplication burden (then ``shape_id`` for a stable order). Grouping is by
+    ``(language, shape_id)``: the language key enforces the ADR-0014
+    within-language contract, since shape_id algorithms differ per language and
+    a hash is only comparable within one. A group of >=2 members is a clone
+    cluster. Excluded from the universe: non-callable kinds, synthetic linker
+    stand-ins (``protocol_origin`` — placeholder targets, not real
+    implementations), and nodes without a shape_id or language. Trivial clusters
+    (representative ``cyclomatic_complexity`` below ``min_complexity``, when
+    known) are dropped as noise — a straight-line stub is not a refactoring
+    lead. A cluster with >=2 production (non-test) members is a production
+    clone; otherwise it is test-dominated and lands in the disclosure bucket.
+    """
+    groups: dict[tuple[str, str], list[dict]] = {}
+    for node in nodes:
+        if node.get("kind") not in _CLONE_KINDS:
+            continue
+        if node.get("protocol_origin"):
+            continue
+        shape_id = node.get("shape_id")
+        language = node.get("language")
+        if not shape_id or not language:
+            continue
+        groups.setdefault((language, shape_id), []).append(node)
+
+    production: list[dict] = []
+    tests: list[dict] = []
+    for (language, shape_id), members in groups.items():
+        if len(members) < 2:
+            continue
+        cc = members[0].get("cyclomatic_complexity")
+        if cc is not None and cc < min_complexity:
+            continue
+        prod = [m for m in members if not _is_test_path(m.get("path", ""))]
+        record = _build_repeat_cluster(language, shape_id, members, prod)
+        (tests if record["is_test_only"] else production).append(record)
+
+    production.sort(key=lambda c: (-c["duplication_burden"], c["shape_id"]))
+    tests.sort(key=lambda c: (-c["duplication_burden"], c["shape_id"]))
+    return production, tests
+
+
+def _emit_repeat_finder_json(
+    production: list[dict], tests: list[dict], min_complexity: int, include_tests: bool
+) -> int:
+    """Emit the repeat-finder view as canonical enveloped JSON."""
+    clusters = production + (tests if include_tests else [])
+    payload = {
+        "summary": {
+            "production_clusters": len(production),
+            "production_clone_nodes": sum(c["production_member_count"] for c in production),
+            "test_only_clusters": len(tests),
+            "min_complexity": min_complexity,
+            "languages": sorted({c["language"] for c in production}),
+        },
+        "clusters": clusters,
+    }
+    print(json.dumps(
+        add_schema_envelope(
+            payload, view="repeat_finder", schema_version=READ_VIEW_SCHEMA_VERSION
+        ),
+        indent=2,
+    ))
+    return 0
+
+
+def _print_repeat_cluster(cluster: dict) -> None:
+    """Print one clone cluster as a refactoring-lead block."""
+    kinds = "/".join(cluster["kinds"]) or "symbol"
+    short = cluster["shape_id"].replace("sha256:", "")[:8]
+    cc = cluster["cyclomatic_complexity"]
+    cc_str = f"cc {cc}" if cc is not None else "cc ?"
+    print(
+        f"▸ {cluster['member_count']} {kinds} · shape {short}… · {cluster['language']} · "
+        f"{cc_str} · ~{cluster['line_span']} LOC · burden {cluster['duplication_burden']}"
+    )
+    for m in cluster["members"]:
+        span = m.get("span") or {}
+        start = span.get("start_line", "?")
+        end = span.get("end_line", "?")
+        print(f"    {m.get('path')}:{start}-{end}  {m.get('name')}")
+    print("  → candidate extract-helper / shared implementation")
+    print()
+
+
+def _emit_repeat_finder_text(
+    production: list[dict], tests: list[dict], min_complexity: int,
+    include_tests: bool, limit: int,
+) -> int:
+    """Emit the repeat-finder view as a human-readable refactoring-lead report."""
+    print("Repeat finder — structurally-identical implementations")
+    print("(same skeleton, different names/literals; within-language)")
+    print()
+    if not production:
+        print(
+            f"No structural-clone clusters found (min complexity {min_complexity}; "
+            "pass --min-complexity 1 to include straight-line clones)."
+        )
+        if tests and include_tests:
+            print()
+            print(f"Test-only clone clusters ({len(tests)}):")
+            print()
+            for c in tests[:limit]:
+                _print_repeat_cluster(c)
+        elif tests:
+            print(
+                f"({len(tests)} test-only clone cluster(s) hidden — "
+                "--include-tests to show.)"
+            )
+        return 0
+
+    total_nodes = sum(c["production_member_count"] for c in production)
+    suffix = f", showing top {limit}:" if len(production) > limit else ":"
+    print(f"{len(production)} production clone cluster(s) ({total_nodes} nodes){suffix}")
+    print()
+    for c in production[:limit]:
+        _print_repeat_cluster(c)
+    more = len(production) - limit
+    if more > 0:
+        print(f"… and {more} more production cluster(s) (--format json for the full list).")
+        print()
+
+    if include_tests and tests:
+        print(f"Test-only clone clusters ({len(tests)}):")
+        print()
+        for c in tests[:limit]:
+            _print_repeat_cluster(c)
+    elif tests:
+        print(
+            f"+ {len(tests)} test-only clone cluster(s) hidden (--include-tests to show)."
+        )
+    return 0
+
+
+def cmd_repeat_finder(args: argparse.Namespace) -> int:
+    """Find structurally-identical implementations — refactoring leads (WI-vogij).
+
+    Groups nodes by ``(language, shape_id)``: a cluster of >=2 nodes is a set of
+    structural clones (same control-flow / nesting skeleton, differing only in
+    identifiers and literals; spec §337/§342). This activates ``shape_id``'s one
+    non-redundant capability over ``fingerprint`` (ADR-0035 §1) — clustering
+    structural clones — surfacing candidate copy-paste / extract-helper
+    refactoring leads. Within-language only (ADR-0014; enforced by the language
+    key).
+
+    Default filtering keeps the signal dense: trivial clusters (representative
+    cyclomatic_complexity below ``--min-complexity``, default 2) are dropped,
+    and only production clones (>=2 production members) are the headline —
+    test-only clone clusters (parametrized tests are structurally identical by
+    design) are a labeled disclosure bucket, shown with ``--include-tests``.
+    Clusters rank by duplication burden (member count * representative LOC).
+    """
+    repo_root = Path(args.path).resolve()
+    input_path, _was_cached, _generated = _get_or_run_analysis(
+        repo_root, explicit_input=args.input, show_progress=True,
+    )
+    if input_path is None:
+        print(f"Error: Input file not found: {args.input}", file=sys.stderr)
+        return 1
+    behavior_map = load_substrate(input_path)
+    nodes = behavior_map.get("nodes", [])
+    min_complexity = getattr(args, "min_complexity", 2)
+    include_tests = getattr(args, "include_tests", False)
+    limit = getattr(args, "limit", 20)
+    production, tests = _cluster_repeats(nodes, min_complexity)
+    if _read_view_wants_json(args):
+        return _emit_repeat_finder_json(production, tests, min_complexity, include_tests)
+    return _emit_repeat_finder_text(
+        production, tests, min_complexity, include_tests, limit
+    )
+
+
 def cmd_dead_code_maybe(args: argparse.Namespace) -> int:
     """Find potentially dead code: production callables unreachable from seeds.
 
@@ -7936,6 +8173,39 @@ Auto-discovers cached results from 'hypergumbo survey', or specify --input.
     )
     p_dead_code.set_defaults(func=cmd_dead_code_maybe)
 
+    # hypergumbo repeat-finder
+    p_repeat = sub.add_parser(
+        "repeat-finder",
+        help="Find structurally-identical implementations (refactoring leads)",
+    )
+    _add_path_argument(p_repeat)
+    p_repeat.add_argument(
+        "--input", default=None,
+        help="Input survey file (default: auto-detect cached results)",
+    )
+    p_repeat.add_argument(
+        "--format", choices=["text", "json"], default="text",
+        help="Output format (default: text)",
+    )
+    p_repeat.add_argument(
+        "--min-complexity", type=int, default=2,
+        help="Drop clone clusters whose (shared) cyclomatic complexity is below "
+             "N as trivial noise (default: 2). Pass 1 to include straight-line "
+             "clones (no branches).",
+    )
+    p_repeat.add_argument(
+        "--include-tests", action="store_true", default=False,
+        help="Also show test-only clone clusters (parametrized tests are "
+             "structurally identical by design; hidden by default, counted in "
+             "the summary).",
+    )
+    p_repeat.add_argument(
+        "--limit", type=int, default=20,
+        help="Max clusters to show in text output per section (default: 20; "
+             "--format json always emits the full list).",
+    )
+    p_repeat.set_defaults(func=cmd_repeat_finder)
+
     # hypergumbo symbols
     symbols_epilog = """\
 Examples:
@@ -8323,7 +8593,8 @@ inconclusive, or the claims file failed validation.
     # Core analysis commands (group_order=0) - ordered by suborder
     core_cmds = ["sketch", "survey", "slice", "search", "routes", "explain",
                  "catalog", "config", "test-coverage", "dead-code-maybe",
-                 "symbols", "compact", "io-boundaries", "verify-claims"]
+                 "repeat-finder", "symbols", "compact", "io-boundaries",
+                 "verify-claims"]
     for i, cmd in enumerate(core_cmds):
         _set_subparser_group(sub, cmd, "core", 0, suborder=i)
 
@@ -9769,7 +10040,7 @@ def main(argv=None) -> int:
         print_all_help(parser)
         return 0
 
-    subcommands = {"survey", "run", "slice", "search", "routes", "explain", "catalog", "config", "sketch", "build-grammars", "install-gitleaks", "uninstall-gitleaks", "cache-status", "cache-clear", "install-embeddings", "uninstall-embeddings", "install-rust-analyzer", "uninstall-rust-analyzer", "add-extras", "remove-extras", "test-coverage", "dead-code-maybe", "symbols", "compact", "io-boundaries", "verify-claims"}
+    subcommands = {"survey", "run", "slice", "search", "routes", "explain", "catalog", "config", "sketch", "build-grammars", "install-gitleaks", "uninstall-gitleaks", "cache-status", "cache-clear", "install-embeddings", "uninstall-embeddings", "install-rust-analyzer", "uninstall-rust-analyzer", "add-extras", "remove-extras", "test-coverage", "dead-code-maybe", "repeat-finder", "symbols", "compact", "io-boundaries", "verify-claims"}
 
     # WI-balij (UAT UX-04): accept --debug in any position. Strip it here so
     # `hypergumbo sketch . --debug` and `hypergumbo --debug sketch .` both

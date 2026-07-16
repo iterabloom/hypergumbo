@@ -123,6 +123,16 @@
     "--skip",
     "-h"
   ],
+  "repeat-finder": [
+    "--format",
+    "--help",
+    "--include-tests",
+    "--input",
+    "--limit",
+    "--min-complexity",
+    "--path",
+    "-h"
+  ],
   "routes": [
     "--exclude-tests",
     "--format",
