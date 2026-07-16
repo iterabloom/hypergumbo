@@ -179,6 +179,35 @@ _TIERED_STRIP_KEYS = _COMPACT_STRIP_KEYS | frozenset({
     "validation_report",
 })
 
+# WI-pohuf: the compact/tiered views are LLM-friendly, token-budgeted
+# projections — NOT the full survey. Emitting the full ~24-field
+# ``Symbol.to_dict()`` per node (identity hashes stable_id/shape_id/fingerprint,
+# provenance origin/origin_run_id, the ~200-byte supply_chain block, meta, and
+# other internals) makes each node cost ~250 tokens, so at small budgets the
+# post-selection shrink loop trims the map down to ~1 surviving symbol — which
+# also broke compact containment monotonicity (WI-kolal: the single symbol that
+# fits at 4k differs from the one at 16k) and centrality coverage (WI-zulij: the
+# few survivors hold a tiny fraction of total centrality). This projection keeps
+# only the fields a consumer needs to *understand and navigate* a symbol; the
+# identity, provenance, and supply-chain details remain in the full survey.
+_COMPACT_NODE_FIELDS: tuple[str, ...] = (
+    "id", "name", "qualified_name", "kind", "language",
+    "path", "span", "signature", "docstring",
+)
+
+
+def compact_node(symbol: Symbol) -> dict:
+    """Project a ``Symbol`` to the slim compact/tiered-view node representation.
+
+    Keeps only the LLM-meaningful navigation/understanding fields
+    (``_COMPACT_NODE_FIELDS``) and omits null-valued optional ones, dropping the
+    identity hashes, provenance ids, and supply-chain internals that would
+    otherwise dominate the token budget (WI-pohuf). ``centrality`` is added
+    separately by ``_annotate_node_centrality`` on the paths that annotate it.
+    """
+    full = symbol.to_dict()
+    return {k: full[k] for k in _COMPACT_NODE_FIELDS if full.get(k) is not None}
+
 
 def _recompute_view_metrics(view_map: dict) -> None:
     """Recompute a projected view's ``metrics`` block from its OWN nodes/edges.
@@ -1201,7 +1230,7 @@ def format_compact_behavior_map(
             if k not in _COMPACT_STRIP_KEYS
         }
         compact_map["view"] = "compact"
-        compact_map["nodes"] = [s.to_dict() for s in conn_result.included.symbols]
+        compact_map["nodes"] = [compact_node(s) for s in conn_result.included.symbols]
         _annotate_node_centrality(compact_map["nodes"], conn_result.centrality)
         compact_map["nodes_summary"] = conn_result.to_dict()
 
@@ -1238,7 +1267,7 @@ def format_compact_behavior_map(
             if k not in _COMPACT_STRIP_KEYS
         }
         compact_map["view"] = "compact"
-        compact_map["nodes"] = [s.to_dict() for s in result.included.symbols]
+        compact_map["nodes"] = [compact_node(s) for s in result.included.symbols]
         _annotate_node_centrality(compact_map["nodes"], result.centrality)
         compact_map["nodes_summary"] = result.to_dict()
 
@@ -1631,11 +1660,12 @@ def format_tiered_behavior_map(
     # Connectivity-aware selection starts from entrypoints (seeds) and
     # expands via the frontier, so selected nodes share edges by design.
     #
-    # Estimate max_additional from the token budget.  Average node cost
-    # is ~250 tokens; reserve 50% of budget for edges, entrypoints, and
-    # overhead.  The post-selection shrink loop (below) enforces the
-    # exact budget, so over-estimating here is safe.
-    _AVG_TOKENS_PER_NODE = 250
+    # Estimate max_additional from the token budget.  With the WI-pohuf slim
+    # ``compact_node`` projection, an emitted node costs ~80 tokens (was ~250
+    # when the full ~24-field ``to_dict()`` was emitted); reserve 50% of budget
+    # for edges, entrypoints, and overhead.  The post-selection shrink loop
+    # (below) enforces the exact budget, so over-estimating here is safe.
+    _AVG_TOKENS_PER_NODE = 80
     node_budget_tokens = target_tokens // 2
     max_additional = max(1, node_budget_tokens // _AVG_TOKENS_PER_NODE)
 
@@ -1707,9 +1737,20 @@ def format_tiered_behavior_map(
         if ep.get("symbol_id") in included_ids
     ]
 
-    tiered_map["nodes"] = [s.to_dict() for s in included_symbols]
+    tiered_map["nodes"] = [compact_node(s) for s in included_symbols]
     tiered_map["edges"] = induced_edges
     tiered_map["entrypoints"] = filtered_eps
+    # Re-project features onto the SELECTED set before the shrink loop so the
+    # in-loop token estimate reflects the small re-projected features, not the
+    # full ``features[]`` (WI-pohuf — often the single largest field; the shrink
+    # loop only removes nodes, so an un-projected 25k-token features field would
+    # keep the map over budget no matter how many nodes are trimmed). Refined to
+    # the final node set after the loop (see the authoritative re-projection
+    # below). The projection stays small as the loop shrinks the node set.
+    _all_features = behavior_map.get("features", [])
+    tiered_map["features"] = _reproject_features(
+        _all_features, included_ids, {e.get("id") for e in induced_edges}
+    )
     # Pre-shrink summary: scratch for the in-loop token estimate only. The authoritative
     # nodes_summary is re-derived from the FINAL arrays after the shrink loop (INV-pazur).
     tiered_map["nodes_summary"] = conn_result.to_dict()
@@ -1778,10 +1819,27 @@ def format_tiered_behavior_map(
                 if ep.get("symbol_id") in included_ids
             ]
 
-            tiered_map["nodes"] = [s.to_dict() for s in included_symbols]
+            tiered_map["nodes"] = [compact_node(s) for s in included_symbols]
             tiered_map["edges"] = induced_edges
             tiered_map["entrypoints"] = filtered_eps
             actual_tokens = estimate_behavior_map_tokens(tiered_map)
+
+    # Re-project features onto the shrunk tier (INV-titid), mirroring the
+    # compact path. WI-pohuf: the full ``features[]`` is copied wholesale into
+    # the initial tiered_map and is frequently the single largest field (on
+    # apollo-server it is ~25k tokens — a lone feature referencing thousands of
+    # nodes), which swamps even a 16k budget and forces the shrink loop to trim
+    # the map to ~1 node while the map stays far over budget. Filtering each
+    # feature's node/edge pointers to the retained sets — and dropping features
+    # whose nodes were all pruned — keeps the tier within budget.
+    included_edge_ids = {e.get("id") for e in tiered_map["edges"]}
+    all_features = behavior_map.get("features", [])
+    tiered_map["features"] = _reproject_features(
+        all_features, included_ids, included_edge_ids
+    )
+    tiered_map["features_summary"] = _array_projection_summary(
+        len(all_features), len(tiered_map["features"])
+    )
 
     # INV-pazur: re-derive nodes_summary from the FINAL (post-shrink) on-disk arrays so its
     # included.count / included_edges_count and the omitted distribution can never disagree

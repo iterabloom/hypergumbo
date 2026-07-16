@@ -17,6 +17,7 @@ from hypergumbo_core.compact import (
     compute_tier_distribution,
     select_by_coverage,
     format_compact_behavior_map,
+    compact_node,
     CompactConfig,
     IncludedSummary,
     OmittedSummary,
@@ -3848,8 +3849,13 @@ class TestTieredTokenBudget:
             f"{[n.get('name') for n in boundary_in_output]}"
         )
 
-        # First-party nodes should be present
-        first_party = [n for n in result_nodes if n.get("supply_chain", {}).get("tier") == 1]
+        # First-party nodes should be present. The slim compact/tiered node
+        # projection drops the supply_chain block (WI-pohuf), so identify
+        # first-party by the non-boundary in-repo functions — which is exactly
+        # what the boundary-exclusion this test guards protects.
+        first_party = [
+            n for n in result_nodes if n.get("name") in {"processData", "loadConfig"}
+        ]
         assert len(first_party) >= 1, "At least one first-party node should be in tiered output"
 
     def test_tiered_excludes_cfg_test_annotated_nodes(self):
@@ -4288,3 +4294,117 @@ class TestCompactSeedBudget:
         assert bridge_count > 0, (
             "No bridge nodes included — forced seeds consumed all budget"
         )
+
+
+class TestCompactNodeSlimProjection:
+    """WI-pohuf: compact/tiered views emit a slim node projection, not the full
+    ~24-field Symbol.to_dict(), so token budgets fit many symbols instead of ~1.
+    """
+
+    _HEAVY_FIELDS = (
+        "stable_id", "shape_id", "fingerprint", "supply_chain",
+        "origin_run_id", "origin", "discovery_language", "meta",
+    )
+
+    def test_compact_node_keeps_essentials_drops_internals(self):
+        sym = make_symbol("do_thing", path="src/svc.py", kind="function")
+        sym.signature = "do_thing(x: int) -> str"
+        sym.docstring = "Does the thing."
+        node = compact_node(sym)
+        # essentials present
+        assert node["id"] == sym.id
+        assert node["name"] == "do_thing"
+        assert node["kind"] == "function"
+        assert node["path"] == "src/svc.py"
+        assert node["signature"] == "do_thing(x: int) -> str"
+        assert node["docstring"] == "Does the thing."
+        assert "span" in node
+        # heavy internal fields dropped
+        for f in self._HEAVY_FIELDS:
+            assert f not in node, f"{f} should be dropped from compact node"
+        # substantially smaller than the full node
+        import json
+        assert len(json.dumps(node)) < len(json.dumps(sym.to_dict()))
+
+    def test_compact_node_omits_null_optionals(self):
+        sym = make_symbol("bare", kind="class")  # no signature/docstring set
+        node = compact_node(sym)
+        # optional fields that are None are omitted entirely
+        assert "signature" not in node
+        assert "docstring" not in node
+        # required fields still present
+        assert node["id"] == sym.id and node["kind"] == "class"
+
+    def test_compact_output_nodes_are_slim(self):
+        symbols = [make_symbol(f"s{i}") for i in range(6)]
+        edges = [make_edge(symbols[1].id, symbols[0].id)]
+        bm = {
+            "nodes": [s.to_dict() for s in symbols],
+            "edges": [e.to_dict() for e in edges],
+            "entrypoints": [],
+            "features": [],
+        }
+        cfg = CompactConfig(min_symbols=3, max_symbols=3)
+        result = format_compact_behavior_map(bm, symbols, edges, cfg,
+                                             force_include_entrypoints=False)
+        assert result["nodes"]
+        for n in result["nodes"]:
+            for f in self._HEAVY_FIELDS:
+                assert f not in n
+            assert "id" in n and "centrality" in n
+
+    def test_tiered_reprojects_features_not_wholesale(self):
+        # A feature referencing every node — pre-fix this was copied wholesale
+        # into the tier (WI-pohuf); now it is re-projected onto the retained set.
+        symbols = [make_symbol(f"s{i}") for i in range(20)]
+        edges = [make_edge(symbols[i + 1].id, symbols[i].id) for i in range(19)]
+        entrypoints = [{"symbol_id": symbols[0].id, "kind": "function",
+                        "confidence": 0.95}]
+        features = [{
+            "id": "feat_all",
+            "entry_nodes": [symbols[0].id],
+            "node_ids": [s.id for s in symbols],   # references ALL nodes
+            "edge_ids": [e.id for e in edges],
+        }]
+        bm = {
+            "nodes": [s.to_dict() for s in symbols],
+            "edges": [e.to_dict() for e in edges],
+            "entrypoints": entrypoints,
+            "features": features,
+        }
+        tiered = format_tiered_behavior_map(bm, symbols, edges, 2000)
+        out_ids = {n["id"] for n in tiered["nodes"]}
+        # feature re-projected: its node_ids are a subset of the retained nodes,
+        # not the full 20-node list.
+        for feat in tiered["features"]:
+            assert set(feat["node_ids"]) <= out_ids
+        assert "features_summary" in tiered
+
+    def test_tiered_does_not_collapse_under_feature_overhead(self):
+        # WI-pohuf core: a large feature + full nodes used to make the shrink
+        # loop trim the tier to a single node. With slim nodes + feature
+        # re-projection, many nodes survive a modest budget.
+        symbols = [make_symbol(f"s{i}") for i in range(40)]
+        edges = [make_edge(symbols[i + 1].id, symbols[i].id) for i in range(39)]
+        entrypoints = [{"symbol_id": symbols[0].id, "kind": "function",
+                        "confidence": 0.95}]
+        features = [{
+            "id": "big",
+            "entry_nodes": [symbols[0].id],
+            "node_ids": [s.id for s in symbols],
+            "edge_ids": [e.id for e in edges],
+        }]
+        bm = {
+            "nodes": [s.to_dict() for s in symbols],
+            "edges": [e.to_dict() for e in edges],
+            "entrypoints": entrypoints,
+            "features": features,
+        }
+        tiered = format_tiered_behavior_map(bm, symbols, edges, 3000)
+        # Well above the pre-fix collapse-to-1; the exact count depends on the
+        # connectivity selection, but the tier must not degenerate.
+        assert len(tiered["nodes"]) > 3
+        # and the emitted nodes are slim
+        for n in tiered["nodes"]:
+            for f in self._HEAVY_FIELDS:
+                assert f not in n
