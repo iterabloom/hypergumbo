@@ -15,14 +15,14 @@ for focused LLM context.
 
 hypergumbo analyzed its own source code and found:
 - **293** Python modules (133 analyzers, 57 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 29, Infrastructure 7; 66 core, 4 CLI, 33 tracker)
-- **36909** symbols (functions, classes, methods)
-- **125905** edges by type:
-  - calls: 63553
-  - contains: 34079
-  - imports: 11198
-  - instantiates: 10373
+- **36920** symbols (functions, classes, methods)
+- **125940** edges by type:
+  - calls: 63567
+  - contains: 34089
+  - imports: 11200
+  - instantiates: 10383
   - references: 4234
-  - module_attr_ref: 1154
+  - module_attr_ref: 1153
   - other: 1314
 
 ## Package Architecture
@@ -85,7 +85,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 36909 Symbols + 125905 Edges + UsageContexts           │
+│  Output: 36920 Symbols + 125940 Edges + UsageContexts           │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -195,9 +195,11 @@ A code symbol (function, class, etc.) detected by analysis.
 - `span`: Source location with lines and columns
 - `origin`: Provenance list (INV-jidat). Each element is a pass ID that contributed to this Symbol's existence, ordered chronologically (originating pass first). Single-element lists are the common case. Auto-normalized from scalar str for backward compat.
 - `origin_run_id`: Unique execution ID of the analysis run
-- `stable_id`: Structural-identity hash within a (qualified_name, module_path) scope (ADR-0014 amended by Phase 6 PR3 / INV-bazij). Survives BODY edits; does NOT survive rename or move — those are now identity-changing operations. Pre-Phase-6 the field was documented as "survives renames/moves", but on the dogfood corpus that promise produced a 60% collision rate (155 zero-param bash functions in one file shared one ID), so name + qualified_name are now part of the hash inputs.
-- `shape_id`: Structural implementation fingerprint
-- `fingerprint`: Content hash of source bytes (sha256)
+- `stable_id`: Structural-identity hash within a (qualified_name, module_path) scope (ADR-0014 amended by Phase 6 PR3 / INV-bazij). Survives BODY edits; does NOT survive rename or move — those are now identity-changing operations. Pre-Phase-6 the field was documented as "survives renames/moves", but on the dogfood corpus that promise produced a 60% collision rate (155 zero-param bash functions in one file shared one ID), so name + qualified_name are now part of the hash inputs. Serialized as ``sha256:<16hex>``; the ``sha256:`` prefix names the hash *algorithm*, not the identity axis — the scheme/version lives in the top-level ``stable_id_scheme`` descriptor. ``shape_id`` shares this exact surface; the two are discriminated by field identity (and their ``*_scheme`` descriptors), NOT by an in-value prefix, and their value-spaces are disjoint (0 overlap on
+- `the dogfood corpus). This is by design (WI-tisar)`: unlike ``fingerprint``'s ``hgfp2:`` *version* tag or the edges' ``edge:``/``edgekey:`` *namespace* tags, these two need no in-value discriminator because they are always field-qualified. Consumers must therefore retain field context — do NOT join on bare hash values across the stable_id/shape_id axes.
+- `shape_id`: Structural *skeleton* hash — the parse subtree with identifiers, literals, comments, and punctuation STRIPPED (ADR-0014 §1 compute_shape_id), so two symbols with the same code shape but different names/values collide. Compared within-language only (Python uses an ast-based variant). Contrast ``fingerprint``, which KEEPS identifiers/literals — ``shape_id`` is a strict coarsening of it. Serialized as ``sha256:<16hex>`` — the same surface as ``stable_id`` (see that field's note on cross-axis bare-hash joins; WI-tisar).
+- `fingerprint`: Structural *content* hash of the symbol's parse subtree — shape PLUS identifiers and literals, whitespace/ comment-invariant, tagged with the scheme in ``symbol_fingerprint_scheme`` (``hgfp2:``). NOT a raw source-byte hash — that was the ADR-0032-demolished Format-1 scheme. ``None`` for grammarless languages / parse errors /
+- `synthetic spans. Producer`: fingerprint.py.
 - `quality`: Score and reason dict for quality assessment
 - `meta`: Optional metadata dict for language-specific information
 - `supply_chain_tier`: Position in dependency graph (1=first_party, 2=internal_dep, 3=external_dep, 4=derived). See §14 of spec.
@@ -221,8 +223,8 @@ A code symbol (function, class, etc.) detected by analysis.
 
 ### Edge (`ir.py`)
 A relationship between two symbols (e.g., function calls).
-- `id`: Unique identifier for this edge instance
-- `edge_key`: Canonical identity for deduplication across passes
+- `id`: Unique identifier for this edge instance (per-instance identity, line-inclusive; the Edge counterpart of ``Symbol.id``). Surfaced as ``edge:sha256:<16hex>``.
+- `edge_key`: Canonical identity for deduplication across passes — structural identity computed line-insensitively from (src, dst, edge_type), so it is stable across regenerations. This is the Edge counterpart of ``Symbol.stable_id`` (structural identity that survives regeneration); ``edge.id`` is the per-instance counterpart of ``Symbol.id``. Named ``edge_key`` rather than ``stable_id`` for historical reasons — the rename would be a breaking schema change and is not worth the churn (WI-niboh). Surfaced as ``edgekey:sha256:<16hex>``; the ``edgekey:`` namespace distinguishes it from ``edge:``-prefixed edge ids in a shared lookup space.
 - `src`: ID of the source symbol (e.g., the caller)
 - `dst`: ID of the target symbol (e.g., the callee)
 - `edge_type`: Type of relationship (calls, imports, inherits, etc.)
@@ -234,7 +236,7 @@ A relationship between two symbols (e.g., function calls).
 - `evidence_lang`: Language for confidence scoring
 - `is_resolved`: Whether `dst` is a real, in-repo (first-party) symbol node present in the graph (ADR-0037 ruling 1 — resolution names in-repo-ness, NOT target-identification). External/stdlib targets are materialized as `external_symbol` placeholder nodes and are always `is_resolved=False` even though the dst node exists (present-but-synthetic, not absent). The producer-time value (Edge.create default True) is ADVISORY; the finalize edge-resolution sub-step's verdict is what serializes.
 - `dst_ref`: Structured identity for the dst endpoint. Populated on every `is_resolved=False` edge after the finalize edge-resolution sub-step (`None` only for an unidentified dangling reference whose id cannot be parsed); `None` for in-repo (`is_resolved=True`) dsts. Canonical source of truth for external-target identity — the legacy `dst` string is built from the same `ExternalRef`. The fourth cell (`is_resolved=True` + populated `dst_ref`) is never produced (ADR-0037 ruling 1 table).
-- `derived_from`: Symbol (or Edge) IDs the producer consumed to construct this Edge (INV-rukor). Populated by linkers; None for analyzer-originated edges.
+- `derived_from`: Symbol (or Edge) IDs the producer consumed to construct this Edge (INV-rukor). Populated by linkers; None for analyzer-originated edges. Axis note: this is PROVENANCE (PROV wasDerivedFrom, ADR-0030), not identity-*of-this-edge*; it carries ``# axis: identity`` because it holds identity *references* to other records (the same rationale as ``src``/``dst``), and it does NOT participate in ``edge_key``/dedup.
 - `confidence`: Detection-reliability score (0.0-1.0) — the producer's evidence-derived estimate that the relationship EXISTS (ADR-0039 ruling 1). NOT a ranking value; post-detection ranking boosts/penalties live in ``rank_score``.
 - `confidence_source`: Provenance of the ``confidence`` value (ADR-0039 ruling 2), one of ``VALID_CONFIDENCE_SOURCES`` — ``evidence_derived`` / ``emitter_constant`` / ``composite``. See ``VALID_CONFIDENCE_SOURCES`` for the enumeration and re-evaluation trigger.
 - `rank_score`: Ranking prominence (0.0-1.0). Initializes from ``confidence`` and accumulates the ranking adjustments ADR-0039 ruling 3 relocates off ``confidence`` (e.g. the type-hierarchy fan-out dampener). Equal to ``confidence`` until a producer relocates its adjustment. Ranking consumers key on this; reliability consumers key on ``confidence``.
@@ -270,14 +272,14 @@ These symbols have the highest bidirectional centrality
 
 | Symbol | Kind | Score | Location |
 |--------|------|-------|----------|
-| `Symbol` | class | 9309.1 | ir.py |
-| `Span` | class | 6266.0 | ir.py |
+| `Symbol` | class | 9318.3 | ir.py |
+| `Span` | class | 6271.8 | ir.py |
 | `write_text` | external_symbol | 3292.0 | <external> |
 | `LinkerContext` | class | 3156.6 | registry.py |
 | `Edge.create` | method | 2065.9 | ir.py |
 | `TrackerApp` | class | 1946.9 | tui.py |
 | `load_framework_patterns` | function | 1875.9 | framework_patterns.py |
-| `Path` | external_symbol | 1597.0 | <external> |
+| `Path` | external_symbol | 1598.0 | <external> |
 | `main` | function | 1563.1 | cli.py |
 | `clear_pattern_cache` | function | 1336.8 | framework_patterns.py |
 | `Edge` | class | 1265.5 | ir.py |
@@ -838,7 +840,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: 664e8379f4ba
+  commit: 621ff6f5fde0
   hypergumbo: 6.1.0
   python: 3.12.3
 -->
