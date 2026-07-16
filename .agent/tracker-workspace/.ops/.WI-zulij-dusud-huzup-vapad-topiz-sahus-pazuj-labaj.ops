@@ -93,3 +93,10 @@
   clock: 10  # a955
   nonce: a955  # a955
   message: "Fixed + merged (selfh/dev 4c8a8f66c1, bundled with WI-kolal + WI-fumut). compact's default selection flipped from connectivity-aware to a GLOBAL centrality-ranked prefix (D12; spec 'Output reproducibility' already declared this the default). --no-connectivity replaced by --connectivity ('connected core') opt-in. 5 cli.py sites (2 flag defs, 2 wirings, run_behavior_map default True->False). Behavioral evidence: main() --connectivity routes both modes to valid compact output; 3467 affected tests pass; core 100%. Bakeoff-tagged (default compact output shape changes across the corpus). Wave-4 projection lynchpin."  # a955
+- op: discuss  # ced6
+  at: '2026-07-16T04:10:43Z'  # ced6
+  by: agent  # ced6
+  actor: jgstern_agent  # ced6
+  clock: 11  # ced6
+  nonce: ced6  # ced6
+  message: "NO_MOVE (plurality) via DEEP bakeoff deep-20260623-134237 cohort-001 iter-004 (8 repos, code e5a019c2): 4 no_move (apollo/spring/sherpa/pretix), 2 moved (SwiftyJSON/zoxide), 2 inconclusive-leaning-connectivity (caddy/express). Compact SELECTS by centrality (nodes_summary coverage high on small repos) but its visible ORDERING is source-path/containment-grouped, and on repos with build-wrappers (spring mvnw/pom), generated (.d.ts), vendored JS (pretix pdf.worker/d3/vue) or entrypoint-tier nodes the ranking surfaces that noise ABOVE centrality-top real code (spring: mvnw:die over OwnerController deg29; sherpa: Main entrypoints over WaveReader deg29; pretix: 83 selected nodes hold 1.3% of total centrality). Shares a root cause with the seed-ranking item WI-batit (reproduces) + the compact-representation finding. Keeping tag."  # ced6

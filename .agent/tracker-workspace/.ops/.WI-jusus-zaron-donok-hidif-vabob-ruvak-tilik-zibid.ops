@@ -235,3 +235,19 @@
   clock: 31  # 61fd
   nonce: 61fd  # 61fd
   message: "Two high-corpus-share tail slices LANDED (advances WI-jusus; item STAYS todo_hard — the tail continues). Both analyzers emitted ZERO field/variable before.\n\nC++ slice (PR f82f02bb23, dev). cpp.py now emits kind=field for class/struct MEMBER FIELDS and kind=variable for top-level/namespace GLOBALS. Structural hybrid: field_declaration is a distinct node (never in a function body -> no scope walk); global vars and function locals share the 'declaration' node, so variables use a module-scope parent-context gate (parent==translation_unit or a namespace declaration_list; excludes compound_statement locals — INV-sidab/INV-lanaz). Filters: member-function declarations (a function_declarator, incl. via pointer/reference declarator), nested types (struct/enum/class/union_specifier), and function prototypes are NOT fields/variables. Visibility from the most recent access_specifier with C++ defaults (class private / struct public) -> is_exported; multi-declarator/pointer/array/static handled; type -> signature. register_symbol chokepoint skips field/variable. 14 tests, 100% cov, smart-test 3961 passed.\n\nRuby slice (PR 699239d969, dev). Ruby has no lexical field declaration, so a dedicated _emit_ruby_data_symbols post-pass emits: class/module-body CONSTANTS (assignment w/ constant LHS) -> kind=field; top-level CONSTANTS -> kind=variable; @@ CLASS VARIABLES in a class body -> kind=field (not is_exported); attr_accessor/attr_reader/attr_writer attributes -> kind=field per :symbol (Owner#attr). Scope discrimination via _is_nested_in_method: all v1 constructs are class-body/top-level, so members assigned INSIDE method bodies (instance vars @x, method-local constants, dynamic attr_accessor) are DEFERRED (no method-body walk). Ruby's attr_* generate getter/setter methods but ruby.py never emitted those, so emitting attrs as fields conflicts with nothing; the register_symbol chokepoint keeps all field/variable out of the call registry (a data anchor is never a call target). 12 tests, 100% cov, smart-test 3996 passed.\n\nREMAINING WI-jusus tail (item stays todo_hard): Ruby INSTANCE VARIABLES (@x) + @@cvars/constants assigned in method bodies — needs the attribute-to-enclosing-class machinery + dedup (a distinct, more error-prone mechanism, the INV-lanaz/INV-sidab bug class). Plus the non-mainstream analyzer tail (nim/d_lang/fortran/... per earlier notes) and the Haskell unfit-by-design closure. PHP was the prior slice (WI-fosuh)."  # 61fd
+- op: update  # 6a45
+  at: '2026-07-16T04:10:43Z'  # 6a45
+  by: agent  # 6a45
+  actor: jgstern_agent  # 6a45
+  clock: 32  # 6a45
+  nonce: 6a45  # 6a45
+  set: {}  # 6a45
+  remove:  # 6a45
+    tags: [awaits_bakeoff_validation]  # 6a45
+- op: discuss  # 2ef6
+  at: '2026-07-16T04:10:43Z'  # 2ef6
+  by: agent  # 2ef6
+  actor: jgstern_agent  # 2ef6
+  clock: 33  # 2ef6
+  nonce: 2ef6  # 2ef6
+  message: "VALIDATED moved (8/8) via DEEP bakeoff deep-20260623-134237 cohort-001 iter-004 (8 repos, code e5a019c2). kind=variable/field now emit across the non-py-go fleet, disproving the 'emit zero' premise: TS apollo 56 var + 341 field; Java spring 73 field; C# sherpa 19 field; Swift 46 var/19 field; Rust zoxide 6 var/43 field; Go caddy 89/1344; Python pretix 944/5486. Tag stripped; item stays todo_hard for the residual tail (fortran/julia/dart/fsharp no cohort target; Ruby @ivars/method-body deferred; C# properties — see new finding). Per-repo verdicts in reflect/cohort-001/iter-004/*.assessment.yaml."  # 2ef6

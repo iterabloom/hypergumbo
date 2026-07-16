@@ -71,3 +71,10 @@
   clock: 7  # c47d
   nonce: c47d  # c47d
   message: "Fixed + merged (selfh/dev 4c8a8f66c1, with WI-zulij). Containment monotonicity for compact --max-symbols: NOT resolved 'by construction' by the flip alone — I traced a real non-monotonicity in allocate_language_budget (selection/language_proportional.py): when a budget step grows >=2 language bases at once, 'remaining' drops and the last bonus-receiving language loses its +1 while its base is unchanged (a shrink), breaking nodes(B1) subset nodes(B2). Structural fix: the compact default disables language_proportional -> a GLOBAL centrality-ranked prefix, monotonic BY CONSTRUCTION (top-N subset top-M) AND the correct reading of D12's 'centrality-ranked' (a global order, which language floors violate). Behavioral evidence: multi-language stress monotonicity test (unequal sizes 8/4/3/2/1, ALL budgets 2..18, subset assertion at every step) with language_proportional=False; disabling it broke NO test (961 passed across compact/cli/sketch/selection/gitleaks). core 100%. Wave-4 projection."  # c47d
+- op: discuss  # d889
+  at: '2026-07-16T04:10:43Z'  # d889
+  by: agent  # d889
+  actor: jgstern_agent  # d889
+  clock: 8  # d889
+  nonce: d889  # d889
+  message: "NO_MOVE on 2/8 via DEEP bakeoff deep-20260623-134237 cohort-001 iter-004 (8 repos, code e5a019c2): apollo (4k={incrementalDelivery iface} ⊄ 16k={requestPipeline iface}) and pretix (4k={PaymentViewSet} ⊄ 16k={LocaleMiddleware}) violate containment monotonicity; the other 6 repos are monotonic. ROOT CAUSE (pretix agent): compact embeds FULL ~23-field node objects, so at 4k/16k only ONE large symbol fits and the top-ranked single symbol differs across budgets → non-monotonic. Pre-existing (iter-3 also violated) — NOT a regression from this session. Fix is the same as the new compact-representation item. Keeping tag until the degenerate-budget case is monotonic."  # d889

@@ -54,3 +54,10 @@
   clock: 5  # a1af
   nonce: a1af  # a1af
   message: "INCONCLUSIVE via BROAD drain broad-20260706-153915. No cohort repo exercises the claim (a Python project with an argparse CLI that shells out to its own subcommands via subprocess). The 11-repo cohort has no such construct. Keep tagged; unblock = a self-analysis run (hypergumbo own argparse CLI is the canonical example) or a targeted repo. Verdict inconclusive."  # a1af
+- op: discuss  # c609
+  at: '2026-07-16T04:10:43Z'  # c609
+  by: agent  # c609
+  actor: jgstern_agent  # c609
+  clock: 6  # c609
+  nonce: c609  # c609
+  message: "INCONCLUSIVE via DEEP bakeoff deep-20260623-134237 cohort-001 iter-004 (8 repos, code e5a019c2): no Python-argparse-CLI target in the cohort (pretix=Django/Celery, express=JS, caddy=Go, others non-Python). Cannot validate the argparse subprocess-linker fix here. Keep tag; needs a targeted cohort with a Python argparse CLI (e.g. a click-vs-argparse repo)."  # c609

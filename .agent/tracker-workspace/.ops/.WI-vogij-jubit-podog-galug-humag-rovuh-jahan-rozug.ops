@@ -38,3 +38,18 @@
   clock: 3  # 7107
   nonce: '7107'  # 7107
   message: "DECISION 2026-07-15 (human-ratified, walked through step-by-step): KEEP shape_id, do NOT deprecate. Grounding in the ADRs+spec: spec §6 line 367 lists shape_id's Purpose as 'duplicate-code detection'; ADR-0035 §1 line 54 names shape_id + fingerprint 'the refactor-tracking instruments'; ADR-0014 defines it to detect structural changes (within-language). So shape_id is NOT a purposeless dead field — it is a populated (83%), fully-specified, spec-and-ADR-blessed field whose CONSUMER was never built. The honest fix for a write-only field with a documented, valuable purpose is to build the reader, not delete the field. Reframed from a deprecate-watch into this feature seed. Re-eval trigger flips to 'build-it-or-reconsider': revisit deprecation only if a future identity audit finds it still has no consumer AND the clone/refactoring-lead feature was affirmatively dropped from the roadmap. Prerequisite: WI-linon (Python shape_id collapses class/method/function + mis-hashes async def) must land first — a clone-detector on a buggy hash produces false clones. Parked feature sketch (not yet built): group nodes by (language, shape_id), surface the largest same-shape clusters as candidate copy-paste / extract-helper refactoring leads; within-language only per ADR-0014."  # 7107
+- op: update  # ef0b
+  at: '2026-07-16T03:21:58Z'  # ef0b
+  by: agent  # ef0b
+  actor: jgstern_agent  # ef0b
+  clock: 4  # ef0b
+  nonce: ef0b  # ef0b
+  set:  # ef0b
+    status: done  # ef0b
+- op: discuss  # 7bdf
+  at: '2026-07-16T03:21:59Z'  # 7bdf
+  by: agent  # 7bdf
+  actor: jgstern_agent  # 7bdf
+  clock: 5  # 7bdf
+  nonce: 7bdf  # 7bdf
+  message: "BUILT + CLOSED — PR c7826c11fc (merged to dev). Realized the human-ratified 'build the reader' disposition: new 'hypergumbo repeat-finder' read-view activates shape_id's one non-redundant capability over fingerprint (ADR-0035 §1, spec §367 duplicate-code detection). Groups symbols by (language, shape_id) — a cluster of >=2 is a structural-clone set (same skeleton, different names/literals), within-language per ADR-0014. Signal-dense defaults (owner-chosen): trivial clusters (shared cyclomatic complexity < --min-complexity, default 2) dropped; production clones (>=2 non-test members) are the headline, test-only clone clusters a labeled disclosure bucket (--include-tests); ranked by duplication burden (member count * representative LOC). text + json (view=repeat_finder envelope). Prereq WI-linon (kind-discriminated shape_id) landed first as required. BEHAVIORAL evidence (live self-corpus survey): 152 production clone clusters / 477 nodes, 0 kind-mixed (WI-linon holds), 1203 test-only clusters correctly bucketed away; top leads are GENUINE refactoring opportunities in hypergumbo itself (22 near-identical per-analyzer _get_identifier/_get_name/_extract_*_name functions; link_django/airflow dispatch pairs; CMake/Make analyzers). 24 unit tests, 100% coverage of new code; docs-prose gate + CLI flag matrix updated; CHANGELOG + spec §Commands documented. MVP scope: function/method/class clones, within-language; broader shape_id coverage tracked by the completeness siblings (WI-lutob/WI-luzut/WI-rokub/WI-sijug)."  # 7bdf

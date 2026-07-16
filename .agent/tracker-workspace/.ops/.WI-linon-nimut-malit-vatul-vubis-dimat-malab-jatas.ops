@@ -57,3 +57,18 @@
   clock: 6  # 8fa4
   nonce: 8fa4  # 8fa4
   message: "Cross-link (identity concept-audit 2026-07-15): this shape_id-correctness bug is a PREREQUISITE for WI-vogij (build structural-clone / refactoring-lead detection on shape_id). A clone-detector built on a hash that collapses class/method/function and mis-hashes async def would emit false clones — fix the hash first. Set isbefore WI-vogij."  # 8fa4
+- op: update  # 187a
+  at: '2026-07-16T02:10:22Z'  # 187a
+  by: agent  # 187a
+  actor: jgstern_agent  # 187a
+  clock: 7  # 187a
+  nonce: 187a  # 187a
+  set:  # 187a
+    status: done  # 187a
+- op: discuss  # 9b63
+  at: '2026-07-16T02:10:22Z'  # 9b63
+  by: agent  # 9b63
+  actor: jgstern_agent  # 9b63
+  clock: 8  # 9b63
+  nonce: 9b63  # 9b63
+  message: "FIXED + CLOSED — PR 621ff6f5fd (merged to dev @ 2c02af6fed). Root cause exactly as filed: py.py _compute_shape_id (1) omitted the symbol KIND from its hash inputs (a module-level function and a class method are both ast.FunctionDef with self absent from the body → identical hash) and (2) tested isinstance(node, ast.FunctionDef), which ast.AsyncFunctionDef is NOT a subclass of, so async defs mis-branched into the ClassDef path (a docstring-only async def collided with a docstring-only class — the observed sha256:44283d00f7d29138 cluster). Fix folds the symbol kind (class/method/function) AND type(node).__name__ into the hashed prefix, discriminating kind and sync-vs-async while same-kind structural clones still share a shape_id (shape_id's one non-redundant power over fingerprint). BEHAVIORAL closure evidence (live repro of the item's OWN filed scenario on the production analyze_python path, post-merge): FILED COLLISION 1 (class FooError vs async on_event) RESOLVED (f1439907 vs af48fea4); FILED COLLISION 2 (plain_func vs plain_method) RESOLVED (0c866b2a vs 03e07ff1). 5 new tests in test_py_shape_id_kind.py (2 reproduced the exact documented collisions incl. sha256:44283d00, all green post-fix; 3 within-kind-clone regression pins hold). SHAPE_ID_SCHEME bumped v2->v3 per spec §6 mandate (every Python shape_id value changed); shape_id is not part of stable_id, so identity is unaffected — verified the WI-jafat identity-neutrality golden's stable_id + node.id sets are byte-for-byte UNCHANGED, only its shape_id golden re-baselined. Unblocks WI-vogij (structural-clone / refactoring-lead detection), whose isbefore this satisfied. Full mainstream isolation 100%; CI green."  # 9b63
