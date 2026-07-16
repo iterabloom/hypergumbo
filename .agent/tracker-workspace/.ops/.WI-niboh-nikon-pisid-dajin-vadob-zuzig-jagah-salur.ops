@@ -35,3 +35,18 @@
   clock: 3  # 1736
   nonce: '1736'  # 1736
   message: "Pass-22 investigation correction.\n\nThe original framing claimed the semantic difference between edge.id and edge.edge_key is 'not documented'. After reading ir.py:\n- Line 15 (module docstring): 'edges carry a structured ID and edge_key for deduplication across passes' — mentions both fields.\n- Line 583 (Edge dataclass docstring on edge_key): 'Canonical identity for deduplication across passes'.\n- Line 516 (_compute_edge_key): docstring 'Compute canonical edge_key for deduplication across passes'.\n- Line 693-697: edge_key is computed from (src + dst + edge_type), line-insensitive — so edge_key is the structural identity (excludes line for cross-pass dedup), while edge.id is the line-included instance identity.\n\nBoth ARE documented. The earlier 'documentation gap' framing was wrong.\n\nThe real (much weaker) residual: NAMING-CONVENTION divergence from Symbol's id/stable_id pair. Symbol has id (location-based) and stable_id (structural-identity hash). Edge has id (presumably instance-unique with line) and edge_key (structural identity for dedup). The structural-identity field is called stable_id on Symbol and edge_key on Edge — same semantic, different name.\n\nDowngrade P3 -> P4 cosmetic. Either rename edge.edge_key -> edge.stable_id to mirror Symbol's convention, or document explicitly in the IR docstring that edge_key is the Edge counterpart of Symbol.stable_id. Minor naming-axis-uniformity issue; not worth surfacing in agent notes table."  # 1736
+- op: update  # 12b3
+  at: '2026-07-15T22:30:56Z'  # 12b3
+  by: agent  # 12b3
+  actor: jgstern_agent  # 12b3
+  clock: 4  # 12b3
+  nonce: 12b3  # 12b3
+  set:  # 12b3
+    status: done  # 12b3
+- op: discuss  # 6e83
+  at: '2026-07-15T22:30:57Z'  # 6e83
+  by: agent  # 6e83
+  actor: jgstern_agent  # 6e83
+  clock: 5  # 6e83
+  nonce: '6e83'  # 6e83
+  message: "DOCUMENT verdict, shipped in the docs PR merged to dev as 37e0252d5b (commit bc366977). This item was already self-corrected on 2026-06-02 — both edge.id and edge_key ARE documented (ir.py Edge docstring). Verified live on hg-self-v5: edge.id = edge:sha256:<16hex> (134,805/134,805 populated, all distinct), edge_key = edgekey:sha256:<16hex> (134,805/134,805, all distinct). The sole residual was the missing naming-convention cross-reference. Resolution: added to the ir.py Edge docstring that edge_key is the structural-identity / cross-pass-dedup counterpart of Symbol.stable_id (line-insensitive, survives regeneration), while edge.id is the per-instance counterpart of Symbol.id. Renaming edge_key->stable_id for naming uniformity would be a breaking schema change touching every consumer — rejected; documented the equivalence instead."  # 6e83

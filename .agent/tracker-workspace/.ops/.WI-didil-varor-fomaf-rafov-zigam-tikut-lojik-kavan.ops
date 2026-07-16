@@ -31,3 +31,18 @@
     tags: [dogfood]  # 51cb
   remove:  # 51cb
     tags: [dogfooding]  # 51cb
+- op: update  # 3824
+  at: '2026-07-15T23:40:33Z'  # 3824
+  by: agent  # 3824
+  actor: jgstern_agent  # 3824
+  clock: 3  # 3824
+  nonce: '3824'  # 3824
+  set:  # 3824
+    status: done  # 3824
+- op: discuss  # c4d3
+  at: '2026-07-15T23:40:33Z'  # c4d3
+  by: agent  # c4d3
+  actor: jgstern_agent  # c4d3
+  clock: 4  # c4d3
+  nonce: c4d3  # c4d3
+  message: "Fixed in the PR merged to dev as f411abce19 ('fix: every registered analyzer resolves to an AR or a skip record (WI-didil)'). VERIFICATION per closure-evidence discipline (behavioral): re-ran analyzer dispatch on the live self-corpus — analyzers-uncovered (neither AR nor skip) went from 8 to 0; all 7 tree-sitter langs (matlab/meson/puppet/racket/robot/scheme/scss) now emit {reason: 'no files matched'} and rust_analyzer emits {reason: 'rust-analyzer backend not enabled'} (NOT mislabelled 'no files matched' — the repo has 3 .rs files; the opt-in SCIP backend was simply off).\n\nROOT CAUSE (structural): collect_analyzer_result's run=None branch (mis-marked '# pragma: no cover' as 'shouldn't happen') silently dropped any analyzer that produced no run — recording neither an AR nor a skip. These analyzers reach that branch because their languages are absent from taxonomy LANGUAGE_EXTENSIONS, so the file-presence pre-filter dispatches them defensively; empty-handed they return a bare AnalysisResult(). Fix: record a skip there (honouring a self-declared skip_reason), threaded via a new optional analyzer_name arg; rust_analyzer self-declares its reason. Also closed a latent drop of grammar-unavailable skips carrying run=None.\n\nSCOPE REFRAME (the filed 26/1 numbers were stale/mis-measured): (a) Part-b ('every substrate AR references a catalog entry') is ALREADY SATISFIED — spec_validator._check_axis_conformance validates every AR.pass in all_known_pass_ids(); 0 violations on the substrate (my initial '43 not in catalog' was an artifact of measuring against the analyzer-only get_default_catalog() without loading linkers). (b) The 26 'never fire' = 8 analyzers (fixed here) + 18 non-firing LINKERS. The 18 linkers are OUT OF SCOPE by spec: skipped_passes is analyzer-scoped ('a pass that did not run at all'), and a linker with no applicable targets (no GraphQL -> graphql-linker) is a correct no-op, not a skip. Documented as a non-gap in spec §limits. Not filing a follow-up: a no-op linker is correct behavior, not a defect; linker-level 'accounting' would be a new feature, not a bug fix. Verified: smart-test green (1419 passed, 100% cov on changed sources) + 3 out-of-slice skipped_passes-asserting tests (test_run_behavior_map/test_schema/test_ir, 232 passed). INV-luhur child."  # c4d3
