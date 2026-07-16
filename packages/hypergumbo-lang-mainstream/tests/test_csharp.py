@@ -1146,6 +1146,51 @@ class TestCSharpSpecialCases:
         properties = [s for s in result.symbols if s.kind == "property"]
         assert len(properties) >= 2
 
+    def test_user_typed_property_uses_member_name_not_type_name(
+        self, tmp_path: Path
+    ) -> None:
+        """A property whose declared type is a user-defined type must emit a
+        symbol named after the property MEMBER, not after its type.
+
+        Regression: ``extract_name_from_declaration`` grabbed the first
+        ``identifier`` child, but in a C# ``property_declaration`` a user-typed
+        return type (``WaveInfo``, ``FeatureConfig``) is itself an ``identifier``
+        that PRECEDES the property-name identifier. So ``public WaveInfo Info``
+        was misnamed ``C.WaveInfo``, and two same-typed properties collapsed to
+        one entry in ``symbol_by_name``. Predefined/array/generic types are not
+        ``identifier`` nodes, so they were unaffected — masking the bug.
+        """
+        (tmp_path / "Config.cs").write_text(
+            """namespace N
+{
+    public class C
+    {
+        public WaveInfo Info => _info;            // expr-bodied, user type
+        public FeatureConfig Feat { get; set; }   // auto-property, user type
+        public FeatureConfig Other { get; set; }  // same type, distinct member
+        public int Plain { get; set; }            // predefined type (control)
+    }
+}
+"""
+        )
+
+        result = analyze_csharp(tmp_path)
+        props = [s for s in result.symbols if s.kind == "property"]
+        prop_names = {s.name for s in props}
+
+        # Member names — not type names.
+        assert "C.Info" in prop_names
+        assert "C.Feat" in prop_names
+        assert "C.Other" in prop_names  # same-typed sibling not collapsed
+        assert "C.Plain" in prop_names  # predefined-type control still correct
+        # The declared TYPE must never leak into the property symbol name.
+        assert "C.WaveInfo" not in prop_names
+        assert "C.FeatureConfig" not in prop_names
+        # qualified_name must also carry the member, not the type.
+        assert {"N.C.Info", "N.C.Feat", "N.C.Other"} <= {
+            s.qualified_name for s in props
+        }
+
     def test_handles_static_classes(self, tmp_path: Path) -> None:
         """Should handle static class declarations."""
         (tmp_path / "Utils.cs").write_text(

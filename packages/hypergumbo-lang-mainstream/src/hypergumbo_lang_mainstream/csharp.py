@@ -685,8 +685,20 @@ def _extract_symbols_from_file(
     analysis = FileAnalysis(import_aliases=using_aliases)
 
     def extract_name_from_declaration(node: "tree_sitter.Node") -> Optional[str]:
-        """Extract the identifier name from a declaration node."""
-        name_node = find_child_by_type(node, "identifier")
+        """Extract the declared name from a declaration node.
+
+        Uses the grammar's ``name`` field, which points at the member/type name
+        unambiguously. A bare first-``identifier`` scan is WRONG for
+        ``property_declaration``: a user-defined return type (``WaveInfo``,
+        ``FeatureConfig``) is itself an ``identifier`` that PRECEDES the property
+        name, so the first identifier is the type, not the member. Predefined /
+        array / generic return types are non-``identifier`` nodes, which is why
+        the old scan only misfired on user-typed properties. Every declaration
+        kind routed here (class/interface/struct/enum/constructor/property) tags
+        its name with a ``name`` field, so this is a strict correction with no
+        behavior change for the non-property kinds.
+        """
+        name_node = node.child_by_field_name("name")
         if name_node:
             return node_text(name_node, source)
         return None  # pragma: no cover - defensive
