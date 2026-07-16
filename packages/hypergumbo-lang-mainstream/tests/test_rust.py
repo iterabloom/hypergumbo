@@ -1378,6 +1378,109 @@ class TestRustVarTypesExtraction:
         assert var_types == {"x": "Foo"}
 
 
+class TestRustEnumMatchDispatch:
+    """WI-kodap: a binding destructured from a tuple-struct enum variant adopts
+    the variant's field type, so a subsequent method call on it resolves to the
+    concrete impl instead of a short-name collision / external stub.
+
+    Zoxide's subcommand tree is the canonical shape: ``enum Cmd { Query(Query),
+    Add(Add) }`` dispatched by ``match self { Cmd::Query(q) => q.run() }``. The
+    match-arm binding ``q`` was untyped, so ``q.run()`` fell to short-name
+    resolution and every arm bound to the same (last-registered) ``run`` method,
+    leaving the concrete handlers with 0 incoming calls.
+    """
+
+    def _parse(self, source_text: str):
+        import tree_sitter_rust as ts_rust
+        from tree_sitter import Language, Parser
+        lang = Language(ts_rust.language())
+        parser = Parser(lang)
+        tree = parser.parse(source_text.encode("utf-8"))
+        return tree, source_text.encode("utf-8")
+
+    def test_match_arm_binding_adopts_variant_field_type(self) -> None:
+        """Unit: match-arm tuple-struct patterns bind their locals to the
+        enum variant's field type."""
+        from hypergumbo_lang_mainstream.rust import _extract_var_types_rust
+        tree, src = self._parse(
+            "enum Cmd { Query(Query), Add(Add) }\n"
+            "fn dispatch(c: Cmd) {\n"
+            "    match c {\n"
+            "        Cmd::Query(q) => q.run(),\n"
+            "        Cmd::Add(a) => a.run(),\n"
+            "    }\n"
+            "}\n"
+        )
+        var_types = _extract_var_types_rust(tree.root_node, src, None)
+        assert var_types.get("q") == "Query"
+        assert var_types.get("a") == "Add"
+
+    def test_if_let_binding_adopts_variant_field_type(self) -> None:
+        """Unit: ``if let`` destructuring binds too (same pattern node)."""
+        from hypergumbo_lang_mainstream.rust import _extract_var_types_rust
+        tree, src = self._parse(
+            "enum Msg { Text(Payload) }\n"
+            "fn handle(m: Msg) {\n"
+            "    if let Msg::Text(p) = m { p.process(); }\n"
+            "}\n"
+        )
+        var_types = _extract_var_types_rust(tree.root_node, src, None)
+        assert var_types.get("p") == "Payload"
+
+    def test_match_dispatch_resolves_to_concrete_impls(self, tmp_path: Path) -> None:
+        """End-to-end: each match arm's ``.run()`` resolves to the correct
+        concrete impl, not a single shared method."""
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+        (tmp_path / "main.rs").write_text(
+            "pub enum Cmd { Query(Query), Add(Add) }\n"
+            "impl Cmd {\n"
+            "    pub fn run(self) {\n"
+            "        match self {\n"
+            "            Cmd::Query(q) => q.run(),\n"
+            "            Cmd::Add(a) => a.run(),\n"
+            "        }\n"
+            "    }\n"
+            "}\n"
+            "pub struct Query;\n"
+            "impl Query { pub fn run(self) {} }\n"
+            "pub struct Add;\n"
+            "impl Add { pub fn run(self) {} }\n"
+        )
+        result = analyze_rust(tmp_path)
+        by_id = {s.id: s for s in result.symbols}
+        # calls edges out of Cmd::run
+        cmd_run = next(
+            s for s in result.symbols if s.name == "Cmd::run"
+        )
+        dsts = {
+            by_id[e.dst].name
+            for e in result.edges
+            if e.edge_type == "calls" and e.src == cmd_run.id and e.dst in by_id
+        }
+        assert "Query::run" in dsts
+        assert "Add::run" in dsts
+
+    def test_binding_skips_builtin_fields_and_untracked_variants(self) -> None:
+        """Builtin-typed fields (i32) bind nothing; unit variants and
+        non-enum tuple patterns (Option::Some) are ignored; only the
+        user-typed positional field binds."""
+        from hypergumbo_lang_mainstream.rust import _extract_var_types_rust
+        tree, src = self._parse(
+            "enum Mixed { Pair(i32, Payload), Unit }\n"
+            "fn f(m: Mixed, opt: Option<Thing>) {\n"
+            "    match m {\n"
+            "        Mixed::Pair(n, p) => { p.go(); }\n"
+            "        Mixed::Unit => {}\n"
+            "    }\n"
+            "    if let Some(x) = opt { x.run(); }\n"
+            "}\n"
+        )
+        var_types = _extract_var_types_rust(tree.root_node, src, None)
+        assert var_types.get("p") == "Payload"   # user-typed field binds
+        assert "n" not in var_types              # builtin i32 field skipped
+        assert "x" not in var_types              # Option::Some not indexed
+
+
 class TestRustReturnTypeRegistryIntegration:
     """End-to-end tests for the WI-titor return-type registry chain.
 
@@ -5396,6 +5499,38 @@ fn caller() {
             if "caller" in e.src and "compute" in e.dst
         ]
         assert len(compute_edges) >= 1, f"Should find caller->compute: {call_edges}"
+
+    def test_bare_use_aliased_external_call_attributes_source_module(
+        self, tmp_path: Path
+    ) -> None:
+        """A bare call to a name imported via ``use std::fs::write`` resolves to
+        an unresolved-external edge whose module is split from the alias target
+        (``std::fs``), via the terminal-name ``use_aliases`` branch.
+
+        Co-locates coverage of that branch with rust.py: the polyglot call-site
+        suite covers it, but the smart-test slicer does not associate that suite
+        with rust.py, so a rust.py change would otherwise drop the only coverage
+        of these lines and fail the changed-file 100% gate.
+        """
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        code = """\
+use std::fs::write;
+
+fn save(data: &[u8]) {
+    write("out.bin", data).unwrap();
+}
+"""
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "main.rs").write_text(code)
+        result = analyze_rust(tmp_path)
+
+        write_edges = [
+            e
+            for e in result.edges
+            if e.edge_type == "calls" and "write" in str(e.dst)
+        ]
+        assert write_edges, "expected an unresolved-external edge for write()"
 
     def test_macro_call_cross_file_resolver(self, tmp_path: Path) -> None:
         """Call in macro body resolved via cross-file resolver."""

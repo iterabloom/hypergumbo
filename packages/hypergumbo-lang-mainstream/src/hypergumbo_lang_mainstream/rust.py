@@ -331,6 +331,48 @@ def _extract_param_types_rust(
     return out
 
 
+def _extract_enum_variant_field_types_rust(
+    root_node: "tree_sitter.Node", source: bytes
+) -> dict[str, list[str | None]]:
+    """Map ``EnumName::Variant`` -> positional tuple-field types.
+
+    Feeds match-arm / ``if let`` / ``while let`` / destructuring-``let`` binding
+    inference (WI-kodap): a local destructured from a tuple-struct enum variant
+    (``Cmd::Query(q)``) adopts the variant's field type, so a later
+    ``q.method()`` resolves to the concrete impl instead of collapsing to a
+    short-name-ambiguous method (zoxide's subcommand dispatch left every
+    concrete handler with 0 incoming calls). A position whose type is a builtin
+    / opaque / non-identifier normalizes to ``None`` (skipped at bind time, but
+    the slot is kept so multi-field patterns stay positionally aligned). Unit
+    and struct-like (``Named { x: Foo }``) variants are not indexed — their
+    bindings are field-named, not positional.
+    """
+    result: dict[str, list[str | None]] = {}
+    for node in iter_tree(root_node):
+        if node.type != "enum_item":
+            continue
+        enum_name_node = _find_child_by_field(node, "name")
+        if enum_name_node is None:  # pragma: no cover - grammar invariant
+            continue
+        enum_name = node_text(enum_name_node, source)
+        for variant in iter_tree(node):
+            if variant.type != "enum_variant":
+                continue
+            v_name_node = find_child_by_type(variant, "identifier")
+            ofdl = find_child_by_type(variant, "ordered_field_declaration_list")
+            if v_name_node is None or ofdl is None:
+                continue  # unit variant or struct-like variant
+            field_types = [
+                _normalize_rust_type_to_bare_name(node_text(c, source))
+                for c in ofdl.children
+                if c.is_named and c.type != "visibility_modifier"
+            ]
+            if field_types:
+                variant_name = node_text(v_name_node, source)
+                result[f"{enum_name}::{variant_name}"] = field_types
+    return result
+
+
 def _extract_var_types_rust(
     root_node: "tree_sitter.Node",
     source: bytes,
@@ -368,11 +410,39 @@ def _extract_var_types_rust(
     """
     var_types: dict[str, str] = {}
     registry = method_return_type_registry or {}
+    enum_variant_field_types = _extract_enum_variant_field_types_rust(
+        root_node, source
+    )
 
     for node in iter_tree(root_node):
         if node.type == "function_item":
             for k, v in _extract_param_types_rust(node, source).items():
                 var_types.setdefault(k, v)
+        elif node.type == "tuple_struct_pattern":
+            # WI-kodap: a tuple-struct enum-variant pattern (match arm, if/while
+            # let, or destructuring let) binds each positional local to the
+            # variant's field type, so a later `local.method()` resolves to the
+            # concrete impl. First-writer-wins, file-scoped (the documented
+            # var_types trade-off: extra edges, never missing).
+            type_node = _find_child_by_field(node, "type")
+            if type_node is None:  # pragma: no cover - grammar invariant
+                continue
+            field_types = enum_variant_field_types.get(
+                node_text(type_node, source)
+            )
+            if not field_types:
+                continue
+            # NB: compare by stable node id — child_by_field_name returns a
+            # distinct Python wrapper than the same node in ``node.children``,
+            # so an ``is`` check would fail to exclude the variant-path node.
+            sub_patterns = [
+                c
+                for c in node.children
+                if c.id != type_node.id and c.type not in ("(", ")", ",")
+            ]
+            for sub, field_type in zip(sub_patterns, field_types, strict=False):
+                if field_type is not None and sub.type == "identifier":
+                    var_types.setdefault(node_text(sub, source), field_type)
         elif node.type == "let_declaration":
             pattern_node = _find_child_by_field(node, "pattern")
             if pattern_node is None or pattern_node.type != "identifier":
