@@ -32,3 +32,19 @@
   clock: 3  # b6aa
   nonce: b6aa  # b6aa
   message: "Re-surfaced in dogfooding tranche 10 (U11, F192.A1 split, severity 4). resolution_quality='type_inferred' is stamped on the type-CANNOT-be-inferred else-branch (the value is the opposite of its meaning) across 16301 edges — the exact 16301 mislabel this item records. Fix: relabel/repair the py.py:3662 type_inferred else-branch value."  # b6aa
+- op: update  # 78b0
+  at: '2026-07-17T03:26:37Z'  # 78b0
+  by: agent  # 78b0
+  actor: jgstern_agent  # 78b0
+  clock: 4  # 78b0
+  nonce: 78b0  # 78b0
+  set: {}  # 78b0
+  add:  # 78b0
+    tags: [wave5]  # 78b0
+- op: discuss  # d88e
+  at: '2026-07-17T03:26:38Z'  # d88e
+  by: agent  # d88e
+  actor: jgstern_agent  # d88e
+  clock: 5  # d88e
+  nonce: d88e  # d88e
+  message: "Taking this up (owner: 'take WI-javus with wave5 tag', 2026-07-16). Same receiver-resolution correctness thread as the WI-sozoj io work — the terminal-else block in py.py I just modified. Adding wave5 tag."  # d88e
