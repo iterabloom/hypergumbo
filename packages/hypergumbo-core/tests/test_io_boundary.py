@@ -190,27 +190,36 @@ class TestLoadCatalog:
         assert db.get("sqlite3.Cursor.fetchall") == "db_read"
         assert db.get("sqlite3.Connection.commit") == "db_write"
 
-    def test_python_db_primitives_are_all_stdlib(self) -> None:
-        # WI-harin scope discipline: the db_* additions are STRICT STDLIB
-        # (sqlite3 / dbm / shelve) — NOT third-party ORMs. Django ORM /
-        # SQLAlchemy cannot be catalogued here: their calls arrive as bare
-        # untyped unresolved method calls (`.save()`/`.filter()`/`.get()`)
-        # that the matcher correctly refuses (INV-tapat), and matching them
-        # by short name would be a massive false-positive regression
-        # (`dict.get` dwarfs the ORM `get`s). This guards the Plan-C
-        # strict-stdlib boundary against future ORM creep; making Django
-        # ORM visible is a receiver-inference problem tracked separately.
+    def test_python_db_primitives_are_stdlib_or_type_verified_carveout(self) -> None:
+        # WI-harin + WI-sozoj admission criterion. The db_* catalog is stdlib
+        # (sqlite3 / dbm / shelve) PLUS the one documented type-verified
+        # framework carve-out ``django.db.models`` (WI-sozoj). WI-harin's
+        # exclusion was a PRECISION rule against short-name matching of UNTYPED
+        # receivers, not a purity ban: the django entries fire ONLY through
+        # py.py's typed ``.objects``/``models.Model``-subclass module hint (the
+        # module-filter path), never the bare short-name gate, so `dict.get()`
+        # cannot false-tag. Any OTHER third-party db module is STILL forbidden —
+        # this guards the boundary against untyped short-name ORM creep. A new
+        # framework datastore entry must meet the criterion (a real distinctive
+        # module namespace + a type-verified receiver + a bounded method set) and
+        # be added to the allow-list below deliberately.
         catalog = load_catalog("python")
         _STDLIB_DB_MODULE_ROOTS = ("sqlite3", "dbm", "shelve")
+        _TYPE_VERIFIED_DB_MODULES = ("django.db.models",)
         for p in catalog.primitives:
             if p.boundary not in ("db_read", "db_write"):
                 continue
             root = p.module.split(".")[0]
-            assert root in _STDLIB_DB_MODULE_ROOTS, (
-                f"Python db_* catalog must be strict-stdlib "
-                f"(sqlite3/dbm/shelve); third-party module {p.module!r} "
-                f"found ({p.qualified_name}). Third-party ORMs belong to "
-                f"receiver-inference, not the catalog."
+            allowed = (
+                root in _STDLIB_DB_MODULE_ROOTS
+                or p.module in _TYPE_VERIFIED_DB_MODULES
+            )
+            assert allowed, (
+                f"Python db_* catalog must be stdlib (sqlite3/dbm/shelve) or a "
+                f"documented type-verified carve-out {_TYPE_VERIFIED_DB_MODULES}; "
+                f"module {p.module!r} ({p.qualified_name}) is neither. A new "
+                f"framework datastore entry needs a type-verified receiver + a "
+                f"bounded method set + an explicit allow-list addition here."
             )
 
     def test_python_catalog_drops_execute_from_command_line_fp(self) -> None:
@@ -2048,6 +2057,96 @@ class TestModuleQualifiedMatching:
         # Should match fs_write (io::Write), not net_send
         if count > 0:
             assert edge.meta["io_boundary"] == "fs_write"
+
+
+class TestDjangoOrmIoBoundary:
+    """WI-sozoj: Django ORM db_read/db_write via the type-verified module path.
+
+    py.py types the ORM receiver (the ``.objects`` Manager marker /
+    ``models.Model``-subclass ``self``) and emits a ``django.db.models``
+    module-qualified dst. These tests pin that the python.yaml carve-out
+    classifies each method through the module-filter path — never the
+    short-name gate, so no ``dict.get()``/``.save()`` false positive.
+    """
+
+    def _make_edge(self, src: str, dst: str, edge_type: str = "calls"):
+        from dataclasses import dataclass
+        from typing import Any, Dict, Optional
+
+        @dataclass
+        class MockEdge:
+            src: str
+            dst: str
+            edge_type: str
+            meta: Optional[Dict[str, Any]] = None
+
+        return MockEdge(src=src, dst=dst, edge_type=edge_type, meta=None)
+
+    def test_catalog_classifies_manager_read_methods(self) -> None:
+        catalog = load_catalog("python")
+        for method in ("filter", "get", "all", "count", "exists"):
+            hit = catalog.lookup_with_module(method, "django.db.models")
+            assert hit is not None, method
+            assert hit.boundary == "db_read", method
+
+    def test_catalog_classifies_write_methods(self) -> None:
+        catalog = load_catalog("python")
+        for method in ("create", "bulk_create", "update", "delete", "save"):
+            hit = catalog.lookup_with_module(method, "django.db.models")
+            assert hit is not None, method
+            assert hit.boundary == "db_write", method
+
+    def test_ambiguous_get_stays_suppressed_without_module(self) -> None:
+        """Regression: the django ``get``/``delete`` entries must NOT leak into
+        the short-name (no-module) path — a bare ``.get()`` on an untyped
+        receiver stays refused (INV-tapat/INV-maluk), or dict.get() false-tags."""
+        catalog = load_catalog("python")
+        assert catalog.lookup_with_module("get", "external") is None
+        assert catalog.lookup_with_module("delete", "external") is None
+
+    def test_tags_manager_filter_as_db_read(self) -> None:
+        catalog = load_catalog("python")
+        edge = self._make_edge(
+            src="python:/app/views.py:10-12:view:function",
+            dst="python:django.db.models:0-0:filter:unresolved",
+        )
+        count = tag_io_boundaries([edge], {"python": catalog})
+        assert count == 1
+        assert edge.meta["io_boundary"] == "db_read"
+        assert edge.meta["io_primitive"] == "django.db.models.filter"
+
+    def test_tags_manager_create_as_db_write(self) -> None:
+        catalog = load_catalog("python")
+        edge = self._make_edge(
+            src="python:/app/views.py:10-12:make:function",
+            dst="python:django.db.models:0-0:create:unresolved",
+        )
+        count = tag_io_boundaries([edge], {"python": catalog})
+        assert count == 1
+        assert edge.meta["io_boundary"] == "db_write"
+
+    def test_tags_instance_save_as_db_write(self) -> None:
+        catalog = load_catalog("python")
+        edge = self._make_edge(
+            src="python:/app/models.py:10-12:Order.stamp:method",
+            dst="python:django.db.models:0-0:save:unresolved",
+        )
+        count = tag_io_boundaries([edge], {"python": catalog})
+        assert count == 1
+        assert edge.meta["io_boundary"] == "db_write"
+
+    def test_bare_untyped_get_not_tagged_as_django(self) -> None:
+        """A bare ``.get()`` with no django module hint (untyped receiver) is
+        NOT tagged — the carve-out only fires through the typed module path."""
+        catalog = load_catalog("python")
+        edge = self._make_edge(
+            src="python:/app/cache.py:1-3:load:function",
+            dst="python:external:0-0:get:unresolved",
+        )
+        edge.meta = {"call_construct": "method"}
+        count = tag_io_boundaries([edge], {"python": catalog})
+        assert count == 0
+        assert edge.meta.get("io_boundary") is None
 
 
 class TestComputeBoundaryMap:

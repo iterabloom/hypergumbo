@@ -103,7 +103,20 @@ CONTAINABLE_KINDS = frozenset(
     # orphans on self-analysis. The dead-code BFS does not traverse ``contains``
     # (see the module note above), so this de-orphaning does not move the
     # dead-code-maybe FP rate; it only gives fields their class-containment edge.
-    {"method", "getter", "setter", "message", "function", "variable", "field"}
+    #
+    # WI-fokag: ``subscript`` (Swift subscript members, emitted with dotted names
+    # like ``JSON.subscript(key:)`` — the parenthesized ``(key:)`` suffix carries
+    # no name separator, so parent-name extraction already yields ``JSON``) roots
+    # at its enclosing type exactly like ``method``. Without it, correctly-named
+    # struct-body subscripts had 0 ``contains`` edges (verified on SwiftyJSON
+    # post-#689: the JSON struct contained its field/method members but not its
+    # subscripts, leaving the flagship ``json[...]`` accessors looking like
+    # orphaned members of the central type). Like ``field`` above, this is a
+    # graph-completeness fix — the dead-code BFS does not traverse ``contains``,
+    # so it does not move the dead-code-maybe FP rate. (The separate gap where a
+    # ``json["key"]`` subscript-CALL site does not resolve to the subscript node
+    # is a Swift-analyzer resolution facet, out of scope here.)
+    {"method", "getter", "setter", "message", "function", "variable", "field", "subscript"}
 )
 
 # Symbol kinds that can "contain" other symbols.

@@ -422,6 +422,52 @@ def _lookup_symbol_by_module(
 # readline/readlines, fs_write write/writelines).
 EXTERNAL_CONSTRUCTOR_TYPES = {"open": "file", "socket.socket": "socket.socket"}
 
+# WI-sozoj: Django ORM database-I/O visibility. Django's ORM I/O is invisible to
+# the io-boundary detector because it arrives as bare untyped method calls the
+# catalog correctly refuses (INV-tapat/INV-maluk): ``.save()``/``.filter()``/
+# ``.get()`` on a receiver hypergumbo cannot type; matching them by short name
+# would false-positive on every ``dict.get()``/``.save()`` in the corpus. We make
+# it visible the SANCTIONED way — TYPE the receiver via a framework-syntax marker
+# and emit a ``django.db.models``-module-qualified dst, so io-boundary's
+# module-filter path (never the short-name gate) classifies each method as
+# db_read/db_write via the python.yaml catalog. This is the WI-fuvuj division
+# (producer supplies module IDENTITY; the catalog does the CLASSIFICATION) and
+# the receiver-type-inference route python.yaml's WI-harin note reserves for
+# exactly this. Framework-SYNTAX recognition in the analyzer, like the Django
+# route/signal extraction below — NOT dispatch modelling (that stays in the
+# django_orm_dispatch linker, whose orthogonal concern is dispatches_to
+# reachability, not io classification).
+#
+# Two type-verifying markers, each bounded to a closed method set so a non-Django
+# homonym stays invisible rather than mis-tagged:
+#   * ``<Model>.objects.<method>()`` — the Manager/QuerySet query API. ``.objects``
+#     is Django's Manager-descriptor convention; the chained receiver emits no
+#     edge otherwise (measured). Catches reads (filter/get/all/...) AND
+#     Manager-position writes (create/bulk_create/update/...).
+#   * ``self.save()``/``self.delete()`` in a class that DIRECTLY extends
+#     ``models.Model`` — the ORM instance-write surface.
+# The read/write split lives in the catalog (python.yaml keyed on method name);
+# the producer only needs the recognition set. Deferred (share the same
+# instance/return-type-inference need, out of scope here): ``instance.save()`` on
+# a typed local, SQLAlchemy ``Session.*``, and transitive Model bases.
+DJANGO_ORM_MODULE = "django.db.models"
+DJANGO_ORM_MANAGER_METHODS = frozenset({
+    # reads (classified db_read in python.yaml)
+    "all", "filter", "exclude", "get", "count", "exists", "first", "last",
+    "values", "values_list", "annotate", "aggregate", "order_by", "distinct",
+    "none", "iterator", "earliest", "latest", "in_bulk",
+    "select_related", "prefetch_related",
+    # writes (classified db_write in python.yaml)
+    "create", "bulk_create", "update", "bulk_update", "delete",
+    "get_or_create", "update_or_create",
+})
+DJANGO_ORM_INSTANCE_WRITE_METHODS = frozenset({"save", "delete"})
+# DIRECT ``models.Model`` bases only, dotted form only — the unambiguous Django
+# idiom (``class Order(models.Model)``). A transitive base or a bare ``Model``
+# degrades to invisible (INV-tapat precision-safe: a missed ORM write, never a
+# mis-tagged non-ORM call).
+DJANGO_MODEL_BASES = frozenset({"models.Model", "django.db.models.Model"})
+
 # Django URL pattern functions (call-based routing)
 # These emit UsageContext records for YAML pattern matching (v1.1.x)
 DJANGO_URL_FUNCTIONS = {"path", "re_path", "url"}
@@ -4829,6 +4875,33 @@ def _receiver_type_id_trustworthy(
     return True
 
 
+def _class_directly_extends_django_model(
+    class_short_name: str,
+    local_symbols: dict[str, Symbol],
+) -> bool:
+    """WI-sozoj: True iff the named class DIRECTLY subclasses django ``models.Model``.
+
+    Gates the ORM instance-write re-key (``self.save()``/``self.delete()`` →
+    db_write). Deliberately DIRECT-base and dotted-form only
+    (``class Order(models.Model)`` / ``class Order(django.db.models.Model)``) —
+    the unambiguous Django idiom. A transitive base
+    (``Order(LoggedModel)``, ``LoggedModel(models.Model)``) or a bare ``Model``
+    base degrades to invisible: INV-tapat precision-safe, a missed ORM write
+    rather than a mis-tagged non-ORM call. The reachability linker
+    (``django_orm_dispatch``) owns the transitive / short-name-collision case for
+    its orthogonal ``dispatches_to`` concern; io classification stays narrow here.
+
+    Reads ``base_classes`` off the file-global class symbol (the same metadata
+    the inheritance linker consumes); returns False for an unknown name, a
+    non-class symbol, or a class without base metadata.
+    """
+    sym = local_symbols.get(class_short_name)
+    if sym is None or sym.kind != "class" or not sym.meta:
+        return False
+    bases = sym.meta.get("base_classes") or []
+    return any(base in DJANGO_MODEL_BASES for base in bases)
+
+
 def _process_call(
     call_node: ast.Call,
     caller_symbol: Symbol,
@@ -5036,7 +5109,43 @@ def _process_call(
             for d in (caller_symbol.meta or {}).get("decorators", [])
             if isinstance(d, dict)
         }
-        if isinstance(func, ast.Attribute) and isinstance(func.value, ast.Name):
+        # WI-sozoj: Django ORM Manager/QuerySet query dispatch —
+        # ``<Model>.objects.<method>()``. The ``.objects`` attribute is Django's
+        # Manager-descriptor convention: a near-unique, type-verifying marker
+        # (a bare ``.filter()``/``.get()`` collides with dict/cache methods, but
+        # ``<x>.objects.filter()`` does not). Emit a ``django.db.models``
+        # module-qualified dst so io-boundary's module-filter path (never the
+        # short-name gate) classifies each method db_read/db_write via
+        # python.yaml. Bounded to the closed ORM method set, so a stray
+        # non-Django ``.objects.x()`` stays invisible. This chained receiver
+        # (``func.value`` is itself an ``ast.Attribute``) emits no edge in any
+        # branch below (measured), so this is net-new emission, not a re-key.
+        if (
+            isinstance(func, ast.Attribute)
+            and isinstance(func.value, ast.Attribute)
+            and func.value.attr == "objects"
+            and func.attr in DJANGO_ORM_MANAGER_METHODS
+        ):
+            _orm_method = func.attr
+            edges.append(Edge.create(
+                src=caller_symbol.id,
+                dst=f"python:{DJANGO_ORM_MODULE}:0-0:{_orm_method}:unresolved",
+                edge_type="calls",
+                line=call_node.lineno,
+                evidence_type="ast_call",
+                is_resolved=False,
+                meta={
+                    "call_construct": "method",
+                    "framework_dispatch": "django_orm",
+                    "resolution_quality": "type_inferred",
+                },
+                dst_ref=ExternalRef(
+                    lang="python", module_path=DJANGO_ORM_MODULE, name=_orm_method
+                ),
+                origin=PASS_ID,
+                origin_run_id=run_id,
+            ))
+        elif isinstance(func, ast.Attribute) and isinstance(func.value, ast.Name):
             receiver_name = func.value.id
             attr_name = func.attr
 
@@ -5255,6 +5364,30 @@ def _process_call(
                             module_imports, local_symbols,
                         ):
                             unresolved_meta["receiver_type_id"] = _recv_sym.id
+                # WI-sozoj: a ``self.save()``/``self.delete()`` whose enclosing
+                # class DIRECTLY extends django ``models.Model`` is an ORM
+                # instance write — re-key the dst to ``django.db.models`` so
+                # io-boundary classifies it db_write. This reads only the
+                # ``enclosing_class`` the self-branch above already stamped
+                # (present exclusively for the ``self`` receiver, and only when
+                # the method stayed unresolved) and leaves that INV-fahub /
+                # WI-noham / WI-supat receiver-hint chain untouched — additive,
+                # so a non-Django class is byte-identical to before. The
+                # module-qualified dst_ref survives serialization for the
+                # io-boundary CLI consumer (which reparses the dst id).
+                _orm_dst_ref: ExternalRef | None = None
+                if (
+                    attr_name in DJANGO_ORM_INSTANCE_WRITE_METHODS
+                    and unresolved_meta.get("enclosing_class") is not None
+                    and _class_directly_extends_django_model(
+                        unresolved_meta["enclosing_class"], local_symbols
+                    )
+                ):
+                    dst_id = f"python:{DJANGO_ORM_MODULE}:0-0:{attr_name}:unresolved"
+                    unresolved_meta["framework_dispatch"] = "django_orm"
+                    _orm_dst_ref = ExternalRef(
+                        lang="python", module_path=DJANGO_ORM_MODULE, name=attr_name
+                    )
                 edges.append(Edge.create(
                     src=caller_symbol.id,
                     dst=dst_id,
@@ -5263,6 +5396,7 @@ def _process_call(
                     evidence_type="ast_call",
                     is_resolved=False,
                     meta=unresolved_meta,
+                    dst_ref=_orm_dst_ref,
                     origin=PASS_ID,
                     origin_run_id=run_id,
                 ))

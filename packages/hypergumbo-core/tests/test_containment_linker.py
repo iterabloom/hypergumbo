@@ -83,6 +83,49 @@ class TestContainmentLinker:
         assert edge.dst == field.id
         assert edge.edge_type == "contains"
 
+    def test_swift_struct_body_subscript(self) -> None:
+        """WI-fokag: a struct-body subscript (Type.subscript(key:)) roots at its type.
+
+        Swift subscripts are emitted as kind='subscript' with dotted names like
+        'JSON.subscript(key:)', exactly like methods, but 'subscript' was absent
+        from CONTAINABLE_KINDS — so correctly-named struct-body subscripts had 0
+        contains edges (verified real on SwiftyJSON post-#689: the JSON struct
+        contained its field and method members but not its subscripts). The
+        parenthesized '(key:)' name suffix carries no separator, so parent
+        extraction already yields 'JSON'; only the kind gate blocked the edge.
+        """
+        cls = _sym(
+            "swift:json.swift:1-20:JSON:struct",
+            "JSON",
+            "struct",
+            language="swift",
+            path="json.swift",
+            start=1,
+            end=20,
+        )
+        sub = _sym(
+            "swift:json.swift:5-8:JSON.subscript(key:):subscript",
+            "JSON.subscript(key:)",
+            "subscript",
+            language="swift",
+            path="json.swift",
+            start=5,
+            end=8,
+        )
+
+        ctx = LinkerContext(
+            repo_root=Path("/test"),
+            symbols=[cls, sub],
+            edges=[],
+        )
+        result = link_containment(ctx)
+
+        assert len(result.edges) == 1
+        edge = result.edges[0]
+        assert edge.src == cls.id
+        assert edge.dst == sub.id
+        assert edge.edge_type == "contains"
+
     def test_ruby_hash_separated_method(self) -> None:
         """Creates contains edge for Ruby-style ClassName#method."""
         cls = _sym("ruby:app.rb:1-10:User:class", "User", "class", language="ruby", path="app.rb")
