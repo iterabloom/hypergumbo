@@ -48,3 +48,25 @@
   clock: 5  # d88e
   nonce: d88e  # d88e
   message: "Taking this up (owner: 'take WI-javus with wave5 tag', 2026-07-16). Same receiver-resolution correctness thread as the WI-sozoj io work — the terminal-else block in py.py I just modified. Adding wave5 tag."  # d88e
+- op: update  # 6eb8
+  at: '2026-07-17T04:08:18Z'  # 6eb8
+  by: agent  # 6eb8
+  actor: jgstern_agent  # 6eb8
+  clock: 6  # 6eb8
+  nonce: 6eb8  # 6eb8
+  set:  # 6eb8
+    status: done  # 6eb8
+- op: discuss  # 70ad
+  at: '2026-07-17T04:08:18Z'  # 70ad
+  by: agent  # 70ad
+  actor: jgstern_agent  # 70ad
+  clock: 7  # 70ad
+  nonce: 70ad  # 70ad
+  message: "DONE in PR (dev 6f8da9d036). Fixed the titled py.py mislabel: the unresolved method-call fallback stamped resolution_quality='type_inferred' UNCONDITIONALLY, including on the give-up branch whose own comment reads 'type cannot be inferred'. Now DERIVED from whether the receiver-hint chain actually established a type — self (enclosing_class) / annotated-or-constructed var / bare local class keep 'type_inferred'; the untyped/duck give-up (INV-fahub-biased to unresolved) carries NO resolution_quality (the field names the resolution pathway per spec §903, and here there was none).\n\nBEHAVIORAL EVIDENCE (re-ran the filing's own repro on the current corpus, analyze_python on /tmp/f5_cohort_pool/pretix/src): give-up mislabels 7920 -> 0; every remaining type_inferred (7692) carries a real inference signal (receiver_type_hint / enclosing_class / receiver_type_id, or a module-qualified typed dst). NOTE the filing's '0/16301 actually type-inferred' is now STALE — the WI-noham/WI-supat/WI-fuvuj/WI-sozoj receiver-hint work made ~38% legitimately typed before this fix; this fix removes the false label from the remaining ~62% give-ups. Unit test test_py_resolution_quality.py::test_give_up_receiver_carries_no_resolution_quality pins the give-up branch directly; 574 receiver-resolution/coherence regression tests pass, changed source 100% in isolation.\n\nThe 3 genuinely-type-inferred py.py stamps (WI-fuvuj external_var_types, WI-noham property-read line 4037, WI-sozoj django marker) were already correct and are unchanged.\n\nSEPARATE (not this item's titled defect, flagged for owner): the discussion also noted cross-ANALYZER resolution_quality vocabulary inconsistency (py/dart/csharp 'type_inferred', lua 'typed', ruby 'typed_receiver', go 'ambiguous') + whether csharp/dart have the SAME give-up mislabel. That's a vocabulary-normalization + per-analyzer audit, distinct from the Python fix. Not filed — surfaced to owner."  # 70ad
+- op: discuss  # 5083
+  at: '2026-07-17T04:10:47Z'  # 5083
+  by: agent  # 5083
+  actor: jgstern_agent  # 5083
+  clock: 8  # 5083
+  nonce: '5083'  # 5083
+  message: "Cross-analyzer follow-up (surfaced in the closure above) now FILED as WI-botam-sihiv-tumil-fadas-jahuv-bamaz-bikor-zulom (P3, dogfood, not wave5): Facet A = audit csharp/dart for the same give-up mislabel + apply this fix's derive-from-hint shape; Facet B = resolution_quality vocabulary normalization (enum vs free-text across py/dart/csharp/lua/ruby/go). Owner direction: file it, not wave5."  # 5083

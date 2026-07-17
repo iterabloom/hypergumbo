@@ -32,3 +32,18 @@
     tags: [dogfood]  # 90f7
   remove:  # 90f7
     tags: [dogfooding]  # 90f7
+- op: update  # d198
+  at: '2026-07-17T08:09:55Z'  # d198
+  by: agent  # d198
+  actor: jgstern_agent  # d198
+  clock: 3  # d198
+  nonce: d198  # d198
+  set:  # d198
+    status: done  # d198
+- op: discuss  # fdfd
+  at: '2026-07-17T08:09:56Z'  # fdfd
+  by: agent  # fdfd
+  actor: jgstern_agent  # fdfd
+  clock: 4  # fdfd
+  nonce: fdfd  # fdfd
+  message: "Fixed in PR #700 (merged, dev d4429117f8). New pure/tested io_boundary.in_progress_languages(languages) + a shared cli._warn_in_progress_catalogs wired into ALL THREE catalog consumers (io-boundaries, verify-claims, slice --io-boundary) — the invariant 'each consumer warns on an in_progress-language query' now holds uniformly. Catalog status field documented in the spec. BEHAVIORAL EVIDENCE (live repro): 'hypergumbo io-boundaries' on caddy (go=in_progress) emits '⚠ io_primitives catalog for go is in_progress — io-boundary results for go may be incomplete.'; on pretix it warns for javascript (in_progress) but NOT python (complete) — per-language, correct. Production-path test test_io_boundaries_warns_on_in_progress_language + quiet-on-complete control; unit tests for the helper (select/exclude-unsupported/sort-dedup). smart-test green (4448 passed, changed files 100% cov). SCOPE NOTE: part (a) 'promote in_progress catalogs to complete where actually complete' deliberately NOT done — promotion requires per-language stdlib-completeness verification with provenance URLs that can't be supplied honestly; the warning makes the current in_progress state disclosed rather than silent, which is the invariant. Currently complete: python/rust/erlang; 11 remain in_progress."  # fdfd

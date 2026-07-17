@@ -1,0 +1,20 @@
+- op: create  # f209
+  at: '2026-07-17T04:10:34Z'  # f209
+  by: agent  # f209
+  actor: jgstern_agent  # f209
+  clock: 1  # f209
+  nonce: f209  # f209
+  data:  # f209
+    kind: work_item  # f209
+    title: "resolution_quality cross-analyzer audit: give-up-mislabel check (csharp/dart) + vocabulary normalization (WI-javus split-out)"  # f209
+    status: todo_hard  # f209
+    priority: 3  # f209
+    parent:  # f209
+    tags:  # f209
+    - dogfood  # f209
+    isbefore: []  # f209
+    duplicate_of: []  # f209
+    not_duplicate_of: []  # f209
+    pr_ref:  # f209
+    description: "## Origin\n\nSplit from **WI-javus** (done — the Python `resolution_quality='type_inferred'`\ngive-up mislabel, fixed at py.py's terminal-else by deriving the label from\nwhether the receiver-hint chain actually established a type). WI-javus's\ndiscussion flagged a broader cross-analyzer angle that is NOT the Python defect\nand reaches beyond the current DEEP cohort, so it is filed separately and\nuntagged `wave5` (owner direction 2026-07-17).\n\n## Two facets\n\n### Facet A — per-analyzer give-up-mislabel audit (structural analogue of WI-javus)\n\nWI-javus fixed py.py stamping `resolution_quality='type_inferred'` on its\ntype-CANNOT-be-inferred give-up branch. The **same defect may exist in other\nanalyzers** that emit `type_inferred`: **csharp.py and dart.py** stamp\n`type_inferred` — audit whether they, like the old py.py, stamp it\nUNCONDITIONALLY on an unresolved/give-up receiver branch (whose semantics are\n\"could not infer\"), which would be the identical mislabel. The Structural Fix\nProtocol analogue check: for each analyzer emitting `resolution_quality`, does\nthe value honestly reflect the branch that emits it? Apply the WI-javus fix shape\n(derive the label from an actual hint/type establishment; omit on the give-up).\nGrep seed: `grep -rn \"resolution_quality\" packages/*/src/**/*.py`.\n\n### Facet B — vocabulary normalization (is it a bounded enum or an open set?)\n\n`resolution_quality` is currently an OPEN value set with no enum validation\n(`axis_meta_keys.py` MetaKeySpec documents it as a pathway-quality label,\nexamples `recovery`/`ambiguous`, but does not enumerate/validate values). Across\nanalyzers the vocabulary has drifted: `type_inferred` (py/dart/csharp), `typed`\n(lua), `typed_receiver` (ruby), `ambiguous` (go), plus `recovery` (the\nmethod_call_recovery linker). Some of these name the SAME concept with different\nstrings; a consumer branching on the string cannot portably read \"the receiver\ntype was established.\" Decide: normalize to a bounded, documented vocabulary\n(and add enum validation, as the vocab-axis ratchet does for\n`Symbol.kind`/`Edge.evidence_type`), or ratify the per-language values as\ndeliberate free-text (with a documented mapping). Note spec §903 already flags a\nre-evaluation trigger on the sibling `receiver` key for exactly this \"mixes a\nresolution class with an expression shape\" concern — resolution_quality warrants\nthe same scrutiny.\n\n## Precedent / references\n\n- **WI-javus** (done) — the Python fix + the derive-from-hint pattern (Facet A).\n- Current definition: spec §903 + `axis_meta_keys.py` MetaKeySpec\n  (`resolution_quality` = pathway-quality label, orthogonal to `Edge.is_resolved`).\n- Producers today: py.py, csharp.py, dart.py, lua.py, ruby.py, go.py,\n  `linkers/method_call_recovery.py` (the `recovery` value, is_resolved=True — the\n  one value inverted relative to `type_inferred`'s give-up misuse, per WI-javus\n  discussion).\n- Vocab-axis ratchet precedent for Facet B: ADR-0023/0027/0028 + the producer-side\n  value-keyed sweep (INV-numat).\n\n## Not this item\n\nThe Python give-up mislabel (fixed, WI-javus). SQLAlchemy io (WI-jojuv). This item\nis the cross-language audit + the enum-vs-free-text vocabulary decision."  # f209
+    fields: {}  # f209
