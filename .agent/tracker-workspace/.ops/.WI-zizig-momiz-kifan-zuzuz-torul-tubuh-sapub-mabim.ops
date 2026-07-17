@@ -19,3 +19,25 @@
     pr_ref:  # 572c
     description: "Found in DEEP bakeoff deep-20260623-134237 cohort-001 iter-004 (caddy, Go). Caddy's module architecture dispatches via a global registry: 'RegisterModule' populates a map, and 'Context.LoadModule' looks up + instantiates by string ID at runtime. Hypergumbo emits no static edge across this indirection, so the forward slice from 'main()' reaches only 13 nodes and never touches an HTTP handler / module Provision/ServeHTTP method. This is the dominant reason caddy's forward-slice usefulness is limited despite an otherwise strong Go call graph (9441 resolved cross-file calls). A registry-linker (recognize RegisterModule(id, ctor) + LoadModule(id) pairs, emit dispatches_to) would recover the plugin dispatch. Evidence: reflect/cohort-001/iter-004/caddy.assessment.yaml; slice.0.json (13 nodes from main)."  # 572c
     fields: {}  # 572c
+- op: discuss  # 17de
+  at: '2026-07-16T11:37:44Z'  # 17de
+  by: agent  # 17de
+  actor: jgstern_agent  # 17de
+  clock: 2  # 17de
+  nonce: 17de  # 17de
+  message: "Scoping note (2026-07-16, per-language cohort wrap-up). Assessed during the 'crush the cohort in a couple mega-PRs' pass. This is NOT a bounded analyzer tweak like its cohort siblings (WI-kodap/WI-fagit/WI-kudir, all shipped in PR #689/#691) — it needs a NEW framework-dispatch LINKER, a sibling of packages/hypergumbo-core/src/hypergumbo_core/linkers/{kafka_streams_dispatch,airflow_framework_dispatch,message_dispatch}.py. There is no existing RegisterModule/LoadModule handling anywhere in the tree (grepped). The linker must: (1) detect module registration (caddy.RegisterModule(SomeModule{}) — the factory), (2) detect the dispatch read (ctx.LoadModule / registry lookup by name), (3) emit dispatches_to edges from the load site to the registered module's provisioning method, so the forward slice from main() reaches the HTTP handlers. Per ADR-3bbb it needs a Framework-subcategory docstring. Deliberately deferred from the cohort mega-PRs to keep them tight and because it warrants its own TDD + 100% coverage + bakeoff-validation cycle. Recommended as its own focused linker PR. Caddy is the canonical repro (in /tmp/f5_cohort_pool/caddy)."  # 17de
+- op: update  # c39f
+  at: '2026-07-16T19:53:23Z'  # c39f
+  by: agent  # c39f
+  actor: jgstern_agent  # c39f
+  clock: 3  # c39f
+  nonce: c39f  # c39f
+  set:  # c39f
+    status: done  # c39f
+- op: discuss  # 0083
+  at: '2026-07-16T19:53:23Z'  # 0083
+  by: agent  # 0083
+  actor: jgstern_agent  # 0083
+  clock: 4  # 0083
+  nonce: '0083'  # 0083
+  message: "Fixed in PR #693 (dev 1965318df9). New Framework-subcategory linker packages/hypergumbo-core/src/hypergumbo_core/linkers/caddy_module_dispatch.py.\n\nApproach (refined from the scoping note by measure-live): the register->load coupling flows through a runtime string ID resolved from JSON, so a specific LoadModule site is NOT statically matchable to a specific module — that half is deliberately out of scope (same posture as kafka_streams/decorator dispatch linkers). The linker instead recovers the structural half: a Caddy module = a Go struct owning a CaddyModule() ModuleInfo marker method; emit dispatches_to edges from that MARKER METHOD to each framework-called handler (Provision/Validate/Cleanup/Start/Stop/ServeHTTP). Anchor is the marker method, NOT the struct: measure-live showed the struct is only reached by contains edges (which forward-slice does not traverse), while the marker is on the reachable chain init->RegisterModule->Module.CaddyModule->T.CaddyModule (last hop via the implements linker).\n\nBEHAVIORAL EVIDENCE (re-ran the filed repro on the canonical repo /tmp/f5_cohort_pool/caddy): the linker emits 131 caddy_module dispatches_to edges, reaching 131 distinct handler methods that were previously 0-incoming dead-code candidates. 120/136 CaddyModule markers have incoming calls/dispatches_to — i.e. the register->dispatch chain resolves IN-TREE for 88% of modules on real Caddy (cross-package import via go.mod resolves, unlike a bare synthetic fixture), so those handlers are genuinely reachable from the registration flow. Same-package minimal fixture confirms Gzip.Provision/ServeHTTP become reachable from main(). Linker + test at 100% coverage; full smart-test 3330 passed.\n\nRESIDUALS (honest): (1) the 16/136 (12%) markers without an in-tree incoming edge are the cross-package init->RegisterModule Go-resolution gap (external_symbol stub) — a separate Go analyzer concern, on which full main-reachability of those modules' handlers depends. (2) Module-namespace-specific handler methods beyond the universal interface hooks (encoder NewEncoder, matcher Match, etc.) are not yet in the dispatched-method set. Both documented in the linker docstring."  # 0083

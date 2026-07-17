@@ -1,0 +1,22 @@
+- op: create  # adce
+  at: '2026-07-16T19:53:54Z'  # adce
+  by: agent  # adce
+  actor: jgstern_agent  # adce
+  clock: 1  # adce
+  nonce: adce  # adce
+  data:  # adce
+    kind: work_item  # adce
+    title: "Go cross-package call to in-tree (go.mod-local) function resolves to external_symbol stub for some import paths"  # adce
+    status: todo_hard  # adce
+    priority: 3  # adce
+    parent:  # adce
+    tags:  # adce
+    - dogfood  # adce
+    - wave5  # adce
+    - go  # adce
+    isbefore: []  # adce
+    duplicate_of: []  # adce
+    not_duplicate_of: []  # adce
+    pr_ref:  # adce
+    description: "Surfaced while validating the Caddy dispatch linker (WI-zizig, PR #693) on real Caddy (/tmp/f5_cohort_pool/caddy). A cross-package call like gzip.go's 'caddy.RegisterModule(...)' — where the imported package is in the SAME go module — sometimes resolves to a 'go:<importpath>:0-0:RegisterModule:external_symbol' stub instead of the in-tree function node, breaking the reachability chain (init -> RegisterModule -> Module.CaddyModule -> ...). Measured: on real Caddy, 120/136 (88%) CaddyModule marker methods have an incoming call/dispatches_to edge (chain resolves in-tree), but 16/136 (12%) do not — those modules' handlers stay unreachable from the registration flow even with the WI-zizig linker's edges present. A bare synthetic fixture WITHOUT go.mod resolves 0% (fake import path 'example.com/caddy' -> external), confirming the resolver keys on module-path mapping. Action: investigate which of the 16 real-Caddy modules fail and why (package layout? internal/ packages? vendored? alias imports?), and whether the Go analyzer's import->in-tree-package mapping can be tightened. Distinct from WI-zizig (that linker's marker->handler edges are correct; this is the upstream init->RegisterModule resolution)."  # adce
+    fields: {}  # adce

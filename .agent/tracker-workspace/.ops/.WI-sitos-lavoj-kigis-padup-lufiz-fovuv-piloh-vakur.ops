@@ -1,0 +1,22 @@
+- op: create  # 6f62
+  at: '2026-07-17T02:24:28Z'  # 6f62
+  by: agent  # 6f62
+  actor: jgstern_agent  # 6f62
+  clock: 1  # 6f62
+  nonce: 6f62  # 6f62
+  data:  # 6f62
+    kind: work_item  # 6f62
+    title: "Django/SQLAlchemy ORM I/O: instance-typing + SQLAlchemy + transitive Model bases (WI-sozoj residual)"  # 6f62
+    status: todo_hard  # 6f62
+    priority: 3  # 6f62
+    parent:  # 6f62
+    tags:  # 6f62
+    - wave5  # 6f62
+    - dogfood  # 6f62
+    - python  # 6f62
+    isbefore: []  # 6f62
+    duplicate_of: []  # 6f62
+    not_duplicate_of: []  # 6f62
+    pr_ref:  # 6f62
+    description: "## Origin\n\nDeferred residual of **WI-sozoj** (Django ORM db_* visibility), shipped for the\ndominant Django-marker case in PR #695 (dev 5dcfad4927). Owner-approved bounded\nscope: the type-verified `.objects.` Manager marker + `models.Model`-subclass\n`self.save()`/`self.delete()`. These three pieces were deliberately deferred to\nkeep #695 bounded and OUT of the guarded receiver-resolution internals (the\n~110-test dispatch:F3 / WI-noham family that a general inference engine would\ntouch — the risk the owner explicitly chose to avoid).\n\n## Deferred pieces (all share the receiver/return-type-inference mechanism)\n\n1. **Instance writes on a typed local** — `order = Model.objects.get(...)`;\n   `order.save()`. The `<localvar>.M()` bucket is ~25% of pretix ORM call sites\n   but is heavily polluted by non-ORM homonyms (`dict.get`, `cache.get`,\n   `settings.update`), so it CANNOT be caught by the marker — it needs the local\n   typed to a Model subclass via return-type inference on Manager methods\n   (`.objects.get()`/`.first()` → the Model type), then the existing\n   `django.db.models` carve-out classifies `instance.save()`/`.delete()`.\n\n2. **SQLAlchemy** — `Session.query`/`execute`/`add`/`commit`, `Engine.execute`.\n   Same external-base receiver-typing shape; add a `sqlalchemy.orm`-keyed\n   type-verified carve-out (same admission criterion as the Django one). Raw\n   DBAPI (`conn = sqlite3.connect(); conn.cursor().execute()`) is the WI-fuvuj\n   `EXTERNAL_CONSTRUCTOR_TYPES` extension that also activates the LATENT\n   sqlite3.Cursor db_* entries WI-harin already catalogued.\n\n3. **Transitive Model bases** — `Order(LoggedModel)`, `LoggedModel(models.Model)`.\n   #695's `_class_directly_extends_django_model` gate is DIRECT-base + dotted-form\n   only (`class X(models.Model)`) — precision-safe (a missed write, never a\n   mis-tag). Extending to transitive bases can reuse the `django_orm_dispatch`\n   linker's `_transitive_bases` walk, but must stay type-verified.\n\n## Family / precedent\n\ndispatch:F3 / WI-noham receiver-resolution family. Siblings: WI-fabup\n(ambiguous_names for RESOLVED receivers), WI-fuvuj (done — the `file`\nsynthetic-module trick, the return-type-inference precedent for piece 1),\nINV-fahub (receiver-blind resolution umbrella, bakeoff-gated). The #695 catalog\ncarve-out + producer division (analyzer types the receiver; python.yaml\nclassifies) is the established shape to extend.\n\n## Repro\n\n`analyze_python(/tmp/f5_cohort_pool/pretix/src)` + `tag_io_boundaries`: the\n`<localvar>.save()` sites (e.g. `o = Order.objects.get(pk=1); o.save()`) still\nemit `python:external:0-0:save:unresolved` (no module hint) and stay untagged —\nthe ~24.9% write recall the marker cannot reach."  # 6f62
+    fields: {}  # 6f62
