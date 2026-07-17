@@ -1719,6 +1719,30 @@ def _extract_attribute_edges(
     return edges
 
 
+def _stamp_shape_ids(
+    analyzer: TreeSitterAnalyzer, analysis: "_BaseFileAnalysis",
+) -> None:
+    """WI-lutob: fill ``shape_id`` from ``node_for_symbol`` for the C#
+    ``analyze()`` override.
+
+    The base ``TreeSitterAnalyzer.analyze()`` auto-stamps ``shape_id`` (and
+    docstrings) from ``analysis.node_for_symbol`` after extraction, but
+    ``CSharpAnalyzer.analyze()`` reimplements the pipeline and never runs that
+    loop — so every body-bearing C# symbol shipped ``shape_id=None`` and the
+    structural-clone key (ADR-0014 §1) the spec marks done for C# silently did
+    not exist. This replays just the shape_id half over the C# analysis's
+    already-populated ``node_for_symbol`` (docstrings are handled in the C#
+    extraction path). Never clobbers an existing value.
+    """
+    if not analysis.node_for_symbol:
+        return
+    sym_by_id = {s.id: s for s in analysis.symbols}
+    for sym_id, ts_node in analysis.node_for_symbol.items():
+        sym = sym_by_id.get(sym_id)
+        if sym is not None and sym.shape_id is None:
+            sym.shape_id = analyzer.compute_shape_id(ts_node)
+
+
 class CSharpAnalyzer(TreeSitterAnalyzer):
     """Tree-sitter-based C# analyzer.
 
@@ -1793,6 +1817,9 @@ class CSharpAnalyzer(TreeSitterAnalyzer):
             rel_path = str(cs_file.relative_to(repo_root))
             analysis = _extract_symbols_from_file(cs_file, parser, run, rel_path)
             if analysis.symbols:
+                # WI-lutob: this override bypasses the base analyze()'s shape_id
+                # auto-stamp loop; stamp it here from node_for_symbol.
+                _stamp_shape_ids(self, analysis)
                 file_analyses[cs_file] = analysis
             else:
                 files_skipped += 1

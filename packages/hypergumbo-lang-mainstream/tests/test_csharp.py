@@ -148,6 +148,22 @@ class TestCSharpSymbolExtraction:
         interface_names = {s.name for s in interface_symbols}
         assert "IShape" in interface_names
 
+    def test_body_bearing_symbols_get_shape_id(self, csharp_repo: Path) -> None:
+        """WI-lutob: C#'s ``analyze()`` override bypasses the base-class
+        shape_id auto-stamp loop, so body-bearing symbols (method / class /
+        …) shipped ``shape_id=None`` — the structural-clone key (ADR-0014 §1)
+        the spec marks done for C# silently did not exist. They must now carry
+        a well-formed shape_id computed from the tracked CST node."""
+        result = analyze_csharp(csharp_repo)
+        body_bearing = [
+            s for s in result.symbols if s.kind in ("method", "class")
+        ]
+        assert body_bearing, "expected some body-bearing C# symbols"
+        missing = [(s.kind, s.name) for s in body_bearing if s.shape_id is None]
+        assert not missing, f"C# body-bearing symbols with shape_id=None: {missing}"
+        for s in body_bearing:
+            assert s.shape_id.startswith("sha256:"), s.shape_id
+
     def test_extracts_structs(self, csharp_repo: Path) -> None:
         """Should extract struct declarations."""
         result = analyze_csharp(csharp_repo)
@@ -2456,3 +2472,39 @@ class TestCSharpCyclomaticComplexity:
         assert ctor.cyclomatic_complexity == 1
         assert branchy.cyclomatic_complexity is not None
         assert branchy.cyclomatic_complexity >= 4
+
+
+class TestStampShapeIds:
+    """WI-lutob: unit coverage for the ``_stamp_shape_ids`` guard branches."""
+
+    def _sym(self, sid: str, shape_id=None):
+        from hypergumbo_core.ir import Symbol, Span
+        return Symbol(
+            id=sid, name="X", kind="class", language="csharp", path="a.cs",
+            span=Span(start_line=1, end_line=1, start_col=0, end_col=0),
+            shape_id=shape_id,
+        )
+
+    def test_empty_node_for_symbol_is_a_noop(self):
+        """No tracked nodes → early return (nothing to stamp)."""
+        from types import SimpleNamespace
+        from hypergumbo_lang_mainstream.csharp import _stamp_shape_ids
+
+        _stamp_shape_ids(
+            object(), SimpleNamespace(node_for_symbol={}, symbols=[]),
+        )  # must not raise
+
+    def test_skips_missing_symbol_and_preserves_existing_shape_id(self):
+        """A node_for_symbol id absent from symbols (sym is None) is skipped,
+        and a symbol that already has a shape_id is never clobbered — so the
+        analyzer's compute_shape_id is never reached (object() as analyzer)."""
+        from types import SimpleNamespace
+        from hypergumbo_lang_mainstream.csharp import _stamp_shape_ids
+
+        existing = self._sym("keep", shape_id="sha256:preexisting")
+        analysis = SimpleNamespace(
+            node_for_symbol={"keep": object(), "absent": object()},
+            symbols=[existing],
+        )
+        _stamp_shape_ids(object(), analysis)
+        assert existing.shape_id == "sha256:preexisting"
