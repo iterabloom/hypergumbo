@@ -7,8 +7,10 @@ compiled to output views (e.g., behavior_map JSON).
 Key IR Classes
 --------------
 - **Span**: Source location with line/column info
-- **AnalysisRun**: Provenance for an analysis pass execution, including
-  run_signature for cache keying and repo_fingerprint for invalidation
+- **AnalysisRun**: Provenance for an analysis pass execution. Its
+  run_signature and repo_fingerprint are external provenance / PROV-DM
+  fields with no internal consumers — hypergumbo never reads them back to
+  key or invalidate a cache (see the AnalysisRun "Readership note").
 - **Symbol**: Code elements (functions, classes) with location, identity hashes
   (stable_id, shape_id), and quality scores
 - **Edge**: Relationships between symbols with confidence, evidence tracking,
@@ -25,8 +27,10 @@ Key IR Classes
 Provenance Fields
 -----------------
 - execution_id: Unique per run (uuid)
-- run_signature: Deterministic hash of (pass_id, version, config_fingerprint, toolchain)
-- repo_fingerprint: Hash of git state for cache invalidation
+- run_signature: Deterministic hash of (pass_id, version, config_fingerprint,
+  toolchain). Serialized as provenance only; not read back to key a cache.
+- repo_fingerprint: Hash of git state. Serialized as provenance only; the
+  analysis cache keys on analyzer_identity, not on this field.
 - origin_run_signature: *Removed in 0.9.x (WI-gapin); never stamped by any producer.*
 """
 import functools
