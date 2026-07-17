@@ -65,3 +65,18 @@
   clock: 7  # 832c
   nonce: 832c  # 832c
   message: "Phase-2 anomaly strip (BROAD drain, session broad-20260706-153915), Bucket E (misapplied). WI-pozur is todo_hard and tracks the IMPLEMENTATION of the ADR-0043 stage-ordering contract; the only landed PR is the decision artifact itself (ADR-0043 / PR #4212). Per the tagging-discipline playbook 'What does NOT count', an ADR decision artifact is not a quantitative bakeoff-improvement claim, and the implementation (Wave-2, the actual reorder + finalize-stage routing) has not shipped — so there is nothing for a bakeoff cohort to validate. Tag stripped; it should re-accrue at merge time IF the implementation PR ships with a quantitative movement claim. Item status unchanged (stays todo_hard under META-jalur)."  # 832c
+- op: update  # d173
+  at: '2026-07-17T22:57:11Z'  # d173
+  by: agent  # d173
+  actor: jgstern_agent  # d173
+  clock: 8  # d173
+  nonce: d173  # d173
+  set:  # d173
+    status: done  # d173
+- op: discuss  # fef7
+  at: '2026-07-17T22:57:11Z'  # fef7
+  by: agent  # fef7
+  actor: jgstern_agent  # fef7
+  clock: 9  # fef7
+  nonce: fef7  # fef7
+  message: "DONE (contract implemented+wired+tested) per bulk-verify 2026-07-17. ADR-0043's headline deliverables ARE shipped, contradicting the stale 2026-07-06 note ('implementation has not shipped' -- a tagging-discipline strip note, not a code audit): C5 single finalize stage = finalize.py (FinalizeContext + the ordered sub-steps in finalize():491-508: re-relativize/pass_version/run_signature/repo_fingerprint/skipped->limits/edge-resolution[ADR-0037]/visibility/commit-dicts/referential-integrity), wired at cli.py:9733 inside run_survey (=run_behavior_map). C2 filter-before-synthesis = cli.py tier(9546)->noise(9639)->boundary synthesis(9688, annotated 'AFTER tier+noise'). §8 closure gate SATISFIED: run_signature + edge-finalization + validation + compact/budget projections all route through the one finalize; round-trip property test exists (test_finalize_roundtrip.py) asserting one reconciled view. Seam-b sequencing gate cleared by WI-jafat (merged, ADR §6.1), not 'PR #401' (nonexistent). 3 residuals remain, all ADR-flagged 'deferred' + sibling-owned (NOT this contract item): C1 pre-filter validation pass (validator:F3), C4 downstream-absolute-path validator predicate (identity:F1, partial), and C3 (entrypoint:F4) -- a GOVERNANCE TENSION needing a human decision: _is_noise (cli.py:9651-9653) treats entry_role=script as noise per audit-findings 0005 (script->kind=file fold), but ADR-0043 §5 says it should be EXEMPT for entrypoint detection; the docs contradict and current code follows the shipped fold."  # fef7

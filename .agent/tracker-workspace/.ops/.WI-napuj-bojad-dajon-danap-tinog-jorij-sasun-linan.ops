@@ -45,3 +45,18 @@
     tags: [dogfood]  # cf7d
   remove:  # cf7d
     tags: [dogfooding]  # cf7d
+- op: update  # 78db
+  at: '2026-07-17T22:38:56Z'  # 78db
+  by: agent  # 78db
+  actor: jgstern_agent  # 78db
+  clock: 5  # 78db
+  nonce: 78db  # 78db
+  set:  # 78db
+    status: needs_human_review  # 78db
+- op: discuss  # c9b1
+  at: '2026-07-17T22:38:56Z'  # c9b1
+  by: agent  # c9b1
+  actor: jgstern_agent  # c9b1
+  clock: 6  # c9b1
+  nonce: c9b1  # c9b1
+  message: "Bulk-verify 2026-07-17: gap is REAL and confirmed, but needs a HUMAN reconciliation-authority decision (blocked-on-design). profile.frameworks is manifest-derived (_detect_frameworks profile.py:2981-3023); the promote/demote phase (profile.py:3308-3356) DOES compute the node join (module_importers) but DISCARDS the node evidence, keeping only names. Node/edge framework labels exist (concept framework; meta.framework_role/route_framework/server_framework) but none reconciles back to profile.frameworks; framework_evidence appears nowhere (0 grep hits) -- path (2) unimplemented. The design fork: the two surfaces disagree BOTH ways (django/fastapi carry node evidence but absent from profile.frameworks; 'lit' sits in profile.frameworks with zero graph support -- JS/TS broken, WI-zavad), and some node labels are FPs (WI-pitit django, WI-fizir fastapi). The item's proposed invariant ('every profile.frameworks entry has >=1 node') FAILS today for 'lit'. Decisions needed: authority model (manifest vs graph), FP handling, what to do with manifest-only frameworks. Scope once decided: 'persist the promote-phase module_importers as profile.framework_evidence' (small mechanical core). Cross-ref WI-pitit/WI-fizir/WI-zavad."  # c9b1

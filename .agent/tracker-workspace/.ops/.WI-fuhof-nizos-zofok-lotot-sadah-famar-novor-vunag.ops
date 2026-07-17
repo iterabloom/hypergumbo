@@ -41,3 +41,18 @@
   clock: 4  # b007
   nonce: b007  # b007
   message: "root-cause family member (b2) (connections-sweep 2026-06-08T1900Z)"  # b007
+- op: update  # dc0a
+  at: '2026-07-17T22:56:23Z'  # dc0a
+  by: agent  # dc0a
+  actor: jgstern_agent  # dc0a
+  clock: 5  # dc0a
+  nonce: dc0a  # dc0a
+  set:  # dc0a
+    status: done  # dc0a
+- op: discuss  # 6b0a
+  at: '2026-07-17T22:56:23Z'  # 6b0a
+  by: agent  # 6b0a
+  actor: jgstern_agent  # 6b0a
+  clock: 6  # 6b0a
+  nonce: 6b0a  # 6b0a
+  message: "DONE (resolved by ADR-0039) per bulk-verify 2026-07-17. The 'deterministic model' the item said was contradicted now EXISTS: derive_confidence(evidence_type, is_resolved) is the single reader (confidence.py:48-64), and the '4-5 distinct values' split is exactly the readable is_resolved axis the contract demanded -- evidence_derived resolved ast_call/ast_call_direct = uniform 0.85 (dogfood: 6556 edges, 0 stale-confidence). The residual non-uniform values (0.40/0.50/0.90 on resolved, 18/6574 = 0.3%) are ALL confidence_source='emitter_constant' -- framework-dispatch LINKER match-quality overrides (grpc/graphql_resolver/openapi/controller_routes/router_routes/middleware/decorator/di/crypto), which ADR-0039 EXPLICITLY sanctions (ruling 2; spec §12 'Linker edge confidence -- Match quality' 0.40-0.95; confidence.py:20-24 docstring). ADR-0039's own tracker table lists WI-fuhof as 'closed by the ruling-1 derivation layer' (0039-confidence-separation.md:118). Not a META-ruhob violation."  # 6b0a

@@ -42,3 +42,18 @@
   set: {}  # fe35
   add:  # fe35
     isbefore: [WI-popak-gugoz-kibah-dugur-hopif-dutor-zopud-tamak]  # fe35
+- op: update  # 1e6f
+  at: '2026-07-17T22:56:24Z'  # 1e6f
+  by: agent  # 1e6f
+  actor: jgstern_agent  # 1e6f
+  clock: 5  # 1e6f
+  nonce: 1e6f  # 1e6f
+  set:  # 1e6f
+    status: done  # 1e6f
+- op: discuss  # 65bd
+  at: '2026-07-17T22:56:24Z'  # 65bd
+  by: agent  # 65bd
+  actor: jgstern_agent  # 65bd
+  clock: 6  # 65bd
+  nonce: 65bd  # 65bd
+  message: "DONE (fix already landed via sibling validator) per bulk-verify 2026-07-17. The requested behavior -- validate the id kind-slot against the symbol-kind registry -- exists in _check_id_roundtrip (spec_validator.py:1800, if kind_slot not in registered: raise), wired into validate_ir (:244) as a first-class id_format-class check (:163), landed as ADR-0036 id-format:F3 (2026-06-13, AFTER this item's 2026-06-07 filing). The named _check_id_format keeps only the permissive char-class regex, but the registry check moved to the sibling function (NOT axis_conformance, which is blind to the id slot). The 1444-node premise NO LONGER REPRODUCES: current self-corpus (37,118 symbols) has 0 unregistered kind-slots + 0 kind-slot-vs-Symbol.kind disagreements (the ADR-0036 Ruling-2 external_symbol slot migration, ir.py:1264, cleared the WI-pubiv/WI-kugaj cohort). One deferred residual (separate decision): the check is advisory (warning), not error-level -- promotion is tracked by the ADR-0036 gating item, not this scope defect."  # 65bd

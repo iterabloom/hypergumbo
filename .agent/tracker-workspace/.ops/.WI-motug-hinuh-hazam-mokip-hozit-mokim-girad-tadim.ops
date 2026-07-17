@@ -45,3 +45,18 @@
   clock: 4  # e45e
   nonce: e45e  # e45e
   message: "root-cause family member (b2) (connections-sweep 2026-06-08T1900Z)"  # e45e
+- op: update  # c531
+  at: '2026-07-17T22:56:24Z'  # c531
+  by: agent  # c531
+  actor: jgstern_agent  # c531
+  clock: 5  # c531
+  nonce: c531  # c531
+  set:  # c531
+    status: wont_do  # c531
+- op: discuss  # 3e79
+  at: '2026-07-17T22:56:24Z'  # 3e79
+  by: agent  # 3e79
+  actor: jgstern_agent  # 3e79
+  clock: 6  # 3e79
+  nonce: '3e79'  # 3e79
+  message: "WONT_DO (stale, resolved by ADR-0039) per bulk-verify 2026-07-17. Premise doubly false on current code: (a) import_static is NOT TypeScript-exclusive -- java.py:716 emits it on java:-prefixed edges (import_static if is_static else import_declaration), plus js_ts.py:4570; it is a registered evidence_type (evidence_types.py:258). (b) The language-keyed §12 EVIDENCE_CONFIDENCE_MATRIX the whole 'keys it under python/javascript' premise rests on was DELETED by ADR-0039 Stage A (0039:81); derive_confidence takes only (evidence_type, is_resolved) -- NO language parameter (confidence.py:48) -- so import_static gets a uniform 0.95 seed across Java/JS/TS and no python/javascript-vs-typescript keying mismatch is possible. (A future (language, evidence_type) matrix is noted aspirational, 'no consumer keys on it yet', ir.py:938.)"  # 3e79
