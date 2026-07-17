@@ -20,3 +20,10 @@
     description: "Layer-2 super-cluster from the connection sweep (connections-sweep 2026-06-08T1900Z). Cross-packet evidence: WI-motug surfaced in both the evidence_type (C2) and typescript/js (C7) investigations. Children: is_test_file ignored by consumers, evidence_type axis impurity."  # fc01
     fields:  # fc01
       statement: "When an upstream pass computes a correct, granular verdict (supply_chain.is_test_file, node.language='typescript', resolution state), downstream consumers MUST honor it rather than re-deriving via heuristic or keying tables/labels on a coarser value."  # fc01
+- op: discuss  # 2d54
+  at: '2026-07-17T20:15:26Z'  # 2d54
+  by: agent  # 2d54
+  actor: jgstern_agent  # 2d54
+  clock: 2  # 2d54
+  nonce: 2d54  # 2d54
+  message: "WI-popok (the ADR-0041 §2 'worked example' of this family, and a META-jotih residual consumer) was audited 2026-07-17 and closed WONT_DO via a fundamental-concept-audit KEEP verdict: the entrypoint detector's paths.is_test_file is a BROADER, distinct-purpose ranking predicate (test-OR-support), not a coarser re-derivation of Symbol.is_test_file — so it is outside this invariant's 're-derive coarser' wording. NOT a member to fold. Remaining live entry point for META-bifif is WI-molit (evidence_type resolution-state purity) + author the no-consumer-re-derives property test. See ~/hypergumbo_lab_notebook/concept-audit-is_test_file_07172026.md and ADR-0041 §2 annotation."  # 2d54

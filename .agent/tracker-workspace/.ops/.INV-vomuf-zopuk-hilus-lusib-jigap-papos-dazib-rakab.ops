@@ -20,3 +20,10 @@
     fields:  # 9a55
       statement: "Any concrete symbol id threaded through Edge.meta or dict-shaped Symbol.meta must be relativized by _relativize_ir_paths (runs before the linker pipeline) so it matches the relativized class_symbols index; otherwise the id keeps its absolute repo_root-prefixed form, misses the index, and the consumer silently falls back to a name path with NO failing test (negative tests pass via the same fallback; only positive e2e recall assertions catch it)."  # 9a55
       root_cause: "_relativize_ir_paths relativized symbol.id/edge.src/dst + symbol-meta STRINGS (the route handler_ref case) but NOT Edge.meta at all, NOR dict-shaped Symbol.meta values. WI-supat's enclosing_class_id/receiver_type_id (edge-meta strings) and field_type_ids ({field:id} dict on symbol meta) thus stayed absolute and the concrete-id collision-recovery was inert end-to-end."  # 9a55
+- op: discuss  # 6a43
+  at: '2026-07-17T19:01:22Z'  # 6a43
+  by: agent  # 6a43
+  actor: jgstern_agent  # 6a43
+  clock: 2  # 6a43
+  nonce: 6a43  # 6a43
+  message: "Documented residual (list-valued / nested-dict id-in-meta silently re-violates) now has a producer-side forward-guard item: WI-dujib-sitoz-fomoj-bunin-bodif-bugor-vagus-sorak (todo_soft, P4). That item carries the trigger condition + fix recipe (extend _relativize_meta + add a POSITIVE e2e recall assertion). This satisfied item stays satisfied; the guard exists so the trap is discoverable from tracker ready if/when a new id-in-meta shape is introduced."  # 6a43

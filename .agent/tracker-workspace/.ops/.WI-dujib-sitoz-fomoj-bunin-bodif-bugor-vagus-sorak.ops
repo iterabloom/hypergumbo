@@ -1,0 +1,20 @@
+- op: create  # e08e
+  at: '2026-07-17T19:01:06Z'  # e08e
+  by: agent  # e08e
+  actor: jgstern_agent  # e08e
+  clock: 1  # e08e
+  nonce: e08e  # e08e
+  data:  # e08e
+    kind: work_item  # e08e
+    title: "Forward-guard INV-vomuf: relativize list/nested-dict id-in-meta + positive e2e recall assertion when a new such shape is introduced"  # e08e
+    status: todo_soft  # e08e
+    priority: 4  # e08e
+    parent:  # e08e
+    tags:  # e08e
+    - analysis_quality  # e08e
+    isbefore: []  # e08e
+    duplicate_of: []  # e08e
+    not_duplicate_of: []  # e08e
+    pr_ref:  # e08e
+    description: "Forward-guard for the documented residual of INV-vomuf (satisfied; fixed by WI-supat PR-B, dev 0ca939118f). No action needed until the trigger below fires — this item exists purely so the trap is discoverable from the PRODUCER side, which the two current homes of the warning are not.\n\nTHE LATENT TRAP. `_relativize_ir_paths` (via the `_relativize_meta` helper in finalize.py) relativizes ID-embedding meta values only when they are (a) a plain string (the route `handler_ref` / `enclosing_class_id` / `receiver_type_id` case) or (b) a one-level `{key: id_str}` dict (the `field_type_ids` case). LIST-valued and NESTED-dict meta shapes are DELIBERATELY not relativized (see the load-bearing SHAPE CONTRACT comment at finalize.py:144-151). If a future producer threads a concrete symbol id into `Edge.meta` or dict-shaped `Symbol.meta` as a list element or a nested-dict value, that id keeps its absolute repo_root-prefixed form, misses the relativized `class_symbols` index, and the consuming linker SILENTLY falls back to a name path — with NO failing test, because negative tests pass through the same fallback. Only a positive end-to-end recall assertion catches it. This is the exact failure mode INV-vomuf names.\n\nDISCOVERABILITY GAP (why this item exists). The warning currently lives in exactly two places, both consumer/fix-side: (1) a RESIDUAL note inside INV-vomuf's own description — but INV-vomuf is `satisfied`, so it never surfaces in `tracker ready`; (2) the SHAPE CONTRACT comment at finalize.py:144-151, which a future author only reads if they are already editing `_relativize_meta`. Neither routes a producer who adds a new id-in-meta from inside some linker/analyzer back to the contract. This item closes that \"wrong file\" gap.\n\nTRIGGER (start work only when this becomes true). Any new list-valued or nested-dict id-embedding value is introduced into `Edge.meta` or `Symbol.meta` anywhere in the pipeline. As of filing, only WI-supat's fields (`enclosing_class_id`, `receiver_type_id` strings; `field_type_ids` one-level dict) and route `handler_ref` use id-in-meta, and a finalize review confirmed those are the only two shapes — so the contract holds today.\n\nFIX RECIPE (when triggered). (1) Extend `_relativize_meta` to relativize the new shape (list elements / nested-dict values). (2) Add a POSITIVE e2e recall assertion (in the `run_behavior_map` orchestrator style of TestWiSupatEndToEndRecall) that the new id-in-meta actually resolves (0->1) — a negative test will silently pass via the fallback and will NOT protect the invariant. (3) Update the finalize.py SHAPE CONTRACT comment to name the newly covered shape.\n\nCross-ref: INV-vomuf-zopuk-hilus-lusib-jigap-papos-dazib-rakab (satisfied)."  # e08e
+    fields: {}  # e08e

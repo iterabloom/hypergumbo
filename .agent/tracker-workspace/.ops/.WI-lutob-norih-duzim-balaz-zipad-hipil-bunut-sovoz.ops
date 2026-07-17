@@ -51,3 +51,10 @@
   clock: 5  # e050
   nonce: e050  # e050
   message: "Identity triage 2026-07-15: shape_id-coverage prerequisite for WI-vogij (clone/refactoring-lead feature). Re-run: csharp 16/16, solidity 11/11, wgsl 6/6 shape_id=null (100%) — analyze()-override bypasses the base stamp loop (base.py:3226-3232); wgsl hardcodes shape_id=None. A clone detector needs these populated."  # e050
+- op: discuss  # 1a0f
+  at: '2026-07-17T09:34:35Z'  # 1a0f
+  by: agent  # 1a0f
+  actor: jgstern_agent  # 1a0f
+  clock: 6  # 1a0f
+  nonce: 1a0f  # 1a0f
+  message: "CSHARP FACET DONE (PR #704, dev 58dd893b00). CSharpAnalyzer.analyze() now stamps shape_id from its populated node_for_symbol via a new _stamp_shape_ids helper; live: sherpa-csharp 0/105 -> 105/105 body-bearing symbols populated (class/method/struct/constructor), 105 csharp tests pass, csharp.py 100% cov. Surfaced + validated by the 2026-07-17 DEEP-cohort parity check. REMAINING (item stays open, scoped to these): (1) wgsl.py hardcodes shape_id=None at 3 construction sites (238/270/329); (2) solidity.py (analyze_solidity) emits no shape_id — BOTH are function-registered analyzers (not TreeSitterAnalyzer subclasses), so they can't call self.compute_shape_id; the fix needs the TreeSitterAnalyzer.compute_shape_id/_cst_structure logic extracted to a module-level callable (base.py, CORE) with byte-identical output verified (no shape_id churn on other langs). Distinct, larger refactor than the csharp class-based facet."  # 1a0f
