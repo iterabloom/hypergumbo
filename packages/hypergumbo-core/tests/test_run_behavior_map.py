@@ -951,3 +951,68 @@ def test_additional_file_candidate_anchored_and_subset_invariant_f1_f4(tmp_path)
         f"centrality keys not subset of file-anchor node paths: "
         f"{set(scores) - file_paths}"
     )
+
+
+def _files_analyzed_by_pass(out_path: Path) -> dict:
+    """Map pass-id -> sorted list of that pass's AnalysisRun.files_analyzed
+    values (set-wise per pass, so the as-completed collection ORDER does not
+    matter — only whether the COUNTS are stable)."""
+    data = json.loads(out_path.read_text())
+    from collections import defaultdict
+
+    m: dict = defaultdict(list)
+    for ar in data.get("analysis_runs", []):
+        m[ar.get("pass_id") or ar.get("name")].append(ar.get("files_analyzed"))
+    return {k: sorted(v, key=lambda x: (x is None, x)) for k, v in m.items()}
+
+
+def test_files_analyzed_is_deterministic_across_runs(tmp_path):
+    """WI-bijad: ``AnalysisRun.files_analyzed`` must be identical across
+    repeated runs of the same tree.
+
+    Analyzer and linker passes run concurrently (``ThreadPoolExecutor`` +
+    ``as_completed`` in ``analyze.all_analyzers``), so a per-pass file-discovery
+    race — each pass doing its own ``os.walk`` under threads — historically made
+    ``files_analyzed`` vary run-to-run (the filing: 18 of 84 ARs, several scanning
+    100+ files). The shared, sorted ``discovery.FileIndex`` (one ``os.walk`` at
+    startup, deterministically ordered, consulted by every pass) is what keeps
+    each pass's file set stable; this test guards that determinism structurally
+    rather than by chance. The fixture spans multiple languages (→ multiple
+    concurrent analyzers) and a Flask route + a DB ``execute`` (→ the scan-heavy
+    route/db linkers the filing named), then runs the pipeline three times.
+    """
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    (repo_root / "app.py").write_text(
+        "import sqlite3\n"
+        "from flask import Flask\n"
+        "app = Flask(__name__)\n"
+        "@app.route('/items')\n"
+        "def items():\n"
+        "    conn = sqlite3.connect('x.db')\n"
+        "    return conn.execute('SELECT * FROM items').fetchall()\n"
+    )
+    (repo_root / "helper.py").write_text("def helper(x):\n    return x + 1\n")
+    (repo_root / "main.go").write_text(
+        "package main\n"
+        "func Add(a int, b int) int { return a + b }\n"
+        "func main() { _ = Add(1, 2) }\n"
+    )
+    (repo_root / "index.js").write_text(
+        "function greet(name) { return 'hi ' + name; }\n"
+        "module.exports = { greet };\n"
+    )
+
+    maps = []
+    for i in range(3):
+        out = tmp_path / f"out{i}.json"
+        run_behavior_map(
+            repo_root=repo_root, out_path=out, include_sketch_precomputed=False,
+        )
+        maps.append(_files_analyzed_by_pass(out))
+
+    assert maps[0] == maps[1] == maps[2], (
+        "files_analyzed varied across runs — determinism regression (WI-bijad); "
+        f"run0 vs run1 delta: "
+        f"{ {k: (maps[0].get(k), maps[1].get(k)) for k in set(maps[0]) | set(maps[1]) if maps[0].get(k) != maps[1].get(k)} }"
+    )
