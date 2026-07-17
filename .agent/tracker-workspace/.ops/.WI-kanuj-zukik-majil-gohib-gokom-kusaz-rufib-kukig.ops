@@ -47,3 +47,18 @@
   clock: 4  # 8b57
   nonce: 8b57  # 8b57
   message: "Wave-4 triage 2026-07-12: MIGRATE to Wave 5. usage_contexts is documented (spec:934-965) and steers consumers to nodes/entrypoints (spec:965); the monoculture is a producer-breadth concern (expensive broadening or cosmetic rename). P4."  # 8b57
+- op: update  # 2753
+  at: '2026-07-17T22:38:04Z'  # 2753
+  by: agent  # 2753
+  actor: jgstern_agent  # 2753
+  clock: 5  # 2753
+  nonce: '2753'  # 2753
+  set:  # 2753
+    status: wont_do  # 2753
+- op: discuss  # 1ace
+  at: '2026-07-17T22:38:04Z'  # 1ace
+  by: agent  # 1ace
+  actor: jgstern_agent  # 1ace
+  clock: 6  # 1ace
+  nonce: 1ace  # 1ace
+  message: "WONT_DO (stale premise) per bulk-verify 2026-07-17. The 'monoculture' is a property of the SELF-SUBSTRATE, not the usage_contexts facility. Producers emit far more than HTTP/WS (js_ts.py:2146-2178 kind=library_export, py.py:1356 position=resource_class, elixir.py:976 kind=macro, plus call/data_value/export/macro across many langs; ir.py:1132-1215; spec §9 documents the general scope). The self-corpus collapses to call/view_func/Route because hypergumbo's own repo is Python+Starlette AND its JS/TS extraction (which emits library_export contexts) is broken (WI-zavad). Both proposed paths are wrong: 'rename to http_route_invocations' misnames a facility that emits non-HTTP contexts; 'broaden producers' is largely already done. At most a 1-sentence spec note that realized value-diversity is substrate-dependent."  # 1ace

@@ -27,3 +27,10 @@
   clock: 2  # 18b4
   nonce: 18b4  # 18b4
   message: "vocab:F1 progress (merged selfh/dev d9bdc39d0a under failover): the dominant evidence_type axis-smuggling leak in this family -- ast_call_method (Cluster D call-construct, 97.9% of the pending_classification axis, ~4995 self-corpus edges) -- folded to ast_call + meta['call_construct']='method' (WI-nibis + WI-hubit done; live ast_call_method 4995->0). Two 0-edge call-construct peers remain (follow-up WI-fivof). Separately INV-dovus closed satisfied: its import-fragmentation premise was superseded by audit-findings 0004 (import family canonical, not a violation), so it is not an axis-purity violation under this umbrella."  # 18b4
+- op: discuss  # e2b4
+  at: '2026-07-17T21:43:46Z'  # e2b4
+  by: agent  # e2b4
+  actor: jgstern_agent  # e2b4
+  clock: 3  # e2b4
+  nonce: e2b4  # e2b4
+  message: "Leaf WI-molit closed WONT_DO 2026-07-17 (fundamental-concept-audit KEEP verdict, owner-directed 3-lens audit). The ast_call vs ast_call_direct 'redundantly encodes is_resolved' premise does NOT hold: they are distinct call-CONSTRUCT pathways (ADR-0028 explicitly accepts ast_call_direct as a pure pathway); resolution is separate on Edge.is_resolved (ADR-0037); the 98.5%/8.3% split is a benign common-cause correlation; ZERO consumers use the label as a resolution proxy. Added the reusable META-bifif property tests (evidence_type⊥is_resolved). This parent's own statement ('no resolution-state smuggled INTO THE LABEL') is SATISFIED — its real leaks (ast_call_method fold, default-leak) already closed. See ~/hypergumbo_lab_notebook/concept-audit-evidence_type_is_resolved_07172026.md."  # e2b4

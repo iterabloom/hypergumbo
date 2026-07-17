@@ -45,3 +45,18 @@
   clock: 4  # 27f2
   nonce: 27f2  # 27f2
   message: "root-cause family member (g2) (connections-sweep 2026-06-08T1900Z)"  # 27f2
+- op: update  # 9e63
+  at: '2026-07-17T21:43:27Z'  # 9e63
+  by: agent  # 9e63
+  actor: jgstern_agent  # 9e63
+  clock: 5  # 9e63
+  nonce: '9e63'  # 9e63
+  set:  # 9e63
+    status: wont_do  # 9e63
+- op: discuss  # 9d76
+  at: '2026-07-17T21:43:27Z'  # 9d76
+  by: agent  # 9d76
+  actor: jgstern_agent  # 9d76
+  clock: 6  # 9d76
+  nonce: 9d76  # 9d76
+  message: "WONT_DO per fundamental-concept-audit KEEP verdict (2026-07-17; owner-directed full 3-lens audit — 'Full-audit WI-molit first'). Premise DOES NOT HOLD: resolution state is NOT smuggled into the evidence_type axis. (1) evidence_type names the inference PATHWAY (ADR-0028, which explicitly lists ast_call_direct as 'accepted (a pure inference pathway)', §2 line 80); resolution lives solely on Edge.is_resolved (ADR-0037 ruling 1). (2) ast_call ('generic call expression') vs ast_call_direct ('direct non-method call') are distinct call-CONSTRUCT pathways set at DETECTION time — both appear on BOTH resolution states (go.py:2273 ast_call+resolved; py.py:5135 ast_call+unresolved; base.py:679 ast_call_direct+unresolved). (3) The 98.5%/8.3% split is a benign common-cause correlation (method calls need receiver-type inference to resolve), NOT an identity — 322 resolved ast_call + 2957 unresolved ast_call_direct edges break the bijection. (4) EXHAUSTIVE consumer census: ZERO consumers branch on the label as a resolution/quality proxy; all read is_resolved. The confidence coupling (0.40 vs 0.50 base_confidence_unresolved) proves the pathway carries signal independent of resolution — collapsing would be LOSSY. Four leakage tests all pass → KEEP. ADR-0037 ruling 3 (WI-mutuk) is the near-exact precedent (correlation ruled orthogonal/benign, doc-only). META-bifif targets *coarser* re-derivation; evidence_type is a finer/different axis — same logic that closed WI-popok. Behavioral guards (PR merged ec8ef98a): test_evidence_types.py::test_no_evidence_type_name_encodes_resolution_status + test_call_evidence_type_is_orthogonal_to_is_resolved (reusable META-bifif template). Full audit: ~/hypergumbo_lab_notebook/concept-audit-evidence_type_is_resolved_07172026.md. Re-eval triggers: a consumer branching on evidence_type as an is_resolved proxy / a producer choosing the label FROM the resolution result / a new value re-introducing a resolution token in its name. INV-numat drain -1; second false META-bifif member removed."  # 9d76

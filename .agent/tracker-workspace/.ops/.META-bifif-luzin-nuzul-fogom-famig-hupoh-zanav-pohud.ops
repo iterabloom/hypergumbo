@@ -27,3 +27,10 @@
   clock: 2  # 2d54
   nonce: 2d54  # 2d54
   message: "WI-popok (the ADR-0041 §2 'worked example' of this family, and a META-jotih residual consumer) was audited 2026-07-17 and closed WONT_DO via a fundamental-concept-audit KEEP verdict: the entrypoint detector's paths.is_test_file is a BROADER, distinct-purpose ranking predicate (test-OR-support), not a coarser re-derivation of Symbol.is_test_file — so it is outside this invariant's 're-derive coarser' wording. NOT a member to fold. Remaining live entry point for META-bifif is WI-molit (evidence_type resolution-state purity) + author the no-consumer-re-derives property test. See ~/hypergumbo_lab_notebook/concept-audit-is_test_file_07172026.md and ADR-0041 §2 annotation."  # 2d54
+- op: discuss  # cc79
+  at: '2026-07-17T21:43:46Z'  # cc79
+  by: agent  # cc79
+  actor: jgstern_agent  # cc79
+  clock: 3  # cc79
+  nonce: cc79  # cc79
+  message: "Second worked example resolved: WI-molit (evidence_type/is_resolved) closed WONT_DO 2026-07-17 — like WI-popok, a premise-checked KEEP (distinct-purpose axes that merely correlate, not a coarser re-derivation). BOTH of this umbrella's queued Phase-1 members dissolved on rigorous audit. Shipped the reusable no-consumer-re-derives property-test template for the RESOLUTION verdict (test_evidence_types.py: name-purity axiom + data-model orthogonality; confidence split already guarded in test_confidence.py). Coverage of the invariant's three named verdicts: is_test_file KEEP-distinct (WI-popok guard), is_resolved clean (this template). REMAINING to complete the umbrella: audit the LANGUAGE verdict (WI-zadot synthetic-node language, an INV-numat child) — the one axis of the three not yet audited."  # cc79

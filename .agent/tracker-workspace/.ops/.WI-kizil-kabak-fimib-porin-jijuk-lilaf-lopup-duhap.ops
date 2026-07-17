@@ -47,3 +47,18 @@
   clock: 4  # be72
   nonce: be72  # be72
   message: "RELATED_BUT_DISTINCT to WI-napuj: Family M producer-migration gap: kizil=discovery_language unset on native kinds; napuj=profile.frameworks no node-level provenance; distinct fields. Distinct fix; cross-link not fold. (tracker-hygiene-sweep 2026-06-08T174504Z)"  # be72
+- op: update  # 41a7
+  at: '2026-07-17T22:38:03Z'  # 41a7
+  by: agent  # 41a7
+  actor: jgstern_agent  # 41a7
+  clock: 5  # 41a7
+  nonce: 41a7  # 41a7
+  set:  # 41a7
+    status: wont_do  # 41a7
+- op: discuss  # 9bdf
+  at: '2026-07-17T22:38:03Z'  # 9bdf
+  by: agent  # 9bdf
+  actor: jgstern_agent  # 9bdf
+  clock: 6  # 9bdf
+  nonce: 9bdf  # 9bdf
+  message: "WONT_DO (premise invalid) per bulk-verify 2026-07-17. The '<1% populated / 0% on native kinds' is the INTENDED ADR-0031 design, not incomplete migration: discovery_language is None for real-source (Class-A) declarations BY DESIGN ('language already names that information', ir.py:524-532; ADR-0031:79), populated only on Class-B synthetic stand-ins. The item's fix sketch ('assert discovery_language is not None on every node') would VIOLATE the ADR + trip spec_validator's Class-A-xor-B coherence check (spec_validator.py:969-1009). Phase-1 producer migration IS complete (~21 Class-B emit sites incl. all 4 named cross-language consumers as producers); consumers use the None-safe read-prefer fallback (discovery_language or language). The '0 nodes with both' cross-check the item cites as evidence of incompleteness is actually the ENFORCED invariant. (ADR-0031 Phase-2 fallback removal is a distinct pending concern, not this item.)"  # 9bdf
