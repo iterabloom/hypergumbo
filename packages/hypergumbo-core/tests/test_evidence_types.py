@@ -85,6 +85,70 @@ def test_endpoint_shape_axis_is_retired():
     assert et.AXIS_ENDPOINT_SHAPE not in {spec.axis for spec in EVIDENCE_TYPES}
 
 
+# --- META-bifif: evidence_type ⊥ is_resolved (no resolution smuggled into the
+# inference-pathway label; resolution lives solely on Edge.is_resolved) ---
+#
+# These two invariants are the META-bifif "no-consumer-re-derives" discipline
+# applied to the RESOLUTION verdict, and the reusable template for the pattern:
+# a granular producer verdict (here Edge.is_resolved, ADR-0037) must not be
+# encoded in — nor functionally determined by — a coarser sibling label (here
+# Edge.evidence_type, the ADR-0028 inference-pathway axis). WI-molit claimed the
+# ast_call (98.5% unresolved) vs ast_call_direct (8.3%) distinction redundantly
+# encodes is_resolved; a 3-lens audit (2026-07-17) returned KEEP — the split is a
+# benign common-cause correlation (method calls are harder to resolve than direct
+# calls), the two are distinct call-CONSTRUCT pathways, and no consumer reads the
+# label as a resolution proxy (all read is_resolved). The confidence coupling
+# (ast_call 0.85/0.40 vs ast_call_direct 0.85/0.50) is guarded separately by
+# test_confidence.py::test_derive_confidence_multimodal_splits_on_is_resolved.
+# Full audit: ~/hypergumbo_lab_notebook/concept-audit-evidence_type_is_resolved_07172026.md.
+# Re-evaluation trigger: re-open if a consumer is found branching on evidence_type
+# as a proxy for is_resolved, or a producer is found choosing the label FROM the
+# resolution result. (The is_test_file verdict is covered by the WI-popok guard
+# in test_entrypoints.py; the language verdict awaits its own audit — WI-zadot.)
+
+def test_no_evidence_type_name_encodes_resolution_status():
+    """ADR-0028 Test 1 / META-bifif: no evidence_type VALUE may encode
+    resolution status in its name (the ``*_unresolved`` / ``unresolved_*``
+    anti-pattern retired in Phase 4b). Resolution is a separate axis carried by
+    ``Edge.is_resolved``; a name containing a resolution token would smuggle a
+    second axis into the inference-pathway label. Forward-looking guard — fires
+    if any future value re-introduces the leak. (The ``ast_call`` vs
+    ``ast_call_direct`` distinction names a call CONSTRUCT, not resolution;
+    neither name carries a resolution token.)"""
+    offenders = sorted(
+        name for name in all_evidence_type_names() if "resolved" in name.lower()
+    )
+    assert offenders == [], (
+        "evidence_type values must not encode resolution status in their name "
+        f"(resolution lives on Edge.is_resolved); offenders: {offenders}"
+    )
+
+
+def test_call_evidence_type_is_orthogonal_to_is_resolved():
+    """META-bifif: the SAME call-pathway label must be valid on both resolved
+    and unresolved edges — the producer picks it from the call's syntactic form
+    at detection time, and ``is_resolved`` is set separately (ADR-0028 +
+    ADR-0037). If a label were a resolution proxy it could appear on only one
+    ``is_resolved`` value; both ``ast_call`` and ``ast_call_direct`` span both,
+    so the label encodes the pathway, not the state."""
+    for evidence_type in ("ast_call", "ast_call_direct"):
+        resolved = Edge.create(
+            "a", "b", "calls", 1, evidence_type=evidence_type,
+            is_resolved=True, origin="test", origin_run_id="test",
+        )
+        unresolved = Edge.create(
+            "a", "b", "calls", 1, evidence_type=evidence_type,
+            is_resolved=False, origin="test", origin_run_id="test",
+        )
+        assert resolved.evidence_type == evidence_type
+        assert unresolved.evidence_type == evidence_type
+        # Same label, opposite resolution states => the label is orthogonal to
+        # is_resolved (it names the pathway, not the resolution verdict).
+        assert resolved.evidence_type == unresolved.evidence_type
+        assert resolved.is_resolved is True
+        assert unresolved.is_resolved is False
+
+
 # --- Accessors ---
 
 def test_all_evidence_type_names_returns_frozenset():
