@@ -971,6 +971,36 @@ def make_type_stable_id(language: str, path: str, name: str) -> str:
     return _short_sha256(f"type:{language}:{path}:{name}")
 
 
+def make_declaration_stable_id(kind: str, language: str, path: str, name: str) -> str:
+    """WI-rihob: stable identity for container/declaration Symbol kinds.
+
+    Identity formula: ``sha256("{kind}:{language}:{path}:{name}")[:16]`` — the
+    same file-scoped, name-in-hash shape as :func:`make_interface_stable_id` and
+    :func:`make_type_stable_id` (ADR-0035 §4), generalized over ``kind``. Covers
+    the named-declaration container kinds — ``class`` / ``struct`` / ``enum`` /
+    ``trait`` / ``protocol`` / ``contract`` — that the tree-sitter producers
+    (js_ts and its csharp/rust/swift/solidity/wgsl analogues) construct with a
+    ``shape_id=`` but no ``stable_id=``, leaving them at ``None`` (measured:
+    0/4 TypeScript classes, plus the TS enum, csharp class/struct/enum, rust
+    enum/struct/trait, swift class/enum/protocol, solidity contract, wgsl struct).
+
+    The declaring ``path`` is folded in because these names routinely repeat
+    across files (every module can declare ``class Config``); ``kind`` is
+    threaded into the hash so a ``class Widget`` and a same-named ``struct
+    Widget`` in one file stay distinct (mirroring the kind-prefix that separates
+    interface/type). ``language`` namespaces a C# ``IRepository`` from a
+    TypeScript one.
+
+    Per D3a/D3b (ADR-0035): this survives line drift and body edits (adding a
+    method does not churn the class id — members are not in the hash) and churns
+    on rename/move (name is in the hash; move-tracking is delegated to
+    ``shape_id``/``fingerprint``). It is the backstop shape, not the typed tier:
+    a class has no parameter signature, so — like its interface/type siblings —
+    it uses the name-scoped key rather than :func:`make_typed_stable_id`.
+    """
+    return _short_sha256(f"{kind}:{language}:{path}:{name}")
+
+
 def make_protocol_stable_id(category: str, *parts: str) -> str:
     """Phase 6 PR1 (INV-hunup): canonical-shape stable_id for protocol
     linker stand-ins.
@@ -1008,11 +1038,23 @@ def make_protocol_stable_id(category: str, *parts: str) -> str:
     return _short_sha256(key)
 
 
+def _declaration_kind_stable_id(sym: Symbol) -> str:
+    """Backstop factory for container/declaration kinds (WI-rihob)."""
+    return make_declaration_stable_id(sym.kind, sym.language, sym.path, sym.name)
+
+
 # Mapping from Symbol.kind to the factory function used by
-# populate_kind_stable_ids. Kinds NOT present here either have producers
-# that compute their own stable_id (function, method, class, route, etc.)
-# or are absent from INV-sotiv's measured-gap set and remain at None
-# until a future invariant adds them.
+# populate_kind_stable_ids. Kinds NOT present here have producers that compute
+# their own stable_id (function, method, route, and Python classes via
+# ``_compute_stable_id``) or are absent from the measured-gap set and remain at
+# None until a future invariant adds them.
+#
+# WI-rihob: the container/declaration kinds (class/struct/enum/trait/protocol/
+# contract) are backstopped here. Despite the earlier assumption that "class
+# computes its own", the tree-sitter producers (js_ts and its csharp/rust/swift/
+# solidity/wgsl analogues) construct them with ``shape_id=`` but no
+# ``stable_id=``, so they fell through to None; they share interface/type's
+# file-scoped name-in-hash shape via :func:`make_declaration_stable_id`.
 _KIND_STABLE_ID_FACTORIES = {
     "file": lambda s: make_file_stable_id(s.language, s.path),
     "module": lambda s: make_module_stable_id(s.language, s.path, s.name),
@@ -1022,6 +1064,12 @@ _KIND_STABLE_ID_FACTORIES = {
     "project": lambda s: make_project_stable_id(s.name),
     "interface": lambda s: make_interface_stable_id(s.language, s.path, s.name),
     "type": lambda s: make_type_stable_id(s.language, s.path, s.name),
+    "class": _declaration_kind_stable_id,
+    "struct": _declaration_kind_stable_id,
+    "enum": _declaration_kind_stable_id,
+    "trait": _declaration_kind_stable_id,
+    "protocol": _declaration_kind_stable_id,
+    "contract": _declaration_kind_stable_id,
 }
 
 
@@ -1033,15 +1081,19 @@ def populate_kind_stable_ids(symbols: list[Symbol]) -> None:
     Symbol whose ``stable_id`` is still ``None``, dispatches on
     ``Symbol.kind`` to a kind-specific factory and stamps the result.
 
-    Producers that already computed a ``stable_id`` (functions, methods,
-    classes via ``_compute_stable_id``; routes via ``make_route_stable_id``;
-    typed-tier symbols via ``make_typed_stable_id``; etc.) keep priority
-    — this backstop never overrides a non-``None`` value.
+    Producers that already computed a ``stable_id`` (functions and methods
+    via ``make_typed_stable_id``; Python functions/methods/classes via
+    py.py's ``_compute_stable_id``; routes via ``make_route_stable_id``; etc.)
+    keep priority — this backstop never overrides a non-``None`` value.
 
-    Kinds not in ``_KIND_STABLE_ID_FACTORIES`` are left untouched.
-    Self-analysis on hypergumbo's own codebase confirmed that the eight
-    covered kinds account for all the previously-``None`` Symbols; new
-    kinds would surface here and need their own factory entry.
+    Kinds not in ``_KIND_STABLE_ID_FACTORIES`` are left untouched. The map
+    covers the eight INV-sotiv kinds (file / module / dependency / variable /
+    export / project / interface / type) plus the six WI-rihob container/
+    declaration kinds (class / struct / enum / trait / protocol / contract) —
+    the latter because the tree-sitter producers construct them with a
+    ``shape_id=`` but no ``stable_id=`` (unlike Python, whose ``_compute_stable_id``
+    covers classes at the producer). New kinds that surface with ``None`` need
+    their own factory entry here.
     """
     for sym in symbols:
         if sym.stable_id is not None:

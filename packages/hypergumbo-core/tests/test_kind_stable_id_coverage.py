@@ -62,6 +62,19 @@ _KINDS_REQUIRING_STABLE_ID = frozenset({
     "project", "interface", "type",
 })
 
+# WI-rihob: container/declaration kinds the backstop must also cover. The
+# tree-sitter producers (js_ts and its csharp/rust/swift/solidity/wgsl analogues)
+# construct these Symbols with ``shape_id=`` but omit ``stable_id=``, so they fell
+# through the INV-sotiv backstop to ``stable_id=None`` (measured: 0/4 TS classes,
+# TS enum, csharp class/struct/enum, rust enum/struct/trait, swift class/enum/
+# protocol, solidity contract, wgsl struct all null). Callable kinds that were
+# also null (go method, solidity function/constructor) are deliberately NOT here:
+# they must receive the *typed* stable_id from their producers (a name-only key
+# would collide across overloads) — a distinct producer concern.
+_CONTAINER_KINDS = frozenset({
+    "class", "struct", "enum", "trait", "protocol", "contract",
+})
+
 
 def _run_and_load(tmp_path: Path) -> dict:
     out = tmp_path / "out.json"
@@ -264,3 +277,127 @@ class TestKindSpecificFactories:
         assert make_module_stable_id("python", "m.py", "json") != make_module_stable_id("python", "m.py", "os")
         # Cross-language: same name and path in different languages → different stable_ids
         assert make_module_stable_id("python", "m.py", "io") != make_module_stable_id("dart", "m.py", "io")
+
+
+class TestContainerKindStableId:
+    """WI-rihob: container/declaration kinds get a stable_id at the chokepoint.
+
+    Root-caused at the js_ts container sites (class/enum/interface/type) — they
+    pass ``shape_id=`` but omit ``stable_id=``. ``interface``/``type`` were already
+    in the INV-sotiv backstop; ``class``/``struct``/``enum``/``trait``/``protocol``/
+    ``contract`` were not, so they defaulted to ``None`` on every tree-sitter
+    analyzer. The fix extends the backstop factory map (one place, all analyzers),
+    routing them through :func:`make_declaration_stable_id`.
+    """
+
+    def _make_symbol(
+        self, kind: str, name: str = "Widget",
+        language: str = "typescript", path: str = "widget.ts",
+    ) -> Symbol:
+        return Symbol(
+            id=f"{language}:{path}:1-1:{kind}:{name}",
+            name=name,
+            kind=kind,
+            language=language,
+            path=path,
+            span=Span(start_line=1, end_line=1, start_col=0, end_col=0),
+            stable_id=None,
+        )
+
+    def test_every_container_kind_gets_stamped(self) -> None:
+        """All six container/declaration kinds receive a well-formed stable_id."""
+        from hypergumbo_core.analyze.base import populate_kind_stable_ids
+        syms = [self._make_symbol(k) for k in sorted(_CONTAINER_KINDS)]
+        populate_kind_stable_ids(syms)
+        for s in syms:
+            assert s.stable_id is not None, f"kind={s.kind} left at stable_id=None"
+            assert s.stable_id.startswith("sha256:"), s.stable_id
+            assert len(s.stable_id) > len("sha256:")
+
+    def test_container_kinds_distinct_by_kind(self) -> None:
+        """A class and a same-named struct in the same file get distinct ids —
+        the kind is threaded into the hash."""
+        from hypergumbo_core.analyze.base import populate_kind_stable_ids
+        a = self._make_symbol("class", name="Widget")
+        b = self._make_symbol("struct", name="Widget")
+        populate_kind_stable_ids([a, b])
+        assert a.stable_id != b.stable_id
+
+    def test_container_kind_distinct_by_path(self) -> None:
+        """The same class name declared in two files gets distinct ids."""
+        from hypergumbo_core.analyze.base import populate_kind_stable_ids
+        a = self._make_symbol("class", name="Widget", path="a.ts")
+        b = self._make_symbol("class", name="Widget", path="b.ts")
+        populate_kind_stable_ids([a, b])
+        assert a.stable_id != b.stable_id
+
+    def test_container_kind_distinct_by_name(self) -> None:
+        """Two classes in one file get distinct ids — name discriminates."""
+        from hypergumbo_core.analyze.base import populate_kind_stable_ids
+        a = self._make_symbol("class", name="ItemDetail")
+        b = self._make_symbol("class", name="TrackerApp")
+        populate_kind_stable_ids([a, b])
+        assert a.stable_id != b.stable_id
+
+    def test_backstop_preserves_producer_class_id(self) -> None:
+        """A producer-computed class stable_id (e.g. Python ``_compute_stable_id``)
+        is never clobbered by the container backstop."""
+        from hypergumbo_core.analyze.base import populate_kind_stable_ids
+        sym = self._make_symbol("class", name="Config")
+        sym.stable_id = "sha256:producer_typed_id"
+        populate_kind_stable_ids([sym])
+        assert sym.stable_id == "sha256:producer_typed_id"
+
+    def test_backstop_idempotent_for_container_kinds(self) -> None:
+        from hypergumbo_core.analyze.base import populate_kind_stable_ids
+        syms = [self._make_symbol(k) for k in sorted(_CONTAINER_KINDS)]
+        populate_kind_stable_ids(syms)
+        first = [s.stable_id for s in syms]
+        populate_kind_stable_ids(syms)
+        assert first == [s.stable_id for s in syms]
+
+    def test_declaration_factory_is_prefixed_and_deterministic(self) -> None:
+        from hypergumbo_core.analyze.base import make_declaration_stable_id
+        r = make_declaration_stable_id("class", "typescript", "widget.ts", "ItemDetail")
+        assert r.startswith("sha256:")
+        assert len(r) > len("sha256:")
+        assert r == make_declaration_stable_id("class", "typescript", "widget.ts", "ItemDetail")
+
+    def test_declaration_factory_kind_language_path_name_all_matter(self) -> None:
+        from hypergumbo_core.analyze.base import make_declaration_stable_id
+
+        def mk(**kw: str) -> str:
+            args = {"kind": "class", "language": "typescript", "path": "w.ts", "name": "W"}
+            args.update(kw)
+            return make_declaration_stable_id(**args)
+
+        base = mk()
+        assert base != mk(kind="struct")
+        assert base != mk(language="rust")
+        assert base != mk(path="x.ts")
+        assert base != mk(name="V")
+
+
+class TestContainerKindEndToEnd:
+    """WI-rihob behavioral evidence: container kinds carry a stable_id in real
+    orchestrated analysis output (the js_ts sites are the filed root cause)."""
+
+    def test_typescript_class_and_enum_get_stable_id(self, tmp_path: Path) -> None:
+        (tmp_path / "widget.ts").write_text(
+            "export class ItemDetail {\n"
+            "  private id: number;\n"
+            "  constructor(id: number) { this.id = id; }\n"
+            "  getId(): number { return this.id; }\n"
+            "}\n"
+            "\n"
+            "enum Color { Red, Green, Blue }\n"
+        )
+        data = _run_and_load(tmp_path)
+        containers = [n for n in data["nodes"] if n["kind"] in _CONTAINER_KINDS]
+        assert containers, "expected class/enum container nodes in the TS fixture"
+        assert {"class", "enum"} <= {n["kind"] for n in containers}
+        for n in containers:
+            assert n["stable_id"] is not None, (
+                f"kind={n['kind']} name={n['name']!r} has stable_id=None — "
+                f"WI-rihob container backstop missed it"
+            )
