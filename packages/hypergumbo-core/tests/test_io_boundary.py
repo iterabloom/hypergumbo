@@ -5003,3 +5003,38 @@ class TestDstRefPreferredOverDstString:
             "custom_pkg.subpkg" in p and "custom_func" in p
             for p in primitives
         )
+
+
+class TestInProgressLanguages:
+    """WI-najil: consumers must be able to identify which of a query's
+    languages ship an ``status: in_progress`` io_primitives catalog, so a
+    zero-match result can be disclosed as possibly-incomplete rather than
+    read as a genuine 'no I/O here'.
+    """
+
+    def test_selects_only_in_progress_catalogs(self) -> None:
+        from hypergumbo_core.io_boundary import in_progress_languages
+        # python / rust / erlang ship status: complete; go / java ship in_progress.
+        result = in_progress_languages(
+            ["python", "go", "rust", "java", "erlang"]
+        )
+        assert result == ["go", "java"]
+
+    def test_excludes_unsupported_language(self) -> None:
+        """A language with no catalog (is_supported=False, status defaults to
+        'complete') is NOT flagged in_progress — it carries the separate
+        unsupported signal (INV-javam)."""
+        from hypergumbo_core.io_boundary import in_progress_languages
+        assert in_progress_languages(["klingon"]) == []
+
+    def test_complete_only_returns_empty(self) -> None:
+        from hypergumbo_core.io_boundary import in_progress_languages
+        assert in_progress_languages(["python", "rust", "erlang"]) == []
+
+    def test_sorted_and_deduped(self) -> None:
+        from hypergumbo_core.io_boundary import in_progress_languages
+        assert in_progress_languages(["java", "go", "java", "go"]) == ["go", "java"]
+
+    def test_empty_input(self) -> None:
+        from hypergumbo_core.io_boundary import in_progress_languages
+        assert in_progress_languages([]) == []

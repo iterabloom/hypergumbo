@@ -94,6 +94,7 @@ Alongside: the CLI standardizes on `--format {text,json}` across all read views 
 
 - **Read-view JSON single-sources one envelope and one version.** ~6 inlined envelope sites now flow through `add_schema_envelope()`, and six views single-source `READ_VIEW_SCHEMA_VERSION`; the spec documents the three independent version axes (format, tool, per-view). `verify-claims --json` now emits a versioned `{schema_version, view, verdicts, …}` object instead of a bare array (breaking for array-parsing consumers).
 - **`explain` errors on an ambiguous symbol name** instead of silently iterating every match, via the shared ambiguity check `slice` already used (escapable with `--first` / `--language` / `--file`).
+- **`io_primitives` catalog completeness is now disclosed (WI-najil).** The `io-boundaries`, `verify-claims`, and `slice --io-boundary` consumers each emit a one-line stderr warning when a query targets a language whose `io_primitives/<lang>.yaml` ships `status: in_progress` — so a zero-match result for that language is not silently read as "no I/O in this code". Eleven of the fourteen catalogs are `in_progress` (only python/rust/erlang are `complete`); the shared, tested helper is `io_boundary.in_progress_languages`, and the catalog `status` field is now documented in the spec. Unsupported languages keep the separate `is_supported=False` signal (INV-javam).
 
 #### Projection views
 

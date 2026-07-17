@@ -1844,3 +1844,59 @@ def test_io_boundaries_tier_tag_attaches_to_primitive_not_caller(
     assert prim_lines, (
         "primitive line should carry the tier tag in the new layout"
     )
+
+
+# ---------------------------------------------------------------------------
+# WI-najil: in_progress-catalog disclosure warning
+# ---------------------------------------------------------------------------
+
+
+class TestInProgressCatalogWarning:
+    """The catalog consumers (io-boundaries / verify-claims / slice
+    --io-boundary) must warn when a query targets a language whose
+    io_primitives catalog is ``status: in_progress`` — otherwise a
+    zero-match result is indistinguishable from 'no I/O in this code'.
+    """
+
+    def test_warn_helper_prints_and_returns_in_progress(self, capsys) -> None:
+        from hypergumbo_core.cli import _warn_in_progress_catalogs
+        warned = _warn_in_progress_catalogs(["python", "go"])
+        assert warned == ["go"]
+        err = capsys.readouterr().err
+        assert "go" in err
+        assert "in_progress" in err
+
+    def test_warn_helper_silent_for_complete_only(self, capsys) -> None:
+        from hypergumbo_core.cli import _warn_in_progress_catalogs
+        warned = _warn_in_progress_catalogs(["python", "rust"])
+        assert warned == []
+        assert capsys.readouterr().err == ""
+
+    def test_io_boundaries_warns_on_in_progress_language(
+        self, tmp_path, capsys,
+    ) -> None:
+        bmap = _make_behavior_map(
+            nodes=[{
+                "id": "go:main.go:1-5:main:function",
+                "name": "main", "kind": "function", "language": "go",
+                "path": "main.go", "span": {"start_line": 1, "end_line": 5},
+            }],
+            edges=[],
+        )
+        cmd_io_boundaries(_make_args(tmp_path, bmap))
+        err = capsys.readouterr().err
+        assert "go" in err and "in_progress" in err
+
+    def test_io_boundaries_no_warning_for_complete_language(
+        self, tmp_path, capsys,
+    ) -> None:
+        bmap = _make_behavior_map(
+            nodes=[{
+                "id": "python:main.py:1-5:main:function",
+                "name": "main", "kind": "function", "language": "python",
+                "path": "main.py", "span": {"start_line": 1, "end_line": 5},
+            }],
+            edges=[],
+        )
+        cmd_io_boundaries(_make_args(tmp_path, bmap))
+        assert "in_progress" not in capsys.readouterr().err

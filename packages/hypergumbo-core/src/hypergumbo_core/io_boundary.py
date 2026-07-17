@@ -34,7 +34,7 @@ from __future__ import annotations
 import urllib.parse
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
+from typing import Iterable, Optional
 
 import yaml
 
@@ -910,6 +910,28 @@ def load_catalog(language: str) -> IoBoundaryCatalog:
             catalog = catalog.merge(parent_catalog)
 
     return catalog
+
+
+def in_progress_languages(languages: Iterable[str]) -> list[str]:
+    """Return the subset of ``languages`` whose io_primitives catalog is
+    marked ``status: in_progress`` (WI-najil).
+
+    A consumer of the io-boundary catalog (``hypergumbo io-boundaries`` /
+    ``verify-claims`` / ``slice --io-boundary``) uses this to disclose that
+    boundary results for those languages may be incomplete: an ``in_progress``
+    catalog's zero-match outcome is otherwise indistinguishable from a genuine
+    "no I/O in this code". Unsupported languages (no catalog file, even via
+    alias) are excluded — :func:`load_catalog` returns a fallback object whose
+    ``status`` defaults to ``"complete"`` (they carry the separate
+    ``is_supported=False`` signal, INV-javam), so the ``status == "in_progress"``
+    test cleanly drops them. Aliases and parents resolve through
+    :func:`load_catalog` (e.g. ``typescript`` reports the ``javascript``
+    catalog's status). The result is sorted and de-duplicated.
+    """
+    return sorted({
+        lang for lang in languages
+        if load_catalog(lang).status == "in_progress"
+    })
 
 
 # ---------------------------------------------------------------------------

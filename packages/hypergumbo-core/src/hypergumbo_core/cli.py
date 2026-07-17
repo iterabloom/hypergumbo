@@ -42,7 +42,7 @@ import shutil
 import subprocess  # nosec B404 - subprocess needed for pip commands
 import sys
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Set
+from typing import Any, Callable, Dict, Iterable, List, Optional, Set
 
 from rich.console import Console
 from rich.table import Table
@@ -1406,6 +1406,27 @@ def _handle_files_mode(
     return 0
 
 
+def _warn_in_progress_catalogs(languages: Iterable[str]) -> List[str]:
+    """WI-najil: warn (to stderr, once per language) that an io_primitives
+    catalog marked ``status: in_progress`` may yield incomplete io-boundary
+    results — so a zero-match outcome is not silently read as "no I/O here".
+
+    Returns the warned languages (for testability). Shared by the three
+    catalog consumers so the disclosure fires uniformly: ``io-boundaries``,
+    ``verify-claims``, and ``slice --io-boundary``.
+    """
+    from .io_boundary import in_progress_languages
+
+    warned = in_progress_languages(languages)
+    for lang in warned:
+        print(
+            f"⚠  io_primitives catalog for {lang!r} is in_progress — "
+            f"io-boundary results for {lang!r} may be incomplete.",
+            file=sys.stderr,
+        )
+    return warned
+
+
 def _rehydrate_io_boundary_edges(raw_edges: list) -> list:
     """Rebuild lightweight edge objects for the consumer-time io-boundary
     classification, preserving ``is_resolved`` + ``dst_ref`` (WI-kumol).
@@ -1464,6 +1485,9 @@ def _apply_io_boundary_filter(
     slice-scoped, on-demand twin of ``hypergumbo io-boundaries``.
     """
     from .io_boundary import compute_boundary_map, load_catalog
+
+    # WI-najil: same in_progress-catalog disclosure as io-boundaries/verify-claims.
+    _warn_in_progress_catalogs({n.language for n in nodes if n.language})
 
     catalogs: Dict[str, Any] = {}
     for node in nodes:
@@ -4433,6 +4457,10 @@ def cmd_io_boundaries(args: argparse.Namespace) -> int:
         if lang:
             languages.add(lang)
 
+    # WI-najil: disclose in_progress catalogs so a zero-match result for
+    # such a language is not read as a genuine "no I/O in this code".
+    _warn_in_progress_catalogs(languages)
+
     # Load catalogs for detected languages
     # INV-javam: track unsupported languages (no catalog) separately from
     # supported-but-zero-matches languages. The former must be surfaced
@@ -5119,6 +5147,9 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
         lang = node.get("language")
         if lang:
             languages.add(lang)
+
+    # WI-najil: same in_progress-catalog disclosure as io-boundaries.
+    _warn_in_progress_catalogs(languages)
 
     catalogs = {}
     for lang in languages:
