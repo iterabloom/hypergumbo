@@ -149,6 +149,91 @@ def test_call_evidence_type_is_orthogonal_to_is_resolved():
         assert unresolved.is_resolved is False
 
 
+# --- META-bifif UMBRELLA: no consumer re-derives a granular producer verdict ---
+#
+# META-bifif (meta-invariant META-bifif-luzin-…-pohud): when an upstream pass
+# computes a correct, granular verdict, downstream consumers MUST honor it rather
+# than re-deriving a COARSER one via heuristic or keying tables/labels on a
+# coarser value. This is the single documented home for the umbrella across all
+# THREE named verdicts; the resolution verdict is asserted above, the other two
+# below, each cross-referenced to its primary guard.
+#
+#   1. RESOLUTION (Edge.is_resolved, ADR-0037): the evidence_type label does not
+#      encode resolution — a call pathway spans both states, confidence reads
+#      (evidence_type, is_resolved) as orthogonal inputs. [above + test_confidence.py]
+#   2. LANGUAGE (Symbol.language / discovery_language, ADR-0031): a synthetic
+#      protocol stand-in has no source language → language=None + discovery_language;
+#      a fabricated Symbol.language on a synthetic node is flagged. [corpus guard:
+#      spec_validator._check_cross_field_coherence; test_spec_validator_smoke.py]
+#   3. TEST-CODE (Symbol.is_test_file, spec §14) — a KEEP-DISTINCT EXCEPTION, not a
+#      re-derivation. The entrypoint ranker's paths.is_test_file is a BROADER
+#      "test-or-support" ranking predicate, not a coarser re-derivation of the
+#      narrow supply-chain role flag (WI-popok concept-audit KEEP). [test_entrypoints.py]
+#
+# THE REUSABLE PATTERN. For a candidate (granular verdict V, coarse proxy P):
+# META-bifif is violated only if a consumer re-derives V from P *more coarsely*
+# than the producer's verdict. It is NOT violated if P is genuinely broader /
+# different-purpose (is_test_file) or merely correlates with V without encoding it
+# (evidence_type↔is_resolved). Premise-check, don't reflex-fold — two filed
+# "members" (WI-popok, WI-molit) were KEEP-distinct on inspection.
+
+_META_BIFIF_VERDICTS = frozenset(
+    {"Edge.is_resolved", "Symbol.language", "Symbol.is_test_file"}
+)
+
+
+def test_meta_bifif_language_verdict_flags_fabricated_language_on_synthetic_node():
+    """META-bifif verdict 2 (LANGUAGE): a synthetic protocol stand-in has no
+    source language, so it must carry ``language=None`` + ``discovery_language``
+    (ADR-0031); consumers read ``discovery_language`` for the host language. A
+    fabricated ``Symbol.language`` on a ``protocol_origin`` node (the WI-zadot
+    shape) is the re-derivation META-bifif forbids, and the corpus-wide guard
+    ``spec_validator._check_cross_field_coherence`` flags it."""
+    from hypergumbo_core.ir import Span, Symbol
+    from hypergumbo_core.spec_validator import validate_ir
+
+    span = Span(start_line=1, end_line=1, start_col=0, end_col=1)
+    fabricated = Symbol(
+        id="websocket:x.py:1-1:ws:function", name="ws", kind="function",
+        language="python", path="x.py", span=span,
+        origin=["websocket-linker"], origin_run_id="uuid:test",
+        protocol_origin="websocket",
+    )
+    violations = validate_ir([fabricated], [], [])
+    matched = [
+        v for v in violations
+        if v.validator_class == "cross_field"
+        and v.field_name == "Symbol.language / Symbol.protocol_origin"
+    ]
+    assert len(matched) == 1, "fabricated language on a synthetic node must be flagged"
+
+
+def test_meta_bifif_test_code_verdict_is_a_keep_distinct_exception():
+    """META-bifif verdict 3 (TEST-CODE): NOT a re-derivation to fold — a KEEP.
+    The entrypoint ranker's ``paths.is_test_file`` is a genuinely BROADER
+    "test-or-support" predicate (it flags ``mocks/`` etc.), not a coarser
+    re-derivation of the narrow supply-chain role flag ``Symbol.is_test_file``.
+    Because META-bifif targets *coarser* re-derivations, this broader predicate
+    is OUTSIDE the invariant (WI-popok concept-audit KEEP). Asserting the breadth
+    that makes them distinct guards against a future reflex-fold; the full
+    divergence lives in test_entrypoints.py."""
+    from hypergumbo_core.paths import is_test_file
+
+    # The broad ranking predicate flags test-SUPPORT dirs the narrow role flag does
+    # not — the breadth that makes it a distinct concept, not a coarse re-derivation.
+    assert is_test_file("src/mocks/server.py") is True
+    assert is_test_file("src/app.py") is False
+
+
+def test_meta_bifif_names_exactly_three_verdicts():
+    """Completeness guard: META-bifif names exactly these three granular producer
+    verdicts. Adding a new verdict a consumer might re-derive forces adding it
+    here + a guard, so the umbrella's coverage cannot drift silently."""
+    assert _META_BIFIF_VERDICTS == frozenset(
+        {"Edge.is_resolved", "Symbol.language", "Symbol.is_test_file"}
+    )
+
+
 # --- Accessors ---
 
 def test_all_evidence_type_names_returns_frozenset():
