@@ -5266,9 +5266,14 @@ def _process_call(
             # Lower confidence since we don't know the receiver type.
             else:
                 dst_id = f"python:external:0-0:{attr_name}:unresolved"
+                # WI-javus: resolution_quality is NOT stamped here — it is derived
+                # AFTER the hint chain below, honestly, from whether a receiver
+                # type/hint was actually established. Stamping ``type_inferred``
+                # unconditionally (as before) mislabeled the give-up branch — whose
+                # own comment reads "type cannot be inferred" — as a success; on
+                # pretix that was ~62% of the ``type_inferred`` population.
                 unresolved_meta = {
                     "call_construct": "method",
-                    "resolution_quality": "type_inferred",
                 }
                 # WI-noham Part A: when the receiver's type is GENUINELY
                 # inferred, stamp a receiver_type_hint so the inherited_calls
@@ -5364,6 +5369,20 @@ def _process_call(
                             module_imports, local_symbols,
                         ):
                             unresolved_meta["receiver_type_id"] = _recv_sym.id
+                # WI-javus: stamp resolution_quality='type_inferred' ONLY when the
+                # hint chain above actually established a receiver type — ``self``
+                # (enclosing_class), an annotated/constructed var or a bare local
+                # class (receiver_type_hint). The give-up fall-through (an untyped /
+                # duck receiver, INV-fahub-biased to unresolved) established none, so
+                # it carries NO resolution_quality: the field names the resolution
+                # pathway (spec §903 / MetaKeySpec), and here there was none. Was
+                # previously stamped unconditionally, contradicting the branch's own
+                # "type cannot be inferred" semantics on ~62% of these edges.
+                if (
+                    "enclosing_class" in unresolved_meta
+                    or "receiver_type_hint" in unresolved_meta
+                ):
+                    unresolved_meta["resolution_quality"] = "type_inferred"
                 # WI-sozoj: a ``self.save()``/``self.delete()`` whose enclosing
                 # class DIRECTLY extends django ``models.Model`` is an ORM
                 # instance write — re-key the dst to ``django.db.models`` so
