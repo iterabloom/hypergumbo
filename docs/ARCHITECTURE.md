@@ -15,14 +15,14 @@ for focused LLM context.
 
 hypergumbo analyzed its own source code and found:
 - **294** Python modules (133 analyzers, 58 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 30, Infrastructure 7; 66 core, 4 CLI, 33 tracker)
-- **37028** symbols (functions, classes, methods)
-- **126325** edges by type:
-  - calls: 63791
-  - contains: 34194
-  - imports: 11232
-  - instantiates: 10397
-  - references: 4241
-  - module_attr_ref: 1154
+- **37118** symbols (functions, classes, methods)
+- **126582** edges by type:
+  - calls: 63918
+  - contains: 34281
+  - imports: 11250
+  - instantiates: 10412
+  - references: 4250
+  - module_attr_ref: 1155
   - other: 1316
 
 ## Package Architecture
@@ -85,7 +85,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 37028 Symbols + 126325 Edges + UsageContexts           │
+│  Output: 37118 Symbols + 126582 Edges + UsageContexts           │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -204,7 +204,7 @@ A code symbol (function, class, etc.) detected by analysis.
 - `meta`: Optional metadata dict for language-specific information
 - `supply_chain_tier`: Position in dependency graph (1=first_party, 2=internal_dep, 3=external_dep, 4=derived). See §14 of spec.
 - `supply_chain_reason`: Why this tier was assigned (e.g., "matches ^src/")
-- `is_test_file`: True if the file holds test code. Independent of tier — co-located test files can be tier 1.
+- `is_test_file`: True if the file holds test *code* — the NARROW supply-chain role flag (spec §14), where examples/benches/fuzz carry their own role rather than this flag. Independent of tier — co-located test files can be tier 1. Deliberately distinct from the broader ``paths.is_test_file`` ranking/scan heuristic (which also covers mocks/fixtures/testdata/benches for entrypoint deprioritization); do not swap consumers of one for the other without re-running the WI-popok concept audit.
 - `is_example_file`: True if the file is example/demo/sample/tutorial code. Set when the path matches an EXAMPLE_PATTERN.
 - `is_config_file`: True if the file is a dependency/build manifest such as ``pyproject.toml`` / ``package.json`` / ``Cargo.toml``. Within tier 2, ``is_test_file`` / ``is_example_file`` / ``is_config_file`` are mutually exclusive — at most one is True per Symbol.
 - `is_generated_file`: True if the file is generated code. Independent of the role flags above.
@@ -272,19 +272,19 @@ These symbols have the highest bidirectional centrality
 
 | Symbol | Kind | Score | Location |
 |--------|------|-------|----------|
-| `Symbol` | class | 9341.2 | ir.py |
-| `Span` | class | 6280.7 | ir.py |
-| `write_text` | external_symbol | 3293.0 | <external> |
-| `LinkerContext` | class | 3168.6 | registry.py |
-| `Edge.create` | method | 2079.5 | ir.py |
+| `Symbol` | class | 9373.3 | ir.py |
+| `Span` | class | 6301.3 | ir.py |
+| `write_text` | external_symbol | 3294.0 | <external> |
+| `LinkerContext` | class | 3172.6 | registry.py |
+| `Edge.create` | method | 2082.9 | ir.py |
 | `TrackerApp` | class | 1946.9 | tui.py |
 | `load_framework_patterns` | function | 1875.9 | framework_patterns.py |
-| `Path` | external_symbol | 1602.0 | <external> |
+| `Path` | external_symbol | 1605.0 | <external> |
 | `main` | function | 1563.1 | cli.py |
 | `clear_pattern_cache` | function | 1336.8 | framework_patterns.py |
 | `Edge` | class | 1273.7 | ir.py |
-| `append` | external_symbol | 1235.0 | <external> |
-| `get` | external_symbol | 1114.0 | <external> |
+| `append` | external_symbol | 1236.0 | <external> |
+| `get` | external_symbol | 1121.0 | <external> |
 | `TreeSitterAnalyzer` | class | 1074.7 | base.py |
 | `find_files` | function | 997.1 | discovery.py |
 
@@ -841,7 +841,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: 74e09bfc82ea
+  commit: ec8ef98a7bf4
   hypergumbo: 6.1.0
   python: 3.12.3
 -->
