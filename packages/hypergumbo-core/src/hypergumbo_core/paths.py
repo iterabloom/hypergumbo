@@ -271,6 +271,16 @@ def is_test_file(path: str) -> bool:
 
     Used for filtering and deprioritizing test code in analysis results.
 
+    This is the BROAD "test-OR-support" ranking/scan predicate: beyond test
+    code it also flags mocks/, fakes/, fixtures/, testdata/, benches/, ``t/``,
+    ``_test.<any-ext>``, ``spec_*``, ``test-*``, ``*_mock`` and friends. It is
+    the single shared chokepoint for entrypoint ranking and slice/linker
+    filtering, and is DELIBERATELY distinct from the narrow supply-chain role
+    flag ``Symbol.is_test_file`` ("test *code*" only, spec §14). The two answer
+    different questions ("deprioritize as a non-production entrypoint?" vs
+    "is this test code for tier classification?") and diverge in both
+    directions — see the WI-popok fundamental-concept-audit KEEP verdict.
+
     Matches:
     - Files starting with test_ or test- or ending with _test.* (py/js/ts/go)
     - Files starting with spec_ or ending with _spec.* or .spec.*

@@ -17,6 +17,7 @@ from hypergumbo_core.entrypoints import (
     MAX_ENTRYPOINT_CAP,
 )
 from hypergumbo_core.paths import is_test_file
+from hypergumbo_core.supply_chain import classify_file
 
 
 def make_symbol(
@@ -2761,6 +2762,57 @@ class TestEntrypointRankingPenalties:
         assert len(entrypoints) == 1
         assert entrypoints[0].symbol_id == prod_main.id
         assert entrypoints[0].confidence == pytest.approx(0.80, rel=0.01)
+
+    def test_support_dir_entrypoint_penalized_via_broad_path_heuristic(
+        self, tmp_path
+    ) -> None:
+        """WI-popok KEEP verdict: the ranker penalizes on the BROAD
+        ``paths.is_test_file`` ("test-or-support" code), NOT the narrow
+        supply-chain ``Symbol.is_test_file`` role flag.
+
+        A ``main()`` in a ``mocks/`` dir must stay deprioritized even though the
+        canonical supply-chain verdict does NOT flag it as test code — otherwise
+        mock/fixture/testdata entrypoints would flood the entry list on repos
+        that have them. This guards against a naive "consume ``sym.is_test_file``"
+        swap (WI-popok): that field is ``False`` for ``mocks/``, so the swap
+        would drop the penalty and this test would go red.
+
+        Executable re-evaluation trigger (per the fundamental-concept-audit KEEP
+        rule): the divergence-pinning assertion below fails if canonical
+        ``supply_chain.is_test`` is ever broadened to cover ``mocks/`` — the
+        signal to re-open the audit and reconsider consolidating the two
+        predicates.
+        """
+        # The divergence the KEEP verdict rests on: the broad ranking heuristic
+        # flags mocks/ as test-support; the narrow supply-chain classifier does
+        # not. If the second assertion ever flips, the two predicates have
+        # converged and the swap becomes safe — re-run the concept audit.
+        assert is_test_file("src/mocks/server.py") is True
+        mock_file = tmp_path / "src/mocks/server.py"
+        mock_file.parent.mkdir(parents=True, exist_ok=True)
+        mock_file.write_text("def main():\n    pass\n")
+        assert classify_file(mock_file, tmp_path).is_test is False
+
+        prod_main = make_symbol(
+            "main",
+            path="src/app.py",
+            meta={"concepts": [{"concept": "main_function"}]},
+        )
+        mock_main = make_symbol(
+            "main",
+            path="src/mocks/server.py",
+            start_line=10,
+            meta={"concepts": [{"concept": "main_function"}]},
+        )
+        # The mock symbol's canonical role-flag verdict is False — the ranker
+        # must not rely on it, or this entrypoint escapes the penalty.
+        assert mock_main.is_test_file is False
+
+        entrypoints = detect_entrypoints([prod_main, mock_main], [])
+
+        # Broad-heuristic penalty (0.80 * 0.1 = 0.08 < 0.10) filters the mock main.
+        assert len(entrypoints) == 1
+        assert entrypoints[0].symbol_id == prod_main.id
 
     def test_vendor_tier_penalty(self) -> None:
         """Entrypoints in vendor code (tier >= 3) receive a 70% penalty."""

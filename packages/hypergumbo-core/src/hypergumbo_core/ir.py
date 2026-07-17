@@ -491,8 +491,14 @@ class Symbol:
         supply_chain_tier: Position in dependency graph (1=first_party, 2=internal_dep,
             3=external_dep, 4=derived). See §14 of spec.
         supply_chain_reason: Why this tier was assigned (e.g., "matches ^src/")
-        is_test_file: True if the file holds test code. Independent
-            of tier — co-located test files can be tier 1.
+        is_test_file: True if the file holds test *code*. Independent
+            of tier — co-located test files can be tier 1. This is the NARROW
+            supply-chain role flag (spec §14): examples/benches/fuzz carry
+            their own role, not this flag. It is deliberately distinct from the
+            broader ``paths.is_test_file`` ranking/scan heuristic (which also
+            covers mocks/fixtures/testdata/benches for entrypoint
+            deprioritization) — do not swap consumers of one for the other
+            without re-running the WI-popok concept audit.
         is_example_file: True if the file is example/demo/sample/tutorial code.
             Set when the path matches an EXAMPLE_PATTERN.
         is_config_file: True if the file is a dependency/build manifest such as

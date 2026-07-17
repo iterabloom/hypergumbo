@@ -1623,6 +1623,21 @@ def detect_entrypoints(
         # test entrypoints at 0.40 confidence — high enough to dominate
         # auto-slicing selections.  0.1 pushes them to 0.08, well below
         # any production entrypoint.
+        #
+        # WI-popok / fundamental-concept audit (2026-07-17, KEEP verdict): this
+        # deliberately uses the BROAD ``paths.is_test_file`` heuristic (the
+        # ranking notion of "test-OR-support" code: also mocks/, fakes/,
+        # fixtures/, testdata/, benches/, ``_test.<any-ext>``, ``spec_*`` …),
+        # NOT the narrow supply-chain role flag ``Symbol.is_test_file`` (which
+        # per spec §14 means "test *code*" only — examples/benches/fuzz carry
+        # other roles). The two are distinct-purpose predicates, not a
+        # coarse-vs-granular pair, so this is not a META-bifif re-derivation to
+        # fold: swapping onto ``sym.is_test_file`` would silently stop
+        # deprioritizing mock/fixture/benchmark entrypoints and flood the entry
+        # list. Re-evaluation trigger: if ``supply_chain.is_test`` is ever
+        # broadened to cover that support-code breadth, re-open the audit and
+        # reconsider consolidating (guarded by
+        # test_support_dir_entrypoint_penalized_via_broad_path_heuristic).
         if sym.path and is_test_file(sym.path):
             ep.rank_score *= 0.1
 

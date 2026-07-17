@@ -1037,7 +1037,10 @@ def find_non_test_files(
     files) are two filed P1 instances of the same class.
 
     This wrapper drops test-classified paths at the single discovery
-    chokepoint via the canonical :func:`hypergumbo_core.paths.is_test_file`,
+    chokepoint via :func:`hypergumbo_core.paths.is_test_file` — the canonical
+    filesystem-scan test-gate (the broad "test-OR-support" ranking/scan
+    predicate, distinct from the narrow supply-chain role flag
+    ``Symbol.is_test_file``; the two are kept separate by design, WI-popok) —
     so every linker that self-scans the filesystem gates on test status in ONE
     place — instead of each linker carrying (or omitting) its own private
     copy. Swapping a linker's ``find_files`` call for this one is therefore a

@@ -1364,7 +1364,10 @@ def strip_test_file_only_concepts(symbols: list[Symbol]) -> int:
     a production service. The concept-enrichment pass (``enrich_symbols``) runs
     BEFORE supply-chain classification in the pipeline (linker-produced symbols
     must be classified too), so ``Symbol.is_test_file`` — the canonical
-    test-code verdict — is not yet set when concepts are attached. This
+    supply-chain *test-code* verdict (the narrow role flag, spec §14; distinct
+    from the broader ``paths.is_test_file`` ranking/scan heuristic that keys
+    entrypoint deprioritization — WI-popok KEEP verdict) — is not yet set when
+    concepts are attached. This
     post-classification pass honors it: any concept whose producing pattern set
     ``is_test_file: false`` is removed from a symbol the classifier marked
     ``is_test_file``. Returns the number of concepts stripped.
