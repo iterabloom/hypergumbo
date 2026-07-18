@@ -188,6 +188,7 @@
     "ast_call_this",
     "ast_call_this_property",
     "ast_call_type_inferred",
+    "ast_call_ufcs",
     "ast_cite",
     "ast_decorator",
     "ast_import",
