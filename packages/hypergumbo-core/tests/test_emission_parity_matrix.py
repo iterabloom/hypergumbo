@@ -69,6 +69,18 @@ What the gate establishes about its eight named tracker items:
   the eight per-language slices that ratcheted the holes away. `emits_variable`
   is not parametrized for Java/C# (no module-level variables — see
   `COLUMN_APPLICABILITY`).
+* `WI-lutob` / `INV-jahiv` adds the `shape_id` column — the sole *identity*-field
+  cell (all the columns above are semantic/derived-field parity). It was added
+  because the identity fields (shape_id/stable_id/fingerprint) were never
+  enrolled in this ratchet, so a real `csharp shape_id=None` regression (an
+  `analyze()`-override bypassing the base-class auto-stamp loop) slipped past
+  every standing test and surfaced only in a point-in-time DEEP bakeoff — exactly
+  the silent-parity-regression this gate exists to catch. The column locks
+  callable shape_id for the eight core analyzers (all hard locks; csharp is green
+  post-PR #704). SCOPE: shape_id is spec-🟨-optional, coverage deliberately
+  scoped to ~41/70 analyzers, so this guards MAINSTREAM emission against
+  regression, not full-fleet parity — the niche solidity/wgsl "without"-bucket
+  gaps stay `WI-lutob` coverage work and are not cells here.
 """
 from __future__ import annotations
 
@@ -147,6 +159,22 @@ COLUMNS: dict[str, Callable[[AnalysisResult], bool]] = {
     # WI-jusus (emission-parity F5): the analyzer emits a kind='field' Symbol
     # for the class/struct field present in every fixture.
     "emits_field": lambda res: any(s.kind == "field" for s in res.symbols),
+    # WI-lutob / INV-jahiv: the analyzer emits the `axis: identity` structural
+    # shape_id on its callables. This is the one identity-field column (the
+    # semantic-field columns above are the analyzer-parity core); it exists
+    # because a `csharp shape_id=None` regression (csharp.py overriding
+    # `analyze()` and bypassing the base-class auto-stamp loop, WI-lutob) slipped
+    # past every standing test and was caught only by a point-in-time DEEP
+    # bakeoff — the exact "a sweep claimed parity, nothing kept it honest"
+    # failure mode this gate exists to prevent. It locks callable shape_id
+    # emission for the eight core (mainstream) analyzers, whose coverage
+    # ADR-0014's status line asserts is complete. SCOPE BOUNDARY: shape_id is
+    # spec-🟨-optional with coverage deliberately scoped to ~41/70 analyzers
+    # (spec §6, line ~365), so this column guards MAINSTREAM analyzers against
+    # regression — it is NOT a full-fleet parity claim. The niche extended1/
+    # common gaps (solidity, wgsl) are documented "without"-bucket coverage work
+    # (WI-lutob), not cells here (they are not in FIXTURE_ANALYZER).
+    "shape_id": lambda res: any(s.shape_id for s in _callables(res)),
 }
 
 # Columns not applicable to every language. The injected-fixture design assumes
