@@ -185,7 +185,13 @@ def _process_function_declaration(
         qualified_name = f"{parent_name}.{func_name}"
         return _make_symbol(rel_path, run_id, node, qualified_name, "method", source, analyzer, signature=signature)
     else:
-        return _make_symbol(rel_path, run_id, node, func_name, "function", source, analyzer, signature=signature)
+        # WI-situj: stamp the first-parameter type so the receiver_type_dispatch
+        # linker can recover UFCS calls (``x.func()`` ≡ ``func(x)``) against it.
+        ufcs_meta: Optional[dict] = None
+        first_type = _first_param_type(node, source)
+        if first_type:
+            ufcs_meta = {"ufcs_receiver_type": first_type}
+        return _make_symbol(rel_path, run_id, node, func_name, "function", source, analyzer, signature=signature, meta=ufcs_meta)
 
 
 def _process_struct_declaration(
@@ -533,6 +539,83 @@ def _get_ufcs_template_name(
     return None
 
 
+def _param_name_and_type(
+    param_node: "tree_sitter.Node", source: bytes,
+) -> tuple[Optional[str], Optional[str]]:
+    """Return ``(param_name, base_type_name)`` for a D ``parameter`` node.
+
+    A D ``parameter`` child has a ``type`` node (whose ``identifier`` is the
+    type name, e.g. ``File``) followed by an ``identifier`` (the parameter
+    name). ``base_type_name`` is ``None`` for an untyped / ``auto`` parameter
+    so the caller records the name without a resolvable receiver type.
+    """
+    name: Optional[str] = None
+    type_name: Optional[str] = None
+    for child in param_node.children:
+        if child.type == "identifier" and name is None:
+            name = node_text(child, source)
+        elif child.type == "type":
+            tid = find_child_by_type(child, "identifier")
+            if tid is not None:
+                type_name = node_text(tid, source)
+    return name, type_name
+
+
+def _first_param_type(
+    func_node: "tree_sitter.Node", source: bytes,
+) -> Optional[str]:
+    """Base type of a D function's FIRST parameter (its UFCS receiver type).
+
+    ``bool exists(File f)`` → ``"File"``; a UFCS call ``x.exists()`` where ``x``
+    has type ``File`` is sugar for ``exists(x)``, so the receiver-type-index
+    linker (INV-vigaf) matches the call's ``receiver_type_hint`` against this.
+    """
+    params = find_child_by_type(func_node, "parameters")
+    if params is None:  # pragma: no cover - function_declaration always has ()
+        return None
+    for child in params.children:
+        if child.type == "parameter":
+            _name, type_name = _param_name_and_type(child, source)
+            return type_name
+    return None
+
+
+def _extract_param_var_types(
+    func_node: "tree_sitter.Node", source: bytes,
+) -> dict[str, Optional[str]]:
+    """Map each parameter name to its base type (``None`` when untyped).
+
+    WI-situj: the receiver of a UFCS call (``thing.exists()``) is most often a
+    function parameter. Tracking parameter types lets the call site emit a
+    ``receiver_type_hint`` (typed) or an un-hinted unresolved edge (auto),
+    either way withholding the misbinding bare-name resolution. Local variable
+    declarations and ``auto`` locals are a documented residual — not tracked
+    here.
+    """
+    result: dict[str, Optional[str]] = {}
+    params = find_child_by_type(func_node, "parameters")
+    if params is None:  # pragma: no cover - function_declaration always has ()
+        return result
+    for child in params.children:
+        if child.type == "parameter":
+            name, type_name = _param_name_and_type(child, source)
+            if name:
+                result[name] = type_name
+    return result
+
+
+def _enclosing_function_node(
+    node: "tree_sitter.Node",
+) -> Optional["tree_sitter.Node"]:
+    """Walk parents to the enclosing ``function_declaration`` node, or None."""
+    current = node.parent
+    while current is not None:
+        if current.type == "function_declaration":
+            return current
+        current = current.parent
+    return None
+
+
 def _resolve_and_emit_call_edge(
     caller: Symbol,
     target_name: str,
@@ -543,6 +626,7 @@ def _resolve_and_emit_call_edge(
     edges: list[Edge],
     node: "tree_sitter.Node",
     run_id: str,
+    var_types: Optional[dict[str, Optional[str]]] = None,
 ) -> None:
     """Resolve a call target and emit a call edge.
 
@@ -550,6 +634,23 @@ def _resolve_and_emit_call_edge(
     handling. Uses import aliases for qualified calls and import-scope
     path_hints for bare calls to disambiguate cross-file resolution.
     """
+    # WI-situj (INV-fahub / INV-vigaf): UFCS receiver gate. When the receiver
+    # is a known local VARIABLE (a parameter), ``thing.exists()`` is NOT a
+    # module-qualified call — it is UFCS sugar for ``exists(thing)``. The bare
+    # ``resolver.lookup`` below would misbind it to an arbitrary same-named free
+    # function ``exists()`` at 0.85. Instead emit the call unresolved with a
+    # ``receiver_type_hint`` (when the parameter's type is known) and let the
+    # receiver_type_dispatch linker recover the UFCS free function by matching
+    # its first-parameter type; when the type is unknown (``auto``) we still
+    # withhold the misbind — the call stays honestly external.
+    if receiver is not None and var_types and receiver in var_types:
+        edges.append(make_unresolved_edge(
+            "d", caller.id, target_name,
+            node.start_point[0] + 1, PASS_ID, run_id,
+            receiver_type_hint=var_types[receiver],
+        ))
+        return
+
     # Get path hint from import aliases if receiver is aliased
     path_hint: Optional[str] = None
     if receiver:
@@ -710,6 +811,11 @@ class DAnalyzer(TreeSitterAnalyzer):
             if isinstance(sym, Symbol) and sym.kind == "module":
                 module_registry[sym.name] = sym.id
 
+        # WI-situj: per-function parameter var-types, computed lazily and keyed
+        # by the enclosing function's byte span, so the UFCS receiver gate in
+        # _resolve_and_emit_call_edge can tell a variable receiver from a module.
+        var_types_cache: dict[tuple[int, int], dict[str, Optional[str]]] = {}
+
         for node in iter_tree(tree.root_node):
             # Process imports
             if node.type == "import_declaration":
@@ -723,10 +829,21 @@ class DAnalyzer(TreeSitterAnalyzer):
                 if target_name:
                     caller = _find_enclosing_function_d(node, source, local_symbols)
                     if caller:
+                        fnode = _enclosing_function_node(node)
+                        if fnode is None:  # pragma: no cover - caller ⟹ fnode set
+                            call_var_types: dict[str, Optional[str]] = {}
+                        else:
+                            key = (fnode.start_byte, fnode.end_byte)
+                            if key not in var_types_cache:
+                                var_types_cache[key] = _extract_param_var_types(
+                                    fnode, source,
+                                )
+                            call_var_types = var_types_cache[key]
                         _resolve_and_emit_call_edge(
                             caller, target_name, receiver,
                             import_aliases, imported_modules,
                             resolver, edges, node, run.execution_id,
+                            var_types=call_var_types,
                         )
 
             # Process UFCS template calls: arr.map!(fn)
