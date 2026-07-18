@@ -1943,3 +1943,113 @@ class TestSwiftCyclomaticComplexity:
         assert simple.cyclomatic_complexity == 1
         assert branchy.cyclomatic_complexity is not None
         assert branchy.cyclomatic_complexity >= 4
+
+
+class TestSwiftInvFahubReceiverGating:
+    """INV-fahub (WI-votar): an unresolvable-receiver Swift call MUST emit an
+    honest unresolved external edge, not a high-confidence ``calls`` edge to an
+    arbitrary same-named internal def (the ``create``/``delete``/``run`` @0.80
+    funnel). Mirrors the Python/Scala receiver-gating (INV-nilud): analyzer
+    suppresses + stamps ``receiver_type_hint``; the shared inherited_calls
+    linker recovers (Site-2 Step-1). Recall recovery threads function/method
+    parameter types (previously dropped) into the receiver type map."""
+
+    def test_untyped_receiver_does_not_misbind(self, tmp_path: Path) -> None:
+        """``obj.create()`` with an untyped receiver must NOT bind to an
+        arbitrary top-level ``create``."""
+        from hypergumbo_lang_mainstream.swift import analyze_swift
+
+        (tmp_path / "factory.swift").write_text("func create() {}\n")
+        (tmp_path / "handler.swift").write_text(
+            "struct Handler {\n"
+            "  func run() {\n"
+            "    let obj = makeThing()\n"
+            "    obj.create()\n"
+            "  }\n"
+            "}\n"
+        )
+        result = analyze_swift(tmp_path)
+        create_fn = next(
+            s for s in result.symbols
+            if s.name == "create" and s.kind == "function"
+        )
+        misbinds = [
+            e for e in result.edges
+            if e.edge_type == "calls" and e.dst == create_fn.id and "run" in e.src
+        ]
+        assert misbinds == [], f"unresolvable receiver misbound create(): {misbinds}"
+
+    def test_untyped_receiver_emits_canonical_unresolved_method_edge(
+        self, tmp_path: Path
+    ) -> None:
+        """The suppressed call emits the py.py-canonical shape: is_resolved=False,
+        dst ``swift:external:...:unresolved``, evidence_type=ast_call (→ 0.40),
+        meta ``call_construct=method``, and NO ``receiver_type_hint`` (untyped)."""
+        from hypergumbo_lang_mainstream.swift import analyze_swift
+
+        (tmp_path / "factory.swift").write_text("func create() {}\n")
+        (tmp_path / "handler.swift").write_text(
+            "struct Handler {\n"
+            "  func run() {\n"
+            "    let obj = makeThing()\n"
+            "    obj.create()\n"
+            "  }\n"
+            "}\n"
+        )
+        result = analyze_swift(tmp_path)
+        gated = [
+            e for e in result.edges
+            if e.edge_type == "calls" and "run" in e.src
+            and e.dst.endswith(":create:unresolved")
+        ]
+        assert len(gated) == 1, [e.dst for e in result.edges if "run" in e.src]
+        e = gated[0]
+        assert e.is_resolved is False
+        assert "external" in e.dst
+        assert e.evidence_type == "ast_call"
+        assert abs(e.confidence - 0.40) < 1e-9, e.confidence
+        assert (e.meta or {}).get("call_construct") == "method"
+        assert "receiver_type_hint" not in (e.meta or {})
+
+    def test_param_typed_receiver_resolves(self, tmp_path: Path) -> None:
+        """Recall recovery: a receiver typed by a function parameter
+        (``func use(f: Foo)``) resolves — param types are now threaded."""
+        from hypergumbo_lang_mainstream.swift import analyze_swift
+
+        (tmp_path / "app.swift").write_text(
+            "class Foo {\n  func bar() {}\n}\n"
+            "func use(f: Foo) {\n"
+            "  f.bar()\n"
+            "}\n"
+        )
+        result = analyze_swift(tmp_path)
+        resolved = [
+            e for e in result.edges
+            if e.edge_type == "calls" and "use" in e.src
+            and "bar" in e.dst and e.is_resolved
+        ]
+        assert len(resolved) == 1, [
+            (e.dst, e.is_resolved) for e in result.edges
+            if "use" in e.src and "bar" in e.dst
+        ]
+        assert "Foo" in resolved[0].dst
+
+    def test_typed_unresolvable_receiver_stamps_hint(self, tmp_path: Path) -> None:
+        """A param-typed receiver whose method isn't found in-repo emits
+        unresolved WITH ``receiver_type_hint`` so the linker can recover it."""
+        from hypergumbo_lang_mainstream.swift import analyze_swift
+
+        (tmp_path / "svc.swift").write_text(
+            "func go(x: UnknownType) {\n"
+            "  x.doThing()\n"
+            "}\n"
+        )
+        result = analyze_swift(tmp_path)
+        hinted = [
+            e for e in result.edges
+            if e.edge_type == "calls" and "go" in e.src
+            and e.dst.endswith(":doThing:unresolved")
+        ]
+        assert len(hinted) == 1, [e.dst for e in result.edges if "go" in e.src]
+        assert hinted[0].is_resolved is False
+        assert (hinted[0].meta or {}).get("receiver_type_hint") == "UnknownType"

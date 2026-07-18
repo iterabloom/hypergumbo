@@ -938,6 +938,15 @@ def _extract_edges_from_file(
             vname, vtype = _extract_var_type(node, source)
             if vname and vtype:
                 var_types[vname] = vtype
+        elif node.type == "parameter":
+            # INV-fahub / WI-votar recall recovery: thread function/method
+            # parameter types (previously dropped) into the receiver map so a
+            # param-typed receiver (`func handle(client: Client)` → its
+            # ``client.foo()`` calls) resolves via the type-qualified path
+            # instead of misbinding to an arbitrary same-named def below.
+            pname, ptype = _swift_param_name_and_type(node, source)
+            if pname and ptype:
+                var_types[pname] = ptype
 
     for node in iter_tree(tree.root_node):
         if node.type == "import_declaration":
@@ -994,6 +1003,54 @@ def _extract_edges_from_file(
                             ))
                             resolved = True
 
+                    if not resolved and receiver_hint is not None:
+                        # INV-fahub (WI-votar): a method call `recv.m()` whose
+                        # receiver type could not be resolved MUST NOT fall
+                        # through to the bare short-name binds below and bind to
+                        # an arbitrary same-named internal def (the
+                        # create/delete/run @0.80 funnel). Emit an honest
+                        # unresolved external edge instead, mirroring py.py:
+                        # `calls` / external-unresolved dst / `is_resolved=False`
+                        # / `evidence_type="ast_call"` (→ 0.40) /
+                        # `call_construct="method"`. Stamp `receiver_type_hint`
+                        # when the receiver's TYPE is known (its method just was
+                        # not found in-repo) so the shared inherited_calls linker
+                        # can recover it (Site-2 Step-1); an untyped/duck
+                        # receiver gets no hint (bias to unresolved). The linker
+                        # is the sole minter of the resolved edge (INV-nilud).
+                        gate_meta: dict = {"call_construct": "method"}
+                        receiver_type = var_types.get(receiver_hint)
+                        if receiver_type:
+                            gate_meta["receiver_type_hint"] = receiver_type
+                        # Preserve the WI-huzuv external dst_ref (module_path from
+                        # the receiver's known type / import alias / receiver name,
+                        # matching make_unresolved_edge) so a module-qualified
+                        # external call (`HelpersModule.doWork()`) keeps its
+                        # structured reference even while suppressed. `receiver_hint`
+                        # is non-None here, so the fallback is always a real value.
+                        gate_path_hint = (
+                            receiver_type
+                            or import_aliases.get(callee_name)
+                            or receiver_hint
+                        )
+                        edges.append(Edge.create(
+                            src=current_function.id,
+                            dst=f"swift:external:0-0:{callee_name}:unresolved",
+                            edge_type="calls",
+                            line=node.start_point[0] + 1,
+                            evidence_type="ast_call",
+                            is_resolved=False,
+                            origin=PASS_ID,
+                            origin_run_id=run_id,
+                            meta=gate_meta,
+                            dst_ref=ExternalRef(
+                                lang="swift",
+                                module_path=gate_path_hint,
+                                name=callee_name,
+                            ),
+                        ))
+                        resolved = True
+
                     if not resolved and callee_name in local_symbols:
                         callee = local_symbols[callee_name]
                         edges.append(Edge.create(
@@ -1009,15 +1066,11 @@ def _extract_edges_from_file(
                         resolved = True
 
                     if not resolved:
-                        # Build path hint: try type name first, then import alias, then receiver
-                        path_hint = None
-                        if receiver_hint and receiver_hint in var_types:
-                            path_hint = var_types[receiver_hint]
-                        if not path_hint:
-                            path_hint = (
-                                import_aliases.get(callee_name)
-                                or receiver_hint
-                            )
+                        # Bare call only — a receiver call is gated above (which
+                        # sets resolved=True), so receiver_hint is None here.
+                        # Resolve by short name via the resolver, else emit an
+                        # honest external edge.
+                        path_hint = import_aliases.get(callee_name)
                         lookup_result = resolver.lookup(callee_name, path_hint=path_hint, caller_path=_caller_path)
                         if lookup_result.found and lookup_result.symbol is not None:
                             edges.append(Edge.create(
