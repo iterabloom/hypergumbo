@@ -1139,6 +1139,7 @@
                 "ast_call_this": "inference_pathway",
                 "ast_call_this_property": "inference_pathway",
                 "ast_call_type_inferred": "inference_pathway",
+                "ast_call_ufcs": "inference_pathway",
                 "ast_cite": "inference_pathway",
                 "ast_decorator": "inference_pathway",
                 "ast_extends": "inference_pathway",

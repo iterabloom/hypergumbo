@@ -326,6 +326,7 @@ Values that name the inference pathway by which the analyzer concluded this edge
 - **`ast_call_this`** — Edge inferred from a `this`/`self` receiver call.
 - **`ast_call_this_property`** — Edge inferred from a `this.property` / `self.attr` resolved access.
 - **`ast_call_type_inferred`** — Edge inferred from a call site where the receiver type was inferred.
+- **`ast_call_ufcs`** — Edge inferred from a UFCS free-function call written with method syntax (x.foo() resolving to foo(x); D / Nim).
 - **`ast_cite`** — Edge inferred from a citation/cross-reference link in source.
 - **`ast_decorator`** — Edge inferred from a decorator/annotation node in source AST.
 - **`ast_extends`** — Edge inferred from an `extends` clause in source AST.

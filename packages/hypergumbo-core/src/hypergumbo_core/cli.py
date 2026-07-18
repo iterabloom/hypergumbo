@@ -135,6 +135,7 @@ import hypergumbo_core.linkers.kafka_streams_dispatch as _kafka_streams_dispatch
 import hypergumbo_core.linkers.django_orm_dispatch as _django_orm_dispatch_linker  # noqa: F401
 import hypergumbo_core.linkers._third_party_bases as _third_party_bases_linker  # noqa: F401
 import hypergumbo_core.linkers.rust_trait_dispatch as _rust_trait_dispatch_linker  # noqa: F401
+import hypergumbo_core.linkers.receiver_type_dispatch as _receiver_type_dispatch_linker  # noqa: F401
 from .entrypoints import EntrypointKind, detect_entrypoints
 from .routes import is_route, method_token, protocol_method_token, route_of
 from .ir import (

@@ -145,6 +145,9 @@ _RAW_EVIDENCE_TYPES: tuple[EvidenceTypeSpec, ...] = (
                      "Edge inferred from a `this.property` / `self.attr` resolved access."),
     EvidenceTypeSpec("ast_call_type_inferred", AXIS_INFERENCE_PATHWAY,
                      "Edge inferred from a call site where the receiver type was inferred."),
+    EvidenceTypeSpec("ast_call_ufcs", AXIS_INFERENCE_PATHWAY,
+                     "Edge inferred from a UFCS free-function call written with "
+                     "method syntax (x.foo() resolving to foo(x); D / Nim)."),
     EvidenceTypeSpec("ast_cite", AXIS_INFERENCE_PATHWAY,
                      "Edge inferred from a citation/cross-reference link in source."),
     EvidenceTypeSpec("ast_decorator", AXIS_INFERENCE_PATHWAY,
@@ -507,6 +510,7 @@ _CONFIDENCE_SEEDS: dict[str, float] = {
     "ast_attribute": 0.95,
     "ast_call_extension": 0.8,
     "ast_call_type_inferred": 0.85,
+    "ast_call_ufcs": 0.8,
     "ast_decorator": 0.95,
     "ast_extends": 0.95,
     "ast_implements": 0.95,
