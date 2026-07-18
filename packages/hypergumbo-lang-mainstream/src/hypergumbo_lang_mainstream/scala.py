@@ -831,6 +831,16 @@ def _extract_edges_from_file(
         elif node.type == "call_expression":
             current_function = _get_enclosing_function(node, source, local_symbols)
             if current_function is not None:
+                # INV-fahub Site-1: the enclosing class short name for a bare /
+                # implicit-``this`` call, so a deferred bare→method call can be
+                # recovered by the inherited_calls MRO walker when the method is
+                # on the enclosing class's linearization (inherited), and left
+                # external when it is a cross-class magnet. ``None`` for a
+                # top-level def (no owning class → not an implicit-``this`` call).
+                enclosing_type = (
+                    current_function.name.split(".")[-2]
+                    if "." in current_function.name else None
+                )
                 callee_node = find_child_by_type(node, "identifier")
                 receiver_name = None
                 if not callee_node:
@@ -906,16 +916,35 @@ def _extract_edges_from_file(
                         ))
                     elif not edge_added and callee_name in local_symbols:
                         callee = local_symbols[callee_name]
-                        edges.append(Edge.create(
-                            src=current_function.id,
-                            dst=callee.id,
-                            edge_type="calls",
-                            line=node.start_point[0] + 1,
-                            evidence_type="ast_call",
-                            origin=PASS_ID,
-                            origin_run_id=run_id,
-                            meta={"call_construct": "function"},
-                        ))
+                        # INV-fahub (real-repro re-scope 2026-07-18): a bare call
+                        # binds directly only to a same-enclosing-class method
+                        # (legit implicit ``this``) or a non-method (free def /
+                        # object). A bare call to a DIFFERENT same-file class's
+                        # method is not in scope — defer to the inherited_calls
+                        # Site-1 walker (``enclosing_class`` hint), which resolves
+                        # it iff the method is on the enclosing class's MRO
+                        # (inherited), else leaves it honestly external.
+                        _owner = (
+                            callee.name.rsplit(".", 1)[0]
+                            if "." in callee.name else None
+                        )
+                        if callee.kind == "method" and _owner != enclosing_type:
+                            edges.append(make_unresolved_edge(
+                                "scala", current_function.id, callee_name,
+                                node.start_point[0] + 1, PASS_ID, run_id,
+                                enclosing_class=enclosing_type,
+                            ))
+                        else:
+                            edges.append(Edge.create(
+                                src=current_function.id,
+                                dst=callee.id,
+                                edge_type="calls",
+                                line=node.start_point[0] + 1,
+                                evidence_type="ast_call",
+                                origin=PASS_ID,
+                                origin_run_id=run_id,
+                                meta={"call_construct": "function"},
+                            ))
                     elif not edge_added:
                         path_hint = import_aliases.get(callee_name)
                         lookup_result = resolver.lookup(callee_name, path_hint=path_hint, caller_path=_caller_path)
@@ -925,10 +954,31 @@ def _extract_edges_from_file(
                         # field would otherwise become a confidently-wrong call
                         # target (a call-graph corruption). Fall through to the
                         # honest unresolved edge instead.
+                        # INV-fahub (real-repro re-scope 2026-07-18, WI-bihit
+                        # reopened): the DOMINANT Scala funnel is a BARE call —
+                        # implicit-``this`` (case-class ``copy``) or a chained
+                        # receiver whose receiver token was dropped — that
+                        # suffix-matches an unrelated class's ``method`` @0.68
+                        # (magnet: dozens of files → one arbitrary
+                        # ``FileCopyTask.copy`` / ``ColumnOps.setTo`` / ``.map``).
+                        # A class-member method needs a receiver/scope; a weak
+                        # short-name *suffix* guess is not resolution evidence, so
+                        # withhold it → honest unresolved edge (INV-nogof
+                        # withhold-not-pick-first). Exact / path-hint matches and
+                        # free-function / object targets are unaffected.
+                        _sym = lookup_result.symbol
+                        _weak_method = (
+                            _sym is not None
+                            and _sym.kind == "method"
+                            and lookup_result.match_type in (
+                                "suffix", "suffix_ambiguous", "ambiguous",
+                            )
+                        )
                         if (
                             lookup_result.found
-                            and lookup_result.symbol is not None
-                            and lookup_result.symbol.kind not in ("field", "variable")
+                            and _sym is not None
+                            and _sym.kind not in ("field", "variable")
+                            and not _weak_method
                         ):
                             conf = 0.80 * lookup_result.confidence * _short_name_penalty(callee_name)
                             edges.append(Edge.create(
@@ -943,6 +993,12 @@ def _extract_edges_from_file(
                                 meta={"call_construct": "function"},
                             ))
                         else:
+                            # INV-fahub: stamp the enclosing class so the
+                            # inherited_calls Site-1 walker can recover a bare
+                            # *inherited* implicit-``this`` call (the ~30% solo
+                            # tail of the withheld suffix-method magnet), while a
+                            # true cross-class magnet stays external (its method
+                            # is not on the enclosing class's MRO).
                             edges.append(make_unresolved_edge(
                                 "scala", current_function.id, callee_name,
                                 node.start_point[0] + 1, PASS_ID, run_id,
@@ -951,6 +1007,7 @@ def _extract_edges_from_file(
                                     ExternalRef(lang="scala", module_path=path_hint, name=callee_name)
                                     if path_hint else None
                                 ),
+                                enclosing_class=enclosing_type,
                             ))
 
         # Scala eta-expansion: ``transform _`` produces a postfix_expression
