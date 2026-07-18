@@ -794,16 +794,39 @@ def _extract_edges_from_file(
             for pname, ptype in param_types.items():
                 var_types[pname] = ptype
 
-        # Track constructor assignments: val repo = new UserRepository()
+        # Track val receiver types: `val repo = new UserRepository()`
+        # (constructor) and `val repo: UserRepository = f()` (annotation).
+        # INV-fahub / WI-bihit: threading the annotation-typed val — previously
+        # dropped — lets a receiver typed only by annotation resolve via the
+        # type-qualified path instead of misbinding to an arbitrary same-named
+        # def (recall recovery for the receiver gate below).
         elif node.type == "val_definition":
             var_node = find_child_by_type(node, "identifier")
-            inst_node = find_child_by_type(node, "instance_expression")
-            if var_node and inst_node:
-                type_node = find_child_by_type(inst_node, "type_identifier")
-                if type_node:
+            if var_node:
+                inst_node = find_child_by_type(node, "instance_expression")
+                if inst_node is not None:
+                    type_node = find_child_by_type(inst_node, "type_identifier")
+                else:
+                    # Annotated val: the type_identifier is a direct child
+                    # (`val f: Foo = …` → val_definition > type_identifier).
+                    type_node = find_child_by_type(node, "type_identifier")
+                if type_node is not None:
                     var_types[node_text(var_node, source)] = node_text(
                         type_node, source,
                     )
+
+        # Track class-constructor parameter types: `class C(val svc: Service)`.
+        # A constructor-param receiver (`svc.process()`) is typed and must
+        # resolve, not misbind (INV-fahub / WI-bihit recall recovery). The
+        # `class_parameter` node is visited before the class body's calls
+        # (pre-order DFS), so var_types is populated in time.
+        elif node.type == "class_parameter":
+            pname_node = find_child_by_type(node, "identifier")
+            ptype_node = find_child_by_type(node, "type_identifier")
+            if pname_node is not None and ptype_node is not None:
+                var_types[node_text(pname_node, source)] = node_text(
+                    ptype_node, source,
+                )
 
         elif node.type == "call_expression":
             current_function = _get_enclosing_function(node, source, local_symbols)
@@ -850,7 +873,38 @@ def _extract_edges_from_file(
                             ))
                             edge_added = True
 
-                    if not edge_added and callee_name in local_symbols:
+                    if not edge_added and receiver_name is not None:
+                        # INV-fahub (WI-bihit): a method call `recv.m()` whose
+                        # receiver type could not be resolved in-file MUST NOT
+                        # fall through to the bare short-name binds below and
+                        # confidently bind to an arbitrary same-named internal
+                        # def (the copy/setTo @0.68 funnel). Emit an honest
+                        # unresolved external edge instead, mirroring py.py's
+                        # unknown-receiver branch: `calls` / external-unresolved
+                        # dst / `is_resolved=False` / `evidence_type="ast_call"`
+                        # (→ 0.40) / `call_construct="method"`. When the
+                        # receiver's TYPE is known (its method just wasn't found
+                        # here), stamp `receiver_type_hint` so the shared
+                        # inherited_calls linker can recover the edge (Site-2
+                        # Step-1); an untyped/duck receiver gets no hint (bias to
+                        # unresolved). The linker is the sole minter of the
+                        # resolved edge (INV-nilud; taint-safe by construction).
+                        gate_meta: dict = {"call_construct": "method"}
+                        receiver_type = var_types.get(receiver_name)
+                        if receiver_type:
+                            gate_meta["receiver_type_hint"] = receiver_type
+                        edges.append(Edge.create(
+                            src=current_function.id,
+                            dst=f"scala:external:0-0:{callee_name}:unresolved",
+                            edge_type="calls",
+                            line=node.start_point[0] + 1,
+                            evidence_type="ast_call",
+                            is_resolved=False,
+                            origin=PASS_ID,
+                            origin_run_id=run_id,
+                            meta=gate_meta,
+                        ))
+                    elif not edge_added and callee_name in local_symbols:
                         callee = local_symbols[callee_name]
                         edges.append(Edge.create(
                             src=current_function.id,

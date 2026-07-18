@@ -1492,3 +1492,127 @@ trait Shape { def area(): Double }
         for s in result.symbols:
             if s.kind not in callable_kinds:
                 assert s.cyclomatic_complexity is None, (s.kind, s.name)
+
+
+class TestScalaInvFahubReceiverGating:
+    """INV-fahub (WI-bihit): an unresolvable-receiver call MUST emit an honest
+    unresolved external edge, not a high-confidence ``calls`` edge to an
+    arbitrary same-named internal def (the Scala ``copy``/``setTo`` @0.68 funnel).
+
+    Mirrors the Python receiver-gating (py.py) + the shared ``inherited_calls``
+    linker contract (INV-nilud): the analyzer SUPPRESSES the misbind and stamps
+    ``receiver_type_hint`` when the receiver's type is known; the linker recovers
+    the resolved edge (Site-2 Step-1). Recall recovery here also threads
+    annotation-typed vals (``val x: Foo = f()``) into the receiver type map."""
+
+    def test_untyped_receiver_does_not_misbind(self, tmp_path: Path) -> None:
+        """``rec.copy()`` with an untyped receiver must NOT bind to an arbitrary
+        same-named ``Record.copy``."""
+        from hypergumbo_lang_mainstream.scala import analyze_scala
+
+        (tmp_path / "models.scala").write_text(
+            "class Record {\n  def copy(): Record = this\n}\n"
+        )
+        (tmp_path / "svc.scala").write_text(
+            "object Service {\n"
+            "  def run(): Unit = {\n"
+            "    val rec = fetchRecord()\n"
+            "    rec.copy()\n"
+            "  }\n"
+            "}\n"
+        )
+        result = analyze_scala(tmp_path)
+        record_copy = next(
+            s for s in result.symbols
+            if s.name == "Record.copy" and s.kind == "method"
+        )
+        misbinds = [
+            e for e in result.edges
+            if e.edge_type == "calls" and e.dst == record_copy.id and "run" in e.src
+        ]
+        assert misbinds == [], f"unresolvable receiver misbound copy(): {misbinds}"
+
+    def test_untyped_receiver_emits_canonical_unresolved_method_edge(
+        self, tmp_path: Path
+    ) -> None:
+        """The suppressed call emits the py.py-canonical shape: is_resolved=False,
+        dst ``scala:external:...:unresolved``, evidence_type=ast_call (→ 0.40),
+        meta ``call_construct=method``, and NO ``receiver_type_hint`` (untyped)."""
+        from hypergumbo_lang_mainstream.scala import analyze_scala
+
+        (tmp_path / "models.scala").write_text(
+            "class Record {\n  def copy(): Record = this\n}\n"
+        )
+        (tmp_path / "svc.scala").write_text(
+            "object Service {\n"
+            "  def run(): Unit = {\n"
+            "    val rec = fetchRecord()\n"
+            "    rec.copy()\n"
+            "  }\n"
+            "}\n"
+        )
+        result = analyze_scala(tmp_path)
+        copy_edges = [
+            e for e in result.edges
+            if e.edge_type == "calls" and "run" in e.src
+            and e.dst.endswith(":copy:unresolved")
+        ]
+        assert len(copy_edges) == 1, [
+            e.dst for e in result.edges if "run" in e.src
+        ]
+        e = copy_edges[0]
+        assert e.is_resolved is False
+        assert "external" in e.dst
+        assert e.evidence_type == "ast_call"
+        assert abs(e.confidence - 0.40) < 1e-9, e.confidence
+        assert (e.meta or {}).get("call_construct") == "method"
+        assert "receiver_type_hint" not in (e.meta or {})
+
+    def test_annotated_val_receiver_resolves(self, tmp_path: Path) -> None:
+        """Recall recovery: a receiver typed by annotation (``val f: Foo = …``)
+        resolves — the annotated-val type is threaded into the receiver map."""
+        from hypergumbo_lang_mainstream.scala import analyze_scala
+
+        (tmp_path / "App.scala").write_text(
+            "class Foo {\n  def bar(): Unit = {}\n}\n"
+            "object Service {\n"
+            "  def use(): Unit = {\n"
+            "    val f: Foo = makeFoo()\n"
+            "    f.bar()\n"
+            "  }\n"
+            "}\n"
+        )
+        result = analyze_scala(tmp_path)
+        resolved = [
+            e for e in result.edges
+            if e.edge_type == "calls" and "use" in e.src
+            and "bar" in e.dst and e.is_resolved
+        ]
+        assert len(resolved) == 1, [
+            (e.dst, e.is_resolved) for e in result.edges
+            if "use" in e.src and "bar" in e.dst
+        ]
+        assert "Foo" in resolved[0].dst
+
+    def test_typed_unresolvable_receiver_stamps_hint(self, tmp_path: Path) -> None:
+        """A receiver whose type IS known but whose method isn't found in-file
+        emits unresolved WITH ``receiver_type_hint`` so the shared linker can
+        recover it (Site-2 Step-1)."""
+        from hypergumbo_lang_mainstream.scala import analyze_scala
+
+        (tmp_path / "svc.scala").write_text(
+            "object Service {\n"
+            "  def go(x: UnknownType): Unit = {\n"
+            "    x.doThing()\n"
+            "  }\n"
+            "}\n"
+        )
+        result = analyze_scala(tmp_path)
+        hinted = [
+            e for e in result.edges
+            if e.edge_type == "calls" and "go" in e.src
+            and e.dst.endswith(":doThing:unresolved")
+        ]
+        assert len(hinted) == 1, [e.dst for e in result.edges if "go" in e.src]
+        assert hinted[0].is_resolved is False
+        assert (hinted[0].meta or {}).get("receiver_type_hint") == "UnknownType"
