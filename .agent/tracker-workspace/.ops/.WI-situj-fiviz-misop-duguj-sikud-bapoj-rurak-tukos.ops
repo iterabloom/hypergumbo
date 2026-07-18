@@ -1,0 +1,22 @@
+- op: create  # 4c09
+  at: '2026-07-18T03:36:42Z'  # 4c09
+  by: agent  # 4c09
+  actor: jgstern_agent  # 4c09
+  clock: 1  # 4c09
+  nonce: 4c09  # 4c09
+  data:  # 4c09
+    kind: work_item  # 4c09
+    title: "INV-fahub D facet: gate unresolvable-receiver calls (exists/startsWith/toString @0.85) to unresolved; needs var-type tracking (or defer)"  # 4c09
+    status: todo_hard  # 4c09
+    priority: 2  # 4c09
+    parent: INV-fahub-himis-zuzug-zijus-sahof-kabol-nolad-kakit  # 4c09
+    tags:  # 4c09
+    - cross_language_parity  # 4c09
+    - wave5  # 4c09
+    - analysis_quality  # 4c09
+    isbefore: []  # 4c09
+    duplicate_of: []  # 4c09
+    not_duplicate_of: []  # 4c09
+    pr_ref:  # 4c09
+    description: "INV-fahub D facet. d_lang.py misbinds an unresolvable-receiver call (e.g. thing.exists()) to an arbitrary same-named internal def: exists(function) @0.85 (= 0.85 x 1.0 exact) for a top-level func. Misbind site: _resolve_and_emit_call_edge (d_lang.py:536-584), specifically the resolver.lookup at 563-567 emitting calls @ 0.85*conf at 568-577. Root cause is the WORST of the three: D does ZERO receiver/var-type tracking; the receiver is consulted only as an import-alias key (path_hint=import_aliases.get(receiver), 554-556), and — worse — `hints = imported_modules if not receiver else None` (562) DISABLES import-scope disambiguation the moment a receiver is present, so lookup does an unscoped global bare-name match. register_symbol (667-691) registers every func/method under its bare short name (691), seeding the exact-match.\n\nFIX (atomic, INV-nilud-conform): when a receiver is present but resolves to neither an import alias nor a tracked type, withhold the confident bare-name match and emit py.py's unresolved shape (calls, dst=d:external:0-0:{name}:unresolved, is_resolved=False, evidence_type=ast_call -> 0.40, meta={call_construct:method, +receiver_type_hint when typeable}). RECALL RECOVERY IS NOT OPTIONAL HERE: D must first grow at least minimal var->type tracking (from param types + `auto x = new T()` / typed decls) so it can attach a hint — otherwise ~100% of the funnel goes external with zero recovery (maximal dead-code FP spike). ADD 'd' to the inherited_calls Site-2 lang set for Step-1 direct.\n\nDISPOSITION DECISION (owner): if D var-type tracking is too large for one atomic PR, DEFER D entirely (out of the near-term INV-fahub build) rather than ship naked D suppression. Sequence LAST. Tests: linker template (lang=d) + d_lang.py producer test. Reproduces on current code @0.85 (verified 2026-07-17). Recall-regression severity: WORST."  # 4c09
+    fields: {}  # 4c09

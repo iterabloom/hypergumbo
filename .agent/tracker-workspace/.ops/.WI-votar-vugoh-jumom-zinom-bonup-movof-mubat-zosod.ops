@@ -1,0 +1,22 @@
+- op: create  # 2c1f
+  at: '2026-07-18T03:36:39Z'  # 2c1f
+  by: agent  # 2c1f
+  actor: jgstern_agent  # 2c1f
+  clock: 1  # 2c1f
+  nonce: 2c1f  # 2c1f
+  data:  # 2c1f
+    kind: work_item  # 2c1f
+    title: "INV-fahub Swift facet: gate unresolvable-receiver calls (create/delete/run @0.80) to unresolved + thread function-param types"  # 2c1f
+    status: todo_hard  # 2c1f
+    priority: 2  # 2c1f
+    parent: INV-fahub-himis-zuzug-zijus-sahof-kabol-nolad-kakit  # 2c1f
+    tags:  # 2c1f
+    - cross_language_parity  # 2c1f
+    - wave5  # 2c1f
+    - analysis_quality  # 2c1f
+    isbefore: []  # 2c1f
+    duplicate_of: []  # 2c1f
+    not_duplicate_of: []  # 2c1f
+    pr_ref:  # 2c1f
+    description: "INV-fahub Swift facet. swift.py misbinds an unresolvable-receiver call (e.g. x.create()) to an arbitrary same-named internal def: create(function) @0.80 (= 0.80 base x 1.0 exact) for a top-level func, or @0.68 suffix for a method. Misbind sites: swift.py:997-1009 (local_symbols bare bind @0.85) and swift.py:1021-1033 (resolver.lookup bare bind @0.80 exact). Root cause: same as Scala — receiver captured via _extract_call_target (821-878) then dropped when type-qualified resolution (967-995) misses, falling through to bare-name binds.\n\nLarger recall gap than Scala: var_types (934-940) is built ONLY from property_declaration (let x: T / let x = T()); FUNCTION/METHOD PARAMETERS ARE NEVER THREADED into var_types, though their types are already parsed for signatures (_extract_swift_signature 348-394, _swift_param_name_and_type 1240-1251). So `func handle(client: Client){ client.create() }` drops client's known type.\n\nFIX (atomic, INV-nilud-conform): gate the bare-name binds on receiver-present-but-unresolvable -> emit py.py's unresolved shape (calls, dst=swift:external:0-0:{name}:unresolved, is_resolved=False, evidence_type=ast_call -> 0.40, meta={call_construct:method, +receiver_type_hint when typeable}); THREAD function-parameter types into var_types (the load-bearing recall recovery — Swift drops ALL params); ADD 'swift' to the inherited_calls Site-2 lang set for Step-1 direct. Defer the Swift left-to-right MRO walker (_walk_left_to_right, FUTURE) incrementally.\n\nTests: linker template (lang=swift) + swift.py producer test. Blast radius: swift.py leaf + linker lang-set entry; no CORE change. Recall-regression severity: SEVERE if suppression ships without the param-type threading — do them atomically. Reproduces on current code (verified 2026-07-17). Sequence AFTER Scala."  # 2c1f
+    fields: {}  # 2c1f

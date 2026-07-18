@@ -51,3 +51,18 @@
   clock: 5  # 26cb
   nonce: 26cb  # 26cb
   message: "Identity triage 2026-07-15: shape_id-coverage prerequisite for WI-vogij. Re-run: 27 real-language structural-kind shape_id nulls on v5 (csharp 10 + solidity 4 + wgsl 5 + python route-synth 8), 9 with BOTH stable_id and shape_id null. Union of WI-lutob + route-synth; falsifies 'nulls only on non-structural kinds'."  # 26cb
+- op: update  # 3a25
+  at: '2026-07-18T02:22:19Z'  # 3a25
+  by: agent  # 3a25
+  actor: jgstern_agent  # 3a25
+  clock: 6  # 3a25
+  nonce: 3a25  # 3a25
+  set:  # 3a25
+    status: done  # 3a25
+- op: discuss  # 38b0
+  at: '2026-07-18T02:22:19Z'  # 38b0
+  by: agent  # 38b0
+  actor: jgstern_agent  # 38b0
+  clock: 7  # 38b0
+  nonce: 38b0  # 38b0
+  message: "Closed done — verified 2026-07-17. WI-rokub = the WI-lutob structural gaps (csharp/solidity/wgsl) UNION the python route-synth nulls. VERIFICATION: (1) The real code-body gaps (csharp interface/method/class/enum/struct; solidity interface/function; wgsl struct/function — 19 of the 27 re-measured nodes) are FIXED by WI-lutob (csharp PR #704; solidity+wgsl PR 7a2efee53f). Live repro: fresh survey shows csharp 105/105 shapeable (bakeoff deep-20260717-200119), wgsl 3/3 + solidity 2/2 (this session). (2) The remaining 8 nodes are the python route-synthetics at serve.py:425-433 — self-corpus re-measure (hypergumbo survey packages/hypergumbo-tracker) confirms they are ALL 'starlette:<handler>' route-registration nodes (name starlette:_health/_api_list_items/... ; single-line spans 426-433 at the Route(...) declarations; kind=function). These are SYNTHETIC route registrations with no implementation body of their own — the real handlers (_health, _api_list_items, ...) are SEPARATE nodes that carry their own shape_id. shape_id=None on them is a LEGITIMATE synthetic-node absence (there is no control-flow/nesting body to hash), exactly like external_symbol and synthetic-boundary fingerprint nulls — NOT a structural gap. So WI-rokub's expectation ('all real-language structural-KIND nodes carry shape_id') is corrected: it holds for real code bodies (now fixed) but not for synthetic nodes that merely carry a kind=function label. (3) DOC-CORRECTION (item ask b): no committed doc actually asserted 'nulls only on non-structural kinds' (that lived in a ledger), but the spec shape_id section was SILENT on when shape_id is null — added a 'None when:' bullet (spec §365, PR ad049f6402) documenting the synthetic-node / coverage-scope / non-structural cases, mirroring the fingerprint §371 precedent, so a consumer treats null as 'not clusterable' rather than inferring a gap. Adjacent WI-luzut (Python variable-kind shape_id) remains a separate, distinct scope question."  # 38b0
