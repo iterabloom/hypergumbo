@@ -34,3 +34,18 @@
   clock: 3  # e2b4
   nonce: e2b4  # e2b4
   message: "Leaf WI-molit closed WONT_DO 2026-07-17 (fundamental-concept-audit KEEP verdict, owner-directed 3-lens audit). The ast_call vs ast_call_direct 'redundantly encodes is_resolved' premise does NOT hold: they are distinct call-CONSTRUCT pathways (ADR-0028 explicitly accepts ast_call_direct as a pure pathway); resolution is separate on Edge.is_resolved (ADR-0037); the 98.5%/8.3% split is a benign common-cause correlation; ZERO consumers use the label as a resolution proxy. Added the reusable META-bifif property tests (evidence_type⊥is_resolved). This parent's own statement ('no resolution-state smuggled INTO THE LABEL') is SATISFIED — its real leaks (ast_call_method fold, default-leak) already closed. See ~/hypergumbo_lab_notebook/concept-audit-evidence_type_is_resolved_07172026.md."  # e2b4
+- op: update  # f8eb
+  at: '2026-07-17T23:28:44Z'  # f8eb
+  by: agent  # f8eb
+  actor: jgstern_agent  # f8eb
+  clock: 4  # f8eb
+  nonce: f8eb  # f8eb
+  set:  # f8eb
+    status: satisfied  # f8eb
+- op: discuss  # d338
+  at: '2026-07-17T23:28:44Z'  # d338
+  by: agent  # d338
+  actor: jgstern_agent  # d338
+  clock: 5  # d338
+  nonce: d338  # d338
+  message: "SATISFIED per verification pass 2026-07-17. All four dimensions of the statement (evidence_type holds exactly one axis) are addressed + validator-enforced: (1) no fragmented aliases -- ast_call_method folded to ast_call + meta['call_construct']='method' (WI-nibis/WI-hubit done, live 4995->0); import family ruled canonical not fragmentation (INV-dovus satisfied). (2) no undocumented values -- spec_validator axis_conformance enforces every evidence_type value is registered (evidence_types.py). (3) no resolution-state smuggled into the label -- WI-molit fundamental-concept-audit KEEP (ast_call/ast_call_direct are distinct call-CONSTRUCT pathways, resolution lives on Edge.is_resolved; 3-agent + dogfood confirmed 0 consumers read the label as a resolution proxy). (4) no call-specific default leaking onto non-call edges -- WI-lojug done (the ast_call_direct default-leak on 3 non-call Solidity edges fixed; behavioral evidence). All 4 members resolved (INV-dovus satisfied, WI-lojug done, WI-guvup done, WI-molit wont_do-KEEP); ongoing guard = spec_validator axis_conformance + producer_coherence. Behavioral evidence, not proxy-only: each member closed with a live fix/repro."  # d338

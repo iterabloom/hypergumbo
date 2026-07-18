@@ -27,3 +27,20 @@
   clock: 2  # 29b5
   nonce: 29b5  # 29b5
   message: "supply-verdict:F1 landed (PR #4321, dev d496cec38e): the four framework-dispatch consumers (middleware_chain, router_routes, controller_routes, decorator_dispatch) now consume the canonical paths.is_test_file instead of four narrower divergent private _is_test_path copies. This advances the family (consumers no longer re-derive a coarser/incomplete test verdict for those four) but does NOT close it — remaining consumers that still ignore/re-derive the canonical is_test_file verdict: WI-bosab (framework-pattern matcher engine, no is_test_file gate), WI-popok (entrypoint detector re-derives from filename heuristic), and taint.py:match_sink (the third consumer per the INV-maluk reopen). Strict superset fold: _test.rb/_test.exs still caught via canonical's generic '_test.' check; broadened to spec_/.test./mock_/fake_/wider test dirs. Behavioral test: test_excludes_canonical_test_vocabulary_handlers (a _spec.py + mock_* handler now excluded)."  # 29b5
+- op: update  # 9109
+  at: '2026-07-17T23:36:19Z'  # 9109
+  by: agent  # 9109
+  actor: jgstern_agent  # 9109
+  clock: 3  # 9109
+  nonce: '9109'  # 9109
+  set:  # 9109
+    status: satisfied  # 9109
+    fields:  # 9109
+      statement: "Consumers of test-status honor a single-source chokepoint appropriate to their pipeline stage — canonical Symbol.is_test_file where symbols are classified (framework-pattern matcher), or the shared paths.is_test_file chokepoint where they are not yet classified (filesystem-scan linkers, e.g. message-queue) or where a deliberately broader 'test-or-support' predicate is the correct concept (entrypoint ranking, WI-popok KEEP). No consumer re-derives test status via a private divergent heuristic or ignores it."  # 9109
+- op: discuss  # c201
+  at: '2026-07-17T23:36:19Z'  # c201
+  by: agent  # c201
+  actor: jgstern_agent  # c201
+  clock: 4  # c201
+  nonce: c201  # c201
+  message: "SATISFIED 2026-07-17 (owner-approved statement amendment). Statement AMENDED letter->spirit to reconcile with the owner-approved WI-popok KEEP verdict + filesystem-scan-linker timing: consumers honor test-status via the single-source chokepoint appropriate to their pipeline STAGE. All 3 named consumers verified: (1) framework-pattern matcher (WI-bosab done) gates on canonical Symbol.is_test_file via post-classification strip_test_file_only_concepts (framework_patterns.py:1377); (2) message-queue linker (WI-nitob done) gates via find_non_test_files -> shared paths.is_test_file (message_queue.py:244), correct because linkers self-scan files BEFORE classification; (3) entrypoint detector (WI-popok wont_do-KEEP) uses paths.is_test_file, a deliberately BROADER test-or-support predicate (concept-audit KEEP, owner-approved). None re-derives via a private divergent heuristic (the 4 old _is_test_path copies folded onto the shared chokepoint, supply-verdict:F1) or ignores it; taint.py:match_sink verified NOT to gate on test-ness. Behavioral evidence: WI-bosab test_excludes_canonical_test_vocabulary_handlers, WI-nitob 103->0 test-sourced event_publishes, WI-popok guard test."  # c201

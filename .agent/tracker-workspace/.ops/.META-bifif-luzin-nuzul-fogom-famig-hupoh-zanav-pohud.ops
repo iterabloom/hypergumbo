@@ -34,3 +34,18 @@
   clock: 3  # cc79
   nonce: cc79  # cc79
   message: "Second worked example resolved: WI-molit (evidence_type/is_resolved) closed WONT_DO 2026-07-17 — like WI-popok, a premise-checked KEEP (distinct-purpose axes that merely correlate, not a coarser re-derivation). BOTH of this umbrella's queued Phase-1 members dissolved on rigorous audit. Shipped the reusable no-consumer-re-derives property-test template for the RESOLUTION verdict (test_evidence_types.py: name-purity axiom + data-model orthogonality; confidence split already guarded in test_confidence.py). Coverage of the invariant's three named verdicts: is_test_file KEEP-distinct (WI-popok guard), is_resolved clean (this template). REMAINING to complete the umbrella: audit the LANGUAGE verdict (WI-zadot synthetic-node language, an INV-numat child) — the one axis of the three not yet audited."  # cc79
+- op: update  # d56f
+  at: '2026-07-17T23:36:36Z'  # d56f
+  by: agent  # d56f
+  actor: jgstern_agent  # d56f
+  clock: 4  # d56f
+  nonce: d56f  # d56f
+  set:  # d56f
+    status: satisfied  # d56f
+- op: discuss  # cc6f
+  at: '2026-07-17T23:36:36Z'  # cc6f
+  by: agent  # cc6f
+  actor: jgstern_agent  # cc6f
+  clock: 5  # cc6f
+  nonce: cc6f  # cc6f
+  message: "SATISFIED 2026-07-17 (owner-approved) — 2nd Wave-5 umbrella gate closed (after INV-luhur). Both child families now satisfied: META-luvir (evidence_type axis purity — all 4 members resolved + validator-enforced) and META-jotih (consumers honor test-status via the appropriate single-source chokepoint per pipeline stage — statement amended to reconcile with the WI-popok KEEP; all 3 consumers verified). The 'no-consumer-re-derives' invariant holds across all 3 named granular verdicts: (1) is_resolved — evidence_type is orthogonal, not a resolution proxy (WI-molit KEEP; test_evidence_types.py orthogonality guards); (2) language — synthetic nodes carry language=None + discovery_language, guarded corpus-wide by spec_validator._check_cross_field_coherence (WI-zadot done, ADR-0031); (3) is_test_file — consumers honor the appropriate chokepoint; the entrypoint ranker's broader predicate is a documented KEEP-distinct exception (WI-popok). The reusable umbrella 'no-consumer-re-derives' property test is authored (test_evidence_types.py, PR 72083fb0dd) with a completeness guard. Behavioral evidence across the leaves (WI-bosab/WI-nitob/WI-molit/WI-zadot fixes + guard tests). No consumer re-derives a granular producer verdict via a coarser private heuristic."  # cc6f

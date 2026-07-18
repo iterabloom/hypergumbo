@@ -34,3 +34,10 @@
   clock: 3  # 26ad
   nonce: 26ad  # 26ad
   message: "run-lifecycle:F1 (PR #236) landed the single finalize() stage this family was missing (new finalize.py carrier; cli.run_behavior_map calls one finalize(ctx)). run_signature is now reconciled from final AR fields (closed META-hufaz + WI-luzud) and pass_version is backfilled (WI-mipul pass_version part). §8 one-reconciled-view closure: test_finalize_roundtrip.py. REMAINING (family stays open): config_fingerprint reconciliation deferred to WI-mipul; the unsound emission_counts recompute removed (INV-gizik owns the new-field fix). Carrier + run_signature/pass_version reconciliation done."  # 26ad
+- op: discuss  # d551
+  at: '2026-07-17T22:57:36Z'  # d551
+  by: agent  # d551
+  actor: jgstern_agent  # d551
+  clock: 4  # d551
+  nonce: d551  # d551
+  message: "Bulk-verify re-baseline 2026-07-17 (owner-directed, 3-agent): the §8 finalize-reconciliation gate is ESSENTIALLY MET. The single finalize() reconcile stage + round-trip property test are implemented+wired+tested (WI-pozur done). All 3 verified leaves stale: WI-fuhof done (deterministic confidence model exists via ADR-0039; emitter_constant residual sanctioned), WI-motug wont_do (language-keyed §12 matrix deleted by ADR-0039; import_static not TS-exclusive), WI-bovoh done (id kind-slot registry check landed in _check_id_roundtrip ADR-0036 F3; 1444-node premise = 0 on current corpus). Parents substantially addressed: META-ruhob (most confidence IS evidence-derived post-ADR-0039), META-fimas (validation checks now wired: writer_contract/id_roundtrip/axis_conformance). Genuine residuals: WI-pozur's C1/C3/C4 (sibling-owned, ADR-deferred), incl. the C3 script-noise governance tension (audit-findings 0005 vs ADR-0043 §5). Like INV-numat: this gate's MECHANISM was built by the ADR-0039/0036/0043 campaigns; the filed leaves predate them. Flip = human convergence call."  # d551
