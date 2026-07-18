@@ -74,11 +74,23 @@ ceremony for static language semantics). Initial table (PR-2):
   ancestor. Registered for ``python`` only; deliberately NOT added to
   ``_LEGACY_SITE2_LANGS`` (Python keeps strict Site-2, no Step-3 fallback).
 
-Future PRs:
+- ``_walk_linearization`` (Scala; WI-nazab): right-to-left BFS
+  approximating Scala trait linearization (``extends B with T1 with T2``
+  → ``C, T2, T1, B``; rightmost mixin wins, superclass last). Registered
+  for ``scala``.
+- ``_walk_left_to_right`` (Swift; WI-sojim): left-to-right pre-order DFS
+  (single superclass chain, then protocol extensions in declaration
+  order). Registered for ``swift``; the same walker fits PHP/Obj-C/C++
+  when those analyzers are onboarded (they stamp ``enclosing_class`` but
+  are not yet in ``_MRO_WALKERS``).
 
-- ``_walk_left_to_right`` (PHP/Swift/Obj-C/C++): left-to-right depth
-  first — future.
-- ``_walk_linearization`` (Scala traits) — future.
+Both recover Step-2 (inherited-method) calls for the Scala/Swift facets
+(WI-bihit/WI-votar), which already stamp ``receiver_type_hint`` and so
+already resolve Step-1 (direct method on the typed receiver); the walker
+adds the ancestor-chain hop. External-base shadowing (INV-guviv) stays
+Python-scoped — the guard is applied at the Site-2 resolver for
+``python`` only; the Scala/Swift walkers resolve in-tree ancestors and
+inherit that tracked limitation rather than worsening it.
 
 Languages whose walker isn't registered yet are silently no-op'd; the
 analyzer must opt in by emitting the hint AND the linker must have a
@@ -443,6 +455,86 @@ def _walk_c3(
     return None
 
 
+def _walk_linearization(
+    start_class_id: str,
+    callee_short_name: str,
+    inheritance_index: dict[str, list[tuple[str, str]]],
+    method_index: _TypeHierarchyIndex,
+    depth_cap: int = _DEFAULT_DEPTH_CAP,
+) -> Symbol | None:
+    """Right-to-left BFS approximating Scala trait linearization (WI-nazab).
+
+    Scala linearizes ``class C extends B with T1 with T2`` as ``C, T2, T1,
+    B`` — a later mixin overrides an earlier one, and the superclass
+    resolves last. So for the "is this method defined on an ancestor, and
+    which wins?" question, walking each node's parents in REVERSED
+    declaration order (rightmost mixin first) reproduces the precedence
+    without computing the full C3 merge — the same pragmatic approximation
+    ``_walk_insertion_order`` makes for Ruby's declaration-order MRO. The
+    ``inheritance_index`` preserves ``extends``/``with`` declaration order,
+    which this walker reverses per level.
+    """
+    visited: set[str] = {start_class_id}
+    queue: deque[tuple[str, int]] = deque([(start_class_id, 0)])
+    methods_by_class: dict[str, Symbol] = dict(
+        method_index.methods_by_short_name.get(callee_short_name, []),
+    )
+    while queue:
+        class_id, depth = queue.popleft()
+        candidate = methods_by_class.get(class_id)
+        if candidate is not None:
+            return candidate
+        if depth >= depth_cap:
+            continue
+        for parent_id, _edge_type in reversed(
+            inheritance_index.get(class_id, []),
+        ):
+            if parent_id in visited:
+                continue
+            visited.add(parent_id)
+            queue.append((parent_id, depth + 1))
+    return None
+
+
+def _walk_left_to_right(
+    start_class_id: str,
+    callee_short_name: str,
+    inheritance_index: dict[str, list[tuple[str, str]]],
+    method_index: _TypeHierarchyIndex,
+    depth_cap: int = _DEFAULT_DEPTH_CAP,
+) -> Symbol | None:
+    """Left-to-right depth-first walk (Swift / PHP / Obj-C / C++ MRO; WI-sojim).
+
+    Swift resolves a call against the single superclass chain first, then
+    protocol extensions in declaration order; Obj-C categories and C++ bases
+    similarly resolve left-to-right, depth-first. Implemented with an
+    explicit stack whose parents are pushed in REVERSED order so the
+    leftmost parent's subtree is popped (explored) before its right
+    siblings — a left-to-right pre-order DFS. Registered for Swift here;
+    the same walker fits PHP/Obj-C/C++ when their analyzers are onboarded.
+    """
+    visited: set[str] = {start_class_id}
+    methods_by_class: dict[str, Symbol] = dict(
+        method_index.methods_by_short_name.get(callee_short_name, []),
+    )
+    stack: list[tuple[str, int]] = [(start_class_id, 0)]
+    while stack:
+        class_id, depth = stack.pop()
+        candidate = methods_by_class.get(class_id)
+        if candidate is not None:
+            return candidate
+        if depth >= depth_cap:
+            continue
+        for parent_id, _edge_type in reversed(
+            inheritance_index.get(class_id, []),
+        ):
+            if parent_id in visited:
+                continue
+            visited.add(parent_id)
+            stack.append((parent_id, depth + 1))
+    return None
+
+
 # Per-language MRO dispatch. Hardcoded clauses (no YAML / no decorator
 # hooks) because the table is static language semantics — see ADR-3bbb
 # and the WI-hatip plan discussion at ~/puluf-plan.md.
@@ -454,6 +546,8 @@ _MRO_WALKERS: dict[str, Callable[
     "groovy": _walk_insertion_order,
     "java": _walk_single_then_interfaces,
     "python": _walk_c3,
+    "scala": _walk_linearization,  # WI-nazab
+    "swift": _walk_left_to_right,  # WI-sojim
 }
 
 

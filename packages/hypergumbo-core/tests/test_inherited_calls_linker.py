@@ -19,6 +19,8 @@ from hypergumbo_core.ir import Edge, Span, Symbol
 from hypergumbo_core.linkers.inherited_calls import (
     _MRO_WALKERS,
     _walk_insertion_order,
+    _walk_left_to_right,
+    _walk_linearization,
     _walk_single_then_interfaces,
     link_inherited_calls,
 )
@@ -3111,3 +3113,287 @@ class TestInvGuvivStdlibBaseShadow:
         resolved = [e for e in result.edges if e.src == caller.id]
         assert len(resolved) == 1
         assert resolved[0].dst == second_pop.id
+
+
+# ---------------------------------------------------------------------------
+# Scala / Swift MRO walkers (WI-nazab / WI-sojim).
+# ---------------------------------------------------------------------------
+
+
+def _mk_index(*symbols: Symbol) -> "object":
+    """build_method_index over class + method symbols (classes by short name)."""
+    from hypergumbo_core.linkers.type_hierarchy import build_method_index
+
+    class_ids_by_name: dict[str, list[str]] = {}
+    class_symbols: dict[str, Symbol] = {}
+    for s in symbols:
+        if s.kind in ("class", "struct", "module", "interface", "trait",
+                      "protocol"):
+            class_ids_by_name.setdefault(s.name, []).append(s.id)
+            class_symbols[s.id] = s
+    return build_method_index(list(symbols), class_ids_by_name, class_symbols)
+
+
+class TestWalkLinearization:
+    """Scala right-to-left BFS (rightmost mixin wins, superclass last)."""
+
+    def test_direct_method_on_start_class(self) -> None:
+        c = _cls("sym:C", "C", language="scala")
+        c_foo = _method("sym:C#foo", "C#foo", language="scala")
+        idx = _mk_index(c, c_foo)
+        result = _walk_linearization(
+            start_class_id=c.id, callee_short_name="foo",
+            inheritance_index={}, method_index=idx, depth_cap=10,
+        )
+        assert result is not None and result.id == c_foo.id
+
+    def test_one_hop_via_superclass(self) -> None:
+        base = _cls("sym:Base", "Base", language="scala")
+        base_save = _method("sym:Base#save", "Base#save", language="scala")
+        child = _cls("sym:Child", "Child", language="scala")
+        idx = _mk_index(base, base_save, child)
+        result = _walk_linearization(
+            start_class_id=child.id, callee_short_name="save",
+            inheritance_index={child.id: [(base.id, "extends")]},
+            method_index=idx, depth_cap=10,
+        )
+        assert result is not None and result.id == base_save.id
+
+    def test_rightmost_mixin_wins(self) -> None:
+        """C extends B with T1 with T2; both traits define foo → T2 wins."""
+        t1 = _cls("sym:T1", "T1", language="scala")
+        t1_foo = _method("sym:T1#foo", "T1#foo", language="scala")
+        t2 = _cls("sym:T2", "T2", language="scala")
+        t2_foo = _method("sym:T2#foo", "T2#foo", language="scala")
+        c = _cls("sym:C", "C", language="scala")
+        idx = _mk_index(t1, t1_foo, t2, t2_foo, c)
+        # Declaration order [T1, T2]; linearization reverses → T2 first.
+        result = _walk_linearization(
+            start_class_id=c.id, callee_short_name="foo",
+            inheritance_index={c.id: [(t1.id, "extends"), (t2.id, "extends")]},
+            method_index=idx, depth_cap=10,
+        )
+        assert result is not None and result.id == t2_foo.id
+
+    def test_returns_none_when_not_found(self) -> None:
+        a = _cls("sym:A", "A", language="scala")
+        b = _cls("sym:B", "B", language="scala")
+        idx = _mk_index(a, b)
+        result = _walk_linearization(
+            start_class_id=b.id, callee_short_name="missing",
+            inheritance_index={b.id: [(a.id, "extends")]},
+            method_index=idx, depth_cap=10,
+        )
+        assert result is None
+
+    def test_depth_cap_stops_walk(self) -> None:
+        chain = [_cls(f"sym:S{i}", f"S{i}", language="scala") for i in range(6)]
+        deep_foo = _method("sym:S5#foo", "S5#foo", language="scala")
+        idx = _mk_index(*chain, deep_foo)
+        inheritance = {
+            chain[i].id: [(chain[i + 1].id, "extends")]
+            for i in range(5)
+        }
+        result = _walk_linearization(
+            start_class_id=chain[0].id, callee_short_name="foo",
+            inheritance_index=inheritance, method_index=idx, depth_cap=2,
+        )
+        assert result is None
+
+    def test_diamond_visited_dedup(self) -> None:
+        """A parent reachable via two paths is examined once (no re-queue)."""
+        d = _cls("sym:D", "D", language="scala")
+        d_foo = _method("sym:D#foo", "D#foo", language="scala")
+        a = _cls("sym:A", "A", language="scala")
+        b = _cls("sym:B", "B", language="scala")
+        c = _cls("sym:C", "C", language="scala")
+        idx = _mk_index(d, d_foo, a, b, c)
+        result = _walk_linearization(
+            start_class_id=c.id, callee_short_name="foo",
+            inheritance_index={
+                c.id: [(a.id, "extends"), (b.id, "extends")],
+                a.id: [(d.id, "extends")],
+                b.id: [(d.id, "extends")],
+            },
+            method_index=idx, depth_cap=10,
+        )
+        assert result is not None and result.id == d_foo.id
+
+
+class TestWalkLeftToRight:
+    """Swift left-to-right pre-order DFS (superclass subtree before siblings)."""
+
+    def test_direct_method_on_start_class(self) -> None:
+        c = _cls("sym:C", "C", language="swift")
+        c_foo = _method("sym:C#foo", "C#foo", language="swift")
+        idx = _mk_index(c, c_foo)
+        result = _walk_left_to_right(
+            start_class_id=c.id, callee_short_name="foo",
+            inheritance_index={}, method_index=idx, depth_cap=10,
+        )
+        assert result is not None and result.id == c_foo.id
+
+    def test_one_hop_via_superclass(self) -> None:
+        base = _cls("sym:Base", "Base", language="swift")
+        base_run = _method("sym:Base#run", "Base#run", language="swift")
+        child = _cls("sym:Child", "Child", language="swift")
+        idx = _mk_index(base, base_run, child)
+        result = _walk_left_to_right(
+            start_class_id=child.id, callee_short_name="run",
+            inheritance_index={child.id: [(base.id, "extends")]},
+            method_index=idx, depth_cap=10,
+        )
+        assert result is not None and result.id == base_run.id
+
+    def test_depth_first_explores_superclass_subtree_before_sibling(
+        self,
+    ) -> None:
+        """C: SuperA, ProtoB; GrandA (SuperA's parent) and ProtoB both define
+        foo → DFS returns GrandA's foo (deep in the left subtree), NOT the
+        shallower ProtoB (which a BFS walker would pick first)."""
+        grand = _cls("sym:GrandA", "GrandA", language="swift")
+        grand_foo = _method("sym:GrandA#foo", "GrandA#foo", language="swift")
+        supera = _cls("sym:SuperA", "SuperA", language="swift")
+        protob = _cls("sym:ProtoB", "ProtoB", language="swift")
+        protob_foo = _method("sym:ProtoB#foo", "ProtoB#foo", language="swift")
+        c = _cls("sym:C", "C", language="swift")
+        idx = _mk_index(grand, grand_foo, supera, protob, protob_foo, c)
+        result = _walk_left_to_right(
+            start_class_id=c.id, callee_short_name="foo",
+            inheritance_index={
+                c.id: [(supera.id, "extends"), (protob.id, "implements")],
+                supera.id: [(grand.id, "extends")],
+            },
+            method_index=idx, depth_cap=10,
+        )
+        assert result is not None and result.id == grand_foo.id
+
+    def test_returns_none_when_not_found(self) -> None:
+        a = _cls("sym:A", "A", language="swift")
+        b = _cls("sym:B", "B", language="swift")
+        idx = _mk_index(a, b)
+        result = _walk_left_to_right(
+            start_class_id=b.id, callee_short_name="missing",
+            inheritance_index={b.id: [(a.id, "extends")]},
+            method_index=idx, depth_cap=10,
+        )
+        assert result is None
+
+    def test_depth_cap_stops_walk(self) -> None:
+        chain = [_cls(f"sym:S{i}", f"S{i}", language="swift") for i in range(6)]
+        deep_foo = _method("sym:S5#foo", "S5#foo", language="swift")
+        idx = _mk_index(*chain, deep_foo)
+        inheritance = {
+            chain[i].id: [(chain[i + 1].id, "extends")]
+            for i in range(5)
+        }
+        result = _walk_left_to_right(
+            start_class_id=chain[0].id, callee_short_name="foo",
+            inheritance_index=inheritance, method_index=idx, depth_cap=2,
+        )
+        assert result is None
+
+    def test_diamond_visited_dedup(self) -> None:
+        d = _cls("sym:D", "D", language="swift")
+        d_foo = _method("sym:D#foo", "D#foo", language="swift")
+        a = _cls("sym:A", "A", language="swift")
+        b = _cls("sym:B", "B", language="swift")
+        c = _cls("sym:C", "C", language="swift")
+        idx = _mk_index(d, d_foo, a, b, c)
+        result = _walk_left_to_right(
+            start_class_id=c.id, callee_short_name="foo",
+            inheritance_index={
+                c.id: [(a.id, "extends"), (b.id, "extends")],
+                a.id: [(d.id, "extends")],
+                b.id: [(d.id, "extends")],
+            },
+            method_index=idx, depth_cap=10,
+        )
+        assert result is not None and result.id == d_foo.id
+
+    def test_diamond_visited_skip_on_miss(self) -> None:
+        """A miss walks both diamond arms; the second arm's already-visited
+        shared ancestor is skipped (the ``parent_id in visited`` guard)."""
+        d = _cls("sym:D", "D", language="swift")
+        a = _cls("sym:A", "A", language="swift")
+        b = _cls("sym:B", "B", language="swift")
+        c = _cls("sym:C", "C", language="swift")
+        idx = _mk_index(d, a, b, c)  # no method anywhere → walk exhausts
+        result = _walk_left_to_right(
+            start_class_id=c.id, callee_short_name="foo",
+            inheritance_index={
+                c.id: [(a.id, "extends"), (b.id, "implements")],
+                a.id: [(d.id, "extends")],
+                b.id: [(d.id, "extends")],
+            },
+            method_index=idx, depth_cap=10,
+        )
+        assert result is None
+
+
+class TestScalaSwiftMroRegistration:
+    def test_scala_and_swift_registered(self) -> None:
+        assert _MRO_WALKERS.get("scala") is _walk_linearization
+        assert _MRO_WALKERS.get("swift") is _walk_left_to_right
+
+
+class TestScalaSwiftInheritedCallIntegration:
+    """End-to-end Site-2 Step-2 resolution through link_inherited_calls."""
+
+    @staticmethod
+    def _caller(lang: str) -> Symbol:
+        return Symbol(
+            id=f"sym:{lang}.Caller#run", name="Caller#run", kind="method",
+            language=lang, path=f"/caller.{lang}",
+            span=Span(start_line=10, end_line=20, start_col=0, end_col=0),
+            origin="test", origin_run_id="test-run", meta=None,
+        )
+
+    @staticmethod
+    def _site2(src_id: str, callee: str, receiver_type: str,
+               lang: str) -> Edge:
+        from hypergumbo_core.analyze.base import make_unresolved_edge
+        return make_unresolved_edge(
+            lang=lang, src_id=src_id, callee_name=callee,
+            line=7, pass_id="test-pass", run_id="test-run",
+            receiver_type_hint=receiver_type,
+        )
+
+    def test_scala_trait_inherited_method_resolves(self) -> None:
+        trait = _cls("sym:Loggable", "Loggable", language="scala")
+        trait_log = _method("sym:Loggable#log", "Loggable#log",
+                            language="scala")
+        svc = _cls("sym:Service", "Service", language="scala")
+        caller = self._caller("scala")
+        edges = [
+            _edge(svc.id, trait.id, "extends"),  # Service extends/with Loggable
+            self._site2(caller.id, "log", "Service", "scala"),
+        ]
+        ctx = LinkerContext(
+            repo_root=Path("/"),
+            symbols=[trait, trait_log, svc, caller], edges=edges,
+        )
+        result = link_inherited_calls(ctx)
+        resolved = [e for e in result.edges if e.src == caller.id]
+        assert len(resolved) == 1
+        assert resolved[0].dst == trait_log.id
+        assert resolved[0].evidence_type == "ast_call_inherited_method"
+
+    def test_swift_superclass_inherited_method_resolves(self) -> None:
+        base = _cls("sym:BaseVC", "BaseVC", language="swift")
+        base_load = _method("sym:BaseVC#load", "BaseVC#load", language="swift")
+        vc = _cls("sym:HomeVC", "HomeVC", language="swift")
+        caller = self._caller("swift")
+        edges = [
+            _edge(vc.id, base.id, "extends"),
+            self._site2(caller.id, "load", "HomeVC", "swift"),
+        ]
+        ctx = LinkerContext(
+            repo_root=Path("/"),
+            symbols=[base, base_load, vc, caller], edges=edges,
+        )
+        result = link_inherited_calls(ctx)
+        resolved = [e for e in result.edges if e.src == caller.id]
+        assert len(resolved) == 1
+        assert resolved[0].dst == base_load.id
+        assert resolved[0].evidence_type == "ast_call_inherited_method"
