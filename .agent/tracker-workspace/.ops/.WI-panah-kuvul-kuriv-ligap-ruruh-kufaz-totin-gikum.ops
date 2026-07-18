@@ -29,3 +29,18 @@
   set: {}  # ea1a
   add:  # ea1a
     isbefore: [WI-lodij-dulab-tinah-lunos-fovuh-musad-lodov-sasoj, WI-situj-fiviz-misop-duguj-sikud-bapoj-rurak-tukos]  # ea1a
+- op: update  # 9cfd
+  at: '2026-07-18T10:01:16Z'  # 9cfd
+  by: agent  # 9cfd
+  actor: jgstern_agent  # 9cfd
+  clock: 3  # 9cfd
+  nonce: 9cfd  # 9cfd
+  set:  # 9cfd
+    status: done  # 9cfd
+- op: discuss  # 5ed1
+  at: '2026-07-18T10:01:16Z'  # 5ed1
+  by: agent  # 5ed1
+  actor: jgstern_agent  # 5ed1
+  clock: 4  # 5ed1
+  nonce: 5ed1  # 5ed1
+  message: "Done — merged to dev (PR #722, commits e9e7a4ac + e3edd65953). Built the new Infrastructure linker linkers/receiver_type_dispatch.py resolving unresolved x.foo() calls via a receiver-type-keyed index (extension_receiver -> ast_call_extension, ufcs_receiver_type -> ast_call_ufcs), language-scoped + ambiguity-gated; 100% coverage (13 tests); new ast_call_ufcs evidence_type (schema.json + concept-axes.md regenerated, schema-coverage baseline updated). REFINEMENT vs the filed plan: built the new linker STANDALONE first (its own fixtures, zero risk) and DEFERRED the inherited_calls shared-helper extraction to the 2nd use-site (rule-of-three) — folded into WI-lodij (Kotlin migration), the first real consumer. The linker is active but inert until an analyzer stamps the hints."  # 5ed1

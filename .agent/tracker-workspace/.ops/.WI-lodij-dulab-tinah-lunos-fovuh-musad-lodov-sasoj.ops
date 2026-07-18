@@ -29,3 +29,35 @@
   set: {}  # d375
   add:  # d375
     isbefore: [WI-situj-fiviz-misop-duguj-sikud-bapoj-rurak-tukos]  # d375
+- op: update  # 4ef0
+  at: '2026-07-18T07:25:14Z'  # 4ef0
+  by: agent  # 4ef0
+  actor: jgstern_agent  # 4ef0
+  clock: 3  # 4ef0
+  nonce: 4ef0  # 4ef0
+  set: {}  # 4ef0
+  remove:  # 4ef0
+    isbefore: [WI-situj-fiviz-misop-duguj-sikud-bapoj-rurak-tukos]  # 4ef0
+- op: update  # 8bcc
+  at: '2026-07-18T07:27:51Z'  # 8bcc
+  by: agent  # 8bcc
+  actor: jgstern_agent  # 8bcc
+  clock: 4  # 8bcc
+  nonce: 8bcc  # 8bcc
+  set: {}  # 8bcc
+  add:  # 8bcc
+    isbefore: [WI-situj-fiviz-misop-duguj-sikud-bapoj-rurak-tukos]  # 8bcc
+- op: discuss  # 97ea
+  at: '2026-07-18T10:01:17Z'  # 97ea
+  by: agent  # 97ea
+  actor: jgstern_agent  # 97ea
+  clock: 5  # 97ea
+  nonce: 97ea  # 97ea
+  message: "When landing the Kotlin migration (the 2nd real emit site), also EXTRACT the shared emission tail (Edge.create(edge_type=calls...) + existing_call_pairs dedup, duplicated ~5x in inherited_calls.py + 1x in receiver_type_dispatch.py) into a common linker-helpers module both import — the rule-of-three DRY step deferred from WI-panah now that a 2nd use-site exists."  # 97ea
+- op: discuss  # 14cd
+  at: '2026-07-18T10:03:10Z'  # 14cd
+  by: agent  # 14cd
+  actor: jgstern_agent  # 14cd
+  clock: 6  # 14cd
+  nonce: 14cd  # 14cd
+  message: "SCOPE FINDING (2026-07-18, from reading kotlin.py:1259-1288): the migration is NOT a clean recall-neutral refactor. The in-analyzer resolver (a) sets resolved_nav_sym which feeds RETURN-TYPE TRACKING for chained calls (x.ext().foo() → var_types), and (b) does GENERIC BASE-NAME matching (fun List<Int>.foo() matches a List<String> receiver via base 'List'). Moving edge-emission to the linker must EITHER keep the analyzer's local return-type lookup (emit unresolved+hint but still infer ext return type for var_types) OR accept a chained-call recall change; and the linker needs generic-base normalization (strip <...> on both index key and receiver_type_hint) to preserve Kotlin's generic matching. Sequencing this AFTER the cleaner MRO walkers (WI-nazab/WI-sojim). Design carefully to preserve behavior."  # 14cd

@@ -22,3 +22,10 @@
     fields:  # 4560
       statement: "Extension-method and UFCS call resolution (receiver-type-keyed candidate search) MUST live in a shared Infrastructure linker, not duplicated per-analyzer — the INV-nilud contract extended to the non-hierarchy resolution family."  # 4560
       root_cause: "Non-hierarchy call resolution was added per-analyzer as each language surfaced its need, yielding three ad-hoc impls of one search (Kotlin in-analyzer, D in-analyzer, Rust linker) plus ~11 unhandled extension languages; the receiver-type-index search is identical across extension methods and UFCS — only analyzer-side detection and the emitted evidence_type differ."  # 4560
+- op: discuss  # 4afc
+  at: '2026-07-18T07:25:14Z'  # 4afc
+  by: agent  # 4afc
+  actor: jgstern_agent  # 4afc
+  clock: 2  # 4afc
+  nonce: 4afc  # 4afc
+  message: "Owner-specified execution order 2026-07-18 (fork decision): WI-panah (substrate) -> WI-situj (D) -> WI-lodij (Kotlin migration) -> WI-nazab/WI-sojim (Scala/Swift MRO walkers) -> INV-vigaf (property-test flip, last). NOTE: this sequences D before the Kotlin migration, reversing the de-risking preference originally filed (WI-lodij isbefore WI-situj, now removed). WI-panah stays the hard prerequisite for both members and will carry its OWN extension-branch + UFCS-branch test fixtures so the substrate is validated independently of which real consumer lands first."  # 4afc

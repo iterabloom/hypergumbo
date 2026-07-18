@@ -19,3 +19,18 @@
     pr_ref:  # 40a9
     description: "inherited_calls: write + register the Scala `_walk_linearization` MRO walker — Step-2 inherited-method recall for the WI-bihit INV-fahub facet.\n\nCONTEXT: The Scala facet (WI-bihit, done) stamps `receiver_type_hint`, so inherited_calls Site-2 Step-1 (direct method on the hinted type) resolves. But `_MRO_WALKERS` has NO `scala` entry (currently only ruby/groovy/java/python — inherited_calls.py:449-457), so `_MRO_WALKERS.get(\"scala\")` returns None and Step-2 (an inherited method reached via the trait/superclass linearization) is SKIPPED — those calls fall back to external:unresolved. That is HONEST (no misbind — INV-fahub suppression already satisfied by WI-bihit) but leaves a residual dead-code false positive on genuinely inherited calls.\n\nWORK: write `_walk_linearization` (Scala trait linearization order — right-to-left over the mixed-in traits + superclass, deduped, per the inherited_calls docstring FUTURE note at line 81) and register `\"scala\"` in `_MRO_WALKERS`. Respect INV-guviv (external-base shadow blind spot, currently violated P3): the walker must not confidently resolve when an external base could shadow the in-tree ancestor — apply the C3 walker's stdlib-base-guard analogue (inherited_calls.py `_python_stdlib_base_shadows` @533).\n\nSCOPE NOTE: recall recovery ONLY. Does NOT affect INV-fahub misbind suppression (already satisfied). Site-1 (bare `self.method()` inherited) additionally needs `enclosing_class` stamping in scala.py — scala.py does not stamp it yet; file/fold as a follow-on if wanted, but Site-2 Step-2 (inherited method on a TYPED receiver) works with the already-stamped receiver_type_hint + this walker.\n\nTests: linker template lang=scala — a class mixing a trait whose method is called on a typed receiver resolves to the trait method (not external), and an unresolvable receiver still suppresses (WI-bihit regression stays green).\n\nPROVENANCE: 3-lens investigation 2026-07-18 — the MRO walkers are the hierarchy-walk family (family 1), DISTINCT from the extension/UFCS receiver-type-index family."  # 40a9
     fields: {}  # 40a9
+- op: update  # ef5a
+  at: '2026-07-18T11:08:17Z'  # ef5a
+  by: agent  # ef5a
+  actor: jgstern_agent  # ef5a
+  clock: 2  # ef5a
+  nonce: ef5a  # ef5a
+  set:  # ef5a
+    status: done  # ef5a
+- op: discuss  # 4da2
+  at: '2026-07-18T11:08:17Z'  # 4da2
+  by: agent  # 4da2
+  actor: jgstern_agent  # 4da2
+  clock: 3  # 4da2
+  nonce: 4da2  # 4da2
+  message: "Done — merged to dev (eed08dc8f2). Wrote _walk_linearization (Scala right-to-left BFS, rightmost-mixin-wins) + registered scala in _MRO_WALKERS; recovers Site-2 Step-2 inherited-method calls on a typed receiver, completing the WI-bihit facet's recall. Evidence: unit tests + an integration test through link_inherited_calls (scala trait-inherited method resolves to the trait method @ ast_call_inherited_method). 100% coverage. Recall-only; no misbind-suppression change. INV-guviv external-base guard stays python-scoped."  # 4da2
