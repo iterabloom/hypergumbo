@@ -35,3 +35,18 @@
   clock: 3  # ea79
   nonce: ea79  # ea79
   message: "Closed done (PR b2d0a1347d). BEHAVIORAL EVIDENCE — end-to-end dogfood of the reproduction funnel (hypergumbo survey on a 2-file scala repo): rec.copy() + dev.setTo() on untyped receivers now emit unresolved external calls edges @0.40 (evidence_type=ast_call, meta.call_construct=method, dst scala:external:0-0:{name}:external_symbol after the ADR-0037-ruling-4 finalize remap), with 0 misbinds to Record.copy / Device.setTo (was @0.68 each); a typed-param receiver r.copy() (r: Record) still resolves to Record.copy @0.85 (recall preserved). Unit tests: TestScalaInvFahubReceiverGating (4 tests: no-misbind / canonical-unresolved-shape / annotated-val-resolves / typed-unresolvable-stamps-hint) + full 118-test scala suite green; scala.py 100% coverage. FIX (leaf-only, INV-nilud-conform): gate the bare-name binds behind receiver_name is None; a method call with an unresolvable-in-file receiver emits py.py's unresolved shape (+ receiver_type_hint when the receiver TYPE is known, for the shared inherited_calls linker Site-2 Step-1; untyped receiver -> no hint). RECALL RECOVERY: threaded previously-dropped receiver types into var_types — annotation-typed vals (val x: Foo = f()) AND class-constructor parameters (class C(val svc: Service), which surfaced as a regression in test_detects_method_call_on_object and is now recovered). No CORE/linker change (scala is strict-by-default in the linker; Step-1 works without an MRO walker). DEFERRED (separate incremental item, per the WI-noham precedent): the Scala trait-linearization MRO walker (_walk_linearization, marked FUTURE) for Step-2 inherited-method recovery. INV-fahub stays violated (umbrella, bakeoff-gated); Swift (WI-votar) + D (WI-situj) facets remain."  # ea79
+- op: update  # 7503
+  at: '2026-07-18T21:53:51Z'  # 7503
+  by: agent  # 7503
+  actor: jgstern_agent  # 7503
+  clock: 4  # 7503
+  nonce: '7503'  # 7503
+  set:  # 7503
+    status: todo_hard  # 7503
+- op: discuss  # 8cb0
+  at: '2026-07-18T21:53:51Z'  # 8cb0
+  by: agent  # 8cb0
+  actor: jgstern_agent  # 8cb0
+  clock: 5  # 8cb0
+  nonce: 8cb0  # 8cb0
+  message: "Reopened (real-repro validation 2026-07-18, docspell=~/ALL_REPOS/repos_Apr12_2026/docspell): Scala funnels wide open. 242 copy/setTo calls resolve @0.85 (ast_call) to internal defs; 65 suppressed; 0 legit. Magnet: copy<-71 src files->FileCopyTask.copy, setTo<-46->ColumnOps.setTo. Ground truth: InputEnv.addEnv does `copy(env=env.add(...))` = the case-class .copy() (returns InputEnv), misbound to the unrelated FileCopyTask.copy. Case-class .copy() is ubiquitous. Cause: gate only extracts receiver types from annotated-vals + ctor-params; misses .copy() on method-returns/for-bindings/expressions. Design pending 3-lens investigation."  # 8cb0

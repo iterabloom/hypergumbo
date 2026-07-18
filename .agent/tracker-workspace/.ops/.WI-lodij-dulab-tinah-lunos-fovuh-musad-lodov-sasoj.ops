@@ -61,3 +61,18 @@
   clock: 6  # 14cd
   nonce: 14cd  # 14cd
   message: "SCOPE FINDING (2026-07-18, from reading kotlin.py:1259-1288): the migration is NOT a clean recall-neutral refactor. The in-analyzer resolver (a) sets resolved_nav_sym which feeds RETURN-TYPE TRACKING for chained calls (x.ext().foo() → var_types), and (b) does GENERIC BASE-NAME matching (fun List<Int>.foo() matches a List<String> receiver via base 'List'). Moving edge-emission to the linker must EITHER keep the analyzer's local return-type lookup (emit unresolved+hint but still infer ext return type for var_types) OR accept a chained-call recall change; and the linker needs generic-base normalization (strip <...> on both index key and receiver_type_hint) to preserve Kotlin's generic matching. Sequencing this AFTER the cleaner MRO walkers (WI-nazab/WI-sojim). Design carefully to preserve behavior."  # 14cd
+- op: update  # 59a2
+  at: '2026-07-18T20:14:30Z'  # 59a2
+  by: agent  # 59a2
+  actor: jgstern_agent  # 59a2
+  clock: 7  # 59a2
+  nonce: 59a2  # 59a2
+  set:  # 59a2
+    status: done  # 59a2
+- op: discuss  # d8e8
+  at: '2026-07-18T20:14:30Z'  # d8e8
+  by: agent  # d8e8
+  actor: jgstern_agent  # d8e8
+  clock: 8  # d8e8
+  nonce: d8e8  # d8e8
+  message: "Done — merged to dev (7b91e26caf), owner-chosen Option A (behavior-preserving). kotlin.py Case-3b extension branch now emits make_unresolved_edge+receiver_type_hint instead of the resolved ast_call_extension edge; the receiver_type_dispatch linker emits the resolved edge. Analyzer keeps the local extension_index lookup ONLY for resolved_nav_sym (return-type tracking) so recall is unchanged. Linker gained _base_type generic normalization (List<Int> -> List). Evidence: 2 WI-visaz call-site tests updated to run analyzer+linker + a linker generic-match test; 100% coverage, 2249 affected tests green. NOTE: the deferred inherited_calls shared-emission-tail extraction (from WI-panah) was NOT bundled here — it is marginal hygiene (a ~5-line Edge.create tail) and was skipped to keep the migration focused; leaving it as optional future cleanup, not blocking INV-vigaf."  # d8e8

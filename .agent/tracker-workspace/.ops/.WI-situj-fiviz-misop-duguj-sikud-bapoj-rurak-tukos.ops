@@ -42,3 +42,33 @@
   clock: 4  # 0040
   nonce: '0040'  # 0040
   message: "Re-scoped 2026-07-18: D recovery routes through the shared receiver-type-index resolver (INV-vigaf family-2 substrate WI-panah), NOT an analyzer-side UFCS resolver. D is the hardest/last member (UFCS + templates + no var-types + heavy auto). Now depends on WI-panah (substrate) + WI-lodij (Kotlin validation member). The UFCS finding from the 2026-07-18 3-lens investigation reframed D from an isolated one-off to the hardest point of a 15-language non-hierarchy-resolution family."  # 0040
+- op: update  # ad7f
+  at: '2026-07-18T21:04:41Z'  # ad7f
+  by: agent  # ad7f
+  actor: jgstern_agent  # ad7f
+  clock: 5  # ad7f
+  nonce: ad7f  # ad7f
+  set:  # ad7f
+    status: done  # ad7f
+- op: discuss  # f8bf
+  at: '2026-07-18T21:04:41Z'  # f8bf
+  by: agent  # f8bf
+  actor: jgstern_agent  # f8bf
+  clock: 6  # f8bf
+  nonce: f8bf  # f8bf
+  message: "Done — merged to dev (36ef4ec6d1). D UFCS receiver gating via the receiver_type_dispatch substrate: d_lang.py tracks function-parameter types, gates variable-receiver calls (thing.exists()) to make_unresolved_edge+receiver_type_hint (suppressing the 0.85 misbind to a bare exists()), and stamps free functions with meta.ufcs_receiver_type (first-param type) so the linker recovers the real UFCS target as ast_call_ufcs. Behavioral evidence: test_d_ufcs_receiver_gating.py — the funnel case (File-typed param receiver) recovers via the linker, the misbind case (no matching UFCS free fn) is suppressed (0 resolved edges to the bare fn), module/bare calls unaffected. 100% coverage; 20966 affected tests green. RESIDUAL (documented): local-variable and auto receivers are not tracked (parameter receivers are the dominant funnel) — a UFCS-aware follow-up could extend var-type tracking to typed local decls + return types."  # f8bf
+- op: update  # 7ed4
+  at: '2026-07-18T21:53:50Z'  # 7ed4
+  by: agent  # 7ed4
+  actor: jgstern_agent  # 7ed4
+  clock: 7  # 7ed4
+  nonce: 7ed4  # 7ed4
+  set:  # 7ed4
+    status: todo_hard  # 7ed4
+- op: discuss  # 1770
+  at: '2026-07-18T21:53:50Z'  # 1770
+  by: agent  # 1770
+  actor: jgstern_agent  # 1770
+  clock: 8  # 1770
+  nonce: '1770'  # 1770
+  message: "Reopened (real-repro validation 2026-07-18, on the item OWN corpus dub=~/ALL_REPOS/repos_Apr12_2026/dub, fresh post-fix code): D funnels still wide open. 107 exists/startsWith/toString calls resolve @0.85 (ast_call_direct) to arbitrary internal defs. Magnet: toString<-25 src files, startsWith<-19, exists<-13->a NESTED-LOCAL exists (compilers/utils.d:124, invisible outside its scope). Ground truth: commandline.d:1172 `l.startsWith(\"-\")` on a string loop-var means std.algorithm.startsWith, binds to internal sdlang helper. Cause: the gate only fires when receiver is a typed function PARAMETER (var_types); misses free-function-form (receiver=None) + UFCS on locals/loop-vars/fields. Only 1 ufcs+36 type_inferred legit; 75 suppressed. Design pending 3-lens investigation."  # 1770

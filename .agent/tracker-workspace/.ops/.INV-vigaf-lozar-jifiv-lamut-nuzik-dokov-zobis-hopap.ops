@@ -29,3 +29,18 @@
   clock: 2  # 4afc
   nonce: 4afc  # 4afc
   message: "Owner-specified execution order 2026-07-18 (fork decision): WI-panah (substrate) -> WI-situj (D) -> WI-lodij (Kotlin migration) -> WI-nazab/WI-sojim (Scala/Swift MRO walkers) -> INV-vigaf (property-test flip, last). NOTE: this sequences D before the Kotlin migration, reversing the de-risking preference originally filed (WI-lodij isbefore WI-situj, now removed). WI-panah stays the hard prerequisite for both members and will carry its OWN extension-branch + UFCS-branch test fixtures so the substrate is validated independently of which real consumer lands first."  # 4afc
+- op: update  # dfcb
+  at: '2026-07-18T21:10:59Z'  # dfcb
+  by: agent  # dfcb
+  actor: jgstern_agent  # dfcb
+  clock: 3  # dfcb
+  nonce: dfcb  # dfcb
+  set:  # dfcb
+    status: satisfied  # dfcb
+- op: discuss  # 0408
+  at: '2026-07-18T21:10:59Z'  # 0408
+  by: agent  # 0408
+  actor: jgstern_agent  # 0408
+  clock: 4  # 0408
+  nonce: '0408'  # 0408
+  message: "Satisfied — the receiver-type-index resolver family is built and the invariant is enforced. Members all merged to dev: WI-panah (substrate linkers/receiver_type_dispatch.py + ast_call_ufcs, e9e7a4ac), WI-lodij (Kotlin extension resolution migrated OFF the analyzer onto the linker seam, 7b91e26caf), WI-situj (D UFCS routed through the linker + receiver gating, 36ef4ec6d1). Behavioral/enforcement evidence: (1) test_inv_vigaf_analyzer_ownership.py (15d6cef41c) statically asserts no producer source hand-writes evidence_type=ast_call_extension/ast_call_ufcs — those are stamped ONLY by the linker via _RECEIVER_META_EVIDENCE; (2) test_receiver_type_dispatch.py proves the linker resolves both branches (extension + UFCS, incl. generic base-name normalization + ambiguity gating); (3) test_kotlin.py + test_d_ufcs_receiver_gating.py prove Kotlin/D emit make_unresolved_edge+receiver_type_hint (not resolved edges). This is the INV-nilud contract (analyzer emits unresolved+hint, linker owns resolution) extended from inheritance to the non-hierarchy family. SCOPE: satisfied for the currently-implementing languages (Kotlin extension, D UFCS); the other extension-capable languages (C#/Scala/Swift/F#/Dart/Obj-C/Haxe/Nim) do not resolve extension calls yet — future coverage that will route through the same linker, not violations. Provenance: 3-lens investigation 2026-07-18."  # 0408

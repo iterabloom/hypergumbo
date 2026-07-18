@@ -19,3 +19,18 @@
     pr_ref:  # 0146
     description: "inherited_calls: write + register the Swift `_walk_left_to_right` MRO walker — Step-2 inherited-method recall for the WI-votar INV-fahub facet (ONE walker serves Swift/PHP/Obj-C/C++).\n\nCONTEXT: The Swift facet (WI-votar, done) stamps `receiver_type_hint`, so Site-2 Step-1 (direct method) resolves. But `_MRO_WALKERS` has no `swift` entry (inherited_calls.py:449-457), so Step-2 (a method inherited via the superclass + protocol conformances) is skipped -> external:unresolved. Honest (no misbind — suppression satisfied by WI-votar) but a residual dead-code FP on inherited calls.\n\nWORK: write `_walk_left_to_right` (single superclass first, then protocol conformances, left-to-right depth-first — per the inherited_calls docstring FUTURE note at line 79-80; the docstring scopes this one walker to Swift/PHP/Obj-C/C++). Register `\"swift\"`. OPPORTUNISTIC: also register php/objc/cpp — they already stamp `enclosing_class` (Site-1-ready) per the analyzer grep; verify each stamps `receiver_type_hint` for Site-2 before registering (do NOT register a language whose analyzer can't feed the walker). Respect INV-guviv (external-base shadow) as in the Scala walker.\n\nSCOPE NOTE: recall recovery ONLY; no effect on misbind suppression. Site-1 (bare `self.method()` inherited) needs `enclosing_class` stamping in swift.py (not stamped yet) — follow-on. Site-2 Step-2 works with the already-stamped receiver_type_hint + this walker.\n\nTests: linker template lang=swift — a subclass/protocol-inherited method call on a typed receiver resolves; WI-votar suppression regression stays green. Add per-language templates only for languages actually registered.\n\nPROVENANCE: 3-lens investigation 2026-07-18 — hierarchy-walk family (family 1), distinct from extension/UFCS."  # 0146
     fields: {}  # 0146
+- op: update  # 1496
+  at: '2026-07-18T11:09:54Z'  # 1496
+  by: agent  # 1496
+  actor: jgstern_agent  # 1496
+  clock: 2  # 1496
+  nonce: '1496'  # 1496
+  set:  # 1496
+    status: done  # 1496
+- op: discuss  # 87ef
+  at: '2026-07-18T11:09:54Z'  # 87ef
+  by: agent  # 87ef
+  actor: jgstern_agent  # 87ef
+  clock: 3  # 87ef
+  nonce: 87ef  # 87ef
+  message: "Done — merged to dev (eed08dc8f2). Wrote _walk_left_to_right (Swift left-to-right pre-order DFS) + registered swift in _MRO_WALKERS; recovers Site-2 Step-2 inherited-method calls, completing the WI-votar facet's recall. Evidence: unit tests (incl. a DFS-order test distinguishing it from BFS, and a diamond visited-skip test) + an integration test through link_inherited_calls (swift superclass-inherited method resolves @ ast_call_inherited_method). 100% coverage. php/objc/cpp registration deferred (they stamp enclosing_class but need receiver_type_hint verified per-lang first)."  # 87ef
