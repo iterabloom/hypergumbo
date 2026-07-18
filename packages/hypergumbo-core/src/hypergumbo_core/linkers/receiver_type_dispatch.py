@@ -69,10 +69,23 @@ _RECEIVER_META_EVIDENCE: tuple[tuple[str, str], ...] = (
 )
 
 
+def _base_type(type_name: str) -> str:
+    """Strip generic parameters: ``List<Int>`` → ``List``.
+
+    Extension / UFCS resolution matches on the base type, not the
+    instantiation — ``fun List<Int>.foo()`` is invocable on any ``List``
+    receiver. hypergumbo does not do full generic type-checking, so both
+    the declared receiver type and the call-site ``receiver_type_hint`` are
+    normalized to their base name before the index lookup (this reproduces
+    the base-name matching the Kotlin analyzer did in-line before WI-lodij).
+    """
+    return type_name.split("<", 1)[0]
+
+
 def _build_receiver_type_index(
     symbols: list[Symbol],
 ) -> dict[tuple[str, str, str], list[tuple[str, str]]]:
-    """Index callable definitions by (language, receiver type, short name).
+    """Index callable definitions by (language, base receiver type, short name).
 
     Value is a list of ``(callable_symbol_id, evidence_type)`` — a list so the
     resolver can detect an ambiguous (multiple distinct target) hint.
@@ -84,7 +97,7 @@ def _build_receiver_type_index(
             receiver_type = meta.get(meta_key)
             if not receiver_type:
                 continue
-            key = (sym.language, receiver_type, short_name(sym.name))
+            key = (sym.language, _base_type(receiver_type), short_name(sym.name))
             index.setdefault(key, []).append((sym.id, evidence))
     return index
 
@@ -128,7 +141,9 @@ def link_receiver_type_dispatch(ctx: LinkerContext) -> LinkerResult:
         if not callee_short:
             continue
 
-        candidates = index.get((src_lang, receiver_type_hint, callee_short))
+        candidates = index.get(
+            (src_lang, _base_type(receiver_type_hint), callee_short),
+        )
         if not candidates:
             continue
         # Ambiguity gate: two distinct targets for the same (lang, type, name)

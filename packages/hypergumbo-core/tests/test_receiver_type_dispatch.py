@@ -103,6 +103,21 @@ class TestExtensionResolution:
                             symbols=[ext, caller], edges=[call])
         assert link_receiver_type_dispatch(ctx).edges == []
 
+    def test_generic_receiver_matches_on_base_type(self) -> None:
+        """`fun List<Int>.sumSafe()` resolves a `List<String>` receiver call —
+        both sides normalize to the base type `List` (WI-lodij)."""
+        ext = _callable("sym:ext.sumSafe", "sumSafe",
+                        receiver_meta_key="extension_receiver",
+                        receiver_type="List<Int>")
+        caller = _caller()
+        call = _unresolved_call(caller.id, "sumSafe", "List<String>")
+        ctx = LinkerContext(repo_root=Path("/"),
+                            symbols=[ext, caller], edges=[call])
+        result = link_receiver_type_dispatch(ctx)
+        resolved = [e for e in result.edges if e.dst == ext.id]
+        assert len(resolved) == 1
+        assert resolved[0].evidence_type == "ast_call_extension"
+
 
 class TestUfcsResolution:
     def test_resolves_ufcs_free_function_via_first_param_type(self) -> None:

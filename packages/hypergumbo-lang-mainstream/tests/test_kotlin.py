@@ -190,13 +190,36 @@ class TestKotlinExtensionFunctions:
             "configure extension function symbol not found"
         )
 
-        calls_to_configure = [
+        # WI-lodij: the analyzer now emits the call as unresolved + a
+        # receiver_type_hint; the shared receiver_type_dispatch linker emits the
+        # resolved ast_call_extension edge.
+        unresolved = [
             e for e in result.edges
+            if e.edge_type == "calls" and not e.is_resolved
+            and (e.meta or {}).get("receiver_type_hint") == "SpringApplication"
+        ]
+        assert len(unresolved) >= 1, (
+            "expected analyzer to emit an unresolved call with "
+            "receiver_type_hint=SpringApplication"
+        )
+
+        from hypergumbo_core.linkers.receiver_type_dispatch import (
+            link_receiver_type_dispatch,
+        )
+        from hypergumbo_core.linkers.registry import LinkerContext
+
+        ctx = LinkerContext(
+            repo_root=tmp_path, symbols=result.symbols, edges=result.edges,
+        )
+        linked = link_receiver_type_dispatch(ctx)
+        calls_to_configure = [
+            e for e in linked.edges
             if e.edge_type == "calls" and e.dst == configure_sym.id
+            and e.is_resolved and e.evidence_type == "ast_call_extension"
         ]
         assert len(calls_to_configure) >= 1, (
-            f"expected at least one calls→configure edge, got "
-            f"{[(e.src, e.dst, e.evidence_type) for e in result.edges]}"
+            f"expected a linker-resolved calls→configure edge, got "
+            f"{[(e.src, e.dst, e.evidence_type) for e in linked.edges]}"
         )
 
     def test_extension_call_with_generic_receiver(
@@ -232,13 +255,26 @@ class TestKotlinExtensionFunctions:
         )
         assert sum_safe is not None
 
+        # WI-lodij: the linker resolves the unresolved call; generic receivers
+        # (``List<Int>``) match on the base name (``List``) via the linker's
+        # _base_type normalization.
+        from hypergumbo_core.linkers.receiver_type_dispatch import (
+            link_receiver_type_dispatch,
+        )
+        from hypergumbo_core.linkers.registry import LinkerContext
+
+        ctx = LinkerContext(
+            repo_root=tmp_path, symbols=result.symbols, edges=result.edges,
+        )
+        linked = link_receiver_type_dispatch(ctx)
         calls_to_sum_safe = [
-            e for e in result.edges
+            e for e in linked.edges
             if e.edge_type == "calls" and e.dst == sum_safe.id
+            and e.is_resolved and e.evidence_type == "ast_call_extension"
         ]
         assert len(calls_to_sum_safe) >= 1, (
-            f"expected calls→sumSafe edge, got "
-            f"{[(e.src, e.dst, e.evidence_type) for e in result.edges]}"
+            f"expected a linker-resolved calls→sumSafe edge, got "
+            f"{[(e.src, e.dst, e.evidence_type) for e in linked.edges]}"
         )
 
 

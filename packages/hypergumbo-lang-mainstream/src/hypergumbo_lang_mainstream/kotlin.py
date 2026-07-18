@@ -1244,18 +1244,22 @@ def _extract_edges_from_file(
                                 edge_added = True
                                 resolved_nav_sym = lookup_result.symbol
 
-                        # Case 3b (WI-visaz): ``receiver.extFn()`` where
-                        # ``extFn`` is a Kotlin extension function whose
-                        # receiver_type matches the receiver's declared
-                        # type. WI-fuhav detects the definition side and
-                        # records ``meta.extension_receiver``; the
-                        # extension_index keyed by that receiver type lets
-                        # us emit the call edge here. Class methods win
-                        # over extensions in Kotlin's resolution semantics,
-                        # so only probe when Case 3 did not already add an
-                        # edge. Generic receivers (``List<Int>``) match on
-                        # the base name via the same split-on-``<`` rule
-                        # that Pass 1 uses when building the index.
+                        # Case 3b (WI-visaz → WI-lodij): ``receiver.extFn()``
+                        # where ``extFn`` is a Kotlin extension function whose
+                        # receiver_type matches the receiver's declared type.
+                        # WI-fuhav detects the definition side and records
+                        # ``meta.extension_receiver``. Since WI-lodij (INV-vigaf)
+                        # this branch NO LONGER emits the resolved edge — it
+                        # emits an unresolved call + receiver_type_hint and the
+                        # shared receiver_type_dispatch linker emits the
+                        # ast_call_extension edge; the local extension_index
+                        # lookup is kept only to resolve the extension's RETURN
+                        # TYPE (resolved_nav_sym) for chained navigation calls.
+                        # Class methods win over extensions in Kotlin's
+                        # resolution semantics, so only probe when Case 3 did not
+                        # already add an edge. Generic receivers (``List<Int>``)
+                        # match on the base name (the linker's _base_type
+                        # normalization mirrors this pass's split-on-``<`` rule).
                         if (
                             not edge_added
                             and receiver_name in var_types
@@ -1274,14 +1278,21 @@ def _extract_edges_from_file(
                                     else ext_sym.name
                                 )
                                 if ext_short == method_name:
-                                    edges.append(Edge.create(
-                                        src=current_function.id,
-                                        dst=ext_sym.id,
-                                        edge_type="calls",
-                                        line=node.start_point[0] + 1,
-                                        origin=PASS_ID,
-                                        origin_run_id=run.execution_id,
-                                        evidence_type="ast_call_extension",
+                                    # WI-lodij (INV-vigaf): emit the call as
+                                    # unresolved + receiver_type_hint and let the
+                                    # shared receiver_type_dispatch linker emit
+                                    # the resolved ast_call_extension edge — the
+                                    # analyzer no longer resolves the edge itself.
+                                    # The local extension_index lookup is retained
+                                    # ONLY to track the extension's return type
+                                    # (resolved_nav_sym) for chained navigation
+                                    # calls, which is a pass-2 concern the linker
+                                    # (running later) cannot feed back.
+                                    edges.append(make_unresolved_edge(
+                                        "kotlin", current_function.id,
+                                        method_name, node.start_point[0] + 1,
+                                        PASS_ID, run.execution_id,
+                                        receiver_type_hint=type_class_name,
                                     ))
                                     edge_added = True
                                     resolved_nav_sym = ext_sym
