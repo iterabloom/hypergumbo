@@ -297,6 +297,14 @@ def _extract_symbols_from_tree(
         analysis.symbols.append(symbol)
         analysis.symbol_by_name[name] = symbol
         analysis.symbol_by_name[full_name] = symbol
+        # Register the defining node so the base-class auto-stamp loop
+        # (TreeSitterAnalyzer.analyze) computes shape_id (and any NatSpec doc
+        # comment) for this body-bearing symbol. Solidity is a plain
+        # TreeSitterAnalyzer subclass and does not override analyze(), so
+        # populating node_for_symbol is all that is needed to stamp shape_id —
+        # making these symbols visible to the repeat-finder clone detector,
+        # which groups by (language, shape_id) and drops None (WI-lutob).
+        analysis.node_for_symbol[symbol.id] = node
         return symbol
 
     # WI-jusus (emission-parity): file-identity anchor so same-named state

@@ -123,6 +123,33 @@ contract Token {
         functions = [s for s in result.symbols if s.kind == "function"]
         assert any("transfer" in s.name for s in functions)
 
+    def test_body_bearing_symbols_carry_shape_id(self, temp_repo: Path) -> None:
+        """WI-lutob: Solidity body-bearing symbols (function / constructor /
+        contract) carry an auto-stamped structural shape_id — populated via
+        ``node_for_symbol`` + the base-class auto-stamp loop (base.py) — so
+        Solidity functions are visible to the ``repeat-finder`` structural-clone
+        detector, which groups by ``(language, shape_id)`` and drops any
+        ``shape_id`` of None. Before this, Solidity never populated
+        node_for_symbol, so shape_id stayed None on 100% of body-bearing
+        symbols (invisible to clone detection)."""
+        (temp_repo / "C.sol").write_text("""
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+contract C {
+    function f(uint256 x) public pure returns (uint256) {
+        if (x > 0) { return x; }
+        return 0;
+    }
+}
+""")
+        result = analyze_solidity(temp_repo)
+
+        functions = [s for s in result.symbols if s.kind == "function"]
+        assert functions
+        for s in functions:
+            assert s.shape_id, f"solidity function {s.name} has no shape_id"
+
     def test_analyzes_constructor(self, temp_repo: Path) -> None:
         """Detects constructor definitions."""
         (temp_repo / "Token.sol").write_text("""

@@ -439,3 +439,38 @@ fn helper(x: i32) -> i32 { if (x > 0) { return 1; } return 0; }
     for s in functions:
         assert s.cyclomatic_complexity is not None, s.name
         assert s.line_span is not None, s.name
+
+
+def test_functions_carry_shape_id(tmp_path):
+    """WI-lutob: WGSL body-bearing symbols carry an auto-stamped structural
+    shape_id — populated via ``node_for_symbol`` + the base-class auto-stamp
+    loop (base.py) — so WGSL functions are visible to the ``repeat-finder``
+    structural-clone detector, which groups by ``(language, shape_id)`` and
+    drops any ``shape_id`` of None. Before this, WGSL hard-set shape_id=None on
+    every symbol (100% of body-bearing symbols invisible to clone detection)."""
+    (tmp_path / "shader.wgsl").write_text("""
+@vertex
+fn vs_main() -> @builtin(position) vec4<f32> { return vec4<f32>(0.0); }
+fn helper(x: i32) -> i32 { if (x > 0) { return 1; } return 0; }
+""")
+    result = analyze_wgsl_files(tmp_path)
+    functions = [s for s in result.symbols if s.kind == "function"]
+    assert functions
+    for s in functions:
+        assert s.shape_id, f"wgsl function {s.name} has no shape_id"
+
+
+def test_structs_carry_shape_id(tmp_path):
+    """WI-lutob: WGSL structs (a body-bearing kind) also carry an auto-stamped
+    shape_id via the same node_for_symbol path."""
+    (tmp_path / "types.wgsl").write_text("""
+struct VertexOutput {
+    @builtin(position) position: vec4<f32>,
+    @location(0) color: vec4<f32>,
+}
+""")
+    result = analyze_wgsl_files(tmp_path)
+    structs = [s for s in result.symbols if s.kind == "struct"]
+    assert structs
+    for s in structs:
+        assert s.shape_id, f"wgsl struct {s.name} has no shape_id"
