@@ -2011,6 +2011,104 @@ class TestSwiftInvFahubReceiverGating:
         assert (e.meta or {}).get("call_construct") == "method"
         assert "receiver_type_hint" not in (e.meta or {})
 
+    def test_bare_cross_type_method_deferred_stamps_enclosing_class(
+        self, tmp_path: Path
+    ) -> None:
+        """Real-repro (VernissageServer, 302 misbinds): a BARE call (implicit
+        ``self`` or a route-builder chain whose receiver token was dropped, e.g.
+        Vapor ``delete()``) that suffix-matches a DIFFERENT type's method must
+        NOT bind to the unrelated ``ActivityPubClient.delete`` — defer to the
+        inherited_calls Site-1 walker with an ``enclosing_class`` hint."""
+        from hypergumbo_lang_mainstream.swift import analyze_swift
+
+        (tmp_path / "client.swift").write_text(
+            "class ActivityPubClient {\n  func delete() {}\n}\n"
+        )
+        (tmp_path / "controller.swift").write_text(
+            "struct AccountController {\n"
+            "  func boot() {\n"
+            "    delete()\n"
+            "  }\n"
+            "}\n"
+        )
+        result = analyze_swift(tmp_path)
+        client_delete = next(
+            s for s in result.symbols
+            if s.name == "ActivityPubClient.delete" and s.kind == "method"
+        )
+        misbinds = [
+            e for e in result.edges
+            if e.edge_type == "calls" and e.dst == client_delete.id
+            and "boot" in e.src and e.is_resolved
+        ]
+        assert misbinds == [], f"bare delete() misbound: {misbinds}"
+        deferred = [
+            e for e in result.edges
+            if e.edge_type == "calls" and "boot" in e.src
+            and e.dst.endswith(":delete:unresolved")
+        ]
+        assert len(deferred) == 1, [e.dst for e in result.edges if "boot" in e.src]
+        assert (deferred[0].meta or {}).get("enclosing_class") == "AccountController"
+
+    def test_bare_cross_type_same_file_method_deferred(
+        self, tmp_path: Path
+    ) -> None:
+        """Same-file variant: a bare call to a DIFFERENT type's method defined in
+        the same file also defers to Site-1 with an ``enclosing_class`` hint
+        (Swift keys ``local_symbols`` by full name, so this too resolves through
+        the INV-fahub-gated resolver path, not a bare short-name bind)."""
+        from hypergumbo_lang_mainstream.swift import analyze_swift
+
+        (tmp_path / "m.swift").write_text(
+            "class Store {\n  func delete() {}\n}\n"
+            "class Controller {\n  func boot() { delete() }\n}\n"
+        )
+        result = analyze_swift(tmp_path)
+        store_delete = next(
+            s for s in result.symbols
+            if s.name == "Store.delete" and s.kind == "method"
+        )
+        misbinds = [
+            e for e in result.edges
+            if e.edge_type == "calls" and e.dst == store_delete.id
+            and "boot" in e.src and e.is_resolved
+        ]
+        assert misbinds == [], f"same-file cross-type bare call misbound: {misbinds}"
+        deferred = [
+            e for e in result.edges
+            if e.edge_type == "calls" and "boot" in e.src
+            and e.dst.endswith(":delete:unresolved")
+        ]
+        assert len(deferred) == 1, [e.dst for e in result.edges if "boot" in e.src]
+        assert (deferred[0].meta or {}).get("enclosing_class") == "Controller"
+
+    def test_bare_implicit_self_same_type_resolves_directly(
+        self, tmp_path: Path
+    ) -> None:
+        """Recall guard: a bare implicit-``self`` call to a method of the SAME
+        enclosing type still resolves directly (owner == enclosing)."""
+        from hypergumbo_lang_mainstream.swift import analyze_swift
+
+        (tmp_path / "calc.swift").write_text(
+            "class Calc {\n"
+            "  func total() -> Int { return helper() }\n"
+            "  func helper() -> Int { return 41 }\n"
+            "}\n"
+        )
+        result = analyze_swift(tmp_path)
+        calc_helper = next(
+            s for s in result.symbols
+            if s.name == "Calc.helper" and s.kind == "method"
+        )
+        resolved = [
+            e for e in result.edges
+            if e.edge_type == "calls" and e.dst == calc_helper.id
+            and "total" in e.src and e.is_resolved
+        ]
+        assert len(resolved) == 1, [
+            (e.dst, e.is_resolved) for e in result.edges if "total" in e.src
+        ]
+
     def test_param_typed_receiver_resolves(self, tmp_path: Path) -> None:
         """Recall recovery: a receiver typed by a function parameter
         (``func use(f: Foo)``) resolves — param types are now threaded."""

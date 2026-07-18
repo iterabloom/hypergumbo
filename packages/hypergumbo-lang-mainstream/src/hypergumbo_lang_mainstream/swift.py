@@ -53,6 +53,7 @@ from hypergumbo_core.analyze.base import (
     TreeSitterAnalyzer,
     find_child_by_type,
     iter_tree,
+    defer_bare_method_call,
     make_file_id,
     make_file_stable_id,
     make_symbol_id,
@@ -966,6 +967,11 @@ def _extract_edges_from_file(
         elif node.type == "call_expression":
             current_function = _get_enclosing_function(node, source, local_symbols)
             if current_function is not None:
+                # INV-fahub Site-1: enclosing type short name for a bare /
+                # implicit-``self`` call, so a deferred bare→method call can be
+                # recovered by the inherited_calls MRO walker (inherited) or left
+                # external (cross-class magnet).
+                _enclosing_type = _get_enclosing_type(node, source)
                 callee_name, receiver_hint = _extract_call_target(
                     node, source,
                 )
@@ -1052,6 +1058,12 @@ def _extract_edges_from_file(
                         resolved = True
 
                     if not resolved and callee_name in local_symbols:
+                        # Swift keys ``local_symbols`` by full name (``Type.method``),
+                        # so a bare short name resolves here only to a same-file
+                        # top-level FUNCTION — never a class-member method (those go
+                        # through the resolver path below, which is INV-fahub-gated).
+                        # A free-function bind is legitimate (callable bare), so no
+                        # magnet gate is needed on this branch.
                         callee = local_symbols[callee_name]
                         edges.append(Edge.create(
                             src=current_function.id,
@@ -1069,13 +1081,20 @@ def _extract_edges_from_file(
                         # Bare call only — a receiver call is gated above (which
                         # sets resolved=True), so receiver_hint is None here.
                         # Resolve by short name via the resolver, else emit an
-                        # honest external edge.
+                        # honest external edge. INV-fahub: a bare call resolving
+                        # only to a DIFFERENT type's method on weak short-name
+                        # evidence is a magnet — defer to Site-1 (enclosing_class).
                         path_hint = import_aliases.get(callee_name)
                         lookup_result = resolver.lookup(callee_name, path_hint=path_hint, caller_path=_caller_path)
-                        if lookup_result.found and lookup_result.symbol is not None:
+                        _sym = lookup_result.symbol
+                        _defer = _sym is not None and defer_bare_method_call(
+                            _sym.kind, _sym.name,
+                            lookup_result.match_type, _enclosing_type,
+                        )
+                        if lookup_result.found and _sym is not None and not _defer:
                             edges.append(Edge.create(
                                 src=current_function.id,
-                                dst=lookup_result.symbol.id,
+                                dst=_sym.id,
                                 edge_type="calls",
                                 line=node.start_point[0] + 1,
                                 evidence_type="ast_call",
@@ -1093,6 +1112,7 @@ def _extract_edges_from_file(
                                     ExternalRef(lang="swift", module_path=path_hint, name=callee_name)
                                     if path_hint else None
                                 ),
+                                enclosing_class=_enclosing_type,
                             ))
 
         # Function references in non-call contexts (INV-dinur).

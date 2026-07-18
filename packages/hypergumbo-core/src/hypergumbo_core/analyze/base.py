@@ -683,6 +683,45 @@ def make_unresolved_edge(
     )
 
 
+def defer_bare_method_call(
+    candidate_kind: str,
+    candidate_name: str,
+    match_type: str,
+    enclosing_type: Optional[str],
+) -> bool:
+    """INV-fahub: should a BARE call that resolved to ``candidate`` be WITHHELD?
+
+    A bare / implicit-``this`` / ``self`` call (``copy(...)``, a chained-receiver
+    call whose receiver token was dropped, a same-file short-name hit) may
+    legitimately reach a free function / object, or a method of its OWN enclosing
+    class (implicit ``this``). It must NOT confidently bind to a DIFFERENT class's
+    method on weak short-name evidence — that is the cross-language magnet misbind
+    (``copy`` → ``FileCopyTask.copy``, ``delete`` → ``ActivityPubClient.delete``:
+    dozens of call sites → one arbitrary def, per real-repro validation). Deferring
+    such a call to the shared ``inherited_calls`` **Site-1** walker (by emitting
+    ``make_unresolved_edge(..., enclosing_class=<enclosing_type>)``) lets it be
+    recovered iff the method is actually on the enclosing class's linearization (a
+    genuine *inherited* implicit-``this`` call), and left honestly external when it
+    is a cross-class magnet — INV-nogof (withhold, never pick-first) + INV-nilud
+    (the linker owns resolution).
+
+    Returns ``True`` to DEFER, ``False`` to bind directly. ``match_type`` is the
+    resolver's ``LookupResult.match_type``; pass ``"suffix"`` for a bare same-file
+    ``local_symbols`` hit (an exact *short-name* match, but still weak evidence for
+    a cross-class target). Owner class is parsed from ``candidate_name``'s
+    ``"Owner.method"`` shape; a name with no ``"."`` (a free def) never defers.
+    """
+    if candidate_kind != "method":
+        return False
+    owner = candidate_name.rsplit(".", 1)[0] if "." in candidate_name else None
+    if owner is not None and owner == enclosing_type:
+        return False  # same-class implicit ``this``/``self`` — bind directly
+    # Cross-class (or owner-unknown) method: only a strong exact / import-scoped
+    # match is trustworthy for a bare call; a weak suffix / ambiguous / same-file
+    # short-name collision is the magnet — defer to Site-1.
+    return match_type not in ("exact", "path_hint")
+
+
 def make_route_stable_id(method: str, path: str) -> str:
     """Compute a collision-free stable_id for route symbols.
 

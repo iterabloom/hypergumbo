@@ -49,6 +49,7 @@ from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
     TreeSitterAnalyzer,
+    defer_bare_method_call,
     find_child_by_type,
     iter_tree,
     make_file_id,
@@ -916,19 +917,16 @@ def _extract_edges_from_file(
                         ))
                     elif not edge_added and callee_name in local_symbols:
                         callee = local_symbols[callee_name]
-                        # INV-fahub (real-repro re-scope 2026-07-18): a bare call
-                        # binds directly only to a same-enclosing-class method
-                        # (legit implicit ``this``) or a non-method (free def /
-                        # object). A bare call to a DIFFERENT same-file class's
-                        # method is not in scope — defer to the inherited_calls
-                        # Site-1 walker (``enclosing_class`` hint), which resolves
-                        # it iff the method is on the enclosing class's MRO
-                        # (inherited), else leaves it honestly external.
-                        _owner = (
-                            callee.name.rsplit(".", 1)[0]
-                            if "." in callee.name else None
-                        )
-                        if callee.kind == "method" and _owner != enclosing_type:
+                        # INV-fahub: a bare same-file hit binds directly only to a
+                        # same-enclosing-class method (implicit ``this``) or a
+                        # non-method (free def / object); a DIFFERENT class's
+                        # method is a magnet — defer to the inherited_calls Site-1
+                        # walker (shared ``defer_bare_method_call`` decision;
+                        # "suffix" flags the weak short-name evidence of a bare
+                        # ``local_symbols`` hit).
+                        if defer_bare_method_call(
+                            callee.kind, callee.name, "suffix", enclosing_type,
+                        ):
                             edges.append(make_unresolved_edge(
                                 "scala", current_function.id, callee_name,
                                 node.start_point[0] + 1, PASS_ID, run_id,
@@ -967,18 +965,15 @@ def _extract_edges_from_file(
                         # withhold-not-pick-first). Exact / path-hint matches and
                         # free-function / object targets are unaffected.
                         _sym = lookup_result.symbol
-                        _weak_method = (
-                            _sym is not None
-                            and _sym.kind == "method"
-                            and lookup_result.match_type in (
-                                "suffix", "suffix_ambiguous", "ambiguous",
-                            )
+                        _defer = _sym is not None and defer_bare_method_call(
+                            _sym.kind, _sym.name,
+                            lookup_result.match_type, enclosing_type,
                         )
                         if (
                             lookup_result.found
                             and _sym is not None
                             and _sym.kind not in ("field", "variable")
-                            and not _weak_method
+                            and not _defer
                         ):
                             conf = 0.80 * lookup_result.confidence * _short_name_penalty(callee_name)
                             edges.append(Edge.create(
