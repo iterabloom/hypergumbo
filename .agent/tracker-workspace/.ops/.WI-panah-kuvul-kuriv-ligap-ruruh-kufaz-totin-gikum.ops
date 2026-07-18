@@ -1,0 +1,22 @@
+- op: create  # b883
+  at: '2026-07-18T07:17:32Z'  # b883
+  by: agent  # b883
+  actor: jgstern_agent  # b883
+  clock: 1  # b883
+  nonce: b883  # b883
+  data:  # b883
+    kind: work_item  # b883
+    title: "Receiver-type-index resolver linker: shared substrate for extension/UFCS call resolution (extract inherited_calls helpers + new Infrastructure linker)"  # b883
+    status: todo_hard  # b883
+    priority: 2  # b883
+    parent: INV-vigaf-lozar-jifiv-lamut-nuzik-dokov-zobis-hopap  # b883
+    tags:  # b883
+    - cross_language_parity  # b883
+    - analysis_quality  # b883
+    - structural  # b883
+    isbefore: []  # b883
+    duplicate_of: []  # b883
+    not_duplicate_of: []  # b883
+    pr_ref:  # b883
+    description: "Build the shared substrate for extension/UFCS call resolution (parent invariant: receiver-type-index resolver belongs in a linker, not analyzers).\n\nTWO parts, one PR (mirrors WI-gifar \"PR-1: contract + shared helpers\" for inherited_calls):\n\n(1) EXTRACT the strategy-agnostic scaffold currently duplicated in linkers/inherited_calls.py into a common linker-helpers module both linkers import:\n    - receiver-type-hint extraction (reading meta.receiver_type_hint / concrete *_id),\n    - same-language candidate scoping (the `_same_language_class_ids` src_lang gate, INV-milud),\n    - the `Edge.create(edge_type=\"calls\", ...)` emission tail + `existing_call_pairs` dedup — lens-1 found this copy-pasted ~5x (inherited_calls.py:1063, 1157, 1182, 1206, 1334).\n  This is additive/behavior-preserving for inherited_calls (re-run its tests unchanged).\n\n(2) NEW Infrastructure linker (e.g. linkers/receiver_type_dispatch.py) that resolves an unresolved `calls` edge carrying a `receiver_type_hint` against a receiver-type-keyed candidate index:\n    - INDEX: `receiver_type_name -> [(callable_id, Symbol)]`, populated from analyzer-stamped hints — extension defs stamp `extension_receiver` (Kotlin already does, kotlin.py), UFCS-eligible free functions stamp their first-parameter type.\n    - LOOKUP: by the call's `receiver_type_hint`, matched by callee short-name; ambiguity gate (len>1 -> withhold) mirroring inherited_calls.\n    - EMIT: `calls`, is_resolved=True, evidence_type `ast_call_extension` (exists, evidence_types.py:132) for extension members / a NEW `ast_call_ufcs` (add one EvidenceTypeSpec on the existing inference-pathway axis — ADR-0028/ADR-0024 cheap path) for UFCS free functions.\n\nINV-nilud-conform: analyzers emit `make_unresolved_edge(...)` + hint only; the linker owns the search. Docstring MUST open `\"\"\"Infrastructure linker: <purpose>.` (ADR-3bbb).\n\nThis substrate is the prerequisite for the Kotlin migration (validation member) and the D/UFCS facet (WI-situj). It does NOT itself change output until a consumer (Kotlin migration) lands. Tests: linker template + helper unit tests + a no-regression check on inherited_calls after the extraction.\n\nPROVENANCE: 3-lens investigation 2026-07-18 (the extractable scaffold is the concrete \"meaningful shared-code savings\" lens-1 identified)."  # b883
+    fields: {}  # b883
