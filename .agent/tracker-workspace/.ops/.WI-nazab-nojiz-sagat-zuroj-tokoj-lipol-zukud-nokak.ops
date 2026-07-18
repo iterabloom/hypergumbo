@@ -1,0 +1,21 @@
+- op: create  # 40a9
+  at: '2026-07-18T07:18:05Z'  # 40a9
+  by: agent  # 40a9
+  actor: jgstern_agent  # 40a9
+  clock: 1  # 40a9
+  nonce: 40a9  # 40a9
+  data:  # 40a9
+    kind: work_item  # 40a9
+    title: "inherited_calls: write + register Scala _walk_linearization MRO walker (Step-2 inherited-method recall for the WI-bihit facet)"  # 40a9
+    status: todo_hard  # 40a9
+    priority: 3  # 40a9
+    parent:  # 40a9
+    tags:  # 40a9
+    - cross_language_parity  # 40a9
+    - analysis_quality  # 40a9
+    isbefore: []  # 40a9
+    duplicate_of: []  # 40a9
+    not_duplicate_of: []  # 40a9
+    pr_ref:  # 40a9
+    description: "inherited_calls: write + register the Scala `_walk_linearization` MRO walker — Step-2 inherited-method recall for the WI-bihit INV-fahub facet.\n\nCONTEXT: The Scala facet (WI-bihit, done) stamps `receiver_type_hint`, so inherited_calls Site-2 Step-1 (direct method on the hinted type) resolves. But `_MRO_WALKERS` has NO `scala` entry (currently only ruby/groovy/java/python — inherited_calls.py:449-457), so `_MRO_WALKERS.get(\"scala\")` returns None and Step-2 (an inherited method reached via the trait/superclass linearization) is SKIPPED — those calls fall back to external:unresolved. That is HONEST (no misbind — INV-fahub suppression already satisfied by WI-bihit) but leaves a residual dead-code false positive on genuinely inherited calls.\n\nWORK: write `_walk_linearization` (Scala trait linearization order — right-to-left over the mixed-in traits + superclass, deduped, per the inherited_calls docstring FUTURE note at line 81) and register `\"scala\"` in `_MRO_WALKERS`. Respect INV-guviv (external-base shadow blind spot, currently violated P3): the walker must not confidently resolve when an external base could shadow the in-tree ancestor — apply the C3 walker's stdlib-base-guard analogue (inherited_calls.py `_python_stdlib_base_shadows` @533).\n\nSCOPE NOTE: recall recovery ONLY. Does NOT affect INV-fahub misbind suppression (already satisfied). Site-1 (bare `self.method()` inherited) additionally needs `enclosing_class` stamping in scala.py — scala.py does not stamp it yet; file/fold as a follow-on if wanted, but Site-2 Step-2 (inherited method on a TYPED receiver) works with the already-stamped receiver_type_hint + this walker.\n\nTests: linker template lang=scala — a class mixing a trait whose method is called on a typed receiver resolves to the trait method (not external), and an unresolvable receiver still suppresses (WI-bihit regression stays green).\n\nPROVENANCE: 3-lens investigation 2026-07-18 — the MRO walkers are the hierarchy-walk family (family 1), DISTINCT from the extension/UFCS receiver-type-index family."  # 40a9
+    fields: {}  # 40a9

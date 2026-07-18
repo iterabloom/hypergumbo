@@ -1,0 +1,31 @@
+- op: create  # 4d61
+  at: '2026-07-18T07:18:01Z'  # 4d61
+  by: agent  # 4d61
+  actor: jgstern_agent  # 4d61
+  clock: 1  # 4d61
+  nonce: 4d61  # 4d61
+  data:  # 4d61
+    kind: work_item  # 4d61
+    title: "Migrate Kotlin extension-call resolution from the analyzer into the shared receiver-type-index linker (validates the substrate; fixes the anti-pattern)"  # 4d61
+    status: todo_hard  # 4d61
+    priority: 3  # 4d61
+    parent: INV-vigaf-lozar-jifiv-lamut-nuzik-dokov-zobis-hopap  # 4d61
+    tags:  # 4d61
+    - cross_language_parity  # 4d61
+    - analysis_quality  # 4d61
+    - structural  # 4d61
+    isbefore: []  # 4d61
+    duplicate_of: []  # 4d61
+    not_duplicate_of: []  # 4d61
+    pr_ref:  # 4d61
+    description: "Migrate Kotlin extension-function call resolution from the analyzer into the shared receiver-type-index linker (the substrate WI). Fixes the parent invariant's anti-pattern on a KNOWN-WORKING baseline and validates the substrate before the harder members.\n\nCURRENT (in-analyzer, the anti-pattern): kotlin.py detects `fun Receiver.name()` and stamps `meta[\"extension_receiver\"]` (WI-fuhav, ~line 772), builds an analyzer-local `extension_index` keyed by receiver type (WI-visaz, ~line 1794), and in pass 2 emits a fully-RESOLVED `Edge.create(edge_type=\"calls\", evidence_type=\"ast_call_extension\")` (~line 1284).\n\nMIGRATE TO: kotlin.py emits `make_unresolved_edge(...)` + the `extension_receiver` (and receiver_type_hint) hint; the shared receiver-type-index linker resolves and emits the `ast_call_extension` edge. Drop the analyzer-local `extension_index` + pass-2 resolution.\n\nWHY KOTLIN FIRST: it is the one extension language already resolved + tested, so its existing extension-dispatch tests (WI-visaz) become the linker's regression guard — edge/byte parity against the current in-analyzer output proves the substrate before C#/Scala/Swift/D. This is a recall-NEUTRAL refactor (same edges, different producer), so it de-risks with no correctness exposure.\n\nDEPENDS ON: the substrate WI (must exist first).\nTests: relocate/reuse the Kotlin extension-dispatch tests at the linker; assert edge-parity (same src/dst/evidence_type/confidence) vs pre-migration on a Kotlin extension-call fixture. Also add the INV-nilud-analogue property assertion (kotlin.py no longer emits a resolved extension call itself).\n\nPROVENANCE: 3-lens investigation 2026-07-18 (lens-1 flagged the Kotlin in-analyzer resolver as the proof-by-precedent that the pattern lives ad-hoc; lens-2 counted the breadth)."  # 4d61
+    fields: {}  # 4d61
+- op: update  # d375
+  at: '2026-07-18T07:18:33Z'  # d375
+  by: agent  # d375
+  actor: jgstern_agent  # d375
+  clock: 2  # d375
+  nonce: d375  # d375
+  set: {}  # d375
+  add:  # d375
+    isbefore: [WI-situj-fiviz-misop-duguj-sikud-bapoj-rurak-tukos]  # d375
