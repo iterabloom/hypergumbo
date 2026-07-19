@@ -256,15 +256,18 @@ def link_phoenix_ipc(repo_root: Path) -> PhoenixLinkResult:
     send_by_event: dict[str, list[PhoenixPattern]] = {}
     receive_by_event: dict[str, list[PhoenixPattern]] = {}
 
-    for p in all_patterns:
-        if p.type == "send":
-            if p.event not in send_by_event:
-                send_by_event[p.event] = []
-            send_by_event[p.event].append(p)
+    # NB: distinct loop variable from the ``for p in patterns`` (dict) loop
+    # above — reusing ``p`` left mypy narrowing this PhoenixPattern iteration to
+    # the earlier ``dict`` type (spurious attr-defined on .type/.event).
+    for pat in all_patterns:
+        if pat.type == "send":
+            if pat.event not in send_by_event:
+                send_by_event[pat.event] = []
+            send_by_event[pat.event].append(pat)
         else:
-            if p.event not in receive_by_event:
-                receive_by_event[p.event] = []
-            receive_by_event[p.event].append(p)
+            if pat.event not in receive_by_event:
+                receive_by_event[pat.event] = []
+            receive_by_event[pat.event].append(pat)
 
     # Create symbols and edges for matching events
     edges: list[Edge] = []

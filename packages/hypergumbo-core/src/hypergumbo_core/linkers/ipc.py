@@ -476,15 +476,18 @@ def link_ipc(repo_root: Path) -> IpcLinkResult:
     send_by_channel: dict[str, list[IpcPattern]] = {}
     receive_by_channel: dict[str, list[IpcPattern]] = {}
 
-    for p in all_patterns:
-        if p.type == "send":
-            if p.channel not in send_by_channel:
-                send_by_channel[p.channel] = []
-            send_by_channel[p.channel].append(p)
+    # NB: distinct loop variable from the ``for p in patterns`` (dict) loop
+    # above — reusing ``p`` left mypy narrowing this IpcPattern iteration to the
+    # earlier ``dict`` type (spurious attr-defined on .type/.channel).
+    for pat in all_patterns:
+        if pat.type == "send":
+            if pat.channel not in send_by_channel:
+                send_by_channel[pat.channel] = []
+            send_by_channel[pat.channel].append(pat)
         else:
-            if p.channel not in receive_by_channel:
-                receive_by_channel[p.channel] = []
-            receive_by_channel[p.channel].append(p)
+            if pat.channel not in receive_by_channel:
+                receive_by_channel[pat.channel] = []
+            receive_by_channel[pat.channel].append(pat)
 
     # Create symbols and edges for matching channels
     edges: list[Edge] = []
