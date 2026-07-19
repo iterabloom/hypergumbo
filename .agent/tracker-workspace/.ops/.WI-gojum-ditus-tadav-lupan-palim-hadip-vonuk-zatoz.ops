@@ -1,0 +1,23 @@
+- op: create  # bef8
+  at: '2026-07-19T09:18:20Z'  # bef8
+  by: agent  # bef8
+  actor: jgstern_agent  # bef8
+  clock: 1  # bef8
+  nonce: bef8  # bef8
+  data:  # bef8
+    kind: work_item  # bef8
+    title: "rust-analyzer as the accurate Rust engine — multi-fidelity reconciliation (ADR-0012 Steps 2-3, parked)"  # bef8
+    status: todo_hard  # bef8
+    priority: 3  # bef8
+    parent:  # bef8
+    tags:  # bef8
+    - rust_analyzer  # bef8
+    - scip  # bef8
+    - multi_fidelity  # bef8
+    - roadmap  # bef8
+    isbefore: []  # bef8
+    duplicate_of: []  # bef8
+    not_duplicate_of: []  # bef8
+    pr_ref:  # bef8
+    description: "Roadmapped effort (parked 2026-07-19 by owner): make the rust-analyzer SCIP backend the accurate Rust engine — i.e. build ADR-0012's Steps 2-3 (unified pass Protocol + a type-resolution / multi-fidelity reconciliation), which the ADR marks as DESIGN TARGETS, not yet built.\n\nWHY PARKED (investigation summary, INV-fahub session 2026-07-19):\n- The rust-analyzer backend is a SHIPPED Tier-1 SCIP analyzer (WI-duzul / WI-mafut / WI-bajuz / WI-zakub, all done) that runs ALONGSIDE tree-sitter BY DESIGN. stable_id parity is readiness for a future dedup, not a dedup that runs today.\n- ADR-0012 status: \"Step 1 implemented; Steps 2-3 remain design targets.\" The reconciliation IS Steps 2-3, explicitly deferred (\"long-term goal, no current user demand\").\n- ADR-0012's intended multi-fidelity design is COEXISTENCE (ast_call_method @0.85 AND type_resolved_call @0.95 at the same call site, provenance-tracked; slicing prefers high-confidence) — NOT \"rust-analyzer replaces tree-sitter.\" A replace design would AMEND ADR-0012.\n- TENSION to resolve when scoped: ADR-0012 \"coexist + outrank\" does NOT remove tree-sitter's magnets (they stay at lower confidence), so it does not by itself satisfy INV-fahub for Rust. Killing Rust magnets via RA needs either the replace design (amend ADR-0012) or a finalize-stage demotion of the outranked AST edges.\n\nALREADY FIXED (merged, independent bug — commit 9266762d4b): scip edge endpoints were dangling (raw SCIP descriptor strings, not Symbol.ids), so the survey's endpoint-integrity finalize silently dropped the ENTIRE scip call graph while scip symbols survived. translate_scip_to_hg now builds a resolve_symbol map; scip edges surface (0 -> 739 on zoxide).\n\nSUB-COMPONENTS for the eventual build:\n1. Multi-fidelity reconciliation (Step 2/3): unify the pass Protocol; a pass reads the AST IR and returns confidence-upgrade deltas. Decide coexist (ADR as-written) vs replace (amend). If replace: the cross-reference design walked with the owner — tree-sitter identifies call SITES, rust-analyzer supplies accurate TARGETS (matched by function+line); unmatched (macros) -> unresolved; external calls recorded accurately; drop tree-sitter's guessy call edges (needs a pipeline transform / finalize step — linkers are add-only, LinkerResult carries only new edges).\n2. Symbol dedup between backends: 617 scip + 185 tree-sitter symbols coexist un-merged on zoxide (double-counts every Rust function). stable_id parity exists (WI-bajuz) but the dedup using it is not wired into the survey pipeline.\n3. Cache-key bug: the analysis cache key (<repo-fingerprint>/results/<state-hash>/<analyzer-identity>) does NOT include the backend (HYPERGUMBO_RUST_ANALYZER). A tree-sitter run and a rust-analyzer run share the same behavior-map cache -> each can return the other's stale result. Real correctness bug (low impact while RA is opt-in). Fix: fold the backend into the state hash.\n4. Opt-out-but-LOUD default (owner-preferred flavor): default to rust-analyzer when the binary is available, silently fall back otherwise; print to stdout which engine ran + how to opt out (--backend tree-sitter) + (when absent) how to install it. Pin tests/CI/bakeoffs to tree-sitter.\n\nRefs: ADR-0012 (pass-unification-and-multi-fidelity); docs/future/scip-generalization-vision.md (WI-nokoh); spec roadmap (Mixed-fidelity graphs)."  # bef8
+    fields: {}  # bef8

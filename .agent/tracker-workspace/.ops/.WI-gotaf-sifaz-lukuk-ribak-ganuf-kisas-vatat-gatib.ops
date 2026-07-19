@@ -20,3 +20,18 @@
     pr_ref:  # b48c
     description: "Deferred from mypy:F1 (which resolved WI-gusag/WI-bihaf: landed the non-blocking foundation + [tool.mypy] basic config + cleared the 20 [valid-type] and 2 malformed type:ignore). These ~80 [union-attr]/[attr-defined] findings (45 union-attr + 35 attr-defined at F1 landing) are the highest-signal remaining category: potential latent None/AttributeError bugs, e.g. .decode() on 'bytes | None', .children on 'Node | None', .symbols on 'FileAnalysis?'. Some are guarded-but-mypy-can't-narrow; some are likely real bugs. ACTION (F2): triage each during the per-package strict ratchet (Decision D13: strict on packages/*/src) — fix real None-unsafety, assert/guard the false positives. Root cause: loose Optional handling (deref without a mypy-visible guard); surfaced (not introduced) by F1. Per-package totals at F1 landing: core 169, mainstream 56, tracker 31, common 10, extended1 10 (all non-blocking). Reproduce: 'mypy packages/<pkg>/src/<module>' with the basic [tool.mypy] config, then grep '[union-attr]' / '[attr-defined]'."  # b48c
     fields: {}  # b48c
+- op: update  # 175b
+  at: '2026-07-19T12:55:18Z'  # 175b
+  by: agent  # 175b
+  actor: jgstern_agent  # 175b
+  clock: 2  # 175b
+  nonce: 175b  # 175b
+  set:  # 175b
+    status: done  # 175b
+- op: discuss  # e54b
+  at: '2026-07-19T12:55:18Z'  # e54b
+  by: agent  # e54b
+  actor: jgstern_agent  # e54b
+  clock: 3  # e54b
+  nonce: e54b  # e54b
+  message: "Done across 4 PRs (fix-types: cli+sketch core; lang-analyzers+axis_drift; tracker sync_log/models/tui; + earlier build_target/taint/analyzer_identity). Canonical per-package None-safety census — the item's own repro, matching CI's 'for mod in packages/*/src/*/; mypy $mod' loop — is now 0 union-attr + 0 attr-defined across all 6 Python packages (was ~80 at F1 landing; 45 union-attr + 35 attr-defined). Each finding triaged, not blanket-silenced: asserts documenting guarded invariants mypy can't narrow across an intermediate boolean (taint_catalog, cached_results, tag_node, tree=ast.Module); real defensive None-guards where a value genuinely can be None (parser._subparsers, node.parent); honest type corrections (TextIO, TreeNode, dataclasses.fields, ast.stmt, (node.text or b'')); isinstance narrows for ast-walk nodes and the decorator name value; type:ignore reserved ONLY for true typeshed stub gaps (argparse _ChoicesPseudoAction dynamic attrs, PackageMetadata.get). No behavior change in any PR. Filing a separate DRY follow-up for the 14 identical _get_node_text copies surfaced during the analyzer sweep."  # e54b

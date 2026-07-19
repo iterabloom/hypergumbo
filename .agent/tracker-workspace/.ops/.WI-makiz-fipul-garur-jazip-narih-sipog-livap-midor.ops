@@ -1,0 +1,22 @@
+- op: create  # 9ca7
+  at: '2026-07-19T04:51:09Z'  # 9ca7
+  by: agent  # 9ca7
+  actor: jgstern_agent  # 9ca7
+  clock: 1  # 9ca7
+  nonce: 9ca7  # 9ca7
+  data:  # 9ca7
+    kind: work_item  # 9ca7
+    title: "INV-fahub fleet gate: gate untyped-receiver-method + free-form magnet paths (Go/Rust/D confirmed; validate csharp/php/cpp/objc/lua)"  # 9ca7
+    status: todo_hard  # 9ca7
+    priority: 2  # 9ca7
+    parent:  # 9ca7
+    tags:  # 9ca7
+    - cross_language_parity  # 9ca7
+    - wave5  # 9ca7
+    - analysis_quality  # 9ca7
+    isbefore: []  # 9ca7
+    duplicate_of: []  # 9ca7
+    not_duplicate_of: []  # 9ca7
+    pr_ref:  # 9ca7
+    description: "Corrective per-language pass surfaced by the 2026-07-19 INV-fahub validation bakeoff. The fleet gate (defer_bare_method_call, merged across 11 analyzers) gates each analyzer BARE-IDENTIFIER free-call resolver path, but INV-fahub's funnel is UNTYPED-RECEIVER method calls (x.method() where x's type is unresolvable), which for Go/Rust resolve via a SEPARATE method/selector path never gated; D FREE-FORM stdlib calls (writeln(x)->internal method) are a third ungated path (D excluded from the fleet PR). Real-repro evidence (scratchpad/inv-fahub/{funnel,fleet_magnet}.py + *.json): Scala(docspell) CLEAN 0 magnets; Swift(vernissage) 6 candidate magnets; Go(caddy) 41 magnets/666 binds gate-fired-1 (Dispenser.Val<-53 = d.Val() @0.85 call_construct=method); Rust(ripgrep) 23 magnets; D(dub) 9 free-form (writeln<-70/to<-33/execute<-15). TASK: per fleet language find where untyped-receiver method calls (and D free-form) resolve, gate that path via defer_bare_method_call (like Scala/Swift WI-bihit/votar receiver-gating, which is why they are clean), re-validate on real repos, flip INV-fahub. Also confirm the Swift 6 candidates (legit typed-receiver vs real) + validate csharp/php/cpp/objc/lua."  # 9ca7
+    fields: {}  # 9ca7
