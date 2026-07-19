@@ -95,6 +95,31 @@ def test_receiver_marker_in_meta_skipped():
     assert find_receiver_blind_magnets(nodes, edges) == []
 
 
+def test_qualified_receiver_marker_skipped():
+    # A scoped/static ``Type::method()`` call names the target type explicitly
+    # (receiver="qualified"), so it is NOT receiver-blind — excluded even though
+    # it resolves to a cross-owner method-kind symbol (the associated-function
+    # false positive this marker exists to suppress).
+    nodes, edges = _graph_with_magnet(meta={"receiver": "qualified"})
+    assert find_receiver_blind_magnets(nodes, edges) == []
+
+
+def test_external_receiver_markers_skipped():
+    for marker in ("external", "constant_external", "stdlib"):
+        nodes, edges = _graph_with_magnet(meta={"receiver": marker})
+        assert find_receiver_blind_magnets(nodes, edges) == [], marker
+
+
+def test_bare_and_generic_receiver_still_flagged_cross_owner():
+    # 'bare' (implicit-this/self) and 'generic' (receiver present but
+    # unclassified) are receiver-blind: a cross-owner bind carrying them is still
+    # a magnet. (The legitimate same-class implicit-this case is excluded by the
+    # owner check, not by the marker — see test_same_owner_implicit_this_skipped.)
+    for marker in ("bare", "generic"):
+        nodes, edges = _graph_with_magnet(meta={"receiver": marker})
+        assert len(find_receiver_blind_magnets(nodes, edges)) == 1, marker
+
+
 def test_resolution_quality_typed_receiver_skipped():
     nodes, edges = _graph_with_magnet(meta={"resolution_quality": "typed_receiver"})
     assert find_receiver_blind_magnets(nodes, edges) == []

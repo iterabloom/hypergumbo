@@ -22,12 +22,14 @@ per-language fixture-matrix test (``run_analyzer`` output, pre-linker), and the
 real-repro survey harness.
 
 **How it distinguishes a magnet from a legitimate bind.** A legitimate
-resolution *knows something about the receiver* and stamps it — either a
-receiver-aware ``evidence_type`` (``ast_call_type_inferred`` / ``ast_call_ufcs``
-/ ``ast_call_inherited`` — the Site-1/Site-2 recoveries and typed binds), or a
+resolution *knows the target type* and stamps it — either a receiver-aware
+``evidence_type`` (``ast_call_type_inferred`` / ``ast_call_ufcs`` /
+``ast_call_inherited`` — the Site-1/Site-2 recoveries and typed binds), or a
 ``meta.receiver`` marker (``typed_var`` / ``typed_field`` / ``field_chain`` /
-``external`` / ``stdlib``), or ``meta.resolution_quality`` other than
-``"ambiguous"``. So a magnet is precisely a **resolved** ``calls`` edge to an
+``external`` / ``stdlib`` for a typed/external receiver, or ``qualified`` for an
+explicitly-scoped/static ``Type::method`` call whose type the call site named),
+or ``meta.resolution_quality`` other than ``"ambiguous"``. So a magnet is
+precisely a **resolved** ``calls`` edge to an
 **internal ``method``** that carries only the bare ``ast_call`` /
 ``ast_call_direct`` pathway, **no** receiver marker, is **cross-owner** (the
 caller's class differs from the method's owner — a same-class implicit-``this``
@@ -51,9 +53,22 @@ __all__ = ["find_receiver_blind_magnets", "owner_of"]
 # legitimate bind and is excluded simply by not being in this set.
 _BARE_EVIDENCE = frozenset({"ast_call", "ast_call_direct"})
 
-# meta.receiver values that mean the receiver type/target was identified.
+# meta.receiver values that mean the call's TARGET TYPE was identified, so the
+# bind is NOT receiver-blind: a typed receiver (``typed_var`` / ``typed_field`` /
+# ``field_chain``), an external/stdlib receiver, or an explicitly-QUALIFIED
+# target (``Type::method`` / ``Type.Method`` — the scoped/static call whose type
+# the call site named, which resolves to a method-kind associated-function/static
+# symbol and would otherwise be a false positive). The receiver-blind values
+# ``'bare'`` (implicit-``this``/``self``) and ``'generic'`` (receiver present but
+# unclassified) are deliberately ABSENT — a ``'bare'`` cross-class bind is exactly
+# the magnet, and the legitimate same-class implicit-``this`` case is excluded by
+# the owner check in ``find_receiver_blind_magnets`` instead.
 _RECEIVER_MARKERS = frozenset(
-    {"typed_var", "typed_field", "typed", "field_chain", "external", "stdlib"}
+    {
+        "typed_var", "typed_field", "field_chain",
+        "external", "constant_external", "stdlib",
+        "qualified",
+    }
 )
 
 _OWNER_SEPARATORS = ("::", "#", ".")
