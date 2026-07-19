@@ -93,7 +93,7 @@ def _get_function_name(node: "tree_sitter.Node") -> Optional[str]:
 
 def _get_function_params(node: "tree_sitter.Node") -> list[str]:
     """Get parameters from a function define form."""
-    params = []
+    params: list[str] = []
     children = [c for c in node.children if c.type not in ("(", ")")]
     if len(children) < 2:
         return params  # pragma: no cover
@@ -128,7 +128,7 @@ def _get_struct_name(node: "tree_sitter.Node") -> Optional[str]:
 
 def _get_struct_fields(node: "tree_sitter.Node") -> list[str]:
     """Get field names from a struct form."""
-    fields = []
+    fields: list[str] = []
     children = [c for c in node.children if c.type not in ("(", ")")]
     if len(children) < 3:
         return fields  # pragma: no cover

@@ -2683,8 +2683,12 @@ class RustAnalyzer(TreeSitterAnalyzer):
         global_symbols[symbol.name] = symbol
         cache = getattr(self, "_kind_index_cache", None)
         if cache is None or cache[0] is not global_symbols:
-            cache = (global_symbols, {})
-            self._kind_index_cache = cache
+            # Annotate the empty kind-index and assign the tuple directly to the
+            # attribute so mypy can infer _kind_index_cache's type (the `cache`
+            # local is Any, coming from getattr).
+            kind_index: dict[str, list[Symbol]] = {}
+            self._kind_index_cache = (global_symbols, kind_index)
+            cache = self._kind_index_cache
         cache[1].setdefault(symbol.name, []).append(symbol)
 
     def extract_edges_from_file(

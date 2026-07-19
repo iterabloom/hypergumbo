@@ -1584,7 +1584,7 @@ def _extract_file_samples(
     seed = hash(str(file_path)) % (2**32)
     rng = random.Random(seed)  # noqa: S311 # nosec B311
 
-    samples = []
+    samples: list[str] = []
     available_start = 0
 
     for _ in range(num_samples):

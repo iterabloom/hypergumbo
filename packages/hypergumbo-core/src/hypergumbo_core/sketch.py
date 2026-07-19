@@ -974,7 +974,7 @@ def _extract_config_heuristic(repo_root: Path) -> list[str]:
 
     def _extract_package_json(path: Path, prefix: str) -> list[str]:
         """Extract key fields from package.json."""
-        result = []
+        result: list[str] = []
         try:
             data = json.loads(path.read_text(encoding="utf-8", errors="replace"))
             # Skip non-dict package.json files
@@ -3555,7 +3555,7 @@ def _extract_readme_description_heuristic(
 
     # Find the first non-empty paragraph (stop at next header or empty line)
     # Skip common non-description content: badges, images, HTML comments
-    paragraph_lines = []
+    paragraph_lines: list[str] = []
     for line in lines[start_idx:]:
         stripped = line.strip()
         # Stop at headers (markdown ## or RST underlines)
