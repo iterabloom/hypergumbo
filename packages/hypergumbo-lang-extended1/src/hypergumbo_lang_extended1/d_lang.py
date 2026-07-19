@@ -187,11 +187,19 @@ def _process_function_declaration(
     else:
         # WI-situj: stamp the first-parameter type so the receiver_type_dispatch
         # linker can recover UFCS calls (``x.func()`` ≡ ``func(x)``) against it.
-        ufcs_meta: Optional[dict] = None
+        fn_meta: dict = {}
         first_type = _first_param_type(node, source)
         if first_type:
-            ufcs_meta = {"ufcs_receiver_type": first_type}
-        return _make_symbol(rel_path, run_id, node, func_name, "function", source, analyzer, signature=signature, meta=ufcs_meta)
+            fn_meta["ufcs_receiver_type"] = first_type
+        # INV-fahub (real-repro dub residual): a NESTED-LOCAL function — declared
+        # inside another function's body — is not callable by bare name from
+        # outside its enclosing scope, so it must not become a global resolver
+        # target (the ``exists(x)`` free-call funnel that bound to utils.d's
+        # nested ``exists``). Mark it so ``register_symbol`` keeps it out of the
+        # resolver index; it still ships as an output symbol.
+        if _enclosing_function_node(node) is not None:
+            fn_meta["nested_local"] = True
+        return _make_symbol(rel_path, run_id, node, func_name, "function", source, analyzer, signature=signature, meta=fn_meta or None)
 
 
 def _process_struct_declaration(
@@ -813,6 +821,9 @@ class DAnalyzer(TreeSitterAnalyzer):
         registry.
         """
         if symbol.kind in ("field", "variable"):
+            return
+        # INV-fahub: a nested-local function is not a cross-scope call target.
+        if (symbol.meta or {}).get("nested_local"):
             return
         file_stem = Path(symbol.path).stem  # "errors.d" -> "errors"
         qualified = f"{file_stem}.{symbol.name}"

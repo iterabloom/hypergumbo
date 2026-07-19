@@ -237,3 +237,37 @@ class TestDUfcsHelpers:
         tree = parser.parse(b"module m;\n")
         # the module_declaration node has no function ancestor
         assert _enclosing_function_node(tree.root_node.children[0]) is None
+
+
+class TestDNestedLocalFunction:
+    """INV-fahub (real-repro dub residual): a function defined INSIDE another
+    function's body (a nested-local) is not callable by bare name from another
+    scope/file, so it must not become a global resolver target. On dub, the
+    nested ``exists`` in compilers/utils.d bound ~9 cross-file ``exists(x)``
+    free-calls (which mean ``std.file.exists``)."""
+
+    def test_nested_local_not_cross_file_target(self, tmp_path: Path) -> None:
+        (tmp_path / "utils.d").write_text(
+            "void outer() {\n"
+            "  bool exists(string s) { return s.length > 0; }\n"
+            "  auto ok = exists(\"x\");\n"
+            "}\n"
+        )
+        (tmp_path / "caller.d").write_text(
+            "void run() {\n"
+            "  auto b = exists(\"path\");\n"
+            "}\n"
+        )
+        result = analyze_d(tmp_path)
+        nested = next(
+            s for s in result.symbols
+            if s.kind == "function" and s.name == "exists"
+        )
+        misbinds = [
+            e for e in result.edges
+            if e.edge_type == "calls" and e.dst == nested.id
+            and "run" in e.src and e.is_resolved
+        ]
+        assert misbinds == [], (
+            "cross-file bare call must not bind to a nested-local function"
+        )
