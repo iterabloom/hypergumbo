@@ -258,7 +258,7 @@ def link_lua_ffi(
         # + meta['bridge_kind']='ffi'. INV-zuhub: downgrade when the
         # FFI symbol name had cross-file collisions.
         confidence = 0.5 if is_fallback else 0.85
-        edge_meta: dict[str, object] = {"bridge_kind": "ffi"}
+        edge_meta = {"bridge_kind": "ffi"}
         if is_fallback:
             edge_meta["disambiguation_fallback"] = True
         result_edges.append(Edge.create(

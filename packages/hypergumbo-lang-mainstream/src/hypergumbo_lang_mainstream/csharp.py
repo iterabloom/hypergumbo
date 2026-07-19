@@ -869,7 +869,7 @@ def _extract_symbols_from_file(
                 annotations = _extract_annotations(node, source)
 
                 # Build meta dict
-                meta: dict[str, object] | None = None
+                meta = None
                 if annotations:
                     meta = {"annotations": annotations}
 

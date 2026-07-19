@@ -452,8 +452,7 @@ def otp_linker(ctx: LinkerContext) -> LinkerResult:
                         continue
 
                     handler_name, mechanism = ERLANG_CALL_TYPE_MAP[call_type]
-                    target_modules: list[str] = []
-                    confidence: float
+                    target_modules = []
 
                     if is_module:
                         # Explicit module atom: gen_server:call(data_server, ...)

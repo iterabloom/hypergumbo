@@ -3875,7 +3875,7 @@ def _extract_go_routes(
 
             # Extract handler from the RHS call expression
             right = find_child_by_field(n, "right")
-            handler_name: str | None = None
+            handler_name = None
             handler_field: str | None = None
             if right is not None:
                 for child in right.children:

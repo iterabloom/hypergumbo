@@ -420,7 +420,7 @@ class Pattern:
         # Single-result match types below: parameter_type, symbol_name,
         # symbol_kind, parent_base_class, method_name. These produce at most
         # one match per symbol, so wrap in a list.
-        result: dict[str, Any] = {"concept": self.concept}
+        result = {"concept": self.concept}
 
         # Try parameter type match
         if self._param_type_re:

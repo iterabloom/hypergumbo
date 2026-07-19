@@ -301,7 +301,7 @@ def link_ruby_ffi(
             # the rb_define_method C function short name had cross-file
             # collisions in the in-tree symbol table.
             confidence = 0.5 if is_fallback else 0.85
-            edge_meta: dict[str, object] = {
+            edge_meta = {
                 "bridge_kind": "ffi",
                 "framework_dispatch": "ruby_c_extension",
             }

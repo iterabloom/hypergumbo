@@ -2788,7 +2788,7 @@ def _extract_type_reference_edges(
                         continue
 
                     ref_names = _collect_type_identifiers(body_node, pf.source)
-                    seen: set[str] = set()
+                    seen = set()
                     for ref_name in ref_names:
                         if ref_name == decl_name or ref_name in seen:
                             continue
@@ -3980,7 +3980,7 @@ def _extract_symbols(
                 # Build meta with decorators
                 # Note: Route path combination is handled by enrichment via prefix_from_parent
                 # in the NestJS YAML pattern definition (see nestjs.yaml)
-                meta: dict[str, object] | None = None
+                meta = None
                 decorators = _extract_decorators(node, source)
                 if decorators:
                     meta = {"decorators": decorators}

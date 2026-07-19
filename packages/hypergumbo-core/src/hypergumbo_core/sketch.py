@@ -6425,7 +6425,7 @@ def _generate_sketch_impl(
         # (canonical pipeline: edge filtering, hub saturation, full dampening).
         # Also compute raw in-degree for stats tracking.
         # Additionally compute per-symbol weighted centrality for truncation elbow.
-        raw_in_degree: dict[str, int] = {}  # Initialize for structure tree update
+        raw_in_degree = {}  # Initialize for structure tree update
         if symbols and edges:
             raw_in_degree = compute_raw_in_degree(symbols, edges)
             ranked_files = rank_files(symbols, edges)
