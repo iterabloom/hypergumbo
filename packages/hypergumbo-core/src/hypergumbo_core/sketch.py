@@ -6392,6 +6392,9 @@ def _generate_sketch_impl(
 
     if remaining_tokens > 50 or _has_required_analysis_section:  # WI-nakam: force analysis when a required section depends on it
         if using_cached_analysis:
+            # using_cached_analysis is only True when cached_results is not
+            # None (see its definition above); narrow it for mypy.
+            assert cached_results is not None
             # Use cached symbols and edges from behavior map
             _log("Using cached analysis results...")
             symbols = [Symbol.from_dict(n) for n in cached_results.get("nodes", [])]

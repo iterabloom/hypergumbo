@@ -379,9 +379,13 @@ def _set_subparser_group(
     # Find the _ChoicesPseudoAction for this subparser
     for choice_action in subparsers._choices_actions:
         if choice_action.dest == name:
-            choice_action.group = group
-            choice_action.group_order = group_order
-            choice_action.suborder = suborder
+            # argparse's _ChoicesPseudoAction has no group/group_order/suborder
+            # attributes; we stash them here and read them back in
+            # _get_subparsers_by_group. The typeshed Action stub does not model
+            # these dynamic attributes, so the attr-defined is a stub gap.
+            choice_action.group = group  # type: ignore[attr-defined]
+            choice_action.group_order = group_order  # type: ignore[attr-defined]
+            choice_action.suborder = suborder  # type: ignore[attr-defined]
             return
     # If we get here, the subparser wasn't found (shouldn't happen)
     raise ValueError(f"Subparser '{name}' not found")  # pragma: no cover
@@ -889,12 +893,19 @@ def cmd_sketch(args: argparse.Namespace) -> int:
     # If --readme-debug, show README extraction debug info before sketch
     if readme_debug:
         from .sketch import _find_readme_path
-        from .sketch_embeddings import extract_readme_description_embedding
+        from .sketch_embeddings import (
+            ReadmeExtractionDebug,
+            extract_readme_description_embedding,
+        )
 
         readme_path = _find_readme_path(repo_root)
         if readme_path:
             result = extract_readme_description_embedding(readme_path, debug=True)
             if result:
+                # debug=True always yields a ReadmeExtractionDebug (never the
+                # str form); the union return type can't express that the
+                # concrete type depends on the debug flag.
+                assert isinstance(result, ReadmeExtractionDebug)
                 print("README Extraction Debug:", file=sys.stderr)
                 print(f"  Description: {result.description!r}", file=sys.stderr)
                 print(f"  k-scores: {result.k_scores}", file=sys.stderr)
@@ -5259,6 +5270,10 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
             )
 
     if has_taint_claims:
+        # has_taint_claims implies the load block above ran (its guard is
+        # ``has_taint_claims or any_taint_flags``) and succeeded — a load
+        # failure returned exit 2 — so the catalog is populated here.
+        assert taint_catalog is not None
         # Build per-language source/sink/sanitizer tables. Running
         # propagation per-language avoids cross-language short-name
         # collisions (e.g., elixir HTTPoison.get matching every Python
@@ -5855,6 +5870,10 @@ def cmd_test_coverage(args: argparse.Namespace) -> int:
         print("-" * 47)
         print(_TEST_COVERAGE_RECALL_DISCLAIMER)
         per_lang = caveats["per_language"]
+        # _test_coverage_caveats returns dict[str, object] (heterogeneous:
+        # a disclaimer str plus this dict); per_language is the dict[str, str]
+        # built there. Narrow it for the .items() iteration below.
+        assert isinstance(per_lang, dict)
         if per_lang:
             print()
             print("Known per-language blind spots in the analyzed repo:")
@@ -10000,7 +10019,10 @@ def print_all_help(parser: argparse.ArgumentParser) -> None:
     # Get subparsers
     # pylint: disable=protected-access
     subparsers_action = None
-    for action in parser._subparsers._actions:
+    subparsers_group = parser._subparsers
+    if subparsers_group is None:  # pragma: no cover - the top parser always has subparsers
+        return
+    for action in subparsers_group._actions:
         if isinstance(action, argparse._SubParsersAction):
             subparsers_action = action
             break
