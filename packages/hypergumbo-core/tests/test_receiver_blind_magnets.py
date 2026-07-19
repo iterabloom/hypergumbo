@@ -35,6 +35,27 @@ def test_owner_of_each_separator():
     assert owner_of("a.b.c") == "a.b"
 
 
+def test_owner_of_normalizes_generics():
+    # a template/generic class folds to its base owner so a this/self call
+    # inside it doesn't read as cross-class
+    assert owner_of("AP4_Array<T>::method") == "AP4_Array"
+    assert owner_of("Vec<T>::push") == "Vec"
+    assert owner_of("Foo<Bar<T>>::x") == "Foo"            # nested generics
+    assert owner_of("Foo<Bar::Baz>::x") == "Foo"          # :: inside the param
+    # operator tails with a bare '<' don't crash; owner still resolves
+    assert owner_of("Foo::operator<<") == "Foo"
+
+
+def test_same_class_generic_call_not_flagged():
+    # AP4_Array<T>::ctor calling a method of AP4_Array is a same-class this call
+    nodes = [
+        _node("AP4_Array<T>::ctor", "AP4_Array<T>::ctor", "method"),
+        _node("AP4_Array::ItemCount", "AP4_Array::ItemCount", "method"),
+    ]
+    edges = [_edge(src="AP4_Array<T>::ctor", dst="AP4_Array::ItemCount")]
+    assert find_receiver_blind_magnets(nodes, edges) == []
+
+
 # ---- fixture helpers ------------------------------------------------------
 
 def _node(nid, name, kind):

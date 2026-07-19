@@ -83,14 +83,43 @@ def _get(obj: Any, key: str, default: Any = None) -> Any:
     return getattr(obj, key, default)
 
 
+def _strip_generics(name: str) -> str:
+    """Remove balanced ``<...>`` generic/template-parameter groups from a name.
+
+    A ``this``/``self`` call inside a generic class surfaces as
+    ``AP4_Array<T>::method`` on the caller but ``AP4_Array::method`` on the
+    callee — the SAME class, differing only by the instantiation notation. Left
+    unnormalized, the owner comparison reads them as cross-class and the call is
+    a false-positive magnet (bento4 C++ produced ~hundreds of these). Stripping
+    balanced ``<...>`` groups (Rust ``Vec<T>``, C++ ``Array<T>``, C#/Java
+    ``List<T>``) folds both spellings to the same owner. Unbalanced ``<`` (a
+    C++ ``operator<`` / ``operator<<`` tail) simply drops the remainder, which is
+    harmless for owner extraction — the class prefix precedes the operator name.
+    """
+    out = []
+    depth = 0
+    for ch in name:
+        if ch == "<":
+            depth += 1
+        elif ch == ">":
+            if depth > 0:
+                depth -= 1
+        elif depth == 0:
+            out.append(ch)
+    return "".join(out)
+
+
 def owner_of(name: Optional[str]) -> Optional[str]:
     """Return the owning-type prefix of a qualified symbol name, or None.
 
-    ``"GlobSet::len"`` → ``"GlobSet"``; ``"Json.to"`` → ``"Json"``; a bare
-    ``"helper"`` (a free function, no separator) → ``None``.
+    ``"GlobSet::len"`` → ``"GlobSet"``; ``"Json.to"`` → ``"Json"``;
+    ``"AP4_Array<T>::method"`` → ``"AP4_Array"`` (generics normalized so
+    same-class template calls don't read as cross-class); a bare ``"helper"``
+    (a free function, no separator) → ``None``.
     """
     if not name:
         return None
+    name = _strip_generics(name)
     for sep in _OWNER_SEPARATORS:
         if sep in name:
             return name.rsplit(sep, 1)[0]
