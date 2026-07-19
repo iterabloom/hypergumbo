@@ -22,3 +22,31 @@
     fields:  # ff7b
       statement: "A call whose receiver/target type cannot be resolved MUST emit an ambiguous/external edge, not a high-confidence calls edge to an arbitrary same-named internal definition. Observed cross-language on the Apr12 cohort: Scala copy/setTo @0.68, D exists/startsWith/toString @0.85, Swift create/delete/run funnels @0.8. The Python instance is addressed by the scope-stack rewrite (identity:F1/F4a) + WI-noham; this umbrella tracks the cross-language generalization."  # ff7b
       root_cause: "Call resolution falls back to a global by-short-name index without receiver-type gating, so an unresolvable receiver binds to the first same-named internal definition instead of emitting an ambiguous/external edge. Cross-language manifestation of the Python var_types/flat-dict resolution gap."  # ff7b
+- op: discuss  # 7a46
+  at: '2026-07-18T21:54:17Z'  # 7a46
+  by: agent  # 7a46
+  actor: jgstern_agent  # 7a46
+  clock: 2  # 7a46
+  nonce: 7a46  # 7a46
+  message: "Real-repro validation 2026-07-18 (the Apr12 cohort named in the repro): funnels wide open across ALL THREE languages on the real repos — Scala 242 misbinds (docspell), Swift 302 (VernissageServer), D 107 (dub). WI-bihit/WI-votar/WI-situj built only a narrow receiver-type slice (annotated-vals+ctor-params / function-params / typed-params); the dominant patterns (case-class .copy(), Vapor route builders, free-function-form, calls on locals/loop-vars/fields) still bare-lookup-misbind @0.85. All 3 reopened todo_hard. CLOSURE-EVIDENCE LESSON: WI-bihit/WI-votar were closed done on \"0 misbinds, funnels closed end-to-end\" via unit tests + the zero-baseline SwiftyJSON cohort, NOT the real repro corpus — an open-ended behavioral invariant treated as closed without its own filed repro. Validation harness + surveys in scratchpad. Design approach: owner chose 3-lens investigation first."  # 7a46
+- op: discuss  # d70d
+  at: '2026-07-19T03:04:16Z'  # d70d
+  by: agent  # d70d
+  actor: jgstern_agent  # d70d
+  clock: 3  # d70d
+  nonce: d70d  # d70d
+  message: "FLEET GATE LANDED (PR merged 86a58ce952). The bare->method magnet gate is now wired across ALL method-dispatch analyzers: the 3 funnel langs (Scala/Swift/D, merged earlier) + 11 more via a verified multi-agent workflow (go, rust, php, js_ts, csharp, groovy, dart, lua, zig, cpp, objc). Shared defer_bare_method_call helper (analyze/base.py, generalized with a separator param for Owner::method langs). Each analyzer withholds a weak-suffix/ambiguous bind to a cross-class method, emitting unresolved + enclosing_class instead of a false high-confidence calls edge; free funcs/objects, same-class implicit this/self, and exact/import-scoped matches still resolve. 21020 tests green, 100% coverage; every wiring TDD-red-confirmed + adversarially verified. ruby (already had its own INV-fahub cascade) and nim (no cross-class magnet) correctly excluded. REMAINING for the flip: (1) Site-1 MRO walkers for the fleet langs to RECOVER inherited implicit-this/self calls (PR-2, needs per-language inheritance-edge validation); (2) D free-form nested-local residual (WI-situj); (3) the cross-language validation bakeoff."  # d70d
+- op: discuss  # 5cb5
+  at: '2026-07-19T03:56:48Z'  # 5cb5
+  by: agent  # 5cb5
+  actor: jgstern_agent  # 5cb5
+  clock: 4  # 5cb5
+  nonce: 5cb5  # 5cb5
+  message: "FLEET WALKERS LANDED (PR merged eb572f99a7). Site-1 MRO walkers registered for the 8 inheriting fleet langs (go/rust/php/javascript/typescript/csharp/cpp/objc), reusing the proven walker functions; dart/lua/zig unregistered (no class-inheritance model -> nothing recoverable). Parametrized Site-1 test confirms recovery for all 8. Real-repro ghostfolio(TS): gate fires 84 deferred, 0 recovered = CORRECT (none call a concrete-ancestor method; all are genuine cross-class magnets). GATE+WALKERS COMPLETE across all 14 method-dispatch analyzers. REMAINING for the flip: (1) D free-form nested-local residual (WI-situj, distinct free-call-scoping mechanism); (2) the cross-language validation bakeoff (the final DEEP confirmation on real Scala/D/Swift/+ repos). No code gate work remains for the 14 analyzers."  # 5cb5
+- op: discuss  # 785a
+  at: '2026-07-19T04:50:04Z'  # 785a
+  by: agent  # 785a
+  actor: jgstern_agent  # 785a
+  clock: 5  # 785a
+  nonce: 785a  # 785a
+  message: "VALIDATION BAKEOFF (2026-07-19) — gate is REAL but INCOMPLETE on real code; stays violated. Surveyed real repos w/ final merged code (scratchpad/inv-fahub/*.json). CLEAN: Scala(docspell) 0 magnets, gate fired 5692, 38 recovered. NEAR-CLEAN: Swift(vernissage) 6 candidate magnets/100 binds (need legit-vs-real check), gate fired 2084, 81 recovered. NOT CLEAN: Go(caddy) 41 magnets/666 binds gate-fired-1 (Dispenser.Val<-53, Next<-46 = d.Val() UNTYPED-RECEIVER method calls @0.85); Rust(ripgrep) 23 magnets gate-fired-2; D(dub) 9 FREE-FORM magnets (writeln<-70/to<-33/execute<-15 stdlib calls misbinding to internal methods). ROOT CAUSE: the fleet workflow gated each analyzer BARE-IDENTIFIER free-call path; synthetic+adversarial tests validated THAT path; but INV-fahub funnel is UNTYPED-RECEIVER method calls, which for Go/Rust resolve via a SEPARATE method/selector path never gated. D free-form path also ungated (D excluded from fleet PR as done). Scala/Swift clean because WI-bihit/votar gated the untyped-receiver path directly. Owner: CHECKPOINT/bank finding. See follow-up WI for the corrective per-language pass."  # 785a

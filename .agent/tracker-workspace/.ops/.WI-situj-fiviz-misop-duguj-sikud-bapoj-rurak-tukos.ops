@@ -72,3 +72,25 @@
   clock: 8  # 1770
   nonce: '1770'  # 1770
   message: "Reopened (real-repro validation 2026-07-18, on the item OWN corpus dub=~/ALL_REPOS/repos_Apr12_2026/dub, fresh post-fix code): D funnels still wide open. 107 exists/startsWith/toString calls resolve @0.85 (ast_call_direct) to arbitrary internal defs. Magnet: toString<-25 src files, startsWith<-19, exists<-13->a NESTED-LOCAL exists (compilers/utils.d:124, invisible outside its scope). Ground truth: commandline.d:1172 `l.startsWith(\"-\")` on a string loop-var means std.algorithm.startsWith, binds to internal sdlang helper. Cause: the gate only fires when receiver is a typed function PARAMETER (var_types); misses free-function-form (receiver=None) + UFCS on locals/loop-vars/fields. Only 1 ufcs+36 type_inferred legit; 75 suppressed. Design pending 3-lens investigation."  # 1770
+- op: discuss  # 240a
+  at: '2026-07-19T00:47:23Z'  # 240a
+  by: agent  # 240a
+  actor: jgstern_agent  # 240a
+  clock: 9  # 240a
+  nonce: 240a  # 240a
+  message: "D UFCS facet ADVANCED (PR merged afadf61c46). Real-repro dub: the gate now withholds ANY non-module value receiver (params + locals + loop-vars + fields), not just params — _is_module_receiver distinguishes a UFCS value prefix from an imported-module prefix. Resolved-internal bare exists/startsWith/toString binds 107 -> 21; the startsWith<-19-files and toString<-25-files function magnets ELIMINATED; typed receivers still recovered via receiver_type_dispatch (INV-vigaf). DOCUMENTED RESIDUAL (distinct mechanism, NOT UFCS receiver-gating, stays on this item): free-function-form calls exists(x) (no receiver) still bind by short name to a NESTED-LOCAL function (defined inside another function body, structurally invisible from the call site; nested exists symbol has qualified_name=None so it is not distinguishable at resolution) — ~9 exists binds on dub. A free-call-scoping / nested-function-visibility fix. INV-fahub stays violated (fleet-wide method-magnet rollout across the other ~13 analyzers remains)."  # 240a
+- op: update  # bf32
+  at: '2026-07-19T04:31:23Z'  # bf32
+  by: agent  # bf32
+  actor: jgstern_agent  # bf32
+  clock: 10  # bf32
+  nonce: bf32  # bf32
+  set:  # bf32
+    status: done  # bf32
+- op: discuss  # b642
+  at: '2026-07-19T04:31:23Z'  # b642
+  by: agent  # b642
+  actor: jgstern_agent  # b642
+  clock: 11  # b642
+  nonce: b642  # b642
+  message: "D facet COMPLETE (PR merged a812987fa9). Nested-local residual closed: nested functions (declared inside another function body) marked meta.nested_local + skipped in register_symbol, so they are output symbols but never cross-scope resolver targets. dub exists magnet ~9->0. Combined with the UFCS value-receiver gate (afadf61c46), the D funnel is resolved. 100% cov. INV-fahub: only the validation bakeoff remains."  # b642

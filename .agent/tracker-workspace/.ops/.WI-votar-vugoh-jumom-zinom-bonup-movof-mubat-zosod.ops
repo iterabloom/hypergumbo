@@ -35,3 +35,33 @@
   clock: 3  # 9aed
   nonce: 9aed  # 9aed
   message: "Closed done (PR b498838c12). BEHAVIORAL EVIDENCE — end-to-end dogfood (hypergumbo survey, 2-file swift repo): doWork()'s untyped obj.create()/delete()/run() now emit unresolved external calls edges @0.40 (evidence_type=ast_call, meta.call_construct=method), 0 misbinds to the top-level create/delete/run (was @0.80 each); a param-typed receiver typed(c: Client) -> c.send() resolves to Client.send @0.85 (recall preserved via the new param-type threading). Unit tests: TestSwiftInvFahubReceiverGating (4: no-misbind / canonical-unresolved-shape / param-typed-resolves / typed-unresolvable-stamps-hint) + full 168-test swift suite (incl. the WI-huzuv dst_ref sweep) green; swift.py 100% coverage. FIX (leaf-only, INV-nilud-conform): same shape as the Scala facet — gate the bare-name binds behind receiver_hint is None; a method call with an unresolvable receiver emits py.py's unresolved shape (+ receiver_type_hint when the type is known). RECALL RECOVERY: threaded function/method PARAMETER types into var_types — Swift previously tracked ONLY property-declaration types (let x: T) and dropped ALL param types, so a func handle(client: Client) receiver was untracked and misbound; now param-typed receivers resolve. WI-huzuv PRESERVED: the gate carries the external dst_ref (module_path from receiver/import-alias/type) so a module-qualified call HelpersModule.doWork() keeps its structured reference — the Scala facet did not hit this because its WI-huzuv test uses a bare call, not a receiver call. No CORE/linker change. DEFERRED: the Swift left-to-right MRO walker (_walk_left_to_right, FUTURE) for Step-2 inherited-method recovery. INV-fahub stays violated (bakeoff-gated); D facet (WI-situj) remains."  # 9aed
+- op: update  # 09a9
+  at: '2026-07-18T21:54:17Z'  # 09a9
+  by: agent  # 09a9
+  actor: jgstern_agent  # 09a9
+  clock: 4  # 09a9
+  nonce: 09a9  # 09a9
+  set:  # 09a9
+    status: todo_hard  # 09a9
+- op: discuss  # a0e5
+  at: '2026-07-18T21:54:17Z'  # a0e5
+  by: agent  # a0e5
+  actor: jgstern_agent  # a0e5
+  clock: 5  # a0e5
+  nonce: a0e5  # a0e5
+  message: "Reopened (real-repro validation 2026-07-18, VernissageServer=~/ALL_REPOS/repos_Apr12_2026/VernissageServer): Swift funnels wide open. 302 create/delete/run calls resolve @0.85 (ast_call) to internal defs; 188 suppressed; 0 legit. Magnet: delete<-99 src files->ActivityPubClient.delete, create<-73, run<-61. Ground truth: AccountController.boot:86 `.delete(\"refresh-token\",\":username\",use:revoke)` = Vapor route registration, misbound to ActivityPubClient.delete (HTTP client). Every Vapor controller boot does this. Cause: gate only extracts function-param receiver types; misses route-builder chains / locals / fields. Design pending 3-lens investigation."  # a0e5
+- op: update  # 4c2c
+  at: '2026-07-19T00:07:53Z'  # 4c2c
+  by: agent  # 4c2c
+  actor: jgstern_agent  # 4c2c
+  clock: 6  # 4c2c
+  nonce: 4c2c  # 4c2c
+  set:  # 4c2c
+    status: done  # 4c2c
+- op: discuss  # df86
+  at: '2026-07-19T00:07:53Z'  # df86
+  by: agent  # df86
+  actor: jgstern_agent  # df86
+  clock: 7  # df86
+  nonce: df86  # df86
+  message: "Swift facet DONE (PR merged c3e258b03d). Real-repro VernissageServer: create/delete/run magnet ELIMINATED — 302 -> 0 high-confidence cross-type misbinds (delete<-99 files->ActivityPubClient.delete, create<-73, run<-61 now honest external); 23 genuine inherited implicit-self calls recovered via inherited_calls Site-1. Fix wires Swifts resolver path to the shared defer_bare_method_call helper (extracted to analyze/base.py, Scala refactored onto it too, docspell still 242->0). Residual 7 funnel.py hits = 3 legit typed-receiver resolutions (let c=ActivityPubClient(); c.create() -> ActivityPubClient.create, verified in source) + 4 sub-0.5-threshold edges — NOT magnet misbinds. Swift local_symbols keyed by full name so only the resolver path needs gating. 10271 tests green, 100% cov. INV-fahub stays violated (D WI-situj + fleet-wide rollout remain)."  # df86

@@ -50,3 +50,18 @@
   clock: 5  # 8cb0
   nonce: 8cb0  # 8cb0
   message: "Reopened (real-repro validation 2026-07-18, docspell=~/ALL_REPOS/repos_Apr12_2026/docspell): Scala funnels wide open. 242 copy/setTo calls resolve @0.85 (ast_call) to internal defs; 65 suppressed; 0 legit. Magnet: copy<-71 src files->FileCopyTask.copy, setTo<-46->ColumnOps.setTo. Ground truth: InputEnv.addEnv does `copy(env=env.add(...))` = the case-class .copy() (returns InputEnv), misbound to the unrelated FileCopyTask.copy. Case-class .copy() is ubiquitous. Cause: gate only extracts receiver types from annotated-vals + ctor-params; misses .copy() on method-returns/for-bindings/expressions. Design pending 3-lens investigation."  # 8cb0
+- op: update  # 39b1
+  at: '2026-07-18T23:17:50Z'  # 39b1
+  by: agent  # 39b1
+  actor: jgstern_agent  # 39b1
+  clock: 6  # 39b1
+  nonce: 39b1  # 39b1
+  set:  # 39b1
+    status: done  # 39b1
+- op: discuss  # 3fbc
+  at: '2026-07-18T23:17:50Z'  # 3fbc
+  by: agent  # 3fbc
+  actor: jgstern_agent  # 3fbc
+  clock: 7  # 3fbc
+  nonce: 3fbc  # 3fbc
+  message: "Scala facet DONE (PR merged c123bb2760). Real-repro docspell (~/ALL_REPOS/repos_Apr12_2026/docspell): cross-class copy/setTo funnel 242->0; ~3000 fabricated magnet call-edges (map<-315 files, flatMap<-159, ...) externalized; 38 genuine inherited implicit-this calls recovered via inherited_calls Site-1 (ast_call_inherited). Fix: withhold any bare call resolving only to a class-member method without scope evidence (weak suffix/ambiguous resolver match OR same-file local_symbols match to a DIFFERENT class), emit unresolved + enclosing_class; Site-1 MRO walker recovers inherited implicit-this; same-class implicit-this + free funcs/objects + typed receivers still resolve. 100% cov, 1993 tests green. INV-nilud/INV-nogof. INV-fahub stays violated (Swift WI-votar + D WI-situj + fleet-wide rollout remain)."  # 3fbc
