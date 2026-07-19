@@ -31,9 +31,8 @@ symbol and the Rust main() symbol exist.
 from __future__ import annotations
 
 import posixpath
-import time
 
-from ..ir import AnalysisRun, Edge, PASS_VERSION, make_pass_id
+from ..ir import AnalysisRun, Edge, PASS_VERSION, Symbol, make_pass_id
 from .registry import LinkerContext, LinkerResult, register_linker
 
 PASS_ID = make_pass_id("build-target-linker")
@@ -42,7 +41,7 @@ PASS_ID = make_pass_id("build-target-linker")
 def _resolve_target_path(
     target_path: str,
     src_id: str,
-    symbols_by_id: dict[str, object],
+    symbols_by_id: dict[str, Symbol],
 ) -> str:
     """Resolve a defines_target destination path against the manifest directory.
 
@@ -96,11 +95,10 @@ def link_build_targets(ctx: LinkerContext) -> LinkerResult:
     and creates a calls edge from the build target node to main().
     """
     run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)
-    t0 = time.monotonic()
 
     # Index symbols by file path for lookup
     symbols_by_path: dict[str, list] = {}
-    symbols_by_id: dict[str, object] = {}
+    symbols_by_id: dict[str, Symbol] = {}
     for sym in ctx.symbols:
         symbols_by_path.setdefault(sym.path, []).append(sym)
         symbols_by_id[sym.id] = sym
@@ -170,5 +168,4 @@ def link_build_targets(ctx: LinkerContext) -> LinkerResult:
             derived_from=[edge.src, main_fn.id],
         ))
 
-    run.wall_time = time.monotonic() - t0
     return LinkerResult(edges=edges, run=run)

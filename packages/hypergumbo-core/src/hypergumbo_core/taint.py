@@ -515,10 +515,13 @@ def _safe_load_catalog_yaml(
     return data
 
 
-def _load_source_yaml(path: Path) -> tuple[str, list[TaintSource]]:
+def _load_source_yaml(path: Path) -> tuple[str, dict[str, list[TaintSource]]]:
     """Load a single taint source YAML file.
 
-    Returns (taint_label, flat list of TaintSource entries across all languages).
+    Returns (taint_label, per-language dict of TaintSource entries). The stale
+    ``list[TaintSource]`` annotation misdescribed the returned value — the body
+    builds and returns ``sources_by_lang`` keyed by language, and every caller
+    iterates it via ``.items()``.
     """
     data = _safe_load_catalog_yaml(path, "sources", dict)
     label = data.get("taint_label", "unknown")
