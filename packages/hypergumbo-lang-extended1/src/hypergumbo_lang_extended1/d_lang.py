@@ -616,6 +616,30 @@ def _enclosing_function_node(
     return None
 
 
+def _is_module_receiver(
+    receiver: str,
+    import_aliases: dict[str, str],
+    imported_modules: list[str],
+) -> bool:
+    """Is a D call prefix ``P`` in ``P.name()`` a MODULE, or a VALUE (UFCS)?
+
+    ``P`` is a module-qualified call (resolve normally) when it is an import alias
+    or (the last segment of) an imported module path. Otherwise ``P`` is a value
+    expression — a parameter, local, loop variable, or field — and ``P.name()`` is
+    UFCS sugar for ``name(P)``; a bare short-name resolution of ``name`` would
+    misbind to an arbitrary same-named internal free function (INV-fahub, the
+    real-repro ``exists``/``startsWith``/``toString`` funnel on dub), so the caller
+    withholds it and lets the ``receiver_type_dispatch`` linker (INV-vigaf) recover
+    it from a ``receiver_type_hint`` when the value's type is known.
+    """
+    if receiver in import_aliases:
+        return True
+    for module in imported_modules:
+        if module == receiver or module.rsplit(".", 1)[-1] == receiver:
+            return True
+    return False
+
+
 def _resolve_and_emit_call_edge(
     caller: Symbol,
     target_name: str,
@@ -634,20 +658,26 @@ def _resolve_and_emit_call_edge(
     handling. Uses import aliases for qualified calls and import-scope
     path_hints for bare calls to disambiguate cross-file resolution.
     """
-    # WI-situj (INV-fahub / INV-vigaf): UFCS receiver gate. When the receiver
-    # is a known local VARIABLE (a parameter), ``thing.exists()`` is NOT a
-    # module-qualified call — it is UFCS sugar for ``exists(thing)``. The bare
+    # WI-situj (INV-fahub / INV-vigaf): UFCS receiver gate. When the receiver is
+    # a VALUE expression (any prefix that is not an imported module) — a
+    # parameter, local, loop variable, or field — ``thing.exists()`` is NOT a
+    # module-qualified call; it is UFCS sugar for ``exists(thing)``. The bare
     # ``resolver.lookup`` below would misbind it to an arbitrary same-named free
-    # function ``exists()`` at 0.85. Instead emit the call unresolved with a
-    # ``receiver_type_hint`` (when the parameter's type is known) and let the
-    # receiver_type_dispatch linker recover the UFCS free function by matching
-    # its first-parameter type; when the type is unknown (``auto``) we still
-    # withhold the misbind — the call stays honestly external.
-    if receiver is not None and var_types and receiver in var_types:
+    # function ``exists()`` at 0.85 (real-repro dub funnel: ``startsWith`` /
+    # ``toString`` / ``exists`` on locals & loop vars, not just parameters).
+    # Instead emit the call unresolved with a ``receiver_type_hint`` when the
+    # value's type is known (a typed parameter) and let the
+    # ``receiver_type_dispatch`` linker recover the UFCS free function by matching
+    # its first-parameter type; an untyped local / ``auto`` / builtin receiver
+    # still withholds the misbind — the call stays honestly external.
+    if receiver is not None and not _is_module_receiver(
+        receiver, import_aliases, imported_modules,
+    ):
+        hint = var_types.get(receiver) if var_types else None
         edges.append(make_unresolved_edge(
             "d", caller.id, target_name,
             node.start_point[0] + 1, PASS_ID, run_id,
-            receiver_type_hint=var_types[receiver],
+            receiver_type_hint=hint,
         ))
         return
 

@@ -163,6 +163,54 @@ class TestDUfcsIntegration:
         ]
         assert len(resolved) >= 1
 
+    def test_local_var_receiver_misbind_suppressed(
+        self, tmp_path: Path,
+    ) -> None:
+        # Real-repro D funnel (dub: startsWith/toString/exists on LOCAL vars and
+        # loop vars — NOT parameters). The param-only gate missed these. A UFCS
+        # receiver that is any non-module VALUE (here a local ``string l``, whose
+        # ``l.startsWith()`` means ``std.algorithm.startsWith``) must be withheld,
+        # not misbound to an arbitrary internal free ``startsWith``.
+        (tmp_path / "lib.d").write_text(
+            "bool startsWith() { return true; }\n",
+        )
+        (tmp_path / "use.d").write_text(
+            "void process() {\n"
+            "  string l = getValue();\n"
+            "  l.startsWith();\n"
+            "}\n",
+        )
+        result = analyze_d(tmp_path)
+        sw = next(
+            s for s in result.symbols
+            if s.kind == "function" and s.name == "startsWith"
+        )
+        misbinds = [
+            e for e in result.edges
+            if e.edge_type == "calls" and e.dst == sw.id and e.is_resolved
+        ]
+        assert misbinds == [], "l.startsWith() on a local must not misbind"
+
+    def test_module_qualified_call_still_resolves(self, tmp_path: Path) -> None:
+        # Recall guard: the gate withholds only VALUE (UFCS) receivers. A prefix
+        # that IS an imported module resolves normally.
+        (tmp_path / "helpers.d").write_text(
+            "module helpers;\nvoid doIt() {}\n",
+        )
+        (tmp_path / "main.d").write_text(
+            "import helpers;\nvoid run() { helpers.doIt(); }\n",
+        )
+        result = analyze_d(tmp_path)
+        do_it = next(
+            s for s in result.symbols
+            if s.kind == "function" and s.name == "doIt"
+        )
+        resolved = [
+            e for e in result.edges
+            if e.edge_type == "calls" and e.dst == do_it.id and e.is_resolved
+        ]
+        assert len(resolved) >= 1, "module-qualified helpers.doIt() must resolve"
+
 
 class TestDUfcsHelpers:
     def test_first_param_type_none_for_no_arg_function(self) -> None:
