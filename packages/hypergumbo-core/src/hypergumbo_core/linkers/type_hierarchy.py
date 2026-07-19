@@ -52,7 +52,7 @@ from .registry import (
 if TYPE_CHECKING:
     pass
 
-PASS_ID = make_pass_id("type-hierarchy")
+PASS_ID = make_pass_id("type-hierarchy-linker")
 
 
 # WI-sukav A1: per-language gate for concrete-extends → virtual dispatch.
@@ -592,7 +592,7 @@ def link_type_hierarchy(ctx: LinkerContext) -> LinkerResult:
 
 # Register the linker
 @register_linker(
-    "type-hierarchy",
+    "type-hierarchy-linker",
     priority=60,  # Run after analyzers, before final cleanup
     description="Creates dispatches_to edges for polymorphic method dispatch",
     activation=LinkerActivation(always=True),  # Run on all codebases

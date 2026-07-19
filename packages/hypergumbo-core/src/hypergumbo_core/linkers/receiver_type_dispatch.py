@@ -56,7 +56,7 @@ from .registry import (
     register_linker,
 )
 
-PASS_ID = make_pass_id("receiver-type-dispatch")
+PASS_ID = make_pass_id("receiver-type-dispatch-linker")
 
 # Callable-definition ``meta`` keys that declare a receiver type, paired with
 # the ``evidence_type`` a resolution through that key emits. Extension members
@@ -103,7 +103,7 @@ def _build_receiver_type_index(
 
 
 @register_linker(
-    "receiver-type-dispatch",
+    "receiver-type-dispatch-linker",
     priority=19,  # Just after inherited-calls (18): resolve the non-hierarchy
     # receiver calls the ancestor-walk linker leaves unresolved.
     description=(

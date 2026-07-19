@@ -45,7 +45,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-PASS_ID = make_pass_id("decorator-dispatch")
+PASS_ID = make_pass_id("decorator-dispatch-linker")
 
 
 # Maps decorator name → list of dispatch site function names.
@@ -112,7 +112,7 @@ def _find_dispatch_sites(
 
 
 @register_linker(
-    "decorator-dispatch",
+    "decorator-dispatch-linker",
     priority=15,
     description="Resolve decorator-based registry dispatch patterns",
     # CNF: decorator-based registry dispatch is canonical in Python (Flask,

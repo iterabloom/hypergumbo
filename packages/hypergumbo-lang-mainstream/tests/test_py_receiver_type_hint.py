@@ -270,7 +270,7 @@ class TestNohamRecallEndToEnd:
             "Foo.bar() did not resolve to the in-repo staticmethod via the "
             "receiver_type_hint -> inherited_calls linker chain"
         )
-        assert "inherited-calls" in (resolved[0].get("origin") or [])
+        assert "inherited-calls-linker" in (resolved[0].get("origin") or [])
         assert resolved[0]["is_resolved"] is True
 
     def test_typed_receiver_instance_method_resolves(self, tmp_path: Path) -> None:
@@ -331,7 +331,7 @@ class TestNohamRecallEndToEnd:
         node_ids = {n["id"] for n in data["nodes"]}
         linker_edges = [
             e for e in data["edges"]
-            if "inherited-calls" in (e.get("origin") or [])
+            if "inherited-calls-linker" in (e.get("origin") or [])
         ]
         assert linker_edges, "no inherited-calls edge minted (test is vacuous)"
         for e in linker_edges:

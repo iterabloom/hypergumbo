@@ -70,7 +70,7 @@ from .registry import LinkerContext, LinkerResult, register_linker
 if TYPE_CHECKING:
     from ..ir import Symbol
 
-PASS_ID = make_pass_id("method-call-recovery")
+PASS_ID = make_pass_id("method-call-recovery-linker")
 
 # Edge types that signal "this caller refers to this class" — could be a
 # fallback ``calls`` (Java/Kotlin/Python) or an explicit ``instantiates``
@@ -112,7 +112,7 @@ _parse_unresolved_name = parse_unresolved_name
 
 
 @register_linker(
-    "method-call-recovery",
+    "method-call-recovery-linker",
     priority=35,  # After containment (12) + inheritance (15); before rollups.
     description=(
         "Rewrites chained calls=Class + unresolved-call(name) pairs to a "

@@ -360,7 +360,7 @@ class TestPropertyReadResolutionEndToEnd:
             "b.size (@property read) did not resolve to Box.size via the "
             "receiver_type_hint -> inherited_calls linker chain"
         )
-        assert "inherited-calls" in (resolved[0].get("origin") or [])
+        assert "inherited-calls-linker" in (resolved[0].get("origin") or [])
         assert resolved[0]["is_resolved"] is True
 
     def test_property_read_linker_edges_pure_resolved(
@@ -386,7 +386,7 @@ class TestPropertyReadResolutionEndToEnd:
         node_ids = {n["id"] for n in data["nodes"]}
         linker_edges = [
             e for e in data["edges"]
-            if "inherited-calls" in (e.get("origin") or [])
+            if "inherited-calls-linker" in (e.get("origin") or [])
         ]
         assert linker_edges, "no inherited-calls edge minted (test is vacuous)"
         for e in linker_edges:

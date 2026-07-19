@@ -131,7 +131,7 @@ from .type_hierarchy import (
     build_method_index,
 )
 
-PASS_ID = make_pass_id("inherited-calls")
+PASS_ID = make_pass_id("inherited-calls-linker")
 
 _INHERITED_CALL_EDGE_TYPES: tuple[str, ...] = (
     "extends", "implements", "includes",
@@ -848,7 +848,7 @@ def _extract_method_short_name(callee_name: str) -> str:
 # ---------------------------------------------------------------------------
 
 @register_linker(
-    "inherited-calls",
+    "inherited-calls-linker",
     priority=18,  # Between inheritance (15) and type_hierarchy (20).
     description=(
         "Walks ancestor chains to resolve unresolved calls that carry the "

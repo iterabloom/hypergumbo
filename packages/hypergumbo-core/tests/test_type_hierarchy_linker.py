@@ -860,7 +860,7 @@ class TestEdgeCases:
             edges=[],
         )
 
-        result = run_linker("type-hierarchy", ctx)
+        result = run_linker("type-hierarchy-linker", ctx)
         assert result is not None
         assert result.edges == []
 
@@ -967,9 +967,9 @@ class TestLinkerRegistration:
         import hypergumbo_core.linkers.type_hierarchy as th_module
         importlib.reload(th_module)
 
-        linker = get_linker("type-hierarchy")
+        linker = get_linker("type-hierarchy-linker")
         assert linker is not None
-        assert linker.name == "type-hierarchy"
+        assert linker.name == "type-hierarchy-linker"
         assert "dispatch" in linker.description.lower() or "hierarchy" in linker.description.lower()
 
 

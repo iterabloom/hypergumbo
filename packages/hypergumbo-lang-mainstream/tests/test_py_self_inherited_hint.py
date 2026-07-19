@@ -343,7 +343,7 @@ class TestSelfInheritedEndToEnd:
             "Base.helper via enclosing_class -> Site-1 C3 walk"
         )
         assert calls[0]["is_resolved"] is True
-        assert "inherited-calls" in (calls[0].get("origin") or [])
+        assert "inherited-calls-linker" in (calls[0].get("origin") or [])
 
     def test_annotated_self_resolves_via_site2_not_site1(
         self, tmp_path: Path

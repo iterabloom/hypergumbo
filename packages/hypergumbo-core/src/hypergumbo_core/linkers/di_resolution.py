@@ -61,7 +61,7 @@ from ._text_filters import read_masked_source
 if TYPE_CHECKING:
     pass
 
-PASS_ID = make_pass_id("di-resolution")
+PASS_ID = make_pass_id("di-resolution-linker")
 
 # ---------------------------------------------------------------------------
 # Regex patterns for explicit DI binding detection
@@ -768,7 +768,7 @@ def link_di_resolution(ctx: LinkerContext) -> LinkerResult:
 # ---------------------------------------------------------------------------
 
 @register_linker(
-    "di-resolution",
+    "di-resolution-linker",
     priority=65,
     description=(
         "Creates di_resolves edges from interface methods to DI-bound "
