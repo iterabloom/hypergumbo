@@ -1,0 +1,158 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+"""INV-fahub receiver-blind method-magnet detector (language-agnostic).
+
+**What it detects and why.** INV-fahub's invariant is that *a call whose
+receiver/target type cannot be resolved MUST emit an ambiguous/external edge,
+not a high-confidence calls edge to an arbitrary same-named internal
+definition.* The failure mode ("the magnet") is an untyped-receiver method call
+— ``x.method()`` where ``x``'s type is unknowable — that a per-language resolver
+binds by short name to the one same-named internal ``method``, so dozens of
+unrelated call sites collapse onto one arbitrary ``Owner.method`` and poison its
+in-degree / centrality (``.len()`` → ``GlobSet::len``; ``writeln(x)`` →
+``ManWriter.writeln``).
+
+**Why this lives in one place.** The prior INV-fahub campaign gated each
+analyzer's *bare-identifier* free-call path, but the real funnel is the
+*method-selector* path, which resolves through a separate ungated route — and
+nothing measured the finalized graph, so the gap survived per-analyzer unit
+tests. This module is the single, language-agnostic definition of "a
+receiver-blind magnet edge," shared by three consumers so they can never drift:
+the ``spec_validator`` content-gated check (whole-graph CI gate), the
+per-language fixture-matrix test (``run_analyzer`` output, pre-linker), and the
+real-repro survey harness.
+
+**How it distinguishes a magnet from a legitimate bind.** A legitimate
+resolution *knows something about the receiver* and stamps it — either a
+receiver-aware ``evidence_type`` (``ast_call_type_inferred`` / ``ast_call_ufcs``
+/ ``ast_call_inherited`` — the Site-1/Site-2 recoveries and typed binds), or a
+``meta.receiver`` marker (``typed_var`` / ``typed_field`` / ``field_chain`` /
+``external`` / ``stdlib``), or ``meta.resolution_quality`` other than
+``"ambiguous"``. So a magnet is precisely a **resolved** ``calls`` edge to an
+**internal ``method``** that carries only the bare ``ast_call`` /
+``ast_call_direct`` pathway, **no** receiver marker, is **cross-owner** (the
+caller's class differs from the method's owner — a same-class implicit-``this``
+call is legitimate), and lands at or above ``min_confidence``. Everything the
+resolver understood about the receiver is excluded by construction, so genuine
+inherited-call recoveries (``ast_call_inherited``) and typed binds never trip.
+
+The reader is shape-tolerant (attribute *or* dict key) so the same function runs
+on live ``Symbol``/``Edge`` dataclasses (the validator, the fixture matrix) and
+on deserialized ``survey.json`` node/edge dicts (the survey harness).
+"""
+from __future__ import annotations
+
+from typing import Any, Iterable, List, Optional
+
+__all__ = ["find_receiver_blind_magnets", "owner_of"]
+
+# evidence_type values that are the bare, receiver-blind resolution pathways.
+# Everything else (ast_call_type_inferred, ast_call_ufcs, ast_call_inherited,
+# interface_dispatch, …) encodes that the receiver WAS characterised, so it is a
+# legitimate bind and is excluded simply by not being in this set.
+_BARE_EVIDENCE = frozenset({"ast_call", "ast_call_direct"})
+
+# meta.receiver values that mean the receiver type/target was identified.
+_RECEIVER_MARKERS = frozenset(
+    {"typed_var", "typed_field", "typed", "field_chain", "external", "stdlib"}
+)
+
+_OWNER_SEPARATORS = ("::", "#", ".")
+
+
+def _get(obj: Any, key: str, default: Any = None) -> Any:
+    """Read ``key`` from a dataclass-like object or a dict, whichever it is."""
+    if obj is None:
+        return default
+    if isinstance(obj, dict):
+        return obj.get(key, default)
+    return getattr(obj, key, default)
+
+
+def owner_of(name: Optional[str]) -> Optional[str]:
+    """Return the owning-type prefix of a qualified symbol name, or None.
+
+    ``"GlobSet::len"`` → ``"GlobSet"``; ``"Json.to"`` → ``"Json"``; a bare
+    ``"helper"`` (a free function, no separator) → ``None``.
+    """
+    if not name:
+        return None
+    for sep in _OWNER_SEPARATORS:
+        if sep in name:
+            return name.rsplit(sep, 1)[0]
+    return None
+
+
+def _evidence_type(edge: Any, meta: dict) -> Optional[str]:
+    """evidence_type is a top-level field on the Edge dataclass but nests under
+    ``meta`` in serialized survey JSON — read whichever is present."""
+    ev = _get(edge, "evidence_type", None)
+    if ev is None:
+        ev = meta.get("evidence_type")
+    return ev
+
+
+def _receiver_was_identified(meta: dict) -> bool:
+    """True iff the edge carries any marker that the receiver was characterised
+    (so it is a legitimate typed/recovered bind, not a receiver-blind magnet)."""
+    rq = meta.get("resolution_quality")
+    if rq is not None and rq != "ambiguous":
+        return True
+    return meta.get("receiver") in _RECEIVER_MARKERS
+
+
+def find_receiver_blind_magnets(
+    nodes: Iterable[Any],
+    edges: Iterable[Any],
+    *,
+    min_confidence: float = 0.80,
+) -> List[Any]:
+    """Return the edges that are receiver-blind cross-class internal-method magnets.
+
+    An edge qualifies iff all hold:
+
+    * ``edge_type`` (dataclass) / ``type`` (JSON) is ``calls`` or ``dispatches_to``;
+    * ``is_resolved`` is true;
+    * ``evidence_type`` is a bare pathway (``ast_call`` / ``ast_call_direct``);
+    * no receiver marker (``meta.resolution_quality`` is absent/``"ambiguous"`` and
+      ``meta.receiver`` is not a known-receiver marker);
+    * ``confidence`` >= ``min_confidence``;
+    * ``dst`` resolves to an in-set node whose ``kind`` is ``method``;
+    * cross-owner: the ``src`` node's owner differs from the ``dst`` method's owner
+      (a same-class implicit-``this`` call is legitimate and excluded).
+
+    Returns the offending edge objects (per-edge, ungrouped) in input order; the
+    caller may group by ``dst`` to rank magnets. Confidence defaults to the
+    invariant's literal "high-confidence" band (0.80); pass ``min_confidence=0.0``
+    to assert a controlled fixture is clean at any confidence.
+    """
+    by_id = {}
+    for n in nodes:
+        nid = _get(n, "id", None)
+        if nid is not None:
+            by_id[nid] = n
+
+    out: List[Any] = []
+    for edge in edges:
+        etype = _get(edge, "edge_type", None) or _get(edge, "type", None)
+        if etype not in ("calls", "dispatches_to"):
+            continue
+        if not _get(edge, "is_resolved", False):
+            continue
+        meta = _get(edge, "meta", None) or {}
+        if _evidence_type(edge, meta) not in _BARE_EVIDENCE:
+            continue
+        if _receiver_was_identified(meta):
+            continue
+        conf = _get(edge, "confidence", 0.0)
+        if conf is None or conf < min_confidence:
+            continue
+        dst = by_id.get(_get(edge, "dst", None))
+        if dst is None or _get(dst, "kind", None) != "method":
+            continue
+        dst_owner = owner_of(_get(dst, "name", None) or _get(dst, "qualified_name", None))
+        src = by_id.get(_get(edge, "src", None))
+        src_owner = owner_of(_get(src, "name", None) or _get(src, "qualified_name", None))
+        if src_owner is not None and src_owner == dst_owner:
+            continue  # same-class implicit-this/self — legitimate
+        out.append(edge)
+    return out
