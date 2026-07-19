@@ -325,6 +325,7 @@ def _check_confidence_range(edges: Iterable[Any]) -> list[ValidationViolation]:
         spec = find_evidence_type(ev)
         # find_evidence_type is non-None here: confidence_within_band only
         # returns False for a seeded (hence registered) pathway.
+        assert spec is not None
         low = (
             spec.base_confidence_unresolved
             if spec.base_confidence_unresolved is not None

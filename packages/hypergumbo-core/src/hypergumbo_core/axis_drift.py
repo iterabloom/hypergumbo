@@ -213,6 +213,10 @@ def find_drift(
                         f"contains {sorted(drift)} not in canonical registry"
                     )
                 if allowed_axis_names is not None:
+                    # The precondition check above raises when
+                    # allowed_axis_names is set but name_to_axis is None, so it
+                    # is non-None here.
+                    assert name_to_axis is not None
                     off_axis = {
                         v for v in (values & registry_names)
                         if name_to_axis.get(v) not in allowed_axis_names

@@ -1512,8 +1512,9 @@ def detect_entrypoints(
             non_decl = [
                 ep for ep in eps
                 if "declaration" not in (
-                    symbol_lookup_for_dedup.get(ep.symbol_id).modifiers
-                    if symbol_lookup_for_dedup.get(ep.symbol_id) else []
+                    _sym.modifiers
+                    if (_sym := symbol_lookup_for_dedup.get(ep.symbol_id)) is not None
+                    else []
                 )
             ]
             deduped_entrypoints.extend(non_decl if non_decl else eps)

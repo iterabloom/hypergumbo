@@ -858,7 +858,9 @@ def _homoiconic_head_text(
                 text_node = child
                 break
     try:
-        text = text_node.text.decode("utf-8", errors="ignore")
+        # ``.text`` is Optional[bytes]; a None slice raises AttributeError,
+        # caught below — the defensive except IS the None handling.
+        text = text_node.text.decode("utf-8", errors="ignore")  # type: ignore[union-attr]
     except (AttributeError, UnicodeDecodeError):  # pragma: no cover - defensive
         return None
     return text.lower() if spec.lowercase else text
@@ -951,7 +953,9 @@ def compute_cyclomatic_complexity(
                 if child.is_named:
                     continue
                 try:
-                    op_text = child.text.decode("utf-8", errors="ignore")
+                    # ``.text`` is Optional[bytes]; None raises AttributeError,
+                    # caught below — the defensive except IS the None handling.
+                    op_text = child.text.decode("utf-8", errors="ignore")  # type: ignore[union-attr]
                 except (AttributeError, UnicodeDecodeError):  # pragma: no cover - defensive
                     continue
                 if op_text in short_circuit_ops:

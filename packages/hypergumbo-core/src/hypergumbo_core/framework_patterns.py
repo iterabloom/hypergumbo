@@ -1748,6 +1748,8 @@ def resolve_deferred_symbol_refs(
         )
 
         if result.found:
+            # result.found implies a resolved symbol.
+            assert result.symbol is not None
             # Update the UsageContext with resolved symbol_ref
             ctx.symbol_ref = result.symbol.id
 
