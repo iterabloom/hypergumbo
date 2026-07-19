@@ -15,14 +15,14 @@ for focused LLM context.
 
 hypergumbo analyzed its own source code and found:
 - **296** Python modules (133 analyzers, 59 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 30, Infrastructure 8; 67 core, 4 CLI, 33 tracker)
-- **37328** symbols (functions, classes, methods)
-- **127308** edges by type:
-  - calls: 64290
-  - contains: 34482
-  - imports: 11322
+- **37340** symbols (functions, classes, methods)
+- **127347** edges by type:
+  - calls: 64311
+  - contains: 34491
+  - imports: 11326
   - instantiates: 10476
-  - references: 4264
-  - module_attr_ref: 1155
+  - references: 4267
+  - module_attr_ref: 1157
   - other: 1319
 
 ## Package Architecture
@@ -85,7 +85,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 37328 Symbols + 127308 Edges + UsageContexts           │
+│  Output: 37340 Symbols + 127347 Edges + UsageContexts           │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -272,7 +272,7 @@ These symbols have the highest bidirectional centrality
 
 | Symbol | Kind | Score | Location |
 |--------|------|-------|----------|
-| `Symbol` | class | 9423.7 | ir.py |
+| `Symbol` | class | 9428.3 | ir.py |
 | `Span` | class | 6330.8 | ir.py |
 | `write_text` | external_symbol | 3294.0 | <external> |
 | `LinkerContext` | class | 3268.5 | registry.py |
@@ -283,8 +283,8 @@ These symbols have the highest bidirectional centrality
 | `main` | function | 1563.1 | cli.py |
 | `clear_pattern_cache` | function | 1336.8 | framework_patterns.py |
 | `Edge` | class | 1282.0 | ir.py |
-| `append` | external_symbol | 1241.0 | <external> |
-| `get` | external_symbol | 1129.0 | <external> |
+| `append` | external_symbol | 1242.0 | <external> |
+| `get` | external_symbol | 1130.0 | <external> |
 | `TreeSitterAnalyzer` | class | 1074.7 | base.py |
 | `find_files` | function | 997.1 | discovery.py |
 
@@ -843,7 +843,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: 30bd135af68d
+  commit: d6376ed87500
   hypergumbo: 6.1.0
   python: 3.12.3
 -->
