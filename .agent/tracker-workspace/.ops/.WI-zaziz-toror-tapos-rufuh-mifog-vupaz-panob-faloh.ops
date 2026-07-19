@@ -1,0 +1,22 @@
+- op: create  # f98b
+  at: '2026-07-19T15:57:08Z'  # f98b
+  by: agent  # f98b
+  actor: jgstern_agent  # f98b
+  clock: 1  # f98b
+  nonce: f98b  # f98b
+  data:  # f98b
+    kind: work_item  # f98b
+    title: "smart-test slice under-selects test_polyglot_call_site_coverage.py for java.py changes → false 99% coverage on CI"  # f98b
+    status: todo_hard  # f98b
+    priority: 2  # f98b
+    parent:  # f98b
+    tags:  # f98b
+    - tooling  # f98b
+    - smart_test  # f98b
+    - ci  # f98b
+    isbefore: []  # f98b
+    duplicate_of: []  # f98b
+    not_duplicate_of: []  # f98b
+    pr_ref:  # f98b
+    description: "Discovered while landing the mypy no-redef rung. When a PR touches\npackages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/java.py,\nthe smart-test slice selects the java-specific tests (test_java.py,\ntest_java_annotation_edges.py, test_java_field_symbols.py) but NOT\ntest_polyglot_call_site_coverage.py — which is the SOLE test covering\njava.py:1872-1878 (the static-import ExternalRef branch). Verified: that\npolyglot test alone covers 1872-1878 (missing-lines list jumps 1807->1943).\n\nEffect: the targeted manifest reports java.py at 99% (3 stmts missing),\nfailing CI's changed-file 100% coverage gate, even though the FULL suite is\n100% (21049 passed). The manual workaround (add the test to the manifest)\ndoes NOT persist because auto-pr regenerates the manifest to match the\ncommit diff (scripts/auto-pr ~line 1301-1316), stripping the addition. Also\nnote: a full-suite manifest is rejected by Fast-CI (ci.yml ~line 772, 5-min\nlimit), so that escape hatch is closed too.\n\nRoot cause: the slice's test selection is import-dependency-based and misses\nCOVERAGE-based dependencies (the polyglot test exercises java code via the\nanalysis pipeline without a direct import edge the slice detects). Impact:\nany java.py change hits this; the current mitigation is to exclude java.py\nfrom the change (as done for the no-redef rung, deferring 2 benign java\nfixes). Fix options: (a) coverage-based slice augmentation, (b) a per-file\n\"always-include-these-tests\" annotation for coverage-only deps, (c) teach\nthe slice the polyglot test's java dependency."  # f98b
+    fields: {}  # f98b
