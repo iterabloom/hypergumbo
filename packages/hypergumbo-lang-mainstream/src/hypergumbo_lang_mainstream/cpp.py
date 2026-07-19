@@ -52,6 +52,7 @@ from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
     TreeSitterAnalyzer,
+    defer_bare_method_call,
     emit_module_attribute_refs,
     find_child_by_type as _find_child_by_type,
     iter_tree,
@@ -1169,10 +1170,29 @@ def _extract_edges_from_tree(
                     # Check global symbols via resolver
                     elif not chain_resolved:
                         lookup_result = resolver.lookup(short_name, path_hint=path_hint, caller_path=_caller_path)
-                        if lookup_result.found and lookup_result.symbol is not None:
+                        # INV-fahub: a BARE call (bare short name, implicit-this,
+                        # or a chained receiver whose token was dropped) that only
+                        # weak-suffix-matches a DIFFERENT class's method is the
+                        # cross-class magnet (dozens of call sites -> one arbitrary
+                        # def, e.g. purge() -> ActivityPubClient::purge). C++
+                        # method symbol names are ``Owner::method`` (separator
+                        # "::"), so parse the owner with that separator. Same-class
+                        # implicit-this (owner == enclosing) and free
+                        # functions/objects still bind directly; a cross-class
+                        # magnet defers to the inherited_calls Site-1 walker via an
+                        # unresolved edge stamped with ``enclosing_class`` (INV-nogof
+                        # withhold-not-pick-first + INV-nilud linker-owns-resolution).
+                        _enclosing_type = _get_enclosing_class(node, source)
+                        _sym = lookup_result.symbol
+                        _defer = _sym is not None and defer_bare_method_call(
+                            _sym.kind, _sym.name,
+                            lookup_result.match_type, _enclosing_type,
+                            separator="::",
+                        )
+                        if lookup_result.found and _sym is not None and not _defer:
                             edges.append(Edge.create(
                                 src=current_function.id,
-                                dst=lookup_result.symbol.id,
+                                dst=_sym.id,
                                 edge_type="calls",
                                 line=node.start_point[0] + 1,
                                 evidence_type="ast_call",
@@ -1202,12 +1222,14 @@ def _extract_edges_from_tree(
                                     run.execution_id,
                                     module_hint=module_hint,
                                     dst_ref=ext_ref,
+                                    enclosing_class=_enclosing_type,
                                 ))
                             else:
                                 edges.append(make_unresolved_edge(
                                     "cpp", current_function.id, short_name,
                                     node.start_point[0] + 1, PASS_ID,
                                     run.execution_id,
+                                    enclosing_class=_enclosing_type,
                                 ))
 
                     # Callback argument detection: bare identifiers in the

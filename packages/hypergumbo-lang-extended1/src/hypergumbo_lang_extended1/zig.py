@@ -33,10 +33,13 @@ from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
+    ExternalRef,
     FileAnalysis,
     TreeSitterAnalyzer,
+    defer_bare_method_call,
     find_child_by_type,
     make_symbol_id,
+    make_unresolved_edge,
     node_text,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
@@ -535,26 +538,60 @@ def _extract_edges_from_tree(
                     # Try to resolve the target using NameResolver with path_hint
                     base_confidence = 0.9
                     lookup_result = resolver.lookup(call_name, path_hint=path_hint)
-                    if lookup_result.found and lookup_result.symbol:
-                        dst_id = lookup_result.symbol.id
-                        confidence = base_confidence * lookup_result.confidence
-                    else:
-                        # Create placeholder ID for unresolved call
-                        dst_id = f"zig:{rel_path}:0-0:{call_name}:function"
-                        confidence = 0.6
-
                     line = node.start_point[0] + 1
-                    edge = Edge.create(
-                        src=current_function_sym.id,
-                        dst=dst_id,
-                        edge_type="calls",
-                        line=line,
-                        origin=PASS_ID,
-                        origin_run_id=run.execution_id,
-                        evidence_type="ast_call_direct",
-                        confidence=confidence,
-                    )
-                    edges.append(edge)
+                    _sym = lookup_result.symbol
+                    # INV-fahub: a bare / chained-receiver call that resolves
+                    # only via a weak short-name (suffix) match to a DIFFERENT
+                    # struct's method is the cross-class magnet — dozens of call
+                    # sites collapsing onto one arbitrary same-named method. The
+                    # Zig analyzer infers no receiver type, so such a match is
+                    # untrustworthy. Withhold it (INV-nogof) and defer to the
+                    # inherited_calls Site-1 walker (INV-nilud) by emitting an
+                    # unresolved edge carrying the enclosing struct name; the
+                    # walker recovers it iff the method is on the enclosing
+                    # struct's linearization. Same-struct implicit-``self`` calls
+                    # and free-function/object binds are NOT deferred.
+                    if (
+                        lookup_result.found
+                        and _sym is not None
+                        and defer_bare_method_call(
+                            _sym.kind, _sym.name,
+                            lookup_result.match_type, container,
+                        )
+                    ):
+                        edges.append(make_unresolved_edge(
+                            "zig", current_function_sym.id, call_name,
+                            line, PASS_ID, run.execution_id,
+                            module_hint=path_hint or "external",
+                            dst_ref=(
+                                ExternalRef(
+                                    lang="zig", module_path=path_hint,
+                                    name=call_name,
+                                )
+                                if path_hint else None
+                            ),
+                            enclosing_class=container,
+                        ))
+                    else:
+                        if lookup_result.found and _sym is not None:
+                            dst_id = _sym.id
+                            confidence = base_confidence * lookup_result.confidence
+                        else:
+                            # Create placeholder ID for unresolved call
+                            dst_id = f"zig:{rel_path}:0-0:{call_name}:function"
+                            confidence = 0.6
+
+                        edge = Edge.create(
+                            src=current_function_sym.id,
+                            dst=dst_id,
+                            edge_type="calls",
+                            line=line,
+                            origin=PASS_ID,
+                            origin_run_id=run.execution_id,
+                            evidence_type="ast_call_direct",
+                            confidence=confidence,
+                        )
+                        edges.append(edge)
 
         # Add children to stack (in reverse to maintain order)
         for child in reversed(node.children):

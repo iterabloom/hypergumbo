@@ -66,6 +66,7 @@ from hypergumbo_core.symbol_resolution import NameResolver
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     TreeSitterAnalyzer,
+    defer_bare_method_call,
     find_child_by_type,
     iter_tree,
     make_file_id,
@@ -569,6 +570,19 @@ def _extract_edges_from_file(
                 # Find the caller (enclosing function)
                 caller = _find_enclosing_lua_function(node, source, local_symbols)
                 if caller:
+                    # INV-fahub: the enclosing table/type for this call site.
+                    # Lua method/function symbols are named ``Table.member``, so
+                    # split the caller's own name on ``"."`` to recover the owning
+                    # table (``None`` for a bare top-level function). Threaded to
+                    # ``defer_bare_method_call`` so a bare / untyped short-name hit
+                    # binds only to a method of its OWN table, and to
+                    # ``make_unresolved_edge`` so a deferred cross-table magnet
+                    # carries ``enclosing_class`` for the Site-1 walker to recover
+                    # a genuine inherited call.
+                    _enclosing_type = (
+                        caller.name.rsplit(".", 1)[0]
+                        if "." in caller.name else None
+                    )
                     # Try require-alias resolution first (highest signal)
                     require_resolved = False
                     recv = receiver_name
@@ -622,7 +636,17 @@ def _extract_edges_from_file(
                             callee = lookup_result.symbol if lookup_result.found else None
                             base = CONFIDENCE_METHOD_CALL
                             confidence = base * lookup_result.confidence if lookup_result.found else 0.50
-                            if callee:
+                            # INV-fahub: an untyped ``obj:method()`` whose short
+                            # name only suffix-matches a DIFFERENT table's method
+                            # is a magnet — withhold it (defer to the Site-1
+                            # ``inherited_calls`` walker via ``enclosing_class``)
+                            # instead of binding to the unrelated def. Same-table
+                            # implicit calls and free functions still bind.
+                            _defer = callee is not None and defer_bare_method_call(
+                                callee.kind, callee.name,
+                                lookup_result.match_type, _enclosing_type,
+                            )
+                            if callee and not _defer:
                                 edge = Edge.create(
                                     src=caller.id,
                                     dst=callee.id,
@@ -636,10 +660,13 @@ def _extract_edges_from_file(
                                 )
                                 edges.append(edge)
                             else:
-                                # Unresolved call. WI-nigah Tier 2: when
-                                # ``receiver_name`` is a require-alias, thread
+                                # Unresolved or deferred call. WI-nigah Tier 2:
+                                # when ``receiver_name`` is a require-alias, thread
                                 # the module path through as ``module_hint`` and
-                                # structured ``dst_ref``.
+                                # structured ``dst_ref``. INV-fahub: a deferred
+                                # cross-table magnet also carries ``enclosing_class``
+                                # so the Site-1 walker can recover a genuine
+                                # inherited call.
                                 hint = (
                                     require_aliases.get(receiver_name)
                                     if receiver_name else None
@@ -652,6 +679,7 @@ def _extract_edges_from_file(
                                         ExternalRef(lang="lua", module_path=hint, name=callee_name)
                                         if hint else None
                                     ),
+                                    enclosing_class=_enclosing_type,
                                 ))
                     elif is_dot_call:
                         # Dot call — try qualified name. WI-nigah Tier 2: when
@@ -698,7 +726,16 @@ def _extract_edges_from_file(
                         lookup_result = resolver.lookup(callee_name, caller_path=_caller_path)
                         callee = lookup_result.symbol if lookup_result.found else None
                         confidence = CONFIDENCE_DIRECT_CALL * lookup_result.confidence if lookup_result.found else 0.50
-                        if callee:
+                        # INV-fahub: a bare ``func()`` whose short name only
+                        # suffix-matches a DIFFERENT table's method is a magnet —
+                        # withhold it (defer to the Site-1 ``inherited_calls``
+                        # walker via ``enclosing_class``). Same-table implicit
+                        # ``self`` calls and free functions still bind.
+                        _defer = callee is not None and defer_bare_method_call(
+                            callee.kind, callee.name,
+                            lookup_result.match_type, _enclosing_type,
+                        )
+                        if callee and not _defer:
                             edge = Edge.create(
                                 src=caller.id,
                                 dst=callee.id,
@@ -715,6 +752,7 @@ def _extract_edges_from_file(
                             edges.append(make_unresolved_edge(
                                 "lua", caller.id, callee_name,
                                 node.start_point[0] + 1, PASS_ID, run_id,
+                                enclosing_class=_enclosing_type,
                             ))
 
     return edges

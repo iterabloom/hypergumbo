@@ -2206,6 +2206,93 @@ public:
         )
 
 
+class TestCppBareMethodMagnetGate:
+    """INV-fahub: a BARE call (implicit-``this`` / a chained receiver whose
+    receiver token was dropped) that only weak-suffix-matches a DIFFERENT
+    class's method must NOT bind a resolved ``calls`` edge to that unrelated
+    method (the cross-class magnet: dozens of call sites -> one arbitrary
+    def). It defers to the inherited_calls Site-1 walker via an unresolved
+    edge stamped with ``enclosing_class``. Free functions and same-class
+    implicit-``this`` calls are unaffected.
+    """
+
+    def test_bare_cross_class_method_deferred_not_misbound(
+        self, tmp_path: Path
+    ) -> None:
+        """A bare ``purge()`` in ``AccountController::boot`` suffix-matches
+        the unrelated ``ActivityPubClient::purge``. It must NOT bind resolved;
+        instead an unresolved edge carrying ``enclosing_class`` is emitted."""
+        from hypergumbo_lang_mainstream.cpp import analyze_cpp
+
+        (tmp_path / "client.cpp").write_text(
+            "class ActivityPubClient {\n"
+            "public:\n"
+            "    void purge() {}\n"
+            "};\n"
+        )
+        (tmp_path / "controller.cpp").write_text(
+            "class AccountController {\n"
+            "public:\n"
+            "    void boot() {\n"
+            "        purge();\n"
+            "    }\n"
+            "};\n"
+        )
+        result = analyze_cpp(tmp_path)
+        client_purge = next(
+            s for s in result.symbols
+            if s.name == "ActivityPubClient::purge" and s.kind == "method"
+        )
+        misbinds = [
+            e for e in result.edges
+            if e.edge_type == "calls" and e.dst == client_purge.id
+            and "boot" in e.src and e.is_resolved
+        ]
+        assert misbinds == [], f"bare purge() misbound: {misbinds}"
+        deferred = [
+            e for e in result.edges
+            if e.edge_type == "calls" and "boot" in e.src
+            and not e.is_resolved and "purge" in e.dst
+        ]
+        assert len(deferred) == 1, [
+            (e.dst, e.is_resolved) for e in result.edges if "boot" in e.src
+        ]
+        assert (deferred[0].meta or {}).get("enclosing_class") == "AccountController"
+
+    def test_bare_free_function_call_still_resolves(
+        self, tmp_path: Path
+    ) -> None:
+        """Recall guard: a bare call to a free FUNCTION (not a method) still
+        binds a resolved ``calls`` edge through the same resolver path — the
+        magnet gate defers only cross-class *methods*."""
+        from hypergumbo_lang_mainstream.cpp import analyze_cpp
+
+        (tmp_path / "util.cpp").write_text(
+            "int compute() { return 42; }\n"
+        )
+        (tmp_path / "worker.cpp").write_text(
+            "class Worker {\n"
+            "public:\n"
+            "    void run() {\n"
+            "        compute();\n"
+            "    }\n"
+            "};\n"
+        )
+        result = analyze_cpp(tmp_path)
+        compute_fn = next(
+            s for s in result.symbols
+            if s.name == "compute" and s.kind == "function"
+        )
+        resolved = [
+            e for e in result.edges
+            if e.edge_type == "calls" and e.dst == compute_fn.id
+            and "run" in e.src and e.is_resolved
+        ]
+        assert len(resolved) == 1, [
+            (e.dst, e.is_resolved) for e in result.edges if "run" in e.src
+        ]
+
+
 class TestCppStableId:
     """Tests for stable_id computation in C++ (ADR-0014 §2)."""
 

@@ -50,6 +50,7 @@ from hypergumbo_core.symbol_resolution import ListNameResolver, NameResolver
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     TreeSitterAnalyzer,
+    defer_bare_method_call,
     iter_tree,
     make_file_id,
     make_file_stable_id,
@@ -1164,10 +1165,24 @@ def _extract_edges(
                     # Use use_aliases for disambiguation
                     path_hint = use_aliases.get(callee_name)
                     lookup_result = symbol_resolver.lookup(callee_name, path_hint=path_hint, caller_path=_caller_path)
-                    if lookup_result.found and lookup_result.symbol is not None:
+                    # INV-fahub: a bare ``foo()`` call that resolves ONLY via a
+                    # weak short-name suffix match to a DIFFERENT class's method
+                    # is a magnet (dozens of call sites → one arbitrary
+                    # ``SomeClass.foo``). Withhold it → honest unresolved edge
+                    # stamped with the enclosing class, so the inherited_calls
+                    # Site-1 walker can recover a genuine inherited implicit-
+                    # ``this`` call and a true cross-class magnet stays external.
+                    # Free functions and same-enclosing-class methods bind.
+                    _enclosing_type = _get_enclosing_class(node, source)
+                    _sym = lookup_result.symbol
+                    _defer = _sym is not None and defer_bare_method_call(
+                        _sym.kind, _sym.name,
+                        lookup_result.match_type, _enclosing_type,
+                    )
+                    if lookup_result.found and _sym is not None and not _defer:
                         edge = Edge.create(
                             src=current_function.id,
-                            dst=lookup_result.symbol.id,
+                            dst=_sym.id,
                             edge_type="calls",
                             line=node.start_point[0] + 1,
                             confidence=0.95 * lookup_result.confidence,
@@ -1185,6 +1200,7 @@ def _extract_edges(
                                 ExternalRef(lang="php", module_path=path_hint, name=callee_name)
                                 if path_hint else None
                             ),
+                            enclosing_class=_enclosing_type,
                         ))
 
         # Method calls: $this->method() or $obj->method()
@@ -1222,10 +1238,21 @@ def _extract_edges(
                         # Emit only one edge to the best candidate (not all
                         # candidates) to avoid name-collision fanout.
                         lookup_result = method_resolver.lookup(method_name)
-                        if lookup_result.found and lookup_result.symbol is not None:
+                        # INV-fahub: this fallback ignores the receiver's static
+                        # type — a weak (ambiguous / suffix) short-name match to a
+                        # DIFFERENT class's method is the magnet. Withhold it and
+                        # stamp the enclosing class so the inherited_calls Site-1
+                        # walker can recover a genuine inherited call; an exact
+                        # single-candidate match and same-class methods still bind.
+                        _sym = lookup_result.symbol
+                        _defer = _sym is not None and defer_bare_method_call(
+                            _sym.kind, _sym.name,
+                            lookup_result.match_type, current_class_name,
+                        )
+                        if lookup_result.found and _sym is not None and not _defer:
                             edge = Edge.create(
                                 src=current_function.id,
-                                dst=lookup_result.symbol.id,
+                                dst=_sym.id,
                                 edge_type="calls",
                                 line=node.start_point[0] + 1,
                                 confidence=0.60 * lookup_result.confidence,
@@ -1238,6 +1265,7 @@ def _extract_edges(
                             edges.append(make_unresolved_edge(
                                 "php", current_function.id, method_name,
                                 node.start_point[0] + 1, PASS_ID, run.execution_id,
+                                enclosing_class=current_class_name,
                             ))
 
         # Static method calls: ClassName::method()

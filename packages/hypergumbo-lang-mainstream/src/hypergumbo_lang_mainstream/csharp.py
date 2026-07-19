@@ -43,19 +43,21 @@ from typing import TYPE_CHECKING, ClassVar, Iterator, Optional, TypeAlias
 
 from hypergumbo_core.dataflow import annotate_dataflow as _annotate_dataflow, get_dataflow_config as _get_dataflow_config
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
+from hypergumbo_core.ir import AnalysisRun, Edge, ExternalRef, PASS_VERSION, Span, Symbol, make_pass_id
 from hypergumbo_core.qualified_name_axis import separator_for_language
 from hypergumbo_core.symbol_resolution import ListNameResolver, NameResolver
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis as _BaseFileAnalysis,
     TreeSitterAnalyzer,
+    defer_bare_method_call,
     find_child_by_type,
     iter_tree,
     make_file_id,
     make_file_stable_id,
     make_symbol_id,
     make_typed_stable_id,
+    make_unresolved_edge,
     node_text,
     populate_docstrings_from_tree,
     visibility_from_modifiers,
@@ -1297,6 +1299,12 @@ def _extract_edges_from_file(
         elif node.type == "invocation_expression":
             current_function = _get_enclosing_method(node, source, local_symbols)
             if current_function is not None:
+                # An explicit receiver identifier (``Helper`` in ``Helper.Foo()``)
+                # is captured inside the member_access branch below; initialize it
+                # here so the shared fallback path (which also handles genuinely
+                # BARE calls, where no receiver exists) can safely read it for the
+                # INV-fahub magnet gate.
+                receiver_name = None
                 # Check for member_access_expression (receiver.method() pattern)
                 member_access = find_child_by_type(node, "member_access_expression")
                 if member_access:
@@ -1450,21 +1458,60 @@ def _extract_edges_from_file(
                         import_hint = using_aliases.get(callee_name)
                         lookup_result = resolver.lookup(callee_name, path_hint=import_hint, caller_path=_caller_path)
                         if lookup_result.found and lookup_result.symbol is not None:
-                            edges.append(Edge.create(
-                                src=current_function.id,
-                                dst=lookup_result.symbol.id,
-                                edge_type="calls",
-                                line=node.start_point[0] + 1,
-                                evidence_type="ast_call",
-                                confidence=0.80 * lookup_result.confidence,
-                                origin=PASS_ID,
-                                origin_run_id=run.execution_id,
-                                meta={"call_construct": "method"},
-                            ))
-                            _track_csharp_return_type(
-                                lookup_result.symbol, node, source,
-                                var_types, local_symbols,
-                            )
+                            # INV-fahub: resolving a bare / implicit-``this`` call
+                            # to a DIFFERENT class's ``method`` on a weak short-name
+                            # suffix match is the magnet (dozens of call sites -> one
+                            # arbitrary ``Owner.method``). ``get_callee_name`` drops
+                            # the receiver, so this fallback is shared by BARE calls
+                            # (``Foo()`` / ``this.Foo()`` — no receiver) and by
+                            # class-qualified static calls (``Helper.Process()`` —
+                            # ``receiver_name`` names the owning type). Compare the
+                            # resolved owner against the call's scope: the explicit
+                            # receiver when present (an explicit qualified call is not
+                            # a magnet), else the enclosing type (implicit ``this``).
+                            # A genuine cross-scope suffix match is withheld with the
+                            # enclosing class stamped so the inherited_calls Site-1
+                            # walker can later recover a real inherited implicit-
+                            # ``this`` call; free/non-method targets and same-scope
+                            # (incl. cross-file ``partial``) methods still bind.
+                            _sym = lookup_result.symbol
+                            _enclosing_type = _get_enclosing_class(node, source)
+                            _scope_type = receiver_name or _enclosing_type
+                            if defer_bare_method_call(
+                                _sym.kind, _sym.name,
+                                lookup_result.match_type, _scope_type,
+                            ):
+                                edges.append(make_unresolved_edge(
+                                    "csharp", current_function.id, callee_name,
+                                    node.start_point[0] + 1, PASS_ID,
+                                    run.execution_id,
+                                    module_hint=import_hint or "external",
+                                    dst_ref=(
+                                        ExternalRef(
+                                            lang="csharp",
+                                            module_path=import_hint,
+                                            name=callee_name,
+                                        )
+                                        if import_hint else None
+                                    ),
+                                    enclosing_class=_enclosing_type,
+                                ))
+                            else:
+                                edges.append(Edge.create(
+                                    src=current_function.id,
+                                    dst=_sym.id,
+                                    edge_type="calls",
+                                    line=node.start_point[0] + 1,
+                                    evidence_type="ast_call",
+                                    confidence=0.80 * lookup_result.confidence,
+                                    origin=PASS_ID,
+                                    origin_run_id=run.execution_id,
+                                    meta={"call_construct": "method"},
+                                ))
+                                _track_csharp_return_type(
+                                    _sym, node, source,
+                                    var_types, local_symbols,
+                                )
 
         # Object creation expression (new ClassName())
         elif node.type == "object_creation_expression":

@@ -8154,3 +8154,167 @@ class TestGoCyclomaticComplexity:
         method = next(s for s in result.symbols if s.name == "Server.Handle")
         assert method.cyclomatic_complexity is not None
         assert method.cyclomatic_complexity >= 2
+
+
+class TestGoBareMethodMagnetGate:
+    """INV-fahub: a BARE call must not confidently bind to an unrelated
+    class's same-named method on weak (ambiguous / non-exact) short-name
+    evidence — that is the cross-language magnet (dozens of bare call sites
+    collapsing onto one arbitrary ``Type.method``). Free functions,
+    same-class methods, and strong exact / path-hint matches are unaffected.
+    """
+
+    def test_bare_cross_class_method_magnet_is_deferred(
+        self, tmp_path: Path,
+    ) -> None:
+        """A bare ``Process()`` whose short name resolves only to methods on
+        OTHER types (ambiguous match) is withheld, not bound — instead an
+        unresolved edge stamped with the caller's enclosing class is emitted
+        so the inherited_calls Site-1 walker can recover a genuine inherited
+        implicit-receiver call.
+        """
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        # Two unrelated types both defining a `Process` method → the bare
+        # short-name lookup resolves ambiguously (2 candidates), the magnet.
+        (tmp_path / "typea.go").write_text(
+            "package main\n"
+            "type TypeA struct{}\n"
+            "func (a *TypeA) Process() {}\n"
+        )
+        (tmp_path / "typeb.go").write_text(
+            "package main\n"
+            "type TypeB struct{}\n"
+            "func (b *TypeB) Process() {}\n"
+        )
+        # A THIRD, unrelated type makes a bare Process() call.
+        (tmp_path / "caller.go").write_text(
+            "package main\n"
+            "type Caller struct{}\n"
+            "func (c *Caller) Run() {\n"
+            "    Process()\n"
+            "}\n"
+        )
+
+        result = analyze_go(tmp_path)
+
+        process_defs = {
+            s.id for s in result.symbols
+            if s.name in ("TypeA.Process", "TypeB.Process")
+        }
+        assert len(process_defs) == 2
+        run_caller = next(
+            s for s in result.symbols if s.name == "Caller.Run"
+        )
+        call_edges = [
+            e for e in result.edges
+            if e.edge_type == "calls" and e.src == run_caller.id
+        ]
+
+        # The magnet: no resolved calls edge to either Process method.
+        resolved_to_process = [
+            e for e in call_edges if e.is_resolved and e.dst in process_defs
+        ]
+        assert not resolved_to_process, resolved_to_process
+
+        # Instead: a single unresolved Process edge carrying the enclosing
+        # class for the inherited_calls Site-1 walker.
+        deferred = [
+            e for e in call_edges
+            if not e.is_resolved
+            and e.dst == "go:external:0-0:Process:unresolved"
+        ]
+        assert len(deferred) == 1, [
+            (e.dst, e.is_resolved) for e in call_edges
+        ]
+        assert deferred[0].meta is not None
+        assert deferred[0].meta.get("enclosing_class") == "Caller"
+
+    def test_bare_free_function_still_resolves(
+        self, tmp_path: Path,
+    ) -> None:
+        """A bare call to a free FUNCTION (not a method) from a free-function
+        caller still binds a resolved edge — the gate only withholds
+        cross-class method magnets.
+        """
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        (tmp_path / "compute.go").write_text(
+            "package main\n"
+            "func Compute() int { return 1 }\n"
+        )
+        (tmp_path / "runner.go").write_text(
+            "package main\n"
+            "func RunCtrl() {\n"
+            "    Compute()\n"
+            "}\n"
+        )
+
+        result = analyze_go(tmp_path)
+
+        compute = next(s for s in result.symbols if s.name == "Compute")
+        runctrl = next(s for s in result.symbols if s.name == "RunCtrl")
+        call_edges = [
+            e for e in result.edges
+            if e.edge_type == "calls" and e.src == runctrl.id
+        ]
+        bound = [
+            e for e in call_edges if e.is_resolved and e.dst == compute.id
+        ]
+        assert len(bound) == 1, [
+            (e.dst, e.is_resolved) for e in call_edges
+        ]
+
+    def test_bare_unknown_call_leaves_symbol_none(
+        self, tmp_path: Path,
+    ) -> None:
+        """A bare call whose short name resolves to NO symbol leaves the
+        resolver's symbol None — the gate short-circuits (never defers) and
+        no resolved edge is minted (exercises the ``_sym is not None`` guard).
+        """
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        (tmp_path / "main.go").write_text(
+            "package main\n"
+            "func Driver() {\n"
+            "    TotallyUnknownXYZ()\n"
+            "}\n"
+        )
+
+        result = analyze_go(tmp_path)
+
+        driver = next(s for s in result.symbols if s.name == "Driver")
+        resolved = [
+            e for e in result.edges
+            if e.edge_type == "calls"
+            and e.src == driver.id
+            and e.is_resolved
+        ]
+        assert not resolved, resolved
+
+
+class TestGoDotImportCall:
+    """Coverage for the ``import . "pkg"`` dot-import branch (WI-vovum): a bare
+    call whose name was dot-imported is attributed to the first dot-imported
+    package as an unresolved edge (`meta.binding=="dot_import"`). Pre-existing
+    behavior; unit-covered here so it stays green under the changed-file gate."""
+
+    def test_dot_import_call_attributed_to_package(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        (tmp_path / "main.go").write_text(
+            'package main\n'
+            'import . "strings"\n'
+            'func run() {\n'
+            '    Contains("ab", "a")\n'
+            '}\n'
+        )
+        result = analyze_go(tmp_path)
+        dot = [
+            e for e in result.edges
+            if e.edge_type == "calls"
+            and e.dst.endswith(":Contains:unresolved")
+            and (e.meta or {}).get("binding") == "dot_import"
+        ]
+        assert len(dot) == 1, [e.dst for e in result.edges if "Contains" in e.dst]
+        assert "strings" in dot[0].dst

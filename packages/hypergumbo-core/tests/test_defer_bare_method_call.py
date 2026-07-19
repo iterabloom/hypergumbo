@@ -50,3 +50,20 @@ def test_owner_unknown_method_defers_on_weak() -> None:
 def test_enclosing_none_defers_cross_class_weak() -> None:
     # a top-level def with no owning class calling a bare weak-matched method.
     assert defer_bare_method_call("method", "X.m", "suffix", None) is True
+
+
+def test_custom_separator_parses_owner() -> None:
+    # Rust / C++ methods are named "Owner::method"; with separator="::" the
+    # same-class shortcut fires and cross-class weak matches still defer.
+    assert (
+        defer_bare_method_call("method", "Foo::bar", "suffix", "Foo", separator="::")
+        is False
+    )
+    assert (
+        defer_bare_method_call("method", "Foo::bar", "suffix", "Other", separator="::")
+        is True
+    )
+    # the default "." separator cannot find the owner in a "::" name (owner=None),
+    # so it defers on match_type alone — tolerable because same-class calls are
+    # pre-caught upstream, but this is why "::" callers pass the separator.
+    assert defer_bare_method_call("method", "Foo::bar", "suffix", "Foo") is True

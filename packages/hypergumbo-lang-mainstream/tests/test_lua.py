@@ -477,11 +477,15 @@ end
         # Evidence type should indicate typed resolution
         assert (process_edge.evidence_type == "ast_call" and process_edge.meta.get("call_construct") == "method" and process_edge.meta.get("resolution_quality") == "typed")
 
-    def test_untyped_method_call_remains_low_confidence(self, tmp_path: Path) -> None:
-        """Method call without type info still uses low confidence.
+    def test_untyped_cross_table_method_call_deferred(self, tmp_path: Path) -> None:
+        """INV-fahub: an untyped ``obj:method()`` whose short name only
+        suffix-matches a DIFFERENT table's method (``Handler.send``) is a magnet.
 
-        When the receiver variable has no tracked type assignment, method calls
-        should continue to use the low 0.40x confidence.
+        It is now WITHHELD — deferred to the Site-1 ``inherited_calls`` walker as
+        an unresolved edge — instead of binding a low-confidence edge to the
+        unrelated def. The caller here is a bare top-level function (no owning
+        table), so ``_enclosing_type`` is ``None`` and no ``enclosing_class`` is
+        stamped.
         """
         from hypergumbo_lang_mainstream.lua import analyze_lua
 
@@ -504,10 +508,12 @@ end
             (e for e in call_edges if "send" in e.dst), None
         )
         assert send_edge is not None, "Call edge to send not found"
-        # Without type info, should remain at low confidence (0.40 * resolver)
+        # Magnet withheld: unresolved (deferred), not a bind to Handler.send.
+        assert not send_edge.is_resolved
+        assert "unresolved" in send_edge.dst
         assert send_edge.confidence <= 0.50
-        # Evidence type should remain as untyped function_call
-        assert (send_edge.evidence_type == "ast_call" and send_edge.meta.get("call_construct") == "function")
+        # Bare-function caller has no owning table → no enclosing_class stamp.
+        assert (send_edge.meta or {}).get("enclosing_class") is None
 
     def test_dot_index_assignment_type_tracking(self, tmp_path: Path) -> None:
         """Track type from dot_index_expression assignment (e.g., ngx.socket.tcp).
@@ -879,3 +885,190 @@ return M
         for s in result.symbols:
             if s.kind not in ("function", "method"):
                 assert s.cyclomatic_complexity is None, (s.kind, s.name)
+
+
+class TestLuaBareMethodMagnetGate:
+    """INV-fahub: a bare / implicit-``self`` / untyped-receiver call whose short
+    name only *suffix*-matches a method of a DIFFERENT Lua table must not bind a
+    ``calls`` edge to that unrelated def (a magnet: dozens of call sites → one
+    arbitrary def). Both name-lookup magnet paths — the untyped ``obj:method()``
+    name-only fallback and the direct ``func()`` lookup — defer such a call to
+    the Site-1 ``inherited_calls`` walker via an ``enclosing_class`` hint, while
+    same-table implicit calls and free functions still bind directly.
+    """
+
+    def test_bare_direct_cross_table_method_deferred(self, tmp_path: Path) -> None:
+        """Path 2 (direct ``func()``): a bare ``delete()`` inside
+        ``Controller:boot`` whose short name suffix-matches a DIFFERENT table's
+        method (``Store.delete``) must NOT bind to the unrelated def — it defers
+        to the Site-1 walker with an ``enclosing_class`` hint."""
+        from hypergumbo_lang_mainstream.lua import analyze_lua
+
+        make_lua_file(tmp_path, "store.lua", """
+local Store = {}
+
+function Store:delete()
+    return true
+end
+""")
+        make_lua_file(tmp_path, "controller.lua", """
+local Controller = {}
+
+function Controller:boot()
+    delete()
+end
+""")
+        result = analyze_lua(tmp_path)
+        store_delete = next(
+            s for s in result.symbols
+            if s.name == "Store.delete" and s.kind == "method"
+        )
+        misbinds = [
+            e for e in result.edges
+            if e.edge_type == "calls" and e.dst == store_delete.id
+            and "boot" in e.src and e.is_resolved
+        ]
+        assert misbinds == [], f"bare delete() misbound: {misbinds}"
+        deferred = [
+            e for e in result.edges
+            if e.edge_type == "calls" and "boot" in e.src
+            and e.dst.endswith(":delete:unresolved")
+        ]
+        assert len(deferred) == 1, [e.dst for e in result.edges if "boot" in e.src]
+        assert (deferred[0].meta or {}).get("enclosing_class") == "Controller"
+
+    def test_untyped_method_call_cross_table_deferred(self, tmp_path: Path) -> None:
+        """Path 1 (``obj:method()`` name-only fallback): an untyped
+        ``x:delete()`` inside ``Controller:remove`` that suffix-matches a
+        DIFFERENT table's ``Store.delete`` defers with an ``enclosing_class``
+        hint rather than binding the magnet."""
+        from hypergumbo_lang_mainstream.lua import analyze_lua
+
+        make_lua_file(tmp_path, "store.lua", """
+local Store = {}
+
+function Store:delete()
+    return true
+end
+""")
+        make_lua_file(tmp_path, "controller.lua", """
+local Controller = {}
+
+function Controller:remove(x)
+    x:delete()
+end
+""")
+        result = analyze_lua(tmp_path)
+        store_delete = next(
+            s for s in result.symbols
+            if s.name == "Store.delete" and s.kind == "method"
+        )
+        misbinds = [
+            e for e in result.edges
+            if e.edge_type == "calls" and e.dst == store_delete.id
+            and "remove" in e.src and e.is_resolved
+        ]
+        assert misbinds == [], f"untyped x:delete() misbound: {misbinds}"
+        deferred = [
+            e for e in result.edges
+            if e.edge_type == "calls" and "remove" in e.src
+            and e.dst.endswith(":delete:unresolved")
+        ]
+        assert len(deferred) == 1, [e.dst for e in result.edges if "remove" in e.src]
+        assert (deferred[0].meta or {}).get("enclosing_class") == "Controller"
+
+    def test_bare_direct_same_table_method_still_binds(self, tmp_path: Path) -> None:
+        """Recall guard (path 2): a bare ``helper()`` inside ``Controller:boot``
+        that suffix-matches a method of its OWN table (``Controller.helper``)
+        still resolves — the gate only withholds CROSS-table magnets."""
+        from hypergumbo_lang_mainstream.lua import analyze_lua
+
+        make_lua_file(tmp_path, "controller.lua", """
+local Controller = {}
+
+function Controller:helper()
+    return 1
+end
+
+function Controller:boot()
+    helper()
+end
+""")
+        result = analyze_lua(tmp_path)
+        helper = next(
+            s for s in result.symbols
+            if s.name == "Controller.helper" and s.kind == "method"
+        )
+        resolved = [
+            e for e in result.edges
+            if e.edge_type == "calls" and e.dst == helper.id
+            and "boot" in e.src and e.is_resolved
+        ]
+        assert len(resolved) == 1, [
+            (e.dst, e.is_resolved) for e in result.edges if "boot" in e.src
+        ]
+
+    def test_untyped_self_method_same_table_still_binds(self, tmp_path: Path) -> None:
+        """Recall guard (path 1): an untyped ``self:helper()`` inside
+        ``Controller:boot`` resolves to its OWN table's ``Controller.helper``
+        (owner == enclosing table) — the name-only fallback binds, not defers."""
+        from hypergumbo_lang_mainstream.lua import analyze_lua
+
+        make_lua_file(tmp_path, "controller.lua", """
+local Controller = {}
+
+function Controller:helper()
+    return 1
+end
+
+function Controller:boot()
+    self:helper()
+end
+""")
+        result = analyze_lua(tmp_path)
+        helper = next(
+            s for s in result.symbols
+            if s.name == "Controller.helper" and s.kind == "method"
+        )
+        resolved = [
+            e for e in result.edges
+            if e.edge_type == "calls" and e.dst == helper.id
+            and "boot" in e.src and e.is_resolved
+        ]
+        assert len(resolved) == 1, [
+            (e.dst, e.is_resolved) for e in result.edges if "boot" in e.src
+        ]
+        # Path-1 (name-only) bind, not typed resolution.
+        assert resolved[0].meta.get("call_construct") == "function"
+
+    def test_bare_free_function_from_method_still_binds(self, tmp_path: Path) -> None:
+        """Recall guard: a bare ``greet()`` inside ``Controller:boot`` binds to a
+        free FUNCTION (kind ``function``, not ``method``) even though the caller
+        has an enclosing table — the gate keys on candidate kind, so callable
+        free functions are never withheld."""
+        from hypergumbo_lang_mainstream.lua import analyze_lua
+
+        make_lua_file(tmp_path, "main.lua", """
+local Controller = {}
+
+function greet()
+    return "hi"
+end
+
+function Controller:boot()
+    greet()
+end
+""")
+        result = analyze_lua(tmp_path)
+        greet = next(
+            s for s in result.symbols
+            if s.name == "greet" and s.kind == "function"
+        )
+        resolved = [
+            e for e in result.edges
+            if e.edge_type == "calls" and e.dst == greet.id
+            and "boot" in e.src and e.is_resolved
+        ]
+        assert len(resolved) == 1, [
+            (e.dst, e.is_resolved) for e in result.edges if "boot" in e.src
+        ]

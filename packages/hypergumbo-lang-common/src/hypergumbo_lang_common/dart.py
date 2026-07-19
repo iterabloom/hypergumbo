@@ -63,17 +63,19 @@ from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
+from hypergumbo_core.ir import Edge, ExternalRef, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
     TreeSitterAnalyzer,
+    defer_bare_method_call,
     find_child_by_type,
     iter_tree,
     make_file_id,
     make_file_stable_id,
     make_symbol_id,
     make_typed_stable_id,
+    make_unresolved_edge,
     make_variable_stable_id,
     node_text,
     visibility_from_modifiers,
@@ -899,19 +901,45 @@ def _extract_edges_from_file(
                         lookup_result = resolver.lookup(first_ident, path_hint=path_hint)
                         if lookup_result.found and lookup_result.symbol:
                             callee = lookup_result.symbol
-                            confidence = 0.85 * lookup_result.confidence
-                            edge = Edge.create(
-                                src=caller.id,
-                                dst=callee.id,
-                                edge_type="calls",
-                                line=node.start_point[0] + 1,
-                                origin=PASS_ID,
-                                origin_run_id=run_id,
-                                evidence_type="ast_call",
-                                confidence=confidence,
-                                meta={"call_construct": "function"},
-                            )
-                            edges.append(edge)
+                            # INV-fahub: a bare call resolving only to a DIFFERENT
+                            # class's method on weak short-name evidence is a magnet
+                            # (dozens of call sites -> one arbitrary def). Defer it to
+                            # the inherited_calls Site-1 walker via an unresolved edge
+                            # that carries the call site's enclosing class; free
+                            # functions and same-class implicit-``this`` calls bind.
+                            enclosing_type = _find_enclosing_class(node, source)
+                            if defer_bare_method_call(
+                                callee.kind, callee.name,
+                                lookup_result.match_type, enclosing_type,
+                            ):
+                                edges.append(make_unresolved_edge(
+                                    "dart", caller.id, first_ident,
+                                    node.start_point[0] + 1, PASS_ID, run_id,
+                                    module_hint=path_hint or "external",
+                                    dst_ref=(
+                                        ExternalRef(
+                                            lang="dart",
+                                            module_path=path_hint,
+                                            name=first_ident,
+                                        )
+                                        if path_hint else None
+                                    ),
+                                    enclosing_class=enclosing_type,
+                                ))
+                            else:
+                                confidence = 0.85 * lookup_result.confidence
+                                edge = Edge.create(
+                                    src=caller.id,
+                                    dst=callee.id,
+                                    edge_type="calls",
+                                    line=node.start_point[0] + 1,
+                                    origin=PASS_ID,
+                                    origin_run_id=run_id,
+                                    evidence_type="ast_call",
+                                    confidence=confidence,
+                                    meta={"call_construct": "function"},
+                                )
+                                edges.append(edge)
 
         # Method call in selector (obj.method()) - complex AST pattern
         if node.type == "selector":  # pragma: no cover - method call detection
@@ -931,19 +959,43 @@ def _extract_edges_from_file(
                                 lookup_result = resolver.lookup(method_name, path_hint=path_hint)
                                 if lookup_result.found and lookup_result.symbol:
                                     callee = lookup_result.symbol
-                                    confidence = 0.80 * lookup_result.confidence
-                                    edge = Edge.create(
-                                        src=caller.id,
-                                        dst=callee.id,
-                                        edge_type="calls",
-                                        line=node.start_point[0] + 1,
-                                        origin=PASS_ID,
-                                        origin_run_id=run_id,
-                                        evidence_type="ast_call",
-                                        confidence=confidence,
-                                        meta={"call_construct": "method"},
-                                    )
-                                    edges.append(edge)
+                                    # INV-fahub: same magnet gate as the simple-call
+                                    # path — a chained-receiver call whose receiver
+                                    # token was dropped must not confidently bind to
+                                    # an unrelated class's method on suffix evidence.
+                                    enclosing_type = _find_enclosing_class(node, source)
+                                    if defer_bare_method_call(
+                                        callee.kind, callee.name,
+                                        lookup_result.match_type, enclosing_type,
+                                    ):
+                                        edges.append(make_unresolved_edge(
+                                            "dart", caller.id, method_name,
+                                            node.start_point[0] + 1, PASS_ID, run_id,
+                                            module_hint=path_hint or "external",
+                                            dst_ref=(
+                                                ExternalRef(
+                                                    lang="dart",
+                                                    module_path=path_hint,
+                                                    name=method_name,
+                                                )
+                                                if path_hint else None
+                                            ),
+                                            enclosing_class=enclosing_type,
+                                        ))
+                                    else:
+                                        confidence = 0.80 * lookup_result.confidence
+                                        edge = Edge.create(
+                                            src=caller.id,
+                                            dst=callee.id,
+                                            edge_type="calls",
+                                            line=node.start_point[0] + 1,
+                                            origin=PASS_ID,
+                                            origin_run_id=run_id,
+                                            evidence_type="ast_call",
+                                            confidence=confidence,
+                                            meta={"call_construct": "method"},
+                                        )
+                                        edges.append(edge)
 
         # Constructor invocation (ClassName() or new ClassName())
         if node.type in ("new_expression", "const_object_expression"):

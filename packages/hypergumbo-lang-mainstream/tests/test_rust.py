@@ -5918,3 +5918,148 @@ class TestRustCyclomaticComplexity:
         assert branchy.cyclomatic_complexity is not None
         assert branchy.cyclomatic_complexity >= 4
         assert branchy.cyclomatic_complexity > simple.cyclomatic_complexity
+
+
+class TestRustBareMethodMagnetGate:
+    """INV-fahub: a bare identifier call (``foo()``) must NOT bind a
+    high-confidence ``calls`` edge to a DIFFERENT impl's same-named method on
+    weak short-name (suffix) evidence — the cross-language "magnet" misbind
+    (dozens of bare call sites collapsing onto one arbitrary ``Type::foo``).
+
+    The gate (shared ``defer_bare_method_call`` helper, ``separator="::"``)
+    withholds such a match and instead emits an unresolved edge carrying
+    ``meta.enclosing_class`` (the enclosing impl type) so the inherited_calls
+    Site-1 walker can later recover a genuine inherited implicit-``self``
+    call. Free functions and SAME-impl methods still bind directly.
+    """
+
+    @staticmethod
+    def _parse(source_text: bytes):
+        import tree_sitter
+        import tree_sitter_rust
+
+        lang = tree_sitter.Language(tree_sitter_rust.language())
+        parser = tree_sitter.Parser(lang)
+        return parser.parse(source_text)
+
+    @staticmethod
+    def _caller_symbol():
+        from hypergumbo_core.ir import Span, Symbol
+
+        return Symbol(
+            id="rust:w.rs:1-5:Widget::caller:method",
+            name="Widget::caller", kind="method", language="rust",
+            path="w.rs",
+            span=Span(start_line=1, end_line=5, start_col=0, end_col=1),
+            origin="test", origin_run_id="run",
+        )
+
+    def _run(self, source_text: bytes, registry):
+        from hypergumbo_lang_mainstream.rust import (
+            _extract_edges_from_file,
+            is_rust_tree_sitter_available,
+        )
+        from hypergumbo_core.symbol_resolution import NameResolver
+
+        if not is_rust_tree_sitter_available():
+            pytest.skip("tree-sitter-rust not available")
+
+        tree = self._parse(source_text)
+        caller = self._caller_symbol()
+        edges = _extract_edges_from_file(
+            tree, source_text, "w.rs", {"caller": caller}, {},
+            "run", NameResolver(registry), {},
+        )
+        return [e for e in edges if e.edge_type == "calls"]
+
+    def test_cross_impl_method_magnet_deferred(self) -> None:
+        """Bare ``foo()`` in ``impl Widget`` must not misbind to ``Gadget::foo``."""
+        from hypergumbo_core.ir import Span, Symbol
+
+        source_text = (
+            b"impl Widget {\n"
+            b"    fn caller(&self) {\n"
+            b"        foo();\n"
+            b"    }\n"
+            b"}\n"
+        )
+        # `foo` exists ONLY as a method of an unrelated impl, reachable purely
+        # by a weak short-name suffix match ("foo" -> "Gadget::foo").
+        gadget_foo = Symbol(
+            id="rust:g.rs:9-9:Gadget::foo:method",
+            name="Gadget::foo", kind="method", language="rust",
+            path="g.rs",
+            span=Span(start_line=9, end_line=9, start_col=0, end_col=1),
+            origin="test", origin_run_id="run",
+        )
+        calls = self._run(source_text, {"Gadget::foo": gadget_foo})
+
+        misbound = [
+            e for e in calls if e.is_resolved and e.dst == gadget_foo.id
+        ]
+        assert misbound == [], (
+            f"bare foo() misbound to unrelated Gadget::foo (magnet): {misbound}"
+        )
+        deferred = [
+            e for e in calls
+            if not e.is_resolved
+            and (e.meta or {}).get("enclosing_class") == "Widget"
+        ]
+        assert len(deferred) == 1, (
+            "expected exactly one deferred unresolved edge carrying "
+            f"enclosing_class=Widget for Site-1 recovery; got {calls}"
+        )
+
+    def test_same_impl_method_still_binds(self) -> None:
+        """Bare call to a SAME-impl method (implicit self) still resolves."""
+        from hypergumbo_core.ir import Span, Symbol
+
+        source_text = (
+            b"impl Widget {\n"
+            b"    fn caller(&self) {\n"
+            b"        helper();\n"
+            b"    }\n"
+            b"}\n"
+        )
+        widget_helper = Symbol(
+            id="rust:w.rs:9-9:Widget::helper:method",
+            name="Widget::helper", kind="method", language="rust",
+            path="w.rs",
+            span=Span(start_line=9, end_line=9, start_col=0, end_col=1),
+            origin="test", origin_run_id="run",
+        )
+        calls = self._run(source_text, {"Widget::helper": widget_helper})
+
+        resolved = [
+            e for e in calls if e.is_resolved and e.dst == widget_helper.id
+        ]
+        assert len(resolved) == 1, (
+            f"same-impl bare helper() should still bind to Widget::helper; got {calls}"
+        )
+
+    def test_free_function_still_binds(self) -> None:
+        """Bare call to a free function (not a method) still resolves."""
+        from hypergumbo_core.ir import Span, Symbol
+
+        source_text = (
+            b"impl Widget {\n"
+            b"    fn caller(&self) {\n"
+            b"        compute();\n"
+            b"    }\n"
+            b"}\n"
+        )
+        compute = Symbol(
+            id="rust:f.rs:9-9:compute:function",
+            name="compute", kind="function", language="rust",
+            path="f.rs",
+            span=Span(start_line=9, end_line=9, start_col=0, end_col=1),
+            origin="test", origin_run_id="run",
+        )
+        calls = self._run(source_text, {"compute": compute})
+
+        resolved = [
+            e for e in calls if e.is_resolved and e.dst == compute.id
+        ]
+        assert len(resolved) == 1, (
+            f"bare compute() to a free function should still bind; got {calls}"
+        )

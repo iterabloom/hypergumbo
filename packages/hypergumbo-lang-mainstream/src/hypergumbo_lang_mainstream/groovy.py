@@ -48,6 +48,7 @@ from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
     TreeSitterAnalyzer,
+    defer_bare_method_call,
     find_child_by_type,
     iter_tree,
     make_file_id,
@@ -795,10 +796,38 @@ class GroovyAnalyzer(TreeSitterAnalyzer):
                             # Check global symbols via resolver
                             else:
                                 lookup_result = resolver.lookup(callee_name, path_hint=path_hint, caller_path=_caller_path)
-                                if lookup_result.found and lookup_result.symbol is not None:
+                                # INV-fahub: a BARE call (``receiver is None`` —
+                                # implicit-``this`` or a chained receiver whose
+                                # token the grammar dropped) that resolves ONLY
+                                # to a DIFFERENT class's method on weak short-name
+                                # SUFFIX evidence is the cross-class magnet
+                                # misbind (dozens of call sites → one arbitrary
+                                # def). Withhold it (INV-nogof withhold-not-pick-
+                                # first) and stamp the enclosing class so the
+                                # inherited_calls Site-1 walker can recover a
+                                # genuine *inherited* implicit-``this`` call; free
+                                # functions/objects and same-class methods still
+                                # bind. An explicit-receiver call keeps its
+                                # existing binding (it is not implicit-``this``,
+                                # so Site-1 enclosing-class recovery would be
+                                # wrong for it) — gate the bare subset only.
+                                _enclosing_type = (
+                                    _get_enclosing_class(node, source)
+                                    if receiver is None else None
+                                )
+                                _sym = lookup_result.symbol
+                                _defer = (
+                                    receiver is None
+                                    and _sym is not None
+                                    and defer_bare_method_call(
+                                        _sym.kind, _sym.name,
+                                        lookup_result.match_type, _enclosing_type,
+                                    )
+                                )
+                                if lookup_result.found and _sym is not None and not _defer:
                                     edges.append(Edge.create(
                                         src=current_function.id,
-                                        dst=lookup_result.symbol.id,
+                                        dst=_sym.id,
                                         edge_type="calls",
                                         line=node.start_point[0] + 1,
                                         evidence_type="ast_call",
@@ -816,6 +845,7 @@ class GroovyAnalyzer(TreeSitterAnalyzer):
                                             ExternalRef(lang="groovy", module_path=path_hint, name=callee_name)
                                             if path_hint else None
                                         ),
+                                        enclosing_class=_enclosing_type,
                                     ))
 
         return edges

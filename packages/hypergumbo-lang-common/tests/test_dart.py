@@ -447,6 +447,125 @@ void main() {
         assert len(helper_calls) >= 1
 
 
+class TestDartBareMethodMagnetGate:
+    """INV-fahub: a bare call must not misbind to an unrelated class's method.
+
+    A bare / implicit-``this`` call resolves via the shared resolver's weak
+    short-name SUFFIX match. Without a gate, that match confidently binds a
+    ``calls`` edge to an arbitrary same-named method in an UNRELATED class (a
+    magnet: dozens of call sites -> one def). The gate defers such a match to an
+    unresolved edge carrying ``enclosing_class`` (so the inherited_calls Site-1
+    walker can later recover a genuine inherited call), while still binding
+    free functions and same-class implicit-``this`` calls directly.
+    """
+
+    def test_bare_cross_class_method_call_defers_not_misbind(
+        self, tmp_path: Path
+    ) -> None:
+        """Bare ``persist()`` in one class must not bind to another class's method."""
+        from hypergumbo_lang_common.dart import analyze_dart
+
+        make_dart_file(tmp_path, "main.dart", """
+class Repository {
+  void persist() {
+    print('persisting');
+  }
+}
+
+class JobRunner {
+  void execute() {
+    persist();
+  }
+}
+""")
+
+        result = analyze_dart(tmp_path)
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+
+        # Must NOT confidently bind to the unrelated Repository.persist method.
+        misbinds = [
+            e
+            for e in call_edges
+            if e.is_resolved and e.dst.endswith("Repository.persist:method")
+        ]
+        assert misbinds == [], (
+            "bare persist() magnet-bound to unrelated Repository.persist"
+        )
+
+        # Instead: an unresolved edge whose meta.enclosing_class names the call
+        # site's class, so the inherited_calls Site-1 walker can recover it.
+        deferred = [
+            e
+            for e in call_edges
+            if not e.is_resolved
+            and "persist" in e.dst
+            and (e.meta or {}).get("enclosing_class") == "JobRunner"
+        ]
+        assert len(deferred) == 1, (
+            f"expected one deferred unresolved persist() edge, got {deferred}"
+        )
+
+    def test_bare_same_class_method_call_still_resolves(
+        self, tmp_path: Path
+    ) -> None:
+        """Bare call to a SAME-class method (implicit ``this``) still binds."""
+        from hypergumbo_lang_common.dart import analyze_dart
+
+        make_dart_file(tmp_path, "main.dart", """
+class Service {
+  void helper() {
+    print('helping');
+  }
+
+  void run() {
+    helper();
+  }
+}
+""")
+
+        result = analyze_dart(tmp_path)
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+
+        binds = [
+            e
+            for e in call_edges
+            if e.is_resolved and e.dst.endswith("Service.helper:method")
+        ]
+        assert len(binds) == 1, (
+            f"same-class helper() should resolve to Service.helper, got {binds}"
+        )
+
+    def test_bare_free_function_call_still_resolves(
+        self, tmp_path: Path
+    ) -> None:
+        """Bare call to a free (top-level) function still binds (kind != method)."""
+        from hypergumbo_lang_common.dart import analyze_dart
+
+        make_dart_file(tmp_path, "main.dart", """
+void greet() {
+  print('hi');
+}
+
+class Widget {
+  void build() {
+    greet();
+  }
+}
+""")
+
+        result = analyze_dart(tmp_path)
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+
+        binds = [
+            e
+            for e in call_edges
+            if e.is_resolved and e.dst.endswith("greet:function")
+        ]
+        assert len(binds) == 1, (
+            f"free function greet() should still resolve, got {binds}"
+        )
+
+
 class TestDartEdgeCases:
     """Edge case tests for Dart analyzer."""
 

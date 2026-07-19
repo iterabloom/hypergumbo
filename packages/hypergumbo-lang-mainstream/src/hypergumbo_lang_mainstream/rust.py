@@ -54,6 +54,7 @@ from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
     TreeSitterAnalyzer,
+    defer_bare_method_call,
     emit_module_attribute_refs,
     find_child_by_type,
     iter_tree,
@@ -2156,6 +2157,15 @@ def _extract_edges_from_file(
                                 # full "Type::new" wasn't found).  Both are
                                 # method-like calls that should not resolve to
                                 # arbitrary same-name symbols.
+                                # INV-fahub bare->method magnet gate: track
+                                # whether this candidate came from the bare
+                                # (non-method, non-scoped) ``resolver.lookup``
+                                # path, plus the enclosing impl type, so a weak
+                                # short-name hit on a DIFFERENT impl's method
+                                # can be deferred to the inherited_calls Site-1
+                                # walker instead of misbound (see below).
+                                _used_bare_resolver = False
+                                _bare_enclosing_type: str | None = None
                                 use_method_guard = (
                                     is_method_call or full_scoped_name is not None
                                 )
@@ -2184,11 +2194,48 @@ def _extract_edges_from_file(
                                 else:
                                     import_hint = use_aliases.get(callee_name)
                                     lookup_result = resolver.lookup(callee_name, path_hint=import_hint, caller_path=_caller_path)
-                                if lookup_result.found and lookup_result.symbol is not None:
+                                    # The magnet gate applies only to genuinely
+                                    # BARE identifier calls (``foo()``). Method /
+                                    # scoped calls that fall through here purely
+                                    # because no ``method_resolver`` was supplied
+                                    # keep their existing suffix resolution —
+                                    # production guards those via the
+                                    # method_resolver ambiguity threshold.
+                                    _used_bare_resolver = not use_method_guard
+                                    _bare_enclosing_type = _get_impl_target(node, source)
+                                _sym = lookup_result.symbol
+                                # INV-fahub: a BARE call (``foo()``) that resolved
+                                # only to a DIFFERENT impl's method on weak
+                                # short-name (suffix / ambiguous) evidence is a
+                                # magnet — withhold it and defer to the
+                                # inherited_calls Site-1 walker via
+                                # ``enclosing_class`` rather than binding a
+                                # high-confidence false edge. Free functions,
+                                # same-impl methods, and exact / import-scoped
+                                # hits still bind. Same-impl ``self.m()`` /
+                                # ``Type::m()`` calls take the method_resolver
+                                # guard path, and same-file free functions are
+                                # caught by the ``local_symbols`` check above, so
+                                # this gate only fires on the cross-impl magnet.
+                                _defer = (
+                                    _used_bare_resolver
+                                    and _sym is not None
+                                    and defer_bare_method_call(
+                                        _sym.kind, _sym.name,
+                                        lookup_result.match_type,
+                                        _bare_enclosing_type,
+                                        separator="::",
+                                    )
+                                )
+                                if (
+                                    lookup_result.found
+                                    and _sym is not None
+                                    and not _defer
+                                ):
                                     confidence = 0.80 * lookup_result.confidence
                                     edges.append(Edge.create(
                                         src=current_function.id,
-                                        dst=lookup_result.symbol.id,
+                                        dst=_sym.id,
                                         edge_type="calls",
                                         line=node.start_point[0] + 1,
                                         evidence_type="ast_call",
@@ -2254,6 +2301,13 @@ def _extract_edges_from_file(
                                             node.start_point[0] + 1, PASS_ID, run_id,
                                             module_hint=module_hint,
                                             dst_ref=ext_ref,
+                                            # INV-fahub: carry the enclosing impl
+                                            # type on the deferred magnet so the
+                                            # Site-1 inherited_calls walker can
+                                            # recover a genuine inherited call.
+                                            enclosing_class=(
+                                                _bare_enclosing_type if _defer else None
+                                            ),
                                         ))
 
         # Detect calls inside macro bodies (tokio::select!, assert!, etc.).

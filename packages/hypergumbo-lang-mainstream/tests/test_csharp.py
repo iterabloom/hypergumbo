@@ -2508,3 +2508,190 @@ class TestStampShapeIds:
         )
         _stamp_shape_ids(object(), analysis)
         assert existing.shape_id == "sha256:preexisting"
+
+
+class TestCSharpBareMethodMagnetGate:
+    """INV-fahub: a BARE call must not confidently bind to an unrelated
+    class's same-named method via a weak short-name suffix match.
+
+    The fallback simple-name resolver path (``resolver.lookup(callee_name)``)
+    is the magnet: dozens of bare call sites collapse onto one arbitrary
+    ``Owner.method`` def. The gate defers such a cross-class suffix match to
+    the inherited_calls Site-1 walker by emitting an unresolved edge that
+    carries ``meta.enclosing_class`` — while still binding implicit-``this``
+    (same enclosing class, incl. cross-file ``partial`` halves) and non-method
+    targets directly.
+    """
+
+    def test_bare_cross_class_method_is_withheld_not_bound(
+        self, tmp_path: Path
+    ) -> None:
+        """A bare ``ComputeMagnet()`` in Alpha must NOT resolve to the
+        unrelated Bravo.ComputeMagnet (only reachable by a weak suffix match).
+        Instead an unresolved edge stamped with enclosing_class=Alpha is
+        emitted for the Site-1 walker to (maybe) recover later."""
+        (tmp_path / "Alpha.cs").write_text("""
+public class Alpha {
+    public void Run() {
+        ComputeMagnet();
+    }
+}
+""")
+        (tmp_path / "Bravo.cs").write_text("""
+public class Bravo {
+    public void ComputeMagnet() { }
+}
+""")
+
+        result = analyze_csharp(tmp_path)
+
+        run_method = next(
+            (s for s in result.symbols if s.name == "Alpha.Run"), None
+        )
+        bravo_method = next(
+            (s for s in result.symbols if s.name == "Bravo.ComputeMagnet"),
+            None,
+        )
+        assert run_method is not None
+        assert bravo_method is not None
+
+        # No resolved calls edge may bind Alpha.Run -> Bravo.ComputeMagnet.
+        misbind = next(
+            (
+                e
+                for e in result.edges
+                if e.src == run_method.id
+                and e.dst == bravo_method.id
+                and e.edge_type == "calls"
+            ),
+            None,
+        )
+        assert misbind is None, (
+            "Bare cross-class call must not bind to the magnet method; "
+            f"got {misbind}"
+        )
+
+        # Instead, an unresolved calls edge carrying enclosing_class=Alpha.
+        deferred = next(
+            (
+                e
+                for e in result.edges
+                if e.src == run_method.id
+                and e.edge_type == "calls"
+                and e.is_resolved is False
+                and "ComputeMagnet" in e.dst
+            ),
+            None,
+        )
+        assert deferred is not None, (
+            "Expected an unresolved (deferred) edge for the bare call. "
+            f"Edges from Run: {[e for e in result.edges if e.src == run_method.id]}"
+        )
+        assert deferred.meta is not None
+        assert deferred.meta.get("enclosing_class") == "Alpha"
+
+    def test_bare_same_class_method_still_resolves_via_partial(
+        self, tmp_path: Path
+    ) -> None:
+        """A bare implicit-``this`` call to a same-class method defined in the
+        OTHER half of a ``partial class`` still binds resolved through the
+        resolver path (owner == enclosing_type => defer returns False)."""
+        (tmp_path / "WidgetA.cs").write_text("""
+public partial class Widget {
+    public void Run() {
+        ConfigureThing();
+    }
+}
+""")
+        (tmp_path / "WidgetB.cs").write_text("""
+public partial class Widget {
+    public void ConfigureThing() { }
+}
+""")
+
+        result = analyze_csharp(tmp_path)
+
+        run_method = next(
+            (s for s in result.symbols if s.name == "Widget.Run"), None
+        )
+        cfg_method = next(
+            (s for s in result.symbols if s.name == "Widget.ConfigureThing"),
+            None,
+        )
+        assert run_method is not None
+        assert cfg_method is not None
+
+        call_edge = next(
+            (
+                e
+                for e in result.edges
+                if e.src == run_method.id
+                and e.dst == cfg_method.id
+                and e.edge_type == "calls"
+            ),
+            None,
+        )
+        assert call_edge is not None, (
+            "Same-class bare call (partial class) must still resolve. "
+            f"Edges from Run: {[e for e in result.edges if e.src == run_method.id]}"
+        )
+        assert call_edge.is_resolved is True
+
+    def test_deferred_bare_call_carries_import_hint_ref(
+        self, tmp_path: Path
+    ) -> None:
+        """A withheld bare magnet whose short name matches a ``using`` alias
+        carries that alias as the unresolved edge's structured module ref —
+        exercising the ``import_hint`` -> ``ExternalRef`` branch of the gate."""
+        (tmp_path / "Alpha.cs").write_text("""
+using Beta.ComputeMagnet;
+
+public class Alpha {
+    public void Run() {
+        ComputeMagnet();
+    }
+}
+""")
+        (tmp_path / "Bravo.cs").write_text("""
+public class Bravo {
+    public void ComputeMagnet() { }
+}
+""")
+
+        result = analyze_csharp(tmp_path)
+
+        run_method = next(
+            (s for s in result.symbols if s.name == "Alpha.Run"), None
+        )
+        bravo_method = next(
+            (s for s in result.symbols if s.name == "Bravo.ComputeMagnet"),
+            None,
+        )
+        assert run_method is not None
+        assert bravo_method is not None
+
+        # Still withheld (not bound to the unrelated Bravo.ComputeMagnet).
+        assert not any(
+            e.src == run_method.id
+            and e.dst == bravo_method.id
+            and e.edge_type == "calls"
+            for e in result.edges
+        )
+
+        deferred = next(
+            (
+                e
+                for e in result.edges
+                if e.src == run_method.id
+                and e.edge_type == "calls"
+                and e.is_resolved is False
+                and "ComputeMagnet" in e.dst
+            ),
+            None,
+        )
+        assert deferred is not None
+        assert deferred.meta is not None
+        assert deferred.meta.get("enclosing_class") == "Alpha"
+        # import_hint -> structured ExternalRef with the using-alias path.
+        assert deferred.dst_ref is not None
+        assert deferred.dst_ref.module_path == "Beta.ComputeMagnet"

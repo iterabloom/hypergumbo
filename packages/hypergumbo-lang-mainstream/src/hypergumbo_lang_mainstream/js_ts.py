@@ -80,7 +80,9 @@ from hypergumbo_core.symbol_resolution import NameResolver, ListNameResolver
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     TreeSitterAnalyzer,
+    defer_bare_method_call,
     emit_module_attribute_refs,
+    make_unresolved_edge,
     populate_docstrings_from_tree,
     find_child_by_field,
     iter_tree,
@@ -3006,6 +3008,22 @@ def _get_jsts_class_ancestors(
     return list(reversed(chain))
 
 
+def _jsts_enclosing_class(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
+    """INV-fahub: the innermost enclosing class name of a call site, or None.
+
+    Used by the bare-/untyped-receiver -> method magnet gate
+    (``defer_bare_method_call``) to decide whether a weak short-name resolver
+    hit is an implicit-``this`` call to the call site's OWN class (bind) or a
+    cross-class magnet (withhold + stamp ``enclosing_class`` for Site-1).
+    ``_get_jsts_class_ancestors`` returns outermost -> innermost, so the
+    innermost enclosing class (the implicit-``this`` owner) is the last entry —
+    the same short name a ``method`` Symbol carries as its ``Owner.method``
+    prefix (``full_name = f"{_get_class_context(...)}.{name}"``).
+    """
+    ancestors = _get_jsts_class_ancestors(node, source)
+    return ancestors[-1] if ancestors else None
+
+
 def _make_jsts_qualified_name(
     ancestors: list[str], name: str, lang: str
 ) -> str:
@@ -4701,6 +4719,14 @@ def _extract_edges(
                             )
                             if callee is not None:
                                 edge_confidence = 0.85  # same-package heuristic
+                        # INV-fahub: a bare ``foo()`` that resolves only via a
+                        # weak short-name SUFFIX to a DIFFERENT class's method is
+                        # the magnet (dozens of call sites -> one arbitrary
+                        # ``Beta.persist``). Withhold that bind and stamp the
+                        # enclosing class so the inherited_calls Site-1 walker can
+                        # recover a genuine inherited implicit-``this`` call; free
+                        # functions, same-class methods, and exact matches bind.
+                        magnet_deferred = False
                         if callee is None:
                             lookup_result = resolver.lookup(func_name, caller_path=_caller_path)
                             if lookup_result.found and lookup_result.symbol is not None:
@@ -4711,8 +4737,22 @@ def _extract_edges(
                                 if not _is_cross_package(
                                     file_path, lookup_result.symbol.path,
                                 ):
-                                    callee = lookup_result.symbol
-                                    edge_confidence = 0.85 * lookup_result.confidence
+                                    _sym = lookup_result.symbol
+                                    _enclosing_type = _jsts_enclosing_class(node, source)
+                                    if defer_bare_method_call(
+                                        _sym.kind, _sym.name,
+                                        lookup_result.match_type, _enclosing_type,
+                                    ):
+                                        edges.append(make_unresolved_edge(
+                                            lang, current_function.id, func_name,
+                                            node.start_point[0] + 1 + line_offset,
+                                            PASS_ID, run.execution_id,
+                                            enclosing_class=_enclosing_type,
+                                        ))
+                                        magnet_deferred = True
+                                    else:
+                                        callee = _sym
+                                        edge_confidence = 0.85 * lookup_result.confidence
                         if callee is not None:
                             edge = Edge.create(
                                 src=current_function.id,
@@ -4725,6 +4765,11 @@ def _extract_edges(
                                 confidence=edge_confidence,
                             )
                             edges.append(edge)
+                        elif magnet_deferred:
+                            # Deferred to Site-1 above (unresolved edge already
+                            # emitted with the enclosing_class hint); do not also
+                            # emit a named-import / known-global fallback edge.
+                            pass
                         elif (named_imports or {}).get(func_name):
                             # WI-banaf: when a named-imported function is
                             # called but doesn't resolve to an intra-repo
@@ -5004,17 +5049,37 @@ def _extract_edges(
                                 # Cross-package guard: low-confidence method
                                 # inference should not cross npm packages.
                                 if not _is_cross_package(file_path, lookup_result.symbol.path):
-                                    edge = Edge.create(
-                                        src=current_function.id,
-                                        dst=lookup_result.symbol.id,
-                                        edge_type="calls",
-                                        line=node.start_point[0] + 1 + line_offset,
-                                        origin=PASS_ID,
-                                        origin_run_id=run.execution_id,
-                                        evidence_type="ast_method_inferred",
-                                        confidence=0.60 * lookup_result.confidence,
-                                    )
-                                    edges.append(edge)
+                                    _sym = lookup_result.symbol
+                                    _enclosing_type = _jsts_enclosing_class(node, source)
+                                    # INV-fahub: the untyped ``obj.method()``
+                                    # fanout — an AMBIGUOUS (2-way) short-name
+                                    # match to an UNRELATED class's method is the
+                                    # magnet. Withhold it and stamp the enclosing
+                                    # class for Site-1 recovery; a single-candidate
+                                    # (``exact``) match and a same-class method
+                                    # still bind.
+                                    if defer_bare_method_call(
+                                        _sym.kind, _sym.name,
+                                        lookup_result.match_type, _enclosing_type,
+                                    ):
+                                        edges.append(make_unresolved_edge(
+                                            lang, current_function.id, method_name,
+                                            node.start_point[0] + 1 + line_offset,
+                                            PASS_ID, run.execution_id,
+                                            enclosing_class=_enclosing_type,
+                                        ))
+                                    else:
+                                        edge = Edge.create(
+                                            src=current_function.id,
+                                            dst=_sym.id,
+                                            edge_type="calls",
+                                            line=node.start_point[0] + 1 + line_offset,
+                                            origin=PASS_ID,
+                                            origin_run_id=run.execution_id,
+                                            evidence_type="ast_method_inferred",
+                                            confidence=0.60 * lookup_result.confidence,
+                                        )
+                                        edges.append(edge)
 
             # Callback argument references: func(handler) or app.get("/path", handler)
             # When a bare identifier in the arguments resolves to a function,

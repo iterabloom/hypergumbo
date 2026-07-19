@@ -10886,3 +10886,155 @@ class TestJsTsUnresolvedExternalInheritance:
         assert not edge.is_resolved
         assert edge.dst.split(":")[1] == "external", edge.dst
         assert edge.dst_ref is None
+
+
+class TestJsTsBareMethodMagnetGate:
+    """INV-fahub: a bare / untyped-receiver call must not confidently bind to
+    an UNRELATED class's same-named method on weak short-name evidence.
+
+    Two magnet paths are gated via ``defer_bare_method_call``:
+      * a bare function call (``persist()``) resolving through the suffix
+        ``resolver``, and
+      * the untyped ``obj.method()`` fallback (``method_resolver``) fanout, the
+        "every class with the same method name gets linked" case (conf 0.60).
+
+    A weak cross-class match is WITHHELD and stamped with ``enclosing_class`` so
+    the inherited_calls Site-1 walker can later recover a genuine *inherited*
+    implicit-``this`` call; a same-enclosing-class method (implicit ``this``) and
+    a single-candidate (strong, ``exact``) match still bind directly.
+    """
+
+    @pytest.fixture(autouse=True)
+    def skip_if_no_tree_sitter(self) -> None:
+        pytest.importorskip("tree_sitter")
+        pytest.importorskip("tree_sitter_typescript")
+
+    def test_bare_function_call_cross_class_method_deferred(
+        self, tmp_path: Path
+    ) -> None:
+        """Path 1 (suffix ``resolver``): a bare ``persist()`` inside ``Alpha``
+        that suffix-matches an UNRELATED ``Beta.persist`` must NOT bind a
+        resolved edge — it defers to Site-1 with ``enclosing_class == "Alpha"``.
+        """
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "store.ts").write_text(
+            "class Beta {\n  persist() { return 1; }\n}\n"
+        )
+        (tmp_path / "ctrl.ts").write_text(
+            "class Alpha {\n  boot() {\n    persist();\n  }\n}\n"
+        )
+        result = analyze_javascript(tmp_path)
+        beta_persist = next(
+            s for s in result.symbols
+            if s.name == "Beta.persist" and s.kind == "method"
+        )
+        misbinds = [
+            e for e in result.edges
+            if e.edge_type == "calls" and e.dst == beta_persist.id
+            and "boot" in e.src and e.is_resolved
+        ]
+        assert misbinds == [], f"bare persist() misbound: {misbinds}"
+        deferred = [
+            e for e in result.edges
+            if e.edge_type == "calls" and "boot" in e.src
+            and e.dst.endswith(":persist:unresolved")
+        ]
+        assert len(deferred) == 1, [
+            e.dst for e in result.edges if "boot" in e.src
+        ]
+        assert (deferred[0].meta or {}).get("enclosing_class") == "Alpha"
+
+    def test_bare_function_call_same_class_method_still_resolves(
+        self, tmp_path: Path
+    ) -> None:
+        """Path 1 recall guard: a bare call to a method of the SAME enclosing
+        class (implicit ``this``) still binds directly (owner == enclosing)."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "calc.ts").write_text(
+            "class Calc {\n"
+            "  total() { return helper(); }\n"
+            "  helper() { return 41; }\n"
+            "}\n"
+        )
+        result = analyze_javascript(tmp_path)
+        calc_helper = next(
+            s for s in result.symbols
+            if s.name == "Calc.helper" and s.kind == "method"
+        )
+        resolved = [
+            e for e in result.edges
+            if e.edge_type == "calls" and e.dst == calc_helper.id
+            and "total" in e.src and e.is_resolved
+        ]
+        assert len(resolved) == 1, [
+            (e.dst, e.is_resolved) for e in result.edges if "total" in e.src
+        ]
+        assert not any(
+            e.edge_type == "calls" and "total" in e.src
+            and e.dst.endswith(":helper:unresolved")
+            for e in result.edges
+        )
+
+    def test_untyped_receiver_two_class_method_fanout_deferred(
+        self, tmp_path: Path
+    ) -> None:
+        """Path 2 (``method_resolver`` fanout): an untyped ``x.compute()`` with
+        TWO classes defining ``compute`` is an ambiguous cross-class magnet — it
+        must NOT bind a resolved edge but defer with ``enclosing_class``."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "m.ts").write_text(
+            "class Widget {\n  compute() { return 1; }\n}\n"
+            "class Gadget {\n  compute() { return 2; }\n}\n"
+            "class Handler {\n"
+            "  process(x) {\n    x.compute();\n  }\n}\n"
+        )
+        result = analyze_javascript(tmp_path)
+        method_ids = {
+            s.id for s in result.symbols
+            if s.name in ("Widget.compute", "Gadget.compute")
+            and s.kind == "method"
+        }
+        misbinds = [
+            e for e in result.edges
+            if e.edge_type == "calls" and e.dst in method_ids
+            and "process" in e.src and e.is_resolved
+        ]
+        assert misbinds == [], f"untyped x.compute() fanout misbound: {misbinds}"
+        deferred = [
+            e for e in result.edges
+            if e.edge_type == "calls" and "process" in e.src
+            and e.dst.endswith(":compute:unresolved")
+        ]
+        assert len(deferred) == 1, [
+            e.dst for e in result.edges if "process" in e.src
+        ]
+        assert (deferred[0].meta or {}).get("enclosing_class") == "Handler"
+
+    def test_untyped_receiver_single_class_method_still_resolves(
+        self, tmp_path: Path
+    ) -> None:
+        """Path 2 recall guard: a single-candidate (``exact``) method match is
+        strong evidence and still binds, even across classes."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "s.ts").write_text(
+            "class Repo {\n  load() { return 1; }\n}\n"
+            "class Service {\n"
+            "  run(x) {\n    x.load();\n  }\n}\n"
+        )
+        result = analyze_javascript(tmp_path)
+        repo_load = next(
+            s for s in result.symbols
+            if s.name == "Repo.load" and s.kind == "method"
+        )
+        resolved = [
+            e for e in result.edges
+            if e.edge_type == "calls" and e.dst == repo_load.id
+            and "run" in e.src and e.is_resolved
+        ]
+        assert len(resolved) == 1, [
+            (e.dst, e.is_resolved) for e in result.edges if "run" in e.src
+        ]

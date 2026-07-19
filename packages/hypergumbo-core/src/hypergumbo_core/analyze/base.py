@@ -688,6 +688,7 @@ def defer_bare_method_call(
     candidate_name: str,
     match_type: str,
     enclosing_type: Optional[str],
+    separator: str = ".",
 ) -> bool:
     """INV-fahub: should a BARE call that resolved to ``candidate`` be WITHHELD?
 
@@ -709,11 +710,17 @@ def defer_bare_method_call(
     resolver's ``LookupResult.match_type``; pass ``"suffix"`` for a bare same-file
     ``local_symbols`` hit (an exact *short-name* match, but still weak evidence for
     a cross-class target). Owner class is parsed from ``candidate_name``'s
-    ``"Owner.method"`` shape; a name with no ``"."`` (a free def) never defers.
+    ``"Owner<sep>method"`` shape; ``separator`` defaults to ``"."`` (Scala / Swift /
+    Go / most) but callers whose method names use another separator pass it — e.g.
+    Rust / C++ (``"Owner::method"``) pass ``separator="::"``. A name with no
+    separator (a free def) never defers.
     """
     if candidate_kind != "method":
         return False
-    owner = candidate_name.rsplit(".", 1)[0] if "." in candidate_name else None
+    owner = (
+        candidate_name.rsplit(separator, 1)[0]
+        if separator in candidate_name else None
+    )
     if owner is not None and owner == enclosing_type:
         return False  # same-class implicit ``this``/``self`` — bind directly
     # Cross-class (or owner-unknown) method: only a strong exact / import-scoped
