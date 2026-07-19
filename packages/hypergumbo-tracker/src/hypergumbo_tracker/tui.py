@@ -86,6 +86,7 @@ from textual.widgets import (
     Tree,
 )
 from textual.widgets.option_list import Option
+from textual.widgets.tree import TreeNode
 
 from rich.text import Text as RichText
 
@@ -2802,13 +2803,13 @@ class TrackerApp(App):
             parent = item.parent if item.parent in item_ids else None
             children_map.setdefault(parent, []).append(item)
 
-        def _add_children(parent_node: object, parent_id: str | None) -> None:
+        def _add_children(parent_node: TreeNode, parent_id: str | None) -> None:
             for child in children_map.get(parent_id, []):
                 tier_char = (
                     _TIER_INDICATOR.get(child.tier, "?") if child.tier else "?"
                 )
                 label = f"[{tier_char}] {_item_title_text(child, self._human_read_state)}"
-                node = parent_node.add(label, data=child.id)  # type: ignore[union-attr]
+                node = parent_node.add(label, data=child.id)
                 _add_children(node, child.id)
 
         _add_children(tree.root, None)
