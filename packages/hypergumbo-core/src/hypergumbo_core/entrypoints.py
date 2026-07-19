@@ -1593,7 +1593,11 @@ def detect_entrypoints(
         # ADR-0039 ruling 3: dedup keeps the most PROMINENT entrypoint per route
         # label — a ranking decision, so key on rank_score (== confidence until
         # the adjustments below relocate onto it).
-        eps.sort(key=lambda e: e.rank_score, reverse=True)
+        # rank_score is populated from confidence in __post_init__, so it is
+        # non-None for constructed entrypoints; `or 0.0` guards a
+        # post-construction reset (the dataclass is not frozen) and keeps the
+        # sort key a plain float (None is not orderable).
+        eps.sort(key=lambda e: e.rank_score or 0.0, reverse=True)
         non_route_eps.append(eps[0])
     unique_entrypoints = non_route_eps
 

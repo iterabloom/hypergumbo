@@ -1544,8 +1544,13 @@ def _extract_vapor_usage_contexts(
 
     def process_stmt(
         child: "tree_sitter.Node", bindings: dict[str, Optional[list[str]]],
-    ) -> dict[str, list[str]]:
-        """Process one node, returning bindings visible to LATER siblings."""
+    ) -> dict[str, Optional[list[str]]]:
+        """Process one node, returning bindings visible to LATER siblings.
+
+        A ``None`` value means a builder-capable name was shadowed/invalidated
+        (see the reassignment cases below); the return type mirrors the
+        ``bindings`` param, which already carries that Optional.
+        """
         kind = child.type
         if kind == "property_declaration":
             result = bindings
