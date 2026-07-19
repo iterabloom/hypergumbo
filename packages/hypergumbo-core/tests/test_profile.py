@@ -2936,6 +2936,62 @@ def test_refine_frameworks_prod_import_stays() -> None:
     assert "flask" not in result.dev_frameworks
 
 
+def test_refine_frameworks_populates_framework_evidence() -> None:
+    """A framework with a prod importer records that importer's node id (WI-napuj)."""
+    from hypergumbo_core.profile import refine_frameworks
+
+    profile = _make_profile(["flask"])
+    src_id = "python:src/app.py:1-5:handler:function"
+    edges = [_make_edge(src=src_id, dst="python:flask:0-0:module:module")]
+    symbols = [_make_symbol(src_id, "src/app.py")]
+
+    result = refine_frameworks(profile, edges, symbols)
+    assert result.framework_evidence.get("flask") == [src_id]
+
+
+def test_refine_frameworks_framework_without_import_edges_has_no_evidence() -> None:
+    """A manifest framework kept confirmed but with no import edge is absent from
+    framework_evidence — 'evidence where the graph supports it' (WI-napuj)."""
+    from hypergumbo_core.profile import refine_frameworks
+
+    profile = _make_profile(["flask"])
+    result = refine_frameworks(profile, [], [])
+    assert "flask" in result.frameworks  # kept (no import edges in its langs)
+    assert result.framework_evidence == {}
+
+
+def test_refine_frameworks_test_only_import_has_no_evidence() -> None:
+    """A framework imported only in test code (demoted to dev) carries no
+    prod evidence (WI-napuj)."""
+    from hypergumbo_core.profile import refine_frameworks
+
+    profile = _make_profile(["pytest"])
+    src_id = "python:tests/test_app.py:1-5:test_foo:function"
+    edges = [_make_edge(src=src_id, dst="python:pytest:0-0:module:module")]
+    symbols = [_make_symbol(src_id, "tests/test_app.py")]
+
+    result = refine_frameworks(profile, edges, symbols)
+    assert "pytest" not in result.framework_evidence
+
+
+def test_repo_profile_framework_evidence_roundtrip() -> None:
+    """framework_evidence survives to_dict/from_dict when non-empty (WI-napuj)."""
+    from hypergumbo_core.profile import RepoProfile
+
+    ev = {"flask": ["python:src/app.py:1-5:h:function"]}
+    profile = RepoProfile(frameworks=["flask"], framework_evidence=ev)
+    d = profile.to_dict()
+    assert d["framework_evidence"] == ev
+    assert RepoProfile.from_dict(d).framework_evidence == ev
+
+
+def test_repo_profile_to_dict_omits_empty_framework_evidence() -> None:
+    """Empty framework_evidence is omitted (INV-virik honesty pattern, WI-napuj)."""
+    from hypergumbo_core.profile import RepoProfile
+
+    assert "framework_evidence" not in RepoProfile(frameworks=["flask"]).to_dict()
+
+
 def test_refine_frameworks_test_only_import_moves_to_dev() -> None:
     """Framework imported only in test code moves to dev_frameworks."""
     from hypergumbo_core.profile import refine_frameworks

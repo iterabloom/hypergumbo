@@ -773,6 +773,14 @@ class RepoProfile:
     dev_frameworks: list[str] = field(default_factory=list)
     framework_mode: str = "auto"  # none, all, explicit, auto
     requested_frameworks: list[str] = field(default_factory=list)
+    # WI-napuj: provenance for ``frameworks``. Maps each declared framework to
+    # the node ids of the prod (non-test) symbols that import it — the promote
+    # phase's module→importer join, kept instead of discarded, so a consumer can
+    # trace *where* a declared framework is used. Populated by refine_frameworks;
+    # a manifest framework whose modules never appear in an import edge (e.g. a
+    # JS lib on a repo with unavailable JS/TS extraction) is absent here, not
+    # keyed to an empty list — "evidence where the graph supports it".
+    framework_evidence: dict[str, list[str]] = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         result = {
@@ -784,6 +792,12 @@ class RepoProfile:
         # Only include requested_frameworks for explicit mode
         if self.framework_mode == "explicit":
             result["requested_frameworks"] = sorted(self.requested_frameworks)
+        # Omit-when-empty (INV-virik): absence honestly reads as "no framework
+        # has graph-level provenance", not a hollow always-{} that reads "clean".
+        if self.framework_evidence:
+            result["framework_evidence"] = {
+                fw: sorted(nodes) for fw, nodes in self.framework_evidence.items()
+            }
         return result
 
     @classmethod
@@ -799,6 +813,7 @@ class RepoProfile:
             dev_frameworks=d.get("dev_frameworks", []),
             framework_mode=d.get("framework_mode", "auto"),
             requested_frameworks=d.get("requested_frameworks", []),
+            framework_evidence=d.get("framework_evidence", {}),
         )
 
 
@@ -3211,6 +3226,47 @@ def _module_match_kind(imported: str, pattern: str) -> str | None:
     return None
 
 
+def _framework_evidence_nodes(
+    framework: str,
+    module_importer_nodes: dict[str, list[tuple[str, str]]],
+    module_languages: dict[str, set[str]],
+    is_test_fn: Callable[[str], bool],
+) -> list[str]:
+    """Return the node ids of prod (non-test) importers of ``framework`` (WI-napuj).
+
+    This is the provenance surface behind ``profile.frameworks``: the promote
+    phase already joins each framework's import-module patterns to the source
+    symbols that import them (``module_importers``); this keeps that join instead
+    of discarding it, so a consumer can trace *where* a declared framework is
+    used. A module counts as evidence when it matches one of the framework's
+    registered import patterns (exact or prefix, via :func:`_module_match_kind`),
+    its language is one of the framework's languages (the same cross-ecosystem
+    gate the promote phase applies — Python ``http.client`` does not count as
+    Julia ``http`` evidence), and at least one importer is a non-test path.
+
+    Evidence is deliberately broader than the *promotion* gate (no
+    ``require_prefix_arm`` bare-name restriction): promotion decides membership,
+    this reports usage. A framework with no matching prod importer returns ``[]``
+    and is therefore absent from ``framework_evidence`` — the "evidence where the
+    graph supports it" contract (a manifest-only framework such as a JS lib on a
+    repo with unavailable JS/TS extraction has no import edges to point at).
+    """
+    fw_langs = _framework_languages(framework)
+    patterns = _import_modules_for_framework(framework)
+    nodes: set[str] = set()
+    for module_key, importers in module_importer_nodes.items():
+        if fw_langs:
+            mod_langs = module_languages.get(module_key, set())
+            if not (mod_langs & fw_langs):
+                continue
+        if not any(_module_match_kind(module_key, pat) is not None for pat in patterns):
+            continue
+        for node_id, path in importers:
+            if path and not is_test_fn(path):
+                nodes.add(node_id)
+    return sorted(nodes)
+
+
 def refine_frameworks(
     profile: "RepoProfile",
     edges: list,
@@ -3276,6 +3332,10 @@ def refine_frameworks(
     import_edge_langs: set[str] = set()
     # Map: lowercased_module → list of source file paths
     module_importers: dict[str, list[str]] = {}
+    # WI-napuj: same join, carrying the importer NODE id (edge.src) alongside its
+    # path, so refine can persist per-framework provenance (framework_evidence)
+    # without a second pass. The path rides along only for the test-file filter.
+    module_importer_nodes: dict[str, list[tuple[str, str]]] = {}
     # WI-pusad / INV-rojip cohort-2 FP: same import path-string can match
     # framework patterns from different language ecosystems (e.g. Python
     # ``http.client`` would match the Julia ``http`` framework's bare
@@ -3303,6 +3363,7 @@ def refine_frameworks(
 
         module_key = imported_module.lower()
         module_importers.setdefault(module_key, []).append(src_path)
+        module_importer_nodes.setdefault(module_key, []).append((edge.src, src_path))
         module_languages.setdefault(module_key, set()).add(lang)
 
     # === PROMOTE PHASE (WI-palol + WI-pusad / INV-rojip) ===
@@ -3388,12 +3449,24 @@ def refine_frameworks(
         else:
             dev_only.append(fw)
 
+    # WI-napuj: persist the module→importer join as per-framework provenance.
+    # Only the confirmed (production) frameworks get an entry, and only when at
+    # least one prod importer exists — "evidence where the graph supports it".
+    framework_evidence: dict[str, list[str]] = {}
+    for fw in confirmed:
+        nodes = _framework_evidence_nodes(
+            fw, module_importer_nodes, module_languages, is_test_file
+        )
+        if nodes:
+            framework_evidence[fw] = nodes
+
     return RepoProfile(
         languages=profile.languages,
         frameworks=confirmed,
         dev_frameworks=dev_only,
         framework_mode=profile.framework_mode,
         requested_frameworks=profile.requested_frameworks,
+        framework_evidence=framework_evidence,
     )
 
 
