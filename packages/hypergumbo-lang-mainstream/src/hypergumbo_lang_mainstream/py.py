@@ -1682,7 +1682,9 @@ def _compute_stable_id(
     is_function = isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
     kind = "function" if is_function else "class"
 
-    if is_function:
+    if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+        # isinstance (not the is_function bool) so mypy narrows node to the
+        # function types that actually carry .args (ClassDef does not).
         args = node.args
         param_count = len(args.args) + len(args.posonlyargs) + len(args.kwonlyargs)
         has_defaults = len(args.defaults) > 0 or len(args.kw_defaults) > 0
@@ -1808,6 +1810,10 @@ def _compute_line_span(node: ast.AST) -> int:
 
     Returns end_line - start_line + 1.
     """
+    # Callers pass function/class def nodes; ast.stmt carries lineno/end_lineno
+    # (the ast.AST base does not). Narrow without tightening the signature,
+    # which would cascade to the ast.AST-typed call sites.
+    assert isinstance(node, ast.stmt)
     start = node.lineno
     end = getattr(node, "end_lineno", node.lineno)
     return end - start + 1
@@ -2754,13 +2760,17 @@ def _extract_file_analysis(
 
                     # Extract decorators with arguments
                     if item.decorator_list:
-                        method_meta["decorators"] = [
+                        method_decorators = [
                             _extract_decorator_info(dec) for dec in item.decorator_list
                         ]
+                        method_meta["decorators"] = method_decorators
                         # Check if any decorator references a prefixed APIRouter
                         if router_prefixes:
-                            for dec_info in method_meta["decorators"]:
-                                dec_name = dec_info.get("name", "") if isinstance(dec_info, dict) else ""
+                            # iterate the typed local, not the object-typed
+                            # method_meta["decorators"] lookup
+                            for dec_info in method_decorators:
+                                name_val = dec_info.get("name", "")
+                                dec_name = name_val if isinstance(name_val, str) else ""
                                 dot_idx = dec_name.find(".")
                                 if dot_idx > 0:
                                     receiver = dec_name[:dot_idx]
@@ -2862,13 +2872,17 @@ def _extract_file_analysis(
 
                 # Extract decorators with arguments
                 if node.decorator_list:
-                    func_meta["decorators"] = [
+                    func_decorators = [
                         _extract_decorator_info(dec) for dec in node.decorator_list
                     ]
+                    func_meta["decorators"] = func_decorators
                     # Check if any decorator references a prefixed APIRouter
                     if router_prefixes:
-                        for dec_info in func_meta["decorators"]:
-                            dec_name = dec_info.get("name", "") if isinstance(dec_info, dict) else ""
+                        # iterate the typed local, not the object-typed
+                        # func_meta["decorators"] lookup
+                        for dec_info in func_decorators:
+                            name_val = dec_info.get("name", "")
+                            dec_name = name_val if isinstance(name_val, str) else ""
                             dot_idx = dec_name.find(".")
                             if dot_idx > 0:
                                 receiver = dec_name[:dot_idx]
@@ -3350,6 +3364,11 @@ def _extract_edges(
         module_imports: Module imports (import X, import X as Y)
         resolver: Optional SymbolResolver for efficient cross-file lookups
     """
+    # tree comes from ast.parse (mode="exec") → always an ast.Module; the
+    # ast.AST annotation is loose (FileAnalysis.tree is ast.AST). Narrow it here
+    # so the tree.body scans below type-check, without tightening the signature
+    # (which would cascade to the ast.AST-typed call sites).
+    assert isinstance(tree, ast.Module)
     if module_imports is None:  # pragma: no cover
         module_imports = {}
     if nested_by_parent_id is None:  # pragma: no cover

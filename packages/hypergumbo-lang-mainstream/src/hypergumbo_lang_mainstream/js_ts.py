@@ -1121,6 +1121,9 @@ def _detect_jsx_route(
     else:
         return None, None  # pragma: no cover - only called for JSX node types
 
+    # tag_node is non-None on every reachable path above (self-closing → node;
+    # jsx_element → the guarded opening tag); narrow it for the .children scans.
+    assert tag_node is not None
     # Check the tag name is "Route"
     tag_name = None
     for child in tag_node.children:

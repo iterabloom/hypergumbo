@@ -127,6 +127,10 @@ def iter_axis_set_assignments(
                 all_strings = False
                 break
         if all_strings and values:
+            # node reaches here only via the ast.Assign / ast.AnnAssign
+            # branches above (target_name is set only there), so it is a
+            # statement carrying .lineno (the ast.AST base does not).
+            assert isinstance(node, (ast.Assign, ast.AnnAssign))
             yield node.lineno, target_name, frozenset(values)
 
 

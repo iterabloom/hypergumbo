@@ -319,7 +319,9 @@ def _process_enum_member(
     never a wrong-owner phantom).
     """
     enum_decl = node.parent
-    if enum_decl.type != "enum_declaration":
+    # node.parent is Node | None; a None parent (root node) has no owner, which
+    # is the same fails-safe skip as a non-enum_declaration parent.
+    if enum_decl is None or enum_decl.type != "enum_declaration":
         return None  # anonymous_enum_declaration (or other) — no owner, skip
     name_node = find_child_by_type(enum_decl, "identifier")
     if name_node is None:
