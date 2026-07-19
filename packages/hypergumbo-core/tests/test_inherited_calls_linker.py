@@ -586,18 +586,18 @@ class TestEndToEndInheritedCalls:
         assert result.edges == []
 
     def test_no_op_for_unregistered_language(self) -> None:
-        """Languages without an MRO walker are silently skipped. WI-hiziz
-        registered ``python`` (C3 walker), so this test uses ``php`` (still
-        unregistered — the future ``_walk_left_to_right``) to exercise the
-        ``walker is None`` branch."""
-        a = _cls("sym:A", "A", language="php")
-        a_init = _method("sym:A.foo", "A.foo", language="php")
-        b = _cls("sym:B", "B", language="php")
-        caller = _caller(sid="sym:Caller.bar", language="php")
+        """Languages without an MRO walker are silently skipped. The INV-fahub
+        fleet rollout registered php/js/ts/csharp/cpp/objc/go/rust, so this test
+        uses ``haskell`` (a functional language with no class-MRO walker, and
+        none planned) to exercise the ``walker is None`` branch."""
+        a = _cls("sym:A", "A", language="haskell")
+        a_init = _method("sym:A.foo", "A.foo", language="haskell")
+        b = _cls("sym:B", "B", language="haskell")
+        caller = _caller(sid="sym:Caller.bar", language="haskell")
         extends = _edge(b.id, a.id, "extends")
         from hypergumbo_core.analyze.base import make_unresolved_edge
         unresolved = make_unresolved_edge(
-            lang="php", src_id=caller.id, callee_name="foo",
+            lang="haskell", src_id=caller.id, callee_name="foo",
             line=1, pass_id="test", run_id="test",
             enclosing_class="B",
         )
@@ -3397,3 +3397,52 @@ class TestScalaSwiftInheritedCallIntegration:
         assert len(resolved) == 1
         assert resolved[0].dst == base_load.id
         assert resolved[0].evidence_type == "ast_call_inherited_method"
+
+
+class TestFleetSite1Walkers:
+    """INV-fahub fleet walkers (PR-2): each newly-registered fleet language
+    recovers a bare inherited implicit-``this``/``self`` call via Site-1 — the
+    enclosing class's registered MRO walker traversing an ``extends`` edge to a
+    base class's method. Validates the ``_MRO_WALKERS`` registration + Site-1
+    dispatch for go/rust/php/js/ts/csharp/cpp/objc (the walker functions
+    themselves are covered by the ruby/groovy/java/scala/swift tests above;
+    dart/lua/zig are deliberately unregistered — no inheritance model)."""
+
+    def test_each_fleet_language_recovers_inherited_call(self) -> None:
+        from hypergumbo_core.analyze.base import make_unresolved_edge
+
+        langs = [
+            "go", "rust", "php", "javascript", "typescript",
+            "csharp", "cpp", "objc",
+        ]
+        for lang in langs:
+            base = _cls(f"sym:{lang}:Base", "Base", language=lang)
+            base_m = _method(
+                f"sym:{lang}:Base#greet", "Base#greet", language=lang,
+            )
+            derived = _cls(f"sym:{lang}:Derived", "Derived", language=lang)
+            caller = _method(
+                f"sym:{lang}:Derived#run", "Derived#run", language=lang,
+            )
+            edges = [
+                _edge(derived.id, base.id, "extends"),
+                make_unresolved_edge(
+                    lang=lang, src_id=caller.id, callee_name="greet",
+                    line=1, pass_id="t", run_id="t",
+                    enclosing_class="Derived",
+                ),
+            ]
+            ctx = LinkerContext(
+                repo_root=Path("/"),
+                symbols=[base, base_m, derived, caller], edges=edges,
+            )
+            result = link_inherited_calls(ctx)
+            resolved = [
+                e for e in result.edges
+                if e.src == caller.id and e.is_resolved
+            ]
+            assert len(resolved) == 1, (
+                f"{lang}: Site-1 did not recover the inherited call"
+            )
+            assert resolved[0].dst == base_m.id, lang
+            assert resolved[0].evidence_type == "ast_call_inherited", lang

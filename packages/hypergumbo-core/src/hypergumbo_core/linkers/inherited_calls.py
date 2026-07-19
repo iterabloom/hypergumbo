@@ -548,6 +548,23 @@ _MRO_WALKERS: dict[str, Callable[
     "python": _walk_c3,
     "scala": _walk_linearization,  # WI-nazab
     "swift": _walk_left_to_right,  # WI-sojim
+    # INV-fahub fleet walkers: recover the inherited implicit-``this``/``self``
+    # calls the fleet magnet gate defers. Each language's analyzer emits
+    # ``base_classes`` (or, for Rust, ``implements``) metadata that the
+    # language-agnostic ``inheritance`` linker turns into the extends/implements
+    # edges these walkers traverse. Walker choice follows the language's MRO
+    # shape: single-superclass-then-interfaces (Java-like) for php/js/ts/csharp/
+    # objc; insertion-order BFS for go struct embedding, rust trait impls, and
+    # C++ multiple inheritance. (dart/lua/zig emit no inheritance model, so no
+    # walker recovers anything for them — deliberately unregistered.)
+    "go": _walk_insertion_order,
+    "rust": _walk_insertion_order,
+    "php": _walk_single_then_interfaces,
+    "javascript": _walk_single_then_interfaces,
+    "typescript": _walk_single_then_interfaces,
+    "csharp": _walk_single_then_interfaces,
+    "cpp": _walk_insertion_order,
+    "objc": _walk_single_then_interfaces,
 }
 
 
