@@ -47,3 +47,18 @@
   clock: 5  # 4bdc
   nonce: 4bdc  # 4bdc
   message: "ADR-0039 ruling 4 DEPRECATION step landed (PR: deprecate Edge.quality; SCHEMA_VERSION 0.14.5->0.14.6). Edge.quality now carries deprecated:true in docs/schema.json + a spec deprecation note; still emitted this release. This item CLOSES when the field is removed next release (the one-version window's removal step)."  # 4bdc
+- op: discuss  # 466f
+  at: '2026-07-19T22:09:21Z'  # 466f
+  by: agent  # 466f
+  actor: jgstern_agent  # 466f
+  clock: 6  # 466f
+  nonce: 466f  # 466f
+  message: "Reparented META-ruhob -> parent=null (owner-ruled 2026-07-19, META-jalur crush). WI-humok's confidence-relevant concern (quality.reason's tier-named values falsely suggesting confidence bands) is structurally resolved by ADR-0039's confidence_source enum, which absorbed the emitter/mechanism-provenance role; the sole residual is the release-gated REMOVAL of the deprecated quality.reason field at the D9b one-version-window close -- sibling to WI-riguh (also parent=null, release-gated at removal). Vestigial META-ruhob parentage removed so META-ruhob (edge-confidence-evidence-derived) drains cleanly for the gate-5 closure."  # 466f
+- op: update  # c11c
+  at: '2026-07-19T22:15:08Z'  # c11c
+  by: agent  # c11c
+  actor: jgstern_agent  # c11c
+  clock: 7  # c11c
+  nonce: c11c  # c11c
+  set:  # c11c
+    parent:  # c11c

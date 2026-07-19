@@ -249,3 +249,20 @@
   clock: 30  # 8457
   nonce: '8457'  # 8457
   message: "Cohort supplementary evidence via DEEP bakeoff deep-20260623-134237 cohort-001 iter-004 (8 repos, code e5a019c2): edge vocab axes read clean on cohort artifacts — express 9359 edges span 9 distinct edge 'type' values (references/calls/imports/contains/module_attr_ref/depends_on/...), evidence_type lives under meta (not mixed into the type axis). Not a clean cohort test of the umbrella (the producer-side value-keyed sweep WI-zipis is the authoritative face, already green). Stays pending_validation on its non-producer faces (WI-pusuv access_mode census)."  # 8457
+- op: update  # 3e68
+  at: '2026-07-19T21:32:38Z'  # 3e68
+  by: agent  # 3e68
+  actor: jgstern_agent  # 3e68
+  clock: 31  # 3e68
+  nonce: '3e68'  # 3e68
+  set:  # 3e68
+    status: satisfied  # 3e68
+  remove:  # 3e68
+    tags: [awaits_bakeoff_validation]  # 3e68
+- op: discuss  # 5beb
+  at: '2026-07-19T21:32:38Z'  # 5beb
+  by: agent  # 5beb
+  actor: jgstern_agent  # 5beb
+  clock: 32  # 5beb
+  nonce: 5beb  # 5beb
+  message: "SATISFIED — owner-approved flip 2026-07-19 (Option-B full-drain criterion MET + human twenty-pass convergence call). All 30 formal children resolved: 16 done / 10 satisfied / 4 wont_do, zero open. The final 3 drained this session — WI-nuduv (done, PR #751: linker pass_id -linker-suffix convention + enforcing ratchet), WI-napuj (done, PR #752: profile.framework_evidence node-provenance for declared frameworks), INV-junid (satisfied, PR #753: docs-only — a 4-lens ADR/spec/history/spirit review refuted the 'axis mix' premise, established framework_dispatch as ADR-0028 Cluster 28C's coherent dispatch-convention fold, and corrected audit-0014's fabricated >=30/>=30 threshold to ADR-0024 rule 3's real >=3-values-OR->=2-producers). KEYSTONE GATE GREEN: the WI-zipis producer-side static value-keyed sweep (scripts/check-producer-axis-coherence) reports 0 new leaks / empty baseline — this is the authoritative closure gate that REPLACED the disproven per-cohort-counting gate (per the 2026-07-07 methodology ruling; per-cohort counting undercounts). Stripped the awaits_bakeoff_validation tag: STALE (ruled misapplied 2026-06-22; the producer sweep, not a bakeoff cohort, is authoritative). Each vocabulary-axis face (evidence_type fold, access_mode, cross_language delete-and-derive, call_construct/call_locality split, framework_dispatch coherent-axis KEEP, discovery_language, WS-route taxonomy, entrypoint.kind, symbol-kind visibility, id/pass_id vocab) landed via its own child with its own evidence."  # 5beb

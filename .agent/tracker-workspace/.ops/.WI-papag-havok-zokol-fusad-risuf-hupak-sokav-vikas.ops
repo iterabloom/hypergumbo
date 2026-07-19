@@ -1,0 +1,20 @@
+- op: create  # db76
+  at: '2026-07-19T22:17:14Z'  # db76
+  by: agent  # db76
+  actor: jgstern_agent  # db76
+  clock: 1  # db76
+  nonce: db76  # db76
+  data:  # db76
+    kind: work_item  # db76
+    title: "Resolve entry_role=script noise-filter governance tension (audit-findings 0005 filter-as-noise vs ADR-0043 §5 exempt-for-entrypoints)"  # db76
+    status: needs_human_review  # db76
+    priority: 3  # db76
+    parent:  # db76
+    tags:  # db76
+    - wave5  # db76
+    isbefore: []  # db76
+    duplicate_of: []  # db76
+    not_duplicate_of: []  # db76
+    pr_ref:  # db76
+    description: "**Governance tension** surfaced during the META-jalur gate-5 crush (2026-07-19; owner directed: file + design ruling). Two shipped governance docs give OPPOSITE instructions for `entry_role=script` symbols at the Phase-D noise filter:\n\n- **ADR-0043 §5** (\"The noise filter exempts entrypoint-bearing symbols (resolves C3)\"): the noise filter carries a declared exemption predicate — entrypoint-bearing symbols (e.g. `entry_role=script` and per-language entrypoint concepts under WI-tosul) are EXEMPT from `_is_noise` and survive into `detect_entrypoints`. This was ADR-0043's stated resolution of its own defect C3 (\"the noise filter erases entrypoint-bearing symbols before they are detected\").\n- **audit-findings 0005** (Wave-6 PR-3 fold): `script` emits as `kind=file` + `meta[entry_role]=script`; `_is_noise` FILTERS it as noise (`cli.py`: `if sym.kind == \"file\" and sym.meta.get(\"entry_role\") == \"script\": return True`).\n\n**Current code follows the fold** (audit-findings 0005): `entry_role=script` is filtered as noise, directly contradicting ADR-0043 §5's \"exempt\" ruling. Both cannot be honored.\n\n**Scope:** ORTHOGONAL to META-jalur's finalize-reconciliation gate — Phase-D filtering is finalize's R1 precondition (it decides set membership, not whether derived fields reconcile), so it does NOT block the META-jalur closure. It was a documented-only residual on WI-pozur (done) with no tracked home until this item.\n\n**Decision needed (owner design ruling):**\n- (A) ADR-0043 §5 wins → remove the `_is_noise` `entry_role=script` branch so it survives into `detect_entrypoints`; correct/supersede audit-findings 0005's fold. Risk: re-admits script nodes the fold removed as degree-0 noise — verify they are entrypoint-bearing, not pure noise.\n- (B) audit-findings 0005 wins → keep filter-as-noise; amend ADR-0043 §5 in place (its \"resolves C3\" ruling superseded by the later fold; the `entry_role=script` exemption withdrawn, though WI-tosul per-language entrypoint concepts may still merit exemption).\n\nDo NOT pick a side unilaterally — both are shipped governance decisions. Owner rules the direction; then implement (doc reconciliation + possible one-line code change).\n\nCross-refs: WI-pozur (ADR-0043 impl, done — C3 was its documented residual); WI-tosul (per-language entrypoint concepts, done); audit-findings 0005; ADR-0043 §5."  # db76
+    fields: {}  # db76
