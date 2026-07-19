@@ -73,6 +73,25 @@ def python_type_to_json_schema(py_type: Any) -> Dict[str, Any]:
                 inner_schema = python_type_to_json_schema(non_none_args[0])
                 return {"oneOf": [inner_schema, {"type": "null"}]}
 
+        # Scalar-or-list normalization union: Union[X, List[X]] accepts either a
+        # scalar X or a list of X at construction and normalizes the scalar to a
+        # single-element list (Symbol/Edge.origin via __post_init__, INV-jidat),
+        # so it always SERIALIZES as an array of X. The union widens the *input*
+        # type for mypy strict (call sites pass a scalar pass_id); the wire form
+        # stays array[X], so map to the list schema, not a oneOf.
+        if origin is typing.Union and len(args) == 2:
+            list_arm = [a for a in args if get_origin(a) is list]
+            scalar_arm = [
+                a for a in args if get_origin(a) is None and a is not type(None)
+            ]
+            if len(list_arm) == 1 and len(scalar_arm) == 1:
+                inner = get_args(list_arm[0])
+                if inner and inner[0] is scalar_arm[0]:
+                    return {
+                        "type": "array",
+                        "items": python_type_to_json_schema(inner[0]),
+                    }
+
         if origin in (list, set, frozenset):
             # set / frozenset fields serialize as sorted JSON arrays.
             if args:

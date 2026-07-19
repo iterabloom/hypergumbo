@@ -448,7 +448,12 @@ class Symbol:
         origin: Provenance list (INV-jidat). Each element is a pass ID that
             contributed to this Symbol's existence, ordered chronologically
             (originating pass first). Single-element lists are the common case.
-            Auto-normalized from scalar str for backward compat.
+            Auto-normalized from scalar str for backward compat. The declared
+            type is ``str | List[str]`` so this accepted-input contract holds at
+            the type level; do NOT narrow it to ``List[str]`` — most producers
+            pass a single scalar pass ID, and narrowing reintroduces hundreds of
+            arg-type errors under mypy strict (INV-zogud). The stored value is
+            always a list after ``__post_init__``.
         origin_run_id: Unique execution ID of the analysis run
         stable_id: Structural-identity hash within a (qualified_name,
             module_path) scope (ADR-0014 amended by Phase 6 PR3 /
@@ -561,7 +566,7 @@ class Symbol:
     language: Optional[str]  # axis: language
     path: str  # axis: free-text — filesystem path; consumers display/sort/group, never branch on the value itself.
     span: Span
-    origin: List[str] = field(default_factory=list)  # axis: pass-id
+    origin: str | List[str] = field(default_factory=list)  # axis: pass-id
     origin_run_id: str = ""  # axis: identity
     stable_id: Optional[str] = None  # axis: identity
     shape_id: Optional[str] = None  # axis: identity
@@ -781,6 +786,10 @@ class Edge:
         line: Line number where the relationship occurs
         confidence: Confidence score (0.0-1.0)
         origin: Pass IDs that contributed to this edge (INV-jidat). Auto-normalized from scalar str.
+            Declared ``str | List[str]`` (both the field and ``Edge.create``'s param) so the
+            scalar-or-list input contract holds at the type level; do NOT narrow to ``List[str]``
+            (most producers pass a scalar pass ID — narrowing reintroduces arg-type errors under
+            mypy strict, INV-zogud). Stored value is always a list after ``__post_init__``.
         origin_run_id: Unique execution ID of the analysis run
         evidence_type: Type of evidence (e.g., ast_call_direct)
         evidence_lang: Language for confidence scoring
@@ -801,7 +810,7 @@ class Edge:
     line: int
     edge_key: Optional[str] = None  # axis: identity
     confidence: float = 0.85
-    origin: List[str] = field(default_factory=list)  # axis: pass-id
+    origin: str | List[str] = field(default_factory=list)  # axis: pass-id
     origin_run_id: str = ""  # axis: identity
     evidence_type: str = "ast_call_direct"  # axis: evidence-type
     evidence_lang: Optional[str] = None  # axis: language
@@ -849,7 +858,7 @@ class Edge:
         dst: str,
         edge_type: str,
         line: int,
-        origin: str = "",
+        origin: str | List[str] = "",
         origin_run_id: str = "",
         evidence_type: str = "ast_call_direct",
         confidence: float | None = None,
