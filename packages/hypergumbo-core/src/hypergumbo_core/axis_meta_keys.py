@@ -155,14 +155,31 @@ META_KEYS: Final[tuple[MetaKeySpec, ...]] = (
     # fold to canonical inference + one of these meta keys.
     # ------------------------------------------------------------------
     MetaKeySpec("framework_dispatch", AXIS_EDGE_META,
-                "Framework whose dispatch convention produced this "
-                "edge (e.g. 'django_orm', 'kafka_streams', "
-                "'phoenix_event'). Fold residue per audit-findings "
-                "0014 / WI-kagik Wave 5."),
+                "The framework-or-generic dispatch convention that "
+                "produced this edge — ONE coherent axis ('which dispatch "
+                "convention recovered this edge'), per ADR-0028 Cluster 28C "
+                "('framework-dispatch convention') and spec §9. Values are "
+                "convention identifiers: framework-specific compounds "
+                "('django_orm', 'kafka_streams', 'vue_component', "
+                "'tauri_invoke') AND framework-agnostic dispatch mechanisms "
+                "('registry_dispatch', 'middleware_chain', 'npm_package'). "
+                "NOT a bare-framework-name axis — that reading misreads "
+                "audit-findings 0014's '<framework_name>' shorthand (INV-junid). "
+                "Distinct from 'detection_pattern' (pattern-shape match "
+                "heuristics — HOW an edge was string/name/URL-matched, not "
+                "which convention dispatches it). Pure provenance: zero "
+                "production consumers read this key; promote to a typed "
+                "Edge.framework field ONLY if a consumer materializes "
+                "(ADR-0028 OQ2, declined 2026-07-05; ADR-0024 rule 3 threshold "
+                "= ≥3 distinct values OR ≥2 producers). Fold residue per "
+                "audit-findings 0014 / WI-kagik Wave 5."),
     MetaKeySpec("detection_pattern", AXIS_EDGE_META,
                 "Pattern-shape inference heuristic that produced "
                 "this edge (e.g. 'abi_name_match', 'jni_naming', "
-                "'implicit_convention'). Fold residue per "
+                "'implicit_convention') — names HOW the edge was "
+                "string/name/URL/regex-matched. Distinct from "
+                "'framework_dispatch' (which dispatch convention produced "
+                "the edge, not how it was matched). Fold residue per "
                 "audit-findings 0014 §'detection_pattern partition'."),
     MetaKeySpec("call_construct", AXIS_EDGE_META,
                 "Source-language call construct collapsed under "
