@@ -1,0 +1,23 @@
+- op: create  # c890
+  at: '2026-07-20T19:51:36Z'  # c890
+  by: agent  # c890
+  actor: jgstern_agent  # c890
+  clock: 1  # c890
+  nonce: c890  # c890
+  data:  # c890
+    kind: work_item  # c890
+    title: "endpoint_shape fold: long-tail values (~19) → canonical relationship + meta, per-pattern subsets"  # c890
+    status: todo_soft  # c890
+    priority: 3  # c890
+    parent: WI-kivip-gijok-pugag-balid-rizin-lutuk-botul-zizon  # c890
+    tags:  # c890
+    - edge_vocab  # c890
+    - axis_conformance  # c890
+    - adr_0023  # c890
+    - vocab  # c890
+    isbefore: []  # c890
+    duplicate_of: []  # c890
+    not_duplicate_of: []  # c890
+    pr_ref:  # c890
+    description: "Fold the ~19 long-tail endpoint_shape values re-added by WI-tavas-voror (done) and deferred with no follow-on. Live list (edge_types.py, axis=endpoint_shape, verified 2026-07-20, excluding the 3 protocol-call values handled by the sibling prune item): abi_call, association, base_image, build_tag_alternative_of, caller_invokes, contains_routes, crypto_flow, depends, extends_template, includes_class, includes_template, invokes_callback, kernel_launch, links_to, notifies_resource, renders, requires_resource, script_src, signal_receiver, template_calls, uses_mixin, uses_vocabulary.\n\nEach carries a *likely* canonical fold target in its EdgeTypeSpec.description docstring (e.g. abi_call -> calls + meta['protocol']='abi'), but ADR-0023 §Phase-4b notes the targets are HETEROGENEOUS (some -> calls+meta, some -> references+dst.kind, some -> event_publishes+channel, some -> depends_on+construct) and must be folded in smaller per-language / per-pattern subsets, each its own Phase-3 (producer migration) + Phase-4b (registry prune) cycle with bakeoff validation (awaits_bakeoff_validation discipline). This item is the tracked OWNER; spawn per-subset children as picked up — do NOT big-bang all 19.\n\nCAUTIONS (do not blind-rename): (a) crypto_flow carries dataflow DIRECTION and belongs to ADR-0038 ruling 3 / the data_direction meta key, NOT a naive calls fold — its correct home is likely data_flows_to + meta. (b) renders / signal_receiver / uses_mixin / association may be GENUINELY DISTINCT relationships (ADR-0023 flags the publish/dispatch families as \"not always deprecate-all-but-one\") — each needs the four-leakage-test / per-family audit judgment (ADR-0024), i.e. a CANONICAL-vs-FOLD verdict, not an assumed FOLD. (c) script_src is also on the mid-fold endpoint_shape axis that WI-pusuv's access_mode N/A declaration waits on (axis_meta_keys.py:136).\n\nParent: the endpoint_shape fold-tail umbrella. Draining the endpoint_shape section (this + the protocol-call prune) is what unblocks WI-pusuv's total access_mode census."  # c890
+    fields: {}  # c890

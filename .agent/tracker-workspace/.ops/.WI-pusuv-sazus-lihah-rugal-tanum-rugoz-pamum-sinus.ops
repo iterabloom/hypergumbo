@@ -34,3 +34,10 @@
   clock: 3  # deda
   nonce: deda  # deda
   message: "HUMAN RULING (2026-07-08): leave PARKED. The applicable-vs-N/A census is a human-ruled reconciliation but is blocked — 23/35 in-scope edge types are endpoint_shape (mid ADR-0023 fold), so classifying them now would itself trip find_axis_drift(strict), and the close condition needs a TOTAL census. Do not pull the 25-value endpoint_shape->relationship micro-phase fold forward for a P3 Wave-5-scheduled INV-numat face; revisit the ruling when/if that fold is prioritized on its own merits."  # deda
+- op: discuss  # b56a
+  at: '2026-07-20T19:52:10Z'  # b56a
+  by: agent  # b56a
+  actor: jgstern_agent  # b56a
+  clock: 4  # b56a
+  nonce: b56a  # b56a
+  message: "Blocker now tracked (2026-07-20, Option C). The endpoint_shape->relationship fold this census is gated on was DORMANT with no open owner: the ADR-0023 §6 Phase 2/3/4 items are all done, but WI-tavas-voror later re-added 19 endpoint_shape registry-completeness values and deferred their fold with no follow-on, so 25 endpoint_shape + 4 pending_classification values still sit in the live EDGE_TYPES registry. Now owned by WI-kivip-gijok-pugag-balid-rizin-lutuk-botul-zizon (umbrella, isbefore=[this item]) + 3 sub-items: WI-hirud (protocol-call prune), WI-pumav (long-tail fold — the actual census blocker, drains the 23 in-scope endpoint_shape types), WI-sumik (resolver/RPC pending_classification audit). WI-pusuv stays parked/todo_soft, but is now gated on a tracked item rather than a dormant untracked remainder. Recommended eventual resolution unchanged (N/A-now + partial census once the endpoint_shape section drains)."  # b56a

@@ -1,0 +1,23 @@
+- op: create  # 4173
+  at: '2026-07-20T19:51:39Z'  # 4173
+  by: agent  # 4173
+  actor: jgstern_agent  # 4173
+  clock: 1  # 4173
+  nonce: '4173'  # 4173
+  data:  # 4173
+    kind: work_item  # 4173
+    title: "endpoint_shape fold: resolver/OpenAPI/RPC pending_classification audit (4 values)"  # 4173
+    status: todo_soft  # 4173
+    priority: 3  # 4173
+    parent: WI-kivip-gijok-pugag-balid-rizin-lutuk-botul-zizon  # 4173
+    tags:  # 4173
+    - edge_vocab  # 4173
+    - axis_conformance  # 4173
+    - adr_0023  # 4173
+    - vocab  # 4173
+    isbefore: []  # 4173
+    duplicate_of: []  # 4173
+    not_duplicate_of: []  # 4173
+    pr_ref:  # 4173
+    description: "Classify the 4 pending_classification edge types — resolver_implements, resolver_for_type, openapi_implements, implements_rpc (the \"resolver/OpenAPI/RPC family\"; edge_types.py:344-346 says the family \"awaits its own audit\"). Every OTHER family's per-family audit exists and is done (dispatch WI-kofuh-fovar, publish WI-kusif-gamup, IPC WI-fugun-butil); this family's audit was never filed — a gap in the ADR-0023 per-family audit set (OQ4 pattern).\n\nWORK: per-family audit deciding, for EACH of the 4, a CANONICAL / FOLD / DEPRECATE verdict via ADR-0024's four leakage tests (property-derivability, apex/peer overloading, construct-vs-relationship, mechanism-vs-category). Working hypothesis (NOT a conclusion): several are likely CANONICAL — a GraphQL resolver-for-type binding and an RPC \"implements\" are arguably genuinely distinct relationships, not endpoint leakage — but the verdict must come from the tests, not the hypothesis. Outcome flows into the EDGE_TYPES axis assignment (move each of the 4 to `relationship` if CANONICAL, or `endpoint_shape` + a fold target if FOLD). File as docs/audits/<NN>-<topic>.md per the audit-findings convention, NOT a new ADR.\n\nNOT a blocker for WI-pusuv: WI-pusuv's 4 pending_classification types are already outside its endpoint_shape census blocker (the census gate is the 23 endpoint_shape in-scope types, not the pending_classification 4). Parent: the endpoint_shape fold-tail umbrella."  # 4173
+    fields: {}  # 4173
