@@ -1,6 +1,6 @@
 {
   "_comment": "Whole-tree `mypy <repo>` strict surface, shrink-only ratchet (WI-rokup / INV-zogud). Regenerate with `scripts/check-mypy-ratchet --update-baseline`. The ramp lowers these numbers; they must never grow (see check-mypy-ratchet).",
-  "total": 1085,
+  "total": 1083,
   "by_code": {
     "arg-type": 104,
     "assignment": 63,
@@ -29,7 +29,7 @@
     "str-bytes-safe": 1,
     "str-unpack": 1,
     "truthy-bool": 66,
-    "type-arg": 447,
+    "type-arg": 445,
     "type-var": 1,
     "union-attr": 30,
     "unreachable": 30,

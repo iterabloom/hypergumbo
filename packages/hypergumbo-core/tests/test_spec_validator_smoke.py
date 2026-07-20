@@ -1206,6 +1206,49 @@ def test_wired_checks_manifest_matches_validate_ir() -> None:
 
 
 # ----------------------------------------------------------------------
+# INV-fahub — no un-demoted harmful receiver-blind magnet survives
+# ----------------------------------------------------------------------
+
+def _magnet_edge(src, dst):
+    from types import SimpleNamespace
+    return SimpleNamespace(
+        id="edge:1", src=src, dst=dst, edge_type="calls", is_resolved=True,
+        evidence_type="ast_call", confidence=0.85, meta={"call_construct": "function"},
+    )
+
+
+def test_harmful_magnet_survivor_is_flagged() -> None:
+    # A production->test-helper magnet that was NOT demoted (simulating a
+    # demotion regression) is caught by the durable gate.
+    from hypergumbo_core.spec_validator import _check_no_harmful_receiver_blind_magnets
+    src = _FakeSym(id="s", name="App.run", kind="method", path="app/main.go", language="go")
+    dst = _FakeSym(id="d", name="Collector.Add", kind="method",
+                   path="test/testutils/collector.go", language="go")
+    edges = [_magnet_edge("s", "d")]
+    violations = _check_no_harmful_receiver_blind_magnets([src, dst], edges)
+    assert len(violations) == 1
+    assert violations[0].severity == "error"
+    assert violations[0].validator_class == "cross_field"
+    assert violations[0].record_id == "edge:1"
+
+
+def test_kept_correct_but_unprovable_bind_is_not_flagged() -> None:
+    # The correct-but-unprovable trait-dispatch residual (ADR-0012 scope) is a
+    # receiver-blind magnet but NOT harmful — the durable gate must not flag it.
+    from hypergumbo_core.spec_validator import _check_no_harmful_receiver_blind_magnets
+    src = _FakeSym(id="s", name="App.run", kind="method", path="src/lib.rs", language="rust")
+    dst = _FakeSym(id="d", name="Red::next", kind="method",
+                   path="src/source/noise.rs", language="rust")
+    edges = [_magnet_edge("s", "d")]
+    assert _check_no_harmful_receiver_blind_magnets([src, dst], edges) == []
+
+
+def test_no_harmful_magnet_check_empty_is_noop() -> None:
+    from hypergumbo_core.spec_validator import _check_no_harmful_receiver_blind_magnets
+    assert _check_no_harmful_receiver_blind_magnets([], []) == []
+
+
+# ----------------------------------------------------------------------
 # Phase 6 PR3 — INV-bazij stable_id collision umbrella check
 # ----------------------------------------------------------------------
 

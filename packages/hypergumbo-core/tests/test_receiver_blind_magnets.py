@@ -12,6 +12,7 @@ from types import SimpleNamespace
 
 from hypergumbo_core.receiver_blind_magnets import (
     demote_harmful_magnets,
+    find_harmful_magnets,
     find_receiver_blind_magnets,
     owner_of,
 )
@@ -363,6 +364,37 @@ def test_demote_nameless_method_target_is_kept():
     ]
     edges = [_edge(src="s", dst="d")]
     assert demote_harmful_magnets(nodes, edges) == []
+
+
+# ---- find_harmful_magnets (the NON-mutating predicate behind the gate) -----
+
+def test_find_harmful_magnets_flags_test_helper_without_mutating():
+    nodes, edges = _prod_to("Collector.Add", "test/testutils/collector.go")
+    harmful = find_harmful_magnets(nodes, edges)
+    assert harmful == edges
+    # non-mutating: the edge dst is untouched (only demote redirects it)
+    assert edges[0].dst == "dst"
+
+
+def test_find_harmful_magnets_flags_stdlib_interface():
+    nodes, edges = _prod_to("Template.Parse", "template/template.go")
+    assert find_harmful_magnets(nodes, edges) == edges
+    assert edges[0].dst == "dst"
+
+
+def test_find_harmful_magnets_keeps_correct_but_unprovable():
+    nodes, edges = _prod_to("Red::next", "src/source/noise.rs",
+                            src_path="src/lib.rs", language="rust")
+    assert find_harmful_magnets(nodes, edges) == []
+
+
+def test_find_and_demote_flag_the_same_edges():
+    # The validator (find) and the finalize action (demote) must never diverge —
+    # both go through _harmful_magnet_reason.
+    nodes, edges = _prod_to("Collector.Add", "test/testutils/collector.go")
+    found = list(find_harmful_magnets(nodes, edges))
+    demoted = demote_harmful_magnets(nodes, edges)
+    assert len(found) == len(demoted) == 1
 
 
 def test_demote_survey_json_dict_shape():

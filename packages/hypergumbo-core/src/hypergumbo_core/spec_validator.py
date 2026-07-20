@@ -111,6 +111,8 @@ import sys
 from dataclasses import asdict, dataclass
 from typing import Any, Callable, Iterable, Optional
 
+from .receiver_blind_magnets import find_harmful_magnets
+
 VALIDATION_REPORT_SCHEMA_VERSION = "0.3"  # 0.3: validator:F2 (WI-moriz) added wired_checks disclosure; 0.2: ADR-0035 §5 added stable_id_stats
 
 # Stable enum-like sets. Mirrored in the ADR-0033 §"Output format" table
@@ -190,6 +192,16 @@ _WIRED_CHECKS: tuple[dict[str, str], ...] = (
                     "carries no redundant path-less concept=route alongside it "
                     "(INV-vokak dual-carry root; the framework belongs on "
                     "route_framework, not orphaned in a second home)."},
+    {"check": "no_harmful_receiver_blind_magnets", "validator_class": "cross_field",
+     "description": "No un-demoted CLEANLY-harmful receiver-blind method magnet "
+                    "survives finalization (INV-fahub): a high-confidence calls "
+                    "edge that bound an unresolvable-receiver call to an arbitrary "
+                    "same-named internal method that is a production->test-helper "
+                    "misbind or a stdlib-interface-method shadow. finalize's "
+                    "demotion sub-step redirects each to external; a survivor is a "
+                    "demotion-ordering/coverage regression. The correct-but-"
+                    "unprovable trait-dispatch residual is ADR-0012 scope and is "
+                    "NOT flagged."},
 )
 
 
@@ -247,6 +259,7 @@ def validate_ir(
     violations.extend(_check_fingerprint_format(symbols, edges, analysis_runs))
     violations.extend(_check_confidence_range(edges))
     violations.extend(_check_route_marker_single_home(symbols))
+    violations.extend(_check_no_harmful_receiver_blind_magnets(symbols, edges))
     return violations
 
 
@@ -294,6 +307,47 @@ def _check_route_marker_single_home(
                     expected="single-homed route marker (no redundant concept)",
                 ))
                 break
+    return violations
+
+
+def _check_no_harmful_receiver_blind_magnets(
+    symbols: Iterable[Any], edges: Iterable[Any],
+) -> list[ValidationViolation]:
+    """INV-fahub: no un-demoted CLEANLY-harmful receiver-blind magnet survives.
+
+    A receiver-blind magnet is a high-confidence ``calls`` edge that bound an
+    unresolvable-receiver call to an arbitrary same-named internal ``method``
+    (``d.Val()`` → an unrelated ``Dispenser.Val``). The finalize demotion
+    sub-step (6c) redirects the two cleanly-harmful sub-classes — a
+    production→test-helper misbind and a stdlib-interface-method shadow — to an
+    ``external:unresolved`` id BEFORE the ADR-0037 edge-resolution verdict, so on
+    the finalized graph ``find_harmful_magnets`` should return nothing. A survivor
+    means the demotion ran out of order, a new producer path emitted one the pass
+    missed, or the shared detector has a gap — this corpus-wide gate is the
+    standing durable teeth that keeps the flip honest (it fires and the ratchet
+    blocks). The refined criterion is deliberate: the correct-but-unprovable
+    trait-dispatch residual (Rust ``x.next()`` → ``Red::next``) needs real type
+    resolution (ADR-0012) and is a KEPT bind, so it is NOT flagged here.
+    """
+    violations: list[ValidationViolation] = []
+    symbols = list(symbols)
+    edges = list(edges)
+    for edge in find_harmful_magnets(symbols, edges):
+        violations.append(ValidationViolation(
+            severity="error",
+            validator_class="cross_field",
+            message=(
+                "harmful receiver-blind method magnet survived finalization "
+                "(INV-fahub): an unresolvable-receiver call bound at high "
+                "confidence to an arbitrary internal method that is a "
+                "test-helper misbind or a stdlib-interface shadow; the finalize "
+                "demotion sub-step should have redirected it to external"
+            ),
+            field_name="dst",
+            record_id=getattr(edge, "id", None),
+            observed=str(getattr(edge, "dst", None)),
+            expected="external:unresolved (harmful magnet demoted at finalize)",
+        ))
     return violations
 
 

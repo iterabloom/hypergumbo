@@ -49,7 +49,12 @@ from typing import Any, Iterable, List, Optional
 
 from .paths import is_test_file
 
-__all__ = ["demote_harmful_magnets", "find_receiver_blind_magnets", "owner_of"]
+__all__ = [
+    "demote_harmful_magnets",
+    "find_harmful_magnets",
+    "find_receiver_blind_magnets",
+    "owner_of",
+]
 
 # evidence_type values that are the bare, receiver-blind resolution pathways.
 # Everything else (ast_call_type_inferred, ast_call_ufcs, ast_call_inherited,
@@ -141,7 +146,7 @@ def owner_of(name: Optional[str]) -> Optional[str]:
     return None
 
 
-def _evidence_type(edge: Any, meta: dict) -> Optional[str]:
+def _evidence_type(edge: Any, meta: "dict[str, Any]") -> Optional[str]:
     """evidence_type is a top-level field on the Edge dataclass but nests under
     ``meta`` in serialized survey JSON — read whichever is present."""
     ev = _get(edge, "evidence_type", None)
@@ -150,7 +155,7 @@ def _evidence_type(edge: Any, meta: dict) -> Optional[str]:
     return ev
 
 
-def _receiver_was_identified(meta: dict) -> bool:
+def _receiver_was_identified(meta: "dict[str, Any]") -> bool:
     """True iff the edge carries any marker that the receiver was characterised
     (so it is a legitimate typed/recovered bind, not a receiver-blind magnet)."""
     rq = meta.get("resolution_quality")
@@ -159,7 +164,7 @@ def _receiver_was_identified(meta: dict) -> bool:
     return meta.get("receiver") in _RECEIVER_MARKERS
 
 
-def _is_route_dispatch(meta: dict) -> bool:
+def _is_route_dispatch(meta: "dict[str, Any]") -> bool:
     """True iff the edge is a framework ROUTE REGISTRATION, not a method call.
 
     A route registration (``mux.HandleFunc("/x", dr.deprecationHandler)``,
@@ -281,6 +286,65 @@ def _method_short_name(name: Optional[str]) -> Optional[str]:
     return name
 
 
+def _harmful_magnet_reason(edge: Any, by_id: "dict[Any, Any]") -> Optional[str]:
+    """Which cleanly-harmful sub-class a receiver-blind magnet ``edge`` is, or None.
+
+    The single shared predicate behind ``find_harmful_magnets`` (the durable
+    validator gate) and ``demote_harmful_magnets`` (the finalize action) so they
+    can never diverge: ``"test_helper"`` (production→test-support misbind),
+    ``"stdlib_interface"`` (stdlib-interface method shadow), or ``None`` (a
+    correct-but-unprovable bind that both KEEP — ADR-0012 scope).
+    """
+    dst = by_id.get(_get(edge, "dst", None))
+    src = by_id.get(_get(edge, "src", None))
+    method = _method_short_name(
+        _get(dst, "name", None) or _get(dst, "qualified_name", None)
+    )
+    dst_is_helper = is_test_file(_get(dst, "path", "") or "")
+    src_is_helper = (
+        is_test_file(_get(src, "path", "") or "") if src is not None else False
+    )
+    if dst_is_helper and not src_is_helper:
+        return "test_helper"
+    if method in _STDLIB_INTERFACE_METHODS:
+        return "stdlib_interface"
+    return None
+
+
+def _by_id(nodes: Iterable[Any]) -> "dict[Any, Any]":
+    out: "dict[Any, Any]" = {}
+    for n in nodes:
+        nid = _get(n, "id", None)
+        if nid is not None:
+            out[nid] = n
+    return out
+
+
+def find_harmful_magnets(
+    nodes: Iterable[Any],
+    edges: Iterable[Any],
+    *,
+    min_confidence: float = 0.80,
+) -> List[Any]:
+    """The receiver-blind magnets that are CLEANLY harmful — a production→
+    test-helper misbind or a stdlib-interface-method shadow (see
+    ``demote_harmful_magnets`` for the rationale). NON-mutating: the durable
+    ``spec_validator`` gate calls this on the FINALIZED graph to assert none
+    survived un-demoted (finalize's demotion should have redirected every one to
+    external, so a survivor means a demotion-ordering regression, a new
+    magnet-producing path, or a detector gap). Returns the offending edge objects
+    in input order (empty list if none)."""
+    nodes = list(nodes)
+    by_id = _by_id(nodes)
+    return [
+        edge
+        for edge in find_receiver_blind_magnets(
+            nodes, edges, min_confidence=min_confidence
+        )
+        if _harmful_magnet_reason(edge, by_id) is not None
+    ]
+
+
 def demote_harmful_magnets(
     nodes: Iterable[Any],
     edges: Iterable[Any],
@@ -320,30 +384,19 @@ def demote_harmful_magnets(
     reconciled graph, so it is a single all-language gate rather than a per-analyzer
     sweep.
     """
-    by_id = {}
-    for n in nodes:
-        nid = _get(n, "id", None)
-        if nid is not None:
-            by_id[nid] = n
-
+    nodes = list(nodes)
+    by_id = _by_id(nodes)
     demoted: List[Any] = []
     for edge in find_receiver_blind_magnets(
         nodes, edges, min_confidence=min_confidence
     ):
+        if _harmful_magnet_reason(edge, by_id) is None:
+            continue
         dst = by_id.get(_get(edge, "dst", None))
         src = by_id.get(_get(edge, "src", None))
         method = _method_short_name(
             _get(dst, "name", None) or _get(dst, "qualified_name", None)
         )
-        dst_is_helper = is_test_file(_get(dst, "path", "") or "")
-        src_is_helper = (
-            is_test_file(_get(src, "path", "") or "") if src is not None else False
-        )
-        harmful_test_helper = dst_is_helper and not src_is_helper
-        harmful_stdlib = method in _STDLIB_INTERFACE_METHODS
-        if not (harmful_test_helper or harmful_stdlib):
-            continue
-
         lang = (
             _get(src, "language", None) or _get(dst, "language", None) or "unknown"
         )
