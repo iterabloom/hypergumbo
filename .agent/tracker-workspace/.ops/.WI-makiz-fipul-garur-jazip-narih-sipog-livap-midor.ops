@@ -20,3 +20,18 @@
     pr_ref:  # 9ca7
     description: "Corrective per-language pass surfaced by the 2026-07-19 INV-fahub validation bakeoff. The fleet gate (defer_bare_method_call, merged across 11 analyzers) gates each analyzer BARE-IDENTIFIER free-call resolver path, but INV-fahub's funnel is UNTYPED-RECEIVER method calls (x.method() where x's type is unresolvable), which for Go/Rust resolve via a SEPARATE method/selector path never gated; D FREE-FORM stdlib calls (writeln(x)->internal method) are a third ungated path (D excluded from the fleet PR). Real-repro evidence (scratchpad/inv-fahub/{funnel,fleet_magnet}.py + *.json): Scala(docspell) CLEAN 0 magnets; Swift(vernissage) 6 candidate magnets; Go(caddy) 41 magnets/666 binds gate-fired-1 (Dispenser.Val<-53 = d.Val() @0.85 call_construct=method); Rust(ripgrep) 23 magnets; D(dub) 9 free-form (writeln<-70/to<-33/execute<-15). TASK: per fleet language find where untyped-receiver method calls (and D free-form) resolve, gate that path via defer_bare_method_call (like Scala/Swift WI-bihit/votar receiver-gating, which is why they are clean), re-validate on real repos, flip INV-fahub. Also confirm the Swift 6 candidates (legit typed-receiver vs real) + validate csharp/php/cpp/objc/lua."  # 9ca7
     fields: {}  # 9ca7
+- op: update  # 8d87
+  at: '2026-07-20T18:42:06Z'  # 8d87
+  by: agent  # 8d87
+  actor: jgstern_agent  # 8d87
+  clock: 2  # 8d87
+  nonce: 8d87  # 8d87
+  set:  # 8d87
+    status: done  # 8d87
+- op: discuss  # 04cd
+  at: '2026-07-20T18:42:06Z'  # 04cd
+  by: agent  # 04cd
+  actor: jgstern_agent  # 04cd
+  clock: 3  # 04cd
+  nonce: 04cd  # 04cd
+  message: "DONE (2026-07-20). The corrective per-language pass resolved NOT as the originally-filed per-analyzer untyped-receiver-emit gate, but as a single language-agnostic FINALIZE-STAGE demotion (chokepoint, not a 14-analyzer sweep) + producer-side qualified-marking, per the owner's 'clean gates + refined-criterion flip' ruling. Ground-truth re-measurement corrected BOTH prior framings: cont.9's 'gate the untyped-receiver funnel' (the funnel is real but the harmful subset is narrow) AND cont.10's 'measurement artifact, defer' (there IS a genuine harmful class — production->test-helper + stdlib-interface shadows — separable from the correct-but-unprovable trait residual by robust signals: broad paths.is_test_file for test-helper, PascalCase stdlib-interface names which case-separate from snake_case Rust trait methods). Shipped: PR #762 (detector route-honesty) + #763 (Rust Type::method receiver=qualified, -247 FP) + #765 (finalize sub-step 6c demotion) + #766 (durable spec_validator gate). Validated 0 harmful surviving across 11 languages incl. all 5 named here (csharp/php/cpp/objc/lua: grpc/koel/bento4/AFNetworking/vernemq). INV-fahub flipped satisfied. The scattered correct-but-unprovable trait-dispatch residual (Rust x.next 666, etc.) stays ADR-0012 scope by owner ruling."  # 04cd

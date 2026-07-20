@@ -1,0 +1,23 @@
+- op: create  # 2544
+  at: '2026-07-20T19:51:08Z'  # 2544
+  by: agent  # 2544
+  actor: jgstern_agent  # 2544
+  clock: 1  # 2544
+  nonce: '2544'  # 2544
+  data:  # 2544
+    kind: work_item  # 2544
+    title: "endpoint_shape fold: protocol-call registry prune (ADR-0023 Phase-4b-prime) — remove http_calls/grpc_calls/graphql_calls"  # 2544
+    status: todo_soft  # 2544
+    priority: 3  # 2544
+    parent: WI-kivip-gijok-pugag-balid-rizin-lutuk-botul-zizon  # 2544
+    tags:  # 2544
+    - edge_vocab  # 2544
+    - axis_conformance  # 2544
+    - adr_0023  # 2544
+    - vocab  # 2544
+    isbefore: []  # 2544
+    duplicate_of: []  # 2544
+    not_duplicate_of: []  # 2544
+    pr_ref:  # 2544
+    description: "Phase-4b-prime registry prune for the protocol-call endpoint_shape family. Producers were already migrated by WI-vumum-juvil (done): linkers/http.py, linkers/grpc.py, linkers/graphql.py now emit canonical `calls` with meta['protocol'] in {http, grpc, graphql}. But the three registry entries http_calls / grpc_calls / graphql_calls still sit at axis=endpoint_shape in edge_types.py, awaiting the \"sibling Phase-4b-prime ship\" that ADR-0023 §Phase-4b describes but which was never filed.\n\nWORK: remove the 3 entries from EDGE_TYPES; SCHEMA_VERSION minor bump; drop any now-dead consumer-side references (canonical `calls` already covers the folded edges in compact.CROSS_CUTTING_EDGE_TYPES / taint.TAINT_CALL_EDGE_TYPES / io_boundary._TRACEABLE_EDGE_TYPES per WI-vumum-juvil, so this is cleanup only); regenerate docs/schema.json; keep the `x-deprecated` annotations consistent; verify the strict drift linter stays green. LOW RISK — no producer change (producers already emit canonical `calls`); no ranking/centrality delta (edges already merged into `calls`), so bakeoff validation is optional. This is the cheapest slice of the fold tail and a clean quick win.\n\nParent: the endpoint_shape fold-tail umbrella. TDD + 100% coverage + own PR per project convention."  # 2544
+    fields: {}  # 2544
