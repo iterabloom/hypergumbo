@@ -215,12 +215,16 @@ jobs:
         run: bandit -r packages/*/src/ -c pyproject.toml
 
 
-  # mypy:F1 foundation — NON-BLOCKING static type-check (WI-gusag).
+  # mypy:F2 — NON-BLOCKING whole-tree strict type ratchet (WI-rokup, INV-zogud).
   # Intentionally absent from ci-complete's `needs` AND continue-on-error: true,
-  # so the type surface is reported on every PR but NEVER gates a merge. This is
-  # the first rung of the G11 ramp (non-blocking job -> per-package strict
-  # ratchet -> blocking). Config lives in root pyproject.toml [tool.mypy]
-  # (basic / non-strict; strict mode is mypy:F2 per Decision D13).
+  # so the type surface is reported on every PR but NEVER gates a merge yet.
+  # WI-rabum flips this to blocking (--mode=strict) once the surface drains.
+  # Config lives in root pyproject.toml [tool.mypy] (strict + pyright-resonant,
+  # Decision D13). Runs ONE whole-tree invocation via scripts/check-mypy-ratchet
+  # — NOT the old per-package loop, which could not follow cross-package imports
+  # (the editable install is mypy-invisible) and so mis-measured INV-zogud's
+  # `mypy <repo>` target. The full project is installed so mypy resolves
+  # third-party + cross-package types, matching .ci/mypy-strict-baseline.json.
   mypy:
     needs: [changes, stop-the-line]
     if: always() && needs.changes.outputs.code == 'true' && needs.stop-the-line.result != 'failure'
@@ -234,20 +238,19 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - name: Install mypy + typeshed stubs
+      - name: Install project + mypy + typeshed stubs
         run: |
+          # Editable install of every Python package so mypy resolves real
+          # third-party + cross-package types (matches the baseline env). tui
+          # extra brings Textual so tracker/tui.py types resolve.
           pip install --upgrade pip
+          pip install -e packages/hypergumbo-core -e packages/hypergumbo-lang-mainstream -e packages/hypergumbo-lang-common -e packages/hypergumbo-lang-extended1 -e packages/hypergumbo-lang-rust-analyzer -e "packages/hypergumbo-tracker[dev,tui]"
           pip install "mypy~=2.1" "types-PyYAML~=6.0.12"
-      - name: Run mypy (non-blocking — basic config per [tool.mypy])
+      - name: Whole-tree strict mypy ratchet (non-blocking — WI-rokup)
         run: |
-          # Report the type surface per Python package; never fail the job (this
-          # is the foundation rung, not the gate). htrac-frontend is JS/TS (no .py).
-          for mod in packages/*/src/*/; do
-            case "$mod" in *htrac-frontend*|*.egg-info*) continue ;; esac
-            echo "::group::mypy ${mod}"
-            mypy "$mod" || true
-            echo "::endgroup::"
-          done
+          # Single whole-tree invocation + shrink-only baseline. Non-blocking
+          # (--mode=warning); WI-rabum flips to --mode=strict to gate merges.
+          scripts/check-mypy-ratchet --mode=warning
 
 
   # Run bash hook tests on every PR regardless of what changed.

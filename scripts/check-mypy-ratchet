@@ -1,0 +1,216 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: AGPL-3.0-or-later
+"""Whole-tree mypy strict ratchet (WI-rokup, Decision D13, INV-zogud).
+
+INV-zogud's clean-state target is ``mypy <repo>`` under the strict +
+pyright-resonant config in ``[tool.mypy]`` producing zero errors. This
+script measures that surface and ratchets it shrink-only against a
+committed baseline in ``.ci/mypy-strict-baseline.json``.
+
+Why a single WHOLE-TREE invocation, not the per-package loop the CI job
+used before: mypy run per-package (``mypy packages/X/src/X``) cannot
+follow imports into a sibling package — the editable install is
+mypy-invisible — so it resolves every cross-package symbol to ``Any``.
+That both INVENTS phantom errors (e.g. ``untyped-decorator`` on every
+analyzer, because the ``@register_analyzer`` it imports reads as ``Any``)
+and HIDES real ones (``arg-type`` mismatches whose callee lives in another
+package). Passing every ``packages/*/src/<pkg>`` root in one invocation
+lets cross-package imports resolve to real types — which is what
+INV-zogud's ``mypy <repo>`` means. htrac-frontend (JS/TS, no Python src)
+is excluded, matching ``[tool.mypy] exclude``.
+
+The baseline records the total and a per-error-code breakdown. The ratchet
+is shrink-only: it fails if the total grows, if any error code's count
+grows, or if a NEW error code appears. It never requires a code to shrink
+(that is the incremental grind the ramp performs), only that it not grow.
+
+Modes:
+
+* ``--mode=warning`` (default) — report current vs baseline and any
+  regression to stderr, but exit 0 regardless. This is the non-blocking
+  rung the CI mypy job uses today.
+* ``--mode=strict`` — exit 1 on any regression (total up, a code up, or a
+  new code). WI-rabum flips the CI job to this once the surface is drained
+  enough to gate merges.
+* ``--update-baseline`` — overwrite the baseline with the current run.
+  Use after a PR intentionally reduces the surface (lowering the numbers)
+  or after an owner-approved config change to the enabled error codes.
+
+Test/override flags:
+
+* ``--input FILE`` — read raw mypy output from FILE instead of running
+  mypy (so the ratchet logic is testable without a real type-check run).
+* ``--baseline FILE`` — use FILE as the baseline instead of the default
+  ``.ci/mypy-strict-baseline.json``.
+
+Exit codes:
+    0 — no regression (or ``--mode=warning``, or ``--update-baseline``).
+    1 — a regression, in ``--mode=strict``.
+    2 — infrastructure error (mypy missing, no source roots found). Never
+        blocks: an infra failure is not a type regression.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import re
+import subprocess  # nosec B404 - runs mypy on our own source tree, no untrusted input
+import sys
+from collections import Counter
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+DEFAULT_BASELINE_PATH = REPO_ROOT / ".ci" / "mypy-strict-baseline.json"
+
+# ``error: ... [code]`` — the trailing bracketed code is the category.
+_ERROR_RE = re.compile(r": error: .*\[([a-z-]+)\]\s*$")
+
+
+def _source_roots() -> list[Path]:
+    """Every ``packages/*/src/<pkg>`` directory except htrac-frontend / eggs."""
+    roots: list[Path] = []
+    for pkg_src in sorted(REPO_ROOT.glob("packages/*/src/*/")):
+        parts = str(pkg_src)
+        if "htrac-frontend" in parts or ".egg-info" in parts:
+            continue
+        if not pkg_src.is_dir():
+            continue  # pragma: no cover — glob only yields dirs
+        roots.append(pkg_src)
+    return roots
+
+
+def _run_mypy(roots: list[Path]) -> str:
+    """Run whole-tree mypy and return its stdout."""
+    cmd = [sys.executable, "-m", "mypy", *[str(r) for r in roots]]
+    try:
+        # nosec B603 - fixed argv (python -m mypy on our own source roots), no shell.
+        proc = subprocess.run(  # noqa: S603
+            cmd, capture_output=True, text=True, cwd=REPO_ROOT
+        )
+    except FileNotFoundError:  # pragma: no cover — mypy absent in the env
+        print("check-mypy-ratchet: mypy is not installed", file=sys.stderr)
+        sys.exit(2)
+    return proc.stdout
+
+
+def _count_errors(text: str) -> Counter[str]:
+    """Count mypy errors per trailing bracketed ``[code]``."""
+    counts: Counter[str] = Counter()
+    for line in text.splitlines():
+        m = _ERROR_RE.search(line)
+        if m:
+            counts[m.group(1)] += 1
+    return counts
+
+
+def _load_baseline(path: Path) -> dict:
+    if not path.exists():
+        print(
+            f"check-mypy-ratchet: no baseline at {path} — run --update-baseline first",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+    try:
+        return json.loads(path.read_text())
+    except ValueError as exc:
+        print(f"check-mypy-ratchet: baseline invalid: {exc}", file=sys.stderr)
+        sys.exit(2)
+
+
+def _save_baseline(path: Path, counts: Counter[str]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    body = {
+        "_comment": (
+            "Whole-tree `mypy <repo>` strict surface, shrink-only ratchet "
+            "(WI-rokup / INV-zogud). Regenerate with "
+            "`scripts/check-mypy-ratchet --update-baseline`. The ramp lowers "
+            "these numbers; they must never grow (see check-mypy-ratchet)."
+        ),
+        "total": sum(counts.values()),
+        "by_code": dict(sorted(counts.items())),
+    }
+    path.write_text(json.dumps(body, indent=2) + "\n")
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Whole-tree mypy strict ratchet.")
+    parser.add_argument(
+        "--mode",
+        choices=("warning", "strict"),
+        default="warning",
+        help="warning (report, exit 0) or strict (exit 1 on regression).",
+    )
+    parser.add_argument(
+        "--update-baseline",
+        action="store_true",
+        help="Overwrite the baseline with the current run and exit 0.",
+    )
+    parser.add_argument(
+        "--input",
+        type=Path,
+        default=None,
+        help="Read raw mypy output from FILE instead of running mypy (testing).",
+    )
+    parser.add_argument(
+        "--baseline",
+        type=Path,
+        default=DEFAULT_BASELINE_PATH,
+        help="Baseline file to read/write (default .ci/mypy-strict-baseline.json).",
+    )
+    args = parser.parse_args()
+
+    if args.input is not None:
+        raw = args.input.read_text()
+    else:
+        roots = _source_roots()
+        if not roots:  # pragma: no cover — packaging breakage only
+            print("check-mypy-ratchet: no packages/*/src roots found", file=sys.stderr)
+            sys.exit(2)
+        raw = _run_mypy(roots)
+
+    current = _count_errors(raw)
+    cur_total = sum(current.values())
+
+    if args.update_baseline:
+        _save_baseline(args.baseline, current)
+        print(f"check-mypy-ratchet: baseline updated — total {cur_total}")
+        sys.exit(0)
+
+    baseline = _load_baseline(args.baseline)
+    base_total = int(baseline.get("total", 0))
+    base_by_code: dict[str, int] = dict(baseline.get("by_code", {}))
+
+    grown = {
+        code: (n, base_by_code.get(code, 0))
+        for code, n in current.items()
+        if n > base_by_code.get(code, 0)
+    }
+
+    print(
+        f"check-mypy-ratchet: whole-tree strict errors = {cur_total} "
+        f"(baseline {base_total}, delta {cur_total - base_total:+d})"
+    )
+    if cur_total < base_total and not grown:
+        print(
+            "check-mypy-ratchet: surface shrank — run --update-baseline to "
+            "lock in the progress."
+        )
+
+    if grown:
+        print("check-mypy-ratchet: REGRESSION — these codes grew:", file=sys.stderr)
+        for code, (now, was) in sorted(grown.items()):
+            new = " (new code)" if was == 0 else ""
+            print(f"  {code}: {was} -> {now}{new}", file=sys.stderr)
+        if args.mode == "strict":
+            sys.exit(1)
+        print(
+            "check-mypy-ratchet: mode=warning — not blocking (WI-rabum flips "
+            "this to --mode=strict).",
+            file=sys.stderr,
+        )
+    sys.exit(0)
+
+
+if __name__ == "__main__":
+    main()

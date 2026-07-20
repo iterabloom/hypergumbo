@@ -77,15 +77,45 @@ skips = [
 ]
 
 [tool.mypy]
-# mypy:F1 foundation — basic (non-strict) type-check config (WI-gusag).
-# Strict mode is deferred to mypy:F2 (per-package strict ratchet, Decision D13);
-# this PR establishes the foundation only. The codebase is already substantially
-# annotated, so basic mode VERIFIES typing rather than introducing it.
+# mypy:F2 strict + pyright-resonant config (WI-rokup, Decision D13, INV-zogud).
+# INV-zogud's target is `mypy <repo>` (a WHOLE-TREE run where cross-package
+# imports resolve) under this config producing zero errors. It is measured and
+# ratcheted by scripts/check-mypy-ratchet (whole-tree invocation over every
+# packages/*/src/<pkg> root + a shrink-only baseline); the CI mypy job runs that
+# script NON-BLOCKING until WI-rabum flips it to blocking. Do NOT run mypy
+# per-package for the gate — per-package isolation cannot follow cross-package
+# imports (the editable install is mypy-invisible), so it treats every
+# cross-package symbol as Any, inventing phantom errors and hiding real ones.
+# D13 scope split: strict on packages/*/src; tests get check_untyped_defs when
+# they are brought into scope (they are not in the src-only gate invocation yet).
 python_version = "3.10"
 warn_unused_configs = true
 no_implicit_optional = true
 # Initially silence missing third-party stubs; carve out per-import as stubs land.
 # types-PyYAML covers PyYAML; tree-sitter and its grammar packages ship py.typed.
 ignore_missing_imports = true
+# The whole-tree gate passes several packages/*/src/<pkg> roots in one run; treat
+# them as namespace packages so cross-package imports resolve to real types.
+namespace_packages = true
+# Strict bundle + pyright-resonant extra error codes (WI-rokup / Decision D13).
+strict = true
+warn_unreachable = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+strict_equality = true
+extra_checks = true
+enable_error_code = [
+    "redundant-expr",
+    "truthy-bool",
+    "truthy-iterable",
+    "ignore-without-code",
+    "possibly-undefined",
+    "explicit-override",
+    "mutable-override",
+    "unused-awaitable",
+    "narrowed-type-not-subtype",
+    "redundant-self",
+    "unimported-reveal",
+]
 # htrac-frontend is a JS/TS package (no Python under src/) — never type-check it.
 exclude = ["packages/htrac-frontend/"]
