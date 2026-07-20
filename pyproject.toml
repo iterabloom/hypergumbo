@@ -104,13 +104,17 @@ warn_unused_ignores = true
 warn_redundant_casts = true
 strict_equality = true
 extra_checks = true
+# NOTE: `explicit-override` is deliberately NOT enabled. It requires an
+# `@override` decorator on every override, which is STRICTER than pyright's
+# default (reportImplicitOverride defaults to "none"), needs a typing_extensions
+# dependency on 3.10, and is high-churn / low-bug-value — so omitting it keeps
+# the config more pyright-resonant, not less (WI-rokup scope refinement).
 enable_error_code = [
     "redundant-expr",
     "truthy-bool",
     "truthy-iterable",
     "ignore-without-code",
     "possibly-undefined",
-    "explicit-override",
     "mutable-override",
     "unused-awaitable",
     "narrowed-type-not-subtype",
@@ -119,3 +123,13 @@ enable_error_code = [
 ]
 # htrac-frontend is a JS/TS package (no Python under src/) — never type-check it.
 exclude = ["packages/htrac-frontend/"]
+
+# The tracker TUI drives Textual, whose widget/action methods return
+# `AwaitComplete` awaitables that are idiomatically fire-and-forget (they
+# complete on the next refresh). mypy's `unused-awaitable` flags every such
+# call (~48, all in this one module) as an error; that is framework noise, not
+# a forgotten await. Disable the code for this module only — it stays enabled
+# everywhere else so a genuinely-dropped coroutine is still caught (WI-rokup).
+[[tool.mypy.overrides]]
+module = "hypergumbo_tracker.tui"
+disable_error_code = ["unused-awaitable"]
