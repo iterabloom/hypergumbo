@@ -14,16 +14,16 @@ for focused LLM context.
 ## Self-Analysis Summary (auto)
 
 hypergumbo analyzed its own source code and found:
-- **296** Python modules (133 analyzers, 59 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 30, Infrastructure 8; 67 core, 4 CLI, 33 tracker)
-- **37340** symbols (functions, classes, methods)
-- **127347** edges by type:
-  - calls: 64311
-  - contains: 34491
-  - imports: 11326
-  - instantiates: 10476
-  - references: 4267
-  - module_attr_ref: 1157
-  - other: 1319
+- **297** Python modules (133 analyzers, 59 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 30, Infrastructure 8; 68 core, 4 CLI, 33 tracker)
+- **37423** symbols (functions, classes, methods)
+- **127618** edges by type:
+  - calls: 64461
+  - contains: 34564
+  - imports: 11346
+  - instantiates: 10488
+  - references: 4276
+  - module_attr_ref: 1160
+  - other: 1323
 
 ## Package Architecture
 
@@ -85,7 +85,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 37340 Symbols + 127347 Edges + UsageContexts           │
+│  Output: 37423 Symbols + 127618 Edges + UsageContexts           │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -193,7 +193,7 @@ A code symbol (function, class, etc.) detected by analysis.
 - `language`: Programming language (python, javascript, etc.). Optional per ADR-0031 — Symbols representing source-code declarations carry the host language; synthetic-stand-in Symbols emitted by linkers for protocol/framework patterns (Kafka topics, WASM modules, IPC channels, etc.) leave this ``None`` and populate ``protocol_origin`` instead. Pre-ADR-0031 emits will continue passing a string for the full ADR-0031 §"Phase 1 Producer migration" window.
 - `path`: File path where the symbol is defined
 - `span`: Source location with lines and columns
-- `origin`: Provenance list (INV-jidat). Each element is a pass ID that contributed to this Symbol's existence, ordered chronologically (originating pass first). Single-element lists are the common case. Auto-normalized from scalar str for backward compat.
+- `origin`: Provenance list (INV-jidat). Each element is a pass ID that contributed to this Symbol's existence, ordered chronologically (originating pass first). Single-element lists are the common case. Auto-normalized from scalar str for backward compat. The declared type is ``str | List[str]`` so this accepted-input contract holds at the type level; do NOT narrow it to ``List[str]`` — most producers pass a single scalar pass ID, and narrowing reintroduces hundreds of arg-type errors under mypy strict (INV-zogud). The stored value is always a list after ``__post_init__``.
 - `origin_run_id`: Unique execution ID of the analysis run
 - `stable_id`: Structural-identity hash within a (qualified_name, module_path) scope (ADR-0014 amended by Phase 6 PR3 / INV-bazij). Survives BODY edits; does NOT survive rename or move — those are now identity-changing operations. Pre-Phase-6 the field was documented as "survives renames/moves", but on the dogfood corpus that promise produced a 60% collision rate (155 zero-param bash functions in one file shared one ID), so name + qualified_name are now part of the hash inputs. Serialized as ``sha256:<16hex>``; the ``sha256:`` prefix names the hash *algorithm*, not the identity axis — the scheme/version lives in the top-level ``stable_id_scheme`` descriptor. ``shape_id`` shares this exact surface; the two are discriminated by field identity (and their ``*_scheme`` descriptors), NOT by an in-value prefix, and their value-spaces are disjoint (0 overlap on
 - `the dogfood corpus). This is by design (WI-tisar)`: unlike ``fingerprint``'s ``hgfp2:`` *version* tag or the edges' ``edge:``/``edgekey:`` *namespace* tags, these two need no in-value discriminator because they are always field-qualified. Consumers must therefore retain field context — do NOT join on bare hash values across the stable_id/shape_id axes.
@@ -230,7 +230,7 @@ A relationship between two symbols (e.g., function calls).
 - `edge_type`: Type of relationship (calls, imports, inherits, etc.)
 - `line`: Line number where the relationship occurs
 - `confidence`: Confidence score (0.0-1.0)
-- `origin`: Pass IDs that contributed to this edge (INV-jidat). Auto-normalized from scalar str.
+- `origin`: Pass IDs that contributed to this edge (INV-jidat). Auto-normalized from scalar str. Declared ``str | List[str]`` (both the field and ``Edge.create``'s param) so the scalar-or-list input contract holds at the type level; do NOT narrow to ``List[str]`` (most producers pass a scalar pass ID — narrowing reintroduces arg-type errors under mypy strict, INV-zogud). Stored value is always a list after ``__post_init__``.
 - `origin_run_id`: Unique execution ID of the analysis run
 - `evidence_type`: Type of evidence (e.g., ast_call_direct)
 - `evidence_lang`: Language for confidence scoring
@@ -272,19 +272,19 @@ These symbols have the highest bidirectional centrality
 
 | Symbol | Kind | Score | Location |
 |--------|------|-------|----------|
-| `Symbol` | class | 9428.3 | ir.py |
-| `Span` | class | 6330.8 | ir.py |
-| `write_text` | external_symbol | 3294.0 | <external> |
+| `Symbol` | class | 9446.6 | ir.py |
+| `Span` | class | 6336.7 | ir.py |
+| `write_text` | external_symbol | 3298.0 | <external> |
 | `LinkerContext` | class | 3268.5 | registry.py |
-| `Edge.create` | method | 2099.9 | ir.py |
+| `Edge.create` | method | 2103.3 | ir.py |
 | `TrackerApp` | class | 1946.9 | tui.py |
 | `load_framework_patterns` | function | 1875.9 | framework_patterns.py |
-| `Path` | external_symbol | 1626.0 | <external> |
+| `Path` | external_symbol | 1628.0 | <external> |
 | `main` | function | 1563.1 | cli.py |
 | `clear_pattern_cache` | function | 1336.8 | framework_patterns.py |
 | `Edge` | class | 1282.0 | ir.py |
-| `append` | external_symbol | 1242.0 | <external> |
-| `get` | external_symbol | 1130.0 | <external> |
+| `append` | external_symbol | 1247.0 | <external> |
+| `get` | external_symbol | 1137.0 | <external> |
 | `TreeSitterAnalyzer` | class | 1074.7 | base.py |
 | `find_files` | function | 997.1 | discovery.py |
 
@@ -470,6 +470,7 @@ The `scripts/` directory contains operational tooling. Descriptions are extracte
 | `check-evidence-type-drift` | Pre-commit lint: ``*EVIDENCE_TYPE*`` sets in packages/ must be |
 | `check-fallback-coherence` | Pre-commit lint: INV-zuhub fallback-coherence at Edge.create call sites. |
 | `check-multi-value-field-axis-declaration` | Pre-commit / CI lint: every str-typed field on a core dataclass |
+| `check-mypy-ratchet` | Whole-tree mypy strict ratchet (WI-rokup, Decision D13, INV-zogud). |
 | `check-pass-id-agreement` | Pre-commit / CI lint: catalog pass IDs agree with runtime pass IDs. |
 | `check-producer-axis-coherence` | Pre-commit lint: literal-string keyword arguments to ``Edge.create``, |
 | `check-schema-coverage` | Corpus-driven schema-coverage gate (WI-luzuh). |
@@ -559,6 +560,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 - **`hypergumbo_core.metrics`**: Metrics computation for behavior map output.
 - **`hypergumbo_core.multi_value_field_axis`**: Multi-value field axis declaration linter (WI-busij).
 - **`hypergumbo_core.name_matcher`**: Name-form normalization at matcher boundaries (Level 2 of WI-zigah).
+- **`hypergumbo_core.noise_filter`**: Default-view noise predicate for the survey pipeline (Phase D).
 - **`hypergumbo_core.partial_install_warnings`**: Runtime warnings for partial installations (ADR-0010 Item 8).
 - **`hypergumbo_core.pass_metadata`**: Per-pass metadata lookup for the finalize stage (run-lifecycle:F1 /...
 - **`hypergumbo_core.paths`**: Centralized path handling utilities for hypergumbo.
@@ -843,7 +845,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: d6376ed87500
+  commit: c56118914299
   hypergumbo: 6.1.0
   python: 3.12.3
 -->
