@@ -146,6 +146,7 @@ from .ir import (
     is_external_boundary,
 )
 from .metrics import compute_metrics
+from .noise_filter import is_noise_symbol
 from .profile import detect_profile
 from .schema import new_behavior_map, READ_VIEW_SCHEMA_VERSION
 from .sketch import generate_sketch, ConfigExtractionMode, SketchStats, display_representativeness_table
@@ -9621,60 +9622,14 @@ def run_survey(
     # (.gitignore patterns, npm scripts) are typically degree-0 and add
     # noise without architectural insight.
     if not include_docs:
-        # ADR-0027 Phase-2 audit (WI-jukav): all members are AXIS_PENDING
-        # (Clusters G/H — build/config-shape and domain long-tail) or
-        # AXIS_LANGUAGE_CONSTRUCT (Cluster A — ``property``, ``label``,
-        # ``heading``, ``paragraph`` per audit-findings 0006/0007). None
-        # of these values is scheduled for fold/rename in Phase 3 producer
-        # migration; the noise-filtering semantics survive Wave 5
-        # unchanged. Forward-compatible.
-        _NOISE_KINDS = frozenset({
-            # Documentation / config
-            "section", "table_array", "code_block",
-            "link", "paragraph", "label",
-            "setting",
-            # CSS structural (degree-0 in behavior maps)
-            "class_selector", "id_selector", "rule_set",
-            "property", "media", "keyframes", "font_face",
-            # Config metadata (degree-0 across all tested repos)
-            "pattern",      # .gitignore entries
-            "requirement",  # pip requirements.txt entries
-        })
-        # CSS-family `variable` (custom properties, SCSS / Sass variables) is
-        # zero-edge noise and stays excluded. WI-gafog E2: in any other
-        # language, `variable` is a real top-level binding (Python module
-        # constants, Go top-level `var`, YAML / Make variables) and must
-        # remain in the output for cross-file `from <mod> import NAME`
-        # resolution.
-        _CSS_LANGUAGES = frozenset({"css", "scss", "sass", "less"})
-
-        # INV-bovif: `kind="table"` is overloaded between TOML/INI/properties
-        # `[section]` headers (config noise) and SQL `CREATE TABLE` entities
-        # (first-class schema constructs). Filter only the config-language
-        # producers; SQL tables pass through so the database_query linker
-        # can link query call-sites to schema tables. Same shape as the
-        # `_CSS_LANGUAGES` carve-out above.
-        _TABLE_NOISE_LANGUAGES = frozenset({"toml", "ini", "properties"})
-
-        def _is_noise(sym: "Symbol") -> bool:
-            if sym.kind in _NOISE_KINDS:
-                return True
-            if sym.kind == "variable" and sym.language in _CSS_LANGUAGES:
-                return True
-            if sym.kind == "table" and sym.language in _TABLE_NOISE_LANGUAGES:
-                return True
-            # Wave 6 PR 3 fold per audit-findings 0005: ``script`` now
-            # emits as ``kind="file"`` + ``meta["entry_role"]="script"``.
-            # The legacy literal stays in ``_NOISE_KINDS`` for unmigrated
-            # producers; this branch catches the post-fold shape without
-            # over-excluding real ``kind="file"`` symbols.
-            if sym.kind == "file" and sym.meta:
-                if sym.meta.get("entry_role") == "script":
-                    return True
-            return False
-
-        noise_ids = {s.id for s in all_symbols if _is_noise(s)}
-        all_symbols = [s for s in all_symbols if not _is_noise(s)]
+        # Default view drops degree-0 noise (docs/config/CSS section+table
+        # nodes, bare npm run-scripts) so the map carries architectural signal.
+        # The predicate — including the WI-papag entry_role=script split that
+        # keeps entrypoint-bearing pyproject/console-scripts (ADR-0043 §5 C3)
+        # while filtering npm run-scripts (audit-findings 0005) — lives in
+        # noise_filter.is_noise_symbol.
+        noise_ids = {s.id for s in all_symbols if is_noise_symbol(s)}
+        all_symbols = [s for s in all_symbols if not is_noise_symbol(s)]
         all_edges = [
             e for e in all_edges
             if e.src not in noise_ids and e.dst not in noise_ids

@@ -1016,3 +1016,53 @@ def test_files_analyzed_is_deterministic_across_runs(tmp_path):
         f"run0 vs run1 delta: "
         f"{ {k: (maps[0].get(k), maps[1].get(k)) for k in set(maps[0]) | set(maps[1]) if maps[0].get(k) != maps[1].get(k)} }"
     )
+
+
+def test_pyproject_console_script_survives_and_is_detected_wi_papag(tmp_path):
+    """WI-papag: a pyproject ``[project.scripts]`` console-script is
+    entrypoint-bearing — it must survive the default (non ``--include-docs``)
+    noise filter AND be detected as a manifest-declared CLI_COMMAND, while an
+    npm ``package.json`` run-script (no ``entry_point``) is correctly filtered
+    as noise. Regression guard for the ADR-0043 §5 C3 / audit-findings 0005
+    reconciliation."""
+    repo_root = tmp_path / "repo"
+    (repo_root / "mypkg").mkdir(parents=True)
+    (repo_root / "pyproject.toml").write_text(
+        '[project]\nname = "mypkg"\nversion = "0.1.0"\n\n'
+        '[project.scripts]\nmycli = "mypkg.cli:main"\n'
+    )
+    (repo_root / "mypkg" / "__init__.py").write_text('"""pkg."""\n')
+    (repo_root / "mypkg" / "cli.py").write_text(
+        '"""CLI."""\n\n\ndef main():\n    """entry."""\n    return 0\n'
+    )
+    (repo_root / "package.json").write_text(
+        '{\n  "name": "x",\n  "version": "1.0.0",\n'
+        '  "scripts": {"build": "webpack", "test": "jest"}\n}\n'
+    )
+    out_path = tmp_path / "out.json"
+    run_behavior_map(
+        repo_root=repo_root, out_path=out_path, include_sketch_precomputed=False,
+    )
+    data = json.loads(out_path.read_text())
+
+    def script_nodes(has_entry_point):
+        return [
+            n for n in data["nodes"]
+            if n.get("kind") == "file"
+            and (n.get("meta") or {}).get("entry_role") == "script"
+            and bool((n.get("meta") or {}).get("entry_point")) is has_entry_point
+        ]
+
+    # The pyproject console-script (has entry_point) survives the noise filter...
+    assert script_nodes(True), \
+        "pyproject [project.scripts] console-script was wrongly filtered as noise"
+    # ...and is detected as a manifest-declared CLI_COMMAND entrypoint.
+    cli_eps = [
+        ep for ep in data["entrypoints"]
+        if ep.get("kind") == "cli_command"
+        and (ep.get("meta") or {}).get("evidence_type") == "manifest_declared"
+    ]
+    assert cli_eps, "pyproject console-script not detected as a CLI_COMMAND entrypoint"
+    # npm run-scripts (no entry_point) remain noise-filtered.
+    assert not script_nodes(False), \
+        "npm package.json run-scripts should be noise-filtered"
