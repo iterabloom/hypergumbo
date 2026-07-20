@@ -97,13 +97,23 @@ def test_edge_types_on_axis_returns_only_matching():
 
 def test_edge_types_on_axis_endpoint_shape_includes_known_deprecation_candidates():
     endpoints = {spec.name for spec in edge_types_on_axis(AXIS_ENDPOINT_SHAPE)}
-    # Representative endpoint-shaped values still in the registry. The
-    # protocol-call trio (http_calls / grpc_calls / graphql_calls) was
-    # producer-migrated in WI-vumum-juvil and stays in the registry as
-    # deprecated until Phase 4b' prunes them.
+    # Representative endpoint-shaped values still in the registry (the long-tail
+    # awaiting per-pattern folds). The protocol-call trio (http_calls /
+    # grpc_calls / graphql_calls) was producer-migrated in WI-vumum-juvil and
+    # pruned from the registry in WI-hirud (Phase 4b'); see
+    # test_protocol_call_trio_pruned_from_registry.
     assert {
-        "http_calls", "grpc_calls", "graphql_calls", "script_src",
+        "script_src", "base_image", "kernel_launch", "renders",
     } <= endpoints
+
+
+def test_protocol_call_trio_pruned_from_registry():
+    """WI-hirud (ADR-0023 Phase 4b'): the protocol-call trio (http_calls /
+    grpc_calls / graphql_calls) was producer-migrated to canonical ``calls`` +
+    ``meta['protocol']`` in WI-vumum-juvil and is now pruned from the registry
+    entirely — no ``endpoint_shape`` entries remain for it."""
+    names = all_edge_type_names()
+    assert {"http_calls", "grpc_calls", "graphql_calls"}.isdisjoint(names)
 
 
 def test_edge_types_on_axis_unknown_returns_empty():
@@ -357,16 +367,17 @@ def test_find_axis_drift_strict_flags_endpoint_shape_value(tmp_path: Path):
 
     _write(
         tmp_path / "packages" / "demo" / "src" / "demo.py",
-        # 'http_calls' is endpoint_shape per the post-Phase-4b registry
-        # (its protocol-specific linker hasn't been migrated yet).
-        '_DEMO_EDGE_TYPES = frozenset({"calls", "http_calls"})\n',
+        # 'base_image' is a registered endpoint_shape value (a long-tail
+        # entry not yet folded); the protocol-call trio it formerly used
+        # was pruned in WI-hirud.
+        '_DEMO_EDGE_TYPES = frozenset({"calls", "base_image"})\n',
     )
     # Default (lax) mode: registered value, no drift.
     assert find_axis_drift(tmp_path) == []
-    # Strict mode: http_calls is endpoint_shape → off-axis.
+    # Strict mode: base_image is endpoint_shape → off-axis.
     offenders = find_axis_drift(tmp_path, strict=True)
     assert len(offenders) == 1
-    assert "http_calls" in offenders[0]
+    assert "base_image" in offenders[0]
     assert "not on allowed axis" in offenders[0]
 
 

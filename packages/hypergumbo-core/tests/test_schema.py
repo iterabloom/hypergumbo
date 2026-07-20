@@ -358,11 +358,6 @@ class TestSchemaUpToDate:
             "calls", "imports", "instantiates", "extends", "implements",
             "references", "depends_on", "links", "sources",
             "script_src", "base_image", "kernel_launch",
-            # From linkers (still endpoint_shape — pending future Phase-3-style
-            # migrations of their respective protocol-specialized linkers)
-            "grpc_calls",  # gRPC
-            "http_calls",  # HTTP
-            "graphql_calls",  # GraphQL
             # Canonical Phase-3 fold targets
             "event_publishes",  # async producer→consumer
             "dispatches_to",   # runtime dispatch indirection

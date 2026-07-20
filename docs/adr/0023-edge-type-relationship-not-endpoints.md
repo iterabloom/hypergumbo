@@ -2,7 +2,7 @@
 # ADR-0023: Edge Type Names the Relationship, Not the Endpoints
 
 Date: 2026-04-29
-Status: Accepted (§6 framework complete; 25 endpoint_shape values pending per-pattern micro-phase fold)
+Status: Accepted (§6 framework complete; 22 endpoint_shape values pending per-pattern micro-phase fold)
 
 > The decision is in force as of the canonical-registry landing
 > (commit `3b60ba3dd` — `EDGE_TYPES` is the source of truth) and the
@@ -10,7 +10,8 @@ Status: Accepted (§6 framework complete; 25 endpoint_shape values pending per-p
 > blocks new violations in pre-commit). Phases 1–3 are complete and
 > Phase 4b has shipped the dst-kind, bridge, IPC, publish/dispatch,
 > and protocol-call family closures (WI-vomoj-suhaz at 0.4.0; protocol
-> family via WI-vumum-juvil). 25 endpoint_shape registry entries
+> family producer-migrated via WI-vumum-juvil, its registry entries
+> pruned in WI-hirud). 22 endpoint_shape registry entries
 > remain — the long-tail individual values (`abi_call`, `extends_template`,
 > `notifies_resource`, …) — on a per-pattern micro-phase schedule;
 > each subset ships its own Phase 3 / 4b cycle with bakeoff validation.
@@ -528,12 +529,12 @@ and the 13 publish/dispatch family values (`routes_to`,
 `message_dispatch`, `crdt_publishes`, `annotated_publishes`,
 `emits`, `enqueues`, `event_subscribes`).
 
-**Remaining endpoint_shape registry entries: 25; of which 22 still
-emit under their current names.** The first 4b ship is partial
-because 25 endpoint_shape values still occupy the registry pending
-future per-family Phase 3 / 4b' work; only 3 of those 25 (the
-protocol-call family) have had their producers migrated. The 25
-split into two groups:
+**Remaining endpoint_shape registry entries: 22 (the long-tail).**
+At first-4b-ship 25 remained; the 3-value protocol-call family has
+since been producer-migrated (WI-vumum-juvil) and its registry
+entries pruned (WI-hirud), leaving the 22 long-tail values pending
+future per-family Phase 3 / 4b' work. The original 25 split into two
+groups:
 
 1. **Protocol-call family** (`http_calls`, `grpc_calls`,
    `graphql_calls`): producer migration shipped under
@@ -549,9 +550,9 @@ split into two groups:
    off-axis consumer references — this Phase 3 cleared the last
    load-bearing endpoint_shape consumer reference, unblocking the
    strict-mode pre-commit flip that subsequently shipped under
-   `WI-mumok`. The three deprecated registry entries stay until a
-   sibling Phase-4b' ship (gated on bakeoff validation of this
-   migration) prunes them along with a SCHEMA_VERSION bump.
+   `WI-mumok`. The three deprecated registry entries were pruned in
+   **WI-hirud** (Phase-4b', SCHEMA_VERSION 0.14.6 → 0.15.0), completing
+   this family's fold end-to-end.
 
 2. **Long-tail individual values** (~22 values from the
    WI-tavas-voror sweep: `abi_call`, `association`, `base_image`,

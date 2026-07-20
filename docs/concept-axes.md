@@ -96,9 +96,6 @@ Values whose meaning is leaked into the type label even though it is captured by
 - **`crypto_flow`** — Crypto-related dataflow (key/secret reaches sink); likely fold to 'data_flows_to' + meta['ref_construct']='crypto'.
 - **`depends`** — Package depends on another (Bitbake, requirements.txt); likely fold to 'depends_on' (already canonical) or 'depends_on_manifest' depending on declaration site.
 - **`extends_template`** — Twig/Jinja template extends a parent template; likely fold to 'extends' + meta['ref_construct']='template' or stay as canonical if templates' extension semantics differ enough.
-- **`graphql_calls`** — GraphQL call (use 'calls' + protocol meta).
-- **`grpc_calls`** — gRPC call (use 'calls' + protocol meta).
-- **`http_calls`** — HTTP call (use 'calls' + protocol meta).
 - **`includes_class`** — Puppet manifest includes a class declaration; likely fold to 'includes' (now canonical) + meta['ref_construct']='puppet_class'.
 - **`includes_template`** — Twig/Jinja template includes a partial; likely fold to 'includes' (now canonical) + meta['ref_construct']='template'.
 - **`invokes_callback`** — Erlang/Elixir/Ruby callback invocation (gen_server callback, framework lifecycle hook); likely fold to 'dispatches_to' or 'calls' + meta['mechanism']='callback'.

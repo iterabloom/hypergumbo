@@ -205,18 +205,10 @@ EDGE_TYPES: Final[tuple[EdgeTypeSpec, ...]] = (
         "kernel_launch", AXIS_ENDPOINT_SHAPE,
         "GPU kernel invocation.",
     ),
-    EdgeTypeSpec(
-        "grpc_calls", AXIS_ENDPOINT_SHAPE,
-        "gRPC call (use 'calls' + protocol meta).",
-    ),
-    EdgeTypeSpec(
-        "http_calls", AXIS_ENDPOINT_SHAPE,
-        "HTTP call (use 'calls' + protocol meta).",
-    ),
-    EdgeTypeSpec(
-        "graphql_calls", AXIS_ENDPOINT_SHAPE,
-        "GraphQL call (use 'calls' + protocol meta).",
-    ),
+    # The protocol-call trio (http_calls / grpc_calls / graphql_calls) was
+    # producer-migrated to canonical ``calls`` + ``meta['protocol']`` in
+    # WI-vumum-juvil and pruned from the registry in WI-hirud (ADR-0023
+    # Phase 4b'). The wire protocol now lives in PROTOCOL_KINDS below.
 
     # Dispatch-family fold targets per audit-findings 0001. Each was a deprecation
     # candidate where the family-specific name encoded a mechanism /
@@ -446,10 +438,11 @@ PROTOCOL_KINDS: Final[frozenset[str]] = frozenset({
 })
 """Closed enumeration of values for ``edge.meta['protocol']``.
 
-Per ADR-0023 §6 Phase 3 (WI-vumum-juvil): Phase 3 folds the
-protocol-call family endpoint_shape values (``http_calls``,
-``grpc_calls``, ``graphql_calls``) into the canonical ``calls``
-relationship plus ``meta['protocol']`` carrying the wire protocol.
+Per ADR-0023 §6 (WI-vumum-juvil Phase 3 + WI-hirud Phase 4b'): the
+protocol-call family (``http_calls``, ``grpc_calls``, ``graphql_calls``)
+was folded into the canonical ``calls`` relationship plus
+``meta['protocol']`` carrying the wire protocol, and its ``endpoint_shape``
+registry entries were then pruned.
 ``ipc`` is already in flight (audit-findings 0002 / WI-hahap-farid:
 the Tauri IPC linker emits ``calls`` + ``meta['protocol']='ipc'``).
 The enumeration is closed: adding a new wire protocol requires an

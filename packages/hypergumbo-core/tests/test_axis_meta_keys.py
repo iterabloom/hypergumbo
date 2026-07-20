@@ -259,7 +259,7 @@ def test_is_access_mode_not_applicable_resolver():
     assert is_access_mode_not_applicable("references") is False
     # Unclassified (deferred) → False: their behavior is untouched by PR 1.
     assert is_access_mode_not_applicable("crypto_flow") is False
-    assert is_access_mode_not_applicable("http_calls") is False
+    assert is_access_mode_not_applicable("renders") is False
     # script_src is a census structural type but deferred (endpoint_shape
     # mid-fold, ADR-0023); behaviorally moot (never reaches the classifier).
     assert is_access_mode_not_applicable("script_src") is False

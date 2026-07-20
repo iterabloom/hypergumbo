@@ -85,6 +85,10 @@ Alongside: the CLI standardizes on `--format {text,json}` across all read views 
 
 ### Changed
 
+#### Edge-type vocabulary — protocol-call family pruned (schema 0.15.0)
+
+- **`http_calls` / `grpc_calls` / `graphql_calls` removed from the edge-type registry (WI-hirud, ADR-0023 Phase 4b′).** These three `endpoint_shape` values were producer-migrated to canonical `calls` + `meta['protocol']` in WI-vumum-juvil; their now-dead registry entries (and the `x-deprecated` schema annotations) are pruned. No producer emitted them and every consumer set already reads canonical `calls`, so runtime behavior is unchanged — but a behavior map produced *before* the WI-vumum-juvil migration that still carries these edge types will no longer validate against the enum. **`SCHEMA_VERSION` 0.14.6 → 0.15.0** (minor bump per the ADR's Phase-4b removal contract). The `endpoint_shape` registry section drops 25 → 22.
+
 #### Meta-layer honesty
 
 - **Per-run and limits reporting lists are present only when non-empty (INV-virik).** `analysis_runs[].{skipped_passes, failed_files, warnings}`, `limits.{failed_files, skipped_languages, truncated_files}`, and `limits.supply_chain.{classification_failures, ambiguous_paths}` are now omitted when empty instead of serialized as an always-`[]` list on every record — so their **absence** honestly reads as "nothing to report" rather than a hollow empty list that reads as "clean" on a pipeline-health consumer. An empty `limits.supply_chain` therefore serializes as `{}`. Matches the existing `partial_results_reason` / `max_tier_applied` omit-when-empty precedent; the fields were already optional in the schema (no version bump). `limits.skipped_passes` (the populated provenance surface) and `limits.test_files_excluded` stay always-present.

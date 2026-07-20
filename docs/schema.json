@@ -8,7 +8,7 @@
     "schema_version": {
       "type": "string",
       "description": "Schema version (semver)",
-      "const": "0.14.6"
+      "const": "0.15.0"
     },
     "confidence_model": {
       "type": "string",
@@ -891,9 +891,6 @@
             "script_src",
             "base_image",
             "kernel_launch",
-            "grpc_calls",
-            "http_calls",
-            "graphql_calls",
             "abi_call",
             "association",
             "build_tag_alternative_of",
@@ -947,9 +944,6 @@
             "script_src": "endpoint_shape",
             "base_image": "endpoint_shape",
             "kernel_launch": "endpoint_shape",
-            "grpc_calls": "endpoint_shape",
-            "http_calls": "endpoint_shape",
-            "graphql_calls": "endpoint_shape",
             "abi_call": "endpoint_shape",
             "association": "endpoint_shape",
             "build_tag_alternative_of": "endpoint_shape",
@@ -978,9 +972,6 @@
             "script_src",
             "base_image",
             "kernel_launch",
-            "grpc_calls",
-            "http_calls",
-            "graphql_calls",
             "abi_call",
             "association",
             "build_tag_alternative_of",
