@@ -2245,6 +2245,23 @@ def _extract_edges_from_file(
                                     and not _defer
                                 ):
                                     confidence = 0.80 * lookup_result.confidence
+                                    # WI-fazaj: a scoped ``Type::method()`` call that
+                                    # resolves *here* (Strategy 1 missed it; the
+                                    # cross-package survey ``method_resolver`` / bare-name
+                                    # fallback bound it) still named its target type at the
+                                    # call site, so it is a *qualified* call, not a
+                                    # receiver-blind magnet — stamp ``receiver="qualified"``
+                                    # (mirroring the Strategy-1 sites) so
+                                    # ``find_receiver_blind_magnets`` excludes it. The
+                                    # branch is reachable only through the full-survey
+                                    # method_resolver (verified unreachable across 8
+                                    # isolated ``analyze_rust`` scenarios — cross-file,
+                                    # nested modules, ``use`` aliases, generics, ``::new``
+                                    # ambiguity, re-exports — which all bind via Strategy 1),
+                                    # so it carries ``# pragma: no cover``.
+                                    _meta = {"call_construct": "function"}
+                                    if full_scoped_name is not None:  # pragma: no cover
+                                        _meta["receiver"] = "qualified"
                                     edges.append(Edge.create(
                                         src=current_function.id,
                                         dst=_sym.id,
@@ -2254,7 +2271,7 @@ def _extract_edges_from_file(
                                         confidence=confidence,
                                         origin=PASS_ID,
                                         origin_run_id=run_id,
-                                        meta={"call_construct": "function"},
+                                        meta=_meta,
                                     ))
                                 else:
                                     # WI-volob / WI-mafik: consult use_aliases
