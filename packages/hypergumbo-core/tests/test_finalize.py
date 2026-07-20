@@ -268,6 +268,7 @@ _SUBSTEPS = [
     "_finalize_recompute_run_signature",
     "_finalize_repo_fingerprint",
     "_finalize_skipped_into_limits",
+    "_finalize_demote_receiver_blind_magnets",  # INV-fahub (6c, before 7)
     "_finalize_edge_resolution",
     "_finalize_compute_visibility",  # INV-jusot (7b, before commit)
     "_finalize_commit_dicts",
@@ -440,6 +441,70 @@ def test_edge_resolution_is_idempotent(tmp_path: Path) -> None:
     first = (edge.is_resolved, edge.dst_ref)
     _finalize_edge_resolution(ctx)
     assert (edge.is_resolved, edge.dst_ref) == first
+
+
+# --- Sub-step 6c: INV-fahub receiver-blind magnet demotion (before 7) -------
+def _magnet(dst_name: str, dst_path: str, *, src_path: str = "app/main.go",
+            language: str = "go") -> tuple[list[Symbol], Edge]:
+    """A production->target resolved untyped-receiver cross-owner magnet."""
+    src = Symbol(id="src:App.run", name="App.run", kind="method", language=language,
+                 path=src_path, span=_span(), origin=["p"], origin_run_id="r1")
+    dst = Symbol(id="dst:target", name=dst_name, kind="method", language=language,
+                 path=dst_path, span=_span(), origin=["p"], origin_run_id="r1")
+    edge = Edge.create(
+        src=src.id, dst=dst.id, edge_type="calls", line=1,
+        evidence_type="ast_call", confidence=0.85, is_resolved=True,
+        origin="p", origin_run_id="r1", meta={"call_construct": "function"},
+    )
+    return [src, dst], edge
+
+
+def test_finalize_demotes_production_to_test_helper_magnet(tmp_path: Path) -> None:
+    # App.run (production) -> Collector.Add whose def is in test/testutils/:
+    # a production->test-helper misbind. Demoted end-to-end through finalize().
+    nodes, edge = _magnet("Collector.Add", "test/testutils/collector.go")
+    ctx = _ctx(tmp_path, symbols=nodes, edges=[edge])
+    finalize(ctx)
+    assert edge.dst == "go:external:0-0:Add:unresolved"
+    assert (edge.meta or {}).get("resolution_quality") == "ambiguous"
+    assert edge.is_resolved is False  # sub-step 7 derives it from the external dst
+
+
+def test_finalize_demotes_stdlib_interface_shadow(tmp_path: Path) -> None:
+    # tmpl.Parse() -> a local Template.Parse: Parse is a stdlib-interface name.
+    nodes, edge = _magnet("Template.Parse", "template/template.go")
+    ctx = _ctx(tmp_path, symbols=nodes, edges=[edge])
+    finalize(ctx)
+    assert edge.dst == "go:external:0-0:Parse:unresolved"
+    assert edge.is_resolved is False
+
+
+def test_finalize_keeps_same_module_trait_bind(tmp_path: Path) -> None:
+    # Rust x.next() -> Red::next: correct-but-unprovable trait funnel (ADR-0012
+    # scope). snake_case + same-module + not a test-helper => KEPT, stays resolved.
+    nodes, edge = _magnet("Red::next", "src/source/noise.rs",
+                          src_path="src/lib.rs", language="rust")
+    ctx = _ctx(tmp_path, symbols=nodes, edges=[edge])
+    finalize(ctx)
+    assert edge.dst == "dst:target"  # untouched
+    assert edge.is_resolved is True
+
+
+def test_demote_runs_before_edge_resolution(monkeypatch, tmp_path: Path) -> None:
+    """Order guard: demotion must precede the ADR-0037 verdict, or the verdict
+    would re-resolve the redirected-but-not-yet-external edge and undo it."""
+    calls: list[str] = []
+    import hypergumbo_core.finalize as fmod
+    for name in ("_finalize_demote_receiver_blind_magnets", "_finalize_edge_resolution"):
+        orig = getattr(fmod, name)
+        monkeypatch.setattr(
+            fmod, name,
+            (lambda ctx, _o=orig, _n=name: (calls.append(_n), _o(ctx))[1]),
+        )
+    finalize(_ctx(tmp_path))
+    assert calls.index("_finalize_demote_receiver_blind_magnets") < calls.index(
+        "_finalize_edge_resolution"
+    )
 
 
 def test_edge_resolution_runs_before_commit_and_validate(monkeypatch, tmp_path: Path) -> None:

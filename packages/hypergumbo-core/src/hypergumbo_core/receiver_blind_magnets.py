@@ -47,7 +47,9 @@ from __future__ import annotations
 
 from typing import Any, Iterable, List, Optional
 
-__all__ = ["find_receiver_blind_magnets", "owner_of"]
+from .paths import is_test_file
+
+__all__ = ["demote_harmful_magnets", "find_receiver_blind_magnets", "owner_of"]
 
 # evidence_type values that are the bare, receiver-blind resolution pathways.
 # Everything else (ast_call_type_inferred, ast_call_ufcs, ast_call_inherited,
@@ -83,6 +85,17 @@ def _get(obj: Any, key: str, default: Any = None) -> Any:
     if isinstance(obj, dict):
         return obj.get(key, default)
     return getattr(obj, key, default)
+
+
+def _set(obj: Any, key: str, value: Any) -> None:
+    """Write ``key`` on a dataclass-like object or a dict, whichever it is —
+    the write-side twin of ``_get``, so ``demote_harmful_magnets`` mutates live
+    ``Edge`` dataclasses (the finalize call) and deserialized survey-JSON dicts
+    (the real-repro survey harness) with the same code."""
+    if isinstance(obj, dict):
+        obj[key] = value
+    else:
+        setattr(obj, key, value)
 
 
 def _strip_generics(name: str) -> str:
@@ -220,3 +233,123 @@ def find_receiver_blind_magnets(
             continue  # same-class implicit-this/self — legitimate
         out.append(edge)
     return out
+
+
+# Well-known standard-library / core-interface method names. An untyped-receiver
+# call to one of these overwhelmingly targets the stdlib type, not the arbitrary
+# internal same-named method it bound to (``tmpl.Parse()`` → text/template, not a
+# local ``Template.Parse``; ``x.Close()`` → io.Closer, not a repo ``Foo.Close``).
+# These are the PascalCase (Go / Java / C#) interface-method names — DELIBERATELY
+# case-sensitive so the snake_case trait methods that dominate Rust
+# (``next`` / ``len`` / ``clone`` / ``into`` / ``channels``) are NOT swept: those
+# are the correct-but-unprovable trait-dispatch binds INV-fahub's owner ruling
+# KEEPS as ADR-0012 (real-type-resolution) scope, not the stdlib shadow this gate
+# demotes. Mirrors ``go.py::_GO_STDLIB_INTERFACE_METHODS`` (a separate emit-time
+# guard) but lives here as the finalize-stage, all-language demotion vocabulary.
+_STDLIB_INTERFACE_METHODS = frozenset({
+    # sync.Locker
+    "Lock", "Unlock", "RLock", "RUnlock",
+    # io: Reader / Writer / Closer / Seeker
+    "Read", "Write", "Close", "Seek", "ReadAt", "WriteAt",
+    # fmt.Stringer / error
+    "String", "Error",
+    # sort.Interface
+    "Len", "Less", "Swap",
+    # encoding.*Marshaler
+    "MarshalJSON", "UnmarshalJSON", "MarshalText", "UnmarshalText",
+    # context.Context
+    "Deadline", "Done", "Value",
+    # net/http Handler / ResponseWriter
+    "ServeHTTP", "Header", "WriteHeader",
+    # text/template, encoding, flag — Parse is a canonical concrete-type method
+    # whose untyped-receiver call overwhelmingly hits the stdlib type.
+    "Parse",
+})
+
+
+def _method_short_name(name: Optional[str]) -> Optional[str]:
+    """The method segment of a qualified name — the inverse of ``owner_of``.
+
+    ``"GlobSet::len"`` → ``"len"``; ``"Json.to"`` → ``"to"``; a bare ``"helper"``
+    (no separator) → ``"helper"``.
+    """
+    if not name:
+        return None
+    for sep in _OWNER_SEPARATORS:
+        if sep in name:
+            return name.rsplit(sep, 1)[1]
+    return name
+
+
+def demote_harmful_magnets(
+    nodes: Iterable[Any],
+    edges: Iterable[Any],
+    *,
+    min_confidence: float = 0.80,
+) -> List[Any]:
+    """Demote the CLEANLY-harmful receiver-blind magnets to unresolved-external.
+
+    INV-fahub's letter says an unresolvable-receiver call must emit an
+    ambiguous/external edge, not a high-confidence bind to an arbitrary internal
+    def. Its owner ruling refines *which* magnets to act on: only the two
+    sub-classes where the bound internal target is almost-certainly WRONG —
+
+    * **production → test-helper**: the ``dst`` def lives in a test-support file
+      (``paths.is_test_file`` — the broad heuristic that flags ``testutils/`` /
+      ``fixtures/`` / ``mocks/`` / ``benches/`` …) while the ``src`` caller does
+      not. Production code binding ``.Add()`` to a *test* ``Collector.Add`` is a
+      misbind; the real target is elsewhere/external.
+    * **stdlib-interface shadow**: the method's short name is a well-known
+      standard-library interface method (``Close`` / ``Parse`` / ``Len`` …), which
+      on an untyped receiver overwhelmingly targets the stdlib type, not the
+      arbitrary internal same-named method.
+
+    Everything else stays: the snake_case trait-method funnel (Rust ``x.next()``
+    → ``Red::next``) is a correct-but-unprovable bind that needs real type
+    resolution (ADR-0012), and the owner ruling KEEPS it rather than pay the
+    recall cost of a blanket gate. Same-module builder binds (``Args.append``)
+    and test→test-helper calls are likewise untouched.
+
+    Each demoted edge has its ``dst`` **redirected** to an
+    ``{lang}:external:0-0:{method}:unresolved`` id (so ``finalize``'s ADR-0037
+    edge-resolution verdict derives ``is_resolved=False`` — this function never
+    hand-sets the flag) and ``meta.resolution_quality='ambiguous'`` stamped to
+    record that the receiver was unresolvable. Mutates the offending edge objects
+    in place and returns them (empty list if none). Intended to run at the
+    finalize chokepoint BEFORE the edge-resolution sub-step, over the whole
+    reconciled graph, so it is a single all-language gate rather than a per-analyzer
+    sweep.
+    """
+    by_id = {}
+    for n in nodes:
+        nid = _get(n, "id", None)
+        if nid is not None:
+            by_id[nid] = n
+
+    demoted: List[Any] = []
+    for edge in find_receiver_blind_magnets(
+        nodes, edges, min_confidence=min_confidence
+    ):
+        dst = by_id.get(_get(edge, "dst", None))
+        src = by_id.get(_get(edge, "src", None))
+        method = _method_short_name(
+            _get(dst, "name", None) or _get(dst, "qualified_name", None)
+        )
+        dst_is_helper = is_test_file(_get(dst, "path", "") or "")
+        src_is_helper = (
+            is_test_file(_get(src, "path", "") or "") if src is not None else False
+        )
+        harmful_test_helper = dst_is_helper and not src_is_helper
+        harmful_stdlib = method in _STDLIB_INTERFACE_METHODS
+        if not (harmful_test_helper or harmful_stdlib):
+            continue
+
+        lang = (
+            _get(src, "language", None) or _get(dst, "language", None) or "unknown"
+        )
+        _set(edge, "dst", f"{lang}:external:0-0:{method}:unresolved")
+        meta = dict(_get(edge, "meta", None) or {})
+        meta["resolution_quality"] = "ambiguous"
+        _set(edge, "meta", meta)
+        demoted.append(edge)
+    return demoted

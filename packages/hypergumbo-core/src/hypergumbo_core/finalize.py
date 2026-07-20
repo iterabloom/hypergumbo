@@ -76,6 +76,7 @@ from typing import TYPE_CHECKING, Optional
 
 from .ir import ExternalRef, _compute_run_signature, _parse_dangling_id
 from .pass_metadata import PassMetadataLookup
+from .receiver_blind_magnets import demote_harmful_magnets
 from .repo_fingerprint import compute_repo_fingerprint
 from .visibility import (
     VISIBILITY_MODIFIER_TERMS,
@@ -345,6 +346,28 @@ def _derive_dst_ref_from_id(dst_id: str) -> Optional[ExternalRef]:
     return ExternalRef(lang=language, module_path=path, name=name)
 
 
+def _finalize_demote_receiver_blind_magnets(ctx: FinalizeContext) -> None:
+    """Sub-step 6c — INV-fahub: demote cleanly-harmful receiver-blind magnets.
+
+    A receiver-blind method magnet is a high-confidence ``calls`` edge that bound
+    an unresolvable-receiver call to an *arbitrary* same-named internal method
+    (``Peer.removeFailedPeers`` → a *test* ``Collector.Add``; ``tmpl.Parse()`` →
+    a local ``Template.Parse`` instead of ``text/template``). This gate demotes
+    only the two sub-classes where the internal target is almost-certainly wrong
+    — a production→test-helper misbind and a stdlib-interface-method shadow — by
+    **redirecting** the edge's ``dst`` to an ``external:unresolved`` id. The
+    correct-but-unprovable trait-method funnel (Rust ``x.next()``) is left intact
+    (ADR-0012 scope; owner ruling) — see ``demote_harmful_magnets``.
+
+    Runs on the RESOLVED graph (producer/linker binds in place) but BEFORE
+    sub-step 7 ``_finalize_edge_resolution``, which then re-derives
+    ``is_resolved=False`` + ``dst_ref`` from the now-external dst — so this
+    sub-step never hand-sets a resolution surface. R1-safe: mutates edge fields
+    only, adds/removes no node or edge.
+    """
+    demote_harmful_magnets(ctx.symbols, ctx.edges)
+
+
 def _finalize_edge_resolution(ctx: FinalizeContext) -> None:
     """Sub-step 7 — single edge-resolution verdict (ADR-0037 rulings 1/2).
 
@@ -496,6 +519,7 @@ def finalize(ctx: FinalizeContext) -> FinalizedMap:
     _finalize_recompute_run_signature(ctx)  # 3  META-hufaz (R2: after 2)
     _finalize_repo_fingerprint(ctx)         # 4  repo_fingerprint stamp
     _finalize_skipped_into_limits(ctx)      # 6  skipped → limits
+    _finalize_demote_receiver_blind_magnets(ctx)  # 6c INV-fahub magnet demote (before 7)
     _finalize_edge_resolution(ctx)          # 7  edge-resolution verdict (ADR-0037; before 8)
     _finalize_compute_visibility(ctx)       # 7b visibility fold (INV-jusot; before 8)
     _finalize_commit_dicts(ctx)             # 8  commit reconciled view
