@@ -558,13 +558,16 @@ def _extract_symbols_from_file(
                 end_line = node.end_point[0] + 1
                 base_classes = _extract_extends_clause(node, source)
                 annotations = _extract_annotations_scala(node, source)
-                meta: dict[str, object] | None = {}
+                # Renamed from `meta` — a different construct's meta dict than
+                # the earlier `meta` in this method (fixes mypy [no-redef]). Typed
+                # non-Optional and built up as a dict, then coerced to None only at
+                # the Symbol via `or None`, so indexed assignment type-checks
+                # instead of tripping [index] on the `| None` arm (WI-hokag).
+                class_meta: dict[str, object] = {}
                 if base_classes:
-                    meta["base_classes"] = base_classes
+                    class_meta["base_classes"] = base_classes
                 if annotations:
-                    meta["decorators"] = annotations
-                if not meta:
-                    meta = None
+                    class_meta["decorators"] = annotations
 
                 symbol = Symbol(
                     id=make_symbol_id("scala", str(file_path), start_line, end_line, type_name, "class"),
@@ -580,7 +583,7 @@ def _extract_symbols_from_file(
                     ),
                     origin=PASS_ID,
                     origin_run_id=run_id,
-                    meta=meta,
+                    meta=class_meta or None,
                     modifiers=_extract_modifiers_scala(node),
                 )
                 analysis.symbols.append(symbol)

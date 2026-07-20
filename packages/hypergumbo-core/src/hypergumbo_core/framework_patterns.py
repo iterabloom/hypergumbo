@@ -1600,36 +1600,39 @@ def enrich_symbols(
     # Phase 3: Usage-based matching (v1.1.x)
     if usage_contexts:
         for ctx in usage_contexts:
-            symbol: Symbol | None = None
+            # Distinct from the `for symbol in symbols:` loop var above (that is
+            # a Symbol; this is a nullable lookup result) — renamed to satisfy
+            # mypy [no-redef]/[assignment] (WI-hokag).
+            resolved_symbol: Symbol | None = None
 
             # Try direct symbol_ref lookup first
             if ctx.symbol_ref:
-                symbol = symbol_by_id.get(ctx.symbol_ref)
+                resolved_symbol = symbol_by_id.get(ctx.symbol_ref)
 
             # Fallback: try name-based resolution from metadata (INV-002 fix)
             # This handles cases where view_name exists but symbol_ref wasn't set
             # because the symbol was in a different file during analysis
-            if symbol is None and ctx.metadata:
+            if resolved_symbol is None and ctx.metadata:
                 view_name = ctx.metadata.get("view_name")
                 if view_name:
                     # Try simple name lookup
                     simple_name = view_name.rsplit(".", 1)[-1]
-                    symbol = symbol_by_name.get(simple_name)
+                    resolved_symbol = symbol_by_name.get(simple_name)
 
-            if not symbol:
+            if not resolved_symbol:
                 continue
 
             # Match against usage patterns
             matches = match_usage_patterns(ctx, pattern_defs)
             if matches:
-                if symbol.meta is None:
-                    symbol.meta = {}
+                if resolved_symbol.meta is None:
+                    resolved_symbol.meta = {}
 
                 # Append to existing concepts, deduplicating.
                 # Both definition-based (Phase 1) and usage-based (Phase 3)
                 # can produce the same concept (e.g., Go route handlers
                 # matched by both decorator and UsageContext patterns).
-                existing = symbol.meta.get("concepts", [])
+                existing = resolved_symbol.meta.get("concepts", [])
                 existing_keys = {
                     tuple(sorted(c.items())) for c in existing
                     if isinstance(c, dict)
@@ -1638,7 +1641,7 @@ def enrich_symbols(
                     if tuple(sorted(m.items())) not in existing_keys:
                         existing.append(m)
                         existing_keys.add(tuple(sorted(m.items())))
-                symbol.meta["concepts"] = existing
+                resolved_symbol.meta["concepts"] = existing
 
     return symbols
 
