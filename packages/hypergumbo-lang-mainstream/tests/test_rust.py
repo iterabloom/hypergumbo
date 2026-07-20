@@ -750,6 +750,51 @@ fn main() {
         assert len(methods) >= 1
 
 
+class TestRustQualifiedReceiverMarking:
+    """INV-fahub Phase A — a scoped ``Type::method()`` call names the target type
+    at the call site, so its resolved edge must carry ``meta.receiver="qualified"``.
+
+    Such a call is a *correct* resolution (the type is explicit), NOT a
+    receiver-blind magnet. Without the marker the language-agnostic detector
+    (``find_receiver_blind_magnets``) counts every qualified associated-function
+    call to a method-kind symbol as a cross-class magnet — e.g. rodio's
+    ``SamplesBuffer::new`` <- 26 callers, all correct. The marker (which the
+    detector already excludes) is the producer half the reframe left open.
+    """
+
+    def test_scoped_call_stamps_qualified_and_is_not_a_magnet(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+        from hypergumbo_core.receiver_blind_magnets import find_receiver_blind_magnets
+
+        rs = tmp_path / "q.rs"
+        # ``caller`` is a free function (no owner); ``Foo::make`` is a method on
+        # ``Foo`` — a cross-owner target. Without the qualified marker this
+        # scoped call is a receiver-blind magnet by the detector's rule.
+        rs.write_text(
+            "struct Foo;\n"
+            "impl Foo { fn make() -> Self { Foo } }\n"
+            "fn caller() { let _f = Foo::make(); }\n"
+        )
+        result = analyze_rust(tmp_path)
+        by_id = {s.id: s for s in result.symbols}
+
+        scoped = [
+            e for e in result.edges
+            if e.edge_type == "calls" and e.is_resolved
+            and by_id.get(e.dst) is not None
+            and by_id[e.dst].name.endswith("make")
+        ]
+        assert scoped, "expected a resolved calls edge to Foo::make"
+        for e in scoped:
+            assert (e.meta or {}).get("receiver") == "qualified", e.meta
+
+        # End-to-end: the detector (fixture-gate mode, any confidence) finds no
+        # receiver-blind magnet — the qualified marker excludes the scoped bind.
+        assert find_receiver_blind_magnets(
+            result.symbols, result.edges, min_confidence=0.0
+        ) == []
+
+
 class TestRustFileReadErrors:
     """Tests for file read error handling.
 

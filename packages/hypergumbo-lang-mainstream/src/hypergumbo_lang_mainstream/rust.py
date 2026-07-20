@@ -1913,6 +1913,18 @@ def _extract_edges_from_file(
 
                         # Strategy 1: Try full scoped name first (e.g., "Diff::compute")
                         # This gives precise resolution for qualified calls.
+                        #
+                        # INV-fahub Phase A: every bind in this branch resolves a
+                        # ``Type::method`` scoped call whose target type the CALL
+                        # SITE named explicitly, so the edge carries
+                        # ``meta.receiver="qualified"``. Without it the
+                        # language-agnostic magnet detector counts a qualified
+                        # associated-function call to a method-kind symbol
+                        # (rodio's ``SamplesBuffer::new`` <- 26 callers) as a
+                        # receiver-blind cross-class magnet even though every one
+                        # is correct — the reframe left the detector-side
+                        # ``qualified`` exclusion ready and this stamps the
+                        # producer half.
                         if not resolved and full_scoped_name and full_scoped_name != callee_name:
                             if full_scoped_name in local_symbols:
                                 callee = local_symbols[full_scoped_name]
@@ -1924,7 +1936,7 @@ def _extract_edges_from_file(
                                     evidence_type="ast_call",
                                     origin=PASS_ID,
                                     origin_run_id=run_id,
-                                    meta={"call_construct": "function"},
+                                    meta={"call_construct": "function", "receiver": "qualified"},
                                 ))
                                 resolved = True
                             else:
@@ -1942,7 +1954,7 @@ def _extract_edges_from_file(
                                         confidence=0.80 * lookup_result.confidence,
                                         origin=PASS_ID,
                                         origin_run_id=run_id,
-                                        meta={"call_construct": "function"},
+                                        meta={"call_construct": "function", "receiver": "qualified"},
                                     ))
                                     resolved = True
 
@@ -1966,7 +1978,7 @@ def _extract_edges_from_file(
                                                 evidence_type="ast_call",
                                                 origin=PASS_ID,
                                                 origin_run_id=run_id,
-                                                meta={"call_construct": "function"},
+                                                meta={"call_construct": "function", "receiver": "qualified"},
                                             ))
                                             resolved = True
                                             break
@@ -1983,7 +1995,7 @@ def _extract_edges_from_file(
                                                 confidence=0.80 * lr.confidence,
                                                 origin=PASS_ID,
                                                 origin_run_id=run_id,
-                                                meta={"call_construct": "function"},
+                                                meta={"call_construct": "function", "receiver": "qualified"},
                                             ))
                                             resolved = True
                                             break
