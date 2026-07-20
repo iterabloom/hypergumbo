@@ -31,9 +31,11 @@ explicitly-scoped/static ``Type::method`` call whose type the call site named),
 or ``meta.resolution_quality`` other than ``"ambiguous"``. So a magnet is
 precisely a **resolved** ``calls`` edge to an
 **internal ``method``** that carries only the bare ``ast_call`` /
-``ast_call_direct`` pathway, **no** receiver marker, is **cross-owner** (the
-caller's class differs from the method's owner — a same-class implicit-``this``
-call is legitimate), and lands at or above ``min_confidence``. Everything the
+``ast_call_direct`` pathway, **no** receiver marker, is **not a framework route
+registration** (a handler bound by reference is a correct dispatch, not a
+method call — see ``_is_route_dispatch``), is **cross-owner** (the caller's
+class differs from the method's owner — a same-class implicit-``this`` call is
+legitimate), and lands at or above ``min_confidence``. Everything the
 resolver understood about the receiver is excluded by construction, so genuine
 inherited-call recoveries (``ast_call_inherited``) and typed binds never trip.
 
@@ -144,6 +146,22 @@ def _receiver_was_identified(meta: dict) -> bool:
     return meta.get("receiver") in _RECEIVER_MARKERS
 
 
+def _is_route_dispatch(meta: dict) -> bool:
+    """True iff the edge is a framework ROUTE REGISTRATION, not a method call.
+
+    A route registration (``mux.HandleFunc("/x", dr.deprecationHandler)``,
+    ``@app.get("/y") def h(): ...``) binds a handler BY REFERENCE to the real
+    handler method — a correctly-resolved dispatch, not a receiver-blind
+    method-CALL magnet. It trips the cross-owner check only incidentally: the
+    call-site receiver token (``dr``) reads as an "owner" that differs from the
+    handler method's class. ``meta.dispatch_kind == "route"`` (and the
+    ``handler_name`` marker some route linkers stamp instead) puts these edges
+    out of the magnet detector's scope. (Real repro: Go alertmanager's 8
+    ``dr.deprecationHandler`` route edges — all correct, none a misbind.)
+    """
+    return meta.get("dispatch_kind") == "route" or "handler_name" in meta
+
+
 def find_receiver_blind_magnets(
     nodes: Iterable[Any],
     edges: Iterable[Any],
@@ -186,6 +204,8 @@ def find_receiver_blind_magnets(
         if _evidence_type(edge, meta) not in _BARE_EVIDENCE:
             continue
         if _receiver_was_identified(meta):
+            continue
+        if _is_route_dispatch(meta):
             continue
         conf = _get(edge, "confidence", 0.0)
         if conf is None or conf < min_confidence:

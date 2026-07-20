@@ -152,6 +152,24 @@ def test_resolution_quality_ambiguous_is_not_a_receiver_marker():
     assert len(find_receiver_blind_magnets(nodes, edges)) == 1
 
 
+def test_route_dispatch_edge_skipped():
+    # A framework route registration (``mux.HandleFunc("/x", dr.handler)``) binds
+    # a handler BY REFERENCE to the real method — a correctly-resolved dispatch,
+    # not a receiver-blind method-CALL magnet. It only trips the owner check
+    # because the call-site receiver var (``dr``) reads as an "owner" different
+    # from the handler's class. ``meta.dispatch_kind == "route"`` marks it out of
+    # scope. (Real repro: Go alertmanager ``deprecationHandler`` <- 8 routes.)
+    nodes, edges = _graph_with_magnet(meta={"dispatch_kind": "route"})
+    assert find_receiver_blind_magnets(nodes, edges) == []
+
+
+def test_route_handler_name_marker_skipped():
+    # The same route-registration signal via the ``handler_name`` marker (some
+    # route linkers stamp the handler ref without a dispatch_kind).
+    nodes, edges = _graph_with_magnet(meta={"handler_name": "dr.deprecationHandler"})
+    assert find_receiver_blind_magnets(nodes, edges) == []
+
+
 def test_confidence_below_threshold_skipped():
     nodes, edges = _graph_with_magnet(confidence=0.42)
     assert find_receiver_blind_magnets(nodes, edges) == []
