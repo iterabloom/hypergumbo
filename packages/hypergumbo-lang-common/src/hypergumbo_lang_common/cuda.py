@@ -313,7 +313,10 @@ def _extract_cuda_edges(
             caller = _get_enclosing_cuda_function(node, source, local_symbols)
             if func_node and caller:
                 called_name = node_text(func_node, source)
-                edge_type = "kernel_launch" if is_kernel_launch else "calls"
+                # ADR-0023 fold: a CUDA kernel launch IS a call; the launch
+                # mechanism moves to meta['mechanism']='kernel_launch' (set on
+                # the is_kernel_launch branch below) rather than the edge_type.
+                edge_type = "calls"
                 start_line = node.start_point[0] + 1
 
                 # Use resolver for callee resolution
@@ -335,7 +338,10 @@ def _extract_cuda_edges(
                         confidence=confidence,
                         origin=PASS_ID,
                         evidence_type="ast_call_direct",
-                        meta={"framework_dispatch": "cuda_kernel_launch"},
+                        meta={
+                            "framework_dispatch": "cuda_kernel_launch",
+                            "mechanism": "kernel_launch",
+                        },
                         origin_run_id=run_id,
                     )
                 else:

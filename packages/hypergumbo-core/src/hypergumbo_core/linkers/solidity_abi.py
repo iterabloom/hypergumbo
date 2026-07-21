@@ -231,13 +231,13 @@ def link_solidity_abi(
             result_edges.append(Edge.create(
                 src=syn_id,
                 dst=target.id,
-                edge_type="abi_call",
+                edge_type="calls",
                 line=line_num,
                 confidence=0.75,
                 origin=PASS_ID,
                 origin_run_id=run.execution_id,
                 evidence_type="ast_call_direct",
-                meta={"detection_pattern": "abi_name_match"},
+                meta={"detection_pattern": "abi_name_match", "call_kind": "abi"},
                 derived_from=[syn_id, target.id],
             ))
 

@@ -105,7 +105,7 @@ int main() {
     assert kernels[0].name == "myKernel"
 
     # Should have kernel_launch edge
-    launch_edges = [e for e in result.edges if e.edge_type == "kernel_launch"]
+    launch_edges = [e for e in result.edges if e.edge_type == "calls" and (e.meta or {}).get("mechanism") == "kernel_launch"]
     assert len(launch_edges) >= 1
 
 def test_analyze_cuda_api_call(tmp_path):

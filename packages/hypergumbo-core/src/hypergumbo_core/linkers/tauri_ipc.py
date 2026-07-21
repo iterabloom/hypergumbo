@@ -793,14 +793,14 @@ def link_tauri_ipc(
                 result_edges.append(Edge.create(
                     src=caller_id,
                     dst=publisher_id,
-                    edge_type="caller_invokes",
+                    edge_type="calls",
                     line=0,
                     confidence=0.80,
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     evidence_type="ast_import",
                     data_direction="src_to_dst",
-                    meta={"framework_dispatch": "specta_wrapper"},
+                    meta={"framework_dispatch": "specta_wrapper", "protocol": "ipc"},
                     derived_from=[caller_id, publisher_id],
                 ))
 

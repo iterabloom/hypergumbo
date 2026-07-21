@@ -202,7 +202,7 @@ void launcher() {
         result = analyze_cuda_files(tmp_path)
         assert not result.skipped
 
-        launch_edges = [e for e in result.edges if e.edge_type == "kernel_launch"]
+        launch_edges = [e for e in result.edges if e.edge_type == "calls" and (e.meta or {}).get("mechanism") == "kernel_launch"]
         assert len(launch_edges) >= 1
         # Should be launcher calling myKernel
         kernel_launches = [e for e in launch_edges if "myKernel" in e.dst]

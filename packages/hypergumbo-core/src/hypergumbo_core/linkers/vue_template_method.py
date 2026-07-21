@@ -115,13 +115,13 @@ def link_vue_template_methods(
         edge = Edge.create(
             src=sym.id,
             dst=target.id,
-            edge_type="template_calls",
+            edge_type="calls",
             line=sym.span.start_line if sym.span else 0,
             origin=PASS_ID,
             origin_run_id=run.execution_id,
             evidence_type="ast_call_direct",
             confidence=0.90,
-            meta={"framework_dispatch": "vue_event_handler"},
+            meta={"framework_dispatch": "vue_event_handler", "mechanism": "template"},
             derived_from=[sym.id, target.id],
         )
         new_edges.append(edge)
