@@ -48,3 +48,10 @@
   clock: 5  # 5582
   nonce: '5582'  # 5582
   message: "Blocker draining (2026-07-20, PR #776). The endpoint_shape fold-tail (WI-kivip) advanced: WI-pumav Batch 0 pruned script_src, the value this census access_mode N/A declaration was deferred on (axis_meta_keys.py), so that coupling is discharged. The census gate is now down to WI-pumav remaining 21-value endpoint_shape fold (audit-findings 0017). Still parked/todo_soft; unblocks once the endpoint_shape section fully drains."  # 5582
+- op: discuss  # e21b
+  at: '2026-07-21T08:41:04Z'  # e21b
+  by: agent  # e21b
+  actor: jgstern_agent  # e21b
+  clock: 6  # e21b
+  nonce: e21b  # e21b
+  message: "Blocker CLEARED (2026-07-21). The endpoint_shape->relationship fold this access_mode census was gated on is COMPLETE: WI-pumav Batches 1a-7 + the consolidated Phase-4b prune (#791) drained the endpoint_shape axis of Edge.edge_type to empty (via WI-kivip). The 23 in-scope endpoint_shape values that blocked the TOTAL census are now folded onto relationship-axis canonicals, so classifying them in the access_mode applicable/N/A sets no longer trips find_axis_drift(strict). WI-pusuv is now ACTIONABLE (no longer parked-on-a-dormant-blocker). Recommended resolution per the 2026-07-08 human ruling is unchanged: N/A-now for the call-family types + a partial polyglot census (WI-nibis negative close-check discipline). Stays todo_soft pending owner direction on running the census."  # e21b
