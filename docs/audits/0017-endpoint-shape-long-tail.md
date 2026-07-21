@@ -2,7 +2,7 @@
 # Audit-findings 0017: Endpoint-Shape Long-Tail Classifications
 
 - Date: 2026-07-20
-- Status: Mixed (1 RESOLVED — `script_src`; 21 UNRESOLVED — verdicts recorded, per-pattern fold migrations pending)
+- Status: Mixed (1 RESOLVED — `script_src`; 4 PRELIM_RESOLVED — Batch 1a `references`-folds producer-migrated 2026-07-20, registry entries pending the consolidated Phase-4b prune; 17 UNRESOLVED — verdicts recorded, per-pattern fold migrations pending)
 - Closes: WI-pumav (endpoint_shape long-tail fold audit) — the verdict pass; the per-subset FOLD migrations remain follow-on work
 - Sibling: [audit-findings 0001](0001-dispatch-publish-family.md) / [0002](0002-ipc-family.md) / [0016](0016-resolver-openapi-rpc-family.md) — same methodology, other `Edge.edge_type` families
 - Methodology: per [ADR-0024 §"Family-audit verdict methodology"](../adr/0024-axis-declaration-template.md). Filed under the audit-findings format defined in [`docs/audits/README.md`](README.md).
@@ -58,7 +58,7 @@ verdicts:
   - value: association
     verdict: FOLD
     fold_target: references
-    status: UNRESOLVED
+    status: PRELIM_RESOLVED
     diagnostic_test:
       cmd: "git grep -nE '\"association\", AXIS_' packages/hypergumbo-core/src/hypergumbo_core/edge_types.py"
       expect: nonempty
@@ -74,7 +74,7 @@ verdicts:
   - value: build_tag_alternative_of
     verdict: FOLD
     fold_target: references
-    status: UNRESOLVED
+    status: PRELIM_RESOLVED
     diagnostic_test:
       cmd: "git grep -nE '\"build_tag_alternative_of\", AXIS_' packages/hypergumbo-core/src/hypergumbo_core/edge_types.py"
       expect: nonempty
@@ -154,7 +154,7 @@ verdicts:
   - value: links_to
     verdict: FOLD
     fold_target: references
-    status: UNRESOLVED
+    status: PRELIM_RESOLVED
     diagnostic_test:
       cmd: "git grep -nE '\"links_to\", AXIS_' packages/hypergumbo-core/src/hypergumbo_core/edge_types.py"
       expect: nonempty
@@ -218,7 +218,7 @@ verdicts:
   - value: uses_vocabulary
     verdict: FOLD
     fold_target: references
-    status: UNRESOLVED
+    status: PRELIM_RESOLVED
     diagnostic_test:
       cmd: "git grep -nE '\"uses_vocabulary\", AXIS_' packages/hypergumbo-core/src/hypergumbo_core/edge_types.py"
       expect: nonempty
@@ -289,7 +289,8 @@ All targets finalized by the 2026-07-20 ruling pass — no per-batch
 target decisions remain.
 
 - **Batch 0 — `script_src` prune** (this PR; unblocks WI-pusuv; no producer/consumer change).
-- **Batch 1 — `references` + `ref_construct`** (additive, lowest risk): `links_to`, `uses_vocabulary`, `association`, `renders`, `build_tag_alternative_of` (all → `references`; carry the build-tag re-eval trigger on that row).
+- **Batch 1a — `references` + `ref_construct`** (additive, lowest risk) — ✅ **producer-migrated 2026-07-20** (PRELIM_RESOLVED): `links_to` (`markdown_link`), `uses_vocabulary` (`rdf_vocabulary`), `association` (`association`, alongside the kept `framework_dispatch`), `build_tag_alternative_of` (`build_tag_alternative`, carrying the re-eval trigger). Registry entries pruned in the consolidated Phase-4b PR.
+- **Batch 1b — `renders` → `references`** (`view_render`): the shared view-template linker (`_view_template_core.py`, 4 frameworks) — split into its own PR for the wider test surface.
 - **Batch 2 — `includes` / `extends`**: `includes_template`, `includes_class`, `uses_mixin` → `includes`; `extends_template` → `extends`.
 - **Batch 3 — `depends_on`**: `depends`, `requires_resource`, `base_image`, `notifies_resource` (the last carrying `ref_construct='puppet_notify'` + `refresh=true`).
 - **Batch 4 — `calls` + mechanism/protocol** (centrality-sensitive): `abi_call` (`call_kind='abi'`, NOT `protocol`), `caller_invokes`, `kernel_launch`, `template_calls`.

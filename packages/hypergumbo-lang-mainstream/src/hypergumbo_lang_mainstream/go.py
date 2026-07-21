@@ -4518,11 +4518,12 @@ def _analyze_go_impl(repo_root: Path, max_files: int | None = None) -> AnalysisR
                     all_edges.append(Edge.create(
                         src=a.id,
                         dst=b.id,
-                        edge_type="build_tag_alternative_of",
+                        edge_type="references",
                         line=a.span.start_line if a.span else 0,
                         origin=PASS_ID,
                         origin_run_id=run.execution_id,
                         confidence=0.95,
+                        meta={"ref_construct": "build_tag_alternative"},
                     ))
 
     return AnalysisResult(

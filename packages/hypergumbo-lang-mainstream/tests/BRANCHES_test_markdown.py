@@ -181,7 +181,7 @@ More content.
 See [API docs](./api.md) for details.
 """)
         result = analyze_markdown(tmp_path)
-        link_edges = [e for e in result.edges if e.edge_type == "links_to"]
+        link_edges = [e for e in result.edges if e.edge_type == "references" and (e.meta or {}).get("ref_construct") == "markdown_link"]
         assert len(link_edges) >= 1
 
 

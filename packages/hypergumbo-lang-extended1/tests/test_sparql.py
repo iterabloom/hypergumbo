@@ -213,7 +213,11 @@ WHERE {
 }
 """)
         result = analyze_sparql(tmp_path)
-        edges = [e for e in result.edges if e.edge_type == "uses_vocabulary"]
+        edges = [
+            e for e in result.edges
+            if e.edge_type == "references"
+            and (e.meta or {}).get("ref_construct") == "rdf_vocabulary"
+        ]
         assert len(edges) >= 2
         dst_prefixes = {e.dst.split(":")[-1] for e in edges}
         assert "foaf" in dst_prefixes
@@ -373,7 +377,11 @@ LIMIT 100
         assert len(query.meta.get("variables", [])) == 3
 
         # Check edges
-        edges = [e for e in result.edges if e.edge_type == "uses_vocabulary"]
+        edges = [
+            e for e in result.edges
+            if e.edge_type == "references"
+            and (e.meta or {}).get("ref_construct") == "rdf_vocabulary"
+        ]
         assert len(edges) >= 2
 
     def test_wikidata_prefixes(self, tmp_path: Path) -> None:

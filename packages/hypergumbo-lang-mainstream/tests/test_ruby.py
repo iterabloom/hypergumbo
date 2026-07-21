@@ -1166,6 +1166,42 @@ require_relative 'helpers/string_utils.rb'
         assert "StringUtils" in hints
         assert hints["StringUtils"] == "helpers/string_utils.rb"
 
+    def test_scoped_constant_receiver_external_call_short_name_fallback(
+        self, tmp_path: Path,
+    ) -> None:
+        """A scoped-constant-receiver call (``Rack::Utils.parse``) that resolves
+        to no project symbol and has no require hint is attributed to the
+        lowercased constant name as an unresolved external ``calls`` edge
+        (WI-rijij / WI-mafik); the scope_resolution receiver exercises the
+        short-name require-hint fallback before the lowercase heuristic."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        (tmp_path / "worker.rb").write_text("""
+class Worker
+  def run
+    Rack::Utils.parse("a=1")
+  end
+end
+""")
+
+        result = analyze_ruby(tmp_path)
+
+        worker_run = next(
+            (s for s in result.symbols if s.name == "Worker#run"), None,
+        )
+        assert worker_run is not None
+
+        ext_edges = [
+            e for e in result.edges
+            if e.edge_type == "calls"
+            and e.src == worker_run.id
+            and (e.meta or {}).get("receiver") == "constant_external"
+        ]
+        assert len(ext_edges) == 1, (
+            f"Expected 1 constant_external call edge, got {len(ext_edges)}"
+        )
+        assert ext_edges[0].is_resolved is False
+
 class TestRubySignatureExtraction:
     """Tests for Ruby method signature extraction."""
 
@@ -3497,7 +3533,8 @@ end
 
         assoc_edges = [
             e for e in result.edges
-            if e.edge_type == "association"
+            if e.edge_type == "references"
+            and (e.meta or {}).get("ref_construct") == "association"
             and e.src == post_sym.id
             and e.dst == comment_sym.id
         ]
@@ -3534,7 +3571,8 @@ end
 
         assoc_edges = [
             e for e in result.edges
-            if e.edge_type == "association"
+            if e.edge_type == "references"
+            and (e.meta or {}).get("ref_construct") == "association"
             and e.src == user_sym.id
             and e.dst == account_sym.id
         ]
@@ -3568,7 +3606,8 @@ end
 
         assoc_edges = [
             e for e in result.edges
-            if e.edge_type == "association"
+            if e.edge_type == "references"
+            and (e.meta or {}).get("ref_construct") == "association"
             and e.src == user_sym.id
             and e.dst == profile_sym.id
         ]
@@ -3598,7 +3637,8 @@ end
 
         assoc_edges = [
             e for e in result.edges
-            if e.edge_type == "association"
+            if e.edge_type == "references"
+            and (e.meta or {}).get("ref_construct") == "association"
             and e.src == conv_sym.id
             and e.dst == msg_sym.id
         ]
@@ -3625,7 +3665,8 @@ end
 
         assoc_edges = [
             e for e in result.edges
-            if e.edge_type == "association"
+            if e.edge_type == "references"
+            and (e.meta or {}).get("ref_construct") == "association"
             and e.src == order_sym.id
         ]
         assert len(assoc_edges) == 1, (
@@ -3657,7 +3698,8 @@ end
 
         assoc_edges = [
             e for e in result.edges
-            if e.edge_type == "association"
+            if e.edge_type == "references"
+            and (e.meta or {}).get("ref_construct") == "association"
             and e.src == product_sym.id
             and e.dst == category_sym.id
         ]
@@ -3756,6 +3798,7 @@ end
         delegate_edges = [
             e for e in result.edges
             if e.edge_type == "references" and e.src == profile_sym.id
+            and (e.meta or {}).get("mechanism") == "delegate"
         ]
         assert len(delegate_edges) == 2, (
             f"Expected 2 delegates_to edges, got {len(delegate_edges)}"

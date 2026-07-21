@@ -402,12 +402,13 @@ class SPARQLAnalyzer(TreeSitterAnalyzer):
                         edge = Edge.create(
                             src=query_sym.id,
                             dst=prefix_sym.id,
-                            edge_type="uses_vocabulary",
+                            edge_type="references",
                             line=node.start_point[0] + 1,
                             origin=PASS_ID,
                             origin_run_id=run.execution_id,
                             evidence_type="static",
                             evidence_lang="sparql",
+                            meta={"ref_construct": "rdf_vocabulary"},
                         )
                         edges.append(edge)
 

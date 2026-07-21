@@ -353,11 +353,12 @@ class MarkdownAnalyzer(TreeSitterAnalyzer):
                 edge = Edge.create(
                     src=symbol_id,
                     dst=_make_link_dst_id(url),
-                    edge_type="links_to",
+                    edge_type="references",
                     line=line,
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     evidence_type="link",
+                    meta={"ref_construct": "markdown_link"},
                 )
                 self._pending_edges.append(edge)
 

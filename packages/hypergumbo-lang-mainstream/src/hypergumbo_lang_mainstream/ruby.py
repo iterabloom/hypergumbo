@@ -1594,24 +1594,30 @@ def _extract_activerecord_associations(
             edges.append(Edge.create(
                 src=class_sym.id,
                 dst=target_sym.id,
-                edge_type="association",
+                edge_type="references",
                 line=node.start_point[0] + 1,
                 evidence_type="ast_call_direct",
                 origin=PASS_ID,
                 origin_run_id=run_id,
-                meta={"framework_dispatch": "activerecord_association"},
+                meta={
+                    "framework_dispatch": "activerecord_association",
+                    "ref_construct": "association",
+                },
             ))
         else:
             # Unresolved: target model not found (may be in a gem)
             edges.append(Edge.create(
                 src=class_sym.id,
                 dst=f"ruby:?:0-0:{target_class}:unresolved",
-                edge_type="association",
+                edge_type="references",
                 line=node.start_point[0] + 1,
                 evidence_type="ast_call_direct",
                 origin=PASS_ID,
                 origin_run_id=run_id,
-                meta={"framework_dispatch": "activerecord_association"},
+                meta={
+                    "framework_dispatch": "activerecord_association",
+                    "ref_construct": "association",
+                },
             ))
 
     return edges

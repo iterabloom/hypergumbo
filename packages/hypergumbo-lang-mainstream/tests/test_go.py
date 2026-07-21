@@ -7707,7 +7707,8 @@ func (h *Handler) Serve() {}
 
         alt_edges = [
             e for e in result.edges
-            if e.edge_type == "build_tag_alternative_of"
+            if e.edge_type == "references"
+            and (e.meta or {}).get("ref_construct") == "build_tag_alternative"
         ]
         assert len(alt_edges) >= 1, (
             "Should detect build_tag_alternative_of between Handler.Serve "
@@ -7747,7 +7748,8 @@ func (h *Handler) Serve() {}
 
         alt_edges = [
             e for e in result.edges
-            if e.edge_type == "build_tag_alternative_of"
+            if e.edge_type == "references"
+            and (e.meta or {}).get("ref_construct") == "build_tag_alternative"
         ]
         assert len(alt_edges) == 0, (
             "Should NOT emit build_tag_alternative_of for different packages"
