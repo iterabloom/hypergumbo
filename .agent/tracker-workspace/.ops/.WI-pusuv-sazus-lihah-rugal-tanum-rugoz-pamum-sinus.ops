@@ -55,3 +55,18 @@
   clock: 6  # e21b
   nonce: e21b  # e21b
   message: "Blocker CLEARED (2026-07-21). The endpoint_shape->relationship fold this access_mode census was gated on is COMPLETE: WI-pumav Batches 1a-7 + the consolidated Phase-4b prune (#791) drained the endpoint_shape axis of Edge.edge_type to empty (via WI-kivip). The 23 in-scope endpoint_shape values that blocked the TOTAL census are now folded onto relationship-axis canonicals, so classifying them in the access_mode applicable/N/A sets no longer trips find_axis_drift(strict). WI-pusuv is now ACTIONABLE (no longer parked-on-a-dormant-blocker). Recommended resolution per the 2026-07-08 human ruling is unchanged: N/A-now for the call-family types + a partial polyglot census (WI-nibis negative close-check discipline). Stays todo_soft pending owner direction on running the census."  # e21b
+- op: update  # e2be
+  at: '2026-07-21T20:12:35Z'  # e2be
+  by: agent  # e2be
+  actor: jgstern_agent  # e2be
+  clock: 7  # e2be
+  nonce: e2be  # e2be
+  set:  # e2be
+    status: done  # e2be
+- op: discuss  # 415d
+  at: '2026-07-21T20:12:35Z'  # 415d
+  by: agent  # 415d
+  actor: jgstern_agent  # 415d
+  clock: 8  # 415d
+  nonce: 415d  # 415d
+  message: "CENSUS COMPLETE — closed done (owner ruled 2026-07-21, Option B). The access_mode applicability matrix now covers the full 25-value relationship registry (both non-relationship axes drained: endpoint_shape via WI-pumav, pending_classification via WI-sumik). 4 APPLICABLE (calls/references/module_attr_ref/event_publishes) + 21 N/A, ZERO unclassified. INV-tibob's interpretability gap is now closed for the FULL vocabulary: a consumer reading access_mode=None can always distinguish 'does not arise' (N/A type) from 'missing data' (applicable type).\n\nBehavioral/test evidence (closure-evidence discipline): the census is enforced by test_access_mode_matrix_total_census_complete (production-path property test over all_edge_type_names()); the applicability matrix is the schema of record in axis_meta_keys.py (resolvers access_mode_applicable_edge_types/access_mode_na_edge_types/is_access_mode_not_applicable); the sole consumer of the N/A flag is the dataflow annotate skip (dataflow.py:377/578), verified green (test_dataflow 167 passed).\n\nPer the 2026-07-08 owner ruling the residual relationship tail is N/A-now: subprocess_calls carries a written RE-EVAL TRIGGER (promote to applicable once an emitter stamps access_mode, ADR-0038 per-analyzer-as-dataflow-matures); data_flows_to N/A (direction lives in data_direction, ADR-0038 ruling 3); constrains/defines_target/includes/links/module_exports/sources/wraps N/A (structural).\n\nWI-nibis close-check status (honest): (a) every emitted type classified applicable XOR na — met, enforced by the property test over the registry; (b) no applicable type silently 0%-populated — met because the census added ZERO new applicable types (the 4 existing are known-populated per INV-tibob: calls 68%/references 59%/module_attr_ref 42%/event_publishes 100%). A polyglot bakeoff was NOT run; the owner ruled to close on the static census (the polyglot check would confirm, not change, this since no applicable type was added). PRs: Batch A 14ad5fb0a4, Batch B 07ebd4e1ea, prune 9132f3a224 (schema 0.18.0), census 5b2c2c3456."  # 415d

@@ -76,3 +76,18 @@
   clock: 9  # 8088
   nonce: '8088'  # 8088
   message: "Approach-C core-linker chokepoint DONE (PR 70d0cc067e, dev). The framework-agnostic inheritance-linker (hypergumbo_core/linkers/inheritance.py) no longer drops a base that resolves to no in-tree symbol — it mints an is_resolved=False external extends edge to an external_symbol boundary node ({lang}:external:0-0:{name}:unresolved, the INV-nuzas-safe 'external' sentinel, dst_ref=None), evidence-derived 0.95 (ADR-0039). Generalizes the external-base fallback (previously Python+JS/TS per-analyzer only) to EVERY OO language and recovers Python dotted bases (class C(argparse.X)) py.py defers. Ownership split prevents double-emission: a per-analyzer fallback owns a class's BARE external bases (resolves import aliases to the ORIGINAL name, invisible to the chokepoint), so when an analyzer already emitted an external edge for a class the chokepoint defers its bare bases and adds only the dotted ones + all bases for languages with no analyzer fallback (Kotlin/Ruby/etc). Self-contained in inheritance.py, 100% cov.\n\nEXTENDS external-drop bug (the 23.4%-base-less-classes headline) FULLY FIXED for all OO languages. Evidence — production-path full-pipeline tests: test_python_ast_analysis::test_run_extends_dotted_qualified_base_emitted_by_chokepoint, test_csharp::test_external_base_class_emits_unresolved_extends; 4-language dogfood (Kotlin UserController->AbstractController, Ruby User->ActiveRecord::Base, Python-dotted GroupedFmt->argparse.RawDescriptionHelpFormatter recover, Python-bare Color->Enum stays py.py precise, 0 dup edges). Real case: cli.py:253 GroupedSubcommandHelpFormatter(argparse.RawDescriptionHelpFormatter) was dropped, now emits.\n\nRESIDUALS (P1->P3, not closed — separate mechanisms, NOT the extends drop): (1) external INSTANTIATES for non-Python is GREENFIELD — Kotlin/Ruby emit NO instantiates edges (Ruby .new is a calls edge; Kotlin emits nothing), so no dropped constructor to recover — new constructor-detection feature work; Python instantiates external already fixed in the campaign. (2) Retiring the now-redundant per-analyzer _extract_inheritance_edges resolvers is a refactor. Both distinct from this item's drop bug."  # 8088
+- op: update  # 1692
+  at: '2026-07-21T21:17:42Z'  # 1692
+  by: agent  # 1692
+  actor: jgstern_agent  # 1692
+  clock: 10  # 1692
+  nonce: '1692'  # 1692
+  set:  # 1692
+    title: "instantiates: greenfield external-constructor emission for non-Python OO langs (Kotlin/Ruby currently emit 0) — the extends + Python-instantiates external-DROP bug is FIXED"  # 1692
+- op: discuss  # 21be
+  at: '2026-07-21T21:17:42Z'  # 21be
+  by: agent  # 21be
+  actor: jgstern_agent  # 21be
+  clock: 11  # 21be
+  nonce: 21be  # 21be
+  message: "Staleness audit 2026-07-21: the filed DROP bug is fixed and verified. inheritance.py Approach-C chokepoint _external_base_edge (PR 70d0cc067e) mints '{lang}:external:0-0:{name}:unresolved' extends edges for EVERY OO language instead of dropping (item's own note: 'FULLY FIXED for all OO languages', production-path tests). Python external instantiates fixed: py.py:5097-5186 types external constructors as instantiates/ast_new/is_resolved=False; self-analysis recovered ~1918 external constructions (was 0). Every Python falsifiable claim in the filing is discharged. RESIDUAL retitled: non-Python instantiates is greenfield feature work (Kotlin/Ruby emit ZERO instantiates edges — nothing is being 'dropped'), not the filed 'no external fallback' bug. Consider splitting the greenfield emission into its own feature item; close-substantially-done is defensible on owner's call."  # 21be

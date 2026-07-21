@@ -251,3 +251,19 @@
   clock: 33  # 2ef6
   nonce: 2ef6  # 2ef6
   message: "VALIDATED moved (8/8) via DEEP bakeoff deep-20260623-134237 cohort-001 iter-004 (8 repos, code e5a019c2). kind=variable/field now emit across the non-py-go fleet, disproving the 'emit zero' premise: TS apollo 56 var + 341 field; Java spring 73 field; C# sherpa 19 field; Swift 46 var/19 field; Rust zoxide 6 var/43 field; Go caddy 89/1344; Python pretix 944/5486. Tag stripped; item stays todo_hard for the residual tail (fortran/julia/dart/fsharp no cohort target; Ruby @ivars/method-body deferred; C# properties — see new finding). Per-repo verdicts in reflect/cohort-001/iter-004/*.assessment.yaml."  # 2ef6
+- op: update  # fc3a
+  at: '2026-07-21T21:17:42Z'  # fc3a
+  by: agent  # fc3a
+  actor: jgstern_agent  # fc3a
+  clock: 34  # fc3a
+  nonce: fc3a  # fc3a
+  set:  # fc3a
+    priority: 3  # fc3a
+    title: "variable/field symbol emission: residual language tail (Ruby ivars, C# expr-bodied props, elixir @attrs, julia const, quote-attribution) — fleet-wide 'emit zero' headline DISCHARGED"  # fc3a
+- op: discuss  # e0a4
+  at: '2026-07-21T21:17:42Z'  # e0a4
+  by: agent  # e0a4
+  actor: jgstern_agent  # e0a4
+  clock: 35  # e0a4
+  nonce: e0a4  # e0a4
+  message: "Staleness audit 2026-07-21: the P1 headline ('TS/non-py-go analyzers emit zero variable/field symbols') is DISPROVEN fleet-wide. js_ts.py now emits kind=field (public_field_definition/field_definition, lines 4033-4067) and kind=variable (make_variable_stable_id, 3807-3821); the item's OWN 2026-07-16 DEEP-bakeoff note validates 8/8 across the fleet (TS apollo 56 var/341 field; Java/C#/Swift/Rust/Go/Python all emit). ~15+ per-language slices landed. Downgraded P1->P3 and retitled to the true residual: a heterogeneous tail mostly tracked in discrete items already (Ruby @ivars, C# expr-bodied props INV-dakit, elixir @attrs [human ruling], julia const INV-vopap, quote-attribution INV-sinah, haskell ratified-unfit). Kept open only as the umbrella for that tail; NOT a P1 defect."  # e0a4

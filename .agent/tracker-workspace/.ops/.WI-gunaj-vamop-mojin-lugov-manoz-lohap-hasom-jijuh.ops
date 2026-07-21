@@ -42,3 +42,18 @@
   clock: 4  # d59d
   nonce: d59d  # d59d
   message: "Wave-5 sweep (2026-07-08): identity:F5 fingerprint-format residual (sketch repo_fingerprint rendered truncated-16 vs full-64 in AR records; a rendering-consistency gap, sketch-adjacent but a fingerprint issue not a sketch-cache one). Empty isbefore -> terminal wave."  # d59d
+- op: update  # 89cd
+  at: '2026-07-21T21:17:43Z'  # 89cd
+  by: agent  # 89cd
+  actor: jgstern_agent  # 89cd
+  clock: 5  # 89cd
+  nonce: 89cd  # 89cd
+  set:  # 89cd
+    title: "sketch repo_fingerprint [:16] is a by-design cache-dir hash — no emitted sketch repo_fingerprint FIELD exists, so the original cross-surface string-join mismatch is not realizable"  # 89cd
+- op: discuss  # f8e2
+  at: '2026-07-21T21:17:43Z'  # f8e2
+  by: agent  # f8e2
+  actor: jgstern_agent  # f8e2
+  clock: 6  # f8e2
+  nonce: f8e2  # f8e2
+  message: "Staleness audit 2026-07-21: the premised harm (a string-equality join between the sketch's repo_fingerprint field and the run record's failing on every pair) was NEVER realizable — grep of sketch.py/schema.py finds NO emitted sketch_precomputed.repo_fingerprint field (the item's own verifiability note already conceded it reads None). The surviving compute_repo_fingerprint(...)[:16] truncation moved to _get_repo_state_hash (sketch_embeddings.py:1372-1390), an explicit internal CACHE-DIR state hash ('keeps cache-dir names short'); _get_repo_fingerprint (1325) no longer calls compute_repo_fingerprint at all. Retitled to reflect the by-design cache hash. Close-eligible (no realizable defect) on owner's call; left open pending that decision."  # f8e2

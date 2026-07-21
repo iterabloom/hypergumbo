@@ -27,3 +27,18 @@
   clock: 2  # bba0
   nonce: bba0  # bba0
   message: "Split out of WI-vuzaf in Phase-7 over-fold reconciliation (the audit flagged WI-vuzaf's 255-node finding as over-folding three mechanisms). THIS item = the Rust separator case: node.id name-slot carries 'MyStruct.method' (dot) while node.name carries 'MyStruct::method' (double-colon) — a separator-normalization bug in the Rust analyzer, a DISTINCT fix from the synthetic-linker category-constant name-slots that WI-vuzaf retains. Evidence: frozen substrate.json (tranche-05 F100.A1). Priority P3 (1 node on this substrate; scope grows on Rust-heavy repos); priority by judgment, not independently blind-judged. Sibling/remainder: WI-vuzaf retains the linker category-constant + starlette route method+path name-slots (one shared producer-id-construction fix)."  # bba0
+- op: update  # 9aa9
+  at: '2026-07-21T21:16:35Z'  # 9aa9
+  by: agent  # 9aa9
+  actor: jgstern_agent  # 9aa9
+  clock: 3  # 9aa9
+  nonce: 9aa9  # 9aa9
+  set:  # 9aa9
+    status: wont_do  # 9aa9
+- op: discuss  # 9f5e
+  at: '2026-07-21T21:16:35Z'  # 9f5e
+  by: agent  # 9f5e
+  actor: jgstern_agent  # 9f5e
+  clock: 4  # 9f5e
+  nonce: 9f5e  # 9f5e
+  message: "wont_do 2026-07-21 (staleness audit). The behavior reproduces verbatim (rust.py:1051 id_name_segment = full_name.replace('::','.') feeds the id name-slot while node.name = full_name keeps native '::'), BUT this is BY DESIGN, not a defect: ADR-0036 Ruling-1 blesses name-slot ':'->'.' sanitization as the intended-lossy contract (canonical ids forbid ':' in the name segment per ADR-0034 Phase-6; full fidelity lives in Symbol.name). The item post-dates the 2026-06-10 ADR-0036 ruling, so its 'separator-normalization bug' premise is superseded by the accepted design. Not a code-fix candidate; closing as wont_do/by-design. If a non-lossy Rust escaping is ever wanted, that would be a fresh design item, not this bug."  # 9f5e
