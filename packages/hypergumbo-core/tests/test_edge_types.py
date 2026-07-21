@@ -26,6 +26,7 @@ from hypergumbo_core.edge_types import (
     all_edge_type_names,
     edge_types_on_axis,
     find_edge_type,
+    is_grpc_rpc_implementation,
 )
 
 
@@ -161,6 +162,33 @@ def test_find_edge_type_unknown_returns_none():
 
 def test_edge_type_spec_is_dataclass():
     assert dataclasses.is_dataclass(EdgeTypeSpec)
+
+
+# --- is_grpc_rpc_implementation predicate (audit-findings 0016) ---
+
+def test_is_grpc_rpc_implementation_true():
+    """The folded gRPC RPC-implementation edge: implements + protocol=grpc."""
+    assert is_grpc_rpc_implementation("implements", {"protocol": "grpc"}) is True
+    # extra meta keys don't matter
+    assert is_grpc_rpc_implementation(
+        "implements", {"protocol": "grpc", "framework_dispatch": "grpc_go_server"}
+    ) is True
+
+
+def test_is_grpc_rpc_implementation_false_wrong_edge_type():
+    """A calls edge with protocol=grpc is a gRPC *call*, not the RPC impl."""
+    assert is_grpc_rpc_implementation("calls", {"protocol": "grpc"}) is False
+
+
+def test_is_grpc_rpc_implementation_false_no_meta():
+    """A plain structural implements edge (no meta) is not the folded form."""
+    assert is_grpc_rpc_implementation("implements", None) is False
+
+
+def test_is_grpc_rpc_implementation_false_wrong_protocol():
+    """implements + a non-grpc protocol (or none) is not the folded form."""
+    assert is_grpc_rpc_implementation("implements", {"protocol": "graphql"}) is False
+    assert is_grpc_rpc_implementation("implements", {}) is False
 
 
 # --- Drift detection ---

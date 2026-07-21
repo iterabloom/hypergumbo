@@ -59,6 +59,7 @@ from typing import Optional
 
 import yaml
 
+from .edge_types import is_grpc_rpc_implementation
 from .io_boundary import KNOWN_IO_BOUNDARIES, BoundaryMap
 
 
@@ -464,20 +465,22 @@ def load_claims(path: Path) -> list[Claim]:
 
 # Analyzer-produced call edge types used to decide per-language I/O coverage.
 # A deliberately registry-clean subset of the edge types ``io_boundary``'s
-# ``tag_io_boundaries`` scans (relationship axis, plus ``implements_rpc`` which
-# is pending_classification). It omits the bridge-family endpoint_shape values
-# (``cgo_bridge``/``wasm_bridge``/...) that the tagger lists defensively: those
-# fold into the canonical ``calls`` relationship (edge_types.py), so a folded
-# FFI edge is already counted via ``calls`` — and they are not relationship-axis
-# edge types, so listing them here would (correctly) fail the ADR-0023 drift
-# linter. This set answers "did the analyzer extract call structure for this
-# language", which is what the WI-kajil blindness signal needs.
+# ``tag_io_boundaries`` scans (all relationship axis). It omits the
+# bridge-family endpoint_shape values (``cgo_bridge``/``wasm_bridge``/...)
+# that the tagger lists defensively: those fold into the canonical ``calls``
+# relationship (edge_types.py), so a folded FFI edge is already counted via
+# ``calls`` — and they are not relationship-axis edge types, so listing them
+# here would (correctly) fail the ADR-0023 drift linter. The folded gRPC
+# RPC-implementation edge (``implements`` + ``meta['protocol']='grpc'``,
+# audit-findings 0016) is counted via the is_grpc_rpc_implementation predicate
+# at the loop below, not membership. This set answers "did the analyzer extract
+# call structure for this language", which is what the WI-kajil blindness
+# signal needs.
 _COVERAGE_CALL_EDGE_TYPES: frozenset[str] = frozenset({
     "calls",
     "imports",
     "module_attr_ref",
     "event_publishes",
-    "implements_rpc",
 })
 
 
@@ -508,7 +511,10 @@ def compute_boundary_coverage(
     languages_with_calls: set[str] = set()
     total_call_edges = 0
     for edge in raw_edges:
-        if edge.get("type") not in _COVERAGE_CALL_EDGE_TYPES:
+        etype = edge.get("type", "")
+        if etype not in _COVERAGE_CALL_EDGE_TYPES and not is_grpc_rpc_implementation(
+            etype, edge.get("meta")
+        ):
             continue
         total_call_edges += 1
         src = edge.get("src", "")

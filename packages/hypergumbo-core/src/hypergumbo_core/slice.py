@@ -99,7 +99,11 @@ from dataclasses import dataclass, field
 from pathlib import PurePosixPath
 from typing import Dict, List, Set
 
-from .edge_types import IMPORT_EDGE_TYPES, INHERITANCE_EDGE_TYPES
+from .edge_types import (
+    IMPORT_EDGE_TYPES,
+    INHERITANCE_EDGE_TYPES,
+    is_grpc_rpc_implementation,
+)
 from .ir import Symbol, Edge
 from .paths import normalize_path, path_ends_with, is_test_node, is_utility_file
 from .ranking import compute_centrality, apply_tier_weights, apply_test_weights
@@ -670,7 +674,16 @@ def slice_graph(
             #   M → Class (via contains) → unrelated callers of Class.
             #   extends/implements are kept in reverse (useful for "who
             #   inherits from this?" queries).
-            if not query.reverse and edge.edge_type in _STRUCTURAL_EDGE_TYPES:
+            # The folded gRPC RPC-implementation edge (``implements`` +
+            # meta['protocol']='grpc', audit-findings 0016) is kept forward-
+            # traversable — it is a cross-service reachability conduit
+            # (client → stub → server → impl), not a plain structural
+            # 'implements' — so it is NOT forward-skipped here.
+            if (
+                not query.reverse
+                and edge.edge_type in _STRUCTURAL_EDGE_TYPES
+                and not is_grpc_rpc_implementation(edge.edge_type, edge.meta)
+            ):
                 continue
             if query.reverse and edge.edge_type == "contains":
                 continue

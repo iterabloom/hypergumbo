@@ -67,10 +67,11 @@ def make_edge(
     edge_type: str = "calls",
     confidence: float = 0.9,
     rank_score: float | None = None,
+    meta: dict | None = None,
 ) -> Edge:
     """Helper to create test edges. rank_score defaults to confidence (via
     __post_init__) unless a diverging value is passed."""
-    return Edge(
+    edge = Edge(
         id=f"edge:{src_id}->{dst_id}",
         src=src_id,
         dst=dst_id,
@@ -80,6 +81,9 @@ def make_edge(
         rank_score=rank_score,
         origin="test", origin_run_id="test",
     )
+    if meta is not None:
+        edge.meta = meta
+    return edge
 
 
 class TestComputeCentrality:
@@ -192,6 +196,38 @@ class TestComputeCentrality:
         assert result_equal[target.id] == 1.0
         assert result_weighted[target.id] == 1.0  # Still normalized to 1.0
         # The absolute score before normalization is lower with weighting
+
+    def test_grpc_rpc_implementation_ranks_like_a_call(self):
+        """A folded gRPC RPC-implementation edge (implements + protocol=grpc,
+        audit-findings 0016) keeps its call-like 1.0 weight, NOT the structural
+        'implements' 0.5 — so gRPC handler centrality is not silently demoted."""
+        from hypergumbo_core.ranking import DEFAULT_EDGE_TYPE_WEIGHTS
+
+        grpc_target = make_symbol("grpc_handler")
+        plain_target = make_symbol("iface_impl")
+        caller_g = make_symbol("caller_g")
+        caller_p = make_symbol("caller_p")
+
+        # Same shape: one incoming edge each — differing only by whether the
+        # implements edge carries protocol=grpc.
+        grpc_edge = make_edge(
+            caller_g.id, grpc_target.id,
+            edge_type="implements", meta={"protocol": "grpc"},
+        )
+        plain_edge = make_edge(
+            caller_p.id, plain_target.id, edge_type="implements",
+        )
+
+        result = compute_centrality(
+            [grpc_target, plain_target, caller_g, caller_p],
+            [grpc_edge, plain_edge],
+            edge_type_weights=DEFAULT_EDGE_TYPE_WEIGHTS,
+        )
+
+        # grpc-implements weighted 1.0 (call), plain implements 0.5 →
+        # after normalization grpc is the top (1.0) and plain is half.
+        assert result[grpc_target.id] == 1.0
+        assert result[plain_target.id] == pytest.approx(0.5)
 
     def test_edge_type_weights_changes_ranking(self):
         """Edge type weighting can change relative rankings."""

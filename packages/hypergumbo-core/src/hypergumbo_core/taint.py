@@ -38,9 +38,11 @@ from __future__ import annotations
 from collections import defaultdict, deque
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 import yaml
+
+from .edge_types import is_grpc_rpc_implementation
 
 
 # ---------------------------------------------------------------------------
@@ -1110,15 +1112,31 @@ TAINT_CALL_EDGE_TYPES = frozenset({
     # this edge type, auto-imported TaintSource records for attribute
     # kind primitives would never match in structural propagation.
     "module_attr_ref",
-    # pending_classification entries awaiting per-family audit
-    # (implements_rpc). Bridge edges no longer enumerated explicitly:
-    # post-Phase-3 (WI-mifor-vabul), every bridge folds to 'calls' which
-    # is already a member; meta['bridge_kind'] carries the bridge type.
-    # Protocol-call family (WI-vumum-juvil) similarly folds into 'calls'
-    # + meta['protocol'], so HTTP/gRPC/GraphQL taint propagation
-    # transfers automatically.
-    "implements_rpc",
+    # Bridge edges no longer enumerated explicitly: post-Phase-3
+    # (WI-mifor-vabul), every bridge folds to 'calls' which is already a
+    # member; meta['bridge_kind'] carries the bridge type. Protocol-call
+    # family (WI-vumum-juvil) similarly folds into 'calls' + meta['protocol'],
+    # so HTTP/gRPC/GraphQL call taint propagation transfers automatically.
+    # implements_rpc folded to 'implements' + meta['protocol']='grpc'
+    # (audit-findings 0016) — NOT a plain set member (that would wholesale-
+    # include every structural 'implements' edge); matched by the
+    # is_grpc_rpc_implementation predicate via _is_taint_call_edge below.
 })
+
+
+def _is_taint_call_edge(edge: dict[str, Any]) -> bool:
+    """True if *edge* (a behavior-map edge dict) carries taint like a call.
+
+    Membership in :data:`TAINT_CALL_EDGE_TYPES`, OR the folded gRPC
+    RPC-implementation edge (``implements`` + ``meta['protocol']='grpc'``,
+    audit-findings 0016) — the one place taint recognizes the folded form,
+    so gRPC taint propagation is preserved without demoting or over-
+    including structural ``implements`` edges.
+    """
+    etype = edge.get("type", "")
+    return etype in TAINT_CALL_EDGE_TYPES or is_grpc_rpc_implementation(
+        etype, edge.get("meta")
+    )
 
 
 def _build_adjacency(
@@ -1134,11 +1152,8 @@ def _build_adjacency(
     forward: dict[str, set[str]] = defaultdict(set)
     reverse: dict[str, set[str]] = defaultdict(set)
 
-    call_types = TAINT_CALL_EDGE_TYPES
-
     for edge in edges:
-        etype = edge.get("type", "")
-        if etype not in call_types:
+        if not _is_taint_call_edge(edge):
             continue
         src = edge["src"]
         dst = edge["dst"]
@@ -1206,8 +1221,7 @@ def _register_sanitizer_callers(
     ``kind`` — a documented follow-up requiring a sanitizer-YAML schema field.)
     """
     for edge in edges:
-        etype = edge.get("type", "")
-        if etype not in TAINT_CALL_EDGE_TYPES:
+        if not _is_taint_call_edge(edge):
             continue
         callee_name = _extract_callee_name(edge["dst"])
         matched_list = sanitizer_by_callee.get(callee_name)
@@ -1278,8 +1292,7 @@ def propagate_taint_structural(
     source_callers: list[tuple[str, str, TaintSource]] = []
     # (caller_symbol_id, source_callee_symbol_id, TaintSource)
     for edge in edges:
-        etype = edge.get("type", "")
-        if etype not in TAINT_CALL_EDGE_TYPES:
+        if not _is_taint_call_edge(edge):
             continue
         matched = _match_propagation_entry(
             source_by_callee, edge["dst"], ambiguous_names,
@@ -1293,8 +1306,7 @@ def propagate_taint_structural(
     sink_callers: dict[str, tuple[str, TaintSink]] = {}
     # Maps caller_symbol_id → (sink_callee_symbol_id, TaintSink)
     for edge in edges:
-        etype = edge.get("type", "")
-        if etype not in TAINT_CALL_EDGE_TYPES:
+        if not _is_taint_call_edge(edge):
             continue
         matched = _match_propagation_entry(
             sink_by_callee, edge["dst"], ambiguous_names,
@@ -1506,8 +1518,7 @@ def propagate_taint_ddg(
     # Step 1: Find source call sites (module + ambiguous_names aware — WI-razol)
     source_callers: list[tuple[str, str, TaintSource]] = []
     for edge in call_edges:
-        etype = edge.get("type", "")
-        if etype not in TAINT_CALL_EDGE_TYPES:
+        if not _is_taint_call_edge(edge):
             continue
         matched = _match_propagation_entry(
             source_by_callee, edge["dst"], ambiguous_names,
@@ -1520,8 +1531,7 @@ def propagate_taint_ddg(
     # Step 2: Find sink call sites (module + ambiguous_names aware — WI-razol)
     sink_callers: dict[str, tuple[str, TaintSink]] = {}
     for edge in call_edges:
-        etype = edge.get("type", "")
-        if etype not in TAINT_CALL_EDGE_TYPES:
+        if not _is_taint_call_edge(edge):
             continue
         matched = _match_propagation_entry(
             sink_by_callee, edge["dst"], ambiguous_names,
@@ -1536,8 +1546,7 @@ def propagate_taint_ddg(
     sanitizer_set: set[str] = set()
     sanitizer_by_caller: dict[str, list[TaintSanitizer]] = defaultdict(list)
     for edge in call_edges:
-        etype = edge.get("type", "")
-        if etype not in TAINT_CALL_EDGE_TYPES:
+        if not _is_taint_call_edge(edge):
             continue
         callee_name = _extract_callee_name(edge["dst"])
         matched_list = sanitizer_by_callee.get(callee_name)

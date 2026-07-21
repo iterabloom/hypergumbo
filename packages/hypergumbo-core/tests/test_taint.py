@@ -1322,11 +1322,17 @@ class TestCrossLanguageTaint:
         longer enumerated explicitly in TAINT_CALL_EDGE_TYPES. Bridges
         fold to canonical 'calls' + meta['bridge_kind']; IPC and
         protocol-call (HTTP/gRPC/GraphQL) fold to 'calls' +
-        meta['protocol']. The set keeps only canonicals plus
-        pending_classification (implements_rpc)."""
+        meta['protocol']. After audit-findings 0016, implements_rpc
+        also folded (to 'implements' + meta['protocol']='grpc'); it is
+        no longer an explicit set member — the folded gRPC edge is matched
+        by the is_grpc_rpc_implementation predicate so taint still crosses
+        it, without wholesale-including every structural 'implements' edge.
+        The set keeps only canonicals."""
         assert "calls" in TAINT_CALL_EDGE_TYPES
         assert "module_attr_ref" in TAINT_CALL_EDGE_TYPES
-        assert "implements_rpc" in TAINT_CALL_EDGE_TYPES
+        # Folded (audit-findings 0016) — matched by predicate, not membership:
+        assert "implements_rpc" not in TAINT_CALL_EDGE_TYPES
+        assert "implements" not in TAINT_CALL_EDGE_TYPES
         # Removed in Phase 4b — folded to 'calls' + meta:
         for removed in ("ffi_bridge", "wasm_bridge", "napi_bridge", "ipc_calls",
                         "native_bridge", "cgo_bridge", "bridge_invokes"):
@@ -1334,6 +1340,50 @@ class TestCrossLanguageTaint:
         # Removed in WI-vumum-juvil — folded to 'calls' + meta['protocol']:
         for removed in ("http_calls", "grpc_calls", "graphql_calls"):
             assert removed not in TAINT_CALL_EDGE_TYPES
+
+    def test_taint_propagates_through_folded_grpc_rpc_edge(self) -> None:
+        """A folded gRPC RPC-implementation edge (implements + meta
+        protocol=grpc, audit-findings 0016) is traceable for taint — a
+        tainted value crosses it to a sink, so gRPC taint propagation is
+        preserved (finding 3). Contrast: a plain structural 'implements'
+        edge (no protocol) is NOT traceable, proving the meta discriminator
+        is load-bearing (not a wholesale 'implements' inclusion)."""
+        sources = [TaintSource(
+            taint_label="plaintext", module="cryptography.fernet",
+            name="Fernet.decrypt", kind="function", return_tainted=True,
+        )]
+        sinks = [TaintSink(
+            zone="host_fs", trust_level="untrusted",
+            module="pathlib.Path", name="write_text", kind="method",
+        )]
+
+        def edges_with(rpc_meta: dict | None) -> list:
+            rpc_edge = {
+                "src": "py:a.py:1-5:handler:function",
+                "dst": "py:a.py:10-15:grpc_impl:function",
+                "type": "implements",
+                "is_resolved": True,
+            }
+            if rpc_meta is not None:
+                rpc_edge["meta"] = rpc_meta
+            return [
+                _make_edge("py:a.py:1-5:handler:function",
+                           "py:external:0-0:Fernet.decrypt:unresolved"),
+                rpc_edge,
+                _make_edge("py:a.py:10-15:grpc_impl:function",
+                           "py:pathlib.Path:0-0:write_text:unresolved"),
+            ]
+
+        # Folded gRPC edge → taint crosses it → violation found.
+        findings = propagate_taint_structural(
+            edges_with({"protocol": "grpc"}), sources, sinks, [])
+        assert len(findings) == 1
+        assert findings[0].taint_label == "plaintext"
+
+        # Plain structural 'implements' (no protocol) is NOT a taint conduit.
+        no_findings = propagate_taint_structural(
+            edges_with(None), sources, sinks, [])
+        assert no_findings == []
 
     def test_structural_taint_via_wasm_bridge(self) -> None:
         """Taint propagates through wasm bridge edges. Post-Phase-3 these

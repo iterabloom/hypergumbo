@@ -34,9 +34,11 @@ from __future__ import annotations
 import urllib.parse
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Iterable, Optional
+from typing import Any, Iterable, Optional
 
 import yaml
+
+from .edge_types import is_grpc_rpc_implementation
 
 
 # ---------------------------------------------------------------------------
@@ -1120,14 +1122,15 @@ class BoundaryMap:
         }
 
 
-# ADR-0023 §6 Phase 2 audit (WI-sahab-fatoz): this set mixes axes —
+# ADR-0023 §6 Phase 2 audit (WI-sahab-fatoz): this set holds
 # relationship-axis values (``calls``, ``instantiates``, ``references``,
-# ``module_attr_ref``), pending_classification values (``dispatches_to``,
-# ``implements_rpc``), and endpoint_shape FFI/IPC bridges. Forward-
-# compatible through Phase 3 because ``calls`` is already a member, so
-# when bridges fold into ``calls`` + ``meta["bridge_kind"]`` the set
-# still matches; the bridge entries become dead-but-harmless and get
-# pruned in Phase 4.
+# ``module_attr_ref``, ``dispatches_to``). Forward-compatible through the
+# endpoint_shape fold because ``calls`` is already a member, so when
+# bridges fold into ``calls`` + ``meta["bridge_kind"]`` the set still
+# matches. The folded gRPC RPC-implementation edge (``implements`` +
+# ``meta['protocol']='grpc'``, audit-findings 0016) is matched by the
+# is_grpc_rpc_implementation predicate (``_is_traceable_edge``), not by
+# membership.
 _TRACEABLE_EDGE_TYPES = frozenset({
     "calls", "instantiates", "dispatches_to", "references",
     # WI-guhok: attribute reads of imported modules (e.g. os.environ, sys.argv)
@@ -1139,12 +1142,27 @@ _TRACEABLE_EDGE_TYPES = frozenset({
     # name in keeps the reverse-graph traversal crossing async-channel
     # boundaries after the IPC family rename.
     "event_publishes",
-    # pending_classification entries awaiting per-family audit
-    # (implements_rpc). Protocol-call family (WI-vumum-juvil) folds
-    # to 'calls' + meta['protocol'], so HTTP/gRPC/GraphQL traversals
-    # transfer via the canonical 'calls' member.
-    "implements_rpc",
+    # Protocol-call family (WI-vumum-juvil) folds to 'calls' +
+    # meta['protocol'], so HTTP/gRPC/GraphQL call traversals transfer via
+    # the canonical 'calls' member. implements_rpc folded to 'implements'
+    # + meta['protocol']='grpc' (audit-findings 0016) — matched by the
+    # is_grpc_rpc_implementation predicate via _is_traceable_edge below,
+    # NOT a set member (that would include every structural 'implements').
 })
+
+
+def _is_traceable_edge(edge: Any) -> bool:
+    """True if *edge* (an ``Edge``) is traceable for I/O-boundary reachability.
+
+    Membership in :data:`_TRACEABLE_EDGE_TYPES`, OR the folded gRPC
+    RPC-implementation edge (``implements`` + ``meta['protocol']='grpc'``,
+    audit-findings 0016) — the one place io_boundary recognizes the folded
+    form, preserving gRPC reachability without over-including structural
+    ``implements`` edges.
+    """
+    return edge.edge_type in _TRACEABLE_EDGE_TYPES or is_grpc_rpc_implementation(
+        edge.edge_type, edge.meta
+    )
 
 
 def _build_reverse_graph(edges: list) -> dict[str, set[str]]:
@@ -1155,7 +1173,7 @@ def _build_reverse_graph(edges: list) -> dict[str, set[str]]:
     """
     reverse_graph: dict[str, set[str]] = {}
     for edge in edges:
-        if edge.edge_type in _TRACEABLE_EDGE_TYPES:
+        if _is_traceable_edge(edge):
             reverse_graph.setdefault(edge.dst, set()).add(edge.src)
     return reverse_graph
 
@@ -1220,7 +1238,7 @@ def _compute_external_potential(
         meta = edge.meta
         if meta and meta.get("io_boundary"):
             continue
-        if edge.edge_type not in _TRACEABLE_EDGE_TYPES:
+        if not _is_traceable_edge(edge):
             continue
         dst_node = nodes_by_id.get(edge.dst)
         if dst_node is None:
@@ -1645,8 +1663,10 @@ def tag_io_boundaries(
         "ipc_calls", "ipc_event",
         # Protocol-call family (WI-vumum-juvil) folds to canonical
         # 'calls' + meta['protocol']; HTTP/gRPC/GraphQL traversals
-        # transfer via 'calls'.
-        "implements_rpc",
+        # transfer via 'calls'. implements_rpc folded to 'implements' +
+        # meta['protocol']='grpc' (audit-findings 0016) — matched by the
+        # is_grpc_rpc_implementation predicate at the loop below, not a
+        # set member.
     }),
 ) -> int:
     """Tag edges that reach I/O primitives with boundary metadata.
@@ -1673,7 +1693,9 @@ def tag_io_boundaries(
     """
     tagged = 0
     for edge in edges:
-        if edge.edge_type not in call_types:
+        if edge.edge_type not in call_types and not is_grpc_rpc_implementation(
+            edge.edge_type, edge.meta
+        ):
             continue
 
         # Extract language from dst ID (first colon-delimited segment)

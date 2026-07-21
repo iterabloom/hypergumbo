@@ -19,8 +19,10 @@ from hypergumbo_core.io_boundary import (
     IoBoundaryCatalog,
     IoChain,
     IoPrimitive,
+    _build_reverse_graph,
     _extract_callee_name,
     _extract_module_hint,
+    _is_traceable_edge,
     _module_matches,
     compute_boundary_map,
     is_high_risk,
@@ -28,6 +30,7 @@ from hypergumbo_core.io_boundary import (
     match_edge_to_primitive,
     tag_io_boundaries,
 )
+from hypergumbo_core.ir import Edge
 
 
 class TestIoPrimitive:
@@ -5038,3 +5041,41 @@ class TestInProgressLanguages:
     def test_empty_input(self) -> None:
         from hypergumbo_core.io_boundary import in_progress_languages
         assert in_progress_languages([]) == []
+
+
+def _grpc_impl_edge(src: str, dst: str, protocol: str | None = "grpc") -> Edge:
+    """A folded gRPC RPC-implementation edge (implements + meta protocol)."""
+    edge = Edge.create(
+        src=src, dst=dst, edge_type="implements", line=1,
+        origin="test", origin_run_id="test", confidence=0.9,
+    )
+    if protocol is not None:
+        edge.meta = {"protocol": protocol}
+    return edge
+
+
+class TestGrpcRpcImplementationTraceability:
+    """The folded gRPC RPC-implementation edge (implements + protocol=grpc,
+    audit-findings 0016) stays traceable for I/O-boundary reachability — the
+    coupling implements_rpc used to carry is preserved via the predicate, not
+    demoted with the structural 'implements' rename (finding 3)."""
+
+    def test_is_traceable_edge_matches_folded_grpc(self) -> None:
+        assert _is_traceable_edge(_grpc_impl_edge("a", "b")) is True
+
+    def test_is_traceable_edge_rejects_plain_implements(self) -> None:
+        # A structural implements edge (no protocol) is NOT traceable — the
+        # meta discriminator is load-bearing, not a wholesale inclusion.
+        assert _is_traceable_edge(_grpc_impl_edge("a", "b", protocol=None)) is False
+
+    def test_reverse_graph_crosses_folded_grpc_edge(self) -> None:
+        grpc = _grpc_impl_edge(
+            "py:client:1-1:call:function", "py:server:1-1:impl:function")
+        plain = _grpc_impl_edge(
+            "py:x:1-1:c:function", "py:y:1-1:i:function", protocol=None)
+        rev = _build_reverse_graph([grpc, plain])
+        # Folded gRPC edge crosses the reverse (callee → caller) graph;
+        # the plain structural implements edge does not.
+        assert rev.get("py:server:1-1:impl:function") == {
+            "py:client:1-1:call:function"}
+        assert "py:y:1-1:i:function" not in rev

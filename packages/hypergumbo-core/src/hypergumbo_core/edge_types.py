@@ -31,6 +31,7 @@ Axis taxonomy:
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
@@ -245,6 +246,35 @@ def find_edge_type(name: str) -> EdgeTypeSpec | None:
     return None
 
 
+def is_grpc_rpc_implementation(
+    edge_type: str, meta: Mapping[str, object] | None
+) -> bool:
+    """True for a folded gRPC RPC-implementation edge (audit-findings 0016).
+
+    ``implements_rpc`` folded to canonical ``implements`` +
+    ``meta['protocol']='grpc'`` (a Go method satisfying a proto RPC IS a
+    Go interface implementation). But ``implements_rpc`` carried call-like
+    consumer coupling — traceable for taint (``taint.TAINT_CALL_EDGE_TYPES``),
+    I/O-boundary reachability (``io_boundary._TRACEABLE_EDGE_TYPES`` /
+    ``verify_claims._COVERAGE_CALL_EDGE_TYPES``), ranked at call weight
+    (``ranking`` weight 1.0), and forward-traversable in slices — whereas
+    canonical ``implements`` is a *structural* (reverse-only, weight-0.5)
+    edge. This predicate lets those consumers keep matching the folded
+    form WITHOUT wholesale-including every structural ``implements`` edge,
+    so gRPC reachability / taint / ranking / slice coupling is preserved
+    (audit-findings 0016 finding 3). It is the single source of truth for
+    "is this the folded gRPC edge", shared by every consumer so they can
+    never drift. Callers pass primitives so it works on both dict-shaped
+    edges (``edge['type']`` / ``edge['meta']``) and ``Edge`` objects
+    (``edge.edge_type`` / ``edge.meta``).
+    """
+    return (
+        edge_type == "implements"
+        and meta is not None
+        and meta.get("protocol") == "grpc"
+    )
+
+
 # ---------------------------------------------------------------------------
 # Phase-2 migration helpers (per ADR-0023 §6 Phase 2)
 # ---------------------------------------------------------------------------
@@ -407,10 +437,14 @@ def find_axis_drift(
     sets are flagged if they contain any registry value whose axis is
     not in ``{relationship, pending_classification}``. Pending values
     stay allowed by design — they are real edges produced by GraphQL/
-    OpenAPI/RPC analyzers awaiting per-family audit, and consumers
-    legitimately reference them today (e.g., ``implements_rpc`` in
-    ``io_boundary._TRACEABLE_EDGE_TYPES``). When the per-family audits
-    move pending values to canonical-relationship, the existing
+    OpenAPI/RPC analyzers awaiting per-family audit, and a consumer set
+    may legitimately reference one. (The resolver/OpenAPI/RPC family —
+    the last pending values — has since been folded to canonical
+    relationships per audit-findings 0016: the folded gRPC edge is now
+    matched by ``is_grpc_rpc_implementation`` rather than by a set
+    membership, so no consumer set names a pending value today; the
+    registry prune that drains the axis follows.) When the per-family
+    audits move pending values to canonical-relationship, the existing
     membership check catches any consumer that didn't follow the
     rename.
 

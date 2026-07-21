@@ -47,9 +47,10 @@ def make_edge(
     dst: Symbol,
     edge_type: str = "calls",
     confidence: float = 0.85,
+    meta: dict | None = None,
 ) -> Edge:
     """Helper to create test edges."""
-    return Edge.create(
+    edge = Edge.create(
         src=src.id,
         dst=dst.id,
         edge_type=edge_type,
@@ -58,6 +59,9 @@ def make_edge(
         origin_run_id="uuid:test",
         confidence=confidence,
     )
+    if meta is not None:
+        edge.meta = meta
+    return edge
 
 
 class TestFindEntryNodes:
@@ -2969,7 +2973,10 @@ class TestPassThroughSyntheticNodes:
         edges = [
             make_edge(func_a, stub, edge_type="uses"),
             make_edge(stub, server, edge_type="grpc"),
-            make_edge(server, impl, edge_type="implements_rpc"),
+            # implements_rpc folded to implements + meta['protocol']='grpc'
+            # (audit-findings 0016); the grpc-rpc predicate keeps it forward-
+            # traversable in slices so cross-service reachability is preserved.
+            make_edge(server, impl, edge_type="implements", meta={"protocol": "grpc"}),
         ]
 
         # Include grpc_stub and grpc_server in pass-through

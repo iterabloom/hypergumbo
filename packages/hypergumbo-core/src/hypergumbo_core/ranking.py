@@ -117,7 +117,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Dict, List
 
-from .edge_types import IMPORT_EDGE_TYPES, INHERITANCE_EDGE_TYPES
+from .edge_types import (
+    IMPORT_EDGE_TYPES,
+    INHERITANCE_EDGE_TYPES,
+    is_grpc_rpc_implementation,
+)
 from .ir import Symbol, Edge
 from .paths import is_test_file, is_test_node
 from .selection.filters import is_test_path
@@ -200,10 +204,13 @@ class RankedFile:
 
 DEFAULT_EDGE_TYPE_WEIGHTS: Dict[str, float] = {
     "calls": 1.0,
-    "implements_rpc": 1.0,
     # Post WI-vumum-juvil: gRPC client→server edges are emitted as
     # canonical 'calls' (weight 1.0); the prior 'grpc_calls' weight
-    # entry was dead after the protocol-call family fold.
+    # entry was dead after the protocol-call family fold. implements_rpc
+    # folded to 'implements' + meta['protocol']='grpc' (audit-findings
+    # 0016); it keeps its call-like 1.0 weight via the grpc-rpc predicate
+    # at the lookup below (NOT a plain 'implements' 0.5), so gRPC
+    # centrality is not silently demoted.
     "event_publishes": 0.8,
     # crypto_flow folded to canonical data_flows_to (ADR-0023 Batch 7 /
     # audit-findings 0017); the crypto linker is data_flows_to's only
@@ -319,7 +326,13 @@ def compute_centrality(
             # Base weight from edge type (if edge_type_weights provided)
             type_weight = 1.0
             if edge_type_weights is not None:
-                type_weight = edge_type_weights.get(edge.edge_type, 0.5)
+                if is_grpc_rpc_implementation(edge.edge_type, edge.meta):
+                    # Folded gRPC RPC-implementation ranks like a call
+                    # (audit-findings 0016 finding 3), not a structural
+                    # 'implements' (0.5).
+                    type_weight = edge_type_weights.get("calls", 1.0)
+                else:
+                    type_weight = edge_type_weights.get(edge.edge_type, 0.5)
 
             if use_file_weighting:
                 src_path = symbol_path.get(edge.src, "")
