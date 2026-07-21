@@ -2,7 +2,7 @@
 # Audit-findings 0017: Endpoint-Shape Long-Tail Classifications
 
 - Date: 2026-07-20
-- Status: Mixed (1 RESOLVED — `script_src`; 21 PRELIM_RESOLVED — all long-tail values producer-migrated 2026-07-20/21 across Batches 1a–7; registry entries + MetaKeySpec bookkeeping pending the consolidated Phase-4b prune). **All producers migrated — zero UNRESOLVED.**
+- Status: All RESOLVED (2026-07-21) — all 22 long-tail `endpoint_shape` values producer-migrated (Batches 1a–7) and their registry entries pruned in the consolidated Phase-4b PR, which also registered the new MetaKeySpec entries and drained the `endpoint_shape` axis of `Edge.edge_type` to **empty**. The fold declared by ADR-0023 §6 is complete; WI-pusuv (access_mode census) is unblocked.
 - Closes: WI-pumav (endpoint_shape long-tail fold audit) — the verdict pass; the per-subset FOLD migrations remain follow-on work
 - Sibling: [audit-findings 0001](0001-dispatch-publish-family.md) / [0002](0002-ipc-family.md) / [0016](0016-resolver-openapi-rpc-family.md) — same methodology, other `Edge.edge_type` families
 - Methodology: per [ADR-0024 §"Family-audit verdict methodology"](../adr/0024-axis-declaration-template.md). Filed under the audit-findings format defined in [`docs/audits/README.md`](README.md).
@@ -50,138 +50,138 @@ verdicts:
   - value: abi_call
     verdict: FOLD
     fold_target: calls
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "git grep -nE '\"abi_call\", AXIS_' packages/hypergumbo-core/src/hypergumbo_core/edge_types.py"
-      expect: nonempty
+      expect: empty
     rationale: "Solidity ABI call IS a call (linkers/solidity_abi.py:234). Fold to calls + meta['call_kind']='abi' — NOT meta['protocol']='abi' (PROTOCOL_KINDS is a closed enum {ipc,http,grpc,graphql}); the synthetic symbol already carries call_kind='abi'. Test 4 (mechanism vs. category)."
   - value: association
     verdict: FOLD
     fold_target: references
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "git grep -nE '\"association\", AXIS_' packages/hypergumbo-core/src/hypergumbo_core/edge_types.py"
-      expect: nonempty
+      expect: empty
     rationale: "Ruby ActiveRecord association (ruby.py:1597) is a framework construct fully recovered by meta['framework_dispatch']='activerecord_association' already emitted → references + meta['ref_construct']='association'. Test 3 (construct vs. relationship). (Cautioned 'maybe distinct' — four-test pass says fold.)"
   - value: base_image
     verdict: FOLD
     fold_target: depends_on
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "git grep -nE '\"base_image\", AXIS_' packages/hypergumbo-core/src/hypergumbo_core/edge_types.py"
-      expect: nonempty
+      expect: empty
     rationale: "Dockerfile intra-file multi-stage FROM...AS (dockerfile.py:192-202): stage→stage build-graph dependency → depends_on + meta['ref_construct']='dockerfile_stage'. RULED 2026-07-20 (4-lens investigation) depends_on over extends: the SAME producer already emits depends_on for the structurally identical COPY --from stage edge (dockerfile.py:305-315), the depends_on docstring names Dockerfile explicitly, extends has zero non-class precedent, and slice treats extends as structural (skipped in forward BFS) which would split the two identical stage edges. No supply-chain pollution (tiering is path-based; package-dep resolution uses depends_on_manifest). Test 1/4."
   - value: build_tag_alternative_of
     verdict: FOLD
     fold_target: references
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "git grep -nE '\"build_tag_alternative_of\", AXIS_' packages/hypergumbo-core/src/hypergumbo_core/edge_types.py"
-      expect: nonempty
+      expect: empty
     rationale: "Go same-qualified-name symbols under differing build_constraint (go.py:4507-4527) → references + meta['ref_construct']='build_tag_alternative'. RULED 2026-07-20 (4-lens investigation) FOLD over the defensible borderline-CANONICAL: the 'symmetric equivalence' is not actually delivered (the producer emits a single arbitrary-direction edge per pair, not a reciprocal pair), the relationship is fully reconstructible from endpoints (Test 1), and it is a lone Go-only producer — below ADR-0024's N=3-values-OR-N=2-producers promotion bar. RE-EVAL TRIGGER: promote to CANONICAL when a second language grows a conditional-compilation-variant equivalence (C #ifdef, Rust #[cfg], platform-specific files)."
   - value: caller_invokes
     verdict: FOLD
     fold_target: calls
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "git grep -nE '\"caller_invokes\", AXIS_' packages/hypergumbo-core/src/hypergumbo_core/edge_types.py"
-      expect: nonempty
+      expect: empty
     rationale: "Tauri IPC caller→command (linkers/tauri_ipc.py:796) IS a call; 'ipc' is the mechanism → calls + meta['protocol']='ipc' (parallel to the ipc_calls fold, audit-findings 0002). Test 4 (mechanism vs. category)."
   - value: contains_routes
     verdict: FOLD
     fold_target: contains
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "git grep -nE '\"contains_routes\", AXIS_' packages/hypergumbo-core/src/hypergumbo_core/edge_types.py"
-      expect: nonempty
+      expect: empty
     rationale: "Controller→route-handler span enclosure (linkers/controller_routes.py:160); the dst concept 'route' is queryable from the dst node → contains. Test 1 (property-derivability)."
   - value: crypto_flow
     verdict: FOLD
     fold_target: data_flows_to
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "git grep -nE '\"crypto_flow\", AXIS_' packages/hypergumbo-core/src/hypergumbo_core/edge_types.py"
-      expect: nonempty
+      expect: empty
     rationale: "CAUTION (a) CONFIRMED: crypto_flow (linkers/crypto_flow.py:358) already sets data_direction='src_to_dst' + channel as first-class fields; it is dataflow, NOT a call. Fold to data_flows_to + meta['ref_construct']='crypto' (ADR-0038 ruling 3 territory). Ranking-weight coupling at ranking.py:208 must move with it. Test 4 + ADR-0038."
   - value: depends
     verdict: FOLD
     fold_target: depends_on
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "git grep -nE '\"depends\", AXIS_' packages/hypergumbo-core/src/hypergumbo_core/edge_types.py"
-      expect: nonempty
+      expect: empty
     rationale: "Manifest-declared dependency (requirements.py:223, bitbake.py:227) → the canonical depends_on synonym (manifest's own declaration). Test 4 (mechanism vs. category)."
   - value: extends_template
     verdict: FOLD
     fold_target: extends
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "git grep -nE '\"extends_template\", AXIS_' packages/hypergumbo-core/src/hypergumbo_core/edge_types.py"
-      expect: nonempty
+      expect: empty
     rationale: "Twig/Blade template extends parent (twig.py:101, blade.py:127), evidence 'extends' → extends + meta['ref_construct']='template'. Test 1 (property-derivability)."
   - value: includes_class
     verdict: FOLD
     fold_target: includes
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "git grep -nE '\"includes_class\", AXIS_' packages/hypergumbo-core/src/hypergumbo_core/edge_types.py"
-      expect: nonempty
+      expect: empty
     rationale: "Puppet manifest include of a class (puppet.py:432), evidence 'include' → includes + meta['ref_construct']='puppet_class'. Test 1/4."
   - value: includes_template
     verdict: FOLD
     fold_target: includes
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "git grep -nE '\"includes_template\", AXIS_' packages/hypergumbo-core/src/hypergumbo_core/edge_types.py"
-      expect: nonempty
+      expect: empty
     rationale: "Twig template includes a partial (twig.py:164), evidence 'include' → includes + meta['ref_construct']='template'. Test 1."
   - value: invokes_callback
     verdict: FOLD
     fold_target: dispatches_to
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "git grep -nE '\"invokes_callback\", AXIS_' packages/hypergumbo-core/src/hypergumbo_core/edge_types.py"
-      expect: nonempty
+      expect: empty
     rationale: "Elixir/Erlang behaviour callback + Rails callback (elixir.py:712, ruby.py:1319) is framework-registered indirection → dispatches_to + meta['mechanism']='callback'. Test 4 (mechanism vs. category)."
   - value: kernel_launch
     verdict: FOLD
     fold_target: calls
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "git grep -nE '\"kernel_launch\", AXIS_' packages/hypergumbo-core/src/hypergumbo_core/edge_types.py"
-      expect: nonempty
+      expect: empty
     rationale: "CUDA kernel launch (cuda.py:316 — literally 'kernel_launch' if is_kernel_launch else 'calls') IS a call; the launch is the mechanism → calls + meta['mechanism']='kernel_launch'. Test 4."
   - value: links_to
     verdict: FOLD
     fold_target: references
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "git grep -nE '\"links_to\", AXIS_' packages/hypergumbo-core/src/hypergumbo_core/edge_types.py"
-      expect: nonempty
+      expect: empty
     rationale: "Markdown internal link (markdown.py:356) → references + meta['ref_construct']='markdown_link'. Test 3 (construct vs. relationship)."
   - value: notifies_resource
     verdict: FOLD
     fold_target: depends_on
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "git grep -nE '\"notifies_resource\", AXIS_' packages/hypergumbo-core/src/hypergumbo_core/edge_types.py"
-      expect: nonempty
+      expect: empty
     rationale: "Puppet resource notify — refresh-on-change (puppet.py:342-353). RULED 2026-07-20 (4-lens investigation, REVISED from the provisional event_publishes): same resource→resource ordering shape as its sibling requires_resource (→depends_on); it has no publisher/subscriber pair and no channel, so event_publishes would require a SYNTHETIC channel and would misclassify a config-refresh as a weight-0.8 async-IO/cross-cutting boundary. → depends_on + meta['ref_construct']='puppet_notify' + meta['refresh']=true (refresh preserved as a first-class queryable fact). Re-eval CANONICAL only if a consumer ever branches on refresh-propagation. Test 4."
   - value: renders
     verdict: FOLD
     fold_target: references
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "git grep -nE '\"renders\", AXIS_' packages/hypergumbo-core/src/hypergumbo_core/edge_types.py"
-      expect: nonempty
+      expect: empty
     rationale: "Controller action renders a view template (linkers/_view_template_core.py:270) → references + meta['ref_construct']='view_render'. Its JSX sibling renders_component ALREADY folded to references + ref_construct='jsx' — same construct-flavored reference, not distinct. Test 3/1. (Cautioned 'maybe distinct' — fold.)"
   - value: requires_resource
     verdict: FOLD
     fold_target: depends_on
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "git grep -nE '\"requires_resource\", AXIS_' packages/hypergumbo-core/src/hypergumbo_core/edge_types.py"
-      expect: nonempty
+      expect: empty
     rationale: "Puppet resource require — ordering dependency (puppet.py:334) → depends_on + meta['ref_construct']='puppet_require'. Test 4."
   - value: script_src
     verdict: FOLD
@@ -194,34 +194,34 @@ verdicts:
   - value: signal_receiver
     verdict: FOLD
     fold_target: dispatches_to
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "git grep -nE '\"signal_receiver\", AXIS_' packages/hypergumbo-core/src/hypergumbo_core/edge_types.py"
-      expect: nonempty
+      expect: empty
     rationale: "Django @receiver signal→handler via django.dispatch (py.py:4315-4324) is runtime-indirection dispatch → dispatches_to + meta['framework_dispatch']='django_signal' (the key the producer already stamps, matching django_orm_dispatch — a pure edge_type rename). RULED 2026-07-20 (4-lens investigation): emit shape is dispatcher-symbol→target, NOT publisher→subscriber; dispatches_to is in the dead-code reachability set (cli.py:6551) so this keeps @receiver handlers reachable, whereas event_publishes would strand them as false dead-code positives. Overrides the docstring's event_publishes guess. Test 4."
   - value: template_calls
     verdict: FOLD
     fold_target: calls
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "git grep -nE '\"template_calls\", AXIS_' packages/hypergumbo-core/src/hypergumbo_core/edge_types.py"
-      expect: nonempty
+      expect: empty
     rationale: "Vue template @click handler→component method (linkers/vue_template_method.py:118) IS a call; template is the mechanism → calls + meta['mechanism']='template'. Test 4."
   - value: uses_mixin
     verdict: FOLD
     fold_target: includes
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "git grep -nE '\"uses_mixin\", AXIS_' packages/hypergumbo-core/src/hypergumbo_core/edge_types.py"
-      expect: nonempty
+      expect: empty
     rationale: "Sass/SCSS @include of a mixin (scss.py:411, evidence 'include') → includes + meta['ref_construct']='sass_mixin'. DISAGREES WITH DOCSTRING (references): canonical 'includes' explicitly covers mixins (incl. Ruby include/extend) and the evidence is literally 'include'. Test 1/4. (Cautioned 'maybe distinct' — fold.)"
   - value: uses_vocabulary
     verdict: FOLD
     fold_target: references
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "git grep -nE '\"uses_vocabulary\", AXIS_' packages/hypergumbo-core/src/hypergumbo_core/edge_types.py"
-      expect: nonempty
+      expect: empty
     rationale: "SPARQL query→RDF prefix/vocabulary symbol (sparql.py:405) → references + meta['ref_construct']='rdf_vocabulary'. Test 3 (construct vs. relationship)."
 ```
 

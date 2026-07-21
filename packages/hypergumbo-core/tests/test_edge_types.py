@@ -95,15 +95,33 @@ def test_edge_types_on_axis_returns_only_matching():
     assert {"calls", "extends", "implements", "imports"} <= names
 
 
-def test_edge_types_on_axis_endpoint_shape_includes_known_deprecation_candidates():
+def test_edge_types_endpoint_shape_axis_fully_drained():
+    """ADR-0023 §6 fold COMPLETE (WI-pumav, audit-findings 0017): every
+    endpoint_shape value has been producer-migrated to a canonical relationship
+    + meta discriminator and pruned, so the endpoint_shape axis of
+    Edge.edge_type is now EMPTY. (The pending_classification resolver/OpenAPI/RPC
+    values are a separate axis — audit-findings 0016.)"""
     endpoints = {spec.name for spec in edge_types_on_axis(AXIS_ENDPOINT_SHAPE)}
-    # Representative endpoint-shaped values still in the registry (the long-tail
-    # awaiting per-pattern folds). The protocol-call trio (http_calls /
-    # grpc_calls / graphql_calls) was pruned in WI-hirud, and script_src in
-    # WI-pumav Batch 0 (both Phase 4b'); see the respective *_pruned tests.
-    assert {
-        "base_image", "kernel_launch", "renders",
-    } <= endpoints
+    assert endpoints == set(), (
+        f"Expected endpoint_shape axis drained to empty, got {sorted(endpoints)}"
+    )
+
+
+def test_long_tail_endpoint_shape_values_pruned_from_registry():
+    """WI-pumav Batches 1a-7 (ADR-0023 Phase 4b'): all 21 long-tail
+    endpoint_shape values (the WI-tavas-voror registry-completeness sweep) were
+    producer-migrated to canonical relationships + meta and pruned from the
+    registry entirely."""
+    names = all_edge_type_names()
+    pruned = {
+        "abi_call", "association", "base_image", "build_tag_alternative_of",
+        "caller_invokes", "contains_routes", "crypto_flow", "depends",
+        "extends_template", "includes_class", "includes_template",
+        "invokes_callback", "kernel_launch", "links_to", "notifies_resource",
+        "renders", "requires_resource", "signal_receiver", "template_calls",
+        "uses_mixin", "uses_vocabulary",
+    }
+    assert pruned.isdisjoint(names)
 
 
 def test_protocol_call_trio_pruned_from_registry():
@@ -370,24 +388,33 @@ def test_find_axis_drift_strict_no_off_axis_consumers():
     )
 
 
-def test_find_axis_drift_strict_flags_endpoint_shape_value(tmp_path: Path):
-    """If a consumer set references an endpoint_shape value (which
-    Phase 4b should have removed everywhere), strict mode flags it."""
-    from hypergumbo_core.edge_types import find_axis_drift
+def test_find_axis_drift_strict_flags_endpoint_shape_value(tmp_path: Path, monkeypatch):
+    """If a consumer set references an endpoint_shape value, strict mode flags
+    it. The Edge.edge_type endpoint_shape axis is now EMPTY (the ADR-0023
+    fold-tail drained it — WI-pumav / audit-findings 0017), so inject a synthetic
+    endpoint_shape value to exercise the off-axis flagging."""
+    from hypergumbo_core import edge_types as et
+    from hypergumbo_core.edge_types import (
+        AXIS_ENDPOINT_SHAPE,
+        EdgeTypeSpec,
+        find_axis_drift,
+    )
+
+    synthetic = EdgeTypeSpec(
+        "synthetic_endpoint_shape_value", AXIS_ENDPOINT_SHAPE, "test-only",
+    )
+    monkeypatch.setattr(et, "EDGE_TYPES", tuple(et.EDGE_TYPES) + (synthetic,))
 
     _write(
         tmp_path / "packages" / "demo" / "src" / "demo.py",
-        # 'base_image' is a registered endpoint_shape value (a long-tail
-        # entry not yet folded); the protocol-call trio it formerly used
-        # was pruned in WI-hirud.
-        '_DEMO_EDGE_TYPES = frozenset({"calls", "base_image"})\n',
+        '_DEMO_EDGE_TYPES = frozenset({"calls", "synthetic_endpoint_shape_value"})\n',
     )
     # Default (lax) mode: registered value, no drift.
     assert find_axis_drift(tmp_path) == []
-    # Strict mode: base_image is endpoint_shape → off-axis.
+    # Strict mode: the synthetic value is endpoint_shape → off-axis.
     offenders = find_axis_drift(tmp_path, strict=True)
     assert len(offenders) == 1
-    assert "base_image" in offenders[0]
+    assert "synthetic_endpoint_shape_value" in offenders[0]
     assert "not on allowed axis" in offenders[0]
 
 

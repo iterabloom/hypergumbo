@@ -189,148 +189,15 @@ EDGE_TYPES: Final[tuple[EdgeTypeSpec, ...]] = (
         "to extends/implements; the override declaration itself).",
     ),
 
-    # Deprecation candidates per ADR-0023 §6. Endpoint properties
-    # leaked into the edge_type label; migration folds these back into
-    # relationship-shaped names with kind/language metadata on the
-    # endpoint nodes.
-    #
-    # ``script_src`` (the first long-tail value) was already producer-migrated
-    # under INV-vavat — ``html.py`` emits canonical ``references`` +
-    # ``meta['ref_construct']='script_src'`` and no producer emits a
-    # ``script_src`` edge type — so its dead registry entry was pruned in
-    # WI-pumav Batch 0 (ADR-0023 Phase 4b'). See audit-findings 0017.
-    EdgeTypeSpec(
-        "base_image", AXIS_ENDPOINT_SHAPE,
-        "Dockerfile ``FROM`` base image reference.",
-    ),
-    EdgeTypeSpec(
-        "kernel_launch", AXIS_ENDPOINT_SHAPE,
-        "GPU kernel invocation.",
-    ),
-    # The protocol-call trio (http_calls / grpc_calls / graphql_calls) was
-    # producer-migrated to canonical ``calls`` + ``meta['protocol']`` in
-    # WI-vumum-juvil and pruned from the registry in WI-hirud (ADR-0023
-    # Phase 4b'). The wire protocol now lives in PROTOCOL_KINDS below.
-
-    # Dispatch-family fold targets per audit-findings 0001. Each was a deprecation
-    # candidate where the family-specific name encoded a mechanism /
-    # protocol / declaration-vs-runtime distinction, not a separate
-    # relationship. Phase 3 producer migration renames these to the
-    # canonical fold target with the differentiating fact in edge.meta.
-
-    # Publish-family fold targets per audit-findings 0001.
-
-    # Registry-completeness fills per WI-tavas-voror sweep —
-    # endpoint_shape values producers were already emitting that
-    # the original ADR-0023 deprecation list missed. Each carries a
-    # plausible canonical fold target to seed a future per-language
-    # or per-pattern audit; the actual Phase-3-style migration is
-    # deferred until that audit picks the meta-key shape.
-    EdgeTypeSpec(
-        "abi_call", AXIS_ENDPOINT_SHAPE,
-        "Solidity contract ABI call (cross-contract method invocation); "
-        "likely fold to 'calls' + meta['protocol']='abi'.",
-    ),
-    EdgeTypeSpec(
-        "association", AXIS_ENDPOINT_SHAPE,
-        "Ruby ActiveRecord association declaration (has_many, belongs_to, "
-        "etc.); likely fold to 'references' + meta['ref_construct']='association'.",
-    ),
-    EdgeTypeSpec(
-        "build_tag_alternative_of", AXIS_ENDPOINT_SHAPE,
-        "Go build-tag-conditional alternative implementation of a symbol; "
-        "likely fold to 'references' + meta['ref_construct']='build_tag_alternative'.",
-    ),
-    EdgeTypeSpec(
-        "caller_invokes", AXIS_ENDPOINT_SHAPE,
-        "Tauri-style cross-language invoke (caller → bound command); "
-        "likely fold to 'calls' + meta['protocol']='ipc' (parallel to "
-        "ipc_calls per audit-findings 0002).",
-    ),
-    EdgeTypeSpec(
-        "contains_routes", AXIS_ENDPOINT_SHAPE,
-        "Controller / module containing route handlers; likely fold "
-        "to 'contains' (already canonical) — pure dst-kind leakage.",
-    ),
-    EdgeTypeSpec(
-        "crypto_flow", AXIS_ENDPOINT_SHAPE,
-        "Crypto-related dataflow (key/secret reaches sink); likely fold "
-        "to 'data_flows_to' + meta['ref_construct']='crypto'.",
-    ),
-    EdgeTypeSpec(
-        "depends", AXIS_ENDPOINT_SHAPE,
-        "Package depends on another (Bitbake, requirements.txt); likely "
-        "fold to 'depends_on' (already canonical) or 'depends_on_manifest' "
-        "depending on declaration site.",
-    ),
-    EdgeTypeSpec(
-        "extends_template", AXIS_ENDPOINT_SHAPE,
-        "Twig/Jinja template extends a parent template; likely fold to "
-        "'extends' + meta['ref_construct']='template' or stay as canonical "
-        "if templates' extension semantics differ enough.",
-    ),
-    EdgeTypeSpec(
-        "includes_class", AXIS_ENDPOINT_SHAPE,
-        "Puppet manifest includes a class declaration; likely fold to "
-        "'includes' (now canonical) + meta['ref_construct']='puppet_class'.",
-    ),
-    EdgeTypeSpec(
-        "includes_template", AXIS_ENDPOINT_SHAPE,
-        "Twig/Jinja template includes a partial; likely fold to "
-        "'includes' (now canonical) + meta['ref_construct']='template'.",
-    ),
-    EdgeTypeSpec(
-        "invokes_callback", AXIS_ENDPOINT_SHAPE,
-        "Erlang/Elixir/Ruby callback invocation (gen_server callback, "
-        "framework lifecycle hook); likely fold to 'dispatches_to' or "
-        "'calls' + meta['mechanism']='callback'.",
-    ),
-    EdgeTypeSpec(
-        "links_to", AXIS_ENDPOINT_SHAPE,
-        "Markdown link from one document to another; likely fold to "
-        "'references' + meta['ref_construct']='markdown_link'.",
-    ),
-    EdgeTypeSpec(
-        "notifies_resource", AXIS_ENDPOINT_SHAPE,
-        "Puppet/Chef resource notify directive (trigger another resource "
-        "on change); likely fold to 'event_publishes' + "
-        "meta['channel_kind']='puppet_notify' (configuration-management "
-        "pub-sub shape).",
-    ),
-    EdgeTypeSpec(
-        "renders", AXIS_ENDPOINT_SHAPE,
-        "Controller renders a view template; likely fold to 'references' "
-        "+ meta['ref_construct']='view_render' (parallel to renders_component "
-        "for JSX).",
-    ),
-    EdgeTypeSpec(
-        "requires_resource", AXIS_ENDPOINT_SHAPE,
-        "Puppet/Chef resource require directive (this resource depends "
-        "on another); likely fold to 'depends_on' + "
-        "meta['ref_construct']='puppet_require'.",
-    ),
-    EdgeTypeSpec(
-        "signal_receiver", AXIS_ENDPOINT_SHAPE,
-        "Django signal receiver registration; likely fold to "
-        "'event_publishes' + meta['channel_kind']='django_signal' (signals "
-        "are pub-sub via Django's dispatch module).",
-    ),
-    EdgeTypeSpec(
-        "template_calls", AXIS_ENDPOINT_SHAPE,
-        "Vue / template-engine method call from template into "
-        "component logic; likely fold to 'calls' + "
-        "meta['mechanism']='template'.",
-    ),
-    EdgeTypeSpec(
-        "uses_mixin", AXIS_ENDPOINT_SHAPE,
-        "Sass/SCSS @include of a mixin; likely fold to 'references' + "
-        "meta['ref_construct']='sass_mixin'.",
-    ),
-    EdgeTypeSpec(
-        "uses_vocabulary", AXIS_ENDPOINT_SHAPE,
-        "SPARQL/RDF query references a vocabulary/ontology; likely "
-        "fold to 'references' + meta['ref_construct']='rdf_vocabulary'.",
-    ),
+    # ADR-0023 Phase 4b' COMPLETE (WI-pumav): all 21 long-tail
+    # endpoint_shape values were producer-migrated to canonical relationship
+    # types + meta discriminators (audit-findings 0017, Batches 1a-7) and
+    # their dead registry entries pruned here. Together with the earlier
+    # dst-kind / bridge / IPC / publish / dispatch closures and the
+    # protocol-call (WI-hirud) + script_src (Batch 0) prunes, the
+    # endpoint_shape axis of Edge.edge_type is now EMPTY — the fold declared
+    # by ADR-0023 §6 is complete. (The 4 pending_classification resolver /
+    # OpenAPI / RPC values below are a separate axis; audit-findings 0016.)
 
     # Per-family audit pending per ADR-0023 §5. The dispatch and
     # publish families were resolved by audit-findings 0001; the resolver /

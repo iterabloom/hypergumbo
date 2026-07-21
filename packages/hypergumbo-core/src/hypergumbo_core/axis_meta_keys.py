@@ -126,9 +126,13 @@ class MetaKeySpec:
 # missing data (fix the emitter). DECLARED-N/A — a ``None`` value means the
 # question does not arise (the dataflow annotate passes skip these; a
 # constructor call ``instantiates`` is not an access). The remaining canonical
-# edge types (``edge_types.all_edge_type_names()`` is 54-wide) are UNCLASSIFIED,
-# deferred to the polyglot-census follow-up. One deliberate deferral remains:
-#   * the dataflow-DIRECTION family (``crypto_flow`` / ``data_flows_to``) — it
+# edge types (``edge_types.all_edge_type_names()`` is 29-wide after the
+# ADR-0023 endpoint_shape fold-tail drained that axis to empty, WI-pumav) are
+# UNCLASSIFIED, deferred to the polyglot-census follow-up (WI-pusuv, now
+# unblocked). One deliberate deferral remains:
+#   * the canonical dataflow relationship ``data_flows_to`` (crypto write→read
+#     flows fold here with ``ref_construct='crypto'``; the endpoint_shape
+#     ``crypto_flow`` edge_type was pruned in Batch 7) — it
 #     is PR-2's ``data_direction`` territory (ADR-0038 ruling 3), not access.
 # (``script_src`` was formerly deferred here as a mid-fold ``endpoint_shape``
 # structural type; it has since been pruned from the registry — WI-pumav
@@ -202,27 +206,48 @@ META_KEYS: Final[tuple[MetaKeySpec, ...]] = (
                 "reclassifications (e.g. 'abi', 'subprocess', "
                 "'db_query'). Fold residue per audit-findings 0010."),
     MetaKeySpec("mechanism", AXIS_EDGE_META,
-                "Dispatch mechanism on a ``dispatches_to`` edge — names "
-                "HOW the dispatch is wired when the canonical ``edge_type`` "
-                "alone is too coarse. Current value space: 'otp_call' / "
-                "'otp_cast' (Elixir/Erlang GenServer synchronous call vs "
-                "asynchronous cast, folded from the former otp_call/otp_cast "
-                "edge_types per WI-rorul). Distinct from ``framework_dispatch`` "
-                "(framework name, e.g. 'otp_genserver') and ``call_construct`` "
-                "(call-edge syntactic shape)."),
+                "Dispatch/call mechanism on a ``dispatches_to`` or ``calls`` "
+                "edge — names HOW the dispatch/call is wired when the canonical "
+                "``edge_type`` alone is too coarse. Current value space: "
+                "'otp_call' / 'otp_cast' (Elixir/Erlang GenServer synchronous "
+                "call vs asynchronous cast, folded from the former "
+                "otp_call/otp_cast edge_types per WI-rorul); 'callback' "
+                "(Elixir/Erlang behaviour + Rails callbacks, folded from "
+                "``invokes_callback`` per audit-findings 0017); 'kernel_launch' "
+                "(CUDA kernel launch, folded from ``kernel_launch``); 'template' "
+                "(Vue template→method call, folded from ``template_calls``). "
+                "Distinct from ``framework_dispatch`` (framework name, e.g. "
+                "'otp_genserver') and ``call_construct`` (call-edge syntactic "
+                "shape)."),
     MetaKeySpec("ref_construct", AXIS_EDGE_META,
-                "Source-language construct on a reference-FAMILY "
-                "(non-call) edge where the canonical ``edge_type`` alone "
-                "is too coarse. Current value space: 'jsx' (JSX render), "
-                "'script_src' (HTML ``<script src=...>`` include), "
+                "Source-language construct on a reference-FAMILY (non-call) "
+                "edge (``references`` / ``includes`` / ``extends`` / "
+                "``depends_on`` / ``contains`` / ``data_flows_to``) where the "
+                "canonical ``edge_type`` alone is too coarse. Value space: "
+                "'jsx' (JSX render), 'script_src' (HTML ``<script src=...>``), "
                 "'websocket_endpoint' (WebSocket endpoint connectivity), "
                 "'event_emit' (Solidity event emission), 'dispatch_table' "
-                "(C/C++ dispatch-table reference) — all folded to "
-                "``references`` edges (INV-vavat / ADR-0023 endpoint-shape "
-                "migration). Renamed from ``construct`` per INV-lajov to "
-                "disambiguate from the sibling ``call_construct`` (which "
+                "(C/C++ dispatch-table reference); and — from the ADR-0023 "
+                "endpoint_shape fold-tail (audit-findings 0017, WI-pumav) — "
+                "'markdown_link', 'rdf_vocabulary', 'association' (Ruby "
+                "ActiveRecord), 'build_tag_alternative' (Go build tags), "
+                "'view_render' (controller→template), 'template' (Twig/Blade "
+                "extends/includes), 'puppet_class', 'sass_mixin', "
+                "'dockerfile_stage' (Docker FROM..AS), 'puppet_require', "
+                "'puppet_notify', 'crypto' (crypto write→read on "
+                "``data_flows_to``). Renamed from ``construct`` per INV-lajov "
+                "to disambiguate from the sibling ``call_construct`` (which "
                 "names the call SHAPE on ``calls`` edges): distinct "
                 "vocabularies, distinct edge families, zero overlap."),
+    MetaKeySpec("refresh", AXIS_EDGE_META,
+                "Boolean flag on a ``depends_on`` edge marking an ordering "
+                "dependency that ALSO triggers a refresh-on-change of the dst "
+                "(Puppet ``notify``, folded from the former ``notifies_resource`` "
+                "edge_type per audit-findings 0017). Present-and-true only on "
+                "the refresh subset; a plain ordering ``depends_on`` (e.g. "
+                "Puppet ``require``, ``ref_construct='puppet_require'``) omits "
+                "it. Makes the require-vs-notify distinction queryable without "
+                "a distinct edge type; no consumer branches on it yet."),
     MetaKeySpec("receiver", AXIS_EDGE_META,
                 "Call-site receiver classification: a per-language "
                 "fold-residue label (audit-findings 0012) emitted only by "
@@ -781,9 +806,10 @@ def is_access_mode_not_applicable(edge_type: str) -> bool:
     """ADR-0038 ruling 2: is ``access_mode`` Declared-N/A for *edge_type*?
 
     The dataflow annotate passes call this to skip stamping ``access_mode`` on
-    N/A edge types. Edge types OUTSIDE the 17-type census (the ~37 uncensused
-    canonical types, incl. the ``crypto_flow`` / ``data_flows_to`` direction
-    family) are UNCLASSIFIED and return ``False`` — their stamping behavior is
-    untouched by this pass, pending the polyglot-census follow-up.
+    N/A edge types. Edge types OUTSIDE the 17-type census (the uncensused
+    canonical types, incl. the ``data_flows_to`` dataflow-direction relationship
+    — crypto write→read flows fold here after the ADR-0023 ``crypto_flow`` prune)
+    are UNCLASSIFIED and return ``False`` — their stamping behavior is untouched
+    by this pass, pending the polyglot-census follow-up (WI-pusuv).
     """
     return edge_type in _ACCESS_MODE_NA_EDGE_TYPES

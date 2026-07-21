@@ -357,10 +357,11 @@ class TestSchemaUpToDate:
             # From analyzers
             "calls", "imports", "instantiates", "extends", "implements",
             "references", "depends_on", "links", "sources",
-            "base_image", "kernel_launch",
-            # Canonical Phase-3 fold targets
+            # Canonical Phase-3 fold targets (endpoint_shape fully drained by
+            # WI-pumav Batches 1a-7; the long-tail values fold onto these)
             "event_publishes",  # async producer→consumer
             "dispatches_to",   # runtime dispatch indirection
+            "includes", "contains", "data_flows_to",
             # GraphQL Resolver — pending_classification per-family audit
             "resolver_implements", "resolver_for_type",
         }
