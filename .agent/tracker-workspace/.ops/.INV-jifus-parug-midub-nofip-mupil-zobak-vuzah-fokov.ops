@@ -61,3 +61,21 @@
   clock: 6  # 9586
   nonce: '9586'  # 9586
   message: "Owner disposition 2026-07-12 (option C): MIGRATE the typed-dataclass residual to Wave 5; concrete work is done. Live-verified: all 3 member faces satisfied -- INV-modor (readme_description blockquote concat), INV-padoz (vocabulary lemmatization; field deleted), INV-napap (centrality_scores renamed additional_file_centrality_scores + block marked x-internal); the config_info blob face addressed (WI-lirub/WI-gojuz); the generate-schema-vs-spec doc-conflict reconciled (WI-rajod 2026-06-24, generate-schema:325-332). The surface is now honestly schema-d in docs/schema.json with x-internal:true, so the statement \"sketch_precomputed has no schema\" is literally stale -- it HAS one. SOLE residual = prevention-only: no typed @dataclass SketchPrecomputed, so the schema entry is a hand-written overlay with a theoretical drift risk (unguarded by test -- schema-compliance skips it via include_sketch_precomputed=False), on an x-internal cache with ZERO external consumers (sketch.py reads it, compact.py strips it, dropped from compact/tiered views). The 2026-06-24 audit already scoped F1 to a lean dataclass + introspected-schema chokepoint and ruled the heavyweight full-axis-governance + runtime-validation version over-engineering. A typed SketchPrecomputed dataclass is a PREVENTION mechanism -> belongs in Wave 5 beside the mypy/typed-contract ramp (NewType -> TypedDict -> typed Protocol), NOT a Wave-4 blocker. Tagged wave5; status stays violated (enforcing mechanism not built). Clears the sole remaining Wave-4 block keystone; Wave-4 completion now needs only leaf-disposition + the owner ruling."  # 9586
+- op: update  # a119
+  at: '2026-07-21T21:20:45Z'  # a119
+  by: agent  # a119
+  actor: jgstern_agent  # a119
+  clock: 7  # a119
+  nonce: a119  # a119
+  set:  # a119
+    title: "META: sketch_precomputed lacks a typed SketchPrecomputed dataclass contract (schema EXISTS, x-internal; prevention-only residual)"  # a119
+    fields:  # a119
+      statement: "SCOPE (2026-07-21 audit): the 'has no schema' premise is FALSIFIED -- docs/schema.json:336-385 now schemas the whole sketch_precomputed block with x-internal:true and typed, scope-described sub-properties (additional_file_centrality_scores, config_info, readme_description), and the three member faces are resolved (INV-napap centrality rename, INV-padoz vocabulary-field deletion, INV-modor readme blockquote skip). The SOLE residual keeping it violated is prevention-only: there is still no typed 'SketchPrecomputed' @dataclass owning the field contract, so hand-overlay per-field scope/normalization drift is unguarded (schema-compliance skips x-internal) on a zero-external-consumer cache -- which the owner migrated to end-of-Wave-5 as over-engineering-avoidance (the 2026-06-24 audit ruled the heavyweight full-axis-governance version over-engineering)."  # a119
+      root_cause: "CORRECTED 2026-07-21: the three original faces (readme_description blockquote skip = INV-modor; vocabulary lemmatization = INV-padoz, field since DELETED; centrality naming = INV-napap) are all resolved, and the block is now schema'd x-internal. The remaining root cause is solely the absence of a typed SketchPrecomputed dataclass owning the field contract: sketch_precomputed is still hand-assembled by independent sketch.py helpers, so per-field scope/normalization drift is unguarded because schema-compliance validation skips x-internal blocks."  # a119
+- op: discuss  # 5411
+  at: '2026-07-21T21:20:45Z'  # 5411
+  by: agent  # 5411
+  actor: jgstern_agent  # 5411
+  clock: 8  # 5411
+  nonce: '5411'  # 5411
+  message: "Re-scoped statement/title/root_cause off 'has no schema' (falsified: docs/schema.json:336-385 schemas it x-internal:true; 3 faces resolved). Sole live residual = the prevention-only typed @dataclass, which the 2026-07-12 owner disposition migrated to end-of-Wave-5. Stays violated in the 'enforcing mechanism unbuilt' sense only."  # 5411

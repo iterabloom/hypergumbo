@@ -86,3 +86,20 @@
   clock: 9  # d966
   nonce: d966  # d966
   message: "Drain audit (deep-20260621-215349), human-authorized strip. no_move/violated: 2026-06-06 bakeoff found 0/110533 edges carry multi-element origin (100% singletons) after the PR #3927 schema change — the producer-side goal (passes appending multiple pass IDs) never materialized. Deterministic structural gap, NOT cohort-re-runnable. Stripping awaits_bakeoff_validation; violated status remains the live signal. Re-tag only on a future fix with a fresh quantitative claim."  # d966
+- op: update  # bfe5
+  at: '2026-07-21T21:20:44Z'  # bfe5
+  by: agent  # bfe5
+  actor: jgstern_agent  # bfe5
+  clock: 10  # bfe5
+  nonce: bfe5  # bfe5
+  set:  # bfe5
+    title: "Symbol/Edge.origin multi-source ATTRIBUTION gap — every producer emits single [PASS_ID] (0/110533 multi-element); the list[str] TYPE goal is DONE"  # bfe5
+    fields:  # bfe5
+      statement: "SCOPE (2026-07-21 audit): the TYPE sub-goal is DONE and the 'current scalar' framing is STALE -- origin is now 'str | List[str]' (ir.py:569/813), __post_init__ normalizes scalar->list, to_dict serializes a list, and a bakeoff confirmed 108649/108649 edges carry list-typed origin (since PR #3927). The LIVE invariant is the multi-source ATTRIBUTION gap: when evidence for a Symbol/Edge is contributed by multiple passes, all contributing passes should be credited in origin, but every producer still emits a single-element [PASS_ID] and no merge/finalize step appends a second (edge-dedup unions referring_paths, not origins; 0/110533 edges multi-element). Re-scoped to the producer-side attribution gap."  # bfe5
+- op: discuss  # 405b
+  at: '2026-07-21T21:20:44Z'  # 405b
+  by: agent  # 405b
+  actor: jgstern_agent  # 405b
+  clock: 11  # 405b
+  nonce: 405b  # 405b
+  message: "Re-scoped statement/title off the stale 'should be list[str] / current scalar' framing: the type widening landed long ago (origin is str|List[str], ir.py:569/813; 108649/108649 list-typed). The substantive invariant -- multi-source attribution -- is genuinely unmet (single-element [PASS_ID] everywhere; 0/110533 multi-element). Root_cause ('single-author field / lossy attribution choice') is still accurate, left as-is."  # 405b

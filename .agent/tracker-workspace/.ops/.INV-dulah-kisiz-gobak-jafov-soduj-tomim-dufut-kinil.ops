@@ -143,3 +143,20 @@
   clock: 16  # b7bd
   nonce: b7bd  # b7bd
   message: "INV-dulah DRY refactor (the 2026-06-22 scope addition) DONE — merged to dev 469243b7b0. Added make_doc_symbol_ids(language, path, kind, name, start_line, end_line) -> (node_id, stable_id) in analyze/base.py: mints BOTH ids from one argument set so they can no longer drift (the WI-rijup bug class where 9 analyzers shipped stable_id == raw id), and dedups the 11 per-analyzer _make_symbol_id copies onto it (rst/robot/scss/vue/svelte/puppet/astro/pony/twig/sparql/kdl). node.id shape is {language}:{path}:{kind}:{start_line}:{name}. The 6 line-bearing analyzers + kdl: node.id byte-identical (verified per call site). The 4 line-less analyzers (rst/robot/pony/sparql): node.id GAINS the start_line segment, fixing their latent same-name-sibling node.id collision; stable_id unchanged. sparql uses_vocabulary edge dst now references the prefix node own id (prefix Symbols indexed by name in Pass 1). markdown/gitignore NOT folded — they already use a different, more grammar-conformant shape {lang}:{path}:{start-end}:{name}:{kind}. Adversarial all-kinds check (throwaway script + strengthened per-analyzer shape asserts): every non-file doc symbol node.id == {lang}:{path}:{kind}:{start_line}:{name}; 10343 passed, 100% coverage on changed sources.\n\nNEW PROPERTY of this invariant (pre-existing, NOT introduced by the refactor): the robot test_case node carries id/stable_id kind-slot 'test_case' while Symbol.kind == 'test' — a kind-slot vs Symbol.kind mismatch, same class as this invariant. The refactor faithfully preserved it (the helper kind arg mirrors the old make_doc_stable_id arg, so stable_id stayed byte-identical and node.id only gained the line).\n\nSTATUS stays VIOLATED: the DRY refactor prevents drift and fixes the collision but does NOT resolve the node.id-format invariant. The dominant cohorts persist — external_symbol nodes with 'unresolved' in the kind-slot, route IDs, and the doc-family slot ORDER is still kind:line:name rather than the documented span:name:kind grammar (full grammar conformance for the doc family is a separate, larger re-keying decision)."  # b7bd
+- op: update  # 4b91
+  at: '2026-07-21T21:20:44Z'  # 4b91
+  by: agent  # 4b91
+  actor: jgstern_agent  # 4b91
+  clock: 17  # 4b91
+  nonce: 4b91  # 4b91
+  set:  # 4b91
+    title: "node.id format escapes documented grammar — live via route ids (WI-zugob), linker name-slot constants (WI-vuzaf), doc-family slot-ORDER, 5 stable_ids (WI-banod); dominant external_symbol cohort FIXED, Rust '::' now by-design"  # 4b91
+    fields:  # 4b91
+      statement: "node.id is documented as 'lang:path:span:name:kind'. SCOPE (2026-07-21 audit): the dominant historical breakage -- ~1663 external_symbol nodes carrying 'unresolved' in the kind-slot -- was FIXED by WI-pubiv (df8e1e60da, 2026-07-02; ir.py:1273 now emits the external_symbol kind-slot), and the Rust '::'->'.' name-slot case is by-design per ADR-0036 Ruling-1 (WI-nagub wont_do). The invariant stays violated via surviving children: route id kind-slot (WI-zugob), linker name-slot constants (WI-vuzaf), the doc-family slot ORDER 'lang:path:kind:line:name' (base.py:983, deliberately not span-third/kind-last), and 5 straggler stable_ids (WI-banod). The original 2026-06 framing (12 nodes: npm 3-colon, Rust '::', route colon-prefix, Solidity carry-over) is preserved in git history and the discussion thread."  # 4b91
+- op: discuss  # e4b7
+  at: '2026-07-21T21:20:44Z'  # e4b7
+  by: agent  # e4b7
+  actor: jgstern_agent  # e4b7
+  clock: 18  # e4b7
+  nonce: e4b7  # e4b7
+  message: "Re-scoped statement/title: the dominant external_symbol 'unresolved' kind-slot cohort was fixed by WI-pubiv (df8e1e60da, ir.py:1273) AFTER the 2026-06-22 framing, and the Rust '::' case is now by-design (ADR-0036 R1; WI-nagub moved to wont_do this session). Umbrella stays violated via WI-zugob (route id kind-slot), WI-vuzaf (linker name-slot constants), the doc-family slot ORDER at base.py:983, and WI-banod (5 residual config-family stable_ids). Root_cause unchanged (colon-escaping mechanism still accurate for the surviving children)."  # e4b7

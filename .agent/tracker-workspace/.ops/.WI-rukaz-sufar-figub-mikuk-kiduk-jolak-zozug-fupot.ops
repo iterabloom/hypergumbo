@@ -36,3 +36,18 @@
   clock: 3  # 9f60
   nonce: 9f60  # 9f60
   message: "Wave-4 triage 2026-07-12: MIGRATE to Wave 5. Perf/scale item (>1M-LOC / large-Java throughput; tags performance,large_repo) -- orthogonal to output/contract surfaces. Belongs to the Wave-5 perf theme."  # 9f60
+- op: update  # 875f
+  at: '2026-07-21T21:18:08Z'  # 875f
+  by: agent  # 875f
+  actor: jgstern_agent  # 875f
+  clock: 4  # 875f
+  nonce: 875f  # 875f
+  set:  # 875f
+    title: "Large Java-repo (~14.6k files) run >60min — bottleneck UNLOCATED; the additional_file_centrality_scores 'per-file embedding pass' root-cause hypothesis is FALSIFIED; needs a fresh profile"  # 875f
+- op: discuss  # c9be
+  at: '2026-07-21T21:18:08Z'  # c9be
+  by: agent  # c9be
+  actor: jgstern_agent  # c9be
+  clock: 5  # c9be
+  nonce: c9be  # c9be
+  message: "Staleness audit 2026-07-21: the named root-cause hypothesis is falsified. additional_file_centrality_scores is computed by compute_symbol_mention_centrality_batch (cli.py:9829-9843) — a ripgrep/regex symbol-mention DENSITY scan (max_file_size=100KB) over NON-source config/doc candidate files only (content_source_paths at cli.py:9817-9818 excludes all source symbols), invoking NO embedding model; only readme_description uses embeddings, on a single README. It does not touch the 14.6k Java files. The 60min timeout headline itself is UNVERIFIED (>60min repro out of scope). Retitled to drop the embedding hypothesis; the real bottleneck over >1M LOC / 193k Import edges (analysis/linker/finalize) needs a fresh profile."  # c9be

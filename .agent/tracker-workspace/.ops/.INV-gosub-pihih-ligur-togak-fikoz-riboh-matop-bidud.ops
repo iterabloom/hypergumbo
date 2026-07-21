@@ -77,3 +77,21 @@
   clock: 8  # 466a
   nonce: 466a  # 466a
   message: "RE-SCOPED (2026-07-13, hygiene sweep). Both filed headline symptoms are STALE/false on dev 8eef2da94d — VERIFIED on a fresh docs/adr slice: (1) 'zero file/section nodes for markdown' is FALSE — 47 markdown file nodes emit for 47 .md files (via the orchestrator file-symbol-synthesis chokepoint added after the 2026-05-30 filing); (2) '102 orphan doc_link externals' is FALSE — 0 external_symbol nodes, 0 orphans in the default map. The DATA-LOSS face is closed. Downgraded P1->P3: the genuine RESIDUAL is confined to the opt-in --include-docs docs graph — internal doc links resolve to synthetic <external> placeholders instead of the real in-repo file/section nodes, and identical targets duplicate for lack of path canonicalization (no markdown-link-resolver linker exists). No default-map consumer harm. A separately-found pipeline dropout (docs/adr/0037 yields 19 section symbols from the analyzer but 0 nodes even under --include-docs) is filed as its own follow-up. INV-mozaf's stale root_cause ('markdown only emits external :doc_link nodes') should be corrected."  # 466a
+- op: update  # 91cc
+  at: '2026-07-21T21:20:45Z'  # 91cc
+  by: agent  # 91cc
+  actor: jgstern_agent  # 91cc
+  clock: 9  # 91cc
+  nonce: 91cc  # 91cc
+  set:  # 91cc
+    title: "Markdown --include-docs link resolution: doc links resolve to synthetic <external> (no path canonicalization, no link-resolver); the default-map 'zero file/section nodes' headline is STALE"  # 91cc
+    fields:  # 91cc
+      statement: "SCOPE (2026-07-21 audit): both default-map HEADLINE symptoms are STALE -- the analyzer DOES emit file + section nodes (markdown.py:185-206; a full docs/adr repro emits 47 file + 1075 section nodes), so 'zero file/section/heading nodes' and 'only orphan :doc_link nodes in the default map' are false. The residual keeping the invariant violated is under opt-in --include-docs: doc links still resolve to synthetic '<external>' placeholders (28 in the repro) rather than real in-repo nodes; _make_link_dst_id (markdown.py:66-84) does NO path canonicalization (adr/0003 vs docs/adr/0003 vs 0003 each duplicate); and no markdown-link-resolver linker module exists. Re-scoped to the --include-docs link-resolution residual."  # 91cc
+      root_cause: "CORRECTED 2026-07-21: the earlier 'emits link-target placeholders WITHOUT any document/section/heading nodes' framing is false at HEAD -- file + section nodes ARE emitted (markdown.py:185-206). The real residual: under --include-docs, _make_link_dst_id (markdown.py:66-84) applies no path canonicalization, so doc links resolve to synthetic '<external>' placeholders instead of the real in-repo section/file nodes, and no markdown-link-resolver linker exists to bind them."  # 91cc
+- op: discuss  # 245e
+  at: '2026-07-21T21:20:45Z'  # 245e
+  by: agent  # 245e
+  actor: jgstern_agent  # 245e
+  clock: 10  # 245e
+  nonce: 245e  # 245e
+  message: "Re-scoped: the item's own 2026-07-13 discussion already flagged the default-map framing as needing correction; confirmed at HEAD (analyzer emits file+section; repro 47 file/1075 section). Corrected statement + root_cause to the genuine --include-docs link-resolution residual (synthetic <external> targets, no path canonicalization, no linker) that keeps it violated."  # 245e
