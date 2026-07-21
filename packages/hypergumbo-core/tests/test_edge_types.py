@@ -99,11 +99,10 @@ def test_edge_types_on_axis_endpoint_shape_includes_known_deprecation_candidates
     endpoints = {spec.name for spec in edge_types_on_axis(AXIS_ENDPOINT_SHAPE)}
     # Representative endpoint-shaped values still in the registry (the long-tail
     # awaiting per-pattern folds). The protocol-call trio (http_calls /
-    # grpc_calls / graphql_calls) was producer-migrated in WI-vumum-juvil and
-    # pruned from the registry in WI-hirud (Phase 4b'); see
-    # test_protocol_call_trio_pruned_from_registry.
+    # grpc_calls / graphql_calls) was pruned in WI-hirud, and script_src in
+    # WI-pumav Batch 0 (both Phase 4b'); see the respective *_pruned tests.
     assert {
-        "script_src", "base_image", "kernel_launch", "renders",
+        "base_image", "kernel_launch", "renders",
     } <= endpoints
 
 
@@ -114,6 +113,17 @@ def test_protocol_call_trio_pruned_from_registry():
     entirely — no ``endpoint_shape`` entries remain for it."""
     names = all_edge_type_names()
     assert {"http_calls", "grpc_calls", "graphql_calls"}.isdisjoint(names)
+
+
+def test_script_src_pruned_from_registry():
+    """WI-pumav Batch 0 (ADR-0023 Phase 4b'): ``script_src`` was the first
+    long-tail endpoint_shape value to be producer-migrated — ``html.py`` emits
+    canonical ``references`` + ``meta['ref_construct']='script_src'`` (INV-vavat)
+    and no producer emits the ``script_src`` edge type. Its dead registry entry
+    is now pruned, discharging the WI-pusuv access_mode-census coupling that was
+    deferred on it."""
+    names = all_edge_type_names()
+    assert "script_src" not in names
 
 
 def test_edge_types_on_axis_unknown_returns_empty():

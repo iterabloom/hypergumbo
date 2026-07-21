@@ -127,17 +127,18 @@ class MetaKeySpec:
 # question does not arise (the dataflow annotate passes skip these; a
 # constructor call ``instantiates`` is not an access). The remaining canonical
 # edge types (``edge_types.all_edge_type_names()`` is 54-wide) are UNCLASSIFIED,
-# deferred to the polyglot-census follow-up. Two deliberate deferrals:
+# deferred to the polyglot-census follow-up. One deliberate deferral remains:
 #   * the dataflow-DIRECTION family (``crypto_flow`` / ``data_flows_to``) — it
-#     is PR-2's ``data_direction`` territory (ADR-0038 ruling 3), not access;
-#   * ``script_src`` — a census structural type, but on the mid-fold
-#     ``endpoint_shape`` axis (ADR-0023). Its access_mode N/A declaration is
-#     deferred until that fold settles (it is behaviorally moot: a
-#     ``<script src>`` include never reaches the dataflow classifier, so it is
-#     never stamped regardless). Deferring it also keeps this set axis-pure for
-#     the ``check-edge-type-drift`` strict linter — these are named
-#     ``*_EDGE_TYPES`` on purpose so that linter DOES watch them, so every
-#     member must be a relationship/pending-axis edge type.
+#     is PR-2's ``data_direction`` territory (ADR-0038 ruling 3), not access.
+# (``script_src`` was formerly deferred here as a mid-fold ``endpoint_shape``
+# structural type; it has since been pruned from the registry — WI-pumav
+# Batch 0, ADR-0023 Phase 4b' — because ``html.py`` already emits canonical
+# ``references`` + ``meta['ref_construct']='script_src'``. There is no longer a
+# ``script_src`` edge type to declare N/A for, so the WI-pusuv coupling on it is
+# discharged.) Keeping this set axis-pure still matters for the
+# ``check-edge-type-drift`` strict linter — these are named ``*_EDGE_TYPES`` on
+# purpose so that linter DOES watch them, so every member must be a
+# relationship/pending-axis edge type.
 _ACCESS_MODE_APPLICABLE_EDGE_TYPES: Final[frozenset[str]] = frozenset({
     "calls", "references", "module_attr_ref", "event_publishes",
 })

@@ -357,7 +357,7 @@ class TestSchemaUpToDate:
             # From analyzers
             "calls", "imports", "instantiates", "extends", "implements",
             "references", "depends_on", "links", "sources",
-            "script_src", "base_image", "kernel_launch",
+            "base_image", "kernel_launch",
             # Canonical Phase-3 fold targets
             "event_publishes",  # async producer→consumer
             "dispatches_to",   # runtime dispatch indirection

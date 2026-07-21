@@ -8,7 +8,7 @@
     "schema_version": {
       "type": "string",
       "description": "Schema version (semver)",
-      "const": "0.15.0"
+      "const": "0.16.0"
     },
     "confidence_model": {
       "type": "string",
@@ -888,7 +888,6 @@
             "data_flows_to",
             "module_exports",
             "overrides",
-            "script_src",
             "base_image",
             "kernel_launch",
             "abi_call",
@@ -941,7 +940,6 @@
             "data_flows_to": "relationship",
             "module_exports": "relationship",
             "overrides": "relationship",
-            "script_src": "endpoint_shape",
             "base_image": "endpoint_shape",
             "kernel_launch": "endpoint_shape",
             "abi_call": "endpoint_shape",
@@ -969,7 +967,6 @@
             "implements_rpc": "pending_classification"
           },
           "x-deprecated": [
-            "script_src",
             "base_image",
             "kernel_launch",
             "abi_call",

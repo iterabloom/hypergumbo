@@ -2,7 +2,7 @@
 # ADR-0023: Edge Type Names the Relationship, Not the Endpoints
 
 Date: 2026-04-29
-Status: Accepted (§6 framework complete; 22 endpoint_shape values pending per-pattern micro-phase fold)
+Status: Accepted (§6 framework complete; 21 endpoint_shape values pending per-pattern micro-phase fold)
 
 > The decision is in force as of the canonical-registry landing
 > (commit `3b60ba3dd` — `EDGE_TYPES` is the source of truth) and the
@@ -11,10 +11,11 @@ Status: Accepted (§6 framework complete; 22 endpoint_shape values pending per-p
 > Phase 4b has shipped the dst-kind, bridge, IPC, publish/dispatch,
 > and protocol-call family closures (WI-vomoj-suhaz at 0.4.0; protocol
 > family producer-migrated via WI-vumum-juvil, its registry entries
-> pruned in WI-hirud). 22 endpoint_shape registry entries
-> remain — the long-tail individual values (`abi_call`, `extends_template`,
-> `notifies_resource`, …) — on a per-pattern micro-phase schedule;
-> each subset ships its own Phase 3 / 4b cycle with bakeoff validation.
+> pruned in WI-hirud; `script_src` pruned in WI-pumav Batch 0). 21
+> endpoint_shape registry entries remain — the long-tail individual
+> values (`abi_call`, `extends_template`, `notifies_resource`, …) — on a
+> per-pattern micro-phase schedule; each subset ships its own Phase 3 /
+> 4b cycle with bakeoff validation.
 > Strict-mode pre-commit drift linter is on (WI-mumok). The companion
 > ADR-0027 (Symbol.kind) and ADR-0028 (Edge.evidence_type) endpoint_shape
 > registries are fully closed.
@@ -529,12 +530,13 @@ and the 13 publish/dispatch family values (`routes_to`,
 `message_dispatch`, `crdt_publishes`, `annotated_publishes`,
 `emits`, `enqueues`, `event_subscribes`).
 
-**Remaining endpoint_shape registry entries: 22 (the long-tail).**
+**Remaining endpoint_shape registry entries: 21 (the long-tail).**
 At first-4b-ship 25 remained; the 3-value protocol-call family has
 since been producer-migrated (WI-vumum-juvil) and its registry
-entries pruned (WI-hirud), leaving the 22 long-tail values pending
-future per-family Phase 3 / 4b' work. The original 25 split into two
-groups:
+entries pruned (WI-hirud), and `script_src` — already producer-migrated
+under INV-vavat — was pruned in WI-pumav Batch 0, leaving 21 long-tail
+values pending future per-family Phase 3 / 4b' work. The original 25
+split into two groups:
 
 1. **Protocol-call family** (`http_calls`, `grpc_calls`,
    `graphql_calls`): producer migration shipped under
@@ -554,14 +556,15 @@ groups:
    **WI-hirud** (Phase-4b', SCHEMA_VERSION 0.14.6 → 0.15.0), completing
    this family's fold end-to-end.
 
-2. **Long-tail individual values** (~22 values from the
+2. **Long-tail individual values** (21 values from the
    WI-tavas-voror sweep: `abi_call`, `association`, `base_image`,
    `build_tag_alternative_of`, `caller_invokes`, `contains_routes`,
    `crypto_flow`, `depends`, `extends_template`, `includes_class`,
    `includes_template`, `invokes_callback`, `kernel_launch`,
    `links_to`, `notifies_resource`, `renders`, `requires_resource`,
-   `script_src`, `signal_receiver`, `template_calls`, `uses_mixin`,
-   `uses_vocabulary`): each carries a fold target in its registry
+   `signal_receiver`, `template_calls`, `uses_mixin`,
+   `uses_vocabulary` — `script_src` was pruned in WI-pumav Batch 0 as
+   already producer-migrated): each carries a fold target in its registry
    description but the fold targets are heterogeneous (some to
    `calls` + meta, some to `references` + dst.kind, some to
    `event_publishes` + channel_kind, some to `depends_on` +

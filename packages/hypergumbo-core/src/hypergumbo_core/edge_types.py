@@ -193,10 +193,12 @@ EDGE_TYPES: Final[tuple[EdgeTypeSpec, ...]] = (
     # leaked into the edge_type label; migration folds these back into
     # relationship-shaped names with kind/language metadata on the
     # endpoint nodes.
-    EdgeTypeSpec(
-        "script_src", AXIS_ENDPOINT_SHAPE,
-        "HTML ``<script src=...>`` reference.",
-    ),
+    #
+    # ``script_src`` (the first long-tail value) was already producer-migrated
+    # under INV-vavat — ``html.py`` emits canonical ``references`` +
+    # ``meta['ref_construct']='script_src'`` and no producer emits a
+    # ``script_src`` edge type — so its dead registry entry was pruned in
+    # WI-pumav Batch 0 (ADR-0023 Phase 4b'). See audit-findings 0017.
     EdgeTypeSpec(
         "base_image", AXIS_ENDPOINT_SHAPE,
         "Dockerfile ``FROM`` base image reference.",

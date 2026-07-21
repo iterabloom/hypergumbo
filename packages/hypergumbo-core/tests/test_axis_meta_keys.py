@@ -260,8 +260,9 @@ def test_is_access_mode_not_applicable_resolver():
     # Unclassified (deferred) → False: their behavior is untouched by PR 1.
     assert is_access_mode_not_applicable("crypto_flow") is False
     assert is_access_mode_not_applicable("renders") is False
-    # script_src is a census structural type but deferred (endpoint_shape
-    # mid-fold, ADR-0023); behaviorally moot (never reaches the classifier).
+    # script_src was pruned from the registry (WI-pumav Batch 0, ADR-0023
+    # Phase 4b'): it is no longer a registered edge type, so it is not in the
+    # N/A set and the classifier treats it as unclassified → False.
     assert is_access_mode_not_applicable("script_src") is False
 
 

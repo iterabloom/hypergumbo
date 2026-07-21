@@ -104,7 +104,6 @@ Values whose meaning is leaked into the type label even though it is captured by
 - **`notifies_resource`** — Puppet/Chef resource notify directive (trigger another resource on change); likely fold to 'event_publishes' + meta['channel_kind']='puppet_notify' (configuration-management pub-sub shape).
 - **`renders`** — Controller renders a view template; likely fold to 'references' + meta['ref_construct']='view_render' (parallel to renders_component for JSX).
 - **`requires_resource`** — Puppet/Chef resource require directive (this resource depends on another); likely fold to 'depends_on' + meta['ref_construct']='puppet_require'.
-- **`script_src`** — HTML ``<script src=...>`` reference.
 - **`signal_receiver`** — Django signal receiver registration; likely fold to 'event_publishes' + meta['channel_kind']='django_signal' (signals are pub-sub via Django's dispatch module).
 - **`template_calls`** — Vue / template-engine method call from template into component logic; likely fold to 'calls' + meta['mechanism']='template'.
 - **`uses_mixin`** — Sass/SCSS @include of a mixin; likely fold to 'references' + meta['ref_construct']='sass_mixin'.
