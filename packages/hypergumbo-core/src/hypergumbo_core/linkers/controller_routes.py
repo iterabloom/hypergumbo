@@ -157,7 +157,7 @@ def link_controller_routes(ctx: LinkerContext) -> LinkerResult:
             edge = Edge.create(
                 src=winner.id,
                 dst=route.id,
-                edge_type="contains_routes",
+                edge_type="contains",
                 line=winner.span.start_line,
                 origin=PASS_ID,
                 evidence_type="ast_call_direct",

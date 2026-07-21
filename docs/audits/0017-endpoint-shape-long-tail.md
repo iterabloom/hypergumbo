@@ -2,7 +2,7 @@
 # Audit-findings 0017: Endpoint-Shape Long-Tail Classifications
 
 - Date: 2026-07-20
-- Status: Mixed (1 RESOLVED — `script_src`; 19 PRELIM_RESOLVED — Batches 1a/1b/2/3/4 + Batch 4b `dispatches_to` folds, producer-migrated 2026-07-20/21, registry entries pending the consolidated Phase-4b prune; 2 UNRESOLVED — `contains_routes` (Batch 5), `crypto_flow` (Batch 7))
+- Status: Mixed (1 RESOLVED — `script_src`; 20 PRELIM_RESOLVED — Batches 1a/1b/2/3/4/4b + Batch 5 `contains`, producer-migrated 2026-07-20/21, registry entries pending the consolidated Phase-4b prune; 1 UNRESOLVED — `crypto_flow` (Batch 7))
 - Closes: WI-pumav (endpoint_shape long-tail fold audit) — the verdict pass; the per-subset FOLD migrations remain follow-on work
 - Sibling: [audit-findings 0001](0001-dispatch-publish-family.md) / [0002](0002-ipc-family.md) / [0016](0016-resolver-openapi-rpc-family.md) — same methodology, other `Edge.edge_type` families
 - Methodology: per [ADR-0024 §"Family-audit verdict methodology"](../adr/0024-axis-declaration-template.md). Filed under the audit-findings format defined in [`docs/audits/README.md`](README.md).
@@ -90,7 +90,7 @@ verdicts:
   - value: contains_routes
     verdict: FOLD
     fold_target: contains
-    status: UNRESOLVED
+    status: PRELIM_RESOLVED
     diagnostic_test:
       cmd: "git grep -nE '\"contains_routes\", AXIS_' packages/hypergumbo-core/src/hypergumbo_core/edge_types.py"
       expect: nonempty
@@ -306,7 +306,7 @@ target decisions remain.
 - **Batch 3 — `depends_on`** — ✅ **producer-migrated 2026-07-21** (PRELIM_RESOLVED): `depends` (requirements + bitbake, a pure `depends_on` synonym, no ref_construct), `requires_resource` (Puppet, `ref_construct='puppet_require'`), `base_image` (Dockerfile stage, `dockerfile_stage`), `notifies_resource` (Puppet, `puppet_notify` + `refresh=true`) → `depends_on`. Registry entries pruned in the consolidated Phase-4b PR.
 - **Batch 4 — `calls` + mechanism/protocol** (centrality-sensitive) — ✅ **producer-migrated 2026-07-21** (PRELIM_RESOLVED): `abi_call` (Solidity, `call_kind='abi'` — NOT `protocol`, a closed enum), `caller_invokes` (Tauri IPC, `protocol='ipc'`, keeps `framework_dispatch='specta_wrapper'`), `kernel_launch` (CUDA, `mechanism='kernel_launch'`, keeps `framework_dispatch='cuda_kernel_launch'`), `template_calls` (Vue, `mechanism='template'`, keeps `framework_dispatch='vue_event_handler'`) → `calls`. These edges enter the `calls` consumer sets (taint/io-boundary/reachability, ranking weight 1.0) — the intended promotion (each IS a call). Registry entries pruned in the consolidated Phase-4b PR.
 - **Batch 4b — `dispatches_to`** — ✅ **producer-migrated 2026-07-21** (PRELIM_RESOLVED): `invokes_callback` (Elixir/Erlang behaviour callbacks + Rails `before_action`/block callbacks, `mechanism='callback'`, keeps any `framework_dispatch`) + `signal_receiver` (Django `@receiver`, `framework_dispatch='django_signal'` — already the ruled discriminator, so edge_type-only) → `dispatches_to`. Folding `signal_receiver` to `dispatches_to` (in the dead-code reachability set) keeps `@receiver` handlers reachable — the correctness point that ruled out `event_publishes`. Registry entries pruned in the consolidated Phase-4b PR.
-- **Batch 5 — `contains`**: `contains_routes`.
+- **Batch 5 — `contains`** — ✅ **producer-migrated 2026-07-21** (PRELIM_RESOLVED): `contains_routes` (controller→route span-enclosure) → `contains` (the dst `route` concept stays queryable from the dst node; keeps `framework_dispatch='controller_routes'`). Registry entry pruned in the consolidated Phase-4b PR.
 - **Batch 7 — `crypto_flow` → `data_flows_to`** (ADR-0038-coupled; ship last; update `ranking.py:208`).
 
 ## Related

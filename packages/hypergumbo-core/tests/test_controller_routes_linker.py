@@ -73,7 +73,7 @@ class TestControllerRoutesLinker:
         edge = result.edges[0]
         assert edge.src == controller.id
         assert edge.dst == route.id
-        assert edge.edge_type == "contains_routes"
+        assert edge.edge_type == "contains"
         assert edge.evidence_type == "ast_call_direct"
         assert (edge.meta or {}).get("framework_dispatch") == "controller_routes"
 
