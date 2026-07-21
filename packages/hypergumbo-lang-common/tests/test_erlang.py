@@ -553,7 +553,7 @@ handle_cast(_Msg, State) ->
         result = analyze_erlang(tmp_path)
         assert not result.skipped
 
-        callback_edges = [e for e in result.edges if e.edge_type == "invokes_callback"]
+        callback_edges = [e for e in result.edges if e.edge_type == "dispatches_to" and (e.meta or {}).get("mechanism") == "callback"]
         assert len(callback_edges) == 3
 
         callback_dsts = {e.dst for e in callback_edges}
@@ -586,7 +586,7 @@ init([]) ->
         )
         result = analyze_erlang(tmp_path)
 
-        callback_edges = [e for e in result.edges if e.edge_type == "invokes_callback"]
+        callback_edges = [e for e in result.edges if e.edge_type == "dispatches_to" and (e.meta or {}).get("mechanism") == "callback"]
         assert len(callback_edges) == 1
         func_syms = {s.id: s for s in result.symbols if s.kind == "function"}
         assert func_syms[callback_edges[0].dst].name == "init/1"
@@ -609,7 +609,7 @@ init([]) ->
         result = analyze_erlang(tmp_path)
 
         # Only init/1 is implemented, others are not
-        callback_edges = [e for e in result.edges if e.edge_type == "invokes_callback"]
+        callback_edges = [e for e in result.edges if e.edge_type == "dispatches_to" and (e.meta or {}).get("mechanism") == "callback"]
         assert len(callback_edges) == 1
 
     def test_unknown_behaviour_no_callbacks(self, tmp_path: Path) -> None:
@@ -629,7 +629,7 @@ init([]) ->
         )
         result = analyze_erlang(tmp_path)
 
-        callback_edges = [e for e in result.edges if e.edge_type == "invokes_callback"]
+        callback_edges = [e for e in result.edges if e.edge_type == "dispatches_to" and (e.meta or {}).get("mechanism") == "callback"]
         assert len(callback_edges) == 0
 
     def test_imports_edge_still_created(self, tmp_path: Path) -> None:
@@ -650,7 +650,7 @@ init([]) ->
         result = analyze_erlang(tmp_path)
 
         import_edges = [e for e in result.edges if e.edge_type == "imports"]
-        callback_edges = [e for e in result.edges if e.edge_type == "invokes_callback"]
+        callback_edges = [e for e in result.edges if e.edge_type == "dispatches_to" and (e.meta or {}).get("mechanism") == "callback"]
 
         # Both import and callback edges should exist
         assert any("gen_server" in e.dst for e in import_edges)

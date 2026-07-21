@@ -1316,12 +1316,12 @@ def _extract_block_callback_edges(
         edges.append(Edge.create(
             src=class_sym.id,
             dst=callee.id,
-            edge_type="invokes_callback",
+            edge_type="dispatches_to",
             line=line,
             evidence_type="ast_call_direct",
             origin=PASS_ID,
             origin_run_id=run_id,
-            meta={"framework_dispatch": "rails_block_callback"},
+            meta={"framework_dispatch": "rails_block_callback", "mechanism": "callback"},
         ))
 
 
@@ -1430,12 +1430,12 @@ def _extract_rails_callbacks(
                 edges.append(Edge.create(
                     src=class_sym.id,
                     dst=callee.id,
-                    edge_type="invokes_callback",
+                    edge_type="dispatches_to",
                     line=node.start_point[0] + 1,
                     evidence_type="ast_call_direct",
                     origin=PASS_ID,
                     origin_run_id=run_id,
-                    meta={"framework_dispatch": "rails_callback"},
+                    meta={"framework_dispatch": "rails_callback", "mechanism": "callback"},
                 ))
 
         # Block-style callbacks: after_commit do...end or before_save { ... }

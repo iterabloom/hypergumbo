@@ -1323,7 +1323,7 @@ end
 
         callback_edges = [
             e for e in result.edges
-            if e.edge_type == "invokes_callback" and e.src == module_sym.id
+            if e.edge_type == "dispatches_to" and (e.meta or {}).get("mechanism") == "callback" and e.src == module_sym.id
         ]
 
         # Should have edges for init, handle_call, handle_cast, handle_info
@@ -1369,7 +1369,7 @@ end
 
         callback_edges = [
             e for e in result.edges
-            if e.edge_type == "invokes_callback" and e.src == module_sym.id
+            if e.edge_type == "dispatches_to" and (e.meta or {}).get("mechanism") == "callback" and e.src == module_sym.id
         ]
 
         dst_names = set()
@@ -1407,7 +1407,7 @@ end
 
         callback_edges = [
             e for e in result.edges
-            if e.edge_type == "invokes_callback" and e.src == module_sym.id
+            if e.edge_type == "dispatches_to" and (e.meta or {}).get("mechanism") == "callback" and e.src == module_sym.id
         ]
         dst_names = set()
         for e in callback_edges:
@@ -1441,7 +1441,7 @@ end
 
         callback_edges = [
             e for e in result.edges
-            if e.edge_type == "invokes_callback" and e.src == module_sym.id
+            if e.edge_type == "dispatches_to" and (e.meta or {}).get("mechanism") == "callback" and e.src == module_sym.id
         ]
         dst_names = set()
         for e in callback_edges:
@@ -1464,7 +1464,7 @@ defmodule MyApp.Plain do
 end
 ''')
         result = analyze_elixir(tmp_path)
-        callback_edges = [e for e in result.edges if e.edge_type == "invokes_callback"]
+        callback_edges = [e for e in result.edges if e.edge_type == "dispatches_to" and (e.meta or {}).get("mechanism") == "callback"]
         assert len(callback_edges) == 0
 
     def test_callback_not_implemented_no_edge(self, tmp_path: Path) -> None:
@@ -1482,7 +1482,7 @@ end
 ''')
         result = analyze_elixir(tmp_path)
 
-        callback_edges = [e for e in result.edges if e.edge_type == "invokes_callback"]
+        callback_edges = [e for e in result.edges if e.edge_type == "dispatches_to" and (e.meta or {}).get("mechanism") == "callback"]
         # Only init is implemented, handle_call/cast/info are NOT
         assert len(callback_edges) == 1
 
@@ -1501,7 +1501,7 @@ end
 ''')
         result = analyze_elixir(tmp_path)
 
-        callback_edges = [e for e in result.edges if e.edge_type == "invokes_callback"]
+        callback_edges = [e for e in result.edges if e.edge_type == "dispatches_to" and (e.meta or {}).get("mechanism") == "callback"]
         assert len(callback_edges) == 1
         assert callback_edges[0].confidence == 0.9
 
@@ -1535,7 +1535,7 @@ end
 
         callback_edges = [
             e for e in result.edges
-            if e.edge_type == "invokes_callback" and e.src == module_sym.id
+            if e.edge_type == "dispatches_to" and (e.meta or {}).get("mechanism") == "callback" and e.src == module_sym.id
         ]
         assert len(callback_edges) == 3  # mount, update, render
 
@@ -1578,7 +1578,7 @@ end
 
         callback_edges = [
             e for e in result.edges
-            if e.edge_type == "invokes_callback" and e.src == module_sym.id
+            if e.edge_type == "dispatches_to" and (e.meta or {}).get("mechanism") == "callback" and e.src == module_sym.id
         ]
         dst_names = set()
         for e in callback_edges:
@@ -1612,7 +1612,7 @@ end
 
         callback_edges = [
             e for e in result.edges
-            if e.edge_type == "invokes_callback" and e.src == module_sym.id
+            if e.edge_type == "dispatches_to" and (e.meta or {}).get("mechanism") == "callback" and e.src == module_sym.id
         ]
         dst_names = set()
         for e in callback_edges:
@@ -1748,7 +1748,7 @@ end
 
         callback_edges = [
             e for e in result.edges
-            if e.edge_type == "invokes_callback" and e.src == module_sym.id
+            if e.edge_type == "dispatches_to" and (e.meta or {}).get("mechanism") == "callback" and e.src == module_sym.id
         ]
         edge_dsts = {e.dst for e in callback_edges}
         for clause_sym in init_syms:

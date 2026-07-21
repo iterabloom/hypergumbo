@@ -230,7 +230,7 @@ def my_handler(sender, instance, **kwargs):
         # Find signal_receiver edges
         signal_edges = [
             e for e in result.edges
-            if e.edge_type == "signal_receiver"
+            if e.edge_type == "dispatches_to" and (e.meta or {}).get("framework_dispatch") == "django_signal"
         ]
 
         assert len(signal_edges) >= 1, "Expected signal_receiver edge"
@@ -267,7 +267,7 @@ def user_saved_handler(sender, instance, **kwargs):
 
         signal_edges = [
             e for e in result.edges
-            if e.edge_type == "signal_receiver"
+            if e.edge_type == "dispatches_to" and (e.meta or {}).get("framework_dispatch") == "django_signal"
         ]
 
         assert len(signal_edges) >= 1, "Expected signal_receiver edge"
@@ -300,7 +300,7 @@ def multi_signal_handler(sender, instance, **kwargs):
 
         signal_edges = [
             e for e in result.edges
-            if e.edge_type == "signal_receiver"
+            if e.edge_type == "dispatches_to" and (e.meta or {}).get("framework_dispatch") == "django_signal"
         ]
 
         # Should have edges from both signals
@@ -340,7 +340,7 @@ def handler(sender, **kwargs):
 
         signal_edges = [
             e for e in result.edges
-            if e.edge_type == "signal_receiver"
+            if e.edge_type == "dispatches_to" and (e.meta or {}).get("framework_dispatch") == "django_signal"
         ]
         assert len(signal_edges) == 1
         edge = signal_edges[0]
@@ -367,7 +367,7 @@ def handler(sender, **kwargs):
         # Should not have signal_receiver edges (no signal specified)
         signal_edges = [
             e for e in result.edges
-            if e.edge_type == "signal_receiver"
+            if e.edge_type == "dispatches_to" and (e.meta or {}).get("framework_dispatch") == "django_signal"
         ]
         assert len(signal_edges) == 0
 
@@ -397,7 +397,7 @@ def handler(sender, **kwargs):
 
         signal_edges = [
             e for e in result.edges
-            if e.edge_type == "signal_receiver"
+            if e.edge_type == "dispatches_to" and (e.meta or {}).get("framework_dispatch") == "django_signal"
         ]
 
         assert len(signal_edges) >= 1, "Expected signal_receiver edge"
@@ -437,7 +437,7 @@ def my_handler(sender, instance, **kwargs):
 
         signal_edges = [
             e for e in result.edges
-            if e.edge_type == "signal_receiver"
+            if e.edge_type == "dispatches_to" and (e.meta or {}).get("framework_dispatch") == "django_signal"
         ]
 
         assert len(signal_edges) >= 1, "Expected signal_receiver edge from imported signal"
@@ -471,7 +471,7 @@ def my_handler(sender, **kwargs):
 
         signal_edges = [
             e for e in result.edges
-            if e.edge_type == "signal_receiver"
+            if e.edge_type == "dispatches_to" and (e.meta or {}).get("framework_dispatch") == "django_signal"
         ]
 
         assert len(signal_edges) >= 1, "Expected signal_receiver edge"

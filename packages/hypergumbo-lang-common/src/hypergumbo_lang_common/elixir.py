@@ -709,11 +709,12 @@ def _extract_behaviour_callbacks(
                 edges.append(Edge.create(
                     src=module_sym.id,
                     dst=callee.id,
-                    edge_type="invokes_callback",
+                    edge_type="dispatches_to",
                     line=node.start_point[0] + 1,
                     evidence_type="behaviour_callback",
                     origin=PASS_ID,
                     origin_run_id=run_id,
+                    meta={"mechanism": "callback"},
                 ))
 
     return edges

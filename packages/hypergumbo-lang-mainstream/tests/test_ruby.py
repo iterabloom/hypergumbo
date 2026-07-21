@@ -2763,7 +2763,7 @@ end
 
         callback_edges = [
             e for e in result.edges
-            if e.edge_type == "invokes_callback"
+            if e.edge_type == "dispatches_to" and (e.meta or {}).get("mechanism") == "callback"
             and e.src == class_sym.id
             and e.dst == auth_method.id
         ]
@@ -2801,7 +2801,7 @@ end
 
         callback_edges = [
             e for e in result.edges
-            if e.edge_type == "invokes_callback"
+            if e.edge_type == "dispatches_to" and (e.meta or {}).get("mechanism") == "callback"
             and e.src == class_sym.id
             and e.dst == log_method.id
         ]
@@ -2835,7 +2835,7 @@ end
 
         callback_edges = [
             e for e in result.edges
-            if e.edge_type == "invokes_callback"
+            if e.edge_type == "dispatches_to" and (e.meta or {}).get("mechanism") == "callback"
             and e.src == class_sym.id
             and e.dst == measure_method.id
         ]
@@ -2875,7 +2875,7 @@ end
 
         callback_edges = [
             e for e in result.edges
-            if e.edge_type == "invokes_callback" and e.src == class_sym.id
+            if e.edge_type == "dispatches_to" and (e.meta or {}).get("mechanism") == "callback" and e.src == class_sym.id
         ]
         dst_ids = {e.dst for e in callback_edges}
         assert auth_method.id in dst_ids, "Should have edge to authenticate!"
@@ -2914,7 +2914,7 @@ end
 
         callback_edges = [
             e for e in result.edges
-            if e.edge_type == "invokes_callback"
+            if e.edge_type == "dispatches_to" and (e.meta or {}).get("mechanism") == "callback"
             and e.src == class_sym.id
             and e.dst == auth_method.id
         ]
@@ -2937,7 +2937,7 @@ end
 
         result = analyze_ruby(tmp_path)
 
-        callback_edges = [e for e in result.edges if e.edge_type == "invokes_callback"]
+        callback_edges = [e for e in result.edges if e.edge_type == "dispatches_to" and (e.meta or {}).get("mechanism") == "callback"]
         assert len(callback_edges) == 0
 
     def test_legacy_before_filter(self, tmp_path: Path) -> None:
@@ -2968,7 +2968,7 @@ end
 
         callback_edges = [
             e for e in result.edges
-            if e.edge_type == "invokes_callback"
+            if e.edge_type == "dispatches_to" and (e.meta or {}).get("mechanism") == "callback"
             and e.src == class_sym.id
             and e.dst == check_method.id
         ]
@@ -2990,7 +2990,7 @@ end
 
         result = analyze_ruby(tmp_path)
 
-        callback_edges = [e for e in result.edges if e.edge_type == "invokes_callback"]
+        callback_edges = [e for e in result.edges if e.edge_type == "dispatches_to" and (e.meta or {}).get("mechanism") == "callback"]
         assert len(callback_edges) == 0
 
     def test_callback_inside_method_body_ignored(self, tmp_path: Path) -> None:
@@ -3015,7 +3015,7 @@ end
 
         result = analyze_ruby(tmp_path)
 
-        callback_edges = [e for e in result.edges if e.edge_type == "invokes_callback"]
+        callback_edges = [e for e in result.edges if e.edge_type == "dispatches_to" and (e.meta or {}).get("mechanism") == "callback"]
         assert len(callback_edges) == 0, (
             f"Callback inside method body should not create edge, got: "
             f"{[(e.src, e.dst) for e in callback_edges]}"
@@ -3051,7 +3051,7 @@ end
 
         edges = [
             e for e in result.edges
-            if e.edge_type == "invokes_callback"
+            if e.edge_type == "dispatches_to" and (e.meta or {}).get("mechanism") == "callback"
             and e.src == class_sym.id
             and e.dst == callback.id
         ]
@@ -3082,7 +3082,7 @@ end
 
         edges = [
             e for e in result.edges
-            if e.edge_type == "invokes_callback"
+            if e.edge_type == "dispatches_to" and (e.meta or {}).get("mechanism") == "callback"
             and e.src == class_sym.id
             and e.dst == callback.id
         ]
@@ -3111,7 +3111,7 @@ end
 
         edges = [
             e for e in result.edges
-            if e.edge_type == "invokes_callback"
+            if e.edge_type == "dispatches_to" and (e.meta or {}).get("mechanism") == "callback"
             and e.src == class_sym.id
             and e.dst == callback.id
         ]
@@ -3140,7 +3140,7 @@ end
 
         edges = [
             e for e in result.edges
-            if e.edge_type == "invokes_callback"
+            if e.edge_type == "dispatches_to" and (e.meta or {}).get("mechanism") == "callback"
             and e.src == class_sym.id
             and e.dst == callback.id
         ]
@@ -3184,7 +3184,7 @@ end
 
         callback_edges = [
             e for e in result.edges
-            if e.edge_type == "invokes_callback"
+            if e.edge_type == "dispatches_to" and (e.meta or {}).get("mechanism") == "callback"
             and e.src == class_sym.id
             and e.dst == provision.id
         ]
@@ -3228,7 +3228,7 @@ end
 
         callback_edges = [
             e for e in result.edges
-            if e.edge_type == "invokes_callback" and e.src == class_sym.id
+            if e.edge_type == "dispatches_to" and (e.meta or {}).get("mechanism") == "callback" and e.src == class_sym.id
         ]
         dst_ids = {e.dst for e in callback_edges}
         assert provision.id in dst_ids, "Should have edge to provision_database"
@@ -3258,7 +3258,7 @@ end
 
         callback_edges = [
             e for e in result.edges
-            if e.edge_type == "invokes_callback"
+            if e.edge_type == "dispatches_to" and (e.meta or {}).get("mechanism") == "callback"
             and e.src == class_sym.id
             and e.dst == normalize.id
         ]
@@ -3290,7 +3290,7 @@ end
 
         callback_edges = [
             e for e in result.edges
-            if e.edge_type == "invokes_callback"
+            if e.edge_type == "dispatches_to" and (e.meta or {}).get("mechanism") == "callback"
             and e.src == class_sym.id
             and e.dst == notify.id
         ]
@@ -3309,7 +3309,7 @@ end
 """)
 
         result = analyze_ruby(tmp_path)
-        callback_edges = [e for e in result.edges if e.edge_type == "invokes_callback"]
+        callback_edges = [e for e in result.edges if e.edge_type == "dispatches_to" and (e.meta or {}).get("mechanism") == "callback"]
         assert len(callback_edges) == 0
 
     def test_block_callback_empty_block_no_crash(self, tmp_path: Path) -> None:
@@ -3325,7 +3325,7 @@ end
 
         result = analyze_ruby(tmp_path)
         # No crash, no callback edges
-        callback_edges = [e for e in result.edges if e.edge_type == "invokes_callback"]
+        callback_edges = [e for e in result.edges if e.edge_type == "dispatches_to" and (e.meta or {}).get("mechanism") == "callback"]
         assert len(callback_edges) == 0
 
 class TestRubyJobEnqueueDetection:

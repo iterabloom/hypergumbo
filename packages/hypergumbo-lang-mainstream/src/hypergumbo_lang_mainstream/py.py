@@ -4315,7 +4315,7 @@ def _extract_edges(
                 edges.append(Edge.create(
                     src=signal_symbol.id,
                     dst=decorated_symbol.id,
-                    edge_type="signal_receiver",
+                    edge_type="dispatches_to",
                     line=line,
                     evidence_type="ast_decorator",
                     meta={"framework_dispatch": "django_signal"},
@@ -4328,7 +4328,7 @@ def _extract_edges(
                 edges.append(Edge.create(
                     src=dst_id,
                     dst=decorated_symbol.id,
-                    edge_type="signal_receiver",
+                    edge_type="dispatches_to",
                     line=line,
                     evidence_type="ast_decorator",
                     is_resolved=False,

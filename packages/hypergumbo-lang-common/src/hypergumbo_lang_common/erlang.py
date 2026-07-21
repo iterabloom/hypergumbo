@@ -639,11 +639,12 @@ def _extract_behaviour_callback_edges(
                 edge = Edge.create(
                     src=module_sym.id,
                     dst=func_sym.id,
-                    edge_type="invokes_callback",
+                    edge_type="dispatches_to",
                     line=func_sym.span.start_line if func_sym.span else 0,
                     origin=PASS_ID,
                     origin_run_id=run_id,
                     evidence_type="behaviour_callback",
+                    meta={"mechanism": "callback"},
                 )
                 edges.append(edge)
 
