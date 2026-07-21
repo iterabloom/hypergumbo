@@ -34,3 +34,18 @@
   clock: 3  # 428f
   nonce: 428f  # 428f
   message: "Wave-4 triage 2026-07-12: MIGRATE to Wave 5. The spec-contradiction half is already reconciled (schema.json x-internal:true); residual is a mid-token truncation on the embedding-only, x-internal sketch_precomputed cache -- low value, non-default mode."  # 428f
+- op: update  # 07db
+  at: '2026-07-21T21:22:51Z'  # 07db
+  by: agent  # 07db
+  actor: jgstern_agent  # 07db
+  clock: 4  # 07db
+  nonce: 07db  # 07db
+  set:  # 07db
+    title: "sketch_precomputed.config_info: raw manifest previews truncated mid-token (embedding chunk-window path only); the spec/schema contradiction is RECONCILED (schema x-internal:true)"  # 07db
+- op: discuss  # 27bc
+  at: '2026-07-21T21:22:51Z'  # 27bc
+  by: agent  # 27bc
+  actor: jgstern_agent  # 27bc
+  clock: 5  # 27bc
+  nonce: 27bc  # 27bc
+  message: "Staleness audit 2026-07-21: part 1 (spec undocumented / schema-spec contradiction) is RECONCILED -- docs/schema.json:338 marks the sketch_precomputed block x-internal:true with a description 'NOT a stability contract', matching spec.md; the item's OR-branch ('config_info documented OR contradiction resolved') is satisfied. Residual: part 2 mid-token truncation, which persists only in the non-default embedding chunk-window path (the default HEURISTIC mode doesn't embedding-chunk). Re-scoped to the embedding-mode part-2 residual."  # 27bc

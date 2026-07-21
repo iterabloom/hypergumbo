@@ -26,3 +26,10 @@
   clock: 2  # a664
   nonce: a664  # a664
   message: "PARTIALLY RESOLVED (2026-07-19, PR merged bcfc50e875). The two GENUINE-RENAME no-redef sites are done: framework_patterns.py (`symbol` ctx-loop -> `resolved_symbol`, clearing no-redef + co-located assignment 1603/1607) + scala.py (`meta` class-branch -> `class_meta`, typed non-Optional + `or None` at the Symbol, clearing no-redef + co-located index 566/568). Behavior-preserving; 3848 tests pass at 100% cov; whole-tree strict baseline 1094 -> 1085. REMAINING (this item stays open): (1) java.py `meta` at 1022/1101 — the SAFE annotation-drops, deferred behind the WI-zaziz smart-test slice limitation (test_polyglot_call_site_coverage.py under-selects on java.py changes; add it to the manifest manually when landing); (2) the assignment-reuse renames catalog.py `reg`, supply_chain.py `match`, websocket.py `file_path`. All are part of the INV-zogud whole-tree strict grind (baseline now 1085, ratcheted by scripts/check-mypy-ratchet)."  # a664
+- op: discuss  # b557
+  at: '2026-07-21T21:22:51Z'  # b557
+  by: agent  # b557
+  actor: jgstern_agent  # b557
+  clock: 3  # b557
+  nonce: b557  # b557
+  message: "Staleness audit 2026-07-21: PARTIALLY RESOLVED (already noted in-thread). The two genuine no-redef renames landed (commit bcfc50e875): framework_patterns.py resolved_symbol (1606-1644), scala.py class_meta (566-586). The 5 remaining named sites are unfixed: java.py:1022/1101 (deferred behind the WI-zaziz smart-test slice limitation), catalog.py:455/470, supply_chain.py:~885, linkers/websocket.py:~790. Kept open for those 5 residual shadowing sites. Title unchanged (still the accurate task)."  # b557
