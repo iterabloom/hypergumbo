@@ -355,7 +355,7 @@ def link_crypto_flow(
             result_edges.append(Edge.create(
                 src=pub_id,
                 dst=sub_id,
-                edge_type="crypto_flow",
+                edge_type="data_flows_to",
                 line=write.line,
                 confidence=0.75,
                 origin=PASS_ID,
@@ -363,7 +363,7 @@ def link_crypto_flow(
                 evidence_type="ast_call_direct",
                 data_direction="src_to_dst",
                 channel=write.channel,
-                meta={"detection_pattern": "crypto_api"},
+                meta={"detection_pattern": "crypto_api", "ref_construct": "crypto"},
                 derived_from=[pub_id, sub_id],
             ))
 

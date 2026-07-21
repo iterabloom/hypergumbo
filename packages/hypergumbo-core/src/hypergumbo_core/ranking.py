@@ -205,7 +205,10 @@ DEFAULT_EDGE_TYPE_WEIGHTS: Dict[str, float] = {
     # canonical 'calls' (weight 1.0); the prior 'grpc_calls' weight
     # entry was dead after the protocol-call family fold.
     "event_publishes": 0.8,
-    "crypto_flow": 0.8,
+    # crypto_flow folded to canonical data_flows_to (ADR-0023 Batch 7 /
+    # audit-findings 0017); the crypto linker is data_flows_to's only
+    # producer, so this preserves the prior 0.8 weight for those edges.
+    "data_flows_to": 0.8,
     "dispatches_to": 0.6,
     "imports": 0.3,
     "module_exports": 0.1,
