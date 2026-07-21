@@ -211,7 +211,10 @@ paths:
         assert result.symbols[0].kind == "function"
         assert (result.symbols[0].meta or {}).get("framework_role") == "openapi_operation"
         assert len(result.edges) == 1
-        assert result.edges[0].edge_type == "openapi_implements"
+        # Folded to references + meta['ref_construct']='openapi_operation',
+        # direction-preserving (audit-findings 0016 finding 2)
+        assert result.edges[0].edge_type == "references"
+        assert (result.edges[0].meta or {}).get("ref_construct") == "openapi_operation"
 
     def test_link_by_operation_id(self, tmp_path: Path) -> None:
         """Links operations to routes by operationId match."""

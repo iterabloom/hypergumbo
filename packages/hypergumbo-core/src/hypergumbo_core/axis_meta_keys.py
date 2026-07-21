@@ -235,7 +235,13 @@ META_KEYS: Final[tuple[MetaKeySpec, ...]] = (
                 "extends/includes), 'puppet_class', 'sass_mixin', "
                 "'dockerfile_stage' (Docker FROM..AS), 'puppet_require', "
                 "'puppet_notify', 'crypto' (crypto write→read on "
-                "``data_flows_to``). Renamed from ``construct`` per INV-lajov "
+                "``data_flows_to``); and — from the resolver/OpenAPI/RPC "
+                "family fold (audit-findings 0016, WI-sumik) — "
+                "'graphql_resolver_type' (a GraphQL ``@Resolver(() => Type)`` "
+                "declaration-time association) and 'openapi_operation' (an "
+                "OpenAPI spec operation referencing its realizing route "
+                "handler, direction-preserving). Renamed from ``construct`` "
+                "per INV-lajov "
                 "to disambiguate from the sibling ``call_construct`` (which "
                 "names the call SHAPE on ``calls`` edges): distinct "
                 "vocabularies, distinct edge families, zero overlap."),
@@ -284,8 +290,12 @@ META_KEYS: Final[tuple[MetaKeySpec, ...]] = (
     # ------------------------------------------------------------------
     MetaKeySpec("protocol", AXIS_EDGE_META,
                 "Wire-level protocol on ``calls`` edges that absorb "
-                "the IPC family (e.g. 'abi', 'ipc', 'ipc_event'). "
-                "Value vocabulary tracked at "
+                "the IPC family (e.g. 'abi', 'ipc', 'ipc_event'), and on "
+                "``implements`` edges for protocol-contract implementations "
+                "folded from the resolver/OpenAPI/RPC family (audit-findings "
+                "0016, WI-sumik): a GraphQL resolver satisfying a schema field "
+                "carries 'graphql'; a Go method satisfying a proto RPC carries "
+                "'grpc'. Value vocabulary tracked at "
                 "``edge_types.PROTOCOL_KINDS``; per "
                 "ADR-0023 Phase 4b precedent."),
     MetaKeySpec("bridge_kind", AXIS_EDGE_META,

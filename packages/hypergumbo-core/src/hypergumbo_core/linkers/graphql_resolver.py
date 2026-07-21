@@ -519,10 +519,13 @@ def link_graphql_resolvers(root: Path, schema_symbols: list[Symbol]) -> Resolver
             # declarations and for Symbols that haven't migrated yet (double-
             # write absorbs the Phase 1 window).
             # ADR-0028 Phase 3 / audit-findings 0014: framework-dispatch leak.
+            # audit-findings 0016 FOLD: resolver_implements -> implements +
+            # meta['protocol']='graphql' (a GraphQL resolver satisfies a
+            # declared schema field: impl->contract, canonical 'implements').
             edge = Edge.create(
                 src=resolver_symbol.id,
                 dst=schema_sym.id,
-                edge_type="resolver_implements",
+                edge_type="implements",
                 line=pattern.line,
                 confidence=0.9,
                 origin=PASS_ID,
@@ -534,6 +537,7 @@ def link_graphql_resolvers(root: Path, schema_symbols: list[Symbol]) -> Resolver
                 "type_name": pattern.type_name,
                 "field_name": pattern.field_name,
                 "framework_dispatch": "graphql_resolver_field",
+                "protocol": "graphql",
             }
             edges.append(edge)
 
@@ -543,10 +547,14 @@ def link_graphql_resolvers(root: Path, schema_symbols: list[Symbol]) -> Resolver
             type_sym = type_lookup[type_key]
             # ADR-0031: see comment at the schema-field comparison above.
             # ADR-0028 Phase 3 / audit-findings 0014: framework-dispatch leak.
+            # audit-findings 0016 FOLD: resolver_for_type -> references +
+            # meta['ref_construct']='graphql_resolver_type' (a coarse
+            # declaration-time association WITH a type, not contract
+            # satisfaction; distinct from its sibling's 'implements').
             edge = Edge.create(
                 src=resolver_symbol.id,
                 dst=type_sym.id,
-                edge_type="resolver_for_type",
+                edge_type="references",
                 line=pattern.line,
                 confidence=0.8,
                 origin=PASS_ID,
@@ -558,6 +566,7 @@ def link_graphql_resolvers(root: Path, schema_symbols: list[Symbol]) -> Resolver
                 "type_name": pattern.type_name,
                 "field_name": pattern.field_name,
                 "framework_dispatch": "graphql_resolver_type",
+                "ref_construct": "graphql_resolver_type",
             }
             edges.append(edge)
 

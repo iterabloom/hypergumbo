@@ -360,10 +360,14 @@ def link_openapi(root: Path, route_symbols: list[Symbol]) -> OpenApiLinkResult:
 
                 # Create edge linking spec to implementation
                 # ADR-0028 Phase 3 / audit-findings 0014: framework-dispatch leak.
+                # audit-findings 0016 FOLD: openapi_implements -> references +
+                # meta['ref_construct']='openapi_operation', direction-preserving
+                # (spec->handler is deliberate — powers the forward-slice-from-
+                # spec; folding to impl->contract 'implements' would flip it).
                 edge = Edge.create(
                     src=symbol.id,
                     dst=route.id,
-                    edge_type="openapi_implements",
+                    edge_type="references",
                     line=op.line,
                     confidence=0.85,
                     evidence_type="ast_call_direct",
@@ -372,6 +376,7 @@ def link_openapi(root: Path, route_symbols: list[Symbol]) -> OpenApiLinkResult:
                         "route_path": route_path,
                         "method": op.method,
                         "framework_dispatch": "openapi_path",
+                        "ref_construct": "openapi_operation",
                     },
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
@@ -386,11 +391,13 @@ def link_openapi(root: Path, route_symbols: list[Symbol]) -> OpenApiLinkResult:
                 # Check if operationId matches function name
                 if route.name == op.operation_id:
                     # ADR-0028 Phase 3 / audit-findings 0014: framework-dispatch
-                    # leak.
+                    # leak. audit-findings 0016 FOLD: openapi_implements ->
+                    # references + meta['ref_construct']='openapi_operation'
+                    # (direction-preserving; see the path-match site above).
                     edge = Edge.create(
                         src=symbol.id,
                         dst=route.id,
-                        edge_type="openapi_implements",
+                        edge_type="references",
                         line=op.line,
                         confidence=0.9,  # Higher confidence for operationId match
                         evidence_type="ast_call_direct",
@@ -398,6 +405,7 @@ def link_openapi(root: Path, route_symbols: list[Symbol]) -> OpenApiLinkResult:
                             "operation_id": op.operation_id,
                             "route_name": route.name,
                             "framework_dispatch": "openapi_operation_id",
+                            "ref_construct": "openapi_operation",
                         },
                         origin=PASS_ID,
                         origin_run_id=run.execution_id,

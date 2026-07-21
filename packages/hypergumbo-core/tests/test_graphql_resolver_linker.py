@@ -380,8 +380,13 @@ class TestGraphQLResolverLinker:
         assert (result.symbols[0].meta or {}).get("framework_role") == "graphql_resolver"
         assert result.symbols[0].name == "Query.users"
 
-        # Should have resolver_for_type edge
-        type_edges = [e for e in result.edges if e.edge_type == "resolver_for_type"]
+        # Should have resolver_for_type edge — folded to references +
+        # meta['ref_construct']='graphql_resolver_type' (audit-findings 0016)
+        type_edges = [
+            e for e in result.edges
+            if e.edge_type == "references"
+            and (e.meta or {}).get("ref_construct") == "graphql_resolver_type"
+        ]
         assert len(type_edges) == 1
         assert type_edges[0].meta["type_name"] == "Query"
 
@@ -420,8 +425,13 @@ class TestGraphQLResolverLinker:
 
         result = link_graphql_resolvers(tmp_path, schema_symbols)
 
-        # Should have resolver_implements edge to field
-        field_edges = [e for e in result.edges if e.edge_type == "resolver_implements"]
+        # Should have resolver_implements edge to field — folded to
+        # implements + meta['protocol']='graphql' (audit-findings 0016)
+        field_edges = [
+            e for e in result.edges
+            if e.edge_type == "implements"
+            and (e.meta or {}).get("protocol") == "graphql"
+        ]
         assert len(field_edges) == 1
         assert field_edges[0].meta["field_name"] == "users"
 
@@ -777,6 +787,11 @@ class TestTypeGraphQLResolverPatterns:
 
         result = link_graphql_resolvers(tmp_path, [schema_type, query_type])
         assert len(result.symbols) >= 1
-        # Should have at least a resolver_for_type edge to Query
-        type_edges = [e for e in result.edges if e.edge_type == "resolver_for_type"]
+        # Should have at least a resolver_for_type edge to Query — folded to
+        # references + meta['ref_construct']='graphql_resolver_type'
+        type_edges = [
+            e for e in result.edges
+            if e.edge_type == "references"
+            and (e.meta or {}).get("ref_construct") == "graphql_resolver_type"
+        ]
         assert len(type_edges) >= 1
