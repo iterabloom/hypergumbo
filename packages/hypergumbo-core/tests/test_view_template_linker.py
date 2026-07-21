@@ -210,7 +210,8 @@ class TestLinkViewTemplates:
         edge = result.edges[0]
         assert edge.src == method.id
         assert edge.dst == "erb:app/views/users/index.html.erb:1-1:index.html.erb:template"
-        assert edge.edge_type == "renders"
+        assert edge.edge_type == "references"
+        assert (edge.meta or {}).get("ref_construct") == "view_render"
         assert edge.evidence_type == "naming_convention"
         assert (edge.meta or {}).get("detection_pattern") == "implicit_convention"
         assert edge.confidence == 0.85
@@ -236,7 +237,8 @@ class TestLinkViewTemplates:
 
         assert len(result.edges) == 1
         edge = result.edges[0]
-        assert edge.edge_type == "renders"
+        assert edge.edge_type == "references"
+        assert (edge.meta or {}).get("ref_construct") == "view_render"
         assert edge.dst == "erb:app/views/admin/users/index.html.erb:1-1:index.html.erb:template"
 
     def test_haml_template_detected(self, tmp_path: Path) -> None:
@@ -286,7 +288,8 @@ class TestLinkViewTemplates:
 
         assert len(result.edges) == 1
         edge = result.edges[0]
-        assert edge.edge_type == "renders"
+        assert edge.edge_type == "references"
+        assert (edge.meta or {}).get("ref_construct") == "view_render"
         assert edge.dst == (
             "erb:app/views/api/v2/accounts/reports/inboxes.csv.erb:1-1:"
             "inboxes.csv.erb:template"
@@ -554,7 +557,8 @@ class TestRegistryEntryPoint:
         result = link_view_template(ctx)
 
         assert len(result.edges) == 1
-        assert result.edges[0].edge_type == "renders"
+        assert result.edges[0].edge_type == "references"
+        assert (result.edges[0].meta or {}).get("ref_construct") == "view_render"
 
 
 class TestTransitiveControllerBase:

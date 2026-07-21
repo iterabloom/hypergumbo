@@ -267,12 +267,15 @@ def link_via_strategies(
                     Edge.create(
                         src=emission.action_symbol_id,
                         dst=template_id,
-                        edge_type="renders",
+                        edge_type="references",
                         line=emission.line,
                         origin=PASS_ID,
                         evidence_type="naming_convention",
                         confidence=0.85,
-                        meta={"detection_pattern": emission.detection_pattern},
+                        meta={
+                            "detection_pattern": emission.detection_pattern,
+                            "ref_construct": "view_render",
+                        },
                         origin_run_id=run.execution_id,
                         derived_from=[emission.action_symbol_id, template_id],
                     )

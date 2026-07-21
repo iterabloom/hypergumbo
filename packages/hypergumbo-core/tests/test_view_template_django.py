@@ -93,7 +93,8 @@ class TestRenderCallEdges:
         assert len(result.edges) == 1
         edge = result.edges[0]
         assert edge.src == view_fn.id
-        assert edge.edge_type == "renders"
+        assert edge.edge_type == "references"
+        assert (edge.meta or {}).get("ref_construct") == "view_render"
         assert edge.evidence_type == "naming_convention"
         assert (edge.meta or {}).get("detection_pattern") == "render_call"
         assert edge.dst == (

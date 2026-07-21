@@ -100,7 +100,8 @@ class TestViewHelperCall:
         assert len(result.edges) == 1
         edge = result.edges[0]
         assert edge.src == method.id
-        assert edge.edge_type == "renders"
+        assert edge.edge_type == "references"
+        assert (edge.meta or {}).get("ref_construct") == "view_render"
         assert (edge.meta or {}).get("detection_pattern") == "view_helper_call"
         assert edge.dst.endswith(
             "resources/views/users/show.blade.php:1-1:show.blade.php:template"
