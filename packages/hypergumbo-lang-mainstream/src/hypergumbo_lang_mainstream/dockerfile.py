@@ -194,11 +194,12 @@ def _process_dockerfile_tree(
                 edge = Edge.create(
                     src=symbol_id,
                     dst=dst_id,
-                    edge_type="base_image",
+                    edge_type="depends_on",
                     line=start_line,
                     origin=PASS_ID,
                     evidence_type="dockerfile_from",
                     origin_run_id=run_id,
+                    meta={"ref_construct": "dockerfile_stage"},
                 )
                 edges.append(edge)
 

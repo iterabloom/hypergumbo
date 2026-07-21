@@ -117,7 +117,7 @@ DEPENDS = "zlib openssl"
         var = next((s for s in result.symbols if s.name == "DEPENDS"), None)
         assert var is not None
         # Should also create dependency edges
-        dep_edges = [e for e in result.edges if e.edge_type == "depends"]
+        dep_edges = [e for e in result.edges if e.edge_type == "depends_on"]
         assert len(dep_edges) >= 2
         deps = {e.dst for e in dep_edges}
         assert "bitbake:package:zlib" in deps
@@ -298,7 +298,7 @@ do_install() {
         assert len(tasks) == 3
 
         # Check edges
-        dep_edges = [e for e in result.edges if e.edge_type == "depends"]
+        dep_edges = [e for e in result.edges if e.edge_type == "depends_on"]
         assert len(dep_edges) >= 2
 
     def test_run_files_analyzed(self, tmp_path: Path) -> None:
@@ -316,7 +316,7 @@ DEPENDS = "${PN}-native zlib"
 """)
         result = analyze_bitbake(tmp_path)
         # Should extract zlib but skip ${PN}-native
-        dep_edges = [e for e in result.edges if e.edge_type == "depends"]
+        dep_edges = [e for e in result.edges if e.edge_type == "depends_on"]
         deps = {e.dst for e in dep_edges}
         assert "bitbake:package:zlib" in deps
         # Variable refs should be filtered out

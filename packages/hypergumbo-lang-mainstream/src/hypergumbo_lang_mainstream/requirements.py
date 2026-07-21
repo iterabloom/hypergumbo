@@ -220,7 +220,7 @@ class RequirementsAnalyzer(TreeSitterAnalyzer):
         edge = Edge.create(
             src=f"requirements:{rel_path}",
             dst=f"pypi:package:{package_name}",
-            edge_type="depends",
+            edge_type="depends_on",
             line=node.start_point[0] + 1,
             origin=PASS_ID,
             origin_run_id=run.execution_id,
@@ -297,7 +297,7 @@ class RequirementsAnalyzer(TreeSitterAnalyzer):
             edge = Edge.create(
                 src=f"requirements:{rel_path}",
                 dst=f"vcs:package:{package_name}",
-                edge_type="depends",
+                edge_type="depends_on",
                 line=node.start_point[0] + 1,
                 origin=PASS_ID,
                 origin_run_id=run.execution_id,

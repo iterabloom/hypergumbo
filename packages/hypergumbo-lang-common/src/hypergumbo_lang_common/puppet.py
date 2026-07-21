@@ -331,11 +331,12 @@ class _PuppetExtractor:
         edge = Edge.create(
             src=src_id,
             dst=f"puppet:resource:{require_value}",
-            edge_type="requires_resource",
+            edge_type="depends_on",
             line=line,
             origin=PASS_ID,
             origin_run_id=self._execution_id,
             evidence_type="require",
+            meta={"ref_construct": "puppet_require"},
         )
         self._edges.append(edge)
 
@@ -344,11 +345,12 @@ class _PuppetExtractor:
         edge = Edge.create(
             src=src_id,
             dst=f"puppet:resource:{notify_value}",
-            edge_type="notifies_resource",
+            edge_type="depends_on",
             line=line,
             origin=PASS_ID,
             origin_run_id=self._execution_id,
             evidence_type="notify",
+            meta={"ref_construct": "puppet_notify", "refresh": True},
         )
         self._edges.append(edge)
 

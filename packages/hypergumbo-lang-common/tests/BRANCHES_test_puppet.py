@@ -140,7 +140,7 @@ service { 'nginx':
 }
 """)
         result = analyze_puppet(tmp_path)
-        requires = [e for e in result.edges if e.edge_type == "requires_resource"]
+        requires = [e for e in result.edges if e.edge_type == "depends_on" and (e.meta or {}).get("ref_construct") == "puppet_require"]
         assert len(requires) >= 1
 
     def test_resource_with_notify(self, tmp_path: Path) -> None:
@@ -156,7 +156,7 @@ service { 'nginx':
 }
 """)
         result = analyze_puppet(tmp_path)
-        notifies = [e for e in result.edges if e.edge_type == "notifies_resource"]
+        notifies = [e for e in result.edges if e.edge_type == "depends_on" and (e.meta or {}).get("ref_construct") == "puppet_notify"]
         assert len(notifies) >= 1
 
 

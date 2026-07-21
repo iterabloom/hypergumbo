@@ -2,7 +2,7 @@
 # Audit-findings 0017: Endpoint-Shape Long-Tail Classifications
 
 - Date: 2026-07-20
-- Status: Mixed (1 RESOLVED — `script_src`; 9 PRELIM_RESOLVED — Batch 1a `references`-folds + Batch 1b `renders` + Batch 2 `includes`/`extends` folds, producer-migrated 2026-07-20/21, registry entries pending the consolidated Phase-4b prune; 12 UNRESOLVED — verdicts recorded, per-pattern fold migrations pending)
+- Status: Mixed (1 RESOLVED — `script_src`; 13 PRELIM_RESOLVED — Batches 1a/1b/2 + Batch 3 `depends_on` folds, producer-migrated 2026-07-20/21, registry entries pending the consolidated Phase-4b prune; 8 UNRESOLVED — verdicts recorded, per-pattern fold migrations pending)
 - Closes: WI-pumav (endpoint_shape long-tail fold audit) — the verdict pass; the per-subset FOLD migrations remain follow-on work
 - Sibling: [audit-findings 0001](0001-dispatch-publish-family.md) / [0002](0002-ipc-family.md) / [0016](0016-resolver-openapi-rpc-family.md) — same methodology, other `Edge.edge_type` families
 - Methodology: per [ADR-0024 §"Family-audit verdict methodology"](../adr/0024-axis-declaration-template.md). Filed under the audit-findings format defined in [`docs/audits/README.md`](README.md).
@@ -66,7 +66,7 @@ verdicts:
   - value: base_image
     verdict: FOLD
     fold_target: depends_on
-    status: UNRESOLVED
+    status: PRELIM_RESOLVED
     diagnostic_test:
       cmd: "git grep -nE '\"base_image\", AXIS_' packages/hypergumbo-core/src/hypergumbo_core/edge_types.py"
       expect: nonempty
@@ -106,7 +106,7 @@ verdicts:
   - value: depends
     verdict: FOLD
     fold_target: depends_on
-    status: UNRESOLVED
+    status: PRELIM_RESOLVED
     diagnostic_test:
       cmd: "git grep -nE '\"depends\", AXIS_' packages/hypergumbo-core/src/hypergumbo_core/edge_types.py"
       expect: nonempty
@@ -162,7 +162,7 @@ verdicts:
   - value: notifies_resource
     verdict: FOLD
     fold_target: depends_on
-    status: UNRESOLVED
+    status: PRELIM_RESOLVED
     diagnostic_test:
       cmd: "git grep -nE '\"notifies_resource\", AXIS_' packages/hypergumbo-core/src/hypergumbo_core/edge_types.py"
       expect: nonempty
@@ -178,7 +178,7 @@ verdicts:
   - value: requires_resource
     verdict: FOLD
     fold_target: depends_on
-    status: UNRESOLVED
+    status: PRELIM_RESOLVED
     diagnostic_test:
       cmd: "git grep -nE '\"requires_resource\", AXIS_' packages/hypergumbo-core/src/hypergumbo_core/edge_types.py"
       expect: nonempty
@@ -288,11 +288,22 @@ each its own Phase-3/4b′ cycle with bakeoff validation, ordered by risk:
 All targets finalized by the 2026-07-20 ruling pass — no per-batch
 target decisions remain.
 
+> **MetaKeySpec bookkeeping (deferred to the consolidated Phase-4b prune):**
+> the Phase-3 batches introduce new `meta['ref_construct']` values
+> (`markdown_link`, `rdf_vocabulary`, `association`, `build_tag_alternative`,
+> `view_render`, `template`, `puppet_class`, `sass_mixin`, `dockerfile_stage`,
+> `puppet_require`, `puppet_notify`) and one new meta key (`refresh`, on the
+> folded Puppet `notify`). None is registry-enforced today (no completeness
+> gate scans producer-emitted meta keys), so they ship with the migrations;
+> the `axis_meta_keys.py` MetaKeySpec entries are updated in the prune PR,
+> which already edits that module to discharge the endpoint_shape N/A
+> deferrals.
+
 - **Batch 0 — `script_src` prune** (this PR; unblocks WI-pusuv; no producer/consumer change).
 - **Batch 1a — `references` + `ref_construct`** (additive, lowest risk) — ✅ **producer-migrated 2026-07-20** (PRELIM_RESOLVED): `links_to` (`markdown_link`), `uses_vocabulary` (`rdf_vocabulary`), `association` (`association`, alongside the kept `framework_dispatch`), `build_tag_alternative_of` (`build_tag_alternative`, carrying the re-eval trigger). Registry entries pruned in the consolidated Phase-4b PR.
 - **Batch 1b — `renders` → `references`** (`view_render`) — ✅ **producer-migrated 2026-07-20** (PRELIM_RESOLVED): the shared view-template linker (`_view_template_core.py`, all 4 frameworks — Django/Laravel/Phoenix/Spring — emit through it) now emits `references` + `meta['ref_construct']='view_render'` alongside the kept `detection_pattern`. Registry entry pruned in the consolidated Phase-4b PR.
 - **Batch 2 — `includes` / `extends`** — ✅ **producer-migrated 2026-07-21** (PRELIM_RESOLVED): `includes_template` (Twig, `ref_construct='template'`), `includes_class` (Puppet, `puppet_class`), `uses_mixin` (Sass/SCSS, `sass_mixin`) → `includes`; `extends_template` (Twig + Blade, `template`) → `extends`. Each keeps its prior meta (`template`/`class_name`/`mixin_name`/`form`). Registry entries pruned in the consolidated Phase-4b PR.
-- **Batch 3 — `depends_on`**: `depends`, `requires_resource`, `base_image`, `notifies_resource` (the last carrying `ref_construct='puppet_notify'` + `refresh=true`).
+- **Batch 3 — `depends_on`** — ✅ **producer-migrated 2026-07-21** (PRELIM_RESOLVED): `depends` (requirements + bitbake, a pure `depends_on` synonym, no ref_construct), `requires_resource` (Puppet, `ref_construct='puppet_require'`), `base_image` (Dockerfile stage, `dockerfile_stage`), `notifies_resource` (Puppet, `puppet_notify` + `refresh=true`) → `depends_on`. Registry entries pruned in the consolidated Phase-4b PR.
 - **Batch 4 — `calls` + mechanism/protocol** (centrality-sensitive): `abi_call` (`call_kind='abi'`, NOT `protocol`), `caller_invokes`, `kernel_launch`, `template_calls`.
 - **Batch 4b — `dispatches_to`** (own sub-PR): `invokes_callback` (`mechanism='callback'`) + `signal_receiver` (`framework_dispatch='django_signal'`).
 - **Batch 5 — `contains`**: `contains_routes`.

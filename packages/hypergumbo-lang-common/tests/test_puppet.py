@@ -171,7 +171,7 @@ class TestAnalyzePuppet:
   }
 }""")
         result = analyze_puppet(tmp_path)
-        edge = next((e for e in result.edges if e.edge_type == "requires_resource"), None)
+        edge = next((e for e in result.edges if e.edge_type == "depends_on" and (e.meta or {}).get("ref_construct") == "puppet_require"), None)
         assert edge is not None
 
     def test_creates_notify_edge(self, tmp_path: Path) -> None:
@@ -182,7 +182,7 @@ class TestAnalyzePuppet:
   }
 }""")
         result = analyze_puppet(tmp_path)
-        edge = next((e for e in result.edges if e.edge_type == "notifies_resource"), None)
+        edge = next((e for e in result.edges if e.edge_type == "depends_on" and (e.meta or {}).get("ref_construct") == "puppet_notify"), None)
         assert edge is not None
 
     def test_creates_includes_class_edge(self, tmp_path: Path) -> None:
@@ -349,9 +349,9 @@ node 'webserver.example.com' {
 
         # Check edges — Cluster E sub-case (b) per audit-findings 0010:
         # include Symbol dropped; includes_class Edge carries the relation.
-        require_edges = [e for e in result.edges if e.edge_type == "requires_resource"]
+        require_edges = [e for e in result.edges if e.edge_type == "depends_on" and (e.meta or {}).get("ref_construct") == "puppet_require"]
         assert len(require_edges) >= 1
-        notify_edges = [e for e in result.edges if e.edge_type == "notifies_resource"]
+        notify_edges = [e for e in result.edges if e.edge_type == "depends_on" and (e.meta or {}).get("ref_construct") == "puppet_notify"]
         assert len(notify_edges) >= 2
         include_edges = [e for e in result.edges if e.edge_type == "includes" and (e.meta or {}).get("ref_construct") == "puppet_class"]
         assert len(include_edges) >= 1
