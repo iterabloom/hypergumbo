@@ -21,3 +21,18 @@
     pr_ref:  # 2544
     description: "Phase-4b-prime registry prune for the protocol-call endpoint_shape family. Producers were already migrated by WI-vumum-juvil (done): linkers/http.py, linkers/grpc.py, linkers/graphql.py now emit canonical `calls` with meta['protocol'] in {http, grpc, graphql}. But the three registry entries http_calls / grpc_calls / graphql_calls still sit at axis=endpoint_shape in edge_types.py, awaiting the \"sibling Phase-4b-prime ship\" that ADR-0023 §Phase-4b describes but which was never filed.\n\nWORK: remove the 3 entries from EDGE_TYPES; SCHEMA_VERSION minor bump; drop any now-dead consumer-side references (canonical `calls` already covers the folded edges in compact.CROSS_CUTTING_EDGE_TYPES / taint.TAINT_CALL_EDGE_TYPES / io_boundary._TRACEABLE_EDGE_TYPES per WI-vumum-juvil, so this is cleanup only); regenerate docs/schema.json; keep the `x-deprecated` annotations consistent; verify the strict drift linter stays green. LOW RISK — no producer change (producers already emit canonical `calls`); no ranking/centrality delta (edges already merged into `calls`), so bakeoff validation is optional. This is the cheapest slice of the fold tail and a clean quick win.\n\nParent: the endpoint_shape fold-tail umbrella. TDD + 100% coverage + own PR per project convention."  # 2544
     fields: {}  # 2544
+- op: update  # db28
+  at: '2026-07-20T23:23:56Z'  # db28
+  by: agent  # db28
+  actor: jgstern_agent  # db28
+  clock: 2  # db28
+  nonce: db28  # db28
+  set:  # db28
+    status: done  # db28
+- op: discuss  # 47af
+  at: '2026-07-20T23:23:56Z'  # 47af
+  by: agent  # 47af
+  actor: jgstern_agent  # 47af
+  clock: 3  # 47af
+  nonce: 47af  # 47af
+  message: "DONE — pruned in the merged PR (WI-hirud). Removed the protocol-call trio (http_calls / grpc_calls / graphql_calls) from the EDGE_TYPES registry (ADR-0023 Phase 4b'); producers were already migrated to canonical calls + meta['protocol'] in WI-vumum-juvil, so runtime behavior is unchanged. SCHEMA_VERSION 0.14.6 -> 0.15.0; endpoint_shape section 25 -> 22. Regenerated docs/schema.json + docs/concept-axes.md; updated ADR-0023 counts + protocol-call disposition. Evidence: test_edge_types.py::test_protocol_call_trio_pruned_from_registry asserts the trio is absent from all_edge_type_names(); full suite 21098 passed / 100% coverage; all pre-commit axis-coherence gates green. First sub-item of WI-kivip (endpoint_shape fold tail) done."  # 47af
