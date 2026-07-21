@@ -41,3 +41,10 @@
   clock: 4  # b56a
   nonce: b56a  # b56a
   message: "Blocker now tracked (2026-07-20, Option C). The endpoint_shape->relationship fold this census is gated on was DORMANT with no open owner: the ADR-0023 §6 Phase 2/3/4 items are all done, but WI-tavas-voror later re-added 19 endpoint_shape registry-completeness values and deferred their fold with no follow-on, so 25 endpoint_shape + 4 pending_classification values still sit in the live EDGE_TYPES registry. Now owned by WI-kivip-gijok-pugag-balid-rizin-lutuk-botul-zizon (umbrella, isbefore=[this item]) + 3 sub-items: WI-hirud (protocol-call prune), WI-pumav (long-tail fold — the actual census blocker, drains the 23 in-scope endpoint_shape types), WI-sumik (resolver/RPC pending_classification audit). WI-pusuv stays parked/todo_soft, but is now gated on a tracked item rather than a dormant untracked remainder. Recommended eventual resolution unchanged (N/A-now + partial census once the endpoint_shape section drains)."  # b56a
+- op: discuss  # 5582
+  at: '2026-07-21T01:56:14Z'  # 5582
+  by: agent  # 5582
+  actor: jgstern_agent  # 5582
+  clock: 5  # 5582
+  nonce: '5582'  # 5582
+  message: "Blocker draining (2026-07-20, PR #776). The endpoint_shape fold-tail (WI-kivip) advanced: WI-pumav Batch 0 pruned script_src, the value this census access_mode N/A declaration was deferred on (axis_meta_keys.py), so that coupling is discharged. The census gate is now down to WI-pumav remaining 21-value endpoint_shape fold (audit-findings 0017). Still parked/todo_soft; unblocks once the endpoint_shape section fully drains."  # 5582
