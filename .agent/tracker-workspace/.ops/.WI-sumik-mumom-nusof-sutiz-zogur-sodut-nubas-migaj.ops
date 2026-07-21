@@ -28,3 +28,18 @@
   clock: 2  # 50bd
   nonce: 50bd  # 50bd
   message: "Audit filed (2026-07-20, PR #776): docs/audits/0016-resolver-openapi-rpc-family.md. The missing per-family audit is now filed: all 4 pending_classification values FOLD, zero CANONICAL (overriding the item working hypothesis that several are likely CANONICAL, via the four-leakage-test pass). resolver_implements / openapi_implements / implements_rpc fold to implements + meta[protocol]; resolver_for_type folds to references. Two migration caveats recorded: openapi_implements emits contract-to-handler (inverse of implements; needs a producer direction flip, or fold to references direction-preservingly); implements_rpc is traceable/taint-coupled (taint.py:1120, io_boundary.py:1146/1649, ranking.py:203 weight 1.0) so a naive rename would silently demote gRPC reachability/taint. The audit deliverable is complete; the 4 FOLD producer migrations remain follow-on (bundle with WI-pumav batching or file per-value)."  # 50bd
+- op: update  # 345a
+  at: '2026-07-21T01:58:50Z'  # 345a
+  by: agent  # 345a
+  actor: jgstern_agent  # 345a
+  clock: 3  # 345a
+  nonce: 345a  # 345a
+  set:  # 345a
+    status: done  # 345a
+- op: discuss  # f5ff
+  at: '2026-07-21T01:58:50Z'  # f5ff
+  by: agent  # f5ff
+  actor: jgstern_agent  # f5ff
+  clock: 4  # f5ff
+  nonce: f5ff  # f5ff
+  message: "Closed done-on-audit (2026-07-20, owner directive). The audit deliverable is complete: docs/audits/0016-resolver-openapi-rpc-family.md is filed, validated by the test_audit_findings.py live-tree property test (YAML schema + status-vs-registry agreement + README index sync), and merged in PR #776. All 4 pending_classification values ruled FOLD, zero CANONICAL (via the four-leakage-test pass, overriding the item working hypothesis that several were likely CANONICAL): resolver_implements / openapi_implements / implements_rpc fold to implements + meta[protocol]; resolver_for_type folds to references. Two migration caveats are recorded in the doc: openapi_implements emits contract-to-handler (inverse of implements; needs a producer direction flip or a references fold), and implements_rpc is taint/reachability-coupled (taint.py, io_boundary.py, ranking.py weight 1.0) so a naive rename would silently demote gRPC reachability. The 4 FOLD producer migrations are downstream Phase-3/4b work, not this audit item; they live under the WI-pumav long-tail batching (audit-findings 0017) within the WI-kivip umbrella."  # f5ff
