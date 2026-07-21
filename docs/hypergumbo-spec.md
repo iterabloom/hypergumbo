@@ -1219,7 +1219,7 @@ Feature comparison across commits: same query → compare `node_ids`/`edge_ids` 
 |---------|---------|
 | **Confirmed** | No taint-flow path exists from source to prohibited sink. |
 | **Confirmed (sanitized)** | Paths exist, but every source→sink path passes through an allowed sanitizer. |
-| **Violated** | Taint flows from source to sink without sanitization — exact path reported. |
+| **Violated** | Taint flows from source to sink without sanitization. The verdict carries per-flow drill-down evidence (WI-kikis): `details` renders up to five *distinct* flows with their source/sink symbol IDs and a `via N hop(s)` path indicator (deduplicated on the full flow identity, so identical-looking rows collapse and the honest total-vs-distinct count is shown), and the `--format json` envelope adds a bounded structured `evidence` array (`source_symbol` / `sink_symbol` / primitives / `path`, ≤100 distinct flows) for programmatic triage even at high evidence counts. |
 | **Inconclusive (no DDG)** | A critical path segment (source, sink, or sanitizer function — see ADR-0017 §3c) lacks DDG coverage (language not supported, bail-out, or budget cap). |
 | **Inconclusive (opaque)** | Path crosses an opaque boundary (native code without source). |
 
