@@ -121,36 +121,49 @@ class MetaKeySpec:
     na_edge_types: frozenset[str] | None = None
 
 
-# ADR-0038 ruling 2: the ``access_mode`` per-edge-type applicability matrix,
-# keyed on INV-tibob's 17-type census. APPLICABLE — a ``None`` value counts as
-# missing data (fix the emitter). DECLARED-N/A — a ``None`` value means the
-# question does not arise (the dataflow annotate passes skip these; a
-# constructor call ``instantiates`` is not an access). The remaining canonical
-# edge types (``edge_types.all_edge_type_names()`` is 25-wide after the
-# ADR-0023 endpoint_shape fold-tail AND the resolver/OpenAPI/RPC
-# pending_classification fold both drained their axes to empty — WI-pumav /
-# WI-sumik) are UNCLASSIFIED, deferred to the polyglot-census follow-up
-# (WI-pusuv, now unblocked). One deliberate deferral remains:
-#   * the canonical dataflow relationship ``data_flows_to`` (crypto write→read
-#     flows fold here with ``ref_construct='crypto'``; the endpoint_shape
-#     ``crypto_flow`` edge_type was pruned in Batch 7) — it
-#     is PR-2's ``data_direction`` territory (ADR-0038 ruling 3), not access.
-# (``script_src`` was formerly deferred here as a mid-fold ``endpoint_shape``
-# structural type; it has since been pruned from the registry — WI-pumav
-# Batch 0, ADR-0023 Phase 4b' — because ``html.py`` already emits canonical
-# ``references`` + ``meta['ref_construct']='script_src'``. There is no longer a
-# ``script_src`` edge type to declare N/A for, so the WI-pusuv coupling on it is
-# discharged.) Keeping this set axis-pure still matters for the
-# ``check-edge-type-drift`` strict linter — these are named ``*_EDGE_TYPES`` on
-# purpose so that linter DOES watch them, so every member must be a
-# relationship/pending-axis edge type.
+# ADR-0038 ruling 2: the ``access_mode`` per-edge-type applicability matrix.
+# APPLICABLE — a ``None`` value counts as missing data (fix the emitter).
+# DECLARED-N/A — a ``None`` value means the question does not arise (the
+# dataflow annotate passes skip these; a constructor call ``instantiates`` is
+# not an access).
+#
+# CENSUS COMPLETE (WI-pusuv, 2026-07-21). The matrix originally covered only
+# INV-tibob's 17-type census; the ADR-0023 endpoint_shape fold-tail (WI-pumav)
+# AND the resolver/OpenAPI/RPC pending_classification fold (WI-sumik) drained
+# both non-relationship axes to empty, so ``edge_types.all_edge_type_names()``
+# is now a 25-wide single ``relationship`` axis and EVERY value is classified
+# here (applicable XOR N/A) — enforced by
+# ``test_access_mode_matrix_total_census_complete``. Per the 2026-07-08 owner
+# ruling the census resolved N/A-now for the residual (no new applicable type
+# is silently 0%-populated, honoring the WI-nibis close-check discipline):
+#   * ``subprocess_calls`` — a subprocess invocation IS a call whose access the
+#     question COULD arise for, but no emitter stamps access_mode on it today,
+#     so it is N/A-now. RE-EVAL TRIGGER: reclassify to APPLICABLE if/when the
+#     subprocess linker stamps access_mode on these edges (the ADR-0038
+#     "per-analyzer as dataflow support matures" precedent).
+#   * ``data_flows_to`` — the ADR-0015 dataflow relationship carries value
+#     PROPAGATION + DIRECTION (the ``data_direction`` key, ADR-0038 ruling 3),
+#     not state access; the access question does not arise → N/A. (``crypto_flow``
+#     folded into it in Batch 7 and is no longer a registry type.)
+#   * ``constrains`` / ``defines_target`` / ``includes`` / ``links`` /
+#     ``module_exports`` / ``sources`` / ``wraps`` — structural / dependency /
+#     export / inclusion relationships, not accesses → N/A (same shape as the
+#     original 12 structural N/A types).
+# Keeping these sets axis-pure still matters for the ``check-edge-type-drift``
+# strict linter — they are named ``*_EDGE_TYPES`` on purpose so the linter DOES
+# watch them, so every member must be a relationship (or pending) axis value.
 _ACCESS_MODE_APPLICABLE_EDGE_TYPES: Final[frozenset[str]] = frozenset({
     "calls", "references", "module_attr_ref", "event_publishes",
 })
 _ACCESS_MODE_NA_EDGE_TYPES: Final[frozenset[str]] = frozenset({
+    # INV-tibob's original 17-type census (ADR-0038 ruling 2):
     "contains", "decorated_by", "depends_on", "depends_on_manifest",
     "dispatches_to", "extends", "implements", "imports", "inherits",
     "overrides", "uses", "instantiates",
+    # WI-pusuv census completion (2026-07-21): the residual relationship tail,
+    # all N/A-now (subprocess_calls carries a re-eval trigger; see above):
+    "constrains", "data_flows_to", "defines_target", "includes", "links",
+    "module_exports", "sources", "subprocess_calls", "wraps",
 })
 
 

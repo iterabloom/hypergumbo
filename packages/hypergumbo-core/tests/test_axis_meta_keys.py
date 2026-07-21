@@ -190,23 +190,29 @@ def test_meta_keys_on_axis_entrypoint_meta_includes_provenance():
     assert {"id", "source", "evidence_type"} <= entrypoint_keys
 
 
-# --- ADR-0038 access_mode applicability matrix (INV-tibob, PR 1) ---
+# --- ADR-0038 access_mode applicability matrix (INV-tibob + WI-pusuv census) ---
 #
 # ADR-0038 ruling 2 declares a per-edge-type applicability matrix for
-# ``access_mode``, keyed on INV-tibob's 17-type census: 4 APPLICABLE (None =
-# "missing data, fix the emitter") and 13 DECLARED-N/A (None = "the question
-# does not arise"). The remaining canonical edge types are UNCLASSIFIED,
-# deferred to a polyglot-census follow-up. Direction-family edges
-# (``crypto_flow``, ``data_flows_to``) are deliberately left out — they are
-# PR-2's ``data_direction`` territory, not access_mode.
+# ``access_mode``: 4 APPLICABLE (None = "missing data, fix the emitter") and
+# DECLARED-N/A (None = "the question does not arise"). The matrix originally
+# covered only INV-tibob's 17-type census; the WI-pusuv census (2026-07-21)
+# classified the residual relationship tail after both non-relationship axes
+# drained to empty, so EVERY canonical edge type is now classified (applicable
+# XOR N/A). ``data_flows_to`` is N/A here (its DIRECTION lives in the
+# ``data_direction`` key, ADR-0038 ruling 3, not access_mode); ``crypto_flow``
+# folded into it and is no longer a registry value.
 
 _ADR0038_APPLICABLE = frozenset({
     "calls", "references", "module_attr_ref", "event_publishes",
 })
 _ADR0038_NA = frozenset({
+    # INV-tibob's original 17-type census:
     "contains", "decorated_by", "depends_on", "depends_on_manifest",
     "dispatches_to", "extends", "implements", "imports", "inherits",
     "overrides", "uses", "instantiates",
+    # WI-pusuv census completion — the residual relationship tail (all N/A-now):
+    "constrains", "data_flows_to", "defines_target", "includes", "links",
+    "module_exports", "sources", "subprocess_calls", "wraps",
 })
 
 
@@ -227,26 +233,38 @@ def test_access_mode_matrix_edge_types_are_canonical():
     assert access_mode_na_edge_types() <= canonical
 
 
-def test_access_mode_matrix_defers_direction_family_to_pr2():
-    """``crypto_flow`` / ``data_flows_to`` carry dataflow DIRECTION, not
-    access; ADR-0038 ruling 3 routes them to PR-2's ``data_direction`` key.
-    They must be neither applicable nor N/A here — declaring them N/A in PR 1
-    would pre-empt PR-2's ownership."""
+def test_access_mode_matrix_data_flows_to_is_na_direction_family():
+    """``data_flows_to`` carries dataflow value-propagation + DIRECTION (the
+    ``data_direction`` key, ADR-0038 ruling 3), NOT state access — so the
+    access question does not arise and it is declared N/A (WI-pusuv census).
+    ``crypto_flow`` folded into ``data_flows_to`` (Batch 7) and is no longer a
+    registry value, so it is absent from both sets."""
+    assert is_access_mode_not_applicable("data_flows_to") is True
     both = access_mode_applicable_edge_types() | access_mode_na_edge_types()
+    assert "data_flows_to" in both
+    assert "crypto_flow" not in all_edge_type_names()
     assert "crypto_flow" not in both
-    assert "data_flows_to" not in both
 
 
-def test_access_mode_matrix_leaves_uncensused_types_unclassified():
-    """The ADR classified only the 17-type census; the rest of the 54-type
-    canonical vocabulary stays UNCLASSIFIED pending the follow-up census."""
+def test_access_mode_matrix_total_census_complete():
+    """WI-pusuv census COMPLETE (2026-07-21): after both non-relationship axes
+    drained to empty (endpoint_shape via WI-pumav, pending_classification via
+    WI-sumik), EVERY canonical edge type is classified applicable XOR N/A —
+    zero unclassified. This is the census close condition: a consumer reading
+    ``access_mode=None`` can always tell "does not arise" (N/A type) from
+    "missing data" (applicable type)."""
     classified = (
         access_mode_applicable_edge_types() | access_mode_na_edge_types()
     )
     assert classified == (_ADR0038_APPLICABLE | _ADR0038_NA)
-    assert all_edge_type_names() - classified, (
-        "expected some canonical edge types to remain unclassified (deferred)"
+    # No canonical edge type is left unclassified.
+    unclassified = all_edge_type_names() - classified
+    assert unclassified == set(), (
+        f"WI-pusuv census must classify every edge type; unclassified: "
+        f"{sorted(unclassified)}"
     )
+    # And no classified value is stale (absent from the registry).
+    assert classified <= all_edge_type_names()
 
 
 def test_is_access_mode_not_applicable_resolver():
@@ -257,9 +275,13 @@ def test_is_access_mode_not_applicable_resolver():
     # Applicable → False.
     assert is_access_mode_not_applicable("calls") is False
     assert is_access_mode_not_applicable("references") is False
-    # Unclassified (deferred) → False: their behavior is untouched by PR 1.
+    # WI-pusuv census additions → N/A (True).
+    assert is_access_mode_not_applicable("subprocess_calls") is True
+    assert is_access_mode_not_applicable("data_flows_to") is True
+    assert is_access_mode_not_applicable("wraps") is True
+    # A non-registry / unknown value → False (not declared N/A).
     assert is_access_mode_not_applicable("crypto_flow") is False
-    assert is_access_mode_not_applicable("renders") is False
+    assert is_access_mode_not_applicable("not_a_real_edge_type") is False
     # script_src was pruned from the registry (WI-pumav Batch 0, ADR-0023
     # Phase 4b'): it is no longer a registered edge type, so it is not in the
     # N/A set and the classifier treats it as unclassified → False.
