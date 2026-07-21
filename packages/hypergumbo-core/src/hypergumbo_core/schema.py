@@ -130,7 +130,15 @@ STABLE_ID_SCHEME = "hypergumbo-stableid-v8"
 # global scheme bumps because the spec mandate is "any change that alters
 # computed values bumps the scheme" (§6), the tree-sitter path is unchanged.
 SHAPE_ID_SCHEME = "hypergumbo-shapeid-v3"
-REPO_FINGERPRINT_SCHEME = "hypergumbo-repofp-v1"
+# v2 (WI-bosog): the AnalysisRun ``repo_fingerprint`` FIELD is now rendered
+# with the ``sha256:`` scheme prefix (``sha256:<64hex>``), matching its sibling
+# identity fields run_signature / config_fingerprint instead of the former bare
+# 64-hex. The hashing algorithm is unchanged; only the field rendering changed,
+# but the emitted value changed, so the scheme bumps per the spec §6 mandate.
+# The bare digest is unchanged where it is used as the colon-free cache-dir
+# path segment (compute_repo_fingerprint); only compute_repo_fingerprint_field
+# gained the prefix.
+REPO_FINGERPRINT_SCHEME = "hypergumbo-repofp-v2"
 # WI-fanun: scheme tag for Symbol.fingerprint, populated by the
 # orchestrator post-pass in ``hypergumbo_core.fingerprint`` (the sole
 # producer — the former producer-side manifest hashes were demolished

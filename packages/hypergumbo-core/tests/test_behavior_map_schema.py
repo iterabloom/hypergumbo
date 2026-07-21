@@ -11,7 +11,7 @@ def test_new_behavior_map_has_required_top_level_fields():
     assert bm["confidence_model"] == "hypergumbo-evidence-v2"
     assert bm["stable_id_scheme"] == "hypergumbo-stableid-v8"
     assert bm["shape_id_scheme"] == "hypergumbo-shapeid-v3"
-    assert bm["repo_fingerprint_scheme"] == "hypergumbo-repofp-v1"
+    assert bm["repo_fingerprint_scheme"] == "hypergumbo-repofp-v2"
 
     # Basic structure
     assert bm["analysis_incomplete"] is False

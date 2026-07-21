@@ -420,6 +420,7 @@ Any change that would alter computed values MUST bump the corresponding scheme i
     - `dirty file`: tracked file whose working tree content differs from HEAD OR untracked file included in analysis
     - Purpose: ensures repo_fingerprint changes when dirty file contents change, not just when paths change
   - Non-git: `sha256(sorted([(path, content_hash) for all files]))`
+  - **Field rendering (WI-bosog, `repofp-v2`):** the AnalysisRun field carries the `sha256:` scheme prefix over the full 64-hex digest (`sha256:<64hex>`), uniform with the sibling identity fields `run_signature` / `config_fingerprint` (`sha256:<16hex>`). The bare (un-prefixed) digest is retained only where the value doubles as the colon-free analysis-cache path segment.
   - Purpose: Cache invalidation, provenance tracking
 
 ### Output views
@@ -699,7 +700,7 @@ Single file: `survey.json`
   "confidence_model": "hypergumbo-evidence-v2",
   "stable_id_scheme": "hypergumbo-stableid-v8",
   "shape_id_scheme": "hypergumbo-shapeid-v3",
-  "repo_fingerprint_scheme": "hypergumbo-repofp-v1",
+  "repo_fingerprint_scheme": "hypergumbo-repofp-v2",
   "view": "behavior_map",
   "generated_at": "2026-01-15T10:30:00Z",
   "analysis_incomplete": false,

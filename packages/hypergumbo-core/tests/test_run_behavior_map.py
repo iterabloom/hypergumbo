@@ -51,7 +51,13 @@ def test_run_behavior_map_stamps_repo_fingerprint_on_every_run(tmp_path):
     assert runs, "expected at least one AnalysisRun in output"
     for run in runs:
         fp = run.get("repo_fingerprint")
-        assert isinstance(fp, str) and len(fp) == 64, (
+        # WI-bosog: the field is sha256:<64hex> (scheme-prefixed, uniform with
+        # run_signature / config_fingerprint).
+        assert (
+            isinstance(fp, str)
+            and fp.startswith("sha256:")
+            and len(fp[len("sha256:"):]) == 64
+        ), (
             f"AnalysisRun pass={run.get('pass')!r} has invalid "
             f"repo_fingerprint={fp!r}"
         )
@@ -61,7 +67,10 @@ def test_run_behavior_map_stamps_repo_fingerprint_on_every_run(tmp_path):
     fps = {run["repo_fingerprint"] for run in runs}
     assert len(fps) == 1, f"runs produced divergent fingerprints: {fps}"
 
-    assert data["repo_fingerprint_scheme"] == "hypergumbo-repofp-v1"
+    assert data["repo_fingerprint_scheme"] == "hypergumbo-repofp-v2"
+    # WI-bosog: the field is now sha256:-prefixed, uniform with the sibling
+    # run_signature / config_fingerprint identity fields.
+    assert all(fp.startswith("sha256:") for fp in fps)
 
 
 def test_sketch_precomputed_omits_vocabulary(tmp_path):

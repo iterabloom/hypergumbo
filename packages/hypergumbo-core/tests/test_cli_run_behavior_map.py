@@ -503,7 +503,10 @@ def test_run_behavior_map_tolerates_unreadable_file_end_to_end(
     # file (proves the fail-open guard reached the non-git fingerprint walk).
     runs = data["analysis_runs"]
     assert runs
-    assert all(len(r["repo_fingerprint"]) == 64 for r in runs)
+    # WI-bosog: the AR-record field carries the ``sha256:`` scheme prefix
+    # (uniform with run_signature / config_fingerprint) over the full 64-hex.
+    assert all(r["repo_fingerprint"].startswith("sha256:") for r in runs)
+    assert all(len(r["repo_fingerprint"][len("sha256:"):]) == 64 for r in runs)
 
     # §17: the unreadable file is surfaced in limits.failed_files.
     py_failed = [

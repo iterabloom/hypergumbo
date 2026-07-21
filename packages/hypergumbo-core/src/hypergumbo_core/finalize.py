@@ -77,7 +77,7 @@ from typing import TYPE_CHECKING, Optional
 from .ir import ExternalRef, _compute_run_signature, _parse_dangling_id
 from .pass_metadata import PassMetadataLookup
 from .receiver_blind_magnets import demote_harmful_magnets
-from .repo_fingerprint import compute_repo_fingerprint
+from .repo_fingerprint import compute_repo_fingerprint_field
 from .visibility import (
     VISIBILITY_MODIFIER_TERMS,
     VISIBILITY_PUBLIC,
@@ -263,8 +263,14 @@ def _finalize_recompute_run_signature(ctx: FinalizeContext) -> None:
 
 
 def _finalize_repo_fingerprint(ctx: FinalizeContext) -> None:
-    """Sub-step 4 — stamp the spec-defined repo_fingerprint into every AR (INV-tofur)."""
-    repo_fp = compute_repo_fingerprint(ctx.repo_root)
+    """Sub-step 4 — stamp the spec-defined repo_fingerprint into every AR (INV-tofur).
+
+    Uses the ``sha256:``-prefixed FIELD rendering (WI-bosog) so the AR-record
+    identity fields (run_signature / config_fingerprint / repo_fingerprint) all
+    carry a uniform scheme prefix; the bare digest stays reserved for the
+    colon-free cache-dir path segment.
+    """
+    repo_fp = compute_repo_fingerprint_field(ctx.repo_root)
     ctx.repo_fingerprint = repo_fp
     for run in ctx.analysis_runs:
         if run.get("repo_fingerprint") is None:
