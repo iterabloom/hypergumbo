@@ -8,7 +8,7 @@
     "schema_version": {
       "type": "string",
       "description": "Schema version (semver)",
-      "const": "0.17.0"
+      "const": "0.18.0"
     },
     "confidence_model": {
       "type": "string",
@@ -887,11 +887,7 @@
             "defines_target",
             "data_flows_to",
             "module_exports",
-            "overrides",
-            "resolver_implements",
-            "resolver_for_type",
-            "openapi_implements",
-            "implements_rpc"
+            "overrides"
           ],
           "x-axis-of-values": {
             "calls": "relationship",
@@ -918,11 +914,7 @@
             "defines_target": "relationship",
             "data_flows_to": "relationship",
             "module_exports": "relationship",
-            "overrides": "relationship",
-            "resolver_implements": "pending_classification",
-            "resolver_for_type": "pending_classification",
-            "openapi_implements": "pending_classification",
-            "implements_rpc": "pending_classification"
+            "overrides": "relationship"
           },
           "x-deprecated": []
         },

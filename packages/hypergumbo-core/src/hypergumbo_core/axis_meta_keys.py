@@ -126,10 +126,11 @@ class MetaKeySpec:
 # missing data (fix the emitter). DECLARED-N/A — a ``None`` value means the
 # question does not arise (the dataflow annotate passes skip these; a
 # constructor call ``instantiates`` is not an access). The remaining canonical
-# edge types (``edge_types.all_edge_type_names()`` is 29-wide after the
-# ADR-0023 endpoint_shape fold-tail drained that axis to empty, WI-pumav) are
-# UNCLASSIFIED, deferred to the polyglot-census follow-up (WI-pusuv, now
-# unblocked). One deliberate deferral remains:
+# edge types (``edge_types.all_edge_type_names()`` is 25-wide after the
+# ADR-0023 endpoint_shape fold-tail AND the resolver/OpenAPI/RPC
+# pending_classification fold both drained their axes to empty — WI-pumav /
+# WI-sumik) are UNCLASSIFIED, deferred to the polyglot-census follow-up
+# (WI-pusuv, now unblocked). One deliberate deferral remains:
 #   * the canonical dataflow relationship ``data_flows_to`` (crypto write→read
 #     flows fold here with ``ref_construct='crypto'``; the endpoint_shape
 #     ``crypto_flow`` edge_type was pruned in Batch 7) — it

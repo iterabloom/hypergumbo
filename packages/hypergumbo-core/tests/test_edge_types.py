@@ -100,12 +100,38 @@ def test_edge_types_endpoint_shape_axis_fully_drained():
     """ADR-0023 §6 fold COMPLETE (WI-pumav, audit-findings 0017): every
     endpoint_shape value has been producer-migrated to a canonical relationship
     + meta discriminator and pruned, so the endpoint_shape axis of
-    Edge.edge_type is now EMPTY. (The pending_classification resolver/OpenAPI/RPC
-    values are a separate axis — audit-findings 0016.)"""
+    Edge.edge_type is now EMPTY."""
     endpoints = {spec.name for spec in edge_types_on_axis(AXIS_ENDPOINT_SHAPE)}
     assert endpoints == set(), (
         f"Expected endpoint_shape axis drained to empty, got {sorted(endpoints)}"
     )
+
+
+def test_edge_types_pending_classification_axis_fully_drained():
+    """WI-sumik / WI-pusuv Option B (audit-findings 0016): the resolver/
+    OpenAPI/RPC family — the last pending_classification values — was
+    producer-migrated to canonical implements/references + meta and pruned,
+    so the pending_classification axis of Edge.edge_type is now EMPTY. The
+    AXIS_PENDING constant is retained for a future edge type that lands
+    pending its per-family audit."""
+    pending = {spec.name for spec in edge_types_on_axis(AXIS_PENDING)}
+    assert pending == set(), (
+        f"Expected pending_classification axis drained to empty, got {sorted(pending)}"
+    )
+
+
+def test_resolver_openapi_rpc_family_pruned_from_registry():
+    """WI-sumik Batches A/B (audit-findings 0016): the four resolver/OpenAPI/RPC
+    pending_classification values were producer-migrated to canonical
+    relationships + meta (resolver_implements/implements_rpc -> implements +
+    protocol; resolver_for_type/openapi_implements -> references + ref_construct)
+    and pruned from the registry entirely."""
+    names = all_edge_type_names()
+    pruned = {
+        "resolver_implements", "resolver_for_type",
+        "openapi_implements", "implements_rpc",
+    }
+    assert pruned.isdisjoint(names)
 
 
 def test_long_tail_endpoint_shape_values_pruned_from_registry():
@@ -446,16 +472,28 @@ def test_find_axis_drift_strict_flags_endpoint_shape_value(tmp_path: Path, monke
     assert "not on allowed axis" in offenders[0]
 
 
-def test_find_axis_drift_strict_allows_pending_classification(tmp_path: Path):
-    """Permissive-pending design: pending_classification values stay
-    allowed because they are real edges produced by GraphQL/OpenAPI/
-    RPC analyzers awaiting per-family audit. Existing consumers (e.g.,
-    io_boundary._TRACEABLE_EDGE_TYPES referencing implements_rpc)
-    must not be flagged by the strict-mode default."""
-    from hypergumbo_core.edge_types import find_axis_drift
+def test_find_axis_drift_strict_allows_pending_classification(tmp_path: Path, monkeypatch):
+    """Permissive-pending design: pending_classification values stay allowed
+    because they are real edges awaiting a per-family audit. The
+    pending_classification axis is now EMPTY (the resolver/OpenAPI/RPC family
+    folded per audit-findings 0016 — WI-sumik / WI-pusuv), so inject a synthetic
+    pending value to exercise the allow path (mirrors the endpoint_shape drain's
+    synthetic-value approach above)."""
+    from hypergumbo_core import edge_types as et
+    from hypergumbo_core.edge_types import (
+        AXIS_PENDING,
+        EdgeTypeSpec,
+        find_axis_drift,
+    )
+
+    synthetic = EdgeTypeSpec(
+        "synthetic_pending_value", AXIS_PENDING, "test-only",
+    )
+    monkeypatch.setattr(et, "EDGE_TYPES", tuple(et.EDGE_TYPES) + (synthetic,))
 
     _write(
         tmp_path / "packages" / "demo" / "src" / "demo.py",
-        '_DEMO_EDGE_TYPES = frozenset({"calls", "implements_rpc"})\n',
+        '_DEMO_EDGE_TYPES = frozenset({"calls", "synthetic_pending_value"})\n',
     )
+    # Strict mode: pending_classification is an allowed axis → no drift.
     assert find_axis_drift(tmp_path, strict=True) == []

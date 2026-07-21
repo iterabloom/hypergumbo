@@ -193,32 +193,19 @@ EDGE_TYPES: Final[tuple[EdgeTypeSpec, ...]] = (
     # ADR-0023 Phase 4b' COMPLETE (WI-pumav): all 21 long-tail
     # endpoint_shape values were producer-migrated to canonical relationship
     # types + meta discriminators (audit-findings 0017, Batches 1a-7) and
-    # their dead registry entries pruned here. Together with the earlier
+    # their dead registry entries pruned. Together with the earlier
     # dst-kind / bridge / IPC / publish / dispatch closures and the
     # protocol-call (WI-hirud) + script_src (Batch 0) prunes, the
     # endpoint_shape axis of Edge.edge_type is now EMPTY — the fold declared
-    # by ADR-0023 §6 is complete. (The 4 pending_classification resolver /
-    # OpenAPI / RPC values below are a separate axis; audit-findings 0016.)
-
-    # Per-family audit pending per ADR-0023 §5. The dispatch and
-    # publish families were resolved by audit-findings 0001; the resolver /
-    # OpenAPI / RPC family awaits its own audit.
-    EdgeTypeSpec(
-        "resolver_implements", AXIS_PENDING,
-        "GraphQL resolver pattern — pending per-family audit.",
-    ),
-    EdgeTypeSpec(
-        "resolver_for_type", AXIS_PENDING,
-        "GraphQL resolver-type binding — pending per-family audit.",
-    ),
-    EdgeTypeSpec(
-        "openapi_implements", AXIS_PENDING,
-        "OpenAPI handler pattern — pending per-family audit.",
-    ),
-    EdgeTypeSpec(
-        "implements_rpc", AXIS_PENDING,
-        "RPC implementation binding — pending per-family audit.",
-    ),
+    # by ADR-0023 §6 is complete.
+    #
+    # The pending_classification axis is now ALSO empty (WI-sumik / WI-pusuv
+    # Option B): the resolver/OpenAPI/RPC family (resolver_implements,
+    # resolver_for_type, openapi_implements, implements_rpc) was producer-
+    # migrated to canonical implements/references + meta per audit-findings
+    # 0016 (Batches A/B) and its dead registry entries pruned here. The
+    # AXIS_PENDING constant is retained (a future edge type may land pending
+    # its per-family audit per ADR-0023 §5), but no value occupies it today.
 )
 
 

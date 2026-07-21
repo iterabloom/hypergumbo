@@ -362,8 +362,9 @@ class TestSchemaUpToDate:
             "event_publishes",  # async producer→consumer
             "dispatches_to",   # runtime dispatch indirection
             "includes", "contains", "data_flows_to",
-            # GraphQL Resolver — pending_classification per-family audit
-            "resolver_implements", "resolver_for_type",
+            # The resolver/OpenAPI/RPC family (the last pending_classification
+            # values) folded to canonical implements/references + meta and was
+            # pruned per audit-findings 0016 (WI-sumik / WI-pusuv Option B).
         }
 
         missing = known_edge_types - edge_types_in_schema

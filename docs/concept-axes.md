@@ -93,10 +93,7 @@ _(empty — no values currently classified on this axis)_
 
 Values deferred to per-family audit. Some may be genuinely distinct relationships; others are protocol-conditional duplicates of a more general relationship. Verdicts arrive with each family's audit.
 
-- **`implements_rpc`** — RPC implementation binding — pending per-family audit.
-- **`openapi_implements`** — OpenAPI handler pattern — pending per-family audit.
-- **`resolver_for_type`** — GraphQL resolver-type binding — pending per-family audit.
-- **`resolver_implements`** — GraphQL resolver pattern — pending per-family audit.
+_(empty — no values currently classified on this axis)_
 
 
 ## `Symbol.kind` axes

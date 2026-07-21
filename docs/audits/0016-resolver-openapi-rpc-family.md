@@ -1,9 +1,9 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 # Audit-findings 0016: Resolver / OpenAPI / RPC Family Classifications
 
-- Date: 2026-07-20
-- Status: All UNRESOLVED (verdicts recorded; producer migration not yet shipped)
-- Closes: WI-sumik (resolver/OpenAPI/RPC `pending_classification` audit) — the audit deliverable; the FOLD migrations remain follow-on work
+- Date: 2026-07-20 (verdicts) · 2026-07-21 (folded + pruned, WI-pusuv Option B)
+- Status: All RESOLVED (producer-migrated + registry entries pruned; the `pending_classification` axis of `Edge.edge_type` is now empty)
+- Closes: WI-sumik (resolver/OpenAPI/RPC `pending_classification` audit) — the audit deliverable; the FOLD migrations shipped as Batches A/B + the consolidated Phase-4b prune (WI-pusuv Option B)
 - Sibling: [audit-findings 0001](0001-dispatch-publish-family.md) / [0002](0002-ipc-family.md) — same methodology, other `Edge.edge_type` families
 - Methodology: per [ADR-0024 §"Family-audit verdict methodology"](../adr/0024-axis-declaration-template.md). Filed under the audit-findings format defined in [`docs/audits/README.md`](README.md).
 
@@ -64,34 +64,34 @@ verdicts:
   - value: resolver_implements
     verdict: FOLD
     fold_target: implements
-    status: UNRESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "git grep -nE '\"resolver_implements\", AXIS_' packages/hypergumbo-core/src/hypergumbo_core/edge_types.py"
-      expect: nonempty
+      expect: empty
     rationale: "A GraphQL resolver function satisfies a declared schema field: impl→contract, canonical 'implements' + meta['protocol']='graphql'. The only differentiator (GraphQL-ness) is already in dst.kind='field' + meta['framework_dispatch']. Test 4 (mechanism vs. category): 'resolver' names the framework role, not the relationship."
   - value: resolver_for_type
     verdict: FOLD
     fold_target: references
-    status: UNRESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "git grep -nE '\"resolver_for_type\", AXIS_' packages/hypergumbo-core/src/hypergumbo_core/edge_types.py"
-      expect: nonempty
+      expect: empty
     rationale: "'@Resolver(() => User)' associates a resolver WITH a type — it does not implement the whole type. Coarse declaration-time association → references + meta['ref_construct']='graphql_resolver_type'. Test 3 (construct vs. relationship) + Test 2 (apex/peer): folding it to 'implements' alongside its sibling would overload one relationship name onto two."
   - value: openapi_implements
     verdict: FOLD
     fold_target: references
-    status: UNRESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "git grep -nE '\"openapi_implements\", AXIS_' packages/hypergumbo-core/src/hypergumbo_core/edge_types.py"
-      expect: nonempty
+      expect: empty
     rationale: "OpenAPI spec operation → route handler (openapi.py:363,390). RULED 2026-07-20 (4-lens investigation, REVISED from the provisional 'implements'): the spec→handler direction is DELIBERATE (openapi.py:39,42 — it powers the linker's documented forward-slice-from-spec-to-implementation), so folding to 'implements' (impl→contract) would require a producer direction flip that BREAKS that traversal AND misclassifies it into the structural INHERITANCE_EDGE_TYPES set — for zero gain (these values have zero consumers). Direction-preserving → references + meta['ref_construct']='openapi_operation' (a declarative spec artifact referencing its realizing handler; the audit-findings 0002 websocket_connection precedent). Test 3."
   - value: implements_rpc
     verdict: FOLD
     fold_target: implements
-    status: UNRESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "git grep -nE '\"implements_rpc\", AXIS_' packages/hypergumbo-core/src/hypergumbo_core/edge_types.py"
-      expect: nonempty
+      expect: empty
     rationale: "A Go method on a struct embedding UnimplementedXxxServer literally IS a Go interface implementation (detected via base_classes / Unimplemented* embedding): impl→contract, canonical 'implements' + meta['protocol']='grpc'. Test 1 (property-derivability): the proto-interface differentiator is already meta. CONSUMER-COUPLING WRINKLE (see Diagnostic findings): a naive rename silently demotes gRPC taint/reachability."
 ```
 
@@ -103,10 +103,13 @@ satisfaction) and **two → `references`** (`resolver_for_type` type
 association, and `openapi_implements` — revised from `implements`
 because its deliberate spec→handler direction folds direction-preservingly
 to `references`, not to the impl→contract `implements`). The canonicals
-folded to (`implements`, `references`) already exist. All
-four rows UNRESOLVED: producers still emit; the fold migrations are
-follow-on Phase-3/4b′ work (bundle with the WI-pumav long-tail per
-audit-findings 0017, or file per-value). No verdict is CANONICAL, so
+folded to (`implements`, `references`) already exist. All four rows are now
+RESOLVED: the producers were migrated (Batch A — the three clean folds; Batch B
+— `implements_rpc`, preserving its call-like taint/io/ranking/slice coupling
+via `edge_types.is_grpc_rpc_implementation` per finding 3) and the four dead
+registry entries pruned in the consolidated Phase-4b PR (SCHEMA_VERSION
+0.17.0 → 0.18.0), draining the `pending_classification` axis to empty. No
+verdict is CANONICAL, so
 the ADR-0024 "CANONICAL requires a re-evaluation trigger" rule does
 not bind; the trigger to record should a future maintainer keep any
 as canonical: "a second non-framework producer emits the same
@@ -154,12 +157,10 @@ back into those three consumer sets, or accept and document the
 demotion. `edge_types.py:540-546` already flags this coupling and warns
 the drift linter watches consumers that don't follow the rename.
 
-## Migration impact (prospective)
+## Migration impact (shipped)
 
-No code has changed for these four values yet (this document is the
-audit; `script_src` is the only endpoint-shape value pruned in the
-same PR, per audit-findings 0017). The concrete rename targets when
-Phase-3 reaches these producers:
+The four values were producer-migrated then pruned (WI-pusuv Option B).
+The concrete rename targets, as shipped:
 
 | Old emit              | New emit     | New `meta`                         | Note |
 |-----------------------|--------------|------------------------------------|------|
