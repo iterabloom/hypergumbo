@@ -19,3 +19,18 @@
     pr_ref:  # ca49
     description: "Parked low-priority cleanup, split out of INV-pitab symptom 2 after it was\nreframed (the cache-correctness stakes turned out to live elsewhere — INV-nofof).\n\n(a) **toolchain.name cosmetics.** Tree-sitter analyzers stamp toolchain.name='python'\n(the host interpreter); 7 hand-written analyzers (puppet/robot/rst/meson/purescript/\nracket/matlab) stamp the language name instead — internally inconsistent. This is\nPURELY cosmetic: nothing branches on toolchain.name, and the real analysis cache keys\non analyzer_identity (not toolchain). Decision space: declare name = execution runtime\n(so 'python'/'tree-sitter' is correct) and normalize the 7 outliers — OR slim/deprecate\nthe per-pass toolchain field entirely, because it duplicates a SUBSET of the top-level\nreproducibility_context block (which already records hypergumbo_version, python_version,\ntree_sitter_version, and per-grammar versions). The overlap is a Fundamental-Concept-Audit\ncandidate (toolchain-per-pass vs reproducibility_context-top-level: same info, two places).\n\n(b) **run_signature is documented-but-unused.** ir.py docstrings (lines ~11, ~217) call\nrun_signature the \"cache key\", but it has ZERO consumers — the cache uses analyzer_identity.\nrun_signature is computed at create, recomputed in finalize, serialized, and never read for\nany decision. Minimum: fix the lying docstrings. Then decide its fate: keep as provenance-only\n(document it as such), wire it to a real purpose, or deprecate.\n\nBoth are low-stakes tidiness; no behavior breaks either way (nothing internal branches on\nthese fields; only external behavior-map readers see them)."  # ca49
     fields: {}  # ca49
+- op: update  # e7b7
+  at: '2026-07-21T21:22:23Z'  # e7b7
+  by: agent  # e7b7
+  actor: jgstern_agent  # e7b7
+  clock: 2  # e7b7
+  nonce: e7b7  # e7b7
+  set:  # e7b7
+    title: "Provenance cleanup: toolchain.name cosmetics only (7 hand-written analyzers stamp language-name vs tree-sitter default 'python'); run_signature 'lying docstrings' half FIXED by the 2026-07-15 concept-audit"  # e7b7
+- op: discuss  # a329
+  at: '2026-07-21T21:22:24Z'  # a329
+  by: agent  # a329
+  actor: jgstern_agent  # a329
+  clock: 3  # a329
+  nonce: a329  # a329
+  message: "Staleness audit 2026-07-21: part (b) is DONE -- the 2026-07-15 concept-audit (AFTER this item was filed) rewrote the run_signature/repo_fingerprint docstrings (ir.py:10-13/30-33, Readership note at 267) to state they are 'external provenance ... with no internal consumers', which is exactly the fate-decision the item requested. Part (a) remains: puppet/robot/rst/meson/purescript/racket/matlab stamp toolchain={'name':'<language>'} while tree-sitter analyzers default to 'python' via _get_python_toolchain (base.py:2501). Re-scoped to part (a) cosmetics only."  # a329

@@ -18,3 +18,18 @@
     pr_ref:  # c627
     description: "id-format:F2 4a (PR for markdown+gitignore) fixed the two named analyzers, but the SAME defect — Symbol.stable_id set to the non-canonical composite Symbol.id instead of a make_*_stable_id factory's canonical sha256:<16hex> — exists across ~17 more lang modules surfaced during the 4a investigation: svelte, vue, astro, scss, puppet, robot, rst, pony, twig, bitbake, kdl, sparql, bibtex, ini, requirements, properties (and possibly others). Instance of the INV-kurup-tidam-ribus-rorif-jigad-tijah-losus-funah META family (identifier-bearing fields emit non-canonical formats).\n\nSPLIT BY IDENTITY AXIS (critical — do NOT lump): for each analyzer, classify its emitted Symbol kinds against cli.py _NOISE_KINDS. Kinds in _NOISE_KINDS (absent from DEFAULT output, e.g. rst 'section', config 'pattern'/'setting') are default-output-neutral -> T0, batchable like 4a was. Kinds that ARE in default output (real-source/markup languages: svelte/vue/astro/scss components, sparql queries, etc.) are id-changing -> T1 and must ride the v6 stable_id bump, NOT land pre-v6. Lumping T0 and T1 would smuggle default-output id churn before the atomic v6 bump.\n\nFIX PATTERN: route each site through the appropriate make_*_stable_id factory (reuse make_doc_stable_id(language, path, kind, name, start, end) for doc/config noise nodes where the span is the needed disambiguator; use the kind-appropriate factory otherwise). Preserve 1:1 distinctness (fold span/kind where same-name siblings exist — the INV-dubam/INV-tazaj collision guard). Add per-analyzer producer tests (canonical shape + no-collision) + ratchet baselines for any analyzer present in the schema-coverage-corpus fixture."  # c627
     fields: {}  # c627
+- op: update  # c27c
+  at: '2026-07-21T21:22:23Z'  # c27c
+  by: agent  # c27c
+  actor: jgstern_agent  # c27c
+  clock: 2  # c27c
+  nonce: c27c  # c27c
+  set:  # c27c
+    title: "stable_id factory: 5 residual config-family analyzers (bitbake/bibtex/ini/requirements/properties) still set stable_id=composite Symbol.id; 11 of 16 named doc/markup analyzers FIXED"  # c27c
+- op: discuss  # 12ce
+  at: '2026-07-21T21:22:23Z'  # 12ce
+  by: agent  # 12ce
+  actor: jgstern_agent  # 12ce
+  clock: 3  # 12ce
+  nonce: 12ce  # 12ce
+  message: "Staleness audit 2026-07-21: 11 of the 16 named analyzers are FIXED -- svelte/vue/astro/scss/puppet/robot/rst/pony/twig/kdl/sparql now mint stable_id via make_doc_symbol_ids -> make_doc_stable_id (canonical sha256:<16hex>, base.py:941) by the INV-dulah DRY refactor (commit 469243b7b0). Still broken (exact stable_id=symbol_id composite): bitbake.py:192/302, bibtex.py:125, ini.py:196/252, requirements.py:203/278, properties.py:159. Re-scoped title to those 5 residuals."  # 12ce

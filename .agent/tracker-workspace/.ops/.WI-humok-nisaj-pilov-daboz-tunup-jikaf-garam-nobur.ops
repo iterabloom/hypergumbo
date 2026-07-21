@@ -62,3 +62,18 @@
   nonce: c11c  # c11c
   set:  # c11c
     parent:  # c11c
+- op: update  # 234d
+  at: '2026-07-21T21:22:24Z'  # 234d
+  by: agent  # 234d
+  actor: jgstern_agent  # 234d
+  clock: 8  # 234d
+  nonce: 234d  # 234d
+  set:  # 234d
+    title: "edge quality.reason: release-gated on the ADR-0039 D9b removal of the still-emitted deprecated Edge.quality field; the 'undocumented' premise is now FALSE"  # 234d
+- op: discuss  # 12e0
+  at: '2026-07-21T21:22:24Z'  # 12e0
+  by: agent  # 12e0
+  actor: jgstern_agent  # 12e0
+  clock: 9  # 12e0
+  nonce: '12e0'  # 12e0
+  message: "Staleness audit 2026-07-21: half (a) 'undocumented' is now FALSE -- quality.reason IS documented as DEPRECATED (ADR-0039 ruling 4) at docs/schema.json:1036 and docs/hypergumbo-spec.md:923 ('encodes the emitter mechanism, not a confidence tier'); the 'rename to emitter names' remedy was superseded by the ADR-0039 DELETION path, with emitter-provenance moved to the new confidence_source enum. Residual keeping it open: the field + tier-named values are STILL EMITTED (ir.py:1083-1091 _derive_edge_quality, serialized 1001/1016). Release-gated: closes at the D9b one-version-window removal of Edge.quality, which has not happened. Do NOT close yet."  # 12e0

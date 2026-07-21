@@ -30,3 +30,18 @@
     tags: [dogfood_tranche_04]  # ca98
   remove:  # ca98
     tags: [dogfood_tranch_04]  # ca98
+- op: update  # bf26
+  at: '2026-07-21T21:22:23Z'  # bf26
+  by: agent  # bf26
+  actor: jgstern_agent  # bf26
+  clock: 3  # bf26
+  nonce: bf26  # bf26
+  set:  # bf26
+    title: "byte-repro: execution_id (uuid4) + wall-clock timestamps defeat whole-file diff, and spec:321 still wrongly claims analysis_runs[] is 'byte-stable'; the analysis_runs[] ORDER nondeterminism is FIXED (WI-haguz)"  # bf26
+- op: discuss  # 7c06
+  at: '2026-07-21T21:22:23Z'  # 7c06
+  by: agent  # 7c06
+  actor: jgstern_agent  # 7c06
+  clock: 4  # 7c06
+  nonce: 7c06  # 7c06
+  message: "Staleness audit 2026-07-21: source (2) FIXED -- finalize.py:462-467 (WI-haguz) now sorts analysis_runs by (started_at, pass), so the as_completed() completion-order race the item cited is gone; the spec 'same input->same output' promise also moved §10->§13 scoped to ordering determinism. Live residuals: (a) source (1) -- ir.py:361 execution_id=uuid4 + 370 wall-clock started_at/duration still churn the whole-file byte diff; (b) spec:321 still asserts analysis_runs[] is 'byte-stable across runs', which is inaccurate given the fresh per-run uuid/timestamps. Re-scoped to those two."  # 7c06

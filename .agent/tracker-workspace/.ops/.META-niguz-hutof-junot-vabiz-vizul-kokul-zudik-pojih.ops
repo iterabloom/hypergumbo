@@ -50,3 +50,19 @@
   clock: 5  # 023d
   nonce: 023d  # 023d
   message: "Wave-5 sweep (2026-07-08): synthetic-node-stamping META umbrella (synthesized/stand-in nodes bypass the shared identity+provenance stamping step). Empty isbefore -> terminal validation-drain / umbrella-closure wave."  # 023d
+- op: update  # dd32
+  at: '2026-07-21T21:21:11Z'  # dd32
+  by: agent  # dd32
+  actor: jgstern_agent  # dd32
+  clock: 6  # dd32
+  nonce: dd32  # dd32
+  set:  # dd32
+    fields:  # dd32
+      statement: "Every node-minting path (boundary external_symbol synthesis, orchestrator file-symbol synthesis, ~21 protocol linkers) MUST route through the same identity + provenance stamping the real-analyzer Symbol path uses; stand-in nodes must not be left with empty/sentinel identity, provenance, or relationship fields. SCOPE (2026-07-21 audit): a shared chokepoint now exists (make_synthetic_symbol_identity / populate_synthetic_class_b_identity, analyze/base.py:1153/1205) and 6 identity/provenance members are done (WI-fozoh/WI-sijut/WI-mosil/WI-lisog/WI-pubiv/WI-kufib). Residual keeping it violated: (1) the chokepoint is an orchestrator POST-pass BACKSTOP, not the per-mint-site construction-time routing this statement mandates; (2) the external_symbol path facet (WI-kapul, path=='<external>'); (3) degenerate relationship-field provenance (INV-rukor / derived_from)."  # dd32
+- op: discuss  # 4066
+  at: '2026-07-21T21:21:11Z'  # 4066
+  by: agent  # 4066
+  actor: jgstern_agent  # 4066
+  clock: 7  # 4066
+  nonce: '4066'  # 4066
+  message: "Re-scoped statement to the residual: the identity/provenance FIELD members are done via the base.py:1153/1205 chokepoint (6 done WIs); what remains is (1) construction-time routing vs the post-pass backstop, (2) external_symbol path facet (WI-kapul), (3) derived_from relationship provenance (INV-rukor). Do NOT close as done."  # 4066
