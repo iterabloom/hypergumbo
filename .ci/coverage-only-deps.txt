@@ -1,0 +1,22 @@
+# Coverage-only test dependencies for scripts/smart-test (WI-zaziz).
+#
+# smart-test selects tests via `hypergumbo slice --files` — an IMPORT-dependency
+# reverse slice. Some tests COVER a source file through the analysis pipeline
+# without IMPORTING it, so the slice under-selects them and the changed-file
+# 100% coverage gate goes false-red on CI (the full suite is still 100%).
+#
+# Each line names one such coverage-only dependency:
+#
+#     <source-path>  <covering-test-path> [more-covering-test-paths...]
+#
+# Both paths are repo-root-relative; tokens are whitespace-separated; `#`
+# comments and blank lines are ignored. Add a pair when a changed-file coverage
+# gap traces to a test that exercises the file through the pipeline (no import
+# edge). Keep it minimal — every entry here is a permanent "always run this
+# test when that file changes" cost. `tests/test_coverage_only_deps.py` asserts
+# every source and test below exists on disk.
+
+# java.py's static-import ExternalRef branch (java.py:1872-1878) is covered
+# solely by the polyglot call-site test, which runs the analyzer end-to-end and
+# never imports java.py.
+packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/java.py  packages/hypergumbo-lang-mainstream/tests/test_polyglot_call_site_coverage.py

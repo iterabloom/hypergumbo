@@ -806,6 +806,29 @@ if [[ -f "$PER_PKG_HELPER" ]] && command -v python3 &>/dev/null && [[ -n "$CHANG
     fi
 fi
 
+# Coverage-only dependency augmentation (WI-zaziz): some tests COVER a source
+# file through the analysis pipeline without a direct import edge, so the
+# import-based reverse slice under-selects them — producing a false <100% on
+# CI's changed-file coverage gate (e.g. test_polyglot_call_site_coverage.py is
+# the sole cover of java.py's static-import ExternalRef branch and imports no
+# java.py). A checked-in declarative map (.ci/coverage-only-deps.txt) names
+# these source→covering-test pairs so they are always included. Because this
+# runs INSIDE smart-test, the manifest auto-pr regenerates via
+# `smart-test --manifest` includes them too, so the fix persists across the
+# commit-diff-driven regeneration (the manual-add workaround did not).
+COV_DEPS_HELPER="$REPO_ROOT/scripts/coverage_only_deps.py"
+COV_DEPS_MAP="$REPO_ROOT/.ci/coverage-only-deps.txt"
+if [[ -f "$COV_DEPS_HELPER" && -f "$COV_DEPS_MAP" ]] && command -v python3 &>/dev/null && [[ -n "$CHANGED_SOURCE_FILES" ]]; then
+    COV_DEPS_TESTS_FILE=$(mktemp)
+    echo "$AFFECTED_TESTS" > "$COV_DEPS_TESTS_FILE"
+    COV_DEPS_ADDS=$(echo "$CHANGED_SOURCE_FILES" | python3 "$COV_DEPS_HELPER" "$REPO_ROOT" --map "$COV_DEPS_MAP" --tests-file "$COV_DEPS_TESTS_FILE" 2>/dev/null || echo "")
+    rm -f "$COV_DEPS_TESTS_FILE"
+    if [[ -n "$COV_DEPS_ADDS" ]]; then
+        log "Coverage-only dependency augmentation adding: $(echo "$COV_DEPS_ADDS" | tr '\n' ' ')"
+        AFFECTED_TESTS=$(printf '%s\n%s\n' "$AFFECTED_TESTS" "$COV_DEPS_ADDS" | sed '/^$/d' | sort -u)
+    fi
+fi
+
 # Count affected tests
 TEST_COUNT=$(echo "$AFFECTED_TESTS" | wc -l)
 log "Found $TEST_COUNT affected test files"
