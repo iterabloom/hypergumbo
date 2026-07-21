@@ -70,7 +70,7 @@ verdicts:
     diagnostic_test:
       cmd: "git grep -nE '\"base_image\", AXIS_' packages/hypergumbo-core/src/hypergumbo_core/edge_types.py"
       expect: nonempty
-    rationale: "Dockerfile intra-file multi-stage FROM...AS (dockerfile.py:197): stage→stage build-graph dependency → depends_on + meta['ref_construct']='dockerfile_stage'. TARGET AMBIGUOUS (Diagnostic findings): depends_on vs extends — provisional depends_on. Test 1/4."
+    rationale: "Dockerfile intra-file multi-stage FROM...AS (dockerfile.py:192-202): stage→stage build-graph dependency → depends_on + meta['ref_construct']='dockerfile_stage'. RULED 2026-07-20 (4-lens investigation) depends_on over extends: the SAME producer already emits depends_on for the structurally identical COPY --from stage edge (dockerfile.py:305-315), the depends_on docstring names Dockerfile explicitly, extends has zero non-class precedent, and slice treats extends as structural (skipped in forward BFS) which would split the two identical stage edges. No supply-chain pollution (tiering is path-based; package-dep resolution uses depends_on_manifest). Test 1/4."
   - value: build_tag_alternative_of
     verdict: FOLD
     fold_target: references
@@ -78,7 +78,7 @@ verdicts:
     diagnostic_test:
       cmd: "git grep -nE '\"build_tag_alternative_of\", AXIS_' packages/hypergumbo-core/src/hypergumbo_core/edge_types.py"
       expect: nonempty
-    rationale: "Go same-qualified-name symbols under differing build_constraint (go.py:4521) → references + meta['ref_construct']='build_tag_alternative'. BORDERLINE CANONICAL (Diagnostic findings): a symmetric equivalence relation awkwardly expressed as directional references; derivable from endpoints (Test 1) → FOLD, but CANONICAL is defensible."
+    rationale: "Go same-qualified-name symbols under differing build_constraint (go.py:4507-4527) → references + meta['ref_construct']='build_tag_alternative'. RULED 2026-07-20 (4-lens investigation) FOLD over the defensible borderline-CANONICAL: the 'symmetric equivalence' is not actually delivered (the producer emits a single arbitrary-direction edge per pair, not a reciprocal pair), the relationship is fully reconstructible from endpoints (Test 1), and it is a lone Go-only producer — below ADR-0024's N=3-values-OR-N=2-producers promotion bar. RE-EVAL TRIGGER: promote to CANONICAL when a second language grows a conditional-compilation-variant equivalence (C #ifdef, Rust #[cfg], platform-specific files)."
   - value: caller_invokes
     verdict: FOLD
     fold_target: calls
@@ -161,12 +161,12 @@ verdicts:
     rationale: "Markdown internal link (markdown.py:356) → references + meta['ref_construct']='markdown_link'. Test 3 (construct vs. relationship)."
   - value: notifies_resource
     verdict: FOLD
-    fold_target: event_publishes
+    fold_target: depends_on
     status: UNRESOLVED
     diagnostic_test:
       cmd: "git grep -nE '\"notifies_resource\", AXIS_' packages/hypergumbo-core/src/hypergumbo_core/edge_types.py"
       expect: nonempty
-    rationale: "Puppet resource notify — refresh-on-change (puppet.py:347). TARGET AMBIGUOUS (Diagnostic findings): event_publishes (pub-sub refresh) vs depends_on (ordering) — provisional event_publishes + meta['channel_kind']='puppet_notify' to keep the require/notify split meaningful. Test 4."
+    rationale: "Puppet resource notify — refresh-on-change (puppet.py:342-353). RULED 2026-07-20 (4-lens investigation, REVISED from the provisional event_publishes): same resource→resource ordering shape as its sibling requires_resource (→depends_on); it has no publisher/subscriber pair and no channel, so event_publishes would require a SYNTHETIC channel and would misclassify a config-refresh as a weight-0.8 async-IO/cross-cutting boundary. → depends_on + meta['ref_construct']='puppet_notify' + meta['refresh']=true (refresh preserved as a first-class queryable fact). Re-eval CANONICAL only if a consumer ever branches on refresh-propagation. Test 4."
   - value: renders
     verdict: FOLD
     fold_target: references
@@ -198,7 +198,7 @@ verdicts:
     diagnostic_test:
       cmd: "git grep -nE '\"signal_receiver\", AXIS_' packages/hypergumbo-core/src/hypergumbo_core/edge_types.py"
       expect: nonempty
-    rationale: "Django @receiver signal→handler via django.dispatch (py.py:4318) is runtime-indirection dispatch → dispatches_to + meta['mechanism']='django_signal'. DISAGREES WITH DOCSTRING (event_publishes) — needs a human ruling (Diagnostic findings). Test 4. (Cautioned 'maybe distinct' — fold.)"
+    rationale: "Django @receiver signal→handler via django.dispatch (py.py:4315-4324) is runtime-indirection dispatch → dispatches_to + meta['framework_dispatch']='django_signal' (the key the producer already stamps, matching django_orm_dispatch — a pure edge_type rename). RULED 2026-07-20 (4-lens investigation): emit shape is dispatcher-symbol→target, NOT publisher→subscriber; dispatches_to is in the dead-code reachability set (cli.py:6551) so this keeps @receiver handlers reachable, whereas event_publishes would strand them as false dead-code positives. Overrides the docstring's event_publishes guess. Test 4."
   - value: template_calls
     verdict: FOLD
     fold_target: calls
@@ -228,10 +228,11 @@ verdicts:
 **Net:** zero CANONICAL, 22 FOLD, zero DEPRECATE-NO-FOLD. One row
 (`script_src`) RESOLVED (already producer-migrated; registry pruned in
 this PR — WI-pumav Batch 0); 21 UNRESOLVED pending their per-pattern
-fold migrations. Fold-target distribution: 6→`references`, 3→`includes`,
-2→`depends_on` (+`base_image` provisional → 3), 4→`calls`,
-2→`dispatches_to`, 1→`extends`, 1→`contains`, 1→`event_publishes`
-(provisional), 1→`data_flows_to`. Every value has a live producer
+fold migrations. Fold-target distribution (finalized after the 2026-07-20
+4-lens ruling pass): 6→`references`, 4→`calls`, 4→`depends_on`,
+3→`includes`, 2→`dispatches_to`, 1→`contains`, 1→`data_flows_to`,
+1→`extends`. Zero `event_publishes` (the provisional `notifies_resource`
+target was revised to `depends_on`). Every value has a live producer
 (cited); none is dead.
 
 ## Diagnostic findings worth naming
@@ -248,23 +249,35 @@ sibling already folded to `references`), `uses_mixin` (canonical
 already shipped under INV-vavat — so pruning it is the WI-pusuv-census
 unblock, not a migration.
 
-**2. Three values' four-test verdict DISAGREES with the registry
-docstring — the human should override the docstring:** `abi_call`
-(docstring `protocol='abi'`, but that's a closed enum → use
-`call_kind='abi'`); `uses_mixin` (docstring `references` → `includes`);
-`signal_receiver` (docstring `event_publishes` → `dispatches_to`, needs
-a ruling).
+**2. Three values' four-test verdict overrode the registry docstring —
+all RULED 2026-07-20 (4-lens investigation), docstrings confirmed
+wrong:** `abi_call` (docstring `protocol='abi'`, but that's a closed
+enum → `call_kind='abi'`; the fold should also correct the stale
+`protocol` MetaKeySpec example list that still lists `abi`/`ipc_event`);
+`uses_mixin` (docstring `references` → `includes`, matching the whole
+include-family incl. the Ruby-mixin analog); `signal_receiver` (docstring
+`event_publishes` → `dispatches_to`, meta `framework_dispatch='django_signal'`
+— dispatch shape + dead-code-reachability correctness, not pub-sub).
 
-**3. Two values are target-ambiguous (still FOLD; human picks the
-canonical):** `base_image` (`depends_on` vs `extends` — provisional
-`depends_on`); `notifies_resource` (`event_publishes` vs `depends_on`
-— provisional `event_publishes`).
+**3. The two target-ambiguous values are RULED to `depends_on`
+(2026-07-20, 4-lens investigation):** `base_image` → `depends_on` (its
+sibling `COPY --from` stage edge already emits `depends_on`; `extends` is
+class-only and would split slice's structural treatment); `notifies_resource`
+→ `depends_on` (**REVISED from the provisional `event_publishes`** — same
+resource→resource ordering shape as `requires_resource`; `event_publishes`
+would need a synthetic channel and would misweight a config-refresh as an
+async-IO boundary). The require/notify split is preserved in
+`meta['ref_construct']` (`puppet_require` vs `puppet_notify`) + `refresh=true`,
+not by two edge types.
 
-**4. One borderline-CANONICAL value:** `build_tag_alternative_of` is a
-symmetric equivalence relation (same qualified name, differing
-`build_constraint`) awkwardly expressed as a directional `references`.
-Ruled FOLD (Test 1: derivable from endpoints), but a human who values
-it as a first-class equivalence edge could defensibly rule CANONICAL.
+**4. The borderline-CANONICAL value is RULED FOLD → `references`
+(2026-07-20):** `build_tag_alternative_of`. The symmetric-equivalence
+CANONICAL case declines because the producer emits a single
+arbitrary-direction edge (not reciprocal — the symmetry is already a
+lossy directed projection), the relation is derivable from the endpoints
+(Test 1), and it is a lone Go-only producer below ADR-0024's N=3/N=2
+promotion bar. RE-EVAL TRIGGER recorded on the verdict row: promote when
+a second language grows a conditional-compilation-variant equivalence.
 
 ## Migration impact (prospective) — proposed per-PR subsets
 
@@ -272,13 +285,16 @@ This document is the verdict pass; only `script_src` (Batch 0) changed
 code in the filing PR. The remaining 21 fold in per-pattern subsets,
 each its own Phase-3/4b′ cycle with bakeoff validation, ordered by risk:
 
+All targets finalized by the 2026-07-20 ruling pass — no per-batch
+target decisions remain.
+
 - **Batch 0 — `script_src` prune** (this PR; unblocks WI-pusuv; no producer/consumer change).
-- **Batch 1 — `references` + `ref_construct`** (additive, lowest risk): `links_to`, `uses_vocabulary`, `association`, `renders`, `build_tag_alternative_of` (decide its CANONICAL-vs-FOLD first).
+- **Batch 1 — `references` + `ref_construct`** (additive, lowest risk): `links_to`, `uses_vocabulary`, `association`, `renders`, `build_tag_alternative_of` (all → `references`; carry the build-tag re-eval trigger on that row).
 - **Batch 2 — `includes` / `extends`**: `includes_template`, `includes_class`, `uses_mixin` → `includes`; `extends_template` → `extends`.
-- **Batch 3 — `depends_on`**: `depends`, `requires_resource` (hold `base_image` for the depends_on-vs-extends call).
-- **Batch 4 — `calls` + mechanism/protocol** (centrality-sensitive): `abi_call`, `caller_invokes`, `kernel_launch`, `template_calls`; `invokes_callback` → `dispatches_to` (own sub-PR).
+- **Batch 3 — `depends_on`**: `depends`, `requires_resource`, `base_image`, `notifies_resource` (the last carrying `ref_construct='puppet_notify'` + `refresh=true`).
+- **Batch 4 — `calls` + mechanism/protocol** (centrality-sensitive): `abi_call` (`call_kind='abi'`, NOT `protocol`), `caller_invokes`, `kernel_launch`, `template_calls`.
+- **Batch 4b — `dispatches_to`** (own sub-PR): `invokes_callback` (`mechanism='callback'`) + `signal_receiver` (`framework_dispatch='django_signal'`).
 - **Batch 5 — `contains`**: `contains_routes`.
-- **Batch 6 — pub-sub** (needs target decisions first): `signal_receiver`, `notifies_resource`.
 - **Batch 7 — `crypto_flow` → `data_flows_to`** (ADR-0038-coupled; ship last; update `ranking.py:208`).
 
 ## Related

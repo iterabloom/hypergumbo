@@ -34,15 +34,19 @@ helper/f-string/dict-subscript indirection). Inventory at audit time:
 
 ### Why this looks like a family
 
-Three of the four express the *same* relationship — "concrete code
-implements a declared contract" — differing only by framework
-(GraphQL / OpenAPI / gRPC), the framework name leaking into the label
-exactly as `http_calls` / `grpc_calls` / `graphql_calls` did before
-their WI-vumum-juvil fold to `calls` + `meta['protocol']`. The
-discriminator is already carried: every one of these edges already
-stamps `meta['framework_dispatch']`. The fourth (`resolver_for_type`)
-is a type-level *association*, not contract satisfaction, so it folds
-to `references` rather than `implements`.
+Two of the four express "concrete code implements a declared contract"
+in the impl→contract direction (`resolver_implements`, `implements_rpc`)
+— differing only by framework (GraphQL / gRPC), the framework name
+leaking into the label exactly as `http_calls` / `grpc_calls` /
+`graphql_calls` did before their WI-vumum-juvil fold to `calls` +
+`meta['protocol']`; these fold to `implements`. The other two fold to
+`references`: `resolver_for_type` is a type-level *association*, not
+contract satisfaction; and `openapi_implements` (per the 2026-07-20
+ruling) emits the *inverse* direction (spec→handler) deliberately, so it
+is a declarative spec-artifact reference rather than impl→contract
+satisfaction. The family thus folds heterogeneously — 2 `implements`,
+2 `references` — mirroring how audit-findings 0002's IPC family split
+`message_send`→`event_publishes` from `websocket_connection`→`references`.
 
 ## Methodology
 
@@ -75,12 +79,12 @@ verdicts:
     rationale: "'@Resolver(() => User)' associates a resolver WITH a type — it does not implement the whole type. Coarse declaration-time association → references + meta['ref_construct']='graphql_resolver_type'. Test 3 (construct vs. relationship) + Test 2 (apex/peer): folding it to 'implements' alongside its sibling would overload one relationship name onto two."
   - value: openapi_implements
     verdict: FOLD
-    fold_target: implements
+    fold_target: references
     status: UNRESOLVED
     diagnostic_test:
       cmd: "git grep -nE '\"openapi_implements\", AXIS_' packages/hypergumbo-core/src/hypergumbo_core/edge_types.py"
       expect: nonempty
-    rationale: "A route handler realizes a declared OpenAPI operation: canonical 'implements' + meta['protocol']='openapi'. Test 4 (mechanism vs. category). DIRECTION WRINKLE (see Diagnostic findings): the producer emits contract→handler, the inverse of 'implements'; the fold requires flipping the edge to handler→spec, else FOLD → references direction-preservingly."
+    rationale: "OpenAPI spec operation → route handler (openapi.py:363,390). RULED 2026-07-20 (4-lens investigation, REVISED from the provisional 'implements'): the spec→handler direction is DELIBERATE (openapi.py:39,42 — it powers the linker's documented forward-slice-from-spec-to-implementation), so folding to 'implements' (impl→contract) would require a producer direction flip that BREAKS that traversal AND misclassifies it into the structural INHERITANCE_EDGE_TYPES set — for zero gain (these values have zero consumers). Direction-preserving → references + meta['ref_construct']='openapi_operation' (a declarative spec artifact referencing its realizing handler; the audit-findings 0002 websocket_connection precedent). Test 3."
   - value: implements_rpc
     verdict: FOLD
     fold_target: implements
@@ -92,9 +96,14 @@ verdicts:
 ```
 
 **Net:** zero CANONICAL, four FOLD, zero DEPRECATE-NO-FOLD — the same
-shape audit-findings 0002 (IPC) reached. Three fold to `implements`
-(framework-in-`meta`), one to `references` (type association). The
-canonicals folded to (`implements`, `references`) already exist. All
+shape audit-findings 0002 (IPC) reached. After the 2026-07-20 4-lens
+ruling pass the family folds **heterogeneously**: **two → `implements`**
+(`resolver_implements`, `implements_rpc` — genuine impl→contract
+satisfaction) and **two → `references`** (`resolver_for_type` type
+association, and `openapi_implements` — revised from `implements`
+because its deliberate spec→handler direction folds direction-preservingly
+to `references`, not to the impl→contract `implements`). The canonicals
+folded to (`implements`, `references`) already exist. All
 four rows UNRESOLVED: producers still emit; the fold migrations are
 follow-on Phase-3/4b′ work (bundle with the WI-pumav long-tail per
 audit-findings 0017, or file per-value). No verdict is CANONICAL, so
@@ -115,15 +124,23 @@ declared contract (interface, GraphQL schema field, OpenAPI operation,
 proto RPC)." `resolver_for_type` is the odd member — a type-level
 association (`references`), not contract satisfaction.
 
-**2. `openapi_implements` is directionally inverted (needs a migration
-decision).** It is the sole family member emitting contract→impl
+**2. `openapi_implements` is directionally inverted — RULED FOLD →
+`references`, direction-preserving, NO flip (2026-07-20, 4-lens
+investigation).** It is the sole family member emitting contract→impl
 (spec→handler), the inverse of the other three and of canonical
-`implements` (impl→contract). Its fold is the only one requiring a
-producer *behavior* change — either flip the edge to handler→spec
-(fold → `implements`, family-consistent), or keep the direction and
-fold → `references` (`meta['ref_construct']='openapi_operation'`). The
-migration author's direction-flip appetite decides it; the YAML
-records the family-consistent `implements` provisionally.
+`implements` (impl→contract). The spec→handler direction is a
+*deliberate* design choice — `openapi.py:39,42` document it as powering
+"slice traversal from spec to implementation," the linker's flagship
+purpose. Folding to `implements` would force a producer flip that breaks
+that forward-slice-from-spec *and* moves the edge into the structural
+`INHERITANCE_EDGE_TYPES` set (forward-BFS-skipped, reverse-only), for
+**zero** offsetting gain: `openapi_implements` has no consumer (unlike
+`implements_rpc`, which is taint/io/ranking-coupled). So it folds to
+`references` + `meta['ref_construct']='openapi_operation'` — a
+declarative spec artifact referencing its realizing handler, exactly the
+audit-findings 0002 `websocket_connection` divergence (a declarative
+connectivity edge that folded to `references` while its family siblings
+folded elsewhere). The family therefore folds heterogeneously (see Net).
 
 **3. `implements_rpc` carries consumer coupling a rename must
 preserve.** It is the only family member with special consumer
@@ -148,7 +165,7 @@ Phase-3 reaches these producers:
 |-----------------------|--------------|------------------------------------|------|
 | `resolver_implements` | `implements` | `protocol="graphql"`               | — |
 | `resolver_for_type`   | `references` | `ref_construct="graphql_resolver_type"` | — |
-| `openapi_implements`  | `implements` | `protocol="openapi"`               | requires producer direction flip (finding 2) |
+| `openapi_implements`  | `references` | `ref_construct="openapi_operation"` | direction-preserving, NO flip (finding 2, ruled 2026-07-20) |
 | `implements_rpc`      | `implements` | `protocol="grpc"`                  | preserve traceable/taint/ranking coupling (finding 3) |
 
 ## Related
