@@ -98,12 +98,12 @@ def _create_extends_edges(
         edge = Edge.create(
             src=make_file_id("twig", str(rel_path)),
             dst=f"twig:template:{template_name}",
-            edge_type="extends_template",
+            edge_type="extends",
             line=line,
             origin=PASS_ID,
             origin_run_id=run_id,
             evidence_type="extends",
-            meta={"template": template_name},
+            meta={"template": template_name, "ref_construct": "template"},
         )
         edges.append(edge)
 
@@ -161,12 +161,12 @@ def _create_include_edges(
         edge = Edge.create(
             src=make_file_id("twig", str(rel_path)),
             dst=f"twig:template:{template_name}",
-            edge_type="includes_template",
+            edge_type="includes",
             line=line,
             origin=PASS_ID,
             origin_run_id=run_id,
             evidence_type="include",
-            meta={"template": template_name},
+            meta={"template": template_name, "ref_construct": "template"},
         )
         edges.append(edge)
 
@@ -220,12 +220,12 @@ def _create_include_function_edges(
     edge = Edge.create(
         src=make_file_id("twig", str(rel_path)),
         dst=f"twig:template:{template_name}",
-        edge_type="includes_template",
+        edge_type="includes",
         line=line,
         origin=PASS_ID,
         origin_run_id=run_id,
         evidence_type="include",
-        meta={"template": template_name, "form": "function"},
+        meta={"template": template_name, "form": "function", "ref_construct": "template"},
     )
     return [edge]
 

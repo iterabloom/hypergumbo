@@ -200,7 +200,7 @@ node 'web.example.com' {
         result = analyze_puppet(tmp_path)
         # Cluster E sub-case (b) per audit-findings 0010: include Symbol
         # dropped; includes_class Edge carries the relationship.
-        include_edges = [e for e in result.edges if e.edge_type == "includes_class"]
+        include_edges = [e for e in result.edges if e.edge_type == "includes" and (e.meta or {}).get("ref_construct") == "puppet_class"]
         assert len(include_edges) >= 1
 
     def test_include_creates_edge(self, tmp_path: Path) -> None:
@@ -215,7 +215,7 @@ class nginx {
 include nginx
 """)
         result = analyze_puppet(tmp_path)
-        includes_edges = [e for e in result.edges if e.edge_type == "includes_class"]
+        includes_edges = [e for e in result.edges if e.edge_type == "includes" and (e.meta or {}).get("ref_construct") == "puppet_class"]
         assert len(includes_edges) >= 1
 
 

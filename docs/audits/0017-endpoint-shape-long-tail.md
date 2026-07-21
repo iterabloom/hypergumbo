@@ -2,7 +2,7 @@
 # Audit-findings 0017: Endpoint-Shape Long-Tail Classifications
 
 - Date: 2026-07-20
-- Status: Mixed (1 RESOLVED — `script_src`; 5 PRELIM_RESOLVED — Batch 1a `references`-folds + Batch 1b `renders`, producer-migrated 2026-07-20, registry entries pending the consolidated Phase-4b prune; 16 UNRESOLVED — verdicts recorded, per-pattern fold migrations pending)
+- Status: Mixed (1 RESOLVED — `script_src`; 9 PRELIM_RESOLVED — Batch 1a `references`-folds + Batch 1b `renders` + Batch 2 `includes`/`extends` folds, producer-migrated 2026-07-20/21, registry entries pending the consolidated Phase-4b prune; 12 UNRESOLVED — verdicts recorded, per-pattern fold migrations pending)
 - Closes: WI-pumav (endpoint_shape long-tail fold audit) — the verdict pass; the per-subset FOLD migrations remain follow-on work
 - Sibling: [audit-findings 0001](0001-dispatch-publish-family.md) / [0002](0002-ipc-family.md) / [0016](0016-resolver-openapi-rpc-family.md) — same methodology, other `Edge.edge_type` families
 - Methodology: per [ADR-0024 §"Family-audit verdict methodology"](../adr/0024-axis-declaration-template.md). Filed under the audit-findings format defined in [`docs/audits/README.md`](README.md).
@@ -114,7 +114,7 @@ verdicts:
   - value: extends_template
     verdict: FOLD
     fold_target: extends
-    status: UNRESOLVED
+    status: PRELIM_RESOLVED
     diagnostic_test:
       cmd: "git grep -nE '\"extends_template\", AXIS_' packages/hypergumbo-core/src/hypergumbo_core/edge_types.py"
       expect: nonempty
@@ -122,7 +122,7 @@ verdicts:
   - value: includes_class
     verdict: FOLD
     fold_target: includes
-    status: UNRESOLVED
+    status: PRELIM_RESOLVED
     diagnostic_test:
       cmd: "git grep -nE '\"includes_class\", AXIS_' packages/hypergumbo-core/src/hypergumbo_core/edge_types.py"
       expect: nonempty
@@ -130,7 +130,7 @@ verdicts:
   - value: includes_template
     verdict: FOLD
     fold_target: includes
-    status: UNRESOLVED
+    status: PRELIM_RESOLVED
     diagnostic_test:
       cmd: "git grep -nE '\"includes_template\", AXIS_' packages/hypergumbo-core/src/hypergumbo_core/edge_types.py"
       expect: nonempty
@@ -210,7 +210,7 @@ verdicts:
   - value: uses_mixin
     verdict: FOLD
     fold_target: includes
-    status: UNRESOLVED
+    status: PRELIM_RESOLVED
     diagnostic_test:
       cmd: "git grep -nE '\"uses_mixin\", AXIS_' packages/hypergumbo-core/src/hypergumbo_core/edge_types.py"
       expect: nonempty
@@ -291,7 +291,7 @@ target decisions remain.
 - **Batch 0 — `script_src` prune** (this PR; unblocks WI-pusuv; no producer/consumer change).
 - **Batch 1a — `references` + `ref_construct`** (additive, lowest risk) — ✅ **producer-migrated 2026-07-20** (PRELIM_RESOLVED): `links_to` (`markdown_link`), `uses_vocabulary` (`rdf_vocabulary`), `association` (`association`, alongside the kept `framework_dispatch`), `build_tag_alternative_of` (`build_tag_alternative`, carrying the re-eval trigger). Registry entries pruned in the consolidated Phase-4b PR.
 - **Batch 1b — `renders` → `references`** (`view_render`) — ✅ **producer-migrated 2026-07-20** (PRELIM_RESOLVED): the shared view-template linker (`_view_template_core.py`, all 4 frameworks — Django/Laravel/Phoenix/Spring — emit through it) now emits `references` + `meta['ref_construct']='view_render'` alongside the kept `detection_pattern`. Registry entry pruned in the consolidated Phase-4b PR.
-- **Batch 2 — `includes` / `extends`**: `includes_template`, `includes_class`, `uses_mixin` → `includes`; `extends_template` → `extends`.
+- **Batch 2 — `includes` / `extends`** — ✅ **producer-migrated 2026-07-21** (PRELIM_RESOLVED): `includes_template` (Twig, `ref_construct='template'`), `includes_class` (Puppet, `puppet_class`), `uses_mixin` (Sass/SCSS, `sass_mixin`) → `includes`; `extends_template` (Twig + Blade, `template`) → `extends`. Each keeps its prior meta (`template`/`class_name`/`mixin_name`/`form`). Registry entries pruned in the consolidated Phase-4b PR.
 - **Batch 3 — `depends_on`**: `depends`, `requires_resource`, `base_image`, `notifies_resource` (the last carrying `ref_construct='puppet_notify'` + `refresh=true`).
 - **Batch 4 — `calls` + mechanism/protocol** (centrality-sensitive): `abi_call` (`call_kind='abi'`, NOT `protocol`), `caller_invokes`, `kernel_launch`, `template_calls`.
 - **Batch 4b — `dispatches_to`** (own sub-PR): `invokes_callback` (`mechanism='callback'`) + `signal_receiver` (`framework_dispatch='django_signal'`).

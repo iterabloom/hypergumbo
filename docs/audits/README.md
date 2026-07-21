@@ -78,7 +78,7 @@ write an ADR vs an audit-findings document."
 | [0014](0014-evidence-type-cluster-c-framework-dispatch.md) | Edge.evidence_type Cluster 28C — Framework-Specific Dispatch | `Edge.evidence_type` | All RESOLVED |
 | [0015](0015-symbol-kind-wi-zipis-drain.md) | Symbol.kind — WI-zipis producer-sweep drain (extension/filter/workflow/operator/assumption/list/map + structure→struct) | `Symbol.kind` | All RESOLVED |
 | [0016](0016-resolver-openapi-rpc-family.md) | Resolver / OpenAPI / RPC Family Classifications | `Edge.edge_type` | All UNRESOLVED |
-| [0017](0017-endpoint-shape-long-tail.md) | Endpoint-Shape Long-Tail Classifications | `Edge.edge_type` | Mixed (1 RESOLVED, 5 PRELIM_RESOLVED, 16 UNRESOLVED) |
+| [0017](0017-endpoint-shape-long-tail.md) | Endpoint-Shape Long-Tail Classifications | `Edge.edge_type` | Mixed (1 RESOLVED, 9 PRELIM_RESOLVED, 12 UNRESOLVED) |
 
 ## File format
 

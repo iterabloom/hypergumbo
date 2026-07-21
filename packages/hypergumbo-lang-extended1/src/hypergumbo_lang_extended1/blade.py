@@ -124,12 +124,12 @@ def analyze_blade(
                 edges.append(Edge.create(
                     src=make_file_id("blade", path_str),
                     dst=f"blade:template:{name}:0-0:{name}:template",
-                    edge_type="extends_template",
+                    edge_type="extends",
                     line=line_num,
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     evidence_type="extends",
-                    meta={"template": name},
+                    meta={"template": name, "ref_construct": "template"},
                 ))
 
             for match in _COMPONENT_RE.finditer(line):

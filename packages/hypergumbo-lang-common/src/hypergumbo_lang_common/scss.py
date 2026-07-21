@@ -408,13 +408,13 @@ def _extract_include(
     edge = Edge.create(
         src=stylesheet_id,
         dst=dst,
-        edge_type="uses_mixin",
+        edge_type="includes",
         line=line,
         origin=PASS_ID,
         origin_run_id=execution_id,
         evidence_type="include",
         confidence=0.95 if mixin_name in mixin_definitions else 0.6,
-        meta={"mixin_name": mixin_name},
+        meta={"mixin_name": mixin_name, "ref_construct": "sass_mixin"},
     )
     edges.append(edge)
 

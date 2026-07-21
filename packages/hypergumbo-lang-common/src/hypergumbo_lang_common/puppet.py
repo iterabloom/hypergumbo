@@ -429,13 +429,13 @@ class _PuppetExtractor:
         edge = Edge.create(
             src=manifest_id,
             dst=dst,
-            edge_type="includes_class",
+            edge_type="includes",
             line=line,
             origin=PASS_ID,
             origin_run_id=self._execution_id,
             evidence_type="include",
             confidence=0.95 if class_name in self._class_registry else 0.6,
-            meta={"class_name": class_name},
+            meta={"class_name": class_name, "ref_construct": "puppet_class"},
         )
         self._edges.append(edge)
 

@@ -29,7 +29,7 @@ class TestAnalyzeBlade:
         (tmp_path / "page.blade.php").write_text("@extends('layouts.app')")
         result = analyze_blade(tmp_path)
         assert any(
-            e.edge_type == "extends_template"
+            e.edge_type == "extends" and (e.meta or {}).get("ref_construct") == "template"
             and (e.meta or {}).get("template") == "layouts.app"
             for e in result.edges
         )
@@ -58,7 +58,7 @@ class TestAnalyzeBlade:
         result = analyze_blade(tmp_path)
         # 2 Symbols (section, yield) + 1 Edge (extends_template — see WI-kunag, origin="test", origin_run_id="test")
         assert len(result.symbols) == 2
-        assert any(e.edge_type == "extends_template" for e in result.edges)
+        assert any(e.edge_type == "extends" and (e.meta or {}).get("ref_construct") == "template" for e in result.edges)
 
     def test_double_quoted_names(self, tmp_path: Path) -> None:
         (tmp_path / "page.blade.php").write_text('@section("content")\n@endsection')

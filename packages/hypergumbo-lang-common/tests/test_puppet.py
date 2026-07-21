@@ -154,7 +154,7 @@ class TestAnalyzePuppet:
         # Cluster E sub-case (b) per audit-findings 0010: include Symbol was
         # dropped; the includes_class Edge carries the relationship.
         edge = next(
-            (e for e in result.edges if e.edge_type == "includes_class"
+            (e for e in result.edges if e.edge_type == "includes" and (e.meta or {}).get("ref_construct") == "puppet_class"
              and (e.meta or {}).get("class_name") == "nginx"),
             None,
         )
@@ -193,7 +193,7 @@ node 'server' {
   include nginx
 }""")
         result = analyze_puppet(tmp_path)
-        edge = next((e for e in result.edges if e.edge_type == "includes_class"), None)
+        edge = next((e for e in result.edges if e.edge_type == "includes" and (e.meta or {}).get("ref_construct") == "puppet_class"), None)
         assert edge is not None
 
     def test_analysis_run_metadata(self, tmp_path: Path) -> None:
@@ -353,5 +353,5 @@ node 'webserver.example.com' {
         assert len(require_edges) >= 1
         notify_edges = [e for e in result.edges if e.edge_type == "notifies_resource"]
         assert len(notify_edges) >= 2
-        include_edges = [e for e in result.edges if e.edge_type == "includes_class"]
+        include_edges = [e for e in result.edges if e.edge_type == "includes" and (e.meta or {}).get("ref_construct") == "puppet_class"]
         assert len(include_edges) >= 1

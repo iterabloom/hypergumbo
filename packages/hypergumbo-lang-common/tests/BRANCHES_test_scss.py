@@ -226,7 +226,7 @@ class TestIncludeExtraction:
         result = analyze_scss(tmp_path)
         # Cluster E sub-case (b) per audit-findings 0010: include Symbol
         # dropped; uses_mixin Edge carries the relationship.
-        uses_edges = [e for e in result.edges if e.edge_type == "uses_mixin"]
+        uses_edges = [e for e in result.edges if e.edge_type == "includes" and (e.meta or {}).get("ref_construct") == "sass_mixin"]
         assert len(uses_edges) >= 1
 
 

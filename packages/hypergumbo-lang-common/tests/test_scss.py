@@ -297,7 +297,7 @@ $spacing: 16px;
         # Cluster E sub-case (b) per audit-findings 0010: include Symbol was
         # dropped; the uses_mixin Edge carries the relationship.
         edge = next(
-            (e for e in result.edges if e.edge_type == "uses_mixin"
+            (e for e in result.edges if e.edge_type == "includes" and (e.meta or {}).get("ref_construct") == "sass_mixin"
              and (e.meta or {}).get("mixin_name") == "button"),
             None,
         )
@@ -313,7 +313,7 @@ $spacing: 16px;
 }
 """)
         result = analyze_scss(tmp_path)
-        edge = next((e for e in result.edges if e.edge_type == "uses_mixin"), None)
+        edge = next((e for e in result.edges if e.edge_type == "includes" and (e.meta or {}).get("ref_construct") == "sass_mixin"), None)
         assert edge is not None
 
     def test_analysis_run_metadata(self, tmp_path: Path) -> None:
@@ -471,7 +471,7 @@ $font-size: 14px;
 
         # Check includes — Cluster E sub-case (b) per audit-findings 0010:
         # include Symbol dropped; uses_mixin Edge carries the relationship.
-        edges = [e for e in result.edges if e.edge_type == "uses_mixin"]
+        edges = [e for e in result.edges if e.edge_type == "includes" and (e.meta or {}).get("ref_construct") == "sass_mixin"]
         assert len(edges) == 2
 
 

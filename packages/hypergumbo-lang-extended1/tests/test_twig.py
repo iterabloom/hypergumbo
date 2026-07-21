@@ -81,14 +81,14 @@ class TestAnalyzeTwig:
         assert not result.skipped
         # Cluster E sub-case (b) per audit-findings 0010: extends Symbol was
         # dropped; the extends_template Edge carries the relationship.
-        edge = next((e for e in result.edges if e.edge_type == "extends_template"), None)
+        edge = next((e for e in result.edges if e.edge_type == "extends" and (e.meta or {}).get("ref_construct") == "template"), None)
         assert edge is not None
         assert (edge.meta or {}).get("template") == "base.html.twig"
 
     def test_extends_creates_edge(self, tmp_path: Path) -> None:
         make_twig_file(tmp_path, "page.twig", '{% extends "base.html.twig" %}')
         result = analyze_twig(tmp_path)
-        edge = next((e for e in result.edges if e.edge_type == "extends_template"), None)
+        edge = next((e for e in result.edges if e.edge_type == "extends" and (e.meta or {}).get("ref_construct") == "template"), None)
         assert edge is not None
 
     def test_extracts_block(self, tmp_path: Path) -> None:
@@ -116,14 +116,14 @@ Hello World
         result = analyze_twig(tmp_path)
         # Cluster E sub-case (b) per audit-findings 0010: include Symbol was
         # dropped; the includes_template Edge carries the relationship.
-        edge = next((e for e in result.edges if e.edge_type == "includes_template"), None)
+        edge = next((e for e in result.edges if e.edge_type == "includes" and (e.meta or {}).get("ref_construct") == "template"), None)
         assert edge is not None
         assert (edge.meta or {}).get("template") == "partials/header.twig"
 
     def test_include_creates_edge(self, tmp_path: Path) -> None:
         make_twig_file(tmp_path, "template.twig", '{% include "partials/header.twig" %}')
         result = analyze_twig(tmp_path)
-        edge = next((e for e in result.edges if e.edge_type == "includes_template"), None)
+        edge = next((e for e in result.edges if e.edge_type == "includes" and (e.meta or {}).get("ref_construct") == "template"), None)
         assert edge is not None
 
     def test_extracts_include_function(self, tmp_path: Path) -> None:
@@ -132,7 +132,7 @@ Hello World
         # Cluster E sub-case (b) per audit-findings 0010: include Symbol was
         # dropped; the includes_template Edge (form='function', origin="test", origin_run_id="test") carries it.
         edge = next(
-            (e for e in result.edges if e.edge_type == "includes_template"
+            (e for e in result.edges if e.edge_type == "includes" and (e.meta or {}).get("ref_construct") == "template"
              and (e.meta or {}).get("form") == "function"),
             None,
         )
@@ -278,7 +278,7 @@ Hello, {{ user.name }}!
         # Check extends + includes — Cluster E sub-case (b) per
         # audit-findings 0010: Symbols dropped; Edges carry the relations.
         extends_edge_check = next(
-            (e for e in result.edges if e.edge_type == "extends_template"
+            (e for e in result.edges if e.edge_type == "extends" and (e.meta or {}).get("ref_construct") == "template"
              and (e.meta or {}).get("template") == "base.html.twig"),
             None,
         )
@@ -299,9 +299,9 @@ Hello, {{ user.name }}!
         assert len(conditionals) == 1
 
         # Check edges
-        extends_edges = [e for e in result.edges if e.edge_type == "extends_template"]
+        extends_edges = [e for e in result.edges if e.edge_type == "extends" and (e.meta or {}).get("ref_construct") == "template"]
         assert len(extends_edges) == 1
-        include_edges = [e for e in result.edges if e.edge_type == "includes_template"]
+        include_edges = [e for e in result.edges if e.edge_type == "includes" and (e.meta or {}).get("ref_construct") == "template"]
         assert len(include_edges) == 2
 
     def test_extends_with_single_quotes(self, tmp_path: Path) -> None:
@@ -309,6 +309,6 @@ Hello, {{ user.name }}!
         result = analyze_twig(tmp_path)
         # Cluster E sub-case (b) per audit-findings 0010: extends Symbol was
         # dropped; the extends_template Edge carries the relationship.
-        edge = next((e for e in result.edges if e.edge_type == "extends_template"), None)
+        edge = next((e for e in result.edges if e.edge_type == "extends" and (e.meta or {}).get("ref_construct") == "template"), None)
         assert edge is not None
         assert (edge.meta or {}).get("template") == "base.html.twig"
