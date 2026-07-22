@@ -85,3 +85,18 @@
   clock: 9  # d20b
   nonce: d20b  # d20b
   message: "isbefore WI-hudug: the per-(kind,field) writer-contract validator engine (this item) must land before its first per-kind entry (qualified_name on Python function/method/class). Provenance: wave5 plan cont.18 / register pt.26 (G9 intra-cluster prereq)."  # d20b
+- op: update  # 1206
+  at: '2026-07-22T02:43:29Z'  # 1206
+  by: agent  # 1206
+  actor: jgstern_agent  # 1206
+  clock: 10  # 1206
+  nonce: '1206'  # 1206
+  set:  # 1206
+    status: done  # 1206
+- op: discuss  # 2a8b
+  at: '2026-07-22T02:43:29Z'  # 2a8b
+  by: agent  # 2a8b
+  actor: jgstern_agent  # 2a8b
+  clock: 11  # 2a8b
+  nonce: 2a8b  # 2a8b
+  message: "Engine landed in PR #815 (dev 3911b43f92). The per-(language,kind,field) writer-contract population contract now exists: `_check_kind_conditioned_population` + `_WRITER_CONTRACT_KIND_MUST_POPULATE` in spec_validator.py, wired into `_check_writer_contract`. Per this item's own reframe (the 312-cell enforced matrix was rejected as over-broad — most NULL cells are legitimately NULL, e.g. a `variable` has no meaningful qualified_name), it is a sound-by-construction population ratchet registered cell-by-cell rather than a blanket matrix: partition symbols by (language,kind), flag a REGISTERED cell that is 100% NULL across its non-empty partition (absent partition skipped; one populated symbol satisfies). This catches the kind-conditioned NULL the record-class-level sub-patterns structurally miss (a field populated on `function` keeps the Symbol-class partition non-empty while every `method` is NULL). isbefore WI-hudug honored (engine before its first entry). 100% coverage; live-verified 0 violations on real Python (self-tree gate safe)."  # 2a8b

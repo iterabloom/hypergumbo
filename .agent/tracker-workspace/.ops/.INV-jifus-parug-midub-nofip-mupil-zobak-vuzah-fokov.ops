@@ -79,3 +79,10 @@
   clock: 8  # 5411
   nonce: '5411'  # 5411
   message: "Re-scoped statement/title/root_cause off 'has no schema' (falsified: docs/schema.json:336-385 schemas it x-internal:true; 3 faces resolved). Sole live residual = the prevention-only typed @dataclass, which the 2026-07-12 owner disposition migrated to end-of-Wave-5. Stays violated in the 'enforcing mechanism unbuilt' sense only."  # 5411
+- op: discuss  # 4d62
+  at: '2026-07-22T02:43:31Z'  # 4d62
+  by: agent  # 4d62
+  actor: jgstern_agent  # 4d62
+  clock: 9  # 4d62
+  nonce: 4d62  # 4d62
+  message: "Re-scoped premise CONFIRMED accurate (2026-07-21): no `SketchPrecomputed` dataclass exists (grep `class SketchPrecomputed` -> none; the field is a hand-assembled dict at cli.py, its schema a hand-written x-internal overlay). The original \"has no schema\" premise is falsified (schema exists, x-internal). Sole residual is the prevention-only typed contract, owner-migrated to end-of-Wave-5 / the mypy typed-contract ramp; a typed SketchPrecomputed would be the natural home to codify the identity/normalization invariants WI-gupod/WI-samif gesture at. Deferred, not started."  # 4d62

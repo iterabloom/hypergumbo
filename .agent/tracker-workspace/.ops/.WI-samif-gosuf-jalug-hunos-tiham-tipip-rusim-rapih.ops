@@ -49,3 +49,18 @@
   clock: 5  # 27bc
   nonce: 27bc  # 27bc
   message: "Staleness audit 2026-07-21: part 1 (spec undocumented / schema-spec contradiction) is RECONCILED -- docs/schema.json:338 marks the sketch_precomputed block x-internal:true with a description 'NOT a stability contract', matching spec.md; the item's OR-branch ('config_info documented OR contradiction resolved') is satisfied. Residual: part 2 mid-token truncation, which persists only in the non-default embedding chunk-window path (the default HEURISTIC mode doesn't embedding-chunk). Re-scoped to the embedding-mode part-2 residual."  # 27bc
+- op: update  # 1bd4
+  at: '2026-07-22T02:43:30Z'  # 1bd4
+  by: agent  # 1bd4
+  actor: jgstern_agent  # 1bd4
+  clock: 6  # 1bd4
+  nonce: 1bd4  # 1bd4
+  set:  # 1bd4
+    status: todo_soft  # 1bd4
+- op: discuss  # e7ca
+  at: '2026-07-22T02:43:30Z'  # e7ca
+  by: agent  # e7ca
+  actor: jgstern_agent  # e7ca
+  clock: 7  # e7ca
+  nonce: e7ca  # e7ca
+  message: "Part 1 (spec/schema contradiction) RECONCILED — confirmed: docs/schema.json `properties.sketch_precomputed: x-internal=true` (\"INTERNAL cache artifact, NOT a stability contract\"). Part 2 (mid-token truncation, embedding chunk-window path) is a NARROW residual that rarely fires (the hard char slices in `_build_context_chunk` only trigger when a 3-line window exceeds 800 chars — uncommon for config lines); the \"stray ]\" the filing cites is actually chunk-boundary selection, the same `_build_context_chunk` root cause as WI-gupod's cosmetic residual. Per the G9 Recommended close-out (owner 2026-07-21) the cosmetic `_build_context_chunk` cleanup is deprioritized (zero-external-consumer x-internal cache; not worth the cold-slice CI tax). Downgraded todo_hard -> todo_soft as the tracked home for that residual."  # e7ca
