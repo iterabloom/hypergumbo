@@ -815,6 +815,14 @@ def _check_writer_contract(
     constant) are codified at the producer side rather than detected
     by the validator — the cross-checks would fire at the boundary
     (orchestrator) layer, which doesn't have a record stream to inspect.
+
+    WI-libib/WI-hudug extension: a **kind-conditioned population contract**.
+    The sub-patterns above partition only by ``(record_class, field)``, so a
+    field populated on one Symbol *kind* masks a 100%-NULL partition on
+    another kind (``qualified_name`` on ``function`` symbols hides a fully-
+    NULL ``method`` partition behind the shared Symbol class). A registered
+    per-``(language, kind, field)`` contract catches that regression class;
+    see ``_check_kind_conditioned_population``.
     """
     violations: list[ValidationViolation] = []
     runs_list = list(analysis_runs)
@@ -888,6 +896,12 @@ def _check_writer_contract(
         _check_sub_pattern_1_never_populated(symbols_list, edges_list, runs_list)
     )
 
+    # Kind-conditioned population contract (WI-libib engine, WI-hudug entry).
+    # Partitions symbols by (language, kind) so a field populated on one kind
+    # cannot mask a 100%-NULL partition on another; complements the
+    # (record_class, field)-level sub-patterns above.
+    violations.extend(_check_kind_conditioned_population(symbols_list))
+
     return violations
 
 
@@ -937,6 +951,86 @@ def _check_sub_pattern_1_never_populated(
                 message=(
                     f"All {len(records)} {record_class} records have "
                     f"{field_name} unpopulated. {contract_msg}"
+                ),
+            ))
+    return violations
+
+
+# Kind-conditioned "must populate" contract (WI-libib engine, WI-hudug entry).
+#
+# Each entry ``(language, kind, field_name, contract_description)`` asserts that
+# symbols matching ``(language, kind)`` populate ``field_name`` — a 100%-NULL
+# partition on that cell is a writer regression that the ``(record_class,
+# field)``-level sub-patterns above cannot see (a field populated on one kind
+# keeps the class-level partition non-empty). Rather than enforce the full
+# (kind, field) matrix — rejected by WI-libib's own author as over-broad, since
+# most NULL cells are legitimately NULL (a ``variable`` has no meaningful
+# ``qualified_name``) — the contract is registered cell by cell: each entry is a
+# deliberate "this cell MUST stay populated" assertion, the sound-by-
+# construction population ratchet WI-libib was reframed to. The producer half of
+# the first entries is done (WI-fagab / ADR-0032), so on current output these
+# emit no violation and serve as a regression guard; a future producer that
+# drops ``qualified_name`` on Python callables/classes trips them, and the
+# resulting ``writer_contract|warning`` cell (unbaselined → ceiling 0) breaks
+# the validation_ratchet self-tree gate.
+_WRITER_CONTRACT_KIND_MUST_POPULATE: tuple[tuple[str, str, str, str], ...] = (
+    ("python", "function", "qualified_name",
+     "Python function symbols carry an ADR-0032 qualified_name (WI-fagab)."),
+    ("python", "method", "qualified_name",
+     "Python method symbols carry an ADR-0032 qualified_name (WI-fagab)."),
+    ("python", "class", "qualified_name",
+     "Python class symbols carry an ADR-0032 qualified_name (WI-fagab)."),
+)
+
+
+def _check_kind_conditioned_population(
+    symbols_list: list[Any],
+) -> list[ValidationViolation]:
+    """Per-``(language, kind)`` population contract (WI-libib engine, WI-hudug).
+
+    The record-class-level sub-patterns partition only by ``(record_class,
+    field)``, so they miss a *kind-conditioned* NULL: ``qualified_name``
+    populated on ``function`` symbols but 100% NULL on every ``method`` symbol
+    never trips a Symbol-level check, because at least one Symbol carries it.
+    This check partitions symbols by ``(language, kind)`` and flags a
+    **registered** cell that is 100% NULL across its **non-empty** kind
+    partition. An absent partition (the kind isn't on this substrate) is skipped
+    — absence is not a population regression — and a single populated symbol
+    satisfies the contract (the writer IS reaching the slot; a residual per-
+    record gap is a finer, separate concern). One umbrella violation per cell,
+    not one per record, because the gap is structural.
+    """
+    violations: list[ValidationViolation] = []
+    for language, kind, field_name, contract_msg in (
+        _WRITER_CONTRACT_KIND_MUST_POPULATE
+    ):
+        partition = [
+            s for s in symbols_list
+            if _read(s, "kind", None) == kind
+            and _read(s, "language", None) == language
+        ]
+        if not partition:
+            continue
+        populated = sum(1 for s in partition if _is_truthy(s, field_name))
+        if populated == 0:
+            violations.append(ValidationViolation(
+                severity="warning",
+                validator_class="writer_contract",
+                axis=None,
+                field_name=f"Symbol[{language}/{kind}].{field_name}",
+                record_id=_read(partition[0], "id", None),
+                observed=(
+                    f"<empty across all {len(partition)} "
+                    f"{language} {kind} symbols>"
+                ),
+                expected=(
+                    "field populated on at least one symbol of this kind "
+                    "(writer-contract kind-conditioned population contract)"
+                ),
+                message=(
+                    f"All {len(partition)} {language} {kind} symbols have "
+                    f"{field_name} unpopulated. {contract_msg} "
+                    "See INV-luhur / WI-libib (kind-conditioned population)."
                 ),
             ))
     return violations
