@@ -35,3 +35,10 @@
   set: {}  # 946f
   add:  # 946f
     isbefore: [INV-dulah-kisiz-gobak-jafov-soduj-tomim-dufut-kinil]  # 946f
+- op: discuss  # 1dce
+  at: '2026-07-22T01:06:17Z'  # 1dce
+  by: agent  # 1dce
+  actor: jgstern_agent  # 1dce
+  clock: 4  # 1dce
+  nonce: 1dce  # 1dce
+  message: "G1 investigation (read-only, PR #808 session): proposes a shared make_route_symbol minting helper (kind-slot=function + origin/origin_run_id stamping + name-slot=sanitized(node.name)). NOTE: the py.py Starlette line refs in this item (~2752/2782/2812) are STALE — Starlette now lives at py.py:3060-3110 and ALREADY builds its id with kind='function' + Symbol.kind='function' (ADR-0036 Ruling 2), so its KIND-slot fossil is already fixed; remaining on that producer = origin provenance (this item) + the name-slot (WI-vuzaf Pattern B, best folded into the same make_route_symbol chokepoint). Not implemented this pass (multi-producer, own chokepoint decision). Still todo_hard."  # 1dce

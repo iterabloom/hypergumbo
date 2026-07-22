@@ -40,3 +40,18 @@
   clock: 4  # eba8
   nonce: eba8  # eba8
   message: "root-cause family member (a1) (connections-sweep 2026-06-08T1900Z)"  # eba8
+- op: update  # d73d
+  at: '2026-07-22T01:05:16Z'  # d73d
+  by: agent  # d73d
+  actor: jgstern_agent  # d73d
+  clock: 5  # d73d
+  nonce: d73d  # d73d
+  set:  # d73d
+    status: wont_do  # d73d
+- op: discuss  # 64f3
+  at: '2026-07-22T01:05:16Z'  # 64f3
+  by: agent  # 64f3
+  actor: jgstern_agent  # 64f3
+  clock: 6  # 64f3
+  nonce: 64f3  # 64f3
+  message: "Resolved wont_do (BY-DESIGN) alongside the G1 bundle (dev d007532a38, PR #808). node.path='<external>' and the id path-slot module name are TWO DIFFERENT AXES, not two renderings of one value: node.path is the filesystem anchor (documented '<external>' no-file-anchor sentinel, ADR-0036 Ruling 3 table row), while the id path-slot carries load-bearing module identity (keeps urllib.request.urlopen distinct from urllib.parse.urlopen; spec §340). Making path agree with the id would CORRUPT the filesystem axis and break the >=3 consumers that key on the sentinel (metrics.py total_files, sketch _map_source_paths, taint); making the id agree with path would DESTROY module identity + force a stable_id scheme bump. The module identity a consumer wants is already available via the id path-slot / stable_id / the import+calls edges (edge.meta.referring_paths). Verified: node.path feeds NEITHER node.id NOR stable_id (both derive from key_path, the module name), so this is purely a path-FIELD-vs-id-SLOT presentation question, resolved by-design. Small docs fix shipped in the bundle: reconciled the ir.py path axis comment's 'never branch on the value' with the '<external>' sentinel carve-out (~3 consumers legitimately branch on it)."  # 64f3

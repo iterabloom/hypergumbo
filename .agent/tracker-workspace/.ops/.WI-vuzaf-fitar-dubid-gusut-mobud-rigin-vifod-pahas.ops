@@ -51,3 +51,10 @@
   target_nonce: '6563'  # f1b0
   new_text: "OVER-FOLD SPLIT (Phase-7 reconciliation): the Rust '.'-vs-'::' separator case is tracked separately as WI-nagub (distinct analyzer fix). THIS item is scoped to the synthetic-node producer-label name-slots (linker category constants: subprocess_call 78 / db_query 34 / mq_publisher 44 / mq_subscriber 31 / http_client 18 / resolver 11; plus starlette route method+path 8) — all one shared fix (producer id-construction should write node.name into the id name-slot). Edit-mode cleanup completed: the Rust-separator detail trimmed from the description (now owned by WI-nagub)."  # f1b0
   reason: "edit-mode cleanup done; drop stale OS-enforced note"  # f1b0
+- op: discuss  # 8c25
+  at: '2026-07-22T01:06:17Z'  # 8c25
+  by: agent  # 8c25
+  actor: jgstern_agent  # 8c25
+  clock: 6  # 8c25
+  nonce: 8c25  # 8c25
+  message: "G1 investigation (read-only, PR #808 session): premise TRUE. TWO patterns. Pattern A (6 linker families — subprocess_call/db_query/mq_publisher+subscriber/http_client/resolver/ws-endpoint, ~236 nodes): the id name-slot carries a GENERIC linker-category constant while node.name carries the SPECIFIC value; ALSO the not-enumerated graphql_client (linkers/graphql.py:209) + grpc_stub/client (grpc.py:721). Pattern B (Starlette route, py.py:3060-3066): INVERTED — id name-slot has the specific method+path, node.name has a generic 'starlette:<view>'. FIX DIRECTION = ALIGN (ADR-0036 Ruling 1: id name-slot MUST equal sanitized(Symbol.name); this is the deferred T1 producer-side landing). Deferred here (T1: node.id VALUE churn for those synthetic nodes — stable_id UNAFFECTED, no scheme bump). Sanitization (:→.) belongs at the make_symbol_id chokepoint. Test to update: test_websocket.py:325-338 hardcodes name-slot ids. Starlette (Pattern B) needs a route-naming decision -> fold into WI-zugob's proposed make_route_symbol chokepoint, NOT the linker fix. Ready to implement as a focused PR (Pattern-A linkers) + coordinate Pattern B with WI-zugob."  # 8c25

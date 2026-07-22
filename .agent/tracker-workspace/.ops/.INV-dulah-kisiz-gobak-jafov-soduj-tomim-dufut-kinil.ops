@@ -160,3 +160,10 @@
   clock: 18  # e4b7
   nonce: e4b7  # e4b7
   message: "Re-scoped statement/title: the dominant external_symbol 'unresolved' kind-slot cohort was fixed by WI-pubiv (df8e1e60da, ir.py:1273) AFTER the 2026-06-22 framing, and the Rust '::' case is now by-design (ADR-0036 R1; WI-nagub moved to wont_do this session). Umbrella stays violated via WI-zugob (route id kind-slot), WI-vuzaf (linker name-slot constants), the doc-family slot ORDER at base.py:983, and WI-banod (5 residual config-family stable_ids). Root_cause unchanged (colon-escaping mechanism still accurate for the surviving children)."  # e4b7
+- op: discuss  # 0fbb
+  at: '2026-07-22T01:06:29Z'  # 0fbb
+  by: agent  # 0fbb
+  actor: jgstern_agent  # 0fbb
+  clock: 19  # 0fbb
+  nonce: 0fbb  # 0fbb
+  message: "G1 progress (PR #808): WI-banod T0 (ini/requirements/properties canonical stable_id) landed; WI-bosog (repo_fingerprint field format, adjacent) landed earlier this session. Residual children still open: WI-zugob (route-marker id-slot + provenance, make_route_symbol chokepoint), WI-vuzaf (synthetic-node id name-slot vs node.name — Pattern A 6 linkers + Pattern B Starlette), WI-banod T1 (bitbake/bibtex, scheme-gated). Umbrella stays violated until those land. WI-kapul (related-but-distinct external node.path facet) resolved wont_do by-design (ADR-0036 Ruling 3 sentinel)."  # 0fbb

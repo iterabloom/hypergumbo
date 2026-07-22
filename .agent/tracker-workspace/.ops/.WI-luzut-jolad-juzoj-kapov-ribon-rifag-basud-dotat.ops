@@ -57,3 +57,18 @@
   set: {}  # 6cdf
   add:  # 6cdf
     isbefore: [WI-vogij-jubit-podog-galug-humag-rovuh-jahan-rozug]  # 6cdf
+- op: update  # dd46
+  at: '2026-07-22T01:05:15Z'  # dd46
+  by: agent  # dd46
+  actor: jgstern_agent  # dd46
+  clock: 7  # dd46
+  nonce: dd46  # dd46
+  set:  # dd46
+    status: done  # dd46
+- op: discuss  # 85ce
+  at: '2026-07-22T01:05:15Z'  # 85ce
+  by: agent  # 85ce
+  actor: jgstern_agent  # 85ce
+  clock: 8  # 85ce
+  nonce: 85ce  # 85ce
+  message: "Closed by G1 bundle merged as dev d007532a38 (PR #808). Python variable- and field-kind Symbols carried shape_id=None because _compute_shape_id required a body-bearing FunctionDef/ClassDef node. New _compute_value_shape_id(node,kind) hashes the assignment statement's AST skeleton via _ast_structure (kind folded per WI-linon), wired at the variable (py.py) and field (py.py, WI-jusus emission) sites. BEHAVIORAL EVIDENCE: 4 new tests in test_py_shape_id_kind.py assert variables/fields carry sha256: shape_ids, distinct shapes differ, same shapes share, and kind discriminates (variable vs field). Additive (no existing shape_id value changes) -> shape_id_scheme UNCHANGED (WI-rihob null->value precedent: its commit 5b8a44805f did not touch the scheme). Scope-note: the field-kind analogue was folded in (item statement named only variable). Downstream clone detection (WI-vogij) still needs its _CLONE_KINDS widened to surface variable/field clones; WI-luzut only populates the field."  # 85ce

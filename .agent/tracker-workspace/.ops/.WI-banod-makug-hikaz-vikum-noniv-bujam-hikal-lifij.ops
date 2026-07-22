@@ -33,3 +33,33 @@
   clock: 3  # 12ce
   nonce: 12ce  # 12ce
   message: "Staleness audit 2026-07-21: 11 of the 16 named analyzers are FIXED -- svelte/vue/astro/scss/puppet/robot/rst/pony/twig/kdl/sparql now mint stable_id via make_doc_symbol_ids -> make_doc_stable_id (canonical sha256:<16hex>, base.py:941) by the INV-dulah DRY refactor (commit 469243b7b0). Still broken (exact stable_id=symbol_id composite): bitbake.py:192/302, bibtex.py:125, ini.py:196/252, requirements.py:203/278, properties.py:159. Re-scoped title to those 5 residuals."  # 12ce
+- op: update  # 8521
+  at: '2026-07-22T01:05:16Z'  # 8521
+  by: agent  # 8521
+  actor: jgstern_agent  # 8521
+  clock: 4  # 8521
+  nonce: '8521'  # 8521
+  set:  # 8521
+    status: done  # 8521
+- op: discuss  # a1ba
+  at: '2026-07-22T01:05:16Z'  # a1ba
+  by: agent  # a1ba
+  actor: jgstern_agent  # a1ba
+  clock: 5  # a1ba
+  nonce: a1ba  # a1ba
+  message: "Closed (FIRST BATCH / T0) by G1 bundle merged as dev d007532a38 (PR #808). ini (section/setting), requirements (requirement x3 sites), and properties (property) set stable_id to the non-canonical composite Symbol.id; they now use the shared make_doc_stable_id factory (canonical sha256:<16hex>), node.id unchanged (still the location key). BEHAVIORAL EVIDENCE: the flipped test_stable_ids in test_ini/test_requirements/test_properties assert stable_id.startswith('sha256:') and id != stable_id. Minimal port keeps node.id byte-identical; the span fold also de-collides same-named siblings the line-less composite could collide. CORRECTION to the filed discussion: 11 offending sites, not 7 (bitbake=4, requirements=3). SCOPE SPLIT (T0/T1 per the item's own identity-axis design): the T0 subset above is default-output-NEUTRAL (all noise-kind symbols) -> safe conformance fix, no scheme concern. The T1 remainder (bitbake variable/task/addtask + bibtex entry) is default-output-OBSERVABLE id churn and is DEFERRED pending a coordinated scheme decision -- see the sibling note. Marking WI-banod done for the T0 batch; the T1 residual is tracked in the discussion for a follow-up."  # a1ba
+- op: update  # b415
+  at: '2026-07-22T01:06:17Z'  # b415
+  by: agent  # b415
+  actor: jgstern_agent  # b415
+  clock: 6  # b415
+  nonce: b415  # b415
+  set:  # b415
+    status: todo_soft  # b415
+- op: discuss  # 0047
+  at: '2026-07-22T01:06:17Z'  # 0047
+  by: agent  # 0047
+  actor: jgstern_agent  # 0047
+  clock: 7  # 0047
+  nonce: '0047'  # 0047
+  message: "CORRECTION: re-opening todo_soft — the item names 5 analyzers; the T0 batch (ini/requirements/properties, 3 analyzers) is DONE and shipped in PR #808 (canonical make_doc_stable_id, tests flipped, default-output-neutral). The T1 remainder — bitbake (variable/task/addtask, 4 sites) + bibtex (entry, 1 site) — is NOT done: those are default-output-OBSERVABLE stable_id churn (non-noise kinds), which the item's own T0/T1 design says must ride a coordinated stable_id-scheme decision, NOT land pre-bump. Left open for that decision + the mechanical port (same make_doc_stable_id factory; make_doc_symbol_ids would also add a start_line to the line-less bitbake/requirements/properties node.ids — the minimal stable_id-only port avoids touching node.id)."  # 0047
