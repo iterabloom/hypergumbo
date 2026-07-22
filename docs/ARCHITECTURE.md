@@ -15,13 +15,13 @@ for focused LLM context.
 
 hypergumbo analyzed its own source code and found:
 - **297** Python modules (133 analyzers, 59 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 30, Infrastructure 8; 68 core, 4 CLI, 33 tracker)
-- **37427** symbols (functions, classes, methods)
-- **127634** edges by type:
-  - calls: 64469
-  - contains: 34568
-  - imports: 11348
-  - instantiates: 10490
-  - references: 4276
+- **37474** symbols (functions, classes, methods)
+- **127804** edges by type:
+  - calls: 64566
+  - contains: 34613
+  - imports: 11368
+  - instantiates: 10496
+  - references: 4278
   - module_attr_ref: 1160
   - other: 1323
 
@@ -85,7 +85,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 37427 Symbols + 127634 Edges + UsageContexts           │
+│  Output: 37474 Symbols + 127804 Edges + UsageContexts           │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -276,15 +276,15 @@ These symbols have the highest bidirectional centrality
 | `Span` | class | 6336.7 | ir.py |
 | `write_text` | external_symbol | 3298.0 | <external> |
 | `LinkerContext` | class | 3268.5 | registry.py |
-| `Edge.create` | method | 2103.3 | ir.py |
+| `Edge.create` | method | 2106.7 | ir.py |
 | `TrackerApp` | class | 1946.9 | tui.py |
 | `load_framework_patterns` | function | 1875.9 | framework_patterns.py |
 | `Path` | external_symbol | 1628.0 | <external> |
 | `main` | function | 1563.1 | cli.py |
 | `clear_pattern_cache` | function | 1336.8 | framework_patterns.py |
 | `Edge` | class | 1282.0 | ir.py |
-| `append` | external_symbol | 1247.0 | <external> |
-| `get` | external_symbol | 1137.0 | <external> |
+| `append` | external_symbol | 1248.0 | <external> |
+| `get` | external_symbol | 1139.0 | <external> |
 | `TreeSitterAnalyzer` | class | 1074.7 | base.py |
 | `find_files` | function | 997.1 | discovery.py |
 
@@ -477,6 +477,7 @@ The `scripts/` directory contains operational tooling. Descriptions are extracte
 | `check-self-tree-validation` | Full-suite self-tree validation ratchet gate (WI-jigup). |
 | `check-symbol-kind-drift` | Pre-commit lint: ``*KIND*`` sets in packages/ must be subsets of the |
 | `concept-audit-record` | Record the completion of a Fundamental Concept Audit. |
+| `coverage_only_deps.py` | Coverage-only test-dependency augmentation for ``scripts/smart-test`` (WI-zaziz). |
 | `dead-code-prospector-run.py` | Lightweight one-shot dead-code-maybe prospecting run. |
 | `deleak-ledger` | Delete-only de-leaker for the dogfood issue ledger (agent_notes). |
 | `finetune-transcript-model` | G-Vendi-guided data selection and finetuning for the local transcript model. |
@@ -845,7 +846,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: f5b4c63757c0
+  commit: f5f7e7b48972
   hypergumbo: 6.1.0
   python: 3.12.3
 -->
