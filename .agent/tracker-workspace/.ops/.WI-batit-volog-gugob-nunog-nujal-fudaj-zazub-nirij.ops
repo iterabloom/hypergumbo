@@ -77,3 +77,10 @@
   clock: 9  # cc6e
   nonce: cc6e  # cc6e
   message: "Staleness audit 2026-07-21: this is a seed-quality UMBRELLA; the build-wrapper facet is FIXED (commit 471bb5a779; entrypoints.py:1435-1672 BUILD_WRAPPER_BASENAMES {mvnw,gradlew,...} x0.1 rank demotion gated on SHELL_SCRIPT). Residual facets still reproduce: no rslice tier-1 seed constraint (SliceQuery.max_tier defaults None), no harder vendored-JS demotion beyond tier-3 x0.3 (pdf.worker.js/d3/vue.js still qualify as seeds), and is_utility_file over-match on samples/example/demo (entrypoints.py:1651). The express test-callback facet belongs to WI-zulij. Title left as the umbrella; kept open for the vendored-JS / rslice-tier / is_utility_file facets."  # cc6e
+- op: discuss  # 65cd
+  at: '2026-07-21T23:06:05Z'  # 65cd
+  by: agent  # 65cd
+  actor: jgstern_agent  # 65cd
+  clock: 10  # 65cd
+  nonce: 65cd  # 65cd
+  message: "G12 attack (2026-07-21): WI-kikis (the group's P1) closed done. WI-batit STAYS OPEN — its remaining facets are bakeoff-gated ranking TUNING, not self-corpus-closeable: (1) harder vendored-JS demotion — tier>=3 library_export seeds get 0.80x0.3=0.24 > the 0.10 exclusion floor, so pdf.worker.js/d3/vue.js still seed slices; the *magnitude* of a harder demotion is a judgment call validated by DEEP bakeoff (the item's own note: 'Affects all 3 bakeoffs'); (2) rslice tier-seed constraint — reverse-slice --entry auto uses the same detect_entrypoints ranking (cli.py:1651), so constraining seeds to tier-1 is the same ranking knob; (3) is_utility_file over-match on samples/example/demo — the item itself flags this DEBATABLE ('a sample repo IS demo code'); (4) express test-callback belongs to WI-zulij (centrality/compact ranking), not this. Decision: do NOT land an unvalidated wide-blast-radius ranking change to dev bundled with the clean WI-kikis close (dev stays deployable); fold WI-batit's prep+validation into a consolidated DEEP bakeoff at a later checkpoint. Build-wrapper facet remains FIXED (471bb5a779)."  # 65cd

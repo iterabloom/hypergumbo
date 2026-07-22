@@ -20,3 +20,34 @@
     pr_ref:  # f98b
     description: "Discovered while landing the mypy no-redef rung. When a PR touches\npackages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/java.py,\nthe smart-test slice selects the java-specific tests (test_java.py,\ntest_java_annotation_edges.py, test_java_field_symbols.py) but NOT\ntest_polyglot_call_site_coverage.py — which is the SOLE test covering\njava.py:1872-1878 (the static-import ExternalRef branch). Verified: that\npolyglot test alone covers 1872-1878 (missing-lines list jumps 1807->1943).\n\nEffect: the targeted manifest reports java.py at 99% (3 stmts missing),\nfailing CI's changed-file 100% coverage gate, even though the FULL suite is\n100% (21049 passed). The manual workaround (add the test to the manifest)\ndoes NOT persist because auto-pr regenerates the manifest to match the\ncommit diff (scripts/auto-pr ~line 1301-1316), stripping the addition. Also\nnote: a full-suite manifest is rejected by Fast-CI (ci.yml ~line 772, 5-min\nlimit), so that escape hatch is closed too.\n\nRoot cause: the slice's test selection is import-dependency-based and misses\nCOVERAGE-based dependencies (the polyglot test exercises java code via the\nanalysis pipeline without a direct import edge the slice detects). Impact:\nany java.py change hits this; the current mitigation is to exclude java.py\nfrom the change (as done for the no-redef rung, deferring 2 benign java\nfixes). Fix options: (a) coverage-based slice augmentation, (b) a per-file\n\"always-include-these-tests\" annotation for coverage-only deps, (c) teach\nthe slice the polyglot test's java dependency."  # f98b
     fields: {}  # f98b
+- op: update  # 3078
+  at: '2026-07-21T22:15:09Z'  # 3078
+  by: agent  # 3078
+  actor: jgstern_agent  # 3078
+  clock: 2  # 3078
+  nonce: '3078'  # 3078
+  set: {}  # 3078
+  add:  # 3078
+    isbefore: [WI-hokag-zilib-mofat-novuh-zufov-hajah-fukiv-gojis]  # 3078
+- op: discuss  # 4c27
+  at: '2026-07-21T22:15:11Z'  # 4c27
+  by: agent  # 4c27
+  actor: jgstern_agent  # 4c27
+  clock: 3  # 4c27
+  nonce: 4c27  # 4c27
+  message: "isbefore WI-hokag: the smart-test slice under-selection fix (this item) unblocks the Java rename work in WI-hokag by making CI coverage honest for java.py changes. Provenance: wave5 plan cont.18 / register pt.26 (G10 intra-cluster prereq)."  # 4c27
+- op: update  # d691
+  at: '2026-07-21T23:32:51Z'  # d691
+  by: agent  # d691
+  actor: jgstern_agent  # d691
+  clock: 4  # d691
+  nonce: d691  # d691
+  set:  # d691
+    status: done  # d691
+- op: discuss  # 1c47
+  at: '2026-07-21T23:32:51Z'  # 1c47
+  by: agent  # 1c47
+  actor: jgstern_agent  # 1c47
+  clock: 5  # 1c47
+  nonce: 1c47  # 1c47
+  message: "Closed by PR merged as dev 1c487b9973 (WI-zaziz). Root cause: smart-test selects tests via `hypergumbo slice --files` (an IMPORT-dependency reverse slice), blind to tests that COVER a source file through the analysis pipeline without IMPORTING it. Filed case: java.py changes selected test_java.py etc. but NOT test_polyglot_call_site_coverage.py (the sole cover of java.py:1872-1878, the static-import ExternalRef branch), false-redding the changed-file 100% coverage gate at 99% while the full suite is 100%; the manual manifest-add didn't survive auto-pr's commit-diff manifest regen.\n\nFIX (option b from the item): a checked-in declarative map .ci/coverage-only-deps.txt of source->covering-test pairs + scripts/coverage_only_deps.py helper, folded into AFFECTED_TESTS INSIDE smart-test (after the per-package fallback, before the manifest write) so the covering tests land in BOTH the run and the auto-pr-regenerated manifest — persisting across the commit-diff regeneration the manual workaround couldn't. Entries validated (source+test must exist on disk); a stale entry can neither disable the augmentation nor inject a phantom test.\n\nBEHAVIORAL EVIDENCE: (1) 20 tests in tests/test_coverage_only_deps.py, helper at 100% coverage (parse_map / compute_adds / main / _read_lines all exercised in-process). (2) Direct real-map simulation: `echo java.py | coverage_only_deps.py . --map .ci/coverage-only-deps.txt --tests-file <test_java.py>` -> emits test_polyglot_call_site_coverage.py; a non-mapped source -> empty. (3) The committed-map guard test asserts every source+test in the live map exists on disk. (4) smart-test's own behavior tests (test_smart_test_slice_robustness, test_smart_test_coverage_gate) still pass with the added block. The augmentation fires whenever the mapped source is in CHANGED_SOURCE_FILES — confirmed present for a java.py change.\n\nFINDING (orthogonal, worth noting): the full end-to-end probe (touch java.py -> smart-test --manifest) fell to a FULL-SUITE fallback, not the targeted path, because the STABLE pipx hypergumbo 6.1.0 that smart-test uses for its internal slice still carries the WI-somup cold-cache bug ('Error: Input file not found: None' after a 402s cold analysis -> slice exit 1). WI-somup is `satisfied` on dev but evidently not yet in the released 6.1.0, so smart-test's internal slice fails on a genuinely-cold cache and falls back to full-suite. That is a separate release-lag/robustness matter (a successful-but-under-selecting slice is WI-zaziz's scope, which this fixes); flagging it here for follow-up.\n\nUnblocks WI-hokag (the deferred java shadowing-rename work) per the isbefore edge — the changed-file gate is now honest for java.py changes."  # 1c47

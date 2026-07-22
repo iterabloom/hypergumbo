@@ -58,3 +58,18 @@
   clock: 6  # 4bfa
   nonce: 4bfa  # 4bfa
   message: "Wave-5 sweep (2026-07-08): identity:F5 fingerprint-format residual (repo_fingerprint bare-64-hex vs sha256:+16 AR-record non-uniformity); child of INV-kurup (id-format umbrella, itself a Wave-5 closure gate). Empty isbefore -> terminal wave."  # 4bfa
+- op: update  # c57c
+  at: '2026-07-21T23:59:53Z'  # c57c
+  by: agent  # c57c
+  actor: jgstern_agent  # c57c
+  clock: 7  # c57c
+  nonce: c57c  # c57c
+  set:  # c57c
+    status: done  # c57c
+- op: discuss  # 8c8c
+  at: '2026-07-21T23:59:53Z'  # 8c8c
+  by: agent  # 8c8c
+  actor: jgstern_agent  # 8c8c
+  clock: 8  # 8c8c
+  nonce: 8c8c  # 8c8c
+  message: "Closed by PR merged as dev 24c52b5c94 (WI-bosog). AR-record repo_fingerprint field now sha256:<64hex> (was bare-64), uniform scheme prefix with run_signature/config_fingerprint. Prefix applied at the field-render site (compute_repo_fingerprint_field, stamped in finalize) so the bare digest stays colon-safe for the cache-dir path segment. repo_fingerprint_scheme v1->v2. BEHAVIORAL EVIDENCE: 126 tests green across test_repo_fingerprint (3 new field-rendering tests + existing bare-digest tests) / test_finalize / test_run_behavior_map / test_cli_run_behavior_map / test_behavior_map_schema, all asserting the sha256:-prefixed field; new helper at 100% coverage; spec §id + CHANGELOG updated; no other scheme pin or repo_fingerprint format assertion left on v1. Bridge item for G8 (settles fingerprint FORMAT)."  # 8c8c
