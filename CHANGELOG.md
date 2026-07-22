@@ -58,6 +58,7 @@ Alongside: the CLI standardizes on `--format {text,json}` across all read views 
 #### Dev workflow
 
 - **`auto-pr` / `merge-pr` recover from Codeberg DB desync** via a branch-push fallback and a merge resync-retry, verifying success by PR record or git ground truth.
+- **`ci-failover disengage-cleanup` no longer aborts with SIGPIPE (141)** before removing the failover flag/shim: two `echo … | head -1` summary pipelines under `set -o pipefail` could 141-kill `echo` when `head` closed the pipe early, leaving failover half-torn-down; both now use a here-string.
 
 ### Deprecated
 
