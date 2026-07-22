@@ -564,7 +564,7 @@ class Symbol:
     name: str  # axis: free-text — language identifier from source; consumers display/store/lookup, never branch on the value itself.
     kind: str  # axis: symbol-kind
     language: Optional[str]  # axis: language
-    path: str  # axis: free-text — filesystem path; consumers display/sort/group, never branch on the value itself.
+    path: str  # axis: free-text — filesystem path; consumers display/sort/group, never branch on the value itself EXCEPT the documented "<external>" sentinel (ADR-0036 Ruling 3) — the no-file-anchor marker for external/boundary pseudo-symbols, whose module identity lives in the id path-slot + stable_id, NOT here (WI-kapul: by-design; path is the filesystem axis, the id path-slot is the module-identity axis).
     span: Span
     origin: str | List[str] = field(default_factory=list)  # axis: pass-id
     origin_run_id: str = ""  # axis: identity

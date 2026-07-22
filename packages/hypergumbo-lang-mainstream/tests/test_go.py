@@ -8320,3 +8320,34 @@ class TestGoDotImportCall:
         ]
         assert len(dot) == 1, [e.dst for e in result.edges if "Contains" in e.dst]
         assert "strings" in dot[0].dst
+
+
+def test_interface_method_declarations_carry_stable_id(tmp_path: Path) -> None:
+    """WI-vibad: interface-method declarations (kind="method") carry a typed
+    producer stable_id. They were None — deliberately excluded from the
+    WI-rihob name-scoped backstop, so the producer must mint the typed id
+    (signature-bearing, so same-named methods across interfaces stay distinct).
+    """
+    from hypergumbo_lang_mainstream.go import analyze_go
+
+    (tmp_path / "iface.go").write_text(
+        "package main\n"
+        "\n"
+        "type Drawer interface {\n"
+        "    Draw(x int, y int) error\n"
+        "    Bounds() (int, int)\n"
+        "}\n"
+    )
+    result = analyze_go(tmp_path)
+    iface_methods = [
+        s for s in result.symbols
+        if s.kind == "method" and s.name.startswith("Drawer.")
+    ]
+    assert len(iface_methods) == 2, [s.name for s in iface_methods]
+    for s in iface_methods:
+        assert (
+            s.stable_id is not None and s.stable_id.startswith("sha256:")
+        ), f"{s.name} has stable_id={s.stable_id!r}"
+    # Distinct methods -> distinct stable_ids.
+    ids = {s.stable_id for s in iface_methods}
+    assert len(ids) == 2

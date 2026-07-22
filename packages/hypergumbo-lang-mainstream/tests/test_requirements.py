@@ -226,7 +226,10 @@ git+https://github.com/user/repo.git@main
         result = analyze_requirements(tmp_path)
         req = next((s for s in result.symbols if s.kind == "requirement"), None)
         assert req is not None
-        assert req.id == req.stable_id
+        # WI-banod: stable_id is now the canonical sha256:<16hex> (not the
+        # composite node.id); node.id remains the location key.
+        assert req.stable_id.startswith("sha256:")
+        assert req.id != req.stable_id
         assert "requirements:" in req.id
         assert "requirements.txt" in req.id
 

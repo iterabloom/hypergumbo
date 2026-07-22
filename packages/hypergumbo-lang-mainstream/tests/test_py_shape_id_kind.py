@@ -127,3 +127,60 @@ def test_two_async_functions_same_body_same_shape(tmp_path: Path) -> None:
     first = _by(result, "function", "first")
     second = _by(result, "function", "second")
     assert first.shape_id == second.shape_id
+
+
+# WI-luzut: variable- and field-kind symbols must also carry a structural
+# shape_id (they were shape_id=None because _compute_shape_id required a
+# body-bearing FunctionDef/ClassDef node).
+
+
+def test_variable_symbols_carry_shape_id(tmp_path: Path) -> None:
+    (tmp_path / "m.py").write_text(
+        "CONST = 5\n"
+        "COMPUTED = make_thing(1, 2)\n"
+    )
+    result = analyze_python(tmp_path)
+    const = _by(result, "variable", "CONST")
+    computed = _by(result, "variable", "COMPUTED")
+    assert const.shape_id is not None and const.shape_id.startswith("sha256:")
+    assert computed.shape_id is not None and computed.shape_id.startswith("sha256:")
+    # Distinct assignment shapes (Constant vs Call) -> distinct shape_ids.
+    assert const.shape_id != computed.shape_id
+
+
+def test_same_shape_variables_share_shape_id(tmp_path: Path) -> None:
+    (tmp_path / "m.py").write_text(
+        "A = compute(x)\n"
+        "B = compute(y)\n"
+    )
+    result = analyze_python(tmp_path)
+    assert (
+        _by(result, "variable", "A").shape_id
+        == _by(result, "variable", "B").shape_id
+    )
+
+
+def test_field_symbols_carry_shape_id(tmp_path: Path) -> None:
+    (tmp_path / "m.py").write_text(
+        "class C:\n"
+        "    x = 5\n"
+        "    y: int = 0\n"
+    )
+    result = analyze_python(tmp_path)
+    fx = _by(result, "field", "C.x")
+    assert fx.shape_id is not None and fx.shape_id.startswith("sha256:")
+
+
+def test_variable_and_field_shape_id_differ_by_kind(tmp_path: Path) -> None:
+    (tmp_path / "m.py").write_text(
+        "V = 7\n"
+        "class C:\n"
+        "    V = 7\n"
+    )
+    result = analyze_python(tmp_path)
+    var = _by(result, "variable", "V")
+    fld = _by(result, "field", "C.V")
+    assert var.shape_id is not None and fld.shape_id is not None
+    # kind is folded into the hash (WI-linon), so same assignment shape but
+    # different kind -> different shape_id.
+    assert var.shape_id != fld.shape_id

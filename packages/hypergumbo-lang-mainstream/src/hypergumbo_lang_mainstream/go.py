@@ -279,7 +279,12 @@ def _extract_go_signature(
         node: A tree-sitter function_declaration or method_declaration node.
         source: Source bytes of the file.
     """
-    if node.type not in ("function_declaration", "method_declaration"):
+    if node.type not in (
+        "function_declaration",
+        "method_declaration",
+        "method_elem",  # WI-vibad: interface-method specs also carry a
+                        # "parameters"/"result" field (see _count_go_method_arity)
+    ):
         return None  # pragma: no cover
 
     params_node = find_child_by_field(node, "parameters")
@@ -1242,6 +1247,30 @@ def _extract_symbols_from_file(
                                 m_start = iface_child.start_point[0] + 1
                                 m_end = iface_child.end_point[0] + 1
                                 m_modifiers = _go_visibility_modifiers(qualified)
+                                # WI-vibad: interface-method declarations are
+                                # kind="method", which is excluded from the
+                                # WI-rihob name-scoped backstop (overloads/
+                                # cross-interface same-name methods would
+                                # collide), so mint the typed producer stable_id
+                                # here exactly as the concrete-method site does.
+                                # method_elem always carries a "parameters"
+                                # field, so the signature is a real "(...)"
+                                # string; the typed id also folds name +
+                                # qualified_name, keeping same-named methods
+                                # across interfaces distinct.
+                                _m_norm_sig = normalize_go_signature(
+                                    _extract_go_signature(iface_child, source)
+                                )
+                                m_stable_id = make_typed_stable_id(
+                                    "method",
+                                    _m_norm_sig,
+                                    visibility_from_modifiers(m_modifiers),
+                                    name=mname,
+                                    qualified_name=_make_go_qualified_name(
+                                        package_name, type_name, mname
+                                    ),
+                                    file_stable_id=file_stable_id,
+                                )
                                 m_sym = Symbol(
                                     id=make_symbol_id(
                                         "go", str(file_path),
@@ -1261,6 +1290,7 @@ def _extract_symbols_from_file(
                                     origin_run_id=run.execution_id,
                                     modifiers=m_modifiers,
                                     line_span=1,
+                                    stable_id=m_stable_id,
                                     shape_id=_analyzer.compute_shape_id(iface_child),
                                     is_exported=bool(mname) and mname[0].isupper(),
                                     qualified_name=_make_go_qualified_name(package_name, type_name, mname),

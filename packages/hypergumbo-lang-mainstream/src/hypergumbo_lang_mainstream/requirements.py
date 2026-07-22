@@ -46,6 +46,7 @@ from hypergumbo_core.analyze.base import (
     FileAnalysis,
     TreeSitterAnalyzer,
     iter_tree,
+    make_doc_stable_id,
     node_text,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
@@ -200,7 +201,14 @@ class RequirementsAnalyzer(TreeSitterAnalyzer):
 
         symbol = Symbol(
             id=symbol_id,
-            stable_id=symbol_id,
+            # WI-banod: canonical sha256:<16hex> stable_id via the shared doc
+            # factory (node.id stays the composite key). The span fold also
+            # distinguishes same-named requirements on different lines, which
+            # the line-less composite id could not.
+            stable_id=make_doc_stable_id(
+                "requirements", str(rel_path), "requirement", package_name,
+                span.start_line, span.end_line,
+            ),
             name=package_name,
             kind="requirement",
             language="requirements",
@@ -275,7 +283,12 @@ class RequirementsAnalyzer(TreeSitterAnalyzer):
 
         symbol = Symbol(
             id=symbol_id,
-            stable_id=symbol_id,
+            # WI-banod: canonical sha256:<16hex> stable_id via the shared doc factory.
+            stable_id=make_doc_stable_id(
+                "requirements", str(rel_path), "requirement",
+                package_name or url_text[:40],
+                span.start_line, span.end_line,
+            ),
             name=package_name or url_text[:40],
             kind="requirement",
             language="requirements",
@@ -355,7 +368,11 @@ class RequirementsAnalyzer(TreeSitterAnalyzer):
 
             symbol = Symbol(
                 id=symbol_id,
-                stable_id=symbol_id,
+                # WI-banod: canonical sha256:<16hex> stable_id via the shared doc factory.
+                stable_id=make_doc_stable_id(
+                    "requirements", str(rel_path), "requirement", option_path,
+                    span.start_line, span.end_line,
+                ),
                 name=option_path,
                 kind="requirement",
                 language="requirements",

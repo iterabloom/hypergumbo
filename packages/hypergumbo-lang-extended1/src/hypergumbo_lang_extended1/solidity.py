@@ -69,6 +69,14 @@ if TYPE_CHECKING:
 
 PASS_ID = make_pass_id("solidity")
 
+# WI-vibad: callable kinds that mint their own typed stable_id at the producer
+# (rather than via the WI-rihob name-scoped backstop, which would collide on
+# overloads). Container kinds (contract / interface / library) are NOT here —
+# they get their stable_id from the backstop.
+_CALLABLE_STABLE_ID_KINDS: frozenset[str] = frozenset(
+    {"function", "constructor", "modifier", "event"}
+)
+
 
 def find_solidity_files(repo_root: Path) -> Iterator[Path]:
     """Yield all Solidity files in the repository."""
@@ -273,6 +281,28 @@ def _extract_symbols_from_tree(
         end_line = node.end_point[0] + 1
         full_name = f"{prefix}.{name}" if prefix else name
 
+        # WI-vibad: callable-kind declarations (function / constructor / modifier
+        # / event) are deliberately excluded from the WI-rihob name-scoped
+        # backstop (``_KIND_STABLE_ID_FACTORIES``) because a name-only key
+        # collides on overloads (two ``Token.mint(...)`` bind to one id). They
+        # must carry the typed producer stable_id — the signature keeps overloads
+        # distinct — exactly as the field path (``add_value_symbol``) already
+        # does. Container kinds (contract / interface / library) leave
+        # ``stable_id=None`` here and receive it from the backstop.
+        callable_stable_id: Optional[str] = None
+        if kind in _CALLABLE_STABLE_ID_KINDS:
+            # _extract_solidity_signature always returns a "(...)" string, so
+            # the fallback is a real signature, never empty.
+            norm_sig = signature or _extract_solidity_signature(node, source)
+            callable_stable_id = make_typed_stable_id(
+                kind,
+                norm_sig,
+                visibility_from_modifiers(modifiers),
+                name=name,
+                qualified_name=full_name,
+                file_stable_id=file_stable_id,
+            )
+
         symbol = Symbol(
             id=make_symbol_id("solidity", file_path, start_line, end_line, full_name, kind),
             name=full_name,
@@ -287,6 +317,7 @@ def _extract_symbols_from_tree(
             ),
             origin=PASS_ID,
             origin_run_id=run_id,
+            stable_id=callable_stable_id,
             signature=signature,
             modifiers=modifiers or [],
             cyclomatic_complexity=(

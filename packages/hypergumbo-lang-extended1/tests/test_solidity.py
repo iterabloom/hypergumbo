@@ -1648,3 +1648,49 @@ contract A {
         assert not any(e.dst in field_ids for e in calls)
         # the real function->function call still resolves
         assert any("helper" in e.dst for e in calls)
+
+
+# WI-vibad: callable-kind declarations (function / constructor / modifier /
+# event) must carry a typed producer stable_id. They are deliberately excluded
+# from the name-scoped WI-rihob backstop because a name-only key collides on
+# overloads, so the producer must mint the signature-bearing typed id.
+
+
+def test_callable_kinds_carry_stable_id(tmp_path: Path) -> None:
+    (tmp_path / "Token.sol").write_text(
+        "// SPDX-License-Identifier: MIT\n"
+        "pragma solidity ^0.8.0;\n"
+        "contract Token {\n"
+        "    event Transfer(address indexed from, address indexed to, uint256 value);\n"
+        "    constructor(uint256 supply) {}\n"
+        "    modifier onlyOwner() { _; }\n"
+        "    function mint(address to) public {}\n"
+        "}\n"
+    )
+    result = analyze_solidity(tmp_path)
+    for kind in ("function", "constructor", "modifier", "event"):
+        syms = [s for s in result.symbols if s.kind == kind]
+        assert syms, f"no {kind} symbols emitted"
+        for s in syms:
+            assert (
+                s.stable_id is not None and s.stable_id.startswith("sha256:")
+            ), f"{kind} {s.name} has stable_id={s.stable_id!r}"
+
+
+def test_function_overloads_get_distinct_stable_ids(tmp_path: Path) -> None:
+    (tmp_path / "Token.sol").write_text(
+        "// SPDX-License-Identifier: MIT\n"
+        "pragma solidity ^0.8.0;\n"
+        "contract Token {\n"
+        "    function mint(address to) public {}\n"
+        "    function mint(address to, uint256 amount) public {}\n"
+        "}\n"
+    )
+    result = analyze_solidity(tmp_path)
+    mints = [
+        s for s in result.symbols
+        if s.kind == "function" and s.name.endswith("mint")
+    ]
+    assert len(mints) == 2
+    assert mints[0].stable_id is not None
+    assert mints[0].stable_id != mints[1].stable_id

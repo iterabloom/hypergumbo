@@ -285,6 +285,7 @@ def _emit_module_level_assign_symbols(
                     span=span,
                     origin="",
                     origin_run_id="",
+                    shape_id=_compute_value_shape_id(node, "variable"),
                     modifiers=_python_visibility_modifiers(tgt.id),
                     is_exported=_is_python_top_level_exported(tgt.id, module_all),
                 )
@@ -1751,6 +1752,27 @@ def _compute_shape_id(
     return f"sha256:{hash_val}"
 
 
+def _compute_value_shape_id(node: ast.AST, kind: str) -> str:
+    """Compute shape_id for a body-less value symbol — variable or field (WI-luzut).
+
+    ``_compute_shape_id`` hashes a node's ``.body`` (control-flow skeleton), but
+    a module-level assignment or a class attribute has no body; it previously
+    fell through to ``shape_id=None``. Its structural shape is the whole
+    assignment statement's AST skeleton with identifiers and literals stripped
+    (exactly what :func:`_ast_structure` produces), so ``X = 5``
+    (``…Constant``), ``X = foo(a)`` (``…Call``), and ``X: int = compute()``
+    (``AnnAssign``) get distinct shape_ids. The symbol ``kind``
+    (``variable`` / ``field``) is folded into the hashed prefix on the same
+    WI-linon discipline as callables, so a module variable and a class field
+    with an identical assignment shape do not collide. Two same-shape
+    assignments still share a shape_id — the structural-clone signal
+    ``shape_id`` exists to provide (WI-vogij; spec §337/§342).
+    """
+    structure = f"{kind}:{_ast_structure(node)}"
+    hash_val = hashlib.sha256(structure.encode()).hexdigest()[:16]
+    return f"sha256:{hash_val}"
+
+
 PASS_ID = make_pass_id("python")
 
 
@@ -2700,6 +2722,7 @@ def _extract_file_analysis(
                         ),
                         origin="",
                         origin_run_id="",
+                        shape_id=_compute_value_shape_id(member, "field"),
                         stable_id=assemble_stable_id(
                             "field", 0, "", "",
                             symbol.stable_id or "", attr, attr_qualified, 0,
