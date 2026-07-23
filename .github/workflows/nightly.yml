@@ -6,8 +6,9 @@ name: Nightly Tests
 # when the release SHA was already covered by nightly.
 
 on:
-  schedule:
-    - cron: '30 5 * * *'  # 5:30 AM UTC daily
+  # schedule disabled during forge migration (Codeberg→GitHub); re-enable on Woodpecker
+  # schedule:
+  #   - cron: '30 5 * * *'  # 5:30 AM UTC daily
   workflow_dispatch:
 
 concurrency:
