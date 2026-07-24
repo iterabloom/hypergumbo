@@ -58,6 +58,12 @@ detect_forge_backend() {
 resolve_forge_token() {
 	if [[ "${FAILOVER_ACTIVE:-false}" == "true" ]]; then
 		FORGE_TOKEN="${SELFHOSTED_FORGEJO_TOKEN:-${FORGEJO_TOKEN:-}}"
+	elif [[ "${FORGE_BACKEND:-forgejo}" == "github" ]]; then
+		# GitHub maintainer tooling uses a dedicated local PAT (HG_GITHUB_TOKEN,
+		# provisioned + documented in PR-D). Falls back to FORGEJO_TOKEN so an
+		# unset env stays dormant-safe rather than erroring while Codeberg is
+		# still origin.
+		FORGE_TOKEN="${HG_GITHUB_TOKEN:-${FORGEJO_TOKEN:-}}"
 	else
 		FORGE_TOKEN="${FORGEJO_TOKEN:-}"
 	fi

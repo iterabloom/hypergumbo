@@ -77,7 +77,13 @@ fi
 # ------------------------------------------------------------------
 # Fetch PRs
 # ------------------------------------------------------------------
-QUERY="sort=recentupdate&limit=50"
+# Pagination params diverge: Forgejo uses sort=recentupdate&limit; GitHub's
+# REST list uses sort=updated&direction=desc&per_page. Dormant github arm.
+if [[ "${FORGE_BACKEND:-forgejo}" == "github" ]]; then
+	QUERY="sort=updated&direction=desc&per_page=100"
+else
+	QUERY="sort=recentupdate&limit=50"
+fi
 if [[ -n "$STATE" ]]; then
 	QUERY="state=$STATE&$QUERY"
 fi
@@ -90,8 +96,10 @@ fi
 # ------------------------------------------------------------------
 # Format output
 # ------------------------------------------------------------------
-python3 -c "
-import sys, json
+FORGE_BACKEND="${FORGE_BACKEND:-forgejo}" python3 -c "
+import sys, json, os
+
+_backend = os.environ.get('FORGE_BACKEND', 'forgejo')
 
 try:
     data = json.load(sys.stdin)
@@ -107,7 +115,11 @@ for pr in data:
     num = pr.get('number', '?')
     title = pr.get('title', '(no title)')
     state = pr.get('state', '?')
-    merged = pr.get('merged', False)
+    # GitHub PR-list objects carry merged_at (no 'merged' bool); Forgejo the reverse.
+    if _backend == 'github':
+        merged = bool(pr.get('merged_at'))
+    else:
+        merged = pr.get('merged', False)
     branch = pr.get('head', {}).get('ref', '?')
     base = pr.get('base', {}).get('ref', '?')
     user = pr.get('user', {}).get('login', '?')
