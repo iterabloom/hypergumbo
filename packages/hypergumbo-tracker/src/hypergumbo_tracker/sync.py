@@ -301,6 +301,9 @@ class PreflightResult:
         forgejo_user: Forgejo username from environment.
         forgejo_token: Forgejo API token from environment.
         push_remote: Git remote to push to (``origin`` or ``selfh`` during failover).
+        backend: Forge backend, ``"forgejo"`` or ``"github"``, derived from the
+            resolved ``api_base`` (forced to ``"forgejo"`` while CI failover is
+            active).
     """
 
     ok: bool
@@ -313,6 +316,7 @@ class PreflightResult:
     forgejo_user: str = ""
     forgejo_token: str = ""
     push_remote: str = "origin"
+    backend: str = "forgejo"
 
 
 @dataclass
@@ -425,11 +429,25 @@ def _detect_failover(git_dir: Path, env_vars: dict[str, str]) -> _FailoverState:
     )
 
 
-def _detect_api_base(repo_root: Path) -> str:
-    """Extract Forgejo API base URL from git remote ``origin``.
+def _api_base_for(host: str, owner: str, repo: str) -> str:
+    """Build the REST API base for a forge host.
 
-    Parses the remote URL (HTTPS or SSH) and returns the API endpoint,
-    e.g. ``https://codeberg.org/api/v1/repos/iterabloom/hypergumbo``.
+    GitHub uses a dedicated ``api.github.com`` host with no ``/api/v1``
+    segment; Forgejo/Gitea (Codeberg, self-hosted) expose ``/api/v1/repos``
+    under the forge host itself.
+    """
+    if host == "github.com":
+        return f"https://api.github.com/repos/{owner}/{repo}"
+    return f"https://{host}/api/v1/repos/{owner}/{repo}"
+
+
+def _detect_api_base(repo_root: Path) -> str:
+    """Extract the REST API base URL from git remote ``origin``.
+
+    Parses the remote URL (HTTPS or SSH) and returns the API endpoint —
+    ``https://api.github.com/repos/{o}/{r}`` for a github.com origin, else the
+    Forgejo/Gitea form ``https://{host}/api/v1/repos/{o}/{r}`` (e.g.
+    ``https://codeberg.org/api/v1/repos/iterabloom/hypergumbo``).
 
     Returns empty string if the remote URL cannot be parsed.
     """
@@ -439,20 +457,18 @@ def _detect_api_base(repo_root: Path) -> str:
 
     url = result.stdout.strip()
 
-    # HTTPS: https://codeberg.org/owner/repo.git
+    # HTTPS: https://host/owner/repo.git
     # Also handles embedded credentials: https://user:token@host/...
     m = re.match(
         r"https?://(?:[^@/]+@)?([^/]+)/([^/]+)/([^/]+?)(?:\.git)?$", url
     )
     if m:
-        host, owner, repo = m.group(1), m.group(2), m.group(3)
-        return f"https://{host}/api/v1/repos/{owner}/{repo}"
+        return _api_base_for(m.group(1), m.group(2), m.group(3))
 
-    # SSH: git@codeberg.org:owner/repo.git
+    # SSH: git@host:owner/repo.git
     m = re.match(r"git@([^:]+):([^/]+)/([^/]+?)(?:\.git)?$", url)
     if m:
-        host, owner, repo = m.group(1), m.group(2), m.group(3)
-        return f"https://{host}/api/v1/repos/{owner}/{repo}"
+        return _api_base_for(m.group(1), m.group(2), m.group(3))
 
     return ""
 
@@ -513,7 +529,13 @@ def _api_call(
     req = Request(url, data=body, method=method)  # noqa: S310  # nosec B310
     req.add_header("Authorization", f"token {token}")
     req.add_header("Content-Type", "application/json")
-    req.add_header("Accept", "application/json")
+    # GitHub's REST API wants an explicit Accept + pinned API version; Forgejo
+    # uses plain JSON.  ``token <PAT>`` auth works on both forges.
+    if "api.github.com" in url:
+        req.add_header("Accept", "application/vnd.github+json")
+        req.add_header("X-GitHub-Api-Version", "2022-11-28")
+    else:
+        req.add_header("Accept", "application/json")
 
     try:
         with urlopen(req, timeout=timeout) as resp:  # noqa: S310  # nosec B310
@@ -1220,6 +1242,14 @@ def preflight_check(repo_root: Path) -> PreflightResult:
             error="could not parse Forgejo API URL from origin remote",
         )
 
+    # Forge backend follows the resolved api_base (i.e. the origin host);
+    # failover always targets the self-hosted Forgejo regardless of origin.
+    backend = (
+        "github"
+        if not failover.active and "api.github.com" in api_base
+        else "forgejo"
+    )
+
     return PreflightResult(
         ok=True,
         repo_root=repo_root,
@@ -1230,6 +1260,7 @@ def preflight_check(repo_root: Path) -> PreflightResult:
         forgejo_user=forgejo_user,
         forgejo_token=forgejo_token,
         push_remote=push_remote,
+        backend=backend,
     )
 
 
@@ -1475,6 +1506,7 @@ def do_sync(
                 head_sha,
                 poll_interval=ci_poll_interval,
                 timeout=ci_timeout,
+                backend=preflight.backend,
             )
             if ci_result != "stale_pending":
                 break

@@ -448,6 +448,26 @@ class TestDetectApiBase:
         result = _detect_api_base(tmp_path)
         assert result == ""
 
+    @patch("hypergumbo_tracker.sync._git")
+    def test_github_https_url(
+        self, mock_git: MagicMock, tmp_path: Path
+    ) -> None:
+        mock_git.return_value = _make_completed_process(
+            stdout="https://github.com/iterabloom/hypergumbo.git\n"
+        )
+        result = _detect_api_base(tmp_path)
+        assert result == "https://api.github.com/repos/iterabloom/hypergumbo"
+
+    @patch("hypergumbo_tracker.sync._git")
+    def test_github_ssh_url(
+        self, mock_git: MagicMock, tmp_path: Path
+    ) -> None:
+        mock_git.return_value = _make_completed_process(
+            stdout="git@github.com:iterabloom/hypergumbo.git\n"
+        )
+        result = _detect_api_base(tmp_path)
+        assert result == "https://api.github.com/repos/iterabloom/hypergumbo"
+
 
 # ---------------------------------------------------------------------------
 # TestApiCall
@@ -583,6 +603,19 @@ class TestApiCall:
         )
         assert status == 204
         assert body is None
+
+    @patch("hypergumbo_tracker.sync.urlopen")
+    def test_github_url_sets_github_headers(
+        self, mock_urlopen: MagicMock
+    ) -> None:
+        """GitHub API calls carry the vnd.github Accept + pinned API version."""
+        mock_urlopen.return_value = _make_urlopen_response({"ok": True}, 200)
+        _api_call("GET", "https://api.github.com/repos/o/r/pulls/1", "tok")
+        req = mock_urlopen.call_args[0][0]
+        headers = {k.lower(): v for k, v in req.header_items()}
+        assert headers["authorization"] == "token tok"
+        assert headers["accept"] == "application/vnd.github+json"
+        assert headers["x-github-api-version"] == "2022-11-28"
 
 
 # ---------------------------------------------------------------------------
@@ -1642,6 +1675,41 @@ class TestPreflightCheck:
         assert len(result.changed_files) == 1
         assert result.forgejo_token == "tok"
         assert result.forgejo_user == "user"
+        assert result.backend == "forgejo"
+
+    @patch("hypergumbo_tracker.sync._git")
+    @patch("hypergumbo_tracker.sync._load_env")
+    @patch("hypergumbo_tracker.sync._detect_api_base")
+    def test_backend_github_for_github_origin(
+        self,
+        mock_api_base: MagicMock,
+        mock_env: MagicMock,
+        mock_git: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        """A github.com origin yields backend='github' on the preflight."""
+        git_dir = tmp_path / ".git"
+        git_dir.mkdir()
+        mock_env.return_value = {"FORGEJO_TOKEN": "tok", "FORGEJO_USER": "u"}
+        mock_api_base.return_value = (
+            "https://api.github.com/repos/iterabloom/hypergumbo"
+        )
+        mock_git.side_effect = [
+            _make_completed_process(stdout=str(git_dir)),  # rev-parse
+            _make_completed_process(stdout="dev\n"),  # branch
+            _make_completed_process(stdout=""),  # diff --cached
+            _make_completed_process(
+                stdout=" M .agent/tracker/.ops/.WI-test.ops\n"
+            ),  # status
+            _make_completed_process(stdout="Test User\n"),  # user.name
+            _make_completed_process(stdout="test@test.com\n"),  # user.email
+            _make_completed_process(
+                stdout="https://github.com/iterabloom/hypergumbo.git\n"
+            ),  # remote
+        ]
+        result = preflight_check(tmp_path)
+        assert result.ok
+        assert result.backend == "github"
 
     @patch("hypergumbo_tracker.sync._git")
     @patch("hypergumbo_tracker.sync._load_env")
@@ -2148,6 +2216,38 @@ class TestDoSync:
             assert "--ignore-removal" in c[0], (
                 f"staging add must use --ignore-removal (INV-lovih); got {c[0]}"
             )
+
+    @patch("hypergumbo_tracker.sync.time")
+    @patch("hypergumbo_tracker.sync._merge_pr")
+    @patch("hypergumbo_tracker.sync._poll_ci")
+    @patch("hypergumbo_tracker.sync._find_open_pr")
+    @patch("hypergumbo_tracker.sync._git")
+    def test_poll_ci_receives_preflight_backend(
+        self,
+        mock_git: MagicMock,
+        mock_find_pr: MagicMock,
+        mock_poll: MagicMock,
+        mock_merge: MagicMock,
+        mock_time: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        """do_sync threads preflight.backend into _poll_ci (wires PR-A's fix)."""
+        mock_time.strftime.return_value = "20260218-120000"
+        mock_time.sleep = MagicMock()
+        pre = _make_preflight(tmp_path, backend="github")
+        mock_git.side_effect = [
+            *self._plumbing_setup(),
+            _make_completed_process(),  # push
+            *self._rebase_check_no_diverge(),
+            *self._cleanup(),
+        ]
+        mock_find_pr.return_value = (42, "sha123")
+        mock_poll.return_value = "success"
+        mock_merge.return_value = True
+
+        do_sync(repo_root=tmp_path, preflight=pre)
+
+        assert mock_poll.call_args.kwargs["backend"] == "github"
 
     @patch("hypergumbo_tracker.sync.time")
     @patch("hypergumbo_tracker.sync._merge_pr")
