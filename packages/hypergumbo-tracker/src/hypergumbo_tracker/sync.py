@@ -604,6 +604,46 @@ def _find_open_pr(
     return None
 
 
+def _create_pr(
+    api_base: str,
+    token: str,
+    *,
+    head: str,
+    base: str,
+    title: str,
+    body: str = "",
+) -> tuple[int, str] | None:
+    """Create a pull request via ``POST /pulls`` (the GitHub write path).
+
+    Forgejo's AGit flow (``git push … refs/for/…``) opens the PR server-side,
+    so the forgejo path never calls this — it discovers the PR with
+    :func:`_find_open_pr`.  GitHub has no AGit equivalent: after a normal
+    branch push the PR must be opened explicitly.
+
+    ``POST /pulls`` returns ``201`` carrying the new PR's number and head SHA
+    (the head SHA equals the commit just pushed, so no poll-for-PR is needed).
+    On an idempotent retry the same head/base pair returns ``422`` ("A pull
+    request already exists") — fall back to :func:`_find_open_pr`, which
+    resolves because GitHub keys ``head.ref`` by the real branch name.  Any
+    other status is a failure.
+
+    Returns:
+        ``(pr_number, head_sha)`` on success, else ``None``.
+    """
+    status, resp = _api_call(
+        "POST",
+        f"{api_base}/pulls",
+        token,
+        data={"title": title, "head": head, "base": base, "body": body},
+    )
+    if status == 201 and isinstance(resp, dict):
+        head_obj = resp.get("head") or {}
+        return (resp["number"], head_obj.get("sha", ""))
+    if status == 422:
+        return _find_open_pr(api_base, token, head, title=title)
+    return None
+
+
 def _elem_state(s: dict[str, Any]) -> str | None:
     """Return a commit-status element's state, tolerating both forge shapes.
 
@@ -734,6 +774,23 @@ def _close_pr(api_base: str, token: str, pr_num: int) -> bool:
     return status == 200
 
 
+def _delete_remote_branch(api_base: str, token: str, branch: str) -> bool:
+    """Delete a remote branch via GitHub's git-refs API (best-effort).
+
+    GitHub's normal-branch PR flow leaves the head branch on the server after
+    merge; the AGit flow never created one.  Deleting it keeps the scoped
+    Lamport branch set small (parity with AGit).  ``DELETE
+    /git/refs/heads/{branch}`` returns ``204``; an already-gone branch returns
+    ``422``.  Non-fatal — the caller ignores the result.
+    """
+    status, _ = _api_call(
+        "DELETE",
+        f"{api_base}/git/refs/heads/{branch}",
+        token,
+    )
+    return status == 204
+
+
 def _check_pr_merged(
     api_base: str, token: str, pr_num: int
 ) -> bool:
@@ -754,37 +811,52 @@ def _merge_pr(
     api_base: str,
     token: str,
     pr_num: int,
+    backend: str = "forgejo",
 ) -> bool:
     """Merge a PR, cascading through merge strategies.
 
-    Tries fast-forward-only first (cleanest history), then rebase
-    (preserves commit identity), then merge commit (always works).
-    AGit-flow PRs (created via ``refs/for/``) lack a real branch,
-    which causes Forgejo's fast-forward merge to silently fail
-    (HTTP 200 but ``merged: false``).
+    Forgejo (AGit) path: ``POST /pulls/{n}/merge`` with ``{"Do": …}``,
+    cascading fast-forward-only → rebase → merge-commit.  A ``204`` (or a
+    ``200`` verified via GET) means merged.  AGit-flow PRs lack a real branch,
+    so Forgejo's fast-forward silently no-ops (``200`` with ``merged: false``)
+    — hence the follow-up GET verification.
 
-    After each attempt, verifies the PR is actually merged before
-    declaring success.
+    GitHub path: ``PUT /pulls/{n}/merge`` with ``{"merge_method": …}``,
+    cascading rebase → merge-commit.  Rebase reproduces the ff-first linear
+    intent (the sync commit is built on ``origin/dev``'s tip, so it is normally
+    already a fast-forward); success is a ``200`` carrying ``{"merged": true}``.
+
+    After each attempt, verifies the PR is actually merged before declaring
+    success.  ``405``/``409`` (blocked/conflict) may just mean already-merged
+    (idempotent) — checked before falling through.
 
     Args:
-        api_base: Forgejo API base URL.
+        api_base: Forge REST API base URL.
         token: API bearer token.
         pr_num: Pull request number.
+        backend: Forge backend, ``"forgejo"`` or ``"github"``.
 
     Returns:
         True if merge succeeded or PR was already merged.
     """
     merge_url = f"{api_base}/pulls/{pr_num}/merge"
 
-    strategies = [
-        ("fast-forward-only", "fast-forward"),
-        ("rebase", "rebase"),
-        ("merge", "merge commit"),
-    ]
+    if backend == "github":
+        method = "PUT"
+        data_key = "merge_method"
+        strategies = [("rebase", "rebase"), ("merge", "merge commit")]
+    else:
+        method = "POST"
+        data_key = "Do"
+        strategies = [
+            ("fast-forward-only", "fast-forward"),
+            ("rebase", "rebase"),
+            ("merge", "merge commit"),
+        ]
 
     for do_value, label in strategies:
         status, body = _api_call(
-            "POST", merge_url, token, data={"Do": do_value},
+            method, merge_url, token, data={data_key: do_value},
         )
 
         if status == 204:
@@ -792,9 +864,13 @@ def _merge_pr(
             return True
 
         if status == 200:
-            # Forgejo sometimes returns 200 with the PR object
-            # without actually merging (especially for AGit-flow PRs
-            # with fast-forward-only).  Verify before declaring success.
+            # GitHub returns 200 with ``{"merged": true}`` on success.  Forgejo
+            # sometimes returns 200 with the PR object WITHOUT merging (AGit
+            # fast-forward-only), so a 200 lacking an explicit ``merged: true``
+            # is verified with a follow-up GET before it is trusted.
+            if isinstance(body, dict) and body.get("merged"):
+                _log(f"merged via {label}")
+                return True
             if _check_pr_merged(api_base, token, pr_num):
                 _log(f"merged via {label}")
                 return True
@@ -1444,9 +1520,22 @@ def do_sync(
 
         # 8. (Gate file already created at step 0a.)
 
-        # 9. Push with retries
-        push_ref = f"refs/heads/{sync_branch}:refs/for/{base_branch}/{sync_branch}"
+        # 9. Push with retries.  The GitHub write path pushes a normal branch
+        #    (``refs/heads/…:refs/heads/…``) with no push options; Forgejo's
+        #    AGit flow pushes to ``refs/for/…`` and passes the PR title +
+        #    description as ``-o`` options (the AGit server opens the PR).
         push_title = sync_title
+        if preflight.backend == "github":
+            push_ref = f"refs/heads/{sync_branch}:refs/heads/{sync_branch}"
+            push_opts: list[str] = []
+        else:
+            push_ref = (
+                f"refs/heads/{sync_branch}:refs/for/{base_branch}/{sync_branch}"
+            )
+            push_opts = [
+                "-o", f"title={push_title}",
+                "-o", "description=Automated tracker data sync",
+            ]
         push_success = False
         cred_helper = (
             f"!f() {{ echo username={preflight.forgejo_user}; "
@@ -1458,8 +1547,7 @@ def do_sync(
                 repo_root,
                 "-c", f"credential.helper={cred_helper}",
                 "push", preflight.push_remote, push_ref,
-                "-o", f"title={push_title}",
-                "-o", "description=Automated tracker data sync",
+                *push_opts,
                 check=False,
             )
             if push_result.returncode == 0:
@@ -1475,14 +1563,27 @@ def do_sync(
                 exit_code=1,
             )
 
-        # 10. Find PR (with brief initial delay)
-        time.sleep(2)
-        pr_info = _find_open_pr(
-            preflight.api_base,
-            preflight.forgejo_token,
-            sync_branch,
-            title=push_title,
-        )
+        # 10. Open the PR.  GitHub: create it explicitly (POST /pulls) — the
+        #     201 response carries the number + head SHA directly (head_sha ==
+        #     the commit we just built, so no poll-for-PR is needed).  Forgejo:
+        #     the AGit push already opened it; discover it after a brief delay.
+        if preflight.backend == "github":
+            pr_info = _create_pr(
+                preflight.api_base,
+                preflight.forgejo_token,
+                head=sync_branch,
+                base=base_branch,
+                title=push_title,
+                body="Automated tracker data sync",
+            )
+        else:
+            time.sleep(2)
+            pr_info = _find_open_pr(
+                preflight.api_base,
+                preflight.forgejo_token,
+                sync_branch,
+                title=push_title,
+            )
         if pr_info is None:
             return SyncResult(
                 success=False,
@@ -1520,13 +1621,17 @@ def do_sync(
             )
             _close_pr(preflight.api_base, preflight.forgejo_token, pr_num)
             time.sleep(wait_secs)
-            # Repush (force) to trigger a new CI run on a fresh PR
+            # Repush (force) to trigger a new CI run on a fresh PR.  This
+            # stale-pending retry only runs on the Forgejo backend — GitHub
+            # posts one long-lived ``pending`` commit-status, so ``_poll_ci``
+            # never returns ``"stale_pending"`` there (see PR-A) and this loop
+            # body is inert.  ``push_opts`` therefore carries the AGit ``-o``
+            # options here.
             push_result = _git(
                 repo_root,
                 "-c", f"credential.helper={cred_helper}",
                 "push", preflight.push_remote, push_ref,
-                "-o", f"title={push_title}",
-                "-o", "description=Automated tracker data sync",
+                *push_opts,
                 check=False,
             )
             if push_result.returncode != 0:  # pragma: no cover
@@ -1650,10 +1755,16 @@ def do_sync(
         slug_match = re.search(r"/repos/(.+)$", preflight.api_base)
         repo_slug = slug_match.group(1) if slug_match else ""
 
+        # The 6-attempt loop also absorbs GitHub's async ``mergeable``
+        # computation (C10): a merge attempted while ``mergeable`` is still
+        # null returns 405, which _merge_pr reports as "not merged" and this
+        # loop retries — treating null as "unknown, retry" rather than
+        # "not mergeable".
         merged = False
         for merge_attempt in range(1, 7):
             merged = _merge_pr(
-                preflight.api_base, preflight.forgejo_token, pr_num
+                preflight.api_base, preflight.forgejo_token, pr_num,
+                backend=preflight.backend,
             )
             if merged:
                 break
@@ -1674,10 +1785,26 @@ def do_sync(
 
         merge_succeeded = True
 
-        # Construct PR URL
-        base_url_match = re.match(r"(https?://[^/]+)/", preflight.api_base)
-        base_url = base_url_match.group(1) if base_url_match else "https://codeberg.org"
-        pr_url = f"{base_url}/{repo_slug}/pulls/{pr_num}"
+        # GitHub leaves the head branch on the server after merge (AGit never
+        # created one); delete it to keep the scoped Lamport branch set small.
+        if preflight.backend == "github":
+            _delete_remote_branch(
+                preflight.api_base, preflight.forgejo_token, sync_branch
+            )
+
+        # Construct the human-facing PR URL.  GitHub's web PR path is singular
+        # (``/pull/N``) under github.com — NOT the api.github.com host embedded
+        # in api_base; Forgejo/Gitea use ``/pulls/N`` under the forge host.
+        if preflight.backend == "github":
+            pr_url = f"https://github.com/{repo_slug}/pull/{pr_num}"
+        else:
+            base_url_match = re.match(r"(https?://[^/]+)/", preflight.api_base)
+            base_url = (
+                base_url_match.group(1)
+                if base_url_match
+                else "https://codeberg.org"
+            )
+            pr_url = f"{base_url}/{repo_slug}/pulls/{pr_num}"
 
         return SyncResult(
             success=True,
@@ -1706,27 +1833,44 @@ def do_sync(
             check=False,
         )
 
-        # If we're sitting on the base branch itself, fast-forward it
-        # to origin/dev so the synced ops files become tracked.  Without
-        # this, the ops files remain "untracked" in the working tree and
-        # pending_sync_lines() counts them again on the next call,
-        # causing the pending-line count to grow by ~22 per sync cycle.
-        # Fast-forward-only is safe: we haven't made local commits on
-        # the base branch (the plumbing approach commits to a detached
-        # sync branch), so ff-only either succeeds or is a no-op.
+        # If we're sitting on the base branch itself, fast-forward it to
+        # origin/dev so the synced ops files become tracked.  Without this the
+        # ops files remain "untracked" in the working tree and
+        # pending_sync_lines() counts them again on the next call, growing the
+        # pending-line count by ~22 per sync cycle.
+        #
+        # ff-only is correct on BOTH backends, INCLUDING GitHub's rebase-merge.
+        # It fast-forwards local dev onto origin/dev, and origin/dev is always a
+        # DESCENDANT of local dev: local dev sits at ``base`` (the plumbing
+        # approach commits only to a detached sync branch — do_sync never moves
+        # the base branch ref), and the merge — whether GitHub's rebase or
+        # Forgejo's (which ALSO rebases these PRs: its ff-only silently no-ops
+        # on the branchless AGit PR and _merge_pr falls through to rebase) —
+        # replays the sync commit onto origin/dev's tip, which itself descends
+        # from ``base``.  So the merge rewriting the sync-commit SHA is
+        # irrelevant here (the earlier "reset --hard for github" plan misread
+        # this as a sibling/divergence): base → origin/dev is a fast-forward on
+        # both forges.  ff-only is also the SAFE choice — it aborts non-
+        # destructively on genuine divergence (e.g. real local commits on dev),
+        # whereas ``reset --hard`` would silently discard both those commits and
+        # any unstaged edit to a tracked NON-ops file (preflight only rejects
+        # STAGED non-tracker files), which the ops-only INV-dalup snapshot does
+        # not restore.
+        #
+        # Both are safe IFF the synced PR actually merged — that's the only
+        # state where origin/dev contains the ops content this overwrites
+        # locally with.  When sync failed (``merge_succeeded`` is False) the
+        # ``checkout HEAD --`` reset and the untracked ``unlink`` would silently
+        # wipe local-only mutations that never made it to remote (WI-lufal).
         #
         # The synced ops files may be in one of two states:
-        # - **Untracked** (new items): must be removed before merge,
-        #   otherwise git refuses to overwrite them.
-        # - **Modified** (updates to existing items): must be reset to
-        #   HEAD content before merge, otherwise git refuses to
-        #   overwrite dirty tracked files.
-        # Both are safe IFF the synced PR actually merged — that's the
-        # only state where origin/dev contains the ops content this
-        # routine is about to overwrite locally with.  When sync failed
-        # (``merge_succeeded`` is False) the ``checkout HEAD --`` reset
-        # and the untracked ``unlink`` would silently wipe local-only
-        # mutations that never made it to remote (WI-lufal).
+        # - **Untracked** (new items): must be removed before merge, otherwise
+        #   git refuses to overwrite them.
+        # - **Modified** (updates to existing items): must be reset to HEAD
+        #   content before merge, otherwise git refuses to overwrite dirty
+        #   tracked files.
+        # Both resets are path-scoped to the ops dirs, so unrelated non-ops
+        # working-tree edits are untouched and ff-only carries them forward.
         if preflight.original_branch == base_branch and merge_succeeded:
             # INV-dalup: snapshot every ops file on disk BEFORE the destructive
             # reset/unlink so mutations written in the ``git add`` → cleanup
@@ -1734,8 +1878,8 @@ def do_sync(
             ops_snapshot = _snapshot_ops_files(repo_root)
 
             # Reset tracked ops files to HEAD (handles modified files).
-            # ``git checkout HEAD -- <paths>`` silently ignores
-            # untracked files, so this is safe.
+            # ``git checkout HEAD -- <paths>`` silently ignores untracked files
+            # and is scoped to the ops dirs, so non-ops edits are safe.
             co_result = _git(
                 repo_root,
                 "checkout", "HEAD", "--",
@@ -1747,8 +1891,8 @@ def do_sync(
                     f"checkout HEAD failed during cleanup: "
                     f"{co_result.stderr.strip()}"
                 )
-            # Remove untracked ops files (new items created this
-            # session that aren't on the local branch yet).
+            # Remove untracked ops files (new items created this session that
+            # aren't on the local branch yet).
             untracked = _git(
                 repo_root,
                 "ls-files", "--others", "--exclude-standard", "--",
@@ -1777,8 +1921,8 @@ def do_sync(
                     f"{ff_result.stderr.strip()}"
                 )
             # INV-dalup: re-apply any post-snapshot ops the reset/unlink/merge
-            # discarded — lossless line-union for modified files, recreate for
-            # new items that never reached the sync commit.
+            # discarded — lossless op-block union for modified files, recreate
+            # for new items that never reached the sync commit.
             _union_restore_ops(ops_snapshot)
 
         # Delete sync branch ref (non-fatal)
