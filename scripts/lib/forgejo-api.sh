@@ -21,6 +21,48 @@
 [[ -n "${_FORGEJO_API_LOADED:-}" ]] && return 0
 _FORGEJO_API_LOADED=1
 
+# Load the GitHub-backend implementations.  DORMANT: nothing in github-api.sh
+# runs unless FORGE_BACKEND=github (origin is github.com, or the
+# HYPERGUMBO_FORGE_BACKEND override forces it).  Sourced here so the callers'
+# single ``source forgejo-api.sh`` line is unchanged (this file is the
+# dispatcher).  Bash resolves function names at call time, so the two files may
+# reference each other's functions regardless of source order.
+# shellcheck source=scripts/lib/github-api.sh
+source "${BASH_SOURCE[0]%/*}/github-api.sh"
+
+# ------------------------------------------------------------------
+# detect_forge_backend [REMOTE_URL]
+#   Set FORGE_BACKEND ("github" or "forgejo").  The HYPERGUMBO_FORGE_BACKEND
+#   env var overrides (used by the forced-backend CI job + tests); otherwise a
+#   github.com origin → "github", anything else → "forgejo" (the dormant
+#   default while Codeberg is origin).  apply_failover_overrides forces
+#   "forgejo" afterward — CI failover always targets the self-hosted Forgejo.
+# ------------------------------------------------------------------
+detect_forge_backend() {
+	local remote_url="${1:-$(git remote get-url origin 2>/dev/null)}"
+	if [[ -n "${HYPERGUMBO_FORGE_BACKEND:-}" ]]; then
+		FORGE_BACKEND="$HYPERGUMBO_FORGE_BACKEND"
+	elif [[ "$remote_url" == *"github.com"* ]]; then
+		FORGE_BACKEND="github"
+	else
+		FORGE_BACKEND="forgejo"
+	fi
+}
+
+# ------------------------------------------------------------------
+# resolve_forge_token
+#   Single, failover-aware source of truth for the API/push credential (C9):
+#   under CI failover the self-hosted Forgejo token wins, matching
+#   apply_failover_overrides' precedence.  Sets FORGE_TOKEN.
+# ------------------------------------------------------------------
+resolve_forge_token() {
+	if [[ "${FAILOVER_ACTIVE:-false}" == "true" ]]; then
+		FORGE_TOKEN="${SELFHOSTED_FORGEJO_TOKEN:-${FORGEJO_TOKEN:-}}"
+	else
+		FORGE_TOKEN="${FORGEJO_TOKEN:-}"
+	fi
+}
+
 # ------------------------------------------------------------------
 # load_env: Load .env, set REPO_ROOT / FORGEJO_USER / FORGEJO_TOKEN
 # ------------------------------------------------------------------
@@ -42,7 +84,12 @@ detect_api_base() {
 	remote_url="$(git remote get-url origin)"
 	REPO_SLUG="$(echo "$remote_url" | sed 's/\.git$//' | awk -F'[:/]' '{print $(NF-1)"/"$NF}')"
 
-	if [[ -n "${FORGEJO_API_BASE:-}" ]]; then
+	detect_forge_backend "$remote_url"
+
+	if [[ "$FORGE_BACKEND" == "github" ]]; then
+		# GitHub uses a dedicated api.github.com host with no /api/v1 segment.
+		API_BASE="https://api.github.com/repos/$REPO_SLUG"
+	elif [[ -n "${FORGEJO_API_BASE:-}" ]]; then
 		API_BASE="$FORGEJO_API_BASE/repos/$REPO_SLUG"
 	elif [[ "$remote_url" == *"codeberg.org"* ]]; then
 		API_BASE="https://codeberg.org/api/v1/repos/$REPO_SLUG"
@@ -65,6 +112,9 @@ apply_failover_overrides() {
 	FAILOVER_ACTIVE=false
 	if [[ -f "$failover_file" ]]; then
 		FAILOVER_ACTIVE=true
+		# CI failover always targets the self-hosted Forgejo — force the
+		# backend regardless of the origin host (C2/C9).
+		FORGE_BACKEND="forgejo"
 		FAILOVER_URL=$(python3 -c "import json,sys; print(json.load(open('$failover_file'))['selfhosted_forgejo_url'])")
 		FAILOVER_REPO=$(python3 -c "import json,sys; print(json.load(open('$failover_file'))['selfhosted_forgejo_repo'])")
 		API_BASE="$FAILOVER_URL/api/v1/repos/$FAILOVER_REPO"
@@ -84,15 +134,26 @@ api_call() {
 	local tmp_file
 	tmp_file="$(mktemp)"
 
+	# Failover-aware credential (C9); FORGE_TOKEN == FORGEJO_TOKEN off failover.
+	resolve_forge_token
+
 	local curl_args=(
 		-s
 		--max-time "$timeout"
 		-o "$tmp_file"
 		-w "%{http_code}"
 		-X "$method"
-		-H "Authorization: token ${FORGEJO_TOKEN:-}"
+		-H "Authorization: token ${FORGE_TOKEN:-}"
 		-H "Content-Type: application/json"
 	)
+
+	# GitHub's REST API wants an explicit Accept + pinned API version.  The
+	# ``token <PAT>`` auth scheme above works on both forges.  Forgejo is left
+	# byte-identical (no Accept header added — its default is JSON).
+	if [[ "$url" == *"api.github.com"* ]]; then
+		curl_args+=(-H "Accept: application/vnd.github+json")
+		curl_args+=(-H "X-GitHub-Api-Version: 2022-11-28")
+	fi
 
 	if [[ -n "$data" ]]; then
 		curl_args+=(-d "$data")
@@ -201,7 +262,13 @@ find_open_pr() {
 	FOUND_PR_NUM=""
 	FOUND_PR_SHA=""
 
-	if ! api_get "$API_BASE/pulls?state=open&sort=recentupdate"; then
+	# GitHub's pulls-list sort enum is {created,updated,...} paged by per_page
+	# (max 100); Forgejo uses recentupdate.  Keep the Forgejo query byte-
+	# identical; use the GitHub-valid equivalent on the github backend.
+	local pulls_query="state=open&sort=recentupdate"
+	[[ "${FORGE_BACKEND:-forgejo}" == "github" ]] && \
+		pulls_query="state=open&sort=updated&direction=desc&per_page=100"
+	if ! api_get "$API_BASE/pulls?$pulls_query"; then
 		return 1
 	fi
 
@@ -338,7 +405,12 @@ find_merged_pr() {
 	FOUND_MERGED_PR_NUM=""
 	FOUND_MERGED_PR_SHA=""
 
-	if ! api_get "$API_BASE/pulls?state=closed&sort=recentupdate&limit=50"; then
+	# GitHub ignores Forgejo's sort=recentupdate / limit; use its valid
+	# equivalent (per_page max 100) on the github backend, else byte-identical.
+	local pulls_query="state=closed&sort=recentupdate&limit=50"
+	[[ "${FORGE_BACKEND:-forgejo}" == "github" ]] && \
+		pulls_query="state=closed&sort=updated&direction=desc&per_page=100"
+	if ! api_get "$API_BASE/pulls?$pulls_query"; then
 		return 1
 	fi
 
@@ -354,6 +426,9 @@ except Exception:
     sys.exit(1)
 search_type = '$search_type'
 search_value = '$search_value'
+# GitHub PR list objects carry 'merged_at' (a timestamp, null if unmerged);
+# Forgejo/Gitea list objects carry a 'merged' bool.
+merged_key = 'merged_at' if '${FORGE_BACKEND:-forgejo}' == 'github' else 'merged'
 if search_type == 'sha':
     field_path = ('head', 'sha')
 elif search_type == 'branch':
@@ -362,7 +437,7 @@ else:
     print('find_merged_pr: unknown type', search_type, file=sys.stderr)
     sys.exit(1)
 for item in data:
-    if not item.get('merged'):
+    if not item.get(merged_key):
         continue
     val = item
     for key in field_path:
@@ -415,7 +490,10 @@ sys.exit(1)
 #   before the local view diverges further from origin.
 # ------------------------------------------------------------------
 find_open_tracker_sync_prs() {
-	if ! api_get "$API_BASE/pulls?state=open&sort=recentupdate"; then
+	local pulls_query="state=open&sort=recentupdate"
+	[[ "${FORGE_BACKEND:-forgejo}" == "github" ]] && \
+		pulls_query="state=open&sort=updated&direction=desc&per_page=100"
+	if ! api_get "$API_BASE/pulls?$pulls_query"; then
 		return 1
 	fi
 
@@ -548,7 +626,7 @@ import sys, json
 try:
     data = json.load(sys.stdin)
     statuses = data.get('statuses', [])
-    non_pending = [s for s in statuses if s.get('status') != 'pending']
+    non_pending = [s for s in statuses if (s.get('state') or s.get('status')) != 'pending']
     print('yes' if non_pending else 'no')
 except Exception:
     print('unknown')
@@ -567,7 +645,7 @@ except Exception:
 import sys, json
 try:
     data = json.load(sys.stdin)
-    non_pending = [s for s in data.get('statuses', []) if s.get('status') != 'pending']
+    non_pending = [s for s in data.get('statuses', []) if (s.get('state') or s.get('status')) != 'pending']
     print('yes' if non_pending else 'no')
 except Exception:
     print('no')
@@ -591,7 +669,7 @@ try:
     data = json.load(sys.stdin)
     for s in data.get('statuses', []):
         if 'ci-complete' in s.get('context', ''):
-            print(s['status'])
+            print(s.get('state') or s.get('status') or '')
             break
     else:
         print('not_found')
@@ -614,7 +692,7 @@ import sys, json
 try:
     data = json.load(sys.stdin)
     pending = [s.get('context', '') for s in data.get('statuses', [])
-               if s.get('status') == 'pending']
+               if (s.get('state') or s.get('status')) == 'pending']
     print('yes' if pending else 'no')
 except Exception:
     print('no')
@@ -647,7 +725,7 @@ import sys, json
 try:
     data = json.load(sys.stdin)
     failed = [s.get('context', 'unknown') for s in data.get('statuses', [])
-              if s.get('status') in ('failure', 'error')]
+              if (s.get('state') or s.get('status')) in ('failure', 'error')]
     print(', '.join(failed) if failed else 'unknown')
 except Exception:
     print('unknown')
@@ -689,7 +767,7 @@ try:
     pending = []
     terminal = []
     for s in statuses:
-        st = s.get('state', 'unknown')
+        st = s.get('state') or s.get('status') or 'unknown'
         ctx = s.get('context', 'unknown')
         if st in ('success', 'failure', 'error'):
             terminal.append((ctx, st))
@@ -756,7 +834,7 @@ try:
     for s in statuses:
         ctx = s.get('context', '?')
         name = ctx.split(' / ')[-1].split(' (')[0] if ' / ' in ctx else ctx
-        st = s.get('state', '?')
+        st = s.get('state') or s.get('status') or '?'
         if st == 'success':
             done += 1
         elif st in ('failure', 'error'):
@@ -803,6 +881,10 @@ except Exception:
 #   Prints log to stdout. Returns 1 if not found.
 # ------------------------------------------------------------------
 fetch_job_log() {
+	if [[ "${FORGE_BACKEND:-forgejo}" == "github" ]]; then
+		_github_fetch_job_log "$@"
+		return $?
+	fi
 	local head_sha="$1"
 	local target_name="${2:-}"
 
@@ -1145,6 +1227,10 @@ _ops_union_restore_dir() {
 }
 
 do_merge() {
+	if [[ "${FORGE_BACKEND:-forgejo}" == "github" ]]; then
+		_github_do_merge "$@"
+		return $?
+	fi
 	local pr_num="$1" title="$2" desc="$3" orig_sha="$4"
 	local force_squash="${5:-false}"
 	local merge_response tmp_file
