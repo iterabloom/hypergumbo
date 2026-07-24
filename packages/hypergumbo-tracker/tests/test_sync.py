@@ -43,6 +43,7 @@ from hypergumbo_tracker.sync import (
     _load_env,
     _check_pr_merged,
     _close_pr,
+    _elem_state,
     _log,
     _merge_pr,
     _poll_ci,
@@ -1050,6 +1051,84 @@ class TestPollCi:
             stale_pending_threshold=90,
         )
         assert result == "success"
+
+    @patch("hypergumbo_tracker.sync.time")
+    @patch("hypergumbo_tracker.sync._api_call")
+    def test_github_single_pending_not_stale_then_success(
+        self, mock_api: MagicMock, mock_time: MagicMock
+    ) -> None:
+        """Woodpecker's single pending status must not trip stale-pending.
+
+        On GitHub, Woodpecker posts one ``ci/woodpecker/pr/woodpecker`` status
+        that stays ``pending`` for the whole build.  Once per-element reads are
+        correct, the forgejo stale-pending heuristic would fire on every real
+        build (no element ever leaves pending) — so the github backend must
+        treat a non-empty statuses list as "started" instead.  Same input on
+        forgejo returns ``stale_pending`` (see test_stale_pending_detection).
+        """
+        # deadline(0) start(0) while(5) while(95 > 90 threshold) while(100)
+        mock_time.monotonic.side_effect = [0, 0, 5, 95, 100]
+        mock_time.sleep = MagicMock()
+        mock_api.side_effect = [
+            (200, {"state": "pending", "statuses": [
+                {"state": "pending", "context": "ci/woodpecker/pr/woodpecker"},
+            ]}),
+            (200, {"state": "pending", "statuses": [
+                {"state": "pending", "context": "ci/woodpecker/pr/woodpecker"},
+            ]}),
+            (200, {"state": "success", "statuses": [
+                {"state": "success", "context": "ci/woodpecker/pr/woodpecker"},
+            ]}),
+        ]
+        result = _poll_ci(
+            "https://api.github.com/repos/o/r",
+            "token",
+            "sha123",
+            timeout=600,
+            stale_pending_threshold=90,
+            backend="github",
+        )
+        assert result == "success"
+
+    @patch("hypergumbo_tracker.sync.time")
+    @patch("hypergumbo_tracker.sync._api_call")
+    def test_github_sole_holdout_reads_state_field(
+        self, mock_api: MagicMock, mock_time: MagicMock
+    ) -> None:
+        """Sole-holdout bypass must read the github ``state`` element field.
+
+        GitHub combined-status elements key the per-element state as ``state``;
+        if the bypass still read ``status`` both elements would look
+        non-success and the bypass would never fire.
+        """
+        # deadline(0) start(0) while(61) holdout_check(62 > 60)
+        mock_time.monotonic.side_effect = [0, 0, 61, 62]
+        mock_time.sleep = MagicMock()
+        mock_api.return_value = (
+            200,
+            {
+                "state": "pending",
+                "statuses": [
+                    {"state": "success", "context": "a"},
+                    {"state": "pending", "context": "b"},
+                ],
+            },
+        )
+        result = _poll_ci(
+            "https://api.github.com/repos/o/r",
+            "token",
+            "sha123",
+            timeout=300,
+            backend="github",
+        )
+        assert result == "success"
+
+    def test_elem_state_prefers_github_field(self) -> None:
+        """_elem_state returns github ``state``, else falls back to ``status``."""
+        assert _elem_state({"state": "success"}) == "success"
+        assert _elem_state({"status": "pending"}) == "pending"
+        assert _elem_state({"state": "failure", "status": "x"}) == "failure"
+        assert _elem_state({}) is None
 
 
 # ---------------------------------------------------------------------------

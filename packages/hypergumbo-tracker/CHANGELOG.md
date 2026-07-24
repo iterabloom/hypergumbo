@@ -14,6 +14,7 @@ This package is independently versioned from the main hypergumbo tool and licens
 ### Changed
 
 - **Single canonical op-block `.ops` restore primitive shared by `recover` and `do_sync`.** Both now share one op-block-granularity union primitive (`journal._union_op_blocks`), deleting `do_sync`'s duplicate private `_union_lines`; deduping whole ops rather than lines so one implementation serves both restorers.
+- **`_poll_ci` is forge-backend-aware, tolerating GitHub's combined-status shape (Codeberg→GitHub migration, dormant).** A new `_elem_state` helper reads a status element's state under GitHub's `state` key or Forgejo's `status` key — extracted as a named helper so the `or` never binds against a neighbouring `!=` (the `state or status != x` precedence trap). `_poll_ci` gains a `backend` parameter: on `github` it treats any non-empty `statuses` list as "started" instead of firing stale-pending, because Woodpecker posts a single commit-status that stays `pending` for the entire build — the Forgejo multi-job stale-pending heuristic would otherwise false-fire hung-runner recovery on every real run. Defaults to `forgejo`, so the behaviour is dormant until the GitHub backend is wired.
 
 ### Fixed
 

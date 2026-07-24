@@ -582,6 +582,21 @@ def _find_open_pr(
     return None
 
 
+def _elem_state(s: dict[str, Any]) -> str | None:
+    """Return a commit-status element's state, tolerating both forge shapes.
+
+    Forgejo commit-status elements key the per-element state under ``status``;
+    GitHub combined-status elements key it under ``state``.  Returns the GitHub
+    field when present, else the Forgejo field (else ``None``).
+
+    Kept as a named helper so an ``or`` never sits beside a ``!=`` in a caller:
+    ``s.get("state") or s.get("status") != "pending"`` would bind as
+    ``s.get("state") or (s.get("status") != "pending")`` — a precedence trap
+    that silently misreads a GitHub ``pending`` element as "started".
+    """
+    return s.get("state") or s.get("status")
+
+
 def _poll_ci(
     api_base: str,
     token: str,
@@ -589,6 +604,7 @@ def _poll_ci(
     poll_interval: int = 10,
     timeout: int = 600,
     stale_pending_threshold: int = 90,
+    backend: str = "forgejo",
 ) -> str:
     """Poll CI status until terminal state or timeout.
 
@@ -610,6 +626,11 @@ def _poll_ci(
         poll_interval: Seconds between polls.
         timeout: Maximum seconds to wait.
         stale_pending_threshold: Seconds before declaring stale-pending.
+        backend: Forge backend, ``"forgejo"`` or ``"github"``.  On
+            ``"github"`` a single Woodpecker commit-status stays ``pending``
+            for the whole build, so stale-pending detection is disabled (a
+            non-empty ``statuses`` list counts as "started"); a genuinely
+            stuck build is still caught by ``timeout``.
 
     Returns:
         ``"success"``, ``"failure"``, ``"timeout"``, or
@@ -643,9 +664,16 @@ def _poll_ci(
         if state == "failure" or state == "error":
             return "failure"
 
-        # Track whether any job has left pending state
+        # Track whether any job has left pending state.  On the GitHub backend
+        # Woodpecker posts a single commit-status that stays "pending" for the
+        # entire build, so "no element has left pending" is normal rather than
+        # a hung runner — treat a non-empty statuses list as "started" and let
+        # the overall timeout catch a genuinely stuck build.  (Forgejo Actions
+        # emits multiple jobs that flip quickly, so its heuristic still holds.)
         if not any_job_started:
-            if any(s.get("status") != "pending" for s in statuses):
+            if backend == "github" or any(
+                _elem_state(s) != "pending" for s in statuses
+            ):
                 any_job_started = True
             elif time.monotonic() - start >= stale_pending_threshold:
                 _log(
@@ -658,7 +686,7 @@ def _poll_ci(
         # been waiting long enough, treat as success
         if len(statuses) > 1:
             non_success = [
-                s for s in statuses if s.get("status") != "success"
+                s for s in statuses if _elem_state(s) != "success"
             ]
             if len(non_success) == 1 and time.monotonic() > deadline - (timeout - 60):
                 return "success"
