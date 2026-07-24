@@ -1,0 +1,10 @@
+when:
+  - event: pull_request
+
+steps:
+  - name: smoke
+    image: python:3.11-bookworm
+    commands:
+      - echo "Woodpecker round-trip smoke test — agent picked up server-dispatched work"
+      - python3 --version
+      - 'echo "event=$CI_PIPELINE_EVENT target=$CI_COMMIT_TARGET_BRANCH source=$CI_COMMIT_SOURCE_BRANCH pr=$CI_COMMIT_PULL_REQUEST commit=$CI_COMMIT_SHA"'
