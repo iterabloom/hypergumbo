@@ -41,14 +41,14 @@ when:
   - event: [push, pull_request]
     branch: [main, dev]
 
-# Woodpecker auto-injects a clone step. dco + smart-test need real history and
-# the target branch present, so deepen and fetch it. (GHA used fetch-depth: 50
-# with self-healing deepen; 50 covers ~95% of PRs.)
+# Woodpecker auto-injects a clone step. dco / verify-generated / smart-test all do
+# git merge-base + recency-window reads, which a SHALLOW clone breaks (empirically:
+# failed merge-base + "last 1 commits"). Full clone — cheap on the self-hosted agent,
+# and it kills that whole class of shallow-history bugs. (GHA used fetch-depth:50 only
+# because GitHub's hosted runners bill bandwidth; we don't.)
 clone:
   git:
     image: woodpeckerci/plugin-git
-    settings:
-      depth: 50
 
 steps:
   # ── ruff + bandit ─────────────────────────────────────────────────────────
@@ -72,7 +72,7 @@ steps:
             - ".agent/tracker-workspace/**"
     commands:
       - pip install --upgrade pip
-      - pip install ruff bandit
+      - pip install "ruff~=0.15.0" "bandit~=1.9.3"
       - ruff check packages/*/src/ packages/*/tests/
       - bandit -r packages/*/src/ -c pyproject.toml
 
@@ -136,6 +136,7 @@ steps:
     image: python:3.11-bookworm    # needs bash+git; python image has both
     depends_on: []
     commands:
+      - apt-get update && apt-get install -y jq   # stop.sh (exercised by test_hooks.sh) needs jq
       - bash .githooks/test_hooks.sh
 
   # ── DCO sign-off check (PRs only) ──────────────────────────────────────────
