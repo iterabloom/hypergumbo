@@ -1,0 +1,41 @@
+- op: create  # a27e
+  at: '2026-07-23T01:25:40Z'  # a27e
+  by: agent  # a27e
+  actor: jgstern_agent  # a27e
+  clock: 1  # a27e
+  nonce: a27e  # a27e
+  data:  # a27e
+    kind: work_item  # a27e
+    title: "Add --reproducible byte-repro mode: deterministic execution_id + omit wall-clock fields (flag-gated; uuid4 stays default)"  # a27e
+    status: todo_soft  # a27e
+    priority: 2  # a27e
+    parent:  # a27e
+    tags:  # a27e
+    - determinism  # a27e
+    - reproducibility  # a27e
+    - identity  # a27e
+    isbefore:  # a27e
+    - WI-situf-jubat-fisit-fufod-hihim-govak-hitot-jopuz  # a27e
+    duplicate_of: []  # a27e
+    not_duplicate_of: []  # a27e
+    pr_ref:  # a27e
+    description: "SPLIT OUT OF WI-pifaj per the G8 \"Reproducibility semantics\" scout (2026-07-21, g8_reproducibility_scout_findings_07212026.md). WI-pifaj's own residual is the docs-honesty spec fix (PR-A: correct the false \"byte-stable\" claim at spec:321, soften :72 / :1649). THIS item is the \"full byte-repro mode\" the scout recommended splitting into a separate work item.\n\nDESIGN DECISION — FLAG-GATED, uuid4 stays the DEFAULT. Chosen over an always-on structural de-overload to avoid churning the load-bearing `origin_run_id -> analysis_runs` FK, the asserted `uuid:` test contract, and every human run. aijo's survey layer would always pass `--reproducible`, so a flag fully serves it without touching the default / audit path. (An always-on structural split — segregate the uuid into its own audit field, make the deterministic id the FK unconditionally — stays available as a LATER hardening if the \"did you pass the flag?\" footgun bites; not needed to unblock aijo.)\n\nSCOPE under `--reproducible` (and/or honoring SOURCE_DATE_EPOCH):\n- Derive `execution_id` deterministically = hash(run_signature + repo_fingerprint + pass_id), TIMESTAMP-FREE. NOTE the spec's own documented sha256 recipe (spec:289 / ir.py) wrongly folds in `started_at` — drop it, or it still churns. Must stay unique-per-run-identity so the `origin_run_id -> analysis_runs` FK (validator F2, spec_validator.py:2091) still resolves. `origin_run_id` copies this id into every Symbol / Edge — the \"342/568 differing sorted-key lines\" amplifier (copy sites cli.py:9426/9444/9665; serialized ir.py:617 Symbol / :1014 Edge).\n- Omit / normalize wall-clock fields: `started_at` + `duration_ms` (ir.py:370 / :392) and top-level `generated_at` (schema.py:168).\n\nACCEPTANCE (folds the DET-4 guard): a property test asserting two `--reproducible` runs on identical input produce BYTE-IDENTICAL output, over the bakeoff corpus. This is the enforcement, not decoration — an unverified canonical-form claim is a silent-corruption risk.\n\nEFFORT: M (flag-gated) per the scout; L only if ever promoted to default + fixtures.\n\nNOT IN SCOPE — G8's other three items are distinct fingerprints on separate tracks: WI-fonod (grammar over-capture, bundle w/ WI-givad), INV-nogom (config_fingerprint runtime-flag blindness, demand-gated), WI-sijug (Symbol.fingerprint nulls, mostly policy-dissolved). The canonical-digest and survey-diff follow-ups are separate items; this one blocks the digest."  # a27e
+    fields: {}  # a27e
+- op: update  # 4a6f
+  at: '2026-07-23T01:26:48Z'  # 4a6f
+  by: agent  # 4a6f
+  actor: jgstern_agent  # 4a6f
+  clock: 2  # 4a6f
+  nonce: 4a6f  # 4a6f
+  set: {}  # 4a6f
+  add:  # 4a6f
+    not_duplicate_of: [INV-dihif-sufuv-kulik-hadiz-sokaz-fagus-najuk-jurub]  # 4a6f
+- op: update  # 9ca3
+  at: '2026-07-23T01:35:59Z'  # 9ca3
+  by: agent  # 9ca3
+  actor: jgstern_agent  # 9ca3
+  clock: 3  # 9ca3
+  nonce: 9ca3  # 9ca3
+  set: {}  # 9ca3
+  add:  # 9ca3
+    isbefore: [WI-vufad-dopup-gikiz-lakag-rozit-kimoj-nijob-kupaj, WI-madut-bokup-rupas-litap-tamim-sakit-jozoh-javoj]  # 9ca3
