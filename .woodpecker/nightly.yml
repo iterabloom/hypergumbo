@@ -1,0 +1,90 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# Woodpecker nightly workflow — cross-Python matrix + integration tests.
+# Port of .github/workflows/nightly.yml. Runs on a Woodpecker cron named
+# "nightly" (configured in the repo's Woodpecker settings, NOT here — intended
+# schedule 30 5 * * *). This is the multi-Python verification the Phase-4 release
+# path relies on, so it MUST be live before release.
+#
+# The `matrix` runs the whole workflow once per Python version (3.10–3.13). The
+# meta-package (`packages/hypergumbo`) install is torch-free (Phase-0 confirmed:
+# torch is the `[embeddings]` extra only), so it installs cleanly in-container.
+# Whole-codebase --cov-fail-under=100 with the no-embeddings rcfile (no
+# sentence-transformers in the container).
+#
+# Dropped vs the GHA original:
+#  • test-matrix-retry  → transient-infra retry; the self-hosted agent doesn't
+#                         need the JS-action-fragility workaround it guarded.
+#  • report job         → wrote Forgejo commit-statuses; Woodpecker reports
+#                         pipeline status to GitHub natively.
+#  • "Install Node.js"  → only needed for GHA JS-actions (checkout@v4);
+#                         Woodpecker's plugin-git clone needs no Node.
+#
+# The integration leg runs once PER matrix version (a modest superset of the GHA
+# original, which ran it only at 3.11) — verifies the meta-package + integration
+# across 3.10–3.13; narrow it to one version at cutover if nightly runtime bites.
+#
+# VALIDATION: NEW authoring — legs Phase-0 smoke-tested under `woodpecker exec`
+# (build-grammars, integration --quick), assembled file NOT yet run under real
+# Woodpecker. Lands DORMANT (INERT on Codeberg/Forgejo); validated at cutover.
+
+when:
+  - event: cron
+    cron: nightly
+
+matrix:
+  PYTHON_VERSION:
+    - "3.10"
+    - "3.11"
+    - "3.12"
+    - "3.13"
+
+clone:
+  git:
+    image: woodpeckerci/plugin-git
+
+steps:
+  - name: build-grammars
+    image: python:${PYTHON_VERSION}-bookworm
+    depends_on: []
+    commands:
+      - python3 -m pip install --upgrade pip setuptools wheel
+      - ./scripts/build-source-grammars --wheels-dir "$CI_WORKSPACE/.grammar-wheels"
+
+  # ── cross-Python whole-codebase 100% ───────────────────────────────────────
+  - name: test-matrix
+    image: python:${PYTHON_VERSION}-bookworm
+    depends_on: [build-grammars]
+    commands:
+      - pip install --upgrade pip
+      - pip install pytest pytest-cov pytest-xdist jsonschema
+      - pip install -e packages/hypergumbo-core -e packages/hypergumbo-lang-mainstream -e packages/hypergumbo-lang-common -e packages/hypergumbo-lang-extended1 -e packages/hypergumbo-lang-rust-analyzer -e "packages/hypergumbo-tracker[dev,tui]" -e packages/hypergumbo
+      - ./scripts/build-source-grammars --wheels-dir "$CI_WORKSPACE/.grammar-wheels"
+      - |
+        if [ -f /sys/fs/cgroup/cpu.max ]; then
+          read quota period < /sys/fs/cgroup/cpu.max
+          [ "$quota" != "max" ] && WORKERS=$((quota / period)) || WORKERS=$(nproc)
+        else
+          WORKERS=$(nproc)
+        fi
+        pytest -n "$WORKERS" --tb=short \
+          --cov=packages/hypergumbo-core/src \
+          --cov=packages/hypergumbo-lang-mainstream/src \
+          --cov=packages/hypergumbo-lang-common/src \
+          --cov=packages/hypergumbo-lang-extended1/src \
+          --cov=packages/hypergumbo-lang-rust-analyzer/src \
+          --cov=packages/hypergumbo-tracker/src \
+          --cov-report=term-missing --cov-fail-under=100 \
+          --cov-config=.coveragerc.no-embeddings \
+          packages/*/tests/
+
+  # ── integration tests (real repos, --quick) ────────────────────────────────
+  - name: integration
+    image: python:${PYTHON_VERSION}-bookworm
+    depends_on: [build-grammars]   # avoid racing build-grammars on the shared wheels dir
+    commands:
+      - apt-get update && apt-get install -y jq
+      - pip install --upgrade pip
+      - pip install -e packages/hypergumbo-core -e packages/hypergumbo-lang-mainstream -e packages/hypergumbo-lang-common -e packages/hypergumbo-lang-extended1 -e packages/hypergumbo-lang-rust-analyzer -e packages/hypergumbo
+      - ./scripts/build-source-grammars --wheels-dir "$CI_WORKSPACE/.grammar-wheels"
+      - ./scripts/integration-test --quick

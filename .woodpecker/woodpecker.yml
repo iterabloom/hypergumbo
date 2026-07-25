@@ -1,14 +1,17 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 #
-# Woodpecker per-PR CI gate (port of .github/workflows/ci.yml). This is the
-# canonical file. It is ACTIVE on GitHub + self-hosted Woodpecker (which reads
-# `.woodpecker.yml`) and INERT on Codeberg/Forgejo (which reads
-# `.github/workflows/**`, not this file) — so it lands dormant while Codeberg is
-# still origin, exactly like the rest of the dual-mode migration tooling. The
-# per-run pass/fail becomes the single GitHub status context
-# `ci/woodpecker/pr/woodpecker` that branch protection marks required.
-# The full-suite / nightly siblings (see "SIBLING WORKFLOWS" at bottom) are a
-# tracked follow-up, not in this file.
+# Woodpecker per-PR CI gate (port of .github/workflows/ci.yml). One of several
+# workflows in the `.woodpecker/` folder (Woodpecker uses EITHER a single root
+# `.woodpecker.yml` OR a `.woodpecker/` folder of workflows — not both — and the
+# folder is needed so nightly can carry its own py-version matrix). The workflow
+# NAME is this file's stem (`woodpecker`), so this gate keeps posting the GitHub
+# status context `ci/woodpecker/pr/woodpecker` that branch protection marks
+# required (VERIFY the exact context on the first real Woodpecker run at cutover).
+# ACTIVE on GitHub + self-hosted Woodpecker; INERT on Codeberg/Forgejo (which
+# reads `.github/workflows/**`, not `.woodpecker/`) — so it lands dormant while
+# Codeberg is origin, like the rest of the dual-mode migration tooling.
+# Siblings: `.woodpecker/full-suite.yml` (push-dev + cron), `.woodpecker/nightly.yml`
+# (cron matrix + integration). See "SIBLING WORKFLOWS" at the bottom.
 #
 # ─── What changed vs the GitHub Actions original ───────────────────────────
 #  • `changes` job        → DELETED. Replaced by Woodpecker-native `when: path`
@@ -363,25 +366,32 @@ steps:
 # a later step once we touch the agent config (same edit as the agent.conf
 # persistence follow-up).
 #
-# ─── STRUCTURE (locked: single file) ────────────────────────────────────────
-# ONE workflow, one agent, shared workspace — so build-grammars feeds pytest
-# with no cross-run cache. The `depends_on: []` steps run in parallel; pytest
-# waits on build-grammars. One workflow also means GitHub sees ONE check
-# context (see the stop-the-line block) — exactly what branch protection marks
-# required.
+# ─── STRUCTURE (one workflow per file in `.woodpecker/`) ────────────────────
+# This PR file is ONE workflow, one agent, shared workspace — build-grammars
+# feeds pytest with no cross-run cache; the `depends_on: []` steps run in
+# parallel; pytest waits on build-grammars. GitHub sees ONE check context per
+# workflow file (this one → `ci/woodpecker/pr/woodpecker`, marked required).
 #
-# ─── SIBLING WORKFLOWS (deferred follow-up — NOT YET LANDED) ────────────────
-# These are new authoring (not Phase-1-validated as files) and land in a
-# follow-up before cutover; nightly MUST exist before Phase-4 release (it is the
-# multi-Python verification the release path relies on). Until then, the C13
-# forge-arm rot-guard is covered per-PR by the `forge-arms` step above.
-# full-suite.yml  → `.woodpecker/full-suite.yml` (cron + push-to-dev): per-package
-#                   pytest at whole-codebase 100% + `pytest tests/` (the top-level
-#                   forge/governance suite); same container pattern, one step per
-#                   package. (Phase 0 already ran the test-core leg.)
-# nightly.yml     → `.woodpecker/nightly.yml` (cron): py3.10–3.13 matrix +
-#                   integration-test --quick (both Phase-0-validated).
-# tracker-ci.yml  → fold into tracker-validate above or a small sibling.
+# ─── SIBLING WORKFLOWS (LANDED alongside this file) ─────────────────────────
+# full-suite.yml  → `.woodpecker/full-suite.yml` (push-to-dev + `event: cron`
+#                   named "full-suite"): per-package pytest at whole-codebase
+#                   100% + self-tree-validation ratchet + `pytest tests/` (the
+#                   top-level forge/governance suite). Same container pattern.
+# nightly.yml     → `.woodpecker/nightly.yml` (`event: cron` named "nightly"):
+#                   py3.10–3.13 `matrix` + integration-test --quick. MUST be live
+#                   before Phase-4 release (the multi-Python verification the
+#                   release path relies on). Woodpecker crons are configured in
+#                   repo settings, NOT here — the human creates crons named
+#                   "full-suite" (0 1,13 * * *) and "nightly" (30 5 * * *).
+# STILL DEFERRED:
+# tracker-ci.yml  → fold into the `tracker-validate` step above or a small sibling.
 # release.yml     → STAYS on GitHub Actions (locked decision: minimal tag-gated
 #                   release-only workflow holding PYPI_TOKEN). NOT ported.
 # release-mirror.yml → DELETED in Phase 4.
+#
+# ─── VALIDATION STATUS (honest) ─────────────────────────────────────────────
+# This per-PR file was Phase-1-validated by a real Woodpecker run. The two
+# siblings are NEW authoring: their individual legs were Phase-0-smoke-tested
+# under `woodpecker exec` (test-core, build-grammars, integration --quick), but
+# the assembled files have NOT had a full Woodpecker run — they land dormant and
+# get validated/iterated on the first real runs at cutover (as this file was).
