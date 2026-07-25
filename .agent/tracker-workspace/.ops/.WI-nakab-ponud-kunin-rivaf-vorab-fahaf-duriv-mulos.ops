@@ -1,0 +1,19 @@
+- op: create  # decf
+  at: '2026-07-25T08:59:44Z'  # decf
+  by: agent  # decf
+  actor: jgstern_agent  # decf
+  clock: 1  # decf
+  nonce: decf  # decf
+  data:  # decf
+    kind: work_item  # decf
+    title: "cutover: GitHub tracker-sync smoke test (throwaway, delete after)"  # decf
+    status: todo_soft  # decf
+    priority: 4  # decf
+    parent:  # decf
+    tags: []  # decf
+    isbefore: []  # decf
+    duplicate_of: []  # decf
+    not_duplicate_of: []  # decf
+    pr_ref:  # decf
+    description: "Throwaway 1-op item validating the do_sync GitHub write path end-to-end (push -> POST /pulls -> Woodpecker gate poll -> PUT merge -> branch delete) before flushing the held ops. Safe to delete."  # decf
+    fields: {}  # decf
