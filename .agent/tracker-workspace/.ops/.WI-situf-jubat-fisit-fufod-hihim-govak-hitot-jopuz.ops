@@ -1,0 +1,23 @@
+- op: create  # e5f0
+  at: '2026-07-23T01:25:30Z'  # e5f0
+  by: agent  # e5f0
+  actor: jgstern_agent  # e5f0
+  clock: 1  # e5f0
+  nonce: e5f0  # e5f0
+  data:  # e5f0
+    kind: work_item  # e5f0
+    title: "Canonical content digest (sha256 over the --reproducible survey) in the top-level envelope"  # e5f0
+    status: todo_soft  # e5f0
+    priority: 3  # e5f0
+    parent:  # e5f0
+    tags:  # e5f0
+    - determinism  # e5f0
+    - reproducibility  # e5f0
+    - identity  # e5f0
+    isbefore:  # e5f0
+    - WI-zomuk-pamof-rufup-bopil-hijub-razub-lopuh-zofub  # e5f0
+    duplicate_of: []  # e5f0
+    not_duplicate_of: []  # e5f0
+    pr_ref:  # e5f0
+    description: "Add a canonical content digest (sha256 over the volatile-stripped / `--reproducible` survey) to the top-level survey envelope. An `# axis: identity` field: two runs on identical code share a digest; any semantic change flips it. Gives O(1) \"same survey?\" plus the natural diff / cache key.\n\nProcedurally lightweight per ADR-0024 / ADR-0033: it is an `identity` field, so no new registry / axis machinery is required. Must hash a stable, volatile-stripped form -> requires the `--reproducible` byte-repro mode first.\n\nBeyond G8 / WI-pifaj scope: new aijo-layer work; no canonical digest exists today (2026-07-21 G8 verification). Demand-gated on aijo. Blocks: survey diff. Blocked-by: the `--reproducible` mode."  # e5f0
+    fields: {}  # e5f0

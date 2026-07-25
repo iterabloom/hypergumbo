@@ -1,0 +1,22 @@
+- op: create  # 64b1
+  at: '2026-07-23T01:35:56Z'  # 64b1
+  by: agent  # 64b1
+  actor: jgstern_agent  # 64b1
+  clock: 1  # 64b1
+  nonce: 64b1  # 64b1
+  data:  # 64b1
+    kind: work_item  # 64b1
+    title: "Baseline full-run wall-clock on representative target repos (small/medium/large/monorepo)"  # 64b1
+    status: todo_soft  # 64b1
+    priority: 2  # 64b1
+    parent:  # 64b1
+    tags:  # 64b1
+    - perf  # 64b1
+    isbefore:  # 64b1
+    - WI-madut-bokup-rupas-litap-tamim-sakit-jozoh-javoj  # 64b1
+    - WI-zagij-judil-bihot-vunit-fajog-tivar-ronut-panaj  # 64b1
+    duplicate_of: []  # 64b1
+    not_duplicate_of: []  # 64b1
+    pr_ref:  # 64b1
+    description: "The one measurement that GATES the entire incremental-analysis stream (INC-1 / INC-2). Cheap experiment, startable NOW, NO dependencies.\n\nMeasure full `hypergumbo survey` wall-clock across a representative repo spread: small (~1k LOC), medium (~50k), large (~500k), and a monorepo. Report a latency table.\n\nDecision rule it feeds:\n- tens of seconds  -> the \"recomputation\" worry evaporates; cached-base + structural diff (WI-zomuk) is plainly enough; INC-1 / INC-2 are NOT needed.\n- minutes           -> package-scoping (INC-2) earns its keep.\n- tens of minutes on a monorepo -> file-level memoization (INC-1) earns its keep.\n\nMethod: 1-repo mini-trial first to validate setup + estimate runtime, per the experiment-design playbook. If any single-command extrapolation exceeds ~8h, document the design in the lab notebook instead of running it.\n\nNo dependencies — this is the fork-of-the-road input; do it before committing to any INC-* work."  # 64b1
+    fields: {}  # 64b1

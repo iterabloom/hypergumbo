@@ -45,3 +45,10 @@
   clock: 4  # 7c06
   nonce: 7c06  # 7c06
   message: "Staleness audit 2026-07-21: source (2) FIXED -- finalize.py:462-467 (WI-haguz) now sorts analysis_runs by (started_at, pass), so the as_completed() completion-order race the item cited is gone; the spec 'same input->same output' promise also moved §10->§13 scoped to ordering determinism. Live residuals: (a) source (1) -- ir.py:361 execution_id=uuid4 + 370 wall-clock started_at/duration still churn the whole-file byte diff; (b) spec:321 still asserts analysis_runs[] is 'byte-stable across runs', which is inaccurate given the fresh per-run uuid/timestamps. Re-scoped to those two."  # 7c06
+- op: discuss  # e627
+  at: '2026-07-23T01:26:29Z'  # e627
+  by: agent  # e627
+  actor: jgstern_agent  # e627
+  clock: 5  # e627
+  nonce: e627  # e627
+  message: "Byte-repro MODE split out to new items per the G8 \"Reproducibility semantics\" scout (g8_reproducibility_scout_findings_07212026.md, 2026-07-21): WI-sazap (--reproducible mode; flag-gated: deterministic execution_id + wall-clock omission) -> WI-situf (canonical digest) -> WI-zomuk (survey diff). The residual here is now just the docs-honesty spec fix (PR-A: correct the false \"byte-stable\" claim at spec:321; soften :72 and :1649) -- close this item on that. Digest/diff are demand-gated on aijo. G8 other three items (WI-fonod / INV-nogom / WI-sijug) are distinct fingerprints, not part of this split."  # e627

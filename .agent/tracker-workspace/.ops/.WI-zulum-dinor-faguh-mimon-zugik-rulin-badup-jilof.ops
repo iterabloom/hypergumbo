@@ -1,0 +1,22 @@
+- op: create  # f3c1
+  at: '2026-07-25T06:32:59Z'  # f3c1
+  by: agent  # f3c1
+  actor: jgstern_agent  # f3c1
+  clock: 1  # f3c1
+  nonce: f3c1  # f3c1
+  data:  # f3c1
+    kind: work_item  # f3c1
+    title: "run_behavior_map.connectivity default drifted True->False; RCT public-API pin fails"  # f3c1
+    status: todo_soft  # f3c1
+    priority: 2  # f3c1
+    parent:  # f3c1
+    tags:  # f3c1
+    - regression  # f3c1
+    - test  # f3c1
+    - ci  # f3c1
+    isbefore: []  # f3c1
+    duplicate_of: []  # f3c1
+    not_duplicate_of: []  # f3c1
+    pr_ref:  # f3c1
+    description: "run_behavior_map's public-API default for `connectivity` is False on dev (897a207870), but the RCT public-API pinning guard tests/test_rct_public_api_pinned.py::test_run_behavior_map_critical_params_pinned documents/pins the baseline as True. The guard fails:\n\n  AssertionError: run_behavior_map.connectivity default changed from True to False; RCT variants assume the documented baseline. Coordinate before merging.\n  assert False == True\n\nReproduces natively in the sandbox (NOT a CI-container artifact). Surfaced when the GitHub/Woodpecker migration's first real Woodpecker run (GitHub dev refresh push, pipeline 6) accidentally ran the full top-level tests/ suite. Pre-existing and unrelated to the migration; Codeberg's dead CI had been hiding it. It will redden the full-suite cron's test-agent-infra step (pytest tests/).\n\nResolution requires a decision:\n  (a) if connectivity=False was an intentional default change -> update the pin in test_rct_public_api_pinned.py AND coordinate the RCT variants that assume the True baseline; or\n  (b) if it was an accidental regression -> restore run_behavior_map's connectivity default to True.\n\nRepro:\n  python -m pytest tests/test_rct_public_api_pinned.py::test_run_behavior_map_critical_params_pinned -o addopts=\"\" -q"  # f3c1
+    fields: {}  # f3c1
