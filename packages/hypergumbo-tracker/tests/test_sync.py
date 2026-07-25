@@ -1692,6 +1692,7 @@ class TestPreflightCheck:
         git_dir = tmp_path / ".git"
         git_dir.mkdir()
         monkeypatch.delenv("FORGEJO_TOKEN", raising=False)
+        monkeypatch.delenv("HG_GITHUB_TOKEN", raising=False)
         mock_env.return_value = {}
         mock_git.side_effect = [
             _make_completed_process(stdout=str(git_dir)),  # rev-parse
@@ -1844,7 +1845,11 @@ class TestPreflightCheck:
         """A github.com origin yields backend='github' on the preflight."""
         git_dir = tmp_path / ".git"
         git_dir.mkdir()
-        mock_env.return_value = {"FORGEJO_TOKEN": "tok", "FORGEJO_USER": "u"}
+        mock_env.return_value = {
+            "FORGEJO_TOKEN": "tok",
+            "FORGEJO_USER": "u",
+            "HG_GITHUB_TOKEN": "ghp_maintainer",
+        }
         mock_api_base.return_value = (
             "https://api.github.com/repos/iterabloom/hypergumbo"
         )
@@ -1864,6 +1869,87 @@ class TestPreflightCheck:
         result = preflight_check(tmp_path)
         assert result.ok
         assert result.backend == "github"
+        # The github backend authenticates with the maintainer PAT, NOT the
+        # Codeberg FORGEJO_TOKEN (which would 401 against github.com); username
+        # is the conventional token-auth placeholder.
+        assert result.forgejo_token == "ghp_maintainer"
+        assert result.forgejo_user == "x-access-token"
+
+    @patch("hypergumbo_tracker.sync._git")
+    @patch("hypergumbo_tracker.sync._load_env")
+    @patch("hypergumbo_tracker.sync._detect_api_base")
+    def test_github_backend_missing_github_token_errors(
+        self,
+        mock_api_base: MagicMock,
+        mock_env: MagicMock,
+        mock_git: MagicMock,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """A github origin with only FORGEJO_TOKEN (no HG_GITHUB_TOKEN) fails
+        preflight — the Codeberg token would 401 against github.com, so we
+        require the maintainer PAT and say so."""
+        monkeypatch.delenv("HG_GITHUB_TOKEN", raising=False)
+        git_dir = tmp_path / ".git"
+        git_dir.mkdir()
+        mock_env.return_value = {"FORGEJO_TOKEN": "cb-tok", "FORGEJO_USER": "u"}
+        mock_api_base.return_value = (
+            "https://api.github.com/repos/iterabloom/hypergumbo"
+        )
+        mock_git.side_effect = [
+            _make_completed_process(stdout=str(git_dir)),  # rev-parse
+            _make_completed_process(stdout="dev\n"),  # branch
+            _make_completed_process(stdout=""),  # diff --cached
+            _make_completed_process(
+                stdout=" M .agent/tracker/.ops/.WI-test.ops\n"
+            ),  # status
+            _make_completed_process(stdout="Test User\n"),  # user.name
+            _make_completed_process(stdout="test@test.com\n"),  # user.email
+            _make_completed_process(
+                stdout="https://github.com/iterabloom/hypergumbo.git\n"
+            ),  # remote
+        ]
+        result = preflight_check(tmp_path)
+        assert not result.ok
+        assert "HG_GITHUB_TOKEN" in result.error
+
+    @patch("hypergumbo_tracker.sync._git")
+    @patch("hypergumbo_tracker.sync._load_env")
+    @patch("hypergumbo_tracker.sync._detect_api_base")
+    def test_github_backend_token_from_os_environ(
+        self,
+        mock_api_base: MagicMock,
+        mock_env: MagicMock,
+        mock_git: MagicMock,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """HG_GITHUB_TOKEN is honored from os.environ when absent from .env."""
+        git_dir = tmp_path / ".git"
+        git_dir.mkdir()
+        monkeypatch.setenv("HG_GITHUB_TOKEN", "ghp_from_env")
+        mock_env.return_value = {"FORGEJO_TOKEN": "cb-tok"}  # no .env github tok
+        mock_api_base.return_value = (
+            "https://api.github.com/repos/iterabloom/hypergumbo"
+        )
+        mock_git.side_effect = [
+            _make_completed_process(stdout=str(git_dir)),  # rev-parse
+            _make_completed_process(stdout="dev\n"),  # branch
+            _make_completed_process(stdout=""),  # diff --cached
+            _make_completed_process(
+                stdout=" M .agent/tracker/.ops/.WI-test.ops\n"
+            ),  # status
+            _make_completed_process(stdout="Test User\n"),  # user.name
+            _make_completed_process(stdout="test@test.com\n"),  # user.email
+            _make_completed_process(
+                stdout="https://github.com/iterabloom/hypergumbo.git\n"
+            ),  # remote
+        ]
+        result = preflight_check(tmp_path)
+        assert result.ok
+        assert result.backend == "github"
+        assert result.forgejo_token == "ghp_from_env"
+        assert result.forgejo_user == "x-access-token"
 
     @patch("hypergumbo_tracker.sync._git")
     @patch("hypergumbo_tracker.sync._load_env")

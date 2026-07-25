@@ -297,9 +297,13 @@ class PreflightResult:
         git_dir: Path to .git directory.
         original_branch: Branch name to restore after sync.
         changed_files: List of dirty tracker file paths (relative to repo root).
-        api_base: Forgejo API base URL for this repo.
-        forgejo_user: Forgejo username from environment.
-        forgejo_token: Forgejo API token from environment.
+        api_base: Forge REST API base URL for this repo.
+        forgejo_user: Effective forge username for the resolved ``backend`` —
+            FORGEJO_USER on forgejo, the ``x-access-token`` PAT-auth placeholder
+            on github (kept named ``forgejo_*`` for backwards compatibility).
+        forgejo_token: Effective forge credential for the resolved ``backend`` —
+            FORGEJO_TOKEN on forgejo, HG_GITHUB_TOKEN on github (the two are NOT
+            interchangeable: the Codeberg token would 401 against github.com).
         push_remote: Git remote to push to (``origin`` or ``selfh`` during failover).
         backend: Forge backend, ``"forgejo"`` or ``"github"``, derived from the
             resolved ``api_base`` (forced to ``"forgejo"`` while CI failover is
@@ -1260,7 +1264,13 @@ def preflight_check(repo_root: Path) -> PreflightResult:
             error=f"tracker validation failed: {summary}",
         )
 
-    # 6. Credentials
+    # 6. Credentials.  Both forges' tokens are resolved here; the effective
+    #    push/API credential is selected by backend at step 9 (once the origin
+    #    host — hence the backend — is known).  The GitHub maintainer credential
+    #    is the LOCAL .env PAT ``HG_GITHUB_TOKEN`` (NOT the Actions-reserved
+    #    ``GITHUB_TOKEN`` name; see AGENTS.md §Secrets / PR-D), and it is NOT
+    #    interchangeable with FORGEJO_TOKEN — presenting the Codeberg token to
+    #    github.com would 401, so the two are kept distinct.
     env_vars = _load_env(repo_root)
     forgejo_token = env_vars.get("FORGEJO_TOKEN") or os.environ.get(
         "FORGEJO_TOKEN", ""
@@ -1268,8 +1278,13 @@ def preflight_check(repo_root: Path) -> PreflightResult:
     forgejo_user = env_vars.get("FORGEJO_USER") or os.environ.get(
         "FORGEJO_USER", ""
     )
+    github_token = env_vars.get("HG_GITHUB_TOKEN") or os.environ.get(
+        "HG_GITHUB_TOKEN", ""
+    )
 
-    # 6a. Failover detection — override credentials, API base, push remote
+    # 6a. Failover detection — override credentials, API base, push remote.
+    #     Failover always targets the self-hosted Forgejo, so it overrides only
+    #     the Forgejo credential (the backend is forced to "forgejo" at step 9).
     failover = _detect_failover(git_dir, env_vars)
     push_remote = "origin"
     if failover.active:
@@ -1278,7 +1293,9 @@ def preflight_check(repo_root: Path) -> PreflightResult:
         push_remote = failover.push_remote
         _log("[SELF-HOSTED] Failover active — targeting self-hosted Forgejo")
 
-    if not forgejo_token:
+    # Fail fast only when NO forge credential exists at all; the backend-specific
+    # requirement (which token this origin actually needs) is enforced at step 9.
+    if not forgejo_token and not github_token:
         return PreflightResult(
             ok=False,
             error="FORGEJO_TOKEN not found in .env or environment",
@@ -1326,6 +1343,26 @@ def preflight_check(repo_root: Path) -> PreflightResult:
         else "forgejo"
     )
 
+    # Select the effective push/API credential by backend.  For GitHub, the PAT
+    # authenticates as the password and the username is ignored, so the
+    # conventional token-auth placeholder ``x-access-token`` is used.  The result
+    # keeps its ``forgejo_*`` field names (they now carry "the resolved forge
+    # credential" for either backend; a rename is a possible follow-up).
+    if backend == "github":
+        forge_token = github_token
+        forge_user = "x-access-token"
+        missing_error = (
+            "HG_GITHUB_TOKEN not found in .env or environment "
+            "(required for the github origin)"
+        )
+    else:
+        forge_token = forgejo_token
+        forge_user = forgejo_user
+        missing_error = "FORGEJO_TOKEN not found in .env or environment"
+
+    if not forge_token:
+        return PreflightResult(ok=False, error=missing_error)
+
     return PreflightResult(
         ok=True,
         repo_root=repo_root,
@@ -1333,8 +1370,8 @@ def preflight_check(repo_root: Path) -> PreflightResult:
         original_branch=original_branch,
         changed_files=changed_files,
         api_base=api_base,
-        forgejo_user=forgejo_user,
-        forgejo_token=forgejo_token,
+        forgejo_user=forge_user,
+        forgejo_token=forge_token,
         push_remote=push_remote,
         backend=backend,
     )
