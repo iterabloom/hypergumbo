@@ -251,6 +251,13 @@ steps:
     environment:
       SMART_TEST_ACTIVE: "1"
     commands:
+      # The smart-test manifest can select top-level agent-infra tests/ (e.g.
+      # test_session_start_agent_notes.py) whose bash hooks shell out to jq;
+      # install it here as the sibling hook-tests / forge-arms steps already do.
+      # Without it those tests hit session_start_logic.sh's `command -v jq`
+      # guard, the notes prompt never fires, and the 5 "prompt fires" asserts
+      # fail (WI-bigab -- surfaced by pipeline 6's whole-suite run).
+      - apt-get update && apt-get install -y jq
       - pip install --upgrade pip
       - pip install pytest pytest-cov pytest-xdist ruff bandit pip-audit jsonschema yamllint
       - pip install -e packages/hypergumbo-core -e packages/hypergumbo-lang-mainstream -e packages/hypergumbo-lang-common -e packages/hypergumbo-lang-extended1 -e packages/hypergumbo-lang-rust-analyzer -e "packages/hypergumbo-tracker[dev,tui]"
