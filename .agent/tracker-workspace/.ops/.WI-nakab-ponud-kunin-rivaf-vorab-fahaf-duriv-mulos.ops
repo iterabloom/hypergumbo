@@ -17,3 +17,18 @@
     pr_ref:  # decf
     description: "Throwaway 1-op item validating the do_sync GitHub write path end-to-end (push -> POST /pulls -> Woodpecker gate poll -> PUT merge -> branch delete) before flushing the held ops. Safe to delete."  # decf
     fields: {}  # decf
+- op: update  # dc6f
+  at: '2026-07-25T09:07:39Z'  # dc6f
+  by: agent  # dc6f
+  actor: jgstern_agent  # dc6f
+  clock: 2  # dc6f
+  nonce: dc6f  # dc6f
+  set:  # dc6f
+    status: wont_do  # dc6f
+- op: discuss  # 7a61
+  at: '2026-07-25T09:07:39Z'  # 7a61
+  by: agent  # 7a61
+  actor: jgstern_agent  # 7a61
+  clock: 3  # 7a61
+  nonce: 7a61  # 7a61
+  message: "Throwaway cutover smoke-test item; it validated the do_sync GitHub write path end-to-end (merged as GitHub PR #3). Closing wont_do — agents can't set 'deleted' (human-authority-gated)."  # 7a61
