@@ -8367,10 +8367,10 @@ Auto-discovers cached results from 'hypergumbo survey', or specify --input."""
 Examples:
   hypergumbo compact --input hg.json --out hg.compact.json
   hypergumbo compact --input hg.json --max-symbols 50 --coverage 0.9
-  hypergumbo compact --input hg.json --no-connectivity
+  hypergumbo compact --input hg.json --connectivity
 
 Converts an existing behavior map to compact form with:
-- Top symbols by centrality coverage (connectivity-aware selection by default)
+- Top symbols by centrality coverage (centrality-ranked by default; pass --connectivity for connectivity-aware selection)
 - Summary of omitted symbols (bag-of-words, path patterns, kinds)
 - Induced subgraph edges (only edges between included symbols)
 
@@ -9254,10 +9254,12 @@ def run_survey(
         compact: If True, output compact mode with coverage-based truncation
             and bag-of-words summary of omitted items.
         coverage: Target centrality coverage for compact mode (0.0-1.0).
-        connectivity: If True (default), use connectivity-aware selection for
-            compact mode. Prioritizes nodes that bridge disconnected entrypoints,
+        connectivity: If True, use connectivity-aware selection for compact
+            mode. Prioritizes nodes that bridge disconnected entrypoints,
             producing well-connected subgraphs instead of isolated high-centrality
-            nodes. Set False to use legacy centrality-based selection.
+            nodes. Defaults to False (centrality-ranked selection, matching the
+            sketch, per D12); opt into connectivity-aware selection via
+            --connectivity.
         budgets: Token budget output specification. Comma-separated specs like
             "4k,16k,64k". Use "default" for DEFAULT_TIERS, "none" to disable.
             If None, defaults to generating DEFAULT_TIERS alongside full output.
