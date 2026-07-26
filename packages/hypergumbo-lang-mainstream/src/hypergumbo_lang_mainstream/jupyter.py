@@ -24,9 +24,10 @@ full Python analyzer, this module handles the notebook-specific concerns
 to Python's built-in ast module directly.
 
 Symbols get language="jupyter" (not "python") because notebook code typically
-lives outside the project's import namespace. Supply chain classification
-places notebooks at Tier 2 (INTERNAL_DEP) — useful context but not core
-architecture.
+lives outside the project's import namespace. Supply chain classification places
+notebooks at Tier 1 (FIRST_PARTY) since INV-naduh — an in-repo notebook is the
+project's own code (distance 0); "useful context but not core architecture" is a
+role/context signal, not a tier-2 (internal_dep) downgrade.
 
 Limitations
 -----------

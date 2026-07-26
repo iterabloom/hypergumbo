@@ -315,8 +315,11 @@ def parse_python_dependencies(repo_root: Path) -> DependencyManifest:
     # first-party workspace source, not a third-party direct dependency.
     # Resolve each package's own distribution name through the same
     # dist→import path and remove it, so the boundary classifier does not stamp
-    # in-repo packages (``hypergumbo_core`` et al.) as external tier-2 "direct
-    # dependency" nodes. Applied AFTER the stdlib carve-out so the final
+    # in-repo packages (``hypergumbo_core`` et al.) as external (tier-3)
+    # dependency nodes. (Pre-ADR-0041 this read "external tier-2 direct
+    # dependency"; ADR-0041 §1 made tier-3 the sole external tier and moved
+    # direct/transitive onto the ``directness`` meta stamp.) Applied AFTER the
+    # stdlib carve-out so the final
     # resolved import-name set is filtered.
     workspace_import_names = _resolve_import_names(workspace_dist_names)
     import_names -= workspace_import_names
