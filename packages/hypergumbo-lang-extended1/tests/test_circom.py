@@ -283,12 +283,12 @@ class TestCircomSkipped:
                 result = circom_module.analyze_circom(tmp_path)
         tc = result.run.toolchain
         assert isinstance(tc, dict), f"toolchain must be a dict, got {type(tc).__name__}"
-        assert tc.get("name") == "circom"
+        assert tc.get("name") == "python"  # WI-zugol: names the analyzing toolchain (python), not the language
         assert "version" in tc
         # to_dict must serialize a dict (schema contract); finalize's
         # ``run["toolchain"].get("name", "")`` must not crash.
         assert isinstance(result.run.to_dict()["toolchain"], dict)
-        assert result.run.to_dict()["toolchain"].get("name", "") == "circom"
+        assert result.run.to_dict()["toolchain"].get("name", "") == "python"
 
 
 class TestCircomSignalFlowConstraints:

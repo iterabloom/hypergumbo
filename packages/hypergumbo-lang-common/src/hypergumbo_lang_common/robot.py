@@ -44,7 +44,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar
 
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
+from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, _get_python_toolchain, make_pass_id
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     TreeSitterAnalyzer,
@@ -622,7 +622,7 @@ class RobotAnalyzer(TreeSitterAnalyzer):
             pass_id=PASS_ID,
             execution_id=execution_id,
             version=PASS_VERSION,
-            toolchain={"name": "robot", "version": "unknown"},
+            toolchain=_get_python_toolchain(),
             duration_ms=duration_ms,
             files_analyzed=extractor._files_analyzed,
         )
