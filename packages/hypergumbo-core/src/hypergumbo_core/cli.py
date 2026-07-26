@@ -8718,7 +8718,19 @@ def _classify_symbols(
     # dependency branch below is unchanged (all deps tier 3).
     workspace_names = collect_workspace_package_names(repo_root)
     for symbol in symbols:
-        if symbol.supply_chain_tier != 1 or symbol.supply_chain_reason:
+        # INV-bonup / ADR-0041 §1: supply_chain_tier names supply-chain DISTANCE
+        # only. Skip symbols already deliberately classified (a reason is set) or
+        # synthetic protocol stand-ins (a truthy `protocol_origin` field — the
+        # canonical ADR-0031 "not a real host-file callable" signal, cli.py:6143/
+        # 6255). The six protocol linkers used to borrow supply_chain_tier=2 purely
+        # to trip this skip, leaking mechanism into the distance axis; keying the
+        # skip on the honest synthetic marker lets those nodes carry a real
+        # first-party distance instead of a phantom internal_dep tier.
+        if (
+            symbol.supply_chain_tier != 1
+            or symbol.supply_chain_reason
+            or symbol.protocol_origin
+        ):
             continue
         # Dependency declarations are external references, not source code —
         # unless the declared name is an in-repo workspace sibling (tier 2).

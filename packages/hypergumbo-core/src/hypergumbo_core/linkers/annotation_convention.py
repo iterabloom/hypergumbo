@@ -213,7 +213,6 @@ def link_annotations(
                         "channel": channel,
                         "framework_role": "event_publisher",
                     },
-                    supply_chain_tier=2,
                     supply_chain_reason="@hg:publishes annotation",
                 ))
 
@@ -248,7 +247,6 @@ def link_annotations(
                             "channel": channel,
                             "framework_role": "event_subscriber",
                         },
-                        supply_chain_tier=2,
                         supply_chain_reason="@hg:subscribes annotation",
                     ))
 
@@ -349,7 +347,6 @@ def link_annotations(
                     "channel": target_name,
                     "framework_role": "dispatcher",
                 },
-                supply_chain_tier=2,
                 supply_chain_reason="@hg:dispatches annotation",
             ))
 

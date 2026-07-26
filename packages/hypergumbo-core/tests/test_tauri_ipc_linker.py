@@ -865,8 +865,10 @@ class TestTauriIPCSyntheticSymbols:
         # tauri_ipc's fingerprint is the synthetic src_id hash (not source bytes); kept per ADR-0032.
         assert sym.fingerprint is not None
         assert len(sym.fingerprint) == 16  # sha256 hex truncated to 16
-        # Tier 2 prevents _classify_symbols from reclassifying to tier 4
-        assert sym.supply_chain_tier == 2
+        # INV-bonup / ADR-0041 §1: supply_chain_tier names distance ONLY. The
+        # synthetic bridge is honest first-party (tier 1); _classify_symbols skips
+        # it via its protocol_origin marker, not a borrowed tier-2 "lock".
+        assert sym.supply_chain_tier == 1
         assert sym.supply_chain_reason == "synthetic IPC bridge node"
 
     def test_deduplicates_symbols_across_files(self, tmp_path: Path) -> None:
@@ -1209,7 +1211,9 @@ class TestTauriSpectaWrapperResolution:
         assert caller_syms[0].language is None
         assert caller_syms[0].discovery_language == "typescript"
         assert caller_syms[0].protocol_origin == "tauri_ipc"
-        assert caller_syms[0].supply_chain_tier == 2
+        # INV-bonup: distance-only tier — the synthetic caller is honest first-party
+        # (skipped by _classify_symbols via protocol_origin, not a tier-2 lock).
+        assert caller_syms[0].supply_chain_tier == 1
 
     def test_wrapper_dedup_same_import_same_file(self, tmp_path: Path) -> None:
         """Same wrapper imported twice in same file creates only one edge."""

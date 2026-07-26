@@ -286,7 +286,6 @@ def link_message_dispatch(
                         "channel": write.channel,
                         "framework_role": "message_sender",
                     },
-                    supply_chain_tier=2,
                     supply_chain_reason="message dispatch sender",
                 ))
 
@@ -319,7 +318,6 @@ def link_message_dispatch(
                         "channel": read.channel,
                         "framework_role": "message_handler",
                     },
-                    supply_chain_tier=2,
                     supply_chain_reason="message dispatch handler",
                 ))
 

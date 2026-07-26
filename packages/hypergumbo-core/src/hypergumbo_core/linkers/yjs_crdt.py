@@ -422,7 +422,6 @@ def link_yjs_crdt(
                         "channel": write.channel,
                         "framework_role": "event_publisher",
                     },
-                    supply_chain_tier=2,
                     supply_chain_reason="synthetic Yjs CRDT publisher",
                 ))
 
@@ -454,7 +453,6 @@ def link_yjs_crdt(
                         "channel": read.channel,
                         "framework_role": "event_subscriber",
                     },
-                    supply_chain_tier=2,
                     supply_chain_reason="synthetic Yjs CRDT subscriber",
                 ))
 
