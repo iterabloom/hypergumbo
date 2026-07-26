@@ -1623,7 +1623,7 @@ Tier and Role compose for analysis decisions:
 | Decision | Tier constraint | Role constraint |
 |----------|----------------|-----------------|
 | Count in LOC | Tiers 1-2 | CODE roles |
-| Extract symbols | analysis_tiers | ANALYZABLE only |
+| Extract symbols | Tiers 1-2 | ANALYZABLE only |
 | Additional Files | Tiers 1-2 | CONFIG + DOCUMENTATION |
 
 **Status:** 🟩 Implemented (ADR-0004). The `taxonomy.py` module provides the unified file classification system with `FileRole` enum and `LanguageSpec` dataclass for 86 languages.

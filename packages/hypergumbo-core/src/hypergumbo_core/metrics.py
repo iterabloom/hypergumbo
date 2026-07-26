@@ -147,8 +147,10 @@ def compute_metrics(
     # Count edges per supply chain tier. Two views (WI-modom):
     # - ``edges``: counted once by the SOURCE node's tier. Each edge counts once,
     #   so the per-tier ``edges`` sum reconciles to the resolved-src edge total.
-    #   External-dependency tiers (2/3) are graph SINKS, not sources, so their
-    #   ``edges`` legitimately reads ~0 — which read as "no contribution".
+    #   Third-party tier 3 is a graph SINK (dependencies are referenced, not
+    #   sources), so its ``edges`` legitimately reads ~0 (INV-higop: tier 2 is
+    #   internal / project-side per ADR-0041 — a source that CAN have out-edges,
+    #   not lumped with tier 3 as an external-dependency sink).
     # - ``edges_incident``: counts an edge once per DISTINCT resolved endpoint
     #   tier (either-endpoint), so a tier's actual graph contribution is visible
     #   (a tier-3 dependency referenced by N edges shows N incident, not 0). This
