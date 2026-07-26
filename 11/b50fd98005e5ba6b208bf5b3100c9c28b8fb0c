@@ -1,0 +1,17 @@
+Original commit body from d81d990e255b575200f7a8f998038bf1855d4d9d:
+
+PR CI runs pytest as root, where os.chmod(path, 0o000) does NOT block reads, so
+test_unreadable_cargo_toml's chmod-based unreadable-file simulation silently
+skipped the `except OSError` branch in detect_package_roots (supply_chain.py:
+891-892). Locally (non-root) the chmod worked and the branch was covered, so the
+affected-only 100%-coverage gate passed here but failed in CI at 99% — the sole
+reason PR #19 was red (all 3753 tests passed; it was the coverage gate, not a
+test failure).
+
+Fix: mock Path.read_text to raise OSError for Cargo.toml, mirroring the already-
+correct test_unreadable_settings_gradle (whose comment names this exact gotcha).
+The mock is user-independent, so the branch is covered under root and non-root
+alike. Pre-existing latent issue surfaced because this PR touches supply_chain.py,
+activating the whole-file gate.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
