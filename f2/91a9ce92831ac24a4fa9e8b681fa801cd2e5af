@@ -1,0 +1,21 @@
+Original commit body from fbd37c5c3205380f106af3f70ac790c26bc44507:
+
+Three spec sites overclaimed byte-level reproducibility, contradicting the
+spec's own reproducibility_context L2 disclaimer (spec:757-786):
+  - :321  analysis_runs[] "byte-stable across runs"
+  - :72   UX key principle "deterministic and reproducible given same repo state"
+  - :1649 verification checklist "same input -> same output"
+
+A two-run survey confirms the array is NOT byte-stable: 65/65 analysis_runs
+entries carry a different execution_id (per-run uuid:) plus fresh wall-clock
+started_at/duration_ms, and the whole-file sha256 differs; the node stable_id
+set is identical (the L2 semantic graph reproduces). The pass ORDER also varies
+run-to-run: started_at is microsecond wall-clock (65/65 distinct), so the sort
+reflects real-time completion order -- WI-haguz removed the old random dict-order
+but did not make the order reproducible.
+
+All three sites now scope the guarantee to the L2 semantic graph (nodes, edges,
+stable_ids, run_signature). Byte-level reproducibility remains a separate opt-in
+(WI-sazap --reproducible). Docs-only; smart-test selects 0 tests.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
