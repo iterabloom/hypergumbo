@@ -1,0 +1,19 @@
+Original commit body from ad835ed0ba3ec9770dafe289f3a94f9e483b2a25:
+
+The retired Forgejo tracker-ci.yml was a dedicated lightweight job (~15s). The
+Woodpecker port folded tracker validation into the general per-PR gate but left
+hook-tests + prepare-git (no `when:` -> always-on) and dco (all PRs) running for
+a tracker-ops-only PR. Those four container steps (each apt/pip-installing in a
+fresh python:3.11-bookworm) outran do_sync's CI-poll timeout, so every auto-sync
+PR timed out and no tracker ops could reach GitHub dev.
+
+Add a shared `non_tracker_paths` path filter (include ** / exclude
+.agent/tracker/** + .agent/tracker-workspace/**) to hook-tests, prepare-git, and
+dco. A tracker-sync PR now runs ONLY tracker-validate -> one fast step, well under
+the poll timeout. Code / docs PRs are unaffected (they match the filter). Skipping
+dco for tracker PRs is safe: do_sync already writes a Signed-off-by trailer
+(sync.py:1520-1531), verified present on the pushed sync commit.
+
+Config-only (.woodpecker + CHANGELOG); smart-test selects 0 tests.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
