@@ -517,6 +517,65 @@ def _freeze(ctx: FinalizeContext) -> FinalizedMap:
     )
 
 
+def _prune_grammars_to_used(
+    analysis_runs: list[dict], seed: dict[str, str]
+) -> dict[str, str]:
+    """Return only the grammar dists actually exercised by node-producing passes.
+
+    Keyed by dist name (dash form). ``analysis_runs`` are ``AnalysisRun.to_dict()``
+    dicts; ``_extend_toolchain`` (analyze/base.py) stamps a tree-sitter analyzer's
+    run with ``toolchain.grammar_module`` (``tree_sitter_go`` for a standalone
+    grammar, or ``language_pack:<lang>`` for a pack-backed one) and, for standalone
+    grammars, ``toolchain.grammar_version``. A run is "used" iff it emitted >=1 node.
+    ast-based analyzers (python) and synthesis / linker passes carry no
+    ``grammar_module`` and contribute nothing (WI-fonod: no grammar is captured for
+    a language that produced zero nodes). Pack-backed grammars surface as distinct
+    ``tree-sitter-language-pack:<lang>`` entries (WI-givad) at the shared pack dist
+    version (the pack exposes no per-grammar version), taken from ``seed`` — the
+    init-time all-installed capture. Standalone grammars carry their own toolchain
+    version, falling back to the seed's dist version. Pure (no ctx / IO) for testing.
+    """
+    pack_version = seed.get("tree-sitter-language-pack")
+    used: dict[str, str] = {}
+    for run in analysis_runs:
+        if run.get("nodes_emitted", 0) <= 0:
+            continue
+        grammar_module = run.get("toolchain", {}).get("grammar_module")
+        if not grammar_module:
+            continue
+        if grammar_module.startswith("language_pack:"):
+            lang = grammar_module.split(":", 1)[1]
+            if pack_version is not None:
+                used[f"tree-sitter-language-pack:{lang}"] = pack_version
+        else:
+            dist = grammar_module.replace("_", "-")
+            version = run.get("toolchain", {}).get("grammar_version") or seed.get(dist)
+            if version is not None:
+                used[dist] = version
+    return dict(sorted(used.items()))
+
+
+def _finalize_prune_repro_grammars(ctx: FinalizeContext) -> None:
+    """WI-fonod / WI-givad: replace ``reproducibility_context.captured.grammars`` —
+    seeded at map-init by ``build_reproducibility_context`` with EVERY installed
+    ``tree-sitter-*`` dist, before any node exists — with only the grammars whose
+    analyzer pass actually emitted nodes. Runs at the ADR-0043 finalize chokepoint,
+    after nodes are final. When no grammar was used (e.g. a python-only repo, whose
+    ``ast`` analyzer needs no tree-sitter grammar) the key is dropped, matching the
+    builder's "present only when non-empty" convention. ``_detect_tree_sitter_versions``
+    stays unscoped for ``analyzer_identity`` (cache correctness / INV-nofof).
+    """
+    captured = ctx.behavior_map.get("reproducibility_context", {}).get("captured", {})
+    seed = captured.get("grammars")
+    if not seed:
+        return
+    used = _prune_grammars_to_used(ctx.analysis_runs, seed)
+    if used:
+        captured["grammars"] = used
+    else:
+        captured.pop("grammars", None)
+
+
 def finalize(ctx: FinalizeContext) -> FinalizedMap:
     """ADR-0043 §6 single pre-serialization reconcile point. Body IS the order contract."""
     ctx.violations.clear()
@@ -528,6 +587,7 @@ def finalize(ctx: FinalizeContext) -> FinalizedMap:
     _finalize_demote_receiver_blind_magnets(ctx)  # 6c INV-fahub magnet demote (before 7)
     _finalize_edge_resolution(ctx)          # 7  edge-resolution verdict (ADR-0037; before 8)
     _finalize_compute_visibility(ctx)       # 7b visibility fold (INV-jusot; before 8)
+    _finalize_prune_repro_grammars(ctx)     # 7c repro grammars → used-only (WI-fonod/WI-givad; before 8)
     _finalize_commit_dicts(ctx)             # 8  commit reconciled view
     _finalize_referential_integrity(ctx)    # 10 validate_ir — LAST (R3)
     ctx.violations.sort(key=_violation_sort_key)  # §6 determinism: stable serialized order
