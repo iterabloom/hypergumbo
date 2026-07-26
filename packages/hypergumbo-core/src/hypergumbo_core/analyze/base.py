@@ -1116,6 +1116,11 @@ _KIND_STABLE_ID_FACTORIES = {
     "trait": _declaration_kind_stable_id,
     "protocol": _declaration_kind_stable_id,
     "contract": _declaration_kind_stable_id,
+    # META-nomiz: view-template stand-ins (linkers/_view_template_core.py) mint
+    # kind="template" with a language but no stable_id, falling through every other
+    # backstop. They share the generic kind-scoped formula — kind is folded into the
+    # hash, so a "template" node stays distinct from a "file" node at the same path.
+    "template": _declaration_kind_stable_id,
 }
 
 

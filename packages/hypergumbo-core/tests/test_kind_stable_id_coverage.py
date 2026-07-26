@@ -225,6 +225,23 @@ class TestBackstopBehavior:
         populate_kind_stable_ids([sym])
         assert sym.stable_id == "sha256:custom_producer_value"
 
+    def test_template_kind_gets_stable_id_distinct_from_file(self) -> None:
+        """META-nomiz: view-template stand-ins (kind='template') are backstopped,
+        and stay distinct from a 'file' node at the same path (kind is in the hash)."""
+        from hypergumbo_core.analyze.base import populate_kind_stable_ids
+        tmpl = self._make_symbol(
+            "template", name="show.html.erb",
+            path="app/views/show.html.erb", language="ruby",
+        )
+        file = self._make_symbol(
+            "file", name="show.html.erb",
+            path="app/views/show.html.erb", language="ruby",
+        )
+        populate_kind_stable_ids([tmpl, file])
+        assert tmpl.stable_id is not None  # was None before the "template" factory
+        assert file.stable_id is not None
+        assert tmpl.stable_id != file.stable_id  # kind folded into the hash
+
     def test_each_kind_dispatches_to_distinct_formula(self) -> None:
         """Two symbols differing only in ``kind`` get distinct stable_ids
         because each kind uses a kind-prefixed formula."""
