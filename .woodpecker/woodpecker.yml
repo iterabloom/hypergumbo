@@ -141,10 +141,23 @@ steps:
       - ./scripts/generate-security-md --check
       - ./scripts/check-schema-coverage --mode=warning
 
-  # ── bash hook tests — runs ALWAYS (even docs-only); cheap; catches silent rot
+  # ── bash hook tests — runs on any non-tracker-only change; cheap; catches silent rot
+  # Skipped for tracker-sync PRs (they touch only .agent/tracker ops → hooks unaffected).
+  # Together with the prepare-git / dco skips below, this leaves a tracker-sync PR running
+  # ONLY `tracker-validate`, so auto-sync's CI is one fast step and never exceeds do_sync's
+  # CI-poll timeout (the old dedicated tracker-ci.yml was a single lightweight job; the
+  # Woodpecker port folded validation into this gate but left 4 always-on steps for a
+  # tracker PR, which blew past the poll timeout).
   - name: hook-tests
     image: python:3.11-bookworm    # needs bash+git; python image has both
     depends_on: []
+    when:
+      - path: &non_tracker_paths
+          include:
+            - "**"
+          exclude:
+            - ".agent/tracker/**"
+            - ".agent/tracker-workspace/**"
     commands:
       - apt-get update && apt-get install -y jq   # stop.sh (exercised by test_hooks.sh) needs jq
       - bash .githooks/test_hooks.sh
@@ -189,16 +202,19 @@ steps:
   - name: prepare-git
     image: python:3.11-bookworm
     depends_on: []
+    when:
+      - path: *non_tracker_paths       # tracker-sync PRs need no history (only tracker-validate runs)
     commands:
       - '[ -f "$(git rev-parse --git-dir)/shallow" ] && git fetch --unshallow origin || echo "repo already complete"'
       - git fetch --no-tags origin "$CI_COMMIT_TARGET_BRANCH"
 
-  # ── DCO sign-off check (PRs only) ──────────────────────────────────────────
+  # ── DCO sign-off check (PRs only; tracker-sync commits are already do_sync-signed) ──
   - name: dco
     image: python:3.11-bookworm
     depends_on: [prepare-git]
     when:
       - event: pull_request
+        path: *non_tracker_paths       # tracker-sync commits carry Signed-off-by from do_sync (sync.py)
     commands:
       - BASE=$(git merge-base "origin/$CI_COMMIT_TARGET_BRANCH" HEAD)
       - |
