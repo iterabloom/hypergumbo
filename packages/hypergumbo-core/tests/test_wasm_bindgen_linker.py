@@ -578,8 +578,10 @@ class TestWasmBindgenSyntheticSymbols:
         assert sym.meta == {"wasm_export": "greet", "compilation_target": "wasm"}
         # ADR-0032: producer-side fingerprint demolished; central post-pass leaves None for language=None.
         assert sym.fingerprint is None
-        # Tier 2 prevents _classify_symbols from reclassifying to tier 4
-        assert sym.supply_chain_tier == 2
+        # INV-bonup / ADR-0041 §1: supply_chain_tier names distance ONLY. The
+        # synthetic bridge is honest first-party (tier 1); _classify_symbols skips
+        # it via its protocol_origin marker, not a borrowed tier-2 "lock".
+        assert sym.supply_chain_tier == 1
         assert sym.supply_chain_reason == "synthetic WASM bridge node"
 
     def test_no_symbols_when_no_matches(self, tmp_path: Path) -> None:

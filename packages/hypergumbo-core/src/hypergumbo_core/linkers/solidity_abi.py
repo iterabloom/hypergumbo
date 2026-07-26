@@ -221,7 +221,6 @@ def link_solidity_abi(
             ),
             origin=PASS_ID,
             origin_run_id=run.execution_id,
-            supply_chain_tier=2,
             meta={"call_kind": "abi"},
         )
         result_symbols.append(syn_sym)

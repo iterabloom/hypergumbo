@@ -1999,6 +1999,37 @@ class TestClassifySymbolsPreservesTier:
 
         assert sym.supply_chain_reason == "manually classified"
 
+    def test_protocol_origin_stand_in_not_reclassified(self, tmp_path: Path) -> None:
+        """INV-bonup / ADR-0041 §1: a synthetic protocol stand-in (tier-1 default,
+        NO supply_chain_reason, but a truthy protocol_origin) is skipped by
+        _classify_symbols rather than reclassified by host-file path.
+
+        protocol_origin is the honest synthetic marker that replaces the old
+        supply_chain_tier=2 'lock' — the six protocol linkers used to borrow tier 2
+        purely to trip this skip, leaking mechanism into the distance axis. This
+        mirrors the solidity_abi call-site node, the one stand-in with no reason of
+        its own (so it depends on the protocol_origin skip, not the reason skip)."""
+        from hypergumbo_core.cli import _classify_symbols
+        from hypergumbo_core.ir import Symbol, Span
+
+        stand_in = Symbol(
+            id="solidity:abi:transfer",
+            name="transfer",
+            kind="call_site",
+            language=None,
+            path="contract.ts",
+            span=Span(1, 1, 0, 0),
+            protocol_origin="solidity_abi",
+        )
+
+        package_roots = detect_package_roots(tmp_path)
+        _classify_symbols([stand_in], tmp_path, package_roots)
+
+        # Skipped via protocol_origin: keeps the first-party default distance and
+        # gets no classification reason stamped (reclassification would set one).
+        assert stand_in.supply_chain_tier == 1
+        assert not stand_in.supply_chain_reason
+
 
 class TestClassifySymbolsDependencyTier:
     """_classify_symbols assigns tier 3 to dependency-kind symbols."""

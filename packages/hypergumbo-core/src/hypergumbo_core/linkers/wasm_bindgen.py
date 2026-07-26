@@ -277,10 +277,12 @@ def link_wasm_bindgen(
                         "wasm_export": import_name,
                         "compilation_target": "wasm",
                     },
-                    # Tier 2 prevents _classify_symbols from reclassifying
-                    # based on the host file path (e.g., generated pkg/ files
-                    # detected as "minified/generated" → tier 4 → filtered out).
-                    supply_chain_tier=2,
+                    # INV-bonup / ADR-0041 §1: NO supply_chain_tier stamp — this
+                    # node used to borrow tier 2 purely to make _classify_symbols
+                    # skip host-path reclassification (e.g. generated pkg/ files →
+                    # tier 4 → filtered out), leaking a skip mechanism into the
+                    # distance axis. The skip now keys on this node's protocol_origin
+                    # marker, so it keeps its honest first-party default distance.
                     supply_chain_reason="synthetic WASM bridge node",
                 ))
 
@@ -416,7 +418,6 @@ def _create_wasm_load_edges(
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     meta={"compilation_target": "wasm"},
-                    supply_chain_tier=2,
                     supply_chain_reason="WASM module loaded dynamically",
                 ))
 

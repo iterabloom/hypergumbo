@@ -654,10 +654,12 @@ def link_tauri_ipc(
                         "tauri_command": cmd_name,
                         "framework_role": "ipc_publisher",
                     },
-                    # Tier 2 prevents _classify_symbols from reclassifying
-                    # based on the host file path (e.g., tauri.ts detected
-                    # as "minified/generated" → tier 4 → filtered out).
-                    supply_chain_tier=2,
+                    # INV-bonup / ADR-0041 §1: NO supply_chain_tier stamp — this
+                    # node used to borrow tier 2 purely to make _classify_symbols
+                    # skip host-path reclassification (e.g. tauri.ts → tier 4 →
+                    # filtered out), leaking a skip mechanism into the distance
+                    # axis. The skip now keys on this node's protocol_origin marker,
+                    # so it keeps its honest first-party default distance.
                     supply_chain_reason="synthetic IPC bridge node",
                 ))
 
@@ -782,7 +784,6 @@ def link_tauri_ipc(
                             "tauri_command": cmd_name,
                             "framework_role": "ipc_caller",
                         },
-                        supply_chain_tier=2,
                         supply_chain_reason="synthetic IPC caller node",
                     ))
 
@@ -882,7 +883,6 @@ def link_tauri_ipc(
                                 "tauri_event": event_name,
                                 "framework_role": "event_publisher",
                             },
-                            supply_chain_tier=2,
                             supply_chain_reason="synthetic Tauri event emitter",
                         ))
 
@@ -912,7 +912,6 @@ def link_tauri_ipc(
                                 "tauri_event": event_name,
                                 "framework_role": "event_subscriber",
                             },
-                            supply_chain_tier=2,
                             supply_chain_reason="synthetic Tauri event listener",
                         ))
 
