@@ -69,7 +69,7 @@ For goals that were considered and rejected, see [Appendix D](#appendix-d-capsul
 
 ## 3) User experience (CLI)
 
-**Key principle:** Analysis execution requires no network or API keys (by default). Output is deterministic and reproducible given the same repo state. See [Appendix B](#appendix-b-telemetry--privacy) for the full privacy and telemetry policy.
+**Key principle:** Analysis execution requires no network or API keys (by default). Output is reproducible at the **L2** level — the semantic graph (nodes, edges, `stable_id`s, `run_signature`) is stable given the same repo state; per-run metadata (`execution_id`, wall-clock timestamps, and the `analysis_runs[]` ordering) is not byte-identical (see the `reproducibility_context` block). See [Appendix B](#appendix-b-telemetry--privacy) for the full privacy and telemetry policy.
 
 ### Install
 * `pipx install hypergumbo` (primary, includes all language analyzers)
@@ -318,7 +318,7 @@ class AnalysisIR:
 ```
 🟪 `AnalysisIR`, `Reference`, `Relationship` are spec names; code uses `AnalysisResult`, `Symbol`, `Edge`.
 
-🟩 The serialized `analysis_runs[]` array is ordered by ascending `started_at`, ties broken by `pass` id (WI-haguz) — a deterministic ordering contract, so consumers can rely on chronological pass order and the array is byte-stable across runs.
+🟩 The serialized `analysis_runs[]` array is sorted by ascending `started_at`, ties broken by `pass` id (WI-haguz), so within a run consumers see passes in chronological completion order. It is **not** byte-stable across runs: every entry stamps a fresh `execution_id` (a per-run `uuid:` value) plus wall-clock `started_at`/`duration_ms`, and because the sort key is wall-clock, even the pass *ordering* is not reproducible run-to-run (WI-haguz removed the old random dict-order; it did not make the order reproducible). Only the L2 semantic content (nodes, edges, `stable_id`s, `run_signature`) is reproducible — see the `reproducibility_context` block (§ below).
 
 ### Multi-value field axes
 
@@ -1646,7 +1646,7 @@ Tier and Role compose for analysis decisions:
 - 🟩 Every symbol has a non-empty name
 - 🟩 Output matches the JSON schema
 - 🟩 Analysis completes without errors
-- 🟩 Determinism: same input → same output
+- 🟩 Determinism: same input → same **semantic** output (nodes/edges/`stable_id`s/`run_signature` reproduce at L2; per-run `execution_id`/timestamps and `analysis_runs[]` order are not byte-identical)
 
 **Benefits:**
 - No need to know "correct" answer upfront
