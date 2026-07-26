@@ -37,3 +37,18 @@
   clock: 3  # 8f32
   nonce: 8f32  # 8f32
   message: "Wave-5 sweep (2026-07-08): identity:F5 fingerprint residual (file-node fingerprint null ~6% bash/ts/go/rust/swift + isolated bash fn); child of INV-zadum (Wave-2 Symbol-write identity-contract umbrella). Empty isbefore -> terminal wave."  # 8f32
+- op: update  # 870c
+  at: '2026-07-26T07:59:15Z'  # 870c
+  by: agent  # 870c
+  actor: jgstern_agent  # 870c
+  clock: 4  # 870c
+  nonce: 870c  # 870c
+  set:  # 870c
+    status: done  # 870c
+- op: discuss  # db0a
+  at: '2026-07-26T07:59:15Z'  # db0a
+  by: agent  # db0a
+  actor: jgstern_agent  # db0a
+  clock: 5  # db0a
+  nonce: db0a  # db0a
+  message: "FIXED (re-scoped) in GitHub PR #13 (dev 2e5ccab0ba). Actionable residual: the create_file_symbols inline path (base.py) minted kind=file nodes with a degenerate Span(1,0,1,0), so their whitespace-invariant structural fingerprint hashed only line 1 (shebang/comment -> filtered empty -> needless null) for ~13 tree-sitter analyzers (haskell/elm/dart/ocaml/...). Now spans the parsed extent (tree.root_node.end_point[0]+1), matching bash.py/js_ts.py + the synthesis paths. Identity-safe: make_file_id hardcodes :1-1: and make_file_stable_id hashes only (language,path) -> no id/stable_id churn (INV-sotiv/INV-vaguj). VERIFY-THE-PREMISE re-scope: the item's named bash/ts/go/rust/swift population already carried full-file spans; their ~6% nulls are cause-2 HONEST-NULLS from whole-file tree-sitter parse errors, SPEC-PERMITTED (spec §372 + spec_validator skips None) -> not a defect, policy-dissolved. Cause-1 (fingerprint.py ignoring grammar_module) MOOT at HEAD (bash resolves via the pack post-WI-givad); §372's stale 'bash has no grammar in the pack' clause corrected. 'Isolated bash function' facet = graph connectivity, orthogonal to fingerprint, not addressed. Evidence: new full-span test (end_point row 4 -> end_line 5); smart-test 10248 passed, 100% cov of changed files."  # db0a

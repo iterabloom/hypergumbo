@@ -35,3 +35,18 @@
   clock: 3  # a1cc
   nonce: a1cc  # a1cc
   message: "Wave-5 sweep (2026-07-08): identity:F5 reproducibility-fingerprint residual (over-captures 51 grammars; 38 for zero-node languages). Empty isbefore -> terminal wave."  # a1cc
+- op: update  # 034c
+  at: '2026-07-26T07:19:40Z'  # 034c
+  by: agent  # 034c
+  actor: jgstern_agent  # 034c
+  clock: 4  # 034c
+  nonce: 034c  # 034c
+  set:  # 034c
+    status: done  # 034c
+- op: discuss  # 9d5d
+  at: '2026-07-26T07:19:40Z'  # 9d5d
+  by: agent  # 9d5d
+  actor: jgstern_agent  # 9d5d
+  clock: 5  # 9d5d
+  nonce: 9d5d  # 9d5d
+  message: "FIXED in GitHub PR #12 (dev 15bc19cc7a). build_reproducibility_context seeds captured.grammars at map-init (before nodes exist) with EVERY installed tree-sitter-* dist (51 on this box; ~38 for zero-node languages). A new finalize sub-step _finalize_prune_repro_grammars (ADR-0043 chokepoint, 7c) rebuilds it from the toolchains of passes that emitted >=1 node (analysis_runs[].toolchain.grammar_module, stamped by _extend_toolchain). Behavioral evidence: a live python-only survey now prunes captured.grammars 51 -> absent (python is ast-based, uses no tree-sitter grammar). _detect_tree_sitter_versions stays unscoped for analyzer_identity cache correctness (INV-nofof). 56 finalize tests green, 100% cov of changed files; 1851 affected tests pass."  # 9d5d

@@ -23,3 +23,10 @@
     fields:  # 118d
       statement: "AnalysisRun.config_fingerprint must distinguish two runs of the same pass produced under different runtime effective configuration (e.g. --include-docs, --max-tier, file/lang filters), so run_signature cache keys do not collide across configurations."  # 118d
       root_cause: "config_fingerprint is computed as a producer-IDENTITY digest (analyzer/linker class + grammar + static file globs, via ir.compute_config_fingerprint / TreeSitterAnalyzer._get_config_dict); runtime CLI flags are never threaded into it. The _get_config_dict override hook that could thread per-run config exists but has zero production overrides."  # 118d
+- op: discuss  # 9e25
+  at: '2026-07-26T07:59:15Z'  # 9e25
+  by: agent  # 9e25
+  actor: jgstern_agent  # 9e25
+  clock: 2  # 9e25
+  nonce: '9e25'  # 9e25
+  message: "DEFERRED (demand-gated) in the G8 sweep. config_fingerprint (ir.py) keys on producer identity and does NOT distinguish same-pass runs under different runtime CLI flags (--include-docs/--max-tier/frameworks/file-lang filters) — the invariant IS violated. But it has NO internal consumer (external cache-keying only, ir.py:267-274), and the fix is a SEMANTIC REDEFINITION (identity -> runtime-config) that also perturbs the finalize run_signature recompute. Per the item's own re-eval trigger and the hypergumbo-spirit 'no complexity without a consumer' call, do NOT redefine config_fingerprint until a consumer needs same-pass/different-flag distinction. Left violated (honest) + this note; reopen when a cache-distinction consumer appears. This does not need human input — it's a deliberate scope call. G8 now COMPLETE: WI-pifaj #7, WI-fonod/WI-givad #12, WI-sijug #13 done; INV-nogom demand-gated-deferred."  # 9e25
