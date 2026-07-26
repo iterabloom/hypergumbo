@@ -20,3 +20,18 @@
     pr_ref:  # 14e9
     description: "The `directness` meta key (values: direct / transitive / undeclared) is WRITE-ONLY. Tier-axis concept audit (2026-07-15): stamped at ir.py:1504 (create_boundary_nodes, gated to go/java/kotlin/python + a non-None DependencyManifest), classified by DependencyManifest.classify_directness (supply_chain.py:107), and registered as a MetaKeySpec axis (axis_meta_keys.py:469) — but has ZERO readers (grep for .get(\"directness\") / meta[\"directness\"] read = 0). ADR-0041 §2 extracted directness FROM tier so \"the direct/transitive knowledge the classifier was burning into the tier is re-emitted as the directness stamp\" — the extraction correctly purified tier, but nothing consumes the re-emitted stamp. (Contrast: `ecosystem`, the ADR-0041 §3 extraction, has one report-only reader at cli.py:8562.)\n\nOPTIONS: (a) wire a consumer — surface directness in explain / supply_chain_summary; (b) mark it an explicit x-internal extension point in the schema (like AnalysisRun.run_signature, kept for external PROV-DM tooling); (c) remove the stamp + classifier if genuinely unwanted. Parallels the provenance-audit dead field origin_run_signature (WI-gapin). Evidence: ~/hypergumbo_lab_notebook/concept-audit-supply_chain_tier_07152026.md (F4)."  # 14e9
     fields: {}  # 14e9
+- op: update  # 8c3f
+  at: '2026-07-26T18:17:47Z'  # 8c3f
+  by: agent  # 8c3f
+  actor: jgstern_agent  # 8c3f
+  clock: 2  # 8c3f
+  nonce: 8c3f  # 8c3f
+  set:  # 8c3f
+    status: done  # 8c3f
+- op: discuss  # 5b11
+  at: '2026-07-26T18:17:47Z'  # 5b11
+  by: agent  # 5b11
+  actor: jgstern_agent  # 5b11
+  clock: 3  # 5b11
+  nonce: 5b11  # 5b11
+  message: "Merged in PR #21 (dev faf57536cc). Wired the write-only ADR-0041 §2 directness meta stamp into a report-only reader: _compute_supply_chain_summary now emits summary['external_dep']['directness'] ({direct/transitive/undeclared/unknown}) mirroring the ecosystem sub-bucket line-for-line. NOT removed (chose option (a) surface-it; ADR-0041 §2 keeps directness as a recorded fact). Tests in TestSupplyChainSummaryFileScoping. SCHEMA_VERSION 0.18.0->0.19.0."  # 5b11

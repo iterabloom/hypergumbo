@@ -1,0 +1,22 @@
+- op: create  # ed36
+  at: '2026-07-26T17:35:05Z'  # ed36
+  by: agent  # ed36
+  actor: jgstern_agent  # ed36
+  clock: 1  # ed36
+  nonce: ed36  # ed36
+  data:  # ed36
+    kind: work_item  # ed36
+    title: "ci-debug can't fetch Woodpecker step logs (agent can't self-diagnose CI failures)"  # ed36
+    status: todo_hard  # ed36
+    priority: 2  # ed36
+    parent:  # ed36
+    tags:  # ed36
+    - ci  # ed36
+    - tooling  # ed36
+    - governance  # ed36
+    isbefore: []  # ed36
+    duplicate_of: []  # ed36
+    not_duplicate_of: []  # ed36
+    pr_ref:  # ed36
+    description: "Woodpecker CI logs are behind Cloudflare Access; scripts/ci-debug logs reports 'not retrievable via the API', and GitHub's commit-status API exposes only the single combined pass/fail context (ci/woodpecker/pr/woodpecker) with no per-step logs. When CI fails, the agent cannot read WHY without human aid -- this cost a very long debugging detour on PR #19, where a coverage-gate failure (99% vs 100%) was invisible via the combined status and reproduced GREEN locally on py3.12. Proposal: wire a Woodpecker API token (or a Cloudflare Access service token) into 'ci-debug logs' so step logs are pullable headlessly. NOTE: scripts/ci-debug is a GOVERNANCE file -- the code change needs human approval; this item documents the need and requests it."  # ed36
+    fields: {}  # ed36
