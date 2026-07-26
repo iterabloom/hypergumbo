@@ -33,3 +33,18 @@
   clock: 3  # 4cbc
   nonce: 4cbc  # 4cbc
   message: "Wave-5 assignment (2026-07-08): identity/file-anchoring verify residual (rust-analyzer SCIP rel_path byte-match under v7 anchoring + _disk_source_reader CWD gap). Empty isbefore → terminal wave."  # 4cbc
+- op: update  # be19
+  at: '2026-07-26T08:30:54Z'  # be19
+  by: agent  # be19
+  actor: jgstern_agent  # be19
+  clock: 4  # be19
+  nonce: be19  # be19
+  set:  # be19
+    status: done  # be19
+- op: discuss  # 0d3a
+  at: '2026-07-26T08:30:54Z'  # 0d3a
+  by: agent  # 0d3a
+  actor: jgstern_agent  # 0d3a
+  clock: 5  # 0d3a
+  nonce: 0d3a  # 0d3a
+  message: "FIXED in GitHub PR #14 (dev c052d2b88a). The rust-analyzer SCIP source reader read doc.relative_path (repo-relative) against os.getcwd(); under repo_root != cwd (absolute-path surveys, monorepo sub-roots, CI runners) the read failed, the stable_id parity reassignment silently no-op'd, and the SCIP symbol kept a raw-moniker id diverging from the tree-sitter rust.py anchor (WI-zakub byte-parity contract, ADR-0035 v7). Now a _repo_anchored_reader(repo_root) factory resolves the relative path against repo_root before reading (pathlib leaves absolute paths unchanged). VERIFY note: the rel_path VALUE already byte-matched and was tested (test_parity_byte_matches_rust_py_for_nested_path) — the gap was the disk plumbing consuming it, latent because reachable only with a rust-analyzer binary + Cargo workspace + cwd!=repo_root. Evidence: new cwd!=repo_root regression test (no binary needed) + updated wiring test; smart-test 1416 passed, 100% cov of analyzer.py."  # 0d3a
