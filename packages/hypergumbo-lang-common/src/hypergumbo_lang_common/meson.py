@@ -32,7 +32,7 @@ from pathlib import Path
 from typing import ClassVar, Iterator, Optional, TYPE_CHECKING
 
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
+from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, _get_python_toolchain, make_pass_id
 from hypergumbo_core.analyze.base import AnalysisResult, TreeSitterAnalyzer, make_symbol_id, populate_docstrings_from_tree
 from hypergumbo_core.analyze.registry import register_analyzer
 
@@ -408,7 +408,7 @@ class MesonAnalyzer(TreeSitterAnalyzer):
             run_signature="",
             pass_id=PASS_ID,
             version=PASS_VERSION,
-            toolchain={"name": "meson", "version": "unknown"},
+            toolchain=_get_python_toolchain(),
             duration_ms=int(elapsed * 1000),
         )
 
