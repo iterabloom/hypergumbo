@@ -1,0 +1,25 @@
+Original commit body from 67619739c3dbbd03c838ee2d02c135367a9e3bcd:
+
+The create_file_symbols inline path (base.py, used by ~13 tree-sitter analyzers —
+haskell/elm/dart/ocaml/…) minted the file node with a degenerate Span(1,0,1,0),
+so its whitespace-invariant structural fingerprint hashed only the first physical
+line. When line 1 is a shebang/comment it filters to empty and the file-node
+fingerprint comes out null for no good reason. Span it over the parsed extent
+(tree.root_node.end_point[0] + 1), matching the bash.py / js_ts.py inline minters
+and the three synthesis paths. File-node identity is unaffected: make_file_id
+hardcodes the :1-1: slot and make_file_stable_id hashes only (language, path), both
+span-independent (INV-sotiv / INV-vaguj) — no id/stable_id churn, no test locked
+the old span.
+
+Re-scope note (from investigation): the bash/ts/go/rust/swift file-node nulls the
+item originally named already carry full-file spans; their nulls are cause-2
+honest-nulls from whole-file tree-sitter parse errors, which the spec explicitly
+permits (§372 + spec_validator skips None) — not a defect. The bash "no grammar in
+the language pack" clause in §372 is now stale (bash resolves via the pack after
+the WI-givad language-pack expansion) and is corrected here. Cause-1 (fingerprint.py
+ignoring grammar_module) is moot at HEAD and left as a latent smell.
+
+Adds a MagicMock end_point=(0,0) to the stub parser + a full-span assertion test.
+smart-test: 10248 passed, 100% coverage of changed files.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
