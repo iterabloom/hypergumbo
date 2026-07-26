@@ -71,8 +71,9 @@ class DependencyManifest:
 
     Maps module paths (e.g., Go module paths from go.mod, npm package names
     from package.json) to dependency metadata. Used by ``create_boundary_nodes``
-    to assign tier 2 (direct dependency) vs tier 3 (indirect/stdlib) to
-    synthetic boundary nodes that represent unresolved external references.
+    to classify synthetic boundary nodes that represent unresolved external
+    references — all tier 3 (``EXTERNAL_DEP``) per ADR-0041 (see below), with the
+    direct/transitive distinction recorded on the ``directness`` meta key.
 
     Entries map module path strings to dicts with at least a ``direct`` bool key.
 
@@ -155,13 +156,11 @@ class SupplyChainConfig:
     Allows customizing tier classification via capsule plan.
 
     Attributes:
-        analysis_tiers: Which tiers to include in analysis (default: [1, 2, 3])
         first_party_patterns: Additional patterns to classify as tier 1
         derived_patterns: Additional patterns to classify as tier 4
         internal_package_roots: Explicit internal package paths
     """
 
-    analysis_tiers: list[int] = field(default_factory=lambda: [1, 2, 3])
     first_party_patterns: list[str] = field(default_factory=list)
     derived_patterns: list[str] = field(default_factory=list)
     internal_package_roots: list[str] = field(default_factory=list)
@@ -169,7 +168,6 @@ class SupplyChainConfig:
     def to_dict(self) -> dict:
         """Serialize to dict for JSON output."""
         return {
-            "analysis_tiers": self.analysis_tiers,
             "first_party_patterns": self.first_party_patterns,
             "derived_patterns": self.derived_patterns,
             "internal_package_roots": self.internal_package_roots,
@@ -179,7 +177,6 @@ class SupplyChainConfig:
     def from_dict(cls, data: dict) -> "SupplyChainConfig":
         """Parse from dict."""
         return cls(
-            analysis_tiers=data.get("analysis_tiers", [1, 2, 3]),
             first_party_patterns=data.get("first_party_patterns", []),
             derived_patterns=data.get("derived_patterns", []),
             internal_package_roots=data.get("internal_package_roots", []),
@@ -382,7 +379,7 @@ CONFIG_FILE_NAMES = frozenset({
     "mix.lock",
 })
 
-# Patterns for documentation directories (tier 2) — not production code.
+# Patterns for documentation directories — first-party (tier 1), not production code.
 # Checked with re.search to match at any depth (e.g., Sources/Lib/Documentation.docc/).
 # Swift DocC (.docc) bundles contain tutorial fragments, articles, and extension files
 # that look like code but are documentation content (not importable modules).
@@ -391,7 +388,7 @@ DOCUMENTATION_PATTERNS = [
     r"(?:^|/)Documentation\.docc/",  # Documentation.docc/ (conventional name)
 ]
 
-# Patterns for fuzz targets and benchmarks (tier 2) — not production code.
+# Patterns for fuzz targets and benchmarks — first-party (tier 1), not production code.
 # Checked with re.search to match at any depth (e.g., crates/core/fuzz/).
 FUZZ_BENCH_PATTERNS = [
     r"(?:^|/)fuzz(?:ing)?/",       # fuzz/ or fuzzing/ at any level

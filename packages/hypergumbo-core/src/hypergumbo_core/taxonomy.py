@@ -13,7 +13,7 @@ Every file has both a Tier and a Role:
 
 These dimensions compose for analysis decisions:
 - LOC counting: Tiers 1-2, CODE roles (analyzable + config + documentation)
-- Symbol extraction: analysis_tiers, ANALYZABLE role only
+- Symbol extraction: Tiers 1-2, ANALYZABLE role only
 - Additional Files: Tiers 1-2, CONFIG + DOCUMENTATION roles
 
 Why This Design

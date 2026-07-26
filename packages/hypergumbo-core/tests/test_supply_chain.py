@@ -1565,6 +1565,19 @@ class TestEdgeCases:
         roots = detect_package_roots(tmp_path)
         assert roots == set()
 
+    def test_non_dict_package_json(self, tmp_path):
+        """Valid-JSON but non-dict package.json (array/string at top level) is ignored.
+
+        Exercises the ``not isinstance(data, dict)`` guard: a top-level JSON array
+        parses cleanly but has no ``workspaces`` key, so it yields no package roots
+        rather than crashing on ``data.get(...)``.
+        """
+        pkg_json = tmp_path / "package.json"
+        pkg_json.write_text('["not", "an", "object"]')
+
+        roots = detect_package_roots(tmp_path)
+        assert roots == set()
+
     def test_malformed_cargo_toml(self, tmp_path):
         """Cargo.toml that can't be read doesn't crash."""
         cargo_toml = tmp_path / "Cargo.toml"
@@ -1717,20 +1730,17 @@ class TestSupplyChainConfig:
         assert config.first_party_patterns == []
         assert config.derived_patterns == []
         assert config.internal_package_roots == []
-        assert config.analysis_tiers == [1, 2, 3]
 
     def test_config_to_dict(self) -> None:
         """SupplyChainConfig serializes correctly."""
         from hypergumbo_core.supply_chain import SupplyChainConfig
 
         config = SupplyChainConfig(
-            analysis_tiers=[1, 2],
             first_party_patterns=["src/", "lib/"],
             derived_patterns=["build/"],
             internal_package_roots=["packages/core"],
         )
         d = config.to_dict()
-        assert d["analysis_tiers"] == [1, 2]
         assert d["first_party_patterns"] == ["src/", "lib/"]
         assert d["derived_patterns"] == ["build/"]
         assert d["internal_package_roots"] == ["packages/core"]
@@ -1740,13 +1750,11 @@ class TestSupplyChainConfig:
         from hypergumbo_core.supply_chain import SupplyChainConfig
 
         data = {
-            "analysis_tiers": [1],
             "first_party_patterns": ["custom/"],
             "derived_patterns": ["out/"],
             "internal_package_roots": ["libs/common"],
         }
         config = SupplyChainConfig.from_dict(data)
-        assert config.analysis_tiers == [1]
         assert config.first_party_patterns == ["custom/"]
         assert config.derived_patterns == ["out/"]
         assert config.internal_package_roots == ["libs/common"]
