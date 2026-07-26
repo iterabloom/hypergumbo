@@ -1,0 +1,25 @@
+Original commit body from ba91c687171041683bd5788874a4d31e6913a66d:
+
+reproducibility_context.captured.grammars was seeded at map-init
+(build_reproducibility_context) with EVERY installed tree-sitter-* dist — 51 on a
+typical dev box, ~38 of them for languages that produced zero nodes — because the
+seed runs before any node exists. And tree-sitter-language-pack masked its ~24
+bundled grammars behind one entry.
+
+A new finalize sub-step _finalize_prune_repro_grammars (ADR-0043 §6 chokepoint,
+7c, before commit) rebuilds captured.grammars from the toolchains of passes that
+actually emitted nodes: analysis_runs[].toolchain.grammar_module (stamped by
+_extend_toolchain) names a standalone grammar ("tree_sitter_go") or a pack-backed
+one ("language_pack:<lang>"). ast-based analyzers (python) and synthesis/linker
+passes carry no grammar_module and contribute nothing (WI-fonod); pack grammars
+surface as distinct tree-sitter-language-pack:<lang> entries at the shared pack
+version (WI-givad; the pack exposes no per-grammar version). A repo analyzed only
+by ast analyzers ends up with no grammars key.
+
+_detect_tree_sitter_versions stays unscoped: its other caller, analyzer_identity,
+needs the full install list for cache correctness (INV-nofof) — it must invalidate
+on any grammar upgrade, even one this run didn't exercise. Pure _prune_grammars_to_used
+helper for branch-testability. Spec §reproducibility_context + schema.py docstring
+updated. Verified E2E: a python-only survey prunes grammars 51 -> absent.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
