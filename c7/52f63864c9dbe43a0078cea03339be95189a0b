@@ -1,0 +1,24 @@
+Original commit body from 543f0d390a37311f196812437866edb2c2520079:
+
+verify-generated's freshness gate required ARCHITECTURE.md's recorded HEAD SHA to
+be within the last 15 commits (get_recent_commit_shas membership). GitHub's
+rebase-merge REWRITES the merged commits' SHAs, so the SHA recorded when the doc is
+regenerated on a feature branch is orphaned on dev the instant the PR merges —
+red-lighting the NEXT code PR's gate. It did exactly that twice during a rapid PR
+run (PR #15, PR #17): local smart-test green, container verify-generated red on a
+SHA no longer in dev's history. (Tracker-only PRs skip verify-generated under the
+CI-slim change, so #16 didn't surface it.) Pre-migration Codeberg/AGit preserved
+SHAs, so this is a GitHub-rebase-merge-induced regression.
+
+Fix: record commit_count (git rev-list --count HEAD) in the generation metadata —
+the ancestor COUNT survives rebase (rebase re-parents, it doesn't add/remove
+commits) — and measure staleness as current_count - recorded_count <=
+RECENT_COMMIT_WINDOW instead of SHA membership. Rot protection is preserved (too
+many commits since generation still fails). The legacy SHA-membership path stays as
+a fallback for docs generated before the field. Regenerated ARCHITECTURE.md so this
+PR's own verify-generated exercises (and bootstraps on) the new commit-count path.
+
+Script-only change (scripts/ is not in CI's ruff/coverage scope); the fix is
+validated end-to-end by this PR's verify-generated step.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
