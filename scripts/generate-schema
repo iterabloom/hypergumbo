@@ -299,8 +299,8 @@ def generate_behavior_map_schema() -> Dict[str, Any]:
                     "Supply-chain classification summary, keyed by tier name "
                     "(first_party / internal_dep / external_dep) plus "
                     "derived_skipped. Each tier carries {files, symbols}; "
-                    "external_dep also an `ecosystem` sub-bucket and "
-                    "derived_skipped a {files, paths} shape. WI-vafid: the "
+                    "external_dep also `ecosystem` and `directness` sub-buckets "
+                    "and derived_skipped a {files, paths} shape. WI-vafid: the "
                     "producer emits these at the top level, not under a "
                     "by_tier wrapper."
                 ),
@@ -310,6 +310,10 @@ def generate_behavior_map_schema() -> Dict[str, Any]:
                         "files": {"type": "integer"},
                         "symbols": {"type": "integer"},
                         "ecosystem": {
+                            "type": "object",
+                            "additionalProperties": {"type": "integer"}
+                        },
+                        "directness": {
                             "type": "object",
                             "additionalProperties": {"type": "integer"}
                         },

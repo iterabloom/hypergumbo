@@ -8,7 +8,7 @@
     "schema_version": {
       "type": "string",
       "description": "Schema version (semver)",
-      "const": "0.18.0"
+      "const": "0.19.0"
     },
     "confidence_model": {
       "type": "string",
@@ -167,7 +167,7 @@
     },
     "supply_chain_summary": {
       "type": "object",
-      "description": "Supply-chain classification summary, keyed by tier name (first_party / internal_dep / external_dep) plus derived_skipped. Each tier carries {files, symbols}; external_dep also an `ecosystem` sub-bucket and derived_skipped a {files, paths} shape. WI-vafid: the producer emits these at the top level, not under a by_tier wrapper.",
+      "description": "Supply-chain classification summary, keyed by tier name (first_party / internal_dep / external_dep) plus derived_skipped. Each tier carries {files, symbols}; external_dep also `ecosystem` and `directness` sub-buckets and derived_skipped a {files, paths} shape. WI-vafid: the producer emits these at the top level, not under a by_tier wrapper.",
       "additionalProperties": {
         "type": "object",
         "properties": {
@@ -178,6 +178,12 @@
             "type": "integer"
           },
           "ecosystem": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "integer"
+            }
+          },
+          "directness": {
             "type": "object",
             "additionalProperties": {
               "type": "integer"
@@ -1420,6 +1426,13 @@
             }
           ],
           "description": "Max supply-chain tier filter applied, when any"
+        },
+        "tier_filtered_files": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Files whose symbols/edges the supply-chain tier filter dropped (e.g. DERIVED tier-4 excluded by default) \u2014 the 'what' behind max_tier_applied's 'why' (WI-tulit)"
         },
         "max_files_per_analyzer": {
           "oneOf": [

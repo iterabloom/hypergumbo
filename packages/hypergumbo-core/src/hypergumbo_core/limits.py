@@ -125,6 +125,9 @@ class Limits:
     truncated_files: List[Dict[str, Any]] = field(default_factory=list)
     partial_results_reason: str = ""
     max_tier_applied: int | None = None
+    # WI-tulit: files whose symbols/edges the tier filter dropped (see
+    # add_tier_filtered_file). Present-when-populated in to_dict per INV-virik.
+    tier_filtered_files: List[str] = field(default_factory=list)
     max_files_per_analyzer: int | None = None
     test_files_excluded: bool = False
     supply_chain: SupplyChainLimits = field(default_factory=SupplyChainLimits)
@@ -176,6 +179,17 @@ class Limits:
             "reason": reason,
         })
 
+    def add_tier_filtered_file(self, path: str) -> None:
+        """Record a file whose symbols/edges the supply-chain tier filter dropped.
+
+        WI-tulit: a tier drop (e.g. a DERIVED tier-4 file excluded by default)
+        silently removes every symbol and edge for the file without touching
+        ``analysis_incomplete`` or ``failed_files``. This list makes the *what*
+        visible so a consumer can see which files were excluded; the
+        ``max_tier_applied`` value is the *why*.
+        """
+        self.tier_filtered_files.append(path)
+
     def add_classification_failure(self, path: str, reason: str) -> None:
         """Record a file that failed supply chain classification."""
         self.supply_chain.classification_failures.append(
@@ -207,6 +221,7 @@ class Limits:
             truncated_files=self.truncated_files + other.truncated_files,
             partial_results_reason=self.partial_results_reason or other.partial_results_reason,
             max_tier_applied=self.max_tier_applied or other.max_tier_applied,
+            tier_filtered_files=self.tier_filtered_files + other.tier_filtered_files,
             max_files_per_analyzer=self.max_files_per_analyzer or other.max_files_per_analyzer,
             test_files_excluded=self.test_files_excluded or other.test_files_excluded,
             supply_chain=merged_supply_chain,
@@ -245,6 +260,8 @@ class Limits:
             result["partial_results_reason"] = self.partial_results_reason
         if self.max_tier_applied is not None:
             result["max_tier_applied"] = self.max_tier_applied
+        if self.tier_filtered_files:
+            result["tier_filtered_files"] = self.tier_filtered_files
         if self.max_files_per_analyzer is not None:
             result["max_files_per_analyzer"] = self.max_files_per_analyzer
         return result

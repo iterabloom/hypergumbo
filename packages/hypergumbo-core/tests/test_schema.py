@@ -682,6 +682,7 @@ class TestTopLevelBlockTyping:
             skipped_languages=["haskell"],
         )
         lim.add_failed_file(path="broken.py", reason="SyntaxError", analyzer="python")
+        lim.add_tier_filtered_file("dist/bundle.min.js")
         assert set(lim.to_dict()) == set(limits_def["properties"])
 
     def test_limits_block_validates_real_output(self):
