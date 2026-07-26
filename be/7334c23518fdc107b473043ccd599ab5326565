@@ -1,0 +1,21 @@
+Original commit body from d67750b64733c8813efa21f7b0ea296eab304c00:
+
+Post-ADR-0041 / INV-naduh tier-axis drift in two lang-mainstream docstrings:
+
+- jupyter.py said supply-chain classification "places notebooks at Tier 2
+  (INTERNAL_DEP)". Since INV-naduh an in-repo notebook is first-party (Tier 1) —
+  it's the project's own code (distance 0); "useful context but not core
+  architecture" is a role/context signal, not a tier-2 downgrade. Corrected.
+- py_deps.py's workspace-subtraction comment described the removed-otherwise nodes
+  as "external tier-2 'direct dependency'". ADR-0041 §1 made tier-3 the sole
+  external tier and moved direct/transitive onto the `directness` meta stamp;
+  updated to "external (tier-3) dependency" with the pre-ADR-0041 wording noted as
+  retired. (The code — subtracting workspace import-names — was already correct.)
+
+Completes WI-josad: F5 (dead analysis_tiers config) landed earlier; F6's concern
+(tier-2 polluted by six synthetic linkers so the weight-table category "rarely
+existed") was resolved by INV-bonup dropping those tier-2 stamps, leaving the
+ranking/cfg/supply_chain tier-2 docstrings accurate as written. Comment-only; full
+suite green at 100% coverage.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
