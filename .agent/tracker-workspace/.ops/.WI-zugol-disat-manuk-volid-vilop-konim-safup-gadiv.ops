@@ -34,3 +34,18 @@
   clock: 3  # a329
   nonce: a329  # a329
   message: "Staleness audit 2026-07-21: part (b) is DONE -- the 2026-07-15 concept-audit (AFTER this item was filed) rewrote the run_signature/repo_fingerprint docstrings (ir.py:10-13/30-33, Readership note at 267) to state they are 'external provenance ... with no internal consumers', which is exactly the fate-decision the item requested. Part (a) remains: puppet/robot/rst/meson/purescript/racket/matlab stamp toolchain={'name':'<language>'} while tree-sitter analyzers default to 'python' via _get_python_toolchain (base.py:2501). Re-scoped to part (a) cosmetics only."  # a329
+- op: update  # 4739
+  at: '2026-07-26T10:35:50Z'  # 4739
+  by: agent  # 4739
+  actor: jgstern_agent  # 4739
+  clock: 4  # 4739
+  nonce: '4739'  # 4739
+  set:  # 4739
+    status: done  # 4739
+- op: discuss  # 653d
+  at: '2026-07-26T10:35:50Z'  # 653d
+  by: agent  # 653d
+  actor: jgstern_agent  # 653d
+  clock: 5  # 653d
+  nonce: 653d  # 653d
+  message: "FIXED in GitHub PR #17 (dev 791a8226fc). 8 Python-implemented analyzers (matlab/robot/racket/purescript/puppet/rst/meson in lang-common; circom in lang-extended1) hand-set AnalysisRun.toolchain={'name':'<language>','version':'unknown'}, mislabeling the analyzed LANGUAGE as the analyzing TOOLCHAIN. All 8 now use _get_python_toolchain() (real interpreter version). Cosmetic -- toolchain.name feeds only run_signature (no internal consumer, recomputed at finalize), no schema bump. circom test updated (circom->python); no other analyzer test locked a toolchain name. Tracker said 7; the 8th (circom, lang-extended1) was missed by the count. G2 now COMPLETE: WI-kapul wont_do (G1 by-design), META-nomiz satisfied #15, WI-zugol done #17, INV-jidat/dubam/rukor satisfied, META-niguz pending_validation."  # 653d

@@ -22,3 +22,18 @@
     fields:  # 7202
       statement: "All supply_chain_tier consumers must treat tier-2 internal_dep as project-side code, not an external-dependency sink; metrics.py currently buckets it with external_dep while ranking/DDG/entrypoints/sketch treat it as project-priority code."  # 7202
       root_cause: "metrics.py inherited the pre-ADR-0041 'tier-2 = declared direct external dependency' meaning that ADR-0041 §1 retired; no consistency guard binds the tier consumers to a single internal_dep semantics, so they drifted apart."  # 7202
+- op: update  # ac6a
+  at: '2026-07-26T17:34:27Z'  # ac6a
+  by: agent  # ac6a
+  actor: jgstern_agent  # ac6a
+  clock: 2  # ac6a
+  nonce: ac6a  # ac6a
+  set:  # ac6a
+    status: satisfied  # ac6a
+- op: discuss  # 74c9
+  at: '2026-07-26T17:34:27Z'  # 74c9
+  by: agent  # 74c9
+  actor: jgstern_agent  # 74c9
+  clock: 3  # 74c9
+  nonce: 74c9  # 74c9
+  message: "Corrected in PR #19 (dev 11b50fd980). metrics.py by_supply_chain_tier edges-view comment lumped tiers (2/3) as external-dependency graph SINKS; post-ADR-0041 only tier 3 (third-party) is a sink — tier 2 is internal/project-side, a SOURCE that can carry out-edges. Positive evidence: the loop at metrics.py counts src-tier edges for ALL src tiers incl tier 2 (no tier-2 exclusion) so behavior was already correct; only the explanatory comment was stale. Comment now names only tier 3 as the sink."  # 74c9

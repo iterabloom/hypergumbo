@@ -57,3 +57,18 @@
   clock: 6  # 386d
   nonce: 386d  # 386d
   message: "Re-scoped statement: narrowed to the `path` facet (WI-kapul + WI-hulup), the only member still reproducing; dropped the ADR-obsoleted canonical_name (removed by ADR-0032) and language (None-by-design per ADR-0031) from the must-carry list. 6 of 7 members already done."  # 386d
+- op: update  # 681f
+  at: '2026-07-26T09:47:12Z'  # 681f
+  by: agent  # 681f
+  actor: jgstern_agent  # 681f
+  clock: 7  # 681f
+  nonce: 681f  # 681f
+  set:  # 681f
+    status: satisfied  # 681f
+- op: discuss  # 150b
+  at: '2026-07-26T09:47:12Z'  # 150b
+  by: agent  # 150b
+  actor: jgstern_agent  # 150b
+  clock: 8  # 150b
+  nonce: 150b  # 150b
+  message: "FIXED in PR #15 (dev 1af1552e21). Last real residual of the synthetic-identity umbrella: kind='template' view-template stand-ins (linkers/_view_template_core.py) minted with a language but no stable_id, falling through populate_kind_stable_ids to None. Added 'template' to _KIND_STABLE_ID_FACTORIES via the shared kind-scoped formula (make_declaration_stable_id; kind folded into the hash keeps a template distinct from a file node at the same path). Evidence: test_template_kind_gets_stable_id_distinct_from_file; smart-test 10250 passed, 100% cov. The rest (origin/origin_run_id via synthetic:F1, Class-B stable_id/display_label/fingerprint via synthetic:F2) was already built. (meta_invariant -> satisfied, not done.)"  # 150b
