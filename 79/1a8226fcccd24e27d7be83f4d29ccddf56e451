@@ -1,0 +1,8 @@
+Original commit body from 91e59aba69ee07a1af58c8693af4411db2bea59a:
+
+PR #15's regen recorded a branch-HEAD SHA that auto-pr's rebase-merge rewrote once
+dev advanced mid-flight, so verify-generated's generate-architecture --check went
+red on the orphaned SHA for the next code PR (#17). Regenerated to a current SHA.
+Docs-only.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
