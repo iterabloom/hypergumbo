@@ -1,0 +1,3 @@
+Original commit body from e8108e01ef18d594552fce99278f6d7e00abcd49:
+
+Condense the four 'Migration — first-real-Woodpecker-run red tests' Fixed bullets from 404 words of mechanism detail to 120 words (30%) of terse effect-statements, keeping the meaningful identifiers and dropping rationale that lives in commit messages. Docs-only.
