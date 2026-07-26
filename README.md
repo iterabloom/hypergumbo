@@ -1,10 +1,8 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 # hypergumbo
 
-[![CI](https://codeberg.org/iterabloom/hypergumbo/badges/workflows/ci.yml/badge.svg?branch=dev)](https://codeberg.org/iterabloom/hypergumbo/actions)
 [![PyPI](https://img.shields.io/pypi/v/hypergumbo.svg)](https://pypi.org/project/hypergumbo/)
 [![License](https://img.shields.io/pypi/l/hypergumbo.svg)](https://pypi.org/project/hypergumbo/)
-[![Coverage](https://img.shields.io/endpoint?url=https://codeberg.org/iterabloom/hypergumbo/raw/branch/badges/coverage.json)](https://codeberg.org/iterabloom/hypergumbo)
 
 hypergumbo is a local-first CLI that generates surveys and sketches from source code. The goal of this project is to efficiently help developers and LLMs understand a codebase.
 
@@ -14,10 +12,10 @@ pip install hypergumbo
 
 > Requires Python 3.10+. For optional extras (embeddings, gitleaks, grammars), run `hypergumbo add-extras` after installing.
 
-> Intel Mac users: Some tree-sitter packages lack x86_64 wheels. See [docs/INTEL_MAC.md](https://codeberg.org/iterabloom/hypergumbo/src/branch/dev/docs/INTEL_MAC.md) for a Docker-based workaround.
+> Intel Mac users: Some tree-sitter packages lack x86_64 wheels. See [docs/INTEL_MAC.md](https://github.com/iterabloom/hypergumbo/blob/dev/docs/INTEL_MAC.md) for a Docker-based workaround.
 
 ```bash
-git clone https://codeberg.org/iterabloom/hypergumbo
+git clone https://github.com/iterabloom/hypergumbo
 hypergumbo hypergumbo/
 ```
 
@@ -101,7 +99,7 @@ hypergumbo/
 [...]
 ```
 
-**[See full example output](https://codeberg.org/iterabloom/hypergumbo/src/branch/dev/docs/example-output.md)**
+**[See full example output](https://github.com/iterabloom/hypergumbo/blob/dev/docs/example-output.md)**
 
 Use `-t` to control the token budget:
 ```bash
@@ -159,15 +157,15 @@ Results are automatically cached in `~/.cache/hypergumbo/`. Just run:
 hypergumbo .    # auto-runs analysis if no cache exists, then generates sketch
 ```
 
-The cache auto-invalidates when source files change. See [docs/CACHE.md](https://codeberg.org/iterabloom/hypergumbo/src/branch/dev/docs/CACHE.md) for details.
+The cache auto-invalidates when source files change. See [docs/CACHE.md](https://github.com/iterabloom/hypergumbo/blob/dev/docs/CACHE.md) for details.
 
 See `hypergumbo --help` for all options.
 
 ## What It Understands
 
-- **Language analyzers**: Python, JS/TS, Java, Rust, Go, C/C++, and [many more](https://codeberg.org/iterabloom/hypergumbo/src/branch/dev/docs/LANGUAGES.md)
-- **Linkers**: Tier 2 edge-recovery passes across four subcategories — Protocol (HTTP, WebSocket, message queues, SQL), Bridge (JNI, wasm_bindgen, Tauri IPC, language-pair FFI), Framework (gRPC, GraphQL, React components, DI resolution, ORM), Infrastructure (containment, inheritance, module imports). [Full catalogue](https://codeberg.org/iterabloom/hypergumbo/src/branch/dev/docs/LINKERS.md).
-- **Framework patterns**: FastAPI, Django, Rails, Spring Boot, Phoenix, Express, and [many more](https://codeberg.org/iterabloom/hypergumbo/src/branch/dev/docs/FRAMEWORKS.md)
+- **Language analyzers**: Python, JS/TS, Java, Rust, Go, C/C++, and [many more](https://github.com/iterabloom/hypergumbo/blob/dev/docs/LANGUAGES.md)
+- **Linkers**: Tier 2 edge-recovery passes across four subcategories — Protocol (HTTP, WebSocket, message queues, SQL), Bridge (JNI, wasm_bindgen, Tauri IPC, language-pair FFI), Framework (gRPC, GraphQL, React components, DI resolution, ORM), Infrastructure (containment, inheritance, module imports). [Full catalogue](https://github.com/iterabloom/hypergumbo/blob/dev/docs/LINKERS.md).
+- **Framework patterns**: FastAPI, Django, Rails, Spring Boot, Phoenix, Express, and [many more](https://github.com/iterabloom/hypergumbo/blob/dev/docs/FRAMEWORKS.md)
 - **I/O boundary detection**: Maps every call chain that reaches the filesystem, network, subprocess, environment, IPC, or browser-local storage — across FFI boundaries
 - **Taint-flow analysis**: Traces data from sensitive sources (environment variables, received network input, crypto outputs, key material) to sinks in six trust zones (`host_fs`, `network`, `host_env`, `ipc`, `browser_storage`, `relay`), with sanitizer awareness
 - **Supply chain tiers**: Classifies code as first-party, internal, external, or derived for dependency-aware analysis
@@ -190,7 +188,7 @@ All analyzers produce the same IR types:
 - **Edge**: A relationship between symbols (calls, imports, extends, implements)
 - **Span**: Source location (file, line, column)
 
-This uniform IR is what allows all language analyzers and linkers (Protocol / Bridge / Framework / Infrastructure — see [ADR-3bbb](https://codeberg.org/iterabloom/hypergumbo/src/branch/dev/docs/adr/3bbb-linker-subcategory-restoration.md)) to work together coherently.
+This uniform IR is what allows all language analyzers and linkers (Protocol / Bridge / Framework / Infrastructure — see [ADR-3bbb](https://github.com/iterabloom/hypergumbo/blob/dev/docs/adr/3bbb-linker-subcategory-restoration.md)) to work together coherently.
 
 ## Architecture
 
@@ -220,7 +218,7 @@ Key design choices:
 ## Development
 
 ```bash
-git clone https://codeberg.org/iterabloom/hypergumbo.git
+git clone https://github.com/iterabloom/hypergumbo.git
 cd hypergumbo
 python3 -m venv .venv && source .venv/bin/activate
 ./scripts/dev-install
@@ -230,26 +228,26 @@ pytest                      # runs smart-test (affected tests only)
 
 `dev-install` installs all packages, git hooks, and the pytest/smart-test wrapper. 100% test coverage required.
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for PR workflow (including fork-based workflow for external contributors), smart test selection setup, and coverage requirements. Agent instructions live in [AGENTS.md](https://codeberg.org/iterabloom/hypergumbo/src/branch/dev/AGENTS.md).
+See [CONTRIBUTING.md](CONTRIBUTING.md) for PR workflow (including fork-based workflow for external contributors), smart test selection setup, and coverage requirements. Agent instructions live in [AGENTS.md](https://github.com/iterabloom/hypergumbo/blob/dev/AGENTS.md).
 
 ## Links
 
-- [docs/USE-CASES.md](https://codeberg.org/iterabloom/hypergumbo/src/branch/dev/docs/USE-CASES.md) — Practical workflows and examples
-- [docs/RELEASE-NOTES-6.X.md](https://codeberg.org/iterabloom/hypergumbo/src/branch/dev/docs/RELEASE-NOTES-6.X.md) — User-facing release notes for the 6.x line
-- [CHANGELOG.md](https://codeberg.org/iterabloom/hypergumbo/src/branch/dev/CHANGELOG.md) — Implementation history
-- [docs/LANGUAGES.md](https://codeberg.org/iterabloom/hypergumbo/src/branch/dev/docs/LANGUAGES.md) — Supported languages
-- [docs/LINKERS.md](https://codeberg.org/iterabloom/hypergumbo/src/branch/dev/docs/LINKERS.md) — Linkers catalogue (Protocol / Bridge / Framework / Infrastructure)
-- [docs/FRAMEWORKS.md](https://codeberg.org/iterabloom/hypergumbo/src/branch/dev/docs/FRAMEWORKS.md) — Framework patterns
-- [docs/hypergumbo-spec.md](https://codeberg.org/iterabloom/hypergumbo/src/branch/dev/docs/hypergumbo-spec.md) — Detailed specification
-- [docs/CITATIONS.md](https://codeberg.org/iterabloom/hypergumbo/src/branch/dev/docs/CITATIONS.md) — Paper citations for embedding models
-- [docs/CACHE.md](https://codeberg.org/iterabloom/hypergumbo/src/branch/dev/docs/CACHE.md) — Caching architecture
-- [docs/agent-supervisor.md](https://codeberg.org/iterabloom/hypergumbo/src/branch/dev/docs/agent-supervisor.md) — Operator guide for `scripts/agent-supervisor` (the tmux-session watchdog for autonomous agents)
-- [SECURITY.md](https://codeberg.org/iterabloom/hypergumbo/src/branch/dev/SECURITY.md) — Vulnerability reporting
+- [docs/USE-CASES.md](https://github.com/iterabloom/hypergumbo/blob/dev/docs/USE-CASES.md) — Practical workflows and examples
+- [docs/RELEASE-NOTES-6.X.md](https://github.com/iterabloom/hypergumbo/blob/dev/docs/RELEASE-NOTES-6.X.md) — User-facing release notes for the 6.x line
+- [CHANGELOG.md](https://github.com/iterabloom/hypergumbo/blob/dev/CHANGELOG.md) — Implementation history
+- [docs/LANGUAGES.md](https://github.com/iterabloom/hypergumbo/blob/dev/docs/LANGUAGES.md) — Supported languages
+- [docs/LINKERS.md](https://github.com/iterabloom/hypergumbo/blob/dev/docs/LINKERS.md) — Linkers catalogue (Protocol / Bridge / Framework / Infrastructure)
+- [docs/FRAMEWORKS.md](https://github.com/iterabloom/hypergumbo/blob/dev/docs/FRAMEWORKS.md) — Framework patterns
+- [docs/hypergumbo-spec.md](https://github.com/iterabloom/hypergumbo/blob/dev/docs/hypergumbo-spec.md) — Detailed specification
+- [docs/CITATIONS.md](https://github.com/iterabloom/hypergumbo/blob/dev/docs/CITATIONS.md) — Paper citations for embedding models
+- [docs/CACHE.md](https://github.com/iterabloom/hypergumbo/blob/dev/docs/CACHE.md) — Caching architecture
+- [docs/agent-supervisor.md](https://github.com/iterabloom/hypergumbo/blob/dev/docs/agent-supervisor.md) — Operator guide for `scripts/agent-supervisor` (the tmux-session watchdog for autonomous agents)
+- [SECURITY.md](https://github.com/iterabloom/hypergumbo/blob/dev/SECURITY.md) — Vulnerability reporting
 - [hypergumbo-tracker README](packages/hypergumbo-tracker/README.md) — Standalone tracker for AI agent governance
 
 ## License
 
-[AGPL-3.0-or-later](https://codeberg.org/iterabloom/hypergumbo/src/branch/dev/LICENSE)
+[AGPL-3.0-or-later](https://github.com/iterabloom/hypergumbo/blob/dev/LICENSE)
 
-![Hypergumbo logo](https://codeberg.org/iterabloom/hypergumbo/raw/branch/dev/docs/hypergumbo%20FINAL%20halfres.jpg)
+![Hypergumbo logo](https://raw.githubusercontent.com/iterabloom/hypergumbo/dev/docs/hypergumbo%20FINAL%20halfres.jpg)
 
