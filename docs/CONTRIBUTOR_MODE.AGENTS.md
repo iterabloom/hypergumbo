@@ -7,14 +7,14 @@ This document covers the fork-based workflow for external contributors without w
 
 ## Setup
 ```bash
-# 1. Fork the repo on Codeberg to your account
+# 1. Fork the repo on GitHub to your account
 
 # 2. Clone YOUR fork (not upstream)
-git clone https://codeberg.org/YOUR-USER/hypergumbo.git
+git clone https://github.com/YOUR-USER/hypergumbo.git
 cd hypergumbo
 
 # 3. Add upstream remote
-git remote add upstream https://codeberg.org/iterabloom/hypergumbo.git
+git remote add upstream https://github.com/iterabloom/hypergumbo.git
 
 # 4. Set credentials (in .env or exported)
 export FORGEJO_USER=your-username

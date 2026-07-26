@@ -166,7 +166,7 @@ Only the latest minor version receives security updates. We recommend always run
 
 ## Reporting a Vulnerability
 
-**Please do not report security vulnerabilities through public GitHub/Codeberg issues.**
+**Please do not report security vulnerabilities through public GitHub issues.**
 
 Instead, please report them via email to:
 
