@@ -1,0 +1,3 @@
+Original commit body from 654fa50f5a02c0a4a3596d292c705910b7ae9096:
+
+GitHub is now primary origin (Codeberg retired). Rewrite all README repo links to GitHub across root + meta-package + 4 lang packages; drop the two dead Codeberg badges (PyPI+license badges remain).
