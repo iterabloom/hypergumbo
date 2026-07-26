@@ -1,0 +1,3 @@
+Original commit body from 06233cf4530380fcef7ffb64fd49f0e772d565c9:
+
+Facts-to-current-reality: invert the source-of-truth line (GitHub primary, Forgejo failover retained), fix fork/clone URLs and contact links to GitHub across CONTRIBUTING, CONTRIBUTOR_MODE, SECURITY, MIGRATION-2.0. Deep auto-pr/AGit mechanics + governance files deferred to a coordinated pass.
