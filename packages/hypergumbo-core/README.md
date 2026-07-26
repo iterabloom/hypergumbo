@@ -33,4 +33,4 @@ from hypergumbo_core.slice import forward_slice, reverse_slice
 
 ## Documentation
 
-See https://codeberg.org/iterabloom/hypergumbo for full documentation.
+See https://github.com/iterabloom/hypergumbo for full documentation.
