@@ -16,14 +16,14 @@ We use **Safe Trunk Based Development**. Direct pushes to `main` are blocked.
 If you don't have write access to the repo, use the fork-based workflow:
 
 ```bash
-# 1. Fork the repo on Codeberg to your account
+# 1. Fork the repo on GitHub to your account
 
 # 2. Clone YOUR fork (not upstream)
-git clone https://codeberg.org/YOUR-USER/hypergumbo.git
+git clone https://github.com/YOUR-USER/hypergumbo.git
 cd hypergumbo
 
 # 3. Add upstream remote
-git remote add upstream https://codeberg.org/iterabloom/hypergumbo.git
+git remote add upstream https://github.com/iterabloom/hypergumbo.git
 
 # 4. Set credentials (in .env or exported)
 export FORGEJO_USER=your-username
@@ -147,7 +147,7 @@ or for the tracker package:
 **DCO covers both licenses.** Your `Signed-off-by` line certifies you have the right to submit under the applicable license. No CLA is required.
 
 ## Canonical forge
-Codeberg is the source of truth for issues/PRs. GitHub is a mirror.
+GitHub is the source of truth for issues and PRs. A self-hosted Forgejo is retained only as a CI failover (see [docs/sops/CI_FAILOVER.md](docs/sops/CI_FAILOVER.md)).
 
 ## Testing
 
@@ -240,7 +240,7 @@ python3 -m pip install --user hypergumbo
 
 This installs the PyPI release to `~/.local/bin/hypergumbo`, which smart-test uses for `slice --files` analysis.
 
-**Why a separate install?** This is a bootstrap safety measure: we use a known-good release to analyze the code under development, avoiding the "testing hypergumbo with itself" paradox. See [ADR-0010](https://codeberg.org/iterabloom/hypergumbo/src/branch/dev/docs/adr/0010-modular-packages-and-smart-testing.md) for design rationale.
+**Why a separate install?** This is a bootstrap safety measure: we use a known-good release to analyze the code under development, avoiding the "testing hypergumbo with itself" paradox. See [ADR-0010](docs/adr/0010-modular-packages-and-smart-testing.md) for design rationale.
 
 ### Running Tests Locally
 
