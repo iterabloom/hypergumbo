@@ -1,0 +1,3 @@
+Original commit body from be0ac3b0b100ca2f0df4aaa2442889145ce71862:
+
+Move the Documentation section to last (after Fixed) to match the 6.0.0 released-section order and Keep-a-Changelog's Deprecated->Fixed->Documentation sequence; trim the two bullets that exceeded the released length ceiling. All ADR/schema/identifier refs preserved. Docs-only.
