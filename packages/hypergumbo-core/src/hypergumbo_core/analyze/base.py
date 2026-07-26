@@ -3314,7 +3314,14 @@ class TreeSitterAnalyzer:
                     kind="file",
                     language=self.lang,
                     path=rel_path,
-                    span=Span(start_line=1, start_col=0, end_line=1, end_col=0),
+                    # Full-file span (WI-sijug): mirror bash.py / js_ts.py so the file
+                    # node fingerprints its real structure, not just line 1 (a shebang or
+                    # comment there filters to empty → a needless null). ``tree`` is parsed
+                    # above; end_point[0] is 0-indexed, so +1 gives the last 1-based line.
+                    span=Span(
+                        start_line=1, start_col=0,
+                        end_line=tree.root_node.end_point[0] + 1, end_col=0,
+                    ),
                     origin=effective_pass_id,
                     origin_run_id=run.execution_id,
                 )

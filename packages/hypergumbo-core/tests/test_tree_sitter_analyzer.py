@@ -82,6 +82,7 @@ class StubAnalyzer(TreeSitterAnalyzer):
         mock_tree = MagicMock()
         mock_root = MagicMock()
         mock_root.children = []
+        mock_root.end_point = (0, 0)  # a real (row, col) so file-node spans compute (WI-sijug)
         mock_tree.root_node = mock_root
         parser.parse.return_value = mock_tree
         return parser
@@ -510,6 +511,27 @@ class TestTreeSitterAnalyzerFileSymbols:
 
         file_syms = [s for s in result.symbols if s.kind == "file"]
         assert len(file_syms) == 0
+
+    def test_file_symbol_spans_full_file_not_line_one(self, tmp_path: Path) -> None:
+        """WI-sijug: the inline file node spans the whole file (parsed ``end_point``),
+        not the degenerate line-1-only ``Span(1,0,1,0)`` that fingerprinted just a
+        shebang/comment and yielded a needless null."""
+
+        class _MultiLineFileSymbolAnalyzer(FileSymbolAnalyzer):
+            def _create_parser(self) -> object:
+                parser = MagicMock()
+                tree = MagicMock()
+                # 0-indexed end_point row 4 → a 5-line file
+                tree.root_node = MagicMock(children=[], end_point=(4, 0))
+                parser.parse.return_value = tree
+                return parser
+
+        (tmp_path / "test.stub").write_text("a\nb\nc\nd\ne\n")
+        result = _MultiLineFileSymbolAnalyzer().analyze(tmp_path)
+
+        file_sym = next(s for s in result.symbols if s.kind == "file")
+        assert file_sym.span.start_line == 1
+        assert file_sym.span.end_line == 5  # full file, not the degenerate 1
 
 
 class TestTreeSitterAnalyzerMaxFiles:
