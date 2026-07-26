@@ -1617,20 +1617,29 @@ class TestEdgeCases:
         result = _extract_package_name("node_modules/", "node_modules/")
         assert result is None
 
-    def test_unreadable_cargo_toml(self, tmp_path):
-        """Unreadable Cargo.toml doesn't crash."""
-        import os
+    def test_unreadable_cargo_toml(self, tmp_path, monkeypatch):
+        """Unreadable Cargo.toml doesn't crash (OSError path).
 
+        Mocks ``read_text`` rather than ``chmod(0o000)``: CI runs pytest as root,
+        where chmod does not block reads, so a chmod-based test would skip the
+        ``except OSError`` branch and leave it uncovered (mirrors
+        ``test_unreadable_settings_gradle``; see the read_text-mock comment there).
+        """
         cargo_toml = tmp_path / "Cargo.toml"
-        cargo_toml.write_text("[workspace]\nmembers = [\"crates/*\"]")
+        cargo_toml.write_text('[workspace]\nmembers = ["crates/*"]')
 
-        # Make unreadable
-        os.chmod(cargo_toml, 0o000)
-        try:
-            roots = detect_package_roots(tmp_path)
-            assert roots == set()
-        finally:
-            os.chmod(cargo_toml, 0o644)
+        original_read_text = Path.read_text
+
+        def _raise_on_cargo(self, *args, **kwargs):
+            if self.name == "Cargo.toml":
+                raise OSError("Permission denied")
+            return original_read_text(self, *args, **kwargs)
+
+        monkeypatch.setattr(Path, "read_text", _raise_on_cargo)
+
+        roots = detect_package_roots(tmp_path)
+        # OSError on read → silently skipped, no Cargo roots detected
+        assert roots == set()
 
     def test_package_roots_with_invalid_path(self, tmp_path):
         """Invalid package root in set doesn't crash classification."""
