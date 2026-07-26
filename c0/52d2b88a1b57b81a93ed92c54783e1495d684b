@@ -1,0 +1,22 @@
+Original commit body from 6eafd00a00580e859555c6d4cb31859d5d161df7:
+
+The rust-analyzer backend's stable_id parity reassignment (which makes SCIP-derived
+Rust symbols share the tree-sitter rust.py file anchor — the WI-zakub byte-parity
+contract, ADR-0035 v7) reads each symbol's source via a disk reader fed the SCIP
+doc.relative_path (a repo-relative path like "src/lib.rs"). The reader called
+Path(path).read_bytes() on the bare relative path, resolving it against os.getcwd().
+
+When the survey runs from anywhere other than repo_root (absolute-path invocations,
+monorepo sub-package roots, CI runners), the read fails, translate skips the parity
+rewrite, and the SCIP symbol keeps its raw-moniker stable_id — diverging from the
+tree-sitter anchor and double-counting every reassignable Rust function across the
+two backends. The rel_path VALUE already byte-matched; the disk plumbing that
+consumes it did not.
+
+Fix: a _repo_anchored_reader(repo_root) factory resolves the relative path against
+repo_root before reading (pathlib leaves an already-absolute path unchanged). Adds
+a cwd != repo_root regression test (no rust-analyzer binary needed) and updates the
+reader-wiring test to assert the anchored behavior. The reassignment is unreachable
+without a rust-analyzer binary + Cargo workspace, so the gap was latent.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
