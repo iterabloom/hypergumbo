@@ -1,0 +1,9 @@
+Original commit body from 43939f12f1aaa5c858a4c7b9314599e8ca837876:
+
+verify-generated's generate-architecture --check requires the doc's recorded SHA
+within the last 15 commits; the rapid G-sweep PR cadence tipped it one commit over
+on this branch (passed on dev at 14, failed at 15), which is what red-lit PR #15's
+Woodpecker gate while local smart-test stayed green. Regenerated; recorded SHA is
+now current. Docs-only.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
