@@ -1,3 +1,3 @@
-Original commit body from 22f0f2016f4043c7402de1c0a325dc707ee2a27e:
+Original commit body from 57bf417540510e4fe15bd0082c1286f0ff3e91db:
 
-Group the Codeberg->GitHub+Woodpecker migration entries under one subheading and condense them from implementation-detail to released-section granularity (both changelogs); strip 21 inside-baseball WI-/INV-/META- tracker-item IDs from the main [Unreleased] section, preserving every ADR / SCHEMA_VERSION / scheme / view-version / CVE / D-ref / code identifier. Docs-only.
+Automated tracker data sync
