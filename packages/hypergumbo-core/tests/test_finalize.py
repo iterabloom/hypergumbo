@@ -23,12 +23,14 @@ from hypergumbo_core.finalize import (
     _finalize_commit_dicts,
     _finalize_compute_visibility,
     _finalize_edge_resolution,
+    _finalize_prune_repro_grammars,
     _finalize_re_relativize,
     _finalize_recompute_run_signature,
     _finalize_referential_integrity,
     _finalize_repo_fingerprint,
     _finalize_skipped_into_limits,
     _finalize_stamp_run_lifecycle,
+    _prune_grammars_to_used,
     _violation_sort_key,
     finalize,
 )
@@ -69,6 +71,78 @@ def _ctx(tmp_path: Path, **over) -> FinalizeContext:
     }
     kwargs.update(over)
     return FinalizeContext(**kwargs)
+
+
+# --- Sub-step 7c: prune reproducibility grammars → used-only (WI-fonod/WI-givad) --------
+def test_prune_grammars_to_used_covers_every_branch() -> None:
+    """The pure filter keeps standalone + pack grammars for node-producing passes only."""
+    seed = {
+        "tree-sitter-go": "0.24.1",
+        "tree-sitter-c": "0.24.1",
+        "tree-sitter-rust": "0.1",
+        "tree-sitter-language-pack": "0.13.0",
+    }
+    runs = [
+        # zero-node pass → skipped even though its toolchain names a grammar
+        _ar("rust", nodes_emitted=0,
+            toolchain={"grammar_module": "tree_sitter_rust", "grammar_version": "0.1"}),
+        # ast pass (no grammar_module) → contributes nothing
+        _ar("python", nodes_emitted=5, toolchain={"name": "python", "version": "3.11"}),
+        # standalone grammar with its own toolchain version
+        _ar("go", nodes_emitted=3,
+            toolchain={"grammar_module": "tree_sitter_go", "grammar_version": "0.24.1"}),
+        # standalone grammar, no toolchain version → falls back to the seed's dist version
+        _ar("c", nodes_emitted=2, toolchain={"grammar_module": "tree_sitter_c"}),
+        # standalone grammar absent from the seed with no version → dropped
+        _ar("zzz", nodes_emitted=1, toolchain={"grammar_module": "tree_sitter_zzz"}),
+        # pack-backed grammar → distinct entry at the shared pack version (WI-givad)
+        _ar("nim", nodes_emitted=4, toolchain={"grammar_module": "language_pack:nim"}),
+    ]
+    assert _prune_grammars_to_used(runs, seed) == {
+        "tree-sitter-c": "0.24.1",
+        "tree-sitter-go": "0.24.1",
+        "tree-sitter-language-pack:nim": "0.13.0",
+    }
+
+
+def test_prune_grammars_to_used_pack_needs_pack_version() -> None:
+    """A pack grammar is dropped when the pack dist isn't in the seed (no version to carry)."""
+    runs = [_ar("nim", nodes_emitted=4, toolchain={"grammar_module": "language_pack:nim"})]
+    assert _prune_grammars_to_used(runs, {"tree-sitter-go": "0.24.1"}) == {}
+
+
+def test_finalize_prune_repro_grammars_keeps_only_used(tmp_path: Path) -> None:
+    ctx = _ctx(
+        tmp_path,
+        analysis_runs=[
+            _ar("go", nodes_emitted=3,
+                toolchain={"grammar_module": "tree_sitter_go", "grammar_version": "0.24.1"})
+        ],
+        behavior_map={"reproducibility_context": {"captured": {"grammars": {
+            "tree-sitter-go": "0.24.1", "tree-sitter-agda": "1.3.3",
+        }}}},
+    )
+    _finalize_prune_repro_grammars(ctx)
+    captured = ctx.behavior_map["reproducibility_context"]["captured"]
+    assert captured["grammars"] == {"tree-sitter-go": "0.24.1"}  # agda dropped (0 nodes)
+
+
+def test_finalize_prune_repro_grammars_drops_key_when_none_used(tmp_path: Path) -> None:
+    ctx = _ctx(
+        tmp_path,
+        analysis_runs=[_ar("python", nodes_emitted=5,
+                           toolchain={"name": "python", "version": "3.11"})],
+        behavior_map={"reproducibility_context": {"captured": {
+            "grammars": {"tree-sitter-agda": "1.3.3"}}}},
+    )
+    _finalize_prune_repro_grammars(ctx)  # python is ast-based → no tree-sitter grammar used
+    assert "grammars" not in ctx.behavior_map["reproducibility_context"]["captured"]
+
+
+def test_finalize_prune_repro_grammars_noop_without_seed(tmp_path: Path) -> None:
+    ctx = _ctx(tmp_path, behavior_map={"reproducibility_context": {"captured": {}}})
+    _finalize_prune_repro_grammars(ctx)  # non-tree-sitter install: nothing seeded to prune
+    assert "grammars" not in ctx.behavior_map["reproducibility_context"]["captured"]
 
 
 # --- Sub-step 3: recompute_run_signature (META-hufaz headline) --------------------------
@@ -271,6 +345,7 @@ _SUBSTEPS = [
     "_finalize_demote_receiver_blind_magnets",  # INV-fahub (6c, before 7)
     "_finalize_edge_resolution",
     "_finalize_compute_visibility",  # INV-jusot (7b, before commit)
+    "_finalize_prune_repro_grammars",  # WI-fonod/WI-givad (7c, before commit)
     "_finalize_commit_dicts",
     "_finalize_referential_integrity",
 ]

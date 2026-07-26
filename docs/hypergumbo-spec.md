@@ -768,9 +768,8 @@ Top-level block introduced in INV-morag (option B) that documents the level of r
       "python_implementation": "CPython",
       "tree_sitter_version": "0.21.0",
       "grammars": {
-        "tree-sitter-language-pack": "0.4.0",
-        "tree-sitter-python": "0.21.0",
-        ...
+        "tree-sitter-go": "0.23.4",
+        "tree-sitter-language-pack:nim": "0.13.0"
       }
     },
     "not_captured": [
@@ -782,6 +781,8 @@ Top-level block introduced in INV-morag (option B) that documents the level of r
   }
 }
 ```
+
+**Grammars captured are those actually used.** `captured.grammars` lists only the tree-sitter grammars whose analyzer pass produced ≥1 node (WI-fonod), pruned at the finalize chokepoint — grammars for detected-but-empty languages, and every installed-but-unexercised grammar, are dropped, and a repo analyzed only by ast-based analyzers (python) carries no `grammars` key at all. Pack-backed grammars appear as distinct `tree-sitter-language-pack:<lang>` entries at the shared pack version (WI-givad; the pack exposes no per-grammar version). (`analyzer_identity`'s cache key still folds in every installed grammar — that surface is deliberately install-scoped, not run-scoped.)
 
 **Levels:** L0 (source content), L1 (pass logic via `AnalysisRun.pass_version`), L2 (direct deps — captured here), L3 (transitive deps), L4 (OS / libc), L5 (hardware). Hypergumbo commits to L2 and disclaims L3-L5.
 

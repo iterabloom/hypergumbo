@@ -245,6 +245,16 @@ def build_reproducibility_context() -> Dict[str, Any]:
     captured. The ``implications`` text tells the consumer what level of
     diff-attribution they can expect from these fields alone.
 
+    Called at map-init (``new_behavior_map``) before any node exists, so the
+    ``captured.grammars`` seeded here is EVERY installed ``tree-sitter-*`` dist.
+    The finalize chokepoint (``finalize._finalize_prune_repro_grammars``, ADR-0043)
+    later replaces it with only the grammars whose analyzer pass actually emitted
+    nodes (WI-fonod), pack-backed grammars expanded to per-language
+    ``tree-sitter-language-pack:<lang>`` entries (WI-givad); a repo whose only
+    analyzers are ast-based (e.g. python) ends up with no ``grammars`` key at all.
+    ``_detect_tree_sitter_versions`` itself stays unscoped — its other caller,
+    ``analyzer_identity``, needs the full install list for cache correctness.
+
     See the module-level commentary and INV-morag's tracker description for
     the design rationale.
     """
