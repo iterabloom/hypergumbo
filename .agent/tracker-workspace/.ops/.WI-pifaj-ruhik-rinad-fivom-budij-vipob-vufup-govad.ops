@@ -52,3 +52,18 @@
   clock: 5  # e627
   nonce: e627  # e627
   message: "Byte-repro MODE split out to new items per the G8 \"Reproducibility semantics\" scout (g8_reproducibility_scout_findings_07212026.md, 2026-07-21): WI-sazap (--reproducible mode; flag-gated: deterministic execution_id + wall-clock omission) -> WI-situf (canonical digest) -> WI-zomuk (survey diff). The residual here is now just the docs-honesty spec fix (PR-A: correct the false \"byte-stable\" claim at spec:321; soften :72 and :1649) -- close this item on that. Digest/diff are demand-gated on aijo. G8 other three items (WI-fonod / INV-nogom / WI-sijug) are distinct fingerprints, not part of this split."  # e627
+- op: update  # 160a
+  at: '2026-07-26T05:31:54Z'  # 160a
+  by: agent  # 160a
+  actor: jgstern_agent  # 160a
+  clock: 6  # 160a
+  nonce: 160a  # 160a
+  set:  # 160a
+    status: done  # 160a
+- op: discuss  # d2ad
+  at: '2026-07-26T05:31:54Z'  # d2ad
+  by: agent  # d2ad
+  actor: jgstern_agent  # d2ad
+  clock: 7  # d2ad
+  nonce: d2ad  # d2ad
+  message: "(b) spec byte-stability overclaim FIXED in GitHub PR #7 (dev f291a9ce92). Behavioral evidence (two-run survey diff on a fixture): 65/65 analysis_runs entries carry a different execution_id (per-run uuid:) + fresh wall-clock started_at/duration_ms, whole-file sha256 differs, while the node stable_id SET is identical (L2 semantic graph reproduces). Corrected spec:321 (analysis_runs 'byte-stable across runs'), :72 (UX 'deterministic and reproducible'), :1649 (checklist 'same input->same output') to the L2 posture. (a) byte-repro MODE (deterministic execution_id + omit wall-clock) tracked separately as WI-sazap. VERIFY-THE-PREMISE finding: this item's own note claimed 'analysis_runs[] ORDER nondeterminism is FIXED (WI-haguz)' -- INACCURATE. started_at is microsecond wall-clock (65/65 distinct), so the sort reflects real-time completion order and the pass ORDER still varies run-to-run (first divergence: gitignore@.292398 vs properties@.976737). WI-haguz removed the random dict-order but did NOT make the order reproducible; folded into WI-sazap. Closing done: docs-honesty deliverable landed; the byte-repro-mode feature lives on as WI-sazap."  # d2ad

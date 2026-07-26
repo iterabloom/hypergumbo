@@ -1,0 +1,39 @@
+- op: create  # 77a0
+  at: '2026-07-26T04:52:22Z'  # 77a0
+  by: agent  # 77a0
+  actor: jgstern_agent  # 77a0
+  clock: 1  # 77a0
+  nonce: 77a0  # 77a0
+  data:  # 77a0
+    kind: work_item  # 77a0
+    title: "Dependabot: 27 npm vulns in htrac-frontend lockfile (vite/dompurify/postcss/esbuild) — bump to patched versions"  # 77a0
+    status: todo_hard  # 77a0
+    priority: 4  # 77a0
+    parent:  # 77a0
+    tags:  # 77a0
+    - security  # 77a0
+    - frontend  # 77a0
+    - hygiene  # 77a0
+    - blocksuite  # 77a0
+    - adr_0019  # 77a0
+    isbefore: []  # 77a0
+    duplicate_of: []  # 77a0
+    not_duplicate_of: []  # 77a0
+    pr_ref:  # 77a0
+    description: "## What\n\n27 open GitHub Dependabot alerts, **all in a single lockfile**: `packages/htrac-frontend/package-lock.json` (npm ecosystem). Surfaced 2026-07-26 during the post-cutover PERMANENT-checklist audit (item #9) — now that GitHub is origin, Dependabot is active and reporting.\n\nSeverity: **4 high / 17 medium / 6 low.** By package (alert counts):\n- `vite` — 8 alerts (dev/build tooling; dev-server-exposure class CVEs)\n- `dompurify` — 13 alerts (runtime XSS sanitizer — the one genuinely runtime-relevant dep)\n- `postcss` — 2, `brace-expansion` — 2, `esbuild` — 1, `file-type` — 1\n\n## Why this is LOW priority (not a migration issue, does not gate GitHub-PERMANENT)\n\n`htrac-frontend` is `\"private\": true`, v0.1.0 — a BlockSuite/Lit web frontend for `htrac serve` (ADR-0019). Consequences:\n- **Never published to npm** → no downstream consumer installs it.\n- **Not wired into any CI** — zero refs in `.woodpecker/` or `.github/`. The vulnerable build tooling (vite/esbuild/postcss) is never even run in the pipeline.\n- **Zero overlap with the shipped Python wheels** — hypergumbo/htrac ship as Python; end users are not exposed to these npm deps.\n- Real exposure is limited to whoever runs the local `htrac serve` bundled UI. Only `dompurify` is runtime-relevant (matters if that UI renders untrusted HTML — for a local tool serving your own tracker data, low practical risk).\n\nPre-existing frontend hygiene, not migration-caused. Not soak-relevant.\n\n## Fix (contained, npm-only, touches zero Python)\n\n26 of 27 alerts list a patched version → an `npm audit fix` / targeted dep bump in `packages/htrac-frontend/`, committing the updated `package-lock.json`, clears them in one contained PR.\n\n- **Lone holdout:** alert **#20** (`dompurify`, low severity) is `no-fix` (no patched release) → leave, or dismiss-with-note in the Dependabot UI.\n- **Caveat / why it's not a blind auto-fix:** the bump needs a node toolchain + a local `npm run build` / `vite preview` to confirm it survives the pinned `@blocksuite/* 0.17.33` / `vite 6` constraints. Because the package is **not in CI**, there is no automated regression net — a broken bump won't be caught by the pipeline. Verify the frontend still builds before merging.\n\n## Acceptance\n\n- `packages/htrac-frontend/package-lock.json` bumped so `gh api \".../dependabot/alerts?state=open\"` returns only the known `no-fix` holdout (alert #20) — or 0 if that one is dismissed.\n- `npm run build` in `packages/htrac-frontend/` succeeds against the bumped deps (BlockSuite/vite pins intact).\n- No Python package touched."  # 77a0
+    fields: {}  # 77a0
+- op: update  # 0def
+  at: '2026-07-26T04:52:55Z'  # 0def
+  by: agent  # 0def
+  actor: jgstern_agent  # 0def
+  clock: 2  # 0def
+  nonce: 0def  # 0def
+  set:  # 0def
+    status: todo_soft  # 0def
+- op: discuss  # 1926
+  at: '2026-07-26T04:52:55Z'  # 1926
+  by: agent  # 1926
+  actor: jgstern_agent  # 1926
+  clock: 3  # 1926
+  nonce: '1926'  # 1926
+  message: "Filed low-priority (P4, todo_soft) from the post-cutover PERMANENT-checklist audit (#9). Deliberately deferred: htrac-frontend is a private/unpublished BlockSuite frontend, not in CI, zero overlap with shipped Python wheels — so this is contained frontend hygiene, not a migration blocker and not soak-relevant. Fix is a self-contained npm bump in packages/htrac-frontend/ (26/27 patchable; alert #20 dompurify is no-fix) but needs a node toolchain + local build verification against the @blocksuite 0.17.33/vite 6 pins (no CI net). Pick up when there's bandwidth + local build access."  # 1926
