@@ -103,3 +103,18 @@
   clock: 11  # 405b
   nonce: 405b  # 405b
   message: "Re-scoped statement/title off the stale 'should be list[str] / current scalar' framing: the type widening landed long ago (origin is str|List[str], ir.py:569/813; 108649/108649 list-typed). The substantive invariant -- multi-source attribution -- is genuinely unmet (single-element [PASS_ID] everywhere; 0/110533 multi-element). Root_cause ('single-author field / lossy attribution choice') is still accurate, left as-is."  # 405b
+- op: update  # 2ac3
+  at: '2026-07-26T09:46:35Z'  # 2ac3
+  by: agent  # 2ac3
+  actor: jgstern_agent  # 2ac3
+  clock: 12  # 2ac3
+  nonce: 2ac3  # 2ac3
+  set:  # 2ac3
+    status: satisfied  # 2ac3
+- op: discuss  # 4746
+  at: '2026-07-26T09:46:35Z'  # 4746
+  by: agent  # 4746
+  actor: jgstern_agent  # 4746
+  clock: 13  # 4746
+  nonce: '4746'  # 4746
+  message: "SATISFIED (demand-gated, correct-by-construction). Symbol.origin/Edge.origin are list[str] (ir.py:569/813), __post_init__ scalar->list normalize (Edge RAISES on empty) -- multi-source-attribution CAPABILITY in place. Single-element population is correct construction: ZERO producers emit multi-element (verified: no .append/.extend/+= on origin in src; every linker origin write is a single-element replacement on a stand-in the linker minted). Multi-source needs a refine-existing-symbol producer (a linker mutating an analyzer symbol's origin), which does not exist (ADR-0030:66). The invariant holds: origin is correctly attributed; 0-multi-element is the accurate model, not a defect. Reopen if a refine-existing-symbol producer is introduced."  # 4746

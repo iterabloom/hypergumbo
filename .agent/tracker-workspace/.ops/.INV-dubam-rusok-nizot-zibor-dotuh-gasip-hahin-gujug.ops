@@ -84,3 +84,18 @@
   clock: 9  # 8270
   nonce: '8270'  # 8270
   message: "Reopen: PROV children reproduce at HEAD (derived_from degenerate; origin 100% singleton; validate_pass_dependencies has 0 callers). (tracker-hygiene-sweep 2026-06-08T174504Z)"  # 8270
+- op: update  # f3b1
+  at: '2026-07-26T09:46:36Z'  # f3b1
+  by: agent  # f3b1
+  actor: jgstern_agent  # f3b1
+  clock: 10  # f3b1
+  nonce: f3b1  # f3b1
+  set:  # f3b1
+    status: satisfied  # f3b1
+- op: discuss  # 429a
+  at: '2026-07-26T09:46:36Z'  # 429a
+  by: agent  # 429a
+  actor: jgstern_agent  # 429a
+  clock: 11  # 429a
+  nonce: 429a  # 429a
+  message: "SATISFIED by ADR-0030 (Accepted). PROV-compliant provenance for derivation/attribution queries is realized in fields: Entity->Symbol/Edge.id, Activity->Pass/analysis_runs, Agent->tool_version, wasAttributedTo->origin, wasDerivedFrom->derived_from, wasInformedBy->Pass.depends_on. ADR Consequences 5 explicitly rules native PROV serialization (PROV-N/JSON) OUT of scope -- offered only as a future optional 'hypergumbo export --format prov-json'. The mapping (the invariant substance) is satisfied; native export is a separate defer-to-human scope call, not a code gap."  # 429a
