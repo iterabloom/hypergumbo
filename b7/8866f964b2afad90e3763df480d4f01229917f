@@ -1,0 +1,30 @@
+Original commit body from 8ff65322d28fc9d28768d8ffe7f1f7a42876f0fe:
+
+INV-bonup (ADR-0041 §1): supply_chain_tier must name supply-chain DISTANCE only —
+"no other fact may influence the value." Six protocol linkers (Tauri IPC,
+wasm-bindgen, message-dispatch, @hg: annotations, Yjs CRDT, Solidity ABI) violated
+this by stamping supply_chain_tier=2 on their synthetic stand-in nodes purely as a
+side-effect trigger: _classify_symbols skips any symbol whose tier != 1, so the
+linkers borrowed tier 2 as a "do-not-reclassify-by-host-path" lock rather than a
+distance. That encoded a mechanism in the distance axis and mislabeled every one of
+those nodes internal_dep.
+
+Structural fix: key the skip on the honest signal for what these nodes actually are
+— synthetic protocol stand-ins — via the protocol_origin field (ADR-0031; already
+THE synthetic-stand-in marker at the cli read boundary, cli.py:6143/6255). All 14
+tier=2 stamps across the 6 linkers are dropped; the nodes fall to the Symbol default
+supply_chain_tier=1 (honest first-party distance) and _classify_symbols now skips
+them via `or symbol.protocol_origin`. 13 of the 14 also carry a supply_chain_reason
+(kept as provenance; already an independent skip trigger); solidity_abi's call-site
+node — the lone stamp with no reason — is covered by the protocol_origin skip.
+
+Behavior change (a correction): supply_chain_summary per-tier `symbols` counts shift
+(these synthetic nodes move internal_dep→first_party); they are non-`file` kinds so
+per-tier `files` counts are unaffected. Updated the 3 tests asserting the old tier==2
+mechanism value (wasm/tauri linkers) to tier==1; added a TestClassifySymbolsPreservesTier
+case proving a protocol_origin stand-in (no reason) stays tier 1 and unclassified.
+The two remaining tier==2 assertions elsewhere are legitimate (IR round-trip;
+workspace-internal dependency declarations) and untouched. Full suite green, changed
+sources at 100% coverage.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
