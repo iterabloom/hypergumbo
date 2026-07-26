@@ -942,6 +942,7 @@ def _limits_sample():
     # Populate the conditional reporting lists so the schema-drift check sees a
     # fully-populated instance (INV-virik — these are omitted when empty).
     lim.add_failed_file(path="broken.py", reason="SyntaxError", analyzer="python")
+    lim.add_tier_filtered_file("dist/bundle.min.js")
     return lim
 
 
@@ -966,6 +967,9 @@ def _limits_spec() -> ClassSpec:
             },
             "truncated_files": {
                 "description": "Files truncated or skipped due to size",
+            },
+            "tier_filtered_files": {
+                "description": "Files whose symbols/edges the supply-chain tier filter dropped (e.g. DERIVED tier-4 excluded by default) — the 'what' behind max_tier_applied's 'why' (WI-tulit)",
             },
             "partial_results_reason": {
                 "description": "Why results are partial, when they are",
@@ -1013,6 +1017,7 @@ def _limits_spec() -> ClassSpec:
             # non-empty (present-when-populated). skipped_passes stays always-
             # emitted (the populated provenance surface, INV-nihug).
             "failed_files", "skipped_languages", "truncated_files",
+            "tier_filtered_files",
         },
         sample_factory=_limits_sample,
     )

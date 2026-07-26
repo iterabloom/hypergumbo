@@ -8862,14 +8862,20 @@ def _compute_supply_chain_summary(
     """Compute supply chain summary from classified symbols.
 
     Returns a dict with counts per tier plus derived_skipped info. Tier-3
-    (external_dep) carries an ``ecosystem`` sub-bucket counting symbols by the
-    ADR-0041 §3 ``ecosystem`` provenance class (stdlib / third_party / unknown).
+    (external_dep) carries two sub-buckets counting its symbols by ``meta``
+    provenance stamps: ``ecosystem`` (ADR-0041 §3: stdlib / third_party / unknown)
+    and ``directness`` (ADR-0041 §2: direct / transitive / undeclared / unknown).
     """
     # Count unique files and symbols per tier
     tier_files: Dict[int, set] = {1: set(), 2: set(), 3: set(), 4: set()}
     tier_symbols: Dict[int, int] = {1: 0, 2: 0, 3: 0, 4: 0}
     # ADR-0041 §3: sub-bucket tier-3 externals by ecosystem provenance class.
     ecosystem_counts: Dict[str, int] = {}
+    # ADR-0041 §2 (WI-bojok): mirror that sub-bucket for the `directness` meta key
+    # (direct / transitive / undeclared) so the otherwise write-only stamp gets a
+    # report-only reader. Tier-3 nodes outside the manifest-backed languages carry
+    # no directness key → "unknown", exactly as ecosystem does.
+    directness_counts: Dict[str, int] = {}
 
     for symbol in symbols:
         tier = symbol.supply_chain_tier
@@ -8885,6 +8891,8 @@ def _compute_supply_chain_summary(
         if tier == 3:
             eco = (symbol.meta or {}).get("ecosystem") or "unknown"
             ecosystem_counts[eco] = ecosystem_counts.get(eco, 0) + 1
+            direct = (symbol.meta or {}).get("directness") or "unknown"
+            directness_counts[direct] = directness_counts.get(direct, 0) + 1
 
     tier_names = {1: "first_party", 2: "internal_dep", 3: "external_dep"}
 
@@ -8897,6 +8905,7 @@ def _compute_supply_chain_summary(
     # Attach the ecosystem breakdown to the external_dep tier (sorted for
     # deterministic output).
     summary["external_dep"]["ecosystem"] = dict(sorted(ecosystem_counts.items()))
+    summary["external_dep"]["directness"] = dict(sorted(directness_counts.items()))
 
     # Cap derived_skipped paths at 10
     summary["derived_skipped"] = {
@@ -9613,6 +9622,17 @@ def run_survey(
             for e in all_edges
             if _is_valid_edge_src(e.src) and e.dst not in removed_symbol_ids
         ]
+
+        # WI-tulit: record which tier-dropped FILES vanished, so a consumer can see
+        # WHAT was excluded — symbols + edges disappear silently otherwise (neither
+        # analysis_incomplete nor limits.failed_files reflects a tier drop). Computed
+        # from the pre-filter `all_symbols` (file nodes only), before the reassignment.
+        for dropped_path in sorted({
+            s.path
+            for s in all_symbols
+            if s.supply_chain_tier > effective_tier and s.kind == "file"
+        }):
+            limits.add_tier_filtered_file(dropped_path)
 
         all_symbols = filtered_symbols
         all_edges = filtered_edges

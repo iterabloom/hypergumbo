@@ -184,6 +184,29 @@ class TestLimits:
         d = limits.to_dict()
         assert d["partial_results_reason"] == "one or more passes crashed; results are partial"
 
+    def test_add_tier_filtered_file_present_when_populated(self) -> None:
+        """WI-tulit: recorded tier-dropped files appear in tier_filtered_files."""
+        limits = Limits()
+        limits.add_tier_filtered_file("dist/bundle.min.js")
+        limits.add_tier_filtered_file("src/generated.py")
+        d = limits.to_dict()
+        assert d["tier_filtered_files"] == ["dist/bundle.min.js", "src/generated.py"]
+
+    def test_tier_filtered_files_omitted_when_empty(self) -> None:
+        """INV-virik: tier_filtered_files is present ONLY when non-empty, so its
+        absence honestly reads as 'nothing tier-dropped' rather than an always-
+        empty list masking the signal."""
+        assert "tier_filtered_files" not in Limits().to_dict()
+
+    def test_merge_concatenates_tier_filtered_files(self) -> None:
+        """merge() concatenates tier_filtered_files from both sides."""
+        a = Limits()
+        a.add_tier_filtered_file("a/gen.py")
+        b = Limits()
+        b.add_tier_filtered_file("b/gen.js")
+        d = a.merge(b).to_dict()
+        assert d["tier_filtered_files"] == ["a/gen.py", "b/gen.js"]
+
 
 class TestFailedFile:
     """Tests for FailedFile dataclass."""

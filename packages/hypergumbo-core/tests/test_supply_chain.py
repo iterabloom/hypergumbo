@@ -3245,3 +3245,41 @@ class TestSupplyChainSummaryFileScoping:
         scs = _compute_supply_chain_summary(syms, [])
         assert scs["external_dep"]["files"] == 0
         assert scs["external_dep"]["symbols"] == 1
+
+    @staticmethod
+    def _ext(name, directness=None):
+        """A tier-3 external node, optionally carrying a `directness` meta stamp."""
+        from hypergumbo_core.ir import Symbol, Span
+        return Symbol(
+            id=f"python:site-packages/{name}.py:1-1:{name}:external_symbol",
+            name=name, kind="external_symbol", language="python",
+            path="<external>", span=Span(1, 1, 0, 0), supply_chain_tier=3,
+            meta={"directness": directness} if directness else {},
+        )
+
+    def test_directness_sub_bucket_mirrors_ecosystem(self) -> None:
+        """WI-bojok: external_dep carries a `directness` sub-bucket counting tier-3
+        nodes by their `directness` meta stamp (direct / transitive / undeclared),
+        mirroring the ecosystem sub-bucket. A tier-3 node lacking the key (outside
+        the manifest-backed languages) falls into `unknown`, exactly as ecosystem."""
+        from hypergumbo_core.cli import _compute_supply_chain_summary
+
+        syms = [
+            self._ext("a", "direct"),
+            self._ext("b", "direct"),
+            self._ext("c", "transitive"),
+            self._ext("d"),  # no directness key → "unknown"
+        ]
+        scs = _compute_supply_chain_summary(syms, [])
+        assert scs["external_dep"]["directness"] == {
+            "direct": 2, "transitive": 1, "unknown": 1,
+        }
+
+    def test_directness_bucket_empty_when_no_externals(self) -> None:
+        """No tier-3 nodes → empty directness bucket (mirrors the ecosystem bucket)."""
+        from hypergumbo_core.cli import _compute_supply_chain_summary
+
+        scs = _compute_supply_chain_summary(
+            [self._sym("a.py", "file", "a.py", 1)], []
+        )
+        assert scs["external_dep"]["directness"] == {}
