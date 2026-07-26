@@ -1,0 +1,32 @@
+Original commit body from ec83d9c1a08f1ddbb5d3ab629ce2c1bc718079a1:
+
+Two ADR-0041 follow-throughs that turn write-only / silent supply-chain facts into
+observable output. SCHEMA_VERSION 0.18.0 → 0.19.0 (both additive).
+
+WI-bojok — wire the `directness` consumer. The ADR-0041 §2 `directness` meta stamp
+(direct / transitive / undeclared, set on tier-3 boundary nodes for the manifest-
+backed languages) was stamped, axis-registered, and read by NOBODY. Rather than
+re-derive it at each consumer (the exact anti-pattern ADR-0041 §2 warns against),
+`_compute_supply_chain_summary` now emits a `directness` sub-bucket on
+`external_dep`, mirroring the existing `ecosystem` reader line-for-line: tier-3
+nodes are counted by their `directness` meta value, with nodes lacking the key
+(outside the gated languages) falling into `unknown` exactly as `ecosystem` does.
+
+WI-tulit — make tier drops visible. When the default supply-chain filter drops a
+DERIVED tier-4 file, every symbol and edge for it vanished with no diagnostic:
+`analysis_incomplete` stayed False and `limits.failed_files` stayed empty, so
+`max_tier_applied` recorded the *why* but nothing recorded the *what*. A new
+`Limits.tier_filtered_files` (present-when-populated per INV-virik, with helper +
+merge + to_dict) now records the dropped file paths, populated at the single
+tier-filter chokepoint in run_survey from the pre-filter file nodes.
+
+Schema: both fields decorated in the generator (generate_schema_lib.py Limits spec +
+generate-schema supply_chain_summary block) and docs/schema.json regenerated;
+generate-schema --check passes. Tests: directness sub-bucket (populated + empty)
+in TestSupplyChainSummaryFileScoping, tier_filtered_files add/omit/merge in
+test_limits.py, and an end-to-end tier-4-drop assertion in TestMaxTierLimitsReporting;
+the Limits keyset schema test populates the new conditional field. Affected-only
+coverage 100% (cli.py / limits.py / schema.py); no root-fragile chmod branches in
+the touched files.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
