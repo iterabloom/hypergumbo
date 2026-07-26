@@ -17,6 +17,7 @@ from hypergumbo_core.analyze.base import AnalysisResult
 from hypergumbo_core.ir import Edge, Span, Symbol
 from hypergumbo_lang_rust_analyzer.analyzer import (
     _disk_source_reader,
+    _repo_anchored_reader,
     analyze_rust_with_scip,
 )
 
@@ -37,6 +38,26 @@ class TestDiskSourceReader:
         f = tmp_path / "lib.rs"
         f.write_bytes(b"fn main() {}\n")
         assert _disk_source_reader(str(f)) == b"fn main() {}\n"
+
+    def test_repo_anchored_reader_resolves_against_repo_root_not_cwd(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """WI-kilih: SCIP's repo-relative ``doc.relative_path`` must resolve against
+        ``repo_root``, not the process CWD — otherwise the stable_id parity
+        reassignment silently no-ops when the survey runs from anywhere but
+        ``repo_root``, and the SCIP symbol diverges from the tree-sitter anchor."""
+        repo = tmp_path / "myrepo"
+        (repo / "src").mkdir(parents=True)
+        (repo / "src" / "lib.rs").write_bytes(b"fn main() {}")
+        elsewhere = tmp_path / "elsewhere"
+        elsewhere.mkdir()
+        monkeypatch.chdir(elsewhere)  # cwd != repo_root — the divergence scenario
+
+        reader = _repo_anchored_reader(repo)
+        # a repo-relative path resolves against repo_root, not cwd
+        assert reader("src/lib.rs") == b"fn main() {}"
+        # a genuinely-missing file still degrades to None (skip reassignment, no crash)
+        assert reader("src/missing.rs") is None
 
 
 class TestAnalyzeRustWithScip:
@@ -111,9 +132,12 @@ class TestAnalyzeRustWithScip:
         assert result.symbols == [sample_sym]
         assert result.edges == [sample_edge]
 
-    def test_passes_repo_root_and_disk_reader_to_backend(
-        self, tmp_path: Path,
+    @pytest.mark.filterwarnings("ignore::UserWarning")  # mocked backend → no-SCIP-edges diag
+    def test_passes_repo_root_and_anchored_reader_to_backend(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
     ) -> None:
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "lib.rs").write_bytes(b"fn f() {}")
         captured: dict[str, object] = {}
 
         def _fake_try(workspace, source_reader, *, log=None):
@@ -128,9 +152,13 @@ class TestAnalyzeRustWithScip:
             "hypergumbo_lang_rust_analyzer.analyzer.try_analyze_with_rust_analyzer",
             side_effect=_fake_try,
         ):
+            monkeypatch.chdir(tmp_path.parent)  # cwd != repo_root
             analyze_rust_with_scip(tmp_path)
         assert captured["workspace"] == tmp_path
-        assert captured["reader"] is _disk_source_reader
+        # WI-kilih: the reader handed to the backend is anchored at repo_root, so a
+        # repo-relative SCIP path resolves against tmp_path, not the CWD.
+        reader = captured["reader"]
+        assert reader("src/lib.rs") == b"fn f() {}"
 
 
 class TestAnalyzerRegistration:

@@ -43,6 +43,7 @@ derived symbols separately from tree-sitter-derived ones.
 from __future__ import annotations
 
 import warnings
+from collections.abc import Callable
 from pathlib import Path
 
 from hypergumbo_core.analyze.base import AnalysisResult
@@ -67,8 +68,29 @@ def _disk_source_reader(path: str) -> bytes | None:
     """
     try:
         return Path(path).read_bytes()
-    except (OSError, ValueError):  # pragma: no cover — pure defensive
+    except (OSError, ValueError):
         return None
+
+
+def _repo_anchored_reader(repo_root: Path) -> Callable[[str], bytes | None]:
+    """Build a source reader that resolves SCIP ``doc.relative_path`` against
+    ``repo_root``, not the process CWD (WI-kilih).
+
+    ``rust-analyzer scip`` emits paths relative to the indexed workspace, so the
+    reassignment pass hands this reader a repo-relative path like ``src/lib.rs``.
+    Reading it bare resolves against ``os.getcwd()``; when the survey runs from
+    anywhere other than ``repo_root`` (absolute-path surveys, monorepo sub-roots,
+    CI runners) the read fails, the stable_id parity reassignment is silently
+    skipped, and the SCIP symbol keeps a raw-moniker stable_id that diverges from
+    the tree-sitter ``rust.py`` anchor — breaking the WI-zakub byte-parity contract
+    (ADR-0035 v7). Anchoring at ``repo_root`` closes the gap; ``pathlib`` leaves an
+    already-absolute path unchanged.
+    """
+
+    def _read(relative_path: str) -> bytes | None:
+        return _disk_source_reader(str(repo_root / relative_path))
+
+    return _read
 
 
 def _emit_user_warning(message: str) -> None:
@@ -153,7 +175,7 @@ def analyze_rust_with_scip(repo_root: Path) -> AnalysisResult:
         )
 
     result = try_analyze_with_rust_analyzer(
-        repo_root, _disk_source_reader, log=_emit_user_warning,
+        repo_root, _repo_anchored_reader(repo_root), log=_emit_user_warning,
     )
     if result is None:
         # Backend on but SCIP invoke/translate produced nothing (WI-nohah
