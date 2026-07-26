@@ -1,0 +1,3 @@
+Original commit body from 67c0b8fec44ea065ba77d3a6a00d5ce5fe1df693:
+
+WI-zulum: reconcile run_survey/run_behavior_map connectivity docs + the RCT public-API pin with the intentional D12 True->False default flip (the pin now guards parameter presence, not the default value the RCT overrides by passing connectivity=True explicitly). WI-bigab: install jq in the per-PR gate pytest step so agent-infra tests whose bash hooks shell out to jq don't fail on session_start_logic.sh's command-v-jq guard. smart-test green: 3358 passed, 100% coverage of changed source.
