@@ -40,3 +40,15 @@ description = "Python bytecode caches"
 paths = [
     '''(^|/)__pycache__/''',
 ]
+
+# The gitignored .env holds local development / maintainer tokens (OpenRouter,
+# Forgejo, and the HG_GITHUB_TOKEN maintainer PAT). It is never tracked or
+# published, and its tokens rotate — per-finding .gitleaksignore fingerprints
+# break on every rotation (as provisioning HG_GITHUB_TOKEN at the GitHub cutover
+# did), so a path allowlist is the durable suppression. All tracked/publishable
+# files are still scanned.
+[[allowlists]]
+description = "Local .env (gitignored, rotating maintainer tokens; never published)"
+paths = [
+    '''^\.env$''',
+]

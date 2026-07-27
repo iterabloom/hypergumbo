@@ -56,5 +56,5 @@ def test_rust_analyzer_accepted_as_arg() -> None:
         "check-package-coverage's arg parser does not accept `rust-analyzer` as a "
         "package selector — `check-package-coverage rust-analyzer` would fail with "
         "`Unknown argument`. Add it to the case alternation (WI-kalub Step 4). "
-        f"Accept line(s):\n  " + "\n  ".join(accept_lines)
+        "Accept line(s):\n  " + "\n  ".join(accept_lines)
     )

@@ -46,7 +46,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install --upgrade pip "wheel>=0.46.2"
+          pip install --upgrade pip "wheel>=0.46.2" setuptools
           # Install modular packages if available, otherwise legacy
           # Note: Use hypergumbo-core[dev] for test deps, don't use meta-package (pulls PyTorch)
           if [ -d "packages/hypergumbo-core" ]; then
@@ -64,43 +64,41 @@ jobs:
           # ship older versions of these transitive deps than our packages
           # install at runtime, and pip-audit scans the environment as-is. The
           # 6.0.0 release run failed on a baseline urllib3 2.6.3 exactly this way.
+          # Baseline-env pins — kept identical to the live Woodpecker CI audit
+          # (.woodpecker/woodpecker.yml) so this gate's audit surface matches the
+          # gate PRs already pass. Fixable transitive CVEs are pinned away here
+          # rather than ignored below.
           pip install "requests~=2.33.0"   # CVE-2026-25645
           pip install "pygments~=2.20.0"   # CVE-2026-4539
           pip install "urllib3>=2.7.0"     # CVE-2026-44431 / CVE-2026-44432
           pip install "idna>=3.15"         # CVE-2026-45409
           pip install "msgpack>=1.2.1"     # GHSA-6v7p-g79w-8964 (via CacheControl->pip-audit)
+          pip install "click>=8.3.3"       # PYSEC-2026-2132
 
       - name: Vulnerability scan (pip-audit)
         run: |
-          # CVE-2025-71176: pytest /tmp/pytest-of-{user} TOCTOU on UNIX.
-          # Fix is pytest 9.0.3, but we are pinned below 9.0.0 transitively by
-          # syrupy 4.8.0 (hard-pinned by pytest-textual-snapshot 1.1.0).
-          # Impact assessment: local attack boundary only, reachable solely in
-          # CI/dev environments — pytest is a dev-only dep, never installed on
-          # end-user systems running hypergumbo. The CI runner is ephemeral
-          # (single-use per job), so practical exploitability is ~0.
-          # Exit plan: upstream PR to relax the syrupy pin is tracked at
-          # https://github.com/Textualize/pytest-textual-snapshot/pull/24
-          # When that merges and a new pytest-textual-snapshot release ships,
-          # bump pytest to 9.0.3+ and drop this ignore (same in ci.yml).
-          #
-          # CVE-2026-3219: pip concatenated-ZIP+tar archive confusion.
-          # Mirror of ci.yml's ignore — same rationale (CVSS 4.6 MEDIUM,
-          # AV:L + UI:A, zero attack surface on our pinned-dep ephemeral CI
-          # runner). Fix is pip 26.1 (PR pypa/pip#13870), not yet on PyPI
-          # when this was added. Drop once pip-audit stops flagging pip.
-          #
-          # PYSEC-2026-139 / CVE-2025-3000: torch, transitive via the dev
-          # extra's sentence-transformers. No fixed release exists; the
-          # full threat analysis (attacker-controlled tensors / crafted
-          # JIT / malicious .pt2 — none reachable from the pinned
-          # SentenceTransformer encode() path) lives in ci.yml's ML-stack
-          # carve-out comment, which names this CVE. The two IDs are the
-          # same advisory under different database keys (the CVE key began
-          # surfacing independently on 2026-06-10). Re-check cadence is
-          # tracker item WI-totak; drop both when a fixed torch ships.
-          pip-audit --skip-editable --ignore-vuln CVE-2025-71176 --ignore-vuln CVE-2026-3219 \
-            --ignore-vuln PYSEC-2026-139 --ignore-vuln CVE-2025-3000
+          # pip-audit's exit code is the gate. This --ignore-vuln list is kept
+          # IDENTICAL to the live Woodpecker CI audit (.woodpecker/woodpecker.yml)
+          # so this release gate accepts exactly the CVEs that per-PR CI already
+          # passes with — no more, no less. The per-CVE rationale (pytest TOCTOU,
+          # pip ZIP-confusion, the torch/transformers ML-stack carve-out, and the
+          # PYSEC-2025-* transitive batch) lives in ci.yml / pyproject; fixable
+          # transitive CVEs (click, msgpack, setuptools, …) are pinned away in the
+          # install step above rather than ignored here. Re-check cadence: WI-totak.
+          pip-audit --skip-editable \
+            --ignore-vuln CVE-2025-71176 --ignore-vuln CVE-2026-3219 \
+            --ignore-vuln PYSEC-2025-211 --ignore-vuln PYSEC-2025-212 \
+            --ignore-vuln PYSEC-2025-213 --ignore-vuln PYSEC-2025-214 \
+            --ignore-vuln PYSEC-2025-215 --ignore-vuln PYSEC-2025-216 \
+            --ignore-vuln PYSEC-2025-217 --ignore-vuln PYSEC-2025-218 \
+            --ignore-vuln PYSEC-2025-189 --ignore-vuln PYSEC-2025-190 \
+            --ignore-vuln PYSEC-2025-191 --ignore-vuln PYSEC-2025-192 \
+            --ignore-vuln PYSEC-2025-193 --ignore-vuln PYSEC-2025-194 \
+            --ignore-vuln PYSEC-2025-195 --ignore-vuln PYSEC-2025-196 \
+            --ignore-vuln PYSEC-2025-197 --ignore-vuln PYSEC-2025-210 \
+            --ignore-vuln PYSEC-2026-139 --ignore-vuln PYSEC-2024-277 \
+            --ignore-vuln CVE-2025-3000 --ignore-vuln CVE-2026-4372 \
+            --ignore-vuln PYSEC-2026-2289 --ignore-vuln PYSEC-2026-2290
 
       - name: Security linting (Bandit)
         run: |

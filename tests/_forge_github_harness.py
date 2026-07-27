@@ -9,7 +9,7 @@ imported by the per-script github-arm test files
 
 Why a shared module rather than the repo's usual per-file harness copy: PR-C2
 adds several github-arm test files that all need the *same* fake network
-boundary, so centralizing it removes ~4× duplication and gives one place to
+boundary, so centralizing it removes ~4x duplication and gives one place to
 evolve the stubs. Bash contributes no Python coverage (Tier B), so nothing here
 counts toward the 100% gate — these are pure behavioral subprocess assertions.
 
