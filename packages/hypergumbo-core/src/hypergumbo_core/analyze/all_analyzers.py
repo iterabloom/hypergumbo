@@ -1,9 +1,15 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""Facade for analyzer dispatch — delegates to the decorator-based registry.
+"""Analyzer orchestration + the stable analyzer-dispatch import points.
 
-This module provides the stable import points used by cli.py and
-partial_install_warnings.py. Internally it delegates to the canonical
-registry in analyze/registry.py (ADR-0012 Step 1).
+Analyzer *discovery* delegates to the canonical decorator-based registry in
+analyze/registry.py (ADR-0012 Step 1) — ``get_analyzers`` /
+``clear_analyzer_cache`` are thin pass-throughs. But this module also houses
+the *orchestrator*: ``run_all_analyzers`` runs the registered analyzers via a
+parallel ``ThreadPoolExecutor`` dispatch, stamps the config fingerprint,
+filters by file presence, runs the file-symbol / anchor synthesis passes,
+normalizes paths, dedups edges, and merges the dependency manifest — so it is
+not a pure facade. It provides the stable import points used by cli.py and
+partial_install_warnings.py.
 
 Import points:
     - cli.py: ``from .analyze.all_analyzers import run_all_analyzers``

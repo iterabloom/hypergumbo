@@ -11,7 +11,7 @@ lives in ``meta``.)
 
 How It Works
 ------------
-Three-phase detection:
+Four-phase detection:
 
 1. **Rust side**: Iterates all Rust symbols to find functions with
    ``#[tauri::command]`` in their ``meta.annotations``. Builds a command map
@@ -34,6 +34,12 @@ Three-phase detection:
    the import site to the synthetic ``ipc_publisher`` node. This closes the "last mile" gap: TS components
    calling ``commands.startRecording()`` are now linked through to Rust
    handlers.
+
+4. **Rust→TS events**: Scans Rust files for ``emit`` / ``emit_all`` /
+   ``emit_to`` and TS/JS files for ``listen`` / ``once``, then creates
+   ``event_publishes`` edges (tagged ``meta.channel_kind="ipc"``,
+   ``meta.framework_dispatch="tauri_emit_listen"``) between matching event
+   channel names, along with synthetic event-subscriber nodes.
 
 After building both maps, the linker creates ``calls`` edges
 (``meta.protocol="ipc"``) from synthetic TS/JS-side sources to the matching

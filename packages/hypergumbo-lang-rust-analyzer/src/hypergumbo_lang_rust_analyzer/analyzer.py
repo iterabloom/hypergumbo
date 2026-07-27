@@ -39,6 +39,14 @@ Successful SCIP-sourced Symbols already carry ``origin="scip"`` from
 preserves the provenance marker the WI-nohah description calls out.
 Downstream tools can filter on ``symbol.origin`` to trust-weight SCIP-
 derived symbols separately from tree-sitter-derived ones.
+
+Diagnostics
+-----------
+When the backend IS enabled but a SCIP run produces zero ``origin='scip'``
+edges despite the repo containing ``.rs`` files (the wasmtime-OOM-class silent
+fall-through), the analyzer surfaces a Python ``UserWarning`` (WI-todon) via
+the ``_emit_user_warning`` callback threaded into
+``try_analyze_with_rust_analyzer`` — the failure is no longer swallowed.
 """
 
 from __future__ import annotations

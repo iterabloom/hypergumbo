@@ -30,6 +30,10 @@ How It Works
    - Single implementation → 0.70
 4. **Create ``dispatches_to`` edges** (``meta.mechanism="di"``) from interface
    methods to implementation methods (method-level, not class-level).
+5. **Create ``references`` edges** (``meta.mechanism="di_registration"``,
+   ``meta.framework_dispatch="nestjs_module"``) for NestJS ``@Module`` provider/
+   controller registrations — a declaration-time binding, distinct from the
+   runtime dispatch of step 4.
 
 Supported Frameworks
 --------------------
@@ -732,14 +736,16 @@ def link_di_resolution(ctx: LinkerContext) -> LinkerResult:
 
     1. Extract explicit bindings from source files.
     2. Apply resolution cascade (explicit > naming > single-impl).
-    3. Create ``di_resolves`` edges at method level.
-    4. Create ``di_registers`` edges for NestJS module registrations.
+    3. Create ``dispatches_to`` edges at method level (``meta.mechanism="di"``).
+    4. Create ``references`` edges for NestJS module registrations
+       (``meta.mechanism="di_registration"``).
 
     Args:
         ctx: LinkerContext with symbols, edges, and repo_root.
 
     Returns:
-        LinkerResult with new di_resolves and di_registers edges.
+        LinkerResult with new ``dispatches_to`` (di) and ``references``
+        (di_registration) edges.
     """
     start = time.time()
     run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)

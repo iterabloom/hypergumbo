@@ -9,6 +9,13 @@ Detects:
 - Struct definitions
 - Class definitions
 - Interface definitions
+- Enum definitions and enum members (emitted as kind=field)
+- Struct/class/interface fields (kind=field) and module-level
+  variables/constants (kind=variable)
+
+Call edges additionally use UFCS-aware receiver resolution (WI-situj /
+INV-vigaf): a ``thing.method()`` that is really the free function
+``method(thing)`` is recovered via ``ufcs_receiver_type`` hints.
 
 D is a systems programming language that combines low-level control
 with modern features like garbage collection, closures, and ranges.
