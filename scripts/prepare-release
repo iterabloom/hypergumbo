@@ -336,45 +336,75 @@ if [[ -n "$TRACKER_VERSION" ]]; then
     PR_DESCRIPTION="Merge dev into main for v$VERSION release. Includes hypergumbo-tracker $TRACKER_VERSION."
 fi
 
+# Determine the forge backend from the origin remote so the dev→main PR is
+# created the right way: GitHub has no AGit `refs/for/` syntax, so its PR is
+# created through the migrated forge library instead of a magic push refspec.
+ORIGIN_URL=$(git remote get-url origin 2>/dev/null || echo "")
+if [[ "$ORIGIN_URL" == *"github.com"* ]]; then
+    FORGE_LABEL="GitHub"
+else
+    FORGE_LABEL="Codeberg"
+fi
+
 if $NO_PR; then
     echo -e "${YELLOW}Skipping PR creation (--no-pr)${NC}"
     PR_URL="(not created)"
-else
-    if ! $DRY_RUN; then
-        # Create PR using Codeberg's refs/for/ syntax.
-        # NOTE: git rejects any push option containing a newline
-        # ("fatal: push options must not have new line characters"), so the
-        # title and description MUST be single-line strings. The
-        # tests/test_prepare_release_push_options.py regression test enforces
-        # this invariant statically.
-        #
-        # WI-vurus: the push must NOT be suffixed with `|| true`. Under
-        # `set -euo pipefail`, any push failure (newline-in-option, network,
-        # auth, refspec rejection) propagates as a non-zero exit so this
-        # script aborts loudly instead of falling through to a misleading
-        # "(check Codeberg for PR)" success message.
-        if ! PR_OUTPUT=$(git push origin "dev:refs/for/main/release-$VERSION" \
-            -o title="$PR_TITLE" \
-            -o description="$PR_DESCRIPTION Reviewer checklist: version bumped correctly, CHANGELOG updated, CI passes." 2>&1); then
-            echo -e "${RED}✗${NC} Step 7 failed: git push to refs/for/main exited non-zero"
-            echo "$PR_OUTPUT"
-            exit 1
-        fi
-
-        # Extract PR URL from output (Codeberg outputs it). The `|| echo ""`
-        # here is a grep-no-match fallback (parsing), not an error swallower
-        # — the push itself has already succeeded by this point.
-        PR_URL=$(echo "$PR_OUTPUT" | grep -oE 'https://[^ ]+/pulls/[0-9]+' | head -1 || echo "")
-
-        if [[ -n "$PR_URL" ]]; then
-            echo -e "${GREEN}✓${NC} PR created: $PR_URL"
-        else
-            echo -e "${YELLOW}!${NC} Push succeeded but no PR URL in output (check Codeberg)"
-            PR_URL="(check Codeberg)"
-        fi
+elif $DRY_RUN; then
+    echo -e "${BLUE}[dry-run]${NC} Would create PR: dev → main (on $FORGE_LABEL)"
+    PR_URL="(dry-run)"
+elif [[ "$FORGE_LABEL" == "GitHub" ]]; then
+    # GitHub backend: create the dev→main PR from the already-pushed `dev`
+    # branch (Step 6 merged the release commit there) via the SAME approved
+    # forge library auto-pr uses — never a raw API call. `refs/for/main` is a
+    # Codeberg/AGit-only refspec that GitHub rejects.
+    # shellcheck source=scripts/lib/forgejo-api.sh
+    source "$SCRIPT_DIR/lib/forgejo-api.sh"
+    load_env          # sources .env → HG_GITHUB_TOKEN for the authenticated call
+    detect_api_base   # sets FORGE_BACKEND, API_BASE, REPO_SLUG
+    if create_pr "dev" "main" "$PR_TITLE" \
+        "$PR_DESCRIPTION Reviewer checklist: version bumped correctly, CHANGELOG updated, CI passes."; then
+        PR_URL="https://github.com/${REPO_SLUG}/pull/${CREATED_PR_NUM}"
+        echo -e "${GREEN}✓${NC} PR created: $PR_URL"
     else
-        echo -e "${BLUE}[dry-run]${NC} Would create PR: dev → main"
-        PR_URL="(dry-run)"
+        # Honest failure (NOT a silent WI-vurus "success"): `dev` already carries
+        # the release commit, so the human can open the PR by hand and continue.
+        echo -e "${RED}✗${NC} Could not auto-create the dev→main PR via the GitHub API."
+        echo "    Open it manually, then continue with tag-release:"
+        echo "      gh pr create --base main --head dev --title \"$PR_TITLE\""
+        echo "    or via the web UI: https://github.com/${REPO_SLUG:-iterabloom/hypergumbo}/compare/main...dev"
+        PR_URL="(create manually — see above)"
+    fi
+else
+    # Codeberg/Forgejo backend: the AGit `refs/for/` push creates the PR.
+    # NOTE: git rejects any push option containing a newline
+    # ("fatal: push options must not have new line characters"), so the
+    # title and description MUST be single-line strings. The
+    # tests/test_prepare_release_push_options.py regression test enforces
+    # this invariant statically.
+    #
+    # WI-vurus: the push must NOT be suffixed with `|| true`. Under
+    # `set -euo pipefail`, any push failure (newline-in-option, network,
+    # auth, refspec rejection) propagates as a non-zero exit so this
+    # script aborts loudly instead of falling through to a misleading
+    # "(check Codeberg for PR)" success message.
+    if ! PR_OUTPUT=$(git push origin "dev:refs/for/main/release-$VERSION" \
+        -o title="$PR_TITLE" \
+        -o description="$PR_DESCRIPTION Reviewer checklist: version bumped correctly, CHANGELOG updated, CI passes." 2>&1); then
+        echo -e "${RED}✗${NC} Step 7 failed: git push to refs/for/main exited non-zero"
+        echo "$PR_OUTPUT"
+        exit 1
+    fi
+
+    # Extract PR URL from output (Codeberg outputs it). The `|| echo ""`
+    # here is a grep-no-match fallback (parsing), not an error swallower
+    # — the push itself has already succeeded by this point.
+    PR_URL=$(echo "$PR_OUTPUT" | grep -oE 'https://[^ ]+/pulls/[0-9]+' | head -1 || echo "")
+
+    if [[ -n "$PR_URL" ]]; then
+        echo -e "${GREEN}✓${NC} PR created: $PR_URL"
+    else
+        echo -e "${YELLOW}!${NC} Push succeeded but no PR URL in output (check Codeberg)"
+        PR_URL="(check Codeberg)"
     fi
 fi
 
@@ -389,7 +419,7 @@ echo ""
 echo "The agent has completed all automated preparation steps."
 echo "A human must now complete the release:"
 echo ""
-echo "  1. Review and merge the PR on Codeberg"
+echo "  1. Review and merge the PR on $FORGE_LABEL"
 if [[ -n "$PR_URL" && "$PR_URL" != "(not created)" && "$PR_URL" != "(dry-run)" ]]; then
     echo "     $PR_URL"
 fi
@@ -398,7 +428,7 @@ echo "  2. After PR is merged, run:"
 echo -e "     ${GREEN}./scripts/tag-release $VERSION${NC}"
 echo ""
 echo "  This will create a signed tag and push it, triggering the"
-echo "  release workflow that publishes to PyPI and Codeberg releases."
+echo "  release workflow that publishes to PyPI and creates a $FORGE_LABEL Release."
 echo ""
 echo "Packages in this release:"
 echo "  - hypergumbo-core $VERSION"

@@ -28,86 +28,63 @@ The release pipeline is defined in `.github/workflows/release.yml` and runs on F
 The release workflow starts under two conditions:
 
 1. **Tag Push**: When a version tag matching `v*` is pushed (e.g., `v0.6.0`, `v1.0.0-rc1`)
-2. **Manual Dispatch**: Via the Forgejo Actions UI or API with:
-   - `version`: Required. The version to release (e.g., `0.6.0`)
+2. **Manual Dispatch**: Via the GitHub Actions UI or API (`workflow_dispatch`) with:
+   - `version`: Required. The version to release (e.g., `7.0.0`)
    - `dry_run`: Optional. Set to `true` to skip PyPI publish (default: `false`)
 
 ### Pipeline Stages
 
-The workflow runs in two phases: pre-publish (hard gates) and post-publish (verification).
+The release workflow (`.github/workflows/release.yml`) runs on GitHub-hosted
+`ubuntu-latest` runners with two jobs: `security-audit` (hard gate) then
+`build-and-publish`, which publishes to PyPI (twine) and cuts a GitHub Release
+(`gh release create`).
 
-Multi-Python matrix testing and integration tests now run nightly (`nightly.yml` at 5:30 AM UTC).
-The release workflow checks whether nightly already covered the release SHA. If so, those jobs
-are skipped entirely, making releases fast (security-audit + build-and-publish only). If not,
-they run post-publish as verification.
+Multi-Python matrix testing and integration tests are **not** part of the release
+workflow. They run on the self-hosted Woodpecker `nightly` cron
+(`.woodpecker/nightly.yml`, 5:30 AM UTC — Python 3.10–3.13 matrix +
+`integration-test --quick`). Confirm a recent nightly is green before tagging.
 
 ```
-┌──────────────┐  ┌─────────────────┐
-│check-nightly │  │  security-audit │  ← hard gate
-│(query commit │  │  (pip-audit,    │
-│ statuses)    │  │  bandit, etc.)  │
-└──────┬───────┘  └────────┬────────┘
-       │                   │
-       │                   ▼
-       │        ┌─────────────────────┐
-       │        │  build-and-publish  │
-       │        │  (gated on audit)   │
-       │        └────────┬────────────┘
-       │                 │
-       ▼                 ▼
-┌────────────────────────────────────────┐
-│  post-publish-matrix (if not covered)  │
-│  post-publish-integration (if not      │
-│  covered by nightly)                   │
-└────────────────────────────────────────┘
+┌─────────────────┐
+│  security-audit │  ← hard gate (pip-audit, bandit, licenses, secrets)
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────────┐
+│  build-and-publish  │  → PyPI (twine) + GitHub Release (gh release create)
+│  (gated on audit)   │
+└─────────────────────┘
 ```
 
-#### Job 1: check-nightly
-- Queries Forgejo commit status API for `nightly/test-matrix` and `nightly/integration-tests`
-- Outputs `matrix_covered` and `integration_covered` booleans
-- If nightly already passed on the release SHA, post-publish jobs are skipped
-
-#### Job 2: security-audit (hard gate)
-- **pip-audit**: Scans for known vulnerabilities in dependencies
-- **Bandit**: Security linting for Python code
-- **Safety**: Dependency safety check (advisory, non-blocking)
+#### Job 1: security-audit (hard gate)
+- **pip-audit**: Scans for known vulnerabilities in dependencies (with a documented
+  `--ignore-vuln` carve-out list — see the workflow comments)
+- **Bandit**: Security linting for Python code (`--quiet`)
 - **pip-licenses**: Audits dependency licenses, warns on copyleft
-- **trufflehog**: Scans for accidentally committed secrets
+- **trufflehog**: Scans for accidentally committed secrets (advisory)
 
-#### Job 3: build-and-publish
-Only runs if security-audit passes. No longer gated on test-matrix or integration-tests.
+#### Job 2: build-and-publish
+Only runs if security-audit passes.
 
-1. **Build**: Creates wheel and source distribution
+1. **Build**: Creates wheels + source distributions for all seven packages in dependency order
 2. **Checksums**: Generates SHA256SUMS for all artifacts
 3. **SBOM**: Generates Software Bill of Materials (CycloneDX format)
 4. **Verify**: Dry-run install and twine check
-5. **Publish to PyPI**: Uses `PYPI_TOKEN` secret (skipped on dry run)
-6. **Create Forgejo Release**: Uses `FORGEJO_TOKEN` secret to:
-   - Create a release with changelog notes
-   - Upload wheel, tarball, checksums, and SBOM
-
-#### Job 4: post-publish-matrix (conditional)
-- Runs after build-and-publish, only if `check-nightly.outputs.matrix_covered != 'true'`
-- Tests on Python 3.10, 3.11, 3.12, and 3.13
-- Builds source-only grammars (tree-sitter-lean, tree-sitter-wolfram)
-- Requires 100% test coverage
-
-#### Job 5: post-publish-integration (conditional)
-- Runs after build-and-publish, only if `check-nightly.outputs.integration_covered != 'true'`
-- Runs `./scripts/integration-test --quick`
-- Tests CLI functionality on real repositories
-- 30-minute timeout
+5. **Publish to PyPI**: Uses the `PYPI_TOKEN` secret (skipped on dry run / when unset)
+6. **Create GitHub Release**: Uses the Actions-auto-injected `GITHUB_TOKEN`
+   (`permissions: contents: write`) to create a release with the changelog notes and
+   upload the wheels, tarballs, checksums, and SBOM
 
 ## Prerequisites
 
 ### Secrets Configuration
 
-Two secrets must be configured in the repository settings:
+One secret must be configured in the repository settings; the other is provided automatically:
 
 | Secret | Purpose | How to Obtain |
 |--------|---------|---------------|
 | `PYPI_TOKEN` | Publishing to PyPI | Create at https://pypi.org/manage/account/token/ |
-| `FORGEJO_TOKEN` | Creating Forgejo releases | Create at https://codeberg.org/user/settings/applications |
+| `GITHUB_TOKEN` | Creating the GitHub Release (`gh release create`) | Auto-injected by GitHub Actions — no provisioning needed (the job requests `permissions: contents: write`) |
 
 ### GPG Signing Setup
 

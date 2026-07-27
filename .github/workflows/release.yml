@@ -1,7 +1,14 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 name: Release
 
-# Triggered manually or when a version tag is pushed
+# Triggered manually or when a version tag is pushed.
+#
+# GitHub-Actions backend (post Codeberg -> GitHub migration, Phase 4): jobs run
+# on GitHub-hosted `ubuntu-latest`; the release publishes to PyPI (twine) and a
+# GitHub Release (`gh release create`). Multi-Python verification + integration
+# tests are covered by the Woodpecker `nightly` cron (`.woodpecker/nightly.yml`),
+# so the former self-hosted post-publish matrix/integration jobs (and the
+# Codeberg nightly-status pre-check) are retired here.
 on:
   push:
     tags:
@@ -9,7 +16,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version to release (e.g., 0.6.0)'
+        description: 'Version to release (e.g., 7.0.0)'
         required: true
         type: string
       dry_run:
@@ -23,55 +30,10 @@ on:
 
 jobs:
   # ─────────────────────────────────────────────────────────────
-  # Check if nightly already covered this SHA
-  # Queries Forgejo commit status API for nightly/test-matrix and
-  # nightly/integration-tests contexts set by nightly.yml.
-  # ─────────────────────────────────────────────────────────────
-  check-nightly:
-    runs-on: self-hosted
-    outputs:
-      matrix_covered: ${{ steps.check.outputs.matrix_covered }}
-      integration_covered: ${{ steps.check.outputs.integration_covered }}
-    steps:
-      - name: Check nightly commit statuses
-        id: check
-        env:
-          FORGEJO_TOKEN: ${{ secrets.FORGEJO_TOKEN }}
-        run: |
-          SHA="${{ github.sha }}"
-          REPO="${{ github.repository }}"
-          API="https://codeberg.org/api/v1/repos/${REPO}/statuses/${SHA}"
-
-          matrix_covered=false
-          integration_covered=false
-
-          if [ -n "$FORGEJO_TOKEN" ]; then
-            STATUSES=$(curl -s -H "Authorization: token $FORGEJO_TOKEN" "$API")
-
-            # Check for successful nightly/test-matrix status
-            if echo "$STATUSES" | jq -e '.[] | select(.context == "nightly/test-matrix" and .status == "success")' > /dev/null 2>&1; then
-              matrix_covered=true
-              echo "Nightly test-matrix already passed for $SHA"
-            fi
-
-            # Check for successful nightly/integration-tests status
-            if echo "$STATUSES" | jq -e '.[] | select(.context == "nightly/integration-tests" and .status == "success")' > /dev/null 2>&1; then
-              integration_covered=true
-              echo "Nightly integration-tests already passed for $SHA"
-            fi
-          else
-            echo "::warning::FORGEJO_TOKEN not set, cannot check nightly status"
-          fi
-
-          echo "matrix_covered=$matrix_covered" >> "$GITHUB_OUTPUT"
-          echo "integration_covered=$integration_covered" >> "$GITHUB_OUTPUT"
-          echo "Matrix covered: $matrix_covered, Integration covered: $integration_covered"
-
-  # ─────────────────────────────────────────────────────────────
   # Security audit (always runs — hard gate before publish)
   # ─────────────────────────────────────────────────────────────
   security-audit:
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
@@ -98,11 +60,10 @@ jobs:
             pip install -e .[dev]
           fi
           pip install pip-audit bandit pip-licenses
-          # Mirror ci.yml's baseline-env pins: the self-hosted runner's
-          # baseline Python can ship older versions of these transitive
-          # deps than our packages install at runtime, and pip-audit scans
-          # the environment as-is. The 6.0.0 release run failed on the
-          # runner's baseline urllib3 2.6.3 exactly this way.
+          # Mirror ci.yml's baseline-env pins: the runner's baseline Python can
+          # ship older versions of these transitive deps than our packages
+          # install at runtime, and pip-audit scans the environment as-is. The
+          # 6.0.0 release run failed on a baseline urllib3 2.6.3 exactly this way.
           pip install "requests~=2.33.0"   # CVE-2026-25645
           pip install "pygments~=2.20.0"   # CVE-2026-4539
           pip install "urllib3>=2.7.0"     # CVE-2026-44431 / CVE-2026-44432
@@ -116,8 +77,8 @@ jobs:
           # syrupy 4.8.0 (hard-pinned by pytest-textual-snapshot 1.1.0).
           # Impact assessment: local attack boundary only, reachable solely in
           # CI/dev environments — pytest is a dev-only dep, never installed on
-          # end-user systems running hypergumbo. Our self-hosted runners are
-          # single-tenant, so practical exploitability is ~0.
+          # end-user systems running hypergumbo. The CI runner is ephemeral
+          # (single-use per job), so practical exploitability is ~0.
           # Exit plan: upstream PR to relax the syrupy pin is tracked at
           # https://github.com/Textualize/pytest-textual-snapshot/pull/24
           # When that merges and a new pytest-textual-snapshot release ships,
@@ -125,7 +86,7 @@ jobs:
           #
           # CVE-2026-3219: pip concatenated-ZIP+tar archive confusion.
           # Mirror of ci.yml's ignore — same rationale (CVSS 4.6 MEDIUM,
-          # AV:L + UI:A, zero attack surface on our pinned-dep self-hosted
+          # AV:L + UI:A, zero attack surface on our pinned-dep ephemeral CI
           # runner). Fix is pip 26.1 (PR pypa/pip#13870), not yet on PyPI
           # when this was added. Drop once pip-audit stops flagging pip.
           #
@@ -155,10 +116,10 @@ jobs:
           fi
 
       # `safety` was previously wired here as `pipx run safety check || true`,
-      # but the self-hosted runner has no pipx (so the step always errored)
-      # and `|| true` swallowed the exit code, making the gate a no-op. Its
-      # CVE corpus overlaps with pip-audit (which IS gating), so the step was
-      # delivering zero signal — removed rather than re-plumbed.
+      # but the runner has no pipx (so the step always errored) and `|| true`
+      # swallowed the exit code, making the gate a no-op. Its CVE corpus
+      # overlaps with pip-audit (which IS gating), so the step was delivering
+      # zero signal — removed rather than re-plumbed.
 
       - name: License audit
         run: |
@@ -175,13 +136,16 @@ jobs:
           trufflehog filesystem . --no-update --only-verified || true
 
   # ─────────────────────────────────────────────────────────────
-  # Build and publish
-  # Now only gated on security-audit. Test-matrix and integration
-  # are either covered by nightly or run post-publish as fallback.
+  # Build and publish (gated on security-audit).
+  # Multi-Python + integration verification is the Woodpecker `nightly` cron's
+  # job now; this workflow builds, publishes to PyPI, and cuts a GitHub Release.
   # ─────────────────────────────────────────────────────────────
   build-and-publish:
     needs: [security-audit]
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
+    permissions:
+      # `gh release create` writes a Release object + uploads assets.
+      contents: write
 
     steps:
       - uses: actions/checkout@v4
@@ -274,286 +238,31 @@ jobs:
           fi
           cat release_notes.md
 
-      - name: Create Forgejo Release
+      - name: Create GitHub Release
         if: github.event_name == 'push'
         env:
-          FORGEJO_TOKEN: ${{ secrets.FORGEJO_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           VERSION="${{ env.VERSION }}"
           TAG="v$VERSION"
 
-          if [[ -z "$FORGEJO_TOKEN" ]]; then
-            echo "::warning::FORGEJO_TOKEN not set, skipping release creation"
-            exit 0
-          fi
-
-          # Determine if prerelease
-          PRERELEASE=false
+          # Mark pre-releases (dev / rc / alpha / beta) so they don't surface as "latest".
+          PRERELEASE_FLAG=""
           if [[ "$VERSION" == *"dev"* ]] || [[ "$VERSION" == *"rc"* ]] || [[ "$VERSION" == *"alpha"* ]] || [[ "$VERSION" == *"beta"* ]]; then
-            PRERELEASE=true
+            PRERELEASE_FLAG="--prerelease"
           fi
 
-          # Read release notes
-          BODY=$(cat release_notes.md | jq -Rs .)
-
-          # Create release via Forgejo API
-          RESPONSE=$(curl -s -X POST \
-            -H "Authorization: token $FORGEJO_TOKEN" \
-            -H "Content-Type: application/json" \
-            -d "{
-              \"tag_name\": \"$TAG\",
-              \"name\": \"$TAG\",
-              \"body\": $BODY,
-              \"draft\": false,
-              \"prerelease\": $PRERELEASE
-            }" \
-            "https://codeberg.org/api/v1/repos/${{ github.repository }}/releases")
-
-          RELEASE_ID=$(echo "$RESPONSE" | jq -r '.id // empty')
-
-          if [[ -z "$RELEASE_ID" ]]; then
-            echo "::warning::Failed to create release"
-            echo "$RESPONSE"
-            exit 0
+          # Attach the wheels, sdists, checksums, and (when present) the SBOM.
+          ASSETS=(dist/*.whl dist/*.tar.gz dist/SHA256SUMS)
+          if [[ -f dist/sbom.json ]]; then
+            ASSETS+=(dist/sbom.json)
           fi
 
-          echo "Created release ID: $RELEASE_ID"
+          # The tag already exists (this workflow was triggered by its push), so
+          # `gh release create <tag>` attaches a Release to it.
+          gh release create "$TAG" "${ASSETS[@]}" \
+            --title "$TAG" \
+            --notes-file release_notes.md \
+            $PRERELEASE_FLAG
 
-          # Upload assets
-          for file in dist/*.whl dist/*.tar.gz dist/SHA256SUMS dist/sbom.json; do
-            if [[ -f "$file" ]]; then
-              FILENAME=$(basename "$file")
-              echo "Uploading $FILENAME..."
-              curl -s -X POST \
-                -H "Authorization: token $FORGEJO_TOKEN" \
-                -H "Content-Type: application/octet-stream" \
-                --data-binary "@$file" \
-                "https://codeberg.org/api/v1/repos/${{ github.repository }}/releases/$RELEASE_ID/assets?name=$FILENAME"
-            fi
-          done
-
-          echo "Release created: https://codeberg.org/${{ github.repository }}/releases/tag/$TAG"
-
-  # ─────────────────────────────────────────────────────────────
-  # Post-publish test matrix (runs only if nightly didn't cover it)
-  # Verifies multi-Python compatibility after publish. If this fails,
-  # the release is already out but the failure is visible for triage.
-  # ─────────────────────────────────────────────────────────────
-  # Uses container images to guarantee Python availability —
-  # setup-python@v5 can't find pre-built binaries for Debian 12
-  # (the versions manifest only ships Ubuntu builds).
-  post-publish-matrix:
-    needs: [check-nightly, build-and-publish]
-    if: needs.check-nightly.outputs.matrix_covered != 'true'
-    strategy:
-      matrix:
-        python-version: ['3.10', '3.11', '3.12', '3.13']
-      fail-fast: false
-
-    runs-on: self-hosted
-    container: python:${{ matrix.python-version }}-bookworm
-    timeout-minutes: 15
-    env:
-      SEGMENT_DOWNLOAD_TIMEOUT_MINS: "1"
-
-    steps:
-      - name: Install Node.js for JS-based actions
-        run: apt-get update && apt-get install -y nodejs
-
-      - uses: actions/checkout@v4
-
-      - name: Install dependencies
-        run: |
-          pip install --upgrade pip
-          if [ -d "packages/hypergumbo-core" ]; then
-            # Install test deps separately, then packages without [dev] extras.
-            # This matches ci.yml's approach and avoids a resolution conflict:
-            # hypergumbo-core[dev] pins pytest~=9.0.2, but syrupy==4.8.0
-            # (from pytest-textual-snapshot via tracker[tui]) requires pytest<9.
-            # Installing pytest first lets pip skip the upper-bound check.
-            pip install pytest pytest-cov pytest-xdist jsonschema
-            pip install -e packages/hypergumbo-core \
-                        -e packages/hypergumbo-lang-mainstream \
-                        -e packages/hypergumbo-lang-common \
-                        -e packages/hypergumbo-lang-extended1 \
-                        -e packages/hypergumbo-lang-rust-analyzer \
-                        -e "packages/hypergumbo-tracker[dev,tui]" \
-                        -e packages/hypergumbo
-          else
-            pip install -e .[dev]
-          fi
-
-      - name: Build source-only grammars
-        run: ./scripts/build-source-grammars
-
-      - name: Check for sentence-transformers
-        run: |
-          if python -c "import sentence_transformers" 2>/dev/null; then
-            echo "sentence-transformers available"
-            echo "EMBEDDINGS_AVAILABLE=true" >> "$GITHUB_ENV"
-          else
-            echo "sentence-transformers not installed, embedding tests will be skipped"
-            echo "EMBEDDINGS_AVAILABLE=false" >> "$GITHUB_ENV"
-          fi
-
-      - name: Run tests with coverage
-        run: |
-          if [ -d "packages/hypergumbo-core" ]; then
-            COV_PATHS="--cov=packages/hypergumbo-core/src --cov=packages/hypergumbo-lang-mainstream/src --cov=packages/hypergumbo-lang-common/src --cov=packages/hypergumbo-lang-extended1/src --cov=packages/hypergumbo-lang-rust-analyzer/src --cov=packages/hypergumbo-tracker/src"
-            TEST_PATHS="packages/*/tests/"
-          else
-            COV_PATHS="--cov=src"
-            TEST_PATHS=""
-          fi
-
-          # Detect available CPUs from cgroup limits
-          if [ -f /sys/fs/cgroup/cpu.max ]; then
-            read quota period < /sys/fs/cgroup/cpu.max
-            if [ "$quota" != "max" ]; then
-              WORKERS=$((quota / period))
-            else
-              WORKERS=$(nproc)
-            fi
-          else
-            WORKERS=$(nproc)
-          fi
-
-          if [ "$EMBEDDINGS_AVAILABLE" = "true" ]; then
-            pytest -n "$WORKERS" $COV_PATHS --cov-report=term-missing --cov-fail-under=100 $TEST_PATHS
-          else
-            pytest -n "$WORKERS" $COV_PATHS --cov-report=term-missing --cov-fail-under=100 \
-              --cov-config=.coveragerc.no-embeddings $TEST_PATHS
-          fi
-
-  # ─────────────────────────────────────────────────────────────
-  # Post-publish test matrix retry (handles transient infra failures)
-  # Re-runs the full Python matrix whenever the primary matrix had any
-  # failure. We intentionally do NOT skip already-passed versions via a
-  # cross-job pass-marker artifact: that required actions/upload-artifact,
-  # a JS action the runner pre-clones at job-setup time, so an unmirrored
-  # action repo (e.g. under CI failover) aborts the whole job before tests
-  # run. Re-running all four versions on the (rare) retry path is cheap
-  # insurance against that fragility.
-  # ─────────────────────────────────────────────────────────────
-  post-publish-matrix-retry:
-    needs: [check-nightly, build-and-publish, post-publish-matrix]
-    if: >-
-      always() &&
-      needs.build-and-publish.result == 'success' &&
-      needs.check-nightly.outputs.matrix_covered != 'true' &&
-      (needs.post-publish-matrix.result == 'failure' || needs.post-publish-matrix.result == 'cancelled')
-    strategy:
-      matrix:
-        python-version: ['3.10', '3.11', '3.12', '3.13']
-      fail-fast: false
-
-    runs-on: self-hosted
-    container: python:${{ matrix.python-version }}-bookworm
-    timeout-minutes: 15
-    env:
-      SEGMENT_DOWNLOAD_TIMEOUT_MINS: "1"
-
-    steps:
-      # Forgejo runner needs Node.js in the container to execute JS-based
-      # actions like actions/checkout@v4. python:*-bookworm images don't
-      # ship it.
-      - name: Install Node.js for JS-based actions
-        run: apt-get update && apt-get install -y nodejs
-
-      - uses: actions/checkout@v4
-
-      - name: Install dependencies
-        run: |
-          pip install --upgrade pip
-          if [ -d "packages/hypergumbo-core" ]; then
-            pip install pytest pytest-cov pytest-xdist jsonschema
-            pip install -e packages/hypergumbo-core \
-                        -e packages/hypergumbo-lang-mainstream \
-                        -e packages/hypergumbo-lang-common \
-                        -e packages/hypergumbo-lang-extended1 \
-                        -e packages/hypergumbo-lang-rust-analyzer \
-                        -e "packages/hypergumbo-tracker[dev,tui]" \
-                        -e packages/hypergumbo
-          else
-            pip install -e .[dev]
-          fi
-
-      - name: Build source-only grammars
-        run: ./scripts/build-source-grammars
-
-      - name: Check for sentence-transformers
-        run: |
-          if python -c "import sentence_transformers" 2>/dev/null; then
-            echo "sentence-transformers available"
-            echo "EMBEDDINGS_AVAILABLE=true" >> "$GITHUB_ENV"
-          else
-            echo "sentence-transformers not installed, embedding tests will be skipped"
-            echo "EMBEDDINGS_AVAILABLE=false" >> "$GITHUB_ENV"
-          fi
-
-      - name: Run tests with coverage
-        run: |
-          if [ -d "packages/hypergumbo-core" ]; then
-            COV_PATHS="--cov=packages/hypergumbo-core/src --cov=packages/hypergumbo-lang-mainstream/src --cov=packages/hypergumbo-lang-common/src --cov=packages/hypergumbo-lang-extended1/src --cov=packages/hypergumbo-lang-rust-analyzer/src --cov=packages/hypergumbo-tracker/src"
-            TEST_PATHS="packages/*/tests/"
-          else
-            COV_PATHS="--cov=src"
-            TEST_PATHS=""
-          fi
-
-          # Detect available CPUs from cgroup limits
-          if [ -f /sys/fs/cgroup/cpu.max ]; then
-            read quota period < /sys/fs/cgroup/cpu.max
-            if [ "$quota" != "max" ]; then
-              WORKERS=$((quota / period))
-            else
-              WORKERS=$(nproc)
-            fi
-          else
-            WORKERS=$(nproc)
-          fi
-
-          if [ "$EMBEDDINGS_AVAILABLE" = "true" ]; then
-            pytest -n "$WORKERS" $COV_PATHS --cov-report=term-missing --cov-fail-under=100 $TEST_PATHS
-          else
-            pytest -n "$WORKERS" $COV_PATHS --cov-report=term-missing --cov-fail-under=100 \
-              --cov-config=.coveragerc.no-embeddings $TEST_PATHS
-          fi
-
-  # ─────────────────────────────────────────────────────────────
-  # Post-publish integration tests (runs only if nightly didn't cover it)
-  # ─────────────────────────────────────────────────────────────
-  post-publish-integration:
-    needs: [check-nightly, build-and-publish]
-    if: needs.check-nightly.outputs.integration_covered != 'true'
-    runs-on: self-hosted
-    container: python:3.11-bookworm
-    timeout-minutes: 30
-    env:
-      SEGMENT_DOWNLOAD_TIMEOUT_MINS: "1"
-
-    steps:
-      - name: Install Node.js and jq for JS-based actions
-        run: apt-get update && apt-get install -y nodejs jq
-
-      - uses: actions/checkout@v4
-
-      - name: Install dependencies
-        run: |
-          pip install --upgrade pip
-          if [ -d "packages/hypergumbo-core" ]; then
-            pip install -e "packages/hypergumbo-core[dev]" \
-                        -e packages/hypergumbo-lang-mainstream \
-                        -e packages/hypergumbo-lang-common \
-                        -e packages/hypergumbo-lang-extended1 \
-                        -e packages/hypergumbo-lang-rust-analyzer \
-                        -e packages/hypergumbo
-          else
-            pip install -e .[dev]
-          fi
-
-      - name: Build source-only grammars
-        run: ./scripts/build-source-grammars
-
-      - name: Run integration tests
-        run: ./scripts/integration-test --quick
+          echo "Release created: ${{ github.server_url }}/${{ github.repository }}/releases/tag/$TAG"

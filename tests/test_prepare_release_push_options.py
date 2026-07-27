@@ -93,6 +93,33 @@ def test_step7_push_does_not_swallow_errors() -> None:
     )
 
 
+def test_github_backend_creates_pr_via_forge_lib() -> None:
+    """On the GitHub backend, Step 7 must create the dev->main PR through the
+    approved forge library (``create_pr``), NOT the Codeberg-only ``refs/for/``
+    push refspec (which GitHub rejects).
+
+    The Codeberg->GitHub migration made ``prepare-release`` dual-mode: the
+    Codeberg/Forgejo branch keeps the AGit ``refs/for/main`` push (guarded by
+    the tests above), while the GitHub branch sources the migrated forge lib,
+    initializes it (``load_env`` for the token, ``detect_api_base`` for the
+    backend/base/slug), and calls ``create_pr dev main`` — the same code path
+    ``auto-pr`` uses, never a raw API call.
+    """
+    text = PREPARE_RELEASE.read_text()
+    assert 'source "$SCRIPT_DIR/lib/forgejo-api.sh"' in text, (
+        "Step 7's GitHub branch must source the approved forge library to "
+        "create the PR (no raw curl/API call)."
+    )
+    assert "load_env" in text and "detect_api_base" in text, (
+        "Step 7's GitHub branch must initialize the forge lib (load_env for "
+        "the token, detect_api_base for the backend/base/slug) before create_pr."
+    )
+    assert re.search(r'create_pr\s+"dev"\s+"main"', text), (
+        "Step 7's GitHub branch must call `create_pr \"dev\" \"main\"` "
+        "(head=dev, base=main) to open the release PR."
+    )
+
+
 def test_push_description_variables_are_single_line() -> None:
     """The variables interpolated into ``-o description=$VAR`` must themselves
     be single-line, otherwise the static check above is bypassed by indirection.
