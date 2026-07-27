@@ -22,3 +22,18 @@
     fields:  # dc28
       statement: "supply_chain_tier must name supply-chain distance only per ADR-0041 §1; six linkers set tier-2 on synthetic nodes for the _classify_symbols tier!=1 reclassification-skip side-effect, not for distance."  # dc28
       root_cause: "cli._classify_symbols skips symbols where supply_chain_tier != 1, so linkers borrow tier-2 as a reclassification-lock instead of declaring a separate is_synthetic/classification-locked flag; the tier field is the only available lock, so the mechanism leaked into the distance axis."  # dc28
+- op: update  # b3ae
+  at: '2026-07-26T19:02:22Z'  # b3ae
+  by: agent  # b3ae
+  actor: jgstern_agent  # b3ae
+  clock: 2  # b3ae
+  nonce: b3ae  # b3ae
+  set:  # b3ae
+    status: satisfied  # b3ae
+- op: discuss  # e922
+  at: '2026-07-26T19:02:22Z'  # e922
+  by: agent  # e922
+  actor: jgstern_agent  # e922
+  clock: 3  # e922
+  nonce: e922  # e922
+  message: "Fixed in PR #23 (dev b78866f964). supply_chain_tier no longer carries the 'don't reclassify' mechanism: dropped all 14 supply_chain_tier=2 stamps across the 6 protocol linkers (tauri_ipc/wasm_bindgen/message_dispatch/annotation_convention/yjs_crdt/solidity_abi) and re-keyed the _classify_symbols skip on the honest protocol_origin field (cli.py:8721). Synthetic stand-ins now carry their honest first-party (tier 1) distance. BEHAVIORAL EVIDENCE: grep 'supply_chain_tier=2' in linkers/ = NONE; new test test_protocol_origin_stand_in_not_reclassified proves a protocol_origin node (no reason) stays tier 1 unclassified; 3 linker tests updated tier==2 -> tier==1. supply_chain_summary per-tier symbols counts shift internal_dep->first_party (files counts unaffected — synthetic nodes are non-file kinds). Full suite green, changed sources 100%."  # e922
