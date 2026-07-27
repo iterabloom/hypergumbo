@@ -1,0 +1,24 @@
+Original commit body from c2370176db24326b08cf325a0c1f3736d972f685:
+
+Follow-up from the docstring-staleness audit. The axis_meta_keys.py MetaKeySpec
+descriptions for route_framework / route_protocol still said "producer emission
+deferred to INV-vokak / INV-tibap" — but that emission has since landed and both
+invariants are satisfied:
+
+- route_framework is stamped by the framework-pattern route enrichment
+  (framework_patterns.py:1424, first-wins) — INV-vokak.
+- route_protocol is persisted via routes.transport_meta(method) spread into the
+  route marker's meta by the py/elixir analyzers, the grpc linker, and
+  framework-pattern enrichment (py.py:3097, elixir.py:597, grpc.py:965,
+  framework_patterns.py:1978) — INV-tibap.
+
+Also corrected route_framework's "today lives only on the concept==route dict"
+claim (contradicted by the framework_patterns write) and the header comment's
+matching "deferred" text.
+
+Verified this is NOT a false-closure — the producer write sites above plus
+routes.route_of reading both keys are the behavioral evidence. Description /
+comment strings only: no behavior change, regenerating concept-axes.md +
+schema.json is a no-op (these keys aren't surfaced there), no SCHEMA_VERSION bump.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
