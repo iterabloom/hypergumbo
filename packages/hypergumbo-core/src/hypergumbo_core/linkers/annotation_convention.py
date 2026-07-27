@@ -24,7 +24,9 @@ Matching
 Publishers and subscribers are matched by channel name (case-sensitive string
 equality). Each publisher creates an edge to every subscriber on the same
 channel. Dispatches directives match against existing symbol names. Route
-directives create standalone symbols. Confidence is 0.95.
+directives create standalone symbols. Confidence is 0.95, dropping to 0.5 with
+a ``disambiguation_fallback`` flag when a ``@hg:dispatches`` target is
+ambiguous (multiple name matches; INV-zuhub).
 
 Language Agnostic
 -----------------

@@ -10,7 +10,7 @@ consolidation.)
 
 How It Works
 ------------
-Two-phase detection:
+Three-phase detection:
 
 1. **Rust side**: Iterates all Rust symbols to find functions with
    ``#[wasm_bindgen]`` in their ``meta.annotations``. Builds an export map
@@ -25,6 +25,12 @@ Two-phase detection:
    - ``import init, { func } from './pkg/module'`` (default + named)
    - Aliased imports: ``import { func as alias }`` extracts ``func``
    - Filters out ``import type { ... }`` (TypeScript type-only imports)
+
+3. **Dynamic WASM loading**: Scans JS/TS for ``WebAssembly.instantiate`` /
+   ``instantiateStreaming``, ``.wasm`` URL imports, and Emscripten ``Module()``
+   patterns, creating synthetic ``kind="module"`` WASM nodes
+   (``meta.compilation_target="wasm"``) and ``imports`` edges from the JS file
+   to them.
 
 After building both maps, the linker creates ``calls`` edges
 (``meta.bridge_kind="wasm"``) from synthetic JS/TS-side sources to the
@@ -369,11 +375,12 @@ def _create_wasm_load_edges(
     ts_js_symbols: list[Symbol],
     run: AnalysisRun,
 ) -> tuple[list[Edge], list[Symbol]]:
-    """Create wasm_load edges for dynamic WASM loading patterns.
+    """Create ``imports`` edges for dynamic WASM loading patterns.
 
     Scans JS/TS files for WebAssembly.instantiate, URL imports of .wasm files,
     and Emscripten Module patterns. Creates synthetic WASM module symbols and
-    wasm_load edges from the JS file to the WASM module.
+    ``imports`` edges (``meta.compilation_target="wasm"``) from the JS file to
+    the WASM module.
     """
     edges: list[Edge] = []
     symbols: list[Symbol] = []

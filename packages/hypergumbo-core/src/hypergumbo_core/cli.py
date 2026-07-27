@@ -8,13 +8,20 @@ How It Works
 ------------
 The CLI uses argparse with subcommands for different operations:
 
-- **sketch** (default): Generate token-budgeted Markdown overview
-- **run**: Execute full analysis and output behavior map JSON
-- **slice**: Extract subgraph from an entry point
-- **catalog**: List available analysis passes
-- **build-grammars**: Build Lean/Wolfram/Circom tree-sitter grammars from source
-- **install-gitleaks**: Install gitleaks for secret scanning
-- **install-rust-analyzer**: Install rust-analyzer via rustup for the SCIP-backed Rust analyzer (WI-dotud)
+- **sketch** (default): generate a token-budgeted Markdown overview.
+- **survey**: run the full analysis and output the survey JSON (behavior map).
+  ``run`` is a deprecated alias kept for one minor-version window (ADR-0042).
+- **Graph queries**: ``slice`` (subgraph from an entry point), ``search``,
+  ``routes``, ``explain``, ``symbols``, ``compact``, ``io-boundaries``,
+  ``verify-claims``, ``repeat-finder``, ``dead-code-maybe``, ``test-coverage``.
+- **Introspection**: ``catalog`` (analysis passes), ``config``,
+  ``cache-status`` / ``cache-clear``.
+- **Setup**: ``build-grammars`` (Lean/Wolfram/Circom), ``install-gitleaks`` /
+  ``uninstall-gitleaks``, ``install-rust-analyzer`` / ``uninstall-rust-analyzer``
+  (SCIP-backed Rust backend, WI-dotud), ``install-embeddings`` /
+  ``uninstall-embeddings``, ``add-extras`` / ``remove-extras``.
+
+The authoritative set is the ``subcommands`` set in ``main()``.
 
 When no subcommand is given, sketch mode is assumed. This makes the
 common case (`hypergumbo .`) as simple as possible.

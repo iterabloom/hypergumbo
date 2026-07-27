@@ -39,7 +39,11 @@ holds those counts shrink-only):
 3. **Cross-field coherence** — documented field-pair invariants:
    ``Edge.dst_ref ↔ Edge.dst``, ``Symbol.language is None ↔
    Symbol.protocol_origin is not None`` for synthetic stand-ins,
-   ``Symbol.display_label`` populated on synthetic stand-ins only.
+   ``Symbol.display_label`` populated on synthetic stand-ins only. The
+   ``cross_field`` class also carries several other wired checks: the
+   ADR-0037 ``is_resolved ↔ dst`` FK, ``origin_run_id`` FK integrity,
+   dangling-endpoint detection, edge ``confidence`` range, route-marker
+   single-home, and the receiver-blind-magnet gate.
 4. **Verdict-enum completeness** — verdict-emitting code paths must enumerate
    an ``inconclusive`` (or equivalent) branch for missing-data cases.
    Folds in WI-rolol sub-task A (``ClaimVerdict.inconclusive``).

@@ -18,9 +18,9 @@ Two API surfaces are covered:
 - Read (consume ciphertext/keys): ``crypto.subtle.decrypt()``,
   ``crypto.subtle.unwrapKey()``, ``crypto.subtle.exportKey()``
 
-**Rust crypto crates (hkdf, aes-gcm, aes-gcm-siv):**
+**Rust crypto crates (hkdf, aes-gcm, aes-gcm-siv, chacha20poly1305):**
 - Write (produce key material/ciphertext): ``Hkdf::new()``,
-  ``Aes256Gcm::new()``, ``Aes256GcmSiv::new()``,
+  ``Aes256Gcm::new()``, ``Aes256GcmSiv::new()``, ``ChaCha20Poly1305::new()``,
   ``.encrypt()``, ``.encrypt_in_place()``
 - Read (consume key material/ciphertext): ``.expand()``,
   ``.decrypt()``, ``.decrypt_in_place()``

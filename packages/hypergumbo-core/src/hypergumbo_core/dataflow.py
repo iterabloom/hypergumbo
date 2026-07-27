@@ -13,6 +13,9 @@ How It Works
 2. ``annotate_dataflow()`` takes a batch of edges and a parsed AST tree,
    finds the AST node at each edge's line, looks up the node type in the
    language config, and stamps ``access_mode`` into the edge's ``meta`` dict.
+   Python (py.py) uses the parallel ``annotate_dataflow_ast()`` entry point,
+   which walks the CPython ``ast`` instead of a tree-sitter tree and applies
+   the same ``library_patterns`` fallback.
 3. Edges that already have ``access_mode`` set (by a linker — Tier 2) are
    skipped, implementing the precedence rule: explicit beats automatic.
 4. ``scan_library_patterns()`` matches regex patterns from the
