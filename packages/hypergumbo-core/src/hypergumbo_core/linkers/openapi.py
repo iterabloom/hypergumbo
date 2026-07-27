@@ -32,7 +32,11 @@ How It Works
 2. Parse spec and extract path operations
 3. Create openapi_operation symbols for each operation
 4. Match to route symbols by path pattern and HTTP method
-5. Create openapi_implements edges linking handlers to specs
+5. Create ``references`` edges (spec operation → handler, tagged
+   ``meta.ref_construct="openapi_operation"``). The bespoke
+   ``openapi_implements`` type was folded onto ``references`` per the
+   audit-findings 0016 relationship-axis consolidation; the spec→handler
+   direction is preserved deliberately to power the forward-slice-from-spec.
 
 Why This Design
 ---------------

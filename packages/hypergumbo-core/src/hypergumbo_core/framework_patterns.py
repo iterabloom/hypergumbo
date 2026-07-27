@@ -7,7 +7,7 @@ externalized to YAML files that match against symbol metadata.
 
 How It Works
 ------------
-1. Each framework has a YAML file in src/hypergumbo/frameworks/ (e.g., fastapi.yaml)
+1. Each framework has a YAML file in src/hypergumbo_core/frameworks/ (e.g., fastapi.yaml)
 2. Patterns match against symbol metadata (decorators, base_classes, annotations)
 3. When a pattern matches, the symbol is enriched with a "concept" (route, model, etc.)
 4. Linkers use concepts to understand symbol semantics without framework knowledge
@@ -46,17 +46,13 @@ Why This Design
 
 Usage
 -----
-    from hypergumbo_core.framework_patterns import (
-        load_framework_patterns,
-        match_patterns,
-        enrich_symbols,
-    )
+    from hypergumbo_core.framework_patterns import enrich_symbols
 
-    # Load patterns for detected frameworks
-    patterns = [load_framework_patterns(fw) for fw in detected_frameworks]
-
-    # Enrich symbols with matched concepts
-    enriched = enrich_symbols(symbols, patterns)
+    # Enrich symbols in place with matched framework concepts. Pass the set of
+    # detected framework ids directly; enrich_symbols loads each framework's
+    # YAML patterns internally (signature: enrich_symbols(symbols,
+    # detected_frameworks, usage_contexts=None)).
+    enriched = enrich_symbols(symbols, detected_frameworks)
 """
 
 from __future__ import annotations
@@ -945,7 +941,7 @@ def get_frameworks_dir() -> Path:
     """Get the path to the frameworks directory.
 
     Returns:
-        Path to src/hypergumbo/frameworks/
+        Path to src/hypergumbo_core/frameworks/
     """
     return Path(__file__).parent / "frameworks"
 

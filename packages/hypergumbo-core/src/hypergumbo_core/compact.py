@@ -51,20 +51,15 @@ Omitted items are summarized with cheap extractive signals:
 - File path pattern analysis
 - Kind distribution (functions, classes, methods)
 
-Example output:
+Example output (the omitted-residual summary, ``OmittedSummary.to_dict``):
     {
-      "view": "tiered",
-      "included": {"count": 47, "coverage": 0.82},
-      "included_edges_count": 312,
-      "tiers": {"4k": ..., "16k": ..., "64k": ...},
+      "count": 1200,
+      "centrality_sum": 0.18,
       "max_centrality": 0.94,
-      "omitted": {
-        "count": 1200,
-        "centrality_sum": 0.18,
-        "top_words": ["test", "mock", "fixture", "assert"],
-        "top_paths": ["tests/", "vendor/"],
-        "kinds": {"function": 900, "class": 200, "method": 100}
-      }
+      "top_words": [{"word": "test", "count": 42}, {"word": "mock", "count": 30}],
+      "top_paths": [{"pattern": "tests/", "count": 55}, {"pattern": "vendor/", "count": 21}],
+      "kinds": {"function": 900, "class": 200, "method": 100},
+      "tiers": {"4000": 12, "16000": 40, "64000": 148}
     }
 
 Why Bag-of-Words

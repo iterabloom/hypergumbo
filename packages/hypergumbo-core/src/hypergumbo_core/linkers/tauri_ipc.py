@@ -1,9 +1,13 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Bridge linker: Tauri IPC for connecting TypeScript/JavaScript invoke() calls to Rust commands.
 
-This linker creates ipc_calls edges between TypeScript/JavaScript code that
-calls Rust functions via Tauri's IPC bridge (``invoke('command_name', ...)``)
-and the Rust functions annotated with ``#[tauri::command]``.
+This linker creates ``calls`` edges (tagged ``meta.protocol="ipc"``) between
+TypeScript/JavaScript code that calls Rust functions via Tauri's IPC bridge
+(``invoke('command_name', ...)``) and the Rust functions annotated with
+``#[tauri::command]``. (The bespoke ``ipc_calls``/``caller_invokes`` edge
+types were folded onto the canonical ``calls`` per the audit-findings
+0002/0014 relationship-axis consolidation; the IPC/specta distinction now
+lives in ``meta``.)
 
 How It Works
 ------------
@@ -26,14 +30,16 @@ Three-phase detection:
    wrapper files — files that export functions wrapping TAURI_INVOKE calls
    (e.g., ``export function takeScreenshot() { return TAURI_INVOKE("take_screenshot") }``).
    Scans other TS/JS files for imports from these wrapper files, and creates
-   ``caller_invokes`` edges from the import site to the synthetic
-   ``ipc_publisher`` node. This closes the "last mile" gap: TS components
+   ``calls`` edges (tagged ``meta.framework_dispatch="specta_wrapper"``) from
+   the import site to the synthetic ``ipc_publisher`` node. This closes the "last mile" gap: TS components
    calling ``commands.startRecording()`` are now linked through to Rust
    handlers.
 
-After building both maps, the linker creates ipc_calls edges from synthetic
-TS/JS-side sources to the matching Rust command functions, and caller_invokes
-edges from TS/JS files that import specta wrappers to the ipc_publisher nodes.
+After building both maps, the linker creates ``calls`` edges
+(``meta.protocol="ipc"``) from synthetic TS/JS-side sources to the matching
+Rust command functions, and ``calls`` edges
+(``meta.framework_dispatch="specta_wrapper"``) from TS/JS files that import
+specta wrappers to the ipc_publisher nodes.
 
 Why This Design
 ---------------

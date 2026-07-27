@@ -1,7 +1,8 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Framework linker: controller → route methods containment.
 
-Creates ``contains_routes`` edges from symbols tagged ``concept: controller``
+Creates ``contains`` edges (tagged ``meta.framework_dispatch:
+"controller_routes"``) from symbols tagged ``concept: controller``
 (class groupings per framework YAML) to the route-handler method symbols
 whose spans nest within the controller's span in the same file.
 
@@ -35,8 +36,8 @@ How It Works
    span fully contains the route's span. Only the innermost controller
    wins, avoiding redundant edges when a base class and derived class
    coexist in the same file.
-5. Emit ``contains_routes`` edges with ``evidence_type="controller_routes"``
-   and confidence 0.80.
+5. Emit ``contains`` edges (``evidence_type="ast_call_direct"``,
+   ``meta.framework_dispatch="controller_routes"``) with confidence 0.80.
 
 Why This Design
 ---------------
@@ -44,9 +45,12 @@ The existing ``containment`` linker already emits a generic ``contains``
 edge by naming convention (``UsersController.index`` → class
 ``UsersController``). This linker is additive, not redundant:
 
-- ``contains_routes`` edges carry semantic *that* the method is a route
-  under the group, enabling queries like "all URLs handled by
-  UsersController" with a single edge-type filter.
+- These edges carry ``meta.framework_dispatch="controller_routes"``,
+  marking *that* the method is a route under the group, so a
+  ``meta``-filtered query recovers "all URLs handled by UsersController".
+  (The bespoke ``contains_routes`` edge type was folded onto the shared
+  ``contains`` per the audit-findings 0016 relationship-axis
+  consolidation; the route-container distinction now lives in ``meta``.)
 - Span-nesting catches the case where naming-convention fails: e.g.,
   ASP.NET ``UsersController.Get`` is named fine, but Django
   ``UserViewSet.list`` has a single underscore instead of a dot in some

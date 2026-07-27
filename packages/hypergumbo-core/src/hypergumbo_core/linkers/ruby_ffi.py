@@ -2,11 +2,14 @@
 """Bridge linker: Ruby FFI for connecting Ruby FFI gem calls and C extension registrations
 to C/C++ function implementations.
 
-This linker creates ffi_bridge edges for two Ruby-C/C++ interop mechanisms:
+This linker creates ``calls`` edges (tagged ``meta.bridge_kind="ffi"``) for two
+Ruby-C/C++ interop mechanisms (the bespoke ``ffi_bridge`` type was folded onto
+``calls`` per the audit-findings 0002 relationship-axis consolidation):
 
-1. **FFI gem**: Scans Ruby files for ``attach_function`` declarations within modules
-   that ``extend FFI::Library``. Extracts the C function name and matches it to
-   C/C++ function symbols.
+1. **FFI gem**: Scans Ruby files line-by-line for ``attach_function``
+   declarations (the scan is not scoped to modules that ``extend
+   FFI::Library``). Extracts the C function name and matches it to C/C++
+   function symbols.
 
 2. **C extensions**: Scans C/C++ files for ``rb_define_method``,
    ``rb_define_module_function``, and ``rb_define_singleton_method`` calls, which
@@ -18,13 +21,13 @@ How It Works
 Phase 1 (Ruby FFI gem):
   Scans ``.rb`` files for ``attach_function :name, ...`` or
   ``attach_function :ruby_name, :c_name, ...`` patterns. When the C function
-  name matches a C/C++ function symbol, creates an ``ffi_bridge`` edge from
+  name matches a C/C++ function symbol, creates a ``calls`` edge from
   the enclosing Ruby symbol to the C function.
 
 Phase 2 (C extensions):
   Scans ``.c`` and ``.cpp`` files for ``rb_define_method(klass, "name", c_func, argc)``
   and variants. When the C function argument matches a C/C++ function symbol,
-  creates an ``ffi_bridge`` edge.
+  creates a ``calls`` edge.
 
 Why This Design
 ---------------

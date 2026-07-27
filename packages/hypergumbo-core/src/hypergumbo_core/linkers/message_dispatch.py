@@ -2,8 +2,11 @@
 """Protocol linker: message dispatch for typed wire protocol message patterns.
 
 Detects custom wire protocol dispatch patterns where message types flow
-between sender and handler code. Creates ``message_dispatch`` edges
-between send sites and receive/dispatch sites matched by message type name.
+between sender and handler code. Creates ``event_publishes`` edges (tagged
+``meta.channel_kind="message_bus"``) between send sites and receive/dispatch
+sites matched by message type name. (The bespoke ``message_dispatch`` edge
+type was folded onto ``event_publishes`` per the audit-findings 0001
+cross-family consolidation.)
 
 Two API surfaces are covered:
 

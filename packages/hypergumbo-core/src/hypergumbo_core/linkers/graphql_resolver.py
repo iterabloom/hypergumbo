@@ -28,7 +28,11 @@ How It Works
 1. Scan source files for resolver patterns
 2. Extract type name and field name from each resolver
 3. Match to schema type/field symbols
-4. Create resolver_implements edges linking resolvers to schema
+4. Emit two edge kinds (the bespoke ``resolver_implements`` /
+   ``resolver_for_type`` types were folded per audit-findings 0016):
+   ``implements`` for a resolver satisfying a declared schema field
+   (``meta.protocol="graphql"``), and ``references`` for the coarser
+   resolver → type association (``meta.ref_construct="graphql_resolver_type"``).
 
 Why This Design
 ---------------

@@ -1,9 +1,12 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Bridge linker: wasm_bindgen for connecting JS/TS imports to Rust #[wasm_bindgen] exports.
 
-This linker creates wasm_bridge edges between JavaScript/TypeScript code that
-imports functions from wasm-pack-generated packages and the Rust functions
-annotated with ``#[wasm_bindgen]``.
+This linker creates ``calls`` edges (tagged ``meta.bridge_kind="wasm"``)
+between JavaScript/TypeScript code that imports functions from
+wasm-pack-generated packages and the Rust functions annotated with
+``#[wasm_bindgen]``. (The bespoke ``wasm_bridge`` edge type was folded onto
+the canonical ``calls`` per the audit-findings 0002 relationship-axis
+consolidation.)
 
 How It Works
 ------------
@@ -23,8 +26,9 @@ Two-phase detection:
    - Aliased imports: ``import { func as alias }`` extracts ``func``
    - Filters out ``import type { ... }`` (TypeScript type-only imports)
 
-After building both maps, the linker creates wasm_bridge edges from synthetic
-JS/TS-side sources to the matching Rust wasm_bindgen functions.
+After building both maps, the linker creates ``calls`` edges
+(``meta.bridge_kind="wasm"``) from synthetic JS/TS-side sources to the
+matching Rust wasm_bindgen functions.
 
 Why This Design
 ---------------

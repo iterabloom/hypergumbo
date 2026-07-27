@@ -8,13 +8,16 @@ can't be automatically detected by framework-specific linkers.
 Supported Directives
 --------------------
 - ``@hg:publishes <channel>`` — marks the enclosing function as a publisher
-  to the named channel. Creates an ``annotated_publishes`` edge when matched
-  with a ``@hg:subscribes`` directive on the same channel.
+  to the named channel. Creates an ``event_publishes`` edge (tagged
+  ``meta.mechanism="annotation"``) when matched with a ``@hg:subscribes``
+  directive on the same channel.
 - ``@hg:subscribes <channel>`` — marks the enclosing function as a subscriber.
-- ``@hg:route <method> <path>`` — creates a route symbol (kind="route")
-  with the given method and path/identifier.
-- ``@hg:dispatches <target>`` — creates an ``annotated_dispatches`` edge
-  from the annotation site to any symbol whose name matches the target.
+- ``@hg:route <method> <path>`` — creates a route symbol (``kind="function"``
+  with ``meta.framework_role="route"``) with the given method and
+  path/identifier.
+- ``@hg:dispatches <target>`` — creates a ``dispatches_to`` edge (tagged
+  ``meta.mechanism="annotation"``) from the annotation site to any symbol
+  whose name matches the target.
 
 Matching
 --------
