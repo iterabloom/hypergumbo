@@ -87,8 +87,12 @@ def test_usage_metavar_includes_every_registered_subparser():
     )
     metavar = sub_action.metavar
     assert metavar is not None
-    # Every registered subparser name appears in the metavar.
+    # Every registered subparser name appears in the metavar. The deprecated
+    # ``run`` alias (ADR-0042) is intentionally hidden — it is an alias of
+    # ``survey`` (which does appear), so it is excluded here.
     for name in sub_action.choices:
+        if name == "run":
+            continue
         assert name in metavar, f"{name!r} missing from sub.metavar={metavar!r}"
     # Explicit guards for the five that were previously missing.
     for previously_missing in (

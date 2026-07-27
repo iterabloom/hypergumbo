@@ -5,7 +5,6 @@ This analyzer uses tree-sitter to parse WebGPU Shading Language files and extrac
 - Shader functions (entry points marked with @vertex, @fragment, @compute)
 - Struct definitions
 - Uniform/storage buffer bindings (@group/@binding)
-- Global variable declarations
 - Function calls
 
 If tree-sitter-wgsl is not installed, the analyzer
@@ -46,6 +45,7 @@ from hypergumbo_core.analyze.base import (
     make_symbol_id,
     node_text,
 )
+from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.registry import register_analyzer
@@ -198,6 +198,7 @@ def _extract_wgsl_symbols(
     rel_path: str,
     symbols: list[Symbol],
     symbol_by_name: dict[str, Symbol],
+    node_for_symbol: dict[str, "tree_sitter.Node"],
 ) -> None:
     """Extract symbols from WGSL AST tree (pass 1).
 
@@ -207,6 +208,12 @@ def _extract_wgsl_symbols(
         rel_path: Relative path to file
         symbols: List to append symbols to
         symbol_by_name: Dict to track symbols by lowercase name for caller lookup
+        node_for_symbol: Dict mapping symbol id -> its defining tree-sitter node.
+            Body-bearing symbols (function, struct) register here so the
+            base-class auto-stamp loop (``TreeSitterAnalyzer.analyze``) computes
+            ``shape_id`` (and any doc comment) for them — WGSL is a plain
+            ``TreeSitterAnalyzer`` subclass and does not override ``analyze``, so
+            populating this is all that is needed to stamp shape_id (WI-lutob).
     """
     for node in iter_tree(root):
         # Function definitions (fn name(...) { ... })
@@ -250,9 +257,14 @@ def _extract_wgsl_symbols(
                     origin=PASS_ID,
                     meta=meta,
                     signature=_extract_wgsl_signature(node, source),
+                    cyclomatic_complexity=compute_cyclomatic_complexity(node, "wgsl"),
+                    line_span=end_line - start_line + 1,
                 )
                 symbols.append(sym)
                 symbol_by_name[func_name.lower()] = sym
+                # Register the defining node so the base auto-stamp loop
+                # computes shape_id/docstring for this function (WI-lutob).
+                node_for_symbol[sym.id] = node
 
         # Struct definitions (struct Name { ... })
         elif node.type == "struct_declaration":
@@ -280,6 +292,9 @@ def _extract_wgsl_symbols(
                     origin=PASS_ID,
                 )
                 symbols.append(sym)
+                # Register the defining node so the base auto-stamp loop
+                # computes shape_id for this struct (WI-lutob).
+                node_for_symbol[sym.id] = node
 
         # Global variable declarations (var<...> name: Type)
         elif node.type == "global_variable_declaration":
@@ -414,6 +429,7 @@ class WgslAnalyzer(TreeSitterAnalyzer):
         _extract_wgsl_symbols(
             tree.root_node, source, rel_path,
             analysis.symbols, analysis.symbol_by_name,
+            analysis.node_for_symbol,
         )
 
         return analysis

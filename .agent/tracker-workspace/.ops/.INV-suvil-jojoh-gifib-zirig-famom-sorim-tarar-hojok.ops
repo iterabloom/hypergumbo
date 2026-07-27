@@ -77,3 +77,25 @@
   clock: 8  # a9a5
   nonce: a9a5  # a9a5
   message: "2026-06-10 design-interview ruling (ADR-0039, merged in PR #4181): confidence is redefined as pure detection reliability with a confidence_source enum, ranking adjustments relocate to a new rank_score, and quality.score/reason are deleted via a one-version deprecation. Hardcoded per-emitter values must be re-derived under that contract. Stays violated until the rework lands; re-validate then."  # a9a5
+- op: discuss  # a349
+  at: '2026-06-28T02:37:35Z'  # a349
+  by: agent  # a349
+  actor: jgstern_agent  # a349
+  clock: 9  # a349
+  nonce: a349  # a349
+  message: "confidence:F1 FIRST SLICE landed (merged selfh/dev a4e5117918 under failover): the central evidence->confidence derivation layer now EXISTS -- EvidenceTypeSpec.base_confidence field + hypergumbo_core.confidence.derive_confidence(evidence_type), seeded for 8 single-valued in-band inference pathways (ast_import/ast_new 0.95, span_overlap/import_to_manifest 0.90, ast_name_read/module_attribute_reference 0.85, module_export_heuristic/callback_argument_reference 0.75). STAYS VIOLATED: the reader is not yet WIRED into Edge.create or producers, so confidence is still hardcoded per-emitter at ~575 sites; closure needs the default-flip + producer migration + confidence_source discriminator (the high-blast-radius F1 steps, gated on the full vocab:F1 axis-gating wave per strategy). Continuation tracked in the new confidence:F1 WI."  # a349
+- op: update  # fc0b
+  at: '2026-06-28T23:34:54Z'  # fc0b
+  by: agent  # fc0b
+  actor: jgstern_agent  # fc0b
+  clock: 10  # fc0b
+  nonce: fc0b  # fc0b
+  set:  # fc0b
+    status: satisfied  # fc0b
+- op: discuss  # c744
+  at: '2026-06-28T23:34:54Z'  # c744
+  by: agent  # c744
+  actor: jgstern_agent  # c744
+  clock: 11  # c744
+  nonce: c744  # c744
+  message: "SATISFIED — analyzer edge confidence is now DERIVED from evidence, not hardcoded per emitter. WI-nurun PR1 (table) + PR2 (producer migration), both merged to selfh (043cff6738, 812569158c). Human rulings: proceed now / hybrid numbers / v2 bump.\n\nBehavioral before->after on the real artifact (fresh `hypergumbo run packages/hypergumbo-core/src`, post-migration editable install):\n  - confidence_model: \"hypergumbo-evidence-v1\" -> \"hypergumbo-evidence-v2\".\n  - ALL 9,638 analyzer (non-linker) seeded edges now carry confidence == derive_confidence(evidence_type, is_resolved). WAS: per-emitter hardcoded literals (218 analyzer Edge.create sites passed an explicit confidence=, the modal being the 0.85 dataclass default; the same evidence_type emitted 0.4..1.0 across sites — e.g. ast_call ranged 0.4-0.95).\n  - The 218 literal confidence= sites were dropped so Edge.create derives from the PR1 registry base_confidence table (75 seeded inference pathways, edge-weighted modal values; ast_call/ast_call_direct is_resolved-conditioned). Per-emitter outliers collapsed to the canonical value (resolved ast_call 0.95->0.85, unresolved 0.5->0.40).\n\nMechanism: ir.py Edge.create derives confidence when omitted (confidence:F1 default-flip, prior arc) + the 218-site producer migration (PR2) that removes the explicit values. Production-path: derive_confidence is on the live Edge.create path; verified on the self-corpus (9638/9638 analyzer-seeded edges derive).\n\nSCOPE (intentional, per spec §12 / ADR-0039 two-model split): this closes INV-suvil for the ANALYZER evidence-derived confidence model. Kept explicit by design and NOT part of this invariant's derivation: (1) LINKER edges = a separate match-quality model (27 linker files untouched); (2) dynamically-computed confidence (linker match-strength, type_hierarchy dampener); (3) three context-encoding analyzer sites whose low value signals ambiguity/unresolved-ness single-valued derivation can't express (Go ambiguous 0.50, Rust unresolved trait_impl 0.70, Haskell external 0.50).\n\nRESIDUAL FOLLOW-UPS (tracked on WI-nurun, NOT blocking this invariant): step 4 range-validation gate (advisory); the ADR-0039 confidence_source discriminator + rank_score separation (later stage); producer-side ceiling fix for the 4 deferred 1.0-modal pathways (naming_convention etc.); proper is_resolved/multimodal modeling of the 3 context-encoders so they can derive too."  # c744

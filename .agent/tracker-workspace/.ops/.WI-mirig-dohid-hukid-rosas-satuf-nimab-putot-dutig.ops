@@ -31,3 +31,18 @@
     tags: [dogfood]  # 3f34
   remove:  # 3f34
     tags: [dogfooding]  # 3f34
+- op: update  # 43f6
+  at: '2026-07-12T08:27:45Z'  # 43f6
+  by: agent  # 43f6
+  actor: jgstern_agent  # 43f6
+  clock: 3  # 43f6
+  nonce: 43f6  # 43f6
+  set:  # 43f6
+    status: done  # 43f6
+- op: discuss  # 9fc7
+  at: '2026-07-12T08:27:45Z'  # 9fc7
+  by: agent  # 9fc7
+  actor: jgstern_agent  # 9fc7
+  clock: 4  # 9fc7
+  nonce: 9fc7  # 9fc7
+  message: "Documented in PR (selfh dev a4bad5897e): added a Node.meta (Symbol.meta) catalog of the 47 registered symbol_meta keys grouped by producer, mirroring Edge.meta; noted export_scope reserved/unemitted, concepts cross-ref (spec 595), and the unregistered per-language analyzer long-tail. Item's '42 keys' figure was stale (registry now 47). Wave-4 contract-accuracy."  # 9fc7

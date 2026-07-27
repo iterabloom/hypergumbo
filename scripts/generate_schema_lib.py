@@ -73,6 +73,25 @@ def python_type_to_json_schema(py_type: Any) -> Dict[str, Any]:
                 inner_schema = python_type_to_json_schema(non_none_args[0])
                 return {"oneOf": [inner_schema, {"type": "null"}]}
 
+        # Scalar-or-list normalization union: Union[X, List[X]] accepts either a
+        # scalar X or a list of X at construction and normalizes the scalar to a
+        # single-element list (Symbol/Edge.origin via __post_init__, INV-jidat),
+        # so it always SERIALIZES as an array of X. The union widens the *input*
+        # type for mypy strict (call sites pass a scalar pass_id); the wire form
+        # stays array[X], so map to the list schema, not a oneOf.
+        if origin is typing.Union and len(args) == 2:
+            list_arm = [a for a in args if get_origin(a) is list]
+            scalar_arm = [
+                a for a in args if get_origin(a) is None and a is not type(None)
+            ]
+            if len(list_arm) == 1 and len(scalar_arm) == 1:
+                inner = get_args(list_arm[0])
+                if inner and inner[0] is scalar_arm[0]:
+                    return {
+                        "type": "array",
+                        "items": python_type_to_json_schema(inner[0]),
+                    }
+
         if origin in (list, set, frozenset):
             # set / frozenset fields serialize as sorted JSON arrays.
             if args:
@@ -242,7 +261,7 @@ def _sample_span() -> Span:
 
 
 def _sample_symbol() -> Symbol:
-    return Symbol(
+    sym = Symbol(
         id="python:a.py:1-2:f:function",
         name="f",
         kind="function",
@@ -252,6 +271,10 @@ def _sample_symbol() -> Symbol:
         origin=["python"],
         origin_run_id="uuid:sample",
     )
+    # quality is a conditional key (omitted when None per INV-nuzal) — populate
+    # it so the schema-drift round-trip sees a fully-populated instance.
+    sym.quality = {"score": 0.9, "reason": "sample"}
+    return sym
 
 
 def _sample_edge() -> Edge:
@@ -265,14 +288,19 @@ def _sample_edge() -> Edge:
         origin="python",
         origin_run_id="uuid:sample",
         evidence_lang="python",
-        evidence_spans=[{"line": 1}],
         dst_ref=ExternalRef(lang="python", module_path="os", name="getcwd"),
         derived_from=["sym:1"],
     )
 
 
 def _sample_analysis_run() -> AnalysisRun:
-    return AnalysisRun.create(pass_id="python", version="0.0.0")
+    run = AnalysisRun.create(pass_id="python", version="0.0.0")
+    # Populate the conditional reporting lists so the schema-drift check sees a
+    # fully-populated instance (INV-virik — these are omitted when empty).
+    run.skipped_passes = [{"pass": "somepass", "reason": "not applicable"}]
+    run.failed_files = [{"path": "broken.py", "reason": "SyntaxError"}]
+    run.warnings = ["a warning"]
+    return run
 
 
 # ---------------------------------------------------------------------------
@@ -360,13 +388,25 @@ def _symbol_spec() -> ClassSpec:
                 "oneOf": [{"type": "integer", "minimum": 1}, {"type": "null"}],
                 "description": "McCabe cyclomatic complexity (decision points + 1)",
             },
-            "lines_of_code": {
+            "line_span": {
                 "oneOf": [{"type": "integer", "minimum": 1}, {"type": "null"}],
-                "description": "Number of source lines in the symbol body",
+                "description": (
+                    "Physical line span of the symbol body (end_line - "
+                    "start_line + 1, including blank/comment lines). NOT "
+                    "source-lines-of-code; file-level SLOC is "
+                    "profile.languages[*].loc. Renamed from lines_of_code "
+                    "(WI-bozid)."
+                ),
             },
         },
         decorations={
-            "id": {"description": "Unique identifier within analysis"},
+            "id": {"description": (
+                "Unique, location-addressed node identifier (ADR-0036 "
+                "grammar: lang:path:span:name:kind). Because it encodes "
+                "location it CHURNS on file move / rename / signature "
+                "change; for an edits-surviving identity use stable_id, "
+                "and for cross-run rename tracking use fingerprint."
+            )},
             "name": {"description": "Symbol name"},
             "kind": {
                 "description": (
@@ -420,10 +460,25 @@ def _symbol_spec() -> ClassSpec:
                 "description": (
                     "Structural identity hash within a (qualified_name, "
                     "module_path) scope (ADR-0014 as amended by Phase 6 / "
-                    "INV-bazij): survives body edits, NOT rename or move"
+                    "INV-bazij): survives body edits, NOT rename or move. "
+                    "Serialized as sha256:<16hex> and shares this exact "
+                    "surface with shape_id; the two are discriminated by "
+                    "field name (and the top-level stable_id_scheme / "
+                    "shape_id_scheme descriptors), NOT by an in-value prefix, "
+                    "and their value-spaces are disjoint. Do not join on bare "
+                    "hash values across the two axes (WI-tisar)."
                 ),
             },
-            "shape_id": {"description": "Structural implementation fingerprint"},
+            "shape_id": {"description": (
+                "Structural *skeleton* hash — the parse subtree with "
+                "identifiers, literals, comments, and punctuation "
+                "STRIPPED (ADR-0014 §1), so same-shape / different-name "
+                "symbols collide. Within-language only. Contrast "
+                "fingerprint, which KEEPS identifiers/literals; shape_id "
+                "is a strict coarsening of it. Serialized as sha256:<16hex>, "
+                "the same surface as stable_id (see WI-tisar). (Currently a "
+                "serialized output-boundary field with no internal consumer.)"
+            )},
             "fingerprint": {"description": (
                 "Structural content hash of the symbol's parse subtree "
                 "(shape + identifiers + literals; whitespace/comment-"
@@ -431,7 +486,12 @@ def _symbol_spec() -> ClassSpec:
                 "symbol_fingerprint_scheme. Null when the span has no "
                 "parseable content or no grammar is available."
             )},
-            "quality": {"description": "Quality assessment"},
+            "quality": {"description": (
+                "Node-level quality assessment ({score, reason}). Has no "
+                "producer (INV-nuzal): unlike edge.quality it is not derived "
+                "from confidence, so it is omitted when null (INV-virik omit-"
+                "when-empty) and appears only if a future pass populates it."
+            )},
             "meta": {"description": "Language-specific metadata"},
             "signature": {
                 "description": (
@@ -478,8 +538,24 @@ def _symbol_spec() -> ClassSpec:
                     "policy is declared."
                 ),
             },
+            "visibility": {
+                "description": (
+                    "INV-jusot: the single canonical visibility level of the "
+                    "symbol — one of public / private / protected / internal / "
+                    "package (vocabulary in visibility.py). Computed once in "
+                    "finalize from the highest-priority signal (a language "
+                    "modifier, else the legacy Apex/Clojure meta['visibility'], "
+                    "else the Python leading-underscore name convention, else "
+                    "the public default); the deciding signal is recorded in "
+                    "meta['visibility_signal']. Null only on symbols that "
+                    "predate the finalize visibility pass. Supersedes the "
+                    "retired per-language meta['visibility'] key; is_exported "
+                    "is reconciled to visibility=='public' in a follow-up."
+                ),
+            },
         },
         sample_factory=_sample_symbol,
+        conditional={"quality"},
     )
 
 
@@ -495,13 +571,12 @@ def _edge_spec() -> ClassSpec:
         folded={
             "evidence_type": "meta",
             "evidence_lang": "meta",
-            "evidence_spans": "meta",
             "meta": "meta",
         },
         composites={
             "meta": {
                 "type": "object",
-                "description": "Edge metadata including evidence",
+                "description": "Edge metadata",
                 "properties": {
                     "evidence_type": {
                         "type": "string",
@@ -544,7 +619,6 @@ def _edge_spec() -> ClassSpec:
                         ],
                     },
                     "evidence_lang": {"type": "string"},
-                    "evidence_spans": {"type": "array"},
                 },
             },
         },
@@ -624,7 +698,32 @@ def _edge_spec() -> ClassSpec:
             "confidence": {
                 "minimum": 0.0,
                 "maximum": 1.0,
-                "description": "Confidence score",
+                "description": (
+                    "Detection reliability (0.0-1.0) — the producer's "
+                    "evidence-derived estimate that the relationship exists "
+                    "(ADR-0039 ruling 1). NOT a ranking value; ranking "
+                    "prominence lives in rank_score."
+                ),
+            },
+            "confidence_source": {
+                "enum": ["evidence_derived", "emitter_constant", "composite"],
+                "description": (
+                    "Provenance of the confidence value (ADR-0039 ruling 2): "
+                    "evidence_derived (from the evidence_type registry base), "
+                    "emitter_constant (a declared hardcoded producer value), "
+                    "or composite (still fuses a ranking adjustment ruling 3 "
+                    "relocates to rank_score)."
+                ),
+            },
+            "rank_score": {
+                "minimum": 0.0,
+                "maximum": 1.0,
+                "description": (
+                    "Ranking prominence (0.0-1.0), ADR-0039 ruling 3. "
+                    "Initializes from confidence and accumulates the ranking "
+                    "adjustments relocated off confidence; equal to confidence "
+                    "until a producer relocates its adjustment."
+                ),
             },
             "origin": {
                 "description": "Pass IDs that contributed to this edge (INV-jidat)",
@@ -642,7 +741,18 @@ def _edge_spec() -> ClassSpec:
                     "Cluster B fold targets."
                 ),
             },
-            "quality": {"description": "Quality assessment"},
+            "quality": {
+                "deprecated": True,
+                "description": (
+                    "DEPRECATED (ADR-0039 ruling 4; WI-humok / WI-riguh). "
+                    "quality.score is a pure function of confidence "
+                    "(round(clamp(confidence), 3)) and quality.reason encodes "
+                    "the emitter mechanism, not a confidence tier — it carries "
+                    "zero independent signal. Read confidence + confidence_source "
+                    "+ is_resolved instead. Still emitted for one deprecation "
+                    "release; removed the next."
+                ),
+            },
         },
         conditional={"dst_ref", "derived_from"},
         # confidence has a producer default (0.85) but is contractually
@@ -683,7 +793,15 @@ def _analysis_run_spec() -> ClassSpec:
             "files_analyzed": {"description": "Number of files analyzed by this pass"},
             "files_skipped": {"description": "Number of files skipped by this pass"},
             "skipped_passes": {
-                "description": "Passes skipped at dispatch time or crashed mid-run, with reasons (a 'crashed: ' prefix marks a contained pass crash)",
+                "description": (
+                    "Legacy per-run mirror of limits.skipped_passes. Pass-level "
+                    "skips (a pass that did not run: no files matched, missing "
+                    "grammar, or crashed) have no analysis_runs[] entry and "
+                    "appear only in top-level limits.skipped_passes; this "
+                    "per-run field has no current producer and is omitted when "
+                    "empty (INV-virik / INV-nihug). Read limits.skipped_passes "
+                    "for skip provenance."
+                ),
             },
             "failed_files": {
                 "description": (
@@ -717,6 +835,9 @@ def _analysis_run_spec() -> ClassSpec:
                 ),
             },
         },
+        # INV-virik: the per-run reporting lists are present ONLY when non-empty
+        # (present-when-populated), so they are conditional keys.
+        conditional={"skipped_passes", "failed_files", "warnings"},
         sample_factory=_sample_analysis_run,
     )
 
@@ -775,6 +896,18 @@ def _ambiguous_path_spec() -> ClassSpec:
     )
 
 
+def _supply_chain_limits_sample():
+    from hypergumbo_core.limits import SupplyChainLimits, ClassificationFailure, AmbiguousPath
+
+    # Populate both conditional reporting lists so the schema-drift check sees a
+    # fully-populated instance (INV-virik — these are omitted when empty, so an
+    # empty SupplyChainLimits serializes as {}).
+    return SupplyChainLimits(
+        classification_failures=[ClassificationFailure(path="weird.xyz", reason="no rule matched")],
+        ambiguous_paths=[AmbiguousPath(path="edge.case", assigned=2, note="two rules matched")],
+    )
+
+
 def _supply_chain_limits_spec() -> ClassSpec:
     from hypergumbo_core.limits import SupplyChainLimits
 
@@ -789,20 +922,28 @@ def _supply_chain_limits_spec() -> ClassSpec:
                 "description": "Files whose classification was ambiguous",
             },
         },
-        sample_factory=lambda: __import__(
-            "hypergumbo_core.limits", fromlist=["SupplyChainLimits"]
-        ).SupplyChainLimits(),
+        # INV-virik: present-when-populated (omitted when empty).
+        conditional={"classification_failures", "ambiguous_paths"},
+        sample_factory=_supply_chain_limits_sample,
     )
 
 
 def _limits_sample():
     from hypergumbo_core.limits import Limits
 
-    return Limits(
+    lim = Limits(
         max_tier_applied=2,
         max_files_per_analyzer=10,
         test_files_excluded=True,
+        partial_results_reason="one or more passes crashed; results are partial",
+        truncated_files=["big.py"],
+        skipped_languages=["haskell"],
     )
+    # Populate the conditional reporting lists so the schema-drift check sees a
+    # fully-populated instance (INV-virik — these are omitted when empty).
+    lim.add_failed_file(path="broken.py", reason="SyntaxError", analyzer="python")
+    lim.add_tier_filtered_file("dist/bundle.min.js")
+    return lim
 
 
 def _limits_spec() -> ClassSpec:
@@ -827,8 +968,8 @@ def _limits_spec() -> ClassSpec:
             "truncated_files": {
                 "description": "Files truncated or skipped due to size",
             },
-            "analysis_depth": {
-                "description": "Depth of analysis performed (e.g. syntax_only)",
+            "tier_filtered_files": {
+                "description": "Files whose symbols/edges the supply-chain tier filter dropped (e.g. DERIVED tier-4 excluded by default) — the 'what' behind max_tier_applied's 'why' (WI-tulit)",
             },
             "partial_results_reason": {
                 "description": "Why results are partial, when they are",
@@ -837,7 +978,7 @@ def _limits_spec() -> ClassSpec:
                 "description": "Supply chain classification issues",
             },
             "test_files_excluded": {
-                "description": "Present (true) when test files were excluded",
+                "description": "Whether test files were excluded from analysis — always emitted so the state is observable (true when excluded, false otherwise)",
             },
         },
         overrides={
@@ -855,14 +996,29 @@ def _limits_spec() -> ClassSpec:
             "not_captured": {
                 "type": "array",
                 "items": {"type": "string"},
-                "description": "Known analysis limitations (static list)",
+                "description": (
+                    "Universal static disclaimer: the fixed categories of "
+                    "constructs static analysis never captures anywhere (dynamic "
+                    "imports, eval, etc.). Identical across all analyses — NOT a "
+                    "per-repo measurement of constructs this repo contains-but-skipped."
+                ),
             },
             "analyzer_version": {
                 "type": "string",
                 "description": "hypergumbo version string that produced this analysis",
             },
         },
-        conditional={"max_tier_applied", "max_files_per_analyzer", "test_files_excluded"},
+        conditional={
+            "max_tier_applied", "max_files_per_analyzer",
+            # test_files_excluded is now always emitted (WI-miron); partial_results_reason
+            # is emitted only when the analysis is incomplete (WI-tamop, spec §960/§994).
+            "partial_results_reason",
+            # INV-virik: the diagnostic reporting lists are present ONLY when
+            # non-empty (present-when-populated). skipped_passes stays always-
+            # emitted (the populated provenance surface, INV-nihug).
+            "failed_files", "skipped_languages", "truncated_files",
+            "tier_filtered_files",
+        },
         sample_factory=_limits_sample,
     )
 

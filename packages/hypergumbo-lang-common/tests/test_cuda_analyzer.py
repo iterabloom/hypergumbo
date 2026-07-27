@@ -105,7 +105,7 @@ int main() {
     assert kernels[0].name == "myKernel"
 
     # Should have kernel_launch edge
-    launch_edges = [e for e in result.edges if e.edge_type == "kernel_launch"]
+    launch_edges = [e for e in result.edges if e.edge_type == "calls" and (e.meta or {}).get("mechanism") == "kernel_launch"]
     assert len(launch_edges) >= 1
 
 def test_analyze_cuda_api_call(tmp_path):
@@ -274,3 +274,34 @@ __global__ void emptyKernel() {
         kernels = [s for s in _by_exec_space(result.symbols, "global") if s.name == "emptyKernel"]
         assert len(kernels) == 1
         assert kernels[0].signature == "()"
+
+
+class TestCudaCyclomaticComplexity:
+    """INV-loguk slice C: callable cuda symbols carry non-null CC + LOC.
+    Real-grammar verification (C-family if/for/while/do/case/ternary + &&/||)."""
+
+    def test_branchy_callables_have_expected_cc(self, tmp_path) -> None:
+        from hypergumbo_lang_common.cuda import analyze_cuda_files
+        (tmp_path / 'k.cu').write_text('__global__ void kernel(int* data, int n) {\n    int idx = threadIdx.x;\n    if (idx < n && data[idx] > 0) {\n        for (int i = 0; i < n; i++) { data[i] += 1; }\n    } else if (idx == 0) { data[0] = 0; }\n    else { data[idx] = -1; }\n    int j = 0;\n    while (j < n || idx == 1) { j++; }\n    do { j--; } while (j > 0);\n    switch (idx) {\n        case 0: data[0] = 1; break;\n        case 1: data[1] = 2; break;\n        default: data[2] = 3;\n    }\n    int x = (idx > 5) ? 1 : 2;\n}\n__device__ int helper(int a) { return a > 0 ? a : -a; }\n')
+        result = analyze_cuda_files(tmp_path)
+        assert not result.skipped
+        by = {s.name: s for s in result.symbols if s.kind in ('function',)}
+        m = by.get('kernel') or next(s for n, s in by.items() if n.split('.')[-1] == 'kernel' or n.endswith('kernel'))
+        assert m.cyclomatic_complexity == 12, m.cyclomatic_complexity
+        assert m.line_span is not None
+        m = by.get('helper') or next(s for n, s in by.items() if n.split('.')[-1] == 'helper' or n.endswith('helper'))
+        assert m.cyclomatic_complexity == 2, m.cyclomatic_complexity
+        assert m.line_span is not None
+
+    def test_callables_non_null_non_callables_null(self, tmp_path) -> None:
+        from hypergumbo_lang_common.cuda import analyze_cuda_files
+        (tmp_path / 'k.cu').write_text('__global__ void kernel(int* data, int n) {\n    int idx = threadIdx.x;\n    if (idx < n && data[idx] > 0) {\n        for (int i = 0; i < n; i++) { data[i] += 1; }\n    } else if (idx == 0) { data[0] = 0; }\n    else { data[idx] = -1; }\n    int j = 0;\n    while (j < n || idx == 1) { j++; }\n    do { j--; } while (j > 0);\n    switch (idx) {\n        case 0: data[0] = 1; break;\n        case 1: data[1] = 2; break;\n        default: data[2] = 3;\n    }\n    int x = (idx > 5) ? 1 : 2;\n}\n__device__ int helper(int a) { return a > 0 ? a : -a; }\n')
+        result = analyze_cuda_files(tmp_path)
+        callables = [s for s in result.symbols if s.kind in ('function',)]
+        assert callables
+        for s in callables:
+            assert s.cyclomatic_complexity is not None, (s.kind, s.name)
+            assert s.line_span is not None, (s.kind, s.name)
+        for s in result.symbols:
+            if s.kind not in ('function',):
+                assert s.cyclomatic_complexity is None, (s.kind, s.name)

@@ -22,3 +22,20 @@
     fields:  # 8383
       statement: "For a fixed repo, the emitted budget-tier (behavior_map.<budget>.json) and compact node SET and ORDER must be identical across PYTHONHASHSEED values. Currently select_by_connectivity's frontier tie-break makes both vary on tie-heavy graphs."  # 8383
       root_cause: "select_by_connectivity (compact.py:718) iterates `for node_id in frontier` (a set) and keeps the first strict-max (`if score > best_score`); on a (component_growth, edges_added, centrality) score tie the winner is set-iteration-order-dependent (PYTHONHASHSEED-dependent). conn_result.included.symbols is written straight to tiered/compact nodes in selection order with no final re-sort, so both the selected set (on real ties) and node order leak into the artifact."  # 8383
+- op: update  # de8c
+  at: '2026-07-10T00:21:22Z'  # de8c
+  by: agent  # de8c
+  actor: jgstern_agent  # de8c
+  clock: 2  # de8c
+  nonce: de8c  # de8c
+  set:  # de8c
+    status: done  # de8c
+  add:  # de8c
+    tags: [wave4]  # de8c
+- op: discuss  # 572e
+  at: '2026-07-10T00:21:23Z'  # 572e
+  by: agent  # 572e
+  actor: jgstern_agent  # 572e
+  clock: 3  # 572e
+  nonce: 572e  # 572e
+  message: "Fixed + merged (selfh/dev 5fc48bb8ee). select_by_connectivity iterated the seed SET + frontier SET directly, so seed ordering + tie resolution depended on PYTHONHASHSEED (non-deterministic node set/order run-to-run, contradicting spec 'Output reproducibility'). Fixed: seed init, frontier tie-break (sorted -> smallest-id wins on tie), and coverage force-include now iterate sorted; the 4th force-include site is already re-sorted by (-centrality,name). Behavioral evidence: multi-seed subprocess determinism test — RELIABLY RED without the fix (verified: 5 distinct outputs across 6 hash seeds), GREEN with it (identical); sorted() lines covered by 33 in-process select_by_* tests. The centrality-ranked default (post-WI-zulij) was already deterministic. core 100%. Wave-4 projection — LAST item; block complete."  # 572e

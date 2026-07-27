@@ -7,8 +7,15 @@ This analyzer uses tree-sitter to parse Scala files and extract:
 - Object definitions (object)
 - Trait definitions (trait)
 - Method definitions (inside classes/objects/traits)
+- Secondary constructors (def this(...), kind=constructor)
 - Function call relationships
 - Import statements
+- Annotations/decorators (into symbol meta["decorators"], for functions, methods, and classes)
+- Inheritance: extends/with base classes and traits (into symbol meta["base_classes"], for classes and traits)
+
+Modifiers (access/abstract/sealed/case) are captured on Symbol.modifiers,
+and parameter/variable types are tracked to disambiguate type-qualified
+method calls.
 
 If tree-sitter with Scala support is not installed, the analyzer
 gracefully degrades and returns an empty result.
@@ -17,7 +24,7 @@ How It Works
 ------------
 Uses TreeSitterAnalyzer base class for two-pass orchestration:
 1. Pass 1: Extract functions, classes, objects, traits with signatures
-2. Pass 2: Extract call edges and import edges using NameResolver
+2. Pass 2: Extract call edges, import edges, and eta-expansion references edges using NameResolver
 
 The base class handles grammar checking, parser creation, file discovery,
 and result assembly. This module provides only the Scala-specific extraction
@@ -42,6 +49,7 @@ from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
     TreeSitterAnalyzer,
+    defer_bare_method_call,
     find_child_by_type,
     iter_tree,
     make_file_id,
@@ -49,11 +57,13 @@ from hypergumbo_core.analyze.base import (
     make_symbol_id,
     make_typed_stable_id,
     make_unresolved_edge,
+    make_variable_stable_id,
     node_text,
     visibility_from_modifiers,
 )
 from hypergumbo_core.paths import normalize_path
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -252,6 +262,65 @@ def _get_enclosing_function(
     return None  # pragma: no cover - defensive
 
 
+# WI-jusus (emission-parity F5): scope discrimination for a val/var, so only a
+# class/object/trait/enum/given-body val becomes a ``field`` and only a
+# top-level val a ``variable``. Any LOCAL binding is NOT an API surface —
+# emitting one would repeat the swift INV-lanaz / go INV-sidab function-local
+# leak regressions. The local set must catch every non-body scope a val can sit
+# directly under: a block/function/lambda, a ``case_clause`` (a braceless
+# ``case _ => val w`` in a partial-function literal / match / try-catch — the
+# *initializer* of a field or top-level val, which would otherwise climb to the
+# body and leak; covers both Scala-2 ``case_block`` and Scala-3 ``indented_cases``
+# chains since the val sits directly under ``case_clause``), and a Scala-3
+# ``indented_block`` (a braceless nested initializer block).
+_SCALA_LOCAL_SCOPE_TYPES = frozenset({
+    "block", "function_definition", "function_declaration", "lambda_expression",
+    "case_clause", "indented_block",
+})
+# Body nodes whose (named) owner makes a directly-contained val a field.
+_SCALA_FIELD_BODY_TYPES = frozenset({
+    "template_body", "enum_body", "with_template_body",
+})
+_SCALA_TYPE_DEF_TYPES = frozenset({
+    "class_definition", "object_definition", "trait_definition",
+    "enum_definition", "given_definition",
+})
+
+
+def _scala_property_scope(
+    node: "tree_sitter.Node", source: bytes
+) -> tuple[Optional[str], Optional[str]]:
+    """Classify a val/var by its nearest scope-defining ancestor (WI-jusus).
+
+    Returns ``("field", owner)`` for a val/var directly in a NAMED
+    class/object/trait/enum/given body, ``("variable", None)`` for a top-level
+    val/var (reaches ``compilation_unit`` first), or ``(None, None)`` for a local
+    binding (block/function/lambda/case/indented) OR an anonymous
+    ``new Foo { val x = ... }`` / anonymous-given member (a body whose parent is
+    not a NAMED type_definition — e.g. an ``instance_expression``). The NEAREST
+    scope wins; the owner is the body's parent identifier (NOT
+    ``_get_enclosing_type``, which would walk past an anonymous body to the outer
+    type and mis-attribute the member).
+    """
+    current = node.parent
+    while current is not None:
+        if current.type in _SCALA_LOCAL_SCOPE_TYPES:
+            return (None, None)
+        if current.type in _SCALA_FIELD_BODY_TYPES:
+            parent = current.parent
+            if (
+                parent is not None
+                and parent.type in _SCALA_TYPE_DEF_TYPES
+                and (nm := find_child_by_type(parent, "identifier")) is not None
+            ):
+                return ("field", node_text(nm, source))
+            return (None, None)
+        if current.type == "compilation_unit":
+            return ("variable", None)
+        current = current.parent  # pragma: no cover - a val's immediate parent is always a scope node in the bundled grammar
+    return (None, None)  # pragma: no cover - every node is under compilation_unit
+
+
 def _extract_scala_signature(
     node: "tree_sitter.Node", source: bytes
 ) -> Optional[str]:
@@ -422,6 +491,8 @@ def _extract_symbols_from_file(
                     modifiers=modifiers,
                     meta=meta,
                     is_exported=is_secondary_ctor,
+                    cyclomatic_complexity=compute_cyclomatic_complexity(node, "scala"),
+                    line_span=end_line - start_line + 1,
                 )
                 analysis.symbols.append(symbol)
                 analysis.node_for_symbol[symbol.id] = node
@@ -471,6 +542,8 @@ def _extract_symbols_from_file(
                     signature=signature,
                     modifiers=modifiers,
                     meta=meta,
+                    cyclomatic_complexity=compute_cyclomatic_complexity(node, "scala"),
+                    line_span=end_line - start_line + 1,
                 )
                 analysis.symbols.append(symbol)
                 analysis.node_for_symbol[symbol.id] = node
@@ -485,13 +558,16 @@ def _extract_symbols_from_file(
                 end_line = node.end_point[0] + 1
                 base_classes = _extract_extends_clause(node, source)
                 annotations = _extract_annotations_scala(node, source)
-                meta: dict[str, object] | None = {}
+                # Renamed from `meta` — a different construct's meta dict than
+                # the earlier `meta` in this method (fixes mypy [no-redef]). Typed
+                # non-Optional and built up as a dict, then coerced to None only at
+                # the Symbol via `or None`, so indexed assignment type-checks
+                # instead of tripping [index] on the `| None` arm (WI-hokag).
+                class_meta: dict[str, object] = {}
                 if base_classes:
-                    meta["base_classes"] = base_classes
+                    class_meta["base_classes"] = base_classes
                 if annotations:
-                    meta["decorators"] = annotations
-                if not meta:
-                    meta = None
+                    class_meta["decorators"] = annotations
 
                 symbol = Symbol(
                     id=make_symbol_id("scala", str(file_path), start_line, end_line, type_name, "class"),
@@ -507,7 +583,7 @@ def _extract_symbols_from_file(
                     ),
                     origin=PASS_ID,
                     origin_run_id=run_id,
-                    meta=meta,
+                    meta=class_meta or None,
                     modifiers=_extract_modifiers_scala(node),
                 )
                 analysis.symbols.append(symbol)
@@ -570,6 +646,84 @@ def _extract_symbols_from_file(
                 analysis.symbols.append(symbol)
                 analysis.node_for_symbol[symbol.id] = node
                 analysis.symbol_by_name[type_name] = symbol
+
+        elif node.type in (
+            "val_definition", "var_definition",
+            "val_declaration", "var_declaration",
+        ):
+            # WI-jusus (emission-parity F5): emit a kind="field" Symbol for a
+            # class/object/trait/enum/given-body val/var and a kind="variable"
+            # Symbol for a top-level val/var. A local binding / anonymous-object
+            # member is skipped (see _scala_property_scope). Documented fails-safe
+            # deferrals (miss the symbol, never emit a WRONG one): a tuple-pattern
+            # ``val (a, b) = t`` and a multi-name ``val a, b = 0`` (the name is an
+            # ``identifiers`` container, no direct ``identifier`` child -> skipped);
+            # constructor ``val``/``var`` params (``class C(val x: Int)`` — an
+            # ``class_parameter``, not a val_definition); and package-object members.
+            scope, owner = _scala_property_scope(node, source)
+            name_node = find_child_by_type(node, "identifier")
+            if scope is not None and name_node is not None:
+                prop_name = node_text(name_node, source)
+                start_line = node.start_point[0] + 1
+                end_line = node.end_point[0] + 1
+                type_node = find_child_by_type(node, "type_identifier")
+                prop_type = (
+                    node_text(type_node, source) if type_node is not None else None
+                )
+                modifiers = _extract_modifiers_scala(node)
+                annotations = _extract_annotations_scala(node, source)
+                meta = {"decorators": annotations} if annotations else None
+
+                if scope == "field":
+                    full_name = f"{owner}.{prop_name}"
+                    stable_id = make_typed_stable_id(
+                        "field", prop_type or "",
+                        visibility_from_modifiers(modifiers),
+                        name=prop_name, qualified_name=full_name,
+                        file_stable_id=file_stable_id,
+                    )
+                else:
+                    full_name = prop_name
+                    stable_id = make_variable_stable_id(
+                        "scala", str(file_path), prop_name
+                    )
+
+                symbol = Symbol(
+                    id=make_symbol_id("scala", str(file_path), start_line, end_line, full_name, scope),
+                    name=full_name,
+                    kind=scope,
+                    language="scala",
+                    path=str(file_path),
+                    span=Span(
+                        start_line=start_line,
+                        end_line=end_line,
+                        start_col=node.start_point[1],
+                        end_col=node.end_point[1],
+                    ),
+                    origin=PASS_ID,
+                    origin_run_id=run_id,
+                    stable_id=stable_id,
+                    signature=prop_type,
+                    modifiers=modifiers,
+                    meta=meta,
+                    is_exported=not any(
+                        m in modifiers for m in ("private", "protected")
+                    ),
+                    line_span=end_line - start_line + 1,
+                )
+                analysis.symbols.append(symbol)
+                analysis.node_for_symbol[symbol.id] = node
+                # Register a FIELD only under its qualified name (never its bare
+                # short name): symbol_by_name is the edge pass's local_symbols
+                # resolution index, and a short-name field/variable would shadow a
+                # same-named callable (a call mis-resolving to a field, or a field
+                # returned as an enclosing "function"). This mirrors commit
+                # 67b2e14788, which stripped short-name registration from 11 langs
+                # for exactly this call-graph-integrity reason; short-name lookups
+                # go through the NameResolver suffix index. A variable is never a
+                # call target, so it is not registered here at all.
+                if scope == "field":
+                    analysis.symbol_by_name[full_name] = symbol
 
     return analysis
 
@@ -634,7 +788,6 @@ def _extract_edges_from_file(
                     edge_type="imports",
                     line=node.start_point[0] + 1,
                     evidence_type="import_statement",
-                    confidence=0.95,
                     origin=PASS_ID,
                     origin_run_id=run_id,
                 ))
@@ -645,20 +798,53 @@ def _extract_edges_from_file(
             for pname, ptype in param_types.items():
                 var_types[pname] = ptype
 
-        # Track constructor assignments: val repo = new UserRepository()
+        # Track val receiver types: `val repo = new UserRepository()`
+        # (constructor) and `val repo: UserRepository = f()` (annotation).
+        # INV-fahub / WI-bihit: threading the annotation-typed val — previously
+        # dropped — lets a receiver typed only by annotation resolve via the
+        # type-qualified path instead of misbinding to an arbitrary same-named
+        # def (recall recovery for the receiver gate below).
         elif node.type == "val_definition":
             var_node = find_child_by_type(node, "identifier")
-            inst_node = find_child_by_type(node, "instance_expression")
-            if var_node and inst_node:
-                type_node = find_child_by_type(inst_node, "type_identifier")
-                if type_node:
+            if var_node:
+                inst_node = find_child_by_type(node, "instance_expression")
+                if inst_node is not None:
+                    type_node = find_child_by_type(inst_node, "type_identifier")
+                else:
+                    # Annotated val: the type_identifier is a direct child
+                    # (`val f: Foo = …` → val_definition > type_identifier).
+                    type_node = find_child_by_type(node, "type_identifier")
+                if type_node is not None:
                     var_types[node_text(var_node, source)] = node_text(
                         type_node, source,
                     )
 
+        # Track class-constructor parameter types: `class C(val svc: Service)`.
+        # A constructor-param receiver (`svc.process()`) is typed and must
+        # resolve, not misbind (INV-fahub / WI-bihit recall recovery). The
+        # `class_parameter` node is visited before the class body's calls
+        # (pre-order DFS), so var_types is populated in time.
+        elif node.type == "class_parameter":
+            pname_node = find_child_by_type(node, "identifier")
+            ptype_node = find_child_by_type(node, "type_identifier")
+            if pname_node is not None and ptype_node is not None:
+                var_types[node_text(pname_node, source)] = node_text(
+                    ptype_node, source,
+                )
+
         elif node.type == "call_expression":
             current_function = _get_enclosing_function(node, source, local_symbols)
             if current_function is not None:
+                # INV-fahub Site-1: the enclosing class short name for a bare /
+                # implicit-``this`` call, so a deferred bare→method call can be
+                # recovered by the inherited_calls MRO walker when the method is
+                # on the enclosing class's linearization (inherited), and left
+                # external when it is a cross-class magnet. ``None`` for a
+                # top-level def (no owning class → not an implicit-``this`` call).
+                enclosing_type = (
+                    current_function.name.split(".")[-2]
+                    if "." in current_function.name else None
+                )
                 callee_node = find_child_by_type(node, "identifier")
                 receiver_name = None
                 if not callee_node:
@@ -695,30 +881,103 @@ def _extract_edges_from_file(
                                 edge_type="calls",
                                 line=node.start_point[0] + 1,
                                 evidence_type="ast_call",
-                                confidence=0.85,
                                 origin=PASS_ID,
                                 origin_run_id=run_id,
                                 meta={"call_construct": "function"},
                             ))
                             edge_added = True
 
-                    if not edge_added and callee_name in local_symbols:
-                        callee = local_symbols[callee_name]
+                    if not edge_added and receiver_name is not None:
+                        # INV-fahub (WI-bihit): a method call `recv.m()` whose
+                        # receiver type could not be resolved in-file MUST NOT
+                        # fall through to the bare short-name binds below and
+                        # confidently bind to an arbitrary same-named internal
+                        # def (the copy/setTo @0.68 funnel). Emit an honest
+                        # unresolved external edge instead, mirroring py.py's
+                        # unknown-receiver branch: `calls` / external-unresolved
+                        # dst / `is_resolved=False` / `evidence_type="ast_call"`
+                        # (→ 0.40) / `call_construct="method"`. When the
+                        # receiver's TYPE is known (its method just wasn't found
+                        # here), stamp `receiver_type_hint` so the shared
+                        # inherited_calls linker can recover the edge (Site-2
+                        # Step-1); an untyped/duck receiver gets no hint (bias to
+                        # unresolved). The linker is the sole minter of the
+                        # resolved edge (INV-nilud; taint-safe by construction).
+                        gate_meta: dict = {"call_construct": "method"}
+                        receiver_type = var_types.get(receiver_name)
+                        if receiver_type:
+                            gate_meta["receiver_type_hint"] = receiver_type
                         edges.append(Edge.create(
                             src=current_function.id,
-                            dst=callee.id,
+                            dst=f"scala:external:0-0:{callee_name}:unresolved",
                             edge_type="calls",
                             line=node.start_point[0] + 1,
                             evidence_type="ast_call",
-                            confidence=0.85,
+                            is_resolved=False,
                             origin=PASS_ID,
                             origin_run_id=run_id,
-                            meta={"call_construct": "function"},
+                            meta=gate_meta,
                         ))
+                    elif not edge_added and callee_name in local_symbols:
+                        callee = local_symbols[callee_name]
+                        # INV-fahub: a bare same-file hit binds directly only to a
+                        # same-enclosing-class method (implicit ``this``) or a
+                        # non-method (free def / object); a DIFFERENT class's
+                        # method is a magnet — defer to the inherited_calls Site-1
+                        # walker (shared ``defer_bare_method_call`` decision;
+                        # "suffix" flags the weak short-name evidence of a bare
+                        # ``local_symbols`` hit).
+                        if defer_bare_method_call(
+                            callee.kind, callee.name, "suffix", enclosing_type,
+                        ):
+                            edges.append(make_unresolved_edge(
+                                "scala", current_function.id, callee_name,
+                                node.start_point[0] + 1, PASS_ID, run_id,
+                                enclosing_class=enclosing_type,
+                            ))
+                        else:
+                            edges.append(Edge.create(
+                                src=current_function.id,
+                                dst=callee.id,
+                                edge_type="calls",
+                                line=node.start_point[0] + 1,
+                                evidence_type="ast_call",
+                                origin=PASS_ID,
+                                origin_run_id=run_id,
+                                meta={"call_construct": "function"},
+                            ))
                     elif not edge_added:
                         path_hint = import_aliases.get(callee_name)
                         lookup_result = resolver.lookup(callee_name, path_hint=path_hint, caller_path=_caller_path)
-                        if lookup_result.found and lookup_result.symbol is not None:
+                        # WI-jusus: a call must never resolve to a field/variable
+                        # — the resolver's suffix index now contains the newly
+                        # emitted field/variable symbols, and a same-short-name
+                        # field would otherwise become a confidently-wrong call
+                        # target (a call-graph corruption). Fall through to the
+                        # honest unresolved edge instead.
+                        # INV-fahub (real-repro re-scope 2026-07-18, WI-bihit
+                        # reopened): the DOMINANT Scala funnel is a BARE call —
+                        # implicit-``this`` (case-class ``copy``) or a chained
+                        # receiver whose receiver token was dropped — that
+                        # suffix-matches an unrelated class's ``method`` @0.68
+                        # (magnet: dozens of files → one arbitrary
+                        # ``FileCopyTask.copy`` / ``ColumnOps.setTo`` / ``.map``).
+                        # A class-member method needs a receiver/scope; a weak
+                        # short-name *suffix* guess is not resolution evidence, so
+                        # withhold it → honest unresolved edge (INV-nogof
+                        # withhold-not-pick-first). Exact / path-hint matches and
+                        # free-function / object targets are unaffected.
+                        _sym = lookup_result.symbol
+                        _defer = _sym is not None and defer_bare_method_call(
+                            _sym.kind, _sym.name,
+                            lookup_result.match_type, enclosing_type,
+                        )
+                        if (
+                            lookup_result.found
+                            and _sym is not None
+                            and _sym.kind not in ("field", "variable")
+                            and not _defer
+                        ):
                             conf = 0.80 * lookup_result.confidence * _short_name_penalty(callee_name)
                             edges.append(Edge.create(
                                 src=current_function.id,
@@ -732,6 +991,12 @@ def _extract_edges_from_file(
                                 meta={"call_construct": "function"},
                             ))
                         else:
+                            # INV-fahub: stamp the enclosing class so the
+                            # inherited_calls Site-1 walker can recover a bare
+                            # *inherited* implicit-``this`` call (the ~30% solo
+                            # tail of the withheld suffix-method magnet), while a
+                            # true cross-class magnet stays external (its method
+                            # is not on the enclosing class's MRO).
                             edges.append(make_unresolved_edge(
                                 "scala", current_function.id, callee_name,
                                 node.start_point[0] + 1, PASS_ID, run_id,
@@ -740,6 +1005,7 @@ def _extract_edges_from_file(
                                     ExternalRef(lang="scala", module_path=path_hint, name=callee_name)
                                     if path_hint else None
                                 ),
+                                enclosing_class=enclosing_type,
                             ))
 
         # Scala eta-expansion: ``transform _`` produces a postfix_expression
@@ -774,7 +1040,6 @@ def _extract_edges_from_file(
                             edge_type="references",
                             line=node.start_point[0] + 1,
                             evidence_type="eta_expansion",
-                            confidence=0.85,
                             origin=PASS_ID,
                             origin_run_id=run_id,
                         ))

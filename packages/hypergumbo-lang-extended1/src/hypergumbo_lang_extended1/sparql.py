@@ -43,6 +43,7 @@ from hypergumbo_core.analyze.base import (
     FileAnalysis,
     TreeSitterAnalyzer,
     iter_tree,
+    make_doc_symbol_ids,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 
@@ -71,11 +72,6 @@ def is_sparql_tree_sitter_available() -> bool:
 def _get_node_text(node: "tree_sitter.Node") -> str:
     """Get the text content of a node."""
     return node.text.decode("utf-8", errors="replace") if node.text else ""
-
-
-def _make_symbol_id(path: str, name: str, kind: str) -> str:
-    """Create a stable symbol ID."""
-    return f"sparql:{path}:{kind}:{name}"
 
 
 # Well-known SPARQL vocabulary prefixes
@@ -110,8 +106,6 @@ def _extract_prefix(
     if not prefix_name:
         return None, "", ""  # pragma: no cover
 
-    symbol_id = _make_symbol_id(rel_path, prefix_name, "prefix")
-
     span = Span(
         start_line=node.start_point[0] + 1,
         start_col=node.start_point[1],
@@ -119,11 +113,18 @@ def _extract_prefix(
         end_col=node.end_point[1],
     )
 
+    # INV-dulah: node.id and canonical stable_id minted together from one arg
+    # set (make_doc_symbol_ids) so they can never drift. node.id GAINS the
+    # start_line here (was line-less), disambiguating same-name siblings.
+    symbol_id, stable_id = make_doc_symbol_ids(
+        "sparql", rel_path, "prefix", prefix_name, span.start_line, span.end_line,
+    )
+
     is_standard = prefix_name.lower() in KNOWN_VOCABULARIES
 
     symbol = Symbol(
         id=symbol_id,
-        stable_id=symbol_id,
+        stable_id=stable_id,
         name=prefix_name,
         kind="prefix",
         language="sparql",
@@ -150,8 +151,6 @@ def _extract_base(
     if not iri:
         return None  # pragma: no cover
 
-    symbol_id = _make_symbol_id(rel_path, "BASE", "base")
-
     span = Span(
         start_line=node.start_point[0] + 1,
         start_col=node.start_point[1],
@@ -159,9 +158,16 @@ def _extract_base(
         end_col=node.end_point[1],
     )
 
+    # INV-dulah: node.id and canonical stable_id minted together from one arg
+    # set (make_doc_symbol_ids) so they can never drift. node.id GAINS the
+    # start_line here (was line-less), disambiguating same-name siblings.
+    symbol_id, stable_id = make_doc_symbol_ids(
+        "sparql", rel_path, "base", "BASE", span.start_line, span.end_line,
+    )
+
     return Symbol(
         id=symbol_id,
-        stable_id=symbol_id,
+        stable_id=stable_id,
         name="BASE",
         kind="base",
         language="sparql",
@@ -242,13 +248,18 @@ def _extract_query(
     if query_type == "SELECT":
         variables = _extract_select_variables(node)
 
-    symbol_id = _make_symbol_id(rel_path, query_name, "query")
-
     span = Span(
         start_line=node.start_point[0] + 1,
         start_col=node.start_point[1],
         end_line=node.end_point[0] + 1,
         end_col=node.end_point[1],
+    )
+
+    # INV-dulah: node.id and canonical stable_id minted together from one arg
+    # set (make_doc_symbol_ids) so they can never drift. node.id GAINS the
+    # start_line here (was line-less), disambiguating same-name siblings.
+    symbol_id, stable_id = make_doc_symbol_ids(
+        "sparql", rel_path, "query", query_name, span.start_line, span.end_line,
     )
 
     # Build signature
@@ -264,7 +275,7 @@ def _extract_query(
 
     symbol = Symbol(
         id=symbol_id,
-        stable_id=symbol_id,
+        stable_id=stable_id,
         name=query_name,
         kind="query",
         language="sparql",
@@ -327,6 +338,12 @@ class SPARQLAnalyzer(TreeSitterAnalyzer):
                 sym, prefix_name, iri = _extract_prefix(node, rel_path)
                 if sym:
                     analysis.symbols.append(sym)
+                    # Index the prefix Symbol by name so Pass-2 edge extraction
+                    # can point uses_vocabulary edges at its actual node id.
+                    # (INV-dulah: node.id now carries a start_line, so the edge
+                    # dst must be the prefix node's own id — re-minting a
+                    # line-less stand-in would no longer resolve to it.)
+                    analysis.symbol_by_name[prefix_name] = sym
                     # Store prefix info for edge extraction in Pass 2
                     if prefix_name:
                         analysis.import_aliases[prefix_name] = iri
@@ -351,6 +368,16 @@ class SPARQLAnalyzer(TreeSitterAnalyzer):
         """Extract vocabulary usage edges from a SPARQL file."""
         edges: list[Edge] = []
 
+        # Map prefix label -> its declared prefix Symbol, so a uses_vocabulary
+        # edge can point at the prefix NODE's own id. (INV-dulah: node.id now
+        # carries a start_line; using prefix_sym.id directly keeps the edge dst
+        # equal to the node id by construction, with no re-derivation.)
+        prefix_syms = {
+            sym.name: sym
+            for sym in local_symbols.values()
+            if sym.kind == "prefix"
+        }
+
         for node in iter_tree(tree.root_node):
             if node.type in ("select_query", "construct_query", "ask_query", "describe_query"):
                 query_type = node.type.replace("_query", "").upper()
@@ -369,16 +396,19 @@ class SPARQLAnalyzer(TreeSitterAnalyzer):
                 used_prefixes = _find_used_prefixes(node)
                 for prefix in used_prefixes:
                     if prefix in import_aliases:
+                        prefix_sym = prefix_syms.get(prefix)
+                        if prefix_sym is None:
+                            continue  # pragma: no cover
                         edge = Edge.create(
                             src=query_sym.id,
-                            dst=_make_symbol_id(rel_path, prefix, "prefix"),
-                            edge_type="uses_vocabulary",
+                            dst=prefix_sym.id,
+                            edge_type="references",
                             line=node.start_point[0] + 1,
                             origin=PASS_ID,
                             origin_run_id=run.execution_id,
                             evidence_type="static",
-                            confidence=1.0,
                             evidence_lang="sparql",
+                            meta={"ref_construct": "rdf_vocabulary"},
                         )
                         edges.append(edge)
 

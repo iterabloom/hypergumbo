@@ -1,0 +1,75 @@
+- op: create  # c55e
+  at: '2026-07-03T10:22:32Z'  # c55e
+  by: agent  # c55e
+  actor: jgstern_agent  # c55e
+  clock: 1  # c55e
+  nonce: c55e  # c55e
+  data:  # c55e
+    kind: work_item  # c55e
+    title: "Python MRO walker + Site-1/Site-3 hints for inherited_calls: resolve self.method()/typed-receiver inherited calls (WI-noham D1)"  # c55e
+    status: todo_hard  # c55e
+    priority: 2  # c55e
+    parent:  # c55e
+    tags:  # c55e
+    - analysis_quality  # c55e
+    - dispatch  # c55e
+    isbefore: []  # c55e
+    duplicate_of: []  # c55e
+    not_duplicate_of: []  # c55e
+    pr_ref:  # c55e
+    description: "Deferred follow-up of WI-noham Part A (PR #404, dev 3fbdf0d0d3). Part A made py.py emit receiver_type_hint on unresolved method-call edges, which the inherited_calls linker's strict INV-fahub Site-2 mode resolves — but ONLY via Step-1 (method directly on the concrete type). Python is absent from inherited_calls._MRO_WALKERS ({ruby,groovy,java}), so the linker's Step-2 MRO walk and Site-1 (self.method() inherited) / Site-3 (self.field.method()) resolution never fire for Python. This D1 item registers a Python MRO walker in _MRO_WALKERS (Python C3 linearization over the extends chain) AND makes py.py emit enclosing_class (Site 1: self.method()) and inherited_field_receiver (Site 3) hints via make_unresolved_edge, unlocking the typed-receiver-INHERITED and self-inherited method mass — the dominant remaining dead-code FP cohort. PRECONDITION (locked by test_ancestor_only_method_not_resolved_without_python_walker + test_legacy_site2_langs_membership_and_walker_decoupling): adding Python to _MRO_WALKERS does NOT auto-enable the Step-3 type-symbol fallback (that stays gated on _LEGACY_SITE2_LANGS={java}); if D1 wants the fallback it must consciously allowlist the python calls->class runtime_coherence partition first. Needs its own adversarial suite (diamond/C3 which-ancestor precision). Closes part of WI-noham's residual."  # c55e
+    fields: {}  # c55e
+- op: update  # d0d4
+  at: '2026-07-03T19:04:59Z'  # d0d4
+  by: agent  # d0d4
+  actor: jgstern_agent  # d0d4
+  clock: 2  # d0d4
+  nonce: d0d4  # d0d4
+  set: {}  # d0d4
+  add:  # d0d4
+    tags: [awaits_bakeoff_validation]  # d0d4
+- op: discuss  # b37f
+  at: '2026-07-03T19:04:59Z'  # b37f
+  by: agent  # b37f
+  actor: jgstern_agent  # b37f
+  clock: 3  # b37f
+  nonce: b37f  # b37f
+  message: "PR-1 of 3 LANDED (PR #408, dev 158d4d3ab1): the Python C3 MRO walker (_walk_c3) registered in _MRO_WALKERS activates Site-2 Step-2 for Python — typed receivers (WI-noham Part A receiver_type_hint) calling an INHERITED method now resolve to the ancestor's method via true C3 linearization (ast_call_inherited_method @0.70, calls->method; python kept OUT of _LEGACY_SITE2_LANGS so strict Site-2 holds). C3 (not insertion-order BFS) verified vs 44k+ CPython __mro__; adversarial review (wf_631a95db-7a2) caught + fixed a base-order blocker (reorder Python bases from meta['base_classes'] — qualified in-tree bases arrive out of order) and a depth/cycle wrong-positive (bias to unresolved). Behavioral evidence: +120 inherited-method calls resolved on hypergumbo self-analysis. Filed INV-guviv (external-base blind spot, shared w/ all walkers). STAYS OPEN — remaining WI-hiziz pieces: PR-2 = Site-1 self.method() enclosing_class emission (py.py), PR-3 = Site-3 self.field.method() inherited_field_receiver + meta['fields'] (py.py). Both rebase on this walker."  # b37f
+- op: discuss  # e8fd
+  at: '2026-07-03T22:02:15Z'  # e8fd
+  by: agent  # e8fd
+  actor: jgstern_agent  # e8fd
+  clock: 4  # e8fd
+  nonce: e8fd  # e8fd
+  message: "PR-2 of 3 LANDED (PR #409, dev 7afcf2f2d9): Site-1 self.method() inherited resolution. py.py's terminal unresolved-emit else stamps meta['enclosing_class'] (caller method's direct class, qualified_name.split('.')[-2]) as a leading mutually-exclusive elif; the inherited_calls _resolve_site1 (Python C3 walker from PR-1) mints the resolved edge. Design + adversarial-review workflows (wf_6991b0ea-f64 design, wf_e6f81f04-d63 review). The review (NO_GO -> fixed) caught TWO real defects I introduced: (1) MAJOR Ruby regression — reusing _LEGACY_SITE2_LANGS={java} for the Site-1 guard swept in Ruby, whose reopened classes (one logical class, many symbols) tripped len>1 and suppressed the INV-nilud-validated X.new->inherited #initialize resolution; fixed by scoping the guard to a dedicated _SITE1_STRICT_LANGS={python} (module-namespace langs only). (2) annotated self:T confidently-wrong 0.90 edge — the leading self-branch preempted an explicit self-annotation (mixin/host idiom); fixed by adding 'receiver_name not in var_types' so annotated self routes to Site-2 on T. Also added a staticmethod-with-self-param gate ('staticmethod' not in decorators). Behavioral evidence: +165 calls edges on self-analysis (62839->63004); cross-file Sub.run->Base.helper resolves; reopened Ruby still resolves; annotated self routes to Site-2. Both packages 100% cov; taint+ratchet green. STAYS OPEN — remaining: PR-3 = Site-3 self.field.method() (inherited_field_receiver + meta['fields'] population, mirror java.py:2382-2388). Filed follow-ups: cls.method() classmethod-inheritance gap; py.py .name.split('.')[0] harmonization."  # e8fd
+- op: update  # a251
+  at: '2026-07-03T23:57:05Z'  # a251
+  by: agent  # a251
+  actor: jgstern_agent  # a251
+  clock: 5  # a251
+  nonce: a251  # a251
+  set:  # a251
+    status: done  # a251
+- op: discuss  # c420
+  at: '2026-07-03T23:57:05Z'  # c420
+  by: agent  # c420
+  actor: jgstern_agent  # c420
+  clock: 6  # c420
+  nonce: c420  # c420
+  message: "PR-3 of 3 (Site-3 self.field.method()) LANDED — dev 7109758f92. WI-hiziz is COMPLETE: PR-1 (Python C3 MRO walker), PR-2 (Site-1 self.method()), PR-3 (Site-3 self.field.method()) all merged. PR-3: (a) each class symbol carries meta['fields']={field:type} from the __init__ scan (mirror java); (b) py.py emits inherited_field_receiver+enclosing_class for a self.field.method() whose field is an inherited/parent field (absent from the child's var_types); (c) _resolve_site3 gains the two INV-fahub ambiguity guards (enclosing-class + field-type name) scoped to _SITE1_STRICT_LANGS={python}. Emit gated like Site-1 + an OWN-field exclusion (field_name not in var_types NOR a new class_own_field_names set of every __init__ self.X target, incl. untyped self.f=make_conn()) — blocks the shadow FP where a child re-declares a parent field name with a different type. BEHAVIORAL EVIDENCE (closure-evidence discipline): cross-file Base.__init__(self, log: Logger)+Sub.run calling self.log.info() emits resolved Sub.run->Logger.info @ast_call_inherited_field (was NO edge); +341 calls edges on self-analysis (63004->63345); a child re-declaring self.handle=make_conn() over inherited handle:Logger emits no wrong edge (non-vacuous regression test). Design+adversarial-review workflows (wf_fe986a22-058 design caught the missing part-c linker guards; wf_d812238a-fad review GO_WITH_NOTES caught+fixed the own-field under-exclusion, a vacuous safety test, and a spurious meta attach to a same-name method). Both packages 100% cov; taint+ratchet green. Filed follow-ups: Site-3 ancestor-selection C3-awareness (BFS-vs-C3 diamond), meta['fields'] id-keyed clobber, AnnAssign own-field residual. WI-noham's only remaining residual is WI-supat/D3 (concrete-class-id precision)."  # c420
+- op: update  # 498b
+  at: '2026-07-04T05:41:49Z'  # 498b
+  by: agent  # 498b
+  actor: jgstern_agent  # 498b
+  clock: 7  # 498b
+  nonce: 498b  # 498b
+  set: {}  # 498b
+  remove:  # 498b
+    tags: [awaits_bakeoff_validation]  # 498b
+- op: discuss  # 17b0
+  at: '2026-07-04T05:41:49Z'  # 17b0
+  by: agent  # 17b0
+  actor: jgstern_agent  # 17b0
+  clock: 8  # 17b0
+  nonce: 17b0  # 17b0
+  message: "Bakeoff-validated as part of the WI-noham dispatch:F3 cluster re-measure (dev 371adbe47c): inherited_calls recall fires on hypergumbo self (243 edges) + pretix (533, incl. 23 Site-3 ast_call_inherited_field), flagship repros (Symbol.end_line/ValidationResult.ok) reachable under dead-code-maybe --seeds all, no regressions across 19 repos/9 langs. Claim MOVED -> tag stripped. See WI-noham for the full evidence."  # 17b0

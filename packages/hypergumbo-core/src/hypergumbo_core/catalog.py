@@ -503,20 +503,38 @@ _BUILTIN_PIPELINE_PASS_IDS: frozenset[str] = frozenset({
     # linker-emitted nodes (grpc_stub, mq_publisher, etc.) to their
     # enclosing functions for slice traversal.
     "enclosure-linker",
+    # framework_patterns.py — two orchestrator-level route-materialization
+    # post-passes that mint standalone route-marker Symbols from enriched
+    # concept metadata (they are not @register_* call sites). Like the two
+    # synthetic synthesizers below, each emits a real AnalysisRun whose
+    # pass_id is the value here and whose execution_id the minted markers'
+    # origin_run_id joins to (WI-tufil). ``route-materializer`` handles
+    # annotation-based frameworks (Spring MVC / JAX-RS / Express); the CBV
+    # expander splits a Django ``as_view()`` ANY-route into one route per
+    # declared HTTP method.
+    "route-materializer",
+    "django-cbv-method-expander",
 })
 
-# Symbol-synthesis mechanisms. ``Symbol.origin`` overloads the pass-id
-# axis with these synthesis-mechanism values per the Symbol docstring's
-# "pending split into a sibling ``synthesis_mechanism`` field" note;
-# until that ADR ships, accept them here as legitimate origin values.
-# synthetic:F1 (WI-dizir/WI-mosil/WI-sijut): the two orchestrator-level
-# synthesizers now also emit a real ``AnalysisRun`` whose ``pass_id`` is
-# the mechanism string, so ``orchestrator_file_symbol_synthesis`` and
-# ``boundary_external_symbol_synthesis`` double as actual pass IDs (their
-# synthesized nodes' ``origin_run_id`` joins to that run's execution_id).
-_SYNTHESIS_MECHANISMS: frozenset[str] = frozenset({
+# Synthetic-pass provenance IDs (ADR-0044). A few pipeline-level synthesis /
+# import passes emit Symbols (and Edges) whose ``origin`` names the pass that
+# synthesized them, but which are not ``@register_analyzer`` /
+# ``@register_linker`` call sites. Per synthetic:F1 (WI-dizir/WI-mosil/WI-sijut)
+# the two orchestrator-level synthesizers emit a real ``AnalysisRun`` whose
+# ``pass_id`` is the value below, and their nodes' ``origin_run_id`` joins to
+# it — so these ARE genuine pass IDs, not a separate "synthesis-mechanism"
+# axis. ADR-0044 records the decision to treat them as legitimate synthetic
+# pass IDs and WITHDRAW WI-kadop's proposed ``synthesis_mechanism`` field
+# split: synthetic:F1 collapsed the mechanism/pass distinction (a synthesized
+# Symbol's "how" IS "which pass synthesized it"), so the split would have
+# duplicated these values into a second field rather than removed a leak. The
+# stale ``inheritance`` value was dropped (zero producers — the
+# inheritance-linker stamps ``make_pass_id("inheritance-linker")``, not the bare
+# string). ``scip`` is the SCIP-index import pass (rust-analyzer); giving its
+# Symbol side a real ``AnalysisRun`` join (like the two orchestrator passes) is
+# the tracked follow-on (WI-zabus).
+_SYNTHETIC_PASS_IDS: frozenset[str] = frozenset({
     "boundary_external_symbol_synthesis",
-    "inheritance",
     "orchestrator_file_symbol_synthesis",
     "scip",
 })
@@ -528,31 +546,46 @@ def all_known_pass_ids() -> frozenset[str]:
     Single source of truth for "what passes does this codebase
     declare?" — the answer is "the names of every ``@register_analyzer``
     and ``@register_linker`` call site, plus the small set of
-    pipeline-level synthetic passes and Symbol synthesis mechanisms
-    documented in this module." Used by the WI-busij multi-value-field-
-    axis linter to resolve the ``# axis: pass-id`` annotation (covers
-    ``AnalysisRun.pass_id``, ``Symbol.origin``, ``Edge.origin``).
+    pipeline-level synthetic passes documented in this module." Used by
+    the WI-busij multi-value-field-axis linter to resolve the
+    ``# axis: pass-id`` annotation (covers ``AnalysisRun.pass_id``,
+    ``Symbol.origin``, ``Edge.origin``).
 
-    ``Symbol.origin`` carries a small set of synthesis-mechanism values
-    (``boundary_external_symbol_synthesis``, ``inheritance``,
-    ``orchestrator_file_symbol_synthesis``, ``scip``); the Symbol docstring
-    documents this as a pending split into a sibling ``synthesis_mechanism``
-    field. Per synthetic:F1 the two orchestrator-level synthesizers now also
-    emit a real ``AnalysisRun`` whose ``pass_id`` is the mechanism string, so
-    ``orchestrator_file_symbol_synthesis`` and
-    ``boundary_external_symbol_synthesis`` double as actual pass IDs. Until
-    the sibling-field ADR ships, ``_SYNTHESIS_MECHANISMS`` (above) carries
-    all of them so the axis-conformance check doesn't false-positive.
+    Beyond the two registries, a few pipeline-level synthesis / import
+    passes emit Symbols whose ``origin`` names them but which are not
+    ``@register_*`` call sites — ``_SYNTHETIC_PASS_IDS`` (above) enumerates
+    them (``orchestrator_file_symbol_synthesis`` /
+    ``boundary_external_symbol_synthesis`` / ``scip``). Per ADR-0044 these
+    are genuine synthetic pass IDs, not a separate synthesis-mechanism axis
+    (WI-kadop's proposed field split was withdrawn — synthetic:F1 made the
+    two orchestrator synthesizers emit real ``AnalysisRun``s whose pass_id
+    is the origin value, collapsing the mechanism/pass distinction).
     """
     from .analyze.registry import _ANALYZER_REGISTRY, ensure_discovered
     from .linkers.registry import _LINKER_REGISTRY
+    from .pass_metadata import _resolve_linker_pass_id
 
     ensure_discovered()
+    # WI-gobip: a linker's EMITTED pass_id is its module-level ``PASS_ID``, which
+    # can diverge from its registration ``name`` — the view_template family
+    # registers under ``view_template`` / ``view_template_phoenix`` / … but all
+    # emit ``view-template-linker`` via ``_view_template_core.PASS_ID``. The
+    # pass-id axis validates the EMITTED value (``Symbol.origin`` /
+    # ``Edge.origin`` / ``AnalysisRun.pass_id``), so the catalog must include it
+    # or every view-template edge/symbol trips axis_conformance. ``make_pass_id``
+    # is identity, so a non-divergent linker's emitted pass_id equals its
+    # registration name (already covered by ``frozenset(_LINKER_REGISTRY)``) —
+    # this union only adds the divergent ones, correct-by-construction and
+    # mirroring ``pass_metadata``'s ``_resolve_linker_pass_id`` keying rule.
+    emitted_linker_pass_ids = frozenset(
+        _resolve_linker_pass_id(linker) for linker in _LINKER_REGISTRY.values()
+    )
     return (
         frozenset(_ANALYZER_REGISTRY)
         | frozenset(_LINKER_REGISTRY)
+        | emitted_linker_pass_ids
         | _BUILTIN_PIPELINE_PASS_IDS
-        | _SYNTHESIS_MECHANISMS
+        | _SYNTHETIC_PASS_IDS
     )
 
 
@@ -572,6 +605,7 @@ def all_known_languages() -> frozenset[str]:
     """
     from .analyze.registry import _ANALYZER_REGISTRY, ensure_discovered
     from .linkers.registry import _LINKER_REGISTRY
+    from .taxonomy import LANGUAGES
 
     ensure_discovered()
     langs: set[str] = set()
@@ -579,6 +613,17 @@ def all_known_languages() -> frozenset[str]:
         langs.update(analyzer.languages)
     for linker in _LINKER_REGISTRY.values():
         langs.update(linker.languages)
+    # WI-kunut: the language axis catalog is the analyzer/linker registration
+    # UNION the taxonomy's recognized LanguageSpecs. Discovery and the
+    # orchestrator file-anchor synthesis label file nodes with taxonomy
+    # languages (a ``.adoc`` → ``asciidoc``, a ``Makefile`` → ``makefile``) that
+    # carry a LanguageSpec but no dedicated ``@register_analyzer`` — so a
+    # registration-only catalog wrongly rejected them (axis_conformance). The
+    # two sources genuinely diverge (gitignore/make/scss are registered but not
+    # taxonomy LanguageSpecs; asciidoc/makefile are the reverse), so the axis
+    # catalog is their union — the complete set of languages hypergumbo can
+    # label a symbol with.
+    langs.update(LANGUAGES)
     return frozenset(langs)
 
 

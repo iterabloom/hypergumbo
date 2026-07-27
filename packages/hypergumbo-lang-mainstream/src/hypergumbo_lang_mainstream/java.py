@@ -10,12 +10,22 @@ This analyzer uses tree-sitter-java to parse Java files and extract:
 - Method call relationships (edges)
 - Inheritance relationships: extends, implements (edges)
 - Instantiation: new ClassName() (edges)
+- Import relationships: file → external ref, one per import declaration (edges)
 - Native method declarations for JNI bridge detection
 
 Per-file scope threading includes both regular ``imports`` and
 ``static_imports`` (``import static pkg.Type.member;``), so call
 resolution can canonicalize unqualified method references to the
 imported owner.
+
+Import edges (INV-gojit)
+------------------------
+Beyond the resolution dicts above, every ``import`` declaration also
+emits one ``imports`` edge (:func:`_extract_import_edges`) from the
+file node to a structured external ref — at parity with every other
+mainstream analyzer, which all surface imports as graph edges. Java was
+the lone holdout (``edge_types == [calls]``) on the emission-parity
+matrix's ``(java, edge_imports)`` cell until this was wired.
 
 Structured external targets
 ---------------------------
@@ -646,6 +656,74 @@ def _extract_wildcard_imports(
     return wildcards
 
 
+def _extract_import_edges(
+    tree: "tree_sitter.Tree",
+    source: bytes,
+    file_path: Path,
+    run: AnalysisRun,
+) -> list[Edge]:
+    """Emit one ``imports`` edge per Java ``import`` declaration (INV-gojit).
+
+    The Java analyzer long consumed import declarations only for name
+    resolution (:func:`_extract_imports` and siblings build simple-name → FQN
+    dicts) and never surfaced them as graph edges, leaving Java the sole
+    mainstream analyzer whose emission-parity ``edge_imports`` cell was a
+    strict-xfail hole. Each declaration now yields a file → external-ref
+    ``imports`` edge with a structured :class:`ExternalRef` (aligned with
+    ADR-0037's push to populate ``dst_ref``).
+
+    The module slot carries the **full import specifier** — a Java ``import``
+    names a fully-qualified TYPE or static member, not a package, so the
+    specifier as written IS the module path (at parity with Go/C#, whose
+    import edges also carry the full import path). This matters downstream:
+    ``refine_frameworks`` prefix-matches import modules against framework
+    patterns, and the full path resolves both package-level patterns
+    (``org.springframework.boot`` ← ``import org.springframework.boot.X``)
+    and type-level patterns (``android.app.activity`` ← exact). The simple
+    ``name`` is the last dotted segment.
+
+    - regular   ``import com.example.Foo;``     → module ``com.example.Foo``,  name ``Foo``
+    - static    ``import static a.b.C.member;`` → module ``a.b.C.member``,     name ``member``
+    - wildcard  ``import a.b.*;``               → module ``a.b``,              name ``*``
+
+    Static declarations carry the registered ``import_static`` evidence type;
+    all others carry ``import_declaration``. Confidence matches the sibling
+    analyzers (0.95). The ``src`` is the :func:`make_file_id` file node,
+    backstopped by the WI-ramuv dangling-endpoint file-symbol synthesizer.
+    """
+    edges: list[Edge] = []
+    file_id = make_file_id("java", str(file_path))
+    for node in iter_tree(tree.root_node):
+        if node.type != "import_declaration":
+            continue
+        scoped = next(
+            (c for c in node.children if c.type == "scoped_identifier"), None
+        )
+        if scoped is None:
+            continue  # pragma: no cover - well-formed imports always have one
+        full_name = _node_text(scoped, source)
+        is_static = any(c.type == "static" for c in node.children)
+        is_wildcard = any(c.type == "asterisk" for c in node.children)
+        # The import specifier itself is the module path (full FQN); for a
+        # wildcard the scoped path is the package and the member is ``*``.
+        module_path = full_name
+        name = "*" if is_wildcard else full_name.rpartition(".")[2]
+        edges.append(Edge.create(
+            src=file_id,
+            dst=f"java:{module_path}:0-0:{name}:symbol",
+            edge_type="imports",
+            line=node.start_point[0] + 1,
+            evidence_type="import_static" if is_static else "import_declaration",
+            confidence=0.95,
+            dst_ref=ExternalRef(
+                lang="java", module_path=module_path, name=name,
+            ),
+            origin=PASS_ID,
+            origin_run_id=run.execution_id,
+        ))
+    return edges
+
+
 def _get_class_ancestors(
     node: "tree_sitter.Node", source: bytes
 ) -> list[str]:
@@ -921,7 +999,7 @@ def _extract_symbols(
                     meta=meta,
                     modifiers=modifiers,
                     shape_id=_java_analyzer.compute_shape_id(node),
-                    lines_of_code=span.end_line - span.start_line + 1,
+                    line_span=span.end_line - span.start_line + 1,
                     is_exported="public" in modifiers,
                     qualified_name=_make_java_qualified_name(package_name, ancestors, name),
                 )
@@ -964,7 +1042,7 @@ def _extract_symbols(
                     meta=meta,
                     modifiers=modifiers,
                     shape_id=_java_analyzer.compute_shape_id(node),
-                    lines_of_code=span.end_line - span.start_line + 1,
+                    line_span=span.end_line - span.start_line + 1,
                     is_exported="public" in modifiers,
                     qualified_name=_make_java_qualified_name(package_name, ancestors, name),
                 )
@@ -994,7 +1072,7 @@ def _extract_symbols(
                     origin_run_id=run.execution_id,
                     modifiers=modifiers,
                     shape_id=_java_analyzer.compute_shape_id(node),
-                    lines_of_code=span.end_line - span.start_line + 1,
+                    line_span=span.end_line - span.start_line + 1,
                     is_exported="public" in modifiers,
                     qualified_name=_make_java_qualified_name(package_name, ancestors, name),
                 )
@@ -1084,7 +1162,7 @@ def _extract_symbols(
                     docstring=extract_preceding_doc_comment(node, source, "java"),
                     modifiers=modifiers,
                     shape_id=_java_analyzer.compute_shape_id(node),
-                    lines_of_code=span.end_line - span.start_line + 1,
+                    line_span=span.end_line - span.start_line + 1,
                     is_exported="public" in modifiers,
                     qualified_name=_make_java_qualified_name(package_name, ancestors, name),
                     cyclomatic_complexity=compute_cyclomatic_complexity(node, "java"),
@@ -1132,12 +1210,76 @@ def _extract_symbols(
                     docstring=extract_preceding_doc_comment(node, source, "java"),
                     modifiers=modifiers,
                     shape_id=_java_analyzer.compute_shape_id(node),
-                    lines_of_code=span.end_line - span.start_line + 1,
+                    line_span=span.end_line - span.start_line + 1,
                     is_exported="public" in modifiers,
                     qualified_name=_make_java_qualified_name(package_name, ancestors, name),
                     cyclomatic_complexity=compute_cyclomatic_complexity(node, "java"),
                 )
                 symbols.append(symbol)
+
+        # Class / interface / enum FIELD declarations — WI-jusus (emission-parity
+        # F5). A field_declaration declares one or more fields (`int a, b;`);
+        # interface constants parse as a distinct `constant_declaration` node of
+        # the same shape (implicitly public static final). Emit a kind="field"
+        # Symbol per declarator, mirroring the method branch. Field annotations
+        # (Spring @Autowired/@Inject DI, JPA @Column ORM) live in the `modifiers`
+        # child and flow through meta["decorators"] into _extract_annotation_edges
+        # as decorated_by edges (anchored on the field).
+        elif node.type in ("field_declaration", "constant_declaration"):
+            ancestors = _get_class_ancestors(node, source)
+            if ancestors:
+                modifiers = _extract_modifiers(node, source)
+                decorators = _extract_annotations(node, source)
+                type_node = node.child_by_field_name("type")
+                field_type = _node_text(type_node, source) if type_node is not None else None
+                for declarator in node.children:
+                    if declarator.type != "variable_declarator":
+                        continue
+                    name_node = declarator.child_by_field_name("name")
+                    if name_node is None:
+                        continue  # pragma: no cover - a declarator always names a field
+                    fname = _node_text(name_node, source)
+                    full_name = f"{'.'.join(ancestors)}.{fname}"
+                    span = Span(
+                        start_line=declarator.start_point[0] + 1,
+                        end_line=declarator.end_point[0] + 1,
+                        start_col=declarator.start_point[1],
+                        end_col=declarator.end_point[1],
+                    )
+                    qualified_name = _make_java_qualified_name(
+                        package_name, ancestors, fname
+                    )
+                    # Class-scoped canonical identity (name + qualified_name +
+                    # file fold): same-named fields in different classes/files
+                    # stay distinct even when the type slot is empty.
+                    stable_id = make_typed_stable_id(
+                        "field", field_type or "",
+                        visibility_from_modifiers(modifiers),
+                        name=fname,
+                        qualified_name=qualified_name,
+                        file_stable_id=file_stable_id,
+                    )
+                    symbols.append(Symbol(
+                        id=_make_symbol_id(str(file_path), span.start_line, span.end_line, full_name, "field"),
+                        name=full_name,
+                        kind="field",
+                        language="java",
+                        path=str(file_path),
+                        span=span,
+                        origin=PASS_ID,
+                        origin_run_id=run.execution_id,
+                        # fresh dict + list copy per declarator: `@Foo int a, b;`
+                        # must not alias one decorators list across both fields.
+                        meta={"decorators": list(decorators)} if decorators else None,
+                        stable_id=stable_id,
+                        signature=field_type,
+                        modifiers=modifiers,
+                        # interface constants are implicitly public static final;
+                        # class/enum fields export only with an explicit `public`.
+                        is_exported=("public" in modifiers) or node.type == "constant_declaration",
+                        qualified_name=qualified_name,
+                        line_span=span.end_line - span.start_line + 1,
+                    ))
 
     return symbols
 
@@ -1397,7 +1539,6 @@ def _extract_edges(
                                             dst=dst_sym.id,
                                             edge_type="extends",
                                             line=child.start_point[0] + 1,
-                                            confidence=0.95,
                                             origin=PASS_ID,
                                             origin_run_id=run.execution_id,
                                             evidence_type="ast_extends",
@@ -1431,7 +1572,6 @@ def _extract_edges(
                                                     dst=dst_sym.id,
                                                     edge_type="implements",
                                                     line=type_node.start_point[0] + 1,
-                                                    confidence=0.95,
                                                     origin=PASS_ID,
                                                     origin_run_id=run.execution_id,
                                                     evidence_type="ast_implements",
@@ -1994,7 +2134,6 @@ def _extract_annotation_edges(
                     dst=annotation_sym.id,
                     edge_type="decorated_by",
                     line=line,
-                    confidence=0.95,
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     evidence_type="ast_annotation",
@@ -2012,7 +2151,6 @@ def _extract_annotation_edges(
                     dst=dst_id,
                     edge_type="decorated_by",
                     line=line,
-                    confidence=0.50,
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     evidence_type="ast_annotation",
@@ -2315,7 +2453,7 @@ def _analyze_java_impl(repo_root: Path) -> JavaAnalysisResult:
             span=Span(start_line=0, end_line=0, start_col=0, end_col=0),
             origin=PASS_ID,
             origin_run_id=run.execution_id,
-            lines_of_code=1,
+            line_span=1,
         )
         emit_module_attribute_refs(
             pf.tree.root_node,
@@ -2337,6 +2475,11 @@ def _analyze_java_impl(repo_root: Path) -> JavaAnalysisResult:
         if _java_df is not None:
             edges = _annotate_dataflow(edges, pf.tree, pf.source, _java_df)
         all_edges.extend(edges)
+        # INV-gojit: surface import declarations as `imports` edges (kept out
+        # of the dataflow pass above — imports carry no read/write access mode).
+        all_edges.extend(
+            _extract_import_edges(pf.tree, pf.source, pf.path, run)
+        )
 
     # Extract annotation edges (INV-012: decorators metadata -> decorated_by edges)
     annotation_edges = _extract_annotation_edges(all_symbols, global_symbols, run)

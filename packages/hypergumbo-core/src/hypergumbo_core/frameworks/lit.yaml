@@ -27,18 +27,26 @@ patterns:
   # ==================== REACTIVE PROPERTIES ====================
 
   # @property() — reactive property (triggers re-render on change)
+  # WI-vuzur: gate on language — `property`/`state`/`query` are common enough
+  # decorator names to collide cross-ecosystem (e.g. Python's builtin
+  # @property), and the matcher does not enforce the file-level `language:
+  # javascript` gate above. The camelCase Lit decorators (queryAll, queryAsync,
+  # eventOptions, customElement) are ecosystem-unique, so they need no gate.
   - concept: reactive_property
     decorator: "^property$"
+    language: "^(javascript|typescript)$"
 
   # @state() — internal reactive state (not exposed as attribute)
   - concept: internal_state
     decorator: "^state$"
+    language: "^(javascript|typescript)$"
 
   # ==================== DOM QUERIES ====================
 
   # @query('#selector') — cached DOM query
   - concept: dom_query
     decorator: "^query$"
+    language: "^(javascript|typescript)$"
 
   # @queryAll('.selector') — cached querySelectorAll
   - concept: dom_query

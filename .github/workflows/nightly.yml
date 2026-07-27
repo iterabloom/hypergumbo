@@ -6,8 +6,9 @@ name: Nightly Tests
 # when the release SHA was already covered by nightly.
 
 on:
-  schedule:
-    - cron: '30 5 * * *'  # 5:30 AM UTC daily
+  # schedule disabled during forge migration (Codeberg→GitHub); re-enable on Woodpecker
+  # schedule:
+  #   - cron: '30 5 * * *'  # 5:30 AM UTC daily
   workflow_dispatch:
 
 concurrency:
@@ -248,7 +249,9 @@ jobs:
         run: |
           SHA="${{ github.sha }}"
           REPO="${{ github.repository }}"
-          API="https://codeberg.org/api/v1/repos/${REPO}/statuses/${SHA}"
+          # WI-kalub Step 2: target the running server (selfh under failover), not
+          # a dead hardcoded codeberg endpoint.
+          API="${{ github.server_url }}/api/v1/repos/${REPO}/statuses/${SHA}"
 
           if [ -z "$FORGEJO_TOKEN" ]; then
             echo "::warning::FORGEJO_TOKEN not set, skipping commit status updates"

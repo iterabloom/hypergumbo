@@ -87,3 +87,20 @@
   clock: 9  # a8bb
   nonce: a8bb  # a8bb
   message: "compact-finalization family anchor; nested under super-cluster beta (connections-sweep 2026-06-08T1900Z)"  # a8bb
+- op: update  # 7ef8
+  at: '2026-07-09T23:47:36Z'  # 7ef8
+  by: agent  # 7ef8
+  actor: jgstern_agent  # 7ef8
+  clock: 10  # 7ef8
+  nonce: 7ef8  # 7ef8
+  set:  # 7ef8
+    status: satisfied  # 7ef8
+  add:  # 7ef8
+    tags: [wave4]  # 7ef8
+- op: discuss  # 4cae
+  at: '2026-07-09T23:47:36Z'  # 4cae
+  by: agent  # 4cae
+  actor: jgstern_agent  # 4cae
+  clock: 11  # 4cae
+  nonce: 4cae  # 4cae
+  message: "SATISFIED — the compact/sketch budget-enforcement coordinator umbrella closes. All seven folded members are done: WI-hakom (induced-edge parallel preservation), WI-judun (heavy-key strip), WI-pizat (metrics recompute), WI-zotam (per-node centrality + edge-count symmetry), WI-kulan (summary companions), WI-kolal (containment monotonicity via global centrality prefix), WI-fumut (--coverage live in default path). The named residual F38.C4 (compact feature refs pointing outside the node window) was resolved by INV-titid's _reproject_features (filters entry_nodes/node_ids/edge_ids to the retained sets, drops orphaned features). Behavioral evidence: the G4 output-closure property test (test_output_closure_all_projected_views, merged selfh/dev a6f3ae7a47 / PR #520) asserts across BOTH compact selection modes that edges reference only included nodes, entrypoints + features reference only included nodes/edges, and every summary count (nodes_summary / included_edges_count / entrypoints_summary / features_summary) matches its emitted array length — plus the per-member behavioral tests. Wave-4 projection-finalize block complete except WI-nivuj (determinism)."  # 4cae

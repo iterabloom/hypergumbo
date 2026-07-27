@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for the Vue.js component analyzer."""
 
+import re
 from pathlib import Path
 from unittest.mock import patch
 
@@ -9,6 +10,8 @@ import pytest
 from hypergumbo_core.analyze.base import AnalysisResult
 from hypergumbo_lang_common import vue as vue_module
 from hypergumbo_lang_common.vue import analyze_vue, find_vue_files, is_vue_tree_sitter_available
+
+_CANONICAL_STABLE_ID_RE = re.compile(r"^sha256:[0-9a-f]{16}$")
 
 def make_vue_file(tmp_path: Path, name: str, content: str) -> Path:
     """Create a Vue file in the temp directory."""
@@ -583,6 +586,59 @@ export default {
         # WI-vobiv: well-formed 5-part dst id; raw path in meta.
         assert edges[0].dst == "vue:./Avatar.vue:0-0:Avatar:component"
         assert edges[0].meta and edges[0].meta.get("import_path") == "./Avatar.vue"
+
+    def test_all_symbols_have_canonical_stable_id(self, tmp_path: Path) -> None:
+        """WI-rijup: every emitted Symbol.stable_id is the canonical sha256
+        form (``sha256:<16hex>``), not the raw composite ``vue:...`` id.
+
+        Reuses the complete-component fixture (directives, slots, props, and a
+        style block) so the assertion is non-vacuous.
+        """
+        make_vue_file(tmp_path, "UserCard.vue", """<template>
+  <div class="user-card">
+    <Avatar :src="user.avatar" @error="handleError"/>
+    <div v-if="showDetails">
+      <h2>{{ fullName }}</h2>
+      <p v-for="detail in details" :key="detail.id">{{ detail.value }}</p>
+    </div>
+    <slot name="actions"></slot>
+    <slot></slot>
+  </div>
+</template>
+
+<script>
+import Avatar from './Avatar.vue';
+
+export default {
+  name: 'UserCard',
+  components: { Avatar },
+  props: {
+    user: {
+      type: Object,
+      required: true
+    },
+    showDetails: {
+      type: Boolean,
+      default: false
+    }
+  }
+}
+</script>
+
+<style scoped lang="scss">
+.user-card {
+  padding: 20px;
+}
+</style>
+""")
+        result = analyze_vue(tmp_path)
+        assert not result.skipped
+        assert len(result.symbols) >= 1
+        for symbol in result.symbols:
+            assert _CANONICAL_STABLE_ID_RE.match(symbol.stable_id), (
+                f"stable_id {symbol.stable_id!r} (kind={symbol.kind}, "
+                f"name={symbol.name!r}) is not canonical sha256 form"
+            )
 
     def test_named_import_component(self, tmp_path: Path) -> None:
         """Test named imports of components."""

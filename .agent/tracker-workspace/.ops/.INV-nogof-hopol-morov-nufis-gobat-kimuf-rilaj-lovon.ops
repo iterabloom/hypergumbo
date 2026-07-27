@@ -60,3 +60,20 @@
     tags: [dogfood]  # 493f
   remove:  # 493f
     tags: [dogfooding]  # 493f
+- op: update  # 5ab0
+  at: '2026-07-10T04:45:41Z'  # 5ab0
+  by: agent  # 5ab0
+  actor: jgstern_agent  # 5ab0
+  clock: 6  # 5ab0
+  nonce: 5ab0  # 5ab0
+  set:  # 5ab0
+    status: satisfied  # 5ab0
+  add:  # 5ab0
+    tags: [wave4]  # 5ab0
+- op: discuss  # 0bc2
+  at: '2026-07-10T04:45:42Z'  # 0bc2
+  by: agent  # 0bc2
+  actor: jgstern_agent  # 0bc2
+  clock: 7  # 0bc2
+  nonce: 0bc2  # 0bc2
+  message: "Fixed in PR #529 (selfh/dev fbdfe8c77a), cli-output F3. Root cause: explain and slice had separate ambiguity policies. Fix: extracted slice.raise_if_ambiguous(entry_spec, candidates) from slice_graph, now shared by cmd_slice AND cmd_explain — the 'shared helper decides ambiguity policy' the 2026-05-30 discussion note called for. explain keeps its own case-insensitive matcher (shares only the DECISION, not the resolver, so no case-insensitivity regression). Behavioral evidence (live CLI, this build): 'explain main' on a 2-file fixture (src/a.py + cmd/server.go) → exit 1, candidates listed on STDERR ('Ambiguous entry main matches 2 symbols in different files'), stdout empty; --first → exit 0; --language go → exit 0 (resolves to cmd/server.go). Production-path test test_cmd_explain_multiple_matches flipped from exit-0 to exit-1+stderr. Note: INV-nugos/WI-kutam (mentioned in the 2026-05-30 note as co-fixable) share the same error path and could now consume raise_if_ambiguous — not folded here."  # 0bc2

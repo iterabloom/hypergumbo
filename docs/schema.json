@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://codeberg.org/iterabloom/hypergumbo/docs/schema.json",
+  "$id": "https://github.com/iterabloom/hypergumbo/docs/schema.json",
   "title": "Hypergumbo Behavior Map",
   "description": "Output schema for hypergumbo analysis. Auto-generated from Python dataclasses.",
   "type": "object",
@@ -8,7 +8,7 @@
     "schema_version": {
       "type": "string",
       "description": "Schema version (semver)",
-      "const": "0.14.2"
+      "const": "0.19.0"
     },
     "confidence_model": {
       "type": "string",
@@ -32,8 +32,12 @@
     },
     "view": {
       "type": "string",
-      "const": "behavior_map",
-      "description": "Output view type"
+      "enum": [
+        "behavior_map",
+        "compact",
+        "tiered"
+      ],
+      "description": "Output view type: 'behavior_map' for the base analysis, 'compact'/'tiered' for the budget-limited projections"
     },
     "generated_at": {
       "type": "string",
@@ -63,11 +67,9 @@
               "files": {
                 "type": "integer"
               },
-              "lines": {
-                "type": "integer"
-              },
-              "percentage": {
-                "type": "number"
+              "loc": {
+                "type": "integer",
+                "description": "Source-lines-of-code (SLOC) for this language \u2014 the file-level LOC convention. Distinct from the per-symbol line_span (physical end-start+1 span). WI-bozid: the schema previously declared phantom `lines`/`percentage` keys the producer (profile.LanguageStats.to_dict) never emits; the real emitted shape is {files, loc}."
               }
             }
           }
@@ -165,19 +167,32 @@
     },
     "supply_chain_summary": {
       "type": "object",
-      "description": "Summary of supply chain classification",
-      "properties": {
-        "by_tier": {
-          "type": "object",
-          "additionalProperties": {
+      "description": "Supply-chain classification summary, keyed by tier name (first_party / internal_dep / external_dep) plus derived_skipped. Each tier carries {files, symbols}; external_dep also `ecosystem` and `directness` sub-buckets and derived_skipped a {files, paths} shape. WI-vafid: the producer emits these at the top level, not under a by_tier wrapper.",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "files": {
+            "type": "integer"
+          },
+          "symbols": {
+            "type": "integer"
+          },
+          "ecosystem": {
             "type": "object",
-            "properties": {
-              "files": {
-                "type": "integer"
-              },
-              "symbols": {
-                "type": "integer"
-              }
+            "additionalProperties": {
+              "type": "integer"
+            }
+          },
+          "directness": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "integer"
+            }
+          },
+          "paths": {
+            "type": "array",
+            "items": {
+              "type": "string"
             }
           }
         }
@@ -326,9 +341,10 @@
     },
     "sketch_precomputed": {
       "type": "object",
-      "description": "Precomputed sketch payload (vocabulary, centrality, readme description, config info). Optional; omitted when --no-sketch-precomputed. Each sub-field is nullable because small repos may not surface a README, license, or any centrality signal.",
+      "x-internal": true,
+      "description": "INTERNAL cache artifact (NOT a stability contract; consumers should not depend on its presence or shape \u2014 spec.md). Pre-computed sketch payload (additional-file centrality, readme description, config info) reused by the `sketch` step. Optional; omitted when --no-sketch-precomputed. Each sub-field is nullable because small repos may not surface a README, license, or any centrality signal.",
       "properties": {
-        "centrality_scores": {
+        "additional_file_centrality_scores": {
           "oneOf": [
             {
               "type": "object",
@@ -340,7 +356,7 @@
               "type": "null"
             }
           ],
-          "description": "File-path \u2192 centrality score"
+          "description": "Non-source-file-path \u2192 symbol-mention density score, for ranking the sketch's Additional Files section. The score is \u03a3(in-degree of the graph symbols whose names appear in the file) \u00f7 file length in characters \u2014 an in-degree-weighted mention density, NOT a [0,1]-normalized centrality and NOT a probability: it is unbounded \u2265 0 (a short file naming high-in-degree symbols routinely exceeds 1.0), is meaningful only as a relative ranking key within one run, and is not comparable across repos (WI-sigof). Keys are config/doc files only (NOT whole-graph symbol centrality \u2014 that is the `symbols` command). file-anchor:F1 guarantees every key is also a kind=file node path (WI-rajod)."
         },
         "config_info": {
           "oneOf": [
@@ -363,20 +379,6 @@
             }
           ],
           "description": "Extracted README description"
-        },
-        "vocabulary": {
-          "oneOf": [
-            {
-              "type": "array",
-              "items": {
-                "type": "string"
-              }
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "description": "Repo-derived vocabulary terms"
         }
       }
     }
@@ -427,7 +429,7 @@
       "properties": {
         "id": {
           "type": "string",
-          "description": "Unique identifier within analysis"
+          "description": "Unique, location-addressed node identifier (ADR-0036 grammar: lang:path:span:name:kind). Because it encodes location it CHURNS on file move / rename / signature change; for an edits-surviving identity use stable_id, and for cross-run rename tracking use fingerprint."
         },
         "name": {
           "type": "string",
@@ -447,6 +449,8 @@
             "enum": "language_construct",
             "union": "language_construct",
             "error_set": "language_construct",
+            "list": "language_construct",
+            "map": "language_construct",
             "trait": "language_construct",
             "module": "language_construct",
             "namespace": "language_construct",
@@ -466,12 +470,16 @@
             "simple_type": "language_construct",
             "defined_type": "language_construct",
             "macro": "language_construct",
+            "generic": "language_construct",
             "mixin": "language_construct",
+            "extension": "language_construct",
             "record": "language_construct",
             "abstract": "language_construct",
             "instance": "language_construct",
             "subroutine": "language_construct",
             "procedure": "language_construct",
+            "filter": "language_construct",
+            "workflow": "language_construct",
             "call_site": "language_construct",
             "arrow_function": "language_construct",
             "object": "language_construct",
@@ -547,6 +555,8 @@
             "command": "language_construct",
             "environment": "language_construct",
             "binding": "language_construct",
+            "operator": "language_construct",
+            "assumption": "language_construct",
             "id": "language_construct",
             "source": "language_construct",
             "port": "language_construct",
@@ -622,7 +632,7 @@
               "type": "null"
             }
           ],
-          "description": "Structural identity hash within a (qualified_name, module_path) scope (ADR-0014 as amended by Phase 6 / INV-bazij): survives body edits, NOT rename or move"
+          "description": "Structural identity hash within a (qualified_name, module_path) scope (ADR-0014 as amended by Phase 6 / INV-bazij): survives body edits, NOT rename or move. Serialized as sha256:<16hex> and shares this exact surface with shape_id; the two are discriminated by field name (and the top-level stable_id_scheme / shape_id_scheme descriptors), NOT by an in-value prefix, and their value-spaces are disjoint. Do not join on bare hash values across the two axes (WI-tisar)."
         },
         "shape_id": {
           "oneOf": [
@@ -633,7 +643,7 @@
               "type": "null"
             }
           ],
-          "description": "Structural implementation fingerprint"
+          "description": "Structural *skeleton* hash \u2014 the parse subtree with identifiers, literals, comments, and punctuation STRIPPED (ADR-0014 \u00a71), so same-shape / different-name symbols collide. Within-language only. Contrast fingerprint, which KEEPS identifiers/literals; shape_id is a strict coarsening of it. Serialized as sha256:<16hex>, the same surface as stable_id (see WI-tisar). (Currently a serialized output-boundary field with no internal consumer.)"
         },
         "fingerprint": {
           "oneOf": [
@@ -655,7 +665,7 @@
               "type": "null"
             }
           ],
-          "description": "Quality assessment"
+          "description": "Node-level quality assessment ({score, reason}). Has no producer (INV-nuzal): unlike edge.quality it is not derived from confidence, so it is omitted when null (INV-virik omit-when-empty) and appears only if a future pass populates it."
         },
         "meta": {
           "oneOf": [
@@ -734,7 +744,7 @@
           ],
           "description": "McCabe cyclomatic complexity (decision points + 1)"
         },
-        "lines_of_code": {
+        "line_span": {
           "oneOf": [
             {
               "type": "integer",
@@ -744,7 +754,7 @@
               "type": "null"
             }
           ],
-          "description": "Number of source lines in the symbol body"
+          "description": "Physical line span of the symbol body (end_line - start_line + 1, including blank/comment lines). NOT source-lines-of-code; file-level SLOC is profile.languages[*].loc. Renamed from lines_of_code (WI-bozid)."
         },
         "signature": {
           "oneOf": [
@@ -818,6 +828,17 @@
             }
           ],
           "description": "ADR-0032: fully-qualified name including ancestor containers, joined with the per-language separator declared in qualified_name_axis.py. Null when name already encodes the qualified form or no separator policy is declared."
+        },
+        "visibility": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "INV-jusot: the single canonical visibility level of the symbol \u2014 one of public / private / protected / internal / package (vocabulary in visibility.py). Computed once in finalize from the highest-priority signal (a language modifier, else the legacy Apex/Clojure meta['visibility'], else the Python leading-underscore name convention, else the public default); the deciding signal is recorded in meta['visibility_signal']. Null only on symbols that predate the finalize visibility pass. Supersedes the retired per-language meta['visibility'] key; is_exported is reconciled to visibility=='public' in a follow-up."
         }
       },
       "required": [
@@ -872,36 +893,7 @@
             "defines_target",
             "data_flows_to",
             "module_exports",
-            "overrides",
-            "script_src",
-            "base_image",
-            "kernel_launch",
-            "grpc_calls",
-            "http_calls",
-            "graphql_calls",
-            "abi_call",
-            "association",
-            "build_tag_alternative_of",
-            "caller_invokes",
-            "contains_routes",
-            "crypto_flow",
-            "depends",
-            "extends_template",
-            "includes_class",
-            "includes_template",
-            "invokes_callback",
-            "links_to",
-            "notifies_resource",
-            "renders",
-            "requires_resource",
-            "signal_receiver",
-            "template_calls",
-            "uses_mixin",
-            "uses_vocabulary",
-            "resolver_implements",
-            "resolver_for_type",
-            "openapi_implements",
-            "implements_rpc"
+            "overrides"
           ],
           "x-axis-of-values": {
             "calls": "relationship",
@@ -928,64 +920,9 @@
             "defines_target": "relationship",
             "data_flows_to": "relationship",
             "module_exports": "relationship",
-            "overrides": "relationship",
-            "script_src": "endpoint_shape",
-            "base_image": "endpoint_shape",
-            "kernel_launch": "endpoint_shape",
-            "grpc_calls": "endpoint_shape",
-            "http_calls": "endpoint_shape",
-            "graphql_calls": "endpoint_shape",
-            "abi_call": "endpoint_shape",
-            "association": "endpoint_shape",
-            "build_tag_alternative_of": "endpoint_shape",
-            "caller_invokes": "endpoint_shape",
-            "contains_routes": "endpoint_shape",
-            "crypto_flow": "endpoint_shape",
-            "depends": "endpoint_shape",
-            "extends_template": "endpoint_shape",
-            "includes_class": "endpoint_shape",
-            "includes_template": "endpoint_shape",
-            "invokes_callback": "endpoint_shape",
-            "links_to": "endpoint_shape",
-            "notifies_resource": "endpoint_shape",
-            "renders": "endpoint_shape",
-            "requires_resource": "endpoint_shape",
-            "signal_receiver": "endpoint_shape",
-            "template_calls": "endpoint_shape",
-            "uses_mixin": "endpoint_shape",
-            "uses_vocabulary": "endpoint_shape",
-            "resolver_implements": "pending_classification",
-            "resolver_for_type": "pending_classification",
-            "openapi_implements": "pending_classification",
-            "implements_rpc": "pending_classification"
+            "overrides": "relationship"
           },
-          "x-deprecated": [
-            "script_src",
-            "base_image",
-            "kernel_launch",
-            "grpc_calls",
-            "http_calls",
-            "graphql_calls",
-            "abi_call",
-            "association",
-            "build_tag_alternative_of",
-            "caller_invokes",
-            "contains_routes",
-            "crypto_flow",
-            "depends",
-            "extends_template",
-            "includes_class",
-            "includes_template",
-            "invokes_callback",
-            "links_to",
-            "notifies_resource",
-            "renders",
-            "requires_resource",
-            "signal_receiver",
-            "template_calls",
-            "uses_mixin",
-            "uses_vocabulary"
-          ]
+          "x-deprecated": []
         },
         "line": {
           "type": "integer",
@@ -1007,7 +944,7 @@
           "type": "number",
           "minimum": 0.0,
           "maximum": 1.0,
-          "description": "Confidence score"
+          "description": "Detection reliability (0.0-1.0) \u2014 the producer's evidence-derived estimate that the relationship exists (ADR-0039 ruling 1). NOT a ranking value; ranking prominence lives in rank_score."
         },
         "origin": {
           "type": "array",
@@ -1070,6 +1007,28 @@
           "default": null,
           "description": "Symbol (or Edge) IDs the producer consumed to construct this Edge (INV-rukor). Populated by linkers; null for analyzer-originated edges."
         },
+        "confidence_source": {
+          "type": "string",
+          "enum": [
+            "evidence_derived",
+            "emitter_constant",
+            "composite"
+          ],
+          "description": "Provenance of the confidence value (ADR-0039 ruling 2): evidence_derived (from the evidence_type registry base), emitter_constant (a declared hardcoded producer value), or composite (still fuses a ranking adjustment ruling 3 relocates to rank_score)."
+        },
+        "rank_score": {
+          "oneOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "minimum": 0.0,
+          "maximum": 1.0,
+          "description": "Ranking prominence (0.0-1.0), ADR-0039 ruling 3. Initializes from confidence and accumulates the ranking adjustments relocated off confidence; equal to confidence until a producer relocates its adjustment."
+        },
         "quality": {
           "oneOf": [
             {
@@ -1079,11 +1038,12 @@
               "type": "null"
             }
           ],
-          "description": "Quality assessment"
+          "deprecated": true,
+          "description": "DEPRECATED (ADR-0039 ruling 4; WI-humok / WI-riguh). quality.score is a pure function of confidence (round(clamp(confidence), 3)) and quality.reason encodes the emitter mechanism, not a confidence tier \u2014 it carries zero independent signal. Read confidence + confidence_source + is_resolved instead. Still emitted for one deprecation release; removed the next."
         },
         "meta": {
           "type": "object",
-          "description": "Edge metadata including evidence",
+          "description": "Edge metadata",
           "properties": {
             "evidence_type": {
               "type": "string",
@@ -1101,6 +1061,7 @@
                 "ast_call_this": "inference_pathway",
                 "ast_call_this_property": "inference_pathway",
                 "ast_call_type_inferred": "inference_pathway",
+                "ast_call_ufcs": "inference_pathway",
                 "ast_cite": "inference_pathway",
                 "ast_decorator": "inference_pathway",
                 "ast_extends": "inference_pathway",
@@ -1207,7 +1168,6 @@
                 "ctypes_call": "pending_classification",
                 "alias_resolution": "pending_classification",
                 "import_resolution": "pending_classification",
-                "ast_call_method": "pending_classification",
                 "ipc_channel_match": "pending_classification",
                 "topic_match": "pending_classification",
                 "ctypes_stdlib_call": "pending_classification",
@@ -1219,9 +1179,6 @@
             },
             "evidence_lang": {
               "type": "string"
-            },
-            "evidence_spans": {
-              "type": "array"
             }
           }
         }
@@ -1295,7 +1252,7 @@
           "items": {
             "type": "object"
           },
-          "description": "Passes skipped at dispatch time or crashed mid-run, with reasons (a 'crashed: ' prefix marks a contained pass crash)"
+          "description": "Legacy per-run mirror of limits.skipped_passes. Pass-level skips (a pass that did not run: no files matched, missing grammar, or crashed) have no analysis_runs[] entry and appear only in top-level limits.skipped_passes; this per-run field has no current producer and is omitted when empty (INV-virik / INV-nihug). Read limits.skipped_passes for skip provenance."
         },
         "failed_files": {
           "type": "array",
@@ -1455,10 +1412,6 @@
           },
           "description": "Files truncated or skipped due to size"
         },
-        "analysis_depth": {
-          "type": "string",
-          "description": "Depth of analysis performed (e.g. syntax_only)"
-        },
         "partial_results_reason": {
           "type": "string",
           "description": "Why results are partial, when they are"
@@ -1474,6 +1427,13 @@
           ],
           "description": "Max supply-chain tier filter applied, when any"
         },
+        "tier_filtered_files": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Files whose symbols/edges the supply-chain tier filter dropped (e.g. DERIVED tier-4 excluded by default) \u2014 the 'what' behind max_tier_applied's 'why' (WI-tulit)"
+        },
         "max_files_per_analyzer": {
           "oneOf": [
             {
@@ -1487,7 +1447,7 @@
         },
         "test_files_excluded": {
           "type": "boolean",
-          "description": "Present (true) when test files were excluded"
+          "description": "Whether test files were excluded from analysis \u2014 always emitted so the state is observable (true when excluded, false otherwise)"
         },
         "supply_chain": {
           "$ref": "#/$defs/SupplyChainLimits",
@@ -1498,7 +1458,7 @@
           "items": {
             "type": "string"
           },
-          "description": "Known analysis limitations (static list)"
+          "description": "Universal static disclaimer: the fixed categories of constructs static analysis never captures anywhere (dynamic imports, eval, etc.). Identical across all analyses \u2014 NOT a per-repo measurement of constructs this repo contains-but-skipped."
         },
         "analyzer_version": {
           "type": "string",
@@ -1755,7 +1715,7 @@
         },
         "kind": {
           "type": "string",
-          "description": "Entrypoint category \u2014 e.g. main_function, cli_command, http_route, framework_handler"
+          "description": "Entrypoint category (what the entrypoint IS \u2014 distinct from meta.evidence_type, which names HOW it was detected). One of the EntrypointKind catalog (WI-pupiz, single source hypergumbo_core.entrypoints.all_known_entrypoint_kinds): aiohttp_view, android_activity, android_application, aspnet_controller, background_task, cli_command, cli_main, connectivity_based, controller, django_view, electron_main, electron_preload, electron_renderer, error_handler, event_handler, express_route, fastify_route, form, go_handler, grape_api, graphql_server, hapi_route, html_entry, http_route, koa_route, ktor_route, laravel_controller, library_export, main_function, main_guard, micronaut_controller, middleware_handler, nestjs_controller, phoenix_controller, plug_route, rails_controller, rust_handler, scheduled_task, script_module, serializer, shell_script, sinatra_route, slim_route, spa_bootstrap, spring_controller, test_function, tornado_handler, vapor_route, websocket_handler"
         },
         "label": {
           "type": "string",
@@ -1765,7 +1725,28 @@
           "type": "number",
           "minimum": 0.0,
           "maximum": 1.0,
-          "description": "Detection confidence"
+          "description": "Detection reliability (0.0-1.0) \u2014 how sure the detector is that this symbol IS an entrypoint. NOT prominence; ADR-0039 ruling 3 relocates ranking to rank_score."
+        },
+        "rank_score": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 1.0,
+          "description": "Ranking prominence (0.0-1.0), ADR-0039 ruling 3. Initializes from confidence and accumulates the entrypoint ranking adjustments; entrypoint ordering and the MIN_ENTRYPOINT_CONFIDENCE filter key on this."
+        },
+        "meta": {
+          "type": "object",
+          "description": "Provenance dict mirroring Edge.meta (WI-rukam). Keys: 'id' (entrypoint:sha256:<16hex> content hash of kind+symbol_id+label, always present), 'source' (producer pass: concept_detector / connectivity_fallback / script_module_detector), 'evidence_type' (inference pathway: manifest_declared / framework_pattern / structural / language_convention / naming_heuristic / connectivity_heuristic). Registered on the entrypoint_meta axis in axis_meta_keys.py.",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "source": {
+              "type": "string"
+            },
+            "evidence_type": {
+              "type": "string"
+            }
+          }
         }
       },
       "required": [

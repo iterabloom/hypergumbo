@@ -9,8 +9,9 @@ items. The layout adapts to terminal size using a tier system:
   via Enter/Esc toggle
 - standard (60x20 - 120x38): Two-pane layout with left list/tree panel
   and right detail panel. Cursor movement auto-updates the detail view.
-  Tree toggle (t) switches between DataTable and Tree. Filter (f) narrows
-  items by title, status, tags, or kind.
+  Tree toggle (t) switches between DataTable and Tree. Filter panel (f)
+  toggles a side panel of status and tag checkboxes (digit keys 1-9 hide/show
+  each); it narrows by status and tag, not by free-text title or kind.
 - wide (> 120x38): Extra DataTable columns (created, updated, conflict),
   longer proquint IDs, split right panel with activity log below detail,
   filter status indicator. Dynamic resize transitions between standard↔wide.
@@ -33,13 +34,19 @@ bypasses the mouse-capture issue where Textual intercepts click-and-drag,
 preventing terminal-native text selection in clients like Royal TSX.
 
 Write keybindings (d, D, m, n, e, p, b, l) push ModalScreen subclasses that
-gather input, then call TrackerSet write methods on dismiss. Errors are shown
+gather input, then call TrackerSet write methods on dismiss. Additional
+write/UI keybindings do not follow the gather-input modal pattern: z
+(toggle_freeze) and Ctrl+E (toggle_edit_mode, WI-zonur) mutate directly, R
+(repair_drift) pushes a ConfirmScreen, and S (capture_screenshot) opens the
+ADR-0020 screenshot+annotation overlay. Wide mode also exposes inline Mark
+Read / Mark Unread human read-state controls. Errors are shown
 via ``self.notify(str(e), severity="error")``. After each write, _load_items()
 refreshes the tables and _restore_selection() keeps the cursor stable.
 
-Status visibility toggles (``c``/``w``) hide or show items with ``done``
-and ``wont_do`` statuses respectively.  A status filter bar below the table
-shows the current show/hide state for each resolved status.
+Status visibility is toggled via the filter panel (open with ``f``): digit
+keys ``1``-``9`` (or clicking an entry) hide/show items by status or tag.  A
+status filter bar below the table shows the current show/hide state for each
+config-defined resolved status.
 
 Manual display reordering (``<``/``>``) lets users visually group related
 items without changing their priority.  The reorder is persisted to a
@@ -79,6 +86,7 @@ from textual.widgets import (
     Tree,
 )
 from textual.widgets.option_list import Option
+from textual.widgets.tree import TreeNode
 
 from rich.text import Text as RichText
 
@@ -2795,13 +2803,13 @@ class TrackerApp(App):
             parent = item.parent if item.parent in item_ids else None
             children_map.setdefault(parent, []).append(item)
 
-        def _add_children(parent_node: object, parent_id: str | None) -> None:
+        def _add_children(parent_node: TreeNode, parent_id: str | None) -> None:
             for child in children_map.get(parent_id, []):
                 tier_char = (
                     _TIER_INDICATOR.get(child.tier, "?") if child.tier else "?"
                 )
                 label = f"[{tier_char}] {_item_title_text(child, self._human_read_state)}"
-                node = parent_node.add(label, data=child.id)  # type: ignore[union-attr]
+                node = parent_node.add(label, data=child.id)
                 _add_children(node, child.id)
 
         _add_children(tree.root, None)

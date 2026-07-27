@@ -43,8 +43,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar
 
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
-from hypergumbo_core.analyze.base import AnalysisResult, TreeSitterAnalyzer, make_file_id, populate_docstrings_from_tree
+from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, _get_python_toolchain, make_pass_id
+from hypergumbo_core.analyze.base import AnalysisResult, TreeSitterAnalyzer, make_doc_symbol_ids, make_file_id, populate_docstrings_from_tree
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
@@ -66,11 +66,6 @@ def find_puppet_files(repo_root: Path) -> list[Path]:
 def _get_node_text(node: "tree_sitter.Node") -> str:
     """Get the text content of a node."""
     return node.text.decode("utf-8", errors="replace") if node.text else ""
-
-
-def _make_symbol_id(path: Path, name: str, kind: str, line: int) -> str:
-    """Create a stable symbol ID."""
-    return f"puppet:{path}:{kind}:{line}:{name}"
 
 
 class _PuppetExtractor:
@@ -117,7 +112,7 @@ class _PuppetExtractor:
             pass_id=PASS_ID,
             execution_id=self._execution_id,
             version=PASS_VERSION,
-            toolchain={"name": "puppet", "version": "unknown"},
+            toolchain=_get_python_toolchain(),
             duration_ms=duration_ms,
             files_analyzed=self._files_analyzed,
         )
@@ -161,12 +156,17 @@ class _PuppetExtractor:
         rel_path = path.relative_to(self.repo_root)
         line = node.start_point[0] + 1
 
-        symbol_id = _make_symbol_id(rel_path, class_name, "class", line)
         span = Span(
             start_line=line,
             start_col=node.start_point[1],
             end_line=node.end_point[0] + 1,
             end_col=node.end_point[1],
+        )
+
+        # Both ids minted together by make_doc_symbol_ids (INV-dulah);
+        # node.id stays byte-identical to the old raw composite.
+        symbol_id, stable_id = make_doc_symbol_ids(
+            "puppet", rel_path, "class", class_name, span.start_line, span.end_line,
         )
 
         # Register class for edge creation
@@ -177,7 +177,7 @@ class _PuppetExtractor:
 
         symbol = Symbol(
             id=symbol_id,
-            stable_id=symbol_id,
+            stable_id=stable_id,
             name=class_name,
             kind="class",
             language="puppet",
@@ -211,7 +211,6 @@ class _PuppetExtractor:
         rel_path = path.relative_to(self.repo_root)
         line = node.start_point[0] + 1
 
-        symbol_id = _make_symbol_id(rel_path, type_name, "defined_type", line)
         span = Span(
             start_line=line,
             start_col=node.start_point[1],
@@ -219,12 +218,18 @@ class _PuppetExtractor:
             end_col=node.end_point[1],
         )
 
+        # Both ids minted together by make_doc_symbol_ids (INV-dulah);
+        # node.id stays byte-identical to the old raw composite.
+        symbol_id, stable_id = make_doc_symbol_ids(
+            "puppet", rel_path, "defined_type", type_name, span.start_line, span.end_line,
+        )
+
         param_str = ", ".join(params) if params else ""
         signature = f"define {type_name}({param_str})" if params else f"define {type_name}"
 
         symbol = Symbol(
             id=symbol_id,
-            stable_id=symbol_id,
+            stable_id=stable_id,
             name=type_name,
             kind="defined_type",
             language="puppet",
@@ -283,7 +288,6 @@ class _PuppetExtractor:
         line = node.start_point[0] + 1
 
         name = f"{resource_type}[{resource_title}]" if resource_title else resource_type
-        symbol_id = _make_symbol_id(rel_path, name, "resource", line)
         span = Span(
             start_line=line,
             start_col=node.start_point[1],
@@ -291,9 +295,15 @@ class _PuppetExtractor:
             end_col=node.end_point[1],
         )
 
+        # Both ids minted together by make_doc_symbol_ids (INV-dulah);
+        # node.id stays byte-identical to the old raw composite.
+        symbol_id, stable_id = make_doc_symbol_ids(
+            "puppet", rel_path, "resource", name, span.start_line, span.end_line,
+        )
+
         symbol = Symbol(
             id=symbol_id,
-            stable_id=symbol_id,
+            stable_id=stable_id,
             name=name,
             kind="resource",
             language="puppet",
@@ -321,12 +331,12 @@ class _PuppetExtractor:
         edge = Edge.create(
             src=src_id,
             dst=f"puppet:resource:{require_value}",
-            edge_type="requires_resource",
+            edge_type="depends_on",
             line=line,
             origin=PASS_ID,
             origin_run_id=self._execution_id,
             evidence_type="require",
-            confidence=0.9,
+            meta={"ref_construct": "puppet_require"},
         )
         self._edges.append(edge)
 
@@ -335,12 +345,12 @@ class _PuppetExtractor:
         edge = Edge.create(
             src=src_id,
             dst=f"puppet:resource:{notify_value}",
-            edge_type="notifies_resource",
+            edge_type="depends_on",
             line=line,
             origin=PASS_ID,
             origin_run_id=self._execution_id,
             evidence_type="notify",
-            confidence=0.9,
+            meta={"ref_construct": "puppet_notify", "refresh": True},
         )
         self._edges.append(edge)
 
@@ -364,7 +374,6 @@ class _PuppetExtractor:
         rel_path = path.relative_to(self.repo_root)
         line = node.start_point[0] + 1
 
-        symbol_id = _make_symbol_id(rel_path, node_name, "node", line)
         span = Span(
             start_line=line,
             start_col=node.start_point[1],
@@ -372,9 +381,15 @@ class _PuppetExtractor:
             end_col=node.end_point[1],
         )
 
+        # Both ids minted together by make_doc_symbol_ids (INV-dulah);
+        # node.id stays byte-identical to the old raw composite.
+        symbol_id, stable_id = make_doc_symbol_ids(
+            "puppet", rel_path, "node", node_name, span.start_line, span.end_line,
+        )
+
         symbol = Symbol(
             id=symbol_id,
-            stable_id=symbol_id,
+            stable_id=stable_id,
             name=node_name,
             kind="node",
             language="puppet",
@@ -416,13 +431,13 @@ class _PuppetExtractor:
         edge = Edge.create(
             src=manifest_id,
             dst=dst,
-            edge_type="includes_class",
+            edge_type="includes",
             line=line,
             origin=PASS_ID,
             origin_run_id=self._execution_id,
             evidence_type="include",
             confidence=0.95 if class_name in self._class_registry else 0.6,
-            meta={"class_name": class_name},
+            meta={"class_name": class_name, "ref_construct": "puppet_class"},
         )
         self._edges.append(edge)
 

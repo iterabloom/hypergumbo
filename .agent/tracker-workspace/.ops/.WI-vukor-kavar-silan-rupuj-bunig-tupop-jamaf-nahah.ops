@@ -1,0 +1,20 @@
+- op: create  # 2e0a
+  at: '2026-06-27T20:55:28Z'  # 2e0a
+  by: agent  # 2e0a
+  actor: jgstern_agent  # 2e0a
+  clock: 1  # 2e0a
+  nonce: 2e0a  # 2e0a
+  data:  # 2e0a
+    kind: work_item  # 2e0a
+    title: "Make Edge.create evidence_type a required param (no ast_call_direct default) — structural hardening of vocab:F2"  # 2e0a
+    status: todo_soft  # 2e0a
+    priority: 2  # 2e0a
+    parent:  # 2e0a
+    tags:  # 2e0a
+    - analysis_quality  # 2e0a
+    isbefore: []  # 2e0a
+    duplicate_of: []  # 2e0a
+    not_duplicate_of: []  # 2e0a
+    pr_ref:  # 2e0a
+    description: "Structural hardening / durable end-state for vocab:F2 (WI-lojug). vocab:F2 fixed the genuine DEFAULT leaks (3 Solidity producers, dev 4bc2839170) but KEPT Edge.create's evidence_type='ast_call_direct' default (ir.py ~668 dataclass field / ~708 create classmethod). The call-specific default is a latent structural risk: any future producer emitting a non-call edge without an explicit evidence_type silently inherits a 'direct function call' label again (the 'N producers, no enforced contract' anti-pattern).\n\nThis item is the Option-2 fix the human chose to DEFER from vocab:F2 (Option 1 now + this as a P2 follow-up): remove the default entirely so evidence_type becomes a REQUIRED kwarg on Edge.create, forcing every producer to declare its inference pathway. Maximally structural (prevents the leak class forever; likely surfaces other latent mislabels).\n\nScope/cost: large mechanical sweep — every Edge.create call site across all analyzers + linkers (hundreds) must pass evidence_type explicitly (most legitimately ARE calls and just add evidence_type='ast_call_direct'). Many test updates. Best done as its own dedicated multi-PR effort, ideally after a producer_coherence-driven census of all current Edge.create sites lacking an explicit evidence_type. Consider a transitional sentinel default ('unspecified', registered) before flipping to required, to stage the migration."  # 2e0a
+    fields: {}  # 2e0a

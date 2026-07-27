@@ -860,7 +860,7 @@ class TestEdgeCases:
             edges=[],
         )
 
-        result = run_linker("type-hierarchy", ctx)
+        result = run_linker("type-hierarchy-linker", ctx)
         assert result is not None
         assert result.edges == []
 
@@ -967,9 +967,9 @@ class TestLinkerRegistration:
         import hypergumbo_core.linkers.type_hierarchy as th_module
         importlib.reload(th_module)
 
-        linker = get_linker("type-hierarchy")
+        linker = get_linker("type-hierarchy-linker")
         assert linker is not None
-        assert linker.name == "type-hierarchy"
+        assert linker.name == "type-hierarchy-linker"
         assert "dispatch" in linker.description.lower() or "hierarchy" in linker.description.lower()
 
 
@@ -1020,12 +1020,14 @@ class TestTestFileConfidencePenalty:
         assert len(dispatch_edges) == 1
         assert dispatch_edges[0].confidence == 0.85
 
-    def test_many_overrides_scale_confidence_by_inverse_sqrt(self) -> None:
-        """With N overrides, confidence scales as base/sqrt(N) (WI-kabom).
+    def test_many_overrides_scale_rank_score_by_inverse_sqrt(self) -> None:
+        """With N overrides, the 1/sqrt(N) fan-out dampener lives on rank_score,
+        NOT confidence (WI-kabom + ADR-0039 ruling 3 / WI-botif).
 
-        When an interface has many implementors (e.g., 19 Notifier impls),
-        each dispatches_to edge should have proportionally lower confidence
-        to reduce ranking noise from N*M dispatch edges.
+        When an interface has many implementors (e.g., 19 Notifier impls), each
+        dispatches_to edge is still a real dispatch (detection confidence = the
+        in-band 0.85 type_hierarchy base), but its ranking prominence is damped by
+        1/sqrt(N) so the N*M dispatch edges don't dominate ranking / reverse slices.
         """
         import math
 
@@ -1079,12 +1081,17 @@ class TestTestFileConfidencePenalty:
         dispatch_edges = [e for e in result.edges if e.edge_type == "dispatches_to"]
         assert len(dispatch_edges) == 8
 
-        # With 8 overrides: 0.85 / sqrt(8) ≈ 0.30
-        expected = 0.85 / math.sqrt(8)
+        # With 8 overrides the dampener is 0.85 / sqrt(8) ≈ 0.30 — it now lives
+        # on rank_score; confidence stays the flat in-band 0.85 base.
+        expected_rank = 0.85 / math.sqrt(8)
         for edge in dispatch_edges:
-            assert abs(edge.confidence - expected) < 0.01, (
-                f"Expected confidence ~{expected:.2f} for 8 overrides, "
-                f"got {edge.confidence}"
+            assert edge.confidence == 0.85, (
+                f"Expected in-band detection confidence 0.85, got {edge.confidence}"
+            )
+            assert edge.confidence_source == "evidence_derived"
+            assert abs(edge.rank_score - expected_rank) < 0.01, (
+                f"Expected rank_score ~{expected_rank:.2f} for 8 overrides, "
+                f"got {edge.rank_score}"
             )
 
     def test_single_override_keeps_full_confidence(self) -> None:
@@ -1132,7 +1139,9 @@ class TestTestFileConfidencePenalty:
         assert dispatch_edges[0].confidence == 0.85
 
     def test_test_file_override_penalized(self) -> None:
-        """Override in test file gets reduced 0.30 confidence (WI-supok)."""
+        """Override in a test file gets the reduced 0.30 RANKING penalty on
+        rank_score (WI-supok + ADR-0039 ruling 3); detection confidence stays
+        the in-band 0.85 base (the dispatch is still real)."""
         parent = Symbol(
             id="java:/app/Service.java:1-5:Service:class",
             name="Service", kind="class", language="java",
@@ -1173,8 +1182,11 @@ class TestTestFileConfidencePenalty:
         result = link_type_hierarchy(ctx)
         dispatch_edges = [e for e in result.edges if e.edge_type == "dispatches_to"]
         assert len(dispatch_edges) == 1
-        assert dispatch_edges[0].confidence == 0.30, (
-            "Test file override should get 0.30 confidence penalty"
+        assert dispatch_edges[0].confidence == 0.85, (
+            "Detection confidence stays in-band; the penalty is a ranking signal"
+        )
+        assert dispatch_edges[0].rank_score == 0.30, (
+            "Test file override should get the 0.30 ranking penalty on rank_score"
         )
 
 

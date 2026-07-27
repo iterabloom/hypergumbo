@@ -1,0 +1,54 @@
+- op: create  # 015a
+  at: '2026-07-01T11:35:03Z'  # 015a
+  by: agent  # 015a
+  actor: jgstern_agent  # 015a
+  clock: 1  # 015a
+  nonce: 015a  # 015a
+  data:  # 015a
+    kind: work_item  # 015a
+    title: "io-boundaries/verify-claims CLI _Edge facade drops is_resolved+dst_ref, defeating the ADR-0028 receiver gate (external_potential inflation)"  # 015a
+    status: todo_hard  # 015a
+    priority: 1  # 015a
+    parent:  # 015a
+    tags:  # 015a
+    - io_boundary  # 015a
+    - dogfood  # 015a
+    isbefore: []  # 015a
+    duplicate_of: []  # 015a
+    not_duplicate_of: []  # 015a
+    pr_ref:  # 015a
+    description: "The consumer-time io-boundary classification is the canonical path (WI-puvun REFRAME: io_boundary is derived at CLI time, 0 producers stamp it). Both cmd_io_boundaries (cli.py ~4068) and cmd_verify_claims (cli.py ~4761) rehydrate a 4-field _Edge(src,dst,edge_type,meta) from the serialized behavior_map, DROPPING is_resolved and dst_ref. compute_boundary_map reads getattr(edge,'is_resolved',True) (io_boundary.py:1174, the ADR-0028 F3-Filter-1 unresolved-receiver skip) and getattr(edge,'dst_ref',None) (io_boundary.py:1191/1612, the WI-tihup structured lookup). With the facade omitting both, is_resolved defaults True and dst_ref defaults None, so the receiver gate NEVER fires on the CLI path and every unresolved bare-name method match (duck-typed .read()/.write()/.close() on an unknown receiver) is (mis)classified as external_potential — re-inflating exactly the noise INV-tapat/INV-maluk (io-boundary:F3) suppressed in-process. Self-corpus: facade external_potential ~26338 vs faithful 0; the real boundary set (total_io_edges) is unchanged (dst_ref-carrying edges like os.remove classify via the WI-tihup path regardless). Fix: rehydrate is_resolved + dst_ref (ExternalRef.from_dict) in both facades (extract a shared helper). Wave-3 Phase-2 §C io-boundary F1 (facade repair). Subsumes ~96% of WI-pimun (file-node-src chains ~288->12 once external_potential stops dominating). Empirically verified: /tmp/iof1 fixture (os.remove + obj.read() + bus.write()) facade external_potential_edges=2 total=1 vs faithful external_potential_edges=0 total=1."  # 015a
+    fields: {}  # 015a
+- op: update  # dc7b
+  at: '2026-07-01T12:33:22Z'  # dc7b
+  by: agent  # dc7b
+  actor: jgstern_agent  # dc7b
+  clock: 2  # dc7b
+  nonce: dc7b  # dc7b
+  set:  # dc7b
+    status: done  # dc7b
+  add:  # dc7b
+    tags: [awaits_bakeoff_validation]  # dc7b
+- op: discuss  # d0cd
+  at: '2026-07-01T12:33:23Z'  # d0cd
+  by: agent  # d0cd
+  actor: jgstern_agent  # d0cd
+  clock: 3  # d0cd
+  nonce: d0cd  # d0cd
+  message: "Fixed in PR (dev c2357b314b), Wave-3 Phase-2 §C io-boundary F1 (facade repair). Root cause: cmd_io_boundaries + cmd_verify_claims rehydrated a 4-field _Edge(src,dst,edge_type,meta) facade from the loaded map, dropping is_resolved + dst_ref; compute_boundary_map reads getattr(edge,'is_resolved',True) (ADR-0028 unresolved-receiver skip in _compute_external_potential) and getattr(edge,'dst_ref',None) (WI-tihup structured lookup), so the receiver gate never fired on the CLI path and unresolved bare-name method matches inflated external_potential. Fix: both facades route through one shared _rehydrate_io_boundary_edges helper carrying is_resolved (default True) + dst_ref (ExternalRef.from_dict, default None). slice --io-boundary unaffected (real Edge objects).\n\nBehavioral evidence — re-ran the item's own filed repro on merged dev (editable binary /home/jgstern_agent/hypergumbo/.venv/bin/hypergumbo):\n  Fixture (os.remove + duck-typed obj.read()/bus.write()): BEFORE external_potential_edges=2 total_io_edges=1; AFTER external_potential_edges=0 total_io_edges=1 (os.remove fs_write preserved).\n  Self-corpus (warm map): BEFORE external_potential_edges=26338 total_io_edges=754 (facade simulation); AFTER external_potential_edges=0 total_io_edges=754 — the real verified-boundary set is UNCHANGED (0 real chains dropped, 0 added; dst_ref module_path is byte-identical to the legacy colon-split hint on this corpus), so no genuine I/O boundary is lost; only the spurious unresolved-receiver external_potential noise is removed.\nProduction-path test: test_cli_io_boundaries.py::test_cmd_io_boundaries_suppresses_unresolved_receiver_external_potential. Full affected suite 15621 passed, cli.py 100% coverage.\n\nTagged awaits_bakeoff_validation for the external_potential 26338->0 quantitative claim (io-boundaries headline movement); the total_io_edges no-movement (754->754) is a verified no-op, not a bakeoff claim."  # d0cd
+- op: update  # de68
+  at: '2026-07-03T03:33:51Z'  # de68
+  by: agent  # de68
+  actor: jgstern_agent  # de68
+  clock: 4  # de68
+  nonce: de68  # de68
+  set: {}  # de68
+  remove:  # de68
+    tags: [awaits_bakeoff_validation]  # de68
+- op: discuss  # 7e95
+  at: '2026-07-03T03:33:52Z'  # 7e95
+  by: agent  # 7e95
+  actor: jgstern_agent  # 7e95
+  clock: 5  # 7e95
+  nonce: '7e95'  # 7e95
+  message: "Bakeoff-validated: ghostfolio DI calls carry is_resolved=true (ast_method_this_property); external_potential_edges=0; receiver gate intact. Drained."  # 7e95

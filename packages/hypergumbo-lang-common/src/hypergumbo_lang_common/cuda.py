@@ -29,6 +29,17 @@ Why This Design
 - Uses tree-sitter-cuda package for grammar
 - Two-pass allows cross-file kernel launch resolution
 - CUDA-specific: kernels, device functions, launches are first-class
+
+Symbol Kind Fold (WI-vibaz / ADR-0027)
+---------------------------------------
+Per the canonical fold, every CUDA function is emitted as
+``Symbol(kind="function")`` regardless of its CUDA attributes. The
+GPU/CPU execution space is carried instead on
+``meta["cuda_execution_space"]`` (one of ``global`` / ``device`` /
+``host_device`` / ``host``, or absent for a plain host function).
+``__global__`` kernels additionally carry ``meta["is_kernel"] = True``,
+which downstream consumers (kernel_launch edges, GPU-entry-point
+detection) key on directly.
 """
 from __future__ import annotations
 
@@ -48,6 +59,7 @@ from hypergumbo_core.analyze.base import (
     node_text,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -254,6 +266,8 @@ def _extract_cuda_symbols(
                     origin=PASS_ID,
                     signature=signature,
                     meta=meta,
+                    cyclomatic_complexity=compute_cyclomatic_complexity(node, "cuda"),
+                    line_span=end_line - start_line + 1,
                 )
                 symbols.append(sym)
                 symbol_registry[func_name.lower()] = sym
@@ -299,7 +313,10 @@ def _extract_cuda_edges(
             caller = _get_enclosing_cuda_function(node, source, local_symbols)
             if func_node and caller:
                 called_name = node_text(func_node, source)
-                edge_type = "kernel_launch" if is_kernel_launch else "calls"
+                # ADR-0023 fold: a CUDA kernel launch IS a call; the launch
+                # mechanism moves to meta['mechanism']='kernel_launch' (set on
+                # the is_kernel_launch branch below) rather than the edge_type.
+                edge_type = "calls"
                 start_line = node.start_point[0] + 1
 
                 # Use resolver for callee resolution
@@ -321,7 +338,10 @@ def _extract_cuda_edges(
                         confidence=confidence,
                         origin=PASS_ID,
                         evidence_type="ast_call_direct",
-                        meta={"framework_dispatch": "cuda_kernel_launch"},
+                        meta={
+                            "framework_dispatch": "cuda_kernel_launch",
+                            "mechanism": "kernel_launch",
+                        },
                         origin_run_id=run_id,
                     )
                 else:

@@ -31,3 +31,20 @@
     tags: [dogfood]  # 155b
   remove:  # 155b
     tags: [dogfooding]  # 155b
+- op: update  # 1d08
+  at: '2026-07-09T05:04:45Z'  # 1d08
+  by: agent  # 1d08
+  actor: jgstern_agent  # 1d08
+  clock: 3  # 1d08
+  nonce: 1d08  # 1d08
+  set:  # 1d08
+    status: done  # 1d08
+  add:  # 1d08
+    tags: [wave4]  # 1d08
+- op: discuss  # 3e88
+  at: '2026-07-09T05:04:45Z'  # 3e88
+  by: agent  # 3e88
+  actor: jgstern_agent  # 3e88
+  clock: 4  # 3e88
+  nonce: '3e88'  # 3e88
+  message: "Fixed + merged (selfh/dev 29e5a1d86f, PR via auto-pr). Root cause: select_by_connectivity derived its induced subgraph from a (src,dst)-keyed dict (compact.py:660), collapsing parallel edges to the last-seen — so the default connectivity-aware compact view silently dropped induced edges between two included nodes. Fix: derive induced edges from the edge LIST, matching the already-correct coverage and tiered branches. Behavioral evidence: new output-closure property test asserts compact edges == induced subgraph (both directions, parallels included) through format_compact_behavior_map; new unit test asserts select_by_connectivity retains BOTH of two parallel A->B edges (RED before / GREEN after). All 210 compact tests + full affected set (3098) green; compact.py 100%. projection:F1, Wave 4 crush item 1."  # 3e88

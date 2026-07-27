@@ -62,3 +62,18 @@
     tags: [dogfood]  # df9f
   remove:  # df9f
     tags: [dogfooding]  # df9f
+- op: update  # 1486
+  at: '2026-06-25T14:19:32Z'  # 1486
+  by: agent  # 1486
+  actor: jgstern_agent  # 1486
+  clock: 6  # 1486
+  nonce: '1486'  # 1486
+  set:  # 1486
+    status: satisfied  # 1486
+- op: discuss  # 656d
+  at: '2026-06-25T14:19:32Z'  # 656d
+  by: agent  # 656d
+  actor: jgstern_agent  # 656d
+  clock: 7  # 656d
+  nonce: 656d  # 656d
+  message: "Fixed in commit 6dea77761a (origin/dev). Behavioral evidence — main()-level repro: 'config airflow-framework-dispatch-linker --format json' now exits 2 with 'hypergumbo config: error: ... is not a known language' (was: exit 0 + all-null sections + only a stderr warning, indistinguishable from a real empty config); 'config pythonn' exits 2 with 'Did you mean: python?'; 'config python' exits 0 (unchanged); 'config agda' (real but config-less language) exits 0 + 'no configuration' warning (a real language with no yaml is still valid — only NON-languages are rejected). Fix: cmd_config validates args.language against all_known_languages() before the lookup, with difflib did-you-mean. Resolved the verifier's two wrinkles: (1) updated the golden test_unknown_language_returns_empty (which asserted exit 0 for 'brainfuck') to assert the corrected rejection; (2) suggestion pool = languages only (config reads per-LANGUAGE config, so frameworks/linkers are not valid targets). Production-path tests: test_cli_config.py::{test_non_language_name_rejected, test_framework_linker_name_rejected, test_did_you_mean_suggestion_for_near_miss, test_known_language_without_config_warns}. 100% coverage. (Member of the INV-fabov input-validation umbrella.)"  # 656d

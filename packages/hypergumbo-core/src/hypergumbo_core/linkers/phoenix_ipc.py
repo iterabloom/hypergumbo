@@ -2,20 +2,23 @@
 """Framework linker: Phoenix Channels IPC for detecting Elixir IPC patterns.
 
 This linker detects Phoenix Channel patterns in Elixir code and creates
-message_send and message_receive edges for cross-process communication.
+``event_publishes`` edges (tagged ``meta.channel_kind="ipc"``) for
+cross-process communication. Only publish-direction edges are emitted; the
+bespoke ``message_send``/``message_receive`` types were folded onto
+``event_publishes`` per the audit-findings 0001 consolidation.
 
 Detected Patterns
 -----------------
 Phoenix Channels:
-- broadcast!(socket, "event", payload) -> message_send
-- broadcast(socket, "event", payload) -> message_send
-- Endpoint.broadcast!("topic", "event", payload) -> message_send
-- push(socket, "event", payload) -> message_send
-- handle_in("event", payload, socket) -> message_receive
+- broadcast!(socket, "event", payload) — send site
+- broadcast(socket, "event", payload) — send site
+- Endpoint.broadcast!("topic", "event", payload) — send site
+- push(socket, "event", payload) — send site
+- handle_in("event", payload, socket) — receive site
 
 Phoenix LiveView:
-- handle_event("event", params, socket) -> message_receive
-- push_event(socket, "event", payload) -> message_send
+- handle_event("event", params, socket) — receive site
+- push_event(socket, "event", payload) — send site
 
 How It Works
 ------------
@@ -38,7 +41,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterator
 
-from ..discovery import find_files
+from ..discovery import find_non_test_files
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from ._text_filters import language_from_path
 from .registry import LinkerActivation, LinkerContext, LinkerResult, register_linker
@@ -206,7 +209,7 @@ def detect_phoenix_patterns(source: bytes, language: str) -> list[dict]:
 
 def _find_elixir_files(repo_root: Path) -> Iterator[Path]:
     """Find all Elixir files in the repository."""
-    yield from find_files(repo_root, ["*.ex", "*.exs"])
+    yield from find_non_test_files(repo_root, ["*.ex", "*.exs"])
 
 
 def link_phoenix_ipc(repo_root: Path) -> PhoenixLinkResult:
@@ -256,15 +259,18 @@ def link_phoenix_ipc(repo_root: Path) -> PhoenixLinkResult:
     send_by_event: dict[str, list[PhoenixPattern]] = {}
     receive_by_event: dict[str, list[PhoenixPattern]] = {}
 
-    for p in all_patterns:
-        if p.type == "send":
-            if p.event not in send_by_event:
-                send_by_event[p.event] = []
-            send_by_event[p.event].append(p)
+    # NB: distinct loop variable from the ``for p in patterns`` (dict) loop
+    # above — reusing ``p`` left mypy narrowing this PhoenixPattern iteration to
+    # the earlier ``dict`` type (spurious attr-defined on .type/.event).
+    for pat in all_patterns:
+        if pat.type == "send":
+            if pat.event not in send_by_event:
+                send_by_event[pat.event] = []
+            send_by_event[pat.event].append(pat)
         else:
-            if p.event not in receive_by_event:
-                receive_by_event[p.event] = []
-            receive_by_event[p.event].append(p)
+            if pat.event not in receive_by_event:
+                receive_by_event[pat.event] = []
+            receive_by_event[pat.event].append(pat)
 
     # Create symbols and edges for matching events
     edges: list[Edge] = []

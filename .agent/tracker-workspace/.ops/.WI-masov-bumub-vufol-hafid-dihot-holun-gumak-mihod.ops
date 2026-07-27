@@ -1,0 +1,20 @@
+- op: create  # 1cf8
+  at: '2026-07-04T02:37:22Z'  # 1cf8
+  by: agent  # 1cf8
+  actor: jgstern_agent  # 1cf8
+  clock: 1  # 1cf8
+  nonce: 1cf8  # 1cf8
+  data:  # 1cf8
+    kind: work_item  # 1cf8
+    title: "_extract_param_types prefers a local class over a same-name shadowing import (var_types mis-resolution)"  # 1cf8
+    status: todo_hard  # 1cf8
+    priority: 4  # 1cf8
+    parent:  # 1cf8
+    tags:  # 1cf8
+    - analysis_quality  # 1cf8
+    isbefore: []  # 1cf8
+    duplicate_of: []  # 1cf8
+    not_duplicate_of: []  # 1cf8
+    pr_ref:  # 1cf8
+    description: "Deeper root cause behind the WI-supat PR-A adversarial-review blocker. When resolving a bare `param: Name` annotation, `_extract_param_types` (py.py ~3565) deterministically prefers `local_symbols.get(type_name)` (a LOCAL class) over a same-named import, even when the import SHADOWS the local class (Python last-binding-wins: `class Foo(...)` followed by `from x import Foo` rebinds `Foo` to the import). So `var_types[param]` holds the WRONG class in that self-shadow case.\n\nWI-supat PR-A closed the CONFIDENTLY-WRONG downstream symptom at the producer (the `_receiver_type_id_trustworthy` gate omits `receiver_type_id` when the resolved type is the in-file class AND the name is import-shadowed, so no wrong resolved edge is minted). But the underlying var_types mis-resolution remains and could surface elsewhere (e.g. Case 2c/2f direct method resolution on the wrong local type, or any future consumer of var_types).\n\nFix options: (a) when a bare annotation name is BOTH a local class and an import, bias `_extract_param_types` to unresolved (drop the entry); or (b) honor Python import precedence (last binding wins) — resolve to the import. (a) is the conservative INV-fahub-aligned choice. Low priority: the confidently-wrong edge is already closed by WI-supat PR-A; this is the residual imprecision, and the trigger (F811 self-shadow: a local class def immediately shadowed by a same-name import in one module) is pathological."  # 1cf8
+    fields: {}  # 1cf8

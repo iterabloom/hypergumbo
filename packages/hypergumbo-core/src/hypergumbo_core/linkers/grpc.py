@@ -63,8 +63,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterator
 
-from ..discovery import find_files
+from ..discovery import find_files, find_non_test_files
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
+from ..routes import transport_meta
 from ._transitive_bases import (
     build_inheritance_index,
     collect_transitive_base_names,
@@ -190,7 +191,7 @@ TS_CLIENT_PATTERN = re.compile(
 def _find_grpc_files(root: Path) -> Iterator[Path]:
     """Find files that might contain gRPC patterns."""
     patterns = ["**/*.proto", "**/*.py", "**/*.go", "**/*.java", "**/*.ts", "**/*.js"]
-    for path in find_files(root, patterns):
+    for path in find_non_test_files(root, patterns):
         yield path
 
 
@@ -481,12 +482,15 @@ def _link_go_methods_to_rpc_routes(
     run: AnalysisRun,
     existing_edges: list[Edge] | None = None,
 ) -> list[Edge]:
-    """Create implements_rpc edges from Go methods to proto RPC routes.
+    """Create gRPC RPC-implementation edges from Go methods to proto RPC routes.
 
     When a Go struct embeds ``UnimplementedXxxServer``, methods on that struct
     with names matching proto RPC definitions are implementations of those RPCs.
-    This function creates ``implements_rpc`` edges connecting the Go method
-    symbols to the proto RPC route symbols.
+    This function creates canonical ``implements`` + ``meta['protocol']='grpc'``
+    edges (folded from the former ``implements_rpc`` edge type per audit-findings
+    0016) connecting the Go method symbols to the proto RPC route symbols. The
+    folded form keeps its call-like taint / io / ranking / slice coupling via
+    ``edge_types.is_grpc_rpc_implementation``.
 
     Args:
         all_patterns: Detected gRPC patterns (includes Go "server" patterns).
@@ -496,7 +500,7 @@ def _link_go_methods_to_rpc_routes(
         run: Analysis run for provenance.
 
     Returns:
-        List of implements_rpc edges.
+        List of ``implements`` + ``protocol=grpc`` edges.
     """
     edges: list[Edge] = []
 
@@ -617,17 +621,22 @@ def _link_go_methods_to_rpc_routes(
             continue
 
         # ADR-0028 Phase 3 / audit-findings 0014: framework-dispatch leak.
-        # Fold to canonical ast_call_direct + meta["framework_dispatch"].
+        # audit-findings 0016 FOLD: implements_rpc -> implements +
+        # meta['protocol']='grpc'. A Go method on a struct embedding
+        # UnimplementedXxxServer literally IS a Go interface implementation
+        # (impl->contract). Its call-like consumer coupling (taint / io /
+        # ranking / slice) is preserved via edge_types.is_grpc_rpc_implementation
+        # so gRPC reachability is not silently demoted (finding 3).
         edges.append(Edge.create(
             src=sym.id,
             dst=route_id,
-            edge_type="implements_rpc",
+            edge_type="implements",
             line=sym.span.start_line,
             confidence=0.90,
             origin=PASS_ID,
             origin_run_id=run.execution_id,
             evidence_type="ast_call_direct",
-            meta={"framework_dispatch": "grpc_go_server"},
+            meta={"framework_dispatch": "grpc_go_server", "protocol": "grpc"},
             derived_from=[sym.id, route_id],
         ))
 
@@ -953,7 +962,7 @@ def link_grpc(
             protocol_origin="grpc",
             meta={
                 "route_path": route_path,
-                "http_method": "RPC",
+                **transport_meta("RPC"),
                 "rpc_service": rpc.service_name,
                 "rpc_method": rpc.rpc_name,
                 "framework_role": "route",

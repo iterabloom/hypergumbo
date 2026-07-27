@@ -1,13 +1,33 @@
-# Governance files - require human (jgstern) review
-# Agent account (jgstern-agent) cannot self-approve changes to these
+# CODEOWNERS — governance-file review gate.
+#
+# Every path below requires review/approval from @jgstern (the human maintainer).
+# The agent account (jgstern-agent) must NOT self-approve or self-merge PRs that
+# touch these files (AGENTS.md §Governance Files). This file is the forge-enforced
+# mirror of that authoritative list; the rot-guard test
+# tests/test_codeowners_governance.py keeps the two in sync.
+#
+# SYNTAX: GitHub reads this as gitignore-style globs (leading "/" anchors to the
+# repo root; a trailing "/" matches a directory and everything under it) — NOT
+# Forgejo/Gitea's regex. It was migrated regex -> glob during the Codeberg ->
+# GitHub migration (PR-E). While Codeberg remains origin, code-owner enforcement
+# there is backstopped by the human merging every governance PR manually.
 
-# Git hooks and installation
-\.githooks/.* @jgstern
-scripts/install-hooks @jgstern
+# --- Agent-policy & governance config --------------------------------------
+/AGENTS.md                     @jgstern
+/ALLOWED_WEBSITES.md           @jgstern
+/AUTONOMOUS_MODE.txt.default   @jgstern
+/CODEOWNERS                    @jgstern
 
-# Automation scripts
-scripts/validate-agents\.sh @jgstern
-scripts/auto-pr @jgstern
+# --- Git hooks, installation & agent-policy validation ---------------------
+/.githooks/                    @jgstern
+/.agent/                       @jgstern
+/scripts/install-hooks         @jgstern
+/scripts/validate-agents.sh    @jgstern
 
-# This file itself (prevents governance bypass)
-CODEOWNERS @jgstern
+# --- Forge-automation scripts (CI / PR / failover) -------------------------
+/scripts/auto-pr               @jgstern
+/scripts/merge-pr               @jgstern
+/scripts/contribute            @jgstern
+/scripts/ci-debug              @jgstern
+/scripts/ci-failover           @jgstern
+/scripts/lib/forgejo-api.sh    @jgstern

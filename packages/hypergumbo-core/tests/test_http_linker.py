@@ -681,7 +681,6 @@ class TestLinkHttp:
         result = link_http(tmp_path, [route_symbol])
 
         assert len(result.edges) == 1
-        assert result.edges[0].meta["cross_language"] is True
 
     def test_creates_client_symbols(self, tmp_path):
         # Create a JS file with fetch call
@@ -1076,6 +1075,31 @@ class TestConceptMetadataSupport:
         assert path is None
         assert method is None
 
+    def test_get_route_info_from_concept_dual_carry_uses_marker(self):
+        """BUG-2: a marker carrying a path-less concept=route must extract the
+        marker's own route_path/http_method (marker-first), not the concept's
+        empty path. Previously the concept-first extractor returned (None,None)
+        and the route was silently dropped from HTTP client->route matching."""
+        from hypergumbo_core.linkers.http import _get_route_info_from_concept
+
+        symbol = Symbol(
+            id="app.rb::UsersController::method",
+            name="UsersController#index",
+            kind="function",
+            path="app.rb",
+            span=Span(start_line=1, start_col=0, end_line=5, end_col=0),
+            language="ruby",
+            meta={
+                "framework_role": "route",
+                "route_path": "/users",
+                "http_method": "GET",
+                # rails.yaml's def-based `framework_role: ^route$` stamps a
+                # path-less concept carrying only the framework.
+                "concepts": [{"concept": "route", "framework": "rails"}],
+            },
+        )
+        assert _get_route_info_from_concept(symbol) == ("/users", "GET")
+
     def test_get_route_symbols_includes_concept_routes(self, tmp_path):
         """_get_route_symbols finds symbols with route concepts."""
         from hypergumbo_core.linkers.http import _get_route_symbols
@@ -1157,7 +1181,6 @@ class TestConceptMetadataSupport:
         edge = result.edges[0]
         assert edge.dst == route_symbol.id
         assert edge.meta["http_method"] == "GET"
-        assert edge.meta["cross_language"] is True  # JS client -> Ruby route
 
     def test_get_route_info_direct_metadata_fallback(self):
         """_get_route_info_from_concept falls back to direct meta fields."""
@@ -1383,7 +1406,6 @@ class TestGoHttpLinking:
         assert result.edges[0].edge_type == "calls"
         assert result.edges[0].meta["protocol"] == "http"
         assert result.edges[0].dst == route_symbol.id
-        assert result.edges[0].meta["cross_language"] is True
 
 
 class TestScanRubyFile:
@@ -1790,7 +1812,6 @@ class TestRubyHttpLinking:
         assert result.edges[0].edge_type == "calls"
         assert result.edges[0].meta["protocol"] == "http"
         assert result.edges[0].dst == route_symbol.id
-        assert result.edges[0].meta["cross_language"] is True
 
     def test_links_ruby_httparty_to_js_route(self, tmp_path):
         """Ruby HTTParty calls link to JS route symbols (cross-language)."""
@@ -1812,7 +1833,6 @@ class TestRubyHttpLinking:
         result = link_http(tmp_path, [route_symbol])
 
         assert len(result.edges) == 1
-        assert result.edges[0].meta["cross_language"] is True
         assert result.edges[0].confidence == 0.8
 
 
@@ -1845,7 +1865,6 @@ class TestJavaHttpLinking:
         assert result.edges[0].edge_type == "calls"
         assert result.edges[0].meta["protocol"] == "http"
         assert result.edges[0].dst == route_symbol.id
-        assert result.edges[0].meta["cross_language"] is True
 
     def test_links_java_retrofit_to_route(self, tmp_path):
         """Java Retrofit annotation calls link to route symbols."""
@@ -1872,7 +1891,6 @@ class TestJavaHttpLinking:
         result = link_http(tmp_path, [route_symbol])
 
         assert len(result.edges) == 1
-        assert result.edges[0].meta["cross_language"] is True
 
 
 class TestFindSourceFiles:

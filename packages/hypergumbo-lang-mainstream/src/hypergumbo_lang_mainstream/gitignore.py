@@ -16,7 +16,7 @@ needed — gitignore files are self-contained).
 
 Symbols Extracted
 -----------------
-- **Patterns**: Ignore patterns with category classification
+- **Patterns**: Ignore patterns, each tagged with a category and with boolean metadata flags (is_negation, is_directory, is_rooted, has_wildcard)
 
 Edges Extracted
 ---------------

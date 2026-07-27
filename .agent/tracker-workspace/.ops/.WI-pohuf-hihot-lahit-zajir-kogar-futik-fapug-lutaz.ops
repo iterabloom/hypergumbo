@@ -1,0 +1,36 @@
+- op: create  # 3841
+  at: '2026-07-16T04:12:03Z'  # 3841
+  by: agent  # 3841
+  actor: jgstern_agent  # 3841
+  clock: 1  # 3841
+  nonce: '3841'  # 3841
+  data:  # 3841
+    kind: work_item  # 3841
+    title: "compact view collapses to ~1 symbol at 4k/16k budgets: embeds full node objects that blow the token budget"  # 3841
+    status: todo_hard  # 3841
+    priority: 1  # 3841
+    parent:  # 3841
+    tags:  # 3841
+    - dogfood  # 3841
+    - wave5  # 3841
+    isbefore: []  # 3841
+    duplicate_of: []  # 3841
+    not_duplicate_of: []  # 3841
+    pr_ref:  # 3841
+    description: "Found in DEEP bakeoff deep-20260623-134237 cohort-001 iter-004. The compact view (hg.4k/16k/64k) embeds FULL survey node objects (~23 fields each: id, name, kind, span, stable_id, shape_id, signature, docstring, meta, supply_chain, ...), so at a 4k or 16k token budget only ONE large symbol fits. Cohort evidence: apollo 4k=1/16k=1/64k=59 nodes; pretix 4k=1/16k=1/64k=83 (coverage 0.0001); spring 4k=1/16k=1 (all mvnw/pom build-file nodes). This single root cause produces THREE downstream failures the cohort flagged: (a) LOW_AVG_SLICE_NODES WARNs; (b) WI-kolal containment-monotonicity violation (4k picks a different single symbol than 16k -> 4k not subset of 16k, on apollo+pretix); (c) WI-zulij low centrality coverage (the 83 pretix nodes hold 1.3% of total centrality). FIX: the compact view should emit COMPACT node representations (id + name + kind + a couple key fields), not full survey nodes, so the token budget fits far more symbols. Closes/unblocks the WI-kolal and WI-zulij no_move verdicts. Repro: inspect hg.4k.json/hg.16k.json node counts on any large-symbol repo."  # 3841
+    fields: {}  # 3841
+- op: update  # b744
+  at: '2026-07-16T05:10:17Z'  # b744
+  by: agent  # b744
+  actor: jgstern_agent  # b744
+  clock: 2  # b744
+  nonce: b744  # b744
+  set:  # b744
+    status: done  # b744
+- op: discuss  # fbc0
+  at: '2026-07-16T05:10:17Z'  # fbc0
+  by: agent  # fbc0
+  actor: jgstern_agent  # fbc0
+  clock: 3  # fbc0
+  nonce: fbc0  # fbc0
+  message: "FIXED + CLOSED — PR de2fb3717c (merged to dev @ 29ddaa1ea3). Two changes: (1) new compact_node() slim projection (id/name/qualified_name/kind/language/path/span/signature/docstring + annotated centrality) used at every compact/tiered node-serialization site, dropping the ~200-byte supply_chain block + identity/provenance internals that cost ~250 tokens/node; (2) the tiered path now re-projects features[] onto the retained node set (before the shrink loop so the token estimate is accurate) instead of copying it wholesale — features[] was the real overhead (apollo's lone feature = ~25k tokens referencing thousands of nodes; since the shrink loop only removes nodes it stayed over budget no matter how many nodes were trimmed). BEHAVIORAL evidence (production format_tiered_behavior_map on real DEEP repo data, merged code): 4k/16k/64k node counts 1/1/59 -> 4/31/142 (apollo-server) and 1/1/83 -> 5/38/190 (pretix); apollo/spring tiers now containment-monotonic. compact.py 100% covered; full compact suite (195) + survey-level tests green. Found via DEEP bakeoff iter-004."  # fbc0

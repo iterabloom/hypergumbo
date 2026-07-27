@@ -5,7 +5,7 @@ Popular language analyzers for hypergumbo.
 
 ## Supported Languages
 
-See [docs/LANGUAGES.md](https://codeberg.org/iterabloom/hypergumbo/src/branch/dev/docs/LANGUAGES.md) for the full list.
+See [docs/LANGUAGES.md](https://github.com/iterabloom/hypergumbo/blob/dev/docs/LANGUAGES.md) for the full list.
 
 ## Installation
 
@@ -27,4 +27,4 @@ from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
 ## Documentation
 
-See https://codeberg.org/iterabloom/hypergumbo for full documentation.
+See https://github.com/iterabloom/hypergumbo for full documentation.

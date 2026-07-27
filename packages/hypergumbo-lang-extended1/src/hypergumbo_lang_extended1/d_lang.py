@@ -9,6 +9,13 @@ Detects:
 - Struct definitions
 - Class definitions
 - Interface definitions
+- Enum definitions and enum members (emitted as kind=field)
+- Struct/class/interface fields (kind=field) and module-level
+  variables/constants (kind=variable)
+
+Call edges additionally use UFCS-aware receiver resolution (WI-situj /
+INV-vigaf): a ``thing.method()`` that is really the free function
+``method(thing)`` is recovered via ``ufcs_receiver_type`` hints.
 
 D is a systems programming language that combines low-level control
 with modern features like garbage collection, closures, and ranges.
@@ -52,6 +59,7 @@ from hypergumbo_core.discovery import classify_dot_d_file, find_files
 from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
 from hypergumbo_core.symbol_resolution import NameResolver
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -86,6 +94,9 @@ def _make_symbol(
     """Create a Symbol with consistent formatting."""
     start_line = node.start_point[0] + 1
     end_line = node.end_point[0] + 1
+    # INV-loguk: CC only for callables; module/struct/class/interface funnel
+    # through this same helper and would otherwise aggregate their subtrees.
+    _is_callable = kind in ("function", "method")
     span = Span(
         start_line=start_line,
         start_col=node.start_point[1],
@@ -111,6 +122,10 @@ def _make_symbol(
         ),
         signature=signature,
         meta=meta,
+        cyclomatic_complexity=(
+            compute_cyclomatic_complexity(node, "d") if _is_callable else None
+        ),
+        line_span=(end_line - start_line + 1) if _is_callable else None,
     )
 
 
@@ -129,6 +144,11 @@ def _process_module_declaration(
 
 _CONTAINER_NODE_TYPES = frozenset({
     "struct_declaration", "class_declaration", "interface_declaration",
+    # A NAMED union owns its members (a nested type: `U.a`, not `Outer.a`). An
+    # ANONYMOUS union has no ``identifier`` child, so ``_find_parent_container``'s
+    # ``if name_node`` guard skips it and the walk continues to the enclosing
+    # struct — correctly preserving D's anonymous-union member hoisting.
+    "union_declaration",
 })
 
 
@@ -172,7 +192,21 @@ def _process_function_declaration(
         qualified_name = f"{parent_name}.{func_name}"
         return _make_symbol(rel_path, run_id, node, qualified_name, "method", source, analyzer, signature=signature)
     else:
-        return _make_symbol(rel_path, run_id, node, func_name, "function", source, analyzer, signature=signature)
+        # WI-situj: stamp the first-parameter type so the receiver_type_dispatch
+        # linker can recover UFCS calls (``x.func()`` ≡ ``func(x)``) against it.
+        fn_meta: dict = {}
+        first_type = _first_param_type(node, source)
+        if first_type:
+            fn_meta["ufcs_receiver_type"] = first_type
+        # INV-fahub (real-repro dub residual): a NESTED-LOCAL function — declared
+        # inside another function's body — is not callable by bare name from
+        # outside its enclosing scope, so it must not become a global resolver
+        # target (the ``exists(x)`` free-call funnel that bound to utils.d's
+        # nested ``exists``). Mark it so ``register_symbol`` keeps it out of the
+        # resolver index; it still ships as an output symbol.
+        if _enclosing_function_node(node) is not None:
+            fn_meta["nested_local"] = True
+        return _make_symbol(rel_path, run_id, node, func_name, "function", source, analyzer, signature=signature, meta=fn_meta or None)
 
 
 def _process_struct_declaration(
@@ -212,6 +246,101 @@ def _process_interface_declaration(
 
     iface_name = node_text(name_node, source)
     return _make_symbol(rel_path, run_id, node, iface_name, "interface", source, analyzer)
+
+
+# ---------------------------------------------------------------------------
+# Field / variable extraction helpers (WI-jusus)
+# ---------------------------------------------------------------------------
+
+_D_VALUE_DECL_NODES = frozenset({"variable_declaration", "auto_declaration"})
+
+
+def _iter_d_declarator_names(
+    node: "tree_sitter.Node",
+) -> Iterator["tree_sitter.Node"]:
+    """Yield the name ``identifier`` node for each declared name.
+
+    A ``variable_declaration`` lists one ``declarator`` per name (multi-name
+    ``int a, b;``); an ``auto_declaration`` (``auto x = …``) carries the name
+    identifier directly.
+    """
+    if node.type == "auto_declaration":
+        ident = find_child_by_type(node, "identifier")
+        if ident is not None:
+            yield ident
+        return
+    for child in node.children:
+        if child.type == "declarator":
+            ident = find_child_by_type(child, "identifier")
+            if ident is not None:
+                yield ident
+
+
+def _process_value_declaration(
+    source: bytes, rel_path: str, run_id: str, node: "tree_sitter.Node",
+    analyzer: "DAnalyzer",
+) -> list[tuple[Symbol, "tree_sitter.Node"]]:
+    """Emit a ``variable_declaration`` / ``auto_declaration`` as field or variable.
+
+    The same node type serves a struct/class field, a module global, AND a
+    function-body local, so classify by the IMMEDIATE parent: ``aggregate_body``
+    → **field** (owner = the enclosing struct/class/interface, via the existing
+    ``_find_parent_container`` — so a nested struct's member is owned by the
+    nearest type, ``Inner.x`` not ``Outer.x``); module scope (``module_def`` when
+    a ``module X;`` declaration is present, else ``source_file`` directly) →
+    **variable**; anything else (``block_statement``/``function_body``) → skipped
+    local. Data anchors only — never call/instantiate targets.
+    """
+    parent = node.parent
+    if parent is None:
+        return []  # pragma: no cover - defensive
+    if parent.type == "aggregate_body":
+        owner = _find_parent_container(node, source)
+        if owner is None:
+            return []  # pragma: no cover - defensive
+        kind = "field"
+        prefix = f"{owner}."
+    elif parent.type in ("module_def", "source_file"):
+        kind = "variable"
+        prefix = ""
+    else:
+        return []  # a function-body local (or other nested scope) — not emitted
+    pairs: list[tuple[Symbol, "tree_sitter.Node"]] = []
+    for name_node in _iter_d_declarator_names(node):
+        name = prefix + node_text(name_node, source)
+        sym = _make_symbol(rel_path, run_id, name_node, name, kind, source, analyzer)
+        pairs.append((sym, name_node))
+    return pairs
+
+
+def _process_enum_member(
+    source: bytes, rel_path: str, run_id: str, node: "tree_sitter.Node",
+    analyzer: "DAnalyzer",
+) -> Optional[Symbol]:
+    """Emit an ``enum_member`` as a ``kind="field"`` anchor (``Color.red``).
+
+    Enum members are type members accessed via ``.`` (dart/zig/nim precedent);
+    the owner is the enclosing ``enum_declaration``'s name. An ANONYMOUS enum
+    (``enum { A, B }``) parses to a distinct ``anonymous_enum_declaration`` node
+    with no owner name, so its members are skipped (a fails-safe recall miss,
+    never a wrong-owner phantom).
+    """
+    enum_decl = node.parent
+    # node.parent is Node | None; a None parent (root node) has no owner, which
+    # is the same fails-safe skip as a non-enum_declaration parent.
+    if enum_decl is None or enum_decl.type != "enum_declaration":
+        return None  # anonymous_enum_declaration (or other) — no owner, skip
+    name_node = find_child_by_type(enum_decl, "identifier")
+    if name_node is None:
+        return None  # pragma: no cover - a named enum_declaration always names
+    ident = find_child_by_type(node, "identifier")
+    if ident is None:
+        return None  # pragma: no cover - defensive
+    owner = node_text(name_node, source)
+    member = node_text(ident, source)
+    return _make_symbol(
+        rel_path, run_id, node, f"{owner}.{member}", "field", source, analyzer,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -304,8 +433,9 @@ def _process_import_declaration(
 
     When *module_registry* maps module names to their symbol IDs, the
     dst of the import edge is resolved to the actual module symbol.
-    Otherwise, the dst falls back to the unresolved ``d:?:name:module``
-    format used for external / standard-library imports.
+    Otherwise, the dst is the well-formed external-module id
+    ``d:{module}:0-0:module:module`` (module in the path slot, INV-fihur)
+    used for external / standard-library imports.
     """
     edges: list[Edge] = []
 
@@ -324,7 +454,7 @@ def _process_import_declaration(
         dst = module_registry[import_name]
         confidence = 0.95
     else:
-        dst = f"d:?:{import_name}:module"
+        dst = f"d:{import_name}:0-0:module:module"
         confidence = 0.9
 
     edges.append(
@@ -426,6 +556,107 @@ def _get_ufcs_template_name(
     return None
 
 
+def _param_name_and_type(
+    param_node: "tree_sitter.Node", source: bytes,
+) -> tuple[Optional[str], Optional[str]]:
+    """Return ``(param_name, base_type_name)`` for a D ``parameter`` node.
+
+    A D ``parameter`` child has a ``type`` node (whose ``identifier`` is the
+    type name, e.g. ``File``) followed by an ``identifier`` (the parameter
+    name). ``base_type_name`` is ``None`` for an untyped / ``auto`` parameter
+    so the caller records the name without a resolvable receiver type.
+    """
+    name: Optional[str] = None
+    type_name: Optional[str] = None
+    for child in param_node.children:
+        if child.type == "identifier" and name is None:
+            name = node_text(child, source)
+        elif child.type == "type":
+            tid = find_child_by_type(child, "identifier")
+            if tid is not None:
+                type_name = node_text(tid, source)
+    return name, type_name
+
+
+def _first_param_type(
+    func_node: "tree_sitter.Node", source: bytes,
+) -> Optional[str]:
+    """Base type of a D function's FIRST parameter (its UFCS receiver type).
+
+    ``bool exists(File f)`` → ``"File"``; a UFCS call ``x.exists()`` where ``x``
+    has type ``File`` is sugar for ``exists(x)``, so the receiver-type-index
+    linker (INV-vigaf) matches the call's ``receiver_type_hint`` against this.
+    """
+    params = find_child_by_type(func_node, "parameters")
+    if params is None:  # pragma: no cover - function_declaration always has ()
+        return None
+    for child in params.children:
+        if child.type == "parameter":
+            _name, type_name = _param_name_and_type(child, source)
+            return type_name
+    return None
+
+
+def _extract_param_var_types(
+    func_node: "tree_sitter.Node", source: bytes,
+) -> dict[str, Optional[str]]:
+    """Map each parameter name to its base type (``None`` when untyped).
+
+    WI-situj: the receiver of a UFCS call (``thing.exists()``) is most often a
+    function parameter. Tracking parameter types lets the call site emit a
+    ``receiver_type_hint`` (typed) or an un-hinted unresolved edge (auto),
+    either way withholding the misbinding bare-name resolution. Local variable
+    declarations and ``auto`` locals are a documented residual — not tracked
+    here.
+    """
+    result: dict[str, Optional[str]] = {}
+    params = find_child_by_type(func_node, "parameters")
+    if params is None:  # pragma: no cover - function_declaration always has ()
+        return result
+    for child in params.children:
+        if child.type == "parameter":
+            name, type_name = _param_name_and_type(child, source)
+            if name:
+                result[name] = type_name
+    return result
+
+
+def _enclosing_function_node(
+    node: "tree_sitter.Node",
+) -> Optional["tree_sitter.Node"]:
+    """Walk parents to the enclosing ``function_declaration`` node, or None."""
+    current = node.parent
+    while current is not None:
+        if current.type == "function_declaration":
+            return current
+        current = current.parent
+    return None
+
+
+def _is_module_receiver(
+    receiver: str,
+    import_aliases: dict[str, str],
+    imported_modules: list[str],
+) -> bool:
+    """Is a D call prefix ``P`` in ``P.name()`` a MODULE, or a VALUE (UFCS)?
+
+    ``P`` is a module-qualified call (resolve normally) when it is an import alias
+    or (the last segment of) an imported module path. Otherwise ``P`` is a value
+    expression — a parameter, local, loop variable, or field — and ``P.name()`` is
+    UFCS sugar for ``name(P)``; a bare short-name resolution of ``name`` would
+    misbind to an arbitrary same-named internal free function (INV-fahub, the
+    real-repro ``exists``/``startsWith``/``toString`` funnel on dub), so the caller
+    withholds it and lets the ``receiver_type_dispatch`` linker (INV-vigaf) recover
+    it from a ``receiver_type_hint`` when the value's type is known.
+    """
+    if receiver in import_aliases:
+        return True
+    for module in imported_modules:
+        if module == receiver or module.rsplit(".", 1)[-1] == receiver:
+            return True
+    return False
+
+
 def _resolve_and_emit_call_edge(
     caller: Symbol,
     target_name: str,
@@ -436,6 +667,7 @@ def _resolve_and_emit_call_edge(
     edges: list[Edge],
     node: "tree_sitter.Node",
     run_id: str,
+    var_types: Optional[dict[str, Optional[str]]] = None,
 ) -> None:
     """Resolve a call target and emit a call edge.
 
@@ -443,6 +675,29 @@ def _resolve_and_emit_call_edge(
     handling. Uses import aliases for qualified calls and import-scope
     path_hints for bare calls to disambiguate cross-file resolution.
     """
+    # WI-situj (INV-fahub / INV-vigaf): UFCS receiver gate. When the receiver is
+    # a VALUE expression (any prefix that is not an imported module) — a
+    # parameter, local, loop variable, or field — ``thing.exists()`` is NOT a
+    # module-qualified call; it is UFCS sugar for ``exists(thing)``. The bare
+    # ``resolver.lookup`` below would misbind it to an arbitrary same-named free
+    # function ``exists()`` at 0.85 (real-repro dub funnel: ``startsWith`` /
+    # ``toString`` / ``exists`` on locals & loop vars, not just parameters).
+    # Instead emit the call unresolved with a ``receiver_type_hint`` when the
+    # value's type is known (a typed parameter) and let the
+    # ``receiver_type_dispatch`` linker recover the UFCS free function by matching
+    # its first-parameter type; an untyped local / ``auto`` / builtin receiver
+    # still withholds the misbind — the call stays honestly external.
+    if receiver is not None and not _is_module_receiver(
+        receiver, import_aliases, imported_modules,
+    ):
+        hint = var_types.get(receiver) if var_types else None
+        edges.append(make_unresolved_edge(
+            "d", caller.id, target_name,
+            node.start_point[0] + 1, PASS_ID, run_id,
+            receiver_type_hint=hint,
+        ))
+        return
+
     # Get path hint from import aliases if receiver is aliased
     path_hint: Optional[str] = None
     if receiver:
@@ -504,25 +759,48 @@ class DAnalyzer(TreeSitterAnalyzer):
         self, tree: "tree_sitter.Tree", source: bytes,
         file_path: Path, rel_path: str, run: "AnalysisRun",
     ) -> FileAnalysis:
-        """Extract module, function, struct, class, and interface symbols."""
+        """Extract module, function, struct, class, interface, field, and variable symbols.
+
+        WI-jusus: ``field`` (struct/class/enum members) and ``variable``
+        (module-level globals) are DATA anchors — emitted to ``analysis.symbols``
+        for search/centrality but kept out of the call graph (never added to
+        ``symbol_by_name``; ``register_symbol`` skips them), so a bare-named
+        module ``variable`` can never clobber a same-named ``function``.
+        """
         analysis = FileAnalysis()
 
         for node in iter_tree(tree.root_node):
-            sym: Optional[Symbol] = None
+            pairs: list[tuple[Symbol, "tree_sitter.Node"]] = []
             if node.type == "module_declaration":
                 sym = _process_module_declaration(source, rel_path, run.execution_id, node, self)
+                if sym:
+                    pairs.append((sym, node))
             elif node.type == "function_declaration":
                 sym = _process_function_declaration(source, rel_path, run.execution_id, node, self)
+                if sym:
+                    pairs.append((sym, node))
             elif node.type == "struct_declaration":
                 sym = _process_struct_declaration(source, rel_path, run.execution_id, node, self)
+                if sym:
+                    pairs.append((sym, node))
             elif node.type == "class_declaration":
                 sym = _process_class_declaration(source, rel_path, run.execution_id, node, self)
+                if sym:
+                    pairs.append((sym, node))
             elif node.type == "interface_declaration":
                 sym = _process_interface_declaration(source, rel_path, run.execution_id, node, self)
+                if sym:
+                    pairs.append((sym, node))
+            elif node.type in _D_VALUE_DECL_NODES:
+                pairs.extend(_process_value_declaration(source, rel_path, run.execution_id, node, self))
+            elif node.type == "enum_member":
+                sym = _process_enum_member(source, rel_path, run.execution_id, node, self)
+                if sym:
+                    pairs.append((sym, node))
 
-            if sym:
+            for sym, sym_node in pairs:
                 analysis.symbols.append(sym)
-                analysis.node_for_symbol[sym.id] = node
+                analysis.node_for_symbol[sym.id] = sym_node
                 if sym.kind in ("function", "method"):
                     analysis.symbol_by_name[sym.name] = sym
 
@@ -542,7 +820,20 @@ class DAnalyzer(TreeSitterAnalyzer):
         This prevents name collisions: errors.error and unrelated.error
         both exist in the registry, enabling suffix matching with path
         hint disambiguation when the caller imports one module.
+
+        WI-jusus: ``field``/``variable`` symbols are DATA anchors, never call or
+        instantiation targets — skip them so a bare-named module ``variable``
+        cannot clobber a same-named ``function``'s registry key (a false-negative
+        an edge-site kind-gate cannot recover) and a field cannot shadow a real
+        method. They still reach output/search/centrality because the output
+        symbol set is built from ``analysis.symbols`` independently of this
+        registry.
         """
+        if symbol.kind in ("field", "variable"):
+            return
+        # INV-fahub: a nested-local function is not a cross-scope call target.
+        if (symbol.meta or {}).get("nested_local"):
+            return
         file_stem = Path(symbol.path).stem  # "errors.d" -> "errors"
         qualified = f"{file_stem}.{symbol.name}"
         global_symbols[qualified] = symbol
@@ -570,6 +861,11 @@ class DAnalyzer(TreeSitterAnalyzer):
             if isinstance(sym, Symbol) and sym.kind == "module":
                 module_registry[sym.name] = sym.id
 
+        # WI-situj: per-function parameter var-types, computed lazily and keyed
+        # by the enclosing function's byte span, so the UFCS receiver gate in
+        # _resolve_and_emit_call_edge can tell a variable receiver from a module.
+        var_types_cache: dict[tuple[int, int], dict[str, Optional[str]]] = {}
+
         for node in iter_tree(tree.root_node):
             # Process imports
             if node.type == "import_declaration":
@@ -583,10 +879,21 @@ class DAnalyzer(TreeSitterAnalyzer):
                 if target_name:
                     caller = _find_enclosing_function_d(node, source, local_symbols)
                     if caller:
+                        fnode = _enclosing_function_node(node)
+                        if fnode is None:  # pragma: no cover - caller ⟹ fnode set
+                            call_var_types: dict[str, Optional[str]] = {}
+                        else:
+                            key = (fnode.start_byte, fnode.end_byte)
+                            if key not in var_types_cache:
+                                var_types_cache[key] = _extract_param_var_types(
+                                    fnode, source,
+                                )
+                            call_var_types = var_types_cache[key]
                         _resolve_and_emit_call_edge(
                             caller, target_name, receiver,
                             import_aliases, imported_modules,
                             resolver, edges, node, run.execution_id,
+                            var_types=call_var_types,
                         )
 
             # Process UFCS template calls: arr.map!(fn)

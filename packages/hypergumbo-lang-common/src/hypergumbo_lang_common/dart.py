@@ -9,6 +9,8 @@ This analyzer uses tree-sitter to parse Dart files and extract:
 - Enum declarations
 - Mixin declarations
 - Extension declarations
+- Field declarations (class/mixin/extension/enum-body values; WI-jusus)
+- Top-level variable declarations (module constants/state; WI-jusus)
 - Import and export statements
 - Function call relationships
 
@@ -18,7 +20,7 @@ gracefully degrades and returns an empty result.
 How It Works
 ------------
 Uses TreeSitterAnalyzer base class for two-pass orchestration:
-1. Pass 1: Extract classes, functions, methods, constructors, enums, mixins
+1. Pass 1: Extract classes, functions, methods, constructors, getters, setters, enums, mixins, extensions, fields, top-level variables
 2. Pass 2: Detect calls, imports, and instantiations using NameResolver
 
 The base class handles grammar checking, parser creation, file discovery,
@@ -61,22 +63,26 @@ from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
+from hypergumbo_core.ir import Edge, ExternalRef, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
     TreeSitterAnalyzer,
+    defer_bare_method_call,
     find_child_by_type,
     iter_tree,
     make_file_id,
     make_file_stable_id,
     make_symbol_id,
     make_typed_stable_id,
+    make_unresolved_edge,
+    make_variable_stable_id,
     node_text,
     visibility_from_modifiers,
 )
 from hypergumbo_core.paths import normalize_path
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
 
 from hypergumbo_core.symbol_resolution import ListNameResolver
 
@@ -210,6 +216,98 @@ def _find_enclosing_class(
     return None
 
 
+# WI-jusus (emission-parity): value-declaration list nodes and the contexts that
+# make them fields vs top-level variables. In tree-sitter-dart a value declaration
+# is an ``initialized_identifier_list`` (var/typed) or ``static_final_declaration_list``
+# (const/static/final-inferred). Inside a type BODY (wrapped in a ``declaration``) it is
+# a field; directly under ``program`` it is a top-level variable. Function-/method-/
+# for-/lambda-/if-block locals use a DISTINCT node (``local_variable_declaration`` →
+# ``initialized_variable_definition``) and never match these, so the swift-INV-lanaz /
+# go-INV-sidab local-leak class is structurally impossible here (verified by AST probe).
+_DART_VALUE_LIST_TYPES = frozenset(
+    {"initialized_identifier_list", "static_final_declaration_list"}
+)
+# The single-name item wrapper inside each list (one per comma-separated name).
+_DART_VALUE_ITEM_TYPES = frozenset(
+    {"initialized_identifier", "static_final_declaration"}
+)
+# Type-body node types (class_body serves both class and mixin declarations).
+_DART_FIELD_BODY_TYPES = frozenset({"class_body", "extension_body", "enum_body"})
+_DART_TYPE_DECL_TYPES = frozenset(
+    {
+        "class_definition",
+        "mixin_declaration",
+        "extension_declaration",
+        "enum_declaration",
+    }
+)
+
+
+def _dart_type_owner(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
+    """Nearest enclosing type name for a field (class/mixin/extension/enum).
+
+    Widens ``_find_enclosing_class`` (which omits enums) for the field path,
+    without changing that helper's existing call-resolution behaviour.
+    """
+    current = node.parent
+    while current is not None:
+        if current.type in _DART_TYPE_DECL_TYPES:
+            name_node = find_child_by_type(current, "identifier")
+            if name_node is not None:
+                return node_text(name_node, source)
+            return None  # pragma: no cover - a named type decl always has an identifier
+        current = current.parent
+    return None  # pragma: no cover - a field-scope list is always under a type decl
+
+
+def _dart_value_list_has_error_sibling(list_node: "tree_sitter.Node") -> bool:
+    """True when a record/list/map *pattern* declaration mis-parsed into this list.
+
+    Dart-3 pattern declarations (``var (a, b) = pair;``, ``final [x, y] = list;``,
+    ``final {'k': v} = map;``) are not supported by the bundled grammar; they
+    mis-parse and salvage the RHS / first binding as an
+    ``initialized_identifier_list``. Every such mis-parse leaves an ``ERROR`` node
+    among the list's preceding siblings (back to the ``;`` boundary); a well-formed
+    const/var/field/multi-name declaration never does. Skipping on that signal is
+    fails-safe — it also drops the rare ``abstract``/``external`` field (which this
+    grammar likewise parses under an ``ERROR``), a documented deferral: miss the
+    symbol, never emit a wrong one.
+    """
+    sibling = list_node.prev_sibling
+    while sibling is not None and sibling.type != ";":
+        if sibling.type == "ERROR":
+            return True
+        sibling = sibling.prev_sibling
+    return False
+
+
+def _dart_value_type(list_node: "tree_sitter.Node", source: bytes) -> Optional[str]:
+    """The declared type for a value list, or None.
+
+    Only a bare ``type_identifier`` immediately preceding the list (``int x``,
+    ``String name``) is a reliable type; ``List<String>`` yields ``type_arguments``,
+    a nullable type ``nullable_type``, and ``var``/inferred yields ``inferred_type``.
+    Returning None for those (rather than their node text) never emits a wrong type.
+    """
+    prev = list_node.prev_named_sibling
+    if prev is not None and prev.type == "type_identifier":
+        return node_text(prev, source)
+    return None
+
+
+def _dart_value_names(
+    list_node: "tree_sitter.Node", source: bytes
+) -> list[tuple[str, "tree_sitter.Node"]]:
+    """(name, identifier_node) for each comma-separated name in a value list."""
+    out: list[tuple[str, "tree_sitter.Node"]] = []
+    for item in list_node.children:
+        if item.type in _DART_VALUE_ITEM_TYPES:
+            name_node = find_child_by_type(item, "identifier")
+            if name_node is not None:
+                out.append((node_text(name_node, source), item))
+    return out
+
+
 def _extract_symbols_from_file(
     tree: "tree_sitter.Tree",
     source: bytes,
@@ -235,8 +333,16 @@ def _extract_symbols_from_file(
         kind: str,
         prefix: Optional[str] = None,
         signature: Optional[str] = None,
+        complexity: bool = False,
+        def_node: Optional["tree_sitter.Node"] = None,
     ) -> Symbol:
-        """Create a Symbol with given span."""
+        """Create a Symbol with given span.
+
+        ``complexity=True`` (callable kinds) populates cyclomatic_complexity
+        (walked from ``def_node`` — the function_body when present, else the
+        signature node) and line_span, per INV-loguk. Gated so non-callable
+        kinds (class/mixin/extension/enum) don't aggregate their whole subtree.
+        """
         full_name = f"{prefix}.{name}" if prefix else name
         span = Span(
             start_line=start_line,
@@ -271,6 +377,10 @@ def _extract_symbols_from_file(
             stable_id=stable_id,
             signature=signature,
             modifiers=modifiers,
+            cyclomatic_complexity=(
+                compute_cyclomatic_complexity(def_node, "dart") if complexity else None
+            ),
+            line_span=(end_line - start_line + 1) if complexity else None,
         )
 
     for node in iter_tree(tree.root_node):
@@ -323,7 +433,7 @@ def _extract_symbols_from_file(
                     # Find the function_body sibling
                     body = _find_next_sibling_by_type(node, "function_body")
                     start_line, end_line, start_col, end_col = _get_combined_span(node, body)
-                    symbols.append(make_symbol(start_line, end_line, start_col, end_col, name, "getter", class_name))
+                    symbols.append(make_symbol(start_line, end_line, start_col, end_col, name, "getter", class_name, complexity=True, def_node=(body if body is not None else node)))
                 continue
 
             # Check for setter_signature
@@ -334,7 +444,7 @@ def _extract_symbols_from_file(
                     name = node_text(name_node, source)
                     body = _find_next_sibling_by_type(node, "function_body")
                     start_line, end_line, start_col, end_col = _get_combined_span(node, body)
-                    symbols.append(make_symbol(start_line, end_line, start_col, end_col, name, "setter", class_name))
+                    symbols.append(make_symbol(start_line, end_line, start_col, end_col, name, "setter", class_name, complexity=True, def_node=(body if body is not None else node)))
                 continue
 
             # Check for constructor_signature (rare in method_signature)
@@ -348,7 +458,7 @@ def _extract_symbols_from_file(
                     name = ".".join(name_parts)
                     body = _find_next_sibling_by_type(node, "function_body")
                     start_line, end_line, start_col, end_col = _get_combined_span(node, body)
-                    symbols.append(make_symbol(start_line, end_line, start_col, end_col, name, "constructor", class_name))
+                    symbols.append(make_symbol(start_line, end_line, start_col, end_col, name, "constructor", class_name, complexity=True, def_node=(body if body is not None else node)))
                 continue
 
             # Regular function_signature inside method_signature
@@ -360,7 +470,7 @@ def _extract_symbols_from_file(
                     body = _find_next_sibling_by_type(node, "function_body")
                     start_line, end_line, start_col, end_col = _get_combined_span(node, body)
                     sig = _extract_dart_signature(func_sig, source)
-                    symbols.append(make_symbol(start_line, end_line, start_col, end_col, name, "method", class_name, signature=sig))
+                    symbols.append(make_symbol(start_line, end_line, start_col, end_col, name, "method", class_name, signature=sig, complexity=True, def_node=(body if body is not None else node)))
             continue
 
         # Top-level function_signature (not inside method_signature)
@@ -373,7 +483,7 @@ def _extract_symbols_from_file(
                 body = _find_next_sibling_by_type(node, "function_body")
                 start_line, end_line, start_col, end_col = _get_combined_span(node, body)
                 sig = _extract_dart_signature(node, source)
-                symbols.append(make_symbol(start_line, end_line, start_col, end_col, name, "function" if not class_name else "method", class_name, signature=sig))
+                symbols.append(make_symbol(start_line, end_line, start_col, end_col, name, "function" if not class_name else "method", class_name, signature=sig, complexity=True, def_node=(body if body is not None else node)))
             continue
 
         # Constructor signature at top level of class body (rare but possible)
@@ -387,7 +497,75 @@ def _extract_symbols_from_file(
                 name = ".".join(name_parts)
                 body = _find_next_sibling_by_type(node, "function_body")
                 start_line, end_line, start_col, end_col = _get_combined_span(node, body)
-                symbols.append(make_symbol(start_line, end_line, start_col, end_col, name, "constructor", class_name))
+                symbols.append(make_symbol(start_line, end_line, start_col, end_col, name, "constructor", class_name, complexity=True, def_node=(body if body is not None else node)))
+            continue
+
+        # Value declarations (WI-jusus emission-parity): field / top-level variable.
+        # A field carries its owner as prefix (Owner.name); a top-level variable is
+        # bare. Locals never reach here (distinct node type). Fields/variables are
+        # kept OUT of the call-resolution registry (see DartAnalyzer.register_symbol),
+        # so bare-named variables can never clobber a function key nor become a
+        # spurious call/instantiate target.
+        if node.type in _DART_VALUE_LIST_TYPES:
+            parent = node.parent
+            if parent is None:  # pragma: no cover - a list node always has a parent
+                continue
+            if (
+                parent.type == "declaration"
+                and parent.parent is not None
+                and parent.parent.type in _DART_FIELD_BODY_TYPES
+            ):
+                scope = "field"
+            elif parent.type == "program":
+                scope = "variable"
+            else:  # pragma: no cover - a value list is only ever under a type
+                continue      # body's `declaration` or directly under `program`
+            # Pattern-declaration mis-parse guard (var (a, b) = x; etc.).
+            if _dart_value_list_has_error_sibling(node):
+                continue
+            owner = _dart_type_owner(node, source) if scope == "field" else None
+            if scope == "field" and owner is None:  # pragma: no cover - always named
+                continue
+            vtype = _dart_value_type(node, source)
+            for value_name, item in _dart_value_names(node, source):
+                full_name = (
+                    f"{owner}.{value_name}" if scope == "field" else value_name
+                )
+                v_modifiers = ["private"] if value_name.startswith("_") else []
+                v_start = item.start_point[0] + 1
+                v_end = item.end_point[0] + 1
+                if scope == "field":
+                    v_stable_id = make_typed_stable_id(
+                        "field", vtype or "",
+                        visibility_from_modifiers(v_modifiers),
+                        name=value_name, qualified_name=full_name,
+                        file_stable_id=file_stable_id,
+                    )
+                else:
+                    v_stable_id = make_variable_stable_id(
+                        "dart", file_path, value_name
+                    )
+                symbols.append(Symbol(
+                    id=make_symbol_id(
+                        "dart", file_path, v_start, v_end, full_name, scope
+                    ),
+                    name=full_name,
+                    kind=scope,
+                    language="dart",
+                    path=file_path,
+                    span=Span(
+                        start_line=v_start,
+                        end_line=v_end,
+                        start_col=item.start_point[1],
+                        end_col=item.end_point[1],
+                    ),
+                    origin=PASS_ID,
+                    origin_run_id=run_id,
+                    stable_id=v_stable_id,
+                    signature=vtype,
+                    modifiers=v_modifiers,
+                    is_exported=not value_name.startswith("_"),
+                ))
             continue
 
     return symbols
@@ -654,7 +832,6 @@ def _extract_edges_from_file(
                     origin=PASS_ID,
                     origin_run_id=run_id,
                     evidence_type="import",
-                    confidence=0.95,
                 )
                 edges.append(edge)
 
@@ -724,19 +901,45 @@ def _extract_edges_from_file(
                         lookup_result = resolver.lookup(first_ident, path_hint=path_hint)
                         if lookup_result.found and lookup_result.symbol:
                             callee = lookup_result.symbol
-                            confidence = 0.85 * lookup_result.confidence
-                            edge = Edge.create(
-                                src=caller.id,
-                                dst=callee.id,
-                                edge_type="calls",
-                                line=node.start_point[0] + 1,
-                                origin=PASS_ID,
-                                origin_run_id=run_id,
-                                evidence_type="ast_call",
-                                confidence=confidence,
-                                meta={"call_construct": "function"},
-                            )
-                            edges.append(edge)
+                            # INV-fahub: a bare call resolving only to a DIFFERENT
+                            # class's method on weak short-name evidence is a magnet
+                            # (dozens of call sites -> one arbitrary def). Defer it to
+                            # the inherited_calls Site-1 walker via an unresolved edge
+                            # that carries the call site's enclosing class; free
+                            # functions and same-class implicit-``this`` calls bind.
+                            enclosing_type = _find_enclosing_class(node, source)
+                            if defer_bare_method_call(
+                                callee.kind, callee.name,
+                                lookup_result.match_type, enclosing_type,
+                            ):
+                                edges.append(make_unresolved_edge(
+                                    "dart", caller.id, first_ident,
+                                    node.start_point[0] + 1, PASS_ID, run_id,
+                                    module_hint=path_hint or "external",
+                                    dst_ref=(
+                                        ExternalRef(
+                                            lang="dart",
+                                            module_path=path_hint,
+                                            name=first_ident,
+                                        )
+                                        if path_hint else None
+                                    ),
+                                    enclosing_class=enclosing_type,
+                                ))
+                            else:
+                                confidence = 0.85 * lookup_result.confidence
+                                edge = Edge.create(
+                                    src=caller.id,
+                                    dst=callee.id,
+                                    edge_type="calls",
+                                    line=node.start_point[0] + 1,
+                                    origin=PASS_ID,
+                                    origin_run_id=run_id,
+                                    evidence_type="ast_call",
+                                    confidence=confidence,
+                                    meta={"call_construct": "function"},
+                                )
+                                edges.append(edge)
 
         # Method call in selector (obj.method()) - complex AST pattern
         if node.type == "selector":  # pragma: no cover - method call detection
@@ -756,19 +959,43 @@ def _extract_edges_from_file(
                                 lookup_result = resolver.lookup(method_name, path_hint=path_hint)
                                 if lookup_result.found and lookup_result.symbol:
                                     callee = lookup_result.symbol
-                                    confidence = 0.80 * lookup_result.confidence
-                                    edge = Edge.create(
-                                        src=caller.id,
-                                        dst=callee.id,
-                                        edge_type="calls",
-                                        line=node.start_point[0] + 1,
-                                        origin=PASS_ID,
-                                        origin_run_id=run_id,
-                                        evidence_type="ast_call",
-                                        confidence=confidence,
-                                        meta={"call_construct": "method"},
-                                    )
-                                    edges.append(edge)
+                                    # INV-fahub: same magnet gate as the simple-call
+                                    # path — a chained-receiver call whose receiver
+                                    # token was dropped must not confidently bind to
+                                    # an unrelated class's method on suffix evidence.
+                                    enclosing_type = _find_enclosing_class(node, source)
+                                    if defer_bare_method_call(
+                                        callee.kind, callee.name,
+                                        lookup_result.match_type, enclosing_type,
+                                    ):
+                                        edges.append(make_unresolved_edge(
+                                            "dart", caller.id, method_name,
+                                            node.start_point[0] + 1, PASS_ID, run_id,
+                                            module_hint=path_hint or "external",
+                                            dst_ref=(
+                                                ExternalRef(
+                                                    lang="dart",
+                                                    module_path=path_hint,
+                                                    name=method_name,
+                                                )
+                                                if path_hint else None
+                                            ),
+                                            enclosing_class=enclosing_type,
+                                        ))
+                                    else:
+                                        confidence = 0.80 * lookup_result.confidence
+                                        edge = Edge.create(
+                                            src=caller.id,
+                                            dst=callee.id,
+                                            edge_type="calls",
+                                            line=node.start_point[0] + 1,
+                                            origin=PASS_ID,
+                                            origin_run_id=run_id,
+                                            evidence_type="ast_call",
+                                            confidence=confidence,
+                                            meta={"call_construct": "method"},
+                                        )
+                                        edges.append(edge)
 
         # Constructor invocation (ClassName() or new ClassName())
         if node.type in ("new_expression", "const_object_expression"):
@@ -866,6 +1093,22 @@ class DartAnalyzer(TreeSitterAnalyzer):
     ) -> dict[str, str]:
         """Extract import hints for disambiguation."""
         return _extract_import_hints(tree, source)
+
+    def register_symbol(self, symbol: Symbol, global_symbols: dict) -> None:
+        """Keep field/variable symbols OUT of the call-resolution registry (WI-jusus).
+
+        A ``field``/``variable`` is a data anchor, never a call or instantiation
+        target. Registering them would let a bare-named top-level ``variable``
+        clobber a same-named ``function``'s flat registry key (a false-negative
+        the edge-site kind cannot recover) and let a suffix-matched ``field``
+        shadow a real method — so both integrity vectors are closed at this one
+        chokepoint rather than by gating every edge site. They remain in
+        ``analysis.symbols`` (search / centrality / io-boundaries) because the
+        output symbol set is built independently of this registry.
+        """
+        if symbol.kind in ("field", "variable"):
+            return
+        super().register_symbol(symbol, global_symbols)
 
     def extract_edges_from_file(
         self, tree: "tree_sitter.Tree", source: bytes,

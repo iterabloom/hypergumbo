@@ -5173,10 +5173,10 @@ public class App {
 
 
 class TestJavaLinesOfCode:
-    """Tests for lines_of_code on Java symbols."""
+    """Tests for line_span on Java symbols."""
 
-    def test_class_lines_of_code(self, tmp_path: Path) -> None:
-        """Class symbols have lines_of_code set from span."""
+    def test_class_line_span(self, tmp_path: Path) -> None:
+        """Class symbols have line_span set from span."""
         from hypergumbo_lang_mainstream.java import analyze_java
 
         (tmp_path / "Foo.java").write_text(
@@ -5188,7 +5188,7 @@ class TestJavaLinesOfCode:
         )
         result = analyze_java(tmp_path)
         cls = next(s for s in result.symbols if s.name == "Foo")
-        assert cls.lines_of_code == 5
+        assert cls.line_span == 5
 
 
 class TestJavaDocstring:
@@ -5300,3 +5300,154 @@ class TestJavaCyclomaticComplexity:
         assert ctor.cyclomatic_complexity == 1
         assert branchy.cyclomatic_complexity is not None
         assert branchy.cyclomatic_complexity >= 4
+
+
+class TestJavaImportEdges:
+    """Imports-edge emission (INV-gojit).
+
+    The Java analyzer historically extracted import declarations only into
+    name-resolution dicts (``_extract_imports`` / ``_extract_static_imports``
+    / ``_extract_wildcard_imports`` build simple-name → FQN maps) and never
+    surfaced them as graph ``imports`` edges, leaving Java the lone mainstream
+    analyzer whose emission-parity ``(java, edge_imports)`` cell was a strict
+    xfail (``edge_types == [calls]``). These tests pin the closure: every
+    import declaration — regular, ``import static``, and wildcard — emits one
+    file → external-ref ``imports`` edge.
+    """
+
+    @staticmethod
+    def _imports_edges(result):
+        return [e for e in result.edges if e.edge_type == "imports"]
+
+    def test_regular_and_stdlib_imports_emit_edges(self, tmp_path: Path) -> None:
+        """INV-gojit filed repro: both a stdlib (``java.util.List``) and a
+        non-stdlib (``com.example.helper.Formatter``) import emit an imports
+        edge — previously zero were produced (only ``calls`` edges)."""
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        (tmp_path / "Main.java").write_text(
+            "import java.util.List;\n"
+            "import com.example.helper.Formatter;\n"
+            "public class Main {\n"
+            "    public void run() {\n"
+            "        List<String> xs = null;\n"
+            "        Formatter f = new Formatter();\n"
+            "    }\n"
+            "}\n"
+        )
+        result = analyze_java(tmp_path)
+        imports = self._imports_edges(result)
+        modules = {e.dst_ref.module_path for e in imports if e.dst_ref}
+        names = {e.dst_ref.name for e in imports if e.dst_ref}
+        # The module slot is the FULL import specifier (Java imports a type,
+        # not a package), at parity with Go/C# — this is what lets
+        # refine_frameworks prefix-match framework package patterns.
+        assert "java.util.List" in modules
+        assert "com.example.helper.Formatter" in modules
+        assert {"List", "Formatter"} <= names
+
+    def test_import_edge_src_is_file_node(self, tmp_path: Path) -> None:
+        """The imports edge originates at the file node (make_file_id shape)."""
+        from hypergumbo_lang_mainstream.java import analyze_java
+        from hypergumbo_core.analyze.base import make_file_id
+
+        java_file = tmp_path / "A.java"
+        java_file.write_text("import java.util.Map;\npublic class A {}\n")
+        result = analyze_java(tmp_path)
+        imports = self._imports_edges(result)
+        assert imports
+        expected_src = make_file_id("java", str(java_file))
+        assert all(e.src == expected_src for e in imports)
+
+    def test_import_edge_evidence_and_confidence(self, tmp_path: Path) -> None:
+        """Regular imports carry the registered ``import_declaration`` evidence
+        type at sibling-parity confidence (0.95)."""
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        (tmp_path / "A.java").write_text(
+            "import java.util.Set;\npublic class A {}\n"
+        )
+        result = analyze_java(tmp_path)
+        edge = next(iter(self._imports_edges(result)))
+        assert edge.evidence_type == "import_declaration"
+        assert edge.confidence == 0.95
+
+    def test_static_import_emits_edge(self, tmp_path: Path) -> None:
+        """``import static`` emits an imports edge whose module slot is the full
+        import specifier and whose name is the member, tagged with the
+        registered ``import_static`` evidence type."""
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        (tmp_path / "A.java").write_text(
+            "import static java.util.Collections.singletonList;\n"
+            "public class A {}\n"
+        )
+        result = analyze_java(tmp_path)
+        statics = [
+            e for e in self._imports_edges(result)
+            if e.evidence_type == "import_static"
+        ]
+        assert len(statics) == 1
+        ref = statics[0].dst_ref
+        assert ref is not None
+        assert ref.module_path == "java.util.Collections.singletonList"
+        assert ref.name == "singletonList"
+
+    def test_wildcard_import_emits_edge(self, tmp_path: Path) -> None:
+        """Wildcard ``import java.util.*;`` emits one imports edge naming the
+        package, with ``*`` as the member sentinel."""
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        (tmp_path / "A.java").write_text(
+            "import java.util.*;\npublic class A {}\n"
+        )
+        result = analyze_java(tmp_path)
+        wildcards = [
+            e for e in self._imports_edges(result)
+            if e.dst_ref and e.dst_ref.name == "*"
+        ]
+        assert len(wildcards) == 1
+        assert wildcards[0].dst_ref.module_path == "java.util"
+        assert wildcards[0].evidence_type == "import_declaration"
+
+    def test_static_wildcard_import_emits_edge(self, tmp_path: Path) -> None:
+        """Static wildcard ``import static java.util.Arrays.*;`` emits an
+        ``import_static`` edge naming the owning type with the ``*`` sentinel."""
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        (tmp_path / "A.java").write_text(
+            "import static java.util.Arrays.*;\npublic class A {}\n"
+        )
+        result = analyze_java(tmp_path)
+        statics = [
+            e for e in self._imports_edges(result)
+            if e.evidence_type == "import_static"
+            and e.dst_ref and e.dst_ref.name == "*"
+        ]
+        assert len(statics) == 1
+        assert statics[0].dst_ref.module_path == "java.util.Arrays"
+
+    def test_no_imports_no_imports_edges(self, tmp_path: Path) -> None:
+        """A file with no import declarations emits zero imports edges."""
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        (tmp_path / "A.java").write_text(
+            "public class A {\n    public void run() {}\n}\n"
+        )
+        result = analyze_java(tmp_path)
+        assert self._imports_edges(result) == []
+
+    def test_one_edge_per_import_declaration(self, tmp_path: Path) -> None:
+        """Edge count matches the import-declaration count exactly (no over-
+        or under-emission)."""
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        (tmp_path / "A.java").write_text(
+            "import java.util.List;\n"
+            "import java.util.Map;\n"
+            "import static java.util.Collections.emptyList;\n"
+            "import java.io.*;\n"
+            "public class A {}\n"
+        )
+        result = analyze_java(tmp_path)
+        assert len(self._imports_edges(result)) == 4

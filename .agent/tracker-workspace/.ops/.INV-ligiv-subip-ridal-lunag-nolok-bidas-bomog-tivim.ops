@@ -1,0 +1,23 @@
+- op: create  # e9be
+  at: '2026-07-03T03:36:35Z'  # e9be
+  by: agent  # e9be
+  actor: jgstern_agent  # e9be
+  clock: 1  # e9be
+  nonce: e9be  # e9be
+  data:  # e9be
+    kind: invariant  # e9be
+    title: "DRF router.register() viewsets produce 0 routes; include(router.urls) is django:unknown"  # e9be
+    status: violated  # e9be
+    priority: 3  # e9be
+    parent:  # e9be
+    tags:  # e9be
+    - framework_detection  # e9be
+    - entrypoint  # e9be
+    isbefore: []  # e9be
+    duplicate_of: []  # e9be
+    not_duplicate_of: []  # e9be
+    pr_ref:  # e9be
+    description: ""  # e9be
+    fields:  # e9be
+      statement: "56 DRF router.register(...) viewset registrations produce 0 ViewSet-targeted routes and include(router.urls) resolves to django:unknown (pretix); Django REST Framework router/viewset routing is not modeled."  # e9be
+      root_cause: "The Django route model does not understand DRF router.register() plus include(router.urls) indirection, which generates viewset routes dynamically at runtime rather than via explicit path() calls."  # e9be

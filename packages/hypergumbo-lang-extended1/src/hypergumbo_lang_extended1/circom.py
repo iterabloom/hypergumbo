@@ -9,6 +9,7 @@ This analyzer uses tree-sitter to parse Circom (.circom) files and extract:
 - Template instantiation edges (component declarations → template calls)
 - Function call edges
 - Include directive edges (imports)
+- Signal flow constraint edges (<==, ==>, === → references edges with evidence_type=signal_constraint)
 
 Circom is a domain-specific language for writing zero-knowledge circuits.
 Templates define reusable circuit components with typed I/O signals.
@@ -19,7 +20,7 @@ How It Works
 ------------
 Uses TreeSitterAnalyzer base class for two-pass orchestration:
 1. Pass 1: Parse all files, extract templates, functions, signals, main
-2. Pass 2: Detect include directives, template instantiations, function calls
+2. Pass 2: Detect include directives, template instantiations, function calls, and signal flow constraints (references edges)
 
 Why This Design
 ---------------
@@ -46,6 +47,7 @@ from hypergumbo_core.analyze.base import (
     node_text,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -146,6 +148,8 @@ def _extract_symbols_from_file(
                 origin=PASS_ID,
                 origin_run_id=run_id,
                 signature=sig,
+                cyclomatic_complexity=compute_cyclomatic_complexity(node, "circom"),
+                line_span=span.end_line - span.start_line + 1,
             )
             symbols.append(sym)
 
@@ -368,7 +372,6 @@ def _extract_edges_from_file(
                         dst=result.symbol.id,
                         edge_type="references",
                         line=node.start_point[0] + 1,
-                        confidence=0.85,
                         origin=PASS_ID,
                         origin_run_id=run_id,
                         evidence_type="signal_constraint",
@@ -467,13 +470,13 @@ def analyze_circom(repo_root: Path) -> AnalysisResult:
                 UserWarning,
                 stacklevel=2,
             )
-        from hypergumbo_core.ir import PASS_VERSION, AnalysisRun
+        from hypergumbo_core.ir import PASS_VERSION, AnalysisRun, _get_python_toolchain
 
         run = AnalysisRun(
             pass_id=PASS_ID,
             # WI-luliv: toolchain is Dict[str, str], not a bare str — a string
             # value crashes finalize's run_signature recompute (.get on a str).
-            toolchain={"name": "circom", "version": "unknown"},
+            toolchain=_get_python_toolchain(),
             execution_id=f"skip-{PASS_ID}",
             version=PASS_VERSION,
         )

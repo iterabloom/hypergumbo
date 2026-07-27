@@ -66,18 +66,24 @@ def make_edge(
     dst_id: str,
     edge_type: str = "calls",
     confidence: float = 0.9,
+    rank_score: float | None = None,
+    meta: dict | None = None,
 ) -> Edge:
-    """Helper to create test edges."""
-    return Edge(
+    """Helper to create test edges. rank_score defaults to confidence (via
+    __post_init__) unless a diverging value is passed."""
+    edge = Edge(
         id=f"edge:{src_id}->{dst_id}",
         src=src_id,
         dst=dst_id,
         edge_type=edge_type,
         line=1,
         confidence=confidence,
-
+        rank_score=rank_score,
         origin="test", origin_run_id="test",
     )
+    if meta is not None:
+        edge.meta = meta
+    return edge
 
 
 class TestComputeCentrality:
@@ -190,6 +196,38 @@ class TestComputeCentrality:
         assert result_equal[target.id] == 1.0
         assert result_weighted[target.id] == 1.0  # Still normalized to 1.0
         # The absolute score before normalization is lower with weighting
+
+    def test_grpc_rpc_implementation_ranks_like_a_call(self):
+        """A folded gRPC RPC-implementation edge (implements + protocol=grpc,
+        audit-findings 0016) keeps its call-like 1.0 weight, NOT the structural
+        'implements' 0.5 — so gRPC handler centrality is not silently demoted."""
+        from hypergumbo_core.ranking import DEFAULT_EDGE_TYPE_WEIGHTS
+
+        grpc_target = make_symbol("grpc_handler")
+        plain_target = make_symbol("iface_impl")
+        caller_g = make_symbol("caller_g")
+        caller_p = make_symbol("caller_p")
+
+        # Same shape: one incoming edge each — differing only by whether the
+        # implements edge carries protocol=grpc.
+        grpc_edge = make_edge(
+            caller_g.id, grpc_target.id,
+            edge_type="implements", meta={"protocol": "grpc"},
+        )
+        plain_edge = make_edge(
+            caller_p.id, plain_target.id, edge_type="implements",
+        )
+
+        result = compute_centrality(
+            [grpc_target, plain_target, caller_g, caller_p],
+            [grpc_edge, plain_edge],
+            edge_type_weights=DEFAULT_EDGE_TYPE_WEIGHTS,
+        )
+
+        # grpc-implements weighted 1.0 (call), plain implements 0.5 →
+        # after normalization grpc is the top (1.0) and plain is half.
+        assert result[grpc_target.id] == 1.0
+        assert result[plain_target.id] == pytest.approx(0.5)
 
     def test_edge_type_weights_changes_ranking(self):
         """Edge type weighting can change relative rankings."""
@@ -1161,6 +1199,18 @@ class TestFilterEdgesForRanking:
         result = filter_edges_for_ranking([edge], [base, test_sym])
         assert len(result) == 1
 
+    def test_preserves_inherits_edges_from_tests(self):
+        """WI-lobif: `inherits` (Solidity-style class inheritance) from a test
+        file is preserved like `extends` — same is-a relationship. Before the
+        fix the structural set hardcoded {extends, implements}, so an `inherits`
+        edge from a test file was dropped as a test edge."""
+        base = make_symbol("Ownable", path="src/base.sol")
+        test_sym = make_symbol("TestOwnable", path="tests/test_ownable.py")
+        edge = make_edge(test_sym.id, base.id, edge_type="inherits")
+
+        result = filter_edges_for_ranking([edge], [base, test_sym])
+        assert len(result) == 1
+
     def test_includes_import_edges_by_default(self):
         """Import edges are included by default (weighted in centrality)."""
         a = make_symbol("a", path="src/a.py")
@@ -1199,6 +1249,28 @@ class TestFilterEdgesForRanking:
         )
         assert len(result) == 1
         assert result[0].confidence == 0.8
+
+    def test_min_edge_confidence_keys_on_rank_score(self):
+        """ADR-0039 ruling 3: the ranking filter keys on rank_score, not
+        confidence — a high-confidence dispatch that a producer dampened for
+        ranking (e.g. type_hierarchy fan-out, confidence 0.85 / rank_score 0.30)
+        is still demoted out (WI-kabom preserved), while an un-dampened edge
+        (rank_score == confidence) is unaffected."""
+        a = make_symbol("a", path="src/a.py")
+        b = make_symbol("b", path="src/b.py")
+        # High detection confidence but low ranking prominence (fan-out damped).
+        damped = make_edge(a.id, b.id, edge_type="dispatches_to",
+                           confidence=0.85, rank_score=0.30)
+        # Un-dampened edge: rank_score defaults to confidence.
+        normal = make_edge(a.id, b.id, edge_type="calls", confidence=0.85)
+
+        result = filter_edges_for_ranking(
+            [damped, normal], [a, b], min_edge_confidence=0.5
+        )
+        # The damped dispatch is excluded despite confidence 0.85 >= 0.5;
+        # keying on confidence (the pre-ADR-0039 behavior) would have kept it.
+        assert len(result) == 1
+        assert result[0].edge_type == "calls"
 
     def test_no_filtering(self):
         """All filters disabled passes through all edges."""
@@ -1957,6 +2029,29 @@ class TestComputeSymbolMentionCentralityBatch:
         )
 
         assert result.normalized_scores[f] == 0.0
+
+    def test_score_is_indegree_density_not_zero_to_one_normalized(self, tmp_path):
+        """WI-sigof: ``normalized_scores`` is in-degree-per-character density
+        (Σ in-degree of mentioned symbols ÷ file length), NOT a [0,1]-normalized
+        centrality. A short file mentioning a high-in-degree symbol scores well
+        above 1.0 — so the field name / schema description must not imply a
+        bounded [0,1] centrality. This characterization test locks the value
+        semantics: if the computation is ever re-normalized to [0,1], it fires
+        and forces the honest label (schema + docstring) to be revisited.
+        """
+        f = tmp_path / "tiny.md"
+        f.write_text("foo")  # 3 characters
+
+        foo = make_symbol("foo")
+        in_degree = {foo.id: 30}
+
+        result = compute_symbol_mention_centrality_batch(
+            [f], [foo], in_degree, min_in_degree=2
+        )
+
+        # 30 in-degree / 3 chars = 10.0 — an order of magnitude outside [0, 1].
+        assert result.normalized_scores[f] == pytest.approx(30 / 3)
+        assert result.normalized_scores[f] > 1.0
 
     def test_progress_callback(self, tmp_path):
         """Progress callback is called during processing."""
@@ -3038,7 +3133,7 @@ class TestTrivialSinkDampening:
     def _make_short_symbol(
         self, name: str, path: str, *, loc: int = 3,
     ) -> Symbol:
-        """Create a symbol with a controlled lines_of_code."""
+        """Create a symbol with a controlled line_span."""
         sym = Symbol(
             id=f"go:{path}:1-{loc}:function:{name}",
             name=name,
@@ -3051,7 +3146,7 @@ class TestTrivialSinkDampening:
         )
         sym.supply_chain_tier = 1
         sym.supply_chain_reason = "tier_1"
-        sym.lines_of_code = loc
+        sym.line_span = loc
         return sym
 
     def test_trivial_sink_ranks_below_connector(self):

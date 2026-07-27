@@ -49,6 +49,12 @@ class TestGradle:
         assert len(result.symbols) == 1
         assert result.symbols[0].name == "Main"
         assert result.symbols[0].kind == "binary"
+        # WI-kunut: a Gradle mainClass target is a Java class (target_path is
+        # .java) — its language is 'java', NOT the build-format 'gradle' (which
+        # is not a registered language → an axis_conformance leak). Consistent
+        # with every sibling extractor mapping manifest→target language
+        # (sbt→scala, cabal→haskell, gemspec→ruby, dune→ocaml, nimble→nim).
+        assert result.symbols[0].language == "java"
         edges = [e for e in result.edges if e.edge_type == "defines_target"]
         assert len(edges) == 1
         assert edges[0].meta.get("target_path") == "com/example/Main.java"
@@ -95,6 +101,10 @@ class TestCsproj:
         result = _analyze_manifest_targets(tmp_path)
         assert len(result.symbols) == 1
         assert result.symbols[0].name == "Program"
+        # WI-kunut: a .csproj StartupObject is a C# class (target_path is .cs) —
+        # language 'csharp', not the build-format 'csproj' (not a registered
+        # language). Mirrors the gradle→java fix.
+        assert result.symbols[0].language == "csharp"
         edges = [e for e in result.edges if e.edge_type == "defines_target"]
         assert edges[0].meta.get("target_path") == "MyApp/Program.cs"
 
@@ -513,9 +523,10 @@ class TestDefinesTargetDstShape:
         token (no '/' or '.'), name slot has no path separators."""
         parts = edge.dst.split(":")
         assert len(parts) == 5, f"dst must be 5 colon-parts, got {edge.dst!r}"
-        # The language slot is per-extractor convention (gradle/csproj/
-        # swift/sbt/etc. — meta-language tokens for build configs). The
-        # invariant we care about is that it is NOT path-shaped.
+        # The language slot is the target's language (a clean token — swift,
+        # scala, haskell, ruby, java, csharp, …; WI-kunut corrected the gradle/
+        # csproj build-format outliers to java/csharp). The invariant this
+        # shape check cares about is only that it is NOT path-shaped.
         assert "/" not in parts[0] and "." not in parts[0], (
             f"language slot must be a clean token, got {parts[0]!r}: "
             f"{edge.dst!r}"

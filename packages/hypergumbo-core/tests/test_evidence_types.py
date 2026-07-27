@@ -85,6 +85,155 @@ def test_endpoint_shape_axis_is_retired():
     assert et.AXIS_ENDPOINT_SHAPE not in {spec.axis for spec in EVIDENCE_TYPES}
 
 
+# --- META-bifif: evidence_type ⊥ is_resolved (no resolution smuggled into the
+# inference-pathway label; resolution lives solely on Edge.is_resolved) ---
+#
+# These two invariants are the META-bifif "no-consumer-re-derives" discipline
+# applied to the RESOLUTION verdict, and the reusable template for the pattern:
+# a granular producer verdict (here Edge.is_resolved, ADR-0037) must not be
+# encoded in — nor functionally determined by — a coarser sibling label (here
+# Edge.evidence_type, the ADR-0028 inference-pathway axis). WI-molit claimed the
+# ast_call (98.5% unresolved) vs ast_call_direct (8.3%) distinction redundantly
+# encodes is_resolved; a 3-lens audit (2026-07-17) returned KEEP — the split is a
+# benign common-cause correlation (method calls are harder to resolve than direct
+# calls), the two are distinct call-CONSTRUCT pathways, and no consumer reads the
+# label as a resolution proxy (all read is_resolved). The confidence coupling
+# (ast_call 0.85/0.40 vs ast_call_direct 0.85/0.50) is guarded separately by
+# test_confidence.py::test_derive_confidence_multimodal_splits_on_is_resolved.
+# Full audit: ~/hypergumbo_lab_notebook/concept-audit-evidence_type_is_resolved_07172026.md.
+# Re-evaluation trigger: re-open if a consumer is found branching on evidence_type
+# as a proxy for is_resolved, or a producer is found choosing the label FROM the
+# resolution result. (The is_test_file verdict is covered by the WI-popok guard
+# in test_entrypoints.py; the language verdict awaits its own audit — WI-zadot.)
+
+def test_no_evidence_type_name_encodes_resolution_status():
+    """ADR-0028 Test 1 / META-bifif: no evidence_type VALUE may encode
+    resolution status in its name (the ``*_unresolved`` / ``unresolved_*``
+    anti-pattern retired in Phase 4b). Resolution is a separate axis carried by
+    ``Edge.is_resolved``; a name containing a resolution token would smuggle a
+    second axis into the inference-pathway label. Forward-looking guard — fires
+    if any future value re-introduces the leak. (The ``ast_call`` vs
+    ``ast_call_direct`` distinction names a call CONSTRUCT, not resolution;
+    neither name carries a resolution token.)"""
+    offenders = sorted(
+        name for name in all_evidence_type_names() if "resolved" in name.lower()
+    )
+    assert offenders == [], (
+        "evidence_type values must not encode resolution status in their name "
+        f"(resolution lives on Edge.is_resolved); offenders: {offenders}"
+    )
+
+
+def test_call_evidence_type_is_orthogonal_to_is_resolved():
+    """META-bifif: the SAME call-pathway label must be valid on both resolved
+    and unresolved edges — the producer picks it from the call's syntactic form
+    at detection time, and ``is_resolved`` is set separately (ADR-0028 +
+    ADR-0037). If a label were a resolution proxy it could appear on only one
+    ``is_resolved`` value; both ``ast_call`` and ``ast_call_direct`` span both,
+    so the label encodes the pathway, not the state."""
+    for evidence_type in ("ast_call", "ast_call_direct"):
+        resolved = Edge.create(
+            "a", "b", "calls", 1, evidence_type=evidence_type,
+            is_resolved=True, origin="test", origin_run_id="test",
+        )
+        unresolved = Edge.create(
+            "a", "b", "calls", 1, evidence_type=evidence_type,
+            is_resolved=False, origin="test", origin_run_id="test",
+        )
+        assert resolved.evidence_type == evidence_type
+        assert unresolved.evidence_type == evidence_type
+        # Same label, opposite resolution states => the label is orthogonal to
+        # is_resolved (it names the pathway, not the resolution verdict).
+        assert resolved.evidence_type == unresolved.evidence_type
+        assert resolved.is_resolved is True
+        assert unresolved.is_resolved is False
+
+
+# --- META-bifif UMBRELLA: no consumer re-derives a granular producer verdict ---
+#
+# META-bifif (meta-invariant META-bifif-luzin-…-pohud): when an upstream pass
+# computes a correct, granular verdict, downstream consumers MUST honor it rather
+# than re-deriving a COARSER one via heuristic or keying tables/labels on a
+# coarser value. This is the single documented home for the umbrella across all
+# THREE named verdicts; the resolution verdict is asserted above, the other two
+# below, each cross-referenced to its primary guard.
+#
+#   1. RESOLUTION (Edge.is_resolved, ADR-0037): the evidence_type label does not
+#      encode resolution — a call pathway spans both states, confidence reads
+#      (evidence_type, is_resolved) as orthogonal inputs. [above + test_confidence.py]
+#   2. LANGUAGE (Symbol.language / discovery_language, ADR-0031): a synthetic
+#      protocol stand-in has no source language → language=None + discovery_language;
+#      a fabricated Symbol.language on a synthetic node is flagged. [corpus guard:
+#      spec_validator._check_cross_field_coherence; test_spec_validator_smoke.py]
+#   3. TEST-CODE (Symbol.is_test_file, spec §14) — a KEEP-DISTINCT EXCEPTION, not a
+#      re-derivation. The entrypoint ranker's paths.is_test_file is a BROADER
+#      "test-or-support" ranking predicate, not a coarser re-derivation of the
+#      narrow supply-chain role flag (WI-popok concept-audit KEEP). [test_entrypoints.py]
+#
+# THE REUSABLE PATTERN. For a candidate (granular verdict V, coarse proxy P):
+# META-bifif is violated only if a consumer re-derives V from P *more coarsely*
+# than the producer's verdict. It is NOT violated if P is genuinely broader /
+# different-purpose (is_test_file) or merely correlates with V without encoding it
+# (evidence_type↔is_resolved). Premise-check, don't reflex-fold — two filed
+# "members" (WI-popok, WI-molit) were KEEP-distinct on inspection.
+
+_META_BIFIF_VERDICTS = frozenset(
+    {"Edge.is_resolved", "Symbol.language", "Symbol.is_test_file"}
+)
+
+
+def test_meta_bifif_language_verdict_flags_fabricated_language_on_synthetic_node():
+    """META-bifif verdict 2 (LANGUAGE): a synthetic protocol stand-in has no
+    source language, so it must carry ``language=None`` + ``discovery_language``
+    (ADR-0031); consumers read ``discovery_language`` for the host language. A
+    fabricated ``Symbol.language`` on a ``protocol_origin`` node (the WI-zadot
+    shape) is the re-derivation META-bifif forbids, and the corpus-wide guard
+    ``spec_validator._check_cross_field_coherence`` flags it."""
+    from hypergumbo_core.ir import Span, Symbol
+    from hypergumbo_core.spec_validator import validate_ir
+
+    span = Span(start_line=1, end_line=1, start_col=0, end_col=1)
+    fabricated = Symbol(
+        id="websocket:x.py:1-1:ws:function", name="ws", kind="function",
+        language="python", path="x.py", span=span,
+        origin=["websocket-linker"], origin_run_id="uuid:test",
+        protocol_origin="websocket",
+    )
+    violations = validate_ir([fabricated], [], [])
+    matched = [
+        v for v in violations
+        if v.validator_class == "cross_field"
+        and v.field_name == "Symbol.language / Symbol.protocol_origin"
+    ]
+    assert len(matched) == 1, "fabricated language on a synthetic node must be flagged"
+
+
+def test_meta_bifif_test_code_verdict_is_a_keep_distinct_exception():
+    """META-bifif verdict 3 (TEST-CODE): NOT a re-derivation to fold — a KEEP.
+    The entrypoint ranker's ``paths.is_test_file`` is a genuinely BROADER
+    "test-or-support" predicate (it flags ``mocks/`` etc.), not a coarser
+    re-derivation of the narrow supply-chain role flag ``Symbol.is_test_file``.
+    Because META-bifif targets *coarser* re-derivations, this broader predicate
+    is OUTSIDE the invariant (WI-popok concept-audit KEEP). Asserting the breadth
+    that makes them distinct guards against a future reflex-fold; the full
+    divergence lives in test_entrypoints.py."""
+    from hypergumbo_core.paths import is_test_file
+
+    # The broad ranking predicate flags test-SUPPORT dirs the narrow role flag does
+    # not — the breadth that makes it a distinct concept, not a coarse re-derivation.
+    assert is_test_file("src/mocks/server.py") is True
+    assert is_test_file("src/app.py") is False
+
+
+def test_meta_bifif_names_exactly_three_verdicts():
+    """Completeness guard: META-bifif names exactly these three granular producer
+    verdicts. Adding a new verdict a consumer might re-derive forces adding it
+    here + a guard, so the umbrella's coverage cannot drift silently."""
+    assert _META_BIFIF_VERDICTS == frozenset(
+        {"Edge.is_resolved", "Symbol.language", "Symbol.is_test_file"}
+    )
+
+
 # --- Accessors ---
 
 def test_all_evidence_type_names_returns_frozenset():
@@ -138,6 +287,14 @@ def test_find_evidence_type_returns_spec():
 
 def test_find_evidence_type_unknown_returns_none():
     assert find_evidence_type("not-a-real-evidence-type") is None
+
+
+def test_ast_call_method_folded_to_ast_call_apex():
+    """vocab:F1 / WI-nibis (audit-findings 0012 Cluster 28D): the parked peer
+    ``ast_call_method`` folds to the ``ast_call`` apex + ``meta['call_construct']``;
+    it is no longer a registry member."""
+    assert find_evidence_type("ast_call_method") is None
+    assert find_evidence_type("ast_call") is not None
 
 
 def test_evidence_type_spec_is_dataclass():

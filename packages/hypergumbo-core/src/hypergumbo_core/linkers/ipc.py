@@ -79,7 +79,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterator
 
-from ..discovery import find_files
+from ..discovery import find_non_test_files
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from ._text_filters import js_ts_language_from_path
 from .registry import (
@@ -416,7 +416,7 @@ def detect_ipc_patterns(source: bytes, language: str) -> list[dict]:
 
 def _find_js_files(repo_root: Path) -> Iterator[Path]:
     """Find all JavaScript/TypeScript files in the repository."""
-    yield from find_files(repo_root, ["*.js", "*.ts", "*.jsx", "*.tsx", "*.mjs"])
+    yield from find_non_test_files(repo_root, ["*.js", "*.ts", "*.jsx", "*.tsx", "*.mjs"])
 
 
 def _get_language(file_path: Path) -> str:
@@ -476,15 +476,18 @@ def link_ipc(repo_root: Path) -> IpcLinkResult:
     send_by_channel: dict[str, list[IpcPattern]] = {}
     receive_by_channel: dict[str, list[IpcPattern]] = {}
 
-    for p in all_patterns:
-        if p.type == "send":
-            if p.channel not in send_by_channel:
-                send_by_channel[p.channel] = []
-            send_by_channel[p.channel].append(p)
+    # NB: distinct loop variable from the ``for p in patterns`` (dict) loop
+    # above — reusing ``p`` left mypy narrowing this IpcPattern iteration to the
+    # earlier ``dict`` type (spurious attr-defined on .type/.channel).
+    for pat in all_patterns:
+        if pat.type == "send":
+            if pat.channel not in send_by_channel:
+                send_by_channel[pat.channel] = []
+            send_by_channel[pat.channel].append(pat)
         else:
-            if p.channel not in receive_by_channel:
-                receive_by_channel[p.channel] = []
-            receive_by_channel[p.channel].append(p)
+            if pat.channel not in receive_by_channel:
+                receive_by_channel[pat.channel] = []
+            receive_by_channel[pat.channel].append(pat)
 
     # Create symbols and edges for matching channels
     edges: list[Edge] = []
@@ -553,7 +556,7 @@ def link_ipc(repo_root: Path) -> IpcLinkResult:
                 # Canonical 'event_publishes' + meta['channel_kind']='ipc'.
                 # Pass meta via kwarg so Edge.create merges with dataflow
                 # fields — assigning edge.meta afterward would wipe out
-                # access_mode/dest_access_mode (INV-forim).
+                # the dataflow meta fields (INV-forim).
                 edge = Edge.create(
                     src=src_id,
                     dst=dst_id,
@@ -564,7 +567,6 @@ def link_ipc(repo_root: Path) -> IpcLinkResult:
                     origin_run_id=run.execution_id,
                     evidence_type="variable_match" if is_variable_match else "ipc_channel_match",
                     access_mode="write",
-                    dest_access_mode="read",
                     channel=channel,
                     meta={
                         "channel_kind": "ipc",
@@ -719,7 +721,7 @@ def link_ipc(repo_root: Path) -> IpcLinkResult:
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     evidence_type="ast_call_direct",
-                    access_mode="write",
+                    data_direction="src_to_dst",
                     channel=channel,
                     meta={
                         "bridge_kind": "context_bridge",
@@ -823,7 +825,7 @@ def link_ipc(repo_root: Path) -> IpcLinkResult:
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     evidence_type="ast_call_direct",
-                    access_mode="write",
+                    data_direction="src_to_dst",
                     channel=channel,
                     meta={
                         "bridge_kind": "context_bridge",

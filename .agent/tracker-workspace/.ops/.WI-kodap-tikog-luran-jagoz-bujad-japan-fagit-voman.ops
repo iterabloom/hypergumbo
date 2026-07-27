@@ -1,0 +1,36 @@
+- op: create  # 8bbc
+  at: '2026-07-16T05:13:37Z'  # 8bbc
+  by: agent  # 8bbc
+  actor: jgstern_agent  # 8bbc
+  clock: 1  # 8bbc
+  nonce: 8bbc  # 8bbc
+  data:  # 8bbc
+    kind: work_item  # 8bbc
+    title: "Rust trait-method dispatch disconnected: ~69% of Rust calls resolve to external stubs; match-arm .run() dispatch dropped"  # 8bbc
+    status: todo_hard  # 8bbc
+    priority: 2  # 8bbc
+    parent:  # 8bbc
+    tags:  # 8bbc
+    - dogfood  # 8bbc
+    - wave5  # 8bbc
+    isbefore: []  # 8bbc
+    duplicate_of: []  # 8bbc
+    not_duplicate_of: []  # 8bbc
+    pr_ref:  # 8bbc
+    description: "Found in DEEP bakeoff deep-20260623-134237 cohort-001 iter-004 (zoxide, Rust CLI). The Rust call graph leaves the subcommand tree as disconnected islands: main()'s 'Cmd::parse().run()' resolves '.run()' to an external stub ('rust:external:0-0:run:external_symbol') even though 'Cmd.run:method' exists as a node; 'Cmd.run' has 0 outgoing edges (the match-arm 'cmd.run()' calls are dropped); and all six variant '.run()' methods have 0 incoming calls. Broadly, 404/589 (69%) of Rust 'calls' edges land on external/unresolved stubs, so the forward slice from main() reaches only 4 nodes and never enters the subcommand handlers. Distinct from the adjacent DONE items WI-gahuk (cross-file call resolution) and WI-tulid (trait-impl relationship EDGES) — this is trait-METHOD-CALL dispatch through enum match arms + trait objects not resolving to the in-tree impl. Evidence: reflect/cohort-001/iter-004/zoxide.assessment.yaml; slice.0.json (4 nodes from main)."  # 8bbc
+    fields: {}  # 8bbc
+- op: update  # c1b4
+  at: '2026-07-16T11:37:04Z'  # c1b4
+  by: agent  # c1b4
+  actor: jgstern_agent  # c1b4
+  clock: 2  # c1b4
+  nonce: c1b4  # c1b4
+  set:  # c1b4
+    status: done  # c1b4
+- op: discuss  # 02f9
+  at: '2026-07-16T11:37:04Z'  # 02f9
+  by: agent  # 02f9
+  actor: jgstern_agent  # 02f9
+  clock: 3  # 02f9
+  nonce: 02f9  # 02f9
+  message: "Match-arm dispatch mechanism FIXED in PR #691 (dev d9086c8550). Scoped-done: symptoms #2 (Cmd.run 0 outgoing) and #3 (variant .run() 0 incoming) are resolved with behavioral evidence; symptom #1 (main's chained Cmd::parse().run()) is a DISTINCT mechanism, NOT fixed here, filed as WI-lohup (do not read as resolved).\n\nBehavioral evidence (live analyze_rust probe on the zoxide subcommand shape): 'match self { Cmd::Query(q) => q.run(), Cmd::Add(a) => a.run() }' now yields Cmd::run -> {Query::run, Add::run} (was: both arms collapsed to the last-registered Add::run; Query::run had 0 incoming). Root cause: match-arm tuple-struct-pattern locals were untyped. Fix: _extract_enum_variant_field_types_rust (EnumName::Variant -> positional field types) + bind tuple_struct_pattern locals in the file-scoped var_types map; existing typed-receiver resolution finishes. Covers match/if-let/while-let/destructuring-let; builtin fields + unit/struct-like variants skipped. Tests: test_rust.py::TestRustEnumMatchDispatch (4). rust.py 100% coverage.\n\nEXPLICIT RESIDUAL (WI-lohup): the forward slice from main() still does NOT reach Cmd::run because main's 'Cmd::parse().run()' chained associated-fn call mis-resolves to Add::run (short-name) — needs return-type inference on the chained call, a separate feature from match-arm binding. Overloaded-arity and cross-file enum (registry is file-scoped) are additional documented residuals."  # 02f9

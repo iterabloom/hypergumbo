@@ -136,7 +136,7 @@ flask>=2.0
 requests
 """)
         result = analyze_requirements(tmp_path)
-        dep_edges = [e for e in result.edges if e.edge_type == "depends"]
+        dep_edges = [e for e in result.edges if e.edge_type == "depends_on"]
         assert len(dep_edges) >= 2
         dsts = {e.dst for e in dep_edges}
         assert "pypi:package:flask" in dsts
@@ -226,7 +226,10 @@ git+https://github.com/user/repo.git@main
         result = analyze_requirements(tmp_path)
         req = next((s for s in result.symbols if s.kind == "requirement"), None)
         assert req is not None
-        assert req.id == req.stable_id
+        # WI-banod: stable_id is now the canonical sha256:<16hex> (not the
+        # composite node.id); node.id remains the location key.
+        assert req.stable_id.startswith("sha256:")
+        assert req.id != req.stable_id
         assert "requirements:" in req.id
         assert "requirements.txt" in req.id
 
@@ -299,7 +302,7 @@ git+https://github.com/user/repo.git#egg=mypackage
         assert len(editables) == 1
 
         # Check edges
-        dep_edges = [e for e in result.edges if e.edge_type == "depends"]
+        dep_edges = [e for e in result.edges if e.edge_type == "depends_on"]
         assert len(dep_edges) >= 4
 
         include_edges = [e for e in result.edges if e.edge_type == "includes"]
@@ -323,10 +326,10 @@ requests
 git+https://github.com/user/repo.git#egg=mypackage
 """)
         result = analyze_requirements(tmp_path)
-        dep_edges = [e for e in result.edges if e.edge_type == "depends"]
+        dep_edges = [e for e in result.edges if e.edge_type == "depends_on"]
         assert len(dep_edges) == 1
         assert "vcs:package:mypackage" in dep_edges[0].dst
-        assert dep_edges[0].confidence == 0.9
+        assert dep_edges[0].confidence == 0.95
 
     def test_mercurial_url_requirement(self, tmp_path: Path) -> None:
         make_requirements_file(tmp_path, "requirements.txt", """

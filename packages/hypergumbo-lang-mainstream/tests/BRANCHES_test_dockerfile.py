@@ -103,7 +103,7 @@ COPY . .
 RUN npm run build
 """)
         result = analyze_dockerfiles(tmp_path)
-        base_edges = [e for e in result.edges if e.edge_type == "base_image"]
+        base_edges = [e for e in result.edges if e.edge_type == "depends_on" and (e.meta or {}).get("ref_construct") == "dockerfile_stage"]
         assert len(base_edges) >= 1
 
 class TestExposedPortExtraction:

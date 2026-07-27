@@ -78,3 +78,19 @@
   clock: 9  # 2a28
   nonce: 2a28  # 2a28
   message: "Closed by PR #3913 (commit 25f3819ef9). The WI-tisam end-to-end gap on apollo-server/smoke-test/ was a YAML-residence bug, not an analyzer-emission bug — INV-rolul shipped `_extract_http_handler_contexts` correctly, but the matching `startStandaloneServer` pattern in graphql.yaml was framework-gated and didn't load on a consumer whose local package.json doesn't declare `@apollo/server`. Fix: relocate `startStandaloneServer` / `runHttpQuery` / `executeHTTPGraphQLRequest` patterns from graphql.yaml to node-http.yaml (always-loaded; name set is high-specificity so no false-positive risk in non-Apollo codebases). Closure criterion (\"smoke-test routes.txt count goes from 0 → at least 1\") met empirically: hypergumbo routes on /home/jgstern_agent/ALL_REPOS/whole_bunch_of_repos/apollo-server/smoke-test/ now reports 1 route ([ALL] / -> ALL /, line 1 in nodenext/src/smoke-test.ts). Parent apollo-server unchanged at 6 routes. Two existing pattern-load tests in test_framework_patterns.py updated to load `node-http` instead of `graphql`; one new regression test (`test_apollo_patterns_fire_without_graphql_framework`) locks the closure invariant by exercising `enrich_symbols` with `detected_frameworks=set()`. 9117 tests pass, 100% coverage on all five packages in isolation. Tag awaits_bakeoff_validation retained — BROAD cohort: apollo-server (parent and smoke-test subdir both)."  # 2a28
+- op: update  # 7ac5
+  at: '2026-06-22T01:47:10Z'  # 7ac5
+  by: agent  # 7ac5
+  actor: jgstern_agent  # 7ac5
+  clock: 10  # 7ac5
+  nonce: 7ac5  # 7ac5
+  set: {}  # 7ac5
+  remove:  # 7ac5
+    tags: [awaits_bakeoff_validation]  # 7ac5
+- op: discuss  # 4e43
+  at: '2026-06-22T01:47:10Z'  # 4e43
+  by: agent  # 4e43
+  actor: jgstern_agent  # 4e43
+  clock: 11  # 4e43
+  nonce: '4e43'  # 4e43
+  message: "Drain audit: D-stale. Claim (apollo-server smoke-test routes 0->>=1) validated 2026-05-26: hypergumbo routes now reports 1 route; PR #3913 (25f3819ef9). Stripping stale tag."  # 4e43

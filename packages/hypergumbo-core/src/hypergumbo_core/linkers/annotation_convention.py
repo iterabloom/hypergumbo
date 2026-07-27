@@ -8,20 +8,25 @@ can't be automatically detected by framework-specific linkers.
 Supported Directives
 --------------------
 - ``@hg:publishes <channel>`` — marks the enclosing function as a publisher
-  to the named channel. Creates an ``annotated_publishes`` edge when matched
-  with a ``@hg:subscribes`` directive on the same channel.
+  to the named channel. Creates an ``event_publishes`` edge (tagged
+  ``meta.mechanism="annotation"``) when matched with a ``@hg:subscribes``
+  directive on the same channel.
 - ``@hg:subscribes <channel>`` — marks the enclosing function as a subscriber.
-- ``@hg:route <method> <path>`` — creates a route symbol (kind="route")
-  with the given method and path/identifier.
-- ``@hg:dispatches <target>`` — creates an ``annotated_dispatches`` edge
-  from the annotation site to any symbol whose name matches the target.
+- ``@hg:route <method> <path>`` — creates a route symbol (``kind="function"``
+  with ``meta.framework_role="route"``) with the given method and
+  path/identifier.
+- ``@hg:dispatches <target>`` — creates a ``dispatches_to`` edge (tagged
+  ``meta.mechanism="annotation"``) from the annotation site to any symbol
+  whose name matches the target.
 
 Matching
 --------
 Publishers and subscribers are matched by channel name (case-sensitive string
 equality). Each publisher creates an edge to every subscriber on the same
 channel. Dispatches directives match against existing symbol names. Route
-directives create standalone symbols. Confidence is 0.95.
+directives create standalone symbols. Confidence is 0.95, dropping to 0.5 with
+a ``disambiguation_fallback`` flag when a ``@hg:dispatches`` target is
+ambiguous (multiple name matches; INV-zuhub).
 
 Language Agnostic
 -----------------
@@ -213,7 +218,6 @@ def link_annotations(
                         "channel": channel,
                         "framework_role": "event_publisher",
                     },
-                    supply_chain_tier=2,
                     supply_chain_reason="@hg:publishes annotation",
                 ))
 
@@ -248,7 +252,6 @@ def link_annotations(
                             "channel": channel,
                             "framework_role": "event_subscriber",
                         },
-                        supply_chain_tier=2,
                         supply_chain_reason="@hg:subscribes annotation",
                     ))
 
@@ -266,7 +269,6 @@ def link_annotations(
                     origin_run_id=run.execution_id,
                     evidence_type="hg_annotation",
                     access_mode="write",
-                    dest_access_mode="read",
                     channel=channel,
                     meta={"mechanism": "annotation"},
                     derived_from=[pub_id, sub_id],
@@ -350,7 +352,6 @@ def link_annotations(
                     "channel": target_name,
                     "framework_role": "dispatcher",
                 },
-                supply_chain_tier=2,
                 supply_chain_reason="@hg:dispatches annotation",
             ))
 
@@ -374,7 +375,9 @@ def link_annotations(
                 origin=PASS_ID,
                 origin_run_id=run.execution_id,
                 evidence_type="hg_annotation",
-                channel=target_name,
+                # WI-pozom: the dispatch target is the canonical edge dst;
+                # meta.channel is reserved for the dataflow conduit/topic, so
+                # the (redundant) target-name channel is dropped here.
                 meta=edge_meta,
                 derived_from=[disp_id, target.id],
             ))

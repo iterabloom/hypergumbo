@@ -317,3 +317,31 @@ class TestSqlShapeId:
         tbl = next(s for s in result.symbols if s.name == "users")
         assert tbl.shape_id is not None
         assert tbl.shape_id.startswith("sha256:")
+
+
+class TestSqlCyclomaticComplexity:
+    """INV-loguk slice C: callable sql symbols carry non-null CC + LOC.
+    Real-grammar verification (CASE expression (plpgsql bodies don't parse; LANGUAGE SQL counted))."""
+
+    def test_branchy_callables_have_expected_cc(self, tmp_path) -> None:
+        from hypergumbo_lang_mainstream.sql import analyze_sql_files
+        (tmp_path / 'f.sql').write_text('CREATE FUNCTION classify(score INT, active BOOLEAN) RETURNS INT AS $$\n  SELECT CASE WHEN score > 90 AND active THEN 1\n              WHEN score > 50 OR active THEN 2\n              ELSE 3 END\n  + CASE WHEN score < 0 THEN -1 ELSE 0 END;\n$$ LANGUAGE SQL;')
+        result = analyze_sql_files(tmp_path)
+        assert not result.skipped
+        by = {s.name: s for s in result.symbols if s.kind in ('function', 'procedure')}
+        m = by.get('classify') or next(s for n, s in by.items() if n.split('.')[-1] == 'classify' or n.endswith('classify'))
+        assert m.cyclomatic_complexity == 3, m.cyclomatic_complexity
+        assert m.line_span is not None
+
+    def test_callables_non_null_non_callables_null(self, tmp_path) -> None:
+        from hypergumbo_lang_mainstream.sql import analyze_sql_files
+        (tmp_path / 'f.sql').write_text('CREATE FUNCTION classify(score INT, active BOOLEAN) RETURNS INT AS $$\n  SELECT CASE WHEN score > 90 AND active THEN 1\n              WHEN score > 50 OR active THEN 2\n              ELSE 3 END\n  + CASE WHEN score < 0 THEN -1 ELSE 0 END;\n$$ LANGUAGE SQL;')
+        result = analyze_sql_files(tmp_path)
+        callables = [s for s in result.symbols if s.kind in ('function', 'procedure')]
+        assert callables
+        for s in callables:
+            assert s.cyclomatic_complexity is not None, (s.kind, s.name)
+            assert s.line_span is not None, (s.kind, s.name)
+        for s in result.symbols:
+            if s.kind not in ('function', 'procedure'):
+                assert s.cyclomatic_complexity is None, (s.kind, s.name)

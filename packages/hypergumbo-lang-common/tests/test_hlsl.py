@@ -297,3 +297,31 @@ float4 main(float2 uv : TEXCOORD) : SV_TARGET {
         # Should have at least the main function
         funcs = [s for s in result.symbols if s.kind == "function"]
         assert len(funcs) >= 1
+
+
+class TestHlslCyclomaticComplexity:
+    """INV-loguk slice C: callable hlsl symbols carry non-null CC + LOC.
+    Real-grammar verification (C-family branches + &&/|| (struct excluded))."""
+
+    def test_branchy_callables_have_expected_cc(self, tmp_path) -> None:
+        from hypergumbo_lang_common.hlsl import analyze_hlsl
+        (tmp_path / 's.hlsl').write_text('float compute(float a, float b, int n) {\n    float result = 0.0;\n    if (a > b && b > 0.0) { result = a; }\n    else if (a < b || n > 10) { result = b; }\n    else { result = 0.0; }\n    for (int i = 0; i < n; i++) { result += a; }\n    while (result > 100.0) { result -= 1.0; }\n    switch (n) {\n        case 0: result = 1.0; break;\n        case 1: result = 2.0; break;\n        default: result = 3.0; break;\n    }\n    float t = (a > 0.0) ? a : b;\n    return result + t;\n}\nstruct VSInput { float4 pos; };\n')
+        result = analyze_hlsl(tmp_path)
+        assert not result.skipped
+        by = {s.name: s for s in result.symbols if s.kind in ('function',)}
+        m = by.get('compute') or next(s for n, s in by.items() if n.split('.')[-1] == 'compute' or n.endswith('compute'))
+        assert m.cyclomatic_complexity == 11, m.cyclomatic_complexity
+        assert m.line_span is not None
+
+    def test_callables_non_null_non_callables_null(self, tmp_path) -> None:
+        from hypergumbo_lang_common.hlsl import analyze_hlsl
+        (tmp_path / 's.hlsl').write_text('float compute(float a, float b, int n) {\n    float result = 0.0;\n    if (a > b && b > 0.0) { result = a; }\n    else if (a < b || n > 10) { result = b; }\n    else { result = 0.0; }\n    for (int i = 0; i < n; i++) { result += a; }\n    while (result > 100.0) { result -= 1.0; }\n    switch (n) {\n        case 0: result = 1.0; break;\n        case 1: result = 2.0; break;\n        default: result = 3.0; break;\n    }\n    float t = (a > 0.0) ? a : b;\n    return result + t;\n}\nstruct VSInput { float4 pos; };\n')
+        result = analyze_hlsl(tmp_path)
+        callables = [s for s in result.symbols if s.kind in ('function',)]
+        assert callables
+        for s in callables:
+            assert s.cyclomatic_complexity is not None, (s.kind, s.name)
+            assert s.line_span is not None, (s.kind, s.name)
+        for s in result.symbols:
+            if s.kind not in ('function',):
+                assert s.cyclomatic_complexity is None, (s.kind, s.name)

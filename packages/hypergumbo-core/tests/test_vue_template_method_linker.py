@@ -60,7 +60,8 @@ class TestVueTemplateMethodLinker:
         edge = result.edges[0]
         assert edge.src == directive.id
         assert edge.dst == method.id
-        assert edge.edge_type == "template_calls"
+        assert edge.edge_type == "calls"
+        assert (edge.meta or {}).get("mechanism") == "template"
 
     def test_no_match_different_file(self) -> None:
         """Directive and method in different files don't link."""

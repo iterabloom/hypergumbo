@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for the SCSS stylesheet analyzer."""
 
+import re
 from pathlib import Path
 from unittest.mock import patch
 
@@ -296,7 +297,7 @@ $spacing: 16px;
         # Cluster E sub-case (b) per audit-findings 0010: include Symbol was
         # dropped; the uses_mixin Edge carries the relationship.
         edge = next(
-            (e for e in result.edges if e.edge_type == "uses_mixin"
+            (e for e in result.edges if e.edge_type == "includes" and (e.meta or {}).get("ref_construct") == "sass_mixin"
              and (e.meta or {}).get("mixin_name") == "button"),
             None,
         )
@@ -312,7 +313,7 @@ $spacing: 16px;
 }
 """)
         result = analyze_scss(tmp_path)
-        edge = next((e for e in result.edges if e.edge_type == "uses_mixin"), None)
+        edge = next((e for e in result.edges if e.edge_type == "includes" and (e.meta or {}).get("ref_construct") == "sass_mixin"), None)
         assert edge is not None
 
     def test_analysis_run_metadata(self, tmp_path: Path) -> None:
@@ -343,8 +344,59 @@ $spacing: 16px;
         result = analyze_scss(tmp_path)
         var = next((s for s in result.symbols if s.kind == "variable"), None)
         assert var is not None
-        assert var.id == var.stable_id
-        assert "scss:" in var.id
+        # INV-dulah: node.id and stable_id are minted together by
+        # make_doc_symbol_ids; node.id is "scss:{path}:{kind}:{start_line}:{name}".
+        # Pin the 5-slot shape (numeric start_line in slot 4) so a slot reorder
+        # or a dropped line segment regresses loudly.
+        _slots = var.id.split(":", 4)
+        assert len(_slots) == 5 and _slots[0] == "scss" and _slots[3].isdigit(), var.id
+        assert var.stable_id != var.id
+        assert re.match(r"^sha256:[0-9a-f]{16}$", var.stable_id)
+
+    def test_all_symbols_have_canonical_stable_id(self, tmp_path: Path) -> None:
+        """WI-rijup: every emitted symbol carries a canonical sha256 stable_id."""
+        # Reuse the complete-stylesheet fixture, which yields variables,
+        # mixins, functions, and rule sets (>=9 symbols).
+        make_scss_file(tmp_path, "styles.scss", """$primary-color: #3498db;
+$spacing: 16px;
+$font-size: 14px;
+
+@mixin flex-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+@mixin button($bg-color) {
+  background-color: $bg-color;
+  padding: $spacing;
+}
+
+@function rem($pixels) {
+  @return $pixels / 16 * 1rem;
+}
+
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.header {
+  @include flex-center;
+  height: 60px;
+}
+
+.button {
+  @include button($primary-color);
+  font-size: rem(14);
+}
+""")
+        result = analyze_scss(tmp_path)
+        assert not result.skipped
+        assert len(result.symbols) >= 1
+        pattern = re.compile(r"^sha256:[0-9a-f]{16}$")
+        for sym in result.symbols:
+            assert pattern.match(sym.stable_id), (sym.kind, sym.name, sym.stable_id)
 
     def test_span_info(self, tmp_path: Path) -> None:
         make_scss_file(tmp_path, "styles.scss", "$color: red;")
@@ -419,5 +471,33 @@ $font-size: 14px;
 
         # Check includes — Cluster E sub-case (b) per audit-findings 0010:
         # include Symbol dropped; uses_mixin Edge carries the relationship.
-        edges = [e for e in result.edges if e.edge_type == "uses_mixin"]
+        edges = [e for e in result.edges if e.edge_type == "includes" and (e.meta or {}).get("ref_construct") == "sass_mixin"]
         assert len(edges) == 2
+
+
+class TestScssCyclomaticComplexity:
+    """INV-loguk slice C: callable scss symbols carry non-null CC + LOC.
+    Real-grammar verification (@if/@else if/@for/@while/@each)."""
+
+    def test_branchy_callables_have_expected_cc(self, tmp_path) -> None:
+        from hypergumbo_lang_common.scss import analyze_scss
+        (tmp_path / 's.scss').write_text('@function classify($x, $y) {\n  @if $x > 0 {\n    @return $x;\n  } @else if $x < 0 {\n    @return 0;\n  } @else {\n    @return $y;\n  }\n  @for $i from 1 through 3 {\n    @if $i == 2 {\n      @return $i;\n    }\n  }\n  @while $y > 0 {\n    @return $y;\n  }\n}')
+        result = analyze_scss(tmp_path)
+        assert not result.skipped
+        by = {s.name: s for s in result.symbols if s.kind in ('mixin', 'function')}
+        m = by.get('classify') or next(s for n, s in by.items() if n.split('.')[-1] == 'classify' or n.endswith('classify'))
+        assert m.cyclomatic_complexity == 6, m.cyclomatic_complexity
+        assert m.line_span is not None
+
+    def test_callables_non_null_non_callables_null(self, tmp_path) -> None:
+        from hypergumbo_lang_common.scss import analyze_scss
+        (tmp_path / 's.scss').write_text('@function classify($x, $y) {\n  @if $x > 0 {\n    @return $x;\n  } @else if $x < 0 {\n    @return 0;\n  } @else {\n    @return $y;\n  }\n  @for $i from 1 through 3 {\n    @if $i == 2 {\n      @return $i;\n    }\n  }\n  @while $y > 0 {\n    @return $y;\n  }\n}')
+        result = analyze_scss(tmp_path)
+        callables = [s for s in result.symbols if s.kind in ('mixin', 'function')]
+        assert callables
+        for s in callables:
+            assert s.cyclomatic_complexity is not None, (s.kind, s.name)
+            assert s.line_span is not None, (s.kind, s.name)
+        for s in result.symbols:
+            if s.kind not in ('mixin', 'function'):
+                assert s.cyclomatic_complexity is None, (s.kind, s.name)

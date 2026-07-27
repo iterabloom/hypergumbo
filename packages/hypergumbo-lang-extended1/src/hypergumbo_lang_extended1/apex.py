@@ -8,8 +8,8 @@ Force.com platform.
 How It Works
 ------------
 Uses TreeSitterAnalyzer base class for two-pass orchestration:
-- Pass 1: Collect symbols (classes, interfaces, enums, methods, fields)
-- Pass 2: Extract edges (method calls, static calls)
+- Pass 1: Collect symbols (classes, interfaces, enums, methods, constructors, fields, triggers)
+- Pass 2: Extract edges (method calls and `new ClassName()` constructor calls)
 
 The base class handles grammar checking, parser creation, file discovery,
 and result assembly. This module provides only the Apex-specific extraction
@@ -23,6 +23,7 @@ Symbol Types
 - method: Method definitions
 - constructor: Constructor definitions
 - field: Field/property declarations
+- trigger: Trigger definitions (with sObject metadata)
 
 Edge Types
 ----------
@@ -43,6 +44,7 @@ from hypergumbo_core.analyze.base import (
     make_symbol_id,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -233,6 +235,8 @@ def _extract_method_symbol(
         origin=PASS_ID,
         signature=signature,
         meta=meta if meta else {},
+        cyclomatic_complexity=compute_cyclomatic_complexity(node, "apex"),
+        line_span=node.end_point[0] - node.start_point[0] + 1,
     )
 
 
@@ -289,6 +293,8 @@ def _extract_constructor_symbol(
         origin=PASS_ID,
         signature=signature,
         meta=meta if meta else {},
+        cyclomatic_complexity=compute_cyclomatic_complexity(node, "apex"),
+        line_span=node.end_point[0] - node.start_point[0] + 1,
     )
 
 

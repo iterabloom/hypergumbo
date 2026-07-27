@@ -43,19 +43,21 @@ from typing import TYPE_CHECKING, ClassVar, Iterator, Optional, TypeAlias
 
 from hypergumbo_core.dataflow import annotate_dataflow as _annotate_dataflow, get_dataflow_config as _get_dataflow_config
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
+from hypergumbo_core.ir import AnalysisRun, Edge, ExternalRef, PASS_VERSION, Span, Symbol, make_pass_id
 from hypergumbo_core.qualified_name_axis import separator_for_language
 from hypergumbo_core.symbol_resolution import ListNameResolver, NameResolver
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis as _BaseFileAnalysis,
     TreeSitterAnalyzer,
+    defer_bare_method_call,
     find_child_by_type,
     iter_tree,
     make_file_id,
     make_file_stable_id,
     make_symbol_id,
     make_typed_stable_id,
+    make_unresolved_edge,
     node_text,
     populate_docstrings_from_tree,
     visibility_from_modifiers,
@@ -685,8 +687,20 @@ def _extract_symbols_from_file(
     analysis = FileAnalysis(import_aliases=using_aliases)
 
     def extract_name_from_declaration(node: "tree_sitter.Node") -> Optional[str]:
-        """Extract the identifier name from a declaration node."""
-        name_node = find_child_by_type(node, "identifier")
+        """Extract the declared name from a declaration node.
+
+        Uses the grammar's ``name`` field, which points at the member/type name
+        unambiguously. A bare first-``identifier`` scan is WRONG for
+        ``property_declaration``: a user-defined return type (``WaveInfo``,
+        ``FeatureConfig``) is itself an ``identifier`` that PRECEDES the property
+        name, so the first identifier is the type, not the member. Predefined /
+        array / generic return types are non-``identifier`` nodes, which is why
+        the old scan only misfired on user-typed properties. Every declaration
+        kind routed here (class/interface/struct/enum/constructor/property) tags
+        its name with a ``name`` field, so this is a strict correction with no
+        behavior change for the non-property kinds.
+        """
+        name_node = node.child_by_field_name("name")
         if name_node:
             return node_text(name_node, source)
         return None  # pragma: no cover - defensive
@@ -731,7 +745,7 @@ def _extract_symbols_from_file(
                     origin_run_id=run.execution_id,
                     meta=meta,
                     modifiers=class_modifiers,
-                    lines_of_code=end_line - start_line + 1,
+                    line_span=end_line - start_line + 1,
                     is_exported="public" in class_modifiers,
                     qualified_name=_make_csharp_qualified_name(ns_name, cls_ancestors, name),
                 )
@@ -764,7 +778,7 @@ def _extract_symbols_from_file(
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     modifiers=iface_modifiers,
-                    lines_of_code=end_line - start_line + 1,
+                    line_span=end_line - start_line + 1,
                     is_exported="public" in iface_modifiers,
                     qualified_name=_make_csharp_qualified_name(ns_name, cls_ancestors, name),
                 )
@@ -797,7 +811,7 @@ def _extract_symbols_from_file(
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     modifiers=struct_modifiers,
-                    lines_of_code=end_line - start_line + 1,
+                    line_span=end_line - start_line + 1,
                     is_exported="public" in struct_modifiers,
                     qualified_name=_make_csharp_qualified_name(ns_name, cls_ancestors, name),
                 )
@@ -830,7 +844,7 @@ def _extract_symbols_from_file(
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     modifiers=enum_modifiers,
-                    lines_of_code=end_line - start_line + 1,
+                    line_span=end_line - start_line + 1,
                     is_exported="public" in enum_modifiers,
                     qualified_name=_make_csharp_qualified_name(ns_name, cls_ancestors, name),
                 )
@@ -855,7 +869,7 @@ def _extract_symbols_from_file(
                 annotations = _extract_annotations(node, source)
 
                 # Build meta dict
-                meta: dict[str, object] | None = None
+                meta = None
                 if annotations:
                     meta = {"annotations": annotations}
 
@@ -892,7 +906,7 @@ def _extract_symbols_from_file(
                     signature=signature,
                     docstring=extract_preceding_doc_comment(node, source, "csharp"),
                     modifiers=modifiers,
-                    lines_of_code=end_line - start_line + 1,
+                    line_span=end_line - start_line + 1,
                     is_exported="public" in modifiers,
                     qualified_name=_make_csharp_qualified_name(ns_name, cls_ancestors, name),
                     cyclomatic_complexity=compute_cyclomatic_complexity(node, "csharp"),
@@ -944,7 +958,7 @@ def _extract_symbols_from_file(
                     signature=signature,
                     docstring=extract_preceding_doc_comment(node, source, "csharp"),
                     modifiers=modifiers,
-                    lines_of_code=end_line - start_line + 1,
+                    line_span=end_line - start_line + 1,
                     is_exported="public" in modifiers,
                     qualified_name=_make_csharp_qualified_name(ns_name, cls_ancestors, name),
                     cyclomatic_complexity=compute_cyclomatic_complexity(node, "csharp"),
@@ -982,7 +996,7 @@ def _extract_symbols_from_file(
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     modifiers=prop_modifiers,
-                    lines_of_code=end_line - start_line + 1,
+                    line_span=end_line - start_line + 1,
                     is_exported="public" in prop_modifiers,
                     qualified_name=_make_csharp_qualified_name(ns_name, cls_ancestors, name),
                 )
@@ -991,12 +1005,25 @@ def _extract_symbols_from_file(
                 analysis.symbol_by_name[name] = symbol
                 analysis.symbol_by_name[full_name] = symbol
 
-        # Field declarations — populate class_field_types for chained resolution
+        # Field declarations — WI-jusus (emission-parity F5): emit a kind="field"
+        # Symbol per declarator AND populate class_field_types for chained-call
+        # resolution. C# field attributes ([Inject] DI, EF [Column]/[Key] ORM)
+        # live in attribute_list and flow through meta["annotations"] into
+        # _extract_attribute_edges as decorated_by edges (anchored on the field).
+        # Properties are a separate property_declaration -> kind="property".
         elif node.type == "field_declaration":
             enclosing = _get_enclosing_class(node, source)
             if enclosing:
                 var_decl = find_child_by_type(node, "variable_declaration")
                 if var_decl:
+                    # Full declared type (signature): the first child of the
+                    # variable_declaration (identifier / predefined_type /
+                    # generic_name / qualified_name / array_type, ...).
+                    type_node = var_decl.children[0] if var_decl.children else None
+                    field_type = (
+                        node_text(type_node, source) if type_node is not None else None
+                    )
+                    # Bare user type NAME (for class_field_types chained resolution).
                     type_name = None
                     type_id = find_child_by_type(var_decl, "identifier")
                     if type_id:
@@ -1007,11 +1034,55 @@ def _extract_symbols_from_file(
                             gen_id = find_child_by_type(gen_name, "identifier")
                             if gen_id:
                                 type_name = node_text(gen_id, source)
-                    var_declarator = find_child_by_type(var_decl, "variable_declarator")
-                    if type_name and var_declarator:
+                    modifiers = _extract_modifiers(node)
+                    annotations = _extract_annotations(node, source)
+                    ns_name = _get_csharp_enclosing_namespace(node, source)
+                    cls_ancestors = _get_csharp_class_ancestors(node, source)
+                    start_line = node.start_point[0] + 1
+                    end_line = node.end_point[0] + 1
+                    for var_declarator in var_decl.children:
+                        if var_declarator.type != "variable_declarator":
+                            continue
                         name_node = find_child_by_type(var_declarator, "identifier")
-                        if name_node:
-                            field_name = node_text(name_node, source)
+                        if name_node is None:
+                            continue  # pragma: no cover - a declarator always names a field
+                        field_name = node_text(name_node, source)
+                        full_name = f"{enclosing}.{field_name}"
+                        qualified = _make_csharp_qualified_name(
+                            ns_name, cls_ancestors, field_name,
+                        )
+                        f_sym = Symbol(
+                            id=make_symbol_id("csharp", str(file_path), start_line, end_line, full_name, "field"),
+                            name=full_name,
+                            kind="field",
+                            language="csharp",
+                            path=str(file_path),
+                            span=Span(
+                                start_line=start_line,
+                                end_line=end_line,
+                                start_col=node.start_point[1],
+                                end_col=node.end_point[1],
+                            ),
+                            origin=PASS_ID,
+                            origin_run_id=run.execution_id,
+                            meta={"annotations": annotations} if annotations else None,
+                            stable_id=make_typed_stable_id(
+                                "field", field_type or "",
+                                visibility_from_modifiers(modifiers),
+                                name=field_name, qualified_name=full_name,
+                                file_stable_id=file_stable_id,
+                            ),
+                            signature=field_type,
+                            modifiers=modifiers,
+                            line_span=end_line - start_line + 1,
+                            is_exported="public" in modifiers,
+                            qualified_name=qualified,
+                        )
+                        analysis.symbols.append(f_sym)
+                        analysis.node_for_symbol[f_sym.id] = node
+                        analysis.symbol_by_name[field_name] = f_sym
+                        analysis.symbol_by_name[full_name] = f_sym
+                        if type_name:
                             if enclosing not in analysis.class_field_types:
                                 analysis.class_field_types[enclosing] = {}
                             analysis.class_field_types[enclosing][field_name] = type_name
@@ -1187,7 +1258,6 @@ def _extract_edges_from_file(
                     edge_type="imports",
                     line=node.start_point[0] + 1,
                     evidence_type="using_directive",
-                    confidence=0.95,
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                 ))
@@ -1229,6 +1299,12 @@ def _extract_edges_from_file(
         elif node.type == "invocation_expression":
             current_function = _get_enclosing_method(node, source, local_symbols)
             if current_function is not None:
+                # An explicit receiver identifier (``Helper`` in ``Helper.Foo()``)
+                # is captured inside the member_access branch below; initialize it
+                # here so the shared fallback path (which also handles genuinely
+                # BARE calls, where no receiver exists) can safely read it for the
+                # INV-fahub magnet gate.
+                receiver_name = None
                 # Check for member_access_expression (receiver.method() pattern)
                 member_access = find_child_by_type(node, "member_access_expression")
                 if member_access:
@@ -1257,7 +1333,6 @@ def _extract_edges_from_file(
                                             edge_type="calls",
                                             line=node.start_point[0] + 1,
                                             evidence_type="ast_call",
-                                            confidence=0.80,
                                             origin=PASS_ID,
                                             origin_run_id=run.execution_id,
                                             meta={"call_construct": "method", "receiver": "field_chain"},
@@ -1323,7 +1398,6 @@ def _extract_edges_from_file(
                                     edge_type="calls",
                                     line=node.start_point[0] + 1,
                                     evidence_type="ast_call",
-                                    confidence=0.85,
                                     origin=PASS_ID,
                                     origin_run_id=run.execution_id,
                                     meta={"call_construct": "method", "resolution_quality": "type_inferred"},
@@ -1372,7 +1446,6 @@ def _extract_edges_from_file(
                             edge_type="calls",
                             line=node.start_point[0] + 1,
                             evidence_type="ast_call",
-                            confidence=0.85,
                             origin=PASS_ID,
                             origin_run_id=run.execution_id,
                             meta={"call_construct": "method"},
@@ -1385,21 +1458,60 @@ def _extract_edges_from_file(
                         import_hint = using_aliases.get(callee_name)
                         lookup_result = resolver.lookup(callee_name, path_hint=import_hint, caller_path=_caller_path)
                         if lookup_result.found and lookup_result.symbol is not None:
-                            edges.append(Edge.create(
-                                src=current_function.id,
-                                dst=lookup_result.symbol.id,
-                                edge_type="calls",
-                                line=node.start_point[0] + 1,
-                                evidence_type="ast_call",
-                                confidence=0.80 * lookup_result.confidence,
-                                origin=PASS_ID,
-                                origin_run_id=run.execution_id,
-                                meta={"call_construct": "method"},
-                            ))
-                            _track_csharp_return_type(
-                                lookup_result.symbol, node, source,
-                                var_types, local_symbols,
-                            )
+                            # INV-fahub: resolving a bare / implicit-``this`` call
+                            # to a DIFFERENT class's ``method`` on a weak short-name
+                            # suffix match is the magnet (dozens of call sites -> one
+                            # arbitrary ``Owner.method``). ``get_callee_name`` drops
+                            # the receiver, so this fallback is shared by BARE calls
+                            # (``Foo()`` / ``this.Foo()`` — no receiver) and by
+                            # class-qualified static calls (``Helper.Process()`` —
+                            # ``receiver_name`` names the owning type). Compare the
+                            # resolved owner against the call's scope: the explicit
+                            # receiver when present (an explicit qualified call is not
+                            # a magnet), else the enclosing type (implicit ``this``).
+                            # A genuine cross-scope suffix match is withheld with the
+                            # enclosing class stamped so the inherited_calls Site-1
+                            # walker can later recover a real inherited implicit-
+                            # ``this`` call; free/non-method targets and same-scope
+                            # (incl. cross-file ``partial``) methods still bind.
+                            _sym = lookup_result.symbol
+                            _enclosing_type = _get_enclosing_class(node, source)
+                            _scope_type = receiver_name or _enclosing_type
+                            if defer_bare_method_call(
+                                _sym.kind, _sym.name,
+                                lookup_result.match_type, _scope_type,
+                            ):
+                                edges.append(make_unresolved_edge(
+                                    "csharp", current_function.id, callee_name,
+                                    node.start_point[0] + 1, PASS_ID,
+                                    run.execution_id,
+                                    module_hint=import_hint or "external",
+                                    dst_ref=(
+                                        ExternalRef(
+                                            lang="csharp",
+                                            module_path=import_hint,
+                                            name=callee_name,
+                                        )
+                                        if import_hint else None
+                                    ),
+                                    enclosing_class=_enclosing_type,
+                                ))
+                            else:
+                                edges.append(Edge.create(
+                                    src=current_function.id,
+                                    dst=_sym.id,
+                                    edge_type="calls",
+                                    line=node.start_point[0] + 1,
+                                    evidence_type="ast_call",
+                                    confidence=0.80 * lookup_result.confidence,
+                                    origin=PASS_ID,
+                                    origin_run_id=run.execution_id,
+                                    meta={"call_construct": "method"},
+                                ))
+                                _track_csharp_return_type(
+                                    _sym, node, source,
+                                    var_types, local_symbols,
+                                )
 
         # Object creation expression (new ClassName())
         elif node.type == "object_creation_expression":
@@ -1408,8 +1520,35 @@ def _extract_edges_from_file(
             type_name = node_text(type_node, source) if type_node else None
 
             if current_function is not None and type_name:
-                # Check if it's a known class
-                if type_name in local_symbols:
+                # WI-fagit: `new X(...)` invokes the CONSTRUCTOR, so the
+                # 'instantiates' edge must land on the ctor node — not the class
+                # node, which conflates 'referenced as a type' with
+                # 'instantiated' and leaves a reverse-slice on the ctor
+                # ('who constructs this?') with zero callers. Prefer the
+                # `Type.Type` constructor symbol (same-file map first, then the
+                # global registry for cross-file); C# forbids a non-ctor member
+                # named the same as its enclosing type (CS0542), so this key
+                # only ever resolves to a constructor. Fall back to the class
+                # node when the type declares no explicit constructor (the
+                # implicit default ctor has no node to anchor on).
+                # NOTE: overloaded constructors collapse to the last-registered
+                # ctor in the global registry, so all instantiations of an
+                # overloaded type share one ctor anchor (arity-precise overload
+                # matching is a follow-up).
+                ctor_key = f"{type_name}.{type_name}"
+                ctor = local_symbols.get(ctor_key) or global_symbols.get(ctor_key)
+                if ctor is not None:
+                    edges.append(Edge.create(
+                        src=current_function.id,
+                        dst=ctor.id,
+                        edge_type="instantiates",
+                        line=node.start_point[0] + 1,
+                        evidence_type="ast_call",
+                        origin=PASS_ID,
+                        origin_run_id=run.execution_id,
+                        meta={"call_construct": "constructor"},
+                    ))
+                elif type_name in local_symbols:
                     target = local_symbols[type_name]
                     edges.append(Edge.create(
                         src=current_function.id,
@@ -1417,7 +1556,6 @@ def _extract_edges_from_file(
                         edge_type="instantiates",
                         line=node.start_point[0] + 1,
                         evidence_type="ast_call",
-                        confidence=0.90,
                         origin=PASS_ID,
                         origin_run_id=run.execution_id,
                         meta={"call_construct": "constructor"},
@@ -1482,7 +1620,6 @@ def _extract_edges_from_file(
                             edge_type="references",
                             line=node.start_point[0] + 1,
                             evidence_type="ast_call",
-                            confidence=0.80,
                             origin=PASS_ID,
                             origin_run_id=run.execution_id,
                             meta={"call_construct": "method_group"},
@@ -1517,7 +1654,6 @@ def _extract_edges_from_file(
                                 edge_type="references",
                                 line=node.start_point[0] + 1,
                                 evidence_type="ast_call",
-                                confidence=0.80,
                                 origin=PASS_ID,
                                 origin_run_id=run.execution_id,
                                 meta={"call_construct": "method_group"},
@@ -1604,7 +1740,6 @@ def _extract_attribute_edges(
                     dst=attr_sym.id,
                     edge_type="decorated_by",
                     line=line,
-                    confidence=0.95,
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     evidence_type="ast_attribute",
@@ -1621,7 +1756,6 @@ def _extract_attribute_edges(
                     dst=dst_id,
                     edge_type="decorated_by",
                     line=line,
-                    confidence=0.50,
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     evidence_type="ast_attribute",
@@ -1630,6 +1764,30 @@ def _extract_attribute_edges(
                 edges.append(edge)
 
     return edges
+
+
+def _stamp_shape_ids(
+    analyzer: TreeSitterAnalyzer, analysis: "_BaseFileAnalysis",
+) -> None:
+    """WI-lutob: fill ``shape_id`` from ``node_for_symbol`` for the C#
+    ``analyze()`` override.
+
+    The base ``TreeSitterAnalyzer.analyze()`` auto-stamps ``shape_id`` (and
+    docstrings) from ``analysis.node_for_symbol`` after extraction, but
+    ``CSharpAnalyzer.analyze()`` reimplements the pipeline and never runs that
+    loop — so every body-bearing C# symbol shipped ``shape_id=None`` and the
+    structural-clone key (ADR-0014 §1) the spec marks done for C# silently did
+    not exist. This replays just the shape_id half over the C# analysis's
+    already-populated ``node_for_symbol`` (docstrings are handled in the C#
+    extraction path). Never clobbers an existing value.
+    """
+    if not analysis.node_for_symbol:
+        return
+    sym_by_id = {s.id: s for s in analysis.symbols}
+    for sym_id, ts_node in analysis.node_for_symbol.items():
+        sym = sym_by_id.get(sym_id)
+        if sym is not None and sym.shape_id is None:
+            sym.shape_id = analyzer.compute_shape_id(ts_node)
 
 
 class CSharpAnalyzer(TreeSitterAnalyzer):
@@ -1706,6 +1864,9 @@ class CSharpAnalyzer(TreeSitterAnalyzer):
             rel_path = str(cs_file.relative_to(repo_root))
             analysis = _extract_symbols_from_file(cs_file, parser, run, rel_path)
             if analysis.symbols:
+                # WI-lutob: this override bypasses the base analyze()'s shape_id
+                # auto-stamp loop; stamp it here from node_for_symbol.
+                _stamp_shape_ids(self, analysis)
                 file_analyses[cs_file] = analysis
             else:
                 files_skipped += 1

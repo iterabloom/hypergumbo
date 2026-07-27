@@ -207,3 +207,49 @@
   clock: 24  # 2699
   nonce: '2699'  # 2699
   message: "RELATED_BUT_DISTINCT to INV-nuzas: virik symptom-1 (classification_failures/ambiguous_paths empty) is the unwritten provenance channel for nuzas's tier mis-classification; distinct fixes. Distinct fix; cross-link not fold. (tracker-hygiene-sweep 2026-06-08T174504Z)"  # 2699
+- op: update  # 2951
+  at: '2026-06-22T01:48:39Z'  # 2951
+  by: agent  # 2951
+  actor: jgstern_agent  # 2951
+  clock: 25  # 2951
+  nonce: '2951'  # 2951
+  set: {}  # 2951
+  remove:  # 2951
+    tags: [awaits_bakeoff_validation]  # 2951
+- op: discuss  # 142c
+  at: '2026-06-22T01:48:39Z'  # 142c
+  by: agent  # 142c
+  actor: jgstern_agent  # 142c
+  clock: 26  # 142c
+  nonce: 142c  # 142c
+  message: "Drain audit: E-misapplied. No quantitative bakeoff-improvement claim -- this is a writer-contract wiring gap (reserved provenance fields / evidence_spans / from_dict declared but never populated; 0/110533 edges). A violation measurement, not a metric-movement claim a cohort can confirm. Tracked by violated status; stripping misapplied tag."  # 142c
+- op: update  # 4892
+  at: '2026-07-13T18:37:36Z'  # 4892
+  by: agent  # 4892
+  actor: jgstern_agent  # 4892
+  clock: 27  # 4892
+  nonce: '4892'  # 4892
+  set:  # 4892
+    priority: 3  # 4892
+- op: discuss  # 1b66
+  at: '2026-07-13T18:37:36Z'  # 1b66
+  by: agent  # 1b66
+  actor: jgstern_agent  # 1b66
+  clock: 28  # 1b66
+  nonce: 1b66  # 1b66
+  message: "ADVANCED (merged 6e7e48bf42). The residual always-[] meta-layer reporting lists now follow present-when-populated (omitted when empty): analysis_runs[].{skipped_passes,failed_files,warnings} + limits.{failed_files,skipped_languages,truncated_files}. A pipeline-health consumer reading failed_files=[] on all 84 runs no longer reads a hollow 'clean' — absence now honestly means 'nothing to report'. Matches the partial_results_reason/max_tier_applied precedent; schema unchanged (fields already optional, no version bump); no production consumer reads them via ['...']. limits.skipped_passes (populated provenance, INV-nihug) + test_files_excluded (WI-miron) stay always-present. NOT CLOSED: supply_chain.{classification_failures,ambiguous_paths} remain always-[] (a minor follow-up) and closure-evidence discipline for this invariant wants a self-corpus sweep confirming NO reserved field is always-empty. Downgraded P1->P3 (accounting tier; the assessment found ~7/12 cataloged fields already fixed and this touches zero graph nodes)."  # 1b66
+- op: update  # 4c0f
+  at: '2026-07-15T08:35:27Z'  # 4c0f
+  by: agent  # 4c0f
+  actor: jgstern_agent  # 4c0f
+  clock: 29  # 4c0f
+  nonce: 4c0f  # 4c0f
+  set:  # 4c0f
+    status: satisfied  # 4c0f
+- op: discuss  # a3d5
+  at: '2026-07-15T08:35:27Z'  # a3d5
+  by: agent  # a3d5
+  actor: jgstern_agent  # a3d5
+  clock: 30  # a3d5
+  nonce: a3d5  # a3d5
+  message: "SATISFIED (2026-07-15). The last always-[] failure/diagnostic reporting field is fixed; a full self-corpus sweep confirms the present-when-populated contract holds everywhere.\n\nRESIDUAL FIX (PR merged, dev @ c0c7eba88f): limits.supply_chain.classification_failures and .ambiguous_paths were serialized as always-[] by SupplyChainLimits.to_dict (the 2 fields the 2026-07-13 advance explicitly left open). They now follow present-when-populated (omit-when-empty); an empty limits.supply_chain serializes as {}. Both are optional in the schema (no version bump); the generator's conditional-key + populated-sample wiring keeps the schema-drift self-check green. No consumer reads them.\n\nBEHAVIORAL EVIDENCE (production-path self-corpus sweep, `hypergumbo survey .` on current dev): ZERO reserved failure/diagnostic list is serialized as an always-[] across limits, limits.supply_chain (={}), supply_chain_summary, validation_report, and every analysis_runs[] entry. This is the self-corpus sweep the 2026-07-13 note named as the closure gate. Combined with the 2026-07-13 advance (analysis_runs[].{skipped_passes,failed_files,warnings} + limits.{failed_files,skipped_languages,truncated_files} omit-when-empty), every failure/diagnostic reporting field now honestly reads absence as \"nothing to report\" rather than [] as \"checked, clean\".\n\nEXPLICITLY-CONSIDERED OUT OF SCOPE: profile.dev_frameworks=[] remains serialized-empty, but it is a DETECTION-RESULT field (no dev-only frameworks detected on this corpus), not a failure/health field where [] falsely reads as \"no failures occurred\" — so it is outside INV-virik's stated scope. RE-EVAL TRIGGER: if dev_frameworks is found to be structurally unwired (never populated on ANY corpus that has dev frameworks), file it as a distinct writer-contract item; do not re-open INV-virik for it. INV-luhur writer-contract member."  # a3d5

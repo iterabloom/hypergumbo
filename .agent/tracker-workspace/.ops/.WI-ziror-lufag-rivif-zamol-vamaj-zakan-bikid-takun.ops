@@ -38,3 +38,18 @@
     tags: [dogfood]  # d33d
   remove:  # d33d
     tags: [dogfooding]  # d33d
+- op: update  # 0881
+  at: '2026-07-12T09:27:58Z'  # 0881
+  by: agent  # 0881
+  actor: jgstern_agent  # 0881
+  clock: 4  # 0881
+  nonce: '0881'  # 0881
+  set:  # 0881
+    status: done  # 0881
+- op: discuss  # dbe3
+  at: '2026-07-12T09:27:58Z'  # dbe3
+  by: agent  # dbe3
+  actor: jgstern_agent  # dbe3
+  clock: 5  # dbe3
+  nonce: dbe3  # dbe3
+  message: "Resolved (B-refined) in PR #594 (selfh dev e02b4a731a). Live self-analysis showed the profile/metrics language key-set divergence is exactly three legitimate classes (profile-only markdown+yaml, metrics-only ansible) with NO arbitrary naming-alias drift among the 16 shared languages -- so this is a documentation fix, not a producer bug. Spec metrics section now documents the two as complementary views over different populations (file-inventory {files,loc} by extension vs symbol-inventory {nodes,edges} by analyzer node.language), naming the 3 divergence causes (files-without-graph-nodes / content-detected specialization / synthetic unknown) and why forcing agreement would regress (erase the analyzer specialization or require pre-parse to parse every file). No producer change per owner decision B-refined 2026-07-12."  # dbe3

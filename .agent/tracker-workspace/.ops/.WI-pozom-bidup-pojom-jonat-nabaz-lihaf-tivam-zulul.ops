@@ -19,3 +19,18 @@
     pr_ref:  # 7655
     description: "**Defect.** The `meta.channel` field means different things on different edge types and can carry arbitrary literal URLs, with no discriminator.\n\n**Evidence.** On event_publishes (103 edges) `channel` is a kafka/queue message topic; on references/calls (42 edges) it is a WebSocket route path (/ws, /chat, /ws/{client_id}) or a consumer class name (ChatConsumer, AsyncChatConsumer). One field name, two unrelated referent semantics, no field to disambiguate them. One observed value is the full external URL https://sqs.us-east-1.amazonaws.com/123/my-queue drawn from a test string literal (test_message_queue_linker.py).\n\n**Contract.** A single field name should carry one referent type, or a discriminator should distinguish the referents; the field should not silently overload across edge types.\n\n**Consequence.** A consumer reading `channel` to understand routing/messaging must already know the edge type to know what the value means, and may ingest an arbitrary literal URL from a test fixture as a real channel — routing/messaging analysis conflates topics with routes.\n\n**Related (not duplicate).** WI-mulub tracks meta-key registration in MetaKeySpec; INV-numat the broader vocab-axis META concern. This is the concrete cross-type referent overload of `channel` (fix: split into distinct field names per referent, or add a discriminator)."  # 7655
     fields: {}  # 7655
+- op: update  # ae15
+  at: '2026-06-30T15:16:51Z'  # ae15
+  by: agent  # ae15
+  actor: jgstern_agent  # ae15
+  clock: 2  # ae15
+  nonce: ae15  # ae15
+  set:  # ae15
+    status: done  # ae15
+- op: discuss  # 67a7
+  at: '2026-06-30T15:16:51Z'  # 67a7
+  by: agent  # 67a7
+  actor: jgstern_agent  # 67a7
+  clock: 3  # 67a7
+  nonce: 67a7  # 67a7
+  message: "Done. Merged 173e539114 (PR #346). edge.meta.channel de-overloaded to a single referent — the dataflow conduit/topic. The 3 non-conduit edge emit sites are fixed: (1) websocket.py references edge — dropped channel=ep.event (endpoint id is the edge dst; not relocated to url_path since ep.event is a route path for path-based WS but a consumer class for Django Channels, not reliably a URL); (2) websocket.py calls edge — dropped redundant channel=path_str (route already on meta.url_path); (3) annotation_convention.py dispatches_to edge — dropped redundant channel=target_name (target is the edge dst). Remaining channel= edge sites (event_publishes in ipc/tauri/message_queue/message_dispatch/event_sourcing/annotation:270/websocket:840/dataflow + crypto_flow/yjs_crdt conduits) are all the dataflow-conduit referent. channel + url_path now registered in axis_meta_keys MetaKeySpec with the conduit-vs-route contract. No Edge.create signature change. Behavioral repro on merged code: a @hg:dispatches annotation now yields a dispatches_to edge with dst='typescript:src/handler.ts:1-1:handle_join:function' and NO 'channel' in meta (meta keys = ['mechanism']) — was meta.channel='handle_join'. Production-path test: test_annotation_convention_linker.py (the dispatches_to assertion flips to the canonical dst + asserts 'channel' not in meta); test_websocket.py green with channel removed from the references/calls bridge edges (event_publishes topic channel at :594 unchanged). Scope note: Symbol.meta.channel on the synthetic annotated-dispatcher node (annotation_convention:350) is a SYMBOL not an edge — out of this edge-meta finding's scope, left as-is."  # 67a7

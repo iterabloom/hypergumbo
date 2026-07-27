@@ -74,3 +74,18 @@
   clock: 8  # 2dfd
   nonce: 2dfd  # 2dfd
   message: "root-cause family cross-link (b2); keeps existing parent (connections-sweep 2026-06-08T1900Z)"  # 2dfd
+- op: update  # 839f
+  at: '2026-07-01T16:03:30Z'  # 839f
+  by: agent  # 839f
+  actor: jgstern_agent  # 839f
+  clock: 9  # 839f
+  nonce: 839f  # 839f
+  set:  # 839f
+    status: done  # 839f
+- op: discuss  # 5623
+  at: '2026-07-01T16:03:30Z'  # 5623
+  by: agent  # 5623
+  actor: jgstern_agent  # 5623
+  clock: 10  # 5623
+  nonce: '5623'  # 5623
+  message: "Stale-already-fixed by ADR-0039 Stage A (confidence:F3). WI-suvat's premise was matching the spec's EVIDENCE_CONFIDENCE_MATRIX (10 rows) against observed edges. That block is GONE: grep -c EVIDENCE_CONFIDENCE_MATRIX docs/hypergumbo-spec.md = 0 (removed from spec §12); the matrix has no implementation to mismatch. Verified on merged dev (2026-07-01). Spec-shape change, grep-verifiable; no runtime behavior remains to reproduce. Confidence is now derived via confidence.py::derive_confidence (evidence_types base_confidence), the single source of truth. Closing done (no PR needed — the fix landed with the ADR-0039 Stage-A spec truth-telling)."  # 5623

@@ -393,7 +393,6 @@ def _extract_edges_from_tree(
                         edge_type="imports",
                         line=line,
                         evidence_type="module_source",
-                        confidence=0.95,
                         origin=PASS_ID,
                         origin_run_id=run_id,
                     ))

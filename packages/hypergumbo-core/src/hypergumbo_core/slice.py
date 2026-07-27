@@ -99,7 +99,11 @@ from dataclasses import dataclass, field
 from pathlib import PurePosixPath
 from typing import Dict, List, Set
 
-from .edge_types import IMPORT_EDGE_TYPES
+from .edge_types import (
+    IMPORT_EDGE_TYPES,
+    INHERITANCE_EDGE_TYPES,
+    is_grpc_rpc_implementation,
+)
 from .ir import Symbol, Edge
 from .paths import normalize_path, path_ends_with, is_test_node, is_utility_file
 from .ranking import compute_centrality, apply_tier_weights, apply_test_weights
@@ -121,9 +125,11 @@ from .ranking import compute_centrality, apply_tier_weights, apply_test_weights
 # All three live on the relationship axis (ADR-0023); audited as
 # already-canonical at Phase 2 (WI-sahab-fatoz). Forward-compatible
 # through Phase 4 without change.
-_STRUCTURAL_EDGE_TYPES = frozenset({
-    "extends", "implements", "contains",
-})
+# WI-lobif: the class is-a edges come from the registry's INHERITANCE_EDGE_TYPES
+# (extends/inherits/implements) rather than a hardcoded {extends, implements}
+# literal that omitted `inherits`; `contains` is the file/class membership edge
+# slice also treats structurally.
+_STRUCTURAL_EDGE_TYPES = INHERITANCE_EDGE_TYPES | frozenset({"contains"})
 
 
 class AmbiguousEntryError(Exception):
@@ -153,6 +159,31 @@ class AmbiguousEntryError(Exception):
         lines.append("Use a full node ID to disambiguate, or filter with --language.")
 
         super().__init__("\n".join(lines))
+
+
+def raise_if_ambiguous(entry_spec: str, candidates: List[Symbol]) -> None:
+    """Enforce the shared ambiguity policy for a resolved entry spec (INV-nogof).
+
+    A name-based ``entry_spec`` that resolves to symbols spanning more than one
+    file is ambiguous: the caller must disambiguate. An exact node-ID match is
+    never ambiguous (a full ID names one identity), and same-file duplicates are
+    not ambiguous (they are distinct definitions in a single location the caller
+    already pinned). Raises :class:`AmbiguousEntryError` in the ambiguous case,
+    returns ``None`` otherwise.
+
+    This was previously an inline block inside :func:`slice_graph`; ``explain``
+    silently picked *every* match instead, so identical input produced an error
+    from ``slice`` but an unbounded dump from ``explain``. Extracting the policy
+    to one function lets both read subcommands enforce it identically.
+    """
+    if len(candidates) <= 1:
+        return
+    # An exact ID match names a single identity — never ambiguous.
+    if any(sym.id == entry_spec for sym in candidates):
+        return
+    # Multiple matches in one file are distinct definitions, not ambiguity.
+    if len({sym.path for sym in candidates}) > 1:
+        raise AmbiguousEntryError(entry_spec, candidates)
 
 
 @dataclass
@@ -223,6 +254,12 @@ class SliceQuery:
             "exclude_utility": self.exclude_utility,
             "reverse": self.reverse,
         }
+        if self.min_confidence:
+            # INV-rakot: echo the confidence threshold so the slice is
+            # reproducible from its JSON. Omitted at the 0.0 default (no
+            # filtering, so it did not influence the slice) — consistent with
+            # the other conditional echoes and stable for the feature_id hash.
+            result["min_confidence"] = self.min_confidence
         if self.max_tier is not None:
             result["max_tier"] = self.max_tier
         if self.language is not None:
@@ -258,10 +295,7 @@ class SliceResult:
             ``admitted_reverse_read`` (reverse-mode read-edge admission),
             ``rejected_read_from_non_writer`` (source is a reader outside any
             writer chain — the case option 3 would catch),
-            ``rejected_other`` (rejected for another mode reason, e.g. delete),
-            ``would_admit_dst_reader`` (subset of rejected edges whose
-            dest_access_mode is read/mutate — predictive counter for option 2
-            impact before it is implemented).
+            ``rejected_other`` (rejected for another mode reason, e.g. delete).
     """
 
     entry_nodes: List[str]
@@ -431,8 +465,8 @@ def slice_graph(
     # one-hop terminals: the edge and the destination node enter the slice
     # but the destination is NOT enqueued (so reader chains don't explode).
     # This implements "data flows OUT (write site → downstream reads of what
-    # was written)" without requiring per-edge dest_access_mode annotation
-    # (which is the option-2/option-3 longer-term direction tracked separately).
+    # was written)" from the source's access_mode alone (ADR-0038 removed the
+    # dest_access_mode annotation the old option-2/option-3 direction relied on).
     writer_node_ids: Set[str] = set()
     if query.dataflow and not query.reverse:
         for edge in edges:
@@ -455,7 +489,6 @@ def slice_graph(
             "admitted_reverse_read": 0,
             "rejected_read_from_non_writer": 0,
             "rejected_other": 0,
-            "would_admit_dst_reader": 0,
         }
 
     # Build file path -> file node IDs mapping for import edge lookup
@@ -481,16 +514,9 @@ def slice_graph(
             limits_hit=[],
         )
 
-    # Check for ambiguous entry: multiple matches in different files
-    # This is only an issue for name-based matches, not exact ID matches
-    if len(entry_nodes) > 1:
-        # Check if the entry was an exact ID match (not ambiguous)
-        is_exact_id = any(n.id == query.entrypoint for n in entry_nodes)
-        if not is_exact_id:
-            # Check if matches are in different files
-            unique_files = {n.path for n in entry_nodes}
-            if len(unique_files) > 1:
-                raise AmbiguousEntryError(query.entrypoint, entry_nodes)
+    # Check for ambiguous entry: multiple name-based matches in different files
+    # (shared policy — INV-nogof; explain enforces the same via raise_if_ambiguous).
+    raise_if_ambiguous(query.entrypoint, entry_nodes)
 
     # Track results
     visited_nodes: Set[str] = set()
@@ -546,8 +572,14 @@ def slice_graph(
         node_depths[entry.id] = 0
         node_tiers[entry.id] = getattr(entry, 'supply_chain_tier', 1)
         files_seen.add(entry.path)
-        # Add import edges from this file (forward only, unless imports excluded)
-        if not query.reverse and not query.exclude_imports:
+        # Add import edges from this file (forward only, unless imports
+        # excluded) -- INV-tarol: ONLY when the entry is a container/file
+        # kind. A function-entry slice must not absorb its containing file's
+        # imports: those edges (src=file-node) are not reachable from the
+        # function, pollute the slice with above-scope content, and break
+        # subgraph closure (the file-node is not in the slice's node set).
+        if (not query.reverse and not query.exclude_imports
+                and entry.kind in _CONTAINER_KINDS):
             add_file_imports(entry.path)
 
     # Class expansion: when entry nodes include container types (class,
@@ -642,7 +674,16 @@ def slice_graph(
             #   M → Class (via contains) → unrelated callers of Class.
             #   extends/implements are kept in reverse (useful for "who
             #   inherits from this?" queries).
-            if not query.reverse and edge.edge_type in _STRUCTURAL_EDGE_TYPES:
+            # The folded gRPC RPC-implementation edge (``implements`` +
+            # meta['protocol']='grpc', audit-findings 0016) is kept forward-
+            # traversable — it is a cross-service reachability conduit
+            # (client → stub → server → impl), not a plain structural
+            # 'implements' — so it is NOT forward-skipped here.
+            if (
+                not query.reverse
+                and edge.edge_type in _STRUCTURAL_EDGE_TYPES
+                and not is_grpc_rpc_implementation(edge.edge_type, edge.meta)
+            ):
                 continue
             if query.reverse and edge.edge_type == "contains":
                 continue
@@ -685,13 +726,9 @@ def slice_graph(
                         admission_stats["admitted_downstream_read"] += 1
                         terminal = True
                     else:
-                        # Rejected by the dataflow rule. Record whether
-                        # option 2 (dst_mode OR-check) would have admitted
-                        # this edge — this is the predictive counter for
-                        # WI-hukoh Phase C decision gate.
-                        dest_mode = edge.meta.get("dest_access_mode")
-                        if dest_mode in ("read", "mutate"):
-                            admission_stats["would_admit_dst_reader"] += 1
+                        # Rejected by the dataflow rule. (The old
+                        # would_admit_dst_reader predictive counter read
+                        # dest_access_mode, removed in ADR-0038 ruling 3.)
                         if mode == "read":
                             admission_stats["rejected_read_from_non_writer"] += 1
                         else:
@@ -751,8 +788,11 @@ def slice_graph(
                 if not terminal:
                     queue.append((next_node.id, hop + 1))
                     # Add import edges from the visited file (forward only,
-                    # unless imports excluded)
-                    if not query.reverse and not query.exclude_imports:
+                    # unless imports excluded) -- INV-tarol: only when the
+                    # reached node is a container/file kind, not a function
+                    # (same scope-closure rationale as the entry-init seed).
+                    if (not query.reverse and not query.exclude_imports
+                            and next_node.kind in _CONTAINER_KINDS):
                         add_file_imports(next_node.path)
 
     # Filter pass-through synthetic nodes: they were traversed during BFS

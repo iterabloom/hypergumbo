@@ -1,0 +1,433 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# Woodpecker per-PR CI gate (port of .github/workflows/ci.yml). One of several
+# workflows in the `.woodpecker/` folder (Woodpecker uses EITHER a single root
+# `.woodpecker.yml` OR a `.woodpecker/` folder of workflows — not both — and the
+# folder is needed so nightly can carry its own py-version matrix). The workflow
+# NAME is this file's stem (`woodpecker`), so this gate keeps posting the GitHub
+# status context `ci/woodpecker/pr/woodpecker` that branch protection marks
+# required (VERIFY the exact context on the first real Woodpecker run at cutover).
+# ACTIVE on GitHub + self-hosted Woodpecker; INERT on Codeberg/Forgejo (which
+# reads `.github/workflows/**`, not `.woodpecker/`) — so it lands dormant while
+# Codeberg is origin, like the rest of the dual-mode migration tooling.
+# Siblings: `.woodpecker/full-suite.yml` (push-dev + cron), `.woodpecker/nightly.yml`
+# (cron matrix + integration). See "SIBLING WORKFLOWS" at the bottom.
+#
+# ─── What changed vs the GitHub Actions original ───────────────────────────
+#  • `changes` job        → DELETED. Replaced by Woodpecker-native `when: path`
+#                           filters on the code-dependent steps.
+#  • `pytest-retry` job   → DELETED. It existed ONLY to survive Codeberg's hard
+#                           5-minute hosted-runner cap. Our self-hosted agent has
+#                           no such cap, so the primary pytest run is authoritative.
+#  • `ci-complete` job    → DELETED. It was a Forgejo-Actions workaround (skipped
+#                           jobs hung the run). Woodpecker reports pipeline status
+#                           natively; the overall pass/fail IS the gate.
+#  • `stop-the-line` job  → NOT PORTED YET (see the commented block at the end).
+#                           It reads the Forgejo commit-status API; on GitHub the
+#                           equivalent is either a GitHub-status query or, better,
+#                           GitHub branch-protection required checks. FLAG — decide
+#                           in review.
+#  • every `runs-on: self-hosted` + `setup-python` → a container step on
+#    `python:3.11-bookworm` (Phase-0 proved gcc/headers are baked in; only `jq`
+#    and grammar builds need no apt).
+#  • `actions/checkout`   → Woodpecker's built-in clone (configured below).
+#  • `actions/cache` (26 uses) → see "CACHING" note. This draft uses a shared
+#    WORKSPACE dir for grammar wheels (built once, consumed by pytest in the same
+#    run) and leaves a host-volume pip cache as a wired-in-later TODO.
+#
+# ─── Mapping notes (CONFIRMED empirically at the Phase-1 gate, 2026-07) ─────
+#  • PR base SHA: GHA used `github.event.pull_request.base.sha`. Woodpecker gives
+#    `CI_COMMIT_TARGET_BRANCH` (the PR's target branch name) but not the base SHA
+#    directly, so the smart-test diff below computes it as
+#    `git merge-base origin/$CI_COMMIT_TARGET_BRANCH HEAD`. CONFIRMED against a
+#    real Woodpecker PR payload (`CI_COMMIT_TARGET_BRANCH=dev`).
+#  • Woodpecker's GitHub driver reports status back as a legacy commit-STATUS
+#    (context `ci/woodpecker/pr/woodpecker`), NOT a check-run (delta (b) resolved;
+#    `/commits/{sha}/check-runs` was empty). The tracker-sync poll re-points to
+#    GitHub's identically-shaped `/commits/{sha}/status`.
+
+# Gate the whole workflow to pushes/PRs on the integration branches.
+when:
+  - event: [push, pull_request]
+    branch: [main, dev]
+
+# Woodpecker auto-injects a clone step. dco / verify-generated / smart-test all do
+# git merge-base + recency-window reads, which a SHALLOW clone breaks (empirically:
+# failed merge-base + "last 1 commits"). Full clone — cheap on the self-hosted agent,
+# and it kills that whole class of shallow-history bugs. (GHA used fetch-depth:50 only
+# because GitHub's hosted runners bill bandwidth; we don't.)
+clone:
+  git:
+    image: woodpeckerci/plugin-git
+
+steps:
+  # ── ruff + bandit ─────────────────────────────────────────────────────────
+  - name: lint
+    image: python:3.11-bookworm
+    depends_on: []            # no deps → starts immediately, parallel with peers
+    when:
+      - path: &code_paths
+          include:
+            - "**/*.py"
+            - "**/*.json"
+            - "**/*.toml"
+            - "scripts/**"
+            - ".github/workflows/**"
+            - ".woodpecker.yml"
+            - ".woodpecker/**"
+            - "**/*.yml"
+            - "**/*.yaml"
+          exclude:
+            - ".agent/tracker/**"
+            - ".agent/tracker-workspace/**"
+    commands:
+      - pip install --upgrade pip
+      - pip install "ruff~=0.15.0" "bandit~=1.9.3"
+      - ruff check packages/*/src/ packages/*/tests/
+      - bandit -r packages/*/src/ -c pyproject.toml
+
+  # ── whole-tree strict mypy ratchet (NON-BLOCKING — WI-rokup/INV-zogud) ─────
+  - name: mypy
+    image: python:3.11-bookworm
+    depends_on: []
+    failure: ignore           # == GHA continue-on-error: reported, never gates
+    when:
+      - path: *code_paths
+    commands:
+      - pip install --upgrade pip
+      - pip install -e packages/hypergumbo-core -e packages/hypergumbo-lang-mainstream -e packages/hypergumbo-lang-common -e packages/hypergumbo-lang-extended1 -e packages/hypergumbo-lang-rust-analyzer -e "packages/hypergumbo-tracker[dev,tui]"
+      - pip install "mypy~=2.1" "types-PyYAML~=6.0.12"
+      - scripts/check-mypy-ratchet --mode=warning
+
+  # ── pip-audit (dependency CVEs) ────────────────────────────────────────────
+  # The long --ignore-vuln list is a verbatim carry-over; the rationale comments
+  # live in ci.yml and pyproject. Kept as-is so the audit surface is identical.
+  - name: audit
+    image: python:3.11-bookworm
+    depends_on: []
+    when:
+      - path: *code_paths
+    commands:
+      - pip install --upgrade pip wheel setuptools
+      - pip install pip-audit "requests~=2.33.0" "pygments~=2.20.0" "urllib3>=2.7.0" "idna>=3.15" "msgpack>=1.2.1" "click>=8.3.3"
+      - >
+        pip-audit --skip-editable
+        --ignore-vuln CVE-2025-71176 --ignore-vuln CVE-2026-3219
+        --ignore-vuln PYSEC-2025-211 --ignore-vuln PYSEC-2025-212
+        --ignore-vuln PYSEC-2025-213 --ignore-vuln PYSEC-2025-214
+        --ignore-vuln PYSEC-2025-215 --ignore-vuln PYSEC-2025-216
+        --ignore-vuln PYSEC-2025-217 --ignore-vuln PYSEC-2025-218
+        --ignore-vuln PYSEC-2025-189 --ignore-vuln PYSEC-2025-190
+        --ignore-vuln PYSEC-2025-191 --ignore-vuln PYSEC-2025-192
+        --ignore-vuln PYSEC-2025-193 --ignore-vuln PYSEC-2025-194
+        --ignore-vuln PYSEC-2025-195 --ignore-vuln PYSEC-2025-196
+        --ignore-vuln PYSEC-2025-197 --ignore-vuln PYSEC-2025-210
+        --ignore-vuln PYSEC-2026-139 --ignore-vuln PYSEC-2024-277
+        --ignore-vuln CVE-2025-3000 --ignore-vuln CVE-2026-4372
+        --ignore-vuln PYSEC-2026-2289 --ignore-vuln PYSEC-2026-2290
+
+  # ── generated-artifact drift gates ─────────────────────────────────────────
+  - name: verify-generated
+    image: python:3.11-bookworm
+    depends_on: [prepare-git]
+    when:
+      - path: *code_paths
+    commands:
+      - pip install --upgrade pip
+      - pip install pytest pytest-cov pytest-xdist ruff bandit pip-audit jsonschema yamllint
+      - pip install -e packages/hypergumbo-core -e packages/hypergumbo-lang-mainstream -e packages/hypergumbo-lang-common -e packages/hypergumbo-lang-extended1 -e packages/hypergumbo-lang-rust-analyzer -e "packages/hypergumbo-tracker[dev]"
+      - ./scripts/generate-schema --check
+      - ./scripts/generate-architecture --check
+      - ./scripts/generate-security-md --check
+      - ./scripts/check-schema-coverage --mode=warning
+
+  # ── bash hook tests — runs on any non-tracker-only change; cheap; catches silent rot
+  # Skipped for tracker-sync PRs (they touch only .agent/tracker ops → hooks unaffected).
+  # Together with the prepare-git / dco skips below, this leaves a tracker-sync PR running
+  # ONLY `tracker-validate`, so auto-sync's CI is one fast step and never exceeds do_sync's
+  # CI-poll timeout (the old dedicated tracker-ci.yml was a single lightweight job; the
+  # Woodpecker port folded validation into this gate but left 4 always-on steps for a
+  # tracker PR, which blew past the poll timeout).
+  - name: hook-tests
+    image: python:3.11-bookworm    # needs bash+git; python image has both
+    depends_on: []
+    when:
+      - path: &non_tracker_paths
+          include:
+            - "**"
+          exclude:
+            - ".agent/tracker/**"
+            - ".agent/tracker-workspace/**"
+    commands:
+      - apt-get update && apt-get install -y jq   # stop.sh (exercised by test_hooks.sh) needs jq
+      - bash .githooks/test_hooks.sh
+
+  # ── forge dual-mode arm rot-guard (C13) ────────────────────────────────────
+  # Runs the top-level bash-subprocess forge github-arm tests + the governance
+  # rot-guards. They FORCE HYPERGUMBO_FORGE_BACKEND=github internally (via
+  # tests/_forge_github_harness.py) and stub the curl/gh boundary, so they need
+  # NO hypergumbo package install — just pytest + bash/git/jq. smart-test's
+  # import-slice can't select bash tests (they contribute no Python coverage), so
+  # this dedicated job is how the DORMANT github write-arms (auto-pr/contribute/
+  # ci-debug/list-my-prs/forge lib) are guarded per-PR — the deferred C13 job.
+  # (full-suite's `pytest tests/` covers the same files post-merge once ported.)
+  - name: forge-arms
+    image: python:3.11-bookworm    # buildpack-deps base → bash + git baked in
+    depends_on: []
+    when:
+      - path:
+          include:
+            - "scripts/**"
+            - "tests/**"
+            - ".woodpecker.yml"
+    environment:
+      SMART_TEST_ACTIVE: "1"       # suppress conftest.py's smart-test re-exec
+    commands:
+      - apt-get update && apt-get install -y jq
+      - pip install --upgrade pip && pip install pytest
+      # -o addopts="" drops the repo's --cov addopts (pytest-cov is not installed
+      # here); the *github* glob also catches test_hg_github_token_documented.py.
+      - >
+        pytest -o addopts="" -p no:cacheprovider -q
+        tests/test_*github*.py
+        tests/test_autopr_*.py
+        tests/test_merge_pr_close.py
+        tests/test_codeowners_governance.py
+
+  # ── unshallow the SHARED workspace .git ONCE ───────────────────────────────
+  # Woodpecker's PR clone lands only the synthetic merge commit (no ancestry) —
+  # this breaks git merge-base + recency-window reads regardless of clone depth.
+  # dco / verify-generated / pytest depend on this step so they see full history
+  # and don't race each other fetching into the one shared .git.
+  - name: prepare-git
+    image: python:3.11-bookworm
+    depends_on: []
+    when:
+      - path: *non_tracker_paths       # tracker-sync PRs need no history (only tracker-validate runs)
+    commands:
+      - '[ -f "$(git rev-parse --git-dir)/shallow" ] && git fetch --unshallow origin || echo "repo already complete"'
+      - git fetch --no-tags origin "$CI_COMMIT_TARGET_BRANCH"
+
+  # ── DCO sign-off check (PRs only; tracker-sync commits are already do_sync-signed) ──
+  - name: dco
+    image: python:3.11-bookworm
+    depends_on: [prepare-git]
+    when:
+      - event: pull_request
+        path: *non_tracker_paths       # tracker-sync commits carry Signed-off-by from do_sync (sync.py)
+    commands:
+      - BASE=$(git merge-base "origin/$CI_COMMIT_TARGET_BRANCH" HEAD)
+      - |
+        # DCO grandfather allowlist — pre-Woodpecker-DCO-gate commit(s) that
+        # cannot be signed retroactively without rewriting all of dev's history.
+        # These only surface on the dev→main release PR's cumulative re-check;
+        # the gate stays strict for every OTHER commit (incl. any future unsigned
+        # one — human or agent).
+        #   54a041c171  admin-josh  ADR-0044 catalog refactor
+        for sha in $(git rev-list --no-merges "$BASE"..HEAD); do
+          case "$sha" in 54a041c171*) continue ;; esac
+          if ! git log -1 --format='%B' "$sha" | grep -q '^Signed-off-by:'; then
+            echo "❌ Commit $sha is missing DCO sign-off (add with: git commit --amend -s)"
+            exit 1
+          fi
+        done
+      - echo "✅ All commits have DCO sign-off (54a041c171 grandfathered)"
+
+  # ── tracker data validation (only when tracker files changed) ──────────────
+  - name: tracker-validate
+    image: python:3.11-bookworm
+    depends_on: []
+    when:
+      - path:
+          include:
+            - ".agent/tracker/**"
+            - ".agent/tracker-workspace/**"
+            - "packages/hypergumbo-tracker/**"
+    commands:
+      - pip install --upgrade pip
+      - pip install -e packages/hypergumbo-tracker
+      - scripts/tracker validate
+
+  # ── build the 3 vendored grammars ONCE into a workspace dir ────────────────
+  # Written to $CI_WORKSPACE/.grammar-wheels (shared across steps in this run),
+  # so the pytest step installs from them instead of rebuilding. This is the
+  # in-run equivalent of GHA's /tmp/grammar-wheels cache.
+  - name: build-grammars
+    image: python:3.11-bookworm
+    depends_on: []
+    when:
+      - path: *code_paths
+    commands:
+      - python3 -m pip install --upgrade pip setuptools wheel
+      - ./scripts/build-source-grammars --wheels-dir "$CI_WORKSPACE/.grammar-wheels"
+
+  # ── pytest + 100%-coverage-of-changed-files (smart-test manifest) ──────────
+  # Faithful port of ci.yml's pytest job. No venv (the container IS the isolation)
+  # → conftest.py's smart-test re-exec doesn't fire → direct pytest is safe
+  # (validated in Phase 0). SMART_TEST_ACTIVE=1 keeps it from re-computing
+  # selection; the committed .ci/affected-tests.txt manifest drives it.
+  - name: pytest
+    image: python:3.11-bookworm
+    depends_on: [build-grammars, prepare-git]
+    when:
+      - path: *code_paths
+    environment:
+      SMART_TEST_ACTIVE: "1"
+    commands:
+      # The smart-test manifest can select top-level agent-infra tests/ (e.g.
+      # test_session_start_agent_notes.py) whose bash hooks shell out to jq;
+      # install it here as the sibling hook-tests / forge-arms steps already do.
+      # Without it those tests hit session_start_logic.sh's `command -v jq`
+      # guard, the notes prompt never fires, and the 5 "prompt fires" asserts
+      # fail (WI-bigab -- surfaced by pipeline 6's whole-suite run).
+      - apt-get update && apt-get install -y jq
+      - pip install --upgrade pip
+      - pip install pytest pytest-cov pytest-xdist ruff bandit pip-audit jsonschema yamllint
+      - pip install -e packages/hypergumbo-core -e packages/hypergumbo-lang-mainstream -e packages/hypergumbo-lang-common -e packages/hypergumbo-lang-extended1 -e packages/hypergumbo-lang-rust-analyzer -e "packages/hypergumbo-tracker[dev,tui]"
+      - ./scripts/build-source-grammars --wheels-dir "$CI_WORKSPACE/.grammar-wheels"
+      - |
+        set -e
+        MANIFEST=".ci/affected-tests.txt"
+
+        # Release PRs carry a cumulative diff the targeted-manifest model can't
+        # cover; full-suite validates them post-merge. prepare-release merges the
+        # release/* branch into dev first, then opens the PR from dev→main
+        # (source=dev, NOT release/*), so key the skip on the target branch; the
+        # release/* source case is kept for a direct release-branch push.
+        if [ "${CI_COMMIT_TARGET_BRANCH:-}" = "main" ]; then
+          echo "✅ Release PR (→ main) — skipping pytest (full-suite covers it post-merge)"; exit 0
+        fi
+        case "${CI_COMMIT_SOURCE_BRANCH:-$CI_COMMIT_BRANCH}" in
+          release/*) echo "✅ Release branch — skipping pytest (full-suite covers it)"; exit 0 ;;
+        esac
+
+        if [ "$CI_PIPELINE_EVENT" = "pull_request" ]; then
+          git fetch --no-tags origin "$CI_COMMIT_TARGET_BRANCH"
+          BASE=$(git merge-base FETCH_HEAD HEAD)
+        else
+          BASE="${CI_PREV_COMMIT_SHA:-HEAD~1}"
+        fi
+        HEAD="$CI_COMMIT_SHA"
+
+        # No .py changed anywhere in the PR (config/docs-only) → no affected tests →
+        # skip cleanly instead of running a stale committed manifest's selections.
+        if [ -z "$(git diff --name-only "$BASE" "$HEAD" | grep -E '\.py$' || true)" ]; then
+          echo "✅ PR changes no .py files — skipping pytest"
+          exit 0
+        fi
+
+        if [ ! -f "$MANIFEST" ]; then
+          echo "❌ No .ci/affected-tests.txt manifest committed. Run: ./scripts/smart-test --manifest && git add .ci/affected-tests.txt"
+          exit 1
+        fi
+
+        # Affected packages come from the PR diff's changed source files.
+        ACTUAL_SOURCE_FILES=$(git diff --name-only "$BASE" "$HEAD" | grep -E '^packages/.*/src/.*\.py$' | sort || true)
+        CHANGED_SOURCE_FILES=$(sed -n '/^# === CHANGED_SOURCE_FILES ===/,/^# === SELECTED_TESTS ===/p' "$MANIFEST" | grep -v '^#' | grep -v '^$' || true)
+        # Trust the actual diff when the manifest is missing files (staged-before-run drift).
+        for f in $ACTUAL_SOURCE_FILES; do
+          echo "$CHANGED_SOURCE_FILES" | grep -qF "$f" || CHANGED_SOURCE_FILES="$ACTUAL_SOURCE_FILES"
+        done
+
+        if [ -z "$ACTUAL_SOURCE_FILES" ] && [ -z "$CHANGED_SOURCE_FILES" ]; then
+          echo "✅ No Python source files changed — skipping pytest"; exit 0
+        fi
+
+        # Per-affected-package coverage, no-embeddings rcfile.
+        COV_PATHS=""
+        for pkg in $(echo "$CHANGED_SOURCE_FILES" | sed 's|^\(packages/[^/]*/src\)/.*|\1|' | sort -u); do
+          COV_PATHS="$COV_PATHS --cov=$pkg"
+        done
+        [ -n "$COV_PATHS" ] && COV_PATHS="$COV_PATHS --cov-report= --cov-config=.coveragerc.no-embeddings"
+
+        # Exclude embedding + _generated files from the 100% gate (need torch / are generated).
+        COVERABLE=""
+        for f in $CHANGED_SOURCE_FILES; do
+          case "$f" in
+            */sketch_embeddings.py|*/_embedding_data.py|*/_generated/*) : ;;
+            *) [ -f "$f" ] && COVERABLE="$COVERABLE $f" ;;
+          esac
+        done
+
+        SELECTED_TESTS=$(sed -n '/^# === SELECTED_TESTS ===/,$p' "$MANIFEST" | grep -v '^#' | grep -v '^$' | tr '\n' ' ')
+
+        # Bound worker count by the cgroup CPU quota (container sees host nproc).
+        if [ -f /sys/fs/cgroup/cpu.max ]; then
+          read quota period < /sys/fs/cgroup/cpu.max
+          [ "$quota" != "max" ] && WORKERS=$((quota / period)) || WORKERS=$(nproc)
+        else
+          WORKERS=$(nproc)
+        fi
+
+        echo "=== pytest ($(echo "$SELECTED_TESTS" | wc -w) selected files, -n $WORKERS) ==="
+        pytest --rootdir=. -n "$WORKERS" --tb=short $COV_PATHS $SELECTED_TESTS
+        TEST_EXIT=$?
+
+        # 100% coverage gate for changed source files only.
+        if [ $TEST_EXIT -eq 0 ] && [ -n "$COVERABLE" ]; then
+          INCLUDE=$(echo "$COVERABLE" | xargs | tr ' ' ',')
+          if coverage report --rcfile=.coveragerc.no-embeddings --include="$INCLUDE" --fail-under=100 > /tmp/cov.txt 2>&1; then
+            cat /tmp/cov.txt; echo "✅ changed files at 100%"
+          elif grep -q "No data to report" /tmp/cov.txt; then
+            echo "⚠️  changed files not exercised by affected slice (e.g. subprocess-only) — not gating; full-suite/nightly enforce whole-codebase 100%."
+          else
+            echo "❌ changed source files below 100% coverage:"; cat /tmp/cov.txt
+            coverage report --rcfile=.coveragerc.no-embeddings --include="$INCLUDE" --show-missing
+            exit 1
+          fi
+        fi
+        exit $TEST_EXIT
+
+# ─── REPLACED (not ported as a job): stop-the-line ──────────────────────────
+# DECISION (locked): GitHub branch-protection "required status checks", NOT a
+# ported job. The GHA job read Forgejo's status API to block PRs when full-suite
+# was red; on GitHub that's declarative branch protection instead.
+# Because this is ONE Woodpecker workflow, Woodpecker posts ONE check context
+# back to GitHub (exact name confirmed at the gate) — mark THAT check required
+# on `dev` (and `main`). It goes green only if every gating step passes; the
+# `mypy` step is `failure: ignore`, so its type-surface report never blocks.
+# Ordering caveat (risk-review delta (d)): a check can only be marked *required*
+# AFTER Woodpecker's first green run creates the context — so branch protection
+# is enabled at the gate, once the check first appears. Configured GitHub-side;
+# nothing to add to this file.
+#
+# ─── CACHING (actions/cache replacement) ────────────────────────────────────
+# Grammar wheels: handled in-run via $CI_WORKSPACE/.grammar-wheels (above).
+# pip packages / editable installs: every step reinstalls (same as GHA's
+# per-job installs). To cache across runs we mount a namespaced host volume on
+# the AGENT (risk #6 says namespace the path so old act_runner + Woodpecker
+# don't collide), e.g. agent env:
+#   WOODPECKER_BACKEND_DOCKER_VOLUMES=/srv/wp-cache/hypergumbo/pip:/root/.cache/pip
+# then set `environment: { PIP_CACHE_DIR: /root/.cache/pip }` per step. Wired in
+# a later step once we touch the agent config (same edit as the agent.conf
+# persistence follow-up).
+#
+# ─── STRUCTURE (one workflow per file in `.woodpecker/`) ────────────────────
+# This PR file is ONE workflow, one agent, shared workspace — build-grammars
+# feeds pytest with no cross-run cache; the `depends_on: []` steps run in
+# parallel; pytest waits on build-grammars. GitHub sees ONE check context per
+# workflow file (this one → `ci/woodpecker/pr/woodpecker`, marked required).
+#
+# ─── SIBLING WORKFLOWS (LANDED alongside this file) ─────────────────────────
+# full-suite.yml  → `.woodpecker/full-suite.yml` (push-to-dev + `event: cron`
+#                   named "full-suite"): per-package pytest at whole-codebase
+#                   100% + self-tree-validation ratchet + `pytest tests/` (the
+#                   top-level forge/governance suite). Same container pattern.
+# nightly.yml     → `.woodpecker/nightly.yml` (`event: cron` named "nightly"):
+#                   py3.10–3.13 `matrix` + integration-test --quick. MUST be live
+#                   before Phase-4 release (the multi-Python verification the
+#                   release path relies on). Woodpecker crons are configured in
+#                   repo settings, NOT here — the human creates crons named
+#                   "full-suite" (0 1,13 * * *) and "nightly" (30 5 * * *).
+# STILL DEFERRED:
+# tracker-ci.yml  → fold into the `tracker-validate` step above or a small sibling.
+# release.yml     → STAYS on GitHub Actions (locked decision: minimal tag-gated
+#                   release-only workflow holding PYPI_TOKEN). NOT ported.
+# release-mirror.yml → DELETED in Phase 4.
+#
+# ─── VALIDATION STATUS (honest) ─────────────────────────────────────────────
+# This per-PR file was Phase-1-validated by a real Woodpecker run. The two
+# siblings are NEW authoring: their individual legs were Phase-0-smoke-tested
+# under `woodpecker exec` (test-core, build-grammars, integration --quick), but
+# the assembled files have NOT had a full Woodpecker run — they land dormant and
+# get validated/iterated on the first real runs at cutover (as this file was).

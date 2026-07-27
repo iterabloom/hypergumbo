@@ -16,6 +16,12 @@ from hypergumbo_lang_extended1.twig import (
 )
 
 
+# The per-analyzer _make_symbol_id builder was folded into the shared
+# make_doc_symbol_ids helper (INV-dulah), which is unit-tested in
+# hypergumbo-core's test_base.py; there is no longer an analyzer-local
+# id-format test here.
+
+
 def make_twig_file(tmp_path: Path, name: str, content: str) -> None:
     """Create a Twig template file with given content."""
     (tmp_path / name).write_text(content)

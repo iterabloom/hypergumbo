@@ -328,9 +328,30 @@ class TestCyclomaticBaseAndUnknown:
         fn = _first_node_of_type(tree.root_node, "function_declaration")
         assert compute_cyclomatic_complexity(fn, "go") == 1
 
-    def test_branch_node_types_covers_supported_languages(self) -> None:
-        """Every supported language has a BRANCH_NODE_TYPES entry."""
-        assert set(BRANCH_NODE_TYPES.keys()) == set(SUPPORTED_LANGUAGES)
+    def test_supported_languages_all_have_branch_node_types(self) -> None:
+        """Every signature/docstring language also has a cyclomatic-complexity
+        entry.
+
+        ``SUPPORTED_LANGUAGES`` (signature/docstring extractors) and
+        ``BRANCH_NODE_TYPES`` (cyclomatic-complexity decision-point tables)
+        are two *distinct* capability axes that happened to coincide while
+        only the 10 ADR-0033-Phase-4 languages populated either. The
+        invariant is one-directional: a language that can produce a signature
+        or docstring MUST also be able to compute complexity (no callable
+        should regress to "has a signature but no CC"). The reverse is NOT
+        required — INV-loguk wires cyclomatic_complexity for bash/c/cpp, which
+        have no signature/docstring extractor yet, so they are CC-only.
+        """
+        assert set(SUPPORTED_LANGUAGES) <= set(BRANCH_NODE_TYPES)
+
+    def test_cc_only_languages_have_branch_entries_but_no_signature(self) -> None:
+        """bash/c/cpp populate cyclomatic_complexity (INV-loguk) without a
+        signature/docstring extractor: present in BRANCH_NODE_TYPES, absent
+        from SUPPORTED_LANGUAGES. Locks the slice-A additions so a future
+        CC-only language is added deliberately."""
+        for lang in ("bash", "c", "cpp"):
+            assert lang in BRANCH_NODE_TYPES
+            assert lang not in SUPPORTED_LANGUAGES
 
 
 class TestCyclomaticPerLanguage:
@@ -523,6 +544,54 @@ class TestCyclomaticPerLanguage:
         # base + unless + and = 3
         assert cc is not None and cc >= 3
 
+    def test_ruby_named_node_not_double_counted(self) -> None:
+        """Regression lock: tree-sitter-ruby emits a named construct node AND a
+        same-``.type`` anonymous keyword token for if/while/etc. The walker's
+        ``is_named`` guard must count each exactly once (was CC=3 for a single
+        ``if`` before the guard; McCabe-correct is 2)."""
+        parser = _ts_parser_for("ruby", "tree_sitter_ruby")
+        src = b"def f(x)\n  if x > 0\n    1\n  end\nend\n"
+        tree = parser.parse(src)
+        m = _first_node_of_type(tree.root_node, "method")
+        # base 1 + exactly one if = 2 (NOT 3 — the anonymous ``if`` keyword
+        # token must not double-count)
+        assert compute_cyclomatic_complexity(m, "ruby") == 2
+
+    def test_ruby_case_when_counts_arms_not_wrapper(self) -> None:
+        """Regression lock: a case/when counts per ``when`` arm, not the ``case``
+        wrapper (arms-only convention, matching c/java/go). 2 arms => CC 3."""
+        parser = _ts_parser_for("ruby", "tree_sitter_ruby")
+        src = (
+            b"def g(x)\n"
+            b"  case x\n"
+            b"  when 1 then :a\n"
+            b"  when 2 then :b\n"
+            b"  else :c\n"
+            b"  end\n"
+            b"end\n"
+        )
+        tree = parser.parse(src)
+        m = _first_node_of_type(tree.root_node, "method")
+        # base 1 + 2 when arms = 3 (the ``case`` wrapper and ``else`` are NOT
+        # decision points)
+        assert compute_cyclomatic_complexity(m, "ruby") == 3
+
+    def test_ruby_case_in_pattern_match_counts_arms(self) -> None:
+        """Ruby 3 case/in: count per ``in_clause`` arm (the ``case_match``
+        wrapper is not counted). 2 arms => CC 3."""
+        parser = _ts_parser_for("ruby", "tree_sitter_ruby")
+        src = (
+            b"def h(x)\n"
+            b"  case x\n"
+            b"  in 1 then :a\n"
+            b"  in 2 then :b\n"
+            b"  end\n"
+            b"end\n"
+        )
+        tree = parser.parse(src)
+        m = _first_node_of_type(tree.root_node, "method")
+        assert compute_cyclomatic_complexity(m, "ruby") == 3
+
     def test_kotlin(self) -> None:
         parser = _ts_parser_for("kotlin", "tree_sitter_kotlin")
         src = (
@@ -566,6 +635,67 @@ class TestCyclomaticPerLanguage:
         # ``guard`` clause). Expect at least if + for + while + 2 case +
         # ternary = 6 above base.
         assert cc is not None and cc >= 5
+
+    def test_bash(self) -> None:
+        parser = _ts_parser_for("bash", "tree_sitter_bash")
+        # if + elif + for + while + 2 case items → at least 5 above base.
+        # Bash short-circuit ``&&``/``||`` between commands live in ``list``
+        # nodes (not ``binary_expression``) and are deliberately NOT counted
+        # (conservative scope), so the asserted floor excludes them.
+        src = (
+            b"greet() {\n"
+            b"  if [ \"$1\" = a ]; then echo a\n"
+            b"  elif [ \"$1\" = b ]; then echo b\n"
+            b"  else echo c\n"
+            b"  fi\n"
+            b"  for i in 1 2 3; do echo \"$i\"; done\n"
+            b"  while true; do break; done\n"
+            b"  case \"$1\" in a) echo x;; *) echo y;; esac\n"
+            b"}\n"
+        )
+        tree = parser.parse(src)
+        fn = _first_node_of_type(tree.root_node, "function_definition")
+        cc = compute_cyclomatic_complexity(fn, "bash")
+        # base=1, if=1, elif=1, for=1, while=1, case_item x2 = 2 → >= 6
+        assert cc is not None and cc >= 6
+
+    def test_c(self) -> None:
+        parser = _ts_parser_for("c", "tree_sitter_c")
+        src = (
+            b"int f(int x) {\n"
+            b"  if (x > 10) { return 1; } else if (x > 5) { return 2; }\n"
+            b"  for (int i = 0; i < x; i++) { if (i % 2 == 0 && i > 0) return i; }\n"
+            b"  while (x > 0) { x--; }\n"
+            b"  switch (x) { case 0: return 9; default: return 8; }\n"
+            b"  do { x++; } while (x < 3);\n"
+            b"  return x > 0 ? 1 : 0;\n"
+            b"}\n"
+        )
+        tree = parser.parse(src)
+        fn = _first_node_of_type(tree.root_node, "function_definition")
+        cc = compute_cyclomatic_complexity(fn, "c")
+        # if + else-if + for + inner-if + && + while + 2 case + do + ternary
+        assert cc is not None and cc >= 8
+
+    def test_cpp(self) -> None:
+        parser = _ts_parser_for("cpp", "tree_sitter_cpp")
+        src = (
+            b"int f(int x) {\n"
+            b"  if (x > 10) { return 1; } else if (x > 5) { return 2; }\n"
+            b"  for (int i = 0; i < x; i++) { if (i % 2 == 0 || i < 0) return i; }\n"
+            b"  for (auto v : items) { use(v); }\n"
+            b"  while (x > 0) { x--; }\n"
+            b"  switch (x) { case 0: return 9; default: return 8; }\n"
+            b"  try { x++; } catch (...) { x = 0; }\n"
+            b"  return x > 0 ? 1 : 0;\n"
+            b"}\n"
+        )
+        tree = parser.parse(src)
+        fn = _first_node_of_type(tree.root_node, "function_definition")
+        cc = compute_cyclomatic_complexity(fn, "cpp")
+        # if + else-if + for + inner-if + || + range-for + while + 2 case +
+        # catch + ternary
+        assert cc is not None and cc >= 9
 
 
 class TestDocstringDispatchAllLanguages:

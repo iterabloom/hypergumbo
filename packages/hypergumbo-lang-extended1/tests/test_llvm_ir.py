@@ -399,3 +399,31 @@ define i32 @my_func() {
         assert func is not None
         # Function starts on line 2 (1-indexed)
         assert func.span.start_line == 2
+
+
+class TestLlvmIrCyclomaticComplexity:
+    """INV-loguk slice C: callable llvm_ir symbols carry non-null CC + LOC.
+    Real-grammar verification (switch/select/invoke (conditional br excluded; declare excluded))."""
+
+    def test_branchy_callables_have_expected_cc(self, tmp_path) -> None:
+        from hypergumbo_lang_extended1.llvm_ir import analyze_llvm_ir
+        (tmp_path / 'f.ll').write_text('define i32 @classify(i32 %x) {\nentry:\n  %cmp = icmp slt i32 %x, 0\n  br i1 %cmp, label %neg, label %check\nneg:\n  ret i32 -1\ncheck:\n  switch i32 %x, label %default [\n    i32 0, label %zero\n    i32 1, label %one\n  ]\nzero:\n  ret i32 0\none:\n  ret i32 10\ndefault:\n  %sel = select i1 %cmp, i32 1, i32 2\n  ret i32 %sel\n}\ndeclare i32 @printf(i8*, ...)\n')
+        result = analyze_llvm_ir(tmp_path)
+        assert not result.skipped
+        by = {s.name: s for s in result.symbols if s.kind in ('function',)}
+        m = by.get('classify') or next(s for n, s in by.items() if n.split('.')[-1] == 'classify' or n.endswith('classify'))
+        assert m.cyclomatic_complexity == 3, m.cyclomatic_complexity
+        assert m.line_span is not None
+
+    def test_callables_non_null_non_callables_null(self, tmp_path) -> None:
+        from hypergumbo_lang_extended1.llvm_ir import analyze_llvm_ir
+        (tmp_path / 'f.ll').write_text('define i32 @classify(i32 %x) {\nentry:\n  %cmp = icmp slt i32 %x, 0\n  br i1 %cmp, label %neg, label %check\nneg:\n  ret i32 -1\ncheck:\n  switch i32 %x, label %default [\n    i32 0, label %zero\n    i32 1, label %one\n  ]\nzero:\n  ret i32 0\none:\n  ret i32 10\ndefault:\n  %sel = select i1 %cmp, i32 1, i32 2\n  ret i32 %sel\n}\ndeclare i32 @printf(i8*, ...)\n')
+        result = analyze_llvm_ir(tmp_path)
+        callables = [s for s in result.symbols if s.kind in ('function',)]
+        assert callables
+        for s in callables:
+            assert s.cyclomatic_complexity is not None, (s.kind, s.name)
+            assert s.line_span is not None, (s.kind, s.name)
+        for s in result.symbols:
+            if s.kind not in ('function',):
+                assert s.cyclomatic_complexity is None, (s.kind, s.name)

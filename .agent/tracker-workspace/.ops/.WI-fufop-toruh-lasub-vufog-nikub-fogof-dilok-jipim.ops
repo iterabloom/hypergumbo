@@ -61,3 +61,18 @@
     tags: [dogfood]  # ec67
   remove:  # ec67
     tags: [dogfooding]  # ec67
+- op: update  # cbc1
+  at: '2026-06-25T10:07:35Z'  # cbc1
+  by: agent  # cbc1
+  actor: jgstern_agent  # cbc1
+  clock: 6  # cbc1
+  nonce: cbc1  # cbc1
+  set:  # cbc1
+    status: done  # cbc1
+- op: discuss  # ed72
+  at: '2026-06-25T10:07:35Z'  # ed72
+  by: agent  # ed72
+  actor: jgstern_agent  # ed72
+  clock: 7  # ed72
+  nonce: ed72  # ed72
+  message: "Implemented in commit ff676ca0c8 (origin/dev). New flag 'hypergumbo sketch --no-comparison-sketches' (follows the --no-secret-scan opt-out pattern) skips both the 4x/16x comparison-sketch generation and the 'How Representative Is This Sketch?' representativeness table. Behavioral evidence — production-path tests: test_cli_commands.py::test_cmd_sketch_no_comparison_sketches_flag_skips_table (asserts the table + 'comparison sketches' message are ABSENT from output with the flag) and test_cmd_sketch_generates_comparison_table_by_default (asserts present by default). Root cause was that cli.py:810 unconditionally ran the comparison block whenever max_tokens was set (default 8000 → always), paying 3x generation cost + table noise for batch/scripted single-budget runs. Default behavior unchanged. CLI flag matrix regenerated. 100% coverage. (Sidecar: regenerated docs/ARCHITECTURE.md in the same PR — its recorded SHA had aged out of the verify-generated 15-commit window; commit 9eead7b17c.)"  # ed72

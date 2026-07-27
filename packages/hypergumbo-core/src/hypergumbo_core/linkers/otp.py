@@ -31,7 +31,7 @@ How It Works
 2. Scan .ex/.exs/.erl files for GenServer/gen_server call/cast patterns via regex
 3. For each call site, find the enclosing function symbol (ctx.find_enclosing_symbol)
 4. Determine target module from call site target expression
-5. Create otp_call/otp_cast edges from caller function to handler symbols
+5. Create dispatches_to edges (meta.mechanism=otp_call/otp_cast) from caller function to handler symbols
 
 Why Not Parse Message Patterns
 ------------------------------
@@ -48,7 +48,7 @@ import time
 from pathlib import Path
 from typing import Iterator
 
-from ..discovery import find_files
+from ..discovery import find_non_test_files
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Symbol, make_pass_id
 from .registry import LinkerActivation, LinkerContext, LinkerResult, register_linker
 
@@ -57,7 +57,7 @@ PASS_ID = make_pass_id("otp-linker")
 # Handler function suffixes that indicate OTP callbacks
 HANDLER_SUFFIXES = (".handle_call", ".handle_cast", ".handle_info")
 
-# Maps GenServer call type to handler suffix and edge type
+# Maps GenServer call type to handler suffix and dispatch mechanism
 CALL_TYPE_MAP = {
     "call": (".handle_call", "otp_call"),
     "cast": (".handle_cast", "otp_cast"),
@@ -181,12 +181,12 @@ def detect_erlang_otp_call_sites(source: bytes) -> list[dict]:
 
 def _find_elixir_files(repo_root: Path) -> Iterator[Path]:
     """Find all Elixir files in the repository."""
-    yield from find_files(repo_root, ["*.ex", "*.exs"])
+    yield from find_non_test_files(repo_root, ["*.ex", "*.exs"])
 
 
 def _find_erlang_files(repo_root: Path) -> Iterator[Path]:
     """Find all Erlang files in the repository."""
-    yield from find_files(repo_root, ["*.erl"])
+    yield from find_non_test_files(repo_root, ["*.erl"])
 
 
 def _build_erlang_handler_index(
@@ -363,7 +363,7 @@ def otp_linker(ctx: LinkerContext) -> LinkerResult:
                     if enclosing is None:
                         continue
 
-                    handler_suffix, edge_type = CALL_TYPE_MAP[call_type]
+                    handler_suffix, mechanism = CALL_TYPE_MAP[call_type]
                     target_modules: list[str] = []
                     confidence: float
 
@@ -397,7 +397,7 @@ def otp_linker(ctx: LinkerContext) -> LinkerResult:
                             edge = Edge.create(
                                 src=enclosing.id,
                                 dst=handler.id,
-                                edge_type=edge_type,
+                                edge_type="dispatches_to",
                                 line=line,
                                 confidence=confidence,
                                 origin=PASS_ID,
@@ -407,6 +407,7 @@ def otp_linker(ctx: LinkerContext) -> LinkerResult:
                             )
                             edge.meta = {
                                 "framework_dispatch": "otp_genserver",
+                                "mechanism": mechanism,
                                 "call_type": call_type,
                                 "target": target,
                             }
@@ -450,9 +451,8 @@ def otp_linker(ctx: LinkerContext) -> LinkerResult:
                     if enclosing is None:
                         continue
 
-                    handler_name, edge_type = ERLANG_CALL_TYPE_MAP[call_type]
-                    target_modules: list[str] = []
-                    confidence: float
+                    handler_name, mechanism = ERLANG_CALL_TYPE_MAP[call_type]
+                    target_modules = []
 
                     if is_module:
                         # Explicit module atom: gen_server:call(data_server, ...)
@@ -491,7 +491,7 @@ def otp_linker(ctx: LinkerContext) -> LinkerResult:
                             edge = Edge.create(
                                 src=enclosing.id,
                                 dst=handler.id,
-                                edge_type=edge_type,
+                                edge_type="dispatches_to",
                                 line=line,
                                 confidence=confidence,
                                 origin=PASS_ID,
@@ -501,6 +501,7 @@ def otp_linker(ctx: LinkerContext) -> LinkerResult:
                             )
                             edge.meta = {
                                 "framework_dispatch": "otp_genserver",
+                                "mechanism": mechanism,
                                 "call_type": call_type,
                                 "target": target,
                             }

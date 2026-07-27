@@ -1,10 +1,25 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for the hypergumbo symbols command."""
 import json
+import re
 from pathlib import Path
 
 from hypergumbo_core.schema import SCHEMA_VERSION
 from hypergumbo_core.cli import cmd_symbols, main, _symbols_column_config
+
+# SGR (color/style) ANSI escape sequences. Rich emits these when color is
+# enabled — which happens even for a non-tty capsys capture when the ambient
+# environment sets FORCE_COLOR (as this dev environment does). The codes
+# interleave with rendered text (e.g. a styled count `40` is separated from
+# ` additional…` by a reset code), which breaks any assertion that treats the
+# rendered output as contiguous text. Stripping them makes text assertions
+# hermetic w.r.t. the ambient color environment (WI-sapaj).
+_ANSI_SGR = re.compile(r"\x1b\[[0-9;]*m")
+
+
+def _strip_ansi(text: str) -> str:
+    """Remove SGR ANSI style codes so text assertions don't depend on color."""
+    return _ANSI_SGR.sub("", text)
 
 
 class FakeArgs:
@@ -133,6 +148,70 @@ def test_cmd_symbols_kind_column_not_truncated(tmp_path: Path, capsys) -> None:
     # WI-puroz: no ellipsis in kind column
     assert "…" not in out, "Kind column must not contain ellipsis (…)"
     assert "functi…" not in out
+
+
+def test_cmd_symbols_numeric_columns_not_truncated(
+    tmp_path: Path, capsys, monkeypatch
+) -> None:
+    """INV-ripoh: the In/Out/Deg columns must render full multi-digit values
+    (no ellipsis) on a default ~120-col terminal. A connectivity hub with a
+    4-digit in-degree previously rendered Deg as '10…', destroying the rank."""
+    import os
+    import hypergumbo_core.cli as cli_mod
+
+    # Force the default-terminal path deterministically (no tty in tests).
+    monkeypatch.setattr(
+        cli_mod.shutil, "get_terminal_size",
+        lambda *a, **k: os.terminal_size((120, 24)),
+    )
+
+    hub = "python:src/hub.py:1-9:Hub:function"
+    src = "python:src/src.py:1-9:Src:function"
+    behavior_map = {
+        "schema_version": SCHEMA_VERSION,
+        "nodes": [
+            {
+                "id": hub, "name": "Hub", "kind": "function", "language": "python",
+                "path": "src/hub.py",
+                "span": {"start_line": 1, "end_line": 9, "start_col": 0, "end_col": 0},
+            },
+            {
+                "id": src, "name": "Src", "kind": "function", "language": "python",
+                "path": "src/src.py",
+                "span": {"start_line": 1, "end_line": 9, "start_col": 0, "end_col": 0},
+            },
+        ],
+        # 1000 distinct edges Src -> Hub => Hub in-degree 1000 (4 digits),
+        # Src out-degree 1000, both Deg=1000.
+        "edges": [
+            {
+                "id": f"edge:{i}", "src": src, "dst": hub, "type": "calls",
+                "line": 1, "confidence": 0.9,
+            }
+            for i in range(1000)
+        ],
+    }
+    results_file = tmp_path / "hypergumbo.results.json"
+    results_file.write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.input = None
+    args.kind = None
+    args.language = None
+    args.limit = 200
+    args.all = False
+    args.exclude_tests = False
+    args.max_per_file = None
+
+    result = cmd_symbols(args)
+    assert result == 0
+
+    out, _ = capsys.readouterr()
+    # The full 4-digit value must render (not "10…").
+    assert "1000" in out, "full 4-digit degree value must render"
+    # No column may be ellipsis-truncated (Symbol/File names here are short).
+    assert "…" not in out, "numeric columns must not be ellipsis-truncated"
 
 
 def test_cmd_symbols_sorts_by_individual_degree(tmp_path: Path, capsys) -> None:
@@ -392,6 +471,7 @@ def test_cmd_symbols_truncates_with_message(tmp_path: Path, capsys) -> None:
     assert result == 0
 
     out, _ = capsys.readouterr()
+    out = _strip_ansi(out)
     # Should show truncation message
     assert "40 additional symbols omitted for brevity" in out
     assert "--all" in out
@@ -611,6 +691,38 @@ def test_cmd_symbols_input_not_found(tmp_path: Path) -> None:
     result = cmd_symbols(args)
 
     assert result == 1
+
+
+def test_main_wrong_shape_input_exits_2_via_dispatch_guard(
+    tmp_path: Path, capsys,
+) -> None:
+    """A wrong-shape ``--input`` (no ``nodes``) surfaces through ``main()``'s
+    dispatch as a clean ``rc=2`` + stderr message (WI-jukah / INV-sozop), not
+    a raw traceback or a silent ``rc=0`` "No symbols found". Exercises the
+    top-level ``except SubstrateError`` guard end-to-end."""
+    bad = tmp_path / "wrongshape.json"
+    bad.write_text(json.dumps({"schema_version": SCHEMA_VERSION, "no_nodes": 1}))
+
+    rc = main(["symbols", str(tmp_path), "--input", str(bad)])
+
+    assert rc == 2
+    err = capsys.readouterr().err
+    assert "Error" in err
+    assert "nodes" in err
+
+
+def test_main_non_directory_path_exits_2(tmp_path: Path, capsys) -> None:
+    """INV-jibof: a positional path that is a non-directory file (not a repo,
+    no --input, no cached results) fails with rc=2 + guidance instead of
+    silently running analysis on a non-repo and printing "No symbols found"
+    with rc=0. Exercises the _get_or_run_analysis directory guard end-to-end."""
+    notadir = tmp_path / "notadir.txt"
+    notadir.write_text("hello\n")
+
+    rc = main(["symbols", str(notadir)])
+
+    assert rc == 2
+    assert "not a directory" in capsys.readouterr().err
 
 
 def test_cmd_symbols_auto_runs_analysis(tmp_path: Path, capsys) -> None:
@@ -1235,6 +1347,101 @@ def test_cmd_symbols_excludes_excluded_kinds(tmp_path: Path, capsys) -> None:
     assert "utils" not in out
 
 
+def _excluded_kind_map() -> dict:
+    """A function plus two default-excluded kinds (file, CSS variable)."""
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "nodes": [
+            {
+                "id": "python:src/main.py:1-10:main_func:function",
+                "name": "main_func",
+                "kind": "function",
+                "language": "python",
+                "path": "src/main.py",
+                "span": {"start_line": 1, "end_line": 10, "start_col": 0, "end_col": 10},
+            },
+            {
+                "id": "javascript:src/utils.js:file:1:utils_file",
+                "name": "utils_file",
+                "kind": "file",
+                "language": "javascript",
+                "path": "src/utils.js",
+                "span": {"start_line": 0, "end_line": 0, "start_col": 0, "end_col": 0},
+                "meta": {"module_system": "esm"},
+            },
+            {
+                "id": "css:src/styles.css:1-5:--brand-color:variable",
+                "name": "--brand-color",
+                "kind": "variable",
+                "language": "css",
+                "path": "src/styles.css",
+                "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
+            },
+        ],
+        "edges": [],
+    }
+
+
+def _symbols_args(tmp_path: Path, **overrides) -> "FakeArgs":
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.input = None
+    args.kind = None
+    args.language = None
+    args.limit = 200
+    args.all = False
+    args.exclude_tests = False
+    args.max_per_file = None
+    for k, v in overrides.items():
+        setattr(args, k, v)
+    return args
+
+
+def test_cmd_symbols_kind_file_surfaces_file_nodes(tmp_path: Path, capsys) -> None:
+    """WI-sufuh: `--kind file` surfaces file nodes despite the default exclusion."""
+    (tmp_path / "hypergumbo.results.json").write_text(json.dumps(_excluded_kind_map()))
+
+    result = cmd_symbols(_symbols_args(tmp_path, kind="file"))
+
+    assert result == 0
+    out, _ = capsys.readouterr()
+    assert "utils_file" in out
+    # Only file-kind requested → the function and variable are filtered out.
+    assert "main_func" not in out
+    assert "--brand-color" not in out
+
+
+def test_cmd_symbols_kind_variable_surfaces_variable_nodes(
+    tmp_path: Path, capsys
+) -> None:
+    """WI-sufuh: `--kind variable` surfaces variable nodes (else hidden)."""
+    (tmp_path / "hypergumbo.results.json").write_text(json.dumps(_excluded_kind_map()))
+
+    result = cmd_symbols(_symbols_args(tmp_path, kind="variable"))
+
+    assert result == 0
+    out, _ = capsys.readouterr()
+    assert "--brand-color" in out
+    assert "utils_file" not in out
+
+
+def test_cmd_symbols_kind_function_still_excludes_low_value_kinds(
+    tmp_path: Path, capsys
+) -> None:
+    """WI-sufuh regression fence: asking for a non-excluded kind keeps the
+    silent exclusion active for the OTHER kinds (the bypass is scoped to the
+    exact kind requested)."""
+    (tmp_path / "hypergumbo.results.json").write_text(json.dumps(_excluded_kind_map()))
+
+    result = cmd_symbols(_symbols_args(tmp_path, kind="function"))
+
+    assert result == 0
+    out, _ = capsys.readouterr()
+    assert "main_func" in out
+    assert "utils_file" not in out
+    assert "--brand-color" not in out
+
+
 def test_cmd_symbols_extreme_sink_dampened(tmp_path: Path, capsys) -> None:
     """Extreme pure sinks (in=100, out=0) rank below architectural connectors.
 
@@ -1813,6 +2020,7 @@ def test_cmd_symbols_wrap_flag_renders_full_long_path(
     assert result == 0
 
     out, _ = capsys.readouterr()
+    out = _strip_ansi(out)
     assert "…" not in out, "Wrap mode should not produce ellipsis truncation"
     # Fold-wrap can split a segment at the column boundary
     # (`seg_11/se` ends one line, `g_12/...` begins the next), so the path

@@ -297,6 +297,13 @@ function run() {
         cross_file_edges = [e for e in call_edges if e.confidence == 0.80]
         assert len(cross_file_edges) >= 1
 
+        # INV-vakaf: file-locality lives on its own meta key call_locality
+        # ('cross_file'), NOT smuggled through call_construct (the syntactic
+        # call-shape axis).
+        xf = cross_file_edges[0]
+        assert (xf.meta or {}).get("call_locality") == "cross_file"
+        assert "call_construct" not in (xf.meta or {})
+
 class TestBashSymbolProperties:
     """Tests for symbol property correctness."""
 
@@ -714,10 +721,10 @@ class TestInvTajapShellScriptConcept:
 
 
 class TestWiPulorFunctionLinesOfCode:
-    """WI-pulor: bash function Symbols must populate lines_of_code.
+    """WI-pulor: bash function Symbols must populate line_span.
 
-    Pre-fix, every bash function Symbol had lines_of_code=None despite valid
-    spans. The convention (see ir.py:349 and py.py:_compute_lines_of_code) is
+    Pre-fix, every bash function Symbol had line_span=None despite valid
+    spans. The convention (see ir.py:349 and py.py:_compute_line_span) is
     end_line - start_line + 1. The dead-code-maybe formatter renders ``?`` when
     LOC is None, so without this fix bash functions appear in the dead-code
     report as ``? LOC`` instead of e.g. ``8 LOC``.
@@ -732,7 +739,7 @@ class TestWiPulorFunctionLinesOfCode:
 
         helper = next((s for s in result.symbols if s.name == "helper"), None)
         assert helper is not None
-        assert helper.lines_of_code == 1
+        assert helper.line_span == 1
 
     def test_multi_line_function_loc(self, tmp_path: Path) -> None:
         from hypergumbo_lang_mainstream.bash import analyze_bash
@@ -751,10 +758,10 @@ class TestWiPulorFunctionLinesOfCode:
         assert section is not None
         assert section.span.start_line == 2
         assert section.span.end_line == 5
-        assert section.lines_of_code == 4
+        assert section.line_span == 4
 
     def test_all_bash_functions_have_non_null_loc(self, tmp_path: Path) -> None:
-        """Property: no bash function Symbol has lines_of_code=None."""
+        """Property: no bash function Symbol has line_span=None."""
         from hypergumbo_lang_mainstream.bash import analyze_bash
 
         bash_file = tmp_path / "many.sh"
@@ -774,8 +781,153 @@ class TestWiPulorFunctionLinesOfCode:
         funcs = [s for s in result.symbols if s.kind == "function"]
         assert len(funcs) == 3
         for func in funcs:
-            assert func.lines_of_code is not None, (
-                f"bash function {func.name!r} has lines_of_code=None; "
+            assert func.line_span is not None, (
+                f"bash function {func.name!r} has line_span=None; "
                 f"WI-pulor regression"
             )
-            assert func.lines_of_code >= 1
+            assert func.line_span >= 1
+
+
+class TestBashCyclomaticComplexity:
+    """INV-loguk: bash function Symbols populate cyclomatic_complexity.
+
+    Bash already populated line_span (WI-pulor); this closes the CC half.
+    Short-circuit ``&&``/``||`` between commands are NOT counted (they live in
+    ``list`` nodes, outside the shared binary-expression scope) — only
+    if/elif/for/while/case decision points contribute.
+    """
+
+    def test_branchy_function_has_nontrivial_cc(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.bash import analyze_bash
+
+        (tmp_path / "s.sh").write_text(
+            "#!/bin/bash\n"
+            "greet() {\n"
+            "  if [ \"$1\" = a ]; then echo a\n"
+            "  elif [ \"$1\" = b ]; then echo b\n"
+            "  else echo c\n"
+            "  fi\n"
+            "  for i in 1 2 3; do echo \"$i\"; done\n"
+            "  while true; do break; done\n"
+            "}\n"
+        )
+        result = analyze_bash(tmp_path)
+        assert not result.skipped
+        fn = next(
+            s for s in result.symbols
+            if s.name == "greet" and s.kind == "function"
+        )
+        # if + elif + for + while = 4 above base
+        assert fn.cyclomatic_complexity is not None
+        assert fn.cyclomatic_complexity >= 4
+
+    def test_straight_line_function_cc_is_one(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.bash import analyze_bash
+
+        (tmp_path / "s.sh").write_text(
+            "#!/bin/bash\n"
+            "hello() {\n"
+            "  echo hello\n"
+            "}\n"
+        )
+        result = analyze_bash(tmp_path)
+        fn = next(
+            s for s in result.symbols
+            if s.name == "hello" and s.kind == "function"
+        )
+        assert fn.cyclomatic_complexity == 1
+
+    def test_no_bash_function_has_null_cc(self, tmp_path: Path) -> None:
+        """Property: every bash function Symbol has non-null CC."""
+        from hypergumbo_lang_mainstream.bash import analyze_bash
+
+        (tmp_path / "s.sh").write_text(
+            "#!/bin/bash\n"
+            "a() { echo 1; }\n"
+            "b() { if true; then echo 2; fi; }\n"
+        )
+        result = analyze_bash(tmp_path)
+        funcs = [s for s in result.symbols if s.kind == "function"]
+        assert funcs
+        for fn in funcs:
+            assert fn.cyclomatic_complexity is not None, fn.name
+
+
+class TestCommandLaunchEmission:
+    """WI-javoh: an external-program launch inside a bash function is a
+    subprocess crossing. Emit a ``calls`` edge prestamped with
+    ``meta.io_boundary == "command_launch"`` (is_resolved=False, external
+    dst_ref), deduped per (caller, command). Shell builtins and in-tree
+    function calls never launch a program, so they never emit."""
+
+    def _launches(self, result):
+        return [
+            e for e in result.edges
+            if (e.meta or {}).get("io_boundary") == "command_launch"
+        ]
+
+    def _analyze(self, tmp_path: Path, src: str):
+        from hypergumbo_lang_mainstream.bash import analyze_bash
+
+        (tmp_path / "s.sh").write_text(src)
+        return analyze_bash(tmp_path)
+
+    def test_external_command_emits_command_launch(self, tmp_path: Path) -> None:
+        result = self._analyze(
+            tmp_path,
+            "#!/bin/bash\n"
+            "deploy() {\n"
+            "  curl -sSL https://example.com/i.sh\n"
+            "  git pull\n"
+            "  rm -rf /tmp/x\n"
+            "}\n",
+        )
+        launches = self._launches(result)
+        prims = {(e.meta or {}).get("io_primitive") for e in launches}
+        assert {"curl", "git", "rm"} <= prims
+        for e in launches:
+            assert e.is_resolved is False
+            assert e.edge_type == "calls"
+            assert e.dst_ref is not None
+            assert e.dst_ref.name in prims
+            assert (e.meta or {}).get("call_construct") == "function"
+
+    def test_builtins_do_not_emit_command_launch(self, tmp_path: Path) -> None:
+        result = self._analyze(
+            tmp_path,
+            "#!/bin/bash\n"
+            "f() {\n"
+            "  echo hi\n"
+            "  cd /tmp\n"
+            "  local x=1\n"
+            "  export Y=2\n"
+            "  read v\n"
+            "  printf '%s' a\n"
+            "}\n",
+        )
+        assert self._launches(result) == []
+
+    def test_launches_deduped_per_caller_command(self, tmp_path: Path) -> None:
+        result = self._analyze(
+            tmp_path,
+            "#!/bin/bash\n"
+            "f() {\n"
+            "  git add .\n"
+            "  git commit -m x\n"
+            "  git push\n"
+            "}\n",
+        )
+        gits = [
+            e for e in self._launches(result)
+            if (e.meta or {}).get("io_primitive") == "git"
+        ]
+        assert len(gits) == 1
+
+    def test_in_tree_function_call_is_not_a_launch(self, tmp_path: Path) -> None:
+        result = self._analyze(
+            tmp_path,
+            "#!/bin/bash\n"
+            "helper() { echo hi; }\n"
+            "main() { helper; }\n",
+        )
+        assert self._launches(result) == []

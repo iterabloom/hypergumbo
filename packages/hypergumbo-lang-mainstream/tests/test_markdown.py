@@ -123,7 +123,7 @@ const x = 1;
         assert code is not None
         assert code.name == "code:javascript"
         assert code.meta.get("code_language") == "javascript"
-        assert code.meta.get("lines_of_code") >= 1
+        assert code.meta.get("line_span") >= 1
         assert code.signature == "```javascript"
 
     def test_extracts_code_block_without_language(self, tmp_path: Path) -> None:
@@ -170,7 +170,7 @@ some code
     def test_creates_edge_for_internal_link(self, tmp_path: Path) -> None:
         make_markdown_file(tmp_path, "README.md", "See [guide](./docs/guide.md) for details.\n")
         result = analyze_markdown(tmp_path)
-        edge = next((e for e in result.edges if e.edge_type == "links_to"), None)
+        edge = next((e for e in result.edges if e.edge_type == "references" and (e.meta or {}).get("ref_construct") == "markdown_link"), None)
         assert edge is not None
         # WI-diruj: dst is a properly-formed 5-part symbol id, NOT the raw URL.
         # Format: markdown:<path>:0-0:<basename>:doc_link
@@ -183,7 +183,7 @@ some code
             tmp_path, "README.md", "See [section](../spec.md#anchor) here.\n",
         )
         result = analyze_markdown(tmp_path)
-        edge = next((e for e in result.edges if e.edge_type == "links_to"), None)
+        edge = next((e for e in result.edges if e.edge_type == "references" and (e.meta or {}).get("ref_construct") == "markdown_link"), None)
         assert edge is not None
         assert edge.dst == "markdown:../spec.md:0-0:spec.md:doc_link"
 
@@ -215,7 +215,7 @@ some code
     def test_no_edge_for_external_link(self, tmp_path: Path) -> None:
         make_markdown_file(tmp_path, "README.md", "Visit [GitHub](https://github.com).\n")
         result = analyze_markdown(tmp_path)
-        edges = [e for e in result.edges if e.edge_type == "links_to"]
+        edges = [e for e in result.edges if e.edge_type == "references" and (e.meta or {}).get("ref_construct") == "markdown_link"]
         assert len(edges) == 0
 
     def test_pass_id(self, tmp_path: Path) -> None:
@@ -339,7 +339,7 @@ Does something.
         assert len(links) == 2
 
         # Internal link edge — properly-formed dst id (WI-diruj)
-        edges = [e for e in result.edges if e.edge_type == "links_to"]
+        edges = [e for e in result.edges if e.edge_type == "references" and (e.meta or {}).get("ref_construct") == "markdown_link"]
         assert len(edges) == 1
         assert edges[0].dst == "markdown:./docs/README.md:0-0:README.md:doc_link"
 
@@ -357,7 +357,7 @@ Does something.
         result = analyze_markdown(tmp_path)
         code = next((s for s in result.symbols if s.kind == "code_block"), None)
         assert code is not None
-        assert code.meta.get("lines_of_code") == 0
+        assert code.meta.get("line_span") == 0
         assert code.meta.get("is_example") is False
 
     def test_multiple_links_in_paragraph(self, tmp_path: Path) -> None:

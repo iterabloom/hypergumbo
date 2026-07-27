@@ -59,6 +59,7 @@ from hypergumbo_core.analyze.base import (
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -202,6 +203,32 @@ def _extract_fsharp_signature(
     return signature
 
 
+_FSHARP_MODULE_SCOPES = frozenset({"named_module", "module_defn", "file"})
+
+
+def _fsharp_value_is_module_level(node: "tree_sitter.Node") -> bool:
+    """Return True if a value ``function_or_value_defn`` is at module scope.
+
+    A module-level ``let x = …`` binding sits under
+    ``declaration_expression > <module scope>``, where the scope is
+    ``named_module`` / ``module_defn`` (a nested ``module N =`` body) or ``file``
+    (a headerless ``.fsx`` script / implicit-module ``.fs`` file, which the
+    bundled grammar wraps directly in ``file`` with no module node). A
+    function-body local ``let`` reuses the SAME ``function_or_value_defn`` node
+    but its ``declaration_expression`` is nested inside the enclosing binding's
+    ``function_or_value_defn`` — so the local is excluded even in a headerless
+    file (WI-jusus: emit only module-level bindings as ``variable`` data anchors,
+    never leak locals). The module-scope allowlist fails safe — a value under an
+    unrecognized scope (e.g. a lambda / computation-expression body) is a recall
+    miss, never a wrong emission.
+    """
+    decl_expr = node.parent
+    if decl_expr is None:
+        return False  # pragma: no cover - defensive: a defn always has a parent
+    scope = decl_expr.parent
+    return scope is not None and scope.type in _FSHARP_MODULE_SCOPES
+
+
 def _extract_symbols_from_file(
     tree: "tree_sitter.Tree",
     source: bytes,
@@ -278,9 +305,14 @@ def _extract_symbols_from_file(
                         origin=PASS_ID,
                         origin_run_id=run_id,
                         signature=signature,
+                        cyclomatic_complexity=compute_cyclomatic_complexity(node, "fsharp"),
+                        line_span=end_line - start_line + 1,
                     ))
-            else:
-                # Check for value_declaration_left (values without params)
+            elif _fsharp_value_is_module_level(node):
+                # A module-level `let x = …` value binding — a data anchor,
+                # emitted as `variable` (the cross-language WI-jusus convention,
+                # replacing the F#-only `value` kind). Function-body locals reuse
+                # this node but are excluded by the module-scope guard.
                 val_left = find_child_by_type(node, "value_declaration_left")
                 if val_left:
                     id_pattern = find_child_by_type(val_left, "identifier_pattern")
@@ -298,11 +330,11 @@ def _extract_symbols_from_file(
                                     start_col=node.start_point[1],
                                     end_col=node.end_point[1],
                                 )
-                                sym_id = make_symbol_id("fsharp", file_path, start_line, end_line, val_name, "value")
+                                sym_id = make_symbol_id("fsharp", file_path, start_line, end_line, val_name, "variable")
                                 symbols.append(Symbol(
                                     id=sym_id,
                                     name=val_name,
-                                    kind="value",
+                                    kind="variable",
                                     language="fsharp",
                                     path=file_path,
                                     span=span,
@@ -339,6 +371,37 @@ def _extract_symbols_from_file(
                             origin=PASS_ID,
                             origin_run_id=run_id,
                         ))
+                        # WI-jusus: record members are `field` data anchors
+                        # (owner = the record type). A `record_field`'s name is
+                        # its first `identifier` child (a `mutable` modifier
+                        # precedes it, which find_child_by_type skips).
+                        fields_node = find_child_by_type(record, "record_fields")
+                        if fields_node:
+                            for field in fields_node.children:
+                                if field.type != "record_field":
+                                    continue  # pragma: no cover - defensive: record_fields holds only record_field
+                                fname_node = find_child_by_type(field, "identifier")
+                                if fname_node is None:
+                                    continue  # pragma: no cover - a record field always names
+                                f_start = field.start_point[0] + 1
+                                f_end = field.end_point[0] + 1
+                                fname = node_text(fname_node, source)
+                                qualified = f"{type_name}.{fname}"
+                                symbols.append(Symbol(
+                                    id=make_symbol_id("fsharp", file_path, f_start, f_end, qualified, "field"),
+                                    name=qualified,
+                                    kind="field",
+                                    language="fsharp",
+                                    path=file_path,
+                                    span=Span(
+                                        start_line=f_start,
+                                        end_line=f_end,
+                                        start_col=field.start_point[1],
+                                        end_col=field.end_point[1],
+                                    ),
+                                    origin=PASS_ID,
+                                    origin_run_id=run_id,
+                                ))
 
             # Discriminated union type
             union = find_child_by_type(node, "union_type_defn")
@@ -477,7 +540,6 @@ def _extract_edges_from_file(
                     origin=PASS_ID,
                     origin_run_id=run_id,
                     evidence_type="import",
-                    confidence=0.95,
                 )
                 edges.append(edge)
 
@@ -558,15 +620,41 @@ class FsharpAnalyzer(TreeSitterAnalyzer):
         )
         analysis.symbols.extend(file_symbols)
 
-        # Register callable symbols for edge resolution
+        # Register resolvable symbols for edge resolution. Record `field`s are
+        # data anchors (never call targets), so they stay out. But an F# module
+        # `variable` (a `let` value binding) IS legitimately callable — a
+        # lambda / partial-application / composition binding (`let add = fun a b
+        # -> …`, `let inc = (+) 1`) is a real call target — and F# forbids a
+        # same-name value+function in a module, so there is no clobber to guard
+        # against; keep variables resolvable.
         for sym in file_symbols:
-            if sym.kind in ("function", "value"):
+            if sym.kind in ("function", "variable"):
                 analysis.symbol_by_name[sym.name] = sym
 
         # Store module aliases in import_aliases for pass 2
         # (extracted separately in get_import_aliases)
 
         return analysis
+
+    def register_symbol(self, symbol: Symbol, global_symbols: dict) -> None:
+        """Keep record ``field`` symbols OUT of the call-resolution registry (WI-jusus).
+
+        A record ``field`` is a data anchor, never a call target — and the
+        ``NameResolver`` suffix index would let a registered qualified field
+        (``Rec.name``) suffix-match a bare call ``name(…)`` and mint a wrong
+        ``calls`` edge to the field, so the field skip is a load-bearing
+        precision guard. ``variable`` (an F# ``let`` value binding) is NOT
+        skipped: it is legitimately callable (point-free / factory idioms) and
+        F# forbids a same-name value+function within a module, so keeping it
+        resolvable adds recall without a clobber risk (the residual is a narrow
+        cross-module data-value-evicts-function false-negative, symmetric with
+        the function-vs-function bare-name ambiguity the resolver already
+        tolerates). Fields still reach output/search/centrality because the
+        output symbol set is built independently of this registry.
+        """
+        if symbol.kind == "field":
+            return
+        super().register_symbol(symbol, global_symbols)
 
     def get_import_aliases(
         self, tree: "tree_sitter.Tree", source: bytes,

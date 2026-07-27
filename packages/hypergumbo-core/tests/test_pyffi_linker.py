@@ -142,8 +142,8 @@ class TestPyFFILinkerCtypes:
         assert edge.dst == c_func.id
         assert edge.evidence_type == "ctypes_call"
         assert edge.meta is not None
-        assert edge.meta.get("access_mode") == "write"
-        assert edge.meta.get("dest_access_mode") == "read"
+        assert edge.meta.get("data_direction") == "src_to_dst"
+        assert edge.meta.get("access_mode") is None
 
     def test_links_cdll_variant_names(self, tmp_path: Path) -> None:
         """Handles CDLL, cdll.LoadLibrary, WinDLL, OleDLL, PyDLL."""
@@ -1231,8 +1231,8 @@ class TestPyFFIStdlibUnresolvedEdges:
         assert edge.dst == f"{PYFFI_STDLIB_PREFIX}fopen:unresolved"
         assert edge.evidence_type == "cffi_stdlib_call"
         assert edge.meta is not None
-        assert edge.meta.get("access_mode") == "write"
-        assert edge.meta.get("dest_access_mode") == "read"
+        assert edge.meta.get("data_direction") == "src_to_dst"
+        assert edge.meta.get("access_mode") is None
 
     def test_ctypes_cdll_none_creates_unresolved_edges(self, tmp_path: Path) -> None:
         """ctypes.CDLL(None) + lib.popen() creates an unresolved edge to C stdlib."""

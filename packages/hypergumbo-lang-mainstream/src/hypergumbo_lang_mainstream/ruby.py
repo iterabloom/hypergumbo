@@ -1166,7 +1166,7 @@ def _extract_rails_routes(
                     },
                     origin=PASS_ID,
                     origin_run_id=run_id,
-                    lines_of_code=span.end_line - span.start_line + 1,
+                    line_span=span.end_line - span.start_line + 1,
                     is_exported=True,
                 )
                 route_symbols.append(route_symbol)
@@ -1217,7 +1217,7 @@ def _extract_rails_routes(
                     },
                     origin=PASS_ID,
                     origin_run_id=run_id,
-                    lines_of_code=span.end_line - span.start_line + 1,
+                    line_span=span.end_line - span.start_line + 1,
                     is_exported=True,
                 )
                 route_symbols.append(route_symbol)
@@ -1249,7 +1249,7 @@ def _extract_rails_routes(
                 meta=route_meta,
                 origin=PASS_ID,
                 origin_run_id=run_id,
-                lines_of_code=span.end_line - span.start_line + 1,
+                line_span=span.end_line - span.start_line + 1,
                 is_exported=True,
             )
             route_symbols.append(route_symbol)
@@ -1316,13 +1316,12 @@ def _extract_block_callback_edges(
         edges.append(Edge.create(
             src=class_sym.id,
             dst=callee.id,
-            edge_type="invokes_callback",
+            edge_type="dispatches_to",
             line=line,
             evidence_type="ast_call_direct",
-            confidence=0.85,
             origin=PASS_ID,
             origin_run_id=run_id,
-            meta={"framework_dispatch": "rails_block_callback"},
+            meta={"framework_dispatch": "rails_block_callback", "mechanism": "callback"},
         ))
 
 
@@ -1431,13 +1430,12 @@ def _extract_rails_callbacks(
                 edges.append(Edge.create(
                     src=class_sym.id,
                     dst=callee.id,
-                    edge_type="invokes_callback",
+                    edge_type="dispatches_to",
                     line=node.start_point[0] + 1,
                     evidence_type="ast_call_direct",
-                    confidence=0.9,
                     origin=PASS_ID,
                     origin_run_id=run_id,
-                    meta={"framework_dispatch": "rails_callback"},
+                    meta={"framework_dispatch": "rails_callback", "mechanism": "callback"},
                 ))
 
         # Block-style callbacks: after_commit do...end or before_save { ... }
@@ -1596,26 +1594,30 @@ def _extract_activerecord_associations(
             edges.append(Edge.create(
                 src=class_sym.id,
                 dst=target_sym.id,
-                edge_type="association",
+                edge_type="references",
                 line=node.start_point[0] + 1,
                 evidence_type="ast_call_direct",
-                confidence=0.90,
                 origin=PASS_ID,
                 origin_run_id=run_id,
-                meta={"framework_dispatch": "activerecord_association"},
+                meta={
+                    "framework_dispatch": "activerecord_association",
+                    "ref_construct": "association",
+                },
             ))
         else:
             # Unresolved: target model not found (may be in a gem)
             edges.append(Edge.create(
                 src=class_sym.id,
                 dst=f"ruby:?:0-0:{target_class}:unresolved",
-                edge_type="association",
+                edge_type="references",
                 line=node.start_point[0] + 1,
                 evidence_type="ast_call_direct",
-                confidence=0.70,
                 origin=PASS_ID,
                 origin_run_id=run_id,
-                meta={"framework_dispatch": "activerecord_association"},
+                meta={
+                    "framework_dispatch": "activerecord_association",
+                    "ref_construct": "association",
+                },
             ))
 
     return edges
@@ -1745,7 +1747,6 @@ def _extract_ruby_delegates(
                         edge_type="references",
                         line=node.start_point[0] + 1,
                         evidence_type="ast_call_direct",
-                        confidence=0.85,
                         origin=PASS_ID,
                         origin_run_id=run_id,
                         meta={"mechanism": "delegate", "framework_dispatch": "ruby_delegate"},
@@ -1758,7 +1759,6 @@ def _extract_ruby_delegates(
                         edge_type="references",
                         line=node.start_point[0] + 1,
                         evidence_type="ast_call_direct",
-                        confidence=0.65,
                         origin=PASS_ID,
                         origin_run_id=run_id,
                         meta={"mechanism": "delegate", "framework_dispatch": "ruby_delegate"},
@@ -1772,7 +1772,6 @@ def _extract_ruby_delegates(
                     edge_type="references",
                     line=node.start_point[0] + 1,
                     evidence_type="ast_call_direct",
-                    confidence=0.65,
                     origin=PASS_ID,
                     origin_run_id=run_id,
                     meta={"framework_dispatch": "ruby_delegate"},
@@ -1783,6 +1782,139 @@ def _extract_ruby_delegates(
 
 # NOTE: We use the base FileAnalysis from hypergumbo_core.analyze.base.
 # Ruby's require_hints are stored in FileAnalysis.import_aliases.
+
+
+_RUBY_ATTR_MACROS = frozenset({"attr_accessor", "attr_reader", "attr_writer"})
+
+
+def _emit_ruby_data_symbol(
+    analysis: FileAnalysis,
+    node: "tree_sitter.Node",
+    full_name: str,
+    member: str,
+    kind: str,
+    is_exported: bool,
+    source: bytes,
+    file_path: str,
+    file_stable_id: str,
+    run_id: str,
+) -> None:
+    """Append one WI-jusus field/variable Symbol.
+
+    Mirrors the class/method symbol shape (canonical ``compute_stable_id`` with a
+    ``::``-qualified ``qualified_name``). The symbol is added to
+    ``analysis.symbols`` only — NOT ``symbol_by_name`` — so a data anchor never
+    shadows a same-named method during per-file resolution; the
+    ``register_symbol`` chokepoint likewise keeps it out of the global registry.
+    """
+    start_line = node.start_point[0] + 1
+    end_line = node.end_point[0] + 1
+    ruby_chain = _get_ruby_class_or_module_chain(node, source)
+    qualified = _make_ruby_qualified_name(ruby_chain, member)
+    symbol = Symbol(
+        id=make_symbol_id(
+            "ruby", str(file_path), start_line, end_line, full_name, kind,
+        ),
+        name=full_name,
+        kind=kind,
+        language="ruby",
+        path=str(file_path),
+        span=Span(
+            start_line=start_line,
+            end_line=end_line,
+            start_col=node.start_point[1],
+            end_col=node.end_point[1],
+        ),
+        origin=PASS_ID,
+        origin_run_id=run_id,
+        is_exported=is_exported,
+        line_span=end_line - start_line + 1,
+        qualified_name=qualified,
+        stable_id=_analyzer.compute_stable_id(
+            node, kind=kind, name=full_name,
+            qualified_name=qualified, file_stable_id=file_stable_id,
+        ),
+        shape_id=_analyzer.compute_shape_id(node),
+    )
+    analysis.symbols.append(symbol)
+    analysis.node_for_symbol[symbol.id] = node
+
+
+def _emit_ruby_data_symbols(
+    analysis: FileAnalysis,
+    tree: "tree_sitter.Tree",
+    source: bytes,
+    file_path: str,
+    file_stable_id: str,
+    run_id: str,
+) -> None:
+    """Emit kind="field" / kind="variable" data anchors for Ruby (WI-jusus).
+
+    Ruby has no lexical field declaration, so the statically-recoverable declared
+    data members are: class/module-body CONSTANTS and ``@@`` class variables
+    (kind=field, owner = the enclosing class/module), top-level CONSTANTS
+    (kind=variable), and ``attr_accessor`` / ``attr_reader`` / ``attr_writer``
+    attributes (kind=field). Members assigned inside a method body — instance
+    variables (``@x``) and method-local constants — are deferred: attributing
+    them to the enclosing class needs a distinct mechanism, so they are skipped
+    via ``_is_nested_in_method``.
+    """
+    for node in iter_tree(tree.root_node):
+        if node.type == "assignment":
+            left = _find_child_by_field(node, "left")
+            if left is None or left.type not in ("constant", "class_variable"):
+                continue
+            if _is_nested_in_method(node):
+                continue
+            member = node_text(left, source)
+            enclosing_name, _enclosing_type = _get_enclosing_class_or_module(
+                node, source,
+            )
+            if enclosing_name is not None:
+                # A class/module-body constant or ``@@`` class variable is a
+                # field of that type. Constants are public by convention; ``@@``
+                # class variables are class-internal state.
+                _emit_ruby_data_symbol(
+                    analysis, left, f"{enclosing_name}::{member}", member,
+                    "field", left.type == "constant",
+                    source, file_path, file_stable_id, run_id,
+                )
+            elif left.type == "constant":
+                # Top-level constant -> module-level variable. (A top-level
+                # ``@@`` class variable is not valid Ruby, so only constants
+                # reach this branch.)
+                _emit_ruby_data_symbol(
+                    analysis, left, member, member, "variable", True,
+                    source, file_path, file_stable_id, run_id,
+                )
+        elif node.type == "call":
+            method_node = _find_child_by_field(node, "method")
+            if (
+                method_node is None
+                or node_text(method_node, source) not in _RUBY_ATTR_MACROS
+            ):
+                continue
+            if _is_nested_in_method(node):
+                continue
+            enclosing_name, _enclosing_type = _get_enclosing_class_or_module(
+                node, source,
+            )
+            if enclosing_name is None:
+                continue
+            args_node = _find_child_by_field(node, "arguments")
+            if args_node is None:  # pragma: no cover - a call always has an argument_list field
+                continue
+            for arg in args_node.children:
+                if arg.type != "simple_symbol":
+                    continue
+                attr = node_text(arg, source).lstrip(":")
+                if not attr:  # pragma: no cover - a simple_symbol always names an attribute
+                    continue
+                _emit_ruby_data_symbol(
+                    analysis, arg, f"{enclosing_name}#{attr}", attr,
+                    "field", True,
+                    source, file_path, file_stable_id, run_id,
+                )
 
 
 def _extract_symbols_from_file(
@@ -1849,7 +1981,7 @@ def _extract_symbols_from_file(
                         file_stable_id=file_stable_id,
                     ),
                     shape_id=_analyzer.compute_shape_id(node),
-                    lines_of_code=end_line - start_line + 1,
+                    line_span=end_line - start_line + 1,
                     is_exported=not _is_nested_in_method(node),
                     qualified_name=_make_ruby_qualified_name(ruby_chain, method_name),
                     cyclomatic_complexity=compute_cyclomatic_complexity(node, "ruby"),
@@ -1897,7 +2029,7 @@ def _extract_symbols_from_file(
                         file_stable_id=file_stable_id,
                     ),
                     shape_id=_analyzer.compute_shape_id(node),
-                    lines_of_code=end_line - start_line + 1,
+                    line_span=end_line - start_line + 1,
                     is_exported=not _is_nested_in_method(node),
                     qualified_name=_make_ruby_qualified_name(ruby_chain, method_name),
                     cyclomatic_complexity=compute_cyclomatic_complexity(node, "ruby"),
@@ -1962,7 +2094,7 @@ def _extract_symbols_from_file(
                         file_stable_id=file_stable_id,
                     ),
                     shape_id=_analyzer.compute_shape_id(node),
-                    lines_of_code=end_line - start_line + 1,
+                    line_span=end_line - start_line + 1,
                     is_exported=not _is_nested_in_method(node),
                     qualified_name=_make_ruby_qualified_name(ruby_chain, class_name),
                 )
@@ -2009,7 +2141,7 @@ def _extract_symbols_from_file(
                         file_stable_id=file_stable_id,
                     ),
                     shape_id=_analyzer.compute_shape_id(node),
-                    lines_of_code=end_line - start_line + 1,
+                    line_span=end_line - start_line + 1,
                     is_exported=not _is_nested_in_method(node),
                     qualified_name=_make_ruby_qualified_name(ruby_chain, module_name),
                 )
@@ -2019,6 +2151,13 @@ def _extract_symbols_from_file(
 
     # Extract require hints for disambiguation (stored in import_aliases)
     analysis.import_aliases = _extract_require_hints(tree, source)
+
+    # WI-jusus: emit kind=field/variable data anchors (constants, attr_*
+    # attributes, class variables). Kept out of symbol_by_name / the call
+    # registry (see _emit_ruby_data_symbols and register_symbol).
+    _emit_ruby_data_symbols(
+        analysis, tree, source, file_path, file_stable_id, run_id,
+    )
 
     return analysis
 
@@ -2167,7 +2306,6 @@ def _try_receiver_call(
                         edge_type="calls",
                         line=line,
                         evidence_type="ast_call",
-                        confidence=0.90,
                         origin=PASS_ID,
                         origin_run_id=run_id,
                         meta={"call_construct": "constructor"},
@@ -2237,7 +2375,6 @@ def _try_receiver_call(
                         edge_type="calls",
                         line=line,
                         evidence_type="ast_call",
-                        confidence=0.85,
                         origin=PASS_ID,
                         origin_run_id=run_id,
                         meta={"call_construct": "method", "receiver": "generic"},
@@ -2297,7 +2434,6 @@ def _try_receiver_call(
             line=line,
             evidence_type="ast_call_direct",
             is_resolved=False,
-            confidence=0.55,
             origin=PASS_ID,
             origin_run_id=run_id,
             meta={"call_construct": "method", "receiver": "constant_external"},
@@ -2350,7 +2486,6 @@ def _try_job_enqueue(
                         edge_type="event_publishes",
                         line=line,
                         evidence_type="ast_call_direct",
-                        confidence=0.90,
                         origin=PASS_ID,
                         origin_run_id=run_id,
                         meta={"channel_kind": "queue", "framework_dispatch": "job_enqueue"},
@@ -2368,7 +2503,6 @@ def _try_job_enqueue(
                     edge_type="event_publishes",
                     line=line,
                     evidence_type="ast_call_direct",
-                    confidence=0.85,
                     origin=PASS_ID,
                     origin_run_id=run_id,
                     meta={"channel_kind": "queue", "framework_dispatch": "job_enqueue"},
@@ -2382,7 +2516,6 @@ def _try_job_enqueue(
         edge_type="event_publishes",
         line=line,
         evidence_type="ast_call_direct",
-        confidence=0.70,
         origin=PASS_ID,
         origin_run_id=run_id,
         meta={"channel_kind": "queue", "framework_dispatch": "job_enqueue"},
@@ -2505,7 +2638,6 @@ def _extract_edges_from_file(
                                         edge_type="imports",
                                         line=node.start_point[0] + 1,
                                         evidence_type="require_statement",
-                                        confidence=0.95,
                                         origin=PASS_ID,
                                         origin_run_id=run_id,
                                     ))
@@ -2551,7 +2683,6 @@ def _extract_edges_from_file(
                                         edge_type="references",
                                         line=node.start_point[0] + 1,
                                         evidence_type="method_reference",
-                                        confidence=0.85,
                                         origin=PASS_ID,
                                         origin_run_id=run_id,
                                     ))
@@ -2601,7 +2732,6 @@ def _extract_edges_from_file(
                                         edge_type="calls",
                                         line=node.start_point[0] + 1,
                                         evidence_type="ast_call",
-                                        confidence=0.80,
                                         origin=PASS_ID,
                                         origin_run_id=run_id,
                                         meta={"call_construct": "method", "resolution_quality": "typed_receiver"},
@@ -2624,7 +2754,6 @@ def _extract_edges_from_file(
                                     edge_type="calls",
                                     line=node.start_point[0] + 1,
                                     evidence_type="ast_call",
-                                    confidence=0.85,
                                     origin=PASS_ID,
                                     origin_run_id=run_id,
                                     meta={"call_construct": "method"},
@@ -2759,7 +2888,6 @@ def _extract_edges_from_file(
                             edge_type="references",
                             line=node.start_point[0] + 1,
                             evidence_type="hash_field_reference",
-                            confidence=0.80,
                             origin=PASS_ID,
                             origin_run_id=run_id,
                         ))
@@ -2881,7 +3009,6 @@ def _extract_inheritance_edges(
                 dst=base_sym.id,
                 edge_type="extends",
                 line=sym.span.start_line if sym.span else 0,
-                confidence=0.95,
                 origin=PASS_ID,
                 origin_run_id=run_id,
                 evidence_type="ast_extends",
@@ -2916,7 +3043,16 @@ class RubyAnalyzer(TreeSitterAnalyzer):
 
         The ``NameResolver`` suffix index handles short-name lookups
         across ``#`` and ``.`` separators.
+
+        WI-jusus chokepoint: field/variable data anchors (constants, attr_*
+        attributes, class variables) are kept OUT of the call-resolution
+        registry — a data anchor is never a call target, so registering it would
+        let it clobber or suffix-shadow a same-named method. They remain in
+        ``analysis.symbols`` (search / centrality) since the output set is built
+        independently of this registry.
         """
+        if symbol.kind in ("field", "variable"):
+            return
         global_symbols[symbol.name] = symbol
 
     def analyze(

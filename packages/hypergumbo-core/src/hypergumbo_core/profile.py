@@ -64,6 +64,11 @@ from .taxonomy import LANGUAGE_EXTENSIONS
 # Framework detection patterns
 # Maps framework name -> (file to check, pattern to look for)
 PYTHON_FRAMEWORKS = {
+    # INV-mupuf: dedicated detection keys equal to the route-YAML basename (no
+    # alias needed) so these route-emitting frameworks are reachable from an
+    # import instead of being exempted from the reachability invariant.
+    "flask-restful": ["flask-restful", "flask_restful", "Flask-RESTful"],
+    "masonite": ["masonite"],
     # Web frameworks
     "fastapi": ["fastapi"],
     "flask": ["flask", "Flask"],
@@ -132,6 +137,8 @@ PYTHON_FRAMEWORKS = {
 }
 
 JS_FRAMEWORKS = {
+    # INV-mupuf: route-emitting framework reachable via its npm package name.
+    "restify": ["restify"],
     # Frontend frameworks
     "react": ["react"],
     "vue": ["vue"],
@@ -275,18 +282,41 @@ GO_FRAMEWORKS = {
 
 # PHP composer.json detection patterns
 PHP_FRAMEWORKS = {
-    "laravel": ["laravel/framework"],
-    "symfony": ["symfony/framework-bundle", "symfony/symfony"],
-    "codeigniter": ["codeigniter4/framework"],
-    "cakephp": ["cakephp/cakephp"],
-    "yii": ["yiisoft/yii2"],
-    "phalcon": ["phalcon/devtools"],
-    "slim": ["slim/slim"],
+    # INV-mupuf: Lumen (Laravel's micro-framework) via its composer package.
+    "lumen": ["laravel/lumen-framework", "laravel/lumen"],
+    # INV-naguv: each framework also carries its PHP import NAMESPACE (matched
+    # against `use Foo\Bar;` imports via the `\` separator), so a source-only
+    # PHP app with no composer manifest still promotes the framework.
+    "laravel": ["laravel/framework", "Illuminate"],
+    "symfony": ["symfony/framework-bundle", "symfony/symfony", "Symfony"],
+    "codeigniter": ["codeigniter4/framework", "CodeIgniter"],
+    "cakephp": ["cakephp/cakephp", "Cake"],
+    "yii": ["yiisoft/yii2", "yii"],
+    "phalcon": ["phalcon/devtools", "Phalcon"],
+    "slim": ["slim/slim", "Slim"],
 }
 
 # Java/Kotlin (pom.xml, build.gradle) detection patterns
 JAVA_FRAMEWORKS = {
-    "spring-boot": ["spring-boot", "org.springframework.boot"],
+    # WI-tolap: Spring's Maven coordinate is org.springframework.boot, but a
+    # Spring MVC controller imports its annotations from a DIFFERENT namespace
+    # family (org.springframework.web.bind.annotation, org.springframework
+    # .stereotype, org.springframework.context.annotation). refine_frameworks'
+    # demote phase validates a manifest-detected framework by matching a prod
+    # import against these patterns; with only the .boot coord, a real
+    # @RestController that never imports org.springframework.boot was demoted to
+    # dev_frameworks, starving enrich_symbols of spring-boot.yaml so no route/
+    # controller concept fired. These extra entries are IMPORT namespaces, not
+    # Maven group coords (spring-web's coord is org.springframework:spring-web),
+    # so _pattern_matches_deps never matches them against a real dependency —
+    # they widen import matching only, adding no manifest-detection FP.
+    "spring-boot": [
+        "spring-boot",
+        "org.springframework.boot",
+        "org.springframework.web",
+        "org.springframework.stereotype",
+        "org.springframework.context",
+    ],
     "micronaut": ["micronaut", "io.micronaut"],
     "quarkus": ["quarkus", "io.quarkus"],
     "dropwizard": ["dropwizard-core", "dropwizard-jersey"],
@@ -342,12 +372,20 @@ SWIFT_FRAMEWORKS = {
     "swiftui": ["swiftui"],  # Detected via imports, not SPM
 }
 
-# Scala (build.sbt) detection patterns
+# Scala (build.sbt) detection patterns.
+# WI-nizuv: each carries its real import NAMESPACE alongside the build
+# COORDINATE. The coordinate (com.typesafe.play / com.typesafe.akka / dev.zio)
+# only appears in build.sbt and never matches the code's import path, so
+# import promotion was dark. The namespace is specific enough (dotted, and
+# scoped past the base library — akka.http not akka, zio.http not zio) to
+# promote without a manifest and not fire on the base library.
 SCALA_FRAMEWORKS = {
-    "play": ["com.typesafe.play", "playframework"],
-    "akka-http": ["akka-http", "com.typesafe.akka"],
+    # INV-mupuf: Scalatra via its sbt artifact / import namespace.
+    "scalatra": ["scalatra", "org.scalatra"],
+    "play": ["com.typesafe.play", "playframework", "play.api"],
+    "akka-http": ["akka-http", "com.typesafe.akka", "akka.http"],
     "http4s": ["http4s", "org.http4s"],
-    "zio-http": ["zio-http", "dev.zio"],
+    "zio-http": ["zio-http", "dev.zio", "zio.http"],
     "finatra": ["finatra", "com.twitter"],
 }
 
@@ -369,6 +407,40 @@ SCALA_FRAMEWORKS = {
 # through the standard import-edge check.
 _AUTOLOAD_BY_CONVENTION_FRAMEWORKS: frozenset[str] = frozenset({
     "rails",  # Ruby on Rails: gem 'rails' in Gemfile, no `require 'rails'` in app code
+})
+
+
+# WI-tosul Phase 2: route frameworks whose BARE module name may promote on an
+# EXACT top-level import (not just the compound-submodule prefix arm that the
+# WI-pusad bare-name gate otherwise requires). These are the dead-code
+# route-monoculture root: a manifest-silent web app whose canonical usage is a
+# top-level exact import (`from flask import Flask`, `const app = express()`)
+# produced a bare EXACT import edge that the prefix gate rejected, so the
+# framework's YAML never loaded and its routes stayed dark.
+#
+# INCLUSION RULE: add ONLY a bare module name whose exact import RELIABLY means
+# "this repo is a backend web app defining routes with this framework" — a
+# dedicated web/route framework in a well-tested ecosystem. Do NOT add a
+# broadly-imported library, a dual-purpose token, a common word, a middleware
+# spec, or a frontend/meta-framework. Counter-examples that MUST stay gated:
+# `graphql` (type defs / codegen — WI-rofiz), `react`/`vue`/`solid` (frontend UI
+# — WI-palol), `plug` (Elixir middleware spec, app-wide), `aiohttp` (primarily
+# an HTTP *client*), `next`/`nex` (generic tokens). The `allowed_langs` gate in
+# `_has_prod_import_match` already blocks cross-ecosystem collisions, so the
+# residual FP risk of a member is within-language only.
+#
+# Seeded (WI-tosul Phase-2 scout, 2026-07-07) with the high-confidence dedicated
+# web frameworks the current gate starves; expand only in bakeoff-validated
+# batches (the NEEDS-BAKEOFF middle set — aiohttp/falcon/grape/vapor/etc. — must
+# be measured for FP volume first).
+_BARE_EXACT_PROMOTE_ROUTE_FRAMEWORKS: frozenset[str] = frozenset({
+    # Python
+    "flask", "fastapi", "sanic", "litestar", "quart", "starlette", "bottle",
+    "tornado", "pyramid", "django", "flask-appbuilder",
+    # JavaScript / TypeScript
+    "express", "koa", "fastify",
+    # Ruby
+    "sinatra", "padrino",
 })
 
 
@@ -413,7 +485,9 @@ SOLIDITY_FRAMEWORKS = {
 # Haskell framework detection patterns (from *.cabal, stack.yaml, package.yaml)
 HASKELL_FRAMEWORKS = {
     "servant": ["servant", "servant-server"],
-    "scotty": ["scotty"],
+    # WI-nizuv: the bare cabal name "scotty" matches stack's scotty-0.12.1 but
+    # never the "Web.Scotty" module import, so import promotion was dark.
+    "scotty": ["scotty", "Web.Scotty"],
     # Yesod — Rails-inspired Haskell web framework (haskellers et al.)
     "yesod": ["yesod", "yesod-core", "yesod-auth", "yesod-persistent"],
 }
@@ -457,6 +531,8 @@ FSHARP_FRAMEWORKS = {
 # Kotlin framework detection patterns (from build.gradle.kts)
 # Separate from JAVA_FRAMEWORKS because Ktor is Kotlin-specific
 KOTLIN_FRAMEWORKS = {
+    # INV-mupuf: http4k via its artifact / import namespace.
+    "http4k": ["http4k", "org.http4k"],
     "ktor": ["ktor-server", "io.ktor"],
     "exposed": ["exposed-core", "org.jetbrains.exposed"],
     "koin": ["koin-core", "io.insert-koin"],
@@ -697,6 +773,14 @@ class RepoProfile:
     dev_frameworks: list[str] = field(default_factory=list)
     framework_mode: str = "auto"  # none, all, explicit, auto
     requested_frameworks: list[str] = field(default_factory=list)
+    # WI-napuj: provenance for ``frameworks``. Maps each declared framework to
+    # the node ids of the prod (non-test) symbols that import it — the promote
+    # phase's module→importer join, kept instead of discarded, so a consumer can
+    # trace *where* a declared framework is used. Populated by refine_frameworks;
+    # a manifest framework whose modules never appear in an import edge (e.g. a
+    # JS lib on a repo with unavailable JS/TS extraction) is absent here, not
+    # keyed to an empty list — "evidence where the graph supports it".
+    framework_evidence: dict[str, list[str]] = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         result = {
@@ -708,6 +792,12 @@ class RepoProfile:
         # Only include requested_frameworks for explicit mode
         if self.framework_mode == "explicit":
             result["requested_frameworks"] = sorted(self.requested_frameworks)
+        # Omit-when-empty (INV-virik): absence honestly reads as "no framework
+        # has graph-level provenance", not a hollow always-{} that reads "clean".
+        if self.framework_evidence:
+            result["framework_evidence"] = {
+                fw: sorted(nodes) for fw, nodes in self.framework_evidence.items()
+            }
         return result
 
     @classmethod
@@ -723,6 +813,7 @@ class RepoProfile:
             dev_frameworks=d.get("dev_frameworks", []),
             framework_mode=d.get("framework_mode", "auto"),
             requested_frameworks=d.get("requested_frameworks", []),
+            framework_evidence=d.get("framework_evidence", {}),
         )
 
 
@@ -1798,6 +1889,25 @@ def _is_dsl_marker(pattern: str) -> bool:
     return any(tok in pattern for tok in ("{", "+="))
 
 
+def _collect_python_deps(repo_root: Path) -> set[str]:
+    """Union the declared Python dependency names across every manifest kind
+    under ``repo_root`` — pyproject.toml, the pip-requirements closure, setup.py,
+    and Pipfile. Names are the structured (PEP 503-style) distribution names the
+    per-manifest parsers return. Shared by :func:`_detect_python_frameworks` and
+    the websocket linker's dependency-gated framework attribution (WI-fizir).
+    """
+    deps: set[str] = set()
+    deps |= _collect_parsed_deps(repo_root, "pyproject.toml", _parse_pyproject_deps)
+    # WI-himas: pip requirements use a layered manifest set (requirements.txt,
+    # requirements/*.txt, requirements-*.txt) with -r/-c includes between
+    # files. Resolve the full closure instead of matching only the literal
+    # "requirements.txt" filename.
+    deps |= _collect_pip_requirements_deps(repo_root)
+    deps |= _collect_parsed_deps(repo_root, "setup.py", _parse_setup_py_deps)
+    deps |= _collect_parsed_deps(repo_root, "Pipfile", _parse_pipfile_deps)
+    return deps
+
+
 def _detect_python_frameworks(repo_root: Path) -> list[str]:
     """Detect Python frameworks from dependency files.
 
@@ -1809,15 +1919,7 @@ def _detect_python_frameworks(repo_root: Path) -> list[str]:
     produce false positives.
     """
     detected = []
-    deps: set[str] = set()
-    deps |= _collect_parsed_deps(repo_root, "pyproject.toml", _parse_pyproject_deps)
-    # WI-himas: pip requirements use a layered manifest set (requirements.txt,
-    # requirements/*.txt, requirements-*.txt) with -r/-c includes between
-    # files. Resolve the full closure instead of matching only the literal
-    # "requirements.txt" filename.
-    deps |= _collect_pip_requirements_deps(repo_root)
-    deps |= _collect_parsed_deps(repo_root, "setup.py", _parse_setup_py_deps)
-    deps |= _collect_parsed_deps(repo_root, "Pipfile", _parse_pipfile_deps)
+    deps = _collect_python_deps(repo_root)
 
     for framework, patterns in PYTHON_FRAMEWORKS.items():
         for pattern in patterns:
@@ -3085,7 +3187,7 @@ def _is_specific_pattern(pattern: str) -> bool:
     Returns:
         True if the pattern is structurally specific.
     """
-    return pattern.startswith("@") or "/" in pattern or "." in pattern
+    return pattern.startswith("@") or "/" in pattern or "." in pattern or "\\" in pattern
 
 
 def _module_match_kind(imported: str, pattern: str) -> str | None:
@@ -3117,9 +3219,52 @@ def _module_match_kind(imported: str, pattern: str) -> str | None:
     imported_lower = imported.lower()
     if imported_lower == pattern:
         return "exact"
-    if imported_lower.startswith(pattern + ".") or imported_lower.startswith(pattern + "/"):
+    if (imported_lower.startswith(pattern + ".")
+            or imported_lower.startswith(pattern + "/")
+            or imported_lower.startswith(pattern + "\\")):  # INV-naguv: PHP namespace separator
         return "prefix"
     return None
+
+
+def _framework_evidence_nodes(
+    framework: str,
+    module_importer_nodes: dict[str, list[tuple[str, str]]],
+    module_languages: dict[str, set[str]],
+    is_test_fn: Callable[[str], bool],
+) -> list[str]:
+    """Return the node ids of prod (non-test) importers of ``framework`` (WI-napuj).
+
+    This is the provenance surface behind ``profile.frameworks``: the promote
+    phase already joins each framework's import-module patterns to the source
+    symbols that import them (``module_importers``); this keeps that join instead
+    of discarding it, so a consumer can trace *where* a declared framework is
+    used. A module counts as evidence when it matches one of the framework's
+    registered import patterns (exact or prefix, via :func:`_module_match_kind`),
+    its language is one of the framework's languages (the same cross-ecosystem
+    gate the promote phase applies — Python ``http.client`` does not count as
+    Julia ``http`` evidence), and at least one importer is a non-test path.
+
+    Evidence is deliberately broader than the *promotion* gate (no
+    ``require_prefix_arm`` bare-name restriction): promotion decides membership,
+    this reports usage. A framework with no matching prod importer returns ``[]``
+    and is therefore absent from ``framework_evidence`` — the "evidence where the
+    graph supports it" contract (a manifest-only framework such as a JS lib on a
+    repo with unavailable JS/TS extraction has no import edges to point at).
+    """
+    fw_langs = _framework_languages(framework)
+    patterns = _import_modules_for_framework(framework)
+    nodes: set[str] = set()
+    for module_key, importers in module_importer_nodes.items():
+        if fw_langs:
+            mod_langs = module_languages.get(module_key, set())
+            if not (mod_langs & fw_langs):
+                continue
+        if not any(_module_match_kind(module_key, pat) is not None for pat in patterns):
+            continue
+        for node_id, path in importers:
+            if path and not is_test_fn(path):
+                nodes.add(node_id)
+    return sorted(nodes)
 
 
 def refine_frameworks(
@@ -3153,8 +3298,14 @@ def refine_frameworks(
     Only applies in AUTO mode — explicit/all/none modes are returned
     unchanged because the user specified the frameworks intentionally.
 
-    For languages that don't emit import edges (e.g., Java), frameworks
-    are kept as confirmed to avoid false negatives.
+    For languages whose analyzer emits no ``imports`` edges, frameworks
+    are kept as confirmed to avoid false negatives (the ``fw_langs &
+    import_edge_langs`` guard in the demote loop). Java *does* now emit
+    import edges (INV-gojit), so Java/Kotlin frameworks participate in
+    the prod-vs-dev demotion like every other import-emitting language —
+    their import-module patterns are matched against the full Java import
+    specifier (``import org.springframework.boot.X`` prefix-matches the
+    ``org.springframework.boot`` pattern).
 
     Args:
         profile: The repo profile with candidate frameworks from manifest
@@ -3181,6 +3332,10 @@ def refine_frameworks(
     import_edge_langs: set[str] = set()
     # Map: lowercased_module → list of source file paths
     module_importers: dict[str, list[str]] = {}
+    # WI-napuj: same join, carrying the importer NODE id (edge.src) alongside its
+    # path, so refine can persist per-framework provenance (framework_evidence)
+    # without a second pass. The path rides along only for the test-file filter.
+    module_importer_nodes: dict[str, list[tuple[str, str]]] = {}
     # WI-pusad / INV-rojip cohort-2 FP: same import path-string can match
     # framework patterns from different language ecosystems (e.g. Python
     # ``http.client`` would match the Julia ``http`` framework's bare
@@ -3208,6 +3363,7 @@ def refine_frameworks(
 
         module_key = imported_module.lower()
         module_importers.setdefault(module_key, []).append(src_path)
+        module_importer_nodes.setdefault(module_key, []).append((edge.src, src_path))
         module_languages.setdefault(module_key, set()).add(lang)
 
     # === PROMOTE PHASE (WI-palol + WI-pusad / INV-rojip) ===
@@ -3249,7 +3405,10 @@ def refine_frameworks(
                 bare_patterns,
                 module_importers,
                 is_test_file,
-                require_prefix_arm=True,
+                # WI-tosul Phase 2: allowlisted route frameworks may promote on a
+                # bare EXACT import (the dead-code monoculture root); all others
+                # keep the WI-pusad compound-submodule prefix requirement.
+                require_prefix_arm=(fw not in _BARE_EXACT_PROMOTE_ROUTE_FRAMEWORKS),
                 module_languages=module_languages,
                 allowed_langs=fw_langs,
             ):
@@ -3290,12 +3449,24 @@ def refine_frameworks(
         else:
             dev_only.append(fw)
 
+    # WI-napuj: persist the module→importer join as per-framework provenance.
+    # Only the confirmed (production) frameworks get an entry, and only when at
+    # least one prod importer exists — "evidence where the graph supports it".
+    framework_evidence: dict[str, list[str]] = {}
+    for fw in confirmed:
+        nodes = _framework_evidence_nodes(
+            fw, module_importer_nodes, module_languages, is_test_file
+        )
+        if nodes:
+            framework_evidence[fw] = nodes
+
     return RepoProfile(
         languages=profile.languages,
         frameworks=confirmed,
         dev_frameworks=dev_only,
         framework_mode=profile.framework_mode,
         requested_frameworks=profile.requested_frameworks,
+        framework_evidence=framework_evidence,
     )
 
 

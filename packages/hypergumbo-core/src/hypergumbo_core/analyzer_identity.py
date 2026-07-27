@@ -91,7 +91,9 @@ def compute_analyzer_identity_hash() -> str:
     # dashes to underscores (`hypergumbo-lang-mainstream` → module
     # `hypergumbo_lang_mainstream`).
     for dist in distributions():
-        name = (dist.metadata.get("Name") or "").strip()
+        # PackageMetadata is email.message.Message-like at runtime (``.get``
+        # works); the typeshed stub omits it, so the attr-defined is spurious.
+        name = (dist.metadata.get("Name") or "").strip()  # type: ignore[attr-defined]
         if not name.startswith("hypergumbo"):
             continue
         module_name = name.replace("-", "_")

@@ -38,9 +38,11 @@ from __future__ import annotations
 from collections import defaultdict, deque
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 import yaml
+
+from .edge_types import is_grpc_rpc_implementation
 
 
 # ---------------------------------------------------------------------------
@@ -207,12 +209,14 @@ def _lookup_named_entry(
     callee_name: str,
     module_hint: str | None,
     ambiguous_names: frozenset[str],
+    call_construct: str | None = None,
 ):
     """Pick the matching catalog entry from ``hits``, mirroring
     :meth:`io_boundary.IoBoundaryCatalog.lookup_with_module` (WI-razol).
 
     ``hits`` is the index bucket for ``callee_name`` (entries registered under
-    that short OR qualified name); each entry exposes a ``module`` attribute.
+    that short OR qualified name); each entry exposes ``module`` / ``name`` /
+    ``kind`` attributes.
 
     * No hits → ``None``.
     * With a usable module hint, filter to entries whose ``module`` matches
@@ -220,13 +224,19 @@ def _lookup_named_entry(
       if none match, return ``None`` — a present-but-mismatched module means
       this is not the catalogued primitive (e.g. ``sys.stdout.write`` is not
       ``asyncio.StreamWriter.write``; F156.A1).
-    * With no usable module hint, an ``ambiguous_names`` short name returns
-      ``None`` (e.g. ``str.replace`` must not match ``Path.replace``; the
-      5541-FP cascade); otherwise the first hit.
+    * With no usable module hint, delegate to the shared kind-aware gate
+      (:func:`io_boundary.gate_named_entry`, io-boundary:F3): an untyped
+      method call (``call_construct == "method"``) has no receiver evidence
+      and never matches (INV-tapat/INV-maluk — ``str.replace`` must not match
+      ``Path.replace``), a free-function call may match only a function-kind
+      hit, and the ``ambiguous_names`` short-name set is retained as the
+      meta-absent / non-Python safety net.
 
-    A qualified ``callee_name`` (e.g. ``"os.replace"``) is not in
-    ``ambiguous_names`` (those list short names only), so an exact qualified
-    match wins regardless of ambiguity.
+    A qualified ``callee_name`` (e.g. ``"os.replace"`` /
+    ``"pathlib.Path.write_text"``) carries its own receiver evidence (the full
+    module path), so an exact ``qualified_name`` match wins regardless of
+    ambiguity OR kind — mirroring :meth:`lookup_with_module`'s qualified-name-
+    first branch, which runs before its kind-aware gate (io-boundary:F3).
     """
     if not hits:
         return None
@@ -236,9 +246,17 @@ def _lookup_named_entry(
             if _module_matches(h.module, module_hint):
                 return h
         return None
-    if callee_name in ambiguous_names:
-        return None
-    return hits[0]
+    # Exact qualified-name match carries its own receiver evidence — allow it
+    # before the kind-aware no-module gate (parity with lookup_with_module's
+    # qualified-name-first branch).
+    for h in hits:
+        if h.qualified_name == callee_name:
+            return h
+    from .io_boundary import gate_named_entry
+    return gate_named_entry(
+        hits, callee_name, module_hint, ambiguous_names,
+        call_construct=call_construct,
+    )
 
 
 def _build_callee_index(entries: list) -> dict[str, list]:
@@ -263,6 +281,9 @@ def _match_propagation_entry(
     index: dict[str, list],
     edge_dst: str,
     ambiguous_names: frozenset[str],
+    call_construct: str | None = None,
+    *,
+    is_resolved: bool = True,
 ):
     """Match an edge's callee against a propagation source/sink ``index``.
 
@@ -271,20 +292,29 @@ def _match_propagation_entry(
     is a file path, not a dotted module to filter on (so module filtering would
     spuriously reject e.g. a ``cmd_sketch`` source whose declared module is
     ``hypergumbo_core.cli`` against the edge's ``cli.py`` path). An *unresolved*
-    (``:unresolved``) edge is the short-name-collision risk surface, so it goes
-    through :func:`_lookup_named_entry`: a bare ambiguous callee with no module
-    hint, or a module-mismatched hint, is not falsely matched (WI-razol).
+    edge is the short-name-collision risk surface, so it goes through
+    :func:`_lookup_named_entry`: a bare ambiguous callee with no module hint, or
+    a module-mismatched hint, is not falsely matched (WI-razol), and an untyped
+    *method* call (``call_construct``, threaded from the edge's ``meta``) never
+    matches a method-kind sink/source (io-boundary:F3, INV-tapat/INV-maluk).
+
+    ADR-0037 ruling 4: the resolution verdict is read from ``Edge.is_resolved``,
+    NOT from the ``:unresolved`` dst-string suffix. That suffix is a producer
+    convention that the WI-pubiv boundary-id remap rewrites to ``:external_symbol``
+    on the final graph, so a string check would make every unresolved edge look
+    "resolved" here and silently bypass the collision guard below.
     """
     callee_name = _extract_callee_name(edge_dst)
     hits = index.get(callee_name)
     if not hits:
         return None
-    if edge_dst.rsplit(":", 1)[-1] != "unresolved":
+    if is_resolved:
         # Resolved first-party symbol — exact-name match; the qualified name
         # also keys into the index, so this honors precise resolution.
         return hits[0]
     return _lookup_named_entry(
         hits, callee_name, _extract_callee_module(edge_dst), ambiguous_names,
+        call_construct=call_construct,
     )
 
 
@@ -374,6 +404,7 @@ class TaintCatalog:
         language: str,
         callee_name: str,
         module_hint: str | None = None,
+        call_construct: str | None = None,
     ) -> Optional[TaintSource]:
         """Match a callee name against taint sources for a language.
 
@@ -381,11 +412,14 @@ class TaintCatalog:
         :func:`_lookup_named_entry` (WI-razol): a module hint that matches
         nothing yields ``None`` rather than the first source, and an ambiguous
         short name with no hint yields ``None`` rather than a false match.
+        ``call_construct`` (io-boundary:F3) lets a bare untyped method call be
+        rejected without the name needing to be in ``ambiguous_names``.
         """
         idx = self._source_by_name.get(language, {})
         return _lookup_named_entry(
             idx.get(callee_name), callee_name, module_hint,
             self._ambiguous_names.get(language, frozenset()),
+            call_construct=call_construct,
         )
 
     def match_sink(
@@ -393,6 +427,7 @@ class TaintCatalog:
         language: str,
         callee_name: str,
         module_hint: str | None = None,
+        call_construct: str | None = None,
     ) -> Optional[TaintSink]:
         """Match a callee name against taint sinks for a language.
 
@@ -400,11 +435,14 @@ class TaintCatalog:
         :func:`_lookup_named_entry` (WI-razol): ``str.replace`` no longer
         matches ``Path.replace`` (the 5541-FP cascade) and ``sys.stdout.write``
         no longer matches ``asyncio.StreamWriter.write`` net_send (F156.A1).
+        ``call_construct`` (io-boundary:F3) lets a bare untyped method call be
+        rejected without the name needing to be in ``ambiguous_names``.
         """
         idx = self._sink_by_name.get(language, {})
         return _lookup_named_entry(
             idx.get(callee_name), callee_name, module_hint,
             self._ambiguous_names.get(language, frozenset()),
+            call_construct=call_construct,
         )
 
     def match_sanitizer(
@@ -479,10 +517,13 @@ def _safe_load_catalog_yaml(
     return data
 
 
-def _load_source_yaml(path: Path) -> tuple[str, list[TaintSource]]:
+def _load_source_yaml(path: Path) -> tuple[str, dict[str, list[TaintSource]]]:
     """Load a single taint source YAML file.
 
-    Returns (taint_label, flat list of TaintSource entries across all languages).
+    Returns (taint_label, per-language dict of TaintSource entries). The stale
+    ``list[TaintSource]`` annotation misdescribed the returned value — the body
+    builds and returns ``sources_by_lang`` keyed by language, and every caller
+    iterates it via ``.items()``.
     """
     data = _safe_load_catalog_yaml(path, "sources", dict)
     label = data.get("taint_label", "unknown")
@@ -664,6 +705,16 @@ def load_taint_catalog(
 # specific (a config file vs. a credential vault vs. user-uploaded JSON).
 # Projects that want every fs_read tainted can declare their own source
 # catalog entries.
+#
+# This sink/source split IS hypergumbo's canonical I/O-boundary risk
+# taxonomy: write-side/outbound boundaries are untrusted sinks (where
+# tainted data lands or escapes), read-side sensitive boundaries are
+# untrusted sources, and it is what ``verify-claims`` consumes. Do NOT
+# confuse it with ``io_boundary.HIGH_RISK_PRIMITIVES`` — that is a narrow,
+# display-only ``high_risk`` marker scoped to ``subprocess`` alone, not a
+# competing risk axis. Destructive-filesystem and network-egress risk live
+# HERE (and, for network, additionally at the chain ``dst_tier`` level),
+# NOT in a second hand-curated high_risk set.
 AUTO_SINK_ZONE_MAP: dict[str, tuple[str, str]] = {
     # io_primitives boundary -> (taint zone, trust_level)
     "fs_write": ("host_fs", "untrusted"),
@@ -1061,15 +1112,31 @@ TAINT_CALL_EDGE_TYPES = frozenset({
     # this edge type, auto-imported TaintSource records for attribute
     # kind primitives would never match in structural propagation.
     "module_attr_ref",
-    # pending_classification entries awaiting per-family audit
-    # (implements_rpc). Bridge edges no longer enumerated explicitly:
-    # post-Phase-3 (WI-mifor-vabul), every bridge folds to 'calls' which
-    # is already a member; meta['bridge_kind'] carries the bridge type.
-    # Protocol-call family (WI-vumum-juvil) similarly folds into 'calls'
-    # + meta['protocol'], so HTTP/gRPC/GraphQL taint propagation
-    # transfers automatically.
-    "implements_rpc",
+    # Bridge edges no longer enumerated explicitly: post-Phase-3
+    # (WI-mifor-vabul), every bridge folds to 'calls' which is already a
+    # member; meta['bridge_kind'] carries the bridge type. Protocol-call
+    # family (WI-vumum-juvil) similarly folds into 'calls' + meta['protocol'],
+    # so HTTP/gRPC/GraphQL call taint propagation transfers automatically.
+    # implements_rpc folded to 'implements' + meta['protocol']='grpc'
+    # (audit-findings 0016) — NOT a plain set member (that would wholesale-
+    # include every structural 'implements' edge); matched by the
+    # is_grpc_rpc_implementation predicate via _is_taint_call_edge below.
 })
+
+
+def _is_taint_call_edge(edge: dict[str, Any]) -> bool:
+    """True if *edge* (a behavior-map edge dict) carries taint like a call.
+
+    Membership in :data:`TAINT_CALL_EDGE_TYPES`, OR the folded gRPC
+    RPC-implementation edge (``implements`` + ``meta['protocol']='grpc'``,
+    audit-findings 0016) — the one place taint recognizes the folded form,
+    so gRPC taint propagation is preserved without demoting or over-
+    including structural ``implements`` edges.
+    """
+    etype = edge.get("type", "")
+    return etype in TAINT_CALL_EDGE_TYPES or is_grpc_rpc_implementation(
+        etype, edge.get("meta")
+    )
 
 
 def _build_adjacency(
@@ -1085,11 +1152,8 @@ def _build_adjacency(
     forward: dict[str, set[str]] = defaultdict(set)
     reverse: dict[str, set[str]] = defaultdict(set)
 
-    call_types = TAINT_CALL_EDGE_TYPES
-
     for edge in edges:
-        etype = edge.get("type", "")
-        if etype not in call_types:
+        if not _is_taint_call_edge(edge):
             continue
         src = edge["src"]
         dst = edge["dst"]
@@ -1130,21 +1194,49 @@ def _register_sanitizer_callers(
     edges: list[dict],
     sanitizer_by_callee: dict[str, list[TaintSanitizer]],
     sanitizer_callers: "dict[str, dict[str, TaintSanitizer]]",
+    ambiguous_names: frozenset[str] = frozenset(),
 ) -> None:
     """Populate sanitizer_callers from edges + multi-sanitizer index.
 
     Each edge whose callee matches one or more sanitizers adds an entry
     per matched sanitizer's input_taint label to the caller's sanitizer
     dict — so a caller of a multi-label barrier picks up every label.
+
+    INV-finoh: sanitizer matching applies the same resolution-/kind-aware
+    gate that source/sink matching does (``_match_propagation_entry`` /
+    ``gate_named_entry``), so a phantom barrier is never registered from a
+    bare-name collision — which would silently SUPPRESS a real taint flow (a
+    false negative, worse than a missed barrier for a security tool). A
+    *resolved* edge trusts its resolution (exact-name match, unchanged). An
+    *unresolved* edge is the short-name-collision surface: a qualified callee
+    carries its own receiver evidence (an exact ``qualified_name`` match wins,
+    parity with ``_lookup_named_entry``'s qualified-first branch), but a bare
+    untyped *method* call (``call_construct == "method"``, threaded from the
+    edge meta) has no receiver evidence and must NOT match — ``x.encrypt()``
+    must not bind ``Fernet.encrypt`` and falsely sanitize a flow (the
+    INV-tapat/INV-maluk rule ``gate_named_entry`` enforces). An
+    ``ambiguous_names`` bare short name is the meta-absent safety net. (The
+    ``kind``-filter for a free-function call matching a method-kind sanitizer
+    is not applied here because the sanitizer catalog carries no explicit
+    ``kind`` — a documented follow-up requiring a sanitizer-YAML schema field.)
     """
     for edge in edges:
-        etype = edge.get("type", "")
-        if etype not in TAINT_CALL_EDGE_TYPES:
+        if not _is_taint_call_edge(edge):
             continue
         callee_name = _extract_callee_name(edge["dst"])
         matched_list = sanitizer_by_callee.get(callee_name)
         if not matched_list:
             continue
+        if not edge.get("is_resolved", True):
+            qualified = any(
+                s.qualified_name == callee_name for s in matched_list
+            )
+            if not qualified:
+                call_construct = edge.get("meta", {}).get("call_construct")
+                if call_construct == "method":
+                    continue
+                if ambiguous_names and callee_name in ambiguous_names:
+                    continue
         for matched in matched_list:
             sanitizer_callers[edge["src"]][matched.input_taint] = matched
 
@@ -1200,11 +1292,12 @@ def propagate_taint_structural(
     source_callers: list[tuple[str, str, TaintSource]] = []
     # (caller_symbol_id, source_callee_symbol_id, TaintSource)
     for edge in edges:
-        etype = edge.get("type", "")
-        if etype not in TAINT_CALL_EDGE_TYPES:
+        if not _is_taint_call_edge(edge):
             continue
         matched = _match_propagation_entry(
             source_by_callee, edge["dst"], ambiguous_names,
+            call_construct=edge.get("meta", {}).get("call_construct"),
+            is_resolved=edge.get("is_resolved", True),
         )
         if matched:
             source_callers.append((edge["src"], edge["dst"], matched))
@@ -1213,11 +1306,12 @@ def propagate_taint_structural(
     sink_callers: dict[str, tuple[str, TaintSink]] = {}
     # Maps caller_symbol_id → (sink_callee_symbol_id, TaintSink)
     for edge in edges:
-        etype = edge.get("type", "")
-        if etype not in TAINT_CALL_EDGE_TYPES:
+        if not _is_taint_call_edge(edge):
             continue
         matched = _match_propagation_entry(
             sink_by_callee, edge["dst"], ambiguous_names,
+            call_construct=edge.get("meta", {}).get("call_construct"),
+            is_resolved=edge.get("is_resolved", True),
         )
         if matched:
             sink_callers[edge["src"]] = (edge["dst"], matched)
@@ -1226,7 +1320,9 @@ def propagate_taint_structural(
     # caller of a barrier function picks up every input_taint label it
     # sanitizes.
     sanitizer_callers: dict[str, dict[str, TaintSanitizer]] = defaultdict(dict)
-    _register_sanitizer_callers(edges, sanitizer_by_callee, sanitizer_callers)
+    _register_sanitizer_callers(
+        edges, sanitizer_by_callee, sanitizer_callers, ambiguous_names,
+    )
 
     # Step 4: For each source, BFS forward to find reachable sinks
     # without passing through sanitizers.
@@ -1422,11 +1518,12 @@ def propagate_taint_ddg(
     # Step 1: Find source call sites (module + ambiguous_names aware — WI-razol)
     source_callers: list[tuple[str, str, TaintSource]] = []
     for edge in call_edges:
-        etype = edge.get("type", "")
-        if etype not in TAINT_CALL_EDGE_TYPES:
+        if not _is_taint_call_edge(edge):
             continue
         matched = _match_propagation_entry(
             source_by_callee, edge["dst"], ambiguous_names,
+            call_construct=edge.get("meta", {}).get("call_construct"),
+            is_resolved=edge.get("is_resolved", True),
         )
         if matched:
             source_callers.append((edge["src"], edge["dst"], matched))
@@ -1434,11 +1531,12 @@ def propagate_taint_ddg(
     # Step 2: Find sink call sites (module + ambiguous_names aware — WI-razol)
     sink_callers: dict[str, tuple[str, TaintSink]] = {}
     for edge in call_edges:
-        etype = edge.get("type", "")
-        if etype not in TAINT_CALL_EDGE_TYPES:
+        if not _is_taint_call_edge(edge):
             continue
         matched = _match_propagation_entry(
             sink_by_callee, edge["dst"], ambiguous_names,
+            call_construct=edge.get("meta", {}).get("call_construct"),
+            is_resolved=edge.get("is_resolved", True),
         )
         if matched:
             sink_callers[edge["src"]] = (edge["dst"], matched)
@@ -1448,8 +1546,7 @@ def propagate_taint_ddg(
     sanitizer_set: set[str] = set()
     sanitizer_by_caller: dict[str, list[TaintSanitizer]] = defaultdict(list)
     for edge in call_edges:
-        etype = edge.get("type", "")
-        if etype not in TAINT_CALL_EDGE_TYPES:
+        if not _is_taint_call_edge(edge):
             continue
         callee_name = _extract_callee_name(edge["dst"])
         matched_list = sanitizer_by_callee.get(callee_name)

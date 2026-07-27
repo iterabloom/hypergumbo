@@ -25,9 +25,10 @@ from pathlib import Path
 from typing import Iterator, Optional, ClassVar, TYPE_CHECKING
 
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
+from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, _get_python_toolchain, make_pass_id
 from hypergumbo_core.analyze.base import AnalysisResult, TreeSitterAnalyzer, make_symbol_id, populate_docstrings_from_tree
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -46,7 +47,7 @@ def find_racket_files(root: Path) -> Iterator[Path]:
 
 def _get_node_text(node: "tree_sitter.Node") -> str:
     """Get the text content of a node."""
-    return node.text.decode("utf-8", errors="replace")
+    return (node.text or b"").decode("utf-8", errors="replace")
 
 
 def _is_define_form(node: "tree_sitter.Node") -> bool:
@@ -92,7 +93,7 @@ def _get_function_name(node: "tree_sitter.Node") -> Optional[str]:
 
 def _get_function_params(node: "tree_sitter.Node") -> list[str]:
     """Get parameters from a function define form."""
-    params = []
+    params: list[str] = []
     children = [c for c in node.children if c.type not in ("(", ")")]
     if len(children) < 2:
         return params  # pragma: no cover
@@ -127,7 +128,7 @@ def _get_struct_name(node: "tree_sitter.Node") -> Optional[str]:
 
 def _get_struct_fields(node: "tree_sitter.Node") -> list[str]:
     """Get field names from a struct form."""
-    fields = []
+    fields: list[str] = []
     children = [c for c in node.children if c.type not in ("(", ")")]
     if len(children) < 3:
         return fields  # pragma: no cover
@@ -217,7 +218,7 @@ class _RacketExtractor:
             run_signature="",
             pass_id=PASS_ID,
             version=PASS_VERSION,
-            toolchain={"name": "racket", "version": "unknown"},
+            toolchain=_get_python_toolchain(),
             duration_ms=int(elapsed * 1000),
         )
 
@@ -260,6 +261,13 @@ class _RacketExtractor:
                         origin=PASS_ID,
                         signature=signature,
                         meta={"param_count": len(params)},
+                        # INV-loguk: homoiconic head-symbol CC; LOC from span.
+                        cyclomatic_complexity=compute_cyclomatic_complexity(
+                            node, "racket",
+                        ),
+                        line_span=(
+                            node.end_point[0] - node.start_point[0] + 1
+                        ),
                     )
                     self.symbols.append(sym)
             else:

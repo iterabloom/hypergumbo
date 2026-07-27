@@ -63,7 +63,12 @@ Tier filtering and noise filtering (Phase D) run **before** boundary-node synthe
 
 ### 5. The noise filter exempts entrypoint-bearing symbols (resolves C3)
 
-The noise filter carries a declared **exemption predicate**: entrypoint-bearing symbols (e.g. `entry_role=script` and the per-language entrypoint concepts tracked under `WI-tosul`) are exempt from `_is_noise` and survive into `detect_entrypoints`. The exemption set is *enumerated*, not discretionary. This is the single noise-filter edit; `entrypoint:F4`'s exemption and any file-anchor carve-outs land as one change with an explicit predicate list. `detect_entrypoints` is **not** moved.
+The noise filter carries a declared **exemption predicate**: entrypoint-bearing symbols survive `_is_noise` and reach `detect_entrypoints`. The predicate is *enumerated*, not discretionary — and for `entry_role=script` it is **subset-refined** (WI-papag), because that role covers two distinct populations:
+
+- **Entrypoint-bearing console-scripts** — pyproject `[project.scripts]` (and equivalent) entries declare a code target (`meta["entry_point"]="pkg.mod:func"`, plus a `defines_target` edge) and are detected as `CLI_COMMAND` @0.99 (`manifest_declared`). These are **exempt** and must survive; filtering them *is* the C3 defect (a package's sole declared CLI command vanishing before detection — reproduced on real repos).
+- **Bare npm run-scripts** — package.json `"scripts"` (`build`/`test`/`lint`) are degree-0 shell commands (`meta["command"]`, no `entry_point`), carry the unrecognized `npm_script` concept, and are never detected as entrypoints. These are **filtered as noise** (audit-findings 0005).
+
+The filter-time discriminator is `meta["entry_point"]` (the `pyproject_script` concept is not yet attached when Phase D runs). This reconciles audit-findings 0005 (filter npm run-scripts) with this ruling's C3 exemption (keep entrypoint-bearing scripts): both stand, each scoped to the subset it correctly describes. The single noise-filter predicate lives in `noise_filter.is_noise_symbol`; `entrypoint:F4`'s exemption and any file-anchor carve-outs land there, alongside the per-language entrypoint concepts tracked under `WI-tosul`. `detect_entrypoints` is **not** moved.
 
 ### 6. A single finalize stage is the only pre-serialization reconcile point (resolves C5)
 

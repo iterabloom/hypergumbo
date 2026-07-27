@@ -59,6 +59,48 @@ def test_view_template_keyed_by_pass_id_not_name() -> None:
     )
 
 
+# The view_template subcategory's per-framework linkers route through
+# ``_view_template_core.link_via_strategies``, which stamps the shared
+# ``PASS_ID`` = ``view-template-linker`` on every AnalysisRun / origin (WI-gobip;
+# see ``test_catalog.test_known_pass_ids_include_divergent_linker_emitted_pass_id``).
+# Their *emitted* pass_id therefore already carries the suffix — ``linker_pass_id``
+# only name-falls-back to the underscore module name because these modules expose
+# no module-level ``PASS_ID``. They are NOT convention violations; this documents
+# the introspection blind spot, not an exemption. (The base ``view_template`` does
+# re-export ``PASS_ID``, so it resolves correctly and is not listed here.)
+_SHARED_CORE_PASS_ID_DELEGATES = frozenset(
+    {
+        "view_template_django",
+        "view_template_laravel",
+        "view_template_phoenix",
+        "view_template_spring",
+    }
+)
+
+
+def test_every_linker_emits_pass_id_with_linker_suffix() -> None:
+    """Every Tier-2 linker's emitted pass_id ends in ``-linker`` (WI-nuduv).
+
+    The suffix lets a consumer filter linker-produced ``AnalysisRun.pass_id`` /
+    ``Symbol.origin`` / ``Edge.origin`` values by substring. This is a
+    shrink-only convention ratchet: a new linker that omits the suffix, or a
+    rename that drops it, trips here. The check is on the *emitted* pass_id (the
+    module ``PASS_ID``, per ``linker_pass_id``), so ``view_template`` (name
+    ``view_template`` → pass_id ``view-template-linker``) conforms; the shared-core
+    delegates whose introspection name-falls-back are documented above.
+    """
+    offenders = sorted(
+        rl.name
+        for rl in get_all_linkers()
+        if rl.name not in _SHARED_CORE_PASS_ID_DELEGATES
+        and not PassMetadataLookup.linker_pass_id(rl).endswith("-linker")
+    )
+    assert offenders == [], (
+        "linkers whose emitted pass_id lacks the '-linker' suffix "
+        f"(convention per WI-nuduv): {offenders}"
+    )
+
+
 def test_every_registered_analyzer_is_keyed() -> None:
     # Holds for whatever analyzers are present (may be few/none in core isolation).
     lookup = build_pass_metadata()

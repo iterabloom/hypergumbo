@@ -56,7 +56,7 @@ from pathlib import Path
 from typing import Iterator
 
 from ..analyze.base import make_site_stable_id, make_symbol_id
-from ..discovery import find_files
+from ..discovery import find_non_test_files
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from ._text_filters import js_ts_language_from_path
 from .registry import LinkerContext, LinkerResult, LinkerRequirement, register_linker
@@ -193,7 +193,7 @@ def _detect_query_type(query: str) -> str:
 def _find_source_files(root: Path) -> Iterator[Path]:
     """Find files that might contain database queries."""
     patterns = ["**/*.py", "**/*.js", "**/*.ts", "**/*.java"]
-    for path in find_files(root, patterns):
+    for path in find_non_test_files(root, patterns):
         yield path
 
 
@@ -450,15 +450,10 @@ def link_database_queries(root: Path, table_symbols: list[Symbol]) -> DatabaseQu
             # declarations and for Symbols that haven't migrated yet (double-
             # write pattern absorbs the Phase 1 producer-consumer coordination
             # window; the fallback is removed at Phase 2 PR3).
-            _q_lang = query_symbol.discovery_language or query_symbol.language
-            _t_lang = table_sym.discovery_language or table_sym.language
-            is_cross_language = _q_lang != _t_lang
-
             confidence = 0.5 if is_fallback else 0.85
             edge_meta: dict[str, object] = {
                 "table_name": table_name,
                 "query_type": pattern.query_type,
-                "cross_language": is_cross_language,
                 "detection_pattern": "table_name",
             }
             if is_fallback:

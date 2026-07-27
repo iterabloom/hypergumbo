@@ -91,6 +91,7 @@ from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
     TreeSitterAnalyzer,
+    defer_bare_method_call,
     emit_module_attribute_refs,
     populate_docstrings_from_tree,
     find_child_by_field,
@@ -101,6 +102,7 @@ from hypergumbo_core.analyze.base import (
     make_route_stable_id,
     make_symbol_id,
     make_typed_stable_id,
+    make_unresolved_edge,
     node_text,
     visibility_from_modifiers,
 )
@@ -277,7 +279,12 @@ def _extract_go_signature(
         node: A tree-sitter function_declaration or method_declaration node.
         source: Source bytes of the file.
     """
-    if node.type not in ("function_declaration", "method_declaration"):
+    if node.type not in (
+        "function_declaration",
+        "method_declaration",
+        "method_elem",  # WI-vibad: interface-method specs also carry a
+                        # "parameters"/"result" field (see _count_go_method_arity)
+    ):
         return None  # pragma: no cover
 
     params_node = find_child_by_field(node, "parameters")
@@ -1106,7 +1113,7 @@ def _extract_symbols_from_file(
                     signature=signature,
                     docstring=extract_preceding_doc_comment(node, source, "go"),
                     modifiers=modifiers,
-                    lines_of_code=end_line - start_line + 1,
+                    line_span=end_line - start_line + 1,
                     shape_id=_analyzer.compute_shape_id(node),
                     is_exported=bool(func_name) and func_name[0].isupper(),
                     qualified_name=_make_go_qualified_name(package_name, None, func_name),
@@ -1171,7 +1178,7 @@ def _extract_symbols_from_file(
                     signature=signature,
                     docstring=extract_preceding_doc_comment(node, source, "go"),
                     modifiers=modifiers,
-                    lines_of_code=end_line - start_line + 1,
+                    line_span=end_line - start_line + 1,
                     shape_id=_analyzer.compute_shape_id(node),
                     is_exported=bool(method_name) and method_name[0].isupper(),
                     qualified_name=_make_go_qualified_name(package_name, receiver_type or None, method_name),
@@ -1240,6 +1247,30 @@ def _extract_symbols_from_file(
                                 m_start = iface_child.start_point[0] + 1
                                 m_end = iface_child.end_point[0] + 1
                                 m_modifiers = _go_visibility_modifiers(qualified)
+                                # WI-vibad: interface-method declarations are
+                                # kind="method", which is excluded from the
+                                # WI-rihob name-scoped backstop (overloads/
+                                # cross-interface same-name methods would
+                                # collide), so mint the typed producer stable_id
+                                # here exactly as the concrete-method site does.
+                                # method_elem always carries a "parameters"
+                                # field, so the signature is a real "(...)"
+                                # string; the typed id also folds name +
+                                # qualified_name, keeping same-named methods
+                                # across interfaces distinct.
+                                _m_norm_sig = normalize_go_signature(
+                                    _extract_go_signature(iface_child, source)
+                                )
+                                m_stable_id = make_typed_stable_id(
+                                    "method",
+                                    _m_norm_sig,
+                                    visibility_from_modifiers(m_modifiers),
+                                    name=mname,
+                                    qualified_name=_make_go_qualified_name(
+                                        package_name, type_name, mname
+                                    ),
+                                    file_stable_id=file_stable_id,
+                                )
                                 m_sym = Symbol(
                                     id=make_symbol_id(
                                         "go", str(file_path),
@@ -1258,7 +1289,8 @@ def _extract_symbols_from_file(
                                     origin=PASS_ID,
                                     origin_run_id=run.execution_id,
                                     modifiers=m_modifiers,
-                                    lines_of_code=1,
+                                    line_span=1,
+                                    stable_id=m_stable_id,
                                     shape_id=_analyzer.compute_shape_id(iface_child),
                                     is_exported=bool(mname) and mname[0].isupper(),
                                     qualified_name=_make_go_qualified_name(package_name, type_name, mname),
@@ -1303,7 +1335,7 @@ def _extract_symbols_from_file(
                             origin_run_id=run.execution_id,
                             modifiers=_go_visibility_modifiers(type_name),
                             meta={"base_classes": embedded_types} if embedded_types else None,
-                            lines_of_code=end_line - start_line + 1,
+                            line_span=end_line - start_line + 1,
                             shape_id=_analyzer.compute_shape_id(child),
                             is_exported=bool(type_name) and type_name[0].isupper(),
                             qualified_name=_make_go_qualified_name(package_name, None, type_name),
@@ -1311,11 +1343,80 @@ def _extract_symbols_from_file(
                         analysis.symbols.append(symbol)
                         analysis.symbol_by_name[type_name] = symbol
 
+                        # WI-jusus (emission-parity F5): emit a kind="field"
+                        # Symbol per NAMED struct field. Embeddings carry no
+                        # field name (captured above as base_classes), so they
+                        # produce no field symbol. One field_declaration may name
+                        # several fields (`a, b int`) — emit one Symbol per name.
+                        if kind == "struct":
+                            field_list = find_child_by_type(
+                                type_node, "field_declaration_list",
+                            )
+                            for field in field_list.children if field_list else ():
+                                if field.type != "field_declaration":
+                                    continue
+                                ftype_node = find_child_by_field(field, "type")
+                                ftype = (
+                                    node_text(ftype_node, source)
+                                    if ftype_node is not None else None
+                                )
+                                f_start = field.start_point[0] + 1
+                                f_end = field.end_point[0] + 1
+                                for nn in field.children:
+                                    if nn.type != "field_identifier":
+                                        continue
+                                    fname = node_text(nn, source)
+                                    fqn = f"{type_name}.{fname}"
+                                    f_qualified = _make_go_qualified_name(
+                                        package_name, type_name, fname,
+                                    )
+                                    f_sym = Symbol(
+                                        id=make_symbol_id(
+                                            "go", str(file_path),
+                                            f_start, f_end, fqn, "field",
+                                        ),
+                                        name=fqn,
+                                        kind="field",
+                                        language="go",
+                                        path=str(file_path),
+                                        span=Span(
+                                            start_line=f_start,
+                                            end_line=f_end,
+                                            start_col=field.start_point[1],
+                                            end_col=field.end_point[1],
+                                        ),
+                                        origin=PASS_ID,
+                                        origin_run_id=run.execution_id,
+                                        modifiers=_go_visibility_modifiers(fname),
+                                        signature=ftype,
+                                        stable_id=make_typed_stable_id(
+                                            "field", ftype or "",
+                                            name=fname,
+                                            qualified_name=f_qualified,
+                                            file_stable_id=file_stable_id,
+                                        ),
+                                        line_span=f_end - f_start + 1,
+                                        is_exported=bool(fname) and fname[0].isupper(),
+                                        qualified_name=f_qualified,
+                                    )
+                                    analysis.symbols.append(f_sym)
+                                    analysis.symbol_by_name[fqn] = f_sym
+
         # var declarations: interface assertions AND package-level aliases
         elif node.type == "var_declaration":
+            # Only package (file) scope vars are module variables. The all-node
+            # walk also reaches `var x = ...` inside function/block bodies
+            # (parent `statement_list`); those are LOCALS, not module variables,
+            # and must not be emitted (INV-sidab). Interface-assertion detection
+            # still runs for every var_spec regardless of scope.
+            is_package_level = (
+                node.parent is not None and node.parent.type == "source_file"
+            )
             for child in node.children:
                 if child.type == "var_spec":
                     _detect_interface_assertion(child, source, impl_assertions)
+                    if not is_package_level:
+                        continue
 
                     # Extract package-level var aliases as symbols.
                     # Pattern: var Name = expr (has initializer, not blank _)
@@ -1359,7 +1460,7 @@ def _extract_symbols_from_file(
                         origin=PASS_ID,
                         origin_run_id=run.execution_id,
                         modifiers=modifiers,
-                        lines_of_code=end_line - start_line + 1,
+                        line_span=end_line - start_line + 1,
                         shape_id=_analyzer.compute_shape_id(child),
                         is_exported=bool(vname) and vname[0].isupper(),
                     )
@@ -1943,7 +2044,6 @@ def _extract_function_reference_edges(
                         edge_type="calls",
                         line=line,
                         evidence_type="function_reference_arg",
-                        confidence=0.70,
                         origin=PASS_ID,
                         origin_run_id=run.execution_id,
                     ))
@@ -1976,7 +2076,6 @@ def _extract_function_reference_edges(
                             edge_type="calls",
                             line=line,
                             evidence_type="function_reference_arg",
-                            confidence=0.70,
                             origin=PASS_ID,
                             origin_run_id=run.execution_id,
                         ))
@@ -2126,7 +2225,6 @@ def _extract_edges_from_file(
                             edge_type="imports",
                             line=child.start_point[0] + 1,
                             evidence_type="import_declaration",
-                            confidence=0.95,
                             origin=PASS_ID,
                             origin_run_id=run.execution_id,
                         ))
@@ -2142,7 +2240,6 @@ def _extract_edges_from_file(
                                     edge_type="imports",
                                     line=spec.start_point[0] + 1,
                                     evidence_type="import_declaration",
-                                    confidence=0.95,
                                     origin=PASS_ID,
                                     origin_run_id=run.execution_id,
                                 ))
@@ -2206,7 +2303,6 @@ def _extract_edges_from_file(
                                         edge_type="calls",
                                         line=node.start_point[0] + 1,
                                         evidence_type="ast_call",
-                                        confidence=0.85,
                                         origin=PASS_ID,
                                         origin_run_id=run.execution_id,
                                         meta={"call_construct": "method", "resolution_quality": "typed_receiver"},
@@ -2222,7 +2318,6 @@ def _extract_edges_from_file(
                                             edge_type="calls",
                                             line=node.start_point[0] + 1,
                                             evidence_type="ast_call",
-                                            confidence=0.85,
                                             origin=PASS_ID,
                                             origin_run_id=run.execution_id,
                                             meta={"call_construct": "method", "resolution_quality": "typed_receiver"},
@@ -2288,7 +2383,6 @@ def _extract_edges_from_file(
                                         edge_type="calls",
                                         line=node.start_point[0] + 1,
                                         evidence_type="ast_call",
-                                        confidence=0.88,
                                         origin=PASS_ID,
                                         origin_run_id=run.execution_id,
                                         meta={"call_construct": "method", "receiver": "typed_field"},
@@ -2383,7 +2477,6 @@ def _extract_edges_from_file(
                                                     edge_type="calls",
                                                     line=node.start_point[0] + 1,
                                                     evidence_type="ast_call",
-                                                    confidence=0.75,
                                                     origin=PASS_ID,
                                                     origin_run_id=run.execution_id,
                                                     meta={"call_construct": "chained_return_type"},
@@ -2414,7 +2507,6 @@ def _extract_edges_from_file(
                                 line=node.start_point[0] + 1,
                                 evidence_type="ast_call",
                                 is_resolved=False,
-                                confidence=0.40,
                                 origin=PASS_ID,
                                 origin_run_id=run.execution_id,
                                 meta={"call_construct": "method", "receiver": "field_chain"},
@@ -2461,7 +2553,6 @@ def _extract_edges_from_file(
                                     edge_type="calls",
                                     line=node.start_point[0] + 1,
                                     evidence_type="ast_call",
-                                    confidence=0.50,
                                     origin=PASS_ID,
                                     origin_run_id=run.execution_id,
                                     meta={"call_construct": "method", "receiver": "external"},
@@ -2541,6 +2632,11 @@ def _extract_edges_from_file(
                                     edge_type="calls",
                                     line=node.start_point[0] + 1,
                                     evidence_type="ast_call",
+                                    # WI-nurun: confidence kept explicit — this is
+                                    # an *ambiguous* method call (resolved to 2+
+                                    # candidates). The ambiguity is encoded in meta,
+                                    # not is_resolved, so derivation would over-score
+                                    # it as a resolved ast_call (0.85).
                                     confidence=0.50,
                                     origin=PASS_ID,
                                     origin_run_id=run.execution_id,
@@ -2567,7 +2663,6 @@ def _extract_edges_from_file(
                                 edge_type="calls",
                                 line=node.start_point[0] + 1,
                                 evidence_type="ast_call",
-                                confidence=0.40,
                                 origin=PASS_ID,
                                 origin_run_id=run.execution_id,
                                 meta={"call_construct": "method", "visibility": "unexported"},
@@ -2596,7 +2691,6 @@ def _extract_edges_from_file(
                                 edge_type="calls",
                                 line=node.start_point[0] + 1,
                                 evidence_type="ast_call",
-                                confidence=0.45,
                                 origin=PASS_ID,
                                 origin_run_id=run.execution_id,
                                 meta={"call_construct": "method", "receiver": "stdlib"},
@@ -2616,7 +2710,6 @@ def _extract_edges_from_file(
                                 edge_type="calls",
                                 line=node.start_point[0] + 1,
                                 evidence_type="ast_call",
-                                confidence=0.85,
                                 origin=PASS_ID,
                                 origin_run_id=run.execution_id,
                                 meta={"call_construct": "function"},
@@ -2624,7 +2717,36 @@ def _extract_edges_from_file(
                         # Check global symbols with disambiguation via ListNameResolver
                         else:
                             lookup_result = resolver.lookup(callee_name, path_hint=import_path_hint)
-                            if lookup_result.found:
+                            # INV-fahub: a BARE identifier call (``import_path_hint
+                            # is None`` — no package evidence) that resolves only to
+                            # a DIFFERENT type's METHOD on weak (ambiguous /
+                            # non-exact) short-name evidence is a magnet — dozens of
+                            # bare call sites collapse onto one arbitrary
+                            # ``Type.method``. Withhold that bind and emit an honest
+                            # unresolved edge stamped with the enclosing class, so
+                            # the inherited_calls Site-1 walker can recover a genuine
+                            # inherited implicit-receiver call (and a true cross-class
+                            # magnet stays external). Free functions, same-class
+                            # methods, and strong exact / path-hint matches are
+                            # unaffected; a package-qualified selector (``pkg.Foo()``,
+                            # ``import_path_hint`` set) carries real routing evidence
+                            # and is never withheld here. The enclosing type is the
+                            # receiver of the calling method (``Type.method`` →
+                            # ``Type``); a free-function caller has no enclosing type.
+                            _enclosing_type = (
+                                current_function.name.rsplit(".", 1)[0]
+                                if "." in current_function.name else None
+                            )
+                            _sym = lookup_result.symbol
+                            _defer = (
+                                import_path_hint is None
+                                and _sym is not None
+                                and defer_bare_method_call(
+                                    _sym.kind, _sym.name,
+                                    lookup_result.match_type, _enclosing_type,
+                                )
+                            )
+                            if lookup_result.found and not _defer:
                                 # Scale base confidence by resolver's confidence multiplier
                                 edge_confidence = 0.80 * lookup_result.confidence
                                 edges.append(Edge.create(
@@ -2637,6 +2759,15 @@ def _extract_edges_from_file(
                                     origin=PASS_ID,
                                     origin_run_id=run.execution_id,
                                     meta={"call_construct": "function"},
+                                ))
+                            elif _defer:
+                                # Bare call only (``import_path_hint`` is None here),
+                                # so the target module is unknown → external hint.
+                                edges.append(make_unresolved_edge(
+                                    "go", current_function.id, callee_name,
+                                    node.start_point[0] + 1, PASS_ID,
+                                    run.execution_id,
+                                    enclosing_class=_enclosing_type,
                                 ))
                             # Bug #2 fix: Create edge for external/unresolved method calls
                             # This enables linkers to potentially match across languages
@@ -2657,7 +2788,6 @@ def _extract_edges_from_file(
                                     line=node.start_point[0] + 1,
                                     evidence_type="ast_call",
                                     is_resolved=False,
-                                    confidence=0.50,  # Lower confidence for unresolved
                                     origin=PASS_ID,
                                     origin_run_id=run.execution_id,
                                     meta={"call_construct": "method"},
@@ -2687,7 +2817,6 @@ def _extract_edges_from_file(
                                     line=node.start_point[0] + 1,
                                     evidence_type="ast_call",
                                     is_resolved=False,
-                                    confidence=0.45,
                                     origin=PASS_ID,
                                     origin_run_id=run.execution_id,
                                     meta={"call_construct": "function", "binding": "dot_import"},
@@ -2729,7 +2858,6 @@ def _extract_edges_from_file(
                                     edge_type="calls",
                                     line=node.start_point[0] + 1,
                                     evidence_type="struct_field_reference",
-                                    confidence=0.70,
                                     origin=PASS_ID,
                                     origin_run_id=run.execution_id,
                                 ))
@@ -2796,7 +2924,7 @@ def _extract_edges_from_file(
             span=Span(start_line=0, end_line=0, start_col=0, end_col=0),
             origin=PASS_ID,
             origin_run_id=run.execution_id,
-            lines_of_code=1,
+            line_span=1,
         )
         emit_module_attribute_refs(
             tree.root_node,
@@ -2967,7 +3095,7 @@ def _maybe_create_wrapper_symbol(
         origin=PASS_ID,
         origin_run_id=run.execution_id,
         meta={"concepts": ["middleware"], "is_closure_wrapper": True},
-        lines_of_code=end_line - start_line + 1,
+        line_span=end_line - start_line + 1,
         is_exported=bool(wrapper_name) and wrapper_name[0].isupper(),
         # No AST node available here (the wrapper Symbol is synthesized
         # from positional data tracked in the closure-var pre-pass), so
@@ -3424,14 +3552,13 @@ def _extract_go_routes(
                                                         line=start_line,
                                                         origin=PASS_ID,
                                                         evidence_type="closure_wrapper",
-                                                        confidence=0.85,
                                                         origin_run_id=run.execution_id,
                                                     ))
 
                                 route_sym = Symbol(
                                     id=make_symbol_id(
                                         "go", str(file_path), start_line, end_line,
-                                        f"{normalized_method} {route_path}", "route"
+                                        f"{normalized_method} {route_path}", "function"
                                     ),
                                     stable_id=make_route_stable_id(normalized_method, route_path),
                                     name=handler_name,
@@ -3447,7 +3574,7 @@ def _extract_go_routes(
                                     origin=PASS_ID,
                                     origin_run_id=run.execution_id,
                                     meta=route_meta,
-                                    lines_of_code=end_line - start_line + 1,
+                                    line_span=end_line - start_line + 1,
                                     is_exported=bool(handler_name) and handler_name.rsplit(".", 1)[-1][:1].isupper(),
                                 )
                                 routes.append(route_sym)
@@ -3546,14 +3673,13 @@ def _extract_go_routes(
                                                         line=start_line,
                                                         origin=PASS_ID,
                                                         evidence_type="closure_wrapper",
-                                                        confidence=0.85,
                                                         origin_run_id=run.execution_id,
                                                     ))
 
                                 route_sym = Symbol(
                                     id=make_symbol_id(
                                         "go", str(file_path), start_line, end_line,
-                                        f"{handle_http_method} {route_path}", "route"
+                                        f"{handle_http_method} {route_path}", "function"
                                     ),
                                     stable_id=make_route_stable_id(
                                         handle_http_method, route_path,
@@ -3571,7 +3697,7 @@ def _extract_go_routes(
                                     origin=PASS_ID,
                                     origin_run_id=run.execution_id,
                                     meta=route_meta_g,
-                                    lines_of_code=end_line - start_line + 1,
+                                    line_span=end_line - start_line + 1,
                                     is_exported=bool(handler_name) and handler_name.rsplit(".", 1)[-1][:1].isupper(),
                                 )
                                 routes.append(route_sym)
@@ -3598,7 +3724,7 @@ def _extract_go_routes(
                             route_sym = Symbol(
                                 id=make_symbol_id(
                                     "go", str(file_path), start_line, end_line,
-                                    f"{normalized_method} {route_path}", "route"
+                                    f"{normalized_method} {route_path}", "function"
                                 ),
                                 stable_id=make_route_stable_id(normalized_method, route_path),
                                 name=handler_name,
@@ -3619,7 +3745,7 @@ def _extract_go_routes(
                                     "handler_name": handler_name,
                                     "framework_role": "route",
                                 },
-                                lines_of_code=end_line - start_line + 1,
+                                line_span=end_line - start_line + 1,
                                 is_exported=bool(handler_name) and handler_name.rsplit(".", 1)[-1][:1].isupper(),
                             )
                             routes.append(route_sym)
@@ -3678,7 +3804,7 @@ def _extract_go_routes(
                                             "handler_ref": handler_ref,
                                             "framework_role": "route_mount",
                                         },
-                                        lines_of_code=end_line - start_line + 1,
+                                        line_span=end_line - start_line + 1,
                                         is_exported=bool(handler_ref) and handler_ref.rsplit(".", 1)[-1][:1].isupper(),
                                     )
                                     routes.append(mount_sym)
@@ -3710,7 +3836,6 @@ def _extract_go_routes(
                                                 dst=dst_id,
                                                 edge_type="calls",
                                                 line=start_line,
-                                                confidence=0.90,
                                                 origin=PASS_ID,
                                                 origin_run_id=(
                                                     run.execution_id
@@ -3780,7 +3905,7 @@ def _extract_go_routes(
 
             # Extract handler from the RHS call expression
             right = find_child_by_field(n, "right")
-            handler_name: str | None = None
+            handler_name = None
             handler_field: str | None = None
             if right is not None:
                 for child in right.children:
@@ -3825,7 +3950,7 @@ def _extract_go_routes(
             route_sym = Symbol(
                 id=make_symbol_id(
                     "go", str(file_path), start_line, end_line,
-                    f"{normalized_method} {route_path}", "route",
+                    f"{normalized_method} {route_path}", "function",
                 ),
                 stable_id=make_route_stable_id(normalized_method, route_path),
                 name=handler_name,
@@ -3841,7 +3966,7 @@ def _extract_go_routes(
                 origin=PASS_ID,
                 origin_run_id=run.execution_id,
                 meta=meta,
-                lines_of_code=end_line - start_line + 1,
+                line_span=end_line - start_line + 1,
             )
             routes.append(route_sym)
 
@@ -4423,11 +4548,12 @@ def _analyze_go_impl(repo_root: Path, max_files: int | None = None) -> AnalysisR
                     all_edges.append(Edge.create(
                         src=a.id,
                         dst=b.id,
-                        edge_type="build_tag_alternative_of",
+                        edge_type="references",
                         line=a.span.start_line if a.span else 0,
                         origin=PASS_ID,
                         origin_run_id=run.execution_id,
                         confidence=0.95,
+                        meta={"ref_construct": "build_tag_alternative"},
                     ))
 
     return AnalysisResult(

@@ -55,9 +55,45 @@ usage() {
   echo "  $0 analyze-deps      # Find missing tree-sitter dependencies"
 }
 
+# GitHub arm: GitHub Actions is disabled under Woodpecker CI, so /actions/runs
+# returns an empty workflow_runs (HTTP 200) — there is no run history to list.
+# The only agent-readable CI signal is the Woodpecker commit-STATUS, so render
+# HEAD's status entries as pseudo-runs. (status/pr-status read the same endpoint
+# and are already shape-compatible.)
+_cmd_runs_github() {
+  local sha
+  sha=$(git rev-parse HEAD)
+  if ! api_get "$API_BASE/commits/$sha/status"; then
+    echo "❌ Failed to fetch commit status (HTTP $API_HTTP_CODE)"
+    exit 1
+  fi
+  CI_DEBUG_SHA="$sha" python3 -c "
+import sys, json, os
+short = os.environ.get('CI_DEBUG_SHA', '')[:8]
+try:
+    data = json.load(sys.stdin)
+    statuses = data.get('statuses') or []
+    if not statuses:
+        print('No CI status reported for this commit yet.')
+        sys.exit(0)
+    for s in statuses:
+        st = s.get('state', s.get('status', '?'))
+        ctx = s.get('context', 'N/A')
+        marker = '✅' if st == 'success' else '❌' if st in ('failure', 'error') else '⏳'
+        print(f'{marker} {st:10} {ctx:30} @ {short}')
+except (json.JSONDecodeError, KeyError, TypeError) as e:
+    print(f'Error parsing response: {e}')
+" <<< "$API_RESPONSE"
+}
+
 cmd_runs() {
   echo "Recent CI runs for $REPO_SLUG:"
   echo "---"
+
+  if [[ "${FORGE_BACKEND:-forgejo}" == "github" ]]; then
+    _cmd_runs_github
+    return
+  fi
 
   # Try /actions/runs (Codeberg / Forgejo 12+), fall back to /actions/tasks
   # (Forgejo 11.x / gitea-1.22 which lacks the runs endpoint).
@@ -68,6 +104,7 @@ cmd_runs() {
     got_runs=true
   else
     echo "❌ Failed to fetch runs (HTTP $API_HTTP_CODE)"
+    print_desync_recovery_hint
     exit 1
   fi
 
@@ -106,6 +143,7 @@ cmd_status() {
 
   if ! api_get "$API_BASE/commits/$sha/status"; then
     echo "❌ Failed to fetch status (HTTP $API_HTTP_CODE)"
+    print_desync_recovery_hint
     exit 1
   fi
 

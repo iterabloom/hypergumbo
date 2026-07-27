@@ -2,7 +2,7 @@
 """MATLAB language analyzer using tree-sitter.
 
 This module provides static analysis for MATLAB source code, extracting symbols
-(functions, classes, properties, methods) and edges (calls).
+(functions, classes, methods) plus a per-class property/method count, and edges (calls).
 
 MATLAB is a high-level language and interactive environment for numerical
 computation, visualization, and programming, commonly used in engineering
@@ -17,7 +17,7 @@ The analyze() method is fully overridden because MATLAB requires:
 Key constructs extracted:
 - function_definition: function output = name(args)
 - class_definition: classdef Name
-- properties: Property declarations within a class
+- properties: counted per class and recorded in the class symbol's meta (property_count), not emitted as separate symbols
 - methods: Method definitions within a class
 - function_call: Direct function calls
 """
@@ -28,9 +28,10 @@ from pathlib import Path
 from typing import ClassVar, Iterator, Optional, TYPE_CHECKING
 
 from hypergumbo_core.discovery import classify_dot_m_file, find_files
-from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
+from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, _get_python_toolchain, make_pass_id
 from hypergumbo_core.analyze.base import AnalysisResult, TreeSitterAnalyzer, make_symbol_id, populate_docstrings_from_tree
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -51,7 +52,7 @@ def find_matlab_files(root: Path) -> Iterator[Path]:
 
 def _get_node_text(node: "tree_sitter.Node") -> str:
     """Get the text content of a node."""
-    return node.text.decode("utf-8", errors="replace")
+    return (node.text or b"").decode("utf-8", errors="replace")
 
 
 def _get_identifier(node: "tree_sitter.Node") -> Optional[str]:
@@ -154,6 +155,8 @@ def _extract_symbols_recursive(
                 origin=PASS_ID,
                 signature=signature,
                 meta={"class": class_name} if class_name else None,
+                cyclomatic_complexity=compute_cyclomatic_complexity(node, "matlab"),
+                line_span=node.end_point[0] - node.start_point[0] + 1,
             )
             symbols.append(sym)
 
@@ -347,7 +350,7 @@ class MatlabAnalyzer(TreeSitterAnalyzer):
             run_signature="",
             pass_id=PASS_ID,
             version=PASS_VERSION,
-            toolchain={"name": "matlab", "version": "unknown"},
+            toolchain=_get_python_toolchain(),
             duration_ms=int(elapsed * 1000),
         )
 

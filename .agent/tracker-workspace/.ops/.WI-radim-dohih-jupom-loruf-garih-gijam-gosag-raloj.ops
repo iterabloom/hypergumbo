@@ -1,0 +1,28 @@
+- op: create  # fae3
+  at: '2026-07-13T02:33:04Z'  # fae3
+  by: agent  # fae3
+  actor: jgstern_agent  # fae3
+  clock: 1  # fae3
+  nonce: fae3  # fae3
+  data:  # fae3
+    kind: work_item  # fae3
+    title: "Seed the 3 remaining 1.0-emitting inference pathways (build_dependency / subdir_include / tree_sitter) so they derive in-band confidence (ADR-0039 R1 ceiling-breach residual)"  # fae3
+    status: todo_hard  # fae3
+    priority: 3  # fae3
+    parent:  # fae3
+    tags:  # fae3
+    - confidence  # fae3
+    - vocab  # fae3
+    isbefore: []  # fae3
+    duplicate_of: []  # fae3
+    not_duplicate_of: []  # fae3
+    pr_ref:  # fae3
+    description: ""  # fae3
+    fields: {}  # fae3
+- op: discuss  # 48fa
+  at: '2026-07-13T02:33:23Z'  # 48fa
+  by: agent  # 48fa
+  actor: jgstern_agent  # 48fa
+  clock: 2  # 48fa
+  nonce: 48fa  # 48fa
+  message: "Surfaced during the ADR-0039 R5 spec reconciliation. After naming_convention (WI-vakuh) and type_hierarchy (WI-botif) were seeded/derived, three inference pathways still emit a hardcoded confidence=1.0 that breaches the 0.95 reserved ceiling: build_dependency, subdir_include, tree_sitter. Same fix shape as naming_convention: seed a principled in-band base_confidence in _CONFIDENCE_SEEDS and drop the producer literal so Edge.create derives it (confidence_source=evidence_derived). Not part of the WI-lutad/WI-vakuh/WI-botif P1s; separate ceiling-breach cleanup."  # 48fa

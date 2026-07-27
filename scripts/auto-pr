@@ -404,11 +404,7 @@ _autopr_handle_already_merged() {
 	if [[ -n "$pr_num" ]]; then
 		echo "📍 Already merged as PR #$pr_num — local cleanup only"
 		_autopr_state_pr_num="$pr_num"
-		if [[ "$FAILOVER_ACTIVE" == "true" ]]; then
-			_autopr_state_pr_url="$FAILOVER_URL/$FAILOVER_REPO/pulls/$pr_num"
-		else
-			_autopr_state_pr_url="https://codeberg.org/$REPO_SLUG/pulls/$pr_num"
-		fi
+		_autopr_state_pr_url="$(_autopr_pr_web_url "$pr_num")"
 	else
 		echo "📍 Already merged (PR # not found via API) — local cleanup only"
 	fi
@@ -444,6 +440,172 @@ _autopr_handle_already_merged() {
 parse_pr_from_push() {
 	local push_output="$1"
 	echo "$push_output" | grep -oP 'pulls/\K[0-9]+' | head -1
+}
+
+# ------------------------------------------------------------------
+# _autopr_branch_push_fallback REMOTE BRANCH BASE TITLE BODY LOCAL_SHA
+#   WI-hubod desync resilience. Codeberg's recurring DB desync breaks the
+#   AGit (refs/for) proc-receive hook — which does the DB writes that create
+#   the PR — producing 504 / "Internal Server Error" / "fail to run
+#   proc-receive hook". A PLAIN branch push (refs/heads/<branch>, post-receive
+#   only) is resilient AND its post-receive recomputes the DB representation,
+#   clearing the desync. So when the AGit push fails, fall back to:
+#     (1) plain branch push, (2) create the PR via the Forgejo API from the
+#     freshly-pushed branch, after reusing any PR a partial AGit push already
+#     made. Sets FALLBACK_PR_NUM. Returns 1 if the branch push or PR-create
+#     fails (a genuine outage — the caller then queues a vPR).
+#   Test seam: AUTO_PR_SIMULATE_DESYNC_FALLBACK=ok|fail bypasses the real
+#   branch push (and skips the live idempotency lookup); create_pr is driven
+#   by its own AUTOPR_TEST_CREATE_PR seam.
+# ------------------------------------------------------------------
+_autopr_branch_push_fallback() {
+	local remote="$1" branch="$2" base="$3" title="$4" body="$5" local_sha="$6"
+	FALLBACK_PR_NUM=""
+	echo ""
+	echo "🔁 WI-hubod desync fallback: plain branch push + API PR-create..."
+
+	# 1. Plain branch push (post-receive only; resilient + resyncs the DB).
+	local pushed=false
+	case "${AUTO_PR_SIMULATE_DESYNC_FALLBACK:-}" in
+	ok)
+		echo "   [test] simulated branch push OK"
+		pushed=true
+		;;
+	fail)
+		echo "   [test] simulated branch push FAILED"
+		;;
+	*)
+		if git -c credential.helper="!f() { echo username=$USER; echo password=$TOKEN; }; f" \
+			push "$remote" "HEAD:refs/heads/$branch" 2>&1; then
+			pushed=true
+		fi
+		;;
+	esac
+
+	if [[ "$pushed" != "true" ]]; then
+		echo "   ❌ Plain branch push failed — remote genuinely unavailable"
+		return 1
+	fi
+	echo "   ✅ Branch push succeeded (Codeberg DB resync triggered)"
+
+	# 2. Idempotency: a partial AGit push may have already created an open PR
+	#    for this branch/commit. Reuse it instead of creating a duplicate.
+	#    (Skipped under the test seam to avoid a live API round-trip.)
+	if [[ -z "${AUTO_PR_SIMULATE_DESYNC_FALLBACK:-}" ]]; then
+		if find_open_pr "branch" "$branch" || find_open_pr "sha" "$local_sha"; then
+			FALLBACK_PR_NUM="$FOUND_PR_NUM"
+			echo "   ↩️  Reusing existing open PR #$FALLBACK_PR_NUM"
+			return 0
+		fi
+	fi
+
+	# 3. Create the PR via the Forgejo API from the pushed branch ref.
+	if create_pr "$branch" "$base" "$title" "$body"; then
+		FALLBACK_PR_NUM="$CREATED_PR_NUM"
+		echo "   ✅ Created PR #$FALLBACK_PR_NUM via Forgejo API"
+		return 0
+	fi
+
+	# create_pr may have created the PR server-side despite a non-2xx /
+	# unparseable response — re-check so we reuse it instead of queueing a vPR
+	# that would duplicate it on flush. (Skipped under the test seam.)
+	if [[ -z "${AUTO_PR_SIMULATE_DESYNC_FALLBACK:-}" ]] \
+	   && { find_open_pr "branch" "$branch" || find_open_pr "sha" "$local_sha"; }; then
+		FALLBACK_PR_NUM="$FOUND_PR_NUM"
+		echo "   ↩️  create_pr reported failure but PR #$FALLBACK_PR_NUM exists — reusing"
+		return 0
+	fi
+
+	echo "   ❌ API PR-create failed"
+	return 1
+}
+
+# ------------------------------------------------------------------
+# _autopr_pr_web_url PR_NUM
+#   The PR's web URL for the WI-miriz sentinel/output, branched by backend +
+#   failover. Centralizes the three previously-inline constructions (do_pr,
+#   flush, already-merged). GitHub uses /pull/N; Forgejo/failover use /pulls/N.
+# ------------------------------------------------------------------
+_autopr_pr_web_url() {
+	local pr_num="$1"
+	if [[ "${FAILOVER_ACTIVE:-false}" == "true" ]]; then
+		echo "$FAILOVER_URL/$FAILOVER_REPO/pulls/$pr_num"
+	elif [[ "${FORGE_BACKEND:-forgejo}" == "github" ]]; then
+		echo "https://github.com/$REPO_SLUG/pull/$pr_num"
+	else
+		echo "https://codeberg.org/$REPO_SLUG/pulls/$pr_num"
+	fi
+}
+
+# ------------------------------------------------------------------
+# _autopr_github_push_create REMOTE BRANCH BASE TITLE BODY LOCAL_SHA
+#   GitHub primary push (replaces the AGit refs/for push — GitHub has no
+#   proc-receive). Plain branch push to refs/heads/<branch> with the resolved
+#   github credential, then create_pr from the pushed branch (reusing any open
+#   PR for idempotency, matching C10). Sets FALLBACK_PR_NUM — the SAME variable
+#   the WI-hubod desync fallback sets — so the do_pr/flush push-result plumbing
+#   (PR_NUM/HEAD_SHA/AUTOPR_FALLBACK_USED) is unchanged. Returns 1 on a genuine
+#   push/create failure (caller queues a vPR).
+#   Test seam: AUTO_PR_SIMULATE_GH_PUSH=ok|fail bypasses the real push (and the
+#   live idempotency lookup); create_pr is driven by the fake curl / its own
+#   AUTOPR_TEST_CREATE_PR seam.
+# ------------------------------------------------------------------
+_autopr_github_push_create() {
+	local remote="$1" branch="$2" base="$3" title="$4" body="$5" local_sha="$6"
+	FALLBACK_PR_NUM=""
+	resolve_forge_token
+	echo ""
+	echo "📤 GitHub: plain branch push + API PR-create..."
+
+	local pushed=false
+	case "${AUTO_PR_SIMULATE_GH_PUSH:-}" in
+	ok)
+		echo "   [test] simulated branch push OK"
+		pushed=true
+		;;
+	fail)
+		echo "   [test] simulated branch push FAILED"
+		;;
+	*)
+		if git -c credential.helper="!f() { echo username=$USER; echo password=$FORGE_TOKEN; }; f" \
+			push "$remote" "HEAD:refs/heads/$branch" 2>&1; then
+			pushed=true
+		fi
+		;;
+	esac
+
+	if [[ "$pushed" != "true" ]]; then
+		echo "   ❌ Branch push failed — remote unavailable"
+		return 1
+	fi
+	echo "   ✅ Branch push succeeded"
+
+	# Idempotency (C10): reuse an open PR for this branch/commit if one exists.
+	if [[ -z "${AUTO_PR_SIMULATE_GH_PUSH:-}" ]]; then
+		if find_open_pr "branch" "$branch" || find_open_pr "sha" "$local_sha"; then
+			FALLBACK_PR_NUM="$FOUND_PR_NUM"
+			echo "   ↩️  Reusing existing open PR #$FALLBACK_PR_NUM"
+			return 0
+		fi
+	fi
+
+	if create_pr "$branch" "$base" "$title" "$body"; then
+		FALLBACK_PR_NUM="$CREATED_PR_NUM"
+		echo "   ✅ Created PR #$FALLBACK_PR_NUM"
+		return 0
+	fi
+
+	# create_pr may have created it server-side despite a non-2xx / unparseable
+	# response — re-check before giving up (parity with the desync fallback).
+	if [[ -z "${AUTO_PR_SIMULATE_GH_PUSH:-}" ]] \
+	   && { find_open_pr "branch" "$branch" || find_open_pr "sha" "$local_sha"; }; then
+		FALLBACK_PR_NUM="$FOUND_PR_NUM"
+		echo "   ↩️  create_pr reported failure but PR #$FALLBACK_PR_NUM exists — reusing"
+		return 0
+	fi
+
+	echo "   ❌ API PR-create failed"
+	return 1
 }
 
 # ------------------------------------------------------------------
@@ -916,36 +1078,46 @@ Individual commits are preserved in the history."
 	fi
 
 	local PUSH_OUTPUT=""
-	while [[ $attempt -le $max_attempts ]]; do
-		PUSH_OUTPUT=$(git -c credential.helper="!f() { echo username=$USER; echo password=$TOKEN; }; f" \
-			push "$push_remote" "HEAD:refs/for/$base_branch/$tip_branch" \
-			-o title="$pr_title" \
-			-o description="$push_desc" \
-			-o force-push=true 2>&1) && push_success=true
-		echo "$PUSH_OUTPUT"
-		if [[ "$push_success" == "true" ]]; then
-			break
+	if [[ "${FORGE_BACKEND:-forgejo}" == "github" ]]; then
+		# GitHub: plain push of the queue tip + create_pr (no AGit refs/for);
+		# the PR is identified below via find_open_pr. Failure → vPRs stay queued
+		# (the push_success check below prints the "remote unavailable" exit).
+		if _autopr_github_push_create "$push_remote" "$tip_branch" "$base_branch" "$pr_title" "$push_desc" "$tip_sha"; then
+			push_success=true
 		fi
+	else
+		while [[ $attempt -le $max_attempts ]]; do
+			PUSH_OUTPUT=$(git -c credential.helper="!f() { echo username=$USER; echo password=$TOKEN; }; f" \
+				push "$push_remote" "HEAD:refs/for/$base_branch/$tip_branch" \
+				-o title="$pr_title" \
+				-o description="$push_desc" \
+				-o force-push=true 2>&1) && push_success=true
+			echo "$PUSH_OUTPUT"
+			if [[ "$push_success" == "true" ]]; then
+				break
+			fi
 
-		# WI-bahuf: detect 'already merged' rejection on flush too.
-		if _autopr_is_already_merged_rejection "$PUSH_OUTPUT"; then
-			_autopr_handle_already_merged "$tip_sha" "$tip_branch" "$base_branch" || true
-		fi
+			# WI-bahuf: detect 'already merged' rejection on flush too.
+			if _autopr_is_already_merged_rejection "$PUSH_OUTPUT"; then
+				_autopr_handle_already_merged "$tip_sha" "$tip_branch" "$base_branch" || true
+			fi
 
-		echo ""
-		echo "⚠️  Push failed (attempt $attempt/$max_attempts)"
+			echo ""
+			echo "⚠️  Push failed (attempt $attempt/$max_attempts)"
 
-		if [[ $attempt -lt $max_attempts ]]; then
-			echo "   Retrying in 10 seconds..."
-			sleep 10
-		fi
-		((attempt++))
-	done
+			if [[ $attempt -lt $max_attempts ]]; then
+				echo "   Retrying in 10 seconds..."
+				sleep 10
+			fi
+			((attempt++))
+		done
+	fi
 
 	if [[ "$push_success" != "true" ]]; then
 		echo ""
 		echo "❌ Remote still unavailable after $max_attempts attempts"
 		echo "   vPRs remain queued. Try again later with: ./scripts/auto-pr flush"
+		print_desync_recovery_hint
 		_autopr_state_final="failed_flush_remote_unavailable"
 		exit 1
 	fi
@@ -955,8 +1127,15 @@ Individual commits are preserved in the history."
 
 	local PR_NUM HEAD_SHA
 
-	# Primary: parse PR number directly from push output (no API race)
-	PR_NUM=$(parse_pr_from_push "$PUSH_OUTPUT")
+	# Primary: parse PR number directly from push output (no API race). GitHub
+	# has no AGit push output — the github push arm already set FALLBACK_PR_NUM
+	# via create_pr, so consume it (and avoid parse_pr_from_push aborting on the
+	# empty PUSH_OUTPUT under `set -o pipefail`).
+	if [[ "${FORGE_BACKEND:-forgejo}" == "github" ]]; then
+		PR_NUM="$FALLBACK_PR_NUM"
+	else
+		PR_NUM=$(parse_pr_from_push "$PUSH_OUTPUT")
+	fi
 
 	if [[ -n "$PR_NUM" ]]; then
 		HEAD_SHA="$tip_sha"
@@ -988,14 +1167,19 @@ Individual commits are preserved in the history."
 
 	# WI-miriz: record PR identity for the sentinel.
 	_autopr_state_pr_num="$PR_NUM"
-	if [[ "$FAILOVER_ACTIVE" == "true" ]]; then
-		_autopr_state_pr_url="$FAILOVER_URL/$FAILOVER_REPO/pulls/$PR_NUM"
-	else
-		_autopr_state_pr_url="https://codeberg.org/$REPO_SLUG/pulls/$PR_NUM"
-	fi
+	_autopr_state_pr_url="$(_autopr_pr_web_url "$PR_NUM")"
 
 	echo "✅ Created PR #$PR_NUM (contains $count vPRs)"
 	echo "🔗 $_autopr_state_pr_url"
+
+	# Test seam: stop after identification so the github flush arm is observable
+	# without a live CI poll (parallels do_pr's AUTO_PR_SIMULATE_GH_PUSH seam).
+	if [[ -n "${AUTO_PR_SIMULATE_GH_PUSH:-}" ]]; then
+		echo "✅ [test] flush identified PR #$PR_NUM"
+		rm -f "$REPO_ROOT/.git/PR_PENDING"
+		_autopr_state_final="test_gh_flush_ok"
+		exit 0
+	fi
 
 	# Poll CI
 	echo "---------------------------------------------------"
@@ -1045,8 +1229,16 @@ Individual commits are preserved in the history."
 	# WI-miriz: capture merged-state into the sentinel.  Trap stays
 	# installed; the natural exit fires it.  Cleanup below also rm's
 	# PR_PENDING explicitly (idempotent with the trap).
+	# GitHub rebase-merge rewrites the commit SHA, so tip_sha is no longer on
+	# dev after merge — re-fetch the true merged tip for the sentinel +
+	# discussion (mirrors do_pr). Forgejo keeps tip_sha byte-identically.
+	local _merged_sha="$tip_sha"
+	if [[ "${FORGE_BACKEND:-forgejo}" == "github" ]]; then
+		git fetch origin "$base_branch" --quiet 2>/dev/null || true
+		_merged_sha="$(git rev-parse --verify "origin/$base_branch^{commit}" 2>/dev/null || echo "$tip_sha")"
+	fi
 	_autopr_state_final="merged"
-	_autopr_state_merged_sha="$tip_sha"
+	_autopr_state_merged_sha="$_merged_sha"
 
 	# WI-dofaz: surface any tracker-sync PR that existed before this
 	# flush run and is still open.  Best-effort warning only.
@@ -1054,7 +1246,7 @@ Individual commits are preserved in the history."
 
 	# WI-mokak: append durable post-merge discussion entry to the
 	# tracker item, if one was referenced by --tracker-id.
-	_autopr_append_tracker_discussion "$TRACKER_ID" "$PR_NUM" "$tip_sha"
+	_autopr_append_tracker_discussion "$TRACKER_ID" "$PR_NUM" "$_merged_sha"
 
 	# Cleanup
 	echo "---------------------------------------------------"
@@ -1362,75 +1554,137 @@ do_pr() {
 	local BASE_SHA_BEFORE_PUSH
 	BASE_SHA_BEFORE_PUSH=$(git rev-parse --verify "origin/$BASE_BRANCH^{commit}" 2>/dev/null || true)
 
-	while [[ $attempt -le $max_attempts ]]; do
-		PUSH_OUTPUT=$(git -c credential.helper="!f() { echo username=$USER; echo password=$TOKEN; }; f" \
-			push "$push_remote" "HEAD:refs/for/$BASE_BRANCH/$BRANCH" \
-			-o title="$TITLE" \
-			-o description="$PUSH_DESC" \
-			-o force-push=true 2>&1) && push_success=true
-		echo "$PUSH_OUTPUT"
-		if [[ "$push_success" == "true" ]]; then
-			break
-		fi
+	# Declared before the push loop so the WI-hubod desync fallback (below)
+	# can set PR_NUM ahead of the identification block — a later
+	# `local PR_NUM` would blank it.
+	local PR_NUM="" HEAD_SHA="" AUTOPR_FALLBACK_USED=false
 
-		# WI-bahuf: don't retry / queue if Forgejo rejected the push
-		# because the work is already in dev.  Detect the literal
-		# rejection message and short-circuit to the merged-cleanup
-		# path on the FIRST attempt.
-		if _autopr_is_already_merged_rejection "$PUSH_OUTPUT"; then
-			_autopr_handle_already_merged "$LOCAL_SHA" "$BRANCH" "$BASE_BRANCH" || true
-			# If _autopr_handle_already_merged returns 1, the SHA is
-			# NOT in the base — fall through to normal retry/queue.
+	# GitHub: plain branch push + create_pr (no AGit refs/for — GitHub has no
+	# proc-receive). Sets PR_NUM/HEAD_SHA/AUTOPR_FALLBACK_USED exactly like the
+	# desync fallback, so the identification + merge flow below is unchanged; a
+	# genuine failure queues a vPR (offline resilience, D5). The forgejo AGit
+	# path is the elif/else below and stays byte-identical.
+	if [[ "${FORGE_BACKEND:-forgejo}" == "github" ]]; then
+		if _autopr_github_push_create "$push_remote" "$BRANCH" "$BASE_BRANCH" "$TITLE" "$PUSH_DESC" "$LOCAL_SHA"; then
+			PR_NUM="$FALLBACK_PR_NUM"
+			HEAD_SHA="$LOCAL_SHA"
+			push_success=true
+			AUTOPR_FALLBACK_USED=true
+			if [[ -n "${AUTO_PR_SIMULATE_GH_PUSH:-}" ]]; then
+				echo "✅ [test] github push identified PR #$PR_NUM"
+				rm -f "$REPO_ROOT/.git/PR_PENDING"
+				_autopr_state_final="test_gh_push_ok"
+				exit 0
+			fi
+		else
+			echo ""
+			echo "❌ GitHub push/PR-create failed — queueing vPR"
+			queue_vpr "$BRANCH" "$BASE_BRANCH" "$TITLE" "$DESC" "$LOCAL_SHA"
+			_autopr_state_final="queued_vpr"
+			exit 0
 		fi
+	# AUTO_PR_SIMULATE_DESYNC (test seam): force the AGit push to "fail" with a
+	# proc-receive error so the branch-push fallback path runs without a real
+	# refs/for push hitting the network.
+	elif [[ "${AUTO_PR_SIMULATE_DESYNC:-}" == "1" ]]; then
+		echo "⚠️  [SIMULATED DESYNC] AUTO_PR_SIMULATE_DESYNC=1"
+		PUSH_OUTPUT="remote: error: fail to run proc-receive hook (simulated)"
+		push_success=false
+	else
+		while [[ $attempt -le $max_attempts ]]; do
+			PUSH_OUTPUT=$(git -c credential.helper="!f() { echo username=$USER; echo password=$TOKEN; }; f" \
+				push "$push_remote" "HEAD:refs/for/$BASE_BRANCH/$BRANCH" \
+				-o title="$TITLE" \
+				-o description="$PUSH_DESC" \
+				-o force-push=true 2>&1) && push_success=true
+			echo "$PUSH_OUTPUT"
+			if [[ "$push_success" == "true" ]]; then
+				break
+			fi
 
-		echo ""
-		echo "⚠️  Push failed (attempt $attempt/$max_attempts)"
+			# WI-bahuf: don't retry / queue if Forgejo rejected the push
+			# because the work is already in dev.  Detect the literal
+			# rejection message and short-circuit to the merged-cleanup
+			# path on the FIRST attempt.
+			if _autopr_is_already_merged_rejection "$PUSH_OUTPUT"; then
+				_autopr_handle_already_merged "$LOCAL_SHA" "$BRANCH" "$BASE_BRANCH" || true
+				# If _autopr_handle_already_merged returns 1, the SHA is
+				# NOT in the base — fall through to normal retry/queue.
+			fi
 
-		if [[ $attempt -lt $max_attempts ]]; then
-			echo "   Retrying in 10 seconds..."
-			sleep 10
-		fi
-		((attempt++))
-	done
+			echo ""
+			echo "⚠️  Push failed (attempt $attempt/$max_attempts)"
+
+			if [[ $attempt -lt $max_attempts ]]; then
+				echo "   Retrying in 10 seconds..."
+				sleep 10
+			fi
+			((attempt++))
+		done
+	fi
 
 	if [[ "$push_success" != "true" ]]; then
 		echo ""
-		echo "❌ Remote unavailable after $max_attempts attempts"
-		queue_vpr "$BRANCH" "$BASE_BRANCH" "$TITLE" "$DESC" "$LOCAL_SHA"
-		_autopr_state_final="queued_vpr"
-		exit 0 # Exit cleanly - vPR is queued
+		echo "⚠️  AGit (refs/for) push failed after $max_attempts attempts"
+		# WI-hubod: try the desync-resilient branch-push + API PR-create
+		# fallback before giving up to a vPR. The plain branch push self-
+		# discriminates — it succeeds under a Codeberg DB desync (and resyncs
+		# it) but fails under a genuine outage.
+		if _autopr_branch_push_fallback "$push_remote" "$BRANCH" "$BASE_BRANCH" "$TITLE" "$PUSH_DESC" "$LOCAL_SHA"; then
+			PR_NUM="$FALLBACK_PR_NUM"
+			HEAD_SHA="$LOCAL_SHA"
+			push_success=true
+			AUTOPR_FALLBACK_USED=true
+			# Test seam: stop after the fallback identifies the PR so the
+			# subprocess test can observe the outcome without a live CI poll.
+			if [[ "${AUTO_PR_SIMULATE_DESYNC:-}" == "1" ]]; then
+				echo "✅ [test] fallback identified PR #$PR_NUM"
+				rm -f "$REPO_ROOT/.git/PR_PENDING"
+				_autopr_state_final="test_desync_fallback_ok"
+				exit 0
+			fi
+		else
+			echo ""
+			echo "❌ Remote unavailable after $max_attempts attempts (+ branch-push fallback)"
+			print_desync_recovery_hint
+			queue_vpr "$BRANCH" "$BASE_BRANCH" "$TITLE" "$DESC" "$LOCAL_SHA"
+			_autopr_state_final="queued_vpr"
+			exit 0 # Exit cleanly - vPR is queued
+		fi
 	fi
 
 	echo "---------------------------------------------------"
 	echo "🔍 Identifying Pull Request..."
 
-	local PR_NUM HEAD_SHA
+	# When the WI-hubod fallback created/reused the PR via the API, PR_NUM is
+	# already set — skip the push-output parse / API search.
+	if [[ "$AUTOPR_FALLBACK_USED" != "true" ]]; then
+		# Primary: parse PR number directly from push output (no API race)
+		PR_NUM=$(parse_pr_from_push "$PUSH_OUTPUT")
 
-	# Primary: parse PR number directly from push output (no API race)
-	PR_NUM=$(parse_pr_from_push "$PUSH_OUTPUT")
-
-	if [[ -n "$PR_NUM" ]]; then
-		HEAD_SHA="$LOCAL_SHA"
-	# Fallback: API search (if push output format changes)
-	elif [[ -n "${FOUND_PR_NUM:-}" ]]; then
-		PR_NUM="$FOUND_PR_NUM"
-		if find_open_pr "branch" "$BRANCH"; then
-			HEAD_SHA="$FOUND_PR_SHA"
-		else
+		if [[ -n "$PR_NUM" ]]; then
 			HEAD_SHA="$LOCAL_SHA"
-		fi
-	else
-		sleep 2
-		if find_open_pr "branch" "$BRANCH"; then
+		# Fallback: API search (if push output format changes)
+		elif [[ -n "${FOUND_PR_NUM:-}" ]]; then
 			PR_NUM="$FOUND_PR_NUM"
-			HEAD_SHA="$FOUND_PR_SHA"
-		elif find_open_pr "sha" "$LOCAL_SHA"; then
-			PR_NUM="$FOUND_PR_NUM"
-			HEAD_SHA="$FOUND_PR_SHA"
+			if find_open_pr "branch" "$BRANCH"; then
+				HEAD_SHA="$FOUND_PR_SHA"
+			else
+				HEAD_SHA="$LOCAL_SHA"
+			fi
 		else
-			echo "❌ Could not find open PR for branch $BRANCH or commit $LOCAL_SHA"
-			_autopr_state_final="failed_pr_lookup"
-			exit 1
+			sleep 2
+			if find_open_pr "branch" "$BRANCH"; then
+				PR_NUM="$FOUND_PR_NUM"
+				HEAD_SHA="$FOUND_PR_SHA"
+			elif find_open_pr "sha" "$LOCAL_SHA"; then
+				PR_NUM="$FOUND_PR_NUM"
+				HEAD_SHA="$FOUND_PR_SHA"
+			else
+				echo "❌ Could not find open PR for branch $BRANCH or commit $LOCAL_SHA"
+				_autopr_state_final="failed_pr_lookup"
+				exit 1
+			fi
 		fi
 	fi
 
@@ -1448,11 +1702,7 @@ do_pr() {
 	# this run is responsible for, even if a later step (CI poll, merge)
 	# fails partway through.
 	_autopr_state_pr_num="$PR_NUM"
-	if [[ "$FAILOVER_ACTIVE" == "true" ]]; then
-		_autopr_state_pr_url="$FAILOVER_URL/$FAILOVER_REPO/pulls/$PR_NUM"
-	else
-		_autopr_state_pr_url="https://codeberg.org/$REPO_SLUG/pulls/$PR_NUM"
-	fi
+	_autopr_state_pr_url="$(_autopr_pr_web_url "$PR_NUM")"
 
 	echo "✅ Found PR #$PR_NUM"
 	echo "🔗 $_autopr_state_pr_url"
@@ -1511,9 +1761,15 @@ do_pr() {
 				api_patch "$API_BASE/pulls/$PR_NUM" '{"state": "closed"}' >/dev/null 2>&1 || true
 				sleep 60
 				echo "📤 Re-pushing..."
-				if ! git push "$push_remote" "HEAD:refs/for/$BASE_BRANCH/$BRANCH" -o "topic=$BRANCH" 2>/dev/null; then
+				if [[ "${FORGE_BACKEND:-forgejo}" == "github" ]]; then
+					# GitHub: reopen the just-closed PR to re-trigger Woodpecker
+					# (no AGit re-push; HEAD is unchanged so a plain push is a
+					# no-op). ⚠ Re-trigger validated at cutover via a stuck-CI drill.
+					api_patch "$API_BASE/pulls/$PR_NUM" '{"state": "open"}' >/dev/null 2>&1 || true
+				elif ! git push "$push_remote" "HEAD:refs/for/$BASE_BRANCH/$BRANCH" -o "topic=$BRANCH" 2>/dev/null; then
 					git push "$push_remote" "HEAD:refs/for/$BASE_BRANCH/$BRANCH" 2>/dev/null || {
 						echo "❌ Re-push failed"
+						print_desync_recovery_hint
 						exit 1
 					}
 				fi
@@ -1562,7 +1818,11 @@ do_pr() {
 
 		# Repush to create a new PR and trigger fresh CI
 		echo "📤 Re-pushing to trigger fresh CI run..."
-		if ! git push "$push_remote" "HEAD:refs/for/$BASE_BRANCH/$BRANCH" -o "topic=$BRANCH" 2>/dev/null; then
+		if [[ "${FORGE_BACKEND:-forgejo}" == "github" ]]; then
+			# GitHub: reopen the just-closed PR to re-trigger Woodpecker (no AGit
+			# re-push; HEAD unchanged). ⚠ Validated at cutover via a stuck-CI drill.
+			api_patch "$API_BASE/pulls/$PR_NUM" '{"state": "open"}' >/dev/null 2>&1 || true
+		elif ! git push "$push_remote" "HEAD:refs/for/$BASE_BRANCH/$BRANCH" -o "topic=$BRANCH" 2>/dev/null; then
 			git push "$push_remote" "HEAD:refs/for/$BASE_BRANCH/$BRANCH" 2>/dev/null || {
 				echo "❌ Re-push failed"
 				exit 1
@@ -1639,7 +1899,17 @@ do_pr() {
 			echo "⚠️  dev advanced during CI poll (${BASE_SHA_BEFORE_PUSH:0:8}→${new_base_sha:0:8}) — rebasing..."
 			if git rebase "origin/$BASE_BRANCH" --quiet 2>/dev/null; then
 				HEAD_SHA=$(git rev-parse HEAD)
-				if git push origin "HEAD:refs/for/$BASE_BRANCH/$BRANCH" -o force-push=true --quiet 2>/dev/null; then
+				_rebase_pushed=false
+				if [[ "${FORGE_BACKEND:-forgejo}" == "github" ]]; then
+					# GitHub: plain force-push the rebased head (new SHA → Woodpecker
+					# reruns on it). No AGit refs/for.
+					resolve_forge_token
+					git -c credential.helper="!f() { echo username=$USER; echo password=$FORGE_TOKEN; }; f" \
+						push origin "HEAD:refs/heads/$BRANCH" --force-with-lease --quiet 2>/dev/null && _rebase_pushed=true
+				else
+					git push origin "HEAD:refs/for/$BASE_BRANCH/$BRANCH" -o force-push=true --quiet 2>/dev/null && _rebase_pushed=true
+				fi
+				if [[ "$_rebase_pushed" == "true" ]]; then
 					echo "   Rebased and force-pushed. Waiting for CI on new SHA..."
 					sleep 3  # Give Forgejo a moment to update PR head
 					poll_result=0
@@ -1682,8 +1952,17 @@ do_pr() {
 	# WI-miriz: capture merged-state into the sentinel.  Leave the trap
 	# installed so the sentinel still fires on the natural exit; cleanup
 	# below also rm's PR_PENDING explicitly (idempotent with the trap).
+	# GitHub rebase-merge rewrites the commit SHA, so LOCAL_SHA is no longer an
+	# ancestor of origin/<base> after merge — re-fetch the true merged tip for
+	# the sentinel + discussion (best-effort; falls back to LOCAL_SHA). Forgejo
+	# keeps LOCAL_SHA byte-identically.
+	local _merged_sha="$LOCAL_SHA"
+	if [[ "${FORGE_BACKEND:-forgejo}" == "github" ]]; then
+		git fetch origin "$BASE_BRANCH" --quiet 2>/dev/null || true
+		_merged_sha="$(git rev-parse --verify "origin/$BASE_BRANCH^{commit}" 2>/dev/null || echo "$LOCAL_SHA")"
+	fi
 	_autopr_state_final="merged"
-	_autopr_state_merged_sha="$LOCAL_SHA"
+	_autopr_state_merged_sha="$_merged_sha"
 
 	# WI-dofaz: surface any tracker-sync PR that existed before this
 	# auto-pr run and is still open.  Best-effort warning only — does
@@ -1692,7 +1971,7 @@ do_pr() {
 
 	# WI-mokak: append durable post-merge discussion entry to the
 	# tracker item, if one was referenced by --tracker-id.
-	_autopr_append_tracker_discussion "$TRACKER_ID" "$PR_NUM" "$LOCAL_SHA"
+	_autopr_append_tracker_discussion "$TRACKER_ID" "$PR_NUM" "$_merged_sha"
 
 	# Record merged PR in failover state
 	if [[ "$FAILOVER_ACTIVE" == "true" ]] && [[ -f "$REPO_ROOT/.git/CI_FAILOVER_ACTIVE" ]]; then

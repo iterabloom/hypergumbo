@@ -36,6 +36,7 @@ from hypergumbo_core.analyze.base import (
     make_unresolved_edge,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -54,7 +55,7 @@ def find_v_files(root: Path) -> Iterator[Path]:
 
 def _get_node_text(node: "tree_sitter.Node") -> str:
     """Get the text content of a node."""
-    return node.text.decode("utf-8", errors="replace")
+    return (node.text or b"").decode("utf-8", errors="replace")
 
 
 def _get_identifier(node: "tree_sitter.Node") -> Optional[str]:
@@ -210,6 +211,8 @@ class VAnalyzer(TreeSitterAnalyzer):
                     origin_run_id=run.execution_id,
                     signature=signature,
                     meta={"is_public": is_pub},
+                    cyclomatic_complexity=compute_cyclomatic_complexity(node, "v"),
+                    line_span=node.end_point[0] - node.start_point[0] + 1,
                 )
                 analysis.symbols.append(sym)
                 analysis.node_for_symbol[sym.id] = node
@@ -334,7 +337,6 @@ class VAnalyzer(TreeSitterAnalyzer):
                         origin=PASS_ID,
                         origin_run_id=run.execution_id,
                         evidence_type="ast_import",
-                        confidence=1.0,
                         evidence_lang="v",
                     )
                     edges.append(edge)
@@ -355,7 +357,6 @@ class VAnalyzer(TreeSitterAnalyzer):
                             origin=PASS_ID,
                             origin_run_id=run.execution_id,
                             evidence_type="ast_call_direct",
-                            confidence=1.0,
                             evidence_lang="v",
                         )
                     else:

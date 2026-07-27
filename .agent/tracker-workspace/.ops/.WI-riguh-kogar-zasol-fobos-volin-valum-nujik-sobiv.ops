@@ -39,3 +39,25 @@
   clock: 4  # f4c8
   nonce: f4c8  # f4c8
   message: "2026-06-10 design-interview ruling (ADR-0039, merged in PR #4181): quality.score is deleted via a one-version deprecation, so the score-vs-confidence divergence on the 257 dispatches_to/type_hierarchy edges disappears with the field; confidence_source and rank_score absorb the legitimate roles. Waits on the deprecation implementation."  # f4c8
+- op: discuss  # 5910
+  at: '2026-07-13T02:30:35Z'  # 5910
+  by: agent  # 5910
+  actor: jgstern_agent  # 5910
+  clock: 5  # 5910
+  nonce: '5910'  # 5910
+  message: "ADR-0039 ruling 4 DEPRECATION step landed (PR: deprecate Edge.quality; SCHEMA_VERSION 0.14.5->0.14.6). Edge.quality now carries deprecated:true in docs/schema.json + a spec deprecation note; still emitted this release. This item CLOSES when the field is removed next release (the one-version window's removal step)."  # 5910
+- op: update  # c9d2
+  at: '2026-07-21T21:22:49Z'  # c9d2
+  by: agent  # c9d2
+  actor: jgstern_agent  # c9d2
+  clock: 6  # c9d2
+  nonce: c9d2  # c9d2
+  set:  # c9d2
+    title: "Edge.quality removal tracker (deprecated field still declared/emitted at SCHEMA 0.18.0, past its one-version window); the original 257-edge quality.score-vs-confidence divergence was resolved by ADR-0039 R3"  # c9d2
+- op: discuss  # 6426
+  at: '2026-07-21T21:22:49Z'  # 6426
+  by: agent  # 6426
+  actor: jgstern_agent  # 6426
+  clock: 7  # 6426
+  nonce: '6426'  # 6426
+  message: "Staleness audit 2026-07-21: the original divergence premise is INVALIDATED by ADR-0039 R3 -- type_hierarchy.py:544-582 now omits confidence= (edges derive the flat in-band 0.85 base) and the 1/sqrt(N) dampener moved to rank_score:582, so quality.score=round(0.85,3)=0.85 matches confidence and the filed repro no longer reproduces. The re-scoped closure condition (removal of Edge.quality) is UNMET: the field is still declared (ir.py:822), auto-derived (ir.py:851-852), and emitted (ir.py:1016) at SCHEMA_VERSION 0.18.0 -- many releases past the 0.14.6 one-version-window promise. Re-scoped to the Edge.quality removal; do not cite the 257-edge divergence as live."  # 6426

@@ -1,0 +1,36 @@
+- op: create  # 1b41
+  at: '2026-07-13T15:10:39Z'  # 1b41
+  by: agent  # 1b41
+  actor: jgstern_agent  # 1b41
+  clock: 1  # 1b41
+  nonce: 1b41  # 1b41
+  data:  # 1b41
+    kind: work_item  # 1b41
+    title: "Markdown pipeline drops section symbols for some .md files under --include-docs"  # 1b41
+    status: todo_hard  # 1b41
+    priority: 4  # 1b41
+    parent:  # 1b41
+    tags:  # 1b41
+    - dogfood  # 1b41
+    - wave5  # 1b41
+    isbefore: []  # 1b41
+    duplicate_of: []  # 1b41
+    not_duplicate_of: []  # 1b41
+    pr_ref:  # 1b41
+    description: "Discovered during the INV-gosub re-scope (2026-07-13). The markdown analyzer emits section symbols for a file (e.g. docs/adr/0037-edge-resolution-semantics.md yields 19 section symbols from the raw analyzer), but those sections appear as 0 nodes in the behavior map EVEN under --include-docs — a pipeline dropout between the analyzer and the emitted map, distinct from the (already-closed) file-node emission. Scope: 1 of 47 files in the docs/adr sample; investigate the analyzer->finalize path for markdown section symbols under --include-docs. Low priority (opt-in docs surface, small footprint)."  # 1b41
+    fields: {}  # 1b41
+- op: update  # 1b37
+  at: '2026-07-21T21:16:24Z'  # 1b37
+  by: agent  # 1b37
+  actor: jgstern_agent  # 1b37
+  clock: 2  # 1b37
+  nonce: 1b37  # 1b37
+  set:  # 1b37
+    status: done  # 1b37
+- op: discuss  # 0300
+  at: '2026-07-21T21:16:24Z'  # 0300
+  by: agent  # 0300
+  actor: jgstern_agent  # 0300
+  clock: 3  # 0300
+  nonce: '0300'  # 0300
+  message: "Closed done 2026-07-21 (staleness audit). Re-ran the item's OWN filed repro on current HEAD: raw MarkdownAnalyzer on docs/adr/0037-edge-resolution-semantics.md yields 19 section symbols (matches filing), and 'hypergumbo survey docs/adr --include-docs' now emits all 19 as section NODES in the map (was 0 at filing). Full 47-file docs/adr sample: 1611 nodes, 1075/1075 section symbols survive to the map, 0 files with 0 section nodes. The analyzer->finalize dropout no longer reproduces. Behavioral closure evidence, not a proxy."  # 0300

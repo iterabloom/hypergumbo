@@ -175,6 +175,126 @@ def test_no_match_different_dependencies():
     assert len(result.edges) == 0
 
 
+def _dep_sym(sym_id: str, name: str, manifest_path: str) -> Symbol:
+    return Symbol(
+        id=sym_id, stable_id=None, shape_id=None, qualified_name=name,
+        fingerprint=sym_id, kind="dependency", name=name, path=manifest_path,
+        language="toml",
+        span=Span(start_line=1, start_col=0, end_line=1, end_col=10),
+        origin="toml",
+    )
+
+
+def _file_sym(sym_id: str, file_path: str) -> Symbol:
+    return Symbol(
+        id=sym_id, stable_id=None, shape_id=None, qualified_name=file_path,
+        fingerprint=sym_id, kind="file", name=file_path, path=file_path,
+        language="python",
+        span=Span(start_line=1, start_col=0, end_line=1, end_col=0),
+        origin="python",
+    )
+
+
+def _import_edge(edge_id: str, src_id: str, dep_name: str) -> Edge:
+    return Edge(
+        id=edge_id, src=src_id,
+        dst=f"python:{dep_name}:0-0:module:module",
+        edge_type="imports", line=1, confidence=0.95,
+        origin="python", origin_run_id="test",
+    )
+
+
+def test_depends_on_manifest_attributes_to_nearest_package_manifest():
+    """WI-timon: when the same dependency name is declared in MULTIPLE monorepo
+    manifests, a file's depends_on_manifest edge must point to its OWN package's
+    manifest (nearest enclosing directory), not whichever manifest happened to be
+    processed last into a global flat lookup."""
+    dep_a = _dep_sym("toml:a:rich", "rich", "packages/a/pyproject.toml")
+    dep_b = _dep_sym("toml:b:rich", "rich", "packages/b/pyproject.toml")
+    file_a = _file_sym("python:a-mod", "packages/a/src/a/mod.py")
+    edge = _import_edge("e1", "python:a-mod", "rich")
+
+    result = link_dependencies(
+        toml_symbols=[dep_a, dep_b], code_edges=[edge], code_symbols=[file_a]
+    )
+    dep_edges = [e for e in result.edges if e.edge_type == "depends_on_manifest"]
+    assert len(dep_edges) == 1, dep_edges
+    # Must attribute to package A's manifest, NOT dep_b (the last-processed).
+    assert dep_edges[0].dst == "toml:a:rich", dep_edges[0].dst
+
+
+def test_depends_on_manifest_single_manifest_unchanged():
+    """A dependency declared in only ONE manifest links to it regardless of the
+    importing file's location (no regression for non-monorepo repos)."""
+    dep = _dep_sym("toml:root:rich", "rich", "pyproject.toml")
+    file_s = _file_sym("python:mod", "src/app.py")
+    edge = _import_edge("e1", "python:mod", "rich")
+
+    result = link_dependencies(
+        toml_symbols=[dep], code_edges=[edge], code_symbols=[file_s]
+    )
+    dep_edges = [e for e in result.edges if e.edge_type == "depends_on_manifest"]
+    assert len(dep_edges) == 1
+    assert dep_edges[0].dst == "toml:root:rich"
+
+
+def test_depends_on_manifest_root_manifest_is_nearest_when_file_at_root():
+    """A file NOT under any nested package dir attributes to a shared/root
+    manifest (the shallowest enclosing dir) when the dep is multiply-declared."""
+    dep_root = _dep_sym("toml:root:rich", "rich", "pyproject.toml")
+    dep_pkg = _dep_sym("toml:pkg:rich", "rich", "packages/a/pyproject.toml")
+    file_root = _file_sym("python:root-mod", "tools/script.py")
+    edge = _import_edge("e1", "python:root-mod", "rich")
+
+    result = link_dependencies(
+        toml_symbols=[dep_pkg, dep_root], code_edges=[edge],
+        code_symbols=[file_root],
+    )
+    dep_edges = [e for e in result.edges if e.edge_type == "depends_on_manifest"]
+    assert len(dep_edges) == 1
+    # tools/script.py is under the root manifest's dir ("") but not packages/a.
+    assert dep_edges[0].dst == "toml:root:rich", dep_edges[0].dst
+
+
+def test_depends_on_manifest_ambiguous_fallback_is_deterministic():
+    """When the importing file is not resolvable to a path (src not in
+    code_symbols) and the dep is multiply-declared, fall back deterministically
+    (first-by-id) and flag the uncertainty — not last-writer-wins."""
+    dep_b = _dep_sym("toml:b:rich", "rich", "packages/b/pyproject.toml")
+    dep_a = _dep_sym("toml:a:rich", "rich", "packages/a/pyproject.toml")
+    edge = _import_edge("e1", "python:unknown-file", "rich")
+
+    result = link_dependencies(
+        toml_symbols=[dep_b, dep_a], code_edges=[edge], code_symbols=[]
+    )
+    dep_edges = [e for e in result.edges if e.edge_type == "depends_on_manifest"]
+    assert len(dep_edges) == 1
+    # Deterministic: sorted-by-id first is toml:a:rich regardless of input order.
+    assert dep_edges[0].dst == "toml:a:rich", dep_edges[0].dst
+    # Ambiguous attribution carries the registered disambiguation_fallback flag
+    # and the INV-zuhub contract (confidence <= 0.5), not a confident 0.9.
+    assert dep_edges[0].meta.get("disambiguation_fallback") is True
+    assert dep_edges[0].confidence <= 0.5
+
+
+def test_depends_on_manifest_file_outside_all_package_dirs_falls_back():
+    """An importer whose path is under NO candidate manifest dir (and there is no
+    root manifest) falls back deterministically with the ambiguity flag — the
+    importing_path-set-but-no-enclosure branch."""
+    dep_a = _dep_sym("toml:a:rich", "rich", "packages/a/pyproject.toml")
+    dep_b = _dep_sym("toml:b:rich", "rich", "packages/b/pyproject.toml")
+    file_out = _file_sym("python:out", "scripts/tool.py")
+    edge = _import_edge("e1", "python:out", "rich")
+
+    result = link_dependencies(
+        toml_symbols=[dep_a, dep_b], code_edges=[edge], code_symbols=[file_out]
+    )
+    dep_edges = [e for e in result.edges if e.edge_type == "depends_on_manifest"]
+    assert len(dep_edges) == 1
+    assert dep_edges[0].dst == "toml:a:rich"
+    assert dep_edges[0].meta.get("disambiguation_fallback") is True
+
+
 def test_multiple_files_import_same_dependency():
     """Test that multiple files importing same dep each get an edge."""
     cargo_dep = Symbol(

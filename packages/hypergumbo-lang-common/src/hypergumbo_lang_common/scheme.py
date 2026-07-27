@@ -9,7 +9,8 @@ continuations. It's widely used in computer science education and research.
 
 Implementation approach:
 - Uses TreeSitterAnalyzer base class for grammar checking and parser creation
-- Two-pass analysis: First pass collects all symbols, second pass extracts edges
+- Two-pass analysis: First pass collects all symbols and attaches docstrings
+  (via populate_docstrings_from_tree); second pass extracts call edges
 - Handles Scheme-specific constructs like define, lambda, let
 
 Key constructs extracted:
@@ -30,6 +31,7 @@ from hypergumbo_core.analyze.base import (
     populate_docstrings_from_tree,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -47,7 +49,7 @@ def find_scheme_files(root: Path) -> Iterator[Path]:
 
 def _get_node_text(node: "tree_sitter.Node") -> str:
     """Get the text content of a node."""
-    return node.text.decode("utf-8", errors="replace")
+    return (node.text or b"").decode("utf-8", errors="replace")
 
 
 def _is_define_form(node: "tree_sitter.Node") -> bool:
@@ -83,7 +85,7 @@ def _get_function_name(node: "tree_sitter.Node") -> Optional[str]:
 
 def _get_function_params(node: "tree_sitter.Node") -> list[str]:
     """Get parameters from a function define form."""
-    params = []
+    params: list[str] = []
     children = [c for c in node.children if c.type not in ("(", ")")]
     if len(children) < 2:
         return params  # pragma: no cover
@@ -153,6 +155,11 @@ def _extract_scheme_symbols(
                     origin=PASS_ID,
                     signature=signature,
                     meta={"param_count": len(params)},
+                    # INV-loguk: homoiconic head-symbol CC; LOC from the span.
+                    cyclomatic_complexity=compute_cyclomatic_complexity(
+                        node, "scheme",
+                    ),
+                    line_span=node.end_point[0] - node.start_point[0] + 1,
                 )
                 symbols.append(sym)
         else:

@@ -79,7 +79,8 @@ class TestPhoenix1xLayout:
         assert len(result.edges) == 1
         edge = result.edges[0]
         assert edge.src == action.id
-        assert edge.edge_type == "renders"
+        assert edge.edge_type == "references"
+        assert (edge.meta or {}).get("ref_construct") == "view_render"
         assert (edge.meta or {}).get("detection_pattern") == "implicit_convention"
         assert edge.dst.endswith(
             "lib/my_app_web/templates/user/show.html.eex:1-1:"

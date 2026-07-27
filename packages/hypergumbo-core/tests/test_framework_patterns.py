@@ -25,8 +25,77 @@ from hypergumbo_core.framework_patterns import (
     match_usage_patterns,
     materialize_route_symbols,
     resolve_deferred_symbol_refs,
+    strip_test_file_only_concepts,
 )
 from hypergumbo_core.ir import Span, Symbol, UsageContext
+
+
+class TestStripTestFileOnlyConcepts:
+    """WI-bosab: naming-convention concepts (service_by_name, controller_by_name,
+    handler_by_name) must not label test code as production services/controllers.
+
+    Concept enrichment runs BEFORE supply-chain classification in the pipeline
+    (linker-produced symbols must be classified too), so ``Symbol.is_test_file``
+    is only known after enrichment; ``strip_test_file_only_concepts`` is the
+    post-classification pass that honors the canonical verdict.
+    """
+
+    @staticmethod
+    def _concepts(sym: Symbol) -> list[str]:
+        return [c["concept"] for c in (sym.meta or {}).get("concepts", [])]
+
+    @staticmethod
+    def _cls(name: str, path: str, is_test: bool) -> Symbol:
+        sym = Symbol(
+            id=f"python:{path}:1-3:{name}:class",
+            name=name,
+            kind="class",
+            language="python",
+            path=path,
+            span=Span(1, 3, 0, 0),
+            meta={},
+        )
+        sym.is_test_file = is_test
+        return sym
+
+    def test_enrich_then_strip_removes_naming_concept_from_test_file(self) -> None:
+        prod = self._cls("UserService", "src/app.py", is_test=False)
+        test = self._cls("MyService", "tests/test_app.py", is_test=True)
+
+        enrich_symbols([prod, test], set(), None)
+        # Enrichment can't see is_test_file yet, so BOTH get the concept.
+        assert self._concepts(prod) == ["service_by_name"]
+        assert self._concepts(test) == ["service_by_name"]
+
+        stripped = strip_test_file_only_concepts([prod, test])
+
+        assert stripped == 1
+        assert self._concepts(prod) == ["service_by_name"]  # production kept
+        assert self._concepts(test) == []  # test-file concept stripped
+
+    def test_strip_noop_on_non_test_symbol(self) -> None:
+        prod = self._cls("UserController", "src/app.py", is_test=False)
+        enrich_symbols([prod], set(), None)
+        assert strip_test_file_only_concepts([prod]) == 0
+        assert self._concepts(prod) == ["controller_by_name"]
+
+    def test_strip_noop_when_no_meta_or_no_concepts(self) -> None:
+        no_meta = self._cls("MyHandler", "tests/t.py", is_test=True)
+        no_meta.meta = None
+        no_concepts = self._cls("MyHandler", "tests/t.py", is_test=True)
+        no_concepts.meta = {"other": 1}
+        assert strip_test_file_only_concepts([no_meta, no_concepts]) == 0
+
+    def test_strip_preserves_non_excluded_concepts_on_test_file(self) -> None:
+        sym = self._cls("MyService", "tests/test_app.py", is_test=True)
+        sym.meta = {
+            "concepts": [
+                {"concept": "service_by_name"},  # test-excluded
+                {"concept": "route"},  # NOT test-excluded
+            ]
+        }
+        assert strip_test_file_only_concepts([sym]) == 1
+        assert self._concepts(sym) == ["route"]
 
 
 @pytest.fixture(autouse=True)
@@ -21153,3 +21222,197 @@ class TestMixedConceptsFormats:
         )
         # Should not crash during enrichment
         enrich_symbols([sym], [], [])
+
+
+class TestFrameworkPatternEcosystemGating:
+    """WI-vuzur / WI-vifun: framework patterns must not fire cross-ecosystem.
+
+    The matcher consults only the per-pattern ``language`` / ``symbol_path``
+    filters, never ``FrameworkPatternDef.language`` (the file-level gate), so a
+    JS-only ``lit`` pattern keyed on a bare ``@property`` decorator fired on a
+    Python ``@property``, and the byte-identical cargo/poetry TOML-dependency
+    patterns both fired on every ``pyproject.toml`` and ``Cargo.toml`` dep.
+    """
+
+    @staticmethod
+    def _concepts(sym: Symbol, framework: str) -> list[str]:
+        return sorted(
+            m["concept"]
+            for m in match_patterns(sym, [load_framework_patterns(framework)])
+        )
+
+    @staticmethod
+    def _decorated(name: str, language: str, decorator: str) -> Symbol:
+        return Symbol(
+            id=f"{language}:x:1-2:{name}:method",
+            name=name,
+            kind="method",
+            language=language,
+            path="x",
+            span=Span(1, 2, 0, 0),
+            meta={"decorators": [{"name": decorator}]},
+        )
+
+    @staticmethod
+    def _dep(path: str, scope: str | None = None) -> Symbol:
+        meta: dict = {}
+        if scope is not None:
+            meta["dependency_scope"] = scope
+        return Symbol(
+            id=f"toml:{path}:1-1:pkg:dependency",
+            name="pkg",
+            kind="dependency",
+            language="toml",
+            path=path,
+            span=Span(1, 1, 0, 0),
+            meta=meta,
+        )
+
+    # ---- WI-vuzur: lit per-pattern language gate ----
+
+    def test_lit_property_does_not_fire_on_python(self) -> None:
+        py = self._decorated("db_path", "python", "property")
+        assert "reactive_property" not in self._concepts(py, "lit")
+
+    def test_lit_property_still_fires_on_javascript(self) -> None:
+        js = self._decorated("dbPath", "javascript", "property")
+        assert "reactive_property" in self._concepts(js, "lit")
+
+    def test_lit_state_and_query_do_not_fire_on_python(self) -> None:
+        state = self._decorated("s", "python", "state")
+        query = self._decorated("q", "python", "query")
+        assert "internal_state" not in self._concepts(state, "lit")
+        assert "dom_query" not in self._concepts(query, "lit")
+
+    def test_lit_state_still_fires_on_typescript(self) -> None:
+        ts = self._decorated("thing", "typescript", "state")
+        assert "internal_state" in self._concepts(ts, "lit")
+
+    # ---- WI-vifun: cargo/poetry symbol_path discriminator ----
+
+    def test_pyproject_dep_is_poetry_not_cargo(self) -> None:
+        c = self._concepts(self._dep("packages/foo/pyproject.toml"), "config-conventions")
+        assert "poetry_dependency" in c
+        assert "cargo_dependency" not in c
+
+    def test_cargo_toml_dep_is_cargo_not_poetry(self) -> None:
+        c = self._concepts(self._dep("crates/bar/Cargo.toml"), "config-conventions")
+        assert "cargo_dependency" in c
+        assert "poetry_dependency" not in c
+
+    def test_pyproject_dev_dep_excludes_cargo_family(self) -> None:
+        c = self._concepts(self._dep("pyproject.toml", scope="dev"), "config-conventions")
+        assert "poetry_dev_dependency" in c
+        assert "cargo_dependency" not in c
+        assert "cargo_dev_dependency" not in c
+
+    def test_cargo_toml_dev_dep_excludes_poetry_family(self) -> None:
+        c = self._concepts(self._dep("Cargo.toml", scope="dev"), "config-conventions")
+        assert "cargo_dev_dependency" in c
+        assert "poetry_dependency" not in c
+        assert "poetry_dev_dependency" not in c
+
+
+class TestRouteMarkerSingleHome:
+    """INV-vokak: a route symbol carries its route fact in exactly ONE home.
+
+    A symbol already carrying the ADR-0027 route marker
+    (``meta['framework_role'] == 'route'``) must NOT also gain a redundant
+    *path-less* ``concept=route`` from a def-based framework pattern
+    (rails/phoenix/sinatra/laravel ``framework_role: '^route$'``). That
+    dual-carry state orphans the concept's framework from the marker (the
+    2026-07-07 route-surfacing audit reproduced two silent bugs on it).
+    ``enrich_symbols`` lifts the concept's framework onto the marker's
+    canonical ``route_framework`` home and drops the redundant concept, so
+    the route fact stays single-homed — the producer-side root that
+    ``route_of``'s framework-UNION only tolerated at the accessor.
+    """
+
+    def _route_marker(self) -> Symbol:
+        return Symbol(
+            id="ruby:app/controllers/users.rb:10-20:index:function",
+            name="index",
+            kind="function",
+            language="ruby",
+            path="app/controllers/users.rb",
+            span=Span(10, 20, 0, 0),
+            meta={
+                "framework_role": "route",
+                "route_path": "/users",
+                "http_method": "GET",
+            },
+        )
+
+    def test_marker_gains_no_redundant_pathless_route_concept(self) -> None:
+        sym = self._route_marker()
+        enrich_symbols([sym], {"rails"})
+        concepts = (sym.meta or {}).get("concepts", []) or []
+        route_concepts = [
+            c for c in concepts
+            if isinstance(c, dict) and c.get("concept") == "route"
+        ]
+        assert route_concepts == [], (
+            "already-marked route symbol gained a redundant route concept "
+            f"(dual-carry): {route_concepts}"
+        )
+
+    def test_marker_framework_lifted_onto_route_framework(self) -> None:
+        sym = self._route_marker()
+        enrich_symbols([sym], {"rails"})
+        assert (sym.meta or {}).get("route_framework") == "rails"
+
+    def test_route_of_framework_preserved_after_dedup(self) -> None:
+        # Behavior-preserving at the accessor: route_of still surfaces the
+        # framework, now via the marker's route_framework home rather than the
+        # co-resident concept it previously had to fall through to.
+        from hypergumbo_core.routes import route_of
+
+        sym = self._route_marker()
+        enrich_symbols([sym], {"rails"})
+        info = route_of(sym)
+        assert info is not None
+        assert info["framework"] == "rails"
+        assert info["path"] == "/users"
+        assert info["method"] == "GET"
+
+    def test_dedup_keeps_non_route_and_pathed_route_concepts(self) -> None:
+        from hypergumbo_core.framework_patterns import (
+            _dedup_route_marker_concepts,
+        )
+
+        meta = {"framework_role": "route"}
+        pathed = {"concept": "route", "framework": "x", "path": "/a"}
+        controller = {"concept": "controller"}
+        kept = _dedup_route_marker_concepts(
+            meta,
+            [
+                {"concept": "route", "framework": "rails"},  # dropped + lifted
+                pathed,       # has a path -> not redundant, kept
+                controller,   # non-route -> kept
+            ],
+        )
+        assert kept == [pathed, controller]
+        assert meta["route_framework"] == "rails"
+
+    def test_dedup_noop_when_not_route_marker(self) -> None:
+        from hypergumbo_core.framework_patterns import (
+            _dedup_route_marker_concepts,
+        )
+
+        meta = {"framework_role": "controller"}
+        matches = [{"concept": "route", "framework": "rails"}]
+        kept = _dedup_route_marker_concepts(meta, matches)
+        assert kept == matches
+        assert "route_framework" not in meta
+
+    def test_dedup_does_not_clobber_existing_route_framework(self) -> None:
+        from hypergumbo_core.framework_patterns import (
+            _dedup_route_marker_concepts,
+        )
+
+        meta = {"framework_role": "route", "route_framework": "sinatra"}
+        kept = _dedup_route_marker_concepts(
+            meta, [{"concept": "route", "framework": "rails"}],
+        )
+        assert kept == []
+        assert meta["route_framework"] == "sinatra"  # first-wins, not clobbered

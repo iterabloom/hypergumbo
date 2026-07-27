@@ -70,3 +70,20 @@
     tags: [dogfood]  # 5e1e
   remove:  # 5e1e
     tags: [dogfooding]  # 5e1e
+- op: update  # 32c6
+  at: '2026-07-10T02:10:58Z'  # 32c6
+  by: agent  # 32c6
+  actor: jgstern_agent  # 32c6
+  clock: 7  # 32c6
+  nonce: 32c6  # 32c6
+  set:  # 32c6
+    status: done  # 32c6
+  add:  # 32c6
+    tags: [wave4]  # 32c6
+- op: discuss  # 6b45
+  at: '2026-07-10T02:10:59Z'  # 6b45
+  by: agent  # 6b45
+  actor: jgstern_agent  # 6b45
+  clock: 8  # 6b45
+  nonce: 6b45  # 6b45
+  message: "Fixed + merged (selfh/dev 4d4cbefcae). catalog gains --format json via add_schema_envelope: {passes:[{id,availability,description,available}], framework_patterns:[{name,path}], suggested, large_directory}. Large-directory scan guarded to text-only. Behavioral evidence: json + large-directory tests; core 100%. cli-output sub-A."  # 6b45

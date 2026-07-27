@@ -316,3 +316,21 @@ verdicts:
 - Audit-findings 0004 — Cluster 28A canonical inference (the registry seed for the inference_pathway axis where `ast_call` and `message_send` apex values live).
 - Audit-findings 0008 — Cluster 28B resolution-status (the canary Phase 3 sub-PR; some of its fold targets are Cluster 28D peer values that this audit re-folds).
 - WI-runod cross-axis schedule — Wave 4 of which this PR closes.
+
+## Addendum — late-discovered peer (WI-nibis reopen)
+
+`ast_call_method` was not among the 28 Phase-1 seed values above. It was registered later (WI-nubuv ext) on `AXIS_PENDING` as a py.py-specific method-call peer, and the `py.py:3811` `evidence_type = "ast_call_method"` *default* — reaching the **resolved** call edge — survived the original Phase-3 migration (which migrated only the explicit peer values). That surviving default (~5,000 edges on self-analysis, 97.9% of the parked call-construct axis) is why WI-nibis reopened. It folds identically to `method_call`.
+
+```yaml
+kind: audit_verdicts
+axis: Edge.evidence_type
+verdicts:
+  - value: ast_call_method
+    verdict: FOLD
+    fold_target: ast_call
+    status: RESOLVED
+    diagnostic_test:
+      cmd: "grep -rn 'evidence_type=\"ast_call_method\"' packages/ --include='*.py' | grep -v test_"
+      expect: empty
+    rationale: "Apex/peer overload (the py.py resolved-method-call default that survived Phase 3). Fold: evidence_type=ast_call + meta={'call_construct':'method'}. Producer: py.py. Removed from the registry (no longer AXIS_PENDING); closes the WI-nibis reopen. Apex per Open Question 1 above (ast_call, not the back-compat ast_call_direct a stale registry/spec note named — ast_call_direct denotes a non-method call)."
+```

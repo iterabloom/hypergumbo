@@ -19,8 +19,10 @@ from hypergumbo_core.io_boundary import (
     IoBoundaryCatalog,
     IoChain,
     IoPrimitive,
+    _build_reverse_graph,
     _extract_callee_name,
     _extract_module_hint,
+    _is_traceable_edge,
     _module_matches,
     compute_boundary_map,
     is_high_risk,
@@ -28,6 +30,7 @@ from hypergumbo_core.io_boundary import (
     match_edge_to_primitive,
     tag_io_boundaries,
 )
+from hypergumbo_core.ir import Edge
 
 
 class TestIoPrimitive:
@@ -82,6 +85,41 @@ class TestLoadCatalog:
         names = {p.qualified_name for p in net_sends}
         assert "socket.socket.send" in names
 
+    def test_python_synthetic_file_module_classifies_read_write(self) -> None:
+        # WI-fuvuj: ``open(...)`` returns a file object whose .read()/.write()
+        # methods carry the synthetic module ``file`` after receiver-type
+        # inference in py.py. The catalog must classify them so the
+        # module-filter path in lookup_with_module bypasses ambiguous_names
+        # suppression for typed receivers.
+        catalog = load_catalog("python")
+        read_hit = catalog.lookup_with_module("read", "file")
+        assert read_hit is not None
+        assert read_hit.boundary == "fs_read"
+        write_hit = catalog.lookup_with_module("write", "file")
+        assert write_hit is not None
+        assert write_hit.boundary == "fs_write"
+
+    def test_python_untyped_file_methods_stay_suppressed(self) -> None:
+        # WI-fuvuj regression guard: an UNtyped receiver carries the
+        # module hint ``external`` (no dst_ref). lookup_with_module falls
+        # back to ambiguous_names suppression, so read/write stay None —
+        # the synthetic ``file`` module must NOT leak into the external path.
+        catalog = load_catalog("python")
+        assert catalog.lookup_with_module("read", "external") is None
+        assert catalog.lookup_with_module("write", "external") is None
+
+    def test_python_socket_socket_send_recv_pin(self) -> None:
+        # WI-fuvuj pin: socket.socket entries already existed; the receiver-
+        # type inference produces the ``socket.socket`` module hint for
+        # ``s.send()``/``s.recv()``. Pin the boundary classification.
+        catalog = load_catalog("python")
+        send_hit = catalog.lookup_with_module("send", "socket.socket")
+        assert send_hit is not None
+        assert send_hit.boundary == "net_send"
+        recv_hit = catalog.lookup_with_module("recv", "socket.socket")
+        assert recv_hit is not None
+        assert recv_hit.boundary == "net_recv"
+
     def test_python_catalog_stdio_is_logging_not_ipc_send(self) -> None:
         # WI-tolif: 2026-04-23 self-audit found that 70 of hypergumbo's 77
         # ipc_send chains were just sys.stderr writes (cli.py progress
@@ -128,6 +166,79 @@ class TestLoadCatalog:
         assert any(p.module == "urllib.request" for p in catalog.primitives)
         assert any(p.module == "http.client.HTTPConnection"
                    for p in catalog.primitives)
+
+    def test_python_catalog_has_db_read_write(self) -> None:
+        # WI-harin: the db_read/db_write boundary categories exist in
+        # CATALOG_BOUNDARY_TYPES and are populated in 6 other language
+        # catalogs (java JDBC, erlang ets/mnesia, swift/objc Core Data,
+        # haskell IORef, elixir Ecto) but were absent from Python. Python's
+        # stdlib db surface is sqlite3 + dbm + shelve. The reliably-matchable
+        # anchors are the free-function opens (sqlite3.connect / dbm.open /
+        # shelve.open); the DB-API method surface (execute/fetch*) is
+        # catalogued for completeness/taint even though untyped receivers
+        # keep it latent (see test_unresolved_bare_db_method_not_tagged).
+        catalog = load_catalog("python")
+        db = {
+            p.qualified_name: p.boundary
+            for p in catalog.primitives
+            if p.boundary in ("db_read", "db_write")
+        }
+        assert db, "Python catalog must populate db_read/db_write (WI-harin)"
+        # Free-function datastore-open anchors (matchable with a module hint).
+        assert db.get("sqlite3.connect") == "db_read"
+        assert db.get("dbm.open") == "db_read"
+        assert db.get("shelve.open") == "db_read"
+        # DB-API method surface (latent until receivers are typed).
+        assert db.get("sqlite3.Cursor.execute") == "db_write"
+        assert db.get("sqlite3.Cursor.fetchall") == "db_read"
+        assert db.get("sqlite3.Connection.commit") == "db_write"
+
+    def test_python_db_primitives_are_stdlib_or_type_verified_carveout(self) -> None:
+        # WI-harin + WI-sozoj admission criterion. The db_* catalog is stdlib
+        # (sqlite3 / dbm / shelve) PLUS the one documented type-verified
+        # framework carve-out ``django.db.models`` (WI-sozoj). WI-harin's
+        # exclusion was a PRECISION rule against short-name matching of UNTYPED
+        # receivers, not a purity ban: the django entries fire ONLY through
+        # py.py's typed ``.objects``/``models.Model``-subclass module hint (the
+        # module-filter path), never the bare short-name gate, so `dict.get()`
+        # cannot false-tag. Any OTHER third-party db module is STILL forbidden —
+        # this guards the boundary against untyped short-name ORM creep. A new
+        # framework datastore entry must meet the criterion (a real distinctive
+        # module namespace + a type-verified receiver + a bounded method set) and
+        # be added to the allow-list below deliberately.
+        catalog = load_catalog("python")
+        _STDLIB_DB_MODULE_ROOTS = ("sqlite3", "dbm", "shelve")
+        _TYPE_VERIFIED_DB_MODULES = ("django.db.models",)
+        for p in catalog.primitives:
+            if p.boundary not in ("db_read", "db_write"):
+                continue
+            root = p.module.split(".")[0]
+            allowed = (
+                root in _STDLIB_DB_MODULE_ROOTS
+                or p.module in _TYPE_VERIFIED_DB_MODULES
+            )
+            assert allowed, (
+                f"Python db_* catalog must be stdlib (sqlite3/dbm/shelve) or a "
+                f"documented type-verified carve-out {_TYPE_VERIFIED_DB_MODULES}; "
+                f"module {p.module!r} ({p.qualified_name}) is neither. A new "
+                f"framework datastore entry needs a type-verified receiver + a "
+                f"bounded method set + an explicit allow-list addition here."
+            )
+
+    def test_python_catalog_drops_execute_from_command_line_fp(self) -> None:
+        # WI-harin: django.core.management.execute_from_command_line was
+        # classified net_recv — a false positive. It is a CLI dispatcher
+        # (manage.py entry that routes to migrate/collectstatic/runserver/…),
+        # not itself a network receive; and it is third-party framework code
+        # (out of scope under the Plan-C strict-stdlib rule the net_send side
+        # already enforces). Removed outright.
+        catalog = load_catalog("python")
+        assert not any(
+            p.name == "execute_from_command_line" for p in catalog.primitives
+        ), "execute_from_command_line net_recv FP must be removed (WI-harin)"
+        assert not any(
+            p.module == "django.core.management" for p in catalog.primitives
+        )
 
     def test_java_catalog_excludes_third_party_wrappers(self) -> None:
         # Plan C, PR A: strict-stdlib rule. Java's stdlib is the JDK
@@ -1488,6 +1599,54 @@ class TestTagIoBoundaries:
         assert count == 1
         assert edge.meta["io_boundary"] == "subprocess"
 
+    def test_tags_sqlite3_connect_as_db_read(self) -> None:
+        # WI-harin: sqlite3.connect is the reliably-matchable stdlib db
+        # anchor. `connect` is ambiguous (socket.socket.connect is net_send),
+        # so the module hint ``sqlite3`` disambiguates it to db_read.
+        catalog = load_catalog("python")
+        edge = self._make_edge(
+            src="python:/app/store.py:10-12:open_db:function",
+            dst="python:sqlite3:0-0:connect:unresolved",
+        )
+        count = tag_io_boundaries([edge], {"python": catalog})
+        assert count == 1
+        assert edge.meta["io_boundary"] == "db_read"
+        assert edge.meta["io_primitive"] == "sqlite3.connect"
+
+    def test_tags_dbm_open_as_db_read(self) -> None:
+        # WI-harin: dbm.open / shelve.open are stdlib key-value datastore
+        # opens. `open` is ambiguous (builtins.open is fs_read), so the
+        # ``dbm`` module hint disambiguates to db_read.
+        catalog = load_catalog("python")
+        edge = self._make_edge(
+            src="python:/app/cache.py:5-7:load:function",
+            dst="python:dbm:0-0:open:unresolved",
+        )
+        count = tag_io_boundaries([edge], {"python": catalog})
+        assert count == 1
+        assert edge.meta["io_boundary"] == "db_read"
+        assert edge.meta["io_primitive"] == "dbm.open"
+
+    def test_unresolved_bare_db_method_not_tagged(self) -> None:
+        # WI-harin feasibility guard: Django-ORM-style calls arrive as bare
+        # untyped unresolved method calls (`.execute()` / `.save()` on a
+        # receiver hypergumbo cannot type). The DB-API method entries
+        # (sqlite3.Cursor.execute, ...) must NOT match such an edge — doing
+        # so by short name would false-positive on every `.execute()` /
+        # `.save()` in the corpus. This is the same INV-tapat/INV-maluk
+        # discipline that keeps bare `.replace()` from matching Path.replace,
+        # and it is precisely why Django ORM visibility needs receiver
+        # inference rather than catalog entries.
+        catalog = load_catalog("python")
+        edge = self._make_edge(
+            src="python:/app/models.py:20-30:save_row:function",
+            dst="python:external:0-0:execute:unresolved",
+        )
+        edge.meta = {"call_construct": "method"}
+        count = tag_io_boundaries([edge], {"python": catalog})
+        assert count == 0
+        assert edge.meta.get("io_boundary") is None
+
     def test_multiple_edges_mixed(self) -> None:
         catalog = load_catalog("python")
         edges = [
@@ -1694,6 +1853,130 @@ class TestTagIoBoundaries:
         assert edge.meta is None
 
 
+class TestKindAwareNoModuleGate:
+    """io-boundary:F3 — the no-module-context fallback is kind-aware
+    (INV-tapat / INV-maluk).
+
+    With no usable module hint and no receiver evidence:
+
+    * a method-kind primitive needs a receiver/module it does not have here,
+      so it never matches (closing INV-tapat: no receiver verification, and
+      INV-maluk: ``str.replace`` matching ``pathlib.Path.replace``);
+    * a free-function call may still match a function-kind primitive;
+    * an explicit ``call_construct="method"`` is rejected outright (an untyped
+      method call, even one whose short name happens to be a function-kind
+      primitive, has an unknown receiver).
+    """
+
+    # --- the unit triad ---
+
+    def test_function_bare_matches(self) -> None:
+        """A bare free-function call matches a function-kind primitive."""
+        catalog = load_catalog("python")
+        hit = catalog.lookup_with_module("listdir", None)
+        assert hit is not None
+        assert hit.kind == "function"
+        assert hit.qualified_name == "os.listdir"
+
+    def test_method_bare_suppressed(self) -> None:
+        """A bare method-kind primitive is suppressed with no module context.
+
+        ``write_text`` is ``pathlib.Path.write_text`` (method-kind only); with
+        no receiver evidence it must not match. (``read_text`` is unsuitable
+        here — it ALSO has a function-kind ``importlib.resources.read_text``
+        entry, which a bare free-function call legitimately matches.)
+        """
+        catalog = load_catalog("python")
+        assert catalog.lookup_with_module("write_text", None) is None
+
+    def test_method_construct_suppressed(self) -> None:
+        """An explicit method call construct is rejected outright.
+
+        ``replace`` collides with ``str.replace`` / ``pathlib.Path.replace``;
+        an untyped ``x.replace(...)`` (call_construct="method") must not match.
+        """
+        catalog = load_catalog("python")
+        assert catalog.lookup_with_module(
+            "replace", None, call_construct="method") is None
+
+    def test_method_with_module_matches(self) -> None:
+        """With a receiver module the method-kind primitive matches (the
+        module-filter branch runs before the gate)."""
+        catalog = load_catalog("python")
+        hit = catalog.lookup_with_module("read_text", "pathlib")
+        assert hit is not None
+        assert hit.qualified_name == "pathlib.Path.read_text"
+
+    def test_replace_with_module_matches(self) -> None:
+        """``replace`` with a pathlib module hint resolves to Path.replace."""
+        catalog = load_catalog("python")
+        hit = catalog.lookup_with_module("replace", "pathlib.Path")
+        assert hit is not None
+        assert hit.qualified_name == "pathlib.Path.replace"
+
+    def test_function_construct_with_method_kind_hit_suppressed(self) -> None:
+        """call_construct="function" still cannot promote a method-kind hit:
+        ``write_text`` has only a method-kind entry, so it stays suppressed."""
+        catalog = load_catalog("python")
+        assert catalog.lookup_with_module(
+            "write_text", None, call_construct="function") is None
+
+    # --- cross-language invariant ---
+
+    def test_no_method_kind_matches_bare_method_call(self) -> None:
+        """Cross-language invariant: for EVERY catalog, no method-kind
+        primitive is returned by a bare call carrying call_construct="method".
+
+        This is the load-bearing INV-tapat/INV-maluk property — it must hold
+        for all 14 language catalogs, not just python (an invariant, not a
+        golden snapshot).
+        """
+        from pathlib import Path as _Path
+
+        from hypergumbo_core import io_boundary as _iob
+
+        catalog_dir = _Path(_iob.__file__).parent / "io_primitives"
+        languages = sorted(p.stem for p in catalog_dir.glob("*.yaml"))
+        assert languages, "no io_primitives catalogs found"
+        offenders: list[str] = []
+        for lang in languages:
+            catalog = load_catalog(lang)
+            for prim in catalog.primitives:
+                if prim.kind != "method":
+                    continue
+                got = catalog.lookup_with_module(
+                    prim.name, None, call_construct="method")
+                if got is not None:
+                    offenders.append(
+                        f"{lang}: {prim.qualified_name} (matched {got.qualified_name})")
+        assert not offenders, (
+            "method-kind primitives must not match a bare method call with no "
+            "module context (INV-tapat/INV-maluk):\n" + "\n".join(offenders))
+
+    def test_no_method_kind_matches_bare_no_construct(self) -> None:
+        """Companion invariant: even with NO call_construct (analyzers like
+        scala/swift/kotlin that emit unresolved edges without a construct), a
+        bare method-kind primitive with no module context is suppressed — the
+        ``non_method`` filter, not just the explicit-method early return."""
+        from pathlib import Path as _Path
+
+        from hypergumbo_core import io_boundary as _iob
+
+        catalog_dir = _Path(_iob.__file__).parent / "io_primitives"
+        languages = sorted(p.stem for p in catalog_dir.glob("*.yaml"))
+        for lang in languages:
+            catalog = load_catalog(lang)
+            for prim in catalog.primitives:
+                if prim.kind != "method":
+                    continue
+                # A name shared with a function-kind primitive may still match
+                # (the function variant); only assert no method-kind result.
+                got = catalog.lookup_with_module(prim.name, None)
+                assert got is None or got.kind != "method", (
+                    f"{lang}: bare method-kind {prim.qualified_name} matched "
+                    f"{got.qualified_name} with no module context")
+
+
 class TestModuleQualifiedMatching:
     """Tests for module-qualified IO boundary matching.
 
@@ -1779,6 +2062,96 @@ class TestModuleQualifiedMatching:
             assert edge.meta["io_boundary"] == "fs_write"
 
 
+class TestDjangoOrmIoBoundary:
+    """WI-sozoj: Django ORM db_read/db_write via the type-verified module path.
+
+    py.py types the ORM receiver (the ``.objects`` Manager marker /
+    ``models.Model``-subclass ``self``) and emits a ``django.db.models``
+    module-qualified dst. These tests pin that the python.yaml carve-out
+    classifies each method through the module-filter path — never the
+    short-name gate, so no ``dict.get()``/``.save()`` false positive.
+    """
+
+    def _make_edge(self, src: str, dst: str, edge_type: str = "calls"):
+        from dataclasses import dataclass
+        from typing import Any, Dict, Optional
+
+        @dataclass
+        class MockEdge:
+            src: str
+            dst: str
+            edge_type: str
+            meta: Optional[Dict[str, Any]] = None
+
+        return MockEdge(src=src, dst=dst, edge_type=edge_type, meta=None)
+
+    def test_catalog_classifies_manager_read_methods(self) -> None:
+        catalog = load_catalog("python")
+        for method in ("filter", "get", "all", "count", "exists"):
+            hit = catalog.lookup_with_module(method, "django.db.models")
+            assert hit is not None, method
+            assert hit.boundary == "db_read", method
+
+    def test_catalog_classifies_write_methods(self) -> None:
+        catalog = load_catalog("python")
+        for method in ("create", "bulk_create", "update", "delete", "save"):
+            hit = catalog.lookup_with_module(method, "django.db.models")
+            assert hit is not None, method
+            assert hit.boundary == "db_write", method
+
+    def test_ambiguous_get_stays_suppressed_without_module(self) -> None:
+        """Regression: the django ``get``/``delete`` entries must NOT leak into
+        the short-name (no-module) path — a bare ``.get()`` on an untyped
+        receiver stays refused (INV-tapat/INV-maluk), or dict.get() false-tags."""
+        catalog = load_catalog("python")
+        assert catalog.lookup_with_module("get", "external") is None
+        assert catalog.lookup_with_module("delete", "external") is None
+
+    def test_tags_manager_filter_as_db_read(self) -> None:
+        catalog = load_catalog("python")
+        edge = self._make_edge(
+            src="python:/app/views.py:10-12:view:function",
+            dst="python:django.db.models:0-0:filter:unresolved",
+        )
+        count = tag_io_boundaries([edge], {"python": catalog})
+        assert count == 1
+        assert edge.meta["io_boundary"] == "db_read"
+        assert edge.meta["io_primitive"] == "django.db.models.filter"
+
+    def test_tags_manager_create_as_db_write(self) -> None:
+        catalog = load_catalog("python")
+        edge = self._make_edge(
+            src="python:/app/views.py:10-12:make:function",
+            dst="python:django.db.models:0-0:create:unresolved",
+        )
+        count = tag_io_boundaries([edge], {"python": catalog})
+        assert count == 1
+        assert edge.meta["io_boundary"] == "db_write"
+
+    def test_tags_instance_save_as_db_write(self) -> None:
+        catalog = load_catalog("python")
+        edge = self._make_edge(
+            src="python:/app/models.py:10-12:Order.stamp:method",
+            dst="python:django.db.models:0-0:save:unresolved",
+        )
+        count = tag_io_boundaries([edge], {"python": catalog})
+        assert count == 1
+        assert edge.meta["io_boundary"] == "db_write"
+
+    def test_bare_untyped_get_not_tagged_as_django(self) -> None:
+        """A bare ``.get()`` with no django module hint (untyped receiver) is
+        NOT tagged — the carve-out only fires through the typed module path."""
+        catalog = load_catalog("python")
+        edge = self._make_edge(
+            src="python:/app/cache.py:1-3:load:function",
+            dst="python:external:0-0:get:unresolved",
+        )
+        edge.meta = {"call_construct": "method"}
+        count = tag_io_boundaries([edge], {"python": catalog})
+        assert count == 0
+        assert edge.meta.get("io_boundary") is None
+
+
 class TestComputeBoundaryMap:
     """Tests for the full boundary map computation."""
 
@@ -1831,6 +2204,63 @@ class TestComputeBoundaryMap:
         assert d["total_io_edges"] == 1
         assert "fs_read" in d["boundaries"]
         assert d["boundaries"]["fs_read"]["chain_count"] == 1
+
+    def _prestamped_edge(self, src: str, dst: str, io_boundary: str, primitive: str):
+        """A producer-prestamped edge (meta.io_boundary already set), mirroring
+        bash's command_launch emission that never touches a data-I/O catalog."""
+        from dataclasses import dataclass
+        from typing import Optional, Dict, Any
+
+        @dataclass
+        class MockEdge:
+            src: str
+            dst: str
+            edge_type: str
+            meta: Optional[Dict[str, Any]] = None
+            is_resolved: bool = False
+
+        return MockEdge(
+            src=src,
+            dst=dst,
+            edge_type="calls",
+            meta={"io_boundary": io_boundary, "io_primitive": primitive},
+        )
+
+    def test_command_launch_disclosed_but_excluded_from_total(self) -> None:
+        """WI-javoh: command_launch is aggregated + disclosed in its own cohort
+        (command_launch_edges) but EXCLUDED from the total_io_edges headline,
+        mirroring the external_potential count-vs-disclose doctrine."""
+        catalog = load_catalog("python")
+        edges = [
+            # one verified catalog subprocess crossing -> counts toward total
+            self._make_edge(
+                src="python:/a.py:1:f:function",
+                dst="python:/sub.py:1:subprocess.run:function",
+            ),
+            # two bash program launches, prestamped, deduped upstream
+            self._prestamped_edge(
+                "bash:/s.sh:1:deploy:function",
+                "bash:curl:0-0:curl:unresolved",
+                "command_launch",
+                "curl",
+            ),
+            self._prestamped_edge(
+                "bash:/s.sh:1:deploy:function",
+                "bash:git:0-0:git:unresolved",
+                "command_launch",
+                "git",
+            ),
+        ]
+        bmap = compute_boundary_map(edges, {"python": catalog})
+        assert "command_launch" in bmap.entries
+        assert len(bmap.entries["command_launch"].chains) == 2
+        assert bmap.command_launch_edges == 2
+        # headline counts only the verified subprocess, not the 2 launches
+        assert bmap.total_io_edges == 1
+        d = bmap.to_dict()
+        assert d["command_launch_edges"] == 2
+        assert d["total_io_edges"] == 1
+        assert "command_launch" in d["boundaries"]
 
     def test_empty_edges(self) -> None:
         bmap = compute_boundary_map([], {"python": load_catalog("python")})
@@ -2190,13 +2620,19 @@ class TestHighRiskPrimitives:
         assert is_high_risk("subprocess.run") is True
         assert is_high_risk("os.execv") is True
 
-    def test_is_high_risk_destructive_fs(self) -> None:
-        assert is_high_risk("shutil.rmtree") is True
-        assert is_high_risk("os.remove") is True
+    def test_destructive_fs_not_high_risk(self) -> None:
+        # Retired: destructive-fs risk is carried by the taint host_fs sink
+        # (ADR-0017 §2b), not the subprocess-scoped high_risk display flag.
+        assert is_high_risk("shutil.rmtree") is False
+        assert is_high_risk("os.remove") is False
 
-    def test_is_high_risk_network(self) -> None:
-        assert is_high_risk("urllib.request.urlopen") is True
-        assert is_high_risk("socket.socket.send") is True
+    def test_network_egress_not_high_risk(self) -> None:
+        # Retired: network-egress risk is carried by the taint network sink
+        # + chain dst_tier (WI-gitad / WI-jihuj), not high_risk. This also
+        # reverts WI-tijos Part A's urlretrieve addition.
+        assert is_high_risk("urllib.request.urlopen") is False
+        assert is_high_risk("urllib.request.urlretrieve") is False
+        assert is_high_risk("socket.socket.send") is False
 
     def test_not_high_risk(self) -> None:
         assert is_high_risk("os.listdir") is False
@@ -2584,8 +3020,11 @@ class TestIoBoundariesEnvelopeSchema:
     """
 
     def test_io_boundaries_schema_version_constant_pinned(self) -> None:
-        """The exported constant pins the inaugural ``1.0`` value."""
-        assert IO_BOUNDARIES_SCHEMA_VERSION == "1.0", (
+        """The exported constant pins ``2.1`` (bumped from 2.0 by WI-javoh: the
+        new command_launch_edges disclosure key; 2.0 was WI-huhit/WI-foduh —
+        total_io_edges redefined to real categories + external_potential_edges).
+        """
+        assert IO_BOUNDARIES_SCHEMA_VERSION == "2.1", (
             "io-boundaries schema_version is a wire-format contract. "
             "Do NOT change the value without bumping it deliberately "
             "AND updating the inline schema docs + CHANGELOG."
@@ -2604,7 +3043,10 @@ class TestIoBoundariesEnvelopeSchema:
         # ``unsupported_languages`` is added by ``cmd_io_boundaries`` in
         # cli.py (it's not part of BoundaryMap state), so it's not in
         # this lock-set; the CLI integration test below covers it.
-        expected_keys = {"schema_version", "total_io_edges", "boundaries"}
+        expected_keys = {
+            "schema_version", "total_io_edges", "external_potential_edges",
+            "command_launch_edges", "boundaries",
+        }
         assert set(d.keys()) == expected_keys, (
             f"Unexpected top-level keys in BoundaryMap.to_dict(): "
             f"got {sorted(d.keys())}, expected {sorted(expected_keys)}. "
@@ -2618,6 +3060,8 @@ class TestIoBoundariesEnvelopeSchema:
         d = bmap.to_dict()
         assert isinstance(d["schema_version"], str)
         assert isinstance(d["total_io_edges"], int)
+        assert isinstance(d["external_potential_edges"], int)
+        assert isinstance(d["command_launch_edges"], int)
         assert isinstance(d["boundaries"], dict)
 
 
@@ -2788,6 +3232,41 @@ class TestExternalPotentialBucket:
                 assert chain.io_edge_dst != dst, (
                     "catalog-matched edge leaked into external_potential"
                 )
+
+    def test_total_io_edges_excludes_external_potential_disclosed_separately(
+        self,
+    ) -> None:
+        """WI-huhit/WI-foduh: ``total_io_edges`` is the real/verified I/O
+        surface (excl ``external_potential``); ``external_potential_edges``
+        discloses the bucket separately so it no longer inflates the headline.
+        """
+        from hypergumbo_core.io_boundary import compute_boundary_map
+
+        # One real net_send (urlopen, in catalog) + one external_potential
+        # (snapshot_download, unresolved wrapper not in any catalog).
+        real_dst = "python:urllib.request:0-0:urlopen:unresolved"
+        ep_dst = "python:huggingface_hub:0-0:snapshot_download:unresolved"
+        edges = [
+            self._mock_edge("python:/app/a.py:1-2:f:function", real_dst),
+            self._mock_edge("python:/app/b.py:1-2:g:function", ep_dst),
+        ]
+        nodes_by_id = {
+            real_dst: self._boundary_node(real_dst, "urlopen"),
+            ep_dst: self._boundary_node(ep_dst, "snapshot_download"),
+        }
+        bmap = compute_boundary_map(
+            edges, {"python": load_catalog("python")}, nodes_by_id=nodes_by_id,
+        )
+        # Both buckets exist...
+        assert bmap.entries["net_send"].chains  # real
+        assert bmap.entries["external_potential"].chains  # unverified noise
+        # ...but the headline counts ONLY the real category; external_potential
+        # is disclosed in its own field (not folded into total_io_edges).
+        assert bmap.total_io_edges == 1
+        assert bmap.external_potential_edges == 1
+        d = bmap.to_dict()
+        assert d["total_io_edges"] == 1
+        assert d["external_potential_edges"] == 1
 
     def test_in_progress_language_emits_chain_with_unreliable_annotation(
         self,
@@ -3227,15 +3706,26 @@ class TestAmbiguousNameFiltering:
         assert count == 0, "Generic 'exec' should not match Runtime.exec for unresolved externals"
 
     def test_scala_specific_names_still_match(self) -> None:
-        """Distinctive I/O names should still match even for unresolved externals."""
+        """io-boundary:F3 — ``readAllBytes`` is ``java.nio.file.Files``'s
+        method-kind static method (inherited via the java parent catalog). A
+        BARE unresolved call with no module context is now suppressed
+        (INV-tapat: no receiver verification); in a real repo the java analyzer
+        emits ``Files.readAllBytes`` with the ``java.nio.file.Files`` module
+        hint (receiver in imports), so the WITH-module form still matches."""
         catalog = load_catalog("scala")
-        # readAllBytes is specific enough to not be ambiguous
-        edge = self._make_edge(
+        bare = self._make_edge(
             src="scala:IO.scala:10:readFile:method",
             dst="scala:external:0-0:readAllBytes:unresolved",
         )
-        count = tag_io_boundaries([edge], {"scala": catalog})
-        assert count == 1, "Specific name 'readAllBytes' should still match for unresolved externals"
+        assert tag_io_boundaries([bare], {"scala": catalog}) == 0
+        assert bare.meta is None
+        # With the receiver module the method-kind primitive still matches.
+        hinted = self._make_edge(
+            src="scala:IO.scala:10:readFile:method",
+            dst="scala:java.nio.file.Files:0-0:readAllBytes:unresolved",
+        )
+        assert tag_io_boundaries([hinted], {"scala": catalog}) == 1, (
+            "module-hinted Files.readAllBytes must still match under F3")
 
     def test_scala_resolved_call_with_module_still_matches(self) -> None:
         """Resolved calls with proper module context should still match even for ambiguous names."""
@@ -3678,6 +4168,49 @@ class TestStdlibModulesAndFilter2:
     def test_is_stdlib_module_empty_catalog_returns_false(self) -> None:
         cat = IoBoundaryCatalog(language="python")
         assert not cat.is_stdlib_module("os")
+
+    def test_is_stdlib_module_dotted_submodule_of_enumerated_package(self) -> None:
+        # WI-bifih: python.yaml enumerates only TOP-LEVEL module names and
+        # declares no ``stdlib_prefixes``, so a submodule import like
+        # ``unittest.mock`` / ``os.path`` / ``urllib.request`` must still be
+        # recognised as stdlib via its top-level package — otherwise its
+        # ecosystem is mis-stamped ``third_party`` (355 such edges on the
+        # self-corpus). A submodule of an enumerated stdlib package IS stdlib.
+        cat = IoBoundaryCatalog(
+            language="python",
+            stdlib_modules=frozenset({"os", "unittest", "urllib", "importlib"}),
+        )
+        assert cat.is_stdlib_module("os.path")
+        assert cat.is_stdlib_module("unittest.mock")
+        assert cat.is_stdlib_module("urllib.request")
+        assert cat.is_stdlib_module("importlib.metadata")
+        # Head NOT enumerated -> stays non-stdlib (no false positives).
+        assert not cat.is_stdlib_module("requests.sessions")
+        # A bare non-stdlib name with no separator is unaffected.
+        assert not cat.is_stdlib_module("requests")
+
+    def test_is_stdlib_module_slash_submodule_of_enumerated_package(self) -> None:
+        # The same fallback covers slash-namespaced languages when the
+        # top-level package is enumerated in ``stdlib_modules`` (rather than
+        # ``stdlib_prefixes``).
+        cat = IoBoundaryCatalog(
+            language="go", stdlib_modules=frozenset({"encoding"})
+        )
+        assert cat.is_stdlib_module("encoding/json")
+        assert not cat.is_stdlib_module("github.com/x/y")
+
+    def test_is_stdlib_module_dotted_submodule_against_shipped_python_yaml(
+        self,
+    ) -> None:
+        # The real shipped catalog, exercising the WI-bifih mis-stamp
+        # population (unittest.mock x251, importlib.util/machinery, urllib.*,
+        # concurrent.futures, ...).
+        cat = load_catalog("python")
+        assert cat.is_stdlib_module("unittest.mock")
+        assert cat.is_stdlib_module("importlib.util")
+        assert cat.is_stdlib_module("urllib.request")
+        assert cat.is_stdlib_module("concurrent.futures")
+        assert not cat.is_stdlib_module("requests.sessions")
 
     def test_is_stdlib_module_complete_flag(self) -> None:
         cat = IoBoundaryCatalog(
@@ -4166,10 +4699,16 @@ class TestSwiftCatalog:
         assert hit.boundary == "ipc_recv"
 
     def test_swift_distinctive_names_match_unresolved(self) -> None:
-        """Distinctive I/O names should match even for unresolved externals."""
+        """io-boundary:F3 — a bare method-kind name with no module context is
+        no longer matched (INV-tapat: no receiver verification). ``fileExists``
+        is a ``FileManager`` instance method (method-kind); without a receiver
+        module it is suppressed, but with the module hint it still matches."""
         catalog = load_catalog("swift")
-        # fileExists is specific to FileManager — should match
-        hit = catalog.lookup_with_module("fileExists", module_hint="external")
+        # No module context — method-kind fileExists is suppressed under F3.
+        assert catalog.lookup_with_module(
+            "fileExists", module_hint="external") is None
+        # With the receiver module it still matches.
+        hit = catalog.lookup_with_module("fileExists", module_hint="FileManager")
         assert hit is not None
         assert hit.boundary == "fs_read"
 
@@ -4193,10 +4732,15 @@ class TestSwiftCatalog:
             meta: Optional[Dict[str, Any]] = None
 
         catalog = load_catalog("swift")
+        # io-boundary:F3 — a bare method-kind call with no module context has no
+        # receiver evidence, so it is no longer tagged (INV-tapat). The method-
+        # kind URLSession.dataTask / FileManager.fileExists primitives must
+        # carry their receiver module to be tagged; Swift.print is a top-level
+        # function (function-kind) and still tags bare.
         edges = [
             MockEdge(
                 src="swift:Sources/App/Network.swift:10:fetch:method",
-                dst="swift:external:0-0:dataTask:unresolved",
+                dst="swift:URLSession:0-0:dataTask:unresolved",
             ),
             MockEdge(
                 src="swift:Sources/App/Util.swift:5:log:method",
@@ -4204,12 +4748,17 @@ class TestSwiftCatalog:
             ),
             MockEdge(
                 src="swift:Sources/App/IO.swift:20:check:method",
-                dst="swift:external:0-0:fileExists:unresolved",
+                dst="swift:FileManager:0-0:fileExists:unresolved",
             ),
             # Generic 'write' should NOT be tagged (ambiguous)
             MockEdge(
                 src="swift:Sources/App/Writer.swift:15:save:method",
                 dst="swift:external:0-0:write:unresolved",
+            ),
+            # F3: a bare method-kind call with no module context is suppressed.
+            MockEdge(
+                src="swift:Sources/App/IO.swift:30:peek:method",
+                dst="swift:external:0-0:fileExists:unresolved",
             ),
         ]
         count = tag_io_boundaries(edges, {"swift": catalog})
@@ -4218,6 +4767,8 @@ class TestSwiftCatalog:
         assert edges[1].meta["io_boundary"] == "logging"
         assert edges[2].meta["io_boundary"] == "fs_read"
         assert edges[3].meta is None  # 'write' should not be tagged
+        # F3: bare method-kind fileExists with no receiver module is suppressed.
+        assert edges[4].meta is None
 
     def test_swift_has_swiftnio_server_primitives(self) -> None:
         """Swift catalog covers SwiftNIO server infrastructure."""
@@ -4276,26 +4827,30 @@ class TestSwiftCatalog:
             meta: Optional[Dict[str, Any]] = None
 
         catalog = load_catalog("swift")
+        # io-boundary:F3 — these are method-kind catalog entries, so the edge
+        # must carry the receiver module (no-receiver-evidence bare calls are
+        # now suppressed under INV-tapat). The module hints below are the
+        # PascalCase type names the receiver-type inference would supply.
         edges = [
             MockEdge(
                 src="swift:Sources/App/Server.swift:10:setup:method",
-                dst="swift:external:0-0:MultiThreadedEventLoopGroup:unresolved",
+                dst="swift:EventLoopGroup:0-0:MultiThreadedEventLoopGroup:unresolved",
             ),
             MockEdge(
                 src="swift:Sources/App/Server.swift:15:teardown:method",
-                dst="swift:external:0-0:syncShutdownGracefully:unresolved",
+                dst="swift:EventLoopGroup:0-0:syncShutdownGracefully:unresolved",
             ),
             MockEdge(
                 src="swift:Sources/App/WS.swift:20:handle:method",
-                dst="swift:external:0-0:onText:unresolved",
+                dst="swift:WebSocket:0-0:onText:unresolved",
             ),
             MockEdge(
                 src="swift:Sources/App/TLS.swift:5:configure:method",
-                dst="swift:external:0-0:NIOSSLContext:unresolved",
+                dst="swift:NIOSSL:0-0:NIOSSLContext:unresolved",
             ),
             MockEdge(
                 src="swift:Sources/App/Client.swift:8:fetch:method",
-                dst="swift:external:0-0:HTTPClientRequest:unresolved",
+                dst="swift:AsyncHTTPClient:0-0:HTTPClientRequest:unresolved",
             ),
         ]
         count = tag_io_boundaries(edges, {"swift": catalog})
@@ -4451,3 +5006,76 @@ class TestDstRefPreferredOverDstString:
             "custom_pkg.subpkg" in p and "custom_func" in p
             for p in primitives
         )
+
+
+class TestInProgressLanguages:
+    """WI-najil: consumers must be able to identify which of a query's
+    languages ship an ``status: in_progress`` io_primitives catalog, so a
+    zero-match result can be disclosed as possibly-incomplete rather than
+    read as a genuine 'no I/O here'.
+    """
+
+    def test_selects_only_in_progress_catalogs(self) -> None:
+        from hypergumbo_core.io_boundary import in_progress_languages
+        # python / rust / erlang ship status: complete; go / java ship in_progress.
+        result = in_progress_languages(
+            ["python", "go", "rust", "java", "erlang"]
+        )
+        assert result == ["go", "java"]
+
+    def test_excludes_unsupported_language(self) -> None:
+        """A language with no catalog (is_supported=False, status defaults to
+        'complete') is NOT flagged in_progress — it carries the separate
+        unsupported signal (INV-javam)."""
+        from hypergumbo_core.io_boundary import in_progress_languages
+        assert in_progress_languages(["klingon"]) == []
+
+    def test_complete_only_returns_empty(self) -> None:
+        from hypergumbo_core.io_boundary import in_progress_languages
+        assert in_progress_languages(["python", "rust", "erlang"]) == []
+
+    def test_sorted_and_deduped(self) -> None:
+        from hypergumbo_core.io_boundary import in_progress_languages
+        assert in_progress_languages(["java", "go", "java", "go"]) == ["go", "java"]
+
+    def test_empty_input(self) -> None:
+        from hypergumbo_core.io_boundary import in_progress_languages
+        assert in_progress_languages([]) == []
+
+
+def _grpc_impl_edge(src: str, dst: str, protocol: str | None = "grpc") -> Edge:
+    """A folded gRPC RPC-implementation edge (implements + meta protocol)."""
+    edge = Edge.create(
+        src=src, dst=dst, edge_type="implements", line=1,
+        origin="test", origin_run_id="test", confidence=0.9,
+    )
+    if protocol is not None:
+        edge.meta = {"protocol": protocol}
+    return edge
+
+
+class TestGrpcRpcImplementationTraceability:
+    """The folded gRPC RPC-implementation edge (implements + protocol=grpc,
+    audit-findings 0016) stays traceable for I/O-boundary reachability — the
+    coupling implements_rpc used to carry is preserved via the predicate, not
+    demoted with the structural 'implements' rename (finding 3)."""
+
+    def test_is_traceable_edge_matches_folded_grpc(self) -> None:
+        assert _is_traceable_edge(_grpc_impl_edge("a", "b")) is True
+
+    def test_is_traceable_edge_rejects_plain_implements(self) -> None:
+        # A structural implements edge (no protocol) is NOT traceable — the
+        # meta discriminator is load-bearing, not a wholesale inclusion.
+        assert _is_traceable_edge(_grpc_impl_edge("a", "b", protocol=None)) is False
+
+    def test_reverse_graph_crosses_folded_grpc_edge(self) -> None:
+        grpc = _grpc_impl_edge(
+            "py:client:1-1:call:function", "py:server:1-1:impl:function")
+        plain = _grpc_impl_edge(
+            "py:x:1-1:c:function", "py:y:1-1:i:function", protocol=None)
+        rev = _build_reverse_graph([grpc, plain])
+        # Folded gRPC edge crosses the reverse (callee → caller) graph;
+        # the plain structural implements edge does not.
+        assert rev.get("py:server:1-1:impl:function") == {
+            "py:client:1-1:call:function"}
+        assert "py:y:1-1:i:function" not in rev

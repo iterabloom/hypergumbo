@@ -507,7 +507,7 @@ PLAYBOOKS = [
      ".agent/agent_playbooks_protocols_sops_skills/self-analysis-dogfooding-playbook.md",
      "Run hypergumbo on its own codebase to validate Python analysis quality and catch "
      "regressions. Covers: generating baseline artifacts (run, sketch, io-boundaries, "
-     "symbols, routes), inspecting behavior map sanity (orphan rate, key symbols, IO "
+     "symbols, routes), inspecting survey sanity (orphan rate, key symbols, IO "
      "boundary categories), validating slices and explain output against known architecture, "
      "diffing against prior baselines to detect regressions. Useful before refactoring shared "
      "modules, after changing analyzers or linkers, and when investigating bakeoff signals. "

@@ -8,11 +8,14 @@ access modes (read, write, mutate, delete).
 
 How It Works
 ------------
-1. Each language has a dataflow YAML (e.g., dataflow/python.yaml) defining
-   which AST node types represent assignments, deletions, and calls.
+1. Each language has a dataflow YAML (e.g., dataflow_patterns/python.yaml)
+   defining which AST node types represent assignments, deletions, and calls.
 2. ``annotate_dataflow()`` takes a batch of edges and a parsed AST tree,
    finds the AST node at each edge's line, looks up the node type in the
    language config, and stamps ``access_mode`` into the edge's ``meta`` dict.
+   Python (py.py) uses the parallel ``annotate_dataflow_ast()`` entry point,
+   which walks the CPython ``ast`` instead of a tree-sitter tree and applies
+   the same ``library_patterns`` fallback.
 3. Edges that already have ``access_mode`` set (by a linker — Tier 2) are
    skipped, implementing the precedence rule: explicit beats automatic.
 4. ``scan_library_patterns()`` matches regex patterns from the
@@ -36,6 +39,8 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
 import yaml
+
+from .axis_meta_keys import is_access_mode_not_applicable
 
 if TYPE_CHECKING:
     from .ir import Edge
@@ -199,7 +204,7 @@ _DATAFLOW_DIR = Path(__file__).parent / "dataflow_patterns"
 def get_dataflow_config(language: str) -> Optional[DataflowConfig]:
     """Get the dataflow config for a language, loading from YAML if needed.
 
-    Looks for a YAML file at ``<package>/dataflow/<language>.yaml``.
+    Looks for a YAML file at ``<package>/dataflow_patterns/<language>.yaml``.
     Returns None if no config exists for the language. Caches results
     so each YAML is loaded at most once per process.
 
@@ -368,6 +373,12 @@ def annotate_dataflow(
     line_index = _build_line_index(tree.root_node)
 
     for edge in edges:
+        # ADR-0038 ruling 2 (INV-tibob / WI-hapab): N/A edge types (instantiates
+        # + the structural types) carry no access_mode — the "effect of src on
+        # dst" question does not arise for a constructor call or a structural
+        # edge, so the line-granular classifier must not stamp them.
+        if is_access_mode_not_applicable(edge.edge_type):
+            continue
         # Skip edges that already have access_mode (Tier 2 precedence)
         if edge.meta is not None and "access_mode" in edge.meta:
             continue
@@ -478,6 +489,20 @@ def scan_library_patterns(
     return sites
 
 
+# INV-kudug: evidence types that, by their own definition, denote a READ of
+# the destination — a bare-name variable read, a function-object reference, or
+# a dereference of an imported module's attribute. An edge carrying one of
+# these is a read even when it lands on an assignment / for / with line (it is
+# the value being read — the RHS — not the target being bound), so its
+# access_mode must be derived from the evidence type rather than from the
+# line's statement kind.
+_READ_EVIDENCE_TYPES: frozenset[str] = frozenset({
+    "ast_name_read",
+    "function_reference",
+    "module_attribute_reference",
+})
+
+
 def annotate_dataflow_ast(
     edges: List["Edge"],
     tree: Any,
@@ -550,18 +575,33 @@ def annotate_dataflow_ast(
         return edges
 
     for edge in edges:
+        # ADR-0038 ruling 2 (INV-tibob / WI-hapab): N/A edge types carry no
+        # access_mode — skip instantiates + the structural types (see the
+        # matching gate in ``annotate_dataflow``).
+        if is_access_mode_not_applicable(edge.edge_type):
+            continue
         if edge.meta is not None and "access_mode" in edge.meta:
             continue
-        mode = line_modes.get(edge.line)
-        if mode is not None:
-            # Call edges on assignment/augmented-assignment lines are reads:
-            # the call produces a value consumed by the assignment (RHS).
-            # Even in `foo().bar = x`, the call reads the object.
-            if mode in ("write", "mutate") and edge.edge_type == "calls":
-                mode = "read"
-        elif library_modes_by_line:
-            # AST walk left this edge unclassified — try library_patterns.
-            mode = library_modes_by_line.get(edge.line)
+        if edge.evidence_type in _READ_EVIDENCE_TYPES:
+            # INV-kudug: a read-evidence edge (bare-name read, function
+            # reference, module-attribute dereference) is a READ even when it
+            # sits on an assignment / for / with line — it is the RHS value
+            # being read, not the target being bound. Derive 'read' from the
+            # evidence type; the line-statement heuristic below only knows the
+            # statement kind (this generalises the calls-on-write-line
+            # downgrade just below to all read-evidence edge types).
+            mode = "read"
+        else:
+            mode = line_modes.get(edge.line)
+            if mode is not None:
+                # Call edges on assignment/augmented-assignment lines are
+                # reads: the call produces a value consumed by the assignment
+                # (RHS). Even in `foo().bar = x`, the call reads the object.
+                if mode in ("write", "mutate") and edge.edge_type == "calls":
+                    mode = "read"
+            elif library_modes_by_line:
+                # AST walk left this edge unclassified — try library_patterns.
+                mode = library_modes_by_line.get(edge.line)
         if mode is not None:
             if edge.meta is None:
                 edge.meta = {}

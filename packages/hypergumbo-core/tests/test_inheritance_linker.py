@@ -3,7 +3,7 @@
 
 from pathlib import Path
 
-from hypergumbo_core.ir import Symbol, Span, Edge
+from hypergumbo_core.ir import Symbol, Span, Edge, ExternalRef
 from hypergumbo_core.linkers.inheritance import link_inheritance
 from hypergumbo_core.linkers.registry import LinkerContext
 
@@ -526,8 +526,10 @@ class TestInheritanceLinker:
         # Should not create self-referential edge
         assert len(result.edges) == 0
 
-    def test_no_edge_for_external_class(self) -> None:
-        """No edge created for external base classes not in symbols."""
+    def test_external_base_emits_unresolved_extends(self) -> None:
+        """WI-jubag Approach C: an external base class (not in symbols) no
+        longer drops silently — the chokepoint mints an unresolved-external
+        ``extends`` edge so the relationship is represented (was: no edge)."""
         derived = Symbol(
             id="sym:User",
             name="User",
@@ -547,8 +549,13 @@ class TestInheritanceLinker:
         )
         result = link_inheritance(ctx)
 
-        # Should not create any edge
-        assert len(result.edges) == 0
+        assert len(result.edges) == 1
+        e = result.edges[0]
+        assert e.src == "sym:User"
+        assert e.edge_type == "extends"
+        assert e.dst == "python:external:0-0:ExternalClass:unresolved"
+        assert e.is_resolved is False
+        assert e.dst_ref is None
 
     def test_go_struct_implements_interface(self) -> None:
         """Go struct with base_classes creates implements edge to interface."""
@@ -1242,3 +1249,240 @@ class TestIncludesEdges:
         result = link_inheritance(ctx)
         new_includes = [e for e in result.edges if e.edge_type == "includes"]
         assert len(new_includes) == 0
+
+
+class TestExternalBaseFallbackApproachC:
+    """WI-jubag Approach C — the core inheritance-linker chokepoint mints
+    unresolved-external ``extends`` edges for base classes that resolve to no
+    in-tree symbol, uniformly across every OO language, instead of dropping
+    them (py.py/js_ts already do this per-analyzer; the chokepoint generalizes
+    it to Kotlin/Ruby/Java/... and to Python dotted bases that py.py defers).
+
+    External targets use the ``external`` sentinel module —
+    ``{lang}:external:0-0:{name}:unresolved`` with ``dst_ref=None`` (the
+    sanctioned WI-huzuv "unidentified reference" shape) — which is INV-nuzas-safe
+    by construction (never a workspace-prefixed phantom).
+    """
+
+    @staticmethod
+    def _cls(
+        sym_id: str,
+        name: str,
+        bases: list[str] | None,
+        *,
+        language: str = "python",
+        path: str = "/t.py",
+        kind: str = "class",
+    ) -> Symbol:
+        return Symbol(
+            id=sym_id,
+            name=name,
+            kind=kind,
+            language=language,
+            path=path,
+            span=Span(start_line=1, end_line=2, start_col=0, end_col=0),
+            origin="test",
+            origin_run_id="test-run",
+            meta={"base_classes": bases} if bases else None,
+        )
+
+    def test_bare_external_base_emits_unresolved_extends(self) -> None:
+        """A bare external base (Kotlin ``AbstractController``) that resolves to
+        no in-tree class now emits an unresolved external ``extends`` edge."""
+        klass = self._cls(
+            "k:UserController", "UserController", ["AbstractController"],
+            language="kotlin", path="/c.kt",
+        )
+        ctx = LinkerContext(repo_root=Path("/"), symbols=[klass], edges=[])
+        result = link_inheritance(ctx)
+
+        assert len(result.edges) == 1
+        e = result.edges[0]
+        assert e.src == "k:UserController"
+        assert e.edge_type == "extends"
+        assert e.dst == "kotlin:external:0-0:AbstractController:unresolved"
+        assert e.is_resolved is False
+        assert e.dst_ref is None
+        assert e.evidence_type == "ast_extends"
+
+    def test_external_base_confidence_is_evidence_derived(self) -> None:
+        """External-extends confidence is evidence-derived 0.95 (ADR-0039): the
+        extends DETECTION is AST-certain, ``is_resolved=False`` carries the
+        unresolved target — matching the merged py.py fallback, not js_ts's 0.5.
+        """
+        klass = self._cls("p:Foo", "Foo", ["SomeLib"])
+        ctx = LinkerContext(repo_root=Path("/"), symbols=[klass], edges=[])
+        result = link_inheritance(ctx)
+
+        assert len(result.edges) == 1
+        assert result.edges[0].confidence == 0.95
+        assert result.edges[0].confidence_source == "evidence_derived"
+
+    def test_dotted_external_base_uses_last_segment(self) -> None:
+        """A dotted external base (``argparse.ArgumentParser``) — dropped by
+        py.py and DEFERRED to Approach C — now emits an external edge keyed on
+        the last segment."""
+        klass = self._cls("p:MyParser", "MyParser", ["argparse.ArgumentParser"])
+        ctx = LinkerContext(repo_root=Path("/"), symbols=[klass], edges=[])
+        result = link_inheritance(ctx)
+
+        assert len(result.edges) == 1
+        assert result.edges[0].dst == "python:external:0-0:ArgumentParser:unresolved"
+        assert result.edges[0].edge_type == "extends"
+
+    def test_scoped_external_base_uses_last_segment(self) -> None:
+        """A Ruby scoped external base (``ActiveRecord::Base``) emits an
+        external edge on the last segment."""
+        klass = self._cls(
+            "r:User", "User", ["ActiveRecord::Base"], language="ruby", path="/u.rb",
+        )
+        ctx = LinkerContext(repo_root=Path("/"), symbols=[klass], edges=[])
+        result = link_inheritance(ctx)
+
+        assert len(result.edges) == 1
+        assert result.edges[0].dst == "ruby:external:0-0:Base:unresolved"
+
+    def test_generic_external_base_strips_brackets(self) -> None:
+        """Python-style generic externals (``Protocol[T]``) strip the ``[...]``
+        before externalizing, so the canonical name is clean."""
+        klass = self._cls("p:P", "P", ["Protocol[T]"])
+        ctx = LinkerContext(repo_root=Path("/"), symbols=[klass], edges=[])
+        result = link_inheritance(ctx)
+
+        assert len(result.edges) == 1
+        assert result.edges[0].dst == "python:external:0-0:Protocol:unresolved"
+
+    def test_in_tree_namesake_base_is_not_externalized(self) -> None:
+        """INV-nuzas guard: if the base's simple name matches ANY in-tree symbol
+        (here a module-level variable, not a class), it is NOT minted as an
+        external — a base whose in-tree definition simply was not extracted as a
+        class must be dropped, never turned into a false external (the same
+        conservative bias py.py's ``_base_module_is_in_tree`` guard takes)."""
+        helper_var = Symbol(
+            id="p:helpers:Helper", name="Helper", kind="variable",
+            language="python", path="/helpers.py",
+            span=Span(start_line=1, end_line=1, start_col=0, end_col=0),
+            origin="test", origin_run_id="test-run", meta=None,
+        )
+        klass = self._cls("p:Foo", "Foo", ["Helper"])
+        ctx = LinkerContext(
+            repo_root=Path("/"), symbols=[helper_var, klass], edges=[],
+        )
+        result = link_inheritance(ctx)
+
+        assert result.edges == []
+
+    def test_bare_external_owned_by_analyzer_is_not_re_emitted(self) -> None:
+        """Coexistence with py.py/js_ts: when an analyzer already emitted an
+        UNRESOLVED external edge for this class (``is_resolved=False``), the
+        chokepoint defers the class's BARE external bases to that analyzer — it
+        must NOT re-mint a sentinel edge (which, for an aliased base like
+        ``from enum import Enum as E``, would carry the alias name and double the
+        analyzer's original-name edge)."""
+        klass = self._cls("p:Color", "Color", ["Enum"])
+        analyzer_edge = Edge.create(
+            src="p:Color", dst="python:enum:0-0:Enum:unresolved",
+            edge_type="extends", line=1, origin="python", origin_run_id="a-run",
+            evidence_type="ast_extends", is_resolved=False,
+            dst_ref=ExternalRef(lang="python", module_path="enum", name="Enum"),
+        )
+        ctx = LinkerContext(
+            repo_root=Path("/"), symbols=[klass], edges=[analyzer_edge],
+        )
+        result = link_inheritance(ctx)
+
+        assert result.edges == []
+
+    def test_bare_external_owned_by_analyzer_builtin_edge(self) -> None:
+        """Same ownership deferral when the analyzer edge is a bare-builtin
+        external (``dst_ref=None``): ``is_resolved=False`` marks the class as
+        analyzer-owned for bare bases."""
+        klass = self._cls("p:MyErr", "MyErr", ["Exception"])
+        analyzer_edge = Edge.create(
+            src="p:MyErr", dst="python:external:0-0:Exception:unresolved",
+            edge_type="extends", line=1, origin="python", origin_run_id="a-run",
+            evidence_type="ast_extends", is_resolved=False, dst_ref=None,
+        )
+        ctx = LinkerContext(
+            repo_root=Path("/"), symbols=[klass], edges=[analyzer_edge],
+        )
+        result = link_inheritance(ctx)
+
+        assert result.edges == []
+
+    def test_analyzer_owned_bare_but_chokepoint_adds_deferred_dotted(self) -> None:
+        """The ownership split, precise: for a class the analyzer partly handled
+        (a bare external base) the chokepoint STILL adds the dotted/qualified
+        base the analyzer deferred — ``class C(Enum, vendor.Widget)`` keeps the
+        analyzer's ``Enum`` edge (bare, deferred to the analyzer) and gains the
+        chokepoint's ``vendor.Widget`` edge (dotted, analyzer-deferred)."""
+        klass = self._cls("p:C", "C", ["Enum", "vendor.Widget"])
+        analyzer_edge = Edge.create(
+            src="p:C", dst="python:enum:0-0:Enum:unresolved",
+            edge_type="extends", line=1, origin="python", origin_run_id="a-run",
+            evidence_type="ast_extends", is_resolved=False,
+            dst_ref=ExternalRef(lang="python", module_path="enum", name="Enum"),
+        )
+        ctx = LinkerContext(
+            repo_root=Path("/"), symbols=[klass], edges=[analyzer_edge],
+        )
+        result = link_inheritance(ctx)
+
+        # Only the dotted base is added; the bare Enum stays analyzer-owned.
+        assert len(result.edges) == 1
+        assert result.edges[0].dst == "python:external:0-0:Widget:unresolved"
+
+    def test_duplicate_external_base_same_name_emits_once(self) -> None:
+        """Two external bases whose last segment is the same name collapse to a
+        single external edge (they are indistinguishable at the sentinel level)."""
+        klass = self._cls("p:Foo", "Foo", ["a.Widget", "b.Widget"])
+        ctx = LinkerContext(repo_root=Path("/"), symbols=[klass], edges=[])
+        result = link_inheritance(ctx)
+
+        assert len(result.edges) == 1
+        assert result.edges[0].dst == "python:external:0-0:Widget:unresolved"
+
+    def test_garbage_base_name_not_externalized(self) -> None:
+        """Ruby dynamic superclass (``class Foo < Struct.new(:a)``) records the
+        raw expression text as a base_classes string; the chokepoint must not
+        mint a garbage external edge — only syntactically-valid identifiers
+        externalize."""
+        klass = self._cls(
+            "r:Point", "Point", ["Struct.new(:a)"], language="ruby", path="/p.rb",
+        )
+        ctx = LinkerContext(repo_root=Path("/"), symbols=[klass], edges=[])
+        result = link_inheritance(ctx)
+
+        assert result.edges == []
+
+    def test_cross_language_external_bases_all_emit(self) -> None:
+        """The chokepoint win: a Kotlin, a Ruby, and a Python class each with an
+        external base ALL get external extends edges in one pass — no
+        per-analyzer fallback required."""
+        kt = self._cls("k:A", "A", ["KtBase"], language="kotlin", path="/a.kt")
+        rb = self._cls("r:B", "B", ["RbBase"], language="ruby", path="/b.rb")
+        py = self._cls("p:C", "C", ["PyBase"], language="python", path="/c.py")
+        ctx = LinkerContext(repo_root=Path("/"), symbols=[kt, rb, py], edges=[])
+        result = link_inheritance(ctx)
+
+        dsts = {e.src: e.dst for e in result.edges if e.edge_type == "extends"}
+        assert dsts["k:A"] == "kotlin:external:0-0:KtBase:unresolved"
+        assert dsts["r:B"] == "ruby:external:0-0:RbBase:unresolved"
+        assert dsts["p:C"] == "python:external:0-0:PyBase:unresolved"
+
+    def test_dangling_existing_edge_dst_does_not_block_new_external(self) -> None:
+        """``_edge_target_name`` returns None for an extends edge whose dst is
+        neither an in-tree symbol nor an unresolved id — that edge contributes
+        no dedup name, and a fresh external base still emits."""
+        klass = self._cls("p:Foo", "Foo", ["RealExternal"])
+        dangling = Edge.create(
+            src="p:Foo", dst="sym:GoneMissing", edge_type="extends", line=1,
+            origin="x", origin_run_id="x-run",
+        )
+        ctx = LinkerContext(
+            repo_root=Path("/"), symbols=[klass], edges=[dangling],
+        )
+        result = link_inheritance(ctx)
+
+        assert len(result.edges) == 1
+        assert result.edges[0].dst == "python:external:0-0:RealExternal:unresolved"

@@ -1,0 +1,20 @@
+- op: create  # 0591
+  at: '2026-06-21T21:16:07Z'  # 0591
+  by: agent  # 0591
+  actor: jgstern_agent  # 0591
+  clock: 1  # 0591
+  nonce: '0591'  # 0591
+  data:  # 0591
+    kind: work_item  # 0591
+    title: "JS/TS anonymous arrows in return/ternary/template-substitution position not extracted as function nodes (WI-zavad Option-1 deferred remainder)"  # 0591
+    status: todo_soft  # 0591
+    priority: 3  # 0591
+    parent:  # 0591
+    tags:  # 0591
+    - dogfood  # 0591
+    isbefore: []  # 0591
+    duplicate_of: []  # 0591
+    not_duplicate_of: []  # 0591
+    pr_ref:  # 0591
+    description: "Deferred remainder of WI-zavad's anonymous-callback function-node slice (PR #4258, emission-parity F2). The slice extracted anonymous functions in the two documented idioms (call-argument callbacks incl. new Promise/new X constructor executors, and IIFEs) per the human-chosen Option-1 scope. Anonymous arrows in OTHER positions are NOT extracted: return-position (`function make(){ return () => cleanup(); }`), ternary (`cond ? () => a() : () => b()`), and template-substitution (`${items.map(x => x.id)}`). Measured blast radius on hypergumbo's own 20 JS/TS files: ~19 of 123 anonymous functions fall in these positions (the other ~104 are the call-arg+IIFE idioms now handled). RATIONALE FOR DEFERRAL: these positions have no call-site anchor for a companion incoming edge, so extracting them would inflate dead-code false-positives (the very metric INV-pohik/WI-lirob are trying to reduce); _classify_anon_function (js_ts.py) returns None for them by design. LOW priority: they carry no I/O (not an io-boundary concern) and the call-graph attribution for body-calls inside them already walks up to the enclosing named function. Revisit only after the Option-1 bakeoff numbers land and if a concrete need surfaces. The exclusion is locked by test_return_position_arrow_not_extracted / test_ternary_arrow_not_extracted (now with positive controls)."  # 0591
+    fields: {}  # 0591

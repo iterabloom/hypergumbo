@@ -80,3 +80,19 @@
   set: {}  # 3cf1
   add:  # 3cf1
     tags: [awaits_bakeoff_validation]  # 3cf1
+- op: update  # 3890
+  at: '2026-06-22T01:46:15Z'  # 3890
+  by: agent  # 3890
+  actor: jgstern_agent  # 3890
+  clock: 10  # 3890
+  nonce: '3890'  # 3890
+  set: {}  # 3890
+  remove:  # 3890
+    tags: [awaits_bakeoff_validation]  # 3890
+- op: discuss  # ee1c
+  at: '2026-06-22T01:46:15Z'  # ee1c
+  by: agent  # ee1c
+  actor: jgstern_agent  # ee1c
+  clock: 11  # ee1c
+  nonce: ee1c  # ee1c
+  message: "Drain audit: D-stale. Claim (76 TOML dependency fingerprints collapsed to one -> restore discrimination) validated 2026-06-10: two-manifest fixture restores 5.0.1 baseline (4 distinct/5 nodes), tracker self-analysis clean; PR #4167. Stripping stale tag."  # ee1c

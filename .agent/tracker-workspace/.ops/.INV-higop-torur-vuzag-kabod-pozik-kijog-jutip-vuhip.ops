@@ -1,0 +1,39 @@
+- op: create  # 7202
+  at: '2026-07-15T07:08:07Z'  # 7202
+  by: agent  # 7202
+  actor: jgstern_agent  # 7202
+  clock: 1  # 7202
+  nonce: '7202'  # 7202
+  data:  # 7202
+    kind: invariant  # 7202
+    title: "Tier-axis leak (F2): internal_dep (tier-2) read as project-code by ranking/DDG/entrypoints/sketch but as an external sink by metrics.py — inconsistent semantics"  # 7202
+    status: violated  # 7202
+    priority: 2  # 7202
+    parent:  # 7202
+    tags:  # 7202
+    - wave5  # 7202
+    - tier_axis  # 7202
+    - concept_audit  # 7202
+    isbefore: []  # 7202
+    duplicate_of: []  # 7202
+    not_duplicate_of: []  # 7202
+    pr_ref:  # 7202
+    description: "Every consumer of supply_chain_tier must agree that tier-2 (internal_dep) is PROJECT-SIDE / project-adjacent code, not an external-dependency sink. Tier-axis concept audit (2026-07-15) found the value is read two contradictory ways: metrics.py:122-141 comments \"External-dependency tiers (2/3) are graph SINKS ... reads ~0\" and buckets tier-2 with tier-3 as external; while ranking.py:162 (weight 1.5, adjacent to first-party 2.0), cfg.py:1655 (DDG default max_tier=2 includes tier-2 as an analysis target), entrypoints.py:1622 (vendor penalty only at tier>=3, so tier-2 escapes it), and sketch.py:5747 (keeps tier-2) all treat tier-2 as project-priority code. A single tier-2 node (config internal_package_roots, a workspace-sibling dependency declaration per PR #655, or a synthetic linker node) is therefore simultaneously up-weighted as project code AND described as an external sink. Root cause: metrics.py inherited the pre-ADR-0041 \"tier-2 = declared direct external dependency\" meaning that ADR-0041 §1 retired. Apex/peer overloading (the most diagnostic leakage test): same value, two roles across consumers.\n\nCross-ref: WI-modom (done) fixed the by_supply_chain_tier.edges=0 COUNT but left the external-sink FRAMING. FIX: reconcile metrics.py to treat internal_dep as project-side (distinct from external_dep); add a consistency guard/test so a new tier consumer can't reintroduce the split. Evidence + verdict in ~/hypergumbo_lab_notebook/concept-audit-supply_chain_tier_07152026.md (F2)."  # 7202
+    fields:  # 7202
+      statement: "All supply_chain_tier consumers must treat tier-2 internal_dep as project-side code, not an external-dependency sink; metrics.py currently buckets it with external_dep while ranking/DDG/entrypoints/sketch treat it as project-priority code."  # 7202
+      root_cause: "metrics.py inherited the pre-ADR-0041 'tier-2 = declared direct external dependency' meaning that ADR-0041 §1 retired; no consistency guard binds the tier consumers to a single internal_dep semantics, so they drifted apart."  # 7202
+- op: update  # ac6a
+  at: '2026-07-26T17:34:27Z'  # ac6a
+  by: agent  # ac6a
+  actor: jgstern_agent  # ac6a
+  clock: 2  # ac6a
+  nonce: ac6a  # ac6a
+  set:  # ac6a
+    status: satisfied  # ac6a
+- op: discuss  # 74c9
+  at: '2026-07-26T17:34:27Z'  # 74c9
+  by: agent  # 74c9
+  actor: jgstern_agent  # 74c9
+  clock: 3  # 74c9
+  nonce: 74c9  # 74c9
+  message: "Corrected in PR #19 (dev 11b50fd980). metrics.py by_supply_chain_tier edges-view comment lumped tiers (2/3) as external-dependency graph SINKS; post-ADR-0041 only tier 3 (third-party) is a sink — tier 2 is internal/project-side, a SOURCE that can carry out-edges. Positive evidence: the loop at metrics.py counts src-tier edges for ALL src tiers incl tier 2 (no tier-2 exclusion) so behavior was already correct; only the explanatory comment was stale. Comment now names only tier 3 as the sink."  # 74c9

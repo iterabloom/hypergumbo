@@ -46,7 +46,7 @@ from pathlib import Path
 from typing import Iterator
 
 from ..analyze.base import make_symbol_id
-from ..discovery import find_files
+from ..discovery import find_non_test_files
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from .registry import LinkerActivation, LinkerContext, LinkerResult, LinkerRequirement, register_linker
 from ._text_filters import read_masked_source
@@ -140,7 +140,7 @@ def _extract_operation_name(query: str) -> tuple[str | None, str | None]:
 def _find_source_files(root: Path) -> Iterator[Path]:
     """Find files that might contain GraphQL client calls."""
     patterns = ["**/*.py", "**/*.js", "**/*.ts", "**/*.jsx", "**/*.tsx"]
-    for path in find_files(root, patterns):
+    for path in find_non_test_files(root, patterns):
         yield path
 
 
@@ -220,7 +220,13 @@ def _create_client_symbol(call: GraphQLClientCall, root: Path) -> Symbol:
         language=None,
         discovery_language=call.language,
         protocol_origin="graphql",
-        stable_id=call.operation_name,
+        # INV-hunup / ADR-0035 §1: Class-B stand-in. Emit None so the
+        # post-linker populate_synthetic_class_b_identity chokepoint stamps a
+        # canonical injective stable_id keyed on (protocol_origin, kind, path,
+        # name, occurrence). Self-stamping call.operation_name was non-canonical
+        # AND collision-prone (operation names repeat across files). The
+        # operation name is preserved in meta["operation_name"].
+        stable_id=None,
         meta={
             "operation_type": call.operation_type,
             "operation_name": call.operation_name,
@@ -282,7 +288,6 @@ def link_graphql(root: Path, schema_symbols: list[Symbol]) -> GraphQLLinkResult:
             op_key = call.operation_name.lower()
             if op_key in operation_map:
                 schema_sym = operation_map[op_key]
-                is_cross_language = client_symbol.language != schema_sym.language
 
                 # ADR-0023 §6 Phase 3 (WI-vumum-juvil): GraphQL is a
                 # wire protocol, not a relationship. The fold target is
@@ -304,7 +309,6 @@ def link_graphql(root: Path, schema_symbols: list[Symbol]) -> GraphQLLinkResult:
                     "protocol": "graphql",
                     "operation_type": call.operation_type,
                     "operation_name": call.operation_name,
-                    "cross_language": is_cross_language,
                     "framework_dispatch": "graphql_operation",
                 }
                 edges.append(edge)

@@ -31,3 +31,18 @@
     tags: [dogfood]  # c32c
   remove:  # c32c
     tags: [dogfooding]  # c32c
+- op: update  # 6774
+  at: '2026-07-12T08:14:46Z'  # 6774
+  by: agent  # 6774
+  actor: jgstern_agent  # 6774
+  clock: 3  # 6774
+  nonce: '6774'  # 6774
+  set:  # 6774
+    status: done  # 6774
+- op: discuss  # 27d4
+  at: '2026-07-12T08:14:46Z'  # 27d4
+  by: agent  # 27d4
+  actor: jgstern_agent  # 27d4
+  clock: 4  # 27d4
+  nonce: 27d4  # 27d4
+  message: "Wave-4 triage 2026-07-12: Entrypoint stable id now exists -- _entrypoint_id at entrypoints.py:268/276, stamped unconditionally in __post_init__ (:306), encoding (kind,symbol_id,label) as prescribed. Lives at meta.id (cosmetic-uniformity residual, INV-kurup family, not this item)."  # 27d4

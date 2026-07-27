@@ -553,7 +553,7 @@ handle_cast(_Msg, State) ->
         result = analyze_erlang(tmp_path)
         assert not result.skipped
 
-        callback_edges = [e for e in result.edges if e.edge_type == "invokes_callback"]
+        callback_edges = [e for e in result.edges if e.edge_type == "dispatches_to" and (e.meta or {}).get("mechanism") == "callback"]
         assert len(callback_edges) == 3
 
         callback_dsts = {e.dst for e in callback_edges}
@@ -586,7 +586,7 @@ init([]) ->
         )
         result = analyze_erlang(tmp_path)
 
-        callback_edges = [e for e in result.edges if e.edge_type == "invokes_callback"]
+        callback_edges = [e for e in result.edges if e.edge_type == "dispatches_to" and (e.meta or {}).get("mechanism") == "callback"]
         assert len(callback_edges) == 1
         func_syms = {s.id: s for s in result.symbols if s.kind == "function"}
         assert func_syms[callback_edges[0].dst].name == "init/1"
@@ -609,7 +609,7 @@ init([]) ->
         result = analyze_erlang(tmp_path)
 
         # Only init/1 is implemented, others are not
-        callback_edges = [e for e in result.edges if e.edge_type == "invokes_callback"]
+        callback_edges = [e for e in result.edges if e.edge_type == "dispatches_to" and (e.meta or {}).get("mechanism") == "callback"]
         assert len(callback_edges) == 1
 
     def test_unknown_behaviour_no_callbacks(self, tmp_path: Path) -> None:
@@ -629,7 +629,7 @@ init([]) ->
         )
         result = analyze_erlang(tmp_path)
 
-        callback_edges = [e for e in result.edges if e.edge_type == "invokes_callback"]
+        callback_edges = [e for e in result.edges if e.edge_type == "dispatches_to" and (e.meta or {}).get("mechanism") == "callback"]
         assert len(callback_edges) == 0
 
     def test_imports_edge_still_created(self, tmp_path: Path) -> None:
@@ -650,7 +650,7 @@ init([]) ->
         result = analyze_erlang(tmp_path)
 
         import_edges = [e for e in result.edges if e.edge_type == "imports"]
-        callback_edges = [e for e in result.edges if e.edge_type == "invokes_callback"]
+        callback_edges = [e for e in result.edges if e.edge_type == "dispatches_to" and (e.meta or {}).get("mechanism") == "callback"]
 
         # Both import and callback edges should exist
         assert any("gen_server" in e.dst for e in import_edges)
@@ -786,5 +786,79 @@ class TestErlangDocstrings:
         assert len(tcp_edges) == 1
         assert tcp_edges[0].dst == "erlang:gen_tcp:0-0:send:function"
 
-        # Confidence should be lower than resolved calls
-        assert all(e.confidence == 0.70 for e in ext_edges)
+        # Confidence is derived from the ast_call evidence type (was 0.70)
+        assert all(e.confidence == 0.85 for e in ext_edges)
+
+
+class TestErlangCyclomaticComplexity:
+    """INV-loguk slice C: callable Erlang symbols carry non-null
+    cyclomatic_complexity (aggregated across coalesced clauses) and
+    line_span. Real-grammar verification of the erlang BRANCH_NODE_TYPES
+    entry (cr_clause / if_clause / receive_after) + andalso/orelse short-circuit."""
+
+    def test_multi_clause_function_aggregates_cc(self, tmp_path: Path) -> None:
+        make_erl_file(tmp_path, "branchy.erl", """-module(branchy).
+-export([classify/1, lookup/1]).
+
+classify(X) when X > 0 ->
+    case X of
+        1 -> one;
+        2 -> two;
+        _ -> other
+    end;
+classify(X) ->
+    if
+        X =:= 0 -> zero;
+        true -> dunno
+    end.
+
+lookup(K) ->
+    A = (K > 1) andalso (K < 100),
+    B = (K =:= 0) orelse (K =:= 50),
+    receive
+        ok -> done;
+        stop -> halt
+    end.
+""")
+        result = analyze_erlang(tmp_path)
+        classify = next(s for s in result.symbols
+                        if s.kind == "function" and s.name == "classify/1")
+        # base 1 + clause1 case (3 arms) + clause2 if (2 arms) = 6
+        assert classify.cyclomatic_complexity == 6
+        assert classify.line_span is not None and classify.line_span >= 4
+        lookup = next(s for s in result.symbols
+                      if s.kind == "function" and s.name == "lookup/1")
+        # base 1 + andalso + orelse + receive (2 arms) = 5
+        assert lookup.cyclomatic_complexity == 5
+
+    def test_straight_line_function_cc_is_one(self, tmp_path: Path) -> None:
+        make_erl_file(tmp_path, "simple.erl", """-module(simple).
+-export([id/1]).
+
+id(X) -> X.
+""")
+        result = analyze_erlang(tmp_path)
+        fn = next(s for s in result.symbols
+                  if s.kind == "function" and s.name == "id/1")
+        assert fn.cyclomatic_complexity == 1
+        assert fn.line_span is not None
+
+    def test_callables_non_null_non_callables_null(self, tmp_path: Path) -> None:
+        make_erl_file(tmp_path, "m.erl", """-module(m).
+-export([f/1]).
+
+-record(state, {count = 0}).
+
+f(X) when X > 0 -> pos;
+f(_) -> nonpos.
+""")
+        result = analyze_erlang(tmp_path)
+        funcs = [s for s in result.symbols if s.kind == "function"]
+        assert funcs
+        for s in funcs:
+            assert s.cyclomatic_complexity is not None, s.name
+            assert s.line_span is not None, s.name
+        # module / record / file (non-callable) keep null CC
+        for s in result.symbols:
+            if s.kind != "function":
+                assert s.cyclomatic_complexity is None, (s.kind, s.name)

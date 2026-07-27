@@ -42,3 +42,34 @@
   clock: 4  # ad67
   nonce: ad67  # ad67
   message: "related-but-distinct cross-link (connections-sweep 2026-06-08T1900Z)"  # ad67
+- op: update  # 48d8
+  at: '2026-07-09T01:42:52Z'  # 48d8
+  by: agent  # 48d8
+  actor: jgstern_agent  # 48d8
+  clock: 5  # 48d8
+  nonce: 48d8  # 48d8
+  set: {}  # 48d8
+  add:  # 48d8
+    tags: [wave5]  # 48d8
+- op: discuss  # 3dee
+  at: '2026-07-09T01:42:52Z'  # 3dee
+  by: agent  # 3dee
+  actor: jgstern_agent  # 3dee
+  clock: 6  # 3dee
+  nonce: 3dee  # 3dee
+  message: "Wave-5 assignment (2026-07-08): identity-hash-coarseness residual (identity:F7 container-kind stable_id, js_ts.py:3322). Empty isbefore, no parent; umbrella INV-tazaj/INV-bazij already satisfied → migrates to the terminal validation-drain wave. Tracked in wave5_remaining_plan_07082026.md."  # 3dee
+- op: update  # 78a0
+  at: '2026-07-17T06:22:04Z'  # 78a0
+  by: agent  # 78a0
+  actor: jgstern_agent  # 78a0
+  clock: 7  # 78a0
+  nonce: 78a0  # 78a0
+  set:  # 78a0
+    status: done  # 78a0
+- op: discuss  # e8d8
+  at: '2026-07-17T06:22:05Z'  # e8d8
+  by: agent  # e8d8
+  actor: jgstern_agent  # e8d8
+  clock: 8  # e8d8
+  nonce: e8d8  # e8d8
+  message: "Fixed in PR #699 (merged, dev 5b8a44805f). ROOT CAUSE (chokepoint, not per-site): the INV-sotiv backstop populate_kind_stable_ids covered {interface,type} but not the other container/declaration kinds; the tree-sitter producers construct class/struct/enum/trait/protocol/contract with shape_id= but no stable_id=, so they fell through to None. FIX: new make_declaration_stable_id (file-scoped sha256(kind:language:path:name), kind threaded in so class vs same-named struct stay distinct) + registered the 6 container kinds in _KIND_STABLE_ID_FACTORIES — one place, every analyzer. Producer-computed ids (Python classes via _compute_stable_id) keep precedence; backstop only fills None. BEHAVIORAL EVIDENCE (re-ran the item's own filed widget.ts repro via hypergumbo survey): class ItemDetail None->sha256:a5ec36a31d4a7d2b, enum Color None->sha256:e3950472c3f2c0ab; interface/type unchanged. Cross-language survey: go struct/interface, rust enum/struct/trait, solidity contract all now populated. Production-path test test_kind_stable_id_coverage.py::TestContainerKindEndToEnd (orchestrator on a TS fixture) + unit tests; base.py 100% cov, 10119 tests green on targeted manifest. RESIDUAL (correctly out of scope — callable kinds must not use the name-scoped backstop, they need a TYPED producer id or they collide across overloads): solidity function/constructor + go interface-method declarations still emit stable_id=None -> filed WI-vibad-lajoz-jifut-zalad-sodad-bumab-dinij-vupif."  # e8d8

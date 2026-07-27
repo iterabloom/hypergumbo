@@ -1,0 +1,80 @@
+- op: create  # 70d5
+  at: '2026-07-11T20:36:12Z'  # 70d5
+  by: agent  # 70d5
+  actor: jgstern_agent  # 70d5
+  clock: 1  # 70d5
+  nonce: 70d5  # 70d5
+  data:  # 70d5
+    kind: work_item  # 70d5
+    title: "INV-nuzas call/attr residual: resolve the statically-resolvable phantom workspace-externals (4 categories A/B/D/E) — WI-hotug/WI-huhum pattern"  # 70d5
+    status: todo_hard  # 70d5
+    priority: 1  # 70d5
+    parent:  # 70d5
+    tags:  # 70d5
+    - dogfood  # 70d5
+    - dispatch_f3  # 70d5
+    isbefore: []  # 70d5
+    duplicate_of: []  # 70d5
+    not_duplicate_of: []  # 70d5
+    pr_ref:  # 70d5
+    description: "INV-nuzas's 2026-07-08 HUMAN RULING directs closing via option (i): fix the\nstatically-resolvable call/attr-facet residual phantom workspace-external nodes as\na fresh sub-WI (the WI-hotug/WI-huhum incremental pattern), THEN re-scope\nINV-nuzas's acceptance property with a documented carve-out for the\nstatically-invisible nodes. This is that sub-WI.\n\nFRESH MEASUREMENT (self-analysis on the hypergumbo monorepo, dev @ 00a2845f2b,\n2026-07-11): 27 external_symbol nodes carry a workspace (hypergumbo_*) prefix:\n\n- CARVE-OUT (8, statically-invisible — no static in-tree definition to resolve\n  to; per the ruling, these are the documented scope-out, NOT bugs):\n  * 5 scip_pb2 protobuf message classes (Document / Index / Occurrence /\n    Relationship / SymbolInformation) — synthesized at import by\n    _builder.BuildTopDescriptorsAndMessages; calls-reached.\n  * 3 package dunders — hypergumbo_core.__path__, hypergumbo_core.__file__,\n    hypergumbo_core.linkers.__path__; module_attr_ref-reached.\n\n- INV-jukok artifacts (2, OUT OF SCOPE here): test_scip_generated.py phantom\n  test-functions with ZERO inbound edges (the generated-file node-emission gap\n  owned by INV-jukok, a different mechanism than the call/attr facet).\n\n- RESOLVABLE (17, this sub-WI), across 4 categories:\n  * Category A (in-tree FUNCTION read via module_attr_ref, ~9): annotate_dataflow,\n    get_dataflow_config, run_all_linkers, hcl.{_extract_string_value,\n    find_child_by_type, node_text}, julia.find_child_by_type, py._make_symbol_id,\n    rust._find_child_by_field. Fix: extend _emit_module_attr_refs's WI-huhum\n    retarget from kind=variable to kind=function (EXACT module match, references\n    edge [taint-safe], scope-shadow guard). CATEGORY A LANDED (commit 8dc4100e5f)\n    — BEHAVIORAL EVIDENCE (self-analysis before->after): workspace-prefix externals\n    27 -> 18, the 9 category-A in-tree function reads all resolved\n    (annotate_dataflow, get_dataflow_config, run_all_linkers, hcl.{3},\n    julia.find_child_by_type, py._make_symbol_id, rust._find_child_by_field). Note\n    the exact-match also resolved the RE-EXPORTED functions (annotate_dataflow is\n    defined in dataflow.py, read as analyze.base.annotate_dataflow) because\n    WI-hotug CASE A's re-export aliasing already populated global_symbols under the\n    re-exporting module — so category A closed both defined-in-module and\n    re-exported function reads in one increment.\n  * Category B (in-tree MODULE/package read via module_attr_ref):\n    hypergumbo_core.linkers, prisma._analyzer, rust._analyzer,\n    rust_analyzer.analyzer. Fix: resolve mod.submodule to the file/package node\n    (module_to_file_id, like supply-verdict:F4 imports). PENDING.\n  * Category D (stdlib re-export mislabeled with a workspace prefix): cli.shutil,\n    store.datetime (module_attr_ref); serve._ws_clients.copy (calls). The\n    receiver module is in-tree but the attr is a stdlib name imported into it;\n    the phantom should carry the stdlib name, not the workspace prefix. PENDING.\n  * Category E (bash external): bash:hypergumbo — the bash analyzer's external\n    node for the `hypergumbo` command. Separate analyzer/mechanism. PENDING.\n\nSEQUENCING (per the ruling): once categories A-E all land, INV-nuzas re-scopes its\nacceptance property to \"no external_symbol canonical_name carries a workspace\nprefix EXCEPT the 8 documented statically-invisible carve-outs (5 scip_pb2 + 3\ndunders)\" and closes. NOT option (ii) route-to-file-node (would change calls-edge\nsemantics for all consumers + misrepresent a protobuf-message call as a file\ncall)."  # 70d5
+    fields: {}  # 70d5
+- op: discuss  # 984d
+  at: '2026-07-13T16:41:26Z'  # 984d
+  by: agent  # 984d
+  actor: jgstern_agent  # 984d
+  clock: 2  # 984d
+  nonce: 984d  # 984d
+  message: "PROGRESS (Category B, within-package) merged 041e56d29c. In-tree submodule reads (import pkg; pkg.sub where sub is a first-party module) now resolve to the submodule's file node via a references edge (module_to_file_id threaded into _extract_edges -> _emit_module_attr_refs; exact dotted match, taint-safe, shadow-guarded). BEHAVIORAL: self-corpus workspace-prefixed external_symbol nodes 18 -> 13. REMAINING (stays todo_hard; INV-nuzas stays violated — NOT closed): (1) cross-PACKAGE submodule reads (hypergumbo_lang_extended1.prisma._analyzer, hypergumbo_lang_mainstream.rust._analyzer) still phantom — analyze() builds module_to_file_id PER-PACKAGE, so resolving these needs a GLOBAL cross-package module map (architectural); (2) Category D stdlib re-exports (cli.shutil, store.datetime) need cross-module import info (the receiver module's own imports), and the serve._ws_clients.copy case needs dispatch-class handling; (3) Category E bash:hypergumbo needs a cross-language console-script bridge OR a human-approved 9th carve-out. The 8 documented carve-outs (5 scip_pb2 + 3 dunders) remain the intended INV-nuzas acceptance-property exception once the resolvable residual clears."  # 984d
+- op: discuss  # 2003
+  at: '2026-07-14T04:11:34Z'  # 2003
+  by: agent  # 2003
+  actor: jgstern_agent  # 2003
+  clock: 3  # 2003
+  nonce: '2003'  # 2003
+  message: "CORRECTION (2026-07-14): the 2026-07-13 note here claiming 'analyze() builds module_to_file_id PER-PACKAGE, so resolving these needs a GLOBAL cross-package module map (architectural)' is CODE-FALSIFIED. analyze_python(repo_root) runs once for the whole repo (py.py:5273); _detect_source_roots finds every package src/ (py.py:1814-1872); module_to_file_id is built from ALL packages' files (py.py:5405-5413) — the map is ALREADY global. The remaining Category-B _analyzer phantoms are NOT a missing-global-map issue: the module_attr_ref retarget (py.py:3613) is already module-scoped and the variable is registered (py.py:5335); the phantom persists via the INV-fahub shadow guard treating a method-local 'from pkg import submodule as Z' as a value-shadow (py.py:3408-3410 / 3612). Full analysis + residual breakdown on INV-nuzas (2026-07-14 record-correction). Do not act on the 'architectural global map' framing."  # 2003
+- op: discuss  # 9639
+  at: '2026-07-14T08:26:23Z'  # 9639
+  by: agent  # 9639
+  actor: jgstern_agent  # 9639
+  clock: 4  # 9639
+  nonce: '9639'  # 9639
+  message: "CATEGORY B COMPLETE + CORRECTION (2026-07-14, PR #640, dev @ c0a40ff689). The remaining Category-B nodes rust._analyzer and prisma._analyzer are RESOLVED; Category B is now fully closed (the other two, hypergumbo_core.linkers and rust_analyzer.analyzer, landed earlier in 041e56d29c).\n\nCORRECTION of my 2026-07-13 note: I mischaracterized rust._analyzer/prisma._analyzer as \"cross-PACKAGE submodule reads\" needing \"a GLOBAL cross-package module map (architectural)\". WRONG on both counts. (a) They are WITHIN-package: test_rust.py + rust.py both live in hypergumbo-lang-mainstream; test_prisma.py + prisma.py both in extended1. (b) They are module_attr_ref reads of a module-level kind=variable (_analyzer), NOT submodule reads. Also: module_to_file_id is in fact built GLOBAL across all packages (not per-package as that note stated) — but the _analyzer fix did not need it anyway; the retarget resolves via global_symbols[(module, name)].\n\nREAL CAUSE: module_imports is FILE-scoped (built by ast.walk over the whole tree), so a sibling test method's plain `import hypergumbo_lang_mainstream.rust as rust_module` pollutes the file-level map; the reading method's own `from hypergumbo_lang_mainstream import rust as rust_module` was then added to the INV-fahub shadow set UNCONDITIONALLY (_collect_local_bindings ImportFrom branch), so the module_attr_ref retarget guard suppressed the (correct) resolution and emitted a workspace-prefixed external phantom.\n\nFIX (PR #640, py.py _collect_local_bindings): on the retarget path (include_import_aliases=False), exclude a from-import whose absolute (level==0) target equals the same name's module_imports binding — a co-referent module alias, not a value shadow. Per-alias exact (derived from the actual AST node); a genuine value rebind (`from pkg import CONST as m`), a later `m = ...` reassignment (re-added via the Store branch), and a different-module collision all still shadow (never a confidently-wrong resolved edge); relative co-referent imports stay phantom (safe miss). ~15 lines. NO global cross-package map was needed.\n\nBEHAVIORAL EVIDENCE (whole-repo self-analysis, dev @ c0a40ff689): Category-B `<module>._analyzer:external_symbol` phantoms = 0 (was 2); the two test_rust.py reads now emit is_resolved=True references to the real rust.py _analyzer variable. Total workspace-prefixed external_symbol phantoms now = 12 = 8 documented carve-outs (5 scip_pb2 + 3 dunders) + Category D x3 + Category E x1. So the ONLY statically-resolvable residual left is D + E.\n\nCATEGORY D (corrected mechanism, still PENDING — this sub-WI is the follow-up tracker): cli.shutil + store.datetime (module_attr_ref) + serve._ws_clients:copy (call). A stdlib/BUILTIN referenced THROUGH an in-tree module gets the workspace module path. _emit_module_attr_refs._emit_one falls through to qname=f'{real_module}.{attr}' keyed on the workspace module when attr is neither an in-tree variable/function (WI-huhum retarget) nor an in-tree submodule (module_to_file_id); it never consults the in-tree module's OWN import table (store's `import datetime` -> stdlib datetime). The call phantom is the WI-zigah multi-segment handler (no in-tree guard), which treats the module-level SET var _ws_clients as a submodule and builtin set.copy as an external function. CORRECTION: serve._ws_clients.copy is set.copy() — a BUILTIN METHOD, not the stdlib `copy` MODULE — so a naive \"relabel to stdlib\" would MINT a new mislabel; it needs suppression / references-retarget. FIX SHAPE: thread each in-tree module's resolved import map into the two emitters so a reference-through-an-in-tree-module relabels to its true target; for the call case, resolve the intermediate segment as a module-level symbol FIRST. This is a REAL bug but NOT an ADR-0041/0037 violation (ADR-0041 explicitly accepts phantom workspace twins as tier-3 externals \"until the workspace-resolution fix lands\"; ADR-0037 governs resolution-state coherence, not module-name accuracy). Medium effort/risk; the shared WI-huhum/WI-zigah paths also serve legit stdlib dotted chains (urllib.request.urlopen) + third-party re-exports, so tag awaits_bakeoff_validation when landed. All 3 are test-file-reached (consumer views _is_test_path-filtered), so consumer impact is low.\n\nCATEGORY E (bash:hypergumbo): the hypergumbo CLI IS genuinely external to a bash script; this is a cosmetic acceptance-property match (the id contains \"hypergumbo\"). Low value; a candidate for a 9th documented carve-out (like the scip_pb2 / dunder carve-outs) rather than a code fix."  # 9639
+- op: discuss  # 0aaf
+  at: '2026-07-15T05:28:47Z'  # 0aaf
+  by: agent  # 0aaf
+  actor: jgstern_agent  # 0aaf
+  clock: 5  # 0aaf
+  nonce: 0aaf  # 0aaf
+  message: "NEW residual phantom surfaced (self-analysis, PR #655 session, dev @ 830f8bd426): hypergumbo_core.behavior_map_io.SubstrateError -- a module_attr_ref phantom introduced by the ADR-0042 survey-rename deprecation shim (behavior_map_io re-exports SubstrateError from survey_io). A Category-A-like re-export read that the WI-hotug CASE A / Category A aliasing does not resolve for this shim. It will disappear when the deprecation shim is removed at the window close (WI-sudin). Current workspace-prefix external_symbol phantom set (self-analysis): 6 = 3 dunder carve-outs (hypergumbo_core.__path__/__file__, linkers.__path__) + Category D cli.shutil + store.datetime + this SubstrateError. NOTE: the 5 scip_pb2 protobuf classes + Category E bash:hypergumbo no longer surface under the hypergumbo_-prefix filter -- re-measure the full residual before the acceptance-property re-scope. (This session's PR #655 fixed the ORTHOGONAL tier-classifier dependency-declaration facet, not the call/attr facet this item owns.)"  # 0aaf
+- op: update  # 74a5
+  at: '2026-07-15T07:14:17Z'  # 74a5
+  by: agent  # 74a5
+  actor: jgstern_agent  # 74a5
+  clock: 6  # 74a5
+  nonce: 74a5  # 74a5
+  set:  # 74a5
+    status: todo_soft  # 74a5
+    priority: 4  # 74a5
+- op: discuss  # acad
+  at: '2026-07-15T07:14:17Z'  # acad
+  by: agent  # acad
+  actor: jgstern_agent  # acad
+  clock: 7  # acad
+  nonce: acad  # acad
+  message: "DOWNGRADED to optional cleanup (2026-07-15). INV-nuzas closed via a human-approved re-scoped acceptance property that CARVES OUT the remaining Category D + E residual (all test/script-reached, so consumer-invisible). WI-tanot therefore no longer gates INV-nuzas. Remaining scope = Category D (cli.shutil / store.datetime: stdlib-thru-module relabel) + Category E (bash:hypergumbo: a 9th carve-out or cross-language console-script bridge). Both are test/script-reached ONLY (zero consumer-facing impact) and the D fix touches the shared taint-adjacent WI-huhum/WI-zigah module-attr-ref emitters (which also serve legit stdlib dotted chains + third-party re-exports -> bakeoff-gated regression risk). So: risk > benefit. Kept OPEN as todo_soft/P4 rather than wont_do (owner did not explicitly elect wont_do; reversible). Note behavior_map_io.SubstrateError (a NEW phantom this residual acquired) self-clears when the ADR-0042 shim is removed at WI-sudin (window-close)."  # acad
+- op: update  # b1d6
+  at: '2026-07-21T21:22:50Z'  # b1d6
+  by: agent  # b1d6
+  actor: jgstern_agent  # b1d6
+  clock: 8  # b1d6
+  nonce: b1d6  # b1d6
+  set:  # b1d6
+    title: "INV-nuzas phantom-external residual: only Cat D (stdlib-thru-module relabel) + Cat E (bash console-script) remain; Cats A+B landed and INV-nuzas already CLOSED via re-scoped acceptance property"  # b1d6
+- op: discuss  # ea64
+  at: '2026-07-21T21:22:50Z'  # ea64
+  by: agent  # ea64
+  actor: jgstern_agent  # ea64
+  clock: 9  # ea64
+  nonce: ea64  # ea64
+  message: "Staleness audit 2026-07-21: Category A landed (8dc4100e5f, in-tree function module_attr_ref reads) and Category B fully landed (041e56d29c submodule->file-node; c0a40ff689 _analyzer co-referent alias). Per the item's own 2026-07-15 discussion, INV-nuzas was CLOSED via a human-approved re-scoped acceptance property and WI-tanot was downgraded to todo_soft/P4 -- it no longer gates INV-nuzas. Remaining: Cat D (cli.shutil/store.datetime stdlib-thru-module relabel) + Cat E (bash:hypergumbo, candidate 9th carve-out), both consumer-invisible. Accurately scoped; light title refresh only."  # ea64

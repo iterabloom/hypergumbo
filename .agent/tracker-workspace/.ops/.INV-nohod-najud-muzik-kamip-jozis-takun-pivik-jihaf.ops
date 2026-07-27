@@ -67,3 +67,18 @@
     tags: [dogfood]  # 0d0e
   remove:  # 0d0e
     tags: [dogfooding]  # 0d0e
+- op: update  # e3ff
+  at: '2026-06-30T01:20:58Z'  # e3ff
+  by: agent  # e3ff
+  actor: jgstern_agent  # e3ff
+  clock: 7  # e3ff
+  nonce: e3ff  # e3ff
+  set:  # e3ff
+    status: satisfied  # e3ff
+- op: discuss  # 9363
+  at: '2026-06-30T01:20:58Z'  # 9363
+  by: agent  # 9363
+  actor: jgstern_agent  # 9363
+  clock: 8  # 9363
+  nonce: '9363'  # 9363
+  message: "Closed satisfied (human ruling A, 2026-06-29). The concern — test code dominating the consuming/RANKED surfaces — is already addressed where it matters; the 76% MAP-level test share is intentional (the behavior map is the complete substrate by design; human ruled the full map stays complete). BEHAVIORAL EVIDENCE: a real 'hypergumbo sketch -t 8000' of the 76%-test hypergumbo repo has ZERO test-path lines in its Key Symbols and Source Files sections (only the dedicated '## Tests' summary mentions tests, by design). Confirming code paths: (1) sketch Key Symbols excludes test files outright — _format_symbols filters 'not _is_test_path(s.path)' (sketch.py:5698); (2) sketch Source Files de-prioritizes tests — rank_files(exclude_test_edges=True) ranks files by non-test callers; (3) compact excludes tests by default — exclude_tests=True (compact.py:1236) + unconditional 'not _is_test_node' (1529). A 0.25x de-emphasis was implemented then REVERTED after TDD proved it a no-op (the sketch's ranked centrality dict contains no test symbols to down-weight — the premise that the sketch is test-dominated was false). DOCUMENTED INTENTIONAL ASYMMETRY: the 'symbols' command includes tests by default (excludes only with --exclude-tests, cli.py:1396); human declined option B (flip its default) since it has an opt-out and sketch/compact already cover the primary ranked surfaces. No code change."  # 9363

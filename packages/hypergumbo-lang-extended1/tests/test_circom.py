@@ -283,12 +283,12 @@ class TestCircomSkipped:
                 result = circom_module.analyze_circom(tmp_path)
         tc = result.run.toolchain
         assert isinstance(tc, dict), f"toolchain must be a dict, got {type(tc).__name__}"
-        assert tc.get("name") == "circom"
+        assert tc.get("name") == "python"  # WI-zugol: names the analyzing toolchain (python), not the language
         assert "version" in tc
         # to_dict must serialize a dict (schema contract); finalize's
         # ``run["toolchain"].get("name", "")`` must not crash.
         assert isinstance(result.run.to_dict()["toolchain"], dict)
-        assert result.run.to_dict()["toolchain"].get("name", "") == "circom"
+        assert result.run.to_dict()["toolchain"].get("name", "") == "python"
 
 
 class TestCircomSignalFlowConstraints:
@@ -368,3 +368,31 @@ template T() {
         result = analyze_circom(tmp_path)
         ref_edges = [e for e in result.edges if e.edge_type == "references"]
         assert len(ref_edges) == 0
+
+
+class TestCircomCyclomaticComplexity:
+    """INV-loguk slice C: callable circom symbols carry non-null CC + LOC.
+    Real-grammar verification (if/for/while/ternary + &&/|| (templates excluded))."""
+
+    def test_branchy_callables_have_expected_cc(self, tmp_path) -> None:
+        from hypergumbo_lang_extended1.circom import analyze_circom
+        (tmp_path / 'c.circom').write_text('pragma circom 2.0.0;\nfunction classify(a, b, n) {\n    var total = 0;\n    if (a > 0 && b > 0) { total = a + b; }\n    else if (a < 0 || b < 0) { total = a - b; }\n    else { total = 0; }\n    for (var i = 0; i < n; i++) { total += i; }\n    var j = 0;\n    while (j < n) { total += j; j++; }\n    return total;\n}\ntemplate Multiplier(N) {\n    signal input a;\n    signal output c;\n    c <== a * a;\n}\n')
+        result = analyze_circom(tmp_path)
+        assert not result.skipped
+        by = {s.name: s for s in result.symbols if s.kind in ('function',)}
+        m = by.get('classify') or next(s for n, s in by.items() if n.split('.')[-1] == 'classify' or n.endswith('classify'))
+        assert m.cyclomatic_complexity == 7, m.cyclomatic_complexity
+        assert m.line_span is not None
+
+    def test_callables_non_null_non_callables_null(self, tmp_path) -> None:
+        from hypergumbo_lang_extended1.circom import analyze_circom
+        (tmp_path / 'c.circom').write_text('pragma circom 2.0.0;\nfunction classify(a, b, n) {\n    var total = 0;\n    if (a > 0 && b > 0) { total = a + b; }\n    else if (a < 0 || b < 0) { total = a - b; }\n    else { total = 0; }\n    for (var i = 0; i < n; i++) { total += i; }\n    var j = 0;\n    while (j < n) { total += j; j++; }\n    return total;\n}\ntemplate Multiplier(N) {\n    signal input a;\n    signal output c;\n    c <== a * a;\n}\n')
+        result = analyze_circom(tmp_path)
+        callables = [s for s in result.symbols if s.kind in ('function',)]
+        assert callables
+        for s in callables:
+            assert s.cyclomatic_complexity is not None, (s.kind, s.name)
+            assert s.line_span is not None, (s.kind, s.name)
+        for s in result.symbols:
+            if s.kind not in ('function',):
+                assert s.cyclomatic_complexity is None, (s.kind, s.name)

@@ -1,0 +1,20 @@
+- op: create  # e6a4
+  at: '2026-07-03T22:03:58Z'  # e6a4
+  by: agent  # e6a4
+  actor: jgstern_agent  # e6a4
+  clock: 1  # e6a4
+  nonce: e6a4  # e6a4
+  data:  # e6a4
+    kind: work_item  # e6a4
+    title: "Harmonize py.py caller_symbol.name.split('.')[0] class-name derivation to [-2]"  # e6a4
+    status: todo_hard  # e6a4
+    priority: 4  # e6a4
+    parent:  # e6a4
+    tags:  # e6a4
+    - tech_debt  # e6a4
+    isbefore: []  # e6a4
+    duplicate_of: []  # e6a4
+    not_duplicate_of: []  # e6a4
+    pr_ref:  # e6a4
+    description: "Latent-bug flag from the WI-hiziz PR-2 design memo (wf_6991b0ea-f64) and review. py.py derives an enclosing class short name via caller_symbol.name.split('.')[0] at (formerly) py.py:3816 (an existing idiom predating PR-2). Today a method's name/qualified_name is exactly 'Class.method' (one dot), so [0] == [-2] and both yield the direct class. But the field is only bare-two-segment by current convention; if a future change ever chains the full scope ('Outer.Inner.method'), [0] yields 'Outer' (WRONG) while [-2] yields 'Inner' (the direct enclosing class — the class_ids_by_name key). WI-hiziz PR-2's new Site-1 emission deliberately uses .split('.')[-2] for exactly this robustness. Harmonize the sibling site(s) to [-2] to remove the latent divergence. Pure refactor, no behavior change on the current producer; verify with a nested-class test."  # e6a4
+    fields: {}  # e6a4

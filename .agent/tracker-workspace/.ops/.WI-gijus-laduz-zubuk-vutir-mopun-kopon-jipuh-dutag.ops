@@ -33,3 +33,18 @@
   clock: 3  # 6daf
   nonce: 6daf  # 6daf
   message: "Dogfood re-confirmation. The multi-pass meta.evidence[] accumulator (spec line 799) is carried on 0/110533 edges and has no backing field on the Edge dataclass at ir.py:605-617. Without a backing field there is nothing for to_dict to serialize, so the array is structurally undeliverable. This is a distinct fix CLASS from the empty-but-existing evidence_lang/evidence_spans fields (WI-kuluh / WI-vozar): those are populate-the-field fixes; this is an add-missing-field fix. A consumer reading meta.evidence[] never sees multi-pass corroboration for any edge."  # 6daf
+- op: update  # 598b
+  at: '2026-07-11T07:23:43Z'  # 598b
+  by: agent  # 598b
+  actor: jgstern_agent  # 598b
+  clock: 4  # 598b
+  nonce: 598b  # 598b
+  set:  # 598b
+    status: done  # 598b
+- op: discuss  # 887c
+  at: '2026-07-11T07:23:44Z'  # 887c
+  by: agent  # 887c
+  actor: jgstern_agent  # 887c
+  clock: 5  # 887c
+  nonce: 887c  # 887c
+  message: "Removed the meta.evidence[] multi-pass-accumulator spec promise per ADR-0040 (Accepted, D10) — PR merged as f59a286b09. meta.evidence[] was a PHANTOM: documented in spec prose (docs/hypergumbo-spec.md 'Multi-pass evidence' paragraph) but never emitted, declared, or read anywhere in code or docs/schema.json (no Edge.evidence field, no 'evidence' list-key property under Edge.meta, no producer/consumer). ADR-0040 rules descope. Removal = deleted the spec prose sentence promising it (rewrote the paragraph to describe the actual populated evidence provenance: meta.evidence_type + central-stamped meta.evidence_lang) and reworded the schema Edge.meta description from 'Edge metadata including evidence' to 'Edge metadata' (generate_schema_lib.py -> schema.json). BEHAVIORAL EVIDENCE: consumer-safe (nothing read it); the spec no longer promises an unimplemented accumulator, so the declared-not-populated gap it named is closed. (Bundled with WI-vozar/WI-kuluh in one atomic ADR-0040 PR.)"  # 887c

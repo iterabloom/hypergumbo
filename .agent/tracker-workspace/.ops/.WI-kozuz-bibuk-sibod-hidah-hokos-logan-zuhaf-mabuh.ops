@@ -34,3 +34,18 @@
   clock: 3  # dd1b
   nonce: dd1b  # dd1b
   message: "RELATED_BUT_DISTINCT to WI-romup: limits-block schema/version drift; kozuz explicitly cross-refs romup as the distinct sub-schema-versioning face vs its analyzer_version-prefix face. Distinct fix; cross-link not fold. (tracker-hygiene-sweep 2026-06-08T174504Z)"  # dd1b
+- op: update  # a45a
+  at: '2026-07-11T09:32:25Z'  # a45a
+  by: agent  # a45a
+  actor: jgstern_agent  # a45a
+  clock: 4  # a45a
+  nonce: a45a  # a45a
+  set:  # a45a
+    status: done  # a45a
+- op: discuss  # 0e80
+  at: '2026-07-11T09:32:25Z'  # 0e80
+  by: agent  # 0e80
+  actor: jgstern_agent  # 0e80
+  clock: 5  # 0e80
+  nonce: '0e80'  # 0e80
+  message: "Resolved — three faces (2026-07-11). (1) Undocumented subfields: max_tier_applied now documented in spec section-9 (PR jgstern-agent/docs/limits-max-tier-applied); analyzer_version was ALREADY documented (STALE premise) under 'Version fields: three independent axes'. (2) analyzer_version 'hypergumbo-' prefix vs analysis_runs[*].version — NOT a bug: intentional and documented — the version taxonomy explicitly records limits.analyzer_version = hypergumbo-<__version__> as a tool/package version, NOT a schema version; limits.py:209 emits f'hypergumbo-{__version__}' by design, and the new spec entry cross-refs this. (3) partial_results_reason='' on a complete map — FIXED by WI-tamop (STALE premise). BEHAVIORAL EVIDENCE (live repro 2026-07-11): Limits().to_dict() on a complete map does NOT contain the 'partial_results_reason' key ('partial_results_reason' in d -> False); limits.py:220-221 emits it only when non-empty; production-path tests test_limits.py::test_partial_results_reason_omitted_when_empty (asserts key absent) and ::test_partial_results_reason_present_when_set both pass. All faces resolved. (Note: the item's '5.0.1' version figure is itself stale — analyzer_version is now hypergumbo-6.1.0 — but the prefix behavior is unchanged.)"  # 0e80

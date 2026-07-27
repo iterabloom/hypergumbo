@@ -18,3 +18,18 @@
     pr_ref:  # e1b1
     description: "- **Subject:** The analysis-depth limit field is an always-constant dead value that misdescribes the analysis actually performed.\n- **Mechanic:** `limits.analysis_depth` defaults to the literal `\"syntax_only\"` and is never assigned anywhere in production code (only constructed with that literal in a test), so it is always emitted as `\"syntax_only\"` regardless of which passes ran. It is undocumented in both schema and spec.\n- **Expectation:** The field should either carry a real, computed analysis depth or be removed; a single edit (populate-or-remove) resolves both the dead-field and the factually-wrong-value aspects.\n- **Scope:** `analysis_depth == \"syntax_only\"` on the map even though that map contains a resolved call graph (61906 calls, 10704 imports, 619 dispatches_to, 4307 references, 7939 instantiates, 1347 module_attr_ref edges) — i.e. semantic-level analysis, not syntax-only. It also disagrees with the sibling depth descriptor `reproducibility_context.level == \"L2\"`, which is not cross-referenced.\n- **Exposure:** A consumer reading `analysis_depth` to decide whether call-graph / semantic analysis was performed.\n- **Consequence:** The consumer wrongly concludes no call-graph or semantic analysis ran and may discard or re-derive analysis that is in fact present; two depth/level vocabularies on the same map disagree, one of them wrong.\n\n---\n\n(Filed from dogfooding.)"  # e1b1
     fields: {}  # e1b1
+- op: update  # c23e
+  at: '2026-07-11T04:20:38Z'  # c23e
+  by: agent  # c23e
+  actor: jgstern_agent  # c23e
+  clock: 2  # c23e
+  nonce: c23e  # c23e
+  set:  # c23e
+    status: wont_do  # c23e
+- op: discuss  # 7c06
+  at: '2026-07-11T04:20:38Z'  # 7c06
+  by: agent  # 7c06
+  actor: jgstern_agent  # 7c06
+  clock: 3  # 7c06
+  nonce: 7c06  # 7c06
+  message: "TRUE DUPLICATE of WI-muzus (folded). Same field (limits.analysis_depth), same defect (dead 'syntax_only' constant misdescribing the semantic analysis performed, undocumented). Both independent reproduction scouts confirmed the duplication (WI-muzus is the older/canonical, created 2026-06-06 with 3 dogfood re-confirmations; WI-zusok created 2026-06-08). Resolved by the WI-muzus REMOVE (PR 9f5f24251b) — the field is gone, so this item's defect no longer exists. No separate work. (WI-zusok also noted a reproducibility_context.level='L2' cross-reference disagreement; moot now that analysis_depth is removed — the only remaining static depth descriptor is reproducibility_context.level, which is a distinct reproducibility axis.)"  # 7c06

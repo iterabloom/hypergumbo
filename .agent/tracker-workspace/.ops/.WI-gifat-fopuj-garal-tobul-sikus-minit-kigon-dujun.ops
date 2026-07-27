@@ -52,3 +52,18 @@
   clock: 5  # 851a
   nonce: 851a  # 851a
   message: "root-cause family member (b2) (connections-sweep 2026-06-08T1900Z)"  # 851a
+- op: update  # 7d17
+  at: '2026-07-01T16:03:55Z'  # 7d17
+  by: agent  # 7d17
+  actor: jgstern_agent  # 7d17
+  clock: 6  # 7d17
+  nonce: 7d17  # 7d17
+  set:  # 7d17
+    status: done  # 7d17
+- op: discuss  # dc90
+  at: '2026-07-01T16:03:55Z'  # dc90
+  by: agent  # dc90
+  actor: jgstern_agent  # dc90
+  clock: 7  # dc90
+  nonce: dc90  # dc90
+  message: "Stale-already-fixed by ADR-0039 Stage A. Premise: the spec's MUST 'consumers MUST default unknown evidence_type to 0.30, wrong for 63% of the corpus'. That MUST was WITHDRAWN: grep of docs/hypergumbo-spec.md finds no 0.30-default MUST; confidence.py:32 explicitly cites WI-gifat as the reason no blanket default was reintroduced ('re-introducing any blanket default would recreate the wrong-for-most-of-corpus problem WI-gifat filed'). Verified on merged dev. No such default is documented, so the named defect cannot occur. Closing done (fix landed with ADR-0039 Stage A)."  # dc90

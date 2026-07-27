@@ -97,7 +97,8 @@ structure Person where
         symbols = result.symbols
         struct = next((s for s in symbols if s.name == "Person"), None)
         assert struct is not None
-        assert struct.kind == "structure"
+        # WI-zipis / audit-0015: Lean `structure` folds to canonical `struct`.
+        assert struct.kind == "struct"
         assert struct.language == "lean"
 
 
@@ -470,3 +471,32 @@ def user := pSpec
             f"Good.lean should reference pSpec (imports Lib.Defs), "
             f"but got {len(good_refs)} edges"
         )
+
+
+class TestLeanCyclomaticComplexity:
+    """INV-loguk slice C: callable lean symbols carry non-null CC + LOC.
+    Real-grammar verification (if_then_else/match_alt + &&/||)."""
+
+    def test_branchy_callables_have_expected_cc(self, tmp_path) -> None:
+        from hypergumbo_lang_extended1.lean import analyze_lean
+        (tmp_path / 'T.lean').write_text('def classify (n : Nat) : String :=\n  if n == 0 then\n    "zero"\n  else if n == 1 then\n    "one"\n  else if n > 100 && n < 200 then\n    "big"\n  else\n    "other"\n\ndef describe (n : Nat) : String :=\n  match n with\n  | 0 => "none"\n  | 1 => "single"\n  | _ => "many"\n')
+        result = analyze_lean(tmp_path)
+        assert not result.skipped
+        by = {s.name: s for s in result.symbols if s.kind in ('function', 'theorem')}
+        assert by['classify'].cyclomatic_complexity == 5, by['classify'].cyclomatic_complexity
+        assert by['classify'].line_span is not None
+        assert by['describe'].cyclomatic_complexity == 4, by['describe'].cyclomatic_complexity
+        assert by['describe'].line_span is not None
+
+    def test_callables_non_null_non_callables_null(self, tmp_path) -> None:
+        from hypergumbo_lang_extended1.lean import analyze_lean
+        (tmp_path / 'T.lean').write_text('def classify (n : Nat) : String :=\n  if n == 0 then\n    "zero"\n  else if n == 1 then\n    "one"\n  else if n > 100 && n < 200 then\n    "big"\n  else\n    "other"\n\ndef describe (n : Nat) : String :=\n  match n with\n  | 0 => "none"\n  | 1 => "single"\n  | _ => "many"\n')
+        result = analyze_lean(tmp_path)
+        callables = [s for s in result.symbols if s.kind in ('function', 'theorem')]
+        assert callables
+        for s in callables:
+            assert s.cyclomatic_complexity is not None, (s.kind, s.name)
+            assert s.line_span is not None, (s.kind, s.name)
+        for s in result.symbols:
+            if s.kind not in ('function', 'theorem'):
+                assert s.cyclomatic_complexity is None, (s.kind, s.name)

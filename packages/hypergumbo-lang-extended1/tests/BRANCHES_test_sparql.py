@@ -3,6 +3,10 @@
 
 Tests specific branch paths in the SPARQL analyzer that may not be covered
 by the main test suite.
+
+Note: the former per-analyzer ``_make_symbol_id`` builder was folded into the
+shared ``make_doc_symbol_ids`` helper (tested in hypergumbo-core
+test_base.py), so there is no analyzer-local id-format test here.
 """
 from pathlib import Path
 from unittest.mock import patch

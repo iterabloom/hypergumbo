@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for the Puppet manifest analyzer."""
 
+import re
 from pathlib import Path
 from unittest.mock import patch
 
@@ -153,7 +154,7 @@ class TestAnalyzePuppet:
         # Cluster E sub-case (b) per audit-findings 0010: include Symbol was
         # dropped; the includes_class Edge carries the relationship.
         edge = next(
-            (e for e in result.edges if e.edge_type == "includes_class"
+            (e for e in result.edges if e.edge_type == "includes" and (e.meta or {}).get("ref_construct") == "puppet_class"
              and (e.meta or {}).get("class_name") == "nginx"),
             None,
         )
@@ -170,7 +171,7 @@ class TestAnalyzePuppet:
   }
 }""")
         result = analyze_puppet(tmp_path)
-        edge = next((e for e in result.edges if e.edge_type == "requires_resource"), None)
+        edge = next((e for e in result.edges if e.edge_type == "depends_on" and (e.meta or {}).get("ref_construct") == "puppet_require"), None)
         assert edge is not None
 
     def test_creates_notify_edge(self, tmp_path: Path) -> None:
@@ -181,7 +182,7 @@ class TestAnalyzePuppet:
   }
 }""")
         result = analyze_puppet(tmp_path)
-        edge = next((e for e in result.edges if e.edge_type == "notifies_resource"), None)
+        edge = next((e for e in result.edges if e.edge_type == "depends_on" and (e.meta or {}).get("ref_construct") == "puppet_notify"), None)
         assert edge is not None
 
     def test_creates_includes_class_edge(self, tmp_path: Path) -> None:
@@ -192,7 +193,7 @@ node 'server' {
   include nginx
 }""")
         result = analyze_puppet(tmp_path)
-        edge = next((e for e in result.edges if e.edge_type == "includes_class"), None)
+        edge = next((e for e in result.edges if e.edge_type == "includes" and (e.meta or {}).get("ref_construct") == "puppet_class"), None)
         assert edge is not None
 
     def test_analysis_run_metadata(self, tmp_path: Path) -> None:
@@ -223,8 +224,61 @@ node 'server' {
         result = analyze_puppet(tmp_path)
         cls = next((s for s in result.symbols if s.kind == "class"), None)
         assert cls is not None
-        assert cls.id == cls.stable_id
-        assert "puppet:" in cls.id
+        # INV-dulah: node.id and stable_id are minted together by
+        # make_doc_symbol_ids; node.id is "puppet:{path}:{kind}:{start_line}:{name}".
+        # Pin the 5-slot shape (numeric start_line in slot 4).
+        _slots = cls.id.split(":", 4)
+        assert len(_slots) == 5 and _slots[0] == "puppet" and _slots[3].isdigit(), cls.id
+        assert cls.stable_id != cls.id
+        assert cls.stable_id.startswith("sha256:")
+
+    def test_all_symbols_have_canonical_stable_id(self, tmp_path: Path) -> None:
+        # Reuse the complete-manifest fixture, which a passing test
+        # (test_complete_manifest) already exercises to yield class,
+        # defined_type, multiple resources, and a node symbol.
+        make_puppet_file(tmp_path, "init.pp", """class nginx (
+  String $server_name = 'localhost',
+  Integer $port = 80,
+) {
+  package { 'nginx':
+    ensure => installed,
+  }
+
+  service { 'nginx':
+    ensure => running,
+    enable => true,
+    require => Package['nginx'],
+  }
+
+  file { '/etc/nginx/nginx.conf':
+    ensure  => file,
+    notify  => Service['nginx'],
+  }
+}
+
+define nginx::vhost (
+  String $server_name,
+) {
+  file { "/etc/nginx/sites-enabled/${name}":
+    ensure => file,
+    notify => Service['nginx'],
+  }
+}
+
+node 'webserver.example.com' {
+  include nginx
+  nginx::vhost { 'mysite':
+    server_name => 'mysite.example.com',
+  }
+}""")
+        result = analyze_puppet(tmp_path)
+        assert not result.skipped
+        assert len(result.symbols) >= 1
+        canonical = re.compile(r"^sha256:[0-9a-f]{16}$")
+        for sym in result.symbols:
+            assert canonical.match(sym.stable_id), (
+                f"non-canonical stable_id for {sym.kind} {sym.name}: {sym.stable_id}"
+            )
 
     def test_span_info(self, tmp_path: Path) -> None:
         make_puppet_file(tmp_path, "init.pp", "class nginx {}")
@@ -295,9 +349,9 @@ node 'webserver.example.com' {
 
         # Check edges — Cluster E sub-case (b) per audit-findings 0010:
         # include Symbol dropped; includes_class Edge carries the relation.
-        require_edges = [e for e in result.edges if e.edge_type == "requires_resource"]
+        require_edges = [e for e in result.edges if e.edge_type == "depends_on" and (e.meta or {}).get("ref_construct") == "puppet_require"]
         assert len(require_edges) >= 1
-        notify_edges = [e for e in result.edges if e.edge_type == "notifies_resource"]
+        notify_edges = [e for e in result.edges if e.edge_type == "depends_on" and (e.meta or {}).get("ref_construct") == "puppet_notify"]
         assert len(notify_edges) >= 2
-        include_edges = [e for e in result.edges if e.edge_type == "includes_class"]
+        include_edges = [e for e in result.edges if e.edge_type == "includes" and (e.meta or {}).get("ref_construct") == "puppet_class"]
         assert len(include_edges) >= 1

@@ -14,7 +14,6 @@ by the main test suite. Focuses on:
 from pathlib import Path
 
 from hypergumbo_lang_common.scss import (
-    _make_symbol_id,
     analyze_scss,
     find_scss_files,
 )
@@ -25,14 +24,10 @@ def make_scss_file(tmp_path: Path, name: str, content: str) -> None:
     (tmp_path / name).write_text(content)
 
 
-class TestScssHelperFunctions:
-    """Branch coverage for helper functions."""
-
-    def test_make_symbol_id_format(self) -> None:
-        """Test symbol ID format."""
-        from pathlib import Path
-        symbol_id = _make_symbol_id(Path("styles/main.scss"), "$primary-color", "variable", 1)
-        assert symbol_id == "scss:styles/main.scss:variable:1:$primary-color"
+# The per-analyzer _make_symbol_id builder was folded into the shared
+# make_doc_symbol_ids helper (tested in hypergumbo-core test_base.py), so the
+# former test_make_symbol_id_format case and its TestScssHelperFunctions class
+# were retired here.
 
 
 class TestVariableExtraction:
@@ -231,7 +226,7 @@ class TestIncludeExtraction:
         result = analyze_scss(tmp_path)
         # Cluster E sub-case (b) per audit-findings 0010: include Symbol
         # dropped; uses_mixin Edge carries the relationship.
-        uses_edges = [e for e in result.edges if e.edge_type == "uses_mixin"]
+        uses_edges = [e for e in result.edges if e.edge_type == "includes" and (e.meta or {}).get("ref_construct") == "sass_mixin"]
         assert len(uses_edges) >= 1
 
 

@@ -1,0 +1,28 @@
+- op: create  # 0283
+  at: '2026-07-13T02:39:47Z'  # 0283
+  by: agent  # 0283
+  actor: jgstern_agent  # 0283
+  clock: 1  # 0283
+  nonce: '0283'  # 0283
+  data:  # 0283
+    kind: work_item  # 0283
+    title: "DataModel.confidence carries the same ranking-injection pattern as entrypoints but was scoped out of ADR-0039 R3 (which names only entrypoints + type_hierarchy); relocate its centrality_boost/dedup/sort to a rank_score analogue"  # 0283
+    status: todo_hard  # 0283
+    priority: 3  # 0283
+    parent:  # 0283
+    tags:  # 0283
+    - confidence  # 0283
+    - vocab  # 0283
+    isbefore: []  # 0283
+    duplicate_of: []  # 0283
+    not_duplicate_of: []  # 0283
+    pr_ref:  # 0283
+    description: ""  # 0283
+    fields: {}  # 0283
+- op: discuss  # a343
+  at: '2026-07-13T02:40:28Z'  # a343
+  by: agent  # a343
+  actor: jgstern_agent  # a343
+  clock: 2  # a343
+  nonce: a343  # a343
+  message: "Filed as the explicit scope-out from ADR-0039 R3 (thread A). datamodels.py:377/394/397 dedups by confidence, mutates model.confidence via a centrality_boost, and sorts by confidence — the identical ranking-injected-into-confidence pattern that R3 relocated to rank_score for entrypoints/type_hierarchy. sketch.py:5433/6519-6521 sorts datamodels by confidence too. R3 names ONLY entrypoints + type_hierarchy, so extending mid-thread would have violated ADR scope; deferred here. Fix shape: add a DataModel.rank_score (or reuse the pattern), move centrality_boost + dedup + sort onto it, leaving DataModel.confidence as detection reliability — mirroring PR-4. Verify no consumer reads DataModel.confidence as a ranking value elsewhere first."  # a343

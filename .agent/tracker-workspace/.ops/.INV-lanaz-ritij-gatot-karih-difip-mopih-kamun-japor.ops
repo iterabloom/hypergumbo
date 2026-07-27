@@ -1,0 +1,36 @@
+- op: create  # b0c6
+  at: '2026-06-23T18:17:38Z'  # b0c6
+  by: agent  # b0c6
+  actor: jgstern_agent  # b0c6
+  clock: 1  # b0c6
+  nonce: b0c6  # b0c6
+  data:  # b0c6
+    kind: invariant  # b0c6
+    title: "Swift field emission misclassifies function-local let/var as class-body fields"  # b0c6
+    status: violated  # b0c6
+    priority: 1  # b0c6
+    parent: WI-jusus-zaron-donok-hidif-vabob-ruvak-tilik-zibid  # b0c6
+    tags: []  # b0c6
+    isbefore: []  # b0c6
+    duplicate_of: []  # b0c6
+    not_duplicate_of: []  # b0c6
+    pr_ref:  # b0c6
+    description: "WI-jusus's swift F5 slice (stored-property -> field) emits kind=\"field\" for ANY tree-sitter `property_declaration` that has an enclosing type. But local `let`/`var` bindings inside method/function bodies ALSO parse as `property_declaration` and have an enclosing type, so they leak in as fields. Invariant violated: an emitted swift field symbol must be a stored property declared DIRECTLY in a type body, never a function-local binding.\n\nBehavioral evidence (DEEP cohort deep-20260623-134237/cohort-001/iter-001, SwiftyJSON):\n- 383 of 407 emitted swift \"field\" nodes are in Tests/ files (XCTest method-body locals); only ~10 are genuine Source/ stored properties (JSON.rawArray, _type, _error, ...).\n- Repro: ArrayTests.swift:29 `let array = [\"1\",\"2\",\"a\",\"B\",\"D\"]` inside `func testSingleDimensionalArraysGetter()` of `class ArrayTests` -> emitted as field `ArrayTests.array`. Same for `let json`, ConcurrencyTests.swift:50 `let processor = Processor()`, PrintableTests.swift:103 `var debugDescription = ...`.\n\nRoot cause: classification keys off `_get_enclosing_type(node)` (nearest ancestor type) WITHOUT verifying the property_declaration is a DIRECT member of the type body (class_body / struct body) -- i.e. that no function_declaration / init_declaration / closure body sits between the node and the type. A local in a method has an enclosing type, so it is misclassified as that type's field.\n\nFix shape: in swift.py property_declaration handling, restrict the enclosing_type->field branch to declarations directly in the type body; reject when an intervening function / initializer / closure scope is found. Preserve the parent==source_file -> variable branch (audited 11/11 correct on this cohort). TDD: fixture with a method-local `let` inside a type asserting NO field node; expect SwiftyJSON 407 -> ~10 fields after fix; re-validate via bakeoff-deep cycle --workdir deep-20260623-134237 (iter-002).\n\nDiscovered by adversarial ground-truth audit (workflow f5-groundtruth-audit; swift REFUTED, 1/12 field samples correct). REGRESSION: shipped in this F5 session's swift slice (PR 2c821f17ad). Lab notebook: notebookjournal_06232026_1411.md."  # b0c6
+    fields:  # b0c6
+      statement: "An emitted swift field symbol must be a stored property declared directly in a type body, never a function-local let/var binding."  # b0c6
+      root_cause: "swift.py field branch keys off _get_enclosing_type without checking the property_declaration is a direct member of the type body; method-local let/var (also parsed as property_declaration) inherit an enclosing type and leak in as fields."  # b0c6
+- op: update  # ee87
+  at: '2026-06-23T20:02:38Z'  # ee87
+  by: agent  # ee87
+  actor: jgstern_agent  # ee87
+  clock: 2  # ee87
+  nonce: ee87  # ee87
+  set:  # ee87
+    status: satisfied  # ee87
+- op: discuss  # d343
+  at: '2026-06-23T20:02:38Z'  # d343
+  by: agent  # d343
+  actor: jgstern_agent  # d343
+  clock: 3  # d343
+  nonce: d343  # d343
+  message: "Fixed in PR #4283 (merged origin/dev=1e0eb6ee2e). Behavioral evidence (closure-evidence discipline): re-ran the filed repro on canonical dev via bakeoff iter-002 (deep-20260623-134237/cohort-001/iter-002). SwiftyJSON swift field 407->19. The filed repro ArrayTests.array (let array = [...] at ArrayTests.swift:29 inside func testSingleDimensionalArraysGetter) is GONE; all 9 previously-leaked method-locals (json/jsonL2/processor/debugDescription/...) are gone. The 19 remaining are genuine stored properties (JSON struct rawArray/rawDictionary/type/... + CodableModel struct fields + test-class fixtures testData/family). The two dropped Source/ entries (let object in init(data:), var merged in merged(with:)) confirmed method-locals. No cross-language regression: iter-002 emission matrix identical to iter-001 for the other 7 languages; 0 non-canonical stable_ids, 0 per-file collisions. Root-cause fix: swift field-eligibility now requires the property_declaration DIRECT parent to be a type-body node (class_body / enum_class_body), not merely _get_enclosing_type being truthy. Regression tests TestSwiftMethodLocalExclusion (method/init/closure-local) lock it; 19529 passed, 100% coverage."  # d343

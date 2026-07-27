@@ -34,6 +34,7 @@ from hypergumbo_core.analyze.base import (
     make_unresolved_edge,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -52,7 +53,7 @@ def find_janet_files(root: Path) -> Iterator[Path]:
 
 def _get_node_text(node: "tree_sitter.Node") -> str:
     """Get the text content of a node."""
-    return node.text.decode("utf-8", errors="replace")
+    return (node.text or b"").decode("utf-8", errors="replace")
 
 
 def _get_function_name(node: "tree_sitter.Node") -> Optional[str]:
@@ -193,6 +194,12 @@ class JanetAnalyzer(TreeSitterAnalyzer):
                     origin_run_id=run.execution_id,
                     signature=signature,
                     meta={"param_count": len(params)},
+                    # INV-loguk: homoiconic head-symbol CC (tuple-headed forms +
+                    # dedicated if/while nodes); LOC from span.
+                    cyclomatic_complexity=compute_cyclomatic_complexity(
+                        node, "janet",
+                    ),
+                    line_span=node.end_point[0] - node.start_point[0] + 1,
                 )
                 analysis.symbols.append(sym)
                 analysis.node_for_symbol[sym.id] = node
@@ -274,7 +281,6 @@ class JanetAnalyzer(TreeSitterAnalyzer):
                                 origin=PASS_ID,
                                 origin_run_id=run.execution_id,
                                 evidence_type="ast_call_direct",
-                                confidence=1.0,
                                 evidence_lang="janet",
                             )
                         else:

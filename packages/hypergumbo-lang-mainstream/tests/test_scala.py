@@ -1436,3 +1436,315 @@ def helper(): Unit = {
                 f"Normal name 'helper' should have confidence >= 0.50, "
                 f"got {edge.confidence}"
             )
+
+
+class TestScalaCyclomaticComplexity:
+    """INV-loguk slice C: callable Scala symbols carry non-null CC + LOC.
+    Real-grammar verification of the scala BRANCH_NODE_TYPES entry
+    (if/for/while/do_while_expression + case_clause)."""
+
+    def test_branchy_method_has_cc_and_loc(self, tmp_path) -> None:
+        from hypergumbo_lang_mainstream.scala import analyze_scala
+        (tmp_path / "F.scala").write_text("""object Demo {
+  def classify(n: Int): String = {
+    if (n < 0) "neg"
+    else if (n == 0) "zero"
+    else {
+      for (i <- 0 until n) { println(i) }
+      while (n > 100) { println(n) }
+      n match {
+        case 1 => "one"
+        case 2 => "two"
+        case _ => "many"
+      }
+    }
+  }
+}
+""")
+        result = analyze_scala(tmp_path)
+        fn = next(s for s in result.symbols if s.name == "Demo.classify")
+        # base 1 + 2 if_expression + for + while + 3 case_clause = 8
+        assert fn.cyclomatic_complexity == 8
+        assert fn.line_span is not None and fn.line_span >= 4
+
+    def test_straight_line_method_cc_is_one(self, tmp_path) -> None:
+        from hypergumbo_lang_mainstream.scala import analyze_scala
+        (tmp_path / "G.scala").write_text("object G { def plain(x: Int): Int = x + 1 }\n")
+        result = analyze_scala(tmp_path)
+        fn = next(s for s in result.symbols if s.name == "G.plain")
+        assert fn.cyclomatic_complexity == 1
+        assert fn.line_span is not None
+
+    def test_callables_non_null_non_callables_null(self, tmp_path) -> None:
+        from hypergumbo_lang_mainstream.scala import analyze_scala
+        (tmp_path / "M.scala").write_text("""class Box {
+  def get(x: Int): Int = if (x > 0) x else 0
+}
+trait Shape { def area(): Double }
+""")
+        result = analyze_scala(tmp_path)
+        callable_kinds = ("function", "method", "constructor")
+        callables = [s for s in result.symbols if s.kind in callable_kinds]
+        assert callables
+        for s in callables:
+            assert s.cyclomatic_complexity is not None, (s.kind, s.name)
+            assert s.line_span is not None, (s.kind, s.name)
+        for s in result.symbols:
+            if s.kind not in callable_kinds:
+                assert s.cyclomatic_complexity is None, (s.kind, s.name)
+
+
+class TestScalaInvFahubReceiverGating:
+    """INV-fahub (WI-bihit): an unresolvable-receiver call MUST emit an honest
+    unresolved external edge, not a high-confidence ``calls`` edge to an
+    arbitrary same-named internal def (the Scala ``copy``/``setTo`` @0.68 funnel).
+
+    Mirrors the Python receiver-gating (py.py) + the shared ``inherited_calls``
+    linker contract (INV-nilud): the analyzer SUPPRESSES the misbind and stamps
+    ``receiver_type_hint`` when the receiver's type is known; the linker recovers
+    the resolved edge (Site-2 Step-1). Recall recovery here also threads
+    annotation-typed vals (``val x: Foo = f()``) into the receiver type map."""
+
+    def test_untyped_receiver_does_not_misbind(self, tmp_path: Path) -> None:
+        """``rec.copy()`` with an untyped receiver must NOT bind to an arbitrary
+        same-named ``Record.copy``."""
+        from hypergumbo_lang_mainstream.scala import analyze_scala
+
+        (tmp_path / "models.scala").write_text(
+            "class Record {\n  def copy(): Record = this\n}\n"
+        )
+        (tmp_path / "svc.scala").write_text(
+            "object Service {\n"
+            "  def run(): Unit = {\n"
+            "    val rec = fetchRecord()\n"
+            "    rec.copy()\n"
+            "  }\n"
+            "}\n"
+        )
+        result = analyze_scala(tmp_path)
+        record_copy = next(
+            s for s in result.symbols
+            if s.name == "Record.copy" and s.kind == "method"
+        )
+        misbinds = [
+            e for e in result.edges
+            if e.edge_type == "calls" and e.dst == record_copy.id and "run" in e.src
+        ]
+        assert misbinds == [], f"unresolvable receiver misbound copy(): {misbinds}"
+
+    def test_untyped_receiver_emits_canonical_unresolved_method_edge(
+        self, tmp_path: Path
+    ) -> None:
+        """The suppressed call emits the py.py-canonical shape: is_resolved=False,
+        dst ``scala:external:...:unresolved``, evidence_type=ast_call (→ 0.40),
+        meta ``call_construct=method``, and NO ``receiver_type_hint`` (untyped)."""
+        from hypergumbo_lang_mainstream.scala import analyze_scala
+
+        (tmp_path / "models.scala").write_text(
+            "class Record {\n  def copy(): Record = this\n}\n"
+        )
+        (tmp_path / "svc.scala").write_text(
+            "object Service {\n"
+            "  def run(): Unit = {\n"
+            "    val rec = fetchRecord()\n"
+            "    rec.copy()\n"
+            "  }\n"
+            "}\n"
+        )
+        result = analyze_scala(tmp_path)
+        copy_edges = [
+            e for e in result.edges
+            if e.edge_type == "calls" and "run" in e.src
+            and e.dst.endswith(":copy:unresolved")
+        ]
+        assert len(copy_edges) == 1, [
+            e.dst for e in result.edges if "run" in e.src
+        ]
+        e = copy_edges[0]
+        assert e.is_resolved is False
+        assert "external" in e.dst
+        assert e.evidence_type == "ast_call"
+        assert abs(e.confidence - 0.40) < 1e-9, e.confidence
+        assert (e.meta or {}).get("call_construct") == "method"
+        assert "receiver_type_hint" not in (e.meta or {})
+
+    def test_annotated_val_receiver_resolves(self, tmp_path: Path) -> None:
+        """Recall recovery: a receiver typed by annotation (``val f: Foo = …``)
+        resolves — the annotated-val type is threaded into the receiver map."""
+        from hypergumbo_lang_mainstream.scala import analyze_scala
+
+        (tmp_path / "App.scala").write_text(
+            "class Foo {\n  def bar(): Unit = {}\n}\n"
+            "object Service {\n"
+            "  def use(): Unit = {\n"
+            "    val f: Foo = makeFoo()\n"
+            "    f.bar()\n"
+            "  }\n"
+            "}\n"
+        )
+        result = analyze_scala(tmp_path)
+        resolved = [
+            e for e in result.edges
+            if e.edge_type == "calls" and "use" in e.src
+            and "bar" in e.dst and e.is_resolved
+        ]
+        assert len(resolved) == 1, [
+            (e.dst, e.is_resolved) for e in result.edges
+            if "use" in e.src and "bar" in e.dst
+        ]
+        assert "Foo" in resolved[0].dst
+
+    def test_typed_unresolvable_receiver_stamps_hint(self, tmp_path: Path) -> None:
+        """A receiver whose type IS known but whose method isn't found in-file
+        emits unresolved WITH ``receiver_type_hint`` so the shared linker can
+        recover it (Site-2 Step-1)."""
+        from hypergumbo_lang_mainstream.scala import analyze_scala
+
+        (tmp_path / "svc.scala").write_text(
+            "object Service {\n"
+            "  def go(x: UnknownType): Unit = {\n"
+            "    x.doThing()\n"
+            "  }\n"
+            "}\n"
+        )
+        result = analyze_scala(tmp_path)
+        hinted = [
+            e for e in result.edges
+            if e.edge_type == "calls" and "go" in e.src
+            and e.dst.endswith(":doThing:unresolved")
+        ]
+        assert len(hinted) == 1, [e.dst for e in result.edges if "go" in e.src]
+        assert hinted[0].is_resolved is False
+        assert (hinted[0].meta or {}).get("receiver_type_hint") == "UnknownType"
+
+    def test_bare_call_suffix_matched_to_unrelated_method_does_not_misbind(
+        self, tmp_path: Path
+    ) -> None:
+        """The DOMINANT Scala funnel (real-repro 2026-07-18, docspell 242
+        misbinds): a BARE call — implicit-``this`` (case-class ``.copy()``) or a
+        chained-receiver call whose receiver was dropped — whose ONLY resolver
+        match is a *suffix* match to an unrelated class's ``method`` MUST NOT bind
+        ``is_resolved=True`` @0.68. A class-member method needs a receiver/scope;
+        a bare suffix match is the magnet (dozens of files → one arbitrary
+        ``FileCopyTask.copy``). It must be withheld → honest unresolved edge
+        (INV-nogof withhold-not-pick-first)."""
+        from hypergumbo_lang_mainstream.scala import analyze_scala
+
+        (tmp_path / "task.scala").write_text(
+            "class FileCopyTask {\n  def copy(src: String): String = src\n}\n"
+        )
+        (tmp_path / "env.scala").write_text(
+            "case class InputEnv(env: Int) {\n"
+            "  def addEnv(): InputEnv = copy(env = 1)\n"
+            "}\n"
+        )
+        result = analyze_scala(tmp_path)
+        task_copy = next(
+            s for s in result.symbols
+            if s.name == "FileCopyTask.copy" and s.kind == "method"
+        )
+        misbinds = [
+            e for e in result.edges
+            if e.edge_type == "calls" and e.dst == task_copy.id
+            and "addEnv" in e.src and e.is_resolved
+        ]
+        assert misbinds == [], (
+            f"bare copy() suffix-misbound to FileCopyTask.copy: {misbinds}"
+        )
+        # The withheld edge carries the enclosing class so the Site-1 MRO walker
+        # can recover it iff ``copy`` is actually inherited by ``InputEnv``.
+        deferred = [
+            e for e in result.edges
+            if e.edge_type == "calls" and "addEnv" in e.src
+            and e.dst.endswith(":copy:unresolved")
+        ]
+        assert len(deferred) == 1, [e.dst for e in result.edges if "addEnv" in e.src]
+        assert (deferred[0].meta or {}).get("enclosing_class") == "InputEnv"
+
+    def test_bare_cross_class_same_file_method_deferred_stamps_enclosing_class(
+        self, tmp_path: Path
+    ) -> None:
+        """A bare call to a DIFFERENT same-file class's method (not implicit
+        ``this``, and previously bound @0.85 via ``local_symbols``) is deferred
+        to the inherited_calls Site-1 walker with an ``enclosing_class`` hint —
+        NOT bound directly to the unrelated method. This closes the same-file
+        ``local_symbols`` half of the funnel so it is provably 0."""
+        from hypergumbo_lang_mainstream.scala import analyze_scala
+
+        (tmp_path / "m.scala").write_text(
+            "class Helper {\n  def build(x: Int): Int = x\n}\n"
+            "class Worker {\n  def go(): Int = build(1)\n}\n"
+        )
+        result = analyze_scala(tmp_path)
+        helper_build = next(
+            s for s in result.symbols
+            if s.name == "Helper.build" and s.kind == "method"
+        )
+        misbinds = [
+            e for e in result.edges
+            if e.edge_type == "calls" and e.dst == helper_build.id
+            and "go" in e.src and e.is_resolved
+        ]
+        assert misbinds == [], f"cross-class bare call misbound: {misbinds}"
+        deferred = [
+            e for e in result.edges
+            if e.edge_type == "calls" and "go" in e.src
+            and e.dst.endswith(":build:unresolved")
+        ]
+        assert len(deferred) == 1, [e.dst for e in result.edges if "go" in e.src]
+        assert deferred[0].is_resolved is False
+        assert (deferred[0].meta or {}).get("enclosing_class") == "Worker"
+
+    def test_bare_implicit_this_same_class_resolves_directly(
+        self, tmp_path: Path
+    ) -> None:
+        """Recall guard: a bare implicit-``this`` call to a method of the SAME
+        enclosing class still resolves directly (``_owner == enclosing_type``)."""
+        from hypergumbo_lang_mainstream.scala import analyze_scala
+
+        (tmp_path / "c.scala").write_text(
+            "class Calc {\n"
+            "  def total(): Int = helper()\n"
+            "  def helper(): Int = 41\n"
+            "}\n"
+        )
+        result = analyze_scala(tmp_path)
+        calc_helper = next(
+            s for s in result.symbols
+            if s.name == "Calc.helper" and s.kind == "method"
+        )
+        resolved = [
+            e for e in result.edges
+            if e.edge_type == "calls" and e.dst == calc_helper.id
+            and "total" in e.src and e.is_resolved
+        ]
+        assert len(resolved) == 1, [
+            (e.dst, e.is_resolved) for e in result.edges if "total" in e.src
+        ]
+
+    def test_bare_call_exact_free_function_still_resolves(
+        self, tmp_path: Path
+    ) -> None:
+        """Recall guard: the suffix-to-method gate is narrow. A bare call whose
+        target is a genuine same-file free/object def (exact match, not a
+        cross-class suffix magnet) still resolves."""
+        from hypergumbo_lang_mainstream.scala import analyze_scala
+
+        (tmp_path / "app.scala").write_text(
+            "object App {\n"
+            "  def helper(x: Int): Int = x + 1\n"
+            "  def run(): Int = helper(41)\n"
+            "}\n"
+        )
+        result = analyze_scala(tmp_path)
+        helper = next(
+            s for s in result.symbols if s.name.endswith("helper")
+        )
+        resolved = [
+            e for e in result.edges
+            if e.edge_type == "calls" and e.dst == helper.id
+            and "run" in e.src and e.is_resolved
+        ]
+        assert len(resolved) == 1, [
+            (e.dst, e.is_resolved) for e in result.edges if "run" in e.src
+        ]

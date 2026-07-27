@@ -31,3 +31,39 @@
   clock: 2  # 178f
   nonce: 178f  # 178f
   message: "[+ tranch_04: WI-kipod — related (card 025/F70.A2): explain never reads Symbol.docstring and sketch renders the path not the captured docstring summary — captured docstrings (74-90% coverage) never reach the two agent-facing commands; adjacent to this sketch read-path concern.]"  # 178f
+- op: discuss  # 1d6e
+  at: '2026-06-29T00:55:10Z'  # 1d6e
+  by: agent  # 1d6e
+  actor: jgstern_agent  # 1d6e
+  clock: 3  # 1d6e
+  nonce: 1d6e  # 1d6e
+  message: "Cluster design (2026-06-28, after WI-nurun completion; human greenlit the broad cross-cluster fix). Scope confirmed: INV-dadaf already SATISFIED (routes --input no longer writes artifacts). Open: INV-jumim (P1), WI-ribag (P2), WI-zipoj (P4), and this umbrella.\n\nRoot cause restated from the read-path map: generate_sketch (sketch.py) sources from repo_root filesystem walks — _analyze_test_files (find_files->rglob, the INV-jumim 60s bottleneck), the structure tree (rglob at ~1270/1350), _get_repo_languages, and config discovery — with NO precondition checking whether an authoritative source (the --input behavior map, or fresh cached analysis) already carries the data. Separately, centrality + per-file embeddings (WI-ribag) recompute on every warm sketch with no cache reuse.\n\nData partition (what the map authoritatively provides vs what genuinely needs disk):\n- FROM MAP (when --input given): the file/node universe, per-node is_test_file (test-file COUNT + paths), per-node language (language detection), per-node lines_of_code (LOC). The structure tree can be built from node paths.\n- NEEDS DISK (scoped to the map's files only): test-file framework-import detection + config/source CONTENT sections (the map stores no raw text). When --input is given these reads must be scoped to the map's file set, NOT a CWD rglob.\n\nDesign: a shared sketch read-path entry guard (SketchReadContext / cache-policy) that, when --input (or fresh cache) is present, derives universe/test-info/languages/structure from the map and restricts any residual disk reads to the map's files; plus a cache layer for centrality + per-file embeddings keyed like the analysis JSON.\n\nProposed staged PRs:\n- PR-A (INV-jumim, P1): map-driven test-file counting (short-circuit the rglob using is_test_file) + map-scoped universe/structure so --input summarizes the MAP, not a re-walked CWD. Fixes the 60s hang + the wrong-universe correctness bug (902-node pkg map -> whole-repo sketch).\n- PR-B (WI-ribag, P2): cache centrality + per-file embeddings so warm sketch reuses them (the 83s-run -> 202s-warm-sketch inversion).\n- PR-C (WI-zipoj, P4): validate at >1M-LOC scale + make comparison-sketch passes optional (WI-fufop's --no-comparison-sketches already exists; wire/default it).\n- INV-papuj closes when the shared read-path short-circuit + cache-policy is in place (the umbrella invariant)."  # 1d6e
+- op: discuss  # 2640
+  at: '2026-06-29T03:55:01Z'  # 2640
+  by: agent  # 2640
+  actor: jgstern_agent  # 2640
+  clock: 4  # 2640
+  nonce: '2640'  # 2640
+  message: "Cluster PR-A landed: INV-jumim satisfied via PR #320 (f6087587c3). The shared read-path seam is now in place — generate_sketch installs a synthetic FileIndex from the --input map's node paths so find_files/_analyze_test_files, languages, config, source-files, and the (now FileIndex-aware) Structure tree summarize the map's universe (no CWD re-walk). Remaining for the umbrella: PR-B (WI-ribag — cache centrality + per-file embeddings so a fully-warm sketch reuses them) and PR-C (WI-zipoj — >1M-LOC validation + default the comparison-sketch-optional path). INV-papuj closes once the centrality/embedding cache layer (the second half of the 'use-the-cache-when-available' precondition) lands."  # 2640
+- op: discuss  # 2f27
+  at: '2026-06-29T05:19:12Z'  # 2f27
+  by: agent  # 2f27
+  actor: jgstern_agent  # 2f27
+  clock: 5  # 2f27
+  nonce: 2f27  # 2f27
+  message: "Cluster PR-B landed: WI-ribag done via PR #321. The shared read-path short-circuit + cache-policy is now substantially in place — PR-A scopes the --input read-path to the map's universe (no CWD re-walk), PR-B reads the 4x/16x comparison sketches from a stats sidecar instead of regenerating them (the dominant warm-sketch cost). Remaining: PR-C (WI-zipoj, P4) — >1M-LOC corpus-scale validation + a size-based default for the comparison-sketch path. INV-papuj closes after PR-C. Residual deferred (not an INV-papuj violation since it's not an ignored cache): symbol-centrality recompute within a single generate_sketch is not cached."  # 2f27
+- op: update  # bd7f
+  at: '2026-06-29T09:15:28Z'  # bd7f
+  by: agent  # bd7f
+  actor: jgstern_agent  # bd7f
+  clock: 6  # bd7f
+  nonce: bd7f  # bd7f
+  set:  # bd7f
+    status: satisfied  # bd7f
+- op: discuss  # 9bb9
+  at: '2026-06-29T09:15:29Z'  # 9bb9
+  by: agent  # 9bb9
+  actor: jgstern_agent  # 9bb9
+  clock: 7  # 9bb9
+  nonce: 9bb9  # 9bb9
+  message: "Satisfied by the PR-A + PR-B cluster (human-greenlit broad fix, 2026-06-28/29). Invariant: 'for any sketch subcommand invoked when fresh cached data exists on disk, the read-path must short-circuit and reuse the cache; no sketch subcommand may re-walk the filesystem or recompute derived data when an authoritative cached version is available.' BEHAVIORAL EVIDENCE (two live repros on the real artifact): (1) PR #320 (INV-jumim) — generate_sketch synthesizes a FileIndex from the --input map's node paths so find_files/_analyze_test_files, languages, config, source-files, and the (now FileIndex-aware) Structure tree summarize the MAP instead of re-walking the CWD; repro: 'sketch --input <90-file pkg map>' from the repo root = 9.6s (was >30s hang) and package-scoped (not whole-repo). (2) PR #321 (WI-ribag) — the 4x/16x comparison sketches now read from a .stats.json sidecar cache instead of regenerating every run; repro: fully-warm 'hypergumbo . -t 8000' WITH the table = ~28s (was ~155s). Members all resolved: INV-jumim satisfied, WI-ribag done, WI-zipoj done (scale-invariant reasoning + self-corpus before/after; >1M-LOC absolute deferred), INV-dadaf satisfied (routes --input no longer writes artifacts). RESIDUAL (NOT an INV-papuj violation): symbol-centrality recompute within a single generate_sketch is uncached — but there is no 'authoritative cached version available' being ignored (centrality is simply not cached), so the invariant holds; caching it is a deferred optimization. Separately surfaced: WI-rukaz (analysis/sketch_precomputed throughput at >1M-LOC, distinct from this read-path invariant)."  # 9bb9

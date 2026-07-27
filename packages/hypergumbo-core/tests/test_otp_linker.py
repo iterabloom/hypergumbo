@@ -199,7 +199,8 @@ end
         edge = result.edges[0]
         assert edge.src == caller_sym.id
         assert edge.dst == handler_sym.id
-        assert edge.edge_type == "otp_call"
+        assert edge.edge_type == "dispatches_to"
+        assert (edge.meta or {})["mechanism"] == "otp_call"
 
     def test_links_cast_to_handle_cast_same_module(self, tmp_path: Path) -> None:
         """Links GenServer.cast(variable) to handle_cast in same module."""
@@ -249,7 +250,8 @@ end
         edge = result.edges[0]
         assert edge.src == caller_sym.id
         assert edge.dst == handler_sym.id
-        assert edge.edge_type == "otp_cast"
+        assert edge.edge_type == "dispatches_to"
+        assert (edge.meta or {})["mechanism"] == "otp_cast"
 
     def test_links_dunder_module_to_same_module(self, tmp_path: Path) -> None:
         """Links GenServer.call(__MODULE__, ...) to same module's handle_call."""
@@ -370,8 +372,8 @@ end
         )
         result = otp_linker(ctx)
 
-        call_edges = [e for e in result.edges if e.edge_type == "otp_call"]
-        cast_edges = [e for e in result.edges if e.edge_type == "otp_cast"]
+        call_edges = [e for e in result.edges if e.edge_type == "dispatches_to" and (e.meta or {}).get("mechanism") == "otp_call"]
+        cast_edges = [e for e in result.edges if e.edge_type == "dispatches_to" and (e.meta or {}).get("mechanism") == "otp_cast"]
         assert len(call_edges) >= 1
         assert len(cast_edges) >= 1
         # call edge: get → handle_call
@@ -444,7 +446,8 @@ end
         edge = result.edges[0]
         assert edge.src == caller_sym.id
         assert edge.dst == handler_sym.id
-        assert edge.edge_type == "otp_call"
+        assert edge.edge_type == "dispatches_to"
+        assert (edge.meta or {})["mechanism"] == "otp_call"
         # Cross-module has lower confidence than same-module
         assert edge.confidence == 0.80
 
@@ -503,7 +506,8 @@ end
         edge = result.edges[0]
         assert edge.src == caller_sym.id
         assert edge.dst == handler_sym.id
-        assert edge.edge_type == "otp_cast"
+        assert edge.edge_type == "dispatches_to"
+        assert (edge.meta or {})["mechanism"] == "otp_cast"
         assert edge.confidence == 0.80
 
 
@@ -923,7 +927,8 @@ end
         edge = result.edges[0]
         assert edge.src == caller_sym.id
         assert edge.dst == handler_sym.id
-        assert edge.edge_type == "otp_call"
+        assert edge.edge_type == "dispatches_to"
+        assert (edge.meta or {})["mechanism"] == "otp_call"
 
     def test_deeply_nested_alias_resolves(self, tmp_path: Path) -> None:
         """Deeply nested module name resolves via suffix match."""
@@ -978,7 +983,8 @@ end
 
         assert len(result.edges) >= 1
         assert result.edges[0].dst == handler_sym.id
-        assert result.edges[0].edge_type == "otp_cast"
+        assert result.edges[0].edge_type == "dispatches_to"
+        assert (result.edges[0].meta or {})["mechanism"] == "otp_cast"
 
     def test_no_match_when_module_unresolvable(self, tmp_path: Path) -> None:
         """When no exact or suffix match exists, no edge is created."""
@@ -1216,7 +1222,8 @@ handle_call(get_data, _From, State) ->
         edge = result.edges[0]
         assert edge.src == caller_sym.id
         assert edge.dst == handler_sym.id
-        assert edge.edge_type == "otp_call"
+        assert edge.edge_type == "dispatches_to"
+        assert (edge.meta or {})["mechanism"] == "otp_call"
 
     def test_links_erlang_cast_to_handle_cast(self, tmp_path: Path) -> None:
         """Links gen_server:cast(Pid, msg) to handle_cast/2 in same module."""
@@ -1271,7 +1278,8 @@ handle_cast({update, Data}, State) ->
         edge = result.edges[0]
         assert edge.src == caller_sym.id
         assert edge.dst == handler_sym.id
-        assert edge.edge_type == "otp_cast"
+        assert edge.edge_type == "dispatches_to"
+        assert (edge.meta or {})["mechanism"] == "otp_cast"
 
     def test_links_erlang_question_module(self, tmp_path: Path) -> None:
         """Links gen_server:call(?MODULE, ...) to same module's handle_call."""
@@ -1411,7 +1419,8 @@ handle_call({fetch, Id}, _From, State) ->
         edge = result.edges[0]
         assert edge.src == caller_sym.id
         assert edge.dst == handler_sym.id
-        assert edge.edge_type == "otp_call"
+        assert edge.edge_type == "dispatches_to"
+        assert (edge.meta or {})["mechanism"] == "otp_call"
         assert edge.confidence == 0.80
 
     def test_erlang_no_matching_module_in_handler_index(

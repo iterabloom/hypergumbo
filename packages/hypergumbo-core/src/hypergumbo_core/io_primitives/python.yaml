@@ -87,6 +87,13 @@ fs_read:
     notes: "io.open is the same as builtins.open"
   - module: fileinput
     functions: [input, FileInput]
+  - module: file
+    methods: [read, readline, readlines]
+    notes: |
+      WI-fuvuj: synthetic module for the file object returned by open().
+      Receiver-type inference in py.py types `f = open(p)` as the `file`
+      module so f.read()/f.readline()/f.readlines() classify here via the
+      module-filter path (untyped receivers stay suppressed by ambiguous_names).
 
 fs_write:
   - module: builtins
@@ -108,6 +115,101 @@ fs_write:
   - module: csv
     functions: [writer]
     notes: "csv.writer wraps a file object for writing"
+  - module: file
+    methods: [write, writelines]
+    notes: |
+      WI-fuvuj: synthetic module for the file object returned by open().
+      Receiver-type inference in py.py types `f = open(p)` as the `file`
+      module so f.write()/f.writelines() classify here via the module-filter
+      path (untyped receivers stay suppressed by ambiguous_names).
+
+# WI-harin: stdlib database / key-value-store primitives (sqlite3 / dbm /
+# shelve). Their calls arrive as bare untyped unresolved method calls
+# (``.save()`` / ``.filter()`` / ``.get()`` on a receiver hypergumbo cannot
+# type), which the matcher correctly refuses by SHORT NAME (INV-tapat/
+# INV-maluk); matching them by short name would false-positive on every
+# ``dict.get()`` / ``.save()`` in the corpus. The free-function datastore
+# opens (connect / open) are the reliably-matchable anchors; the DB-API
+# method surface is catalogued for completeness + taint even though untyped
+# receivers keep it latent (the same shape as the JDBC method surface in
+# java.yaml). db_read/db_write are already members of CATALOG_BOUNDARY_TYPES
+# and populated in 6 other language catalogs; Python was the gap.
+#
+# WI-sozoj (type-verified framework carve-out): WI-harin's exclusion of
+# third-party ORMs was a PRECISION rule scoped to short-name matching of
+# UNTYPED receivers, not a purity ban — the catalog already carries
+# type-verified third-party entries (flask.Flask.run below; javax.persistence
+# in java.yaml). The sanctioned route WI-harin named ("a receiver-type-
+# inference problem, tracked separately") is now here: py.py TYPES the ORM
+# receiver via a framework-syntax marker (``<Model>.objects.<method>()`` /
+# a ``models.Model``-subclass ``self.save()``) and emits a ``django.db.models``
+# module-qualified dst, so these fire ONLY through the module-filter path
+# (never the short-name gate) — no ``dict.get()`` false positive. Admission
+# criterion for any future framework datastore entry (the "principled
+# stopping point"): (a) keyed to a real, distinctive module namespace,
+# (b) matched only via a type-verified receiver / qualified name — never a
+# bare ambiguous short name, (c) a bounded, closed method set. Self-throttled
+# by the per-framework receiver-typing cost (SQLAlchemy is deferred, not
+# free). Do NOT add ``django.db.models`` to ``stdlib_modules`` /
+# ``stdlib_module_completeness`` — it is third-party (would mis-suppress
+# external_potential and corrupt py_deps ecosystem classification), and the
+# ``status: complete`` stdlib claim above stays about stdlib only.
+db_read:
+  - module: sqlite3
+    functions: [connect]
+    notes: |
+      Opens/creates a SQLite database file — the DB-API datastore boundary
+      anchor and the reliably-matchable free-function entry (``connect`` is
+      ambiguous with socket.socket.connect, disambiguated by the sqlite3
+      module hint).
+  - module: sqlite3.Connection
+    methods: [iterdump, backup]
+    notes: "Whole-database export / online backup (read path)"
+  - module: sqlite3.Cursor
+    methods: [fetchone, fetchmany, fetchall]
+    notes: |
+      DB-API result retrieval. Latent: untyped cursor receivers stay
+      suppressed by the no-module gate (fires only when py.py types the
+      cursor, mirroring the WI-fuvuj `file` synthetic module).
+  - module: dbm
+    functions: [open]
+    notes: |
+      Opens a Unix key-value db file. Dual read/write by flag; catalogued as
+      the datastore boundary (``open`` is ambiguous with builtins.open,
+      disambiguated by the dbm module hint).
+  - module: shelve
+    functions: [open]
+    notes: "Persistent dict backed by dbm (module-hint-disambiguated open)"
+  # WI-sozoj: Django ORM Manager/QuerySet READ surface. Latent — fires only
+  # when py.py types the receiver via the ``.objects`` Manager marker
+  # (module-filter path, never the short-name gate). ``get``/``all``/etc. are
+  # ambiguous by short name (dict.get, list.count); the ``django.db.models``
+  # module hint disambiguates. See the type-verified carve-out note above.
+  - module: django.db.models
+    methods: [all, filter, exclude, get, count, exists, first, last,
+              values, values_list, annotate, aggregate, order_by, distinct,
+              none, iterator, earliest, latest, in_bulk,
+              select_related, prefetch_related]
+    notes: "Django ORM Manager/QuerySet query surface (type-verified receiver)"
+
+db_write:
+  - module: sqlite3.Connection
+    methods: [execute, executemany, executescript, commit]
+    notes: |
+      SQL execution + transaction flush. ``execute`` is ambiguous (may
+      mutate), so it is classified as a write — matching how
+      java.sql.Statement.execute is treated. Latent for untyped receivers.
+  - module: sqlite3.Cursor
+    methods: [execute, executemany, executescript]
+    notes: "SQL execution via a cursor (latent — untyped receivers suppressed)"
+  # WI-sozoj: Django ORM WRITE surface — Manager-position writes
+  # (``Model.objects.create()``/``bulk_create()``/``update()``) and instance
+  # writes (``models.Model``-subclass ``self.save()``/``self.delete()``).
+  # Latent — same type-verified module-filter path as the read block above.
+  - module: django.db.models
+    methods: [create, bulk_create, update, bulk_update, delete,
+              get_or_create, update_or_create, save]
+    notes: "Django ORM Manager/instance write surface (type-verified receiver)"
 
 net_send:
   - module: socket.socket
@@ -161,9 +263,13 @@ net_recv:
   - module: flask.Flask
     methods: [run]
     notes: "Flask development server"
-  - module: django.core.management
-    functions: [execute_from_command_line]
-    notes: "Django management command (includes runserver)"
+  # WI-harin: django.core.management.execute_from_command_line was here as
+  # net_recv — a false positive. It is a CLI dispatcher (the manage.py entry
+  # routing to migrate / collectstatic / runserver / …), not itself a
+  # network receive, and it is third-party framework code (out of scope
+  # under the same Plan-C strict-stdlib rule the net_send side enforces).
+  # Removed. A framework's server-start (runserver) surfaces via the
+  # external_potential bucket, not a mislabeled stdlib-catalog entry.
   - module: uvicorn
     functions: [run]
     notes: "ASGI server (used by FastAPI, Starlette)"

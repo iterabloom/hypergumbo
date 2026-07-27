@@ -24,6 +24,7 @@ from hypergumbo_core.analyze.base import (
     iter_tree,
     iter_tree_with_context,
     make_doc_stable_id,
+    make_doc_symbol_ids,
     make_entry_stable_id,
     make_file_id,
     make_protocol_stable_id,
@@ -41,6 +42,8 @@ from hypergumbo_core.analyze.base import (
     populate_docstrings_from_tree,
     split_params_top_level,
     strip_fqn_prefix,
+    synthesize_file_anchors_for_node_bearing_paths,
+    synthesize_file_anchors_for_paths,
     synthesize_file_symbols_for_dangling_edges,
     visibility_from_modifiers,
     widen_route_stable_ids,
@@ -2492,3 +2495,230 @@ class TestMakeDocStableId:
     def test_deterministic(self) -> None:
         assert make_doc_stable_id("markdown", "R.md", "section", "X", 1, 2) == \
             make_doc_stable_id("markdown", "R.md", "section", "X", 1, 2)
+
+
+class TestMakeDocSymbolIds:
+    """make_doc_symbol_ids (INV-dulah): mints the (node.id, stable_id) PAIR for a
+    doc/markup/template Symbol from one argument set, so the two can never drift
+    (the WI-rijup bug class, where nine analyzers shipped stable_id == raw id)."""
+
+    def test_returns_id_and_stable_id_pair(self) -> None:
+        result = make_doc_symbol_ids("scss", "styles/main.scss", "variable", "$c", 1, 1)
+        assert isinstance(result, tuple) and len(result) == 2
+
+    def test_node_id_format(self) -> None:
+        # node.id is the doc-family historical shape
+        # f"{language}:{path}:{kind}:{start_line}:{name}" (NOT the ADR-0036
+        # lang:path:span:name:kind grammar — see the function docstring). This
+        # exact string is what the six line-bearing analyzers already emit.
+        node_id, _ = make_doc_symbol_ids("scss", "styles/main.scss", "variable", "$primary-color", 1, 1)
+        assert node_id == "scss:styles/main.scss:variable:1:$primary-color"
+
+    def test_stable_id_is_canonical_and_matches_factory(self) -> None:
+        import re
+        node_id, stable_id = make_doc_symbol_ids("vue", "src/App.vue", "prop", "title", 10, 12)
+        assert re.match(r"^sha256:[0-9a-f]{16}$", stable_id), stable_id
+        assert stable_id == make_doc_stable_id("vue", "src/App.vue", "prop", "title", 10, 12)
+        assert node_id != stable_id
+
+    def test_path_coerced_so_str_and_path_agree(self) -> None:
+        from pathlib import Path
+        str_ids = make_doc_symbol_ids("rst", "docs/index.rst", "section", "Intro", 3, 9)
+        path_ids = make_doc_symbol_ids("rst", Path("docs/index.rst"), "section", "Intro", 3, 9)
+        assert str_ids == path_ids
+
+    def test_start_line_disambiguates_same_name_siblings(self) -> None:
+        # The reason the line-less adopters (rst/robot/pony/sparql) GAIN the
+        # start_line segment: two same-name same-kind nodes in one file used to
+        # collapse to one node.id; the line now separates them (in BOTH halves).
+        a_id, a_sid = make_doc_symbol_ids("rst", "d.rst", "section", "Overview", 5, 6)
+        b_id, b_sid = make_doc_symbol_ids("rst", "d.rst", "section", "Overview", 40, 41)
+        assert a_id != b_id
+        assert a_sid != b_sid
+
+
+class TestSynthesizeFileAnchorsForNodeBearingPaths:
+    """WI-dagif (file-anchor:F1, node-bearing slice): every path that has
+    content nodes but no file anchor gets exactly one synthesized."""
+
+    @staticmethod
+    def _content(path, kind="class", language="java", name="Data", sid=None):
+        return Symbol(
+            id=sid or f"{language}:{path}:1-3:{name}:{kind}",
+            name=name, kind=kind, language=language, path=path,
+            span=Span(start_line=1, end_line=3, start_col=0, end_col=0),
+            origin="test", origin_run_id="test",
+        )
+
+    def test_mints_anchor_for_node_bearing_path(self) -> None:
+        new = synthesize_file_anchors_for_node_bearing_paths([self._content("Data.java")])
+        assert len(new) == 1
+        anchor = new[0]
+        assert anchor.kind == "file"
+        assert anchor.path == "Data.java"
+        assert anchor.language == "java"
+        assert anchor.id == make_file_id("java", "Data.java")
+        assert anchor.span.end_line == 1  # repo_root None -> sentinel
+        assert anchor.origin == ["orchestrator_file_symbol_synthesis"]
+
+    def test_no_double_anchor_when_file_symbol_exists(self) -> None:
+        content = self._content("Data.java")
+        existing = Symbol(
+            id=make_file_id("java", "Data.java"), name="Data.java", kind="file",
+            language="java", path="Data.java",
+            span=Span(start_line=1, end_line=3, start_col=0, end_col=0),
+            origin="x", origin_run_id="x",
+        )
+        assert synthesize_file_anchors_for_node_bearing_paths([content, existing]) == []
+
+    def test_one_anchor_per_path_for_multiple_content_nodes(self) -> None:
+        a = self._content("Data.java", kind="class", name="Data", sid="java:Data.java:1:Data:class")
+        b = self._content("Data.java", kind="field", name="x", sid="java:Data.java:2:x:field")
+        new = synthesize_file_anchors_for_node_bearing_paths([a, b])
+        assert len(new) == 1 and new[0].path == "Data.java"
+
+    def test_skips_symbol_without_path(self) -> None:
+        assert synthesize_file_anchors_for_node_bearing_paths([self._content("", name="o")]) == []
+
+    def test_skips_symbol_without_language(self) -> None:
+        s = Symbol(
+            id="x:Z.q:1:z:class", name="z", kind="class", language=None,
+            path="Z.q", span=Span(start_line=1, end_line=1, start_col=0, end_col=0),
+            origin="t", origin_run_id="t",
+        )
+        assert synthesize_file_anchors_for_node_bearing_paths([s]) == []
+
+    def test_stamps_origin_run_id(self) -> None:
+        new = synthesize_file_anchors_for_node_bearing_paths(
+            [self._content("Data.java")], origin_run_id="uuid:run")
+        assert new[0].origin_run_id == "uuid:run"
+
+    def test_real_end_line_and_repo_relative_path(self, tmp_path) -> None:
+        (tmp_path / "Data.java").write_text("line1\nline2\nline3\n")
+        sym = self._content(str(tmp_path / "Data.java"))  # absolute path
+        new = synthesize_file_anchors_for_node_bearing_paths([sym], repo_root=tmp_path)
+        assert len(new) == 1
+        assert new[0].path == "Data.java"   # normalized to repo-relative
+        assert new[0].span.end_line == 3    # real line count
+
+    def test_end_line_no_trailing_newline(self, tmp_path) -> None:
+        (tmp_path / "A.java").write_text("a\nb")  # 2 lines, no trailing newline
+        sym = self._content(str(tmp_path / "A.java"), name="A")
+        new = synthesize_file_anchors_for_node_bearing_paths([sym], repo_root=tmp_path)
+        assert new[0].span.end_line == 2
+
+    def test_end_line_unreadable_file(self, tmp_path) -> None:
+        sym = self._content(str(tmp_path / "Missing.java"), name="Missing")
+        new = synthesize_file_anchors_for_node_bearing_paths([sym], repo_root=tmp_path)
+        assert new[0].span.end_line == 1  # absent file -> sentinel
+
+    def test_end_line_empty_file(self, tmp_path) -> None:
+        (tmp_path / "Empty.java").write_text("")
+        sym = self._content(str(tmp_path / "Empty.java"), name="Empty")
+        new = synthesize_file_anchors_for_node_bearing_paths([sym], repo_root=tmp_path)
+        assert new[0].span.end_line == 1  # empty file -> sentinel
+
+    def test_path_not_under_repo_root_unchanged(self, tmp_path) -> None:
+        # already-relative content path with repo_root set -> _rel no-op branch
+        new = synthesize_file_anchors_for_node_bearing_paths(
+            [self._content("rel/Data.java")], repo_root=tmp_path)
+        assert new[0].path == "rel/Data.java"
+        assert new[0].span.end_line == 1  # unreadable under repo_root
+
+
+class TestSynthesizeFileAnchorsForPaths:
+    """file-anchor:F1 (additional-file-candidate cohort): the generic
+    path-keyed minter mints one ``kind="file"`` anchor per (path, language)
+    whose path has no existing Symbol."""
+
+    @staticmethod
+    def _content(path, kind="class", language="java", name="Data", sid=None):
+        return Symbol(
+            id=sid or f"{language}:{path}:1-3:{name}:{kind}",
+            name=name, kind=kind, language=language, path=path,
+            span=Span(start_line=1, end_line=3, start_col=0, end_col=0),
+            origin="test", origin_run_id="test",
+        )
+
+    def test_mints_anchor_per_path(self) -> None:
+        new = synthesize_file_anchors_for_paths(
+            [], {"README.md": "markdown", "config.yaml": "yaml"})
+        assert {a.path for a in new} == {"README.md", "config.yaml"}
+        by_path = {a.path: a for a in new}
+        assert by_path["README.md"].kind == "file"
+        assert by_path["README.md"].language == "markdown"
+        assert by_path["README.md"].id == make_file_id("markdown", "README.md")
+        assert by_path["README.md"].span.end_line == 1  # repo_root None -> sentinel
+        assert by_path["README.md"].origin == ["orchestrator_file_symbol_synthesis"]
+
+    def test_dedups_against_existing_path(self) -> None:
+        existing = self._content("config.yaml", kind="file", language="yaml",
+                                 name="config.yaml")
+        new = synthesize_file_anchors_for_paths(
+            [existing], {"config.yaml": "yaml", "README.md": "markdown"})
+        assert [a.path for a in new] == ["README.md"]
+
+    def test_dedups_against_content_node_path(self) -> None:
+        # A path bearing a non-file content node is already covered -> no anchor.
+        content = self._content("settings.py", kind="class", language="python")
+        new = synthesize_file_anchors_for_paths(
+            [content], {"settings.py": "python"})
+        assert new == []
+
+    def test_empty_mapping_yields_nothing(self) -> None:
+        assert synthesize_file_anchors_for_paths([self._content("Data.java")], {}) == []
+
+    def test_stamps_origin_run_id(self) -> None:
+        new = synthesize_file_anchors_for_paths(
+            [], {"README.md": "markdown"}, origin_run_id="uuid:run")
+        assert new[0].origin_run_id == "uuid:run"
+
+    def test_real_end_line_from_repo_root(self, tmp_path) -> None:
+        (tmp_path / "README.md").write_text("# Title\n\nbody\n")
+        new = synthesize_file_anchors_for_paths(
+            [], {"README.md": "markdown"}, repo_root=tmp_path)
+        assert new[0].span.end_line == 3  # real line count
+
+    def test_unreadable_file_end_line_sentinel(self, tmp_path) -> None:
+        new = synthesize_file_anchors_for_paths(
+            [], {"Missing.md": "markdown"}, repo_root=tmp_path)
+        assert new[0].span.end_line == 1  # absent file -> sentinel
+
+    def test_pathless_existing_symbol_ignored_in_dedup(self) -> None:
+        # A symbol with no path must not break the dedup scan.
+        pathless = Symbol(
+            id="py:x:1:z:class", name="z", kind="class", language="python",
+            path="", span=Span(start_line=1, end_line=1, start_col=0, end_col=0),
+            origin="t", origin_run_id="t",
+        )
+        new = synthesize_file_anchors_for_paths([pathless], {"README.md": "markdown"})
+        assert [a.path for a in new] == ["README.md"]
+
+    def test_dedups_against_absolute_existing_path(self, tmp_path) -> None:
+        # An analyzer (e.g. html) may emit a file Symbol with an ABSOLUTE path
+        # not yet normalized; the relative candidate key must still dedup against
+        # it (else we mint a duplicate file anchor).
+        abs_existing = Symbol(
+            id="html:abs:1-1:file:file",
+            name="index.html", kind="file", language="html",
+            path=str(tmp_path / "index.html"),
+            span=Span(start_line=1, end_line=1, start_col=0, end_col=0),
+            origin="html", origin_run_id="x",
+        )
+        new = synthesize_file_anchors_for_paths(
+            [abs_existing], {"index.html": "html"}, repo_root=tmp_path)
+        assert new == []
+
+    def test_absolute_path_outside_repo_kept_distinct(self, tmp_path) -> None:
+        # An absolute existing path NOT under repo_root stays as-is, so it does
+        # not spuriously dedup a same-named repo-relative candidate.
+        outside = Symbol(
+            id="html:out:1-1:file:file",
+            name="index.html", kind="file", language="html",
+            path="/elsewhere/index.html",
+            span=Span(start_line=1, end_line=1, start_col=0, end_col=0),
+            origin="html", origin_run_id="x",
+        )
+        new = synthesize_file_anchors_for_paths(
+            [outside], {"index.html": "html"}, repo_root=tmp_path)
+        assert [a.path for a in new] == ["index.html"]

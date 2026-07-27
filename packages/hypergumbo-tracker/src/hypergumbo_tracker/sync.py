@@ -297,10 +297,17 @@ class PreflightResult:
         git_dir: Path to .git directory.
         original_branch: Branch name to restore after sync.
         changed_files: List of dirty tracker file paths (relative to repo root).
-        api_base: Forgejo API base URL for this repo.
-        forgejo_user: Forgejo username from environment.
-        forgejo_token: Forgejo API token from environment.
+        api_base: Forge REST API base URL for this repo.
+        forgejo_user: Effective forge username for the resolved ``backend`` —
+            FORGEJO_USER on forgejo, the ``x-access-token`` PAT-auth placeholder
+            on github (kept named ``forgejo_*`` for backwards compatibility).
+        forgejo_token: Effective forge credential for the resolved ``backend`` —
+            FORGEJO_TOKEN on forgejo, HG_GITHUB_TOKEN on github (the two are NOT
+            interchangeable: the Codeberg token would 401 against github.com).
         push_remote: Git remote to push to (``origin`` or ``selfh`` during failover).
+        backend: Forge backend, ``"forgejo"`` or ``"github"``, derived from the
+            resolved ``api_base`` (forced to ``"forgejo"`` while CI failover is
+            active).
     """
 
     ok: bool
@@ -313,6 +320,7 @@ class PreflightResult:
     forgejo_user: str = ""
     forgejo_token: str = ""
     push_remote: str = "origin"
+    backend: str = "forgejo"
 
 
 @dataclass
@@ -425,11 +433,25 @@ def _detect_failover(git_dir: Path, env_vars: dict[str, str]) -> _FailoverState:
     )
 
 
-def _detect_api_base(repo_root: Path) -> str:
-    """Extract Forgejo API base URL from git remote ``origin``.
+def _api_base_for(host: str, owner: str, repo: str) -> str:
+    """Build the REST API base for a forge host.
 
-    Parses the remote URL (HTTPS or SSH) and returns the API endpoint,
-    e.g. ``https://codeberg.org/api/v1/repos/iterabloom/hypergumbo``.
+    GitHub uses a dedicated ``api.github.com`` host with no ``/api/v1``
+    segment; Forgejo/Gitea (Codeberg, self-hosted) expose ``/api/v1/repos``
+    under the forge host itself.
+    """
+    if host == "github.com":
+        return f"https://api.github.com/repos/{owner}/{repo}"
+    return f"https://{host}/api/v1/repos/{owner}/{repo}"
+
+
+def _detect_api_base(repo_root: Path) -> str:
+    """Extract the REST API base URL from git remote ``origin``.
+
+    Parses the remote URL (HTTPS or SSH) and returns the API endpoint —
+    ``https://api.github.com/repos/{o}/{r}`` for a github.com origin, else the
+    Forgejo/Gitea form ``https://{host}/api/v1/repos/{o}/{r}`` (e.g.
+    ``https://codeberg.org/api/v1/repos/iterabloom/hypergumbo``).
 
     Returns empty string if the remote URL cannot be parsed.
     """
@@ -439,20 +461,18 @@ def _detect_api_base(repo_root: Path) -> str:
 
     url = result.stdout.strip()
 
-    # HTTPS: https://codeberg.org/owner/repo.git
+    # HTTPS: https://host/owner/repo.git
     # Also handles embedded credentials: https://user:token@host/...
     m = re.match(
         r"https?://(?:[^@/]+@)?([^/]+)/([^/]+)/([^/]+?)(?:\.git)?$", url
     )
     if m:
-        host, owner, repo = m.group(1), m.group(2), m.group(3)
-        return f"https://{host}/api/v1/repos/{owner}/{repo}"
+        return _api_base_for(m.group(1), m.group(2), m.group(3))
 
-    # SSH: git@codeberg.org:owner/repo.git
+    # SSH: git@host:owner/repo.git
     m = re.match(r"git@([^:]+):([^/]+)/([^/]+?)(?:\.git)?$", url)
     if m:
-        host, owner, repo = m.group(1), m.group(2), m.group(3)
-        return f"https://{host}/api/v1/repos/{owner}/{repo}"
+        return _api_base_for(m.group(1), m.group(2), m.group(3))
 
     return ""
 
@@ -513,7 +533,13 @@ def _api_call(
     req = Request(url, data=body, method=method)  # noqa: S310  # nosec B310
     req.add_header("Authorization", f"token {token}")
     req.add_header("Content-Type", "application/json")
-    req.add_header("Accept", "application/json")
+    # GitHub's REST API wants an explicit Accept + pinned API version; Forgejo
+    # uses plain JSON.  ``token <PAT>`` auth works on both forges.
+    if "api.github.com" in url:
+        req.add_header("Accept", "application/vnd.github+json")
+        req.add_header("X-GitHub-Api-Version", "2022-11-28")
+    else:
+        req.add_header("Accept", "application/json")
 
     try:
         with urlopen(req, timeout=timeout) as resp:  # noqa: S310  # nosec B310
@@ -582,6 +608,61 @@ def _find_open_pr(
     return None
 
 
+def _create_pr(
+    api_base: str,
+    token: str,
+    *,
+    head: str,
+    base: str,
+    title: str,
+    body: str = "",
+) -> tuple[int, str] | None:
+    """Create a pull request via ``POST /pulls`` (the GitHub write path).
+
+    Forgejo's AGit flow (``git push … refs/for/…``) opens the PR server-side,
+    so the forgejo path never calls this — it discovers the PR with
+    :func:`_find_open_pr`.  GitHub has no AGit equivalent: after a normal
+    branch push the PR must be opened explicitly.
+
+    ``POST /pulls`` returns ``201`` carrying the new PR's number and head SHA
+    (the head SHA equals the commit just pushed, so no poll-for-PR is needed).
+    On an idempotent retry the same head/base pair returns ``422`` ("A pull
+    request already exists") — fall back to :func:`_find_open_pr`, which
+    resolves because GitHub keys ``head.ref`` by the real branch name.  Any
+    other status is a failure.
+
+    Returns:
+        ``(pr_number, head_sha)`` on success, else ``None``.
+    """
+    status, resp = _api_call(
+        "POST",
+        f"{api_base}/pulls",
+        token,
+        data={"title": title, "head": head, "base": base, "body": body},
+    )
+    if status == 201 and isinstance(resp, dict):
+        head_obj = resp.get("head") or {}
+        return (resp["number"], head_obj.get("sha", ""))
+    if status == 422:
+        return _find_open_pr(api_base, token, head, title=title)
+    return None
+
+
+def _elem_state(s: dict[str, Any]) -> str | None:
+    """Return a commit-status element's state, tolerating both forge shapes.
+
+    Forgejo commit-status elements key the per-element state under ``status``;
+    GitHub combined-status elements key it under ``state``.  Returns the GitHub
+    field when present, else the Forgejo field (else ``None``).
+
+    Kept as a named helper so an ``or`` never sits beside a ``!=`` in a caller:
+    ``s.get("state") or s.get("status") != "pending"`` would bind as
+    ``s.get("state") or (s.get("status") != "pending")`` — a precedence trap
+    that silently misreads a GitHub ``pending`` element as "started".
+    """
+    return s.get("state") or s.get("status")
+
+
 def _poll_ci(
     api_base: str,
     token: str,
@@ -589,6 +670,7 @@ def _poll_ci(
     poll_interval: int = 10,
     timeout: int = 600,
     stale_pending_threshold: int = 90,
+    backend: str = "forgejo",
 ) -> str:
     """Poll CI status until terminal state or timeout.
 
@@ -610,6 +692,11 @@ def _poll_ci(
         poll_interval: Seconds between polls.
         timeout: Maximum seconds to wait.
         stale_pending_threshold: Seconds before declaring stale-pending.
+        backend: Forge backend, ``"forgejo"`` or ``"github"``.  On
+            ``"github"`` a single Woodpecker commit-status stays ``pending``
+            for the whole build, so stale-pending detection is disabled (a
+            non-empty ``statuses`` list counts as "started"); a genuinely
+            stuck build is still caught by ``timeout``.
 
     Returns:
         ``"success"``, ``"failure"``, ``"timeout"``, or
@@ -643,9 +730,16 @@ def _poll_ci(
         if state == "failure" or state == "error":
             return "failure"
 
-        # Track whether any job has left pending state
+        # Track whether any job has left pending state.  On the GitHub backend
+        # Woodpecker posts a single commit-status that stays "pending" for the
+        # entire build, so "no element has left pending" is normal rather than
+        # a hung runner — treat a non-empty statuses list as "started" and let
+        # the overall timeout catch a genuinely stuck build.  (Forgejo Actions
+        # emits multiple jobs that flip quickly, so its heuristic still holds.)
         if not any_job_started:
-            if any(s.get("status") != "pending" for s in statuses):
+            if backend == "github" or any(
+                _elem_state(s) != "pending" for s in statuses
+            ):
                 any_job_started = True
             elif time.monotonic() - start >= stale_pending_threshold:
                 _log(
@@ -658,7 +752,7 @@ def _poll_ci(
         # been waiting long enough, treat as success
         if len(statuses) > 1:
             non_success = [
-                s for s in statuses if s.get("status") != "success"
+                s for s in statuses if _elem_state(s) != "success"
             ]
             if len(non_success) == 1 and time.monotonic() > deadline - (timeout - 60):
                 return "success"
@@ -684,6 +778,23 @@ def _close_pr(api_base: str, token: str, pr_num: int) -> bool:
     return status == 200
 
 
+def _delete_remote_branch(api_base: str, token: str, branch: str) -> bool:
+    """Delete a remote branch via GitHub's git-refs API (best-effort).
+
+    GitHub's normal-branch PR flow leaves the head branch on the server after
+    merge; the AGit flow never created one.  Deleting it keeps the scoped
+    Lamport branch set small (parity with AGit).  ``DELETE
+    /git/refs/heads/{branch}`` returns ``204``; an already-gone branch returns
+    ``422``.  Non-fatal — the caller ignores the result.
+    """
+    status, _ = _api_call(
+        "DELETE",
+        f"{api_base}/git/refs/heads/{branch}",
+        token,
+    )
+    return status == 204
+
+
 def _check_pr_merged(
     api_base: str, token: str, pr_num: int
 ) -> bool:
@@ -704,37 +815,52 @@ def _merge_pr(
     api_base: str,
     token: str,
     pr_num: int,
+    backend: str = "forgejo",
 ) -> bool:
     """Merge a PR, cascading through merge strategies.
 
-    Tries fast-forward-only first (cleanest history), then rebase
-    (preserves commit identity), then merge commit (always works).
-    AGit-flow PRs (created via ``refs/for/``) lack a real branch,
-    which causes Forgejo's fast-forward merge to silently fail
-    (HTTP 200 but ``merged: false``).
+    Forgejo (AGit) path: ``POST /pulls/{n}/merge`` with ``{"Do": …}``,
+    cascading fast-forward-only → rebase → merge-commit.  A ``204`` (or a
+    ``200`` verified via GET) means merged.  AGit-flow PRs lack a real branch,
+    so Forgejo's fast-forward silently no-ops (``200`` with ``merged: false``)
+    — hence the follow-up GET verification.
 
-    After each attempt, verifies the PR is actually merged before
-    declaring success.
+    GitHub path: ``PUT /pulls/{n}/merge`` with ``{"merge_method": …}``,
+    cascading rebase → merge-commit.  Rebase reproduces the ff-first linear
+    intent (the sync commit is built on ``origin/dev``'s tip, so it is normally
+    already a fast-forward); success is a ``200`` carrying ``{"merged": true}``.
+
+    After each attempt, verifies the PR is actually merged before declaring
+    success.  ``405``/``409`` (blocked/conflict) may just mean already-merged
+    (idempotent) — checked before falling through.
 
     Args:
-        api_base: Forgejo API base URL.
+        api_base: Forge REST API base URL.
         token: API bearer token.
         pr_num: Pull request number.
+        backend: Forge backend, ``"forgejo"`` or ``"github"``.
 
     Returns:
         True if merge succeeded or PR was already merged.
     """
     merge_url = f"{api_base}/pulls/{pr_num}/merge"
 
-    strategies = [
-        ("fast-forward-only", "fast-forward"),
-        ("rebase", "rebase"),
-        ("merge", "merge commit"),
-    ]
+    if backend == "github":
+        method = "PUT"
+        data_key = "merge_method"
+        strategies = [("rebase", "rebase"), ("merge", "merge commit")]
+    else:
+        method = "POST"
+        data_key = "Do"
+        strategies = [
+            ("fast-forward-only", "fast-forward"),
+            ("rebase", "rebase"),
+            ("merge", "merge commit"),
+        ]
 
     for do_value, label in strategies:
         status, body = _api_call(
-            "POST", merge_url, token, data={"Do": do_value},
+            method, merge_url, token, data={data_key: do_value},
         )
 
         if status == 204:
@@ -742,9 +868,13 @@ def _merge_pr(
             return True
 
         if status == 200:
-            # Forgejo sometimes returns 200 with the PR object
-            # without actually merging (especially for AGit-flow PRs
-            # with fast-forward-only).  Verify before declaring success.
+            # GitHub returns 200 with ``{"merged": true}`` on success.  Forgejo
+            # sometimes returns 200 with the PR object WITHOUT merging (AGit
+            # fast-forward-only), so a 200 lacking an explicit ``merged: true``
+            # is verified with a follow-up GET before it is trusted.
+            if isinstance(body, dict) and body.get("merged"):
+                _log(f"merged via {label}")
+                return True
             if _check_pr_merged(api_base, token, pr_num):
                 _log(f"merged via {label}")
                 return True
@@ -1134,7 +1264,13 @@ def preflight_check(repo_root: Path) -> PreflightResult:
             error=f"tracker validation failed: {summary}",
         )
 
-    # 6. Credentials
+    # 6. Credentials.  Both forges' tokens are resolved here; the effective
+    #    push/API credential is selected by backend at step 9 (once the origin
+    #    host — hence the backend — is known).  The GitHub maintainer credential
+    #    is the LOCAL .env PAT ``HG_GITHUB_TOKEN`` (NOT the Actions-reserved
+    #    ``GITHUB_TOKEN`` name; see AGENTS.md §Secrets / PR-D), and it is NOT
+    #    interchangeable with FORGEJO_TOKEN — presenting the Codeberg token to
+    #    github.com would 401, so the two are kept distinct.
     env_vars = _load_env(repo_root)
     forgejo_token = env_vars.get("FORGEJO_TOKEN") or os.environ.get(
         "FORGEJO_TOKEN", ""
@@ -1142,8 +1278,13 @@ def preflight_check(repo_root: Path) -> PreflightResult:
     forgejo_user = env_vars.get("FORGEJO_USER") or os.environ.get(
         "FORGEJO_USER", ""
     )
+    github_token = env_vars.get("HG_GITHUB_TOKEN") or os.environ.get(
+        "HG_GITHUB_TOKEN", ""
+    )
 
-    # 6a. Failover detection — override credentials, API base, push remote
+    # 6a. Failover detection — override credentials, API base, push remote.
+    #     Failover always targets the self-hosted Forgejo, so it overrides only
+    #     the Forgejo credential (the backend is forced to "forgejo" at step 9).
     failover = _detect_failover(git_dir, env_vars)
     push_remote = "origin"
     if failover.active:
@@ -1152,7 +1293,9 @@ def preflight_check(repo_root: Path) -> PreflightResult:
         push_remote = failover.push_remote
         _log("[SELF-HOSTED] Failover active — targeting self-hosted Forgejo")
 
-    if not forgejo_token:
+    # Fail fast only when NO forge credential exists at all; the backend-specific
+    # requirement (which token this origin actually needs) is enforced at step 9.
+    if not forgejo_token and not github_token:
         return PreflightResult(
             ok=False,
             error="FORGEJO_TOKEN not found in .env or environment",
@@ -1192,6 +1335,34 @@ def preflight_check(repo_root: Path) -> PreflightResult:
             error="could not parse Forgejo API URL from origin remote",
         )
 
+    # Forge backend follows the resolved api_base (i.e. the origin host);
+    # failover always targets the self-hosted Forgejo regardless of origin.
+    backend = (
+        "github"
+        if not failover.active and "api.github.com" in api_base
+        else "forgejo"
+    )
+
+    # Select the effective push/API credential by backend.  For GitHub, the PAT
+    # authenticates as the password and the username is ignored, so the
+    # conventional token-auth placeholder ``x-access-token`` is used.  The result
+    # keeps its ``forgejo_*`` field names (they now carry "the resolved forge
+    # credential" for either backend; a rename is a possible follow-up).
+    if backend == "github":
+        forge_token = github_token
+        forge_user = "x-access-token"
+        missing_error = (
+            "HG_GITHUB_TOKEN not found in .env or environment "
+            "(required for the github origin)"
+        )
+    else:
+        forge_token = forgejo_token
+        forge_user = forgejo_user
+        missing_error = "FORGEJO_TOKEN not found in .env or environment"
+
+    if not forge_token:
+        return PreflightResult(ok=False, error=missing_error)
+
     return PreflightResult(
         ok=True,
         repo_root=repo_root,
@@ -1199,9 +1370,10 @@ def preflight_check(repo_root: Path) -> PreflightResult:
         original_branch=original_branch,
         changed_files=changed_files,
         api_base=api_base,
-        forgejo_user=forgejo_user,
-        forgejo_token=forgejo_token,
+        forgejo_user=forge_user,
+        forgejo_token=forge_token,
         push_remote=push_remote,
+        backend=backend,
     )
 
 
@@ -1385,9 +1557,22 @@ def do_sync(
 
         # 8. (Gate file already created at step 0a.)
 
-        # 9. Push with retries
-        push_ref = f"refs/heads/{sync_branch}:refs/for/{base_branch}/{sync_branch}"
+        # 9. Push with retries.  The GitHub write path pushes a normal branch
+        #    (``refs/heads/…:refs/heads/…``) with no push options; Forgejo's
+        #    AGit flow pushes to ``refs/for/…`` and passes the PR title +
+        #    description as ``-o`` options (the AGit server opens the PR).
         push_title = sync_title
+        if preflight.backend == "github":
+            push_ref = f"refs/heads/{sync_branch}:refs/heads/{sync_branch}"
+            push_opts: list[str] = []
+        else:
+            push_ref = (
+                f"refs/heads/{sync_branch}:refs/for/{base_branch}/{sync_branch}"
+            )
+            push_opts = [
+                "-o", f"title={push_title}",
+                "-o", "description=Automated tracker data sync",
+            ]
         push_success = False
         cred_helper = (
             f"!f() {{ echo username={preflight.forgejo_user}; "
@@ -1399,8 +1584,7 @@ def do_sync(
                 repo_root,
                 "-c", f"credential.helper={cred_helper}",
                 "push", preflight.push_remote, push_ref,
-                "-o", f"title={push_title}",
-                "-o", "description=Automated tracker data sync",
+                *push_opts,
                 check=False,
             )
             if push_result.returncode == 0:
@@ -1416,14 +1600,27 @@ def do_sync(
                 exit_code=1,
             )
 
-        # 10. Find PR (with brief initial delay)
-        time.sleep(2)
-        pr_info = _find_open_pr(
-            preflight.api_base,
-            preflight.forgejo_token,
-            sync_branch,
-            title=push_title,
-        )
+        # 10. Open the PR.  GitHub: create it explicitly (POST /pulls) — the
+        #     201 response carries the number + head SHA directly (head_sha ==
+        #     the commit we just built, so no poll-for-PR is needed).  Forgejo:
+        #     the AGit push already opened it; discover it after a brief delay.
+        if preflight.backend == "github":
+            pr_info = _create_pr(
+                preflight.api_base,
+                preflight.forgejo_token,
+                head=sync_branch,
+                base=base_branch,
+                title=push_title,
+                body="Automated tracker data sync",
+            )
+        else:
+            time.sleep(2)
+            pr_info = _find_open_pr(
+                preflight.api_base,
+                preflight.forgejo_token,
+                sync_branch,
+                title=push_title,
+            )
         if pr_info is None:
             return SyncResult(
                 success=False,
@@ -1447,6 +1644,7 @@ def do_sync(
                 head_sha,
                 poll_interval=ci_poll_interval,
                 timeout=ci_timeout,
+                backend=preflight.backend,
             )
             if ci_result != "stale_pending":
                 break
@@ -1460,13 +1658,17 @@ def do_sync(
             )
             _close_pr(preflight.api_base, preflight.forgejo_token, pr_num)
             time.sleep(wait_secs)
-            # Repush (force) to trigger a new CI run on a fresh PR
+            # Repush (force) to trigger a new CI run on a fresh PR.  This
+            # stale-pending retry only runs on the Forgejo backend — GitHub
+            # posts one long-lived ``pending`` commit-status, so ``_poll_ci``
+            # never returns ``"stale_pending"`` there (see PR-A) and this loop
+            # body is inert.  ``push_opts`` therefore carries the AGit ``-o``
+            # options here.
             push_result = _git(
                 repo_root,
                 "-c", f"credential.helper={cred_helper}",
                 "push", preflight.push_remote, push_ref,
-                "-o", f"title={push_title}",
-                "-o", "description=Automated tracker data sync",
+                *push_opts,
                 check=False,
             )
             if push_result.returncode != 0:  # pragma: no cover
@@ -1590,10 +1792,16 @@ def do_sync(
         slug_match = re.search(r"/repos/(.+)$", preflight.api_base)
         repo_slug = slug_match.group(1) if slug_match else ""
 
+        # The 6-attempt loop also absorbs GitHub's async ``mergeable``
+        # computation (C10): a merge attempted while ``mergeable`` is still
+        # null returns 405, which _merge_pr reports as "not merged" and this
+        # loop retries — treating null as "unknown, retry" rather than
+        # "not mergeable".
         merged = False
         for merge_attempt in range(1, 7):
             merged = _merge_pr(
-                preflight.api_base, preflight.forgejo_token, pr_num
+                preflight.api_base, preflight.forgejo_token, pr_num,
+                backend=preflight.backend,
             )
             if merged:
                 break
@@ -1614,10 +1822,26 @@ def do_sync(
 
         merge_succeeded = True
 
-        # Construct PR URL
-        base_url_match = re.match(r"(https?://[^/]+)/", preflight.api_base)
-        base_url = base_url_match.group(1) if base_url_match else "https://codeberg.org"
-        pr_url = f"{base_url}/{repo_slug}/pulls/{pr_num}"
+        # GitHub leaves the head branch on the server after merge (AGit never
+        # created one); delete it to keep the scoped Lamport branch set small.
+        if preflight.backend == "github":
+            _delete_remote_branch(
+                preflight.api_base, preflight.forgejo_token, sync_branch
+            )
+
+        # Construct the human-facing PR URL.  GitHub's web PR path is singular
+        # (``/pull/N``) under github.com — NOT the api.github.com host embedded
+        # in api_base; Forgejo/Gitea use ``/pulls/N`` under the forge host.
+        if preflight.backend == "github":
+            pr_url = f"https://github.com/{repo_slug}/pull/{pr_num}"
+        else:
+            base_url_match = re.match(r"(https?://[^/]+)/", preflight.api_base)
+            base_url = (
+                base_url_match.group(1)
+                if base_url_match
+                else "https://codeberg.org"
+            )
+            pr_url = f"{base_url}/{repo_slug}/pulls/{pr_num}"
 
         return SyncResult(
             success=True,
@@ -1646,27 +1870,44 @@ def do_sync(
             check=False,
         )
 
-        # If we're sitting on the base branch itself, fast-forward it
-        # to origin/dev so the synced ops files become tracked.  Without
-        # this, the ops files remain "untracked" in the working tree and
-        # pending_sync_lines() counts them again on the next call,
-        # causing the pending-line count to grow by ~22 per sync cycle.
-        # Fast-forward-only is safe: we haven't made local commits on
-        # the base branch (the plumbing approach commits to a detached
-        # sync branch), so ff-only either succeeds or is a no-op.
+        # If we're sitting on the base branch itself, fast-forward it to
+        # origin/dev so the synced ops files become tracked.  Without this the
+        # ops files remain "untracked" in the working tree and
+        # pending_sync_lines() counts them again on the next call, growing the
+        # pending-line count by ~22 per sync cycle.
+        #
+        # ff-only is correct on BOTH backends, INCLUDING GitHub's rebase-merge.
+        # It fast-forwards local dev onto origin/dev, and origin/dev is always a
+        # DESCENDANT of local dev: local dev sits at ``base`` (the plumbing
+        # approach commits only to a detached sync branch — do_sync never moves
+        # the base branch ref), and the merge — whether GitHub's rebase or
+        # Forgejo's (which ALSO rebases these PRs: its ff-only silently no-ops
+        # on the branchless AGit PR and _merge_pr falls through to rebase) —
+        # replays the sync commit onto origin/dev's tip, which itself descends
+        # from ``base``.  So the merge rewriting the sync-commit SHA is
+        # irrelevant here (the earlier "reset --hard for github" plan misread
+        # this as a sibling/divergence): base → origin/dev is a fast-forward on
+        # both forges.  ff-only is also the SAFE choice — it aborts non-
+        # destructively on genuine divergence (e.g. real local commits on dev),
+        # whereas ``reset --hard`` would silently discard both those commits and
+        # any unstaged edit to a tracked NON-ops file (preflight only rejects
+        # STAGED non-tracker files), which the ops-only INV-dalup snapshot does
+        # not restore.
+        #
+        # Both are safe IFF the synced PR actually merged — that's the only
+        # state where origin/dev contains the ops content this overwrites
+        # locally with.  When sync failed (``merge_succeeded`` is False) the
+        # ``checkout HEAD --`` reset and the untracked ``unlink`` would silently
+        # wipe local-only mutations that never made it to remote (WI-lufal).
         #
         # The synced ops files may be in one of two states:
-        # - **Untracked** (new items): must be removed before merge,
-        #   otherwise git refuses to overwrite them.
-        # - **Modified** (updates to existing items): must be reset to
-        #   HEAD content before merge, otherwise git refuses to
-        #   overwrite dirty tracked files.
-        # Both are safe IFF the synced PR actually merged — that's the
-        # only state where origin/dev contains the ops content this
-        # routine is about to overwrite locally with.  When sync failed
-        # (``merge_succeeded`` is False) the ``checkout HEAD --`` reset
-        # and the untracked ``unlink`` would silently wipe local-only
-        # mutations that never made it to remote (WI-lufal).
+        # - **Untracked** (new items): must be removed before merge, otherwise
+        #   git refuses to overwrite them.
+        # - **Modified** (updates to existing items): must be reset to HEAD
+        #   content before merge, otherwise git refuses to overwrite dirty
+        #   tracked files.
+        # Both resets are path-scoped to the ops dirs, so unrelated non-ops
+        # working-tree edits are untouched and ff-only carries them forward.
         if preflight.original_branch == base_branch and merge_succeeded:
             # INV-dalup: snapshot every ops file on disk BEFORE the destructive
             # reset/unlink so mutations written in the ``git add`` → cleanup
@@ -1674,8 +1915,8 @@ def do_sync(
             ops_snapshot = _snapshot_ops_files(repo_root)
 
             # Reset tracked ops files to HEAD (handles modified files).
-            # ``git checkout HEAD -- <paths>`` silently ignores
-            # untracked files, so this is safe.
+            # ``git checkout HEAD -- <paths>`` silently ignores untracked files
+            # and is scoped to the ops dirs, so non-ops edits are safe.
             co_result = _git(
                 repo_root,
                 "checkout", "HEAD", "--",
@@ -1687,8 +1928,8 @@ def do_sync(
                     f"checkout HEAD failed during cleanup: "
                     f"{co_result.stderr.strip()}"
                 )
-            # Remove untracked ops files (new items created this
-            # session that aren't on the local branch yet).
+            # Remove untracked ops files (new items created this session that
+            # aren't on the local branch yet).
             untracked = _git(
                 repo_root,
                 "ls-files", "--others", "--exclude-standard", "--",
@@ -1717,8 +1958,8 @@ def do_sync(
                     f"{ff_result.stderr.strip()}"
                 )
             # INV-dalup: re-apply any post-snapshot ops the reset/unlink/merge
-            # discarded — lossless line-union for modified files, recreate for
-            # new items that never reached the sync commit.
+            # discarded — lossless op-block union for modified files, recreate
+            # for new items that never reached the sync commit.
             _union_restore_ops(ops_snapshot)
 
         # Delete sync branch ref (non-fatal)

@@ -22,3 +22,18 @@
     pr_ref:  # 2052
     description: "WI-fagab (PR #223) fixed the producer half: py.py now populates\nSymbol.qualified_name on function/method/class (additive, identity-neutral).\nThe emission-parity matrix (G2) now hard-locks ('python','qualified_name') so\nthe any()-level population cannot silently regress.\n\nThis sibling is WI-fagab's separable SECOND deliverable: a per-KIND\nwriter-contract validator entry (ADR-0033 writer-contract class) requiring\nqualified_name populated on the specific kinds (function/method/class) for which\nthe mainstream analyzers populate it — stronger than the parity gate's any()\nprobe, which would pass even if only one kind populated the field.\n\nScope notes:\n- The parity gate guards \"some symbol has qualified_name\"; this guards \"every\n  function/method/class does\", per-language.\n- For Python, function and method qualified_name are fully container-qualified\n  (outer.inner / Class.method); class qualified_name currently mirrors the bare\n  class name (node.name) because py.py does not compute enclosing-scope\n  qualification for classes (a nested class gets its bare name). If the\n  writer-contract requires TRUE class qualification, this WI must first add\n  enclosing-scope chaining for classes (a small feature, not a kwarg\n  pass-through) — decide at design time.\n- Coordinate with the broader writer-contract validator family\n  (declared-fields:F1 / ADR-0033) rather than adding a one-off check.\n\nFiled per the verified Wave-2 T0 kickoff plan (synthesis: \"file the\nwriter-contract entry as a sibling WI so the opener stays S and lands fast\")."  # 2052
     fields: {}  # 2052
+- op: update  # b935
+  at: '2026-07-22T02:43:29Z'  # b935
+  by: agent  # b935
+  actor: jgstern_agent  # b935
+  clock: 2  # b935
+  nonce: b935  # b935
+  set:  # b935
+    status: done  # b935
+- op: discuss  # 70a4
+  at: '2026-07-22T02:43:29Z'  # 70a4
+  by: agent  # 70a4
+  actor: jgstern_agent  # 70a4
+  clock: 3  # 70a4
+  nonce: 70a4  # 70a4
+  message: "Landed in PR #815 (dev 3911b43f92) on WI-libib's engine. Registered the first per-(kind,field) population-contract entries: qualified_name on Python function/method/class. Producer half was already done (WI-fagab/ADR-0032); the validator entry now GUARDS it — a regression dropping qualified_name on any of these kinds emits a writer_contract|warning (unbaselined cell -> ceiling 0) that breaks the validation_ratchet self-tree gate. Behavioral evidence (closure-evidence discipline): live survey on real Python (class Widget qn=Widget, method Widget.render qn=Widget.render, function top_level_fn qn=top_level_fn — all populated) -> 0 kind-conditioned violations; unit test covers the fire path. Strengthens the prior any()-level emission-parity probe to per-kind."  # 70a4

@@ -13,7 +13,7 @@ Uses the TreeSitterAnalyzer base class with the tree-sitter-perl grammar
 from tree-sitter-language-pack. Full two-pass analysis:
 
 1. extract_symbols_from_file: extracts packages and subroutines
-2. register_symbol: dual-key registration (qualified Package::sub + unqualified sub)
+2. register_symbol: registers by the qualified name only (Package::sub); short-name (unqualified) lookups are handled by the NameResolver suffix index, not by a second registry key
 3. extract_edges_from_file: resolves use/require, function calls, method calls
 4. Per-file package names stored on instance for Pass 2 access
 
@@ -54,6 +54,7 @@ from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, ExternalRef, Span, Symbol, make_pass_id
 from hypergumbo_core.symbol_resolution import NameResolver
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -291,6 +292,8 @@ class PerlAnalyzer(TreeSitterAnalyzer):
                             qualified_name=qualified_name,
                             file_stable_id=self._file_anchor(rel_path),
                         ),
+                        cyclomatic_complexity=compute_cyclomatic_complexity(node, "perl"),
+                        line_span=end_line - start_line + 1,
                     )
                     analysis.symbols.append(symbol)
                     analysis.node_for_symbol[symbol.id] = node
@@ -356,7 +359,6 @@ class PerlAnalyzer(TreeSitterAnalyzer):
                             origin=PASS_ID,
                             origin_run_id=run_id,
                             evidence_type="use",
-                            confidence=0.95,
                         )
                         edges.append(edge)
 
@@ -376,7 +378,6 @@ class PerlAnalyzer(TreeSitterAnalyzer):
                             origin=PASS_ID,
                             origin_run_id=run_id,
                             evidence_type="require",
-                            confidence=0.90,
                         )
                         edges.append(edge)
 

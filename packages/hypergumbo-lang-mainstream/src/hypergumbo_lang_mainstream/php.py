@@ -50,6 +50,7 @@ from hypergumbo_core.symbol_resolution import ListNameResolver, NameResolver
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     TreeSitterAnalyzer,
+    defer_bare_method_call,
     iter_tree,
     make_file_id,
     make_file_stable_id,
@@ -220,6 +221,88 @@ def _get_enclosing_class(node: "tree_sitter.Node", source: bytes) -> Optional[st
                 return name
         current = current.parent
     return None  # pragma: no cover - defensive
+
+
+# WI-fosuh (WI-jusus): PHP type-declaration containers whose bodies hold the
+# ``field``-kind members (properties, constants) emitted below. Constants are
+# also legal at file scope (a global constant → a ``variable``).
+_PHP_TYPE_CONTAINERS = (
+    "class_declaration",
+    "interface_declaration",
+    "trait_declaration",
+    "enum_declaration",
+)
+
+
+def _enclosing_type_name(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
+    """Walk up to the enclosing type declaration (class/interface/trait/enum)."""
+    current = node.parent
+    while current is not None:
+        if current.type in _PHP_TYPE_CONTAINERS:
+            name = _find_name_in_children(current, source)
+            if name:
+                return name
+        current = current.parent
+    return None
+
+
+def _php_property_element_name(
+    el: "tree_sitter.Node", source: bytes
+) -> Optional[str]:
+    """The property name (without the ``$``) from a ``property_element``."""
+    for vn in el.children:
+        if vn.type == "variable_name":
+            for nm in vn.children:
+                if nm.type == "name":
+                    return node_text(nm, source)
+    return None  # pragma: no cover - defensive: a property always names a var
+
+
+def _php_const_element_name(
+    el: "tree_sitter.Node", source: bytes
+) -> Optional[str]:
+    """The constant name from a ``const_element``."""
+    for nm in el.children:
+        if nm.type == "name":
+            return node_text(nm, source)
+    return None  # pragma: no cover - defensive: a const_element always names
+
+
+def _php_member_symbol(
+    file_path: Path,
+    el: "tree_sitter.Node",
+    full_name: str,
+    kind: str,
+    qualified_name: Optional[str],
+    modifiers: list[str],
+    exported: bool,
+    run: AnalysisRun,
+) -> Symbol:
+    """Build a ``field`` / ``variable`` Symbol for a PHP property or constant,
+    spanning the individual property/const ``element`` node (so ``$a, $b`` in one
+    declaration emit two distinctly-spanned fields)."""
+    span = Span(
+        start_line=el.start_point[0] + 1,
+        end_line=el.end_point[0] + 1,
+        start_col=el.start_point[1],
+        end_col=el.end_point[1],
+    )
+    return Symbol(
+        id=make_symbol_id(
+            "php", str(file_path), span.start_line, span.end_line, full_name, kind
+        ),
+        name=full_name,
+        kind=kind,
+        language="php",
+        path=str(file_path),
+        span=span,
+        origin=PASS_ID,
+        origin_run_id=run.execution_id,
+        modifiers=modifiers,
+        line_span=span.end_line - span.start_line + 1,
+        is_exported=exported,
+        qualified_name=qualified_name,
+    )
 
 
 def _extract_php_namespace(
@@ -695,7 +778,7 @@ def _extract_laravel_routes(
                         },
                         origin=run.pass_id,
                         origin_run_id=run.execution_id,
-                        lines_of_code=span.end_line - span.start_line + 1,
+                        line_span=span.end_line - span.start_line + 1,
                         is_exported=True,
                     )
                     route_symbols.append(route_symbol)
@@ -723,7 +806,7 @@ def _extract_laravel_routes(
                 },
                 origin=run.pass_id,
                 origin_run_id=run.execution_id,
-                lines_of_code=span.end_line - span.start_line + 1,
+                line_span=span.end_line - span.start_line + 1,
                 is_exported=True,
             )
             if controller_action:
@@ -832,7 +915,7 @@ def _extract_symbols(
         span=Span(start_line=1, end_line=end_line, start_col=0, end_col=0),
         origin=PASS_ID,
         origin_run_id=run.execution_id,
-        lines_of_code=end_line - 1 + 1,
+        line_span=end_line - 1 + 1,
     )
     symbols.append(module_symbol)
 
@@ -873,7 +956,7 @@ def _extract_symbols(
                     docstring=extract_preceding_doc_comment(node, source, "php"),
                     modifiers=modifiers,
                     shape_id=_analyzer.compute_shape_id(node),
-                    lines_of_code=span.end_line - span.start_line + 1,
+                    line_span=span.end_line - span.start_line + 1,
                     is_exported=True,
                     qualified_name=_make_php_qualified_name(namespace_name, None, name),
                     cyclomatic_complexity=compute_cyclomatic_complexity(node, "php"),
@@ -907,7 +990,7 @@ def _extract_symbols(
                     meta=meta,
                     modifiers=_extract_modifiers_php(node),
                     shape_id=_analyzer.compute_shape_id(node),
-                    lines_of_code=span.end_line - span.start_line + 1,
+                    line_span=span.end_line - span.start_line + 1,
                     is_exported=True,
                     qualified_name=_make_php_qualified_name(namespace_name, None, name),
                 )
@@ -951,12 +1034,57 @@ def _extract_symbols(
                     docstring=extract_preceding_doc_comment(node, source, "php"),
                     modifiers=modifiers,
                     shape_id=_analyzer.compute_shape_id(node),
-                    lines_of_code=span.end_line - span.start_line + 1,
+                    line_span=span.end_line - span.start_line + 1,
                     is_exported="private" not in modifiers and "protected" not in modifiers,
                     qualified_name=_make_php_qualified_name(namespace_name, enclosing_class, name),
                     cyclomatic_complexity=compute_cyclomatic_complexity(node, "php"),
                 )
                 symbols.append(symbol)
+
+        # Class/trait properties -> kind="field" anchored to the type
+        # (WI-fosuh / WI-jusus). property_declaration only occurs in a type body,
+        # so a method-body local (an assignment_expression) can never reach here.
+        elif node.type == "property_declaration":
+            enclosing = _enclosing_type_name(node, source)
+            if enclosing is not None:
+                modifiers = _extract_modifiers_php(node)
+                exported = (
+                    "private" not in modifiers and "protected" not in modifiers
+                )
+                for el in node.children:
+                    if el.type != "property_element":
+                        continue
+                    pname = _php_property_element_name(el, source)
+                    if pname is None:  # pragma: no cover - defensive
+                        continue
+                    symbols.append(_php_member_symbol(
+                        file_path, el, f"{enclosing}.{pname}", "field",
+                        _make_php_qualified_name(namespace_name, enclosing, pname),
+                        modifiers, exported, run,
+                    ))
+
+        # Constants: a class/interface/trait/enum constant is a ``field``; a
+        # top-level (global) constant is a ``variable``.
+        elif node.type == "const_declaration":
+            enclosing = _enclosing_type_name(node, source)
+            for el in node.children:
+                if el.type != "const_element":
+                    continue
+                cname = _php_const_element_name(el, source)
+                if cname is None:  # pragma: no cover - defensive
+                    continue
+                if enclosing is not None:
+                    symbols.append(_php_member_symbol(
+                        file_path, el, f"{enclosing}.{cname}", "field",
+                        _make_php_qualified_name(namespace_name, enclosing, cname),
+                        [], True, run,
+                    ))
+                else:
+                    symbols.append(_php_member_symbol(
+                        file_path, el, cname, "variable",
+                        _make_php_qualified_name(namespace_name, None, cname),
+                        [], True, run,
+                    ))
 
     # INV-jahiv Phase 4 PR3: post-pass for symbols (e.g. classes) whose
     # emit site does not call extract_preceding_doc_comment inline. PHP
@@ -999,6 +1127,33 @@ def _extract_edges(
     edges: list[Edge] = []
     _caller_path = str(file_path)
 
+    # INV-naguv: emit an `imports` edge per `use Namespace\Class;` statement.
+    # php.py previously emitted zero imports edges, so PHP framework namespaces
+    # (`Illuminate\...`, `Symfony\...`) never reached profile.refine_frameworks'
+    # import-promote phase and a manifest-less PHP app surfaced no framework.
+    # The dst carries the full backslash namespace path, which _module_match_kind
+    # now prefix-matches against the PHP_FRAMEWORKS namespace patterns.
+    _file_id = make_file_id("php", str(file_path))
+    for _use in iter_tree(tree.root_node):
+        if _use.type != "namespace_use_declaration":
+            continue
+        for _clause in _use.children:
+            if _clause.type != "namespace_use_clause":
+                continue
+            for _sub in _clause.children:
+                if _sub.type == "qualified_name":
+                    _module_path = node_text(_sub, source)
+                    if _module_path:
+                        edges.append(Edge.create(
+                            src=_file_id,
+                            dst=f"php:{_module_path}:0-0:package:package",
+                            edge_type="imports",
+                            line=_use.start_point[0] + 1,
+                            evidence_type="import_statement",
+                            origin=PASS_ID,
+                            origin_run_id=run.execution_id,
+                        ))
+
     for node in iter_tree(tree.root_node):
         # Function calls: func_name()
         if node.type == "function_call_expression":
@@ -1010,10 +1165,24 @@ def _extract_edges(
                     # Use use_aliases for disambiguation
                     path_hint = use_aliases.get(callee_name)
                     lookup_result = symbol_resolver.lookup(callee_name, path_hint=path_hint, caller_path=_caller_path)
-                    if lookup_result.found and lookup_result.symbol is not None:
+                    # INV-fahub: a bare ``foo()`` call that resolves ONLY via a
+                    # weak short-name suffix match to a DIFFERENT class's method
+                    # is a magnet (dozens of call sites → one arbitrary
+                    # ``SomeClass.foo``). Withhold it → honest unresolved edge
+                    # stamped with the enclosing class, so the inherited_calls
+                    # Site-1 walker can recover a genuine inherited implicit-
+                    # ``this`` call and a true cross-class magnet stays external.
+                    # Free functions and same-enclosing-class methods bind.
+                    _enclosing_type = _get_enclosing_class(node, source)
+                    _sym = lookup_result.symbol
+                    _defer = _sym is not None and defer_bare_method_call(
+                        _sym.kind, _sym.name,
+                        lookup_result.match_type, _enclosing_type,
+                    )
+                    if lookup_result.found and _sym is not None and not _defer:
                         edge = Edge.create(
                             src=current_function.id,
-                            dst=lookup_result.symbol.id,
+                            dst=_sym.id,
                             edge_type="calls",
                             line=node.start_point[0] + 1,
                             confidence=0.95 * lookup_result.confidence,
@@ -1031,6 +1200,7 @@ def _extract_edges(
                                 ExternalRef(lang="php", module_path=path_hint, name=callee_name)
                                 if path_hint else None
                             ),
+                            enclosing_class=_enclosing_type,
                         ))
 
         # Method calls: $this->method() or $obj->method()
@@ -1068,10 +1238,21 @@ def _extract_edges(
                         # Emit only one edge to the best candidate (not all
                         # candidates) to avoid name-collision fanout.
                         lookup_result = method_resolver.lookup(method_name)
-                        if lookup_result.found and lookup_result.symbol is not None:
+                        # INV-fahub: this fallback ignores the receiver's static
+                        # type — a weak (ambiguous / suffix) short-name match to a
+                        # DIFFERENT class's method is the magnet. Withhold it and
+                        # stamp the enclosing class so the inherited_calls Site-1
+                        # walker can recover a genuine inherited call; an exact
+                        # single-candidate match and same-class methods still bind.
+                        _sym = lookup_result.symbol
+                        _defer = _sym is not None and defer_bare_method_call(
+                            _sym.kind, _sym.name,
+                            lookup_result.match_type, current_class_name,
+                        )
+                        if lookup_result.found and _sym is not None and not _defer:
                             edge = Edge.create(
                                 src=current_function.id,
-                                dst=lookup_result.symbol.id,
+                                dst=_sym.id,
                                 edge_type="calls",
                                 line=node.start_point[0] + 1,
                                 confidence=0.60 * lookup_result.confidence,
@@ -1084,6 +1265,7 @@ def _extract_edges(
                             edges.append(make_unresolved_edge(
                                 "php", current_function.id, method_name,
                                 node.start_point[0] + 1, PASS_ID, run.execution_id,
+                                enclosing_class=current_class_name,
                             ))
 
         # Static method calls: ClassName::method()

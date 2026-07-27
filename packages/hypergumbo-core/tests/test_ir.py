@@ -1,9 +1,13 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for the internal representation (IR) layer."""
+import dataclasses
 from pathlib import Path
+
+import pytest
 
 from hypergumbo_core.ir import (
     VALID_ACCESS_MODES,
+    VALID_CONFIDENCE_SOURCES,
     AnalysisRun, Edge, ExternalRef, Span, Symbol, UsageContext, create_boundary_nodes,
     _default_config_fingerprint, compute_config_fingerprint,
     format_legacy_dst, is_external_boundary, validate_symbol_id_format,
@@ -195,7 +199,8 @@ def test_analysis_run_to_dict_includes_failed_files() -> None:
 
 
 def test_analysis_run_to_dict_includes_new_fields() -> None:
-    """AnalysisRun.to_dict should include all spec fields."""
+    """AnalysisRun.to_dict includes the always-present spec fields; the per-run
+    reporting lists are omitted when empty (INV-virik)."""
     run = AnalysisRun.create(pass_id="python", version="0.5.0")
     d = run.to_dict()
 
@@ -203,10 +208,26 @@ def test_analysis_run_to_dict_includes_new_fields() -> None:
     assert "toolchain" in d
     assert "config_fingerprint" in d
     assert "repo_fingerprint" in d
-    assert "skipped_passes" in d
-    assert "warnings" in d
     assert "nodes_emitted" in d
     assert "edges_emitted" in d
+    # INV-virik: empty reporting lists are OMITTED, not present-as-[].
+    assert "skipped_passes" not in d
+    assert "warnings" not in d
+    assert "failed_files" not in d
+
+
+def test_analysis_run_to_dict_keeps_populated_reporting_lists() -> None:
+    """INV-virik: skipped_passes / failed_files / warnings are present ONLY when
+    non-empty (present-when-populated)."""
+    run = AnalysisRun.create(pass_id="python", version="0.5.0")
+    run.warnings = ["a warning"]
+    run.failed_files = [{"path": "x.py", "reason": "boom"}]
+    run.skipped_passes = [{"pass": "p", "reason": "r"}]
+    d = run.to_dict()
+
+    assert d["warnings"] == ["a warning"]
+    assert d["failed_files"] == [{"path": "x.py", "reason": "boom"}]
+    assert d["skipped_passes"] == [{"pass": "p", "reason": "r"}]
 
 
 def test_analysis_run_to_dict_duration_floor_on_emission() -> None:
@@ -302,6 +323,30 @@ def test_symbol_to_dict_includes_new_fields() -> None:
     assert "quality" in d
 
 
+def test_symbol_to_dict_omits_quality_when_none() -> None:
+    """INV-nuzal: node ``quality`` has no producer (0/N populated on
+    self-analysis) — a declared-but-empty field. Following the INV-virik
+    omit-when-empty pattern, ``Symbol.to_dict()`` omits ``quality`` when None
+    rather than emitting a universally-null key, and includes it only when a
+    (future) producer sets it."""
+    span = Span(start_line=1, end_line=2, start_col=0, end_col=10)
+    symbol = Symbol(
+        id="python:test.py:1-2:greet:function",
+        name="greet",
+        kind="function",
+        language="python",
+        path="test.py",
+        span=span,
+    )
+    # No node-level producer sets quality -> key omitted, not null.
+    assert symbol.quality is None
+    assert "quality" not in symbol.to_dict()
+
+    # When a producer does populate it, the key is present with its value.
+    symbol.quality = {"score": 0.9, "reason": "sample"}
+    assert symbol.to_dict()["quality"] == {"score": 0.9, "reason": "sample"}
+
+
 def test_edge_has_edge_key() -> None:
     """Edge should have edge_key for canonical identity."""
     edge = Edge.create(
@@ -316,6 +361,120 @@ def test_edge_has_edge_key() -> None:
     assert hasattr(edge, "edge_key")
     assert edge.edge_key is not None
     assert edge.edge_key.startswith("edgekey:sha256:")
+
+
+def test_edge_confidence_source_derived_when_confidence_omitted() -> None:
+    """ADR-0039 R2: an omitted confidence derives from evidence -> evidence_derived."""
+    edge = Edge.create(
+        src="python:a.py:1-2:foo:function",
+        dst="python:b.py:3-4:bar:function",
+        edge_type="calls",
+        line=5,
+        origin="test", origin_run_id="test",
+        evidence_type="ast_call_direct",  # seeded -> derive returns a value
+    )
+    assert edge.confidence_source == "evidence_derived"
+    # rank_score mirrors detection confidence until a producer relocates it.
+    assert edge.rank_score == edge.confidence
+
+
+def test_edge_confidence_source_emitter_constant_when_explicit() -> None:
+    """ADR-0039 R2: an explicit producer constant -> emitter_constant."""
+    edge = Edge.create(
+        src="a", dst="b", edge_type="contains", line=1,
+        origin="containment-linker", origin_run_id="test",
+        confidence=1.0, evidence_type="naming_convention",
+    )
+    assert edge.confidence_source == "emitter_constant"
+    assert edge.confidence == 1.0
+    assert edge.rank_score == 1.0
+
+
+def test_edge_confidence_source_emitter_constant_on_unseeded_fallback() -> None:
+    """An unseeded pathway derives None -> 0.85 fallback -> emitter_constant."""
+    edge = Edge.create(
+        src="a", dst="b", edge_type="calls", line=1,
+        origin="test", origin_run_id="test",
+        evidence_type="a_totally_unregistered_pathway",
+    )
+    assert edge.confidence == 0.85
+    assert edge.confidence_source == "emitter_constant"
+
+
+def test_edge_confidence_source_explicit_override() -> None:
+    """A producer may declare confidence_source=composite while migrating."""
+    edge = Edge.create(
+        src="a", dst="b", edge_type="calls", line=1,
+        origin="test", origin_run_id="test",
+        confidence=0.5, confidence_source="composite",
+    )
+    assert edge.confidence_source == "composite"
+
+
+def test_edge_rank_score_explicit_diverges_from_confidence() -> None:
+    """ADR-0039 R3: a producer may set rank_score independently of confidence."""
+    edge = Edge.create(
+        src="a", dst="b", edge_type="dispatches_to", line=1,
+        origin="test", origin_run_id="test",
+        confidence=0.85, rank_score=0.30,
+    )
+    assert edge.confidence == 0.85
+    assert edge.rank_score == 0.30
+
+
+def test_edge_create_rejects_invalid_confidence_source() -> None:
+    """An invalid confidence_source is a construction-time error."""
+    with pytest.raises(ValueError, match="confidence_source"):
+        Edge.create(
+            src="a", dst="b", edge_type="calls", line=1,
+            origin="test", origin_run_id="test",
+            confidence_source="not_a_source",
+        )
+
+
+def test_edge_raw_construction_syncs_rank_score() -> None:
+    """Directly-constructed Edge: rank_score defaults to confidence via __post_init__."""
+    edge = Edge(
+        id="edge:x", src="a", dst="b", edge_type="calls", line=1,
+        origin=["test"], origin_run_id="test", confidence=0.7,
+    )
+    assert edge.rank_score == 0.7
+    # No confidence_source passed -> honest default for a hand-set constant.
+    assert edge.confidence_source == "emitter_constant"
+
+
+def test_edge_to_dict_and_from_dict_roundtrip_new_fields() -> None:
+    """confidence_source + rank_score survive the to_dict/from_dict round-trip."""
+    edge = Edge.create(
+        src="a", dst="b", edge_type="calls", line=1,
+        origin="test", origin_run_id="test",
+        confidence=0.6, confidence_source="composite", rank_score=0.42,
+    )
+    d = edge.to_dict()
+    assert d["confidence_source"] == "composite"
+    assert d["rank_score"] == 0.42
+    back = Edge.from_dict(d)
+    assert back.confidence_source == "composite"
+    assert back.rank_score == 0.42
+
+
+def test_edge_from_dict_defaults_new_fields_for_legacy_artifact() -> None:
+    """A legacy artifact lacking the new keys deserializes with safe defaults."""
+    legacy = {
+        "id": "edge:x", "src": "a", "dst": "b", "type": "calls", "line": 1,
+        "confidence": 0.9, "origin": ["test"], "origin_run_id": "test",
+        "meta": {"evidence_type": "ast_call_direct"},
+    }
+    edge = Edge.from_dict(legacy)
+    assert edge.confidence_source == "emitter_constant"
+    # rank_score absent -> __post_init__ syncs it to confidence.
+    assert edge.rank_score == 0.9
+
+
+def test_valid_confidence_sources_vocabulary() -> None:
+    assert VALID_CONFIDENCE_SOURCES == {
+        "evidence_derived", "emitter_constant", "composite",
+    }
 
 
 def test_edge_id_unique_per_line() -> None:
@@ -642,32 +801,14 @@ def test_edge_has_evidence_lang() -> None:
     assert edge.evidence_lang == "python"
 
 
-def test_edge_has_evidence_spans() -> None:
-    """Edge should have evidence_spans in meta."""
-    evidence_spans = [{"file": "a.py", "span": {"start_line": 5, "end_line": 5}}]
-    edge = Edge.create(
-        src="python:a.py:1-2:foo:function",
-        dst="python:b.py:3-4:bar:function",
-        edge_type="calls",
-        line=5,
-        evidence_spans=evidence_spans,
-
-        origin="test", origin_run_id="test",
-    )
-
-    assert edge.evidence_spans == evidence_spans
-
-
 def test_edge_to_dict_includes_new_fields() -> None:
     """Edge.to_dict should include all spec fields."""
-    evidence_spans = [{"file": "a.py", "span": {"start_line": 5, "end_line": 5}}]
     edge = Edge.create(
         src="python:a.py:1-2:foo:function",
         dst="python:b.py:3-4:bar:function",
         edge_type="calls",
         line=5,
         evidence_lang="python",
-        evidence_spans=evidence_spans,
 
         origin="test", origin_run_id="test",
     )
@@ -677,7 +818,90 @@ def test_edge_to_dict_includes_new_fields() -> None:
     assert "edge_key" in d
     assert "quality" in d
     assert "evidence_lang" in d["meta"]
-    assert "evidence_spans" in d["meta"]
+
+
+def test_edge_create_central_stamps_evidence_lang_from_src() -> None:
+    """WI-kuluh / ADR-0040: Edge.create central-stamps evidence_lang from the
+    src id's language slot (ADR-0036 grammar: lang = up to the first colon) when
+    the producer did not pass one, so the field is no longer null on ~100% of
+    mainstream analyzer + linker edges."""
+    edge = Edge.create(
+        src="python:a.py:1-2:foo:function",
+        dst="python:b.py:3-4:bar:function",
+        edge_type="calls",
+        line=5,
+        origin="test", origin_run_id="test",
+    )
+    assert edge.evidence_lang == "python"
+
+
+def test_central_stamp_does_not_clobber_explicit_evidence_lang() -> None:
+    """The central stamp must not override a value a producer passed explicitly
+    (ADR-0040 ruling 2) — guards the ~25 long-tail analyzers that set it."""
+    edge = Edge.create(
+        src="python:a.py:1-2:foo:function",
+        dst="python:b.py:3-4:bar:function",
+        edge_type="calls",
+        line=5,
+        evidence_lang="go",
+        origin="test", origin_run_id="test",
+    )
+    assert edge.evidence_lang == "go"
+
+
+def test_central_stamp_yields_none_for_non_catalog_src() -> None:
+    """A non-canonical src whose first slot is not a known language (e.g. a
+    latex ``rel_path:file`` id) yields None, not a garbage stamp — the catalog
+    guard keeps evidence_lang validator-clean rather than emitting a path
+    segment as a bogus language."""
+    edge = Edge.create(
+        src="chapters/intro.tex:file",
+        dst="python:b.py:3-4:bar:function",
+        edge_type="references",
+        line=1,
+        origin="test", origin_run_id="test",
+    )
+    assert edge.evidence_lang is None
+
+
+def test_stamped_evidence_lang_round_trips() -> None:
+    """A centrally-stamped evidence_lang survives to_dict/from_dict."""
+    edge = Edge.create(
+        src="python:a.py:1-2:foo:function",
+        dst="python:b.py:3-4:bar:function",
+        edge_type="calls",
+        line=5,
+        origin="test", origin_run_id="test",
+    )
+    d = edge.to_dict()
+    assert d["meta"]["evidence_lang"] == "python"
+    assert Edge.from_dict(d).evidence_lang == "python"
+
+
+def test_edge_has_no_evidence_spans_field() -> None:
+    """WI-vozar / ADR-0040: evidence_spans (dead — 0/110533 populated) is removed
+    from the Edge dataclass and the Edge.create kwarg, so a stale writer cannot
+    silently reintroduce it."""
+    assert "evidence_spans" not in {f.name for f in dataclasses.fields(Edge)}
+    with pytest.raises(TypeError):
+        Edge.create(
+            src="python:a.py:1-2:foo:function",
+            dst="python:b.py:3-4:bar:function",
+            edge_type="calls", line=5,
+            evidence_spans=[{"line": 1}],  # type: ignore[call-arg]
+            origin="test", origin_run_id="test",
+        )
+
+
+def test_to_dict_meta_has_no_evidence_spans() -> None:
+    """evidence_spans no longer appears in the serialized edge meta."""
+    edge = Edge.create(
+        src="python:a.py:1-2:foo:function",
+        dst="python:b.py:3-4:bar:function",
+        edge_type="calls", line=5,
+        origin="test", origin_run_id="test",
+    )
+    assert "evidence_spans" not in edge.to_dict()["meta"]
 
 
 def test_edge_with_custom_meta() -> None:
@@ -706,21 +930,21 @@ def test_valid_access_modes_vocabulary() -> None:
 
 
 def test_edge_create_access_mode_kwargs() -> None:
-    """Edge.create should accept access_mode, dest_access_mode, channel kwargs."""
+    """Edge.create should accept access_mode, data_direction, channel kwargs."""
     edge = Edge.create(
         src="py:src/a.py:10:writer:function",
         dst="py:src/b.py:20:reader:function",
         edge_type="data_flows_to",
         line=10,
         access_mode="write",
-        dest_access_mode="read",
+        data_direction="src_to_dst",
         channel="awareness.cursor",
 
         origin="test", origin_run_id="test",
     )
     assert edge.meta is not None
     assert edge.meta["access_mode"] == "write"
-    assert edge.meta["dest_access_mode"] == "read"
+    assert edge.meta["data_direction"] == "src_to_dst"
     assert edge.meta["channel"] == "awareness.cursor"
 
 
@@ -733,7 +957,7 @@ def test_edge_create_access_mode_merges_with_existing_meta() -> None:
         line=10,
         meta={"topic": "user.created"},
         access_mode="write",
-        dest_access_mode="read",
+        data_direction="src_to_dst",
         channel="user.created",
 
         origin="test", origin_run_id="test",
@@ -741,7 +965,7 @@ def test_edge_create_access_mode_merges_with_existing_meta() -> None:
     assert edge.meta is not None
     assert edge.meta["topic"] == "user.created"
     assert edge.meta["access_mode"] == "write"
-    assert edge.meta["dest_access_mode"] == "read"
+    assert edge.meta["data_direction"] == "src_to_dst"
     assert edge.meta["channel"] == "user.created"
 
 
@@ -772,7 +996,7 @@ def test_edge_create_partial_access_mode() -> None:
     )
     assert edge.meta is not None
     assert edge.meta["access_mode"] == "write"
-    assert "dest_access_mode" not in edge.meta
+    assert "data_direction" not in edge.meta
     assert "channel" not in edge.meta
 
 
@@ -791,16 +1015,16 @@ def test_edge_create_invalid_access_mode_raises() -> None:
         )
 
 
-def test_edge_create_invalid_dest_access_mode_raises() -> None:
-    """Edge.create should reject invalid dest_access_mode values."""
+def test_edge_create_invalid_data_direction_raises() -> None:
+    """Edge.create should reject invalid data_direction values."""
     import pytest
-    with pytest.raises(ValueError, match="dest_access_mode"):
+    with pytest.raises(ValueError, match="data_direction"):
         Edge.create(
             src="py:src/a.py:10:f:function",
             dst="py:src/b.py:20:g:function",
             edge_type="calls",
             line=10,
-            dest_access_mode="bogus",
+            data_direction="bogus",
 
             origin="test", origin_run_id="test",
         )
@@ -814,14 +1038,14 @@ def test_edge_access_mode_survives_to_dict() -> None:
         edge_type="data_flows_to",
         line=10,
         access_mode="write",
-        dest_access_mode="read",
+        data_direction="src_to_dst",
         channel="config.db_url",
 
         origin="test", origin_run_id="test",
     )
     d = edge.to_dict()
     assert d["meta"]["access_mode"] == "write"
-    assert d["meta"]["dest_access_mode"] == "read"
+    assert d["meta"]["data_direction"] == "src_to_dst"
     assert d["meta"]["channel"] == "config.db_url"
 
 
@@ -1161,7 +1385,7 @@ def test_symbol_from_dict() -> None:
         "qualified_name": "api.process_request",
         "supply_chain": {"tier": 1, "reason": "first_party"},
         "cyclomatic_complexity": 5,
-        "lines_of_code": 10,
+        "line_span": 10,
         "signature": "(request: Request) -> Response",
         "modifiers": ["async", "public"],
     }
@@ -1179,9 +1403,28 @@ def test_symbol_from_dict() -> None:
     assert symbol.supply_chain_tier == 1
     assert symbol.supply_chain_reason == "first_party"
     assert symbol.cyclomatic_complexity == 5
-    assert symbol.lines_of_code == 10
+    assert symbol.line_span == 10
     assert symbol.signature == "(request: Request) -> Response"
     assert symbol.modifiers == ["async", "public"]
+
+
+def test_symbol_from_dict_line_span_legacy_lines_of_code_key() -> None:
+    """WI-bozid back-compat: a pre-rename behavior map stored the per-symbol
+    physical line span under the key ``lines_of_code``. Symbol.from_dict still
+    reads that legacy key into ``line_span`` so old maps deserialize correctly;
+    the new ``line_span`` key takes precedence when both are present."""
+    legacy = {
+        "id": "python:a.py:1-9:f:function",
+        "name": "f",
+        "kind": "function",
+        "language": "python",
+        "path": "a.py",
+        "lines_of_code": 9,  # pre-rename key
+    }
+    assert Symbol.from_dict(legacy).line_span == 9
+
+    both = {**legacy, "line_span": 42}  # new key wins
+    assert Symbol.from_dict(both).line_span == 42
 
 
 def test_symbol_from_dict_with_defaults() -> None:
@@ -1400,6 +1643,38 @@ def test_edge_from_dict_with_defaults() -> None:
     assert edge.evidence_type == "ast_call_direct"  # Default
 
 
+def test_create_derives_confidence_when_omitted():
+    # confidence:F1 (ADR-0039): Edge.create with no explicit confidence
+    # derives detection-reliability from the inference pathway.
+    # Seeded single-valued pathway -> the registry value:
+    e = Edge.create(src="a", dst="b", edge_type="imports", line=1,
+                    evidence_type="ast_import", origin="test", origin_run_id="test")
+    assert e.confidence == 0.95
+    # Seeded multimodal pathway -> conditioned on is_resolved:
+    e_res = Edge.create(src="a", dst="b", edge_type="calls", line=1,
+                        evidence_type="ast_call_direct", is_resolved=True,
+                        origin="test", origin_run_id="test")
+    e_unres = Edge.create(src="a", dst="b", edge_type="calls", line=1,
+                          evidence_type="ast_call_direct", is_resolved=False,
+                          origin="test", origin_run_id="test")
+    assert e_res.confidence == 0.85
+    assert e_unres.confidence == 0.50
+    # Unseeded pathway -> the historical 0.85 default (unmigrated producers
+    # are unaffected):
+    e_unseeded = Edge.create(src="a", dst="b", edge_type="references", line=1,
+                             evidence_type="naming_convention",
+                             origin="test", origin_run_id="test")
+    assert e_unseeded.confidence == 0.85
+
+
+def test_create_keeps_explicit_confidence():
+    # An explicit confidence is never overridden by derivation.
+    e = Edge.create(src="a", dst="b", edge_type="imports", line=1,
+                    evidence_type="ast_import", confidence=0.42,
+                    origin="test", origin_run_id="test")
+    assert e.confidence == 0.42
+
+
 class TestCreateBoundaryNodes:
     """Tests for create_boundary_nodes (WI-sikur / INV-miniz)."""
 
@@ -1436,9 +1711,11 @@ class TestCreateBoundaryNodes:
         result, remap = create_boundary_nodes([s1], [e])
         assert len(result) == 1
         node = result[0]
-        # Non-file kind: canonical id == original (no rewrite needed).
-        assert node.id == "go:fmt:0-0:Errorf:unresolved"
+        # ADR-0036 Ruling 2: the id kind-slot is the node's own kind
+        # (external_symbol); the use-site reference syntax moves to meta.
+        assert node.id == "go:fmt:0-0:Errorf:external_symbol"
         assert node.kind == "external_symbol"
+        assert node.meta["reference_syntax"] == "unresolved"
         assert node.language == "go"
         assert node.name == "Errorf"
         assert node.supply_chain_tier == 3
@@ -1446,8 +1723,11 @@ class TestCreateBoundaryNodes:
         # Stable identity is populated for cross-run grouping (WI-fozoh).
         assert node.stable_id is not None
         assert node.display_label == "go:fmt:Errorf:unresolved"
-        # Canonical id == original id, so remap is empty (no rewrite needed).
-        assert remap == {}
+        # The id changed (kind slot unresolved -> external_symbol), so the
+        # inbound edge must be remapped onto the new canonical id.
+        assert remap == {
+            "go:fmt:0-0:Errorf:unresolved": "go:fmt:0-0:Errorf:external_symbol",
+        }
 
     def test_stamps_origin_and_origin_run_id(self):
         """synthetic:F1: boundary external_symbol nodes carry a non-empty
@@ -1480,6 +1760,51 @@ class TestCreateBoundaryNodes:
         assert result[0].origin == ["boundary_external_symbol_synthesis"]
         assert result[0].origin_run_id == ""
 
+    def test_boundary_language_bare_path_normalized_to_none(self):
+        """WI-muzuf: a dangling dst that is a bare import path (e.g. a Solidity
+        ``import "../Governor.sol"``) parses via ``_parse_dangling_id``'s
+        <5-part fallback to language='../Governor.sol' — a file path, never a
+        registered language. The boundary node's ``language`` FIELD must be
+        None (the axis allows None) so it does not pollute the language axis
+        (axis_conformance). The id/display_label keep the raw value (the id
+        kind/lang-slot cleanup is a separate INV-dulah/WI-zugob concern)."""
+        s1 = self._make_symbol("python:a.py:1-1:foo:function")
+        e = Edge.create(
+            src=s1.id, dst="../Governor.sol", edge_type="imports",
+            line=1, origin="test", origin_run_id="test",
+        )
+        result, _ = create_boundary_nodes([s1], [e])
+        assert len(result) == 1
+        node = result[0]
+        assert node.kind == "external_symbol"
+        assert node.language is None
+        # The raw value is preserved on the printable display_label.
+        assert "../Governor.sol" in node.display_label
+
+    def test_boundary_language_unregistered_normalized_to_none(self):
+        """WI-muzuf: a parsed language that is not in ``all_known_languages()``
+        (e.g. a build-tool label like ``gradle`` a manifest producer stuffed
+        into the lang slot) normalizes to None on the FIELD."""
+        s1 = self._make_symbol("python:a.py:1-1:foo:function")
+        e = Edge.create(
+            src=s1.id, dst="gradle:cli/Main.java:0-0:Main:external_symbol",
+            edge_type="calls", line=1, origin="test", origin_run_id="test",
+        )
+        result, _ = create_boundary_nodes([s1], [e])
+        assert len(result) == 1
+        assert result[0].language is None
+
+    def test_boundary_known_language_preserved(self):
+        """WI-muzuf regression guard: a real registered language (go) on a
+        dangling id is unchanged by the field normalization."""
+        s1 = self._make_symbol("python:a.py:1-1:foo:function")
+        e = Edge.create(
+            src=s1.id, dst="go:fmt:0-0:Errorf:unresolved",
+            edge_type="calls", line=1, origin="test", origin_run_id="test",
+        )
+        result, _ = create_boundary_nodes([s1], [e])
+        assert result[0].language == "go"
+
     def test_boundary_synthesis_mechanism_is_a_known_pass_id(self):
         """The boundary synthesis mechanism must be a registered pass-id so both
         ``Symbol.origin`` and the synthetic ``AnalysisRun.pass_id`` pass the
@@ -1499,8 +1824,9 @@ class TestCreateBoundaryNodes:
         )
         result, _ = create_boundary_nodes([s1], [e])
         assert len(result) == 1
-        # Non-file kind: canonical id == original.
-        assert result[0].id == "external:lib:0-0:helper:unresolved"
+        # ADR-0036 Ruling 2: kind slot is external_symbol; ref syntax on meta.
+        assert result[0].id == "external:lib:0-0:helper:external_symbol"
+        assert result[0].meta["reference_syntax"] == "unresolved"
 
     def test_multiple_dangling_deduped(self):
         """Multiple edges to the same dangling target create only one node."""
@@ -1511,7 +1837,8 @@ class TestCreateBoundaryNodes:
         e2 = Edge.create(src=s2.id, dst=dangling_id, edge_type="calls", line=2, origin="test", origin_run_id="test")
         result, _ = create_boundary_nodes([s1, s2], [e1, e2])
         assert len(result) == 1
-        assert result[0].id == dangling_id
+        # ADR-0036 Ruling 2: kind slot uniformly external_symbol.
+        assert result[0].id == "go:fmt:0-0:Println:external_symbol"
 
     def test_distinct_modules_with_same_name_stay_distinct(self):
         """WI-fozoh: ``urllib.request.urlopen`` and ``urllib.parse.urlopen``
@@ -1535,8 +1862,10 @@ class TestCreateBoundaryNodes:
         result, _ = create_boundary_nodes([s1], [e1, e2])
         assert len(result) == 2
         ids = {n.id for n in result}
-        assert "python:urllib.request:0-0:urlopen:unresolved" in ids
-        assert "python:urllib.parse:0-0:urlopen:unresolved" in ids
+        # Distinct modules stay distinct via the path slot; the kind slot is
+        # uniformly external_symbol (ADR-0036 Ruling 2).
+        assert "python:urllib.request:0-0:urlopen:external_symbol" in ids
+        assert "python:urllib.parse:0-0:urlopen:external_symbol" in ids
 
     def test_boundary_node_path_is_external(self):
         """Boundary nodes have path '<external>'."""
@@ -1614,33 +1943,98 @@ class TestCreateBoundaryNodes:
         # Two boundary nodes: 1 collapsed "file" boundary covering both
         # source files, plus 1 click boundary from the shared dst.
         ids = {n.id for n in result}
-        canonical_file = "python:<external>:0-0:file:file"
+        # ADR-0036 Ruling 2: kind slot is uniformly external_symbol; the "file"
+        # reference syntax moves to meta.reference_syntax.
+        canonical_file = "python:<external>:0-0:file:external_symbol"
         assert canonical_file in ids
-        assert "python:click:0-0:click:unresolved" in ids
+        file_node = next(n for n in result if n.id == canonical_file)
+        assert file_node.meta["reference_syntax"] == "file"
+        assert "python:click:0-0:click:external_symbol" in ids
         # Both distinct file-id srcs remap to the canonical "file" id.
         assert remap["python:packages/foo/A.py:1-1:file:file"] == canonical_file
         assert remap["python:packages/bar/B.py:1-1:file:file"] == canonical_file
-        # The click dst is non-file kind: canonical id == original, no remap.
-        assert "python:click:0-0:click:unresolved" not in remap
+        # The click dst's id also changed (kind slot -> external_symbol), so it
+        # is remapped onto its canonical id too.
+        assert (
+            remap["python:click:0-0:click:unresolved"]
+            == "python:click:0-0:click:external_symbol"
+        )
 
-    def test_tier_min_selection_picks_tier2_when_any_member_matches(self):
-        """WI-fozoh: tier-min selection — if any member of the collapsed
-        group classifies as tier-2, the canonical node is tier-2.
+    def test_boundary_id_kind_slot_is_always_external_symbol(self):
+        """ADR-0036 Ruling 2: every boundary node's id kind-slot equals its own
+        ``Symbol.kind`` (``external_symbol``), regardless of the use-site
+        reference syntax, which is preserved on ``meta.reference_syntax``.
+        """
+        s1 = self._make_symbol("python:a.py:1-1:f:function")
+        # A mix of reference syntaxes that used to leak into the kind slot.
+        dsts = {
+            "python:os.path:0-0:join:unresolved": "unresolved",
+            "python:mod:0-0:attr:attribute": "attribute",
+            "go:github.com/x:0-0:pkg:package": "package",
+        }
+        edges = [
+            Edge.create(src=s1.id, dst=d, edge_type="calls", line=i,
+                        origin="test", origin_run_id="test")
+            for i, d in enumerate(dsts)
+        ]
+        result, _ = create_boundary_nodes([s1], edges)
+        assert len(result) == 3
+        for node in result:
+            assert node.kind == "external_symbol"
+            assert node.id.rsplit(":", 1)[-1] == "external_symbol"
+            # the original reference syntax is preserved, never lost
+            assert node.meta["reference_syntax"] in set(dsts.values())
 
-        Two file pseudo-IDs collapse, with different per-reference path
-        slots. The manifest classifies neither file path (because they
-        ARE filesystem paths, not module names), but for the file-id
-        collapse case the path slot is uninformative anyway. This test
-        therefore exercises a scenario where the collapsed group
-        receives a path slot that DOES match the manifest — uses Go
-        package-style ids where the path slot is the import path.
+    def test_boundary_ids_are_unique_even_across_reference_syntaxes(self):
+        """ADR-0036 Ruling 2 dedupe-collision guard: two references to the same
+        ``(lang, path, name)`` external via *different* reference syntaxes
+        collapse to a single boundary node with a unique id (the kind slot no
+        longer distinguishes them). Guards against the duplicate ids the
+        kind-slot uniforming could otherwise introduce.
+        """
+        s1 = self._make_symbol("python:a.py:1-1:f:function")
+        e1 = Edge.create(src=s1.id, dst="python:os:0-0:getcwd:unresolved",
+                         edge_type="calls", line=1, origin="test", origin_run_id="test")
+        e2 = Edge.create(src=s1.id, dst="python:os:0-0:getcwd:attribute",
+                         edge_type="calls", line=2, origin="test", origin_run_id="test")
+        result, remap = create_boundary_nodes([s1], [e1, e2])
+        # Collapsed to ONE node — same (lang, path, name).
+        assert len(result) == 1
+        node = result[0]
+        assert node.id == "python:os:0-0:getcwd:external_symbol"
+        # min() picks a deterministic reference syntax; both inbound edges
+        # remap onto the single canonical id.
+        assert node.meta["reference_syntax"] == "attribute"
+        assert remap["python:os:0-0:getcwd:unresolved"] == node.id
+        assert remap["python:os:0-0:getcwd:attribute"] == node.id
+        # ids are globally unique
+        ids = [n.id for n in result]
+        assert len(ids) == len(set(ids))
+
+    def test_boundary_already_external_symbol_kind_slot_gets_no_reference_syntax(self):
+        """When a dangling id's kind slot is already ``external_symbol`` there is
+        no use-site reference syntax to preserve, so ``meta.reference_syntax`` is
+        omitted (the id is already pure) and the id is unchanged (empty remap).
+        """
+        s1 = self._make_symbol("python:a.py:1-1:f:function")
+        e = Edge.create(src=s1.id, dst="python:mod:0-0:thing:external_symbol",
+                        edge_type="calls", line=1, origin="test", origin_run_id="test")
+        result, remap = create_boundary_nodes([s1], [e])
+        node = result[0]
+        assert node.id == "python:mod:0-0:thing:external_symbol"
+        assert "reference_syntax" not in node.meta
+        assert remap == {}
+
+    def test_direct_dep_is_tier3_with_directness_direct(self):
+        """ADR-0041 §1/§2: a declared (direct) third-party boundary node is
+        tier 3 — supply-chain distance only — and carries the declaration
+        relationship on the ``directness`` meta stamp instead of tier 2.
+
+        (Supersedes WI-fozoh's tier-min-picks-tier-2 behavior; stable_id /
+        display_label are still populated regardless of manifest match.)
         """
         from hypergumbo_core.supply_chain import DependencyManifest
 
-        # Two go package boundary ids with the SAME path (same external).
-        # They have full identity preservation (kind="package"); manifest
-        # match works on the path slot. No collapse here, just stable_id
-        # identity verification.
         s1 = self._make_symbol("go:main.go:1-1:main:function")
         e = Edge.create(
             src=s1.id, dst="go:github.com/go-kit/log:0-0:package:package",
@@ -1653,32 +2047,15 @@ class TestCreateBoundaryNodes:
         })
         result, _ = create_boundary_nodes([s1], [e], dependency_manifest=manifest)
         assert len(result) == 1
-        assert result[0].supply_chain_tier == 2
+        assert result[0].supply_chain_tier == 3
+        assert result[0].supply_chain_reason == "unresolved external reference"
+        assert (result[0].meta or {}).get("directness") == "direct"
         # stable_id is populated regardless of manifest match (WI-fozoh).
         assert result[0].stable_id is not None
         assert result[0].display_label is not None
 
-    def test_manifest_classifies_direct_dep_as_tier2(self):
-        """Boundary nodes for direct deps get tier 2 when manifest provided."""
-        from hypergumbo_core.supply_chain import DependencyManifest
-
-        s1 = self._make_symbol("go:main.go:1-1:main:function")
-        e = Edge.create(
-            src=s1.id, dst="go:github.com/go-kit/log:0-0:package:package",
-            edge_type="imports", line=3,
-
-            origin="test", origin_run_id="test",
-        )
-        manifest = DependencyManifest(entries={
-            "github.com/go-kit/log": {"direct": True},
-        })
-        result, _ = create_boundary_nodes([s1], [e], dependency_manifest=manifest)
-        assert len(result) == 1
-        assert result[0].supply_chain_tier == 2
-        assert "direct dependency" in result[0].supply_chain_reason
-
-    def test_manifest_classifies_indirect_dep_as_tier3(self):
-        """Boundary nodes for indirect deps remain tier 3."""
+    def test_manifest_classifies_indirect_dep_directness_transitive(self):
+        """Indirect (transitive) deps are tier 3 with directness 'transitive'."""
         from hypergumbo_core.supply_chain import DependencyManifest
 
         s1 = self._make_symbol("go:main.go:1-1:main:function")
@@ -1694,9 +2071,10 @@ class TestCreateBoundaryNodes:
         result, _ = create_boundary_nodes([s1], [e], dependency_manifest=manifest)
         assert len(result) == 1
         assert result[0].supply_chain_tier == 3
+        assert (result[0].meta or {}).get("directness") == "transitive"
 
-    def test_manifest_classifies_go_stdlib_as_tier3(self):
-        """Go stdlib boundary nodes remain tier 3 with manifest."""
+    def test_manifest_classifies_go_stdlib_directness_undeclared(self):
+        """Go stdlib boundary nodes are tier 3, directness 'undeclared'."""
         from hypergumbo_core.supply_chain import DependencyManifest
 
         s1 = self._make_symbol("go:main.go:1-1:main:function")
@@ -1712,9 +2090,11 @@ class TestCreateBoundaryNodes:
         result, _ = create_boundary_nodes([s1], [e], dependency_manifest=manifest)
         assert len(result) == 1
         assert result[0].supply_chain_tier == 3
+        assert (result[0].meta or {}).get("directness") == "undeclared"
 
     def test_no_manifest_backward_compat(self):
-        """Without manifest, all boundary nodes get tier 3 (existing behavior)."""
+        """Without a manifest, boundary nodes are tier 3 with NO directness
+        stamp (directness is unknowable absent manifest context)."""
         s1 = self._make_symbol("go:main.go:1-1:main:function")
         e = Edge.create(
             src=s1.id, dst="go:github.com/go-kit/log:0-0:package:package",
@@ -1725,9 +2105,10 @@ class TestCreateBoundaryNodes:
         result, _ = create_boundary_nodes([s1], [e])
         assert len(result) == 1
         assert result[0].supply_chain_tier == 3
+        assert "directness" not in (result[0].meta or {})
 
     def test_manifest_subpackage_prefix_match(self):
-        """Import of subpackage matches module path prefix in manifest."""
+        """Subpackage of a direct dep inherits directness 'direct', tier 3."""
         from hypergumbo_core.supply_chain import DependencyManifest
 
         s1 = self._make_symbol("go:main.go:1-1:main:function")
@@ -1743,12 +2124,14 @@ class TestCreateBoundaryNodes:
         })
         result, _ = create_boundary_nodes([s1], [e], dependency_manifest=manifest)
         assert len(result) == 1
-        assert result[0].supply_chain_tier == 2
+        assert result[0].supply_chain_tier == 3
+        assert (result[0].meta or {}).get("directness") == "direct"
 
     def test_manifest_non_go_language_unaffected(self):
-        """Languages without manifest support stay tier 3 (the lua language
-        has no manifest parser; even if a passed manifest happened to
-        match by string prefix, classification should fall through).
+        """Languages without manifest support stay tier 3 with NO directness
+        stamp (the lua language has no manifest parser; even if a passed
+        manifest happened to match by string prefix, directness should not
+        be stamped for a non-allow-listed language).
         """
         from hypergumbo_core.supply_chain import DependencyManifest
 
@@ -1764,11 +2147,12 @@ class TestCreateBoundaryNodes:
         })
         result, _ = create_boundary_nodes([s1], [e], dependency_manifest=manifest)
         assert len(result) == 1
-        # lua not in the allow-list: manifest doesn't apply, stays tier 3
+        # lua not in the allow-list: directness not stamped, stays tier 3
         assert result[0].supply_chain_tier == 3
+        assert "directness" not in (result[0].meta or {})
 
-    def test_manifest_classifies_java_direct_dep_as_tier2(self):
-        """Java boundary nodes classified as tier 2 with manifest."""
+    def test_manifest_classifies_java_direct_dep_directness_direct(self):
+        """Java direct-dep boundary nodes are tier 3 with directness 'direct'."""
         from hypergumbo_core.supply_chain import DependencyManifest
 
         s1 = self._make_symbol("java:App.java:1-1:main:function")
@@ -1784,11 +2168,11 @@ class TestCreateBoundaryNodes:
         })
         result, _ = create_boundary_nodes([s1], [e], dependency_manifest=manifest)
         assert len(result) == 1
-        assert result[0].supply_chain_tier == 2
-        assert "direct dependency" in result[0].supply_chain_reason
+        assert result[0].supply_chain_tier == 3
+        assert (result[0].meta or {}).get("directness") == "direct"
 
-    def test_manifest_classifies_kotlin_direct_dep_as_tier2(self):
-        """Kotlin boundary nodes classified as tier 2 with manifest."""
+    def test_manifest_classifies_kotlin_direct_dep_directness_direct(self):
+        """Kotlin direct-dep boundary nodes are tier 3 with directness 'direct'."""
         from hypergumbo_core.supply_chain import DependencyManifest
 
         s1 = self._make_symbol("kotlin:App.kt:1-1:main:function")
@@ -1804,10 +2188,11 @@ class TestCreateBoundaryNodes:
         })
         result, _ = create_boundary_nodes([s1], [e], dependency_manifest=manifest)
         assert len(result) == 1
-        assert result[0].supply_chain_tier == 2
+        assert result[0].supply_chain_tier == 3
+        assert (result[0].meta or {}).get("directness") == "direct"
 
-    def test_manifest_java_unknown_import_stays_tier3(self):
-        """Java import not in manifest stays tier 3."""
+    def test_manifest_java_unknown_import_directness_undeclared(self):
+        """Java import not in manifest is tier 3 with directness 'undeclared'."""
         from hypergumbo_core.supply_chain import DependencyManifest
 
         s1 = self._make_symbol("java:App.java:1-1:main:function")
@@ -1824,6 +2209,55 @@ class TestCreateBoundaryNodes:
         result, _ = create_boundary_nodes([s1], [e], dependency_manifest=manifest)
         assert len(result) == 1
         assert result[0].supply_chain_tier == 3
+        assert (result[0].meta or {}).get("directness") == "undeclared"
+
+    def test_ecosystem_classifier_stamps_stdlib_and_third_party(self):
+        """ADR-0041 §3: an ecosystem_classifier stamps meta.ecosystem
+        (stdlib vs third_party) on tier-3 boundary nodes."""
+        s1 = self._make_symbol("python:app.py:1-1:main:function")
+        e_os = Edge.create(
+            src=s1.id, dst="python:os:0-0:getcwd:unresolved",
+            edge_type="calls", line=2, origin="test", origin_run_id="test",
+        )
+        e_req = Edge.create(
+            src=s1.id, dst="python:requests:0-0:get:unresolved",
+            edge_type="calls", line=3, origin="test", origin_run_id="test",
+        )
+
+        def classifier(language: str, module: str):
+            assert language == "python"
+            return "stdlib" if module == "os" else "third_party"
+
+        result, _ = create_boundary_nodes(
+            [s1], [e_os, e_req], ecosystem_classifier=classifier
+        )
+        eco = {r.name: (r.meta or {}).get("ecosystem") for r in result}
+        assert eco == {"getcwd": "stdlib", "get": "third_party"}
+
+    def test_ecosystem_absent_without_classifier(self):
+        """No ecosystem_classifier → no ecosystem meta key (back-compat)."""
+        s1 = self._make_symbol("python:app.py:1-1:main:function")
+        e = Edge.create(
+            src=s1.id, dst="python:os:0-0:getcwd:unresolved",
+            edge_type="calls", line=2, origin="test", origin_run_id="test",
+        )
+        result, _ = create_boundary_nodes([s1], [e])
+        assert len(result) == 1
+        assert "ecosystem" not in (result[0].meta or {})
+
+    def test_ecosystem_absent_when_classifier_returns_none(self):
+        """Classifier returning None (no enumerated stdlib for the language)
+        → no ecosystem meta key."""
+        s1 = self._make_symbol("python:app.py:1-1:main:function")
+        e = Edge.create(
+            src=s1.id, dst="python:os:0-0:getcwd:unresolved",
+            edge_type="calls", line=2, origin="test", origin_run_id="test",
+        )
+        result, _ = create_boundary_nodes(
+            [s1], [e], ecosystem_classifier=lambda language, module: None
+        )
+        assert len(result) == 1
+        assert "ecosystem" not in (result[0].meta or {})
 
 
 class TestApplyExternalIdRemap:

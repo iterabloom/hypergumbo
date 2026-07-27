@@ -31,6 +31,10 @@ class TestCmdConfig:
         data = json.loads(buf.getvalue())
         assert "dataflow_patterns" in data
         assert data["dataflow_patterns"] is not None
+        # INV-pazum: config JSON now carries the schema envelope (spread, so
+        # dataflow_patterns / io_primitives stay top-level)
+        assert data["schema_version"] == "0.1.0"
+        assert data["view"] == "config"
 
     def test_known_language_io_primitives(self) -> None:
         """Config for go includes io_primitives section."""
@@ -46,10 +50,57 @@ class TestCmdConfig:
         assert "io_primitives" in data
         assert data["io_primitives"] is not None
 
-    def test_unknown_language_returns_empty(self) -> None:
-        """Config for an unknown language returns empty sections with warning."""
+    def test_non_language_name_rejected(self) -> None:
+        """INV-gufod: a non-language name (not in the language catalog) is
+        rejected with exit 2 and an error — not silently accepted as an
+        all-null config at exit 0."""
         args = FakeArgs()
-        args.language = "brainfuck"
+        args.language = "brainfuck"  # not a known language
+        args.format = "json"
+
+        buf = StringIO()
+        err_buf = StringIO()
+        with patch("sys.stdout", buf), patch("sys.stderr", err_buf):
+            result = cmd_config(args)
+
+        assert result == 2
+        assert buf.getvalue() == ""  # no JSON emitted on rejection
+        assert "not a known language" in err_buf.getvalue().lower()
+
+    def test_framework_linker_name_rejected(self) -> None:
+        """INV-gufod: a framework/linker name (the original repro) is rejected,
+        not treated as a language."""
+        args = FakeArgs()
+        args.language = "airflow-framework-dispatch-linker"
+        args.format = "json"
+
+        err_buf = StringIO()
+        with patch("sys.stdout", StringIO()), patch("sys.stderr", err_buf):
+            result = cmd_config(args)
+
+        assert result == 2
+        assert "not a known language" in err_buf.getvalue().lower()
+
+    def test_did_you_mean_suggestion_for_near_miss(self) -> None:
+        """INV-gufod: a near-miss typo of a real language gets a 'Did you mean'
+        suggestion (exercises the difflib branch)."""
+        args = FakeArgs()
+        args.language = "pythonn"  # typo of python
+        args.format = "json"
+
+        err_buf = StringIO()
+        with patch("sys.stdout", StringIO()), patch("sys.stderr", err_buf):
+            result = cmd_config(args)
+
+        assert result == 2
+        err = err_buf.getvalue().lower()
+        assert "did you mean" in err and "python" in err
+
+    def test_known_language_without_config_warns(self) -> None:
+        """A real language with no config yaml is still VALID (exit 0): it
+        returns all-null sections with a warning. Only non-languages error."""
+        args = FakeArgs()
+        args.language = "agda"  # a known language with no config yaml
         args.format = "json"
 
         buf = StringIO()
@@ -59,10 +110,8 @@ class TestCmdConfig:
 
         assert result == 0
         data = json.loads(buf.getvalue())
-        # All sections should be None (no config found)
         assert data["dataflow_patterns"] is None
         assert data["io_primitives"] is None
-        # Warning emitted to stderr
         assert "no configuration" in err_buf.getvalue().lower()
 
     def test_text_format(self) -> None:
@@ -124,9 +173,22 @@ class TestCmdConfig:
         """Corrupted YAML produces None for that section."""
         import yaml
 
+        from hypergumbo_core.catalog import all_known_languages
+
         args = FakeArgs()
         args.language = "go"
         args.format = "json"
+
+        # Test-isolation: cmd_config validates args.language against
+        # all_known_languages(), which cold-loads catalog YAMLs via
+        # yaml.safe_load on first use (module-cached thereafter). This test's
+        # mock raises on the FIRST safe_load call, expecting that call to be
+        # cmd_config's dataflow_patterns section load. Warm the catalog loads
+        # BEFORE installing the mock so a *cold* catalog cache (which happens
+        # when this test runs first in a shard/order — the CI failure mode)
+        # cannot consume the raising call ahead of the section load and leave
+        # dataflow_patterns non-None.
+        all_known_languages()
 
         original_safe_load = yaml.safe_load
         call_count = 0

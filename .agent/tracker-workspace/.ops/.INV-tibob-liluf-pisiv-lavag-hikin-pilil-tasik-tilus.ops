@@ -70,3 +70,51 @@
   clock: 6  # 79ac
   nonce: 79ac  # 79ac
   message: "2026-06-10 design-interview ruling (ADR-0038, merged in PR #4181): the coverage policy this item flagged as undocumented becomes a MetaKeySpec applicability matrix built from this very census — N/A cells are instantiated explicitly, and bridge constants move to a data_direction key instead of riding on access_mode. Stays violated until the matrix and per-edge rebuild land; re-validate then."  # 79ac
+- op: discuss  # 6947
+  at: '2026-07-01T23:23:36Z'  # 6947
+  by: agent  # 6947
+  actor: jgstern_agent  # 6947
+  clock: 7  # 6947
+  nonce: '6947'  # 6947
+  message: "PR 1 of ADR-0038 ruling 2 landed dev 880cb6775a (vocab F4). axis_meta_keys.MetaKeySpec gained applicable_edge_types/na_edge_types; access_mode now DECLARES its 17-type census matrix — applicable = calls/references/module_attr_ref/event_publishes; Declared-N/A = 11 structural + instantiates (resolver is_access_mode_not_applicable). Both dataflow annotate passes gate the N/A set, so the ~6006 spurious stamps stop being emitted (behavioral: instantiates -> access_mode None [was 5992 stamped: write 5065/mutate 152/read 775], dispatches_to -> None [was 14]; calls/references/module_attr_ref unaffected). Registry description de-staled ('read_write' -> read/write/mutate/delete).\n\nSTAYS violated: the interpretability gap is closed only for the census-17. The current canonical vocabulary is 54 edge types; the ~37 uncensused types remain UNCLASSIFIED (matrix declares nothing for them) -> filed WI-pusuv (P3, polyglot census + WI-nibis substrate-wide negative close-check). Also out of this PR by design: crypto_flow/data_flows_to (direction family -> PR-2 data_direction, ruling 3) and script_src (endpoint_shape mid-fold, ADR-0023, behaviorally moot). Re-validate INV-tibob to satisfied once the full 54-type coverage lands (WI-pusuv) — or re-scope this item to 'census-17 matrix declared' and let WI-pusuv carry the 54-type tail. awaits_bakeoff_validation applied (access_mode drops from ~6006 edges; a DEEP cohort should confirm no taint/io-boundary consumer regressed)."  # 6947
+- op: update  # 2cdb
+  at: '2026-07-01T23:23:37Z'  # 2cdb
+  by: agent  # 2cdb
+  actor: jgstern_agent  # 2cdb
+  clock: 8  # 2cdb
+  nonce: 2cdb  # 2cdb
+  set: {}  # 2cdb
+  add:  # 2cdb
+    tags: [awaits_bakeoff_validation]  # 2cdb
+- op: update  # c824
+  at: '2026-07-03T03:33:53Z'  # c824
+  by: agent  # c824
+  actor: jgstern_agent  # c824
+  clock: 9  # c824
+  nonce: c824  # c824
+  set:  # c824
+    priority: 4  # c824
+  remove:  # c824
+    tags: [awaits_bakeoff_validation]  # c824
+- op: discuss  # 6c75
+  at: '2026-07-03T03:33:53Z'  # 6c75
+  by: agent  # 6c75
+  actor: jgstern_agent  # 6c75
+  clock: 10  # 6c75
+  nonce: 6c75  # 6c75
+  message: "Bakeoff confirms the access_mode restriction is the ADR-0038 applicability matrix, consistently applied with zero leakage (docspell). Behavioral half resolved; residual = schema-doc cross-reference of the applicability policy. Downgraded P3->P4; drained."  # 6c75
+- op: update  # 9e88
+  at: '2026-07-17T22:36:34Z'  # 9e88
+  by: agent  # 9e88
+  actor: jgstern_agent  # 9e88
+  clock: 11  # 9e88
+  nonce: '9e88'  # 9e88
+  set:  # 9e88
+    status: satisfied  # 9e88
+- op: discuss  # a680
+  at: '2026-07-17T22:36:34Z'  # a680
+  by: agent  # a680
+  actor: jgstern_agent  # a680
+  clock: 12  # a680
+  nonce: a680  # a680
+  message: "SATISFIED per bulk-verify 2026-07-17 + doc fix PR #709. The '0% coverage on 12/17 edge.types' is the DECLARED applicability matrix (ADR-0038 ruling 2), not a gap: access_mode applies only to calls/references/module_attr_ref/event_publishes; on the 12 structural edge types the question does not arise (key absent by design). MetaKeySpec (axis_meta_keys.py:141-148/306-321) is the schema of record, distinguishing 'None=missing data on applicable type' from 'None=does not arise on N/A type'. Emission wired/gated (dataflow.py:377/578 skip N/A via is_access_mode_not_applicable) + bakeoff-verified (~6006 spurious instantiates stamps stopped, tracker 2026-07-01/03). Sole residual — the missing spec-doc cross-reference — added in spec §9 Edge.meta catalog (PR #709). WI-pusuv (the ~37 uncensused canonical edge types beyond the census-17, parked on the endpoint_shape->relationship fold per 2026-07-08 ruling) is a DISJOINT follow-up, not a subset of this item."  # a680

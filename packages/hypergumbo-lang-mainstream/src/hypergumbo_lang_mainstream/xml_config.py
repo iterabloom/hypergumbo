@@ -209,7 +209,6 @@ def _process_maven_dependency(
                 dst=symbol_id,
                 edge_type="depends_on",
                 line=start_line,
-                confidence=0.95,
                 origin=PASS_ID,
                 evidence_type="static",
                 origin_run_id=run_id,

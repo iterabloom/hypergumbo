@@ -1,0 +1,66 @@
+- op: create  # afdd
+  at: '2026-06-23T18:17:42Z'  # afdd
+  by: agent  # afdd
+  actor: jgstern_agent  # afdd
+  clock: 1  # afdd
+  nonce: afdd  # afdd
+  data:  # afdd
+    kind: invariant  # afdd
+    title: "C# expression-bodied properties not emitted as property symbols"  # afdd
+    status: violated  # afdd
+    priority: 3  # afdd
+    parent:  # afdd
+    tags: []  # afdd
+    isbefore: []  # afdd
+    duplicate_of: []  # afdd
+    not_duplicate_of: []  # afdd
+    pr_ref:  # afdd
+    description: "C# expression-bodied get-only properties (`public int X => expr;`) are not detected/emitted as kind=\"property\" symbols.\n\nBehavioral evidence (DEEP cohort deep-20260623-134237/cohort-001/iter-001, sherpa-csharp): WaveHeader.cs:159 `public int SampleRate => _header.SampleRate;` and :161 `public float[] Samples => _samples;` produce no property node; the whole cohort has 0 csharp property nodes despite real expression-bodied properties in the source.\n\nScope: NOT a regression of WI-jusus F5 (which added field/variable emission, not property emission). C# FIELD emission is correct (adversarial audit 11/11 field samples correct). This is a C# property-emission coverage gap -- whether regular `{ get; set; }` auto-properties emit on richer C# repos is also unverified (sherpa-onnx examples are thin). Low priority; distinct from the field/variable F5 work.\n\nFix shape: extend the C# analyzer's property detection to cover arrow/expression-bodied member declarations (`=> expr`) in addition to accessor-list properties. Discovered by adversarial ground-truth audit (workflow f5-groundtruth-audit; csharp PARTIAL). Lab notebook: notebookjournal_06232026_1411.md."  # afdd
+    fields:  # afdd
+      statement: "C# expression-bodied properties (member => expr) must emit a kind=property symbol."  # afdd
+      root_cause: "C# analyzer property detection only handles accessor-list properties, not arrow/expression-bodied member declarations, so they emit no property node."  # afdd
+- op: discuss  # 42c6
+  at: '2026-06-24T01:31:54Z'  # 42c6
+  by: agent  # 42c6
+  actor: jgstern_agent  # 42c6
+  clock: 2  # 42c6
+  nonce: 42c6  # 42c6
+  message: "Deferred (human decision, 2026-06-23). Distinct from the F5 field/variable emission work (this is C# PROPERTY emission), lower priority (P3), and not a regression. Unblock condition: a richer C# application repo than the sherpa-onnx dotnet-examples (which are thin ONNX example programs) to validate property emission against — the cohort could only confirm the field side. Stays violated (live gap); fix shape recorded above (extend C# property detection to arrow/expression-bodied member declarations)."  # 42c6
+- op: discuss  # a694
+  at: '2026-07-16T05:14:42Z'  # a694
+  by: agent  # a694
+  actor: jgstern_agent  # a694
+  clock: 3  # a694
+  nonce: a694  # a694
+  message: "REINFORCED + BROADENED by DEEP bakeoff deep-20260623-134237 cohort-001 iter-004 (sherpa-csharp): 108 in-repo C# property declarations emit 0 property nodes — and this is NOT limited to expression-bodied properties (the 2 in WaveReader). 106 of the 108 are ordinary auto-properties ('{ get; set; }' in 5 option classes). There is no 'property' kind emitted at all. So the fix should cover both auto-properties AND expression-bodied; the option-class properties are the dominant case. Evidence: reflect/cohort-001/iter-004/sherpa-csharp.assessment.yaml. Stays violated."  # a694
+- op: update  # 4e44
+  at: '2026-07-16T05:24:25Z'  # 4e44
+  by: agent  # 4e44
+  actor: jgstern_agent  # 4e44
+  clock: 4  # 4e44
+  nonce: '4e44'  # 4e44
+  set: {}  # 4e44
+  add:  # 4e44
+    tags: [wave5]  # 4e44
+- op: discuss  # 4fcf
+  at: '2026-07-16T05:24:26Z'  # 4fcf
+  by: agent  # 4fcf
+  actor: jgstern_agent  # 4fcf
+  clock: 5  # 4fcf
+  nonce: 4fcf  # 4fcf
+  message: "Rolled into Wave 5 (owner, 2026-07-16) with the per-language emission-gap cohort surfaced by the DEEP iter-004 dogfood (WI-kodap/WI-fagit/WI-kudir/WI-zizig)."  # 4fcf
+- op: update  # 67bb
+  at: '2026-07-16T10:21:24Z'  # 67bb
+  by: agent  # 67bb
+  actor: jgstern_agent  # 67bb
+  clock: 6  # 67bb
+  nonce: 67bb  # 67bb
+  set:  # 67bb
+    status: satisfied  # 67bb
+- op: discuss  # 457e
+  at: '2026-07-16T10:21:24Z'  # 457e
+  by: agent  # 457e
+  actor: jgstern_agent  # 457e
+  clock: 7  # 457e
+  nonce: 457e  # 457e
+  message: "Satisfied on EMISSION with behavioral evidence, and the filed root_cause is empirically FALSE. Owner-directed disposition (2026-07-16): satisfy-on-emission + file the real defect separately. Live probe (analyze_csharp on the exact sherpa-csharp shapes WaveHeader.cs:159/161 + option-class auto-properties): EVERY property shape emits kind=property — expression-bodied (int/array/user-typed => expr), accessor-list auto-properties ({get;set;}, {get;}). The existing production-path test test_handles_properties (auto-properties) already passed, contradicting the filing's '0 property nodes' claim. The filed mechanism ('property detection only handles accessor-list, not arrow/expression-bodied') is therefore false — emission was never the gap. The REAL defect the cohort's name-based search was detecting: user-typed properties were misnamed with their TYPE (public WaveInfo Info -> symbol 'C.WaveInfo', not 'C.Info'), so a search for expected property names found 0. That naming defect is fixed in PR #689 and filed as its own item (see below)."  # 457e

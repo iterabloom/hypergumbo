@@ -2,8 +2,11 @@
 """Framework linker: Yjs/CRDT reactive for detecting pub/sub patterns in Yjs-based codebases.
 
 Detects data-mediated coupling through Yjs shared types (Y.Map, Y.Array, Y.Text,
-Y.Doc) and Awareness (ephemeral state). Creates ``crdt_publishes`` edges between
-code that writes to shared state and code that observes it.
+Y.Doc) and Awareness (ephemeral state). Creates ``event_publishes`` edges
+(tagged ``meta.channel_kind="crdt"``, ``meta.framework_dispatch="yjs_crdt"``)
+between code that writes to shared state and code that observes it. (The
+bespoke ``crdt_publishes`` type was folded onto ``event_publishes`` per the
+audit-findings 0001/0014 consolidation.)
 
 Three API surfaces are covered:
 
@@ -14,7 +17,8 @@ Detected Patterns
 - Shared type access: ``doc.getMap('name')``, ``doc.getArray('name')``,
   ``doc.getText('name')``, ``doc.getXmlFragment('name')``
 - Read: ``yMap.observe(callback)``, ``yMap.observeDeep(callback)``
-- Doc-level: ``yDoc.on('update', handler)``, ``yDoc.on('subdocs', handler)``
+- Doc-level: ``yDoc.on('update', handler)``, ``yDoc.on('subdocs', handler)``,
+  ``yDoc.on('destroy', handler)``
 
 **Yjs Awareness (ephemeral state):**
 - Write: ``awareness.setLocalState(state)``, ``awareness.setLocalStateField('key', value)``
@@ -24,7 +28,9 @@ Detected Patterns
 - Write: ``store.addBlock('flavour', ...)``, ``store.deleteBlock()``,
   ``store.transact(fn)``, ``defineBlockSchema({ flavour: 'x' })``
 - Read: ``store.slots.blockUpdated.subscribe()``,
-  ``store.slots.rootAdded.subscribe()``, ``model.propsUpdated.subscribe()``
+  ``store.slots.rootAdded.subscribe()``, ``store.slots.rootDeleted.subscribe()``,
+  ``store.slots.yBlockUpdated.subscribe()``, ``store.slots.ready.subscribe()``,
+  ``model.propsUpdated.subscribe()``
 
 BlockSuite is an abstraction layer over Yjs used by editors like AFFiNE. Block
 mutations map to Yjs operations internally, so tracing through BlockSuite's API
@@ -317,7 +323,7 @@ def link_yjs_crdt(
         symbols: All symbols from all analyzers.
 
     Returns:
-        LinkerResult with crdt_publishes edges.
+        LinkerResult with event_publishes edges (mechanism-tagged CRDT pub/sub).
     """
     start_time = time.time()
     run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)
@@ -422,7 +428,6 @@ def link_yjs_crdt(
                         "channel": write.channel,
                         "framework_role": "event_publisher",
                     },
-                    supply_chain_tier=2,
                     supply_chain_reason="synthetic Yjs CRDT publisher",
                 ))
 
@@ -454,7 +459,6 @@ def link_yjs_crdt(
                         "channel": read.channel,
                         "framework_role": "event_subscriber",
                     },
-                    supply_chain_tier=2,
                     supply_chain_reason="synthetic Yjs CRDT subscriber",
                 ))
 
@@ -474,7 +478,6 @@ def link_yjs_crdt(
                 origin_run_id=run.execution_id,
                 evidence_type="ast_call_direct",
                 access_mode="write",
-                dest_access_mode="read",
                 channel=write.channel,
                 meta={
                     "channel_kind": "crdt",

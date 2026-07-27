@@ -25,3 +25,50 @@
   clock: 2  # 0cf9
   nonce: 0cf9  # 0cf9
   message: "Dogfood finding (member F141.A1), reproduces on the frozen substrate. Mechanism: the Python shape-id helper _compute_shape_id (py.py:1642) is typed (node: ast.FunctionDef | ast.ClassDef) and is invoked only on the function/class construction path; the variable-symbol emission path never calls it. So every module- and class-level `variable` symbol is serialized with shape_id=null even though it carries a real stable_id. Scope: 1609/1610 Python variable nodes carry shape_id=null (the lone populated case is a Go MyVar via the tree-sitter base path). Spec §341 marks Python shape_id 🟩 done (\"implemented via _compute_shape_id()\") and §781 allows null, so 0% on variables is schema-valid but the 🟩 coverage claim is function/class-only. Exposure/consequence: any consumer diffing structural fingerprints to detect \"implementation changed but signature stayed the same\" on Python module-level state gets null and silently loses signal for ~99.9% of the variable population. FRESH-RUN REPRODUCED (/tmp mod.py: MAX_RETRIES=5 + def helper -> variable shape_id None, function populated). Distinct from WI-lutob (shape_id None on csharp/solidity/wgsl BODY-bearing symbols via analyze()-override bypass) — here kind=variable, lang=python, root cause = FunctionDef|ClassDef-only signature. Cross-ref WI-lutob. Substrate evidence: probe_1_shapeid.log / probe_1_varshape.log."  # 0cf9
+- op: update  # 9bb2
+  at: '2026-07-09T01:51:51Z'  # 9bb2
+  by: agent  # 9bb2
+  actor: jgstern_agent  # 9bb2
+  clock: 3  # 9bb2
+  nonce: 9bb2  # 9bb2
+  set: {}  # 9bb2
+  add:  # 9bb2
+    tags: [wave5]  # 9bb2
+- op: discuss  # 28a4
+  at: '2026-07-09T01:51:51Z'  # 28a4
+  by: agent  # 28a4
+  actor: jgstern_agent  # 28a4
+  clock: 4  # 28a4
+  nonce: 28a4  # 28a4
+  message: "Wave-5 sweep (2026-07-08): identity:F5 shape_id residual (Python variable-kind shape_id null; _compute_shape_id is FunctionDef|ClassDef-only). Empty isbefore -> terminal wave."  # 28a4
+- op: discuss  # e0f4
+  at: '2026-07-15T21:18:08Z'  # e0f4
+  by: agent  # e0f4
+  actor: jgstern_agent  # e0f4
+  clock: 5  # e0f4
+  nonce: e0f4  # e0f4
+  message: "Canonical row for the Python-variable shape_id=null defect (WI-zidal folded in as TRUE_DUPLICATE, 2026-07-15). Ported parity evidence: go/swift variable-kind nodes DO get shape_id (2/2, 1/1) — it's a py.py analyzer-parity gap (_compute_shape_id typed FunctionDef|ClassDef-only, py.py:1678; _emit_module_level_assign_symbols builds kind='variable' with no shape_id call). Now a WI-vogij prerequisite: the clone/refactoring-lead feature needs shape_id populated on variable nodes."  # e0f4
+- op: update  # 6cdf
+  at: '2026-07-15T21:18:59Z'  # 6cdf
+  by: agent  # 6cdf
+  actor: jgstern_agent  # 6cdf
+  clock: 6  # 6cdf
+  nonce: 6cdf  # 6cdf
+  set: {}  # 6cdf
+  add:  # 6cdf
+    isbefore: [WI-vogij-jubit-podog-galug-humag-rovuh-jahan-rozug]  # 6cdf
+- op: update  # dd46
+  at: '2026-07-22T01:05:15Z'  # dd46
+  by: agent  # dd46
+  actor: jgstern_agent  # dd46
+  clock: 7  # dd46
+  nonce: dd46  # dd46
+  set:  # dd46
+    status: done  # dd46
+- op: discuss  # 85ce
+  at: '2026-07-22T01:05:15Z'  # 85ce
+  by: agent  # 85ce
+  actor: jgstern_agent  # 85ce
+  clock: 8  # 85ce
+  nonce: 85ce  # 85ce
+  message: "Closed by G1 bundle merged as dev d007532a38 (PR #808). Python variable- and field-kind Symbols carried shape_id=None because _compute_shape_id required a body-bearing FunctionDef/ClassDef node. New _compute_value_shape_id(node,kind) hashes the assignment statement's AST skeleton via _ast_structure (kind folded per WI-linon), wired at the variable (py.py) and field (py.py, WI-jusus emission) sites. BEHAVIORAL EVIDENCE: 4 new tests in test_py_shape_id_kind.py assert variables/fields carry sha256: shape_ids, distinct shapes differ, same shapes share, and kind discriminates (variable vs field). Additive (no existing shape_id value changes) -> shape_id_scheme UNCHANGED (WI-rihob null->value precedent: its commit 5b8a44805f did not touch the scheme). Scope-note: the field-kind analogue was folded in (item statement named only variable). Downstream clone detection (WI-vogij) still needs its _CLONE_KINDS widened to surface variable/field clones; WI-luzut only populates the field."  # 85ce

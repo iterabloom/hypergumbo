@@ -95,9 +95,12 @@ if [[ -z "$UPSTREAM_URL" ]]; then
     echo -e "${RED}Error: No 'upstream' remote found${NC}"
     echo ""
     echo "Fork-based workflow requires:"
-    echo "  1. Fork the repo on Codeberg"
+    echo "  1. Fork the repo on the upstream forge"
     echo "  2. Clone YOUR fork"
-    echo "  3. Add upstream: git remote add upstream https://codeberg.org/iterabloom/hypergumbo.git"
+    echo "  3. Add the upstream remote, e.g.:"
+    echo "       git remote add upstream https://github.com/iterabloom/hypergumbo.git"
+    echo "       git remote add upstream https://codeberg.org/iterabloom/hypergumbo.git"
+    echo "     (see CONTRIBUTING.md)"
     echo ""
     echo "Your current origin: $ORIGIN_URL"
     exit 1
@@ -111,6 +114,25 @@ extract_slug() {
 FORK_SLUG=$(extract_slug "$ORIGIN_URL")
 UPSTREAM_SLUG=$(extract_slug "$UPSTREAM_URL")
 LOCAL_SHA="$(git rev-parse HEAD)"
+
+# Detect the upstream forge (keyed on the UPSTREAM remote — the lib's default
+# reads origin, which is the fork here). GitHub → gh pr create (auto-fork);
+# Forgejo → curl/api_post. Dormant while codeberg is upstream (byte-identical
+# api base + /pulls/ web path for a codeberg upstream).
+detect_forge_backend "$UPSTREAM_URL"
+FORK_OWNER="${FORK_SLUG%%/*}"
+if [[ "${FORGE_BACKEND:-forgejo}" == "github" ]]; then
+    UPSTREAM_API_BASE="https://api.github.com/repos/$UPSTREAM_SLUG"
+    UPSTREAM_WEB="https://github.com/$UPSTREAM_SLUG"
+    PR_PATH="pull"
+else
+    # Robust host extraction (the lib's detect_api_base sed only handles SSH
+    # URLs): strip scheme, then userinfo, then the path/port tail.
+    UPSTREAM_HOST=$(echo "$UPSTREAM_URL" | sed -E -e 's|^[a-z]+://||' -e 's|^[^@]+@||' -e 's|[:/].*$||')
+    UPSTREAM_API_BASE="https://$UPSTREAM_HOST/api/v1/repos/$UPSTREAM_SLUG"
+    UPSTREAM_WEB="https://$UPSTREAM_HOST/$UPSTREAM_SLUG"
+    PR_PATH="pulls"
+fi
 
 echo "╔════════════════════════════════════════╗"
 echo "║       Contributor PR Workflow          ║"
@@ -212,11 +234,57 @@ if [[ -z "$BODY" ]]; then
     BODY=$(git log dev..HEAD --pretty=format:'- %s' | head -10)
 fi
 
-# Check if PR already exists using shared library
-UPSTREAM_API_BASE="https://codeberg.org/api/v1/repos/$UPSTREAM_SLUG"
+# GitHub via gh: auto-forks + collapses the token/fork ceremony (the one place
+# gh earns its keep — contributor-facing, human-run). Falls through to the
+# curl/api_post path below when gh is unavailable.
+if [[ "${FORGE_BACKEND:-forgejo}" == "github" ]] && command -v gh >/dev/null 2>&1; then
+    # gh maps --head to the bare headRefName (no owner), so pass the bare
+    # branch and disambiguate cross-fork PRs by the head repo owner in the JSON.
+    EXISTING_PR=$(GH_TOKEN="$TOKEN" gh pr list --repo "$UPSTREAM_SLUG" \
+        --state open --head "$BRANCH" \
+        --json number,headRepositoryOwner \
+        --jq "map(select(.headRepositoryOwner.login == \"$FORK_OWNER\")) | .[0].number // empty" 2>/dev/null || echo "")
+    if [[ -n "$EXISTING_PR" ]]; then
+        echo -e "${YELLOW}PR #$EXISTING_PR already exists for this branch${NC}"
+        echo "🔗 $UPSTREAM_WEB/$PR_PATH/$EXISTING_PR"
+        echo ""
+        echo "To update the PR, just push more commits."
+        exit 0
+    fi
+    if PR_URL=$(GH_TOKEN="$TOKEN" gh pr create --repo "$UPSTREAM_SLUG" \
+        --base dev --head "$FORK_OWNER:$BRANCH" \
+        --title "$TITLE" --body "$BODY" 2>&1); then
+        PR_NUM="${PR_URL##*/}"
+        echo -e "${GREEN}✓${NC} Created PR #$PR_NUM"
+        echo ""
+        echo "╔════════════════════════════════════════╗"
+        echo -e "║  ${GREEN}PR Created Successfully!${NC}              ║"
+        echo "╚════════════════════════════════════════╝"
+        echo ""
+        echo "🔗 $PR_URL"
+        echo ""
+        echo "Next steps:"
+        echo "  1. Wait for CI to run"
+        echo "  2. Address any review feedback"
+        echo "  3. Maintainer will merge when ready"
+        echo ""
+        echo -e "${YELLOW}Note: You don't have write access, so the PR will NOT auto-merge.${NC}"
+        exit 0
+    else
+        echo -e "${RED}✗ Failed to create PR${NC}"
+        echo "$PR_URL"
+        echo ""
+        echo "You can create manually at:"
+        echo "  $UPSTREAM_WEB/compare/dev...$FORK_OWNER:$BRANCH"
+        exit 1
+    fi
+fi
 
-# Save/restore API_BASE since find_open_pr uses the global
-_saved_api_base="$API_BASE"
+# Forgejo (or github with gh unavailable): curl/api_post against the REST API.
+# ${API_BASE:-} avoids a set -u crash — contribute never runs detect_api_base
+# (it targets upstream, not origin), so the origin-derived API_BASE is unset;
+# we point it at the upstream base for the probe, then restore.
+_saved_api_base="${API_BASE:-}"
 API_BASE="$UPSTREAM_API_BASE"
 
 # Search for existing PR from this fork/branch
@@ -244,7 +312,7 @@ API_BASE="$_saved_api_base"
 
 if [[ -n "$EXISTING_PR" ]]; then
     echo -e "${YELLOW}PR #$EXISTING_PR already exists for this branch${NC}"
-    echo "🔗 https://codeberg.org/$UPSTREAM_SLUG/pulls/$EXISTING_PR"
+    echo "🔗 $UPSTREAM_WEB/$PR_PATH/$EXISTING_PR"
     echo ""
     echo "To update the PR, just push more commits."
     exit 0
@@ -256,7 +324,7 @@ import json, sys
 payload = {
     'title': sys.stdin.readline().rstrip('\n'),
     'body': sys.stdin.read(),
-    'head': '$USER:$BRANCH',
+    'head': '$FORK_OWNER:$BRANCH',
     'base': 'dev'
 }
 print(json.dumps(payload))
@@ -276,7 +344,7 @@ if api_post "$UPSTREAM_API_BASE/pulls" "$PR_PAYLOAD"; then
         echo -e "║  ${GREEN}PR Created Successfully!${NC}              ║"
         echo "╚════════════════════════════════════════╝"
         echo ""
-        echo "🔗 https://codeberg.org/$UPSTREAM_SLUG/pulls/$PR_NUM"
+        echo "🔗 $UPSTREAM_WEB/$PR_PATH/$PR_NUM"
         echo ""
         echo "Next steps:"
         echo "  1. Wait for CI to run"
@@ -289,7 +357,7 @@ if api_post "$UPSTREAM_API_BASE/pulls" "$PR_PAYLOAD"; then
         echo "Response: $API_RESPONSE"
         echo ""
         echo "You can create manually at:"
-        echo "  https://codeberg.org/$UPSTREAM_SLUG/compare/dev...$USER:$BRANCH"
+        echo "  $UPSTREAM_WEB/compare/dev...$FORK_OWNER:$BRANCH"
         exit 1
     fi
 else
@@ -297,6 +365,6 @@ else
     echo "Response: $API_RESPONSE"
     echo ""
     echo "You can create manually at:"
-    echo "  https://codeberg.org/$UPSTREAM_SLUG/compare/dev...$USER:$BRANCH"
+    echo "  $UPSTREAM_WEB/compare/dev...$FORK_OWNER:$BRANCH"
     exit 1
 fi

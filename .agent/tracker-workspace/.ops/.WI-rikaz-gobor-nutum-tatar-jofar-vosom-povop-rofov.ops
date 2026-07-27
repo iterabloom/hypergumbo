@@ -31,3 +31,18 @@
     tags: [dogfood]  # 6ea0
   remove:  # 6ea0
     tags: [dogfooding]  # 6ea0
+- op: update  # c73d
+  at: '2026-06-25T05:31:50Z'  # c73d
+  by: agent  # c73d
+  actor: jgstern_agent  # c73d
+  clock: 3  # c73d
+  nonce: c73d  # c73d
+  set:  # c73d
+    status: done  # c73d
+- op: discuss  # f6f5
+  at: '2026-06-25T05:31:50Z'  # f6f5
+  by: agent  # f6f5
+  actor: jgstern_agent  # f6f5
+  clock: 4  # f6f5
+  nonce: f6f5  # f6f5
+  message: "Semantics documented + field self-documenting, commit 037a3730de. (1) Renamed centrality_scores -> additional_file_centrality_scores (the fix-sketch's 'optionally rename for clarity' option). (2) docs/schema.json field description now documents the derivation (symbol-mention centrality via compute_symbol_mention_centrality_batch), the interpretation (ranks the sketch's Additional-Files section; keys are config/doc files only), and the contrast with whole-graph symbol centrality (the 'symbols' command). Venue note: documented at the SCHEMA layer (inline on the field) rather than spec.md section 9, because the same change reclassified sketch_precomputed as x-internal — section 9 documents the PUBLIC schema, and an internal cache field is documented inline; the x-internal marker further tells consumers not to depend on the block, mitigating the 'misleading to consumers' concern. Correction: the item's 'import-edge-derived' premise was inaccurate — the score is symbol-mention frequency, not import-edge centrality; the new description states the actual derivation."  # f6f5

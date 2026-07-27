@@ -3193,8 +3193,18 @@ app.get('/data', (req, res) => {
             assert "GET" in edge.src or "handler" in edge.src.lower() or "routes" in edge.src.lower(), \
                 f"Call should be attributed to route handler, got src={edge.src}"
 
-    def test_call_inside_callback_in_named_function_attributed(self, tmp_path: Path) -> None:
-        """Calls inside callbacks within named functions are attributed to the named function."""
+    def test_call_inside_callback_attributed_to_callback_symbol(self, tmp_path: Path) -> None:
+        """Calls inside an anonymous callback attribute to the *callback* symbol.
+
+        WI-zavad anon-callback slice changed this contract: the callback
+        ``data.forEach((item) => { helper(); })`` is now extracted as a
+        ``_cb_forEach`` function node, so ``helper()`` attributes to it rather
+        than to the enclosing named ``main`` (the prior behavior, which had no
+        callback symbol to anchor on). The enclosing ``main`` still reaches the
+        callback — and transitively ``helper`` — via the companion
+        ``references`` edge, so reachability is preserved while attribution
+        becomes more precise.
+        """
         from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         js_file = tmp_path / "app.js"
@@ -3213,17 +3223,21 @@ function main() {
 
         result = analyze_javascript(tmp_path)
 
-        # Find call edges to helper
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
         helper_calls = [e for e in call_edges if "helper" in e.dst]
-
-        # There should be a call from main to helper
         assert len(helper_calls) >= 1, "Call to helper inside forEach callback should be detected"
 
-        # The source should be 'main' (the containing named function)
-        main_to_helper = [e for e in helper_calls if "main" in e.src]
-        assert len(main_to_helper) >= 1, \
-            f"Call should be attributed to main function, got sources: {[e.src for e in helper_calls]}"
+        cb = next(s for s in result.symbols if s.name == "_cb_forEach")
+        main = next(s for s in result.symbols if s.name == "main")
+        # the body call now attributes to the callback symbol, not main directly
+        assert any(e.src == cb.id for e in helper_calls), \
+            f"Call should attribute to the callback symbol, got sources: {[e.src for e in helper_calls]}"
+        # main reaches the callback via a companion references edge (preserves
+        # main -> ... -> helper reachability)
+        assert any(
+            e.src == main.id and e.dst == cb.id and e.edge_type == "references"
+            for e in result.edges
+        ), "main should reference the forEach callback"
 
 
     def test_app_get_without_string_path_not_route(self, tmp_path: Path) -> None:
@@ -3971,9 +3985,12 @@ function sum(...numbers) {
 
         result = analyze_javascript(tmp_path)
 
+        # NOTE: the inline ``reduce((a, b) => a + b, 0)`` callback is now also a
+        # function symbol (WI-zavad anon-callback slice), so find ``sum`` by name
+        # rather than assuming it is the only function.
         funcs = [s for s in result.symbols if s.kind == "function"]
-        assert len(funcs) == 1
-        sig = funcs[0].signature
+        sum_fn = next(s for s in funcs if s.name == "sum")
+        sig = sum_fn.signature
         assert sig is not None
         assert "...numbers" in sig
 
@@ -3996,6 +4013,128 @@ function greet(name: string): string {
         as_dict = funcs[0].to_dict()
         assert "signature" in as_dict
         assert "name: string" in as_dict["signature"]
+
+
+class TestJsTsSignatureParityINVgolap:
+    """INV-golap: JS function/method nodes must populate ``signature`` at
+    parity with TypeScript.
+
+    The original "0/10 JS vs 25/26 TS" asymmetry was stale for ordinary
+    constructs (the signature code path was added after the measuring pass).
+    The residual real gap was route-handler pseudo-symbols: the inline
+    handler emit site created a ``kind="function"`` Symbol without ever
+    calling ``_extract_jsts_signature``, leaving ``signature=None`` even
+    though ``(req, res)`` is right there on the handler node. These tests
+    lock in parity so the closure cannot silently regress.
+    """
+
+    # Construct families that the analyzer extracts as named function/method
+    # symbols (generators / bare function-expressions are separately tracked).
+    _JS_CONSTRUCTS = """
+function fd(a, b) { return a; }
+const ac = (a, b) => a;
+async function af(a) { return a; }
+const o = { om(a) { return a; } };
+export function ef(a) { return a; }
+export const eca = (a) => a;
+export default function edf(a) { return a; }
+class C {
+  m(a) { return a; }
+  static sm(a) { return a; }
+  async am(a) { return a; }
+  get g() { return 1; }
+  set s(v) { this._v = v; }
+}
+"""
+    _TS_CONSTRUCTS = """
+function fd(a: number, b: string): number { return a; }
+const ac = (a: number, b: string): number => a;
+async function af(a: number): Promise<number> { return a; }
+const o = { om(a: number): number { return a; } };
+export function ef(a: number): number { return a; }
+export const eca = (a: number): number => a;
+export default function edf(a: number): number { return a; }
+class C {
+  m(a: number): number { return a; }
+  static sm(a: number): number { return a; }
+  async am(a: number): Promise<number> { return a; }
+  get g(): number { return 1; }
+  set s(v: number) { this._v = v; }
+}
+"""
+
+    _FUNC_KINDS = ("function", "method", "getter", "setter")
+
+    def _funcs(self, result):
+        return [s for s in result.symbols if s.kind in self._FUNC_KINDS]
+
+    def test_js_extracted_constructs_all_populate_signature(self, tmp_path: Path) -> None:
+        """Every extracted JS function/method/getter/setter has a signature."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "mod.js").write_text(self._JS_CONSTRUCTS)
+        funcs = self._funcs(analyze_javascript(tmp_path))
+        assert funcs  # sanity: constructs were extracted
+        nulls = [(f.kind, f.name) for f in funcs if not f.signature]
+        assert not nulls, f"JS symbols missing signature: {nulls}"
+
+    def test_ts_extracted_constructs_all_populate_signature(self, tmp_path: Path) -> None:
+        """TypeScript parity baseline: every extracted node has a signature."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "mod.ts").write_text(self._TS_CONSTRUCTS)
+        funcs = self._funcs(analyze_javascript(tmp_path))
+        assert funcs
+        nulls = [(f.kind, f.name) for f in funcs if not f.signature]
+        assert not nulls, f"TS symbols missing signature: {nulls}"
+
+    def test_js_ts_signature_population_at_parity(self, tmp_path: Path) -> None:
+        """JS and TS populate signature on the SAME set of construct names."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        js_dir = tmp_path / "js"
+        js_dir.mkdir()
+        (js_dir / "mod.js").write_text(self._JS_CONSTRUCTS)
+        ts_dir = tmp_path / "ts"
+        ts_dir.mkdir()
+        (ts_dir / "mod.ts").write_text(self._TS_CONSTRUCTS)
+
+        js_named = {f.name for f in self._funcs(analyze_javascript(js_dir)) if f.signature}
+        ts_named = {f.name for f in self._funcs(analyze_javascript(ts_dir)) if f.signature}
+        assert js_named == ts_named, (
+            f"signature-population asymmetry: JS-only={js_named - ts_named}, "
+            f"TS-only={ts_named - js_named}"
+        )
+
+    def test_route_handler_inline_arrow_populates_signature(self, tmp_path: Path) -> None:
+        """Express inline arrow handler gets a signature from its (req, res)."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "app.js").write_text(
+            "const app = require('express')();\n"
+            "app.get('/health', (req, res) => { res.json({ ok: 1 }); });\n"
+        )
+        handlers = [
+            s for s in analyze_javascript(tmp_path).symbols
+            if s.kind == "function" and s.meta and s.meta.get("http_method") == "GET"
+        ]
+        assert len(handlers) == 1
+        assert handlers[0].signature == "(req, res)"
+
+    def test_route_handler_function_expression_populates_signature(self, tmp_path: Path) -> None:
+        """Express named-function-expression handler gets a signature."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "app.js").write_text(
+            "const app = require('express')();\n"
+            "app.post('/x', function doPost(req, res) { res.send('ok'); });\n"
+        )
+        handlers = [
+            s for s in analyze_javascript(tmp_path).symbols
+            if s.kind == "function" and s.meta and s.meta.get("http_method") == "POST"
+        ]
+        assert len(handlers) == 1
+        assert handlers[0].signature == "(req, res)"
 
 
 class TestNamespaceImports:
@@ -6200,8 +6339,14 @@ class UserRepository extends Repository<User> {
         assert "UserRepository" in edge.src
         assert "Repository" in edge.dst
 
-    def test_no_extends_edge_for_external_class(self, tmp_path: Path) -> None:
-        """No extends edge created when base class is external (not in repo)."""
+    def test_external_base_class_emits_unresolved_extends_edge(
+        self, tmp_path: Path
+    ) -> None:
+        """External base classes now emit an UNRESOLVED extends edge (F4/A2).
+
+        Previously the extractor dropped external bases entirely, orphaning the
+        class in the inheritance graph. The edge is unresolved-external (its dst
+        is a ``:unresolved`` placeholder, not a resolved in-repo symbol)."""
         from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         (tmp_path / "component.tsx").write_text("""
@@ -6221,9 +6366,14 @@ class MyComponent extends React.Component {
         assert my_class is not None
         assert "base_classes" in (my_class.meta or {})
 
-        # But no extends edge since React.Component is external
+        # External base now yields exactly one UNRESOLVED extends edge (not a
+        # resolved in-repo target, and no longer dropped).
         extends_edges = [e for e in result.edges if e.edge_type == "extends"]
-        assert len(extends_edges) == 0
+        assert len(extends_edges) == 1, [(e.dst, e.is_resolved) for e in extends_edges]
+        edge = extends_edges[0]
+        assert not edge.is_resolved
+        assert ":unresolved" in edge.dst
+        assert "Component" in edge.dst
 
     def test_extends_prefers_imported_class_over_name_collision(
         self, tmp_path: Path
@@ -9219,10 +9369,10 @@ class TestAccessModeClassificationOnCallEdges:
 
 
 class TestJsTsLinesOfCode:
-    """Tests for lines_of_code on JS/TS symbols."""
+    """Tests for line_span on JS/TS symbols."""
 
-    def test_function_lines_of_code(self, tmp_path: Path) -> None:
-        """Function symbols have lines_of_code set from span."""
+    def test_function_line_span(self, tmp_path: Path) -> None:
+        """Function symbols have line_span set from span."""
         from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         (tmp_path / "app.js").write_text(
@@ -9232,7 +9382,7 @@ class TestJsTsLinesOfCode:
         )
         result = analyze_javascript(tmp_path)
         func = next(s for s in result.symbols if s.name == "greet")
-        assert func.lines_of_code == 3
+        assert func.line_span == 3
 
 
 class TestJsTsDocstring:
@@ -9358,3 +9508,1533 @@ class TestJsTsCyclomaticComplexity:
         method = next(s for s in result.symbols if s.name == "C.branchy")
         assert method.cyclomatic_complexity is not None
         assert method.cyclomatic_complexity >= 2
+
+
+class TestWizavadCjsModuleBindingParity:
+    """WI-zavad / emission-parity F2: CommonJS module bindings are first-class
+    import aliases (parity with ESM), and module-variant extensions
+    (.mjs/.cjs/.mts/.cts) are discovered.
+
+    Before this fix the ``require()`` edge-emitter recorded the *import* edge
+    but never registered the bound name as a namespace/named alias, so member
+    calls on a require-bound module
+    (``const fs = require('fs'); fs.readFileSync(...)``) emitted ZERO ``calls``
+    edges — leaving CommonJS Node I/O invisible to the io-boundaries layer (the
+    WI-zavad P0 symptom: a CJS service file reports zero I/O, output identical
+    to a genuinely I/O-free file). ESM ``import * as fs`` / ``import { x }``
+    already routed through the namespace (Case 2 / WI-vurop) and named-import
+    (WI-banaf) unresolved-call paths; CommonJS now reaches the same parity.
+    """
+
+    def test_cjs_default_binding_member_call_emits_unresolved_edge(
+        self, tmp_path: Path
+    ) -> None:
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "app.js").write_text(
+            "const fs = require('fs');\n"
+            "function main() { return fs.readFileSync('x'); }\n"
+        )
+        result = analyze_javascript(tmp_path)
+        callees = {
+            e.dst for e in result.edges
+            if e.edge_type == "calls" and ":unresolved" in e.dst
+        }
+        hits = [c for c in callees if "readFileSync" in c]
+        assert hits, callees
+        # dst format: ``{lang}:{module}:0-0:{name}:unresolved`` — module hint
+        # is the second colon-segment and feeds the io-boundary catalog.
+        assert hits[0].split(":")[1] == "fs", hits[0]
+
+    def test_cjs_destructured_binding_bare_call_emits_unresolved_edge(
+        self, tmp_path: Path
+    ) -> None:
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "app.js").write_text(
+            "const { exec } = require('child_process');\n"
+            "function run() { return exec('ls'); }\n"
+        )
+        result = analyze_javascript(tmp_path)
+        callees = {
+            e.dst for e in result.edges
+            if e.edge_type == "calls" and ":unresolved" in e.dst
+        }
+        hits = [c for c in callees if "exec" in c]
+        assert hits, callees
+        assert hits[0].split(":")[1] == "child_process", hits[0]
+
+    def test_cjs_aliased_destructure_uses_canonical_name(
+        self, tmp_path: Path
+    ) -> None:
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "app.js").write_text(
+            "const { readFile: rf } = require('node:fs');\n"
+            "function f() { return rf('x'); }\n"
+        )
+        result = analyze_javascript(tmp_path)
+        callees = {
+            e.dst for e in result.edges
+            if e.edge_type == "calls" and ":unresolved" in e.dst
+        }
+        # canonical imported name (readFile), not the local alias (rf);
+        # the ``node:`` module prefix is normalised away to ``fs``.
+        hits = [c for c in callees if "readFile" in c]
+        assert hits, callees
+        assert hits[0].split(":")[1] == "fs", hits[0]
+        assert all(":rf:" not in c for c in callees), callees
+
+    def test_module_variant_extensions_are_discovered(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.js_ts import find_js_ts_files
+
+        for name in ("a.mjs", "b.cjs", "c.mts", "d.cts", "keep.js"):
+            (tmp_path / name).write_text("export function f(){ return 1; }\n")
+        found = {p.name for p in find_js_ts_files(tmp_path)}
+        assert {"a.mjs", "b.cjs", "c.mts", "d.cts", "keep.js"} <= found, found
+
+    def test_cjs_file_extension_is_analyzed(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "worker.cjs").write_text(
+            "const fs = require('fs');\n"
+            "function main() { return fs.readFileSync('x'); }\n"
+        )
+        result = analyze_javascript(tmp_path)
+        assert not result.skipped
+        assert any(s.kind == "function" and s.name == "main" for s in result.symbols)
+        assert any(
+            e.edge_type == "calls" and ":unresolved" in e.dst and "readFileSync" in e.dst
+            for e in result.edges
+        )
+
+    def test_module_variant_extension_language_tags(self) -> None:
+        from hypergumbo_lang_mainstream.js_ts import _get_language_for_file
+
+        assert _get_language_for_file(Path("x.mts")) == "typescript"
+        assert _get_language_for_file(Path("x.cts")) == "typescript"
+        assert _get_language_for_file(Path("x.mjs")) == "javascript"
+        assert _get_language_for_file(Path("x.cjs")) == "javascript"
+
+    def test_mts_file_analyzed_as_typescript(self, tmp_path: Path) -> None:
+        pytest.importorskip("tree_sitter_typescript")
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "mod.mts").write_text(
+            "export function helper(x: number): string { return String(x); }\n"
+        )
+        result = analyze_javascript(tmp_path)
+        assert not result.skipped
+        helper = next((s for s in result.symbols if s.name == "helper"), None)
+        assert helper is not None
+        assert helper.language == "typescript"
+
+    # --- direct unit tests for the alias extractors (edge-case branches) ---
+
+    def test_extract_namespace_imports_captures_require_default(self) -> None:
+        from hypergumbo_lang_mainstream.js_ts import (
+            _extract_namespace_imports, _get_parser_for_lang,
+        )
+        src = b"const fs = require('fs');\nvar http = require('http');\n"
+        tree = _get_parser_for_lang(False).parse(src)
+        ns = _extract_namespace_imports(tree, src)
+        assert ns.get("fs") == "fs"
+        assert ns.get("http") == "http"
+
+    def test_extract_named_imports_captures_require_destructure(self) -> None:
+        from hypergumbo_lang_mainstream.js_ts import (
+            _extract_named_imports, _get_parser_for_lang,
+        )
+        src = b"const { exec, spawn: sp } = require('child_process');\n"
+        tree = _get_parser_for_lang(False).parse(src)
+        nm, orig = _extract_named_imports(tree, src)
+        assert nm.get("exec") == "child_process"
+        assert orig.get("exec") == "exec"
+        assert nm.get("sp") == "child_process"
+        assert orig.get("sp") == "spawn"
+
+    def test_dynamic_require_binding_registers_no_alias(self) -> None:
+        from hypergumbo_lang_mainstream.js_ts import (
+            _extract_namespace_imports, _get_parser_for_lang,
+        )
+        # require(name) has no string literal -> no alias (dynamic require).
+        src = b"const m = require(name);\n"
+        tree = _get_parser_for_lang(False).parse(src)
+        assert "m" not in _extract_namespace_imports(tree, src)
+
+    def test_non_require_initializer_registers_no_alias(self) -> None:
+        from hypergumbo_lang_mainstream.js_ts import (
+            _extract_namespace_imports, _extract_named_imports, _get_parser_for_lang,
+        )
+        # A non-require call (identifier callee), a member-expression callee,
+        # and a *destructured* non-require call must all be ignored by the
+        # require-alias extraction (no module string -> no alias).
+        src = (
+            b"const x = compute('fs');\n"
+            b"const y = obj.load('fs');\n"
+            b"const { z } = build();\n"
+        )
+        tree = _get_parser_for_lang(False).parse(src)
+        ns = _extract_namespace_imports(tree, src)
+        nm, _orig = _extract_named_imports(tree, src)
+        assert "x" not in ns and "y" not in ns
+        assert "x" not in nm and "y" not in nm and "z" not in nm
+
+
+class TestWizavadGlobalIoEmission:
+    """WI-zavad / emission-parity F2 (slice 2): browser/worker global I/O calls
+    reach the io-boundary catalog.
+
+    The JavaScript io-primitives catalog already lists ``caches`` (Service
+    Worker CacheStorage), ``indexedDB``, and the global ``fetch`` — but the
+    analyzer never emitted calls for them, so a Service Worker file built
+    entirely from top-level ``self.addEventListener('fetch', e => caches.open(...))``
+    callbacks produced zero edges (the WI-zavad frozen-substrate repro:
+    ``service-worker.js`` full of ``caches.open()``/``fetch()`` emitted only
+    event-subscriber 'uses' edges). ``caches``/``indexedDB`` join
+    ``JS_KNOWN_GLOBALS`` (member-call Case 3b) and bare ``fetch()`` gets an
+    unresolved-call path; calls in top-level/anonymous-callback scope attribute
+    to the file pseudo-node (``module_symbol``).
+    """
+
+    def test_caches_member_call_emits_unresolved_edge(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "sw.js").write_text(
+            "function warm() { return caches.open('v1'); }\n"
+        )
+        result = analyze_javascript(tmp_path)
+        callees = {
+            e.dst for e in result.edges
+            if e.edge_type == "calls" and ":unresolved" in e.dst
+        }
+        hits = [c for c in callees if c.split(":")[1] == "caches" and ":open:" in c]
+        assert hits, callees
+
+    def test_indexeddb_member_call_emits_unresolved_edge(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "db.js").write_text(
+            "function load() { return indexedDB.open('store'); }\n"
+        )
+        result = analyze_javascript(tmp_path)
+        callees = {
+            e.dst for e in result.edges
+            if e.edge_type == "calls" and ":unresolved" in e.dst
+        }
+        hits = [c for c in callees if c.split(":")[1] == "indexedDB" and ":open:" in c]
+        assert hits, callees
+
+    def test_bare_fetch_call_emits_unresolved_edge(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "net.js").write_text(
+            "function load(url) { return fetch(url); }\n"
+        )
+        result = analyze_javascript(tmp_path)
+        callees = {
+            e.dst for e in result.edges
+            if e.edge_type == "calls" and ":unresolved" in e.dst
+        }
+        # module hint AND callee name are both ``fetch`` (catalog: module fetch,
+        # functions [fetch]).
+        hits = [c for c in callees if c.split(":")[1] == "fetch" and ":fetch:" in c]
+        assert hits, callees
+
+    def test_service_worker_idiom_emits_io_calls(self, tmp_path: Path) -> None:
+        """The WI-zavad P0 reproduction: a Service Worker built from top-level
+        anonymous-callback event listeners now emits its CacheStorage + network
+        I/O calls (attributed to the file pseudo-node), where it previously
+        emitted zero call edges."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "service-worker.js").write_text(
+            "self.addEventListener('fetch', (event) => {\n"
+            "  event.respondWith(\n"
+            "    caches.open('v1').then((cache) =>\n"
+            "      cache.match(event.request) || fetch(event.request))\n"
+            "  );\n"
+            "});\n"
+        )
+        result = analyze_javascript(tmp_path)
+        callees = {
+            e.dst for e in result.edges
+            if e.edge_type == "calls" and ":unresolved" in e.dst
+        }
+        assert any(c.split(":")[1] == "caches" for c in callees), callees
+        assert any(c.split(":")[1] == "fetch" for c in callees), callees
+
+    def test_local_function_named_fetch_is_not_treated_as_global(
+        self, tmp_path: Path
+    ) -> None:
+        """A user-defined ``fetch`` resolves intra-repo and must NOT also emit
+        the global-fetch unresolved edge (resolution precedes the global path)."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "app.js").write_text(
+            "function fetch(u) { return u; }\n"
+            "function main() { return fetch('/x'); }\n"
+        )
+        result = analyze_javascript(tmp_path)
+        calls = [e for e in result.edges if e.edge_type == "calls"]
+        # main -> local fetch resolves (a resolved edge exists)
+        assert any(e.is_resolved and "fetch" in e.dst for e in calls), calls
+        # and no unresolved global-fetch edge was emitted
+        assert not any(
+            not e.is_resolved and e.dst.split(":")[1] == "fetch" and ":fetch:" in e.dst
+            for e in calls
+        ), calls
+
+
+class TestWizavadGeneratorFnExprEmission:
+    """WI-zavad / emission-parity F2 (named function-node slice): generator
+    functions and const-bound *function expressions* emit function symbols at
+    parity with ordinary function declarations and const-bound arrow functions.
+
+    Two NAMED extraction holes (symmetric across JS and TS — distinct from
+    INV-golap's signature asymmetry, which only affected route handlers):
+
+    1. ``function* gen() {}`` parses as ``generator_function_declaration``
+       (declaration) / ``generator_function`` (expression), neither of which the
+       symbol-extraction branches matched — so generators emitted ZERO function
+       symbols (invisible to call graph / centrality / dead-code / CC / LOC /
+       signature).
+    2. ``const f = function () {}`` binds a ``function_expression`` (or
+       ``generator_function``) to a variable, but the ``lexical_declaration``
+       emit path only matched ``arrow_function`` values — so const-bound
+       function expressions emitted zero symbols.
+
+    These are the named counterpart of the still-deferred anonymous-callback
+    function-NODE slice (same HIGH-blast-radius class: adds function symbols
+    corpus-wide, shifting symbol/centrality/dead-code counts). Fixing emission
+    also requires call-attribution parity (``_get_enclosing_function`` must
+    recognise generator bodies) so calls inside a generator attribute to the
+    generator symbol rather than dangling on the file pseudo-node.
+    """
+
+    @pytest.mark.parametrize("ext", ["js", "ts"])
+    def test_generator_declaration_emits_function_symbol(
+        self, tmp_path: Path, ext: str
+    ) -> None:
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / f"a.{ext}").write_text(
+            "function* genDecl() { yield 1; }\n"
+        )
+        result = analyze_javascript(tmp_path)
+        names = {s.name for s in result.symbols if s.kind == "function"}
+        assert "genDecl" in names, names
+
+    @pytest.mark.parametrize("ext", ["js", "ts"])
+    def test_const_function_expression_emits_function_symbol(
+        self, tmp_path: Path, ext: str
+    ) -> None:
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / f"a.{ext}").write_text(
+            "const fnExpr = function () { return 3; };\n"
+        )
+        result = analyze_javascript(tmp_path)
+        names = {s.name for s in result.symbols if s.kind == "function"}
+        assert "fnExpr" in names, names
+
+    @pytest.mark.parametrize("ext", ["js", "ts"])
+    def test_const_named_function_expression_named_after_variable(
+        self, tmp_path: Path, ext: str
+    ) -> None:
+        """A named function expression bound to a variable takes the *variable*
+        name (parity with ``const x = () => {}`` arrow naming), not the inner
+        function name."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / f"a.{ext}").write_text(
+            "const outer = function inner() { return 4; };\n"
+        )
+        result = analyze_javascript(tmp_path)
+        names = {s.name for s in result.symbols if s.kind == "function"}
+        assert "outer" in names, names
+
+    @pytest.mark.parametrize("ext", ["js", "ts"])
+    def test_const_generator_expression_emits_function_symbol(
+        self, tmp_path: Path, ext: str
+    ) -> None:
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / f"a.{ext}").write_text(
+            "const genExpr = function* () { yield 5; };\n"
+        )
+        result = analyze_javascript(tmp_path)
+        names = {s.name for s in result.symbols if s.kind == "function"}
+        assert "genExpr" in names, names
+
+    @pytest.mark.parametrize("ext", ["js", "ts"])
+    def test_const_async_function_expression_emits_function_symbol(
+        self, tmp_path: Path, ext: str
+    ) -> None:
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / f"a.{ext}").write_text(
+            "const asyncFn = async function () { return 6; };\n"
+        )
+        result = analyze_javascript(tmp_path)
+        names = {s.name for s in result.symbols if s.kind == "function"}
+        assert "asyncFn" in names, names
+
+    @pytest.mark.parametrize("ext", ["js", "ts"])
+    def test_exported_generator_declaration_emits_function_symbol(
+        self, tmp_path: Path, ext: str
+    ) -> None:
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / f"a.{ext}").write_text(
+            "export function* expGen() { yield 9; }\n"
+        )
+        result = analyze_javascript(tmp_path)
+        funcs = [s for s in result.symbols if s.kind == "function"]
+        names = {s.name for s in funcs}
+        assert "expGen" in names, names
+        # exported generator is exactly one symbol (no double-emit between the
+        # direct branch and the export_statement branch)
+        assert sum(1 for s in funcs if s.name == "expGen") == 1, funcs
+
+    @pytest.mark.parametrize("ext", ["js", "ts"])
+    def test_generator_symbol_carries_signature(
+        self, tmp_path: Path, ext: str
+    ) -> None:
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / f"a.{ext}").write_text(
+            "function* gen(a, b) { yield a; yield b; }\n"
+        )
+        result = analyze_javascript(tmp_path)
+        gen = next(
+            s for s in result.symbols if s.kind == "function" and s.name == "gen"
+        )
+        assert gen.signature is not None, "generator signature should populate"
+        assert "a" in gen.signature and "b" in gen.signature, gen.signature
+
+    @pytest.mark.parametrize("ext", ["js", "ts"])
+    def test_call_inside_generator_attributed_to_generator(
+        self, tmp_path: Path, ext: str
+    ) -> None:
+        """A call in a generator body must attribute to the generator symbol
+        (its ``src``), not dangle on the file pseudo-node — call-graph parity."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / f"a.{ext}").write_text(
+            "function helper() { return 1; }\n"
+            "function* gen() { helper(); }\n"
+        )
+        result = analyze_javascript(tmp_path)
+        gen = next(
+            s for s in result.symbols if s.kind == "function" and s.name == "gen"
+        )
+        calls = [
+            e for e in result.edges
+            if e.edge_type == "calls" and "helper" in e.dst
+        ]
+        assert calls, [e.dst for e in result.edges if e.edge_type == "calls"]
+        assert any(e.src == gen.id for e in calls), (
+            gen.id, [e.src for e in calls]
+        )
+
+    @pytest.mark.parametrize("ext", ["js", "ts"])
+    def test_call_inside_const_function_expression_attributed(
+        self, tmp_path: Path, ext: str
+    ) -> None:
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / f"a.{ext}").write_text(
+            "function helper() { return 1; }\n"
+            "const runner = function () { helper(); };\n"
+        )
+        result = analyze_javascript(tmp_path)
+        runner = next(
+            s for s in result.symbols if s.kind == "function" and s.name == "runner"
+        )
+        calls = [
+            e for e in result.edges
+            if e.edge_type == "calls" and "helper" in e.dst
+        ]
+        assert calls, [e.dst for e in result.edges if e.edge_type == "calls"]
+        assert any(e.src == runner.id for e in calls), (
+            runner.id, [e.src for e in calls]
+        )
+
+    def test_js_and_ts_emit_same_function_names(self, tmp_path: Path) -> None:
+        """Symmetry: the same construct set yields the same function-symbol
+        names for .js and .ts (the gaps were identical across both)."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        src = (
+            "function regular() { return 1; }\n"
+            "function* genDecl() { yield 1; }\n"
+            "const arrowVar = () => 2;\n"
+            "const fnExpr = function () { return 3; };\n"
+            "const genExpr = function* () { yield 5; };\n"
+        )
+        js_dir = tmp_path / "js"
+        ts_dir = tmp_path / "ts"
+        js_dir.mkdir()
+        ts_dir.mkdir()
+        (js_dir / "a.js").write_text(src)
+        (ts_dir / "a.ts").write_text(src)
+        js_names = {
+            s.name for s in analyze_javascript(js_dir).symbols
+            if s.kind == "function"
+        }
+        ts_names = {
+            s.name for s in analyze_javascript(ts_dir).symbols
+            if s.kind == "function"
+        }
+        expected = {"regular", "genDecl", "arrowVar", "fnExpr", "genExpr"}
+        assert expected <= js_names, js_names
+        assert js_names == ts_names, (js_names, ts_names)
+
+    @pytest.mark.parametrize("ext", ["js", "ts"])
+    def test_generator_param_shadows_global_no_false_call(
+        self, tmp_path: Path, ext: str
+    ) -> None:
+        """A generator param shadowing a global function name must NOT emit a
+        false call edge to the global (``_is_shadowed_by_param`` must recognise
+        generator scopes). Before the fix, ``cb`` inside the generator was not
+        seen as a param, so ``cb()`` falsely resolved to the global ``cb``."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / f"a.{ext}").write_text(
+            "function cb() { return 99; }\n"
+            "function* gen(cb) { cb(); }\n"
+        )
+        result = analyze_javascript(tmp_path)
+        gen = next(
+            s for s in result.symbols if s.kind == "function" and s.name == "gen"
+        )
+        false_edges = [
+            e for e in result.edges
+            if e.edge_type == "calls" and e.src == gen.id and "cb" in e.dst
+        ]
+        assert not false_edges, [e.dst for e in false_edges]
+
+    def test_generator_typed_param_method_resolves(self, tmp_path: Path) -> None:
+        """TS: a method call on a typed generator param resolves to the *correct*
+        class method via param-type inference (the ``_extract_param_types`` gate
+        must include generator declarations).
+
+        A second class ``Other`` with a same-named ``send`` is declared BEFORE
+        ``Client`` so a weaker name-only fallback would mis-resolve to
+        ``Other.send``: the test therefore requires the typed-param gate to
+        actually fire (resolve to ``Client.send`` AND attribute to ``gen``),
+        rather than passing on the single-method name-disambiguation coincidence
+        that made an earlier version of this test vacuous."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "a.ts").write_text(
+            "class Other { send() { return 2; } }\n"
+            "class Client { send() { return 1; } }\n"
+            "function* gen(c: Client) { c.send(); }\n"
+        )
+        result = analyze_javascript(tmp_path)
+        gen = next(
+            s for s in result.symbols if s.kind == "function" and s.name == "gen"
+        )
+        send_calls = [
+            e for e in result.edges
+            if e.edge_type == "calls" and e.is_resolved and "send" in e.dst
+        ]
+        assert send_calls, [
+            (e.is_resolved, e.dst) for e in result.edges if e.edge_type == "calls"
+        ]
+        # typed-param inference picks Client.send (NOT Other.send) and attributes
+        # the call to the generator symbol
+        assert any(
+            "Client.send" in e.dst and e.src == gen.id for e in send_calls
+        ), [(e.src == gen.id, e.dst) for e in send_calls]
+        assert not any("Other.send" in e.dst for e in send_calls), [
+            e.dst for e in send_calls
+        ]
+
+    @pytest.mark.parametrize("ext", ["js", "ts"])
+    def test_exported_generator_is_marked_exported(
+        self, tmp_path: Path, ext: str
+    ) -> None:
+        """``export function* g(){}`` must set ``is_exported=True`` at parity with
+        ``export function f(){}`` (the export-name collection must include the
+        generator declaration node). A non-exported generator stays False."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / f"a.{ext}").write_text(
+            "export function* expGen() { yield 1; }\n"
+            "export function plainExp() { return 1; }\n"
+            "function* localGen() { yield 2; }\n"
+        )
+        result = analyze_javascript(tmp_path)
+        by_name = {s.name: s for s in result.symbols if s.kind == "function"}
+        assert by_name["expGen"].is_exported is True, by_name["expGen"]
+        # parity control + non-exported generator stays False
+        assert by_name["plainExp"].is_exported is True
+        assert by_name["localGen"].is_exported is False, by_name["localGen"]
+
+    def test_exported_generator_emits_library_export_context(
+        self, tmp_path: Path
+    ) -> None:
+        """A generator exported from an index/library entry point surfaces a
+        ``library_export`` UsageContext like a plain exported function, so it is
+        visible to library-export pattern matching / entrypoint surfacing."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "index.ts").write_text(
+            "export function* genExport() { yield 1; }\n"
+            "export function plainExport() { return 1; }\n"
+        )
+        result = analyze_javascript(tmp_path)
+        exported = {
+            (c.metadata or {}).get("export_name")
+            for c in result.usage_contexts
+            if c.kind == "library_export"
+        }
+        assert "genExport" in exported, exported
+        assert "plainExport" in exported, exported  # parity control
+
+    def test_inline_generator_route_handler_emitted(self, tmp_path: Path) -> None:
+        """An inline generator route handler (Koa-v1 idiom) emits a route symbol
+        retaining its declared name, instead of being silently dropped."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "a.js").write_text(
+            "const app = require('express')();\n"
+            "app.get('/gen', function* h(req, res) { yield 1; });\n"
+        )
+        result = analyze_javascript(tmp_path)
+        routes = [
+            s for s in result.symbols
+            if s.kind == "function" and (s.meta or {}).get("route_path") == "/gen"
+        ]
+        assert routes, [
+            (s.name, (s.meta or {}).get("route_path"))
+            for s in result.symbols if s.kind == "function"
+        ]
+        # named generator handler keeps its declared name
+        assert any(s.name == "h" for s in routes), [s.name for s in routes]
+
+
+class TestWizavadAnonCallbackFunctionNode:
+    """WI-zavad / emission-parity F2 (anonymous-callback function-node slice,
+    Option 1 — documented-idiom scope).
+
+    Anonymous functions that are (a) passed as call arguments
+    (``self.addEventListener('x', e => {})``, ``arr.forEach(cb)``,
+    ``p.then(cb)``) or (b) immediately-invoked function expressions / IIFEs
+    (``(function () {})()``) now emit function-node symbols.
+
+    Before this slice these anonymous callbacks produced NO symbol (only the
+    file pseudo-node), so body-calls inside them attributed to the file node and
+    the WS-linker fell back to a file anchor as the edge src (the F159.A2-c
+    facet on the frozen service-worker substrate).
+
+    Naming convention:
+      * call-argument callback -> ``_cb_<callee>`` (the function/method the
+        callback is passed to, e.g. ``_cb_forEach`` / ``_cb_addEventListener``).
+      * IIFE -> ``_iife``.
+
+    Scope is deliberately bounded to the two idioms WI-zavad names. Anonymous
+    arrows in return / ternary / template-substitution position have no
+    call-site anchor for an incoming edge and are NOT extracted (a separate,
+    explicitly-deferred follow-up).
+
+    The attribution machinery already supported callbacks via position lookup
+    (``_get_enclosing_function``); this slice is the *extraction* half plus a
+    companion incoming edge (``references``/``callback_argument_reference`` for
+    call-arg callbacks, ``calls`` for IIFEs) so the new symbols are not
+    dead-code false-positives.
+    """
+
+    @pytest.mark.parametrize("ext", ["js", "ts"])
+    def test_call_arg_arrow_callback_emits_function_symbol(
+        self, tmp_path: Path, ext: str
+    ) -> None:
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / f"a.{ext}").write_text(
+            "function sink(x) { return x; }\n"
+            "arr.forEach(x => { sink(x); });\n"
+        )
+        result = analyze_javascript(tmp_path)
+        names = {s.name for s in result.symbols if s.kind == "function"}
+        assert "_cb_forEach" in names, names
+
+    @pytest.mark.parametrize("ext", ["js", "ts"])
+    def test_call_arg_function_expression_callback_emits_symbol(
+        self, tmp_path: Path, ext: str
+    ) -> None:
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / f"a.{ext}").write_text(
+            "function doWork() {}\n"
+            "subscribe(function () { doWork(); });\n"
+        )
+        result = analyze_javascript(tmp_path)
+        names = {s.name for s in result.symbols if s.kind == "function"}
+        assert "_cb_subscribe" in names, names
+
+    @pytest.mark.parametrize("ext", ["js", "ts"])
+    def test_call_arg_generator_callback_emits_symbol(
+        self, tmp_path: Path, ext: str
+    ) -> None:
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / f"a.{ext}").write_text(
+            "subscribe(function* () { yield 1; });\n"
+        )
+        result = analyze_javascript(tmp_path)
+        names = {s.name for s in result.symbols if s.kind == "function"}
+        assert "_cb_subscribe" in names, names
+
+    def test_event_listener_callback_emits_symbol_js(
+        self, tmp_path: Path
+    ) -> None:
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "sw.js").write_text(
+            "self.addEventListener('fetch', e => { caches.open('v1'); });\n"
+        )
+        result = analyze_javascript(tmp_path)
+        names = {s.name for s in result.symbols if s.kind == "function"}
+        assert "_cb_addEventListener" in names, names
+
+    @pytest.mark.parametrize("ext", ["js", "ts"])
+    def test_callback_body_call_attributes_to_callback_not_file(
+        self, tmp_path: Path, ext: str
+    ) -> None:
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / f"a.{ext}").write_text(
+            "function sink(x) { return x; }\n"
+            "arr.forEach(x => { sink(x); });\n"
+        )
+        result = analyze_javascript(tmp_path)
+        cb = next(s for s in result.symbols if s.name == "_cb_forEach")
+        sink = next(s for s in result.symbols if s.name == "sink")
+        file_sym = next(s for s in result.symbols if s.kind == "file")
+        call_edges = [
+            e for e in result.edges
+            if e.dst == sink.id and e.edge_type == "calls"
+        ]
+        assert call_edges, [
+            (e.src, e.dst, e.edge_type) for e in result.edges
+        ]
+        # the body call attributes to the callback symbol, not the file node
+        assert any(e.src == cb.id for e in call_edges), [
+            e.src for e in call_edges
+        ]
+        assert all(e.src != file_sym.id for e in call_edges), (
+            "body call still attributed to the file pseudo-node"
+        )
+
+    @pytest.mark.parametrize("ext", ["js", "ts"])
+    def test_callback_has_incoming_edge_not_dead_code(
+        self, tmp_path: Path, ext: str
+    ) -> None:
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / f"a.{ext}").write_text(
+            "function sink(x) { return x; }\n"
+            "arr.forEach(x => { sink(x); });\n"
+        )
+        result = analyze_javascript(tmp_path)
+        cb = next(s for s in result.symbols if s.name == "_cb_forEach")
+        incoming = [e for e in result.edges if e.dst == cb.id]
+        assert incoming, "callback has no incoming edge -> dead-code FP"
+        assert any(e.edge_type == "references" for e in incoming), [
+            e.edge_type for e in incoming
+        ]
+
+    @pytest.mark.parametrize("ext", ["js", "ts"])
+    def test_iife_function_expression_emits_symbol(
+        self, tmp_path: Path, ext: str
+    ) -> None:
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / f"a.{ext}").write_text(
+            "function boot() {}\n"
+            "(function () { boot(); })();\n"
+        )
+        result = analyze_javascript(tmp_path)
+        names = {s.name for s in result.symbols if s.kind == "function"}
+        assert "_iife" in names, names
+
+    @pytest.mark.parametrize("ext", ["js", "ts"])
+    def test_iife_arrow_emits_symbol(self, tmp_path: Path, ext: str) -> None:
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / f"a.{ext}").write_text(
+            "function boot() {}\n"
+            "(() => { boot(); })();\n"
+        )
+        result = analyze_javascript(tmp_path)
+        names = {s.name for s in result.symbols if s.kind == "function"}
+        assert "_iife" in names, names
+
+    @pytest.mark.parametrize("ext", ["js", "ts"])
+    def test_iife_body_call_attributes_to_iife(
+        self, tmp_path: Path, ext: str
+    ) -> None:
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / f"a.{ext}").write_text(
+            "function boot() {}\n"
+            "(function () { boot(); })();\n"
+        )
+        result = analyze_javascript(tmp_path)
+        iife = next(s for s in result.symbols if s.name == "_iife")
+        boot = next(s for s in result.symbols if s.name == "boot")
+        call_edges = [
+            e for e in result.edges
+            if e.dst == boot.id and e.edge_type == "calls"
+        ]
+        assert any(e.src == iife.id for e in call_edges), [
+            e.src for e in call_edges
+        ]
+
+    @pytest.mark.parametrize("ext", ["js", "ts"])
+    def test_iife_has_incoming_calls_edge(
+        self, tmp_path: Path, ext: str
+    ) -> None:
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / f"a.{ext}").write_text(
+            "function boot() {}\n"
+            "(function () { boot(); })();\n"
+        )
+        result = analyze_javascript(tmp_path)
+        iife = next(s for s in result.symbols if s.name == "_iife")
+        incoming = [
+            e for e in result.edges
+            if e.dst == iife.id and e.edge_type == "calls"
+        ]
+        assert incoming, "IIFE has no incoming calls edge -> dead-code FP"
+
+    @pytest.mark.parametrize("ext", ["js", "ts"])
+    def test_named_bound_arrow_not_double_extracted(
+        self, tmp_path: Path, ext: str
+    ) -> None:
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / f"a.{ext}").write_text(
+            "function work() {}\n"
+            "const f = () => { work(); };\n"
+            "arr.forEach(f);\n"
+        )
+        result = analyze_javascript(tmp_path)
+        names = [s.name for s in result.symbols if s.kind == "function"]
+        assert "f" in names, names
+        assert names.count("f") == 1, names
+        assert "_cb_forEach" not in names, names
+
+    def test_route_handler_inline_arrow_not_double_extracted(
+        self, tmp_path: Path
+    ) -> None:
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "a.js").write_text(
+            "function handle() {}\n"
+            "const app = require('express')();\n"
+            "app.get('/x', (req, res) => { handle(); });\n"
+        )
+        result = analyze_javascript(tmp_path)
+        funcs = [s for s in result.symbols if s.kind == "function"]
+        assert any(
+            (s.meta or {}).get("route_path") == "/x" for s in funcs
+        ), [(s.name, (s.meta or {}).get("route_path")) for s in funcs]
+        assert not any(s.name == "_cb_get" for s in funcs), [
+            s.name for s in funcs
+        ]
+
+    @pytest.mark.parametrize("ext", ["js", "ts"])
+    def test_return_position_arrow_not_extracted(
+        self, tmp_path: Path, ext: str
+    ) -> None:
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / f"a.{ext}").write_text(
+            "function cleanup() {}\n"
+            "function g() {}\n"
+            "function make() { return () => cleanup(); }\n"
+            "arr.forEach(x => { g(x); });\n"  # positive control
+        )
+        result = analyze_javascript(tmp_path)
+        names = {s.name for s in result.symbols if s.kind == "function"}
+        assert "make" in names, names
+        # Positive control: a real call-arg callback IS extracted, so the
+        # negative assertion means "return-position arrow selectively excluded",
+        # not "feature off".
+        assert "_cb_forEach" in names, names
+        # The return-position arrow itself is NOT extracted: the ONLY synthetic
+        # callback symbol is the positive control's _cb_forEach.
+        cb_names = {n for n in names if n.startswith("_cb_") or n == "_iife"}
+        assert cb_names == {"_cb_forEach"}, cb_names
+
+    @pytest.mark.parametrize("ext", ["js", "ts"])
+    def test_ternary_arrow_not_extracted(
+        self, tmp_path: Path, ext: str
+    ) -> None:
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / f"a.{ext}").write_text(
+            "function a() {}\n"
+            "function b() {}\n"
+            "function g() {}\n"
+            "const x = cond ? () => a() : () => b();\n"
+            "arr.forEach(y => { g(y); });\n"  # positive control
+        )
+        result = analyze_javascript(tmp_path)
+        names = {s.name for s in result.symbols if s.kind == "function"}
+        # Positive control proves the feature is on; the ternary arrows are
+        # selectively excluded (the only synthetic callback is _cb_forEach).
+        assert "_cb_forEach" in names, names
+        cb_names = {n for n in names if n.startswith("_cb_") or n == "_iife"}
+        assert cb_names == {"_cb_forEach"}, cb_names
+
+    @pytest.mark.parametrize("ext", ["js", "ts"])
+    def test_nested_callback_attributes_to_inner(
+        self, tmp_path: Path, ext: str
+    ) -> None:
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / f"a.{ext}").write_text(
+            "function deep() {}\n"
+            "outer(() => { inner(() => { deep(); }); });\n"
+        )
+        result = analyze_javascript(tmp_path)
+        names = {s.name for s in result.symbols if s.kind == "function"}
+        assert "_cb_outer" in names and "_cb_inner" in names, names
+        inner_cb = next(s for s in result.symbols if s.name == "_cb_inner")
+        deep = next(s for s in result.symbols if s.name == "deep")
+        deep_calls = [
+            e for e in result.edges
+            if e.dst == deep.id and e.edge_type == "calls"
+        ]
+        assert deep_calls, [(e.src, e.dst) for e in result.edges]
+        assert all(e.src == inner_cb.id for e in deep_calls), [
+            e.src for e in deep_calls
+        ]
+
+    @pytest.mark.parametrize("ext", ["js", "ts"])
+    def test_callback_has_signature_and_complexity(
+        self, tmp_path: Path, ext: str
+    ) -> None:
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / f"a.{ext}").write_text(
+            "function sink(x) { return x; }\n"
+            "arr.forEach((x, i) => { if (x) { sink(x); } });\n"
+        )
+        result = analyze_javascript(tmp_path)
+        cb = next(s for s in result.symbols if s.name == "_cb_forEach")
+        assert cb.signature is not None, "callback has no signature"
+        assert (
+            cb.cyclomatic_complexity is not None
+            and cb.cyclomatic_complexity >= 1
+        ), cb.cyclomatic_complexity
+        assert cb.line_span is not None and cb.line_span >= 1
+
+    @pytest.mark.parametrize("ext", ["js", "ts"])
+    def test_callback_carries_anonymous_meta(
+        self, tmp_path: Path, ext: str
+    ) -> None:
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / f"a.{ext}").write_text(
+            "function sink(x) { return x; }\n"
+            "arr.forEach(x => { sink(x); });\n"
+        )
+        result = analyze_javascript(tmp_path)
+        cb = next(s for s in result.symbols if s.name == "_cb_forEach")
+        assert (cb.meta or {}).get("anonymous") is True, cb.meta
+
+    @pytest.mark.parametrize("ext", ["js", "ts"])
+    def test_parenthesized_uninvoked_function_not_extracted(
+        self, tmp_path: Path, ext: str
+    ) -> None:
+        """A parenthesized function that is NOT invoked (``const x = (() => 1)``)
+        is not an IIFE and is not extracted — only the *invoked* parenthesized
+        form ``(() => 1)()`` qualifies."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / f"a.{ext}").write_text("const x = (() => 1);\n")
+        result = analyze_javascript(tmp_path)
+        names = {s.name for s in result.symbols if s.kind == "function"}
+        assert "_iife" not in names, names
+        assert not any(n.startswith("_cb_") for n in names), names
+
+    @pytest.mark.parametrize("ext", ["js", "ts"])
+    def test_curried_call_callback_falls_back_to_generic_name(
+        self, tmp_path: Path, ext: str
+    ) -> None:
+        """When the callee has no trailing name (curried ``getHandler()(cb)``),
+        the callback falls back to the generic ``_cb_anonymous`` name."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / f"a.{ext}").write_text(
+            "function work() {}\n"
+            "getHandler()(x => { work(); });\n"
+        )
+        result = analyze_javascript(tmp_path)
+        names = {s.name for s in result.symbols if s.kind == "function"}
+        assert "_cb_anonymous" in names, names
+
+    @pytest.mark.parametrize("ext", ["js", "ts"])
+    def test_new_promise_executor_callback_emits_symbol(
+        self, tmp_path: Path, ext: str
+    ) -> None:
+        """The canonical ``new Promise((res, rej) => {})`` executor — a
+        constructor-call argument callback (new_expression, not call_expression)
+        — is extracted and its body-calls attribute to it, with a companion
+        incoming edge so it is not a dead-code false-positive."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / f"a.{ext}").write_text(
+            "function done() {}\n"
+            "new Promise((res, rej) => { done(); });\n"
+        )
+        result = analyze_javascript(tmp_path)
+        cb = next(
+            (s for s in result.symbols if s.name == "_cb_Promise"), None
+        )
+        assert cb is not None, [s.name for s in result.symbols if s.kind == "function"]
+        done = next(s for s in result.symbols if s.name == "done")
+        file_sym = next(s for s in result.symbols if s.kind == "file")
+        done_calls = [
+            e for e in result.edges if e.dst == done.id and e.edge_type == "calls"
+        ]
+        assert any(e.src == cb.id for e in done_calls), [e.src for e in done_calls]
+        assert all(e.src != file_sym.id for e in done_calls), "attributed to file"
+        # companion incoming edge (not dead-code)
+        assert any(e.dst == cb.id for e in result.edges), "no incoming edge"
+
+    @pytest.mark.parametrize("ext", ["js", "ts"])
+    def test_new_member_constructor_callback_emits_symbol(
+        self, tmp_path: Path, ext: str
+    ) -> None:
+        """A namespaced constructor executor (``new rxjs.Observable(cb)``) is
+        named after the constructor property."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / f"a.{ext}").write_text(
+            "new rxjs.Observable(sub => { sub.next(1); });\n"
+        )
+        result = analyze_javascript(tmp_path)
+        names = {s.name for s in result.symbols if s.kind == "function"}
+        assert "_cb_Observable" in names, names
+
+    def test_catchasync_wrapper_callback_not_double_extracted(
+        self, tmp_path: Path
+    ) -> None:
+        """A call-wrapped variable binding ``const handler = catchAsync((req,
+        res) => {...})`` is extracted ONCE (named after the variable) — the
+        ``processed_handlers`` guard keeps the anon-callback branch from also
+        emitting a ``_cb_catchAsync`` for the same arrow node (the real
+        double-emission risk that the vacuous bare-identifier test missed)."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "a.js").write_text(
+            "function work() {}\n"
+            "const handler = catchAsync((req, res) => { work(); });\n"
+        )
+        result = analyze_javascript(tmp_path)
+        names = [s.name for s in result.symbols if s.kind == "function"]
+        assert names.count("handler") == 1, names
+        assert "_cb_catchAsync" not in names, names
+
+    @pytest.mark.parametrize("ext", ["js", "ts"])
+    def test_same_line_same_callee_callbacks_have_distinct_ids(
+        self, tmp_path: Path, ext: str
+    ) -> None:
+        """Two same-callee anonymous callbacks on ONE line (``p.then(a => a,
+        e => e)``) share the display name ``_cb_then`` but MUST get distinct
+        ``id``s (start_col folded into the id name-slot), or a downstream
+        ``{s.id: s}`` map silently drops one."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / f"a.{ext}").write_text("p.then(a => a, e => e);\n")
+        result = analyze_javascript(tmp_path)
+        cbs = [s for s in result.symbols if s.name == "_cb_then"]
+        assert len(cbs) == 2, [(s.name, s.span.start_col) for s in cbs]
+        assert len({s.id for s in cbs}) == 2, [s.id for s in cbs]
+
+    def test_route_handler_no_spurious_reference_edge(
+        self, tmp_path: Path
+    ) -> None:
+        """The companion references-edge must NOT target an Express inline route
+        handler — those are not anonymous-callback symbols (no meta.anonymous),
+        so minting a ``file -> handler`` reference would shift in-degree /
+        centrality for every route handler in a corpus."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "a.js").write_text(
+            "const app = require('express')();\n"
+            "app.get('/x', (req, res) => { res.send('a'); });\n"
+        )
+        result = analyze_javascript(tmp_path)
+        handler = next(
+            s for s in result.symbols if (s.meta or {}).get("route_path") == "/x"
+        )
+        ref_edges = [
+            e for e in result.edges
+            if e.dst == handler.id and e.evidence_type == "callback_argument_reference"
+        ]
+        assert ref_edges == [], [(e.src, e.evidence_type) for e in ref_edges]
+
+    def test_service_worker_idiom_emits_callback_symbols_js(
+        self, tmp_path: Path
+    ) -> None:
+        """The WI-zavad frozen-substrate reproduction: a file built entirely
+        from top-level addEventListener callbacks plus an IIFE previously
+        emitted ZERO function nodes (only the file pseudo-node)."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "sw.js").write_text(
+            "self.addEventListener('install', e => { caches.open('v1'); });\n"
+            "self.addEventListener('fetch', event => { fetch(event.request); });\n"
+            "(function () { const fs = require('fs'); fs.readFileSync('a'); })();\n"
+        )
+        result = analyze_javascript(tmp_path)
+        funcs = [s for s in result.symbols if s.kind == "function"]
+        assert len(funcs) >= 3, [s.name for s in funcs]
+        assert sum(1 for s in funcs if s.name == "_cb_addEventListener") == 2, [
+            s.name for s in funcs
+        ]
+        assert any(s.name == "_iife" for s in funcs), [s.name for s in funcs]
+
+
+class TestJsTsUnresolvedExternalInheritance:
+    """Tests for the unresolved-external extends/implements fallback (F4 / A2).
+
+    Before this fix the JS/TS inheritance-edge extractor emitted edges only for
+    bases that resolved intra-repo; external/library bases (``extends
+    LitElement``, ``implements OnInit``) were dropped entirely, leaving the
+    class an inheritance-graph orphan indistinguishable from a base-less class.
+
+    The fallback mirrors the unresolved-CALL convention (WI-banaf/WI-vurop): an
+    edge to ``{lang}:{module_hint}:0-0:{base}:unresolved`` with ``is_resolved=
+    False`` and a structured ``dst_ref`` when the import module is known. The
+    edge type is precise — ``extends`` for an external class base,
+    ``implements`` for an external interface base (Angular's
+    ``implements OnInit`` is a common external-interface case that an
+    extends-default would mislabel).
+    """
+
+    @pytest.mark.parametrize("ext", ["ts", "js"])
+    def test_external_class_base_emits_unresolved_extends(
+        self, tmp_path: Path, ext: str
+    ) -> None:
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / f"a.{ext}").write_text(
+            "import { LitElement } from 'lit';\n"
+            "export class MyEl extends LitElement {}\n"
+        )
+        result = analyze_javascript(tmp_path)
+        ext_edges = [
+            e for e in result.edges
+            if e.edge_type == "extends" and "LitElement" in e.dst
+        ]
+        assert ext_edges, [
+            (e.edge_type, e.dst) for e in result.edges
+            if e.edge_type in ("extends", "implements")
+        ]
+        edge = ext_edges[0]
+        assert not edge.is_resolved
+        assert ":unresolved" in edge.dst
+        # module hint is the import module (second colon segment)
+        assert edge.dst.split(":")[1] == "lit", edge.dst
+        assert edge.dst_ref is not None
+        assert edge.dst_ref.module_path == "lit"
+        assert edge.dst_ref.name == "LitElement"
+
+    def test_external_interface_base_emits_unresolved_implements(
+        self, tmp_path: Path
+    ) -> None:
+        """An external interface base (Angular ``implements OnInit``) emits an
+        ``implements`` edge, NOT a mislabeled ``extends``."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "a.ts").write_text(
+            "import { OnInit } from '@angular/core';\n"
+            "export class Comp implements OnInit {\n"
+            "  ngOnInit() {}\n"
+            "}\n"
+        )
+        result = analyze_javascript(tmp_path)
+        impl = [
+            e for e in result.edges
+            if e.edge_type == "implements" and "OnInit" in e.dst
+        ]
+        assert impl, [(e.edge_type, e.dst) for e in result.edges
+                      if e.edge_type in ("extends", "implements")]
+        edge = impl[0]
+        assert not edge.is_resolved
+        assert edge.dst.split(":")[1] == "@angular/core", edge.dst
+        # must NOT be mislabeled as extends
+        assert not any(
+            e.edge_type == "extends" and "OnInit" in e.dst for e in result.edges
+        ), [(e.edge_type, e.dst) for e in result.edges]
+
+    def test_mixed_external_extends_and_implements(self, tmp_path: Path) -> None:
+        """``extends LitElement implements OnInit`` yields one external extends
+        (LitElement) and one external implements (OnInit), each correctly typed
+        and carrying its own per-base module hint."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "a.ts").write_text(
+            "import { LitElement } from 'lit';\n"
+            "import { OnInit } from '@angular/core';\n"
+            "export class Comp extends LitElement implements OnInit {\n"
+            "  ngOnInit() {}\n"
+            "}\n"
+        )
+        result = analyze_javascript(tmp_path)
+        # include the module-hint segment so the assertion fails if per-base
+        # module resolution regresses (not just the type/name)
+        typed = {
+            (e.edge_type, e.dst.split(":")[1], e.dst.split(":")[3])
+            for e in result.edges
+            if e.edge_type in ("extends", "implements") and not e.is_resolved
+        }
+        assert ("extends", "lit", "LitElement") in typed, typed
+        assert ("implements", "@angular/core", "OnInit") in typed, typed
+
+    @pytest.mark.parametrize("ext", ["ts", "js"])
+    def test_aliased_local_base_resolves_not_external(
+        self, tmp_path: Path, ext: str
+    ) -> None:
+        """An aliased import of a LOCAL class (``import { Base as B }``) must
+        resolve to the real in-repo symbol via its canonical name, NOT be
+        mislabeled as an unresolved-external base."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / f"base.{ext}").write_text("export class Base {}\n")
+        (tmp_path / f"app.{ext}").write_text(
+            "import { Base as B } from './base';\n"
+            "export class C extends B {}\n"
+        )
+        result = analyze_javascript(tmp_path)
+        extends_edges = [e for e in result.edges if e.edge_type == "extends"]
+        assert len(extends_edges) == 1, [
+            (e.dst, e.is_resolved) for e in extends_edges
+        ]
+        edge = extends_edges[0]
+        assert edge.is_resolved, edge.dst
+        assert ":unresolved" not in edge.dst
+        assert "Base" in edge.dst
+
+    def test_aliased_local_interface_resolves_not_external(
+        self, tmp_path: Path
+    ) -> None:
+        """An aliased import of a LOCAL interface (``import { IBase as IB }`` +
+        ``implements IB``) re-resolves to the in-repo interface via its canonical
+        name, emitting a resolved ``implements`` edge (not an external one)."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "iface.ts").write_text("export interface IBase { x: number; }\n")
+        (tmp_path / "app.ts").write_text(
+            "import { IBase as IB } from './iface';\n"
+            "export class C implements IB { x = 1; }\n"
+        )
+        result = analyze_javascript(tmp_path)
+        impl = [e for e in result.edges if e.edge_type == "implements"]
+        assert len(impl) == 1, [(e.dst, e.is_resolved) for e in impl]
+        edge = impl[0]
+        assert edge.is_resolved, edge.dst
+        assert ":unresolved" not in edge.dst
+        assert "IBase" in edge.dst
+
+    def test_aliased_external_base_uses_canonical_name_and_module(
+        self, tmp_path: Path
+    ) -> None:
+        """An aliased import of an EXTERNAL class (``import { LitElement as LE }``)
+        emits an unresolved edge under the canonical export name + real module."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "a.ts").write_text(
+            "import { LitElement as LE } from 'lit';\n"
+            "export class C extends LE {}\n"
+        )
+        result = analyze_javascript(tmp_path)
+        ext_edges = [e for e in result.edges if e.edge_type == "extends"]
+        assert len(ext_edges) == 1, [(e.dst, e.is_resolved) for e in ext_edges]
+        edge = ext_edges[0]
+        assert not edge.is_resolved
+        assert edge.dst.split(":")[1] == "lit", edge.dst
+        assert edge.dst.split(":")[3] == "LitElement", edge.dst  # canonical, not LE
+        assert edge.dst_ref is not None and edge.dst_ref.name == "LitElement"
+
+    def test_default_import_base_recovers_module_hint(self, tmp_path: Path) -> None:
+        """A default-imported external base (``import Component from 'preact'``)
+        recovers its module hint from namespace_imports (not just named_imports)."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "a.tsx").write_text(
+            "import Component from 'preact';\n"
+            "export class C extends Component {}\n"
+        )
+        result = analyze_javascript(tmp_path)
+        ext_edges = [e for e in result.edges if e.edge_type == "extends"]
+        assert ext_edges, [(e.edge_type, e.dst) for e in result.edges]
+        edge = ext_edges[0]
+        assert edge.dst.split(":")[1] == "preact", edge.dst
+        assert edge.dst_ref is not None and edge.dst_ref.module_path == "preact"
+
+    def test_namespace_qualified_base_recovers_module_hint(
+        self, tmp_path: Path
+    ) -> None:
+        """A namespace-qualified base (``import * as React`` + ``extends
+        React.Component``) recovers the module hint from the qualifier and names
+        the member."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "a.tsx").write_text(
+            "import * as React from 'react';\n"
+            "export class C extends React.Component {}\n"
+        )
+        result = analyze_javascript(tmp_path)
+        ext_edges = [e for e in result.edges if e.edge_type == "extends"]
+        assert ext_edges, [(e.edge_type, e.dst) for e in result.edges]
+        edge = ext_edges[0]
+        assert edge.dst.split(":")[1] == "react", edge.dst
+        assert edge.dst.split(":")[3] == "Component", edge.dst
+        assert edge.dst_ref is not None and edge.dst_ref.module_path == "react"
+
+    @pytest.mark.parametrize("ext", ["ts", "js"])
+    def test_relative_import_unresolved_base_not_mislabeled_external(
+        self, tmp_path: Path, ext: str
+    ) -> None:
+        """A base imported from a RELATIVE path that fails to resolve to a symbol
+        is intra-repo, not a library — it must NOT emit a misleading external
+        edge (preserves the conservative drop rather than mislabeling)."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        # './types' has no extractable class symbol (type-only re-export shape)
+        (tmp_path / f"types.{ext}").write_text("export const x = 1;\n")
+        (tmp_path / f"app.{ext}").write_text(
+            "import { Unextracted } from './types';\n"
+            "export class C extends Unextracted {}\n"
+        )
+        result = analyze_javascript(tmp_path)
+        bad = [
+            e for e in result.edges
+            if e.edge_type == "extends" and "Unextracted" in e.dst
+        ]
+        assert not bad, [(e.dst, e.is_resolved) for e in bad]
+
+    def test_url_and_deno_module_hint_no_colon_corruption(self) -> None:
+        """``_normalize_import_module_hint`` strips URL/Deno specifier schemes and
+        sanitizes residual colons so the module hint never corrupts the
+        colon-delimited symbol-id grammar."""
+        from hypergumbo_lang_mainstream.js_ts import _normalize_import_module_hint
+
+        assert ":" not in _normalize_import_module_hint("npm:lit@3")
+        assert ":" not in _normalize_import_module_hint("jsr:@std/foo")
+        assert ":" not in _normalize_import_module_hint("https://cdn.skypack.dev/lit")
+        assert ":" not in _normalize_import_module_hint("https://host:8080/pkg")
+        # existing behavior preserved
+        assert _normalize_import_module_hint("node:fs") == "fs"
+        assert _normalize_import_module_hint("@scope/pkg") == "@scope/pkg"
+
+    @pytest.mark.parametrize("ext", ["ts", "js"])
+    def test_intra_repo_base_still_resolves_no_unresolved(
+        self, tmp_path: Path, ext: str
+    ) -> None:
+        """An intra-repo base still resolves to a real symbol (no regression),
+        and does NOT additionally emit an unresolved edge for it."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / f"base.{ext}").write_text("export class LocalBase {}\n")
+        (tmp_path / f"app.{ext}").write_text(
+            "import { LocalBase } from './base';\n"
+            "export class Local extends LocalBase {}\n"
+        )
+        result = analyze_javascript(tmp_path)
+        local_extends = [
+            e for e in result.edges
+            if e.edge_type == "extends" and "LocalBase" in e.dst
+        ]
+        assert len(local_extends) == 1, [
+            (e.dst, e.is_resolved) for e in local_extends
+        ]
+        assert local_extends[0].is_resolved
+        assert ":unresolved" not in local_extends[0].dst
+
+    @pytest.mark.parametrize("ext", ["ts", "js"])
+    def test_external_base_without_import_uses_external_hint(
+        self, tmp_path: Path, ext: str
+    ) -> None:
+        """A non-imported external/global base (``extends Error``) emits an
+        unresolved extends edge with the ``external`` module sentinel and no
+        structured ``dst_ref`` (the ADR-0037 unidentified-reference cell)."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / f"a.{ext}").write_text(
+            "export class MyError extends SomeGlobalBase {}\n"
+        )
+        result = analyze_javascript(tmp_path)
+        ext_edges = [
+            e for e in result.edges
+            if e.edge_type == "extends" and "SomeGlobalBase" in e.dst
+        ]
+        assert ext_edges, [(e.edge_type, e.dst) for e in result.edges]
+        edge = ext_edges[0]
+        assert not edge.is_resolved
+        assert edge.dst.split(":")[1] == "external", edge.dst
+        assert edge.dst_ref is None
+
+
+class TestJsTsBareMethodMagnetGate:
+    """INV-fahub: a bare / untyped-receiver call must not confidently bind to
+    an UNRELATED class's same-named method on weak short-name evidence.
+
+    Two magnet paths are gated via ``defer_bare_method_call``:
+      * a bare function call (``persist()``) resolving through the suffix
+        ``resolver``, and
+      * the untyped ``obj.method()`` fallback (``method_resolver``) fanout, the
+        "every class with the same method name gets linked" case (conf 0.60).
+
+    A weak cross-class match is WITHHELD and stamped with ``enclosing_class`` so
+    the inherited_calls Site-1 walker can later recover a genuine *inherited*
+    implicit-``this`` call; a same-enclosing-class method (implicit ``this``) and
+    a single-candidate (strong, ``exact``) match still bind directly.
+    """
+
+    @pytest.fixture(autouse=True)
+    def skip_if_no_tree_sitter(self) -> None:
+        pytest.importorskip("tree_sitter")
+        pytest.importorskip("tree_sitter_typescript")
+
+    def test_bare_function_call_cross_class_method_deferred(
+        self, tmp_path: Path
+    ) -> None:
+        """Path 1 (suffix ``resolver``): a bare ``persist()`` inside ``Alpha``
+        that suffix-matches an UNRELATED ``Beta.persist`` must NOT bind a
+        resolved edge — it defers to Site-1 with ``enclosing_class == "Alpha"``.
+        """
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "store.ts").write_text(
+            "class Beta {\n  persist() { return 1; }\n}\n"
+        )
+        (tmp_path / "ctrl.ts").write_text(
+            "class Alpha {\n  boot() {\n    persist();\n  }\n}\n"
+        )
+        result = analyze_javascript(tmp_path)
+        beta_persist = next(
+            s for s in result.symbols
+            if s.name == "Beta.persist" and s.kind == "method"
+        )
+        misbinds = [
+            e for e in result.edges
+            if e.edge_type == "calls" and e.dst == beta_persist.id
+            and "boot" in e.src and e.is_resolved
+        ]
+        assert misbinds == [], f"bare persist() misbound: {misbinds}"
+        deferred = [
+            e for e in result.edges
+            if e.edge_type == "calls" and "boot" in e.src
+            and e.dst.endswith(":persist:unresolved")
+        ]
+        assert len(deferred) == 1, [
+            e.dst for e in result.edges if "boot" in e.src
+        ]
+        assert (deferred[0].meta or {}).get("enclosing_class") == "Alpha"
+
+    def test_bare_function_call_same_class_method_still_resolves(
+        self, tmp_path: Path
+    ) -> None:
+        """Path 1 recall guard: a bare call to a method of the SAME enclosing
+        class (implicit ``this``) still binds directly (owner == enclosing)."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "calc.ts").write_text(
+            "class Calc {\n"
+            "  total() { return helper(); }\n"
+            "  helper() { return 41; }\n"
+            "}\n"
+        )
+        result = analyze_javascript(tmp_path)
+        calc_helper = next(
+            s for s in result.symbols
+            if s.name == "Calc.helper" and s.kind == "method"
+        )
+        resolved = [
+            e for e in result.edges
+            if e.edge_type == "calls" and e.dst == calc_helper.id
+            and "total" in e.src and e.is_resolved
+        ]
+        assert len(resolved) == 1, [
+            (e.dst, e.is_resolved) for e in result.edges if "total" in e.src
+        ]
+        assert not any(
+            e.edge_type == "calls" and "total" in e.src
+            and e.dst.endswith(":helper:unresolved")
+            for e in result.edges
+        )
+
+    def test_untyped_receiver_two_class_method_fanout_deferred(
+        self, tmp_path: Path
+    ) -> None:
+        """Path 2 (``method_resolver`` fanout): an untyped ``x.compute()`` with
+        TWO classes defining ``compute`` is an ambiguous cross-class magnet — it
+        must NOT bind a resolved edge but defer with ``enclosing_class``."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "m.ts").write_text(
+            "class Widget {\n  compute() { return 1; }\n}\n"
+            "class Gadget {\n  compute() { return 2; }\n}\n"
+            "class Handler {\n"
+            "  process(x) {\n    x.compute();\n  }\n}\n"
+        )
+        result = analyze_javascript(tmp_path)
+        method_ids = {
+            s.id for s in result.symbols
+            if s.name in ("Widget.compute", "Gadget.compute")
+            and s.kind == "method"
+        }
+        misbinds = [
+            e for e in result.edges
+            if e.edge_type == "calls" and e.dst in method_ids
+            and "process" in e.src and e.is_resolved
+        ]
+        assert misbinds == [], f"untyped x.compute() fanout misbound: {misbinds}"
+        deferred = [
+            e for e in result.edges
+            if e.edge_type == "calls" and "process" in e.src
+            and e.dst.endswith(":compute:unresolved")
+        ]
+        assert len(deferred) == 1, [
+            e.dst for e in result.edges if "process" in e.src
+        ]
+        assert (deferred[0].meta or {}).get("enclosing_class") == "Handler"
+
+    def test_untyped_receiver_single_class_method_still_resolves(
+        self, tmp_path: Path
+    ) -> None:
+        """Path 2 recall guard: a single-candidate (``exact``) method match is
+        strong evidence and still binds, even across classes."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "s.ts").write_text(
+            "class Repo {\n  load() { return 1; }\n}\n"
+            "class Service {\n"
+            "  run(x) {\n    x.load();\n  }\n}\n"
+        )
+        result = analyze_javascript(tmp_path)
+        repo_load = next(
+            s for s in result.symbols
+            if s.name == "Repo.load" and s.kind == "method"
+        )
+        resolved = [
+            e for e in result.edges
+            if e.edge_type == "calls" and e.dst == repo_load.id
+            and "run" in e.src and e.is_resolved
+        ]
+        assert len(resolved) == 1, [
+            (e.dst, e.is_resolved) for e in result.edges if "run" in e.src
+        ]

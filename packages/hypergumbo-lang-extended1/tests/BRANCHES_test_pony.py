@@ -15,6 +15,10 @@ from hypergumbo_lang_extended1.pony import (
     find_pony_files,
 )
 
+# The per-analyzer _make_symbol_id builder was folded into the shared
+# make_doc_symbol_ids helper (tested in hypergumbo-core test_base.py), so the
+# former local id-format test no longer lives here.
+
 
 def make_pony_file(tmp_path: Path, name: str, content: str) -> None:
     """Create a Pony file with given content."""

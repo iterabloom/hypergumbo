@@ -76,3 +76,34 @@
   clock: 8  # 0a0c
   nonce: 0a0c  # 0a0c
   message: "validation failed (pending_validation->violated): tranch_04 card 030 (F75.A1) reproduced the mechanism on substrate at HEAD eb5355917e (reused tranch-03 substrate sha256 a32c4a31). Edge.derived_from is DEGENERATE: all 23867 populated edges (21.59%, linker-only, 13 passes) have derived_from == {src,dst} EXACTLY, uniform chain-len 2, even for 1008 non-containment edges where the producer could name a 3rd consumed input; zero provenance beyond endpoints; the '(or Edge)' clause is unexercised. The PR #3926 'landed' state populated the field mechanically but did NOT achieve the invariant's intent (record the Symbols the linker CONSUMED beyond the endpoints) — so the goal is not met. blind severity 4. Active fix-work item: WI-latup (populate derived_from with real consumed inputs at ~20 linker sites). Duplicate finding WI-ratun is wont_do (flagged to operator)."  # 0a0c
+- op: update  # 67e9
+  at: '2026-06-22T02:52:56Z'  # 67e9
+  by: agent  # 67e9
+  actor: jgstern_agent  # 67e9
+  clock: 9  # 67e9
+  nonce: '67e9'  # 67e9
+  set: {}  # 67e9
+  remove:  # 67e9
+    tags: [awaits_bakeoff_validation]  # 67e9
+- op: discuss  # c606
+  at: '2026-06-22T02:52:56Z'  # c606
+  by: agent  # c606
+  actor: jgstern_agent  # c606
+  clock: 10  # c606
+  nonce: c606  # c606
+  message: "Drain audit (deep-20260621-215349), human-authorized strip. no_move/violated: tranch_04 (card 030) found Edge.derived_from degenerate (only {src,dst}, not the real consumed inputs) after PR #3926; active remediation tracked by WI-latup. Validation verdict is conclusive and the work is tracked elsewhere — the validation tag does no work here. Stripping awaits_bakeoff_validation; violated status + WI-latup remain the live signals."  # c606
+- op: update  # e75c
+  at: '2026-07-26T09:46:36Z'  # e75c
+  by: agent  # e75c
+  actor: jgstern_agent  # e75c
+  clock: 11  # e75c
+  nonce: e75c  # e75c
+  set:  # e75c
+    status: satisfied  # e75c
+- op: discuss  # ec72
+  at: '2026-07-26T09:46:36Z'  # ec72
+  by: agent  # ec72
+  actor: jgstern_agent  # ec72
+  clock: 12  # ec72
+  nonce: ec72  # ec72
+  message: "SATISFIED. Edge.derived_from (list[str]) records the Symbols/Edges a linker consumed. Positive evidence: source-tree guard test test_edge_derived_from.py::test_all_linker_edge_creates_pass_derived_from PASSES (re-ran: 1 passed) -- AST-walks every linker file, asserts every Edge.create() passes derived_from=. Coverage sweep: 91/91 Edge.create sites across 57 linker files stamp it with real consumed-id lists (0 missing, 0 None/empty; no raw-constructor or replace/copy bypass). Analyzer-originated edges legitimately None (ir.py:819). Note: 'WI-latup / INV-nuzal tail' paraphrase is THIS same completed work (WI-latup not in repo); real INV-nuzal is a separate node.quality item -- do not conflate."  # ec72

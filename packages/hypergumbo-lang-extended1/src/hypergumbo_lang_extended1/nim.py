@@ -48,6 +48,7 @@ from hypergumbo_core.analyze.base import (
     node_text,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -72,14 +73,41 @@ def is_nim_tree_sitter_available() -> bool:
 # ---------------------------------------------------------------------------
 
 
+def _declared_name_node(
+    parent: "tree_sitter.Node",
+) -> tuple[Optional["tree_sitter.Node"], bool]:
+    """Return ``(name_identifier, is_exported)`` for a Nim declaration.
+
+    A plain declaration exposes its name as a direct ``identifier`` child. An
+    EXPORTED one — Nim's ``*`` postfix, ``proc greet*`` / ``type Person*`` —
+    wraps that identifier in an ``exported_symbol`` node (``identifier`` +
+    ``*``), so a bare ``find_child_by_type(parent, "identifier")`` finds
+    nothing and the whole declaration was silently dropped (INV-bisom, 0/246
+    on the filed corpus). Resolve the inner identifier in either shape, and
+    report whether the ``*`` export marker was present so the caller can set
+    ``Symbol.is_exported`` (mirroring go.py's lexical-case export rule).
+    """
+    ident = find_child_by_type(parent, "identifier")
+    if ident is not None:
+        return ident, False
+    exported = find_child_by_type(parent, "exported_symbol")
+    if exported is not None:
+        return find_child_by_type(exported, "identifier"), True
+    return None, False  # pragma: no cover - defensive: a declaration always names
+
+
 def _make_symbol(
     analyzer: "NimAnalyzer", rel_path: str, run_id: str, node: "tree_sitter.Node",
     name: str, kind: str, source: bytes,
     signature: Optional[str] = None, meta: Optional[dict] = None,
+    is_exported: bool = False,
 ) -> Symbol:
     """Create a Symbol with consistent formatting."""
     start_line = node.start_point[0] + 1
     end_line = node.end_point[0] + 1
+    # INV-loguk: CC only for callables; the "type" kind funnels through this
+    # same helper and would otherwise aggregate nested proc branches.
+    _is_callable = kind in ("function", "method")
     sym_id = make_symbol_id("nim", rel_path, start_line, end_line, name, kind)
     span = Span(
         start_line=start_line,
@@ -108,6 +136,11 @@ def _make_symbol(
         ),
         signature=signature,
         meta=meta,
+        is_exported=is_exported,
+        cyclomatic_complexity=(
+            compute_cyclomatic_complexity(node, "nim") if _is_callable else None
+        ),
+        line_span=(end_line - start_line + 1) if _is_callable else None,
     )
 
 
@@ -115,7 +148,7 @@ def _process_proc_declaration(
     analyzer: "NimAnalyzer", source: bytes, rel_path: str, run_id: str, node: "tree_sitter.Node",
 ) -> Optional[Symbol]:
     """Process a proc declaration."""
-    name_node = find_child_by_type(node, "identifier")
+    name_node, is_exported = _declared_name_node(node)
     if not name_node:
         return None  # pragma: no cover - defensive
 
@@ -123,14 +156,14 @@ def _process_proc_declaration(
     params = find_child_by_type(node, "parameter_declaration_list")
     signature = node_text(params, source) if params else "()"
 
-    return _make_symbol(analyzer, rel_path, run_id, node, proc_name, "function", source, signature=signature)
+    return _make_symbol(analyzer, rel_path, run_id, node, proc_name, "function", source, signature=signature, is_exported=is_exported)
 
 
 def _process_func_declaration(
     analyzer: "NimAnalyzer", source: bytes, rel_path: str, run_id: str, node: "tree_sitter.Node",
 ) -> Optional[Symbol]:
     """Process a func declaration (pure function)."""
-    name_node = find_child_by_type(node, "identifier")
+    name_node, is_exported = _declared_name_node(node)
     if not name_node:
         return None  # pragma: no cover - defensive
 
@@ -138,14 +171,14 @@ def _process_func_declaration(
     params = find_child_by_type(node, "parameter_declaration_list")
     signature = node_text(params, source) if params else "()"
 
-    return _make_symbol(analyzer, rel_path, run_id, node, func_name, "function", source, signature=signature)
+    return _make_symbol(analyzer, rel_path, run_id, node, func_name, "function", source, signature=signature, is_exported=is_exported)
 
 
 def _process_method_declaration(
     analyzer: "NimAnalyzer", source: bytes, rel_path: str, run_id: str, node: "tree_sitter.Node",
 ) -> Optional[Symbol]:
     """Process a method declaration."""
-    name_node = find_child_by_type(node, "identifier")
+    name_node, is_exported = _declared_name_node(node)
     if not name_node:
         return None  # pragma: no cover - defensive
 
@@ -153,7 +186,7 @@ def _process_method_declaration(
     params = find_child_by_type(node, "parameter_declaration_list")
     signature = node_text(params, source) if params else "()"
 
-    return _make_symbol(analyzer, rel_path, run_id, node, method_name, "method", source, signature=signature)
+    return _make_symbol(analyzer, rel_path, run_id, node, method_name, "method", source, signature=signature, is_exported=is_exported)
 
 
 def _process_type_declaration(
@@ -164,12 +197,151 @@ def _process_type_declaration(
     if not type_sym:
         return None  # pragma: no cover - defensive
 
-    name_node = find_child_by_type(type_sym, "identifier")
+    name_node, is_exported = _declared_name_node(type_sym)
     if not name_node:
         return None  # pragma: no cover - defensive
 
     type_name = node_text(name_node, source)
-    return _make_symbol(analyzer, rel_path, run_id, node, type_name, "type", source)
+    return _make_symbol(analyzer, rel_path, run_id, node, type_name, "type", source, is_exported=is_exported)
+
+
+# ---------------------------------------------------------------------------
+# Field / variable extraction helpers (WI-jusus)
+# ---------------------------------------------------------------------------
+
+
+def _enclosing_type_name(
+    node: "tree_sitter.Node", source: bytes,
+) -> Optional[str]:
+    """Return the name of the ``type_declaration`` directly owning ``node``.
+
+    An object ``field_declaration`` / ``enum_field_declaration`` lives inside a
+    ``type_declaration`` whose name (``type_symbol_declaration``) becomes the
+    field's owner. ``_declared_name_node`` resolves the plain-or-exported name
+    shape, so ``Person*`` yields owner ``Person``.
+
+    An **intervening** ``field_declaration`` on the way up means ``node`` is a
+    member of an anonymous tuple/object embedded in *another* field's type
+    (``coord: tuple[x, y: int]``) — those inner members belong to the tuple, not
+    to the enclosing named object, so attributing them would mint a phantom,
+    wrong-owner ``Outer.x``. Abort the walk (skip the symbol — a fails-safe
+    miss) in that case. A standalone named tuple (``type Coord = tuple[x, y]``)
+    and object-variant branch fields cross no intervening ``field_declaration``,
+    so their members stay correctly owned; a tuple in a proc return / free
+    ``var`` type reaches the root with no ``type_declaration`` and is skipped.
+    """
+    current = node.parent
+    while current is not None:
+        if current.type == "field_declaration":
+            return None
+        if current.type == "type_declaration":
+            type_sym = find_child_by_type(current, "type_symbol_declaration")
+            if type_sym is not None:
+                name_node, _ = _declared_name_node(type_sym)
+                if name_node is not None:
+                    return node_text(name_node, source)
+            return None  # pragma: no cover - defensive: a type always names
+        current = current.parent
+    return None  # a field_declaration outside any named type (proc-return / free tuple)
+
+
+def _iter_named_declarations(
+    sdl: "tree_sitter.Node", source: bytes,
+) -> Iterator[tuple["tree_sitter.Node", str, bool]]:
+    """Yield ``(symbol_declaration_node, name, is_exported)`` per declared name.
+
+    A ``symbol_declaration_list`` holds one ``symbol_declaration`` per name, so a
+    multi-name declaration (``age, weight: int`` / ``var a, b = 0``) yields each
+    name separately. ``_declared_name_node`` resolves the plain-or-``*``-exported
+    identifier shape. Shared by the field and module-variable paths.
+    """
+    for child in sdl.children:
+        if child.type != "symbol_declaration":
+            continue
+        name_node, is_exported = _declared_name_node(child)
+        if name_node is None:
+            continue  # pragma: no cover - defensive: a declaration always names
+        yield child, node_text(name_node, source), is_exported
+
+
+def _process_field_declaration(
+    analyzer: "NimAnalyzer", source: bytes, rel_path: str, run_id: str, node: "tree_sitter.Node",
+) -> list[tuple[Symbol, "tree_sitter.Node"]]:
+    """Process object ``field_declaration`` members into ``kind="field"`` anchors.
+
+    ``field_declaration > symbol_declaration_list > symbol_declaration+`` — each
+    name is emitted as ``Owner.member`` keyed off its own node so co-declared
+    fields get distinct spans / shape_ids.
+    """
+    type_name = _enclosing_type_name(node, source)
+    if type_name is None:
+        return []  # pragma: no cover - defensive
+    sdl = find_child_by_type(node, "symbol_declaration_list")
+    if sdl is None:
+        return []  # pragma: no cover - defensive
+    pairs: list[tuple[Symbol, "tree_sitter.Node"]] = []
+    for child, member, is_exported in _iter_named_declarations(sdl, source):
+        sym = _make_symbol(
+            analyzer, rel_path, run_id, child, f"{type_name}.{member}",
+            "field", source, is_exported=is_exported,
+        )
+        pairs.append((sym, child))
+    return pairs
+
+
+def _process_enum_field_declaration(
+    analyzer: "NimAnalyzer", source: bytes, rel_path: str, run_id: str, node: "tree_sitter.Node",
+) -> Optional[Symbol]:
+    """Process an ``enum_field_declaration`` member into a ``kind="field"`` anchor.
+
+    Enum variants are type members accessed via ``.`` (``Color.red``), emitted
+    as fields per the dart/zig enum-body-value precedent. Structure is
+    ``enum_field_declaration > symbol_declaration [= value]``.
+    """
+    type_name = _enclosing_type_name(node, source)
+    if type_name is None:
+        return None  # pragma: no cover - defensive
+    sd = find_child_by_type(node, "symbol_declaration")
+    if sd is None:
+        return None  # pragma: no cover - defensive
+    name_node, is_exported = _declared_name_node(sd)
+    if name_node is None:
+        return None  # pragma: no cover - defensive
+    member = node_text(name_node, source)
+    return _make_symbol(
+        analyzer, rel_path, run_id, node, f"{type_name}.{member}",
+        "field", source, is_exported=is_exported,
+    )
+
+
+def _process_module_variable(
+    analyzer: "NimAnalyzer", source: bytes, rel_path: str, run_id: str, node: "tree_sitter.Node",
+) -> list[tuple[Symbol, "tree_sitter.Node"]]:
+    """Process a module-level ``variable_declaration`` into ``kind="variable"`` anchors.
+
+    A ``const``/``var``/``let`` at module scope is a ``variable_declaration``
+    whose section (``const_section``/``var_section``/``let_section``) sits
+    DIRECTLY under ``source_file``. A proc-body local reuses the SAME node but
+    its section lives under a ``statement_list``, so the source_file-parented
+    gate keeps locals out (the swift/go INV-lanaz/INV-sidab local-leak class).
+    Multi-name (``var a, b = 0``) lists one ``symbol_declaration`` per name.
+    """
+    section = node.parent
+    if section is None or section.parent is None:
+        return []  # pragma: no cover - defensive
+    if section.parent.type != "source_file":
+        return []  # a proc-body local (or nested block) — not a module variable
+    sdl = find_child_by_type(node, "symbol_declaration_list")
+    if sdl is None:
+        return []  # pragma: no cover - defensive
+    pairs: list[tuple[Symbol, "tree_sitter.Node"]] = []
+    for child, var_name, is_exported in _iter_named_declarations(sdl, source):
+        sym = _make_symbol(
+            analyzer, rel_path, run_id, child, var_name,
+            "variable", source, is_exported=is_exported,
+        )
+        pairs.append((sym, child))
+    return pairs
 
 
 # ---------------------------------------------------------------------------
@@ -232,7 +404,7 @@ def _extract_import_edges(
                 edges.append(
                     Edge.create(
                         src=file_stable_id,
-                        dst=f"nim:?:{import_name}:module",
+                        dst=f"nim:{import_name}:0-0:module:module",
                         edge_type="imports",
                         line=node.start_point[0] + 1,
                         confidence=0.9,
@@ -247,7 +419,7 @@ def _extract_import_edges(
                         edges.append(
                             Edge.create(
                                 src=file_stable_id,
-                                dst=f"nim:?:{import_name}:module",
+                                dst=f"nim:{import_name}:0-0:module:module",
                                 edge_type="imports",
                                 line=node.start_point[0] + 1,
                                 confidence=0.9,
@@ -317,27 +489,67 @@ class NimAnalyzer(TreeSitterAnalyzer):
         self, tree: "tree_sitter.Tree", source: bytes,
         file_path: Path, rel_path: str, run: "AnalysisRun",
     ) -> FileAnalysis:
-        """Extract proc, func, method, and type symbols from a Nim file."""
+        """Extract proc, func, method, type, field, and variable symbols.
+
+        WI-jusus: ``field`` (object/enum members) and ``variable`` (module-level
+        ``const``/``var``/``let``) are DATA anchors — emitted to
+        ``analysis.symbols`` for search/centrality but kept out of the call
+        graph. They are never added to ``symbol_by_name`` here, and
+        ``register_symbol`` skips them from the global resolution registry, so a
+        bare-named ``variable`` can never clobber a same-named ``proc``.
+        """
         analysis = FileAnalysis()
 
         for node in iter_tree(tree.root_node):
-            sym: Optional[Symbol] = None
+            pairs: list[tuple[Symbol, "tree_sitter.Node"]] = []
             if node.type == "proc_declaration":
                 sym = _process_proc_declaration(self, source, rel_path, run.execution_id, node)
+                if sym:
+                    pairs.append((sym, node))
             elif node.type == "func_declaration":
                 sym = _process_func_declaration(self, source, rel_path, run.execution_id, node)
+                if sym:
+                    pairs.append((sym, node))
             elif node.type == "method_declaration":
                 sym = _process_method_declaration(self, source, rel_path, run.execution_id, node)
+                if sym:
+                    pairs.append((sym, node))
             elif node.type == "type_declaration":
                 sym = _process_type_declaration(self, source, rel_path, run.execution_id, node)
+                if sym:
+                    pairs.append((sym, node))
+            elif node.type == "field_declaration":
+                pairs.extend(_process_field_declaration(self, source, rel_path, run.execution_id, node))
+            elif node.type == "enum_field_declaration":
+                sym = _process_enum_field_declaration(self, source, rel_path, run.execution_id, node)
+                if sym:
+                    pairs.append((sym, node))
+            elif node.type == "variable_declaration":
+                pairs.extend(_process_module_variable(self, source, rel_path, run.execution_id, node))
 
-            if sym:
+            for sym, sym_node in pairs:
                 analysis.symbols.append(sym)
-                analysis.node_for_symbol[sym.id] = node
+                analysis.node_for_symbol[sym.id] = sym_node
                 if sym.kind in ("function", "method"):
                     analysis.symbol_by_name[sym.name] = sym
 
         return analysis
+
+    def register_symbol(self, symbol: Symbol, global_symbols: dict) -> None:
+        """Keep field/variable symbols OUT of the call-resolution registry (WI-jusus).
+
+        A ``field``/``variable`` is a data anchor, never a call or instantiation
+        target. Registering them would let a bare-named module ``variable``
+        clobber a same-named ``proc``'s flat registry key (a false-negative the
+        edge site cannot recover) and let a field shadow a real method — so both
+        integrity vectors are closed at this one chokepoint rather than by gating
+        every edge site. They remain in ``analysis.symbols`` (search / centrality
+        / io-boundaries) because the output symbol set is built independently of
+        this registry.
+        """
+        if symbol.kind in ("field", "variable"):
+            return
+        super().register_symbol(symbol, global_symbols)
 
     def get_import_aliases(
         self, tree: "tree_sitter.Tree", source: bytes,

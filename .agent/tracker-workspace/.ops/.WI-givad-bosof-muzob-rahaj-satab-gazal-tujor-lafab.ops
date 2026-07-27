@@ -25,3 +25,18 @@
   clock: 2  # ab0c
   nonce: ab0c  # ab0c
   message: "Re-confirms 24 language-pack grammars get no grammar_version (only bundle version), incl used markdown+wgsl. WI-givad names same masked-24. WI-luzud is the run_signature-recompute item (distinct). (dogfood; blinded sev 3)"  # ab0c
+- op: update  # 85ae
+  at: '2026-07-26T07:19:40Z'  # 85ae
+  by: agent  # 85ae
+  actor: jgstern_agent  # 85ae
+  clock: 3  # 85ae
+  nonce: 85ae  # 85ae
+  set:  # 85ae
+    status: done  # 85ae
+- op: discuss  # 264c
+  at: '2026-07-26T07:19:40Z'  # 264c
+  by: agent  # 264c
+  actor: jgstern_agent  # 264c
+  clock: 4  # 264c
+  nonce: 264c  # 264c
+  message: "FIXED in GitHub PR #12 (dev 15bc19cc7a), bundled with WI-fonod on the same finalize surface. The single masked 'tree-sitter-language-pack' entry is expanded to distinct 'tree-sitter-language-pack:<lang>' entries for the pack languages actually used, keyed off the toolchain's grammar_module='language_pack:<lang>'. They share the pack dist version (the pack exposes no per-grammar version — verified: tree_sitter_language_pack 0.13.0 has SupportedLanguage but no per-grammar version table). Verified by test_prune_grammars_to_used_covers_every_branch (nim -> tree-sitter-language-pack:nim). Spec §reproducibility_context + example updated."  # 264c

@@ -588,9 +588,9 @@ class TestLinkWebSocket:
         assert "receiver.js" in message_edges[0].dst
         # INV-forim: dataflow annotations must persist through the linker.
         # Historically edge.meta was reassigned after Edge.create, wiping
-        # the access_mode and dest_access_mode set by the kwargs.
+        # the access_mode set by the kwargs (dest_access_mode was removed, ADR-0038).
         assert message_edges[0].meta["access_mode"] == "write"
-        assert message_edges[0].meta["dest_access_mode"] == "read"
+        assert message_edges[0].meta.get("dest_access_mode") is None
         assert message_edges[0].meta["channel"] == "chat"
         assert message_edges[0].meta["event"] == "chat"
 
@@ -1455,8 +1455,9 @@ class TestWiZolotCrossLanguageBridge:
        pairings. No client↔server cross-language edge was ever emitted.
 
     Fix: extend client regex to accept template strings, add Starlette
-    pattern, emit ``calls`` + ``meta["protocol"]="ws"`` + ``cross_language``
-    bridge edge when client+server endpoints share a path string.
+    pattern, emit a ``calls`` + ``meta["protocol"]="ws"`` bridge edge when
+    client+server endpoints share a path string. (Cross-language-ness is
+    derivable from the endpoint node languages, not stamped — INV-zigup.)
     """
 
     def test_native_websocket_template_string_extracts_trailing_path(self, tmp_path: Path) -> None:
@@ -1539,7 +1540,6 @@ class TestWiZolotCrossLanguageBridge:
         ]
         assert len(bridge_edges) == 1
         edge = bridge_edges[0]
-        assert (edge.meta or {}).get("cross_language") is True
         assert (edge.meta or {}).get("url_path") == "/ws"
         # src is the TS client file; dst is the Python endpoint symbol.
         assert edge.src == _make_file_id("typescript", "ws-client.ts")
@@ -1698,7 +1698,6 @@ class TestWiZolotCrossLanguageBridge:
         ]
         assert len(bridge_edges) == 1
         edge = bridge_edges[0]
-        assert (edge.meta or {}).get("cross_language") is True
         assert (edge.meta or {}).get("url_path") == "/ws"
         assert (edge.meta or {}).get("server_framework") == "starlette"
 
@@ -1718,4 +1717,75 @@ class TestWiZolotCrossLanguageBridge:
             if e.edge_type == "calls" and (e.meta or {}).get("protocol") == "ws"
         ]
         assert len(bridge_edges) == 1
-        assert (bridge_edges[0].meta or {}).get("cross_language") is True
+
+
+class TestWebSocketFrameworkDependencyGating:
+    """WI-fizir: WS framework attribution is gated on declared Python deps.
+
+    FastAPI and Starlette share the ``@app.websocket(...)`` route syntax, so the
+    pattern matcher can guess ``fastapi`` for a Starlette app. The linker corrects
+    that to the framework the repo actually declares.
+    """
+
+    def test_resolve_corrects_fastapi_to_starlette_when_only_starlette_declared(
+        self,
+    ) -> None:
+        from hypergumbo_core.linkers.websocket import _resolve_ws_framework
+
+        assert _resolve_ws_framework("fastapi", {"starlette"}) == "starlette"
+
+    def test_resolve_keeps_fastapi_when_fastapi_declared(self) -> None:
+        from hypergumbo_core.linkers.websocket import _resolve_ws_framework
+
+        assert _resolve_ws_framework("fastapi", {"fastapi", "starlette"}) == "fastapi"
+
+    def test_resolve_keeps_fastapi_when_neither_declared(self) -> None:
+        from hypergumbo_core.linkers.websocket import _resolve_ws_framework
+
+        # No dependency signal at all → do not invent a correction.
+        assert _resolve_ws_framework("fastapi", set()) == "fastapi"
+
+    def test_resolve_passes_through_non_fastapi_frameworks(self) -> None:
+        from hypergumbo_core.linkers.websocket import _resolve_ws_framework
+
+        assert _resolve_ws_framework("native", {"starlette"}) == "native_websocket"
+        assert _resolve_ws_framework("starlette", {"starlette"}) == "starlette"
+        assert _resolve_ws_framework("socketio", set()) == "socketio"
+
+    def test_link_websocket_attributes_starlette_on_starlette_repo(
+        self, tmp_path: Path
+    ) -> None:
+        """End-to-end: a Starlette repo whose @app.websocket endpoint matches the
+        FastAPI pattern is attributed to starlette (its declared dep), not fastapi."""
+        (tmp_path / "pyproject.toml").write_text(
+            '[project]\nname = "x"\nversion = "0"\ndependencies = ["starlette>=1.0"]\n'
+        )
+        (tmp_path / "app.py").write_text(
+            '@app.websocket("/ws")\n'
+            "async def ws_endpoint(websocket):\n"
+            "    await websocket.accept()\n"
+        )
+        result = link_websocket(tmp_path)
+        frameworks = {
+            (e.meta or {}).get("framework_dispatch")
+            for e in result.edges
+            if (e.meta or {}).get("framework_dispatch")
+        }
+        assert frameworks == {"starlette"}
+
+    def test_link_websocket_keeps_fastapi_when_declared(self, tmp_path: Path) -> None:
+        (tmp_path / "pyproject.toml").write_text(
+            '[project]\nname = "x"\nversion = "0"\ndependencies = ["fastapi>=0.1"]\n'
+        )
+        (tmp_path / "app.py").write_text(
+            '@app.websocket("/ws")\n'
+            "async def ws_endpoint(websocket):\n"
+            "    await websocket.accept()\n"
+        )
+        result = link_websocket(tmp_path)
+        frameworks = {
+            (e.meta or {}).get("framework_dispatch")
+            for e in result.edges
+            if (e.meta or {}).get("framework_dispatch")
+        }
+        assert frameworks == {"fastapi"}

@@ -22,14 +22,19 @@ import pytest
 
 from hypergumbo_core.axis_meta_keys import (
     AXIS_EDGE_META,
+    AXIS_ENTRYPOINT_META,
     AXIS_SYMBOL_META,
     META_KEYS,
     MetaKeySpec,
     VALID_AXES,
+    access_mode_applicable_edge_types,
+    access_mode_na_edge_types,
     all_meta_key_names,
     find_meta_key,
+    is_access_mode_not_applicable,
     meta_keys_on_axis,
 )
+from hypergumbo_core.edge_types import all_edge_type_names
 
 
 # --- Registry invariants ---
@@ -57,7 +62,9 @@ def test_specs_are_frozen():
 
 
 def test_valid_axes_constant_matches_module_constants():
-    assert VALID_AXES == frozenset({AXIS_SYMBOL_META, AXIS_EDGE_META})
+    assert VALID_AXES == frozenset({
+        AXIS_SYMBOL_META, AXIS_EDGE_META, AXIS_ENTRYPOINT_META,
+    })
 
 
 def test_every_axis_has_at_least_one_spec():
@@ -100,6 +107,22 @@ def test_meta_keys_on_axis_edge_meta_includes_fold_residues():
     } <= edge_keys
 
 
+def test_linker_vocabulary_keys_registered_on_edge_meta():
+    """WI-mulub: the cross-language / framework vocabularies emitted on
+    ``Edge.meta`` by their linkers must be registered so the writer-contract
+    and registry-drift checks can police them. These were emitted but absent
+    from ``MetaKeySpec`` — websocket (client/server_framework), message_queue
+    (topic/topic_type/queue_type), database_query (query_type/table_name),
+    route_handler + go_cobra (handler_name), the analyzer receiver-inference
+    (receiver_type_hint), and the ir.py edge-dedup pass (referring_paths)."""
+    edge_keys = {spec.name for spec in meta_keys_on_axis(AXIS_EDGE_META)}
+    assert {
+        "client_framework", "server_framework", "topic", "topic_type",
+        "queue_type", "query_type", "table_name", "handler_name",
+        "receiver_type_hint", "referring_paths",
+    } <= edge_keys
+
+
 def test_meta_keys_on_axis_unknown_returns_empty():
     assert meta_keys_on_axis("not-an-axis") == ()
 
@@ -128,21 +151,169 @@ def test_meta_key_spec_is_dataclass():
 # --- Cross-axis hygiene ---
 
 def test_no_meta_key_collides_with_typed_field():
-    """Meta keys must NOT collide with named typed fields on Symbol /
-    Edge dataclasses. The convention (per the module docstring) is
-    that a field elevated to a typed slot is named on the dataclass
-    rather than carried in ``meta``. A registry entry colliding with
-    a typed field name signals an unfinished promotion (the key was
-    added to meta and the typed field was later introduced, but the
-    meta entry wasn't retired) — both shapes existing simultaneously
-    creates an ambiguity for consumers."""
-    from hypergumbo_core.ir import Edge, Symbol
+    """A meta key must NOT collide with a named typed field ON THE SAME
+    dataclass. The convention (per the module docstring) is that a field
+    elevated to a typed slot is named on the dataclass rather than carried
+    in ``meta``. A registry entry colliding with a typed field name on its
+    OWN parent dataclass signals an unfinished promotion (the key was added
+    to meta and the typed field was later introduced, but the meta entry
+    wasn't retired) — both shapes existing simultaneously creates an
+    ambiguity for consumers.
 
-    typed_symbol_fields = {f.name for f in dataclasses.fields(Symbol)}
-    typed_edge_fields = {f.name for f in dataclasses.fields(Edge)}
-    registry_names = all_meta_key_names()
-    collisions = registry_names & (typed_symbol_fields | typed_edge_fields)
-    assert not collisions, (
-        f"Meta keys collide with typed field names: {sorted(collisions)}. "
-        "Either retire the meta entry or rename the typed field."
+    The check is axis-aware: a ``symbol_meta`` key is checked against
+    ``Symbol`` fields, an ``edge_meta`` key against ``Edge`` fields, and an
+    ``entrypoint_meta`` key against ``Entrypoint`` fields. Cross-dataclass
+    name reuse is NOT a collision — ``Entrypoint.meta["id"]`` is fine even
+    though ``Edge`` has a typed ``id`` field, because they describe
+    different records (WI-rukam introduced the third axis)."""
+    from hypergumbo_core.ir import Edge, Symbol
+    from hypergumbo_core.entrypoints import Entrypoint
+
+    axis_to_fields = {
+        AXIS_SYMBOL_META: {f.name for f in dataclasses.fields(Symbol)},
+        AXIS_EDGE_META: {f.name for f in dataclasses.fields(Edge)},
+        AXIS_ENTRYPOINT_META: {f.name for f in dataclasses.fields(Entrypoint)},
+    }
+    for spec in META_KEYS:
+        own_fields = axis_to_fields[spec.axis]
+        assert spec.name not in own_fields, (
+            f"Meta key {spec.name!r} (axis {spec.axis}) collides with a "
+            f"typed field on its own parent dataclass. Either retire the "
+            f"meta entry or rename the typed field."
+        )
+
+
+def test_meta_keys_on_axis_entrypoint_meta_includes_provenance():
+    """WI-rukam: the Entrypoint provenance keys live on the
+    ``entrypoint_meta`` axis."""
+    entrypoint_keys = {spec.name for spec in meta_keys_on_axis(AXIS_ENTRYPOINT_META)}
+    assert {"id", "source", "evidence_type"} <= entrypoint_keys
+
+
+# --- ADR-0038 access_mode applicability matrix (INV-tibob + WI-pusuv census) ---
+#
+# ADR-0038 ruling 2 declares a per-edge-type applicability matrix for
+# ``access_mode``: 4 APPLICABLE (None = "missing data, fix the emitter") and
+# DECLARED-N/A (None = "the question does not arise"). The matrix originally
+# covered only INV-tibob's 17-type census; the WI-pusuv census (2026-07-21)
+# classified the residual relationship tail after both non-relationship axes
+# drained to empty, so EVERY canonical edge type is now classified (applicable
+# XOR N/A). ``data_flows_to`` is N/A here (its DIRECTION lives in the
+# ``data_direction`` key, ADR-0038 ruling 3, not access_mode); ``crypto_flow``
+# folded into it and is no longer a registry value.
+
+_ADR0038_APPLICABLE = frozenset({
+    "calls", "references", "module_attr_ref", "event_publishes",
+})
+_ADR0038_NA = frozenset({
+    # INV-tibob's original 17-type census:
+    "contains", "decorated_by", "depends_on", "depends_on_manifest",
+    "dispatches_to", "extends", "implements", "imports", "inherits",
+    "overrides", "uses", "instantiates",
+    # WI-pusuv census completion — the residual relationship tail (all N/A-now):
+    "constrains", "data_flows_to", "defines_target", "includes", "links",
+    "module_exports", "sources", "subprocess_calls", "wraps",
+})
+
+
+def test_access_mode_matrix_matches_adr0038_census():
+    assert access_mode_applicable_edge_types() == _ADR0038_APPLICABLE
+    assert access_mode_na_edge_types() == _ADR0038_NA
+
+
+def test_access_mode_matrix_sets_are_disjoint():
+    assert access_mode_applicable_edge_types().isdisjoint(
+        access_mode_na_edge_types()
+    )
+
+
+def test_access_mode_matrix_edge_types_are_canonical():
+    canonical = all_edge_type_names()
+    assert access_mode_applicable_edge_types() <= canonical
+    assert access_mode_na_edge_types() <= canonical
+
+
+def test_access_mode_matrix_data_flows_to_is_na_direction_family():
+    """``data_flows_to`` carries dataflow value-propagation + DIRECTION (the
+    ``data_direction`` key, ADR-0038 ruling 3), NOT state access — so the
+    access question does not arise and it is declared N/A (WI-pusuv census).
+    ``crypto_flow`` folded into ``data_flows_to`` (Batch 7) and is no longer a
+    registry value, so it is absent from both sets."""
+    assert is_access_mode_not_applicable("data_flows_to") is True
+    both = access_mode_applicable_edge_types() | access_mode_na_edge_types()
+    assert "data_flows_to" in both
+    assert "crypto_flow" not in all_edge_type_names()
+    assert "crypto_flow" not in both
+
+
+def test_access_mode_matrix_total_census_complete():
+    """WI-pusuv census COMPLETE (2026-07-21): after both non-relationship axes
+    drained to empty (endpoint_shape via WI-pumav, pending_classification via
+    WI-sumik), EVERY canonical edge type is classified applicable XOR N/A —
+    zero unclassified. This is the census close condition: a consumer reading
+    ``access_mode=None`` can always tell "does not arise" (N/A type) from
+    "missing data" (applicable type)."""
+    classified = (
+        access_mode_applicable_edge_types() | access_mode_na_edge_types()
+    )
+    assert classified == (_ADR0038_APPLICABLE | _ADR0038_NA)
+    # No canonical edge type is left unclassified.
+    unclassified = all_edge_type_names() - classified
+    assert unclassified == set(), (
+        f"WI-pusuv census must classify every edge type; unclassified: "
+        f"{sorted(unclassified)}"
+    )
+    # And no classified value is stale (absent from the registry).
+    assert classified <= all_edge_type_names()
+
+
+def test_is_access_mode_not_applicable_resolver():
+    # Declared-N/A → True (the dataflow gate skips these).
+    assert is_access_mode_not_applicable("instantiates") is True
+    assert is_access_mode_not_applicable("contains") is True
+    assert is_access_mode_not_applicable("dispatches_to") is True
+    # Applicable → False.
+    assert is_access_mode_not_applicable("calls") is False
+    assert is_access_mode_not_applicable("references") is False
+    # WI-pusuv census additions → N/A (True).
+    assert is_access_mode_not_applicable("subprocess_calls") is True
+    assert is_access_mode_not_applicable("data_flows_to") is True
+    assert is_access_mode_not_applicable("wraps") is True
+    # A non-registry / unknown value → False (not declared N/A).
+    assert is_access_mode_not_applicable("crypto_flow") is False
+    assert is_access_mode_not_applicable("not_a_real_edge_type") is False
+    # script_src was pruned from the registry (WI-pumav Batch 0, ADR-0023
+    # Phase 4b'): it is no longer a registered edge type, so it is not in the
+    # N/A set and the classifier treats it as unclassified → False.
+    assert is_access_mode_not_applicable("script_src") is False
+
+
+def test_access_mode_description_not_stale():
+    """ADR-0038 flags the ``'read_write'`` example in the access_mode
+    description as stale — the four-cell vocabulary is
+    read / write / mutate / delete."""
+    spec = find_meta_key("access_mode")
+    assert spec is not None
+    assert "read_write" not in spec.description
+    assert "mutate" in spec.description
+
+
+# --- ADR-0038 ruling 3: data_direction declared, dest_access_mode removed ---
+
+def test_data_direction_registered_on_edge_meta():
+    spec = find_meta_key("data_direction")
+    assert spec is not None
+    assert spec.axis == AXIS_EDGE_META
+
+
+def test_dest_access_mode_removed():
+    """ADR-0038 ruling 3 removes dest_access_mode entirely (the bridge
+    direction it encoded now lives in data_direction)."""
+    assert find_meta_key("dest_access_mode") is None
+
+
+def test_valid_data_directions_vocabulary():
+    from hypergumbo_core.ir import VALID_DATA_DIRECTIONS
+    assert VALID_DATA_DIRECTIONS == frozenset(
+        {"src_to_dst", "dst_to_src", "bidirectional"}
     )

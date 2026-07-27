@@ -1,0 +1,22 @@
+- op: create  # 29e7
+  at: '2026-07-23T01:35:35Z'  # 29e7
+  by: agent  # 29e7
+  actor: jgstern_agent  # 29e7
+  clock: 1  # 29e7
+  nonce: '29e7'  # 29e7
+  data:  # 29e7
+    kind: work_item  # 29e7
+    title: "Survey as a committed canonical artifact (git = base cache + native diff), with a CI drift-check"  # 29e7
+    status: todo_soft  # 29e7
+    priority: 3  # 29e7
+    parent:  # 29e7
+    tags:  # 29e7
+    - determinism  # 29e7
+    - reproducibility  # 29e7
+    - cache  # 29e7
+    isbefore: []  # 29e7
+    duplicate_of: []  # 29e7
+    not_duplicate_of: []  # 29e7
+    pr_ref:  # 29e7
+    description: "Optional / experimental alternative-or-complement to the `hypergumbo diff` command (WI-zomuk): commit a CANONICAL survey into the target repo (e.g. `.hypergumbo/survey.json`) and let git do the storage + diffing.\n\nPayoff: git becomes the base-survey cache for free (base = the file at the merge-base; no SHA-keyed cache service), and the survey delta rides along as a NATIVE reviewable diff in the forge's own UI. WI-zomuk's structural diff is then the *polished* renderer; the git line-diff is the cheap storage + rough view.\n\nRequires the `--reproducible` byte-repro MODE (WI-sazap) first — a non-canonical survey produces a giant meaningless git patch every run (WI-pifaj churn).\n\nKnown \"commit a generated artifact\" tradeoffs to design for: a CI drift-check (regenerate + assert equal, or the file goes stale), merge conflicts on the file, repo growth (git delta absorbs most).\n\nBelongs to the (separable) aijo epic, not G8. Demand-gated on aijo. Blocked-by: WI-sazap (the `--reproducible` mode)."  # 29e7
+    fields: {}  # 29e7

@@ -8,6 +8,8 @@ an entrypoint idiom (the ``__main__`` guard).
 """
 import os
 
+MAX_ITEMS = 100
+
 
 def helper(value):
     """Return a derived string."""
@@ -28,6 +30,8 @@ def process(items, flag):
 
 class Service:
     """A small service."""
+
+    count = 0
 
     def run(self):
         """Run the service."""

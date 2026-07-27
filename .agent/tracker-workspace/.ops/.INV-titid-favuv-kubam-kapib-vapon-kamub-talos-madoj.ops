@@ -68,3 +68,18 @@
   clock: 7  # 3ed6
   nonce: 3ed6  # 3ed6
   message: "compact finalize-after-shrink family (connections-sweep 2026-06-08T1900Z)"  # 3ed6
+- op: update  # ddee
+  at: '2026-06-28T10:07:57Z'  # ddee
+  by: agent  # ddee
+  actor: jgstern_agent  # ddee
+  clock: 8  # ddee
+  nonce: ddee  # ddee
+  set:  # ddee
+    status: satisfied  # ddee
+- op: discuss  # 719f
+  at: '2026-06-28T10:07:57Z'  # 719f
+  by: agent  # 719f
+  actor: jgstern_agent  # 719f
+  clock: 9  # 719f
+  nonce: 719f  # 719f
+  message: "SATISFIED — fixed in PR #310 (selfh, commit e2d4727537) and verified behaviorally on the item's OWN filed repro (the `compact` subcommand on hypergumbo self-analysis, the same 16-feature behavior map the symptoms were quantified on).\n\nRoot cause (as diagnosed 2026-05-30): compact.py built `compact_map = dict(behavior_map)` (shallow copy), rebuilt nodes/edges/entrypoints, but never touched `features[]`, so features carried full-graph node_ids/edge_ids referencing centrality-pruned content. Fix = structural fix-direction (i): a new `_reproject_features` helper, wired into BOTH selection branches (connectivity-aware + coverage), rewrites each surviving feature's entry_nodes/node_ids/edge_ids/node_depths/node_tiers to the retained sets and DROPS any feature whose every entry node was pruned — mirroring the existing entrypoint-filtering precedent (compact.py:1065/1089).\n\nBehavioral evidence — production CLI path, `hypergumbo compact --input <self-analysis bm.json> --max-symbols 100` (filed repro re-run):\n  • connectivity (default): 100 nodes / 342 edges; 16 features -> 8 (the 8 whose anchors were pruned are dropped). feature node_ids 0/35 dangling, edge_ids 0/38 dangling, entry_nodes 0/8 dangling.\n  • --no-connectivity (coverage branch): 100 nodes / 114 edges; 8 features. node_ids 0/13, edge_ids 0/4, entry_nodes 0/8 dangling.\nWAS (filed): 16 features preserved unchanged; ~50% of entry_nodes, 50-82% of node_ids, 46-94% of edge_ids dangling at default budget. The 8 survivors are exactly those whose entry node is in the 100-node compact set (matches the filed \"8/16 entry_nodes survive\"). Both branches: ZERO dangling feature refs.\n\nThe candidate-fix property test (\"every features[].node_ids/edge_ids id is present in the compact's own nodes/edges\") is added (test_compact.py::TestFeatureReprojection — parametrized over both branches + drop/keep-and-filter cases). Spec features[] section documents the compact-view re-projection contract.\n\nThis is the twin of INV-tarol (slice scope closure, satisfied this session): INV-tarol stopped above-scope content leaking INTO a function slice; INV-titid stops below-scope refs dangling OUT of compact features. Both = feature scope re-derived from the emitted graph rather than copied wholesale. Parent INV-fanur (sketch budget enforcement coordinator) remains open — distinct concern."  # 719f

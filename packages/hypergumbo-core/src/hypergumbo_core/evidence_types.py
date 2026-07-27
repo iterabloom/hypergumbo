@@ -45,23 +45,28 @@ audit-findings 0008 / 0012 / 0014 for per-value fold targets.
 Seeding completeness (per the Phase 1 plan file):
 
 - 207 static-literal evidence_type values from ``grep packages/*/src``.
-- 10 enumerable dynamic variants from f-string emits at
-  ``websocket.py:572`` (``{pattern_type}_emit``) and
-  ``websocket.py:613`` (``{pattern_type}_endpoint``) for the 5
-  registered ``pattern_type`` literals (``socketio``, ``native``, ``ws``,
-  ``fastapi``, ``django_channels``).
-- 1 placeholder ``di_binding`` for the unbounded colon-form emit at
-  ``di_resolution.py:608`` (``f"di_binding:{binding.source}"``);
-  Phase 3 producer migration normalizes that site to a canonical
-  inference label plus ``meta["framework_dispatch"]``.
-- The dynamic ``f"ast_{edge_type}"`` at ``inheritance.py:258`` only
+- 10 enumerable dynamic variants from the f-string emits
+  (``{pattern_type}_emit`` / ``{pattern_type}_endpoint``) in
+  ``websocket.py`` for the 6 registered ``pattern_type`` literals
+  (``socketio``, ``native``, ``ws``, ``fastapi``, ``starlette``,
+  ``django_channels``). This Phase 1 seed was folded in Phase 3
+  (audit-findings 0014): those variants were collapsed to
+  ``ast_call_direct`` + ``meta["framework_dispatch"]``, so they are
+  no longer seeded.
+- The Phase-3 producer migration retired the former ``di_binding``
+  colon-form placeholder: the DI-resolution site
+  (``di_resolution.py:628``) now emits the canonical ``ast_call_direct``
+  evidence type plus ``meta["framework_dispatch"]=binding.source`` and
+  ``meta["mechanism"]="di"``, so ``di_binding`` is no longer seeded
+  (``find_evidence_type('di_binding')`` returns None).
+- The dynamic ``f"ast_{edge_type}"`` at ``inheritance.py:368`` only
   yields ``ast_extends`` / ``ast_implements``, both already in the
   static set.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Final
 
@@ -85,14 +90,29 @@ VALID_AXES: Final[frozenset[str]] = frozenset({
 
 @dataclass(frozen=True)
 class EvidenceTypeSpec:
-    """A single Edge.evidence_type value and its axis classification."""
+    """A single Edge.evidence_type value and its axis classification.
+
+    ``base_confidence`` is the ADR-0039 detection-reliability seed for this
+    inference pathway — the canonical ``Edge.confidence`` for an edge whose
+    only evidence is this pathway. ``None`` means the value is not yet
+    derived for this type (the caller keeps its own literal); see
+    :func:`hypergumbo_core.confidence.derive_confidence`.
+
+    ``base_confidence_unresolved`` is the variant for unresolved edges
+    (``Edge.is_resolved=False``) on pathways whose reliability is
+    is_resolved-conditioned (the multimodal call types ``ast_call`` /
+    ``ast_call_direct``). ``None`` means the pathway is not
+    is_resolved-conditioned and ``base_confidence`` applies regardless.
+    """
 
     name: str
     axis: str
     description: str
+    base_confidence: float | None = None
+    base_confidence_unresolved: float | None = None
 
 
-EVIDENCE_TYPES: Final[tuple[EvidenceTypeSpec, ...]] = (
+_RAW_EVIDENCE_TYPES: tuple[EvidenceTypeSpec, ...] = (
     # ----------------------------------------------------------------
     # Cluster A — Canonical inference pathways (AXIS_INFERENCE_PATHWAY).
     # Each value names how the analyzer concluded this edge exists.
@@ -104,9 +124,11 @@ EVIDENCE_TYPES: Final[tuple[EvidenceTypeSpec, ...]] = (
     EvidenceTypeSpec("ast_attribute", AXIS_INFERENCE_PATHWAY,
                      "Edge inferred from an attribute access in source AST."),
     EvidenceTypeSpec("ast_call", AXIS_INFERENCE_PATHWAY,
-                     "Edge inferred from a generic call expression in source AST."),
+                     "Edge inferred from a generic call expression in source AST.",
+                     base_confidence=0.85, base_confidence_unresolved=0.40),
     EvidenceTypeSpec("ast_call_direct", AXIS_INFERENCE_PATHWAY,
-                     "Edge inferred from a direct (non-method) call site."),
+                     "Edge inferred from a direct (non-method) call site.",
+                     base_confidence=0.85, base_confidence_unresolved=0.50),
     EvidenceTypeSpec("ast_call_extension", AXIS_INFERENCE_PATHWAY,
                      "Edge inferred from an extension-method call (Kotlin / Swift / C#)."),
     EvidenceTypeSpec("ast_call_inherited", AXIS_INFERENCE_PATHWAY,
@@ -123,6 +145,9 @@ EVIDENCE_TYPES: Final[tuple[EvidenceTypeSpec, ...]] = (
                      "Edge inferred from a `this.property` / `self.attr` resolved access."),
     EvidenceTypeSpec("ast_call_type_inferred", AXIS_INFERENCE_PATHWAY,
                      "Edge inferred from a call site where the receiver type was inferred."),
+    EvidenceTypeSpec("ast_call_ufcs", AXIS_INFERENCE_PATHWAY,
+                     "Edge inferred from a UFCS free-function call written with "
+                     "method syntax (x.foo() resolving to foo(x); D / Nim)."),
     EvidenceTypeSpec("ast_cite", AXIS_INFERENCE_PATHWAY,
                      "Edge inferred from a citation/cross-reference link in source."),
     EvidenceTypeSpec("ast_decorator", AXIS_INFERENCE_PATHWAY,
@@ -132,7 +157,8 @@ EVIDENCE_TYPES: Final[tuple[EvidenceTypeSpec, ...]] = (
     EvidenceTypeSpec("ast_implements", AXIS_INFERENCE_PATHWAY,
                      "Edge inferred from an `implements` clause in source AST."),
     EvidenceTypeSpec("ast_import", AXIS_INFERENCE_PATHWAY,
-                     "Edge inferred from an import statement in source AST."),
+                     "Edge inferred from an import statement in source AST.",
+                     base_confidence=0.95),
     EvidenceTypeSpec("ast_include", AXIS_INFERENCE_PATHWAY,
                      "Edge inferred from an include directive in source AST (C/C++)."),
     EvidenceTypeSpec("ast_includes", AXIS_INFERENCE_PATHWAY,
@@ -147,9 +173,11 @@ EVIDENCE_TYPES: Final[tuple[EvidenceTypeSpec, ...]] = (
     EvidenceTypeSpec("ast_method_type_inferred", AXIS_INFERENCE_PATHWAY,
                      "Edge inferred from a method call with type-inferred receiver."),
     EvidenceTypeSpec("ast_name_read", AXIS_INFERENCE_PATHWAY,
-                     "Edge inferred from a bare-name read of a module-level variable (WI-jagus)."),
+                     "Edge inferred from a bare-name read of a module-level variable (WI-jagus).",
+                     base_confidence=0.85),
     EvidenceTypeSpec("ast_new", AXIS_INFERENCE_PATHWAY,
-                     "Edge inferred from a `new` constructor expression."),
+                     "Edge inferred from a `new` constructor expression.",
+                     base_confidence=0.95),
     EvidenceTypeSpec("ast_package", AXIS_INFERENCE_PATHWAY,
                      "Edge inferred from a package declaration."),
     EvidenceTypeSpec("ast_perform", AXIS_INFERENCE_PATHWAY,
@@ -177,7 +205,8 @@ EVIDENCE_TYPES: Final[tuple[EvidenceTypeSpec, ...]] = (
     EvidenceTypeSpec("callable_reference", AXIS_INFERENCE_PATHWAY,
                      "Edge inferred from a callable reference (Kotlin `::fn`, etc.)."),
     EvidenceTypeSpec("callback_argument_reference", AXIS_INFERENCE_PATHWAY,
-                     "Edge inferred from a callback function passed as an argument."),
+                     "Edge inferred from a callback function passed as an argument.",
+                     base_confidence=0.75),
     EvidenceTypeSpec("canonical_name", AXIS_INFERENCE_PATHWAY,
                      "Edge inferred from canonical-name resolution."),
     EvidenceTypeSpec("cgo_call", AXIS_INFERENCE_PATHWAY,
@@ -232,7 +261,8 @@ EVIDENCE_TYPES: Final[tuple[EvidenceTypeSpec, ...]] = (
     EvidenceTypeSpec("import_static", AXIS_INFERENCE_PATHWAY,
                      "Edge inferred from a Java `import static` declaration."),
     EvidenceTypeSpec("import_to_manifest", AXIS_INFERENCE_PATHWAY,
-                     "Edge inferred from a manifest-driven import resolution."),
+                     "Edge inferred from a manifest-driven import resolution.",
+                     base_confidence=0.90),
     EvidenceTypeSpec("include", AXIS_INFERENCE_PATHWAY,
                      "Edge inferred from a generic include construct."),
     EvidenceTypeSpec("include_directive", AXIS_INFERENCE_PATHWAY,
@@ -255,9 +285,11 @@ EVIDENCE_TYPES: Final[tuple[EvidenceTypeSpec, ...]] = (
     EvidenceTypeSpec("method_reference", AXIS_INFERENCE_PATHWAY,
                      "Edge inferred from a method reference (Java `::method`, etc.)."),
     EvidenceTypeSpec("module_attribute_reference", AXIS_INFERENCE_PATHWAY,
-                     "Edge inferred from a module-level attribute reference."),
+                     "Edge inferred from a module-level attribute reference.",
+                     base_confidence=0.85),
     EvidenceTypeSpec("module_export_heuristic", AXIS_INFERENCE_PATHWAY,
-                     "Edge inferred from a module-export heuristic recognition."),
+                     "Edge inferred from a module-export heuristic recognition.",
+                     base_confidence=0.75),
     EvidenceTypeSpec("module_identifier_reference", AXIS_INFERENCE_PATHWAY,
                      "Edge inferred from a module-qualified identifier reference."),
     EvidenceTypeSpec("module_source", AXIS_INFERENCE_PATHWAY,
@@ -297,7 +329,8 @@ EVIDENCE_TYPES: Final[tuple[EvidenceTypeSpec, ...]] = (
     EvidenceTypeSpec("source_statement", AXIS_INFERENCE_PATHWAY,
                      "Edge inferred from a generic source-level statement."),
     EvidenceTypeSpec("span_overlap", AXIS_INFERENCE_PATHWAY,
-                     "Edge inferred from text-span overlap between symbols."),
+                     "Edge inferred from text-span overlap between symbols.",
+                     base_confidence=0.90),
     EvidenceTypeSpec("sql_foreign_key", AXIS_INFERENCE_PATHWAY,
                      "Edge inferred from a SQL `FOREIGN KEY` constraint."),
     EvidenceTypeSpec("stack_construction", AXIS_INFERENCE_PATHWAY,
@@ -384,11 +417,6 @@ EVIDENCE_TYPES: Final[tuple[EvidenceTypeSpec, ...]] = (
                      "JS module-resolution pathway via direct import "
                      "(linkers/js_module.py). Pending cluster-A audit "
                      "(could promote to AXIS_INFERENCE_PATHWAY canonical)."),
-    EvidenceTypeSpec("ast_call_method", AXIS_PENDING,
-                     "Python AST method-call inference (py.py). At-risk "
-                     "Cluster D peer of `ast_call_direct`: fold candidate "
-                     "to `ast_call_direct` + `meta['call_construct']='method'`. "
-                     "Pending cluster-D audit."),
 
     # ----------------------------------------------------------------
     # WI-nubuv ext B + IfExp-classifier discoveries — leak shapes that
@@ -462,6 +490,123 @@ EVIDENCE_TYPES: Final[tuple[EvidenceTypeSpec, ...]] = (
 )
 
 
+# --- Detection-reliability seeds (ADR-0039 / WI-nurun confidence:F1) ---------
+# Single authoritative table of per-evidence-type base confidences for the
+# single-valued inference pathways. The two multimodal call-types
+# (``ast_call`` / ``ast_call_direct``), whose confidence is conditioned on
+# ``is_resolved``, carry their (resolved, unresolved) pair inline on the spec
+# above and are intentionally absent here. Each value is the edge-weighted
+# modal confidence that pathway's producers currently hardcode (the
+# corpus-dominant value, with the AST-scan site modal as the fallback for
+# pathways absent from the self-corpus). So when a producer drops its explicit
+# ``confidence=`` and lets ``Edge.create`` derive (the WI-nurun producer
+# migration), the published value is unchanged for the dominant cohort while
+# the per-emitter hardcoded outliers collapse to this single canonical value —
+# the INV-suvil fix (confidence derived from evidence, not hardcoded per
+# emitter). Keys are disjoint from the inline-seeded specs above
+# (``test_confidence_seeds_disjoint_from_inline``).
+_CONFIDENCE_SEEDS: dict[str, float] = {
+    "ast_annotation": 0.5,
+    "ast_attribute": 0.95,
+    "ast_call_extension": 0.8,
+    "ast_call_type_inferred": 0.85,
+    "ast_call_ufcs": 0.8,
+    "ast_decorator": 0.95,
+    "ast_extends": 0.95,
+    "ast_implements": 0.95,
+    "ast_method_inferred": 0.7,
+    "ast_method_this_property": 0.9,
+    "ast_method_type_inferred": 0.85,
+    "ast_type_ref": 0.85,
+    "async_spawn": 0.85,
+    "behaviour": 0.95,
+    "behaviour_callback": 0.9,
+    "bridging_header_import": 0.95,
+    "build_target_main": 0.95,
+    "canonical_name": 0.95,
+    "closure_wrapper": 0.85,
+    "dispatch_pattern": 0.7,
+    "dispatch_table_reference": 0.85,
+    "dockerfile_copy_from": 0.95,
+    "dockerfile_from": 0.95,
+    "enclosing_scope": 0.9,
+    "eta_expansion": 0.85,
+    "extends": 0.95,
+    "function_pointer": 0.85,
+    "function_reference": 0.8,
+    "function_reference_arg": 0.7,
+    "grpc_stub_resolution": 0.75,
+    "hash_field_reference": 0.8,
+    "hg_annotation": 0.95,
+    "import": 0.95,
+    "import_declaration": 0.95,
+    "import_directive": 0.95,
+    "import_statement": 0.95,
+    "import_static": 0.95,
+    "include": 0.95,
+    "include_directive": 0.95,
+    "instance": 0.9,
+    "link": 0.95,
+    "message_send": 0.9,
+    "method_reference": 0.85,
+    "module_identifier_reference": 0.85,
+    "module_source": 0.95,
+    # ADR-0039 R1 (WI-vakuh / WI-lutad): a name-parse containment heuristic —
+    # reliable but structurally weaker than the certain span_overlap (0.90), so
+    # it seeds BELOW it to restore reliability ordering, and in-band (the old
+    # literal 1.0 breached the 0.95 ceiling on ~18k edges).
+    "naming_convention": 0.85,
+    "notify": 0.9,
+    "object_field_reference": 0.8,
+    "open": 0.95,
+    "open_import": 0.95,
+    "reference": 0.95,
+    "require": 0.95,
+    "require_dynamic": 0.4,
+    "require_statement": 0.95,
+    "require_static": 0.9,
+    "signal_constraint": 0.85,
+    "source_statement": 0.95,
+    "stack_construction": 0.85,
+    "static": 0.95,
+    "struct_field_reference": 0.7,
+    "trait_impl": 0.95,
+    # ADR-0039 R1/R3 (WI-botif): a real dispatch relationship — reliably 0.85;
+    # the 1/sqrt(N) fan-out dampener + test-file penalty are RANKING signals that
+    # relocate to Edge.rank_score (type_hierarchy.py), so published confidence is
+    # the flat in-band base, not the dampened value that undershot the 0.40 floor.
+    "type_hierarchy": 0.85,
+    "typeclass_instance": 0.9,
+    "use": 0.95,
+    "use-package": 0.95,
+    "use_declaration": 0.95,
+    "use_directive": 0.95,
+    "using_directive": 0.95,
+}
+
+
+def _apply_confidence_seeds(
+    specs: tuple[EvidenceTypeSpec, ...],
+) -> tuple[EvidenceTypeSpec, ...]:
+    """Overlay ``_CONFIDENCE_SEEDS`` onto the raw registry (WI-nurun).
+
+    Pathways named in the seed table receive their ``base_confidence``;
+    everything else (already-inline-seeded specs, and pathways whose
+    producers always pass a computed ``confidence=``) passes through
+    unchanged.
+    """
+    return tuple(
+        replace(spec, base_confidence=_CONFIDENCE_SEEDS[spec.name])
+        if spec.name in _CONFIDENCE_SEEDS else spec
+        for spec in specs
+    )
+
+
+EVIDENCE_TYPES: Final[tuple[EvidenceTypeSpec, ...]] = _apply_confidence_seeds(
+    _RAW_EVIDENCE_TYPES
+)
+
+
 def all_evidence_type_names() -> frozenset[str]:
     """Return every canonical Edge.evidence_type name."""
     return frozenset(spec.name for spec in EVIDENCE_TYPES)
@@ -508,10 +653,18 @@ def find_axis_drift(repo_root: Path) -> list[str]:
 
     Used by the property test in ``tests/test_evidence_types.py`` and
     the pre-commit linter at ``scripts/check-evidence-type-drift``.
+
+    ``ENTRYPOINT_EVIDENCE_TYPES`` (``entrypoints.py``) is excluded: it
+    matches the ``EVIDENCE_TYPE`` name filter by substring but enumerates
+    the SEPARATE ``Entrypoint.meta`` inference-pathway axis (WI-rukam), not
+    ``Edge.evidence_type``. Same shape as the ``KIND``-filter exclusions
+    for ``PROTOCOL_KINDS`` / ``BRIDGE_KINDS`` — a name collision across
+    axes, resolved by name-exclusion rather than renaming the constant.
     """
     from hypergumbo_core.axis_drift import find_drift
     return find_drift(
         repo_root,
         name_filter="EVIDENCE_TYPE",
         registry_names=all_evidence_type_names(),
+        excluded_target_names=("ENTRYPOINT_EVIDENCE_TYPES",),
     )

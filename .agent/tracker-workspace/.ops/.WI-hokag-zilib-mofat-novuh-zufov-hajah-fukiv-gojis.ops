@@ -1,0 +1,35 @@
+- op: create  # e717
+  at: '2026-07-19T15:57:27Z'  # e717
+  by: agent  # e717
+  actor: jgstern_agent  # e717
+  clock: 1  # e717
+  nonce: e717  # e717
+  data:  # e717
+    kind: work_item  # e717
+    title: "mypy: rename genuinely-shadowed variables (no-redef + assignment categories) — 2 deferred no-redef + ~5 assignment reuse sites"  # e717
+    status: todo_hard  # e717
+    priority: 3  # e717
+    parent:  # e717
+    tags:  # e717
+    - mypy_adoption  # e717
+    - static_typing  # e717
+    isbefore: []  # e717
+    duplicate_of: []  # e717
+    not_duplicate_of: []  # e717
+    pr_ref:  # e717
+    description: "Follow-up from the INV-zogud mypy ramp. Two error categories share a\nroot pattern: a local/loop variable is bound to two DIFFERENT types in one\nfunction scope (mypy flags [no-redef] for annotated re-declarations,\n[assignment] for loop-var reuse). Unlike the 22 already-fixed sites (benign\nre-annotation of the SAME-typed variable — dropping the second annotation\nwas a zero-change cleanup), these need a deliberate RENAME to separate the\ntwo conceptually-distinct variables, because the occurrences carry genuinely\ndifferent types AND pre-existing assignment/index errors.\n\nConfirmed sites:\n- framework_patterns.py: `symbol` — loop var (Symbol, line 1504) vs a\n  nullable lookup (Symbol | None, ~1603). Also 2 pre-existing assignment\n  errors (1603/1607).\n- scala.py: `meta` — two dicts with different value types (~459 vs ~561).\n  Also pre-existing index/assignment errors (~563).\n- Deferred-but-benign (excluded from the no-redef PR only to dodge the\n  java.py smart-test slice limitation, see the sibling tooling item):\n  java.py `meta` at 1022 and 1101 (these ARE the safe drop-annotation fix;\n  just re-land them once java.py can be touched without the coverage\n  false-negative).\n- Assignment loop-var reuse (rename): catalog.py `reg`\n  (RegisteredLinker vs RegisteredAnalyzer, ~470), supply_chain.py `match`\n  (Match[str] vs Path, ~885), websocket.py `file_path` (str vs Path, ~790).\n\nEach rename must update ALL references within the block (regression risk —\ntests catch a miss). Low priority; part of the broader mypy basic-mode\ncleanup toward WI-rabum (flip CI blocking) / INV-zogud (strict)."  # e717
+    fields: {}  # e717
+- op: discuss  # a664
+  at: '2026-07-20T02:27:01Z'  # a664
+  by: agent  # a664
+  actor: jgstern_agent  # a664
+  clock: 2  # a664
+  nonce: a664  # a664
+  message: "PARTIALLY RESOLVED (2026-07-19, PR merged bcfc50e875). The two GENUINE-RENAME no-redef sites are done: framework_patterns.py (`symbol` ctx-loop -> `resolved_symbol`, clearing no-redef + co-located assignment 1603/1607) + scala.py (`meta` class-branch -> `class_meta`, typed non-Optional + `or None` at the Symbol, clearing no-redef + co-located index 566/568). Behavior-preserving; 3848 tests pass at 100% cov; whole-tree strict baseline 1094 -> 1085. REMAINING (this item stays open): (1) java.py `meta` at 1022/1101 — the SAFE annotation-drops, deferred behind the WI-zaziz smart-test slice limitation (test_polyglot_call_site_coverage.py under-selects on java.py changes; add it to the manifest manually when landing); (2) the assignment-reuse renames catalog.py `reg`, supply_chain.py `match`, websocket.py `file_path`. All are part of the INV-zogud whole-tree strict grind (baseline now 1085, ratcheted by scripts/check-mypy-ratchet)."  # a664
+- op: discuss  # b557
+  at: '2026-07-21T21:22:51Z'  # b557
+  by: agent  # b557
+  actor: jgstern_agent  # b557
+  clock: 3  # b557
+  nonce: b557  # b557
+  message: "Staleness audit 2026-07-21: PARTIALLY RESOLVED (already noted in-thread). The two genuine no-redef renames landed (commit bcfc50e875): framework_patterns.py resolved_symbol (1606-1644), scala.py class_meta (566-586). The 5 remaining named sites are unfixed: java.py:1022/1101 (deferred behind the WI-zaziz smart-test slice limitation), catalog.py:455/470, supply_chain.py:~885, linkers/websocket.py:~790. Kept open for those 5 residual shadowing sites. Title unchanged (still the accurate task)."  # b557

@@ -80,3 +80,18 @@
   clock: 9  # 4a0e
   nonce: 4a0e  # 4a0e
   message: "[Wave-0 pending-validation sweep] tracker update INV-rojip-bosup-lonut-gamiv-famuz-hulij-gamoj-posij --status pending_validation --note \"Fix confirmed in code with 100% unit test coverage (16 tests passing). WI-palol (commit 659c575645) implements scoped/compound-pattern promotion. WI-pusad (commit 4449696014) implements bare-name promotion gated on prefix-arm matches. Cross-ecosystem guard (module_languages) prevents Julia http / Python http.client FP. Static invariant holds: promote phase correctly adds frameworks from imports before demote phase removes test-only ones. Pending BROAD bakeoff validation across prospector corpus to confirm no regressions on real repos (cohorts: apollo-server/workspace, bakerydemo/django, chatwoot/rails, node-monorepo). See profile.py:3213-3299 for implementation; test_profile.py::test_refine_frameworks_promote* for test suite.\""  # 4a0e
+- op: update  # 48ee
+  at: '2026-07-03T03:43:52Z'  # 48ee
+  by: agent  # 48ee
+  actor: jgstern_agent  # 48ee
+  clock: 10  # 48ee
+  nonce: 48ee  # 48ee
+  set:  # 48ee
+    status: satisfied  # 48ee
+- op: discuss  # 104a
+  at: '2026-07-03T03:43:52Z'  # 104a
+  by: agent  # 104a
+  actor: jgstern_agent  # 104a
+  clock: 11  # 104a
+  nonce: 104a  # 104a
+  message: "Validated by directed manifest-silent test (apollo-server/smoke-test, INV-rojip's own criterion-#3 repo). Editable-install run: profile.frameworks=[apollo,graphql] with 0 manifest framework hits (smoke-test/package.json declares only graphql+make-fetch-happen; no @apollo/server). All 7 smoke-test.* importers return is_test_file=False (operationally prod). node-http.yaml (WI-donud relocation) is a route-concept catalog and does not feed profile.frameworks, so the PROMOTE phase in refine_frameworks is the sole source. Positive-promotion half proven; safety half already shown by the BROAD cohort (zero false promotion, all promoted frameworks import-backed)."  # 104a

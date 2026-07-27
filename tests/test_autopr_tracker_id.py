@@ -301,28 +301,40 @@ class TestWiring:
     # still asserting the call is "near" the marker.
     _HELPER_CALL_WINDOW = 25
 
-    def test_helper_called_from_do_pr(self) -> None:
-        """The do_pr merge-success site calls the helper."""
-        content = AUTO_PR_PATH.read_text()
-        lines = content.splitlines()
-        for i, line in enumerate(lines):
-            if '_autopr_state_final="merged"' in line and 'LOCAL_SHA' in "\n".join(lines[i:i + 5]):
-                window = "\n".join(lines[i:i + self._HELPER_CALL_WINDOW])
+    def _merge_site_calls_helper(self, func_name: str) -> None:
+        """Assert ``func_name``'s FINAL merge-success site calls the helper.
+
+        Scoped to the function body (via the ``name() {`` … column-0 ``}``
+        delimiters) so do_pr and flush_queue can't cross-match — both now
+        record the merged SHA via a ``_merged_sha`` local, so a line-window
+        marker alone is ambiguous. The final site is distinguished from the
+        recovery gates (which also set ``_autopr_state_final="merged"``) by the
+        nearby ``_autopr_state_merged_sha=`` sentinel assignment, which only the
+        final site has.
+        """
+        lines = AUTO_PR_PATH.read_text().splitlines()
+        start = next(
+            (i for i, ln in enumerate(lines) if ln.startswith(f"{func_name}() {{")),
+            None,
+        )
+        assert start is not None, f"{func_name} not found"
+        end = next(i for i in range(start + 1, len(lines)) if lines[i] == "}")
+        body = lines[start:end + 1]
+        for i, line in enumerate(body):
+            if '_autopr_state_final="merged"' in line and any(
+                "_autopr_state_merged_sha=" in b for b in body[i:i + 8]
+            ):
+                window = "\n".join(body[i:i + self._HELPER_CALL_WINDOW])
                 assert "_autopr_append_tracker_discussion" in window, (
-                    f"do_pr merge-success site does not call helper: {window}"
+                    f"{func_name} merge-success site does not call helper: {window}"
                 )
                 return
-        pytest.fail("do_pr merge-success marker not found")
+        pytest.fail(f"{func_name} merge-success marker not found")
+
+    def test_helper_called_from_do_pr(self) -> None:
+        """The do_pr merge-success site calls the helper."""
+        self._merge_site_calls_helper("do_pr")
 
     def test_helper_called_from_flush_queue(self) -> None:
         """The flush_queue merge-success site calls the helper."""
-        content = AUTO_PR_PATH.read_text()
-        lines = content.splitlines()
-        for i, line in enumerate(lines):
-            if '_autopr_state_final="merged"' in line and 'tip_sha' in "\n".join(lines[i:i + 5]):
-                window = "\n".join(lines[i:i + self._HELPER_CALL_WINDOW])
-                assert "_autopr_append_tracker_discussion" in window, (
-                    f"flush_queue merge-success site does not call helper: {window}"
-                )
-                return
-        pytest.fail("flush_queue merge-success marker not found")
+        self._merge_site_calls_helper("flush_queue")

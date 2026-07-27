@@ -291,8 +291,16 @@ class TestObjCCallEdges:
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
         assert len(call_edges) >= 1
 
-    def test_extracts_cross_file_call_edges(self, tmp_path: Path) -> None:
-        """Extracts call edges between classes in different files."""
+    def test_cross_class_message_send_defers_not_binds(self, tmp_path: Path) -> None:
+        """INV-fahub: a cross-class message send is WITHHELD, not magnet-bound.
+
+        ``[h help]`` in ``MyClass`` reaches selector ``help`` which the
+        receiver-blind, short-name-keyed resolver would otherwise bind
+        high-confidence to ``Helper.help`` (a DIFFERENT class). Under the
+        INV-fahub gate this is deferred to an honest unresolved edge that
+        carries ``enclosing_class`` for the inherited_calls Site-1 walker,
+        rather than a resolved cross_file bind to an arbitrary same-named def.
+        """
         from hypergumbo_lang_mainstream.objc import analyze_objc
 
         helper_file = tmp_path / "Helper.m"
@@ -322,8 +330,21 @@ class TestObjCCallEdges:
 
         result = analyze_objc(tmp_path)
 
+        helper_help = next(s for s in result.symbols if s.name == "Helper.help")
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
-        assert len(call_edges) >= 1
+
+        # No resolved cross-class magnet bind to Helper.help.
+        assert not any(
+            e.is_resolved and e.dst == helper_help.id for e in call_edges
+        )
+        # The deferred call is an unresolved edge tagged with the caller's
+        # enclosing class so Site-1 can recover a genuine inherited call.
+        help_calls = [
+            e for e in call_edges
+            if not e.is_resolved and e.dst.endswith(":help:unresolved")
+        ]
+        assert len(help_calls) == 1
+        assert (help_calls[0].meta or {}).get("enclosing_class") == "MyClass"
 
 class TestObjCSymbolProperties:
     """Tests for symbol property correctness."""
@@ -390,6 +411,96 @@ class TestObjCEmptyFile:
         result = analyze_objc(tmp_path)
 
         assert result.run is not None
+
+class TestObjCFahubMagnetGate:
+    """INV-fahub: the bare/receiver-blind message-send magnet gate.
+
+    ObjC's ``global_methods`` registry is keyed by the bare selector (short
+    name), so ``method_resolver.lookup(selector)`` collapses every same-named
+    method across unrelated classes to one arbitrary def. Binding a message
+    send to that def on nothing but a short-name collision is the cross-class
+    magnet (many receiver-blind call sites → one def). The gate withholds such
+    a cross-class match (deferring it to the inherited_calls Site-1 walker via
+    ``enclosing_class``) while still binding a same-class implicit-``self`` hit.
+    """
+
+    def test_cross_class_magnet_does_not_bind(self, tmp_path: Path) -> None:
+        """A call reachable only by short-name collision must NOT resolve.
+
+        ``Beta.run`` sends ``process`` to a non-Alpha receiver; the only
+        ``process`` in the registry is ``Alpha.process`` (an UNRELATED class).
+        Pre-gate this bound is_resolved=True @0.75 to ``Alpha.process``; the
+        gate defers it to an unresolved edge carrying ``enclosing_class``.
+        """
+        from hypergumbo_lang_mainstream.objc import analyze_objc
+
+        (tmp_path / "Alpha.m").write_text("""
+@implementation Alpha
+- (void)process {
+    NSLog(@"alpha process");
+}
+@end
+""")
+        (tmp_path / "Beta.m").write_text("""
+#import "Widget.h"
+@implementation Beta
+- (void)run {
+    Widget *w = [[Widget alloc] init];
+    [w process];
+}
+@end
+""")
+
+        result = analyze_objc(tmp_path)
+
+        alpha_process = next(s for s in result.symbols if s.name == "Alpha.process")
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+
+        # Must NOT bind the magnet: no resolved edge targets Alpha.process.
+        assert not any(
+            e.is_resolved and e.dst == alpha_process.id for e in call_edges
+        )
+        # Deferred: an unresolved ``process`` edge carrying the caller's class.
+        process_calls = [
+            e for e in call_edges
+            if not e.is_resolved and e.dst.endswith(":process:unresolved")
+        ]
+        assert len(process_calls) == 1
+        assert (process_calls[0].meta or {}).get("enclosing_class") == "Beta"
+
+    def test_same_class_message_send_still_resolves(self, tmp_path: Path) -> None:
+        """A same-class implicit-``self`` cross-file hit still binds directly.
+
+        ``Store.save`` (in Store.m) sends ``flush`` to ``self``; ``flush`` is
+        declared on ``Store`` in Store.h. Owner == enclosing class, so the gate
+        binds it (is_resolved=True, cross_file) rather than deferring.
+        """
+        from hypergumbo_lang_mainstream.objc import analyze_objc
+
+        (tmp_path / "Store.h").write_text("""
+@interface Store : NSObject
+- (void)flush;
+@end
+""")
+        (tmp_path / "Store.m").write_text("""
+#import "Store.h"
+@implementation Store
+- (void)save {
+    [self flush];
+}
+@end
+""")
+
+        result = analyze_objc(tmp_path)
+
+        store_flush = next(s for s in result.symbols if s.name == "Store.flush")
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        resolved = [
+            e for e in call_edges if e.is_resolved and e.dst == store_flush.id
+        ]
+        assert len(resolved) == 1
+        assert (resolved[0].meta or {}).get("call_locality") == "cross_file"
+
 
 class TestObjCParserFailure:
     """Tests for parser failure handling."""
@@ -788,3 +899,65 @@ class TestObjCStableShapeId:
         assert cls.stable_id.startswith("sha256:")
         assert cls.shape_id is not None
         assert cls.shape_id.startswith("sha256:")
+
+
+class TestObjcCyclomaticComplexity:
+    """INV-loguk slice C: callable Obj-C symbols (methods) carry non-null
+    CC + LOC. Real-grammar verification (if/for/while/do/case/ternary/catch +
+    &&/|| short-circuit)."""
+
+    def test_branchy_method_has_cc_and_loc(self, tmp_path) -> None:
+        from hypergumbo_lang_mainstream.objc import analyze_objc
+        (tmp_path / "Foo.m").write_text("""@implementation Foo
+- (int)classify:(int)x with:(int)y {
+    if (x > 0 && y > 0) { NSLog(@"a"); }
+    if (x < 0 || y < 0) { NSLog(@"b"); }
+    for (int i = 0; i < x; i++) { NSLog(@"%d", i); }
+    while (x > 0) { x--; }
+    switch (x) {
+        case 1: return 10;
+        case 2: return 20;
+        default: return 0;
+    }
+    return x > y ? x : y;
+}
+@end
+""")
+        result = analyze_objc(tmp_path)
+        fn = next(s for s in result.symbols
+                  if s.kind == "method" and "classify" in s.name)
+        # base 1 + if x2 + && + || + for + while + 3 case + ternary = 11
+        assert fn.cyclomatic_complexity == 11
+        assert fn.line_span is not None and fn.line_span >= 4
+
+    def test_straight_line_method_cc_is_one(self, tmp_path) -> None:
+        from hypergumbo_lang_mainstream.objc import analyze_objc
+        (tmp_path / "Bar.m").write_text("""@implementation Bar
+- (int)plain:(int)x { return x; }
+@end
+""")
+        result = analyze_objc(tmp_path)
+        fn = next(s for s in result.symbols
+                  if s.kind == "method" and "plain" in s.name)
+        assert fn.cyclomatic_complexity == 1
+        assert fn.line_span is not None
+
+    def test_callables_non_null_non_callables_null(self, tmp_path) -> None:
+        from hypergumbo_lang_mainstream.objc import analyze_objc
+        (tmp_path / "Baz.m").write_text("""@interface Baz : NSObject
+@property (nonatomic) int count;
+- (int)compute:(int)x;
+@end
+@implementation Baz
+- (int)compute:(int)x { if (x > 0) { return 1; } return 0; }
+@end
+""")
+        result = analyze_objc(tmp_path)
+        methods = [s for s in result.symbols if s.kind == "method"]
+        assert methods
+        for s in methods:
+            assert s.cyclomatic_complexity is not None, s.name
+            assert s.line_span is not None, s.name
+        for s in result.symbols:
+            if s.kind != "method":
+                assert s.cyclomatic_complexity is None, (s.kind, s.name)

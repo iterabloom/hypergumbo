@@ -127,6 +127,10 @@ def iter_axis_set_assignments(
                 all_strings = False
                 break
         if all_strings and values:
+            # node reaches here only via the ast.Assign / ast.AnnAssign
+            # branches above (target_name is set only there), so it is a
+            # statement carrying .lineno (the ast.AST base does not).
+            assert isinstance(node, (ast.Assign, ast.AnnAssign))
             yield node.lineno, target_name, frozenset(values)
 
 
@@ -213,6 +217,10 @@ def find_drift(
                         f"contains {sorted(drift)} not in canonical registry"
                     )
                 if allowed_axis_names is not None:
+                    # The precondition check above raises when
+                    # allowed_axis_names is set but name_to_axis is None, so it
+                    # is non-None here.
+                    assert name_to_axis is not None
                     off_axis = {
                         v for v in (values & registry_names)
                         if name_to_axis.get(v) not in allowed_axis_names

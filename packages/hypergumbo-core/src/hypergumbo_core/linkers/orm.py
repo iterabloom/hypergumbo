@@ -42,7 +42,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterator
 
-from ..discovery import find_files
+from ..discovery import find_non_test_files
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Symbol, make_pass_id
 from ._concept_utils import has_concept
 from .registry import LinkerContext, LinkerResult, register_linker
@@ -189,7 +189,7 @@ def _scan_orm_references(
 
 def _find_python_files(root: Path) -> Iterator[Path]:
     """Find Python source files for ORM scanning."""
-    for path in find_files(root, ["**/*.py"]):
+    for path in find_non_test_files(root, ["**/*.py"]):
         yield path
 
 

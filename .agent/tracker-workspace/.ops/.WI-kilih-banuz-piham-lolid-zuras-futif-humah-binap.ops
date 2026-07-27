@@ -17,3 +17,34 @@
     pr_ref:  # 3c2e
     description: "Surfaced by the WI-bokab v7 implementation review (wf_8c022fdc-817, lens R3). Pre-v7, the rust.py<->rust_scip.py byte-parity contract (WI-zakub/WI-duzul) did NOT depend on the file path (path was not in the typed-tier hash). v7 folds make_file_stable_id('rust', normalize_path(rel_path)) into the containing slot, so parity is now PATH-REPRESENTATION-SENSITIVE: rust.py uses str(source_file.relative_to(repo_root)); translate.py passes rel_path=sym.path (the SCIP doc.relative_path). normalize_path only swaps backslashes — it does NOT strip a leading './', collapse '..', or strip trailing slashes. Empirically reproduced: for a fn at 'src/lib.rs', rel_path='src/lib.rs' MATCHES rust.py but './src/lib.rs' and 'src/lib.rs/' do NOT. If real rust-analyzer emits doc.relative_path in any divergent form, SCIP-translated rust symbols get a different stable_id and cross-pass dedup double-counts every rust function (when HYPERGUMBO_RUST_ANALYZER is opted into). MITIGATION ALREADY LANDED: test_translate.py::test_parity_byte_matches_rust_py_for_nested_path pins the contract for a clean repo-relative nested path (the mechanism is correct when paths match). REMAINING: (1) capture/construct a real rust-analyzer SCIP index (gated on binary availability) for a nested-path file and assert the translate-reassigned id byte-equals analyze_rust's id; if doc.relative_path diverges, normalize it to rust.py's form in translate.py before folding. (2) PRE-EXISTING related nit: _disk_source_reader (analyzer.py:69) reads Path(sym.path).read_bytes() on the workspace-relative path while invoke.py:150 runs rust-analyzer in cwd=mkdtemp(); if the reader CWD isn't the workspace root the read returns None and parity reassignment is skipped ENTIRELY — the v7 anchor on rust_scip may be dead on the real production path. Confirm whether _disk_source_reader resolves sym.path against repo_root. Bounded: opt-in backend, not the default analysis path."  # 3c2e
     fields: {}  # 3c2e
+- op: update  # afa1
+  at: '2026-07-09T01:43:19Z'  # afa1
+  by: agent  # afa1
+  actor: jgstern_agent  # afa1
+  clock: 2  # afa1
+  nonce: afa1  # afa1
+  set: {}  # afa1
+  add:  # afa1
+    tags: [wave5]  # afa1
+- op: discuss  # 4cbc
+  at: '2026-07-09T01:43:19Z'  # 4cbc
+  by: agent  # 4cbc
+  actor: jgstern_agent  # 4cbc
+  clock: 3  # 4cbc
+  nonce: 4cbc  # 4cbc
+  message: "Wave-5 assignment (2026-07-08): identity/file-anchoring verify residual (rust-analyzer SCIP rel_path byte-match under v7 anchoring + _disk_source_reader CWD gap). Empty isbefore → terminal wave."  # 4cbc
+- op: update  # be19
+  at: '2026-07-26T08:30:54Z'  # be19
+  by: agent  # be19
+  actor: jgstern_agent  # be19
+  clock: 4  # be19
+  nonce: be19  # be19
+  set:  # be19
+    status: done  # be19
+- op: discuss  # 0d3a
+  at: '2026-07-26T08:30:54Z'  # 0d3a
+  by: agent  # 0d3a
+  actor: jgstern_agent  # 0d3a
+  clock: 5  # 0d3a
+  nonce: 0d3a  # 0d3a
+  message: "FIXED in GitHub PR #14 (dev c052d2b88a). The rust-analyzer SCIP source reader read doc.relative_path (repo-relative) against os.getcwd(); under repo_root != cwd (absolute-path surveys, monorepo sub-roots, CI runners) the read failed, the stable_id parity reassignment silently no-op'd, and the SCIP symbol kept a raw-moniker id diverging from the tree-sitter rust.py anchor (WI-zakub byte-parity contract, ADR-0035 v7). Now a _repo_anchored_reader(repo_root) factory resolves the relative path against repo_root before reading (pathlib leaves absolute paths unchanged). VERIFY note: the rel_path VALUE already byte-matched and was tested (test_parity_byte_matches_rust_py_for_nested_path) — the gap was the disk plumbing consuming it, latent because reachable only with a rust-analyzer binary + Cargo workspace + cwd!=repo_root. Evidence: new cwd!=repo_root regression test (no binary needed) + updated wiring test; smart-test 1416 passed, 100% cov of analyzer.py."  # 0d3a

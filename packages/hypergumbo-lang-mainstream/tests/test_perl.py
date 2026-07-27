@@ -389,3 +389,56 @@ class TestPerlShapeId:
         func = next(s for s in result.symbols if s.kind == "function")
         assert func.shape_id is not None
         assert func.shape_id.startswith("sha256:")
+
+
+class TestPerlCyclomaticComplexity:
+    """INV-loguk slice C: callable Perl symbols carry non-null CC + LOC.
+    Real-grammar verification (conditional/for/loop_statement + postfix forms +
+    &&/||/// short-circuit; elsif deliberately uncounted due to keyword
+    collision)."""
+
+    def test_branchy_sub_has_cc_and_loc(self, tmp_path) -> None:
+        from hypergumbo_lang_mainstream.perl import analyze_perl
+        (tmp_path / "M.pm").write_text("""package MyMod;
+
+sub branchy {
+    my ($x, $y) = @_;
+    if ($x > 0 && $y > 0) {
+        for my $i (1..10) { print $i; }
+    }
+    if ($x < 0 || $y < 0) {
+        while ($x < 100) { $x++; }
+    }
+    foreach my $z (@_) { next unless $z; }
+    my $r = $x > 5 ? "big" : "small";
+    return $r;
+}
+""")
+        result = analyze_perl(tmp_path)
+        fn = next(s for s in result.symbols if s.kind == "function" and "branchy" in s.name)
+        # base 1 + 2 conditional + 2 for + 1 loop + ternary + postfix-unless + && + || = 10
+        assert fn.cyclomatic_complexity == 10
+        assert fn.line_span is not None and fn.line_span >= 4
+
+    def test_straight_line_sub_cc_is_one(self, tmp_path) -> None:
+        from hypergumbo_lang_mainstream.perl import analyze_perl
+        (tmp_path / "S.pm").write_text("package S;\nsub simple { return 42; }\n")
+        result = analyze_perl(tmp_path)
+        fn = next(s for s in result.symbols if s.kind == "function" and "simple" in s.name)
+        assert fn.cyclomatic_complexity == 1
+        assert fn.line_span is not None
+
+    def test_callables_non_null_non_callables_null(self, tmp_path) -> None:
+        from hypergumbo_lang_mainstream.perl import analyze_perl
+        (tmp_path / "P.pm").write_text("""package P;
+sub f { my $x = shift; return $x > 0 ? 1 : 0; }
+""")
+        result = analyze_perl(tmp_path)
+        funcs = [s for s in result.symbols if s.kind == "function"]
+        assert funcs
+        for s in funcs:
+            assert s.cyclomatic_complexity is not None, s.name
+            assert s.line_span is not None, s.name
+        for s in result.symbols:
+            if s.kind != "function":
+                assert s.cyclomatic_complexity is None, (s.kind, s.name)

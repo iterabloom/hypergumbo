@@ -8,13 +8,20 @@ How It Works
 ------------
 The CLI uses argparse with subcommands for different operations:
 
-- **sketch** (default): Generate token-budgeted Markdown overview
-- **run**: Execute full analysis and output behavior map JSON
-- **slice**: Extract subgraph from an entry point
-- **catalog**: List available analysis passes
-- **build-grammars**: Build Lean/Wolfram/Circom tree-sitter grammars from source
-- **install-gitleaks**: Install gitleaks for secret scanning
-- **install-rust-analyzer**: Install rust-analyzer via rustup for the SCIP-backed Rust analyzer (WI-dotud)
+- **sketch** (default): generate a token-budgeted Markdown overview.
+- **survey**: run the full analysis and output the survey JSON (behavior map).
+  ``run`` is a deprecated alias kept for one minor-version window (ADR-0042).
+- **Graph queries**: ``slice`` (subgraph from an entry point), ``search``,
+  ``routes``, ``explain``, ``symbols``, ``compact``, ``io-boundaries``,
+  ``verify-claims``, ``repeat-finder``, ``dead-code-maybe``, ``test-coverage``.
+- **Introspection**: ``catalog`` (analysis passes), ``config``,
+  ``cache-status`` / ``cache-clear``.
+- **Setup**: ``build-grammars`` (Lean/Wolfram/Circom), ``install-gitleaks`` /
+  ``uninstall-gitleaks``, ``install-rust-analyzer`` / ``uninstall-rust-analyzer``
+  (SCIP-backed Rust backend, WI-dotud), ``install-embeddings`` /
+  ``uninstall-embeddings``, ``add-extras`` / ``remove-extras``.
+
+The authoritative set is the ``subcommands`` set in ``main()``.
 
 When no subcommand is given, sketch mode is assumed. This makes the
 common case (`hypergumbo .`) as simple as possible.
@@ -28,7 +35,7 @@ Why This Design
 ---------------
 - Subcommand dispatch keeps each operation isolated and testable
 - Default sketch mode optimizes for the common "quick overview" use case
-- run_behavior_map() is separate from cmd_run() for testability
+- run_survey() is separate from cmd_run() for testability
 - Helper functions (Symbol.from_dict, _edge_from_dict) enable slice
   to work with previously-generated JSON files
 """
@@ -42,7 +49,7 @@ import shutil
 import subprocess  # nosec B404 - subprocess needed for pip commands
 import sys
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Set
+from typing import Any, Callable, Dict, Iterable, List, Optional, Set
 
 from rich.console import Console
 from rich.table import Table
@@ -56,7 +63,12 @@ from .analyze.base import (
     split_within_file_stable_id_collisions,
     widen_route_stable_ids,
 )
-from .behavior_map_io import load_behavior_map
+from .survey_io import (
+    CANONICAL_SURVEY_FILENAME,
+    SubstrateError,
+    find_survey_in_dir,
+    load_substrate,
+)
 from .catalog import get_default_catalog, is_available, suggest_passes_for_languages
 # ADR-0043 §6: finalize() is the single pre-serialization reconcile point. _relativize_ir_paths
 # lives there now (finalize sub-step 1 owns it); re-exported here for the Phase B call below
@@ -71,6 +83,7 @@ from .safety_zones import (
     user_out_write,
 )
 # Import linker modules to trigger @register_linker decoration (side effect imports)
+import hypergumbo_core.linkers.caddy_module_dispatch as _caddy_module_dispatch_linker  # noqa: F401
 import hypergumbo_core.linkers.cgo as _cgo_linker  # noqa: F401
 import hypergumbo_core.linkers.containment as _containment_linker  # noqa: F401
 import hypergumbo_core.linkers.database_query as _database_query_linker  # noqa: F401
@@ -129,22 +142,34 @@ import hypergumbo_core.linkers.kafka_streams_dispatch as _kafka_streams_dispatch
 import hypergumbo_core.linkers.django_orm_dispatch as _django_orm_dispatch_linker  # noqa: F401
 import hypergumbo_core.linkers._third_party_bases as _third_party_bases_linker  # noqa: F401
 import hypergumbo_core.linkers.rust_trait_dispatch as _rust_trait_dispatch_linker  # noqa: F401
+import hypergumbo_core.linkers.receiver_type_dispatch as _receiver_type_dispatch_linker  # noqa: F401
 from .entrypoints import EntrypointKind, detect_entrypoints
+from .routes import is_route, method_token, protocol_method_token, route_of
 from .ir import (
     AnalysisRun, PASS_VERSION,
-    Symbol, Edge, apply_external_id_remap, compute_config_fingerprint,
+    Symbol, Edge, ExternalRef, apply_external_id_remap, compute_config_fingerprint,
     create_boundary_nodes,
     deduplicate_edges,
     is_external_boundary,
 )
 from .metrics import compute_metrics
+from .noise_filter import is_noise_symbol
 from .profile import detect_profile
-from .schema import new_behavior_map
+from .schema import new_behavior_map, READ_VIEW_SCHEMA_VERSION
 from .sketch import generate_sketch, ConfigExtractionMode, SketchStats, display_representativeness_table
-from .slice import SliceQuery, slice_graph, AmbiguousEntryError, rank_slice_nodes
+from .slice import (
+    SliceQuery, slice_graph, AmbiguousEntryError, raise_if_ambiguous,
+    rank_slice_nodes,
+)
 from .selection.filters import is_excluded_kind
 from .limits import Limits
-from .supply_chain import classify_file, detect_package_roots
+from .supply_chain import (
+    DERIVED_PATH_PATTERNS,
+    _normalize_pep503,
+    classify_file,
+    collect_workspace_package_names,
+    detect_package_roots,
+)
 from .ranking import (
     rank_symbols, _is_test_path, compute_transitive_test_coverage,
     compute_symbol_mention_centrality_batch, compute_raw_in_degree,
@@ -177,8 +202,22 @@ from .framework_patterns import (
     enrich_symbols,
     get_frameworks_dir,
     resolve_deferred_symbol_refs,
+    strip_test_file_only_concepts,
 )
 from .partial_install_warnings import check_partial_install_warnings
+
+# ADR-0042: glob patterns for the survey map + its budget-tier side-outputs in a
+# cache dir, canonical (``survey.json`` / ``survey.<tier>.json``) and legacy
+# (``hypergumbo.results*.json``), used for artifact reporting and the
+# pre-existing-vs-freshly-generated diff in cmd_sketch.
+_SURVEY_ARTIFACT_GLOBS = ("survey*.json", "hypergumbo.results*.json")
+
+
+def _glob_survey_artifacts(cache_dir: Path) -> set[Path]:
+    """Return the survey map + tier artifacts in ``cache_dir`` (canonical and
+    legacy names). Non-recursive: excludes per-route slice files under
+    ``survey.slices/`` and sketch ``.md`` side-outputs."""
+    return {p for pat in _SURVEY_ARTIFACT_GLOBS for p in cache_dir.glob(pat)}
 
 
 def _setup_locale_filtering(
@@ -348,9 +387,13 @@ def _set_subparser_group(
     # Find the _ChoicesPseudoAction for this subparser
     for choice_action in subparsers._choices_actions:
         if choice_action.dest == name:
-            choice_action.group = group
-            choice_action.group_order = group_order
-            choice_action.suborder = suborder
+            # argparse's _ChoicesPseudoAction has no group/group_order/suborder
+            # attributes; we stash them here and read them back in
+            # _get_subparsers_by_group. The typeshed Action stub does not model
+            # these dynamic attributes, so the attr-defined is a stub gap.
+            choice_action.group = group  # type: ignore[attr-defined]
+            choice_action.group_order = group_order  # type: ignore[attr-defined]
+            choice_action.suborder = suborder  # type: ignore[attr-defined]
             return
     # If we get here, the subparser wasn't found (shouldn't happen)
     raise ValueError(f"Subparser '{name}' not found")  # pragma: no cover
@@ -427,38 +470,37 @@ def _find_git_root(start_path: Path) -> Optional[Path]:
 
 
 def _discover_input_file(repo_root: Path) -> Optional[Path]:
-    """Auto-discover behavior map file from cache or repo root.
+    """Auto-discover a survey artifact from cache or repo root.
 
     Search order:
     1. Cache directory: ~/.cache/hypergumbo/<fingerprint>/results/<state>/<analyzer_identity>/
-    2. Repo root: <repo>/hypergumbo.results.json
+    2. Repo root: <repo>/
 
-    This enables seamless workflow where 'hypergumbo run .' (which caches results)
-    is automatically discovered by search/explain/routes/slice/symbols commands.
+    This enables the seamless workflow where 'hypergumbo survey .' (which caches
+    results) is automatically discovered by search/explain/routes/slice/symbols
+    commands. Both locations are searched via the merged ``find_survey_in_dir``
+    resolver (ADR-0042 §4), so the canonical ``survey.json`` and every legacy
+    alias (``hypergumbo.results.json`` / ``hg.json`` / ``bm.json`` /
+    ``behavior_map.json``), plain or ``.gz``, are all discovered.
 
     Args:
         repo_root: Repository root path.
 
     Returns:
-        Path to behavior map file if found, None otherwise.
+        Path to a survey artifact if found, None otherwise.
     """
-    # First, check cache directory (where 'hypergumbo run' saves by default)
+    # First, check cache directory (where 'hypergumbo survey' saves by default)
     try:
         from .sketch_embeddings import _get_results_cache_dir
 
-        cache_dir = _get_results_cache_dir(repo_root)
-        cached_file = cache_dir / "hypergumbo.results.json"
-        if cached_file.exists():
-            return cached_file
+        cached = find_survey_in_dir(_get_results_cache_dir(repo_root))
+        if cached is not None:
+            return cached
     except Exception:  # pragma: no cover - cache discovery errors
         pass
 
     # Fall back to repo root (for explicit --out or legacy workflows)
-    repo_file = repo_root / "hypergumbo.results.json"
-    if repo_file.exists():
-        return repo_file
-
-    return None
+    return find_survey_in_dir(repo_root)
 
 
 def _get_or_run_analysis(
@@ -469,7 +511,7 @@ def _get_or_run_analysis(
     """Get cached behavior map or run analysis if needed.
 
     Provides seamless auto-analysis: commands that need a behavior map will
-    automatically run 'hypergumbo run' if no cached results exist.
+    automatically run 'hypergumbo survey' if no cached results exist.
 
     Args:
         repo_root: Repository root path.
@@ -494,21 +536,46 @@ def _get_or_run_analysis(
     if cached_path is not None:
         return cached_path, True, []
 
+    # INV-jibof: a positional path that is not a directory (with no --input and
+    # no cached results) is not a repository to analyze — running analysis on a
+    # non-directory silently yields empty output and a "No X found" with rc=0.
+    # Fail loudly with guidance instead. (A behavior-map file belongs on
+    # --input; the SubstrateError is caught by main()'s dispatch → rc=2.)
+    if not repo_root.is_dir():
+        raise SubstrateError(
+            f"{repo_root}: not a directory. Pass a repository directory, or "
+            f"pass a behavior map via --input."
+        )
+
     # No cached results - run analysis
     print(
         "[hypergumbo] No cached results found, running analysis...",
         file=sys.stderr,
     )
 
-    generated_files = run_behavior_map(
+    generated_files = run_survey(
         repo_root=repo_root,
         out_path=None,  # Use default cache location
         progress=show_progress,
     )
 
-    # Now discover the newly created results
-    new_path = _discover_input_file(repo_root)
-    if new_path is None:  # pragma: no cover - shouldn't happen
+    # INV-somup: use the map path run_survey ACTUALLY wrote (out_path is
+    # appended to generated_files at the write site) rather than re-deriving it
+    # via _discover_input_file. That helper recomputes the ``<state_hash>``
+    # cache-dir segment from live git-dirty content (compute_repo_fingerprint);
+    # if the repo's dirty content changes during the multi-second analysis
+    # (concurrent tracker .ops / .ci writes in the self-analysis + smart-test
+    # scenario), the recomputed segment drifts from the write-time value and the
+    # freshly written map becomes undiscoverable — the caller then reported
+    # "Input file not found: None" and smart-test fell back to a full-suite
+    # manifest. Select the main map BY NAME so a budget side-output
+    # (survey.<tier>.json) or a handler-slice file is never returned
+    # in its place.
+    new_path = next(
+        (p for p in generated_files if p.name == CANONICAL_SURVEY_FILENAME),
+        None,
+    )
+    if new_path is None:  # pragma: no cover - run_survey always appends the main map
         return None, False, generated_files
 
     return new_path, False, generated_files
@@ -527,7 +594,7 @@ def _print_output_summary(
     Always prints as the last thing, even if no artifacts generated.
 
     Args:
-        command: The hypergumbo subcommand name (e.g., "sketch", "run")
+        command: The hypergumbo subcommand name (e.g., "sketch", "survey")
         artifacts: List of generated file paths (None or empty for stdout-only)
         stdout_output: If True, indicate output went to stdout
         file: Output file (default: sys.stdout). Use sys.stderr for JSON output
@@ -617,6 +684,111 @@ def _generate_sketch_filename(
     return ".".join(parts) + ".md"
 
 
+def _get_or_generate_comparison_sketch(
+    repo_root: Path,
+    cache_dir: "Path | None",
+    budget: int,
+    *,
+    exclude_tests: bool,
+    with_source: bool,
+    gen_kwargs: dict,
+) -> SketchStats:
+    """Return the representativeness :class:`SketchStats` for a comparison-budget
+    sketch, reusing the on-disk cache when present (WI-ribag).
+
+    The 4x/16x comparison sketches feed the representativeness table but were
+    regenerated on every ``sketch`` invocation despite being ``cache_write``-ten
+    to the per-(repo, state, analyzer-identity) cache dir — the dominant
+    warm-sketch cost (~83% of wall-clock on the self-corpus) and a textbook
+    INV-papuj cache-read miss. When both the cached sketch text and its
+    serialized stats sidecar are present for the current state, they are read
+    back and the expensive ``generate_sketch`` call is skipped; otherwise the
+    sketch is generated and BOTH artifacts are cached so the next warm run hits.
+    A present file in the state-scoped cache dir is fresh by construction (any
+    source change rotates the dir), so existence is the only freshness check
+    needed. ``exclude_tests`` / ``with_source`` are explicit (not in
+    ``gen_kwargs``) because they also key the cache filename.
+    """
+    sketch_filename = _generate_sketch_filename(
+        tokens=budget, exclude_tests=exclude_tests, with_source=with_source,
+    )
+    sketch_path = cache_dir / sketch_filename if cache_dir is not None else None
+    stats_path = (
+        cache_dir / Path(sketch_filename).with_suffix(".stats.json")
+        if cache_dir is not None else None
+    )
+    if (
+        sketch_path is not None and sketch_path.exists()
+        and stats_path is not None and stats_path.exists()
+    ):
+        try:
+            return SketchStats.from_dict(json.loads(stats_path.read_text()))
+        except (OSError, ValueError):  # pragma: no cover - corrupt cache regenerates
+            pass
+
+    stats = SketchStats()
+    sketch_text = generate_sketch(
+        repo_root,
+        max_tokens=budget,
+        exclude_tests=exclude_tests,
+        with_source=with_source,
+        stats_out=stats,
+        **gen_kwargs,
+    )
+    if sketch_path is not None and stats_path is not None:
+        cache_write(sketch_path, sketch_text)
+        cache_write(stats_path, json.dumps(stats.to_dict()))
+    return stats
+
+
+def _reject_unknown_choice(
+    value: str,
+    valid: "frozenset[str]",
+    *,
+    subcommand: str,
+    noun: str,
+) -> int | None:
+    """Reject a CLI filter value not in an enumerable set (INV-fabov family).
+
+    Returns ``None`` when ``value`` is a member of ``valid``; otherwise prints
+    a clear error plus a difflib did-you-mean suggestion to stderr and returns
+    exit code 2. This is the shared embodiment of the INV-fabov fix-class
+    (silent acceptance of invalid filter values) — it mirrors the inline
+    ``config <language>`` validation (INV-gufod) so every "unknown <noun>"
+    rejection reads identically.
+    """
+    if value in valid:
+        return None
+    import difflib
+    close = difflib.get_close_matches(value, sorted(valid), n=3, cutoff=0.5)
+    print(
+        f"hypergumbo {subcommand}: error: '{value}' is not a known {noun}.",
+        file=sys.stderr,
+    )
+    if close:
+        print(f"  Did you mean: {', '.join(close)}?", file=sys.stderr)
+    return 2
+
+
+def _validate_require_sections(require_sections: "list[str] | None") -> int | None:
+    """Validate ``sketch --require-section`` names (WI-furop / INV-fabov).
+
+    Each value must name a real sketch section; a typo (``Key Sympols``) or a
+    wrong case (``key symbols``) otherwise silently buys no budget guarantee.
+    Returns ``None`` when every name is valid (or the list is empty/None);
+    otherwise returns exit code 2 after printing the first offender's error.
+    """
+    from .sketch import VALID_SKETCH_SECTIONS
+
+    for section in require_sections or []:
+        rc = _reject_unknown_choice(
+            section, VALID_SKETCH_SECTIONS, subcommand="sketch", noun="section"
+        )
+        if rc is not None:
+            return rc
+    return None
+
+
 def cmd_sketch(args: argparse.Namespace) -> int:
     """Generate token-budgeted Markdown sketch to stdout."""
     repo_root = Path(args.path).resolve()
@@ -638,6 +810,13 @@ def cmd_sketch(args: argparse.Namespace) -> int:
             file=sys.stderr,
         )
         return 1
+
+    # WI-furop (INV-fabov): reject unknown --require-section names before any
+    # analysis, so a typo / wrong case errors loudly instead of silently
+    # buying no budget guarantee.
+    rc = _validate_require_sections(getattr(args, "require_sections", []))
+    if rc is not None:
+        return rc
 
     # Warn if analyzing a subdirectory of a git repo
     git_root = _find_git_root(repo_root)
@@ -692,9 +871,16 @@ def cmd_sketch(args: argparse.Namespace) -> int:
         if not input_file.exists():
             print(f"Error: Input file not found: {input_path}", file=sys.stderr)
             return 1
-        cached_results = load_behavior_map(input_file)
+        cached_results = load_substrate(input_file)
 
-        # Warn if results file is older than any source files in repo
+        # Warn if results file is older than any source files in repo.
+        # NOTE: this freshness check intentionally walks the working tree
+        # (not the map's node paths): its purpose is to detect source files
+        # that changed OR were ADDED since the map was generated — a new file
+        # is precisely a staleness signal and by definition is not yet in the
+        # map. The INV-jumim read-path scoping deliberately does NOT cover this
+        # check; the dominant --input bottleneck (the _analyze_test_files
+        # rglob) is addressed via the synthetic FileIndex in generate_sketch.
         results_mtime = input_file.stat().st_mtime
         newest_source_mtime = 0.0
         for ext in ["*.py", "*.js", "*.ts", "*.tsx", "*.go", "*.rs", "*.java"]:
@@ -708,19 +894,26 @@ def cmd_sketch(args: argparse.Namespace) -> int:
         if newest_source_mtime > results_mtime:
             print(
                 f"NOTE: {input_path} may be stale (source files modified since).\n"
-                f"      Run 'hypergumbo run' to regenerate.\n",
+                f"      Run 'hypergumbo survey' to regenerate.\n",
                 file=sys.stderr,
             )
 
     # If --readme-debug, show README extraction debug info before sketch
     if readme_debug:
         from .sketch import _find_readme_path
-        from .sketch_embeddings import extract_readme_description_embedding
+        from .sketch_embeddings import (
+            ReadmeExtractionDebug,
+            extract_readme_description_embedding,
+        )
 
         readme_path = _find_readme_path(repo_root)
         if readme_path:
             result = extract_readme_description_embedding(readme_path, debug=True)
             if result:
+                # debug=True always yields a ReadmeExtractionDebug (never the
+                # str form); the union return type can't express that the
+                # concrete type depends on the debug flag.
+                assert isinstance(result, ReadmeExtractionDebug)
                 print("README Extraction Debug:", file=sys.stderr)
                 print(f"  Description: {result.description!r}", file=sys.stderr)
                 print(f"  k-scores: {result.k_scores}", file=sys.stderr)
@@ -746,7 +939,7 @@ def cmd_sketch(args: argparse.Namespace) -> int:
     pre_existing_results: set[Path] = set()
     if cache_dir is not None:
         try:
-            pre_existing_results = set(cache_dir.glob("hypergumbo.results*.json"))
+            pre_existing_results = _glob_survey_artifacts(cache_dir)
         except Exception:  # pragma: no cover - cache discovery errors
             pass
 
@@ -808,76 +1001,56 @@ def cmd_sketch(args: argparse.Namespace) -> int:
         shutil.rmtree(_legacy_compare_dir, ignore_errors=True)
 
     # Generate 4x and 16x budget sketches for comparison table
-    # Using 4x/16x (instead of 2x) reveals when large files start fitting
-    if max_tokens and stats is not None:
+    # Using 4x/16x (instead of 2x) reveals when large files start fitting.
+    # WI-fufop: --no-comparison-sketches opts out (batch/scripted single-budget
+    # runs don't want the 3x generation cost or the representativeness table).
+    no_comparison_sketches = getattr(args, "no_comparison_sketches", False)
+    if max_tokens and stats is not None and not no_comparison_sketches:
         budget_4x = max_tokens * 4
         budget_16x = max_tokens * 16
 
-        stats_4x = SketchStats()
-        stats_16x = SketchStats()
-
-        # Generate 4x budget sketch
-        sketch_4x = generate_sketch(
-            repo_root,
-            max_tokens=budget_4x,
-            exclude_tests=exclude_tests,
-            first_party_priority=first_party_priority,
-            extra_excludes=extra_excludes,
-            config_extraction_mode=config_mode,
-            verbose=False,
-            max_config_files=max_config_files,
-            fleximax_lines=fleximax_lines,
-            max_chunk_chars=max_chunk_chars,
-            language_proportional=language_proportional,
-            progress=False,
-            cached_results=cached_results,
-            with_source=with_source,
-            stats_out=stats_4x,
+        # WI-ribag: read each comparison sketch's stats from cache when fresh
+        # instead of regenerating the (expensive) 4x/16x sketches on every
+        # invocation — the dominant warm-sketch cost. The helper caches both
+        # the sketch text and a stats sidecar; gen_kwargs are the
+        # generate_sketch params that do NOT key the cache filename
+        # (exclude_tests/with_source are passed separately because they do).
+        comparison_kwargs = {
+            "first_party_priority": first_party_priority,
+            "extra_excludes": extra_excludes,
+            "config_extraction_mode": config_mode,
+            "verbose": False,
+            "max_config_files": max_config_files,
+            "fleximax_lines": fleximax_lines,
+            "max_chunk_chars": max_chunk_chars,
+            "language_proportional": language_proportional,
+            "progress": False,
+            "cached_results": cached_results,
+        }
+        stats_4x = _get_or_generate_comparison_sketch(
+            repo_root, cache_dir, budget_4x,
+            exclude_tests=exclude_tests, with_source=with_source,
+            gen_kwargs=comparison_kwargs,
         )
-
-        # Generate 16x budget sketch
-        sketch_16x = generate_sketch(
-            repo_root,
-            max_tokens=budget_16x,
-            exclude_tests=exclude_tests,
-            first_party_priority=first_party_priority,
-            extra_excludes=extra_excludes,
-            config_extraction_mode=config_mode,
-            verbose=False,
-            max_config_files=max_config_files,
-            fleximax_lines=fleximax_lines,
-            max_chunk_chars=max_chunk_chars,
-            language_proportional=language_proportional,
-            progress=False,
-            cached_results=cached_results,
-            with_source=with_source,
-            stats_out=stats_16x,
+        stats_16x = _get_or_generate_comparison_sketch(
+            repo_root, cache_dir, budget_16x,
+            exclude_tests=exclude_tests, with_source=with_source,
+            gen_kwargs=comparison_kwargs,
         )
 
         display_representativeness_table(stats, stats_4x, stats_16x)
 
-        sketch_4x_filename = _generate_sketch_filename(
-            tokens=budget_4x,
-            exclude_tests=exclude_tests,
-            with_source=with_source,
-        )
-        sketch_16x_filename = _generate_sketch_filename(
-            tokens=budget_16x,
-            exclude_tests=exclude_tests,
-            with_source=with_source,
-        )
-
-        # WI-jupar: comparison sketches now live in cache_dir alongside
-        # the main sketch. No /tmp staging — that path was shared across
-        # repos (filename-by-budget collision) and never cleaned up. The
-        # cache_dir is per-(repo, state, analyzer-identity), so each
-        # repo's comparison sketches stay isolated and ride normal cache
-        # lifecycle (cache-status / cache-clear / INV-padum honk).
+        # WI-jupar: comparison sketches live in cache_dir alongside the main
+        # sketch (per-(repo, state, analyzer-identity)). The helper above wrote
+        # them on a miss; on a hit they were already present. Point the user at
+        # the cached paths either way.
         if cache_dir is not None:
-            cache_4x = cache_dir / sketch_4x_filename
-            cache_16x = cache_dir / sketch_16x_filename
-            cache_write(cache_4x, sketch_4x)
-            cache_write(cache_16x, sketch_16x)
+            cache_4x = cache_dir / _generate_sketch_filename(
+                tokens=budget_4x, exclude_tests=exclude_tests, with_source=with_source,
+            )
+            cache_16x = cache_dir / _generate_sketch_filename(
+                tokens=budget_16x, exclude_tests=exclude_tests, with_source=with_source,
+            )
             print(
                 f"\nhypergumbo also cached comparison sketches:\n"
                 f"  4x budget ({budget_4x:,}t):  {cache_4x}\n"
@@ -905,8 +1078,8 @@ def cmd_sketch(args: argparse.Namespace) -> int:
 
     if cache_dir is not None:
         try:
-            # Find all results files in cache (both new and existing)
-            results_after = set(cache_dir.glob("hypergumbo.results*.json"))
+            # Find all survey map/tier files in cache (both new and existing)
+            results_after = _glob_survey_artifacts(cache_dir)
             for f in sorted(results_after):
                 artifacts.append(f)
 
@@ -940,7 +1113,17 @@ def cmd_sketch(args: argparse.Namespace) -> int:
 
 
 def cmd_run(args: argparse.Namespace) -> int:
-    # The positional argument for `run` is called `path` in the parser below.
+    # ADR-0042 (WI-vatuf): ``hypergumbo run`` is a deprecated alias for
+    # ``hypergumbo survey``. Warn once on stderr when invoked under the old
+    # verb; ``command`` is absent when cmd_run is called directly (e.g. tests),
+    # in which case the getattr guard reports None and no warning is emitted.
+    if getattr(args, "command", None) == "run":
+        print(
+            "warning: 'hypergumbo run' is deprecated and will be removed in a "
+            "future release; use 'hypergumbo survey' instead.",
+            file=sys.stderr,
+        )
+    # The positional argument for `survey`/`run` is called `path` in the parser.
     repo_root = Path(args.path).resolve()
 
     # WI-zujum: same single-file guard as cmd_sketch — analysing a single
@@ -953,7 +1136,7 @@ def cmd_run(args: argparse.Namespace) -> int:
         print(
             f"Error: {repo_root} is a file, not a directory.\n"
             f"hypergumbo analyses repositories. Try its parent directory:\n"
-            f"  hypergumbo run {parent}",
+            f"  hypergumbo survey {parent}",
             file=sys.stderr,
         )
         return 1
@@ -964,7 +1147,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     max_file_bytes = getattr(args, "max_file_bytes", None)
     compact = getattr(args, "compact", False)
     coverage = getattr(args, "coverage", 0.8)
-    connectivity = not getattr(args, "no_connectivity", False)
+    connectivity = getattr(args, "connectivity", False)
     budgets = getattr(args, "budgets", None)
     extra_excludes = getattr(args, "extra_excludes", [])
     frameworks = getattr(args, "frameworks", None)
@@ -989,7 +1172,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     # Detect and filter locale documentation directories
     _setup_locale_filtering(repo_root, locale)
 
-    generated_files = run_behavior_map(
+    generated_files = run_survey(
         repo_root=repo_root,
         out_path=out_path,
         max_tier=max_tier,
@@ -1009,8 +1192,11 @@ def cmd_run(args: argparse.Namespace) -> int:
         no_sketch_fan_out=no_sketch_fan_out,
     )
 
-    # Output summary (always at the end)
-    _print_output_summary("run", artifacts=generated_files)
+    # Output summary (always at the end) — label with the actually-typed verb
+    # (survey, or the deprecated run alias) so the summary matches invocation.
+    _print_output_summary(
+        getattr(args, "command", None) or "survey", artifacts=generated_files
+    )
 
     # INV-padum: surface cache footprint after every run. The cache just
     # grew (a new state-hash entry was written), so this is when the user
@@ -1240,10 +1426,156 @@ def _handle_files_mode(
     return 0
 
 
+def _warn_in_progress_catalogs(languages: Iterable[str]) -> List[str]:
+    """WI-najil: warn (to stderr, once per language) that an io_primitives
+    catalog marked ``status: in_progress`` may yield incomplete io-boundary
+    results — so a zero-match outcome is not silently read as "no I/O here".
+
+    Returns the warned languages (for testability). Shared by the three
+    catalog consumers so the disclosure fires uniformly: ``io-boundaries``,
+    ``verify-claims``, and ``slice --io-boundary``.
+    """
+    from .io_boundary import in_progress_languages
+
+    warned = in_progress_languages(languages)
+    for lang in warned:
+        print(
+            f"⚠  io_primitives catalog for {lang!r} is in_progress — "
+            f"io-boundary results for {lang!r} may be incomplete.",
+            file=sys.stderr,
+        )
+    return warned
+
+
+def _rehydrate_io_boundary_edges(raw_edges: list) -> list:
+    """Rebuild lightweight edge objects for the consumer-time io-boundary
+    classification, preserving ``is_resolved`` + ``dst_ref`` (WI-kumol).
+
+    ``compute_boundary_map`` reads ``edge.is_resolved`` (io_boundary.py:1174 —
+    the ADR-0028 F3-Filter-1 unresolved-receiver skip in
+    ``_compute_external_potential``) and ``edge.dst_ref`` (the WI-tihup
+    structured external-target lookup). Both CLI commands that load a *persisted*
+    behavior_map — ``io-boundaries`` and ``verify-claims`` — must reconstruct
+    these from the serialized edge dict. The earlier 4-field facade dropped
+    them, so ``getattr`` fell back to ``is_resolved=True`` / ``dst_ref=None``:
+    the receiver gate never fired on the CLI path and every unresolved bare-name
+    method match (duck-typed ``x.read()`` on an unknown receiver) was
+    (mis)classified into ``external_potential`` — re-inflating exactly the noise
+    ``io-boundary:F3`` (INV-tapat/INV-maluk) suppresses in-process (~26k spurious
+    chains on self-analysis). ``is_resolved`` defaults to True and ``dst_ref`` to
+    None so a pre-ADR-0028 / pre-WI-tihup legacy map (lacking the keys)
+    classifies exactly as it did before. (The ``slice --io-boundary`` path is
+    unaffected — it operates on real ``Edge`` objects, not this facade.)
+    """
+    from dataclasses import dataclass as _dc
+
+    @_dc
+    class _IoBoundaryEdge:
+        src: str
+        dst: str
+        edge_type: str
+        meta: Optional[Dict[str, Any]] = None
+        is_resolved: bool = True
+        dst_ref: Optional[ExternalRef] = None
+
+    return [
+        _IoBoundaryEdge(
+            src=e.get("src", ""),
+            dst=e.get("dst", ""),
+            edge_type=e.get("type", ""),
+            meta=dict(e.get("meta", {})) if e.get("meta") else None,
+            is_resolved=e.get("is_resolved", True),
+            dst_ref=ExternalRef.from_dict(e["dst_ref"]) if e.get("dst_ref") else None,
+        )
+        for e in raw_edges
+    ]
+
+
+def _apply_io_boundary_filter(
+    result: Any, nodes: list, edges: list, category: str
+) -> int:
+    """Filter ``result`` in place to edges reaching the named I/O boundary
+    ``category``, computed ephemerally.
+
+    Per the io-boundary REFRAME (WI-fakuv / WI-puvun), io-boundary is not a
+    persisted field — ``compute_boundary_map`` derives it on demand and stamps
+    ``meta['io_boundary']`` onto the slice's edges *in memory*. We keep only the
+    edges whose stamp equals ``category``, plus their endpoint nodes and the
+    slice's entry nodes, and return the count of kept edges. This is the
+    slice-scoped, on-demand twin of ``hypergumbo io-boundaries``.
+    """
+    from .io_boundary import compute_boundary_map, load_catalog
+
+    # WI-najil: same in_progress-catalog disclosure as io-boundaries/verify-claims.
+    _warn_in_progress_catalogs({n.language for n in nodes if n.language})
+
+    catalogs: Dict[str, Any] = {}
+    for node in nodes:
+        lang = node.language
+        if lang and lang not in catalogs:
+            catalog = load_catalog(lang)
+            if catalog.is_supported and catalog.primitives:
+                catalogs[lang] = catalog
+    slice_edge_ids = set(result.edge_ids)
+    slice_edges = [e for e in edges if e.id in slice_edge_ids]
+    # Stamps meta['io_boundary'] on slice_edges in place (consumer-time).
+    compute_boundary_map(slice_edges, catalogs)
+    kept_edge_ids = {
+        e.id for e in slice_edges if (e.meta or {}).get("io_boundary") == category
+    }
+    keep_nodes = set(result.entry_nodes)
+    for edge in slice_edges:
+        if edge.id in kept_edge_ids:
+            keep_nodes.add(edge.src)
+            keep_nodes.add(edge.dst)
+    result.edge_ids = {eid for eid in result.edge_ids if eid in kept_edge_ids}
+    result.node_ids = {nid for nid in result.node_ids if nid in keep_nodes}
+    return len(result.edge_ids)
+
+
+def add_schema_envelope(
+    payload: dict, *, view: str, schema_version: str
+) -> dict:
+    """Wrap a read-view JSON payload in the canonical top-level envelope.
+
+    The single source of the CLI read-view wire shape (WI-gogif / cli-output
+    F1). Per spec Appendix C ("Schema compatibility contract") the envelope is
+    ``schema_version`` + ``view`` with the payload **spread at top level** — NOT
+    nested under a ``data`` key. ``schema_version`` is per-view (each read view
+    carries its own: a substrate echo, a wire constant, or a placeholder), so
+    the caller passes the value that view emits; this helper does not unify them
+    (that is a separate, breaking version-policy change — WI-bobog). Key order
+    is ``schema_version``, ``view``, then payload keys — byte-identical to the
+    inline idiom it replaces.
+
+    (The ``io-boundaries`` view is deliberately NOT wrapped here: its frozen
+    wire contract omits ``view`` and carries its own ``IO_BOUNDARIES_SCHEMA_VERSION``.)
+    """
+    return {"schema_version": schema_version, "view": view, **payload}
+
+
+def _read_view_wants_json(args: argparse.Namespace) -> bool:
+    """True when a read subcommand should emit JSON rather than text.
+
+    Unifies the two flag spellings a JSON-capable read view may carry
+    (WI-kitud): the canonical ``--format json`` shared with the other read
+    views (``cache-status`` / ``catalog`` / ``config`` / ``dead-code-maybe`` /
+    ``routes`` / ``test-coverage``) and the pre-existing ``--json`` boolean,
+    kept as a back-compat alias on ``io-boundaries`` / ``verify-claims``.
+    Either selects JSON; ``--json`` wins when both are present (it has always
+    meant JSON). ``getattr`` defaults keep this safe for the many in-process
+    tests that build a bare ``FakeArgs`` without a ``format`` attribute.
+    """
+    return (
+        getattr(args, "format", "text") == "json"
+        or getattr(args, "json_output", False)
+    )
+
+
 def cmd_slice(args: argparse.Namespace) -> int:
     """Execute the slice command."""
     path_arg = Path(args.path).resolve()
-    out_path_arg = args.out  # Keep as string to detect if default was used
+    out_path_arg = args.out  # None when --out omitted → auto-name (INV-fapid)
 
     # Smart detection: if path is a .json file, treat it as --input automatically
     # This provides better UX: `hypergumbo slice results.json` just works
@@ -1264,7 +1596,7 @@ def cmd_slice(args: argparse.Namespace) -> int:
         print(f"Error: Input file not found: {args.input}", file=sys.stderr)
         return 1
 
-    behavior_map = load_behavior_map(input_path)
+    behavior_map = load_substrate(input_path)
 
     # Reconstruct Symbol and Edge objects from the behavior map
     nodes = [Symbol.from_dict(n) for n in behavior_map.get("nodes", [])]
@@ -1360,11 +1692,12 @@ def cmd_slice(args: argparse.Namespace) -> int:
         # in alertmanager had 7 route-node edges but 0 useful call edges).
         _MAIN_KINDS = frozenset({
             EntrypointKind.MAIN_FUNCTION,
+            EntrypointKind.MAIN_GUARD,  # WI-tuvun: a guard-only __main__.py is a root too
             EntrypointKind.CLI_MAIN,
         })
 
         def entry_score(ep: Any) -> float:
-            """Score = confidence * connectivity_boost * kind_boost.
+            """Score = rank_score * connectivity_boost * kind_boost.
 
             connectivity_boost = 1 + log(1 + outgoing_edges)
             kind_boost = 2.0 for main functions, 1.0 otherwise
@@ -1372,11 +1705,15 @@ def cmd_slice(args: argparse.Namespace) -> int:
             Main functions get a 2x boost because they are the canonical
             application root.  Route handlers with more edges often point
             to dead-end route nodes rather than useful call chains.
+
+            ADR-0039 ruling 3: keys on rank_score (ranking prominence) — the
+            slice auto-entry wants the most prominent entrypoint, not the most
+            reliably-detected one.
             """
             out_edges = edge_src_counts.get(ep.symbol_id, 0)
             connectivity_boost = 1 + math.log(1 + out_edges)
             kind_boost = 2.0 if ep.kind in _MAIN_KINDS else 1.0
-            return ep.confidence * connectivity_boost * kind_boost
+            return ep.rank_score * connectivity_boost * kind_boost
 
         best = max(entrypoints, key=entry_score)
         entry = best.symbol_id
@@ -1386,9 +1723,11 @@ def cmd_slice(args: argparse.Namespace) -> int:
         if out_edges > 0:
             print(f"  (selected for connectivity: {out_edges} outgoing edges)")
 
-    # Generate output path with entry name if using default
-    # This prevents accidental overwrites when slicing different symbols
-    if out_path_arg == "slice.json":
+    # Generate output path with entry name when --out is omitted (INV-fapid:
+    # keyed on the None default sentinel, NOT the literal "slice.json" string —
+    # an explicit `--out slice.json` was previously indistinguishable from the
+    # default and got silently overridden by this auto-detection).
+    if out_path_arg is None:
         # Extract short name from entry (e.g., "main" from "python:src/main.py:1-5:main:function")
         entry_parts = entry.split(":")
         short_name = entry_parts[-2] if len(entry_parts) >= 2 else entry_parts[0]
@@ -1441,6 +1780,25 @@ def cmd_slice(args: argparse.Namespace) -> int:
             file=sys.stderr,
         )
         return 1
+
+    # --io-boundary: ephemerally classify the slice's edges by I/O boundary and
+    # keep only those reaching the requested category (WI-fakuv filter half).
+    io_boundary_filter = getattr(args, "io_boundary", None)
+    if io_boundary_filter is not None:
+        from .io_boundary import KNOWN_IO_BOUNDARIES
+
+        if io_boundary_filter not in KNOWN_IO_BOUNDARIES:
+            print(
+                f"Error: unknown --io-boundary category '{io_boundary_filter}'. "
+                f"Valid: {', '.join(sorted(KNOWN_IO_BOUNDARIES))}",
+                file=sys.stderr,
+            )
+            return 2
+        kept = _apply_io_boundary_filter(result, nodes, edges, io_boundary_filter)
+        print(
+            f"[hypergumbo slice] --io-boundary {io_boundary_filter}: "
+            f"{kept} edge(s) reach this boundary"
+        )
 
     # Rank slice nodes by importance (centrality + tier weighting).
     # For reverse slices, downweight test file callers so production callers
@@ -1542,11 +1900,11 @@ def cmd_slice(args: argparse.Namespace) -> int:
             "edges": feature_dict["edges"],
         }
     else:
-        output = {
-            "schema_version": behavior_map.get("schema_version", "0.1.0"),
-            "view": "slice",
-            "feature": feature_dict,
-        }
+        output = add_schema_envelope(
+            {"feature": feature_dict},
+            view="slice",
+            schema_version=behavior_map.get("schema_version", "0.1.0"),
+        )
 
     # Write output
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -1575,6 +1933,45 @@ def cmd_search(args: argparse.Namespace) -> int:
     """Search for symbols by name pattern."""
     repo_root = Path(args.path).resolve()
 
+    # WI-kopon: reject an empty / whitespace-only pattern (e.g. a shell-eaten
+    # arg like an unquoted `|`) up front. An empty pattern is a substring of
+    # every name, so it would silently match all symbols — a degenerate input
+    # that should fail fast (exit 2) per the cli-input validation umbrella.
+    if not args.pattern.strip():
+        print("Error: search pattern cannot be empty.", file=sys.stderr)
+        return 2
+
+    # WI-runos: --language / --kind are case-insensitive, uniform with the
+    # documented case-insensitive positional pattern. Fold to the registry's
+    # canonical lowercase before validation + comparison so `--language PYTHON`
+    # matches `python` instead of rejecting as "not a known language".
+    if args.language:
+        args.language = args.language.lower()
+    if args.kind:
+        args.kind = args.kind.lower()
+
+    # WI-furop (INV-fabov): reject invalid --language / --kind filter values
+    # up front -- before the (potentially auto-running) analysis -- so a typo
+    # or non-language/non-kind errors loudly (exit 2) instead of silently
+    # returning "No symbols found" (exit 0), which is indistinguishable from a
+    # real empty result.
+    if args.language:
+        from .catalog import all_known_languages
+        rc = _reject_unknown_choice(
+            args.language, all_known_languages(),
+            subcommand="search", noun="language",
+        )
+        if rc is not None:
+            return rc
+    if args.kind:
+        from .symbol_kinds import all_symbol_kind_names
+        rc = _reject_unknown_choice(
+            args.kind, all_symbol_kind_names(),
+            subcommand="search", noun="symbol kind",
+        )
+        if rc is not None:
+            return rc
+
     # Get or run analysis (auto-runs if no cached results)
     input_path, was_cached, generated_files = _get_or_run_analysis(
         repo_root,
@@ -1586,7 +1983,7 @@ def cmd_search(args: argparse.Namespace) -> int:
         return 1
 
     # Load behavior map
-    behavior_map = load_behavior_map(input_path)
+    behavior_map = load_substrate(input_path)
     nodes = behavior_map.get("nodes", [])
 
     # Search pattern (case-insensitive substring match)
@@ -1609,8 +2006,14 @@ def cmd_search(args: argparse.Namespace) -> int:
                 continue
             matches.append(node)
 
-    # Apply limit
-    if args.limit and len(matches) > args.limit:
+    # Apply limit. INV-toniv: report the TOTAL match count, not the
+    # post-truncation count (the header was reading len(matches) AFTER the
+    # slice, so it always showed min(total, limit) and hid the real total).
+    # The argparse type factory rejects limit < 1; the bool() guard keeps a
+    # caller-supplied None/0 (e.g. tests) meaning "no limit".
+    total = len(matches)
+    truncated = bool(args.limit) and total > args.limit
+    if truncated:
         matches = matches[: args.limit]
 
     # Output results
@@ -1618,7 +2021,13 @@ def cmd_search(args: argparse.Namespace) -> int:
         print(f"No symbols found matching '{args.pattern}'")
         return 0
 
-    print(f"Found {len(matches)} symbol(s) matching '{args.pattern}':\n")
+    if truncated:
+        print(
+            f"Found {total} symbol(s) matching '{args.pattern}' "
+            f"(showing {args.limit}):\n"
+        )
+    else:
+        print(f"Found {total} symbol(s) matching '{args.pattern}':\n")
     for node in matches:
         name = _format_symbol_display_name(node, node.get("id", ""))
         kind = node.get("kind", "")
@@ -1694,6 +2103,42 @@ def _count_related_endpoint_kinds(
     return [(k, c) for k in _RELATED_ENDPOINT_KINDS if (c := counts[k]) > 0]
 
 
+def _route_json_record(route: dict) -> dict:
+    """Build a structured route record for ``routes --format json`` (INV-jutuj).
+
+    Mirrors the field-extraction the text renderer does (kind="route" symbols
+    carry authoritative ``meta.route_path``/``http_method``; concept-enriched
+    symbols carry them under ``meta.concepts[].path``/``method``), so the JSON
+    and text views agree on what each route is.
+    """
+    meta = route.get("meta") or {}
+    route_path = None
+    method = None
+    controller_action = None
+    if meta.get("framework_role") == "route":
+        route_path = meta.get("route_path")
+        method = meta.get("http_method") or protocol_method_token(meta.get("route_protocol"))
+    if route_path is None:
+        for concept in meta.get("concepts", []) or []:
+            if isinstance(concept, dict) and concept.get("concept") == "route":
+                route_path = concept.get("path")
+                method = concept.get("method")
+                controller_action = concept.get("controller_action")
+                break
+    if controller_action is None:
+        controller_action = meta.get("controller_action")
+    return {
+        "id": route.get("id", ""),
+        "name": route.get("name", ""),
+        "path": route.get("path", ""),
+        "language": route.get("language"),
+        "span": route.get("span", {}),
+        "method": (method or "").upper(),
+        "route_path": route_path,
+        "controller_action": controller_action,
+    }
+
+
 def cmd_routes(args: argparse.Namespace) -> int:
     """Display API routes/endpoints from the behavior map."""
     repo_root = Path(args.path).resolve()
@@ -1709,7 +2154,7 @@ def cmd_routes(args: argparse.Namespace) -> int:
         return 1
 
     # Load behavior map
-    behavior_map = load_behavior_map(input_path)
+    behavior_map = load_substrate(input_path)
     nodes = behavior_map.get("nodes", [])
 
     from .paths import is_test_file
@@ -1765,7 +2210,7 @@ def cmd_routes(args: argparse.Namespace) -> int:
         # concept method would cause dedup collisions.
         if (node.get("meta") or {}).get("framework_role") == "route":
             route_path = meta.get("route_path")
-            method = meta.get("http_method")
+            method = meta.get("http_method") or protocol_method_token(meta.get("route_protocol"))
         if route_path is None:
             for concept in meta.get("concepts", []):
                 if isinstance(concept, dict) and concept.get("concept") == "route":
@@ -1780,6 +2225,24 @@ def cmd_routes(args: argparse.Namespace) -> int:
         deduped_routes.append(node)
     routes = deduped_routes
 
+    # INV-jutuj: JSON output (parity with test-coverage / dead-code-maybe).
+    # Handles empty and non-empty uniformly; the run summary goes to stderr so
+    # stdout stays pure JSON.
+    if getattr(args, "format", "text") == "json":
+        output = add_schema_envelope(
+            {"routes": [_route_json_record(r) for r in routes]},
+            view="routes",
+            schema_version=READ_VIEW_SCHEMA_VERSION,
+        )
+        print(json.dumps(output, indent=2))
+        cached_set = {input_path} if was_cached else set()
+        artifacts = (generated_files + [input_path]) if not was_cached else [input_path]
+        _print_output_summary(
+            "routes", artifacts=artifacts, stdout_output=True,
+            file=sys.stderr, cached_artifacts=cached_set,
+        )
+        return 0
+
     if not routes:
         print("No API routes found in the behavior map.")
         related_counts = _count_related_endpoint_kinds(nodes)
@@ -1790,7 +2253,7 @@ def cmd_routes(args: argparse.Namespace) -> int:
                 print(f"  - {count} {kind} node(s)")
             print()
             print(
-                "To inspect them, view the JSON output (`hypergumbo run`) "
+                "To inspect them, view the JSON output (`hypergumbo survey`) "
                 "or use `hypergumbo explain <name>`."
             )
         cached_set = {input_path} if was_cached else set()
@@ -1819,7 +2282,7 @@ def cmd_routes(args: argparse.Namespace) -> int:
         # centrality, which previously leaked into the routes display).
         span = route.get("span", {}) or {}
         meta = route.get("meta", {}) or {}
-        method = (meta.get("http_method") or "") if meta.get("framework_role") == "route" else ""
+        method = (meta.get("http_method") or protocol_method_token(meta.get("route_protocol")) or "") if meta.get("framework_role") == "route" else ""
         route_path = meta.get("route_path") or ""
         if not method:
             for concept in meta.get("concepts", []) or []:
@@ -1848,7 +2311,7 @@ def cmd_routes(args: argparse.Namespace) -> int:
             controller_action = None
             if (route.get("meta") or {}).get("framework_role") == "route":
                 route_path = meta.get("route_path")
-                method = meta.get("http_method")
+                method = meta.get("http_method") or protocol_method_token(meta.get("route_protocol"))
             if route_path is None:
                 concepts = meta.get("concepts", [])
                 for concept in concepts:
@@ -1933,6 +2396,96 @@ def _estimate_tokens(text: str) -> int:
     return _shared_estimate_tokens(text)
 
 
+# INV-rarol: explain sections partition by edge TYPE, not just direction, so a
+# section's label matches the edge semantics of its entries (a "Called by"
+# count must mean callers, not callers+containers+instantiators summed). Maps
+# edge_type -> (incoming label, outgoing label). Unmapped types fall back to a
+# direction-qualified canonical-name label.
+_EXPLAIN_EDGE_LABELS: Dict[str, tuple] = {
+    "calls": ("Called by", "Calls"),
+    "contains": ("Contained by", "Contains"),
+    "instantiates": ("Instantiated by", "Instantiates"),
+    "references": ("Referenced by", "References"),
+    "module_attr_ref": ("Attr-referenced by", "Attr-references"),
+    "extends": ("Extended by", "Extends"),
+    "implements": ("Implemented by", "Implements"),
+    "inherits": ("Inherited by", "Inherits"),
+    "overrides": ("Overridden by", "Overrides"),
+    "imports": ("Imported by", "Imports"),
+    "decorated_by": ("Decorated by", "Decorates"),
+    "dispatches_to": ("Dispatched-to by", "Dispatches to"),
+    "uses": ("Used by", "Uses"),
+}
+
+
+def _explain_edge_labels(etype: str) -> tuple:
+    """Return ``(incoming_label, outgoing_label)`` for an edge type (WI-dazob).
+
+    Three cases, in order: a hand-curated friendly label wins; a type that is
+    absent from the friendly table but registered in the edge-type registry
+    falls back to a direction-qualified canonical-name label (legitimate but
+    unstyled); a type registered nowhere is flagged ``unrecognized`` so a
+    renamed/old-substrate edge type is not silently presented as a valid
+    relationship (the pre-WI-dazob behavior printed ``Incoming '<type>'`` for
+    both cases, giving no signal that the type was unknown).
+    """
+    labels = _EXPLAIN_EDGE_LABELS.get(etype)
+    if labels is not None:
+        return labels
+    from .edge_types import find_edge_type
+
+    if find_edge_type(etype) is not None:
+        return (f"Incoming '{etype}'", f"Outgoing '{etype}'")
+    return (
+        f"Incoming (unrecognized edge type '{etype}')",
+        f"Outgoing (unrecognized edge type '{etype}')",
+    )
+
+
+def _render_explain_edge_sections(
+    items: list,
+    direction: str,
+    default_label: str,
+    show_provenance: bool,
+    nodes_by_id: Dict[str, Dict[str, Any]],
+) -> None:
+    """Print explain edge sections grouped by edge type (INV-rarol).
+
+    ``items`` are the caller/callee tuples
+    ``(in_degree, name, path, line, id, node, edge_type, edge_dict)``.
+    ``direction`` is ``"in"`` (incoming) or ``"out"`` (outgoing). Each section
+    header names the actual relationship (``Called by`` counts only ``calls``;
+    ``Instantiated by`` lists ``instantiates``), so the count matches the
+    entries' semantics instead of summing mixed edge types under one direction
+    label. Types are rendered in a stable (alphabetical) order.
+    """
+    if not items:
+        print(f"  {default_label}: (none)")
+        return
+    by_type: Dict[str, list] = {}
+    for it in items:
+        by_type.setdefault(it[6] or "", []).append(it)
+    for etype in sorted(by_type):
+        group = by_type[etype]
+        inc_label, out_label = _explain_edge_labels(etype)
+        label = inc_label if direction == "in" else out_label
+        print(f"  {label} ({len(group)}):")
+        # WI-dazob: for a registered-but-unstyled edge type, surface the
+        # registry description so its meaning is not left implicit behind a
+        # bare quoted type name (F80.A1: EdgeTypeSpec.description exists but was
+        # never rendered). Friendly-labelled and unrecognized types are skipped.
+        if etype not in _EXPLAIN_EDGE_LABELS:
+            from .edge_types import find_edge_type
+
+            spec = find_edge_type(etype)
+            if spec is not None:
+                print(f"    ({spec.description})")
+        for item in group:
+            print(f"    - {item[1]} ({item[2]}:{item[3]})")
+            if show_provenance:
+                _print_edge_provenance(item[7], nodes_by_id)
+
+
 def _print_edge_provenance(
     edge_dict: Dict[str, Any],
     nodes_by_id: Dict[str, Dict[str, Any]],
@@ -1940,6 +2493,13 @@ def _print_edge_provenance(
     """Print derivation chain details for an edge (--provenance mode)."""
     derived_from = edge_dict.get("derived_from")
     if not derived_from:
+        # INV-rarol: --provenance must have a VISIBLE effect even on edges with
+        # no derivation chain (previously this returned silently, making
+        # `explain --provenance` byte-identical to the no-flag form for the
+        # analyzer-produced edges that dominate most symbols). derived_from is
+        # recorded only on linker-inferred edges; say so. Extending it to every
+        # edge is the deferred structural half (declared-fields:F5).
+        print("      (no derivation chain — analyzer-produced edge)")
         return
     resolved = []
     for sym_id in derived_from:
@@ -1966,9 +2526,28 @@ def cmd_explain(args: argparse.Namespace) -> int:
         return 1
 
     # Load behavior map
-    behavior_map = load_behavior_map(input_path)
+    behavior_map = load_substrate(input_path)
     nodes = behavior_map.get("nodes", [])
     edges = behavior_map.get("edges", [])
+
+    # WI-dazob: field-presence guard. A substrate emitted by a different schema
+    # version may legitimately lack consumer fields (supply_chain, origin,
+    # docstring) that this renderer reads — which otherwise looks identical to a
+    # symbol for which the field is genuinely inapplicable. Signal the schema
+    # drift once so a consumer diffing explain output can tell "code changed"
+    # from "substrate schema changed". Gated on the version (not per-node
+    # absence, which would false-fire on nearly every real symbol).
+    from .schema import SCHEMA_VERSION
+
+    substrate_version = behavior_map.get("schema_version")
+    if substrate_version is not None and substrate_version != SCHEMA_VERSION:
+        print(
+            f"Warning: substrate schema_version {substrate_version!r} differs "
+            f"from this build's {SCHEMA_VERSION!r}; consumer fields "
+            f"(supply_chain, origin, docstring) may be absent due to schema "
+            f"drift rather than genuine inapplicability.",
+            file=sys.stderr,
+        )
 
     # Build lookup tables
     nodes_by_id = {n["id"]: n for n in nodes}
@@ -1985,36 +2564,76 @@ def cmd_explain(args: argparse.Namespace) -> int:
     with_source = getattr(args, "with_source", False)
     token_budget = getattr(args, "tokens", None)
     show_provenance = getattr(args, "provenance", False)
+    # WI-nanut: disambiguation / bounding flags (parity with `symbols`).
+    language_filter = getattr(args, "language", None)
+    file_filter = getattr(args, "file", None)
+    first_only = getattr(args, "first", False)
+    section_limit = getattr(args, "limit", None)
+
+    # WI-nanut: restrict the *matching* pool (not the graph) by language/file so
+    # a spec that would be ambiguous across the whole map can be pinned to one
+    # symbol. The full `nodes`/`nodes_by_id`/`in_degree` still back the
+    # caller/callee display — filtering the match pool, like find_entry_nodes.
+    match_pool = nodes
+    if language_filter:
+        match_pool = [
+            n for n in match_pool if n.get("language") == language_filter
+        ]
+    if file_filter:
+        match_pool = [
+            n for n in match_pool
+            if n.get("path", "").endswith(file_filter)
+            or n.get("path", "").endswith("/" + file_filter)
+        ]
 
     # Find matching symbols using priority-based matching (same rules as
     # slice --entry for consistency — WI-gipop).
     # Priority: exact ID → exact path → path suffix → exact name → partial name
     spec = args.symbol
-    matches = [n for n in nodes if n.get("id") == spec]
+    matches = [n for n in match_pool if n.get("id") == spec]
     if not matches:
-        matches = [n for n in nodes if n.get("path") == spec]
+        matches = [n for n in match_pool if n.get("path") == spec]
     if not matches and ("/" in spec or "\\" in spec):
         matches = [
-            n for n in nodes
+            n for n in match_pool
             if n.get("path", "").endswith(spec)
             or n.get("path", "").endswith("/" + spec)
         ]
     if not matches:
-        matches = [n for n in nodes if n.get("name") == spec]
+        matches = [n for n in match_pool if n.get("name") == spec]
     if not matches:
-        # Case-insensitive name match (original behavior)
+        # Case-insensitive name match (original behavior; NOT present in slice's
+        # find_entry_nodes — kept here deliberately, WI-dazob landmine #2).
         pattern = spec.lower()
-        matches = [n for n in nodes if n.get("name", "").lower() == pattern]
+        matches = [n for n in match_pool if n.get("name", "").lower() == pattern]
     if not matches:
         # Partial name match (contains)
-        matches = [n for n in nodes if spec in n.get("name", "")]
+        matches = [n for n in match_pool if spec in n.get("name", "")]
 
     if not matches:
         print(f"Error: No symbol found matching '{args.symbol}'", file=sys.stderr)
         return 1
 
+    # INV-nogof: enforce the SAME ambiguity policy as `slice` — a name-based
+    # spec resolving to symbols in >1 file is ambiguous. `--first` is the opt-in
+    # escape that picks the top match; `--language`/`--file` (applied above)
+    # narrow the pool so the spec resolves unambiguously. The error message
+    # already names those flags (AmbiguousEntryError → "filter with --language").
+    if first_only:
+        matches = matches[:1]
+    else:
+        try:
+            raise_if_ambiguous(spec, [Symbol.from_dict(n) for n in matches])
+        except AmbiguousEntryError as e:
+            print(f"Error: {e}", file=sys.stderr)
+            return 1
+
+    # WI-nanut: --limit caps how many sections print for a non-ambiguous
+    # multi-match (same-file duplicate definitions); None shows all.
+    display_matches = matches if section_limit is None else matches[:section_limit]
+
     # Display each match
-    for i, node in enumerate(matches):
+    for i, node in enumerate(display_matches):
         if i > 0:
             print("\n" + "=" * 60 + "\n")
 
@@ -2031,6 +2650,14 @@ def cmd_explain(args: argparse.Namespace) -> int:
         print(f"  Location: {path}:{start_line}-{end_line}")
         print(f"  Language: {lang}")
 
+        # WI-kipod: surface the captured docstring (the human-written
+        # intent) so `explain` reports what a symbol is for, not only its
+        # location, metrics, and call graph. Absent for symbols the
+        # analyzer captured no doc comment for.
+        docstring = node.get("docstring")
+        if docstring:
+            print(f"  Docstring: {docstring}")
+
         # Show origin passes (PROV wasAttributedTo)
         node_origin = node.get("origin")
         if node_origin:
@@ -2041,7 +2668,7 @@ def cmd_explain(args: argparse.Namespace) -> int:
 
         # Show complexity and LOC if available
         complexity = node.get("cyclomatic_complexity")
-        loc = node.get("lines_of_code")
+        loc = node.get("line_span")
         if complexity is not None or loc is not None:
             metrics = []
             if complexity is not None:
@@ -2233,29 +2860,14 @@ def cmd_explain(args: argparse.Namespace) -> int:
         # WI-dubum: print both summaries before any source dumps so the
         # call-graph signal isn't buried beneath hundreds of lines of
         # source code.
-        # Display callers summary
+        # Display incoming/outgoing summaries, partitioned by edge type so each
+        # section label matches its entries' relationship (INV-rarol).
         print()
-        if callers:
-            print(f"  Called by ({len(callers)}):")
-            for _, caller_name, caller_path, caller_line, _, _, edge_type, edge_dict in callers:
-                edge_annotation = f" [{edge_type}]" if edge_type else ""
-                print(f"    - {caller_name} ({caller_path}:{caller_line}){edge_annotation}")
-                if show_provenance:
-                    _print_edge_provenance(edge_dict, nodes_by_id)
-        else:
-            print("  Called by: (none)")
-
-        # Display callees summary
+        _render_explain_edge_sections(
+            callers, "in", "Called by", show_provenance, nodes_by_id)
         print()
-        if callees:
-            print(f"  Calls ({len(callees)}):")
-            for _, callee_name, callee_path, callee_line, _, _, edge_type, edge_dict in callees:
-                edge_annotation = f" [{edge_type}]" if edge_type else ""
-                print(f"    - {callee_name} ({callee_path}:{callee_line}){edge_annotation}")
-                if show_provenance:
-                    _print_edge_provenance(edge_dict, nodes_by_id)
-        else:
-            print("  Calls: (none)")
+        _render_explain_edge_sections(
+            callees, "out", "Calls", show_provenance, nodes_by_id)
 
         # Now print all source dumps (queried symbol → callers → callees)
         # after both summaries.
@@ -2353,13 +2965,16 @@ def cmd_catalog(args: argparse.Namespace) -> int:
     """
     catalog = get_default_catalog()
     cwd = Path.cwd()
+    fmt = getattr(args, "format", "text")
 
     # Check if this is a very large directory (e.g., $HOME) to avoid slow scans
     detected_languages: set[str] = set()
-    if _is_large_directory(cwd):
-        print("Note: Large directory detected - skipping language suggestions.")
-        print("      Run from a specific project directory for suggestions.")
-        print()
+    large_dir = _is_large_directory(cwd)
+    if large_dir:
+        if fmt != "json":
+            print("Note: Large directory detected - skipping language suggestions.")
+            print("      Run from a specific project directory for suggestions.")
+            print()
     else:
         # Detect repo profile using existing language detection
         # Use max_file_size to skip large files - catalog is just for quick hints,
@@ -2369,6 +2984,36 @@ def cmd_catalog(args: argparse.Namespace) -> int:
 
     # Show suggested passes based on detected languages
     suggested = suggest_passes_for_languages(detected_languages)
+
+    if fmt == "json":
+        frameworks_dir = get_frameworks_dir()
+        framework_patterns = (
+            [
+                {"name": f.stem, "path": str(f)}
+                for f in sorted(frameworks_dir.glob("*.yaml"))
+            ]
+            if frameworks_dir.exists()
+            else []
+        )
+        print(json.dumps(add_schema_envelope(
+            {
+                "passes": [
+                    {
+                        "id": p.id,
+                        "availability": p.availability,
+                        "description": p.description,
+                        "available": is_available(p),
+                    }
+                    for p in catalog.passes
+                ],
+                "framework_patterns": framework_patterns,
+                "suggested": [p.id for p in suggested],
+                "large_directory": large_dir,
+            },
+            view="catalog", schema_version=READ_VIEW_SCHEMA_VERSION,
+        ), indent=2))
+        return 0
+
     if suggested:
         print("Suggested for current repo:")
         for p in suggested:
@@ -2977,14 +3622,27 @@ def cmd_cache_status(args: argparse.Namespace) -> int:
 
     cache_dir = _get_cache_base()
     per_repo = getattr(args, "per_repo", False)
+    fmt = getattr(args, "format", "text")
 
     if args.quiet:
         return 0
 
     if not cache_dir.exists():
-        print(f"Cache directory: {cache_dir}")
-        print("Status: empty (directory does not exist)")
-        print("0 entries, 0 B")
+        if fmt == "json":
+            print(json.dumps(add_schema_envelope(
+                {
+                    "cache_dir": str(cache_dir),
+                    "total_entries": 0,
+                    "total_size_bytes": 0,
+                    "entries": [],
+                    "honk_threshold_bytes": _get_honk_threshold_bytes(),
+                },
+                view="cache_status", schema_version=READ_VIEW_SCHEMA_VERSION,
+            ), indent=2))
+        else:
+            print(f"Cache directory: {cache_dir}")
+            print("Status: empty (directory does not exist)")
+            print("0 entries, 0 B")
         return 0
 
     # Count entries and compute size
@@ -3002,6 +3660,31 @@ def cmd_cache_status(args: argparse.Namespace) -> int:
         newest_age = int((now - newest[1]) / 86400)
     else:
         oldest_age = newest_age = 0
+
+    if fmt == "json":
+        now = time.time()
+        rows = _list_repo_breakdown(cache_dir)
+        entries_json = [
+            {
+                "fingerprint": row["fingerprint"],
+                "size_bytes": row["size"],
+                "entry_count": row["entries"],
+                "age_days": int((now - row["last_used"]) / 86400),
+            }
+            for row in rows
+        ]
+        print(json.dumps(add_schema_envelope(
+            {
+                "cache_dir": str(cache_dir),
+                "total_entries": entry_count,
+                "total_size_bytes": total_size,
+                "entries": entries_json,
+                "honk_threshold_bytes": _get_honk_threshold_bytes(),
+            },
+            view="cache_status", schema_version=READ_VIEW_SCHEMA_VERSION,
+        ), indent=2))
+        _maybe_honk_cache(cache_dir, total_size=total_size)
+        return 0
 
     print(f"Cache directory: {cache_dir}")
     print(f"Entries: {entry_count}")
@@ -3411,10 +4094,14 @@ def cmd_remove_extras(args: argparse.Namespace) -> int:
 _SYMBOLS_DEFAULT_SYMBOL_WIDTH = 60
 _SYMBOLS_DEFAULT_FILE_WIDTH = 80
 _SYMBOLS_MAX_COL_WIDTH = 1000
-# Reserved console width for the four inner narrow columns (Kind / In /
-# Out / Deg) plus Rich's per-column padding. Empirical: a normal
-# `cmd_symbols` row needs ~30 chars beyond Symbol + File.
-_SYMBOLS_INNER_COLUMNS_OVERHEAD = 30
+# Rich's per-column padding (default (0, 1) => 2 chars * 6 columns) plus a
+# small safety margin, added to the DATA-DRIVEN content widths of the four
+# inner columns (Kind / In / Out / Deg) to force the console wide enough that
+# none is squeezed. A fixed overhead instead (the old approach) under-budgeted
+# the numeric columns once In/Deg hit 4 digits, so Rich proportionally squeezed
+# Deg into "10…" — destroying the rank the `symbols` command exists to surface
+# (INV-ripoh; the pass-31 face extended the same truncation to the In column).
+_SYMBOLS_COLUMN_PADDING = 14
 
 
 def _symbols_column_config(
@@ -3474,7 +4161,7 @@ def cmd_symbols(args: argparse.Namespace) -> int:
         return 1
 
     # Load behavior map
-    behavior_map = load_behavior_map(input_path)
+    behavior_map = load_substrate(input_path)
     nodes = behavior_map.get("nodes", [])
     edges_raw = behavior_map.get("edges", [])
 
@@ -3552,7 +4239,15 @@ def cmd_symbols(args: argparse.Namespace) -> int:
         # fold — synthetic post-fold nodes (kind=function|method +
         # meta.framework_role=<excluded role>) are excluded the same as
         # their pre-fold legacy-kind counterparts.
-        if is_excluded_kind(kind, node.get("meta")):
+        #
+        # WI-sufuh: the default silent kind-exclusion (file / variable / CSS
+        # kinds / npm packages — low-value for a connectivity table) must NOT
+        # override an EXPLICIT `--kind file` / `--kind variable`. Suppress the
+        # pre-filter only when the user did not ask for this exact kind; the
+        # `--kind` mismatch filter below still hides everything else.
+        if is_excluded_kind(kind, node.get("meta")) and not (
+            args.kind and kind == args.kind
+        ):
             continue
         if args.kind and kind != args.kind:
             continue
@@ -3615,7 +4310,19 @@ def cmd_symbols(args: argparse.Namespace) -> int:
     # the correct trade-off when the user has explicitly asked for wide
     # columns.
     detected_width = shutil.get_terminal_size(fallback=(120, 24)).columns
-    required_width = symbol_width + file_width + _SYMBOLS_INNER_COLUMNS_OVERHEAD
+    # Data-driven widths for the four inner columns: each must be at least as
+    # wide as its widest cell (or its header), so the required console width
+    # reflects the actual values and Rich never squeezes a numeric column into
+    # an ellipsis (INV-ripoh). Header labels floor the numeric widths.
+    kind_width = max((len(r[1]) for r in display_rows), default=4)
+    in_width = max([len("In")] + [len(str(r[2])) for r in display_rows])
+    out_width = max([len("Out")] + [len(str(r[3])) for r in display_rows])
+    deg_width = max([len("Deg")] + [len(str(r[4])) for r in display_rows])
+    required_width = (
+        symbol_width + file_width
+        + kind_width + in_width + out_width + deg_width
+        + _SYMBOLS_COLUMN_PADDING
+    )
     console = Console(width=max(detected_width, required_width))
     table = Table(show_header=True, header_style="bold", box=None)
 
@@ -3623,11 +4330,13 @@ def cmd_symbols(args: argparse.Namespace) -> int:
         "Symbol", style="cyan",
         width=symbol_width, no_wrap=no_wrap_flag, overflow=overflow,
     )
-    kind_width = max((len(r[1]) for r in display_rows), default=4)
     table.add_column("Kind", style="green", min_width=kind_width, no_wrap=True)
-    table.add_column("In", justify="right", style="yellow")
-    table.add_column("Out", justify="right", style="yellow")
-    table.add_column("Deg", justify="right", style="bold yellow")
+    table.add_column("In", justify="right", style="yellow",
+                     min_width=in_width, no_wrap=True)
+    table.add_column("Out", justify="right", style="yellow",
+                     min_width=out_width, no_wrap=True)
+    table.add_column("Deg", justify="right", style="bold yellow",
+                     min_width=deg_width, no_wrap=True)
     table.add_column(
         "File", style="dim",
         width=file_width, no_wrap=no_wrap_flag, overflow=overflow,
@@ -3666,6 +4375,16 @@ def cmd_compact(args: argparse.Namespace) -> int:
     This is useful for post-processing large behavior maps into LLM-friendly
     formats without re-running the full analysis.
     """
+    # WI-vusaf: cross-flag numeric coherence (single-flag ranges are enforced
+    # by the argparse type= validators). max < min is a configuration error.
+    if args.max_symbols < args.min_symbols:
+        print(
+            f"Error: --max-symbols ({args.max_symbols}) must be >= "
+            f"--min-symbols ({args.min_symbols})",
+            file=sys.stderr,
+        )
+        return 2
+
     input_path = Path(args.input).resolve()
 
     if not input_path.exists():
@@ -3673,7 +4392,7 @@ def cmd_compact(args: argparse.Namespace) -> int:
         return 1
 
     # Load behavior map
-    behavior_map = load_behavior_map(input_path)
+    behavior_map = load_substrate(input_path)
     nodes = behavior_map.get("nodes", [])
     edges_data = behavior_map.get("edges", [])
 
@@ -3686,10 +4405,16 @@ def cmd_compact(args: argparse.Namespace) -> int:
         target_coverage=args.coverage,
         max_symbols=args.max_symbols,
         min_symbols=args.min_symbols,
+        # WI-kolal + D12: the compact default is a GLOBAL centrality-ranked
+        # prefix. language_proportional floors would (a) break --max-symbols
+        # containment monotonicity via non-monotonic remainder redistribution
+        # and (b) diverge from "centrality-ranked" (a global ordering).
+        language_proportional=False,
     )
 
-    # Use connectivity-aware selection if not disabled
-    connectivity_aware = not args.no_connectivity
+    # Centrality-ranked selection is the default (D12); --connectivity opts into
+    # the "connected core" connectivity-aware selection.
+    connectivity_aware = getattr(args, "connectivity", False)
 
     # Generate compact behavior map
     compact_map = format_compact_behavior_map(
@@ -3736,28 +4461,12 @@ def cmd_io_boundaries(args: argparse.Namespace) -> int:
         )
         return 1
 
-    behavior_map = load_behavior_map(input_path)
+    behavior_map = load_substrate(input_path)
     raw_edges = behavior_map.get("edges", [])
 
-    # Build lightweight edge objects for the tagging pass
-    from dataclasses import dataclass as _dc
-
-    @_dc
-    class _Edge:
-        src: str
-        dst: str
-        edge_type: str
-        meta: Optional[Dict[str, Any]] = None
-
-    edges = [
-        _Edge(
-            src=e.get("src", ""),
-            dst=e.get("dst", ""),
-            edge_type=e.get("type", ""),
-            meta=dict(e.get("meta", {})) if e.get("meta") else None,
-        )
-        for e in raw_edges
-    ]
+    # Build lightweight edge objects for the tagging pass. WI-kumol: carry
+    # is_resolved + dst_ref so the ADR-0028 receiver gate / WI-tihup lookup fire.
+    edges = _rehydrate_io_boundary_edges(raw_edges)
 
     # Detect languages in the graph
     from .io_boundary import compute_boundary_map, load_catalog
@@ -3767,6 +4476,10 @@ def cmd_io_boundaries(args: argparse.Namespace) -> int:
         lang = node.get("language")
         if lang:
             languages.add(lang)
+
+    # WI-najil: disclose in_progress catalogs so a zero-match result for
+    # such a language is not read as a genuine "no I/O in this code".
+    _warn_in_progress_catalogs(languages)
 
     # Load catalogs for detected languages
     # INV-javam: track unsupported languages (no catalog) separately from
@@ -3879,17 +4592,40 @@ def cmd_io_boundaries(args: argparse.Namespace) -> int:
             filtered_entries[btype] = entry
 
     # Output
-    if getattr(args, "json_output", False):
+    if _read_view_wants_json(args):
         if boundary_filter or primitive_filter or exclude_tests:
-            from .io_boundary import IO_BOUNDARIES_SCHEMA_VERSION
+            from .io_boundary import (
+                IO_BOUNDARIES_SCHEMA_VERSION,
+                _DISCLOSED_ONLY_BOUNDARIES,
+            )
 
-            filtered_total = sum(len(e.chains) for e in filtered_entries.values())
+            # INV-pubom (amended, WI-huhit/WI-foduh): total_io_edges is the
+            # real/verified surface (excl external_potential AND command_launch,
+            # WI-javoh); both are disclosed separately — same split as
+            # BoundaryMap.to_dict so the filtered and unfiltered JSON paths agree.
+            filtered_total = sum(
+                len(e.chains)
+                for k, e in filtered_entries.items()
+                if k not in _DISCLOSED_ONLY_BOUNDARIES
+            )
+            filtered_ep = (
+                len(filtered_entries["external_potential"].chains)
+                if "external_potential" in filtered_entries
+                else 0
+            )
+            filtered_cl = (
+                len(filtered_entries["command_launch"].chains)
+                if "command_launch" in filtered_entries
+                else 0
+            )
             output = {
                 # PR-B: pin the io-boundaries envelope schema_version on
                 # the filtered path too; the unfiltered path inherits it
                 # from ``BoundaryMap.to_dict``.
                 "schema_version": IO_BOUNDARIES_SCHEMA_VERSION,
                 "total_io_edges": filtered_total,
+                "external_potential_edges": filtered_ep,
+                "command_launch_edges": filtered_cl,
                 "boundaries": {
                     k: v.to_dict() for k, v in sorted(filtered_entries.items())
                 },
@@ -3928,8 +4664,9 @@ def cmd_io_boundaries(args: argparse.Namespace) -> int:
     if ep_suppressed_count:
         print(
             f"  external_potential: {ep_suppressed_count} chain(s) "
-            f"suppressed (pass --show-external-potential to include "
-            f"them, or use --boundary external_potential).",
+            f"suppressed and excluded from the headline total (unverified "
+            f"receiver-unresolved calls; pass --show-external-potential to "
+            f"include them, or use --boundary external_potential).",
         )
     _print_unsupported_languages_notice(unsupported_languages)
 
@@ -4021,8 +4758,23 @@ def _print_io_boundaries_by_type(
         print("No I/O boundary calls detected.")
         return
 
-    total = sum(len(e.chains) for e in entries.values())
-    print(f"I/O Boundary Map ({total} boundary calls)\n")
+    # WI-huhit/WI-foduh: the headline canonical count is the REAL/verified I/O
+    # surface (excl external_potential), matching JSON total_io_edges regardless
+    # of --show-external-potential; external_potential is disclosed separately.
+    total = sum(
+        len(e.chains) for k, e in entries.items() if k != "external_potential"
+    )
+    ep_n = (
+        len(entries["external_potential"].chains)
+        if "external_potential" in entries
+        else 0
+    )
+    ep_note = (
+        f"; +{ep_n} external_potential [unverified, excluded from total]"
+        if ep_n
+        else ""
+    )
+    print(f"I/O Boundary Map ({total} boundary calls{ep_note})\n")
 
     for boundary_type in sorted(entries.keys()):
         entry = entries[boundary_type]
@@ -4102,8 +4854,22 @@ def _print_io_boundaries_by_file(
             display_path = _relativize(raw_path, repo_root) if raw_path else "unknown"
             chains_by_file[display_path].append(chain)
 
-    total = sum(len(v) for v in chains_by_file.values())
-    print(f"I/O Boundary Map by File ({total} boundary calls)\n")
+    # WI-huhit/WI-foduh: canonical count excludes external_potential (matches
+    # JSON total_io_edges); external_potential disclosed separately.
+    total = sum(
+        len(e.chains) for k, e in entries.items() if k != "external_potential"
+    )
+    ep_n = (
+        len(entries["external_potential"].chains)
+        if "external_potential" in entries
+        else 0
+    )
+    ep_note = (
+        f"; +{ep_n} external_potential [unverified, excluded from total]"
+        if ep_n
+        else ""
+    )
+    print(f"I/O Boundary Map by File ({total} boundary calls{ep_note})\n")
 
     for filepath in sorted(chains_by_file.keys()):
         file_chains = chains_by_file[filepath]
@@ -4354,6 +5120,7 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
 
     # Load claims
     from .verify_claims import (
+        VERIFY_CLAIMS_SCHEMA_VERSION,
         ClaimsFileError,
         compute_boundary_coverage,
         load_claims,
@@ -4386,27 +5153,12 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
         )
         return 1
 
-    behavior_map = load_behavior_map(input_path)
+    behavior_map = load_substrate(input_path)
     raw_edges = behavior_map.get("edges", [])
 
-    from dataclasses import dataclass as _dc
-
-    @_dc
-    class _Edge:
-        src: str
-        dst: str
-        edge_type: str
-        meta: Optional[dict] = None
-
-    edges = [
-        _Edge(
-            src=e.get("src", ""),
-            dst=e.get("dst", ""),
-            edge_type=e.get("type", ""),
-            meta=dict(e.get("meta", {})) if e.get("meta") else None,
-        )
-        for e in raw_edges
-    ]
+    # WI-kumol: carry is_resolved + dst_ref so the ADR-0028 receiver gate /
+    # WI-tihup lookup fire on the verify-claims boundary classification too.
+    edges = _rehydrate_io_boundary_edges(raw_edges)
 
     from .io_boundary import compute_boundary_map, load_catalog
 
@@ -4415,6 +5167,9 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
         lang = node.get("language")
         if lang:
             languages.add(lang)
+
+    # WI-najil: same in_progress-catalog disclosure as io-boundaries.
+    _warn_in_progress_catalogs(languages)
 
     catalogs = {}
     for lang in languages:
@@ -4523,6 +5278,10 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
             )
 
     if has_taint_claims:
+        # has_taint_claims implies the load block above ran (its guard is
+        # ``has_taint_claims or any_taint_flags``) and succeeded — a load
+        # failure returned exit 2 — so the catalog is populated here.
+        assert taint_catalog is not None
         # Build per-language source/sink/sanitizer tables. Running
         # propagation per-language avoids cross-language short-name
         # collisions (e.g., elixir HTTPoison.get matching every Python
@@ -4601,11 +5360,24 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
     )
 
     # Output
-    if getattr(args, "json_output", False):
-        # Preserve the legacy flat-list schema for programmatic consumers;
-        # INV-javam's unsupported_taint_languages signal goes to stderr to
-        # avoid breaking existing pipelines that parse verify-claims JSON.
-        print(json.dumps([v.to_dict() for v in verdicts], indent=2))
+    if _read_view_wants_json(args):
+        # WI-nulot / INV-gatog: a versioned top-level envelope (was a bare JSON
+        # array), so metadata is extensible without breaking consumers. The
+        # INV-javam taint-coverage signal — previously stderr-only — is now
+        # machine-visible via `unsupported_taint_languages` (empty when there
+        # are no taint claims or every touched language has a catalog),
+        # mirroring the `io-boundaries --json` envelope.
+        output = add_schema_envelope(
+            {
+                "verdicts": [v.to_dict() for v in verdicts],
+                "unsupported_taint_languages": (
+                    unsupported_taint_languages if has_taint_claims else []
+                ),
+            },
+            view="verify-claims",
+            schema_version=VERIFY_CLAIMS_SCHEMA_VERSION,
+        )
+        print(json.dumps(output, indent=2, sort_keys=True))
     else:
         violated = 0
         inconclusive = 0
@@ -4677,8 +5449,29 @@ def cmd_config(args: argparse.Namespace) -> int:
     """
     import yaml as _yaml
 
+    from .catalog import all_known_languages
+
     lang = args.language.lower()
     fmt = args.format
+
+    # INV-gufod: `config <X>` reads per-language config, so X must be a known
+    # LANGUAGE — not a framework/linker name or a typo. Previously any string
+    # was accepted, silently returning all-null sections with only a stderr
+    # warning (exit 0), indistinguishable to a script from a real empty config
+    # (e.g. `config airflow-framework-dispatch-linker` looked like success).
+    # A real language that simply has no config yaml is still valid (it hits
+    # the `not found_any` warning below at exit 0); only non-languages error.
+    known_languages = all_known_languages()
+    if lang not in known_languages:
+        import difflib
+        close = difflib.get_close_matches(lang, sorted(known_languages), n=3, cutoff=0.5)
+        print(
+            f"hypergumbo config: error: '{args.language}' is not a known language.",
+            file=sys.stderr,
+        )
+        if close:
+            print(f"  Did you mean: {', '.join(close)}?", file=sys.stderr)
+        return 2
 
     # Locate config directories relative to this package
     pkg_root = Path(__file__).parent
@@ -4710,7 +5503,10 @@ def cmd_config(args: argparse.Namespace) -> int:
         )
 
     if fmt == "json":
-        print(json.dumps(merged, indent=2, default=str))
+        print(json.dumps(
+            add_schema_envelope(merged, view="config", schema_version=READ_VIEW_SCHEMA_VERSION),
+            indent=2, default=str,
+        ))
     elif fmt == "yaml":
         print(_yaml.dump(merged, default_flow_style=False, sort_keys=False))
     else:
@@ -4848,7 +5644,7 @@ def cmd_test_coverage(args: argparse.Namespace) -> int:
         return 1
 
     # Load behavior map
-    behavior_map = load_behavior_map(input_path)
+    behavior_map = load_substrate(input_path)
     nodes = behavior_map.get("nodes", [])
     edges = behavior_map.get("edges", [])
 
@@ -4924,7 +5720,7 @@ def cmd_test_coverage(args: argparse.Namespace) -> int:
     for target_id, test_ids in tests_per_target.items():
         target = target_symbols[target_id]
         test_count = len(test_ids)
-        loc = target.get("lines_of_code") or 1  # Default to 1 to avoid division by zero
+        loc = target.get("line_span") or 1  # Default to 1 to avoid division by zero
 
         if test_count == 0:
             # Cold spot - include LOC and complexity for prioritization
@@ -4974,20 +5770,22 @@ def cmd_test_coverage(args: argparse.Namespace) -> int:
     # Output
     if args.format == "json":
         # JSON output
-        output = {
-            "schema_version": "0.1.0",
-            "view": "test-coverage",
-            "caveats": caveats,
-            "summary": {
-                "total_functions": total_functions,
-                "tested_functions": tested_functions,
-                "untested_functions": untested_functions,
-                "coverage_percent": round(coverage_percent, 1),
-                "total_tests": total_tests,
+        output = add_schema_envelope(
+            {
+                "caveats": caveats,
+                "summary": {
+                    "total_functions": total_functions,
+                    "tested_functions": tested_functions,
+                    "untested_functions": untested_functions,
+                    "coverage_percent": round(coverage_percent, 1),
+                    "total_tests": total_tests,
+                },
+                "test_dense": [],
+                "cold_spots": [],
             },
-            "test_dense": [],
-            "cold_spots": [],
-        }
+            view="test-coverage",
+            schema_version=READ_VIEW_SCHEMA_VERSION,
+        )
 
         for density, test_count, loc, target, test_names in test_dense[:top_n] if top_n else test_dense:
             span = target.get("span", {})
@@ -4997,7 +5795,7 @@ def cmd_test_coverage(args: argparse.Namespace) -> int:
                 "path": target.get("path", ""),
                 "span": span,
                 "test_count": test_count,
-                "lines_of_code": loc,
+                "line_span": loc,
                 "test_density": round(density, 2),
                 "tests": sorted(test_names),
             })
@@ -5012,7 +5810,7 @@ def cmd_test_coverage(args: argparse.Namespace) -> int:
                 "test_count": 0,
             }
             if loc:
-                entry["lines_of_code"] = loc
+                entry["line_span"] = loc
             if complexity:
                 entry["cyclomatic_complexity"] = complexity
             output["cold_spots"].append(entry)
@@ -5080,6 +5878,10 @@ def cmd_test_coverage(args: argparse.Namespace) -> int:
         print("-" * 47)
         print(_TEST_COVERAGE_RECALL_DISCLAIMER)
         per_lang = caveats["per_language"]
+        # _test_coverage_caveats returns dict[str, object] (heterogeneous:
+        # a disclaimer str plus this dict); per_language is the dict[str, str]
+        # built there. Narrow it for the .items() iteration below.
+        assert isinstance(per_lang, dict)
         if per_lang:
             print()
             print("Known per-language blind spots in the analyzed repo:")
@@ -5312,20 +6114,327 @@ def _compute_cross_language_hits(
     return hits
 
 
+def production_callables(
+    nodes: list[dict],
+) -> tuple[dict[str, dict], set[str], set[str]]:
+    """Classify function/method symbols for dead-code analysis (docs-prose:F4).
+
+    Returns ``(production_symbols, test_symbols, exported_symbols)``:
+
+    - ``production_symbols`` — non-test function/method nodes keyed by id (the
+      dead-code candidate universe; ``dead = production_callables - reachable``).
+    - ``test_symbols`` — function/method nodes under a test path.
+    - ``exported_symbols`` — production symbols with ``supply_chain.is_exported``
+      (public API, reachable by external callers outside the analysis scope —
+      WI-zimum).
+
+    Extracted from the inline classification ``cmd_dead_code_maybe`` used to
+    build so the seed-cohort math has a single named source of truth.
+    """
+    production_symbols: dict[str, dict] = {}
+    test_symbols: set[str] = set()
+    exported_symbols: set[str] = set()
+    for node in nodes:
+        kind = node.get("kind", "")
+        if kind not in ("function", "method"):
+            continue
+        # INV-disin: ADR-0031 Class-B synthetic linker stand-ins carry a truthy
+        # protocol_origin (and language=None). They are not real source callables
+        # — they are placeholder targets synthesized by linkers — so they must
+        # not enter the dead-code candidate universe. Left in, they are ~100%
+        # flagged dead because language-scoped seeds/entrypoints can never match
+        # a language=None node. Keyed on protocol_origin (the canonical Class-B
+        # marker, biconditional-enforced by the spec validator), NOT framework_role
+        # (which also marks Class-A route callables that must stay candidates) and
+        # NOT language-is-None.
+        if node.get("protocol_origin"):
+            continue
+        path = node.get("path", "")
+        if _is_test_path(path):
+            test_symbols.add(node["id"])
+        else:
+            production_symbols[node["id"]] = node
+            sc = node.get("supply_chain") or {}
+            if sc.get("is_exported"):
+                exported_symbols.add(node["id"])
+    return production_symbols, test_symbols, exported_symbols
+
+
+def _bfs_reachable(
+    seed_ids: set[str], call_graph: dict[str, list[str]],
+) -> set[str]:
+    """Return all symbol ids reachable from *seed_ids* over *call_graph*."""
+    reachable: set[str] = set()
+    queue = list(seed_ids)
+    visited: set[str] = set(seed_ids)
+    while queue:
+        current = queue.pop()
+        reachable.add(current)
+        for neighbor in call_graph.get(current, []):
+            if neighbor not in visited:
+                visited.add(neighbor)
+                queue.append(neighbor)
+    return reachable
+
+
+# -- repeat-finder: structural-clone / refactoring-lead detection (WI-vogij) ---
+
+# Symbol kinds that carry a shape_id and form the clone-clustering universe.
+_CLONE_KINDS = ("function", "method", "class")
+
+
+def _repeat_span_start(node: dict) -> int:
+    """Best-effort start line for deterministic member ordering.
+
+    ``span`` is always a ``{start_line, end_line}`` dict in the survey schema
+    (verified: 39,831/39,831 self-corpus nodes), so no non-dict guard is needed.
+    """
+    return (node.get("span") or {}).get("start_line") or 0
+
+
+def _build_repeat_cluster(
+    language: str, shape_id: str, members: list[dict], prod: list[dict]
+) -> dict:
+    """Assemble one structural-clone cluster record.
+
+    All members share a ``shape_id`` and therefore an identical control-flow
+    skeleton, so ``cyclomatic_complexity`` is invariant across the cluster (it
+    counts only structural, name/literal-independent nodes) and is read from a
+    representative. ``line_span`` is formatting-sensitive (blank lines, wrapped
+    expressions), so the representative size is the *largest* member — the
+    widest extraction scope. ``duplication_burden`` = the count of the relevant
+    members (production members for a production cluster, else all members) *
+    that representative size, i.e. roughly how much duplicated code a single
+    extract-helper would remove.
+    """
+    kinds = sorted({m.get("kind") for m in members if m.get("kind")})
+    cc = members[0].get("cyclomatic_complexity")
+    rep_line_span = max((m.get("line_span") or 0) for m in members) or 1
+    is_test_only = len(prod) < 2
+    burden_count = len(members) if is_test_only else len(prod)
+    ordered = sorted(members, key=lambda m: (m.get("path") or "", _repeat_span_start(m)))
+    return {
+        "shape_id": shape_id,
+        "language": language,
+        "kinds": kinds,
+        "member_count": len(members),
+        "production_member_count": len(prod),
+        "cyclomatic_complexity": cc,
+        "line_span": rep_line_span,
+        "duplication_burden": burden_count * rep_line_span,
+        "is_test_only": is_test_only,
+        "members": [
+            {
+                "id": m.get("id"),
+                "name": m.get("name"),
+                "kind": m.get("kind"),
+                "path": m.get("path"),
+                "span": m.get("span"),
+                "line_span": m.get("line_span"),
+            }
+            for m in ordered
+        ],
+    }
+
+
+def _cluster_repeats(
+    nodes: list[dict], min_complexity: int
+) -> tuple[list[dict], list[dict]]:
+    """Group clone-relevant nodes into structural-clone clusters (WI-vogij).
+
+    Returns ``(production_clusters, test_clusters)``, each ranked by descending
+    duplication burden (then ``shape_id`` for a stable order). Grouping is by
+    ``(language, shape_id)``: the language key enforces the ADR-0014
+    within-language contract, since shape_id algorithms differ per language and
+    a hash is only comparable within one. A group of >=2 members is a clone
+    cluster. Excluded from the universe: non-callable kinds, synthetic linker
+    stand-ins (``protocol_origin`` — placeholder targets, not real
+    implementations), and nodes without a shape_id or language. Trivial clusters
+    (representative ``cyclomatic_complexity`` below ``min_complexity``, when
+    known) are dropped as noise — a straight-line stub is not a refactoring
+    lead. A cluster with >=2 production (non-test) members is a production
+    clone; otherwise it is test-dominated and lands in the disclosure bucket.
+    """
+    groups: dict[tuple[str, str], list[dict]] = {}
+    for node in nodes:
+        if node.get("kind") not in _CLONE_KINDS:
+            continue
+        if node.get("protocol_origin"):
+            continue
+        shape_id = node.get("shape_id")
+        language = node.get("language")
+        if not shape_id or not language:
+            continue
+        groups.setdefault((language, shape_id), []).append(node)
+
+    production: list[dict] = []
+    tests: list[dict] = []
+    for (language, shape_id), members in groups.items():
+        if len(members) < 2:
+            continue
+        cc = members[0].get("cyclomatic_complexity")
+        if cc is not None and cc < min_complexity:
+            continue
+        prod = [m for m in members if not _is_test_path(m.get("path", ""))]
+        record = _build_repeat_cluster(language, shape_id, members, prod)
+        (tests if record["is_test_only"] else production).append(record)
+
+    production.sort(key=lambda c: (-c["duplication_burden"], c["shape_id"]))
+    tests.sort(key=lambda c: (-c["duplication_burden"], c["shape_id"]))
+    return production, tests
+
+
+def _emit_repeat_finder_json(
+    production: list[dict], tests: list[dict], min_complexity: int, include_tests: bool
+) -> int:
+    """Emit the repeat-finder view as canonical enveloped JSON."""
+    clusters = production + (tests if include_tests else [])
+    payload = {
+        "summary": {
+            "production_clusters": len(production),
+            "production_clone_nodes": sum(c["production_member_count"] for c in production),
+            "test_only_clusters": len(tests),
+            "min_complexity": min_complexity,
+            "languages": sorted({c["language"] for c in production}),
+        },
+        "clusters": clusters,
+    }
+    print(json.dumps(
+        add_schema_envelope(
+            payload, view="repeat_finder", schema_version=READ_VIEW_SCHEMA_VERSION
+        ),
+        indent=2,
+    ))
+    return 0
+
+
+def _print_repeat_cluster(cluster: dict) -> None:
+    """Print one clone cluster as a refactoring-lead block."""
+    kinds = "/".join(cluster["kinds"]) or "symbol"
+    short = cluster["shape_id"].replace("sha256:", "")[:8]
+    cc = cluster["cyclomatic_complexity"]
+    cc_str = f"cc {cc}" if cc is not None else "cc ?"
+    print(
+        f"▸ {cluster['member_count']} {kinds} · shape {short}… · {cluster['language']} · "
+        f"{cc_str} · ~{cluster['line_span']} LOC · burden {cluster['duplication_burden']}"
+    )
+    for m in cluster["members"]:
+        span = m.get("span") or {}
+        start = span.get("start_line", "?")
+        end = span.get("end_line", "?")
+        print(f"    {m.get('path')}:{start}-{end}  {m.get('name')}")
+    print("  → candidate extract-helper / shared implementation")
+    print()
+
+
+def _emit_repeat_finder_text(
+    production: list[dict], tests: list[dict], min_complexity: int,
+    include_tests: bool, limit: int,
+) -> int:
+    """Emit the repeat-finder view as a human-readable refactoring-lead report."""
+    print("Repeat finder — structurally-identical implementations")
+    print("(same skeleton, different names/literals; within-language)")
+    print()
+    if not production:
+        print(
+            f"No structural-clone clusters found (min complexity {min_complexity}; "
+            "pass --min-complexity 1 to include straight-line clones)."
+        )
+        if tests and include_tests:
+            print()
+            print(f"Test-only clone clusters ({len(tests)}):")
+            print()
+            for c in tests[:limit]:
+                _print_repeat_cluster(c)
+        elif tests:
+            print(
+                f"({len(tests)} test-only clone cluster(s) hidden — "
+                "--include-tests to show.)"
+            )
+        return 0
+
+    total_nodes = sum(c["production_member_count"] for c in production)
+    suffix = f", showing top {limit}:" if len(production) > limit else ":"
+    print(f"{len(production)} production clone cluster(s) ({total_nodes} nodes){suffix}")
+    print()
+    for c in production[:limit]:
+        _print_repeat_cluster(c)
+    more = len(production) - limit
+    if more > 0:
+        print(f"… and {more} more production cluster(s) (--format json for the full list).")
+        print()
+
+    if include_tests and tests:
+        print(f"Test-only clone clusters ({len(tests)}):")
+        print()
+        for c in tests[:limit]:
+            _print_repeat_cluster(c)
+    elif tests:
+        print(
+            f"+ {len(tests)} test-only clone cluster(s) hidden (--include-tests to show)."
+        )
+    return 0
+
+
+def cmd_repeat_finder(args: argparse.Namespace) -> int:
+    """Find structurally-identical implementations — refactoring leads (WI-vogij).
+
+    Groups nodes by ``(language, shape_id)``: a cluster of >=2 nodes is a set of
+    structural clones (same control-flow / nesting skeleton, differing only in
+    identifiers and literals; spec §337/§342). This activates ``shape_id``'s one
+    non-redundant capability over ``fingerprint`` (ADR-0035 §1) — clustering
+    structural clones — surfacing candidate copy-paste / extract-helper
+    refactoring leads. Within-language only (ADR-0014; enforced by the language
+    key).
+
+    Default filtering keeps the signal dense: trivial clusters (representative
+    cyclomatic_complexity below ``--min-complexity``, default 2) are dropped,
+    and only production clones (>=2 production members) are the headline —
+    test-only clone clusters (parametrized tests are structurally identical by
+    design) are a labeled disclosure bucket, shown with ``--include-tests``.
+    Clusters rank by duplication burden (member count * representative LOC).
+    """
+    repo_root = Path(args.path).resolve()
+    input_path, _was_cached, _generated = _get_or_run_analysis(
+        repo_root, explicit_input=args.input, show_progress=True,
+    )
+    if input_path is None:
+        print(f"Error: Input file not found: {args.input}", file=sys.stderr)
+        return 1
+    behavior_map = load_substrate(input_path)
+    nodes = behavior_map.get("nodes", [])
+    min_complexity = getattr(args, "min_complexity", 2)
+    include_tests = getattr(args, "include_tests", False)
+    limit = getattr(args, "limit", 20)
+    production, tests = _cluster_repeats(nodes, min_complexity)
+    if _read_view_wants_json(args):
+        return _emit_repeat_finder_json(production, tests, min_complexity, include_tests)
+    return _emit_repeat_finder_text(
+        production, tests, min_complexity, include_tests, limit
+    )
+
+
 def cmd_dead_code_maybe(args: argparse.Namespace) -> int:
-    """Find potentially dead code: production callables unreachable from entrypoints.
+    """Find potentially dead code: production callables unreachable from seeds.
 
     Computes: dead = production_callables - reachable_from(seed_set)
 
-    The seed set is configurable via ``--seeds``:
-    - ``entrypoints``: CLI mains, HTTP routes, framework hooks (default)
-    - ``tests``: test functions only
-    - ``exports``: symbols with ``is_exported=True`` (public API, WI-zimum)
-    - ``all``: entrypoints + tests + exports
+    The seed set is selected via ``--seeds`` (default ``production``):
+    - ``production``: entrypoints + exported public API (the default headline
+      view — dispatch:F2 / 2026-06-10 ruling).
+    - ``entrypoints``: CLI mains, HTTP routes, framework hooks only (the strict
+      entry-only cohort; surfaced as a disclosure bucket under the default).
+    - ``tests``: test functions only.
+    - ``exports``: symbols with ``is_exported=True`` (public API, WI-zimum).
+    - ``all``: entrypoints + tests + exports.
 
-    Uses BFS over call edges from seed symbols.  Functions not visited
-    are flagged as potentially dead.  Results are ranked by lines of code
-    (larger unreachable functions first).
+    ``view_func`` framework-dispatch handlers (WI-vuton) seed every mode. Uses
+    BFS over call/dispatches_to/wraps edges; unvisited production callables are
+    flagged, ranked by cross-language-hit/shape/FFI signal then LOC. Under the
+    default ``production`` view the summary discloses two cohorts the headline
+    folds away: ``entrypoint_only_dead`` (the strict ~89%-dead view) and
+    ``test_only_reachable`` (functions reachable only once tests are seeded —
+    the WI-jufih dead-code-vs-coverage contradiction).
     """
     repo_root = Path(args.path).resolve()
 
@@ -5338,39 +6447,31 @@ def cmd_dead_code_maybe(args: argparse.Namespace) -> int:
         print(f"Error: Input file not found: {args.input}", file=sys.stderr)
         return 1
 
-    behavior_map = load_behavior_map(input_path)
+    behavior_map = load_substrate(input_path)
     nodes = behavior_map.get("nodes", [])
     edges = behavior_map.get("edges", [])
-    # Identify production callable symbols (exclude test files)
-    production_symbols: dict[str, dict] = {}
-    test_symbols: set[str] = set()
-    exported_symbols: set[str] = set()
-    for node in nodes:
-        path = node.get("path", "")
-        kind = node.get("kind", "")
-        if kind not in ("function", "method"):
-            continue
-        if _is_test_path(path):
-            test_symbols.add(node["id"])
-        else:
-            production_symbols[node["id"]] = node
-            # WI-zimum: is_exported is stored under supply_chain in the
-            # behavior map. A production symbol with is_exported=True is
-            # part of the public API and should be unconditionally
-            # reachable (external callers are outside the analysis scope).
-            sc = node.get("supply_chain") or {}
-            if sc.get("is_exported"):
-                exported_symbols.add(node["id"])
+    # Identify production callable symbols (exclude test files); docs-prose:F4.
+    production_symbols, test_symbols, exported_symbols = production_callables(nodes)
 
     if not production_symbols:
         print("No production functions found to analyze.", file=sys.stderr)
         return 0
 
-    # Build seed set based on --seeds flag
-    seed_ids: set[str] = set()
-    seeds_mode = getattr(args, "seeds", "entrypoints")
+    # dispatch:F2 — resolve the seed mode. The default is ``production``
+    # (entrypoints + exported public API), the 2026-06-10 ruling's headline
+    # view: it retires the ~89%-dead entrypoint-only false-positive headline
+    # while keeping the strict entrypoint-only view and test-only reachability
+    # as labeled disclosure buckets (see the summary). ``--seeds`` defaults to
+    # None at the argparse layer so an *omitted* flag (warn-worthy) is
+    # distinguishable from an explicit ``--seeds entrypoints``.
+    seeds_arg = getattr(args, "seeds", None)
+    seeds_defaulted = seeds_arg is None
+    seeds_mode = "production" if seeds_defaulted else seeds_arg
 
-    if seeds_mode in ("entrypoints", "all"):
+    # Component seed sets, composed per mode below. Computed once so the
+    # disclosure buckets can re-BFS from alternate cohorts cheaply.
+    entrypoint_seed_ids: set[str] = set()
+    if seeds_mode in ("production", "entrypoints", "all"):
         from .entrypoints import detect_entrypoints
         from .ir import LEGACY_DESERIALIZED_SENTINEL, Symbol, Edge, Span, _normalize_origin
 
@@ -5412,17 +6513,12 @@ def cmd_dead_code_maybe(args: argparse.Namespace) -> int:
             ))
 
         min_conf = getattr(args, "min_confidence", 0.0)
-        entrypoints = detect_entrypoints(ir_nodes, ir_edges)
-        for ep in entrypoints:
-            if ep.confidence >= min_conf:
-                seed_ids.add(ep.symbol_id)
-
-    if seeds_mode in ("tests", "all"):
-        seed_ids.update(test_symbols)
-
-    # WI-zimum: exported symbols (public API) as seeds.
-    if seeds_mode in ("exports", "all"):
-        seed_ids.update(exported_symbols)
+        for ep in detect_entrypoints(ir_nodes, ir_edges):
+            # ADR-0039 ruling 3: --min-confidence on entrypoint seeds is a
+            # prominence filter (historically the post-adjustment value), so it
+            # keys on rank_score, matching the entrypoint list's own ordering.
+            if ep.rank_score >= min_conf:
+                entrypoint_seed_ids.add(ep.symbol_id)
 
     # WI-vuton heuristic 2: usage_contexts cross-reference. A symbol that
     # appears as a callable-position (``view_func``) in a usage_context
@@ -5433,7 +6529,7 @@ def cmd_dead_code_maybe(args: argparse.Namespace) -> int:
     # hypergumbo self-analysis. Only ``view_func`` (and other future
     # callable-position kinds) seed the BFS — pure name references
     # (``arg_value``) do not represent dispatch sites and should NOT
-    # produce reachability claims.
+    # produce reachability claims. Seeded in every mode.
     _CALLABLE_POSITIONS = frozenset({"view_func"})
     view_func_seed_ids: set[str] = set()
     for uc in behavior_map.get("usage_contexts", []) or []:
@@ -5442,7 +6538,15 @@ def cmd_dead_code_maybe(args: argparse.Namespace) -> int:
         ref = uc.get("symbol_ref")
         if ref and ref in production_symbols:
             view_func_seed_ids.add(ref)
-    seed_ids.update(view_func_seed_ids)
+
+    # Compose the active seed set for the resolved mode.
+    seed_ids: set[str] = set(view_func_seed_ids)
+    if seeds_mode in ("production", "entrypoints", "all"):
+        seed_ids |= entrypoint_seed_ids
+    if seeds_mode in ("production", "exports", "all"):
+        seed_ids |= exported_symbols
+    if seeds_mode in ("tests", "all"):
+        seed_ids |= test_symbols
 
     # BFS from seeds through call-flow edges.
     # calls:          direct function/method calls (post-Phase-3, also covers
@@ -5460,16 +6564,26 @@ def cmd_dead_code_maybe(args: argparse.Namespace) -> int:
             if src and dst:
                 call_graph.setdefault(src, []).append(dst)
 
-    reachable: set[str] = set()
-    queue = list(seed_ids)
-    visited: set[str] = set(seed_ids)
-    while queue:
-        current = queue.pop()
-        reachable.add(current)
-        for neighbor in call_graph.get(current, []):
-            if neighbor not in visited:
-                visited.add(neighbor)
-                queue.append(neighbor)
+    reachable = _bfs_reachable(seed_ids, call_graph)
+
+    # dispatch:F2 disclosure buckets (computed for the production headline
+    # view). ``entrypoint_only_dead`` re-exposes the strict ~89%-dead cohort
+    # the default used to print; ``test_only_reachable`` names production
+    # functions dead under the production seeds yet reachable once test code is
+    # also seeded — the WI-jufih dead-code-vs-coverage contradiction, disclosed
+    # rather than silently absorbed.
+    production_keys = set(production_symbols)
+    entrypoint_only_dead: int | None = None
+    test_only_reachable: int | None = None
+    if seeds_mode == "production":
+        reachable_entrypoint_only = _bfs_reachable(
+            entrypoint_seed_ids | view_func_seed_ids, call_graph,
+        )
+        entrypoint_only_dead = len(production_keys - reachable_entrypoint_only)
+        reachable_with_tests = _bfs_reachable(seed_ids | test_symbols, call_graph)
+        test_only_reachable = len(
+            (reachable_with_tests - reachable) & production_keys,
+        )
 
     # Dead candidates = production symbols NOT reachable
     dead_candidates = []
@@ -5636,6 +6750,29 @@ def cmd_dead_code_maybe(args: argparse.Namespace) -> int:
             dead_candidates, repo_root,
         )
 
+    # dispatch:F7 (WI-gavub): consume cross_language_hits as a false-positive
+    # DEMOTER, not merely a rank signal. A candidate whose name appears as a
+    # string in >= ``--cross-lang-threshold`` other-language files is
+    # near-certainly reached via a cross-language path the static call graph
+    # misses (framework dispatch like Lit's ``*.render``, an HTTP route, an RPC
+    # method, an FFI name) — i.e. NOT dead. The threshold stays > 1 so a single
+    # coincidental hit does not exclude (some genuine dead code has low CLH); a
+    # threshold <= 0 disables the demoter. Mirrors the dispatch_inherited_ids
+    # demoter above (a hard exclusion: no per-candidate dead-confidence score
+    # exists to demote proportionally yet).
+    cross_lang_threshold = getattr(args, "cross_lang_threshold", 3)
+    cross_lang_demoted_ids: set[str] = set()
+    if cross_lang_threshold > 0:
+        cross_lang_demoted_ids = {
+            n["id"] for n in dead_candidates
+            if cross_lang_hits.get(n["id"], 0) >= cross_lang_threshold
+        }
+        if cross_lang_demoted_ids:
+            dead_candidates = [
+                n for n in dead_candidates
+                if n["id"] not in cross_lang_demoted_ids
+            ]
+
     # Path/name shape boost: candidates in cross-language directories
     # (api/, rpc/, proto/, ffi/, native/, bindings/, bridge/) or with
     # cross-language naming conventions (handler, _request, _response,
@@ -5664,7 +6801,7 @@ def cmd_dead_code_maybe(args: argparse.Namespace) -> int:
                 + shape_boosts.get(n["id"], 0)
                 + (_FFI_RANK_BOOST if ffi_flags.get(n["id"]) else 0)
             ),
-            -(n.get("lines_of_code") or 1),
+            -(n.get("line_span") or 1),
         ),
     )
 
@@ -5674,6 +6811,16 @@ def cmd_dead_code_maybe(args: argparse.Namespace) -> int:
     total_dead = len(dead_candidates)
     total_entrypoints = len(seed_ids)
 
+    if seeds_defaulted:
+        print(
+            "note: defaulting to --seeds production (entrypoints + exported "
+            "public API; dispatch:F2). Use --seeds entrypoints for the strict "
+            "entry-only view or --seeds all to also seed tests; the summary's "
+            "entrypoint_only_dead / test_only_reachable buckets disclose both "
+            "cohorts the default folds away.",
+            file=sys.stderr,
+        )
+
     if args.format == "json":
         output = {
             "summary": {
@@ -5682,7 +6829,14 @@ def cmd_dead_code_maybe(args: argparse.Namespace) -> int:
                 "dead_candidates": total_dead,
                 "seed_count": total_entrypoints,
                 "seeds_mode": seeds_mode,
+                "seeds_defaulted": seeds_defaulted,
                 "dead_percent": round(total_dead / max(total_production, 1) * 100, 1),
+                # dispatch:F2 disclosure buckets (non-null only in the
+                # production headline view): the strict entrypoint-only dead
+                # count, and production functions reachable only once tests are
+                # seeded (WI-jufih). null under explicit non-default modes.
+                "entrypoint_only_dead": entrypoint_only_dead,
+                "test_only_reachable": test_only_reachable,
                 # WI-vuton: how many symbols entered the reachable set via
                 # framework-dispatch usage_contexts (view_func position) and
                 # how many methods were demoted from dead via inheritance-
@@ -5690,6 +6844,10 @@ def cmd_dead_code_maybe(args: argparse.Namespace) -> int:
                 # corrections so consumers can audit them.
                 "demoted_view_func": len(view_func_seed_ids),
                 "demoted_dispatch_inherited": len(dispatch_inherited_ids),
+                # dispatch:F7 (WI-gavub): candidates excluded because their name
+                # appears in >= cross_lang_threshold other-language files
+                # (cross-language dispatch / missing-edge false positives).
+                "demoted_cross_language": len(cross_lang_demoted_ids),
             },
             "dead_candidates": [
                 {
@@ -5697,7 +6855,7 @@ def cmd_dead_code_maybe(args: argparse.Namespace) -> int:
                     "path": n.get("path", ""),
                     "language": n.get("language", ""),
                     "kind": n.get("kind", ""),
-                    "lines_of_code": n.get("lines_of_code"),
+                    "line_span": n.get("line_span"),
                     "span": n.get("span"),
                     "id": n["id"],
                     "cross_language_hits": cross_lang_hits.get(n["id"], 0),
@@ -5707,7 +6865,12 @@ def cmd_dead_code_maybe(args: argparse.Namespace) -> int:
                 for n in dead_candidates
             ],
         }
-        print(json.dumps(output, indent=2))
+        print(json.dumps(
+            add_schema_envelope(
+                output, view="dead_code_maybe", schema_version=READ_VIEW_SCHEMA_VERSION
+            ),
+            indent=2,
+        ))
     else:
         # Text format
         print(f"Dead Code Analysis (seeds: {seeds_mode})")
@@ -5717,6 +6880,10 @@ def cmd_dead_code_maybe(args: argparse.Namespace) -> int:
         print(f"Reachable:            {total_reachable}")
         print(f"Potentially dead:     {total_dead} "
               f"({total_dead / max(total_production, 1) * 100:.1f}%)")
+        if seeds_mode == "production":
+            # dispatch:F2 disclosure buckets.
+            print(f"  entrypoint-only view would flag: {entrypoint_only_dead}")
+            print(f"  reachable only from tests:       {test_only_reachable}")
         print()
 
         if dead_candidates:
@@ -5725,7 +6892,7 @@ def cmd_dead_code_maybe(args: argparse.Namespace) -> int:
             for n in dead_candidates[:50]:
                 name = n.get("name", "?")
                 path = n.get("path", "?")
-                loc = n.get("lines_of_code") or "?"
+                loc = n.get("line_span") or "?"
                 print(f"  {name:<30} {path:<30} {loc:>5} LOC")
 
             if len(dead_candidates) > 50:  # pragma: no cover
@@ -5755,6 +6922,86 @@ def _positive_token_budget(raw: str) -> int:
             f"token budget must be a positive integer, got {value}"
         )
     return value
+
+
+def _positive_result_limit(raw: str) -> int:
+    """argparse type for a result-count ``--limit``: require a positive integer.
+
+    INV-toniv: ``search --limit -5`` was silently interpreted as Python
+    tail-drop slicing (``matches[:-5]``), and ``--limit 0`` fell through the
+    falsy guard and was treated as "no limit". Both are configuration errors —
+    a result limit must be >= 1 — and should fail fast with a clear message.
+    """
+    try:
+        value = int(raw)
+    except (TypeError, ValueError) as exc:
+        raise argparse.ArgumentTypeError(
+            f"--limit must be a positive integer, got {raw!r}"
+        ) from exc
+    if value <= 0:
+        raise argparse.ArgumentTypeError(
+            f"--limit must be a positive integer, got {value}"
+        )
+    return value
+
+
+def _positive_int_arg(label: str):
+    """argparse ``type=`` factory: require a positive integer (>= 1) for ``label``.
+
+    WI-vusaf: ``compact --max-symbols 0`` / negative was silently accepted and
+    produced a degenerate view. A bounded validator fails fast with rc=2.
+    """
+    def _parse(raw: str) -> int:
+        try:
+            value = int(raw)
+        except (TypeError, ValueError) as exc:
+            raise argparse.ArgumentTypeError(
+                f"{label} must be a positive integer, got {raw!r}"
+            ) from exc
+        if value < 1:
+            raise argparse.ArgumentTypeError(
+                f"{label} must be a positive integer (>= 1), got {value}"
+            )
+        return value
+    return _parse
+
+
+def _nonneg_int_arg(label: str):
+    """argparse ``type=`` factory: require a non-negative integer (>= 0) for ``label``."""
+    def _parse(raw: str) -> int:
+        try:
+            value = int(raw)
+        except (TypeError, ValueError) as exc:
+            raise argparse.ArgumentTypeError(
+                f"{label} must be a non-negative integer, got {raw!r}"
+            ) from exc
+        if value < 0:
+            raise argparse.ArgumentTypeError(
+                f"{label} must be a non-negative integer (>= 0), got {value}"
+            )
+        return value
+    return _parse
+
+
+def _unit_interval_arg(label: str):
+    """argparse ``type=`` factory: require a float in the inclusive range [0.0, 1.0].
+
+    WI-vusaf: ``compact --coverage 1.5`` / negative was silently accepted.
+    0.0 and 1.0 are valid (module tests use both).
+    """
+    def _parse(raw: str) -> float:
+        try:
+            value = float(raw)
+        except (TypeError, ValueError) as exc:
+            raise argparse.ArgumentTypeError(
+                f"{label} must be a number in [0.0, 1.0], got {raw!r}"
+            ) from exc
+        if not (0.0 <= value <= 1.0):
+            raise argparse.ArgumentTypeError(
+                f"{label} must be in the range [0.0, 1.0], got {value}"
+            )
+        return value
+    return _parse
 
 
 def _add_path_argument(parser: argparse.ArgumentParser) -> None:
@@ -5795,11 +7042,11 @@ Generate codebase summaries for AI assistants and coding agents.
 Quick start:
   hypergumbo .              Generate Markdown sketch (~8000 tokens default)
   hypergumbo . -t 16000     Larger sketch with more detail
-  hypergumbo run .          Full JSON analysis for tooling
+  hypergumbo survey .       Full JSON analysis for tooling
 
 Workflow:
   Most users only need 'sketch' (the default). For deeper analysis:
-  1. hypergumbo run .       → creates hypergumbo.results.json
+  1. hypergumbo survey .    → creates survey.json
   2. hypergumbo search X    → find symbols matching "X"
   3. hypergumbo explain X   → show callers/callees of symbol "X"
   4. hypergumbo slice       → extract subgraph from entry point"""
@@ -5809,7 +7056,7 @@ Examples:
   hypergumbo ~/myproject                    # Sketch with auto token budget
   hypergumbo ~/myproject -t 8000            # Sketch sized for 8k context
   hypergumbo . -t 4000 -x                   # Exclude test files
-  hypergumbo run . --compact                # LLM-friendly JSON output
+  hypergumbo survey . --compact                # LLM-friendly JSON output
   hypergumbo slice --entry main --reverse   # Find what calls main()
   hypergumbo routes                         # List API endpoints
 
@@ -5986,6 +7233,13 @@ Output is Markdown, printed to stdout. Pipe to a file or clipboard:
         help="Skip secret scanning (not recommended)",
     )
     p_sketch.add_argument(
+        "--no-comparison-sketches",
+        action="store_true",
+        dest="no_comparison_sketches",
+        help="Skip the 4x/16x comparison sketches and the representativeness "
+             "table (faster; useful for batch/scripted single-budget runs)",
+    )
+    p_sketch.add_argument(
         "--locale",
         type=str,
         default=None,
@@ -6007,15 +7261,15 @@ Output is Markdown, printed to stdout. Pipe to a file or clipboard:
     )
     p_sketch.set_defaults(func=cmd_sketch, first_party_priority=True, language_proportional=True)
 
-    # hypergumbo run
+    # hypergumbo survey (aka the deprecated `run` alias)
     run_epilog = """\
 Examples:
-  hypergumbo run .                      # Full analysis → cached in ~/.cache/hypergumbo/
-  hypergumbo run . --out analysis.json  # Custom output file (plus side-outputs, see below)
-  hypergumbo run . --out analysis.json --budgets none --no-handler-slices
+  hypergumbo survey .                      # Full analysis → cached in ~/.cache/hypergumbo/
+  hypergumbo survey . --out analysis.json  # Custom output file (plus side-outputs, see below)
+  hypergumbo survey . --out analysis.json --budgets none --no-handler-slices
                                         # Single output file (no side-outputs)
-  hypergumbo run . --compact            # LLM-friendly: top symbols + summary
-  hypergumbo run . --first-party-only   # Exclude vendored/external code
+  hypergumbo survey . --compact            # LLM-friendly: top symbols + summary
+  hypergumbo survey . --first-party-only   # Exclude vendored/external code
 
 Side-outputs alongside --out:
   In addition to the path you pass, `run` writes:
@@ -6043,9 +7297,14 @@ Cache location:
   dev edits and stable releases don't poison each other's cache).
   Auto-invalidated when files change."""
 
+    # ADR-0042 (WI-vatuf): ``survey`` is the primary verb; ``run`` is a
+    # deprecated one-minor-version alias (fully functional, warns on use). Under
+    # ``aliases=``, argparse records the actually-typed verb in ``args.command``,
+    # so cmd_run gates the deprecation warning on ``command == "run"``.
     p_run = sub.add_parser(
-        "run",
-        help="Run full analysis and save behavior map to JSON",
+        "survey",
+        aliases=["run"],
+        help="Survey the repository; save the full analysis to survey.json",
         epilog=run_epilog,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
@@ -6110,17 +7369,17 @@ Cache location:
     )
     p_run.add_argument(
         "--coverage",
-        type=float,
+        type=_unit_interval_arg("--coverage"),
         default=0.8,
         help="Target centrality coverage for --compact mode (0.0-1.0, default: 0.8)",
     )
     p_run.add_argument(
-        "--no-connectivity",
+        "--connectivity",
         action="store_true",
-        dest="no_connectivity",
-        help="Disable connectivity-aware selection for --compact mode. "
-             "Falls back to centrality-based selection (may produce disconnected "
-             "subgraphs where entrypoints have no edges).",
+        dest="connectivity",
+        help="'connected core' for --compact mode: connectivity-aware selection "
+             "that bridges disconnected entrypoints. The default is "
+             "centrality-ranked (most-important-first), matching the sketch.",
     )
     p_run.add_argument(
         "--budgets",
@@ -6242,7 +7501,7 @@ Use cases:
   - Extract a focused subgraph for debugging or review
   - Smart test selection: find tests affected by changed files
 
-Auto-discovers cached results from 'hypergumbo run', or specify --input."""
+Auto-discovers cached results from 'hypergumbo survey', or specify --input."""
 
     p_slice = sub.add_parser(
         "slice",
@@ -6265,7 +7524,7 @@ Auto-discovers cached results from 'hypergumbo run', or specify --input."""
     )
     p_slice.add_argument(
         "--out",
-        default="slice.json",
+        default=None,
         help="Output JSON path (default: slice.<entry-name>.json)",
     )
     p_slice.add_argument(
@@ -6317,7 +7576,7 @@ Auto-discovers cached results from 'hypergumbo run', or specify --input."""
     )
     p_slice.add_argument(
         "--hub-threshold",
-        type=int,
+        type=_nonneg_int_arg("--hub-threshold"),
         default=50,
         dest="hub_threshold",
         help="Prune hub nodes: nodes with more outgoing (forward) or incoming "
@@ -6367,6 +7626,17 @@ Auto-discovers cached results from 'hypergumbo run', or specify --input."""
              "still followed.",
     )
     p_slice.add_argument(
+        "--io-boundary",
+        default=None,
+        metavar="CATEGORY",
+        dest="io_boundary",
+        help="Filter the slice to edges that reach the named I/O boundary "
+             "category (e.g. fs_read, fs_write, net_send, subprocess). The "
+             "classification is computed ephemerally from the io_primitives "
+             "catalogs at slice time — there is no persisted io_boundary field "
+             "(see `hypergumbo io-boundaries`, the canonical full-graph view).",
+    )
+    p_slice.add_argument(
         "--files",
         default=None,
         metavar="FILE",
@@ -6391,7 +7661,7 @@ Examples:
   hypergumbo search "test" --limit 50     # Show more results
   hypergumbo search "handle" --language python
 
-Auto-discovers cached results from 'hypergumbo run', or specify --input."""
+Auto-discovers cached results from 'hypergumbo survey', or specify --input."""
 
     p_search = sub.add_parser(
         "search",
@@ -6407,7 +7677,7 @@ Auto-discovers cached results from 'hypergumbo run', or specify --input."""
     p_search.add_argument(
         "--input",
         default=None,
-        help="Input behavior map file (default: hypergumbo.results.json)",
+        help="Input behavior map file (default: survey.json)",
     )
     p_search.add_argument(
         "--kind",
@@ -6421,9 +7691,10 @@ Auto-discovers cached results from 'hypergumbo run', or specify --input."""
     )
     p_search.add_argument(
         "--limit",
-        type=int,
+        type=_positive_result_limit,
         default=20,
-        help="Maximum number of results to show (default: 20)",
+        help="Maximum number of results to show; must be a positive integer "
+             "(default: 20). The header always reports the total match count.",
     )
     p_search.set_defaults(func=cmd_search)
 
@@ -6435,7 +7706,7 @@ Examples:
 
 Detects: Flask routes, FastAPI endpoints, Express routes, Django URLs, etc.
 
-Auto-discovers cached results from 'hypergumbo run', or specify --input."""
+Auto-discovers cached results from 'hypergumbo survey', or specify --input."""
 
     p_routes = sub.add_parser(
         "routes",
@@ -6447,7 +7718,7 @@ Auto-discovers cached results from 'hypergumbo run', or specify --input."""
     p_routes.add_argument(
         "--input",
         default=None,
-        help="Input behavior map file (default: hypergumbo.results.json)",
+        help="Input behavior map file (default: survey.json)",
     )
     p_routes.add_argument(
         "--language",
@@ -6471,6 +7742,13 @@ Auto-discovers cached results from 'hypergumbo run', or specify --input."""
         dest="exclude_tests",
         help="(deprecated; excluded by default) Exclude routes from test files",
     )
+    p_routes.add_argument(
+        "--format",
+        choices=["text", "json"],
+        default="text",
+        help="Output format (default: text). JSON goes to stdout; the run "
+             "summary goes to stderr so stdout stays machine-parseable.",
+    )
     p_routes.set_defaults(func=cmd_routes)
 
     # hypergumbo explain
@@ -6480,12 +7758,19 @@ Examples:
   hypergumbo explain "UserService"        # Explain a class
   hypergumbo explain "parse_config"       # Explain a specific function
   hypergumbo explain "foo" --provenance   # Include derivation chains per edge
+  hypergumbo explain "main" --first       # Pick the first match if ambiguous
+  hypergumbo explain "main" --language go # Disambiguate by language
+  hypergumbo explain "main" --file cmd/server.go  # Disambiguate by file suffix
 
 Shows: Symbol location, origin passes, callers (what calls it), callees (what it calls).
 Edge types are shown inline. Use --provenance to see which symbols each linker
 consumed to construct each edge (PROV wasDerivedFrom).
 
-Auto-discovers cached results from 'hypergumbo run', or specify --input."""
+A name matching symbols in more than one file is AMBIGUOUS: explain errors and
+lists the candidates (matching `slice`). Use --language / --file to narrow, or
+--first to accept the top match.
+
+Auto-discovers cached results from 'hypergumbo survey', or specify --input."""
 
     p_explain = sub.add_parser(
         "explain",
@@ -6501,7 +7786,7 @@ Auto-discovers cached results from 'hypergumbo run', or specify --input."""
     p_explain.add_argument(
         "--input",
         default=None,
-        help="Input behavior map file (default: hypergumbo.results.json)",
+        help="Input behavior map file (default: survey.json)",
     )
     p_explain.add_argument(
         "-x",
@@ -6538,6 +7823,29 @@ Auto-discovers cached results from 'hypergumbo run', or specify --input."""
         dest="provenance",
         help="Show derivation chains (derived_from) for each edge",
     )
+    # WI-nanut: disambiguation / bounding flags (parity with `symbols`).
+    p_explain.add_argument(
+        "--language",
+        default=None,
+        help="Filter matches to this language (e.g., python, go)",
+    )
+    p_explain.add_argument(
+        "--file",
+        default=None,
+        help="Filter matches to files whose path ends with this suffix",
+    )
+    p_explain.add_argument(
+        "--first",
+        action="store_true",
+        default=False,
+        help="Show only the first match instead of erroring on ambiguity",
+    )
+    p_explain.add_argument(
+        "--limit",
+        type=_positive_int_arg("--limit"),
+        default=None,
+        help="Maximum number of symbol sections to show (default: all)",
+    )
     p_explain.set_defaults(func=cmd_explain)
 
     # hypergumbo catalog
@@ -6553,6 +7861,12 @@ The output begins with passes suggested for your current directory."""
         help="List available language analyzers",
         epilog=catalog_epilog,
         formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    p_catalog.add_argument(
+        "--format",
+        choices=["text", "json"],
+        default="text",
+        help="Output format (default: text)",
     )
     p_catalog.set_defaults(func=cmd_catalog)
 
@@ -6654,6 +7968,12 @@ Configure via HYPERGUMBO_CACHE_HONK_GB=<N> (set to 0 to silence)."""
         "--quiet",
         action="store_true",
         help="Suppress output",
+    )
+    p_cache_status.add_argument(
+        "--format",
+        choices=["text", "json"],
+        default="text",
+        help="Output format (default: text)",
     )
     p_cache_status.set_defaults(func=cmd_cache_status)
 
@@ -6791,6 +8111,17 @@ Clearing it forces re-analysis on next run (slower but ensures fresh results).""
     p_remove_extras.set_defaults(func=cmd_remove_extras)
 
     # hypergumbo test-coverage
+    # WI-rakol: the "production functions" denominator is shared by
+    # test-coverage and dead-code-maybe (both derive it from
+    # ``production_callables``); document it once, in both epilogs.
+    production_fn_doc = (
+        '"Production functions" (the shared denominator for both '
+        "test-coverage and\n"
+        "dead-code-maybe) are the non-test function/method symbols, "
+        "excluding\n"
+        "ADR-0031 synthetic linker stand-ins.  dead = production - reachable."
+    )
+
     test_coverage_epilog = """\
 Examples:
   hypergumbo test-coverage .                  # Show coverage summary
@@ -6811,7 +8142,9 @@ a footer, and in JSON output under the 'caveats' field. Treat
 'untested' as 'unreached by static call graph', not 'definitely
 untested', before taking action on the cold-spot list.
 
-Auto-discovers cached results from 'hypergumbo run', or specify --input."""
+Auto-discovers cached results from 'hypergumbo survey', or specify --input.
+
+""" + production_fn_doc
 
     p_test_cov = sub.add_parser(
         "test-coverage",
@@ -6823,7 +8156,7 @@ Auto-discovers cached results from 'hypergumbo run', or specify --input."""
     p_test_cov.add_argument(
         "--input",
         default=None,
-        help="Input behavior map file (default: hypergumbo.results.json)",
+        help="Input behavior map file (default: survey.json)",
     )
     p_test_cov.add_argument(
         "--format",
@@ -6855,6 +8188,7 @@ Auto-discovers cached results from 'hypergumbo run', or specify --input."""
     p_dead_code = sub.add_parser(
         "dead-code-maybe",
         help="Find potentially dead code unreachable from entrypoints",
+        epilog=production_fn_doc,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     _add_path_argument(p_dead_code)
@@ -6867,11 +8201,14 @@ Auto-discovers cached results from 'hypergumbo run', or specify --input."""
         help="Output format (default: text)",
     )
     p_dead_code.add_argument(
-        "--seeds", choices=["entrypoints", "tests", "exports", "all"],
-        default="entrypoints",
-        help="Seed set for reachability analysis (default: entrypoints). "
-             "'exports' uses symbols with is_exported=True (public API). "
-             "'all' combines entrypoints, tests, and exports.",
+        "--seeds", choices=["production", "entrypoints", "tests", "exports", "all"],
+        default=None,
+        help="Seed set for reachability analysis (default: production = "
+             "entrypoints + exported public API; dispatch:F2). 'entrypoints' is "
+             "the strict entry-only view (also disclosed as a bucket under the "
+             "default). 'exports' uses symbols with is_exported=True. 'all' "
+             "combines entrypoints, tests, and exports. Omitting the flag prints "
+             "a note and the entrypoint-only / test-only-reachable buckets.",
     )
     p_dead_code.add_argument(
         "--min-confidence", type=float, default=0.0,
@@ -6887,7 +8224,47 @@ Auto-discovers cached results from 'hypergumbo run', or specify --input."""
         help="WI-zafab filter 3: exclude candidates whose is_exported=True "
              "(public API — reachable by external callers outside the analysis scope)",
     )
+    p_dead_code.add_argument(
+        "--cross-lang-threshold", type=int, default=3,
+        help="dispatch:F7 (WI-gavub): demote (exclude) candidates whose name "
+             "appears in >= N other-language files — near-certain cross-language "
+             "dispatch / missing-edge false positives (default: 3). Set <= 0 to "
+             "disable the demoter.",
+    )
     p_dead_code.set_defaults(func=cmd_dead_code_maybe)
+
+    # hypergumbo repeat-finder
+    p_repeat = sub.add_parser(
+        "repeat-finder",
+        help="Find structurally-identical implementations (refactoring leads)",
+    )
+    _add_path_argument(p_repeat)
+    p_repeat.add_argument(
+        "--input", default=None,
+        help="Input survey file (default: auto-detect cached results)",
+    )
+    p_repeat.add_argument(
+        "--format", choices=["text", "json"], default="text",
+        help="Output format (default: text)",
+    )
+    p_repeat.add_argument(
+        "--min-complexity", type=int, default=2,
+        help="Drop clone clusters whose (shared) cyclomatic complexity is below "
+             "N as trivial noise (default: 2). Pass 1 to include straight-line "
+             "clones (no branches).",
+    )
+    p_repeat.add_argument(
+        "--include-tests", action="store_true", default=False,
+        help="Also show test-only clone clusters (parametrized tests are "
+             "structurally identical by design; hidden by default, counted in "
+             "the summary).",
+    )
+    p_repeat.add_argument(
+        "--limit", type=int, default=20,
+        help="Max clusters to show in text output per section (default: 20; "
+             "--format json always emits the full list).",
+    )
+    p_repeat.set_defaults(func=cmd_repeat_finder)
 
     # hypergumbo symbols
     symbols_epilog = """\
@@ -6898,16 +8275,22 @@ Examples:
   hypergumbo symbols --max-per-file 5       # Max 5 symbols per file
   hypergumbo symbols --max-per-file 3 --all # All files, 3 symbols each
   hypergumbo symbols --kind function        # Only functions
+  hypergumbo symbols --kind file            # Surface file nodes (else hidden)
   hypergumbo symbols --language python      # Only Python symbols
   hypergumbo symbols --col-width 200        # Wider Symbol/File columns
   hypergumbo symbols --wrap                 # Wrap long names instead of truncating
+
+By default (and with --all) low-value kinds are hidden from the connectivity
+table — file/dependency/project/package nodes and CSS class/id/variable/
+keyframes/media/font-face/markdown kinds. Request one of these explicitly with
+`--kind <k>` (e.g. `--kind file`, `--kind variable`) to surface it (WI-sufuh).
 
 Output: Rich table with columns Symbol, Kind, In (in-degree), Out (out-degree),
 Deg (total degree), File. Symbol and File columns default to 60 / 80 chars
 (use --col-width to override, --wrap to fold long content across lines).
 Sorted by file connectivity (hottest files first), then filename, then degree.
 
-Auto-discovers cached results from 'hypergumbo run', or specify --input."""
+Auto-discovers cached results from 'hypergumbo survey', or specify --input."""
 
     p_symbols = sub.add_parser(
         "symbols",
@@ -6919,7 +8302,7 @@ Auto-discovers cached results from 'hypergumbo run', or specify --input."""
     p_symbols.add_argument(
         "--input",
         default=None,
-        help="Input behavior map file (default: hypergumbo.results.json)",
+        help="Input behavior map file (default: survey.json)",
     )
     p_symbols.add_argument(
         "-x", "--exclude-tests",
@@ -6938,7 +8321,11 @@ Auto-discovers cached results from 'hypergumbo run', or specify --input."""
     p_symbols.add_argument(
         "--kind",
         default=None,
-        help="Filter by symbol kind (e.g., function, class, method)",
+        help=(
+            "Filter by symbol kind (e.g., function, class, method). Low-value "
+            "kinds hidden by default (file, variable, package, CSS/markdown "
+            "kinds) are surfaced when requested explicitly, e.g. --kind file"
+        ),
     )
     p_symbols.add_argument(
         "--language",
@@ -6955,7 +8342,10 @@ Auto-discovers cached results from 'hypergumbo run', or specify --input."""
         "--all",
         action="store_true",
         dest="all",
-        help="Show all symbols (ignore --limit)",
+        help=(
+            "Show all symbols (ignore --limit). Low-value kinds are still "
+            "hidden unless requested via --kind (WI-sufuh)"
+        ),
     )
     p_symbols.add_argument(
         "--col-width",
@@ -6984,10 +8374,10 @@ Auto-discovers cached results from 'hypergumbo run', or specify --input."""
 Examples:
   hypergumbo compact --input hg.json --out hg.compact.json
   hypergumbo compact --input hg.json --max-symbols 50 --coverage 0.9
-  hypergumbo compact --input hg.json --no-connectivity
+  hypergumbo compact --input hg.json --connectivity
 
 Converts an existing behavior map to compact form with:
-- Top symbols by centrality coverage (connectivity-aware selection by default)
+- Top symbols by centrality coverage (centrality-ranked by default; pass --connectivity for connectivity-aware selection)
 - Summary of omitted symbols (bag-of-words, path patterns, kinds)
 - Induced subgraph edges (only edges between included symbols)
 
@@ -7014,29 +8404,30 @@ without re-running the full analysis."""
     )
     p_compact.add_argument(
         "--max-symbols",
-        type=int,
+        type=_positive_int_arg("--max-symbols"),
         default=100,
         dest="max_symbols",
         help="Maximum symbols to include (default: 100)",
     )
     p_compact.add_argument(
         "--min-symbols",
-        type=int,
+        type=_nonneg_int_arg("--min-symbols"),
         default=10,
         dest="min_symbols",
         help="Minimum symbols to include (default: 10)",
     )
     p_compact.add_argument(
         "--coverage",
-        type=float,
+        type=_unit_interval_arg("--coverage"),
         default=0.8,
         help="Target centrality coverage 0.0-1.0 (default: 0.8)",
     )
     p_compact.add_argument(
-        "--no-connectivity",
+        "--connectivity",
         action="store_true",
-        dest="no_connectivity",
-        help="Disable connectivity-aware selection (may produce disconnected subgraphs)",
+        dest="connectivity",
+        help="'connected core': connectivity-aware selection that bridges "
+             "disconnected entrypoints (default: centrality-ranked)",
     )
     p_compact.set_defaults(func=cmd_compact)
 
@@ -7045,7 +8436,7 @@ without re-running the full analysis."""
 Examples:
   hypergumbo io-boundaries .                          # Production-only IO map
   hypergumbo io-boundaries . --include-tests          # Also include test files
-  hypergumbo io-boundaries . --json                   # JSON output
+  hypergumbo io-boundaries . --format json            # JSON output (--json alias)
   hypergumbo io-boundaries . --input hg.json          # From existing analysis
   hypergumbo io-boundaries . --by-file                # Group by file
   hypergumbo io-boundaries . --boundary subprocess    # Filter to subprocess calls
@@ -7068,10 +8459,16 @@ are excluded by default — pass --include-tests to see them. See ADR-0016."""
         help="Input behavior map file (default: auto-discover or run analysis)",
     )
     p_io.add_argument(
+        "--format",
+        choices=["text", "json"],
+        default="text",
+        help="Output format (default: text). The canonical read-view spelling.",
+    )
+    p_io.add_argument(
         "--json",
         action="store_true",
         dest="json_output",
-        help="Output as JSON",
+        help="Alias for --format json (back-compat)",
     )
     p_io.add_argument(
         "--by-file",
@@ -7206,10 +8603,16 @@ inconclusive, or the claims file failed validation.
         help="Input behavior map file (default: auto-discover or run analysis)",
     )
     p_vc.add_argument(
+        "--format",
+        choices=["text", "json"],
+        default="text",
+        help="Output format (default: text). The canonical read-view spelling.",
+    )
+    p_vc.add_argument(
         "--json",
         action="store_true",
         dest="json_output",
-        help="Output as JSON",
+        help="Alias for --format json (back-compat)",
     )
     p_vc.add_argument(
         "--taint-sources",
@@ -7248,9 +8651,10 @@ inconclusive, or the claims file failed validation.
 
     # Assign subcommands to groups for help formatting
     # Core analysis commands (group_order=0) - ordered by suborder
-    core_cmds = ["sketch", "run", "slice", "search", "routes", "explain",
+    core_cmds = ["sketch", "survey", "slice", "search", "routes", "explain",
                  "catalog", "config", "test-coverage", "dead-code-maybe",
-                 "symbols", "compact", "io-boundaries", "verify-claims"]
+                 "repeat-finder", "symbols", "compact", "io-boundaries",
+                 "verify-claims"]
     for i, cmd in enumerate(core_cmds):
         _set_subparser_group(sub, cmd, "core", 0, suborder=i)
 
@@ -7300,7 +8704,12 @@ def _classify_symbols(
 
     Dependency-kind symbols (from Cargo.toml, package.json, etc.) are
     classified as tier 3 (EXTERNAL_DEP) since they represent references
-    to external packages, not first-party code.
+    to external packages, not first-party code — EXCEPT a declaration
+    naming an in-repo workspace sibling, which is workspace-internal
+    (tier 2 INTERNAL_DEP) per INV-nuzas / ADR-0041 D8a. Workspace-sibling
+    recognition uses ``collect_workspace_package_names`` (Python pyproject
+    distribution names); Cargo/npm workspace-sibling analogues are a
+    documented cross-language follow-up and still fall through to tier 3.
 
     INV-virik: when ``limits`` is supplied, ``classify_file`` failures
     (the default-fallback "outside repo" classification, or any uncaught
@@ -7310,13 +8719,37 @@ def _classify_symbols(
     declared this field but no producer ever wrote to it.
     """
     seen_failures: set[str] = set()
+    # INV-nuzas / ADR-0041 D8a: recognize in-repo workspace-sibling package
+    # names so a sibling declared as a dependency is tiered workspace-internal
+    # (tier 2), not external (tier 3). Empty set on a non-Python repo → the
+    # dependency branch below is unchanged (all deps tier 3).
+    workspace_names = collect_workspace_package_names(repo_root)
     for symbol in symbols:
-        if symbol.supply_chain_tier != 1 or symbol.supply_chain_reason:
+        # INV-bonup / ADR-0041 §1: supply_chain_tier names supply-chain DISTANCE
+        # only. Skip symbols already deliberately classified (a reason is set) or
+        # synthetic protocol stand-ins (a truthy `protocol_origin` field — the
+        # canonical ADR-0031 "not a real host-file callable" signal, cli.py:6143/
+        # 6255). The six protocol linkers used to borrow supply_chain_tier=2 purely
+        # to trip this skip, leaking mechanism into the distance axis; keying the
+        # skip on the honest synthetic marker lets those nodes carry a real
+        # first-party distance instead of a phantom internal_dep tier.
+        if (
+            symbol.supply_chain_tier != 1
+            or symbol.supply_chain_reason
+            or symbol.protocol_origin
+        ):
             continue
-        # Dependency declarations are external references, not source code
+        # Dependency declarations are external references, not source code —
+        # unless the declared name is an in-repo workspace sibling (tier 2).
         if symbol.kind in _DEPENDENCY_KINDS:
-            symbol.supply_chain_tier = 3
-            symbol.supply_chain_reason = "dependency declaration (external)"
+            if _normalize_pep503(symbol.name or "") in workspace_names:
+                symbol.supply_chain_tier = 2
+                symbol.supply_chain_reason = (
+                    "workspace-internal dependency declaration"
+                )
+            else:
+                symbol.supply_chain_tier = 3
+                symbol.supply_chain_reason = "dependency declaration (external)"
             continue
         file_path = repo_root / symbol.path
         classification = classify_file(file_path, repo_root, package_roots)
@@ -7349,21 +8782,136 @@ def _classify_symbols(
                 )
 
 
+def _make_ecosystem_classifier() -> Callable[[str, str], Optional[str]]:
+    """Build the ADR-0041 §3 ecosystem classifier for boundary nodes.
+
+    Returns a callable ``(language, module) -> 'stdlib' | 'third_party' | None``
+    backed by the single-source language stdlib catalog
+    (``io_boundary.load_catalog`` / ``IoBoundaryCatalog.is_stdlib_module`` — the
+    same catalog the io-boundary closed-world gates consume, per ADR-0041 §3's
+    single-source constraint). Returns ``None`` when the language has no
+    enumerated stdlib, so an unmatched module is never mislabelled
+    ``third_party`` on a language whose stdlib set we don't know. Catalogs are
+    loaded lazily and cached per language.
+    """
+    from .io_boundary import load_catalog
+    cache: Dict[str, Any] = {}
+
+    def classify(language: str, module: str) -> Optional[str]:
+        if language not in cache:
+            cat = load_catalog(language)
+            # Usable only when the catalog enumerates the stdlib; otherwise
+            # "not in set" is indistinguishable from "stdlib set unknown".
+            cache[language] = (
+                cat if (cat.stdlib_modules or cat.stdlib_prefixes) else None
+            )
+        cat = cache[language]
+        if cat is None:
+            return None
+        return "stdlib" if cat.is_stdlib_module(module) else "third_party"
+
+    return classify
+
+
+# Directory names matching DERIVED_PATH_PATTERNS (supply_chain.py). These are
+# build/cache artifact dirs that discovery gitignore-excludes BEFORE the tier-4
+# derived classifier runs, so they never surface in derived_skipped without the
+# dedicated scan below (WI-jafoz). Kept in sync with the directory-name half of
+# each DERIVED_PATH_PATTERNS entry.
+_DERIVED_DIR_NAMES = frozenset(
+    {
+        "dist",
+        "build",
+        "out",
+        "target",
+        ".next",
+        ".nuxt",
+        ".output",
+        ".svelte-kit",
+        ".build",
+        "__pycache__",
+    }
+)
+
+
+def _find_derived_skipped(repo_root: Path) -> list[str]:
+    """Enumerate files under derived-artifact directories present on disk but
+    excluded from analysis.
+
+    WI-jafoz: ``discovery``'s gitignore-style ``DEFAULT_EXCLUDES`` prune
+    (node_modules, dist, build, __pycache__, ...) fires *before* the tier-4
+    derived classifier (``supply_chain.classify_file``), so derived dirs are
+    skipped silently and ``derived_skipped`` reads ``{files: 0, paths: []}``
+    even when the repo plainly contains them. This scan restores an honest
+    "what did we ignore" accounting: it walks the tree directly, matching the
+    same ``DERIVED_PATH_PATTERNS`` the classifier uses, while pruning the
+    dependency/VCS excludes so we neither descend into huge dep trees nor
+    misattribute a dependency's *own* build output as the project's.
+
+    Returns sorted repo-relative POSIX paths of every file beneath a derived
+    directory.
+    """
+    import re
+
+    from .discovery import DEFAULT_EXCLUDES
+
+    derived_res = [re.compile(p) for p in DERIVED_PATH_PATTERNS]
+    # Prune dep/VCS/cache dirs (so we don't walk or misattribute them) but keep
+    # the derived dirs themselves so the walk can reach and record them.
+    prune = {d for d in DEFAULT_EXCLUDES if d not in _DERIVED_DIR_NAMES}
+    skipped: list[str] = []
+    for dirpath, dirnames, _filenames in os.walk(repo_root):
+        rel = os.path.relpath(dirpath, repo_root)
+        rel_norm = "" if rel == "." else rel.replace(os.sep, "/") + "/"
+        if rel_norm and any(r.search(rel_norm) for r in derived_res):
+            # Derived root: record every file beneath it, then stop the outer
+            # walk from descending (the nested walk already covered it).
+            for sub_dp, _sub_dn, sub_files in os.walk(dirpath):
+                sub_rel = os.path.relpath(sub_dp, repo_root).replace(os.sep, "/")
+                skipped.extend(sub_rel + "/" + f for f in sub_files)
+            dirnames[:] = []
+            continue
+        dirnames[:] = [d for d in dirnames if d not in prune]
+    return sorted(skipped)
+
+
 def _compute_supply_chain_summary(
     symbols: list[Symbol], derived_paths: list[str]
 ) -> Dict[str, Any]:
     """Compute supply chain summary from classified symbols.
 
-    Returns a dict with counts per tier plus derived_skipped info.
+    Returns a dict with counts per tier plus derived_skipped info. Tier-3
+    (external_dep) carries two sub-buckets counting its symbols by ``meta``
+    provenance stamps: ``ecosystem`` (ADR-0041 §3: stdlib / third_party / unknown)
+    and ``directness`` (ADR-0041 §2: direct / transitive / undeclared / unknown).
     """
     # Count unique files and symbols per tier
     tier_files: Dict[int, set] = {1: set(), 2: set(), 3: set(), 4: set()}
     tier_symbols: Dict[int, int] = {1: 0, 2: 0, 3: 0, 4: 0}
+    # ADR-0041 §3: sub-bucket tier-3 externals by ecosystem provenance class.
+    ecosystem_counts: Dict[str, int] = {}
+    # ADR-0041 §2 (WI-bojok): mirror that sub-bucket for the `directness` meta key
+    # (direct / transitive / undeclared) so the otherwise write-only stamp gets a
+    # report-only reader. Tier-3 nodes outside the manifest-backed languages carry
+    # no directness key → "unknown", exactly as ecosystem does.
+    directness_counts: Dict[str, int] = {}
 
     for symbol in symbols:
         tier = symbol.supply_chain_tier
-        tier_files[tier].add(symbol.path)
+        # WI-mutuv: the per-tier `files` count is the number of distinct
+        # kind=='file' node paths for that tier. Counting paths from *all* tier
+        # nodes double-counted function paths and, worse, folded in
+        # external_symbol nodes whose path is the ``<external>`` sentinel —
+        # phantom "files" that no file node backs. `symbols` still counts every
+        # node of the tier.
+        if symbol.kind == "file":
+            tier_files[tier].add(symbol.path)
         tier_symbols[tier] += 1
+        if tier == 3:
+            eco = (symbol.meta or {}).get("ecosystem") or "unknown"
+            ecosystem_counts[eco] = ecosystem_counts.get(eco, 0) + 1
+            direct = (symbol.meta or {}).get("directness") or "unknown"
+            directness_counts[direct] = directness_counts.get(direct, 0) + 1
 
     tier_names = {1: "first_party", 2: "internal_dep", 3: "external_dep"}
 
@@ -7373,6 +8921,10 @@ def _compute_supply_chain_summary(
             "files": len(tier_files[tier]),
             "symbols": tier_symbols[tier],
         }
+    # Attach the ecosystem breakdown to the external_dep tier (sorted for
+    # deterministic output).
+    summary["external_dep"]["ecosystem"] = dict(sorted(ecosystem_counts.items()))
+    summary["external_dep"]["directness"] = dict(sorted(directness_counts.items()))
 
     # Cap derived_skipped paths at 10
     summary["derived_skipped"] = {
@@ -7406,41 +8958,47 @@ _HANDLER_SLICE_HUB_THRESHOLD = 100
 def _is_route_symbol(symbol: Symbol) -> bool:
     """Return True if the symbol represents a route/handler.
 
-    Uses the same detector as cmd_routes: symbols with kind='route' (produced
-    by analyzers that materialize routes directly, e.g. Go) OR symbols whose
-    meta.concepts list contains a concept='route' entry (produced by
-    framework-YAML concept enrichment, e.g. FastAPI @app.get).
+    Delegates to the canonical accessor :func:`hypergumbo_core.routes.is_route`
+    (WI-tosul / target-D): a route is either the ADR-0027 marker
+    (``meta.framework_role == 'route'``, e.g. Go) or a ``concept == 'route'``
+    entry (framework-YAML enrichment, e.g. FastAPI ``@app.get``).
     """
-    meta = symbol.meta or {}
-    if meta.get("framework_role") == "route":
-        return True
-    for concept in meta.get("concepts", []) or []:
-        if isinstance(concept, dict) and concept.get("concept") == "route":
-            return True
-    return False
+    return is_route(symbol)
+
+
+def _is_route_marker(symbol: Symbol) -> bool:
+    """Return True for a framework-materialized route *marker* node.
+
+    A route marker (``meta.framework_role == "route"``, e.g. an analyzer's
+    standalone ``GET:/health:route`` node) is a registration stub with
+    essentially no outbound edges — distinct from the concept-enriched
+    *function* handler (matched via ``meta.concepts``), which carries the real
+    call graph. When both map to the same ``(method, path)`` slice filename,
+    preferring the non-marker keeps the informative slice instead of the
+    degenerate marker one (INV-nubub).
+    """
+    return (symbol.meta or {}).get("framework_role") == "route"
 
 
 def _extract_route_info(symbol: Symbol) -> dict | None:
     """Pull (method, path) out of a route symbol's metadata.
 
-    Returns None when both lookup sites fail to yield a complete pair —
+    Returns None unless a complete ``(method, path)`` pair is available —
     downstream code uses the return value to decide whether to emit a
-    route-qualified filename or a handler-name fallback. kind='route'
-    symbols prefer their authoritative meta.http_method/route_path; other
-    route symbols fall back to the first matching concept entry.
+    route-qualified filename or a handler-name fallback. Delegates to the
+    canonical accessor :func:`hypergumbo_core.routes.route_of` (marker-first,
+    matching this function's historical framework_role-then-concept
+    precedence). The accessor normalizes the ``'WS'`` sentinel into
+    ``protocol='websocket'``; this wrapper reconstructs the raw ``'WS'``
+    method to preserve its established ``{method, path}`` contract.
     """
-    meta = symbol.meta or {}
-    if meta.get("framework_role") == "route":
-        method = meta.get("http_method")
-        path = meta.get("route_path")
-        if method and path:
-            return {"method": str(method), "path": str(path)}
-    for concept in meta.get("concepts", []) or []:
-        if isinstance(concept, dict) and concept.get("concept") == "route":
-            method = concept.get("method")
-            path = concept.get("path")
-            if method and path:
-                return {"method": str(method), "path": str(path)}
+    info = route_of(symbol)
+    if info is None:
+        return None
+    method = method_token(info)
+    path = info["path"]
+    if method and path:
+        return {"method": str(method), "path": str(path)}
     return None
 
 
@@ -7496,7 +9054,7 @@ def _emit_handler_slices(
     from .slice import AmbiguousEntryError, SliceQuery, slice_graph
 
     # Step 1: collect route symbols, excluding test-file handlers. Order is
-    # preserved from all_symbols, which run_behavior_map passes in already
+    # preserved from all_symbols, which run_survey passes in already
     # ranked by centrality — so first-seen is most prominent.
     handlers: list[Symbol] = []
     for sym in all_symbols:
@@ -7506,8 +9064,9 @@ def _emit_handler_slices(
             continue
         handlers.append(sym)
 
-    # Step 2: group by symbol id so shared handlers emit once with a merged
-    # routes list. Preserves the ranked insertion order.
+    # Step 2: group by symbol id so a single handler registered under
+    # multiple routes emits once with a merged routes list. Preserves the
+    # ranked insertion order.
     id_to_routes: dict[str, list[dict]] = {}
     id_order: list[str] = []
     id_to_symbol: dict[str, Symbol] = {}
@@ -7520,6 +9079,35 @@ def _emit_handler_slices(
         if info and info not in id_to_routes[h.id]:
             id_to_routes[h.id].append(info)
 
+    # Step 2b (INV-nubub): collapse distinct ids that resolve to the SAME
+    # on-disk slice filename. The framework route marker
+    # (meta.framework_role == "route", ~0 outbound edges) and the
+    # concept-enriched function handler (the real call graph) for one
+    # (method, path) are different ids but produce the same filename; grouping
+    # by id alone let both reach the write step, and the second writer
+    # silently clobbered the first on disk, leaving only the degenerate marker
+    # slice. Keep ONE slice per filename -- prefer the non-marker so the
+    # informative function slice wins -- and merge every colliding id's routes
+    # into the survivor.
+    fname_order: list[str] = []
+    fname_to_symbol: dict[str, Symbol] = {}
+    fname_to_routes: dict[str, list[dict]] = {}
+    for hid in id_order:
+        sym = id_to_symbol[hid]
+        routes = id_to_routes[hid]
+        primary = routes[0] if routes else None
+        fname = _handler_slice_filename(sym, primary)
+        if fname not in fname_to_routes:
+            fname_order.append(fname)
+            fname_to_symbol[fname] = sym
+            fname_to_routes[fname] = list(routes)
+            continue
+        if _is_route_marker(fname_to_symbol[fname]) and not _is_route_marker(sym):
+            fname_to_symbol[fname] = sym
+        for info in routes:
+            if info not in fname_to_routes[fname]:
+                fname_to_routes[fname].append(info)
+
     # Pre-compute out-degree for the index file (gives consumers a quick
     # "how many callees does this handler have?" signal without re-scanning).
     out_degree: dict[str, int] = {}
@@ -7531,10 +9119,10 @@ def _emit_handler_slices(
     written: list[Path] = []
     index_entries: list[dict] = []
 
-    for rank, handler_id in enumerate(id_order):
-        handler = id_to_symbol[handler_id]
-        routes = id_to_routes[handler_id]
-        primary_route = routes[0] if routes else None
+    for rank, fname in enumerate(fname_order):
+        handler = fname_to_symbol[fname]
+        handler_id = handler.id
+        routes = fname_to_routes[fname]
 
         entry: dict = {
             "id": handler_id,
@@ -7575,7 +9163,7 @@ def _emit_handler_slices(
             index_entries.append(entry)
             continue
 
-        filename = _handler_slice_filename(handler, primary_route)
+        filename = fname  # the group key (one slice file per (method, path))
         out_path = out_dir / filename
 
         node_ids_set = set(result.node_ids)
@@ -7593,7 +9181,18 @@ def _emit_handler_slices(
         # below; features[] holds just IDs + query + summary so consumers
         # can discover what slices exist via the behavior map alone, and
         # diff across commits using the query-derived stable id.
-        behavior_map.setdefault("features", []).append(result.to_dict())
+        #
+        # WI-rijop: but keep a degenerate route *marker* (framework_role=
+        # "route" whose forward slice recovers nothing beyond itself) OUT of
+        # features[] — it is a content-free twin of the real concept-handler
+        # feature and would double-populate the array. The per-slice file and
+        # index entry below are still written for completeness.
+        if not (
+            _is_route_marker(handler)
+            and len(result.node_ids) <= 1
+            and not result.edge_ids
+        ):
+            behavior_map.setdefault("features", []).append(result.to_dict())
 
         feature_dict = result.to_dict()
         feature_dict["nodes"] = inline_nodes
@@ -7610,11 +9209,11 @@ def _emit_handler_slices(
             },
         }
 
-        output = {
-            "schema_version": behavior_map.get("schema_version", "0.1.0"),
-            "view": "slice",
-            "feature": feature_dict,
-        }
+        output = add_schema_envelope(
+            {"feature": feature_dict},
+            view="slice",
+            schema_version=behavior_map.get("schema_version", "0.1.0"),
+        )
         user_out_open_json_dump(out_path, output)
 
         entry["emitted"] = True
@@ -7628,12 +9227,14 @@ def _emit_handler_slices(
     user_out_write(
         index_path,
         json.dumps(
-            {
-                "schema_version": behavior_map.get("schema_version", "0.1.0"),
-                "view": "handler_slice_index",
-                "max_handler_slices": max_handler_slices,
-                "handlers": index_entries,
-            },
+            add_schema_envelope(
+                {
+                    "max_handler_slices": max_handler_slices,
+                    "handlers": index_entries,
+                },
+                view="handler_slice_index",
+                schema_version=behavior_map.get("schema_version", "0.1.0"),
+            ),
             indent=2,
             sort_keys=True,
         )
@@ -7647,7 +9248,7 @@ def _emit_handler_slices(
 
 
 # RCT-pinned surface — see tests/test_rct_public_api_pinned.py before changing parameter names or defaults.
-def run_behavior_map(
+def run_survey(
     repo_root: Path,
     out_path: Path | None = None,
     max_tier: int | None = None,
@@ -7655,7 +9256,7 @@ def run_behavior_map(
     max_file_bytes: int | None = None,
     compact: bool = False,
     coverage: float = 0.8,
-    connectivity: bool = True,
+    connectivity: bool = False,
     budgets: str | None = None,
     extra_excludes: list[str] | None = None,
     frameworks: str | None = None,
@@ -7673,7 +9274,7 @@ def run_behavior_map(
     Args:
         repo_root: Root directory of the repository
         out_path: Path to write the behavior map JSON. If None, defaults to
-            ~/.cache/hypergumbo/<fingerprint>/results/<state_hash>/hypergumbo.results.json
+            ~/.cache/hypergumbo/<fingerprint>/results/<state_hash>/survey.json
         max_tier: Optional maximum supply chain tier (1-4). Symbols with
             tier > max_tier are filtered out. None means no filtering.
         max_files: Optional maximum files per language analyzer. Limits
@@ -7681,10 +9282,12 @@ def run_behavior_map(
         compact: If True, output compact mode with coverage-based truncation
             and bag-of-words summary of omitted items.
         coverage: Target centrality coverage for compact mode (0.0-1.0).
-        connectivity: If True (default), use connectivity-aware selection for
-            compact mode. Prioritizes nodes that bridge disconnected entrypoints,
+        connectivity: If True, use connectivity-aware selection for compact
+            mode. Prioritizes nodes that bridge disconnected entrypoints,
             producing well-connected subgraphs instead of isolated high-centrality
-            nodes. Set False to use legacy centrality-based selection.
+            nodes. Defaults to False (centrality-ranked selection, matching the
+            sketch, per D12); opt into connectivity-aware selection via
+            --connectivity.
         budgets: Token budget output specification. Comma-separated specs like
             "4k,16k,64k". Use "default" for DEFAULT_TIERS, "none" to disable.
             If None, defaults to generating DEFAULT_TIERS alongside full output.
@@ -7701,8 +9304,8 @@ def run_behavior_map(
             config (setting, config, table), and CSS structural nodes
             (class_selector, id_selector, rule_set, property, media, keyframes,
             font_face) to reduce degree-0 noise.
-        include_sketch_precomputed: If True (default), pre-extract config_info,
-            vocabulary, and readme_description for fast sketch generation.
+        include_sketch_precomputed: If True (default), pre-extract config_info
+            and readme_description for fast sketch generation.
             Set False to skip this (avoids loading embedding model).
         progress: If True, show progress indicator with ETA to stderr.
 
@@ -7743,7 +9346,7 @@ def run_behavior_map(
     if out_path is None:
         from .sketch_embeddings import _get_results_cache_dir
         cache_dir = _get_results_cache_dir(repo_root)
-        out_path = cache_dir / "hypergumbo.results.json"
+        out_path = cache_dir / CANONICAL_SURVEY_FILENAME
 
     generated_files: list[Path] = []
     behavior_map = new_behavior_map()
@@ -7838,19 +9441,44 @@ def run_behavior_map(
         expand_class_based_view_routes,
         materialize_route_symbols,
     )
-    materialized_routes = materialize_route_symbols(all_symbols)
+    # WI-tufil: mint a real AnalysisRun for each route-materialization post-pass
+    # so the route-marker symbols they emit carry a non-empty origin_run_id
+    # joining a run in this artifact's analysis_runs (WI-mosil), mirroring the
+    # boundary-synthesis pass below. The pass_ids are registered in
+    # catalog._BUILTIN_PIPELINE_PASS_IDS / pass_metadata.GAP_PASSES.
+    _route_mat_run = AnalysisRun.create(  # nosec B106 — pass_id is a pass identifier, not a password
+        pass_id="route-materializer", version=PASS_VERSION,
+        config_fingerprint=compute_config_fingerprint(
+            {"pass_id": "route-materializer"}
+        ),
+    )
+    materialized_routes = materialize_route_symbols(
+        all_symbols, origin_run_id=_route_mat_run.execution_id
+    )
     if materialized_routes:
         all_symbols.extend(materialized_routes)
+        _route_mat_run.nodes_emitted = len(materialized_routes)
+        analysis_runs.append(_route_mat_run.to_dict())
 
     # WI-lojoh: expand Django CBV routes (single ANY route per as_view()
     # registration) into one route per declared HTTP method on the view
     # class. Runs after materialize_route_symbols so any newly minted route
     # symbols can also be expanded.
-    cbv_expanded, cbv_removed_ids = expand_class_based_view_routes(all_symbols)
+    _cbv_run = AnalysisRun.create(  # nosec B106 — pass_id is a pass identifier, not a password
+        pass_id="django-cbv-method-expander", version=PASS_VERSION,
+        config_fingerprint=compute_config_fingerprint(
+            {"pass_id": "django-cbv-method-expander"}
+        ),
+    )
+    cbv_expanded, cbv_removed_ids = expand_class_based_view_routes(
+        all_symbols, origin_run_id=_cbv_run.execution_id
+    )
     if cbv_removed_ids:
         all_symbols = [s for s in all_symbols if s.id not in cbv_removed_ids]
     if cbv_expanded:
         all_symbols.extend(cbv_expanded)
+        _cbv_run.nodes_emitted = len(cbv_expanded)
+        analysis_runs.append(_cbv_run.to_dict())
 
     # Run cross-language linkers
     show_progress("Running linkers", 55)
@@ -7939,9 +9567,21 @@ def run_behavior_map(
     show_progress("Classifying symbols", 60)
     _classify_symbols(all_symbols, repo_root, package_roots, limits=limits)
 
-    # Promote route-bearing symbols from derived (tier 4) to internal (tier 2).
-    # Routes represent the API surface and are valuable regardless of whether
-    # the code is generated (e.g., go-swagger, protobuf gRPC stubs).
+    # WI-bosab: now that Symbol.is_test_file is set, strip naming-convention
+    # framework concepts (service_by_name / controller_by_name / handler_by_name)
+    # from test-file symbols. enrich_symbols runs earlier (before linkers, so it
+    # cannot see the canonical is_test_file verdict), so a test fixture like
+    # `class MyService` in tests/ was mislabeled a production service until here.
+    strip_test_file_only_concepts(all_symbols)
+
+    # Promote route-bearing symbols out of derived (tier 4) so the API surface
+    # is not excluded by the default tier-4 filter — valuable regardless of
+    # whether the code is generated (e.g., go-swagger, protobuf gRPC stubs).
+    # INV-naduh / ADR-0041 §1: tier names supply-chain DISTANCE only, and these
+    # routes live IN the repo (distance 0), so they promote to tier 1
+    # (first_party) — NOT tier 2 (internal_dep), which is reserved for
+    # org-internal *dependency* packages. The "promoted from derived" reason
+    # records that the source was generated/derived.
     for s in all_symbols:
         if s.supply_chain_tier == 4:
             is_route = (s.meta or {}).get("framework_role") == "route"
@@ -7951,7 +9591,7 @@ def run_behavior_map(
                         is_route = True
                         break
             if is_route:
-                s.supply_chain_tier = 2
+                s.supply_chain_tier = 1
                 s.supply_chain_reason = "route promoted from derived"
 
     # Apply tier filtering: always exclude DERIVED (tier 4) unless --max-tier 4.
@@ -8002,6 +9642,17 @@ def run_behavior_map(
             if _is_valid_edge_src(e.src) and e.dst not in removed_symbol_ids
         ]
 
+        # WI-tulit: record which tier-dropped FILES vanished, so a consumer can see
+        # WHAT was excluded — symbols + edges disappear silently otherwise (neither
+        # analysis_incomplete nor limits.failed_files reflects a tier drop). Computed
+        # from the pre-filter `all_symbols` (file nodes only), before the reassignment.
+        for dropped_path in sorted({
+            s.path
+            for s in all_symbols
+            if s.supply_chain_tier > effective_tier and s.kind == "file"
+        }):
+            limits.add_tier_filtered_file(dropped_path)
+
         all_symbols = filtered_symbols
         all_edges = filtered_edges
         limits.max_tier_applied = effective_tier
@@ -8012,60 +9663,14 @@ def run_behavior_map(
     # (.gitignore patterns, npm scripts) are typically degree-0 and add
     # noise without architectural insight.
     if not include_docs:
-        # ADR-0027 Phase-2 audit (WI-jukav): all members are AXIS_PENDING
-        # (Clusters G/H — build/config-shape and domain long-tail) or
-        # AXIS_LANGUAGE_CONSTRUCT (Cluster A — ``property``, ``label``,
-        # ``heading``, ``paragraph`` per audit-findings 0006/0007). None
-        # of these values is scheduled for fold/rename in Phase 3 producer
-        # migration; the noise-filtering semantics survive Wave 5
-        # unchanged. Forward-compatible.
-        _NOISE_KINDS = frozenset({
-            # Documentation / config
-            "section", "table_array", "code_block",
-            "link", "paragraph", "label",
-            "setting",
-            # CSS structural (degree-0 in behavior maps)
-            "class_selector", "id_selector", "rule_set",
-            "property", "media", "keyframes", "font_face",
-            # Config metadata (degree-0 across all tested repos)
-            "pattern",      # .gitignore entries
-            "requirement",  # pip requirements.txt entries
-        })
-        # CSS-family `variable` (custom properties, SCSS / Sass variables) is
-        # zero-edge noise and stays excluded. WI-gafog E2: in any other
-        # language, `variable` is a real top-level binding (Python module
-        # constants, Go top-level `var`, YAML / Make variables) and must
-        # remain in the output for cross-file `from <mod> import NAME`
-        # resolution.
-        _CSS_LANGUAGES = frozenset({"css", "scss", "sass", "less"})
-
-        # INV-bovif: `kind="table"` is overloaded between TOML/INI/properties
-        # `[section]` headers (config noise) and SQL `CREATE TABLE` entities
-        # (first-class schema constructs). Filter only the config-language
-        # producers; SQL tables pass through so the database_query linker
-        # can link query call-sites to schema tables. Same shape as the
-        # `_CSS_LANGUAGES` carve-out above.
-        _TABLE_NOISE_LANGUAGES = frozenset({"toml", "ini", "properties"})
-
-        def _is_noise(sym: "Symbol") -> bool:
-            if sym.kind in _NOISE_KINDS:
-                return True
-            if sym.kind == "variable" and sym.language in _CSS_LANGUAGES:
-                return True
-            if sym.kind == "table" and sym.language in _TABLE_NOISE_LANGUAGES:
-                return True
-            # Wave 6 PR 3 fold per audit-findings 0005: ``script`` now
-            # emits as ``kind="file"`` + ``meta["entry_role"]="script"``.
-            # The legacy literal stays in ``_NOISE_KINDS`` for unmigrated
-            # producers; this branch catches the post-fold shape without
-            # over-excluding real ``kind="file"`` symbols.
-            if sym.kind == "file" and sym.meta:
-                if sym.meta.get("entry_role") == "script":
-                    return True
-            return False
-
-        noise_ids = {s.id for s in all_symbols if _is_noise(s)}
-        all_symbols = [s for s in all_symbols if not _is_noise(s)]
+        # Default view drops degree-0 noise (docs/config/CSS section+table
+        # nodes, bare npm run-scripts) so the map carries architectural signal.
+        # The predicate — including the WI-papag entry_role=script split that
+        # keeps entrypoint-bearing pyproject/console-scripts (ADR-0043 §5 C3)
+        # while filtering npm run-scripts (audit-findings 0005) — lives in
+        # noise_filter.is_noise_symbol.
+        noise_ids = {s.id for s in all_symbols if is_noise_symbol(s)}
+        all_symbols = [s for s in all_symbols if not is_noise_symbol(s)]
         all_edges = [
             e for e in all_edges
             if e.src not in noise_ids and e.dst not in noise_ids
@@ -8099,6 +9704,7 @@ def run_behavior_map(
     boundary, id_remap = create_boundary_nodes(
         all_symbols, all_edges, dependency_manifest=dependency_manifest,
         origin_run_id=_boundary_run.execution_id,
+        ecosystem_classifier=_make_ecosystem_classifier(),
     )
     if boundary:
         all_symbols.extend(boundary)
@@ -8196,19 +9802,21 @@ def run_behavior_map(
     )
     generated_files.extend(handler_slice_files)
 
-    # Compute supply chain summary
-    # Note: derived_paths would be tracked during file discovery in a full implementation
+    # Compute supply chain summary. WI-jafoz: discovery gitignore-excludes
+    # derived dirs (dist/build/__pycache__/...) before the tier-4 classifier
+    # sees them, so we recover them with a direct scan to keep derived_skipped
+    # an honest "what did we ignore" view rather than a silent {files:0}.
     behavior_map["supply_chain_summary"] = _compute_supply_chain_summary(
-        all_symbols, derived_paths=[]
+        all_symbols, derived_paths=_find_derived_skipped(repo_root)
     )
 
-    # Pre-extract sketch data (config, vocabulary, readme)
+    # Pre-extract sketch data (config, readme)
     # This avoids needing to load the embedding model later in sketch mode
     from .sketch import (
-        _extract_config_info, _extract_domain_vocabulary, _extract_readme_description,
+        _extract_config_info, _extract_readme_description,
         ConfigExtractionMode,
     )
-    # Pre-extract sketch data (config, vocabulary, readme) if requested
+    # Pre-extract sketch data (config, readme) if requested
     # This avoids reloading the embedding model when generating sketches later
     if include_sketch_precomputed:
         show_progress("Pre-computing sketch data", 80)
@@ -8222,68 +9830,42 @@ def run_behavior_map(
         except Exception:  # pragma: no cover - graceful degradation
             sketch_precomputed["config_info"] = ""
 
-        # Extract domain vocabulary
-        sketch_precomputed["vocabulary"] = _extract_domain_vocabulary(repo_root, profile)
-
         # Extract README description (uses embedding model)
         try:
             sketch_precomputed["readme_description"] = _extract_readme_description(repo_root)
         except Exception:  # pragma: no cover - graceful degradation
             sketch_precomputed["readme_description"] = None
 
-        # Pre-compute centrality scores for Additional Files section
-        # This avoids expensive ripgrep/regex operations during sketch generation
-        from fnmatch import fnmatch
+        # Pre-compute the Additional-Files ranking scores
+        # (`additional_file_centrality_scores`): the symbol-mention DENSITY of
+        # the NON-SOURCE config/doc files surfaced in the sketch's Additional
+        # Files section — Σ in-degree of mentioned symbols ÷ file length, an
+        # unbounded relative ranking key, NOT a [0,1] centrality (WI-sigof; see
+        # CentralityResult). Pre-computing here avoids expensive ripgrep/regex
+        # work during sketch generation.
+        #
+        # file-anchor:F4 — `content_source_paths` excludes file-kind anchors
+        # (only CONTENT nodes count as "source"), so the file-anchor:F1 candidate
+        # anchors (minted for these same files at the orchestrator chokepoint)
+        # are NOT re-subtracted from the candidate set. That keeps the surface
+        # populated AND makes every centrality key a real node path (the WI-rajod
+        # subset invariant; `additional_file_candidates` is the shared selector
+        # both sites use).
         from .discovery import DEFAULT_EXCLUDES
         from .sketch import ADDITIONAL_FILES_EXCLUDES
-        from .taxonomy import is_additional_file_candidate
+        from .taxonomy import additional_file_candidates
 
-        # Extract source file paths from analyzed symbols
-        source_paths: set[str] = set()
-        for sym in all_symbols:
-            if sym.path:
-                source_paths.add(sym.path)
-
-        # Collect candidate non-source files (same logic as _format_additional_files)
-        all_excludes = list(DEFAULT_EXCLUDES) + ADDITIONAL_FILES_EXCLUDES
-        candidate_files: list[Path] = []
-
+        content_source_paths: set[str] = {
+            sym.path for sym in all_symbols if sym.path and sym.kind != "file"
+        }
         if file_index is not None:
             _all_repo_files = file_index.all_files()
-        else:  # pragma: no cover - file_index always set in run_behavior_map
+        else:  # pragma: no cover - file_index always set in run_survey
             _all_repo_files = [f for f in repo_root.rglob("*") if f.is_file()]
-        for f in _all_repo_files:
-            rel_path = f.relative_to(repo_root)
-            rel_str = str(rel_path)
-
-            # Skip source files
-            if rel_str in source_paths:
-                continue
-
-            # Skip hidden files/directories
-            if any(p.startswith(".") for p in rel_path.parts):
-                continue  # pragma: no cover - tested in _format_additional_files
-
-            # Role-based filtering (ADR-0004 Phase 4)
-            if not is_additional_file_candidate(f):
-                continue
-
-            # Pattern-based filtering for boilerplate (same logic as _format_additional_files)
-            is_excluded = False
-            for pattern in all_excludes:
-                if fnmatch(f.name, pattern):
-                    is_excluded = True  # pragma: no cover - tested in sketch tests
-                    break  # pragma: no cover
-                for part in rel_path.parts:
-                    if fnmatch(part, pattern):
-                        is_excluded = True  # pragma: no cover - tested in sketch tests
-                        break  # pragma: no cover
-                if is_excluded:  # pragma: no cover
-                    break
-            if is_excluded:
-                continue  # pragma: no cover
-
-            candidate_files.append(f)
+        candidate_files = additional_file_candidates(
+            repo_root, _all_repo_files, content_source_paths,
+            list(DEFAULT_EXCLUDES) + ADDITIONAL_FILES_EXCLUDES,
+        )
 
         # Compute centrality scores for all candidates
         if candidate_files and all_symbols:
@@ -8296,12 +9878,12 @@ def run_behavior_map(
                 max_file_size=100 * 1024,
             )
             # Store as relative path strings for JSON serialization
-            sketch_precomputed["centrality_scores"] = {
+            sketch_precomputed["additional_file_centrality_scores"] = {
                 str(f.relative_to(repo_root)): score
                 for f, score in centrality_result.normalized_scores.items()
             }
         else:  # pragma: no cover - defensive: no candidates or no symbols
-            sketch_precomputed["centrality_scores"] = {}
+            sketch_precomputed["additional_file_centrality_scores"] = {}
 
         behavior_map["sketch_precomputed"] = sketch_precomputed
 
@@ -8369,7 +9951,10 @@ def run_behavior_map(
 
     # Apply compact mode if requested (modifies main output only)
     if compact:
-        config = CompactConfig(target_coverage=coverage)
+        # WI-kolal + D12: global centrality-ranked prefix (see cmd_compact).
+        config = CompactConfig(
+            target_coverage=coverage, language_proportional=False
+        )
         behavior_map = format_compact_behavior_map(
             behavior_map, all_symbols, all_edges, config,
             connectivity_aware=connectivity,
@@ -8377,10 +9962,11 @@ def run_behavior_map(
 
     # ADR-0033/ADR-0043 §6: validate_ir + the validation_report now run inside finalize()
     # (sub-step 10, structurally last over the final substrate). Only the stderr warning
-    # summary remains here (I/O). In compact mode behavior_map was rebound above, but
-    # format_compact_behavior_map does dict(behavior_map) so finalize's validation_report is
-    # preserved. The shrink-only ratchet gate (tests/test_validation_report_empty.py) is
-    # unchanged.
+    # summary remains here (I/O). In compact mode behavior_map was rebound above;
+    # format_compact_behavior_map preserves finalize's validation_report (and analysis_runs)
+    # through the projection — it strips only the heavy usage_contexts / sketch_precomputed
+    # blocks (WI-judun), so the quality signal survives compact. The shrink-only ratchet gate
+    # (tests/test_validation_report_empty.py) is unchanged.
     from .spec_validator import emit_stderr_summary
     emit_stderr_summary(_fin_ctx.violations)
 
@@ -8410,6 +9996,14 @@ def run_behavior_map(
     return generated_files
 
 
+# ADR-0042 (WI-kisoj): ``run_behavior_map`` is a deprecated alias for
+# ``run_survey`` (the "survey" concept rename). Kept for the one-minor-version
+# window so existing call-sites (~56 tests + a few src modules) resolve without
+# a mass rename; removed at window-close. Assignment (not a wrapper) so the
+# signature and introspection stay identical.
+run_behavior_map = run_survey
+
+
 def print_all_help(parser: argparse.ArgumentParser) -> None:
     """Print help for main parser and all subcommands."""
     # Print main help
@@ -8421,7 +10015,10 @@ def print_all_help(parser: argparse.ArgumentParser) -> None:
     # Get subparsers
     # pylint: disable=protected-access
     subparsers_action = None
-    for action in parser._subparsers._actions:
+    subparsers_group = parser._subparsers
+    if subparsers_group is None:  # pragma: no cover - the top parser always has subparsers
+        return
+    for action in subparsers_group._actions:
         if isinstance(action, argparse._SubParsersAction):
             subparsers_action = action
             break
@@ -8452,17 +10049,36 @@ def print_all_help(parser: argparse.ArgumentParser) -> None:
         subparser.print_help()
 
 
+def _suppress_broken_stdout_pipe() -> None:
+    """Point the stdout fd at ``/dev/null`` after a downstream pipe closed.
+
+    When a reader such as ``head`` exits early, the next write to stdout raises
+    ``BrokenPipeError``; even after we catch it, Python flushes the standard
+    streams at interpreter shutdown and would re-raise, printing a traceback
+    after otherwise-correct output. Redirecting the fd to ``/dev/null`` swallows
+    that final flush. Best-effort: if stdout is already unusable there is
+    nothing to suppress.
+    """
+    try:
+        devnull = os.open(os.devnull, os.O_WRONLY)
+        os.dup2(devnull, sys.stdout.fileno())
+    except (OSError, ValueError):  # pragma: no cover - stdout already closed
+        pass
+
+
 def main(argv=None) -> int:
     import logging
 
-    # Restore default SIGPIPE behavior so commands like
-    # ``hypergumbo explain Symbol | head`` exit quietly when the downstream
-    # pipe closes, instead of producing a BrokenPipeError traceback after
-    # otherwise-correct output. POSIX-only: signal.SIGPIPE doesn't exist
-    # on Windows, where Python uses a different mechanism for closed pipes.
-    import signal
-    if hasattr(signal, "SIGPIPE"):
-        signal.signal(signal.SIGPIPE, signal.SIG_DFL)
+    # INV-vopuh: do NOT reset SIGPIPE to SIG_DFL. Python's default disposition
+    # (SIG_IGN) turns a write to a closed pipe into a *catchable*
+    # ``BrokenPipeError``. Resetting it to SIG_DFL made an EPIPE on ANY pipe in
+    # the process fatal with signal 13 (exit 141, zero output) — including the
+    # ``transformers`` safetensors-conversion *background thread* that fires
+    # during ``model.encode()`` (sketch_embeddings.py), which silently killed
+    # ``sketch`` at higher token budgets regardless of where the main thread
+    # was. The one case SIG_DFL was installed for — ``hypergumbo explain | head``
+    # exiting quietly — is handled by catching ``BrokenPipeError`` around command
+    # dispatch below.
 
     parser = build_parser()
 
@@ -8475,7 +10091,7 @@ def main(argv=None) -> int:
         print_all_help(parser)
         return 0
 
-    subcommands = {"run", "slice", "search", "routes", "explain", "catalog", "config", "sketch", "build-grammars", "install-gitleaks", "uninstall-gitleaks", "cache-status", "cache-clear", "install-embeddings", "uninstall-embeddings", "install-rust-analyzer", "uninstall-rust-analyzer", "add-extras", "remove-extras", "test-coverage", "dead-code-maybe", "symbols", "compact", "io-boundaries", "verify-claims"}
+    subcommands = {"survey", "run", "slice", "search", "routes", "explain", "catalog", "config", "sketch", "build-grammars", "install-gitleaks", "uninstall-gitleaks", "cache-status", "cache-clear", "install-embeddings", "uninstall-embeddings", "install-rust-analyzer", "uninstall-rust-analyzer", "add-extras", "remove-extras", "test-coverage", "dead-code-maybe", "repeat-finder", "symbols", "compact", "io-boundaries", "verify-claims"}
 
     # WI-balij (UAT UX-04): accept --debug in any position. Strip it here so
     # `hypergumbo sketch . --debug` and `hypergumbo --debug sketch .` both
@@ -8489,8 +10105,8 @@ def main(argv=None) -> int:
     # WI-vozof: accept --backend in any position and translate it to the
     # HYPERGUMBO_RUST_ANALYZER env var that the gate reads. The gate itself
     # already knows how to honour either signal; this path is CLI-side sugar
-    # so `hypergumbo run . --backend rust-analyzer` works identically to
-    # `HYPERGUMBO_RUST_ANALYZER=1 hypergumbo run .`. Matches the --debug
+    # so `hypergumbo survey . --backend rust-analyzer` works identically to
+    # `HYPERGUMBO_RUST_ANALYZER=1 hypergumbo survey .`. Matches the --debug
     # stripping pattern so the flag works in any position relative to the
     # subcommand.
     #
@@ -8591,5 +10207,50 @@ def main(argv=None) -> int:
         parser.print_help()  # pragma: no cover
         return 1  # pragma: no cover
 
-    return args.func(args)
+    try:
+        result = args.func(args)
+        # Flush while we can still catch a closed downstream pipe *in-band*.
+        # stdout is block-buffered when piped, so a large write (e.g. a full
+        # sketch) is otherwise deferred to interpreter shutdown — where the
+        # EPIPE escapes as an "Exception ignored in: <stdout>" message and a
+        # 120 exit instead of being caught here (INV-vopuh, the `| head` UX).
+        sys.stdout.flush()
+        return result
+    except SubstrateError as exc:
+        # A --input substrate failed the strict load (INV-sozop / WI-jukah /
+        # INV-gapib): convert the typed failure to a clean rc=2 + message for
+        # every consumer at one chokepoint, rather than a raw traceback or a
+        # silent rc=0 "No X found". (Typed rc=2 for input problems; the general
+        # unexpected-error safety net is the `except Exception` handler below,
+        # WI-himas.)
+        print(f"Error: {exc}", file=sys.stderr)
+        return 2
+    except BrokenPipeError:
+        # The downstream reader closed the pipe (e.g. ``... | head``). Redirect
+        # the stdout fd to /dev/null so Python's shutdown flush does not
+        # re-raise, then exit quietly with a non-zero status (a reader leaving
+        # mid-output is not a clean completion; under a shell pipeline the
+        # reader's own exit status dominates anyway).
+        _suppress_broken_stdout_pipe()
+        return 1
+    except Exception as exc:  # deliberate top-level safety net (WI-himas)
+        # WI-himas: a top-level catch-all so an *unanticipated* error surfaces
+        # as a clean message + rc=1 instead of a raw Python traceback dumped at
+        # the user. Under --debug the original exception is re-raised so the
+        # full traceback is available for diagnosis. Expected/typed failures are
+        # handled by the specific excepts above; this catches only the genuinely
+        # unexpected. `except Exception` (not BaseException) deliberately lets
+        # SystemExit (argparse --help / parse errors) and KeyboardInterrupt
+        # (Ctrl-C) propagate normally.
+        if debug_flag or getattr(args, "debug", False):
+            raise
+        print(
+            f"hypergumbo: internal error: {type(exc).__name__}: {exc}",
+            file=sys.stderr,
+        )
+        print(
+            "This is a bug; re-run with --debug for a full traceback.",
+            file=sys.stderr,
+        )
+        return 1
 

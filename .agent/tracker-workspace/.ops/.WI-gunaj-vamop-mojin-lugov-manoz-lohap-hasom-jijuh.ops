@@ -26,3 +26,49 @@
   clock: 2  # 55f6
   nonce: 55f6  # 55f6
   message: "Split sibling: WI-bosog (the AR-record repo_fingerprint format outlier, bare-64 vs sha256:+16). Same field repo_fingerprint, distinct producers, distinct fixes."  # 55f6
+- op: update  # 1974
+  at: '2026-07-09T01:52:18Z'  # 1974
+  by: agent  # 1974
+  actor: jgstern_agent  # 1974
+  clock: 3  # 1974
+  nonce: '1974'  # 1974
+  set: {}  # 1974
+  add:  # 1974
+    tags: [wave5]  # 1974
+- op: discuss  # d59d
+  at: '2026-07-09T01:52:18Z'  # d59d
+  by: agent  # d59d
+  actor: jgstern_agent  # d59d
+  clock: 4  # d59d
+  nonce: d59d  # d59d
+  message: "Wave-5 sweep (2026-07-08): identity:F5 fingerprint-format residual (sketch repo_fingerprint rendered truncated-16 vs full-64 in AR records; a rendering-consistency gap, sketch-adjacent but a fingerprint issue not a sketch-cache one). Empty isbefore -> terminal wave."  # d59d
+- op: update  # 89cd
+  at: '2026-07-21T21:17:43Z'  # 89cd
+  by: agent  # 89cd
+  actor: jgstern_agent  # 89cd
+  clock: 5  # 89cd
+  nonce: 89cd  # 89cd
+  set:  # 89cd
+    title: "sketch repo_fingerprint [:16] is a by-design cache-dir hash — no emitted sketch repo_fingerprint FIELD exists, so the original cross-surface string-join mismatch is not realizable"  # 89cd
+- op: discuss  # f8e2
+  at: '2026-07-21T21:17:43Z'  # f8e2
+  by: agent  # f8e2
+  actor: jgstern_agent  # f8e2
+  clock: 6  # f8e2
+  nonce: f8e2  # f8e2
+  message: "Staleness audit 2026-07-21: the premised harm (a string-equality join between the sketch's repo_fingerprint field and the run record's failing on every pair) was NEVER realizable — grep of sketch.py/schema.py finds NO emitted sketch_precomputed.repo_fingerprint field (the item's own verifiability note already conceded it reads None). The surviving compute_repo_fingerprint(...)[:16] truncation moved to _get_repo_state_hash (sketch_embeddings.py:1372-1390), an explicit internal CACHE-DIR state hash ('keeps cache-dir names short'); _get_repo_fingerprint (1325) no longer calls compute_repo_fingerprint at all. Retitled to reflect the by-design cache hash. Close-eligible (no realizable defect) on owner's call; left open pending that decision."  # f8e2
+- op: update  # 60a4
+  at: '2026-07-21T21:32:00Z'  # 60a4
+  by: agent  # 60a4
+  actor: jgstern_agent  # 60a4
+  clock: 7  # 60a4
+  nonce: 60a4  # 60a4
+  set:  # 60a4
+    status: wont_do  # 60a4
+- op: discuss  # 6d85
+  at: '2026-07-21T21:32:01Z'  # 6d85
+  by: agent  # 6d85
+  actor: jgstern_agent  # 6d85
+  clock: 8  # 6d85
+  nonce: 6d85  # 6d85
+  message: "wont_do 2026-07-21 (user-confirmed close after staleness audit). Confirmed residual-free by direct re-verification: grep repo_fingerprint in sketch.py = 0 hits (no emitted sketch_precomputed.repo_fingerprint field), so the filed cross-surface string-equality join mismatch is NOT realizable. The only surviving compute_repo_fingerprint(...)[:16] truncation is _get_repo_state_hash (sketch_embeddings.py:1390, used at :1460 as a cache-dir state_hash) — by-design internal cache-dir naming, not an emitted-field defect. No defect residual; premise does not hold."  # 6d85

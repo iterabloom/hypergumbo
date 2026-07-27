@@ -1,0 +1,50 @@
+- op: create  # db76
+  at: '2026-07-19T22:17:14Z'  # db76
+  by: agent  # db76
+  actor: jgstern_agent  # db76
+  clock: 1  # db76
+  nonce: db76  # db76
+  data:  # db76
+    kind: work_item  # db76
+    title: "Resolve entry_role=script noise-filter governance tension (audit-findings 0005 filter-as-noise vs ADR-0043 §5 exempt-for-entrypoints)"  # db76
+    status: needs_human_review  # db76
+    priority: 3  # db76
+    parent:  # db76
+    tags:  # db76
+    - wave5  # db76
+    isbefore: []  # db76
+    duplicate_of: []  # db76
+    not_duplicate_of: []  # db76
+    pr_ref:  # db76
+    description: "**Governance tension** surfaced during the META-jalur gate-5 crush (2026-07-19; owner directed: file + design ruling). Two shipped governance docs give OPPOSITE instructions for `entry_role=script` symbols at the Phase-D noise filter:\n\n- **ADR-0043 §5** (\"The noise filter exempts entrypoint-bearing symbols (resolves C3)\"): the noise filter carries a declared exemption predicate — entrypoint-bearing symbols (e.g. `entry_role=script` and per-language entrypoint concepts under WI-tosul) are EXEMPT from `_is_noise` and survive into `detect_entrypoints`. This was ADR-0043's stated resolution of its own defect C3 (\"the noise filter erases entrypoint-bearing symbols before they are detected\").\n- **audit-findings 0005** (Wave-6 PR-3 fold): `script` emits as `kind=file` + `meta[entry_role]=script`; `_is_noise` FILTERS it as noise (`cli.py`: `if sym.kind == \"file\" and sym.meta.get(\"entry_role\") == \"script\": return True`).\n\n**Current code follows the fold** (audit-findings 0005): `entry_role=script` is filtered as noise, directly contradicting ADR-0043 §5's \"exempt\" ruling. Both cannot be honored.\n\n**Scope:** ORTHOGONAL to META-jalur's finalize-reconciliation gate — Phase-D filtering is finalize's R1 precondition (it decides set membership, not whether derived fields reconcile), so it does NOT block the META-jalur closure. It was a documented-only residual on WI-pozur (done) with no tracked home until this item.\n\n**Decision needed (owner design ruling):**\n- (A) ADR-0043 §5 wins → remove the `_is_noise` `entry_role=script` branch so it survives into `detect_entrypoints`; correct/supersede audit-findings 0005's fold. Risk: re-admits script nodes the fold removed as degree-0 noise — verify they are entrypoint-bearing, not pure noise.\n- (B) audit-findings 0005 wins → keep filter-as-noise; amend ADR-0043 §5 in place (its \"resolves C3\" ruling superseded by the later fold; the `entry_role=script` exemption withdrawn, though WI-tosul per-language entrypoint concepts may still merit exemption).\n\nDo NOT pick a side unilaterally — both are shipped governance decisions. Owner rules the direction; then implement (doc reconciliation + possible one-line code change).\n\nCross-refs: WI-pozur (ADR-0043 impl, done — C3 was its documented residual); WI-tosul (per-language entrypoint concepts, done); audit-findings 0005; ADR-0043 §5."  # db76
+    fields: {}  # db76
+- op: update  # 4ced
+  at: '2026-07-20T20:55:57Z'  # 4ced
+  by: agent  # 4ced
+  actor: jgstern_agent  # 4ced
+  clock: 2  # 4ced
+  nonce: 4ced  # 4ced
+  set:  # 4ced
+    status: todo_hard  # 4ced
+- op: discuss  # cefa
+  at: '2026-07-20T20:55:57Z'  # cefa
+  by: agent  # cefa
+  actor: jgstern_agent  # cefa
+  clock: 3  # cefa
+  nonce: cefa  # cefa
+  message: "OWNER RULING 2026-07-20: Option C — refined predicate (reconcile both docs by subset). Direction set; leaving needs_human_review -> todo_hard for implementation.\n\nEMPIRICAL BASIS (fixture + real repo, noise-filter ON vs OFF via a temporary env-guard, reverted). entry_role=script is TWO populations the single predicate (kind==file and entry_role==script) cannot distinguish:\n  (1) npm package.json \"scripts\" (build/test/lint): kind=file lang=json, DEGREE-0 (no edges), concept=npm_script which detect_entrypoints does NOT recognize -> never detected as an entrypoint -> genuine noise. Filtering is CORRECT.\n  (2) pyproject [project.scripts] / cargo [[bin]] console-scripts: kind=file lang=toml, carries an outgoing defines_target(+calls) edge into the real CLI module, concept=pyproject_script which detect_entrypoints DOES recognize -> detected as CLI_COMMAND @0.99 evidence_type=manifest_declared -> genuine high-value entrypoint. Filtering WRONGLY drops it.\nEVIDENCE: synthetic fixture -> exempting scripts = +2 entrypoints (mycli/myworker @0.99), -0. Real repo beads-mcp -> current filter silently drops the package's SOLE declared CLI command (beads-mcp = \"beads_mcp.server:main\"); exempting recovers it (0.99 manifest_declared), loses nothing.\n\nRECONCILIATION (both governance docs STAND, each scoped to its correct subset — neither is overruled):\n  - audit-findings 0005 \"filter script as noise\" is CORRECT for the npm_script degree-0 subset.\n  - ADR-0043 §5 \"exempt entrypoint-bearing symbols (resolves C3)\" is CORRECT for the manifest-CLI subset — these ARE the entrypoint-bearing symbols the noise filter erases before detection (C3). The Wave-6 blanket fold over-corrected: it fixed the npm noise but re-opened C3 for pyproject/cargo CLI entrypoints.\nROOT CAUSE: a coarse predicate conflating \"degree-0 noise declaration\" with \"entrypoint-bearing manifest CLI\" — the same one-label-two-concepts pattern the correctness campaign targets.\n\nIMPLEMENTATION (cli.py + docs; none governance-locked): narrow _is_noise so it filters entry_role=script ONLY when the node is NOT entrypoint-bearing (the npm_script degree-0 case), and EXEMPTS the entrypoint-bearing case. Discriminator note: at filter time the pyproject_script CONCEPT is not yet on the node (resolved later in detection), so the discriminator must be filter-time-available — candidates in order of principledness: (a) reorder/exempt symbols that detection will flag as entrypoints (literally ADR-0043 §5's C3 intent); (b) meta.entry_point presence (pyproject sets it; npm run-scripts set meta.command, no entry_point); (c) presence of an outgoing defines_target edge. Then amend ADR-0043 §5 + audit-findings 0005 to state the subset boundary. TDD + own PR."  # cefa
+- op: update  # dd60
+  at: '2026-07-20T22:29:07Z'  # dd60
+  by: agent  # dd60
+  actor: jgstern_agent  # dd60
+  clock: 4  # dd60
+  nonce: dd60  # dd60
+  set:  # dd60
+    status: done  # dd60
+- op: discuss  # 288f
+  at: '2026-07-20T22:29:09Z'  # 288f
+  by: agent  # 288f
+  actor: jgstern_agent  # 288f
+  clock: 5  # 288f
+  nonce: 288f  # 288f
+  message: "DONE — implemented Option C in PR #769 (merged fast-forward to dev). Root cause: the Phase-D noise filter treated every entry_role=script file symbol as noise (kind==file and entry_role==script), silently erasing entrypoint-bearing pyproject/console-scripts before detect_entrypoints ran (ADR-0043 §5 C3). Fix: extracted the predicate to the unit-testable noise_filter.is_noise_symbol and refined the script branch by meta['entry_point'] — bare npm run-scripts (meta['command'], no entry_point) filtered; entrypoint-bearing console-scripts (meta['entry_point']) exempt.\n\nBEHAVIORAL EVIDENCE (closure-evidence discipline — this is a runtime/output-behavior item): (1) production-path regression test test_run_behavior_map.py::test_pyproject_console_script_survives_and_is_detected_wi_papag asserts the pyproject console-script survives the default filter AND is detected as a manifest_declared CLI_COMMAND, while npm run-scripts stay filtered — green in CI. (2) Live repro re-run: fixture with [project.scripts] -> exempting yields +2 CLI entrypoints (mycli/myworker @0.99), -0; real repo beads-mcp -> the sole declared CLI command (beads-mcp = beads_mcp.server:main) now survives and is detected (was silently dropped). Full suite 21097 passed / 100% coverage.\n\nGovernance reconciliation: amended ADR-0043 §5 (subset-refined exemption) and audit-findings 0005 (kind-fold does not mandate blanket noise-filtering) — both docs now stand, each scoped to its correct population. verify-generated recency trip on docs/ARCHITECTURE.md cleared by regeneration in the same PR (core modules 67->68 for the new noise_filter module)."  # 288f

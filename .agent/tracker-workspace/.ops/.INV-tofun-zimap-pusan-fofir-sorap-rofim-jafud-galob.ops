@@ -110,3 +110,19 @@
   clock: 11  # 2634
   nonce: '2634'  # 2634
   message: "[Wave-0 pending-validation sweep] tracker: satisfy INV-tofun\n\nThe four named linkers (event_sourcing, database_query, graphql_resolver, ipc) no longer hardcode language=javascript on synthetic stand-ins from .ts/.tsx files. All four now use the shared js_ts_language_from_path helper (_text_filters.py:100-118) that mirrors the JS/TS analyzer's parity rule: .ts/.tsx -> typescript, else javascript. Coverage is 100% on changed source. Unit tests at test_event_sourcing_linker.py:132-139, test_database_query_linker.py:315-324, test_graphql_resolver_linker.py:45-60 all pass. End-to-end validation in test_event_sourcing_linker.py:369-385 confirms Symbol.discovery_language and id prefix are correctly set to typescript on .ts discoveries. Commit a638bfefe3 (2026-06-08)."  # 2634
+- op: update  # 78f3
+  at: '2026-06-22T02:21:59Z'  # 78f3
+  by: agent  # 78f3
+  actor: jgstern_agent  # 78f3
+  clock: 12  # 78f3
+  nonce: 78f3  # 78f3
+  set: {}  # 78f3
+  remove:  # 78f3
+    tags: [awaits_bakeoff_validation]  # 78f3
+- op: discuss  # 7d92
+  at: '2026-06-22T02:21:59Z'  # 7d92
+  by: agent  # 7d92
+  actor: jgstern_agent  # 7d92
+  clock: 13  # 7d92
+  nonce: 7d92  # 7d92
+  message: "Validated MOVED via DEEP cohort deep-20260621-215349/cohort-002/iter-001. apollo-server (strong TS target): 0/3882 .ts/.tsx-path nodes carry language=javascript -- the linker synthetic-symbol mis-tag is gone; 0 mistagged across jedis/pretix/chatwoot too. Non-TS repos = inconclusive; apollo verdict unambiguous, stripping per Phase-6 hand-correction (plurality penalizes niche claims)."  # 7d92

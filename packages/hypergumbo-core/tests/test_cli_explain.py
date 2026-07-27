@@ -26,7 +26,7 @@ def test_cmd_explain_shows_symbol_details(tmp_path: Path, capsys) -> None:
                 "path": "src/main.py",
                 "span": {"start_line": 1, "end_line": 10, "start_col": 0, "end_col": 10},
                 "cyclomatic_complexity": 5,
-                "lines_of_code": 10,
+                "line_span": 10,
                 "supply_chain": {
                     "tier": 1,
                     "tier_name": "first_party",
@@ -54,6 +54,71 @@ def test_cmd_explain_shows_symbol_details(tmp_path: Path, capsys) -> None:
     assert "src/main.py" in out
     assert "complexity" in out.lower() or "5" in out
     assert "lines" in out.lower() or "10" in out
+
+
+def test_cmd_explain_shows_docstring(tmp_path: Path, capsys) -> None:
+    """WI-kipod: explain surfaces the captured docstring (human intent)."""
+    behavior_map = {
+        "schema_version": SCHEMA_VERSION,
+        "nodes": [
+            {
+                "id": "python:src/main.py:1-10:foo:function",
+                "name": "foo",
+                "kind": "function",
+                "language": "python",
+                "path": "src/main.py",
+                "span": {"start_line": 1, "end_line": 10, "start_col": 0, "end_col": 10},
+                "docstring": "Return a friendly greeting for the given name.",
+            },
+        ],
+        "edges": [],
+    }
+    results_file = tmp_path / "hypergumbo.results.json"
+    results_file.write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.symbol = "foo"
+    args.path = str(tmp_path)
+    args.input = None
+
+    result = cmd_explain(args)
+
+    assert result == 0
+    out, _ = capsys.readouterr()
+    assert "Return a friendly greeting for the given name." in out
+
+
+def test_cmd_explain_omits_docstring_line_when_absent(
+    tmp_path: Path, capsys
+) -> None:
+    """WI-kipod: no Docstring label emitted for a symbol without one."""
+    behavior_map = {
+        "schema_version": SCHEMA_VERSION,
+        "nodes": [
+            {
+                "id": "python:src/main.py:1-10:foo:function",
+                "name": "foo",
+                "kind": "function",
+                "language": "python",
+                "path": "src/main.py",
+                "span": {"start_line": 1, "end_line": 10, "start_col": 0, "end_col": 10},
+            },
+        ],
+        "edges": [],
+    }
+    results_file = tmp_path / "hypergumbo.results.json"
+    results_file.write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.symbol = "foo"
+    args.path = str(tmp_path)
+    args.input = None
+
+    result = cmd_explain(args)
+
+    assert result == 0
+    out, _ = capsys.readouterr()
+    assert "Docstring:" not in out
 
 
 def test_cmd_explain_shows_callers_and_callees(tmp_path: Path, capsys) -> None:
@@ -157,8 +222,116 @@ def test_cmd_explain_symbol_not_found(tmp_path: Path, capsys) -> None:
     assert "not found" in err.lower() or "No symbol" in err
 
 
+def _multi_file_process_map() -> dict:
+    """Two symbols named ``process`` in DIFFERENT files — an ambiguous spec."""
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "nodes": [
+            {
+                "id": "python:src/main.py:1-5:process:function",
+                "name": "process",
+                "kind": "function",
+                "language": "python",
+                "path": "src/main.py",
+                "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
+            },
+            {
+                "id": "javascript:src/utils.js:1-5:process:function",
+                "name": "process",
+                "kind": "function",
+                "language": "javascript",
+                "path": "src/utils.js",
+                "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
+            },
+        ],
+        "edges": [],
+    }
+
+
 def test_cmd_explain_multiple_matches(tmp_path: Path, capsys) -> None:
-    """Explain lists all matches when multiple symbols match."""
+    """INV-nogof: explain ERRORS on an ambiguous name (matches in >1 file),
+    matching slice's policy — it no longer silently dumps every match."""
+    results_file = tmp_path / "hypergumbo.results.json"
+    results_file.write_text(json.dumps(_multi_file_process_map()))
+
+    args = FakeArgs()
+    args.symbol = "process"
+    args.path = str(tmp_path)
+    args.input = None
+
+    result = cmd_explain(args)
+
+    # Strict policy: non-zero exit, candidates listed on STDERR (not stdout).
+    assert result == 1
+    out, err = capsys.readouterr()
+    assert "Ambiguous entry" in err
+    assert "src/main.py" in err
+    assert "src/utils.js" in err
+    # The error names the disambiguation escapes.
+    assert "--language" in err
+
+
+def test_cmd_explain_first_resolves_ambiguity(tmp_path: Path, capsys) -> None:
+    """INV-nogof/WI-nanut: --first accepts the top match instead of erroring."""
+    results_file = tmp_path / "hypergumbo.results.json"
+    results_file.write_text(json.dumps(_multi_file_process_map()))
+
+    args = FakeArgs()
+    args.symbol = "process"
+    args.path = str(tmp_path)
+    args.input = None
+    args.first = True
+
+    result = cmd_explain(args)
+
+    assert result == 0
+    out, _ = capsys.readouterr()
+    # Exactly one section: the first candidate, no "=====" section separator.
+    assert "process" in out
+    assert "=" * 60 not in out
+
+
+def test_cmd_explain_language_resolves_ambiguity(tmp_path: Path, capsys) -> None:
+    """WI-nanut: --language narrows the match pool so the spec is unambiguous."""
+    results_file = tmp_path / "hypergumbo.results.json"
+    results_file.write_text(json.dumps(_multi_file_process_map()))
+
+    args = FakeArgs()
+    args.symbol = "process"
+    args.path = str(tmp_path)
+    args.input = None
+    args.language = "javascript"
+
+    result = cmd_explain(args)
+
+    assert result == 0
+    out, err = capsys.readouterr()
+    assert "Ambiguous entry" not in err
+    # Only the javascript symbol survives the language filter.
+    assert "src/utils.js" in out
+
+
+def test_cmd_explain_file_resolves_ambiguity(tmp_path: Path, capsys) -> None:
+    """WI-nanut: --file narrows the match pool by path suffix."""
+    results_file = tmp_path / "hypergumbo.results.json"
+    results_file.write_text(json.dumps(_multi_file_process_map()))
+
+    args = FakeArgs()
+    args.symbol = "process"
+    args.path = str(tmp_path)
+    args.input = None
+    args.file = "main.py"
+
+    result = cmd_explain(args)
+
+    assert result == 0
+    out, err = capsys.readouterr()
+    assert "Ambiguous entry" not in err
+    assert "src/main.py" in out
+
+
+def test_cmd_explain_limit_caps_same_file_sections(tmp_path: Path, capsys) -> None:
+    """WI-nanut: --limit caps sections for non-ambiguous same-file duplicates."""
     behavior_map = {
         "schema_version": SCHEMA_VERSION,
         "nodes": [
@@ -171,12 +344,12 @@ def test_cmd_explain_multiple_matches(tmp_path: Path, capsys) -> None:
                 "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
             },
             {
-                "id": "python:src/utils.py:1-5:process:function",
+                "id": "python:src/main.py:20-25:process:function",
                 "name": "process",
                 "kind": "function",
                 "language": "python",
-                "path": "src/utils.py",
-                "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
+                "path": "src/main.py",
+                "span": {"start_line": 20, "end_line": 25, "start_col": 0, "end_col": 10},
             },
         ],
         "edges": [],
@@ -188,16 +361,15 @@ def test_cmd_explain_multiple_matches(tmp_path: Path, capsys) -> None:
     args.symbol = "process"
     args.path = str(tmp_path)
     args.input = None
+    args.limit = 1
 
     result = cmd_explain(args)
 
-    # Should succeed but show disambiguation or all matches
+    # Same-file duplicates are NOT ambiguous (slice policy); --limit caps them.
     assert result == 0
-
     out, _ = capsys.readouterr()
-    # Should mention both locations
-    assert "src/main.py" in out
-    assert "src/utils.py" in out
+    # Only one section: no separator between multiple sections.
+    assert "=" * 60 not in out
 
 
 def test_cmd_explain_with_input_file(tmp_path: Path, capsys) -> None:
@@ -2017,7 +2189,9 @@ def test_cmd_explain_shows_edge_type_in_callers(tmp_path: Path, capsys) -> None:
 
 
 def test_cmd_explain_shows_edge_type_in_callees(tmp_path: Path, capsys) -> None:
-    """Callee lines show the edge type."""
+    """Callee edge type is surfaced — now via the per-type section header
+    ("Calls" groups calls edges) rather than a per-entry [calls] annotation
+    (INV-rarol)."""
     behavior_map = {
         "schema_version": SCHEMA_VERSION,
         "nodes": [
@@ -2062,8 +2236,9 @@ def test_cmd_explain_shows_edge_type_in_callees(tmp_path: Path, capsys) -> None:
     assert result == 0
 
     out, _ = capsys.readouterr()
-    # Callee line should mention the edge type
-    assert "calls" in out
+    # The edge type is conveyed by the per-type section header.
+    assert "Calls (1)" in out
+    assert "helper" in out
 
 
 def test_cmd_explain_provenance_on_callees(tmp_path: Path, capsys) -> None:
@@ -2244,7 +2419,9 @@ def test_cmd_explain_provenance_off_by_default(tmp_path: Path, capsys) -> None:
 
 
 def test_cmd_explain_provenance_no_derived_from(tmp_path: Path, capsys) -> None:
-    """--provenance gracefully handles edges without derived_from."""
+    """INV-rarol: --provenance has a VISIBLE effect even on edges without a
+    derivation chain — it prints a marker instead of being byte-identical to
+    the no-flag form."""
     behavior_map = {
         "schema_version": SCHEMA_VERSION,
         "nodes": [
@@ -2289,8 +2466,68 @@ def test_cmd_explain_provenance_no_derived_from(tmp_path: Path, capsys) -> None:
     assert result == 0
 
     out, _ = capsys.readouterr()
-    # Should not crash; no derived_from line shown for edges without it
+    # No "Derived from:" line (that's only for edges that carry a chain)...
     assert "Derived from:" not in out
+    # ...but --provenance is no longer invisible: it marks the chainless edge.
+    assert "(no derivation chain" in out
+
+
+def test_cmd_explain_sections_partition_by_edge_type(tmp_path: Path, capsys) -> None:
+    """INV-rarol: explain sections partition by edge TYPE, so a section's count
+    matches its entries' relationship — 'Called by (N)' means callers (calls
+    edges) only, NOT callers+instantiators+containers summed. Unmapped edge
+    types fall back to a direction-qualified canonical-name label."""
+    span = "python:s.py:1-9:Span:class"
+
+    def node(nid: str, name: str, kind: str = "function") -> dict:
+        return {
+            "id": nid, "name": name, "kind": kind, "language": "python",
+            "path": "s.py",
+            "span": {"start_line": 1, "end_line": 2, "start_col": 0, "end_col": 0},
+        }
+
+    behavior_map = {
+        "schema_version": SCHEMA_VERSION,
+        "nodes": [
+            node(span, "Span", "class"),
+            node("python:s.py:20:caller:function", "caller"),
+            node("python:s.py:30:maker:function", "maker"),
+            node("python:s.py:1:mod:file", "mod", "file"),
+            node("python:s.py:40:dep:function", "dep"),
+            node("python:s.py:50:m:method", "m", "method"),
+            node("python:s.py:60:callee:function", "callee"),
+        ],
+        "edges": [
+            # Four DIFFERENT incoming relationships to Span:
+            {"id": "e1", "src": "python:s.py:20:caller:function", "dst": span, "type": "calls", "line": 1, "confidence": 0.9},
+            {"id": "e2", "src": "python:s.py:30:maker:function", "dst": span, "type": "instantiates", "line": 1, "confidence": 0.9},
+            {"id": "e3", "src": "python:s.py:1:mod:file", "dst": span, "type": "contains", "line": 1, "confidence": 0.9},
+            {"id": "e4", "src": "python:s.py:40:dep:function", "dst": span, "type": "depends_on", "line": 1, "confidence": 0.9},
+            # Two different outgoing relationships from Span:
+            {"id": "e5", "src": span, "dst": "python:s.py:50:m:method", "type": "contains", "line": 1, "confidence": 0.9},
+            {"id": "e6", "src": span, "dst": "python:s.py:60:callee:function", "type": "calls", "line": 1, "confidence": 0.9},
+        ],
+    }
+    (tmp_path / "hypergumbo.results.json").write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.symbol = "Span"
+    args.path = str(tmp_path)
+    args.input = None
+    args.provenance = False
+    args.exclude_tests = False
+
+    assert cmd_explain(args) == 0
+    out, _ = capsys.readouterr()
+    # Incoming: one labeled section per type; counts NOT conflated.
+    assert "Called by (1)" in out          # only the calls edge
+    assert "Instantiated by (1)" in out
+    assert "Contained by (1)" in out
+    assert "Incoming 'depends_on' (1)" in out   # fallback label, unmapped type
+    assert "Called by (4)" not in out      # the old conflated count is gone
+    # Outgoing: per type.
+    assert "Calls (1)" in out
+    assert "Contains (1)" in out
 
 
 def test_cmd_explain_provenance_unresolved_derived_from(tmp_path: Path, capsys) -> None:
@@ -2444,4 +2681,180 @@ def test_cmd_explain_summary_appears_before_source_dumps(tmp_path: Path, capsys)
         assert calls_pos < source_for_pos, (
             "Calls summary must precede caller/callee source dumps — WI-dubum regression"
         )
+
+
+# =============================================================================
+# WI-dazob: field-presence + unknown-edge-type guards, registry label table
+# =============================================================================
+
+
+def test_cmd_explain_warns_on_schema_version_drift(tmp_path: Path, capsys) -> None:
+    """WI-dazob: a substrate whose schema_version differs from this build emits a
+    field-presence drift warning to stderr (so absent consumer fields read as
+    schema drift, not silent inapplicability)."""
+    behavior_map = {
+        "schema_version": "0.0.1-ancient",  # deliberately != current SCHEMA_VERSION
+        "nodes": [
+            {
+                "id": "python:src/main.py:1-5:foo:function",
+                "name": "foo",
+                "kind": "function",
+                "language": "python",
+                "path": "src/main.py",
+                "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
+            },
+        ],
+        "edges": [],
+    }
+    results_file = tmp_path / "hypergumbo.results.json"
+    results_file.write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.symbol = "foo"
+    args.path = str(tmp_path)
+    args.input = None
+
+    result = cmd_explain(args)
+
+    assert result == 0
+    _, err = capsys.readouterr()
+    assert "schema_version" in err
+    assert "0.0.1-ancient" in err
+    assert "schema drift" in err
+
+
+def test_cmd_explain_no_drift_warning_on_current_schema(tmp_path: Path, capsys) -> None:
+    """WI-dazob: no drift warning when the substrate matches this build."""
+    behavior_map = {
+        "schema_version": SCHEMA_VERSION,
+        "nodes": [
+            {
+                "id": "python:src/main.py:1-5:foo:function",
+                "name": "foo",
+                "kind": "function",
+                "language": "python",
+                "path": "src/main.py",
+                "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
+            },
+        ],
+        "edges": [],
+    }
+    results_file = tmp_path / "hypergumbo.results.json"
+    results_file.write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.symbol = "foo"
+    args.path = str(tmp_path)
+    args.input = None
+
+    result = cmd_explain(args)
+
+    assert result == 0
+    _, err = capsys.readouterr()
+    assert "schema drift" not in err
+
+
+def test_cmd_explain_flags_unrecognized_edge_type(tmp_path: Path, capsys) -> None:
+    """WI-dazob: an edge type registered NOWHERE is flagged 'unrecognized' rather
+    than presented as a legitimate relationship (old/renamed substrate signal)."""
+    behavior_map = {
+        "schema_version": SCHEMA_VERSION,
+        "nodes": [
+            {
+                "id": "python:src/main.py:1-5:foo:function",
+                "name": "foo",
+                "kind": "function",
+                "language": "python",
+                "path": "src/main.py",
+                "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
+            },
+            {
+                "id": "python:src/other.py:1-5:bar:function",
+                "name": "bar",
+                "kind": "function",
+                "language": "python",
+                "path": "src/other.py",
+                "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
+            },
+        ],
+        "edges": [
+            {
+                "id": "e1",
+                "src": "python:src/other.py:1-5:bar:function",
+                "dst": "python:src/main.py:1-5:foo:function",
+                "type": "OLD_RENAMED_TYPE",  # not in the edge-type registry
+                "line": 3,
+            },
+        ],
+    }
+    results_file = tmp_path / "hypergumbo.results.json"
+    results_file.write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.symbol = "foo"
+    args.path = str(tmp_path)
+    args.input = None
+    args.exclude_tests = False
+
+    result = cmd_explain(args)
+
+    assert result == 0
+    out, _ = capsys.readouterr()
+    assert "unrecognized edge type 'OLD_RENAMED_TYPE'" in out
+
+
+def test_cmd_explain_surfaces_registry_description(tmp_path: Path, capsys) -> None:
+    """WI-dazob: a registered-but-unstyled edge type surfaces its registry
+    description (F80.A1) rather than a bare quoted type name."""
+    from hypergumbo_core.edge_types import find_edge_type
+
+    # module_exports is registered but absent from the friendly label table.
+    spec = find_edge_type("module_exports")
+    assert spec is not None  # guards the fixture premise
+
+    behavior_map = {
+        "schema_version": SCHEMA_VERSION,
+        "nodes": [
+            {
+                "id": "python:src/main.py:1-5:foo:function",
+                "name": "foo",
+                "kind": "function",
+                "language": "python",
+                "path": "src/main.py",
+                "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
+            },
+            {
+                "id": "python:src/other.py:1-5:bar:function",
+                "name": "bar",
+                "kind": "function",
+                "language": "python",
+                "path": "src/other.py",
+                "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
+            },
+        ],
+        "edges": [
+            {
+                "id": "e1",
+                "src": "python:src/main.py:1-5:foo:function",
+                "dst": "python:src/other.py:1-5:bar:function",
+                "type": "module_exports",
+                "line": 3,
+            },
+        ],
+    }
+    results_file = tmp_path / "hypergumbo.results.json"
+    results_file.write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.symbol = "foo"
+    args.path = str(tmp_path)
+    args.input = None
+    args.exclude_tests = False
+
+    result = cmd_explain(args)
+
+    assert result == 0
+    out, _ = capsys.readouterr()
+    # The registry description appears as a sub-line under the section header.
+    assert spec.description in out
 

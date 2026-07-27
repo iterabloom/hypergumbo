@@ -77,3 +77,91 @@
   clock: 7  # 6652
   nonce: '6652'  # 6652
   message: "[Wave-0 pending-validation sweep] tracker: keep-pending INV-hunup\n\nFix is complete and present in code:\n- spec_validator.py:1262 defines _CANONICAL_STABLE_ID_PATTERN regex enforcing sha256:[0-9a-f]{16}\n- spec_validator.py:1287-1323 implements _check_stable_id_format validator with 5-category classification\n- spec_validator.py:148 calls validator in validate_ir pipeline\n- cli.py:8364 integrates validator into behavior_map artifact\n- analyze/base.py:564-658 all factories (make_file/module/dependency/variable/export/project/interface/type/protocol_stable_id) use _short_sha256 helper\n- All 4 linkers (database_query, message_queue, event_sourcing, graphql_resolver) migrated to make_protocol_stable_id\n- All 72 spec_validator tests pass (including 8 stable_id format tests)\n\nReady for bakeoff validation on diverse repos to confirm no regressions.\nRoot cause fully addressed per Phase 6 PR1 (commit dbaacdbb84).\n"  # 6652
+- op: update  # 76ae
+  at: '2026-06-22T02:24:12Z'  # 76ae
+  by: agent  # 76ae
+  actor: jgstern_agent  # 76ae
+  clock: 8  # 76ae
+  nonce: 76ae  # 76ae
+  set:  # 76ae
+    status: violated  # 76ae
+- op: discuss  # ef3e
+  at: '2026-06-22T02:24:12Z'  # ef3e
+  by: agent  # ef3e
+  actor: jgstern_agent  # ef3e
+  clock: 9  # ef3e
+  nonce: ef3e  # ef3e
+  message: "DEEP cohort deep-20260621-215349/cohort-002/iter-001 verdict: NO_MOVE. Canonical stable_id sha256:[0-9a-f]{16} is NOT enforced on rst/vue/scss analyzer nodes: pretix 1223 nonconforming (rst 821 directive/target, vue 284 prop/slot, scss 118 mixin); chatwoot 12664 (vue 12661 directive/prop/slot/style_block, scss 3). The 'reduce violations to 0' claim holds only on core analyzers (apollo TS 1 edge-case 'test', jedis Java 0). Self-analysis showed 0 because hypergumbo's own repo has no rst/vue/scss nodes. Downgraded pending_validation -> violated (positive evidence). awaits_bakeoff_validation tag RETAINED per no_move lifecycle (re-validate after the regression fix ships)."  # ef3e
+- op: discuss  # 872a
+  at: '2026-06-22T02:24:15Z'  # 872a
+  by: agent  # 872a
+  actor: jgstern_agent  # 872a
+  clock: 10  # 872a
+  nonce: 872a  # 872a
+  message: "Regression sub-item filed: WI-rijup-pomag-nakan-hohar-fapoj-dobiz-kizok-gaboz (rst/vue/scss stable_id non-canonicalization). See DEEP cohort deep-20260621-215349/cohort-002/iter-001. Parent stays tagged for re-validation after the regression fix ships."  # 872a
+- op: update  # 6781
+  at: '2026-06-22T04:47:28Z'  # 6781
+  by: agent  # 6781
+  actor: jgstern_agent  # 6781
+  clock: 11  # 6781
+  nonce: '6781'  # 6781
+  set:  # 6781
+    status: pending_validation  # 6781
+- op: discuss  # b405
+  at: '2026-06-22T04:47:28Z'  # b405
+  by: agent  # b405
+  actor: jgstern_agent  # b405
+  clock: 12  # b405
+  nonce: b405  # b405
+  message: "Fix shipped in PR #4263 (merged origin/dev e354900c5a): the no_move root cause (rst/vue/scss — and svelte/puppet/robot/astro/twig/pony — emitting raw-format stable_id) is closed via WI-rijup. Downgrade reversed violated -> pending_validation. RE-VALIDATE by re-running the SAME DEEP session as iter-002: `bakeoff-deep cycle --workdir ~/hypergumbo_lab_notebook/bakeoff_artifacts/deep-20260621-215349` then re-run /tmp/drain_verify.py — expect nonconforming stable_id 1223->0 (pretix) and 12664->0 (chatwoot). awaits_bakeoff_validation tag retained until iter-002 confirms moved."  # b405
+- op: update  # bb36
+  at: '2026-06-22T05:44:46Z'  # bb36
+  by: agent  # bb36
+  actor: jgstern_agent  # bb36
+  clock: 13  # bb36
+  nonce: bb36  # bb36
+  set:  # bb36
+    status: violated  # bb36
+  remove:  # bb36
+    tags: [awaits_bakeoff_validation]  # bb36
+- op: discuss  # d907
+  at: '2026-06-22T05:44:47Z'  # d907
+  by: agent  # d907
+  actor: jgstern_agent  # d907
+  clock: 14  # d907
+  nonce: d907  # d907
+  message: "iter-002 validation (deep-20260621-215349/cohort-002/iter-002, post PR #4263): WI-rijup claim VALIDATED MOVED -- pretix rst/vue/scss nonconforming stable_id 1223->0, chatwoot vue/scss 12664->0. Moved for the RIGHT reason: node counts byte-identical (pretix 31095->31095, chatwoot 44372->44372; doc-node counts rst 821/vue 284/scss 118 and vue 14387/scss 3 unchanged), node.id byte-identical iter1<->iter2 (0 added/removed), 0 new stable_id collisions. No regression on the other cohort claims (ts_extends 86, inherited 11455/16, refs->pyvar 922, bare_hex 0). awaits_bakeoff_validation tag STRIPPED (the shipped WI-rijup claim is validated moved). BUT INV-hunup is NOT satisfied -> status remains violated: iter-002 surfaced a residual the cohort+grep had missed, and a codebase-wide scope-expansion found MORE non-canonical stable_id producers beyond WI-rijup's 9 doc analyzers: (1) graphql-linker linkers/graphql.py:223 stable_id=call.operation_name on synthetic graphql_client nodes (language=None) -- surfaced live on apollo-server as stable_id='test' from 'query test{...}'; (2) sparql.py (3 sites) stable_id=symbol_id -- EXACT WI-rijup antipattern, MISSED by WI-rijup's grep; (3) kdl.py stable_id=symbol_id -- same, MISSED; (4) scip/index.py:203 stable_id=sym_info.symbol (SCIP moniker) -- needs judgment (hash-to-canonical vs document-exempt). wgsl.py:234 verified canonical (make_entry_stable_id/None). Remediation to be filed; WI-rijup's 'found exactly these 9 producers' claim was incomplete (grep blind spot: only matched analyzers with =symbol_id and was not run over linkers/scip)."  # d907
+- op: update  # e356
+  at: '2026-06-22T07:03:06Z'  # e356
+  by: agent  # e356
+  actor: jgstern_agent  # e356
+  clock: 15  # e356
+  nonce: e356  # e356
+  set:  # e356
+    status: pending_validation  # e356
+  add:  # e356
+    tags: [awaits_bakeoff_validation]  # e356
+- op: discuss  # 60d1
+  at: '2026-06-22T07:03:07Z'  # 60d1
+  by: agent  # 60d1
+  actor: jgstern_agent  # 60d1
+  clock: 16  # 60d1
+  nonce: 60d1  # 60d1
+  message: "All KNOWN non-canonical stable_id producers are now fixed: 9 doc analyzers (WI-rijup, validated iter-002) + sparql/kdl/graphql-client/scip (PR #4265 (merged origin/dev 416ee26a70) / WI-sojop). Re-tagged awaits_bakeoff_validation. RE-VALIDATE via iter-003 (bakeoff-deep cycle --workdir deep-20260621-215349 + /tmp/iter002_verify.py): expect apollo's graphql residual stable_id='test' -> 0 (last cohort residual). sparql/kdl/scip are not in the cohort's languages -> validated at unit-test level (canonical-stable_id assertions). On iter-003 0-nonconforming -> INV-hunup satisfied."  # 60d1
+- op: update  # 638d
+  at: '2026-06-22T07:21:51Z'  # 638d
+  by: agent  # 638d
+  actor: jgstern_agent  # 638d
+  clock: 17  # 638d
+  nonce: 638d  # 638d
+  set:  # 638d
+    status: satisfied  # 638d
+  remove:  # 638d
+    tags: [awaits_bakeoff_validation]  # 638d
+- op: discuss  # 4280
+  at: '2026-06-22T07:21:51Z'  # 4280
+  by: agent  # 4280
+  actor: jgstern_agent  # 4280
+  clock: 18  # 4280
+  nonce: '4280'  # 4280
+  message: "SATISFIED via iter-003 (deep-20260621-215349/cohort-002/iter-003, post PR #4265). BEHAVIORAL EVIDENCE: total nonconforming stable_id across all 4 cohort repos = 0 (apollo 1->0: all 38 graphql_client nodes now canonical sha256, incl. 37 previously-null anonymous-operation nodes; jedis/pretix/chatwoot 0). Moved for the right reason: node counts byte-identical (apollo 4737->4737 etc.). SCOPE (no weasel words): validated = the cohort's languages (JS/TS/Java/Python/Ruby/Vue/SCSS/RST + graphql-linker) at 0 nonconforming, PLUS all grep-identified non-canonical producers fixed and pinned by production-path unit tests -- the 9 doc analyzers (WI-rijup), and sparql/kdl/graphql-client/scip (WI-sojop). sparql/kdl/scip are not in the cohort's languages so their canonicalization is unit-test-validated, not cohort-validated. The standing spec_validator _check_stable_id_format gate runs on every analysis and guards against regression or a newly-introduced non-canonical producer. Validators: /tmp/iter003_verify.py + .out; /tmp/iter002_verify.py."  # 4280

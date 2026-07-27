@@ -164,5 +164,5 @@ find . -name "*.py" -exec sed -i 's/import hypergumbo\./import hypergumbo_core./
 
 ## Getting Help
 
-- Issues: https://codeberg.org/iterabloom/hypergumbo/issues
-- Documentation: https://codeberg.org/iterabloom/hypergumbo/src/branch/main/docs
+- Issues: https://github.com/iterabloom/hypergumbo/issues
+- Documentation: https://github.com/iterabloom/hypergumbo/tree/main/docs

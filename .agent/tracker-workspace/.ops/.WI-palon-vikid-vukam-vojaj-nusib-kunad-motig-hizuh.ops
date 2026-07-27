@@ -38,3 +38,34 @@
     tags: [dogfood]  # d328
   remove:  # d328
     tags: [dogfooding]  # d328
+- op: update  # 9073
+  at: '2026-07-12T08:14:50Z'  # 9073
+  by: agent  # 9073
+  actor: jgstern_agent  # 9073
+  clock: 4  # 9073
+  nonce: '9073'  # 9073
+  set: {}  # 9073
+  add:  # 9073
+    tags: [wave5]  # 9073
+- op: discuss  # daa4
+  at: '2026-07-12T08:14:50Z'  # daa4
+  by: agent  # daa4
+  actor: jgstern_agent  # daa4
+  clock: 5  # daa4
+  nonce: daa4  # daa4
+  message: "Wave-4 triage 2026-07-12: MIGRATE to Wave 5. No emission bug -- profile.py:867 loc is correct file-level SLOC; the 1.66x double-count is a cross-measure artifact (file-SLOC vs span-LOC), and the item own 2026-06-06 correction reversed the direction. Doc-only, low value."  # daa4
+- op: update  # 16a3
+  at: '2026-07-15T19:37:10Z'  # 16a3
+  by: agent  # 16a3
+  actor: jgstern_agent  # 16a3
+  clock: 6  # 16a3
+  nonce: 16a3  # 16a3
+  set:  # 16a3
+    status: done  # 16a3
+- op: discuss  # f608
+  at: '2026-07-15T19:37:10Z'  # f608
+  by: agent  # f608
+  actor: jgstern_agent  # f608
+  clock: 7  # f608
+  nonce: f608  # f608
+  message: "Done via documentation (PR #665). The 'profile double-counts' premise is backwards: profile.languages[L].loc is the authoritative per-file SLOC (_count_loc summed over the file set, each file once, profile.py:867); node.line_span is a per-symbol span that overlaps across nesting, so Σ(node.line_span) ≈ 1.66× the file total is the non-summable artifact, not a profile error. The root-cause conceptual leak (lines_of_code naming both conventions) was already closed by the WI-bozid rename → line_span, and schema.json + ir.py already document the distinction; the only residual was the spec §profile prose gap, now closed in PR #665. Option B (make node LOC file-kind-only) was rejected: ADR-0043 §6.1 #5 precedent against replacing a per-file count with a per-node aggregate, and it would destroy six real line_span consumers (centrality dampening, test-density, dead-code ranking, slicing, sketch density)."  # f608

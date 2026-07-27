@@ -2,11 +2,14 @@
 """Bridge linker: Ruby FFI for connecting Ruby FFI gem calls and C extension registrations
 to C/C++ function implementations.
 
-This linker creates ffi_bridge edges for two Ruby-C/C++ interop mechanisms:
+This linker creates ``calls`` edges (tagged ``meta.bridge_kind="ffi"``) for two
+Ruby-C/C++ interop mechanisms (the bespoke ``ffi_bridge`` type was folded onto
+``calls`` per the audit-findings 0002 relationship-axis consolidation):
 
-1. **FFI gem**: Scans Ruby files for ``attach_function`` declarations within modules
-   that ``extend FFI::Library``. Extracts the C function name and matches it to
-   C/C++ function symbols.
+1. **FFI gem**: Scans Ruby files line-by-line for ``attach_function``
+   declarations (the scan is not scoped to modules that ``extend
+   FFI::Library``). Extracts the C function name and matches it to C/C++
+   function symbols.
 
 2. **C extensions**: Scans C/C++ files for ``rb_define_method``,
    ``rb_define_module_function``, and ``rb_define_singleton_method`` calls, which
@@ -18,13 +21,13 @@ How It Works
 Phase 1 (Ruby FFI gem):
   Scans ``.rb`` files for ``attach_function :name, ...`` or
   ``attach_function :ruby_name, :c_name, ...`` patterns. When the C function
-  name matches a C/C++ function symbol, creates an ``ffi_bridge`` edge from
+  name matches a C/C++ function symbol, creates a ``calls`` edge from
   the enclosing Ruby symbol to the C function.
 
 Phase 2 (C extensions):
   Scans ``.c`` and ``.cpp`` files for ``rb_define_method(klass, "name", c_func, argc)``
   and variants. When the C function argument matches a C/C++ function symbol,
-  creates an ``ffi_bridge`` edge.
+  creates a ``calls`` edge.
 
 Why This Design
 ---------------
@@ -249,8 +252,7 @@ def link_ruby_ffi(
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     evidence_type="ast_call_direct",
-                    access_mode="write",
-                    dest_access_mode="read",
+                    data_direction="src_to_dst",
                     meta=edge_meta,
                     derived_from=[src_sym.id, c_sym.id],
                 ))
@@ -267,8 +269,7 @@ def link_ruby_ffi(
                     origin_run_id=run.execution_id,
                     evidence_type="ast_call_direct",
                     is_resolved=False,
-                    access_mode="write",
-                    dest_access_mode="read",
+                    data_direction="src_to_dst",
                     meta={"bridge_kind": "ffi", "framework_dispatch": "ruby_ffi_attach"},
                     derived_from=[src_sym.id, dst],
                 ))
@@ -303,7 +304,7 @@ def link_ruby_ffi(
             # the rb_define_method C function short name had cross-file
             # collisions in the in-tree symbol table.
             confidence = 0.5 if is_fallback else 0.85
-            edge_meta: dict[str, object] = {
+            edge_meta = {
                 "bridge_kind": "ffi",
                 "framework_dispatch": "ruby_c_extension",
             }
@@ -318,8 +319,7 @@ def link_ruby_ffi(
                 origin=PASS_ID,
                 origin_run_id=run.execution_id,
                 evidence_type="ast_call_direct",
-                access_mode="write",
-                dest_access_mode="read",
+                data_direction="src_to_dst",
                 meta=edge_meta,
                 derived_from=[c_sym.id, c_sym.id],
             ))

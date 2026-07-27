@@ -24,3 +24,20 @@
     fields:  # cfe8
       statement: "Every JSON output must carry a standard envelope (schema_version, view, query echo, data); no subcommand may emit a bare array or skip envelope fields."  # cfe8
       root_cause: "Shared add_schema_envelope() helper is unevenly deployed. Symptoms: dead-code-maybe lacks schema_version (INV-fipol), verify-claims returns bare JSON array with explicit preserve-legacy-flat-list comment at cli.py:4531 backward-compat blocker (INV-gatog), config lacks schema_version/view (INV-pazum), slice query echo incomplete partial-fixed at slice.py:226-233 but min_confidence still missing (INV-rakot)."  # cfe8
+- op: update  # d82f
+  at: '2026-07-10T02:46:05Z'  # d82f
+  by: agent  # d82f
+  actor: jgstern_agent  # d82f
+  clock: 2  # d82f
+  nonce: d82f  # d82f
+  set:  # d82f
+    status: satisfied  # d82f
+  add:  # d82f
+    tags: [wave4]  # d82f
+- op: discuss  # 4596
+  at: '2026-07-10T02:46:05Z'  # 4596
+  by: agent  # 4596
+  actor: jgstern_agent  # 4596
+  clock: 3  # 4596
+  nonce: '4596'  # 4596
+  message: "SATISFIED — cli-output sub-B (JSON envelope incomplete/non-standard) closed. Members done: INV-fipol (dead-code-maybe) + INV-pazum (config) now emit the canonical spread envelope through the add_schema_envelope gateway (WI-gogif F1). Advances WI-gogif (2 of 3 sub-metas closed: INV-fivar + INV-pikob; INV-rugah's leaf WI-nohoh already done — WI-gogif closes once INV-rugah is confirmed)."  # 4596

@@ -7,8 +7,10 @@ compiled to output views (e.g., behavior_map JSON).
 Key IR Classes
 --------------
 - **Span**: Source location with line/column info
-- **AnalysisRun**: Provenance for an analysis pass execution, including
-  run_signature for cache keying and repo_fingerprint for invalidation
+- **AnalysisRun**: Provenance for an analysis pass execution. Its
+  run_signature and repo_fingerprint are external provenance / PROV-DM
+  fields with no internal consumers — hypergumbo never reads them back to
+  key or invalidate a cache (see the AnalysisRun "Readership note").
 - **Symbol**: Code elements (functions, classes) with location, identity hashes
   (stable_id, shape_id), and quality scores
 - **Edge**: Relationships between symbols with confidence, evidence tracking,
@@ -25,10 +27,13 @@ Key IR Classes
 Provenance Fields
 -----------------
 - execution_id: Unique per run (uuid)
-- run_signature: Deterministic hash of (pass_id, version, config_fingerprint, toolchain)
-- repo_fingerprint: Hash of git state for cache invalidation
+- run_signature: Deterministic hash of (pass_id, version, config_fingerprint,
+  toolchain). Serialized as provenance only; not read back to key a cache.
+- repo_fingerprint: Hash of git state. Serialized as provenance only; the
+  analysis cache keys on analyzer_identity, not on this field.
 - origin_run_signature: *Removed in 0.9.x (WI-gapin); never stamped by any producer.*
 """
+import functools
 import hashlib
 import inspect
 import json
@@ -48,6 +53,48 @@ VALID_ACCESS_MODES: frozenset[str] = frozenset({"read", "write", "mutate", "dele
 - write: replace value entirely
 - mutate: modify in place (implies read + write; ordering matters)
 - delete: remove binding/key/entry (can cause subsequent reads to fail)
+"""
+
+VALID_DATA_DIRECTIONS: frozenset[str] = frozenset({
+    "src_to_dst", "dst_to_src", "bidirectional",
+})
+"""ADR-0038 ruling 3 dataflow-DIRECTION vocabulary for ``Edge.meta['data_direction']``.
+
+The way data moves across a cross-boundary edge — a SEPARATE axis from
+``access_mode`` (how src touches dst's state). This is the post-eviction home of
+the FFI-bridge / protocol-linker direction semantic that ``access_mode="write"``
++ ``dest_access_mode="read"`` used to smuggle (the cgo docstring said it
+outright — "Go caller passes data to C"). ``dest_access_mode`` is removed.
+
+- src_to_dst: data flows from the edge source to the destination (the common
+  bridge case — caller passes args to the native/remote callee)
+- dst_to_src: data flows back from destination to source
+- bidirectional: data flows both ways
+"""
+
+VALID_CONFIDENCE_SOURCES: frozenset[str] = frozenset({
+    "evidence_derived", "emitter_constant", "composite",
+})
+"""ADR-0039 ruling 2 provenance discriminator for ``Edge.confidence_source``.
+
+Names *how* the published ``confidence`` value was produced, so the migration
+off hardcoded per-emitter constants (ADR-0039 ruling 1) onto the evidence
+derivation layer is machine-readable rather than an audit:
+
+- evidence_derived: the value came through ``confidence.derive_confidence``
+  (the ``EvidenceTypeSpec.base_confidence`` registry seed for the edge's
+  ``evidence_type``). The honest, target state.
+- emitter_constant: a hardcoded producer constant (the legacy state of the
+  ~566 ``confidence=`` call sites, and the last-resort 0.85 fallback for an
+  unseeded pathway). A legal, declared transitional state.
+- composite: ``confidence`` still fuses a ranking adjustment that ruling 3
+  relocates to ``rank_score``; a producer stamps this explicitly while its
+  ranking migration is pending.
+
+Re-evaluation trigger (ADR-0024 bounded-enum discipline): if ``composite``
+ever needs to split into sub-kinds (per-adjustment provenance), or a consumer
+needs to filter edges by source programmatically across the codebase, promote
+to a heavyweight registry-backed axis per ADR-0024's seven-step workflow.
 """
 
 PASS_VERSION: str = __version__
@@ -216,6 +263,15 @@ class AnalysisRun:
     Tracks which pass ran, when, and what it analyzed. Includes fields
     for cache keying (run_signature, repo_fingerprint) and runtime info
     (toolchain).
+
+    Readership note (concept-audit 2026-07-15): ``run_signature``,
+    ``repo_fingerprint``, ``config_fingerprint``, and ``pass_version``
+    have no *internal* consumers — hypergumbo never reads them back to
+    key a cache or branch a decision. They are computed and serialized
+    for EXTERNAL cache-keying / PROV-DM tooling only (``run_signature``
+    is additionally recomputed at finalize). By contrast ``execution_id``
+    and the ``origin_run_id`` FK on Symbol/Edge ARE load-bearing
+    internally (spec-validator referential-integrity).
     """
 
     execution_id: str  # axis: identity
@@ -316,7 +372,7 @@ class AnalysisRun:
         )
 
     def to_dict(self) -> dict:
-        return {
+        result: dict = {
             "execution_id": self.execution_id,
             "run_signature": self.run_signature,
             "repo_fingerprint": self.repo_fingerprint,
@@ -326,9 +382,6 @@ class AnalysisRun:
             "config_fingerprint": self.config_fingerprint,
             "files_analyzed": self.files_analyzed,
             "files_skipped": self.files_skipped,
-            "skipped_passes": self.skipped_passes,
-            "failed_files": self.failed_files,
-            "warnings": self.warnings,
             "started_at": self.started_at,
             # INV-gizik: a pass that emitted output cannot serialize duration_ms=0
             # ("324 edges in 0ms is impossible"). The timer is now wired on every
@@ -343,6 +396,18 @@ class AnalysisRun:
             "nodes_emitted": self.nodes_emitted,
             "edges_emitted": self.edges_emitted,
         }
+        # INV-virik: the per-run reporting lists are present ONLY when non-empty,
+        # so a consumer reads their ABSENCE as "nothing to report" instead of a
+        # misleading always-empty list on every one of the (many) runs (which read
+        # as "pipeline clean"). Matches the partial_results_reason / max_tier_applied
+        # omit-when-empty precedent; these fields are optional in the schema.
+        if self.skipped_passes:
+            result["skipped_passes"] = self.skipped_passes
+        if self.failed_files:
+            result["failed_files"] = self.failed_files
+        if self.warnings:
+            result["warnings"] = self.warnings
+        return result
 
 
 # Supply chain tier names for JSON output
@@ -383,7 +448,12 @@ class Symbol:
         origin: Provenance list (INV-jidat). Each element is a pass ID that
             contributed to this Symbol's existence, ordered chronologically
             (originating pass first). Single-element lists are the common case.
-            Auto-normalized from scalar str for backward compat.
+            Auto-normalized from scalar str for backward compat. The declared
+            type is ``str | List[str]`` so this accepted-input contract holds at
+            the type level; do NOT narrow it to ``List[str]`` — most producers
+            pass a single scalar pass ID, and narrowing reintroduces hundreds of
+            arg-type errors under mypy strict (INV-zogud). The stored value is
+            always a list after ``__post_init__``.
         origin_run_id: Unique execution ID of the analysis run
         stable_id: Structural-identity hash within a (qualified_name,
             module_path) scope (ADR-0014 amended by Phase 6 PR3 /
@@ -393,15 +463,47 @@ class Symbol:
             the dogfood corpus that promise produced a 60% collision rate
             (155 zero-param bash functions in one file shared one ID),
             so name + qualified_name are now part of the hash inputs.
-        shape_id: Structural implementation fingerprint
-        fingerprint: Content hash of source bytes (sha256)
+            Serialized as ``sha256:<16hex>``; the ``sha256:`` prefix names
+            the hash *algorithm*, not the identity axis — the scheme/version
+            lives in the top-level ``stable_id_scheme`` descriptor.
+            ``shape_id`` shares this exact surface; the two are discriminated
+            by field identity (and their ``*_scheme`` descriptors), NOT by an
+            in-value prefix, and their value-spaces are disjoint (0 overlap on
+            the dogfood corpus). This is by design (WI-tisar): unlike
+            ``fingerprint``'s ``hgfp2:`` *version* tag or the edges'
+            ``edge:``/``edgekey:`` *namespace* tags, these two need no in-value
+            discriminator because they are always field-qualified. Consumers
+            must therefore retain field context — do NOT join on bare hash
+            values across the stable_id/shape_id axes.
+        shape_id: Structural *skeleton* hash — the parse subtree with
+            identifiers, literals, comments, and punctuation STRIPPED
+            (ADR-0014 §1 compute_shape_id), so two symbols with the same
+            code shape but different names/values collide. Compared
+            within-language only (Python uses an ast-based variant).
+            Contrast ``fingerprint``, which KEEPS identifiers/literals —
+            ``shape_id`` is a strict coarsening of it. Serialized as
+            ``sha256:<16hex>`` — the same surface as ``stable_id`` (see that
+            field's note on cross-axis bare-hash joins; WI-tisar).
+        fingerprint: Structural *content* hash of the symbol's parse
+            subtree — shape PLUS identifiers and literals, whitespace/
+            comment-invariant, tagged with the scheme in
+            ``symbol_fingerprint_scheme`` (``hgfp2:``). NOT a raw
+            source-byte hash — that was the ADR-0032-demolished Format-1
+            scheme. ``None`` for grammarless languages / parse errors /
+            synthetic spans. Producer: fingerprint.py.
         quality: Score and reason dict for quality assessment
         meta: Optional metadata dict for language-specific information
         supply_chain_tier: Position in dependency graph (1=first_party, 2=internal_dep,
             3=external_dep, 4=derived). See §14 of spec.
         supply_chain_reason: Why this tier was assigned (e.g., "matches ^src/")
-        is_test_file: True if the file holds test code. Independent
-            of tier — co-located test files can be tier 1.
+        is_test_file: True if the file holds test *code* — the NARROW
+            supply-chain role flag (spec §14), where examples/benches/fuzz
+            carry their own role rather than this flag. Independent of tier —
+            co-located test files can be tier 1. Deliberately distinct from the
+            broader ``paths.is_test_file`` ranking/scan heuristic (which also
+            covers mocks/fixtures/testdata/benches for entrypoint
+            deprioritization); do not swap consumers of one for the other
+            without re-running the WI-popok concept audit.
         is_example_file: True if the file is example/demo/sample/tutorial code.
             Set when the path matches an EXAMPLE_PATTERN.
         is_config_file: True if the file is a dependency/build manifest such as
@@ -413,7 +515,12 @@ class Symbol:
         is_exported: True if the symbol is part of the package's public API.
         cyclomatic_complexity: McCabe cyclomatic complexity (decision points + 1).
             Counts if/elif/else, for, while, except, with, and/or, match/case.
-        lines_of_code: Number of source lines in the symbol body (end_line - start_line + 1).
+        line_span: Physical line span of the symbol body — ``end_line -
+            start_line + 1``, INCLUDING blank and comment lines. This is NOT
+            source-lines-of-code (SLOC); the spec's "lines of code" / file-level
+            SLOC convention lives in ``profile.languages[*].loc``. Renamed from
+            ``lines_of_code`` (WI-bozid) so one term no longer names two
+            different counting conventions.
         signature: Function/method signature string, e.g., "(x: int, y: str) -> bool".
             Only populated for callable symbols (functions, methods). None for classes, etc.
         docstring: First-line summary of doc comment (truncated to 80 chars).
@@ -457,9 +564,9 @@ class Symbol:
     name: str  # axis: free-text — language identifier from source; consumers display/store/lookup, never branch on the value itself.
     kind: str  # axis: symbol-kind
     language: Optional[str]  # axis: language
-    path: str  # axis: free-text — filesystem path; consumers display/sort/group, never branch on the value itself.
+    path: str  # axis: free-text — filesystem path; consumers display/sort/group, never branch on the value itself EXCEPT the documented "<external>" sentinel (ADR-0036 Ruling 3) — the no-file-anchor marker for external/boundary pseudo-symbols, whose module identity lives in the id path-slot + stable_id, NOT here (WI-kapul: by-design; path is the filesystem axis, the id path-slot is the module-identity axis).
     span: Span
-    origin: List[str] = field(default_factory=list)  # axis: pass-id
+    origin: str | List[str] = field(default_factory=list)  # axis: pass-id
     origin_run_id: str = ""  # axis: identity
     stable_id: Optional[str] = None  # axis: identity
     shape_id: Optional[str] = None  # axis: identity
@@ -474,7 +581,7 @@ class Symbol:
     is_generated_file: bool = False  # WI-tizij: generated code flag
     is_exported: bool = False  # WI-zimum: public API / externally reachable
     cyclomatic_complexity: Optional[int] = None
-    lines_of_code: Optional[int] = None
+    line_span: Optional[int] = None
     signature: Optional[str] = None  # axis: free-text — callable signature string in source-language grammar; consumers display, never branch on the value itself.
     docstring: Optional[str] = None  # axis: free-text — natural-language summary from the source comment; consumers display/log/hash, never branch on the value itself.
     modifiers: List[str] = field(default_factory=list)
@@ -482,6 +589,7 @@ class Symbol:
     protocol_origin: Optional[str] = None  # axis: protocol-origin
     display_label: Optional[str] = None  # axis: free-text — human-readable UI display string for synthetic linker stand-ins; consumers display, never branch on the value itself.
     qualified_name: Optional[str] = None  # axis: qualified-name (ADR-0032)
+    visibility: Optional[str] = None  # axis: visibility — INV-jusot: one computed canonical visibility level (public/private/protected/internal/package), folded in finalize from the language modifier / legacy meta['visibility'] / Python name convention; None until finalize computes it. The deciding signal is recorded in meta['visibility_signal'].
 
     def __post_init__(self) -> None:
         if isinstance(self.origin, str):
@@ -498,7 +606,7 @@ class Symbol:
 
     def to_dict(self) -> dict:
         """Convert to dictionary for JSON serialization."""
-        return {
+        result = {
             "id": self.id,
             "name": self.name,
             "kind": self.kind,
@@ -510,7 +618,6 @@ class Symbol:
             "stable_id": self.stable_id,
             "shape_id": self.shape_id,
             "fingerprint": self.fingerprint,
-            "quality": self.quality,
             "meta": self.meta,
             "supply_chain": {
                 "tier": self.supply_chain_tier,
@@ -523,7 +630,7 @@ class Symbol:
                 "is_exported": self.is_exported,
             },
             "cyclomatic_complexity": self.cyclomatic_complexity,
-            "lines_of_code": self.lines_of_code,
+            "line_span": self.line_span,
             "signature": self.signature,
             "docstring": self.docstring,
             "modifiers": self.modifiers,
@@ -531,7 +638,15 @@ class Symbol:
             "protocol_origin": self.protocol_origin,
             "display_label": self.display_label,
             "qualified_name": self.qualified_name,  # ADR-0032
+            "visibility": self.visibility,  # INV-jusot
         }
+        # INV-nuzal: node ``quality`` has no producer (declared-but-empty,
+        # 0/N populated on self-analysis). Omit it when None — the INV-virik
+        # omit-when-empty pattern — rather than emit a universally-null key;
+        # present only when a producer sets it.
+        if self.quality is not None:
+            result["quality"] = self.quality
+        return result
 
     @classmethod
     def from_dict(cls, d: dict) -> "Symbol":
@@ -560,7 +675,8 @@ class Symbol:
             is_generated_file=supply_chain.get("is_generated_file", False),
             is_exported=supply_chain.get("is_exported", False),
             cyclomatic_complexity=d.get("cyclomatic_complexity"),
-            lines_of_code=d.get("lines_of_code"),
+            # WI-bozid back-compat: pre-rename maps stored this as lines_of_code.
+            line_span=d.get("line_span", d.get("lines_of_code")),
             signature=d.get("signature"),
             docstring=d.get("docstring"),
             modifiers=d.get("modifiers", []),
@@ -568,6 +684,7 @@ class Symbol:
             protocol_origin=d.get("protocol_origin"),
             display_label=d.get("display_label"),
             qualified_name=d.get("qualified_name"),  # ADR-0032
+            visibility=d.get("visibility"),  # INV-jusot
         )
 
 
@@ -631,29 +748,59 @@ def format_legacy_dst(ref: ExternalRef) -> str:
     return f"{ref.lang}:{ref.module_path}:0-0:{ref.name}:unresolved"
 
 
+@functools.lru_cache(maxsize=1)
+def _known_languages_for_evidence() -> "frozenset[str]":
+    """Memoized language catalog for central-stamping ``evidence_lang`` at
+    ``Edge.create`` (WI-kuluh / ADR-0040). ``all_known_languages()`` rebuilds its
+    union set on every call, so it is cached here — the stamp only ever yields
+    ``None`` or a real catalog member and ``spec_validator`` re-checks the live
+    catalog, so a stale cache stays correctness-safe (the analyzer/linker registry
+    is not mutated after discovery)."""
+    from hypergumbo_core.catalog import all_known_languages
+    return all_known_languages()
+
+
 # RCT-pinned surface — see tests/test_rct_public_api_pinned.py before changing field names, types, or defaults.
 @dataclass
 class Edge:
     """A relationship between two symbols (e.g., function calls).
 
     Attributes:
-        id: Unique identifier for this edge instance
-        edge_key: Canonical identity for deduplication across passes
+        id: Unique identifier for this edge instance (per-instance identity,
+            line-inclusive; the Edge counterpart of ``Symbol.id``). Surfaced
+            as ``edge:sha256:<16hex>``.
+        edge_key: Canonical identity for deduplication across passes —
+            structural identity computed line-insensitively from
+            (src, dst, edge_type), so it is stable across regenerations. This
+            is the Edge counterpart of ``Symbol.stable_id`` (structural
+            identity that survives regeneration); ``edge.id`` is the
+            per-instance counterpart of ``Symbol.id``. Named ``edge_key``
+            rather than ``stable_id`` for historical reasons — the rename
+            would be a breaking schema change and is not worth the churn
+            (WI-niboh). Surfaced as ``edgekey:sha256:<16hex>``; the
+            ``edgekey:`` namespace distinguishes it from ``edge:``-prefixed
+            edge ids in a shared lookup space.
         src: ID of the source symbol (e.g., the caller)
         dst: ID of the target symbol (e.g., the callee)
         edge_type: Type of relationship (calls, imports, inherits, etc.)
         line: Line number where the relationship occurs
         confidence: Confidence score (0.0-1.0)
         origin: Pass IDs that contributed to this edge (INV-jidat). Auto-normalized from scalar str.
+            Declared ``str | List[str]`` (both the field and ``Edge.create``'s param) so the
+            scalar-or-list input contract holds at the type level; do NOT narrow to ``List[str]``
+            (most producers pass a scalar pass ID — narrowing reintroduces arg-type errors under
+            mypy strict, INV-zogud). Stored value is always a list after ``__post_init__``.
         origin_run_id: Unique execution ID of the analysis run
         evidence_type: Type of evidence (e.g., ast_call_direct)
         evidence_lang: Language for confidence scoring
-        evidence_spans: Structured locations of evidence
         is_resolved: Whether `dst` is a real, in-repo (first-party) symbol node present in the graph (ADR-0037 ruling 1 — resolution names in-repo-ness, NOT target-identification). External/stdlib targets are materialized as `external_symbol` placeholder nodes and are always `is_resolved=False` even though the dst node exists (present-but-synthetic, not absent). The producer-time value (Edge.create default True) is ADVISORY; the finalize edge-resolution sub-step's verdict is what serializes.
         dst_ref: Structured identity for the dst endpoint. Populated on every `is_resolved=False` edge after the finalize edge-resolution sub-step (`None` only for an unidentified dangling reference whose id cannot be parsed); `None` for in-repo (`is_resolved=True`) dsts. Canonical source of truth for external-target identity — the legacy `dst` string is built from the same `ExternalRef`. The fourth cell (`is_resolved=True` + populated `dst_ref`) is never produced (ADR-0037 ruling 1 table).
-        derived_from: Symbol (or Edge) IDs the producer consumed to construct this Edge (INV-rukor). Populated by linkers; None for analyzer-originated edges.
+        derived_from: Symbol (or Edge) IDs the producer consumed to construct this Edge (INV-rukor). Populated by linkers; None for analyzer-originated edges. Axis note: this is PROVENANCE (PROV wasDerivedFrom, ADR-0030), not identity-*of-this-edge*; it carries ``# axis: identity`` because it holds identity *references* to other records (the same rationale as ``src``/``dst``), and it does NOT participate in ``edge_key``/dedup.
+        confidence: Detection-reliability score (0.0-1.0) — the producer's evidence-derived estimate that the relationship EXISTS (ADR-0039 ruling 1). NOT a ranking value; post-detection ranking boosts/penalties live in ``rank_score``.
+        confidence_source: Provenance of the ``confidence`` value (ADR-0039 ruling 2), one of ``VALID_CONFIDENCE_SOURCES`` — ``evidence_derived`` / ``emitter_constant`` / ``composite``. See ``VALID_CONFIDENCE_SOURCES`` for the enumeration and re-evaluation trigger.
+        rank_score: Ranking prominence (0.0-1.0). Initializes from ``confidence`` and accumulates the ranking adjustments ADR-0039 ruling 3 relocates off ``confidence`` (e.g. the type-hierarchy fan-out dampener). Equal to ``confidence`` until a producer relocates its adjustment. Ranking consumers key on this; reliability consumers key on ``confidence``.
         quality: Score and reason dict for quality assessment
-        meta: Optional metadata dict. Dataflow edges (ADR-0015) store access_mode, dest_access_mode, and channel here.
+        meta: Optional metadata dict. Dataflow edges store access_mode (ADR-0015) and channel here; cross-boundary edges store data_direction (ADR-0038 ruling 3).
     """
 
     id: str  # axis: identity
@@ -663,14 +810,15 @@ class Edge:
     line: int
     edge_key: Optional[str] = None  # axis: identity
     confidence: float = 0.85
-    origin: List[str] = field(default_factory=list)  # axis: pass-id
+    origin: str | List[str] = field(default_factory=list)  # axis: pass-id
     origin_run_id: str = ""  # axis: identity
     evidence_type: str = "ast_call_direct"  # axis: evidence-type
     evidence_lang: Optional[str] = None  # axis: language
-    evidence_spans: Optional[List[Dict[str, Any]]] = None
     is_resolved: bool = True
     dst_ref: Optional[ExternalRef] = None
     derived_from: Optional[List[str]] = None  # axis: identity
+    confidence_source: str = "emitter_constant"  # axis: bounded-enum
+    rank_score: Optional[float] = None
     quality: Optional[Dict[str, Any]] = None
     meta: Optional[Dict[str, Any]] = None
 
@@ -690,6 +838,13 @@ class Edge:
                 f"edge_type={self.edge_type!r}). Stamp from AnalysisRun.create()"
                 "'s execution_id at the producer; see WI-higap.",
             )
+        # ADR-0039 ruling 3: ``rank_score`` initializes from detection
+        # ``confidence`` and only diverges once a producer relocates a
+        # ranking adjustment onto it. Syncing here (not just in ``create``)
+        # keeps directly-constructed edges — e.g. in tests or ``from_dict``
+        # of a legacy artifact — internally consistent.
+        if self.rank_score is None:
+            self.rank_score = self.confidence
         # WI-lonoz / Phase 6 PR2: populate ``quality`` at construction so
         # the field is never None on the in-memory IR. Producers that
         # need a custom quality block pass it explicitly.
@@ -703,24 +858,27 @@ class Edge:
         dst: str,
         edge_type: str,
         line: int,
-        origin: str = "",
+        origin: str | List[str] = "",
         origin_run_id: str = "",
         evidence_type: str = "ast_call_direct",
-        confidence: float = 0.85,
+        confidence: float | None = None,
+        confidence_source: str | None = None,
+        rank_score: float | None = None,
         evidence_lang: Optional[str] = None,
-        evidence_spans: Optional[List[Dict[str, Any]]] = None,
         is_resolved: bool = True,
         dst_ref: Optional[ExternalRef] = None,
         derived_from: Optional[List[str]] = None,
         meta: Optional[Dict[str, Any]] = None,
         access_mode: Optional[str] = None,
-        dest_access_mode: Optional[str] = None,
+        data_direction: Optional[str] = None,
         channel: Optional[str] = None,
     ) -> "Edge":
         """Create an Edge with auto-generated ID and edge_key.
 
-        ADR-0015 dataflow kwargs (access_mode, dest_access_mode, channel)
-        are merged into the meta dict when non-None.
+        Dataflow kwargs (access_mode [ADR-0015], data_direction [ADR-0038
+        ruling 3], channel) are merged into the meta dict when non-None.
+        ``dest_access_mode`` was removed (ADR-0038 ruling 3 — the bridge
+        direction it encoded now lives in ``data_direction``).
 
         ``is_resolved`` here is ADVISORY: the finalize edge-resolution sub-step
         (ADR-0037 ruling 1/2) derives the authoritative value from the dst
@@ -731,16 +889,21 @@ class Edge:
             raise ValueError(
                 f"access_mode={access_mode!r} not in {sorted(VALID_ACCESS_MODES)}"
             )
-        if dest_access_mode is not None and dest_access_mode not in VALID_ACCESS_MODES:
+        if data_direction is not None and data_direction not in VALID_DATA_DIRECTIONS:
             raise ValueError(
-                f"dest_access_mode={dest_access_mode!r} not in {sorted(VALID_ACCESS_MODES)}"
+                f"data_direction={data_direction!r} not in {sorted(VALID_DATA_DIRECTIONS)}"
+            )
+        if confidence_source is not None and confidence_source not in VALID_CONFIDENCE_SOURCES:
+            raise ValueError(
+                f"confidence_source={confidence_source!r} not in "
+                f"{sorted(VALID_CONFIDENCE_SOURCES)}"
             )
         # Merge dataflow kwargs into meta
         dataflow_meta: Dict[str, str] = {}
         if access_mode is not None:
             dataflow_meta["access_mode"] = access_mode
-        if dest_access_mode is not None:
-            dataflow_meta["dest_access_mode"] = dest_access_mode
+        if data_direction is not None:
+            dataflow_meta["data_direction"] = data_direction
         if channel is not None:
             dataflow_meta["channel"] = channel
         if dataflow_meta:
@@ -750,6 +913,43 @@ class Edge:
                 meta = merged
             else:
                 meta = dataflow_meta
+        # confidence:F1 (ADR-0039): when the producer passes no explicit
+        # confidence, derive detection-reliability from the inference pathway
+        # (Edge.evidence_type), conditioned on is_resolved. Unseeded pathways
+        # fall back to the historical 0.85 default, so unmigrated producers are
+        # unaffected; producers that pass an explicit confidence keep it.
+        confidence_derived = False
+        if confidence is None:
+            from hypergumbo_core.confidence import derive_confidence
+            derived = derive_confidence(evidence_type, is_resolved=is_resolved)
+            if derived is None:
+                confidence = 0.85
+            else:
+                confidence = derived
+                confidence_derived = True
+        # ADR-0039 ruling 2: stamp the provenance discriminator. A value that
+        # came through ``derive_confidence`` is ``evidence_derived``; an
+        # explicit producer constant (or the unseeded 0.85 fallback) is
+        # ``emitter_constant``. A producer can override (e.g. ``composite``
+        # while its ranking migration is pending).
+        if confidence_source is None:
+            confidence_source = "evidence_derived" if confidence_derived else "emitter_constant"
+        # ADR-0039 ruling 3: ``rank_score`` mirrors detection ``confidence``
+        # until a producer relocates a ranking adjustment onto it.
+        if rank_score is None:
+            rank_score = confidence
+        # WI-kuluh / ADR-0040: central-stamp evidence_lang from the src id's
+        # language slot (ADR-0036: lang = everything up to the first colon; src is
+        # the producer's own well-formed node) when the producer did not pass one,
+        # so it stops being null on ~100% of mainstream analyzer + linker edges.
+        # Catalog-guarded so a non-canonical src (e.g. a latex ``rel_path:file``
+        # id) yields None rather than a bogus path-segment "language". This is the
+        # future ``lang`` input to the (language, evidence_type) confidence matrix
+        # (ADR-0039); no consumer keys on it yet, so it changes no current value.
+        if evidence_lang is None:
+            cand = src.split(":", 1)[0] if ":" in src else None
+            if cand in _known_languages_for_evidence():
+                evidence_lang = cand
         # Generate deterministic edge ID from src, dst, type, AND line
         # Line is included to ensure uniqueness for multiple call sites
         edge_hash = hashlib.sha256(f"{src}:{dst}:{edge_type}:{line}".encode()).hexdigest()[:16]
@@ -767,10 +967,11 @@ class Edge:
             origin_run_id=origin_run_id,
             evidence_type=evidence_type,
             evidence_lang=evidence_lang,
-            evidence_spans=evidence_spans,
             is_resolved=is_resolved,
             dst_ref=dst_ref,
             derived_from=derived_from,
+            confidence_source=confidence_source,
+            rank_score=rank_score,
             meta=meta,
         )
 
@@ -793,8 +994,6 @@ class Edge:
         }
         if self.evidence_lang is not None:
             meta["evidence_lang"] = self.evidence_lang
-        if self.evidence_spans is not None:
-            meta["evidence_spans"] = self.evidence_spans
         # Merge any additional metadata (e.g., channel for IPC edges)
         if self.meta is not None:
             meta.update(self.meta)
@@ -809,6 +1008,8 @@ class Edge:
             "type": self.edge_type,
             "line": self.line,
             "confidence": self.confidence,
+            "confidence_source": self.confidence_source,
+            "rank_score": self.rank_score,
             "origin": self.origin,
             "origin_run_id": self.origin_run_id,
             "is_resolved": self.is_resolved,
@@ -847,10 +1048,11 @@ class Edge:
             origin_run_id=d.get("origin_run_id") or LEGACY_DESERIALIZED_SENTINEL,
             evidence_type=meta.get("evidence_type", "ast_call_direct"),
             evidence_lang=meta.get("evidence_lang"),
-            evidence_spans=meta.get("evidence_spans"),
             is_resolved=d.get("is_resolved", True),
             dst_ref=ExternalRef.from_dict(dst_ref_raw) if dst_ref_raw else None,
             derived_from=d.get("derived_from"),
+            confidence_source=d.get("confidence_source", "emitter_constant"),
+            rank_score=d.get("rank_score"),
             quality=d.get("quality"),
             meta=meta,
         )
@@ -1053,18 +1255,22 @@ def is_external_boundary(symbol_or_dict: Any) -> bool:
 _REFERRING_PATHS_CAP = 50
 
 
-def _canonical_external_id(language: str, path: str, name: str, kind: str) -> str:
-    """Canonical id for a deduplicated boundary Symbol (WI-fozoh).
+def _canonical_external_id(language: str, path: str, name: str) -> str:
+    """Canonical id for a deduplicated boundary Symbol (WI-fozoh; ADR-0036 Ruling 2).
 
-    Format mirrors :func:`make_symbol_id` so downstream tooling parses
-    it consistently. The path slot is preserved for kinds where it
-    carries semantic identity (e.g. module name for ``kind="module"``,
-    qualified path for ``kind="unresolved"``); for ``kind="file"``
-    pseudo-IDs the path slot is replaced with ``<external>`` and all
-    per-reference variants collapse into one canonical Symbol per
-    language.
+    The kind slot is fixed at ``external_symbol`` — the boundary node's own
+    ``Symbol.kind`` — per ADR-0036 Ruling 2 (kind-slot purity: the slot is a
+    denormalized copy of ``node.kind``, never use-site reference syntax, a
+    framework role, or a resolution status). The originating reference syntax
+    (``unresolved`` / ``attribute`` / ``module`` / ...) is preserved on
+    ``Symbol.meta['reference_syntax']`` by the caller.
+
+    Format mirrors :func:`make_symbol_id` so downstream tooling parses it
+    consistently. The path slot carries semantic identity (module name for
+    imports, qualified path for unresolved calls); the file-pseudo case has its
+    path collapsed to ``<external>`` upstream in :func:`_dedupe_key`.
     """
-    return f"{language}:{path}:0-0:{name}:{kind}"
+    return f"{language}:{path}:0-0:{name}:external_symbol"
 
 
 _SYNTHETIC_SPAN = "0-0"
@@ -1126,17 +1332,17 @@ def validate_symbol_id_format(symbol_id: str) -> Optional[str]:
 
 
 def _canonical_external_stable_id(
-    language: str, path: str, name: str, kind: str,
+    language: str, path: str, name: str,
 ) -> str:
     """Stable cross-run identity for a boundary Symbol.
 
-    Identity is a function of the dedupe key — ``(language, name, kind)``
-    for collapsed file-id groups (path absent), or
-    ``(language, path, name, kind)`` for full-identity externals. Two
-    runs against equivalent code produce the same stable_id for the
-    same logical boundary.
+    Identity is a function of the dedupe key ``(language, path, name)``
+    (``path`` is ``<external>`` for collapsed file-id groups). Per ADR-0036
+    Ruling 2 the kind slot is uniformly ``external_symbol`` and no longer
+    participates in boundary identity. Two runs against equivalent code produce
+    the same stable_id for the same logical boundary.
     """
-    payload = f"external:{language}:{path}:{name}:{kind}"
+    payload = f"external:{language}:{path}:{name}"
     return f"sha256:{hashlib.sha256(payload.encode()).hexdigest()[:16]}"
 
 
@@ -1183,7 +1389,7 @@ def _parse_dangling_id(dangling_id: str) -> tuple[str, str, str, str]:
 
 def _dedupe_key(
     language: str, path: str, name: str, kind: str,
-) -> tuple[str, str, str, str]:
+) -> tuple[str, str, str]:
     """Compute the dedupe key for an external boundary group.
 
     For ``kind="file"`` pseudo-IDs (produced by ``make_file_id`` in
@@ -1194,10 +1400,17 @@ def _dedupe_key(
     the path slot is meaningful (module name for imports, qualified
     submodule for unresolved calls, etc.) and is kept in the key so
     distinct logical externals stay distinct.
+
+    ``kind`` decides the file-collapse but is **not** part of the returned
+    key — ADR-0036 Ruling 2 makes the boundary id kind-slot uniformly
+    ``external_symbol``, so boundary identity is ``(language, path, name)``
+    only. Two references to the same external via different use-site syntaxes
+    therefore collapse to one node (measured lossless: no external is reached
+    via more than one syntax on any corpus).
     """
     if kind == "file":
-        return (language, "<external>", name, kind)
-    return (language, path, name, kind)
+        return (language, "<external>", name)
+    return (language, path, name)
 
 
 def create_boundary_nodes(
@@ -1205,6 +1418,7 @@ def create_boundary_nodes(
     edges: List[Edge],
     dependency_manifest: Any = None,
     origin_run_id: str = "",
+    ecosystem_classifier: "Optional[Callable[[str, str], Optional[str]]]" = None,
 ) -> tuple[List[Symbol], Dict[str, str]]:
     """Create boundary nodes for dangling edge endpoints, with cross-run identity.
 
@@ -1294,14 +1508,14 @@ def create_boundary_nodes(
 
     # Group dangling ids by dedupe key. The key collapses file-id
     # pseudo-symbols per language; other kinds keep full identity.
-    groups: Dict[tuple[str, str, str, str], List[str]] = {}
+    groups: Dict[tuple[str, str, str], List[str]] = {}
+    group_ref_kinds: Dict[tuple[str, str, str], set] = {}
     for dangling_id in dangling_ids:
         ref = dangling_refs.get(dangling_id)
         if ref is not None:
             # WI-tihup: structured ref bypasses the colon-split heuristic.
             # ``kind`` is fixed at "unresolved" for ExternalRef-bearing
-            # edges (the producer convention), which matches the dst's
-            # kind slot for the canonical 5-seg shape.
+            # edges (the producer convention).
             language, path, name, kind = (
                 ref.lang, ref.module_path, ref.name, "unresolved",
             )
@@ -1309,52 +1523,86 @@ def create_boundary_nodes(
             language, path, name, kind = _parse_dangling_id(dangling_id)
         key = _dedupe_key(language, path, name, kind)
         groups.setdefault(key, []).append(dangling_id)
+        # ADR-0036 Ruling 2: retain the use-site reference syntax so it can be
+        # stamped on ``meta.reference_syntax``; the id kind-slot is uniform.
+        group_ref_kinds.setdefault(key, set()).add(kind)
 
     boundary_nodes: List[Symbol] = []
     id_remap: Dict[str, str] = {}
     zero_span = Span(start_line=0, end_line=0, start_col=0, end_col=0)
 
-    # Iterate groups in sorted order so the output is deterministic.
-    for (language, key_path, name, kind), members in sorted(groups.items()):
-        canonical_id = _canonical_external_id(language, key_path, name, kind)
+    # WI-muzuf: the boundary ``language`` is whatever ``_parse_dangling_id`` /
+    # ``ExternalRef.lang`` yielded, which a malformed producer can leave as a
+    # non-language — a bare import path (``../Governor.sol`` from a Solidity
+    # ``import``) parses via the <5-part fallback to language=the-path, and
+    # manifest producers can stuff a build-tool label (``gradle``) into the lang
+    # slot. Normalize the language FIELD to a registered language or None (the
+    # axis allows None) so external symbols never pollute the language axis
+    # (axis_conformance). The id / stable_id / display_label keep the raw parsed
+    # value — the id lang-slot cleanup is a separate concern (INV-dulah /
+    # WI-zugob). Lazy import breaks the catalog<->ir cycle; ``ensure_discovered``
+    # is cached after the first call (a no-op in the run pipeline).
+    from .catalog import all_known_languages
 
-        # Tier-min selection: if ANY referring site classifies as tier-2
-        # via the manifest, the canonical node is tier-2.
-        best_tier = 3
-        best_reason = "unresolved external reference"
+    known_languages = all_known_languages()
+
+    # Iterate groups in sorted order so the output is deterministic.
+    for (language, key_path, name), members in sorted(groups.items()):
+        # ADR-0036 Ruling 2: the id kind-slot is the node's own kind
+        # (external_symbol); the use-site reference syntax moves to
+        # meta.reference_syntax. ``min()`` is deterministic and, in practice,
+        # unambiguous — no (language, path, name) external is reached via more
+        # than one reference syntax on any measured corpus, so the collapse is
+        # lossless (guarded by the boundary-id-uniqueness property test).
+        reference_syntax = min(group_ref_kinds[(language, key_path, name)])
+        canonical_id = _canonical_external_id(language, key_path, name)
+
+        # ADR-0041 §1/§2 (supply:F5): tier names supply-chain distance only, so
+        # every boundary node is tier 3 (external) — the old tier-min relabel that
+        # promoted manifest-declared direct deps to tier 2 (and its "direct
+        # dependency (...)" reason strings) is retired. The direct/transitive/
+        # undeclared declaration relationship the classifier still knows is
+        # re-emitted as the `directness` meta stamp, stamped once here (the
+        # single classification chokepoint for boundary nodes).
+        directness: str | None = None
         if (
             dependency_manifest is not None
             and language in ("go", "java", "kotlin", "python")
         ):
-            for member_id in members:
-                _, member_path, _, _ = _parse_dangling_id(member_id)
-                if not member_path or member_path == "<unknown>":
-                    continue  # pragma: no cover  # defensive — generated ids all have 5 parts
-                manifest_tier = dependency_manifest.classify_import(member_path)
-                if manifest_tier.value < best_tier:
-                    best_tier = manifest_tier.value
-                    if best_tier == 2:
-                        if language == "go":
-                            best_reason = "direct dependency (go.mod)"
-                        elif language == "python":
-                            best_reason = "direct dependency (pyproject.toml)"
-                        else:
-                            best_reason = "direct dependency (build manifest)"
-                    if best_tier == 1:  # pragma: no cover - manifests don't return tier-1
-                        break
+            directness = dependency_manifest.classify_directness(key_path)
+
+        boundary_meta: dict = {"external_boundary": True}
+        if directness is not None:
+            boundary_meta["directness"] = directness
+        # ADR-0036 Ruling 2: preserve the use-site reference syntax that used to
+        # live (impurely) in the id kind-slot on its registered meta home.
+        if reference_syntax != "external_symbol":
+            boundary_meta["reference_syntax"] = reference_syntax
+
+        # ADR-0041 §3: provenance class (stdlib vs third_party) of this
+        # tier-3 external, from the single-source language stdlib catalog.
+        # Absent when the language has no enumerated stdlib (classifier
+        # returns None) — orthogonal to directness (declaration relationship).
+        if ecosystem_classifier is not None:
+            ecosystem = ecosystem_classifier(language, key_path)
+            if ecosystem is not None:
+                boundary_meta["ecosystem"] = ecosystem
 
         sym = Symbol(
             id=canonical_id,
-            stable_id=_canonical_external_stable_id(language, key_path, name, kind),
-            display_label=f"{language}:{key_path}:{name}:{kind}",
+            stable_id=_canonical_external_stable_id(language, key_path, name),
+            display_label=f"{language}:{key_path}:{name}:{reference_syntax}",
             name=name,
             kind="external_symbol",
-            language=language,
+            # WI-muzuf: registered language or None (never a path / build-tool
+            # label). Raw ``language`` still feeds the id/stable_id/display_label
+            # above (a separate id-slot concern).
+            language=language if language in known_languages else None,
             path="<external>",
             span=zero_span,
-            meta={"external_boundary": True},
-            supply_chain_tier=best_tier,
-            supply_chain_reason=best_reason,
+            meta=boundary_meta,
+            supply_chain_tier=3,
+            supply_chain_reason="unresolved external reference",
             # synthetic:F1 (WI-sijut/WI-mosil): boundary nodes previously shipped
             # origin=[] / origin_run_id='' (zero provenance). Stamp the synthesis
             # mechanism as origin and the orchestrator-emitted AnalysisRun's

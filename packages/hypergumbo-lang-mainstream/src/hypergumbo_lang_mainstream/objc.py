@@ -15,9 +15,10 @@ Node types handled:
 - preproc_include: #import statements
 - message_expression: [receiver message] method calls
 
-Two-pass analysis:
-- Pass 1: Extract all symbols from all files
-- Pass 2: Resolve method calls using global symbol registry
+Three-pass analysis:
+- Pass 1: Extract all symbols from all files and collect methods into a global registry
+- Pass 1.5: Propagate each class's base_classes into its methods' meta['parent_base_classes'] (so .m @implementation methods inherit the .h @interface bases for framework pattern matching)
+- Pass 2: Extract edges using the global symbol registry — resolve method-call edges (local, then cross-file via NameResolver), emit #import edges, and emit unresolved calls with a module hint for PascalCase (class) receivers.
 """
 
 from __future__ import annotations
@@ -33,6 +34,7 @@ from hypergumbo_core.symbol_resolution import NameResolver
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     TreeSitterAnalyzer,
+    defer_bare_method_call,
     find_child_by_type,
     iter_tree,
     make_file_id,
@@ -41,6 +43,7 @@ from hypergumbo_core.analyze.base import (
     node_text,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -384,6 +387,8 @@ def _extract_symbols_from_file(
                     signature=signature,
                     stable_id=_analyzer.compute_stable_id(node, kind="method", name=full_name, file_stable_id=file_stable_id),
                     shape_id=_analyzer.compute_shape_id(node),
+                    cyclomatic_complexity=compute_cyclomatic_complexity(node, "objc"),
+                    line_span=end_line - start_line + 1,
                 )
                 analysis.symbols.append(symbol)
                 analysis.methods_by_name[method_name] = symbol
@@ -554,7 +559,6 @@ def _extract_edges_from_file(
                         edge_type="imports",
                         line=line,
                         evidence_type="import_statement",
-                        confidence=0.95,
                         origin=PASS_ID,
                         origin_run_id=run.execution_id,
                     ))
@@ -575,26 +579,46 @@ def _extract_edges_from_file(
                         edge_type="calls",
                         line=line,
                         evidence_type="message_send",
-                        confidence=0.90,
                         origin=PASS_ID,
                         origin_run_id=run.execution_id,
                     ))
                 else:
-                    # Try cross-file resolution via resolver
+                    # Try cross-file resolution via resolver.
+                    # INV-fahub: ``global_methods`` is keyed by the bare
+                    # SELECTOR (short name), so every resolver hit is an
+                    # *exact short-name* match that collapses all same-named
+                    # methods across classes to one arbitrary def — a magnet
+                    # (many receiver-blind message sends → one def). That is
+                    # weak cross-class evidence, so it is flagged ``"suffix"``
+                    # (as the Scala/Swift bare-call gate does for a short-name
+                    # hit) and run through ``defer_bare_method_call``: a
+                    # DIFFERENT class's method is WITHHELD — deferred to the
+                    # inherited_calls Site-1 walker via ``enclosing_class`` —
+                    # while a same-class implicit-``self`` hit (owner ==
+                    # enclosing) still binds directly.
+                    _enclosing_type = _get_enclosing_class_objc(node, source)
                     lookup_result = method_resolver.lookup(selector, caller_path=_caller_path)
-                    if lookup_result.found and lookup_result.symbol is not None:
+                    _sym = lookup_result.symbol
+                    _defer = _sym is not None and defer_bare_method_call(
+                        _sym.kind, _sym.name, "suffix", _enclosing_type,
+                    )
+                    if lookup_result.found and _sym is not None and not _defer:
                         edges.append(Edge.create(
                             src=current_method.id,
-                            dst=lookup_result.symbol.id,
+                            dst=_sym.id,
                             edge_type="calls",
                             line=line,
                             evidence_type="message_send",
                             confidence=0.75 * lookup_result.confidence,
                             origin=PASS_ID,
                             origin_run_id=run.execution_id,
-                            meta={"call_construct": "cross_file"},
+                            meta={"call_locality": "cross_file"},
                         ))
                     else:
+                        # Not found, or a deferred cross-class magnet. Emit an
+                        # honest unresolved edge carrying ``enclosing_class`` so
+                        # the inherited_calls Site-1 walker can later recover a
+                        # genuine inherited implicit-``self`` call.
                         # WI-nigah Tier 2: if the receiver looks like an
                         # ObjC class name (PascalCase), use it as the
                         # ``module_path`` for the structured ``dst_ref``.
@@ -611,11 +635,13 @@ def _extract_edges_from_file(
                                     module_path=receiver_name,
                                     name=selector,
                                 ),
+                                enclosing_class=_enclosing_type,
                             ))
                         else:
                             edges.append(make_unresolved_edge(
                                 "objc", current_method.id, selector,
                                 line, PASS_ID, run.execution_id,
+                                enclosing_class=_enclosing_type,
                             ))
 
     return edges

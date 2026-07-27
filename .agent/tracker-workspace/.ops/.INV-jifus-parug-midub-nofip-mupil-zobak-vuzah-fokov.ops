@@ -31,3 +31,58 @@
   clock: 2  # 3165
   nonce: '3165'  # 3165
   message: "**Pass-24 finding (F24.4) — `sketch_precomputed.config_info` is an unstructured concatenated blob.**\n\nThe `config_info` field on the sketch_precomputed section is a single string concatenating:\n\n```\nLICENSE: AGPL\n\n--- Additional context (semantic) ---\n\n[packages/htrac-frontend/package.json]\n  > { \"name\": \"htrac-frontend\", \"version\": \"0.1.0\",\n\n[packages/htrac-frontend/tsconfig.json]\n  > { \"compilerOptions\": { \"target\": \"ES2022\",\n\n[packages/hypergumbo-core/pyproject.toml]\n  > [project] name = \"hypergumbo-core\" version = \"5.0.1\"\n\n[packages/hypergumbo-lang-common/pyproject.toml]\n  > [project] name = \"hypergumbo-lang-common\" version = \"5.0.1\"\n...\n```\n\nThe blob includes LICENSE detection + package manifest first-line snippets concatenated with `[path]\\n  > first_line\\n` formatting. To extract a specific field — e.g., the Python version, the package count, the htrac-frontend ES target — a consumer must regex-parse the string.\n\nThe same underlying data exists in structured form elsewhere in the substrate:\n- `reproducibility_context.captured.grammars` covers grammar/runtime versions\n- `profile.languages` covers per-language file counts\n- `metrics.languages` covers per-language node/edge counts\n\nSo the blob is redundant for some queries and unparseable for others.\n\n**Significance.** INV-jifus (\"sketch_precomputed has no schema\") sub-face at the config_info field. The producer pre-formats the blob for LLM-sketch consumption (where unstructured prose works well); the schema doesn't model the blob's structure, so non-LLM consumers can't reliably extract specific fields. Either schema-ize config_info into a dict (LICENSE / manifests / configs as typed sub-fields), or document the blob's intended use exclusively (e.g., \"consumed only by sketch output; do not treat as structured data\").\n\nDiscussion-only; no new tracker item filed. Fits naturally as a sub-pattern under INV-jifus's existing schema-absence umbrella.\n\n**Lab notebook entry:** `~/hypergumbo_lab_notebook/notebookjournal_06022026_0250_pass24.md`."  # 3165
+- op: discuss  # bce0
+  at: '2026-06-24T20:05:18Z'  # bce0
+  by: agent  # bce0
+  actor: jgstern_agent  # bce0
+  clock: 3  # bce0
+  nonce: bce0  # bce0
+  message: "Option-B spirit-audit (2026-06-24) cross-refs + scope bounds, to avoid rediscovery: (1) PLAN MAPPING: INV-jifus IS the strategy doc sketch-cache family. Planned fix = sketch-cache:F1-F5 in WAVE 4 (correctness_strategy_06102026.md:194): F1 typed SketchPrecomputed contract (schema authored AGAINST THE INTROSPECTED GENERATOR; centrality respec documents BOTH zero paths; vocabulary field deleted after no-consumer re-verification); F2 substrate inversion (map-authoritative, shared loader). The strategy doc does not use the jifus name -- hence this cross-ref. (2) PREMISE REFINEMENT: the title \"no schema\" is imprecise. sketch_precomputed IS already in docs/schema.json (327-382) but as a HAND-WRITTEN overlay in generate-schema:441-477 -- NOT auto-introspected from a dataclass, no SketchPrecomputed dataclass exists, and the runtime spec_validator does NOT cover it. The real gap = no owning dataclass + hand-overlay drift risk + no per-field scope/normalization invariants. (3) PROPORTIONALITY / SCOPE BOUND: sketch_precomputed is an INTERNAL CACHE, not a wire contract -- docs/hypergumbo-spec.md:706: \"internal cache artifact -- not part of the public schema; consumers should not depend on its presence.\" All consumers internal (sketch.py reads it; compact.py strips it); zero external readers. Per the repo two-tier discipline, derived surfaces are SCHEMA-d but EXEMPT from the runtime validator (metrics/supply_chain_summary/etc.), and the ADR-0024 axis-declaration gate is scoped to ir.py/datamodels.py ONLY. So F1 = typed dataclass + introspected schema (a chokepoint), NOT full axis-governance + runtime validation -- applying the heavyweight discipline here would be over-engineering. (4) SEQUENCING: Wave 4, gated on Wave-3 (vocab axis purity feeds schema generation; file-anchor:F1 co-release). (5) NEW DOC-CONFLICT to reconcile in F1: generate-schema:296-303 comment claims sketch_precomputed \"is part of hypergumbo documented output contract\", directly contradicting spec:706 (internal cache, do not depend). Resolve these two when F1 lands."  # bce0
+- op: discuss  # 29a5
+  at: '2026-06-25T05:31:28Z'  # 29a5
+  by: agent  # 29a5
+  actor: jgstern_agent  # 29a5
+  clock: 4  # 29a5
+  nonce: 29a5  # 29a5
+  message: "Centrality face (member INV-napap) resolved in commit 037a3730de: centrality_scores renamed to additional_file_centrality_scores (accurate name) and the whole sketch_precomputed block marked x-internal in docs/schema.json (declaring it NOT a public stability contract, per spec.md). That addresses face (c) 'accurate name' plus the schema-status gap for the centrality member. The META stays OPEN: the readme_description face (INV-modor, blockquote-prefix concat) and vocabulary face (INV-padoz, no lemmatization) remain, and there is still no typed SketchPrecomputed dataclass owning per-field invariants (the full Wave-4 sketch-cache:F1 contract)."  # 29a5
+- op: update  # ef89
+  at: '2026-07-12T06:54:35Z'  # ef89
+  by: agent  # ef89
+  actor: jgstern_agent  # ef89
+  clock: 5  # ef89
+  nonce: ef89  # ef89
+  set: {}  # ef89
+  add:  # ef89
+    tags: [wave5]  # ef89
+- op: discuss  # 9586
+  at: '2026-07-12T06:54:35Z'  # 9586
+  by: agent  # 9586
+  actor: jgstern_agent  # 9586
+  clock: 6  # 9586
+  nonce: '9586'  # 9586
+  message: "Owner disposition 2026-07-12 (option C): MIGRATE the typed-dataclass residual to Wave 5; concrete work is done. Live-verified: all 3 member faces satisfied -- INV-modor (readme_description blockquote concat), INV-padoz (vocabulary lemmatization; field deleted), INV-napap (centrality_scores renamed additional_file_centrality_scores + block marked x-internal); the config_info blob face addressed (WI-lirub/WI-gojuz); the generate-schema-vs-spec doc-conflict reconciled (WI-rajod 2026-06-24, generate-schema:325-332). The surface is now honestly schema-d in docs/schema.json with x-internal:true, so the statement \"sketch_precomputed has no schema\" is literally stale -- it HAS one. SOLE residual = prevention-only: no typed @dataclass SketchPrecomputed, so the schema entry is a hand-written overlay with a theoretical drift risk (unguarded by test -- schema-compliance skips it via include_sketch_precomputed=False), on an x-internal cache with ZERO external consumers (sketch.py reads it, compact.py strips it, dropped from compact/tiered views). The 2026-06-24 audit already scoped F1 to a lean dataclass + introspected-schema chokepoint and ruled the heavyweight full-axis-governance + runtime-validation version over-engineering. A typed SketchPrecomputed dataclass is a PREVENTION mechanism -> belongs in Wave 5 beside the mypy/typed-contract ramp (NewType -> TypedDict -> typed Protocol), NOT a Wave-4 blocker. Tagged wave5; status stays violated (enforcing mechanism not built). Clears the sole remaining Wave-4 block keystone; Wave-4 completion now needs only leaf-disposition + the owner ruling."  # 9586
+- op: update  # a119
+  at: '2026-07-21T21:20:45Z'  # a119
+  by: agent  # a119
+  actor: jgstern_agent  # a119
+  clock: 7  # a119
+  nonce: a119  # a119
+  set:  # a119
+    title: "META: sketch_precomputed lacks a typed SketchPrecomputed dataclass contract (schema EXISTS, x-internal; prevention-only residual)"  # a119
+    fields:  # a119
+      statement: "SCOPE (2026-07-21 audit): the 'has no schema' premise is FALSIFIED -- docs/schema.json:336-385 now schemas the whole sketch_precomputed block with x-internal:true and typed, scope-described sub-properties (additional_file_centrality_scores, config_info, readme_description), and the three member faces are resolved (INV-napap centrality rename, INV-padoz vocabulary-field deletion, INV-modor readme blockquote skip). The SOLE residual keeping it violated is prevention-only: there is still no typed 'SketchPrecomputed' @dataclass owning the field contract, so hand-overlay per-field scope/normalization drift is unguarded (schema-compliance skips x-internal) on a zero-external-consumer cache -- which the owner migrated to end-of-Wave-5 as over-engineering-avoidance (the 2026-06-24 audit ruled the heavyweight full-axis-governance version over-engineering)."  # a119
+      root_cause: "CORRECTED 2026-07-21: the three original faces (readme_description blockquote skip = INV-modor; vocabulary lemmatization = INV-padoz, field since DELETED; centrality naming = INV-napap) are all resolved, and the block is now schema'd x-internal. The remaining root cause is solely the absence of a typed SketchPrecomputed dataclass owning the field contract: sketch_precomputed is still hand-assembled by independent sketch.py helpers, so per-field scope/normalization drift is unguarded because schema-compliance validation skips x-internal blocks."  # a119
+- op: discuss  # 5411
+  at: '2026-07-21T21:20:45Z'  # 5411
+  by: agent  # 5411
+  actor: jgstern_agent  # 5411
+  clock: 8  # 5411
+  nonce: '5411'  # 5411
+  message: "Re-scoped statement/title/root_cause off 'has no schema' (falsified: docs/schema.json:336-385 schemas it x-internal:true; 3 faces resolved). Sole live residual = the prevention-only typed @dataclass, which the 2026-07-12 owner disposition migrated to end-of-Wave-5. Stays violated in the 'enforcing mechanism unbuilt' sense only."  # 5411
+- op: discuss  # 4d62
+  at: '2026-07-22T02:43:31Z'  # 4d62
+  by: agent  # 4d62
+  actor: jgstern_agent  # 4d62
+  clock: 9  # 4d62
+  nonce: 4d62  # 4d62
+  message: "Re-scoped premise CONFIRMED accurate (2026-07-21): no `SketchPrecomputed` dataclass exists (grep `class SketchPrecomputed` -> none; the field is a hand-assembled dict at cli.py, its schema a hand-written x-internal overlay). The original \"has no schema\" premise is falsified (schema exists, x-internal). Sole residual is the prevention-only typed contract, owner-migrated to end-of-Wave-5 / the mypy typed-contract ramp; a typed SketchPrecomputed would be the natural home to codify the identity/normalization invariants WI-gupod/WI-samif gesture at. Deferred, not started."  # 4d62

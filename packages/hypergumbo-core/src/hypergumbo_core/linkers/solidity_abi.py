@@ -1,16 +1,18 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Bridge linker: Solidity ABI bridge for connecting TS/JS contract calls to Solidity functions.
 
-This linker creates ``abi_call`` edges between TypeScript/JavaScript code that
-calls Solidity contract methods (via ethers.js, viem, or similar libraries)
-and the corresponding Solidity function definitions.
+This linker creates ``calls`` edges (tagged ``meta.call_kind="abi"``) between
+TypeScript/JavaScript code that calls Solidity contract methods (via
+ethers.js, viem, or similar libraries) and the corresponding Solidity function
+definitions. (The bespoke ``abi_call`` edge type was folded onto the canonical
+``calls`` per the audit-findings 0002 relationship-axis consolidation.)
 
 How It Works
 ------------
 Two-phase detection:
 
-1. **Solidity side**: Collects all Solidity ``function`` symbols and builds
-   a name-to-symbols map. Constructor, event, and modifier symbols are
+1. **Solidity side**: Collects Solidity ``function`` and ``constructor``
+   symbols and builds a name-to-symbols map. Event and modifier symbols are
    excluded since they're not callable from TS/JS contract interfaces.
 
 2. **TS/JS side**: Scans source files for two call patterns:
@@ -19,9 +21,10 @@ Two-phase detection:
    - **viem config calls**: ``functionName: 'solidityFn'`` inside
      ``readContract``/``writeContract``/``simulateContract`` call objects.
 
-After building both maps, the linker creates ``abi_call`` edges from synthetic
-TS/JS-side call nodes to the matching Solidity function symbols. Confidence
-is 0.75 (name-based matching is heuristic — no ABI artifact parsing).
+After building both maps, the linker creates ``calls`` edges
+(``meta.call_kind="abi"``) from synthetic TS/JS-side call nodes to the matching
+Solidity function symbols. Confidence is 0.75 (name-based matching is
+heuristic — no ABI artifact parsing).
 
 Why This Design
 ---------------
@@ -221,7 +224,6 @@ def link_solidity_abi(
             ),
             origin=PASS_ID,
             origin_run_id=run.execution_id,
-            supply_chain_tier=2,
             meta={"call_kind": "abi"},
         )
         result_symbols.append(syn_sym)
@@ -231,13 +233,13 @@ def link_solidity_abi(
             result_edges.append(Edge.create(
                 src=syn_id,
                 dst=target.id,
-                edge_type="abi_call",
+                edge_type="calls",
                 line=line_num,
                 confidence=0.75,
                 origin=PASS_ID,
                 origin_run_id=run.execution_id,
                 evidence_type="ast_call_direct",
-                meta={"detection_pattern": "abi_name_match"},
+                meta={"detection_pattern": "abi_name_match", "call_kind": "abi"},
                 derived_from=[syn_id, target.id],
             ))
 

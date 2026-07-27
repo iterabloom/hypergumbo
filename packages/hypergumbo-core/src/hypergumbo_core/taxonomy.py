@@ -13,7 +13,7 @@ Every file has both a Tier and a Role:
 
 These dimensions compose for analysis decisions:
 - LOC counting: Tiers 1-2, CODE roles (analyzable + config + documentation)
-- Symbol extraction: analysis_tiers, ANALYZABLE role only
+- Symbol extraction: Tiers 1-2, ANALYZABLE role only
 - Additional Files: Tiers 1-2, CONFIG + DOCUMENTATION roles
 
 Why This Design
@@ -487,6 +487,28 @@ LANGUAGES: dict[str, LanguageSpec] = {
         extensions=["*.html", "*.htm"],
         roles=FileRole.CONFIG,  # HTML is structural config, not really "code"
     ),
+    # WI-novob: Rails view templates (erb/haml/slim). CONFIG, like html — they
+    # are structural HTML markup with embedded logic, not prose (DOCUMENTATION)
+    # and not analyzable source (no dedicated analyzer). The view-template linker
+    # stamps Symbol.language from these extensions (.html.erb → erb); without a
+    # LanguageSpec they were absent from the WI-kunut language-axis union and
+    # tripped axis_conformance. Not folded to ruby: an .html.erb is an HTML
+    # template that embeds Ruby, not Ruby source.
+    "erb": LanguageSpec(
+        name="erb",
+        extensions=["*.erb"],
+        roles=FileRole.CONFIG,
+    ),
+    "haml": LanguageSpec(
+        name="haml",
+        extensions=["*.haml"],
+        roles=FileRole.CONFIG,
+    ),
+    "slim": LanguageSpec(
+        name="slim",
+        extensions=["*.slim"],
+        roles=FileRole.CONFIG,
+    ),
     "css": LanguageSpec(
         name="css",
         extensions=["*.css", "*.scss", "*.sass", "*.less"],
@@ -739,6 +761,82 @@ def is_additional_file_candidate(path: Path) -> bool:
     if role is None:
         return False
     return role in (FileRole.CONFIG, FileRole.DOCUMENTATION)
+
+
+def additional_file_candidates(
+    repo_root: Path,
+    all_files: "list[Path]",
+    content_source_paths: "set[str]",
+    exclude_patterns: "list[str]",
+) -> "list[Path]":
+    """The non-source CONFIG/DOC files eligible for the Additional-Files surface.
+
+    Single source of truth shared by two callers (file-anchor:F1 + F4):
+
+    * the orchestrator's file-anchor synthesis (``all_analyzers``), which mints a
+      ``kind="file"`` anchor per candidate so the centrality keys are real node
+      paths (the WI-rajod subset invariant); and
+    * the ``additional_file_centrality_scores`` producer (``cli``), which scores
+      these same candidates.
+
+    A candidate must: NOT be a content-source path (``content_source_paths`` is
+    the set of paths that already have a non-file-kind node — file-anchor:F4
+    keys on *content*, not bare anchors, so the anchors this list drives don't
+    re-exclude themselves); not be hidden; pass :func:`is_additional_file_candidate`
+    (CONFIG/DOCUMENTATION role); not match an ``exclude_patterns`` glob; AND have
+    a resolvable language (:func:`get_language` not ``None``) so it can be
+    anchored with a valid ``make_file_id`` / ``Symbol.language`` and the subset
+    invariant holds for every key.
+
+    Args:
+        repo_root: Repository root (candidate paths are returned absolute,
+            relativized by the caller).
+        all_files: Discovered files (e.g. ``FileIndex.all_files()``).
+        content_source_paths: Repo-relative paths that already carry a
+            non-file-kind node.
+        exclude_patterns: Boilerplate globs (e.g. ``DEFAULT_EXCLUDES`` +
+            ``ADDITIONAL_FILES_EXCLUDES``), matched against the file name and
+            each path part.
+
+    Returns:
+        Candidate file paths (absolute), each with a resolvable language.
+    """
+    from fnmatch import fnmatch
+
+    candidates: list[Path] = []
+    for f in all_files:
+        rel_path = f.relative_to(repo_root)
+        rel_str = str(rel_path)
+        if rel_str in content_source_paths:
+            continue
+        if any(p.startswith(".") for p in rel_path.parts):
+            continue
+        if not is_additional_file_candidate(f):
+            continue
+        # Defensive: every name/extension that resolves to a CONFIG/DOC role in
+        # the taxonomy registry today also resolves a language, so this guard is
+        # unreachable for current entries. It protects the subset invariant from
+        # a future registry entry that adds a CONFIG/DOC role without a language
+        # (which would mint a language=None anchor and break make_file_id).
+        if get_language(f) is None:  # pragma: no cover
+            continue
+        # A discovered path can be a broken symlink (Path.is_file() follows the
+        # link and is False when the target is absent). Such a file is not
+        # readable, so neither anchoring it (file-anchor:F1) nor scoring it
+        # (F4 centrality) is meaningful — the html analyzer skips it too.
+        if not f.is_file():
+            continue
+        excluded = False
+        for pattern in exclude_patterns:
+            if fnmatch(f.name, pattern) or any(
+                fnmatch(part, pattern) for part in rel_path.parts
+            ):
+                excluded = True
+                break
+        if excluded:
+            continue
+        candidates.append(f)
+    return candidates
 
 
 # =============================================================================

@@ -1,14 +1,14 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Hack language analyzer.
 
-This module analyzes Hack files (.hack, .php with <?hh header) using tree-sitter.
+This module analyzes Hack files (.hack, .hh, and .php files with a <?hh header) using tree-sitter.
 Hack is a statically-typed programming language developed by Meta (Facebook)
 that runs on HHVM and is a dialect of PHP.
 
 How It Works
 ------------
 Uses TreeSitterAnalyzer base class for two-pass orchestration:
-- Pass 1: Collect symbols (classes, interfaces, traits, functions, methods)
+- Pass 1: Collect symbols (namespaces, classes, interfaces, traits, functions, methods)
 - Pass 2: Extract edges (function calls, method calls, static calls)
 
 The base class handles grammar checking, parser creation, file discovery,
@@ -43,6 +43,7 @@ from hypergumbo_core.analyze.base import (
     make_symbol_id,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -190,6 +191,8 @@ def _extract_method_symbol(
                 "param_count": len(params),
                 "class": current_class,
             },
+            cyclomatic_complexity=compute_cyclomatic_complexity(node, "hack"),
+            line_span=node.end_point[0] - node.start_point[0] + 1,
         )
     return None  # pragma: no cover
 
@@ -337,6 +340,8 @@ def _extract_symbols_recursive(
                 origin=PASS_ID,
                 signature=signature,
                 meta={"param_count": len(params)},
+                cyclomatic_complexity=compute_cyclomatic_complexity(node, "hack"),
+                line_span=node.end_point[0] - node.start_point[0] + 1,
             )
             analysis.symbols.append(sym)
             analysis.node_for_symbol[sym.id] = node

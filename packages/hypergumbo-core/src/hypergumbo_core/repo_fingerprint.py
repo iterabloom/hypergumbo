@@ -47,8 +47,12 @@ field without conditional logic.
 ## Scheme
 
 The top-level ``repo_fingerprint_scheme`` declared in the spec
-(``hypergumbo-repofp-v1``) covers this algorithm. Future algorithm
-changes must bump the scheme version.
+(``hypergumbo-repofp-v2``) covers this algorithm and its field rendering.
+Future algorithm changes must bump the scheme version. v2 (WI-bosog) added
+the ``sha256:`` prefix to the AR-record FIELD (:func:`compute_repo_fingerprint_field`),
+uniform with run_signature / config_fingerprint; the bare digest returned by
+:func:`compute_repo_fingerprint` (the colon-free cache-dir path segment) is
+unchanged.
 
 ## Performance
 
@@ -262,3 +266,22 @@ def compute_repo_fingerprint(repo_root: Path) -> str:
     if (repo_root / ".git").exists():
         return _compute_git_fingerprint(repo_root)
     return _compute_non_git_fingerprint(repo_root)
+
+
+def compute_repo_fingerprint_field(repo_root: Path) -> str:
+    """Render the AnalysisRun ``repo_fingerprint`` FIELD value (WI-bosog).
+
+    The bare :func:`compute_repo_fingerprint` digest doubles as a filesystem
+    path segment — the analysis cache-dir ``<state_hash>`` — so it must stay
+    colon-free. The AR-record provenance FIELD, however, was the lone identity
+    field rendered as bare 64-hex while its siblings ``run_signature`` and
+    ``config_fingerprint`` carry the ``sha256:`` scheme prefix (``sha256:<16
+    hex>``). That non-uniformity meant a consumer could not strip a scheme
+    prefix uniformly across the AR's identity fields. This helper stamps the
+    prefix onto the FIELD while leaving the cache-dir digest untouched. The
+    full 64-hex digest is retained — ``repo_fingerprint`` is a content hash of
+    the code snapshot, not a derived 16-hex signature — so the field is
+    ``sha256:<64hex>`` (the ``pass_version`` rendering convention). Governed by
+    ``schema.REPO_FINGERPRINT_SCHEME`` (bumped to v2 when the prefix landed).
+    """
+    return "sha256:" + compute_repo_fingerprint(repo_root)

@@ -1,0 +1,37 @@
+- op: create  # 8c0d
+  at: '2026-07-25T06:33:02Z'  # 8c0d
+  by: agent  # 8c0d
+  actor: jgstern_agent  # 8c0d
+  clock: 1  # 8c0d
+  nonce: 8c0d  # 8c0d
+  data:  # 8c0d
+    kind: work_item  # 8c0d
+    title: "test_session_start_agent_notes (5) not hermetic; fail in clean CI container"  # 8c0d
+    status: todo_soft  # 8c0d
+    priority: 2  # 8c0d
+    parent:  # 8c0d
+    tags:  # 8c0d
+    - test_hermeticity  # 8c0d
+    - agent_infrastructure  # 8c0d
+    - ci  # 8c0d
+    isbefore: []  # 8c0d
+    duplicate_of: []  # 8c0d
+    not_duplicate_of: []  # 8c0d
+    pr_ref:  # 8c0d
+    description: "Five tests in tests/test_session_start_agent_notes.py fail inside a fresh CI container but PASS natively in the sandbox -> they are not hermetic. In a clean checkout, when the tests' intended inputs are not fully controlled, the session-start hook takes the \"Autonomous mode is OFF...\" branch instead of emitting the agent_notes-staleness prompt the tests assert on:\n\n  AssertionError: assert 'agent_notes.json was last updated' in 'Autonomous mode is OFF. Before starting work, ask the user which mode to use: BROAD, DEEP, or OFF. Then run: ./scripts/loop-toggle <choice>'\n\nFailing tests:\n  - test_notes_prompt_fires_with_both_ages\n  - test_notes_prompt_uses_seconds_under_one_minute\n  - test_notes_prompt_uses_days_when_old\n  - test_notes_prompt_omits_last_session_clause_when_transcript_absent\n  - test_notes_prompt_fires_in_case_4_mode_active\n\nSurfaced by the migration's first real Woodpecker run (GitHub dev refresh push, pipeline 6). Because they pass natively, this is a hermeticity gap: the tests depend on lab-notebook / agent_notes state (and/or AUTONOMOUS_MODE precedence and transcript presence) that the fresh container lacks. They will redden the full-suite cron's test-agent-infra step and the nightly matrix wherever tests/ runs in a clean container.\n\nFix: make the tests control EVERY input the session-start hook branches on (agent_notes.json presence + mtime, AUTONOMOUS_MODE state, transcript presence) via tmp fixtures/env, so the intended branch fires regardless of ambient repo/container state. Verify by running in a clean checkout with no ~/hypergumbo_lab_notebook.\n\nRepro (passes natively; needs a clean container to fail):\n  python -m pytest tests/test_session_start_agent_notes.py -o addopts=\"\" -q"  # 8c0d
+    fields: {}  # 8c0d
+- op: update  # 06ad
+  at: '2026-07-26T03:05:22Z'  # 06ad
+  by: agent  # 06ad
+  actor: jgstern_agent  # 06ad
+  clock: 2  # 06ad
+  nonce: 06ad  # 06ad
+  set:  # 06ad
+    status: done  # 06ad
+- op: discuss  # 1223
+  at: '2026-07-26T03:05:22Z'  # 1223
+  by: agent  # 1223
+  actor: jgstern_agent  # 1223
+  clock: 3  # 1223
+  nonce: '1223'  # 1223
+  message: "Fixed in GitHub PR #6. Root cause CORRECTED: not an uncontrolled-inputs/hermeticity gap (the tests already fake HOME + notes + transcript) but a MISSING jq binary in the per-PR Woodpecker gate's pytest step. session_start_logic.sh's 'command -v jq' guard (line 91) returns early with no jq -> the notes prompt never appends -> the 5 'prompt fires' assertions fail. Sibling steps (hook-tests:149, forge-arms:173) and full-suite's test-agent-infra:103 already install jq; the main pytest step was the lone omission (surfaced by pipeline 6's whole-suite run). Fix: add 'apt-get install -y jq' to that step. Behavioral evidence: reproduced by masking jq from PATH -> exactly these 5 fail (assert 'false' == 'true'); with jq present all 9 pass. Caveats: PR #6's gate did not re-select these 5 (smart-test picked only cli.py-affected tests), so the direct in-CI observation lands on the next gate run that selects them -- the mechanism is locally proven + the fix is in dev. The item's prediction that full-suite/nightly would redden was inaccurate (full-suite already had jq; nightly runs only packages/*/tests/, not top-level tests/)."  # 1223

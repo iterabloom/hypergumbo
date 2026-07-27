@@ -85,3 +85,19 @@
   clock: 8  # 5122
   nonce: '5122'  # 5122
   message: "[Wave-0 pending-validation sweep] tracker: satisfied INV-sadiv -- All six linker passes migrated to make_symbol_id factory with canonical <language>:<path>:<start>-<end>:<name>:<kind> schema. ID-format validator class enforces schema at spec_validator.py:1157-1239 with explicit INV-sadiv detection at lines 1183-1189. Positive evidence: grep results show NO remaining double-colon ID construction sites in any linker code; all six sites verified using make_symbol_id; unit tests passing on canonical shapes."  # 5122
+- op: update  # 3625
+  at: '2026-06-22T01:47:09Z'  # 3625
+  by: agent  # 3625
+  actor: jgstern_agent  # 3625
+  clock: 9  # 3625
+  nonce: '3625'  # 3625
+  set: {}  # 3625
+  remove:  # 3625
+    tags: [awaits_bakeoff_validation]  # 3625
+- op: discuss  # d0c0
+  at: '2026-06-22T01:47:09Z'  # d0c0
+  by: agent  # d0c0
+  actor: jgstern_agent  # d0c0
+  clock: 10  # d0c0
+  nonce: d0c0  # d0c0
+  message: "Drain audit: D-stale. Claim (218 call_site nodes with :: separator / 50 spurious edges) validated 2026-06-11: six linker sites migrated to make_symbol_id factory, validator enforcement spec_validator.py:1157-1239, tests passing. Status satisfied. Stripping stale tag."  # d0c0

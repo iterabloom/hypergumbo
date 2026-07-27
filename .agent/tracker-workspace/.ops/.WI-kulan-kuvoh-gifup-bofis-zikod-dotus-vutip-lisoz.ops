@@ -47,3 +47,20 @@
   clock: 4  # 2af4
   nonce: 2af4  # 2af4
   message: "compact finalize-after-shrink family cross-link (connections-sweep 2026-06-08T1900Z)"  # 2af4
+- op: update  # 71a2
+  at: '2026-07-09T21:38:13Z'  # 71a2
+  by: agent  # 71a2
+  actor: jgstern_agent  # 71a2
+  clock: 5  # 71a2
+  nonce: 71a2  # 71a2
+  set:  # 71a2
+    status: done  # 71a2
+  add:  # 71a2
+    tags: [wave4]  # 71a2
+- op: discuss  # 6024
+  at: '2026-07-09T21:38:13Z'  # 6024
+  by: agent  # 6024
+  actor: jgstern_agent  # 6024
+  clock: 6  # 6024
+  nonce: '6024'  # 6024
+  message: "Fixed + merged (selfh/dev a401dad045, bundled with WI-zotam). compact emitted nodes_summary but no companion for the other truncated top-level arrays. Added entrypoints_summary + features_summary ({included:{count},omitted:{count}}) via a shared _array_projection_summary helper, both selection branches. usage_contexts_summary INTENTIONALLY OMITTED per scope-audit: usage_contexts is fully stripped from compact (WI-judun), so an included/omitted mirror would be degenerate (included always 0) — the documented strip covers it. Behavioral evidence: new test asserts both summaries reconcile with emitted/source array lengths + entrypoints omitted>0 (truncation exercised) across both branches; 3465 affected tests pass; core 100%. Wave-4 projection."  # 6024

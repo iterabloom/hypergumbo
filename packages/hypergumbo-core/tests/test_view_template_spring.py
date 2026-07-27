@@ -125,7 +125,8 @@ class TestStringReturnViewName:
         assert len(result.edges) == 1
         edge = result.edges[0]
         assert edge.src == method.id
-        assert edge.edge_type == "renders"
+        assert edge.edge_type == "references"
+        assert (edge.meta or {}).get("ref_construct") == "view_render"
         assert (edge.meta or {}).get("detection_pattern") == "return_string"
         assert edge.dst.endswith(
             "src/main/resources/templates/users/show.html:1-1:show.html:template"

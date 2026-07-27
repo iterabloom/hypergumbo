@@ -292,3 +292,30 @@ func _ready():
         assert result.run is not None
         assert result.run.pass_id == "gdscript"
         assert result.run.files_analyzed >= 1
+
+
+class TestGdscriptCyclomaticComplexity:
+    """INV-loguk slice C: callable gdscript symbols carry non-null CC + LOC.
+    Real-grammar verification (if/elif/for/while/pattern_section/ternary/pattern_guard + and/or/&&/||)."""
+
+    def test_branchy_callables_have_expected_cc(self, tmp_path) -> None:
+        from hypergumbo_lang_extended1.gdscript import analyze_gdscript
+        (tmp_path / 's.gd').write_text('extends Node\n\nfunc compute(a, b):\n\tif a > 0 and b > 0:\n\t\tfor i in range(a):\n\t\t\twhile i < b:\n\t\t\t\ti += 1\n\telif a < 0 or b < 0:\n\t\tprint("neg")\n\telse:\n\t\tif b == 0:\n\t\t\treturn 0\n\tmatch a:\n\t\t1:\n\t\t\treturn 1\n\t\t2:\n\t\t\treturn 2\n\t\t_:\n\t\t\treturn -1\n\treturn a + b\n')
+        result = analyze_gdscript(tmp_path)
+        assert not result.skipped
+        by = {s.name: s for s in result.symbols if s.kind in ('function',)}
+        assert by['compute'].cyclomatic_complexity == 11, by['compute'].cyclomatic_complexity
+        assert by['compute'].line_span is not None
+
+    def test_callables_non_null_non_callables_null(self, tmp_path) -> None:
+        from hypergumbo_lang_extended1.gdscript import analyze_gdscript
+        (tmp_path / 's.gd').write_text('extends Node\n\nfunc compute(a, b):\n\tif a > 0 and b > 0:\n\t\tfor i in range(a):\n\t\t\twhile i < b:\n\t\t\t\ti += 1\n\telif a < 0 or b < 0:\n\t\tprint("neg")\n\telse:\n\t\tif b == 0:\n\t\t\treturn 0\n\tmatch a:\n\t\t1:\n\t\t\treturn 1\n\t\t2:\n\t\t\treturn 2\n\t\t_:\n\t\t\treturn -1\n\treturn a + b\n')
+        result = analyze_gdscript(tmp_path)
+        callables = [s for s in result.symbols if s.kind in ('function',)]
+        assert callables
+        for s in callables:
+            assert s.cyclomatic_complexity is not None, (s.kind, s.name)
+            assert s.line_span is not None, (s.kind, s.name)
+        for s in result.symbols:
+            if s.kind not in ('function',):
+                assert s.cyclomatic_complexity is None, (s.kind, s.name)

@@ -7,6 +7,7 @@ This analyzer uses tree-sitter to parse Nix files and extract:
 - Flake inputs
 - Derivation declarations
 - Import expressions
+- Call-graph edges between functions
 
 If tree-sitter-nix is not installed, the analyzer
 gracefully degrades and returns an empty result.
@@ -21,7 +22,9 @@ and result assembly. This module provides only the Nix-specific extraction logic
 2. If not available, return skipped result (not an error)
 3. Parse all .nix files
 4. Extract bindings, functions, derivations
-5. Create imports edges for import expressions
+5. Create imports edges for import expressions and calls edges for function
+   applications (callee resolved via NameResolver, falling back to
+   nix:external:<name>:function)
 
 Why This Design
 ---------------
@@ -47,6 +50,7 @@ from hypergumbo_core.analyze.base import (
     node_text,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -352,6 +356,13 @@ def _extract_nix_symbols(
                     ),
                     origin=PASS_ID,
                     signature=signature,
+                    # INV-loguk: CC only for function-kind bindings (walked from
+                    # the function value_node); binding/input/derivation stay None.
+                    cyclomatic_complexity=(
+                        compute_cyclomatic_complexity(value_node, "nix")
+                        if kind == "function" and value_node is not None else None
+                    ),
+                    line_span=(end_line - start_line + 1) if kind == "function" else None,
                 )
                 symbols.append(sym)
                 # Register functions for call resolution
@@ -383,6 +394,8 @@ def _extract_nix_symbols(
                 ),
                 origin=PASS_ID,
                 signature=_extract_nix_signature(node, source),
+                cyclomatic_complexity=compute_cyclomatic_complexity(node, "nix"),
+                line_span=end_line - start_line + 1,
             )
             symbols.append(sym)
             symbol_registry[name] = sym
@@ -429,7 +442,6 @@ def _extract_nix_edges(
                         dst=dst_id,
                         edge_type="imports",
                         line=start_line,
-                        confidence=0.80,
                         origin=PASS_ID,
                         evidence_type="static",
                         origin_run_id=run_id,

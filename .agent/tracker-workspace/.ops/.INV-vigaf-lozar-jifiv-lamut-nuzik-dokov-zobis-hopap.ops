@@ -1,0 +1,46 @@
+- op: create  # 4560
+  at: '2026-07-18T07:16:57Z'  # 4560
+  by: agent  # 4560
+  actor: jgstern_agent  # 4560
+  clock: 1  # 4560
+  nonce: '4560'  # 4560
+  data:  # 4560
+    kind: invariant  # 4560
+    title: "META: Extension/UFCS call resolution belongs in a shared receiver-type-index linker, not in language analyzers"  # 4560
+    status: violated  # 4560
+    priority: 2  # 4560
+    parent:  # 4560
+    tags:  # 4560
+    - cross_language_parity  # 4560
+    - analysis_quality  # 4560
+    - structural  # 4560
+    isbefore: []  # 4560
+    duplicate_of: []  # 4560
+    not_duplicate_of: []  # 4560
+    pr_ref:  # 4560
+    description: "STATEMENT: Resolution of `x.foo()` to a target OUTSIDE the receiver's type hierarchy — extension methods (Kotlin/C#/Scala/Swift/F#/Dart/Obj-C/Haxe/Pascal), UFCS free functions (D/Nim), library-for-type (Solidity) — is ONE search: a receiver-type-keyed candidate index queried by the call's `receiver_type_hint`, matched by callee short-name. It MUST live in a shared Infrastructure linker, with analyzers only emitting `make_unresolved_edge(...)` + the receiver-type hint — the exact analyzer/linker contract INV-nilud established for inheritance-aware resolution. Currently VIOLATED.\n\nROOT CAUSE: Non-hierarchy call resolution was added per-analyzer as each language's need surfaced, before the shared pattern was recognized. Three ad-hoc implementations of one concept now exist:\n  1. Kotlin — extension-function resolution IN-ANALYZER (WI-visaz/WI-fuhav; kotlin.py:1259-1288 builds `extension_index` keyed by `meta[\"extension_receiver\"]`, emits resolved `ast_call_extension` edges). The exact anti-pattern this invariant names.\n  2. D — UFCS resolution IN-ANALYZER (d_lang.py, `_get_ufcs_template_name` @518 + UFCS branch @~732).\n  3. Rust — trait-impl dispatch via a linker (linkers/rust_trait_dispatch.py; consumes `implements` edges, emits `dispatches_to`).\nPlus ~11 extension-capable languages with NO call-site resolution (C# has only an ambiguity guard, WI-gafat; Scala implicits / Swift `extension` / Dart `extension` / Obj-C categories / F# / Haxe static-extensions parse the members but never resolve calls to them).\n\nWHY ONE SEARCH: extension-method and UFCS resolution build the SAME structure — `receiver_type_name -> [(callable_id, Symbol)]` — from declarations that name a receiver/first-param type, then look up by the receiver's inferred type. Only the analyzer-side DETECTION (what populates the index) and the emitted `evidence_type` differ. `edge_type` stays `calls` (ADR-0023 forbids an `extension`/`ufcs` edge_type — endpoint-derivable). `ast_call_extension` already exists (evidence_types.py:132, conf 0.8); UFCS needs ONE cheap same-axis registry value (`ast_call_ufcs`) — a registry addition, not a new axis (ADR-0028/ADR-0024).\n\nDISTINCT FROM the hierarchy-walk family: inherited-method resolution (inherited_calls.py, `_MRO_WALKERS`) walks the receiver's ANCESTOR chain — a genuinely different search that does NOT belong in this resolver. The MRO walkers stay their own family (see the Scala/Swift `_walk_linearization`/`_walk_left_to_right` items).\n\nPRECEDENT + SPIRIT: This is the sibling of INV-nilud / ADR-0029, which consolidated inheritance-aware resolution out of the Java+Ruby analyzers into one linker (\"the other 12 analyzers shared the same silent gap\"). Same DRY smell (3+ ad-hoc impls of one idea), same fix shape.\n\nBREADTH (grounds the DRY payoff): ~15 supported languages (strong) have a non-hierarchy `x.foo()` mechanism — 13 extension-style + 2 UFCS (D, Nim). The shared linker is built once; each additional language is a small analyzer hint-emitter (mirrors inherited_calls exactly: one linker + per-analyzer hint emission).\n\nPROVENANCE: 3-lens investigation 2026-07-18 (linker-architecture / cross-language-matrix / ADR-spec-spirit). The \"no meaningful shared-code savings\" supposition was found overstated: the shared scaffold (receiver-type-hint front-half + `Edge.create(edge_type=calls...)` emission tail, currently duplicated ~5x in inherited_calls.py) IS worth extracting once the reuse breadth (15 langs) is counted. Full synthesis in the session transcript; see also correctness_strategy_07092026.md.\n\nSATISFACTION CRITERIA: extension/UFCS call resolution routes through the shared receiver-type-index linker for at least the currently-implementing languages (Kotlin migrated off the analyzer; D routed through it), analyzers emit unresolved+hint only, and a property test asserts no analyzer resolves an extension/UFCS call itself (the INV-nilud analogue). Members: substrate WI (below), Kotlin migration WI, D/UFCS (WI-situj re-scoped). C#/Scala/Swift/F#/Dart/Obj-C/Haxe roll-out filed when the program is undertaken."  # 4560
+    fields:  # 4560
+      statement: "Extension-method and UFCS call resolution (receiver-type-keyed candidate search) MUST live in a shared Infrastructure linker, not duplicated per-analyzer — the INV-nilud contract extended to the non-hierarchy resolution family."  # 4560
+      root_cause: "Non-hierarchy call resolution was added per-analyzer as each language surfaced its need, yielding three ad-hoc impls of one search (Kotlin in-analyzer, D in-analyzer, Rust linker) plus ~11 unhandled extension languages; the receiver-type-index search is identical across extension methods and UFCS — only analyzer-side detection and the emitted evidence_type differ."  # 4560
+- op: discuss  # 4afc
+  at: '2026-07-18T07:25:14Z'  # 4afc
+  by: agent  # 4afc
+  actor: jgstern_agent  # 4afc
+  clock: 2  # 4afc
+  nonce: 4afc  # 4afc
+  message: "Owner-specified execution order 2026-07-18 (fork decision): WI-panah (substrate) -> WI-situj (D) -> WI-lodij (Kotlin migration) -> WI-nazab/WI-sojim (Scala/Swift MRO walkers) -> INV-vigaf (property-test flip, last). NOTE: this sequences D before the Kotlin migration, reversing the de-risking preference originally filed (WI-lodij isbefore WI-situj, now removed). WI-panah stays the hard prerequisite for both members and will carry its OWN extension-branch + UFCS-branch test fixtures so the substrate is validated independently of which real consumer lands first."  # 4afc
+- op: update  # dfcb
+  at: '2026-07-18T21:10:59Z'  # dfcb
+  by: agent  # dfcb
+  actor: jgstern_agent  # dfcb
+  clock: 3  # dfcb
+  nonce: dfcb  # dfcb
+  set:  # dfcb
+    status: satisfied  # dfcb
+- op: discuss  # 0408
+  at: '2026-07-18T21:10:59Z'  # 0408
+  by: agent  # 0408
+  actor: jgstern_agent  # 0408
+  clock: 4  # 0408
+  nonce: '0408'  # 0408
+  message: "Satisfied — the receiver-type-index resolver family is built and the invariant is enforced. Members all merged to dev: WI-panah (substrate linkers/receiver_type_dispatch.py + ast_call_ufcs, e9e7a4ac), WI-lodij (Kotlin extension resolution migrated OFF the analyzer onto the linker seam, 7b91e26caf), WI-situj (D UFCS routed through the linker + receiver gating, 36ef4ec6d1). Behavioral/enforcement evidence: (1) test_inv_vigaf_analyzer_ownership.py (15d6cef41c) statically asserts no producer source hand-writes evidence_type=ast_call_extension/ast_call_ufcs — those are stamped ONLY by the linker via _RECEIVER_META_EVIDENCE; (2) test_receiver_type_dispatch.py proves the linker resolves both branches (extension + UFCS, incl. generic base-name normalization + ambiguity gating); (3) test_kotlin.py + test_d_ufcs_receiver_gating.py prove Kotlin/D emit make_unresolved_edge+receiver_type_hint (not resolved edges). This is the INV-nilud contract (analyzer emits unresolved+hint, linker owns resolution) extended from inheritance to the non-hierarchy family. SCOPE: satisfied for the currently-implementing languages (Kotlin extension, D UFCS); the other extension-capable languages (C#/Scala/Swift/F#/Dart/Obj-C/Haxe/Nim) do not resolve extension calls yet — future coverage that will route through the same linker, not violations. Provenance: 3-lens investigation 2026-07-18."  # 0408

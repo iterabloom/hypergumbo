@@ -50,6 +50,7 @@ from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from hypergumbo_core.symbol_resolution import NameResolver
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -190,6 +191,8 @@ def _extract_r_symbols(
                     ),
                     origin=PASS_ID,
                     signature=_extract_r_signature(right_node, source),
+                    cyclomatic_complexity=compute_cyclomatic_complexity(right_node, "r"),
+                    line_span=end_line - start_line + 1,
                 )
                 symbols.append(sym)
                 symbol_registry[func_name] = sym
@@ -239,7 +242,6 @@ def _extract_r_symbols(
                                             dst=f"r:{pkg_name}:0-0:{pkg_name}:package",
                                             edge_type="imports",
                                             line=start_line,
-                                            confidence=0.85,
                                             origin=PASS_ID,
                                             evidence_type="import",
                                             meta={

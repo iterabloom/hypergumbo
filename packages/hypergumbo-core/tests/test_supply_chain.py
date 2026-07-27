@@ -3,7 +3,10 @@
 
 Tests the classification of files into supply chain tiers:
 - Tier 1 (first_party): Project's own source code
-- Tier 2 (internal_dep): Monorepo packages, local forks
+- Tier 2 (internal_dep): Org-internal dependency packages (e.g. configured
+  ``internal_package_roots``). Per ADR-0041 §1 / INV-naduh, in-repo role
+  files (examples, docs, notebooks, fuzz/bench) are first-party (tier 1),
+  not tier 2 — their role is carried by flags/reason, not by distance
 - Tier 3 (external_dep): Third-party dependencies
 - Tier 4 (derived): Build artifacts, minified/bundled output
 """
@@ -201,6 +204,46 @@ class TestVendoredSdkDetection:
         )
 
 
+class TestVendoredStaticAssets:
+    """INV-kokik: un-minified vendored third-party JS/CSS under a first-party
+    root (e.g. ``src/pretix/static/.../vendored/jquery.js``) is EXTERNAL_DEP
+    (tier 3), not first-party — otherwise vendored bundles inflate JS symbol
+    totals and leak into top-ranked symbols. Detected by unambiguous
+    vendored-marker directory segments (``vendored/`` / ``npm_mirror/`` /
+    ``bower_components/``) matched anywhere in the path, NOT a blanket
+    ``static/`` rule (many projects keep first-party JS/CSS under static/).
+    Minified bundles (``*.min.js``) are already demoted upstream."""
+
+    @pytest.mark.parametrize("path", [
+        "src/pretix/static/pretixbase/js/vendored/jquery.js",
+        "src/app/static/npm_mirror/moment/moment.js",
+        "assets/bower_components/select2/select2.js",
+    ])
+    def test_vendored_static_asset_classified_as_external(self, path, tmp_path):
+        """Un-minified vendored assets under a marker dir are tier 3."""
+        file_path = tmp_path / path
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+        file_path.write_text("// vendored library source")
+
+        result = classify_file(file_path, tmp_path)
+        assert result.tier == Tier.EXTERNAL_DEP, (
+            f"{path} should be EXTERNAL_DEP, got {result.tier.name}: {result.reason}"
+        )
+
+    def test_first_party_static_not_misclassified(self, tmp_path):
+        """A first-party static file NOT under a vendored marker dir stays
+        first-party — guards against an over-broad static/-based rule."""
+        path = "src/pretix/static/pretixbase/js/ui/main.js"
+        file_path = tmp_path / path
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+        file_path.write_text("// our own UI code")
+
+        result = classify_file(file_path, tmp_path)
+        assert result.tier != Tier.EXTERNAL_DEP, (
+            f"{path} is first-party static, should NOT be EXTERNAL_DEP: {result.reason}"
+        )
+
+
 class TestFirstPartyDetection:
     """Test tier 1 (first_party) detection."""
 
@@ -236,7 +279,14 @@ class TestFirstPartyDetection:
 
 
 class TestInternalDepDetection:
-    """Test tier 2 (internal_dep) detection via workspace configs."""
+    """Test workspace-config package detection and role-file classification.
+
+    Workspace members are first-party (the workspace IS the project), so the
+    classifier returns tier 1 for them; only configured
+    ``internal_package_roots`` remain tier 2. Per ADR-0041 §1 / INV-naduh,
+    in-repo example/demo/sample role files are first-party (tier 1) with
+    ``is_example=True`` carrying the role — not tier 2.
+    """
 
     def test_npm_workspaces(self, tmp_path):
         """Detect internal packages from package.json workspaces."""
@@ -490,14 +540,16 @@ members = ["crates/*"]
         assert result.tier == Tier.FIRST_PARTY
         assert result.is_test is True
 
-    def test_workspace_test_dir_drowns_out_real_internal_dep(self, tmp_path):
-        """Regression guard for INV-tisid: a workspace with both real
-        internal-dep code (examples/) and tests should yield tier 2
-        only for the examples, not the tests.
+    def test_workspace_tests_and_examples_are_distinct_first_party_roles(self, tmp_path):
+        """INV-tisid + INV-naduh: in a workspace with both tests and an
+        examples/ dir, BOTH are first-party (tier 1) but carry distinct role
+        flags — tests get is_test=True, examples get is_example=True.
 
-        Self-analysis evidence (2026-05-16): 508 of 509 internal_dep
-        entries were tests, drowning out the single real entry. After
-        the fix, the test ratio drops to 0%.
+        INV-tisid: pre-fix the workspace test branch returned INTERNAL_DEP,
+        making ~99% of self-analysis internal_dep entries tests rather than
+        real internal deps (508 of 509 on 2026-05-16). INV-naduh / ADR-0041
+        §1: examples are the project's own code (distance 0) → first-party,
+        with is_example carrying the role, not tier 2.
         """
         pkg_json = tmp_path / "package.json"
         pkg_json.write_text('{"workspaces": ["packages/*"]}')
@@ -507,7 +559,7 @@ members = ["crates/*"]
         (pkg_dir / "package.json").write_text("{}")
         (pkg_dir / "tests" / "test_core.py").write_text("# test")
 
-        # Real internal-dep: an examples directory outside the workspace.
+        # An examples/ directory outside the workspace (first-party, is_example).
         (tmp_path / "examples").mkdir()
         (tmp_path / "examples" / "demo.py").write_text("# demo")
 
@@ -518,7 +570,7 @@ members = ["crates/*"]
 
         assert test_result.tier == Tier.FIRST_PARTY
         assert test_result.is_test is True
-        assert example_result.tier == Tier.INTERNAL_DEP
+        assert example_result.tier == Tier.FIRST_PARTY
         assert example_result.is_example is True
 
     def test_workspace_test_file_pattern_is_first_party(self, tmp_path):
@@ -538,37 +590,47 @@ members = ["crates/*"]
         assert result.is_test is True
         assert "co-located test" in result.reason
 
-    def test_examples_dir_is_internal_dep(self, tmp_path):
-        """Examples directory is tier 2 (lower priority than workspace source)."""
+    def test_examples_dir_is_first_party(self, tmp_path):
+        """Examples directory is first-party (tier 1) with is_example=True.
+
+        INV-naduh / ADR-0041 §1: in-repo examples are the project's own code
+        (distance 0); the example role is carried by is_example, not by tier.
+        """
         # Create examples directory
         examples_dir = tmp_path / "examples" / "basic"
         examples_dir.mkdir(parents=True)
         (examples_dir / "app.js").write_text("// example")
 
         result = classify_file(examples_dir / "app.js", tmp_path, set())
-        assert result.tier == Tier.INTERNAL_DEP
+        assert result.tier == Tier.FIRST_PARTY
+        assert result.is_example is True
         assert "examples" in result.reason
 
-    def test_demos_dir_is_internal_dep(self, tmp_path):
-        """Demos directory is tier 2."""
+    def test_demos_dir_is_first_party(self, tmp_path):
+        """Demos directory is first-party (tier 1) with is_example=True (INV-naduh)."""
         demos_dir = tmp_path / "demos"
         demos_dir.mkdir()
         (demos_dir / "demo.py").write_text("# demo")
 
         result = classify_file(demos_dir / "demo.py", tmp_path, set())
-        assert result.tier == Tier.INTERNAL_DEP
+        assert result.tier == Tier.FIRST_PARTY
+        assert result.is_example is True
 
-    def test_samples_dir_is_internal_dep(self, tmp_path):
-        """Samples directory is tier 2."""
+    def test_samples_dir_is_first_party(self, tmp_path):
+        """Samples directory is first-party (tier 1) with is_example=True (INV-naduh)."""
         samples_dir = tmp_path / "samples"
         samples_dir.mkdir()
         (samples_dir / "sample.rs").write_text("// sample")
 
         result = classify_file(samples_dir / "sample.rs", tmp_path, set())
-        assert result.tier == Tier.INTERNAL_DEP
+        assert result.tier == Tier.FIRST_PARTY
+        assert result.is_example is True
 
-    def test_examples_lower_priority_than_workspace_source(self, tmp_path):
-        """Examples (tier 2) have lower priority than workspace source (tier 1)."""
+    def test_workspace_source_and_examples_both_first_party(self, tmp_path):
+        """Workspace source and examples are both first-party (tier 1) but
+        carry distinct roles: workspace source has is_example=False, examples
+        have is_example=True (INV-naduh / ADR-0041 §1).
+        """
         # Set up a library monorepo like socket.io
         pkg_json = tmp_path / "package.json"
         pkg_json.write_text('{"workspaces": ["packages/*"]}')
@@ -585,16 +647,15 @@ members = ["crates/*"]
 
         roots = detect_package_roots(tmp_path)
 
-        # Workspace lib/ should be tier 1
+        # Workspace lib/ is first-party production code (not an example).
         lib_result = classify_file(pkg_dir / "lib" / "index.ts", tmp_path, roots)
         assert lib_result.tier == Tier.FIRST_PARTY
+        assert lib_result.is_example is False
 
-        # Examples should be tier 2
+        # Examples are first-party with the example role carried by is_example.
         example_result = classify_file(examples_dir / "app.ts", tmp_path, roots)
-        assert example_result.tier == Tier.INTERNAL_DEP
-
-        # Tier 1 < Tier 2, so workspace source has higher priority
-        assert lib_result.tier < example_result.tier
+        assert example_result.tier == Tier.FIRST_PARTY
+        assert example_result.is_example is True
 
 
 class TestGradleWorkspaces:
@@ -745,30 +806,36 @@ class TestGradleWorkspaces:
 
 
 class TestDocCClassification:
-    """DocC documentation directories should be tier 2 (not first-party)."""
+    """DocC documentation directories are first-party (tier 1), not tier 2.
 
-    def test_docc_tutorial_swift_file_is_tier2(self, tmp_path):
-        """Swift tutorial fragments in Documentation.docc are tier 2."""
+    INV-naduh / ADR-0041 §1: in-repo docs are the project's own artifacts
+    (distance 0); the documentation role is carried by the reason string,
+    not by a tier-2 (internal-dependency) label.
+    """
+
+    def test_docc_tutorial_swift_file_is_first_party(self, tmp_path):
+        """Swift tutorial fragments in Documentation.docc are first-party (tier 1)."""
         docc_dir = tmp_path / "Sources" / "MyLib" / "Documentation.docc" / "Tutorials"
         docc_dir.mkdir(parents=True)
         (docc_dir / "code-0001.swift").write_text("import MyLib\nlet store = Store()")
 
         result = classify_file(docc_dir / "code-0001.swift", tmp_path, set())
-        assert result.tier == Tier.INTERNAL_DEP, (
-            f"DocC tutorial should be tier 2, got {result.tier}: {result.reason}"
+        assert result.tier == Tier.FIRST_PARTY, (
+            f"DocC tutorial should be tier 1, got {result.tier}: {result.reason}"
         )
+        assert "documentation" in result.reason.lower()
 
-    def test_docc_nested_under_sources_not_tier1(self, tmp_path):
-        """DocC under Sources/ should NOT be promoted to tier 1."""
+    def test_docc_nested_under_sources_is_first_party(self, tmp_path):
+        """DocC under Sources/ is first-party (tier 1); the .docc reason records the role."""
         src_dir = tmp_path / "Sources" / "ComposableArchitecture"
         docc_dir = src_dir / "Documentation.docc" / "Tutorials" / "MeetTCA"
         docc_dir.mkdir(parents=True)
         (docc_dir / "code-0003.swift").write_text("struct ContactsFeature {}")
 
-        # Even though it's under Sources/, the .docc path should demote it
+        # Under Sources/, but the .docc path tags it as documentation (still tier 1).
         result = classify_file(docc_dir / "code-0003.swift", tmp_path, set())
-        assert result.tier == Tier.INTERNAL_DEP, (
-            f"DocC tutorial under Sources/ should be tier 2, got {result.tier}: {result.reason}"
+        assert result.tier == Tier.FIRST_PARTY, (
+            f"DocC tutorial under Sources/ should be tier 1, got {result.tier}: {result.reason}"
         )
 
     def test_non_docc_source_stays_tier1(self, tmp_path):
@@ -786,37 +853,39 @@ class TestDocCClassification:
 
 
 class TestNotebookClassification:
-    """Jupyter notebooks are always tier 2 (internal_dep).
+    """Jupyter notebooks are first-party (tier 1), not tier 2.
 
-    Notebooks are exploratory code that lives outside the project's import
-    namespace. They should be analyzed but deprioritized vs. first-party source.
+    Notebooks are exploratory in-repo code; per INV-naduh / ADR-0041 §1 they
+    are the project's own files (distance 0) → first-party, with the
+    "notebook" role carried by the reason string rather than a tier-2
+    (internal-dependency) label.
     """
 
-    def test_notebook_in_root_is_internal_dep(self, tmp_path):
-        """Notebook at repo root is tier 2."""
+    def test_notebook_in_root_is_first_party(self, tmp_path):
+        """Notebook at repo root is first-party (tier 1)."""
         nb = tmp_path / "analysis.ipynb"
         nb.write_text("{}")
         result = classify_file(nb, tmp_path, set())
-        assert result.tier == Tier.INTERNAL_DEP
+        assert result.tier == Tier.FIRST_PARTY
         assert "notebook" in result.reason.lower()
 
-    def test_notebook_in_src_is_internal_dep(self, tmp_path):
-        """Notebook in src/ is still tier 2 (not tier 1)."""
+    def test_notebook_in_src_is_first_party(self, tmp_path):
+        """Notebook in src/ is first-party (tier 1)."""
         src = tmp_path / "src"
         src.mkdir()
         nb = src / "explore.ipynb"
         nb.write_text("{}")
         result = classify_file(nb, tmp_path, set())
-        assert result.tier == Tier.INTERNAL_DEP
+        assert result.tier == Tier.FIRST_PARTY
 
-    def test_notebook_in_notebooks_dir_is_internal_dep(self, tmp_path):
-        """Notebook in notebooks/ subdirectory is tier 2."""
+    def test_notebook_in_notebooks_dir_is_first_party(self, tmp_path):
+        """Notebook in notebooks/ subdirectory is first-party (tier 1)."""
         nb_dir = tmp_path / "notebooks"
         nb_dir.mkdir()
         nb = nb_dir / "experiment.ipynb"
         nb.write_text("{}")
         result = classify_file(nb, tmp_path, set())
-        assert result.tier == Tier.INTERNAL_DEP
+        assert result.tier == Tier.FIRST_PARTY
 
 
 class TestTestFileClassification:
@@ -824,9 +893,11 @@ class TestTestFileClassification:
     (first_party) with is_test=True.
 
     Test code IS first-party code (it lives in the project's repo and is
-    written by the project's authors). Tier 2 (internal_dep) is reserved
-    for in-repo non-test code: monorepo subpackages used as dependencies,
-    fuzz harnesses, examples, vendored-but-in-tree deps. Per INV-tisid,
+    written by the project's authors). Per ADR-0041 §1 / INV-naduh, tier 2
+    (internal_dep) is reserved for org-internal *dependency* packages
+    (configured internal_package_roots); other in-repo role files — tests,
+    examples, fuzz harnesses, notebooks, docs — are first-party (tier 1)
+    with their role carried by flags/reason, not by tier. Per INV-tisid,
     routing tests through tier 2 made tier 2 a synonym for is_test and
     drowned out the real internal-dep signal (~99% of self-analysis
     internal_dep entries were tests).
@@ -1071,6 +1142,37 @@ class TestTestFileClassification:
         assert result.tier == Tier.FIRST_PARTY
         assert result.is_test is True
 
+    def test_python_test_prefix_colocated_is_test(self, tmp_path):
+        """WI-mozum: Python test_*.py co-located with source (not under a
+        tests/ dir) is tier 1 + is_test."""
+        pkg = tmp_path / "mymod" / "sub"
+        pkg.mkdir(parents=True)
+        (pkg / "test_thing.py").write_text("def test_x():\n    assert True\n")
+
+        result = classify_file(pkg / "test_thing.py", tmp_path, set())
+        assert result.tier == Tier.FIRST_PARTY
+        assert result.is_test is True
+
+    def test_python_test_suffix_colocated_is_test(self, tmp_path):
+        """WI-mozum: Python *_test.py co-located with source is is_test."""
+        pkg = tmp_path / "mymod" / "sub"
+        pkg.mkdir(parents=True)
+        (pkg / "thing_test.py").write_text("def test_x():\n    assert True\n")
+
+        result = classify_file(pkg / "thing_test.py", tmp_path, set())
+        assert result.tier == Tier.FIRST_PARTY
+        assert result.is_test is True
+
+    def test_bash_test_prefix_colocated_is_test(self, tmp_path):
+        """WI-mozum: Bash test_*.sh co-located with source is is_test."""
+        scripts = tmp_path / "scripts"
+        scripts.mkdir()
+        (scripts / "test_hooks.sh").write_text("#!/bin/bash\necho ok\n")
+
+        result = classify_file(scripts / "test_hooks.sh", tmp_path, set())
+        assert result.tier == Tier.FIRST_PARTY
+        assert result.is_test is True
+
     def test_cpp_production_code_stays_tier1(self, tmp_path):
         """C++ production code with 'test' in the name stays tier 1."""
         src_dir = tmp_path / "src"
@@ -1109,80 +1211,83 @@ class TestTestFileClassification:
 
 
 class TestFuzzBenchClassification:
-    """Test that fuzz and benchmark directories are classified as tier 2.
+    """Test that fuzz and benchmark directories are classified as first-party.
 
-    Fuzz targets and benchmarks are non-production code — they exercise the
-    library but are not part of its API surface.  Common across Rust, Go, C/C++.
+    Fuzz targets and benchmarks are in-repo non-production code — they
+    exercise the library but are not part of its API surface. Per INV-naduh /
+    ADR-0041 §1 they are the project's own files (distance 0) → first-party
+    (tier 1); "not production" is carried by the reason string, not by a
+    tier-2 (internal-dependency) label. Common across Rust, Go, C/C++.
 
     - Rust: fuzz/, fuzz_targets/, benches/, criterion/
     - Go: fuzz (in _test.go), benchmarks/ (less common)
     - C/C++: fuzz/, fuzzing/, benchmarks/, benchmark/
     """
 
-    def test_fuzz_dir_is_internal_dep(self, tmp_path):
-        """Top-level fuzz/ directory is tier 2."""
+    def test_fuzz_dir_is_first_party(self, tmp_path):
+        """Top-level fuzz/ directory is first-party (tier 1)."""
         fuzz_dir = tmp_path / "fuzz" / "fuzz_targets"
         fuzz_dir.mkdir(parents=True)
         (fuzz_dir / "fuzz_diff.rs").write_text("fuzz_target!(|data| {})")
 
         result = classify_file(fuzz_dir / "fuzz_diff.rs", tmp_path, set())
-        assert result.tier == Tier.INTERNAL_DEP
+        assert result.tier == Tier.FIRST_PARTY
         assert "fuzz" in result.reason.lower()
 
     def test_fuzz_dir_with_cargo_toml(self, tmp_path):
-        """Fuzz Cargo.toml in fuzz/ is tier 2."""
+        """Fuzz Cargo.toml in fuzz/ is first-party (tier 1)."""
         fuzz_dir = tmp_path / "fuzz"
         fuzz_dir.mkdir()
         (fuzz_dir / "Cargo.toml").write_text('[package]\nname = "fuzz"')
 
         result = classify_file(fuzz_dir / "Cargo.toml", tmp_path, set())
-        assert result.tier == Tier.INTERNAL_DEP
+        assert result.tier == Tier.FIRST_PARTY
 
-    def test_nested_fuzz_dir_is_internal_dep(self, tmp_path):
-        """Nested fuzz/ in a crate workspace is tier 2."""
+    def test_nested_fuzz_dir_is_first_party(self, tmp_path):
+        """Nested fuzz/ in a crate workspace is first-party (tier 1)."""
         fuzz_dir = tmp_path / "crates" / "core" / "fuzz"
         fuzz_dir.mkdir(parents=True)
         (fuzz_dir / "fuzz_parse.rs").write_text("fuzz_target!(|data| {})")
 
         result = classify_file(fuzz_dir / "fuzz_parse.rs", tmp_path, set())
-        assert result.tier == Tier.INTERNAL_DEP
+        assert result.tier == Tier.FIRST_PARTY
 
-    def test_benches_dir_is_internal_dep(self, tmp_path):
-        """Rust benches/ directory is tier 2."""
+    def test_benches_dir_is_first_party(self, tmp_path):
+        """Rust benches/ directory is first-party (tier 1)."""
         bench_dir = tmp_path / "benches"
         bench_dir.mkdir()
         (bench_dir / "pipeline.rs").write_text("fn bench_pipeline() {}")
 
         result = classify_file(bench_dir / "pipeline.rs", tmp_path, set())
-        assert result.tier == Tier.INTERNAL_DEP
+        assert result.tier == Tier.FIRST_PARTY
         assert "bench" in result.reason.lower()
 
-    def test_benchmarks_dir_is_internal_dep(self, tmp_path):
-        """benchmarks/ directory is tier 2."""
+    def test_benchmarks_dir_is_first_party(self, tmp_path):
+        """benchmarks/ directory is first-party (tier 1)."""
         bench_dir = tmp_path / "benchmarks"
         bench_dir.mkdir()
         (bench_dir / "bench_main.cpp").write_text("BENCHMARK(main)")
 
         result = classify_file(bench_dir / "bench_main.cpp", tmp_path, set())
-        assert result.tier == Tier.INTERNAL_DEP
+        assert result.tier == Tier.FIRST_PARTY
 
-    def test_benchmark_singular_dir_is_internal_dep(self, tmp_path):
-        """benchmark/ (singular) directory is tier 2."""
+    def test_benchmark_singular_dir_is_first_party(self, tmp_path):
+        """benchmark/ (singular) directory is first-party (tier 1)."""
         bench_dir = tmp_path / "benchmark"
         bench_dir.mkdir()
         (bench_dir / "bench.go").write_text("func BenchmarkParse(b *testing.B)")
 
         result = classify_file(bench_dir / "bench.go", tmp_path, set())
-        assert result.tier == Tier.INTERNAL_DEP
+        assert result.tier == Tier.FIRST_PARTY
 
-    def test_fuzzing_dir_is_internal_dep(self, tmp_path):
-        """fuzzing/ directory is tier 2 (OSS-Fuzz convention)."""
+    def test_fuzzing_dir_is_first_party(self, tmp_path):
+        """fuzzing/ directory is first-party (tier 1) (OSS-Fuzz convention)."""
         fuzz_dir = tmp_path / "fuzzing"
         fuzz_dir.mkdir()
         (fuzz_dir / "fuzz_harness.c").write_text("int LLVMFuzzerTestOneInput()")
 
         result = classify_file(fuzz_dir / "fuzz_harness.c", tmp_path, set())
-        assert result.tier == Tier.INTERNAL_DEP
+        assert result.tier == Tier.FIRST_PARTY
 
     def test_production_code_unaffected(self, tmp_path):
         """Production code in src/ is not affected by fuzz/bench patterns."""
@@ -1228,6 +1333,41 @@ function goodbye() {
 }
 """)
         assert is_likely_minified(normal) is False
+
+    def test_line_length_heuristic_gated_to_web_assets(self, tmp_path):
+        """INV-lukop: the average-line-length heuristic (>150) is a MINIFICATION
+        signal that fires ONLY for web-asset extensions (JS/CSS/HTML bundles).
+        A dense-but-real source file in a non-web language (a Python data/lookup
+        module, a very long function signature, generated protobuf) legitimately
+        has long lines and must NOT be misclassified as minified — otherwise its
+        WHOLE file is silently dropped as tier-4 with no diagnostic."""
+        long_line = "x = " + "a" * 200  # ~204 chars, avg > 150
+        py = tmp_path / "dense.py"
+        py.write_text(long_line + "\n" + long_line + "\n")
+        assert is_likely_minified(py) is False
+        # ...but a web asset with the same shape is still minified.
+        js = tmp_path / "dense.js"
+        js.write_text(long_line + "\n" + long_line + "\n")
+        assert is_likely_minified(js) is True
+
+    def test_dense_python_file_not_silently_dropped(self, tmp_path):
+        """INV-lukop behavioral repro: a Python file whose average line length
+        exceeds 150 (here a long function signature) must emit its symbols, not
+        0 nodes from a tier-4 minified-misclassification drop."""
+        import json
+        from hypergumbo_core.cli import run_behavior_map
+
+        long_sig = "def wide(" + ", ".join(
+            f"parameter_number_{i}: int = {i}" for i in range(30)
+        ) + "):\n    return 0\n"
+        (tmp_path / "m.py").write_text(long_sig)
+        out = tmp_path / "out.json"
+        run_behavior_map(
+            repo_root=tmp_path, out_path=out, include_sketch_precomputed=False
+        )
+        data = json.loads(out.read_text())
+        fns = [n for n in data["nodes"] if n.get("name") == "wide"]
+        assert len(fns) == 1, [n.get("name") for n in data["nodes"]]
 
     def test_source_map_reference_detected(self, tmp_path):
         """Files with sourceMappingURL are detected as derived."""
@@ -1425,6 +1565,19 @@ class TestEdgeCases:
         roots = detect_package_roots(tmp_path)
         assert roots == set()
 
+    def test_non_dict_package_json(self, tmp_path):
+        """Valid-JSON but non-dict package.json (array/string at top level) is ignored.
+
+        Exercises the ``not isinstance(data, dict)`` guard: a top-level JSON array
+        parses cleanly but has no ``workspaces`` key, so it yields no package roots
+        rather than crashing on ``data.get(...)``.
+        """
+        pkg_json = tmp_path / "package.json"
+        pkg_json.write_text('["not", "an", "object"]')
+
+        roots = detect_package_roots(tmp_path)
+        assert roots == set()
+
     def test_malformed_cargo_toml(self, tmp_path):
         """Cargo.toml that can't be read doesn't crash."""
         cargo_toml = tmp_path / "Cargo.toml"
@@ -1464,20 +1617,29 @@ class TestEdgeCases:
         result = _extract_package_name("node_modules/", "node_modules/")
         assert result is None
 
-    def test_unreadable_cargo_toml(self, tmp_path):
-        """Unreadable Cargo.toml doesn't crash."""
-        import os
+    def test_unreadable_cargo_toml(self, tmp_path, monkeypatch):
+        """Unreadable Cargo.toml doesn't crash (OSError path).
 
+        Mocks ``read_text`` rather than ``chmod(0o000)``: CI runs pytest as root,
+        where chmod does not block reads, so a chmod-based test would skip the
+        ``except OSError`` branch and leave it uncovered (mirrors
+        ``test_unreadable_settings_gradle``; see the read_text-mock comment there).
+        """
         cargo_toml = tmp_path / "Cargo.toml"
-        cargo_toml.write_text("[workspace]\nmembers = [\"crates/*\"]")
+        cargo_toml.write_text('[workspace]\nmembers = ["crates/*"]')
 
-        # Make unreadable
-        os.chmod(cargo_toml, 0o000)
-        try:
-            roots = detect_package_roots(tmp_path)
-            assert roots == set()
-        finally:
-            os.chmod(cargo_toml, 0o644)
+        original_read_text = Path.read_text
+
+        def _raise_on_cargo(self, *args, **kwargs):
+            if self.name == "Cargo.toml":
+                raise OSError("Permission denied")
+            return original_read_text(self, *args, **kwargs)
+
+        monkeypatch.setattr(Path, "read_text", _raise_on_cargo)
+
+        roots = detect_package_roots(tmp_path)
+        # OSError on read → silently skipped, no Cargo roots detected
+        assert roots == set()
 
     def test_package_roots_with_invalid_path(self, tmp_path):
         """Invalid package root in set doesn't crash classification."""
@@ -1577,20 +1739,17 @@ class TestSupplyChainConfig:
         assert config.first_party_patterns == []
         assert config.derived_patterns == []
         assert config.internal_package_roots == []
-        assert config.analysis_tiers == [1, 2, 3]
 
     def test_config_to_dict(self) -> None:
         """SupplyChainConfig serializes correctly."""
         from hypergumbo_core.supply_chain import SupplyChainConfig
 
         config = SupplyChainConfig(
-            analysis_tiers=[1, 2],
             first_party_patterns=["src/", "lib/"],
             derived_patterns=["build/"],
             internal_package_roots=["packages/core"],
         )
         d = config.to_dict()
-        assert d["analysis_tiers"] == [1, 2]
         assert d["first_party_patterns"] == ["src/", "lib/"]
         assert d["derived_patterns"] == ["build/"]
         assert d["internal_package_roots"] == ["packages/core"]
@@ -1600,13 +1759,11 @@ class TestSupplyChainConfig:
         from hypergumbo_core.supply_chain import SupplyChainConfig
 
         data = {
-            "analysis_tiers": [1],
             "first_party_patterns": ["custom/"],
             "derived_patterns": ["out/"],
             "internal_package_roots": ["libs/common"],
         }
         config = SupplyChainConfig.from_dict(data)
-        assert config.analysis_tiers == [1]
         assert config.first_party_patterns == ["custom/"]
         assert config.derived_patterns == ["out/"]
         assert config.internal_package_roots == ["libs/common"]
@@ -1653,13 +1810,15 @@ class TestSupplyChainLimits:
         assert entry["note"] == "could be tier 2 or 3"
 
     def test_empty_supply_chain_section(self) -> None:
-        """Empty limits has empty supply_chain section."""
+        """Empty limits serializes supply_chain as {} (INV-virik: the two
+        diagnostic lists are omitted when empty, not present as always-[])."""
         from hypergumbo_core.limits import Limits
 
         limits = Limits()
         result = limits.to_dict()
-        assert result["supply_chain"]["classification_failures"] == []
-        assert result["supply_chain"]["ambiguous_paths"] == []
+        assert result["supply_chain"] == {}
+        assert "classification_failures" not in result["supply_chain"]
+        assert "ambiguous_paths" not in result["supply_chain"]
 
     def test_merge_preserves_supply_chain(self) -> None:
         """Merging limits preserves supply_chain data."""
@@ -1733,7 +1892,8 @@ class TestClassifySymbolsRecordsClassificationFailures:
         limits = Limits()
         _classify_symbols([sym], tmp_path, set(), limits=limits)
         d = limits.to_dict()
-        assert d["supply_chain"]["classification_failures"] == []
+        # INV-virik: no failure recorded → the list is omitted (not present-as-[]).
+        assert "classification_failures" not in d["supply_chain"]
 
     def test_failure_dedup_per_path(self, tmp_path: Path) -> None:
         """Multiple symbols on the same failed path record one failure."""
@@ -1838,6 +1998,37 @@ class TestClassifySymbolsPreservesTier:
         _classify_symbols([sym], tmp_path, package_roots)
 
         assert sym.supply_chain_reason == "manually classified"
+
+    def test_protocol_origin_stand_in_not_reclassified(self, tmp_path: Path) -> None:
+        """INV-bonup / ADR-0041 §1: a synthetic protocol stand-in (tier-1 default,
+        NO supply_chain_reason, but a truthy protocol_origin) is skipped by
+        _classify_symbols rather than reclassified by host-file path.
+
+        protocol_origin is the honest synthetic marker that replaces the old
+        supply_chain_tier=2 'lock' — the six protocol linkers used to borrow tier 2
+        purely to trip this skip, leaking mechanism into the distance axis. This
+        mirrors the solidity_abi call-site node, the one stand-in with no reason of
+        its own (so it depends on the protocol_origin skip, not the reason skip)."""
+        from hypergumbo_core.cli import _classify_symbols
+        from hypergumbo_core.ir import Symbol, Span
+
+        stand_in = Symbol(
+            id="solidity:abi:transfer",
+            name="transfer",
+            kind="call_site",
+            language=None,
+            path="contract.ts",
+            span=Span(1, 1, 0, 0),
+            protocol_origin="solidity_abi",
+        )
+
+        package_roots = detect_package_roots(tmp_path)
+        _classify_symbols([stand_in], tmp_path, package_roots)
+
+        # Skipped via protocol_origin: keeps the first-party default distance and
+        # gets no classification reason stamped (reclassification would set one).
+        assert stand_in.supply_chain_tier == 1
+        assert not stand_in.supply_chain_reason
 
 
 class TestClassifySymbolsDependencyTier:
@@ -1952,6 +2143,198 @@ class TestClassifySymbolsDependencyTier:
         assert sym.supply_chain_tier == 1  # First-party, not tier 3
 
 
+class TestWorkspaceSiblingDependencyTier:
+    """INV-nuzas / ADR-0041 D8a: a workspace sibling that another workspace
+    package declares as a *dependency* is workspace-INTERNAL (tier 2
+    ``internal_dep``), not a third-party external (tier 3).
+
+    ``_classify_symbols`` previously stamped every ``kind='dependency'``
+    symbol tier-3 unconditionally, so in a monorepo where sibling packages
+    list each other as dependencies (the normal pattern) every internal
+    cross-package dependency edge was mis-tiered external — corrupting
+    tier-weighted views. The fix consults the set of in-repo package
+    distribution names (``collect_workspace_package_names``) and tiers a
+    matching dependency declaration tier-2.
+    """
+
+    def test_python_workspace_sibling_dependency_gets_tier2(
+        self, tmp_path: Path
+    ) -> None:
+        """A sibling package declared as a dependency → tier 2; a genuine
+        third-party dependency in the same manifest stays tier 3."""
+        from hypergumbo_core.cli import _classify_symbols
+        from hypergumbo_core.ir import Symbol, Span
+
+        pkg_a = tmp_path / "packages" / "pkg-a"
+        pkg_a.mkdir(parents=True)
+        (pkg_a / "pyproject.toml").write_text(
+            '[project]\nname = "my-pkg-a"\nversion = "0.1"\n'
+        )
+        pkg_b = tmp_path / "packages" / "pkg-b"
+        pkg_b.mkdir(parents=True)
+        (pkg_b / "pyproject.toml").write_text(
+            '[project]\nname = "my-pkg-b"\n'
+            'dependencies = ["my-pkg-a", "rich"]\n'
+        )
+
+        sibling = Symbol(
+            id="toml:dep:my-pkg-a",
+            name="my-pkg-a",
+            kind="dependency",
+            language="toml",
+            path="packages/pkg-b/pyproject.toml",
+            span=Span(3, 0, 3, 12),
+        )
+        external = Symbol(
+            id="toml:dep:rich",
+            name="rich",
+            kind="dependency",
+            language="toml",
+            path="packages/pkg-b/pyproject.toml",
+            span=Span(3, 0, 3, 12),
+        )
+
+        _classify_symbols([sibling, external], tmp_path, set())
+
+        assert sibling.supply_chain_tier == 2
+        assert "workspace" in sibling.supply_chain_reason
+        assert external.supply_chain_tier == 3
+        assert "dependency declaration" in external.supply_chain_reason
+
+    def test_workspace_sibling_pep503_normalization(self, tmp_path: Path) -> None:
+        """Sibling match is PEP 503-normalized: an underscore/dot in either
+        the declared dep name or the package's own name still matches."""
+        from hypergumbo_core.cli import _classify_symbols
+        from hypergumbo_core.ir import Symbol, Span
+
+        pkg_a = tmp_path / "pkg_a"
+        pkg_a.mkdir()
+        # Own name uses dots; the dependency declaration uses underscores.
+        (pkg_a / "pyproject.toml").write_text('[project]\nname = "My.Pkg.A"\n')
+
+        dep = Symbol(
+            id="toml:dep:my_pkg_a",
+            name="my_pkg_a",
+            kind="dependency",
+            language="toml",
+            path="other/pyproject.toml",
+            span=Span(1, 0, 1, 12),
+        )
+
+        _classify_symbols([dep], tmp_path, set())
+        assert dep.supply_chain_tier == 2
+
+    def test_poetry_named_sibling_gets_tier2(self, tmp_path: Path) -> None:
+        """A workspace member that declares its name under Poetry
+        ``[tool.poetry].name`` is recognized as a sibling too."""
+        from hypergumbo_core.cli import _classify_symbols
+        from hypergumbo_core.ir import Symbol, Span
+
+        pkg = tmp_path / "libs" / "widget"
+        pkg.mkdir(parents=True)
+        (pkg / "pyproject.toml").write_text(
+            '[tool.poetry]\nname = "widget-lib"\n'
+        )
+
+        dep = Symbol(
+            id="toml:dep:widget-lib",
+            name="widget-lib",
+            kind="dependency",
+            language="toml",
+            path="app/pyproject.toml",
+            span=Span(1, 0, 1, 12),
+        )
+
+        _classify_symbols([dep], tmp_path, set())
+        assert dep.supply_chain_tier == 2
+
+    def test_non_sibling_dependency_stays_tier3(self, tmp_path: Path) -> None:
+        """When no in-repo package matches, the dependency stays tier 3."""
+        from hypergumbo_core.cli import _classify_symbols
+        from hypergumbo_core.ir import Symbol, Span
+
+        (tmp_path / "pyproject.toml").write_text(
+            '[project]\nname = "the-app"\ndependencies = ["requests"]\n'
+        )
+        dep = Symbol(
+            id="toml:dep:requests",
+            name="requests",
+            kind="dependency",
+            language="toml",
+            path="pyproject.toml",
+            span=Span(3, 0, 3, 12),
+        )
+
+        _classify_symbols([dep], tmp_path, set())
+        assert dep.supply_chain_tier == 3
+        assert "dependency declaration" in dep.supply_chain_reason
+
+
+class TestCollectWorkspacePackageNames:
+    """Unit coverage for ``collect_workspace_package_names`` — the
+    workspace-sibling recognizer backing the tier-2 dependency rule."""
+
+    def test_collects_pep621_names_across_monorepo(self, tmp_path: Path) -> None:
+        from hypergumbo_core.supply_chain import collect_workspace_package_names
+
+        for name, rel in [("core-pkg", "packages/core"), ("util-pkg", "packages/util")]:
+            d = tmp_path / rel
+            d.mkdir(parents=True)
+            (d / "pyproject.toml").write_text(f'[project]\nname = "{name}"\n')
+
+        assert collect_workspace_package_names(tmp_path) == {"core-pkg", "util-pkg"}
+
+    def test_normalizes_names_pep503(self, tmp_path: Path) -> None:
+        from hypergumbo_core.supply_chain import collect_workspace_package_names
+
+        (tmp_path / "pyproject.toml").write_text('[project]\nname = "My_Cool.Pkg"\n')
+        assert collect_workspace_package_names(tmp_path) == {"my-cool-pkg"}
+
+    def test_reads_poetry_name(self, tmp_path: Path) -> None:
+        from hypergumbo_core.supply_chain import collect_workspace_package_names
+
+        (tmp_path / "pyproject.toml").write_text('[tool.poetry]\nname = "poe-pkg"\n')
+        assert collect_workspace_package_names(tmp_path) == {"poe-pkg"}
+
+    def test_project_without_name_falls_back_to_poetry(self, tmp_path: Path) -> None:
+        from hypergumbo_core.supply_chain import collect_workspace_package_names
+
+        # [project] present but no name; [tool.poetry].name supplies it.
+        (tmp_path / "pyproject.toml").write_text(
+            '[project]\nversion = "1.0"\n[tool.poetry]\nname = "fallback-pkg"\n'
+        )
+        assert collect_workspace_package_names(tmp_path) == {"fallback-pkg"}
+
+    def test_pyproject_without_any_name_is_skipped(self, tmp_path: Path) -> None:
+        from hypergumbo_core.supply_chain import collect_workspace_package_names
+
+        (tmp_path / "pyproject.toml").write_text('[build-system]\nrequires = []\n')
+        assert collect_workspace_package_names(tmp_path) == set()
+
+    def test_malformed_toml_is_skipped(self, tmp_path: Path) -> None:
+        from hypergumbo_core.supply_chain import collect_workspace_package_names
+
+        (tmp_path / "pyproject.toml").write_text('[project\nname = broken')
+        assert collect_workspace_package_names(tmp_path) == set()
+
+    def test_excluded_and_dot_dirs_are_not_walked(self, tmp_path: Path) -> None:
+        from hypergumbo_core.supply_chain import collect_workspace_package_names
+
+        for skip_dir in ("node_modules", ".venv"):
+            d = tmp_path / skip_dir / "vendored"
+            d.mkdir(parents=True)
+            (d / "pyproject.toml").write_text('[project]\nname = "leaked-pkg"\n')
+        (tmp_path / "pyproject.toml").write_text('[project]\nname = "real-pkg"\n')
+
+        assert collect_workspace_package_names(tmp_path) == {"real-pkg"}
+
+    def test_no_pyproject_returns_empty(self, tmp_path: Path) -> None:
+        from hypergumbo_core.supply_chain import collect_workspace_package_names
+
+        (tmp_path / "README.md").write_text("hi")
+        assert collect_workspace_package_names(tmp_path) == set()
+
+
 class TestIsTestFileAxis:
     """WI-rigun: is_test_file is independent of supply_chain_tier.
 
@@ -2017,13 +2400,13 @@ class TestIsTestFileAxis:
         assert result.is_test is False
 
     def test_fuzz_file_is_not_marked_is_test(self, tmp_path: Path) -> None:
-        """Fuzz/bench files are tier 2 but is_test=False (separate axis)."""
+        """Fuzz/bench files are first-party (tier 1) but is_test=False (separate axis)."""
         fuzz = tmp_path / "fuzz" / "fuzz_targets"
         fuzz.mkdir(parents=True)
         (fuzz / "fuzz_diff.rs").write_text("fuzz_target!(|data| {})")
 
         result = classify_file(fuzz / "fuzz_diff.rs", tmp_path, set())
-        assert result.tier == Tier.INTERNAL_DEP
+        assert result.tier == Tier.FIRST_PARTY
         assert result.is_test is False
 
     def test_classify_symbols_propagates_is_test_flag(
@@ -2426,70 +2809,90 @@ class TestIsGeneratedFileAxis:
 
 
 class TestDependencyManifest:
-    """Tests for DependencyManifest (WI-vovuk)."""
+    """Tests for DependencyManifest (WI-vovuk).
+
+    ADR-0041 §1/§2 (supply:F5): ``classify_import`` now returns
+    ``Tier.EXTERNAL_DEP`` for ALL third-party imports — tier names supply-chain
+    distance and nothing else, so a declared (direct) third-party package is no
+    longer promoted to tier 2. The direct/transitive/undeclared declaration
+    relationship moved to ``classify_directness`` (stamped as the ``directness``
+    meta key). Tier 2 (``internal_dep``) is reserved for workspace/org-internal
+    packages, assigned by file classification, not by the manifest classifier.
+    """
 
     def test_classify_direct_dep(self) -> None:
-        """Direct dependency → tier 2 (INTERNAL_DEP)."""
+        """ADR-0041 §1: direct third-party dep is tier 3 (not tier 2)."""
         from hypergumbo_core.supply_chain import DependencyManifest
 
         manifest = DependencyManifest(entries={
             "github.com/go-kit/log": {"direct": True},
         })
-        assert manifest.classify_import("github.com/go-kit/log") == Tier.INTERNAL_DEP
+        assert manifest.classify_import("github.com/go-kit/log") == Tier.EXTERNAL_DEP
+        assert manifest.classify_directness("github.com/go-kit/log") == "direct"
 
     def test_classify_indirect_dep(self) -> None:
-        """Indirect dependency → tier 3 (EXTERNAL_DEP)."""
+        """Indirect (transitive) dependency → tier 3, directness 'transitive'."""
         from hypergumbo_core.supply_chain import DependencyManifest
 
         manifest = DependencyManifest(entries={
             "github.com/beorn7/perp": {"direct": False},
         })
         assert manifest.classify_import("github.com/beorn7/perp") == Tier.EXTERNAL_DEP
+        assert manifest.classify_directness("github.com/beorn7/perp") == "transitive"
 
     def test_classify_prefix_matching(self) -> None:
-        """Import subpackage matches module path prefix."""
+        """Import subpackage matches module path prefix (directness inherited)."""
         from hypergumbo_core.supply_chain import DependencyManifest
 
         manifest = DependencyManifest(entries={
             "github.com/go-kit/log": {"direct": True},
         })
-        # Subpackage of a direct dep
-        assert manifest.classify_import("github.com/go-kit/log/level") == Tier.INTERNAL_DEP
+        # Subpackage of a direct dep — tier 3, directness 'direct'.
+        assert manifest.classify_import("github.com/go-kit/log/level") == Tier.EXTERNAL_DEP
+        assert manifest.classify_directness("github.com/go-kit/log/level") == "direct"
 
     def test_classify_go_stdlib(self) -> None:
-        """Go stdlib (no dots in first segment) → tier 3."""
+        """Go stdlib (no dots in first segment) → tier 3, declared nowhere."""
         from hypergumbo_core.supply_chain import DependencyManifest
 
         manifest = DependencyManifest(entries={})
         assert manifest.classify_import("encoding/json") == Tier.EXTERNAL_DEP
         assert manifest.classify_import("fmt") == Tier.EXTERNAL_DEP
         assert manifest.classify_import("net/http") == Tier.EXTERNAL_DEP
+        # Stdlib is declared in no manifest → directness 'undeclared'. The
+        # stdlib-vs-third_party distinction is the separate `ecosystem` axis
+        # (ADR-0041 §3 / supply:F6), not directness.
+        assert manifest.classify_directness("encoding/json") == "undeclared"
 
     def test_classify_unknown_external(self) -> None:
-        """Unknown external (has dots, not in manifest) → tier 3."""
+        """Unknown external (has dots, not in manifest) → tier 3, undeclared."""
         from hypergumbo_core.supply_chain import DependencyManifest
 
         manifest = DependencyManifest(entries={
             "github.com/foo/bar": {"direct": True},
         })
         assert manifest.classify_import("github.com/other/pkg") == Tier.EXTERNAL_DEP
+        assert manifest.classify_directness("github.com/other/pkg") == "undeclared"
 
     def test_classify_empty_import(self) -> None:
-        """Empty import path → tier 3."""
+        """Empty import path → tier 3, undeclared."""
         from hypergumbo_core.supply_chain import DependencyManifest
 
         manifest = DependencyManifest(entries={})
         assert manifest.classify_import("") == Tier.EXTERNAL_DEP
+        assert manifest.classify_directness("") == "undeclared"
 
     def test_merge_manifests(self) -> None:
-        """Merging manifests combines entries."""
+        """Merging manifests combines entries (directness preserved per entry)."""
         from hypergumbo_core.supply_chain import DependencyManifest
 
         m1 = DependencyManifest(entries={"github.com/a/pkg": {"direct": True}})
         m2 = DependencyManifest(entries={"github.com/b/pkg": {"direct": False}})
         merged = DependencyManifest.merge([m1, m2])
-        assert merged.classify_import("github.com/a/pkg") == Tier.INTERNAL_DEP
+        assert merged.classify_import("github.com/a/pkg") == Tier.EXTERNAL_DEP
         assert merged.classify_import("github.com/b/pkg") == Tier.EXTERNAL_DEP
+        assert merged.classify_directness("github.com/a/pkg") == "direct"
+        assert merged.classify_directness("github.com/b/pkg") == "transitive"
 
     def test_merge_empty_list(self) -> None:
         """Merging empty list returns empty manifest."""
@@ -2507,7 +2910,10 @@ class TestDependencyManifest:
         })
         assert manifest.classify_import(
             "github.com/alecthomas/kingpin/v2/cmd"
-        ) == Tier.INTERNAL_DEP
+        ) == Tier.EXTERNAL_DEP
+        assert manifest.classify_directness(
+            "github.com/alecthomas/kingpin/v2/cmd"
+        ) == "direct"
 
     def test_classify_java_direct_dep(self) -> None:
         """Java/Maven groupId as manifest entry, dot-separated prefix match."""
@@ -2518,10 +2924,13 @@ class TestDependencyManifest:
         })
         assert manifest.classify_import(
             "com.fasterxml.jackson.core.JsonParser"
-        ) == Tier.INTERNAL_DEP
+        ) == Tier.EXTERNAL_DEP
+        assert manifest.classify_directness(
+            "com.fasterxml.jackson.core.JsonParser"
+        ) == "direct"
 
     def test_classify_java_subpackage_prefix(self) -> None:
-        """Dot-separated subpackage matches groupId prefix."""
+        """Dot-separated subpackage matches groupId prefix (directness 'direct')."""
         from hypergumbo_core.supply_chain import DependencyManifest
 
         manifest = DependencyManifest(entries={
@@ -2529,7 +2938,10 @@ class TestDependencyManifest:
         })
         assert manifest.classify_import(
             "org.apache.kafka.clients.producer.KafkaProducer"
-        ) == Tier.INTERNAL_DEP
+        ) == Tier.EXTERNAL_DEP
+        assert manifest.classify_directness(
+            "org.apache.kafka.clients.producer.KafkaProducer"
+        ) == "direct"
 
     def test_classify_java_unknown_import(self) -> None:
         """Java import not in manifest → EXTERNAL_DEP."""
@@ -2551,20 +2963,23 @@ class TestDependencyManifest:
         assert manifest.classify_import("javax.servlet.http.HttpServlet") == Tier.EXTERNAL_DEP
 
     def test_classify_dot_separated_exact_match(self) -> None:
-        """Exact match on dot-separated entry works."""
+        """Exact match on dot-separated entry works (directness 'direct')."""
         from hypergumbo_core.supply_chain import DependencyManifest
 
         manifest = DependencyManifest(entries={
             "junit": {"direct": True},
         })
-        assert manifest.classify_import("junit") == Tier.INTERNAL_DEP
+        assert manifest.classify_import("junit") == Tier.EXTERNAL_DEP
+        assert manifest.classify_directness("junit") == "direct"
 
 
 class TestIsExampleFileAxis:
     """WI-jobuj: is_example flag is set when path matches EXAMPLE_PATTERNS.
 
-    Mirrors the WI-rigun pattern for is_test_file. Within tier 2,
-    is_example is mutually exclusive with is_test and is_config.
+    Mirrors the WI-rigun pattern for is_test_file. is_example is mutually
+    exclusive with is_test and is_config (role flags are XOR-disjoint). Per
+    INV-naduh, example files are first-party (tier 1), with is_example
+    carrying the role.
     """
 
     @pytest.mark.parametrize("path", [
@@ -2578,12 +2993,12 @@ class TestIsExampleFileAxis:
         "tutorial/intro.md",
     ])
     def test_example_paths_set_is_example(self, tmp_path: Path, path: str) -> None:
-        """All EXAMPLE_PATTERNS variants set is_example=True at tier 2."""
+        """All EXAMPLE_PATTERNS variants set is_example=True at tier 1 (INV-naduh)."""
         full = tmp_path / path
         full.parent.mkdir(parents=True, exist_ok=True)
         full.write_text("")
         result = classify_file(full, tmp_path, set())
-        assert result.tier == Tier.INTERNAL_DEP
+        assert result.tier == Tier.FIRST_PARTY
         assert result.is_example is True
         assert result.is_test is False
         assert result.is_config is False
@@ -2642,15 +3057,16 @@ class TestIsConfigFileAxis:
     def test_config_under_examples_is_example_not_config(self, tmp_path: Path) -> None:
         """examples/foo/package.json → is_example=True, is_config=False.
 
-        Mutual exclusion: example detection wins over config detection so
-        within tier 2 the role flags are XOR-disjoint (acceptance criterion
-        for WI-jobuj).
+        Mutual exclusion: example detection wins over config detection so the
+        role flags are XOR-disjoint (acceptance criterion for WI-jobuj). Per
+        INV-naduh the file is first-party (tier 1), with is_example carrying
+        the role.
         """
         f = tmp_path / "examples" / "foo" / "package.json"
         f.parent.mkdir(parents=True)
         f.write_text("{}")
         result = classify_file(f, tmp_path, set())
-        assert result.tier == Tier.INTERNAL_DEP
+        assert result.tier == Tier.FIRST_PARTY
         assert result.is_example is True
         assert result.is_config is False
 
@@ -2671,14 +3087,14 @@ class TestIsConfigFileAxis:
         assert result.is_config is False
 
 
-class TestRoleFlagMutualExclusionInTier2:
-    """WI-jobuj acceptance: every Symbol whose tier=2 has at most one of
-    is_test_file / is_example_file / is_config_file set.
+class TestRoleFlagMutualExclusion:
+    """WI-jobuj acceptance (rescoped per INV-naduh): every Symbol has at most
+    one of is_test_file / is_example_file / is_config_file set.
 
-    This is the headline property the WI calls out:
-    'every Symbol whose tier=2 has at most one of is_test_file /
-    is_example_file / is_config_file set (mutually exclusive within
-    tier 2).'
+    WI-jobuj originally scoped this to tier 2, but per INV-naduh / ADR-0041
+    §1 the role-bearing files (tests, examples, configs) are now first-party
+    (tier 1). The mutual-exclusion property is tier-independent: a file may
+    carry at most one role flag regardless of its supply-chain tier.
     """
 
     def _classify(self, tmp_path: Path, rel: str, content: str = "") -> FileClassification:
@@ -2697,25 +3113,23 @@ class TestRoleFlagMutualExclusionInTier2:
         "demos/widget.ts",
         "samples/intro.go",
         "tutorials/lesson.md",
-        # Config (when not under example/test path)
-        "tools/pyproject.toml",  # tier defaults to first-party here, but check anyway
-        # Pure tier-2 categories with no role flag
+        # Config
+        "tools/pyproject.toml",
+        # First-party role files with no test/example/config flag
         "fuzz/fuzz_diff.rs",
         "benchmarks/bench.py",
         "doc.ipynb",
     ])
-    def test_at_most_one_role_flag_when_tier_is_2(
+    def test_at_most_one_role_flag(
         self, tmp_path: Path, rel: str
     ) -> None:
         result = self._classify(tmp_path, rel)
-        if result.tier != Tier.INTERNAL_DEP:
-            # Property only constrains tier 2; outside tier 2 this test is vacuous.
-            return
         flags_set = sum([result.is_test, result.is_example, result.is_config])
         assert flags_set <= 1, (
-            f"tier-2 file {rel!r} has {flags_set} role flags set "
-            f"(is_test={result.is_test}, is_example={result.is_example}, "
-            f"is_config={result.is_config}); they must be mutually exclusive"
+            f"file {rel!r} (tier {int(result.tier)}) has {flags_set} role "
+            f"flags set (is_test={result.is_test}, "
+            f"is_example={result.is_example}, is_config={result.is_config}); "
+            f"they must be mutually exclusive"
         )
 
 
@@ -2816,3 +3230,87 @@ class TestClassifySymbolsPropagatesNewFlags:
         assert sym.is_config_file is True
         assert sym.is_example_file is False
         assert sym.is_test_file is False
+
+
+class TestSupplyChainSummaryFileScoping:
+    """WI-mutuv: supply_chain_summary.<tier>.files counts only kind=='file' nodes."""
+
+    @staticmethod
+    def _sym(name, kind, path, tier):
+        from hypergumbo_core.ir import Symbol, Span
+        return Symbol(
+            id=f"python:{path}:1-1:{name}:{kind}",
+            name=name, kind=kind, language="python", path=path,
+            span=Span(1, 1, 0, 0), supply_chain_tier=tier,
+        )
+
+    def test_files_counts_only_file_kind_nodes(self) -> None:
+        """The per-tier `files` count must be the number of distinct kind=='file'
+        node paths for that tier — not distinct paths across *all* tier nodes,
+        which double-counted function paths and external_symbol '<external>'
+        sentinels (phantom inflation)."""
+        from hypergumbo_core.cli import _compute_supply_chain_summary
+
+        syms = [
+            self._sym("a.py", "file", "a.py", 1),
+            self._sym("f", "function", "a.py", 1),
+            self._sym("h", "function", "other.py", 1),   # non-file path (phantom)
+            self._sym("req", "external_symbol", "<external>", 3),  # sentinel (phantom)
+            self._sym("lib.py", "file", "site-packages/lib.py", 3),
+        ]
+        scs = _compute_supply_chain_summary(syms, [])
+
+        # first_party: one file node (a.py); the two function nodes do not count.
+        assert scs["first_party"]["files"] == 1
+        # external_dep: one file node (lib.py); the '<external>' node does not count.
+        assert scs["external_dep"]["files"] == 1
+        # symbols still count every node of the tier.
+        assert scs["first_party"]["symbols"] == 3
+        assert scs["external_dep"]["symbols"] == 2
+
+    def test_files_zero_when_tier_has_no_file_nodes(self) -> None:
+        """A tier reachable only via non-file nodes reports files == 0."""
+        from hypergumbo_core.cli import _compute_supply_chain_summary
+
+        syms = [self._sym("req", "external_symbol", "<external>", 3)]
+        scs = _compute_supply_chain_summary(syms, [])
+        assert scs["external_dep"]["files"] == 0
+        assert scs["external_dep"]["symbols"] == 1
+
+    @staticmethod
+    def _ext(name, directness=None):
+        """A tier-3 external node, optionally carrying a `directness` meta stamp."""
+        from hypergumbo_core.ir import Symbol, Span
+        return Symbol(
+            id=f"python:site-packages/{name}.py:1-1:{name}:external_symbol",
+            name=name, kind="external_symbol", language="python",
+            path="<external>", span=Span(1, 1, 0, 0), supply_chain_tier=3,
+            meta={"directness": directness} if directness else {},
+        )
+
+    def test_directness_sub_bucket_mirrors_ecosystem(self) -> None:
+        """WI-bojok: external_dep carries a `directness` sub-bucket counting tier-3
+        nodes by their `directness` meta stamp (direct / transitive / undeclared),
+        mirroring the ecosystem sub-bucket. A tier-3 node lacking the key (outside
+        the manifest-backed languages) falls into `unknown`, exactly as ecosystem."""
+        from hypergumbo_core.cli import _compute_supply_chain_summary
+
+        syms = [
+            self._ext("a", "direct"),
+            self._ext("b", "direct"),
+            self._ext("c", "transitive"),
+            self._ext("d"),  # no directness key → "unknown"
+        ]
+        scs = _compute_supply_chain_summary(syms, [])
+        assert scs["external_dep"]["directness"] == {
+            "direct": 2, "transitive": 1, "unknown": 1,
+        }
+
+    def test_directness_bucket_empty_when_no_externals(self) -> None:
+        """No tier-3 nodes → empty directness bucket (mirrors the ecosystem bucket)."""
+        from hypergumbo_core.cli import _compute_supply_chain_summary
+
+        scs = _compute_supply_chain_summary(
+            [self._sym("a.py", "file", "a.py", 1)], []
+        )
+        assert scs["external_dep"]["directness"] == {}

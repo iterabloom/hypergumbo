@@ -40,6 +40,7 @@ from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import (
     Edge, ExternalRef, Span, Symbol, UsageContext, make_pass_id,
 )
+from hypergumbo_core.routes import transport_meta
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
@@ -51,6 +52,7 @@ from hypergumbo_core.analyze.base import (
     node_text,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
 
 # Phoenix HTTP method macros for route detection
 PHOENIX_HTTP_METHODS = {"get", "post", "put", "patch", "delete", "head", "options"}
@@ -592,7 +594,7 @@ def _extract_phoenix_routes(
                 path=str(file_path),
                 span=span,
                 meta={
-                    "http_method": http_method,
+                    **transport_meta(http_method),
                     "route_path": normalized_path,
                     "framework_role": "route",
                 },
@@ -707,15 +709,147 @@ def _extract_behaviour_callbacks(
                 edges.append(Edge.create(
                     src=module_sym.id,
                     dst=callee.id,
-                    edge_type="invokes_callback",
+                    edge_type="dispatches_to",
                     line=node.start_point[0] + 1,
                     evidence_type="behaviour_callback",
-                    confidence=0.9,
                     origin=PASS_ID,
                     origin_run_id=run_id,
+                    meta={"mechanism": "callback"},
                 ))
 
     return edges
+
+
+def _atom_field_name(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
+    """Return a field name from an ``atom`` / ``quoted_atom`` node, or None.
+
+    ``:name`` -> ``name`` (leading ``:`` stripped); ``:"weird name"`` -> the
+    ``quoted_content`` text.
+    """
+    if node.type == "atom":
+        return node_text(node, source).lstrip(":")
+    if node.type == "quoted_atom":
+        content = find_child_by_type(node, "quoted_content")
+        return node_text(content, source) if content is not None else None  # pragma: no cover - a quoted_atom always has quoted_content
+    return None
+
+
+def _keyword_key(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
+    """Return a field key from a ``keyword`` / ``quoted_keyword`` node, or None.
+
+    ``x:`` -> ``x``; ``"weird key":`` -> the ``quoted_content`` text.
+    """
+    if node.type == "keyword":
+        return node_text(node, source).split(":")[0].strip()
+    if node.type == "quoted_keyword":
+        content = find_child_by_type(node, "quoted_content")
+        return node_text(content, source) if content is not None else None  # pragma: no cover - a quoted_keyword always has quoted_content
+    return None  # pragma: no cover - a keyword pair's first child is always a keyword / quoted_keyword
+
+
+def _keyword_pair_keys(keywords_node: "tree_sitter.Node", source: bytes) -> list[str]:
+    """Return the KEY of each direct ``pair`` in a ``keywords`` node.
+
+    ``x: 0, y: 0`` -> [``x``, ``y``]. Only each pair's first child (its
+    ``keyword``/``quoted_keyword`` key) is a field; a default VALUE that is itself
+    a keyword list (``opts: [a: 1]``) nests its ``a:`` under the value, so it is
+    not mistaken for a field.
+    """
+    keys: list[str] = []
+    for pair in keywords_node.children:
+        if pair.type == "pair" and pair.children:
+            key = _keyword_key(pair.children[0], source)
+            if key is not None:
+                keys.append(key)
+    return keys
+
+
+def _extract_defstruct_field_names(
+    defstruct_call: "tree_sitter.Node", source: bytes
+) -> list[str]:
+    """Return the field names declared by a ``defstruct`` macro call, or [].
+
+    ``defstruct`` takes a single argument, WITH OR WITHOUT surrounding parens.
+    Its container is a ``list`` (of atoms and/or tuple/keyword pairs) or
+    ``keywords`` (default pairs). Fields come from: a ``list`` ``atom`` /
+    ``quoted_atom`` (``[:name]`` / ``[:"weird"]``); a ``keywords`` or in-list
+    keyword pair's KEY (``x: 0`` / ``"k": 0`` -> ``x``/``k``, never the default
+    value); or a tuple-literal pair (``[{:name, 0}]`` — what ``[name: 0]``
+    desugars to) whose first atom is the field. A ``@fields`` module-attribute
+    reference (a ``unary_operator``) is dynamic and yields no static fields (a
+    fails-safe miss, never a phantom).
+    """
+    args = find_child_by_type(defstruct_call, "arguments")
+    if args is None:  # pragma: no cover - a `defstruct` call always has an arguments node (a bare `defstruct` parses as an identifier, not a call)
+        return []
+    # NAMED children skip the surrounding `(`/`)` tokens of a parenthesized
+    # `defstruct([...])` / `defstruct(k: v)`, so [0] is the real container in
+    # both the paren and paren-less forms.
+    container = args.named_children[0] if args.named_children else None
+    if container is None:  # pragma: no cover - a defstruct with args always has a named container
+        return []
+    names: list[str] = []
+    if container.type == "keywords":
+        names.extend(_keyword_pair_keys(container, source))
+    elif container.type == "list":
+        for child in container.children:
+            if child.type in ("atom", "quoted_atom"):
+                name = _atom_field_name(child, source)
+                if name is not None:
+                    names.append(name)
+            elif child.type == "keywords":
+                names.extend(_keyword_pair_keys(child, source))
+            elif child.type == "tuple":
+                # `[{:name, 0}]` — the field is the FIRST atom (the key); the
+                # value that follows is not.
+                for grandchild in child.children:
+                    name = _atom_field_name(grandchild, source)
+                    if name is not None:
+                        names.append(name)
+                        break
+    # else: `@fields` reference / other dynamic form -> no static fields.
+    return names
+
+
+def _has_quote_ancestor(node: "tree_sitter.Node", source: bytes) -> bool:
+    """True if ``node`` is inside a ``quote do … end`` block.
+
+    A ``defstruct`` (or ``def``) inside a ``quote`` is a TEMPLATE injected into
+    whatever module later runs ``use``, not a definition on the syntactically
+    enclosing module — so its fields must not be attributed to the defining
+    module. (The broader analyzer-wide quote-attribution gap — the same is true
+    of ``def``/``defmacro`` inside a quote — is tracked separately.)
+    """
+    current = node.parent
+    while current is not None:
+        if current.type == "call":
+            target = find_child_by_type(current, "identifier")
+            if target is not None and node_text(target, source) == "quote":
+                return True
+        current = current.parent
+    return False
+
+
+def _nearest_enclosing_module_resolvable(
+    node: "tree_sitter.Node", source: bytes
+) -> bool:
+    """True iff the NEAREST enclosing ``defmodule`` has a resolvable (alias) name.
+
+    An atom-named module (``defmodule :"x"``) yields None from ``_get_module_name``
+    and is SKIPPED by ``_get_enclosing_modules``, so a defstruct nested inside it
+    would be mis-attributed to a resolvable ANCESTOR module (a wrong owner).
+    Gating on the nearest module's resolvability drops the field instead
+    (fails-safe). Also returns False for a defstruct with NO enclosing module
+    (top-level — invalid but parseable), so it emits nothing.
+    """
+    current = node.parent
+    while current is not None:
+        if current.type == "call":
+            target = find_child_by_type(current, "identifier")
+            if target is not None and node_text(target, source) == "defmodule":
+                return _get_module_name(current, source) is not None
+        current = current.parent
+    return False
 
 
 def _extract_symbols_from_tree(
@@ -773,7 +907,12 @@ def _extract_symbols_from_tree(
                         symbols.append(symbol)
                         symbol_by_name[full_name] = symbol
 
-                elif target_name in ("def", "defp"):
+                elif (target_name in ("def", "defp")
+                      and not _has_quote_ancestor(node, source)):
+                    # INV-sinah: a def/defp inside a `quote` (an `__using__`
+                    # template) is injected into the module that runs `use`, not
+                    # defined on the defining module — suppress rather than
+                    # mis-attribute (fails-safe, mirroring the defstruct guard).
                     func_name = _get_function_name(node, source)
                     if func_name:
                         enclosing_modules = _get_enclosing_modules(node, source)
@@ -802,13 +941,24 @@ def _extract_symbols_from_tree(
                             origin_run_id=run_id,
                             signature=_extract_elixir_signature(node, source),
                             modifiers=modifiers,
+                            # INV-loguk: homoiconic head-symbol CC; LOC from span.
+                            # The analyzer emits one Symbol per def clause, so the
+                            # walker is applied per-clause (no aggregation).
+                            cyclomatic_complexity=compute_cyclomatic_complexity(
+                                node, "elixir",
+                            ),
+                            line_span=end_line - start_line + 1,
                         )
                         symbols.append(symbol)
                         symbol_by_name[func_name] = symbol  # Store by short name for local calls
                         # Multi-clause index: all symbols with the same short name
                         symbols_by_name.setdefault(func_name, []).append(symbol)
 
-                elif target_name in ("defmacro", "defmacrop"):
+                elif (target_name in ("defmacro", "defmacrop")
+                      and not _has_quote_ancestor(node, source)):
+                    # INV-sinah: same fails-safe suppression as def/defp above —
+                    # a defmacro inside a `quote` is a template for the using
+                    # module, not a macro on the defining module.
                     macro_name = _get_function_name(node, source)
                     if macro_name:
                         enclosing_modules = _get_enclosing_modules(node, source)
@@ -837,9 +987,58 @@ def _extract_symbols_from_tree(
                             origin_run_id=run_id,
                             signature=_extract_elixir_signature(node, source),
                             modifiers=modifiers,
+                            # INV-loguk: homoiconic head-symbol CC; LOC from span.
+                            cyclomatic_complexity=compute_cyclomatic_complexity(
+                                node, "elixir",
+                            ),
+                            line_span=end_line - start_line + 1,
                         )
                         symbols.append(symbol)
                         symbol_by_name[macro_name] = symbol
+
+                elif (target_name == "defstruct"
+                      and not _has_quote_ancestor(node, source)
+                      and _nearest_enclosing_module_resolvable(node, source)):
+                    # Struct fields (WI-jusus). An Elixir struct IS its module
+                    # (`%User{}`), so the field owner is the enclosing module. A
+                    # defstruct inside a `quote` is a template for a DIFFERENT
+                    # module (via `use`); one whose nearest enclosing module is
+                    # atom-named or absent has no reliable owner — both excluded.
+                    owner = ".".join(_get_enclosing_modules(node, source))
+                    field_names = _extract_defstruct_field_names(node, source)
+                    if field_names:
+                        start_line = node.start_point[0] + 1
+                        end_line = node.end_point[0] + 1
+                        seen_fields: set[str] = set()
+                        for field_name in field_names:
+                            # Dedup (invalid `[:a, :a]` would otherwise mint two
+                            # colliding-id symbols).
+                            if field_name in seen_fields:
+                                continue
+                            seen_fields.add(field_name)
+                            full_name = f"{owner}.{field_name}"
+                            # A field is a DATA anchor: appended to `symbols` (so
+                            # it reaches output/search/centrality) but NOT written
+                            # to symbol_by_name/symbols_by_name and skipped by
+                            # register_symbol, so it never enters call resolution.
+                            symbols.append(Symbol(
+                                id=make_symbol_id(
+                                    "elixir", file_path, start_line, end_line,
+                                    full_name, "field",
+                                ),
+                                name=full_name,
+                                kind="field",
+                                language="elixir",
+                                path=file_path,
+                                span=Span(
+                                    start_line=start_line,
+                                    end_line=end_line,
+                                    start_col=node.start_point[1],
+                                    end_col=node.end_point[1],
+                                ),
+                                origin=PASS_ID,
+                                origin_run_id=run_id,
+                            ))
 
     return symbols, symbol_by_name, symbols_by_name
 
@@ -891,7 +1090,6 @@ def _extract_edges_from_tree(
                                     edge_type="imports",
                                     line=node.start_point[0] + 1,
                                     evidence_type="use_directive",
-                                    confidence=0.95,
                                     origin=PASS_ID,
                                     origin_run_id=run_id,
                                 ))
@@ -908,7 +1106,6 @@ def _extract_edges_from_tree(
                                     edge_type="imports",
                                     line=node.start_point[0] + 1,
                                     evidence_type="import_directive",
-                                    confidence=0.95,
                                     origin=PASS_ID,
                                     origin_run_id=run_id,
                                 ))
@@ -927,7 +1124,6 @@ def _extract_edges_from_tree(
                                     edge_type="calls",
                                     line=node.start_point[0] + 1,
                                     evidence_type="ast_call",
-                                    confidence=0.85,
                                     origin=PASS_ID,
                                     origin_run_id=run_id,
                                     meta={"call_construct": "function"},
@@ -941,7 +1137,6 @@ def _extract_edges_from_tree(
                                 edge_type="calls",
                                 line=node.start_point[0] + 1,
                                 evidence_type="ast_call",
-                                confidence=0.85,
                                 origin=PASS_ID,
                                 origin_run_id=run_id,
                                 meta={"call_construct": "function"},
@@ -972,7 +1167,6 @@ def _extract_edges_from_tree(
                                 line=node.start_point[0] + 1,
                                 evidence_type="ast_call_direct",
                                 is_resolved=False,
-                                confidence=0.55,
                                 origin=PASS_ID,
                                 origin_run_id=run_id,
                                 meta={"call_construct": "function", "binding": "explicit_import"},
@@ -1000,7 +1194,6 @@ def _extract_edges_from_tree(
                                         edge_type="calls",
                                         line=node.start_point[0] + 1,
                                         evidence_type="ast_call",
-                                        confidence=0.80,
                                         origin=PASS_ID,
                                         origin_run_id=run_id,
                                         meta={"call_construct": "function"},
@@ -1054,7 +1247,6 @@ def _extract_edges_from_tree(
                                     edge_type="calls",
                                     line=node.start_point[0] + 1,
                                     evidence_type="ast_call",
-                                    confidence=0.85,
                                     origin=PASS_ID,
                                     origin_run_id=run_id,
                                     meta={"call_construct": "pipe"},
@@ -1074,7 +1266,6 @@ def _extract_edges_from_tree(
                                         edge_type="calls",
                                         line=node.start_point[0] + 1,
                                         evidence_type="ast_call",
-                                        confidence=0.80,
                                         origin=PASS_ID,
                                         origin_run_id=run_id,
                                         meta={"call_construct": "pipe"},
@@ -1097,7 +1288,7 @@ def _handle_dot_call(
     alias_hints: dict[str, str],
     edges: list[Edge],
     run_id: str,
-    evidence_type: str = "module_qualified_call",
+    evidence_type: str = "ast_call",
 ) -> None:
     """Handle module-qualified calls like Helper.greet() or App.Module.func().
 
@@ -1199,7 +1390,6 @@ def _handle_dot_call(
         line=call_node.start_point[0] + 1,
         evidence_type="ast_call_direct",
         is_resolved=False,
-        confidence=0.50,
         origin=PASS_ID,
         origin_run_id=run_id,
         dst_ref=ExternalRef(
@@ -1237,7 +1427,14 @@ class ElixirAnalyzer(TreeSitterAnalyzer):
         keeps both short and qualified name keys because call sites use
         bare function names (e.g., ``handle_call``) to look up all
         clauses of ``MyApp.Server.handle_call``.
+
+        A ``defstruct`` ``field`` (WI-jusus) is skipped: it is a data anchor,
+        never a call target, and its qualified name (``User.name``) would
+        otherwise suffix-match a bare ``name(…)`` call and mint a wrong ``calls``
+        edge. It still reaches output via ``analysis.symbols``.
         """
+        if symbol.kind == "field":
+            return
         global_symbols[symbol.name] = symbol
         short_name = symbol.name.split(".")[-1] if "." in symbol.name else symbol.name
         multi: dict[str, list[Symbol]] = global_symbols.setdefault("__multi__", {})

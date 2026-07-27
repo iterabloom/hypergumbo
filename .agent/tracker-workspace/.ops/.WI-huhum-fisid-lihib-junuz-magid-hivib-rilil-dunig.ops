@@ -1,0 +1,35 @@
+- op: create  # f626
+  at: '2026-07-04T07:39:07Z'  # f626
+  by: agent  # f626
+  actor: jgstern_agent  # f626
+  clock: 1  # f626
+  nonce: f626  # f626
+  data:  # f626
+    kind: work_item  # f626
+    title: "module_attr_ref on imported module-level constants dead-ends at phantom workspace externals (52 nodes, INV-nuzas sibling of WI-hotug)"  # f626
+    status: todo_hard  # f626
+    priority: 2  # f626
+    parent:  # f626
+    tags:  # f626
+    - analysis_quality  # f626
+    isbefore: []  # f626
+    duplicate_of: []  # f626
+    not_duplicate_of: []  # f626
+    pr_ref:  # f626
+    description: "The LARGEST remaining chunk of INV-nuzas's phantom-workspace-external residual (52 of the 107; distinct from WI-hotug's call-reached CASE A/B). Self-analysis: 52 external_symbol nodes with a workspace prefix are reached by module_attr_ref edges (a non-call attribute READ on an imported module constant), minted by _emit_module_attr_refs (py.py ~3273-3314) — but wait: _emit_module_attr_refs only fires for `module_imports` (import X) receivers, so these 52 come from a DIFFERENT path. INVESTIGATE the exact emission site (grep the module_attr_ref emitters); likely an attribute read `CONST.attr` (not a call) where CONST is `from x import CONST` and attr is accessed without calling, OR a multi-segment `mod.CONST.field` chain.\n\nFIX (mirror WI-hotug CASE B): when the module_attr_ref receiver resolves via the import-anchored _lookup_symbol_by_module to an in-tree kind=variable symbol (allow_ambiguous=False, INV-fahub, + a `not in _caller_locals` scope-shadow guard), retarget the module_attr_ref edge to the in-tree variable node instead of minting a workspace-prefixed phantom external. Coherence: check the module_attr_ref->variable partition (module_attr_ref IS in TAINT_CALL_EDGE_TYPES, so unlike WI-hotug's references edge, retargeting a module_attr_ref to an in-tree variable may interact with taint — verify the taint findings are unchanged, and whether references vs module_attr_ref is the right retarget type). Acceptance: drives the INV-nuzas phantom count 68 -> ~16 (52 closed). Re-measure INV-nuzas after landing."  # f626
+    fields: {}  # f626
+- op: update  # 4de2
+  at: '2026-07-04T12:36:51Z'  # 4de2
+  by: agent  # 4de2
+  actor: jgstern_agent  # 4de2
+  clock: 2  # 4de2
+  nonce: 4de2  # 4de2
+  set:  # 4de2
+    status: done  # 4de2
+- op: discuss  # 7a51
+  at: '2026-07-04T12:36:51Z'  # 7a51
+  by: agent  # 7a51
+  actor: jgstern_agent  # 7a51
+  clock: 3  # 7a51
+  nonce: 7a51  # 7a51
+  message: "LANDED — PR merged, dev 6d50b100b0. _emit_module_attr_refs now retargets a non-call attribute read on an imported IN-TREE module constant to a references/ast_name_read edge to the real kind=variable, instead of the phantom workspace external. Three INV-fahub-critical choices: (1) EXACT module match (global_symbols.get), not suffix _lookup_symbol_by_module — a suffix match would bind an external 'import json as j; j.X' to a coincidentally same-suffixed in-tree pkg/json.py (mirrors WI-hotug CASE A); (2) edge type 'references' NOT 'module_attr_ref' — module_attr_ref IS in TAINT_CALL_EDGE_TYPES, so retargeting it to a live in-tree node would inject a new taint frontier; the adversarial review ran a before/after verify-claims diff and confirmed Python taint findings byte-IDENTICAL (the 52 phantoms matched 0 attributes:-catalog stdlib IO primitives); (3) shadow guard.\n\nTWO adversarial-review fixes were load-bearing: (a) the shadow guard EXCLUDES plain 'import X as Y' aliases (_collect_local_bindings(include_import_aliases=False)) — a function-local 'import pkg.mod as m; m.CONST' (the DOMINANT self-corpus shape: a test method importing then reading) is the alias to resolve, not a shadow; without this the retarget closed only 3 of 52. (b) The walk is now SCOPE-BOUNDED (skips nested def/class bodies) — a raw ast.walk descends into nested scopes and under the retarget mints a confidently-wrong RESOLVED edge attributed to the enclosing function / over a nested param shadow.\n\nBehavioral (self-analysis): module_attr_ref-reached workspace phantoms 52 -> 18; total INV-nuzas workspace phantoms 58 -> 24. Coherence-neutral (un-allow-listed offenders 28, unchanged). 100% cov; smart-test 3795 passed. Residual 18 = kind=function/dunder/re-export targets the variable-only guard correctly skips. Follow-up WI-luhah: the enclosing-scope closure-capture + module-scope-rebind shadow gaps (contrived; shared with the sibling _emit_variable_refs)."  # 7a51

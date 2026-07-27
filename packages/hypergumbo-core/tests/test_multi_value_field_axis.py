@@ -329,6 +329,18 @@ def test_known_axes_includes_all_declared_axes():
     # …plus the two catalog-derived lightweight axes added by WI-busij.
     assert "language" in axes
     assert "pass-id" in axes
+    # …plus the entrypoint-kind catalog axis added by WI-pupiz.
+    assert "entrypoint-kind" in axes
+
+
+def test_entrypoint_kind_axis_resolver_returns_enum_values():
+    """The WI-pupiz entrypoint-kind axis resolves to the EntrypointKind
+    catalog (single-source)."""
+    from hypergumbo_core.multi_value_field_axis import _known_axes
+    from hypergumbo_core.entrypoints import EntrypointKind
+
+    resolver = _known_axes()["entrypoint-kind"]
+    assert set(resolver()) == {k.value for k in EntrypointKind}
 
 
 def test_known_axes_resolvers_return_non_empty_sets():

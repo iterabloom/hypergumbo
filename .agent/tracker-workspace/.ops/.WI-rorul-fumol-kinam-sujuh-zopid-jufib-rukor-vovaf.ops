@@ -1,0 +1,36 @@
+- op: create  # 9a10
+  at: '2026-06-28T00:55:29Z'  # 9a10
+  by: agent  # 9a10
+  actor: jgstern_agent  # 9a10
+  clock: 1  # 9a10
+  nonce: 9a10  # 9a10
+  data:  # 9a10
+    kind: work_item  # 9a10
+    title: "otp_call / otp_cast edge_types emitted via dict-indirection are unregistered and invisible to the L3 edge_type producer-coherence gate"  # 9a10
+    status: todo_hard  # 9a10
+    priority: 3  # 9a10
+    parent:  # 9a10
+    tags:  # 9a10
+    - vocabulary  # 9a10
+    - analysis_quality  # 9a10
+    isbefore: []  # 9a10
+    duplicate_of: []  # 9a10
+    not_duplicate_of: []  # 9a10
+    pr_ref:  # 9a10
+    description: "The OTP linker emits two edge_type values -- otp_call and otp_cast -- that are NOT in the canonical edge_type registry (edge_types.py), yet the static L3 producer-coherence gate (test_no_strict_producer_violations_for_edge_type) stays GREEN. Mechanic: the values are carried via dict-indirection -- CALL_TYPE_MAP {'call': ('.handle_call','otp_call'), 'cast': ('.handle_cast','otp_cast')} at linkers/otp.py:62-63 and ERLANG_CALL_TYPE_MAP at :99-100 -- then tuple-unpacked into Edge.create at otp.py:397/491. The static walker (find_emitted_edge_types, which scans Edge.create(edge_type=literal)) cannot resolve the value through the dict subscript + tuple unpack, so it never sees otp_call/otp_cast and the gate reports clean. Exposure: when Erlang/Elixir OTP code is analyzed, 2 unregistered edge_type values ship; any consumer enumerating edge types from the registry misses them. Two sub-questions: (a) gate blind-spot -- extend the producer-coherence walker to resolve dict-indirection/tuple-unpack emit sites, or add a runtime-corpus check; (b) vocabulary -- register-as-canonical vs fold to dispatches_to/calls + meta['mechanism'] (no consumer branches on these today). Confirmed read-only on dev d9bdc39d0a. NOTE: a scope sweep also claimed SCIP has_type/defined_by have the same shape, but I could NOT reproduce those (no such edge_type literals found) -- verify separately."  # 9a10
+    fields: {}  # 9a10
+- op: update  # d995
+  at: '2026-06-30T14:26:27Z'  # d995
+  by: agent  # d995
+  actor: jgstern_agent  # d995
+  clock: 2  # d995
+  nonce: d995  # d995
+  set:  # d995
+    status: done  # d995
+- op: discuss  # a769
+  at: '2026-06-30T14:26:27Z'  # a769
+  by: agent  # a769
+  actor: jgstern_agent  # a769
+  clock: 3  # a769
+  nonce: a769  # a769
+  message: "Done (vocabulary half). Merged 945c063c3a (PR #345). The OTP linker no longer emits unregistered edge_types: otp_call/otp_cast folded to the registered dispatches_to edge_type + a new registered meta['mechanism'] key (values otp_call/otp_cast), at both emit blocks (Elixir CALL_TYPE_MAP + Erlang ERLANG_CALL_TYPE_MAP); meta.framework_dispatch=otp_genserver / call_type unchanged. Behavioral evidence (production-path): test_otp_linker.py — 44 pass, the edge assertions now require edge.edge_type=='dispatches_to' AND (edge.meta or {})['mechanism']=='otp_call'/'otp_cast' (e.g. lines 202/252/447/506/926/981 + the call/cast filter pair + the 2 Erlang-block equivalents). The L3 edge_type producer-coherence gate (test_no_strict_producer_violations_for_edge_type) is green — the linker now emits the literal 'dispatches_to' (registered), so the dict-indirected unregistered-value exposure is gone. dispatches_to was already registered; mechanism newly registered in axis_meta_keys. EXECUTION HALF SPLIT: the latent L3-walker blind-spot itself (static resolution of dict-indirection / tuple-unpack edge_type emit sites in producer_coherence._resolve_function_local/_resolve_simple_rhs) has NO remaining exploiter post-fold (the scope-sweep's claimed SCIP has_type/defined_by could not be reproduced) and is tracked as a focused preventive follow-up: WI-zigih. CHANGELOG ### Fixed updated."  # a769

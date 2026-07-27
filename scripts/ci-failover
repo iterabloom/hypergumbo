@@ -797,7 +797,9 @@ for pr in prs:
 " 2>/dev/null || echo "0")
 
 			local pr_total branch_list
-			pr_total=$(echo "$prs_count" | head -1)
+			# Here-string, not `echo | head` — see the SIGPIPE note in the
+			# summary block below; `head` closing the pipe early can 141-kill echo.
+			pr_total=$(head -1 <<<"$prs_count")
 			branch_list=$(echo "$prs_count" | tail -n +2)
 
 			if [[ "$pr_total" -gt 0 ]] && [[ -n "$branch_list" ]]; then
@@ -827,7 +829,10 @@ for pr in prs:
 " 2>/dev/null || echo "0")
 
 	local count
-	count=$(echo "$pr_total_display" | head -1)
+	# Here-string, not `echo | head`: under pipefail+errexit a large payload
+	# lets `head` close the pipe first, SIGPIPE-killing `echo` (141) and
+	# aborting cleanup before it removes the failover flag/shim.
+	count=$(head -1 <<<"$pr_total_display")
 	echo "📊 Summary:"
 	echo "   PRs merged on self-hosted Forgejo: $count"
 	if [[ "$count" -gt 0 ]]; then

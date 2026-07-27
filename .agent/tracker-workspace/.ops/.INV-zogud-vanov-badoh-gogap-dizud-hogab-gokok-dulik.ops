@@ -31,3 +31,17 @@
   clock: 2  # 43f0
   nonce: 43f0  # 43f0
   message: "2026-06-10 design-interview ruling (decision recorded, no ADR): this invariant's definition of 'clean' is amended to name the scope split — mypy strict on packages/*/src, check_untyped_defs on tests, and every type:ignore individually justified. Stays violated until the codebase conforms under that amended definition; re-validate with the new config."  # 43f0
+- op: discuss  # 0e7a
+  at: '2026-07-19T23:44:49Z'  # 0e7a
+  by: agent  # 0e7a
+  actor: jgstern_agent  # 0e7a
+  clock: 3  # 0e7a
+  nonce: 0e7a  # 0e7a
+  message: "INV-zogud ramp progress (2026-07-19, autonomous 'crush mypy' session). KEY MEASUREMENT FINDING: INV-zogud's statement is 'mypy <repo>' — a WHOLE-TREE invocation where cross-package imports resolve. The current CI job runs mypy PER-PACKAGE in a loop (mypy $mod), which cannot follow cross-package imports (the editable install is mypy-invisible) so it treats every cross-package symbol as Any. That both INVENTS phantom errors (e.g. all 118 untyped-decorator — register_analyzer resolves to Any per-package; 0 whole-tree) and HIDES real ones (arg-type 117 per-package vs 571 whole-tree). So the per-package counts (231 basic / 1445 strict) are NOT the INV-zogud target. The real target = whole-tree 'mypy <all pkg src dirs>' strict + pyright-resonant config = measured at 1359 errors at session start. PR #(origin) landed: widened Symbol/Edge.origin + Edge.create param to str|List[str] (the INV-jidat scalar-or-list normalization contract) — resolved 465 arg-type (34% of the surface, ONE root cause) at the ir.py chokepoint (not the 465-site sweep the through-line forbids); generate_schema_lib.py taught that Union[X,List[X]] serializes as array[X] so docs/schema.json is byte-identical. Whole-tree strict now 888. Remaining is grind-dominated: type-arg 447 (bare dict 308/list 65/set 26 — mechanical hygiene), no-untyped-def 69, assignment 65, no-any-return 39, unreachable 32, union-attr 30, arg-type 105 residual, index 23, operator 14, name-defined 7 (6 = scip_pb2 generated protobuf), no-redef 4 (WI-hokag). Multi-session. Next structural step = WI-rokup keystone (switch CI to whole-tree strict + baseline ratchet)."  # 0e7a
+- op: discuss  # 4925
+  at: '2026-07-20T01:41:46Z'  # 4925
+  by: agent  # 4925
+  actor: jgstern_agent  # 4925
+  clock: 4  # 4925
+  nonce: '4925'  # 4925
+  message: "Keystone landed (PR f56ca6a23c): INV-zogud's 'mypy <repo>' target is now MEASURED (whole-tree strict + pyright-resonant) and RATCHETED shrink-only via scripts/check-mypy-ratchet + .ci/mypy-strict-baseline.json. Real surface after the origin fix + full config = 1431 (CI job runs it non-blocking). Remaining path: grind 1431 -> 0 (multi-session) -> WI-rabum flips CI blocking (--mode=strict) -> INV-zogud mechanical flip (owner's twenty-pass call). Note the ~440 aggressive-code cluster (explicit-override/mutable-override/unused-awaitable) is a scope decision (grind vs relax) that gates how far the bar goes."  # 4925

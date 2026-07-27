@@ -45,3 +45,34 @@
     tags: [dogfood]  # cd94
   remove:  # cd94
     tags: [dogfooding]  # cd94
+- op: update  # 3450
+  at: '2026-07-12T08:14:50Z'  # 3450
+  by: agent  # 3450
+  actor: jgstern_agent  # 3450
+  clock: 5  # 3450
+  nonce: '3450'  # 3450
+  set: {}  # 3450
+  add:  # 3450
+    tags: [wave5]  # 3450
+- op: discuss  # b145
+  at: '2026-07-12T08:14:51Z'  # b145
+  by: agent  # b145
+  actor: jgstern_agent  # b145
+  clock: 6  # b145
+  nonce: b145  # b145
+  message: "Wave-4 triage 2026-07-12: MIGRATE to Wave 5. The {files,paths} vs {files,symbols} divergence is intentional (paths = capped sample list, not a symbol count), so rename is inapplicable; residual is spec-doc acknowledgment only. P4, low value."  # b145
+- op: update  # 5018
+  at: '2026-07-15T19:36:59Z'  # 5018
+  by: agent  # 5018
+  actor: jgstern_agent  # 5018
+  clock: 7  # 5018
+  nonce: '5018'  # 5018
+  set:  # 5018
+    status: done  # 5018
+- op: discuss  # cb31
+  at: '2026-07-15T19:36:59Z'  # cb31
+  by: agent  # cb31
+  actor: jgstern_agent  # cb31
+  clock: 8  # cb31
+  nonce: cb31  # cb31
+  message: "Done via documentation (PR #665). The {files,paths} vs sibling {files,symbols} divergence is intentional, not a writer typo: tier-4 derived artifacts are excluded from analysis (spec §14) and emit no symbols, so a symbols count would be a structurally-always-0 dead field (ADR-0040 forbids); paths is a genuinely different quantity (capped sample of WHICH files were skipped) named per ADR-0039 ('a new quantity gets a new name'). Documented in spec §14 that derived_skipped is an exclusion-disclosure bucket, not a peer tier. The item's own invariant is disjunctive ((1) writer-fix OR (2) document the divergence); branch (2) makes it hold. NOTE: the folded second facet (metrics.by_supply_chain_tier omits the derived tier — a tier-set disagreement, distinct from this shape question) is re-filed as WI-nibul-zodif-hojal-foduh-monuh-gorir-roniz-dukud, NOT dropped."  # cb31

@@ -19,3 +19,34 @@
     pr_ref:  # 7d65
     description: "**Defect.** The reproducibility fingerprint over-captures grammar versions for languages that produced zero nodes.\n\n**Evidence.** `reproducibility_context.captured.grammars` enumerates 51 installed tree-sitter grammar versions (agda, circom, cuda, fortran, julia, lean, zig, ...) regardless of whether each grammar was used. Only 17 languages are actually present in the nodes; 38 of the 51 captured grammars correspond to languages with zero nodes. The implications text then asserts that maps with matching per-grammar versions should be functionally identical.\n\n**Contract.** The fingerprint should capture only grammars that actually contributed to the output (or the \"functionally identical\" implication should be scoped to used grammars), so that environment changes which cannot affect the map do not appear to.\n\n**Consequence.** The fingerprint conflates \"grammar installed\" with \"grammar used\"; a consumer diffing the captured block for reproducibility sees spurious \"not functionally identical\" verdicts driven by grammar versions for languages the repo does not contain.\n\n**Related (not duplicate).** Distinct from WI-mifok (pass_versions absent from captured) — this is over-capture of unused grammars, not absence of a referenced field."  # 7d65
     fields: {}  # 7d65
+- op: update  # 8f3d
+  at: '2026-07-09T01:52:18Z'  # 8f3d
+  by: agent  # 8f3d
+  actor: jgstern_agent  # 8f3d
+  clock: 2  # 8f3d
+  nonce: 8f3d  # 8f3d
+  set: {}  # 8f3d
+  add:  # 8f3d
+    tags: [wave5]  # 8f3d
+- op: discuss  # a1cc
+  at: '2026-07-09T01:52:18Z'  # a1cc
+  by: agent  # a1cc
+  actor: jgstern_agent  # a1cc
+  clock: 3  # a1cc
+  nonce: a1cc  # a1cc
+  message: "Wave-5 sweep (2026-07-08): identity:F5 reproducibility-fingerprint residual (over-captures 51 grammars; 38 for zero-node languages). Empty isbefore -> terminal wave."  # a1cc
+- op: update  # 034c
+  at: '2026-07-26T07:19:40Z'  # 034c
+  by: agent  # 034c
+  actor: jgstern_agent  # 034c
+  clock: 4  # 034c
+  nonce: 034c  # 034c
+  set:  # 034c
+    status: done  # 034c
+- op: discuss  # 9d5d
+  at: '2026-07-26T07:19:40Z'  # 9d5d
+  by: agent  # 9d5d
+  actor: jgstern_agent  # 9d5d
+  clock: 5  # 9d5d
+  nonce: 9d5d  # 9d5d
+  message: "FIXED in GitHub PR #12 (dev 15bc19cc7a). build_reproducibility_context seeds captured.grammars at map-init (before nodes exist) with EVERY installed tree-sitter-* dist (51 on this box; ~38 for zero-node languages). A new finalize sub-step _finalize_prune_repro_grammars (ADR-0043 chokepoint, 7c) rebuilds it from the toolchains of passes that emitted >=1 node (analysis_runs[].toolchain.grammar_module, stamped by _extend_toolchain). Behavioral evidence: a live python-only survey now prunes captured.grammars 51 -> absent (python is ast-based, uses no tree-sitter grammar). _detect_tree_sitter_versions stays unscoped for analyzer_identity cache correctness (INV-nofof). 56 finalize tests green, 100% cov of changed files; 1851 affected tests pass."  # 9d5d

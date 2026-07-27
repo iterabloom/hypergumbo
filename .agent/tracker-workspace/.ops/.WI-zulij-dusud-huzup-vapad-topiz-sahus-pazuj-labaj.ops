@@ -76,3 +76,34 @@
   clock: 8  # ec60
   nonce: ec60  # ec60
   message: "2026-06-10 design-interview ruling (decision recorded, no ADR): 'important symbols' means centrality-ranked everywhere — spec:1267 stands, and compact's default moves to match sketch. Connectivity-growth survives only behind an explicit --connectivity flag labeled 'connected core', and the change is bakeoff-tagged. Waits on the default-switch implementation."  # ec60
+- op: update  # d8cc
+  at: '2026-07-09T23:00:05Z'  # d8cc
+  by: agent  # d8cc
+  actor: jgstern_agent  # d8cc
+  clock: 9  # d8cc
+  nonce: d8cc  # d8cc
+  set:  # d8cc
+    status: done  # d8cc
+  add:  # d8cc
+    tags: [wave4, awaits_bakeoff_validation]  # d8cc
+- op: discuss  # a955
+  at: '2026-07-09T23:00:05Z'  # a955
+  by: agent  # a955
+  actor: jgstern_agent  # a955
+  clock: 10  # a955
+  nonce: a955  # a955
+  message: "Fixed + merged (selfh/dev 4c8a8f66c1, bundled with WI-kolal + WI-fumut). compact's default selection flipped from connectivity-aware to a GLOBAL centrality-ranked prefix (D12; spec 'Output reproducibility' already declared this the default). --no-connectivity replaced by --connectivity ('connected core') opt-in. 5 cli.py sites (2 flag defs, 2 wirings, run_behavior_map default True->False). Behavioral evidence: main() --connectivity routes both modes to valid compact output; 3467 affected tests pass; core 100%. Bakeoff-tagged (default compact output shape changes across the corpus). Wave-4 projection lynchpin."  # a955
+- op: discuss  # ced6
+  at: '2026-07-16T04:10:43Z'  # ced6
+  by: agent  # ced6
+  actor: jgstern_agent  # ced6
+  clock: 11  # ced6
+  nonce: ced6  # ced6
+  message: "NO_MOVE (plurality) via DEEP bakeoff deep-20260623-134237 cohort-001 iter-004 (8 repos, code e5a019c2): 4 no_move (apollo/spring/sherpa/pretix), 2 moved (SwiftyJSON/zoxide), 2 inconclusive-leaning-connectivity (caddy/express). Compact SELECTS by centrality (nodes_summary coverage high on small repos) but its visible ORDERING is source-path/containment-grouped, and on repos with build-wrappers (spring mvnw/pom), generated (.d.ts), vendored JS (pretix pdf.worker/d3/vue) or entrypoint-tier nodes the ranking surfaces that noise ABOVE centrality-top real code (spring: mvnw:die over OwnerController deg29; sherpa: Main entrypoints over WaveReader deg29; pretix: 83 selected nodes hold 1.3% of total centrality). Shares a root cause with the seed-ranking item WI-batit (reproduces) + the compact-representation finding. Keeping tag."  # ced6
+- op: discuss  # 2823
+  at: '2026-07-16T05:12:47Z'  # 2823
+  by: agent  # 2823
+  actor: jgstern_agent  # 2823
+  clock: 12  # 2823
+  nonce: '2823'  # 2823
+  message: "The WI-pohuf compact-node fix (PR de2fb3717c) directly improves the centrality-coverage face flagged in iter-004: the tiered views now fit far more symbols per budget (apollo 4k/16k/64k 1/1/59 -> 4/31/142; pretix 1/1/83 -> 5/38/190), so the compact selection covers much more of the centrality mass. The ORDERING/noise-contamination face (compact leading with build-wrappers/generated/entrypoint nodes over centrality-top real code) is the seed-ranking issue tracked on WI-batit (reproduces) — orthogonal to compact-node size. Keep tag; re-validate ordering after WI-batit."  # 2823

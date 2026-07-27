@@ -53,13 +53,31 @@ How It Works
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
+from typing import TYPE_CHECKING, Any, Optional
+
+if TYPE_CHECKING:
+    from .taint import TaintFlowFinding
 
 import yaml
 
+from .edge_types import is_grpc_rpc_implementation
 from .io_boundary import KNOWN_IO_BOUNDARIES, BoundaryMap
+
+
+# Schema version for the ``verify-claims --json`` envelope (WI-nulot / INV-gatog).
+# 1.0 introduces the top-level object (schema_version + view + verdicts +
+# unsupported_taint_languages) replacing the legacy bare JSON array.
+VERIFY_CLAIMS_SCHEMA_VERSION = "1.1"
+# WI-kikis: cap on the per-verdict structured drill-down evidence list. A
+# violated claim can have thousands of flows (3,969 on the self-corpus); the
+# deduplicated ``evidence`` list is bounded to this many DISTINCT flows so the
+# JSON stays a reasonable size, while ``evidence_count`` still reports the true
+# total and ``details`` discloses the distinct count. 100 distinct source→sink
+# paths is far more than a human triages by hand and comfortably covers the
+# handful of distinct flows a high-count claim collapses to in practice.
+_MAX_EVIDENCE_ROWS = 100
 
 
 # ---------------------------------------------------------------------------
@@ -124,6 +142,16 @@ class ClaimVerdict:
             class (INV-bitig P0, INV-gobob, INV-mofih, INV-nufob).
         evidence_count: Number of I/O chains that violate the claim (0 if confirmed).
         details: Human-readable explanation.
+        evidence: Bounded, deduplicated list of per-flow drill-down records for
+            a violated taint claim (WI-kikis). Each entry carries
+            ``source_symbol`` / ``sink_symbol`` (the graph node IDs a consumer
+            uses to locate the exact edge), the corresponding primitive names,
+            and the ``path`` (list of symbol IDs through the call graph). Empty
+            for confirmed / inconclusive / boundary verdicts. Capped at
+            ``_MAX_EVIDENCE_ROWS`` DISTINCT flows — ``evidence_count`` remains
+            the full total, so ``len(evidence) < evidence_count`` signals either
+            verbatim-duplicate flows collapsed away or a high-count claim
+            truncated to the cap.
     """
 
     claim_id: str
@@ -131,6 +159,7 @@ class ClaimVerdict:
     verdict: str  # axis: bounded-enum — "confirmed" / "violated" / "inconclusive"
     evidence_count: int = 0
     details: str = ""
+    evidence: list[dict[str, Any]] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         """Serialize to JSON-friendly dict."""
@@ -140,6 +169,7 @@ class ClaimVerdict:
             "verdict": self.verdict,
             "evidence_count": self.evidence_count,
             "details": self.details,
+            "evidence": self.evidence,
         }
 
 
@@ -458,20 +488,22 @@ def load_claims(path: Path) -> list[Claim]:
 
 # Analyzer-produced call edge types used to decide per-language I/O coverage.
 # A deliberately registry-clean subset of the edge types ``io_boundary``'s
-# ``tag_io_boundaries`` scans (relationship axis, plus ``implements_rpc`` which
-# is pending_classification). It omits the bridge-family endpoint_shape values
-# (``cgo_bridge``/``wasm_bridge``/...) that the tagger lists defensively: those
-# fold into the canonical ``calls`` relationship (edge_types.py), so a folded
-# FFI edge is already counted via ``calls`` — and they are not relationship-axis
-# edge types, so listing them here would (correctly) fail the ADR-0023 drift
-# linter. This set answers "did the analyzer extract call structure for this
-# language", which is what the WI-kajil blindness signal needs.
+# ``tag_io_boundaries`` scans (all relationship axis). It omits the
+# bridge-family endpoint_shape values (``cgo_bridge``/``wasm_bridge``/...)
+# that the tagger lists defensively: those fold into the canonical ``calls``
+# relationship (edge_types.py), so a folded FFI edge is already counted via
+# ``calls`` — and they are not relationship-axis edge types, so listing them
+# here would (correctly) fail the ADR-0023 drift linter. The folded gRPC
+# RPC-implementation edge (``implements`` + ``meta['protocol']='grpc'``,
+# audit-findings 0016) is counted via the is_grpc_rpc_implementation predicate
+# at the loop below, not membership. This set answers "did the analyzer extract
+# call structure for this language", which is what the WI-kajil blindness
+# signal needs.
 _COVERAGE_CALL_EDGE_TYPES: frozenset[str] = frozenset({
     "calls",
     "imports",
     "module_attr_ref",
     "event_publishes",
-    "implements_rpc",
 })
 
 
@@ -502,7 +534,10 @@ def compute_boundary_coverage(
     languages_with_calls: set[str] = set()
     total_call_edges = 0
     for edge in raw_edges:
-        if edge.get("type") not in _COVERAGE_CALL_EDGE_TYPES:
+        etype = edge.get("type", "")
+        if etype not in _COVERAGE_CALL_EDGE_TYPES and not is_grpc_rpc_implementation(
+            etype, edge.get("meta")
+        ):
             continue
         total_call_edges += 1
         src = edge.get("src", "")
@@ -543,7 +578,16 @@ def _default_coverage(boundary_map: BoundaryMap) -> BoundaryCoverage:
     supplies the stricter per-language signal that also catches a partially
     blind analysis (WI-kajil).
     """
-    if boundary_map.total_io_edges == 0:
+    # INV-bitig gate: "did the analysis SEE any I/O at all?" — count BOTH
+    # confirmed I/O (total_io_edges, real categories) AND the external_potential
+    # bucket. The WI-huhit/WI-foduh headline redefine excludes external_potential
+    # from total_io_edges, but external_potential>0 still means the analysis ran
+    # and found (receiver-unresolved) calls, so it is NOT an unanalyzed input;
+    # this gate keeps the original "any boundary signal" semantics.
+    if (
+        boundary_map.total_io_edges == 0
+        and boundary_map.external_potential_edges == 0
+    ):
         return BoundaryCoverage(
             complete=False,
             reason=(
@@ -663,6 +707,49 @@ def verify_claim(
     )
 
 
+def _flow_identity(v: "TaintFlowFinding") -> tuple[Any, ...]:
+    """Full per-flow identity of a taint finding (WI-kikis).
+
+    Two findings are "the same flow" iff their source/sink symbols, primitive
+    names, and call-graph path all match — so verbatim-duplicate findings
+    collapse while flows that merely share a primitive NAME (distinct symbols)
+    stay distinct.
+    """
+    return (
+        v.source_primitive,
+        v.source_symbol,
+        v.sink_primitive,
+        v.sink_symbol,
+        tuple(v.path),
+    )
+
+
+def _render_flow(v: "TaintFlowFinding") -> str:
+    """Render one violating flow with its drill-down identity (WI-kikis):
+    ``<source_primitive> [<source_symbol>] -> <sink_primitive> [<sink_symbol>]``
+    plus a hop count when the path routes through intermediate nodes."""
+    row = (
+        f"{v.source_primitive} [{v.source_symbol}] -> "
+        f"{v.sink_primitive} [{v.sink_symbol}]"
+    )
+    # path = [source, ...intermediate..., sink]; hops are the interior nodes.
+    if len(v.path) > 2:
+        row += f" via {len(v.path) - 2} hop(s)"
+    return row
+
+
+def _flow_evidence_dict(v: "TaintFlowFinding") -> dict[str, Any]:
+    """Structured per-flow drill-down record for the verdict ``evidence`` list
+    (WI-kikis) — the machine-readable counterpart of :func:`_render_flow`."""
+    return {
+        "source_symbol": v.source_symbol,
+        "source_primitive": v.source_primitive,
+        "sink_symbol": v.sink_symbol,
+        "sink_primitive": v.sink_primitive,
+        "path": list(v.path),
+    }
+
+
 def verify_taint_claim(
     claim: Claim,
     findings: list,
@@ -716,21 +803,52 @@ def verify_taint_claim(
             ),
         )
 
-    # Build detailed violation message
-    paths_desc = "; ".join(
-        f"{v.source_primitive} -> {v.sink_primitive}" for v in violations[:5]
-    )
+    # Build detailed violation message with per-flow drill-down evidence
+    # (WI-kikis). The previous rendering collapsed every violation to a bare
+    # "<source_primitive> -> <sink_primitive>" pair and showed the first 5 —
+    # which, on high-count claims (3,969 flows on the self-corpus), were
+    # frequently VERBATIM DUPLICATES, because many distinct source/sink SYMBOLS
+    # share a primitive NAME. The consumer saw the same string five times and
+    # had no way to locate any individual flow (no symbol, no path, no edge).
+    # Fix: (a) deduplicate on the full per-flow identity (source/sink symbol +
+    # primitive + call-graph path) so genuinely-identical findings collapse and
+    # the shown rows are DISTINCT; (b) render each shown row WITH its symbol IDs
+    # (and path-hop count) so distinct flows are visibly distinct and drillable;
+    # (c) attach the bounded structured ``evidence`` list to the verdict so a
+    # consumer can triage programmatically even at high evidence counts.
+    distinct_violations: list = []
+    _seen_flows: set = set()
+    for v in violations:
+        identity = _flow_identity(v)
+        if identity in _seen_flows:
+            continue
+        _seen_flows.add(identity)
+        distinct_violations.append(v)
+
+    paths_desc = "; ".join(_render_flow(v) for v in distinct_violations[:5])
     suffix = ""
-    if len(violations) > 5:
-        suffix = f" (and {len(violations) - 5} more)"
+    if len(distinct_violations) > 5:
+        suffix = (
+            f" (and {len(distinct_violations) - 5} more distinct flow(s))"
+        )
+    # Only disclose the distinct count when it differs from the raw total, so
+    # the common no-duplicates case stays terse.
+    distinct_clause = ""
+    if len(distinct_violations) < len(violations):
+        distinct_clause = f" ({len(distinct_violations)} distinct)"
 
     return ClaimVerdict(
         claim_id=claim.id,
         claim_text=claim.text,
         verdict="violated",
         evidence_count=len(violations),
+        evidence=[
+            _flow_evidence_dict(v)
+            for v in distinct_violations[:_MAX_EVIDENCE_ROWS]
+        ],
         details=(
-            f"{len(violations)} unsanitized {tf.source_taint} flow(s) "
+            f"{len(violations)} unsanitized {tf.source_taint} flow(s)"
+            f"{distinct_clause} "
             f"to {tf.prohibited_sink_zone} zone "
             f"[{tf.source_taint} confidence: approximate]: "
             f"{paths_desc}{suffix}"

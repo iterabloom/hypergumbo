@@ -1,0 +1,78 @@
+- op: create  # 4d61
+  at: '2026-07-18T07:18:01Z'  # 4d61
+  by: agent  # 4d61
+  actor: jgstern_agent  # 4d61
+  clock: 1  # 4d61
+  nonce: 4d61  # 4d61
+  data:  # 4d61
+    kind: work_item  # 4d61
+    title: "Migrate Kotlin extension-call resolution from the analyzer into the shared receiver-type-index linker (validates the substrate; fixes the anti-pattern)"  # 4d61
+    status: todo_hard  # 4d61
+    priority: 3  # 4d61
+    parent: INV-vigaf-lozar-jifiv-lamut-nuzik-dokov-zobis-hopap  # 4d61
+    tags:  # 4d61
+    - cross_language_parity  # 4d61
+    - analysis_quality  # 4d61
+    - structural  # 4d61
+    isbefore: []  # 4d61
+    duplicate_of: []  # 4d61
+    not_duplicate_of: []  # 4d61
+    pr_ref:  # 4d61
+    description: "Migrate Kotlin extension-function call resolution from the analyzer into the shared receiver-type-index linker (the substrate WI). Fixes the parent invariant's anti-pattern on a KNOWN-WORKING baseline and validates the substrate before the harder members.\n\nCURRENT (in-analyzer, the anti-pattern): kotlin.py detects `fun Receiver.name()` and stamps `meta[\"extension_receiver\"]` (WI-fuhav, ~line 772), builds an analyzer-local `extension_index` keyed by receiver type (WI-visaz, ~line 1794), and in pass 2 emits a fully-RESOLVED `Edge.create(edge_type=\"calls\", evidence_type=\"ast_call_extension\")` (~line 1284).\n\nMIGRATE TO: kotlin.py emits `make_unresolved_edge(...)` + the `extension_receiver` (and receiver_type_hint) hint; the shared receiver-type-index linker resolves and emits the `ast_call_extension` edge. Drop the analyzer-local `extension_index` + pass-2 resolution.\n\nWHY KOTLIN FIRST: it is the one extension language already resolved + tested, so its existing extension-dispatch tests (WI-visaz) become the linker's regression guard — edge/byte parity against the current in-analyzer output proves the substrate before C#/Scala/Swift/D. This is a recall-NEUTRAL refactor (same edges, different producer), so it de-risks with no correctness exposure.\n\nDEPENDS ON: the substrate WI (must exist first).\nTests: relocate/reuse the Kotlin extension-dispatch tests at the linker; assert edge-parity (same src/dst/evidence_type/confidence) vs pre-migration on a Kotlin extension-call fixture. Also add the INV-nilud-analogue property assertion (kotlin.py no longer emits a resolved extension call itself).\n\nPROVENANCE: 3-lens investigation 2026-07-18 (lens-1 flagged the Kotlin in-analyzer resolver as the proof-by-precedent that the pattern lives ad-hoc; lens-2 counted the breadth)."  # 4d61
+    fields: {}  # 4d61
+- op: update  # d375
+  at: '2026-07-18T07:18:33Z'  # d375
+  by: agent  # d375
+  actor: jgstern_agent  # d375
+  clock: 2  # d375
+  nonce: d375  # d375
+  set: {}  # d375
+  add:  # d375
+    isbefore: [WI-situj-fiviz-misop-duguj-sikud-bapoj-rurak-tukos]  # d375
+- op: update  # 4ef0
+  at: '2026-07-18T07:25:14Z'  # 4ef0
+  by: agent  # 4ef0
+  actor: jgstern_agent  # 4ef0
+  clock: 3  # 4ef0
+  nonce: 4ef0  # 4ef0
+  set: {}  # 4ef0
+  remove:  # 4ef0
+    isbefore: [WI-situj-fiviz-misop-duguj-sikud-bapoj-rurak-tukos]  # 4ef0
+- op: update  # 8bcc
+  at: '2026-07-18T07:27:51Z'  # 8bcc
+  by: agent  # 8bcc
+  actor: jgstern_agent  # 8bcc
+  clock: 4  # 8bcc
+  nonce: 8bcc  # 8bcc
+  set: {}  # 8bcc
+  add:  # 8bcc
+    isbefore: [WI-situj-fiviz-misop-duguj-sikud-bapoj-rurak-tukos]  # 8bcc
+- op: discuss  # 97ea
+  at: '2026-07-18T10:01:17Z'  # 97ea
+  by: agent  # 97ea
+  actor: jgstern_agent  # 97ea
+  clock: 5  # 97ea
+  nonce: 97ea  # 97ea
+  message: "When landing the Kotlin migration (the 2nd real emit site), also EXTRACT the shared emission tail (Edge.create(edge_type=calls...) + existing_call_pairs dedup, duplicated ~5x in inherited_calls.py + 1x in receiver_type_dispatch.py) into a common linker-helpers module both import — the rule-of-three DRY step deferred from WI-panah now that a 2nd use-site exists."  # 97ea
+- op: discuss  # 14cd
+  at: '2026-07-18T10:03:10Z'  # 14cd
+  by: agent  # 14cd
+  actor: jgstern_agent  # 14cd
+  clock: 6  # 14cd
+  nonce: 14cd  # 14cd
+  message: "SCOPE FINDING (2026-07-18, from reading kotlin.py:1259-1288): the migration is NOT a clean recall-neutral refactor. The in-analyzer resolver (a) sets resolved_nav_sym which feeds RETURN-TYPE TRACKING for chained calls (x.ext().foo() → var_types), and (b) does GENERIC BASE-NAME matching (fun List<Int>.foo() matches a List<String> receiver via base 'List'). Moving edge-emission to the linker must EITHER keep the analyzer's local return-type lookup (emit unresolved+hint but still infer ext return type for var_types) OR accept a chained-call recall change; and the linker needs generic-base normalization (strip <...> on both index key and receiver_type_hint) to preserve Kotlin's generic matching. Sequencing this AFTER the cleaner MRO walkers (WI-nazab/WI-sojim). Design carefully to preserve behavior."  # 14cd
+- op: update  # 59a2
+  at: '2026-07-18T20:14:30Z'  # 59a2
+  by: agent  # 59a2
+  actor: jgstern_agent  # 59a2
+  clock: 7  # 59a2
+  nonce: 59a2  # 59a2
+  set:  # 59a2
+    status: done  # 59a2
+- op: discuss  # d8e8
+  at: '2026-07-18T20:14:30Z'  # d8e8
+  by: agent  # d8e8
+  actor: jgstern_agent  # d8e8
+  clock: 8  # d8e8
+  nonce: d8e8  # d8e8
+  message: "Done — merged to dev (7b91e26caf), owner-chosen Option A (behavior-preserving). kotlin.py Case-3b extension branch now emits make_unresolved_edge+receiver_type_hint instead of the resolved ast_call_extension edge; the receiver_type_dispatch linker emits the resolved edge. Analyzer keeps the local extension_index lookup ONLY for resolved_nav_sym (return-type tracking) so recall is unchanged. Linker gained _base_type generic normalization (List<Int> -> List). Evidence: 2 WI-visaz call-site tests updated to run analyzer+linker + a linker generic-match test; 100% coverage, 2249 affected tests green. NOTE: the deferred inherited_calls shared-emission-tail extraction (from WI-panah) was NOT bundled here — it is marginal hygiene (a ~5-line Edge.create tail) and was skipped to keep the migration focused; leaving it as optional future cleanup, not blocking INV-vigaf."  # d8e8

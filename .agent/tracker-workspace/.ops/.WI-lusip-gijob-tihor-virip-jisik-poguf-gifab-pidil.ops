@@ -1,0 +1,37 @@
+- op: create  # 7329
+  at: '2026-07-16T10:22:00Z'  # 7329
+  by: agent  # 7329
+  actor: jgstern_agent  # 7329
+  clock: 1  # 7329
+  nonce: '7329'  # 7329
+  data:  # 7329
+    kind: work_item  # 7329
+    title: "C# user-typed property symbols misnamed with their type, not the member name"  # 7329
+    status: todo_hard  # 7329
+    priority: 2  # 7329
+    parent:  # 7329
+    tags:  # 7329
+    - dogfood  # 7329
+    - wave5  # 7329
+    - csharp  # 7329
+    isbefore: []  # 7329
+    duplicate_of: []  # 7329
+    not_duplicate_of: []  # 7329
+    pr_ref:  # 7329
+    description: "C# user-typed property/member symbols are misnamed with their TYPE, not the member name.\n\nBehavioral evidence (DEEP cohort deep-20260623-134237, sherpa-csharp; live analyze_csharp probe): a C# property whose declared return type is a user-defined type is emitted under the TYPE name, not the member name — `public WaveInfo Info => _info;` emits symbol `C.WaveInfo` (should be `C.Info`); `public FeatureConfig Feat { get; set; }` emits `C.FeatureConfig`. Two same-typed properties collapse to one entry in symbol_by_name (name-index collision). Predefined/array/generic return types are non-identifier AST nodes, so only USER-typed properties misfired — which masked the bug and made a name-based property search return 0 (the symptom INV-dakit's filing misattributed to non-emission).\n\nRoot cause: `extract_name_from_declaration` (csharp.py) grabbed the first `identifier` child, but in a C# `property_declaration` a user-typed return type is itself an `identifier` PRECEDING the property-name identifier. Fix: read the grammar's `name` field instead. Verified no-op for class/interface/struct/enum/constructor (their name field == the first identifier). Methods were unaffected (separate type-aware extraction path).\n\nDiscovered while investigating INV-dakit (whose filed 'expression-bodied not emitted' mechanism was empirically false — emission always worked). Sibling of INV-dakit."  # 7329
+    fields: {}  # 7329
+- op: update  # 7f92
+  at: '2026-07-16T10:22:12Z'  # 7f92
+  by: agent  # 7f92
+  actor: jgstern_agent  # 7f92
+  clock: 2  # 7f92
+  nonce: 7f92  # 7f92
+  set:  # 7f92
+    status: done  # 7f92
+- op: discuss  # 7cc3
+  at: '2026-07-16T10:22:12Z'  # 7cc3
+  by: agent  # 7cc3
+  actor: jgstern_agent  # 7cc3
+  clock: 3  # 7cc3
+  nonce: 7cc3  # 7cc3
+  message: "Fixed in PR #689 (dev b8e4d675a1). extract_name_from_declaration now reads the grammar's 'name' field instead of the first identifier child. Behavioral evidence: live analyze_csharp probe — 'public WaveInfo Info => _info' now emits 'C.Info' (was 'C.WaveInfo'); 'public FeatureConfig Feat {get;set;}' emits 'C.Feat'; two same-typed properties (Feat/Other) no longer collide. Regression test: test_csharp.py::TestCSharpSpecialCases::test_user_typed_property_uses_member_name_not_type_name (asserts C.Info/C.Feat/C.Other present, C.WaveInfo/C.FeatureConfig absent, and qualified_name carries the member). No-op verified for class/interface/struct/enum/constructor. csharp.py at 100% coverage."  # 7cc3

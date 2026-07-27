@@ -1,0 +1,38 @@
+- op: create  # 44c6
+  at: '2026-07-06T14:57:13Z'  # 44c6
+  by: agent  # 44c6
+  actor: jgstern_agent  # 44c6
+  clock: 1  # 44c6
+  nonce: 44c6  # 44c6
+  data:  # 44c6
+    kind: invariant  # 44c6
+    title: "Julia const emitter drops multi-name/typed const members and clobbers same-named functions"  # 44c6
+    status: violated  # 44c6
+    priority: 3  # 44c6
+    parent:  # 44c6
+    tags:  # 44c6
+    - dogfood  # 44c6
+    - emission_parity  # 44c6
+    isbefore: []  # 44c6
+    duplicate_of: []  # 44c6
+    not_duplicate_of: []  # 44c6
+    pr_ref:  # 44c6
+    description: "Pre-existing julia const-emitter bugs, surfaced by the WI-jusus module-variable review (distinct from that slice, which correctly returns None for const_statement parents). (1) const a,b=1,2 emits ZERO const symbols (open_tuple LHS). (2) const K::Int=3 dropped/mis-named (typed_expression LHS). (3) const handler=5 clobbers a same-named cross-module function (bare-name registration beats the function's qualified suffix-match). Fix: reuse _julia_assignment_target_names(lhs) for const LHS extraction; for the clobber, a const value binding CAN be a legit call target (const f=()->… is callable), so keep it resolvable but add a function-preferring resolver tie-break OR module-qualified const names. Evidence: analyze_julia on 'module M; const a,b=1,2; end' -> zero const; 3-module file with const handler=5 (B) + function handler() (A) + caller (C) -> caller resolves to const:handler not the function."  # 44c6
+    fields:  # 44c6
+      statement: "Every valid Julia const declaration emits a const symbol for ALL declared names (including multi-name const a,b=1,2 and typed const K::Int=3), and a const value binding never wrongly clobbers a same-named cross-module function in call resolution."  # 44c6
+      root_cause: "The const_statement emitter uses find_child_by_type(assignment,identifier) which finds no direct identifier for an open_tuple or typed_expression LHS (dropping multi-name and typed consts), and registers const under its BARE unqualified name so it EXACT-matches a bare foo() call and beats a same-named function module-qualified suffix-match."  # 44c6
+- op: update  # 5611
+  at: '2026-07-08T20:17:54Z'  # 5611
+  by: agent  # 5611
+  actor: jgstern_agent  # 5611
+  clock: 2  # 5611
+  nonce: '5611'  # 5611
+  set:  # 5611
+    status: satisfied  # 5611
+- op: discuss  # f7f5
+  at: '2026-07-08T20:17:54Z'  # f7f5
+  by: agent  # f7f5
+  actor: jgstern_agent  # f7f5
+  clock: 3  # f7f5
+  nonce: f7f5  # f7f5
+  message: "Merged 8f559a33bc (bundle). julia const_statement branch now emits one const per bound name via _julia_assignment_target_names (multi-name const a,b=1,2 and typed const K::Int=3 went 0→N symbols), module-qualified id + bare name, with a function-preferring symbol_by_name tie-break so a const does not clobber a same-named function in resolution (clobber test verified as a valid RED). lang-common 100%."  # f7f5

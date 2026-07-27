@@ -1,9 +1,15 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""Facade for analyzer dispatch — delegates to the decorator-based registry.
+"""Analyzer orchestration + the stable analyzer-dispatch import points.
 
-This module provides the stable import points used by cli.py and
-partial_install_warnings.py. Internally it delegates to the canonical
-registry in analyze/registry.py (ADR-0012 Step 1).
+Analyzer *discovery* delegates to the canonical decorator-based registry in
+analyze/registry.py (ADR-0012 Step 1) — ``get_analyzers`` /
+``clear_analyzer_cache`` are thin pass-throughs. But this module also houses
+the *orchestrator*: ``run_all_analyzers`` runs the registered analyzers via a
+parallel ``ThreadPoolExecutor`` dispatch, stamps the config fingerprint,
+filters by file presence, runs the file-symbol / anchor synthesis passes,
+normalizes paths, dedups edges, and merges the dependency manifest — so it is
+not a pure facade. It provides the stable import points used by cli.py and
+partial_install_warnings.py.
 
 Import points:
     - cli.py: ``from .analyze.all_analyzers import run_all_analyzers``
@@ -18,14 +24,19 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any
 
-from ..discovery import set_global_on_file_skipped
+from ..discovery import DEFAULT_EXCLUDES, get_file_index, set_global_on_file_skipped
 from ..ir import (
     AnalysisRun, Edge, PASS_VERSION, Symbol, UsageContext,
     _default_config_fingerprint, compute_config_fingerprint,
 )
 from ..limits import Limits
 from ..paths import normalize_path
-from .base import populate_kind_stable_ids, synthesize_file_symbols_for_dangling_edges
+from .base import (
+    populate_kind_stable_ids,
+    synthesize_file_anchors_for_node_bearing_paths,
+    synthesize_file_anchors_for_paths,
+    synthesize_file_symbols_for_dangling_edges,
+)
 from .registry import (
     RegisteredAnalyzer,
     clear_registry,
@@ -89,6 +100,7 @@ def collect_analyzer_result(
     all_edges: list[Edge],
     all_usage_contexts: list[UsageContext],
     limits: Limits,
+    analyzer_name: str = "",
 ) -> None:
     """Collect results from an analyzer into the aggregated lists.
 
@@ -102,12 +114,40 @@ def collect_analyzer_result(
         all_edges: List to append edges to
         all_usage_contexts: List to append usage contexts to
         limits: Limits object to track skipped passes
+        analyzer_name: The dispatching analyzer's registration name, used to
+            record a ``skipped_passes`` entry when the result carries no run
+            (WI-didil). Optional for backward compatibility; when empty, a
+            ``run=None`` result is drained but not recorded as a skip.
     """
-    # Handle results without run (shouldn't happen but be defensive)
-    if result.run is None:  # pragma: no cover
+    # A result with no run is an analyzer that produced nothing (WI-didil).
+    # It reaches here — rather than being short-circuited by the file-presence
+    # pre-filter (_filter_by_file_presence) — when its declared language is
+    # absent from the taxonomy (matlab/meson/puppet/racket/robot/scheme/scss)
+    # or it is an opt-in backend that stayed off (rust_analyzer). Formerly this
+    # branch silently returned, recording NEITHER an AnalysisRun NOR a skip, so
+    # those passes violated the "every catalog pass → AR or skip" invariant.
+    # Now it records a skip so coverage of the catalog stays complete. The
+    # reason honours a self-declared ``skip_reason`` (e.g. rust_analyzer's
+    # "backend not enabled") and otherwise falls back to "no files matched" —
+    # the same wording the pre-filter uses (a bare ``run=None`` result is a
+    # no-input analyzer). Symbols/edges are still drained fail-open.
+    if result.run is None:
         all_symbols.extend(result.symbols)
         all_edges.extend(result.edges)
         all_usage_contexts.extend(getattr(result, "usage_contexts", []))
+        # Only a genuinely-empty result (no run, no output) is a skip. A
+        # producer that emitted symbols/edges without a run is a distinct
+        # anomaly (e.g. rust_analyzer's success path returns run=None with
+        # SCIP output) — keep its output, don't mislabel it a skip.
+        produced_nothing = not result.symbols and not result.edges
+        if analyzer_name and produced_nothing:
+            reason = (
+                getattr(result, "skip_reason", "")
+                if getattr(result, "skipped", False)
+                and getattr(result, "skip_reason", "")
+                else "no files matched"
+            )
+            limits.skipped_passes.append({"pass": analyzer_name, "reason": reason})
         return
 
     # Check if analyzer was skipped (optional deps missing)
@@ -305,7 +345,8 @@ def run_all_analyzers(
             stamp_analyzer_config_fingerprint(result, analyzer)
 
             collect_analyzer_result(
-                result, analysis_runs, all_symbols, all_edges, all_usage_contexts, limits
+                result, analysis_runs, all_symbols, all_edges, all_usage_contexts,
+                limits, analyzer_name=analyzer.name,
             )
 
             # Capture symbols for linkers (e.g., JNI needs c_symbols and java_symbols)
@@ -349,10 +390,56 @@ def run_all_analyzers(
     )
     if _synth_file_symbols:
         all_symbols.extend(_synth_file_symbols)
+    # WI-dagif (file-anchor:F1, node-bearing slice): after the dangling-edge
+    # pass, mint a file anchor for every path that has content nodes but still
+    # no file anchor, so the contains tree has a reachable file root (the
+    # containment linker's span-based pass then roots top-level members at it).
+    # Runs after the dangling pass so its anchors count as already-present, and
+    # shares the one synthesis AnalysisRun. Safe without file-anchor:F4 — these
+    # paths already carry content nodes, so they are already in source_paths and
+    # cannot empty the Additional-Files surface.
+    _synth_node_anchors = synthesize_file_anchors_for_node_bearing_paths(
+        all_symbols, repo_root=repo_root,
+        origin_run_id=_file_synth_run.execution_id,
+    )
+    if _synth_node_anchors:
+        all_symbols.extend(_synth_node_anchors)
+    # file-anchor:F1 (additional-file-candidate cohort) + F4 co-release: anchor
+    # every Additional-Files candidate (config/doc file) that still lacks a node
+    # so the `additional_file_centrality_scores` keys are real node paths (the
+    # WI-rajod subset invariant). Co-released with F4 — cli.py computes
+    # source_paths as CONTENT-only, so these bare leaf anchors are NOT
+    # re-subtracted from the Additional-Files surface. Selection (candidate
+    # filter + language) lives here because base.py cannot import taxonomy/
+    # discovery/sketch without a cycle; minting stays in base.
+    _synth_candidate_anchors: list[Symbol] = []
+    _af_file_index = get_file_index()
+    if _af_file_index is not None:
+        from ..sketch import ADDITIONAL_FILES_EXCLUDES
+        from ..taxonomy import additional_file_candidates, get_language
+        _content_paths = {s.path for s in all_symbols if s.kind != "file" and s.path}
+        _af_excludes = list(DEFAULT_EXCLUDES) + ADDITIONAL_FILES_EXCLUDES
+        _af_path_lang = {
+            str(_c.relative_to(repo_root)): get_language(_c)
+            for _c in additional_file_candidates(
+                repo_root, _af_file_index.all_files(), _content_paths, _af_excludes,
+            )
+        }
+        _synth_candidate_anchors = synthesize_file_anchors_for_paths(
+            all_symbols, _af_path_lang, repo_root=repo_root,
+            origin_run_id=_file_synth_run.execution_id,
+        )
+        if _synth_candidate_anchors:
+            all_symbols.extend(_synth_candidate_anchors)
+    _total_file_synth = (
+        len(_synth_file_symbols) + len(_synth_node_anchors)
+        + len(_synth_candidate_anchors)
+    )
+    if _total_file_synth:
         # INV-gizik: this synthesis pass bypasses both analyzer + linker
         # chokepoints; stamp its duration + node count (it emits only Symbols).
         _file_synth_run.duration_ms = int((time.perf_counter() - _file_synth_t0) * 1000)
-        _file_synth_run.nodes_emitted = len(_synth_file_symbols)
+        _file_synth_run.nodes_emitted = _total_file_synth
         analysis_runs.append(_file_synth_run.to_dict())
 
     # Normalize paths: some analyzers produce absolute paths instead of

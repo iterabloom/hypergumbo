@@ -1,8 +1,10 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Meson build system analyzer using tree-sitter.
 
-This module provides static analysis for Neson build files, extracting symbols
-(projects, executables, libraries, variables) and edges (dependencies, subdirs).
+This module provides static analysis for Meson build files, extracting symbols
+(projects, executables, libraries) and edges (dependencies, subdirs). Variable
+assignments are tracked internally (target registry) to resolve dependencies but
+are not emitted as symbols.
 
 Meson is a modern build system designed to be fast and user-friendly. It uses
 a simple declarative language in meson.build files that define build targets
@@ -17,8 +19,9 @@ The analyze() method is fully overridden because Meson requires:
 Key constructs extracted:
 - project('name', ...) - project definition
 - executable('name', ...) - executable target
-- library/shared_library/static_library('name', ...) - library targets
-- var = command(...) - variable assignments
+- library/shared_library/static_library/both_libraries('name', ...) - library targets
+- custom_target/run_target('name', ...) - other build targets (emitted as kind 'target')
+- var = command(...) - variable assignments are tracked (not emitted as symbols) to resolve cross-target dependencies
 - subdir('path') - subdirectory includes
 - dependencies: [...] - target dependencies
 """
@@ -29,7 +32,7 @@ from pathlib import Path
 from typing import ClassVar, Iterator, Optional, TYPE_CHECKING
 
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
+from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, _get_python_toolchain, make_pass_id
 from hypergumbo_core.analyze.base import AnalysisResult, TreeSitterAnalyzer, make_symbol_id, populate_docstrings_from_tree
 from hypergumbo_core.analyze.registry import register_analyzer
 
@@ -57,7 +60,7 @@ def find_meson_files(root: Path) -> Iterator[Path]:
 
 def _get_node_text(node: "tree_sitter.Node") -> str:
     """Get the text content of a node."""
-    return node.text.decode("utf-8", errors="replace")
+    return (node.text or b"").decode("utf-8", errors="replace")
 
 
 def _get_identifier(node: "tree_sitter.Node") -> Optional[str]:
@@ -405,7 +408,7 @@ class MesonAnalyzer(TreeSitterAnalyzer):
             run_signature="",
             pass_id=PASS_ID,
             version=PASS_VERSION,
-            toolchain={"name": "meson", "version": "unknown"},
+            toolchain=_get_python_toolchain(),
             duration_ms=int(elapsed * 1000),
         )
 

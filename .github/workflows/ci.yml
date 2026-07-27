@@ -101,9 +101,14 @@ jobs:
     steps:
       - name: Check full-suite status
         run: |
-          # Use commit status API (works unauthenticated for public repos)
-          # This is more reliable than the workflow runs API on Forgejo
-          API_BASE="https://codeberg.org/api/v1/repos/${{ github.repository }}"
+          # Use commit status API (works unauthenticated for public repos).
+          # WI-kalub Step 2: anchor on the RUNNING server (github.server_url), not
+          # a hardcoded codeberg.org. The Full Test Suite / aggregate auto-status
+          # lives on whichever Forgejo the full-suite ran on (selfh under CI
+          # failover); reading a dead codeberg endpoint silently disables
+          # stop-the-line. Mirrors the failover-correct form already at
+          # the "Set commit status" step below.
+          API_BASE="${{ github.server_url }}/api/v1/repos/${{ github.repository }}"
 
           # Get the base branch HEAD SHA (the branch we're merging into)
           BASE_SHA="${{ github.event.pull_request.base.sha }}"
@@ -210,12 +215,16 @@ jobs:
         run: bandit -r packages/*/src/ -c pyproject.toml
 
 
-  # mypy:F1 foundation — NON-BLOCKING static type-check (WI-gusag).
+  # mypy:F2 — NON-BLOCKING whole-tree strict type ratchet (WI-rokup, INV-zogud).
   # Intentionally absent from ci-complete's `needs` AND continue-on-error: true,
-  # so the type surface is reported on every PR but NEVER gates a merge. This is
-  # the first rung of the G11 ramp (non-blocking job -> per-package strict
-  # ratchet -> blocking). Config lives in root pyproject.toml [tool.mypy]
-  # (basic / non-strict; strict mode is mypy:F2 per Decision D13).
+  # so the type surface is reported on every PR but NEVER gates a merge yet.
+  # WI-rabum flips this to blocking (--mode=strict) once the surface drains.
+  # Config lives in root pyproject.toml [tool.mypy] (strict + pyright-resonant,
+  # Decision D13). Runs ONE whole-tree invocation via scripts/check-mypy-ratchet
+  # — NOT the old per-package loop, which could not follow cross-package imports
+  # (the editable install is mypy-invisible) and so mis-measured INV-zogud's
+  # `mypy <repo>` target. The full project is installed so mypy resolves
+  # third-party + cross-package types, matching .ci/mypy-strict-baseline.json.
   mypy:
     needs: [changes, stop-the-line]
     if: always() && needs.changes.outputs.code == 'true' && needs.stop-the-line.result != 'failure'
@@ -229,20 +238,19 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - name: Install mypy + typeshed stubs
+      - name: Install project + mypy + typeshed stubs
         run: |
+          # Editable install of every Python package so mypy resolves real
+          # third-party + cross-package types (matches the baseline env). tui
+          # extra brings Textual so tracker/tui.py types resolve.
           pip install --upgrade pip
+          pip install -e packages/hypergumbo-core -e packages/hypergumbo-lang-mainstream -e packages/hypergumbo-lang-common -e packages/hypergumbo-lang-extended1 -e packages/hypergumbo-lang-rust-analyzer -e "packages/hypergumbo-tracker[dev,tui]"
           pip install "mypy~=2.1" "types-PyYAML~=6.0.12"
-      - name: Run mypy (non-blocking — basic config per [tool.mypy])
+      - name: Whole-tree strict mypy ratchet (non-blocking — WI-rokup)
         run: |
-          # Report the type surface per Python package; never fail the job (this
-          # is the foundation rung, not the gate). htrac-frontend is JS/TS (no .py).
-          for mod in packages/*/src/*/; do
-            case "$mod" in *htrac-frontend*|*.egg-info*) continue ;; esac
-            echo "::group::mypy ${mod}"
-            mypy "$mod" || true
-            echo "::endgroup::"
-          done
+          # Single whole-tree invocation + shrink-only baseline. Non-blocking
+          # (--mode=warning); WI-rabum flips to --mode=strict to gate merges.
+          scripts/check-mypy-ratchet --mode=warning
 
 
   # Run bash hook tests on every PR regardless of what changed.
@@ -331,6 +339,19 @@ jobs:
           # the self-hosted runner's baseline ships idna 3.11. Mirrors the
           # requests / pygments / urllib3 pin pattern above.
           pip install "idna>=3.15"
+          # GHSA-6v7p-g79w-8964: msgpack <1.2.1 — fix in 1.2.1. Transitive
+          # through CacheControl[filecache] -> pip-audit (the audit tool's own
+          # dependency, not a hypergumbo runtime dep — msgpack is declared in
+          # no package's pyproject.toml). Pinning upgrades the audit env past
+          # the advisory rather than ignoring it, matching the requests /
+          # pygments / urllib3 / idna pin pattern above.
+          pip install "msgpack>=1.2.1"
+          # PYSEC-2026-2132: click <8.3.3 — fix in 8.3.3. Transitive through
+          # uvicorn (hypergumbo-tracker) and typer-slim -> huggingface_hub ->
+          # transformers (via sentence-transformers). Surfaced 2026-07-13; a
+          # fixed release EXISTS, so pin past it rather than ignore, matching the
+          # requests / pygments / urllib3 / idna / msgpack bump pattern above.
+          pip install "click>=8.3.3"
       - name: Run pip-audit (dependency vulnerabilities)
         run: |
           # CVE-2025-71176: pytest /tmp/pytest-of-{user} TOCTOU on UNIX.
@@ -390,6 +411,34 @@ jobs:
           # surfacing it under its own CVE ID rather than aliased to an
           # ignored PYSEC ID, slipping past the list. Same analysis, same
           # exit plan, one more key.
+          #
+          # CVE-2026-4372: transformers 5.1.0 (fix in 5.3.0), newly surfaced
+          # 2026-07-01. A member of the same transitive ML-stack carve-out above
+          # (transformers via sentence-transformers~=5.2.2): the embedding model
+          # is package-pinned (no --model / --checkpoint CLI surface),
+          # trust_remote_code / auto_map are never enabled, and CI installs
+          # pinned deps from PyPI on a single-tenant self-hosted runner, so no
+          # untrusted bytes reach a transformers code path. NOTE: unlike the
+          # PYSEC-2025-211..218 entries this ignore is NOT backed by a
+          # per-CVE upstream analysis (the advisory detail was not fetched at
+          # add time — offline). It rides the general ML-stack threat-model
+          # carve-out pending re-audit. A fixed release EXISTS (transformers
+          # 5.3.0), so the preferred exit is to bump sentence-transformers to a
+          # version pulling transformers>=5.3.0 and drop this key (tracked with
+          # the WI-totak re-audit cadence) — this ignore is the stopgap.
+          #
+          # PYSEC-2026-2289 / PYSEC-2026-2290: transformers 5.0.0 — same
+          # transitive ML-stack carve-out as CVE-2026-4372 above (via
+          # sentence-transformers~=5.2.2; pinned MiniLM embedding model, no
+          # --model / --checkpoint CLI surface, trust_remote_code / auto_map never
+          # enabled, single-tenant self-hosted runner — no untrusted bytes reach a
+          # transformers code path). Surfaced 2026-07-13. PYSEC-2026-2290 has no
+          # fixed release; PYSEC-2026-2289's fix (transformers 5.3.0) is
+          # transitively capped by sentence-transformers~=5.2.2, so bumping
+          # requires a sentence-transformers bump (WI-totak re-audit cadence) —
+          # these ignores are the stopgap. Per-CVE upstream detail was not fetched
+          # offline; they ride the general ML-stack threat-model carve-out, to be
+          # re-audited online per the WI-totak cadence.
           pip-audit --skip-editable \
             --ignore-vuln CVE-2025-71176 --ignore-vuln CVE-2026-3219 \
             --ignore-vuln PYSEC-2025-211 --ignore-vuln PYSEC-2025-212 \
@@ -402,7 +451,8 @@ jobs:
             --ignore-vuln PYSEC-2025-195 --ignore-vuln PYSEC-2025-196 \
             --ignore-vuln PYSEC-2025-197 --ignore-vuln PYSEC-2025-210 \
             --ignore-vuln PYSEC-2026-139 --ignore-vuln PYSEC-2024-277 \
-            --ignore-vuln CVE-2025-3000
+            --ignore-vuln CVE-2025-3000 --ignore-vuln CVE-2026-4372 \
+            --ignore-vuln PYSEC-2026-2289 --ignore-vuln PYSEC-2026-2290
 
   verify-generated:
     needs: [changes, stop-the-line]
@@ -886,13 +936,21 @@ jobs:
 
               # Use no-embeddings rcfile so exclude_also patterns are respected
               COV_RCFILE="--rcfile=.coveragerc.no-embeddings"
-              if ! coverage report $COV_RCFILE --include="$INCLUDE_PATTERN" --fail-under=100; then
+              # WI-kalub Step 1c parity: distinguish coverage.py's "No data to
+              # report" (exit 1 — the affected slice didn't exercise the changed
+              # file, e.g. subprocess-only; NOT a regression) from a real <100%
+              # failure (exit 2). The if/elif/else form is exit-safe.
+              if coverage report $COV_RCFILE --include="$INCLUDE_PATTERN" --fail-under=100 > /tmp/ci-cov.txt 2>&1; then
+                cat /tmp/ci-cov.txt
+                echo "✅ All changed source files are at 100% coverage"
+              elif grep -q "No data to report" /tmp/ci-cov.txt; then
+                echo "⚠️  No coverage data for changed source files under the affected-test slice (not exercised, e.g. subprocess-only) — not gating; full-suite + nightly enforce whole-codebase 100%."
+              else
                 echo ""
                 echo "❌ Changed source files are not at 100% coverage:"
+                cat /tmp/ci-cov.txt
                 coverage report $COV_RCFILE --include="$INCLUDE_PATTERN" --show-missing
                 exit 1
-              else
-                echo "✅ All changed source files are at 100% coverage"
               fi
             fi
           fi
@@ -1131,13 +1189,21 @@ jobs:
               INCLUDE_PATTERN=$(echo "$EXISTING_FILES" | tr ' ' ',' | sed 's/,$//')
               # Use no-embeddings rcfile so exclude_also patterns are respected
               COV_RCFILE="--rcfile=.coveragerc.no-embeddings"
-              if ! coverage report $COV_RCFILE --include="$INCLUDE_PATTERN" --fail-under=100; then
+              # WI-kalub Step 1c parity: distinguish coverage.py's "No data to
+              # report" (exit 1 — the affected slice didn't exercise the changed
+              # file, e.g. subprocess-only; NOT a regression) from a real <100%
+              # failure (exit 2). The if/elif/else form is exit-safe.
+              if coverage report $COV_RCFILE --include="$INCLUDE_PATTERN" --fail-under=100 > /tmp/ci-cov.txt 2>&1; then
+                cat /tmp/ci-cov.txt
+                echo "✅ All changed source files are at 100% coverage"
+              elif grep -q "No data to report" /tmp/ci-cov.txt; then
+                echo "⚠️  No coverage data for changed source files under the affected-test slice (not exercised, e.g. subprocess-only) — not gating; full-suite + nightly enforce whole-codebase 100%."
+              else
                 echo ""
                 echo "❌ Changed source files are not at 100% coverage:"
+                cat /tmp/ci-cov.txt
                 coverage report $COV_RCFILE --include="$INCLUDE_PATTERN" --show-missing
                 exit 1
-              else
-                echo "✅ All changed source files are at 100% coverage"
               fi
             fi
           fi

@@ -6,11 +6,13 @@ This analyzer uses tree-sitter to parse C++ files and extract:
 - Struct declarations
 - Enum declarations
 - Function definitions (standalone and class methods)
-- Namespace declarations
+- Namespace aliases (used as resolution path hints, ADR-0007)
 - Function call relationships
 - Include directives
-- Object instantiation (new expressions)
+- Object instantiation (new expressions, stack construction, and compound literals)
 - Dispatch table edges (function pointers in static array initializers)
+- Function-pointer references (address-of expressions like `&func` or `&Class::method`)
+- Module attribute references for iostream IO (`std::cout`/`std::cerr`/`std::cin` and namespace-alias attribute reads; feeds io-boundaries)
 
 If tree-sitter with C++ support is not installed, the analyzer
 gracefully degrades and returns an empty result.
@@ -50,6 +52,7 @@ from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
     TreeSitterAnalyzer,
+    defer_bare_method_call,
     emit_module_attribute_refs,
     find_child_by_type as _find_child_by_type,
     iter_tree,
@@ -59,6 +62,9 @@ from hypergumbo_core.analyze.base import (
     node_text as _node_text,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_lang_mainstream.symbol_introspection import (
+    compute_cyclomatic_complexity,
+)
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -341,6 +347,168 @@ def _extract_function_name(node: "tree_sitter.Node", source: bytes) -> Optional[
     return None  # pragma: no cover - defensive
 
 
+# WI-jusus: node-type sets for field/variable (data-member) emission.
+# A declarator chain wraps the declared name; a function_declarator inside one
+# marks the declaration as a FUNCTION (member fn / prototype), never a data
+# member. A nested type specifier marks a nested type declaration, not a field.
+_CPP_DECLARATOR_TYPES = frozenset({
+    "identifier", "field_identifier", "init_declarator", "pointer_declarator",
+    "reference_declarator", "array_declarator", "parenthesized_declarator",
+    "function_declarator",
+})
+_CPP_NESTED_TYPE_NODES = frozenset({
+    "struct_specifier", "class_specifier", "enum_specifier", "union_specifier",
+})
+
+
+def _cpp_declarator_info(
+    node: "tree_sitter.Node", source: bytes,
+) -> tuple[str | None, bool]:
+    """Resolve a C++ declarator chain to (innermost data name, is_function).
+
+    Descends through init_/pointer_/reference_/array_/parenthesized_declarator
+    to the leaf identifier. Returns ``(None, True)`` when the chain is a
+    ``function_declarator`` (a member-function declaration or a prototype, not a
+    data member), and ``(name, False)`` for a real data declarator.
+    """
+    t = node.type
+    if t in ("identifier", "field_identifier"):
+        return _node_text(node, source), False
+    if t == "function_declarator":
+        return None, True
+    if t in ("init_declarator", "pointer_declarator", "reference_declarator",
+             "array_declarator", "parenthesized_declarator"):
+        for child in node.children:
+            if child.type in _CPP_DECLARATOR_TYPES:
+                return _cpp_declarator_info(child, source)
+    return None, False  # pragma: no cover - defensive: a declarator group always wraps an inner declarator
+
+
+def _cpp_data_declarators(
+    decl_node: "tree_sitter.Node", source: bytes,
+) -> tuple[list[str], bool, bool]:
+    """Collect data-member names from a ``field_declaration`` / ``declaration``.
+
+    Returns ``(names, is_function, has_nested_type)``: ``names`` is one entry per
+    declarator (so ``int a, b;`` yields both, ``int arr[4]`` yields ``arr``,
+    ``char* p`` yields ``p``); ``is_function`` is True if any declarator is a
+    function declarator (member fn / prototype); ``has_nested_type`` is True if a
+    nested struct/class/enum/union specifier is present (a nested type decl).
+    """
+    names: list[str] = []
+    is_function = False
+    has_nested_type = False
+    for child in decl_node.children:
+        if child.type in _CPP_NESTED_TYPE_NODES:
+            has_nested_type = True
+        elif child.type in _CPP_DECLARATOR_TYPES:
+            name, is_func = _cpp_declarator_info(child, source)
+            if is_func:
+                is_function = True
+            elif name is not None:
+                names.append(name)
+    return names, is_function, has_nested_type
+
+
+def _cpp_leading_type(decl_node: "tree_sitter.Node", source: bytes) -> str:
+    """Declared type text (qualifiers + type node) preceding the declarators.
+
+    Storage-class specifiers (``static``, ``extern``) are modifiers, not type,
+    and are excluded; iteration stops at the first declarator.
+    """
+    parts: list[str] = []
+    for child in decl_node.children:
+        if child.type == "storage_class_specifier":
+            continue
+        if child.type in _CPP_DECLARATOR_TYPES or child.type in _CPP_NESTED_TYPE_NODES:
+            break
+        text = _node_text(child, source).strip()
+        if text and text != ";":
+            parts.append(text)
+    return " ".join(parts).strip()
+
+
+def _cpp_is_static(decl_node: "tree_sitter.Node", source: bytes) -> bool:
+    """True if the declaration carries a ``static`` storage-class specifier."""
+    return any(
+        child.type == "storage_class_specifier"
+        and _node_text(child, source).strip() == "static"
+        for child in decl_node.children
+    )
+
+
+def _emit_cpp_field_symbols(
+    analysis: "FileAnalysis",
+    type_node: "tree_sitter.Node",
+    owner_name: str,
+    default_visibility: str,
+    file_path: Path,
+    file_stable_id: str,
+    source: bytes,
+    run: AnalysisRun,
+) -> None:
+    """Emit kind="field" Symbols for a class/struct body's data members (WI-jusus).
+
+    ``field_declaration`` is structurally distinct (it never appears in a
+    function body) so NO scope walk is needed. Member-function declarations
+    (``void move();``) and nested type declarations (``struct Inner {};``) also
+    parse as ``field_declaration`` and are filtered out. Visibility follows the
+    most recent ``access_specifier`` (C++ default: private for a class body,
+    public for a struct body). Field symbols are appended to ``analysis.symbols``
+    (they still reach output/search/centrality) but deliberately NOT to
+    ``analysis.symbol_by_name`` — a data member is never a call target, and the
+    ``register_symbol`` chokepoint likewise keeps it out of the global registry.
+    """
+    body = _find_child_by_type(type_node, "field_declaration_list")
+    if body is None:
+        return
+    current_visibility = default_visibility
+    for child in body.children:
+        if child.type == "access_specifier":
+            current_visibility = _node_text(child, source).strip()
+            continue
+        if child.type != "field_declaration":
+            continue
+        names, is_function, has_nested_type = _cpp_data_declarators(child, source)
+        if is_function or has_nested_type or not names:
+            continue
+        field_type = _cpp_leading_type(child, source)
+        modifiers = [current_visibility]
+        if _cpp_is_static(child, source):
+            modifiers.append("static")
+        start_line = child.start_point[0] + 1
+        end_line = child.end_point[0] + 1
+        for field_name in names:
+            full_name = f"{owner_name}::{field_name}"
+            symbol = Symbol(
+                id=_make_symbol_id(
+                    str(file_path), start_line, end_line, full_name, "field",
+                ),
+                name=full_name,
+                kind="field",
+                language="cpp",
+                path=str(file_path),
+                span=Span(
+                    start_line=start_line,
+                    end_line=end_line,
+                    start_col=child.start_point[1],
+                    end_col=child.end_point[1],
+                ),
+                origin=PASS_ID,
+                origin_run_id=run.execution_id,
+                signature=field_type or None,
+                modifiers=modifiers,
+                is_exported=(current_visibility == "public"),
+                line_span=end_line - start_line + 1,
+                stable_id=_analyzer.compute_stable_id(
+                    child, kind="field", name=full_name,
+                    file_stable_id=file_stable_id,
+                ),
+            )
+            analysis.symbols.append(symbol)
+            analysis.node_for_symbol[symbol.id] = child
+
+
 def _extract_symbols_from_tree(
     tree: "tree_sitter.Tree",
     source: bytes,
@@ -406,6 +574,13 @@ def _extract_symbols_from_tree(
                 if field_types:
                     analysis.class_field_types[name] = field_types
 
+                # WI-jusus: emit kind="field" member data symbols (class body
+                # default visibility is private).
+                _emit_cpp_field_symbols(
+                    analysis, node, name, "private",
+                    file_path, file_stable_id, source, run,
+                )
+
         # Struct definition (with body only — skip references and
         # forward declarations like ``struct Foo;``)
         elif node.type == "struct_specifier":
@@ -448,6 +623,13 @@ def _extract_symbols_from_tree(
                 field_types = _extract_field_types_cpp(node, source)
                 if field_types:
                     analysis.class_field_types[name] = field_types
+
+                # WI-jusus: emit kind="field" member data symbols (struct body
+                # default visibility is public).
+                _emit_cpp_field_symbols(
+                    analysis, node, name, "public",
+                    file_path, file_stable_id, source, run,
+                )
 
         # Enum definition (with body only — skip references and
         # forward declarations)
@@ -513,6 +695,11 @@ def _extract_symbols_from_tree(
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     signature=signature,
+                    # INV-loguk: analytical fields for C++ functions/methods.
+                    line_span=end_line - start_line + 1,
+                    cyclomatic_complexity=compute_cyclomatic_complexity(
+                        node, "cpp",
+                    ),
                     stable_id=_analyzer.compute_stable_id(
                         node, kind=kind, name=name,
                         file_stable_id=file_stable_id,
@@ -525,6 +712,63 @@ def _extract_symbols_from_tree(
                 short_name = name.split("::")[-1] if "::" in name else name
                 if short_name != name:
                     analysis.symbol_by_name[short_name] = symbol
+
+        # WI-jusus: top-level / namespace variable (kind="variable"). A
+        # ``declaration`` node is shared between module-scope globals and
+        # function-body locals, so only module-scope ones are variables
+        # (INV-sidab). Function prototypes (a function_declarator) and forward
+        # type declarations must not leak. Like fields, variables go to
+        # analysis.symbols only, never symbol_by_name.
+        elif node.type == "declaration":
+            parent = node.parent
+            is_module_scope = parent is not None and (
+                parent.type == "translation_unit"
+                or (
+                    parent.type == "declaration_list"
+                    and parent.parent is not None
+                    and parent.parent.type == "namespace_definition"
+                )
+            )
+            if is_module_scope:
+                names, is_function, has_nested_type = _cpp_data_declarators(
+                    node, source,
+                )
+                if names and not is_function and not has_nested_type:
+                    var_type = _cpp_leading_type(node, source)
+                    modifiers = (
+                        ["static"] if _cpp_is_static(node, source) else []
+                    )
+                    start_line = node.start_point[0] + 1
+                    end_line = node.end_point[0] + 1
+                    for var_name in names:
+                        symbol = Symbol(
+                            id=_make_symbol_id(
+                                str(file_path), start_line, end_line,
+                                var_name, "variable",
+                            ),
+                            name=var_name,
+                            kind="variable",
+                            language="cpp",
+                            path=str(file_path),
+                            span=Span(
+                                start_line=start_line,
+                                end_line=end_line,
+                                start_col=node.start_point[1],
+                                end_col=node.end_point[1],
+                            ),
+                            origin=PASS_ID,
+                            origin_run_id=run.execution_id,
+                            signature=var_type or None,
+                            modifiers=modifiers,
+                            is_exported="static" not in modifiers,
+                            line_span=end_line - start_line + 1,
+                            stable_id=_analyzer.compute_stable_id(
+                                node, kind="variable", name=var_name,
+                                file_stable_id=file_stable_id,
+                            ),
+                        )
+                        analysis.symbols.append(symbol)
+                        analysis.node_for_symbol[symbol.id] = node
 
     return analysis
 
@@ -816,7 +1060,6 @@ def _extract_edges_from_tree(
                         edge_type="imports",
                         line=node.start_point[0] + 1,
                         evidence_type="include_directive",
-                        confidence=0.95,
                         origin=PASS_ID,
                         origin_run_id=run.execution_id,
                     ))
@@ -831,7 +1074,6 @@ def _extract_edges_from_tree(
                         edge_type="imports",
                         line=node.start_point[0] + 1,
                         evidence_type="include_directive",
-                        confidence=0.95,
                         origin=PASS_ID,
                         origin_run_id=run.execution_id,
                     ))
@@ -863,7 +1105,6 @@ def _extract_edges_from_tree(
                                         edge_type="calls",
                                         line=node.start_point[0] + 1,
                                         evidence_type="ast_call",
-                                        confidence=0.85,
                                         origin=PASS_ID,
                                         origin_run_id=run.execution_id,
                                         meta={"call_construct": "method", "receiver": "field_chain"},
@@ -922,7 +1163,6 @@ def _extract_edges_from_tree(
                             edge_type="calls",
                             line=node.start_point[0] + 1,
                             evidence_type="ast_call",
-                            confidence=0.85,
                             origin=PASS_ID,
                             origin_run_id=run.execution_id,
                             meta={"call_construct": "function"},
@@ -930,10 +1170,29 @@ def _extract_edges_from_tree(
                     # Check global symbols via resolver
                     elif not chain_resolved:
                         lookup_result = resolver.lookup(short_name, path_hint=path_hint, caller_path=_caller_path)
-                        if lookup_result.found and lookup_result.symbol is not None:
+                        # INV-fahub: a BARE call (bare short name, implicit-this,
+                        # or a chained receiver whose token was dropped) that only
+                        # weak-suffix-matches a DIFFERENT class's method is the
+                        # cross-class magnet (dozens of call sites -> one arbitrary
+                        # def, e.g. purge() -> ActivityPubClient::purge). C++
+                        # method symbol names are ``Owner::method`` (separator
+                        # "::"), so parse the owner with that separator. Same-class
+                        # implicit-this (owner == enclosing) and free
+                        # functions/objects still bind directly; a cross-class
+                        # magnet defers to the inherited_calls Site-1 walker via an
+                        # unresolved edge stamped with ``enclosing_class`` (INV-nogof
+                        # withhold-not-pick-first + INV-nilud linker-owns-resolution).
+                        _enclosing_type = _get_enclosing_class(node, source)
+                        _sym = lookup_result.symbol
+                        _defer = _sym is not None and defer_bare_method_call(
+                            _sym.kind, _sym.name,
+                            lookup_result.match_type, _enclosing_type,
+                            separator="::",
+                        )
+                        if lookup_result.found and _sym is not None and not _defer:
                             edges.append(Edge.create(
                                 src=current_function.id,
-                                dst=lookup_result.symbol.id,
+                                dst=_sym.id,
                                 edge_type="calls",
                                 line=node.start_point[0] + 1,
                                 evidence_type="ast_call",
@@ -963,12 +1222,14 @@ def _extract_edges_from_tree(
                                     run.execution_id,
                                     module_hint=module_hint,
                                     dst_ref=ext_ref,
+                                    enclosing_class=_enclosing_type,
                                 ))
                             else:
                                 edges.append(make_unresolved_edge(
                                     "cpp", current_function.id, short_name,
                                     node.start_point[0] + 1, PASS_ID,
                                     run.execution_id,
+                                    enclosing_class=_enclosing_type,
                                 ))
 
                     # Callback argument detection: bare identifiers in the
@@ -1014,8 +1275,14 @@ def _extract_edges_from_tree(
                         if inner_type:
                             type_name = _node_text(inner_type, source)
                 if type_name:
+                    # WI-dagih: emit the REGISTERED evidence_type 'ast_new' (the
+                    # value js_ts/java already use for the identical heap-`new`
+                    # instantiation), not the raw tree-sitter node-type string
+                    # 'new_expression' (absent from the evidence-type catalog —
+                    # an axis_conformance leak). Stack-construction paths keep
+                    # their own registered 'stack_construction' pathway.
                     _try_instantiation_edge(
-                        type_name, current_function, node, "new_expression",
+                        type_name, current_function, node, "ast_new",
                         0.90, local_symbols, resolver, edges, run,
                     )
 
@@ -1047,7 +1314,6 @@ def _extract_edges_from_tree(
                             edge_type="instantiates",
                             line=node.start_point[0] + 1,
                             evidence_type="stack_construction",
-                            confidence=0.85,
                             origin=PASS_ID,
                             origin_run_id=run.execution_id,
                         ))
@@ -1068,7 +1334,6 @@ def _extract_edges_from_tree(
                             edge_type="instantiates",
                             line=node.start_point[0] + 1,
                             evidence_type="stack_construction",
-                            confidence=0.85,
                             origin=PASS_ID,
                             origin_run_id=run.execution_id,
                         ))
@@ -1106,7 +1371,6 @@ def _extract_edges_from_tree(
                                 edge_type="references",
                                 line=node.start_point[0] + 1,
                                 evidence_type="function_pointer",
-                                confidence=0.85,
                                 origin=PASS_ID,
                                 origin_run_id=run.execution_id,
                             ))
@@ -1220,17 +1484,16 @@ def _extract_edges_from_tree(
                     # ADR-0023 §6 Phase 3 / audit-findings 0001 (WI-vasik-jofiv):
                     # Same as c.py — function references a dispatch-
                     # table data symbol. Canonical 'references' +
-                    # meta['construct']='dispatch_table'.
+                    # meta['ref_construct']='dispatch_table'.
                     edges.append(Edge.create(
                         src=func_sym.id,
                         dst=dispatch_tables[name],
                         edge_type="references",
                         line=inner.start_point[0] + 1,
-                        confidence=0.85,
                         origin=PASS_ID,
                         origin_run_id=run.execution_id,
                         evidence_type="dispatch_table_reference",
-                        meta={"construct": "dispatch_table"},
+                        meta={"ref_construct": "dispatch_table"},
                     ))
 
     # WI-zojid: emit module_attr_ref edges for scoped attribute reads on
@@ -1317,7 +1580,17 @@ class CppAnalyzer(TreeSitterAnalyzer):
         handles ``"compute"`` → ``"MyClass::compute"`` lookups. Registering
         short names caused false exact matches when multiple types share a
         method name.
+
+        WI-jusus chokepoint: field/variable data anchors are kept OUT of the
+        call-resolution registry. A member field / global variable is never a
+        call target, so registering it under its (possibly bare) name would
+        clobber a same-named function's flat key or become a suffix-matched
+        spurious call target. They remain in ``analysis.symbols`` (search /
+        centrality / io-boundaries) since the output set is built independently
+        of this registry.
         """
+        if symbol.kind in ("field", "variable"):
+            return
         existing = global_symbols.get(symbol.name)
         if existing is None:
             global_symbols[symbol.name] = symbol

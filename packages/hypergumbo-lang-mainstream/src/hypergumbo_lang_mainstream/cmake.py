@@ -9,6 +9,7 @@ This analyzer uses tree-sitter to parse CMakeLists.txt files and extract:
 - Macro definitions
 - Target link dependencies
 - Subdirectory includes
+- External package dependencies (find_package)
 
 If tree-sitter-cmake is not installed, the analyzer
 gracefully degrades and returns an empty result.
@@ -17,16 +18,18 @@ How It Works
 ------------
 1. Check if tree-sitter-cmake is available
 2. If not available, return skipped result (not an error)
-3. Two-pass analysis:
-   - Pass 1: Parse all files, extract all target/function/macro definitions
-   - Pass 2: Resolve target_link_libraries and create edges
+3. Single-pass, file-by-file analysis: for each file, a single tree traversal
+   extracts target/function/macro definitions into a shared target registry
+   and resolves target_link_libraries into edges in the same pass
 4. Create links edges for library dependencies
 
 Why This Design
 ---------------
 - Optional dependency keeps base install lightweight
 - Uses tree-sitter-cmake package for grammar
-- Two-pass allows cross-file target resolution
+- Shared target registry across files allows resolution of targets defined
+  earlier in iteration order; unresolved names are treated as external library
+  references
 - Build-system-specific: targets, functions, macros are first-class
 """
 from __future__ import annotations
@@ -39,6 +42,7 @@ from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import AnalysisResult, TreeSitterAnalyzer, iter_tree, make_symbol_id, node_text
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -328,6 +332,13 @@ def _process_cmake_tree(
                             ),
                             origin=PASS_ID,
                             signature=_extract_cmake_signature(child, source),
+                            # INV-loguk: function() bodies carry control flow
+                            # (if/elseif/foreach/while); walk the full
+                            # function_def subtree (node). LOC from span.
+                            cyclomatic_complexity=compute_cyclomatic_complexity(
+                                node, "cmake",
+                            ),
+                            line_span=end_line - start_line + 1,
                         )
                         symbols.append(sym)
                         target_registry[func_name.lower()] = symbol_id
@@ -360,6 +371,12 @@ def _process_cmake_tree(
                             ),
                             origin=PASS_ID,
                             signature=_extract_cmake_signature(child, source),
+                            # INV-loguk: macro() bodies carry control flow too;
+                            # walk the full macro_def subtree (node). LOC from span.
+                            cyclomatic_complexity=compute_cyclomatic_complexity(
+                                node, "cmake",
+                            ),
+                            line_span=end_line - start_line + 1,
                         )
                         symbols.append(sym)
                         target_registry[macro_name.lower()] = symbol_id

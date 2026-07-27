@@ -78,8 +78,12 @@ def test_cmd_run_with_js_analyzer_available(tmp_path: Path) -> None:
     assert result == 0
 
     data = json.loads((tmp_path / "results.json").read_text())
-    # Should have JavaScript symbols
-    js_nodes = [n for n in data["nodes"] if n["language"] == "javascript"]
+    # Should have JavaScript symbols (excluding the WI-dagif file anchor that
+    # app.js, a node-bearing path, now also gets).
+    js_nodes = [
+        n for n in data["nodes"]
+        if n["language"] == "javascript" and n["kind"] != "file"
+    ]
     assert len(js_nodes) == 1
     assert js_nodes[0]["name"] == "foo"
 
@@ -756,6 +760,108 @@ def test_cmd_slice_creates_slice(tmp_path: Path, capsys) -> None:
 
     out, _ = capsys.readouterr()
     assert "[hypergumbo slice]" in out
+
+
+_SLICE_FIXTURE_MAP = {
+    "schema_version": SCHEMA_VERSION,
+    "nodes": [
+        {
+            "id": "python:src/main.py:1-2:hello:function",
+            "name": "hello",
+            "kind": "function",
+            "language": "python",
+            "path": "src/main.py",
+            "span": {"start_line": 1, "end_line": 2, "start_col": 0, "end_col": 10},
+        }
+    ],
+    "edges": [],
+}
+
+
+def _slice_args(tmp_path: Path, out) -> "FakeArgs":
+    (tmp_path / "hypergumbo.results.json").write_text(json.dumps(_SLICE_FIXTURE_MAP))
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.entry = "hello"
+    args.out = out
+    args.input = None
+    args.max_hops = 3
+    args.max_files = 20
+    args.min_confidence = 0.0
+    args.exclude_tests = False
+    args.list_entries = False
+    args.reverse = False
+    args.language = None
+    return args
+
+
+def test_slice_negative_hub_threshold_rejected(tmp_path: Path, capsys) -> None:
+    """WI-bolar: a negative --hub-threshold is rejected at parse time (rc=2),
+    not silently coerced through the ``raw if raw else None`` truthiness guard
+    (which passed negatives through) into a collapsed slice. ``0`` stays the
+    documented disable sentinel — that path is unchanged."""
+    with pytest.raises(SystemExit) as exc:
+        main(["slice", str(tmp_path), "--hub-threshold=-5"])
+    assert exc.value.code == 2
+    assert "non-negative" in capsys.readouterr().err
+
+
+def test_cmd_slice_explicit_out_slice_json_is_honored(
+    tmp_path: Path, monkeypatch, capsys,
+) -> None:
+    """INV-fapid: an explicit ``--out slice.json`` is written to that literal
+    path, no longer silently overridden by entry-name auto-detection (the
+    default sentinel is now ``None``, so the collision with a user's
+    ``slice.json`` is gone)."""
+    args = _slice_args(tmp_path, "slice.json")
+    monkeypatch.chdir(tmp_path)
+
+    assert cmd_slice(args) == 0
+    assert (tmp_path / "slice.json").exists()
+
+
+def test_cmd_slice_omitted_out_auto_generates_from_entry(
+    tmp_path: Path, capsys,
+) -> None:
+    """INV-fapid: with ``--out`` omitted (``None``), the output name is
+    auto-generated from the entry (into the cache dir) to avoid accidental
+    overwrites — the default-name path, now keyed on ``out is None`` rather
+    than the ``== 'slice.json'`` string collision."""
+    args = _slice_args(tmp_path, None)
+
+    assert cmd_slice(args) == 0
+    assert "slice.hello" in capsys.readouterr().out
+
+
+def test_main_unexpected_exception_exits_1_with_clean_message(
+    monkeypatch, capsys,
+) -> None:
+    """WI-himas: an unexpected exception in a command surfaces through main()'s
+    top-level handler as a clean 'internal error' message + rc=1, not a raw
+    Python traceback dumped at the user."""
+    def _boom(_args):
+        raise RuntimeError("kaboom")
+    monkeypatch.setattr("hypergumbo_core.cli.cmd_catalog", _boom)
+
+    rc = main(["catalog"])
+
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "internal error" in err
+    assert "RuntimeError" in err
+    assert "kaboom" in err
+    assert "--debug" in err
+
+
+def test_main_unexpected_exception_reraises_under_debug(monkeypatch) -> None:
+    """WI-himas: under --debug the original exception propagates so the full
+    traceback is available for diagnosis (no clean-swallow)."""
+    def _boom(_args):
+        raise RuntimeError("kaboom-debug")
+    monkeypatch.setattr("hypergumbo_core.cli.cmd_catalog", _boom)
+
+    with pytest.raises(RuntimeError, match="kaboom-debug"):
+        main(["catalog", "--debug"])
 
 
 def test_cmd_slice_with_input_file(tmp_path: Path) -> None:
@@ -2508,6 +2614,44 @@ def test_cmd_sketch_config_extraction_modes(tmp_path: Path, capsys) -> None:
     assert "test" in out  # Should include package name
 
 
+def test_cmd_sketch_generates_comparison_table_by_default(tmp_path: Path, capsys) -> None:
+    """By default the sketch command shows the representativeness comparison table."""
+    (tmp_path / "package.json").write_text('{"name": "defpkg", "version": "1.0.0"}')
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.tokens = 1000
+    args.exclude_tests = False
+    args.first_party_priority = True
+    args.extra_excludes = []
+    args.config_extraction_mode = "heuristic"
+
+    result = cmd_sketch(args)
+    assert result == 0
+    out, err = capsys.readouterr()
+    assert "How Representative Is This Sketch?" in (out + err)
+
+
+def test_cmd_sketch_no_comparison_sketches_flag_skips_table(tmp_path: Path, capsys) -> None:
+    """WI-fufop: --no-comparison-sketches skips the 4x/16x comparison sketches
+    and the representativeness table (for batch/scripted single-budget runs)."""
+    (tmp_path / "package.json").write_text('{"name": "batchpkg", "version": "1.0.0"}')
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.tokens = 1000
+    args.exclude_tests = False
+    args.first_party_priority = True
+    args.extra_excludes = []
+    args.config_extraction_mode = "heuristic"
+    args.no_comparison_sketches = True
+
+    result = cmd_sketch(args)
+    assert result == 0
+    out, err = capsys.readouterr()
+    both = out + err
+    assert "How Representative Is This Sketch?" not in both
+    assert "comparison sketches" not in both
+
+
 def test_main_sketch_config_extraction_flag(tmp_path: Path) -> None:
     """Test sketch command with --config-extraction flag via main()."""
     (tmp_path / "package.json").write_text('{"name": "cli-test", "version": "2.0.0"}')
@@ -3063,8 +3207,8 @@ def test_cmd_sketch_prints_output_summary(tmp_path: Path, capsys) -> None:
     assert "[hypergumbo sketch]" in out
     assert "Generated" in out
     assert "Output: stdout" in out
-    # Should show path to cached results
-    assert "hypergumbo.results.json" in out
+    # Should show path to cached results (ADR-0042: canonical survey.json)
+    assert "survey.json" in out
 
 
 def test_cmd_sketch_input_file_not_found(tmp_path: Path, capsys) -> None:
@@ -3191,7 +3335,7 @@ def test_cmd_sketch_input_staleness_warning(tmp_path: Path, capsys) -> None:
     _, err = capsys.readouterr()
     # Should warn about stale results
     assert "may be stale" in err
-    assert "Run 'hypergumbo run' to regenerate" in err
+    assert "Run 'hypergumbo survey' to regenerate" in err
 
 
 def test_cmd_sketch_input_no_staleness_warning_when_fresh(tmp_path: Path, capsys) -> None:
@@ -3303,7 +3447,7 @@ def test_cmd_slice_default_output_includes_entry_name(tmp_path: Path, capsys) ->
     args = FakeArgs()
     args.path = str(tmp_path)
     args.entry = "my_func"
-    args.out = "slice.json"  # Default value
+    args.out = None  # --out omitted → auto-name from entry (INV-fapid)
     args.input = None
     args.max_hops = 3
     args.max_files = 20
@@ -3353,7 +3497,7 @@ def test_cmd_slice_reverse_uses_distinct_filename(tmp_path: Path, capsys) -> Non
     args_fwd = FakeArgs()
     args_fwd.path = str(tmp_path)
     args_fwd.entry = "my_func"
-    args_fwd.out = "slice.json"
+    args_fwd.out = None  # --out omitted → auto-name (INV-fapid)
     args_fwd.input = None
     args_fwd.max_hops = 3
     args_fwd.max_files = 20
@@ -3371,7 +3515,7 @@ def test_cmd_slice_reverse_uses_distinct_filename(tmp_path: Path, capsys) -> Non
     args_rev = FakeArgs()
     args_rev.path = str(tmp_path)
     args_rev.entry = "my_func"
-    args_rev.out = "slice.json"
+    args_rev.out = None  # --out omitted → auto-name (INV-fapid)
     args_rev.input = None
     args_rev.max_hops = 3
     args_rev.max_files = 20
@@ -3910,7 +4054,7 @@ def test_cmd_compact_converts_behavior_map(tmp_path: Path) -> None:
     args.max_symbols = 10
     args.min_symbols = 5
     args.coverage = 0.8
-    args.no_connectivity = False
+    args.connectivity = False
 
     result = cmd_compact(args)
 
@@ -3964,7 +4108,7 @@ def test_cmd_compact_accepts_gzipped_input(tmp_path: Path, suffix: str) -> None:
     args.max_symbols = 10
     args.min_symbols = 3
     args.coverage = 0.8
-    args.no_connectivity = False
+    args.connectivity = False
 
     assert cmd_compact(args) == 0
     compact_map = json.loads(output_path.read_text())
@@ -4001,7 +4145,7 @@ def test_cmd_compact_to_stdout(tmp_path: Path, capsys) -> None:
     args.max_symbols = 100
     args.min_symbols = 10
     args.coverage = 0.8
-    args.no_connectivity = False
+    args.connectivity = False
 
     result = cmd_compact(args)
 
@@ -4019,11 +4163,162 @@ def test_cmd_compact_file_not_found(tmp_path: Path) -> None:
     args.max_symbols = 100
     args.min_symbols = 10
     args.coverage = 0.8
-    args.no_connectivity = False
+    args.connectivity = False
 
     result = cmd_compact(args)
 
     assert result == 1
+
+
+def test_wi_vusaf_compact_arg_validators() -> None:
+    """WI-vusaf: the compact flag validators accept valid values and reject
+    out-of-range ones with argparse.ArgumentTypeError (→ CLI exit 2)."""
+    import argparse
+    from hypergumbo_core.cli import (
+        _positive_int_arg, _nonneg_int_arg, _unit_interval_arg,
+    )
+    assert _positive_int_arg("--max-symbols")("5") == 5
+    assert _positive_int_arg("--max-symbols")("1") == 1
+    for bad in ("0", "-1", "abc"):
+        with pytest.raises(argparse.ArgumentTypeError):
+            _positive_int_arg("--max-symbols")(bad)
+
+    assert _nonneg_int_arg("--min-symbols")("0") == 0
+    assert _nonneg_int_arg("--min-symbols")("7") == 7
+    for bad in ("-1", "abc"):
+        with pytest.raises(argparse.ArgumentTypeError):
+            _nonneg_int_arg("--min-symbols")(bad)
+
+    assert _unit_interval_arg("--coverage")("0.0") == 0.0
+    assert _unit_interval_arg("--coverage")("1.0") == 1.0
+    assert _unit_interval_arg("--coverage")("0.5") == 0.5
+    for bad in ("1.5", "-0.5", "abc"):
+        with pytest.raises(argparse.ArgumentTypeError):
+            _unit_interval_arg("--coverage")(bad)
+
+
+@pytest.mark.parametrize("flag,val", [
+    ("--max-symbols", "0"),
+    ("--min-symbols", "-1"),
+    ("--coverage", "1.5"),
+    ("--coverage", "-0.5"),
+])
+def test_wi_vusaf_main_rejects_bad_compact_flags(
+    tmp_path: Path, flag: str, val: str
+) -> None:
+    """WI-vusaf: numerically invalid compact flags are rejected at the CLI
+    boundary (exit 2), not silently accepted."""
+    bm = {"schema_version": SCHEMA_VERSION, "nodes": [], "edges": []}
+    inp = tmp_path / "hg.json"
+    inp.write_text(json.dumps(bm))
+    with pytest.raises(SystemExit) as exc:
+        main(["compact", "--input", str(inp), flag, val])
+    assert exc.value.code == 2
+
+
+def test_wi_vusaf_cmd_compact_rejects_max_lt_min(
+    tmp_path: Path, capsys
+) -> None:
+    """WI-vusaf: --max-symbols < --min-symbols is a cross-flag config error
+    (rc=2 with a clear message), caught before any file load."""
+    args = FakeArgs()
+    args.input = str(tmp_path / "unused.json")
+    args.out = None
+    args.max_symbols = 50
+    args.min_symbols = 100
+    args.coverage = 0.8
+    args.connectivity = False
+
+    assert cmd_compact(args) == 2
+    _, err = capsys.readouterr()
+    assert "max-symbols" in err
+
+
+def test_wi_zulij_connectivity_flag_routes_both_modes(tmp_path: Path) -> None:
+    """WI-zulij: the compact default is centrality-ranked; --connectivity opts
+    into connectivity-aware selection. Both produce a valid compact view."""
+    bm = {
+        "schema_version": SCHEMA_VERSION,
+        "nodes": [
+            {"id": f"python:src/m.py:1-2:function:f{i}", "name": f"f{i}",
+             "kind": "function", "language": "python", "path": "src/m.py",
+             "span": {"start_line": 1, "end_line": 2,
+                      "start_col": 0, "end_col": 0}}
+            for i in range(5)
+        ],
+        "edges": [],
+        "entrypoints": [],
+    }
+    inp = tmp_path / "hg.json"
+    inp.write_text(json.dumps(bm))
+    for extra in ([], ["--connectivity"]):
+        out = tmp_path / "out.json"
+        rc = main(["compact", "--input", str(inp), "--out", str(out)] + extra)
+        assert rc == 0
+        assert json.loads(out.read_text())["view"] == "compact"
+
+
+def test_add_schema_envelope_spread_shape() -> None:
+    """WI-gogif: the shared read-view envelope spreads schema_version + view +
+    payload at top level (spec Appendix C) — NOT nested under 'data' — and
+    preserves per-view schema_version and key order."""
+    from hypergumbo_core.cli import add_schema_envelope
+
+    env = add_schema_envelope(
+        {"routes": [1, 2], "extra": "x"}, view="routes", schema_version="0.1.0"
+    )
+    assert env == {
+        "schema_version": "0.1.0", "view": "routes",
+        "routes": [1, 2], "extra": "x",
+    }
+    # spread, not nested; schema_version + view lead, then payload
+    assert "data" not in env
+    assert list(env.keys()) == ["schema_version", "view", "routes", "extra"]
+    # per-view schema_version is passed through verbatim (not unified)
+    assert add_schema_envelope(
+        {}, view="verify-claims", schema_version="1.0"
+    )["schema_version"] == "1.0"
+
+
+def test_cmd_catalog_json_format(tmp_path: Path, capsys, monkeypatch) -> None:
+    """WI-soroz: catalog --format json emits a passes / framework_patterns /
+    suggested envelope."""
+    from hypergumbo_core.cli import cmd_catalog
+
+    monkeypatch.chdir(tmp_path)  # empty dir -> not large, no suggestions
+    args = FakeArgs()
+    args.format = "json"
+
+    assert cmd_catalog(args) == 0
+    data = json.loads(capsys.readouterr().out)
+    assert data["schema_version"] == "0.1.0"
+    assert data["view"] == "catalog"
+    assert isinstance(data["passes"], list) and len(data["passes"]) > 0
+    assert all("id" in p and "available" in p for p in data["passes"])
+    assert isinstance(data["framework_patterns"], list)
+    assert isinstance(data["suggested"], list)
+    assert data["large_directory"] is False
+
+
+def test_cmd_catalog_json_large_directory(
+    tmp_path: Path, capsys, monkeypatch
+) -> None:
+    """WI-soroz: in a large directory, catalog --format json sets
+    large_directory=True and skips language detection (no suggestions)."""
+    from hypergumbo_core.cli import cmd_catalog
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(
+        "hypergumbo_core.cli._is_large_directory", lambda p: True
+    )
+    args = FakeArgs()
+    args.format = "json"
+
+    assert cmd_catalog(args) == 0
+    data = json.loads(capsys.readouterr().out)
+    assert data["view"] == "catalog"
+    assert data["large_directory"] is True
+    assert data["suggested"] == []
 
 
 def test_cmd_slice_auto_entry_exclude_tests(tmp_path: Path, capsys) -> None:

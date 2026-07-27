@@ -2,7 +2,7 @@
 """Tcl language analyzer using tree-sitter.
 
 This module provides static analysis for Tcl source code, extracting symbols
-(procedures, namespaces, variables) and edges (calls).
+(procedures, namespaces) and edges (calls).
 
 Tcl (Tool Command Language) is a dynamic scripting language commonly used for
 rapid prototyping, scripted applications, GUIs, and testing. It's particularly
@@ -16,7 +16,7 @@ Implementation approach:
 Key constructs extracted:
 - procedure: proc name {args} {body}
 - namespace: namespace eval name {body}
-- command_substitution: [command args] (function calls)
+- command / command_substitution: a bare `command args` invocation or a bracketed `[command args]` substitution (both produce call edges)
 """
 
 from __future__ import annotations
@@ -34,6 +34,7 @@ from hypergumbo_core.analyze.base import (
     make_unresolved_edge,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -53,7 +54,7 @@ def find_tcl_files(root: Path) -> Iterator[Path]:
 
 def _get_node_text(node: "tree_sitter.Node") -> str:
     """Get the text content of a node."""
-    return node.text.decode("utf-8", errors="replace")
+    return (node.text or b"").decode("utf-8", errors="replace")
 
 
 def _get_proc_name(node: "tree_sitter.Node") -> Optional[str]:
@@ -221,6 +222,8 @@ class TclAnalyzer(TreeSitterAnalyzer):
                     origin_run_id=run.execution_id,
                     signature=signature,
                     meta={"namespace": namespace} if namespace else None,
+                    cyclomatic_complexity=compute_cyclomatic_complexity(node, "tcl"),
+                    line_span=node.end_point[0] - node.start_point[0] + 1,
                 )
                 analysis.symbols.append(sym)
                 analysis.node_for_symbol[sym.id] = node
@@ -311,7 +314,6 @@ class TclAnalyzer(TreeSitterAnalyzer):
                             origin=PASS_ID,
                             origin_run_id=run.execution_id,
                             evidence_type="ast_call_direct",
-                            confidence=1.0,
                             evidence_lang="tcl",
                         )
                     else:

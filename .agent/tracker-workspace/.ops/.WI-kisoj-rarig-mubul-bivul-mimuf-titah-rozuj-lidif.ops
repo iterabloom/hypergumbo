@@ -20,3 +20,34 @@
     pr_ref:  # 7334
     description: "Internal function and module renames so the codebase concept name matches the artifact: `run_behavior_map` → `run_survey` (or whatever the ADR chooses); `packages/hypergumbo-core/src/hypergumbo_core/behavior_map_io.py` → `survey_io.py`; any internal `behavior_map` variable / parameter names. Sweep symbol names across the codebase. Test names (test_behavior_map_io.py → test_survey_io.py) follow."  # 7334
     fields: {}  # 7334
+- op: update  # d621
+  at: '2026-07-12T05:43:00Z'  # d621
+  by: agent  # d621
+  actor: jgstern_agent  # d621
+  clock: 2  # d621
+  nonce: d621  # d621
+  set: {}  # d621
+  add:  # d621
+    tags: [wave5]  # d621
+- op: discuss  # 7659
+  at: '2026-07-12T05:43:00Z'  # 7659
+  by: agent  # 7659
+  actor: jgstern_agent  # 7659
+  clock: 3  # 7659
+  nonce: '7659'  # 7659
+  message: "Deferred to end of Wave 5 per owner decision 2026-07-12 (see INV-firuh discussion for full rationale: ADR-0042 campaign blocks zero P1s transitively; execute last to avoid cli.py resolver-merge overlap with P1 structural work). Tagged wave5; status stays todo_soft per project future-wave convention. ADR-0042 remains Accepted."  # 7659
+- op: update  # 54d4
+  at: '2026-07-15T02:56:21Z'  # 54d4
+  by: agent  # 54d4
+  actor: jgstern_agent  # 54d4
+  clock: 4  # 54d4
+  nonce: 54d4  # 54d4
+  set:  # 54d4
+    status: done  # 54d4
+- op: discuss  # 3dff
+  at: '2026-07-15T02:56:21Z'  # 3dff
+  by: agent  # 3dff
+  actor: jgstern_agent  # 3dff
+  clock: 5  # 3dff
+  nonce: 3dff  # 3dff
+  message: "Done — both PRs merged, ADR-0042 §2 code-name migration. PR1 module rename (2ad2d3eb55, PR #647): behavior_map_io.py->survey_io.py + a deprecation shim (re-exports the 8 public names, warns on import). PR2 function rename (bcdffc5514, PR #650): cli.run_behavior_map->run_survey + a module-level alias (same object, identical signature). EVIDENCE: from hypergumbo_core.survey_io import load_substrate works; the behavior_map_io shim re-exports the same objects + fires DeprecationWarning on import (locked by test in test_survey_io.py); cli.run_survey canonical, run_behavior_map alias is-same-object with preserved signature so the ~56 test call-sites resolve unchanged. Internal src + loader test + bakeoff/analysis scripts migrated to survey_io. Both PRs 100% coverage on changed files. PROCESS LESSONS (durable): (1) a NEW standalone test file that is the SOLE coverer of a changed source file can be dropped from smart-test's committed manifest -> 0% coverage in CI's manifest run even though local smart-test (which runs new test files ad-hoc) shows 100%; fold such tests into an already-in-manifest file, or run check-package-coverage before pushing. (2) auto-pr's rebase silently clobbered an amend's working-tree edit when the branch was behind base; commit on an up-to-date base so auto-pr fast-forwards. RESIDUAL (window-close): call-site migration to run_survey (56 tests + few src) rides the deprecation window via the alias."  # 3dff

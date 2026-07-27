@@ -281,8 +281,7 @@ def link_jni(java_symbols: list[Symbol], native_symbols: list[Symbol]) -> JniLin
             origin=PASS_ID,
             origin_run_id=run.execution_id,
             evidence_type="naming_convention",
-            access_mode="write",
-            dest_access_mode="read",
+            data_direction="src_to_dst",
             meta=edge_meta,
             derived_from=[sym.id, native_sym.id],
         )

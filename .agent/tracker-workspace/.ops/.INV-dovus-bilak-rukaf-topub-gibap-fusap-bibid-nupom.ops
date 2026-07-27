@@ -92,3 +92,25 @@
   clock: 9  # 3a8c
   nonce: 3a8c  # 3a8c
   message: "root-cause family cross-link (g2); keeps existing parent (connections-sweep 2026-06-08T1900Z)"  # 3a8c
+- op: discuss  # 3a57
+  at: '2026-06-24T20:06:40Z'  # 3a57
+  by: agent  # 3a57
+  actor: jgstern_agent  # 3a57
+  clock: 10  # 3a57
+  nonce: 3a57  # 3a57
+  message: "Cross-ref 2026-06-24: INV-gojit (merged) added Java imports-edge emission (java.py _extract_import_edges) that uses TWO of the four fragmented import evidence_type names -- import_declaration (regular + wildcard imports) and import_static (static imports). So Java is now an additional producer to update when the import evidence_type vocabulary is consolidated (alongside the python ast_import and the import_statement producers). Semantic note for the consolidation call: import_static is arguably a DISTINCT inference pathway (static-member import) vs the generic import_declaration -- decide keep-separate vs fold when harmonizing."  # 3a57
+- op: update  # 1fbe
+  at: '2026-06-28T00:58:04Z'  # 1fbe
+  by: agent  # 1fbe
+  actor: jgstern_agent  # 1fbe
+  clock: 11  # 1fbe
+  nonce: 1fbe  # 1fbe
+  set:  # 1fbe
+    status: satisfied  # 1fbe
+- op: discuss  # 91dd
+  at: '2026-06-28T00:58:04Z'  # 91dd
+  by: agent  # 91dd
+  actor: jgstern_agent  # 91dd
+  clock: 12  # 91dd
+  nonce: 91dd  # 91dd
+  message: "Superseded by audit-findings 0004 (RESOLVED, ADR-0024 four-leakage-test): the import family (ast_import / import_statement / import_directive / import_declaration / import_static) is CANONICAL registry-sanctioned per-language synonymy on the single inference_pathway axis -- ADR-0028's explicit no-migration cluster -- NOT a fragmentation violation. The flagged 'vestigial' singletons are live + distinct (callback_argument_reference, use_declaration, trait_impl): corpus-snapshot singletons are not vestigial (the INV-vavat keep-distinct precedent). No axis-purity violation; the parent INV-numat single-axis frame holds for these values. The genuine evidence_type smuggling in this family -- Cluster D call-construct (ast_call_method) -- was folded under WI-nibis/WI-hubit (vocab:F1). This item's 'fold the 4 import names' premise was the cross-artifact mixed signal that conflicted with 0004; aligning status to the authoritative verdict so it stops steering toward folding canonical values."  # 91dd

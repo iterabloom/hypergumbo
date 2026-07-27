@@ -25,3 +25,20 @@
   clock: 2  # 1112
   nonce: '1112'  # 1112
   message: "Root-novelty (human-adjudicated): INSTANCE of WI-kutas generate-schema-drift root — codegen emitted const:'behavior_map' from the dataclass default instead of an enum. Distinct fix (emit enum) keeps it a separate row, but it is the same generator root, not a new root."  # 1112
+- op: update  # c61d
+  at: '2026-07-09T20:59:11Z'  # c61d
+  by: agent  # c61d
+  actor: jgstern_agent  # c61d
+  clock: 3  # c61d
+  nonce: c61d  # c61d
+  set:  # c61d
+    status: done  # c61d
+  add:  # c61d
+    tags: [wave4]  # c61d
+- op: discuss  # 9028
+  at: '2026-07-09T20:59:11Z'  # 9028
+  by: agent  # 9028
+  actor: jgstern_agent  # 9028
+  clock: 4  # 9028
+  nonce: '9028'  # 9028
+  message: "Fixed + merged (selfh/dev 5eec6c2f29). docs/schema.json pinned the top-level 'view' field to const 'behavior_map', so compact/tiered projections (view='compact'/'tiered') failed JSON-Schema validation on that field. Now an enum single-sourced from a new schema.VIEW_NAMES tuple (behavior_map/compact/tiered) that generate-schema enumerates. RESCOPED per scope-audit: the item statement was over-broad (claimed slice/test-coverage also fail identically — FALSE; only compact/tiered are behavior_map projections retaining the required envelope). Backward-compatible enum widening → no SCHEMA_VERSION bump. Behavioral evidence: new test validates each projected view name against the view sub-schema (+ rejects a bogus view); test_schema_matches_generated + version tests stay green; 3464 affected tests pass; core 100%. Wave-4 schema."  # 9028

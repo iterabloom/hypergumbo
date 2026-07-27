@@ -7,7 +7,7 @@ test path exclusion, and output formatting.
 import json
 from pathlib import Path
 
-from hypergumbo_core.schema import SCHEMA_VERSION
+from hypergumbo_core.schema import SCHEMA_VERSION, READ_VIEW_SCHEMA_VERSION
 from hypergumbo_core.cli import cmd_routes, main
 
 
@@ -76,6 +76,87 @@ def test_cmd_routes_shows_http_routes(tmp_path: Path, capsys) -> None:
     assert "GET" in out.upper() or "get" in out.lower()
     assert "POST" in out.upper() or "post" in out.lower()
     assert "helper" not in out  # Non-route should not appear
+
+
+def test_cmd_routes_format_json_emits_records(tmp_path: Path, capsys) -> None:
+    """INV-jutuj: `routes --format json` emits a structured JSON envelope
+    (parity with test-coverage/dead-code-maybe), covering both concept-enriched
+    and kind="route" (framework_role) routes."""
+    behavior_map = {
+        "schema_version": SCHEMA_VERSION,
+        "nodes": [
+            {
+                "id": "python:src/api.py:1-5:get_user:function",
+                "name": "get_user", "kind": "function", "language": "python",
+                "path": "src/api.py",
+                "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 0},
+                "meta": {"concepts": [{
+                    "concept": "route", "path": "/users/{id}", "method": "GET",
+                    "controller_action": "UsersController#show",
+                }]},
+            },
+            {
+                "id": "go:h.go:1-5:ListUsers:route",
+                "name": "ListUsers", "kind": "route", "language": "go",
+                "path": "h.go",
+                "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 0},
+                "meta": {"framework_role": "route", "route_path": "/users",
+                         "http_method": "get"},
+            },
+        ],
+        "edges": [],
+    }
+    (tmp_path / "hypergumbo.results.json").write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.input = None
+    args.language = None
+    args.format = "json"
+
+    assert cmd_routes(args) == 0
+    out, _ = capsys.readouterr()
+    data = json.loads(out)  # stdout must be pure JSON
+    assert data["view"] == "routes"
+    # WI-bobog: the routes view-envelope version is single-sourced from
+    # READ_VIEW_SCHEMA_VERSION (was a bare "0.1.0" literal, previously
+    # test-silent). Distinct from the top-level bm SCHEMA_VERSION.
+    assert data["schema_version"] == READ_VIEW_SCHEMA_VERSION
+    assert data["schema_version"] != SCHEMA_VERSION
+    rec = {r["route_path"]: r for r in data["routes"]}
+    assert set(rec) == {"/users/{id}", "/users"}
+    assert rec["/users/{id}"]["method"] == "GET"
+    assert rec["/users"]["method"] == "GET"  # uppercased from "get"
+    assert rec["/users/{id}"]["controller_action"] == "UsersController#show"
+    assert rec["/users"]["id"] == "go:h.go:1-5:ListUsers:route"
+
+
+def test_cmd_routes_format_json_empty_is_valid_json(tmp_path: Path, capsys) -> None:
+    """INV-jutuj: with no routes, JSON mode emits {"routes": []} (valid JSON),
+    not the human-readable "No API routes found" text."""
+    behavior_map = {
+        "schema_version": SCHEMA_VERSION,
+        "nodes": [{
+            "id": "python:u.py:1-5:helper:function", "name": "helper",
+            "kind": "function", "language": "python", "path": "u.py",
+            "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 0},
+        }],
+        "edges": [],
+    }
+    (tmp_path / "hypergumbo.results.json").write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.input = None
+    args.language = None
+    args.format = "json"
+
+    assert cmd_routes(args) == 0
+    out, _ = capsys.readouterr()
+    data = json.loads(out)
+    assert data["view"] == "routes"
+    assert data["routes"] == []
+    assert "No API routes found" not in out
 
 
 def test_cmd_routes_filter_by_language(tmp_path: Path, capsys) -> None:

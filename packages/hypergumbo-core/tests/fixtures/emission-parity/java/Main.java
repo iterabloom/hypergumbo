@@ -3,6 +3,9 @@
 import java.util.List;
 
 public class Main {
+    /** Instance count, default zero-value. */
+    int count = 0;
+
     /** Return a derived string. */
     static String helper(int value) {
         return String.valueOf(value);

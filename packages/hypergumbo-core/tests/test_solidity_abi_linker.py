@@ -218,7 +218,8 @@ class TestLinkSolidityAbi:
         )
         assert len(result.edges) == 1
         edge = result.edges[0]
-        assert edge.edge_type == "abi_call"
+        assert edge.edge_type == "calls"
+        assert (edge.meta or {}).get("call_kind") == "abi"
         assert edge.dst == sol_func.id
 
     def test_viem_pattern_creates_edge(self, tmp_path: Path) -> None:
@@ -363,4 +364,5 @@ class TestRegistryIntegration:
 
         result = solidity_abi_linker(ctx)
         assert len(result.edges) == 1
-        assert result.edges[0].edge_type == "abi_call"
+        assert result.edges[0].edge_type == "calls"
+        assert (result.edges[0].meta or {}).get("call_kind") == "abi"

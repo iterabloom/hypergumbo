@@ -58,6 +58,7 @@ from hypergumbo_core.analyze.base import (
     node_text,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -169,8 +170,15 @@ def _extract_symbols_from_file(
         kind: str,
         meta: dict | None = None,
         signature: Optional[str] = None,
+        complexity: bool = False,
     ) -> None:
-        """Add a symbol if not already seen."""
+        """Add a symbol if not already seen.
+
+        ``complexity=True`` (callable kinds — function / theorem) populates
+        cyclomatic_complexity + line_span per INV-loguk. Gated so
+        non-callable kinds (structure/inductive/class/instance) that share this
+        helper don't aggregate their whole subtree.
+        """
         if not name or name in seen_names:  # pragma: no cover - defensive
             return  # pragma: no cover
         seen_names.add(name)
@@ -194,6 +202,10 @@ def _extract_symbols_from_file(
             origin=PASS_ID,
             origin_run_id=run_id,
             signature=signature,
+            cyclomatic_complexity=(
+                compute_cyclomatic_complexity(node, "lean") if complexity else None
+            ),
+            line_span=(end_line - start_line + 1) if complexity else None,
         )
         if meta:  # pragma: no cover - meta rarely used
             sym.meta = meta  # pragma: no cover
@@ -210,7 +222,7 @@ def _extract_symbols_from_file(
                         name = _get_identifier_text(id_node, source)
                         if name:
                             sig = _extract_lean_signature(child, source)
-                            add_symbol(child, name, "function", signature=sig)
+                            add_symbol(child, name, "function", signature=sig, complexity=True)
 
                 elif child.type == "theorem":
                     # theorem name ...
@@ -219,7 +231,7 @@ def _extract_symbols_from_file(
                         name = _get_identifier_text(id_node, source)
                         if name:
                             sig = _extract_lean_signature(child, source)
-                            add_symbol(child, name, "theorem", signature=sig)
+                            add_symbol(child, name, "theorem", signature=sig, complexity=True)
 
                 elif child.type == "lemma":  # pragma: no cover - similar to theorem
                     # lemma name ...
@@ -228,7 +240,7 @@ def _extract_symbols_from_file(
                         name = _get_identifier_text(id_node, source)
                         if name:
                             sig = _extract_lean_signature(child, source)
-                            add_symbol(child, name, "theorem", {"is_lemma": True}, signature=sig)
+                            add_symbol(child, name, "theorem", {"is_lemma": True}, signature=sig, complexity=True)
 
                 elif child.type == "structure":
                     # structure name where ...
@@ -236,7 +248,9 @@ def _extract_symbols_from_file(
                     if id_node:
                         name = _get_identifier_text(id_node, source)
                         if name:
-                            add_symbol(child, name, "structure")
+                            # WI-zipis / audit-0015 fold: Lean `structure` is a
+                            # struct (record/product type) -> canonical `struct`.
+                            add_symbol(child, name, "struct")
 
                 elif child.type == "inductive":
                     # inductive name where ...
@@ -282,7 +296,7 @@ def _extract_symbols_from_file(
                         name = _get_identifier_text(id_node, source)
                         if name:
                             sig = _extract_lean_signature(child, source)
-                            add_symbol(child, name, "function", {"is_abbrev": True}, signature=sig)
+                            add_symbol(child, name, "function", {"is_abbrev": True}, signature=sig, complexity=True)
 
     return symbols
 
@@ -351,7 +365,6 @@ def _extract_edges_from_file(
                         origin=PASS_ID,
                         origin_run_id=run_id,
                         evidence_type="import",
-                        confidence=0.95,
                     )
                     edges.append(edge)
 

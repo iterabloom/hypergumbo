@@ -24,3 +24,20 @@
     fields:  # 4ac7
       statement: "Every numeric / path / typed CLI flag must have argparse-layer validation (type-cast, range-check, existence-check); no flag may silently accept out-of-range or wrong-type values."  # 4ac7
       root_cause: "No shared argparse-action factory for bounded-numeric / validated-path / positive-int types — each subcommand reinvents. Symptoms: compact accepts max<min and coverage>1 (WI-vusaf), search accepts negative --limit (INV-toniv), positional path silently swallows non-directory (INV-jibof), slice --out silently overridden by argparse-default (INV-fapid)."  # 4ac7
+- op: update  # 5991
+  at: '2026-07-10T16:00:53Z'  # 5991
+  by: agent  # 5991
+  actor: jgstern_agent  # 5991
+  clock: 2  # 5991
+  nonce: '5991'  # 5991
+  set:  # 5991
+    status: satisfied  # 5991
+  add:  # 5991
+    tags: [wave4]  # 5991
+- op: discuss  # 6197
+  at: '2026-07-10T16:00:53Z'  # 6197
+  by: agent  # 6197
+  actor: jgstern_agent  # 6197
+  clock: 3  # 6197
+  nonce: '6197'  # 6197
+  message: "SATISFIED — cli-input sub-B (argparse type/range validation) META closes: all members resolved. Numeric/range flags now fail fast on out-of-range input and non-directory positionals are rejected: INV-toniv (search --limit, _positive_result_limit) satisfied; WI-vusaf (compact --max-symbols/--min-symbols/--coverage + max<min guard) done; INV-fapid (slice --out None-sentinel, PR #541) satisfied; INV-jibof (non-directory positional path -> rc=2, PR #543) satisfied. INV-votop's --limit face (dual-parented under sub-C) also satisfied. The shared _positive_int_arg/_nonneg_int_arg/_unit_interval_arg/_positive_result_limit argparse factories back every numeric read-flag. Advances the INV-fabov umbrella (sub-A INV-somut + sub-C INV-murig already satisfied)."  # 6197

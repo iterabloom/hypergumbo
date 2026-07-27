@@ -93,7 +93,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
 import pool_utils  # noqa: E402
 
 # WI-mokim: consumer-side .gz handling for `hypergumbo run --gzip` outputs.
-from hypergumbo_core.behavior_map_io import find_behavior_map, load_behavior_map  # noqa: E402
+from hypergumbo_core.survey_io import find_behavior_map, load_behavior_map  # noqa: E402
 
 
 # =============================================================================
@@ -217,6 +217,23 @@ class BakeoffState:
 # =============================================================================
 # Utility functions
 # =============================================================================
+
+def _pool_repo_path(pool_path: str, repo_name: str) -> str:
+    """Resolve a cohort repo name to its on-disk path.
+
+    WI-favav parity: cohort SELECTION resolves nested-collection pool repos via
+    ``pool_utils.resolve_repo_path`` (which descends one level into collection
+    subdirs, e.g. ``ALL_REPOS/whole_bunch_of_repos/<repo>``), so the RUN must use
+    the same resolver — a bare ``os.path.join(pool_path, repo_name)`` misses a
+    repo living one level down and ``get_dir_size`` then ``FileNotFoundError``s.
+    Falls back to the naive join so a genuinely-missing repo still errors as
+    before (rather than passing ``None`` downstream).
+    """
+    return (
+        pool_utils.resolve_repo_path(pool_path, repo_name)
+        or os.path.join(pool_path, repo_name)
+    )
+
 
 def get_dir_size(path: str) -> int:
     """Get directory size in bytes."""
@@ -802,7 +819,7 @@ def cmd_run(args):
             print(f"Output: {iter_dir}")
             print(f"{'='*60}")
             for repo_name in repos:
-                repo_path = os.path.join(pool_path, repo_name)
+                repo_path = _pool_repo_path(pool_path, repo_name)
                 repo_out = os.path.join(iter_dir, repo_name)
                 os.makedirs(repo_out, exist_ok=True)
                 print(f"[{repo_name}]")
@@ -876,7 +893,7 @@ def cmd_run(args):
     print()
 
     for repo_name in state.current_cohort:
-        repo_path = os.path.join(pool_path, repo_name)
+        repo_path = _pool_repo_path(pool_path, repo_name)
         repo_out = os.path.join(out_dir, repo_name)
         os.makedirs(repo_out, exist_ok=True)
 

@@ -865,8 +865,10 @@ class TestTauriIPCSyntheticSymbols:
         # tauri_ipc's fingerprint is the synthetic src_id hash (not source bytes); kept per ADR-0032.
         assert sym.fingerprint is not None
         assert len(sym.fingerprint) == 16  # sha256 hex truncated to 16
-        # Tier 2 prevents _classify_symbols from reclassifying to tier 4
-        assert sym.supply_chain_tier == 2
+        # INV-bonup / ADR-0041 §1: supply_chain_tier names distance ONLY. The
+        # synthetic bridge is honest first-party (tier 1); _classify_symbols skips
+        # it via its protocol_origin marker, not a borrowed tier-2 "lock".
+        assert sym.supply_chain_tier == 1
         assert sym.supply_chain_reason == "synthetic IPC bridge node"
 
     def test_deduplicates_symbols_across_files(self, tmp_path: Path) -> None:
@@ -997,8 +999,12 @@ class TestTauriSpectaWrapperResolution:
         )
 
         # Should have: ipc_calls edge from bindings, caller_invokes from editor
-        ipc_edges = [e for e in result.edges if e.edge_type == "calls"]
-        caller_edges = [e for e in result.edges if e.edge_type == "caller_invokes"]
+        ipc_edges = [
+            e for e in result.edges
+            if e.edge_type == "calls"
+            and (e.meta or {}).get("framework_dispatch") != "specta_wrapper"
+        ]
+        caller_edges = [e for e in result.edges if e.edge_type == "calls" and (e.meta or {}).get("framework_dispatch") == "specta_wrapper"]
 
         assert len(ipc_edges) == 1
         assert len(caller_edges) == 1
@@ -1048,7 +1054,7 @@ class TestTauriSpectaWrapperResolution:
             rust_symbols=[rust_get, rust_save],
         )
 
-        caller_edges = [e for e in result.edges if e.edge_type == "caller_invokes"]
+        caller_edges = [e for e in result.edges if e.edge_type == "calls" and (e.meta or {}).get("framework_dispatch") == "specta_wrapper"]
         assert len(caller_edges) == 2
 
     def test_namespace_import_creates_edges(self, tmp_path: Path) -> None:
@@ -1086,7 +1092,7 @@ class TestTauriSpectaWrapperResolution:
             rust_symbols=[rust_sym],
         )
 
-        caller_edges = [e for e in result.edges if e.edge_type == "caller_invokes"]
+        caller_edges = [e for e in result.edges if e.edge_type == "calls" and (e.meta or {}).get("framework_dispatch") == "specta_wrapper"]
         assert len(caller_edges) == 1
 
     def test_no_wrapper_edge_when_import_not_from_wrapper_file(
@@ -1125,7 +1131,7 @@ class TestTauriSpectaWrapperResolution:
             rust_symbols=[rust_sym],
         )
 
-        caller_edges = [e for e in result.edges if e.edge_type == "caller_invokes"]
+        caller_edges = [e for e in result.edges if e.edge_type == "calls" and (e.meta or {}).get("framework_dispatch") == "specta_wrapper"]
         assert len(caller_edges) == 0
 
     def test_wrapper_with_extension_in_import(self, tmp_path: Path) -> None:
@@ -1160,7 +1166,7 @@ class TestTauriSpectaWrapperResolution:
             rust_symbols=[rust_sym],
         )
 
-        caller_edges = [e for e in result.edges if e.edge_type == "caller_invokes"]
+        caller_edges = [e for e in result.edges if e.edge_type == "calls" and (e.meta or {}).get("framework_dispatch") == "specta_wrapper"]
         assert len(caller_edges) == 1
 
     def test_wrapper_caller_symbol_created(self, tmp_path: Path) -> None:
@@ -1205,7 +1211,9 @@ class TestTauriSpectaWrapperResolution:
         assert caller_syms[0].language is None
         assert caller_syms[0].discovery_language == "typescript"
         assert caller_syms[0].protocol_origin == "tauri_ipc"
-        assert caller_syms[0].supply_chain_tier == 2
+        # INV-bonup: distance-only tier — the synthetic caller is honest first-party
+        # (skipped by _classify_symbols via protocol_origin, not a tier-2 lock).
+        assert caller_syms[0].supply_chain_tier == 1
 
     def test_wrapper_dedup_same_import_same_file(self, tmp_path: Path) -> None:
         """Same wrapper imported twice in same file creates only one edge."""
@@ -1240,7 +1248,7 @@ class TestTauriSpectaWrapperResolution:
             rust_symbols=[rust_sym],
         )
 
-        caller_edges = [e for e in result.edges if e.edge_type == "caller_invokes"]
+        caller_edges = [e for e in result.edges if e.edge_type == "calls" and (e.meta or {}).get("framework_dispatch") == "specta_wrapper"]
         assert len(caller_edges) == 1
 
     def test_wrapper_plugin_pattern(self, tmp_path: Path) -> None:
@@ -1275,7 +1283,7 @@ class TestTauriSpectaWrapperResolution:
             rust_symbols=[rust_sym],
         )
 
-        caller_edges = [e for e in result.edges if e.edge_type == "caller_invokes"]
+        caller_edges = [e for e in result.edges if e.edge_type == "calls" and (e.meta or {}).get("framework_dispatch") == "specta_wrapper"]
         assert len(caller_edges) == 1
 
     def test_non_relative_import_ignored(self, tmp_path: Path) -> None:
@@ -1310,7 +1318,7 @@ class TestTauriSpectaWrapperResolution:
             rust_symbols=[rust_sym],
         )
 
-        caller_edges = [e for e in result.edges if e.edge_type == "caller_invokes"]
+        caller_edges = [e for e in result.edges if e.edge_type == "calls" and (e.meta or {}).get("framework_dispatch") == "specta_wrapper"]
         assert len(caller_edges) == 0
 
     def test_unresolvable_import_ignored(self, tmp_path: Path) -> None:
@@ -1345,7 +1353,7 @@ class TestTauriSpectaWrapperResolution:
             rust_symbols=[rust_sym],
         )
 
-        caller_edges = [e for e in result.edges if e.edge_type == "caller_invokes"]
+        caller_edges = [e for e in result.edges if e.edge_type == "calls" and (e.meta or {}).get("framework_dispatch") == "specta_wrapper"]
         assert len(caller_edges) == 0
 
     def test_import_from_non_wrapper_file_ignored(self, tmp_path: Path) -> None:
@@ -1390,7 +1398,7 @@ class TestTauriSpectaWrapperResolution:
             rust_symbols=[rust_sym],
         )
 
-        caller_edges = [e for e in result.edges if e.edge_type == "caller_invokes"]
+        caller_edges = [e for e in result.edges if e.edge_type == "calls" and (e.meta or {}).get("framework_dispatch") == "specta_wrapper"]
         assert len(caller_edges) == 0
 
     def test_wrapper_caller_outside_repo_root(self, tmp_path: Path) -> None:
@@ -1444,7 +1452,7 @@ class TestTauriSpectaWrapperResolution:
 
             # Import isn't relative so no caller_invokes edge
             caller_edges = [
-                e for e in result.edges if e.edge_type == "caller_invokes"
+                e for e in result.edges if e.edge_type == "calls" and (e.meta or {}).get("framework_dispatch") == "specta_wrapper"
             ]
             assert len(caller_edges) == 0
 
@@ -1480,7 +1488,7 @@ class TestTauriSpectaWrapperResolution:
         )
 
         # Only ipc_calls from bindings, no caller_invokes
-        caller_edges = [e for e in result.edges if e.edge_type == "caller_invokes"]
+        caller_edges = [e for e in result.edges if e.edge_type == "calls" and (e.meta or {}).get("framework_dispatch") == "specta_wrapper"]
         assert len(caller_edges) == 0
 
     def test_wrapper_file_with_no_importers(self, tmp_path: Path) -> None:
@@ -1513,8 +1521,12 @@ class TestTauriSpectaWrapperResolution:
             rust_symbols=[rust_sym],
         )
 
-        ipc_edges = [e for e in result.edges if e.edge_type == "calls"]
-        caller_edges = [e for e in result.edges if e.edge_type == "caller_invokes"]
+        ipc_edges = [
+            e for e in result.edges
+            if e.edge_type == "calls"
+            and (e.meta or {}).get("framework_dispatch") != "specta_wrapper"
+        ]
+        caller_edges = [e for e in result.edges if e.edge_type == "calls" and (e.meta or {}).get("framework_dispatch") == "specta_wrapper"]
         assert len(ipc_edges) == 1
         assert len(caller_edges) == 0
 
@@ -1550,7 +1562,7 @@ class TestTauriSpectaWrapperResolution:
             rust_symbols=[rust_sym],
         )
 
-        caller_edges = [e for e in result.edges if e.edge_type == "caller_invokes"]
+        caller_edges = [e for e in result.edges if e.edge_type == "calls" and (e.meta or {}).get("framework_dispatch") == "specta_wrapper"]
         assert len(caller_edges) == 1
 
     def test_wrapper_caller_outside_repo_root_phase4(
@@ -1592,7 +1604,7 @@ class TestTauriSpectaWrapperResolution:
 
             # Should have caller_invokes edge with absolute path (outside repo_root)
             caller_edges = [
-                e for e in result.edges if e.edge_type == "caller_invokes"
+                e for e in result.edges if e.edge_type == "calls" and (e.meta or {}).get("framework_dispatch") == "specta_wrapper"
             ]
             assert len(caller_edges) == 1
             # The path should be absolute since it's outside repo_root
@@ -1639,7 +1651,7 @@ class TestTauriSpectaWrapperResolution:
         )
 
         # ghost_cmd has no ipc_publisher, so no caller_invokes edge for ghost
-        caller_edges = [e for e in result.edges if e.edge_type == "caller_invokes"]
+        caller_edges = [e for e in result.edges if e.edge_type == "calls" and (e.meta or {}).get("framework_dispatch") == "specta_wrapper"]
         assert len(caller_edges) == 0
 
     def test_wrapper_dedup_across_imports(self, tmp_path: Path) -> None:
@@ -1678,7 +1690,7 @@ class TestTauriSpectaWrapperResolution:
         )
 
         # Dedup: same (file, cmd) pair → only one caller_invokes edge
-        caller_edges = [e for e in result.edges if e.edge_type == "caller_invokes"]
+        caller_edges = [e for e in result.edges if e.edge_type == "calls" and (e.meta or {}).get("framework_dispatch") == "specta_wrapper"]
         assert len(caller_edges) == 1
 
     def test_wrapper_imported_name_not_in_wrapper_map(
@@ -1717,7 +1729,7 @@ class TestTauriSpectaWrapperResolution:
         )
 
         # VERSION is not a wrapper function, so no caller_invokes edge
-        caller_edges = [e for e in result.edges if e.edge_type == "caller_invokes"]
+        caller_edges = [e for e in result.edges if e.edge_type == "calls" and (e.meta or {}).get("framework_dispatch") == "specta_wrapper"]
         assert len(caller_edges) == 0
 
     def test_wrapper_resolution_works_through_registry(
@@ -1755,7 +1767,7 @@ class TestTauriSpectaWrapperResolution:
         )
 
         result = run_linker("tauri-ipc-linker", ctx)
-        caller_edges = [e for e in result.edges if e.edge_type == "caller_invokes"]
+        caller_edges = [e for e in result.edges if e.edge_type == "calls" and (e.meta or {}).get("framework_dispatch") == "specta_wrapper"]
         assert len(caller_edges) == 1
 
 
@@ -2024,7 +2036,7 @@ commands.stopRecording();
         assert len(ipc_edges) >= 2
 
         # Should have caller_invokes edges from the named import
-        caller_edges = [e for e in result.edges if e.edge_type == "caller_invokes"]
+        caller_edges = [e for e in result.edges if e.edge_type == "calls" and (e.meta or {}).get("framework_dispatch") == "specta_wrapper"]
         assert len(caller_edges) >= 2
         cmd_names = {
             (e.meta or {}).get("tauri_command")
@@ -2129,7 +2141,7 @@ bindings.commands.doStuff();
 
         result = link_tauri_ipc(tmp_path, [ts_sym1, ts_sym2], [rust_sym])
 
-        caller_edges = [e for e in result.edges if e.edge_type == "caller_invokes"]
+        caller_edges = [e for e in result.edges if e.edge_type == "calls" and (e.meta or {}).get("framework_dispatch") == "specta_wrapper"]
         assert len(caller_edges) >= 1
 
 
@@ -2173,7 +2185,7 @@ listen('relay-status', (event) => {
         edge = event_edges[0]
         assert edge.meta is not None
         assert edge.meta.get("access_mode") == "write"
-        assert edge.meta.get("dest_access_mode") == "read"
+        assert edge.meta.get("dest_access_mode") is None
         assert edge.meta.get("channel") == "relay-status"
 
     def test_emit_all_detected(self, tmp_path: Path) -> None:

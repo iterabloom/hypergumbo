@@ -1,0 +1,37 @@
+- op: create  # f299
+  at: '2026-07-08T04:07:01Z'  # f299
+  by: agent  # f299
+  actor: jgstern_agent  # f299
+  clock: 1  # f299
+  nonce: f299  # f299
+  data:  # f299
+    kind: invariant  # f299
+    title: "PHP route frameworks (laravel/symfony/cakephp/yii/slim) cannot import-promote: analyzer emits no import edges for 'use' statements AND matcher has no backslash-namespace rule"  # f299
+    status: violated  # f299
+    priority: 3  # f299
+    parent:  # f299
+    tags:  # f299
+    - route_surfacing  # f299
+    isbefore: []  # f299
+    duplicate_of: []  # f299
+    not_duplicate_of: []  # f299
+    pr_ref:  # f299
+    description: "Split out of WI-nizuv (which fixed the Scala/Haskell/JVM coordinate-vs-namespace patterns; PR 64bae43c6e). PHP is a DEEPER gap than a missing pattern. Probed 2026-07-08: a laravel routes.php with 'use Illuminate\\Support\\Facades\\Route' + Route::get() emits the route marker but ZERO import edges (2 nodes, 1 route edge, 0 illuminate). Fix chain: (a) php.py emit an imports edge with dst_ref.module_path for each 'use' namespace statement (normalize the backslash — either keep 'Illuminate\\Support\\Facades\\Route' or dot-normalize); (b) teach _module_match_kind/_is_specific_pattern the backslash separator (or normalize module_path backslashes to '.' at emit so the existing dotted rules apply); (c) add the real PHP namespace patterns to LANGUAGE_FRAMEWORKS: laravel->Illuminate, symfony->Symfony, cakephp->Cake, yii->yii, slim->Slim. Owns the full PHP route-import-promotion chain."  # f299
+    fields:  # f299
+      statement: "A PHP repo importing a route framework (use Illuminate\\Support\\Facades\\Route) import-promotes that framework (profile.frameworks), the same as Python/JS/Scala."  # f299
+      root_cause: "Two gaps compound. (1) php.py parses 'use' namespace statements for symbol resolution but emits NO import EDGE with a module_path, so module_importers is empty for PHP -> nothing for _has_prod_import_match to match. (2) Even if it did, _module_match_kind / _is_specific_pattern only recognize '.' and '/' separators, not PHP's backslash namespace separator, so a pattern 'Illuminate' would not prefix-match 'Illuminate\\Http' and 'Illuminate\\' is not classified 'specific'. So the PHP composer coords (laravel/framework, cakephp/cakephp, yiisoft/yii2, ...) are the only match surface and they never appear in code."  # f299
+- op: update  # 2dc1
+  at: '2026-07-08T23:44:39Z'  # 2dc1
+  by: agent  # 2dc1
+  actor: jgstern_agent  # 2dc1
+  clock: 2  # 2dc1
+  nonce: 2dc1  # 2dc1
+  set:  # 2dc1
+    status: satisfied  # 2dc1
+- op: discuss  # 8fc6
+  at: '2026-07-08T23:44:40Z'  # 8fc6
+  by: agent  # 8fc6
+  actor: jgstern_agent  # 8fc6
+  clock: 3  # 8fc6
+  nonce: 8fc6  # 8fc6
+  message: "Merged 63ab6d8727. PHP use-statement import-promotion chain: (A) php.py emits imports edges per 'use Namespace\\Class;' (was zero); (B) profile.py _module_match_kind/_is_specific_pattern learn the '\\' separator; (C) PHP_FRAMEWORKS carry import namespaces (Illuminate->laravel, Symfony, Cake, yii, Slim, Phalcon, CodeIgniter). RED/GREEN: matcher tests + refine_frameworks promote test (synthetic edge) + php.py emitter test. Manifest-less PHP app now promotes its framework via the standard prod-importer+language gate. Core+mainstream 100%."  # 8fc6

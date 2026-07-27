@@ -1166,6 +1166,42 @@ require_relative 'helpers/string_utils.rb'
         assert "StringUtils" in hints
         assert hints["StringUtils"] == "helpers/string_utils.rb"
 
+    def test_scoped_constant_receiver_external_call_short_name_fallback(
+        self, tmp_path: Path,
+    ) -> None:
+        """A scoped-constant-receiver call (``Rack::Utils.parse``) that resolves
+        to no project symbol and has no require hint is attributed to the
+        lowercased constant name as an unresolved external ``calls`` edge
+        (WI-rijij / WI-mafik); the scope_resolution receiver exercises the
+        short-name require-hint fallback before the lowercase heuristic."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        (tmp_path / "worker.rb").write_text("""
+class Worker
+  def run
+    Rack::Utils.parse("a=1")
+  end
+end
+""")
+
+        result = analyze_ruby(tmp_path)
+
+        worker_run = next(
+            (s for s in result.symbols if s.name == "Worker#run"), None,
+        )
+        assert worker_run is not None
+
+        ext_edges = [
+            e for e in result.edges
+            if e.edge_type == "calls"
+            and e.src == worker_run.id
+            and (e.meta or {}).get("receiver") == "constant_external"
+        ]
+        assert len(ext_edges) == 1, (
+            f"Expected 1 constant_external call edge, got {len(ext_edges)}"
+        )
+        assert ext_edges[0].is_resolved is False
+
 class TestRubySignatureExtraction:
     """Tests for Ruby method signature extraction."""
 
@@ -2727,7 +2763,7 @@ end
 
         callback_edges = [
             e for e in result.edges
-            if e.edge_type == "invokes_callback"
+            if e.edge_type == "dispatches_to" and (e.meta or {}).get("mechanism") == "callback"
             and e.src == class_sym.id
             and e.dst == auth_method.id
         ]
@@ -2735,7 +2771,7 @@ end
             f"Expected 1 invokes_callback edge, got {len(callback_edges)}. "
             f"All edges: {[(e.edge_type, e.src, e.dst) for e in result.edges]}"
         )
-        assert callback_edges[0].confidence == 0.9
+        assert callback_edges[0].confidence == 0.85
 
     def test_after_action_creates_callback_edge(self, tmp_path: Path) -> None:
         """after_action :method creates invokes_callback edge."""
@@ -2765,7 +2801,7 @@ end
 
         callback_edges = [
             e for e in result.edges
-            if e.edge_type == "invokes_callback"
+            if e.edge_type == "dispatches_to" and (e.meta or {}).get("mechanism") == "callback"
             and e.src == class_sym.id
             and e.dst == log_method.id
         ]
@@ -2799,7 +2835,7 @@ end
 
         callback_edges = [
             e for e in result.edges
-            if e.edge_type == "invokes_callback"
+            if e.edge_type == "dispatches_to" and (e.meta or {}).get("mechanism") == "callback"
             and e.src == class_sym.id
             and e.dst == measure_method.id
         ]
@@ -2839,7 +2875,7 @@ end
 
         callback_edges = [
             e for e in result.edges
-            if e.edge_type == "invokes_callback" and e.src == class_sym.id
+            if e.edge_type == "dispatches_to" and (e.meta or {}).get("mechanism") == "callback" and e.src == class_sym.id
         ]
         dst_ids = {e.dst for e in callback_edges}
         assert auth_method.id in dst_ids, "Should have edge to authenticate!"
@@ -2878,7 +2914,7 @@ end
 
         callback_edges = [
             e for e in result.edges
-            if e.edge_type == "invokes_callback"
+            if e.edge_type == "dispatches_to" and (e.meta or {}).get("mechanism") == "callback"
             and e.src == class_sym.id
             and e.dst == auth_method.id
         ]
@@ -2901,7 +2937,7 @@ end
 
         result = analyze_ruby(tmp_path)
 
-        callback_edges = [e for e in result.edges if e.edge_type == "invokes_callback"]
+        callback_edges = [e for e in result.edges if e.edge_type == "dispatches_to" and (e.meta or {}).get("mechanism") == "callback"]
         assert len(callback_edges) == 0
 
     def test_legacy_before_filter(self, tmp_path: Path) -> None:
@@ -2932,7 +2968,7 @@ end
 
         callback_edges = [
             e for e in result.edges
-            if e.edge_type == "invokes_callback"
+            if e.edge_type == "dispatches_to" and (e.meta or {}).get("mechanism") == "callback"
             and e.src == class_sym.id
             and e.dst == check_method.id
         ]
@@ -2954,7 +2990,7 @@ end
 
         result = analyze_ruby(tmp_path)
 
-        callback_edges = [e for e in result.edges if e.edge_type == "invokes_callback"]
+        callback_edges = [e for e in result.edges if e.edge_type == "dispatches_to" and (e.meta or {}).get("mechanism") == "callback"]
         assert len(callback_edges) == 0
 
     def test_callback_inside_method_body_ignored(self, tmp_path: Path) -> None:
@@ -2979,7 +3015,7 @@ end
 
         result = analyze_ruby(tmp_path)
 
-        callback_edges = [e for e in result.edges if e.edge_type == "invokes_callback"]
+        callback_edges = [e for e in result.edges if e.edge_type == "dispatches_to" and (e.meta or {}).get("mechanism") == "callback"]
         assert len(callback_edges) == 0, (
             f"Callback inside method body should not create edge, got: "
             f"{[(e.src, e.dst) for e in callback_edges]}"
@@ -3015,7 +3051,7 @@ end
 
         edges = [
             e for e in result.edges
-            if e.edge_type == "invokes_callback"
+            if e.edge_type == "dispatches_to" and (e.meta or {}).get("mechanism") == "callback"
             and e.src == class_sym.id
             and e.dst == callback.id
         ]
@@ -3046,7 +3082,7 @@ end
 
         edges = [
             e for e in result.edges
-            if e.edge_type == "invokes_callback"
+            if e.edge_type == "dispatches_to" and (e.meta or {}).get("mechanism") == "callback"
             and e.src == class_sym.id
             and e.dst == callback.id
         ]
@@ -3075,7 +3111,7 @@ end
 
         edges = [
             e for e in result.edges
-            if e.edge_type == "invokes_callback"
+            if e.edge_type == "dispatches_to" and (e.meta or {}).get("mechanism") == "callback"
             and e.src == class_sym.id
             and e.dst == callback.id
         ]
@@ -3104,7 +3140,7 @@ end
 
         edges = [
             e for e in result.edges
-            if e.edge_type == "invokes_callback"
+            if e.edge_type == "dispatches_to" and (e.meta or {}).get("mechanism") == "callback"
             and e.src == class_sym.id
             and e.dst == callback.id
         ]
@@ -3148,7 +3184,7 @@ end
 
         callback_edges = [
             e for e in result.edges
-            if e.edge_type == "invokes_callback"
+            if e.edge_type == "dispatches_to" and (e.meta or {}).get("mechanism") == "callback"
             and e.src == class_sym.id
             and e.dst == provision.id
         ]
@@ -3192,7 +3228,7 @@ end
 
         callback_edges = [
             e for e in result.edges
-            if e.edge_type == "invokes_callback" and e.src == class_sym.id
+            if e.edge_type == "dispatches_to" and (e.meta or {}).get("mechanism") == "callback" and e.src == class_sym.id
         ]
         dst_ids = {e.dst for e in callback_edges}
         assert provision.id in dst_ids, "Should have edge to provision_database"
@@ -3222,7 +3258,7 @@ end
 
         callback_edges = [
             e for e in result.edges
-            if e.edge_type == "invokes_callback"
+            if e.edge_type == "dispatches_to" and (e.meta or {}).get("mechanism") == "callback"
             and e.src == class_sym.id
             and e.dst == normalize.id
         ]
@@ -3254,7 +3290,7 @@ end
 
         callback_edges = [
             e for e in result.edges
-            if e.edge_type == "invokes_callback"
+            if e.edge_type == "dispatches_to" and (e.meta or {}).get("mechanism") == "callback"
             and e.src == class_sym.id
             and e.dst == notify.id
         ]
@@ -3273,7 +3309,7 @@ end
 """)
 
         result = analyze_ruby(tmp_path)
-        callback_edges = [e for e in result.edges if e.edge_type == "invokes_callback"]
+        callback_edges = [e for e in result.edges if e.edge_type == "dispatches_to" and (e.meta or {}).get("mechanism") == "callback"]
         assert len(callback_edges) == 0
 
     def test_block_callback_empty_block_no_crash(self, tmp_path: Path) -> None:
@@ -3289,7 +3325,7 @@ end
 
         result = analyze_ruby(tmp_path)
         # No crash, no callback edges
-        callback_edges = [e for e in result.edges if e.edge_type == "invokes_callback"]
+        callback_edges = [e for e in result.edges if e.edge_type == "dispatches_to" and (e.meta or {}).get("mechanism") == "callback"]
         assert len(callback_edges) == 0
 
 class TestRubyJobEnqueueDetection:
@@ -3497,7 +3533,8 @@ end
 
         assoc_edges = [
             e for e in result.edges
-            if e.edge_type == "association"
+            if e.edge_type == "references"
+            and (e.meta or {}).get("ref_construct") == "association"
             and e.src == post_sym.id
             and e.dst == comment_sym.id
         ]
@@ -3508,7 +3545,7 @@ end
         )
         assert assoc_edges[0].evidence_type == "ast_call_direct"
         assert (assoc_edges[0].meta or {}).get("framework_dispatch") == "activerecord_association"
-        assert assoc_edges[0].confidence == 0.90
+        assert assoc_edges[0].confidence == 0.85
 
     def test_belongs_to_creates_association_edge(self, tmp_path: Path) -> None:
         """belongs_to :account creates association edge from User to Account."""
@@ -3534,7 +3571,8 @@ end
 
         assoc_edges = [
             e for e in result.edges
-            if e.edge_type == "association"
+            if e.edge_type == "references"
+            and (e.meta or {}).get("ref_construct") == "association"
             and e.src == user_sym.id
             and e.dst == account_sym.id
         ]
@@ -3568,7 +3606,8 @@ end
 
         assoc_edges = [
             e for e in result.edges
-            if e.edge_type == "association"
+            if e.edge_type == "references"
+            and (e.meta or {}).get("ref_construct") == "association"
             and e.src == user_sym.id
             and e.dst == profile_sym.id
         ]
@@ -3598,7 +3637,8 @@ end
 
         assoc_edges = [
             e for e in result.edges
-            if e.edge_type == "association"
+            if e.edge_type == "references"
+            and (e.meta or {}).get("ref_construct") == "association"
             and e.src == conv_sym.id
             and e.dst == msg_sym.id
         ]
@@ -3625,14 +3665,15 @@ end
 
         assoc_edges = [
             e for e in result.edges
-            if e.edge_type == "association"
+            if e.edge_type == "references"
+            and (e.meta or {}).get("ref_construct") == "association"
             and e.src == order_sym.id
         ]
         assert len(assoc_edges) == 1, (
             f"Expected unresolved association edge, got {len(assoc_edges)}"
         )
         assert "unresolved" in assoc_edges[0].dst
-        assert assoc_edges[0].confidence == 0.70
+        assert assoc_edges[0].confidence == 0.85
 
     def test_has_many_pluralization_ies(self, tmp_path: Path) -> None:
         """has_many :categories correctly singularizes to Category (ies → y)."""
@@ -3657,7 +3698,8 @@ end
 
         assoc_edges = [
             e for e in result.edges
-            if e.edge_type == "association"
+            if e.edge_type == "references"
+            and (e.meta or {}).get("ref_construct") == "association"
             and e.src == product_sym.id
             and e.dst == category_sym.id
         ]
@@ -3756,6 +3798,7 @@ end
         delegate_edges = [
             e for e in result.edges
             if e.edge_type == "references" and e.src == profile_sym.id
+            and (e.meta or {}).get("mechanism") == "delegate"
         ]
         assert len(delegate_edges) == 2, (
             f"Expected 2 delegates_to edges, got {len(delegate_edges)}"
@@ -3785,7 +3828,7 @@ end
         ]
         assert len(delegate_edges) == 1
         assert "unresolved" in delegate_edges[0].dst
-        assert delegate_edges[0].confidence == 0.65
+        assert delegate_edges[0].confidence == 0.85
 
     def test_delegate_to_class(self, tmp_path: Path) -> None:
         """delegate :name, to: :class is a valid pattern (delegates to class)."""
@@ -3841,7 +3884,7 @@ end
         assert len(delegate_edges) == 1
         assert "unresolved" in delegate_edges[0].dst
         assert "Account#nonexistent_method" in delegate_edges[0].dst
-        assert delegate_edges[0].confidence == 0.65
+        assert delegate_edges[0].confidence == 0.85
 
     def test_delegate_inside_method_ignored(self, tmp_path: Path) -> None:
         """delegate inside a method body should be ignored (only class-level)."""
@@ -5156,10 +5199,10 @@ class TestRubyStableShapeId:
 
 
 class TestRubyLinesOfCode:
-    """Tests for lines_of_code on Ruby symbols."""
+    """Tests for line_span on Ruby symbols."""
 
-    def test_class_lines_of_code(self, tmp_path: Path) -> None:
-        """Class symbols have lines_of_code set from span."""
+    def test_class_line_span(self, tmp_path: Path) -> None:
+        """Class symbols have line_span set from span."""
         from hypergumbo_lang_mainstream.ruby import analyze_ruby
 
         (tmp_path / "example.rb").write_text(
@@ -5171,7 +5214,7 @@ class TestRubyLinesOfCode:
         )
         result = analyze_ruby(tmp_path)
         cls = next(s for s in result.symbols if s.kind == "class")
-        assert cls.lines_of_code == 5
+        assert cls.line_span == 5
 
 
 class TestRubyIsExported:
@@ -5369,3 +5412,133 @@ class TestRubyCyclomaticComplexity:
         sym = next(s for s in result.symbols if s.name == "C.classy")
         assert sym.cyclomatic_complexity is not None
         assert sym.cyclomatic_complexity >= 2
+
+
+class TestRubyFieldVariableSymbols:
+    """WI-jusus: Ruby constants (class/module body -> kind='field'; top level ->
+    kind='variable'), attr_accessor/attr_reader/attr_writer attributes
+    (-> field), and class-body @@class variables (-> field). Members assigned
+    inside method bodies (instance variables, method-local constants) are
+    deferred in this slice, so no method-body scope walk is needed."""
+
+    @staticmethod
+    def _fields(result: object) -> dict:
+        return {s.name: s for s in result.symbols if s.kind == "field"}
+
+    @staticmethod
+    def _vars(result: object) -> dict:
+        return {s.name: s for s in result.symbols if s.kind == "variable"}
+
+    def test_toplevel_constant_is_variable(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+        (tmp_path / "a.rb").write_text("MAX_SIZE = 100\n")
+        vars_ = self._vars(analyze_ruby(tmp_path))
+        assert "MAX_SIZE" in vars_
+        assert vars_["MAX_SIZE"].is_exported is True
+
+    def test_class_constant_is_field(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+        (tmp_path / "a.rb").write_text('class User\n  ROLE = "admin"\nend\n')
+        fields = self._fields(analyze_ruby(tmp_path))
+        assert "User::ROLE" in fields
+        assert fields["User::ROLE"].is_exported is True
+
+    def test_module_constant_is_field(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+        (tmp_path / "a.rb").write_text('module Config\n  VERSION = "1.0"\nend\n')
+        fields = self._fields(analyze_ruby(tmp_path))
+        assert "Config::VERSION" in fields
+
+    def test_attr_accessor_reader_writer_fields(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+        (tmp_path / "a.rb").write_text(
+            "class User\n"
+            "  attr_accessor :name, :email\n"
+            "  attr_reader :id\n"
+            "  attr_writer :secret\n"
+            "end\n"
+        )
+        fields = self._fields(analyze_ruby(tmp_path))
+        assert "User#name" in fields
+        assert "User#email" in fields
+        assert "User#id" in fields
+        assert "User#secret" in fields
+        assert fields["User#name"].is_exported is True
+
+    def test_class_variable_is_field_not_exported(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+        (tmp_path / "a.rb").write_text("class Counter\n  @@count = 0\nend\n")
+        fields = self._fields(analyze_ruby(tmp_path))
+        assert "Counter::@@count" in fields
+        assert fields["Counter::@@count"].is_exported is False
+
+    def test_instance_var_in_method_deferred(self, tmp_path: Path) -> None:
+        """@ivars are assigned inside method bodies (the tricky attribute-to-
+        enclosing-class case) and are deferred in this slice — none emit."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+        (tmp_path / "a.rb").write_text(
+            "class User\n  def initialize\n    @created_at = Time.now\n  end\nend\n"
+        )
+        result = analyze_ruby(tmp_path)
+        assert not [s for s in result.symbols if s.kind in ("field", "variable")]
+
+    def test_method_local_constant_not_emitted(self, tmp_path: Path) -> None:
+        """A constant assigned inside a method body is method-scoped, not a
+        class-body member — it must not emit."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+        (tmp_path / "a.rb").write_text(
+            "class C\n  def build\n    local = 3\n    INNER = 1\n  end\nend\n"
+        )
+        result = analyze_ruby(tmp_path)
+        names = {s.name for s in result.symbols if s.kind in ("field", "variable")}
+        assert "local" not in names
+        assert "C::INNER" not in names and "INNER" not in names
+
+    def test_nested_class_constant_qualified_name(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+        (tmp_path / "a.rb").write_text(
+            "module App\n  class User\n    ROLE = 1\n  end\nend\n"
+        )
+        fields = self._fields(analyze_ruby(tmp_path))
+        assert "User::ROLE" in fields
+        assert fields["User::ROLE"].qualified_name == "App::User::ROLE"
+
+    def test_attr_accessor_in_method_deferred(self, tmp_path: Path) -> None:
+        """A dynamic attr_accessor call inside a method body is method-scoped —
+        it must not emit a class field (deferred like @ivars)."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+        (tmp_path / "a.rb").write_text(
+            "class C\n  def setup\n    attr_accessor :dynamic\n  end\nend\n"
+        )
+        fields = self._fields(analyze_ruby(tmp_path))
+        assert "C#dynamic" not in fields
+
+    def test_attr_accessor_at_top_level_skipped(self, tmp_path: Path) -> None:
+        """A top-level attr_accessor (no enclosing class/module) has no owner —
+        no field is emitted."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+        (tmp_path / "a.rb").write_text("attr_accessor :x\n")
+        result = analyze_ruby(tmp_path)
+        assert not [s for s in result.symbols if s.kind == "field"]
+
+    def test_register_symbol_skips_field_and_variable(self) -> None:
+        """The chokepoint: field/variable data anchors never enter the
+        call-resolution registry, so a same-named method stays the call target."""
+        from hypergumbo_core.ir import Symbol, Span
+        from hypergumbo_lang_mainstream.ruby import _analyzer
+
+        def _sym(name: str, kind: str) -> Symbol:
+            return Symbol(
+                id=f"ruby:/a.rb:1-1:{name}:{kind}", name=name, kind=kind,
+                language="ruby", path="/a.rb",
+                span=Span(start_line=1, end_line=1, start_col=0, end_col=0),
+                origin="test", origin_run_id="r",
+            )
+
+        registry: dict = {}
+        _analyzer.register_symbol(_sym("User#name", "field"), registry)
+        _analyzer.register_symbol(_sym("MAX", "variable"), registry)
+        assert registry == {}
+        _analyzer.register_symbol(_sym("greet", "method"), registry)
+        assert registry.get("greet") is not None
+        assert registry["greet"].kind == "method"

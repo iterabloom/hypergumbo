@@ -20,3 +20,18 @@
     description: "Layer-1 root-cause family from the connection sweep (connections-sweep 2026-06-08T1900Z). Members: WI-moriz, WI-bovoh, WI-davij, WI-dizir. Orphan members are reparented here; already-parented members are cross-linked (not_duplicate_of) to preserve their existing umbrella."  # 7d75
     fields:  # 7d75
       statement: "The spec_validator's validation_report must actually enumerate the cross-field/dangling/id-format defects present in the substrate it emits, not report zero violations while thousands are scannable."  # 7d75
+- op: update  # 6329
+  at: '2026-07-19T22:18:13Z'  # 6329
+  by: agent  # 6329
+  actor: jgstern_agent  # 6329
+  clock: 2  # 6329
+  nonce: '6329'  # 6329
+  set:  # 6329
+    status: satisfied  # 6329
+- op: discuss  # 8f51
+  at: '2026-07-19T22:18:13Z'  # 8f51
+  by: agent  # 8f51
+  actor: jgstern_agent  # 8f51
+  clock: 3  # 8f51
+  nonce: 8f51  # 8f51
+  message: "SATISFIED (META-jalur gate-5 crush, 2026-07-19). Full drain: all 4 members resolved (WI-moriz/WI-bovoh/WI-davij/WI-dizir done). MECHANISM: validation_report is built at the finalize chokepoint — sub-step 10 (_finalize_referential_integrity -> validate_ir: axis/writer-contract/cross-field/verdict-enum/id-format/stable-id/round-trip + ADR-0037 is_resolved<->dst FK + validator:F2 origin_run_id FK) runs STRUCTURALLY LAST (R3) over the committed substrate, so the report validates exactly what serializes. BEHAVIORAL EVIDENCE (fresh self-survey, corpus scale 40282 nodes/136269 edges/89 ARs, schema 0.14.6): validation_report ENUMERATES real defects — 7 violations (cross_field=6, id_format=1), sum(violations_by_class)==len(violations)==7 (counts consistent). This is the DIRECT non-reproduction of the filed repro (WI-moriz: 'violations_by_class all=0 despite thousands scannable') — the checks are now wired and the report is populated, NOT a false all-clear. PRODUCTION-PATH TEST: test_finalize_roundtrip.py::test_validation_report_well_formed (green, 61-test closure set passing)."  # 8f51

@@ -148,6 +148,22 @@ class TestCSharpSymbolExtraction:
         interface_names = {s.name for s in interface_symbols}
         assert "IShape" in interface_names
 
+    def test_body_bearing_symbols_get_shape_id(self, csharp_repo: Path) -> None:
+        """WI-lutob: C#'s ``analyze()`` override bypasses the base-class
+        shape_id auto-stamp loop, so body-bearing symbols (method / class /
+        …) shipped ``shape_id=None`` — the structural-clone key (ADR-0014 §1)
+        the spec marks done for C# silently did not exist. They must now carry
+        a well-formed shape_id computed from the tracked CST node."""
+        result = analyze_csharp(csharp_repo)
+        body_bearing = [
+            s for s in result.symbols if s.kind in ("method", "class")
+        ]
+        assert body_bearing, "expected some body-bearing C# symbols"
+        missing = [(s.kind, s.name) for s in body_bearing if s.shape_id is None]
+        assert not missing, f"C# body-bearing symbols with shape_id=None: {missing}"
+        for s in body_bearing:
+            assert s.shape_id.startswith("sha256:"), s.shape_id
+
     def test_extracts_structs(self, csharp_repo: Path) -> None:
         """Should extract struct declarations."""
         result = analyze_csharp(csharp_repo)
@@ -365,8 +381,11 @@ public class User : IEntity {
         assert implements_edges[0].src == user.id
         assert implements_edges[0].dst == entity.id
 
-    def test_no_edge_for_external_base_class(self, tmp_path: Path) -> None:
-        """No edge created when base class is not in analyzed codebase."""
+    def test_external_base_class_emits_unresolved_extends(self, tmp_path: Path) -> None:
+        """WI-jubag Approach C: an external C# base class (``Controller``, not in
+        the analyzed codebase) now emits an unresolved-external ``extends`` edge
+        from the core inheritance-linker chokepoint instead of dropping — C# is
+        one of the OO languages the chokepoint generalization sweeps in."""
         from hypergumbo_lang_mainstream.csharp import analyze_csharp
         from hypergumbo_core.linkers.inheritance import link_inheritance
         from hypergumbo_core.linkers.registry import LinkerContext
@@ -389,9 +408,14 @@ public class UserController : Controller {
         assert controller.meta is not None
         assert controller.meta.get("base_classes") == ["Controller"]
 
-        # No edges (Controller is external)
+        # Controller is external -> an unresolved-external extends edge (was: dropped).
         extends_edges = [e for e in linker_result.edges if e.edge_type in ("extends", "implements")]
-        assert len(extends_edges) == 0
+        assert len(extends_edges) == 1
+        e = extends_edges[0]
+        assert e.edge_type == "extends"
+        assert e.dst == "csharp:external:0-0:Controller:unresolved"
+        assert e.is_resolved is False
+        assert e.dst_ref is None
 
 
 class TestCSharpEdgeExtraction:
@@ -1138,6 +1162,51 @@ class TestCSharpSpecialCases:
         properties = [s for s in result.symbols if s.kind == "property"]
         assert len(properties) >= 2
 
+    def test_user_typed_property_uses_member_name_not_type_name(
+        self, tmp_path: Path
+    ) -> None:
+        """A property whose declared type is a user-defined type must emit a
+        symbol named after the property MEMBER, not after its type.
+
+        Regression: ``extract_name_from_declaration`` grabbed the first
+        ``identifier`` child, but in a C# ``property_declaration`` a user-typed
+        return type (``WaveInfo``, ``FeatureConfig``) is itself an ``identifier``
+        that PRECEDES the property-name identifier. So ``public WaveInfo Info``
+        was misnamed ``C.WaveInfo``, and two same-typed properties collapsed to
+        one entry in ``symbol_by_name``. Predefined/array/generic types are not
+        ``identifier`` nodes, so they were unaffected — masking the bug.
+        """
+        (tmp_path / "Config.cs").write_text(
+            """namespace N
+{
+    public class C
+    {
+        public WaveInfo Info => _info;            // expr-bodied, user type
+        public FeatureConfig Feat { get; set; }   // auto-property, user type
+        public FeatureConfig Other { get; set; }  // same type, distinct member
+        public int Plain { get; set; }            // predefined type (control)
+    }
+}
+"""
+        )
+
+        result = analyze_csharp(tmp_path)
+        props = [s for s in result.symbols if s.kind == "property"]
+        prop_names = {s.name for s in props}
+
+        # Member names — not type names.
+        assert "C.Info" in prop_names
+        assert "C.Feat" in prop_names
+        assert "C.Other" in prop_names  # same-typed sibling not collapsed
+        assert "C.Plain" in prop_names  # predefined-type control still correct
+        # The declared TYPE must never leak into the property symbol name.
+        assert "C.WaveInfo" not in prop_names
+        assert "C.FeatureConfig" not in prop_names
+        # qualified_name must also carry the member, not the type.
+        assert {"N.C.Info", "N.C.Feat", "N.C.Other"} <= {
+            s.qualified_name for s in props
+        }
+
     def test_handles_static_classes(self, tmp_path: Path) -> None:
         """Should handle static class declarations."""
         (tmp_path / "Utils.cs").write_text(
@@ -1272,6 +1341,109 @@ public class Factory
             if "Factory.Create" in e.src and "Product" in e.dst
         ]
         assert len(same_file_creates) >= 1
+
+    def test_cross_file_instantiation_targets_constructor(
+        self, tmp_path: Path
+    ) -> None:
+        """WI-fagit: ``new X(...)`` from another file must land its
+        ``instantiates`` edge on X's CONSTRUCTOR node, not the class node.
+
+        The class node conflates 'referenced as a type' with 'instantiated'; a
+        reverse-slice seeded on the constructor ('who constructs this?') found 0
+        callers because cross-file instantiations resolved to the class via
+        ``resolver.lookup`` (csharp.py) rather than the ctor.
+        """
+        (tmp_path / "WaveReader.cs").write_text(
+            """namespace N
+{
+    public class WaveReader
+    {
+        public WaveReader(string path) { }
+    }
+}
+"""
+        )
+        (tmp_path / "Consumer.cs").write_text(
+            """namespace N
+{
+    public class Consumer
+    {
+        public void Load()
+        {
+            var r = new WaveReader("a.wav");
+        }
+    }
+}
+"""
+        )
+
+        result = analyze_csharp(tmp_path)
+        by_id = {s.id: s for s in result.symbols}
+        inst = [e for e in result.edges if e.edge_type == "instantiates"]
+        assert len(inst) == 1
+        dst = by_id[inst[0].dst]
+        assert dst.kind == "constructor"
+        assert dst.name == "WaveReader.WaveReader"
+
+    def test_same_file_instantiation_targets_constructor(
+        self, tmp_path: Path
+    ) -> None:
+        """Same-file ``new X(...)`` also lands on the constructor when X has an
+        explicit ctor (previously relied on symbol_by_name shadowing; now
+        resolved explicitly via the ``X.X`` key)."""
+        (tmp_path / "S.cs").write_text(
+            """namespace N
+{
+    public class Foo
+    {
+        public Foo(int x) { }
+    }
+
+    public class Bar
+    {
+        public void M()
+        {
+            var f = new Foo(1);
+        }
+    }
+}
+"""
+        )
+
+        result = analyze_csharp(tmp_path)
+        by_id = {s.id: s for s in result.symbols}
+        inst = [e for e in result.edges if e.edge_type == "instantiates"]
+        assert len(inst) == 1
+        assert by_id[inst[0].dst].kind == "constructor"
+
+    def test_instantiation_without_explicit_ctor_targets_class(
+        self, tmp_path: Path
+    ) -> None:
+        """A class with no explicit constructor has no ctor node, so the
+        ``instantiates`` edge correctly falls back to the class node."""
+        (tmp_path / "Plain.cs").write_text(
+            """namespace N { public class Plain { } }
+"""
+        )
+        (tmp_path / "User.cs").write_text(
+            """namespace N
+{
+    public class User
+    {
+        public void M()
+        {
+            var p = new Plain();
+        }
+    }
+}
+"""
+        )
+
+        result = analyze_csharp(tmp_path)
+        by_id = {s.id: s for s in result.symbols}
+        inst = [e for e in result.edges if e.edge_type == "instantiates"]
+        assert len(inst) == 1
+        assert by_id[inst[0].dst].kind == "class"
 
     def test_direct_function_call(self, tmp_path: Path) -> None:
         """Should handle direct function calls without member access."""
@@ -2149,10 +2321,10 @@ class TestCSharpMethodGroupReferences:
 
 
 class TestCsharpLinesOfCode:
-    """Tests for lines_of_code on C# symbols."""
+    """Tests for line_span on C# symbols."""
 
-    def test_class_lines_of_code(self, tmp_path: Path) -> None:
-        """Class symbols have lines_of_code set from span."""
+    def test_class_line_span(self, tmp_path: Path) -> None:
+        """Class symbols have line_span set from span."""
         from hypergumbo_lang_mainstream.csharp import analyze_csharp
 
         (tmp_path / "Foo.cs").write_text(
@@ -2164,7 +2336,7 @@ class TestCsharpLinesOfCode:
         )
         result = analyze_csharp(tmp_path)
         cls = next(s for s in result.symbols if s.name == "Foo")
-        assert cls.lines_of_code == 5
+        assert cls.line_span == 5
 
 
 class TestCsharpIsExported:
@@ -2300,3 +2472,226 @@ class TestCSharpCyclomaticComplexity:
         assert ctor.cyclomatic_complexity == 1
         assert branchy.cyclomatic_complexity is not None
         assert branchy.cyclomatic_complexity >= 4
+
+
+class TestStampShapeIds:
+    """WI-lutob: unit coverage for the ``_stamp_shape_ids`` guard branches."""
+
+    def _sym(self, sid: str, shape_id=None):
+        from hypergumbo_core.ir import Symbol, Span
+        return Symbol(
+            id=sid, name="X", kind="class", language="csharp", path="a.cs",
+            span=Span(start_line=1, end_line=1, start_col=0, end_col=0),
+            shape_id=shape_id,
+        )
+
+    def test_empty_node_for_symbol_is_a_noop(self):
+        """No tracked nodes → early return (nothing to stamp)."""
+        from types import SimpleNamespace
+        from hypergumbo_lang_mainstream.csharp import _stamp_shape_ids
+
+        _stamp_shape_ids(
+            object(), SimpleNamespace(node_for_symbol={}, symbols=[]),
+        )  # must not raise
+
+    def test_skips_missing_symbol_and_preserves_existing_shape_id(self):
+        """A node_for_symbol id absent from symbols (sym is None) is skipped,
+        and a symbol that already has a shape_id is never clobbered — so the
+        analyzer's compute_shape_id is never reached (object() as analyzer)."""
+        from types import SimpleNamespace
+        from hypergumbo_lang_mainstream.csharp import _stamp_shape_ids
+
+        existing = self._sym("keep", shape_id="sha256:preexisting")
+        analysis = SimpleNamespace(
+            node_for_symbol={"keep": object(), "absent": object()},
+            symbols=[existing],
+        )
+        _stamp_shape_ids(object(), analysis)
+        assert existing.shape_id == "sha256:preexisting"
+
+
+class TestCSharpBareMethodMagnetGate:
+    """INV-fahub: a BARE call must not confidently bind to an unrelated
+    class's same-named method via a weak short-name suffix match.
+
+    The fallback simple-name resolver path (``resolver.lookup(callee_name)``)
+    is the magnet: dozens of bare call sites collapse onto one arbitrary
+    ``Owner.method`` def. The gate defers such a cross-class suffix match to
+    the inherited_calls Site-1 walker by emitting an unresolved edge that
+    carries ``meta.enclosing_class`` — while still binding implicit-``this``
+    (same enclosing class, incl. cross-file ``partial`` halves) and non-method
+    targets directly.
+    """
+
+    def test_bare_cross_class_method_is_withheld_not_bound(
+        self, tmp_path: Path
+    ) -> None:
+        """A bare ``ComputeMagnet()`` in Alpha must NOT resolve to the
+        unrelated Bravo.ComputeMagnet (only reachable by a weak suffix match).
+        Instead an unresolved edge stamped with enclosing_class=Alpha is
+        emitted for the Site-1 walker to (maybe) recover later."""
+        (tmp_path / "Alpha.cs").write_text("""
+public class Alpha {
+    public void Run() {
+        ComputeMagnet();
+    }
+}
+""")
+        (tmp_path / "Bravo.cs").write_text("""
+public class Bravo {
+    public void ComputeMagnet() { }
+}
+""")
+
+        result = analyze_csharp(tmp_path)
+
+        run_method = next(
+            (s for s in result.symbols if s.name == "Alpha.Run"), None
+        )
+        bravo_method = next(
+            (s for s in result.symbols if s.name == "Bravo.ComputeMagnet"),
+            None,
+        )
+        assert run_method is not None
+        assert bravo_method is not None
+
+        # No resolved calls edge may bind Alpha.Run -> Bravo.ComputeMagnet.
+        misbind = next(
+            (
+                e
+                for e in result.edges
+                if e.src == run_method.id
+                and e.dst == bravo_method.id
+                and e.edge_type == "calls"
+            ),
+            None,
+        )
+        assert misbind is None, (
+            "Bare cross-class call must not bind to the magnet method; "
+            f"got {misbind}"
+        )
+
+        # Instead, an unresolved calls edge carrying enclosing_class=Alpha.
+        deferred = next(
+            (
+                e
+                for e in result.edges
+                if e.src == run_method.id
+                and e.edge_type == "calls"
+                and e.is_resolved is False
+                and "ComputeMagnet" in e.dst
+            ),
+            None,
+        )
+        assert deferred is not None, (
+            "Expected an unresolved (deferred) edge for the bare call. "
+            f"Edges from Run: {[e for e in result.edges if e.src == run_method.id]}"
+        )
+        assert deferred.meta is not None
+        assert deferred.meta.get("enclosing_class") == "Alpha"
+
+    def test_bare_same_class_method_still_resolves_via_partial(
+        self, tmp_path: Path
+    ) -> None:
+        """A bare implicit-``this`` call to a same-class method defined in the
+        OTHER half of a ``partial class`` still binds resolved through the
+        resolver path (owner == enclosing_type => defer returns False)."""
+        (tmp_path / "WidgetA.cs").write_text("""
+public partial class Widget {
+    public void Run() {
+        ConfigureThing();
+    }
+}
+""")
+        (tmp_path / "WidgetB.cs").write_text("""
+public partial class Widget {
+    public void ConfigureThing() { }
+}
+""")
+
+        result = analyze_csharp(tmp_path)
+
+        run_method = next(
+            (s for s in result.symbols if s.name == "Widget.Run"), None
+        )
+        cfg_method = next(
+            (s for s in result.symbols if s.name == "Widget.ConfigureThing"),
+            None,
+        )
+        assert run_method is not None
+        assert cfg_method is not None
+
+        call_edge = next(
+            (
+                e
+                for e in result.edges
+                if e.src == run_method.id
+                and e.dst == cfg_method.id
+                and e.edge_type == "calls"
+            ),
+            None,
+        )
+        assert call_edge is not None, (
+            "Same-class bare call (partial class) must still resolve. "
+            f"Edges from Run: {[e for e in result.edges if e.src == run_method.id]}"
+        )
+        assert call_edge.is_resolved is True
+
+    def test_deferred_bare_call_carries_import_hint_ref(
+        self, tmp_path: Path
+    ) -> None:
+        """A withheld bare magnet whose short name matches a ``using`` alias
+        carries that alias as the unresolved edge's structured module ref —
+        exercising the ``import_hint`` -> ``ExternalRef`` branch of the gate."""
+        (tmp_path / "Alpha.cs").write_text("""
+using Beta.ComputeMagnet;
+
+public class Alpha {
+    public void Run() {
+        ComputeMagnet();
+    }
+}
+""")
+        (tmp_path / "Bravo.cs").write_text("""
+public class Bravo {
+    public void ComputeMagnet() { }
+}
+""")
+
+        result = analyze_csharp(tmp_path)
+
+        run_method = next(
+            (s for s in result.symbols if s.name == "Alpha.Run"), None
+        )
+        bravo_method = next(
+            (s for s in result.symbols if s.name == "Bravo.ComputeMagnet"),
+            None,
+        )
+        assert run_method is not None
+        assert bravo_method is not None
+
+        # Still withheld (not bound to the unrelated Bravo.ComputeMagnet).
+        assert not any(
+            e.src == run_method.id
+            and e.dst == bravo_method.id
+            and e.edge_type == "calls"
+            for e in result.edges
+        )
+
+        deferred = next(
+            (
+                e
+                for e in result.edges
+                if e.src == run_method.id
+                and e.edge_type == "calls"
+                and e.is_resolved is False
+                and "ComputeMagnet" in e.dst
+            ),
+            None,
+        )
+        assert deferred is not None
+        assert deferred.meta is not None
+        assert deferred.meta.get("enclosing_class") == "Alpha"
+        # import_hint -> structured ExternalRef with the using-alias path.
+        assert deferred.dst_ref is not None
+        assert deferred.dst_ref.module_path == "Beta.ComputeMagnet"

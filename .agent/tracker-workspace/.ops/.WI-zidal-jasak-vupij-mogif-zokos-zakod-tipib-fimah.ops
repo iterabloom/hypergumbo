@@ -20,3 +20,36 @@
     pr_ref:  # 8f80
     description: "**Defect.** Python `variable`-kind nodes never receive `shape_id` while the same kind gets one under the tree-sitter path — an analyzer-parity gap.\n\n**Mechanic.** py.py:_compute_shape_id(node) is typed `ast.FunctionDef | ast.ClassDef` and is only called at 3 callsites (py.py:2342/2431/2555), all function/class/method construction. Python variable symbols (module-level constants) are constructed without a shape_id and default to None. The tree-sitter generic CST shape-walker does compute shape_id for variables.\n\n**Scope.** Symbol shape_id field, variable kind. On the substrate: variable 1 present / 1609 None (99.9% None). The single populated variable shape_id is a Go fixture variable (go:tests/fixtures/.../go/main.go:23-23:MyVar:variable, sha256:c2db5319...); all 1609 Python variable nodes (real module constants like ir.py:52:PASS_VERSION, discovery.py:393-464:DEFAULT_EXCLUDES) are None. By contrast method 18385/2, class 4461/1, function 6974/143. Reproduced on a fresh /tmp run: Python consts get shape_id=None, Python function gets a populated shape_id.\n\n**Expectation.** Either Python variable symbols carry a shape_id like the tree-sitter path produces for the same kind, or the spec documents an explicit cross-analyzer carve-out.\n\n**Fix.** Extend the Python analyzer to compute shape_id for variable Symbols (or document a cross-analyzer carve-out).\n\n**Consequence.** Zero structural grouping for Python variables, and the two analyzers silently disagree on whether a variable has a structural fingerprint — cross-language clustering or change-tracking on variables is unreliable.\n\n**Cross-refs.** Distinct from WI-jusus (TS/non-py-go analyzers emit ZERO variable/field symbols — there the node does not exist at all; here the Python variable node exists but lacks shape_id) and from WI-lisog (fingerprint null/format drift, a different identity field). Adjacent to WI-rihob / the structural-kind-null shape_id theme."  # 8f80
     fields: {}  # 8f80
+- op: update  # f3da
+  at: '2026-07-09T01:51:51Z'  # f3da
+  by: agent  # f3da
+  actor: jgstern_agent  # f3da
+  clock: 2  # f3da
+  nonce: f3da  # f3da
+  set: {}  # f3da
+  add:  # f3da
+    tags: [wave5]  # f3da
+- op: discuss  # ef49
+  at: '2026-07-09T01:51:51Z'  # ef49
+  by: agent  # ef49
+  actor: jgstern_agent  # ef49
+  clock: 3  # ef49
+  nonce: ef49  # ef49
+  message: "Wave-5 sweep (2026-07-08): identity:F5 shape_id parity residual (Python variable-kind never gets shape_id while Go variable does). Empty isbefore -> terminal wave. Also a strategy-doc load-bearing item (per-(kind,field) coverage is emergent per code path)."  # ef49
+- op: update  # 2036
+  at: '2026-07-15T21:18:08Z'  # 2036
+  by: agent  # 2036
+  actor: jgstern_agent  # 2036
+  clock: 4  # 2036
+  nonce: '2036'  # 2036
+  set:  # 2036
+    status: wont_do  # 2036
+  add:  # 2036
+    duplicate_of: [WI-luzut-jolad-juzoj-kapov-ribon-rifag-basud-dotat]  # 2036
+- op: discuss  # 0d12
+  at: '2026-07-15T21:18:08Z'  # 0d12
+  by: agent  # 0d12
+  actor: jgstern_agent  # 0d12
+  clock: 5  # 0d12
+  nonce: 0d12  # 0d12
+  message: "TRUE_DUPLICATE of WI-luzut (identity concept-audit triage, 2026-07-15). Same root cause and measurement: Python variable-kind nodes carry shape_id=null (1854/1854 on v5) because py.py:1678 _compute_shape_id is typed FunctionDef|ClassDef-only. WI-luzut is the canonical row (P2, earlier). This item's Go-parity evidence (go/swift variable shape_id populated 2/2, 1/1) folded onto WI-luzut."  # 0d12

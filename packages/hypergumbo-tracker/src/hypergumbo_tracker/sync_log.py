@@ -24,6 +24,7 @@ import sys
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from typing import TextIO
 
 # How long to keep log files before garbage collection.
 RETENTION_DAYS = 30
@@ -33,7 +34,7 @@ RETENTION_DAYS = 30
 _LOG_FILENAME_RE = re.compile(r"^sync-(\d{4}-\d{2}-\d{2})\.log$")
 
 # Module-level state: the open log file handle and its path.
-_log_file_handle: object | None = None  # typing as object to avoid IO type complexity
+_log_file_handle: TextIO | None = None  # text-mode handle from open(..., "a")
 _log_dir: Path | None = None
 
 
@@ -157,8 +158,8 @@ def write_log(msg: str) -> None:
         _log_file_handle, "closed", True
     ):
         try:
-            _log_file_handle.write(formatted + "\n")  # type: ignore[union-attr]
-            _log_file_handle.flush()  # type: ignore[union-attr]
+            _log_file_handle.write(formatted + "\n")
+            _log_file_handle.flush()
         except OSError:
             pass  # Best-effort — don't crash sync because of log I/O.
 
@@ -168,7 +169,7 @@ def _close_log() -> None:
     global _log_file_handle
     if _log_file_handle is not None:
         try:
-            _log_file_handle.close()  # type: ignore[union-attr]
+            _log_file_handle.close()
         except OSError:
             pass
         _log_file_handle = None

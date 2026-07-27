@@ -80,7 +80,9 @@ from hypergumbo_core.symbol_resolution import NameResolver, ListNameResolver
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     TreeSitterAnalyzer,
+    defer_bare_method_call,
     emit_module_attribute_refs,
+    make_unresolved_edge,
     populate_docstrings_from_tree,
     find_child_by_field,
     iter_tree,
@@ -88,6 +90,7 @@ from hypergumbo_core.analyze.base import (
     make_file_stable_id,
     make_route_stable_id,
     make_typed_stable_id,
+    make_variable_stable_id,
     node_text as _node_text,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
@@ -109,8 +112,16 @@ _df_config = get_dataflow_config("javascript")
 def find_js_ts_files(
     repo_root: Path, max_files: int | None = None
 ) -> Iterator[Path]:
-    """Yield all JS/TS files in the repository, excluding common non-source dirs."""
-    yield from find_files(repo_root, ["*.js", "*.jsx", "*.ts", "*.tsx"], max_files=max_files)
+    """Yield all JS/TS files in the repository, excluding common non-source dirs.
+
+    Includes the module-variant extensions ``.mjs``/``.cjs`` (ES-module /
+    CommonJS JavaScript) and ``.mts``/``.cts`` (their TypeScript counterparts);
+    omitting them left whole CommonJS service files undiscovered (WI-zavad)."""
+    yield from find_files(
+        repo_root,
+        ["*.js", "*.jsx", "*.ts", "*.tsx", "*.mjs", "*.cjs", "*.mts", "*.cts"],
+        max_files=max_files,
+    )
 
 
 def find_svelte_files(
@@ -246,7 +257,10 @@ class JstsTreeSitterAnalyzer(TreeSitterAnalyzer):
     """
 
     lang = "javascript"
-    file_patterns: ClassVar[list[str]] = ["*.js", "*.jsx", "*.ts", "*.tsx", "*.svelte", "*.vue"]
+    file_patterns: ClassVar[list[str]] = [
+        "*.js", "*.jsx", "*.ts", "*.tsx", "*.mjs", "*.cjs", "*.mts", "*.cts",
+        "*.svelte", "*.vue",
+    ]
     grammar_module = "tree_sitter_javascript"
 
     def analyze(self, repo_root: Path, max_files: int | None = None) -> AnalysisResult:
@@ -301,9 +315,12 @@ def _make_symbol_id(path: str, start_line: int, end_line: int, name: str, kind: 
 
 
 def _get_language_for_file(file_path: Path) -> str:
-    """Determine language based on file extension."""
+    """Determine language based on file extension.
+
+    ``.mts``/``.cts`` are TypeScript (ES-module / CommonJS variants);
+    ``.mjs``/``.cjs`` fall through to JavaScript like ``.js``."""
     suffix = file_path.suffix.lower()
-    if suffix in (".ts", ".tsx"):
+    if suffix in (".ts", ".tsx", ".mts", ".cts"):
         return "typescript"
     return "javascript"
 
@@ -319,7 +336,7 @@ def _get_parser_for_file(file_path: Path) -> Optional["tree_sitter.Parser"]:
     suffix = file_path.suffix.lower()
     parser = tree_sitter.Parser()
 
-    if suffix in (".ts", ".tsx"):
+    if suffix in (".ts", ".tsx", ".mts", ".cts"):
         try:
             import tree_sitter_typescript
 
@@ -348,18 +365,58 @@ def _normalize_import_module_hint(module: str) -> str:
     becomes the bare module name expected by the I/O catalog
     (``fs``, ``child_process``, ``axios``).
 
+    URL imports (``https://cdn/x``) and Deno specifiers (``npm:lit``,
+    ``jsr:@std/foo``) carry their own ``:`` which would inject extra segments
+    into the colon-delimited symbol ID, so their scheme is stripped and any
+    residual ``:`` (e.g. a URL port) is sanitised to ``_``.
+
     Examples:
         node:fs           -> fs
         node:child_process -> child_process
+        npm:lit@3         -> lit@3
+        jsr:@std/foo      -> @std/foo
+        https://cdn/x     -> cdn/x
         ./utils           -> utils
         ../helpers/git    -> helpers/git
         @scope/pkg        -> @scope/pkg (unchanged)
     """
-    if module.startswith("node:"):
-        return module[5:]
+    for prefix in ("https://", "http://", "node:", "npm:", "jsr:"):
+        if module.startswith(prefix):
+            module = module[len(prefix):]
+            break
     while module.startswith("./") or module.startswith("../"):
         module = module[2:] if module.startswith("./") else module[3:]
-    return module
+    # Any residual ``:`` (URL port, deep deno specifier) would break the
+    # colon-delimited symbol-id grammar (lang:module:span:name:kind).
+    return module.replace(":", "_")
+
+
+def _require_module_string(
+    call_node: "tree_sitter.Node", source: bytes
+) -> str | None:
+    """Module string of a ``require('<literal>')`` call expression, else None.
+
+    Mirrors the require-detection in :func:`_extract_edges`: the callee must be
+    the bare identifier ``require`` and the first argument a string literal.
+    Returns None for non-require calls (e.g. ``compute(x)``, ``obj.load(x)``)
+    and for dynamic ``require(name)`` (no string literal), so a non-module
+    binding never masquerades as a CommonJS import alias.
+    """
+    func_node = None
+    args_node = None
+    for child in call_node.children:
+        if child.type in ("identifier", "member_expression"):
+            func_node = child
+        elif child.type == "arguments":
+            args_node = child
+    if func_node is None or func_node.type != "identifier":
+        return None
+    if _node_text(func_node, source) != "require" or args_node is None:
+        return None
+    for arg in args_node.children:
+        if arg.type == "string":
+            return _node_text(arg, source).strip("'\"")
+    return None
 
 
 def _extract_namespace_imports(
@@ -371,6 +428,7 @@ def _extract_namespace_imports(
     Tracks:
     - import * as alias from 'module' -> alias: module
     - import alias from 'module' (default import) -> alias: module
+    - CommonJS ``const alias = require('module')`` -> alias: module (WI-zavad)
 
     Returns dict mapping alias -> module name.
     """
@@ -400,6 +458,33 @@ def _extract_namespace_imports(
 
         if module_name and alias:
             namespace_imports[alias] = module_name
+
+    # CommonJS default-style binding: ``const fs = require('fs')`` /
+    # ``var http = require('http')`` binds a module to a name exactly like an
+    # ESM default/namespace import (WI-zavad). Registering it here lets member
+    # calls (``fs.readFileSync()``) route through the same namespace resolution
+    # (Case 2 / WI-vurop) in _extract_edges instead of vanishing — the gap that
+    # left CommonJS Node I/O invisible to the io-boundaries layer.
+    for node in iter_tree(tree.root_node):
+        if node.type != "variable_declarator":
+            continue
+        name_node = None
+        value_node = None
+        for child in node.children:
+            if child.type in ("identifier", "object_pattern") and name_node is None:
+                name_node = child
+            elif child.type == "call_expression":
+                value_node = child
+        if value_node is None:
+            continue
+        module = _require_module_string(value_node, source)
+        if module is None:
+            continue
+        # Destructuring (``const { x } = require(...)``) is a *named* import,
+        # handled by _extract_named_imports; only a plain identifier name binds
+        # the whole module as a namespace alias.
+        if name_node is not None and name_node.type == "identifier":
+            namespace_imports[_node_text(name_node, source)] = module
 
     return namespace_imports
 
@@ -466,6 +551,46 @@ def _extract_named_imports(
             for local_name, original_name in import_pairs:
                 named_imports[local_name] = module_name
                 named_import_originals[local_name] = original_name
+
+    # CommonJS destructuring: ``const { exec, spawn: sp } = require('cp')``
+    # binds named exports exactly like ``import { exec, spawn as sp } from 'cp'``
+    # (WI-zavad). Registering these lets a bare call (``exec()``) route through
+    # the WI-banaf unresolved-named-import path in _extract_edges. The aliased
+    # form preserves the canonical export name (``spawn``) over the local alias
+    # (``sp``) — io-boundary catalogs key on the canonical name (cf. WI-kujom).
+    for node in iter_tree(tree.root_node):
+        if node.type != "variable_declarator":
+            continue
+        pattern_node = None
+        value_node = None
+        for child in node.children:
+            if child.type == "object_pattern" and pattern_node is None:
+                pattern_node = child
+            elif child.type == "call_expression":
+                value_node = child
+        if pattern_node is None or value_node is None:
+            continue
+        module = _require_module_string(value_node, source)
+        if module is None:
+            continue
+        for spec in pattern_node.children:
+            if spec.type == "shorthand_property_identifier_pattern":
+                local = _node_text(spec, source)
+                named_imports[local] = module
+                named_import_originals[local] = local
+            elif spec.type == "pair_pattern":
+                # ``{ readFile: rf }`` -> property_identifier (original) then
+                # identifier (local alias).
+                key_name = None
+                local_name = None
+                for sc in spec.children:
+                    if sc.type == "property_identifier":
+                        key_name = _node_text(sc, source)
+                    elif sc.type == "identifier":
+                        local_name = _node_text(sc, source)
+                if key_name is not None and local_name is not None:
+                    named_imports[local_name] = module
+                    named_import_originals[local_name] = key_name
 
     return named_imports, named_import_originals
 
@@ -649,6 +774,18 @@ JS_KNOWN_GLOBALS: frozenset[str] = frozenset({
     "navigator",      # net_send / env_read (sendBeacon, userAgent, geolocation)
     "window",         # net_send / env_read (fetch, location, navigator, screen)
     "Deno",           # Deno runtime (readFile, writeFile, connect, listen, ...)
+    "caches",         # Service Worker CacheStorage (open, match, has, keys)
+    "indexedDB",      # Browser IndexedDB (open, databases)
+})
+
+# Bare global functions (called as ``fn(...)``, not ``obj.fn(...)``) that the
+# io-boundary catalog recognises. ``fetch`` is the global network primitive
+# (Node 18+ and browsers); unlike the JS_KNOWN_GLOBALS member receivers it is
+# invoked directly, so it needs its own emission path. Resolution to an
+# intra-repo or imported ``fetch`` takes precedence — only a truly-global bare
+# ``fetch()`` reaches this set (WI-zavad / emission-parity F2).
+JS_KNOWN_GLOBAL_CALLS: frozenset[str] = frozenset({
+    "fetch",          # net_send (catalog: module fetch, functions [fetch])
 })
 
 # HTTP methods recognized as route handlers (Express, Fastify, Koa, etc.)
@@ -692,7 +829,17 @@ def _extract_jsts_signature(
             # Single parameter without parens: x => x
             params_node = _find_child_by_field(node, "parameter")
         return_type_node = _find_child_by_field(node, "return_type")
-    elif node.type in ("method_definition", "function"):
+    elif node.type in (
+        "method_definition", "function", "function_expression",
+        "generator_function_declaration", "generator_function",
+    ):
+        # ``function`` / ``function_expression`` cover both anonymous and named
+        # function expressions used as values — e.g. Express route handlers
+        # ``app.get('/x', function h(req, res) {})`` (INV-golap route-handler gap).
+        # ``generator_function_declaration`` (``function* g() {}``) and
+        # ``generator_function`` (``const g = function*() {}``) reach signature
+        # parity via the same ``parameters``/``return_type`` fields (WI-zavad
+        # named function-node slice).
         params_node = _find_child_by_field(node, "parameters")
         return_type_node = _find_child_by_field(node, "return_type")
     else:
@@ -801,7 +948,13 @@ def _extract_param_types(
 
     # Find parameters node - structure varies by function type
     params_node = None
-    if node.type == "function_declaration":
+    if node.type in (
+        "function_declaration",
+        "generator_function_declaration",
+        "generator_function",
+    ):
+        # WI-zavad: typed params of generators feed method-call resolution in
+        # the generator body (parity with ``function_declaration``).
         params_node = _find_child_by_field(node, "parameters")
     elif node.type == "arrow_function":
         params_node = _find_child_by_field(node, "parameters")
@@ -968,6 +1121,9 @@ def _detect_jsx_route(
     else:
         return None, None  # pragma: no cover - only called for JSX node types
 
+    # tag_node is non-None on every reachable path above (self-closing → node;
+    # jsx_element → the guarded opening tag); narrow it for the .children scans.
+    assert tag_node is not None
     # Check the tag name is "Route"
     tag_name = None
     for child in tag_node.children:
@@ -1391,7 +1547,10 @@ def _find_route_handler_in_call(
 
             # Check for inline function handlers first (anywhere in args)
             for arg in args:
-                if arg.type == "function_expression" or arg.type == "function":
+                # ``generator_function`` covers Koa-v1-style generator handlers
+                # (``app.use(function*(){})``) — WI-zavad parity so an inline
+                # generator route handler is not silently dropped.
+                if arg.type in ("function_expression", "function", "generator_function"):
                     return arg, None, False
                 if arg.type == "arrow_function":
                     return arg, None, False
@@ -1823,7 +1982,7 @@ def _extract_nextjs_usage_contexts(
         for child in node.children:
             if child.type == "default":
                 is_default = True
-            elif child.type == "function_declaration":
+            elif child.type in ("function_declaration", "generator_function_declaration"):
                 name = _find_name_in_children(child, source)
                 if name:  # pragma: no branch — function_declaration always has a name
                     export_name = name
@@ -1938,7 +2097,9 @@ def _extract_library_export_contexts(
         for child in node.children:
             if child.type == "default":
                 is_default = True
-            elif child.type == "function_declaration":
+            elif child.type in ("function_declaration", "generator_function_declaration"):
+                # WI-zavad: ``export function* g(){}`` is a public library export
+                # like ``export function f(){}`` — surface its UsageContext too.
                 name = _find_name_in_children(child, source)
                 if name:
                     export_names.append(name)
@@ -2341,6 +2502,33 @@ def _extract_inheritance_edges(
                 interfaces_by_name[sym.name] = []
             interfaces_by_name[sym.name].append(sym)
 
+    # F4/A2 inputs for the unresolved-external fallback:
+    # (1) per-(file, class) ``implements``-clause base names — gives an unresolved
+    #     external base the correct edge type (``implements`` vs ``extends``);
+    # (2) per-file import maps — give the external base a real module hint
+    #     (``LitElement`` -> ``lit``) and let an *aliased* import be re-resolved
+    #     to its canonical name before being declared external.
+    implements_by_class: dict[tuple[str, str], set[str]] = {}
+    named_imports_by_path: dict[str, dict[str, str]] = {}
+    namespace_imports_by_path: dict[str, dict[str, str]] = {}
+    named_import_originals_by_path: dict[str, dict[str, str]] = {}
+    for pf in parsed_files:
+        pf_path = str(pf.path)
+        named_imports_by_path[pf_path] = pf.named_imports or {}
+        namespace_imports_by_path[pf_path] = pf.namespace_imports or {}
+        named_import_originals_by_path[pf_path] = pf.named_import_originals or {}
+        for node in iter_tree(pf.tree.root_node):
+            if node.type in ("class_declaration", "abstract_class_declaration"):
+                cname = _find_name_in_children(node, pf.source)
+                if not cname:  # pragma: no cover - class_declaration always names
+                    continue
+                impls = _extract_implements_names(node, pf.source)
+                if impls:
+                    # normalise to the same form the resolution loop uses
+                    implements_by_class.setdefault((pf_path, cname), set()).update(
+                        n.split("<")[0].split(".")[-1] for n in impls
+                    )
+
     for sym in symbols:
         if sym.kind != "class":
             continue
@@ -2349,46 +2537,120 @@ def _extract_inheritance_edges(
         if not base_classes:
             continue
 
+        sym_path = sym.path or ""
         for base_class_name in base_classes:
             # Strip generics from base class name (e.g., "Repository<User>" -> "Repository")
-            base_name = base_class_name.split("<")[0]
-            # Handle qualified names like "React.Component" -> use just "Component"
-            if "." in base_name:
-                base_name = base_name.split(".")[-1]
+            de_generic = base_class_name.split("<")[0]
+            # Qualified base (``React.Component``): keep the qualifier (``React``)
+            # to recover its namespace-import module; resolve on the member name.
+            qualifier = de_generic.split(".")[0] if "." in de_generic else None
+            base_name = de_generic.split(".")[-1] if "." in de_generic else de_generic
 
-            # Try class first, then interface, using disambiguation
+            # Resolve against project classes and interfaces (disambiguated).
             base_sym = _resolve_base_class_js(
                 base_name, sym, classes_by_name, parsed_files
             )
+            iface_sym = _resolve_base_class_js(
+                base_name, sym, interfaces_by_name, parsed_files
+            )
             if base_sym is not None and base_sym.id != sym.id:
-                edge = Edge.create(
+                edges.append(Edge.create(
                     src=sym.id,
                     dst=base_sym.id,
                     edge_type="extends",
                     line=sym.span.start_line if sym.span else 0,
-                    confidence=0.95,
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     evidence_type="ast_extends",
-                )
-                edges.append(edge)
-            else:
-                # Check interfaces
-                iface_sym = _resolve_base_class_js(
-                    base_name, sym, interfaces_by_name, parsed_files
-                )
-                if iface_sym is not None and iface_sym.id != sym.id:
-                    edge = Edge.create(
-                        src=sym.id,
-                        dst=iface_sym.id,
-                        edge_type="implements",
-                        line=sym.span.start_line if sym.span else 0,
-                        confidence=0.95,
-                        origin=PASS_ID,
-                        origin_run_id=run.execution_id,
-                        evidence_type="ast_implements",
+                ))
+            elif iface_sym is not None and iface_sym.id != sym.id:
+                edges.append(Edge.create(
+                    src=sym.id,
+                    dst=iface_sym.id,
+                    edge_type="implements",
+                    line=sym.span.start_line if sym.span else 0,
+                    origin=PASS_ID,
+                    origin_run_id=run.execution_id,
+                    evidence_type="ast_implements",
+                ))
+            elif base_sym is None and iface_sym is None:
+                # F4/A2: the base resolves to neither a project class nor a
+                # project interface. Before declaring it external, re-resolve an
+                # *aliased* import (``import { Base as B }``) on its canonical
+                # name — otherwise a local class imported under an alias would be
+                # mislabeled as an external base.
+                canonical = named_import_originals_by_path.get(
+                    sym_path, {}
+                ).get(base_name, base_name)
+                if canonical != base_name:
+                    rb = _resolve_base_class_js(
+                        canonical, sym, classes_by_name, parsed_files
                     )
-                    edges.append(edge)
+                    ri = _resolve_base_class_js(
+                        canonical, sym, interfaces_by_name, parsed_files
+                    )
+                    if rb is not None and rb.id != sym.id:
+                        edges.append(Edge.create(
+                            src=sym.id, dst=rb.id, edge_type="extends",
+                            line=sym.span.start_line if sym.span else 0,
+                            origin=PASS_ID,
+                            origin_run_id=run.execution_id,
+                            evidence_type="ast_extends",
+                        ))
+                        continue
+                    if ri is not None and ri.id != sym.id:
+                        edges.append(Edge.create(
+                            src=sym.id, dst=ri.id, edge_type="implements",
+                            line=sym.span.start_line if sym.span else 0,
+                            origin=PASS_ID,
+                            origin_run_id=run.execution_id,
+                            evidence_type="ast_implements",
+                        ))
+                        continue
+
+                # Module hint: named import of the member, else a default/
+                # namespace import of the member, else the namespace qualifier
+                # (``React`` in ``React.Component``).
+                ni = named_imports_by_path.get(sym_path, {})
+                nsi = namespace_imports_by_path.get(sym_path, {})
+                raw_module = (
+                    ni.get(base_name)
+                    or nsi.get(base_name)
+                    or (nsi.get(qualifier) if qualifier else None)
+                )
+                # A base imported from a RELATIVE path is intra-repo (a local
+                # file whose symbol was not extracted), NOT a library — drop it
+                # rather than mislabel it as external.
+                if raw_module and (
+                    raw_module.startswith("./") or raw_module.startswith("../")
+                ):
+                    continue
+
+                is_impl = base_name in implements_by_class.get(
+                    (sym_path, sym.name), set()
+                )
+                edge_type = "implements" if is_impl else "extends"
+                lang = sym.language
+                if raw_module:
+                    module_hint = _normalize_import_module_hint(raw_module)
+                    dst_ref: ExternalRef | None = ExternalRef(
+                        lang=lang, module_path=module_hint, name=canonical,
+                    )
+                else:
+                    module_hint = "external"
+                    dst_ref = None
+                edges.append(Edge.create(
+                    src=sym.id,
+                    dst=f"{lang}:{module_hint}:0-0:{canonical}:unresolved",
+                    edge_type=edge_type,
+                    line=sym.span.start_line if sym.span else 0,
+                    confidence=0.5,
+                    origin=PASS_ID,
+                    origin_run_id=run.execution_id,
+                    evidence_type=f"ast_{edge_type}",
+                    is_resolved=False,
+                    dst_ref=dst_ref,
+                ))
 
     return edges
 
@@ -2505,7 +2767,6 @@ def _extract_type_reference_edges(
                             dst=dst_sym.id,
                             edge_type="references",
                             line=src_sym.span.start_line if src_sym.span else 0,
-                            confidence=0.85,
                             origin=PASS_ID,
                             origin_run_id=run.execution_id,
                             evidence_type="ast_type_ref",
@@ -2527,7 +2788,7 @@ def _extract_type_reference_edges(
                         continue
 
                     ref_names = _collect_type_identifiers(body_node, pf.source)
-                    seen: set[str] = set()
+                    seen = set()
                     for ref_name in ref_names:
                         if ref_name == decl_name or ref_name in seen:
                             continue
@@ -2545,7 +2806,6 @@ def _extract_type_reference_edges(
                             dst=dst_sym.id,
                             edge_type="references",
                             line=src_sym.span.start_line if src_sym.span else 0,
-                            confidence=0.85,
                             origin=PASS_ID,
                             origin_run_id=run.execution_id,
                             evidence_type="ast_type_ref",
@@ -2614,7 +2874,6 @@ def _extract_decorator_edges(
                     dst=decorator_sym.id,
                     edge_type="decorated_by",
                     line=line,
-                    confidence=0.95,
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     evidence_type="ast_decorator",
@@ -2629,7 +2888,6 @@ def _extract_decorator_edges(
                     dst=dst_id,
                     edge_type="decorated_by",
                     line=line,
-                    confidence=0.50,
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     evidence_type="ast_decorator",
@@ -2751,6 +3009,22 @@ def _get_jsts_class_ancestors(
                 chain.append(name)
         current = current.parent
     return list(reversed(chain))
+
+
+def _jsts_enclosing_class(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
+    """INV-fahub: the innermost enclosing class name of a call site, or None.
+
+    Used by the bare-/untyped-receiver -> method magnet gate
+    (``defer_bare_method_call``) to decide whether a weak short-name resolver
+    hit is an implicit-``this`` call to the call site's OWN class (bind) or a
+    cross-class magnet (withhold + stamp ``enclosing_class`` for Site-1).
+    ``_get_jsts_class_ancestors`` returns outermost -> innermost, so the
+    innermost enclosing class (the implicit-``this`` owner) is the last entry —
+    the same short name a ``method`` Symbol carries as its ``Owner.method``
+    prefix (``full_name = f"{_get_class_context(...)}.{name}"``).
+    """
+    ancestors = _get_jsts_class_ancestors(node, source)
+    return ancestors[-1] if ancestors else None
 
 
 def _make_jsts_qualified_name(
@@ -2907,6 +3181,65 @@ def _extract_decorators(
     return decorators
 
 
+def _find_field_name(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
+    """Return a class field's declared name — its direct ``property_identifier``
+    or ``private_property_identifier`` (JS ``#x``) child — or None for a computed
+    field name (``[Symbol.iterator]``), which has no stable string identity.
+
+    Reads only the field's own name slot, NOT the decorator child (which carries
+    its own identifier, e.g. ``property`` in ``@property() count``).
+    """
+    for child in node.children:
+        if child.type in ("property_identifier", "private_property_identifier"):
+            return _node_text(child, source)
+    return None
+
+
+def _extract_field_modifiers(node: "tree_sitter.Node", source: bytes) -> list[str]:
+    """Collect a class field's modifiers: the keyword nodes ``static`` /
+    ``readonly`` / ``abstract`` / ``declare`` / ``override`` plus the
+    accessibility modifier (``public`` / ``private`` / ``protected``, whose value
+    is the node's text). Mirrors the public-API ``modifiers`` set py.py populates
+    for variables (WI-zimum)."""
+    mods: list[str] = []
+    for child in node.children:
+        if child.type in ("static", "readonly", "abstract", "declare", "override"):
+            mods.append(child.type)
+        elif child.type == "accessibility_modifier":
+            mods.append(_node_text(child, source))
+    return mods
+
+
+def _extract_field_type(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
+    """Return the type-annotation text (without the leading ``: ``, e.g.
+    ``"string[]"``) of a class field (``public_field_definition``) or a variable
+    declarator (``const x: T``), or None when untyped (every JS binding and
+    untyped TS bindings). The annotation is a direct ``type_annotation`` child in
+    both shapes."""
+    for child in node.children:
+        if child.type == "type_annotation":
+            return _node_text(child, source).lstrip(": ").strip() or None
+    return None
+
+
+def _is_module_level_declaration(node: "tree_sitter.Node") -> bool:
+    """True when a ``lexical_declaration`` / ``variable_declaration`` sits at
+    module (program) scope — directly under ``program``, or under a top-level
+    ``export_statement`` (``export const X = ...``). Mirrors the Python
+    analyzer's module-level-only variable contract (WI-jusus F5): function-body
+    locals and block-scoped bindings are deliberately excluded to bound the
+    blast radius to module constants / module state."""
+    parent = node.parent
+    if parent is None:  # pragma: no cover - declarations always have a parent
+        return False
+    if parent.type == "program":
+        return True
+    if parent.type == "export_statement":
+        grandparent = parent.parent
+        return grandparent is not None and grandparent.type == "program"
+    return False
+
+
 def _unwrap_paren_extends(
     paren_node: "tree_sitter.Node", source: bytes,
 ) -> str:
@@ -2994,6 +3327,109 @@ def _extract_base_classes(
     return base_classes
 
 
+def _extract_implements_names(
+    node: "tree_sitter.Node", source: bytes
+) -> list[str]:
+    """Return the ``implements`` clause base names of a class node.
+
+    ``_extract_base_classes`` flattens ``extends`` and ``implements`` bases into
+    one list, which is fine for the resolved path (the target Symbol's kind
+    disambiguates: class -> extends, interface -> implements). The
+    unresolved-external fallback (F4) has no target kind, so it needs the clause
+    origin to label the edge correctly — an external ``implements OnInit``
+    (Angular) must not be mislabeled ``extends``. JavaScript has no
+    ``implements`` clause, so this returns ``[]`` for JS classes.
+    """
+    names: list[str] = []
+    for child in node.children:
+        if child.type == "class_heritage":
+            for heritage_child in child.children:
+                if heritage_child.type == "implements_clause":
+                    for impl_child in heritage_child.children:
+                        if impl_child.type in (
+                            "identifier", "type_identifier", "generic_type",
+                        ):
+                            names.append(_node_text(impl_child, source))
+    return names
+
+
+def _callee_last_name(
+    call: "tree_sitter.Node", source: bytes,
+) -> Optional[str]:
+    """Return the last identifier of a call_expression's callee.
+
+    ``foo(...)`` -> ``foo``; ``a.b.forEach(...)`` -> ``forEach``. Used to name
+    anonymous call-argument callbacks ``_cb_<callee>``. Returns ``None`` when
+    the callee is itself an expression with no trailing name (e.g. the curried
+    ``getHandler()(cb)``), in which case the caller falls back to a generic
+    name.
+    """
+    fn = call.child_by_field_name("function")
+    if fn is None:
+        # ``new X(cb)`` is a ``new_expression`` whose callee is the
+        # ``constructor`` field, not ``function``.
+        fn = call.child_by_field_name("constructor")
+    if fn is None:  # pragma: no cover - defensive: a call/new always has a callee
+        return None
+    if fn.type == "identifier":
+        return _node_text(fn, source)
+    if fn.type == "member_expression":
+        prop = fn.child_by_field_name("property")
+        if prop is not None:  # pragma: no branch - member_expression always has a property
+            return _node_text(prop, source)
+    return None
+
+
+def _classify_anon_function(
+    node: "tree_sitter.Node", source: bytes,
+) -> Optional[tuple[str, str]]:
+    """Classify an anonymous arrow / function-expression / generator node.
+
+    WI-zavad anonymous-callback function-node slice (emission-parity F2,
+    Option 1 — documented-idiom scope). Returns ``(category, name)``:
+
+    * ``("call_arg", "_cb_<callee>")`` — the function is passed as an argument
+      to a call (``arr.forEach(x => {})``, ``el.addEventListener('x', cb)``).
+    * ``("iife", "_iife")`` — an immediately-invoked function expression
+      ``(function () {})()`` / ``(() => {})()``.
+
+    Returns ``None`` for any other position — variable-bound (extracted by the
+    ``lexical_declaration`` path), object property, or return / ternary /
+    template-substitution position — which is out of scope for this slice (those
+    have no call-site anchor for a companion incoming edge, so extracting them
+    would inflate dead-code false-positives; an explicitly-deferred follow-up).
+    """
+    parent = node.parent
+    if parent is None:  # pragma: no cover - defensive: root is always 'program'
+        return None
+    # IIFE: the function sits inside a parenthesized_expression that is itself
+    # the *callee* (the ``function`` field) of a call_expression. A bare
+    # parenthesized function that is NOT invoked (``const x = (() => 1)``) has a
+    # parenthesized_expression parent but no invoking call_expression, so it is
+    # correctly skipped.
+    if parent.type == "parenthesized_expression":
+        grandparent = parent.parent
+        if grandparent is not None and grandparent.type == "call_expression":
+            callee = grandparent.child_by_field_name("function")
+            if callee is not None and callee.id == parent.id:
+                return ("iife", "_iife")
+        return None
+    # Call-argument callback: the function is a direct child of a call's
+    # ``arguments`` list. Both ``foo(cb)`` (call_expression) and the canonical
+    # ``new Promise((res, rej) => {})`` / ``new Observable(cb)`` constructor-
+    # executor form (new_expression) qualify — the executor IS the most common
+    # anonymous callback.
+    if parent.type == "arguments":
+        call = parent.parent
+        if call is not None and call.type in ("call_expression", "new_expression"):
+            callee_name = _callee_last_name(call, source)
+            return (
+                "call_arg",
+                f"_cb_{callee_name}" if callee_name else "_cb_anonymous",
+            )
+    return None
+
+
 def _extract_symbols(
     tree: "tree_sitter.Tree",
     source: bytes,
@@ -3062,7 +3498,7 @@ def _extract_symbols(
         span=module_span,
         origin=PASS_ID,
         origin_run_id=run.execution_id,
-        lines_of_code=module_span.end_line - module_span.start_line + 1,
+        line_span=module_span.end_line - module_span.start_line + 1,
     )
     symbols.append(module_symbol)
 
@@ -3111,13 +3547,17 @@ def _extract_symbols(
                             origin_run_id=run.execution_id,
                             stable_id=make_route_stable_id(http_method, route_path) if route_path else None,
                             meta={"route_path": route_path, "http_method": http_method, "handler_ref": handler_name, "framework_role": "route"},
-                            lines_of_code=span.end_line - span.start_line + 1,
+                            line_span=span.end_line - span.start_line + 1,
                         )
                         symbols.append(symbol)
                     else:
                         # Inline handler: router.get('/path', (req, res) => {})
                         name = None
-                        if handler_node.type == "function_expression" or handler_node.type == "function":
+                        if handler_node.type in (
+                            "function_expression", "function", "generator_function",
+                        ):
+                            # named generator handler ``function* h(){}`` keeps
+                            # its declared name (WI-zavad parity)
                             name = _find_name_in_children(handler_node, source)
                         if not name:
                             clean_path = route_path.replace("/", "_").replace(":", "").replace("{", "").replace("}", "") if route_path else ""
@@ -3129,6 +3569,11 @@ def _extract_symbols(
                             start_col=handler_node.start_point[1],
                             end_col=handler_node.end_point[1],
                         )
+                        # INV-golap: the inline handler IS a real function node
+                        # (arrow / function / function_expression), so extract
+                        # its signature like any other function symbol — the
+                        # earlier omission left route handlers as the lone
+                        # null-signature function|method nodes vs TS parity.
                         symbol = Symbol(
                             id=_make_symbol_id(str(file_path), span.start_line, span.end_line, name, "function", lang),
                             name=name,
@@ -3140,7 +3585,8 @@ def _extract_symbols(
                             origin_run_id=run.execution_id,
                             stable_id=make_route_stable_id(http_method, route_path) if route_path else None,
                             meta={"route_path": route_path, "http_method": http_method} if route_path else None,
-                            lines_of_code=span.end_line - span.start_line + 1,
+                            signature=_extract_jsts_signature(handler_node, source),
+                            line_span=span.end_line - span.start_line + 1,
                         )
                         symbols.append(symbol)
                     continue  # Skip further processing of this call_expression
@@ -3171,7 +3617,7 @@ def _extract_symbols(
                     origin_run_id=run.execution_id,
                     stable_id=make_route_stable_id("GET", route_path),
                     meta=jsx_route_meta,
-                    lines_of_code=span.end_line - span.start_line + 1,
+                    line_span=span.end_line - span.start_line + 1,
                 )
                 symbols.append(symbol)
                 # Don't continue — let tree walk also process child nodes
@@ -3205,11 +3651,14 @@ def _extract_symbols(
                     origin_run_id=run.execution_id,
                     stable_id=make_route_stable_id("GET", rpath),
                     meta=route_meta,
-                    lines_of_code=span.end_line - span.start_line + 1,
+                    line_span=span.end_line - span.start_line + 1,
                 ))
 
-        # Function declarations (skip if inside an export_statement - handled below)
-        if node.type == "function_declaration":
+        # Function declarations, incl. generators ``function* g() {}`` (WI-zavad
+        # named function-node slice — ``generator_function_declaration`` was
+        # never matched, so generators emitted zero function symbols).
+        # (skip if inside an export_statement - handled below)
+        if node.type in ("function_declaration", "generator_function_declaration"):
             # Check if parent is export_statement - if so, skip (handled in export_statement case)
             if node.parent and node.parent.type == "export_statement":
                 continue
@@ -3247,7 +3696,7 @@ def _extract_symbols(
                     signature=signature,
                     docstring=extract_preceding_doc_comment(node, source, lang),
                     shape_id=_jsts_analyzer.compute_shape_id(node),
-                    lines_of_code=span.end_line - span.start_line + 1,
+                    line_span=span.end_line - span.start_line + 1,
                     qualified_name=_make_jsts_qualified_name(
                         _get_jsts_class_ancestors(node, source), name, lang,
                     ),
@@ -3264,14 +3713,25 @@ def _extract_symbols(
                     for grandchild in child.children:
                         if grandchild.type == "identifier":
                             name_node = grandchild
-                        elif grandchild.type == "arrow_function":
+                        elif grandchild.type in (
+                            "arrow_function", "function_expression",
+                            "generator_function",
+                        ):
+                            # WI-zavad named function-node slice: ``const f =
+                            # function () {}`` (function_expression) and
+                            # ``const g = function* () {}`` (generator_function)
+                            # reach parity with the existing arrow-function path.
                             value_node = grandchild
                         elif grandchild.type == "call_expression":
                             # Pattern: const handler = catchAsync(async (req, res) => {})
                             for call_child in grandchild.children:
                                 if call_child.type == "arguments":
                                     for arg in call_child.children:
-                                        if arg.type == "arrow_function":
+                                        if arg.type in (
+                                            "arrow_function",
+                                            "function_expression",
+                                            "generator_function",
+                                        ):
                                             value_node = arg
                                             break
                                     if value_node:
@@ -3310,13 +3770,59 @@ def _extract_symbols(
                             signature=signature,
                             docstring=extract_preceding_doc_comment(node, source, lang),
                             shape_id=_jsts_analyzer.compute_shape_id(value_node),
-                            lines_of_code=span.end_line - span.start_line + 1,
+                            line_span=span.end_line - span.start_line + 1,
                             qualified_name=_make_jsts_qualified_name(
                                 _get_jsts_class_ancestors(node, source), name, lang,
                             ),
                             cyclomatic_complexity=compute_cyclomatic_complexity(value_node, lang),
                         )
                         symbols.append(symbol)
+                        # WI-zavad anon-callback slice: this arrow/function-
+                        # expression is already extracted (named after its
+                        # variable), so mark it processed to keep the bare
+                        # anonymous-callback branch below from re-emitting it.
+                        processed_handlers.add(id(value_node))
+                    elif _is_module_level_declaration(node):
+                        # WI-jusus F5 slice 2: a module-level value declaration
+                        # (const/let/var X = ...; or a bare `let s;`) that is NOT
+                        # a function emits a kind='variable' symbol so module
+                        # constants / module state are visible to search,
+                        # centrality, and io-boundaries. Use the declarator's
+                        # `name` FIELD (not the loop's name_node, which catches a
+                        # destructuring RHS identifier): only a simple identifier
+                        # name is emitted — object/array destructuring patterns
+                        # are a follow-up. Function-valued declarations are
+                        # handled by the branch above (value_node set), so they
+                        # never reach here.
+                        var_name_node = child.child_by_field_name("name")
+                        if var_name_node is not None and var_name_node.type == "identifier":
+                            var_name = _node_text(var_name_node, source)
+                            vspan = Span(
+                                start_line=child.start_point[0] + 1 + line_offset,
+                                end_line=child.end_point[0] + 1 + line_offset,
+                                start_col=child.start_point[1],
+                                end_col=child.end_point[1],
+                            )
+                            symbols.append(Symbol(
+                                id=_make_symbol_id(str(file_path), vspan.start_line, vspan.end_line, var_name, "variable", lang),
+                                name=var_name,
+                                kind="variable",
+                                language=lang,
+                                path=str(file_path),
+                                span=vspan,
+                                origin=PASS_ID,
+                                origin_run_id=run.execution_id,
+                                # INV-sotiv variable identity: name-scoped to the
+                                # declaring file (repo-relative for location
+                                # independence, WI-bokab). const/let cannot
+                                # redeclare at module scope; a rare `var`
+                                # redeclaration is split by the within-file
+                                # collision post-pass (ADR-0035).
+                                stable_id=make_variable_stable_id(lang, normalize_path(file_name), var_name),
+                                signature=_extract_field_type(child, source),
+                                is_exported=node.parent is not None and node.parent.type == "export_statement",
+                                line_span=vspan.end_line - vspan.start_line + 1,
+                            ))
 
         # Class declarations (including abstract classes)
         elif node.type in ("class_declaration", "abstract_class_declaration"):
@@ -3351,7 +3857,7 @@ def _extract_symbols(
                     origin_run_id=run.execution_id,
                     meta=meta,
                     shape_id=_jsts_analyzer.compute_shape_id(node),
-                    lines_of_code=span.end_line - span.start_line + 1,
+                    line_span=span.end_line - span.start_line + 1,
                     qualified_name=_make_jsts_qualified_name(
                         _get_jsts_class_ancestors(node, source), name, lang,
                     ),
@@ -3378,7 +3884,7 @@ def _extract_symbols(
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     shape_id=_jsts_analyzer.compute_shape_id(node),
-                    lines_of_code=span.end_line - span.start_line + 1,
+                    line_span=span.end_line - span.start_line + 1,
                     qualified_name=_make_jsts_qualified_name(
                         _get_jsts_class_ancestors(node, source), name, lang,
                     ),
@@ -3405,7 +3911,7 @@ def _extract_symbols(
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     shape_id=_jsts_analyzer.compute_shape_id(node),
-                    lines_of_code=span.end_line - span.start_line + 1,
+                    line_span=span.end_line - span.start_line + 1,
                 )
                 symbols.append(symbol)
 
@@ -3433,7 +3939,7 @@ def _extract_symbols(
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     shape_id=_jsts_analyzer.compute_shape_id(node),
-                    lines_of_code=span.end_line - span.start_line + 1,
+                    line_span=span.end_line - span.start_line + 1,
                     qualified_name=_make_jsts_qualified_name(
                         _get_jsts_class_ancestors(node, source), name, lang,
                     ),
@@ -3474,7 +3980,7 @@ def _extract_symbols(
                 # Build meta with decorators
                 # Note: Route path combination is handled by enrichment via prefix_from_parent
                 # in the NestJS YAML pattern definition (see nestjs.yaml)
-                meta: dict[str, object] | None = None
+                meta = None
                 decorators = _extract_decorators(node, source)
                 if decorators:
                     meta = {"decorators": decorators}
@@ -3508,7 +4014,7 @@ def _extract_symbols(
                     signature=signature,
                     docstring=extract_preceding_doc_comment(node, source, lang),
                     shape_id=_jsts_analyzer.compute_shape_id(node),
-                    lines_of_code=span.end_line - span.start_line + 1,
+                    line_span=span.end_line - span.start_line + 1,
                     qualified_name=_make_jsts_qualified_name(
                         _get_jsts_class_ancestors(node, source), name, lang,
                     ),
@@ -3516,10 +4022,69 @@ def _extract_symbols(
                 )
                 symbols.append(symbol)
 
+        # WI-jusus (emission-parity F5): class FIELD symbols. Class fields parse
+        # as public_field_definition (TS) / field_definition (JS); before this
+        # they emitted no symbol, so module/class state had no anchor and field
+        # decorators (lit @property/@state) had nothing to attach a decorated_by
+        # edge to. Mirrors the method_definition branch (fields are class members
+        # too): class-scoped identity via qualified_name, modifiers, and a
+        # type-annotation signature. Decorators flow into _extract_decorator_edges
+        # through meta["decorators"], exactly like classes/methods.
+        elif node.type in ("public_field_definition", "field_definition"):
+            name = _find_field_name(node, source)
+            if name:
+                span = Span(
+                    start_line=node.start_point[0] + 1 + line_offset,
+                    end_line=node.end_point[0] + 1 + line_offset,
+                    start_col=node.start_point[1],
+                    end_col=node.end_point[1],
+                )
+                current_class_name = _get_class_context(node, source)
+                full_name = f"{current_class_name}.{name}" if current_class_name else name
+
+                meta_f: dict[str, object] | None = None
+                decorators = _extract_decorators(node, source)
+                if decorators:
+                    meta_f = {"decorators": decorators}
+
+                field_type = _extract_field_type(node, source)
+                qualified_name = _make_jsts_qualified_name(
+                    _get_jsts_class_ancestors(node, source), name, lang,
+                )
+                # Class-scoped canonical identity: name + qualified_name +
+                # file fold make same-named fields in different classes/files
+                # distinct even when both are untyped (empty signature slot).
+                stable_id = make_typed_stable_id(
+                    "field", field_type or "",
+                    name=name,
+                    qualified_name=qualified_name,
+                    file_stable_id=file_stable_id,
+                )
+
+                symbol = Symbol(
+                    id=_make_symbol_id(str(file_path), span.start_line, span.end_line, full_name, "field", lang),
+                    name=full_name,
+                    kind="field",
+                    language=lang,
+                    path=str(file_path),
+                    span=span,
+                    origin=PASS_ID,
+                    origin_run_id=run.execution_id,
+                    stable_id=stable_id,
+                    meta=meta_f,
+                    signature=field_type,
+                    modifiers=_extract_field_modifiers(node, source),
+                    qualified_name=qualified_name,
+                    line_span=span.end_line - span.start_line + 1,
+                )
+                symbols.append(symbol)
+
         # Export default function - extract the function symbol
+        # (incl. ``export function* g() {}`` — WI-zavad: the direct branch
+        # above skips export children, so generators must be matched here too)
         elif node.type == "export_statement":
             for child in node.children:
-                if child.type == "function_declaration":
+                if child.type in ("function_declaration", "generator_function_declaration"):
                     name = _find_name_in_children(child, source)
                     if name:
                         span = Span(
@@ -3554,7 +4119,7 @@ def _extract_symbols(
                             signature=signature,
                             docstring=extract_preceding_doc_comment(node, source, lang),
                             shape_id=_jsts_analyzer.compute_shape_id(child),
-                            lines_of_code=span.end_line - span.start_line + 1,
+                            line_span=span.end_line - span.start_line + 1,
                             qualified_name=_make_jsts_qualified_name(
                                 _get_jsts_class_ancestors(child, source), name, lang,
                             ),
@@ -3562,6 +4127,67 @@ def _extract_symbols(
                         )
                         symbols.append(symbol)
                     break  # Only handle one function_declaration per export
+
+        # WI-zavad anonymous-callback function-node slice (emission-parity F2,
+        # Option 1 — documented-idiom scope): anonymous arrow / function-
+        # expression / generator callbacks passed as call arguments, and IIFEs,
+        # emit function symbols so body-calls attribute to them (not the file
+        # pseudo-node) and linkers anchor on a real call-site symbol (the
+        # F159.A2-c WS-linker file-anchor facet). Route-handler and variable-
+        # bound callbacks are already extracted (and added to
+        # ``processed_handlers``), so the skip at the top of this loop prevents
+        # double-emission. ``_classify_anon_function`` returns ``None`` for
+        # return / ternary / template-substitution arrows (deferred follow-up).
+        elif node.type in (
+            "arrow_function", "function_expression", "generator_function",
+        ):
+            classification = _classify_anon_function(node, source)
+            if classification is not None:
+                _category, anon_name = classification
+                span = Span(
+                    start_line=node.start_point[0] + 1 + line_offset,
+                    end_line=node.end_point[0] + 1 + line_offset,
+                    start_col=node.start_point[1],
+                    end_col=node.end_point[1],
+                )
+                signature = _extract_jsts_signature(node, source)
+                norm_sig = normalize_jsts_signature(signature)
+                qualified_name = _make_jsts_qualified_name(
+                    _get_jsts_class_ancestors(node, source), anon_name, lang,
+                )
+                stable_id = make_typed_stable_id(
+                    "function", norm_sig,
+                    name=anon_name,
+                    qualified_name=qualified_name,
+                    file_stable_id=file_stable_id,
+                ) if norm_sig else None
+                symbols.append(Symbol(
+                    id=_make_symbol_id(
+                        str(file_path), span.start_line, span.end_line,
+                        # Fold start_col into the id name-slot so two same-callee
+                        # callbacks on ONE line (``p.then(a => a, e => e)``, two
+                        # ``_iife``s) get distinct ids; Symbol.name stays the
+                        # clean display name. The id round-trip validator only
+                        # requires the name-slot be non-empty + colon-free.
+                        f"{anon_name}@{span.start_col}", "function", lang,
+                    ),
+                    name=anon_name,
+                    kind="function",
+                    language=lang,
+                    path=str(file_path),
+                    span=span,
+                    origin=PASS_ID,
+                    origin_run_id=run.execution_id,
+                    stable_id=stable_id,
+                    signature=signature,
+                    docstring=extract_preceding_doc_comment(node, source, lang),
+                    shape_id=_jsts_analyzer.compute_shape_id(node),
+                    line_span=span.end_line - span.start_line + 1,
+                    qualified_name=qualified_name,
+                    cyclomatic_complexity=compute_cyclomatic_complexity(node, lang),
+                    meta={"anonymous": True},
+                ))
+                processed_handlers.add(id(node))
 
     # WI-nimug / WI-zimum Phase 2b: mark symbols as is_exported=True when
     # their defining declaration sits under a top-level export_statement.
@@ -3610,7 +4236,12 @@ def _extract_export_names_from_statement(
     """Populate *out* with the identifier names exported by *node*."""
     for child in node.children:
         ctype = child.type
-        if ctype in ("function_declaration", "class_declaration"):
+        if ctype in (
+            "function_declaration", "class_declaration",
+            "generator_function_declaration",
+        ):
+            # WI-zavad: ``export function* g(){}`` must mark its symbol
+            # is_exported=True like ``export function f(){}`` does.
             name = _find_name_in_children(child, source)
             if name:
                 out.add(name)
@@ -3700,6 +4331,9 @@ def _is_shadowed_by_param(node: "tree_sitter.Node", name: str, source: bytes) ->
             "function_declaration",
             "function_expression",
             "method_definition",
+            # WI-zavad: generator declaration/expression scopes also bind params
+            "generator_function_declaration",
+            "generator_function",
         ):
             for child in current.children:
                 if child.type == "formal_parameters":
@@ -3721,7 +4355,7 @@ def _is_shadowed_by_param(node: "tree_sitter.Node", name: str, source: bytes) ->
             # declarations (top-level), stop — these are analysis units.
             # For closures (arrow_function, function_expression), continue
             # walking up since JS lexical scoping makes outer params visible.
-            if current.type == "function_declaration":
+            if current.type in ("function_declaration", "generator_function_declaration"):
                 return False
             # else: keep walking up through closure scopes
         current = current.parent
@@ -3752,7 +4386,10 @@ def _get_enclosing_function(
     file_path_str = str(file_path)
     current = node.parent
     while current is not None:
-        if current.type == "function_declaration":
+        # ``generator_function_declaration`` (``function* g() {}``) is a named
+        # top-level analysis unit like ``function_declaration`` — a call in its
+        # body attributes to the generator symbol (WI-zavad call-graph parity).
+        if current.type in ("function_declaration", "generator_function_declaration"):
             # Position-based lookup handles duplicate names across files
             if symbol_by_position:
                 pos_key = (file_path_str, current.start_point[0] + 1 + line_offset, current.start_point[1])
@@ -3786,9 +4423,12 @@ def _get_enclosing_function(
                             return sym
             return None  # pragma: no cover
 
-        # Arrow functions - try variable assignment first, then position lookup
-        if current.type == "arrow_function":
-            # First, try to find a variable_declarator parent (assigned arrow fn)
+        # Arrow functions and const-bound function expressions / generator
+        # expressions - try variable assignment first, then position lookup.
+        # (WI-zavad: ``const f = function () {}`` / ``function* () {}`` attribute
+        # their body calls to the variable-named symbol, like arrow functions.)
+        if current.type in ("arrow_function", "function_expression", "generator_function"):
+            # First, try to find a variable_declarator parent (assigned fn)
             parent = current.parent
             while parent is not None:
                 if parent.type == "variable_declarator":
@@ -3820,6 +4460,59 @@ def _get_enclosing_function(
 
         current = current.parent
     return None  # pragma: no cover
+
+
+def _emit_anon_callback_reference_edges(
+    call_node: "tree_sitter.Node",
+    args_node: Optional["tree_sitter.Node"],
+    current_function: Optional[Symbol],
+    symbol_by_position: Optional[dict[tuple[str, int, int], Symbol]],
+    file_path: Path,
+    line_offset: int,
+    run: AnalysisRun,
+    edges: list[Edge],
+) -> None:
+    """Emit a companion ``references`` edge from *current_function* to each
+    inline anonymous-callback argument of *call_node* (WI-zavad anon-callback
+    slice) so the new callback symbols are not dead-code false-positives.
+
+    The bare-identifier callback-reference path covers only *named* callbacks;
+    inline anonymous ones (``foo(() => {})``, ``new Promise(cb)``) need this.
+    Gated on ``meta.anonymous`` so it fires ONLY for the symbols this slice
+    extracts — never for a route-handler or variable-bound arrow that happens
+    to occupy the same source position (those keep their existing edges; this
+    avoids minting a spurious ``file -> route_handler`` reference that would
+    shift in-degree/centrality for every Express inline route handler).
+    """
+    if (
+        args_node is not None
+        and symbol_by_position is not None
+        and current_function is not None
+    ):
+        for arg in args_node.children:
+            if arg.type not in (
+                "arrow_function", "function_expression", "generator_function",
+            ):
+                continue
+            cb_sym = symbol_by_position.get((
+                str(file_path),
+                arg.start_point[0] + 1 + line_offset,
+                arg.start_point[1],
+            ))
+            if (
+                cb_sym is not None
+                and (cb_sym.meta or {}).get("anonymous") is True
+                and cb_sym.id != current_function.id
+            ):
+                edges.append(Edge.create(
+                    src=current_function.id,
+                    dst=cb_sym.id,
+                    edge_type="references",
+                    line=call_node.start_point[0] + 1 + line_offset,
+                    origin=PASS_ID,
+                    origin_run_id=run.execution_id,
+                    evidence_type="callback_argument_reference",
+                ))
 
 
 def _extract_edges(
@@ -3896,13 +4589,16 @@ def _extract_edges(
                         origin=PASS_ID,
                         origin_run_id=run.execution_id,
                         evidence_type="import_static",
-                        confidence=0.95,
                     )
                     edges.append(edge)
                     break
 
         # Function/method declarations - extract parameter types for type inference
-        elif node.type in ("function_declaration", "method_definition", "arrow_function"):
+        # (incl. generator declarations/expressions — WI-zavad parity)
+        elif node.type in (
+            "function_declaration", "method_definition", "arrow_function",
+            "generator_function_declaration", "generator_function",
+        ):
             param_types = _extract_param_types(node, source)
             # Add parameter types to var_types for method call resolution
             for param_name, param_type in param_types.items():
@@ -3919,6 +4615,44 @@ def _extract_edges(
                     func_node = child
                 elif child.type == "arguments":
                     args_node = child
+
+            # WI-zavad anon-callback slice: IIFE companion edge. When a call's
+            # callee is a parenthesized anonymous function ``(function(){})()``,
+            # emit a ``calls`` edge from the enclosing scope to the IIFE symbol
+            # (it runs immediately at load) so the new symbol is not a dead-code
+            # false-positive and its invocation is visible in the graph.
+            iife_callee = node.child_by_field_name("function")
+            if (
+                iife_callee is not None
+                and iife_callee.type == "parenthesized_expression"
+                and symbol_by_position is not None
+            ):
+                for inner in iife_callee.children:
+                    if inner.type in (
+                        "arrow_function", "function_expression",
+                        "generator_function",
+                    ):
+                        iife_sym = symbol_by_position.get((
+                            str(file_path),
+                            inner.start_point[0] + 1 + line_offset,
+                            inner.start_point[1],
+                        ))
+                        if iife_sym is not None and (iife_sym.meta or {}).get("anonymous") is True:
+                            enclosing = _get_enclosing_function(
+                                node, source, file_path, global_symbols,
+                                symbol_by_position, line_offset,
+                            ) or module_symbol
+                            if enclosing is not None:
+                                edges.append(Edge.create(
+                                    src=enclosing.id,
+                                    dst=iife_sym.id,
+                                    edge_type="calls",
+                                    line=node.start_point[0] + 1 + line_offset,
+                                    origin=PASS_ID,
+                                    origin_run_id=run.execution_id,
+                                    evidence_type="ast_call_direct",
+                                ))
+                        break
 
             # Require calls
             if func_node and func_node.type == "identifier":
@@ -3937,7 +4671,6 @@ def _extract_edges(
                                 origin=PASS_ID,
                                 origin_run_id=run.execution_id,
                                 evidence_type="require_static",
-                                confidence=0.90,
                             )
                             edges.append(edge)
                             break
@@ -3953,7 +4686,6 @@ def _extract_edges(
                                 origin=PASS_ID,
                                 origin_run_id=run.execution_id,
                                 evidence_type="require_dynamic",
-                                confidence=0.40,
                             )
                             edges.append(edge)
                             break
@@ -3990,6 +4722,14 @@ def _extract_edges(
                             )
                             if callee is not None:
                                 edge_confidence = 0.85  # same-package heuristic
+                        # INV-fahub: a bare ``foo()`` that resolves only via a
+                        # weak short-name SUFFIX to a DIFFERENT class's method is
+                        # the magnet (dozens of call sites -> one arbitrary
+                        # ``Beta.persist``). Withhold that bind and stamp the
+                        # enclosing class so the inherited_calls Site-1 walker can
+                        # recover a genuine inherited implicit-``this`` call; free
+                        # functions, same-class methods, and exact matches bind.
+                        magnet_deferred = False
                         if callee is None:
                             lookup_result = resolver.lookup(func_name, caller_path=_caller_path)
                             if lookup_result.found and lookup_result.symbol is not None:
@@ -4000,8 +4740,22 @@ def _extract_edges(
                                 if not _is_cross_package(
                                     file_path, lookup_result.symbol.path,
                                 ):
-                                    callee = lookup_result.symbol
-                                    edge_confidence = 0.85 * lookup_result.confidence
+                                    _sym = lookup_result.symbol
+                                    _enclosing_type = _jsts_enclosing_class(node, source)
+                                    if defer_bare_method_call(
+                                        _sym.kind, _sym.name,
+                                        lookup_result.match_type, _enclosing_type,
+                                    ):
+                                        edges.append(make_unresolved_edge(
+                                            lang, current_function.id, func_name,
+                                            node.start_point[0] + 1 + line_offset,
+                                            PASS_ID, run.execution_id,
+                                            enclosing_class=_enclosing_type,
+                                        ))
+                                        magnet_deferred = True
+                                    else:
+                                        callee = _sym
+                                        edge_confidence = 0.85 * lookup_result.confidence
                         if callee is not None:
                             edge = Edge.create(
                                 src=current_function.id,
@@ -4014,6 +4768,11 @@ def _extract_edges(
                                 confidence=edge_confidence,
                             )
                             edges.append(edge)
+                        elif magnet_deferred:
+                            # Deferred to Site-1 above (unresolved edge already
+                            # emitted with the enclosing_class hint); do not also
+                            # emit a named-import / known-global fallback edge.
+                            pass
                         elif (named_imports or {}).get(func_name):
                             # WI-banaf: when a named-imported function is
                             # called but doesn't resolve to an intra-repo
@@ -4045,11 +4804,35 @@ def _extract_edges(
                                 origin_run_id=run.execution_id,
                                 evidence_type="ast_call_direct",
                                 is_resolved=False,
-                                confidence=0.70,
                                 dst_ref=ExternalRef(
                                     lang=lang,
                                     module_path=module_hint,
                                     name=canonical_name,
+                                ),
+                            )
+                            edges.append(edge)
+                        elif func_name in JS_KNOWN_GLOBAL_CALLS:
+                            # Bare global I/O function (``fetch(url)``) that did
+                            # not resolve intra-repo and was not imported: emit
+                            # an unresolved-call edge whose module hint AND name
+                            # are the function itself, matching the catalog's
+                            # ``module: fetch, functions: [fetch]`` shape so the
+                            # io-boundaries layer can tag the network call
+                            # (WI-zavad / emission-parity F2).
+                            dst_id = f"{lang}:{func_name}:0-0:{func_name}:unresolved"
+                            edge = Edge.create(
+                                src=current_function.id,
+                                dst=dst_id,
+                                edge_type="calls",
+                                line=node.start_point[0] + 1 + line_offset,
+                                origin=PASS_ID,
+                                origin_run_id=run.execution_id,
+                                evidence_type="ast_call_direct",
+                                is_resolved=False,
+                                dst_ref=ExternalRef(
+                                    lang=lang,
+                                    module_path=func_name,
+                                    name=func_name,
                                 ),
                             )
                             edges.append(edge)
@@ -4142,7 +4925,6 @@ def _extract_edges(
                                         origin=PASS_ID,
                                         origin_run_id=run.execution_id,
                                         evidence_type="ast_method_this_property",
-                                        confidence=0.90,
                                     )
                                     edges.append(edge)
                                     edge_added = True
@@ -4190,7 +4972,6 @@ def _extract_edges(
                                     origin_run_id=run.execution_id,
                                     evidence_type="ast_method_inferred",
                                     is_resolved=False,
-                                    confidence=0.70,
                                 )
                                 edges.append(edge)
                                 edge_added = True
@@ -4219,7 +5000,6 @@ def _extract_edges(
                                     origin=PASS_ID,
                                     origin_run_id=run.execution_id,
                                     evidence_type="ast_method_type_inferred",
-                                    confidence=0.85,
                                 )
                                 edges.append(edge)
                                 edge_added = True
@@ -4255,7 +5035,6 @@ def _extract_edges(
                                 origin_run_id=run.execution_id,
                                 evidence_type="ast_method_inferred",
                                 is_resolved=False,
-                                confidence=0.65,
                             )
                             edges.append(edge)
                             edge_added = True
@@ -4273,17 +5052,37 @@ def _extract_edges(
                                 # Cross-package guard: low-confidence method
                                 # inference should not cross npm packages.
                                 if not _is_cross_package(file_path, lookup_result.symbol.path):
-                                    edge = Edge.create(
-                                        src=current_function.id,
-                                        dst=lookup_result.symbol.id,
-                                        edge_type="calls",
-                                        line=node.start_point[0] + 1 + line_offset,
-                                        origin=PASS_ID,
-                                        origin_run_id=run.execution_id,
-                                        evidence_type="ast_method_inferred",
-                                        confidence=0.60 * lookup_result.confidence,
-                                    )
-                                    edges.append(edge)
+                                    _sym = lookup_result.symbol
+                                    _enclosing_type = _jsts_enclosing_class(node, source)
+                                    # INV-fahub: the untyped ``obj.method()``
+                                    # fanout — an AMBIGUOUS (2-way) short-name
+                                    # match to an UNRELATED class's method is the
+                                    # magnet. Withhold it and stamp the enclosing
+                                    # class for Site-1 recovery; a single-candidate
+                                    # (``exact``) match and a same-class method
+                                    # still bind.
+                                    if defer_bare_method_call(
+                                        _sym.kind, _sym.name,
+                                        lookup_result.match_type, _enclosing_type,
+                                    ):
+                                        edges.append(make_unresolved_edge(
+                                            lang, current_function.id, method_name,
+                                            node.start_point[0] + 1 + line_offset,
+                                            PASS_ID, run.execution_id,
+                                            enclosing_class=_enclosing_type,
+                                        ))
+                                    else:
+                                        edge = Edge.create(
+                                            src=current_function.id,
+                                            dst=_sym.id,
+                                            edge_type="calls",
+                                            line=node.start_point[0] + 1 + line_offset,
+                                            origin=PASS_ID,
+                                            origin_run_id=run.execution_id,
+                                            evidence_type="ast_method_inferred",
+                                            confidence=0.60 * lookup_result.confidence,
+                                        )
+                                        edges.append(edge)
 
             # Callback argument references: func(handler) or app.get("/path", handler)
             # When a bare identifier in the arguments resolves to a function,
@@ -4361,8 +5160,13 @@ def _extract_edges(
                                 origin=PASS_ID,
                                 origin_run_id=run.execution_id,
                                 evidence_type="callback_argument_reference",
-                                confidence=0.75,
                             ))
+                    # WI-zavad anon-callback slice: companion references edge for
+                    # inline anonymous callbacks (see helper).
+                    _emit_anon_callback_reference_edges(
+                        node, args_node, current_function, symbol_by_position,
+                        file_path, line_offset, run, edges,
+                    )
 
             # Middleware chain edges: for Express-style route registrations
             # with multiple middleware/handler arguments, create edges between
@@ -4416,7 +5220,6 @@ def _extract_edges(
                                 origin=PASS_ID,
                                 origin_run_id=run.execution_id,
                                 evidence_type="ast_call_direct",
-                                confidence=0.70,
                                 meta={"framework_dispatch": "middleware_chain"},
                             ))
 
@@ -4468,6 +5271,14 @@ def _extract_edges(
                     confidence=0.95 * lookup_confidence,
                 )
                 edges.append(edge)
+
+            # WI-zavad anon-callback slice: companion references edge for an
+            # inline anonymous callback passed to a constructor — the canonical
+            # ``new Promise((res, rej) => {})`` / ``new Observable(cb)`` form.
+            _emit_anon_callback_reference_edges(
+                node, node.child_by_field_name("arguments"), current_function,
+                symbol_by_position, file_path, line_offset, run, edges,
+            )
 
             # Track variable type for type inference
             # Check if this new_expression is part of a variable assignment
@@ -4522,7 +5333,6 @@ def _extract_edges(
                             origin=PASS_ID,
                             origin_run_id=run.execution_id,
                             evidence_type="object_field_reference",
-                            confidence=0.80,
                         ))
 
         # Shorthand property: {handleClick} — equivalent to {handleClick: handleClick}
@@ -4552,7 +5362,6 @@ def _extract_edges(
                         origin=PASS_ID,
                         origin_run_id=run.execution_id,
                         evidence_type="object_field_reference",
-                        confidence=0.80,
                     ))
 
     return edges

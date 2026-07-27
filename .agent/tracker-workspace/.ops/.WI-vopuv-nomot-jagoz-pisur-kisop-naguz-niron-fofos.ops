@@ -1,0 +1,19 @@
+- op: create  # 33e2
+  at: '2026-07-19T22:17:18Z'  # 33e2
+  by: agent  # 33e2
+  actor: jgstern_agent  # 33e2
+  clock: 1  # 33e2
+  nonce: '33e2'  # 33e2
+  data:  # 33e2
+    kind: work_item  # 33e2
+    title: "tracker CLI: update --parent cannot clear a parent (reparent-to-top-level); --parent '' silently no-ops"  # 33e2
+    status: todo_soft  # 33e2
+    priority: 4  # 33e2
+    parent:  # 33e2
+    tags: []  # 33e2
+    isbefore: []  # 33e2
+    duplicate_of: []  # 33e2
+    not_duplicate_of: []  # 33e2
+    pr_ref:  # 33e2
+    description: "**Tooling gap + footgun** found during the META-jalur crush (2026-07-19). `scripts/tracker update <ID> --parent <X>` can only REASSIGN a parent, never CLEAR it (reparent-to-top-level, parent=null):\n\n- The CLI guard `if args.parent:` (`cli.py` `_cmd_update`) skips falsy values, so `--parent \"\"` is a SILENT no-op (looks like it worked — the footgun).\n- `_resolve_ref` has no null sentinel, so `--parent none` / `--parent null` fail with \"cannot resolve\".\n\nThe DATA layer fully supports clearing: `parent` is in `_UPDATABLE_FIELDS` with scalar-LWW semantics, and `TrackerSet.update(id, set_fields={\"parent\": None})` cleanly sets `parent: null` (verified 2026-07-19 — used exactly this to reparent WI-humok to null per owner ruling, because the CLI could not).\n\n**Fix (TDD, 100% cov):** add a CLI path to clear a parent — a `--parent none`/`null`/`-` sentinel handled in `_cmd_update`/`_resolve_ref`, or a dedicated `--clear-parent` flag. Tests: (1) the new path sets `parent=null`; (2) `show` renders `parent: null`; (3) the sentinel does not collide with a real item prefix; (4) `--parent \"\"` should error (or clear) rather than silently no-op. Impact low (occasional), priority P4."  # 33e2
+    fields: {}  # 33e2

@@ -1,0 +1,24 @@
+- op: create  # 954b
+  at: '2026-07-15T04:14:26Z'  # 954b
+  by: agent  # 954b
+  actor: jgstern_agent  # 954b
+  clock: 1  # 954b
+  nonce: 954b  # 954b
+  data:  # 954b
+    kind: work_item  # 954b
+    title: "survey-rename: remove deprecation-window affordances (run alias, legacy filename aliases, behavior_map_io/run_behavior_map shims) at next minor bump"  # 954b
+    status: todo_soft  # 954b
+    priority: 4  # 954b
+    parent:  # 954b
+    tags:  # 954b
+    - survey_rename  # 954b
+    - naming  # 954b
+    - backward_compat  # 954b
+    - wave5  # 954b
+    - deprecation_window  # 954b
+    isbefore: []  # 954b
+    duplicate_of: []  # 954b
+    not_duplicate_of: []  # 954b
+    pr_ref:  # 954b
+    description: "ADR-0042 survey-rename deprecation-window CLOSE. The rename shipped with a one-minor-version backward-compat window (INV-firuh satisfied 2026-07-15, S1-S8). At the next minor-version bump, remove the four backward-compat affordances that were deliberately retained for that window:\n\n1. The `run` subcommand alias (cli.py — `sub.add_parser(\"survey\", aliases=[\"run\"], ...)` + the `cmd_run` stderr deprecation warning branch keyed on `args.command == \"run\"`). After removal, `hypergumbo run` should exit as an unknown subcommand.\n2. The 4 legacy input filename aliases in the loader resolver (survey_io.LEGACY_SURVEY_FILENAMES: hypergumbo.results.json / hg.json / bm.json / behavior_map.json) + `_warn_if_legacy_survey_name` (the WI-didif `--input <legacy>` acceptance + stderr warning). After removal, `--input bm.json` should fail to resolve rather than warn-and-load.\n3. The `behavior_map_io.py` module re-export shim (re-exports survey_io + module-level DeprecationWarning). After removal, `import hypergumbo_core.behavior_map_io` should ImportError.\n4. The `run_behavior_map = run_survey` function alias in cli.py. After removal, `cli.run_behavior_map` should AttributeError.\n\nDESIGN NOTE (do NOT remove): the on-disk `view` JSON discriminator VALUE stays `\"behavior_map\"` — ADR-0042 changes zero schema bytes on purpose (consumers parsing the JSON see no break). This is a permanent design decision, NOT part of the deprecation window. Do not \"finish the rename\" by touching the discriminator value.\n\nTDD: each removal wants a Red test asserting the new failure mode (unknown-subcommand exit, unresolved-input error, ImportError, AttributeError) replacing the current deprecation-warning tests. Bump SCHEMA_VERSION only if any wire format actually changes (it should not — this is CLI/loader/module surface, not schema). Update CHANGELOG.md + spec deprecation notes.\n\nGated: do NOT pull until the next minor-version bump crosses the one-version window. Filed per the 2026-07-15 handoff (the sole survey-rename residual). Closes the ADR-0042 migration-plan step 7."  # 954b
+    fields: {}  # 954b

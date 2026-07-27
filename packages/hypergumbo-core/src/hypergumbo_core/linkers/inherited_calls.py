@@ -63,19 +63,53 @@ ceremony for static language semantics). Initial table (PR-2):
 
 - ``_walk_insertion_order``: Ruby, Groovy. BFS through inheritance edges
   in declaration order. Per-source visited set guards against cycles.
+- ``_walk_single_then_interfaces`` (Java; PR-3 / WI-dukog): single
+  superclass (``extends``) walked before interfaces
+  (``implements``/``includes``) via edge-type priority. Default /
+  Kotlin / C# extension still future.
 
-Future PRs:
+- ``_walk_c3`` (Python; WI-hiziz / D1): true C3 linearization over the
+  in-tree ``extends`` chain. Python's MRO is C3, not insertion-order BFS —
+  the two diverge on uneven-depth diamonds, where BFS picks the wrong
+  ancestor. Registered for ``python`` only; deliberately NOT added to
+  ``_LEGACY_SITE2_LANGS`` (Python keeps strict Site-2, no Step-3 fallback).
 
-- ``_walk_single_then_interfaces`` (default + Java/Kotlin/C#): single
-  superclass before interface list — PR-3.
-- ``_walk_c3`` (Python): C3 linearization — future.
-- ``_walk_left_to_right`` (PHP/Swift/Obj-C/C++): left-to-right depth
-  first — future.
-- ``_walk_linearization`` (Scala traits) — future.
+- ``_walk_linearization`` (Scala; WI-nazab): right-to-left BFS
+  approximating Scala trait linearization (``extends B with T1 with T2``
+  → ``C, T2, T1, B``; rightmost mixin wins, superclass last). Registered
+  for ``scala``.
+- ``_walk_left_to_right`` (Swift; WI-sojim): left-to-right pre-order DFS
+  (single superclass chain, then protocol extensions in declaration
+  order). Registered for ``swift``; the same walker fits PHP/Obj-C/C++
+  when those analyzers are onboarded (they stamp ``enclosing_class`` but
+  are not yet in ``_MRO_WALKERS``).
+
+Both recover Step-2 (inherited-method) calls for the Scala/Swift facets
+(WI-bihit/WI-votar), which already stamp ``receiver_type_hint`` and so
+already resolve Step-1 (direct method on the typed receiver); the walker
+adds the ancestor-chain hop. External-base shadowing (INV-guviv) stays
+Python-scoped — the guard is applied at the Site-2 resolver for
+``python`` only; the Scala/Swift walkers resolve in-tree ancestors and
+inherit that tracked limitation rather than worsening it.
 
 Languages whose walker isn't registered yet are silently no-op'd; the
 analyzer must opt in by emitting the hint AND the linker must have a
 walker registered for that source language.
+
+Language scoping (INV-milud)
+----------------------------
+``class_ids_by_name`` is a language-AGNOSTIC short-name index — a Python
+``Handler`` and a Java ``Handler`` collide on the same key. But MRO /
+typed-receiver dispatch never crosses a language boundary (cross-language
+edges are the FFI/bridge linkers' job), so every place a Site turns a
+receiver / enclosing-class / field-type NAME into candidate class ids goes
+through ``_same_language_class_ids``, which restricts the candidates to the
+call's own ``src_lang``. This is one chokepoint (not a per-Site sweep) and it
+closes two failures at once: a confidently-wrong cross-language ``calls`` edge
+(the Java legacy-permissive Site-2 skips the same-name ambiguity guard and
+would otherwise bind to a foreign namesake), and a false-negative where a
+foreign namesake inflates the strict ``len(...) > 1`` ambiguity count and
+suppresses a legitimate same-language resolution.
 """
 
 from __future__ import annotations
@@ -97,7 +131,7 @@ from .type_hierarchy import (
     build_method_index,
 )
 
-PASS_ID = make_pass_id("inherited-calls")
+PASS_ID = make_pass_id("inherited-calls-linker")
 
 _INHERITED_CALL_EDGE_TYPES: tuple[str, ...] = (
     "extends", "implements", "includes",
@@ -142,6 +176,51 @@ def _build_typed_inheritance_index(
         if edge.edge_type in edge_types:
             index[edge.src].append((edge.dst, edge.edge_type))
     return index
+
+
+def _reorder_python_bases_by_source(
+    inheritance_index: dict[str, list[tuple[str, str]]],
+    class_symbols: dict[str, Symbol],
+) -> None:
+    """Reorder each Python class's parent list to match SOURCE base order.
+
+    C3 correctness needs the left-to-right base order (``class D(B, C)`` →
+    ``[B, C]``). ``_build_typed_inheritance_index`` preserves edge-ARRIVAL
+    order, which diverges for a QUALIFIED in-tree base: py.py's short-name base
+    resolver misses ``class D(mod.Bar, Mixin)``'s ``mod.Bar``, so that
+    ``extends`` edge is recovered LATE by the inheritance-linker and arrives
+    after ``Mixin`` — reversing the base order and (on a method-name collision)
+    resolving to the wrong ancestor. Each Python child's authoritative source
+    order lives in ``meta['base_classes']`` (``node.bases`` order, dotted names
+    intact); parents are sorted by their short name's position there, with
+    parents whose short name isn't found kept in a stable trailing block. In
+    place; only Python multi-base children are touched, so ruby / groovy / java
+    walkers (which rely on edge-arrival / edge-type order) are unaffected.
+    """
+    for child in class_symbols.values():
+        if child.language != "python":
+            continue
+        parents = inheritance_index.get(child.id)
+        if not parents or len(parents) < 2:
+            continue
+        base_names = [
+            str(b).split(".")[-1]
+            for b in ((child.meta or {}).get("base_classes") or [])
+        ]
+        if not base_names:
+            continue
+        pos = {name: i for i, name in enumerate(base_names)}
+        fallback = len(base_names)
+        decorated: list[tuple[int, int, tuple[str, str]]] = []
+        for arrival, parent_entry in enumerate(parents):
+            psym = class_symbols.get(parent_entry[0])
+            if psym is None:  # pragma: no cover - an extends dst is always an in-tree class
+                short = ""
+            else:
+                short = psym.name.split(".")[-1]
+            decorated.append((pos.get(short, fallback), arrival, parent_entry))
+        decorated.sort()
+        inheritance_index[child.id] = [entry for _, _, entry in decorated]
 
 
 # ---------------------------------------------------------------------------
@@ -257,6 +336,205 @@ def _walk_single_then_interfaces(
     return None
 
 
+def _c3_merge(sequences: list[list[str]]) -> list[str]:
+    """C3 merge: combine linearizations preserving monotonicity + local order.
+
+    Repeatedly takes a *good head* — a class that is the head of some sequence
+    and appears in NO sequence's tail — appends it, and removes it from every
+    sequence. A mathematically-inconsistent hierarchy (real Python raises
+    ``TypeError``) has no good head; a static walker must stay total, so we
+    DEGRADE by taking the first available head instead of raising. The result
+    has no duplicates (each pick is removed from all sequences).
+    """
+    seqs = [list(s) for s in sequences if s]
+    result: list[str] = []
+    while seqs:
+        head: str | None = None
+        for seq in seqs:
+            candidate = seq[0]
+            if not any(candidate in s[1:] for s in seqs):
+                head = candidate
+                break
+        if head is None:  # inconsistent hierarchy — degrade, never raise
+            head = seqs[0][0]
+        result.append(head)
+        seqs = [[c for c in s if c != head] for s in seqs]
+        seqs = [s for s in seqs if s]
+    return result
+
+
+def _linearize_c3(
+    class_id: str,
+    inheritance_index: dict[str, list[tuple[str, str]]],
+    depth_cap: int = _DEFAULT_DEPTH_CAP,
+    _memo: dict[str, list[str] | None] | None = None,
+    _in_progress: frozenset[str] = frozenset(),
+) -> list[str] | None:
+    """Compute the C3 linearization (Python MRO order) of ``class_id``.
+
+    ``L[C] = [C] + merge(L[B1], ..., L[Bn], [B1, ..., Bn])`` over the in-tree
+    ancestor subgraph, using the ORDERED base list from ``inheritance_index``
+    (left-to-right ``extends`` order, which C3's local-precedence rule needs).
+    Results are memoized per class.
+
+    Returns ``None`` — a "cannot linearize reliably, bias to unresolved" signal
+    — rather than a best-effort order in two cases that would otherwise emit a
+    CONFIDENTLY-WRONG resolution: an inheritance **cycle** (``_in_progress``;
+    malformed, can't be valid Python) and **depth exhaustion** (``depth_cap``;
+    a truncated branch would silently drop a precedence edge and reorder two
+    real ancestors). ``None`` propagates: if any base branch is unreliable, the
+    whole linearization is. A final dedup pass keeps the result robust to
+    repeated classes. Never raises.
+    """
+    if _memo is None:
+        _memo = {}
+    if class_id in _memo:
+        return _memo[class_id]
+    if class_id in _in_progress or depth_cap <= 0:
+        return None
+    child_in_progress = _in_progress | {class_id}
+    parents = [parent_id for parent_id, _edge_type in inheritance_index.get(class_id, ())]
+    seqs: list[list[str]] = []
+    for parent_id in parents:
+        parent_lin = _linearize_c3(
+            parent_id, inheritance_index, depth_cap - 1, _memo, child_in_progress,
+        )
+        if parent_lin is None:
+            return None
+        seqs.append(parent_lin)
+    if parents:
+        seqs.append(list(parents))
+    merged = [class_id] + _c3_merge(seqs)
+    seen: set[str] = set()
+    deduped = [c for c in merged if not (c in seen or seen.add(c))]
+    _memo[class_id] = deduped
+    return deduped
+
+
+def _walk_c3(
+    start_class_id: str,
+    callee_short_name: str,
+    inheritance_index: dict[str, list[tuple[str, str]]],
+    method_index: _TypeHierarchyIndex,
+    depth_cap: int = _DEFAULT_DEPTH_CAP,
+) -> Symbol | None:
+    """C3-linearization MRO walk (Python).
+
+    Python's MRO is C3 linearization, NOT the insertion-order BFS the Ruby /
+    Groovy walker uses. They agree on single inheritance and even diamonds but
+    diverge on uneven-depth diamonds, where insertion-order picks the *wrong*
+    ancestor (a confidently-wrong ``calls`` edge). This walker computes the C3
+    order and returns the first class in it that defines ``callee_short_name``;
+    an un-linearizable hierarchy (cycle / too deep) biases to unresolved.
+
+    Scope caveat (INV-guviv): the linearization spans only in-tree bases. An
+    EXTERNAL base (``dict`` / a 3rd-party class) produces no ``extends`` edge, so
+    it is invisible to the walk — and if such a base sits ahead of the in-tree
+    ancestor in the real MRO *and* defines the same method name, the walk would
+    resolve to the wrong (in-tree) method. The Site resolvers guard the BUILTIN
+    subset of this via ``_python_stdlib_base_shadows`` (the ``_STDLIB_BASE_METHODS``
+    catalog): a cataloged builtin base declared ahead of the in-tree ancestor and
+    defining the method biases the resolution to unresolved. A generic 3rd-party
+    external base (not cataloged — the catalog is deliberately not open-ended, to
+    avoid over-suppressing the external-mixin-first idiom) remains a documented
+    residual, shared with every intra-repo-only walker.
+    """
+    candidates_by_short = method_index.methods_by_short_name.get(
+        callee_short_name, [],
+    )
+    methods_by_class: dict[str, Symbol] = dict(candidates_by_short)
+    if not methods_by_class:
+        return None
+    linearization = _linearize_c3(start_class_id, inheritance_index, depth_cap)
+    if linearization is None:
+        return None
+    for class_id in linearization:
+        candidate = methods_by_class.get(class_id)
+        if candidate is not None:
+            return candidate
+    return None
+
+
+def _walk_linearization(
+    start_class_id: str,
+    callee_short_name: str,
+    inheritance_index: dict[str, list[tuple[str, str]]],
+    method_index: _TypeHierarchyIndex,
+    depth_cap: int = _DEFAULT_DEPTH_CAP,
+) -> Symbol | None:
+    """Right-to-left BFS approximating Scala trait linearization (WI-nazab).
+
+    Scala linearizes ``class C extends B with T1 with T2`` as ``C, T2, T1,
+    B`` — a later mixin overrides an earlier one, and the superclass
+    resolves last. So for the "is this method defined on an ancestor, and
+    which wins?" question, walking each node's parents in REVERSED
+    declaration order (rightmost mixin first) reproduces the precedence
+    without computing the full C3 merge — the same pragmatic approximation
+    ``_walk_insertion_order`` makes for Ruby's declaration-order MRO. The
+    ``inheritance_index`` preserves ``extends``/``with`` declaration order,
+    which this walker reverses per level.
+    """
+    visited: set[str] = {start_class_id}
+    queue: deque[tuple[str, int]] = deque([(start_class_id, 0)])
+    methods_by_class: dict[str, Symbol] = dict(
+        method_index.methods_by_short_name.get(callee_short_name, []),
+    )
+    while queue:
+        class_id, depth = queue.popleft()
+        candidate = methods_by_class.get(class_id)
+        if candidate is not None:
+            return candidate
+        if depth >= depth_cap:
+            continue
+        for parent_id, _edge_type in reversed(
+            inheritance_index.get(class_id, []),
+        ):
+            if parent_id in visited:
+                continue
+            visited.add(parent_id)
+            queue.append((parent_id, depth + 1))
+    return None
+
+
+def _walk_left_to_right(
+    start_class_id: str,
+    callee_short_name: str,
+    inheritance_index: dict[str, list[tuple[str, str]]],
+    method_index: _TypeHierarchyIndex,
+    depth_cap: int = _DEFAULT_DEPTH_CAP,
+) -> Symbol | None:
+    """Left-to-right depth-first walk (Swift / PHP / Obj-C / C++ MRO; WI-sojim).
+
+    Swift resolves a call against the single superclass chain first, then
+    protocol extensions in declaration order; Obj-C categories and C++ bases
+    similarly resolve left-to-right, depth-first. Implemented with an
+    explicit stack whose parents are pushed in REVERSED order so the
+    leftmost parent's subtree is popped (explored) before its right
+    siblings — a left-to-right pre-order DFS. Registered for Swift here;
+    the same walker fits PHP/Obj-C/C++ when their analyzers are onboarded.
+    """
+    visited: set[str] = {start_class_id}
+    methods_by_class: dict[str, Symbol] = dict(
+        method_index.methods_by_short_name.get(callee_short_name, []),
+    )
+    stack: list[tuple[str, int]] = [(start_class_id, 0)]
+    while stack:
+        class_id, depth = stack.pop()
+        candidate = methods_by_class.get(class_id)
+        if candidate is not None:
+            return candidate
+        if depth >= depth_cap:
+            continue
+        for parent_id, _edge_type in reversed(
+            inheritance_index.get(class_id, []),
+        ):
+            if parent_id in visited:
+                continue
+            visited.add(parent_id)
+            stack.append((parent_id, depth + 1))
+    return None
+
+
 # Per-language MRO dispatch. Hardcoded clauses (no YAML / no decorator
 # hooks) because the table is static language semantics — see ADR-3bbb
 # and the WI-hatip plan discussion at ~/puluf-plan.md.
@@ -267,7 +545,203 @@ _MRO_WALKERS: dict[str, Callable[
     "ruby": _walk_insertion_order,
     "groovy": _walk_insertion_order,
     "java": _walk_single_then_interfaces,
+    "python": _walk_c3,
+    "scala": _walk_linearization,  # WI-nazab
+    "swift": _walk_left_to_right,  # WI-sojim
+    # INV-fahub fleet walkers: recover the inherited implicit-``this``/``self``
+    # calls the fleet magnet gate defers. Each language's analyzer emits
+    # ``base_classes`` (or, for Rust, ``implements``) metadata that the
+    # language-agnostic ``inheritance`` linker turns into the extends/implements
+    # edges these walkers traverse. Walker choice follows the language's MRO
+    # shape: single-superclass-then-interfaces (Java-like) for php/js/ts/csharp/
+    # objc; insertion-order BFS for go struct embedding, rust trait impls, and
+    # C++ multiple inheritance. (dart/lua/zig emit no inheritance model, so no
+    # walker recovers anything for them — deliberately unregistered.)
+    "go": _walk_insertion_order,
+    "rust": _walk_insertion_order,
+    "php": _walk_single_then_interfaces,
+    "javascript": _walk_single_then_interfaces,
+    "typescript": _walk_single_then_interfaces,
+    "csharp": _walk_single_then_interfaces,
+    "cpp": _walk_insertion_order,
+    "objc": _walk_single_then_interfaces,
 }
+
+
+# INV-guviv: hardcoded stdlib-base-method catalog for the Python C3 walker's
+# external-base shadow guard. Static language semantics — hardcoded over YAML,
+# consistent with ``_MRO_WALKERS`` (ADR-0029) and the sibling framework-base
+# tables (``DJANGO_BASE_METHODS`` in django_orm_dispatch, ``THIRD_PARTY_BASE_METHODS``
+# in _third_party_bases — "the table lives with its consumer"). Maps a builtin
+# container base's short name → the named methods it defines. Scoped to the
+# small, STABLE builtin collision types: a class inheriting one of these plus an
+# in-tree mixin, where the builtin is declared first, has the builtin's method
+# win Python's real MRO — invisible to the in-tree-only C3 walk. Non-stdlib
+# external bases (a 3rd-party ORM base, an auth mixin) are DELIBERATELY not
+# cataloged: that list is open-ended, and the common external-mixin-first idiom
+# must not be over-suppressed (the naive "any external ahead → suppress" gate,
+# rejected in the INV-guviv design workflow, regressed exactly that idiom). They
+# remain a documented residual (fast-follow: extend to well-known ORM bases only
+# if a bakeoff shows real hits).
+_STDLIB_BASE_METHODS: dict[str, frozenset[str]] = {
+    "dict": frozenset({
+        "keys", "values", "items", "get", "pop", "popitem",
+        "setdefault", "update", "clear", "copy", "fromkeys",
+    }),
+    "list": frozenset({
+        "append", "extend", "insert", "remove", "pop", "clear",
+        "index", "count", "sort", "reverse", "copy",
+    }),
+    "set": frozenset({
+        "add", "remove", "discard", "pop", "clear", "copy",
+        "union", "intersection", "difference", "symmetric_difference",
+        "update", "intersection_update", "difference_update",
+        "symmetric_difference_update", "issubset", "issuperset", "isdisjoint",
+    }),
+    "frozenset": frozenset({
+        "copy", "union", "intersection", "difference",
+        "symmetric_difference", "issubset", "issuperset", "isdisjoint",
+    }),
+    "tuple": frozenset({"index", "count"}),
+    "str": frozenset({
+        "capitalize", "casefold", "center", "count", "encode", "endswith",
+        "expandtabs", "find", "format", "format_map", "index", "isalnum",
+        "isalpha", "isascii", "isdecimal", "isdigit", "isidentifier",
+        "islower", "isnumeric", "isprintable", "isspace", "istitle",
+        "isupper", "join", "ljust", "lower", "lstrip", "maketrans",
+        "partition", "removeprefix", "removesuffix", "replace", "rfind",
+        "rindex", "rjust", "rpartition", "rsplit", "rstrip", "split",
+        "splitlines", "startswith", "strip", "swapcase", "title",
+        "translate", "upper", "zfill",
+    }),
+    "bytes": frozenset({
+        "decode", "hex", "count", "find", "index", "rfind", "rindex",
+        "split", "rsplit", "splitlines", "join", "replace", "startswith",
+        "endswith", "strip", "lstrip", "rstrip", "partition", "rpartition",
+        "translate", "center", "ljust", "rjust", "zfill",
+    }),
+    "bytearray": frozenset({
+        "append", "extend", "insert", "remove", "pop", "clear", "reverse",
+        "copy", "decode", "hex", "count", "find", "index", "split", "join",
+        "replace", "startswith", "endswith", "strip",
+    }),
+}
+
+
+def _stdlib_short_base(raw: str) -> str:
+    """Strip generics + dotted qualifier so a declared base name → its short form.
+
+    Mirrors the sibling linkers' ``_short_base_name``. Only the bare builtin
+    names (``dict``/``list``/...) match the catalog; a dotted form takes the
+    last segment.
+    """
+    name = raw.split("[")[0].split("<")[0].strip()
+    if "." in name:
+        name = name.rsplit(".", 1)[-1]
+    return name
+
+
+def _python_stdlib_base_shadows(
+    start_class_id: str,
+    callee_short: str,
+    inheritance_index: dict[str, list[tuple[str, str]]],
+    class_symbols: dict[str, Symbol],
+    method_index: _TypeHierarchyIndex,
+) -> bool:
+    """True when a resolved Python inherited method is shadowed by a builtin base.
+
+    INV-guviv: ``_walk_c3`` spans only in-tree ``extends`` edges, so an external
+    builtin base is invisible. If such a base is declared BEFORE the first
+    in-tree base of ``start_class_id`` AND it defines ``callee_short``, Python's
+    real MRO dispatches to the (unseen) builtin method — the walk's in-tree
+    binding is confidently wrong, so bias to unresolved.
+
+    Sound by construction (never over-suppresses the external-mixin-first idiom):
+    fires only when a CATALOGED builtin that DEFINES the method precedes ANY
+    in-tree base. A non-stdlib external mixin is not cataloged; a builtin that
+    does not define the method is skipped; a class defining the method itself is
+    exempt (its own method is first in the MRO). Scoped to the start class's own
+    declared bases — a builtin declared in an in-tree ANCESTOR is a documented
+    residual. The scan stops at the FIRST in-tree base, so a builtin declared
+    AFTER an in-tree base that lacks the method but BEFORE a LATER in-tree base
+    that has it is a documented UNDER-suppression residual (safe: it leaves the
+    pre-existing edge, never over-suppresses a correct one).
+    """
+    start_sym = class_symbols.get(start_class_id)
+    declared = (
+        ((start_sym.meta or {}).get("base_classes") if start_sym else None) or []
+    )
+    if not declared:
+        return False
+    # The class's own method is first in the MRO — never shadowed.
+    if any(
+        cid == start_class_id
+        for cid, _ in method_index.methods_by_short_name.get(callee_short, [])
+    ):
+        return False
+    # ``str(raw)`` coercion mirrors the sibling ``_reorder_python_bases_by_source``
+    # defense (the producer is typed ``-> str``, so this is belt-and-suspenders).
+    declared_short = [_stdlib_short_base(str(raw)) for raw in declared]
+    in_tree_short = {
+        _stdlib_short_base(class_symbols[pid].name)
+        for pid, _ in inheritance_index.get(start_class_id, ())
+        if pid in class_symbols
+    }
+    # Soundness guard: the shadow reasoning aligns declared base ORDER with the
+    # in-tree parents. If an in-tree parent's name is ABSENT from the declared
+    # bases (e.g. an in-tree class import-aliased to a builtin's exact name, or
+    # any name divergence), the alignment is unreliable — bias to no-shadow
+    # rather than risk over-suppressing a correct resolution.
+    if not in_tree_short.issubset(declared_short):
+        return False
+    for short in declared_short:
+        if short in in_tree_short:
+            # Reached the in-tree resolution path before any shadowing builtin.
+            return False
+        methods = _STDLIB_BASE_METHODS.get(short)
+        if methods is not None and callee_short in methods:
+            return True
+    return False  # pragma: no cover - the subset guard guarantees an in-tree hit
+
+
+# Languages that get the LEGACY-PERMISSIVE Site-2 typed-receiver resolution:
+# the Step-3 type-symbol fallback fires, and a same-name-class collision
+# resolves by first-match rather than biasing to unresolved. This preserves
+# the Java analyzer's pre-PR-5 behavior and the INV-nilud-validated Java
+# Site-2 edges. Only ``java`` currently emits ``receiver_type_hint`` (Ruby /
+# Groovy emit Site-1/Site-3 hints only), so ``java`` is the sole member.
+#
+# Every OTHER (newly-onboarded) language — Python (WI-noham Part A) and any
+# future emitter — gets the STRICT INV-fahub mode: resolve ONLY when the
+# method is directly on the concretely-named, unambiguous type (linker Step 1
+# / Step 2 MRO), NEVER the Step-3 type-symbol fallback (which would mint a
+# ``calls→class`` edge — a new runtime_coherence partition — and bind an
+# under-determined receiver to a class), and NEVER a same-name-class first
+# match (INV-fahub: an under-determined receiver must stay ambiguous/external).
+#
+# DELIBERATELY DECOUPLED from ``_MRO_WALKERS``: this is NOT ``set(_MRO_WALKERS)``.
+# Adding a Python MRO walker (deferred D1) must NOT silently re-enable Python's
+# permissive Step-3 fallback; a language opts into permissiveness only by being
+# listed HERE, consciously, after allowlisting the ``calls→class`` partition.
+_LEGACY_SITE2_LANGS: frozenset[str] = frozenset({"java"})
+
+
+# ``_SITE1_STRICT_LANGS`` — languages whose Site-1 (``enclosing_class``)
+# resolution applies the INV-fahub same-short-name ambiguity guard (WI-hiziz
+# PR-2). This is DELIBERATELY NOT ``all langs except _LEGACY_SITE2_LANGS``: the
+# guard's premise is that two in-tree classes sharing a short name are DISTINCT
+# classes (true in Python, which has module namespaces — a bare ``enclosing_class``
+# name genuinely under-determines which module's class the caller is in). It is
+# FALSE in Ruby (and any single-global-namespace language): a *reopened* class
+# (``class Worker`` opened in several files — ubiquitous in Rails) emits one class
+# symbol per definition, all sharing the same short name, yet they are ONE logical
+# class. Applying the guard there would suppress the INV-nilud-validated
+# ``X.new → inherited #initialize`` Site-1 resolution this linker was built to
+# preserve. So the guard is opt-in per language, and only Python (whose Site-1
+# WI-hiziz PR-2 onboards) is a member; Ruby/Groovy keep their loop-all-first-match
+# Site-1 behavior. WI-supat (D3) threads a concrete class id to recover Python's
+# guard-sacrificed recall.
+_SITE1_STRICT_LANGS: frozenset[str] = frozenset({"python"})
 
 
 # ---------------------------------------------------------------------------
@@ -281,8 +755,18 @@ def _walk_parents_for_field(
     inheritance_index: dict[str, list[tuple[str, str]]],
     class_symbols: dict[str, Symbol],
     depth_cap: int = _DEFAULT_DEPTH_CAP,
-) -> str | None:
-    """BFS the parent chain looking for ``meta["fields"][field_short_name]``.
+    src_lang: str | None = None,
+) -> tuple[str, str | None] | None:
+    """Walk the parent chain looking for ``meta["fields"][field_short_name]``.
+
+    WI-rarab: for Python (``src_lang == "python"``) the walk follows the C3
+    linearization, not insertion-order BFS — on an uneven-depth diamond where
+    the same field name is declared at different depths with DIVERGENT types,
+    BFS returns a direct base's field while C3 returns the MRO-earlier
+    ancestor's (the one Python's real attribute lookup would use). An
+    un-linearizable (cyclic / too-deep) Python hierarchy biases to unresolved
+    (``None``), matching ``_walk_c3``. Other languages keep the insertion-order
+    BFS below.
 
     Used by Site-3 resolution (WI-puvil / PR-5). The Java analyzer
     populates each class symbol's ``meta["fields"]`` with the
@@ -303,8 +787,29 @@ def _walk_parents_for_field(
         depth_cap: Maximum walk depth.
 
     Returns:
-        First matching field type name (e.g. ``"Logger"``), or ``None``.
+        On a HIT, a ``(type_name, type_id_or_None)`` 2-tuple — the field's type
+        short name plus the concrete type id from the parent's parallel
+        ``meta["field_type_ids"]`` (WI-supat PR-B), or ``None`` when the parent
+        carries only the legacy name-keyed ``meta["fields"]`` (java / pre-PR-B).
+        On a MISS (no ancestor declares the field), bare ``None`` — preserving
+        the depth-cap / cycle negatives that assert ``result is None``.
     """
+    if src_lang == "python":
+        # WI-rarab: C3-ordered field walk. Linearize the enclosing class and
+        # take the first ancestor (excluding the class itself — own fields are
+        # not examined) that declares the field.
+        linearization = _linearize_c3(start_class_id, inheritance_index, depth_cap)
+        if linearization is None:
+            return None
+        for class_id in linearization[1:]:
+            sym = class_symbols.get(class_id)
+            if sym is not None and sym.meta:
+                fields = sym.meta.get("fields") or {}
+                if field_short_name in fields:
+                    type_ids = sym.meta.get("field_type_ids") or {}
+                    return fields[field_short_name], type_ids.get(field_short_name)
+        return None
+
     visited: set[str] = {start_class_id}
     queue: deque[tuple[str, int]] = deque([(start_class_id, 0)])
     while queue:
@@ -319,7 +824,8 @@ def _walk_parents_for_field(
             if parent_sym is not None and parent_sym.meta:
                 fields = parent_sym.meta.get("fields") or {}
                 if field_short_name in fields:
-                    return fields[field_short_name]
+                    type_ids = parent_sym.meta.get("field_type_ids") or {}
+                    return fields[field_short_name], type_ids.get(field_short_name)
             queue.append((parent_id, depth + 1))
     return None
 
@@ -342,7 +848,7 @@ def _extract_method_short_name(callee_name: str) -> str:
 # ---------------------------------------------------------------------------
 
 @register_linker(
-    "inherited-calls",
+    "inherited-calls-linker",
     priority=18,  # Between inheritance (15) and type_hierarchy (20).
     description=(
         "Walks ancestor chains to resolve unresolved calls that carry the "
@@ -384,6 +890,11 @@ def link_inherited_calls(ctx: LinkerContext) -> LinkerResult:
         if s.kind in ("class", "struct", "module", "interface", "trait", "protocol"):
             class_ids_by_name.setdefault(s.name, []).append(s.id)
             class_symbols[s.id] = s
+    # WI-hiziz (D1): C3 needs left-to-right base order, but a qualified in-tree
+    # base's extends edge arrives out of order (recovered late by the
+    # inheritance-linker). Restore each Python class's source base order from
+    # meta['base_classes'] before the C3 walker consumes the index.
+    _reorder_python_bases_by_source(inheritance_index, class_symbols)
     method_index = build_method_index(
         ctx.symbols, class_ids_by_name, class_symbols,
     )
@@ -414,6 +925,13 @@ def link_inherited_calls(ctx: LinkerContext) -> LinkerResult:
         receiver_type_hint = meta.get("receiver_type_hint")
         inherited_field_receiver = meta.get("inherited_field_receiver")
         enclosing_class = meta.get("enclosing_class")
+        # WI-supat (D3): the concrete class ids the producer threaded alongside
+        # the name hints (an AUTHORITATIVE enclosing-class id, and a
+        # within-file-uniqueness-gated receiver-type id). Consumed by the Site
+        # resolvers to skip the same-short-name ambiguity guard precisely. The
+        # Site-3 field-TYPE id rides the parent class symbol's meta, not here.
+        receiver_type_id = meta.get("receiver_type_id")
+        enclosing_class_id = meta.get("enclosing_class_id")
 
         if not (
             receiver_type_hint or inherited_field_receiver
@@ -436,6 +954,8 @@ def link_inherited_calls(ctx: LinkerContext) -> LinkerResult:
             receiver_type_hint=receiver_type_hint,
             inherited_field_receiver=inherited_field_receiver,
             enclosing_class=enclosing_class,
+            receiver_type_id=receiver_type_id,
+            enclosing_class_id=enclosing_class_id,
             class_ids_by_name=class_ids_by_name,
             class_symbols=class_symbols,
             method_index=method_index,
@@ -456,6 +976,41 @@ def link_inherited_calls(ctx: LinkerContext) -> LinkerResult:
 # ---------------------------------------------------------------------------
 
 
+def _same_language_class_ids(
+    name: str,
+    src_lang: str,
+    class_ids_by_name: dict[str, list[str]],
+    class_symbols: dict[str, Symbol],
+) -> list[str]:
+    """Short-name class-id candidates RESTRICTED to ``src_lang`` (INV-milud).
+
+    ``class_ids_by_name`` is built language-agnostically: a class named
+    ``Handler`` in Python and a ``Handler`` in Java collide on the same short
+    name. But an inherited-/typed-receiver call in a ``src_lang`` source file
+    can only bind to a ``src_lang`` class — MRO and typed-receiver dispatch
+    never cross a language boundary (cross-language edges are the FFI/bridge
+    linkers' job). Applying this filter at the SINGLE point where every Site
+    turns a receiver / enclosing-class / field-type NAME into candidate class
+    ids keeps the name path from two distinct failures:
+
+    * **Confidently-wrong cross-language edge** — the concrete leak was the
+      Java legacy-permissive Site-2 (``_LEGACY_SITE2_LANGS``), which skips the
+      same-name ambiguity guard and so would bind a Java receiver to a Python
+      namesake's method (Step 1) or type symbol (Step 3 fallback).
+    * **False-negative from count pollution** — a foreign-language namesake
+      inflates the strict ``len(...) > 1`` ambiguity guard, suppressing a
+      legitimate same-language resolution that was never actually ambiguous.
+
+    Every id in ``class_ids_by_name`` is a key in ``class_symbols`` (both are
+    built in the same pass over ``ctx.symbols``), so the subscript is total.
+    """
+    return [
+        cid
+        for cid in class_ids_by_name.get(name, [])
+        if class_symbols[cid].language == src_lang
+    ]
+
+
 def _try_resolve(
     *,
     edge: Edge,
@@ -464,6 +1019,8 @@ def _try_resolve(
     receiver_type_hint: str | None,
     inherited_field_receiver: str | None,
     enclosing_class: str | None,
+    receiver_type_id: str | None,
+    enclosing_class_id: str | None,
     class_ids_by_name: dict[str, list[str]],
     class_symbols: dict[str, Symbol],
     method_index: _TypeHierarchyIndex,
@@ -475,6 +1032,11 @@ def _try_resolve(
 
     Returns the resolved edge (or ``None`` if no Site matches). Caller
     appends to ``new_edges`` and updates the dedupe set.
+
+    ``receiver_type_id`` / ``enclosing_class_id`` (WI-supat) are the concrete
+    class ids the producer threaded alongside the name hints; a Site resolver
+    prefers a valid, same-language id over the re-globalized name (skipping the
+    ambiguity guard) to recover the recall the guard sacrifices.
     """
     method_short = _extract_method_short_name(callee_short)
 
@@ -484,6 +1046,7 @@ def _try_resolve(
             edge=edge, method_short=method_short,
             src_lang=src_lang,
             enclosing_class=enclosing_class,
+            enclosing_class_id=enclosing_class_id,
             inherited_field_receiver=inherited_field_receiver,
             class_ids_by_name=class_ids_by_name,
             class_symbols=class_symbols,
@@ -503,6 +1066,7 @@ def _try_resolve(
         return _resolve_site2(
             edge=edge, method_short=method_short,
             receiver_type_hint=receiver_type_hint,
+            receiver_type_id=receiver_type_id,
             src_lang=src_lang,
             class_ids_by_name=class_ids_by_name,
             class_symbols=class_symbols,
@@ -518,7 +1082,9 @@ def _try_resolve(
             edge=edge, callee_short=callee_short,
             src_lang=src_lang,
             enclosing_class=enclosing_class,
+            enclosing_class_id=enclosing_class_id,
             class_ids_by_name=class_ids_by_name,
+            class_symbols=class_symbols,
             method_index=method_index,
             inheritance_index=inheritance_index,
             existing_call_pairs=existing_call_pairs,
@@ -533,7 +1099,9 @@ def _resolve_site1(
     callee_short: str,
     src_lang: str,
     enclosing_class: str,
+    enclosing_class_id: str | None,
     class_ids_by_name: dict[str, list[str]],
+    class_symbols: dict[str, Symbol],
     method_index: _TypeHierarchyIndex,
     inheritance_index: dict[str, list[tuple[str, str]]],
     existing_call_pairs: set[tuple[str, str]],
@@ -543,10 +1111,42 @@ def _resolve_site1(
     walker = _MRO_WALKERS.get(src_lang)
     if walker is None:
         return None
-    start_class_ids = class_ids_by_name.get(enclosing_class, [])
-    if not start_class_ids:
-        return None
+    # WI-supat (D3): prefer the AUTHORITATIVE concrete enclosing-class id the
+    # producer threaded (an exact lexical method→class map, immune to the
+    # bare-name last-write-wins clobber). A valid, same-language id names exactly
+    # one class, so the receiver is NOT under-determined — resolve it precisely
+    # and SKIP the ambiguity guard, recovering the recall the guard sacrifices
+    # (both same-short-name and cross-language namesakes, since ``class_symbols``
+    # is language-agnostic). ``id in class_symbols`` guards staleness; the
+    # language match guards a foreign-language id keying a same-id class (belt-
+    # and-suspenders: Symbol.id is language-prefixed, so this is always True for a
+    # producer-stamped id — but a future shared stamp helper must not leak one).
+    if (
+        enclosing_class_id is not None
+        and enclosing_class_id in class_symbols
+        and class_symbols[enclosing_class_id].language == src_lang
+    ):
+        start_class_ids = [enclosing_class_id]
+    else:
+        start_class_ids = _same_language_class_ids(
+            enclosing_class, src_lang, class_ids_by_name, class_symbols,
+        )
+        if not start_class_ids:
+            return None
+        # WI-hiziz PR-2: INV-fahub ambiguity guard for Site-1. ``enclosing_class``
+        # is a NAME only; in a language with module namespaces
+        # (``_SITE1_STRICT_LANGS`` — Python) two in-tree classes sharing that short
+        # name are DISTINCT classes, so the enclosing receiver is under-determined
+        # — bias to unresolved rather than binding whichever namesake the walk hits
+        # first. This is scoped to ``_SITE1_STRICT_LANGS`` (NOT "all but Java"): in
+        # Ruby the same short name is a class REOPENING (one logical class), so
+        # applying the guard would suppress its INV-nilud-validated Site-1
+        # resolution. The concrete-id path above recovers Python's guard-sacrificed
+        # recall when the producer could stamp an authoritative id.
+        if src_lang in _SITE1_STRICT_LANGS and len(start_class_ids) > 1:
+            return None
     resolved_target: Symbol | None = None
+    resolved_start_id: str | None = None
     for start_id in start_class_ids:
         candidate = walker(
             start_id, callee_short, inheritance_index,
@@ -554,8 +1154,20 @@ def _resolve_site1(
         )
         if candidate is not None:
             resolved_target = candidate
+            resolved_start_id = start_id
             break
     if resolved_target is None:
+        return None
+    # INV-guviv: an external builtin base ahead of the in-tree ancestor shadows
+    # the walk's resolution in Python's real MRO — bias to unresolved.
+    if (
+        src_lang == "python"
+        and resolved_start_id is not None
+        and _python_stdlib_base_shadows(
+            resolved_start_id, callee_short, inheritance_index,
+            class_symbols, method_index,
+        )
+    ):
         return None
     if (edge.src, resolved_target.id) in existing_call_pairs:
         return None
@@ -574,6 +1186,7 @@ def _resolve_site2(
     edge: Edge,
     method_short: str,
     receiver_type_hint: str,
+    receiver_type_id: str | None,
     src_lang: str,
     class_ids_by_name: dict[str, list[str]],
     class_symbols: dict[str, Symbol],
@@ -584,7 +1197,7 @@ def _resolve_site2(
 ) -> Edge | None:
     """Site 2: ``var.method()`` typed receiver.
 
-    Three-step resolution preserving Java analyzer's pre-PR-5 behavior:
+    Three-step resolution preserving the Java analyzer's pre-PR-5 behavior:
 
     1. **Direct lookup** — method defined on the type itself →
        ``ast_call_type_inferred`` at 0.85 (matches analyzer's Case 3 if).
@@ -595,12 +1208,49 @@ def _resolve_site2(
        ``ast_call_inherited_method`` at 0.70 pointing to the type
        symbol itself (matches analyzer's Case 3 else fallback).
 
-    Steps 2 + 3 require the language to have an MRO walker; steps 1 + 3
-    work without one (used by analyzers whose MRO isn't registered yet).
+    Step 2 requires the language to have an MRO walker; step 1 works
+    without one.
+
+    Two ``src_lang``-gated modes (WI-noham Part A):
+
+    * **Legacy-permissive** (``src_lang in _LEGACY_SITE2_LANGS`` — Java only):
+      steps 1-3 as above, first same-name class wins. Preserves the
+      INV-nilud-validated Java edges.
+    * **Strict INV-fahub** (every other language, e.g. Python): step 3 is
+      DISABLED (no ``calls→class`` under-determined bind / new ratchet
+      partition), and a same-name-class collision (``len(type_class_ids) > 1``)
+      biases to unresolved rather than binding by first match. Only a method
+      DIRECTLY on the single, concretely-named type (step 1 / step 2 MRO)
+      resolves.
     """
-    type_class_ids = class_ids_by_name.get(receiver_type_hint, [])
-    if not type_class_ids:
-        return None
+    # WI-supat (D3): prefer the concrete receiver-type id the producer threaded.
+    # It is stamped only when the type's short name is UNIQUE within the file (so
+    # the bare-name inference that produced it could not have hit the wrong
+    # same-file twin) and is validated here as a real, same-language
+    # ``class_symbols`` key. A valid id names exactly one type, so the receiver is
+    # NOT under-determined — resolve it precisely (Step 1/2 only; Step 3 stays
+    # gated below) and SKIP the ambiguity guard, recovering the recall the guard
+    # sacrifices. Absent / stale / foreign-language → the original name path.
+    if (
+        receiver_type_id is not None
+        and receiver_type_id in class_symbols
+        and class_symbols[receiver_type_id].language == src_lang
+    ):
+        type_class_ids = [receiver_type_id]
+    else:
+        type_class_ids = _same_language_class_ids(
+            receiver_type_hint, src_lang, class_ids_by_name, class_symbols,
+        )
+        if not type_class_ids:
+            return None
+
+        # Strict INV-fahub ambiguity guard: the hint carries only a class NAME.
+        # When two in-repo classes share it, the receiver is under-determined —
+        # bias to unresolved instead of binding to whichever same-named class
+        # happens to define the method (the concrete-id path above recovers this
+        # recall precisely when the producer could stamp an authoritative id).
+        if src_lang not in _LEGACY_SITE2_LANGS and len(type_class_ids) > 1:
+            return None
 
     walker = _MRO_WALKERS.get(src_lang)
     candidates_by_short = method_index.methods_by_short_name.get(
@@ -632,6 +1282,12 @@ def _resolve_site2(
                 method_index, _DEFAULT_DEPTH_CAP,
             )
             if via_mro is not None:
+                # INV-guviv: skip when a builtin base shadows the resolution.
+                if src_lang == "python" and _python_stdlib_base_shadows(
+                    type_class_id, method_short, inheritance_index,
+                    class_symbols, method_index,
+                ):
+                    continue
                 if (edge.src, via_mro.id) in existing_call_pairs:  # pragma: no cover
                     return None
                 return Edge.create(
@@ -645,6 +1301,13 @@ def _resolve_site2(
                 )
 
     # Step 3: fallback to the type symbol itself.
+    # Strict INV-fahub gate: only legacy-permissive languages fall back. For
+    # every newly-onboarded language the method was nowhere on the (single)
+    # type's chain, so we leave the call unresolved rather than mint a
+    # low-confidence ``calls→class`` edge (a new runtime_coherence partition
+    # and an under-determined bind).
+    if src_lang not in _LEGACY_SITE2_LANGS:
+        return None
     type_class_id = type_class_ids[0]
     type_sym = class_symbols.get(type_class_id)
     if type_sym is None:  # pragma: no cover
@@ -667,6 +1330,7 @@ def _resolve_site3(
     method_short: str,
     src_lang: str,
     enclosing_class: str,
+    enclosing_class_id: str | None,
     inherited_field_receiver: str,
     class_ids_by_name: dict[str, list[str]],
     class_symbols: dict[str, Symbol],
@@ -683,27 +1347,72 @@ def _resolve_site3(
     MRO walk if one is registered). Emits ``ast_call_inherited_field``
     at confidence 0.80.
     """
-    encl_class_ids = class_ids_by_name.get(enclosing_class, [])
-    if not encl_class_ids:  # pragma: no cover
-        return None
-
-    # Find the field's type by walking the enclosing class's parents.
-    field_type: str | None = None
-    for encl_id in encl_class_ids:
-        ft = _walk_parents_for_field(
-            encl_id, inherited_field_receiver, inheritance_index,
-            class_symbols, _DEFAULT_DEPTH_CAP,
+    # WI-supat (D3): prefer the authoritative concrete enclosing-class id (same
+    # contract as Site-1). A valid, same-language id starts the parent-walk from
+    # exactly the caller's lexical class, so the enclosing receiver is not
+    # under-determined — skip the enclosing ambiguity guard. The field-TYPE
+    # disambiguation below is INDEPENDENT (recovered in PR-B).
+    if (
+        enclosing_class_id is not None
+        and enclosing_class_id in class_symbols
+        and class_symbols[enclosing_class_id].language == src_lang
+    ):
+        encl_class_ids = [enclosing_class_id]
+    else:
+        encl_class_ids = _same_language_class_ids(
+            enclosing_class, src_lang, class_ids_by_name, class_symbols,
         )
-        if ft is not None:
-            field_type = ft
+        if not encl_class_ids:  # pragma: no cover
+            return None
+        # WI-hiziz PR-3: INV-fahub ambiguity guard on the ENCLOSING class,
+        # mirroring Site-1/Site-2, scoped to _SITE1_STRICT_LANGS (Python — module
+        # namespaces make same-short-name classes distinct). Two same-name
+        # enclosing classes would each expose different parent fields →
+        # under-determined → bias to unresolved. Java/Ruby stay permissive
+        # (reopening / legacy first-match).
+        if src_lang in _SITE1_STRICT_LANGS and len(encl_class_ids) > 1:
+            return None
+
+    # Find the field's type (name + optional concrete id) by walking the
+    # enclosing class's parents.
+    field_type: str | None = None
+    field_type_id: str | None = None
+    for encl_id in encl_class_ids:
+        walked = _walk_parents_for_field(
+            encl_id, inherited_field_receiver, inheritance_index,
+            class_symbols, _DEFAULT_DEPTH_CAP, src_lang=src_lang,
+        )
+        if walked is not None:
+            field_type, field_type_id = walked
             break
     if field_type is None:
         return None
 
-    # Look up the field's type as a class symbol.
-    field_type_class_ids = class_ids_by_name.get(field_type, [])
-    if not field_type_class_ids:
-        return None
+    # WI-supat (D3) PR-B: prefer the concrete field-TYPE id the producer threaded
+    # on the parent's meta['field_type_ids'] (validated, same-language). It names
+    # exactly one type, so the field's type is not under-determined — skip the
+    # field-type ambiguity guard. Absent (java/legacy) / stale / foreign-language
+    # falls back to the re-globalized name path + guard below.
+    if (
+        field_type_id is not None
+        and field_type_id in class_symbols
+        and class_symbols[field_type_id].language == src_lang
+    ):
+        field_type_class_ids = [field_type_id]
+    else:
+        # Look up the field's type as a same-language class symbol.
+        field_type_class_ids = _same_language_class_ids(
+            field_type, src_lang, class_ids_by_name, class_symbols,
+        )
+        if not field_type_class_ids:
+            return None
+        # WI-hiziz PR-3: the SECOND INV-fahub guard — the field's TYPE name is
+        # also re-globalized; two same-short-name types are under-determined for
+        # a strict language. Bias to unresolved rather than resolving the method
+        # on an arbitrary namesake type (the concrete-id path above recovers this
+        # recall when the producer could stamp an authoritative id).
+        if src_lang in _SITE1_STRICT_LANGS and len(field_type_class_ids) > 1:
+            return None
 
     # Resolve the method on the field's type (direct or MRO walk).
     walker = _MRO_WALKERS.get(src_lang)
@@ -729,7 +1438,9 @@ def _resolve_site3(
 
     if resolved_target is None:
         return None
-    if (edge.src, resolved_target.id) in existing_call_pairs:  # pragma: no cover
+    # Dedup: the analyzer may already have a resolved calls edge to this target
+    # (Python producer now exercises this — WI-hiziz PR-3 dedup test).
+    if (edge.src, resolved_target.id) in existing_call_pairs:
         return None
     return Edge.create(
         src=edge.src, dst=resolved_target.id, edge_type="calls",

@@ -1,0 +1,53 @@
+- op: create  # e5fe
+  at: '2026-07-03T10:22:35Z'  # e5fe
+  by: agent  # e5fe
+  actor: jgstern_agent  # e5fe
+  clock: 1  # e5fe
+  nonce: e5fe  # e5fe
+  data:  # e5fe
+    kind: work_item  # e5fe
+    title: "Resolve @property attribute reads (obj.prop) to the in-repo getter — WI-noham flagship dead-code FPs (Symbol.end_line, ValidationResult.ok)"  # e5fe
+    status: todo_hard  # e5fe
+    priority: 2  # e5fe
+    parent:  # e5fe
+    tags:  # e5fe
+    - analysis_quality  # e5fe
+    isbefore: []  # e5fe
+    duplicate_of: []  # e5fe
+    not_duplicate_of: []  # e5fe
+    pr_ref:  # e5fe
+    description: "Deferred follow-up of WI-noham Part A (PR #404) — the FLAGSHIP dead-code false positives and the gate that lets WI-noham finally close. An @property access (obj.prop) is an ast.Attribute in LOAD context, NOT an ast.Call, so _process_call never sees it and no edge is emitted — Symbol.end_line (ir.py, 260 refs) and ValidationResult.ok (47 refs) are dead for this reason (attribute reads, not calls). This is a genuinely different node type/edge from WI-noham Part A (which handles ast.Call method calls). Proposed: a new attribute-LOAD emitter (mirror _emit_module_attr_refs) that, gated on a var_types / local-class receiver whose target getter carries meta.decorators including 'property', emits a calls-to-getter edge (NOT references/reads — keep the (method,python)-calls->(method,python) single partition, ratchet-safe). Reuse the same INV-fahub scope guard as Part A (suppress when the receiver is a local binding shadowing a class). CLOSURE-EVIDENCE DISCIPLINE: WI-noham MUST NOT be marked satisfied while Symbol.end_line / ValidationResult.ok still reproduce as dead under `dead-code-maybe --seeds all`; those repros belong to THIS item. When D2 (+ D1 for inherited methods) land and the flagship deadness clears, WI-noham can close."  # e5fe
+    fields: {}  # e5fe
+- op: update  # cb69
+  at: '2026-07-03T17:34:10Z'  # cb69
+  by: agent  # cb69
+  actor: jgstern_agent  # cb69
+  clock: 2  # cb69
+  nonce: cb69  # cb69
+  set:  # cb69
+    status: done  # cb69
+  add:  # cb69
+    tags: [awaits_bakeoff_validation]  # cb69
+- op: discuss  # 25ab
+  at: '2026-07-03T17:34:10Z'  # 25ab
+  by: agent  # 25ab
+  actor: jgstern_agent  # 25ab
+  clock: 3  # 25ab
+  nonce: 25ab  # 25ab
+  message: "Landed in PR #407 (dev 3e11c3ca17). D2: process_code_block emits an unresolved calls edge + receiver_type_hint for a @property read on a var_types-typed instance (function/method scope); the inherited_calls linker mints the resolved calls->getter edge via strict Site-2 Step-1 (getter is kind='method' with a Class.attr name, so build_method_index finds it — no linker change). Gated by _resolve_property_getter (kind method + a decorator named exactly 'property'); plain field/non-property method/untyped receiver/Store-write/bare-CLASS receiver all emit nothing. BEHAVIORAL EVIDENCE (item's own flagship repro, real hypergumbo-tracker package via run_behavior_map): ValidationResult.ok — previously 0 incoming calls (dead: property reads emit no edge) — now has 1 incoming RESOLVED calls edge from _cmd_validate (is_resolved=True, origin=inherited-calls); getter reachable, FP cleared. Adversarial review (wf_b1e410fd-9d9) caught a coverage-hidden MODULE-scope ratchet regression (file-kind src -> new runtime_coherence offender in the (file,python,external_symbol,python) partition), fixed by gating to function/method callers; verified vs test_substrate_within_ratchet_baseline. Both packages 100% coverage. Deferred: inherited @property (WI-hiziz/D1), read-write getter+setter (WI-sizut). Filed shared pre-existing gaps: INV-finoh (taint sanitizer gate), INV-ruluv (sub-scope var_types leak)."  # 25ab
+- op: update  # 29b1
+  at: '2026-07-04T05:41:49Z'  # 29b1
+  by: agent  # 29b1
+  actor: jgstern_agent  # 29b1
+  clock: 4  # 29b1
+  nonce: 29b1  # 29b1
+  set: {}  # 29b1
+  remove:  # 29b1
+    tags: [awaits_bakeoff_validation]  # 29b1
+- op: discuss  # 5f65
+  at: '2026-07-04T05:41:50Z'  # 5f65
+  by: agent  # 5f65
+  actor: jgstern_agent  # 5f65
+  clock: 5  # 5f65
+  nonce: 5f65  # 5f65
+  message: "Bakeoff-validated as part of the WI-noham dispatch:F3 cluster re-measure (dev 371adbe47c): inherited_calls recall fires on hypergumbo self (243 edges) + pretix (533, incl. 23 Site-3 ast_call_inherited_field), flagship repros (Symbol.end_line/ValidationResult.ok) reachable under dead-code-maybe --seeds all, no regressions across 19 repos/9 langs. Claim MOVED -> tag stripped. See WI-noham for the full evidence."  # 5f65

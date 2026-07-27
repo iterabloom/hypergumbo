@@ -17,10 +17,30 @@ Version Distinction
 
 - **__version__** (in __init__.py): The tool/package version. This increments
   with every release (new analyzers, bug fixes, performance improvements,
-  CLI changes, etc.). It does NOT indicate output format changes.
+  CLI changes, etc.). It does NOT indicate output format changes. It surfaces
+  in output under TWO field names that are both aliases of it, not schema
+  versions: `reproducibility_context.captured.hypergumbo_version` and
+  `limits.analyzer_version` (`f"hypergumbo-{__version__}"`).
 
-These versions evolve independently. The tool can have many releases while
-the schema stays stable if the output format doesn't change.
+- **Per-view / per-sub-schema versions** (the third axis — WI-bobog / WI-romup):
+  several JSON surfaces carry their OWN version, independent of both of the
+  above. The CLI read-view envelopes (`routes` / `test-coverage` / `config` /
+  `catalog` / `cache-status` / `dead-code-maybe`) share
+  `READ_VIEW_SCHEMA_VERSION` — one placeholder until a view needs to evolve its
+  wire shape independently, at which point it promotes to its own named
+  constant, as `io-boundaries` (`io_boundary.IO_BOUNDARIES_SCHEMA_VERSION`),
+  `verify-claims` (`verify_claims.VERIFY_CLAIMS_SCHEMA_VERSION`), and the
+  embedded `validation_report` block
+  (`spec_validator.VALIDATION_REPORT_SCHEMA_VERSION`) already have. A change to
+  one view's wire shape bumps only that view's version, NOT the top-level
+  `schema_version`.
+
+These three axes are deliberately independent. Do NOT consolidate them onto a
+single number, and do NOT rename the wire fields (`hypergumbo_version`,
+`analyzer_version`, the per-view `schema_version`) — each has spec text and
+consumers, so a rename is a covert wire-break requiring a major bump. The tool
+can have many releases while the schema stays stable if the output format
+doesn't change.
 
 How It Works
 ------------
@@ -32,9 +52,13 @@ This module defines several versioned schemes:
 - **stable_id_scheme**: How stable_id hashes are generated
 - **shape_id_scheme**: How shape_id (structure) hashes are generated
 - **repo_fingerprint_scheme**: How repo state is fingerprinted for caching
+- **symbol_fingerprint_scheme**: How Symbol.fingerprint values are computed
+  (context-aware whole-file subtree hashing; populated by the
+  `hypergumbo_core.fingerprint` post-pass)
 
 new_behavior_map() returns an empty structure with all top-level fields
-initialized, ensuring consistent output even for empty analyses.
+initialized, ensuring consistent output even for empty analyses. It also
+embeds a reproducibility_context block built by build_reproducibility_context().
 
 Why This Design
 ---------------
@@ -50,6 +74,10 @@ This module works with two other components to provide schema infrastructure:
 **This file (schema.py)** - Runtime constants and factory
 - Defines SCHEMA_VERSION and scheme identifiers
 - Provides new_behavior_map() factory for output generation
+- Builds the L2 reproducibility_context block via
+  build_reproducibility_context() (INV-morag): captures
+  hypergumbo/Python/tree-sitter/grammar versions and documents the
+  L3-L5 factors that are explicitly not captured.
 - Used at runtime when hypergumbo generates JSON output
 
 **scripts/generate-schema** - Documentation generator
@@ -70,11 +98,47 @@ import platform
 from datetime import datetime, timezone
 from typing import Any, Dict
 
-SCHEMA_VERSION = "0.14.2"
-CONFIDENCE_MODEL = "hypergumbo-evidence-v1"
+SCHEMA_VERSION = "0.19.0"
+# Canonical ``view`` field values a behavior map (or its budget-limited
+# projections) may carry: the base analysis emits ``behavior_map``; the compact
+# and tiered projections emit their own view name. Single-sourced here so the
+# schema generator enumerates them in one place — future projection views append
+# here (WI-tagaj). The published schema pins ``view`` to this enum, so every
+# projected view validates (it previously pinned a ``const`` of "behavior_map",
+# which rejected the compact/tiered projections).
+VIEW_NAMES = ("behavior_map", "compact", "tiered")
+# Wire-format version carried by the CLI *read-view* JSON envelopes that project
+# or summarize a behavior map without BEING the behavior map (routes /
+# test-coverage / config / catalog / cache-status / dead-code-maybe). These
+# share one placeholder version until a view needs to evolve its wire shape
+# independently — at which point it promotes to its own named constant, as
+# io-boundaries (IO_BOUNDARIES_SCHEMA_VERSION) and verify-claims
+# (VERIFY_CLAIMS_SCHEMA_VERSION) already have. Single-sourced here (WI-bobog) so
+# the six view sites cannot drift; DISTINCT from the top-level bm.json
+# SCHEMA_VERSION (a read view is not the behavior map) and from __version__ (the
+# tool version). See the "Version Distinction" module docstring for the three
+# version axes.
+READ_VIEW_SCHEMA_VERSION = "0.1.0"
+CONFIDENCE_MODEL = "hypergumbo-evidence-v2"
 STABLE_ID_SCHEME = "hypergumbo-stableid-v8"
-SHAPE_ID_SCHEME = "hypergumbo-shapeid-v2"
-REPO_FINGERPRINT_SCHEME = "hypergumbo-repofp-v1"
+# v3 (WI-linon): the Python shape_id hash now folds the symbol kind
+# (class/method/function) and the concrete AST node type into its prefix, so
+# structurally-trivial symbols of different kinds no longer collide — a
+# module-level function vs a class method (both ``ast.FunctionDef``), and an
+# ``async def`` vs a ``class`` (``ast.AsyncFunctionDef`` had mis-branched into
+# the ClassDef path). Every Python shape_id value changed relative to v2; the
+# global scheme bumps because the spec mandate is "any change that alters
+# computed values bumps the scheme" (§6), the tree-sitter path is unchanged.
+SHAPE_ID_SCHEME = "hypergumbo-shapeid-v3"
+# v2 (WI-bosog): the AnalysisRun ``repo_fingerprint`` FIELD is now rendered
+# with the ``sha256:`` scheme prefix (``sha256:<64hex>``), matching its sibling
+# identity fields run_signature / config_fingerprint instead of the former bare
+# 64-hex. The hashing algorithm is unchanged; only the field rendering changed,
+# but the emitted value changed, so the scheme bumps per the spec §6 mandate.
+# The bare digest is unchanged where it is used as the colon-free cache-dir
+# path segment (compute_repo_fingerprint); only compute_repo_fingerprint_field
+# gained the prefix.
+REPO_FINGERPRINT_SCHEME = "hypergumbo-repofp-v2"
 # WI-fanun: scheme tag for Symbol.fingerprint, populated by the
 # orchestrator post-pass in ``hypergumbo_core.fingerprint`` (the sole
 # producer — the former producer-side manifest hashes were demolished
@@ -180,6 +244,16 @@ def build_reproducibility_context() -> Dict[str, Any]:
     available) and documents the L3-L5 factors that are explicitly NOT
     captured. The ``implications`` text tells the consumer what level of
     diff-attribution they can expect from these fields alone.
+
+    Called at map-init (``new_behavior_map``) before any node exists, so the
+    ``captured.grammars`` seeded here is EVERY installed ``tree-sitter-*`` dist.
+    The finalize chokepoint (``finalize._finalize_prune_repro_grammars``, ADR-0043)
+    later replaces it with only the grammars whose analyzer pass actually emitted
+    nodes (WI-fonod), pack-backed grammars expanded to per-language
+    ``tree-sitter-language-pack:<lang>`` entries (WI-givad); a repo whose only
+    analyzers are ast-based (e.g. python) ends up with no ``grammars`` key at all.
+    ``_detect_tree_sitter_versions`` itself stays unscoped — its other caller,
+    ``analyzer_identity``, needs the full install list for cache correctness.
 
     See the module-level commentary and INV-morag's tracker description for
     the design rationale.

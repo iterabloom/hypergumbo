@@ -63,3 +63,20 @@
     tags: [dogfood]  # cd85
   remove:  # cd85
     tags: [dogfooding]  # cd85
+- op: update  # 55fc
+  at: '2026-07-10T16:00:33Z'  # 55fc
+  by: agent  # 55fc
+  actor: jgstern_agent  # 55fc
+  clock: 6  # 55fc
+  nonce: 55fc  # 55fc
+  set:  # 55fc
+    status: satisfied  # 55fc
+  add:  # 55fc
+    tags: [wave4]  # 55fc
+- op: discuss  # 32ca
+  at: '2026-07-10T16:00:33Z'  # 32ca
+  by: agent  # 32ca
+  actor: jgstern_agent  # 32ca
+  clock: 7  # 32ca
+  nonce: 32ca  # 32ca
+  message: "SATISFIED — PR #543 (selfh/dev 5a761ed99c). The shared _get_or_run_analysis chokepoint now raises SubstrateError when the resolved repo_root is not a directory (and there is no --input / cached map), so the CLI dispatch converts it to rc=2 + guidance instead of running analysis on a non-repo and printing 'No X found' with rc=0. slice's smart .json-detect is unaffected (sets --input first, returns early). BEHAVIORAL EVIDENCE (live @ 5a761ed99c): 'routes /tmp/notadir.txt' and 'io-boundaries /tmp/notadir.txt' -> rc=2 'Error: ...: not a directory. Pass a repository directory, or pass a behavior map via --input.'; a real directory still analyzes (rc=0). cli-input sub-B (INV-dunof) member. Core 100% coverage."  # 32ca

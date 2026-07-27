@@ -168,3 +168,101 @@
   clock: 19  # 0dc5
   nonce: 0dc5  # 0dc5
   message: "[Wave-0 pending-validation sweep] tracker: update INV-numat-judoj-dogal-misuj-divuf-kajus-buban-dihuj --status pending_validation\n\nRationale: The structural axis-conformance validator (catalog-membership enforcement) IS present and active in runtime pipeline. However, INV-numat's ROOT PROBLEM is vocabulary-mixing (values mixing multiple semantic axes within a single field), which requires STRUCTURAL fixes (field splitting, renaming, sibling relationships per ADR-0031/ADR-0032), not just catalog enforcement.\n\nRecent investigation passes (F24.7 evidence_type, F27.4 entrypoint.kind, F30.4 entrypoint.kind↔concepts, F31.5 text/claim_text, F34.B2 symbol_ref, F35.C2/F35.C3 feature/EP ratio, F36.D1 kind flag-gating) document AXIS-MIXING vocabulary issues that persist despite catalog completeness. These are not axis-conformance violations (values ARE in catalogs) but structural design gaps.\n\nPositive evidence the FIX exists (per strategy):\n- spec_validator.py:217-285: Checks Symbol.kind, Symbol.language, Symbol.discovery_language, Symbol.protocol_origin, Symbol.origin, Edge.edge_type, Edge.evidence_type, Edge.evidence_lang, Edge.origin against their axis catalogs\n- cli.py:8364-8366: Validator integrated end-of-pipeline, violations collected into artifact validation_report, emitted to stderr\n- test_spec_validator_smoke.py: 13 comprehensive unit tests for axis-conformance; Phase 3 PR1 self-analysis reported 0 violations\n\nValidation gap: Recent passes (F24-F36, most from June 2) surface VOCABULARY-MIXING findings that suggest a bakeoff cohort run is needed to confirm (1) zero catalog-conformance violations still hold with recent linker/producer changes, and (2) no NEW unmapped values have been emitted by recent code paths. Strategy calls for bakeoff validation; no pure-code evidence can rule out new edge/evidence producers that emit unmapped values."  # 0dc5
+- op: update  # 4222
+  at: '2026-06-22T01:48:05Z'  # 4222
+  by: agent  # 4222
+  actor: jgstern_agent  # 4222
+  clock: 20  # 4222
+  nonce: '4222'  # 4222
+  set: {}  # 4222
+  remove:  # 4222
+    tags: [awaits_bakeoff_validation]  # 4222
+- op: discuss  # a817
+  at: '2026-06-22T01:48:05Z'  # a817
+  by: agent  # a817
+  actor: jgstern_agent  # a817
+  clock: 21  # a817
+  nonce: a817  # a817
+  message: "Drain audit: E-misapplied. No quantitative bakeoff-improvement claim -- this is a structural vocabulary-axis-mixing item (ADR-0031/0032 field-split work). The 'bakeoff validation' the discussion references is next-step methodology to rule out unmapped values, not a metric movement a cohort can confirm. Tracked by its own status; stripping misapplied tag."  # a817
+- op: discuss  # 6292
+  at: '2026-06-30T15:20:38Z'  # 6292
+  by: agent  # 6292
+  actor: jgstern_agent  # 6292
+  clock: 22  # 6292
+  nonce: '6292'  # 6292
+  message: "Residual-audit finding from WI-moliz (no-fold ruling, now closed): beyond the OOP inheritance family (extends/inherits/implements/overrides — KEPT DISTINCT per ADR-0023/INV-vavat), the inheritance-family edge_type grep across packages/*/src surfaced a CONTRACT-IMPLEMENTATION cluster — implements_rpc / openapi_implements / resolver_implements ('an in-code symbol implements an externally-declared gRPC/OpenAPI/GraphQL contract') — 3 protocol-specific vocabularies for arguably one relation. Candidate sibling leak under this umbrella, DISTINCT from OOP class-implements-interface (different domain). Also extends_template (Twig/Jinja) + uses_mixin (Sass) already carry planned 'likely fold to extends/references + meta' docstrings in edge_types.py/concept-axes.md. NOT folded (keep-distinct default); flagged for human triage on whether the contract-implementation family warrants its own ADR-0023-style canonical+meta consolidation. No code action taken."  # 6292
+- op: discuss  # 1418
+  at: '2026-07-02T02:43:05Z'  # 1418
+  by: agent  # 1418
+  actor: jgstern_agent  # 1418
+  clock: 23  # 1418
+  nonce: '1418'  # 1418
+  message: "access_mode axis-purity expression COMPLETE (ADR-0038 rulings 1+2+3; vocab F4). The access_mode field no longer mixes axes: (ruling 1) per-edge AST-role derivation replaced the line-granular classifier; (ruling 2, PR1 dev 880cb6775a) the applicability matrix declares which edge types carry it (instantiates + structural gated N/A); (ruling 3, PR2 dev 16c0817330) the FFI-bridge DIRECTION semantic that access_mode='write'/dest_access_mode='read' smuggled is evicted to the new registered data_direction key, and dest_access_mode is removed. Access lives in access_mode, direction in data_direction — one field, one axis. INV-numat stays pending_validation per its Wave-5 cohort gate (closes only on a zero-axis-violation bakeoff cohort AFTER the folds + new axes land); the access_mode expression is now materially discharged. awaits_bakeoff_validation: the bridge edges' dataflow meta changes shape across the polyglot corpus."  # 1418
+- op: update  # 9365
+  at: '2026-07-02T02:43:06Z'  # 9365
+  by: agent  # 9365
+  actor: jgstern_agent  # 9365
+  clock: 24  # 9365
+  nonce: '9365'  # 9365
+  set: {}  # 9365
+  add:  # 9365
+    tags: [awaits_bakeoff_validation]  # 9365
+- op: discuss  # cfac
+  at: '2026-07-06T20:07:01Z'  # cfac
+  by: agent  # cfac
+  actor: jgstern_agent  # cfac
+  clock: 25  # cfac
+  nonce: cfac  # cfac
+  message: "NO_MOVE via BROAD drain broad-20260706-153915. axis_conformance is NOT zero on the cohort: pretix 611, phoenix 515, openzeppelin 519, detekt 9. Distinct unregistered values: Edge.evidence_type=module_qualified_call (x512), pass-id view-template-linker on Edge/Symbol/AnalysisRun origin (x612), Symbol.language=asciidoc (x36)/gradle (x8), and Symbol.language set to a FILE PATH (phoenix priv/static JS, openzeppelin .sol import paths). The zero-axis-violation closure gate is not met; stays pending_validation, tag retained. Blocker sub-items filed: WI-gobip (view-template-linker unregistered pass-id + module_qualified_call evidence_type) and WI-muzuf (Symbol.language axis pollution)."  # cfac
+- op: discuss  # 23ef
+  at: '2026-07-06T22:39:53Z'  # 23ef
+  by: agent  # 23ef
+  actor: jgstern_agent  # 23ef
+  clock: 26  # 23ef
+  nonce: 23ef  # 23ef
+  message: "AXIS_CONFORMANCE RESIDUAL UPDATE (post WI-muzuf + WI-gobip, both merged to dev). The two drain-surfaced blockers are fixed and behaviorally validated; re-measuring the BROAD cohort (broad-20260706-153915) axis_conformance: pretix 611->0 (all 611 were the view-template-linker pass-id, WI-gobip), phoenix 515->0 (module_qualified_call evidence_type + view-template-linker, WI-gobip + a path-language via WI-muzuf), openzeppelin 519->36 (WI-muzuf cleared 484 path-languages), detekt 9->6 (WI-muzuf cleared index.js + 2 gradle boundary externals). ~1612 of the cohort's ~1654 axis_conformance violations eliminated. The ENTIRE remaining cohort residual (42: asciidoc x36 on openzeppelin + gradle x6 on detekt) is the file-type-label catalog gap tracked by WI-kunut (asciidoc IS a taxonomy LanguageSpec but unregistered in all_known_languages(); needs the catalog-registration decision). INV-numat stays pending_validation: its zero-axis-violation closure gate is now blocked only on WI-kunut for THIS cohort (a broader all-language/all-repo re-measure may surface other unregistered values). Blockers WI-muzuf + WI-gobip: done."  # 23ef
+- op: discuss  # 1d4a
+  at: '2026-07-06T23:34:43Z'  # 1d4a
+  by: agent  # 1d4a
+  actor: jgstern_agent  # 1d4a
+  clock: 27  # 1d4a
+  nonce: 1d4a  # 1d4a
+  message: "MILESTONE: the BROAD drain cohort (broad-20260706-153915) is now ZERO-axis-violation. All three drain-surfaced blocker classes are fixed + merged: WI-muzuf (Symbol.language=path on boundary externals -> registered-or-None), WI-gobip (elixir module_qualified_call evidence_type -> ast_call; view-template-linker emitted pass_id -> cataloged), WI-kunut (asciidoc/makefile taxonomy union + gradle/csproj producer mislabel -> java/csharp). Per-repo axis_conformance after all three: pretix 611->0, phoenix 515->0, openzeppelin 519->0, detekt 9->0; the other 7 cohort repos were already 0 and the fixes only ever remove/normalize values (never add), so the full 11-repo / 8-language cohort is now 0. INV-numat's closure gate ('a zero-axis-violation bakeoff cohort') is MET on this cohort. Kept pending_validation (conservative for a P1 umbrella): this is a curated 8-language cohort, not the full 86-language taxonomy, so a language not exercised here could still carry an unregistered value. RECOMMEND formal closure on a fresh diverse BROAD/DEEP bakeoff confirming axis_conformance=0."  # 1d4a
+- op: discuss  # 5a01
+  at: '2026-07-07T00:12:17Z'  # 5a01
+  by: agent  # 5a01
+  actor: jgstern_agent  # 5a01
+  clock: 28  # 5a01
+  nonce: 5a01  # 5a01
+  message: "FRESH DIVERSE BROAD COHORT (broad-20260706-194844: go/rust/ruby/erlang/haskell/objc/c/cpp/lua/ocaml — ZERO primary-language overlap with the prior cohort) did NOT close INV-numat. It surfaced 360 axis_conformance violations in 4 pre-existing classes the prior 8-language cohort never exercised: Edge.evidence_type='new_expression' (244, cpp; WI-dagih), Symbol.kind='rpc'(89)+'service'(8) (proto/kong; WI-rilal), Symbol.language='erb' (19, rails; WI-novob). Root-caused via a 5-agent workflow. TWO structural lessons: (1) rpc/service were ALREADY marked RESOLVED in docs/audits/0013 on a FALSE 'zero producers' premise — proto.py emits them via a POSITIONAL helper the grep diagnostics miss; (2) therefore the closure diagnostic (per-cohort validation-report counts) is a FLOOR not a ceiling, and no cohort result can prove the invariant. INV-numat CANNOT be closed on cohort-counting alone — it needs a producer-side axis-leak sweep (WI-zipis) across all analyzers + untested languages (php/csharp/scala/kotlin/swift/dart/elixir). Stays pending_validation. Blockers filed: WI-dagih (mechanical), WI-rilal (ratified fold), WI-novob (roles design call), WI-zipis (the closure prerequisite)."  # 5a01
+- op: discuss  # 903f
+  at: '2026-07-07T09:18:27Z'  # 903f
+  by: agent  # 903f
+  actor: jgstern_agent  # 903f
+  clock: 29  # 903f
+  nonce: 903f  # 903f
+  message: "PRODUCER-SIDE CLOSURE GATE NOW GREEN (WI-zipis done, merged). The methodology-corrected gate for INV-numat — a trustworthy producer-side static sweep, replacing per-cohort validation_report counting (which provably undercounts; it was the false RESOLVED in audit-0013 that started this) — is materialized and enforcing: `scripts/check-producer-axis-coherence` + CI test `test_live_tree_producer_axis_ratchet` run the full descend-aware sweep (direct constructor + module-level + nested-closure helpers; cross-module verified-absent) against a shrink-only baseline that is now EMPTY. Live: the unregistered-value census is [] for ALL THREE vocab axes (Symbol.kind / Edge.evidence_type / Edge.edge_type); any new unregistered value fails pre-commit AND CI.\n\nThis closes the PRODUCER-EMISSION face of INV-numat structurally (the \"adding a new value has no gate\" root cause from the 2026-05-30 note). It does NOT by itself close the umbrella — the remaining faces are member work, not producer-emission conformance: e.g. access_mode applicability census (WI-pusuv, gated on the endpoint_shape->relationship fold), the entrypoint.kind symbol-nature-vs-file-role mixing (F27.4 face), and the evidence_class ast-vs-heuristic sub-axis (F24.7 face). INV-numat stays pending_validation pending those; but its keystone structural gap — no producer-side emission-conformance gate — is now closed."  # 903f
+- op: discuss  # 8457
+  at: '2026-07-16T04:11:09Z'  # 8457
+  by: agent  # 8457
+  actor: jgstern_agent  # 8457
+  clock: 30  # 8457
+  nonce: '8457'  # 8457
+  message: "Cohort supplementary evidence via DEEP bakeoff deep-20260623-134237 cohort-001 iter-004 (8 repos, code e5a019c2): edge vocab axes read clean on cohort artifacts — express 9359 edges span 9 distinct edge 'type' values (references/calls/imports/contains/module_attr_ref/depends_on/...), evidence_type lives under meta (not mixed into the type axis). Not a clean cohort test of the umbrella (the producer-side value-keyed sweep WI-zipis is the authoritative face, already green). Stays pending_validation on its non-producer faces (WI-pusuv access_mode census)."  # 8457
+- op: update  # 3e68
+  at: '2026-07-19T21:32:38Z'  # 3e68
+  by: agent  # 3e68
+  actor: jgstern_agent  # 3e68
+  clock: 31  # 3e68
+  nonce: '3e68'  # 3e68
+  set:  # 3e68
+    status: satisfied  # 3e68
+  remove:  # 3e68
+    tags: [awaits_bakeoff_validation]  # 3e68
+- op: discuss  # 5beb
+  at: '2026-07-19T21:32:38Z'  # 5beb
+  by: agent  # 5beb
+  actor: jgstern_agent  # 5beb
+  clock: 32  # 5beb
+  nonce: 5beb  # 5beb
+  message: "SATISFIED — owner-approved flip 2026-07-19 (Option-B full-drain criterion MET + human twenty-pass convergence call). All 30 formal children resolved: 16 done / 10 satisfied / 4 wont_do, zero open. The final 3 drained this session — WI-nuduv (done, PR #751: linker pass_id -linker-suffix convention + enforcing ratchet), WI-napuj (done, PR #752: profile.framework_evidence node-provenance for declared frameworks), INV-junid (satisfied, PR #753: docs-only — a 4-lens ADR/spec/history/spirit review refuted the 'axis mix' premise, established framework_dispatch as ADR-0028 Cluster 28C's coherent dispatch-convention fold, and corrected audit-0014's fabricated >=30/>=30 threshold to ADR-0024 rule 3's real >=3-values-OR->=2-producers). KEYSTONE GATE GREEN: the WI-zipis producer-side static value-keyed sweep (scripts/check-producer-axis-coherence) reports 0 new leaks / empty baseline — this is the authoritative closure gate that REPLACED the disproven per-cohort-counting gate (per the 2026-07-07 methodology ruling; per-cohort counting undercounts). Stripped the awaits_bakeoff_validation tag: STALE (ruled misapplied 2026-06-22; the producer sweep, not a bakeoff cohort, is authoritative). Each vocabulary-axis face (evidence_type fold, access_mode, cross_language delete-and-derive, call_construct/call_locality split, framework_dispatch coherent-axis KEEP, discovery_language, WS-route taxonomy, entrypoint.kind, symbol-kind visibility, id/pass_id vocab) landed via its own child with its own evidence."  # 5beb

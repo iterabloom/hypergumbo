@@ -50,3 +50,18 @@
   clock: 5  # d9ca
   nonce: d9ca  # d9ca
   message: "[Wave-0 pending-validation sweep] \ntracker: re-verify INV-nilud -- inheritance-aware call resolution\n\nStatus: **POSITIVELY CONFIRMED** via code inspection; KEEP PENDING_VALIDATION pending bakeoff quantitative validation.\n\n**What holds statically:**\n- Linker module fully implemented at packages/hypergumbo-core/src/hypergumbo_core/linkers/inherited_calls.py:1-742\n  * Priority 18 (between inheritance:15 and type_hierarchy:20)\n  * Three MRO walkers: _walk_insertion_order (Ruby/Groovy), _walk_single_then_interfaces (Java)\n  * Three Site resolvers fully functional\n- Java analyzer cleaned of duplicate inherited-call walks; now emits hints only\n  * Site 1 (bare/this): enclosing_class at java.py:1541\n  * Site 2 (typed receiver): receiver_type_hint at java.py:1593\n  * Site 3 (inherited field): inherited_field_receiver at java.py:1627, with meta[\"fields\"] at java.py:2217\n  * All three hints passed to make_unresolved_edge at java.py:1756-1766\n- Ruby analyzer threads enclosing_class hint; includes edges emitted by inheritance linker\n- Site-3 field metadata population: java.py:2211-2217\n- All 5 PRs merged (WI-gifar, WI-hatip, WI-dukog, WI-sivuk, WI-puvil)\n- Comprehensive test coverage: 44 tests, ALL PASS\n\n**What requires bakeoff validation:**\n- Per tracker item description: \"META transitions to satisfied after a full BROAD cycle confirms no regression — specifically: ast_call_inherited / ast_call_inherited_method / ast_call_inherited_field counts within stated tolerances on spring-petclinic, spring-boot, chatwoot, hypergumbo-self.\"\n- This quantitative validation cannot be done statically.\n\n**Recommendation:** keep_pending_validation. The fix is COMPLETE and CORRECT per static inspection. Schedule a full BROAD bakeoff cycle to measure edge counts on the four reference repos and close when tolerances are confirmed.\n"  # d9ca
+- op: update  # 9903
+  at: '2026-07-03T03:33:25Z'  # 9903
+  by: agent  # 9903
+  actor: jgstern_agent  # 9903
+  clock: 6  # 9903
+  nonce: '9903'  # 9903
+  set:  # 9903
+    status: satisfied  # 9903
+- op: discuss  # c899
+  at: '2026-07-03T03:33:25Z'  # c899
+  by: agent  # c899
+  actor: jgstern_agent  # c899
+  clock: 7  # c899
+  nonce: c899  # c899
+  message: "Validated by targeted BROAD cohort (spring-petclinic + chatwoot, session broad-20260702-225127): spring-petclinic 68 Java inherited-call edges (ast_call_inherited 4 + ast_call_inherited_method 64) all is_resolved=True; chatwoot 218 ast_includes (Ruby include/extend mixins resolving to UrlHelper/Events::Types/concerns) + 16 ast_call_inherited, all resolved. Provenance contract holds (origin=[inherited-calls]); no crash/dangling. Architecture invariant (resolution in Tier-2 linker; analyzers emit hints only) confirmed. A distinct cross-language Site-2 collision (Java Property vs Scala trait) is filed separately as an accuracy bug."  # c899

@@ -27,3 +27,50 @@
   clock: 2  # bcaf
   nonce: bcaf  # bcaf
   message: "DEFERRED out of Wave 2 to Wave 3 item 10 (2026-06-18 scope decision; recorded in correctness_strategy_06102026.md §Wave 3 item 10 + cross-ref from §Wave 2 synthetic:F3). P2 format-purity cleanup (today's :unresolved + is_resolved=False is the internally-consistent state, not a live break); single largest remaining Wave-2 piece (~58 test edits + 3 producer/3 consumer sites). ADR-0036 (node-id grammar v2) is ACCEPTED, so scope-#4's 'coordinate with identity migration' is satisfiable. Clears the dominant :unresolved cohort (~458 nodes), unblocking INV-kurup/INV-numat Wave-5 closure. Status stays todo_hard (scheduled, not dropped)."  # bcaf
+- op: discuss  # 7ec2
+  at: '2026-06-21T03:09:06Z'  # 7ec2
+  by: agent  # 7ec2
+  actor: jgstern_agent  # 7ec2
+  clock: 3  # 7ec2
+  nonce: 7ec2  # 7ec2
+  message: "Recon (2026-06-20), surfaced while fixing the full-suite self-tree-validation gate. QUANTIFICATION — live 'hypergumbo run .' self-analysis now shows validation_report id_format|warning = 3022. Kind-slot -> Symbol.kind mismatch breakdown: unresolved->external_symbol 1365, attribute->external_symbol 222, module->external_symbol 14, namespace->external_symbol 2, function->external_symbol 2, package/script->external_symbol 1 each (the ruling-4 dual-mint family); PLUS tails NOT covered by the :unresolved->:external_symbol fold: event_subscriber->function 9, route->function 8, event_publisher->function 3, npm_package->package 3, tsconfig->file 1. ROOT-CAUSE CONFIRMED: every '*->external_symbol' bucket is ONE family — create_boundary_nodes (ir.py ~1287) forces kind=external_symbol while the id keeps the REFERENCE's original kind-slot (unresolved/attribute/module/namespace/function). The node-id (_canonical_external_id ir.py ~1056/1302) and the inbound edge-dst (format_legacy_dst ir.py ~622, make_unresolved_edge analyze/base.py ~455) are minted by SEPARATE loci, so they MUST flip together or every inbound edge dangles — confirming this item's atomic 3-producer + 3-consumer + ~58-test scope. There is NO clean 'shave-N' partial. CLOSURE CAVEAT: the :unresolved fold alone will NOT zero the id_format cohort — the attribute/module/namespace/function->external_symbol tails (~240) ride the SAME create_boundary_nodes dual-mint and should fold into the same change (rebuild the boundary-node id from its FINAL kind, not the reference's kind-slot); the event_subscriber/route/event_publisher->function + npm_package->package + tsconfig->file tails (~24) are SEPARATE synthetic-node producers whose id-slot != kind (own follow-ups). Consider broadening ruling-4 to 'rebuild every boundary/synthetic id from its emitted kind' rather than only :unresolved. CI CONTEXT: the full-suite self-tree-validation ratchet (WI-jigup) has NEVER actually run — its job invoked the bare 'hypergumbo' command (exit 127; the meta-package providing that console script is never installed in CI; the gate needs 'python -m hypergumbo_core run .', mirroring check-schema-coverage). So baseline id_format|warning=3012 (set 2026-06-18) was a snapshot, never an enforced floor; live count is now 3022 (+10 legitimate growth). A verified CLI fix (full-suite.yml -> 'python -m hypergumbo_core run .' + a workflow-invocation guard test, tests/test_workflow_cli_invocation.py) is ready on local branch jgstern-agent/fix/self-tree-validation-cli-invocation; the ratchet won't pass until this item drives the cohort down (or the baseline is one-time reconciled). DECISION (2026-06-20, human): hold this item until it is deliberately scheduled — do not rush the ~458-node id-shape migration to unblock the periodic ratchet. Recon recorded here for that work."  # 7ec2
+- op: update  # ca6a
+  at: '2026-07-02T19:50:13Z'  # ca6a
+  by: agent  # ca6a
+  actor: jgstern_agent  # ca6a
+  clock: 4  # ca6a
+  nonce: ca6a  # ca6a
+  set: {}  # ca6a
+  add:  # ca6a
+    isbefore: [WI-popak-gugoz-kibah-dugur-hopif-dutor-zopud-tamak]  # ca6a
+- op: update  # 4ade
+  at: '2026-07-02T19:50:13Z'  # 4ade
+  by: agent  # 4ade
+  actor: jgstern_agent  # 4ade
+  clock: 5  # 4ade
+  nonce: 4ade  # 4ade
+  set: {}  # 4ade
+  add:  # 4ade
+    isbefore: [INV-dulah-kisiz-gobak-jafov-soduj-tomim-dufut-kinil]  # 4ade
+- op: discuss  # 1773
+  at: '2026-07-02T19:51:02Z'  # 1773
+  by: agent  # 1773
+  actor: jgstern_agent  # 1773
+  clock: 6  # 1773
+  nonce: '1773'  # 1773
+  message: "2026-07-02 HOLD LIFTED (human). The 2026-06-20 scheduling hold on the ADR-0036 node-id-grammar migration is lifted. Approved to proceed STANDALONE (v6 stable_id hash train already landed; nothing to bundle into) with a SCHEMA_VERSION PATCH bump. Diff-scope = Option B: WI-jopil co-ships with WI-pubiv as ONE atomic core train (create_boundary_nodes chokepoint rebuild + :unresolved edge-dst fold at make_unresolved_edge/format_legacy_dst + refactor the 3 suffix-matching consumers cgo.py/taint.py/taint_refine.py to read is_resolved/dst_ref + ~58 :unresolved test updates). Route/event (WI-kugaj, WI-zugob) and npm_package/tsconfig folds land as small independent fast-follows (different producers, no shared remap coupling). Committed baseline id_format|warning=3012 (2026-06-18, 35285 syms); live re-measure in flight."  # 1773
+- op: update  # 57df
+  at: '2026-07-03T01:32:40Z'  # 57df
+  by: agent  # 57df
+  actor: jgstern_agent  # 57df
+  clock: 7  # 57df
+  nonce: 57df  # 57df
+  set:  # 57df
+    status: done  # 57df
+- op: discuss  # e852
+  at: '2026-07-03T01:32:40Z'  # e852
+  by: agent  # e852
+  actor: jgstern_agent  # e852
+  clock: 8  # e852
+  nonce: e852  # e852
+  message: "DONE via PR #395 (dev 2e3d003619, ADR-0037 ruling 4). SCOPE-CORRECTED by WI-pubiv: the id-slot OUTPUT fold (:unresolved->:external_symbol) was already discharged by WI-pubiv + the id_remap (final node ids AND edge dsts are :external_symbol); the remaining structural piece was the CONSUMER refactor (cross-family mechanism #3). BEHAVIORAL EVIDENCE — this fix corrected a LATENT REGRESSION WI-pubiv introduced: the boundary-id remap rewrote unresolved edge dsts :unresolved->:external_symbol, but taint._match_propagation_entry / taint_refine._maybe_rewrite_edge / cgo linker re-derived resolution by string-matching :unresolved. Post-remap the suffix is gone, so verify-claims taint treated EVERY unresolved external edge as RESOLVED, bypassing the WI-razol/INV-tapat ambiguous-name collision guard (empirical repro: _match_propagation_entry on 'py:external:0-0:get:external_symbol' returned a FALSE exact-match where the :unresolved form correctly declined). All three consumers now read Edge.is_resolved; regression test test_post_remap_external_symbol_sink_still_suppressed locks it. 100% coverage core; 193 taint + 135 verify-claims tests pass. Completes ADR-0037 (rulings 1/2/3/5 shipped earlier). Producer :unresolved suffix RETAINED deliberately as an internal pre-remap convention (feeds WI-pubiv reference_syntax; output already :external_symbol)."  # e852

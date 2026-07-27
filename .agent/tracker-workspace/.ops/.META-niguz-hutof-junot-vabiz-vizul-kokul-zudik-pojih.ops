@@ -34,3 +34,50 @@
   clock: 3  # 6848
   nonce: '6848'  # 6848
   message: "synthetic:F2 (5a, PR #226, merged dev c058b59a55) lands the make_synthetic_symbol_identity chokepoint + the populate_synthetic_class_b_identity post-pass: Class-B protocol-synth nodes (language=None + protocol_origin) now get stable_id (INJECTIVE key (protocol_origin, kind, path, name, occurrence) — zero by-design collisions per ADR-0035 §1, after an adversarial review caught a coarse-key collision regression), display_label (closes META-huvuh), and fingerprint, where the ~7 zero-stable_id linkers + unstamped others left them null. PARTIAL toward this super-cluster: (a) it is a post-pass backstop (the architecture chosen for 5a), not yet a construction-time chokepoint every mint site routes through; (b) the external_symbol kind-slot re-keying (WI-kapul-ganan) is 5b, deferred to the v6/ADR-0037 train; (c) WI-hulup's npm_package path=''/language gap is a path concern, not the identity-stamp gap 5a fills. Staying violated pending those."  # 6848
+- op: update  # 71dd
+  at: '2026-07-09T01:53:05Z'  # 71dd
+  by: agent  # 71dd
+  actor: jgstern_agent  # 71dd
+  clock: 4  # 71dd
+  nonce: 71dd  # 71dd
+  set: {}  # 71dd
+  add:  # 71dd
+    tags: [wave5]  # 71dd
+- op: discuss  # 023d
+  at: '2026-07-09T01:53:05Z'  # 023d
+  by: agent  # 023d
+  actor: jgstern_agent  # 023d
+  clock: 5  # 023d
+  nonce: 023d  # 023d
+  message: "Wave-5 sweep (2026-07-08): synthetic-node-stamping META umbrella (synthesized/stand-in nodes bypass the shared identity+provenance stamping step). Empty isbefore -> terminal validation-drain / umbrella-closure wave."  # 023d
+- op: update  # dd32
+  at: '2026-07-21T21:21:11Z'  # dd32
+  by: agent  # dd32
+  actor: jgstern_agent  # dd32
+  clock: 6  # dd32
+  nonce: dd32  # dd32
+  set:  # dd32
+    fields:  # dd32
+      statement: "Every node-minting path (boundary external_symbol synthesis, orchestrator file-symbol synthesis, ~21 protocol linkers) MUST route through the same identity + provenance stamping the real-analyzer Symbol path uses; stand-in nodes must not be left with empty/sentinel identity, provenance, or relationship fields. SCOPE (2026-07-21 audit): a shared chokepoint now exists (make_synthetic_symbol_identity / populate_synthetic_class_b_identity, analyze/base.py:1153/1205) and 6 identity/provenance members are done (WI-fozoh/WI-sijut/WI-mosil/WI-lisog/WI-pubiv/WI-kufib). Residual keeping it violated: (1) the chokepoint is an orchestrator POST-pass BACKSTOP, not the per-mint-site construction-time routing this statement mandates; (2) the external_symbol path facet (WI-kapul, path=='<external>'); (3) degenerate relationship-field provenance (INV-rukor / derived_from)."  # dd32
+- op: discuss  # 4066
+  at: '2026-07-21T21:21:11Z'  # 4066
+  by: agent  # 4066
+  actor: jgstern_agent  # 4066
+  clock: 7  # 4066
+  nonce: '4066'  # 4066
+  message: "Re-scoped statement to the residual: the identity/provenance FIELD members are done via the base.py:1153/1205 chokepoint (6 done WIs); what remains is (1) construction-time routing vs the post-pass backstop, (2) external_symbol path facet (WI-kapul), (3) derived_from relationship provenance (INV-rukor). Do NOT close as done."  # 4066
+- op: update  # 099d
+  at: '2026-07-26T09:45:56Z'  # 099d
+  by: agent  # 099d
+  actor: jgstern_agent  # 099d
+  clock: 8  # 099d
+  nonce: 099d  # 099d
+  set:  # 099d
+    status: pending_validation  # 099d
+- op: discuss  # 34c0
+  at: '2026-07-26T09:45:56Z'  # 34c0
+  by: agent  # 34c0
+  actor: jgstern_agent  # 34c0
+  clock: 9  # 34c0
+  nonce: 34c0  # 34c0
+  message: "RE-SCOPED (G2 investigation). The item hypothesized a single stamping chokepoint synthesized nodes skip; there is NO such chokepoint and by the architecture there should not be -- external/file/protocol/npm/declaration nodes each need their own identity formula, covered by THREE dispatch-by-class backstops (origin_run_id all_analyzers.py:178; stable_id-by-kind base.py:1122; Class-B identity base.py:1205) + producer-side stamps (create_boundary_nodes; file synthesizers base.py:448/535/596; js_module npm). ~95% was already built (synthetic:F1/F2, ADR-0044/0030/0031). Its ONE concrete residual family (kind='template' -> stable_id=None) is FIXED in PR #15 (META-nomiz). Set pending_validation: fix deployed; a self-analysis showing 0 synthesized-node identity gaps (spec_validator None-cohort ~0) flips it to satisfied. No chokepoint fix exists to 'complete' -- it is per-family, last known family closed."  # 34c0

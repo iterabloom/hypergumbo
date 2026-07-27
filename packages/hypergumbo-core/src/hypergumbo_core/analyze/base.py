@@ -2,7 +2,7 @@
 """Base classes and utilities for language analyzers.
 
 This module provides shared infrastructure for all language analyzers,
-eliminating duplication across the ~127 analyzer files spread across
+eliminating duplication across the ~128 analyzer files spread across
 the four ``hypergumbo-lang-*`` packages.
 
 Shared Components
@@ -323,6 +323,29 @@ def make_file_id(lang: str, path: str) -> str:
 _FILE_ID_SUFFIX = ":1-1:file:file"
 
 
+def _read_file_end_line(repo_root: "Path", rel_path: str) -> int:
+    """Line count (>=1) of ``repo_root/rel_path`` when readable, else 1.
+
+    Shared by the two file-anchor synthesizers (the dangling-edge pass and the
+    node-bearing-path pass) to stamp a real ``span.end_line`` on each synthesized
+    file Symbol (INV-vaguj). The real span is load-bearing: the containment
+    linker's span-based pass roots a file's top-level members at the file node by
+    span containment, so a 1-1 span would leave the file an orphan. Unreadable
+    files keep the schema-valid sentinel ``1`` (the INV-piroh schema gate forbids
+    the negative sentinel).
+    """
+    try:
+        file_text = (repo_root / rel_path).read_text(
+            encoding="utf-8", errors="ignore",
+        )
+    except (OSError, ValueError):
+        return 1
+    line_count = file_text.count("\n")
+    if file_text and not file_text.endswith("\n"):
+        line_count += 1
+    return line_count if line_count >= 1 else 1
+
+
 def synthesize_file_symbols_for_dangling_edges(
     symbols: list[Symbol],
     edges: list[Edge],
@@ -420,17 +443,7 @@ def synthesize_file_symbols_for_dangling_edges(
                     path = normed[len(root_prefix):]
                 # INV-vaguj: stamp the file's real line count when we can
                 # read it; otherwise keep the schema-valid sentinel of 1.
-                try:
-                    file_text = (repo_root / path).read_text(
-                        encoding="utf-8", errors="ignore",
-                    )
-                    line_count = file_text.count("\n")
-                    if file_text and not file_text.endswith("\n"):
-                        line_count += 1
-                    if line_count >= 1:
-                        end_line = line_count
-                except (OSError, ValueError):
-                    pass
+                end_line = _read_file_end_line(repo_root, path)
 
             synthesized[endpoint] = Symbol(
                 id=endpoint,
@@ -450,6 +463,147 @@ def synthesize_file_symbols_for_dangling_edges(
             )
 
     return list(synthesized.values())
+
+
+def synthesize_file_anchors_for_node_bearing_paths(
+    symbols: list[Symbol],
+    repo_root: "Optional[Path]" = None,
+    origin_run_id: str = "",
+) -> list[Symbol]:
+    """Synthesize a ``kind="file"`` anchor for every path that has content
+    nodes but no file anchor (WI-dagif; file-anchor:F1, node-bearing slice).
+
+    Sibling of :func:`synthesize_file_symbols_for_dangling_edges`: that pass is
+    keyed on dangling ``make_file_id`` EDGE endpoints (WI-ramuv); this one is
+    keyed on NODE-BEARING PATHS whose ``make_file_id`` has no producer-side
+    ``kind="file"`` Symbol *and* no dangling edge to trigger the other pass —
+    e.g. a Java/C#/Rust file with only a class + fields and no imports/calls, or
+    a generated module. Without it those paths have a rootless ``contains`` tree
+    (content nodes with no file root), so ``slice`` cannot expand "this file's
+    symbols" and the file universe is split (WI-rajod).
+
+    Run AFTER the dangling-edge pass so its anchors count as already-present.
+    Each anchor carries a real ``span.end_line`` (the file's line count) so the
+    containment linker's span-based pass roots the file's top-level members at it
+    — no separate ``contains``-edge emission is needed here.
+
+    SAFETY — why this is landable independently of file-anchor:F4 (the centrality
+    surface split): these paths already carry content nodes, so they are already
+    in the Additional-Files exclusion set (``source_paths`` in cli.py) and minting
+    their anchors cannot empty that surface. The nodeless cohort (yaml/markdown/
+    config files with zero nodes) is deliberately NOT anchored here — that is the
+    full F1+F4 co-release, gated on the WI-rajod-invariant human decision.
+
+    Args:
+        symbols: All Symbols collected from analyzers + the dangling-edge pass.
+        repo_root: Repository root; when provided, paths normalize to
+            repo-relative and ``span.end_line`` reflects each file's line count.
+        origin_run_id: Execution id of the orchestrator file-synthesis
+            ``AnalysisRun`` (shared with the dangling-edge pass).
+
+    Returns:
+        One new ``kind="file"`` Symbol per node-bearing path that lacked one.
+    """
+    root_prefix: Optional[str] = None
+    if repo_root is not None:
+        root_prefix = str(repo_root).replace("\\", "/").rstrip("/") + "/"
+
+    def _rel(p: str) -> str:
+        if root_prefix is not None:
+            normed = p.replace("\\", "/")
+            if normed.startswith(root_prefix):
+                return normed[len(root_prefix):]
+        return p
+
+    anchored: set[str] = {
+        _rel(s.path) for s in symbols if s.kind == "file" and s.path
+    }
+    # path -> representative language (first content node wins; deterministic in
+    # input order). A path with no language is skipped — make_file_id needs one.
+    needs_anchor: dict[str, str] = {}
+    for sym in symbols:
+        if sym.kind == "file" or not sym.path or not sym.language:
+            continue
+        rel = _rel(sym.path)
+        if rel in anchored or rel in needs_anchor:
+            continue
+        needs_anchor[rel] = sym.language
+
+    synthesized: list[Symbol] = []
+    for rel, language in needs_anchor.items():
+        end_line = _read_file_end_line(repo_root, rel) if repo_root is not None else 1
+        synthesized.append(Symbol(
+            id=make_file_id(language, rel),
+            name=rel,
+            kind="file",
+            language=language,
+            path=rel,
+            span=Span(start_line=1, start_col=0, end_line=end_line, end_col=0),
+            origin="orchestrator_file_symbol_synthesis",
+            origin_run_id=origin_run_id,
+        ))
+    return synthesized
+
+
+def synthesize_file_anchors_for_paths(
+    symbols: list[Symbol],
+    path_to_language: "dict[str, str]",
+    repo_root: "Optional[Path]" = None,
+    origin_run_id: str = "",
+) -> list[Symbol]:
+    """Mint a ``kind="file"`` anchor for each ``(rel_path, language)`` whose path
+    has no existing Symbol (file-anchor:F1, additional-file-candidate cohort).
+
+    Generic path-keyed minter: the caller (``all_analyzers``) selects the
+    candidates via :func:`taxonomy.additional_file_candidates` + ``get_language``
+    — selection lives in the caller because ``base`` cannot import the taxonomy/
+    discovery/sketch modules that define the candidate filter and its exclude
+    lists without a cycle. Minting (the canonical id/span/origin shape, shared
+    with the dangling-edge and node-bearing synthesizers) stays here. These
+    anchors are leaf nodes (their files — config/docs — carry no content nodes
+    to contain), so no containment-linker rooting is needed.
+
+    Args:
+        symbols: All Symbols so far (only their ``path`` set is read, for dedup).
+        path_to_language: Repo-relative path -> resolved language. Every language
+            must be non-``None`` (the candidate filter requires a resolvable one).
+        repo_root: Repo root; when provided, ``span.end_line`` reflects the
+            file's line count.
+        origin_run_id: Execution id of the shared file-synthesis ``AnalysisRun``.
+
+    Returns:
+        One new ``kind="file"`` Symbol per path that lacked one.
+    """
+    # Dedup against already-emitted paths, normalized to repo-relative. Some
+    # analyzers (e.g. html) emit file Symbols with ABSOLUTE paths that the
+    # pipeline only normalizes downstream (after this chokepoint). The candidate
+    # keys here are repo-relative, so an absolute existing path would not match
+    # and we would mint a duplicate anchor (the html double-file-node regression).
+    existing: set[str] = set()
+    for s in symbols:
+        if not s.path:
+            continue
+        sp = s.path
+        _p = Path(sp)
+        if repo_root is not None and _p.is_absolute() and _p.is_relative_to(repo_root):
+            sp = str(_p.relative_to(repo_root))
+        existing.add(sp)
+    synthesized: list[Symbol] = []
+    for rel, language in path_to_language.items():
+        if rel in existing:
+            continue
+        end_line = _read_file_end_line(repo_root, rel) if repo_root is not None else 1
+        synthesized.append(Symbol(
+            id=make_file_id(language, rel),
+            name=rel,
+            kind="file",
+            language=language,
+            path=rel,
+            span=Span(start_line=1, start_col=0, end_line=end_line, end_col=0),
+            origin="orchestrator_file_symbol_synthesis",
+            origin_run_id=origin_run_id,
+        ))
+    return synthesized
 
 
 def make_unresolved_edge(
@@ -520,7 +674,6 @@ def make_unresolved_edge(
         dst=dst_id,
         edge_type="calls",
         line=line,
-        confidence=0.50,
         origin=pass_id,
         origin_run_id=run_id,
         evidence_type="ast_call_direct",
@@ -528,6 +681,52 @@ def make_unresolved_edge(
         dst_ref=dst_ref,
         meta=hint_meta or None,
     )
+
+
+def defer_bare_method_call(
+    candidate_kind: str,
+    candidate_name: str,
+    match_type: str,
+    enclosing_type: Optional[str],
+    separator: str = ".",
+) -> bool:
+    """INV-fahub: should a BARE call that resolved to ``candidate`` be WITHHELD?
+
+    A bare / implicit-``this`` / ``self`` call (``copy(...)``, a chained-receiver
+    call whose receiver token was dropped, a same-file short-name hit) may
+    legitimately reach a free function / object, or a method of its OWN enclosing
+    class (implicit ``this``). It must NOT confidently bind to a DIFFERENT class's
+    method on weak short-name evidence — that is the cross-language magnet misbind
+    (``copy`` → ``FileCopyTask.copy``, ``delete`` → ``ActivityPubClient.delete``:
+    dozens of call sites → one arbitrary def, per real-repro validation). Deferring
+    such a call to the shared ``inherited_calls`` **Site-1** walker (by emitting
+    ``make_unresolved_edge(..., enclosing_class=<enclosing_type>)``) lets it be
+    recovered iff the method is actually on the enclosing class's linearization (a
+    genuine *inherited* implicit-``this`` call), and left honestly external when it
+    is a cross-class magnet — INV-nogof (withhold, never pick-first) + INV-nilud
+    (the linker owns resolution).
+
+    Returns ``True`` to DEFER, ``False`` to bind directly. ``match_type`` is the
+    resolver's ``LookupResult.match_type``; pass ``"suffix"`` for a bare same-file
+    ``local_symbols`` hit (an exact *short-name* match, but still weak evidence for
+    a cross-class target). Owner class is parsed from ``candidate_name``'s
+    ``"Owner<sep>method"`` shape; ``separator`` defaults to ``"."`` (Scala / Swift /
+    Go / most) but callers whose method names use another separator pass it — e.g.
+    Rust / C++ (``"Owner::method"``) pass ``separator="::"``. A name with no
+    separator (a free def) never defers.
+    """
+    if candidate_kind != "method":
+        return False
+    owner = (
+        candidate_name.rsplit(separator, 1)[0]
+        if separator in candidate_name else None
+    )
+    if owner is not None and owner == enclosing_type:
+        return False  # same-class implicit ``this``/``self`` — bind directly
+    # Cross-class (or owner-unknown) method: only a strong exact / import-scoped
+    # match is trustworthy for a bare call; a weak suffix / ambiguous / same-file
+    # short-name collision is the magnet — defer to Site-1.
+    return match_type not in ("exact", "path_hint")
 
 
 def make_route_stable_id(method: str, path: str) -> str:
@@ -744,6 +943,48 @@ def make_doc_stable_id(
     )
 
 
+def make_doc_symbol_ids(
+    language: str, path: str, kind: str, name: str, start_line: int, end_line: int
+) -> tuple[str, str]:
+    """Mint the ``(node.id, stable_id)`` PAIR for a doc/markup/template Symbol
+    together, from one argument set (INV-dulah).
+
+    The doc/markup/template analyzer family (rst/scss/vue/svelte/puppet/robot/
+    astro/twig/pony/sparql/kdl) each carried a near-duplicate local
+    ``_make_symbol_id`` that built the raw composite ``Symbol.id``, then SEPARATELY
+    called :func:`make_doc_stable_id` for the canonical ``stable_id``. Holding the
+    two identities in two places is exactly the drift that let WI-rijup ship
+    ``stable_id == raw id`` for nine of them. Minting both here, from the same
+    ``(language, path, kind, name, start_line, end_line)`` tuple, makes that
+    divergence unrepresentable, and dedups the eleven copies onto one definition.
+
+    ``node.id`` shape: ``"{language}:{path}:{kind}:{start_line}:{name}"`` — the
+    historical doc-family shape the six line-bearing adopters
+    (scss/vue/svelte/puppet/astro/twig, plus kdl) already emit, so they migrate
+    byte-for-byte. This is deliberately NOT the documented ADR-0036 node.id
+    grammar (``lang:path:span:name:kind`` — span third, kind last): full grammar
+    conformance for the doc family would re-key every node and is a separate,
+    larger decision (the markdown/gitignore analyzers, which already use the
+    span-third/kind-last shape, are NOT folded onto this helper for that reason).
+    The line-less adopters (rst/robot/pony/sparql) GAIN the ``start_line`` segment
+    here, which both moves their id TOWARD the grammar and resolves their latent
+    same-name-sibling id collision (two ``section`` nodes of the same name in one
+    file previously shared an id).
+
+    ``stable_id`` is the canonical ``sha256:<16hex>`` from
+    :func:`make_doc_stable_id` — unchanged for every adopter (they already called
+    it with these same args).
+
+    ``path`` is coerced with ``str()`` so callers may pass ``str`` or
+    ``pathlib.Path`` (the family is split between the two); on POSIX the f-string
+    interpolation the analyzers previously used produced the identical string.
+    """
+    spath = str(path)
+    symbol_id = f"{language}:{spath}:{kind}:{start_line}:{name}"
+    stable_id = make_doc_stable_id(language, spath, kind, name, start_line, end_line)
+    return symbol_id, stable_id
+
+
 def make_project_stable_id(name: str) -> str:
     """INV-sotiv: stable identity for ``kind="project"`` Symbols.
 
@@ -774,6 +1015,36 @@ def make_type_stable_id(language: str, path: str, name: str) -> str:
     named type declarations (Rust ``type`` aliases, TypeScript ``type`` statements, etc.).
     """
     return _short_sha256(f"type:{language}:{path}:{name}")
+
+
+def make_declaration_stable_id(kind: str, language: str, path: str, name: str) -> str:
+    """WI-rihob: stable identity for container/declaration Symbol kinds.
+
+    Identity formula: ``sha256("{kind}:{language}:{path}:{name}")[:16]`` — the
+    same file-scoped, name-in-hash shape as :func:`make_interface_stable_id` and
+    :func:`make_type_stable_id` (ADR-0035 §4), generalized over ``kind``. Covers
+    the named-declaration container kinds — ``class`` / ``struct`` / ``enum`` /
+    ``trait`` / ``protocol`` / ``contract`` — that the tree-sitter producers
+    (js_ts and its csharp/rust/swift/solidity/wgsl analogues) construct with a
+    ``shape_id=`` but no ``stable_id=``, leaving them at ``None`` (measured:
+    0/4 TypeScript classes, plus the TS enum, csharp class/struct/enum, rust
+    enum/struct/trait, swift class/enum/protocol, solidity contract, wgsl struct).
+
+    The declaring ``path`` is folded in because these names routinely repeat
+    across files (every module can declare ``class Config``); ``kind`` is
+    threaded into the hash so a ``class Widget`` and a same-named ``struct
+    Widget`` in one file stay distinct (mirroring the kind-prefix that separates
+    interface/type). ``language`` namespaces a C# ``IRepository`` from a
+    TypeScript one.
+
+    Per D3a/D3b (ADR-0035): this survives line drift and body edits (adding a
+    method does not churn the class id — members are not in the hash) and churns
+    on rename/move (name is in the hash; move-tracking is delegated to
+    ``shape_id``/``fingerprint``). It is the backstop shape, not the typed tier:
+    a class has no parameter signature, so — like its interface/type siblings —
+    it uses the name-scoped key rather than :func:`make_typed_stable_id`.
+    """
+    return _short_sha256(f"{kind}:{language}:{path}:{name}")
 
 
 def make_protocol_stable_id(category: str, *parts: str) -> str:
@@ -813,11 +1084,23 @@ def make_protocol_stable_id(category: str, *parts: str) -> str:
     return _short_sha256(key)
 
 
+def _declaration_kind_stable_id(sym: Symbol) -> str:
+    """Backstop factory for container/declaration kinds (WI-rihob)."""
+    return make_declaration_stable_id(sym.kind, sym.language, sym.path, sym.name)
+
+
 # Mapping from Symbol.kind to the factory function used by
-# populate_kind_stable_ids. Kinds NOT present here either have producers
-# that compute their own stable_id (function, method, class, route, etc.)
-# or are absent from INV-sotiv's measured-gap set and remain at None
-# until a future invariant adds them.
+# populate_kind_stable_ids. Kinds NOT present here have producers that compute
+# their own stable_id (function, method, route, and Python classes via
+# ``_compute_stable_id``) or are absent from the measured-gap set and remain at
+# None until a future invariant adds them.
+#
+# WI-rihob: the container/declaration kinds (class/struct/enum/trait/protocol/
+# contract) are backstopped here. Despite the earlier assumption that "class
+# computes its own", the tree-sitter producers (js_ts and its csharp/rust/swift/
+# solidity/wgsl analogues) construct them with ``shape_id=`` but no
+# ``stable_id=``, so they fell through to None; they share interface/type's
+# file-scoped name-in-hash shape via :func:`make_declaration_stable_id`.
 _KIND_STABLE_ID_FACTORIES = {
     "file": lambda s: make_file_stable_id(s.language, s.path),
     "module": lambda s: make_module_stable_id(s.language, s.path, s.name),
@@ -827,6 +1110,17 @@ _KIND_STABLE_ID_FACTORIES = {
     "project": lambda s: make_project_stable_id(s.name),
     "interface": lambda s: make_interface_stable_id(s.language, s.path, s.name),
     "type": lambda s: make_type_stable_id(s.language, s.path, s.name),
+    "class": _declaration_kind_stable_id,
+    "struct": _declaration_kind_stable_id,
+    "enum": _declaration_kind_stable_id,
+    "trait": _declaration_kind_stable_id,
+    "protocol": _declaration_kind_stable_id,
+    "contract": _declaration_kind_stable_id,
+    # META-nomiz: view-template stand-ins (linkers/_view_template_core.py) mint
+    # kind="template" with a language but no stable_id, falling through every other
+    # backstop. They share the generic kind-scoped formula — kind is folded into the
+    # hash, so a "template" node stays distinct from a "file" node at the same path.
+    "template": _declaration_kind_stable_id,
 }
 
 
@@ -838,15 +1132,19 @@ def populate_kind_stable_ids(symbols: list[Symbol]) -> None:
     Symbol whose ``stable_id`` is still ``None``, dispatches on
     ``Symbol.kind`` to a kind-specific factory and stamps the result.
 
-    Producers that already computed a ``stable_id`` (functions, methods,
-    classes via ``_compute_stable_id``; routes via ``make_route_stable_id``;
-    typed-tier symbols via ``make_typed_stable_id``; etc.) keep priority
-    — this backstop never overrides a non-``None`` value.
+    Producers that already computed a ``stable_id`` (functions and methods
+    via ``make_typed_stable_id``; Python functions/methods/classes via
+    py.py's ``_compute_stable_id``; routes via ``make_route_stable_id``; etc.)
+    keep priority — this backstop never overrides a non-``None`` value.
 
-    Kinds not in ``_KIND_STABLE_ID_FACTORIES`` are left untouched.
-    Self-analysis on hypergumbo's own codebase confirmed that the eight
-    covered kinds account for all the previously-``None`` Symbols; new
-    kinds would surface here and need their own factory entry.
+    Kinds not in ``_KIND_STABLE_ID_FACTORIES`` are left untouched. The map
+    covers the eight INV-sotiv kinds (file / module / dependency / variable /
+    export / project / interface / type) plus the six WI-rihob container/
+    declaration kinds (class / struct / enum / trait / protocol / contract) —
+    the latter because the tree-sitter producers construct them with a
+    ``shape_id=`` but no ``stable_id=`` (unlike Python, whose ``_compute_stable_id``
+    covers classes at the producer). New kinds that surface with ``None`` need
+    their own factory entry here.
     """
     for sym in symbols:
         if sym.stable_id is not None:
@@ -2031,7 +2329,6 @@ def emit_module_attribute_refs(
             dst=f"{lang}:{real_module}:0-0:{qname}:attribute",
             edge_type="module_attr_ref",
             line=node.start_point[0] + 1,
-            confidence=0.85,
             origin=pass_id,
             origin_run_id=run_id,
             evidence_type="module_attribute_reference",
@@ -3022,7 +3319,14 @@ class TreeSitterAnalyzer:
                     kind="file",
                     language=self.lang,
                     path=rel_path,
-                    span=Span(start_line=1, start_col=0, end_line=1, end_col=0),
+                    # Full-file span (WI-sijug): mirror bash.py / js_ts.py so the file
+                    # node fingerprints its real structure, not just line 1 (a shebang or
+                    # comment there filters to empty → a needless null). ``tree`` is parsed
+                    # above; end_point[0] is 0-indexed, so +1 gives the last 1-based line.
+                    span=Span(
+                        start_line=1, start_col=0,
+                        end_line=tree.root_node.end_point[0] + 1, end_col=0,
+                    ),
                     origin=effective_pass_id,
                     origin_run_id=run.execution_id,
                 )

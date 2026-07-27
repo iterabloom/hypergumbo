@@ -25,7 +25,7 @@ from pathlib import Path
 from typing import Any
 
 # WI-mokim: consumer-side .gz handling for `hypergumbo run --gzip` outputs.
-from hypergumbo_core.behavior_map_io import load_behavior_map
+from hypergumbo_core.survey_io import load_behavior_map
 
 
 def find_artifacts(base_paths: list[str] | None = None) -> list[Path]:

@@ -16,7 +16,7 @@ extraction, Jupyter notebooks, and the Play framework's routes DSL.
 See `docs/LANGUAGES.md` for the authoritative inventory.
 """
 
-__version__ = "6.1.0"
+__version__ = "7.0.0"
 
 # Module paths for analyzer discovery via entry-points (ADR-0012 Step 1).
 # Importing each module triggers the @register_analyzer decorator within it.
@@ -60,6 +60,7 @@ ANALYZER_MODULES = [
     # Config files
     "hypergumbo_lang_mainstream.json_config",
     "hypergumbo_lang_mainstream.yaml_ansible",
+    "hypergumbo_lang_mainstream.yaml",
     "hypergumbo_lang_mainstream.xml_config",
     "hypergumbo_lang_mainstream.toml_config",
     "hypergumbo_lang_mainstream.ini",

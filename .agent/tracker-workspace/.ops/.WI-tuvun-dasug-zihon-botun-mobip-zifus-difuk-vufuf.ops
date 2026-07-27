@@ -26,3 +26,18 @@
   clock: 2  # 00da
   nonce: 00da  # 00da
   message: "Materialized from dogfood tranche 05 (F96.A2 / anon-card-006). Mechanism: main_function entrypoint kind is overloaded — its target node.kind splits function (9/11) vs file (2/11) and only the free-text label disambiguates. Evidence: frozen substrate.json (probe_2_ep.log, probe_2_mainfunc.log, probe_2_mainfunc2.log) — (main_function,function)=9, (main_function,file)=2 both conf=1.0 targeting __main__.py:1-1:file:file; spec line 351 example implies a function target. Fresh run: temp pkg/__main__.py with no main() yields target_kind=file conf=0.96. Magnitude: 2/11 main_function entrypoints, undocumented file-target case. Blind severity 3/5, reproduced on frozen substrate + fresh run. NOT_A_DUPLICATE — no existing item covers the file-target overload. RELATED to INV-hosuh (satisfied — entrypoint detection double-counts scripts with BOTH if __name__ AND main(); that handles the double-count, not the single-target file-vs-function kind overload) and WI-suvil (the confidence-drift secondary note, hardcoded-confidence family)."  # 00da
+- op: update  # 4896
+  at: '2026-07-01T09:23:39Z'  # 4896
+  by: agent  # 4896
+  actor: jgstern_agent  # 4896
+  clock: 3  # 4896
+  nonce: '4896'  # 4896
+  set:  # 4896
+    status: done  # 4896
+- op: discuss  # dcbe
+  at: '2026-07-01T09:23:39Z'  # dcbe
+  by: agent  # dcbe
+  actor: jgstern_agent  # dcbe
+  clock: 4  # dcbe
+  nonce: dcbe  # dcbe
+  message: "Done in PR #359 (ff-merged to dev). Behavioral item; re-ran the item's own filed repro with the EDITABLE install (.venv/bin/hypergumbo).\n\nBEFORE: kind=main_function overloaded — a guard-only __main__.py (no def main()) and a def main() BOTH emitted kind=main_function (targets file vs function respectively, conf 1.0), disambiguated only by the free-text label.\nAFTER (editable-binary repro):\n- /tmp/tuv_guard (__main__.py: 'if __name__' guard, NO main()) -> kind=main_guard target_kind=file label='Python script (if __name__ == ...)'.\n- /tmp/tuv_func (def main() + 'if __name__: main()') -> single kind=main_function target_kind=function label='Python main()' (guard deduped — INV-hosuh preserved).\nSo kind ALONE now disambiguates the target type (main_function->function, main_guard->file).\n\nImplementation: new EntrypointKind.MAIN_GUARD (auto-registered into the entrypoint-kind catalog axis + generated Entrypoint.kind schema enum); main_guard concept emits it; INV-hosuh post-pass updated to supersede same-path MAIN_GUARD with a function-target MAIN_FUNCTION. Ripples (behavior-preserving): sketch _ENTRYPOINT_GROUPS 'CLI & Scripts' + cli _MAIN_KINDS slice boost include MAIN_GUARD; dead-code seeding is kind-agnostic (no reachability regression, verified). 100% cov (entrypoints.py 616/0), 15617 tests pass, schema+spec §13 updated. Secondary confidence-drift note (0.85 spec vs ~0.96 observed) left to WI-suvil family per the filing."  # dcbe

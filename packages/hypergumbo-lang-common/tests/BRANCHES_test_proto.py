@@ -14,6 +14,12 @@ from pathlib import Path
 from hypergumbo_core.analyze.base import make_file_id, make_symbol_id, node_text
 from hypergumbo_lang_common.proto import analyze_proto, find_proto_files
 
+def _role(sym, role: str) -> bool:
+    """A folded framework symbol carries its role in ``meta['framework_role']``
+    (WI-rilal / audit-0013: ``service`` -> ``interface``, ``rpc`` -> ``method``)."""
+    return (sym.meta or {}).get("framework_role") == role
+
+
 def make_proto_file(tmp_path: Path, name: str, content: str) -> None:
     """Create a Proto file with given content."""
     (tmp_path / name).write_text(content)
@@ -44,7 +50,7 @@ service StreamService {
 }
 ''')
         result = analyze_proto(tmp_path)
-        rpcs = [s for s in result.symbols if s.kind == "rpc"]
+        rpcs = [s for s in result.symbols if _role(s, "rpc")]
         assert len(rpcs) == 1
         assert "stream UploadRequest" in rpcs[0].signature
         assert "UploadResponse" in rpcs[0].signature
@@ -59,7 +65,7 @@ service StreamService {
 }
 ''')
         result = analyze_proto(tmp_path)
-        rpcs = [s for s in result.symbols if s.kind == "rpc"]
+        rpcs = [s for s in result.symbols if _role(s, "rpc")]
         assert len(rpcs) == 1
         assert "DownloadRequest" in rpcs[0].signature
         assert "stream DownloadChunk" in rpcs[0].signature
@@ -74,7 +80,7 @@ service ChatService {
 }
 ''')
         result = analyze_proto(tmp_path)
-        rpcs = [s for s in result.symbols if s.kind == "rpc"]
+        rpcs = [s for s in result.symbols if _role(s, "rpc")]
         assert len(rpcs) == 1
         # Both request and response should be streaming
         assert rpcs[0].signature.count("stream") == 2
@@ -209,7 +215,7 @@ service ApiService {
 ''')
         result = analyze_proto(tmp_path)
         contains_edges = [e for e in result.edges if e.edge_type == "contains"]
-        rpcs = [s for s in result.symbols if s.kind == "rpc"]
+        rpcs = [s for s in result.symbols if _role(s, "rpc")]
         # Should have one contains edge per RPC
         assert len(contains_edges) == len(rpcs)
         assert len(rpcs) == 4
@@ -231,8 +237,8 @@ service ServiceB {
 }
 ''')
         result = analyze_proto(tmp_path)
-        services = {s.name: s for s in result.symbols if s.kind == "service"}
-        rpcs = {s.name: s for s in result.symbols if s.kind == "rpc"}
+        services = {s.name: s for s in result.symbols if _role(s, "service")}
+        rpcs = {s.name: s for s in result.symbols if _role(s, "rpc")}
         contains_edges = [e for e in result.edges if e.edge_type == "contains"]
 
         # Check MethodA is linked to ServiceA
@@ -295,7 +301,7 @@ service UserService {
 }
 ''')
         result = analyze_proto(tmp_path)
-        rpc = next(s for s in result.symbols if s.kind == "rpc")
+        rpc = next(s for s in result.symbols if _role(s, "rpc"))
         # Canonical name should include package and service
         assert "myservice.v1" in rpc.qualified_name
         assert "UserService" in rpc.qualified_name

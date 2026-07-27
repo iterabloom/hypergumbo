@@ -163,6 +163,48 @@ A new script `scripts/check-package-coverage` validates each package achieves 10
 
 This catches cross-package coverage dependencies before pushing.
 
+## Update (2026-07-11, WI-kalub): the baseline is the branch-own merge-base, not the last-green marker
+
+The original design (Part 1 + Part 2 step 1) anchored the coverage/selection
+baseline on a `last-green-sha` marker written by full-suite. In practice the
+marker's write side fires only on an all-packages-*exactly*-100% full-suite run,
+and its `git push origin badges` no-ops under permanent CI failover (origin =
+codeberg is the stale remote) — so the marker routinely sat tens of commits
+stale. A stale marker inflates the per-PR "changed files" set with already-merged
+work whose full test sets the affected slice does not select, which produced two
+compounding failures:
+
+- **False-red scoped coverage.** The scoped gate enforced 100% on every *drifted*
+  changed file, but the affected-test slice under-covers integration-covered files
+  it does not fully exercise → `coverage report --fail-under=100` exit 2 on a
+  genuinely-green branch. The gate also conflated coverage.py's "No data to
+  report" (exit 1 — the slice didn't exercise the file at all, e.g. subprocess-
+  only) with a real <100% failure.
+- **~Whole-suite-every-PR runtime.** The inflated changed set expanded the reverse
+  slice to ~the entire suite (measured: 459 selected vs 436 total test files,
+  16338/16342 tests, ~15.5 min on 6 cores), erasing the smart-test speedup.
+
+**Decision.** `get_baseline` now returns `merge-base(HEAD, <authoritative-dev>)`
+(failover-aware: `selfh/dev` under permanent failover) — the branch's OWN changes.
+The last-green marker is no longer consulted for the baseline (it may still feed
+the coverage badge). Coverage enforcement and test selection are thereby scoped to
+files the branch actually changed, which are guaranteed to be exercised by the
+affected slice. The scoped gate additionally distinguishes "No data to report"
+(not a regression — warn, don't gate) from a real <100% failure, and writes its
+verdict into `.ci/pytest-output.log` so the captured log carries the signal.
+
+**Whole-codebase coverage** — a cross-cutting regression on an *unchanged* file —
+is enforced *separately* from the per-PR scoped gate: `nightly.yml` already runs
+`--cov-fail-under=100` across all packages, and `full-suite.yml` gains the same
+teeth (companion WI-kalub change) so such a regression is caught within ~12 h and
+trips stop-the-line rather than resting only on nightly. This is the deliberate
+division of labour the original ADR's Part 2 conflated: the fast per-PR slice
+(ADR-0010, intentionally incomplete) can only truthfully gate the branch's own
+changes; the whole-codebase invariant belongs to the full-run gates.
+
+This supersedes the marker-as-baseline mechanism in Part 1 / Part 2 step 1 above,
+which are retained for history. See WI-kalub for the full investigation.
+
 ## Consequences
 
 ### Positive

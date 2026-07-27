@@ -71,3 +71,18 @@
     tags: [dogfood]  # 0ab7
   remove:  # 0ab7
     tags: [dogfooding]  # 0ab7
+- op: update  # bfe7
+  at: '2026-07-01T19:33:12Z'  # bfe7
+  by: agent  # bfe7
+  actor: jgstern_agent  # bfe7
+  clock: 7  # bfe7
+  nonce: bfe7  # bfe7
+  set:  # bfe7
+    status: satisfied  # bfe7
+- op: discuss  # bd05
+  at: '2026-07-01T19:33:12Z'  # bd05
+  by: agent  # bd05
+  actor: jgstern_agent  # bd05
+  clock: 8  # bd05
+  nonce: bd05  # bd05
+  message: "Satisfied by the same PR (dev 29cad65990) as WI-nulot. INV-gatog's statement: verify-claims --json 'must be a top-level object containing at minimum schema_version, view, and the claim verdicts list — not a bare JSON array.' Behavioral evidence (editable binary, merged dev): verify-claims --json stdout is now a dict (was a bare list) with keys including schema_version='1.0', view='verify-claims', and verdicts=[...]. Production-path test: test_cli_verify_claims.py::test_verify_claims_json_output asserts isinstance(data, dict) + the schema_version/view/verdicts keys. The envelope makes the output extensible (WI-nulot added unsupported_taint_languages under it without a further breaking change)."  # bd05

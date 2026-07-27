@@ -70,3 +70,18 @@
   clock: 7  # 430e
   nonce: 430e  # 430e
   message: "related-but-distinct cross-link (connections-sweep 2026-06-08T1900Z)"  # 430e
+- op: update  # 6562
+  at: '2026-06-30T18:50:55Z'  # 6562
+  by: agent  # 6562
+  actor: jgstern_agent  # 6562
+  clock: 8  # 6562
+  nonce: '6562'  # 6562
+  set:  # 6562
+    status: done  # 6562
+- op: discuss  # ab99
+  at: '2026-06-30T18:50:55Z'  # ab99
+  by: agent  # ab99
+  actor: jgstern_agent  # ab99
+  clock: 9  # ab99
+  nonce: ab99  # ab99
+  message: "Done in PR merged to dev @59911faa7f (commit 92258d8fe9). Entrypoint records now nest id/source/evidence_type under Entrypoint.meta, mirroring Edge's provenance shape. BEHAVIORAL EVIDENCE (live repro, production path): detect_entrypoints([route-concept symbol], []) -> first record to_dict() now = {symbol_id, kind, confidence, label, meta:{source:'concept_detector', evidence_type:'framework_pattern', id:'entrypoint:sha256:438df9526b9406fd'}} (was: only the 4 base keys). Production-path test test_entrypoints.py::TestEntrypointProvenance::test_detect_entrypoints_all_carry_provenance asserts EVERY detect_entrypoints output carries meta.id (entrypoint:sha256: prefix) + meta.source in ENTRYPOINT_SOURCES + meta.evidence_type in ENTRYPOINT_EVIDENCE_TYPES; test_evidence_type_per_representative_kind + test_connectivity_fallback_carries_provenance pin specific source/evidence values. Design: id auto-stamped in __post_init__ (pure fn of kind+symbol_id+label; confidence excluded); Entrypoint.create() validates source/evidence_type vs single-source frozensets (typo -> ValueError, mirroring Edge.create); all 38 producer sites migrated. New entrypoint_meta axis in axis_meta_keys.py (registry's 3rd axis); collision test made axis-aware; L1 evidence-type drift exempts ENTRYPOINT_EVIDENCE_TYPES (cross-axis name collision, same as PROTOCOL_KINDS precedent). Schema Entrypoint $def gains documented meta object; SCHEMA_VERSION 0.14.2->0.14.3. 100% coverage on all 13 changed files."  # ab99

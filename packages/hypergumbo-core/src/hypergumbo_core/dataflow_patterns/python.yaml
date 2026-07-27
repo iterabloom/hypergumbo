@@ -43,17 +43,26 @@ deletions:
 # methods whose name unambiguously implies the access mode regardless of
 # the receiver type.
 library_patterns:
-  # === Mutating list/dict/set operations ===
+  # === In-place collection mutations (INV-kudug symptom 3) ===
+  # append / extend / add / update / insert / setdefault modify an existing
+  # collection in place -> the four-cell `mutate` value, NOT `write` (which is
+  # reserved for binding a fresh value, or writing to an external sink — see
+  # the file/stream/socket block below). The element-removal family
+  # (pop/remove/clear/discard/popitem) keeps the more specific `delete` cell.
+  # Matched by method name regardless of receiver type, per this file's
+  # conservative name-implies-mode convention.
   - match: '\.append\('
-    access_mode: write
+    access_mode: mutate
   - match: '\.extend\('
-    access_mode: write
+    access_mode: mutate
   - match: '\.add\('
-    access_mode: write
+    access_mode: mutate
   - match: '\.update\('
     access_mode: mutate
   - match: '\.insert\('
-    access_mode: write
+    access_mode: mutate
+  - match: '\.setdefault\('
+    access_mode: mutate
   - match: '\.pop\('
     access_mode: delete
   - match: '\.remove\('

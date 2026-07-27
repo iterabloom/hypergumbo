@@ -8,7 +8,7 @@
 
 # Concept Axes
 
-Typing axes maintained in hypergumbo's behavior map. Each axis names a
+Typing axes maintained in hypergumbo's survey. Each axis names a
 dimension along which a multi-value field's values must be classified.
 New axes are introduced via ADR following ADR-0024's four-part
 declaration template (axis name, axiom, consumer pattern, enforcement);
@@ -63,8 +63,8 @@ Values that name the relationship the edge expresses between src and dst. Per AD
 - **`data_flows_to`** — Data flow edge per ADR-0015 — value computed at src reaches dst.
 - **`decorated_by`** — Symbol is decorated/annotated by another (e.g., Python decorator, Java annotation, C# attribute, Rust derive).
 - **`defines_target`** — Config file defines a build/run/deploy target (Makefile rule, package.json script, pyproject entry point, Compose service, etc.).
-- **`depends_on`** — Generic dependency relationship.
-- **`depends_on_manifest`** — Dependency declared in a package or build manifest.
+- **`depends_on`** — A package/build manifest DECLARES a dependency on another (package.json, Dockerfile, Makefile, meson, ...): a declaration edge from the manifest/project to its dependency. Distinct from depends_on_manifest (the import-resolution bridge) -- see WI-dinih.
+- **`depends_on_manifest`** — An importing source file RESOLVED to a manifest-declared dependency (the dependency linker's import->declared-dep bridge; evidence_type=import_to_manifest): a resolution edge from the file to the dependency. Distinct from depends_on (the manifest's own declaration) -- see WI-dinih.
 - **`dispatches_to`** — Caller dispatches to callee via runtime indirection (virtual method, function pointer, DI resolution, etc.).
 - **`event_publishes`** — Producer publishes an event/message that the consumer receives via an async channel (event bus, queue, CRDT, etc.).
 - **`extends`** — Class extends a superclass.
@@ -87,40 +87,13 @@ Values that name the relationship the edge expresses between src and dst. Per AD
 
 Values whose meaning is leaked into the type label even though it is captured by `src.kind` / `dst.kind` / language metadata. Migration plan in ADR-0023 §6 folds these back into relationship-shaped names with kind/language metadata on the endpoint nodes.
 
-- **`abi_call`** — Solidity contract ABI call (cross-contract method invocation); likely fold to 'calls' + meta['protocol']='abi'.
-- **`association`** — Ruby ActiveRecord association declaration (has_many, belongs_to, etc.); likely fold to 'references' + meta['construct']='association'.
-- **`base_image`** — Dockerfile ``FROM`` base image reference.
-- **`build_tag_alternative_of`** — Go build-tag-conditional alternative implementation of a symbol; likely fold to 'references' + meta['construct']='build_tag_alternative'.
-- **`caller_invokes`** — Tauri-style cross-language invoke (caller → bound command); likely fold to 'calls' + meta['protocol']='ipc' (parallel to ipc_calls per audit-findings 0002).
-- **`contains_routes`** — Controller / module containing route handlers; likely fold to 'contains' (already canonical) — pure dst-kind leakage.
-- **`crypto_flow`** — Crypto-related dataflow (key/secret reaches sink); likely fold to 'data_flows_to' + meta['construct']='crypto'.
-- **`depends`** — Package depends on another (Bitbake, requirements.txt); likely fold to 'depends_on' (already canonical) or 'depends_on_manifest' depending on declaration site.
-- **`extends_template`** — Twig/Jinja template extends a parent template; likely fold to 'extends' + meta['construct']='template' or stay as canonical if templates' extension semantics differ enough.
-- **`graphql_calls`** — GraphQL call (use 'calls' + protocol meta).
-- **`grpc_calls`** — gRPC call (use 'calls' + protocol meta).
-- **`http_calls`** — HTTP call (use 'calls' + protocol meta).
-- **`includes_class`** — Puppet manifest includes a class declaration; likely fold to 'includes' (now canonical) + meta['construct']='puppet_class'.
-- **`includes_template`** — Twig/Jinja template includes a partial; likely fold to 'includes' (now canonical) + meta['construct']='template'.
-- **`invokes_callback`** — Erlang/Elixir/Ruby callback invocation (gen_server callback, framework lifecycle hook); likely fold to 'dispatches_to' or 'calls' + meta['mechanism']='callback'.
-- **`kernel_launch`** — GPU kernel invocation.
-- **`links_to`** — Markdown link from one document to another; likely fold to 'references' + meta['construct']='markdown_link'.
-- **`notifies_resource`** — Puppet/Chef resource notify directive (trigger another resource on change); likely fold to 'event_publishes' + meta['channel_kind']='puppet_notify' (configuration-management pub-sub shape).
-- **`renders`** — Controller renders a view template; likely fold to 'references' + meta['construct']='view_render' (parallel to renders_component for JSX).
-- **`requires_resource`** — Puppet/Chef resource require directive (this resource depends on another); likely fold to 'depends_on' + meta['construct']='puppet_require'.
-- **`script_src`** — HTML ``<script src=...>`` reference.
-- **`signal_receiver`** — Django signal receiver registration; likely fold to 'event_publishes' + meta['channel_kind']='django_signal' (signals are pub-sub via Django's dispatch module).
-- **`template_calls`** — Vue / template-engine method call from template into component logic; likely fold to 'calls' + meta['mechanism']='template'.
-- **`uses_mixin`** — Sass/SCSS @include of a mixin; likely fold to 'references' + meta['construct']='sass_mixin'.
-- **`uses_vocabulary`** — SPARQL/RDF query references a vocabulary/ontology; likely fold to 'references' + meta['construct']='rdf_vocabulary'.
+_(empty — no values currently classified on this axis)_
 
 ### `pending_classification` — per-family audit pending per ADR-0023 §5
 
 Values deferred to per-family audit. Some may be genuinely distinct relationships; others are protocol-conditional duplicates of a more general relationship. Verdicts arrive with each family's audit.
 
-- **`implements_rpc`** — RPC implementation binding — pending per-family audit.
-- **`openapi_implements`** — OpenAPI handler pattern — pending per-family audit.
-- **`resolver_for_type`** — GraphQL resolver-type binding — pending per-family audit.
-- **`resolver_implements`** — GraphQL resolver pattern — pending per-family audit.
+_(empty — no values currently classified on this axis)_
 
 
 ## `Symbol.kind` axes
@@ -144,6 +117,7 @@ Values that name the source-language syntactic construct the symbol represents. 
 - **`alias`** — Generic alias declaration.
 - **`architecture`** — Architecture symbol (VHDL). CANONICAL per audit-findings 0007.
 - **`arrow_function`** — Arrow-function expression (JS / TS).
+- **`assumption`** — TLA+ `ASSUME` declaration — a named top-level assumption / axiom, sibling to `theorem` / `operator`. Producer: `tlaplus.py` `assumption` node via nested `add_symbol`. Registered per the WI-zipis drain / ADR-0027 verdict (audit-findings 0015).
 - **`attribute`** — Attribute declaration (Python class attribute, etc.).
 - **`base`** — Base symbol (XML / OWL). CANONICAL per audit-findings 0007.
 - **`binding`** — Binding symbol (DSL / DI). CANONICAL per audit-findings 0007.
@@ -177,13 +151,16 @@ Values that name the source-language syntactic construct the symbol represents. 
 - **`executable`** — Executable declaration (CMake `add_executable`, Meson `executable`). CANONICAL per audit-findings 0005.
 - **`export`** — Export declaration (JS / TS / TOML / Rust).
 - **`exposed_port`** — Container exposed-port symbol. CANONICAL per audit-findings 0006.
+- **`extension`** — Dart `extension` declaration (`extension NumberParsing on String { ... }`) — a top-level named construct that adds members to an existing type without subclassing. A genuine peer to `class` / `mixin` / `enum` (own keyword, own `extension_declaration` AST node), NOT a `class` (defines no new type) nor a `mixin` (Dart's distinct `mixin_declaration` already maps to `mixin`). Producer: `dart.py` `extension_declaration`. Registered per the WI-zipis drain / ADR-0027 verdict (audit-findings 0015).
 - **`external_symbol`** — IR-pipeline boundary pseudo-symbol — emitted by ``create_boundary_nodes`` (``ir.py:959``) for every edge endpoint that doesn't resolve to a real Symbol (stdlib calls, npm imports, third-party constructors). CANONICAL per audit-findings 0007 §"Diagnostic findings #3" (Wave 6 PR 6 reclassification): structurally a top-level construct in the IR pipeline's own DSL, parallel to other Cluster H domain-DSL constructs (``playbook``, ``participant``, …). Consumers query boundary status via ``is_external_boundary(sym)`` (meta-key based), so this kind is a label not a discriminator — promotion does not change consumer behavior.
 - **`field`** — Field declaration on a struct / class / record.
 - **`file`** — File-shape symbol — top-level file declaration in build / source DSLs. CANONICAL per audit-findings 0005.
+- **`filter`** — PowerShell `filter` declaration — a named callable whose body is an implicit `process` block, run once per pipeline object. A distinct source keyword (own tree-sitter node), sibling to `function` / `workflow`; kept distinct like `subroutine` / `procedure` / `generic` rather than folded to `function`. Producer: `powershell.py` (`function_statement` child `filter`). Registered per the WI-zipis drain / ADR-0027 verdict (audit-findings 0015).
 - **`font_face`** — CSS @font-face symbol. CANONICAL per audit-findings 0007.
 - **`for_loop`** — For-loop symbol (control-flow). CANONICAL per audit-findings 0007.
 - **`fragment`** — Fragment symbol (GraphQL / template). CANONICAL per audit-findings 0007.
 - **`function`** — Top-level function definition.
+- **`generic`** — Generic-function declaration (Common Lisp `defgeneric`). The dispatch-declaration construct, sibling to `method` (`defmethod`) and `function` (`defun`). Producer: `commonlisp.py` maps `defgeneric` -> kind="generic" via its `kind_map` dict. Surfaced (and registered) when the INV-loguk homoiconic-CC slice added the first registry-scanned `*_KINDS` set naming it — the original ADR-0027 Phase-1 seeding missed it because the producer emits via `kind_map` indirection, not a literal `kind="generic"` kwarg (same literal-grep blind-spot class as `message` / `inductive` / `theorem`).
 - **`getter`** — Property getter accessor.
 - **`id`** — Id symbol (k8s / DSL). CANONICAL per audit-findings 0007.
 - **`id_selector`** — CSS id selector symbol. CANONICAL per audit-findings 0007.
@@ -198,8 +175,10 @@ Values that name the source-language syntactic construct the symbol represents. 
 - **`label`** — Label symbol (assembly / k8s). CANONICAL per audit-findings 0007.
 - **`library`** — Library declaration (CMake `add_library`, Meson `library`, Cargo `[lib]`, etc.). CANONICAL per audit-findings 0005.
 - **`link`** — Link symbol (markdown / yaml-anchor). CANONICAL per audit-findings 0007.
+- **`list`** — Smithy `list` shape — a named ordered-collection type declaration (`list Foo { member: Bar }`). A first-class aggregate-shape construct, sibling to the already-registered smithy shapes `union` / `enum` / `simple_type`; no generic collection kind exists to fold to (`type` is too broad, `struct`/`record` are product types). Producer: `smithy.py` `list_statement` -> `_extract_shape(..., "list", ...)`. Registered per the WI-zipis producer-sweep drain / ADR-0027 verdict (audit-findings 0015); its emit site is a nested-closure/positional helper the literal-grep diagnostics missed.
 - **`local`** — Local symbol (Terraform local). CANONICAL per audit-findings 0007.
 - **`macro`** — Macro definition (Rust / C / Scheme).
+- **`map`** — Smithy `map` shape — a named key->value associative-type declaration (`map Foo { key: Bar, value: Baz }`). Sibling aggregate shape to `list` / `union` / `enum`; not a `struct` (associative, not fixed named members) and no generic map/dict kind exists to fold to. Producer: `smithy.py` `map_statement` -> `_extract_shape(..., "map", ...)`. Registered per the WI-zipis drain / ADR-0027 verdict (audit-findings 0015).
 - **`media`** — CSS @media symbol. CANONICAL per audit-findings 0007.
 - **`message`** — Protobuf ``message`` declaration (``proto.py:260``). CANONICAL per audit-findings 0007 (reclassified Wave 6 PR 4 — the original DEPRECATE-NO-FOLD verdict was a literal-grep blind-spot miss; ``proto.py`` emits via ``_make_proto_symbol(..., 'message', ...)`` indirection).
 - **`method`** — Method on a class / struct / interface.
@@ -210,6 +189,7 @@ Values that name the source-language syntactic construct the symbol represents. 
 - **`namespace`** — Namespace declaration (C++ / TypeScript / C#).
 - **`node`** — Node symbol (k8s / DSL). CANONICAL per audit-findings 0007.
 - **`object`** — Object / singleton declaration (Scala / Kotlin).
+- **`operator`** — TLA+ operator definition (`Op(x) == ...`) — the primary TLA+ definitional construct, walked alongside `theorem` / `assumption`. Producer: `tlaplus.py` `operator_definition` via the nested `add_symbol(...)` helper (a literal-grep blind-spot, same class as `message` / `generic`). Registered per the WI-zipis drain / ADR-0027 verdict (audit-findings 0015).
 - **`output`** — Output symbol (Terraform / shader). CANONICAL per audit-findings 0007.
 - **`package`** — Package declaration (CMake `find_package`, VHDL `package`, Go `package`, JS `package.json` synthesis, etc.). CANONICAL per audit-findings 0005.
 - **`paragraph`** — Paragraph symbol (markdown / docs). CANONICAL per audit-findings 0007.
@@ -267,6 +247,7 @@ Values that name the source-language syntactic construct the symbol represents. 
 - **`value`** — Value symbol (key-value DSLs). CANONICAL per audit-findings 0007.
 - **`variable`** — Variable / let / mutable binding.
 - **`view`** — View declaration (MVC / template languages).
+- **`workflow`** — PowerShell `workflow` declaration — a named callable compiled to Windows Workflow Foundation (checkpoint / suspend-resume / parallel semantics), a distinct keyword and AST node sibling to `function` / `filter`. Kept distinct rather than folded to `function` (same rationale as `filter` / `generic`). Producer: `powershell.py` (`function_statement` child `workflow`). Registered per the WI-zipis drain / ADR-0027 verdict (audit-findings 0015).
 - **`yield`** — Yield-statement symbol. CANONICAL per audit-findings 0007.
 
 ### `pending_classification` — per-cluster audit pending per ADR-0027 §"Migration"
@@ -318,6 +299,7 @@ Values that name the inference pathway by which the analyzer concluded this edge
 - **`ast_call_this`** — Edge inferred from a `this`/`self` receiver call.
 - **`ast_call_this_property`** — Edge inferred from a `this.property` / `self.attr` resolved access.
 - **`ast_call_type_inferred`** — Edge inferred from a call site where the receiver type was inferred.
+- **`ast_call_ufcs`** — Edge inferred from a UFCS free-function call written with method syntax (x.foo() resolving to foo(x); D / Nim).
 - **`ast_cite`** — Edge inferred from a citation/cross-reference link in source.
 - **`ast_decorator`** — Edge inferred from a decorator/annotation node in source AST.
 - **`ast_extends`** — Edge inferred from an `extends` clause in source AST.
@@ -426,7 +408,6 @@ Values that name the inference pathway by which the analyzer concluded this edge
 Values deferred to per-cluster audit-findings docs at `docs/audits/<NN>-<topic>.md`. Each cluster's audit decides between fold-to-Cluster-A vs separate-axis declaration vs producer-side drop.
 
 - **`alias_resolution`** — JS module-resolution pathway via path alias (linkers/js_module.py). Pending cluster-A audit (could promote to AXIS_INFERENCE_PATHWAY canonical).
-- **`ast_call_method`** — Python AST method-call inference (py.py). At-risk Cluster D peer of `ast_call_direct`: fold candidate to `ast_call_direct` + `meta['call_construct']='method'`. Pending cluster-D audit.
 - **`ast_call_namespace`** — JS/TS namespace-import call inference (hypergumbo-lang-mainstream/js_ts.py:3858; ``import * as obj; obj.method()``). Sibling of the canonical `ast_call_direct` / `ast_new` peers; emitted from the inline ternary ``'ast_new' if is_class else 'ast_call_namespace'``. At-risk Cluster D call-construct: fold candidate to `ast_call_direct` + `meta['call_construct']='namespace'`. Pending cluster-D audit.
 - **`cffi_call`** — Python cffi FFI call (linkers/pyffi.py). At-risk Cluster C: fold candidate to canonical inference + `meta['ffi_mechanism']='cffi'`. Pending cluster-C audit.
 - **`cffi_stdlib_call`** — Python cffi FFI call against the stdlib variant (linkers/pyffi.py; same dict-subscript-target leak shape as `ctypes_stdlib_call`). At-risk Cluster C peer: fold candidate to `cffi_call` + `meta['ffi_scope']='stdlib'`. Pending cluster-C audit.

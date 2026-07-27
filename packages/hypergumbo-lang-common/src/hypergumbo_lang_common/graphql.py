@@ -2,8 +2,7 @@
 """GraphQL schema analysis pass using tree-sitter-graphql.
 
 This analyzer uses tree-sitter to parse GraphQL schema and query files and extract:
-- Type definitions (object, input, interface, enum, scalar)
-- Field definitions
+- Type definitions (object, input, interface, enum, scalar, union)
 - Query/Mutation/Subscription definitions
 - Fragment definitions
 - Directives
@@ -13,9 +12,9 @@ gracefully degrades and returns an empty result.
 
 How It Works
 ------------
-Uses TreeSitterAnalyzer base class for two-pass orchestration:
-1. Pass 1: Extract type definitions and relationships
-2. Pass 2: Create field_of edges for type-field relationships
+Uses TreeSitterAnalyzer base class for single-pass extraction: symbols
+(type definitions, directives, fragments, operations) are emitted directly;
+GraphQL schemas have no call-style edges, so no edges are produced.
 
 The base class handles grammar checking, parser creation, file discovery,
 and result assembly. This module provides only the GraphQL-specific extraction

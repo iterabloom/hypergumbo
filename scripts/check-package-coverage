@@ -40,14 +40,14 @@ for arg in "$@"; do
     case $arg in
         --quick) QUICK=true ;;
         --serial) SERIAL=true ;;
-        core|mainstream|common|extended|tracker) TARGETS+=("$arg") ;;
+        core|mainstream|common|extended|tracker|rust-analyzer) TARGETS+=("$arg") ;;
         *) echo "Unknown argument: $arg"; exit 1 ;;
     esac
 done
 
 # Default to all packages
 if [[ ${#TARGETS[@]} -eq 0 ]]; then
-    TARGETS=("core" "mainstream" "common" "extended" "tracker")
+    TARGETS=("core" "mainstream" "common" "extended" "tracker" "rust-analyzer")
 fi
 
 # Skip extended in quick mode

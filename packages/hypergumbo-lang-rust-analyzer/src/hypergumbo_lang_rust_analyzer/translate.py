@@ -177,7 +177,33 @@ def translate_scip_to_hg(
             version=PASS_VERSION,
         )
         run_id = _scip_run.execution_id
+    # Map each SCIP symbol string to the hypergumbo ``Symbol.id`` the shim
+    # assigned it (the shim preserves the raw string in ``meta["scip_symbol"]``),
+    # so edge endpoints reference real Symbols instead of raw SCIP descriptor
+    # strings. Without this ``resolve_symbol`` map the edge builders default to
+    # the raw string endpoint (``occ.symbol``), so every scip edge is dangling
+    # (its src/dst match no ``Symbol.id``) — and the survey's endpoint-integrity
+    # finalize drops the ENTIRE scip call graph while the scip Symbols survive,
+    # a silent half-merge that made the rust-analyzer backend emit zero edges via
+    # ``hypergumbo survey``.
+    id_by_scip_symbol = {
+        (sym.meta or {}).get("scip_symbol"): sym.id
+        for sym in symbols
+        if sym.meta and sym.meta.get("scip_symbol")
+    }
+
+    def _resolve(scip_symbol: str) -> Optional[str]:
+        # ``None`` tells the shim to skip the edge: the referenced symbol is
+        # external (a dependency / stdlib symbol not defined in this workspace,
+        # hence absent from the Symbol set). Internal references resolve to the
+        # defining Symbol's ``id``.
+        return id_by_scip_symbol.get(scip_symbol)
+
     edges: List[Edge] = []
-    edges.extend(scip_index_to_edges(index, run_id=run_id))
-    edges.extend(scip_index_to_call_edges(index, run_id=run_id))
+    edges.extend(
+        scip_index_to_edges(index, run_id=run_id, resolve_symbol=_resolve)
+    )
+    edges.extend(
+        scip_index_to_call_edges(index, run_id=run_id, resolve_symbol=_resolve)
+    )
     return symbols, edges

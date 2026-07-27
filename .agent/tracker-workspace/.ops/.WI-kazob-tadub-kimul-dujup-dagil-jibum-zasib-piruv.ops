@@ -30,3 +30,18 @@
     tags: [dogfood_tranche_04]  # dc49
   remove:  # dc49
     tags: [dogfood_tranch_04]  # dc49
+- op: update  # ef54
+  at: '2026-06-30T21:42:05Z'  # ef54
+  by: agent  # ef54
+  actor: jgstern_agent  # ef54
+  clock: 3  # ef54
+  nonce: ef54  # ef54
+  set:  # ef54
+    status: done  # ef54
+- op: discuss  # 5e5f
+  at: '2026-06-30T21:42:05Z'  # 5e5f
+  by: agent  # 5e5f
+  actor: jgstern_agent  # 5e5f
+  clock: 4  # 5e5f
+  nonce: 5e5f  # 5e5f
+  message: "Done in PR merged to dev @b55b5d2616 (commit 5d86139d25). The Python file-kind node now carries the module docstring's first-line summary. BEHAVIORAL EVIDENCE (live repro, production path): analyze_python() on a library module ('\"\"\"Linker registry and dispatch.\"\"\"' + imports + a def, NO top-level executable code — the dominant real case) now returns a kind='file' Symbol with docstring='Linker registry and dispatch.' (was: None, and for this _has_module_level_code==False case py.py emitted NO file node at all — the language-agnostic synthesizer made it without the docstring). Fix: py.py stamps ast.get_docstring(module)'s first line (<=80 chars) onto the file Symbol, and the emission condition broadened to 'code OR docstring' so docstring-only/library modules get the py.py file node (INV-hojus dedup ensures no double node). Production-path tests: test_wi_kazob_module_docstring.py (6 cases incl. library-imports+defs-only, docstring-only, multiline-truncation, no-docstring guards) + inverted integration test test_analyzer_emits_file_node_for_docstring_carrying_summary in test_python_ast_analysis.py. Python-scoped (845/908 file nodes; the project mandates Python module docstrings); other languages lack a uniform module-docstring construct (noted, not chased). 100% coverage; full smart-test 10167 passed."  # 5e5f

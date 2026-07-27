@@ -96,10 +96,12 @@ def _known_axes() -> dict[str, Callable[[], Iterable[str]]]:
     axis.
     """
     from .edge_types import all_edge_type_names
+    from .entrypoints import all_known_entrypoint_kinds
     from .evidence_types import all_evidence_type_names
     from .protocol_origins import all_protocol_origin_names
     from .qualified_name_axis import all_qualified_name_languages
     from .symbol_kinds import all_symbol_kind_names
+    from .visibility import all_known_visibility_levels
     from .catalog import all_known_languages, all_known_pass_ids
 
     return {
@@ -110,6 +112,10 @@ def _known_axes() -> dict[str, Callable[[], Iterable[str]]]:
         "pass-id": all_known_pass_ids,
         "protocol-origin": all_protocol_origin_names,
         "qualified-name": all_qualified_name_languages,
+        # WI-pupiz: entrypoint-kind catalog (single source = EntrypointKind).
+        "entrypoint-kind": all_known_entrypoint_kinds,
+        # INV-jusot: canonical visibility levels (closed enum).
+        "visibility": all_known_visibility_levels,
     }
 
 

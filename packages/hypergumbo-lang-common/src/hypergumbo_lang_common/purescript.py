@@ -2,7 +2,7 @@
 """PureScript language analyzer using tree-sitter.
 
 This module provides static analysis for PureScript source code, extracting symbols
-(modules, functions, data types, classes) and edges (calls, imports).
+(modules, functions, data types, classes) and call edges.
 
 PureScript is a strongly-typed functional programming language that compiles to
 JavaScript. It features a powerful type system inspired by Haskell, with support
@@ -27,9 +27,10 @@ from pathlib import Path
 from typing import Iterator, Optional, ClassVar, TYPE_CHECKING
 
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
+from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, _get_python_toolchain, make_pass_id
 from hypergumbo_core.analyze.base import AnalysisResult, TreeSitterAnalyzer, make_symbol_id, populate_docstrings_from_tree
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -47,7 +48,7 @@ def find_purescript_files(root: Path) -> Iterator[Path]:
 
 def _get_node_text(node: "tree_sitter.Node") -> str:
     """Get the text content of a node."""
-    return node.text.decode("utf-8", errors="replace")
+    return (node.text or b"").decode("utf-8", errors="replace")
 
 
 def _get_module_name(node: "tree_sitter.Node") -> Optional[str]:
@@ -193,7 +194,7 @@ class _PureScriptExtractor:
             run_signature="",
             pass_id=PASS_ID,
             version=PASS_VERSION,
-            toolchain={"name": "purescript", "version": "unknown"},
+            toolchain=_get_python_toolchain(),
             duration_ms=int(elapsed * 1000),
         )
 
@@ -250,6 +251,8 @@ class _PureScriptExtractor:
                     ),
                     origin=PASS_ID,
                     meta={"module": self._current_module},
+                    cyclomatic_complexity=compute_cyclomatic_complexity(node, "purescript"),
+                    line_span=node.end_point[0] - node.start_point[0] + 1,
                 )
                 self.symbols.append(sym)
             return  # Don't recurse into function bodies
@@ -285,6 +288,8 @@ class _PureScriptExtractor:
                         origin=PASS_ID,
                         signature=type_sig,
                         meta={"module": self._current_module},
+                        cyclomatic_complexity=compute_cyclomatic_complexity(node, "purescript"),
+                        line_span=node.end_point[0] - node.start_point[0] + 1,
                     )
                     self.symbols.append(sym)
 

@@ -1,0 +1,21 @@
+- op: create  # f877
+  at: '2026-07-23T01:25:19Z'  # f877
+  by: agent  # f877
+  actor: jgstern_agent  # f877
+  clock: 1  # f877
+  nonce: f877  # f877
+  data:  # f877
+    kind: work_item  # f877
+    title: "hypergumbo diff <base> <head>: identity-keyed structural survey diff (added/removed/changed nodes, edges, routes, entrypoints)"  # f877
+    status: todo_soft  # f877
+    priority: 3  # f877
+    parent:  # f877
+    tags:  # f877
+    - determinism  # f877
+    - reproducibility  # f877
+    isbefore: []  # f877
+    duplicate_of: []  # f877
+    not_duplicate_of: []  # f877
+    pr_ref:  # f877
+    description: "Consumer-facing capability behind aijo's \"survey as a first-class PR artifact\": diff two surveys (base vs head) and surface only real structural changes — added / removed / changed nodes, edges, routes, entrypoints. Identity-keyed STRUCTURAL diff (keyed on stable_id / edge identity), NOT a text diff — so it ignores volatile provenance by construction and short-circuits when the two canonical digests match. Read-view + JSON envelope {schema_version, view: \"survey_diff\", ...}.\n\nBeyond G8 / WI-pifaj scope: new aijo-layer work, confirmed absent by the 2026-07-21 G8 verification pass (no diff exists today). Demand-gated on aijo — build when the aijo layer needs it.\n\nBlocked-by: the canonical-digest item (its short-circuit key) and, transitively, the `--reproducible` byte-repro mode (a text-noisy survey makes the diff meaningless)."  # f877
+    fields: {}  # f877

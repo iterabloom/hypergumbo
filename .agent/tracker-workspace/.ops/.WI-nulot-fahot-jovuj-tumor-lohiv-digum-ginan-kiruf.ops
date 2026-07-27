@@ -30,3 +30,18 @@
     tags: [dogfood_tranche_03]  # 1130
   remove:  # 1130
     tags: [dogfood_tranch_03]  # 1130
+- op: update  # 3512
+  at: '2026-07-01T19:32:36Z'  # 3512
+  by: agent  # 3512
+  actor: jgstern_agent  # 3512
+  clock: 3  # 3512
+  nonce: '3512'  # 3512
+  set:  # 3512
+    status: done  # 3512
+- op: discuss  # 4474
+  at: '2026-07-01T19:32:36Z'  # 4474
+  by: agent  # 4474
+  actor: jgstern_agent  # 4474
+  clock: 4  # 4474
+  nonce: '4474'  # 4474
+  message: "Fixed in PR (dev 29cad65990), Wave-3 Phase-2 §C io-boundary F5. verify-claims --json now emits a versioned top-level envelope {schema_version:'1.0', view:'verify-claims', verdicts:[...], unsupported_taint_languages:[...]} instead of a bare array; the INV-javam taint-coverage signal (which flags 'confirmed' verdicts on catalog-less languages as really inconclusive) is now machine-visible instead of stderr-only. VERIFY_CLAIMS_SCHEMA_VERSION='1.0' added. Blast radius audited (only test_cli_verify_claims.py + doc examples parse it; all migrated to result['verdicts']). Behavioral evidence (editable binary, re-ran filed repro on merged dev): a bash-only map + a taint-flow claim -> verify-claims --json = dict with keys [schema_version, unsupported_taint_languages, verdicts, view], schema_version=1.0, unsupported_taint_languages includes 'bash' (was stderr-only, invisible to a JSON-parsing CI gate). Production-path tests: test_verify_claims_json_output (envelope shape) + test_verify_claims_json_exposes_unsupported_taint_languages (signal populates). 6249 passed, 100% coverage. Breaking-for-array-consumers -> schema_version lets them detect the shape."  # 4474

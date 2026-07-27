@@ -1,0 +1,36 @@
+- op: create  # e79e
+  at: '2026-07-13T14:54:20Z'  # e79e
+  by: agent  # e79e
+  actor: jgstern_agent  # e79e
+  clock: 1  # e79e
+  nonce: e79e  # e79e
+  data:  # e79e
+    kind: work_item  # e79e
+    title: "Tier-filtered file drops are silent — record them in limits"  # e79e
+    status: todo_hard  # e79e
+    priority: 3  # e79e
+    parent:  # e79e
+    tags:  # e79e
+    - dogfood  # e79e
+    - wave5  # e79e
+    isbefore: []  # e79e
+    duplicate_of: []  # e79e
+    not_duplicate_of: []  # e79e
+    pr_ref:  # e79e
+    description: "Follow-up to INV-lukop (the minified-heuristic gate). When the default supply-chain tier filter drops a file classified tier-4 (DERIVED) — minified/bundled/generated web assets, and any future mis-tier — EVERY symbol and edge for that file vanishes from the behavior map with NO diagnostic (analysis_incomplete stays False, limits.failed_files stays []). INV-lukop fixed the specific dense-non-web-file misclassification; this item generalizes the honesty half: record tier-filtered file drops in limits (e.g. a limits.tier_filtered_files list or reuse supply_chain_summary.derived_skipped at file granularity) so a consumer can see WHAT was dropped and WHY, rather than silently receiving an incomplete graph. Assessment note: keep it to a recording line at the file-drop chokepoint — do NOT re-architect the tier filter. Locate the file-level DERIVED-drop site first (distinct from the cli.py --max-tier entrypoint/slice filters)."  # e79e
+    fields: {}  # e79e
+- op: update  # 2607
+  at: '2026-07-26T18:16:35Z'  # 2607
+  by: agent  # 2607
+  actor: jgstern_agent  # 2607
+  clock: 2  # 2607
+  nonce: '2607'  # 2607
+  set:  # 2607
+    status: done  # 2607
+- op: discuss  # c7c9
+  at: '2026-07-26T18:16:35Z'  # c7c9
+  by: agent  # c7c9
+  actor: jgstern_agent  # c7c9
+  clock: 3  # c7c9
+  nonce: c7c9  # c7c9
+  message: "Merged in PR #21 (dev faf57536cc). New Limits.tier_filtered_files (FILE granularity per the item's preference, present-when-populated per INV-virik) records supply-chain tier-dropped file paths at the single filter chokepoint in run_survey, from the pre-filter file nodes. Previously a tier drop (e.g. DERIVED tier-4) removed symbols+edges silently (analysis_incomplete stays False, failed_files empty) — max_tier_applied gave the why, nothing the what. limits.py field+helper+merge+to_dict, schema decorated, e2e tier-4-drop test in TestMaxTierLimitsReporting. Did NOT flip analysis_incomplete or re-architect the filter (one recording line, per the assessment note)."  # c7c9

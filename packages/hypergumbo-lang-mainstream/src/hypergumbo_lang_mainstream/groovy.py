@@ -24,7 +24,7 @@ How It Works
 Uses the TreeSitterAnalyzer base class for two-pass orchestration:
 1. extract_symbols_from_file: extracts classes, interfaces, enums, methods, functions
 2. get_import_aliases: extracts 'import X as Y' aliases for path_hint disambiguation
-3. register_symbol: registers both short and full names for cross-file resolution
+3. register_symbol: registers each symbol by its qualified name (the NameResolver suffix index handles short-name lookups for cross-file resolution)
 4. extract_edges_from_file: resolves import statements and function/method calls
 
 Why This Design
@@ -48,6 +48,7 @@ from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
     TreeSitterAnalyzer,
+    defer_bare_method_call,
     find_child_by_type,
     iter_tree,
     make_file_id,
@@ -59,6 +60,7 @@ from hypergumbo_core.analyze.base import (
     visibility_from_modifiers,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -557,6 +559,8 @@ class GroovyAnalyzer(TreeSitterAnalyzer):
                         signature=signature,
                         modifiers=modifiers,
                         meta=method_meta,
+                        cyclomatic_complexity=compute_cyclomatic_complexity(node, "groovy"),
+                        line_span=end_line - start_line + 1,
                     )
                     analysis.symbols.append(symbol)
                     analysis.node_for_symbol[symbol.id] = node
@@ -600,6 +604,8 @@ class GroovyAnalyzer(TreeSitterAnalyzer):
                         stable_id=stable_id,
                         signature=signature,
                         modifiers=modifiers,
+                        cyclomatic_complexity=compute_cyclomatic_complexity(node, "groovy"),
+                        line_span=end_line - start_line + 1,
                     )
                     analysis.symbols.append(symbol)
                     analysis.node_for_symbol[symbol.id] = node
@@ -700,7 +706,6 @@ class GroovyAnalyzer(TreeSitterAnalyzer):
                         edge_type="imports",
                         line=node.start_point[0] + 1,
                         evidence_type="import_statement",
-                        confidence=0.95,
                         origin=PASS_ID,
                         origin_run_id=run.execution_id,
                     ))
@@ -762,7 +767,6 @@ class GroovyAnalyzer(TreeSitterAnalyzer):
                                     edge_type="calls",
                                     line=node.start_point[0] + 1,
                                     evidence_type="ast_call",
-                                    confidence=0.85,
                                     origin=PASS_ID,
                                     origin_run_id=run.execution_id,
                                     meta={"call_construct": "function"},
@@ -785,7 +789,6 @@ class GroovyAnalyzer(TreeSitterAnalyzer):
                                     edge_type="calls",
                                     line=node.start_point[0] + 1,
                                     evidence_type="ast_call",
-                                    confidence=0.85,
                                     origin=PASS_ID,
                                     origin_run_id=run.execution_id,
                                     meta={"call_construct": "function"},
@@ -793,10 +796,38 @@ class GroovyAnalyzer(TreeSitterAnalyzer):
                             # Check global symbols via resolver
                             else:
                                 lookup_result = resolver.lookup(callee_name, path_hint=path_hint, caller_path=_caller_path)
-                                if lookup_result.found and lookup_result.symbol is not None:
+                                # INV-fahub: a BARE call (``receiver is None`` —
+                                # implicit-``this`` or a chained receiver whose
+                                # token the grammar dropped) that resolves ONLY
+                                # to a DIFFERENT class's method on weak short-name
+                                # SUFFIX evidence is the cross-class magnet
+                                # misbind (dozens of call sites → one arbitrary
+                                # def). Withhold it (INV-nogof withhold-not-pick-
+                                # first) and stamp the enclosing class so the
+                                # inherited_calls Site-1 walker can recover a
+                                # genuine *inherited* implicit-``this`` call; free
+                                # functions/objects and same-class methods still
+                                # bind. An explicit-receiver call keeps its
+                                # existing binding (it is not implicit-``this``,
+                                # so Site-1 enclosing-class recovery would be
+                                # wrong for it) — gate the bare subset only.
+                                _enclosing_type = (
+                                    _get_enclosing_class(node, source)
+                                    if receiver is None else None
+                                )
+                                _sym = lookup_result.symbol
+                                _defer = (
+                                    receiver is None
+                                    and _sym is not None
+                                    and defer_bare_method_call(
+                                        _sym.kind, _sym.name,
+                                        lookup_result.match_type, _enclosing_type,
+                                    )
+                                )
+                                if lookup_result.found and _sym is not None and not _defer:
                                     edges.append(Edge.create(
                                         src=current_function.id,
-                                        dst=lookup_result.symbol.id,
+                                        dst=_sym.id,
                                         edge_type="calls",
                                         line=node.start_point[0] + 1,
                                         evidence_type="ast_call",
@@ -814,6 +845,7 @@ class GroovyAnalyzer(TreeSitterAnalyzer):
                                             ExternalRef(lang="groovy", module_path=path_hint, name=callee_name)
                                             if path_hint else None
                                         ),
+                                        enclosing_class=_enclosing_type,
                                     ))
 
         return edges

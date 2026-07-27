@@ -62,6 +62,12 @@ def _collect_rust_py_stable_ids(tmp_path: Path, source: str) -> dict[tuple[int, 
     for sym in result.symbols:
         if sym.stable_id is None:
             continue
+        # The SCIP helper computes identity for CALLABLES only; rust.py now also
+        # emits canonical stable_ids for struct fields / module consts (WI-jusus
+        # F5), which the function-parity helper does not cover — scope to
+        # function/method so the parity comparison stays apples-to-apples.
+        if sym.kind not in ("function", "method"):
+            continue
         mapping[(sym.span.start_line, sym.span.end_line)] = sym.stable_id
     return mapping
 

@@ -553,3 +553,214 @@ class TestZigSignatureExtraction:
         funcs = [s for s in result.symbols if s.kind == "function" and s.name == "getAnswer"]
         assert len(funcs) == 1
         assert funcs[0].signature == "() i32"
+
+
+class TestZigCyclomaticComplexity:
+    """INV-loguk slice C: callable Zig symbols carry non-null CC + LOC.
+    Real-grammar verification (if/for/while/switch_case + and/or)."""
+
+    def test_branchy_function_has_cc_and_loc(self, tmp_path: Path) -> None:
+        (tmp_path / "f.zig").write_text("""fn complex(x: i32, n: i32, tag: u8) i32 {
+    var total: i32 = 0;
+    if (x > 0 and n > 0) {
+        total += 1;
+    } else if (x < 0 or n < 0) {
+        total -= 1;
+    }
+    var i: i32 = 0;
+    while (i < n) : (i += 1) {
+        total += i;
+    }
+    for (0..10) |j| {
+        total += @intCast(j);
+    }
+    switch (tag) {
+        0 => total += 1,
+        else => total += 2,
+    }
+    return total;
+}
+""")
+        result = analyze_zig(tmp_path)
+        fn = next(s for s in result.symbols
+                  if s.kind in ("function", "method") and s.name == "complex")
+        # base 1 + 2 if + and + or + while + for + 2 switch_case = 9
+        assert fn.cyclomatic_complexity == 9
+        assert fn.line_span is not None and fn.line_span >= 4
+
+    def test_straight_line_function_cc_is_one(self, tmp_path: Path) -> None:
+        (tmp_path / "g.zig").write_text("fn g(x: i32) i32 { return x; }\n")
+        result = analyze_zig(tmp_path)
+        fn = next(s for s in result.symbols
+                  if s.kind in ("function", "method") and s.name == "g")
+        assert fn.cyclomatic_complexity == 1
+        assert fn.line_span is not None
+
+    def test_callables_non_null_non_callables_null(self, tmp_path: Path) -> None:
+        (tmp_path / "m.zig").write_text("""const Point = struct {
+    x: i32,
+    fn dist(self: Point) i32 { if (self.x > 0) { return self.x; } return 0; }
+};
+fn top(x: i32) i32 { return x; }
+""")
+        result = analyze_zig(tmp_path)
+        callables = [s for s in result.symbols if s.kind in ("function", "method")]
+        assert callables
+        for s in callables:
+            assert s.cyclomatic_complexity is not None, (s.kind, s.name)
+            assert s.line_span is not None, (s.kind, s.name)
+        for s in result.symbols:
+            if s.kind not in ("function", "method"):
+                assert s.cyclomatic_complexity is None, (s.kind, s.name)
+
+
+class TestZigBareMethodMagnetGate:
+    """INV-fahub: a bare call resolving via a weak short-name (suffix) match
+    to a DIFFERENT struct's method must NOT bind a high-confidence ``calls``
+    edge (the cross-class magnet). It defers to the ``inherited_calls``
+    Site-1 walker by emitting an unresolved edge carrying ``enclosing_class``.
+    Same-struct methods and free functions still bind."""
+
+    def _write_canvas(self, tmp_path: Path) -> None:
+        # A different struct that owns a ``paint`` method — the magnet target.
+        (tmp_path / "canvas.zig").write_text(
+            "pub const Canvas = struct {\n"
+            "    pub fn paint(self: Canvas) void {\n"
+            "        return;\n"
+            "    }\n"
+            "};\n"
+        )
+
+    def test_cross_class_bare_call_is_deferred_not_bound(
+        self, tmp_path: Path
+    ) -> None:
+        """A bare ``paint()`` in ``Widget.render`` must not bind to
+        ``Canvas.paint`` — it defers with meta.enclosing_class set."""
+        self._write_canvas(tmp_path)
+        (tmp_path / "widget.zig").write_text(
+            "pub const Widget = struct {\n"
+            "    pub fn render(self: Widget) void {\n"
+            "        paint();\n"
+            "    }\n"
+            "};\n"
+        )
+        result = analyze_zig(tmp_path)
+
+        render = next(
+            s for s in result.symbols
+            if s.kind == "method" and s.name == "Widget.render"
+        )
+        canvas_paint = next(
+            s for s in result.symbols
+            if s.kind == "method" and s.name == "Canvas.paint"
+        )
+        call_edges = [
+            e for e in result.edges
+            if e.edge_type == "calls" and e.src == render.id
+        ]
+        assert len(call_edges) == 1
+        edge = call_edges[0]
+        # Must NOT be a high-confidence bind to the unrelated struct's method.
+        assert not (edge.dst == canvas_paint.id and edge.is_resolved)
+        # Deferred: unresolved and carrying the enclosing struct for Site-1.
+        assert edge.is_resolved is False
+        assert edge.meta is not None
+        assert edge.meta.get("enclosing_class") == "Widget"
+
+    def test_same_class_bare_call_still_binds(self, tmp_path: Path) -> None:
+        """A bare call to a method of the SAME enclosing struct (implicit
+        ``self``) still binds high-confidence — the gate must not defer it."""
+        (tmp_path / "widget.zig").write_text(
+            "pub const Widget = struct {\n"
+            "    pub fn render(self: Widget) void {\n"
+            "        helper();\n"
+            "    }\n"
+            "    pub fn helper(self: Widget) void {\n"
+            "        return;\n"
+            "    }\n"
+            "};\n"
+        )
+        result = analyze_zig(tmp_path)
+
+        render = next(
+            s for s in result.symbols
+            if s.kind == "method" and s.name == "Widget.render"
+        )
+        helper = next(
+            s for s in result.symbols
+            if s.kind == "method" and s.name == "Widget.helper"
+        )
+        call_edges = [
+            e for e in result.edges
+            if e.edge_type == "calls" and e.src == render.id
+        ]
+        assert len(call_edges) == 1
+        edge = call_edges[0]
+        assert edge.dst == helper.id
+        assert edge.is_resolved is True
+
+    def test_free_function_bare_call_still_binds(self, tmp_path: Path) -> None:
+        """A bare call to a free (top-level) function still binds — a free
+        function is legitimately callable bare, so the gate must not defer."""
+        (tmp_path / "app.zig").write_text(
+            "fn util() void {\n"
+            "    return;\n"
+            "}\n"
+            "pub const Widget = struct {\n"
+            "    pub fn render(self: Widget) void {\n"
+            "        util();\n"
+            "    }\n"
+            "};\n"
+        )
+        result = analyze_zig(tmp_path)
+
+        render = next(
+            s for s in result.symbols
+            if s.kind == "method" and s.name == "Widget.render"
+        )
+        util = next(
+            s for s in result.symbols
+            if s.kind == "function" and s.name == "util"
+        )
+        call_edges = [
+            e for e in result.edges
+            if e.edge_type == "calls" and e.src == render.id
+        ]
+        assert len(call_edges) == 1
+        edge = call_edges[0]
+        assert edge.dst == util.id
+        assert edge.is_resolved is True
+
+    def test_deferred_call_via_import_alias_carries_module_hint(
+        self, tmp_path: Path
+    ) -> None:
+        """When the deferred cross-class call's receiver is an import alias,
+        the unresolved edge carries the module hint (structured dst_ref) while
+        still deferring with enclosing_class — exercises the path_hint arm."""
+        self._write_canvas(tmp_path)
+        (tmp_path / "widget.zig").write_text(
+            'const m = @import("mod.zig");\n'
+            "pub const Widget = struct {\n"
+            "    pub fn render(self: Widget) void {\n"
+            "        m.paint();\n"
+            "    }\n"
+            "};\n"
+        )
+        result = analyze_zig(tmp_path)
+
+        render = next(
+            s for s in result.symbols
+            if s.kind == "method" and s.name == "Widget.render"
+        )
+        call_edges = [
+            e for e in result.edges
+            if e.edge_type == "calls" and e.src == render.id
+        ]
+        assert len(call_edges) == 1
+        edge = call_edges[0]
+        # Deferred (not bound to Canvas.paint) but with the import module hint.
+        assert edge.is_resolved is False
+        assert edge.meta is not None
+        assert edge.meta.get("enclosing_class") == "Widget"
+        assert edge.dst_ref is not None
+        assert edge.dst_ref.module_path == "mod.zig"

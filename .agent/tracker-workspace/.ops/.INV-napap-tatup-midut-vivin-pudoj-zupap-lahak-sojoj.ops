@@ -143,3 +143,25 @@
     tags: [dogfood]  # ef60
   remove:  # ef60
     tags: [dogfooding]  # ef60
+- op: discuss  # 6f26
+  at: '2026-06-24T20:05:18Z'  # 6f26
+  by: agent  # 6f26
+  actor: jgstern_agent  # 6f26
+  clock: 16  # 6f26
+  nonce: 6f26  # 6f26
+  message: "Re-verified reproducing 2026-06-24 (self-analysis of hypergumbo_core: 154 centrality_scores entries, 0 are .py; 153 .yaml + 1 .md). KEY FIX-SHAPE FINDING (prevents the WRONG fix): the correct fix is a RENAME, NOT repopulating with whole-graph centrality. Producer cli.py:8288-8304 computes compute_symbol_mention_centrality_batch over candidate_files = the Additional-Files candidate set (non-source docs/configs; source excluded BY DESIGN). Consumers sketch.py:6458-6462 and 6608-6614 feed those scores into the Additional-Files RANKING (sketch.py:4325-4335 ranks candidate_files). So repopulating the field with source-graph centrality would BREAK the Additional Files ranking -- the field is correctly additional-file-scoped, only mis-named. PLAN SEQUENCING: per correctness_strategy_06102026.md:194 the centrality respec belongs to sketch-cache:F1 (WAVE 4) -- quote \"centrality respec documents BOTH zero paths\" -- and the sketch additional-files surface MUST co-release with file-anchor:F1 (strategy:112; centrality keys come from the file-anchor anchor cohort). So INV-napap is NOT a standalone-now rename; it lands inside the Wave-4 typed SketchPrecomputed contract, co-released with file-anchor:F1. Suggested name when done: additional_file_centrality_scores. Source: lab notebook notebookjournal_06242026_0440.md + Option-B spirit audit."  # 6f26
+- op: update  # 22d0
+  at: '2026-06-25T05:29:39Z'  # 22d0
+  by: agent  # 22d0
+  actor: jgstern_agent  # 22d0
+  clock: 17  # 22d0
+  nonce: 22d0  # 22d0
+  set:  # 22d0
+    status: satisfied  # 22d0
+- op: discuss  # c2eb
+  at: '2026-06-25T05:29:39Z'  # c2eb
+  by: agent  # c2eb
+  actor: jgstern_agent  # c2eb
+  clock: 18  # c2eb
+  nonce: c2eb  # c2eb
+  message: "Resolved via RENAME (the human-approved fix shape, NOT repopulation), commit 037a3730de. sketch_precomputed.centrality_scores -> additional_file_centrality_scores at every producer (cli.py) and consumer (sketch.py) site; the whole sketch_precomputed block marked x-internal in docs/schema.json with a description stating the scope ('Non-source-file-path -> symbol-mention centrality score... config/doc files only, NOT whole-graph symbol centrality'). The field correctly excludes source files BY DESIGN (it ranks the sketch's Additional-Files section); the defect per root_cause was the misleading NAME implying whole-graph centrality, which the rename fixes. Whole-graph centrality already exists separately (hypergumbo symbols / ranking.compute_centrality). Live repro (rust-analyzer pkg): additional_file_centrality_scores present, legacy 'centrality_scores' key absent. This is INV-jifus's centrality face."  # c2eb

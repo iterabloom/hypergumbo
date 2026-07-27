@@ -59,3 +59,20 @@
   clock: 6  # 7d34
   nonce: 7d34  # 7d34
   message: "Q2 deferral from projection:F1 (re_derive_view/INV-pazur). projection:F1 introduces a parameterized summary-recompute helper (recompute_view_summary) in compact.py that takes the omitted-universe + edge-source as params. That helper is the natural fix vehicle for THIS item's included_edges_count asymmetry: routing format_compact_behavior_map (esp. the --no-connectivity coverage branch, whose CompactResult.to_dict has NO included_edges_count key) through it would close the asymmetry. Deliberately DEFERRED from projection:F1 so that PR stays a tiered-only bug fix: adding included_edges_count to the coverage-branch payload is a schema change that deserves a deliberate schema_version bump (this item), not an incidental DRY side effect; and routing compact-connectivity through a parallel-preserving recompute would change edge counts for multigraph repos. projection:F1 keeps compact untouched; this item owns the compact-side reconciliation when picked up."  # 7d34
+- op: update  # 4872
+  at: '2026-07-09T21:38:13Z'  # 4872
+  by: agent  # 4872
+  actor: jgstern_agent  # 4872
+  clock: 7  # 4872
+  nonce: '4872'  # 4872
+  set:  # 4872
+    status: done  # 4872
+  add:  # 4872
+    tags: [wave4]  # 4872
+- op: discuss  # af73
+  at: '2026-07-09T21:38:13Z'  # af73
+  by: agent  # af73
+  actor: jgstern_agent  # af73
+  clock: 8  # af73
+  nonce: af73  # af73
+  message: "Fixed + merged (selfh/dev a401dad045, bundled with WI-kulan). (a) compact/tiered nodes carried NO per-node centrality — each retained node now carries its selection-mode centrality (CompactResult/ConnectivityResult gained an internal centrality dict; format_compact stamps round(c,4) in both branches). (b) included_edges_count was connectivity-only in nodes_summary — coverage branch now adds it from emitted edges, symmetric across both modes. Used the minimal edge-count add (not the recompute_view_summary reroute), avoiding the empty-symbols 1.0->0.0 divergence + docstring-contract reversal the scope-audit flagged. Additive under permissive additionalProperties → no SCHEMA_VERSION bump. Behavioral evidence: new test asserts per-node centrality float + included_edges_count==len(edges) in BOTH modes; 3465 affected tests pass; core 100%. Wave-4 projection."  # af73

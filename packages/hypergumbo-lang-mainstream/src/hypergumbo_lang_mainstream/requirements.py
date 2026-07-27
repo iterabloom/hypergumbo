@@ -7,8 +7,9 @@ It's used by pip to install packages with specific version constraints.
 How It Works
 ------------
 Uses the TreeSitterAnalyzer base class with the tree-sitter-requirements grammar
-from tree-sitter-language-pack. Single-pass for symbols; edges (depends, includes,
-constrains) are collected during symbol extraction and flushed via post_process.
+from tree-sitter-language-pack. Single-pass for symbols; edges (depends_on,
+includes, constrains) are collected during symbol extraction and flushed via
+post_process.
 
 1. extract_symbols_from_file: walks AST to find requirements, URLs, global options
 2. post_process: flushes accumulated dependency/include/constraint edges
@@ -24,7 +25,7 @@ Edges Extracted
 ---------------
 - **includes**: References to other requirements files (-r)
 - **constrains**: References to constraints files (-c)
-- **depends**: Package dependency edges
+- **depends_on**: Package dependency edges
 
 Why This Design
 ---------------
@@ -46,6 +47,7 @@ from hypergumbo_core.analyze.base import (
     FileAnalysis,
     TreeSitterAnalyzer,
     iter_tree,
+    make_doc_stable_id,
     node_text,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
@@ -200,7 +202,14 @@ class RequirementsAnalyzer(TreeSitterAnalyzer):
 
         symbol = Symbol(
             id=symbol_id,
-            stable_id=symbol_id,
+            # WI-banod: canonical sha256:<16hex> stable_id via the shared doc
+            # factory (node.id stays the composite key). The span fold also
+            # distinguishes same-named requirements on different lines, which
+            # the line-less composite id could not.
+            stable_id=make_doc_stable_id(
+                "requirements", str(rel_path), "requirement", package_name,
+                span.start_line, span.end_line,
+            ),
             name=package_name,
             kind="requirement",
             language="requirements",
@@ -220,12 +229,11 @@ class RequirementsAnalyzer(TreeSitterAnalyzer):
         edge = Edge.create(
             src=f"requirements:{rel_path}",
             dst=f"pypi:package:{package_name}",
-            edge_type="depends",
+            edge_type="depends_on",
             line=node.start_point[0] + 1,
             origin=PASS_ID,
             origin_run_id=run.execution_id,
             evidence_type="static",
-            confidence=1.0,
             evidence_lang="requirements",
         )
         self._pending_edges.append(edge)
@@ -276,7 +284,12 @@ class RequirementsAnalyzer(TreeSitterAnalyzer):
 
         symbol = Symbol(
             id=symbol_id,
-            stable_id=symbol_id,
+            # WI-banod: canonical sha256:<16hex> stable_id via the shared doc factory.
+            stable_id=make_doc_stable_id(
+                "requirements", str(rel_path), "requirement",
+                package_name or url_text[:40],
+                span.start_line, span.end_line,
+            ),
             name=package_name or url_text[:40],
             kind="requirement",
             language="requirements",
@@ -298,12 +311,11 @@ class RequirementsAnalyzer(TreeSitterAnalyzer):
             edge = Edge.create(
                 src=f"requirements:{rel_path}",
                 dst=f"vcs:package:{package_name}",
-                edge_type="depends",
+                edge_type="depends_on",
                 line=node.start_point[0] + 1,
                 origin=PASS_ID,
                 origin_run_id=run.execution_id,
                 evidence_type="static",
-                confidence=0.9,
                 evidence_lang="requirements",
             )
             self._pending_edges.append(edge)
@@ -340,7 +352,6 @@ class RequirementsAnalyzer(TreeSitterAnalyzer):
                 origin=PASS_ID,
                 origin_run_id=run.execution_id,
                 evidence_type="static",
-                confidence=1.0,
                 evidence_lang="requirements",
             )
             self._pending_edges.append(edge)
@@ -358,7 +369,11 @@ class RequirementsAnalyzer(TreeSitterAnalyzer):
 
             symbol = Symbol(
                 id=symbol_id,
-                stable_id=symbol_id,
+                # WI-banod: canonical sha256:<16hex> stable_id via the shared doc factory.
+                stable_id=make_doc_stable_id(
+                    "requirements", str(rel_path), "requirement", option_path,
+                    span.start_line, span.end_line,
+                ),
                 name=option_path,
                 kind="requirement",
                 language="requirements",

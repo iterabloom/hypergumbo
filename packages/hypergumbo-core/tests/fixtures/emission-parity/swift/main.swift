@@ -2,6 +2,9 @@
 // See tests/fixtures/emission-parity/README.md.
 import Foundation
 
+/// Maximum number of items to process.
+let MaxItems = 5
+
 /// Return a derived string.
 func helper(_ value: Int) -> String {
     return String(value)
@@ -24,6 +27,7 @@ public func process(_ items: [Int], _ flag: Bool) -> String {
 
 /// Service is a small service.
 public class Service {
+    public var count: Int = 0
     public func run() -> String {
         return process([1, 2, 3], true)
     }

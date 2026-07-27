@@ -41,3 +41,34 @@
   clock: 4  # 7937
   nonce: '7937'  # 7937
   message: "synthetic:F2 (5a, PR #226, merged dev c058b59a55): Class-B synth stand-ins no longer leave stable_id/display_label/fingerprint at empty defaults — populate_synthetic_class_b_identity fills them via an injective (protocol_origin, kind, path, name, occurrence) key. Member status: META-huvuh -> satisfied (display_label producer+validator). WI-fozoh/WI-kapul-ganan/WI-sijut's external_symbol facets + the 5b kind-slot migration remain (deferred to v6/ADR-0037); WI-hulup is a path gap not addressed by 5a. Staying violated pending the external_symbol/5b work."  # 7937
+- op: update  # d8ff
+  at: '2026-07-21T21:21:11Z'  # d8ff
+  by: agent  # d8ff
+  actor: jgstern_agent  # d8ff
+  clock: 5  # d8ff
+  nonce: d8ff  # d8ff
+  set:  # d8ff
+    fields:  # d8ff
+      statement: "Synthesized external_symbol / stand-in nodes must carry stable_id, path, origin, origin_run_id, fingerprint, and a correct id kind-slot -- not None/''/'<external>' defaults. SCOPE (2026-07-21 audit): 6 of 7 members are done (WI-fozoh stable_id / WI-sijut origin / WI-mosil origin_run_id / WI-lisog fingerprint / WI-pubiv kind-slot / WI-kufib language), so those fields are no longer at defaults. The ONLY facet still reproducing is `path` (WI-kapul path=='<external>' + WI-hulup npm_package path==''). NOTE: `canonical_name` was removed by ADR-0032 and `language=None` on stand-ins is by-design per ADR-0031 -- both dropped from the original must-carry list."  # d8ff
+- op: discuss  # 386d
+  at: '2026-07-21T21:21:11Z'  # 386d
+  by: agent  # 386d
+  actor: jgstern_agent  # 386d
+  clock: 6  # 386d
+  nonce: 386d  # 386d
+  message: "Re-scoped statement: narrowed to the `path` facet (WI-kapul + WI-hulup), the only member still reproducing; dropped the ADR-obsoleted canonical_name (removed by ADR-0032) and language (None-by-design per ADR-0031) from the must-carry list. 6 of 7 members already done."  # 386d
+- op: update  # 681f
+  at: '2026-07-26T09:47:12Z'  # 681f
+  by: agent  # 681f
+  actor: jgstern_agent  # 681f
+  clock: 7  # 681f
+  nonce: 681f  # 681f
+  set:  # 681f
+    status: satisfied  # 681f
+- op: discuss  # 150b
+  at: '2026-07-26T09:47:12Z'  # 150b
+  by: agent  # 150b
+  actor: jgstern_agent  # 150b
+  clock: 8  # 150b
+  nonce: 150b  # 150b
+  message: "FIXED in PR #15 (dev 1af1552e21). Last real residual of the synthetic-identity umbrella: kind='template' view-template stand-ins (linkers/_view_template_core.py) minted with a language but no stable_id, falling through populate_kind_stable_ids to None. Added 'template' to _KIND_STABLE_ID_FACTORIES via the shared kind-scoped formula (make_declaration_stable_id; kind folded into the hash keeps a template distinct from a file node at the same path). Evidence: test_template_kind_gets_stable_id_distinct_from_file; smart-test 10250 passed, 100% cov. The rest (origin/origin_run_id via synthetic:F1, Class-B stable_id/display_label/fingerprint via synthetic:F2) was already built. (meta_invariant -> satisfied, not done.)"  # 150b

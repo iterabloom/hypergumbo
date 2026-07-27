@@ -713,22 +713,31 @@ def test_validate_deprecate_no_fold_resolved_present_fails():
     assert "DEPRECATE-NO-FOLD + status RESOLVED" in errors[0]
 
 
-def test_validate_prelim_resolved_endpoint_shape_passes():
-    # Pick any value currently on the endpoint_shape axis.
-    from hypergumbo_core.edge_types import (
-        AXIS_ENDPOINT_SHAPE,
-        EDGE_TYPES,
-    )
+def test_validate_prelim_resolved_endpoint_shape_passes(monkeypatch):
+    # The Edge.edge_type endpoint_shape axis is now EMPTY (the ADR-0023 fold-tail
+    # drained it — WI-pumav / audit-findings 0017), so no live value can exercise
+    # the PRELIM_RESOLVED "present on endpoint_shape" branch. Inject a synthetic
+    # endpoint_shape spec into the registry binding to cover it.
+    from hypergumbo_core import audit_findings as af
+    from hypergumbo_core.edge_types import AXIS_ENDPOINT_SHAPE, EdgeTypeSpec
 
-    endpoint_value = next(
-        spec.name for spec in EDGE_TYPES if spec.axis == AXIS_ENDPOINT_SHAPE
+    binding = af._REGISTRIES[AXIS_EDGE_EDGE_TYPE]
+    synthetic = EdgeTypeSpec(
+        "synthetic_endpoint_shape_value", AXIS_ENDPOINT_SHAPE, "test-only",
     )
+    patched = af._AxisRegistry(
+        specs=tuple(binding.specs) + (synthetic,),
+        canonical_axis=binding.canonical_axis,
+        endpoint_axis=binding.endpoint_axis,
+    )
+    monkeypatch.setitem(af._REGISTRIES, AXIS_EDGE_EDGE_TYPE, patched)
+
     findings = AuditFindings(
         path=Path("synthetic.md"),
         axis=AXIS_EDGE_EDGE_TYPE,
         verdicts=(
             VerdictRow(
-                value=endpoint_value,
+                value="synthetic_endpoint_shape_value",
                 verdict=VERDICT_FOLD,
                 fold_target="calls",
                 status=STATUS_PRELIM_RESOLVED,

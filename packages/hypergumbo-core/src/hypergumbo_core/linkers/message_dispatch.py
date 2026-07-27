@@ -2,8 +2,11 @@
 """Protocol linker: message dispatch for typed wire protocol message patterns.
 
 Detects custom wire protocol dispatch patterns where message types flow
-between sender and handler code. Creates ``message_dispatch`` edges
-between send sites and receive/dispatch sites matched by message type name.
+between sender and handler code. Creates ``event_publishes`` edges (tagged
+``meta.channel_kind="message_bus"``) between send sites and receive/dispatch
+sites matched by message type name. (The bespoke ``message_dispatch`` edge
+type was folded onto ``event_publishes`` per the audit-findings 0001
+cross-family consolidation.)
 
 Two API surfaces are covered:
 
@@ -286,7 +289,6 @@ def link_message_dispatch(
                         "channel": write.channel,
                         "framework_role": "message_sender",
                     },
-                    supply_chain_tier=2,
                     supply_chain_reason="message dispatch sender",
                 ))
 
@@ -319,7 +321,6 @@ def link_message_dispatch(
                         "channel": read.channel,
                         "framework_role": "message_handler",
                     },
-                    supply_chain_tier=2,
                     supply_chain_reason="message dispatch handler",
                 ))
 
@@ -338,7 +339,6 @@ def link_message_dispatch(
                 origin_run_id=run.execution_id,
                 evidence_type="dispatch_pattern",
                 access_mode="write",
-                dest_access_mode="read",
                 channel=write.channel,
                 meta={"channel_kind": "message_bus"},
                 derived_from=[pub_id, sub_id],

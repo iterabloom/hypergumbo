@@ -59,3 +59,18 @@
     tags: [dogfood]  # b0e5
   remove:  # b0e5
     tags: [dogfooding]  # b0e5
+- op: update  # 1a9d
+  at: '2026-06-28T08:44:49Z'  # 1a9d
+  by: agent  # 1a9d
+  actor: jgstern_agent  # 1a9d
+  clock: 6  # 1a9d
+  nonce: 1a9d  # 1a9d
+  set:  # 1a9d
+    status: satisfied  # 1a9d
+- op: discuss  # 7831
+  at: '2026-06-28T08:44:49Z'  # 7831
+  by: agent  # 7831
+  actor: jgstern_agent  # 7831
+  clock: 7  # 7831
+  nonce: '7831'  # 7831
+  message: "SATISFIED — fixed in PR #309 (selfh, commit ab9acec32b) and verified behaviorally on the filed repro's own function (_hash, now fingerprint.py:457-459 after line drift).\n\nRoot cause (as diagnosed in the 2026-05-30 cross-ref): slice.py seeded add_file_imports(entry.path) during entry-node init AND in the BFS loop regardless of entry kind, so a function entry absorbed its containing file's import edges (src=file-node) — above-scope content not reachable from the function. Fix = structural fix (i), not the post-filter (ii): both add_file_imports sites are now gated on `kind in _CONTAINER_KINDS`, so file/container entries still include their imports but function entries do not.\n\nBehavioral evidence (production CLI path, `hypergumbo slice` on this repo's hypergumbo-core src):\n  • `--entry=_hash --max-hops 0`  → 1 node (_hash itself), 0 edges, 0 file-import leaks.   WAS: 12 edges, ALL file-level imports (src=file-node), none touching _hash.\n  • `--entry=_hash --max-hops 1`  → 3 nodes, 2 edges, BOTH with src=_hash (→ hashlib.sha256 [external], → _SCHEME_PREFIX [variable]); 0 file-import leaks; 0 out-of-closure edges (subgraph closed).   WAS: 14 edges, only 2 touching the entry.\nThis directly resolves F66.A1's \"forward slice edge_ids include file-import edges with both endpoints absent from node_ids\" for function entries: such leaks are now 0, and the function-entry slice is subgraph-closed.\n\nContract change (human-ratified, no prior ADR/decision-register ruling covered it): function-entry slices NO LONGER include the containing file's imports. The 3 tests asserting the old behavior were rewritten to the new contract (test_function_entry_excludes_containing_file_imports, test_function_entry_max_hops_0_not_reduced_to_file_imports, test_container_entry_includes_file_level_imports). --exclude-imports and file/container-entry slices unaffected; CHANGELOG documents the reversal.\n\nScope / residual (explicitly NOT claimed fixed here): the non-import slice-projection non-closure — at --max-hops 0 a file/container-entry slice still lists members' real call/ref edges whose unresolved external dst (e.g. hashlib.sha256) is not materialized as an in-slice node (file-entry repro: 0 import edges but 13 non-import out-of-closure edges). F74.A1 already ruled that ORTHOGONAL to INV-tarol; it lives with the INV-titid twin (below-scope refs leaking OUT), which remains open."  # 7831

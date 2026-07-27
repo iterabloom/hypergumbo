@@ -39,7 +39,11 @@ holds those counts shrink-only):
 3. **Cross-field coherence** — documented field-pair invariants:
    ``Edge.dst_ref ↔ Edge.dst``, ``Symbol.language is None ↔
    Symbol.protocol_origin is not None`` for synthetic stand-ins,
-   ``Symbol.display_label`` populated on synthetic stand-ins only.
+   ``Symbol.display_label`` populated on synthetic stand-ins only. The
+   ``cross_field`` class also carries several other wired checks: the
+   ADR-0037 ``is_resolved ↔ dst`` FK, ``origin_run_id`` FK integrity,
+   dangling-endpoint detection, edge ``confidence`` range, route-marker
+   single-home, and the receiver-blind-magnet gate.
 4. **Verdict-enum completeness** — verdict-emitting code paths must enumerate
    an ``inconclusive`` (or equivalent) branch for missing-data cases.
    Folds in WI-rolol sub-task A (``ClaimVerdict.inconclusive``).
@@ -72,8 +76,9 @@ Default failure behavior
 The validator does NOT fail ``hypergumbo run`` by default. Violations are:
 
 * Written into the artifact's ``validation_report`` section.
-* Summarized to stderr (``"[warn] N axis-conformance violations; see
-  validation_report in <artifact>"``).
+* Summarized to stderr, one line per non-empty validator class
+  (``"[warn] N <class> validation violation(s); see validation_report in
+  artifact"``).
 * CI-gated by a separate test (``tests/test_validation_report_empty.py``).
 
 The gate's realized form (validator:F1 / G1, WI-kafar + WI-himoj). The
@@ -96,10 +101,14 @@ violations as informational warnings; CI catches regressions; downstream
 producer fixes ratchet each substrate's baseline toward zero.
 
 WI-niluv denominator disclosure: the cross-field collision/degeneracy
-umbrellas exclude records with no stable_id / fingerprint from their
-non-null denominators (a rate is undefined without a key), but the firing
-violation discloses ``denominator_scope=non_null`` plus the excluded
-cohort over the full population, so the encoding is biconditional.
+umbrellas both disclose their keyless cohort so a clean non-null rate can
+never silently hide a large no-key cohort, but they treat the denominator
+oppositely. The stable_id collision umbrella INCLUDES the no-stable_id cohort
+in its denominator (the rate is over ALL Symbols) and discloses the count as
+``none_cohort=N/population``. The fingerprint degeneracy twin keeps a non-null
+denominator (a rate is undefined without a key) and discloses
+``denominator_scope=non_null`` plus the excluded cohort. Either way the
+encoding is biconditional.
 
 See ADR-0033 for the full architectural decision.
 """
@@ -109,6 +118,8 @@ import re
 import sys
 from dataclasses import asdict, dataclass
 from typing import Any, Callable, Iterable, Optional
+
+from .receiver_blind_magnets import find_harmful_magnets
 
 VALIDATION_REPORT_SCHEMA_VERSION = "0.3"  # 0.3: validator:F2 (WI-moriz) added wired_checks disclosure; 0.2: ADR-0035 §5 added stable_id_stats
 
@@ -178,6 +189,27 @@ _WIRED_CHECKS: tuple[dict[str, str], ...] = (
                     "prefix (content-gated on a non-empty run set; WI-vudul "
                     "output-boundary format guard — Class-B language=None "
                     "identity-hash stand-ins are exempt)."},
+    {"check": "confidence_range", "validator_class": "cross_field",
+     "description": "Edge.confidence sits within the derived [low, "
+                    "base_confidence] band for its evidence_type — a WI-nurun "
+                    "step-4 forward regression guard against off-band / "
+                    "reserved-ceiling (1.0) per-emitter values (advisory info; "
+                    "unregistered/unseeded pathways carry no band)."},
+    {"check": "route_marker_single_home", "validator_class": "cross_field",
+     "description": "An ADR-0027 route marker (meta.framework_role=='route') "
+                    "carries no redundant path-less concept=route alongside it "
+                    "(INV-vokak dual-carry root; the framework belongs on "
+                    "route_framework, not orphaned in a second home)."},
+    {"check": "no_harmful_receiver_blind_magnets", "validator_class": "cross_field",
+     "description": "No un-demoted CLEANLY-harmful receiver-blind method magnet "
+                    "survives finalization (INV-fahub): a high-confidence calls "
+                    "edge that bound an unresolvable-receiver call to an arbitrary "
+                    "same-named internal method that is a production->test-helper "
+                    "misbind or a stdlib-interface-method shadow. finalize's "
+                    "demotion sub-step redirects each to external; a survivor is a "
+                    "demotion-ordering/coverage regression. The correct-but-"
+                    "unprovable trait-dispatch residual is ADR-0012 scope and is "
+                    "NOT flagged."},
 )
 
 
@@ -233,6 +265,148 @@ def validate_ir(
     violations.extend(_check_origin_run_id_fk(symbols, edges, analysis_runs))
     violations.extend(_check_dangling_endpoint(symbols, edges, analysis_runs))
     violations.extend(_check_fingerprint_format(symbols, edges, analysis_runs))
+    violations.extend(_check_confidence_range(edges))
+    violations.extend(_check_route_marker_single_home(symbols))
+    violations.extend(_check_no_harmful_receiver_blind_magnets(symbols, edges))
+    return violations
+
+
+def _check_route_marker_single_home(
+    symbols: Iterable[Any],
+) -> list[ValidationViolation]:
+    """INV-vokak: a route symbol records its route fact in exactly ONE home.
+
+    A symbol carrying the ADR-0027 route marker (``meta['framework_role'] ==
+    'route'``) must not ALSO carry a redundant *path-less* ``concept ==
+    'route'`` entry in ``meta['concepts']``. That dual-carry state orphans the
+    concept's framework from the marker — ``routes.route_of`` merely tolerates
+    it by unioning the framework at read time (WI-tosul Phase-1b-alpha), but
+    the emitted data is incoherent (one route fact in two homes). The
+    producer-side fix (``framework_patterns._dedup_route_marker_concepts``)
+    lifts such a concept's framework onto the marker's ``route_framework`` home
+    and drops the concept; this predicate is the standing corpus-wide guard
+    that the fix holds — a regression here, or a new route producer that
+    re-introduces the shape, re-fires it and the ratchet gate blocks.
+    """
+    violations: list[ValidationViolation] = []
+    for sym in symbols:
+        meta = getattr(sym, "meta", None) or {}
+        if meta.get("framework_role") != "route":
+            continue
+        for concept in meta.get("concepts", []) or []:
+            if (
+                isinstance(concept, dict)
+                and concept.get("concept") == "route"
+                and not concept.get("path")
+            ):
+                violations.append(ValidationViolation(
+                    severity="error",
+                    validator_class="cross_field",
+                    message=(
+                        "route symbol carries a redundant path-less "
+                        "concept=route alongside its framework_role=='route' "
+                        "marker (INV-vokak dual-carry): the route fact must "
+                        "live in one home and the framework belongs on "
+                        "route_framework"
+                    ),
+                    field_name="meta.concepts",
+                    record_id=getattr(sym, "id", None),
+                    observed=str(concept.get("framework")),
+                    expected="single-homed route marker (no redundant concept)",
+                ))
+                break
+    return violations
+
+
+def _check_no_harmful_receiver_blind_magnets(
+    symbols: Iterable[Any], edges: Iterable[Any],
+) -> list[ValidationViolation]:
+    """INV-fahub: no un-demoted CLEANLY-harmful receiver-blind magnet survives.
+
+    A receiver-blind magnet is a high-confidence ``calls`` edge that bound an
+    unresolvable-receiver call to an arbitrary same-named internal ``method``
+    (``d.Val()`` → an unrelated ``Dispenser.Val``). The finalize demotion
+    sub-step (6c) redirects the two cleanly-harmful sub-classes — a
+    production→test-helper misbind and a stdlib-interface-method shadow — to an
+    ``external:unresolved`` id BEFORE the ADR-0037 edge-resolution verdict, so on
+    the finalized graph ``find_harmful_magnets`` should return nothing. A survivor
+    means the demotion ran out of order, a new producer path emitted one the pass
+    missed, or the shared detector has a gap — this corpus-wide gate is the
+    standing durable teeth that keeps the flip honest (it fires and the ratchet
+    blocks). The refined criterion is deliberate: the correct-but-unprovable
+    trait-dispatch residual (Rust ``x.next()`` → ``Red::next``) needs real type
+    resolution (ADR-0012) and is a KEPT bind, so it is NOT flagged here.
+    """
+    violations: list[ValidationViolation] = []
+    symbols = list(symbols)
+    edges = list(edges)
+    for edge in find_harmful_magnets(symbols, edges):
+        violations.append(ValidationViolation(
+            severity="error",
+            validator_class="cross_field",
+            message=(
+                "harmful receiver-blind method magnet survived finalization "
+                "(INV-fahub): an unresolvable-receiver call bound at high "
+                "confidence to an arbitrary internal method that is a "
+                "test-helper misbind or a stdlib-interface shadow; the finalize "
+                "demotion sub-step should have redirected it to external"
+            ),
+            field_name="dst",
+            record_id=getattr(edge, "id", None),
+            observed=str(getattr(edge, "dst", None)),
+            expected="external:unresolved (harmful magnet demoted at finalize)",
+        ))
+    return violations
+
+
+def _check_confidence_range(edges: Iterable[Any]) -> list[ValidationViolation]:
+    """WI-nurun step 4: advisory range-validation of `Edge.confidence`.
+
+    Per ADR-0039, an analyzer edge's confidence is *derived* from its
+    inference pathway (`evidence_type`). This check flags any edge whose
+    confidence falls outside the derived ``[low, base_confidence]`` band for
+    its pathway — a per-emitter value that no longer tracks the pathway (a
+    derivation regression, or an over-claim such as the reserved-ceiling 1.0).
+    It is a forward regression guard: the post-migration corpus is fully
+    in-band (0 violations), and edges whose evidence_type is unregistered or
+    not-yet-seeded carry no band (treated in-band). Emitted as advisory
+    ``info`` under the existing ``cross_field`` class (confidence cohering with
+    evidence_type is a cross-field property).
+    """
+    from hypergumbo_core.confidence import confidence_within_band
+    from hypergumbo_core.evidence_types import find_evidence_type
+
+    violations: list[ValidationViolation] = []
+    for edge in edges:
+        ev = getattr(edge, "evidence_type", None)
+        conf = getattr(edge, "confidence", None)
+        if ev is None or conf is None:
+            continue
+        if confidence_within_band(ev, conf):
+            continue
+        spec = find_evidence_type(ev)
+        # find_evidence_type is non-None here: confidence_within_band only
+        # returns False for a seeded (hence registered) pathway.
+        assert spec is not None
+        low = (
+            spec.base_confidence_unresolved
+            if spec.base_confidence_unresolved is not None
+            else 0.30
+        )
+        violations.append(ValidationViolation(
+            severity="info",
+            validator_class="cross_field",
+            message=(
+                f"Edge.confidence {conf} for evidence_type '{ev}' is outside "
+                f"the derived band [{low}, {spec.base_confidence}] — the "
+                f"per-emitter value no longer tracks the inference pathway "
+                f"(WI-nurun range validation)."
+            ),
+            field_name="confidence",
+            record_id=getattr(edge, "id", None),
+            observed=str(conf),
+            expected=f"[{low}, {spec.base_confidence}]",
+        ))
     return violations
 
 
@@ -267,7 +441,12 @@ def validate_ir(
 _BOUNDED_ENUMS: dict[tuple[str, str], frozenset[str]] = {
     # (record_class, field) -> legal value set documented in the
     # dataclass docstring. Mirrors ADR-0024 "bounded-enum" category.
-    # Currently empty; new bounded-enum fields register here.
+    # ADR-0039 ruling 2: Edge.confidence_source provenance discriminator.
+    # Kept in lockstep with ir.VALID_CONFIDENCE_SOURCES by
+    # test_spec_validator's drift guard.
+    ("Edge", "confidence_source"): frozenset({
+        "evidence_derived", "emitter_constant", "composite",
+    }),
 }
 
 
@@ -349,6 +528,11 @@ def _check_axis_conformance(
             edge_id, "Edge.evidence_lang", "language",
             getattr(edge, "evidence_lang", None), languages,
             allow_none=True,
+        ))
+        violations.extend(_check_value(
+            edge_id, "Edge.confidence_source", "bounded-enum",
+            getattr(edge, "confidence_source", None),
+            _BOUNDED_ENUMS[("Edge", "confidence_source")], allow_none=False,
         ))
         for v in _check_list(
             edge_id, "Edge.origin", "pass-id",
@@ -609,8 +793,11 @@ _WRITER_CONTRACT_NEVER_POPULATED: tuple[tuple[str, str, str], ...] = ()
 # cross-check because the boundary/metrics-builder layer doesn't have
 # a record stream to inspect — but the contract is recorded here:
 #
-# - total_io_edges canonical = sum(len(e.chains) for e in entries.values())
-#   (post-external_potential chain count); see io_boundary.py.
+# - total_io_edges canonical = sum(len(e.chains) for k, e in entries.items()
+#   if k != "external_potential") — the real/verified I/O surface, EXCLUDING
+#   the external_potential bucket (disclosed separately as
+#   external_potential_edges). INV-pubom amended 2026-06-30 (WI-huhit/WI-foduh);
+#   see io_boundary.py.
 # - total_files canonical = len({n.path for n in nodes if n.path})
 #   (node-distinct-path count); see metrics.py:compute_metrics.
 
@@ -636,6 +823,14 @@ def _check_writer_contract(
     constant) are codified at the producer side rather than detected
     by the validator — the cross-checks would fire at the boundary
     (orchestrator) layer, which doesn't have a record stream to inspect.
+
+    WI-libib/WI-hudug extension: a **kind-conditioned population contract**.
+    The sub-patterns above partition only by ``(record_class, field)``, so a
+    field populated on one Symbol *kind* masks a 100%-NULL partition on
+    another kind (``qualified_name`` on ``function`` symbols hides a fully-
+    NULL ``method`` partition behind the shared Symbol class). A registered
+    per-``(language, kind, field)`` contract catches that regression class;
+    see ``_check_kind_conditioned_population``.
     """
     violations: list[ValidationViolation] = []
     runs_list = list(analysis_runs)
@@ -709,6 +904,12 @@ def _check_writer_contract(
         _check_sub_pattern_1_never_populated(symbols_list, edges_list, runs_list)
     )
 
+    # Kind-conditioned population contract (WI-libib engine, WI-hudug entry).
+    # Partitions symbols by (language, kind) so a field populated on one kind
+    # cannot mask a 100%-NULL partition on another; complements the
+    # (record_class, field)-level sub-patterns above.
+    violations.extend(_check_kind_conditioned_population(symbols_list))
+
     return violations
 
 
@@ -758,6 +959,86 @@ def _check_sub_pattern_1_never_populated(
                 message=(
                     f"All {len(records)} {record_class} records have "
                     f"{field_name} unpopulated. {contract_msg}"
+                ),
+            ))
+    return violations
+
+
+# Kind-conditioned "must populate" contract (WI-libib engine, WI-hudug entry).
+#
+# Each entry ``(language, kind, field_name, contract_description)`` asserts that
+# symbols matching ``(language, kind)`` populate ``field_name`` — a 100%-NULL
+# partition on that cell is a writer regression that the ``(record_class,
+# field)``-level sub-patterns above cannot see (a field populated on one kind
+# keeps the class-level partition non-empty). Rather than enforce the full
+# (kind, field) matrix — rejected by WI-libib's own author as over-broad, since
+# most NULL cells are legitimately NULL (a ``variable`` has no meaningful
+# ``qualified_name``) — the contract is registered cell by cell: each entry is a
+# deliberate "this cell MUST stay populated" assertion, the sound-by-
+# construction population ratchet WI-libib was reframed to. The producer half of
+# the first entries is done (WI-fagab / ADR-0032), so on current output these
+# emit no violation and serve as a regression guard; a future producer that
+# drops ``qualified_name`` on Python callables/classes trips them, and the
+# resulting ``writer_contract|warning`` cell (unbaselined → ceiling 0) breaks
+# the validation_ratchet self-tree gate.
+_WRITER_CONTRACT_KIND_MUST_POPULATE: tuple[tuple[str, str, str, str], ...] = (
+    ("python", "function", "qualified_name",
+     "Python function symbols carry an ADR-0032 qualified_name (WI-fagab)."),
+    ("python", "method", "qualified_name",
+     "Python method symbols carry an ADR-0032 qualified_name (WI-fagab)."),
+    ("python", "class", "qualified_name",
+     "Python class symbols carry an ADR-0032 qualified_name (WI-fagab)."),
+)
+
+
+def _check_kind_conditioned_population(
+    symbols_list: list[Any],
+) -> list[ValidationViolation]:
+    """Per-``(language, kind)`` population contract (WI-libib engine, WI-hudug).
+
+    The record-class-level sub-patterns partition only by ``(record_class,
+    field)``, so they miss a *kind-conditioned* NULL: ``qualified_name``
+    populated on ``function`` symbols but 100% NULL on every ``method`` symbol
+    never trips a Symbol-level check, because at least one Symbol carries it.
+    This check partitions symbols by ``(language, kind)`` and flags a
+    **registered** cell that is 100% NULL across its **non-empty** kind
+    partition. An absent partition (the kind isn't on this substrate) is skipped
+    — absence is not a population regression — and a single populated symbol
+    satisfies the contract (the writer IS reaching the slot; a residual per-
+    record gap is a finer, separate concern). One umbrella violation per cell,
+    not one per record, because the gap is structural.
+    """
+    violations: list[ValidationViolation] = []
+    for language, kind, field_name, contract_msg in (
+        _WRITER_CONTRACT_KIND_MUST_POPULATE
+    ):
+        partition = [
+            s for s in symbols_list
+            if _read(s, "kind", None) == kind
+            and _read(s, "language", None) == language
+        ]
+        if not partition:
+            continue
+        populated = sum(1 for s in partition if _is_truthy(s, field_name))
+        if populated == 0:
+            violations.append(ValidationViolation(
+                severity="warning",
+                validator_class="writer_contract",
+                axis=None,
+                field_name=f"Symbol[{language}/{kind}].{field_name}",
+                record_id=_read(partition[0], "id", None),
+                observed=(
+                    f"<empty across all {len(partition)} "
+                    f"{language} {kind} symbols>"
+                ),
+                expected=(
+                    "field populated on at least one symbol of this kind "
+                    "(writer-contract kind-conditioned population contract)"
+                ),
+                message=(
+                    f"All {len(partition)} {language} {kind} symbols have "
+                    f"{field_name} unpopulated. {contract_msg} "
+                    "See INV-luhur / WI-libib (kind-conditioned population)."
                 ),
             ))
     return violations

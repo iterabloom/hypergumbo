@@ -204,6 +204,24 @@ void main() {}
         assert any("std.stdio" in dst for dst in imported)
         assert any("std.string" in dst for dst in imported)
 
+    def test_external_import_edge_dst_is_well_formed(
+        self, temp_repo: Path,
+    ) -> None:
+        """INV-fihur: an external/stdlib import (no in-tree module_registry
+        entry) must emit a well-formed 5-slot ``{lang}:{path}:{span}:{name}:
+        {kind}`` id with the module in the PATH slot (``parts[1]``) — not the
+        malformed ``d:?:{name}:module`` (4 slots, ``?`` path) that leaves
+        ``module_path``/``src`` at ``<unknown>`` and false-demotes vibe.d
+        (``refine_frameworks`` reads ``parts[1]``)."""
+        (temp_repo / "main.d").write_text("import vibe.vibe;\n")
+        result = analyze_d(temp_repo)
+        import_edges = [e for e in result.edges if e.edge_type == "imports"]
+        assert len(import_edges) == 1
+        parts = import_edges[0].dst.split(":")
+        assert len(parts) == 5, import_edges[0].dst
+        assert parts[0] == "d"
+        assert parts[1] == "vibe.vibe"   # module in the path slot, not "?"
+
 
 class TestDCallResolution:
     """Tests for D call resolution."""
@@ -641,7 +659,11 @@ void run() { helper(); }
             )
 
     def test_external_import_stays_unresolved(self, temp_repo: Path) -> None:
-        """Import of a module NOT in the repo stays unresolved (d:?:...)."""
+        """Import of a module NOT in the repo emits the well-formed external
+        id ``d:{module}:0-0:module:module`` (module in the path slot, synthetic
+        ``0-0`` span) — distinct from a resolved in-tree import (which points
+        at the real module symbol id). INV-fihur: this was the malformed
+        ``d:?:{name}:module`` (4 slots) that left module_path=<unknown>."""
         (temp_repo / "main.d").write_text('''
 module main;
 
@@ -656,11 +678,14 @@ void run() {}
         stdio_imports = [e for e in import_edges if "std.stdio" in e.dst]
 
         assert len(stdio_imports) >= 1
-        # External imports should remain unresolved
         for edge in stdio_imports:
-            assert "?" in edge.dst, (
-                f"External import should be unresolved (d:?:...), got: {edge.dst}"
-            )
+            parts = edge.dst.split(":")
+            assert len(parts) == 5, edge.dst
+            assert parts[1] == "std.stdio"   # module in path slot, not "?"
+            # synthetic external marker (no real file span), distinct from an
+            # in-tree module symbol id.
+            assert parts[2] == "0-0"
+            assert parts[3] == "module" and parts[4] == "module"
 
     def test_dotted_module_import_resolved(self, temp_repo: Path) -> None:
         """Import of a dotted module name (pkg.sub) resolves when present."""
@@ -691,3 +716,59 @@ void run() { add(1, 2); }
             f"Dotted module import should be resolved, edges: {[e.dst for e in math_imports]}"
         )
         assert any("pkg/math.d" in e.dst or "pkg.math" in e.dst for e in resolved)
+
+
+class TestDCyclomaticComplexity:
+    """INV-loguk slice C: callable D symbols carry non-null CC + LOC.
+    Real-grammar verification (if/for/while/do/case/ternary +
+    logical_and/or_expression short-circuit nodes, Dart-style)."""
+
+    def test_branchy_function_has_cc_and_loc(self, tmp_path: Path) -> None:
+        (tmp_path / "f.d").write_text("""module testmod;
+int compute(int x, int y) {
+    int result = 0;
+    if (x > 0 && y > 0) { result = x + y; }
+    else if (x < 0 || y < 0) { result = x - y; }
+    else { result = 0; }
+    for (int i = 0; i < x; i++) { result += i; }
+    while (result > 100) { result -= 10; }
+    do { result += 1; } while (result < 5);
+    switch (x) {
+        case 1: result = 1; break;
+        case 2: result = 2; break;
+        default: result = -1;
+    }
+    int t = (x > y) ? x : y;
+    return result;
+}
+""")
+        result = analyze_d(tmp_path)
+        fn = next(s for s in result.symbols
+                  if s.kind in ("function", "method") and s.name == "compute")
+        # base 1 + 2 if + && + || + for + while + do + 3 case + ternary = 12
+        assert fn.cyclomatic_complexity == 12
+        assert fn.line_span is not None and fn.line_span >= 4
+
+    def test_straight_line_function_cc_is_one(self, tmp_path: Path) -> None:
+        (tmp_path / "g.d").write_text("module m;\nint g(int x) { return x; }\n")
+        result = analyze_d(tmp_path)
+        fn = next(s for s in result.symbols
+                  if s.kind in ("function", "method") and s.name == "g")
+        assert fn.cyclomatic_complexity == 1
+        assert fn.line_span is not None
+
+    def test_callables_non_null_non_callables_null(self, tmp_path: Path) -> None:
+        (tmp_path / "m.d").write_text("""module m;
+class Box {
+    int get(int x) { if (x > 0) { return x; } return 0; }
+}
+""")
+        result = analyze_d(tmp_path)
+        callables = [s for s in result.symbols if s.kind in ("function", "method")]
+        assert callables
+        for s in callables:
+            assert s.cyclomatic_complexity is not None, (s.kind, s.name)
+            assert s.line_span is not None, (s.kind, s.name)
+        for s in result.symbols:
+            if s.kind not in ("function", "method"):
+                assert s.cyclomatic_complexity is None, (s.kind, s.name)

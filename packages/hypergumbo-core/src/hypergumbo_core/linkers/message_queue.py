@@ -59,7 +59,7 @@ from pathlib import Path
 from typing import Iterator
 
 from ..analyze.base import make_protocol_stable_id, make_symbol_id
-from ..discovery import find_files
+from ..discovery import find_non_test_files
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from .registry import LinkerContext, LinkerResult, register_linker
 from ._text_filters import read_masked_source
@@ -241,7 +241,7 @@ REDIS_SUBSCRIBE_JS_PATTERN = re.compile(
 def _find_source_files(root: Path) -> Iterator[Path]:
     """Find files that might contain message queue patterns."""
     patterns = ["**/*.py", "**/*.js", "**/*.ts", "**/*.java"]
-    for path in find_files(root, patterns):
+    for path in find_non_test_files(root, patterns):
         yield path
 
 
@@ -528,8 +528,8 @@ def link_message_queues(root: Path) -> MessageQueueLinkResult:
                     confidence = base_confidence - (0.1 if is_cross_language else 0.0)
                     # Pass linker-specific meta via Edge.create's meta= kwarg
                     # so Edge.create merges it with the dataflow fields —
-                    # assigning edge.meta afterward would wipe access_mode
-                    # and dest_access_mode set above (INV-forim).
+                    # assigning edge.meta afterward would wipe the dataflow
+                    # meta fields set above (INV-forim).
                     # ADR-0023 §6 Phase 3 / audit-findings 0002 (WI-hahap-farid):
                     # MQ publisher→subscriber via topic is publish-
                     # family shape; "queue" is the channel kind.
@@ -546,14 +546,12 @@ def link_message_queues(root: Path) -> MessageQueueLinkResult:
                         origin_run_id=run.execution_id,
                         evidence_type="variable_match" if is_variable_match else "topic_match",
                         access_mode="write",
-                        dest_access_mode="read",
                         channel=key[1],
                         meta={
                             "channel_kind": "queue",
                             "queue_type": key[0],
                             "topic": key[1],
                             "topic_type": "variable" if is_variable_match else "literal",
-                            "cross_language": is_cross_language,
                         },
                         derived_from=[pub_symbol.id, sub_symbol.id],
                     )

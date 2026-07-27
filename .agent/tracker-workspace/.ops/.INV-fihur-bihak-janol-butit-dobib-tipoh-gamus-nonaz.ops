@@ -1,0 +1,38 @@
+- op: create  # 6da7
+  at: '2026-07-03T03:36:02Z'  # 6da7
+  by: agent  # 6da7
+  actor: jgstern_agent  # 6da7
+  clock: 1  # 6da7
+  nonce: 6da7  # 6da7
+  data:  # 6da7
+    kind: invariant  # 6da7
+    title: "D import edges malformed: <unknown> slots (vibe.d) mis-demote framework"  # 6da7
+    status: violated  # 6da7
+    priority: 3  # 6da7
+    parent:  # 6da7
+    tags:  # 6da7
+    - framework_detection  # 6da7
+    - analysis_quality  # 6da7
+    isbefore: []  # 6da7
+    duplicate_of: []  # 6da7
+    not_duplicate_of: []  # 6da7
+    pr_ref:  # 6da7
+    description: ""  # 6da7
+    fields:  # 6da7
+      statement: "D import edges show the same <unknown> wrong-slot defect as Nim (vibe.d in the name-slot), causing an unjustified vibe-d framework demote on dub; likely a joint fix with the Nim external_symbol code path."  # 6da7
+      root_cause: "The D import-edge producer has the same <unknown>-slot defect as Nim; both likely share the external_symbol code path that fails to populate module_path."  # 6da7
+- op: update  # 3847
+  at: '2026-07-05T08:37:49Z'  # 3847
+  by: agent  # 3847
+  actor: jgstern_agent  # 3847
+  clock: 2  # 3847
+  nonce: '3847'  # 3847
+  set:  # 3847
+    status: satisfied  # 3847
+- op: discuss  # ce3b
+  at: '2026-07-05T08:37:49Z'  # ce3b
+  by: agent  # ce3b
+  actor: jgstern_agent  # ce3b
+  clock: 3  # ce3b
+  nonce: ce3b  # ce3b
+  message: "Fixed jointly with INV-lumuh in PR (dev abf47e01a7). Same malformed-slot defect as Nim: d_lang.py's external/stdlib import fallback (process_import else-branch, when the module is not in module_registry) emitted d:?:{module}:module (4 slots, '?' path, no span), leaving module_path/src=<unknown> and vibe.d invisible to refine_frameworks (reads parts[1]) -> vibe-d false-demote on dub. Fix: emit the canonical d:{module}:0-0:module:module form (module in parts[1]); in-tree imports already resolve to the real module symbol id (module_registry path, unchanged). Behavioral evidence (analyze_d): import vibe.vibe; -> d:vibe.vibe:0-0:module:module (parts[1]='vibe.vibe', was '?'). Extended package 100% coverage."  # ce3b

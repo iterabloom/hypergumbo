@@ -54,3 +54,34 @@
   clock: 5  # 6902
   nonce: '6902'  # 6902
   message: "2026-06-10 design-interview ruling (decision recorded, no ADR): compact's default becomes centrality-ranked, under which --max-symbols selection is a ranked prefix and containment monotonicity across budgets holds by construction; the connectivity-growth path keeps its own semantics behind explicit --connectivity. Waits on the default switch; re-check monotonicity afterwards."  # 6902
+- op: update  # 89d1
+  at: '2026-07-09T23:02:44Z'  # 89d1
+  by: agent  # 89d1
+  actor: jgstern_agent  # 89d1
+  clock: 6  # 89d1
+  nonce: 89d1  # 89d1
+  set:  # 89d1
+    status: done  # 89d1
+  add:  # 89d1
+    tags: [wave4, awaits_bakeoff_validation]  # 89d1
+- op: discuss  # c47d
+  at: '2026-07-09T23:02:44Z'  # c47d
+  by: agent  # c47d
+  actor: jgstern_agent  # c47d
+  clock: 7  # c47d
+  nonce: c47d  # c47d
+  message: "Fixed + merged (selfh/dev 4c8a8f66c1, with WI-zulij). Containment monotonicity for compact --max-symbols: NOT resolved 'by construction' by the flip alone — I traced a real non-monotonicity in allocate_language_budget (selection/language_proportional.py): when a budget step grows >=2 language bases at once, 'remaining' drops and the last bonus-receiving language loses its +1 while its base is unchanged (a shrink), breaking nodes(B1) subset nodes(B2). Structural fix: the compact default disables language_proportional -> a GLOBAL centrality-ranked prefix, monotonic BY CONSTRUCTION (top-N subset top-M) AND the correct reading of D12's 'centrality-ranked' (a global order, which language floors violate). Behavioral evidence: multi-language stress monotonicity test (unequal sizes 8/4/3/2/1, ALL budgets 2..18, subset assertion at every step) with language_proportional=False; disabling it broke NO test (961 passed across compact/cli/sketch/selection/gitleaks). core 100%. Wave-4 projection."  # c47d
+- op: discuss  # d889
+  at: '2026-07-16T04:10:43Z'  # d889
+  by: agent  # d889
+  actor: jgstern_agent  # d889
+  clock: 8  # d889
+  nonce: d889  # d889
+  message: "NO_MOVE on 2/8 via DEEP bakeoff deep-20260623-134237 cohort-001 iter-004 (8 repos, code e5a019c2): apollo (4k={incrementalDelivery iface} ⊄ 16k={requestPipeline iface}) and pretix (4k={PaymentViewSet} ⊄ 16k={LocaleMiddleware}) violate containment monotonicity; the other 6 repos are monotonic. ROOT CAUSE (pretix agent): compact embeds FULL ~23-field node objects, so at 4k/16k only ONE large symbol fits and the top-ranked single symbol differs across budgets → non-monotonic. Pre-existing (iter-3 also violated) — NOT a regression from this session. Fix is the same as the new compact-representation item. Keeping tag until the degenerate-budget case is monotonic."  # d889
+- op: discuss  # 1e83
+  at: '2026-07-16T05:10:18Z'  # 1e83
+  by: agent  # 1e83
+  actor: jgstern_agent  # 1e83
+  clock: 9  # 1e83
+  nonce: '1e83'  # 1e83
+  message: "CORRECTION to the iter-004 no_move: the bakeoff measured containment on the TIERED token-budget artifacts (survey.4k/16k/64k.json = the connectivity-aware select_by_connectivity path, a connected-subgraph selection that is NOT a monotonic prefix by design). WI-kolal's ACTUAL claim is about 'compact --max-symbols' (format_compact_behavior_map / select_by_coverage — the centrality-ranked prefix). Verified directly on pretix's survey: compact --max-symbols 10/25/50/100 IS containment-monotonic (10⊆25⊆50⊆100). So WI-kolal's fix HOLDS on its own path. Separately, the WI-pohuf compact-node fix (PR de2fb3717c) fixed the tiered COLLAPSE (1/1/59 -> 4/31/142 on apollo) and as a side effect restored tiered monotonicity on apollo/spring. Recommend re-validating with a fresh bakeoff pointed at the --max-symbols path (not the tiered files); the tiered non-monotonicity on pretix is a distinct connectivity-selection property, not a WI-kolal regression."  # 1e83

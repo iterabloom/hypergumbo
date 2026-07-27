@@ -395,3 +395,81 @@ end function get_zero
         funcs = [s for s in result.symbols if s.kind == "function" and s.name == "get_zero"]
         assert len(funcs) == 1
         assert funcs[0].signature == "(): integer"
+
+
+class TestFortranCyclomaticComplexity:
+    """INV-loguk slice C: callable Fortran symbols (function + subroutine) carry
+    non-null CC + LOC. Real-grammar verification (if/elseif/do_loop/case +
+    .and./.or.)."""
+
+    def test_branchy_function_has_cc_and_loc(self, tmp_path) -> None:
+        (tmp_path / "m.f90").write_text("""module m
+contains
+  integer function compute(a, b, n)
+    integer :: a, b, n, i, acc
+    acc = 0
+    if (a > 0 .and. b > 0) then
+      acc = a + b
+    else if (a < 0 .or. b < 0) then
+      acc = a - b
+    end if
+    do i = 1, n
+      acc = acc + i
+    end do
+    do while (acc > 100)
+      acc = acc - 1
+    end do
+    select case (n)
+    case (1)
+      acc = acc + 1
+    case (2)
+      acc = acc + 2
+    case default
+      acc = acc + 3
+    end select
+    compute = acc
+  end function compute
+end module m
+""")
+        result = analyze_fortran_files(tmp_path)
+        fn = next(s for s in result.symbols if s.kind == "function" and s.name == "compute")
+        # base 1 + if + elseif + 2 do_loop + 3 case + .and. + .or. = 10
+        assert fn.cyclomatic_complexity == 10
+        assert fn.line_span is not None and fn.line_span >= 4
+
+    def test_subroutine_has_cc_and_loc(self, tmp_path) -> None:
+        (tmp_path / "s.f90").write_text("""module m
+contains
+  subroutine sideeffect(x)
+    integer :: x
+    if (x > 0) then
+      x = x + 1
+    end if
+  end subroutine sideeffect
+end module m
+""")
+        result = analyze_fortran_files(tmp_path)
+        sub = next(s for s in result.symbols if s.kind == "subroutine" and s.name == "sideeffect")
+        # base 1 + 1 if = 2
+        assert sub.cyclomatic_complexity == 2
+        assert sub.line_span is not None
+
+    def test_callables_non_null_non_callables_null(self, tmp_path) -> None:
+        (tmp_path / "p.f90").write_text("""module mymod
+  integer :: x
+contains
+  integer function f(a)
+    integer :: a
+    f = a
+  end function f
+end module mymod
+""")
+        result = analyze_fortran_files(tmp_path)
+        callables = [s for s in result.symbols if s.kind in ("function", "subroutine")]
+        assert callables
+        for s in callables:
+            assert s.cyclomatic_complexity is not None, (s.kind, s.name)
+            assert s.line_span is not None, (s.kind, s.name)
+        for s in result.symbols:
+            if s.kind not in ("function", "subroutine"):
+                assert s.cyclomatic_complexity is None, (s.kind, s.name)

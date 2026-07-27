@@ -1,0 +1,52 @@
+- op: create  # c890
+  at: '2026-07-20T19:51:36Z'  # c890
+  by: agent  # c890
+  actor: jgstern_agent  # c890
+  clock: 1  # c890
+  nonce: c890  # c890
+  data:  # c890
+    kind: work_item  # c890
+    title: "endpoint_shape fold: long-tail values (~19) → canonical relationship + meta, per-pattern subsets"  # c890
+    status: todo_soft  # c890
+    priority: 3  # c890
+    parent: WI-kivip-gijok-pugag-balid-rizin-lutuk-botul-zizon  # c890
+    tags:  # c890
+    - edge_vocab  # c890
+    - axis_conformance  # c890
+    - adr_0023  # c890
+    - vocab  # c890
+    isbefore: []  # c890
+    duplicate_of: []  # c890
+    not_duplicate_of: []  # c890
+    pr_ref:  # c890
+    description: "Fold the ~19 long-tail endpoint_shape values re-added by WI-tavas-voror (done) and deferred with no follow-on. Live list (edge_types.py, axis=endpoint_shape, verified 2026-07-20, excluding the 3 protocol-call values handled by the sibling prune item): abi_call, association, base_image, build_tag_alternative_of, caller_invokes, contains_routes, crypto_flow, depends, extends_template, includes_class, includes_template, invokes_callback, kernel_launch, links_to, notifies_resource, renders, requires_resource, script_src, signal_receiver, template_calls, uses_mixin, uses_vocabulary.\n\nEach carries a *likely* canonical fold target in its EdgeTypeSpec.description docstring (e.g. abi_call -> calls + meta['protocol']='abi'), but ADR-0023 §Phase-4b notes the targets are HETEROGENEOUS (some -> calls+meta, some -> references+dst.kind, some -> event_publishes+channel, some -> depends_on+construct) and must be folded in smaller per-language / per-pattern subsets, each its own Phase-3 (producer migration) + Phase-4b (registry prune) cycle with bakeoff validation (awaits_bakeoff_validation discipline). This item is the tracked OWNER; spawn per-subset children as picked up — do NOT big-bang all 19.\n\nCAUTIONS (do not blind-rename): (a) crypto_flow carries dataflow DIRECTION and belongs to ADR-0038 ruling 3 / the data_direction meta key, NOT a naive calls fold — its correct home is likely data_flows_to + meta. (b) renders / signal_receiver / uses_mixin / association may be GENUINELY DISTINCT relationships (ADR-0023 flags the publish/dispatch families as \"not always deprecate-all-but-one\") — each needs the four-leakage-test / per-family audit judgment (ADR-0024), i.e. a CANONICAL-vs-FOLD verdict, not an assumed FOLD. (c) script_src is also on the mid-fold endpoint_shape axis that WI-pusuv's access_mode N/A declaration waits on (axis_meta_keys.py:136).\n\nParent: the endpoint_shape fold-tail umbrella. Draining the endpoint_shape section (this + the protocol-call prune) is what unblocks WI-pusuv's total access_mode census."  # c890
+    fields: {}  # c890
+- op: discuss  # 04c1
+  at: '2026-07-21T01:56:14Z'  # 04c1
+  by: agent  # 04c1
+  actor: jgstern_agent  # 04c1
+  clock: 2  # 04c1
+  nonce: 04c1  # 04c1
+  message: "Batch 0 landed + audit filed (2026-07-20, PR #776). The per-value CANONICAL-vs-FOLD verdict pass is filed as docs/audits/0017-endpoint-shape-long-tail.md: all 22 long-tail values FOLD, zero CANONICAL. Batch 0 (script_src) is DONE: it was already producer-migrated (html.py emits references + ref_construct=script_src, INV-vavat), so its dead registry entry was pruned (SCHEMA_VERSION 0.15.0 to 0.16.0; endpoint_shape 22 to 21), discharging the WI-pusuv access_mode-census coupling. 21 folds remain as per-pattern batches (Batches 1-7 in the audit), each its own Phase-3/4b-prime plus bakeoff cycle. Human-ruling decision points flagged in the audit: signal_receiver (event_publishes vs dispatches_to), base_image (depends_on vs extends), notifies_resource (event_publishes vs depends_on), build_tag_alternative_of (FOLD vs borderline-CANONICAL), plus docstring-disagreements on abi_call (call_kind not protocol) and uses_mixin (includes not references). Stays todo_soft as owner of the remaining 21 folds."  # 04c1
+- op: discuss  # 17e2
+  at: '2026-07-21T02:39:04Z'  # 17e2
+  by: agent  # 17e2
+  actor: jgstern_agent  # 17e2
+  clock: 3  # 17e2
+  nonce: '17e2'  # 17e2
+  message: "Decision points RULED (2026-07-20). The fold-target ambiguities flagged in audit-findings 0017 (and 0016) were investigated via a 4-lens ADR/spec/spirit/history pass (4 parallel read-only sub-agents) and ruled together with the owner one at a time. All stay FOLD (zero CANONICAL); two provisional targets were REVISED and the audit docs updated (docs-only PR).\n\nFinalized 0017 targets: signal_receiver to dispatches_to + framework_dispatch=django_signal (dispatch shape + dead-code reachability, not pub-sub); notifies_resource to depends_on + ref_construct=puppet_notify + refresh=true (REVISED from the provisional event_publishes; same resource-to-resource shape as sibling requires_resource, avoids a synthetic channel and an async-IO misweight); base_image to depends_on + ref_construct=dockerfile_stage (over extends; sibling COPY --from already emits depends_on); build_tag_alternative_of to references + ref_construct=build_tag_alternative (borderline-CANONICAL declined: lossy single-direction projection + lone Go-only producer below the N=3/N=2 promotion bar; re-eval trigger recorded); abi_call to calls + call_kind=abi (not protocol, closed enum); uses_mixin to includes + ref_construct=sass_mixin.\n\nAlso 0016 (WI-sumik, closed): openapi_implements REVISED to references + ref_construct=openapi_operation (no producer flip; the spec-to-handler direction is deliberate and powers forward-slice-from-spec); resolver_for_type to references. The family folds heterogeneously (2 implements, 2 references).\n\nPer-batch target decisions are now CLOSED. The remaining WI-pumav work is the mechanical per-batch producer migrations (Batches 1-7 in audit-findings 0017), each its own Phase-3/4b cycle with bakeoff validation. Stays todo_soft as owner of the 21 folds."  # 17e2
+- op: update  # 20ef
+  at: '2026-07-21T08:41:04Z'  # 20ef
+  by: agent  # 20ef
+  actor: jgstern_agent  # 20ef
+  clock: 4  # 20ef
+  nonce: 20ef  # 20ef
+  set:  # 20ef
+    status: done  # 20ef
+- op: discuss  # 8268
+  at: '2026-07-21T08:41:04Z'  # 8268
+  by: agent  # 8268
+  actor: jgstern_agent  # 8268
+  clock: 5  # 8268
+  nonce: '8268'  # 8268
+  message: "DONE (2026-07-21). The endpoint_shape->relationship fold-tail is COMPLETE. All 21 long-tail values were producer-migrated (Phase 3) across Batches 1a-7 and their dead registry entries pruned in the consolidated Phase-4b PR (#791). The endpoint_shape axis of Edge.edge_type is now EMPTY; SCHEMA_VERSION 0.16.0 -> 0.17.0; total edge-type registry 50 -> 29 (25 relationship + 4 pending_classification).\n\nFold-target distribution (per the 4-lens ruling pass, audit-findings 0017): 6 references, 4 calls, 4 depends_on, 3 includes, 2 dispatches_to, 1 contains, 1 extends, 1 data_flows_to (plus script_src -> references at Batch 0). All 22 audit-findings 0017 rows are RESOLVED. New MetaKeySpec entries registered in axis_meta_keys.py (12 ref_construct values, 3 mechanism values, the refresh key). ADR-0023 §6 marked COMPLETE.\n\nNotable handling: the calls-family and dispatches_to folds enter consumer surfaces (taint/io/reachability/ranking) as intended promotions; signal_receiver->dispatches_to preserves @receiver-handler reachability; crypto_flow->data_flows_to moved the ranking.py weight 0.8; base_image->depends_on unified with COPY --from. This unblocks WI-pusuv."  # 8268

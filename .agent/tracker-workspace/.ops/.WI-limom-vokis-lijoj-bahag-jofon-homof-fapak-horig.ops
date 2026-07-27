@@ -1,0 +1,29 @@
+- op: create  # 4e13
+  at: '2026-07-13T02:33:01Z'  # 4e13
+  by: agent  # 4e13
+  actor: jgstern_agent  # 4e13
+  clock: 1  # 4e13
+  nonce: '4e13'  # 4e13
+  data:  # 4e13
+    kind: work_item  # 4e13
+    title: "ADR-0039 R5 Stage B: generate the per-evidence-type confidence table from EVIDENCE_TYPES into spec §12 + freshness gate"  # 4e13
+    status: todo_hard  # 4e13
+    priority: 3  # 4e13
+    parent:  # 4e13
+    tags:  # 4e13
+    - confidence  # 4e13
+    - vocab  # 4e13
+    - docs  # 4e13
+    isbefore: []  # 4e13
+    duplicate_of: []  # 4e13
+    not_duplicate_of: []  # 4e13
+    pr_ref:  # 4e13
+    description: ""  # 4e13
+    fields: {}  # 4e13
+- op: discuss  # 2474
+  at: '2026-07-13T02:33:23Z'  # 2474
+  by: agent  # 2474
+  actor: jgstern_agent  # 2474
+  clock: 2  # 2474
+  nonce: '2474'  # 2474
+  message: "Deferred from the ADR-0039 confidence-separation implementation (thread A). R5 Stage A (delete the fictional EVIDENCE_CONFIDENCE_MATRIX + withdraw the 0.30-default MUST) is done; the §12 prose was reconciled to reality in the R5 spec-honesty PR. Stage B remains: emit a per-evidence-type base_confidence table into spec §12 as a projection of evidence_types.EVIDENCE_TYPES (the concept-axes generated-docs pattern), with a --check freshness gate so the table can't drift from the registry. Lowest-value / most-infra piece of ADR-0039; deferred rather than hand-transcribing a drift-prone table."  # 2474

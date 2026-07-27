@@ -171,6 +171,96 @@ proc main() =
         assert any("sequtils" in dst for dst in imported)
         assert any("os" in dst for dst in imported)
 
+    def test_import_edge_dst_is_well_formed(self, temp_repo: Path) -> None:
+        """INV-lumuh: the import-edge dst must be a well-formed 5-slot
+        ``{lang}:{path}:{span}:{name}:{kind}`` id with the module name in the
+        PATH slot (``parts[1]``) — not the malformed ``nim:?:{name}:module``
+        (4 slots, ``?`` path), which leaves ``module_path``/``src`` at the
+        ``<unknown>`` sentinel and makes the module invisible to
+        ``refine_frameworks`` (reads ``parts[1]``) and ``is_test_file``, so
+        jester/karax get false-demoted."""
+        (temp_repo / "main.nim").write_text("import jester\n")
+        result = analyze_nim(temp_repo)
+        import_edges = [e for e in result.edges if e.edge_type == "imports"]
+        assert len(import_edges) == 1
+        parts = import_edges[0].dst.split(":")
+        assert len(parts) == 5, import_edges[0].dst
+        assert parts[0] == "nim"
+        assert parts[1] == "jester"   # module in the path slot, not "?"
+
+
+class TestNimExportedSymbols:
+    """INV-bisom: Nim marks a public symbol with a ``*`` export postfix
+    (``proc greet*``), which the tree-sitter grammar wraps in an
+    ``exported_symbol`` node instead of exposing a bare ``identifier`` child.
+    The extractors previously looked only for a direct ``identifier``, so EVERY
+    exported proc / func / method / type was silently dropped (0/246 on the
+    filed corpus). They must be extracted AND marked ``is_exported``."""
+
+    def test_extracts_exported_proc(self, temp_repo: Path) -> None:
+        (temp_repo / "m.nim").write_text('''
+proc greet*(name: string): string =
+  result = "hi " & name
+''')
+        result = analyze_nim(temp_repo)
+        procs = [s for s in result.symbols if s.name == "greet"]
+        assert len(procs) == 1
+        assert procs[0].kind == "function"
+        assert procs[0].is_exported is True
+
+    def test_extracts_exported_func(self, temp_repo: Path) -> None:
+        (temp_repo / "m.nim").write_text('''
+func double*(n: int): int = n * 2
+''')
+        result = analyze_nim(temp_repo)
+        funcs = [s for s in result.symbols if s.name == "double"]
+        assert len(funcs) == 1
+        assert funcs[0].kind == "function"
+        assert funcs[0].is_exported is True
+
+    def test_extracts_exported_method(self, temp_repo: Path) -> None:
+        (temp_repo / "m.nim").write_text('''
+type Animal = ref object of RootObj
+  name: string
+
+method speak*(a: Animal): string =
+  result = "sound"
+''')
+        result = analyze_nim(temp_repo)
+        methods = [
+            s for s in result.symbols
+            if s.name == "speak" and s.kind == "method"
+        ]
+        assert len(methods) == 1
+        assert methods[0].is_exported is True
+
+    def test_extracts_exported_type(self, temp_repo: Path) -> None:
+        (temp_repo / "m.nim").write_text('''
+type Person* = object
+  name: string
+''')
+        result = analyze_nim(temp_repo)
+        types = [
+            s for s in result.symbols
+            if s.name == "Person" and s.kind == "type"
+        ]
+        assert len(types) == 1
+        assert types[0].is_exported is True
+
+    def test_non_exported_symbols_not_marked_exported(
+        self, temp_repo: Path,
+    ) -> None:
+        """Regression: a plain (non-``*``) proc is still extracted and is NOT
+        marked exported."""
+        (temp_repo / "m.nim").write_text('''
+proc internalHelper(x: int): int =
+  result = x + 1
+''')
+        result = analyze_nim(temp_repo)
+        procs = [s for s in result.symbols if s.name == "internalHelper"]
+        assert len(procs) == 1
+        assert procs[0].is_exported is False
+
 
 class TestNimCallResolution:
     """Tests for Nim call resolution."""
@@ -330,3 +420,66 @@ proc processText(text: string) =
         proc_calls = [e for e in call_edges if "processText" in e.src]
         # Should have at least the echo call
         assert len(proc_calls) >= 1
+
+
+class TestNimCyclomaticComplexity:
+    """INV-loguk slice C: callable Nim symbols carry non-null CC + LOC.
+    Real-grammar verification of the collision-free arm nodes (elif_branch /
+    of_branch / except_branch) + and/or short-circuit via infix_expression.
+    Note: primary if/for/while/case/try are NOT counted (keyword/named-node
+    .type collision would double-count), so CC is a conservative estimate."""
+
+    def test_branchy_proc_has_cc_and_loc(self, tmp_path: Path) -> None:
+        (tmp_path / "f.nim").write_text("""proc classify(n: int): string =
+  if n > 0 and n < 10:
+    result = "small"
+  elif n >= 10 or n == -1:
+    result = "big"
+  else:
+    result = "other"
+  case n
+  of 1:
+    echo "one"
+  of 2:
+    echo "two"
+  else:
+    echo "many"
+  try:
+    echo n
+  except ValueError:
+    echo "err"
+""")
+        result = analyze_nim(tmp_path)
+        fn = next(s for s in result.symbols
+                  if s.kind in ("function", "method") and s.name == "classify")
+        # base 1 + elif + 2 of_branch + except + and + or = 7
+        assert fn.cyclomatic_complexity == 7
+        assert fn.line_span is not None and fn.line_span >= 4
+
+    def test_straight_line_proc_cc_is_one(self, tmp_path: Path) -> None:
+        (tmp_path / "g.nim").write_text("proc g(x: int): int =\n  return x\n")
+        result = analyze_nim(tmp_path)
+        fn = next(s for s in result.symbols
+                  if s.kind in ("function", "method") and s.name == "g")
+        assert fn.cyclomatic_complexity == 1
+        assert fn.line_span is not None
+
+    def test_callables_non_null_type_null(self, tmp_path: Path) -> None:
+        (tmp_path / "m.nim").write_text("""type
+  Color = enum
+    Red, Green, Blue
+
+proc f(x: int): int =
+  if x > 0:
+    return 1
+  return 0
+""")
+        result = analyze_nim(tmp_path)
+        callables = [s for s in result.symbols if s.kind in ("function", "method")]
+        assert callables
+        for s in callables:
+            assert s.cyclomatic_complexity is not None, s.name
+            assert s.line_span is not None, s.name
+        for s in result.symbols:
+            if s.kind not in ("function", "method"):
+                assert s.cyclomatic_complexity is None, (s.kind, s.name)

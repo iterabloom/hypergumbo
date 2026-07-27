@@ -135,7 +135,7 @@ class TestLinkAnnotations:
         assert edge.confidence == 0.95
         assert edge.meta is not None
         assert edge.meta["access_mode"] == "write"
-        assert edge.meta["dest_access_mode"] == "read"
+        assert edge.meta.get("dest_access_mode") is None
         assert edge.meta["channel"] == "cursor.position"
 
     def test_no_match_different_channels(self, tmp_path: Path) -> None:
@@ -306,7 +306,11 @@ class TestLinkDispatchAnnotations:
 
         dispatch_edges = [e for e in result.edges if e.edge_type == "dispatches_to"]
         assert len(dispatch_edges) >= 1
-        assert dispatch_edges[0].meta["channel"] == "handle_join"
+        # WI-pozom: the dispatch target is the canonical edge dst, not a
+        # redundant meta.channel (which is reserved for the dataflow
+        # conduit/topic referent).
+        assert dispatch_edges[0].dst == "typescript:src/handler.ts:1-1:handle_join:function"
+        assert "channel" not in (dispatch_edges[0].meta or {})
 
     def test_dispatches_no_target_no_edge(self, tmp_path: Path) -> None:
         """@hg:dispatches with no matching symbol creates no edge."""

@@ -1,0 +1,37 @@
+- op: create  # d7f9
+  at: '2026-07-16T11:36:46Z'  # d7f9
+  by: agent  # d7f9
+  actor: jgstern_agent  # d7f9
+  clock: 1  # d7f9
+  nonce: d7f9  # d7f9
+  data:  # d7f9
+    kind: work_item  # d7f9
+    title: "Rust chained return-position dispatch (Cmd::parse().run()) unresolved — forward slice from main still misses dispatcher"  # d7f9
+    status: todo_hard  # d7f9
+    priority: 2  # d7f9
+    parent:  # d7f9
+    tags:  # d7f9
+    - dogfood  # d7f9
+    - wave5  # d7f9
+    - rust  # d7f9
+    isbefore: []  # d7f9
+    duplicate_of: []  # d7f9
+    not_duplicate_of: []  # d7f9
+    pr_ref:  # d7f9
+    description: "Rust chained return-position dispatch (`Cmd::parse().run()`) does not resolve to the receiver's method.\n\nBehavioral evidence (live analyze_rust probe, post-WI-kodap): with `impl Cmd { pub fn parse() -> Cmd {...} pub fn run(self) {...} }` and `fn main() { Cmd::parse().run(); }`, main's outgoing calls resolve to `['Add::run', 'Cmd::parse']` — the `.run()` on the value returned by `Cmd::parse()` mis-resolves to a short-name-ambiguous `Add::run` instead of `Cmd::run`. So the forward slice from main() still does not enter the correct dispatcher (`Cmd::run`), even though WI-kodap fixed the match-arm dispatch INSIDE `Cmd::run` (Cmd::run -> Query::run/Add::run now resolve).\n\nDistinct mechanism from WI-kodap (match-arm binding): this needs return-type inference on a chained associated-function call — `Cmd::parse()` returns `Cmd`, so the immediately-chained `.run()` should resolve against `Cmd`. The WI-titor `_method_return_type_registry` already infers return types for `let x = obj.method()` let-bindings; the gap is the chained (no-let) `Type::assoc_fn().method()` form. This is the residual of WI-kodap symptom #1 (main's `Cmd::parse().run()` -> external/wrong).\n\nFix shape: in the method-call resolution, when the receiver is itself a call expression `Type::assoc_fn(...)` (or `expr.method(...)`) whose return type is known from the return-type registry, resolve the outer `.method()` against that return type. Zoxide is the canonical repro (its real `main` uses `Cmd::parse().run()`)."  # d7f9
+    fields: {}  # d7f9
+- op: update  # 58c8
+  at: '2026-07-16T20:45:33Z'  # 58c8
+  by: agent  # 58c8
+  actor: jgstern_agent  # 58c8
+  clock: 2  # 58c8
+  nonce: 58c8  # 58c8
+  set:  # 58c8
+    status: done  # 58c8
+- op: discuss  # 640f
+  at: '2026-07-16T20:45:33Z'  # 640f
+  by: agent  # 640f
+  actor: jgstern_agent  # 640f
+  clock: 3  # 640f
+  nonce: 640f  # 640f
+  message: "Fixed in PR #694 (dev b6bfe4951a). Added a resolution strategy in rust.py _extract_edges_from_file: when a method call's receiver is itself a call_expression, infer its return type via the existing _infer_type_from_rust_rhs helper (Cmd::parse() -> Cmd via the associated-fn path; obj.foo() -> foo's registered return type) and resolve the outer method against Type::method in the local/global registry.\n\nBEHAVIORAL EVIDENCE (re-ran the filed repro on the zoxide subcommand shape): main's outgoing calls are now ['Cmd::parse', 'Cmd::run'] (was ['Cmd::parse', 'Add::run'] — the chained .run() mis-resolved to a short-name sibling). Forward reachability from main via calls/dispatches_to now reaches Cmd::run: True, Query::run: True, Add::run: True — i.e. TOGETHER WITH WI-kodap this closes the original zoxide symptom end-to-end (the forward slice from main() now enters the whole subcommand tree: main -> Cmd::run -> {Query::run, Add::run} via the match arms). This resolves WI-kodap's symptom #1. rust.py at 100% coverage; smart-test 1937 passed.\n\nNote: the associated-fn heuristic (_infer_type_from_rust_rhs returns the scoped PATH for Type::assoc_fn()) assumes Self-returning constructors/parsers — correct for the dominant case; a non-Self-returning associated fn could yield an extra edge (the same ADR-0006 'extra edges over missing edges' posture the let-binding path already accepts). Dropped the resolver.lookup ambiguity fallback (unlike typed_var) because a concrete inferred type qualifies its method uniquely in local/global — kept the strategy fully covered."  # 640f

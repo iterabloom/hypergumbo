@@ -26,9 +26,13 @@ Why This Design
 Assembly-Specific Considerations
 -------------------------------
 - Labels are the primary symbols (no function keyword in assembly)
-- .global directives indicate exported symbols
+- .global directives (which mark exported symbols in assembly) are not parsed;
+  all labels are treated uniformly and none is flagged as exported.
 - Call targets may be external (libc functions, syscalls)
-- Section directives (.text, .data, .bss) hint at symbol purpose
+- Indirect calls through CPU registers (e.g. `call rax`) are skipped via the
+  `_REGISTER_NAMES` set, since registers aren't function names and would
+  otherwise create false external call edges.
+- Section directives (.text, .data, .bss, .rodata) hint at symbol purpose
 """
 from __future__ import annotations
 
@@ -48,6 +52,7 @@ from hypergumbo_core.analyze.base import (
     node_text,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -179,6 +184,13 @@ class AsmAnalyzer(TreeSitterAnalyzer):
                             node, kind=kind, name=label_name,
                             file_stable_id=file_stable_id,
                         ),
+                        # INV-loguk: degenerate grammar -> base CC=1 for callable
+                        # (function-kind) labels; data/bss labels stay None.
+                        cyclomatic_complexity=(
+                            compute_cyclomatic_complexity(node, "asm")
+                            if kind == "function" else None
+                        ),
+                        line_span=(end_line - start_line + 1) if kind == "function" else None,
                     )
                     analysis.symbols.append(sym)
                     analysis.node_for_symbol[sym.id] = node

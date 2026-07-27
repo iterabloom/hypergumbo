@@ -51,3 +51,25 @@
   clock: 5  # 1028
   nonce: '1028'  # 1028
   message: "[+ tranch_04: WI-dazob — related (card 020/F68.A3): explain ALSO silently degrades on stripped/renamed substrate fields (drops Supply-chain line, prints unknown edge type verbatim, no field-presence/unknown-type guard) and lacks a registry-backed friendly edge-type label table (F80.A1) — a distinct explain-renderer defect from this heading-partition breach.]"  # 1028
+- op: discuss  # a18f
+  at: '2026-06-25T08:40:22Z'  # a18f
+  by: agent  # a18f
+  actor: jgstern_agent  # a18f
+  clock: 6  # a18f
+  nonce: a18f  # a18f
+  message: "Scoped + verified: reproduces. Two issues in cli.py explain: (1) _print_edge_provenance (~1948-1955) returns early when derived_from is empty — and only linker-produced edges populate derived_from, so analyzer edges show nothing for --provenance; (2) section-header semantics. DECISION NEEDED: for (1) add-a-notice vs extend-derived_from-to-all-edges (structural) vs doc-update; for (2) partition-by-edge-type (verbose) vs rename to Incoming/Outgoing. Awaiting your contract-shape call."  # a18f
+- op: update  # cd82
+  at: '2026-06-25T21:22:24Z'  # cd82
+  by: agent  # cd82
+  actor: jgstern_agent  # cd82
+  clock: 7  # cd82
+  nonce: cd82  # cd82
+  set:  # cd82
+    status: satisfied  # cd82
+- op: discuss  # 6511
+  at: '2026-06-25T21:22:25Z'  # 6511
+  by: agent  # 6511
+  actor: jgstern_agent  # 6511
+  clock: 8  # 6511
+  nonce: '6511'  # 6511
+  message: "Implemented in commit c4b9680f8f (origin/dev) per cli-output:F3. Behavioral evidence — live repro on a Span symbol with a calls-caller + an instantiates-caller: explain output now shows separate 'Called by (1)' AND 'Instantiated by (1)' sections, NO conflated 'Called by (2)', and with --provenance the chainless edges show '(no derivation chain - analyzer-produced edge)' (was: byte-identical to no-flag). FIX 1 (provenance visible): _print_edge_provenance prints a marker instead of returning silently on empty derived_from — flag is never invisible now; recording derived_from on every edge stays deferred to declared-fields:F5. FIX 2 (section semantics): _render_explain_edge_sections partitions each direction by edge TYPE with relationship-accurate labels (Called by=calls only; Instantiated by=instantiates; Contained by=contains; unmapped->Incoming '<type>' fallback), so a section's count matches its entries. Production-path tests: test_cli_explain.py::{test_cmd_explain_sections_partition_by_edge_type (per-type + no-conflation + fallback), test_cmd_explain_provenance_no_derived_from (marker visible)}; the edge-type-annotation test updated to read the section header. 100% coverage; full affected suite 10859 passed. INV-rarol was the last cli-output-contract P1 from this thread."  # 6511

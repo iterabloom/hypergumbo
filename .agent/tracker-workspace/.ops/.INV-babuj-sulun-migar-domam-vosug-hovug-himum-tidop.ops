@@ -69,3 +69,18 @@
     tags: [dogfood]  # e331
   remove:  # e331
     tags: [dogfooding]  # e331
+- op: update  # 3f48
+  at: '2026-06-30T23:25:00Z'  # 3f48
+  by: agent  # 3f48
+  actor: jgstern_agent  # 3f48
+  clock: 7  # 3f48
+  nonce: 3f48  # 3f48
+  set:  # 3f48
+    status: satisfied  # 3f48
+- op: discuss  # 2806
+  at: '2026-06-30T23:25:00Z'  # 2806
+  by: agent  # 2806
+  actor: jgstern_agent  # 2806
+  clock: 8  # 2806
+  nonce: '2806'  # 2806
+  message: "Satisfied in PR merged to dev @855181018b (commit 5ee5eaabad). The general YAML analyzer (hypergumbo_lang_mainstream.yaml, @register_analyzer('yaml', languages=['yaml'])) now emits one kind='file' anchor per generic .yaml/.yml file. BEHAVIORAL EVIDENCE (live editable self-analysis, production path): 'hypergumbo run .' now produces 173 language='yaml' nodes, ALL kind='file' (was 0 — premise was 'yaml analyzer produces 0 path-bearing nodes despite 174 yaml files'). The 174th file (.yamllint.yaml) is the lone Ansible-claimed one (language='ansible' via yaml_ansible), so 173+1 = full coverage. Sample anchored path: docs/hypergumbo-self-catalog/add_extras_sources.yaml (repo-relative — orchestrator normalizes the analyzer's str(path)). RULING (§A): file-anchor nodes ONLY — no per-key/per-document nodes (verified by test_file_anchor_only_no_per_key_nodes: a multi-key/multi-section YAML yields exactly 1 file symbol). Coexistence with yaml_ansible: make_file_id is language-keyed so this analyzer subtracts find_ansible_files(root) to keep INV-hojus one-file-node-per-file. 'yaml' auto-registers into all_known_languages (derived from analyzer languages= kwargs). yaml.py 100% coverage; full smart-test 10175 passed. Structural note: markdown/css/just/mermaid also lack content analyzers (same INV-nanon sub-pattern) — out of scope for this YAML-specific item, noted for follow-up."  # 2806

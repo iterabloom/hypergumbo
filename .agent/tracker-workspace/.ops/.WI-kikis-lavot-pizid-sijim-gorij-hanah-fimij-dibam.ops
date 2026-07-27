@@ -30,3 +30,18 @@
     tags: [dogfood_tranche_03]  # 1730
   remove:  # 1730
     tags: [dogfood_tranch_03]  # 1730
+- op: update  # b16c
+  at: '2026-07-21T23:05:47Z'  # b16c
+  by: agent  # b16c
+  actor: jgstern_agent  # b16c
+  clock: 3  # b16c
+  nonce: b16c  # b16c
+  set:  # b16c
+    status: done  # b16c
+- op: discuss  # 8cff
+  at: '2026-07-21T23:05:47Z'  # 8cff
+  by: agent  # 8cff
+  actor: jgstern_agent  # 8cff
+  clock: 4  # 8cff
+  nonce: 8cff  # 8cff
+  message: "Closed by PR merged as dev 02de40d84b (WI-kikis). Root cause: verify_taint_claim rendered violated-claim `details` as bare `<source_primitive> -> <sink_primitive>` pairs for violations[:5] with NO dedup and NO symbol/line/edge/path identity, so at high counts (the filed 3,969/939/619/14-flow self-corpus claims) the shown rows were verbatim duplicates hiding 99.87% of evidence. Fix: (a) dedup on full per-flow identity (source/sink symbol + primitive + call-graph path); (b) render each shown row with its source/sink symbol IDs + `via N hop(s)`; (c) disclose honest total-vs-distinct count; (d) attach a bounded (<=100 distinct) structured `evidence` array to --format json for programmatic triage at scale. VERIFY_CLAIMS_SCHEMA_VERSION 1.0->1.1. Spec verdict table + CHANGELOG updated.\n\nBEHAVIORAL EVIDENCE (closure-evidence discipline): 8 new production-path tests in test_verify_claims.py::TestViolatedFlowEvidence exercise the EXACT production function verify_taint_claim on the filed symptom and assert the fixed behavior — test_verbatim_duplicate_flows_collapse (>5 flows: dedup + 'N distinct' disclosure), test_structured_evidence_is_bounded (>100 flows: cap), test_details_row_carries_symbol_ids, test_identical_primitive_rows_distinguished_by_symbol (the exact 'cmd_run -> replace' x5 repro), test_path_hops_shown_in_details, test_structured_evidence_has_drilldown_keys, test_to_dict_includes_evidence. 100% coverage on verify_claims.py; CLI JSON-envelope serialization covered by the passing test_cli_verify_claims suite (35). These test the symptom mechanism at the real code path (not a proxy). NOTE: I did not run the full self-corpus verify-claims survey as the live repro because the self-claims in docs/hypergumbo.claims.yaml are designed to be CONFIRMED (they assert safety properties that hold), so it would most likely show zero violated claims — demonstrating nothing about the enrichment while busting the analysis cache. The production-path tests reproduce and fix the filed >5-flow collapse directly and count-independently."  # 8cff

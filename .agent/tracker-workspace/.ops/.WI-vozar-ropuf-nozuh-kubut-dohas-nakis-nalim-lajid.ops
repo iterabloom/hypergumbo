@@ -40,3 +40,18 @@
   clock: 4  # 3052
   nonce: '3052'  # 3052
   message: "2026-06-10 design-interview ruling (ADR-0040, merged in PR #4181): evidence_spans (along with meta.evidence[]) is descoped — re-introduction requires both a real consumer and a central producer. This item resolves by removing the dead field, not by populating it. Waits on the descope implementation."  # 3052
+- op: update  # 6b0c
+  at: '2026-07-11T07:23:43Z'  # 6b0c
+  by: agent  # 6b0c
+  actor: jgstern_agent  # 6b0c
+  clock: 5  # 6b0c
+  nonce: 6b0c  # 6b0c
+  set:  # 6b0c
+    status: done  # 6b0c
+- op: discuss  # 706e
+  at: '2026-07-11T07:23:43Z'  # 706e
+  by: agent  # 706e
+  actor: jgstern_agent  # 706e
+  clock: 6  # 706e
+  nonce: 706e  # 706e
+  message: "Removed Edge.evidence_spans per ADR-0040 (Accepted, D10) — PR merged as f59a286b09. Root cause: evidence_spans was declared on Edge but populated by ZERO production producers (0/110533 edges; grep confirms no evidence_spans= kwarg outside ir.py/schema-gen-sample/tests, and no consumer reads it) — its prior done-status was met only by a constructor round-trip test (test_edge_has_evidence_spans), not real population. ADR-0040 rules DESCOPE. Removed every site: the Edge dataclass field, Edge.create param, cls() arg, to_dict emission branch, from_dict read (ir.py), the schema-generator sample kwarg + folded-map entry + composites sub-property + the 'including evidence' description (generate_schema_lib.py -> regenerated docs/schema.json + docs/ARCHITECTURE.md), the two spec surfaces (docs/hypergumbo-spec.md meta-evidence prose + evidence_spans[] bullet + the stale required-field-presence done-marker), and the test kwarg sites. BEHAVIORAL EVIDENCE: test_ir.py::test_edge_has_no_evidence_spans_field asserts 'evidence_spans' not in dataclasses.fields(Edge) AND that Edge.create(evidence_spans=...) raises TypeError (kwarg rejected, so a stale writer can't reintroduce it); test_ir.py::test_to_dict_meta_has_no_evidence_spans asserts it is absent from serialized meta; test_schema.py::test_edge_meta_has_no_evidence_spans_property asserts the published schema dropped the Edge.meta.evidence_spans sub-property. No SCHEMA_VERSION bump (the serializer emitted it only when non-None, and it never was — byte-invisible on every artifact ever produced; removing a non-required meta sub-key is backward-compatible). 100% coverage."  # 706e

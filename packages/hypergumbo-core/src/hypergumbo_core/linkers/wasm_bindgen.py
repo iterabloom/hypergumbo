@@ -1,13 +1,16 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Bridge linker: wasm_bindgen for connecting JS/TS imports to Rust #[wasm_bindgen] exports.
 
-This linker creates wasm_bridge edges between JavaScript/TypeScript code that
-imports functions from wasm-pack-generated packages and the Rust functions
-annotated with ``#[wasm_bindgen]``.
+This linker creates ``calls`` edges (tagged ``meta.bridge_kind="wasm"``)
+between JavaScript/TypeScript code that imports functions from
+wasm-pack-generated packages and the Rust functions annotated with
+``#[wasm_bindgen]``. (The bespoke ``wasm_bridge`` edge type was folded onto
+the canonical ``calls`` per the audit-findings 0002 relationship-axis
+consolidation.)
 
 How It Works
 ------------
-Two-phase detection:
+Three-phase detection:
 
 1. **Rust side**: Iterates all Rust symbols to find functions with
    ``#[wasm_bindgen]`` in their ``meta.annotations``. Builds an export map
@@ -23,8 +26,15 @@ Two-phase detection:
    - Aliased imports: ``import { func as alias }`` extracts ``func``
    - Filters out ``import type { ... }`` (TypeScript type-only imports)
 
-After building both maps, the linker creates wasm_bridge edges from synthetic
-JS/TS-side sources to the matching Rust wasm_bindgen functions.
+3. **Dynamic WASM loading**: Scans JS/TS for ``WebAssembly.instantiate`` /
+   ``instantiateStreaming``, ``.wasm`` URL imports, and Emscripten ``Module()``
+   patterns, creating synthetic ``kind="module"`` WASM nodes
+   (``meta.compilation_target="wasm"``) and ``imports`` edges from the JS file
+   to them.
+
+After building both maps, the linker creates ``calls`` edges
+(``meta.bridge_kind="wasm"``) from synthetic JS/TS-side sources to the
+matching Rust wasm_bindgen functions.
 
 Why This Design
 ---------------
@@ -277,10 +287,12 @@ def link_wasm_bindgen(
                         "wasm_export": import_name,
                         "compilation_target": "wasm",
                     },
-                    # Tier 2 prevents _classify_symbols from reclassifying
-                    # based on the host file path (e.g., generated pkg/ files
-                    # detected as "minified/generated" → tier 4 → filtered out).
-                    supply_chain_tier=2,
+                    # INV-bonup / ADR-0041 §1: NO supply_chain_tier stamp — this
+                    # node used to borrow tier 2 purely to make _classify_symbols
+                    # skip host-path reclassification (e.g. generated pkg/ files →
+                    # tier 4 → filtered out), leaking a skip mechanism into the
+                    # distance axis. The skip now keys on this node's protocol_origin
+                    # marker, so it keeps its honest first-party default distance.
                     supply_chain_reason="synthetic WASM bridge node",
                 ))
 
@@ -295,8 +307,7 @@ def link_wasm_bindgen(
                 origin=PASS_ID,
                 origin_run_id=run.execution_id,
                 evidence_type="ast_import",
-                access_mode="write",
-                dest_access_mode="read",
+                data_direction="src_to_dst",
                 meta={"bridge_kind": "wasm", "framework_dispatch": "wasm_bindgen_import"},
                 derived_from=[src_id, target_sym.id],
             ))
@@ -364,11 +375,12 @@ def _create_wasm_load_edges(
     ts_js_symbols: list[Symbol],
     run: AnalysisRun,
 ) -> tuple[list[Edge], list[Symbol]]:
-    """Create wasm_load edges for dynamic WASM loading patterns.
+    """Create ``imports`` edges for dynamic WASM loading patterns.
 
     Scans JS/TS files for WebAssembly.instantiate, URL imports of .wasm files,
     and Emscripten Module patterns. Creates synthetic WASM module symbols and
-    wasm_load edges from the JS file to the WASM module.
+    ``imports`` edges (``meta.compilation_target="wasm"``) from the JS file to
+    the WASM module.
     """
     edges: list[Edge] = []
     symbols: list[Symbol] = []
@@ -417,7 +429,6 @@ def _create_wasm_load_edges(
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     meta={"compilation_target": "wasm"},
-                    supply_chain_tier=2,
                     supply_chain_reason="WASM module loaded dynamically",
                 ))
 

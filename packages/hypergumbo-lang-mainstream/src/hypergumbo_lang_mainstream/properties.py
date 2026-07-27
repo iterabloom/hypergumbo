@@ -43,6 +43,7 @@ from hypergumbo_core.analyze.base import (
     FileAnalysis,
     TreeSitterAnalyzer,
     iter_tree,
+    make_doc_stable_id,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 
@@ -156,7 +157,13 @@ def _extract_property_symbols(
 
         symbol = Symbol(
             id=symbol_id,
-            stable_id=symbol_id,
+            # WI-banod: canonical sha256:<16hex> stable_id via the shared doc
+            # factory (node.id stays the composite key; the span fold also
+            # distinguishes same-named properties on different lines).
+            stable_id=make_doc_stable_id(
+                "properties", str(rel_path), "property", key,
+                span.start_line, span.end_line,
+            ),
             name=key,
             kind="property",
             language="properties",

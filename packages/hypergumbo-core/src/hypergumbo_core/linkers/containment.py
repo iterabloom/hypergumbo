@@ -10,9 +10,11 @@ orphan rates and hides hierarchical structure from slice traversal.
 
 How It Works
 ------------
-Three phases, tried in order of decreasing confidence:
+Three phases, tried in order of precedence:
 
-**Phase 1 — Naming convention** (confidence=1.0):
+**Phase 1 — Naming convention** (confidence=0.85, ADR-0039-derived from the
+``naming_convention`` evidence seed — a name-parse heuristic, so BELOW the
+structurally-certain span_overlap 0.90):
 Extracts the parent name from the symbol's ``name`` field using
 language-specific separators (``.``, ``#``, ``::``).  For example,
 ``User.save`` → parent ``User``.
@@ -60,7 +62,7 @@ from ..ir import PASS_VERSION, AnalysisRun, Edge, make_pass_id
 from .registry import LinkerContext, LinkerResult, register_linker
 
 if TYPE_CHECKING:
-    from ..ir import Symbol
+    from ..ir import Span, Symbol
 
 PASS_ID = make_pass_id("containment-linker")
 
@@ -80,7 +82,42 @@ PASS_ID = make_pass_id("containment-linker")
 # synthetic-node names lack class-qualifier separators, so the
 # parent-extraction step in :func:`link_containment` skips them
 # before kind matters).
-CONTAINABLE_KINDS = frozenset({"method", "getter", "setter", "message"})
+#
+# dispatch:F4 (INV-pohik de-orphan): ``function`` and ``variable`` are
+# graph-structural members of their enclosing file/module. They are reached
+# almost entirely through Phase-2 span_overlap — a top-level ``def`` or module
+# ``var`` carries a bare name, so Phase-1 naming-convention cannot match it —
+# attaching them to the ``kind="file"`` anchor that encloses their span
+# (file-anchor:F1) so the file's ``contains`` tree is rooted at its top-level
+# members and ``slice`` can expand "this file's symbols". A *dotted* function
+# name (e.g. the JS ``userController.createUser`` route-handler idiom) can still
+# match a same-file container via Phase 1 — that is accepted: the dotted name
+# genuinely qualifies a real container when one exists in the file, and no edge
+# is emitted when none does. The dead-code reachability BFS does NOT traverse
+# ``contains`` (it follows calls/dispatches_to/wraps), so this de-orphaning
+# does not move the dead-code-maybe false-positive rate.
+CONTAINABLE_KINDS = frozenset(
+    # WI-zajaz: ``field`` (class-body attributes, emitted with dotted names like
+    # ``Widget.size`` by emission-parity F5) roots at its class exactly like
+    # ``method`` — without it, 1862 real field symbols (99.6% of them) were
+    # orphans on self-analysis. The dead-code BFS does not traverse ``contains``
+    # (see the module note above), so this de-orphaning does not move the
+    # dead-code-maybe FP rate; it only gives fields their class-containment edge.
+    #
+    # WI-fokag: ``subscript`` (Swift subscript members, emitted with dotted names
+    # like ``JSON.subscript(key:)`` — the parenthesized ``(key:)`` suffix carries
+    # no name separator, so parent-name extraction already yields ``JSON``) roots
+    # at its enclosing type exactly like ``method``. Without it, correctly-named
+    # struct-body subscripts had 0 ``contains`` edges (verified on SwiftyJSON
+    # post-#689: the JSON struct contained its field/method members but not its
+    # subscripts, leaving the flagship ``json[...]`` accessors looking like
+    # orphaned members of the central type). Like ``field`` above, this is a
+    # graph-completeness fix — the dead-code BFS does not traverse ``contains``,
+    # so it does not move the dead-code-maybe FP rate. (The separate gap where a
+    # ``json["key"]`` subscript-CALL site does not resolve to the subscript node
+    # is a Swift-analyzer resolution facet, out of scope here.)
+    {"method", "getter", "setter", "message", "function", "variable", "field", "subscript"}
+)
 
 # Symbol kinds that can "contain" other symbols.
 # Includes struct/trait/enum for Rust (and Go/C/Zig structs),
@@ -95,6 +132,15 @@ CONTAINABLE_KINDS = frozenset({"method", "getter", "setter", "message"})
 CONTAINER_KINDS = frozenset({
     "class", "interface", "struct", "trait", "enum", "module",
     "message",
+    # WI-sakug: language-construct container kinds the WI-jusus field-emission
+    # tail produces for a field's enclosing type — solidity `contract`/`library`,
+    # nim/others `type`, scala `object`, D `union`. Without these the container
+    # was never indexed into container_by_name, so dotted-name fields
+    # (`Token.totalSupply` → `Token`) found no owner and stayed orphaned
+    # (solidity 0% rooted, nim 8%, scala 69%, D 78%). All five are registered
+    # SYMBOL_KINDS; `_find_parent`'s same-language + same-file/unique gate bounds
+    # false positives for the widely-emitted `type` kind.
+    "contract", "library", "type", "object", "union",
     # INV-hojus: file-kind Symbols are the canonical file representation
     # (orchestrator synthesis + py.py for Python with module-level code,
     # js_module linker for TS, etc.). Including them here lets Phase 2's
@@ -140,12 +186,17 @@ def _find_parent(
     child_path: str,
     container_by_name: dict[str, list[Symbol]],
     child_language: str | None = None,
+    child_span: Span | None = None,
 ) -> Symbol | None:
     """Find the best parent container for a given parent name.
 
     When multiple containers share a name (e.g., Django's 238 Model classes),
     uses a priority cascade:
-      1. Same file (most specific, always correct)
+      1. Same file (most specific). When more than one same-name container
+         lives in the child's file, disambiguate by SPAN — the true parent is
+         the one whose span encloses the child (tightest wins). If none
+         encloses the child, the naming match is to the wrong same-name class,
+         so refuse rather than emit a provably-false containment (WI-vakuh).
       2. Same language, different file (structural match)
       3. No match (returns None — prevents cross-language false positives)
 
@@ -163,9 +214,30 @@ def _find_parent(
         return candidates[0]
 
     # Priority 1: same file
-    for c in candidates:
-        if c.path == child_path:
-            return c
+    same_file = [c for c in candidates if c.path == child_path]
+    if len(same_file) == 1:
+        return same_file[0]
+    if len(same_file) > 1:
+        # Multiple same-name containers in one file (e.g. a real class plus a
+        # same-named test stub). The first-match heuristic could bind a method
+        # to the wrong class, whose span does not even enclose it. Disambiguate
+        # by span: pick the enclosing container, tightest first.
+        if child_span is not None:
+            enclosing = [
+                (c.span.end_line - c.span.start_line, c)
+                for c in same_file
+                if c.span is not None
+                and c.span.start_line <= child_span.start_line
+                and child_span.end_line <= c.span.end_line
+            ]
+            if enclosing:
+                return min(enclosing, key=lambda item: item[0])[1]
+            # No same-name container in this file encloses the child → the
+            # name match is to the wrong class; refuse (Phase 2 span_overlap
+            # only serves unqualified names, so this yields no edge here).
+            return None
+        # No span to disambiguate with: preserve the legacy first-match.
+        return same_file[0]
 
     # Priority 2: same language (any file)
     if child_language:
@@ -245,6 +317,7 @@ def link_containment(ctx: LinkerContext) -> LinkerResult:
 
         parent_sym = _find_parent(
             parent_name, sym.path, container_by_name, sym.language,
+            child_span=sym.span,
         )
         if parent_sym is None:
             continue
@@ -263,7 +336,10 @@ def link_containment(ctx: LinkerContext) -> LinkerResult:
             dst=sym.id,
             edge_type="contains",
             line=sym.span.start_line if sym.span else 0,
-            confidence=1.0,
+            # ADR-0039 R1: derive from the naming_convention registry seed
+            # (0.85 — below the certain span_overlap 0.90) instead of the old
+            # hardcoded 1.0 that breached the 0.95 band ceiling and inverted
+            # reliability vs span_overlap (WI-vakuh / WI-lutad).
             origin=PASS_ID,
             origin_run_id=run.execution_id,
             evidence_type="naming_convention",
@@ -294,6 +370,7 @@ def link_containment(ctx: LinkerContext) -> LinkerResult:
 
         parent_sym = _find_parent(
             parent_name, sym.path, container_by_name, sym.language,
+            child_span=sym.span,
         )
         if parent_sym is None:
             continue

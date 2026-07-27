@@ -61,6 +61,7 @@ from hypergumbo_core.analyze.base import (
     node_text,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -68,6 +69,12 @@ if TYPE_CHECKING:
     from hypergumbo_core.symbol_resolution import NameResolver
 
 PASS_ID = make_pass_id("clojure")
+
+# INV-loguk: Clojure callable kinds get non-null cyclomatic_complexity /
+# line_span via the homoiconic head-symbol walker. Non-callable def forms
+# (variable/protocol/record/type/multimethod) and the ns ``module`` symbol
+# share the emit site and stay None.
+_CLOJURE_CALLABLE_KINDS: frozenset[str] = frozenset({"function", "macro", "method"})
 
 
 def find_clojure_files(repo_root: Path) -> Iterator[Path]:
@@ -212,6 +219,7 @@ def _extract_symbols_from_file(
                         if kind == "function":
                             signature = _extract_clojure_signature(node, source)
 
+                        is_callable = kind in _CLOJURE_CALLABLE_KINDS
                         symbols.append(Symbol(
                             id=sym_id,
                             name=def_name,
@@ -223,6 +231,13 @@ def _extract_symbols_from_file(
                             origin_run_id=run_id,
                             signature=signature,
                             meta={"visibility": visibility} if visibility == "private" else None,
+                            cyclomatic_complexity=(
+                                compute_cyclomatic_complexity(node, "clojure")
+                                if is_callable else None
+                            ),
+                            line_span=(
+                                end_line - start_line + 1 if is_callable else None
+                            ),
                         ))
 
     return symbols
@@ -362,7 +377,6 @@ def _extract_edges_from_file(
                                                     origin=PASS_ID,
                                                     origin_run_id=run_id,
                                                     evidence_type="require",
-                                                    confidence=0.95,
                                                 )
                                                 edges.append(edge)
                                         elif req.type == "sym_lit":
@@ -377,7 +391,6 @@ def _extract_edges_from_file(
                                                 origin=PASS_ID,
                                                 origin_run_id=run_id,
                                                 evidence_type="require",
-                                                confidence=0.95,
                                             )
                                             edges.append(edge)
 

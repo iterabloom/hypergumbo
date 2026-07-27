@@ -10,7 +10,7 @@ from hypergumbo_lang_mainstream.py import (
     _module_name_from_path,
     _resolve_relative_import,
     _compute_cyclomatic_complexity,
-    _compute_lines_of_code,
+    _compute_line_span,
 )
 import ast
 
@@ -28,9 +28,10 @@ def test_run_detects_python_function(tmp_path: Path) -> None:
     # Load results
     data = json.loads(out_path.read_text())
 
-    # Expect a node in the output
-    assert len(data["nodes"]) == 1
-    node = data["nodes"][0]
+    # Expect the content node (WI-dagif file anchor filtered out)
+    content = [n for n in data["nodes"] if n["kind"] != "file"]
+    assert len(content) == 1
+    node = content[0]
     assert node["name"] == "greet"
     assert node["kind"] == "function"
     assert node["language"] == "python"
@@ -53,8 +54,9 @@ def test_run_skips_syntax_error_files(tmp_path: Path) -> None:
 
     # Should still find the good function
     data = json.loads(out_path.read_text())
-    assert len(data["nodes"]) == 1
-    assert data["nodes"][0]["name"] == "works"
+    content = [n for n in data["nodes"] if n["kind"] != "file"]
+    assert len(content) == 1
+    assert content[0]["name"] == "works"
 
     # INV-buhur: the dropped file MUST be recorded in limits.failed_files so
     # consumers can detect partially-analyzed repos.
@@ -81,8 +83,9 @@ def test_run_skips_unicode_error_files(tmp_path: Path) -> None:
 
     # Should still find the good function
     data = json.loads(out_path.read_text())
-    assert len(data["nodes"]) == 1
-    assert data["nodes"][0]["name"] == "works"
+    content = [n for n in data["nodes"] if n["kind"] != "file"]
+    assert len(content) == 1
+    assert content[0]["name"] == "works"
 
     # INV-buhur: the dropped UTF-8 file MUST be recorded in failed_files.
     failed = data["limits"]["failed_files"]
@@ -132,8 +135,9 @@ def test_run_skips_unreadable_permission_error_file(
 
     # The readable file is still analyzed; the run did not abort.
     data = json.loads(out_path.read_text())
-    assert len(data["nodes"]) == 1
-    assert data["nodes"][0]["name"] == "works"
+    content = [n for n in data["nodes"] if n["kind"] != "file"]
+    assert len(content) == 1
+    assert content[0]["name"] == "works"
 
     # §17: the unreadable file is recorded in limits.failed_files with the
     # PermissionError reason so consumers can detect the partial analysis.
@@ -159,11 +163,13 @@ def test_run_analyzes_bom_prefixed_python_file(tmp_path: Path) -> None:
     run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
-    assert len(data["nodes"]) == 1
-    assert data["nodes"][0]["name"] == "boom"
-    assert data["nodes"][0]["kind"] == "function"
-    # And the file must not be recorded as failed.
-    assert data["limits"]["failed_files"] == []
+    content = [n for n in data["nodes"] if n["kind"] != "file"]
+    assert len(content) == 1
+    assert content[0]["name"] == "boom"
+    assert content[0]["kind"] == "function"
+    # And the file must not be recorded as failed (INV-virik: an empty
+    # failed_files list is omitted, so its absence means "no failures").
+    assert "failed_files" not in data["limits"]
 
 
 def test_run_detects_python_class(tmp_path: Path) -> None:
@@ -179,9 +185,10 @@ def test_run_detects_python_class(tmp_path: Path) -> None:
     # Load results
     data = json.loads(out_path.read_text())
 
-    # Expect a class node in the output
-    assert len(data["nodes"]) == 1
-    node = data["nodes"][0]
+    # Expect a class node in the output (WI-dagif file anchor filtered out)
+    content = [n for n in data["nodes"] if n["kind"] != "file"]
+    assert len(content) == 1
+    node = content[0]
     assert node["name"] == "User"
     assert node["kind"] == "class"
     assert node["language"] == "python"
@@ -207,12 +214,16 @@ def test_run_detects_call_edges(tmp_path: Path) -> None:
     # Load results
     data = json.loads(out_path.read_text())
 
-    # Should have two function nodes
-    assert len(data["nodes"]) == 2
+    # Should have two function nodes (WI-dagif file anchor filtered out)
+    content = [n for n in data["nodes"] if n["kind"] != "file"]
+    assert len(content) == 2
 
-    # Should have one edge showing main calls helper
-    assert len(data["edges"]) == 1
-    edge = data["edges"][0]
+    # Should have one calls edge showing main calls helper. (The containment
+    # linker also roots top-level members at the file anchor, so filter to
+    # `calls` rather than asserting the total edge count.)
+    call_edges = [e for e in data["edges"] if e["type"] == "calls"]
+    assert len(call_edges) == 1
+    edge = call_edges[0]
     assert edge["type"] == "calls"
     assert "main" in edge["src"]
     assert "helper" in edge["dst"]
@@ -338,6 +349,479 @@ def test_run_detects_module_import_edges(tmp_path: Path) -> None:
     import_edge = import_edges[0]
     assert import_edge["src"] == "python:main.py:1-1:file:file"
     assert "os" in import_edge["dst"]
+
+
+def _build_nuzas_monorepo(root: Path) -> None:
+    """supply:F4 fixture — a two-package monorepo where ``apipkg`` imports the
+    sibling ``authpkg`` via the bare module name (src-layout, workspace siblings).
+
+    Mirrors the hypergumbo monorepo shape that INV-nuzas was filed against:
+    ``packages/<pkg>/src/<import_name>/``.
+    """
+    auth = root / "packages" / "auth" / "src" / "authpkg"
+    api = root / "packages" / "api" / "src" / "apipkg"
+    auth.mkdir(parents=True)
+    api.mkdir(parents=True)
+    (root / "packages" / "auth" / "pyproject.toml").write_text(
+        '[project]\nname = "authpkg"\nversion = "0.1.0"\n'
+    )
+    (root / "packages" / "api" / "pyproject.toml").write_text(
+        '[project]\nname = "apipkg"\nversion = "0.1.0"\ndependencies = ["authpkg"]\n'
+    )
+    (auth / "__init__.py").write_text("from .models import User\n")
+    (auth / "models.py").write_text("class User:\n    pass\n")
+    (auth / "helpers.py").write_text("def hash_pw(p):\n    return p\n")
+
+
+def test_run_import_submodule_resolves_to_in_tree_file_node(tmp_path: Path) -> None:
+    """supply:F4 / INV-nuzas Gap A: a bare ``import authpkg.helpers`` of an
+    in-tree workspace-sibling module must resolve to the real first-party file
+    node, not collapse to an ``external_symbol`` boundary node.
+
+    Before F4, ``ast.Import`` did no symbol lookup at all — every ``import X``
+    dst was an unconditional ExternalRef, so workspace siblings became phantom
+    tier-3 externals with ``path='<external>'``.
+    """
+    _build_nuzas_monorepo(tmp_path)
+    (tmp_path / "packages" / "api" / "src" / "apipkg" / "h.py").write_text(
+        "import authpkg.helpers\n"
+    )
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+    data = json.loads(out_path.read_text())
+
+    import_edges = [e for e in data["edges"] if e["type"] == "imports"]
+    helpers_imports = [e for e in import_edges if e["src"].endswith("apipkg/h.py:1-1:file:file")]
+    assert len(helpers_imports) == 1, f"expected one import edge, got {helpers_imports}"
+    edge = helpers_imports[0]
+    assert edge["dst"] == "python:packages/auth/src/authpkg/helpers.py:1-1:file:file", (
+        f"import authpkg.helpers must resolve to the in-tree file node, got {edge['dst']}"
+    )
+    assert edge["is_resolved"] is True
+    assert edge.get("dst_ref") is None
+    # No phantom external twin for the workspace sibling.
+    ext_ids = [n["id"] for n in data["nodes"] if n["kind"] == "external_symbol"]
+    assert not any("authpkg" in i for i in ext_ids), (
+        f"workspace sibling must not appear as an external_symbol, got {ext_ids}"
+    )
+
+
+def test_run_from_import_submodule_resolves_to_in_tree_file_node(tmp_path: Path) -> None:
+    """supply:F4 / INV-nuzas Gap B: ``from authpkg import helpers`` where
+    ``helpers`` is a SUBMODULE (not a symbol re-exported from ``__init__``) must
+    resolve to the submodule's file node.
+
+    Before F4 the symbol lookup for ``helpers`` in ``authpkg`` failed and the
+    edge dangled to ``python:authpkg:0-0:helpers:unresolved`` → external.
+    """
+    _build_nuzas_monorepo(tmp_path)
+    (tmp_path / "packages" / "api" / "src" / "apipkg" / "h.py").write_text(
+        "from authpkg import helpers\n"
+    )
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+    data = json.loads(out_path.read_text())
+
+    import_edges = [e for e in data["edges"] if e["type"] == "imports"]
+    sub = [e for e in import_edges if e["src"].endswith("apipkg/h.py:1-1:file:file")]
+    assert len(sub) == 1, f"expected one import edge, got {sub}"
+    assert sub[0]["dst"] == "python:packages/auth/src/authpkg/helpers.py:1-1:file:file", (
+        f"from authpkg import helpers must resolve to the submodule file node, got {sub[0]['dst']}"
+    )
+    assert sub[0]["is_resolved"] is True
+
+
+def test_run_workspace_sibling_import_is_first_party_not_external(
+    tmp_path: Path,
+) -> None:
+    """supply:F4 / INV-nuzas behavioral closure: workspace-sibling imports tier
+    as first_party (their resolved file nodes) and genuine third-party imports
+    (``os``) still tier as external. No ``external_symbol`` node carries an
+    in-tree package prefix.
+    """
+    _build_nuzas_monorepo(tmp_path)
+    (tmp_path / "packages" / "api" / "src" / "apipkg" / "h.py").write_text(
+        "import os\n"
+        "import authpkg.helpers\n"
+        "from authpkg import helpers\n"
+        "from authpkg import User\n"
+    )
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+    data = json.loads(out_path.read_text())
+
+    nodes_by_id = {n["id"]: n for n in data["nodes"]}
+    # The resolved authpkg.helpers file node is first_party.
+    helpers_node = nodes_by_id.get("python:packages/auth/src/authpkg/helpers.py:1-1:file:file")
+    assert helpers_node is not None
+    assert helpers_node["supply_chain"]["tier_name"] == "first_party"
+
+    ext_ids = [n["id"] for n in data["nodes"] if n["kind"] == "external_symbol"]
+    # os stays external; no in-tree prefix leaks into the external set.
+    assert any("os" in i for i in ext_ids), f"third-party os should stay external: {ext_ids}"
+    assert not any("authpkg" in i for i in ext_ids), (
+        f"no workspace prefix may appear as external_symbol: {ext_ids}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# WI-jubag: extends edges to EXTERNAL bases must be emitted (not dropped).
+# The relationship-edge producer previously emitted an ``extends`` edge only when
+# the base resolved to a first-party class; external/stdlib bases (``Enum``,
+# ``Exception``, ...) yielded ``base_sym is None`` and the loop dropped them —
+# so 24.8% of base-bearing Python classes appeared base-less BY OMISSION. This
+# slice adds the unresolved-external fallback (mirroring the landed JS/TS A2
+# change, WI-dutov) for from-imported and builtin bases, with an in-tree guard
+# that keeps a not-yet-extracted in-tree base from leaking as a workspace-
+# prefixed phantom (INV-nuzas). Dotted/qualified bases (``argparse.X``) are
+# deferred to the Approach-C core-linker chokepoint.
+# ---------------------------------------------------------------------------
+
+
+def test_run_extends_external_from_import_base_emits_unresolved_edge(
+    tmp_path: Path,
+) -> None:
+    """A class extending a from-imported external base (``from enum import Enum;
+    class Color(Enum)``) emits a module-qualified unresolved ``extends`` edge —
+    not a silent drop. Confidence stays evidence-derived (ADR-0039): the extends
+    DETECTION is AST-certain; ``is_resolved=False`` carries the unresolved target.
+    """
+    (tmp_path / "m.py").write_text(
+        "from enum import Enum\n"
+        "class Color(Enum):\n"
+        "    RED = 1\n"
+    )
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+    data = json.loads(out_path.read_text())
+
+    extends = [e for e in data["edges"] if e["type"] == "extends"]
+    ext = [e for e in extends if not e["is_resolved"]]
+    assert len(ext) == 1, extends
+    # The unresolved dst is remapped to its canonical external_symbol node id
+    # (WI-fozoh boundary synthesis: ``:unresolved`` -> ``:external_symbol``).
+    assert ext[0]["dst"] == "python:enum:0-0:Enum:external_symbol", ext[0]
+    # evidence-derived (ast_extends -> 0.95), NOT a 0.5 emitter-constant.
+    assert ext[0]["confidence"] == 0.95, ext[0]
+    ext_ids = [n["id"] for n in data["nodes"] if n["kind"] == "external_symbol"]
+    assert any(i == "python:enum:0-0:Enum:external_symbol" for i in ext_ids), ext_ids
+
+
+def test_run_extends_builtin_base_emits_external_edge(tmp_path: Path) -> None:
+    """A builtin base (``class MyError(Exception)`` — not imported) emits an
+    ``extends`` edge to the generic ``python:external:...`` placeholder."""
+    (tmp_path / "m.py").write_text("class MyError(Exception):\n    pass\n")
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+    data = json.loads(out_path.read_text())
+
+    ext = [
+        e for e in data["edges"]
+        if e["type"] == "extends" and not e["is_resolved"]
+    ]
+    assert len(ext) == 1, ext
+    assert ext[0]["dst"] == "python:external:0-0:Exception:external_symbol", ext[0]
+
+
+def test_run_extends_intree_base_still_resolved(tmp_path: Path) -> None:
+    """Regression guard: an in-repo base still resolves to a RESOLVED extends
+    edge (the external fallback must not disturb the resolved path)."""
+    (tmp_path / "m.py").write_text(
+        "class Base:\n    pass\n"
+        "class Derived(Base):\n    pass\n"
+    )
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+    data = json.loads(out_path.read_text())
+
+    extends = [e for e in data["edges"] if e["type"] == "extends"]
+    assert len(extends) == 1, extends
+    assert extends[0]["is_resolved"] is True
+    assert extends[0]["dst"].endswith(":Base:class"), extends[0]
+
+
+def test_run_extends_intree_nonclass_base_dropped_not_external(
+    tmp_path: Path,
+) -> None:
+    """INV-nuzas guard: a base naming an IN-TREE module symbol that was not
+    extracted as a class (here a module-level VARIABLE) must be DROPPED, never
+    minted as a workspace-prefixed external_symbol."""
+    pkg = tmp_path / "pkg"
+    pkg.mkdir()
+    (pkg / "__init__.py").write_text("")
+    (pkg / "consts.py").write_text("THING = object\n")
+    (tmp_path / "m.py").write_text(
+        "from pkg.consts import THING\n"
+        "class C(THING):\n    pass\n"
+    )
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+    data = json.loads(out_path.read_text())
+
+    ext_ids = [n["id"] for n in data["nodes"] if n["kind"] == "external_symbol"]
+    assert not any("pkg" in i for i in ext_ids), (
+        f"in-tree base must not leak as external_symbol: {ext_ids}"
+    )
+    bad = [
+        e for e in data["edges"]
+        if e["type"] == "extends" and not e["is_resolved"] and "pkg" in e["dst"]
+    ]
+    assert bad == [], bad
+
+
+def test_run_extends_aliased_intree_base_resolves(tmp_path: Path) -> None:
+    """An aliased in-tree base (``from base import RealBase as RB; class C(RB)``)
+    re-resolves on the ORIGINAL name to the in-repo class — a RESOLVED extends
+    edge, not an external placeholder."""
+    (tmp_path / "base.py").write_text("class RealBase:\n    pass\n")
+    (tmp_path / "m.py").write_text(
+        "from base import RealBase as RB\n"
+        "class C(RB):\n    pass\n"
+    )
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+    data = json.loads(out_path.read_text())
+
+    resolved = [
+        e for e in data["edges"]
+        if e["type"] == "extends" and e["is_resolved"]
+        and e["dst"].endswith(":RealBase:class")
+    ]
+    assert len(resolved) == 1, [
+        e for e in data["edges"] if e["type"] == "extends"
+    ]
+
+
+def test_run_extends_aliased_external_base_uses_original_name(
+    tmp_path: Path,
+) -> None:
+    """An aliased EXTERNAL base (``from enum import Enum as E; class C(E)``) emits
+    the unresolved external edge under the ORIGINAL name (``Enum``), not the
+    alias — the re-resolution finds no in-tree class and falls through."""
+    (tmp_path / "m.py").write_text(
+        "from enum import Enum as E\n"
+        "class C(E):\n    pass\n"
+    )
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+    data = json.loads(out_path.read_text())
+
+    ext = [
+        e for e in data["edges"]
+        if e["type"] == "extends" and not e["is_resolved"]
+    ]
+    assert len(ext) == 1, ext
+    assert ext[0]["dst"] == "python:enum:0-0:Enum:external_symbol", ext[0]
+
+
+def test_run_extends_dotted_qualified_base_emitted_by_chokepoint(tmp_path: Path) -> None:
+    """WI-jubag Approach C: a dotted/qualified base
+    (``class C(argparse.RawDescriptionHelpFormatter)``) — which py.py DEFERS
+    (naming its module needs module_imports) — is now recovered by the core
+    inheritance-linker chokepoint as an unresolved-external ``extends`` edge on
+    the last segment, instead of being dropped."""
+    (tmp_path / "m.py").write_text(
+        "import argparse\n"
+        "class C(argparse.RawDescriptionHelpFormatter):\n    pass\n"
+    )
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+    data = json.loads(out_path.read_text())
+
+    ext = [
+        e for e in data["edges"]
+        if e["type"] == "extends" and not e["is_resolved"]
+    ]
+    assert len(ext) == 1, [e for e in data["edges"] if e["type"] == "extends"]
+    assert ext[0]["dst"] == (
+        "python:external:0-0:RawDescriptionHelpFormatter:external_symbol"
+    ), ext[0]
+    assert ext[0]["confidence"] == 0.95, ext[0]
+
+
+def test_run_extends_self_referential_base_emits_no_edge(tmp_path: Path) -> None:
+    """A syntactically self-referential base (``class Foo(Foo)`` — parseable
+    though a runtime NameError) resolves to the class itself; no extends edge
+    (resolved or external) is emitted."""
+    (tmp_path / "m.py").write_text("class Foo(Foo):\n    pass\n")
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+    data = json.loads(out_path.read_text())
+
+    assert [e for e in data["edges"] if e["type"] == "extends"] == []
+
+
+class TestBaseModuleIsInTree:
+    """Direct unit coverage of ``_base_module_is_in_tree`` (the external-fallback
+    in-tree guard) — each of its four resolution paths."""
+
+    def test_exact_module_match(self) -> None:
+        from hypergumbo_lang_mainstream.py import _base_module_is_in_tree
+        assert _base_module_is_in_tree(
+            "pkg.mod", "X", frozenset({"pkg.mod"})
+        ) is True
+
+    def test_submodule_match(self) -> None:
+        from hypergumbo_lang_mainstream.py import _base_module_is_in_tree
+        # ``from pkg import sub`` where ``pkg.sub`` is an in-tree submodule.
+        assert _base_module_is_in_tree(
+            "pkg", "sub", frozenset({"pkg.sub"})
+        ) is True
+
+    def test_suffix_match_relative_import_form(self) -> None:
+        from hypergumbo_lang_mainstream.py import _base_module_is_in_tree
+        # Relative imports store a repo-root-relative superset path; the
+        # source-root-relative in-tree key is a suffix of it.
+        assert _base_module_is_in_tree(
+            "packages.auth.src.authpkg.base", "X", frozenset({"authpkg.base"})
+        ) is True
+
+    def test_external_module_no_match(self) -> None:
+        from hypergumbo_lang_mainstream.py import _base_module_is_in_tree
+        assert _base_module_is_in_tree(
+            "enum", "Enum", frozenset({"pkg.mod"})
+        ) is False
+
+
+def test_run_module_attr_ref_to_intree_submodule_resolves_not_phantom(
+    tmp_path: Path,
+) -> None:
+    """WI-tanot category B (INV-nuzas): reading an in-tree SUBMODULE as a value
+    (``import pkg; ... pkg.sub``) — where ``sub`` is a first-party subpackage/
+    module, not a variable/function — resolves to the submodule's file node via a
+    ``references`` edge, instead of minting a workspace-prefixed external_symbol
+    phantom (``python:pkg:0-0:pkg.sub:attribute``)."""
+    pkg = tmp_path / "pkg"
+    pkg.mkdir()
+    (pkg / "__init__.py").write_text("")
+    (pkg / "sub.py").write_text("VALUE = 1\n")
+    (tmp_path / "mod.py").write_text(
+        "import pkg\n"
+        "def f():\n"
+        "    return pkg.sub\n"
+    )
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+    data = json.loads(out_path.read_text())
+
+    ext_ids = [n["id"] for n in data["nodes"] if n["kind"] == "external_symbol"]
+    assert not any("pkg.sub" in i for i in ext_ids), (
+        f"in-tree submodule read must not leak as external: {ext_ids}"
+    )
+    refs = [
+        e for e in data["edges"]
+        if e["type"] == "references" and e["dst"].endswith("pkg/sub.py:1-1:file:file")
+    ]
+    assert len(refs) >= 1, [
+        e for e in data["edges"] if e["type"] == "references"
+    ]
+
+
+def test_run_namespace_package_bare_import_stays_external(tmp_path: Path) -> None:
+    """supply:F4 documented scope-out: a PEP-420 namespace package (no
+    ``__init__.py``) bare ``import nspkg`` has no file anchor for the package
+    name, so it stays external. (A submodule ``import nspkg.mod`` of a real file
+    would still resolve — not exercised here.)
+    """
+    pkg = tmp_path / "src" / "nspkg"
+    pkg.mkdir(parents=True)
+    # No __init__.py -> namespace package; mod.py exists but we import the pkg name.
+    (pkg / "mod.py").write_text("X = 1\n")
+    (tmp_path / "main.py").write_text("import nspkg\n")
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+    data = json.loads(out_path.read_text())
+    import_edges = [e for e in data["edges"] if e["type"] == "imports"]
+    nspkg_edges = [e for e in import_edges if e["dst_ref"] and e["dst_ref"]["module_path"] == "nspkg"]
+    assert len(nspkg_edges) == 1, f"bare namespace import should stay external: {import_edges}"
+    assert nspkg_edges[0]["is_resolved"] is False
+
+
+def test_run_stdlib_submodule_import_stamped_ecosystem_stdlib(tmp_path: Path) -> None:
+    """WI-bifih behavioral closure: a stdlib *submodule* import
+    (``from unittest.mock import patch``) resolves to an ``external_symbol``
+    boundary node stamped ``ecosystem=stdlib`` — not the ``third_party``
+    mis-stamp it got when ``is_stdlib_module`` was exact-match-only (python.yaml
+    enumerates ``unittest`` but not the submodule ``unittest.mock``, the largest
+    slice of the 355-edge mis-stamp population). The node stays external / tier 3
+    (ADR-0041 §3: stdlib is external to the project; ``is_resolved`` stays False).
+    """
+    (tmp_path / "main.py").write_text(
+        "from unittest.mock import patch\n"
+        "import requests\n"
+    )
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+    data = json.loads(out_path.read_text())
+
+    mock_nodes = [
+        n for n in data["nodes"]
+        if n["kind"] == "external_symbol" and "unittest.mock" in n["id"]
+    ]
+    assert mock_nodes, "unittest.mock boundary node missing"
+    mock_node = mock_nodes[0]
+    # The dotted stdlib submodule is now recognised as stdlib...
+    assert (mock_node.get("meta") or {}).get("ecosystem") == "stdlib"
+    # ...while staying an external / tier-3 boundary node (NOT "resolved").
+    assert mock_node["supply_chain"]["tier_name"] == "external_dep"
+
+    # Contrast: a genuine third-party top-level module stays third_party.
+    req_nodes = [
+        n for n in data["nodes"]
+        if n["kind"] == "external_symbol" and "requests" in n["id"]
+    ]
+    assert req_nodes
+    assert (req_nodes[0].get("meta") or {}).get("ecosystem") == "third_party"
+
+
+def test_run_resolves_call_to_function_defined_in_package_init(
+    tmp_path: Path,
+) -> None:
+    """INV-nuzas residual: a cross-module call to a function DEFINED IN a
+    package's ``__init__.py`` resolves to the in-tree symbol instead of leaking
+    to an ``external_symbol`` twin. ``_module_name_from_path`` keys an
+    ``__init__.py``'s symbols under ``pkg.__init__``, but callers/imports
+    reference ``pkg`` — so the ``(module, name)`` lookup missed every symbol
+    defined directly in a package ``__init__`` (342 first-party ``calls`` edges
+    on the self-corpus leaked to external twins). The registry now also aliases
+    ``__init__``-defined symbols under the importable package name.
+    """
+    pkg = tmp_path / "mypkg"
+    pkg.mkdir()
+    (pkg / "__init__.py").write_text("def helper():\n    return 1\n")
+    (tmp_path / "main.py").write_text(
+        "import mypkg\n"
+        "\n"
+        "def use():\n"
+        "    return mypkg.helper()\n"
+    )
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+    data = json.loads(out_path.read_text())
+
+    helper_nodes = [
+        n for n in data["nodes"]
+        if n["kind"] == "function" and n["id"].endswith(":helper:function")
+    ]
+    assert helper_nodes, "in-tree helper function node missing"
+    helper_id = helper_nodes[0]["id"]
+
+    # mypkg.helper() resolves to the in-tree helper symbol...
+    resolved = [
+        e for e in data["edges"]
+        if e["type"] == "calls" and e["dst"] == helper_id
+    ]
+    assert resolved, "mypkg.helper() should resolve to the in-tree helper symbol"
+    assert resolved[0]["is_resolved"] is True
+
+    # ...and does NOT leak to an external_symbol twin.
+    ext_helper = [
+        n for n in data["nodes"]
+        if n["kind"] == "external_symbol" and n["id"].endswith(":helper:unresolved")
+    ]
+    assert not ext_helper, (
+        f"helper must not appear as external_symbol: {[n['id'] for n in ext_helper]}"
+    )
 
 
 def test_run_detects_module_attr_ref_edges_for_env_read(tmp_path: Path) -> None:
@@ -846,14 +1330,43 @@ def test_run_detects_method_calls_on_self(tmp_path: Path) -> None:
 
     data = json.loads(out_path.read_text())
 
-    # Should have a class and two methods
-    assert len(data["nodes"]) == 3
+    # Should have a class and two methods (WI-dagif file anchor filtered out)
+    content = [n for n in data["nodes"] if n["kind"] != "file"]
+    assert len(content) == 3
 
     # Should detect run -> helper via self.helper()
     call_edges = [e for e in data["edges"] if e["type"] == "calls"]
     assert len(call_edges) == 1
     assert "run" in call_edges[0]["src"]
     assert "helper" in call_edges[0]["dst"]
+
+
+def test_resolved_method_call_uses_ast_call_apex_with_call_construct_meta(
+    tmp_path: Path,
+) -> None:
+    """vocab:F1 / WI-nibis: a RESOLVED method call folds to the ``ast_call``
+    apex + ``meta['call_construct']='method'`` (Cluster 28D, audit-findings
+    0012), not the parked peer ``ast_call_method`` (the py.py:3811 default
+    leak that survived the original 0012 fold)."""
+    py_file = tmp_path / "service.py"
+    py_file.write_text(
+        "class Service:\n"
+        "    def helper(self):\n"
+        "        pass\n"
+        "\n"
+        "    def run(self):\n"
+        "        self.helper()\n"
+    )
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+    data = json.loads(out_path.read_text())
+
+    call_edges = [e for e in data["edges"] if e["type"] == "calls"]
+    assert len(call_edges) == 1
+    edge = call_edges[0]
+    assert edge["meta"]["evidence_type"] == "ast_call"
+    assert edge["meta"]["call_construct"] == "method"
 
 
 def test_run_detects_class_instantiation(tmp_path: Path) -> None:
@@ -967,7 +1480,9 @@ def test_fastapi_get_decorator_metadata(tmp_path: Path) -> None:
     data = json.loads(out_path.read_text())
 
     # Find the route handler function
-    functions = [n for n in data["nodes"] if n["kind"] == "function"]
+    # WI-tosul Phase 2: fastapi now promotes on the bare import even without a
+    # manifest, so a route symbol is materialized alongside the handler — exclude it.
+    functions = [n for n in data["nodes"] if n["kind"] == "function" and (n.get("meta") or {}).get("framework_role") != "route"]
     assert len(functions) == 1
 
     func = functions[0]
@@ -999,7 +1514,8 @@ def test_fastapi_post_decorator_metadata(tmp_path: Path) -> None:
 
     data = json.loads(out_path.read_text())
 
-    functions = [n for n in data["nodes"] if n["kind"] == "function"]
+    # WI-tosul Phase 2: fastapi promotes on the bare import (no manifest) -> exclude the materialized route.
+    functions = [n for n in data["nodes"] if n["kind"] == "function" and (n.get("meta") or {}).get("framework_role") != "route"]
     assert len(functions) == 1
 
     func = functions[0]
@@ -1027,7 +1543,8 @@ def test_fastapi_router_decorator_metadata(tmp_path: Path) -> None:
 
     data = json.loads(out_path.read_text())
 
-    functions = [n for n in data["nodes"] if n["kind"] == "function"]
+    # WI-tosul Phase 2: fastapi promotes on the bare import (no manifest) -> exclude the materialized route.
+    functions = [n for n in data["nodes"] if n["kind"] == "function" and (n.get("meta") or {}).get("framework_role") != "route"]
     assert len(functions) == 1
 
     func = functions[0]
@@ -1072,7 +1589,8 @@ def test_fastapi_all_http_method_decorators(tmp_path: Path) -> None:
 
     data = json.loads(out_path.read_text())
 
-    functions = [n for n in data["nodes"] if n["kind"] == "function"]
+    # WI-tosul Phase 2: fastapi promotes on the bare import (no manifest) -> exclude the 7 materialized routes.
+    functions = [n for n in data["nodes"] if n["kind"] == "function" and (n.get("meta") or {}).get("framework_role") != "route"]
     assert len(functions) == 7
 
     # Check each function has correct decorator metadata
@@ -1176,7 +1694,8 @@ def test_flask_route_decorator_metadata(tmp_path: Path) -> None:
 
     data = json.loads(out_path.read_text())
 
-    functions = [n for n in data["nodes"] if n["kind"] == "function"]
+    # WI-tosul Phase 2: flask promotes on the bare import (no manifest) -> exclude the materialized route.
+    functions = [n for n in data["nodes"] if n["kind"] == "function" and (n.get("meta") or {}).get("framework_role") != "route"]
     assert len(functions) == 1
 
     func = functions[0]
@@ -1323,7 +1842,7 @@ def test_flask_add_url_rule_usage_context(tmp_path: Path) -> None:
     assert ctx.context_name == "app.add_url_rule"
     assert ctx.metadata["route_path"] == "/users"
     assert ctx.metadata["view_name"] == "user_list"
-    assert ctx.metadata["methods"] == ["GET"]  # Default
+    assert ctx.metadata["http_method"] == "GET"  # Default (WI-kohav)
 
 
 def test_flask_add_url_rule_with_view_func_kwarg(tmp_path: Path) -> None:
@@ -1368,9 +1887,12 @@ def test_flask_add_url_rule_with_methods(tmp_path: Path) -> None:
 
     result = analyze_python(tmp_path)
 
-    assert len(result.usage_contexts) == 1
-    ctx = result.usage_contexts[0]
-    assert ctx.metadata["methods"] == ["POST", "PUT"]
+    # WI-kohav: one UsageContext per declared method, each carrying an
+    # http_method STRING (matching every other language's route extractor).
+    assert len(result.usage_contexts) == 2
+    methods = sorted(c.metadata["http_method"] for c in result.usage_contexts)
+    assert methods == ["POST", "PUT"]
+    assert all("methods" not in c.metadata for c in result.usage_contexts)
 
 
 def test_flask_blueprint_add_url_rule(tmp_path: Path) -> None:
@@ -1613,7 +2135,7 @@ def test_fastapi_add_api_route_usage_context(tmp_path: Path) -> None:
     assert ctx["context_name"] == "router.add_api_route"
     assert ctx["metadata"]["route_path"] == "/items"
     assert ctx["metadata"]["view_name"] == "list_items"
-    assert ctx["metadata"]["methods"] == ["GET"]
+    assert ctx["metadata"]["http_method"] == "GET"  # WI-kohav
 
 
 def test_fastapi_add_api_route_second_positional_arg(tmp_path: Path) -> None:
@@ -1638,7 +2160,7 @@ def test_fastapi_add_api_route_second_positional_arg(tmp_path: Path) -> None:
     ctx = usage_contexts[0]
     assert ctx["metadata"]["view_name"] == "infer"
     assert ctx["metadata"]["route_path"] == "/models/{model_name}/infer"
-    assert ctx["metadata"]["methods"] == ["POST"]
+    assert ctx["metadata"]["http_method"] == "POST"  # WI-kohav
 
 
 def test_fastapi_add_api_route_attribute_handler(tmp_path: Path) -> None:
@@ -1684,7 +2206,7 @@ def test_fastapi_add_api_route_no_explicit_methods(tmp_path: Path) -> None:
     assert len(usage_contexts) >= 1
     ctx = usage_contexts[0]
     assert ctx["metadata"]["view_name"] == "root"
-    assert ctx["metadata"]["methods"] == ["GET"]  # default
+    assert ctx["metadata"]["http_method"] == "GET"  # default (WI-kohav)
 
 
 def test_fastapi_apirouter_prefix_composition_literal(tmp_path: Path) -> None:
@@ -3110,7 +3632,7 @@ def complex_function(items, flag):
     assert _compute_cyclomatic_complexity(func) == 7
 
 
-def test_lines_of_code_simple() -> None:
+def test_line_span_simple() -> None:
     """LOC is end_line - start_line + 1."""
     code = """def simple():
     x = 1
@@ -3119,10 +3641,10 @@ def test_lines_of_code_simple() -> None:
     tree = ast.parse(code)
     func = tree.body[0]
     # Lines 1-3
-    assert _compute_lines_of_code(func) == 3
+    assert _compute_line_span(func) == 3
 
 
-def test_lines_of_code_multiline() -> None:
+def test_line_span_multiline() -> None:
     """LOC counts all lines in a function."""
     code = """def multiline():
     a = 1
@@ -3135,7 +3657,7 @@ def test_lines_of_code_multiline() -> None:
     tree = ast.parse(code)
     func = tree.body[0]
     # Lines 1-7
-    assert _compute_lines_of_code(func) == 7
+    assert _compute_line_span(func) == 7
 
 
 def test_cyclomatic_complexity_in_output(tmp_path: Path) -> None:
@@ -3165,7 +3687,7 @@ def branchy(x, y):
     assert functions["branchy"]["cyclomatic_complexity"] == 3
 
 
-def test_lines_of_code_in_output(tmp_path: Path) -> None:
+def test_line_span_in_output(tmp_path: Path) -> None:
     """Lines of code should appear in analysis output."""
     py_file = tmp_path / "example.py"
     py_file.write_text("""def short():
@@ -3186,14 +3708,14 @@ def longer():
     functions = {n["name"]: n for n in data["nodes"] if n["kind"] == "function"}
 
     # short() is 2 lines
-    assert functions["short"]["lines_of_code"] == 2
+    assert functions["short"]["line_span"] == 2
 
     # longer() is 6 lines
-    assert functions["longer"]["lines_of_code"] == 6
+    assert functions["longer"]["line_span"] == 6
 
 
 def test_class_has_complexity_and_loc(tmp_path: Path) -> None:
-    """Classes should also have cyclomatic_complexity and lines_of_code."""
+    """Classes should also have cyclomatic_complexity and line_span."""
     py_file = tmp_path / "example.py"
     py_file.write_text("""class MyClass:
     def __init__(self, x):
@@ -3214,15 +3736,15 @@ def test_class_has_complexity_and_loc(tmp_path: Path) -> None:
     classes = [n for n in data["nodes"] if n["kind"] == "class"]
     assert len(classes) == 1
     cls = classes[0]
-    assert cls["lines_of_code"] == 8  # Lines 1-8
+    assert cls["line_span"] == 8  # Lines 1-8
     # Class complexity includes all methods' branches
     assert cls["cyclomatic_complexity"] >= 1
 
     # Find methods
     methods = {n["name"]: n for n in data["nodes"] if n["kind"] == "method"}
-    assert methods["MyClass.__init__"]["lines_of_code"] == 2
+    assert methods["MyClass.__init__"]["line_span"] == 2
     assert methods["MyClass.__init__"]["cyclomatic_complexity"] == 1
-    assert methods["MyClass.process"]["lines_of_code"] == 4
+    assert methods["MyClass.process"]["line_span"] == 4
     assert methods["MyClass.process"]["cyclomatic_complexity"] == 2  # 1 base + 1 if
 
 
@@ -3264,7 +3786,7 @@ class TestPythonSignatureExtraction:
 
         funcs = [n for n in data["nodes"] if n["kind"] == "function"]
         assert len(funcs) == 1
-        assert funcs[0]["signature"] == "(name: str, greeting: str=…) -> str"
+        assert funcs[0]["signature"] == "(name: str, greeting: str='hello') -> str"
 
     def test_signature_with_varargs(self, tmp_path: Path) -> None:
         """Extract signature for function with *args."""
@@ -3313,7 +3835,7 @@ class TestPythonSignatureExtraction:
         funcs = [n for n in data["nodes"] if n["kind"] == "function"]
         assert len(funcs) == 1
         # Note: the bare * is not captured as vararg, but kwonly args follow
-        assert funcs[0]["signature"] == "(key: str, value: int=…) -> None"
+        assert funcs[0]["signature"] == "(key: str, value: int=0) -> None"
 
     def test_signature_with_posonly_args(self, tmp_path: Path) -> None:
         """Extract signature for function with positional-only args (PEP 570)."""
@@ -3398,17 +3920,22 @@ class TestPythonSignatureExtraction:
         funcs = [n for n in data["nodes"] if n["kind"] == "function"]
         assert len(funcs) == 1
         sig = funcs[0]["signature"]
-        # Signature should be truncated to max_len (60 by default) + ellipsis
-        assert len(sig) <= 60
-        assert sig.endswith("…")
+        # WI-hopiz: the display signature is no longer capped at 60 — the full
+        # 7-param list and the return type are rendered.
+        assert len(sig) > 60
+        assert not sig.endswith("…")
+        assert "param_seven: str" in sig
+        assert sig.endswith("-> str")
 
     def test_method_long_signature_untyped_fallback(self, tmp_path: Path) -> None:
-        """Class method with truncated signature falls back to untyped stable_id.
+        """Long class method: display signature is full, stable_id still falls back.
 
-        When ``_format_function_signature`` truncates the signature (>60 chars),
-        ``normalize_python_signature`` returns None because the closing paren is
-        missing.  The analyzer must fall back to the untyped ``_compute_stable_id``
-        (ADR-0014 §2) rather than crash.
+        WI-hopiz decoupling — the DISPLAY ``Symbol.signature`` is now rendered in
+        full (wide cap), while the stable_id path keeps the legacy ``max_len=60``
+        identity signature. That identity signature truncates (no closing paren),
+        so ``normalize_python_signature`` returns None and the analyzer falls back
+        to the untyped ``_compute_stable_id`` (ADR-0014 §2) — unchanged, so no
+        identity churn.
         """
         py_file = tmp_path / "test.py"
         py_file.write_text(
@@ -3425,10 +3952,52 @@ class TestPythonSignatureExtraction:
         methods = [n for n in data["nodes"] if n["kind"] == "method"]
         assert len(methods) == 1
         method = methods[0]
-        # Signature is truncated (no closing paren)
-        assert method["signature"].endswith("…")
-        # stable_id still assigned via untyped fallback
+        # WI-hopiz: the display signature is now rendered in full (not truncated)
+        assert not method["signature"].endswith("…")
+        assert "param_f: str" in method["signature"]
+        # …while the stable_id is still the untyped fallback (identity signature
+        # is max_len=60 → truncated → normalize returns None). No churn.
         assert method["stable_id"].startswith("sha256:")
+
+    def test_signature_graceful_truncation_preserves_return_type(self) -> None:
+        """WI-hopiz: a signature still over the display cap truncates the parameter
+        list but preserves the return type + a marker (not a blind mid-content cut).
+
+        Exercised as a direct unit call because routing a >240-char signature
+        through the full analyzer would hit a *separate*, pre-existing "long
+        signature drops the whole file" limitation, tracked apart from WI-hopiz.
+        """
+        from hypergumbo_lang_mainstream.py import (
+            _DISPLAY_SIGNATURE_MAX_LEN,
+            _format_function_signature,
+        )
+
+        params = ", ".join(
+            f"param_{i}: VeryLongTypeAnnotationNumber{i}Padding" for i in range(20)
+        )
+        node = ast.parse(f"def huge({params}) -> SomeReturnType: pass").body[0]
+        sig = _format_function_signature(
+            node, max_len=_DISPLAY_SIGNATURE_MAX_LEN, render_defaults=True
+        )
+        assert len(sig) <= _DISPLAY_SIGNATURE_MAX_LEN
+        assert sig.endswith("…) -> SomeReturnType")  # return type preserved
+
+    def test_signature_over_long_default_falls_back_to_ellipsis(
+        self, tmp_path: Path
+    ) -> None:
+        """WI-hopiz: a pathologically long parameter default is bounded to '…' so a
+        single default cannot blow up the rendered signature."""
+        long_default = "'" + ("x" * 60) + "'"
+        py_file = tmp_path / "test.py"
+        py_file.write_text(f"def g(a: str = {long_default}) -> None:\n    pass\n")
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+        data = json.loads(out_path.read_text())
+
+        funcs = [n for n in data["nodes"] if n["kind"] == "function"]
+        assert len(funcs) == 1
+        assert funcs[0]["signature"] == "(a: str=…) -> None"
 
     def test_signature_constant_annotation(self, tmp_path: Path) -> None:
         """Extract signature with constant type like Literal['a', 'b']."""
@@ -3567,11 +4136,13 @@ class TestModulePseudoNode:
         assert len(files) == 1
         assert files[0]["name"] == "config.py"
 
-    def test_no_analyzer_emitted_file_node_for_docstring_only(self, tmp_path: Path) -> None:
-        """Files with only docstring don't get an analyzer-emitted file
-        pseudo-node (no module-level executable code to anchor). The
-        orchestrator synthesizer may still create one for the import
-        edge — that's a separate producer."""
+    def test_analyzer_emits_file_node_for_docstring_carrying_summary(self, tmp_path: Path) -> None:
+        """WI-kazob: a file whose only module-level content is a docstring (no
+        executable code) NOW gets an analyzer-emitted file node — so the file
+        node can carry the module's one-line summary. Before WI-kazob this
+        file produced no analyzer file node (the docstring was dropped); the
+        emission condition is now ``code OR docstring``. Integration-level
+        complement to test_wi_kazob_module_docstring.py's unit coverage."""
         py_file = tmp_path / "empty.py"
         py_file.write_text(
             '"""This module does nothing."""\n'
@@ -3589,14 +4160,16 @@ class TestModulePseudoNode:
             and n["language"] == "python"
             and n["origin"] != ["orchestrator_file_symbol_synthesis"]
         ]
-        assert len(analyzer_emitted) == 0
+        assert len(analyzer_emitted) == 1
+        assert analyzer_emitted[0]["docstring"] == "This module does nothing."
 
     def test_no_analyzer_emitted_file_node_for_pass_only(self, tmp_path: Path) -> None:
-        """Files with only pass statements don't get an analyzer-emitted
-        file pseudo-node."""
+        """Files with only pass statements (and no module docstring) don't get
+        an analyzer-emitted file pseudo-node. (WI-kazob: a docstring would
+        trigger one — see test_analyzer_emits_file_node_for_docstring_carrying_summary
+        — so this fixture has none, isolating the pass-only branch.)"""
         py_file = tmp_path / "stub.py"
         py_file.write_text(
-            '"""Stub module."""\n'
             "pass\n"
         )
 
@@ -3613,11 +4186,18 @@ class TestModulePseudoNode:
         assert len(analyzer_emitted) == 0
 
     def test_no_analyzer_emitted_file_node_for_type_annotation_only(self, tmp_path: Path) -> None:
-        """Files with only type annotations don't get an analyzer-emitted
-        file pseudo-node."""
+        """Files with only type annotations (and no module docstring) don't
+        get an analyzer-emitted file pseudo-node.
+
+        WI-kazob note: the file-node emission condition is ``code OR
+        docstring``, so a docstring WOULD trigger an analyzer file node (to
+        carry the module summary). This fixture intentionally has no
+        docstring so it isolates the annotation-only branch; the
+        docstring-triggers-emission path is covered in
+        ``test_wi_kazob_module_docstring.py``.
+        """
         py_file = tmp_path / "types.py"
         py_file.write_text(
-            '"""Type stubs."""\n'
             "x: int\n"
             "y: str\n"
         )
@@ -4002,7 +4582,7 @@ class TestVariableMethodCalls:
             None
         )
         assert send_request_edge is not None, "Should emit unresolved edge for stub.send_request()"
-        assert "unresolved" in send_request_edge["dst"]
+        assert "external_symbol" in send_request_edge["dst"]
         assert send_request_edge["confidence"] == 0.40
 
     def test_return_type_generic_not_tracked(self, tmp_path: Path) -> None:
@@ -4039,7 +4619,7 @@ class TestVariableMethodCalls:
             None
         )
         assert send_request_edge is not None, "Should emit unresolved edge for stub.send_request()"
-        assert "unresolved" in send_request_edge["dst"]
+        assert "external_symbol" in send_request_edge["dst"]
         assert send_request_edge["confidence"] == 0.40
 
     def test_return_type_local_class(self, tmp_path: Path) -> None:
@@ -4134,7 +4714,7 @@ class TestVariableMethodCalls:
             None
         )
         assert process_edge is not None, "Should emit unresolved edge for t.process()"
-        assert "unresolved" in process_edge["dst"]
+        assert "external_symbol" in process_edge["dst"]
         assert process_edge["confidence"] == 0.40
 
     def test_module_level_module_qualified_call(self, tmp_path: Path) -> None:
@@ -4228,7 +4808,7 @@ class TestVariableMethodCalls:
         call_edges = [e for e in data["edges"] if e["type"] == "calls"]
         assert len(call_edges) == 1, "Should have 1 unresolved call edge"
         assert "unknown_method" in call_edges[0]["dst"]
-        assert "unresolved" in call_edges[0]["dst"]
+        assert "external_symbol" in call_edges[0]["dst"]
         assert call_edges[0]["confidence"] == 0.40
 
     def test_unresolved_constructor_no_type_tracking(self, tmp_path: Path) -> None:
@@ -4248,7 +4828,7 @@ class TestVariableMethodCalls:
         # Should emit unresolved edge for the method call (enables IO/taint analysis)
         call_edges = [e for e in data["edges"] if e["type"] == "calls"]
         inst_edges = [e for e in data["edges"] if e["type"] == "instantiates"]
-        unresolved_calls = [e for e in call_edges if "unresolved" in e["dst"]]
+        unresolved_calls = [e for e in call_edges if "external_symbol" in e["dst"]]
         assert len(unresolved_calls) == 1, "Should have 1 unresolved call edge for do_something"
         assert "do_something" in unresolved_calls[0]["dst"]
         assert len(inst_edges) == 0, "Should not have instantiates edges for unresolved constructor"
@@ -5225,7 +5805,7 @@ class TestUnresolvedEdgeEmission:
         # Should have an unresolved edge to external_lib.process
         unresolved = [
             e for e in call_edges
-            if ":unresolved" in e["dst"] and "process" in e["dst"]
+            if ":external_symbol" in e["dst"] and "process" in e["dst"]
         ]
         assert len(unresolved) == 1, f"Expected unresolved edge, got: {call_edges}"
         edge = unresolved[0]
@@ -5234,7 +5814,7 @@ class TestUnresolvedEdgeEmission:
         assert edge["meta"]["evidence_type"] == "ast_call"
         assert edge["meta"]["call_construct"] == "method"
         assert edge["is_resolved"] is False
-        assert edge["confidence"] == 0.50
+        assert edge["confidence"] == 0.40
 
     def test_unresolved_edge_for_imported_class_method(self, tmp_path: Path) -> None:
         """Calls to methods on imported classes emit unresolved edges."""
@@ -5256,7 +5836,7 @@ class TestUnresolvedEdgeEmission:
         # Should have an unresolved edge to Client.create
         unresolved = [
             e for e in call_edges
-            if ":unresolved" in e["dst"] and "Client.create" in e["dst"]
+            if ":external_symbol" in e["dst"] and "Client.create" in e["dst"]
         ]
         assert len(unresolved) == 1, f"Expected unresolved edge, got: {call_edges}"
 
@@ -6002,8 +6582,12 @@ class TestPythonInheritanceEdges:
         edge = child_extends[0]
         assert "Base" in edge.dst
 
-    def test_no_extends_edge_for_external_base_class(self, tmp_path: Path) -> None:
-        """No extends edge created when base class is external (not in repo)."""
+    def test_extends_edge_for_external_base_class_is_unresolved(
+        self, tmp_path: Path
+    ) -> None:
+        """WI-jubag: an external base class emits an UNRESOLVED-external extends
+        edge (not a silent drop). ``analyze_python`` returns the raw edge before
+        boundary synthesis, so the dst is the ``:unresolved`` placeholder."""
         from hypergumbo_lang_mainstream.py import analyze_python
 
         py_file = tmp_path / "models.py"
@@ -6022,9 +6606,106 @@ class TestPythonInheritanceEdges:
         assert "base_classes" in (user_class.meta or {})
         assert "BaseModel" in user_class.meta["base_classes"]
 
-        # But no extends edge since BaseModel is external
+        # BaseModel is external (pydantic) -> exactly one unresolved extends edge.
         extends_edges = [e for e in result.edges if e.edge_type == "extends"]
-        assert len(extends_edges) == 0
+        assert len(extends_edges) == 1
+        edge = extends_edges[0]
+        assert edge.is_resolved is False
+        assert edge.dst == "python:pydantic:0-0:BaseModel:unresolved", edge.dst
+
+
+class TestPythonInstantiatesExternal:
+    """WI-jubag (instantiates half): external constructor calls must type as
+    ``instantiates``, not misfile as plain ``calls``. Previously ``instantiates``
+    recorded 0 external constructions out of thousands, while ~2,333 external
+    constructor calls (``Path``, ``MagicMock``, ``argparse.ArgumentParser`` …)
+    were emitted as ``calls`` to an external placeholder. An unresolved imported
+    name whose original name is PascalCase (Python's strong class-naming
+    convention) is treated as a construction (``evidence_type='ast_new'``);
+    snake_case callables stay ``calls``."""
+
+    def test_instantiates_edge_for_external_bare_constructor(
+        self, tmp_path: Path
+    ) -> None:
+        """``from pathlib import Path; Path(p)`` -> an unresolved ``instantiates``
+        edge (not ``calls``)."""
+        from hypergumbo_lang_mainstream.py import analyze_python
+
+        (tmp_path / "m.py").write_text(
+            "from pathlib import Path\n"
+            "def f(p):\n"
+            "    return Path(p)\n"
+        )
+        result = analyze_python(tmp_path)
+
+        inst = [e for e in result.edges if e.edge_type == "instantiates"]
+        assert len(inst) == 1, [(e.edge_type, e.dst) for e in result.edges]
+        edge = inst[0]
+        assert edge.is_resolved is False
+        assert edge.dst == "python:pathlib:0-0:Path:unresolved", edge.dst
+        assert edge.evidence_type == "ast_new", edge.evidence_type
+        # Not also misfiled as a calls edge.
+        assert not any(
+            e.edge_type == "calls" and "Path" in e.dst for e in result.edges
+        )
+
+    def test_external_bare_snake_case_call_stays_calls(
+        self, tmp_path: Path
+    ) -> None:
+        """A snake_case imported callable (``from os.path import join; join(...)``)
+        stays a ``calls`` edge — not every external call is a construction."""
+        from hypergumbo_lang_mainstream.py import analyze_python
+
+        (tmp_path / "m.py").write_text(
+            "from os.path import join\n"
+            "def f():\n"
+            "    return join('a', 'b')\n"
+        )
+        result = analyze_python(tmp_path)
+
+        assert [e for e in result.edges if e.edge_type == "instantiates"] == []
+        calls = [
+            e for e in result.edges
+            if e.edge_type == "calls" and "join" in e.dst
+        ]
+        assert len(calls) == 1, [(e.edge_type, e.dst) for e in result.edges]
+
+    def test_instantiates_edge_for_external_module_attr_constructor(
+        self, tmp_path: Path
+    ) -> None:
+        """``import argparse; argparse.ArgumentParser()`` -> an unresolved
+        ``instantiates`` edge (the module-qualified constructor case)."""
+        from hypergumbo_lang_mainstream.py import analyze_python
+
+        (tmp_path / "m.py").write_text(
+            "import argparse\n"
+            "def f():\n"
+            "    return argparse.ArgumentParser()\n"
+        )
+        result = analyze_python(tmp_path)
+
+        inst = [e for e in result.edges if e.edge_type == "instantiates"]
+        assert len(inst) == 1, [(e.edge_type, e.dst) for e in result.edges]
+        assert inst[0].dst == "python:argparse:0-0:ArgumentParser:unresolved", (
+            inst[0].dst
+        )
+        assert inst[0].evidence_type == "ast_new", inst[0].evidence_type
+
+    def test_external_module_attr_snake_case_call_stays_calls(
+        self, tmp_path: Path
+    ) -> None:
+        """``import os; os.getcwd()`` stays a ``calls`` edge (snake_case function,
+        not a constructor)."""
+        from hypergumbo_lang_mainstream.py import analyze_python
+
+        (tmp_path / "m.py").write_text(
+            "import os\n"
+            "def f():\n"
+            "    return os.getcwd()\n"
+        )
+        result = analyze_python(tmp_path)
+
+        assert [e for e in result.edges if e.edge_type == "instantiates"] == []
 
 
 class TestPythonVisibilityModifiers:
@@ -6686,3 +7367,1464 @@ class TestWiFagabQualifiedNameField:
         )
         assert cls.qualified_name == "Greeter"
         assert cls.name == cls.qualified_name
+
+
+class TestExternalConstructorReceiverTypeInference:
+    """WI-fuvuj: infer the receiver type of method calls on local variables
+    typed by a known I/O constructor (``open`` / ``socket.socket``), so
+    io-boundary's catalog can disambiguate ``f.read()`` / ``s.send()`` into
+    the right boundary bucket instead of the undifferentiated
+    ``external_potential`` bucket.
+
+    The fix emits a MODULE-QUALIFIED dst (``python:{module}:0-0:{name}:
+    unresolved``) plus a structured ``dst_ref`` so both the dst_ref path and
+    the dst-id-parse fallback (the io-boundaries CLI drops dst_ref on
+    serialize/reload) satisfy the module-filter match.
+    """
+
+    def _calls_edge(self, result, dst_substr: str):
+        """Return the single calls edge whose dst contains ``dst_substr``."""
+        matches = [
+            e for e in result.edges
+            if e.edge_type == "calls" and dst_substr in e.dst
+        ]
+        assert len(matches) == 1, (
+            f"expected exactly 1 calls edge containing {dst_substr!r}; "
+            f"got {[e.dst for e in matches]}"
+        )
+        return matches[0]
+
+    def test_socket_socket_send_is_module_qualified(self, tmp_path: Path) -> None:
+        from hypergumbo_core.ir import ExternalRef
+
+        (tmp_path / "m.py").write_text(
+            "import socket\n"
+            "def run():\n"
+            "    s = socket.socket()\n"
+            '    s.send(b"x")\n'
+        )
+        result = extract_nodes(tmp_path / "m.py")
+        edge = self._calls_edge(result, "send:unresolved")
+        assert edge.dst == "python:socket.socket:0-0:send:unresolved"
+        assert isinstance(edge.dst_ref, ExternalRef)
+        assert edge.dst_ref.module_path == "socket.socket"
+        assert edge.dst_ref.name == "send"
+        assert edge.dst_ref.lang == "python"
+
+    def test_open_read_is_module_qualified(self, tmp_path: Path) -> None:
+        from hypergumbo_core.ir import ExternalRef
+
+        (tmp_path / "m.py").write_text(
+            "def run():\n"
+            '    fh = open("p")\n'
+            "    fh.read()\n"
+        )
+        result = extract_nodes(tmp_path / "m.py")
+        edge = self._calls_edge(result, "read:unresolved")
+        assert edge.dst == "python:file:0-0:read:unresolved"
+        assert isinstance(edge.dst_ref, ExternalRef)
+        assert edge.dst_ref.module_path == "file"
+        assert edge.dst_ref.name == "read"
+
+    def test_with_open_write_is_module_qualified(self, tmp_path: Path) -> None:
+        from hypergumbo_core.ir import ExternalRef
+
+        (tmp_path / "m.py").write_text(
+            "def run():\n"
+            '    with open("p") as fh:\n'
+            '        fh.write("x")\n'
+        )
+        result = extract_nodes(tmp_path / "m.py")
+        edge = self._calls_edge(result, "write:unresolved")
+        assert edge.dst == "python:file:0-0:write:unresolved"
+        assert isinstance(edge.dst_ref, ExternalRef)
+        assert edge.dst_ref.module_path == "file"
+        assert edge.dst_ref.name == "write"
+
+    def test_open_builtin_call_emits_builtins_edge(self, tmp_path: Path) -> None:
+        """WI-mitul: a bare ``open()`` call emits a ``calls`` edge to
+        ``builtins.open`` in every syntactic form, so the io_primitives/
+        python.yaml ``builtins`` rows (fs_read/fs_write functions=[open]) — which
+        were dead because no edge ever targeted them — receive an edge. The
+        receiver ``.read()``/``.write()`` edges (WI-fuvuj, module=file) are
+        orthogonal to this ``open()``-call edge."""
+        from hypergumbo_core.ir import ExternalRef
+
+        forms = {
+            "assign": "def run(p):\n    fh = open(p)\n    return fh\n",
+            "with": "def run(p):\n    with open(p) as fh:\n        pass\n",
+            "chained": "def run(p):\n    return open(p).read()\n",
+            "return": "def run(p):\n    return open(p)\n",
+        }
+        for label, src in forms.items():
+            (tmp_path / f"m_{label}.py").write_text(src)
+            result = extract_nodes(tmp_path / f"m_{label}.py")
+            edge = self._calls_edge(result, "builtins:0-0:open:unresolved")
+            assert edge.dst == "python:builtins:0-0:open:unresolved", label
+            assert edge.is_resolved is False, label
+            assert isinstance(edge.dst_ref, ExternalRef), label
+            assert edge.dst_ref.module_path == "builtins", label
+            assert edge.dst_ref.name == "open", label
+
+    def test_with_socket_socket_send_is_module_qualified(
+        self, tmp_path: Path
+    ) -> None:
+        from hypergumbo_core.ir import ExternalRef
+
+        (tmp_path / "m.py").write_text(
+            "import socket\n"
+            "def run():\n"
+            "    with socket.socket() as s:\n"
+            '        s.send(b"x")\n'
+        )
+        result = extract_nodes(tmp_path / "m.py")
+        edge = self._calls_edge(result, "send:unresolved")
+        assert edge.dst == "python:socket.socket:0-0:send:unresolved"
+        assert isinstance(edge.dst_ref, ExternalRef)
+        assert edge.dst_ref.module_path == "socket.socket"
+
+    def test_unrecognized_receiver_stays_external_without_dst_ref(
+        self, tmp_path: Path
+    ) -> None:
+        """NEGATIVE: a method call on a variable not typed by a recognized
+        constructor must keep the old ``external`` dst with NO dst_ref."""
+        (tmp_path / "m.py").write_text(
+            "def run(x):\n"
+            "    x.frobnicate()\n"
+        )
+        result = extract_nodes(tmp_path / "m.py")
+        edge = self._calls_edge(result, "frobnicate:unresolved")
+        assert edge.dst == "python:external:0-0:frobnicate:unresolved"
+        assert edge.dst_ref is None
+        assert edge.confidence == 0.40
+
+    def test_assignment_from_unrecognized_call_stays_external(
+        self, tmp_path: Path
+    ) -> None:
+        """The EXTERNAL_CONSTRUCTOR_TYPES fall-through: a Call RHS whose
+        constructor name is not a recognized I/O constructor does not type
+        the variable, so its method calls stay ``external``."""
+        (tmp_path / "m.py").write_text(
+            "def run():\n"
+            "    obj = make_thing()\n"
+            "    obj.frobnicate()\n"
+        )
+        result = extract_nodes(tmp_path / "m.py")
+        edge = self._calls_edge(result, "frobnicate:unresolved")
+        assert edge.dst == "python:external:0-0:frobnicate:unresolved"
+        assert edge.dst_ref is None
+
+    def test_with_non_call_context_expr_does_not_type_var(
+        self, tmp_path: Path
+    ) -> None:
+        """ast.With guard: an ``optional_vars`` Name whose ``context_expr``
+        is NOT a Call (e.g. a bare name context manager) does not get typed."""
+        (tmp_path / "m.py").write_text(
+            "def run(cm):\n"
+            "    with cm as fh:\n"
+            "        fh.read()\n"
+        )
+        result = extract_nodes(tmp_path / "m.py")
+        edge = self._calls_edge(result, "read:unresolved")
+        assert edge.dst == "python:external:0-0:read:unresolved"
+        assert edge.dst_ref is None
+
+    def test_with_unrecognized_call_context_expr_does_not_type_var(
+        self, tmp_path: Path
+    ) -> None:
+        """ast.With guard: a Call context_expr that is not a recognized
+        constructor (e.g. a user context manager) does not get typed, but
+        the body is still traversed."""
+        (tmp_path / "m.py").write_text(
+            "def run():\n"
+            "    with make_cm() as fh:\n"
+            "        fh.read()\n"
+        )
+        result = extract_nodes(tmp_path / "m.py")
+        edge = self._calls_edge(result, "read:unresolved")
+        assert edge.dst == "python:external:0-0:read:unresolved"
+        assert edge.dst_ref is None
+
+    def test_with_non_name_optional_vars_does_not_crash(
+        self, tmp_path: Path
+    ) -> None:
+        """ast.With guard: ``with open(p) as (a, b):`` has a Tuple
+        ``optional_vars`` (not a Name); it must not be typed and must not
+        crash. The body is still traversed."""
+        (tmp_path / "m.py").write_text(
+            "def run():\n"
+            '    with open("p") as (a, b):\n'
+            "        a.read()\n"
+        )
+        result = extract_nodes(tmp_path / "m.py")
+        edge = self._calls_edge(result, "read:unresolved")
+        assert edge.dst == "python:external:0-0:read:unresolved"
+        assert edge.dst_ref is None
+
+    def test_with_no_optional_vars_does_not_crash(self, tmp_path: Path) -> None:
+        """ast.With guard: ``with open(p):`` (no ``as``) has
+        ``optional_vars is None``; it must not crash and the body is still
+        traversed."""
+        (tmp_path / "m.py").write_text(
+            "def run(other):\n"
+            '    with open("p"):\n'
+            "        other.read()\n"
+        )
+        result = extract_nodes(tmp_path / "m.py")
+        edge = self._calls_edge(result, "read:unresolved")
+        assert edge.dst == "python:external:0-0:read:unresolved"
+        assert edge.dst_ref is None
+
+    def test_module_constructor_unknown_module_falls_through(
+        self, tmp_path: Path
+    ) -> None:
+        """The ast.Attribute constructor resolution requires the root Name to
+        be a known module import. ``foo.socket()`` where ``foo`` is not
+        imported must not type the variable."""
+        (tmp_path / "m.py").write_text(
+            "def run(foo):\n"
+            "    s = foo.socket()\n"
+            '    s.send(b"x")\n'
+        )
+        result = extract_nodes(tmp_path / "m.py")
+        edge = self._calls_edge(result, "send:unresolved")
+        assert edge.dst == "python:external:0-0:send:unresolved"
+        assert edge.dst_ref is None
+
+
+def test_run_imported_const_method_call_references_in_tree_variable(
+    tmp_path: Path,
+) -> None:
+    """WI-hotug CASE B / INV-nuzas: ``from x import CONST; CONST.items()`` where
+    CONST is an in-tree module-level VARIABLE (a dict/list/regex/cache constant)
+    with a BUILTIN method call on it. The ``.items`` is a builtin (no in-tree
+    target), but the receiver IS a real first-party symbol — emit a
+    ``references`` edge to the in-tree variable, NOT a workspace-prefixed phantom
+    ``external_symbol`` (the INV-nuzas acceptance-property violation).
+    """
+    _build_nuzas_monorepo(tmp_path)
+    auth = tmp_path / "packages" / "auth" / "src" / "authpkg"
+    (auth / "config.py").write_text("CONFIG = {'a': 1}\n")
+    (tmp_path / "packages" / "api" / "src" / "apipkg" / "u.py").write_text(
+        "from authpkg.config import CONFIG\n"
+        "def use():\n"
+        "    return CONFIG.items()\n"
+    )
+    out_path = tmp_path / "out.json"
+    run_behavior_map(
+        repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False
+    )
+    data = json.loads(out_path.read_text())
+    config_var = next(
+        n["id"] for n in data["nodes"]
+        if n["kind"] == "variable" and n.get("name") == "CONFIG"
+    )
+    use_fn = next(
+        n["id"] for n in data["nodes"]
+        if n.get("name") == "use" and n["kind"] == "function"
+    )
+    refs = [
+        e for e in data["edges"]
+        if e["type"] == "references" and e["src"] == use_fn
+        and e["dst"] == config_var
+    ]
+    assert len(refs) == 1, (
+        "imported-const method call must emit a references edge to the in-tree "
+        f"variable; got references={[e for e in data['edges'] if e['type']=='references' and e['src']==use_fn]}"
+    )
+    assert refs[0]["is_resolved"] is True
+    # No workspace-prefixed phantom external for CONFIG.items.
+    ext_ids = [n["id"] for n in data["nodes"] if n["kind"] == "external_symbol"]
+    assert not any("CONFIG.items" in i for i in ext_ids), (
+        f"phantom CONFIG.items external minted: {[i for i in ext_ids if 'CONFIG' in i]}"
+    )
+
+
+def test_run_imported_external_const_method_stays_unresolved(
+    tmp_path: Path,
+) -> None:
+    """WI-hotug CASE B negative: an imported const method call whose receiver is
+    NOT in-tree (a stdlib/external symbol) must NOT emit a references edge — it
+    falls through to the unchanged unresolved-external behavior. Locks that the
+    kind=='variable' guard is import-anchored (allow_ambiguous=False) and never
+    fabricates a resolution."""
+    _build_nuzas_monorepo(tmp_path)
+    (tmp_path / "packages" / "api" / "src" / "apipkg" / "u.py").write_text(
+        "from os import environ\n"
+        "def use():\n"
+        "    return environ.get('X')\n"
+    )
+    out_path = tmp_path / "out.json"
+    run_behavior_map(
+        repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False
+    )
+    data = json.loads(out_path.read_text())
+    use_fn = next(
+        n["id"] for n in data["nodes"]
+        if n.get("name") == "use" and n["kind"] == "function"
+    )
+    # environ is external (os) -> no references edge to any in-tree variable.
+    refs = [
+        e for e in data["edges"]
+        if e["type"] == "references" and e["src"] == use_fn
+    ]
+    assert refs == [], f"external const must not emit a references edge, got {refs}"
+
+
+def test_run_imported_const_shadowed_by_param_no_references(tmp_path: Path) -> None:
+    """WI-hotug CASE B INV-fahub guard: a function PARAMETER that shadows a
+    same-named imported constant must NOT mint a resolved references edge to the
+    module constant — the receiver is the parameter (unknown type), so the call
+    stays honestly unresolved. Reproduces the review-caught scope-shadow false
+    resolution."""
+    _build_nuzas_monorepo(tmp_path)
+    auth = tmp_path / "packages" / "auth" / "src" / "authpkg"
+    (auth / "config.py").write_text("settings = {'a': 1}\n")
+    (tmp_path / "packages" / "api" / "src" / "apipkg" / "u.py").write_text(
+        "from authpkg.config import settings\n"
+        "def handle(settings):\n"
+        "    return settings.get('a')\n"
+    )
+    out_path = tmp_path / "out.json"
+    run_behavior_map(
+        repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False
+    )
+    data = json.loads(out_path.read_text())
+    handle_fn = next(
+        n["id"] for n in data["nodes"]
+        if n.get("name") == "handle" and n["kind"] == "function"
+    )
+    settings_var = next(
+        (n["id"] for n in data["nodes"]
+         if n["kind"] == "variable" and n.get("name") == "settings"), None
+    )
+    refs = [
+        e for e in data["edges"]
+        if e["type"] == "references" and e["src"] == handle_fn
+        and e["dst"] == settings_var
+    ]
+    assert refs == [], (
+        f"parameter shadowing an imported constant must not emit a references "
+        f"edge to the module constant, got {refs}"
+    )
+
+
+def test_run_imported_const_shadowed_by_local_rebind_no_references(
+    tmp_path: Path,
+) -> None:
+    """WI-hotug CASE B INV-fahub guard: a LOCAL rebind shadowing an imported
+    constant must not mint a resolved references edge to the module constant."""
+    _build_nuzas_monorepo(tmp_path)
+    auth = tmp_path / "packages" / "auth" / "src" / "authpkg"
+    (auth / "config.py").write_text("CONFIG = {'a': 1}\n")
+    (tmp_path / "packages" / "api" / "src" / "apipkg" / "u.py").write_text(
+        "from authpkg.config import CONFIG\n"
+        "def handle(raw):\n"
+        "    CONFIG = raw\n"
+        "    return CONFIG.items()\n"
+    )
+    out_path = tmp_path / "out.json"
+    run_behavior_map(
+        repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False
+    )
+    data = json.loads(out_path.read_text())
+    handle_fn = next(
+        n["id"] for n in data["nodes"]
+        if n.get("name") == "handle" and n["kind"] == "function"
+    )
+    module_config = next(
+        (n["id"] for n in data["nodes"]
+         if n["kind"] == "variable" and n.get("name") == "CONFIG"
+         and "config.py" in n.get("path", "")), None
+    )
+    refs = [
+        e for e in data["edges"]
+        if e["type"] == "references" and e["src"] == handle_fn
+        and e["dst"] == module_config
+    ]
+    assert refs == [], (
+        f"local rebind shadowing an imported constant must not emit a references "
+        f"edge to the module constant, got {refs}"
+    )
+
+
+def test_run_imported_class_unresolved_method_stays_phantom(
+    tmp_path: Path,
+) -> None:
+    """WI-hotug CASE B: the ``kind == 'variable'`` guard is load-bearing. An
+    in-tree imported CLASS with an unresolved method (``from x import User;
+    User.nonexistent()``) must NOT emit a references edge — it stays the
+    unchanged unresolved/phantom calls edge (references is only for a variable
+    receiver, never a class). Pins the guard against a drop-mutation."""
+    _build_nuzas_monorepo(tmp_path)  # authpkg.models defines class User
+    (tmp_path / "packages" / "api" / "src" / "apipkg" / "u.py").write_text(
+        "from authpkg.models import User\n"
+        "def use():\n"
+        "    return User.nonexistent_method()\n"
+    )
+    out_path = tmp_path / "out.json"
+    run_behavior_map(
+        repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False
+    )
+    data = json.loads(out_path.read_text())
+    use_fn = next(
+        n["id"] for n in data["nodes"]
+        if n.get("name") == "use" and n["kind"] == "function"
+    )
+    refs = [
+        e for e in data["edges"]
+        if e["type"] == "references" and e["src"] == use_fn
+    ]
+    assert refs == [], (
+        f"class receiver must not emit a references edge (kind guard), got {refs}"
+    )
+    # The unresolved phantom calls edge is preserved (unchanged behavior).
+    calls = [
+        e for e in data["edges"]
+        if e["type"] == "calls" and e["src"] == use_fn
+        and not e.get("is_resolved")
+    ]
+    assert calls, "the unresolved calls edge for the class-method call must survive"
+
+
+def test_run_imported_function_via_nonpackage_reexport_resolves(
+    tmp_path: Path,
+) -> None:
+    """WI-hotug CASE A / INV-nuzas: ``from facade import fn; fn()`` where a
+    NON-package facade module re-exports an in-tree module-level FUNCTION
+    (``from authpkg.impl import compute``) must resolve the call to the REAL
+    first-party ``compute`` node, not dead-end at a phantom workspace
+    ``external_symbol`` (``python:authpkg.facade:0-0:compute:external_symbol``).
+
+    The ``__init__.py``-only re-export alias pass left non-package re-export
+    facades unaliased, so the direct imported-function call missed. This test
+    fails RED on current dev (the calls edge points to the phantom facade
+    external and no resolved edge to the real ``impl.compute`` exists).
+    """
+    _build_nuzas_monorepo(tmp_path)
+    auth = tmp_path / "packages" / "auth" / "src" / "authpkg"
+    (auth / "impl.py").write_text("def compute():\n    return 1\n")
+    (auth / "facade.py").write_text("from authpkg.impl import compute\n")
+    (tmp_path / "packages" / "api" / "src" / "apipkg" / "u.py").write_text(
+        "from authpkg.facade import compute\n"
+        "def use():\n"
+        "    return compute()\n"
+    )
+    out_path = tmp_path / "out.json"
+    run_behavior_map(
+        repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False
+    )
+    data = json.loads(out_path.read_text())
+    real_compute = next(
+        n["id"] for n in data["nodes"]
+        if n["kind"] == "function" and n.get("name") == "compute"
+        and "impl.py" in n.get("path", "")
+    )
+    use_fn = next(
+        n["id"] for n in data["nodes"]
+        if n.get("name") == "use" and n["kind"] == "function"
+    )
+    resolved = [
+        e for e in data["edges"]
+        if e["type"] == "calls" and e["src"] == use_fn
+        and e["dst"] == real_compute
+    ]
+    assert len(resolved) == 1 and resolved[0]["is_resolved"] is True, (
+        "the call through the non-package re-export must resolve to the real "
+        f"impl.compute; got calls={[e for e in data['edges'] if e['type']=='calls' and e['src']==use_fn]}"
+    )
+    # No workspace-prefixed phantom external for the facade re-export.
+    ext_ids = [n["id"] for n in data["nodes"] if n["kind"] == "external_symbol"]
+    assert not any("facade" in i and "compute" in i for i in ext_ids), (
+        f"phantom facade compute external minted: {[i for i in ext_ids if 'compute' in i]}"
+    )
+
+
+def test_run_nonpackage_reexport_shadow_guard_local_def_wins(
+    tmp_path: Path,
+) -> None:
+    """WI-hotug CASE A INV-fahub local-def-wins: when a facade module BOTH
+    re-exports (``from authpkg.impl import compute``) AND defines a same-named
+    symbol LOCALLY (``def compute()``), the re-export alias must NOT clobber the
+    local definition — a call through the facade resolves to the facade's own
+    ``compute``, not the re-exported ``impl.compute``. Locks the single
+    ``(module_name, local_name) in global_symbols`` guard (the facade's local
+    ``compute`` is pre-registered under its own module key, so the alias pass
+    skips it); deleting that guard mints the wrong alias and flips this test."""
+    _build_nuzas_monorepo(tmp_path)
+    auth = tmp_path / "packages" / "auth" / "src" / "authpkg"
+    (auth / "impl.py").write_text("def compute():\n    return 1\n")
+    (auth / "facade.py").write_text(
+        "from authpkg.impl import compute\n"
+        "def compute():\n"
+        "    return 2\n"
+    )
+    (tmp_path / "packages" / "api" / "src" / "apipkg" / "u.py").write_text(
+        "from authpkg.facade import compute\n"
+        "def use():\n"
+        "    return compute()\n"
+    )
+    out_path = tmp_path / "out.json"
+    run_behavior_map(
+        repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False
+    )
+    data = json.loads(out_path.read_text())
+    facade_compute = next(
+        n["id"] for n in data["nodes"]
+        if n["kind"] == "function" and n.get("name") == "compute"
+        and "facade.py" in n.get("path", "")
+    )
+    use_fn = next(
+        n["id"] for n in data["nodes"]
+        if n.get("name") == "use" and n["kind"] == "function"
+    )
+    calls = [
+        e for e in data["edges"]
+        if e["type"] == "calls" and e["src"] == use_fn and e.get("is_resolved")
+    ]
+    assert [e["dst"] for e in calls] == [facade_compute], (
+        "a facade's local definition must win over its same-name re-export; "
+        f"got resolved calls={[e['dst'] for e in calls]}"
+    )
+
+
+def test_run_nonpackage_reexport_multihop_chain_resolves_bounded(
+    tmp_path: Path,
+) -> None:
+    """WI-hotug CASE A: an N-hop re-export chain through non-package modules
+    (``impl -> mid -> top``) resolves to the real function within the bounded
+    fixed point, regardless of file-iteration order."""
+    _build_nuzas_monorepo(tmp_path)
+    auth = tmp_path / "packages" / "auth" / "src" / "authpkg"
+    (auth / "impl.py").write_text("def deepfn():\n    return 1\n")
+    (auth / "mid.py").write_text("from authpkg.impl import deepfn\n")
+    (auth / "top.py").write_text("from authpkg.mid import deepfn\n")
+    (tmp_path / "packages" / "api" / "src" / "apipkg" / "u.py").write_text(
+        "from authpkg.top import deepfn\n"
+        "def use():\n"
+        "    return deepfn()\n"
+    )
+    out_path = tmp_path / "out.json"
+    run_behavior_map(
+        repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False
+    )
+    data = json.loads(out_path.read_text())
+    real_deepfn = next(
+        n["id"] for n in data["nodes"]
+        if n["kind"] == "function" and n.get("name") == "deepfn"
+        and "impl.py" in n.get("path", "")
+    )
+    use_fn = next(
+        n["id"] for n in data["nodes"]
+        if n.get("name") == "use" and n["kind"] == "function"
+    )
+    resolved = [
+        e for e in data["edges"]
+        if e["type"] == "calls" and e["src"] == use_fn
+        and e["dst"] == real_deepfn
+    ]
+    assert len(resolved) == 1 and resolved[0]["is_resolved"] is True, (
+        "the 2-hop re-export chain must resolve to the real impl.deepfn; got "
+        f"calls={[e for e in data['edges'] if e['type']=='calls' and e['src']==use_fn]}"
+    )
+
+
+def test_run_nonpackage_reexport_does_not_mark_re_exported_modifier(
+    tmp_path: Path,
+) -> None:
+    """WI-hotug CASE A decouple: generalizing the alias pass to all modules must
+    NOT extend the ``re_exported`` modifier to non-package re-exports — that
+    modifier stays ``__init__.py``-only (visibility.py / library-exports.yaml
+    consume it as a package-surface signal). The alias still RESOLVES the call
+    (locking that decouple != non-resolution)."""
+    _build_nuzas_monorepo(tmp_path)
+    auth = tmp_path / "packages" / "auth" / "src" / "authpkg"
+    (auth / "impl.py").write_text("def widget():\n    return 1\n")
+    (auth / "facade.py").write_text("from authpkg.impl import widget\n")
+    (tmp_path / "packages" / "api" / "src" / "apipkg" / "u.py").write_text(
+        "from authpkg.facade import widget\n"
+        "def use():\n"
+        "    return widget()\n"
+    )
+    out_path = tmp_path / "out.json"
+    run_behavior_map(
+        repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False
+    )
+    data = json.loads(out_path.read_text())
+    widget_node = next(
+        n for n in data["nodes"]
+        if n["kind"] == "function" and n.get("name") == "widget"
+        and "impl.py" in n.get("path", "")
+    )
+    assert "re_exported" not in widget_node.get("modifiers", []), (
+        "a NON-package re-export must not mark the source symbol re_exported; "
+        f"got modifiers={widget_node.get('modifiers', [])}"
+    )
+    # But the alias still resolves the call (decouple != non-resolution).
+    use_fn = next(
+        n["id"] for n in data["nodes"]
+        if n.get("name") == "use" and n["kind"] == "function"
+    )
+    resolved = [
+        e for e in data["edges"]
+        if e["type"] == "calls" and e["src"] == use_fn
+        and e["dst"] == widget_node["id"] and e.get("is_resolved")
+    ]
+    assert len(resolved) == 1, (
+        "the non-package re-export alias must still resolve the call to the real "
+        f"widget; got calls={[e for e in data['edges'] if e['type']=='calls' and e['src']==use_fn]}"
+    )
+
+
+def test_run_nonpackage_reexport_external_module_shadow_not_aliased(
+    tmp_path: Path,
+) -> None:
+    """WI-hotug CASE A INV-fahub: the non-package re-export pass resolves by
+    EXACT module match, never suffix-fuzzy match — so a facade re-exporting a
+    stdlib/third-party name (``from json import dumps``) must NOT bind to a
+    coincidentally same-suffixed in-tree module (``authpkg/json.py`` defining a
+    local ``dumps``). Binding it would mint a confidently-wrong resolved edge to
+    the wrong symbol (the defect the adversarial review flagged). This test fails
+    RED under a suffix-matching alias pass and passes under exact match."""
+    _build_nuzas_monorepo(tmp_path)
+    auth = tmp_path / "packages" / "auth" / "src" / "authpkg"
+    # An in-tree module whose name coincidentally matches the stdlib ``json``.
+    (auth / "json.py").write_text("def dumps(x):\n    return x\n")
+    (auth / "facade.py").write_text("from json import dumps\n")
+    (tmp_path / "packages" / "api" / "src" / "apipkg" / "u.py").write_text(
+        "from authpkg.facade import dumps\n"
+        "def use():\n"
+        "    return dumps({})\n"
+    )
+    out_path = tmp_path / "out.json"
+    run_behavior_map(
+        repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False
+    )
+    data = json.loads(out_path.read_text())
+    # The in-tree authpkg/json.py:dumps IS analyzed (guards against a vacuous test).
+    intree_dumps = next(
+        n["id"] for n in data["nodes"]
+        if n["kind"] == "function" and n.get("name") == "dumps"
+        and "json.py" in n.get("path", "")
+    )
+    use_fn = next(
+        n["id"] for n in data["nodes"]
+        if n.get("name") == "use" and n["kind"] == "function"
+    )
+    wrong = [
+        e for e in data["edges"]
+        if e["type"] == "calls" and e["src"] == use_fn
+        and e["dst"] == intree_dumps
+    ]
+    assert wrong == [], (
+        "an external-shadowing re-export must not bind to a coincidentally "
+        f"same-suffixed in-tree module (exact-match only); got {wrong}"
+    )
+
+
+def test_run_module_attr_ref_const_references_in_tree_variable(
+    tmp_path: Path,
+) -> None:
+    """WI-huhum / INV-nuzas: a NON-call attribute read on an imported in-tree
+    module constant (``import authpkg.config as cfg; cfg.CONFIG``) now emits a
+    ``references`` edge to the in-tree ``kind=variable`` instead of a phantom
+    workspace-prefixed ``module_attr_ref`` external. Uses EXACT module match
+    (INV-fahub-safe, mirroring WI-hotug CASE A). Fails RED on current dev (the
+    read minted ``python:authpkg.config:0-0:authpkg.config.CONFIG:external_symbol``
+    and no references edge)."""
+    _build_nuzas_monorepo(tmp_path)
+    auth = tmp_path / "packages" / "auth" / "src" / "authpkg"
+    (auth / "config.py").write_text("CONFIG = {'a': 1}\n")
+    (tmp_path / "packages" / "api" / "src" / "apipkg" / "u.py").write_text(
+        "import authpkg.config as cfg\n"
+        "def use():\n"
+        "    return cfg.CONFIG\n"
+    )
+    out_path = tmp_path / "out.json"
+    run_behavior_map(
+        repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False
+    )
+    data = json.loads(out_path.read_text())
+    config_var = next(
+        n["id"] for n in data["nodes"]
+        if n["kind"] == "variable" and n.get("name") == "CONFIG"
+        and "config.py" in n.get("path", "")
+    )
+    use_fn = next(
+        n["id"] for n in data["nodes"]
+        if n.get("name") == "use" and n["kind"] == "function"
+    )
+    refs = [
+        e for e in data["edges"]
+        if e["type"] == "references" and e["src"] == use_fn
+        and e["dst"] == config_var
+    ]
+    assert len(refs) == 1 and refs[0]["is_resolved"] is True, (
+        "the module-attr read of an in-tree constant must emit a resolved "
+        f"references edge to the in-tree variable; got references="
+        f"{[e for e in data['edges'] if e['type']=='references' and e['src']==use_fn]}"
+    )
+    # No workspace-prefixed phantom module_attr_ref external for CONFIG.
+    ext_ids = [n["id"] for n in data["nodes"] if n["kind"] == "external_symbol"]
+    assert not any("authpkg.config.CONFIG" in i for i in ext_ids), (
+        f"phantom CONFIG module_attr_ref external minted: {[i for i in ext_ids if 'CONFIG' in i]}"
+    )
+
+
+def test_run_module_attr_ref_function_references_in_tree_function(
+    tmp_path: Path,
+) -> None:
+    """INV-nuzas category A: a NON-call attribute read on an imported
+    in-tree module FUNCTION (``import authpkg.helpers as h; h.compute`` used as a
+    value, not called) now emits a ``references`` edge to the in-tree
+    ``kind=function`` instead of a phantom workspace-prefixed ``module_attr_ref``
+    external. Extends WI-huhum's ``kind=variable`` retarget to ``kind=function``,
+    reusing its EXACT-module-match (INV-fahub), ``references`` edge (taint-safe),
+    and scope-shadow guards. Fails RED on current dev (the read minted
+    ``python:authpkg.helpers:0-0:authpkg.helpers.compute:external_symbol``)."""
+    _build_nuzas_monorepo(tmp_path)
+    auth = tmp_path / "packages" / "auth" / "src" / "authpkg"
+    (auth / "helpers.py").write_text("def compute():\n    return 1\n")
+    (tmp_path / "packages" / "api" / "src" / "apipkg" / "u.py").write_text(
+        "import authpkg.helpers as h\n"
+        "def use():\n"
+        "    return h.compute\n"
+    )
+    out_path = tmp_path / "out.json"
+    run_behavior_map(
+        repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False
+    )
+    data = json.loads(out_path.read_text())
+    compute_fn = next(
+        n["id"] for n in data["nodes"]
+        if n["kind"] == "function" and n.get("name") == "compute"
+        and "helpers.py" in n.get("path", "")
+    )
+    use_fn = next(
+        n["id"] for n in data["nodes"]
+        if n.get("name") == "use" and n["kind"] == "function"
+    )
+    refs = [
+        e for e in data["edges"]
+        if e["type"] == "references" and e["src"] == use_fn
+        and e["dst"] == compute_fn
+    ]
+    assert len(refs) == 1 and refs[0]["is_resolved"] is True, (
+        "the module-attr read of an in-tree function must emit a resolved "
+        f"references edge to the in-tree function; got references="
+        f"{[e for e in data['edges'] if e['type']=='references' and e['src']==use_fn]}"
+    )
+    # No workspace-prefixed phantom module_attr_ref external for compute.
+    ext_ids = [n["id"] for n in data["nodes"] if n["kind"] == "external_symbol"]
+    assert not any("authpkg.helpers.compute" in i for i in ext_ids), (
+        f"phantom compute module_attr_ref external minted: "
+        f"{[i for i in ext_ids if 'compute' in i]}"
+    )
+
+
+def test_run_module_attr_ref_external_module_stays_phantom(
+    tmp_path: Path,
+) -> None:
+    """WI-huhum negative: a module-attr read on an EXTERNAL module
+    (``import os as o; o.getcwd``) must NOT emit a references edge — os is not
+    in-tree, so exact lookup misses and the read falls through to the unchanged
+    phantom. Locks that the retarget is import-anchored, never fabricated."""
+    _build_nuzas_monorepo(tmp_path)
+    (tmp_path / "packages" / "api" / "src" / "apipkg" / "u.py").write_text(
+        "import os as o\n"
+        "def use():\n"
+        "    return o.getcwd\n"
+    )
+    out_path = tmp_path / "out.json"
+    run_behavior_map(
+        repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False
+    )
+    data = json.loads(out_path.read_text())
+    use_fn = next(
+        n["id"] for n in data["nodes"]
+        if n.get("name") == "use" and n["kind"] == "function"
+    )
+    refs = [
+        e for e in data["edges"]
+        if e["type"] == "references" and e["src"] == use_fn
+    ]
+    assert refs == [], f"external module attr must not emit a references edge, got {refs}"
+
+
+def test_run_module_attr_ref_external_module_name_shadow_not_aliased(
+    tmp_path: Path,
+) -> None:
+    """WI-huhum INV-fahub: exact match, never suffix. A read on an EXTERNAL
+    module (``import json as j; j.SETTINGS``) must NOT bind to a coincidentally
+    same-suffixed in-tree module (``authpkg/json.py`` with a local ``SETTINGS``).
+    Fails RED under a suffix-matching retarget; passes under exact match."""
+    _build_nuzas_monorepo(tmp_path)
+    auth = tmp_path / "packages" / "auth" / "src" / "authpkg"
+    (auth / "json.py").write_text("SETTINGS = {'x': 1}\n")
+    (tmp_path / "packages" / "api" / "src" / "apipkg" / "u.py").write_text(
+        "import json as j\n"
+        "def use():\n"
+        "    return j.SETTINGS\n"
+    )
+    out_path = tmp_path / "out.json"
+    run_behavior_map(
+        repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False
+    )
+    data = json.loads(out_path.read_text())
+    intree_settings = next(
+        n["id"] for n in data["nodes"]
+        if n["kind"] == "variable" and n.get("name") == "SETTINGS"
+        and "json.py" in n.get("path", "")
+    )
+    use_fn = next(
+        n["id"] for n in data["nodes"]
+        if n.get("name") == "use" and n["kind"] == "function"
+    )
+    wrong = [
+        e for e in data["edges"]
+        if e["type"] == "references" and e["src"] == use_fn
+        and e["dst"] == intree_settings
+    ]
+    assert wrong == [], (
+        "an external-module attr read must not bind to a coincidentally "
+        f"same-suffixed in-tree module (exact-match only); got {wrong}"
+    )
+
+
+def test_run_module_attr_ref_alias_shadowed_by_param_no_references(
+    tmp_path: Path,
+) -> None:
+    """WI-huhum INV-fahub scope-shadow guard: a function PARAMETER that shadows a
+    module alias (``import authpkg.config as cfg; def use(cfg): cfg.CONFIG``) must
+    NOT mint a resolved references edge to the module constant — the receiver is
+    the parameter, not the module. Load-bearing: without the guard the retarget
+    would fire on the param, minting a confidently-wrong edge."""
+    _build_nuzas_monorepo(tmp_path)
+    auth = tmp_path / "packages" / "auth" / "src" / "authpkg"
+    (auth / "config.py").write_text("CONFIG = {'a': 1}\n")
+    (tmp_path / "packages" / "api" / "src" / "apipkg" / "u.py").write_text(
+        "import authpkg.config as cfg\n"
+        "def use(cfg):\n"
+        "    return cfg.CONFIG\n"
+    )
+    out_path = tmp_path / "out.json"
+    run_behavior_map(
+        repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False
+    )
+    data = json.loads(out_path.read_text())
+    use_fn = next(
+        n["id"] for n in data["nodes"]
+        if n.get("name") == "use" and n["kind"] == "function"
+    )
+    config_var = next(
+        (n["id"] for n in data["nodes"]
+         if n["kind"] == "variable" and n.get("name") == "CONFIG"
+         and "config.py" in n.get("path", "")), None
+    )
+    refs = [
+        e for e in data["edges"]
+        if e["type"] == "references" and e["src"] == use_fn
+        and e["dst"] == config_var
+    ]
+    assert refs == [], (
+        "a parameter shadowing a module alias must not emit a references edge to "
+        f"the module constant, got {refs}"
+    )
+
+
+def test_run_module_attr_ref_function_target_resolves(
+    tmp_path: Path,
+) -> None:
+    """INV-nuzas category A (2026-07-08 human ruling): the module-attr
+    retarget now covers ``kind=function`` in addition to WI-huhum's ``kind=
+    variable``. A module-attr read whose target is an in-tree ``kind=function``
+    (``import authpkg.helpers as h; h.hash_pw`` used as a value) resolves to the
+    real function via a ``references`` edge. This deliberately supersedes
+    WI-huhum's earlier variable-only pin (that scope was residual-driven — the 52
+    it closed were variables — not a function-specific safety exclusion; the
+    ruling authorizes the widening)."""
+    _build_nuzas_monorepo(tmp_path)  # authpkg.helpers defines hash_pw()
+    (tmp_path / "packages" / "api" / "src" / "apipkg" / "u.py").write_text(
+        "import authpkg.helpers as h\n"
+        "def use():\n"
+        "    return h.hash_pw\n"
+    )
+    out_path = tmp_path / "out.json"
+    run_behavior_map(
+        repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False
+    )
+    data = json.loads(out_path.read_text())
+    hash_pw_fn = next(
+        n["id"] for n in data["nodes"]
+        if n["kind"] == "function" and n.get("name") == "hash_pw"
+        and "helpers.py" in n.get("path", "")
+    )
+    use_fn = next(
+        n["id"] for n in data["nodes"]
+        if n.get("name") == "use" and n["kind"] == "function"
+    )
+    refs = [
+        e for e in data["edges"]
+        if e["type"] == "references" and e["src"] == use_fn
+        and e["dst"] == hash_pw_fn
+    ]
+    assert len(refs) == 1 and refs[0]["is_resolved"] is True, (
+        "an in-tree function-target module-attr read must resolve to a "
+        f"references edge (INV-nuzas category A), got {refs}"
+    )
+
+
+def test_run_module_attr_ref_function_local_import_resolves(
+    tmp_path: Path,
+) -> None:
+    """WI-huhum: a FUNCTION-LOCAL module import (``def use(): import
+    authpkg.config as cfg; return cfg.CONFIG``) — the dominant self-corpus shape
+    (a test method importing a module then reading its constant) — must resolve.
+    The local ``import X as Y`` is the module ALIAS, not a shadow, so the shadow
+    guard excludes plain import aliases (only params / assignments / from-import
+    value rebinds shadow). Without the exclusion ~46 of the 52 residual stay
+    phantom (the initial implementation closed only 3)."""
+    _build_nuzas_monorepo(tmp_path)
+    auth = tmp_path / "packages" / "auth" / "src" / "authpkg"
+    (auth / "config.py").write_text("CONFIG = {'a': 1}\n")
+    (tmp_path / "packages" / "api" / "src" / "apipkg" / "u.py").write_text(
+        "def use():\n"
+        "    import authpkg.config as cfg\n"
+        "    return cfg.CONFIG\n"
+    )
+    out_path = tmp_path / "out.json"
+    run_behavior_map(
+        repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False
+    )
+    data = json.loads(out_path.read_text())
+    config_var = next(
+        n["id"] for n in data["nodes"]
+        if n["kind"] == "variable" and n.get("name") == "CONFIG"
+        and "config.py" in n.get("path", "")
+    )
+    use_fn = next(
+        n["id"] for n in data["nodes"]
+        if n.get("name") == "use" and n["kind"] == "function"
+    )
+    refs = [
+        e for e in data["edges"]
+        if e["type"] == "references" and e["src"] == use_fn
+        and e["dst"] == config_var
+    ]
+    assert len(refs) == 1 and refs[0]["is_resolved"] is True, (
+        "a function-local module import is an alias, not a shadow — the retarget "
+        f"must resolve it; got references="
+        f"{[e for e in data['edges'] if e['type']=='references' and e['src']==use_fn]}"
+    )
+
+
+def test_run_module_attr_ref_coreferent_from_import_alias_resolves(
+    tmp_path: Path,
+) -> None:
+    """INV-nuzas / INV-fahub: a function-local ``from pkg import sub as m`` that
+    binds the SAME in-tree submodule already recorded as a module alias in the
+    FILE-scoped ``module_imports`` (via a SIBLING scope's plain ``import pkg.sub
+    as m``) is a CO-REFERENT module alias, not a value shadow. The read
+    ``m.CONST`` must retarget to the real in-tree variable via a ``references``
+    edge, not mint a workspace-prefixed phantom ``external_symbol``.
+
+    Root cause of the phantom (pre-fix): ``module_imports`` is FILE-scoped (built
+    by an ``ast.walk`` over the whole tree), so a plain ``import authpkg.config
+    as cfg`` in ``pollute()`` makes ``cfg`` a resolvable module alias in
+    ``read()`` too; but ``_collect_local_bindings`` added ``read()``'s own
+    ``from authpkg import config as cfg`` to the INV-fahub shadow set
+    unconditionally, so the retarget guard suppressed the (correct) resolution
+    and emitted ``python:authpkg.config:0-0:authpkg.config.CONFIG:attribute``
+    (later remapped to a workspace-prefixed ``external_symbol``). This is the
+    self-corpus ``rust._analyzer`` / ``prisma._analyzer`` shape (a test method
+    plain-imports the analyzer module while a sibling method from-imports it).
+    Fails RED before the co-referent exclusion in ``_collect_local_bindings``."""
+    _build_nuzas_monorepo(tmp_path)
+    auth = tmp_path / "packages" / "auth" / "src" / "authpkg"
+    (auth / "config.py").write_text("CONFIG = {'a': 1}\n")
+    (tmp_path / "packages" / "api" / "src" / "apipkg" / "u.py").write_text(
+        "def pollute():\n"
+        "    import authpkg.config as cfg\n"
+        "    return cfg\n"
+        "def read():\n"
+        "    from authpkg import config as cfg\n"
+        "    return cfg.CONFIG\n"
+    )
+    out_path = tmp_path / "out.json"
+    run_behavior_map(
+        repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False
+    )
+    data = json.loads(out_path.read_text())
+    config_var = next(
+        n["id"] for n in data["nodes"]
+        if n["kind"] == "variable" and n.get("name") == "CONFIG"
+        and "config.py" in n.get("path", "")
+    )
+    read_fn = next(
+        n["id"] for n in data["nodes"]
+        if n.get("name") == "read" and n["kind"] == "function"
+    )
+    refs = [
+        e for e in data["edges"]
+        if e["type"] == "references" and e["src"] == read_fn
+        and e["dst"] == config_var
+    ]
+    assert len(refs) == 1 and refs[0]["is_resolved"] is True, (
+        "a co-referent from-import module alias must retarget to the in-tree "
+        f"variable; got references="
+        f"{[e for e in data['edges'] if e['type']=='references' and e['src']==read_fn]}"
+    )
+    ext_ids = [n["id"] for n in data["nodes"] if n["kind"] == "external_symbol"]
+    assert not any("authpkg.config.CONFIG" in i for i in ext_ids), (
+        "phantom CONFIG module_attr_ref external minted: "
+        f"{[i for i in ext_ids if 'CONFIG' in i]}"
+    )
+
+
+def test_run_module_attr_ref_coreferent_guard_different_module_stays_phantom(
+    tmp_path: Path,
+) -> None:
+    """INV-fahub safety lock for the co-referent exclusion: the exclusion fires
+    ONLY when the function-local ``from``-import binds the SAME module as the
+    polluting plain-import alias. Here ``read()`` does ``from authpkg import
+    other as cfg`` while the sibling ``pollute()`` plain-imports ``authpkg.config
+    as cfg`` — DIFFERENT modules — so ``cfg`` stays a genuine shadow and the read
+    must NOT mint a confidently-wrong ``references`` edge to
+    ``authpkg.config.CONFIG`` (the polluting module's variable, which
+    ``real_module`` erroneously points at). Locks that a same-name /
+    different-module collision is never over-retargeted."""
+    _build_nuzas_monorepo(tmp_path)
+    auth = tmp_path / "packages" / "auth" / "src" / "authpkg"
+    (auth / "config.py").write_text("CONFIG = {'a': 1}\n")
+    (auth / "other.py").write_text("CONFIG = {'b': 2}\n")
+    (tmp_path / "packages" / "api" / "src" / "apipkg" / "u.py").write_text(
+        "def pollute():\n"
+        "    import authpkg.config as cfg\n"
+        "    return cfg\n"
+        "def read():\n"
+        "    from authpkg import other as cfg\n"
+        "    return cfg.CONFIG\n"
+    )
+    out_path = tmp_path / "out.json"
+    run_behavior_map(
+        repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False
+    )
+    data = json.loads(out_path.read_text())
+    config_var = next(
+        n["id"] for n in data["nodes"]
+        if n["kind"] == "variable" and n.get("name") == "CONFIG"
+        and "config.py" in n.get("path", "")
+    )
+    read_fn = next(
+        n["id"] for n in data["nodes"]
+        if n.get("name") == "read" and n["kind"] == "function"
+    )
+    wrong = [
+        e for e in data["edges"]
+        if e["type"] == "references" and e["src"] == read_fn
+        and e["dst"] == config_var
+    ]
+    assert wrong == [], (
+        "a different-module from-import alias must not over-retarget to the "
+        f"polluting module's variable; got {wrong}"
+    )
+
+
+def test_run_module_attr_ref_enclosing_param_shadow_no_references(
+    tmp_path: Path,
+) -> None:
+    """WI-luhah (1c) INV-fahub enclosing-scope closure-capture shadow: with a
+    module-level ``import authpkg.config as cfg`` and ``def outer(cfg): def
+    inner(): return cfg.CONFIG``, ``inner``'s ``cfg`` is ``outer``'s PARAMETER
+    captured by closure, NOT the module alias — so the module-attr retarget must
+    NOT mint a resolved references edge from ``inner`` to the module CONFIG.
+    ``inner``'s immediate local_bindings exclude ``outer``'s param, so the guard
+    needs the enclosing-scope binding union. Fails RED before the union (inner ->
+    CONFIG confidently-wrong resolved edge)."""
+    _build_nuzas_monorepo(tmp_path)
+    auth = tmp_path / "packages" / "auth" / "src" / "authpkg"
+    (auth / "config.py").write_text("CONFIG = {'a': 1}\n")
+    (tmp_path / "packages" / "api" / "src" / "apipkg" / "u.py").write_text(
+        "import authpkg.config as cfg\n"
+        "def outer(cfg):\n"
+        "    def inner():\n"
+        "        return cfg.CONFIG\n"
+        "    return inner\n"
+    )
+    out_path = tmp_path / "out.json"
+    run_behavior_map(
+        repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False
+    )
+    data = json.loads(out_path.read_text())
+    config_var = next(
+        (n["id"] for n in data["nodes"]
+         if n["kind"] == "variable" and n.get("name") == "CONFIG"
+         and "config.py" in n.get("path", "")), None
+    )
+    inner_fn = next(
+        (n["id"] for n in data["nodes"]
+         if n.get("name") == "outer.inner" and n["kind"] == "function"), None
+    )
+    assert config_var is not None and inner_fn is not None, (
+        f"fixture nodes must exist: config_var={config_var}, inner_fn={inner_fn}"
+    )
+    refs = [
+        e for e in data["edges"]
+        if e["type"] == "references" and e["src"] == inner_fn
+        and e["dst"] == config_var
+    ]
+    assert refs == [], (
+        "an enclosing param shadowing a module alias must not emit a references "
+        f"edge from the nested function to the module constant; got {refs}"
+    )
+
+
+def test_run_module_attr_ref_module_scope_rebind_no_references(
+    tmp_path: Path,
+) -> None:
+    """WI-luhah (2) INV-fahub module-scope rebind shadow: with ``import
+    authpkg.config as cfg; cfg = make_cfg(); X = cfg.CONFIG`` at MODULE scope, the
+    module-level reassignment rebinds ``cfg`` off the import alias, so the read
+    ``cfg.CONFIG`` must NOT retarget to the module CONFIG. The module-scope
+    _emit_module_attr_refs caller passes EMPTY local_bindings, so a module-level
+    reassignment of the import alias is unguarded. Fails RED before the
+    module-scope shadow set (<module> -> CONFIG confidently-wrong resolved
+    edge)."""
+    _build_nuzas_monorepo(tmp_path)
+    auth = tmp_path / "packages" / "auth" / "src" / "authpkg"
+    (auth / "config.py").write_text("CONFIG = {'a': 1}\n")
+    (tmp_path / "packages" / "api" / "src" / "apipkg" / "u.py").write_text(
+        "import authpkg.config as cfg\n"
+        "def make_cfg():\n"
+        "    return object()\n"
+        "cfg = make_cfg()\n"
+        "X = cfg.CONFIG\n"
+    )
+    out_path = tmp_path / "out.json"
+    run_behavior_map(
+        repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False
+    )
+    data = json.loads(out_path.read_text())
+    config_var = next(
+        (n["id"] for n in data["nodes"]
+         if n["kind"] == "variable" and n.get("name") == "CONFIG"
+         and "config.py" in n.get("path", "")), None
+    )
+    assert config_var is not None, "fixture CONFIG variable node must exist"
+    refs = [
+        e for e in data["edges"]
+        if e["type"] == "references" and e.get("dst") == config_var
+    ]
+    assert refs == [], (
+        "a module-scope reassignment of an import alias must not emit a "
+        f"references edge to the module constant; got {refs}"
+    )
+
+
+def test_run_variable_ref_enclosing_param_shadow_no_references(
+    tmp_path: Path,
+) -> None:
+    """WI-luhah (1c) sibling _emit_variable_refs: with a module-level variable
+    ``COUNTER`` and ``def outer(COUNTER): def inner(): return COUNTER``,
+    ``inner``'s bare ``COUNTER`` read is ``outer``'s PARAMETER (closure capture),
+    NOT the module variable — so no references edge from ``inner`` to the module
+    variable. Same enclosing-scope-union gap as the module_attr_ref sibling."""
+    _build_nuzas_monorepo(tmp_path)
+    (tmp_path / "packages" / "api" / "src" / "apipkg" / "u.py").write_text(
+        "COUNTER = 0\n"
+        "def outer(COUNTER):\n"
+        "    def inner():\n"
+        "        return COUNTER\n"
+        "    return inner\n"
+    )
+    out_path = tmp_path / "out.json"
+    run_behavior_map(
+        repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False
+    )
+    data = json.loads(out_path.read_text())
+    counter_var = next(
+        (n["id"] for n in data["nodes"]
+         if n["kind"] == "variable" and n.get("name") == "COUNTER"
+         and "u.py" in n.get("path", "")), None
+    )
+    inner_fn = next(
+        (n["id"] for n in data["nodes"]
+         if n.get("name") == "outer.inner" and n["kind"] == "function"), None
+    )
+    assert counter_var is not None and inner_fn is not None, (
+        f"fixture nodes must exist: counter_var={counter_var}, inner_fn={inner_fn}"
+    )
+    refs = [
+        e for e in data["edges"]
+        if e["type"] == "references" and e["src"] == inner_fn
+        and e["dst"] == counter_var
+    ]
+    assert refs == [], (
+        "an enclosing param shadowing a module variable must not emit a "
+        f"references edge from the nested function to the module variable; "
+        f"got {refs}"
+    )
+
+
+def test_run_variable_ref_module_scope_import_over_var_no_references(
+    tmp_path: Path,
+) -> None:
+    """WI-luhah (2) sibling _emit_variable_refs: a module-level ``import`` (plain
+    or ``from``) that rebinds a name off a same-named module-level VARIABLE must
+    suppress the bare-name references retarget — the read is the import, not the
+    variable. The module-scope caller passes EMPTY local_bindings, leaving the
+    import-over-variable shadow unguarded. Covers both plain and ``from`` import
+    aliases. Fails RED before the module-scope import-alias shadow."""
+    _build_nuzas_monorepo(tmp_path)  # authpkg.helpers exists
+    (tmp_path / "packages" / "api" / "src" / "apipkg" / "u.py").write_text(
+        "PLAINV = 1\n"
+        "import authpkg.helpers as PLAINV\n"
+        "FROMV = 2\n"
+        "from authpkg import helpers as FROMV\n"
+        "a = PLAINV\n"
+        "b = FROMV\n"
+    )
+    out_path = tmp_path / "out.json"
+    run_behavior_map(
+        repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False
+    )
+    data = json.loads(out_path.read_text())
+    plain_var = next(
+        (n["id"] for n in data["nodes"]
+         if n["kind"] == "variable" and n.get("name") == "PLAINV"
+         and "u.py" in n.get("path", "")), None
+    )
+    from_var = next(
+        (n["id"] for n in data["nodes"]
+         if n["kind"] == "variable" and n.get("name") == "FROMV"
+         and "u.py" in n.get("path", "")), None
+    )
+    assert plain_var is not None and from_var is not None, (
+        f"fixture vars must exist: plain_var={plain_var}, from_var={from_var}"
+    )
+    wrong = [
+        e for e in data["edges"]
+        if e["type"] == "references" and e.get("dst") in {plain_var, from_var}
+    ]
+    assert wrong == [], (
+        "a module-level import shadowing a same-named module variable must not "
+        f"emit a references edge to the variable; got {wrong}"
+    )
+
+
+def test_run_module_attr_ref_module_scope_comprehension_target_not_shadowed(
+    tmp_path: Path,
+) -> None:
+    """WI-luhah gap 2 precision: a module-level comprehension for-target is
+    comprehension-scoped (Python-3) and does NOT rebind a same-named module
+    import alias, so ``_collect_module_rebound_names`` must NOT descend into the
+    comprehension and collect it — the ``cfg.CONFIG`` retarget must still
+    resolve. Guards against the over-suppression the naive walk would cause."""
+    _build_nuzas_monorepo(tmp_path)
+    auth = tmp_path / "packages" / "auth" / "src" / "authpkg"
+    (auth / "config.py").write_text("CONFIG = {'a': 1}\n")
+    (tmp_path / "packages" / "api" / "src" / "apipkg" / "u.py").write_text(
+        "import authpkg.config as cfg\n"
+        "data = [cfg for cfg in range(3)]\n"
+        "X = cfg.CONFIG\n"
+    )
+    out_path = tmp_path / "out.json"
+    run_behavior_map(
+        repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False
+    )
+    data = json.loads(out_path.read_text())
+    config_var = next(
+        (n["id"] for n in data["nodes"]
+         if n["kind"] == "variable" and n.get("name") == "CONFIG"
+         and "config.py" in n.get("path", "")), None
+    )
+    assert config_var is not None, "fixture CONFIG variable node must exist"
+    refs = [
+        e for e in data["edges"]
+        if e["type"] == "references" and e.get("dst") == config_var
+    ]
+    assert len(refs) == 1 and refs[0]["is_resolved"] is True, (
+        "a module-level comprehension for-target must not shadow a same-named "
+        f"import alias; cfg.CONFIG must still resolve; got {refs}"
+    )
+
+
+def test_run_module_attr_ref_enclosing_param_shadow_transitive_no_references(
+    tmp_path: Path,
+) -> None:
+    """WI-luhah gap 1c transitive: a 3-level nest where the INNERMOST function
+    reads ``cfg.CONFIG`` and ``cfg`` is the GRANDPARENT's param must not resolve
+    — ``_enclosing_shadow`` must walk the FULL enclosing chain, not just the
+    immediate parent. A 1-hop-only regression would keep the 2-level tests green
+    while re-minting the wrong ``a.b.c -> CONFIG`` edge."""
+    _build_nuzas_monorepo(tmp_path)
+    auth = tmp_path / "packages" / "auth" / "src" / "authpkg"
+    (auth / "config.py").write_text("CONFIG = {'a': 1}\n")
+    (tmp_path / "packages" / "api" / "src" / "apipkg" / "u.py").write_text(
+        "import authpkg.config as cfg\n"
+        "def a(cfg):\n"
+        "    def b():\n"
+        "        def c():\n"
+        "            return cfg.CONFIG\n"
+        "        return c\n"
+        "    return b\n"
+    )
+    out_path = tmp_path / "out.json"
+    run_behavior_map(
+        repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False
+    )
+    data = json.loads(out_path.read_text())
+    config_var = next(
+        (n["id"] for n in data["nodes"]
+         if n["kind"] == "variable" and n.get("name") == "CONFIG"
+         and "config.py" in n.get("path", "")), None
+    )
+    c_fn = next(
+        (n["id"] for n in data["nodes"]
+         if n.get("name") == "a.b.c" and n["kind"] == "function"), None
+    )
+    assert config_var is not None and c_fn is not None, (
+        f"fixture nodes must exist: config_var={config_var}, c_fn={c_fn}"
+    )
+    refs = [
+        e for e in data["edges"]
+        if e["type"] == "references" and e["src"] == c_fn
+        and e["dst"] == config_var
+    ]
+    assert refs == [], (
+        "a grandparent param shadowing a module alias must not emit a references "
+        f"edge from the deeply-nested function; got {refs}"
+    )
+
+
+def test_run_module_attr_ref_nested_read_not_attributed_to_enclosing(
+    tmp_path: Path,
+) -> None:
+    """WI-huhum scope-boundary: a module-attr read inside a NESTED function
+    (``def outer(): def inner(): return cfg.CONFIG``) must be attributed to
+    ``inner``, never to the enclosing ``outer`` — the walk is scope-bounded
+    (mirroring _emit_variable_refs), so ``outer`` does not over-walk into
+    ``inner``. Fails RED under a raw ast.walk (which mints a spurious resolved
+    ``outer -> CONFIG`` edge in addition to the correct ``inner -> CONFIG``)."""
+    _build_nuzas_monorepo(tmp_path)
+    auth = tmp_path / "packages" / "auth" / "src" / "authpkg"
+    (auth / "config.py").write_text("CONFIG = {'a': 1}\n")
+    (tmp_path / "packages" / "api" / "src" / "apipkg" / "u.py").write_text(
+        "import authpkg.config as cfg\n"
+        "def outer():\n"
+        "    def inner():\n"
+        "        return cfg.CONFIG\n"
+        "    return inner\n"
+    )
+    out_path = tmp_path / "out.json"
+    run_behavior_map(
+        repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False
+    )
+    data = json.loads(out_path.read_text())
+    config_var = next(
+        n["id"] for n in data["nodes"]
+        if n["kind"] == "variable" and n.get("name") == "CONFIG"
+        and "config.py" in n.get("path", "")
+    )
+    outer_fn = next(
+        n["id"] for n in data["nodes"]
+        if n.get("name") == "outer" and n["kind"] == "function"
+    )
+    inner_fn = next(
+        (n["id"] for n in data["nodes"]
+         if str(n.get("name", "")).endswith("inner")
+         and n["kind"] == "function"), None
+    )
+    # The enclosing `outer` must NOT be credited with the nested read.
+    outer_refs = [
+        e for e in data["edges"]
+        if e["type"] == "references" and e["src"] == outer_fn
+        and e["dst"] == config_var
+    ]
+    assert outer_refs == [], (
+        f"nested read must not be attributed to the enclosing function; got {outer_refs}"
+    )
+    # And `inner` (its own pass) DOES resolve the read.
+    inner_refs = [
+        e for e in data["edges"]
+        if e["type"] == "references" and e["src"] == inner_fn
+        and e["dst"] == config_var
+    ]
+    assert len(inner_refs) == 1, (
+        f"the nested function's own read must resolve to CONFIG; got {inner_refs}"
+    )
+
+
+def test_run_module_attr_ref_nested_param_shadow_no_references(
+    tmp_path: Path,
+) -> None:
+    """WI-huhum scope-boundary + shadow: a nested function PARAMETER that shadows
+    a module alias (``def use(): def inner(cfg): return cfg.CONFIG``) must not
+    mint a resolved references edge from anyone — ``use`` does not over-walk into
+    ``inner`` (scope boundary), and ``inner``'s own pass sees ``cfg`` as its
+    param. Fails RED under a raw ast.walk (spurious ``use -> CONFIG``)."""
+    _build_nuzas_monorepo(tmp_path)
+    auth = tmp_path / "packages" / "auth" / "src" / "authpkg"
+    (auth / "config.py").write_text("CONFIG = {'a': 1}\n")
+    (tmp_path / "packages" / "api" / "src" / "apipkg" / "u.py").write_text(
+        "import authpkg.config as cfg\n"
+        "def use():\n"
+        "    def inner(cfg):\n"
+        "        return cfg.CONFIG\n"
+        "    return inner\n"
+    )
+    out_path = tmp_path / "out.json"
+    run_behavior_map(
+        repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False
+    )
+    data = json.loads(out_path.read_text())
+    config_var = next(
+        (n["id"] for n in data["nodes"]
+         if n["kind"] == "variable" and n.get("name") == "CONFIG"
+         and "config.py" in n.get("path", "")), None
+    )
+    refs = [
+        e for e in data["edges"]
+        if e["type"] == "references" and e["dst"] == config_var
+    ]
+    assert refs == [], (
+        f"a nested param shadowing the module alias must emit no references edge, got {refs}"
+    )
+
+
+def test_run_module_attr_ref_module_scope_read_resolves(
+    tmp_path: Path,
+) -> None:
+    """WI-huhum module scope: a module-level attribute read of an imported
+    in-tree constant (``import authpkg.config as cfg; X = cfg.CONFIG`` at module
+    scope) resolves to the in-tree variable, attributed to the reading file
+    node. Covers the module-scope retarget path (the function-scope tests do
+    not exercise it)."""
+    _build_nuzas_monorepo(tmp_path)
+    auth = tmp_path / "packages" / "auth" / "src" / "authpkg"
+    (auth / "config.py").write_text("CONFIG = {'a': 1}\n")
+    (tmp_path / "packages" / "api" / "src" / "apipkg" / "u.py").write_text(
+        "import authpkg.config as cfg\n"
+        "X = cfg.CONFIG\n"
+    )
+    out_path = tmp_path / "out.json"
+    run_behavior_map(
+        repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False
+    )
+    data = json.loads(out_path.read_text())
+    nodes = {n["id"]: n for n in data["nodes"]}
+    config_var = next(
+        n["id"] for n in data["nodes"]
+        if n["kind"] == "variable" and n.get("name") == "CONFIG"
+        and "config.py" in n.get("path", "")
+    )
+    refs = [
+        e for e in data["edges"]
+        if e["type"] == "references" and e["dst"] == config_var
+    ]
+    assert len(refs) == 1 and refs[0]["is_resolved"] is True, (
+        f"a module-scope module-attr read must resolve to the in-tree variable; got {refs}"
+    )
+    assert "u.py" in nodes[refs[0]["src"]].get("path", ""), (
+        f"the module-scope read must be attributed to u.py; got src={refs[0]['src']}"
+    )

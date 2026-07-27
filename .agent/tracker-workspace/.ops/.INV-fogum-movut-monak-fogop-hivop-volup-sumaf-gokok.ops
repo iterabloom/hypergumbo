@@ -106,3 +106,19 @@
   clock: 11  # a094
   nonce: a094  # a094
   message: "[Wave-0 pending-validation sweep] tracker: upgrade INV-fogum-movut-monak-fogop-hivop-volup-sumaf-gokok satisfied — TOML dependency fingerprints now use canonical hgfp2: prefix. Root cause (producer-side bare-hex emission) fixed by central post-pass at packages/hypergumbo-core/src/hypergumbo_core/fingerprint.py:106-445 (scheme v2) with toml_config.py:198-613 deferring to post-pass. Positive evidence: direct compute test + orchestrator stamp test both verify hgfp2: prefix; all 40 unit tests pass (test_fingerprint.py)."  # a094
+- op: update  # d3e9
+  at: '2026-06-22T01:48:05Z'  # d3e9
+  by: agent  # d3e9
+  actor: jgstern_agent  # d3e9
+  clock: 12  # d3e9
+  nonce: d3e9  # d3e9
+  set: {}  # d3e9
+  remove:  # d3e9
+    tags: [awaits_bakeoff_validation]  # d3e9
+- op: discuss  # c4f1
+  at: '2026-06-22T01:48:05Z'  # c4f1
+  by: agent  # c4f1
+  actor: jgstern_agent  # c4f1
+  clock: 13  # c4f1
+  nonce: c4f1  # c4f1
+  message: "Drain audit: D-stale. Claim (99 TOML nodes raw-hex vs canonical hgfp1: prefix) validated 2026-06-10/06-11 via direct-compute + orchestrator-stamp + 40 unit tests (test_fingerprint.py); PR #4167. Status satisfied. Stripping stale tag."  # c4f1

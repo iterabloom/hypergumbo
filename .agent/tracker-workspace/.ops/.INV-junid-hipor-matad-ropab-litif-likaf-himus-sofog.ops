@@ -53,3 +53,53 @@
     tags: [dogfood]  # 77b6
   remove:  # 77b6
     tags: [dogfooding]  # 77b6
+- op: update  # 7356
+  at: '2026-06-30T12:38:07Z'  # 7356
+  by: agent  # 7356
+  actor: jgstern_agent  # 7356
+  clock: 5  # 7356
+  nonce: '7356'  # 7356
+  set:  # 7356
+    status: needs_human_review  # 7356
+    priority: 3  # 7356
+    title: "framework_dispatch meta-key at recurrence-promotion threshold — promote to Edge.framework? (ADR-0028 OQ2)"  # 7356
+    description: "RE-SCOPED 2026-06-30 (wave3 plan §A row 9; tracker hygiene, no code).\n\nORIGINAL premise (RESOLVED): the edge.meta.framework_dispatch axis mixed\nframework names (fastapi, starlette, django_channels) with mechanism/pattern\ncategories (registry_dispatch 89%, native_websocket, rust_trait_dispatch) and\npackaging nouns (npm_package, html_script_src) — two/three axes in one field.\n\nRESOLVED BY audit-findings 0014 (Cluster 28C, docs/audits/0014-evidence-type-cluster-c-framework-dispatch.md):\nthe meta-key partition splits the cluster — 56 framework-named rows fold to\nmeta[\"framework_dispatch\"]=<framework_name>; 9 pattern/mechanism rows\n(registry_dispatch, naming/URL/regex matches, etc.) fold to\nmeta[\"detection_pattern\"]=<pattern_name>. After the fold, framework_dispatch\nholds framework names only; the mechanism leak is gone. Shipped via Wave 5 of\nWI-runod (Codeberg #3572 + selfh #162-#166); audit 0014 status: All RESOLVED.\n\nRE-SCOPED CONCERN (this item now tracks): ADR-0028 Open Question 2 — the\nrecurrence-promotion threshold. Post-fold, meta[\"framework_dispatch\"] carries\n~30 distinct framework-name values across ~30 producer modules, which is AT the\nADR-0024 §\"Fold-residue discipline\" rule-3 threshold (>=30 distinct values\nacross >=30 producers). Open decision: should framework_dispatch promote from\nan Edge.meta key to a dedicated Edge.framework: str | None field? Gated on\npost-migration steady-state emission-count confirmation (needs a diverse-corpus\nbakeoff, not self-analysis — hypergumbo's own deps exercise only a few of the\n~30 frameworks, so a self-corpus count under-counts). If the threshold is\nconfirmed tripped, the promotion is a follow-on ADR (or an ADR-0028 §6\namendment) adding the field with its ADR-0024 axis scaffolding — a human\narchitectural call, hence needs_human_review."  # 7356
+  add:  # 7356
+    tags: [promotion_threshold]  # 7356
+- op: discuss  # 4e19
+  at: '2026-06-30T12:38:07Z'  # 4e19
+  by: agent  # 4e19
+  actor: jgstern_agent  # 4e19
+  clock: 6  # 4e19
+  nonce: '4e19'  # 4e19
+  message: "Re-scoped per wave3 §A row 9 (tracker hygiene, no code). Original split-premise — framework_dispatch mixing framework names (fastapi/starlette) with mechanism/pattern categories (registry_dispatch 89%, native_websocket, rust_trait_dispatch) — is RESOLVED by audit-findings 0014's meta-key partition: the 9 pattern/mechanism rows fold to meta.detection_pattern, the 56 framework-named rows stay in meta.framework_dispatch, so the field now holds framework names only (shipped Wave 5 of WI-runod, audit 0014 status All RESOLVED). KEEP framework_dispatch. This item now tracks the ADR-0028 Open Question 2 promotion-threshold decision: post-fold framework_dispatch sits at ~30 distinct values × ~30 producers (the ADR-0024 §Fold-residue-discipline rule-3 threshold); whether to promote it from an Edge.meta key to a dedicated Edge.framework: str|None field is a human architectural call gated on diverse-corpus steady-state emission-count confirmation (self-analysis under-counts) → needs_human_review."  # 4e19
+- op: update  # 878d
+  at: '2026-07-05T03:29:24Z'  # 878d
+  by: agent  # 878d
+  actor: jgstern_agent  # 878d
+  clock: 7  # 878d
+  nonce: 878d  # 878d
+  set:  # 878d
+    status: violated  # 878d
+- op: discuss  # 7211
+  at: '2026-07-05T03:29:25Z'  # 7211
+  by: agent  # 7211
+  actor: jgstern_agent  # 7211
+  clock: 8  # 7211
+  nonce: '7211'  # 7211
+  message: "ADR-0028 OQ-2 RESOLVED — DECLINE promotion (adversarially stress-tested; the 'promote to typed Edge.framework field' lean was reversed). Keep framework_dispatch as the registered MetaKeySpec: (1) ADR-0024 fold-residue rules are ORDERED gates — rule 3 promotion bites only after rule 1 (endpoint-property) + rule 2 (axis-leak), and framework survives neither; (2) ADR-0023 classifies framework as an ENDPOINT property (already at meta.concepts[*].framework), so a typed Edge.framework inverts the axiom; (3) Edge-side revealed preference is registry-gate (ADR-0038 data_direction stayed registered meta at ~31 producers), never a typed field; (4) ZERO production consumers read framework_dispatch (pure provenance). Endpoint-reference-concept alternative ALSO rejected (category error: 75% of edges carry framework on neither endpoint, all pass ADR-0023 enforcement green -> the 'endpoints must carry framework' axiom doesn't exist; a node->edge back-pointer adds INV-vomuf-class silent-dangling risk). Escalation to a typed Edge field sanctioned ONLY if a consumer ever materializes (rule 3). Re-scoped to the PARKED low-urgency rule-2 value-space cleanup (mixed non-framework values npm_package/registry_dispatch/middleware_chain/orm_accessor/<fw>_<subtype> -> own registered keys); STAYS violated on the axis-purity residual (zero-urgency, nothing reads the key). Fix the fabricated '>=30/>=30' threshold cited here + in audit-findings 0014 (ADR-0024's real rule = 3 values OR 2 producers). Provenance: decision_register_06102026.md UPDATE 2026-07-04."  # 7211
+- op: update  # fe8c
+  at: '2026-07-19T21:26:06Z'  # fe8c
+  by: agent  # fe8c
+  actor: jgstern_agent  # fe8c
+  clock: 9  # fe8c
+  nonce: fe8c  # fe8c
+  set:  # fe8c
+    status: satisfied  # fe8c
+- op: discuss  # aa6a
+  at: '2026-07-19T21:26:06Z'  # aa6a
+  by: agent  # aa6a
+  actor: jgstern_agent  # aa6a
+  clock: 10  # aa6a
+  nonce: aa6a  # aa6a
+  message: "SATISFIED on the CORRECTED acceptance property (owner-approved path C, 2026-07-19; INV-nuzas/INV-vavat precedent of resolving an INV whose filed premise was refuted). Original premise — 'framework_dispatch should hold a bare framework NAME; it mixes framework names with mechanism names, two axes in one field' — was REFUTED by a four-lens review (ADR / spec / history / spirit, all → keep+document). Findings: (1) framework_dispatch IS one coherent axis by design — ADR-0028 Cluster 28C is literally the 'framework-dispatch CONVENTION' fold; its values are dispatch-convention identifiers (framework-specific compounds django_orm/kafka_streams/tauri_invoke AND framework-agnostic mechanisms registry_dispatch/npm_package), the deliberate fold residues, NOT an axis leak to split. (2) The 'bare framework name' reading is a literal over-reading of audit-0014's '<framework_name>' shorthand, contradicted by that audit's own compound examples, ADR-0028:80 (treats django_orm as one meta-bound unit), and spec §9 line 903 ('Framework-dispatch convention name'). (3) detection_pattern is a SEPARATE coherent axis (pattern-shape match heuristics: abi_name_match/jni_naming) — moving convention values there (options A/B) would contradict audit-0014's own verdict table, which deliberately placed registry_dispatch/npm_package in framework_dispatch. (4) The '>=30 values / >=30 producers' threshold cited in the item + audit-0014 is FABRICATED — ADR-0024 rule 3's real threshold is '>=3 values OR >=2 producers'; the key trips it ~15x, but rule-3 promotion (key->typed Edge.framework) is an ordered gate behind rules 1-2 which framework_dispatch survives neither, so ADR-0028 OQ2 stays DECLINED (2026-07-05). (5) ZERO production consumers read the key (grep-verified) — pure provenance. EVIDENCE (docs-only PR #753, CI-green, merged): axis_meta_keys.py MetaKeySpec descriptions rewritten to name the coherent axis + value space + re-eval trigger; audit-findings 0014 threshold corrected (both sites) + dated Correction clarifying the dispatch-convention-vs-pattern-shape discriminator; spec §9 updated. Live value enumeration: 45 distinct values / ~30 producers, all dispatch conventions. The one residual homogeneity nit (framework-agnostic sentinels beside framework-specific compounds) is zero-consumer, zero-urgency, documented in-place; a typed Edge.framework escalation remains available if a consumer ever materializes."  # aa6a

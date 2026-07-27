@@ -55,3 +55,20 @@
   clock: 5  # bfaa
   nonce: bfaa  # bfaa
   message: "STEP-1 RE-VERIFICATION (dev @ df6dccac20). Boundary face (WI-ruzib, verify-claims constraint.boundary registry-membership) HOLDS with positive evidence: 'hypergumbo verify-claims' with constraint.boundary=banana now rejects at load with rc2 and a helpful valid-boundary list (browser_storage_read..subprocess, 16 values) — a did-you-mean-grade hint. META INV-murig STAYS VIOLATED: the config/search/sketch registry faces (INV-gufod, INV-gapib, INV-subak, INV-votop, WI-furop) are out-of-arc and unaddressed; 'hypergumbo config klingon', 'search --kind banana', 'search --language banana', 'sketch --require-section <invalid>' still silently accept arbitrary values. Only the verify-claims boundary face is closed."  # bfaa
+- op: update  # 077c
+  at: '2026-07-10T09:55:09Z'  # 077c
+  by: agent  # 077c
+  actor: jgstern_agent  # 077c
+  clock: 6  # 077c
+  nonce: 077c  # 077c
+  set:  # 077c
+    status: satisfied  # 077c
+  add:  # 077c
+    tags: [wave4]  # 077c
+- op: discuss  # 546c
+  at: '2026-07-10T09:55:09Z'  # 546c
+  by: agent  # 546c
+  actor: jgstern_agent  # 546c
+  clock: 7  # 546c
+  nonce: 546c  # 546c
+  message: "SATISFIED — cli-input sub-C (registry-membership validation) META closes: all members resolved. Every CLI flag whose semantics require a registry lookup now rejects non-registry values with a did-you-mean hint (verified live @ dev 1386628b52): config language (INV-gufod satisfied + INV-subak satisfied — 'notalanguage' -> rc=2 'not a known language'), search --kind/--language (INV-votop satisfied — 'boguskind'/'bipbop' -> rc=2 + 'Did you mean'), sketch --require-section (WI-furop done), verify-claims boundary axis (WI-ruzib done), and the --input view discriminator (INV-gapib satisfied — wrong view -> rc=2, PR #538). No registry-backed flag proceeds silently on a non-registry value. Advances the INV-fabov umbrella (sub-A INV-somut satisfied; sub-B INV-dunof pending only INV-jibof)."  # 546c

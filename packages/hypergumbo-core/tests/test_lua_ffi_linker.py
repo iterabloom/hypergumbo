@@ -115,8 +115,8 @@ class TestLuaFFILinkerFfiC:
         assert edge.dst == c_sym.id
         assert edge.src == lua_sym.id
         assert edge.meta is not None
-        assert edge.meta.get("access_mode") == "write"
-        assert edge.meta.get("dest_access_mode") == "read"
+        assert edge.meta.get("data_direction") == "src_to_dst"
+        assert edge.meta.get("access_mode") is None
 
     def test_ffi_c_with_multiple_functions(self, tmp_path: Path) -> None:
         """Multiple ffi.C calls should each create a bridge edge."""

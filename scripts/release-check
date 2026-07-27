@@ -218,13 +218,36 @@ section "3. Dependencies & Security"
 # pip-audit's exit code is the gate: 0 = no vulnerabilities, 1 = found.
 # Anything else (network, parse, unsupported package) is a real failure
 # we want to surface, not paper over.
+echo "  Syncing local audit env to the CI (.woodpecker) baseline pins..."
+# Mirror the live Woodpecker CI audit posture: pin the fixable transitive deps
+# to their fixed versions (upgraded away, NOT ignored) so this local go/no-go
+# gate audits the same surface as per-PR CI. Best-effort — a pin that can't
+# resolve just leaves the CVE for pip-audit to surface below.
+pip install --upgrade pip wheel setuptools >/dev/null 2>&1 || true
+pip install "requests~=2.33.0" "pygments~=2.20.0" "urllib3>=2.7.0" "idna>=3.15" \
+    "msgpack>=1.2.1" "click>=8.3.3" "pyasn1>=0.6.4" "pillow>=12.3.0" >/dev/null 2>&1 || true
+
 echo "  Running pip-audit..."
+# --ignore-vuln list kept IN SYNC with .woodpecker/woodpecker.yml (the
+# authoritative CI audit), plus two LOCAL-ONLY carve-outs this dev box pulls
+# that CI's closure does not: CVE-2025-69872 (diskcache, via CairoSVG/safety)
+# and PYSEC-2026-597 (nltk, no fix available). The published packages depend on
+# neither. Fixable deps are pinned above, not ignored here.
 AUDIT_OUTPUT=$(pip-audit --skip-editable \
-    --ignore-vuln CVE-2025-71176 \
-    --ignore-vuln CVE-2026-3219 \
-    --ignore-vuln CVE-2025-69872 \
-    --ignore-vuln PYSEC-2026-139 \
-    --ignore-vuln CVE-2025-3000 2>&1)
+    --ignore-vuln CVE-2025-71176 --ignore-vuln CVE-2026-3219 \
+    --ignore-vuln PYSEC-2025-211 --ignore-vuln PYSEC-2025-212 \
+    --ignore-vuln PYSEC-2025-213 --ignore-vuln PYSEC-2025-214 \
+    --ignore-vuln PYSEC-2025-215 --ignore-vuln PYSEC-2025-216 \
+    --ignore-vuln PYSEC-2025-217 --ignore-vuln PYSEC-2025-218 \
+    --ignore-vuln PYSEC-2025-189 --ignore-vuln PYSEC-2025-190 \
+    --ignore-vuln PYSEC-2025-191 --ignore-vuln PYSEC-2025-192 \
+    --ignore-vuln PYSEC-2025-193 --ignore-vuln PYSEC-2025-194 \
+    --ignore-vuln PYSEC-2025-195 --ignore-vuln PYSEC-2025-196 \
+    --ignore-vuln PYSEC-2025-197 --ignore-vuln PYSEC-2025-210 \
+    --ignore-vuln PYSEC-2026-139 --ignore-vuln PYSEC-2024-277 \
+    --ignore-vuln CVE-2025-3000 --ignore-vuln CVE-2026-4372 \
+    --ignore-vuln PYSEC-2026-2289 --ignore-vuln PYSEC-2026-2290 \
+    --ignore-vuln CVE-2025-69872 --ignore-vuln PYSEC-2026-597 2>&1)
 AUDIT_EXIT=$?
 if [ $AUDIT_EXIT -eq 0 ]; then
     pass "No known vulnerabilities in dependencies"

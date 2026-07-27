@@ -1,0 +1,36 @@
+- op: create  # 9f41
+  at: '2026-07-16T05:13:40Z'  # 9f41
+  by: agent  # 9f41
+  actor: jgstern_agent  # 9f41
+  clock: 1  # 9f41
+  nonce: 9f41  # 9f41
+  data:  # 9f41
+    kind: work_item  # 9f41
+    title: "C# instantiation edges target the class node, not the constructor — reverse-slice on a ctor misses all 'new X()' callers"  # 9f41
+    status: todo_hard  # 9f41
+    priority: 2  # 9f41
+    parent:  # 9f41
+    tags:  # 9f41
+    - dogfood  # 9f41
+    - wave5  # 9f41
+    isbefore: []  # 9f41
+    duplicate_of: []  # 9f41
+    not_duplicate_of: []  # 9f41
+    pr_ref:  # 9f41
+    description: "Found in DEEP bakeoff deep-20260623-134237 cohort-001 iter-004 (sherpa-csharp). 'new WaveReader(...)' instantiation edges land their in-degree on the CLASS node (WaveReader in-degree 24) rather than the constructor node (WaveReader.WaveReader in-degree 1). A reverse slice seeded on the constructor therefore returns only 2 nodes and misses ~24 real construction call sites — crippling refactoring-safety analysis ('who constructs this?'). The class node conflates 'referenced as a type' with 'instantiated'. Evidence: reflect/cohort-001/iter-004/sherpa-csharp.assessment.yaml; rslice on WaveReader.WaveReader = 2 nodes vs class in-degree 24."  # 9f41
+    fields: {}  # 9f41
+- op: update  # 5261
+  at: '2026-07-16T10:22:27Z'  # 5261
+  by: agent  # 5261
+  actor: jgstern_agent  # 5261
+  clock: 2  # 5261
+  nonce: '5261'  # 5261
+  set:  # 5261
+    status: done  # 5261
+- op: discuss  # 72c1
+  at: '2026-07-16T10:22:27Z'  # 72c1
+  by: agent  # 72c1
+  actor: jgstern_agent  # 72c1
+  clock: 3  # 72c1
+  nonce: 72c1  # 72c1
+  message: "Fixed in PR #689 (dev b8e4d675a1). Cross-file 'new X(...)' now lands its 'instantiates' edge on the constructor node (Type.Type) instead of the class node; falls back to the class only when the type has no explicit ctor (implicit default). Behavioral evidence: live analyze_csharp probe — cross-file 'new WaveReader(\"a.wav\")' now targets dst.kind=constructor 'WaveReader.WaveReader' (was dst.kind=class 'WaveReader'), so a reverse-slice seeded on the ctor now reaches the construction call sites. Tests: test_csharp.py::TestCSharpSpecialCases::{test_cross_file_instantiation_targets_constructor, test_same_file_instantiation_targets_constructor, test_instantiation_without_explicit_ctor_targets_class}. Root cause: same-file resolution hit the ctor via symbol_by_name shadowing while cross-file resolver.lookup returned the class — now unified via the Type.Type key (C# CS0542 guarantees that key is a ctor). DOCUMENTED RESIDUAL: overloaded constructors collapse to the last-registered ctor in the global registry, so all instantiations of an overloaded type share one ctor anchor (arity-precise overload matching is a follow-up, filed separately)."  # 72c1

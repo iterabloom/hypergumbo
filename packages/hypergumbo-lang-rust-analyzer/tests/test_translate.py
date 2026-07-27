@@ -275,6 +275,49 @@ class TestTranslateScipToHg:
             for e in edges
         )
 
+    def test_edge_endpoints_are_hypergumbo_symbol_ids(self) -> None:
+        """Regression (scip-edge-drop): a translated edge's src/dst must be the
+        translated Symbols' hypergumbo ids — NOT the raw SCIP descriptor strings.
+
+        translate_scip_to_hg was calling the edge builders without a
+        ``resolve_symbol`` map, so every edge kept the raw SCIP symbol string
+        (e.g. ``'... crate/'``) as its endpoint. Those match no Symbol.id, so
+        every scip edge is dangling and the survey's endpoint-integrity finalize
+        drops all of them (2978 → 0 on zoxide) even though the scip *symbols*
+        survive — a silent half-merge that made the rust-analyzer backend emit no
+        call graph via ``hypergumbo survey``.
+        """
+        caller = _rust_symbol("m/caller().")
+        callee = _rust_symbol("m/callee().")
+        doc = scip_pb2.Document(
+            language="Rust",
+            relative_path="src/lib.rs",
+            symbols=[
+                scip_pb2.SymbolInformation(symbol=caller),
+                scip_pb2.SymbolInformation(symbol=callee),
+            ],
+            occurrences=[
+                scip_pb2.Occurrence(
+                    symbol=caller, symbol_roles=DEFINITION_ROLE, range=[0, 0, 20, 0],
+                ),
+                scip_pb2.Occurrence(
+                    symbol=callee, symbol_roles=DEFINITION_ROLE, range=[30, 0, 35, 0],
+                ),
+                scip_pb2.Occurrence(symbol=callee, symbol_roles=0, range=[5, 4, 10]),
+            ],
+        )
+        blob = _index_bytes(doc)
+        symbols, edges = translate_scip_to_hg(blob, lambda _p: None)
+        sym_ids = {s.id for s in symbols}
+        call_edges = [
+            e for e in edges
+            if "callee" in (e.meta or {}).get("scip_dst_symbol", "")
+        ]
+        assert call_edges, "expected a caller->callee call edge"
+        for e in call_edges:
+            assert e.src in sym_ids, f"src {e.src!r} is not a translated Symbol id"
+            assert e.dst in sym_ids, f"dst {e.dst!r} is not a translated Symbol id"
+
     def test_reader_is_invoked_for_rust_functions(self) -> None:
         seen_paths: list[str] = []
 

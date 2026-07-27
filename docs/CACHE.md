@@ -71,7 +71,7 @@ Embeddings are stored by file content hash:
 - Same content = same embedding (cache hit)
 - Modified content = new embedding (cache miss, but doesn't invalidate others)
 
-**Results depend on the full repository state.** The behavior map (`hypergumbo.results.json`) includes cross-file relationships, call graphs, and framework detection. Changing one file can affect edges throughout the codebase.
+**Results depend on the full repository state.** The survey (`survey.json`) includes cross-file relationships, call graphs, and framework detection. Changing one file can affect edges throughout the codebase.
 
 Results are stored per state hash:
 - Exact same state = reuse cached results

@@ -2,6 +2,7 @@
 """Tests for the sketch module (token-budgeted Markdown output)."""
 import importlib.util
 import os
+from types import SimpleNamespace
 from typing import ClassVar
 from pathlib import Path
 
@@ -22,7 +23,6 @@ from hypergumbo_core.sketch import (
     _format_structure_tree,
     _format_structure_tree_fallback,
     _collect_important_files,
-    _extract_domain_vocabulary,
     _analyze_test_files,
     _format_test_summary,
     _estimate_test_coverage,
@@ -37,6 +37,8 @@ from hypergumbo_core.sketch import (
     _extract_path_from_forge_url,
     _extract_readme_internal_links,
     _format_file_content_block,
+    _content_is_binary,
+    _file_docstrings,
     CONFIG_FILES_BY_LANG,
 )
 from hypergumbo_core.ranking import compute_centrality, _is_test_path
@@ -44,6 +46,7 @@ from hypergumbo_core.profile import detect_profile
 from hypergumbo_core.ir import Symbol, Edge, Span
 from hypergumbo_core.entrypoints import Entrypoint, EntrypointKind
 from hypergumbo_core.datamodels import DataModel, DataModelKind
+from hypergumbo_core.cli import cmd_sketch, _validate_require_sections
 
 
 def _has_sentence_transformers() -> bool:
@@ -1067,6 +1070,34 @@ class TestExtractReadmeDescriptionHeuristic:
         result = _extract_readme_description_heuristic(readme)
         assert result == "Real description."
 
+    def test_skips_blockquote_note_in_paragraph(self, tmp_path: Path) -> None:
+        """INV-modor: a '> ' blockquote note (a callout/aside) that continues a
+        paragraph is skipped, not embedded raw with its markdown prefix. Before
+        the fix the '> ' prefix leaked into readme_description and the cut landed
+        mid-blockquote; skipping the aside leaves a clean, complete sentence."""
+        from hypergumbo_core.sketch import _extract_readme_description_heuristic
+        readme = tmp_path / "README.md"
+        readme.write_text(
+            "# Proj\n\nProj is a tool to understand a codebase.\n"
+            "> Requires Python 3.10+. Run setup after installing.\n"
+        )
+        result = _extract_readme_description_heuristic(readme)
+        assert "> " not in (result or "")
+        assert result == "Proj is a tool to understand a codebase."
+
+    def test_sentence_completion_skips_blockquote(self, tmp_path: Path) -> None:
+        """INV-modor: sentence-completion (which pulls the next line to finish an
+        incomplete sentence) must not pull in a blockquote note either."""
+        from hypergumbo_core.sketch import _extract_readme_description_heuristic
+        readme = tmp_path / "README.md"
+        readme.write_text(
+            "# Proj\n\nProj is a local-first tool\n\n"
+            "> Requires Python 3.10+.\n"
+        )
+        result = _extract_readme_description_heuristic(readme)
+        assert "> " not in (result or "")
+        assert result == "Proj is a local-first tool"
+
     def test_extracts_title_subtitle(self, tmp_path: Path) -> None:
         """Falls back to title subtitle if no paragraph."""
         from hypergumbo_core.sketch import _extract_readme_description_heuristic
@@ -1449,6 +1480,18 @@ class TestFormatSourceFiles:
         result = _format_source_files(tmp_path, [])
         assert result == ""
 
+    def test_renders_docstring_when_present(self, tmp_path: Path) -> None:
+        """WI-kipod: file with a module docstring shows it after the path."""
+        files = [tmp_path / "a.py", tmp_path / "b.py"]
+        docstrings = {"a.py": "Module A: greeting primitives."}
+
+        result = _format_source_files(tmp_path, files, docstrings=docstrings)
+
+        assert "- `a.py` — Module A: greeting primitives." in result
+        # b.py has no docstring entry: bare path line, no dash summary.
+        assert "- `b.py`" in result
+        assert "- `b.py` —" not in result
+
     def test_sorts_by_density_when_provided(self, tmp_path: Path) -> None:
         """Sorts files by density scores when provided."""
         files = [
@@ -1475,6 +1518,45 @@ class TestFormatSourceFiles:
         assert "`medium.py`" in file_lines[1]
         assert "`low.py`" in file_lines[2]
 
+
+class TestFileDocstrings:
+    """WI-kipod: map relative file path -> module docstring for file nodes."""
+
+    def test_maps_file_kind_docstrings_relativizing_absolute_paths(
+        self, tmp_path: Path
+    ) -> None:
+        """Absolute file-node paths are relativized to repo_root."""
+        symbols = [
+            Symbol(id="f1", name="a.py", kind="file", language="python",
+                   path=str(tmp_path / "a.py"), span=Span(1, 1, 1, 1),
+                   docstring="Module A summary."),
+        ]
+        result = _file_docstrings(symbols, tmp_path)
+        assert result == {"a.py": "Module A summary."}
+
+    def test_keeps_already_relative_paths(self, tmp_path: Path) -> None:
+        """A file node whose path is already relative is keyed as-is."""
+        symbols = [
+            Symbol(id="f1", name="a.py", kind="file", language="python",
+                   path="a.py", span=Span(1, 1, 1, 1),
+                   docstring="Module A summary."),
+        ]
+        result = _file_docstrings(symbols, tmp_path)
+        assert result == {"a.py": "Module A summary."}
+
+    def test_skips_files_without_docstring_and_non_file_kinds(
+        self, tmp_path: Path
+    ) -> None:
+        """Non-file kinds and docstring-less file nodes are excluded."""
+        symbols = [
+            Symbol(id="f1", name="a.py", kind="file", language="python",
+                   path="a.py", span=Span(1, 1, 1, 1)),  # no docstring
+            Symbol(id="fn", name="foo", kind="function", language="python",
+                   path="a.py", span=Span(1, 1, 1, 1),
+                   docstring="A function docstring."),  # not kind=file
+        ]
+        result = _file_docstrings(symbols, tmp_path)
+        assert result == {}
 
 
 def _make_test_symbol(
@@ -1523,6 +1605,24 @@ class TestFormatFileContentBlock:
         lines = _format_file_content_block("src/app.py", "x = 1")
         assert "START of src/app.py" in lines[0]
         assert "END of src/app.py" in lines[4]
+
+    def test_binary_content_omitted_with_placeholder(self) -> None:
+        """WI-pubar: content with NUL bytes is omitted with an explanatory
+        placeholder instead of being embedded verbatim, at the single render
+        chokepoint every content section funnels through."""
+        lines = _format_file_content_block("data.bin", "prefix\x00\x00binary")
+        joined = "\n".join(lines)
+        assert "\x00" not in joined
+        assert "[binary content omitted]" in joined
+        # START/END markers still frame the omitted file.
+        assert "START of data.bin" in lines[0]
+        assert "END of data.bin" in lines[2]
+
+    def test_content_is_binary_predicate(self) -> None:
+        """The NUL-byte binary sniff distinguishes text from binary content."""
+        assert _content_is_binary("plain text\nsecond line") is False
+        assert _content_is_binary("") is False
+        assert _content_is_binary("has a \x00 nul") is True
 
 
 class TestFormatAdditionalFiles:
@@ -2034,6 +2134,37 @@ class TestFormatAdditionalFiles:
         # With such a small budget, we may not be able to include anything
         # but header should still be present
         assert "## Additional Files" in result
+
+    def test_content_mode_omits_binary_file_no_nul_bytes(self, tmp_path: Path) -> None:
+        """WI-pubar: a selected file containing NUL bytes must not leak raw
+        control bytes into 'Additional Files Content'.
+
+        ``read_text(errors="replace")`` only substitutes *invalid* encoding
+        sequences; U+0000 is a valid code point, so a binary file's NULs pass
+        through verbatim. Before the fix a cold-cache ``sketch -t 4000`` emitted
+        12,792 NUL bytes into the rendered section. The file is now omitted with
+        an explanatory placeholder instead, at any token budget.
+        """
+        text_file = tmp_path / "GUIDE.md"
+        text_file.write_text("# Guide\n\nReal readable documentation content.\n")
+        nul_file = tmp_path / "NOTES.md"
+        nul_file.write_bytes(b"# Notes\n" + b"\x00" * 12792 + b"\nend\n")
+
+        result, _, _ = _format_additional_files(
+            tmp_path,
+            source_files=[],
+            symbols=[],
+            in_degree={},
+            token_budget=4000,
+            include_content=True,
+            section_title="Additional Files Content",
+            preselected_files=[text_file, nul_file],
+        )
+
+        assert "\x00" not in result, "binary NUL bytes leaked into rendered sketch"
+        assert "[binary content omitted]" in result
+        # The real text file still renders its content.
+        assert "Real readable documentation content." in result
 
 
 class TestExtractMarkdownLinks:
@@ -2704,6 +2835,57 @@ class TestFormatEntrypoints:
         assert "### CLI & Scripts" in result
         assert "`main`" in result
         assert "CLI main" in result
+
+    def test_renders_docstring_when_present(self, tmp_path: Path) -> None:
+        """WI-kipod: entry with a docstring shows it after the dash, not the path."""
+        symbols = [
+            Symbol(id="main", name="main", kind="function", language="python",
+                   path=str(tmp_path / "cli.py"), span=Span(1, 1, 1, 10),
+                   docstring="Run the demo: greet the world and hail a user."),
+        ]
+        entrypoints = [
+            Entrypoint(symbol_id="main", kind=EntrypointKind.CLI_MAIN,
+                       confidence=0.7, label="CLI main"),
+        ]
+
+        result = _format_entrypoints(entrypoints, symbols, tmp_path)
+
+        assert "- `main` (CLI main) — Run the demo: greet the world and hail a user." in result
+        # When a docstring is present the path is not rendered after the dash.
+        assert "— `cli.py`" not in result
+
+    def test_falls_back_to_path_without_docstring(self, tmp_path: Path) -> None:
+        """WI-kipod: entry with no docstring keeps the path after the dash."""
+        symbols = [
+            Symbol(id="main", name="main", kind="function", language="python",
+                   path=str(tmp_path / "cli.py"), span=Span(1, 1, 1, 10)),
+        ]
+        entrypoints = [
+            Entrypoint(symbol_id="main", kind=EntrypointKind.CLI_MAIN,
+                       confidence=0.7, label="CLI main"),
+        ]
+
+        result = _format_entrypoints(entrypoints, symbols, tmp_path)
+
+        assert "- `main` (CLI main) — `cli.py`" in result
+
+    def test_main_guard_renders_under_cli_and_scripts(self, tmp_path: Path) -> None:
+        """WI-tuvun: MAIN_GUARD entries group under 'CLI & Scripts', not 'Other'."""
+        symbols = [
+            Symbol(id="script.py", name="script.py", kind="file", language="python",
+                   path=str(tmp_path / "script.py"), span=Span(1, 1, 1, 1)),
+        ]
+        entrypoints = [
+            Entrypoint(symbol_id="script.py", kind=EntrypointKind.MAIN_GUARD,
+                       confidence=0.85,
+                       label="Python script (if __name__ == '__main__')"),
+        ]
+
+        result = _format_entrypoints(entrypoints, symbols, tmp_path)
+
+        assert "### CLI & Scripts" in result
+        assert "### Other" not in result
+        assert "script.py" in result
 
     def test_respects_max_entries(self, tmp_path: Path) -> None:
         """Limits output to max_entries per group."""
@@ -3559,7 +3741,7 @@ class TestFormatSymbols:
         )
         sink.supply_chain_tier = 1
         sink.supply_chain_reason = "tier_1"
-        sink.lines_of_code = 3
+        sink.line_span = 3
 
         # Connector: 50-line body, has outgoing edges, 20 callers
         connector = Symbol(
@@ -3570,7 +3752,7 @@ class TestFormatSymbols:
         )
         connector.supply_chain_tier = 1
         connector.supply_chain_reason = "tier_1"
-        connector.lines_of_code = 50
+        connector.line_span = 50
 
         # Caller symbols
         callers = []
@@ -5002,166 +5184,6 @@ class TestCollectImportantFiles:
         assert result[0] == "file0.c"
 
 
-class TestExtractDomainVocabulary:
-    """Tests for domain vocabulary extraction."""
-
-    def test_extracts_domain_terms(self, tmp_path: Path) -> None:
-        """Extracts domain-specific terms from source code."""
-        (tmp_path / "server.py").write_text(
-            "def handleAuthentication(user, token):\n"
-            "    validateToken(token)\n"
-            "    authenticateUser(user)\n"
-        )
-        profile = detect_profile(tmp_path)
-
-        terms = _extract_domain_vocabulary(tmp_path, profile)
-
-        assert "authentication" in terms or "authenticate" in terms
-        assert "token" in terms or "validate" in terms
-
-    def test_filters_common_terms(self, tmp_path: Path) -> None:
-        """Filters out common programming terms."""
-        (tmp_path / "app.py").write_text(
-            "def get_value():\n"
-            "    result = process_data(input_value)\n"
-            "    return result\n"
-            "\n"
-            "def calculatePaymentTotal(invoice):\n"
-            "    total = invoice.amount\n"
-            "    return total\n"
-        )
-        profile = detect_profile(tmp_path)
-
-        terms = _extract_domain_vocabulary(tmp_path, profile)
-
-        # Common terms should be filtered
-        assert "value" not in terms
-        assert "result" not in terms
-        # Domain terms should be included
-        assert "payment" in terms or "invoice" in terms or "calculate" in terms
-
-    def test_splits_camel_case(self, tmp_path: Path) -> None:
-        """Splits camelCase and PascalCase identifiers."""
-        (tmp_path / "service.py").write_text(
-            "class UserAuthenticationService:\n"
-            "    def validateCredentials(self):\n"
-            "        pass\n"
-        )
-        profile = detect_profile(tmp_path)
-
-        terms = _extract_domain_vocabulary(tmp_path, profile)
-
-        assert "authentication" in terms or "validate" in terms or "credentials" in terms
-
-    def test_splits_snake_case(self, tmp_path: Path) -> None:
-        """Splits snake_case identifiers."""
-        (tmp_path / "handler.py").write_text(
-            "def process_payment_request(payment_details):\n"
-            "    validate_payment_amount(payment_details)\n"
-        )
-        profile = detect_profile(tmp_path)
-
-        terms = _extract_domain_vocabulary(tmp_path, profile)
-
-        assert "payment" in terms
-
-    def test_respects_max_terms(self, tmp_path: Path) -> None:
-        """Respects max_terms limit."""
-        # Create file with many unique terms
-        (tmp_path / "app.py").write_text(
-            "def alpha(): pass\n"
-            "def bravo(): pass\n"
-            "def charlie(): pass\n"
-            "def delta(): pass\n"
-            "def echo(): pass\n"
-        )
-        profile = detect_profile(tmp_path)
-
-        terms = _extract_domain_vocabulary(tmp_path, profile, max_terms=3)
-
-        assert len(terms) <= 3
-
-    def test_excludes_node_modules(self, tmp_path: Path) -> None:
-        """Excludes node_modules directory."""
-        (tmp_path / "node_modules").mkdir()
-        (tmp_path / "node_modules" / "lib.js").write_text(
-            "function excludedTerm() {}\n"
-        )
-        (tmp_path / "app.py").write_text(
-            "def includedTerm():\n"
-            "    pass\n"
-        )
-        profile = detect_profile(tmp_path)
-
-        terms = _extract_domain_vocabulary(tmp_path, profile)
-
-        assert "excluded" not in terms
-
-    def test_handles_empty_project(self, tmp_path: Path) -> None:
-        """Returns empty list for project with no source files."""
-        (tmp_path / "README.md").write_text("# Project\n")
-        profile = detect_profile(tmp_path)
-
-        terms = _extract_domain_vocabulary(tmp_path, profile)
-
-        assert terms == []
-
-    def test_handles_unreadable_files(self, tmp_path: Path) -> None:
-        """Gracefully handles unreadable files."""
-        (tmp_path / "good.py").write_text("def validFunction(): pass\n")
-        profile = detect_profile(tmp_path)
-
-        # Just verify no exception is raised
-        terms = _extract_domain_vocabulary(tmp_path, profile)
-        assert isinstance(terms, list)
-
-    def test_handles_pure_snake_case(self, tmp_path: Path) -> None:
-        """Handles pure snake_case identifiers without uppercase letters."""
-        (tmp_path / "handler.py").write_text(
-            "def process_customer_payment_request():\n"
-            "    validate_invoice_amount()\n"
-        )
-        profile = detect_profile(tmp_path)
-
-        terms = _extract_domain_vocabulary(tmp_path, profile)
-
-        assert "customer" in terms or "payment" in terms or "invoice" in terms
-
-    def test_handles_all_uppercase_constants(self, tmp_path: Path) -> None:
-        """Handles ALL_UPPERCASE_CONSTANTS (snake_case fallback path)."""
-        (tmp_path / "constants.py").write_text(
-            "MAX_CUSTOMER_LIMIT = 100\n"
-            "DEFAULT_PAYMENT_TIMEOUT = 30\n"
-        )
-        profile = detect_profile(tmp_path)
-
-        terms = _extract_domain_vocabulary(tmp_path, profile)
-
-        assert "customer" in terms or "payment" in terms or "limit" in terms or "timeout" in terms
-
-    def test_handles_file_read_error(self, tmp_path: Path) -> None:
-        """Gracefully handles file read errors (OSError)."""
-        from unittest.mock import patch
-
-        (tmp_path / "good.py").write_text("def validTerm(): pass\n")
-        profile = detect_profile(tmp_path)
-
-        # Mock file reading to raise OSError
-        original_read_text = Path.read_text
-
-        def mock_read_text(self, *args, **kwargs):
-            if "good.py" in str(self):
-                raise OSError("Mocked read error")
-            return original_read_text(self, *args, **kwargs)
-
-        with patch.object(Path, "read_text", mock_read_text):
-            # This should not raise even when files can't be read
-            terms = _extract_domain_vocabulary(tmp_path, profile)
-
-        assert isinstance(terms, list)
-
-
-
 class TestConfigExtraction:
     """Tests for config file extraction with different modes."""
 
@@ -5280,6 +5302,47 @@ license = "GPL-3.0"
         result = _extract_config_info(tmp_path, mode=ConfigExtractionMode.HEURISTIC)
 
         assert "LICENSE: AGPL" in result
+
+    def test_license_aggregates_all_distinct_including_packages(
+        self, tmp_path: Path
+    ) -> None:
+        """WI-gojuz: license aggregation reports every distinct license present,
+        including per-package LICENSE files in a monorepo — not just the first
+        root file (which collapsed a dual-licensed AGPL+MPL repo to AGPL alone).
+        """
+        from hypergumbo_core.sketch import _extract_config_info, ConfigExtractionMode
+
+        (tmp_path / "LICENSE").write_text(
+            "GNU AFFERO GENERAL PUBLIC LICENSE\nVersion 3, 19 November 2007\n"
+        )
+        pkg = tmp_path / "packages" / "tracker"
+        pkg.mkdir(parents=True)
+        (pkg / "LICENSE").write_text("Mozilla Public License Version 2.0\n")
+        # A dependency's license under a hidden/excluded dir must be ignored.
+        vendored = tmp_path / ".vendor" / "dep"
+        vendored.mkdir(parents=True)
+        (vendored / "LICENSE").write_text(
+            "MIT License\nPermission is hereby granted\n"
+        )
+
+        result = _extract_config_info(tmp_path, mode=ConfigExtractionMode.HEURISTIC)
+
+        assert "AGPL" in result
+        assert "MPL" in result
+        assert "MIT" not in result  # excluded-dir license not aggregated
+
+    def test_unrecognized_license_yields_no_tag(self, tmp_path: Path) -> None:
+        """An unrecognized LICENSE produces no LICENSE line — the classifier
+        returns None rather than mislabeling it."""
+        from hypergumbo_core.sketch import _extract_config_info, ConfigExtractionMode
+
+        (tmp_path / "LICENSE").write_text(
+            "Custom proprietary terms. All rights reserved.\n"
+        )
+
+        result = _extract_config_info(tmp_path, mode=ConfigExtractionMode.HEURISTIC)
+
+        assert "LICENSE:" not in result
 
     def test_extract_lgpl_license(self, tmp_path: Path) -> None:
         """Detects LGPL license."""
@@ -5464,6 +5527,49 @@ gem "puma"
         assert "client/package.json" in result
         assert "server-app" in result
         assert "client-app" in result
+
+    def test_monorepo_packages_dir_manifests(self, tmp_path: Path) -> None:
+        """WI-lirub: the heuristic scan surfaces per-package manifest identity
+        for monorepo layouts under packages/ (depth 1-2), not only the flat
+        CONFIG_SUBDIRS set (server/client/...). Mirrors _collect_config_content's
+        monorepo glob so heuristic (and HYBRID-fallback) config_info covers every
+        sub-package's name/version, deterministically, on any monorepo.
+        """
+        from hypergumbo_core.sketch import _extract_config_info, ConfigExtractionMode
+
+        (tmp_path / "pyproject.toml").write_text(
+            '[project]\nname = "root-umbrella"\nversion = "9.9.9"\n'
+        )
+        core = tmp_path / "packages" / "core"
+        core.mkdir(parents=True)
+        (core / "pyproject.toml").write_text(
+            '[project]\nname = "acme-core"\nversion = "1.2.3"\n'
+        )
+        web = tmp_path / "packages" / "web-app"
+        web.mkdir(parents=True)
+        (web / "package.json").write_text(
+            '{"name": "acme-web", "version": "4.5.6"}'
+        )
+        # A manifest under an excluded dir (node_modules) must NOT leak in.
+        vendored = tmp_path / "node_modules" / "dep"
+        vendored.mkdir(parents=True)
+        (vendored / "package.json").write_text(
+            '{"name": "vendored-dep", "version": "0.0.1"}'
+        )
+
+        result = _extract_config_info(
+            tmp_path, mode=ConfigExtractionMode.HEURISTIC, max_chars=4000
+        )
+
+        # Root manifest still present.
+        assert "root-umbrella" in result
+        # Sub-package identity now surfaced, each with its path prefix.
+        assert "packages/core/pyproject.toml" in result
+        assert "acme-core" in result
+        assert "packages/web-app/package.json" in result
+        assert "acme-web" in result
+        # Excluded-dir manifest ignored.
+        assert "vendored-dep" not in result
 
     def test_truncates_long_output(self, tmp_path: Path) -> None:
         """Truncates output when exceeding max_chars."""
@@ -7444,7 +7550,6 @@ class TestCachedResults:
             "edges": [],
             "sketch_precomputed": {
                 "config_info": 'name = "cached_project_name"\nversion = "1.2.3"',
-                "vocabulary": ["token", "semantic", "embedding"],
                 "readme_description": "A cached project description from README.",
             },
         }
@@ -7471,7 +7576,6 @@ class TestCachedResults:
             "edges": [],
             "sketch_precomputed": {
                 "config_info": "",
-                "vocabulary": [],
                 "readme_description": "Cached README description here.",
             },
         }
@@ -7530,7 +7634,6 @@ class TestCachedResults:
             "edges": [],
             "sketch_precomputed": {
                 "config_info": 'name = "auto_discovered_project"',
-                "vocabulary": ["autodiscovered"],
                 "readme_description": "Auto-discovered README description.",
             },
         }
@@ -7706,6 +7809,50 @@ class TestRequireSections:
         (tmp_path / "main.py").write_text("x = 1\n")
         sketch = generate_sketch(tmp_path, max_tokens=500, require_sections=None)
         assert "## Overview" in sketch
+
+
+class TestRequireSectionCliValidation:
+    """WI-furop: `sketch --require-section` rejects unknown section names
+    (INV-fabov family) instead of silently accepting them.
+    """
+
+    def test_validate_require_sections_accepts_valid(self) -> None:
+        """All-valid section names return None (no error)."""
+        assert _validate_require_sections(
+            ["Key Symbols", "Entry Points"]
+        ) is None
+
+    def test_validate_require_sections_accepts_empty(self) -> None:
+        """Empty list / None are no-ops (return None)."""
+        assert _validate_require_sections([]) is None
+        assert _validate_require_sections(None) is None
+
+    def test_validate_require_sections_rejects_unknown(self, capsys) -> None:
+        """An unknown section name is rejected (rc=2)."""
+        rc = _validate_require_sections(["NONEXISTENT"])
+        assert rc == 2
+        _, err = capsys.readouterr()
+        assert "is not a known section" in err
+
+    def test_validate_require_sections_suggests_close_match(self, capsys) -> None:
+        """A near-miss (lowercase) gets a did-you-mean suggestion."""
+        rc = _validate_require_sections(["key symbols"])
+        assert rc == 2
+        _, err = capsys.readouterr()
+        assert "Did you mean: Key Symbols" in err
+
+    def test_cmd_sketch_rejects_unknown_require_section(
+        self, tmp_path: Path, capsys
+    ) -> None:
+        """The sketch CLI rejects an invalid --require-section before analysis."""
+        (tmp_path / "main.py").write_text("x = 1\n")
+        args = SimpleNamespace(
+            path=str(tmp_path), require_sections=["NONEXISTENT"]
+        )
+        result = cmd_sketch(args)
+        assert result == 2
+        _, err = capsys.readouterr()
+        assert "is not a known section" in err
 
 
 class TestSketchWithSource:

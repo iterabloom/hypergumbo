@@ -51,20 +51,15 @@ Omitted items are summarized with cheap extractive signals:
 - File path pattern analysis
 - Kind distribution (functions, classes, methods)
 
-Example output:
+Example output (the omitted-residual summary, ``OmittedSummary.to_dict``):
     {
-      "view": "tiered",
-      "included": {"count": 47, "coverage": 0.82},
-      "included_edges_count": 312,
-      "tiers": {"4k": ..., "16k": ..., "64k": ...},
+      "count": 1200,
+      "centrality_sum": 0.18,
       "max_centrality": 0.94,
-      "omitted": {
-        "count": 1200,
-        "centrality_sum": 0.18,
-        "top_words": ["test", "mock", "fixture", "assert"],
-        "top_paths": ["tests/", "vendor/"],
-        "kinds": {"function": 900, "class": 200, "method": 100}
-      }
+      "top_words": [{"word": "test", "count": 42}, {"word": "mock", "count": 30}],
+      "top_paths": [{"pattern": "tests/", "count": 55}, {"pattern": "vendor/", "count": 21}],
+      "kinds": {"function": 900, "class": 200, "method": 100},
+      "tiers": {"4000": 12, "16000": 40, "64000": 148}
     }
 
 Why Bag-of-Words
@@ -94,6 +89,7 @@ from .selection.filters import (
     is_example_path as _is_example_path,
 )
 from .paths import is_test_node as _is_test_node
+from .metrics import compute_metrics
 from .selection.language_proportional import (
     allocate_language_budget,
     find_underrepresented_language_seeds,
@@ -154,6 +150,79 @@ CROSS_CUTTING_EDGE_TYPES = frozenset({
     "event_publishes", # async producer→consumer (covers IPC, websocket,
                        # queue, CRDT, message_bus)
 })
+
+
+# Top-level blocks dropped from the budget-limited projected views to reduce
+# payload. The two views differ DELIBERATELY on provenance/quality signals:
+#
+#   _COMPACT_STRIP_KEYS — the compact view drops only the heavy, view-irrelevant
+#     blocks: usage_contexts (spec-mandated stripped from compact/tiered,
+#     docs/hypergumbo-spec.md §usage_contexts) and sketch_precomputed (an
+#     internal cache artifact consumers must not depend on, spec §707). It KEEPS
+#     analysis_runs (provenance) and validation_report (the finalize quality
+#     signal) — ADR-0033/ADR-0043 preserve both through the compact projection
+#     (test_compact_preserves_validation_report_and_consistency).
+#   _TIERED_STRIP_KEYS — the tiered view is the more aggressive budget projection
+#     and ALSO drops analysis_runs and validation_report
+#     (test_budget_tier_omits_validation_report).
+_COMPACT_STRIP_KEYS = frozenset({
+    "usage_contexts",
+    "sketch_precomputed",
+})
+_TIERED_STRIP_KEYS = _COMPACT_STRIP_KEYS | frozenset({
+    "analysis_runs",
+    "validation_report",
+})
+
+# WI-pohuf: the compact/tiered views are LLM-friendly, token-budgeted
+# projections — NOT the full survey. Emitting the full ~24-field
+# ``Symbol.to_dict()`` per node (identity hashes stable_id/shape_id/fingerprint,
+# provenance origin/origin_run_id, the ~200-byte supply_chain block, meta, and
+# other internals) makes each node cost ~250 tokens, so at small budgets the
+# post-selection shrink loop trims the map down to ~1 surviving symbol — which
+# also broke compact containment monotonicity (WI-kolal: the single symbol that
+# fits at 4k differs from the one at 16k) and centrality coverage (WI-zulij: the
+# few survivors hold a tiny fraction of total centrality). This projection keeps
+# only the fields a consumer needs to *understand and navigate* a symbol; the
+# identity, provenance, and supply-chain details remain in the full survey.
+_COMPACT_NODE_FIELDS: tuple[str, ...] = (
+    "id", "name", "qualified_name", "kind", "language",
+    "path", "span", "signature", "docstring",
+)
+
+
+def compact_node(symbol: Symbol) -> dict:
+    """Project a ``Symbol`` to the slim compact/tiered-view node representation.
+
+    Keeps only the LLM-meaningful navigation/understanding fields
+    (``_COMPACT_NODE_FIELDS``) and omits null-valued optional ones, dropping the
+    identity hashes, provenance ids, and supply-chain internals that would
+    otherwise dominate the token budget (WI-pohuf). ``centrality`` is added
+    separately by ``_annotate_node_centrality`` on the paths that annotate it.
+    """
+    full = symbol.to_dict()
+    return {k: full[k] for k in _COMPACT_NODE_FIELDS if full.get(k) is not None}
+
+
+def _recompute_view_metrics(view_map: dict) -> None:
+    """Recompute a projected view's ``metrics`` block from its OWN nodes/edges.
+
+    A budget-limited projection (compact/tiered) shallow-copies the source map,
+    so without this it would echo the FULL-repo ``metrics`` (total_nodes,
+    total_edges, total_files, by_supply_chain_tier) that ``compute_metrics``
+    produced BEFORE projection — a view that lies about itself (WI-pizat).
+    Recompute in place so the counts describe the projected arrays. Only fires
+    when the source carried a ``metrics`` block (the projection mirrors the
+    source's structure — it does not invent one). Deliberately does NOT touch
+    ``analysis_incomplete``: per spec §726 that flag is analyzer-scope (set only
+    on early termination / errors / resource limits), not a view-truncation
+    signal.
+    """
+    if "metrics" in view_map:
+        view_map["metrics"] = compute_metrics(
+            view_map["nodes"], view_map["edges"],
+            profile=view_map.get("profile"),
+        )
 
 
 @dataclass
@@ -235,6 +304,11 @@ class CompactResult:
     included: IncludedSummary
     omitted: OmittedSummary
     config: CompactConfig = field(default_factory=CompactConfig)
+    # Per-node centrality (id -> score) for the SELECTED symbols, on THIS
+    # selection mode's own centrality basis. Internal — surfaced onto the
+    # compact node dicts by format_compact_behavior_map (WI-zotam); NOT
+    # serialized in to_dict.
+    centrality: Dict[str, float] = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         """Serialize to dictionary."""
@@ -254,6 +328,11 @@ class ConnectivityResult:
     included: IncludedSummary
     omitted: OmittedSummary
     included_edges: List[Edge] = field(default_factory=list)
+    # Per-node centrality (id -> score) for the SELECTED symbols, on the
+    # connectivity mode's own centrality basis. Internal — surfaced onto the
+    # compact node dicts by format_compact_behavior_map (WI-zotam); NOT
+    # serialized in to_dict.
+    centrality: Dict[str, float] = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         """Serialize to dictionary."""
@@ -657,7 +736,6 @@ def select_by_connectivity(
         ConnectivityResult with selected symbols and induced edges.
     """
     symbol_by_id = {s.id: s for s in symbols}
-    edge_set = {(e.src, e.dst): e for e in edges if e.src != e.dst}
 
     # Build adjacency lists
     outgoing, incoming = _build_adjacency_list(edges)
@@ -674,7 +752,10 @@ def select_by_connectivity(
     selected_ids: set = set()
     selected_symbols: List[Symbol] = []
 
-    for sid in seed_ids:
+    # WI-nivuj: iterate seeds in sorted order so the seed prefix of the output
+    # node list is reproducible (seed_ids is a set — its iteration order is
+    # PYTHONHASHSEED-dependent).
+    for sid in sorted(seed_ids):
         if sid in symbol_by_id:
             selected_ids.add(sid)
             selected_symbols.append(symbol_by_id[sid])
@@ -715,7 +796,10 @@ def select_by_connectivity(
         best_node = None
         best_score = (-1, -1, -1.0)
 
-        for node_id in frontier:
+        # WI-nivuj: iterate the frontier in sorted order so a SCORE TIE resolves
+        # to the lexicographically-smallest node deterministically (frontier is a
+        # set; without sorting the winner depends on PYTHONHASHSEED).
+        for node_id in sorted(frontier):
             score = _compute_connectivity_score(
                 node_id, selected_ids, uf, outgoing, incoming, centrality
             )
@@ -751,11 +835,17 @@ def select_by_connectivity(
 
         added += 1
 
-    # Compute induced subgraph edges
-    included_edges: List[Edge] = []
-    for (src, dst), edge in edge_set.items():
-        if src in selected_ids and dst in selected_ids:
-            included_edges.append(edge)
+    # Compute induced subgraph edges. Iterate the edge LIST (not a
+    # (src, dst)-keyed dict) so PARALLEL edges between the same node pair are
+    # all retained — a (src, dst) dict collapses them, dropping every parallel
+    # but the last (WI-hakom induced-subgraph leak; the coverage and tiered
+    # branches already iterate the list directly). Self-loops (src == dst) waste
+    # budget without adding connectivity, so they stay excluded, matching those
+    # branches.
+    included_edges: List[Edge] = [
+        e for e in edges
+        if e.src != e.dst and e.src in selected_ids and e.dst in selected_ids
+    ]
 
     # Compute centrality sums
     included_centrality = sum(centrality.get(s.id, 0) for s in selected_symbols)
@@ -791,6 +881,7 @@ def select_by_connectivity(
             tiers=tier_dist,
         ),
         included_edges=included_edges,
+        centrality=centrality,
     )
 
 
@@ -830,6 +921,7 @@ def select_by_coverage(
                 top_words=[], top_paths=[], kinds={}, tiers={}
             ),
             config=config,
+            centrality={},
         )
 
     # WI-tahum: shared helper applies rank_symbols' tuned
@@ -886,7 +978,7 @@ def select_by_coverage(
     # These are semantically important and should always be included
     if force_include_ids:
         symbol_by_id = {s.id: s for s in symbols}
-        for sid in force_include_ids:
+        for sid in sorted(force_include_ids):  # WI-nivuj: reproducible order
             if sid in symbol_by_id and sid not in included_ids:
                 sym = symbol_by_id[sid]
                 included.append(sym)
@@ -944,7 +1036,83 @@ def select_by_coverage(
             tiers=tier_dist,
         ),
         config=config,
+        centrality=centrality,
     )
+
+
+def _reproject_features(
+    features: List[dict],
+    included_node_ids: set,
+    included_edge_ids: set,
+) -> List[dict]:
+    """Re-project feature slices onto the compacted node/edge set (INV-titid).
+
+    The compact pass selects a budget-limited subset of nodes and edges, but
+    the source map's ``features[]`` carry full-graph ``node_ids``/``edge_ids``
+    references. Left unchanged, the great majority of those references dangle
+    in the compact output -- the feature claims to describe a slice of the
+    compact graph yet points at pruned content. This rewrites each surviving
+    feature's references to the retained sets and drops any feature whose
+    every entry node was pruned, mirroring the entrypoint-filtering precedent
+    (an entrypoint whose symbol was pruned is dropped; so is a feature whose
+    anchor was pruned). The result is the twin of INV-tarol's slice fix:
+    feature scope is re-derived from the emitted graph rather than copied
+    wholesale. ``admission_stats`` (not node-keyed) passes through unchanged.
+    """
+    reprojected: List[dict] = []
+    for feat in features:
+        entry_nodes = [
+            n for n in feat.get("entry_nodes", []) if n in included_node_ids
+        ]
+        # A feature whose every entry node was pruned no longer describes
+        # anything in the compact graph -- drop it (parallel to entrypoints).
+        if not entry_nodes:
+            continue
+        new_feat = dict(feat)
+        new_feat["entry_nodes"] = entry_nodes
+        new_feat["node_ids"] = [
+            n for n in feat.get("node_ids", []) if n in included_node_ids
+        ]
+        new_feat["edge_ids"] = [
+            e for e in feat.get("edge_ids", []) if e in included_edge_ids
+        ]
+        if "node_depths" in feat:
+            new_feat["node_depths"] = {
+                k: v for k, v in feat["node_depths"].items()
+                if k in included_node_ids
+            }
+        if "node_tiers" in feat:
+            new_feat["node_tiers"] = {
+                k: v for k, v in feat["node_tiers"].items()
+                if k in included_node_ids
+            }
+        reprojected.append(new_feat)
+    return reprojected
+
+
+def _annotate_node_centrality(nodes: list, centrality: Dict[str, float]) -> None:
+    """Stamp each projected node dict with its centrality score (WI-zotam).
+
+    A budget-limited projection previously emitted no per-node centrality, so a
+    consumer could not rank the retained nodes or cross-check them against the
+    summary's aggregate. Each node now carries the selection mode's own
+    centrality (rounded), so ``nodes`` and ``nodes_summary`` agree.
+    """
+    for n in nodes:
+        n["centrality"] = round(centrality.get(n.get("id"), 0.0), 4)
+
+
+def _array_projection_summary(original_len: int, emitted_len: int) -> dict:
+    """Included/omitted counts for a top-level array truncated by the compact
+    projection — the entrypoints/features analogue of ``nodes_summary``
+    (WI-kulan). The compact view filters entrypoints to retained nodes and drops
+    features whose anchors were all pruned, so without a companion summary a
+    consumer cannot tell how much of each array was omitted.
+    """
+    return {
+        "included": {"count": emitted_len},
+        "omitted": {"count": max(0, original_len - emitted_len)},
+    }
 
 
 def format_compact_behavior_map(
@@ -1052,9 +1220,13 @@ def format_compact_behavior_map(
         )
 
         # Create compact output
-        compact_map = dict(behavior_map)
+        compact_map = {
+            k: v for k, v in behavior_map.items()
+            if k not in _COMPACT_STRIP_KEYS
+        }
         compact_map["view"] = "compact"
-        compact_map["nodes"] = [s.to_dict() for s in conn_result.included.symbols]
+        compact_map["nodes"] = [compact_node(s) for s in conn_result.included.symbols]
+        _annotate_node_centrality(compact_map["nodes"], conn_result.centrality)
         compact_map["nodes_summary"] = conn_result.to_dict()
 
         # Use the induced edges from connectivity selection
@@ -1062,18 +1234,36 @@ def format_compact_behavior_map(
 
         # Filter entrypoints to only those whose symbol_id exists in included nodes
         included_ids = {s.id for s in conn_result.included.symbols}
+        all_entrypoints = behavior_map.get("entrypoints", [])
         compact_map["entrypoints"] = [
-            ep for ep in behavior_map.get("entrypoints", [])
+            ep for ep in all_entrypoints
             if ep.get("symbol_id") in included_ids
         ]
+        compact_map["entrypoints_summary"] = _array_projection_summary(
+            len(all_entrypoints), len(compact_map["entrypoints"])
+        )
+
+        # Re-project features onto the compacted graph (INV-titid).
+        included_edge_ids = {e.get("id") for e in compact_map["edges"]}
+        all_features = behavior_map.get("features", [])
+        compact_map["features"] = _reproject_features(
+            all_features, included_ids, included_edge_ids
+        )
+        compact_map["features_summary"] = _array_projection_summary(
+            len(all_features), len(compact_map["features"])
+        )
     else:
         # Use original coverage-based selection
         result = select_by_coverage(symbols, edges, config, force_include_ids)
 
         # Create compact output
-        compact_map = dict(behavior_map)
+        compact_map = {
+            k: v for k, v in behavior_map.items()
+            if k not in _COMPACT_STRIP_KEYS
+        }
         compact_map["view"] = "compact"
-        compact_map["nodes"] = [s.to_dict() for s in result.included.symbols]
+        compact_map["nodes"] = [compact_node(s) for s in result.included.symbols]
+        _annotate_node_centrality(compact_map["nodes"], result.centrality)
         compact_map["nodes_summary"] = result.to_dict()
 
         # Keep only edges where BOTH endpoints exist in the included set and
@@ -1084,13 +1274,34 @@ def format_compact_behavior_map(
             if e.get("src") in included_ids and e.get("dst") in included_ids
             and e.get("src") != e.get("dst")
         ]
+        # Symmetry with the connectivity branch (WI-zotam): the coverage-shaped
+        # summary (CompactResult.to_dict) omits included_edges_count, so add it
+        # here from the emitted edges — both compact modes now report it.
+        compact_map["nodes_summary"]["included_edges_count"] = len(
+            compact_map["edges"]
+        )
 
         # Filter entrypoints to only those whose symbol_id exists in included nodes
+        all_entrypoints = behavior_map.get("entrypoints", [])
         compact_map["entrypoints"] = [
-            ep for ep in behavior_map.get("entrypoints", [])
+            ep for ep in all_entrypoints
             if ep.get("symbol_id") in included_ids
         ]
+        compact_map["entrypoints_summary"] = _array_projection_summary(
+            len(all_entrypoints), len(compact_map["entrypoints"])
+        )
 
+        # Re-project features onto the compacted graph (INV-titid).
+        included_edge_ids = {e.get("id") for e in compact_map["edges"]}
+        all_features = behavior_map.get("features", [])
+        compact_map["features"] = _reproject_features(
+            all_features, included_ids, included_edge_ids
+        )
+        compact_map["features_summary"] = _array_projection_summary(
+            len(all_features), len(compact_map["features"])
+        )
+
+    _recompute_view_metrics(compact_map)
     return compact_map
 
 
@@ -1444,11 +1655,12 @@ def format_tiered_behavior_map(
     # Connectivity-aware selection starts from entrypoints (seeds) and
     # expands via the frontier, so selected nodes share edges by design.
     #
-    # Estimate max_additional from the token budget.  Average node cost
-    # is ~250 tokens; reserve 50% of budget for edges, entrypoints, and
-    # overhead.  The post-selection shrink loop (below) enforces the
-    # exact budget, so over-estimating here is safe.
-    _AVG_TOKENS_PER_NODE = 250
+    # Estimate max_additional from the token budget.  With the WI-pohuf slim
+    # ``compact_node`` projection, an emitted node costs ~80 tokens (was ~250
+    # when the full ~24-field ``to_dict()`` was emitted); reserve 50% of budget
+    # for edges, entrypoints, and overhead.  The post-selection shrink loop
+    # (below) enforces the exact budget, so over-estimating here is safe.
+    _AVG_TOKENS_PER_NODE = 80
     node_budget_tokens = target_tokens // 2
     max_additional = max(1, node_budget_tokens // _AVG_TOKENS_PER_NODE)
 
@@ -1495,10 +1707,10 @@ def format_tiered_behavior_map(
     # so the report's counts wouldn't match the tier's nodes — and it wastes token budget.
     # (Before the ADR-0043 finalize rewire, validate_ir ran after tier generation, so tier
     # files never carried it; stripping preserves that shape now that finalize sets it early.)
-    _TIERED_STRIP_KEYS = {
-        "analysis_runs", "usage_contexts", "sketch_precomputed", "validation_report",
+    tiered_map = {
+        k: v for k, v in behavior_map.items()
+        if k not in _TIERED_STRIP_KEYS
     }
-    tiered_map = {k: v for k, v in behavior_map.items() if k not in _TIERED_STRIP_KEYS}
     tiered_map["view"] = "tiered"
     tiered_map["tier_tokens"] = target_tokens
 
@@ -1520,9 +1732,20 @@ def format_tiered_behavior_map(
         if ep.get("symbol_id") in included_ids
     ]
 
-    tiered_map["nodes"] = [s.to_dict() for s in included_symbols]
+    tiered_map["nodes"] = [compact_node(s) for s in included_symbols]
     tiered_map["edges"] = induced_edges
     tiered_map["entrypoints"] = filtered_eps
+    # Re-project features onto the SELECTED set before the shrink loop so the
+    # in-loop token estimate reflects the small re-projected features, not the
+    # full ``features[]`` (WI-pohuf — often the single largest field; the shrink
+    # loop only removes nodes, so an un-projected 25k-token features field would
+    # keep the map over budget no matter how many nodes are trimmed). Refined to
+    # the final node set after the loop (see the authoritative re-projection
+    # below). The projection stays small as the loop shrinks the node set.
+    _all_features = behavior_map.get("features", [])
+    tiered_map["features"] = _reproject_features(
+        _all_features, included_ids, {e.get("id") for e in induced_edges}
+    )
     # Pre-shrink summary: scratch for the in-loop token estimate only. The authoritative
     # nodes_summary is re-derived from the FINAL arrays after the shrink loop (INV-pazur).
     tiered_map["nodes_summary"] = conn_result.to_dict()
@@ -1591,10 +1814,27 @@ def format_tiered_behavior_map(
                 if ep.get("symbol_id") in included_ids
             ]
 
-            tiered_map["nodes"] = [s.to_dict() for s in included_symbols]
+            tiered_map["nodes"] = [compact_node(s) for s in included_symbols]
             tiered_map["edges"] = induced_edges
             tiered_map["entrypoints"] = filtered_eps
             actual_tokens = estimate_behavior_map_tokens(tiered_map)
+
+    # Re-project features onto the shrunk tier (INV-titid), mirroring the
+    # compact path. WI-pohuf: the full ``features[]`` is copied wholesale into
+    # the initial tiered_map and is frequently the single largest field (on
+    # apollo-server it is ~25k tokens — a lone feature referencing thousands of
+    # nodes), which swamps even a 16k budget and forces the shrink loop to trim
+    # the map to ~1 node while the map stays far over budget. Filtering each
+    # feature's node/edge pointers to the retained sets — and dropping features
+    # whose nodes were all pruned — keeps the tier within budget.
+    included_edge_ids = {e.get("id") for e in tiered_map["edges"]}
+    all_features = behavior_map.get("features", [])
+    tiered_map["features"] = _reproject_features(
+        all_features, included_ids, included_edge_ids
+    )
+    tiered_map["features_summary"] = _array_projection_summary(
+        len(all_features), len(tiered_map["features"])
+    )
 
     # INV-pazur: re-derive nodes_summary from the FINAL (post-shrink) on-disk arrays so its
     # included.count / included_edges_count and the omitted distribution can never disagree
@@ -1604,6 +1844,7 @@ def format_tiered_behavior_map(
     recompute_view_summary(
         tiered_map, eligible_symbols, selection_centrality, emit_edge_count=True
     )
+    _recompute_view_metrics(tiered_map)
     return tiered_map
 
 
@@ -1611,11 +1852,11 @@ def generate_tier_filename(base_path: str, tier_spec: str) -> str:
     """Generate filename for a tier output file.
 
     Args:
-        base_path: Base output path like "hypergumbo.results.json"
+        base_path: Base output path like "survey.json"
         tier_spec: Tier spec like "4k", "16k"
 
     Returns:
-        Tier-specific filename like "hypergumbo.results.4k.json"
+        Tier-specific filename like "survey.4k.json"
     """
     import os
     base, ext = os.path.splitext(base_path)

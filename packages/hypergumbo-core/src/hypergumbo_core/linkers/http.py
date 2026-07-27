@@ -93,14 +93,14 @@ from typing import Iterator
 from urllib.parse import urlparse
 
 from ..analyze.base import make_site_stable_id, make_symbol_id
-from ..discovery import find_files
+from ..discovery import find_non_test_files
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
+from ..routes import is_route, method_token, route_of
 from ..url_folding import (
     fold_array_join,
     fold_string_interpolation,
     load_url_folding_registry,
 )
-from ._concept_utils import get_concept, has_concept
 from .registry import LinkerContext, LinkerResult, LinkerRequirement, register_linker
 from ._text_filters import read_masked_source
 
@@ -633,7 +633,7 @@ def _find_source_files(root: Path) -> Iterator[Path]:
         "**/*.py", "**/*.js", "**/*.ts", "**/*.jsx", "**/*.tsx",
         "**/*.go", "**/*.rb", "**/*.java", "**/*.elm",
     ]
-    for path in find_files(root, patterns):
+    for path in find_non_test_files(root, patterns):
         if path.stem.endswith(".min"):
             continue
         yield path
@@ -1512,7 +1512,6 @@ def link_http(root: Path, route_symbols: list[Symbol]) -> HttpLinkResult:
                 "protocol": "http",
                 "http_method": call.method,
                 "url_path": call_path,
-                "cross_language": is_cross_language,
                 "url_type": call.url_type,
                 "detection_pattern": "http_url",
             }
@@ -1529,54 +1528,31 @@ def link_http(root: Path, route_symbols: list[Symbol]) -> HttpLinkResult:
 # =============================================================================
 
 
-def _has_route_concept(symbol: Symbol) -> bool:
-    """Check if symbol has a route concept in meta.concepts."""
-    return has_concept(symbol, "route")
-
-
 def _get_route_info_from_concept(symbol: Symbol) -> tuple[str | None, str | None]:
-    """Extract route path and method from symbol metadata.
+    """Extract ``(route_path, http_method)`` for HTTP client->route matching.
 
-    Checks in order:
-    1. Concept metadata (meta.concepts[].path/method) - from FRAMEWORK_PATTERNS enrichment
-    2. Direct metadata (meta.route_path/http_method) - from analyzer-created route symbols
-
-    Returns:
-        Tuple of (route_path, http_method), or (None, None) if not found.
+    Delegates to the canonical MARKER-FIRST ``routes.route_of`` (WI-tosul
+    Phase-1b-alpha). This replaces a concept-first duplicate that silently
+    dropped routes (BUG-2): a marker carrying a path-less ``concept == 'route'``
+    (Rails/Laravel/Phoenix/Sinatra dual-carry) used to return ``(None, None)``
+    and its route was dropped from client->route matching. The ``'WS'`` sentinel
+    is reconstructed from ``route_of``'s normalized ``protocol`` so the method-key
+    bucketing below (which treats WS like any non-ANY method) is preserved.
     """
-    # First, try concept metadata (from FRAMEWORK_PATTERNS enrichment)
-    route = get_concept(symbol, "route")
-    if route is not None:
-        return route.get("path"), route.get("method")
-
-    if not symbol.meta:
+    info = route_of(symbol)
+    if info is None:
         return None, None
-
-    # Fallback: check direct metadata (from analyzer-created route symbols)
-    # Route symbols from Ruby, PHP, Elixir, JS analyzers store info here
-    route_path = symbol.meta.get("route_path")
-    http_method = symbol.meta.get("http_method")
-    if route_path or http_method:
-        return route_path, http_method
-
-    return None, None
+    method = method_token(info)
+    return info["path"], method
 
 
 def _get_route_symbols(ctx: LinkerContext) -> list[Symbol]:
-    """Extract route symbols from context.
+    """Extract route symbols (marker OR ``concept == 'route'``) from context.
 
-    Route symbols are either:
-    - kind="route" (Ruby, Go, Rust, Express analyzers)
-    - have route concept in meta.concepts (FRAMEWORK_PATTERNS enrichment)
-
-    Note: We no longer check legacy meta.route_path field - route detection
-    should come from concepts (single source of truth).
+    Exactly ``routes.is_route``'s disjunction, folded onto the canonical
+    accessor (WI-tosul Phase-1b-alpha).
     """
-    return [
-        s for s in ctx.symbols
-        if (s.meta or {}).get("framework_role") == "route"
-        or _has_route_concept(s)
-    ]
+    return [s for s in ctx.symbols if is_route(s)]
 
 
 def _count_route_symbols(ctx: LinkerContext) -> int:

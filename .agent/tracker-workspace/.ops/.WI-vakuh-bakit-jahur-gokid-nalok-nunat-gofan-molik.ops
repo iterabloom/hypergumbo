@@ -55,3 +55,43 @@
   clock: 6  # 29ca
   nonce: 29ca  # 29ca
   message: "root-cause family member (b2) (connections-sweep 2026-06-08T1900Z)"  # 29ca
+- op: discuss  # 782d
+  at: '2026-07-11T10:20:28Z'  # 782d
+  by: agent  # 782d
+  actor: jgstern_agent  # 782d
+  clock: 7  # 782d
+  nonce: 782d  # 782d
+  message: "Progress (2026-07-11 pt.2, PR jgstern-agent/fix/containment-span-disambiguation): the '30 provably-false class->method contains' face is FIXED. Root cause: _find_parent Priority 1 returned the FIRST same-file same-name container WITHOUT checking spans — so with two same-named classes in one file (e.g. two _FakeMetadata in test_analyzer_identity.py), a method bound to the wrong one whose span does not enclose it. Fix: _find_parent now takes the child span and, when >1 same-name container shares the child's file, picks the one whose span ENCLOSES the child (tightest); if none encloses, it refuses (no edge) rather than emitting to the arbitrary first. BEHAVIORAL EVIDENCE (production-path link_containment, RED->GREEN): tests/test_containment_linker.py::TestContainmentNameCollision::test_same_file_same_name_classes_disambiguate_by_span (method now binds to the ENCLOSING class, not the first same-file match) + ::test_same_file_same_name_no_enclosing_class_refuses (no false containment when nothing encloses) + coverage guard tests; containment.py at 100%. STILL OPEN — the confidence-INVERSION face (naming_convention 1.0 > span_overlap 0.9; 18388 edges above the 0.95 linker ceiling) is NOT addressed here: it is governed by ADR-0039 (confidence separation / rank_score split), which explicitly cites containment.py's 1.0 naming_convention edges above the 0.95 linker ceiling and pairs with WI-lutad (which 'closes jointly via ADR-0039 rulings 1 and 3'). Changing containment confidence in isolation would conflict with that coordinated rollout, so the inversion is deferred to the ADR-0039 implementation. WI-vakuh remains open (todo_hard) for that confidence face."  # 782d
+- op: update  # ca1e
+  at: '2026-07-12T23:24:07Z'  # ca1e
+  by: agent  # ca1e
+  actor: jgstern_agent  # ca1e
+  clock: 8  # ca1e
+  nonce: ca1e  # ca1e
+  set:  # ca1e
+    status: done  # ca1e
+  add:  # ca1e
+    tags: [awaits_bakeoff_validation]  # ca1e
+- op: discuss  # 1b05
+  at: '2026-07-12T23:24:08Z'  # 1b05
+  by: agent  # 1b05
+  actor: jgstern_agent  # 1b05
+  clock: 9  # 1b05
+  nonce: 1b05  # 1b05
+  message: "Confidence face FIXED in PR #608 (ADR-0039 ruling 1). Root cause: containment Phase-1 hardcoded confidence=1.0 on naming_convention 'contains' edges — above the 0.95 linker ceiling and outranking the structurally-certain span_overlap (0.90), so a consumer trusting confidence treated the error-prone name heuristic as gold. Fix: seeded naming_convention=0.85 in the evidence registry (below span_overlap, in-band) + dropped the containment literal so Phase-1 DERIVES it (confidence_source=evidence_derived). Behavioral evidence (self-analysis, 134,017 edges; hypergumbo run . then bucket 'contains' by confidence/evidence_type): naming_convention 21,787 @ 0.85 evidence_derived; span_overlap 14,271 @ 0.90 now OUTRANKS them -> inversion resolved; canonical_name 7 @ 0.95. The 30 provably-false out-of-span containments (the false-EDGE face) were already eliminated 2026-07-11 by span-disambiguation; this closes the remaining confidence face. Tagged awaits_bakeoff_validation (confidence shifted on 16.6% of edges)."  # 1b05
+- op: update  # bc3f
+  at: '2026-07-13T03:18:32Z'  # bc3f
+  by: agent  # bc3f
+  actor: jgstern_agent  # bc3f
+  clock: 10  # bc3f
+  nonce: bc3f  # bc3f
+  set: {}  # bc3f
+  remove:  # bc3f
+    tags: [awaits_bakeoff_validation]  # bc3f
+- op: discuss  # 6435
+  at: '2026-07-13T03:18:33Z'  # 6435
+  by: agent  # 6435
+  actor: jgstern_agent  # 6435
+  clock: 11  # 6435
+  nonce: '6435'  # 6435
+  message: "BAKEOFF-VALIDATED: moved -> tag stripped. DEEP cohort deep-20260623-134237 iter-003 (schema 0.14.6 / confidence_model evidence-v2, post-thread-A), 8 repos: express/caddy/spring-petclinic/zoxide/SwiftyJSON/sherpa-csharp/apollo-server/pretix. On real repos, containment 'contains' naming_convention edges = confidence 0.85 confidence_source=evidence_derived (caddy 2800, apollo 464, pretix 15215, spring 241, zoxide 101, SwiftyJSON 185, sherpa 80; express 0=n/a); span_overlap 'contains' stays 0.90 so reliability ordering is restored (0.90>0.85); 0 evidence_derived edges exceed the 0.95 ceiling in all 8 repos. No regression."  # 6435

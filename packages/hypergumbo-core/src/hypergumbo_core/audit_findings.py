@@ -374,7 +374,7 @@ def validate_against_registry(findings: AuditFindings) -> list[str]:
 
         if row.status == STATUS_RESOLVED:
             if row.verdict == VERDICT_CANONICAL:
-                if not (in_registry and spec.axis == registry.canonical_axis):
+                if not (spec is not None and spec.axis == registry.canonical_axis):
                     errors.append(
                         f"{findings.path}: row {row.value!r} verdict "
                         f"CANONICAL + status RESOLVED requires the "
@@ -383,7 +383,7 @@ def validate_against_registry(findings: AuditFindings) -> list[str]:
                         f"{_describe_state(spec)}",
                     )
             else:
-                if in_registry:
+                if spec is not None:
                     errors.append(
                         f"{findings.path}: row {row.value!r} verdict "
                         f"{row.verdict} + status RESOLVED requires "
@@ -391,7 +391,7 @@ def validate_against_registry(findings: AuditFindings) -> list[str]:
                         f"currently present on axis {spec.axis!r}",
                     )
         elif row.status == STATUS_PRELIM_RESOLVED:
-            if not (in_registry and spec.axis == registry.endpoint_axis):
+            if not (spec is not None and spec.axis == registry.endpoint_axis):
                 errors.append(
                     f"{findings.path}: row {row.value!r} status "
                     f"PRELIM_RESOLVED requires the value to be in "

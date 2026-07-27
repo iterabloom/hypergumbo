@@ -57,7 +57,7 @@ structure Point where
   y : Float
 """)
         result = analyze_lean(tmp_path)
-        structs = [s for s in result.symbols if s.kind == "structure"]
+        structs = [s for s in result.symbols if s.kind == "struct"]
         assert any("Point" in s.name for s in structs)
 
 

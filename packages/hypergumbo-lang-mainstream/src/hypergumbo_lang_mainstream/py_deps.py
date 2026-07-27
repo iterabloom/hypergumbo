@@ -49,16 +49,20 @@ tier 3, the current default (no regression).
 
 Stdlib carve-out
 ----------------
-``sys.stdlib_module_names`` (Python 3.10+) is used to filter the resolved
-import-name set. A user who declares ``os`` (or any other stdlib name)
-in ``pyproject.toml`` won't accidentally promote it to tier 2.
+The single-source ``python.yaml`` ``stdlib_modules`` catalog (ADR-0041 §3,
+via ``io_boundary.load_catalog("python").is_stdlib_module``) filters the
+resolved import-name set. A user who declares ``os`` (or any other stdlib
+name) in ``pyproject.toml`` won't accidentally promote it to tier 2. This is
+the SAME stdlib recognizer the supply-chain ecosystem classifier uses — one
+source, not the live interpreter's ``sys.stdlib_module_names`` (which would
+be a second, version-drifting source the §3 single-source constraint forbids).
 """
 from __future__ import annotations
 
 import re
-import sys
 from pathlib import Path
 
+from hypergumbo_core.io_boundary import load_catalog
 from hypergumbo_core.supply_chain import DependencyManifest
 
 
@@ -119,6 +123,35 @@ def _extract_pep621_distribution_names(data: dict) -> set[str]:
                         if name:
                             out.add(name)
     return out
+
+
+def _extract_distribution_name(data: dict) -> str | None:
+    """Read a package's OWN distribution name from its ``pyproject.toml``.
+
+    PEP 621 ``[project].name`` is preferred; Poetry ``[tool.poetry].name``
+    is the fallback. Returns ``None`` when neither is a non-empty string.
+
+    Used for workspace-member subtraction (supply-verdict F3 / INV-nuzas,
+    ADR-0041 D8a). In a monorepo, a sibling package that another package
+    declares as a dependency is first-party workspace source, not a
+    third-party direct dependency. Collecting each package's own name lets
+    :func:`parse_python_dependencies` remove the sibling from the tier-2
+    "direct dependency" set instead of mislabelling in-repo code as an
+    external dependency (the "tier-2 direct dependency lie", leverage #27).
+    """
+    project = data.get("project")
+    if isinstance(project, dict):
+        name = project.get("name")
+        if isinstance(name, str) and name.strip():
+            return name.strip()
+    tool = data.get("tool")
+    if isinstance(tool, dict):
+        poetry = tool.get("poetry")
+        if isinstance(poetry, dict):
+            name = poetry.get("name")
+            if isinstance(name, str) and name.strip():
+                return name.strip()
+    return None
 
 
 def _extract_poetry_distribution_names(data: dict) -> set[str]:
@@ -237,11 +270,12 @@ def parse_python_dependencies(repo_root: Path) -> DependencyManifest:
     ``libs/<lib>/pyproject.toml``, etc., per WI-zujip). Returns an empty
     manifest when no pyproject is present anywhere.
 
-    Stdlib module names are filtered out via ``sys.stdlib_module_names``
-    (Python 3.10+) so a user who erroneously declares ``os`` (or any
-    other stdlib name) in pyproject doesn't accidentally promote it to
-    tier 2. Same dependency declared by multiple packages collapses to
-    one entry (set-union semantics).
+    Stdlib module names are filtered out via the single-source
+    ``python.yaml`` stdlib catalog (ADR-0041 §3,
+    ``io_boundary.load_catalog("python").is_stdlib_module``) so a user who
+    erroneously declares ``os`` (or any other stdlib name) in pyproject
+    doesn't accidentally promote it to tier 2. Same dependency declared by
+    multiple packages collapses to one entry (set-union semantics).
 
     Returns:
         ``DependencyManifest`` mapping importable top-level names to
@@ -255,17 +289,40 @@ def parse_python_dependencies(repo_root: Path) -> DependencyManifest:
         return DependencyManifest(entries=entries)
 
     dist_names: set[str] = set()
+    workspace_dist_names: set[str] = set()
     for pyproject in pyproject_files:
         data = _load_pyproject(pyproject)
         if not isinstance(data, dict):
             continue
         dist_names |= _extract_pep621_distribution_names(data)
         dist_names |= _extract_poetry_distribution_names(data)
+        own_name = _extract_distribution_name(data)
+        if own_name:
+            workspace_dist_names.add(own_name)
 
     import_names = _resolve_import_names(dist_names)
 
-    stdlib_names = getattr(sys, "stdlib_module_names", frozenset())
-    import_names = {n for n in import_names if n not in stdlib_names}
+    # Single-source stdlib carve-out (ADR-0041 §3 / WI-bifih): the python.yaml
+    # ``stdlib_modules`` catalog is the ONE authoritative stdlib recognizer for
+    # both the supply-chain/ecosystem classifier and this manifest filter,
+    # replacing the prior second source (the live interpreter's
+    # ``sys.stdlib_module_names``) so the two cannot drift.
+    stdlib_catalog = load_catalog("python")
+    import_names = {n for n in import_names if not stdlib_catalog.is_stdlib_module(n)}
+
+    # Workspace-member subtraction (supply-verdict F3 / INV-nuzas, ADR-0041
+    # D8a). A monorepo sibling that another package declares as a dependency is
+    # first-party workspace source, not a third-party direct dependency.
+    # Resolve each package's own distribution name through the same
+    # dist→import path and remove it, so the boundary classifier does not stamp
+    # in-repo packages (``hypergumbo_core`` et al.) as external (tier-3)
+    # dependency nodes. (Pre-ADR-0041 this read "external tier-2 direct
+    # dependency"; ADR-0041 §1 made tier-3 the sole external tier and moved
+    # direct/transitive onto the ``directness`` meta stamp.) Applied AFTER the
+    # stdlib carve-out so the final
+    # resolved import-name set is filtered.
+    workspace_import_names = _resolve_import_names(workspace_dist_names)
+    import_names -= workspace_import_names
 
     for name in import_names:
         entries[name] = {"direct": True}

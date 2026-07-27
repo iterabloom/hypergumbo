@@ -661,6 +661,74 @@ runs can find prior work:
   mappings), INV-zivah (drift guard invariant), WI-gitad
   (HIGH_RISK_PRIMITIVES sync test).
 
+- **2026-07-15 — `supply_chain_tier` (the tier axis).** Trigger: cadence
+  overdue (100+ commits) + having just shipped PR #655 (workspace-sibling
+  dependency declarations → tier-2), which surfaced a live tension with
+  ADR-0041 §1's "tier = distance, nothing else" axiom. Outcome: **confirmed
+  structural leak** (multiple, pre-existing; PR #655 vindicated as clean).
+  Findings: (F1) the §1 axiom never fixes the reference frame — a workspace
+  member's *source* is tier-1 but a *declaration naming* it is tier-2 —
+  resolvable by sharpening the axiom to "distance of the package a node
+  *represents*" (DOCUMENT); (F2, dominant) `internal_dep` (tier-2) is read as
+  project-priority code by `ranking.py:162`/`cfg.py:1655` DDG/`entrypoints.py:1622`/
+  `sketch.py:5747` but as an "external-dependency graph sink" by
+  `metrics.py:122-141` — the same value playing two contradictory roles across
+  consumers (apex/peer overloading); (F3) six linkers (`tauri_ipc`,
+  `wasm_bindgen`, `message_dispatch`, `annotation_convention`, `yjs_crdt`,
+  `solidity_abi`) overload `tier=2` as a *don't-reclassify-me* sentinel chosen
+  for `_classify_symbols`'s `tier!=1` skip (mechanism-vs-category leak, confirmed
+  by the `tauri_ipc.py:660` comment); (F4) `directness` is write-only (stamped
+  `ir.py:1504`, registered axis, zero readers — the ADR-0041 §2 extraction
+  purified `tier` but its extracted half is dead); (F5) `analysis_tiers` is dead
+  config; (F6/F7) tier-2 is near-phantom in the default file classifier and its
+  docstrings/comments describe a tier-2 "source code" concept that rarely exists.
+  Explore-agent-assisted producer/consumer trace. Five tracker items filed:
+  INV-higop (F2 semantic split), INV-bonup (F3 synthetic sentinel), WI-bojok
+  (F4 dead axis), WI-josad (F5/F6/F7 cleanup); F1 axiom-sharpening → ADR-0041
+  addendum follow-up. Full write-up:
+  `~/hypergumbo_lab_notebook/concept-audit-supply_chain_tier_07152026.md`.
+  Note: the leaks are orthogonal to the INV-nuzas closure that motivated the
+  audit (that property is about `external_symbol` naming, not tier semantics),
+  so the audit cleared the closure rather than blocking it.
+
+- **2026-07-15 — identity vocabulary (`# axis: identity`).** Trigger: chosen as
+  the sharpest next Wave-5 audit (the identity tail is 22+ items on the
+  shape_id / stable_id / fingerprint / canonical_name vocabulary). Method: three
+  parallel read-only sub-agent evidence traces (structural-identity trio /
+  name-addressable identity / run-provenance) + orchestrator synthesis, each
+  applying the four leakage tests + the Step 4.5 five-shape producer trace.
+  Outcome: **partially confirmed — the axis is conceptually CLEAN (no
+  concept-smuggling); the findings are a documentation-drift cluster + one dead
+  read-side field.** A cleaner result than the tier-axis audit (which found real
+  cross-consumer semantic splits). Findings: (F1, a real bug) `Symbol.fingerprint`
+  docstring read "Content hash of source bytes (sha256)" — wrong; the producer
+  (fingerprint.py, `hgfp2:` scheme) computes a whitespace/comment-invariant
+  *structural parse-subtree* hash; "source bytes" was the ADR-0032-demolished
+  Format-1 scheme. (F2) ADR-0032 labels the retained Format-2 `hgfp1:`/70-char
+  throughout; shipped is `hgfp2:`/16-hex — added a scheme-drift note (historical
+  refs left; git is the record). (F3) `shape_id` was defined circularly as
+  "Structural implementation fingerprint" (its sibling's name); empirically a
+  strict coarsening of `fingerprint` (fingerprint→shape_id is a pure function
+  over 33,053 nodes; shape_id→fingerprint is not) — docstring fixed to state the
+  strip-vs-keep rule. (F4) schema `Symbol.id` description gained its
+  location-addressedness caveat, symmetric with stable_id's. (F5) `Edge.derived_from`
+  is provenance (PROV wasDerivedFrom), not identity-of-record — within axis
+  precedent (identity covers FK-refs), docstring note only. (F6)
+  run_signature / repo_fingerprint / config_fingerprint / pass_version have zero
+  internal readers (external cache/PROV tooling only) — AnalysisRun docstring says
+  so. (F7, DEPRECATE-watch) `shape_id` is read-dead (5-shape trace + full
+  packages/+scripts/ sweep: only serialization + producer-guards), dominated by
+  fingerprint, intended cross-run refactor-tracking consumer unbuilt — filed as a
+  human deprecate-vs-keep decision item (kept for now with a written re-eval
+  trigger per the Step-6 KEEP rule). Clean/KEEP: `qualified_name` (correctly axed
+  as a name — 34,615 non-unique values, all consumers collision-tolerant),
+  `id`×`stable_id`, `edge_key`×`Edge.id`, the run/provenance quartet,
+  `version`×`pass_version`. Adjacent: `canonical_name` already demolished by
+  ADR-0032 (no residual field). Prior 2026-05-27 provenance-audit items
+  re-verified all closed (INV-kohat satisfied, WI-gapin done, WI-hupoz done).
+  F1–F6 fixed in one docs PR; no axis declaration / new ADR needed. Full
+  write-up: `~/hypergumbo_lab_notebook/concept-audit-identity-vocabulary_07152026.md`.
+
 (Future audits append here.)
 
 ## Relationship to other playbooks

@@ -1,0 +1,36 @@
+- op: create  # d062
+  at: '2026-07-07T00:11:55Z'  # d062
+  by: agent  # d062
+  actor: jgstern_agent  # d062
+  clock: 1  # d062
+  nonce: d062  # d062
+  data:  # d062
+    kind: work_item  # d062
+    title: "Execute audit-0013's ratified rpc/service symbol-kind FOLD on the proto/thrift/smithy positional-helper producers the grep diagnostics missed"  # d062
+    status: todo_hard  # d062
+    priority: 3  # d062
+    parent: INV-numat-judoj-dogal-misuj-divuf-kajus-buban-dihuj  # d062
+    tags:  # d062
+    - vocab_axis  # d062
+    - axis_conformance  # d062
+    isbefore: []  # d062
+    duplicate_of: []  # d062
+    not_duplicate_of: []  # d062
+    pr_ref:  # d062
+    description: "Fresh BROAD cohort (kong .proto) found Symbol.kind='rpc' (89) + 'service' (8). docs/audits/0013 ALREADY RATIFIED both as FOLD (rpc->method, service->interface/class, +meta['framework_role']) but marked them RESOLVED on a FALSE 'zero producers' premise. proto.py:239 (rpc) / proto.py:215 (service) emit via a POSITIONAL helper _make_proto_symbol(...,'rpc',...) that BOTH the literal-grep AND the broader kind=['\"]val['\"] grep miss (same blind-spot class audit-0013 documents for 'message'). Also thrift.py:186, smithy.py:430 (service). EXECUTE the ratified fold: thread meta through the proto/thrift/smithy kind emit + correct audit-0013's status (RESOLVED->UNRESOLVED->done). NOT a new design decision — executing ratified governance (docs/audits is not a governance-approval file)."  # d062
+    fields: {}  # d062
+- op: update  # baa5
+  at: '2026-07-07T04:39:08Z'  # baa5
+  by: agent  # baa5
+  actor: jgstern_agent  # baa5
+  clock: 2  # baa5
+  nonce: baa5  # baa5
+  set:  # baa5
+    status: done  # baa5
+- op: discuss  # ac4f
+  at: '2026-07-07T04:39:09Z'  # ac4f
+  by: agent  # ac4f
+  actor: jgstern_agent  # ac4f
+  clock: 3  # ac4f
+  nonce: ac4f  # ac4f
+  message: "DONE — PR merged to dev (a95d6d87c6, fix(coherence)). Executed audit-0013's ratified Cluster 27D fold across all three IDL analyzers whose positional-helper emit sites the grep diagnostics missed:\n  - proto.py: service -> kind='interface', rpc -> kind='method' (a service member), each + meta['framework_role'].\n  - thrift.py: service -> kind='interface' + meta['framework_role']='service' (emit site was a NESTED closure make_symbol, invisible even to the WI-zipis within-module engine — fixed directly here; noted as a nested-helper engine gap for the gate PR).\n  - smithy.py: service -> kind='interface' + meta['framework_role']='service' (merged into the existing traits meta).\nMechanism: each emit helper (_make_proto_symbol / make_symbol / _extract_shape) gained a framework_role param threading the role into Symbol.meta.\n\nBEHAVIORAL EVIDENCE (this item changes runtime Symbol.kind, so behavioral not proxy): the WI-zipis Symbol.kind helper-descent census drops 8->5 — proto rpc/service, thrift service, smithy service all GONE. Folded-contract tests assert kind=='interface'/'method' + meta['framework_role'] and pass; full affected suite 3670 passed / 0 failed; proto/thrift/smithy source 100% coverage. Edge.evidence_type helper axis stays clean (0).\n\naudit-0013 CORRECTED: the stale 'zero-producer / RESOLVED' verdict for rpc/service (doc-RESOLVED but producer-UNRESOLVED) is dated-corrected; rpc fold_target function->method (service member); the literal-grep is noted INSUFFICIENT for the positional-helper form (the WI-zipis descend sweep is authoritative). check-audit-findings green.\n\nRESIDUAL (NOT this item — next drain unit): the census's remaining 5 are OUT of audit-0013 scope — smithy structure/list/map (IDL type-shape kinds) + powershell filter/workflow (function-like) — each needs a register-vs-fold verdict, not a ratified fold."  # ac4f

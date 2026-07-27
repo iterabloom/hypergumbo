@@ -19,3 +19,64 @@
     pr_ref:  # bafb
     description: "**Mechanism.** C#, Solidity, WGSL populate shape_id=None on every body-bearing symbol (function/method/class/struct/interface/enum/contract), while bash/go/java/python/rust/swift/typescript all populate it. The spec lists C# among ~20 mainstream analyzers with shape_id done. Root cause (structural): go.py calls self.compute_shape_id(node) directly at symbol construction ('path 2'). csharp.py instead populates analysis.node_for_symbol[symbol.id] ('path 1') which should yield automatic base-class shape_id — BUT the base-class auto-stamp loop runs only inside TreeSitterAnalyzer.analyze() (base.py:2553-2560). csharp.py OVERRIDES analyze() (csharp.py:1639) with its own pipeline and never invokes that stamp loop, so csharp's populated node_for_symbol is dead for shape_id. wgsl.py hardcodes shape_id=None at construction (wgsl.py:235/265/324).\n\n**Evidence.** Frozen substrate shape_id coverage on body-bearing kinds: csharp None=6 has=0 (100%), solidity None=7 has=0 (100%), wgsl None=5 has=0 (100%); bash/go/java/python/rust/swift/typescript all 0% None. Fresh hypergumbo run on /tmp csharp Program.cs -> all csharp nodes shape_id=None. REPRODUCED.\n\n**Consequence.** A consumer using shape_id to detect 'implementation changed but signature stayed same' (spec §337) cannot do so for any C#/Solidity/WGSL symbol — the structural-diff capability the spec marks done for C# silently does not exist.\n\n**Related (distinct).** Same analyze()-override-bypasses-base-stamping mechanism WI-mipul names for pass_version/config_fingerprint, applied to shape_id — a NEW field facet (csharp is in WI-mipul's override-analyze list). Distinct from WI-rihob (stable_id=None on containers; it asserted shape_id was fine, which is false for these three langs). Source: dogfood_tranche_07 F139.A1, fresh-run reproduced."  # bafb
     fields: {}  # bafb
+- op: update  # be61
+  at: '2026-07-09T01:51:51Z'  # be61
+  by: agent  # be61
+  actor: jgstern_agent  # be61
+  clock: 2  # be61
+  nonce: be61  # be61
+  set: {}  # be61
+  add:  # be61
+    tags: [wave5]  # be61
+- op: discuss  # b060
+  at: '2026-07-09T01:51:51Z'  # b060
+  by: agent  # b060
+  actor: jgstern_agent  # b060
+  clock: 3  # b060
+  nonce: b060  # b060
+  message: "Wave-5 sweep (2026-07-08): identity:F5 shape_id residual (csharp/solidity/wgsl shape_id=None on 100% body-bearing symbols; analyze()-override bypasses the base-class stamp loop). Empty isbefore -> terminal wave."  # b060
+- op: update  # 7fce
+  at: '2026-07-15T21:18:34Z'  # 7fce
+  by: agent  # 7fce
+  actor: jgstern_agent  # 7fce
+  clock: 4  # 7fce
+  nonce: 7fce  # 7fce
+  set: {}  # 7fce
+  add:  # 7fce
+    isbefore: [WI-vogij-jubit-podog-galug-humag-rovuh-jahan-rozug]  # 7fce
+- op: discuss  # e050
+  at: '2026-07-15T21:18:34Z'  # e050
+  by: agent  # e050
+  actor: jgstern_agent  # e050
+  clock: 5  # e050
+  nonce: e050  # e050
+  message: "Identity triage 2026-07-15: shape_id-coverage prerequisite for WI-vogij (clone/refactoring-lead feature). Re-run: csharp 16/16, solidity 11/11, wgsl 6/6 shape_id=null (100%) — analyze()-override bypasses the base stamp loop (base.py:3226-3232); wgsl hardcodes shape_id=None. A clone detector needs these populated."  # e050
+- op: discuss  # 1a0f
+  at: '2026-07-17T09:34:35Z'  # 1a0f
+  by: agent  # 1a0f
+  actor: jgstern_agent  # 1a0f
+  clock: 6  # 1a0f
+  nonce: 1a0f  # 1a0f
+  message: "CSHARP FACET DONE (PR #704, dev 58dd893b00). CSharpAnalyzer.analyze() now stamps shape_id from its populated node_for_symbol via a new _stamp_shape_ids helper; live: sherpa-csharp 0/105 -> 105/105 body-bearing symbols populated (class/method/struct/constructor), 105 csharp tests pass, csharp.py 100% cov. Surfaced + validated by the 2026-07-17 DEEP-cohort parity check. REMAINING (item stays open, scoped to these): (1) wgsl.py hardcodes shape_id=None at 3 construction sites (238/270/329); (2) solidity.py (analyze_solidity) emits no shape_id — BOTH are function-registered analyzers (not TreeSitterAnalyzer subclasses), so they can't call self.compute_shape_id; the fix needs the TreeSitterAnalyzer.compute_shape_id/_cst_structure logic extracted to a module-level callable (base.py, CORE) with byte-identical output verified (no shape_id churn on other langs). Distinct, larger refactor than the csharp class-based facet."  # 1a0f
+- op: discuss  # 272c
+  at: '2026-07-18T00:51:13Z'  # 272c
+  by: agent  # 272c
+  actor: jgstern_agent  # 272c
+  clock: 7  # 272c
+  nonce: 272c  # 272c
+  message: "Fix-shape premise CORRECTION (3-lens investigation 2026-07-17). The 2026-07-17 note claims wgsl/solidity 'are function-registered analyzers (not TreeSitterAnalyzer subclasses), so they can't call self.compute_shape_id' and concludes the fix needs compute_shape_id/_cst_structure extracted to a module-level base.py (CORE) callable with byte-identical verification. That premise is FALSE: wgsl.py:401 'class WgslAnalyzer(TreeSitterAnalyzer)' and solidity.py:753 'class SolidityAnalyzer(TreeSitterAnalyzer)' ARE subclasses; NEITHER overrides analyze(); the base analyze() auto-stamp loop (base.py:3277-3286) already runs for them — they just never populate analysis.node_for_symbol, so the loop finds nothing to stamp. The tree-sitter CST node is in scope at both construction sites. CORRECT minimal fix (NO base.py/CORE change, NO shape_id churn on other langs): populate node_for_symbol in the two extraction helpers — solidity: one line (analysis.node_for_symbol[symbol.id]=node where add_symbol has node in scope); wgsl: thread analysis.node_for_symbol into _extract_wgsl_symbols and set it at the function site (~wgsl.py:213/224). csharp was the HARD case (it DOES override analyze(), needing the _stamp_shape_ids replay PR #704 added); wgsl/solidity are the EASY case. Blast radius: 2 leaf analyzer files, zero base.py. LIVE IMPACT confirmed: repeat-finder (cli.py:6238 'if not shape_id or not language: continue') silently drops wgsl/solidity functions from clone detection (both in _CLONE_KINDS) — same hole PR #704 closed for csharp; WI-lutob isbefore WI-vogij. Stays coverage-completeness work (spec §6 'without' buckets); INV-jahiv flipped satisfied independently (shape_id is spec-optional coverage-scoped, not a uniform-contract parity field)."  # 272c
+- op: update  # cb37
+  at: '2026-07-18T02:10:33Z'  # cb37
+  by: agent  # cb37
+  actor: jgstern_agent  # cb37
+  clock: 8  # cb37
+  nonce: cb37  # cb37
+  set:  # cb37
+    status: done  # cb37
+- op: discuss  # d58a
+  at: '2026-07-18T02:10:34Z'  # d58a
+  by: agent  # d58a
+  actor: jgstern_agent  # d58a
+  clock: 9  # d58a
+  nonce: d58a  # d58a
+  message: "Closed done — all 3 facets resolved (csharp PR #704; solidity+wgsl PR merged 7a2efee53f). BEHAVIORAL EVIDENCE (re-ran the item's own filed repro): fresh 'hypergumbo survey' on a /tmp wgsl+solidity repo — wgsl 3/3 body-bearing (struct + 2 functions) and solidity 2/2 (contract + function) now populate shape_id (was 100% null; the filed repro read 'csharp 16/16, solidity 11/11, wgsl 6/6 shape_id=null'). Production-path regression tests added in-package: test_wgsl_analyzer.py::{test_functions_carry_shape_id,test_structs_carry_shape_id}, test_solidity.py::test_body_bearing_symbols_carry_shape_id. ROOT CAUSE + FIX: wgsl/solidity never populated FileAnalysis.node_for_symbol, so the base-class auto-stamp loop (base.py:3277-3286) had nothing to stamp. Correcting the filed premise: both ARE TreeSitterAnalyzer subclasses that do NOT override analyze() (not 'function-registered analyzers needing a shared helper'), so populating node_for_symbol at the construction sites (solidity add_symbol = 1 line; wgsl _extract_wgsl_symbols function+struct sites) is all that was needed — NO base.py/CORE change, NO shape_id churn on other languages. Completes repeat-finder's structural-clone reach across C#/Solidity/WGSL (the cli.py:6238 shape_id-None drop no longer silently excludes them); unblocks WI-vogij coverage for these langs."  # d58a

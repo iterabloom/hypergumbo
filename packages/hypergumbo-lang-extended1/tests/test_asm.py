@@ -294,3 +294,31 @@ class TestAsmAnalysisUnavailable:
 
         assert result.skipped is True
         assert len(result.symbols) == 0
+
+
+class TestAsmCyclomaticComplexity:
+    """INV-loguk slice C: callable asm symbols carry non-null CC + LOC.
+    Real-grammar verification (degenerate flat grammar: base CC=1 for every label)."""
+
+    def test_branchy_callables_have_expected_cc(self, tmp_path) -> None:
+        from hypergumbo_lang_extended1.asm import analyze_asm
+        (tmp_path / 'f.s').write_text('.text\n.global myfunc\nmyfunc:\n    cmp rdi, 0\n    je .Lzero\n.Lzero:\n    ret\n')
+        result = analyze_asm(tmp_path)
+        assert not result.skipped
+        by = {s.name: s for s in result.symbols if s.kind in ('function',)}
+        m = by.get('myfunc') or next(s for n, s in by.items() if n.split('.')[-1] == 'myfunc' or n.endswith('myfunc'))
+        assert m.cyclomatic_complexity == 1, m.cyclomatic_complexity
+        assert m.line_span is not None
+
+    def test_callables_non_null_non_callables_null(self, tmp_path) -> None:
+        from hypergumbo_lang_extended1.asm import analyze_asm
+        (tmp_path / 'f.s').write_text('.text\n.global myfunc\nmyfunc:\n    cmp rdi, 0\n    je .Lzero\n.Lzero:\n    ret\n')
+        result = analyze_asm(tmp_path)
+        callables = [s for s in result.symbols if s.kind in ('function',)]
+        assert callables
+        for s in callables:
+            assert s.cyclomatic_complexity is not None, (s.kind, s.name)
+            assert s.line_span is not None, (s.kind, s.name)
+        for s in result.symbols:
+            if s.kind not in ('function',):
+                assert s.cyclomatic_complexity is None, (s.kind, s.name)

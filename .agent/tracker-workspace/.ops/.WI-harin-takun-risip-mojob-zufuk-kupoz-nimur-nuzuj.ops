@@ -1,0 +1,36 @@
+- op: create  # 9422
+  at: '2026-07-16T04:12:06Z'  # 9422
+  by: agent  # 9422
+  actor: jgstern_agent  # 9422
+  clock: 1  # 9422
+  nonce: '9422'  # 9422
+  data:  # 9422
+    kind: work_item  # 9422
+    title: "io-boundary taxonomy has no db_* category: Django ORM / cache / most net I/O invisible (io_tag_rate 0.5%)"  # 9422
+    status: todo_hard  # 9422
+    priority: 1  # 9422
+    parent:  # 9422
+    tags:  # 9422
+    - dogfood  # 9422
+    - wave5  # 9422
+    isbefore: []  # 9422
+    duplicate_of: []  # 9422
+    not_duplicate_of: []  # 9422
+    pr_ref:  # 9422
+    description: "Found in DEEP bakeoff deep-20260623-134237 cohort-001 iter-004 (pretix, Django/Celery). io-boundaries reports total_io_edges=191/101342 (0.19%) because the boundary taxonomy (env_read, logging, fs_read/write, subprocess, net_send/recv, browser_storage, command_launch) has NO db_* category and weak net/cache primitives. Source reality invisible to the detector: 4991 '.objects.', 2632 '.save()', 305 'transaction.atomic', 305 cursor.execute/.raw (DB); 128 'cache.*' + 1005 redis refs (cache); 23 'requests.*' + 58 send_mail/smtplib (net_send=2, only socket.connect caught). Drives the LOW_IO_TAG_RATE WARNs across the whole cohort (express/apollo/caddy/pretix all flagged). Also a FALSE POSITIVE: net_recv tags django.core.management.execute_from_command_line (a CLI dispatcher, not network I/O). FIX: add db_read/db_write boundary categories + Django-ORM / SQLAlchemy / cache(redis) / requests / smtplib entries to the io_primitives catalogs; fix the execute_from_command_line net_recv FP. Repro: hypergumbo io-boundaries on a Django repo."  # 9422
+    fields: {}  # 9422
+- op: update  # 2476
+  at: '2026-07-16T06:49:20Z'  # 2476
+  by: agent  # 2476
+  actor: jgstern_agent  # 2476
+  clock: 2  # 2476
+  nonce: '2476'  # 2476
+  set:  # 2476
+    status: done  # 2476
+- op: discuss  # f4c1
+  at: '2026-07-16T06:49:20Z'  # f4c1
+  by: agent  # f4c1
+  actor: jgstern_agent  # f4c1
+  clock: 3  # f4c1
+  nonce: f4c1  # f4c1
+  message: "Resolved the db_*-taxonomy + FP scope in PR #685 (dev a58b18f82a; CI green, 2950 tests / 100% coverage). Owner-ratified clean-scope (2026-07-16).\n\n(A) Python stdlib db_read/db_write populated (sqlite3/dbm/shelve) — the db_* category is no longer empty for Python (it was always in CATALOG_BOUNDARY_TYPES and populated for 6 other language catalogs; Python was the gap). (B) django.core.management.execute_from_command_line net_recv FP removed.\n\nPRODUCTION-PATH behavioral evidence (`hypergumbo io-boundaries` on a sqlite3+dbm fixture): boundary keys=[db_read], db_read chains=[dbm.open, sqlite3.connect], total_io_edges=2 (was []/0 pre-PR); execute_from_command_line present=False. Unit guards: test_tags_sqlite3_connect_as_db_read / test_tags_dbm_open_as_db_read / test_python_catalog_drops_execute_from_command_line_fp (green).\n\nTRANSFERRED, NOT CLOSED: the dominant symptom in THIS item body (Django ORM / cache / most net I/O invisible -> io_tag_rate ~0.5% on pretix) is a DISTINCT receiver-inference problem this PR does NOT resolve, refiled as WI-sozoj-vabud-dovaf-nagot-tonod-gobov-godap-pamot (P2, wave5). Verified against pretix live survey: 90%+ of ORM calls are bare untyped unresolved external method calls the io-boundary matcher CORRECTLY refuses (INV-tapat); catalog entries cannot reach them. Honest facet-close (db_* taxonomy + FP behaviorally verified); the metric/ORM facet has a named owner, not a proxy close."  # f4c1

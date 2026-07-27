@@ -62,3 +62,49 @@
   clock: 6  # d425
   nonce: d425  # d425
   message: "emission-parity:F1 / G2 gate landed (PR #4202): tests/test_emission_parity_matrix.py is the standing per-(language, field/edge-type) parity enforcement this META called for — the missing audit gate named in root_cause. It LOCKS current emission with strict-xfail ratchets on the documented holes (python qualified_name=WI-fagab, java imports=INV-gojit, non-python entrypoint concepts=WI-tosul) so parity cannot regress silently; each Wave-3 emitter fix XPASS-trips the gate. STATUS STAYS VIOLATED: reading live emission the gate ratifies the invariant is currently violated in those cells — it operationalizes/ratchets the META, it does not satisfy it. Open children INV-golap/INV-loguk/INV-gilok + WI-fagab/WI-bujot/INV-gojit remain."  # d425
+- op: update  # f504
+  at: '2026-06-22T01:48:06Z'  # f504
+  by: agent  # f504
+  actor: jgstern_agent  # f504
+  clock: 7  # f504
+  nonce: f504  # f504
+  set: {}  # f504
+  remove:  # f504
+    tags: [awaits_bakeoff_validation]  # f504
+- op: discuss  # 56bf
+  at: '2026-06-22T01:48:06Z'  # 56bf
+  by: agent  # 56bf
+  actor: jgstern_agent  # 56bf
+  clock: 8  # 56bf
+  nonce: 56bf  # 56bf
+  message: "Drain audit: E-misapplied. META analyzer-parity item; PR #4202 implemented the parity audit GATE (test_emission_parity_matrix.py), not a metric-moving fix. No quantitative bakeoff claim; underlying violations tracked by open children (INV-golap/loguk/gilok etc.) and violated status. Stripping misapplied tag."  # 56bf
+- op: discuss  # e89e
+  at: '2026-07-13T15:09:57Z'  # e89e
+  by: agent  # e89e
+  actor: jgstern_agent  # e89e
+  clock: 9  # e89e
+  nonce: e89e  # e89e
+  message: "STATUS (2026-07-13, hygiene sweep): the structural deliverable — the per-(language,construct) emission-parity ratchet (test_emission_parity_matrix.py) — is LANDED and GREEN: 80 passed, KNOWN_HOLES empty, full parity for the 8 core FIXTURE languages. All 3 named children (INV-golap/loguk/gilok) satisfied; no live parity gap is currently filed. DELIBERATELY LEFT 'violated': this is an open-ended fleet-wide invariant and the ratchet enforces parity shrink-only for the COVERED scope, not fleet-wide zero-unevenness — so closure-evidence discipline forbids marking it satisfied (fleet-wide parity is not positively proven; cf. INV-nufob false-satisfaction). It advances by finishing member work (e.g. WI-jusus var/field slices) and re-scopes to satisfied only when a bakeoff cohort shows zero new parity gaps."  # e89e
+- op: update  # ded8
+  at: '2026-07-15T03:42:50Z'  # ded8
+  by: agent  # ded8
+  actor: jgstern_agent  # ded8
+  clock: 10  # ded8
+  nonce: ded8  # ded8
+  set:  # ded8
+    description: "**Origin.** Filed 2026-05-30 from the linked-pile L7 investigation (notebookjournal_05302026_0522_linked_L7_analyzer_framework_dcm.md sub-pile A). Standalone META, peer of INV-luhur (writer contract — survey.json meta-layer).\n\n**The shape.** Three active items describe the same anti-pattern: a dataclass field on `Symbol` / `Edge` is declared in the schema but populated unevenly across language analyzers. Python's analyzer populates the field; non-Python analyzers don't, or populate with wrong-shape values. The schema reads as a uniform contract; the data delivers a Python-only or sparse-coverage reality.\n\n**Distinct from INV-luhur** (writer contract for survey.json meta-layer fields like AnalysisRun, metrics, limits, config_fingerprint). This META is about per-analyzer Symbol/Edge field-population coverage parity, not meta-layer writers.\n\n**Members (3).** INV-golap (JavaScript analyzer populates Symbol.signature on 0/10 function|method nodes; TypeScript 25/26; may be partially fixed since pass-9 — re-measure pending), INV-loguk (non-Python analyzers don't populate cyclomatic_complexity; bash/rust LOC-only; only `py.py:1655` defines CC), INV-gilok (Solidity analyzer captures source-text string as the identifier value — `solidity.py:355-369` unconditional `_extract_import_aliases` with no `import_directive` guard).\n\n**Fix shape.** Per-analyzer parity audit: for each declared `Symbol` and `Edge` field, identify the canonical computation (the one Python does correctly) and apply analogous logic in non-Python analyzers. WI-zisov polyglot fixture is the test substrate for verification; add isbefore when L7 work begins.\n\n**Parent:** null (top-level META, peer of INV-luhur)."  # ded8
+- op: update  # a196
+  at: '2026-07-18T00:51:13Z'  # a196
+  by: agent  # a196
+  actor: jgstern_agent  # a196
+  clock: 11  # a196
+  nonce: a196  # a196
+  set:  # a196
+    status: satisfied  # a196
+- op: discuss  # aa44
+  at: '2026-07-18T00:51:13Z'  # aa44
+  by: agent  # aa44
+  actor: jgstern_agent  # aa44
+  clock: 12  # aa44
+  nonce: aa44  # aa44
+  message: "Flipped violated→satisfied (owner convergence call 2026-07-17: 'add the mainstream shape_id guard, then flip'). BEHAVIORAL EVIDENCE (closure-evidence discipline): (1) DEEP cross-language cohort CLEAN — session deep-20260717-200119, 8 repos spanning ts/js/go/php/python/csharp/java/swift/c/rust: ZERO new parity gaps in the emission-parity matrix's semantic-field columns; csharp shape_id 0→100% of shapeable (105/105) after PR #704; the two low cells (csharp docstring 0%, js is_exported 0.2%) verified LEGITIMATE (source has no doc comments; pre-existing CommonJS texture), not analyzer gaps. (2) The standing ratchet tests/test_emission_parity_matrix.py is GREEN at 88 passed — now including a shape_id hard-lock column (PR #713) that closes the identity-field blind spot which had let the csharp regression reach a bakeoff before any standing test caught it. (3) The semantic-field parity this META governs (signature/qualified_name/is_exported/docstring/complexity/edge_calls/edge_imports/emits_variable/emits_field) is fully locked across the 8 core analyzers; all named children satisfied/done/wont_do (INV-golap/loguk/gilok/gojit, WI-fagab, WI-bujot). SCOPE: shape_id is spec-optional (spec §6, ~41/70 analyzers) — the ADR/spec/gate all present it as coverage-scoped, NOT a uniform contract — so the niche solidity/wgsl 'without'-bucket shape_id gaps are documented coverage-completeness work (WI-lutob), not INV-jahiv violations. Advance-not-block: WI-hudug (P3, per-kind qualified_name writer-contract entry) hardens but does not gate. Basis: 3-lens ADR/spec/consumer investigation 2026-07-17."  # aa44

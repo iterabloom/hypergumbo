@@ -256,7 +256,10 @@ host = localhost
         result = analyze_ini(tmp_path)
         section = next((s for s in result.symbols if s.kind == "section"), None)
         assert section is not None
-        assert section.id == section.stable_id
+        # WI-banod: stable_id is now the canonical sha256:<16hex> (not the
+        # composite node.id); node.id remains the location key.
+        assert section.stable_id.startswith("sha256:")
+        assert section.id != section.stable_id
         assert "ini:" in section.id
 
     def test_span_info(self, tmp_path: Path) -> None:

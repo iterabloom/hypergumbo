@@ -7,7 +7,7 @@ externalized to YAML files that match against symbol metadata.
 
 How It Works
 ------------
-1. Each framework has a YAML file in src/hypergumbo/frameworks/ (e.g., fastapi.yaml)
+1. Each framework has a YAML file in src/hypergumbo_core/frameworks/ (e.g., fastapi.yaml)
 2. Patterns match against symbol metadata (decorators, base_classes, annotations)
 3. When a pattern matches, the symbol is enriched with a "concept" (route, model, etc.)
 4. Linkers use concepts to understand symbol semantics without framework knowledge
@@ -46,17 +46,13 @@ Why This Design
 
 Usage
 -----
-    from hypergumbo_core.framework_patterns import (
-        load_framework_patterns,
-        match_patterns,
-        enrich_symbols,
-    )
+    from hypergumbo_core.framework_patterns import enrich_symbols
 
-    # Load patterns for detected frameworks
-    patterns = [load_framework_patterns(fw) for fw in detected_frameworks]
-
-    # Enrich symbols with matched concepts
-    enriched = enrich_symbols(symbols, patterns)
+    # Enrich symbols in place with matched framework concepts. Pass the set of
+    # detected framework ids directly; enrich_symbols loads each framework's
+    # YAML patterns internally (signature: enrich_symbols(symbols,
+    # detected_frameworks, usage_contexts=None)).
+    enriched = enrich_symbols(symbols, detected_frameworks)
 """
 
 from __future__ import annotations
@@ -215,6 +211,11 @@ class Pattern:
     modifiers: str | None = None
     modifiers_exclude: str | None = None
     symbol_path: str | None = None
+    # WI-bosab: when set to False, the concept this pattern produces is stripped
+    # from symbols the supply-chain classifier marks as test code (see
+    # ``strip_test_file_only_concepts``). A plain tri-state bool (not a regex),
+    # so no ``__post_init__`` compilation. None = no test-file policy.
+    is_test_file: bool | None = None
     usage: UsagePatternSpec | None = None
     extract: dict[str, str] | None = None
 
@@ -415,7 +416,7 @@ class Pattern:
         # Single-result match types below: parameter_type, symbol_name,
         # symbol_kind, parent_base_class, method_name. These produce at most
         # one match per symbol, so wrap in a list.
-        result: dict[str, Any] = {"concept": self.concept}
+        result = {"concept": self.concept}
 
         # Try parameter type match
         if self._param_type_re:
@@ -874,6 +875,7 @@ class FrameworkPatternDef:
                 modifiers=p.get("modifiers"),
                 modifiers_exclude=p.get("modifiers_exclude"),
                 symbol_path=p.get("symbol_path"),
+                is_test_file=p.get("is_test_file"),
                 extract_path=p.get("extract_path"),
                 extract_method=p.get("extract_method"),
                 prefix_from_parent=p.get("prefix_from_parent"),
@@ -922,6 +924,16 @@ _FRAMEWORK_ALIASES: dict[str, str] = {
     "dropwizard": "jax-rs",
     "jersey": "jax-rs",
     "resteasy": "jax-rs",
+    # INV-fosam: route frameworks whose detection key differs from their YAML
+    # basename. Without these, a detected Next.js / AdonisJS / ASP.NET Core /
+    # Vert.x / ZIO-HTTP app loads NO route YAML and emits ZERO routes even with
+    # a manifest. (test_route_framework_yaml_reachability enforces this
+    # structurally.)
+    "adonis": "adonisjs",
+    "aspnetcore": "aspnet",
+    "next": "nextjs",
+    "vert.x": "vertx",
+    "zio-http": "zio",
 }
 
 
@@ -929,7 +941,7 @@ def get_frameworks_dir() -> Path:
     """Get the path to the frameworks directory.
 
     Returns:
-        Path to src/hypergumbo/frameworks/
+        Path to src/hypergumbo_core/frameworks/
     """
     return Path(__file__).parent / "frameworks"
 
@@ -1300,6 +1312,121 @@ def _apply_subresource_locator_paths(
                         c["path"] = full_class_prefix
 
 
+# Convention pattern YAMLs applied to every repo regardless of framework
+# detection (main() entry points, test frameworks, naming heuristics, library
+# exports, ...). Shared by ``enrich_symbols`` (which applies them) and
+# ``_test_excluded_concepts`` (which scans them for the WI-bosab test-file
+# exclusion markers) so the list has a single source of truth.
+_CONVENTION_PATTERN_IDS: tuple[str, ...] = (
+    "main-functions",
+    "test-frameworks",
+    "language-conventions",
+    "config-conventions",
+    "naming-conventions",
+    "library-exports",
+    "logging-conventions",
+    "go-encoding-callbacks",
+    "node-http",
+)
+
+
+def _test_excluded_concepts() -> frozenset[str]:
+    """Concept names whose pattern declared ``is_test_file: false`` (WI-bosab).
+
+    These concepts are stripped from test-file symbols by
+    ``strip_test_file_only_concepts``. The markers live in the always-loaded
+    convention YAMLs (naming-conventions.yaml today), so this scans that set
+    rather than every framework file. Cheap (the pattern defs are cached) and
+    called once per run, so it is recomputed rather than memoized — memoization
+    would survive across the pattern-cache clears that tests rely on.
+    """
+    excluded: set[str] = set()
+    for convention_id in _CONVENTION_PATTERN_IDS:
+        pattern_def = load_framework_patterns(convention_id)
+        if pattern_def is None:  # pragma: no cover - convention files always exist
+            continue
+        for pattern in pattern_def.patterns:
+            if pattern.is_test_file is False:
+                excluded.add(pattern.concept)
+    return frozenset(excluded)
+
+
+def strip_test_file_only_concepts(symbols: list[Symbol]) -> int:
+    """Drop concepts declared ``is_test_file: false`` from test-file symbols.
+
+    WI-bosab: naming-convention concepts (``service_by_name``,
+    ``controller_by_name``, ``handler_by_name``) fire on a class purely by its
+    name, so a test fixture like ``class MyService`` in ``tests/`` was mislabeled
+    a production service. The concept-enrichment pass (``enrich_symbols``) runs
+    BEFORE supply-chain classification in the pipeline (linker-produced symbols
+    must be classified too), so ``Symbol.is_test_file`` — the canonical
+    supply-chain *test-code* verdict (the narrow role flag, spec §14; distinct
+    from the broader ``paths.is_test_file`` ranking/scan heuristic that keys
+    entrypoint deprioritization — WI-popok KEEP verdict) — is not yet set when
+    concepts are attached. This
+    post-classification pass honors it: any concept whose producing pattern set
+    ``is_test_file: false`` is removed from a symbol the classifier marked
+    ``is_test_file``. Returns the number of concepts stripped.
+    """
+    excluded = _test_excluded_concepts()
+    if not excluded:  # pragma: no cover - the convention corpus always declares some
+        return 0
+    stripped = 0
+    for symbol in symbols:
+        if not symbol.is_test_file:
+            continue
+        meta = symbol.meta
+        if not meta:
+            continue
+        concepts = meta.get("concepts")
+        if not concepts:
+            continue
+        kept = [
+            c
+            for c in concepts
+            if not (isinstance(c, dict) and c.get("concept") in excluded)
+        ]
+        removed = len(concepts) - len(kept)
+        if removed:
+            stripped += removed
+            meta["concepts"] = kept
+    return stripped
+
+
+def _dedup_route_marker_concepts(
+    meta: dict[str, Any], matches: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """INV-vokak: keep a route symbol's route fact in exactly ONE home.
+
+    When *meta* already carries the ADR-0027 route marker
+    (``framework_role == 'route'``), a def-based framework pattern
+    (rails/phoenix/sinatra/laravel ``framework_role: '^route$'``) would append
+    a redundant *path-less* ``concept=route`` carrying only a framework — a
+    dual-carry state that orphans the framework from the marker (``route_of``'s
+    framework-UNION merely tolerates it at the accessor; the incoherent data
+    persists). This lifts such a concept's framework onto the marker's
+    canonical ``route_framework`` home (first-wins, never clobbering an
+    existing value) and drops the concept, so the route fact stays
+    single-homed. Symbols without the marker, non-route concepts, and route
+    concepts that carry a ``path`` (usage-based, not redundant) are untouched.
+    """
+    if meta.get("framework_role") != "route":
+        return matches
+    kept: list[dict[str, Any]] = []
+    for concept in matches:
+        if (
+            isinstance(concept, dict)
+            and concept.get("concept") == "route"
+            and not concept.get("path")
+        ):
+            framework = concept.get("framework")
+            if framework and not meta.get("route_framework"):
+                meta["route_framework"] = framework
+            continue
+        kept.append(concept)
+    return kept
+
+
 def enrich_symbols(
     symbols: list[Symbol],
     detected_frameworks: set[str],
@@ -1340,17 +1467,7 @@ def enrich_symbols(
     # - logging-conventions.yaml: Logger classes, factory methods, log bridges
     # - go-encoding-callbacks.yaml: Go MarshalJSON/UnmarshalYAML/etc. methods (WI-pimig)
     # - node-http.yaml: bare-Node http.createServer / Apollo startStandaloneServer (WI-tisam)
-    for convention_id in (
-        "main-functions",
-        "test-frameworks",
-        "language-conventions",
-        "config-conventions",
-        "naming-conventions",
-        "library-exports",
-        "logging-conventions",
-        "go-encoding-callbacks",
-        "node-http",
-    ):
+    for convention_id in _CONVENTION_PATTERN_IDS:
         convention_patterns = load_framework_patterns(convention_id)
         if convention_patterns:
             pattern_defs.append(convention_patterns)
@@ -1386,7 +1503,14 @@ def enrich_symbols(
             # Add matched concepts to symbol metadata
             if symbol.meta is None:  # pragma: no cover - patterns require meta to match
                 symbol.meta = {}
-            symbol.meta["concepts"] = matches
+            # INV-vokak: keep a route symbol's route fact in ONE home — a
+            # def-based route pattern must not append a redundant path-less
+            # concept=route onto an already-marked marker (dual-carry orphans
+            # the framework). Lift the framework onto route_framework and drop
+            # the redundant concept before stamping.
+            symbol.meta["concepts"] = _dedup_route_marker_concepts(
+                symbol.meta, matches,
+            )
 
     # Phase 1.5: APIRouter prefix composition
     # When a Python function has router_prefix in its metadata (from a prefixed
@@ -1472,36 +1596,39 @@ def enrich_symbols(
     # Phase 3: Usage-based matching (v1.1.x)
     if usage_contexts:
         for ctx in usage_contexts:
-            symbol: Symbol | None = None
+            # Distinct from the `for symbol in symbols:` loop var above (that is
+            # a Symbol; this is a nullable lookup result) — renamed to satisfy
+            # mypy [no-redef]/[assignment] (WI-hokag).
+            resolved_symbol: Symbol | None = None
 
             # Try direct symbol_ref lookup first
             if ctx.symbol_ref:
-                symbol = symbol_by_id.get(ctx.symbol_ref)
+                resolved_symbol = symbol_by_id.get(ctx.symbol_ref)
 
             # Fallback: try name-based resolution from metadata (INV-002 fix)
             # This handles cases where view_name exists but symbol_ref wasn't set
             # because the symbol was in a different file during analysis
-            if symbol is None and ctx.metadata:
+            if resolved_symbol is None and ctx.metadata:
                 view_name = ctx.metadata.get("view_name")
                 if view_name:
                     # Try simple name lookup
                     simple_name = view_name.rsplit(".", 1)[-1]
-                    symbol = symbol_by_name.get(simple_name)
+                    resolved_symbol = symbol_by_name.get(simple_name)
 
-            if not symbol:
+            if not resolved_symbol:
                 continue
 
             # Match against usage patterns
             matches = match_usage_patterns(ctx, pattern_defs)
             if matches:
-                if symbol.meta is None:
-                    symbol.meta = {}
+                if resolved_symbol.meta is None:
+                    resolved_symbol.meta = {}
 
                 # Append to existing concepts, deduplicating.
                 # Both definition-based (Phase 1) and usage-based (Phase 3)
                 # can produce the same concept (e.g., Go route handlers
                 # matched by both decorator and UsageContext patterns).
-                existing = symbol.meta.get("concepts", [])
+                existing = resolved_symbol.meta.get("concepts", [])
                 existing_keys = {
                     tuple(sorted(c.items())) for c in existing
                     if isinstance(c, dict)
@@ -1510,7 +1637,7 @@ def enrich_symbols(
                     if tuple(sorted(m.items())) not in existing_keys:
                         existing.append(m)
                         existing_keys.add(tuple(sorted(m.items())))
-                symbol.meta["concepts"] = existing
+                resolved_symbol.meta["concepts"] = existing
 
     return symbols
 
@@ -1620,6 +1747,8 @@ def resolve_deferred_symbol_refs(
         )
 
         if result.found:
+            # result.found implies a resolved symbol.
+            assert result.symbol is not None
             # Update the UsageContext with resolved symbol_ref
             ctx.symbol_ref = result.symbol.id
 
@@ -1689,8 +1818,10 @@ def _extract_resolution_hints(ctx: UsageContext) -> dict[str, str | None]:
     return hints
 
 
-def materialize_route_symbols(symbols: list[Symbol]) -> list[Symbol]:
-    """Create kind='route' symbols for enriched route handler methods.
+def materialize_route_symbols(
+    symbols: list[Symbol], origin_run_id: str = ""
+) -> list[Symbol]:
+    """Create route-marker symbols (kind='function') for enriched handlers.
 
     After ``enrich_symbols()`` tags handler methods with ``concept: route``,
     this function creates corresponding route IR nodes that the
@@ -1704,13 +1835,18 @@ def materialize_route_symbols(symbols: list[Symbol]) -> list[Symbol]:
 
     Args:
         symbols: All symbols (already enriched by ``enrich_symbols``).
+        origin_run_id: execution_id of the ``route-materializer`` AnalysisRun
+            the caller minted for this pass. Stamped onto every emitted marker
+            so its node->AnalysisRun provenance join is intact (WI-tufil /
+            WI-mosil). Defaults to "" for unit callers that don't validate.
 
     Returns:
         List of new route Symbol objects to extend the symbol list.
         Does NOT modify the input list.
     """
-    from .analyze.base import make_route_stable_id
+    from .analyze.base import make_route_stable_id, make_symbol_id
     from .ir import Span, Symbol as SymbolCls, make_pass_id
+    from .routes import transport_meta
 
     pass_id = make_pass_id("route-materializer")
     new_route_symbols: list[SymbolCls] = []
@@ -1812,10 +1948,15 @@ def materialize_route_symbols(symbols: list[Symbol]) -> list[Symbol]:
 
                 stable_id = make_route_stable_id(method, route_path_normalized)
 
-                # Create route symbol at the same location as the handler
-                route_id = (
-                    f"{sym.language}:{sym.path}:{sym.span.start_line}-"
-                    f"{sym.span.end_line}:{route_name}:route"
+                # Create route symbol at the same location as the handler.
+                # WI-tufil: build the id via make_symbol_id with the symbol's
+                # own kind ("function", the ADR-0027 Phase-3 route->function
+                # fold) so the id kind-slot round-trips against Symbol.kind. The
+                # route signal lives in meta["framework_role"], not the id-slot.
+                route_id = make_symbol_id(
+                    sym.language, sym.path,
+                    sym.span.start_line, sym.span.end_line,
+                    route_name, "function",
                 )
                 route_sym = SymbolCls(
                     id=route_id,
@@ -1830,10 +1971,11 @@ def materialize_route_symbols(symbols: list[Symbol]) -> list[Symbol]:
                         end_col=sym.span.end_col,
                     ),
                     origin=pass_id,
+                    origin_run_id=origin_run_id,
                     stable_id=stable_id,
                     meta={
                         "route_path": route_path_normalized,
-                        "http_method": method,
+                        **transport_meta(method),
                         "handler_ref": sym.name,
                         "materialized_from": sym.id,
                         "framework_role": "route",
@@ -1850,7 +1992,7 @@ _HTTP_METHOD_NAMES: frozenset[str] = frozenset(
 
 
 def expand_class_based_view_routes(
-    symbols: list,
+    symbols: list, origin_run_id: str = "",
 ) -> tuple[list, set[str]]:
     """Expand CBV routes into one route per declared HTTP method.
 
@@ -1882,7 +2024,7 @@ def expand_class_based_view_routes(
           should be dropped (only populated when expansion succeeded for
           that route).
     """
-    from .analyze.base import make_route_stable_id
+    from .analyze.base import make_route_stable_id, make_symbol_id
     from .ir import Span, Symbol as SymbolCls, make_pass_id
 
     # Build view_class_name -> set of declared HTTP method names.
@@ -1933,14 +2075,19 @@ def expand_class_based_view_routes(
                 "expanded_from": sym.id,
                 "framework_role": "route",
             }
-            new_id = (
-                f"{sym.language}:{sym.path}:{sym.span.start_line}-"
-                f"{sym.span.end_line}:{route_path}:{http_method}:route"
+            # WI-tufil: id kind-slot = the symbol's own kind ("function"), name
+            # slot = the symbol's name, so the id round-trips against Symbol.kind
+            # (the route signal is in meta["framework_role"]).
+            new_name = f"{sym.name}.{method_name}"
+            new_id = make_symbol_id(
+                sym.language, sym.path,
+                sym.span.start_line, sym.span.end_line,
+                new_name, "function",
             )
             new_routes.append(
                 SymbolCls(
                     id=new_id,
-                    name=f"{sym.name}.{method_name}",
+                    name=new_name,
                     kind="function",
                     language=sym.language,
                     path=sym.path,
@@ -1951,6 +2098,7 @@ def expand_class_based_view_routes(
                         end_col=sym.span.end_col,
                     ),
                     origin=pass_id,
+                    origin_run_id=origin_run_id,
                     stable_id=make_route_stable_id(http_method, route_path),
                     meta=new_meta,
                 )

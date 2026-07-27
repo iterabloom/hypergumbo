@@ -1,0 +1,45 @@
+- op: create  # 2f37
+  at: '2026-06-27T09:49:12Z'  # 2f37
+  by: agent  # 2f37
+  actor: jgstern_agent  # 2f37
+  clock: 1  # 2f37
+  nonce: 2f37  # 2f37
+  data:  # 2f37
+    kind: invariant  # 2f37
+    title: "File classification routes in-repo example/doc/config role files to tier 2, violating ADR-0041 §1 (tier = supply-chain distance only)"  # 2f37
+    status: violated  # 2f37
+    priority: 3  # 2f37
+    parent:  # 2f37
+    tags:  # 2f37
+    - supply_chain  # 2f37
+    - classification  # 2f37
+    isbefore: []  # 2f37
+    duplicate_of: []  # 2f37
+    not_duplicate_of: []  # 2f37
+    pr_ref:  # 2f37
+    description: "Structural scope-expansion from supply-verdict:F5 (ADR-0041 §1/§2). NOT a regression of F5 — pre-existing behavior. Fix options (decision needed): (a) route examples/docs/fuzz to tier 1 with role flags only, reserving tier 2 strictly for org-internal packages per ADR-0041 §1; (b) amend ADR-0041 §1 to admit in-repo non-source role files at tier 2 (axis re-widening, likely rejected per the single-axis through-line). Behavioral self-corpus evidence (a repo with examples/) required to close. The spec §14 scope-note added in F5 documents this as the open follow-up. Cross-ref INV-tisid (satisfied; its 'tier 2 reserved for examples/fuzz' clause is the OLD definition superseded by ADR-0041 §1)."  # 2f37
+    fields:  # 2f37
+      statement: "The supply-chain tier names supply-chain DISTANCE and nothing else (ADR-0041 §1); tier 2 (internal_dep) is reserved for workspace/org-internal dependency packages ONLY (monorepo siblings, local forks). In-repo non-source ROLE files (examples, documentation bundles, notebooks, fuzz/bench harnesses) are the project's own code and must classify as tier 1 (first_party) with role flags (is_example/is_test/etc.), NOT tier 2."  # 2f37
+      root_cause: "FileClassification in supply_chain.py independently assigns Tier.INTERNAL_DEP (tier 2) to role files outside the distance axiom: ~615 EXAMPLE_PATTERNS (examples/demos/samples/tutorials) is_example=True; ~621 DOCUMENTATION_PATTERNS; ~697 notebook .ipynb; ~702 fuzz/bench. (~628 config internal_package_roots is arguably org-internal/conformant.) cli.py ~8267 also promotes derived routes to tier 2 ('route promoted from derived'). supply-verdict:F5 (dev 36e37afb69) retired only the *manifest* direct-dep → tier-2 mapping (ADR-0041 explicitly scoped its supersession there); these FileClassification/route-promotion tier-2 assigners are the residual the §1 axiom newly flags. Latent on the hypergumbo self-corpus (0 tier-2 nodes — no example/doc files classified this way), so severity-low until a repo with examples/ exercises it."  # 2f37
+- op: discuss  # f6fe
+  at: '2026-06-30T08:55:40Z'  # f6fe
+  by: agent  # f6fe
+  actor: jgstern_agent  # f6fe
+  clock: 2  # f6fe
+  nonce: f6fe  # f6fe
+  message: "Source-side fix WIP-committed on branch jgstern-agent/fix/inv-naduh-role-files-tier1 (commit 0c9a8b9d98), NOT yet merged. Done: supply_chain.py classify_file routes examples (keeps is_example=True) / documentation / .ipynb notebooks / fuzz-bench to Tier.FIRST_PARTY (were INTERNAL_DEP); cli.py route-promotion promotes generated/derived routes tier 4->1 (was 2). internal_package_roots KEPT at tier 2 (genuine org-internal). REMAINING (resume on the branch): ~27 tests in test_supply_chain.py encode the OLD tier-2 contract and now fail by design — flip role-file tier assertions INTERNAL_DEP->FIRST_PARTY + rename (classes: TestInternalDepDetection example tests, TestDocCClassification, TestNotebookClassification, TestFuzzBenchClassification, TestIsExampleFileAxis, TestIsTestFileAxis::test_fuzz_file_is_not_marked_is_test), KEEPING the legitimate internal_package_roots/enum/workspace-package INTERNAL_DEP assertions; add a route-promotion->tier1 test; full validation + manifest; auto-pr; then close violated->satisfied with the fixture evidence. Route-promotion 2->1 was an in-scope sibling §1 violation (in-repo generated routes are distance-0)."  # f6fe
+- op: update  # db16
+  at: '2026-06-30T10:48:03Z'  # db16
+  by: agent  # db16
+  actor: jgstern_agent  # db16
+  clock: 3  # db16
+  nonce: db16  # db16
+  set:  # db16
+    status: satisfied  # db16
+- op: discuss  # 1e3e
+  at: '2026-06-30T10:48:03Z'  # 1e3e
+  by: agent  # 1e3e
+  actor: jgstern_agent  # 1e3e
+  clock: 4  # 1e3e
+  nonce: 1e3e  # 1e3e
+  message: "Satisfied. Merged 9db39694bc (selfh/dev, fast-forward). Behavioral repro on the MERGED code (re-ran the filed 'repo with examples/' repro): classify_file now returns tier 1 for examples/app.py (is_example=True), demos/widget.ts (is_example=True), docs/Documentation.docc/*.swift (reason 'documentation path matches'), analysis.ipynb (reason 'notebook file (.ipynb)'), fuzz/fuzz_targets/*.rs + benches/*.rs (reason 'fuzz/bench path matches') — all were tier 2 (INTERNAL_DEP) pre-fix. Genuine tier-2 preserved: libs/shared/u.py under config internal_package_roots -> tier 2 (now the SOLE tier-2 producer; no path heuristic yields tier 2). Generated in-repo routes promote tier 4->1 (was 2), asserted by the end-to-end run_behavior_map route-promotion test (test_max_tier.py). Production-path evidence: ~27 flipped fixture tests in test_supply_chain.py (TestInternalDepDetection examples, TestDocCClassification, TestNotebookClassification, TestFuzzBenchClassification, TestIsExampleFileAxis) exercise classify_file directly; TestRoleFlagMutualExclusion rescoped tier-independent. Spec §14 scope-note (which flagged this as the open follow-up) resolved. Latent on self-corpus (0 role-file tier-2 nodes) so no self-analysis count moves — not a quantitative bakeoff claim (no awaits_bakeoff_validation tag)."  # 1e3e

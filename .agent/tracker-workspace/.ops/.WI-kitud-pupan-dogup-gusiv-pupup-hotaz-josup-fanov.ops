@@ -39,3 +39,36 @@
     tags: [dogfood]  # 0356
   remove:  # 0356
     tags: [dogfooding]  # 0356
+- op: update  # b069
+  at: '2026-07-10T07:16:33Z'  # b069
+  by: agent  # b069
+  actor: jgstern_agent  # b069
+  clock: 4  # b069
+  nonce: b069  # b069
+  set: {}  # b069
+  add:  # b069
+    tags: [wave4]  # b069
+- op: discuss  # c657
+  at: '2026-07-10T07:16:33Z'  # c657
+  by: agent  # c657
+  actor: jgstern_agent  # c657
+  clock: 5  # c657
+  nonce: c657  # c657
+  message: "STILL OPEN — verified NOT a pure F1 (envelope) duplicate; it tracks a distinct, currently-UNMET flag-SPELLING-uniformity gap. Flag audit (.ci/cli-flag-matrix.json @ dev 24b44a1d0d): --format json on 6 read subcommands (cache-status, catalog, config, dead-code-maybe, routes, test-coverage) but --json still on io-boundaries + verify-claims; slice uses --flat (orthogonal payload-shape axis, not a format selector). INV-fivar (sub-A, satisfied) only retrofitted --format json onto the flag-LESS trio (cache-status/catalog/routes via add_schema_envelope); it did NOT touch the pre-existing --json subcommands, so the 'same spelling everywhere' invariant is unmet. Remaining work to close: add --format {text,json} to io-boundaries + verify-claims (keep --json as a hidden back-compat alias mapping to format=json), bringing every JSON-emitting read subcommand to one spelling; regen cli-flag-matrix + update help/spec/changelog. This is the last gap blocking WI-gogif's 'one consistent convention' expectation."  # c657
+- op: update  # f3f2
+  at: '2026-07-10T07:53:47Z'  # f3f2
+  by: agent  # f3f2
+  actor: jgstern_agent  # f3f2
+  clock: 6  # f3f2
+  nonce: f3f2  # f3f2
+  set:  # f3f2
+    status: done  # f3f2
+  add:  # f3f2
+    tags: [wave4]  # f3f2
+- op: discuss  # 2d15
+  at: '2026-07-10T07:53:47Z'  # 2d15
+  by: agent  # 2d15
+  actor: jgstern_agent  # 2d15
+  clock: 7  # 2d15
+  nonce: 2d15  # 2d15
+  message: "DONE — PR #537 (selfh/dev 4d933c251f). io-boundaries + verify-claims now expose the canonical --format {text,json} (default text) via a shared _read_view_wants_json(args) helper; --json kept as a back-compat alias (--json wins when both given). All 8 text-defaulting read views (cache-status/catalog/config/dead-code-maybe/routes/test-coverage + io-boundaries/verify-claims) share one flag spelling. BEHAVIORAL EVIDENCE (live @ dev 4d933c251f, /tmp fixture os.listdir+subprocess.run): 'io-boundaries --format json' -> parseable JSON (total_io_edges=2, boundaries=[fs_read,subprocess]); '--json' alias -> identical JSON; '--format text' -> 'I/O Boundary Map (2 boundary calls)'. 'verify-claims --claims ... --format json' -> parseable JSON (view=verify-claims, schema_version=1.0, 1 verdict); '--json' alias -> identical; '--format text' -> 'checkmark [SC-001] ... Verdict: confirmed'. Both --help list '--format {text,json}' (canonical) + '--json' (alias). Wire envelopes byte-identical (IO_BOUNDARIES/VERIFY_CLAIMS schema_versions unchanged); additive flag, no schema bump; flag-matrix regenerated; core 100% coverage. slice/compact excluded (JSON-only category, no text mode). Closes the last flag-spelling gap under WI-gogif."  # 2d15

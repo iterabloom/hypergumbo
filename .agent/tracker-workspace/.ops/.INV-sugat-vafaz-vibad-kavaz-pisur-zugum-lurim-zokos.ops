@@ -47,3 +47,19 @@
   clock: 4  # 08da
   nonce: 08da  # 08da
   message: "Closed by the 26-PR INV-sugat campaign (Phase 0 through Phase 6 PR7). The spec-vs-data validator stage at packages/hypergumbo-core/src/hypergumbo_core/spec_validator.py runs at end-of-pipeline with 5 active validator classes (axis_conformance, writer_contract, cross_field, verdict_enum, id_format). Self-analysis post-campaign reports ZERO violations across all 5 classes. Final commit: d1f69b835e. See CHANGELOG.md \"Phase 0 through Phase 6 PR7\" entries for the full closure trail. Positive evidence: validator at 0 = no spec-vs-data mismatch in emitted IR."  # 08da
+- op: update  # f781
+  at: '2026-06-22T01:47:09Z'  # f781
+  by: agent  # f781
+  actor: jgstern_agent  # f781
+  clock: 5  # f781
+  nonce: f781  # f781
+  set: {}  # f781
+  remove:  # f781
+    tags: [awaits_bakeoff_validation]  # f781
+- op: discuss  # 15c6
+  at: '2026-06-22T01:47:09Z'  # 15c6
+  by: agent  # 15c6
+  actor: jgstern_agent  # 15c6
+  clock: 6  # 15c6
+  nonce: 15c6  # 15c6
+  message: "Drain audit: D-stale. META spec-vs-data validator stage deployed (spec_validator.py, 5 validator classes, zero self-analysis violations); commit d1f69b835e, 2026-06-01 closure. Status satisfied; no cohort metric pending. Stripping stale tag."  # 15c6

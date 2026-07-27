@@ -49,6 +49,7 @@ from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
     TreeSitterAnalyzer,
+    make_doc_symbol_ids,
     make_file_id,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
@@ -80,11 +81,6 @@ def _get_node_text(node: "tree_sitter.Node") -> str:
     return node.text.decode("utf-8", errors="replace") if node.text else ""
 
 
-def _make_symbol_id(path: str, name: str, kind: str, line: int) -> str:
-    """Create a stable symbol ID."""
-    return f"twig:{path}:{kind}:{line}:{name}"
-
-
 def _create_extends_edges(
     rel_path: str, node: "tree_sitter.Node",
     template_name: str, run_id: str,
@@ -102,13 +98,12 @@ def _create_extends_edges(
         edge = Edge.create(
             src=make_file_id("twig", str(rel_path)),
             dst=f"twig:template:{template_name}",
-            edge_type="extends_template",
+            edge_type="extends",
             line=line,
             origin=PASS_ID,
             origin_run_id=run_id,
             evidence_type="extends",
-            confidence=0.95,
-            meta={"template": template_name},
+            meta={"template": template_name, "ref_construct": "template"},
         )
         edges.append(edge)
 
@@ -121,17 +116,22 @@ def _create_block_symbol(
     """Create a symbol for block definition."""
     line = node.start_point[0] + 1
 
-    symbol_id = _make_symbol_id(rel_path, block_name, "block", line)
     span = Span(
         start_line=line,
         start_col=node.start_point[1],
         end_line=node.end_point[0] + 1,
         end_col=node.end_point[1],
     )
+    # Both ids minted together by make_doc_symbol_ids (INV-dulah). node.id is
+    # byte-identical to the old f"twig:{path}:{kind}:{line}:{name}" form.
+    symbol_id, stable_id = make_doc_symbol_ids(
+        "twig", str(rel_path), "block", block_name,
+        span.start_line, span.end_line,
+    )
 
     return Symbol(
         id=symbol_id,
-        stable_id=symbol_id,
+        stable_id=stable_id,
         name=block_name,
         kind="block",
         language="twig",
@@ -161,13 +161,12 @@ def _create_include_edges(
         edge = Edge.create(
             src=make_file_id("twig", str(rel_path)),
             dst=f"twig:template:{template_name}",
-            edge_type="includes_template",
+            edge_type="includes",
             line=line,
             origin=PASS_ID,
             origin_run_id=run_id,
             evidence_type="include",
-            confidence=0.95,
-            meta={"template": template_name},
+            meta={"template": template_name, "ref_construct": "template"},
         )
         edges.append(edge)
 
@@ -180,17 +179,22 @@ def _create_macro_symbol(
     """Create a symbol for macro definition."""
     line = node.start_point[0] + 1
 
-    symbol_id = _make_symbol_id(rel_path, macro_name, "macro", line)
     span = Span(
         start_line=line,
         start_col=node.start_point[1],
         end_line=node.end_point[0] + 1,
         end_col=node.end_point[1],
     )
+    # Both ids minted together by make_doc_symbol_ids (INV-dulah). node.id is
+    # byte-identical to the old f"twig:{path}:{kind}:{line}:{name}" form.
+    symbol_id, stable_id = make_doc_symbol_ids(
+        "twig", str(rel_path), "macro", macro_name,
+        span.start_line, span.end_line,
+    )
 
     return Symbol(
         id=symbol_id,
-        stable_id=symbol_id,
+        stable_id=stable_id,
         name=macro_name,
         kind="macro",
         language="twig",
@@ -216,13 +220,12 @@ def _create_include_function_edges(
     edge = Edge.create(
         src=make_file_id("twig", str(rel_path)),
         dst=f"twig:template:{template_name}",
-        edge_type="includes_template",
+        edge_type="includes",
         line=line,
         origin=PASS_ID,
         origin_run_id=run_id,
         evidence_type="include",
-        confidence=0.95,
-        meta={"template": template_name, "form": "function"},
+        meta={"template": template_name, "form": "function", "ref_construct": "template"},
     )
     return [edge]
 
@@ -293,17 +296,22 @@ def _extract_for_statement(
     line = parent_node.start_point[0] + 1
 
     name = f"for {loop_var} in {iterable}" if iterable else f"for {loop_var}"
-    symbol_id = _make_symbol_id(rel_path, name, "for_loop", line)
     span = Span(
         start_line=line,
         start_col=parent_node.start_point[1],
         end_line=parent_node.end_point[0] + 1,
         end_col=parent_node.end_point[1],
     )
+    # Both ids minted together by make_doc_symbol_ids (INV-dulah). node.id is
+    # byte-identical to the old f"twig:{path}:{kind}:{line}:{name}" form.
+    symbol_id, stable_id = make_doc_symbol_ids(
+        "twig", str(rel_path), "for_loop", name,
+        span.start_line, span.end_line,
+    )
 
     symbol = Symbol(
         id=symbol_id,
-        stable_id=symbol_id,
+        stable_id=stable_id,
         name=name,
         kind="for_loop",
         language="twig",
@@ -331,17 +339,22 @@ def _extract_if_statement(
     line = parent_node.start_point[0] + 1
 
     name = f"if {condition}"
-    symbol_id = _make_symbol_id(rel_path, name, "conditional", line)
     span = Span(
         start_line=line,
         start_col=parent_node.start_point[1],
         end_line=parent_node.end_point[0] + 1,
         end_col=parent_node.end_point[1],
     )
+    # Both ids minted together by make_doc_symbol_ids (INV-dulah). node.id is
+    # byte-identical to the old f"twig:{path}:{kind}:{line}:{name}" form.
+    symbol_id, stable_id = make_doc_symbol_ids(
+        "twig", str(rel_path), "conditional", name,
+        span.start_line, span.end_line,
+    )
 
     symbol = Symbol(
         id=symbol_id,
-        stable_id=symbol_id,
+        stable_id=stable_id,
         name=name,
         kind="conditional",
         language="twig",
@@ -400,17 +413,22 @@ def _extract_function_call(
         ))
         return
 
-    symbol_id = _make_symbol_id(rel_path, func_name, "function_call", line)
     span = Span(
         start_line=line,
         start_col=parent_node.start_point[1],
         end_line=parent_node.end_point[0] + 1,
         end_col=parent_node.end_point[1],
     )
+    # Both ids minted together by make_doc_symbol_ids (INV-dulah). node.id is
+    # byte-identical to the old f"twig:{path}:{kind}:{line}:{name}" form.
+    symbol_id, stable_id = make_doc_symbol_ids(
+        "twig", str(rel_path), "function_call", func_name,
+        span.start_line, span.end_line,
+    )
 
     symbol = Symbol(
         id=symbol_id,
-        stable_id=symbol_id,
+        stable_id=stable_id,
         name=func_name,
         kind="call_site",
         language="twig",

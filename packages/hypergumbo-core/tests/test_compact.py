@@ -17,6 +17,7 @@ from hypergumbo_core.compact import (
     compute_tier_distribution,
     select_by_coverage,
     format_compact_behavior_map,
+    compact_node,
     CompactConfig,
     IncludedSummary,
     OmittedSummary,
@@ -735,6 +736,358 @@ class TestFormatCompactBehaviorMap:
         included_ids = {n["id"] for n in result["nodes"]}
         for edge in result["edges"]:
             assert edge["src"] in included_ids and edge["dst"] in included_ids
+
+    def test_output_closure_preserves_parallel_induced_edges(self):
+        """WI-hakom output-closure: compact edges == the induced subgraph,
+        including parallel edges, in the connectivity-aware path.
+
+        For every source edge whose both endpoints survive into the compact
+        view, that exact edge (by id) must appear in the compact edge array —
+        no induced edge, parallel or otherwise, may be silently dropped.
+        """
+        sym_a = make_symbol("a")
+        sym_b = make_symbol("b")
+        sym_c = make_symbol("c")
+        symbols = [sym_a, sym_b, sym_c]
+
+        # Two parallel A->B edges (distinct types/ids) + A->C for connectivity.
+        e_calls = make_edge(sym_a.id, sym_b.id, edge_type="calls")
+        e_calls.id = "edge:a->b:calls"
+        e_refs = make_edge(sym_a.id, sym_b.id, edge_type="references")
+        e_refs.id = "edge:a->b:references"
+        e_ac = make_edge(sym_a.id, sym_c.id, edge_type="calls")
+        edges = [e_calls, e_refs, e_ac]
+
+        behavior_map = {
+            "nodes": [s.to_dict() for s in symbols],
+            "edges": [e.to_dict() for e in edges],
+            "entrypoints": [],
+        }
+
+        config = CompactConfig(min_symbols=3, max_symbols=3)
+        result = format_compact_behavior_map(
+            behavior_map, symbols, edges, config,
+            connectivity_aware=True, force_include_entrypoints=False,
+        )
+
+        included_ids = {n["id"] for n in result["nodes"]}
+        # The parallel pair must actually be in scope for this to test anything.
+        assert sym_a.id in included_ids and sym_b.id in included_ids
+
+        # Output closure: compact edges == induced subgraph (both directions).
+        expected = {
+            e["id"] for e in behavior_map["edges"]
+            if e["src"] in included_ids and e["dst"] in included_ids
+            and e["src"] != e["dst"]
+        }
+        got = {e["id"] for e in result["edges"]}
+        assert expected == got, f"induced edges dropped: {expected - got}"
+
+    def test_strips_heavy_keys_but_keeps_provenance_and_quality(self):
+        """WI-judun: compact drops the heavy, view-irrelevant blocks but KEEPS
+        the finalize provenance/quality signals.
+
+        ``usage_contexts`` is spec-mandated stripped from compact/tiered views
+        (spec §usage_contexts) and ``sketch_precomputed`` is an internal cache
+        artifact (spec §707) — both are dropped. But ``analysis_runs``
+        (provenance) and ``validation_report`` (the finalize quality signal)
+        are deliberately PRESERVED through the compact projection per
+        ADR-0033/ADR-0043 — unlike the more aggressive tiered view, which drops
+        them too. Applies to BOTH the coverage and connectivity-aware branches.
+        """
+        symbols = [make_symbol("core"), make_symbol("helper")]
+        edges = [make_edge(symbols[1].id, symbols[0].id)]
+        behavior_map = {
+            "nodes": [s.to_dict() for s in symbols],
+            "edges": [e.to_dict() for e in edges],
+            "entrypoints": [],
+            "analysis_runs": [{"analyzer": "py", "files": 3, "symbols": 9}],
+            "usage_contexts": [{"symbol_id": "x", "kind": "call"}],
+            "sketch_precomputed": {"config_info": "x" * 500},
+            "validation_report": {"violations": [], "checks": 12},
+        }
+        config = CompactConfig(min_symbols=2, max_symbols=2)
+
+        for connectivity_aware in (False, True):
+            result = format_compact_behavior_map(
+                behavior_map, symbols, edges, config,
+                connectivity_aware=connectivity_aware,
+                force_include_entrypoints=False,
+            )
+            for stripped in ("usage_contexts", "sketch_precomputed"):
+                assert stripped not in result, (
+                    f"compact (connectivity_aware={connectivity_aware}) should "
+                    f"strip {stripped} to save tokens"
+                )
+            for kept in ("analysis_runs", "validation_report"):
+                assert kept in result, (
+                    f"compact (connectivity_aware={connectivity_aware}) must "
+                    f"preserve {kept} (ADR-0043 provenance/quality signal)"
+                )
+
+    def test_metrics_describe_projection_not_source(self):
+        """WI-pizat: compact recomputes its metrics block from the PROJECTED
+        arrays instead of echoing the source (full-repo) totals.
+
+        ``analysis_incomplete`` is left untouched — per spec §726 it is an
+        analyzer-scope flag (early termination / errors / resource limits),
+        NOT a view-truncation signal. Applies to both selection branches.
+        """
+        symbols = [make_symbol(f"s{i}") for i in range(8)]
+        edges = [
+            make_edge(symbols[1].id, symbols[0].id),
+            make_edge(symbols[2].id, symbols[0].id),
+        ]
+        behavior_map = {
+            "nodes": [s.to_dict() for s in symbols],
+            "edges": [e.to_dict() for e in edges],
+            "entrypoints": [],
+            "analysis_incomplete": False,
+            "metrics": {
+                "total_nodes": 9999,
+                "total_edges": 9999,
+                "total_files": 999,
+                "by_supply_chain_tier": {
+                    "first_party": {
+                        "nodes": 9999, "edges": 9999, "edges_incident": 9999,
+                    },
+                },
+            },
+        }
+        config = CompactConfig(min_symbols=3, max_symbols=3)
+
+        for connectivity_aware in (False, True):
+            result = format_compact_behavior_map(
+                behavior_map, symbols, edges, config,
+                connectivity_aware=connectivity_aware,
+                force_include_entrypoints=False,
+            )
+            m = result["metrics"]
+            # metrics describe the projected arrays, not the 9999 source totals
+            assert m["total_nodes"] == len(result["nodes"]) < 9999
+            assert m["total_edges"] == len(result["edges"]) < 9999
+            # analyzer-scope flag untouched by view truncation (spec §726)
+            assert result["analysis_incomplete"] is False
+
+    def test_per_node_centrality_edge_count_and_summary_companions(self):
+        """WI-zotam + WI-kulan: compact annotates each node with its centrality,
+        reports included_edges_count in BOTH selection modes, and emits
+        entrypoints_summary / features_summary companions for the truncated
+        arrays. Invariant assertions, robust to selection nondeterminism.
+        """
+        symbols = [make_symbol(f"s{i}") for i in range(8)]
+        edges = [
+            make_edge(symbols[1].id, symbols[0].id),
+            make_edge(symbols[2].id, symbols[0].id),
+        ]
+        entrypoints = [
+            {"symbol_id": s.id, "kind": "function", "confidence": 0.9}
+            for s in symbols
+        ]
+        features = [
+            {"id": "feat1", "entry_nodes": [symbols[7].id],
+             "node_ids": [symbols[7].id], "edge_ids": []},
+        ]
+        behavior_map = {
+            "nodes": [s.to_dict() for s in symbols],
+            "edges": [e.to_dict() for e in edges],
+            "entrypoints": entrypoints,
+            "features": features,
+        }
+        config = CompactConfig(min_symbols=3, max_symbols=3)
+
+        for connectivity_aware in (False, True):
+            result = format_compact_behavior_map(
+                behavior_map, symbols, edges, config,
+                connectivity_aware=connectivity_aware,
+                force_include_entrypoints=False,
+            )
+            # WI-zotam (a): every retained node carries a centrality score
+            for n in result["nodes"]:
+                assert isinstance(n["centrality"], float)
+            # WI-zotam (b): included_edges_count present in BOTH modes == array
+            assert (
+                result["nodes_summary"]["included_edges_count"]
+                == len(result["edges"])
+            )
+            # WI-kulan: companion summaries mirror nodes_summary's shape and
+            # reconcile with the emitted/source arrays
+            for skey, akey in (("entrypoints_summary", "entrypoints"),
+                               ("features_summary", "features")):
+                summ = result[skey]
+                assert summ["included"]["count"] == len(result[akey])
+                assert summ["omitted"]["count"] == (
+                    len(behavior_map[akey]) - len(result[akey])
+                )
+            # entrypoints truncation is actually exercised (8 -> <=3 nodes)
+            assert result["entrypoints_summary"]["omitted"]["count"] > 0
+
+    def test_default_selection_containment_monotonic_multilang(self):
+        """WI-kolal: with the centrality-ranked default (connectivity_aware=False),
+        a smaller --max-symbols budget selects a SUBSET of a larger budget's
+        selection — including across languages. The language_proportional budget
+        allocation must not let a language's slice SHRINK as the global budget
+        grows (which would break nodes(B1) ⊆ nodes(B2))."""
+        # UNEQUAL language sizes + budgets that are NOT multiples of the language
+        # count, so int(budget * proportion) truncates and the remainder is
+        # redistributed — the exact case that can make a language's slice shrink
+        # as the global budget grows.
+        sizes = {"python": ("py", 8), "javascript": ("js", 4),
+                 "go": ("go", 3), "rust": ("rs", 2), "c": ("c", 1)}
+        symbols = []
+        for lang, (ext, n) in sizes.items():
+            for i in range(n):
+                symbols.append(make_symbol(
+                    f"{lang}_{i}", path=f"src/{lang}/{i}.{ext}", language=lang
+                ))
+        edges = [
+            make_edge(symbols[1].id, symbols[0].id),
+            make_edge(symbols[9].id, symbols[8].id),
+            make_edge(symbols[13].id, symbols[12].id),
+        ]
+        behavior_map = {
+            "nodes": [s.to_dict() for s in symbols],
+            "edges": [e.to_dict() for e in edges],
+            "entrypoints": [],
+        }
+        prev_ids = None
+        for budget in range(2, len(symbols) + 1):
+            # Matches the compact CLI default: a GLOBAL centrality-ranked prefix
+            # (language_proportional disabled), which is monotonic by construction
+            # — unlike the language-stratified allocation, whose remainder
+            # redistribution can be non-monotonic (WI-kolal).
+            config = CompactConfig(
+                min_symbols=1, max_symbols=budget, language_proportional=False,
+            )
+            result = format_compact_behavior_map(
+                behavior_map, symbols, edges, config,
+                connectivity_aware=False, force_include_entrypoints=False,
+            )
+            ids = {n["id"] for n in result["nodes"]}
+            if prev_ids is not None:
+                assert prev_ids <= ids, (
+                    f"containment violated at budget {budget}: "
+                    f"dropped {prev_ids - ids}"
+                )
+            prev_ids = ids
+
+    def test_output_closure_all_projected_views(self):
+        """INV-fanur (G4): every compact projected view (both selection modes)
+        is self-consistent — edges reference only included nodes, entrypoints
+        and features reference only included nodes/edges, and every summary
+        count matches its array length. The output-closure guardrail for the
+        whole projection-finalize block.
+        """
+        symbols = [make_symbol(f"s{i}") for i in range(12)]
+        edges = [make_edge(symbols[i + 1].id, symbols[0].id) for i in range(5)]
+        entrypoints = [
+            {"symbol_id": s.id, "kind": "function", "confidence": 0.9}
+            for s in symbols
+        ]
+        features = [
+            {"id": "f_hub", "entry_nodes": [symbols[0].id],
+             "node_ids": [s.id for s in symbols[:6]],
+             "edge_ids": [e.id for e in edges]},
+            {"id": "f_orphan", "entry_nodes": [symbols[11].id],
+             "node_ids": [symbols[11].id], "edge_ids": []},
+        ]
+        behavior_map = {
+            "nodes": [s.to_dict() for s in symbols],
+            "edges": [e.to_dict() for e in edges],
+            "entrypoints": entrypoints,
+            "features": features,
+        }
+        config = CompactConfig(min_symbols=3, max_symbols=4)
+
+        for connectivity_aware in (False, True):
+            view = format_compact_behavior_map(
+                behavior_map, symbols, edges, config,
+                connectivity_aware=connectivity_aware,
+                force_include_entrypoints=False,
+            )
+            node_ids = {n["id"] for n in view["nodes"]}
+            edge_ids = {e["id"] for e in view["edges"]}
+
+            # edges ⊆ nodes (both endpoints included)
+            for e in view["edges"]:
+                assert e["src"] in node_ids and e["dst"] in node_ids
+
+            # entrypoints reference only included nodes
+            for ep in view["entrypoints"]:
+                assert ep["symbol_id"] in node_ids
+
+            # features reference only included nodes/edges (INV-titid / F38.C4)
+            for feat in view["features"]:
+                for nid in feat.get("node_ids", []):
+                    assert nid in node_ids
+                for eid in feat.get("edge_ids", []):
+                    assert eid in edge_ids
+                assert any(n in node_ids for n in feat.get("entry_nodes", []))
+
+            # every summary count reconciles with its emitted array
+            ns = view["nodes_summary"]
+            assert ns["included"]["count"] == len(view["nodes"])
+            assert ns["included_edges_count"] == len(view["edges"])
+            assert (view["entrypoints_summary"]["included"]["count"]
+                    == len(view["entrypoints"]))
+            assert (view["features_summary"]["included"]["count"]
+                    == len(view["features"]))
+
+    def test_connectivity_selection_deterministic_across_hash_seeds(self):
+        """WI-nivuj: connectivity selection is PYTHONHASHSEED-independent.
+
+        The seed/frontier iteration was over sets, so a connectivity-score TIE
+        resolved to an arbitrary (hash-seed-dependent) node. This runs an
+        identical selection with a deliberate tie under several hash seeds and
+        asserts the output is identical. A subprocess test (the fix's sorted()
+        lines are covered by the many in-process select_by_connectivity tests);
+        it is what makes the determinism reliably testable — an in-process test
+        cannot vary PYTHONHASHSEED, which is fixed per interpreter.
+        """
+        import os
+        import subprocess
+        import sys
+        import textwrap
+
+        script = textwrap.dedent('''
+            from hypergumbo_core.compact import select_by_connectivity
+            from hypergumbo_core.ir import Symbol, Edge, Span
+
+            def sym(name):
+                return Symbol(
+                    id=f"python:src/m.py:1-2:function:{name}", name=name,
+                    kind="function", language="python", path="src/m.py",
+                    span=Span(start_line=1, end_line=2,
+                              start_col=0, end_col=0),
+                )
+
+            # seed S; A..E are symmetric frontier nodes (each connects only to
+            # S) -> identical connectivity scores -> a tie the budget can't fit.
+            s = sym("seed")
+            others = [sym(n) for n in ("aaa", "bbb", "ccc", "ddd", "eee")]
+            edges = [
+                Edge(id=f"e{i}", src=o.id, dst=s.id, edge_type="calls",
+                     line=1, confidence=0.9, origin="t", origin_run_id="t")
+                for i, o in enumerate(others)
+            ]
+            r = select_by_connectivity(
+                [s, *others], edges, {s.id}, max_additional=2,
+            )
+            print(",".join(x.id for x in r.included.symbols))
+        ''')
+
+        outputs = set()
+        for seed in ("0", "1", "2", "3", "7", "13"):
+            env = {**os.environ, "PYTHONHASHSEED": seed}
+            res = subprocess.run(
+                [sys.executable, "-c", script], env=env,
+                capture_output=True, text=True, check=True,
+            )
+            outputs.add(res.stdout.strip())
+        assert len(outputs) == 1, (
+            f"connectivity selection non-deterministic across hash seeds: "
+            f"{outputs}"
+        )
 
 
 class TestStopWords:
@@ -1658,6 +2011,138 @@ class TestEntrypointFiltering:
             assert ep["symbol_id"] in included_ids
 
 
+class TestFeatureReprojection:
+    """Tests for feature re-projection onto the compacted graph (INV-titid).
+
+    The compact pass selects a budget-limited subset of nodes/edges. Feature
+    slices in the source behavior map carry full-graph node/edge references;
+    without re-projection the great majority of those references dangle in the
+    compact output (the feature claims to describe a slice of the compact
+    graph but points at pruned content). These tests pin the twin contract to
+    INV-tarol's slice fix: a compact feature must be self-contained — every id
+    it references exists in the compact's own nodes/edges — and a feature whose
+    anchor was pruned is dropped, mirroring entrypoint filtering.
+    """
+
+    @pytest.mark.parametrize("connectivity_aware", [False, True])
+    def test_feature_refs_have_no_dangling_after_compaction(
+        self, connectivity_aware
+    ):
+        """No feature ref points at content absent from the compact output."""
+        symbols = [make_symbol(f"sym_{i}") for i in range(10)]
+        edges = [
+            make_edge(symbols[i].id, symbols[i + 1].id) for i in range(4)
+        ]
+        feature = {
+            "id": "sha256:feat0",
+            "name": "feat0",
+            "entry_nodes": [symbols[0].id],
+            "node_ids": [s.id for s in symbols[:5]],
+            "edge_ids": [e.id for e in edges],
+            "node_depths": {s.id: i for i, s in enumerate(symbols[:5])},
+            "node_tiers": {s.id: 1 for s in symbols[:5]},
+        }
+        behavior_map = {
+            "nodes": [s.to_dict() for s in symbols],
+            "edges": [e.to_dict() for e in edges],
+            "entrypoints": [
+                {"symbol_id": symbols[0].id, "kind": "main_function",
+                 "confidence": 0.9}
+            ],
+            "features": [feature],
+        }
+        config = CompactConfig(min_symbols=1, max_symbols=3)
+        result = format_compact_behavior_map(
+            behavior_map, symbols, edges, config,
+            connectivity_aware=connectivity_aware,
+        )
+
+        node_ids = {n["id"] for n in result["nodes"]}
+        edge_ids = {e["id"] for e in result["edges"]}
+        # The feature is anchored at a force-included entrypoint, so it
+        # survives -- but every reference it carries must be present.
+        assert result["features"], "feature anchored on included node was dropped"
+        for feat in result["features"]:
+            for nid in feat.get("entry_nodes", []):
+                assert nid in node_ids, f"dangling entry_node {nid}"
+            for nid in feat.get("node_ids", []):
+                assert nid in node_ids, f"dangling node_id {nid}"
+            for eid in feat.get("edge_ids", []):
+                assert eid in edge_ids, f"dangling edge_id {eid}"
+            for nid in feat.get("node_depths", {}):
+                assert nid in node_ids, f"dangling node_depths key {nid}"
+            for nid in feat.get("node_tiers", {}):
+                assert nid in node_ids, f"dangling node_tiers key {nid}"
+
+    def test_feature_dropped_when_all_entry_nodes_pruned(self):
+        """A feature whose every entry node was pruned is removed entirely."""
+        symbols = [make_symbol(f"sym_{i}") for i in range(5)]
+        ghost_id = "python:gone.py:1-10:function:ghost"
+        feature = {
+            "id": "sha256:ghost",
+            "name": "ghost",
+            "entry_nodes": [ghost_id],
+            "node_ids": [ghost_id],
+            "edge_ids": [],
+        }
+        behavior_map = {
+            "nodes": [s.to_dict() for s in symbols],
+            "edges": [],
+            "entrypoints": [],
+            "features": [feature],
+        }
+        config = CompactConfig(min_symbols=1, max_symbols=3)
+        result = format_compact_behavior_map(
+            behavior_map, symbols, [], config,
+            force_include_entrypoints=False,
+        )
+
+        assert all(f["name"] != "ghost" for f in result["features"]), \
+            "feature with no surviving entry node should be dropped"
+
+    def test_feature_kept_when_entry_node_survives_and_refs_filtered(self):
+        """A surviving feature keeps in-set refs and drops pruned ones."""
+        anchor = make_symbol("anchor")
+        other = make_symbol("other")
+        edge_ao = make_edge(anchor.id, other.id)
+        ghost_id = "python:gone.py:1-10:function:ghost"
+        ghost_edge_id = f"edge:{ghost_id}->{anchor.id}"
+        feature = {
+            "id": "sha256:anchored",
+            "name": "anchored",
+            "entry_nodes": [anchor.id],
+            "node_ids": [anchor.id, other.id, ghost_id],
+            "edge_ids": [edge_ao.id, ghost_edge_id],
+        }
+        behavior_map = {
+            "nodes": [anchor.to_dict(), other.to_dict()],
+            "edges": [edge_ao.to_dict()],
+            "entrypoints": [
+                {"symbol_id": anchor.id, "kind": "main_function",
+                 "confidence": 0.9},
+                {"symbol_id": other.id, "kind": "main_function",
+                 "confidence": 0.9},
+            ],
+            "features": [feature],
+        }
+        # max_symbols=4 leaves room for both force-included entrypoints
+        # (the forced cap is max_symbols//2 == 2).
+        config = CompactConfig(min_symbols=1, max_symbols=4)
+        result = format_compact_behavior_map(
+            behavior_map, [anchor, other], [edge_ao], config,
+        )
+
+        kept = [f for f in result["features"] if f["name"] == "anchored"]
+        assert kept, "feature anchored on an included node should survive"
+        feat = kept[0]
+        # Phantom refs are gone; the real edge between two included nodes
+        # is retained.
+        assert ghost_id not in feat["node_ids"]
+        assert ghost_edge_id not in feat["edge_ids"]
+        assert anchor.id in feat["entry_nodes"]
+        assert edge_ao.id in feat["edge_ids"]
+
+
 class TestForceIncludeEntrypoints:
     """Tests for force-including entrypoints in selection."""
 
@@ -2239,6 +2724,36 @@ class TestConnectivityAwareSelection:
         assert result.included_edges[0].src == sym_a.id
         assert result.included_edges[0].dst == sym_b.id
 
+    def test_preserves_parallel_edges(self):
+        """WI-hakom: parallel edges between the same node pair are ALL retained.
+
+        The induced subgraph must be derived from the edge LIST, not a
+        (src, dst)-keyed dict — the latter collapses parallel edges (e.g. a
+        ``calls`` and a ``references`` edge between the same two symbols),
+        dropping every parallel but the last.
+        """
+        from hypergumbo_core.compact import select_by_connectivity
+
+        sym_a = make_symbol("a")
+        sym_b = make_symbol("b")
+        symbols = [sym_a, sym_b]
+
+        e_calls = make_edge(sym_a.id, sym_b.id, edge_type="calls")
+        e_calls.id = "edge:a->b:calls"
+        e_refs = make_edge(sym_a.id, sym_b.id, edge_type="references")
+        e_refs.id = "edge:a->b:references"
+        edges = [e_calls, e_refs]
+
+        result = select_by_connectivity(
+            symbols, edges, {sym_a.id, sym_b.id}, max_additional=0
+        )
+
+        # Both parallel edges are in the induced subgraph.
+        assert len(result.included_edges) == 2
+        assert {e.id for e in result.included_edges} == {
+            "edge:a->b:calls", "edge:a->b:references"
+        }
+
     def test_frontier_expands_via_incoming_edges(self):
         """Frontier includes nodes that have incoming edges to selected nodes."""
         from hypergumbo_core.compact import select_by_connectivity
@@ -2736,8 +3251,7 @@ class TestTieredTokenBudget:
             "entrypoints": [],
             "sketch_precomputed": {
                 "config_info": "x" * 1000,
-                "vocabulary": ["word"] * 100,
-                "centrality_scores": {"file.py": 0.5},
+                "additional_file_centrality_scores": {"file.py": 0.5},
             },
         }
 
@@ -2748,6 +3262,31 @@ class TestTieredTokenBudget:
         assert "sketch_precomputed" not in result, (
             "Tiered output should strip sketch_precomputed to save tokens"
         )
+
+    def test_tiered_metrics_describe_projection_not_source(self):
+        """WI-pizat: tiered recomputes its metrics block from the projected
+        arrays instead of echoing the source (full-repo) totals."""
+        symbols = [make_symbol("a"), make_symbol("b")]
+        edges = [make_edge(symbols[1].id, symbols[0].id)]
+        behavior_map = {
+            "nodes": [s.to_dict() for s in symbols],
+            "edges": [e.to_dict() for e in edges],
+            "entrypoints": [],
+            "metrics": {
+                "total_nodes": 9999,
+                "total_edges": 9999,
+                "total_files": 999,
+                "by_supply_chain_tier": {},
+            },
+        }
+
+        result = format_tiered_behavior_map(
+            behavior_map, symbols, edges, target_tokens=4000
+        )
+
+        m = result["metrics"]
+        assert m["total_nodes"] == len(result["nodes"]) < 9999
+        assert m["total_edges"] == len(result["edges"]) < 9999
 
     def test_tiered_low_confidence_entrypoints_dont_crowd_bridge_nodes(self):
         """Low-confidence entrypoints should not crowd out bridge nodes.
@@ -3310,8 +3849,13 @@ class TestTieredTokenBudget:
             f"{[n.get('name') for n in boundary_in_output]}"
         )
 
-        # First-party nodes should be present
-        first_party = [n for n in result_nodes if n.get("supply_chain", {}).get("tier") == 1]
+        # First-party nodes should be present. The slim compact/tiered node
+        # projection drops the supply_chain block (WI-pohuf), so identify
+        # first-party by the non-boundary in-repo functions — which is exactly
+        # what the boundary-exclusion this test guards protects.
+        first_party = [
+            n for n in result_nodes if n.get("name") in {"processData", "loadConfig"}
+        ]
         assert len(first_party) >= 1, "At least one first-party node should be in tiered output"
 
     def test_tiered_excludes_cfg_test_annotated_nodes(self):
@@ -3750,3 +4294,117 @@ class TestCompactSeedBudget:
         assert bridge_count > 0, (
             "No bridge nodes included — forced seeds consumed all budget"
         )
+
+
+class TestCompactNodeSlimProjection:
+    """WI-pohuf: compact/tiered views emit a slim node projection, not the full
+    ~24-field Symbol.to_dict(), so token budgets fit many symbols instead of ~1.
+    """
+
+    _HEAVY_FIELDS = (
+        "stable_id", "shape_id", "fingerprint", "supply_chain",
+        "origin_run_id", "origin", "discovery_language", "meta",
+    )
+
+    def test_compact_node_keeps_essentials_drops_internals(self):
+        sym = make_symbol("do_thing", path="src/svc.py", kind="function")
+        sym.signature = "do_thing(x: int) -> str"
+        sym.docstring = "Does the thing."
+        node = compact_node(sym)
+        # essentials present
+        assert node["id"] == sym.id
+        assert node["name"] == "do_thing"
+        assert node["kind"] == "function"
+        assert node["path"] == "src/svc.py"
+        assert node["signature"] == "do_thing(x: int) -> str"
+        assert node["docstring"] == "Does the thing."
+        assert "span" in node
+        # heavy internal fields dropped
+        for f in self._HEAVY_FIELDS:
+            assert f not in node, f"{f} should be dropped from compact node"
+        # substantially smaller than the full node
+        import json
+        assert len(json.dumps(node)) < len(json.dumps(sym.to_dict()))
+
+    def test_compact_node_omits_null_optionals(self):
+        sym = make_symbol("bare", kind="class")  # no signature/docstring set
+        node = compact_node(sym)
+        # optional fields that are None are omitted entirely
+        assert "signature" not in node
+        assert "docstring" not in node
+        # required fields still present
+        assert node["id"] == sym.id and node["kind"] == "class"
+
+    def test_compact_output_nodes_are_slim(self):
+        symbols = [make_symbol(f"s{i}") for i in range(6)]
+        edges = [make_edge(symbols[1].id, symbols[0].id)]
+        bm = {
+            "nodes": [s.to_dict() for s in symbols],
+            "edges": [e.to_dict() for e in edges],
+            "entrypoints": [],
+            "features": [],
+        }
+        cfg = CompactConfig(min_symbols=3, max_symbols=3)
+        result = format_compact_behavior_map(bm, symbols, edges, cfg,
+                                             force_include_entrypoints=False)
+        assert result["nodes"]
+        for n in result["nodes"]:
+            for f in self._HEAVY_FIELDS:
+                assert f not in n
+            assert "id" in n and "centrality" in n
+
+    def test_tiered_reprojects_features_not_wholesale(self):
+        # A feature referencing every node — pre-fix this was copied wholesale
+        # into the tier (WI-pohuf); now it is re-projected onto the retained set.
+        symbols = [make_symbol(f"s{i}") for i in range(20)]
+        edges = [make_edge(symbols[i + 1].id, symbols[i].id) for i in range(19)]
+        entrypoints = [{"symbol_id": symbols[0].id, "kind": "function",
+                        "confidence": 0.95}]
+        features = [{
+            "id": "feat_all",
+            "entry_nodes": [symbols[0].id],
+            "node_ids": [s.id for s in symbols],   # references ALL nodes
+            "edge_ids": [e.id for e in edges],
+        }]
+        bm = {
+            "nodes": [s.to_dict() for s in symbols],
+            "edges": [e.to_dict() for e in edges],
+            "entrypoints": entrypoints,
+            "features": features,
+        }
+        tiered = format_tiered_behavior_map(bm, symbols, edges, 2000)
+        out_ids = {n["id"] for n in tiered["nodes"]}
+        # feature re-projected: its node_ids are a subset of the retained nodes,
+        # not the full 20-node list.
+        for feat in tiered["features"]:
+            assert set(feat["node_ids"]) <= out_ids
+        assert "features_summary" in tiered
+
+    def test_tiered_does_not_collapse_under_feature_overhead(self):
+        # WI-pohuf core: a large feature + full nodes used to make the shrink
+        # loop trim the tier to a single node. With slim nodes + feature
+        # re-projection, many nodes survive a modest budget.
+        symbols = [make_symbol(f"s{i}") for i in range(40)]
+        edges = [make_edge(symbols[i + 1].id, symbols[i].id) for i in range(39)]
+        entrypoints = [{"symbol_id": symbols[0].id, "kind": "function",
+                        "confidence": 0.95}]
+        features = [{
+            "id": "big",
+            "entry_nodes": [symbols[0].id],
+            "node_ids": [s.id for s in symbols],
+            "edge_ids": [e.id for e in edges],
+        }]
+        bm = {
+            "nodes": [s.to_dict() for s in symbols],
+            "edges": [e.to_dict() for e in edges],
+            "entrypoints": entrypoints,
+            "features": features,
+        }
+        tiered = format_tiered_behavior_map(bm, symbols, edges, 3000)
+        # Well above the pre-fix collapse-to-1; the exact count depends on the
+        # connectivity selection, but the tier must not degenerate.
+        assert len(tiered["nodes"]) > 3
+        # and the emitted nodes are slim
+        for n in tiered["nodes"]:
+            for f in self._HEAVY_FIELDS:
+                assert f not in n

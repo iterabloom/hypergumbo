@@ -59,15 +59,17 @@ Post-Processing Filters (INV-mahap):
 """
 from __future__ import annotations
 
+import hashlib
 import math
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
-from typing import List
+from typing import List, Optional
 
 import re
 
 from .ir import Symbol, Edge
+from .routes import method_token, route_of
 from .paths import is_infrastructure_path, is_test_file, is_utility_file
 
 
@@ -157,6 +159,11 @@ class EntrypointKind(Enum):
     CLI_COMMAND = "cli_command"
     # Language-level main() entry points (detected via YAML patterns)
     MAIN_FUNCTION = "main_function"
+    # Module-level script guard: `if __name__ == "__main__":` with no separate
+    # main() function. Targets the FILE node (not a callable), so it is a
+    # distinct kind from MAIN_FUNCTION — kind alone disambiguates the target
+    # type (function vs file) rather than the free-text label (WI-tuvun).
+    MAIN_GUARD = "main_guard"
     ELECTRON_MAIN = "electron_main"
     ELECTRON_PRELOAD = "electron_preload"
     ELECTRON_RENDERER = "electron_renderer"
@@ -210,6 +217,65 @@ class EntrypointKind(Enum):
     CONNECTIVITY_BASED = "connectivity_based"  # High-connectivity callable
 
 
+def all_known_entrypoint_kinds() -> frozenset[str]:
+    """Single-source catalog of every entrypoint-kind value (WI-pupiz).
+
+    The canonical vocabulary IS the :class:`EntrypointKind` enum; this
+    resolver exposes it as a lightweight catalog-derived axis (ADR-0024
+    §4 "use judgment" carveout), mirroring ``edge_types.all_edge_type_names``
+    and ``catalog.all_known_languages``. Wired into
+    :func:`hypergumbo_core.multi_value_field_axis._known_axes` under the
+    ``entrypoint-kind`` axis name so any future ``str`` field carrying an
+    entrypoint-kind validates against the catalog, and used as the single
+    source for the schema ``Entrypoint.kind`` enumeration (``generate-schema``).
+
+    Distinct from the ``entrypoint_meta`` ``evidence_type`` axis (WI-rukam):
+    ``kind`` names WHAT the entrypoint is (an HTTP route, a CLI command),
+    while ``evidence_type`` names HOW it was detected. The empirically
+    dark-on-self-corpus kinds (e.g. ``cli_command`` for argparse CLIs —
+    a detection gap tracked under WI-lubap) are still *known* kinds and
+    appear here.
+    """
+    return frozenset(k.value for k in EntrypointKind)
+
+
+# --- Entrypoint provenance vocabularies (WI-rukam) -------------------
+# The Entrypoint record mirrors Edge's provenance shape: a producer pass
+# (``source``, analog of ``Edge.origin``) and an inference pathway
+# (``evidence_type``, analog of ``Edge.evidence_type``), both nested under
+# ``Entrypoint.meta``. These two frozensets are the single source of truth
+# for the value spaces; ``Entrypoint.create`` validates against them and
+# ``axis_meta_keys`` documents them under the ``entrypoint_meta`` axis.
+
+# Producer passes that emit Entrypoints (the three functions below).
+ENTRYPOINT_SOURCES: frozenset[str] = frozenset({
+    "concept_detector",        # _detect_from_concepts (YAML-concept matches)
+    "connectivity_fallback",   # _connectivity_fallback (no-patterns fallback)
+    "script_module_detector",  # _detect_script_modules (TS/JS standalone)
+})
+
+# Inference pathways — aligns 1:1 with the spec §8/§9 confidence tiers.
+ENTRYPOINT_EVIDENCE_TYPES: frozenset[str] = frozenset({
+    "manifest_declared",       # 0.99 — package-manifest bin/scripts entry
+    "framework_pattern",       # framework decorator/base-class/usage match
+    "structural",              # main-guard, shebang, filename, import-graph
+    "language_convention",     # main()/test functions/library exports
+    "naming_heuristic",        # *Controller/*Handler/cmd_* name patterns
+    "connectivity_heuristic",  # 0.50 — out-degree fallback
+})
+
+
+def _entrypoint_id(kind: "EntrypointKind", symbol_id: str, label: str) -> str:
+    """Content-hash identity for an Entrypoint record (WI-rukam).
+
+    A pure function of (kind, symbol_id, label) — the record's identity,
+    NOT its confidence (a ranking value). Mirrors ``Edge``'s
+    ``edge:sha256:<16hex>`` id shape with an ``entrypoint:`` namespace.
+    """
+    payload = f"{kind.value}:{symbol_id}:{label}"
+    return "entrypoint:sha256:" + hashlib.sha256(payload.encode()).hexdigest()[:16]
+
+
 @dataclass
 class Entrypoint:
     """A detected entrypoint in the codebase.
@@ -217,14 +283,78 @@ class Entrypoint:
     Attributes:
         symbol_id: ID of the symbol that is an entrypoint.
         kind: Type of entrypoint detected.
-        confidence: Confidence score (0.0-1.0).
+        confidence: Detection reliability (0.0-1.0) — how sure the detector
+            is that this symbol IS an entrypoint. NOT a prominence value;
+            ADR-0039 ruling 3 relocates the ranking boosts/penalties to
+            ``rank_score``.
+        rank_score: Ranking prominence (0.0-1.0). Initializes from
+            ``confidence`` and accumulates the multiplicative penalties,
+            library-export demotion, and degree boosts (ADR-0039 ruling 3).
+            Entrypoint ordering + the ``MIN_ENTRYPOINT_CONFIDENCE`` filter
+            key on this; equal to ``confidence`` until those adjustments
+            relocate.
         label: Human-readable label for the entrypoint.
+        meta: Provenance dict mirroring ``Edge.meta`` (WI-rukam). Carries
+            ``id`` (auto-stamped content hash), and — when built via
+            :meth:`create` — ``source`` (producer pass) and
+            ``evidence_type`` (inference pathway). Keys are registered on
+            the ``entrypoint_meta`` axis in :mod:`hypergumbo_core.axis_meta_keys`.
     """
 
     symbol_id: str
     kind: EntrypointKind
     confidence: float
     label: str
+    meta: dict = field(default_factory=dict)
+    rank_score: Optional[float] = None
+
+    def __post_init__(self) -> None:
+        # ``id`` is a pure function of (kind, symbol_id, label); stamp it
+        # unconditionally so EVERY Entrypoint — including those built
+        # directly (e.g. in tests) rather than via ``create`` — carries a
+        # stable identity. ``setdefault`` lets a caller pre-seed it.
+        self.meta.setdefault("id", _entrypoint_id(self.kind, self.symbol_id, self.label))
+        # ADR-0039 ruling 3: ``rank_score`` mirrors detection ``confidence``
+        # until the ranking adjustments relocate onto it.
+        if self.rank_score is None:
+            self.rank_score = self.confidence
+
+    @classmethod
+    def create(
+        cls,
+        symbol_id: str,
+        kind: EntrypointKind,
+        confidence: float,
+        label: str,
+        *,
+        source: str,
+        evidence_type: str,
+    ) -> "Entrypoint":
+        """Build an Entrypoint with full provenance (WI-rukam).
+
+        ``source`` and ``evidence_type`` are validated against
+        :data:`ENTRYPOINT_SOURCES` / :data:`ENTRYPOINT_EVIDENCE_TYPES`
+        (mirroring ``Edge.create``'s access-mode validation) so a typo'd
+        pathway is a construction-time error, not a silent free-text leak.
+        The ``id`` is stamped by ``__post_init__``.
+        """
+        if source not in ENTRYPOINT_SOURCES:
+            raise ValueError(
+                f"Entrypoint source={source!r} not in "
+                f"{sorted(ENTRYPOINT_SOURCES)}"
+            )
+        if evidence_type not in ENTRYPOINT_EVIDENCE_TYPES:
+            raise ValueError(
+                f"Entrypoint evidence_type={evidence_type!r} not in "
+                f"{sorted(ENTRYPOINT_EVIDENCE_TYPES)}"
+            )
+        return cls(
+            symbol_id=symbol_id,
+            kind=kind,
+            confidence=confidence,
+            label=label,
+            meta={"source": source, "evidence_type": evidence_type},
+        )
 
     def to_dict(self) -> dict:
         """Serialize to dictionary."""
@@ -232,7 +362,9 @@ class Entrypoint:
             "symbol_id": self.symbol_id,
             "kind": self.kind.value,
             "confidence": self.confidence,
+            "rank_score": self.rank_score,
             "label": self.label,
+            "meta": dict(self.meta),
         }
 
 
@@ -287,6 +419,23 @@ def _pick_best_bootstrap_framework(concepts: list[dict]) -> str:
     return bootstrap_fws[0]
 
 
+def _ws_route_label(path: str, framework: str = "") -> str:
+    """Label for a WebSocket entrypoint (WI-kuvig/WI-lomoz).
+
+    Path-bearing WS routes (e.g. Starlette ``WebSocketRoute("/ws", ...)``) get
+    a ``"WS <path>"`` label — parallel to the HTTP ``"HTTP <method> <path>"``
+    shape — so the handler-concept entrypoint and the minted route-symbol
+    entrypoint for the same route collapse to one in the label-dedup pass.
+    Pathless concept handlers (NestJS gateways, etc.) keep the framework label
+    and are not collapsed.
+    """
+    if path:
+        return f"WS {path}"
+    if framework:
+        return f"{framework.title()} WebSocket handler"
+    return "WebSocket handler"
+
+
 def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
     """Detect entrypoints from semantic concept metadata.
 
@@ -323,7 +472,10 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
     - "app_bootstrap" -> SPA_BOOTSTRAP (createRoot, ReactDOM.render, hydrateRoot)
 
     Detected concepts (language conventions, confidence=0.80):
-    - "main_function" -> MAIN_FUNCTION (Go, Java, Python, C, etc.)
+    - "main_function" -> MAIN_FUNCTION (function target: Go, Java, Python, C, etc.)
+    - "main_guard" -> MAIN_GUARD (file target: Python `if __name__ == "__main__"`
+      with no separate main(); WI-tuvun — kind disambiguates target from
+      MAIN_FUNCTION)
     - "test_function" -> TEST_FUNCTION (pytest, JUnit, Go testing, etc.)
     - "benchmark_function" -> TEST_FUNCTION (Go Benchmark*, Rust #[bench])
     - "example_function" -> TEST_FUNCTION (Go Example*)
@@ -353,10 +505,11 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
             concept_type = concept.get("concept")
             framework = concept.get("framework", "")
 
-            # Route concept -> HTTP_ROUTE
+            # Route concept -> HTTP_ROUTE (or WEBSOCKET_HANDLER when the
+            # route's method is the synthetic "WS" marker — WI-kuvig: a
+            # WebSocket route is not an HTTP route; meta.http_method="WS" is
+            # retained on the symbol, only the entrypoint kind changes).
             if concept_type == "route":
-                if EntrypointKind.HTTP_ROUTE in added_kinds:
-                    continue
                 # WI-kilal: when the concept dict doesn't carry method/path,
                 # fall back to the Symbol's meta-level fields. Rails routes
                 # are emitted by the ruby analyzer with framework_role="route"
@@ -369,8 +522,32 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
                 # label, and the label-dedup in detect_entrypoints collapsed
                 # all of them to one entrypoint (e.g., chatwoot: 623 routes
                 # -> 1 HTTP_ROUTE entrypoint).
-                method = concept.get("method", "") or sym.meta.get("http_method", "")
-                path = concept.get("path", "") or sym.meta.get("route_path", "")
+                info = route_of(sym)
+                protocol = info["protocol"]
+                method = method_token(info) or ""
+                path = info["path"] or ""
+                # Suppress false-positive route classification on frontend
+                # UI code (WI-ronik).  React/Vue/Angular component event
+                # handlers syntactically resemble Express route handlers
+                # but are not server-side routes.
+                confidence = 0.95
+                if _is_frontend_file(sym):
+                    confidence = 0.05  # Below MIN_ENTRYPOINT_CONFIDENCE
+                if protocol == "websocket":
+                    if EntrypointKind.WEBSOCKET_HANDLER in added_kinds:
+                        continue
+                    entrypoints.append(Entrypoint.create(
+                        symbol_id=sym.id,
+                        kind=EntrypointKind.WEBSOCKET_HANDLER,
+                        confidence=confidence,
+                        label=_ws_route_label(path, concept.get("framework", "")),
+                        source="concept_detector",
+                        evidence_type="framework_pattern",
+                    ))
+                    added_kinds.add(EntrypointKind.WEBSOCKET_HANDLER)
+                    continue
+                if EntrypointKind.HTTP_ROUTE in added_kinds:
+                    continue
                 if method and path:
                     label = f"HTTP {method.upper()} {path}"
                 elif method:
@@ -379,18 +556,13 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
                     label = f"HTTP route {path}"
                 else:
                     label = "HTTP route"
-                # Suppress false-positive route classification on frontend
-                # UI code (WI-ronik).  React/Vue/Angular component event
-                # handlers syntactically resemble Express route handlers
-                # but are not server-side routes.
-                confidence = 0.95
-                if _is_frontend_file(sym):
-                    confidence = 0.05  # Below MIN_ENTRYPOINT_CONFIDENCE
-                entrypoints.append(Entrypoint(
+                entrypoints.append(Entrypoint.create(
                     symbol_id=sym.id,
                     kind=EntrypointKind.HTTP_ROUTE,
                     confidence=confidence,
                     label=label,
+                    source="concept_detector",
+                    evidence_type="framework_pattern",
                 ))
                 added_kinds.add(EntrypointKind.HTTP_ROUTE)
 
@@ -402,11 +574,13 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
                     label = f"{framework.title()} controller"
                 else:
                     label = "Controller"
-                entrypoints.append(Entrypoint(
+                entrypoints.append(Entrypoint.create(
                     symbol_id=sym.id,
                     kind=EntrypointKind.CONTROLLER,
                     confidence=0.95,
                     label=label,
+                    source="concept_detector",
+                    evidence_type="framework_pattern",
                 ))
                 added_kinds.add(EntrypointKind.CONTROLLER)
 
@@ -418,11 +592,13 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
                     label = f"{framework.title()} task"
                 else:
                     label = "Background task"
-                entrypoints.append(Entrypoint(
+                entrypoints.append(Entrypoint.create(
                     symbol_id=sym.id,
                     kind=EntrypointKind.BACKGROUND_TASK,
                     confidence=0.95,
                     label=label,
+                    source="concept_detector",
+                    evidence_type="framework_pattern",
                 ))
                 added_kinds.add(EntrypointKind.BACKGROUND_TASK)
 
@@ -434,11 +610,13 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
                     label = f"{framework.title()} scheduled task"
                 else:
                     label = "Scheduled task"
-                entrypoints.append(Entrypoint(
+                entrypoints.append(Entrypoint.create(
                     symbol_id=sym.id,
                     kind=EntrypointKind.SCHEDULED_TASK,
                     confidence=0.95,
                     label=label,
+                    source="concept_detector",
+                    evidence_type="framework_pattern",
                 ))
                 added_kinds.add(EntrypointKind.SCHEDULED_TASK)
 
@@ -446,15 +624,18 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
             elif concept_type in ("websocket_handler", "websocket_gateway"):
                 if EntrypointKind.WEBSOCKET_HANDLER in added_kinds:
                     continue
-                if framework:
-                    label = f"{framework.title()} WebSocket handler"
-                else:
-                    label = "WebSocket handler"
-                entrypoints.append(Entrypoint(
+                # Path-bearing WS routes (Starlette WebSocketRoute) get a
+                # "WS <path>" label so they dedup with the minted route
+                # symbol; pathless handlers (NestJS gateways) keep the
+                # framework label (WI-kuvig/WI-lomoz).
+                ws_path = concept.get("path", "") or sym.meta.get("route_path", "")
+                entrypoints.append(Entrypoint.create(
                     symbol_id=sym.id,
                     kind=EntrypointKind.WEBSOCKET_HANDLER,
                     confidence=0.95,
-                    label=label,
+                    label=_ws_route_label(ws_path, framework),
+                    source="concept_detector",
+                    evidence_type="framework_pattern",
                 ))
                 added_kinds.add(EntrypointKind.WEBSOCKET_HANDLER)
 
@@ -469,11 +650,13 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
                     label = f"{framework.title()} middleware"
                 else:
                     label = "HTTP middleware"
-                entrypoints.append(Entrypoint(
+                entrypoints.append(Entrypoint.create(
                     symbol_id=sym.id,
                     kind=EntrypointKind.MIDDLEWARE_HANDLER,
                     confidence=0.95,
                     label=label,
+                    source="concept_detector",
+                    evidence_type="framework_pattern",
                 ))
                 added_kinds.add(EntrypointKind.MIDDLEWARE_HANDLER)
 
@@ -485,11 +668,13 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
                     label = f"{framework.title()} event handler"
                 else:
                     label = "Event handler"
-                entrypoints.append(Entrypoint(
+                entrypoints.append(Entrypoint.create(
                     symbol_id=sym.id,
                     kind=EntrypointKind.EVENT_HANDLER,
                     confidence=0.95,
                     label=label,
+                    source="concept_detector",
+                    evidence_type="framework_pattern",
                 ))
                 added_kinds.add(EntrypointKind.EVENT_HANDLER)
 
@@ -514,11 +699,13 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
                     label = f"{framework.title()} error handler"
                 else:
                     label = "Error handler"
-                entrypoints.append(Entrypoint(
+                entrypoints.append(Entrypoint.create(
                     symbol_id=sym.id,
                     kind=EntrypointKind.ERROR_HANDLER,
                     confidence=0.95,
                     label=label,
+                    source="concept_detector",
+                    evidence_type="framework_pattern",
                 ))
                 added_kinds.add(EntrypointKind.ERROR_HANDLER)
 
@@ -547,11 +734,13 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
                     label = f"{framework.title()} form"
                 else:
                     label = "Form"
-                entrypoints.append(Entrypoint(
+                entrypoints.append(Entrypoint.create(
                     symbol_id=sym.id,
                     kind=EntrypointKind.FORM,
                     confidence=0.90,
                     label=label,
+                    source="concept_detector",
+                    evidence_type="framework_pattern",
                 ))
                 added_kinds.add(EntrypointKind.FORM)
 
@@ -582,11 +771,13 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
                     label = f"{framework.title()} serializer"
                 else:
                     label = "Serializer"
-                entrypoints.append(Entrypoint(
+                entrypoints.append(Entrypoint.create(
                     symbol_id=sym.id,
                     kind=EntrypointKind.SERIALIZER,
                     confidence=0.90,
                     label=label,
+                    source="concept_detector",
+                    evidence_type="framework_pattern",
                 ))
                 added_kinds.add(EntrypointKind.SERIALIZER)
 
@@ -598,11 +789,13 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
                     label = f"{framework.title()} command"
                 else:
                     label = "CLI command"
-                entrypoints.append(Entrypoint(
+                entrypoints.append(Entrypoint.create(
                     symbol_id=sym.id,
                     kind=EntrypointKind.CLI_COMMAND,
                     confidence=0.95,
                     label=label,
+                    source="concept_detector",
+                    evidence_type="framework_pattern",
                 ))
                 added_kinds.add(EntrypointKind.CLI_COMMAND)
 
@@ -619,11 +812,13 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
                     label = f"Cargo binary: {sym.name}"
                 else:
                     label = f"Python CLI: {sym.name}"
-                entrypoints.append(Entrypoint(
+                entrypoints.append(Entrypoint.create(
                     symbol_id=sym.id,
                     kind=EntrypointKind.CLI_COMMAND,
                     confidence=0.99,  # Declared in manifest - highest confidence
                     label=label,
+                    source="concept_detector",
+                    evidence_type="manifest_declared",
                 ))
                 added_kinds.add(EntrypointKind.CLI_COMMAND)
 
@@ -632,11 +827,13 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
                 if EntrypointKind.CONTROLLER in added_kinds:
                     continue
                 label = "Phoenix LiveView"
-                entrypoints.append(Entrypoint(
+                entrypoints.append(Entrypoint.create(
                     symbol_id=sym.id,
                     kind=EntrypointKind.CONTROLLER,
                     confidence=0.95,
                     label=label,
+                    source="concept_detector",
+                    evidence_type="framework_pattern",
                 ))
                 added_kinds.add(EntrypointKind.CONTROLLER)
 
@@ -648,11 +845,13 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
                     label = "GraphQL resolver"
                 else:
                     label = "GraphQL schema"
-                entrypoints.append(Entrypoint(
+                entrypoints.append(Entrypoint.create(
                     symbol_id=sym.id,
                     kind=EntrypointKind.GRAPHQL_SERVER,
                     confidence=0.95,
                     label=label,
+                    source="concept_detector",
+                    evidence_type="framework_pattern",
                 ))
                 added_kinds.add(EntrypointKind.GRAPHQL_SERVER)
 
@@ -671,11 +870,13 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
                     # Extract class name from qualified method name
                     parts = sym.name.rsplit(".", 1)
                     class_name = parts[0] if len(parts) == 2 else sym.name
-                    entrypoints.append(Entrypoint(
+                    entrypoints.append(Entrypoint.create(
                         symbol_id=sym.id,
                         kind=EntrypointKind.ANDROID_ACTIVITY,
                         confidence=0.95,
                         label=f"Android Activity ({class_name})",
+                        source="concept_detector",
+                        evidence_type="framework_pattern",
                     ))
                     added_kinds.add(EntrypointKind.ANDROID_ACTIVITY)
                 elif matched_base in ("Application", "MultiDexApplication"):
@@ -683,11 +884,13 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
                         continue  # pragma: no cover - defensive deduplication
                     parts = sym.name.rsplit(".", 1)
                     class_name = parts[0] if len(parts) == 2 else sym.name
-                    entrypoints.append(Entrypoint(
+                    entrypoints.append(Entrypoint.create(
                         symbol_id=sym.id,
                         kind=EntrypointKind.ANDROID_APPLICATION,
                         confidence=0.95,
                         label=f"Android Application ({class_name})",
+                        source="concept_detector",
+                        evidence_type="framework_pattern",
                     ))
                     added_kinds.add(EntrypointKind.ANDROID_APPLICATION)
                 # For Fragment, Service, BroadcastReceiver, ContentProvider - use CONTROLLER
@@ -699,11 +902,13 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
                         continue  # pragma: no cover - defensive deduplication
                     parts = sym.name.rsplit(".", 1)
                     class_name = parts[0] if len(parts) == 2 else sym.name
-                    entrypoints.append(Entrypoint(
+                    entrypoints.append(Entrypoint.create(
                         symbol_id=sym.id,
                         kind=EntrypointKind.CONTROLLER,
                         confidence=0.95,
                         label=f"Android {matched_base} ({class_name})",
+                        source="concept_detector",
+                        evidence_type="framework_pattern",
                     ))
                     added_kinds.add(EntrypointKind.CONTROLLER)
 
@@ -714,11 +919,13 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
                     continue
                 # Derive label from symbol's language
                 lang = sym.language.title() if sym.language else "Unknown"
-                entrypoints.append(Entrypoint(
+                entrypoints.append(Entrypoint.create(
                     symbol_id=sym.id,
                     kind=EntrypointKind.MAIN_FUNCTION,
                     confidence=0.80,  # Lower than framework patterns
                     label=f"{lang} main()",
+                    source="concept_detector",
+                    evidence_type="language_convention",
                 ))
                 added_kinds.add(EntrypointKind.MAIN_FUNCTION)
 
@@ -734,11 +941,13 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
                 # The label points at the script path so consumers can
                 # distinguish multiple bash entrypoints in the same repo.
                 script_path = sym.path or sym.name
-                entrypoints.append(Entrypoint(
+                entrypoints.append(Entrypoint.create(
                     symbol_id=sym.id,
                     kind=EntrypointKind.SHELL_SCRIPT,
                     confidence=0.85,  # Structural pattern, same tier as main_guard
                     label=f"Shell script ({script_path})",
+                    source="concept_detector",
+                    evidence_type="structural",
                 ))
                 added_kinds.add(EntrypointKind.SHELL_SCRIPT)
 
@@ -750,26 +959,36 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
                 if EntrypointKind.HTML_ENTRY in added_kinds:
                     continue
                 html_path = sym.path or sym.name
-                entrypoints.append(Entrypoint(
+                entrypoints.append(Entrypoint.create(
                     symbol_id=sym.id,
                     kind=EntrypointKind.HTML_ENTRY,
                     confidence=0.85,  # Structural pattern, same tier as shell_script
                     label=f"HTML entry ({html_path})",
+                    source="concept_detector",
+                    evidence_type="structural",
                 ))
                 added_kinds.add(EntrypointKind.HTML_ENTRY)
 
-            # Python main guard concept -> MAIN_FUNCTION
-            # Structural entrypoint: `if __name__ == "__main__":` pattern
+            # Python main guard concept -> MAIN_GUARD (WI-tuvun)
+            # Structural entrypoint: `if __name__ == "__main__":` pattern.
+            # Distinct from MAIN_FUNCTION: the guard marks a FILE node
+            # (module-as-script), not a callable. When this symbol already
+            # emitted a MAIN_FUNCTION (a named main() on the same symbol), the
+            # guard is redundant and skipped; the cross-symbol case (guard on
+            # the file node, main() on the function node) is deduped in the
+            # INV-hosuh post-pass below.
             elif concept_type == "main_guard":
                 if EntrypointKind.MAIN_FUNCTION in added_kinds:
                     continue
-                entrypoints.append(Entrypoint(
+                entrypoints.append(Entrypoint.create(
                     symbol_id=sym.id,
-                    kind=EntrypointKind.MAIN_FUNCTION,
+                    kind=EntrypointKind.MAIN_GUARD,
                     confidence=0.85,  # Structural pattern (higher than naming heuristic)
                     label="Python script (if __name__ == '__main__')",
+                    source="concept_detector",
+                    evidence_type="structural",
                 ))
-                added_kinds.add(EntrypointKind.MAIN_FUNCTION)
+                added_kinds.add(EntrypointKind.MAIN_GUARD)
 
             # Library export concept -> LIBRARY_EXPORT
             # (ADR-3aaa v1.3.x - Library public API detection)
@@ -777,6 +996,20 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
             # entry points since they define the public API surface.
             elif concept_type == "library_export":
                 if EntrypointKind.LIBRARY_EXPORT in added_kinds:
+                    continue
+                # WI-pikib: a library_export entrypoint must be part of the
+                # package's PUBLIC API — externally importable. The concept
+                # detector also fires on non-public symbols such as a nested
+                # private closure (`fold_string_interpolation._sub`, the
+                # callback passed to `re.sub`) that no consumer can import.
+                # INV-jusot's canonical `Symbol.visibility` axis (computed in
+                # finalize step 7b, which runs before detect_entrypoints — see
+                # cli.run_behavior_map) lets us reject those. Key on the
+                # canonical `visibility` axis (per the Wave-3 §E-5 constraint),
+                # not the older is_exported heuristic. A None visibility
+                # (uncomputed / legacy map) is left permissive so a genuine
+                # export is never suppressed on a missing signal.
+                if sym.visibility is not None and sym.visibility != "public":
                     continue
                 export_name = concept.get("export_name", sym.name)
                 # Handle is_default as bool or string "true"/"false"
@@ -786,11 +1019,13 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
                     label = "Library default export"
                 else:
                     label = f"Library export: {export_name}"
-                entrypoints.append(Entrypoint(
+                entrypoints.append(Entrypoint.create(
                     symbol_id=sym.id,
                     kind=EntrypointKind.LIBRARY_EXPORT,
                     confidence=0.75,  # Lower than routes, similar to main()
                     label=label,
+                    source="concept_detector",
+                    evidence_type="language_convention",
                 ))
                 added_kinds.add(EntrypointKind.LIBRARY_EXPORT)
 
@@ -805,11 +1040,13 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
             elif concept_type == "serialization_callback":
                 if EntrypointKind.LIBRARY_EXPORT in added_kinds:
                     continue
-                entrypoints.append(Entrypoint(
+                entrypoints.append(Entrypoint.create(
                     symbol_id=sym.id,
                     kind=EntrypointKind.LIBRARY_EXPORT,
                     confidence=0.80,  # Specific signature names → high confidence
                     label=f"Serialization callback: {sym.name}",
+                    source="concept_detector",
+                    evidence_type="framework_pattern",
                 ))
                 added_kinds.add(EntrypointKind.LIBRARY_EXPORT)
 
@@ -819,22 +1056,26 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
             elif concept_type == "controller_by_name":
                 if EntrypointKind.CONTROLLER in added_kinds:
                     continue  # Already detected via framework pattern
-                entrypoints.append(Entrypoint(
+                entrypoints.append(Entrypoint.create(
                     symbol_id=sym.id,
                     kind=EntrypointKind.CONTROLLER,
                     confidence=0.70,  # Naming heuristic - lowest tier
                     label=f"Controller (by name): {sym.name}",
+                    source="concept_detector",
+                    evidence_type="naming_heuristic",
                 ))
                 added_kinds.add(EntrypointKind.CONTROLLER)
 
             elif concept_type == "handler_by_name":
                 if EntrypointKind.CONTROLLER in added_kinds:
                     continue  # Handlers are treated as controllers
-                entrypoints.append(Entrypoint(
+                entrypoints.append(Entrypoint.create(
                     symbol_id=sym.id,
                     kind=EntrypointKind.CONTROLLER,
                     confidence=0.70,  # Naming heuristic - lowest tier
                     label=f"Handler (by name): {sym.name}",
+                    source="concept_detector",
+                    evidence_type="naming_heuristic",
                 ))
                 added_kinds.add(EntrypointKind.CONTROLLER)
 
@@ -846,11 +1087,13 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
             elif concept_type == "broker_lifecycle_by_name":
                 if EntrypointKind.CONTROLLER in added_kinds:
                     continue
-                entrypoints.append(Entrypoint(
+                entrypoints.append(Entrypoint.create(
                     symbol_id=sym.id,
                     kind=EntrypointKind.CONTROLLER,
                     confidence=0.70,  # Naming heuristic - lowest tier
                     label=f"Server lifecycle (by name): {sym.name}",
+                    source="concept_detector",
+                    evidence_type="naming_heuristic",
                 ))
                 added_kinds.add(EntrypointKind.CONTROLLER)
 
@@ -865,11 +1108,13 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
             elif concept_type == "command_by_name":
                 if EntrypointKind.CLI_COMMAND in added_kinds:
                     continue
-                entrypoints.append(Entrypoint(
+                entrypoints.append(Entrypoint.create(
                     symbol_id=sym.id,
                     kind=EntrypointKind.CLI_COMMAND,
                     confidence=0.80,  # Naming convention - higher than generic
                     label=f"CLI command (by name): {sym.name}",
+                    source="concept_detector",
+                    evidence_type="naming_heuristic",
                 ))
                 added_kinds.add(EntrypointKind.CLI_COMMAND)
 
@@ -887,11 +1132,13 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
                     "benchmark_function": "Benchmark",
                     "example_function": "Example",
                 }.get(concept_type, "Test")
-                entrypoints.append(Entrypoint(
+                entrypoints.append(Entrypoint.create(
                     symbol_id=sym.id,
                     kind=EntrypointKind.TEST_FUNCTION,
                     confidence=0.80,
                     label=f"{label_prefix}: {sym.name}",
+                    source="concept_detector",
+                    evidence_type="language_convention",
                 ))
                 added_kinds.add(EntrypointKind.TEST_FUNCTION)
 
@@ -913,11 +1160,13 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
                         label = "App entrypoint"
                 if target_kind in added_kinds:
                     continue
-                entrypoints.append(Entrypoint(
+                entrypoints.append(Entrypoint.create(
                     symbol_id=sym.id,
                     kind=target_kind,
                     confidence=0.90,
                     label=label,
+                    source="concept_detector",
+                    evidence_type="framework_pattern",
                 ))
                 added_kinds.add(target_kind)
 
@@ -937,11 +1186,13 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
                     label = f"{best_fw.title()} app bootstrap"
                 else:
                     label = "SPA bootstrap"
-                entrypoints.append(Entrypoint(
+                entrypoints.append(Entrypoint.create(
                     symbol_id=sym.id,
                     kind=EntrypointKind.SPA_BOOTSTRAP,
                     confidence=0.90,
                     label=label,
+                    source="concept_detector",
+                    evidence_type="framework_pattern",
                 ))
                 added_kinds.add(EntrypointKind.SPA_BOOTSTRAP)
 
@@ -956,11 +1207,13 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
                     label = f"{framework.title()} IPC handler"
                 else:
                     label = "IPC handler"
-                entrypoints.append(Entrypoint(
+                entrypoints.append(Entrypoint.create(
                     symbol_id=sym.id,
                     kind=EntrypointKind.EVENT_HANDLER,
                     confidence=0.90,
                     label=label,
+                    source="concept_detector",
+                    evidence_type="framework_pattern",
                 ))
                 added_kinds.add(EntrypointKind.EVENT_HANDLER)
 
@@ -975,11 +1228,13 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
                     label = f"{framework.title()} application"
                 else:
                     label = "Application entrypoint"
-                entrypoints.append(Entrypoint(
+                entrypoints.append(Entrypoint.create(
                     symbol_id=sym.id,
                     kind=EntrypointKind.MAIN_FUNCTION,
                     confidence=0.90,
                     label=label,
+                    source="concept_detector",
+                    evidence_type="framework_pattern",
                 ))
                 added_kinds.add(EntrypointKind.MAIN_FUNCTION)
 
@@ -993,11 +1248,13 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
                     label = f"{framework.title()} servlet"
                 else:
                     label = "Servlet"
-                entrypoints.append(Entrypoint(
+                entrypoints.append(Entrypoint.create(
                     symbol_id=sym.id,
                     kind=EntrypointKind.CONTROLLER,
                     confidence=0.90,
                     label=label,
+                    source="concept_detector",
+                    evidence_type="framework_pattern",
                 ))
                 added_kinds.add(EntrypointKind.CONTROLLER)
 
@@ -1007,17 +1264,34 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
     # rather than going through YAML concept enrichment.  These symbols are
     # found by the routes CLI command (which checks both concepts and kind)
     # but were missed by entrypoint detection until now.
-    # Track existing route entrypoint symbol_ids to avoid duplicates.
-    route_ep_ids = {ep.symbol_id for ep in entrypoints if ep.kind == EntrypointKind.HTTP_ROUTE}
+    # Track existing route/websocket entrypoint symbol_ids to avoid duplicates.
+    route_ep_ids = {
+        ep.symbol_id for ep in entrypoints
+        if ep.kind in (EntrypointKind.HTTP_ROUTE, EntrypointKind.WEBSOCKET_HANDLER)
+    }
 
     for sym in symbols:
         if (sym.meta or {}).get("framework_role") != "route":
             continue
         if sym.id in route_ep_ids:
             continue
-        meta = sym.meta or {}
-        method = meta.get("http_method", "")
-        path = meta.get("route_path", "")
+        info = route_of(sym)
+        protocol = info["protocol"]
+        method = method_token(info) or ""
+        path = info["path"] or ""
+        # WI-kuvig: a route whose transport is WebSocket is a WebSocket handler,
+        # not an HTTP route (INV-tibap: the transport now lives in route_protocol,
+        # normalized by route_of; only the entrypoint kind reflects it).
+        if protocol == "websocket":
+            entrypoints.append(Entrypoint.create(
+                symbol_id=sym.id,
+                kind=EntrypointKind.WEBSOCKET_HANDLER,
+                confidence=0.90,  # Slightly lower than concept-enriched (0.95)
+                label=_ws_route_label(path, info["framework"] or ""),
+                source="concept_detector",
+                evidence_type="framework_pattern",
+            ))
+            continue
         if method and path:
             label = f"HTTP {method.upper()} {path}"
         elif method:
@@ -1026,11 +1300,13 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
             label = f"HTTP route {path}"
         else:
             label = "HTTP route"
-        entrypoints.append(Entrypoint(
+        entrypoints.append(Entrypoint.create(
             symbol_id=sym.id,
             kind=EntrypointKind.HTTP_ROUTE,
             confidence=0.90,  # Slightly lower than concept-enriched (0.95)
             label=label,
+            source="concept_detector",
+            evidence_type="framework_pattern",
         ))
 
     return entrypoints
@@ -1086,11 +1362,13 @@ def _connectivity_fallback(
     entrypoints: List[Entrypoint] = []
     for sym, _out_count in top:
         lang = sym.language or "unknown"
-        entrypoints.append(Entrypoint(
+        entrypoints.append(Entrypoint.create(
             symbol_id=sym.id,
             kind=EntrypointKind.CONNECTIVITY_BASED,
             confidence=0.50,
             label=f"High-connectivity {lang} {sym.kind}: {sym.name}",
+            source="connectivity_fallback",
+            evidence_type="connectivity_heuristic",
         ))
 
     return entrypoints
@@ -1143,13 +1421,28 @@ def _detect_script_modules(
         if sym.id not in outbound_call_srcs:
             continue  # no outbound calls → inert data, not executable code
         script_path = sym.path or sym.name
-        entrypoints.append(Entrypoint(
+        entrypoints.append(Entrypoint.create(
             symbol_id=sym.id,
             kind=EntrypointKind.SCRIPT_MODULE,
             confidence=0.80,
             label=f"Script module ({script_path})",
+            source="script_module_detector",
+            evidence_type="structural",
         ))
     return entrypoints
+
+
+# WI-batit: Maven/Gradle build-wrapper scripts. These are checked-in repo-root
+# shell scripts that ARE executable entrypoints structurally, but are build
+# tooling — never the developer-facing API surface a forward slice should seed
+# from. Because they sit at the repo root at tier 1 (not a test/utility/vendor
+# path), none of the ranking penalties in ``detect_entrypoints`` fire, and their
+# large out-degree lets the connectivity boost climb their 0.85 base to ~0.98 —
+# outranking real routes/controllers in ``slice --entry auto``. They are demoted
+# explicitly (basename match, gated on SHELL_SCRIPT) so the real API surface wins.
+_BUILD_WRAPPER_BASENAMES: frozenset[str] = frozenset({
+    "mvnw", "mvnw.cmd", "gradlew", "gradlew.bat",
+})
 
 
 def detect_entrypoints(
@@ -1219,8 +1512,9 @@ def detect_entrypoints(
             non_decl = [
                 ep for ep in eps
                 if "declaration" not in (
-                    symbol_lookup_for_dedup.get(ep.symbol_id).modifiers
-                    if symbol_lookup_for_dedup.get(ep.symbol_id) else []
+                    _sym.modifiers
+                    if (_sym := symbol_lookup_for_dedup.get(ep.symbol_id)) is not None
+                    else []
                 )
             ]
             deduped_entrypoints.extend(non_decl if non_decl else eps)
@@ -1228,20 +1522,24 @@ def detect_entrypoints(
             deduped_entrypoints.extend(eps)
     unique_entrypoints = deduped_entrypoints
 
-    # INV-hosuh: collapse module-level main-guard + function-level main()
-    # in the same script to a single entry. The main-guard
-    # (kind=MAIN_FUNCTION on the module/file symbol, from the
-    # ``main_guard`` concept) and the main() function (kind=MAIN_FUNCTION
-    # on the function symbol, from the ``main_function`` concept) both
-    # fire for the same script when both are present. The function-level
-    # entry is the canonical "real" entrypoint; the main-guard marker is
-    # redundant once we have it. Scripts that have only one of the two
-    # (e.g., __main__.py with no separate main(), or a bare main() with
-    # no __main__ block) keep their single entry.
+    # INV-hosuh + WI-tuvun: collapse module-level main-guard + function-level
+    # main() in the same script to a single entry. The main-guard
+    # (kind=MAIN_GUARD on the module/file symbol, from the ``main_guard``
+    # concept) and the main() function (kind=MAIN_FUNCTION on the function
+    # symbol, from the ``main_function`` concept) both fire for the same
+    # script when both are present. The function-level entry is the canonical
+    # "real" entrypoint; the main-guard marker is redundant once we have it
+    # (the ``fn_eps`` filter keeps only function-target entries per path).
+    # Scripts that have only one of the two (e.g., __main__.py with no
+    # separate main() -> lone MAIN_GUARD, or a bare main() with no __main__
+    # block -> lone MAIN_FUNCTION) keep their single entry.
     main_by_path: dict[str, list[Entrypoint]] = defaultdict(list)
     non_main_eps: list[Entrypoint] = []
     for ep in unique_entrypoints:
-        if ep.kind != EntrypointKind.MAIN_FUNCTION:
+        if ep.kind not in (
+            EntrypointKind.MAIN_FUNCTION,
+            EntrypointKind.MAIN_GUARD,
+        ):
             non_main_eps.append(ep)
             continue
         sym = symbol_lookup_for_dedup.get(ep.symbol_id)
@@ -1283,10 +1581,23 @@ def detect_entrypoints(
     for ep in unique_entrypoints:
         if ep.kind in _ROUTE_KINDS and ep.label.startswith("HTTP "):
             route_label_groups[ep.label].append(ep)
+        elif ep.kind == EntrypointKind.WEBSOCKET_HANDLER and ep.label.startswith("WS "):
+            # Path-bearing WS routes ("WS /ws") dedup like HTTP routes so the
+            # handler concept and the minted route symbol collapse to one;
+            # pathless WS handlers ("<Framework> WebSocket handler") fall
+            # through and stay distinct (WI-kuvig/WI-lomoz).
+            route_label_groups[ep.label].append(ep)
         else:
             non_route_eps.append(ep)
     for _label, eps in route_label_groups.items():
-        eps.sort(key=lambda e: e.confidence, reverse=True)
+        # ADR-0039 ruling 3: dedup keeps the most PROMINENT entrypoint per route
+        # label — a ranking decision, so key on rank_score (== confidence until
+        # the adjustments below relocate onto it).
+        # rank_score is populated from confidence in __post_init__, so it is
+        # non-None for constructed entrypoints; `or 0.0` guards a
+        # post-construction reset (the dataclass is not frozen) and keeps the
+        # sort key a plain float (None is not orderable).
+        eps.sort(key=lambda e: e.rank_score or 0.0, reverse=True)
         non_route_eps.append(eps[0])
     unique_entrypoints = non_route_eps
 
@@ -1300,8 +1611,12 @@ def detect_entrypoints(
     # Build lookup from symbol_id to Symbol for penalty calculations
     symbol_lookup: dict[str, Symbol] = {node.id: node for node in nodes}
 
-    # Apply penalties for test files and vendor code
-    # This deprioritizes them without removing them from the list
+    # Apply penalties for test files and vendor code (ADR-0039 ruling 3: these
+    # are RANKING adjustments — they deprioritize an entrypoint without making
+    # it less certainly an entrypoint — so they mutate ``rank_score``, leaving
+    # detection ``confidence`` at the construction base. rank_score initialized
+    # from confidence, so the accumulated ranking value is unchanged).
+    build_wrapper_ids: set[str] = set()
     for ep in unique_entrypoints:
         sym = symbol_lookup.get(ep.symbol_id)
         if sym is None:
@@ -1313,18 +1628,48 @@ def detect_entrypoints(
         # test entrypoints at 0.40 confidence — high enough to dominate
         # auto-slicing selections.  0.1 pushes them to 0.08, well below
         # any production entrypoint.
+        #
+        # WI-popok / fundamental-concept audit (2026-07-17, KEEP verdict): this
+        # deliberately uses the BROAD ``paths.is_test_file`` heuristic (the
+        # ranking notion of "test-OR-support" code: also mocks/, fakes/,
+        # fixtures/, testdata/, benches/, ``_test.<any-ext>``, ``spec_*`` …),
+        # NOT the narrow supply-chain role flag ``Symbol.is_test_file`` (which
+        # per spec §14 means "test *code*" only — examples/benches/fuzz carry
+        # other roles). The two are distinct-purpose predicates, not a
+        # coarse-vs-granular pair, so this is not a META-bifif re-derivation to
+        # fold: swapping onto ``sym.is_test_file`` would silently stop
+        # deprioritizing mock/fixture/benchmark entrypoints and flood the entry
+        # list. Re-evaluation trigger: if ``supply_chain.is_test`` is ever
+        # broadened to cover that support-code breadth, re-open the audit and
+        # reconsider consolidating (guarded by
+        # test_support_dir_entrypoint_penalized_via_broad_path_heuristic).
         if sym.path and is_test_file(sym.path):
-            ep.confidence *= 0.1
+            ep.rank_score *= 0.1
 
         # Penalty for utility/example/docs files (50% reduction)
         # These are demonstration code, not production entrypoints
         if sym.path and is_utility_file(sym.path):
-            ep.confidence *= 0.5
+            ep.rank_score *= 0.5
 
         # Penalty for vendor/external dependencies (70% reduction)
         # Tier 3 = external deps, Tier 4 = derived/build artifacts
         if sym.supply_chain_tier >= 3:
-            ep.confidence *= 0.3
+            ep.rank_score *= 0.3
+
+        # WI-batit: demote Maven/Gradle build-wrapper scripts (mvnw/gradlew).
+        # A checked-in wrapper is a tier-1 repo-root shell script, so none of
+        # the penalties above fire and its large out-degree would otherwise
+        # boost it above the real API surface, making it the default
+        # --entry auto seed. It is build tooling, never the code a developer
+        # wants to slice from. Tracked so the connectivity boost skips it too
+        # (same pattern as infra_export_ids), otherwise the boost re-inflates it.
+        if (
+            ep.kind == EntrypointKind.SHELL_SCRIPT
+            and sym.path
+            and sym.path.rsplit("/", 1)[-1] in _BUILD_WRAPPER_BASENAMES
+        ):
+            ep.rank_score *= 0.1
+            build_wrapper_ids.add(ep.symbol_id)
 
         # Penalty for Go main()s in deeply nested cmd/ directories (50%).
         # In Go repos, top-level cmd/<name>/ holds the primary application
@@ -1340,7 +1685,7 @@ def detect_entrypoints(
             parts = sym.path.split("/")
             for i, part in enumerate(parts):
                 if part == "cmd" and i >= 2:
-                    ep.confidence *= 0.5
+                    ep.rank_score *= 0.5
                     break
 
     # Application demotion: when real semantic entrypoints exist (routes,
@@ -1417,7 +1762,7 @@ def detect_entrypoints(
                 sym = symbol_lookup.get(ep.symbol_id)
                 lang = sym.language if sym else None
                 if lang and lang in langs_with_semantic:
-                    ep.confidence *= 0.1  # 90% reduction, same as test penalty
+                    ep.rank_score *= 0.1  # 90% ranking reduction, same as test penalty
                     # Infrastructure-path exports (telemetry/, metrics/, logging/)
                     # are internal plumbing, not developer-facing API.  Track
                     # them so connectivity boost skips them (like tests).
@@ -1493,6 +1838,11 @@ def detect_entrypoints(
         # survived at ~0.14 confidence via connectivity boost.
         if ep.symbol_id in infra_export_ids:
             continue
+        # WI-batit: skip the connectivity boost for demoted build wrappers
+        # (mvnw/gradlew) — their large out-degree would otherwise re-inflate
+        # the x0.1 demotion above, same rationale as infra_export_ids.
+        if ep.symbol_id in build_wrapper_ids:
+            continue
         effective_edges = _effective_out_degree(ep.symbol_id)
         in_degree = incoming_counts.get(ep.symbol_id, 0)
 
@@ -1503,9 +1853,11 @@ def detect_entrypoints(
         # (higher than the 0.25 out-degree cap) because in-degree directly
         # measures architectural importance.
         if ep.kind == EntrypointKind.LIBRARY_EXPORT and in_degree > 0:
+            # WI-dojor + ADR-0039 ruling 3: the additive in-degree connectivity
+            # boost (cap +0.35) is a ranking-prominence signal -> rank_score.
             in_boost = min(0.35, math.log(1 + in_degree) / 8)
             lang_scale = 0.5 + 0.5 * _language_weight(ep.symbol_id)
-            ep.confidence = min(1.0, ep.confidence + in_boost * lang_scale)
+            ep.rank_score = min(1.0, ep.rank_score + in_boost * lang_scale)
 
         if effective_edges > 0:
             # Logarithmic boost: diminishing returns for very high counts
@@ -1517,7 +1869,7 @@ def detect_entrypoints(
             # Formula: 0.5 + 0.5 * weight → range [0.5, 1.0]
             lang_scale = 0.5 + 0.5 * _language_weight(ep.symbol_id)
             connectivity_boost = raw_boost * lang_scale
-            ep.confidence = min(1.0, ep.confidence + connectivity_boost)
+            ep.rank_score = min(1.0, ep.rank_score + connectivity_boost)
 
     # Sort by confidence (highest first) for better --entry auto behavior.
     # Tiebreakers (in order):
@@ -1526,22 +1878,26 @@ def detect_entrypoints(
     #    the Python script has higher connectivity.
     # 2. Effective out-degree: when two entrypoints from the same language
     #    tie on confidence, prefer the one with higher transitive reach.
+    # ADR-0039 ruling 3: order by rank_score (ranking prominence — base
+    # confidence plus the relocated penalties/demotions/boosts), NOT the
+    # detection ``confidence`` which now stays at the construction base.
     unique_entrypoints.sort(
         key=lambda ep: (
-            ep.confidence,
+            ep.rank_score,
             _language_weight(ep.symbol_id),
             _effective_out_degree(ep.symbol_id),
         ),
         reverse=True,
     )
 
-    # Filter out entries below minimum confidence threshold.
-    # After all adjustments (test penalty, vendor penalty, library demotion),
-    # entries with very low confidence are noise — e.g., library_export
-    # entries demoted from 0.80 to 0.08 when semantic entries exist.
+    # Filter out entries below the minimum RANKING threshold (ADR-0039 ruling 3:
+    # re-keyed from confidence to rank_score). After all adjustments (test
+    # penalty, vendor penalty, library demotion), entries with very low
+    # prominence are noise — e.g. library_export demoted from 0.80 to 0.08 when
+    # semantic entries exist. MIN_ENTRYPOINT_CONFIDENCE is a rank floor.
     unique_entrypoints = [
         ep for ep in unique_entrypoints
-        if ep.confidence >= MIN_ENTRYPOINT_CONFIDENCE
+        if ep.rank_score >= MIN_ENTRYPOINT_CONFIDENCE
     ]
 
     # Cap the number of returned entrypoints.

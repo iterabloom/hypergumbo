@@ -83,6 +83,18 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 cd "$PROJECT_ROOT"
 
+# Backend-aware forge labels for the advisory URLs below. The tag push itself
+# always goes to `origin` (GitHub post-migration); only the human-facing links
+# differ between the GitHub and Codeberg backends.
+ORIGIN_URL=$(git remote get-url origin 2>/dev/null || echo "")
+if [[ "$ORIGIN_URL" == *"github.com"* ]]; then
+    FORGE_LABEL="GitHub"
+    FORGE_WEB="https://github.com/iterabloom/hypergumbo"
+else
+    FORGE_LABEL="Codeberg"
+    FORGE_WEB="https://codeberg.org/iterabloom/hypergumbo"
+fi
+
 echo "╔════════════════════════════════════════╗"
 echo "║        Tag Release $TAG"
 echo "╚════════════════════════════════════════╝"
@@ -250,14 +262,14 @@ echo "╔═══════════════════════�
 echo -e "║  ${GREEN}Release $TAG triggered!${NC}                                "
 echo "╚════════════════════════════════════════════════════════════╝"
 echo ""
-echo "The release workflow should now be running on Codeberg."
+echo "The release workflow should now be running on $FORGE_LABEL."
 echo ""
 echo "Monitor progress:"
-echo "  https://codeberg.org/iterabloom/hypergumbo/actions"
+echo "  $FORGE_WEB/actions"
 echo ""
 echo "Once complete, verify:"
 echo "  - PyPI: https://pypi.org/project/hypergumbo/"
-echo "  - Codeberg: https://codeberg.org/iterabloom/hypergumbo/releases"
+echo "  - $FORGE_LABEL: $FORGE_WEB/releases"
 echo ""
 
 # Optionally sync dev with main

@@ -75,3 +75,19 @@
   set: {}  # 5fbb
   add:  # 5fbb
     tags: [awaits_bakeoff_validation]  # 5fbb
+- op: update  # 4d10
+  at: '2026-06-22T01:46:16Z'  # 4d10
+  by: agent  # 4d10
+  actor: jgstern_agent  # 4d10
+  clock: 9  # 4d10
+  nonce: 4d10  # 4d10
+  set: {}  # 4d10
+  remove:  # 4d10
+    tags: [awaits_bakeoff_validation]  # 4d10
+- op: discuss  # 09a9
+  at: '2026-06-22T01:46:16Z'  # 09a9
+  by: agent  # 09a9
+  actor: jgstern_agent  # 09a9
+  clock: 10  # 09a9
+  nonce: 09a9  # 09a9
+  message: "Drain audit: D-stale. Claim (4507 dst :unresolved-suffix vs is_resolved=True disagreement) validated 2026-06-17 behavioral repro: contradicted edges 987->0, full contradiction class 1312->0, cross_field violations=0; ADR-0037 / PR #4181 (2dd851297d). Stripping stale tag."  # 09a9

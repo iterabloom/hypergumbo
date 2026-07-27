@@ -31,3 +31,18 @@
     tags: [dogfood]  # 9e4d
   remove:  # 9e4d
     tags: [dogfooding]  # 9e4d
+- op: update  # b7a5
+  at: '2026-07-12T08:14:46Z'  # b7a5
+  by: agent  # b7a5
+  actor: jgstern_agent  # b7a5
+  clock: 3  # b7a5
+  nonce: b7a5  # b7a5
+  set:  # b7a5
+    status: done  # b7a5
+- op: discuss  # fbec
+  at: '2026-07-12T08:14:47Z'  # fbec
+  by: agent  # fbec
+  actor: jgstern_agent  # fbec
+  clock: 4  # fbec
+  nonce: fbec  # fbec
+  message: "Wave-4 triage 2026-07-12: the two-id semantic split is now in spec, not just ir.py -- spec:826-833 documents edge_key (canonical identity to deduplicate/merge) vs id (unique per edge record instance). Primary deliverable done; optional rename is low-value."  # fbec

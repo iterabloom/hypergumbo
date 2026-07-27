@@ -47,3 +47,36 @@
   clock: 4  # 92da
   nonce: 92da  # 92da
   message: "Dogfood enrichment, Python visibility-absence facet. The Python analyzer stamps 'private' (underscore-prefix convention) but never stamps a positive 'public' marker, so an empty modifiers is ambiguous between public and unstamped. On the substrate 4106/34396 nodes carry non-empty modifiers; private dominates (4047, all Python). Of 22369 public-named Python function/method nodes, 0 carry a public modifier and 21834 have completely empty modifiers. (public/exported/pub/external appear only at single-digit counts from csharp/java/go/rust/solidity.) A consumer reading modifiers to determine a Python symbol's visibility can identify private symbols but cannot tell a public symbol from one the analyzer left unstamped, so a 'list the public API' filter is unreliable for Python. The unified-visibility-axis fix this META proposes covers stamping a positive public/unstamped distinction for Python."  # 92da
+- op: update  # 1e17
+  at: '2026-07-01T03:18:46Z'  # 1e17
+  by: agent  # 1e17
+  actor: jgstern_agent  # 1e17
+  clock: 5  # 1e17
+  nonce: '1e17'  # 1e17
+  set:  # 1e17
+    status: satisfied  # 1e17
+  add:  # 1e17
+    tags: [awaits_bakeoff_validation]  # 1e17
+- op: discuss  # d8ef
+  at: '2026-07-01T03:18:46Z'  # d8ef
+  by: agent  # d8ef
+  actor: jgstern_agent  # d8ef
+  clock: 6  # d8ef
+  nonce: d8ef  # d8ef
+  message: "Satisfied by two merged PRs: PR1 (commit fb933138d8, additive) + PR2 (commit b97a8ab723, reconcile), both on dev @af339a8d53. RESOLUTION: visibility now has ONE canonical encoding — the new Symbol.visibility field (public/private/protected/internal/package; # axis: visibility wired into _known_axes via all_known_visibility_levels()), computed once in the finalize _finalize_compute_visibility pass from the highest-priority signal (language modifier > legacy Apex/Clojure meta['visibility'] > Python leading-underscore name > public default), with the deciding signal recorded in meta['visibility_signal']. The two prior disagreeing encodings are reconciled: (1) is_exported = is_exported_old AND (visibility=='public') — visibility is NECESSARY not sufficient; (2) modifiers keeps only non-visibility terms (private/public/pub/exported/external/unexported/protected stripped; re_exported KEPT as it marks the re-export mechanism beyond visibility). The legacy meta['visibility'] key is retired (folded into the field + removed). BEHAVIORAL EVIDENCE: whole-suite 15511 passed, 100% coverage. EMPIRICAL PREMISE CHECK that shaped PR2: a PURE is_exported=visibility=='public' alias would have flipped 22319/38243 self-corpus symbols (58%, 19151 in test files) from not-exported to exported — redefining is_exported from public-API-membership(29%) to language-public(87%) and gutting dead-code roots; the AND-with-visibility keeps public-API semantics and moves only 5 symbols (the src/_foo privates the path heuristic wrongly marked exported). awaits_bakeoff_validation: those 5 is_exported changes shift dead-code/reachability for them + dependents."  # d8ef
+- op: update  # c800
+  at: '2026-07-06T20:06:12Z'  # c800
+  by: agent  # c800
+  actor: jgstern_agent  # c800
+  clock: 7  # c800
+  nonce: c800  # c800
+  set: {}  # c800
+  remove:  # c800
+    tags: [awaits_bakeoff_validation]  # c800
+- op: discuss  # ea82
+  at: '2026-07-06T20:06:12Z'  # ea82
+  by: agent  # ea82
+  actor: jgstern_agent  # ea82
+  clock: 8  # ea82
+  nonce: ea82  # ea82
+  message: "MOVED via BROAD drain broad-20260706-153915. Symbol.visibility populated on 100 pct of nodes across all 11 repos (scala/D/nim/swift/TS/elixir/kotlin/solidity/java/python), e.g. pretix 36519/36519, detekt 15215/15215. Unified visibility axis present everywhere. Verdict moved."  # ea82

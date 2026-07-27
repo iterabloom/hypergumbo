@@ -269,3 +269,45 @@ class TestGraphQLLinkerRegistered:
         # The linker should still work even if no client calls are found
         assert isinstance(result.symbols, list)
         assert isinstance(result.edges, list)
+
+
+class TestClientSymbolCanonicalStableId:
+    """INV-hunup: graphql_client stand-ins emit stable_id=None and the
+    post-linker chokepoint stamps a canonical injective id (was a
+    collision-prone bare operation_name)."""
+
+    def _call(self, tmp_path: Path, fname: str, op_name):
+        from hypergumbo_core.linkers.graphql import GraphQLClientCall
+        return GraphQLClientCall(
+            operation_type="query",
+            operation_name=op_name,
+            query_text="query %s { x }" % (op_name or ""),
+            line=10,
+            file_path=str(tmp_path / fname),
+            language="javascript",
+        )
+
+    def test_client_symbol_canonical_via_chokepoint(self, tmp_path: Path) -> None:
+        from hypergumbo_core.linkers.graphql import _create_client_symbol
+        from hypergumbo_core.analyze.base import populate_synthetic_class_b_identity
+        from hypergumbo_core.spec_validator import _CANONICAL_STABLE_ID_PATTERN
+
+        sym = _create_client_symbol(self._call(tmp_path, "app.js", "GetUsers"), tmp_path)
+        # Class-B stand-in: defers stable_id to the chokepoint (not bare op name).
+        assert sym.stable_id is None
+        assert sym.language is None and sym.protocol_origin == "graphql"
+        assert sym.meta["operation_name"] == "GetUsers"  # preserved in meta
+        populate_synthetic_class_b_identity([sym])
+        assert _CANONICAL_STABLE_ID_PATTERN.match(sym.stable_id)
+
+    def test_repeated_operation_name_no_collision(self, tmp_path: Path) -> None:
+        # The old bare-operation_name stable_id collided when an op name repeated
+        # across files; the chokepoint's (protocol_origin, kind, path, name,
+        # occurrence) key makes them injective.
+        from hypergumbo_core.linkers.graphql import _create_client_symbol
+        from hypergumbo_core.analyze.base import populate_synthetic_class_b_identity
+
+        a = _create_client_symbol(self._call(tmp_path, "a.js", "GetUsers"), tmp_path)
+        b = _create_client_symbol(self._call(tmp_path, "b.js", "GetUsers"), tmp_path)
+        populate_synthetic_class_b_identity([a, b])
+        assert a.stable_id != b.stable_id

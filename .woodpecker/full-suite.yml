@@ -1,0 +1,115 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# Woodpecker full-suite workflow — whole-codebase 100%-coverage validation.
+# Port of .github/workflows/full-suite.yml. CRON-ONLY, via a Woodpecker cron
+# named "full-suite" (configured in the repo's Woodpecker settings, NOT here —
+# intended schedule 0 1,13 * * *). The GHA source deliberately REMOVED the
+# post-merge push trigger ("with 20+ merges/day and singleton concurrency the
+# queue never clears") and serialized runs via `concurrency: full-suite-singleton`.
+# Woodpecker has no in-file concurrency guard — if you ever add a push trigger,
+# ALSO cap agent parallelism / add a repo concurrency setting to replace it.
+#
+# Whole-codebase --cov-fail-under=100 across all six packages in one step is
+# equivalent to the GHA per-package 100% jobs (a 100% union ⟺ every package at
+# 100%) and far more compact. Plus the WI-jigup self-tree-validation ratchet and
+# the top-level `pytest tests/` suite (forge/governance + agent-infra).
+#
+# Dropped vs the GHA original (all Codeberg/Forgejo artifacts):
+#  • changes / prep jobs → Woodpecker `when` + in-run grammar build.
+#  • *-retry jobs        → existed ONLY for Codeberg's 5-min hosted-runner cap;
+#                          the self-hosted agent has none.
+#  • aggregate job       → Woodpecker reports pipeline status natively.
+#  • actions/cache       → grammars built once into $CI_WORKSPACE and reused.
+#
+# No venv (the container IS the isolation) → sentence-transformers/torch absent →
+# always the .coveragerc.no-embeddings config, exactly as the per-PR gate.
+#
+# VALIDATION: NEW authoring — the individual legs were Phase-0 smoke-tested under
+# `woodpecker exec` (test-core, build-grammars), but this assembled file has NOT
+# had a full Woodpecker run. Lands DORMANT (INERT on Codeberg/Forgejo, which
+# reads .github/workflows/**, not .woodpecker/); validated/iterated at cutover.
+
+when:
+  - event: cron
+    cron: full-suite
+
+clone:
+  git:
+    image: woodpeckerci/plugin-git
+
+steps:
+  # Unshallow the shared .git once (self-tree-validation + tests/ do history /
+  # recency reads; see the per-PR gate's prepare-git rationale).
+  - name: prepare-git
+    image: python:3.11-bookworm
+    depends_on: []
+    commands:
+      - '[ -f "$(git rev-parse --git-dir)/shallow" ] && git fetch --unshallow origin || echo "repo already complete"'
+
+  - name: build-grammars
+    image: python:3.11-bookworm
+    depends_on: []
+    commands:
+      - python3 -m pip install --upgrade pip setuptools wheel
+      - ./scripts/build-source-grammars --wheels-dir "$CI_WORKSPACE/.grammar-wheels"
+
+  # ── whole-codebase 100% (WI-kalub full-suite teeth) ────────────────────────
+  - name: test-all-packages
+    image: python:3.11-bookworm
+    depends_on: [build-grammars]
+    commands:
+      - pip install --upgrade pip
+      - pip install pytest pytest-cov pytest-xdist jsonschema
+      - pip install -e packages/hypergumbo-core -e packages/hypergumbo-lang-mainstream -e packages/hypergumbo-lang-common -e packages/hypergumbo-lang-extended1 -e packages/hypergumbo-lang-rust-analyzer -e "packages/hypergumbo-tracker[dev,tui]"
+      - ./scripts/build-source-grammars --wheels-dir "$CI_WORKSPACE/.grammar-wheels"
+      - |
+        if [ -f /sys/fs/cgroup/cpu.max ]; then
+          read quota period < /sys/fs/cgroup/cpu.max
+          [ "$quota" != "max" ] && WORKERS=$((quota / period)) || WORKERS=$(nproc)
+        else
+          WORKERS=$(nproc)
+        fi
+        pytest -n "$WORKERS" --tb=short \
+          --cov=packages/hypergumbo-core/src \
+          --cov=packages/hypergumbo-lang-mainstream/src \
+          --cov=packages/hypergumbo-lang-common/src \
+          --cov=packages/hypergumbo-lang-extended1/src \
+          --cov=packages/hypergumbo-lang-rust-analyzer/src \
+          --cov=packages/hypergumbo-tracker/src \
+          --cov-report=term-missing --cov-fail-under=100 \
+          --cov-config=.coveragerc.no-embeddings \
+          packages/*/tests/
+
+  # ── WI-jigup self-tree-validation ratchet (full-suite-only) ────────────────
+  # Runs the full analysis on hypergumbo's OWN tree and ratchets its
+  # per-(validator_class, severity) violation matrix shrink-only vs the baseline.
+  # Invoked via `python -m hypergumbo_core` (the bare `hypergumbo` console script
+  # lives in the meta-package CI doesn't install), mirroring the GHA job.
+  - name: self-tree-validation
+    image: python:3.11-bookworm
+    depends_on: [build-grammars]
+    commands:
+      - pip install --upgrade pip && pip install jsonschema
+      - pip install -e packages/hypergumbo-core -e packages/hypergumbo-lang-mainstream -e packages/hypergumbo-lang-common -e packages/hypergumbo-lang-extended1 -e "packages/hypergumbo-tracker[dev]"
+      - ./scripts/build-source-grammars --wheels-dir "$CI_WORKSPACE/.grammar-wheels"
+      - python -m hypergumbo_core run . --out /tmp/self-tree.json
+      - python scripts/check-self-tree-validation /tmp/self-tree.json .ci/self-tree-validation-baselines.json
+
+  # ── top-level forge/governance + agent-infra suite (no package coverage) ───
+  - name: test-agent-infra
+    image: python:3.11-bookworm
+    depends_on: [prepare-git]
+    commands:
+      - apt-get update && apt-get install -y jq
+      # The top-level tests/ are subprocess/file/git tests (NO hypergumbo package
+      # install), but need pyyaml + hypothesis (a few property/parse tests do).
+      # prepare-git unshallowed the history a git-SHA-walking test asserts on.
+      - pip install --upgrade pip && pip install pytest pytest-xdist pyyaml 'hypothesis~=6.100'
+      - |
+        if [ -f /sys/fs/cgroup/cpu.max ]; then
+          read quota period < /sys/fs/cgroup/cpu.max
+          [ "$quota" != "max" ] && WORKERS=$((quota / period)) || WORKERS=$(nproc)
+        else
+          WORKERS=$(nproc)
+        fi
+        pytest tests/ -o addopts="" -n "$WORKERS" --tb=short

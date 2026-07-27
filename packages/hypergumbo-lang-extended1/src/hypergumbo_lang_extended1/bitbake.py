@@ -224,12 +224,11 @@ class BitBakeAnalyzer(TreeSitterAnalyzer):
             edge = Edge.create(
                 src=f"bitbake:{rel_path}",
                 dst=f"bitbake:package:{pkg}",
-                edge_type="depends",
+                edge_type="depends_on",
                 line=line,
                 origin=PASS_ID,
                 origin_run_id=run.execution_id,
                 evidence_type="static",
-                confidence=0.8,
                 evidence_lang="bitbake",
             )
             pending_edges.append(edge)
@@ -265,7 +264,6 @@ class BitBakeAnalyzer(TreeSitterAnalyzer):
                 origin=PASS_ID,
                 origin_run_id=run.execution_id,
                 evidence_type="static",
-                confidence=1.0,
                 evidence_lang="bitbake",
             )
             pending_edges.append(edge)

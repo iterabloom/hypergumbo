@@ -1,0 +1,21 @@
+- op: create  # 3dd2
+  at: '2026-07-23T01:35:41Z'  # 3dd2
+  by: agent  # 3dd2
+  actor: jgstern_agent  # 3dd2
+  clock: 1  # 3dd2
+  nonce: 3dd2  # 3dd2
+  data:  # 3dd2
+    kind: work_item  # 3dd2
+    title: "Package/workspace-scoped re-analysis — cheap coarse-grained middle path before file-level incrementality"  # 3dd2
+    status: todo_soft  # 3dd2
+    priority: 3  # 3dd2
+    parent:  # 3dd2
+    tags:  # 3dd2
+    - perf  # 3dd2
+    - cache  # 3dd2
+    isbefore: []  # 3dd2
+    duplicate_of: []  # 3dd2
+    not_duplicate_of: []  # 3dd2
+    pr_ref:  # 3dd2
+    description: "DEFERRED — gated on MEAS-1. The cheap first step before INC-1's full per-file generality: hypergumbo already knows workspace / package boundaries (supply-chain tiers / internal_package_roots / workspace siblings), so a PR touching only package A can re-analyze just A's subtree.\n\nCoarser than INC-1 (whole-package granularity, not per-file), but avoids INC-1's per-file purity-audit + complete-key hazards — a much lower-risk latency win when full-repo is too slow but per-file memoization is not yet justified.\n\nBlocked-by: MEAS-1. Relationship: a lighter alternative / precursor to INC-1; do whichever the MEAS-1 numbers justify."  # 3dd2
+    fields: {}  # 3dd2

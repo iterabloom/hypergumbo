@@ -1,0 +1,63 @@
+- op: create  # f8d2
+  at: '2026-06-28T02:37:35Z'  # f8d2
+  by: agent  # f8d2
+  actor: jgstern_agent  # f8d2
+  clock: 1  # f8d2
+  nonce: f8d2  # f8d2
+  data:  # f8d2
+    kind: work_item  # f8d2
+    title: "confidence:F1 continuation: wire derive_confidence (multimodal is_resolved + Edge.create default flip + producer migration + range validation)"  # f8d2
+    status: todo_hard  # f8d2
+    priority: 1  # f8d2
+    parent:  # f8d2
+    tags:  # f8d2
+    - analysis_quality  # f8d2
+    isbefore: []  # f8d2
+    duplicate_of: []  # f8d2
+    not_duplicate_of: []  # f8d2
+    pr_ref:  # f8d2
+    description: "Continues confidence:F1 (ADR-0039) after the first slice (derive_confidence reader + base_confidence seed for 8 single-valued pathways; merged selfh/dev a4e5117918). REMAINING, high-blast-radius, DECISION-GATED steps: (1) Multimodal pathways conditioned on is_resolved -- ast_call_direct (resolved 0.85 / unresolved 0.50) and ast_call (resolved 0.85 / unresolved 0.40); ADR-0039 fork: two base fields vs base+penalty (recommend two explicit fields -- empirical penalties differ per type). (2) Flip the Edge.create flat ~0.85 default to route through derive_confidence when no explicit confidence passed (~44k edges). (3) Add Edge.confidence_source discriminator (bounded-enum evidence_derived|emitter_constant|composite, ADR-0024 lightweight axis) + the >100-edge-constant property guard, enabling INCREMENTAL producer migration (no flag-day). (4) Range validation (each edge within its evidence-type band) into the ADR-0033 validator + ADR-0043 finalize sub-step 10 (advisory for composite until F2). OPEN FORKS (need human ruling, per scope wf_84ea50b4-043): (a) DOMINANT -- proceed before the full vocab:F1 axis-gating wave (strategy names it the 'true prerequisite') or wait; the first slice was fold-safe but the default-flip/migration are where vocab:F1 incompleteness could re-key edges. (b) per-type base/range NUMBERS (hybrid: modal where in-band, principled bands for multimodal). (c) bump confidence_model hypergumbo-evidence-v1 -> v2 on the default flip. F2 (ranking/detection separation) owns type_hierarchy dampener + entrypoint boosts + the composite-vs-pure decision; naming_convention=1.0 ceiling-breach is a containment.py producer fix. Advances INV-suvil."  # f8d2
+    fields: {}  # f8d2
+- op: discuss  # 386e
+  at: '2026-06-28T04:39:35Z'  # 386e
+  by: agent  # 386e
+  actor: jgstern_agent  # 386e
+  clock: 2  # 386e
+  nonce: 386e  # 386e
+  message: "confidence:F1 multimodal table DONE (merged selfh/dev 51a4a2fc2a). Step 1 of this WI complete: added base_confidence_unresolved + is_resolved conditioning for the 2 high-volume call types (ast_call_direct 0.85/0.50, ast_call 0.85/0.40), verified bimodal on the live is_resolved x confidence cross-tab. The derivation TABLE now covers the highest-volume edge types (single-valued + multimodal) -- still not wired, no published value changes. REMAINING: (2) Edge.create default flip (change the flat 0.85 confidence default to a sentinel so Edge.create derives when no explicit confidence is passed); (3) confidence_source discriminator + per-producer migration; (4) range validation. Re-scoping note: the seeded types' producers currently pass EXPLICIT values that already match the registry, so the flip+migration is mostly de-duplication with minor-cohort normalization (e.g. ast_call_direct's 292 edges at 0.7 -> 0.85), NOT a 44k-edge value overhaul. confidence_model v1->v2 bump rides the flip."  # 386e
+- op: discuss  # ea52
+  at: '2026-06-28T07:06:40Z'  # ea52
+  by: agent  # ea52
+  actor: jgstern_agent  # ea52
+  clock: 3  # ea52
+  nonce: ea52  # ea52
+  message: "confidence:F1 default-flip DONE (merged selfh/dev c596e8ed3c). Edge.create's flat 0.85 confidence default is now a sentinel: when a producer omits confidence, create() derives via derive_confidence(evidence_type, is_resolved=...) + falls back to 0.85 for unseeded pathways. Near-no-op confirmed (broad suite 15488 passed, zero fallout; the dominant omit case ast_call_direct-resolved derives 0.85 = old default). Steps 1-2 of this WI complete: the derivation TABLE (single-valued + multimodal) + the Edge.create WIRING both exist. REMAINING: (3) per-producer migration -- drop explicit confidence= so ~575 sites derive (this is the INV-suvil-closing grind, multi-PR, mostly no-op since seeded values match producers' explicit ones); (4) range-validation gate; + confidence_model v1->v2 bump (rides the first value-changing migration). (Process note: the flush's first auto-merge was a WI-bunag false positive on the commit-body prose 'migration that closes INV-suvil'; amended to 'closes the invariant' and re-flushed cleanly.)"  # ea52
+- op: discuss  # ae98
+  at: '2026-06-28T21:42:34Z'  # ae98
+  by: agent  # ae98
+  actor: jgstern_agent  # ae98
+  clock: 4  # ae98
+  nonce: ae98  # ae98
+  message: "PR1 (confidence table) DONE — merged selfh 043cff6738. Human rulings applied: proceed now, hybrid numbers, v2 bump (deferred to PR2). Centralized _CONFIDENCE_SEEDS overlay added to evidence_types.py: seeded base_confidence count 10 -> 75 (65 new single-valued inference pathways). Each value = edge-weighted modal confidence its producers currently hardcode (corpus-dominant; AST-scan site modal fallback for non-self-corpus pathways). Constraints enforced by tests: inference_pathway axis only, 0.30-0.95 band, disjoint from the inline-seeded specs. NO published value change (seeds only affect omit-confidence edges, dominated by already-seeded ast_call_direct); broad suite 4657 passed.\n\nDEFERRED (NOT seeded — separate producer-side ceiling-fix): four 1.0-modal pathways breach the 0.95 reserved ceiling and must be lowered at the producer, not enshrined as a base: naming_convention (1.0, ~19k `contains` edges — the dominant ceiling-breach; note the evidence_type=naming_convention on `contains` edges also looks like a producer mislabel worth a separate look), build_dependency, subdir_include, tree_sitter. Their producers keep explicit confidence in PR2 (not migrated).\n\nNEXT — PR2 (the value-moving producer migration): drop the literal `confidence=` at the 305 Edge.create sites whose evidence_type is a literal SEEDED pathway (keep the 173 computed-confidence sites; keep computed-evidence_type sites; keep the 4 deferred-type sites). Net ~5% edge movement, dominated by the intended ast_call resolved spread-collapse (0.95->0.85) + unresolved (0.5->0.4). confidence_model v1->v2 bump rides PR2. Then range-validation gate (advisory) + close INV-suvil with before->after distribution evidence."  # ae98
+- op: discuss  # c90e
+  at: '2026-06-28T23:36:17Z'  # c90e
+  by: agent  # c90e
+  actor: jgstern_agent  # c90e
+  clock: 5  # c90e
+  nonce: c90e  # c90e
+  message: "PR2 (producer migration) DONE — merged selfh 812569158c. INV-suvil now SATISFIED (analyzer edge confidence is derived, not hardcoded; 9,638/9,638 analyzer-seeded self-corpus edges == derive_confidence; confidence_model v1->v2). Steps 1 (multimodal), 2 (default-flip), 3 (producer migration) of this WI are complete.\n\nThree over-migration scope corrections were made during PR2 (each spec/ADR-grounded, not new decisions): (a) reverted all 27 LINKER files — linker confidence is a separate match-quality model (spec §12); (b) kept dynamically-COMPUTED confidence sites explicit; (c) reverted 3 context-encoding analyzer sites (Go ambiguous 0.50, Rust unresolved trait_impl 0.70, Haskell external 0.50) whose low value encodes ambiguity/unresolved-ness that single-valued derivation can't express.\n\nREMAINING on this WI:\n- Step 4: range-validation gate (advisory) — each edge's confidence within its evidence_type band; into the ADR-0033 validator / ADR-0043 finalize sub-step 10. NOT yet done. This is the last piece of WI-nurun proper.\nSeparate follow-ups (file/track as their own items when picked up): ADR-0039 confidence_source discriminator + rank_score separation (later F-stage); producer-side ceiling fix for the 4 deferred 1.0-modal pathways (naming_convention ~19k contains edges at 1.0, build_dependency, subdir_include, tree_sitter); proper is_resolved/multimodal modeling of the 3 context-encoders (so they derive too — e.g. make trait_impl multimodal 0.95/0.70; mark Go-ambiguous + Haskell-external edges is_resolved=False)."  # c90e
+- op: update  # bb34
+  at: '2026-06-29T00:51:26Z'  # bb34
+  by: agent  # bb34
+  actor: jgstern_agent  # bb34
+  clock: 6  # bb34
+  nonce: bb34  # bb34
+  set:  # bb34
+    status: done  # bb34
+- op: discuss  # 420b
+  at: '2026-06-29T00:51:26Z'  # 420b
+  by: agent  # 420b
+  actor: jgstern_agent  # 420b
+  clock: 7  # 420b
+  nonce: 420b  # 420b
+  message: "DONE — all four steps merged to selfh. Step 1 (multimodal is_resolved seeds) + step 2 (Edge.create default-flip): prior arc. Step 3 (producer migration, 218 analyzer sites; PR2 812569158c) closed INV-suvil. Step 4 (range-validation gate; PR3 eed5195497): confidence.confidence_within_band + spec_validator._check_confidence_range advisory cross_field/info check, wired into validate_ir + disclosed in _WIRED_CHECKS; forward regression guard (corpus 0 out-of-band).\n\nNet result: analyzer edge confidence is derived from evidence_type via the registry base_confidence table (75 seeded pathways, is_resolved-conditioned for call types), confidence_model v2. Linker confidence (match-quality, spec §12) and a handful of computed/context-encoder sites remain explicit by design.\n\nFollow-ups (separate items, NOT part of this WI): ADR-0039 confidence_source discriminator + rank_score separation; producer-side ceiling fix for the 4 deferred 1.0-modal pathways (naming_convention ~19k contains edges at 1.0, build_dependency, subdir_include, tree_sitter); proper is_resolved/multimodal modeling of the 3 context-encoders (Go ambiguous, Rust unresolved trait_impl, Haskell external) so they derive too."  # 420b

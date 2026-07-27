@@ -218,7 +218,7 @@ class TestLinkReactComponents:
         assert len(result.edges) == 1
         edge = result.edges[0]
         assert edge.edge_type == "references"
-        assert edge.meta.get("construct") == "jsx"
+        assert edge.meta.get("ref_construct") == "jsx"
         assert edge.dst == button_sym.id
         assert edge.confidence == 0.80
         assert edge.evidence_type == "jsx_element"
@@ -489,7 +489,7 @@ class TestReactComponentRegistry:
         result = run_linker("react-component-linker", ctx)
         assert len(result.edges) == 1
         assert result.edges[0].edge_type == "references"
-        assert result.edges[0].meta.get("construct") == "jsx"
+        assert result.edges[0].meta.get("ref_construct") == "jsx"
 
 
 class TestTransitiveReactBase:

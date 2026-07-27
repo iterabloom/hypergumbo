@@ -213,11 +213,21 @@ def test_run_behavior_map_critical_params_pinned() -> None:
         )
 
     # Stable defaults the variants assume as baseline.
+    #
+    # NOTE: ``connectivity`` is intentionally NOT pinned here by default *value*.
+    # Its default flipped True->False as a deliberate product decision (D12,
+    # commit 4c8a8f66c1: "centrality-ranked default selection; --connectivity
+    # opt-in"), and it stays a product knob that may keep moving on product
+    # grounds the RCT does not care about. The RCT's baseline is the
+    # connectivity-aware behavior (the old ``True`` default); to reproduce that
+    # baseline in a substantively-equivalent re-run, the RCT harness must pass
+    # ``connectivity=True`` EXPLICITLY rather than rely on the default. What the
+    # RCT actually depends on -- that the ``connectivity`` knob still EXISTS --
+    # is pinned by the ``required`` presence check above, not by its default.
     baseline_defaults = {
         "out_path": None,
         "compact": False,
         "coverage": 0.8,
-        "connectivity": True,
         "progress": True,
         "enable_handler_slices": True,
         "max_handler_slices": 25,

@@ -556,3 +556,56 @@ class TestIsFsharpTreeSitterAvailable:
             return_value=False,
         ):
             assert is_fsharp_tree_sitter_available() is False
+
+
+class TestFSharpCyclomaticComplexity:
+    """INV-loguk slice C: callable F# symbols carry non-null CC + LOC.
+    Real-grammar verification (if/elif/for/while_expression + match `rule`
+    arms)."""
+
+    def test_branchy_function_has_cc_and_loc(self, tmp_path: Path) -> None:
+        (tmp_path / "t.fs").write_text("""module Test
+
+let analyze items threshold =
+    let mutable count = 0
+    for item in items do
+        if item > threshold && item < 100 then
+            count <- count + 1
+        elif item = 0 then
+            count <- count - 1
+    while count > 10 do
+        count <- count - 1
+    match count with
+    | 0 -> "none"
+    | 1 -> "one"
+    | _ -> "many"
+""")
+        result = analyze_fsharp(tmp_path)
+        fn = next(s for s in result.symbols if s.kind == "function" and s.name == "analyze")
+        # base 1 + if + elif + for + while + 3 rule = 8
+        assert fn.cyclomatic_complexity == 8
+        assert fn.line_span is not None and fn.line_span >= 4
+
+    def test_straight_line_function_cc_is_one(self, tmp_path: Path) -> None:
+        (tmp_path / "g.fs").write_text("module G\n\nlet add a b = a + b\n")
+        result = analyze_fsharp(tmp_path)
+        fn = next(s for s in result.symbols if s.kind == "function" and s.name == "add")
+        assert fn.cyclomatic_complexity == 1
+        assert fn.line_span is not None
+
+    def test_callables_non_null_non_callables_null(self, tmp_path: Path) -> None:
+        (tmp_path / "m.fs").write_text("""module M
+
+type Color = Red | Green | Blue
+
+let classify x = if x > 0 then 1 else 0
+""")
+        result = analyze_fsharp(tmp_path)
+        funcs = [s for s in result.symbols if s.kind == "function"]
+        assert funcs
+        for s in funcs:
+            assert s.cyclomatic_complexity is not None, s.name
+            assert s.line_span is not None, s.name
+        for s in result.symbols:
+            if s.kind != "function":
+                assert s.cyclomatic_complexity is None, (s.kind, s.name)

@@ -3,8 +3,10 @@
 
 Detects data-mediated coupling through cryptographic APIs where key material
 flows between derivation, encryption, and decryption sites across files.
-Creates ``crypto_flow`` edges enabling ``slice --dataflow`` to trace through
-encryption boundaries.
+Creates ``data_flows_to`` edges (tagged ``meta.detection_pattern="crypto_api"``)
+enabling ``slice --dataflow`` to trace through encryption boundaries. (The
+bespoke ``crypto_flow`` type was folded onto ``data_flows_to`` per the
+audit-findings 0014 consolidation.)
 
 Two API surfaces are covered:
 
@@ -16,9 +18,9 @@ Two API surfaces are covered:
 - Read (consume ciphertext/keys): ``crypto.subtle.decrypt()``,
   ``crypto.subtle.unwrapKey()``, ``crypto.subtle.exportKey()``
 
-**Rust crypto crates (hkdf, aes-gcm, aes-gcm-siv):**
+**Rust crypto crates (hkdf, aes-gcm, aes-gcm-siv, chacha20poly1305):**
 - Write (produce key material/ciphertext): ``Hkdf::new()``,
-  ``Aes256Gcm::new()``, ``Aes256GcmSiv::new()``,
+  ``Aes256Gcm::new()``, ``Aes256GcmSiv::new()``, ``ChaCha20Poly1305::new()``,
   ``.encrypt()``, ``.encrypt_in_place()``
 - Read (consume key material/ciphertext): ``.expand()``,
   ``.decrypt()``, ``.decrypt_in_place()``
@@ -208,9 +210,10 @@ def link_crypto_flow(
 ) -> LinkerResult:
     """Link crypto write sites to crypto read sites across files.
 
-    Creates ``crypto_flow`` edges between encryption/key-derivation sites
-    (writers) and decryption/key-extraction sites (readers) in different
-    files within the same API surface.
+    Creates ``data_flows_to`` edges (``meta.detection_pattern="crypto_api"``)
+    between encryption/key-derivation sites (writers) and decryption/
+    key-extraction sites (readers) in different files within the same API
+    surface.
 
     Args:
         repo_root: Repository root path.
@@ -355,16 +358,15 @@ def link_crypto_flow(
             result_edges.append(Edge.create(
                 src=pub_id,
                 dst=sub_id,
-                edge_type="crypto_flow",
+                edge_type="data_flows_to",
                 line=write.line,
                 confidence=0.75,
                 origin=PASS_ID,
                 origin_run_id=run.execution_id,
                 evidence_type="ast_call_direct",
-                access_mode="write",
-                dest_access_mode="read",
+                data_direction="src_to_dst",
                 channel=write.channel,
-                meta={"detection_pattern": "crypto_api"},
+                meta={"detection_pattern": "crypto_api", "ref_construct": "crypto"},
                 derived_from=[pub_id, sub_id],
             ))
 

@@ -1,0 +1,21 @@
+- op: create  # a84f
+  at: '2026-07-23T01:35:38Z'  # a84f
+  by: agent  # a84f
+  actor: jgstern_agent  # a84f
+  clock: 1  # a84f
+  nonce: a84f  # a84f
+  data:  # a84f
+    kind: work_item  # a84f
+    title: "Per-file analyzer memoization keyed on (git blob sha + complete input key); reuse on unchanged files"  # a84f
+    status: todo_soft  # a84f
+    priority: 3  # a84f
+    parent:  # a84f
+    tags:  # a84f
+    - perf  # a84f
+    - cache  # a84f
+    isbefore: []  # a84f
+    duplicate_of: []  # a84f
+    not_duplicate_of: []  # a84f
+    pr_ref:  # a84f
+    description: "DEFERRED — gated on MEAS-1 proving full-run latency actually hurts. Do NOT build until the number demands it.\n\nIdea: per-file analyzer output is (mostly) a pure function of the file's own bytes, so memoize it. Git blob SHAs ARE content hashes -> the natural cache key. A 3-file PR then re-parses 3 files; the embarrassingly-parallel parse cost collapses to the diff size.\n\nNon-trivial to prove + implement:\n- SOUNDNESS: per-file extract must be a PURE function of that file's bytes. Any analyzer that peeks cross-file (imported symbol kind, base class elsewhere, re-export) breaks it -> verify purity analyzer-by-analyzer; it silently regresses. Global identity reconciliation (split_within_file_stable_id_collisions / widen_route_stable_ids / synthetic-class-B) is whole-graph and re-runs regardless.\n- COMPLETE KEY: the key is (blob_sha, analyzer_version, GRAMMAR version, config, ...) — miss one input -> silent stale hit (worst failure mode).\n- DETERMINISM precondition: only safe to cache a deterministic function's output -> requires the `--reproducible` mode (WI-sazap).\n- IRREDUCIBLE REMAINDER: the LINKERS (cross-file edge recovery) still run whole-graph — memoization only attacks the parse/extract stage, NOT total work.\n\n\"Proof\" = a differential equivalence property test: incremental_run(repo, arbitrary change-set) == full_run(repo), canonical-compared over the bakeoff corpus (reuses WI-sazap's byte-identity guard). Build THIS first — until it is green, blob-SHA memoization is a silent-corruption generator.\n\nBlocked-by: MEAS-1 (proves need) + WI-sazap (determinism + the differential guard). See also INC-2 (cheaper coarse-grained precursor)."  # a84f
+    fields: {}  # a84f

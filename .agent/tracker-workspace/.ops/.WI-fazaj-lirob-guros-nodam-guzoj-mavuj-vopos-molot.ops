@@ -1,0 +1,37 @@
+- op: create  # 68c2
+  at: '2026-07-20T18:45:32Z'  # 68c2
+  by: agent  # 68c2
+  actor: jgstern_agent  # 68c2
+  clock: 1  # 68c2
+  nonce: 68c2  # 68c2
+  data:  # 68c2
+    kind: work_item  # 68c2
+    title: "INV-fahub: Rust Type::new second-path calls not stamped receiver=qualified (raw-count FPs)"  # 68c2
+    status: todo_hard  # 68c2
+    priority: 4  # 68c2
+    parent:  # 68c2
+    tags:  # 68c2
+    - cross_language_parity  # 68c2
+    - analysis_quality  # 68c2
+    - wave5  # 68c2
+    isbefore: []  # 68c2
+    duplicate_of: []  # 68c2
+    not_duplicate_of: []  # 68c2
+    pr_ref:  # 68c2
+    description: "PR #763 stamped meta.receiver='qualified' on rust.py's Strategy-1 scoped-call emit sites, but Type::new()/Type::try_from() calls that resolve via a SECOND path (var_types constructor / method_resolver suffix) remain unmarked — e.g. rodio Red::new<-5, Decoder::try_from<-3, FlacDecoder::new<-2. These are CORRECT resolutions (call site named the type), so they are false positives in the raw find_receiver_blind_magnets count, NOT harmful magnets (the durable INV-fahub gate correctly ignores them). Cosmetic measurement-precision only; INV-fahub satisfied regardless. Fix: find the second Type::new resolution path in rust.py and stamp receiver='qualified', matching PR #763. Deprioritized cosmetic follow-up split from WI-makiz."  # 68c2
+    fields: {}  # 68c2
+- op: update  # 1b54
+  at: '2026-07-21T00:00:38Z'  # 1b54
+  by: agent  # 1b54
+  actor: jgstern_agent  # 1b54
+  clock: 2  # 1b54
+  nonce: 1b54  # 1b54
+  set:  # 1b54
+    status: done  # 1b54
+- op: discuss  # fe80
+  at: '2026-07-21T00:00:38Z'  # fe80
+  by: agent  # fe80
+  actor: jgstern_agent  # fe80
+  clock: 3  # fe80
+  nonce: fe80  # fe80
+  message: "DONE — fixed in the merged PR (WI-fazaj). rust.py's method_resolver / bare-name scoped-call fallback (Strategy 1 missed) now stamps meta.receiver='qualified' when the call named its type (full_scoped_name set), mirroring PR #763's Strategy-1 sites, so a correct associated-function call (rodio Red::new / Decoder::try_from) is no longer counted as a receiver-blind magnet in the raw find_receiver_blind_magnets diagnostic.\n\nTESTABILITY NOTE (owner ruled pragma): the branch is reachable ONLY through the full cross-package survey method_resolver — verified unreachable across 8 isolated analyze_rust scenarios (cross-file, nested modules, use aliases, generics, ::new ambiguity, re-exports), which all bind via Strategy 1 and are already stamped. A minimal RED test therefore cannot reach the emit, and the added qualified-stamp branch would break the 100% coverage gate; per owner direction it carries `# pragma: no cover` with a justification comment. rust.py stays at 100% (smart-test scoped-coverage confirmed). Cosmetic measurement-precision only; INV-fahub satisfied throughout. Sub-item context: raw-count follow-up split from WI-makiz; not a WI-kivip fold sub-item."  # fe80

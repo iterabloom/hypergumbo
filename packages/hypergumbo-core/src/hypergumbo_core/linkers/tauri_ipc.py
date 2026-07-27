@@ -1,13 +1,17 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Bridge linker: Tauri IPC for connecting TypeScript/JavaScript invoke() calls to Rust commands.
 
-This linker creates ipc_calls edges between TypeScript/JavaScript code that
-calls Rust functions via Tauri's IPC bridge (``invoke('command_name', ...)``)
-and the Rust functions annotated with ``#[tauri::command]``.
+This linker creates ``calls`` edges (tagged ``meta.protocol="ipc"``) between
+TypeScript/JavaScript code that calls Rust functions via Tauri's IPC bridge
+(``invoke('command_name', ...)``) and the Rust functions annotated with
+``#[tauri::command]``. (The bespoke ``ipc_calls``/``caller_invokes`` edge
+types were folded onto the canonical ``calls`` per the audit-findings
+0002/0014 relationship-axis consolidation; the IPC/specta distinction now
+lives in ``meta``.)
 
 How It Works
 ------------
-Three-phase detection:
+Four-phase detection:
 
 1. **Rust side**: Iterates all Rust symbols to find functions with
    ``#[tauri::command]`` in their ``meta.annotations``. Builds a command map
@@ -26,14 +30,22 @@ Three-phase detection:
    wrapper files — files that export functions wrapping TAURI_INVOKE calls
    (e.g., ``export function takeScreenshot() { return TAURI_INVOKE("take_screenshot") }``).
    Scans other TS/JS files for imports from these wrapper files, and creates
-   ``caller_invokes`` edges from the import site to the synthetic
-   ``ipc_publisher`` node. This closes the "last mile" gap: TS components
+   ``calls`` edges (tagged ``meta.framework_dispatch="specta_wrapper"``) from
+   the import site to the synthetic ``ipc_publisher`` node. This closes the "last mile" gap: TS components
    calling ``commands.startRecording()`` are now linked through to Rust
    handlers.
 
-After building both maps, the linker creates ipc_calls edges from synthetic
-TS/JS-side sources to the matching Rust command functions, and caller_invokes
-edges from TS/JS files that import specta wrappers to the ipc_publisher nodes.
+4. **Rust→TS events**: Scans Rust files for ``emit`` / ``emit_all`` /
+   ``emit_to`` and TS/JS files for ``listen`` / ``once``, then creates
+   ``event_publishes`` edges (tagged ``meta.channel_kind="ipc"``,
+   ``meta.framework_dispatch="tauri_emit_listen"``) between matching event
+   channel names, along with synthetic event-subscriber nodes.
+
+After building both maps, the linker creates ``calls`` edges
+(``meta.protocol="ipc"``) from synthetic TS/JS-side sources to the matching
+Rust command functions, and ``calls`` edges
+(``meta.framework_dispatch="specta_wrapper"``) from TS/JS files that import
+specta wrappers to the ipc_publisher nodes.
 
 Why This Design
 ---------------
@@ -654,10 +666,12 @@ def link_tauri_ipc(
                         "tauri_command": cmd_name,
                         "framework_role": "ipc_publisher",
                     },
-                    # Tier 2 prevents _classify_symbols from reclassifying
-                    # based on the host file path (e.g., tauri.ts detected
-                    # as "minified/generated" → tier 4 → filtered out).
-                    supply_chain_tier=2,
+                    # INV-bonup / ADR-0041 §1: NO supply_chain_tier stamp — this
+                    # node used to borrow tier 2 purely to make _classify_symbols
+                    # skip host-path reclassification (e.g. tauri.ts → tier 4 →
+                    # filtered out), leaking a skip mechanism into the distance
+                    # axis. The skip now keys on this node's protocol_origin marker,
+                    # so it keeps its honest first-party default distance.
                     supply_chain_reason="synthetic IPC bridge node",
                 ))
 
@@ -677,8 +691,7 @@ def link_tauri_ipc(
                 origin=PASS_ID,
                 origin_run_id=run.execution_id,
                 evidence_type="ast_call_direct",
-                access_mode="write",
-                dest_access_mode="read",
+                data_direction="src_to_dst",
                 meta={
                     "protocol": "ipc",
                     "framework_dispatch": "tauri_invoke",
@@ -783,7 +796,6 @@ def link_tauri_ipc(
                             "tauri_command": cmd_name,
                             "framework_role": "ipc_caller",
                         },
-                        supply_chain_tier=2,
                         supply_chain_reason="synthetic IPC caller node",
                     ))
 
@@ -794,14 +806,14 @@ def link_tauri_ipc(
                 result_edges.append(Edge.create(
                     src=caller_id,
                     dst=publisher_id,
-                    edge_type="caller_invokes",
+                    edge_type="calls",
                     line=0,
                     confidence=0.80,
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     evidence_type="ast_import",
-                    access_mode="write",
-                    meta={"framework_dispatch": "specta_wrapper"},
+                    data_direction="src_to_dst",
+                    meta={"framework_dispatch": "specta_wrapper", "protocol": "ipc"},
                     derived_from=[caller_id, publisher_id],
                 ))
 
@@ -883,7 +895,6 @@ def link_tauri_ipc(
                                 "tauri_event": event_name,
                                 "framework_role": "event_publisher",
                             },
-                            supply_chain_tier=2,
                             supply_chain_reason="synthetic Tauri event emitter",
                         ))
 
@@ -913,7 +924,6 @@ def link_tauri_ipc(
                                 "tauri_event": event_name,
                                 "framework_role": "event_subscriber",
                             },
-                            supply_chain_tier=2,
                             supply_chain_reason="synthetic Tauri event listener",
                         ))
 
@@ -935,7 +945,6 @@ def link_tauri_ipc(
                         origin_run_id=run.execution_id,
                         evidence_type="ast_call_direct",
                         access_mode="write",
-                        dest_access_mode="read",
                         channel=event_name,
                         meta={
                             "channel_kind": "ipc",

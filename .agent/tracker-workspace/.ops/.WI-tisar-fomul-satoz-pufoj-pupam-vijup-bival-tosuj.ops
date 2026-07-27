@@ -57,3 +57,34 @@
   clock: 6  # 8eae
   nonce: 8eae  # 8eae
   message: "related-but-distinct cross-link (connections-sweep 2026-06-08T1900Z)"  # 8eae
+- op: update  # aaf7
+  at: '2026-07-09T01:53:04Z'  # aaf7
+  by: agent  # aaf7
+  actor: jgstern_agent  # aaf7
+  clock: 7  # aaf7
+  nonce: aaf7  # aaf7
+  set: {}  # aaf7
+  add:  # aaf7
+    tags: [wave5]  # aaf7
+- op: discuss  # 8625
+  at: '2026-07-09T01:53:04Z'  # 8625
+  by: agent  # 8625
+  actor: jgstern_agent  # 8625
+  clock: 8  # 8625
+  nonce: '8625'  # 8625
+  message: "Wave-5 sweep (2026-07-08): identity:F5 axis-legibility residual (stable_id + shape_id share the sha256:+16-hex shape -> a bare value is unclassifiable by axis; the identity:F5 domain-tag work targets this). Empty isbefore -> terminal wave."  # 8625
+- op: update  # a3e8
+  at: '2026-07-15T22:30:44Z'  # a3e8
+  by: agent  # a3e8
+  actor: jgstern_agent  # a3e8
+  clock: 9  # a3e8
+  nonce: a3e8  # a3e8
+  set:  # a3e8
+    status: done  # a3e8
+- op: discuss  # 715c
+  at: '2026-07-15T22:30:46Z'  # 715c
+  by: agent  # 715c
+  actor: jgstern_agent  # 715c
+  clock: 10  # 715c
+  nonce: 715c  # 715c
+  message: "DOCUMENT verdict (owner-ratified 2026-07-15), shipped in the docs PR merged to dev as 37e0252d5b (commit bc366977, 'docs: document 3 intentional identity/tier legibility divergences'). Predicate re-verified live on hg-self-v5 (39,831 nodes): stable_id populated 39,792/39,831 and shape_id 33,054/39,831, BOTH surfacing as sha256:<16hex>; bare-hash overlap = 0 (disjoint value-spaces, no uniqueness collapse). Disposition rationale: the sha256: prefix names the hash ALGORITHM, not the identity axis; the two are discriminated by field name + the top-level stable_id_scheme/shape_id_scheme descriptors. The 'other hashed IDs carry a self-identifying prefix' argument does not transfer: fingerprint's hgfp2: is a VERSION tag (fingerprint.py:79 — evolves v1->v2->v3 so consumers can cache-key), and edges' edge:/edgekey: are NAMESPACE tags (shared lookup space with nodes/entrypoints, cf. entrypoints.py:273); stable_id/shape_id need neither (scheme is top-level, always field-qualified). Reformatting to add in-value prefixes would churn all ~40k/33k serialized identity values (cross-version join breakage) + a scheme bump, for a legibility nicety already recoverable from the schema — rejected on cost/benefit. Documented in ir.py Symbol docstring + the schema stable_id/shape_id descriptions with a consumer caution: do NOT join on bare hash values across the two axes."  # 715c

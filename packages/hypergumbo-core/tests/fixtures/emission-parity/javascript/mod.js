@@ -2,6 +2,9 @@
 // reaches parity; see tests/fixtures/emission-parity/README.md).
 import os from 'os';
 
+// Module/package-level variable: a top-level const binding at file scope.
+const MAX_ITEMS = 5;
+
 /** Return a derived string. */
 export function helper(value) {
   return os.hostname() + String(value);
@@ -16,8 +19,8 @@ export function process(items, flag) {
   if (items.length) {
     total += items.length;
   }
-  if (total > 5) {
-    total = 5;
+  if (total > MAX_ITEMS) {
+    total = MAX_ITEMS;
   }
   return helper(total);
 }
@@ -28,7 +31,11 @@ export const compute = (n) => {
 };
 
 export class Service {
+  // Class field: a value member of the type (zero-value default).
+  count = 0;
+
   run() {
+    this.count += 1;
     return process([1, 2, 3], true);
   }
 }

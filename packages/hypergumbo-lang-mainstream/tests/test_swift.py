@@ -1037,8 +1037,9 @@ class TestSwiftReceiverTypeTracking:
         assert len(store_send) >= 1, (
             f"Expected Store.send, got: {[e.dst for e in send_edges]}"
         )
-        # Confidence should be 0.90 (type-qualified)
-        assert store_send[0].confidence == 0.90
+        # Confidence is 0.85, derived from the ast_call evidence type
+        # (resolved). Previously hardcoded at 0.90 for type-qualified.
+        assert store_send[0].confidence == 0.85
 
     def test_extract_var_type_annotation(self) -> None:
         """Test _extract_var_type with type annotation."""
@@ -1310,6 +1311,87 @@ class TestSwiftSubscriptDeclarations:
         sub_names = {s.name for s in subs}
         assert "Multi.subscript(index:)" in sub_names
         assert "Multi.subscript(key:)" in sub_names
+
+
+class TestSwiftExtensionMemberAttribution:
+    """WI-kudir: members declared in ``extension T { ... }`` must attribute to T.
+
+    tree-sitter-swift parses ``extension T`` as a ``class_declaration`` whose
+    type name is wrapped in a ``user_type`` node (not a direct
+    ``type_identifier``), so the enclosing-type resolution returned None and
+    demoted extension functions / computed-properties / subscripts to bare
+    file-level symbols — losing the ``T.`` prefix and, for functions, the
+    ``method`` kind. This hides the whole public API of extension-heavy
+    libraries (SwiftyJSON's operators, rawData/rawString, and the flagship
+    ``json[...]`` subscripts are all declared in extensions).
+    """
+
+    def test_extension_function_is_method_of_type(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.swift import analyze_swift
+
+        (tmp_path / "JSON.swift").write_text(
+            "public struct JSON {}\n"
+            "extension JSON {\n"
+            "    public func rawData() -> Data { return Data() }\n"
+            "}\n"
+        )
+        result = analyze_swift(tmp_path)
+        assert any(
+            s.kind == "method" and s.name == "JSON.rawData"
+            for s in result.symbols
+        )
+        # Not demoted to a bare file-level function.
+        assert not any(
+            s.kind == "function" and s.name == "rawData"
+            for s in result.symbols
+        )
+
+    def test_extension_computed_property_attributed(
+        self, tmp_path: Path
+    ) -> None:
+        from hypergumbo_lang_mainstream.swift import analyze_swift
+
+        (tmp_path / "JSON.swift").write_text(
+            "public struct JSON {}\n"
+            "extension JSON {\n"
+            "    public var rawString: String { return \"\" }\n"
+            "}\n"
+        )
+        result = analyze_swift(tmp_path)
+        props = [s for s in result.symbols if s.kind == "property"]
+        assert "JSON.rawString" in {s.name for s in props}
+        assert "JSON.rawString" in {s.qualified_name for s in props}
+
+    def test_extension_subscript_attributed_to_type(
+        self, tmp_path: Path
+    ) -> None:
+        from hypergumbo_lang_mainstream.swift import analyze_swift
+
+        (tmp_path / "JSON.swift").write_text(
+            "public struct JSON {}\n"
+            "extension JSON {\n"
+            "    public subscript(index: Int) -> JSON { return JSON() }\n"
+            "}\n"
+        )
+        result = analyze_swift(tmp_path)
+        subs = [s for s in result.symbols if s.kind == "subscript"]
+        assert len(subs) == 1
+        assert subs[0].name == "JSON.subscript(index:)"
+
+    def test_struct_body_method_unchanged(self, tmp_path: Path) -> None:
+        """Control: a method in the struct body stays attributed (no regression)."""
+        from hypergumbo_lang_mainstream.swift import analyze_swift
+
+        (tmp_path / "JSON.swift").write_text(
+            "public struct JSON {\n"
+            "    public func merge() -> JSON { return self }\n"
+            "}\n"
+        )
+        result = analyze_swift(tmp_path)
+        assert any(
+            s.kind == "method" and s.name == "JSON.merge"
+            for s in result.symbols
+        )
 
 
 class TestSwiftShortNameCollision:
@@ -1705,10 +1787,10 @@ struct User {
 
 
 class TestSwiftLinesOfCode:
-    """Tests for lines_of_code on Swift symbols."""
+    """Tests for line_span on Swift symbols."""
 
-    def test_class_lines_of_code(self, tmp_path: Path) -> None:
-        """Class symbols have lines_of_code set from span."""
+    def test_class_line_span(self, tmp_path: Path) -> None:
+        """Class symbols have line_span set from span."""
         from hypergumbo_lang_mainstream.swift import analyze_swift
 
         (tmp_path / "Foo.swift").write_text(
@@ -1720,7 +1802,7 @@ class TestSwiftLinesOfCode:
         )
         result = analyze_swift(tmp_path)
         cls = next(s for s in result.symbols if s.name == "Foo")
-        assert cls.lines_of_code == 5
+        assert cls.line_span == 5
 
 
 class TestSwiftIsExported:
@@ -1861,3 +1943,211 @@ class TestSwiftCyclomaticComplexity:
         assert simple.cyclomatic_complexity == 1
         assert branchy.cyclomatic_complexity is not None
         assert branchy.cyclomatic_complexity >= 4
+
+
+class TestSwiftInvFahubReceiverGating:
+    """INV-fahub (WI-votar): an unresolvable-receiver Swift call MUST emit an
+    honest unresolved external edge, not a high-confidence ``calls`` edge to an
+    arbitrary same-named internal def (the ``create``/``delete``/``run`` @0.80
+    funnel). Mirrors the Python/Scala receiver-gating (INV-nilud): analyzer
+    suppresses + stamps ``receiver_type_hint``; the shared inherited_calls
+    linker recovers (Site-2 Step-1). Recall recovery threads function/method
+    parameter types (previously dropped) into the receiver type map."""
+
+    def test_untyped_receiver_does_not_misbind(self, tmp_path: Path) -> None:
+        """``obj.create()`` with an untyped receiver must NOT bind to an
+        arbitrary top-level ``create``."""
+        from hypergumbo_lang_mainstream.swift import analyze_swift
+
+        (tmp_path / "factory.swift").write_text("func create() {}\n")
+        (tmp_path / "handler.swift").write_text(
+            "struct Handler {\n"
+            "  func run() {\n"
+            "    let obj = makeThing()\n"
+            "    obj.create()\n"
+            "  }\n"
+            "}\n"
+        )
+        result = analyze_swift(tmp_path)
+        create_fn = next(
+            s for s in result.symbols
+            if s.name == "create" and s.kind == "function"
+        )
+        misbinds = [
+            e for e in result.edges
+            if e.edge_type == "calls" and e.dst == create_fn.id and "run" in e.src
+        ]
+        assert misbinds == [], f"unresolvable receiver misbound create(): {misbinds}"
+
+    def test_untyped_receiver_emits_canonical_unresolved_method_edge(
+        self, tmp_path: Path
+    ) -> None:
+        """The suppressed call emits the py.py-canonical shape: is_resolved=False,
+        dst ``swift:external:...:unresolved``, evidence_type=ast_call (→ 0.40),
+        meta ``call_construct=method``, and NO ``receiver_type_hint`` (untyped)."""
+        from hypergumbo_lang_mainstream.swift import analyze_swift
+
+        (tmp_path / "factory.swift").write_text("func create() {}\n")
+        (tmp_path / "handler.swift").write_text(
+            "struct Handler {\n"
+            "  func run() {\n"
+            "    let obj = makeThing()\n"
+            "    obj.create()\n"
+            "  }\n"
+            "}\n"
+        )
+        result = analyze_swift(tmp_path)
+        gated = [
+            e for e in result.edges
+            if e.edge_type == "calls" and "run" in e.src
+            and e.dst.endswith(":create:unresolved")
+        ]
+        assert len(gated) == 1, [e.dst for e in result.edges if "run" in e.src]
+        e = gated[0]
+        assert e.is_resolved is False
+        assert "external" in e.dst
+        assert e.evidence_type == "ast_call"
+        assert abs(e.confidence - 0.40) < 1e-9, e.confidence
+        assert (e.meta or {}).get("call_construct") == "method"
+        assert "receiver_type_hint" not in (e.meta or {})
+
+    def test_bare_cross_type_method_deferred_stamps_enclosing_class(
+        self, tmp_path: Path
+    ) -> None:
+        """Real-repro (VernissageServer, 302 misbinds): a BARE call (implicit
+        ``self`` or a route-builder chain whose receiver token was dropped, e.g.
+        Vapor ``delete()``) that suffix-matches a DIFFERENT type's method must
+        NOT bind to the unrelated ``ActivityPubClient.delete`` — defer to the
+        inherited_calls Site-1 walker with an ``enclosing_class`` hint."""
+        from hypergumbo_lang_mainstream.swift import analyze_swift
+
+        (tmp_path / "client.swift").write_text(
+            "class ActivityPubClient {\n  func delete() {}\n}\n"
+        )
+        (tmp_path / "controller.swift").write_text(
+            "struct AccountController {\n"
+            "  func boot() {\n"
+            "    delete()\n"
+            "  }\n"
+            "}\n"
+        )
+        result = analyze_swift(tmp_path)
+        client_delete = next(
+            s for s in result.symbols
+            if s.name == "ActivityPubClient.delete" and s.kind == "method"
+        )
+        misbinds = [
+            e for e in result.edges
+            if e.edge_type == "calls" and e.dst == client_delete.id
+            and "boot" in e.src and e.is_resolved
+        ]
+        assert misbinds == [], f"bare delete() misbound: {misbinds}"
+        deferred = [
+            e for e in result.edges
+            if e.edge_type == "calls" and "boot" in e.src
+            and e.dst.endswith(":delete:unresolved")
+        ]
+        assert len(deferred) == 1, [e.dst for e in result.edges if "boot" in e.src]
+        assert (deferred[0].meta or {}).get("enclosing_class") == "AccountController"
+
+    def test_bare_cross_type_same_file_method_deferred(
+        self, tmp_path: Path
+    ) -> None:
+        """Same-file variant: a bare call to a DIFFERENT type's method defined in
+        the same file also defers to Site-1 with an ``enclosing_class`` hint
+        (Swift keys ``local_symbols`` by full name, so this too resolves through
+        the INV-fahub-gated resolver path, not a bare short-name bind)."""
+        from hypergumbo_lang_mainstream.swift import analyze_swift
+
+        (tmp_path / "m.swift").write_text(
+            "class Store {\n  func delete() {}\n}\n"
+            "class Controller {\n  func boot() { delete() }\n}\n"
+        )
+        result = analyze_swift(tmp_path)
+        store_delete = next(
+            s for s in result.symbols
+            if s.name == "Store.delete" and s.kind == "method"
+        )
+        misbinds = [
+            e for e in result.edges
+            if e.edge_type == "calls" and e.dst == store_delete.id
+            and "boot" in e.src and e.is_resolved
+        ]
+        assert misbinds == [], f"same-file cross-type bare call misbound: {misbinds}"
+        deferred = [
+            e for e in result.edges
+            if e.edge_type == "calls" and "boot" in e.src
+            and e.dst.endswith(":delete:unresolved")
+        ]
+        assert len(deferred) == 1, [e.dst for e in result.edges if "boot" in e.src]
+        assert (deferred[0].meta or {}).get("enclosing_class") == "Controller"
+
+    def test_bare_implicit_self_same_type_resolves_directly(
+        self, tmp_path: Path
+    ) -> None:
+        """Recall guard: a bare implicit-``self`` call to a method of the SAME
+        enclosing type still resolves directly (owner == enclosing)."""
+        from hypergumbo_lang_mainstream.swift import analyze_swift
+
+        (tmp_path / "calc.swift").write_text(
+            "class Calc {\n"
+            "  func total() -> Int { return helper() }\n"
+            "  func helper() -> Int { return 41 }\n"
+            "}\n"
+        )
+        result = analyze_swift(tmp_path)
+        calc_helper = next(
+            s for s in result.symbols
+            if s.name == "Calc.helper" and s.kind == "method"
+        )
+        resolved = [
+            e for e in result.edges
+            if e.edge_type == "calls" and e.dst == calc_helper.id
+            and "total" in e.src and e.is_resolved
+        ]
+        assert len(resolved) == 1, [
+            (e.dst, e.is_resolved) for e in result.edges if "total" in e.src
+        ]
+
+    def test_param_typed_receiver_resolves(self, tmp_path: Path) -> None:
+        """Recall recovery: a receiver typed by a function parameter
+        (``func use(f: Foo)``) resolves — param types are now threaded."""
+        from hypergumbo_lang_mainstream.swift import analyze_swift
+
+        (tmp_path / "app.swift").write_text(
+            "class Foo {\n  func bar() {}\n}\n"
+            "func use(f: Foo) {\n"
+            "  f.bar()\n"
+            "}\n"
+        )
+        result = analyze_swift(tmp_path)
+        resolved = [
+            e for e in result.edges
+            if e.edge_type == "calls" and "use" in e.src
+            and "bar" in e.dst and e.is_resolved
+        ]
+        assert len(resolved) == 1, [
+            (e.dst, e.is_resolved) for e in result.edges
+            if "use" in e.src and "bar" in e.dst
+        ]
+        assert "Foo" in resolved[0].dst
+
+    def test_typed_unresolvable_receiver_stamps_hint(self, tmp_path: Path) -> None:
+        """A param-typed receiver whose method isn't found in-repo emits
+        unresolved WITH ``receiver_type_hint`` so the linker can recover it."""
+        from hypergumbo_lang_mainstream.swift import analyze_swift
+
+        (tmp_path / "svc.swift").write_text(
+            "func go(x: UnknownType) {\n"
+            "  x.doThing()\n"
+            "}\n"
+        )
+        result = analyze_swift(tmp_path)
+        hinted = [
+            e for e in result.edges
+            if e.edge_type == "calls" and "go" in e.src
+            and e.dst.endswith(":doThing:unresolved")
+        ]
+        assert len(hinted) == 1, [e.dst for e in result.edges if "go" in e.src]
+        assert hinted[0].is_resolved is False
+        assert (hinted[0].meta or {}).get("receiver_type_hint") == "UnknownType"

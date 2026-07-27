@@ -70,3 +70,51 @@
   clock: 7  # f665
   nonce: f665  # f665
   message: "validation failed: the list[str] migration shipped but multi-pass attribution is still vacuous — 0 of 34396 nodes and 0 of 110533 edges carry a multi-element origin list (100% singletons). Every origin is single-pass, so the list type buys nothing over a scalar; no producer ever appends a second pass id. (Blind-severity-derived priority signal: P3.)"  # f665
+- op: update  # c18b
+  at: '2026-06-22T02:52:56Z'  # c18b
+  by: agent  # c18b
+  actor: jgstern_agent  # c18b
+  clock: 8  # c18b
+  nonce: c18b  # c18b
+  set: {}  # c18b
+  remove:  # c18b
+    tags: [awaits_bakeoff_validation]  # c18b
+- op: discuss  # d966
+  at: '2026-06-22T02:52:56Z'  # d966
+  by: agent  # d966
+  actor: jgstern_agent  # d966
+  clock: 9  # d966
+  nonce: d966  # d966
+  message: "Drain audit (deep-20260621-215349), human-authorized strip. no_move/violated: 2026-06-06 bakeoff found 0/110533 edges carry multi-element origin (100% singletons) after the PR #3927 schema change — the producer-side goal (passes appending multiple pass IDs) never materialized. Deterministic structural gap, NOT cohort-re-runnable. Stripping awaits_bakeoff_validation; violated status remains the live signal. Re-tag only on a future fix with a fresh quantitative claim."  # d966
+- op: update  # bfe5
+  at: '2026-07-21T21:20:44Z'  # bfe5
+  by: agent  # bfe5
+  actor: jgstern_agent  # bfe5
+  clock: 10  # bfe5
+  nonce: bfe5  # bfe5
+  set:  # bfe5
+    title: "Symbol/Edge.origin multi-source ATTRIBUTION gap — every producer emits single [PASS_ID] (0/110533 multi-element); the list[str] TYPE goal is DONE"  # bfe5
+    fields:  # bfe5
+      statement: "SCOPE (2026-07-21 audit): the TYPE sub-goal is DONE and the 'current scalar' framing is STALE -- origin is now 'str | List[str]' (ir.py:569/813), __post_init__ normalizes scalar->list, to_dict serializes a list, and a bakeoff confirmed 108649/108649 edges carry list-typed origin (since PR #3927). The LIVE invariant is the multi-source ATTRIBUTION gap: when evidence for a Symbol/Edge is contributed by multiple passes, all contributing passes should be credited in origin, but every producer still emits a single-element [PASS_ID] and no merge/finalize step appends a second (edge-dedup unions referring_paths, not origins; 0/110533 edges multi-element). Re-scoped to the producer-side attribution gap."  # bfe5
+- op: discuss  # 405b
+  at: '2026-07-21T21:20:44Z'  # 405b
+  by: agent  # 405b
+  actor: jgstern_agent  # 405b
+  clock: 11  # 405b
+  nonce: 405b  # 405b
+  message: "Re-scoped statement/title off the stale 'should be list[str] / current scalar' framing: the type widening landed long ago (origin is str|List[str], ir.py:569/813; 108649/108649 list-typed). The substantive invariant -- multi-source attribution -- is genuinely unmet (single-element [PASS_ID] everywhere; 0/110533 multi-element). Root_cause ('single-author field / lossy attribution choice') is still accurate, left as-is."  # 405b
+- op: update  # 2ac3
+  at: '2026-07-26T09:46:35Z'  # 2ac3
+  by: agent  # 2ac3
+  actor: jgstern_agent  # 2ac3
+  clock: 12  # 2ac3
+  nonce: 2ac3  # 2ac3
+  set:  # 2ac3
+    status: satisfied  # 2ac3
+- op: discuss  # 4746
+  at: '2026-07-26T09:46:35Z'  # 4746
+  by: agent  # 4746
+  actor: jgstern_agent  # 4746
+  clock: 13  # 4746
+  nonce: '4746'  # 4746
+  message: "SATISFIED (demand-gated, correct-by-construction). Symbol.origin/Edge.origin are list[str] (ir.py:569/813), __post_init__ scalar->list normalize (Edge RAISES on empty) -- multi-source-attribution CAPABILITY in place. Single-element population is correct construction: ZERO producers emit multi-element (verified: no .append/.extend/+= on origin in src; every linker origin write is a single-element replacement on a stand-in the linker minted). Multi-source needs a refine-existing-symbol producer (a linker mutating an analyzer symbol's origin), which does not exist (ADR-0030:66). The invariant holds: origin is correctly attributed; 0-multi-element is the accurate model, not a defect. Reopen if a refine-existing-symbol producer is introduced."  # 4746

@@ -7,7 +7,13 @@ This analyzer uses tree-sitter-c to parse C files and extract:
 - Typedef declarations (symbols)
 - Enum declarations (symbols)
 - Function call relationships (edges)
-- JNI export patterns (Java_ClassName_methodName)
+- Function-pointer references and callback-argument calls (edges)
+- Dispatch tables from static-array and designated-struct initializers
+  (dispatches_to edges)
+- stdio global references (stdout/stderr/stdin) as module_attr_ref edges
+
+The analyzer also extracts function signatures (``_extract_c_signature``)
+and applies ADR-0015 Tier 1 dataflow annotation to the resulting edges.
 
 If tree-sitter-c is not installed, the analyzer gracefully degrades
 and returns an empty result.
@@ -21,7 +27,8 @@ How It Works
 4. Two-pass analysis:
    - Pass 1: Parse all files, extract all symbols into global registry
    - Pass 2: Detect calls and resolve against global symbol registry
-5. Detect function calls and JNI export patterns
+5. Detect function calls, function-pointer references, and dispatch-table /
+   designated-initializer function-pointer edges
 
 Why This Design
 ---------------
@@ -55,6 +62,9 @@ from hypergumbo_core.analyze.base import (
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.dataflow import annotate_dataflow, get_dataflow_config
+from hypergumbo_lang_mainstream.symbol_introspection import (
+    compute_cyclomatic_complexity,
+)
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -270,6 +280,12 @@ def _extract_symbols(
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     signature=signature,
+                    # INV-loguk: analytical fields, uniform with the other
+                    # mainstream callable analyzers.
+                    line_span=span.end_line - span.start_line + 1,
+                    cyclomatic_complexity=compute_cyclomatic_complexity(
+                        node, "c",
+                    ),
                     stable_id=_analyzer.compute_stable_id(
                         node, kind="function", name=name,
                         file_stable_id=file_stable_id,
@@ -304,6 +320,13 @@ def _extract_symbols(
                             origin_run_id=run.execution_id,
                             signature=signature,
                             modifiers=["declaration"],
+                            # INV-loguk: a bodyless prototype is straight-line
+                            # (the walker finds no decision points → CC == 1)
+                            # spanning its declaration line(s).
+                            line_span=span.end_line - span.start_line + 1,
+                            cyclomatic_complexity=compute_cyclomatic_complexity(
+                                node, "c",
+                            ),
                             stable_id=_analyzer.compute_stable_id(
                                 node, kind="function", name=name,
                                 file_stable_id=file_stable_id,
@@ -719,17 +742,16 @@ def _extract_edges(
                     # ADR-0023 §6 Phase 3 / audit-findings 0001 (WI-vasik-jofiv):
                     # Function references a dispatch-table data
                     # symbol (not dispatcher→target). Canonical
-                    # 'references' + meta['construct']='dispatch_table'.
+                    # 'references' + meta['ref_construct']='dispatch_table'.
                     edges.append(Edge.create(
                         src=func_sym.id,
                         dst=dispatch_tables[name],
                         edge_type="references",
                         line=inner.start_point[0] + 1,
-                        confidence=0.85,
                         origin=PASS_ID,
                         origin_run_id=run.execution_id,
                         evidence_type="dispatch_table_reference",
-                        meta={"construct": "dispatch_table"},
+                        meta={"ref_construct": "dispatch_table"},
                     ))
 
     return edges
@@ -873,7 +895,6 @@ def _emit_stdio_identifier_refs(
             dst=f"c:{module}:0-0:{qname}:attribute",
             edge_type="module_attr_ref",
             line=node.start_point[0] + 1,
-            confidence=0.85,
             evidence_type="module_identifier_reference",
             origin=PASS_ID,
             origin_run_id=run.execution_id,
@@ -884,7 +905,7 @@ class CAnalyzer(TreeSitterAnalyzer):
     """Tree-sitter-based C analyzer.
 
     Uses tree-sitter-c to parse C files and extract functions, structs, enums,
-    typedefs, call edges, and JNI patterns. Overrides ``analyze`` to use
+    typedefs, and call edges. Overrides ``analyze`` to use
     custom file discovery that skips .h files when C++ files exist (avoids
     duplicates with the C++ analyzer). Overrides ``register_symbol`` to prefer
     definitions in .c files over declarations in .h files.

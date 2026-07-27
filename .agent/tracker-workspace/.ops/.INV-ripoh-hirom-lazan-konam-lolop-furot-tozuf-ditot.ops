@@ -83,3 +83,18 @@
     tags: [dogfood]  # 7372
   remove:  # 7372
     tags: [dogfooding]  # 7372
+- op: update  # 94d4
+  at: '2026-06-25T06:27:18Z'  # 94d4
+  by: agent  # 94d4
+  actor: jgstern_agent  # 94d4
+  clock: 9  # 94d4
+  nonce: 94d4  # 94d4
+  set:  # 94d4
+    status: satisfied  # 94d4
+- op: discuss  # 0737
+  at: '2026-06-25T06:27:18Z'  # 0737
+  by: agent  # 0737
+  actor: jgstern_agent  # 0737
+  clock: 10  # 0737
+  nonce: '0737'  # 0737
+  message: "Fixed in commit abc1a5e3b3 (origin/dev). Behavioral evidence — live repro (hub symbol with 4-digit in-degree, forced 120-col terminal): BEFORE the Deg column rendered '10…'/'19…' (full value absent); AFTER, In/Out/Deg render their full values with zero ellipsis. Verified across 4-digit AND 5-digit degrees and long kind names (class/function/async_function/constructor, deg up to 12345) — all truncated=False, full value present. Root cause fixed structurally: the numeric columns had no min_width and a fixed _SYMBOLS_INNER_COLUMNS_OVERHEAD=30 under-budgeted the console width once In/Deg hit 4 digits, so Rich squeezed Deg. Now each inner column's width is computed from its widest cell (floored by header), setting both the column min_width (Rich can't squeeze it) AND the forced console required_width (honoring min_widths doesn't overflow Symbol/File). This also covers the pass-31 In-column face. Production-path regression test: test_cli_symbols.py::test_cmd_symbols_numeric_columns_not_truncated. All changed source files at 100% coverage. The --col-width 1000 workaround is no longer needed."  # 0737

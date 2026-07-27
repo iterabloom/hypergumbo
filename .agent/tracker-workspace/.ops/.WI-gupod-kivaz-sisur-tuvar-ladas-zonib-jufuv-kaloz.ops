@@ -93,3 +93,34 @@
   clock: 11  # b010
   nonce: b010  # b010
   message: "related-but-distinct cross-link (connections-sweep 2026-06-08T1900Z)"  # b010
+- op: update  # c049
+  at: '2026-07-12T08:14:48Z'  # c049
+  by: agent  # c049
+  actor: jgstern_agent  # c049
+  clock: 12  # c049
+  nonce: c049  # c049
+  set: {}  # c049
+  add:  # c049
+    tags: [wave5]  # c049
+- op: discuss  # 1ebe
+  at: '2026-07-12T08:14:48Z'  # 1ebe
+  by: agent  # 1ebe
+  actor: jgstern_agent  # 1ebe
+  clock: 13  # 1ebe
+  nonce: 1ebe  # 1ebe
+  message: "Wave-4 triage 2026-07-12: MIGRATE to Wave 5. config_info identity defect lives only in embedding mode (non-default; default HEURISTIC) on the x-internal sketch_precomputed cache (schema.json x-internal:true) -- not an output-contract surface. Sibling of the migrated INV-jifus sketch-cache prevention residual."  # 1ebe
+- op: update  # d161
+  at: '2026-07-22T02:43:30Z'  # d161
+  by: agent  # d161
+  actor: jgstern_agent  # d161
+  clock: 14  # d161
+  nonce: d161  # d161
+  set:  # d161
+    status: done  # d161
+- op: discuss  # 0392
+  at: '2026-07-22T02:43:30Z'  # 0392
+  by: agent  # 0392
+  actor: jgstern_agent  # 0392
+  clock: 15  # 0392
+  nonce: '0392'  # 0392
+  message: "Headline (config_info drops package identity name/version/license for 3/11 manifests) is behaviorally DISSOLVED by WI-lirub (commit 2b6387d23a, 2026-07-11): the heuristic extractor gained a monorepo packages/ scan + per-package LICENSE detection, and the pyproject parser now emits name/version/license directly. LIVE REPRO (2026-07-21, closure-evidence): surveyed a manifest-bearing repo -> config_info contains `pyproject.toml: name: acme-widget; version: 2.3.4; license: ...` + `LICENSE: Apache`. Stale filing literal (version 0.5.1) confirmed superseded (0.6.0). Sole residual is cosmetic — the embedding appendix appends a fragmentary chunk and the pyproject license VALUE is clipped mid-token — on a zero-external-consumer x-internal cache (schema x-internal:true). Per the G9 Recommended close-out (owner 2026-07-21), that cosmetic `_build_context_chunk` cleanup is deliberately NOT pursued (not worth the cold-slice CI tax); it is the same surface tracked under WI-samif Part 2 (downgraded). Filed defect resolved -> done."  # 0392

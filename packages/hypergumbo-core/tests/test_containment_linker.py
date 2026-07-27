@@ -59,6 +59,73 @@ class TestContainmentLinker:
         assert edge.dst == method.id
         assert edge.edge_type == "contains"
 
+    def test_dot_separated_field(self) -> None:
+        """WI-zajaz: a class field (ClassName.field) is rooted at its class.
+
+        Class-body attributes are emitted as kind='field' with dotted names
+        (e.g. 'Widget.size'), exactly like methods, but were never in
+        CONTAINABLE_KINDS — so 1862 real field symbols (99.6% of them) were
+        orphans on self-analysis. Fields must root at their class like methods.
+        """
+        cls = _sym("py:app.py:1-10:Widget:class", "Widget", "class")
+        field = _sym("py:app.py:2-2:Widget.size:field", "Widget.size", "field", start=2, end=2)
+
+        ctx = LinkerContext(
+            repo_root=Path("/test"),
+            symbols=[cls, field],
+            edges=[],
+        )
+        result = link_containment(ctx)
+
+        assert len(result.edges) == 1
+        edge = result.edges[0]
+        assert edge.src == cls.id
+        assert edge.dst == field.id
+        assert edge.edge_type == "contains"
+
+    def test_swift_struct_body_subscript(self) -> None:
+        """WI-fokag: a struct-body subscript (Type.subscript(key:)) roots at its type.
+
+        Swift subscripts are emitted as kind='subscript' with dotted names like
+        'JSON.subscript(key:)', exactly like methods, but 'subscript' was absent
+        from CONTAINABLE_KINDS — so correctly-named struct-body subscripts had 0
+        contains edges (verified real on SwiftyJSON post-#689: the JSON struct
+        contained its field and method members but not its subscripts). The
+        parenthesized '(key:)' name suffix carries no separator, so parent
+        extraction already yields 'JSON'; only the kind gate blocked the edge.
+        """
+        cls = _sym(
+            "swift:json.swift:1-20:JSON:struct",
+            "JSON",
+            "struct",
+            language="swift",
+            path="json.swift",
+            start=1,
+            end=20,
+        )
+        sub = _sym(
+            "swift:json.swift:5-8:JSON.subscript(key:):subscript",
+            "JSON.subscript(key:)",
+            "subscript",
+            language="swift",
+            path="json.swift",
+            start=5,
+            end=8,
+        )
+
+        ctx = LinkerContext(
+            repo_root=Path("/test"),
+            symbols=[cls, sub],
+            edges=[],
+        )
+        result = link_containment(ctx)
+
+        assert len(result.edges) == 1
+        edge = result.edges[0]
+        assert edge.src == cls.id
+        assert edge.dst == sub.id
+        assert edge.edge_type == "contains"
+
     def test_ruby_hash_separated_method(self) -> None:
         """Creates contains edge for Ruby-style ClassName#method."""
         cls = _sym("ruby:app.rb:1-10:User:class", "User", "class", language="ruby", path="app.rb")
@@ -347,7 +414,12 @@ class TestContainmentLinker:
         assert result.run.pass_id == "containment-linker"
 
     def test_edge_confidence(self) -> None:
-        """Contains edges have high confidence since naming is deterministic."""
+        """Contains edges derive naming_convention confidence (ADR-0039 R1).
+
+        The old hardcoded 1.0 breached the 0.95 band ceiling and outranked the
+        structurally-certain span_overlap (0.90); the name-parse heuristic now
+        derives 0.85 from the registry and is stamped evidence_derived.
+        """
         cls = _sym("py:app.py:1-10:User:class", "User", "class")
         method = _sym("py:app.py:3-5:User.save:method", "User.save", "method", start=3, end=5)
 
@@ -358,7 +430,11 @@ class TestContainmentLinker:
         )
         result = link_containment(ctx)
 
-        assert result.edges[0].confidence == 1.0
+        assert result.edges[0].evidence_type == "naming_convention"
+        assert result.edges[0].confidence == 0.85
+        assert result.edges[0].confidence_source == "evidence_derived"
+        # Reliability ordering restored: the certain span_overlap outranks it.
+        assert result.edges[0].confidence < 0.90
 
     def test_struct_contains_method(self) -> None:
         """Struct symbols (Rust, Go, C) should contain their methods."""
@@ -539,6 +615,111 @@ class TestContainmentNameCollision:
 
         # Should still create an edge (fallback to some match)
         assert len(result.edges) == 1
+
+    def test_same_file_same_name_classes_disambiguate_by_span(self) -> None:
+        """WI-vakuh: two classes with the SAME name in ONE file — a method
+        links to the class whose span ENCLOSES it, not merely the first
+        same-file candidate. _find_parent previously returned the first
+        same-file match, producing provably-false containments where the
+        method span lies outside the matched class span."""
+        # First _FakeMetadata (a small earlier stub).
+        first = _sym(
+            "py:t.py:205-207:_FakeMetadata:class", "_FakeMetadata", "class",
+            path="t.py", start=205, end=207,
+        )
+        # Second _FakeMetadata (the real one) later, enclosing the method.
+        second = _sym(
+            "py:t.py:230-280:_FakeMetadata:class", "_FakeMetadata", "class",
+            path="t.py", start=230, end=280,
+        )
+        method = _sym(
+            "py:t.py:234-235:_FakeMetadata.get:method", "_FakeMetadata.get",
+            "method", path="t.py", start=234, end=235,
+        )
+
+        ctx = LinkerContext(
+            repo_root=Path("/test"),
+            symbols=[first, second, method],
+            edges=[],
+        )
+        result = link_containment(ctx)
+
+        assert len(result.edges) == 1
+        edge = result.edges[0]
+        assert edge.src == second.id, (
+            "method (234-235) must be contained by the enclosing class "
+            f"second (230-280), not the first same-file match (205-207); "
+            f"got src={edge.src}"
+        )
+        assert edge.dst == method.id
+
+    def test_same_file_same_name_no_enclosing_class_refuses(self) -> None:
+        """WI-vakuh: when a method's span lies outside EVERY same-name same-file
+        class, the naming match is to the wrong class — no contains edge is
+        emitted rather than a provably-false one."""
+        first = _sym(
+            "py:t.py:1-5:Foo:class", "Foo", "class", path="t.py", start=1, end=5,
+        )
+        second = _sym(
+            "py:t.py:10-15:Foo:class", "Foo", "class", path="t.py", start=10, end=15,
+        )
+        # Method at 30-31 — outside both Foo spans.
+        method = _sym(
+            "py:t.py:30-31:Foo.bar:method", "Foo.bar", "method",
+            path="t.py", start=30, end=31,
+        )
+        ctx = LinkerContext(
+            repo_root=Path("/test"),
+            symbols=[first, second, method],
+            edges=[],
+        )
+        result = link_containment(ctx)
+
+        assert result.edges == [], (
+            "no same-name class encloses the method — expected no (false) "
+            f"containment edge, got {result.edges}"
+        )
+
+    def test_find_parent_multi_same_file_without_span_keeps_legacy_first(
+        self,
+    ) -> None:
+        """Without a child span, _find_parent keeps the legacy first-match among
+        multiple same-file same-name containers — span disambiguation needs the
+        child span, which the link_containment callers always supply."""
+        a = _sym(
+            "py:t.py:1-5:Foo:class", "Foo", "class", path="t.py", start=1, end=5,
+        )
+        b = _sym(
+            "py:t.py:10-20:Foo:class", "Foo", "class", path="t.py", start=10, end=20,
+        )
+        container_by_name = {"Foo": [a, b]}
+        result = _find_parent(
+            "Foo", "t.py", container_by_name, "python", child_span=None,
+        )
+        assert result is a
+
+    def test_non_containable_symbols_are_skipped(self) -> None:
+        """Symbols whose kind is neither containable nor a container (e.g.
+        imports) are skipped by every phase's kind guard, contributing no
+        contains edges."""
+        cls = _sym("py:app.py:1-10:User:class", "User", "class")
+        method = _sym(
+            "py:app.py:3-5:User.save:method", "User.save", "method",
+            start=3, end=5,
+        )
+        imp = _sym("py:app.py:1-1:os:import", "os", "import", start=1, end=1)
+
+        ctx = LinkerContext(
+            repo_root=Path("/test"),
+            symbols=[cls, method, imp],
+            edges=[],
+        )
+        result = link_containment(ctx)
+
+        # Only the class→method edge; the import contributes nothing.
+        assert len(result.edges) == 1
+        assert result.edges[0].src == cls.id
+        assert result.edges[0].dst == method.id
 
     def test_many_duplicate_classes_correct_linkage(self) -> None:
         """Simulates Django: 1 real Model + many test Models, methods link correctly."""
@@ -737,6 +918,98 @@ class TestSpanBasedContainment:
         assert len(contains) == 1
         assert contains[0].src == mod.id
         assert contains[0].dst == method.id
+
+    def test_span_containment_file_contains_function(self) -> None:
+        """dispatch:F4 — a file anchor contains a top-level function via span.
+
+        A top-level ``def`` carries a bare name, so only Phase-2 span_overlap
+        can root it at its enclosing ``kind="file"`` anchor. Before F4,
+        ``function`` was excluded from CONTAINABLE_KINDS so this edge never
+        landed and the function was a contains-tree orphan."""
+        f = _sym(
+            "python:app/util.py:1-50:app/util.py:file",
+            "app/util.py", "file", path="app/util.py", start=1, end=50,
+        )
+        func = _sym(
+            "python:app/util.py:5-10:helper:function",
+            "helper", "function", path="app/util.py", start=5, end=10,
+        )
+        ctx = LinkerContext(
+            repo_root=Path("/test"), symbols=[f, func], edges=[],
+        )
+        result = link_containment(ctx)
+        contains = [e for e in result.edges if e.edge_type == "contains"]
+        assert len(contains) == 1
+        assert contains[0].src == f.id
+        assert contains[0].dst == func.id
+        assert contains[0].evidence_type == "span_overlap"
+
+    def test_span_containment_file_contains_variable(self) -> None:
+        """dispatch:F4 — a file anchor contains a module-level variable via span."""
+        f = _sym(
+            "python:app/conf.py:1-20:app/conf.py:file",
+            "app/conf.py", "file", path="app/conf.py", start=1, end=20,
+        )
+        var = _sym(
+            "python:app/conf.py:3-3:CONFIG:variable",
+            "CONFIG", "variable", path="app/conf.py", start=3, end=3,
+        )
+        ctx = LinkerContext(
+            repo_root=Path("/test"), symbols=[f, var], edges=[],
+        )
+        result = link_containment(ctx)
+        contains = [e for e in result.edges if e.edge_type == "contains"]
+        assert len(contains) == 1
+        assert contains[0].src == f.id
+        assert contains[0].dst == var.id
+        assert contains[0].evidence_type == "span_overlap"
+
+    def test_dotted_function_name_no_spurious_edge_without_container(self) -> None:
+        """dispatch:F4 guard — a dotted function name (JS route-handler idiom)
+        produces NO contains edge when no same-file container of the parent name
+        exists. Phase 1 extracts parent ``userController`` and finds nothing;
+        Phase 2 is skipped because the name has a separator. The result is a
+        missed de-orphan, never a spurious edge."""
+        handler = _sym(
+            "javascript:routes.js:5-9:userController.createUser:function",
+            "userController.createUser", "function",
+            language="javascript", path="routes.js", start=5, end=9,
+        )
+        f = _sym(
+            "javascript:routes.js:1-30:routes.js:file",
+            "routes.js", "file", language="javascript", path="routes.js",
+            start=1, end=30,
+        )
+        ctx = LinkerContext(
+            repo_root=Path("/test"), symbols=[handler, f], edges=[],
+        )
+        result = link_containment(ctx)
+        contains = [e for e in result.edges if e.edge_type == "contains"]
+        assert contains == []
+
+    def test_dotted_function_name_contained_by_same_file_class(self) -> None:
+        """dispatch:F4 accepted behavior — when a dotted function name DOES name
+        a real same-file container, Phase 1 emits a naming_convention edge. The
+        dotted name genuinely qualifies the container, so this is correct."""
+        cls = _sym(
+            "javascript:ctrl.js:1-30:userController:class",
+            "userController", "class", language="javascript", path="ctrl.js",
+            start=1, end=30,
+        )
+        method = _sym(
+            "javascript:ctrl.js:5-9:userController.createUser:function",
+            "userController.createUser", "function",
+            language="javascript", path="ctrl.js", start=5, end=9,
+        )
+        ctx = LinkerContext(
+            repo_root=Path("/test"), symbols=[cls, method], edges=[],
+        )
+        result = link_containment(ctx)
+        contains = [e for e in result.edges if e.edge_type == "contains"]
+        assert len(contains) == 1
+        assert contains[0].src == cls.id
+        assert contains[0].dst == method.id
+        assert contains[0].evidence_type == "naming_convention"
 
     def test_span_containment_prefers_tightest_container(self) -> None:
         """When nested containers both enclose a symbol, pick the tightest one."""
@@ -1262,3 +1535,38 @@ class TestFindParent:
         )
         # Without language info, returns first candidate (backward compat)
         assert result is go_class
+
+
+class TestWiSakugFieldContainment:
+    """WI-sakug: fields emitted by the WI-jusus tail (solidity/nim/scala/D) were
+    never rooted because their enclosing type's kind (contract/library/type/
+    object/union) was absent from CONTAINER_KINDS — the container was never
+    indexed, so the dotted-name field found no owner and stayed orphaned
+    (solidity 0% rooted, nim 8%, scala 69%, D 78%)."""
+
+    def _root(self, kind: str, lang: str, container: str, field: str) -> bool:
+        c = _sym(f"{lang}:f.src:1-20:{container}:{kind}", container, kind,
+                 language=lang, path="f.src")
+        fld = _sym(f"{lang}:f.src:2-2:{field}:field", field, "field",
+                   language=lang, path="f.src", start=2, end=2)
+        ctx = LinkerContext(repo_root=Path("/test"), symbols=[c, fld], edges=[])
+        result = link_containment(ctx)
+        return any(
+            e.edge_type == "contains" and e.src == c.id and e.dst == fld.id
+            for e in result.edges
+        )
+
+    def test_roots_solidity_contract_field(self) -> None:
+        assert self._root("contract", "solidity", "Token", "Token.totalSupply")
+
+    def test_roots_solidity_library_field(self) -> None:
+        assert self._root("library", "solidity", "SafeMath", "SafeMath.MAX")
+
+    def test_roots_nim_type_field(self) -> None:
+        assert self._root("type", "nim", "Person", "Person.age")
+
+    def test_roots_scala_object_field(self) -> None:
+        assert self._root("object", "scala", "Config", "Config.timeout")
+
+    def test_roots_d_union_field(self) -> None:
+        assert self._root("union", "d", "Value", "Value.i")

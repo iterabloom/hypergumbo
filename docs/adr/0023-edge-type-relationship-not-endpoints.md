@@ -2,7 +2,7 @@
 # ADR-0023: Edge Type Names the Relationship, Not the Endpoints
 
 Date: 2026-04-29
-Status: Accepted (§6 framework complete; 25 endpoint_shape values pending per-pattern micro-phase fold)
+Status: Accepted — §6 fold COMPLETE (2026-07-21, WI-pumav): all endpoint_shape values folded to canonical relationships + meta and pruned; the `endpoint_shape` axis of `Edge.edge_type` is now empty
 
 > The decision is in force as of the canonical-registry landing
 > (commit `3b60ba3dd` — `EDGE_TYPES` is the source of truth) and the
@@ -10,10 +10,14 @@ Status: Accepted (§6 framework complete; 25 endpoint_shape values pending per-p
 > blocks new violations in pre-commit). Phases 1–3 are complete and
 > Phase 4b has shipped the dst-kind, bridge, IPC, publish/dispatch,
 > and protocol-call family closures (WI-vomoj-suhaz at 0.4.0; protocol
-> family via WI-vumum-juvil). 25 endpoint_shape registry entries
-> remain — the long-tail individual values (`abi_call`, `extends_template`,
-> `notifies_resource`, …) — on a per-pattern micro-phase schedule;
-> each subset ships its own Phase 3 / 4b cycle with bakeoff validation.
+> family producer-migrated via WI-vumum-juvil, its registry entries
+> pruned in WI-hirud; `script_src` pruned in WI-pumav Batch 0). The 21
+> long-tail individual values (`abi_call`, `extends_template`,
+> `notifies_resource`, …) were folded across WI-pumav Batches 1a–7
+> (audit-findings 0017, the 4-lens ruling pass) and their registry
+> entries pruned in the consolidated Phase-4b PR (SCHEMA_VERSION
+> 0.16.0 → 0.17.0), so the **`endpoint_shape` axis of `Edge.edge_type`
+> is now EMPTY — the §6 fold is complete.**
 > Strict-mode pre-commit drift linter is on (WI-mumok). The companion
 > ADR-0027 (Symbol.kind) and ADR-0028 (Edge.evidence_type) endpoint_shape
 > registries are fully closed.
@@ -294,9 +298,14 @@ names a distinct syntactic construct or semantic action that is not
 derivable from endpoints alone:
 
 `calls`, `imports`, `references`, `contains`, `instantiates`, `inherits`,
-`implements`, `decorated_by`, `extends`, `module_attr_ref`,
+`implements`, `overrides`, `decorated_by`, `extends`, `module_attr_ref`,
 `includes`, `defines_target`, `data_flows_to` (ADR-0015), and the
 access-mode-annotated edges introduced by ADR-0015.
+
+(`overrides` added 2026-06-25 per INV-vavat: a method-override is a
+distinct relationship from `extends`/`implements` (type-level) — it was
+mis-flagged as a "vestigial singleton" only because the dogfood corpus
+under-represents Solidity, its primary producer.)
 
 Notably `module_attr_ref` survives because `imported_module.X` is a
 syntactically different construct from a bare-name `X` reference, and the
@@ -364,8 +373,9 @@ The shipped implementation lives in
 [`hypergumbo_core.runtime_coherence`](../../packages/hypergumbo-core/src/hypergumbo_core/runtime_coherence.py)
 with a thin CLI at
 [`scripts/check-edge-type-runtime-coherence`](../../scripts/check-edge-type-runtime-coherence)
-and an empty allow-list at
-[`docs/edge-type-runtime-allowlist.yaml`](../edge-type-runtime-allowlist.yaml).
+and the allow-list at
+[`docs/edge-type-runtime-allowlist.yaml`](../edge-type-runtime-allowlist.yaml)
+(one amendment so far — file-anchor containment variance, recorded below).
 The deployment posture is warn-only — the CLI exits 1 on un-allow-listed
 offenders for human invocation during Phase 2/3 migration, but is
 not (yet) wired into pre-commit / CI; Phase 4's expectation is that
@@ -377,6 +387,21 @@ a top-level Symbol field today (it lives in `meta.concepts[*].framework`,
 a list awkward to use as a partition key), and a coarser key still
 catches every leak the finer key would. Expand to six fields if a
 top-level `Symbol.framework` registry lands.
+
+**Allow-list amendment — file-anchor containment variance (dispatch:F4,
+2026-06-25).** `file-anchor:F1` mints a `kind="file"` anchor per discovered
+path; `dispatch:F4` (INV-pohik de-orphan) adds `function`/`variable` to the
+containment linker's `CONTAINABLE_KINDS`, so a file anchor now `contains` its
+top-level members. The file *pseudo-node* also names those same members through
+other, genuinely-distinct relationships — module-scope `calls` and `references`,
+`imports`, and TS/JS `module_exports` — so the
+`(file, <lang>, function|variable, <lang>)` partition legitimately carries
+`contains` alongside them. `contains` is a relationship ("the file encloses this
+member"), not a leaked endpoint property, so the variance is admitted to the
+allow-list (five entries: python function/variable, bash function, typescript
+function, javascript function) rather than folded. This is the first non-empty
+state of the allow-list; the superset check still flags any *third*,
+genuinely-anomalous edge type that later appears in one of these partitions.
 
 **3. Cadence — landed.** Static and runtime checks catch known
 offender shapes; the fundamental-concept audit playbook
@@ -507,12 +532,15 @@ and the 13 publish/dispatch family values (`routes_to`,
 `message_dispatch`, `crdt_publishes`, `annotated_publishes`,
 `emits`, `enqueues`, `event_subscribes`).
 
-**Remaining endpoint_shape registry entries: 25; of which 22 still
-emit under their current names.** The first 4b ship is partial
-because 25 endpoint_shape values still occupy the registry pending
-future per-family Phase 3 / 4b' work; only 3 of those 25 (the
-protocol-call family) have had their producers migrated. The 25
-split into two groups:
+**Remaining endpoint_shape registry entries: 0 — the fold is COMPLETE.**
+At first-4b-ship 25 remained; the 3-value protocol-call family was
+producer-migrated (WI-vumum-juvil) and pruned (WI-hirud), `script_src`
+(already producer-migrated under INV-vavat) was pruned in WI-pumav Batch 0,
+and the remaining 21 long-tail values were folded across WI-pumav
+Batches 1a–7 (audit-findings 0017) and pruned in the consolidated
+Phase-4b PR (SCHEMA_VERSION 0.16.0 → 0.17.0), draining the `endpoint_shape`
+axis of `Edge.edge_type` to empty. The original 25 split into two groups
+(both now fully closed):
 
 1. **Protocol-call family** (`http_calls`, `grpc_calls`,
    `graphql_calls`): producer migration shipped under
@@ -528,24 +556,25 @@ split into two groups:
    off-axis consumer references — this Phase 3 cleared the last
    load-bearing endpoint_shape consumer reference, unblocking the
    strict-mode pre-commit flip that subsequently shipped under
-   `WI-mumok`. The three deprecated registry entries stay until a
-   sibling Phase-4b' ship (gated on bakeoff validation of this
-   migration) prunes them along with a SCHEMA_VERSION bump.
+   `WI-mumok`. The three deprecated registry entries were pruned in
+   **WI-hirud** (Phase-4b', SCHEMA_VERSION 0.14.6 → 0.15.0), completing
+   this family's fold end-to-end.
 
-2. **Long-tail individual values** (~22 values from the
+2. **Long-tail individual values** (21 values from the
    WI-tavas-voror sweep: `abi_call`, `association`, `base_image`,
    `build_tag_alternative_of`, `caller_invokes`, `contains_routes`,
    `crypto_flow`, `depends`, `extends_template`, `includes_class`,
    `includes_template`, `invokes_callback`, `kernel_launch`,
    `links_to`, `notifies_resource`, `renders`, `requires_resource`,
-   `script_src`, `signal_receiver`, `template_calls`, `uses_mixin`,
-   `uses_vocabulary`): each carries a fold target in its registry
-   description but the fold targets are heterogeneous (some to
-   `calls` + meta, some to `references` + dst.kind, some to
-   `event_publishes` + channel_kind, some to `depends_on` +
-   construct). These will be folded in smaller subsets — likely
-   per-language or per-pattern — in subsequent micro-phases. Each
-   such subset gets its own Phase 3 / 4b cycle with its own
+   `signal_receiver`, `template_calls`, `uses_mixin`,
+   `uses_vocabulary`; plus `script_src` at Batch 0): **DONE.** The
+   heterogeneous fold targets were adjudicated by the audit-findings 0017
+   4-lens ruling pass and shipped as WI-pumav Batches 1a–7 —
+   `references` (6), `calls` (4), `depends_on` (4), `includes` (3),
+   `dispatches_to` (2), `contains` (1), `extends` (1), `data_flows_to` (1),
+   each with the differentiating construct/mechanism/protocol in
+   `meta['ref_construct' | 'mechanism' | 'protocol' | 'call_kind' | 'refresh']`.
+   Each subset shipped its own Phase 3 / 4b cycle with its own
    bakeoff validation. The `endpoint_shape` axis of the registry
    stays populated (and `x-deprecated` annotations stay on the
    schema for these values) until that long-tail work completes.

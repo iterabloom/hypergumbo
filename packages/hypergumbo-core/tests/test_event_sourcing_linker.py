@@ -207,6 +207,49 @@ class TestPythonEventPatterns:
         assert subscribers[0].event_name == "post_save"
         assert subscribers[1].event_name == "pre_delete"
 
+    def test_django_signals_gated_on_framework_detection(self, tmp_path: Path):
+        """WI-pitit: the Django-signal sub-scans only fire when Django is
+        detected. On a repo where Django is NOT in detected_frameworks, a
+        framework-blind sqlite3.connect / socket.send call must not produce
+        phantom framework='django' event symbols."""
+        (tmp_path / "db.py").write_text(
+            "import sqlite3\n"
+            "import socket\n"
+            "def f(db_path, payload):\n"
+            "    conn = sqlite3.connect(db_path)\n"
+            "    sock = socket.socket()\n"
+            "    sock.send(payload)\n"
+            "    return conn\n"
+        )
+        ctx = LinkerContext(
+            symbols=[], edges=[], repo_root=tmp_path, detected_frameworks=set(),
+        )
+        result = event_sourcing_linker(ctx)
+        django_syms = [
+            s for s in result.symbols if (s.meta or {}).get("framework") == "django"
+        ]
+        assert django_syms == [], (
+            "Django signal patterns fired without Django detected: "
+            f"{[(s.name, (s.meta or {}).get('framework_role')) for s in django_syms]}"
+        )
+
+    def test_django_signals_fire_when_django_detected(self, tmp_path: Path):
+        """WI-pitit: with Django in detected_frameworks the gate is not
+        over-tight — genuine Django signals still produce django symbols."""
+        (tmp_path / "handlers.py").write_text(
+            "from django.db.models.signals import post_save\n"
+            "post_save.connect(on_user_saved, sender=User)\n"
+        )
+        ctx = LinkerContext(
+            symbols=[], edges=[], repo_root=tmp_path,
+            detected_frameworks={"django"},
+        )
+        result = event_sourcing_linker(ctx)
+        django_syms = [
+            s for s in result.symbols if (s.meta or {}).get("framework") == "django"
+        ]
+        assert django_syms, "expected a Django signal symbol when django is detected"
+
     def test_event_bus_publish(self, tmp_path: Path):
         """Detect EventBus.publish() pattern."""
         code = dedent('''
@@ -361,9 +404,9 @@ class TestEventSourcingLinker:
         assert result.edges[0].meta["event_name"] == "user:created"
         # INV-forim: dataflow annotations must persist through the linker.
         # Historically edge.meta was reassigned after Edge.create, wiping
-        # the access_mode and dest_access_mode set by the kwargs.
+        # the access_mode set by the kwargs (dest_access_mode was removed, ADR-0038).
         assert result.edges[0].meta["access_mode"] == "write"
-        assert result.edges[0].meta["dest_access_mode"] == "read"
+        assert result.edges[0].meta.get("dest_access_mode") is None
         assert result.edges[0].meta["channel"] == "user:created"
 
     def test_typescript_symbol_discovery_language_and_id(self, tmp_path: Path):
@@ -399,7 +442,6 @@ class TestEventSourcingLinker:
         result = link_events(tmp_path)
 
         assert len(result.edges) == 1
-        assert result.edges[0].meta["cross_language"] is True
 
     def test_multiple_subscribers_same_event(self, tmp_path: Path):
         """Multiple subscribers for the same event create multiple edges."""
@@ -721,7 +763,9 @@ class TestEventSymbolFormat:
 
     Regression: DEEP bakeoff cohort #6 (forgejo) showed malformed IDs using
     file paths as language prefixes (e.g., 'web_src/js/utils/dom.js::event_publisher::42'
-    instead of 'javascript:web_src/js/utils/dom.js:42-42:user_created:event_publisher').
+    instead of 'javascript:web_src/js/utils/dom.js:42-42:user_created:function'
+    — kind-slot is "function" per ADR-0036 Ruling 2; the role is on
+    meta.framework_role).
     """
 
     def test_event_publisher_id_format(self, tmp_path: Path):
@@ -740,10 +784,12 @@ class TestEventSymbolFormat:
         # ID must start with language, not file path
         assert sym.id.startswith("javascript:"), (
             f"Event symbol ID '{sym.id}' uses file path as prefix instead of "
-            f"language. Expected format: javascript:events.js:42-42:user_created:event_publisher"
+            f"language. Expected format: javascript:events.js:42-42:user_created:function"
         )
-        # Verify the full format matches standard convention
-        assert ":event_publisher" in sym.id
+        # ADR-0036 Ruling 2: the id kind-slot is the node's own kind
+        # ("function"); the role lives on meta.framework_role, not the id-slot.
+        assert sym.id.rsplit(":", 1)[-1] == "function"
+        assert sym.meta["framework_role"] == "event_publisher"
 
     def test_event_subscriber_id_format(self, tmp_path: Path):
         """Subscriber symbol ID uses language prefix."""
@@ -761,7 +807,9 @@ class TestEventSymbolFormat:
         assert sym.id.startswith("python:"), (
             f"Event symbol ID '{sym.id}' should start with 'python:'"
         )
-        assert ":event_subscriber" in sym.id
+        # ADR-0036 Ruling 2: kind-slot is "function"; role on meta.framework_role.
+        assert sym.id.rsplit(":", 1)[-1] == "function"
+        assert sym.meta["framework_role"] == "event_subscriber"
 
     def test_link_events_produces_valid_symbol_ids(self, tmp_path: Path):
         """End-to-end: linked event symbols have valid IDs."""

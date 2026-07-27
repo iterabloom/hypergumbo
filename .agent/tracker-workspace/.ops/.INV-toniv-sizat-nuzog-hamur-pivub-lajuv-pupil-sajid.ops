@@ -80,3 +80,18 @@
     tags: [dogfood]  # 6801
   remove:  # 6801
     tags: [dogfooding]  # 6801
+- op: update  # 54a0
+  at: '2026-06-25T07:13:54Z'  # 54a0
+  by: agent  # 54a0
+  actor: jgstern_agent  # 54a0
+  clock: 8  # 54a0
+  nonce: 54a0  # 54a0
+  set:  # 54a0
+    status: satisfied  # 54a0
+- op: discuss  # a291
+  at: '2026-06-25T07:13:54Z'  # a291
+  by: agent  # a291
+  actor: jgstern_agent  # a291
+  clock: 9  # a291
+  nonce: a291  # a291
+  message: "Fixed in commit 5306050b96 (origin/dev). Behavioral evidence — live repro: BEFORE 'search <common> --limit 20' header read 'Found 20' while 1468 matched (post-slice len), and '--limit -5' silently did matches[:-5]. AFTER: 'search func --limit 3' -> 'Found 10 symbol(s) matching \"func\" (showing 3):' (total reported, truncation disclosed); 'search func --limit -5' -> exit 2 'hypergumbo search: error: argument --limit: --limit must be a positive integer, got -5'. Root cause fixed structurally: header now computes total before slicing and reports it; --limit routes through a positive-integer argparse type factory (_positive_result_limit) rejecting <=0 and non-numeric (covers the pass-35 0/overflow sentinel ambiguity too — 0 is now rejected, not silently 'no limit'). Production-path tests: test_cli_search.py::{test_cmd_search_header_reports_total_not_post_limit, test_positive_result_limit_type_factory, test_main_search_negative_limit_rejected}. All changed source files at 100% coverage."  # a291

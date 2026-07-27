@@ -9,8 +9,13 @@ This analyzer uses tree-sitter to parse Solidity smart contract files and extrac
 - Constructor definitions
 - Modifier definitions
 - Event definitions
+- State variables + struct members (kind="field"; WI-jusus)
+- File-level constants (kind="variable"; WI-jusus)
 - Function call relationships
 - Import relationships
+- Inheritance relationships (contract A is B)
+- Function override relationships
+- Event emit references (emit Event(...))
 
 If tree-sitter with Solidity support is not installed, the analyzer
 gracefully degrades and returns an empty result.
@@ -19,7 +24,7 @@ How It Works
 ------------
 Uses TreeSitterAnalyzer base class for two-pass orchestration:
 - Pass 1: Parse all files, extract all symbols into global registry
-- Pass 2: Detect calls, imports, and resolve against global symbol registry
+- Pass 2: Detect calls, imports, inheritance, event emits, and function overrides, resolving against the global symbol registry
 
 The base class handles grammar checking, parser creation, file discovery,
 and result assembly. This module provides only the Solidity-specific
@@ -37,6 +42,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
+from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
 from hypergumbo_core.symbol_resolution import NameResolver
@@ -47,9 +53,13 @@ from hypergumbo_core.analyze.base import (
     find_child_by_type,
     iter_tree,
     make_file_id,
+    make_file_stable_id,
     make_symbol_id,
+    make_typed_stable_id,
     make_unresolved_edge,
+    make_variable_stable_id,
     node_text,
+    visibility_from_modifiers,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 
@@ -58,6 +68,14 @@ if TYPE_CHECKING:
     from hypergumbo_core.ir import AnalysisRun
 
 PASS_ID = make_pass_id("solidity")
+
+# WI-vibad: callable kinds that mint their own typed stable_id at the producer
+# (rather than via the WI-rihob name-scoped backstop, which would collide on
+# overloads). Container kinds (contract / interface / library) are NOT here —
+# they get their stable_id from the backstop.
+_CALLABLE_STABLE_ID_KINDS: frozenset[str] = frozenset(
+    {"function", "constructor", "modifier", "event"}
+)
 
 
 def find_solidity_files(repo_root: Path) -> Iterator[Path]:
@@ -80,6 +98,27 @@ def _get_enclosing_contract(node: "tree_sitter.Node", source: bytes) -> Optional
                 return node_text(name_node, source)
         current = current.parent
     return None  # pragma: no cover - defensive
+
+
+def _get_enclosing_struct(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
+    """Walk up to the nearest enclosing struct name (owner of a struct member)."""
+    current = node.parent
+    while current is not None:
+        if current.type == "struct_declaration":
+            name_node = find_child_by_type(current, "identifier")
+            if name_node is not None:
+                return node_text(name_node, source)
+            return None  # pragma: no cover - a struct declaration always names
+        current = current.parent
+    return None  # pragma: no cover - a struct_member is always under a struct
+
+
+def _solidity_value_type(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
+    """The declared ``type_name`` text of a state-variable / member / constant."""
+    type_node = find_child_by_type(node, "type_name")
+    if type_node is not None:
+        return node_text(type_node, source)
+    return None  # pragma: no cover - a value declaration always has a type_name
 
 
 def _get_enclosing_function_solidity(
@@ -228,11 +267,41 @@ def _extract_symbols_from_tree(
         prefix: str = "",
         signature: Optional[str] = None,
         modifiers: Optional[list[str]] = None,
+        complexity: bool = False,
     ) -> Symbol:
-        """Helper to create and register a symbol."""
+        """Helper to create and register a symbol.
+
+        ``complexity=True`` (callable kinds — function / constructor /
+        modifier) populates ``cyclomatic_complexity`` and ``line_span``
+        per INV-loguk. It is gated rather than unconditional so a non-callable
+        symbol (contract / interface / event) does not silently aggregate
+        every branch node in its whole subtree.
+        """
         start_line = node.start_point[0] + 1
         end_line = node.end_point[0] + 1
         full_name = f"{prefix}.{name}" if prefix else name
+
+        # WI-vibad: callable-kind declarations (function / constructor / modifier
+        # / event) are deliberately excluded from the WI-rihob name-scoped
+        # backstop (``_KIND_STABLE_ID_FACTORIES``) because a name-only key
+        # collides on overloads (two ``Token.mint(...)`` bind to one id). They
+        # must carry the typed producer stable_id — the signature keeps overloads
+        # distinct — exactly as the field path (``add_value_symbol``) already
+        # does. Container kinds (contract / interface / library) leave
+        # ``stable_id=None`` here and receive it from the backstop.
+        callable_stable_id: Optional[str] = None
+        if kind in _CALLABLE_STABLE_ID_KINDS:
+            # _extract_solidity_signature always returns a "(...)" string, so
+            # the fallback is a real signature, never empty.
+            norm_sig = signature or _extract_solidity_signature(node, source)
+            callable_stable_id = make_typed_stable_id(
+                kind,
+                norm_sig,
+                visibility_from_modifiers(modifiers),
+                name=name,
+                qualified_name=full_name,
+                file_stable_id=file_stable_id,
+            )
 
         symbol = Symbol(
             id=make_symbol_id("solidity", file_path, start_line, end_line, full_name, kind),
@@ -248,13 +317,81 @@ def _extract_symbols_from_tree(
             ),
             origin=PASS_ID,
             origin_run_id=run_id,
+            stable_id=callable_stable_id,
             signature=signature,
             modifiers=modifiers or [],
+            cyclomatic_complexity=(
+                compute_cyclomatic_complexity(node, "solidity") if complexity else None
+            ),
+            line_span=(end_line - start_line + 1) if complexity else None,
         )
         analysis.symbols.append(symbol)
         analysis.symbol_by_name[name] = symbol
         analysis.symbol_by_name[full_name] = symbol
+        # Register the defining node so the base-class auto-stamp loop
+        # (TreeSitterAnalyzer.analyze) computes shape_id (and any NatSpec doc
+        # comment) for this body-bearing symbol. Solidity is a plain
+        # TreeSitterAnalyzer subclass and does not override analyze(), so
+        # populating node_for_symbol is all that is needed to stamp shape_id —
+        # making these symbols visible to the repeat-finder clone detector,
+        # which groups by (language, shape_id) and drops None (WI-lutob).
+        analysis.node_for_symbol[symbol.id] = node
         return symbol
+
+    # WI-jusus (emission-parity): file-identity anchor so same-named state
+    # variables / constants in different files hash to distinct stable_ids.
+    file_stable_id = make_file_stable_id("solidity", file_path)
+
+    def add_value_symbol(
+        node: "tree_sitter.Node",
+        name: str,
+        kind: str,
+        full_name: str,
+        vtype: Optional[str],
+        modifiers: list[str],
+        is_exported: bool,
+    ) -> None:
+        """Append a field/variable Symbol (WI-jusus).
+
+        Deliberately NOT registered in ``symbol_by_name`` (nor, via
+        ``SolidityAnalyzer.register_symbol``, in the global registry): a state
+        variable / member / constant is a data anchor, never a call target, so
+        keeping it out of resolution prevents a bare-named value from shadowing
+        a same-named function. It still reaches output/search/centrality/io-
+        boundaries because the output symbol set is analysis.symbols.
+        """
+        start_line = node.start_point[0] + 1
+        end_line = node.end_point[0] + 1
+        if kind == "field":
+            stable_id = make_typed_stable_id(
+                "field", vtype or "",
+                visibility_from_modifiers(modifiers),
+                name=name, qualified_name=full_name,
+                file_stable_id=file_stable_id,
+            )
+        else:
+            stable_id = make_variable_stable_id("solidity", file_path, name)
+        analysis.symbols.append(Symbol(
+            id=make_symbol_id(
+                "solidity", file_path, start_line, end_line, full_name, kind
+            ),
+            name=full_name,
+            kind=kind,
+            language="solidity",
+            path=file_path,
+            span=Span(
+                start_line=start_line,
+                end_line=end_line,
+                start_col=node.start_point[1],
+                end_col=node.end_point[1],
+            ),
+            origin=PASS_ID,
+            origin_run_id=run_id,
+            stable_id=stable_id,
+            signature=vtype,
+            modifiers=modifiers,
+            is_exported=is_exported,
+        ))
 
     for node in iter_tree(tree.root_node):
         # Contract declaration
@@ -286,12 +423,12 @@ def _extract_symbols_from_tree(
                 current_contract = _get_enclosing_contract(node, source) or ""
                 signature = _extract_solidity_signature(node, source)
                 modifiers = _extract_visibility_modifiers(node, source)
-                add_symbol(func_name, "function", node, current_contract, signature=signature, modifiers=modifiers)
+                add_symbol(func_name, "function", node, current_contract, signature=signature, modifiers=modifiers, complexity=True)
 
         # Constructor definition
         elif node.type == "constructor_definition":
             current_contract = _get_enclosing_contract(node, source) or ""
-            add_symbol("constructor", "constructor", node, current_contract)
+            add_symbol("constructor", "constructor", node, current_contract, complexity=True)
 
         # Modifier definition
         elif node.type == "modifier_definition":
@@ -299,7 +436,7 @@ def _extract_symbols_from_tree(
             if name_node:
                 mod_name = node_text(name_node, source)
                 current_contract = _get_enclosing_contract(node, source) or ""
-                add_symbol(mod_name, "modifier", node, current_contract)
+                add_symbol(mod_name, "modifier", node, current_contract, complexity=True)
 
         # Event definition
         elif node.type == "event_definition":
@@ -308,6 +445,47 @@ def _extract_symbols_from_tree(
                 event_name = node_text(name_node, source)
                 current_contract = _get_enclosing_contract(node, source) or ""
                 add_symbol(event_name, "event", node, current_contract)
+
+        # State variable (contract storage) -> field (WI-jusus emission-parity).
+        # The security-critical persistent storage: taint source/sink, io-boundary
+        # anchor, and what functions read/write. Function-body locals use a distinct
+        # node (variable_declaration inside variable_declaration_statement) and never
+        # reach here, so the local-leak class is structurally impossible.
+        elif node.type == "state_variable_declaration":
+            name_node = find_child_by_type(node, "identifier")
+            if name_node is not None:
+                name = node_text(name_node, source)
+                owner = _get_enclosing_contract(node, source) or ""
+                vtype = _solidity_value_type(node, source)
+                vis_node = find_child_by_type(node, "visibility")
+                visibility = node_text(vis_node, source) if vis_node is not None else None
+                modifiers = [visibility] if visibility else []
+                full_name = f"{owner}.{name}" if owner else name
+                add_value_symbol(
+                    node, name, "field", full_name, vtype, modifiers,
+                    visibility == "public",
+                )
+
+        # Struct member -> field (owner = the struct type).
+        elif node.type == "struct_member":
+            name_node = find_child_by_type(node, "identifier")
+            if name_node is not None:
+                name = node_text(name_node, source)
+                owner = _get_enclosing_struct(node, source) or ""
+                vtype = _solidity_value_type(node, source)
+                full_name = f"{owner}.{name}" if owner else name
+                add_value_symbol(node, name, "field", full_name, vtype, [], True)
+
+        # File-level constant -> variable (contract-level constants parse as
+        # state_variable_declaration and are handled above as fields).
+        elif node.type == "constant_variable_declaration":
+            parent = node.parent
+            if parent is not None and parent.type == "source_file":
+                name_node = find_child_by_type(node, "identifier")
+                if name_node is not None:
+                    name = node_text(name_node, source)
+                    vtype = _solidity_value_type(node, source)
+                    add_value_symbol(node, name, "variable", name, vtype, [], True)
 
 
 def _extract_edges_from_tree(
@@ -397,7 +575,12 @@ def _extract_edges_from_tree(
                                         dst=parent_sym.id,
                                         edge_type="inherits",
                                         line=child.start_point[0] + 1,
-                                        confidence=0.95,
+                                        # vocab:F2 (WI-lojug): AST-derived from the
+                                        # `is` (inheritance_specifier) clause — not a
+                                        # call. Without this, the Edge.create default
+                                        # 'ast_call_direct' would mislabel a contract
+                                        # inheritance as a direct function call.
+                                        evidence_type="ast_extends",
                                         origin=PASS_ID,
                                         origin_run_id=run_id,
                                     )
@@ -535,10 +718,13 @@ def _extract_edges_from_tree(
                         dst=event_sym.id,
                         edge_type="references",
                         line=node.start_point[0] + 1,
-                        confidence=0.95,
+                        # vocab:F2 (WI-lojug): a name-resolved reference to the
+                        # event symbol, not a direct call — avoid the
+                        # 'ast_call_direct' default on this non-call edge.
+                        evidence_type="reference",
                         origin=PASS_ID,
                         origin_run_id=run_id,
-                        meta={"construct": "event_emit"},
+                        meta={"ref_construct": "event_emit"},
                     )
                     edges.append(edge)
 
@@ -586,6 +772,10 @@ def _extract_edges_from_tree(
                         edge_type="overrides",
                         line=child_sym.span.start_line,
                         confidence=0.85,
+                        # vocab:F2 (WI-lojug): resolved by name-matching child
+                        # functions against the inheritance hierarchy, not from a
+                        # direct call — avoid the 'ast_call_direct' default.
+                        evidence_type="type_hierarchy",
                         origin=PASS_ID,
                         origin_run_id=run_id,
                     )
@@ -615,6 +805,22 @@ class SolidityAnalyzer(TreeSitterAnalyzer):
     def __init__(self) -> None:
         super().__init__()
         self._file_symbols: dict[str, list[Symbol]] = {}
+
+    def register_symbol(self, symbol: Symbol, global_symbols: dict) -> None:
+        """Keep field/variable symbols OUT of the call-resolution registry (WI-jusus).
+
+        A state variable / struct member / file-level constant is a data anchor,
+        never a call target (a ``public`` state variable's auto-generated getter is
+        a synthesized function, not this symbol). Excluding them prevents a
+        bare-named value from clobbering a same-named function's flat registry key
+        or being a suffix-matched spurious call target — closing the call-graph
+        integrity vector at one chokepoint. They remain in ``analysis.symbols``
+        (search / centrality / io-boundaries) since the output set is built
+        independently of this registry.
+        """
+        if symbol.kind in ("field", "variable"):
+            return
+        super().register_symbol(symbol, global_symbols)
 
     def extract_symbols_from_file(
         self, tree: "tree_sitter.Tree", source: bytes,

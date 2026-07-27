@@ -54,3 +54,18 @@
   clock: 5  # bcde
   nonce: bcde  # bcde
   message: "root-cause family cross-link (t1); keeps existing parent (connections-sweep 2026-06-08T1900Z)"  # bcde
+- op: update  # 36c0
+  at: '2026-07-12T09:08:48Z'  # 36c0
+  by: agent  # 36c0
+  actor: jgstern_agent  # 36c0
+  clock: 6  # 36c0
+  nonce: 36c0  # 36c0
+  set:  # 36c0
+    status: done  # 36c0
+- op: discuss  # ec27
+  at: '2026-07-12T09:08:48Z'  # ec27
+  by: agent  # ec27
+  actor: jgstern_agent  # ec27
+  clock: 7  # ec27
+  nonce: ec27  # ec27
+  message: "Fixed in PR #591 (selfh dev 3caccf12f1). The 'production functions' denominator (production_callables: non-test function/method symbols excluding ADR-0031 synth linker stand-ins; dead = production - reachable) is now documented via a shared production_fn_doc in both the test-coverage and dead-code-maybe --help epilogs (dead-code-maybe had none) and a spec sentence. Wave-4 contract-accuracy."  # ec27

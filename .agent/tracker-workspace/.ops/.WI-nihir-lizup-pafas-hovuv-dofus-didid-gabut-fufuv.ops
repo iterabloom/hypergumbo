@@ -19,3 +19,18 @@
     pr_ref:  # a631
     description: "**Defect.** A documented `limits.skipped_languages` field has a setter with zero callers, so it is always empty even when its documented trigger condition occurs.\n\n**Evidence.** `limits.skipped_languages` is documented (spec §184: \"If a specific grammar fails to load, that language is skipped with explicit limits.skipped_languages[] logging\"; spec §957) to log languages skipped because their grammar failed to load. Its only writer is `add_skipped_language` (limits.py:114-117). A grep across all packages/*/src/ for callers of `add_skipped_language` (and any other write to skipped_languages) returns ZERO hits. The field is `[]` in the map. A sibling field for the different \"no files matched\" condition (limits.skipped_passes) does work (66 entries) — only the grammar-load-failure field is dead.\n\n**Contract.** The setter should be wired into the grammar-load-failure path, so a grammar that fails to load appears in `skipped_languages` as the spec describes.\n\n**Consequence.** The field always reports \"no languages skipped,\" even when grammar loading fails — a silent false assurance that every detected language was analyzed."  # a631
     fields: {}  # a631
+- op: update  # 0c78
+  at: '2026-07-11T03:50:37Z'  # 0c78
+  by: agent  # 0c78
+  actor: jgstern_agent  # 0c78
+  clock: 2  # 0c78
+  nonce: 0c78  # 0c78
+  set:  # 0c78
+    status: done  # 0c78
+- op: discuss  # e047
+  at: '2026-07-11T03:50:37Z'  # e047
+  by: agent  # e047
+  actor: jgstern_agent  # e047
+  clock: 3  # e047
+  nonce: e047  # e047
+  message: "Fixed (PR merged as c31fea4459). Root cause: Limits.add_skipped_language (limits.py:140) had ZERO non-test callers (grep across packages/*/src -> only the definition + tests; verify_claims.py:491 even carried a 'dead field — WI-nihir' comment), so limits.skipped_languages was structurally always []; a language the profile DETECTED but for which no analyzer pass ran (tree-sitter grammar failed to load, unsupported language, or a crashed pass — the skipped branch routes to limits.skipped_passes and never appends an AnalysisRun) was silently absent from the honesty signal. Fix (structural, single chokepoint): new finalize._detected_unanalyzed_languages(ctx) computes detected = profile.languages keys - CONFIG_LANGUAGES, analyzed = union of the languages covered by the analyzer whose pass_id appears in analysis_runs (pass_id==RegisteredAnalyzer.name per all_analyzers.py:218; languages via the same 'set(languages) if languages else {name}' convention as all_analyzers.py:202), and _finalize_skipped_into_limits drains sorted(detected - analyzed) through the previously-dead setter before committing behavior_map['limits']. One site covers grammar-load-failure, missing-analyzer, and crashed-pass causes with no per-analyzer edit. No schema change (skipped_languages was already always-emitted; value [] -> populated). BEHAVIORAL EVIDENCE: live 'hypergumbo run' on a synthetic python+Makefile repo now emits limits.skipped_languages == ['makefile'] (makefile detected in profile, no makefile analyzer — only linker/build-target passes) where it was [] before. Production-path tests in test_finalize.py: test_skipped_languages_populated_for_detected_unanalyzed_language (go detected, only python analyzed -> ['go']), _empty_when_all_detected_languages_analyzed ([]), _excludes_config_only_languages (json filtered, haskell flagged). 100% coverage. (declared-fields F2 keystone; siblings WI-muzus/WI-zusok analysis_depth + WI-togop not_captured tracked separately.)"  # e047

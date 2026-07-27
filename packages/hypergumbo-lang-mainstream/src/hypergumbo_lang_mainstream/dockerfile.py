@@ -16,16 +16,16 @@ How It Works
 ------------
 1. Check if tree-sitter-dockerfile is available
 2. If not available, return skipped result (not an error)
-3. Two-pass analysis:
-   - Pass 1: Parse all files, extract stages and symbols
-   - Pass 2: Resolve COPY --from references between stages
-4. Create edges for dependencies between stages
+3. Single-pass analysis: parse each file once and, in the same AST
+   traversal, extract stages/ports/env/arg symbols and emit base_image
+   and depends_on (COPY --from) edges using a stage registry built
+   during the traversal.
 
 Why This Design
 ---------------
 - Optional dependency keeps base install lightweight
 - Uses tree-sitter-dockerfile package for grammar
-- Two-pass allows cross-file stage resolution
+- The stage registry persists across files within the single pass, allowing COPY --from / base-image references to resolve to stages defined in other Dockerfiles.
 - Container-specific: stages, ports, env vars are first-class symbols
 """
 from __future__ import annotations
@@ -194,12 +194,12 @@ def _process_dockerfile_tree(
                 edge = Edge.create(
                     src=symbol_id,
                     dst=dst_id,
-                    edge_type="base_image",
+                    edge_type="depends_on",
                     line=start_line,
-                    confidence=0.95,
                     origin=PASS_ID,
                     evidence_type="dockerfile_from",
                     origin_run_id=run_id,
+                    meta={"ref_construct": "dockerfile_stage"},
                 )
                 edges.append(edge)
 
@@ -309,7 +309,6 @@ def _process_dockerfile_tree(
                         dst=src_stage_id,
                         edge_type="depends_on",
                         line=start_line,
-                        confidence=0.95,
                         origin=PASS_ID,
                         evidence_type="dockerfile_copy_from",
                         origin_run_id=run_id,

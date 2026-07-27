@@ -51,3 +51,18 @@
   clock: 5  # 7ccd
   nonce: 7ccd  # 7ccd
   message: "2026-06-10 design-interview ruling (ADR-0040, merged in PR #4181): evidence_lang is kept and centrally stamped at Edge.create, defaulting to the src language — replacing the per-emitter population that left it 100% null. Waits on the central-stamping implementation; this work is sequenced before the schema-generation content pass."  # 7ccd
+- op: update  # e7fe
+  at: '2026-07-11T07:26:39Z'  # e7fe
+  by: agent  # e7fe
+  actor: jgstern_agent  # e7fe
+  clock: 6  # e7fe
+  nonce: e7fe  # e7fe
+  set:  # e7fe
+    status: done  # e7fe
+- op: discuss  # 83bf
+  at: '2026-07-11T07:26:40Z'  # 83bf
+  by: agent  # 83bf
+  actor: jgstern_agent  # 83bf
+  clock: 7  # 83bf
+  nonce: 83bf  # 83bf
+  message: "Central-stamped Edge.evidence_lang per ADR-0040 (Accepted, D10) — PR merged as f59a286b. Root cause: evidence_lang (the lang input to the ADR-0039 (language, evidence_type) confidence matrix) was declared + plumbed through Edge.create/to_dict/from_dict but ~no producer passed it: 132 of 168 Edge.create-calling modules omit it, including EVERY mainstream analyzer (py/js_ts/java/go/rust/...) and EVERY linker, so it was null on ~100% of the 110533-edge corpus (only ~25 long-tail analyzers stamp it, ~0 self-corpus edges). ADR-0040 rules KEEP + CENTRAL-STAMP at Edge.create. Fix: Edge.create, when evidence_lang is None, derives it from the src id language slot (src.split(':',1)[0]; ADR-0036 Ruling 1 normative; src is the producer's own well-formed node), GUARDED by all_known_languages() catalog membership (memoized lru_cache helper) so a non-canonical src (latex rel_path:file) yields None not garbage, gated on 'if evidence_lang is None' so it never clobbers the ~25 explicit producers. external_symbol placeholders + <external>/<unknown> sentinels carry a real language in slot 0 (ADR-0036 Ruling 3) so they stamp correctly. BEHAVIORAL EVIDENCE: (1) production-path unit tests in test_ir.py: test_edge_create_central_stamps_evidence_lang_from_src (python:... src, no explicit lang -> evidence_lang=='python', was None; RED->GREEN), _does_not_clobber_explicit (explicit 'go' stays 'go'), _yields_none_for_non_catalog_src (latex src -> None), _stamped_evidence_lang_round_trips. (2) LIVE REPRO: a fresh 'hypergumbo run' on a 2-function python module (a() calls b()) now emits meta.evidence_lang=='python' on ALL 3 edges (distribution {'python': 3}) where it was null on 100% before. No SCHEMA_VERSION bump (additive against the already-declared optional field). No current confidence change (derive_confidence keys only on evidence_type+is_resolved today) — forward-looking plumbing for the future language-conditioned matrix. 100% coverage. (Corpus-wide evidence_lang population-fraction census on a fresh full substrate is a natural follow-up validation; closure rests on the live-verified per-edge stamp.)"  # 83bf

@@ -37,6 +37,7 @@ import logging
 from typing import TYPE_CHECKING
 
 from ..ir import PASS_VERSION, AnalysisRun, Edge, make_pass_id
+from ..paths import is_test_file
 from .registry import LinkerContext, LinkerResult, register_linker
 
 if TYPE_CHECKING:
@@ -44,21 +45,8 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-PASS_ID = make_pass_id("decorator-dispatch")
+PASS_ID = make_pass_id("decorator-dispatch-linker")
 
-# Path segments that indicate test files
-_TEST_PATH_SEGMENTS = frozenset({"tests", "test", "testing", "conftest"})
-
-
-def _is_test_path(path: str) -> bool:
-    """Check if a path belongs to a test file."""
-    parts = path.replace("\\", "/").split("/")
-    basename = parts[-1] if parts else ""
-    return (
-        any(p in _TEST_PATH_SEGMENTS for p in parts)
-        or basename.startswith("test_")
-        or basename.endswith("_test.py")
-    )
 
 # Maps decorator name → list of dispatch site function names.
 # Each entry defines a "registry family": handlers registered with the
@@ -124,7 +112,7 @@ def _find_dispatch_sites(
 
 
 @register_linker(
-    "decorator-dispatch",
+    "decorator-dispatch-linker",
     priority=15,
     description="Resolve decorator-based registry dispatch patterns",
     # CNF: decorator-based registry dispatch is canonical in Python (Flask,
@@ -141,7 +129,7 @@ def link_decorator_dispatch(ctx: LinkerContext) -> LinkerResult:
     decorated = _find_decorated_symbols(ctx.symbols, DISPATCH_DECORATOR_PATTERNS)
     handlers_by_family: dict[str, list[Symbol]] = {}
     for sym, dec_name in decorated:
-        if _is_test_path(sym.path):
+        if is_test_file(sym.path):
             continue
         handlers_by_family.setdefault(dec_name, []).append(sym)
 

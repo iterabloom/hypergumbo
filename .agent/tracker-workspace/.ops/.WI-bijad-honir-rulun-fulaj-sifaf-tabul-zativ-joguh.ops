@@ -38,3 +38,18 @@
     tags: [dogfood]  # d0ec
   remove:  # d0ec
     tags: [dogfooding]  # d0ec
+- op: update  # bbc9
+  at: '2026-07-17T08:48:15Z'  # bbc9
+  by: agent  # bbc9
+  actor: jgstern_agent  # bbc9
+  clock: 4  # bbc9
+  nonce: bbc9  # bbc9
+  set:  # bbc9
+    status: done  # bbc9
+- op: discuss  # a629
+  at: '2026-07-17T08:48:15Z'  # a629
+  by: agent  # a629
+  actor: jgstern_agent  # a629
+  clock: 5  # a629
+  nonce: a629  # a629
+  message: "Resolved in PR #703 (merged, dev 90b7a2b10c). NON-REPRODUCED under 6-way concurrency (cpu_count=6): 2x pretix (88 ARs) + 6x caddy (72 ARs) surveys -> 0 passes varied in files_analyzed (filing claimed 18/84 — a signal 8 runs would catch). MECHANISM CLOSED STRUCTURALLY: the per-pass concurrent os.walk race is gone — file discovery routes through the shared, sorted discovery.FileIndex (single os.walk at startup, deterministically ordered, get_file_index/set_file_index), so every pass sees the same stable file set. Added the regression GUARD (test_files_analyzed_is_deterministic_across_runs): pipeline 3x on a multi-language + Flask-route + DB-execute fixture (concurrent analyzers + the scan-heavy route/db linkers the filing named), assert files_analyzed identical per pass — passes. HONEST LIMIT: a fast small-fixture guard can't reproduce a scale/timing race, so the primary evidence is the 8-run real-repo non-reproduction + the FileIndex mechanism; the guard locks it forward."  # a629

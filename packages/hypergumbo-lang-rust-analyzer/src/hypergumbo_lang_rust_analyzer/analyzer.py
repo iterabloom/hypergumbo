@@ -27,8 +27,9 @@ convention.
 
 When the opt-in gate returns False (the default for every session
 that hasn't set ``HYPERGUMBO_RUST_ANALYZER=1`` or passed
-``--backend rust-analyzer``), this analyzer returns an empty
-:class:`AnalysisResult` immediately. No file walk, no subprocess.
+``--backend rust-analyzer``), this analyzer returns an
+:class:`AnalysisResult` marked ``skipped=True`` (``skip_reason="rust-analyzer
+backend not enabled"``) immediately. No file walk, no subprocess.
 ``rust.py`` takes care of Rust analysis in that case.
 
 Provenance
@@ -38,11 +39,20 @@ Successful SCIP-sourced Symbols already carry ``origin="scip"`` from
 preserves the provenance marker the WI-nohah description calls out.
 Downstream tools can filter on ``symbol.origin`` to trust-weight SCIP-
 derived symbols separately from tree-sitter-derived ones.
+
+Diagnostics
+-----------
+When the backend IS enabled but a SCIP run produces zero ``origin='scip'``
+edges despite the repo containing ``.rs`` files (the wasmtime-OOM-class silent
+fall-through), the analyzer surfaces a Python ``UserWarning`` (WI-todon) via
+the ``_emit_user_warning`` callback threaded into
+``try_analyze_with_rust_analyzer`` — the failure is no longer swallowed.
 """
 
 from __future__ import annotations
 
 import warnings
+from collections.abc import Callable
 from pathlib import Path
 
 from hypergumbo_core.analyze.base import AnalysisResult
@@ -67,8 +77,29 @@ def _disk_source_reader(path: str) -> bytes | None:
     """
     try:
         return Path(path).read_bytes()
-    except (OSError, ValueError):  # pragma: no cover — pure defensive
+    except (OSError, ValueError):
         return None
+
+
+def _repo_anchored_reader(repo_root: Path) -> Callable[[str], bytes | None]:
+    """Build a source reader that resolves SCIP ``doc.relative_path`` against
+    ``repo_root``, not the process CWD (WI-kilih).
+
+    ``rust-analyzer scip`` emits paths relative to the indexed workspace, so the
+    reassignment pass hands this reader a repo-relative path like ``src/lib.rs``.
+    Reading it bare resolves against ``os.getcwd()``; when the survey runs from
+    anywhere other than ``repo_root`` (absolute-path surveys, monorepo sub-roots,
+    CI runners) the read fails, the stable_id parity reassignment is silently
+    skipped, and the SCIP symbol keeps a raw-moniker stable_id that diverges from
+    the tree-sitter ``rust.py`` anchor — breaking the WI-zakub byte-parity contract
+    (ADR-0035 v7). Anchoring at ``repo_root`` closes the gap; ``pathlib`` leaves an
+    already-absolute path unchanged.
+    """
+
+    def _read(relative_path: str) -> bytes | None:
+        return _disk_source_reader(str(repo_root / relative_path))
+
+    return _read
 
 
 def _emit_user_warning(message: str) -> None:
@@ -143,13 +174,24 @@ def analyze_rust_with_scip(repo_root: Path) -> AnalysisResult:
     scip`` expect.
     """
     if not should_use_rust_analyzer_backend():
-        return AnalysisResult()
+        # Opt-in SCIP backend disabled (the default). Self-declare the skip so
+        # the orchestrator records an honest ``skipped_passes`` entry with this
+        # reason rather than the generic "no files matched" (which would be
+        # wrong — the repo may well contain .rs files; the backend simply did
+        # not run). WI-didil.
+        return AnalysisResult(
+            skipped=True, skip_reason="rust-analyzer backend not enabled",
+        )
 
     result = try_analyze_with_rust_analyzer(
-        repo_root, _disk_source_reader, log=_emit_user_warning,
+        repo_root, _repo_anchored_reader(repo_root), log=_emit_user_warning,
     )
     if result is None:
-        return AnalysisResult()
+        # Backend on but SCIP invoke/translate produced nothing (WI-nohah
+        # fall-through). Self-declare so this surfaces as a reasoned skip.
+        return AnalysisResult(
+            skipped=True, skip_reason="rust-analyzer backend produced no output",
+        )
 
     symbols, edges = result
     if not _has_scip_origin_edge(edges) and _repo_has_rs_files(repo_root):

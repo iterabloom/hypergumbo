@@ -6,6 +6,9 @@ Computes summary statistics from nodes and edges:
 - Average confidence across edges
 - Per-language breakdowns
 - Per-supply-chain-tier breakdowns
+- A ``debug`` sub-block with introspection counts
+  (``unique_paths_in_analysis``, ``analyzed_file_symbols``, and an
+  optional ``profile_files_sum`` when a ``profile`` is supplied)
 
 These metrics help agents quickly assess the scope and quality
 of an analysis without traversing the full graph. The supply chain
@@ -63,7 +66,17 @@ def compute_metrics(
     # discovered but couldn't fully analyze (e.g., over the size cap, or
     # syntax-error fail) and now rides in ``debug.profile_files_sum``
     # for introspection.
-    unique_paths = len({n.get("path") for n in nodes if n.get("path")})
+    # INV-mozaf: the ``<external>`` sentinel path on external_symbol boundary
+    # nodes is a placeholder, not a real file — exclude it so total_files
+    # counts only path-bearing source files (the invariant is "total_files ==
+    # number of files that contributed at least one node"). Without this, the
+    # single ``<external>`` bucket inflates the count by 1 on any repo with
+    # external references.
+    unique_paths = len({
+        n.get("path")
+        for n in nodes
+        if n.get("path") and n.get("path") != "<external>"
+    })
     file_kind_count = sum(1 for n in nodes if n.get("kind") == "file")
     total_files = unique_paths
     profile_files_sum: int | None = None
@@ -89,18 +102,33 @@ def compute_metrics(
         node_id_to_lang[node_id] = lang
 
         if lang not in languages:
-            languages[lang] = {"nodes": 0, "edges": 0}
+            languages[lang] = {"nodes": 0, "edges": 0, "files": 0}
         languages[lang]["nodes"] += 1
+        # WI-ninaj: per-language file rollup — count file-kind nodes per
+        # language so ``metrics.languages.<lang>.files`` reads the real count
+        # instead of an always-0 placeholder. Node-derived (file-kind node
+        # count), consistent with ``total_files`` being the distinct node-path
+        # count rather than the over-counting profile-language sum.
+        if node.get("kind") == "file":
+            languages[lang]["files"] += 1
 
     # Count edges per language (based on source node's language)
     for edge in edges:
         src_id = edge.get("src", "")
         lang = node_id_to_lang.get(src_id, "unknown")
         if lang not in languages:
-            languages[lang] = {"nodes": 0, "edges": 0}
+            languages[lang] = {"nodes": 0, "edges": 0, "files": 0}
         languages[lang]["edges"] += 1
 
-    # Group by supply chain tier
+    # Group by supply chain tier. Populated by iterating the ANALYZED node
+    # set below, so it enumerates only tiers that carry >=1 analyzed node —
+    # in practice the analyzed tiers 1-3 (first_party / internal_dep /
+    # external_dep). Tier 4 (derived) is excluded from analysis (spec §14),
+    # emits no nodes, and therefore never gets a bucket here; it surfaces
+    # solely as ``supply_chain_summary.derived_skipped``. The resulting
+    # tier-set disagreement between the two summary surfaces is intentional,
+    # not an omission (WI-nibul): an always-empty ``derived`` bucket here
+    # would be a structurally-always-0 field, which ADR-0040 forbids.
     by_supply_chain_tier: Dict[str, Dict[str, int]] = {}
     node_id_to_tier: Dict[str, str] = {}
 
@@ -111,23 +139,33 @@ def compute_metrics(
         node_id_to_tier[node_id] = tier_name
 
         if tier_name not in by_supply_chain_tier:
-            by_supply_chain_tier[tier_name] = {"nodes": 0, "edges": 0}
+            by_supply_chain_tier[tier_name] = {
+                "nodes": 0, "edges": 0, "edges_incident": 0,
+            }
         by_supply_chain_tier[tier_name]["nodes"] += 1
 
-    # Count edges per supply chain tier (based on source node's tier).
-    # INV-jukok: skip edges whose src isn't resolved in node_id_to_tier
-    # rather than minting an "unknown" tier with 0 nodes. The phantom
-    # ``by_supply_chain_tier["unknown"]`` entry (23 edges, 0 nodes on
-    # self-analysis) was the writer-contract sub-pattern-3 symptom of
-    # this gap: tier counts must reference a real classified node.
+    # Count edges per supply chain tier. Two views (WI-modom):
+    # - ``edges``: counted once by the SOURCE node's tier. Each edge counts once,
+    #   so the per-tier ``edges`` sum reconciles to the resolved-src edge total.
+    #   Third-party tier 3 is a graph SINK (dependencies are referenced, not
+    #   sources), so its ``edges`` legitimately reads ~0 (INV-higop: tier 2 is
+    #   internal / project-side per ADR-0041 — a source that CAN have out-edges,
+    #   not lumped with tier 3 as an external-dependency sink).
+    # - ``edges_incident``: counts an edge once per DISTINCT resolved endpoint
+    #   tier (either-endpoint), so a tier's actual graph contribution is visible
+    #   (a tier-3 dependency referenced by N edges shows N incident, not 0). This
+    #   view double-counts cross-tier edges by design and does NOT sum to the
+    #   total (the src-tier ``edges`` view is the reconciling one).
+    # INV-jukok: an unresolved endpoint (not in node_id_to_tier) is skipped
+    # rather than minting an "unknown" bucket — tier counts reference real nodes.
     for edge in edges:
-        src_id = edge.get("src", "")
-        tier_name = node_id_to_tier.get(src_id)
-        if tier_name is None:
-            continue
-        # Tier was registered when the node was visited above; no new
-        # buckets are minted here, so unresolved srcs simply don't count.
-        by_supply_chain_tier[tier_name]["edges"] += 1
+        src_tier = node_id_to_tier.get(edge.get("src", ""))
+        dst_tier = node_id_to_tier.get(edge.get("dst", ""))
+        if src_tier is not None:
+            by_supply_chain_tier[src_tier]["edges"] += 1
+        for incident_tier in {src_tier, dst_tier}:
+            if incident_tier is not None:
+                by_supply_chain_tier[incident_tier]["edges_incident"] += 1
 
     debug: Dict[str, Any] = {
         "unique_paths_in_analysis": unique_paths,

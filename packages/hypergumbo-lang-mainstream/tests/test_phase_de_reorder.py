@@ -94,6 +94,13 @@ GOLDEN_FIRSTPARTY_STABLE_IDS = frozenset({
     "sha256:d89075745234437a",  # pkg/models.py Item.total:method
     "sha256:36d8981e5e413f29",  # pkg/models.py Order:class
     "sha256:4e2034fe2ff7a100",  # pkg/service.py Service.stop:method
+    # WI-dagif (file-anchor:F1, node-bearing slice): service.py and models.py
+    # have content nodes but no imports/calls, so they now get synthesized
+    # kind="file" anchors (app.py already had one via its import edges). Proven
+    # purely additive — the 10 identities above are UNCHANGED, so the
+    # reorder-neutrality invariant still holds.
+    "sha256:11d642e4bc07a11a",  # pkg/service.py file anchor
+    "sha256:68d4dd5cd2cc022f",  # pkg/models.py file anchor
 })
 
 # The tier-4 DERIVED file-level symbol that must be filtered out (the defect precondition).
@@ -113,7 +120,9 @@ def _run(tmp_path: Path) -> dict:
 def _first_party_stable_ids(data: dict) -> frozenset:
     return frozenset(
         n["stable_id"] for n in data["nodes"]
-        if "<external>" not in n["id"] and ":unresolved" not in n["id"]
+        # Exclude synthetic boundary nodes; per ADR-0036 Ruling 2 their id
+        # kind-slot is now external_symbol (was :unresolved).
+        if "<external>" not in n["id"] and ":external_symbol" not in n["id"]
     )
 
 

@@ -57,3 +57,34 @@
   set: {}  # f9c5
   add:  # f9c5
     isbefore: [WI-zaviv-viruf-jidim-zotuj-saraz-zovuj-pupof-zugoz]  # f9c5
+- op: update  # a307
+  at: '2026-07-12T05:38:04Z'  # a307
+  by: agent  # a307
+  actor: jgstern_agent  # a307
+  clock: 6  # a307
+  nonce: a307  # a307
+  set: {}  # a307
+  add:  # a307
+    tags: [wave5]  # a307
+- op: discuss  # df9a
+  at: '2026-07-12T05:38:04Z'  # df9a
+  by: agent  # df9a
+  actor: jgstern_agent  # df9a
+  clock: 7  # df9a
+  nonce: df9a  # df9a
+  message: "Deferred to end of Wave 5 per owner decision 2026-07-12 (see INV-firuh discussion for full rationale: ADR-0042 campaign blocks zero P1s transitively; execute last to avoid cli.py resolver-merge overlap with P1 structural work). Tagged wave5; status stays todo_soft per project future-wave convention. ADR-0042 remains Accepted."  # df9a
+- op: update  # ccd5
+  at: '2026-07-14T20:38:06Z'  # ccd5
+  by: agent  # ccd5
+  actor: jgstern_agent  # ccd5
+  clock: 8  # ccd5
+  nonce: ccd5  # ccd5
+  set:  # ccd5
+    status: done  # ccd5
+- op: discuss  # 2552
+  at: '2026-07-14T20:38:06Z'  # 2552
+  by: agent  # 2552
+  actor: jgstern_agent  # 2552
+  clock: 9  # 2552
+  nonce: '2552'  # 2552
+  message: "Done — merged PR #643 (5a7b0f5a0c), ADR-0042 S2-CLI. `hypergumbo survey` is the primary verb producing survey.json; `run` is a deprecated stderr-warning alias. BEHAVIORAL REPRO (live, XDG-scoped cache): `hypergumbo survey <repo>` -> exit 0, writes survey.json (0 legacy files, no warning); `hypergumbo run <repo>` -> exit 0 + stderr \"warning: 'hypergumbo run' is deprecated and will be removed in a future release; use 'hypergumbo survey' instead.\" Default write + INV-somup by-name filter, 3 cache-readers (_peek_cached_results / sketch auto-discover / find_latest_behavior_map), cmd_sketch artifact glob (_glob_survey_artifacts), discovery DEFAULT_EXCLUDES, and sketch ADDITIONAL_FILES_EXCLUDES all moved to survey*.json; legacy hypergumbo.results*.json still resolved on read. The rename surfaced + this PR fixed a cold-cache reload NPE in generate_sketch, an artifact-glob under-report, and a walk-exclude gap (all caught by the coverage gate). 11062 tests / 100% coverage on changed files. Removal of the run alias + legacy filename aliases at window-close is a separate follow-up (does not gate this)."  # 2552

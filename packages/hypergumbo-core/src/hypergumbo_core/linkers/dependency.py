@@ -80,28 +80,76 @@ def _extract_root_package(import_path: str) -> str | None:
     return None
 
 
-def _build_dependency_lookup(toml_symbols: list[Symbol]) -> dict[str, Symbol]:
-    """Build a lookup table from dependency names to TOML symbols.
+def _build_dependency_lookup(
+    toml_symbols: list[Symbol],
+) -> dict[str, list[Symbol]]:
+    """Build a lookup table from dependency names to their TOML symbols.
 
-    Returns a dict mapping normalized dependency names to their Symbol.
+    Returns a dict mapping each normalized dependency name to a LIST of Symbols —
+    one per manifest that declares the name. A monorepo commonly declares the
+    same dependency (``rich``, ``pyyaml``) in several package manifests; keying to
+    a single Symbol (last-writer-wins) misattributed every importer's
+    ``depends_on_manifest`` edge to whichever manifest was processed last
+    (WI-timon). ``link_dependencies`` disambiguates by nearest-enclosing manifest.
     Both original and normalized names are added for Rust crates.
     """
-    lookup: dict[str, Symbol] = {}
+    lookup: dict[str, list[Symbol]] = {}
 
     for sym in toml_symbols:
         if sym.kind != "dependency":
             continue
 
         # Add original name
-        lookup[sym.name] = sym
+        lookup.setdefault(sym.name, []).append(sym)
 
         # For Rust crates, also add normalized name (hyphen -> underscore)
         if sym.path.endswith("Cargo.toml"):
             normalized = _normalize_crate_name(sym.name)
             if normalized != sym.name:
-                lookup[normalized] = sym
+                lookup.setdefault(normalized, []).append(sym)
 
     return lookup
+
+
+def _manifest_dir(manifest_path: str) -> str:
+    """Directory containing a manifest; ``''`` for a repo-root manifest."""
+    return manifest_path.rsplit("/", 1)[0] if "/" in manifest_path else ""
+
+
+def _select_nearest_manifest_dep(
+    candidates: list[Symbol], importing_path: str | None
+) -> tuple[Symbol, bool]:
+    """Pick the dependency Symbol whose manifest most tightly encloses the
+    importing file (WI-timon).
+
+    Returns ``(chosen_symbol, is_ambiguous_fallback)``. With a single candidate the
+    choice is unambiguous. With several, the manifest whose directory is the
+    LONGEST prefix of ``importing_path`` wins (a repo-root manifest, dir ``''``,
+    encloses everything at length 0, so a nested package manifest beats it). When
+    the importing path is unknown, or falls under no candidate's manifest dir,
+    fall back to a DETERMINISTIC first-by-id (not the old input-order
+    last-writer-wins) and mark the result ambiguous.
+    """
+    if len(candidates) == 1:
+        return candidates[0], False
+
+    if importing_path is not None:
+        best: Symbol | None = None
+        best_len = -1
+        for cand in candidates:
+            man_dir = _manifest_dir(cand.path)
+            encloses = (
+                man_dir == ""
+                or importing_path == man_dir
+                or importing_path.startswith(man_dir + "/")
+            )
+            if encloses and len(man_dir) > best_len:
+                best_len = len(man_dir)
+                best = cand
+        if best is not None:
+            return best, False
+
+    return sorted(candidates, key=lambda c: c.id)[0], True
 
 
 def link_dependencies(
@@ -125,13 +173,18 @@ def link_dependencies(
     edges: list[Edge] = []
     seen_pairs: set[tuple[str, str]] = set()
 
-    # Build lookup table for dependencies
+    # Build lookup table for dependencies (name -> list of per-manifest symbols)
     dep_lookup = _build_dependency_lookup(toml_symbols)
 
     if not dep_lookup:
         # No dependencies to link
         run.duration_ms = int((time.time() - start_time) * 1000)
         return DependencyLinkResult(edges=edges, run=run)
+
+    # WI-timon: the importing file's path (from its code Symbol) drives the
+    # nearest-enclosing-manifest disambiguation when a dependency name is
+    # declared in more than one monorepo manifest.
+    file_path_by_id = {s.id: s.path for s in code_symbols}
 
     # Process import edges
     for edge in code_edges:
@@ -143,10 +196,15 @@ def link_dependencies(
         if root_pkg is None:
             continue
 
-        # Look up in dependency table
-        dep_sym = dep_lookup.get(root_pkg)
-        if dep_sym is None:
+        # Look up in dependency table (may span several manifests)
+        candidates = dep_lookup.get(root_pkg)
+        if not candidates:
             continue
+
+        # Attribute to the manifest that most tightly encloses the importer.
+        dep_sym, ambiguous = _select_nearest_manifest_dep(
+            candidates, file_path_by_id.get(edge.src)
+        )
 
         # Avoid duplicate edges for same file -> same dependency
         pair = (edge.src, dep_sym.id)
@@ -154,17 +212,22 @@ def link_dependencies(
             continue
         seen_pairs.add(pair)
 
-        # Create the link edge
+        # Create the link edge. An unambiguous nearest-manifest match is
+        # confident (0.9); an ambiguous fallback (importer not resolvable to a
+        # path, or under no candidate's manifest dir) carries the registered
+        # ``disambiguation_fallback`` flag with its INV-zuhub contract
+        # (confidence <= 0.5) so consumers can filter uncertain attributions.
         link_edge = Edge.create(
             src=edge.src,  # The file that imports
             dst=dep_sym.id,  # The dependency declaration in manifest
             edge_type="depends_on_manifest",
             line=edge.line,
-            confidence=0.9,  # High confidence but not certain
+            confidence=0.5 if ambiguous else 0.9,
             origin=PASS_ID,
             origin_run_id=run.execution_id,
             evidence_type="import_to_manifest",
             derived_from=[edge.src, dep_sym.id],
+            meta={"disambiguation_fallback": True} if ambiguous else None,
         )
         edges.append(link_edge)
 

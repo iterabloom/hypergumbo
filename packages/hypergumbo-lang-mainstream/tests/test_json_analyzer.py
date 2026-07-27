@@ -209,6 +209,9 @@ def test_analyze_tsconfig(tmp_path):
     # Find tsconfig symbol
     configs = [s for s in result.symbols if s.kind == "file" and s.meta and s.meta.get("config_format") == "tsconfig"]
     assert len(configs) >= 1
+    # ADR-0036 Ruling 2: the id kind-slot is the node's own kind (``file``), not
+    # the ``tsconfig`` fold-source (which survives on meta.config_format).
+    assert configs[0].id.rsplit(":", 1)[-1] == "file"
 
     # Cluster E sub-case (b) per audit-findings 0010: per-reference Symbol
     # was dropped; the references Edge carries the relationship.

@@ -19,3 +19,36 @@
     pr_ref:  # 77a6
     description: "**Mechanism.** The Python analyzer does not emit a calls edge for the open() builtin in most syntactic forms, so a function whose only I/O is open() produces either no edge or only the downstream .read()/.close(). Fresh hypergumbo run on /tmp/opentest (deterministic): 'f = open(path)' -> 0 edges; 'with open(path) as f: f.read()' -> only calls->external:read (open not captured); 'open(path).read()' -> 0 edges; 'data = open(path)' -> 0 edges.\n\n**Substrate corroboration.** builtins.open produces only 2 edges total (python:external:0-0:open:unresolved); the other 21 open-targeting edges are module-qualified (gzip.open 15 / os.open 3 / tarfile.open 2), 22/23 is_resolved=False. On the full substrate io-boundaries yields fs_read=561 + fs_write=102 but 100% of fs_read primitives are pathlib.Path.* / os.* — ZERO from builtins.open. hypergumbo's own code uses pathlib/os so the gap is masked; a codebase using open() for file I/O gets zero fs boundaries.\n\n**Consequence (security/audit).** An auditor running io-boundaries on code that uses the open() idiom to read/write files is told there are no filesystem boundaries — a recall gap. This is the edge-emission half of F126.A1 (the suppression half is the sibling row on .read()/.write()/.close() into external_potential via ambiguous_names).\n\n**Related (distinct).** Distinct from WI-zavad (JS emits zero edges) and WI-foduh (text-vs-JSON count). Cross-links to the io-boundaries ambiguous_names suppression sibling. Source: dogfood_tranche_07 F126.A1a, fresh-run reproduced."  # 77a6
     fields: {}  # 77a6
+- op: update  # 7dc6
+  at: '2026-07-02T16:29:57Z'  # 7dc6
+  by: agent  # 7dc6
+  actor: jgstern_agent  # 7dc6
+  clock: 2  # 7dc6
+  nonce: 7dc6  # 7dc6
+  set:  # 7dc6
+    status: done  # 7dc6
+  add:  # 7dc6
+    tags: [awaits_bakeoff_validation]  # 7dc6
+- op: discuss  # 6686
+  at: '2026-07-02T16:29:58Z'  # 6686
+  by: agent  # 6686
+  actor: jgstern_agent  # 6686
+  clock: 3  # 6686
+  nonce: '6686'  # 6686
+  message: "Done via PR #385 (merged FF). _process_call's terminal bare-Name call branch now emits a calls edge python:builtins:0-0:open:unresolved (dst_ref module=builtins) for bare builtin I/O constructors (open) via EXTERNAL_CONSTRUCTOR_TYPES — the io_primitives/python.yaml builtins rows (fs_read/fs_write functions=[open]) were dead (no edge targeted them). Behavioral evidence (production-path extract_nodes, the item's filed repro): a module with open() in assign / with / chained-.read() / return forms now yields exactly 1 calls edge to python:builtins:0-0:open:unresolved per call (was 0 in every form). Orthogonal to WI-fuvuj's receiver .read()/.write() edges (module=file). core+mainstream 100% coverage in isolation; CI passed. Tagged awaits_bakeoff_validation: adds an edge on every Python open() call corpus-wide (edge / io-boundary / dead-code counts shift)."  # 6686
+- op: update  # 3374
+  at: '2026-07-03T03:33:52Z'  # 3374
+  by: agent  # 3374
+  actor: jgstern_agent  # 3374
+  clock: 4  # 3374
+  nonce: '3374'  # 3374
+  set: {}  # 3374
+  remove:  # 3374
+    tags: [awaits_bakeoff_validation]  # 3374
+- op: discuss  # 5931
+  at: '2026-07-03T03:33:53Z'  # 5931
+  by: agent  # 5931
+  actor: jgstern_agent  # 5931
+  clock: 5  # 5931
+  nonce: '5931'  # 5931
+  message: "Bakeoff-validated (downstream): pretix fs_read/fs_write open-dependent chains correct, no regression. Drained."  # 5931

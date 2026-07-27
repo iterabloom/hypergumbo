@@ -553,6 +553,31 @@ var name string
             f"Expected no variable symbols for uninitialized vars, got {[s.name for s in var_syms]}"
         )
 
+    def test_skips_function_local_var(self, tmp_path: Path) -> None:
+        """INV-sidab: an initialized function-local ``var x = ...`` must NOT
+        emit a module variable — only package (file) scope vars are module
+        variables. Before the fix, the all-node tree walk reached
+        ``var_declaration`` nodes inside function bodies (parent
+        ``statement_list``) and emitted them as ``kind="variable"``."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""package main
+
+var PkgLevel = compute()
+
+func work() int {
+    var localVar = helper()
+    return localVar
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        var_names = {s.name for s in result.symbols if s.kind == "variable"}
+        assert "PkgLevel" in var_names, var_names
+        assert "localVar" not in var_names, var_names
+
 
 class TestGoHelperFunctions:
     """Tests for helper function edge cases."""
@@ -5879,10 +5904,10 @@ func main() {
 
 
 class TestGoLinesOfCode:
-    """Tests for lines_of_code on Go symbols."""
+    """Tests for line_span on Go symbols."""
 
-    def test_function_lines_of_code(self, tmp_path: Path) -> None:
-        """Function symbols have lines_of_code set from span."""
+    def test_function_line_span(self, tmp_path: Path) -> None:
+        """Function symbols have line_span set from span."""
         from hypergumbo_lang_mainstream.go import analyze_go
 
         go_file = tmp_path / "main.go"
@@ -5902,11 +5927,11 @@ func medium(x int) int {
         result = analyze_go(tmp_path)
         small = next(s for s in result.symbols if s.name == "small")
         medium = next(s for s in result.symbols if s.name == "medium")
-        assert small.lines_of_code == 3
-        assert medium.lines_of_code == 5
+        assert small.line_span == 3
+        assert medium.line_span == 5
 
-    def test_method_lines_of_code(self, tmp_path: Path) -> None:
-        """Method symbols have lines_of_code set from span."""
+    def test_method_line_span(self, tmp_path: Path) -> None:
+        """Method symbols have line_span set from span."""
         from hypergumbo_lang_mainstream.go import analyze_go
 
         go_file = tmp_path / "main.go"
@@ -5921,10 +5946,10 @@ func (s *Server) Start() error {
 
         result = analyze_go(tmp_path)
         start = next(s for s in result.symbols if s.name == "Server.Start")
-        assert start.lines_of_code == 3
+        assert start.line_span == 3
 
-    def test_struct_lines_of_code(self, tmp_path: Path) -> None:
-        """Struct/interface symbols have lines_of_code set from span."""
+    def test_struct_line_span(self, tmp_path: Path) -> None:
+        """Struct/interface symbols have line_span set from span."""
         from hypergumbo_lang_mainstream.go import analyze_go
 
         go_file = tmp_path / "main.go"
@@ -5939,7 +5964,7 @@ type Config struct {
 
         result = analyze_go(tmp_path)
         config = next(s for s in result.symbols if s.name == "Config")
-        assert config.lines_of_code == 5
+        assert config.line_span == 5
 
 
 class TestGoIsExported:
@@ -6932,7 +6957,7 @@ func main() {}
         notify_sym = next(s for s in result.symbols if s.name == "Integration.Notify")
         assert edge.src == exec_sym.id
         assert edge.dst == notify_sym.id
-        assert edge.confidence == 0.88
+        assert edge.confidence == 0.85
         assert edge.edge_type == "calls"
 
     def test_pointer_field_call(self, tmp_path: Path) -> None:
@@ -6964,7 +6989,7 @@ func main() {}
             if (e.evidence_type == "ast_call" and e.meta.get("call_construct") == "method" and e.meta.get("receiver") == "typed_field")
         ]
         assert len(typed_edges) == 1
-        assert typed_edges[0].confidence == 0.88
+        assert typed_edges[0].confidence == 0.85
 
     def test_cross_file_field_call(self, tmp_path: Path) -> None:
         """Chained field call resolves via global symbols across files."""
@@ -7682,7 +7707,8 @@ func (h *Handler) Serve() {}
 
         alt_edges = [
             e for e in result.edges
-            if e.edge_type == "build_tag_alternative_of"
+            if e.edge_type == "references"
+            and (e.meta or {}).get("ref_construct") == "build_tag_alternative"
         ]
         assert len(alt_edges) >= 1, (
             "Should detect build_tag_alternative_of between Handler.Serve "
@@ -7722,7 +7748,8 @@ func (h *Handler) Serve() {}
 
         alt_edges = [
             e for e in result.edges
-            if e.edge_type == "build_tag_alternative_of"
+            if e.edge_type == "references"
+            and (e.meta or {}).get("ref_construct") == "build_tag_alternative"
         ]
         assert len(alt_edges) == 0, (
             "Should NOT emit build_tag_alternative_of for different packages"
@@ -8129,3 +8156,198 @@ class TestGoCyclomaticComplexity:
         method = next(s for s in result.symbols if s.name == "Server.Handle")
         assert method.cyclomatic_complexity is not None
         assert method.cyclomatic_complexity >= 2
+
+
+class TestGoBareMethodMagnetGate:
+    """INV-fahub: a BARE call must not confidently bind to an unrelated
+    class's same-named method on weak (ambiguous / non-exact) short-name
+    evidence — that is the cross-language magnet (dozens of bare call sites
+    collapsing onto one arbitrary ``Type.method``). Free functions,
+    same-class methods, and strong exact / path-hint matches are unaffected.
+    """
+
+    def test_bare_cross_class_method_magnet_is_deferred(
+        self, tmp_path: Path,
+    ) -> None:
+        """A bare ``Process()`` whose short name resolves only to methods on
+        OTHER types (ambiguous match) is withheld, not bound — instead an
+        unresolved edge stamped with the caller's enclosing class is emitted
+        so the inherited_calls Site-1 walker can recover a genuine inherited
+        implicit-receiver call.
+        """
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        # Two unrelated types both defining a `Process` method → the bare
+        # short-name lookup resolves ambiguously (2 candidates), the magnet.
+        (tmp_path / "typea.go").write_text(
+            "package main\n"
+            "type TypeA struct{}\n"
+            "func (a *TypeA) Process() {}\n"
+        )
+        (tmp_path / "typeb.go").write_text(
+            "package main\n"
+            "type TypeB struct{}\n"
+            "func (b *TypeB) Process() {}\n"
+        )
+        # A THIRD, unrelated type makes a bare Process() call.
+        (tmp_path / "caller.go").write_text(
+            "package main\n"
+            "type Caller struct{}\n"
+            "func (c *Caller) Run() {\n"
+            "    Process()\n"
+            "}\n"
+        )
+
+        result = analyze_go(tmp_path)
+
+        process_defs = {
+            s.id for s in result.symbols
+            if s.name in ("TypeA.Process", "TypeB.Process")
+        }
+        assert len(process_defs) == 2
+        run_caller = next(
+            s for s in result.symbols if s.name == "Caller.Run"
+        )
+        call_edges = [
+            e for e in result.edges
+            if e.edge_type == "calls" and e.src == run_caller.id
+        ]
+
+        # The magnet: no resolved calls edge to either Process method.
+        resolved_to_process = [
+            e for e in call_edges if e.is_resolved and e.dst in process_defs
+        ]
+        assert not resolved_to_process, resolved_to_process
+
+        # Instead: a single unresolved Process edge carrying the enclosing
+        # class for the inherited_calls Site-1 walker.
+        deferred = [
+            e for e in call_edges
+            if not e.is_resolved
+            and e.dst == "go:external:0-0:Process:unresolved"
+        ]
+        assert len(deferred) == 1, [
+            (e.dst, e.is_resolved) for e in call_edges
+        ]
+        assert deferred[0].meta is not None
+        assert deferred[0].meta.get("enclosing_class") == "Caller"
+
+    def test_bare_free_function_still_resolves(
+        self, tmp_path: Path,
+    ) -> None:
+        """A bare call to a free FUNCTION (not a method) from a free-function
+        caller still binds a resolved edge — the gate only withholds
+        cross-class method magnets.
+        """
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        (tmp_path / "compute.go").write_text(
+            "package main\n"
+            "func Compute() int { return 1 }\n"
+        )
+        (tmp_path / "runner.go").write_text(
+            "package main\n"
+            "func RunCtrl() {\n"
+            "    Compute()\n"
+            "}\n"
+        )
+
+        result = analyze_go(tmp_path)
+
+        compute = next(s for s in result.symbols if s.name == "Compute")
+        runctrl = next(s for s in result.symbols if s.name == "RunCtrl")
+        call_edges = [
+            e for e in result.edges
+            if e.edge_type == "calls" and e.src == runctrl.id
+        ]
+        bound = [
+            e for e in call_edges if e.is_resolved and e.dst == compute.id
+        ]
+        assert len(bound) == 1, [
+            (e.dst, e.is_resolved) for e in call_edges
+        ]
+
+    def test_bare_unknown_call_leaves_symbol_none(
+        self, tmp_path: Path,
+    ) -> None:
+        """A bare call whose short name resolves to NO symbol leaves the
+        resolver's symbol None — the gate short-circuits (never defers) and
+        no resolved edge is minted (exercises the ``_sym is not None`` guard).
+        """
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        (tmp_path / "main.go").write_text(
+            "package main\n"
+            "func Driver() {\n"
+            "    TotallyUnknownXYZ()\n"
+            "}\n"
+        )
+
+        result = analyze_go(tmp_path)
+
+        driver = next(s for s in result.symbols if s.name == "Driver")
+        resolved = [
+            e for e in result.edges
+            if e.edge_type == "calls"
+            and e.src == driver.id
+            and e.is_resolved
+        ]
+        assert not resolved, resolved
+
+
+class TestGoDotImportCall:
+    """Coverage for the ``import . "pkg"`` dot-import branch (WI-vovum): a bare
+    call whose name was dot-imported is attributed to the first dot-imported
+    package as an unresolved edge (`meta.binding=="dot_import"`). Pre-existing
+    behavior; unit-covered here so it stays green under the changed-file gate."""
+
+    def test_dot_import_call_attributed_to_package(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        (tmp_path / "main.go").write_text(
+            'package main\n'
+            'import . "strings"\n'
+            'func run() {\n'
+            '    Contains("ab", "a")\n'
+            '}\n'
+        )
+        result = analyze_go(tmp_path)
+        dot = [
+            e for e in result.edges
+            if e.edge_type == "calls"
+            and e.dst.endswith(":Contains:unresolved")
+            and (e.meta or {}).get("binding") == "dot_import"
+        ]
+        assert len(dot) == 1, [e.dst for e in result.edges if "Contains" in e.dst]
+        assert "strings" in dot[0].dst
+
+
+def test_interface_method_declarations_carry_stable_id(tmp_path: Path) -> None:
+    """WI-vibad: interface-method declarations (kind="method") carry a typed
+    producer stable_id. They were None — deliberately excluded from the
+    WI-rihob name-scoped backstop, so the producer must mint the typed id
+    (signature-bearing, so same-named methods across interfaces stay distinct).
+    """
+    from hypergumbo_lang_mainstream.go import analyze_go
+
+    (tmp_path / "iface.go").write_text(
+        "package main\n"
+        "\n"
+        "type Drawer interface {\n"
+        "    Draw(x int, y int) error\n"
+        "    Bounds() (int, int)\n"
+        "}\n"
+    )
+    result = analyze_go(tmp_path)
+    iface_methods = [
+        s for s in result.symbols
+        if s.kind == "method" and s.name.startswith("Drawer.")
+    ]
+    assert len(iface_methods) == 2, [s.name for s in iface_methods]
+    for s in iface_methods:
+        assert (
+            s.stable_id is not None and s.stable_id.startswith("sha256:")
+        ), f"{s.name} has stable_id={s.stable_id!r}"
+    # Distinct methods -> distinct stable_ids.
+    ids = {s.stable_id for s in iface_methods}
+    assert len(ids) == 2

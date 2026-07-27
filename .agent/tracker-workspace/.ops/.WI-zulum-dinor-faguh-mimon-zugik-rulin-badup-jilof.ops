@@ -1,0 +1,37 @@
+- op: create  # f3c1
+  at: '2026-07-25T06:32:59Z'  # f3c1
+  by: agent  # f3c1
+  actor: jgstern_agent  # f3c1
+  clock: 1  # f3c1
+  nonce: f3c1  # f3c1
+  data:  # f3c1
+    kind: work_item  # f3c1
+    title: "run_behavior_map.connectivity default drifted True->False; RCT public-API pin fails"  # f3c1
+    status: todo_soft  # f3c1
+    priority: 2  # f3c1
+    parent:  # f3c1
+    tags:  # f3c1
+    - regression  # f3c1
+    - test  # f3c1
+    - ci  # f3c1
+    isbefore: []  # f3c1
+    duplicate_of: []  # f3c1
+    not_duplicate_of: []  # f3c1
+    pr_ref:  # f3c1
+    description: "run_behavior_map's public-API default for `connectivity` is False on dev (897a207870), but the RCT public-API pinning guard tests/test_rct_public_api_pinned.py::test_run_behavior_map_critical_params_pinned documents/pins the baseline as True. The guard fails:\n\n  AssertionError: run_behavior_map.connectivity default changed from True to False; RCT variants assume the documented baseline. Coordinate before merging.\n  assert False == True\n\nReproduces natively in the sandbox (NOT a CI-container artifact). Surfaced when the GitHub/Woodpecker migration's first real Woodpecker run (GitHub dev refresh push, pipeline 6) accidentally ran the full top-level tests/ suite. Pre-existing and unrelated to the migration; Codeberg's dead CI had been hiding it. It will redden the full-suite cron's test-agent-infra step (pytest tests/).\n\nResolution requires a decision:\n  (a) if connectivity=False was an intentional default change -> update the pin in test_rct_public_api_pinned.py AND coordinate the RCT variants that assume the True baseline; or\n  (b) if it was an accidental regression -> restore run_behavior_map's connectivity default to True.\n\nRepro:\n  python -m pytest tests/test_rct_public_api_pinned.py::test_run_behavior_map_critical_params_pinned -o addopts=\"\" -q"  # f3c1
+    fields: {}  # f3c1
+- op: update  # a0cf
+  at: '2026-07-26T03:05:21Z'  # a0cf
+  by: agent  # a0cf
+  actor: jgstern_agent  # a0cf
+  clock: 2  # a0cf
+  nonce: a0cf  # a0cf
+  set:  # a0cf
+    status: done  # a0cf
+- op: discuss  # 9d05
+  at: '2026-07-26T03:05:21Z'  # 9d05
+  by: agent  # 9d05
+  actor: jgstern_agent  # 9d05
+  clock: 3  # 9d05
+  nonce: 9d05  # 9d05
+  message: "Fixed in GitHub PR #6 via Path 1 (human-approved). Root cause: the run_survey/run_behavior_map connectivity default was intentionally flipped True->False in 4c8a8f66c1 (D12: centrality-ranked default; --connectivity opt-in). That updated the argparse --help but left the RCT pin + 3 docstrings/help strings asserting the old True default, so the pin went permanently red the first time real GitHub/Woodpecker CI ran the full suite (Codeberg's dead CI had hidden it). Fix: the pin now guards connectivity's parameter PRESENCE (the surface the RCT actually depends on), not its default VALUE (a product knob the RCT overrides by passing connectivity=True explicitly); the 3 stale docs are reconciled to the centrality-ranked default. Behavioral evidence: re-ran the filed repro 'python -m pytest tests/test_rct_public_api_pinned.py::test_run_behavior_map_critical_params_pinned -o addopts=\"\" -q' -> now passes (previously AssertionError: connectivity default changed from True to False). RCT-coordination: mgumbo/dgumbo re-runs must pass connectivity=True EXPLICITLY for the connectivity-aware baseline; recorded in the pin breadcrumb comment + PR."  # 9d05

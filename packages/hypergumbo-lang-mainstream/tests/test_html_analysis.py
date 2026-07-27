@@ -29,10 +29,14 @@ def test_detects_script_src_tag(tmp_path: Path) -> None:
     assert len(html_nodes) == 1
 
     # Should have an edge from HTML to the script
-    script_edges = [e for e in data["edges"] if e["type"] == "script_src"]
+    script_edges = [e for e in data["edges"] if e["type"] == "references" and (e.get("meta") or {}).get("ref_construct") == "script_src"]
     assert len(script_edges) == 1
     assert "index.html" in script_edges[0]["src"]
     assert "app.js" in script_edges[0]["dst"]
+    # INV-vavat / ADR-0023: <script src> is a `references` relationship with
+    # the ref_construct in meta — NOT the old endpoint-shape edge_type "script_src".
+    assert script_edges[0]["type"] == "references"
+    assert script_edges[0]["meta"]["ref_construct"] == "script_src"
 
 
 def test_detects_multiple_script_tags(tmp_path: Path) -> None:
@@ -56,7 +60,7 @@ def test_detects_multiple_script_tags(tmp_path: Path) -> None:
     data = json.loads(out_path.read_text())
 
     # Should have three script_src edges
-    script_edges = [e for e in data["edges"] if e["type"] == "script_src"]
+    script_edges = [e for e in data["edges"] if e["type"] == "references" and (e.get("meta") or {}).get("ref_construct") == "script_src"]
     assert len(script_edges) == 3
 
 
@@ -83,7 +87,7 @@ def test_ignores_inline_scripts_for_edges(tmp_path: Path) -> None:
     assert len(html_nodes) == 1
 
     # But no script_src edges (inline scripts don't reference external files)
-    script_edges = [e for e in data["edges"] if e["type"] == "script_src"]
+    script_edges = [e for e in data["edges"] if e["type"] == "references" and (e.get("meta") or {}).get("ref_construct") == "script_src"]
     assert len(script_edges) == 0
 
 
@@ -104,7 +108,7 @@ def test_handles_both_quote_styles(tmp_path: Path) -> None:
 
     data = json.loads(out_path.read_text())
 
-    script_edges = [e for e in data["edges"] if e["type"] == "script_src"]
+    script_edges = [e for e in data["edges"] if e["type"] == "references" and (e.get("meta") or {}).get("ref_construct") == "script_src"]
     assert len(script_edges) == 2
 
     srcs = {e["dst"] for e in script_edges}
@@ -133,7 +137,7 @@ def test_skips_unreadable_html_files(tmp_path: Path) -> None:
     assert "valid.html" in html_nodes[0]["path"]
 
     # Should have the edge from valid file
-    script_edges = [e for e in data["edges"] if e["type"] == "script_src"]
+    script_edges = [e for e in data["edges"] if e["type"] == "references" and (e.get("meta") or {}).get("ref_construct") == "script_src"]
     assert len(script_edges) == 1
 
 

@@ -31,3 +31,25 @@
     tags: [dogfood]  # a174
   remove:  # a174
     tags: [dogfooding]  # a174
+- op: discuss  # 2d8d
+  at: '2026-07-17T22:38:58Z'  # 2d8d
+  by: agent  # 2d8d
+  actor: jgstern_agent  # 2d8d
+  clock: 3  # 2d8d
+  nonce: 2d8d  # 2d8d
+  message: "Bulk-verify 2026-07-17: premise CONFIRMED still valid but purely cosmetic (P4 right). The 5 pass_ids still lack '-linker' (decorator_dispatch.py:48, di_resolution.py:64, inherited_calls.py:122, method_call_recovery.py:73, type_hierarchy.py:55); the other 51 linkers carry it. BUT nothing enforces or depends on the suffix -- no validator (catalog checks registration only), no production consumer keys on '-linker' (grep endswith('-linker') empty); the stated rationale (consumers substring-match) is unimplemented. Fix = ~10 producer lines (align @register_linker name + PASS_ID) + ~4 exact-match test-assertion updates (test_linker_di_resolution.py:960, test_type_hierarchy_linker.py:863/970/972); catalog + substring checks follow automatically. COST: changes user-visible origin strings (Symbol.origin/Edge.origin/AnalysisRun.pass_id) + hypergumbo explain output + invalidates cached artifacts for these 5. DEFERRED pending owner do/defer (uniformity vs churn); if done, add a test enforcing the convention so it can't re-drift."  # 2d8d
+- op: update  # e57e
+  at: '2026-07-19T21:26:55Z'  # e57e
+  by: agent  # e57e
+  actor: jgstern_agent  # e57e
+  clock: 4  # e57e
+  nonce: e57e  # e57e
+  set:  # e57e
+    status: done  # e57e
+- op: discuss  # de74
+  at: '2026-07-19T21:26:55Z'  # de74
+  by: agent  # de74
+  actor: jgstern_agent  # de74
+  clock: 5  # de74
+  nonce: de74  # de74
+  message: "Done via PR #751 (merged f2042cf8a2). 6 linker pass_ids gained the -linker suffix — the 5 filed (decorator-dispatch/di-resolution/inherited-calls/method-call-recovery/type-hierarchy) + receiver-type-dispatch (a 6th surfaced by the enforcing ratchet, filed after WI-nuduv). Registration name + module PASS_ID aligned; test_pass_metadata::test_every_linker_emits_pass_id_with_linker_suffix ratchet enforces the convention (view_template per-framework delegates, which emit the shared view-template-linker at runtime, are documented allowlist exceptions). Behavioral: all 6 emit <name>-linker in AnalysisRun.pass_id/Symbol.origin/Edge.origin; full suite green + ARCHITECTURE.md regenerated."  # de74

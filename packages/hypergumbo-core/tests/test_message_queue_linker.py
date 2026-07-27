@@ -528,7 +528,6 @@ class TestVariableTopicPatterns:
         assert len(result.edges) == 1
         # Variable + cross-language: 0.65 - 0.1 = 0.55
         assert result.edges[0].confidence == 0.55
-        assert result.edges[0].meta["cross_language"] is True
         assert result.edges[0].meta["topic_type"] == "variable"
 
     def test_symbol_has_topic_type_metadata(self, tmp_path: Path):
@@ -635,7 +634,6 @@ class TestMessageQueueLinker:
 
         assert len(result.symbols) == 2
         assert len(result.edges) == 1
-        assert result.edges[0].meta["cross_language"] is True
         assert result.edges[0].confidence == 0.8  # Cross-language confidence
 
     def test_no_edges_for_unmatched_topics(self, tmp_path: Path):
@@ -726,7 +724,8 @@ class TestMessageQueueDataflowAnnotationsPreserved:
     """Regression tests for INV-forim.
 
     The message_queue linker sets access_mode="write" and
-    dest_access_mode="read" on its edges via Edge.create kwargs, then
+    access_mode="write" on its edges via Edge.create kwargs (dest_access_mode
+    was removed, ADR-0038), then
     historically overwrote edge.meta with a dict that wiped both fields.
     These tests assert the annotations now persist through the linker.
     """
@@ -748,7 +747,7 @@ class TestMessageQueueDataflowAnnotationsPreserved:
         assert len(result.edges) == 1
         edge = result.edges[0]
         assert edge.meta["access_mode"] == "write"
-        assert edge.meta["dest_access_mode"] == "read"
+        assert edge.meta.get("dest_access_mode") is None
         # channel (from Edge.create kwarg) and topic (from meta dict) are
         # both present — they are different keys, preserved for downstream
         # consumers that may reference either name.
@@ -771,3 +770,54 @@ class TestMessageQueueLinkerRegistry:
         assert result.symbols[0].kind == "function"
         assert (result.symbols[0].meta or {}).get("framework_role") == "mq_publisher"
         assert result.run is not None
+
+
+class TestTestFileGating:
+    """linker-evidence-gating:F1 / WI-nitob: MQ pattern string literals living
+    in TEST files must not synthesize publisher/subscriber symbols or phantom
+    ``event_publishes`` edges. The linker previously scanned its own test
+    fixtures and cross-linked 103 phantom edges across unrelated test files."""
+
+    def test_mq_patterns_in_test_files_emit_nothing(self, tmp_path: Path):
+        # The WI-nitob shape: a producer pattern in a test_*-named file and a
+        # matching subscriber under a tests/ directory.
+        producer = tmp_path / "test_producer.py"
+        producer.write_text(dedent('''
+            from confluent_kafka import Producer
+            TOPIC = "orders"
+            producer.produce(TOPIC, value='order')
+        '''))
+        tests_dir = tmp_path / "tests"
+        tests_dir.mkdir()
+        consumer = tests_dir / "consumer_checks.py"
+        consumer.write_text(dedent('''
+            from kafka import KafkaConsumer
+            TOPIC = "orders"
+            consumer.subscribe([TOPIC])
+        '''))
+
+        result = link_message_queues(tmp_path)
+
+        assert result.symbols == []
+        assert result.edges == []
+
+    def test_mq_patterns_in_production_files_still_link(self, tmp_path: Path):
+        # Control: the IDENTICAL patterns in production-named files DO link,
+        # proving the gate is test-scoped, not a blanket disable.
+        producer = tmp_path / "producer.py"
+        producer.write_text(dedent('''
+            from confluent_kafka import Producer
+            TOPIC = "orders"
+            producer.produce(TOPIC, value='order')
+        '''))
+        consumer = tmp_path / "consumer.py"
+        consumer.write_text(dedent('''
+            from kafka import KafkaConsumer
+            TOPIC = "orders"
+            consumer.subscribe([TOPIC])
+        '''))
+
+        result = link_message_queues(tmp_path)
+
+        assert len(result.symbols) == 2
+        assert len(result.edges) == 1

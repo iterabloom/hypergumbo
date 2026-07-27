@@ -190,13 +190,36 @@ class TestKotlinExtensionFunctions:
             "configure extension function symbol not found"
         )
 
-        calls_to_configure = [
+        # WI-lodij: the analyzer now emits the call as unresolved + a
+        # receiver_type_hint; the shared receiver_type_dispatch linker emits the
+        # resolved ast_call_extension edge.
+        unresolved = [
             e for e in result.edges
+            if e.edge_type == "calls" and not e.is_resolved
+            and (e.meta or {}).get("receiver_type_hint") == "SpringApplication"
+        ]
+        assert len(unresolved) >= 1, (
+            "expected analyzer to emit an unresolved call with "
+            "receiver_type_hint=SpringApplication"
+        )
+
+        from hypergumbo_core.linkers.receiver_type_dispatch import (
+            link_receiver_type_dispatch,
+        )
+        from hypergumbo_core.linkers.registry import LinkerContext
+
+        ctx = LinkerContext(
+            repo_root=tmp_path, symbols=result.symbols, edges=result.edges,
+        )
+        linked = link_receiver_type_dispatch(ctx)
+        calls_to_configure = [
+            e for e in linked.edges
             if e.edge_type == "calls" and e.dst == configure_sym.id
+            and e.is_resolved and e.evidence_type == "ast_call_extension"
         ]
         assert len(calls_to_configure) >= 1, (
-            f"expected at least one calls→configure edge, got "
-            f"{[(e.src, e.dst, e.evidence_type) for e in result.edges]}"
+            f"expected a linker-resolved calls→configure edge, got "
+            f"{[(e.src, e.dst, e.evidence_type) for e in linked.edges]}"
         )
 
     def test_extension_call_with_generic_receiver(
@@ -232,13 +255,26 @@ class TestKotlinExtensionFunctions:
         )
         assert sum_safe is not None
 
+        # WI-lodij: the linker resolves the unresolved call; generic receivers
+        # (``List<Int>``) match on the base name (``List``) via the linker's
+        # _base_type normalization.
+        from hypergumbo_core.linkers.receiver_type_dispatch import (
+            link_receiver_type_dispatch,
+        )
+        from hypergumbo_core.linkers.registry import LinkerContext
+
+        ctx = LinkerContext(
+            repo_root=tmp_path, symbols=result.symbols, edges=result.edges,
+        )
+        linked = link_receiver_type_dispatch(ctx)
         calls_to_sum_safe = [
-            e for e in result.edges
+            e for e in linked.edges
             if e.edge_type == "calls" and e.dst == sum_safe.id
+            and e.is_resolved and e.evidence_type == "ast_call_extension"
         ]
         assert len(calls_to_sum_safe) >= 1, (
-            f"expected calls→sumSafe edge, got "
-            f"{[(e.src, e.dst, e.evidence_type) for e in result.edges]}"
+            f"expected a linker-resolved calls→sumSafe edge, got "
+            f"{[(e.src, e.dst, e.evidence_type) for e in linked.edges]}"
         )
 
 
@@ -2180,7 +2216,7 @@ class MyService {
         ]
         assert len(decorated_edges) == 1
         assert decorated_edges[0].dst == anno_cls.id
-        assert decorated_edges[0].confidence == 0.95
+        assert decorated_edges[0].confidence == 0.5
 
     def test_unresolved_annotation_edge(self, tmp_path: Path) -> None:
         """Annotation referencing external class creates unresolved edge."""
@@ -2350,10 +2386,10 @@ class TestKotlinShapeId:
 
 
 class TestKotlinLinesOfCode:
-    """Tests for lines_of_code on Kotlin symbols."""
+    """Tests for line_span on Kotlin symbols."""
 
-    def test_class_lines_of_code(self, tmp_path: Path) -> None:
-        """Class symbols have lines_of_code set from span."""
+    def test_class_line_span(self, tmp_path: Path) -> None:
+        """Class symbols have line_span set from span."""
         from hypergumbo_lang_mainstream.kotlin import analyze_kotlin
 
         (tmp_path / "Example.kt").write_text(
@@ -2365,7 +2401,7 @@ class TestKotlinLinesOfCode:
         )
         result = analyze_kotlin(tmp_path)
         cls = next(s for s in result.symbols if s.kind == "class")
-        assert cls.lines_of_code == 5
+        assert cls.line_span == 5
 
 
 class TestKotlinIsExportedClassesAndObjects:

@@ -29,22 +29,24 @@
     "-h"
   ],
   "cache-status": [
+    "--format",
     "--help",
     "--per-repo",
     "--quiet",
     "-h"
   ],
   "catalog": [
+    "--format",
     "--help",
     "-h"
   ],
   "compact": [
+    "--connectivity",
     "--coverage",
     "--help",
     "--input",
     "--max-symbols",
     "--min-symbols",
-    "--no-connectivity",
     "--out",
     "-h"
   ],
@@ -54,6 +56,7 @@
     "-h"
   ],
   "dead-code-maybe": [
+    "--cross-lang-threshold",
     "--exclude-annotated",
     "--exclude-exports",
     "--format",
@@ -66,8 +69,12 @@
   ],
   "explain": [
     "--exclude-tests",
+    "--file",
+    "--first",
     "--help",
     "--input",
+    "--language",
+    "--limit",
     "--no-source",
     "--path",
     "--provenance",
@@ -99,6 +106,7 @@
     "--boundary",
     "--by-file",
     "--exclude-tests",
+    "--format",
     "--help",
     "--include-tests",
     "--input",
@@ -115,8 +123,19 @@
     "--skip",
     "-h"
   ],
+  "repeat-finder": [
+    "--format",
+    "--help",
+    "--include-tests",
+    "--input",
+    "--limit",
+    "--min-complexity",
+    "--path",
+    "-h"
+  ],
   "routes": [
     "--exclude-tests",
+    "--format",
     "--help",
     "--include-tests",
     "--input",
@@ -128,6 +147,7 @@
   "run": [
     "--budgets",
     "--compact",
+    "--connectivity",
     "--coverage",
     "--exclude",
     "--first-party-only",
@@ -140,7 +160,6 @@
     "--max-files",
     "--max-handler-slices",
     "--max-tier",
-    "--no-connectivity",
     "--no-handler-slices",
     "--no-progress",
     "--no-sketch-fan-out",
@@ -170,6 +189,7 @@
     "--locale",
     "--max-chunk-chars",
     "--max-config-files",
+    "--no-comparison-sketches",
     "--no-first-party-priority",
     "--no-language-proportional",
     "--no-progress",
@@ -201,6 +221,7 @@
     "--hub-threshold",
     "--inline",
     "--input",
+    "--io-boundary",
     "--language",
     "--list-entries",
     "--max-files",
@@ -211,6 +232,32 @@
     "--output",
     "--path",
     "--reverse",
+    "-h"
+  ],
+  "survey": [
+    "--budgets",
+    "--compact",
+    "--connectivity",
+    "--coverage",
+    "--exclude",
+    "--first-party-only",
+    "--frameworks",
+    "--gzip",
+    "--help",
+    "--include-docs",
+    "--locale",
+    "--max-file-bytes",
+    "--max-files",
+    "--max-handler-slices",
+    "--max-tier",
+    "--no-handler-slices",
+    "--no-progress",
+    "--no-sketch-fan-out",
+    "--out",
+    "--path",
+    "--progress",
+    "--tiers",
+    "-e",
     "-h"
   ],
   "symbols": [
@@ -256,6 +303,7 @@
   ],
   "verify-claims": [
     "--claims",
+    "--format",
     "--help",
     "--input",
     "--json",

@@ -75,7 +75,7 @@ class TestScriptTagEdgeExtraction:
 </html>
 """)
         result = analyze_html(tmp_path)
-        script_edges = [e for e in result.edges if e.edge_type == "script_src"]
+        script_edges = [e for e in result.edges if e.edge_type == "references" and (e.meta or {}).get("ref_construct") == "script_src"]
         assert len(script_edges) >= 1
 
     def test_script_src_single_quotes(self, tmp_path: Path) -> None:
@@ -89,7 +89,7 @@ class TestScriptTagEdgeExtraction:
 </html>
 """)
         result = analyze_html(tmp_path)
-        script_edges = [e for e in result.edges if e.edge_type == "script_src"]
+        script_edges = [e for e in result.edges if e.edge_type == "references" and (e.meta or {}).get("ref_construct") == "script_src"]
         assert len(script_edges) >= 1
 
     def test_multiple_scripts(self, tmp_path: Path) -> None:
@@ -106,7 +106,7 @@ class TestScriptTagEdgeExtraction:
 </html>
 """)
         result = analyze_html(tmp_path)
-        script_edges = [e for e in result.edges if e.edge_type == "script_src"]
+        script_edges = [e for e in result.edges if e.edge_type == "references" and (e.meta or {}).get("ref_construct") == "script_src"]
         assert len(script_edges) >= 3
 
     def test_script_with_type(self, tmp_path: Path) -> None:
@@ -120,7 +120,7 @@ class TestScriptTagEdgeExtraction:
 </html>
 """)
         result = analyze_html(tmp_path)
-        script_edges = [e for e in result.edges if e.edge_type == "script_src"]
+        script_edges = [e for e in result.edges if e.edge_type == "references" and (e.meta or {}).get("ref_construct") == "script_src"]
         assert len(script_edges) >= 1
 
     def test_script_line_number(self, tmp_path: Path) -> None:
@@ -136,7 +136,7 @@ class TestScriptTagEdgeExtraction:
 </html>
 """)
         result = analyze_html(tmp_path)
-        script_edges = [e for e in result.edges if e.edge_type == "script_src"]
+        script_edges = [e for e in result.edges if e.edge_type == "references" and (e.meta or {}).get("ref_construct") == "script_src"]
         assert len(script_edges) >= 1
         # Script is on line 7 or 8 depending on newlines
         assert script_edges[0].line >= 6
@@ -152,7 +152,7 @@ class TestScriptTagEdgeExtraction:
 </html>
 """)
         result = analyze_html(tmp_path)
-        script_edges = [e for e in result.edges if e.edge_type == "script_src"]
+        script_edges = [e for e in result.edges if e.edge_type == "references" and (e.meta or {}).get("ref_construct") == "script_src"]
         assert len(script_edges) >= 1
 
 

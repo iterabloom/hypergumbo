@@ -519,6 +519,13 @@ void create() {
         instantiate_edges = [e for e in result.edges if e.edge_type == "instantiates"]
         # create should instantiate Widget
         assert len(instantiate_edges) >= 1
+        # WI-dagih: the `new X()` instantiation edge carries the REGISTERED
+        # evidence_type 'ast_new' (the value js_ts/java already emit for the
+        # identical heap-`new` construct), not the raw tree-sitter node-type
+        # 'new_expression' (which is not in the evidence-type catalog — an
+        # axis_conformance leak).
+        assert any(e.evidence_type == "ast_new" for e in instantiate_edges)
+        assert not any(e.evidence_type == "new_expression" for e in instantiate_edges)
 
     def test_prefers_definition_over_declaration_for_call_edges(
         self, tmp_path: Path
@@ -2199,6 +2206,93 @@ public:
         )
 
 
+class TestCppBareMethodMagnetGate:
+    """INV-fahub: a BARE call (implicit-``this`` / a chained receiver whose
+    receiver token was dropped) that only weak-suffix-matches a DIFFERENT
+    class's method must NOT bind a resolved ``calls`` edge to that unrelated
+    method (the cross-class magnet: dozens of call sites -> one arbitrary
+    def). It defers to the inherited_calls Site-1 walker via an unresolved
+    edge stamped with ``enclosing_class``. Free functions and same-class
+    implicit-``this`` calls are unaffected.
+    """
+
+    def test_bare_cross_class_method_deferred_not_misbound(
+        self, tmp_path: Path
+    ) -> None:
+        """A bare ``purge()`` in ``AccountController::boot`` suffix-matches
+        the unrelated ``ActivityPubClient::purge``. It must NOT bind resolved;
+        instead an unresolved edge carrying ``enclosing_class`` is emitted."""
+        from hypergumbo_lang_mainstream.cpp import analyze_cpp
+
+        (tmp_path / "client.cpp").write_text(
+            "class ActivityPubClient {\n"
+            "public:\n"
+            "    void purge() {}\n"
+            "};\n"
+        )
+        (tmp_path / "controller.cpp").write_text(
+            "class AccountController {\n"
+            "public:\n"
+            "    void boot() {\n"
+            "        purge();\n"
+            "    }\n"
+            "};\n"
+        )
+        result = analyze_cpp(tmp_path)
+        client_purge = next(
+            s for s in result.symbols
+            if s.name == "ActivityPubClient::purge" and s.kind == "method"
+        )
+        misbinds = [
+            e for e in result.edges
+            if e.edge_type == "calls" and e.dst == client_purge.id
+            and "boot" in e.src and e.is_resolved
+        ]
+        assert misbinds == [], f"bare purge() misbound: {misbinds}"
+        deferred = [
+            e for e in result.edges
+            if e.edge_type == "calls" and "boot" in e.src
+            and not e.is_resolved and "purge" in e.dst
+        ]
+        assert len(deferred) == 1, [
+            (e.dst, e.is_resolved) for e in result.edges if "boot" in e.src
+        ]
+        assert (deferred[0].meta or {}).get("enclosing_class") == "AccountController"
+
+    def test_bare_free_function_call_still_resolves(
+        self, tmp_path: Path
+    ) -> None:
+        """Recall guard: a bare call to a free FUNCTION (not a method) still
+        binds a resolved ``calls`` edge through the same resolver path — the
+        magnet gate defers only cross-class *methods*."""
+        from hypergumbo_lang_mainstream.cpp import analyze_cpp
+
+        (tmp_path / "util.cpp").write_text(
+            "int compute() { return 42; }\n"
+        )
+        (tmp_path / "worker.cpp").write_text(
+            "class Worker {\n"
+            "public:\n"
+            "    void run() {\n"
+            "        compute();\n"
+            "    }\n"
+            "};\n"
+        )
+        result = analyze_cpp(tmp_path)
+        compute_fn = next(
+            s for s in result.symbols
+            if s.name == "compute" and s.kind == "function"
+        )
+        resolved = [
+            e for e in result.edges
+            if e.edge_type == "calls" and e.dst == compute_fn.id
+            and "run" in e.src and e.is_resolved
+        ]
+        assert len(resolved) == 1, [
+            (e.dst, e.is_resolved) for e in result.edges if "run" in e.src
+        ]
+
+
 class TestCppStableId:
     """Tests for stable_id computation in C++ (ADR-0014 §2)."""
 
@@ -2293,3 +2387,200 @@ int main() { return helper(); }
         ]
         assert len(unresolved_helper) == 0
 
+
+class TestCppComplexityAndLoc:
+    """INV-loguk: C++ function and method Symbols populate
+    cyclomatic_complexity and line_span."""
+
+    def test_function_has_cc_and_loc(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.cpp import analyze_cpp
+
+        (tmp_path / "f.cpp").write_text(
+            "int classify(int x) {\n"
+            "  if (x > 10) { return 1; } else if (x > 5) { return 2; }\n"
+            "  for (int i = 0; i < x; i++) { if (i % 2 == 0 || i < 0) return i; }\n"
+            "  return 0;\n"
+            "}\n"
+        )
+        result = analyze_cpp(tmp_path)
+        assert not result.skipped
+        fn = next(
+            s for s in result.symbols
+            if s.name == "classify" and s.kind == "function"
+        )
+        # if + else-if + for + inner-if + || → >= 4 above base
+        assert fn.cyclomatic_complexity is not None
+        assert fn.cyclomatic_complexity >= 4
+        assert fn.line_span == 5
+
+    def test_method_has_cc_and_loc(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.cpp import analyze_cpp
+
+        (tmp_path / "c.cpp").write_text(
+            "class C {\n"
+            "public:\n"
+            "  int score(int x) {\n"
+            "    if (x > 0) { return x; }\n"
+            "    return 0;\n"
+            "  }\n"
+            "};\n"
+        )
+        result = analyze_cpp(tmp_path)
+        methods = [s for s in result.symbols if s.kind == "method"]
+        assert methods
+        for m in methods:
+            assert m.cyclomatic_complexity is not None and m.cyclomatic_complexity >= 2
+            assert m.line_span is not None and m.line_span >= 1
+
+    def test_no_cpp_callable_has_null_cc_or_loc(self, tmp_path: Path) -> None:
+        """Property: every C++ function/method Symbol has non-null CC and LOC."""
+        from hypergumbo_lang_mainstream.cpp import analyze_cpp
+
+        (tmp_path / "f.cpp").write_text(
+            "int add(int a, int b) { return a + b; }\n"
+        )
+        result = analyze_cpp(tmp_path)
+        funcs = [s for s in result.symbols if s.kind in ("function", "method")]
+        assert funcs
+        for fn in funcs:
+            assert fn.cyclomatic_complexity is not None, fn.name
+            assert fn.line_span is not None, fn.name
+
+
+
+class TestCppFieldVariableSymbols:
+    """WI-jusus: C++ class/struct member fields (kind='field') and top-level /
+    namespace variables (kind='variable'). Fields are the structurally-distinct
+    ``field_declaration`` node (no scope walk); variables share the
+    ``declaration`` node with function-body locals and so need a module-scope
+    gate (INV-sidab/INV-lanaz). Member-function declarations, nested types, and
+    function prototypes must NOT leak as fields/variables."""
+
+    @staticmethod
+    def _fields(result: object) -> dict:
+        return {s.name: s for s in result.symbols if s.kind == "field"}
+
+    @staticmethod
+    def _vars(result: object) -> dict:
+        return {s.name: s for s in result.symbols if s.kind == "variable"}
+
+    def test_class_public_field_emitted_and_exported(self, tmp_path: Path) -> None:
+        (tmp_path / "a.cpp").write_text("class Widget {\npublic:\n  int width;\n};\n")
+        fields = self._fields(analyze_cpp(tmp_path))
+        assert "Widget::width" in fields
+        f = fields["Widget::width"]
+        assert f.is_exported is True
+        assert f.signature == "int"
+
+    def test_struct_field_default_public(self, tmp_path: Path) -> None:
+        (tmp_path / "a.cpp").write_text("struct Point {\n  int x;\n  int y;\n};\n")
+        fields = self._fields(analyze_cpp(tmp_path))
+        assert "Point::x" in fields and "Point::y" in fields
+        assert fields["Point::x"].is_exported is True
+
+    def test_class_field_default_private_not_exported(self, tmp_path: Path) -> None:
+        (tmp_path / "a.cpp").write_text("class C {\n  int secret;\n};\n")
+        fields = self._fields(analyze_cpp(tmp_path))
+        assert "C::secret" in fields
+        assert fields["C::secret"].is_exported is False
+
+    def test_protected_field_not_exported(self, tmp_path: Path) -> None:
+        (tmp_path / "a.cpp").write_text(
+            "class C {\nprotected:\n  int mid;\npublic:\n  int shown;\n};\n"
+        )
+        fields = self._fields(analyze_cpp(tmp_path))
+        assert fields["C::mid"].is_exported is False
+        assert fields["C::shown"].is_exported is True
+
+    def test_member_function_declaration_not_field(self, tmp_path: Path) -> None:
+        (tmp_path / "a.cpp").write_text(
+            "class W {\npublic:\n  void move();\n  W* clone() const;\n  int width;\n};\n"
+        )
+        fields = self._fields(analyze_cpp(tmp_path))
+        assert "W::move" not in fields
+        assert "W::clone" not in fields
+        assert "W::width" in fields  # the real field still emits
+
+    def test_nested_type_not_field(self, tmp_path: Path) -> None:
+        (tmp_path / "a.cpp").write_text(
+            "class W {\npublic:\n  struct Inner { int z; };\n  enum Mode { A, B };\n};\n"
+        )
+        fields = self._fields(analyze_cpp(tmp_path))
+        assert "W::Inner" not in fields
+        assert "W::Mode" not in fields
+        assert "Inner::z" in fields  # the nested struct's own field IS emitted
+
+    def test_multi_declarator_pointer_array_fields(self, tmp_path: Path) -> None:
+        (tmp_path / "a.cpp").write_text(
+            "class C {\npublic:\n  double x_, y_;\n  char* name;\n  int arr[4];\n};\n"
+        )
+        fields = self._fields(analyze_cpp(tmp_path))
+        assert "C::x_" in fields and "C::y_" in fields
+        assert "C::name" in fields
+        assert "C::arr" in fields
+
+    def test_static_member_field(self, tmp_path: Path) -> None:
+        (tmp_path / "a.cpp").write_text(
+            "class C {\npublic:\n  static int count;\n};\n"
+        )
+        fields = self._fields(analyze_cpp(tmp_path))
+        assert "C::count" in fields
+        assert "static" in fields["C::count"].modifiers
+
+    def test_toplevel_variable_emitted(self, tmp_path: Path) -> None:
+        (tmp_path / "a.cpp").write_text(
+            'int g_counter = 0;\nconst char* NAME = "x";\n'
+        )
+        vars_ = self._vars(analyze_cpp(tmp_path))
+        assert "g_counter" in vars_
+        assert "NAME" in vars_
+        assert vars_["g_counter"].is_exported is True
+
+    def test_namespace_global_is_variable(self, tmp_path: Path) -> None:
+        (tmp_path / "a.cpp").write_text("namespace ns {\n  int nsGlobal = 1;\n}\n")
+        vars_ = self._vars(analyze_cpp(tmp_path))
+        assert "nsGlobal" in vars_
+
+    def test_static_global_not_exported(self, tmp_path: Path) -> None:
+        (tmp_path / "a.cpp").write_text("static int s_count = 0;\n")
+        vars_ = self._vars(analyze_cpp(tmp_path))
+        assert "s_count" in vars_
+        assert vars_["s_count"].is_exported is False
+        assert "static" in vars_["s_count"].modifiers
+
+    def test_function_local_not_variable(self, tmp_path: Path) -> None:
+        """INV-sidab: function-body locals must NOT leak as module variables."""
+        (tmp_path / "a.cpp").write_text(
+            "void fn() {\n  int local = 3;\n  const int k = 4;\n}\n"
+        )
+        vars_ = self._vars(analyze_cpp(tmp_path))
+        assert "local" not in vars_
+        assert "k" not in vars_
+
+    def test_function_prototype_not_variable(self, tmp_path: Path) -> None:
+        (tmp_path / "a.cpp").write_text("int forward_proto(int);\n")
+        vars_ = self._vars(analyze_cpp(tmp_path))
+        assert "forward_proto" not in vars_
+
+    def test_register_symbol_skips_field_and_variable(self) -> None:
+        """The chokepoint: field/variable data anchors never enter the
+        call-resolution registry, so a bare-named global/member cannot clobber a
+        same-named function's flat key (a function stays the call target)."""
+        from hypergumbo_core.ir import Symbol, Span
+        from hypergumbo_lang_mainstream.cpp import _analyzer
+
+        def _sym(name: str, kind: str) -> Symbol:
+            return Symbol(
+                id=f"cpp:/a.cpp:1-1:{name}:{kind}", name=name, kind=kind,
+                language="cpp", path="/a.cpp",
+                span=Span(start_line=1, end_line=1, start_col=0, end_col=0),
+                origin="test", origin_run_id="r",
+            )
+
+        registry: dict = {}
+        _analyzer.register_symbol(_sym("C::x", "field"), registry)
+        _analyzer.register_symbol(_sym("g", "variable"), registry)
+        assert registry == {}  # neither data anchor registered
+        _analyzer.register_symbol(_sym("g", "function"), registry)
+        assert registry.get("g") is not None
+        assert registry["g"].kind == "function"

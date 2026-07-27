@@ -61,6 +61,9 @@ class TestDeadCodeMaybe:
         assert "orphan" in dead_names
         # helper IS reachable from main → NOT dead
         assert "helper" not in dead_names
+        # INV-fipol: dead-code-maybe JSON now carries the schema envelope
+        assert output["schema_version"] == "0.1.0"
+        assert output["view"] == "dead_code_maybe"
 
     def test_all_reachable_returns_empty(self, tmp_path: Path) -> None:
         """When all functions are reachable, dead list is empty."""
@@ -107,7 +110,7 @@ class TestDeadCodeMaybe:
              "meta": {"route_path": "/api", "http_method": "GET", "framework_role": "route"}},
             {"id": "py:app.py:12-20:orphan:function", "name": "orphan", "kind": "function",
              "language": "python", "path": "app.py", "span": {"start_line": 12, "end_line": 20},
-             "lines_of_code": 9},
+             "line_span": 9},
         ]
         bm_path = _make_behavior_map(tmp_path, nodes, [])
 
@@ -1672,3 +1675,279 @@ class TestWiVutonDispatchInheritedDemotion:
         # free top-level helper() must NOT be demoted just because
         # Base.helper (a method) is reachable.
         assert "helper" in dead_names
+
+
+def _run_dead_code_f2(
+    tmp_path: Path, behavior_map: dict, seeds, fmt: str = "json",
+):
+    """Run cmd_dead_code_maybe capturing stdout AND stderr.
+
+    ``seeds=None`` exercises the omitted-flag (defaulted) path. Returns
+    ``(rc, stdout, stderr)``.
+    """
+    import argparse
+    import io
+    import sys
+
+    bm_path = tmp_path / "hg.json"
+    bm_path.write_text(json.dumps(behavior_map))
+    args = argparse.Namespace(
+        path=str(tmp_path), input=str(bm_path), format=fmt,
+        seeds=seeds, min_confidence=0.0,
+    )
+    out, err = io.StringIO(), io.StringIO()
+    old_out, old_err = sys.stdout, sys.stderr
+    sys.stdout, sys.stderr = out, err
+    try:
+        rc = cmd_dead_code_maybe(args)
+    finally:
+        sys.stdout, sys.stderr = old_out, old_err
+    return rc, out.getvalue(), err.getvalue()
+
+
+def _f2_behavior_map() -> dict:
+    """Fixture exercising the dispatch:F2 seed cohorts.
+
+    - ``api`` is a route entrypoint; ``helper`` is reachable from it.
+    - ``public_api`` is an export (reachable under the production default via
+      the exports seed, but dead under the entrypoint-only cohort);
+      ``export_callee`` is reachable from it.
+    - ``tested_fn`` is reachable only from a test function (test-only-reachable).
+    - ``truly_dead`` is dead in every cohort.
+    """
+    return {
+        "schema_version": "0.2.3",
+        "nodes": [
+            {"id": "py:app.py:1-5:GET /api:route", "name": "api", "kind": "function",
+             "language": "python", "path": "app.py", "span": {"start_line": 1, "end_line": 5},
+             "meta": {"route_path": "/api", "http_method": "GET", "framework_role": "route"}},
+            {"id": "py:app.py:7-10:helper:function", "name": "helper", "kind": "function",
+             "language": "python", "path": "app.py", "span": {"start_line": 7, "end_line": 10}},
+            {"id": "py:lib.py:1-5:public_api:function", "name": "public_api", "kind": "function",
+             "language": "python", "path": "lib.py", "span": {"start_line": 1, "end_line": 5},
+             "supply_chain": {"is_exported": True}},
+            {"id": "py:lib.py:7-10:export_callee:function", "name": "export_callee", "kind": "function",
+             "language": "python", "path": "lib.py", "span": {"start_line": 7, "end_line": 10}},
+            {"id": "py:svc.py:1-5:tested_fn:function", "name": "tested_fn", "kind": "function",
+             "language": "python", "path": "svc.py", "span": {"start_line": 1, "end_line": 5}},
+            {"id": "py:tests/test_svc.py:1-5:test_it:function", "name": "test_it", "kind": "function",
+             "language": "python", "path": "tests/test_svc.py", "span": {"start_line": 1, "end_line": 5}},
+            {"id": "py:svc.py:7-10:truly_dead:function", "name": "truly_dead", "kind": "function",
+             "language": "python", "path": "svc.py", "span": {"start_line": 7, "end_line": 10}},
+        ],
+        "edges": [
+            {"type": "calls", "src": "py:app.py:1-5:GET /api:route",
+             "dst": "py:app.py:7-10:helper:function"},
+            {"type": "calls", "src": "py:lib.py:1-5:public_api:function",
+             "dst": "py:lib.py:7-10:export_callee:function"},
+            {"type": "calls", "src": "py:tests/test_svc.py:1-5:test_it:function",
+             "dst": "py:svc.py:1-5:tested_fn:function"},
+        ],
+    }
+
+
+class TestDispatchF2SeedsDefault:
+    """dispatch:F2 — default seed mode is ``production`` (entrypoints + exports)
+    with disclosure buckets; the 2026-06-10 ruling. Retires the entrypoint-only
+    ~89%-dead headline while keeping the strict view + test-only reachability
+    as labeled cohorts (WI-lirob / WI-jufih)."""
+
+    def test_default_is_production_with_buckets_and_warn(self, tmp_path: Path) -> None:
+        rc, out, err = _run_dead_code_f2(tmp_path, _f2_behavior_map(), seeds=None)
+        assert rc == 0
+        assert "defaulting to --seeds production" in err
+        s = json.loads(out)["summary"]
+        assert s["seeds_mode"] == "production"
+        assert s["seeds_defaulted"] is True
+        dead = {d["name"] for d in json.loads(out)["dead_candidates"]}
+        # exports rescue public_api and its callee; only the genuinely
+        # unreachable + the test-only-reachable remain dead under production.
+        assert dead == {"tested_fn", "truly_dead"}
+        # disclosure buckets: the strict entrypoint-only view flags more, and
+        # tested_fn is reachable only once tests are seeded.
+        assert s["entrypoint_only_dead"] == 4
+        assert s["test_only_reachable"] == 1
+
+    def test_explicit_production_buckets_no_warn(self, tmp_path: Path) -> None:
+        rc, out, err = _run_dead_code_f2(
+            tmp_path, _f2_behavior_map(), seeds="production",
+        )
+        assert rc == 0
+        assert "defaulting to" not in err  # explicit mode → no default note
+        s = json.loads(out)["summary"]
+        assert s["seeds_defaulted"] is False
+        assert s["entrypoint_only_dead"] == 4
+        assert s["test_only_reachable"] == 1
+
+    def test_explicit_entrypoints_has_null_buckets(self, tmp_path: Path) -> None:
+        rc, out, err = _run_dead_code_f2(
+            tmp_path, _f2_behavior_map(), seeds="entrypoints",
+        )
+        assert rc == 0
+        s = json.loads(out)["summary"]
+        assert s["seeds_mode"] == "entrypoints"
+        # buckets are a production-view property; null under explicit modes.
+        assert s["entrypoint_only_dead"] is None
+        assert s["test_only_reachable"] is None
+
+    def test_production_text_output_shows_buckets(self, tmp_path: Path) -> None:
+        rc, out, err = _run_dead_code_f2(
+            tmp_path, _f2_behavior_map(), seeds="production", fmt="text",
+        )
+        assert rc == 0
+        assert "entrypoint-only view would flag: 4" in out
+        assert "reachable only from tests:       1" in out
+
+
+def test_production_callables_classifies() -> None:
+    """production_callables splits function/method nodes into production / test /
+    exported, skipping non-callable kinds (docs-prose:F4)."""
+    from hypergumbo_core.cli import production_callables
+
+    nodes = [
+        {"id": "p1", "kind": "function", "path": "app.py",
+         "supply_chain": {"is_exported": True}},
+        {"id": "p2", "kind": "method", "path": "app.py"},
+        {"id": "t1", "kind": "function", "path": "tests/test_x.py"},
+        {"id": "c1", "kind": "class", "path": "app.py"},  # non-callable → skipped
+    ]
+    prod, test, exported = production_callables(nodes)
+    assert set(prod) == {"p1", "p2"}
+    assert test == {"t1"}
+    assert exported == {"p1"}
+
+
+def test_bfs_reachable_traverses_and_skips_visited() -> None:
+    """_bfs_reachable returns the transitive closure and skips already-visited
+    neighbors (diamond graph)."""
+    from hypergumbo_core.cli import _bfs_reachable
+
+    assert _bfs_reachable(set(), {"a": ["b"]}) == set()
+    # diamond: c is reachable from both a and b → second visit is skipped.
+    assert _bfs_reachable({"a"}, {"a": ["b", "c"], "b": ["c"]}) == {"a", "b", "c"}
+
+
+def _run_dead_code_clh(tmp_path: Path, nodes: list, edges: list, threshold):
+    """Run cmd_dead_code_maybe (entrypoints seeds) with an optional
+    ``cross_lang_threshold`` (None → omit, exercising the getattr default)."""
+    import argparse
+    import io
+    import sys
+
+    bm_path = tmp_path / "hg.json"
+    bm_path.write_text(json.dumps(
+        {"schema_version": "0.2.3", "nodes": nodes, "edges": edges},
+    ))
+    kwargs = {
+        "path": str(tmp_path), "input": str(bm_path), "format": "json",
+        "seeds": "entrypoints", "min_confidence": 0.0,
+    }
+    if threshold is not None:
+        kwargs["cross_lang_threshold"] = threshold
+    args = argparse.Namespace(**kwargs)
+    out = io.StringIO()
+    old = sys.stdout
+    sys.stdout = out
+    try:
+        rc = cmd_dead_code_maybe(args)
+    finally:
+        sys.stdout = old
+    assert rc == 0
+    return json.loads(out.getvalue())
+
+
+def _clh_fixture(tmp_path: Path):
+    """A Go function whose name appears as a string in a Python file (CLH=1),
+    plus a route entrypoint. ProcessPayment has no edges → dead candidate."""
+    go_dir = tmp_path / "pkg"
+    go_dir.mkdir()
+    (go_dir / "handler.go").write_text("package pkg\nfunc ProcessPayment() {}\n")
+    (tmp_path / "app.py").write_text(
+        'import requests\nrequests.post("/api/ProcessPayment")\n',
+    )
+    nodes = [
+        {"id": "go:pkg/handler.go:2-2:ProcessPayment:function", "name": "ProcessPayment",
+         "kind": "function", "language": "go", "path": "pkg/handler.go",
+         "span": {"start_line": 2, "end_line": 2}},
+        {"id": "py:app.py:1-2:main:function", "name": "main", "kind": "function",
+         "language": "python", "path": "app.py", "span": {"start_line": 1, "end_line": 2},
+         "meta": {"is_main": True, "framework_role": "route"}},
+    ]
+    return nodes, []
+
+
+class TestDispatchF7CrossLanguageDemoter:
+    """dispatch:F7 (WI-gavub): cross_language_hits is consumed as a false-positive
+    DEMOTER. A candidate whose name appears in >= cross_lang_threshold
+    other-language files is near-certainly reached via a cross-language path
+    (framework dispatch, HTTP route, RPC, FFI) — excluded from the dead set."""
+
+    def test_demoter_excludes_at_threshold_1(self, tmp_path: Path) -> None:
+        nodes, edges = _clh_fixture(tmp_path)
+        out = _run_dead_code_clh(tmp_path, nodes, edges, threshold=1)
+        dead = {d["name"] for d in out["dead_candidates"]}
+        assert "ProcessPayment" not in dead
+        assert out["summary"]["demoted_cross_language"] == 1
+
+    def test_demoter_disabled_at_zero_keeps_candidate(self, tmp_path: Path) -> None:
+        nodes, edges = _clh_fixture(tmp_path)
+        out = _run_dead_code_clh(tmp_path, nodes, edges, threshold=0)
+        dead = {d["name"] for d in out["dead_candidates"]}
+        assert "ProcessPayment" in dead
+        assert out["summary"]["demoted_cross_language"] == 0
+
+    def test_default_threshold_keeps_low_clh(self, tmp_path: Path) -> None:
+        # CLH=1 is below the default threshold (3) → not demoted (some genuine
+        # dead code has a single coincidental cross-language hit).
+        nodes, edges = _clh_fixture(tmp_path)
+        out = _run_dead_code_clh(tmp_path, nodes, edges, threshold=None)
+        dead = {d["name"] for d in out["dead_candidates"]}
+        assert "ProcessPayment" in dead
+        assert out["summary"]["demoted_cross_language"] == 0
+
+
+class TestProductionCallablesClassBExclusion:
+    """INV-disin: ADR-0031 Class-B synthetic linker stand-ins (protocol_origin
+    populated, language=None) are not real source callables. They must NOT enter
+    the dead-code candidate universe — otherwise they are ~100% flagged dead,
+    since language-scoped seeds/entrypoints can never match a language=None node
+    (kserve/prometheus/killbill each surfaced dozens of these phantom dead nodes)."""
+
+    def test_class_b_synthetic_excluded_from_production_candidates(self) -> None:
+        from hypergumbo_core.cli import production_callables
+
+        synthetic = {
+            "id": "go:events.go:6-6:done:function",
+            "kind": "function",
+            "language": None,
+            "protocol_origin": "event_sourcing",
+            "path": "events.go",
+        }
+        real = {
+            "id": "go:app.go:1-3:main:function",
+            "kind": "function",
+            "language": "go",
+            "path": "app.go",
+        }
+        production, _test, _exported = production_callables([synthetic, real])
+        assert synthetic["id"] not in production, (
+            "Class-B synthetic (protocol_origin set) must not be a dead-code candidate"
+        )
+        assert real["id"] in production, "a real source callable must stay a candidate"
+
+    def test_class_a_route_marker_stays_candidate(self) -> None:
+        # Guard against over-exclusion: a Class-A route marker (framework_role
+        # set, real language, NO protocol_origin) is a legitimate callable and
+        # must remain a candidate — the predicate is protocol_origin, not
+        # framework_role and not language-is-None.
+        from hypergumbo_core.cli import production_callables
+
+        route_marker = {
+            "id": "python:app.py:1-3:home:function",
+            "kind": "function",
+            "language": "python",
+            "framework_role": "route",
+            "path": "app.py",
+        }
+        production, _t, _e = production_callables([route_marker])
+        assert route_marker["id"] in production

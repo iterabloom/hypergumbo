@@ -41,3 +41,18 @@
   clock: 4  # ae57
   nonce: ae57  # ae57
   message: "root-cause family member (g2) (connections-sweep 2026-06-08T1900Z)"  # ae57
+- op: update  # d562
+  at: '2026-06-27T20:57:43Z'  # d562
+  by: agent  # d562
+  actor: jgstern_agent  # d562
+  clock: 5  # d562
+  nonce: d562  # d562
+  set:  # d562
+    status: done  # d562
+- op: discuss  # ef97
+  at: '2026-06-27T20:57:43Z'  # ef97
+  by: agent  # ef97
+  actor: jgstern_agent  # ef97
+  clock: 6  # ef97
+  nonce: ef97  # ef97
+  message: "Done — the DEFAULT-leak class (Edge.create's ast_call_direct default inherited by non-call edges) is closed, via vocab:F2 (dev 4bc2839170).\n\nKEY CORRECTION: the original 326-edge count was STALE. Re-investigation (scoping wf_9fb31a4a) found that of the 326, the decorator-dispatch (292) and rust-trait-dispatch (1) dispatches_to edges now EXPLICITLY pass evidence_type='ast_call_direct' + meta['framework_dispatch'] — the canonical post-fold form per ADR-0028 Phase 3 / audit-findings 0014 (framework-dispatch folds to canonical inference + meta), NOT a leak. So the only genuine remaining DEFAULT leaks (producers omitting evidence_type → inheriting the default) were 3 Solidity analyzer edges.\n\nFix: the 3 Solidity producers now pass accurate registered inference-pathway evidence_types:\n- inherits (from the AST inheritance_specifier/ clause) -> ast_extends\n- overrides (resolved by name-matching child funcs against the inheritance hierarchy) -> type_hierarchy\n- emit-Event references (name-resolved reference to the event symbol) -> reference\n\nBehavioral evidence (hypergumbo self-corpus, hypergumbo run . , before->after on Contract.sol):\n- non-call edges carrying ast_call_direct: inherits 1->0, overrides 1->0, references 4->3.\n- the 3 Contract.sol edges now read ast_extends / type_hierarchy / reference (confirmed in /tmp/hg-self-vf2.json).\nProduction-path tests: test_solidity.py TestSolidityInheritance/OverrideEdges/EmitEdges now assert the analyzer emits ast_extends/type_hierarchy/reference (not ast_call_direct). All values registry-conformant (producer_coherence gate). 100% coverage on solidity.py.\n\nRESIDUAL (NOT a default leak; filed separately): the 3 remaining ast_call_direct 'references' edges are websocket_endpoint references emitted EXPLICITLY by the websocket linker (+ middleware_chain similarly). Whether that explicit value is the right inference-pathway (vs naming_convention/reference) is WI-lojus. The structural 'make evidence_type a required Edge.create param' hardening (the Option-2 end-state the human deferred) is WI-vukor (P2). This unblocks the evidence_type axis for confidence:F1."  # ef97

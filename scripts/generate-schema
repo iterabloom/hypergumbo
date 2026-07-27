@@ -29,10 +29,11 @@ sys.path.insert(0, str(REPO_ROOT / "src"))
 sys.path.insert(0, str(REPO_ROOT / "scripts"))
 
 from hypergumbo_core.edge_types import AXIS_ENDPOINT_SHAPE, EDGE_TYPES
+from hypergumbo_core.entrypoints import all_known_entrypoint_kinds
 from hypergumbo_core.evidence_types import EVIDENCE_TYPES
 from hypergumbo_core.symbol_kinds import SYMBOL_KINDS
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
-from hypergumbo_core.schema import SCHEMA_VERSION
+from hypergumbo_core.schema import SCHEMA_VERSION, VIEW_NAMES
 
 from generate_schema_lib import build_all_defs
 
@@ -125,7 +126,7 @@ def generate_behavior_map_schema() -> Dict[str, Any]:
     # Build the schema with definitions
     schema: Dict[str, Any] = {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "$id": "https://codeberg.org/iterabloom/hypergumbo/docs/schema.json",
+        "$id": "https://github.com/iterabloom/hypergumbo/docs/schema.json",
         "title": "Hypergumbo Behavior Map",
         "description": "Output schema for hypergumbo analysis. Auto-generated from Python dataclasses.",
         "type": "object",
@@ -160,8 +161,10 @@ def generate_behavior_map_schema() -> Dict[str, Any]:
             },
             "view": {
                 "type": "string",
-                "const": "behavior_map",
-                "description": "Output view type"
+                "enum": list(VIEW_NAMES),
+                "description": "Output view type: 'behavior_map' for the base "
+                               "analysis, 'compact'/'tiered' for the "
+                               "budget-limited projections"
             },
             "generated_at": {
                 "type": "string",
@@ -187,8 +190,21 @@ def generate_behavior_map_schema() -> Dict[str, Any]:
                             "type": "object",
                             "properties": {
                                 "files": {"type": "integer"},
-                                "lines": {"type": "integer"},
-                                "percentage": {"type": "number"}
+                                "loc": {
+                                    "type": "integer",
+                                    "description": (
+                                        "Source-lines-of-code (SLOC) for this "
+                                        "language — the file-level LOC "
+                                        "convention. Distinct from the "
+                                        "per-symbol line_span (physical "
+                                        "end-start+1 span). WI-bozid: the "
+                                        "schema previously declared phantom "
+                                        "`lines`/`percentage` keys the producer "
+                                        "(profile.LanguageStats.to_dict) never "
+                                        "emits; the real emitted shape is "
+                                        "{files, loc}."
+                                    )
+                                }
                             }
                         }
                     },
@@ -279,28 +295,45 @@ def generate_behavior_map_schema() -> Dict[str, Any]:
             },
             "supply_chain_summary": {
                 "type": "object",
-                "description": "Summary of supply chain classification",
-                "properties": {
-                    "by_tier": {
-                        "type": "object",
-                        "additionalProperties": {
+                "description": (
+                    "Supply-chain classification summary, keyed by tier name "
+                    "(first_party / internal_dep / external_dep) plus "
+                    "derived_skipped. Each tier carries {files, symbols}; "
+                    "external_dep also `ecosystem` and `directness` sub-buckets "
+                    "and derived_skipped a {files, paths} shape. WI-vafid: the "
+                    "producer emits these at the top level, not under a "
+                    "by_tier wrapper."
+                ),
+                "additionalProperties": {
+                    "type": "object",
+                    "properties": {
+                        "files": {"type": "integer"},
+                        "symbols": {"type": "integer"},
+                        "ecosystem": {
                             "type": "object",
-                            "properties": {
-                                "files": {"type": "integer"},
-                                "symbols": {"type": "integer"}
-                            }
-                        }
+                            "additionalProperties": {"type": "integer"}
+                        },
+                        "directness": {
+                            "type": "object",
+                            "additionalProperties": {"type": "integer"}
+                        },
+                        "paths": {"type": "array", "items": {"type": "string"}}
                     }
                 }
             },
-            # INV-piroh sub-issue (b): three top-level keys the CLI
-            # produces but the schema didn't declare. All three are part
-            # of hypergumbo's documented output contract:
+            # INV-piroh sub-issue (b): three top-level keys the CLI produces
+            # but the schema didn't declare. Two are part of hypergumbo's
+            # documented output contract:
             #   - entrypoints: per-language entrypoint detection results.
             #   - usage_contexts: per ADR-3ccc usage_context_patterns.
-            #   - sketch_precomputed: payload computed during run for
-            #     reuse by the sketch step; included by default for
-            #     downstream tooling.
+            # The third is INTERNAL (WI-rajod reconcile, 2026-06-24): per
+            # spec.md it is an internal cache artifact — "not part of the public
+            # schema; consumers should not depend on its presence". It is
+            # documented here (with x-internal: true) only so the schema honestly
+            # reflects what is emitted; it is NOT a stability contract and may
+            # change shape between versions:
+            #   - sketch_precomputed: payload pre-computed during `run` for reuse
+            #     by the `sketch` step (avoids re-loading the embedding model).
             "entrypoints": {
                 "type": "array",
                 "items": {"$ref": "#/$defs/Entrypoint"},
@@ -440,15 +473,19 @@ def generate_behavior_map_schema() -> Dict[str, Any]:
             },
             "sketch_precomputed": {
                 "type": "object",
+                "x-internal": True,
                 "description": (
-                    "Precomputed sketch payload (vocabulary, centrality, "
-                    "readme description, config info). Optional; omitted "
-                    "when --no-sketch-precomputed. Each sub-field is "
-                    "nullable because small repos may not surface a "
-                    "README, license, or any centrality signal."
+                    "INTERNAL cache artifact (NOT a stability contract; "
+                    "consumers should not depend on its presence or shape — "
+                    "spec.md). Pre-computed sketch payload (additional-file "
+                    "centrality, readme description, config info) reused by the "
+                    "`sketch` step. Optional; omitted when "
+                    "--no-sketch-precomputed. Each sub-field is nullable "
+                    "because small repos may not surface a README, license, or "
+                    "any centrality signal."
                 ),
                 "properties": {
-                    "centrality_scores": {
+                    "additional_file_centrality_scores": {
                         "oneOf": [
                             {
                                 "type": "object",
@@ -456,7 +493,22 @@ def generate_behavior_map_schema() -> Dict[str, Any]:
                             },
                             {"type": "null"}
                         ],
-                        "description": "File-path → centrality score"
+                        "description": (
+                            "Non-source-file-path → symbol-mention density "
+                            "score, for ranking the sketch's Additional Files "
+                            "section. The score is Σ(in-degree of the graph "
+                            "symbols whose names appear in the file) ÷ file "
+                            "length in characters — an in-degree-weighted "
+                            "mention density, NOT a [0,1]-normalized centrality "
+                            "and NOT a probability: it is unbounded ≥ 0 (a short "
+                            "file naming high-in-degree symbols routinely exceeds "
+                            "1.0), is meaningful only as a relative ranking key "
+                            "within one run, and is not comparable across repos "
+                            "(WI-sigof). Keys are config/doc files only (NOT "
+                            "whole-graph symbol centrality — that is the "
+                            "`symbols` command). file-anchor:F1 guarantees every "
+                            "key is also a kind=file node path (WI-rajod)."
+                        )
                     },
                     "config_info": {
                         "oneOf": [{"type": "string"}, {"type": "null"}],
@@ -465,13 +517,6 @@ def generate_behavior_map_schema() -> Dict[str, Any]:
                     "readme_description": {
                         "oneOf": [{"type": "string"}, {"type": "null"}],
                         "description": "Extracted README description"
-                    },
-                    "vocabulary": {
-                        "oneOf": [
-                            {"type": "array", "items": {"type": "string"}},
-                            {"type": "null"}
-                        ],
-                        "description": "Repo-derived vocabulary terms"
                     }
                 }
             }
@@ -507,8 +552,12 @@ def generate_behavior_map_schema() -> Dict[str, Any]:
             "kind": {
                 "type": "string",
                 "description": (
-                    "Entrypoint category — e.g. main_function, "
-                    "cli_command, http_route, framework_handler"
+                    "Entrypoint category (what the entrypoint IS — distinct "
+                    "from meta.evidence_type, which names HOW it was "
+                    "detected). One of the EntrypointKind catalog "
+                    "(WI-pupiz, single source "
+                    "hypergumbo_core.entrypoints.all_known_entrypoint_kinds): "
+                    + ", ".join(sorted(all_known_entrypoint_kinds()))
                 )
             },
             "label": {
@@ -519,7 +568,41 @@ def generate_behavior_map_schema() -> Dict[str, Any]:
                 "type": "number",
                 "minimum": 0.0,
                 "maximum": 1.0,
-                "description": "Detection confidence"
+                "description": (
+                    "Detection reliability (0.0-1.0) — how sure the detector "
+                    "is that this symbol IS an entrypoint. NOT prominence; "
+                    "ADR-0039 ruling 3 relocates ranking to rank_score."
+                )
+            },
+            "rank_score": {
+                "type": "number",
+                "minimum": 0.0,
+                "maximum": 1.0,
+                "description": (
+                    "Ranking prominence (0.0-1.0), ADR-0039 ruling 3. "
+                    "Initializes from confidence and accumulates the entrypoint "
+                    "ranking adjustments; entrypoint ordering and the "
+                    "MIN_ENTRYPOINT_CONFIDENCE filter key on this."
+                )
+            },
+            "meta": {
+                "type": "object",
+                "description": (
+                    "Provenance dict mirroring Edge.meta (WI-rukam). "
+                    "Keys: 'id' (entrypoint:sha256:<16hex> content hash of "
+                    "kind+symbol_id+label, always present), 'source' (producer "
+                    "pass: concept_detector / connectivity_fallback / "
+                    "script_module_detector), 'evidence_type' (inference "
+                    "pathway: manifest_declared / framework_pattern / "
+                    "structural / language_convention / naming_heuristic / "
+                    "connectivity_heuristic). Registered on the "
+                    "entrypoint_meta axis in axis_meta_keys.py."
+                ),
+                "properties": {
+                    "id": {"type": "string"},
+                    "source": {"type": "string"},
+                    "evidence_type": {"type": "string"}
+                }
             }
         },
         "required": ["symbol_id", "kind"]

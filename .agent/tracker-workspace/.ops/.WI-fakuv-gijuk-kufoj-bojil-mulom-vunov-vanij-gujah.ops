@@ -37,3 +37,25 @@
     tags: [dogfood_tranche_03]  # 3a72
   remove:  # 3a72
     tags: [dogfood_tranch_03]  # 3a72
+- op: discuss  # cfed
+  at: '2026-06-30T05:20:47Z'  # cfed
+  by: agent  # cfed
+  actor: jgstern_agent  # cfed
+  clock: 4  # cfed
+  nonce: cfed  # cfed
+  message: "Persistence-half addressed via the io-boundary REFRAME (doc-only, dev fde06b3522): spec §9 reframed so io_boundary is consumer-time derived (not stamped) and the io-boundaries CLI is canonical — the 'meta.io_boundary null' face is now intended/documented, not a gap. The remaining half — adding the slice --io-boundary filter affordance (ephemeral, per the user's 'recompute on-demand' ruling) — is tracked next; WI-fakuv stays open until that ships."  # cfed
+- op: update  # 70d8
+  at: '2026-06-30T07:03:54Z'  # 70d8
+  by: agent  # 70d8
+  actor: jgstern_agent  # 70d8
+  clock: 5  # 70d8
+  nonce: 70d8  # 70d8
+  set:  # 70d8
+    status: done  # 70d8
+- op: discuss  # 4315
+  at: '2026-06-30T07:03:54Z'  # 4315
+  by: agent  # 4315
+  actor: jgstern_agent  # 4315
+  clock: 6  # 4315
+  nonce: '4315'  # 4315
+  message: "Both halves resolved. (1) Persistence half — REFRAME (dev fde06b3522): spec §9 reframed so io_boundary is consumer-time derived, not stamped; the 'meta.io_boundary null' face is intended/documented and the io-boundaries CLI is canonical. (2) Filter half — slice --io-boundary shipped (dev 577521ceac). Behavioral evidence: 'hypergumbo slice --entry X --io-boundary fs_read' now filters the slice to fs_read-reaching edges (was 'unrecognized arguments' — the verbatim spec example exited non-zero); an unknown category exits 2 with the KNOWN_IO_BOUNDARIES list. Production-path tests (test_slice_io_boundary.py): parser acceptance, cmd_slice valid-category filtering (only the fs_read edge survives, non-io callee pruned), unknown-category→exit 2, and the _apply_io_boundary_filter helper across all catalog branches. Classification is ephemeral via compute_boundary_map (no persisted field, per the REFRAME). spec §11 updated. Full suite green, 100% cov."  # 4315

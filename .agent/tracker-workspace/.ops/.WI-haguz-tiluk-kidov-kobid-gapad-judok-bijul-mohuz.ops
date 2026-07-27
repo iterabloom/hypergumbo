@@ -31,3 +31,18 @@
     tags: [dogfood]  # ae2c
   remove:  # ae2c
     tags: [dogfooding]  # ae2c
+- op: update  # 08c9
+  at: '2026-07-12T09:08:48Z'  # 08c9
+  by: agent  # 08c9
+  actor: jgstern_agent  # 08c9
+  clock: 3  # 08c9
+  nonce: 08c9  # 08c9
+  set:  # 08c9
+    status: done  # 08c9
+- op: discuss  # 8657
+  at: '2026-07-12T09:08:48Z'  # 8657
+  by: agent  # 8657
+  actor: jgstern_agent  # 8657
+  clock: 4  # 8657
+  nonce: '8657'  # 8657
+  message: "Fixed in PR #591 (selfh dev 3caccf12f1). _finalize_commit_dicts now sorts analysis_runs in place by (started_at, pass) — a deterministic, byte-stable ordering contract, documented in spec (AnalysisRun section). Two finalize tests cover the sort + None-started_at pass tiebreak; in-place sort preserves the behavior_map<->ctx identity other sub-steps rely on. Wave-4 contract-accuracy."  # 8657

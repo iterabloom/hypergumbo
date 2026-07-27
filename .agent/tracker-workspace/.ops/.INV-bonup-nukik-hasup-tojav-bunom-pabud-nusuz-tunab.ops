@@ -1,0 +1,39 @@
+- op: create  # dc28
+  at: '2026-07-15T07:08:10Z'  # dc28
+  by: agent  # dc28
+  actor: jgstern_agent  # dc28
+  clock: 1  # dc28
+  nonce: dc28  # dc28
+  data:  # dc28
+    kind: invariant  # dc28
+    title: "Tier-axis leak (F3): tier-2 overloaded as a synthetic-node classification-lock sentinel by 6 linkers (mechanism leaking into the distance axis)"  # dc28
+    status: violated  # dc28
+    priority: 2  # dc28
+    parent:  # dc28
+    tags:  # dc28
+    - wave5  # dc28
+    - tier_axis  # dc28
+    - concept_audit  # dc28
+    isbefore: []  # dc28
+    duplicate_of: []  # dc28
+    not_duplicate_of: []  # dc28
+    pr_ref:  # dc28
+    description: "supply_chain_tier must name supply-chain DISTANCE only (ADR-0041 §1 axiom: \"no other fact may influence the value\"); it must NOT encode \"this is a synthetic node that must not be reclassified.\" Tier-axis concept audit (2026-07-15) found six linkers set supply_chain_tier=2 on SYNTHETIC nodes whose reason strings name a role/mechanism, never a distance: tauri_ipc.py:660/785/885/915 (\"synthetic IPC bridge/caller node\", \"synthetic Tauri event emitter/listener\"), wasm_bindgen.py:283/419 (\"synthetic WASM bridge node\"), message_dispatch.py:289/322 (\"message dispatch sender/handler\"), annotation_convention.py:216/251/352 (\"@hg:publishes/subscribes/dispatches annotation\"), yjs_crdt.py:425/457 (\"synthetic Yjs CRDT publisher/subscriber\"), solidity_abi.py:224. The tauri_ipc.py:660 comment is explicit: \"Tier 2 prevents _classify_symbols from reclassifying based on the host file path\" — the value 2 is chosen for its side-effect (cli.py:8397 skips symbols where tier != 1), a MECHANISM leaking into the distance axis (mechanism-vs-category leakage test).\n\nSTRUCTURAL FIX: a separate is_synthetic / classification-locked flag (or a supply_chain_reason-based skip) so _classify_symbols skips synthetic linker nodes WITHOUT borrowing tier-2; the synthetic nodes then carry an honest distance tier. Cross-ref: WI-zadot (needs_human_review — synthetic linker nodes kind=function/language=python mislabel), WI-vuzaf (synthetic-node id NAME slot vs node.name). Evidence + verdict: ~/hypergumbo_lab_notebook/concept-audit-supply_chain_tier_07152026.md (F3)."  # dc28
+    fields:  # dc28
+      statement: "supply_chain_tier must name supply-chain distance only per ADR-0041 §1; six linkers set tier-2 on synthetic nodes for the _classify_symbols tier!=1 reclassification-skip side-effect, not for distance."  # dc28
+      root_cause: "cli._classify_symbols skips symbols where supply_chain_tier != 1, so linkers borrow tier-2 as a reclassification-lock instead of declaring a separate is_synthetic/classification-locked flag; the tier field is the only available lock, so the mechanism leaked into the distance axis."  # dc28
+- op: update  # b3ae
+  at: '2026-07-26T19:02:22Z'  # b3ae
+  by: agent  # b3ae
+  actor: jgstern_agent  # b3ae
+  clock: 2  # b3ae
+  nonce: b3ae  # b3ae
+  set:  # b3ae
+    status: satisfied  # b3ae
+- op: discuss  # e922
+  at: '2026-07-26T19:02:22Z'  # e922
+  by: agent  # e922
+  actor: jgstern_agent  # e922
+  clock: 3  # e922
+  nonce: e922  # e922
+  message: "Fixed in PR #23 (dev b78866f964). supply_chain_tier no longer carries the 'don't reclassify' mechanism: dropped all 14 supply_chain_tier=2 stamps across the 6 protocol linkers (tauri_ipc/wasm_bindgen/message_dispatch/annotation_convention/yjs_crdt/solidity_abi) and re-keyed the _classify_symbols skip on the honest protocol_origin field (cli.py:8721). Synthetic stand-ins now carry their honest first-party (tier 1) distance. BEHAVIORAL EVIDENCE: grep 'supply_chain_tier=2' in linkers/ = NONE; new test test_protocol_origin_stand_in_not_reclassified proves a protocol_origin node (no reason) stays tier 1 unclassified; 3 linker tests updated tier==2 -> tier==1. supply_chain_summary per-tier symbols counts shift internal_dep->first_party (files counts unaffected — synthetic nodes are non-file kinds). Full suite green, changed sources 100%."  # e922

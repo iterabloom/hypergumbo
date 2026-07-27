@@ -26,3 +26,18 @@
   clock: 2  # 20d5
   nonce: 20d5  # 20d5
   message: "Materialized from dogfood tranche 05 (F98.A2 / anon-card-015). Mechanism: usage_contexts metadata emits 'methods' (list) where spec §9.914/§9.928 documents 'http_method' (string). Evidence: frozen substrate.json metadata key probe (0/8 http_method, 8/8 methods) + spec §914/§928; fresh tracker run reproduces. Magnitude: 8/8 usage_contexts (all route records in corpus); consumer following spec gets KeyError/None on every route. Blind severity 4/5, reproduced on frozen substrate + fresh run. NOT_A_DUPLICATE (no existing item covers the usage_contexts metadata method-key schema-vs-spec drift). RELATED to WI-sulaz (done — the Starlette UsageContext extractor that is the producer of this metadata), and adjacent to but distinct from WI-kuvig (WS filed under http_route kind). Carded separately from F98.A1 (the usage: vs uc: id-prefix drift) by the card-writer."  # 20d5
+- op: update  # 1f5e
+  at: '2026-07-02T17:43:21Z'  # 1f5e
+  by: agent  # 1f5e
+  actor: jgstern_agent  # 1f5e
+  clock: 3  # 1f5e
+  nonce: 1f5e  # 1f5e
+  set:  # 1f5e
+    status: done  # 1f5e
+- op: discuss  # 244d
+  at: '2026-07-02T17:43:21Z'  # 244d
+  by: agent  # 244d
+  actor: jgstern_agent  # 244d
+  clock: 4  # 244d
+  nonce: 244d  # 244d
+  message: "Done via PR #389 (merged; auto-pr re-committed as 9f2fd3f629 after a tracker auto-sync commit interleaved). The Flask/FastAPI (add_url_rule/add_api_route) and Starlette (Route) route UsageContext extractors now emit one context per declared method with metadata['http_method']=<string> (spec §9), dropping metadata['methods']=[list]. Python was the sole deviant vs rust/ruby/elixir/php/swift/js. Sole internal reader (the Starlette route-symbol minter, the only reader of metadata['methods'] in the tree) reads the string; framework_patterns extracts method from decorator/call AST (extract_method), not the usage_context. Behavioral evidence (production-path analyze_python on merged dev): add_url_rule('/u', methods=['POST','PUT']) -> 2 usage_contexts with http_method POST/PUT (no 'methods' key); default '/list' -> http_method='GET'. Minted route symbols (already one per method) unchanged. core+mainstream 100% coverage; CI passed."  # 244d

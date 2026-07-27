@@ -11,7 +11,7 @@ This module provides the core storage operations for the tracker:
   globally unique for merge=union correctness.
 - **Proquint IDs:** Content-hash IDs using SHA-256 + proquint encoding.
   Same logical item → same ID, natural deduplication.
-- **compile():** Pure function that folds an op log into current item state.
+- **compile_ops():** Pure function that folds an op log into current item state.
   LWW for scalars, accumulation for sets, Lamport-clock-ordered.
 - **Lamport clock:** Cross-branch causal ordering via git cat-file --batch.
 - **SimHash:** Fast locality-sensitive fingerprinting for near-duplicate
@@ -21,8 +21,9 @@ This module provides the core storage operations for the tracker:
 - **Prefix matching:** Resolve unambiguous ID prefixes to full IDs.
 - **ready/list:** Filtered, sorted item queries.
 
-The Store operates on a single tier directory (no TrackerSet, no cache —
-those come in later PRs).
+The Store operates on a single tier directory (no multi-tier merging —
+that lives in TrackerSet). list_items()/ready() accept an optional Cache
+for cache-accelerated reads of unchanged ops files.
 
 See ADR-0013 for the full design specification.
 """

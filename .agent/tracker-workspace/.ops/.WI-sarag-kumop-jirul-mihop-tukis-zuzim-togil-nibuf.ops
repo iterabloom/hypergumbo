@@ -1,0 +1,22 @@
+- op: create  # 5d3a
+  at: '2026-07-19T12:55:50Z'  # 5d3a
+  by: agent  # 5d3a
+  actor: jgstern_agent  # 5d3a
+  clock: 1  # 5d3a
+  nonce: 5d3a  # 5d3a
+  data:  # 5d3a
+    kind: work_item  # 5d3a
+    title: "14 identical _get_node_text(node) copies across lang analyzers duplicate node.text decode; extract a shared helper"  # 5d3a
+    status: todo_hard  # 5d3a
+    priority: 3  # 5d3a
+    parent:  # 5d3a
+    tags:  # 5d3a
+    - refactoring  # 5d3a
+    - tech_debt  # 5d3a
+    - analysis_quality  # 5d3a
+    isbefore: []  # 5d3a
+    duplicate_of: []  # 5d3a
+    not_duplicate_of: []  # 5d3a
+    pr_ref:  # 5d3a
+    description: "Surfaced during the WI-gotaf None-safety sweep: 14 analyzers each define a\nbyte-identical local helper\n\n    def _get_node_text(node) -> str:\n        return node.text.decode(\"utf-8\", errors=\"replace\")\n\n(scheme, meson, matlab, racket, purescript in hypergumbo-lang-common;\nv_lang, tcl, prisma, pascal, odin, janet, haxe, gleam, fennel in\nhypergumbo-lang-extended1). The None-safety fix — (node.text or b\"\") — had\nto be applied 14 times, one per copy, which is exactly the smell: a single\nnode.text-is-bytes|None guard should live in ONE shared helper.\n\nProposed: extract a shared _get_node_text(node) -> str into analyze/base.py\n(or hypergumbo-lang-common) and import it in all 14 analyzers, deleting the\nlocal copies. NOTE: lang_common already has node_text(node, source) but with\na different signature (takes source bytes, slices by byte offset rather than\nusing node.text) — the new helper is the .text-based variant, so reconcile\nthe two (or document why both exist).\n\nLow priority: the duplication is stable and mechanical, but consolidating\nprevents future N-times-fix events like the one that produced this item.\nRoot cause: copy-paste analyzer scaffolding predating a shared text helper."  # 5d3a
+    fields: {}  # 5d3a

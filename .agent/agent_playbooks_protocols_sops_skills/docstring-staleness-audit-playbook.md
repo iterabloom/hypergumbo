@@ -5,7 +5,7 @@ When the agent suspects module docstrings have drifted from the code
 beneath them — typically after a release, after a large architectural
 shift (e.g., a new ADR closure), or when running hypergumbo on itself
 and seeing inconsistencies between what docstrings claim and what the
-behavior map reports — this playbook codifies a four-step audit that
+survey reports — this playbook codifies a four-step audit that
 produces a triaged candidate list and fixes the unambiguous cases via
 a single docs-only PR.
 

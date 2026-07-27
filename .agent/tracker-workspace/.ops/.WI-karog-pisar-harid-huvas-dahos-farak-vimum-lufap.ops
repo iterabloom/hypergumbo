@@ -30,3 +30,18 @@
     tags: [dogfood_tranche_03]  # fff1
   remove:  # fff1
     tags: [dogfood_tranch_03]  # fff1
+- op: update  # 9233
+  at: '2026-06-28T12:33:22Z'  # 9233
+  by: agent  # 9233
+  actor: jgstern_agent  # 9233
+  clock: 3  # 9233
+  nonce: '9233'  # 9233
+  set:  # 9233
+    status: done  # 9233
+- op: discuss  # aa85
+  at: '2026-06-28T12:33:22Z'  # aa85
+  by: agent  # aa85
+  actor: jgstern_agent  # aa85
+  clock: 4  # aa85
+  nonce: aa85  # aa85
+  message: "DONE — already resolved (stale item; impl ≡ docs now holds). Verified, no code change needed:\n- impl: slice.py:542 `_CONTAINER_KINDS = {\"class\",\"interface\",\"module\",\"struct\",\"trait\",\"enum\",\"file\"}` (7 kinds incl file).\n- docs: docs/hypergumbo-spec.md §\"Reverse slice class expansion\" (line 1114) reads \"Applies to class, interface, module, struct, trait, enum, and file containers\" — all 7 incl file.\n- These match (impl ≡ docs), satisfying the item's expectation (\"the set literal matches the spec enumeration; silent extensions are either documented or removed\" — file is now documented, not silent).\nTimeline: item filed 2026-06-05 when the spec enumerated only 6; the 2026-06-18 doc staleness sweep (commit b6dd1690ec, \"46 fixes\") added \"and file containers\" to line 1114, incidentally documenting the 7th kind but without closing this tracker item. A repo-wide grep finds no remaining container-kind enumeration that omits file. The file-kind reverse-slice expansion behavior the item described is the intended file-anchor behavior (file-kind entries auto-expand top-level `contains` children, slice.py:573), now correctly documented."  # aa85

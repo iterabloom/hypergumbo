@@ -1,0 +1,54 @@
+- op: create  # 48c8
+  at: '2026-07-02T03:20:46Z'  # 48c8
+  by: agent  # 48c8
+  actor: jgstern_agent  # 48c8
+  clock: 1  # 48c8
+  nonce: 48c8  # 48c8
+  data:  # 48c8
+    kind: work_item  # 48c8
+    title: "Java Spring @GetMapping/@RequestMapping emit no concept=route despite spring-boot detected (framework_patterns enrich gap)"  # 48c8
+    status: todo_hard  # 48c8
+    priority: 2  # 48c8
+    parent:  # 48c8
+    tags:  # 48c8
+    - dogfood  # 48c8
+    - framework_dispatch_linkers  # 48c8
+    isbefore: []  # 48c8
+    duplicate_of: []  # 48c8
+    not_duplicate_of: []  # 48c8
+    pr_ref:  # 48c8
+    description: "Found by the WI-tosul re-measure (2026-07-01). On a canonical Spring fixture (pom.xml declaring spring-boot-starter-web + @RestController class with @GetMapping('/users') method), the full pipeline emits NO concept=route / framework_role=route on the handler method — only the class-level library_export + maven_dependency concepts. This is NOT a fixture-idiom or detection-gate artifact: _detect_java_frameworks() returns ['spring-boot'] from the pom (verified live), spring-boot.yaml HAS the route pattern (concept: route, decorator: '^(Get|Post|Put|Delete|Patch)Mapping$'), and the java analyzer extracts the annotation correctly (Ctrl.listUsers meta.decorators=[{name:'GetMapping', args:['/users']}]). So the analyzer extraction + catalog pattern + framework detection are all correct, yet enrich_symbols does not tag the method with concept=route. Likely a framework_patterns matcher gap for java method-level annotations keyed under 'decorator:' (WI-lubap class: decorator-vs-annotation key, or method-annotation matching, possibly interacting with prefix_from_parent from the class-level @RestController). Contrast (same re-measure): python Flask @app.route -> concept:route fires WITH requirements.txt (manifest-detection-gated); rust actix #[get] -> concept:route fires WITH Cargo.toml; go net/http HandleFunc -> framework_role=route (analyzer-level, no manifest); js Express app.get -> analyzer-level route_path meta. Java is the sole top-5 language whose canonical web route is fully dark. Repro fixtures live at packages/hypergumbo-core/tests/fixtures/route-parity/. This is a concrete slice of the WI-tosul 'per-language framework/route detection breadth' residual. Behavioral close-check: the route-parity gate's (java) strict-xfail flips to XPASS when fixed."  # 48c8
+    fields: {}  # 48c8
+- op: update  # d6fa
+  at: '2026-07-02T07:03:41Z'  # d6fa
+  by: agent  # d6fa
+  actor: jgstern_agent  # d6fa
+  clock: 2  # d6fa
+  nonce: d6fa  # d6fa
+  set:  # d6fa
+    status: done  # d6fa
+  add:  # d6fa
+    tags: [awaits_bakeoff_validation]  # d6fa
+- op: discuss  # 12b6
+  at: '2026-07-02T07:03:41Z'  # 12b6
+  by: agent  # 12b6
+  actor: jgstern_agent  # 12b6
+  clock: 3  # 12b6
+  nonce: 12b6  # 12b6
+  message: "Fixed in PR #381 (merged b590c885ed). Root cause: refine_frameworks' AUTO-mode demote phase dropped manifest-detected spring-boot to dev_frameworks because its import patterns (org.springframework.boot only) did not match a Spring MVC controller's actual annotation import (org.springframework.web.bind.annotation); with profile.frameworks=[] enrich_symbols never loaded spring-boot.yaml, so no route/controller concept fired. Fix: broadened spring-boot's JAVA_FRAMEWORKS import patterns to include org.springframework.web/.stereotype/.context — import namespaces, not Maven group coords (spring-web's coord is org.springframework:spring-web), so _pattern_matches_deps adds no manifest-detection FP; only import-edge matching widens. Deliberately NOT autoload-by-convention (Rails) — Spring is imported like Django, so import validation stays active. Behavioral evidence (re-ran the item's OWN repro on merged dev b590c885ed, fixtures/route-parity/java/ via run_behavior_map): BEFORE profile.frameworks=[] and Ctrl.listUsers carried no concept; AFTER profile.frameworks=['spring-boot'], Ctrl class -> concept=controller, Ctrl.listUsers method -> concept=route. Route-parity gate: java moved from strict-xfail into ROUTE_GREEN (5/5 pass). Full local suite 100% (19917 passed). Tagged awaits_bakeoff_validation: flips java-Spring concept=route inert->live and widens spring-boot detection corpus-wide. Surfaced a separate PRE-EXISTING route-marker synthesis validation defect (filed WI-tufil; affects go/js/java equally)."  # 12b6
+- op: update  # f31f
+  at: '2026-07-06T20:06:12Z'  # f31f
+  by: agent  # f31f
+  actor: jgstern_agent  # f31f
+  clock: 4  # f31f
+  nonce: f31f  # f31f
+  set: {}  # f31f
+  remove:  # f31f
+    tags: [awaits_bakeoff_validation]  # f31f
+- op: discuss  # 63b9
+  at: '2026-07-06T20:06:12Z'  # 63b9
+  by: agent  # 63b9
+  actor: jgstern_agent  # 63b9
+  clock: 5  # 63b9
+  nonce: 63b9  # 63b9
+  message: "MOVED via BROAD drain broad-20260706-153915 (cohort-001/spring-petclinic, the item target). profile.frameworks=[spring-boot]; 35 nodes carry framework_role/concept=route (was 0 before the fix). Java @GetMapping/@RequestMapping now surface as concept=route. Verdict moved."  # 63b9

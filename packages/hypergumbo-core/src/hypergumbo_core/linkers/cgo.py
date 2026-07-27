@@ -35,8 +35,9 @@ appear as regular C-style function symbols and are matched the same way.
 
 Dataflow Annotation
 -------------------
-Bridge edges are annotated with ``access_mode="write"`` (Go caller passes data
-to C) and ``dest_access_mode="read"`` (C callee receives data). This is Tier 2
+Bridge edges are annotated with ``data_direction="src_to_dst"`` (Go caller
+passes data to C — ADR-0038 ruling 3, the post-eviction home of the former
+``access_mode="write"`` / ``dest_access_mode="read"`` direction pair). This is Tier 2
 (explicit linker) annotation — Tier 1 automatic annotation cannot work across
 language boundaries because no single-language AST spans the FFI call.
 
@@ -62,19 +63,19 @@ from .registry import (
 
 PASS_ID = make_pass_id("cgo-linker")
 
-# The prefix for cgo unresolved edges created by the Go analyzer
+# The prefix identifying cgo edges (calls to the C pseudo-package) created by
+# the Go analyzer. ADR-0037 ruling 4: the resolution verdict comes from
+# ``Edge.is_resolved``, so there is no ``:unresolved`` suffix constant.
 CGO_UNRESOLVED_PREFIX = "go:C:0-0:"
-CGO_UNRESOLVED_SUFFIX = ":unresolved"
 
 
 def _count_go_cgo_calls(ctx: LinkerContext) -> int:
     """Count unresolved Go edges that target the C pseudo-package."""
     count = 0
     for edge in ctx.edges:
-        if (
-            edge.dst.startswith(CGO_UNRESOLVED_PREFIX)
-            and edge.dst.endswith(CGO_UNRESOLVED_SUFFIX)
-        ):
+        # ADR-0037 ruling 4: identify cgo edges by the C-pseudo-package prefix +
+        # the resolution VERDICT (Edge.is_resolved), not the ``:unresolved`` suffix.
+        if edge.dst.startswith(CGO_UNRESOLVED_PREFIX) and not edge.is_resolved:
             count += 1
     return count
 
@@ -159,15 +160,18 @@ def link_cgo(
 
     # Find unresolved cgo edges and resolve them
     for edge in edges:
-        # Only process unresolved edges targeting the C pseudo-package
+        # Only process unresolved edges targeting the C pseudo-package.
+        # ADR-0037 ruling 4: the resolution verdict is Edge.is_resolved, not the
+        # ``:unresolved`` suffix (WI-pubiv's boundary-id remap rewrites it).
         if not edge.dst.startswith(CGO_UNRESOLVED_PREFIX):
             continue
-        if not edge.dst.endswith(CGO_UNRESOLVED_SUFFIX):  # pragma: no cover - defensive
+        if edge.is_resolved:  # pragma: no cover - cgo C-package edges are unresolved
             continue
 
-        # Extract function name from dst: "go:C:0-0:funcName:unresolved"
-        # Strip prefix "go:C:0-0:" and suffix ":unresolved"
-        func_name = edge.dst[len(CGO_UNRESOLVED_PREFIX):-len(CGO_UNRESOLVED_SUFFIX)]
+        # Extract the function name from "go:C:0-0:funcName:<kind>": strip the
+        # prefix, then drop the trailing kind slot (robust whether the suffix is
+        # ``:unresolved`` pre-remap or ``:external_symbol`` post-remap).
+        func_name = edge.dst[len(CGO_UNRESOLVED_PREFIX):].rsplit(":", 1)[0]
 
         if not func_name:
             continue  # pragma: no cover - defensive for malformed edge
@@ -203,8 +207,7 @@ def link_cgo(
             origin=PASS_ID,
             origin_run_id=run.execution_id,
             evidence_type="cgo_call",
-            access_mode="write",
-            dest_access_mode="read",
+            data_direction="src_to_dst",
             meta=edge_meta,
             derived_from=[edge.src, c_sym.id],
         ))

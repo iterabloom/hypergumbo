@@ -1,16 +1,17 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Framework linker: multi-language dependency injection resolution.
 
-Creates ``di_resolves`` edges from interface methods to implementation methods
-when DI bindings can be determined with high confidence.
+Creates ``dispatches_to`` edges (tagged ``meta.mechanism="di"``) from interface
+methods to implementation methods when DI bindings can be determined with high
+confidence.
 
-Why ``di_resolves`` Instead of ``dispatches_to``
--------------------------------------------------
-``dispatches_to`` is in ``_STRUCTURAL_EDGE_TYPES`` (slice.py), so forward BFS
-excludes it to avoid fan-out explosion (an interface with 50 implementations
-pollutes the slice). ``di_resolves`` is *not* structural, so forward slices
-follow it—correct behavior when DI configuration narrows the binding to one
-high-confidence implementation.
+Edge Type (folded to ``dispatches_to``)
+---------------------------------------
+This linker previously emitted a bespoke ``di_resolves`` edge type. Per the
+audit-findings 0001 relationship-axis consolidation it now emits the canonical
+``dispatches_to`` with ``meta.mechanism="di"`` — a high-confidence DI binding
+resolves an interface method to a single implementation method, which is a
+dispatch relationship. The DI-specific distinction is carried in ``meta``.
 
 How It Works
 ------------
@@ -27,8 +28,12 @@ How It Works
    - SPI ``META-INF/services/`` → 0.85
    - Naming convention (``DefaultX``/``XImpl``) → 0.75
    - Single implementation → 0.70
-4. **Create ``di_resolves`` edges** from interface methods to implementation
-   methods (method-level, not class-level).
+4. **Create ``dispatches_to`` edges** (``meta.mechanism="di"``) from interface
+   methods to implementation methods (method-level, not class-level).
+5. **Create ``references`` edges** (``meta.mechanism="di_registration"``,
+   ``meta.framework_dispatch="nestjs_module"``) for NestJS ``@Module`` provider/
+   controller registrations — a declaration-time binding, distinct from the
+   runtime dispatch of step 4.
 
 Supported Frameworks
 --------------------
@@ -48,7 +53,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from ..discovery import find_files
+from ..discovery import find_non_test_files
 from ..ir import PASS_VERSION, AnalysisRun, Edge, Symbol, make_pass_id
 from .registry import (
     LinkerActivation,
@@ -61,7 +66,7 @@ from ._text_filters import read_masked_source
 if TYPE_CHECKING:
     pass
 
-PASS_ID = make_pass_id("di-resolution")
+PASS_ID = make_pass_id("di-resolution-linker")
 
 # ---------------------------------------------------------------------------
 # Regex patterns for explicit DI binding detection
@@ -247,7 +252,7 @@ def _scan_spi_files(root: Path) -> list[DIBinding]:
     spi_dir = root / "META-INF" / "services"
     if not spi_dir.is_dir():
         # Also check src/main/resources/ (Maven layout)
-        for candidate in find_files(root, ["META-INF/services/*"]):
+        for candidate in find_non_test_files(root, ["META-INF/services/*"]):
             iface_fqn = candidate.name
             iface_short = iface_fqn.rsplit(".", 1)[-1]
             try:
@@ -365,7 +370,7 @@ def extract_bindings_from_source(root: Path) -> list[DIBinding]:
     bindings: list[DIBinding] = []
 
     # Scan source files
-    for file_path in find_files(root, _SOURCE_GLOBS):
+    for file_path in find_non_test_files(root, _SOURCE_GLOBS):
         ext = file_path.suffix.lower()
         patterns = _PATTERNS_BY_EXT.get(ext, [])
         reversed_patterns = _REVERSED_PATTERNS_BY_EXT.get(ext, [])
@@ -731,14 +736,16 @@ def link_di_resolution(ctx: LinkerContext) -> LinkerResult:
 
     1. Extract explicit bindings from source files.
     2. Apply resolution cascade (explicit > naming > single-impl).
-    3. Create ``di_resolves`` edges at method level.
-    4. Create ``di_registers`` edges for NestJS module registrations.
+    3. Create ``dispatches_to`` edges at method level (``meta.mechanism="di"``).
+    4. Create ``references`` edges for NestJS module registrations
+       (``meta.mechanism="di_registration"``).
 
     Args:
         ctx: LinkerContext with symbols, edges, and repo_root.
 
     Returns:
-        LinkerResult with new di_resolves and di_registers edges.
+        LinkerResult with new ``dispatches_to`` (di) and ``references``
+        (di_registration) edges.
     """
     start = time.time()
     run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)
@@ -768,7 +775,7 @@ def link_di_resolution(ctx: LinkerContext) -> LinkerResult:
 # ---------------------------------------------------------------------------
 
 @register_linker(
-    "di-resolution",
+    "di-resolution-linker",
     priority=65,
     description=(
         "Creates di_resolves edges from interface methods to DI-bound "

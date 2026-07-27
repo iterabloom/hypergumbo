@@ -6,14 +6,18 @@ from hypergumbo_core.ir import Symbol, Edge, Span
 from hypergumbo_core.entrypoints import (
     _diversity_cap,
     _is_frontend_file,
+    all_known_entrypoint_kinds,
     compute_entrypoint_cap,
     detect_entrypoints,
     Entrypoint,
     EntrypointKind,
+    ENTRYPOINT_EVIDENCE_TYPES,
+    ENTRYPOINT_SOURCES,
     BASE_ENTRYPOINT_CAP,
     MAX_ENTRYPOINT_CAP,
 )
 from hypergumbo_core.paths import is_test_file
+from hypergumbo_core.supply_chain import classify_file
 
 
 def make_symbol(
@@ -26,6 +30,7 @@ def make_symbol(
     decorators: list[str] | None = None,
     meta: dict | None = None,
     supply_chain_tier: int = 1,
+    visibility: str | None = None,
 ) -> Symbol:
     """Helper to create test symbols."""
     span = Span(start_line=start_line, end_line=end_line, start_col=0, end_col=10)
@@ -44,6 +49,7 @@ def make_symbol(
         stable_id=stable_id,
         meta=meta,
         supply_chain_tier=supply_chain_tier,
+        visibility=visibility,
     )
 
 
@@ -1349,6 +1355,72 @@ class TestSemanticEntryDetection:
         assert ep.confidence == 0.75
         assert "doSomething" in ep.label
 
+    def test_library_export_skipped_for_non_public_visibility(self) -> None:
+        """WI-pikib: a non-public symbol matching library_export is NOT an EP.
+
+        The concept detector fires ``library_export`` on a nested private
+        closure (e.g. ``fold_string_interpolation._sub``, the callback passed
+        to ``re.sub``), but such a symbol is not importable — no consumer can
+        reach it as public API. INV-jusot's canonical ``Symbol.visibility``
+        axis (computed in finalize, before ``detect_entrypoints``) lets the
+        gate reject it. ``visibility='private'`` -> no LIBRARY_EXPORT.
+        """
+        sym = make_symbol(
+            "fold._sub",
+            kind="function",
+            path="pkg/__init__.py",
+            language="python",
+            visibility="private",
+            meta={
+                "concepts": [
+                    {
+                        "concept": "library_export",
+                        "framework": "library-exports",
+                        "export_name": "fold._sub",
+                        "is_default": "false",
+                    }
+                ]
+            },
+        )
+
+        entrypoints = detect_entrypoints([sym], [])
+
+        lib_eps = [e for e in entrypoints if e.kind == EntrypointKind.LIBRARY_EXPORT]
+        assert lib_eps == [], (
+            "A private (non-public) symbol must not become a LIBRARY_EXPORT "
+            f"entrypoint, got {lib_eps}"
+        )
+
+    def test_library_export_kept_for_public_visibility(self) -> None:
+        """WI-pikib positive control: a public symbol still becomes an EP.
+
+        The visibility gate must only suppress affirmatively non-public
+        matches; a ``visibility='public'`` library export is retained.
+        """
+        sym = make_symbol(
+            "fold_string_interpolation",
+            kind="function",
+            path="pkg/__init__.py",
+            language="python",
+            visibility="public",
+            meta={
+                "concepts": [
+                    {
+                        "concept": "library_export",
+                        "framework": "library-exports",
+                        "export_name": "fold_string_interpolation",
+                        "is_default": "false",
+                    }
+                ]
+            },
+        )
+
+        entrypoints = detect_entrypoints([sym], [])
+
+        lib_eps = [e for e in entrypoints if e.kind == EntrypointKind.LIBRARY_EXPORT]
+        assert len(lib_eps) == 1
+        assert "fold_string_interpolation" in lib_eps[0].label
+
     def test_library_export_default_export(self) -> None:
         """Default exports have appropriate label."""
         sym = make_symbol(
@@ -1510,9 +1582,12 @@ class TestSemanticEntryDetection:
         assert "Python CLI" in cli_eps[0].label
 
     def test_main_guard_entrypoint_detection(self) -> None:
-        """Python files with main guard (if __name__ == '__main__') are detected as entrypoints.
+        """A guard-only script (if __name__, no main()) is a MAIN_GUARD entry (WI-tuvun).
 
         INV-hojus: the carrier is the file-kind pseudo-node, not module-kind.
+        WI-tuvun: the ``main_guard`` concept produces the distinct MAIN_GUARD
+        kind (file target), NOT MAIN_FUNCTION (function target), so ``kind``
+        alone disambiguates the target type.
         """
         sym = Symbol(
             id="python:script.py:1-1:file:file",
@@ -1527,10 +1602,43 @@ class TestSemanticEntryDetection:
 
         entrypoints = detect_entrypoints(nodes, [])
 
-        main_eps = [e for e in entrypoints if e.kind == EntrypointKind.MAIN_FUNCTION]
-        assert len(main_eps) == 1
-        assert main_eps[0].confidence == 0.85  # Structural pattern
-        assert "if __name__" in main_eps[0].label
+        guard_eps = [e for e in entrypoints if e.kind == EntrypointKind.MAIN_GUARD]
+        assert len(guard_eps) == 1
+        assert guard_eps[0].confidence == 0.85  # Structural pattern
+        assert "if __name__" in guard_eps[0].label
+        # It is NOT the function-target MAIN_FUNCTION kind.
+        assert not [e for e in entrypoints if e.kind == EntrypointKind.MAIN_FUNCTION]
+
+    def test_main_guard_superseded_by_function_main_cross_symbol(self) -> None:
+        """WI-tuvun/INV-hosuh: a def main() supersedes the same-file MAIN_GUARD.
+
+        Real analyzer shape: the ``main_guard`` concept lands on the FILE
+        symbol while ``main_function`` lands on the FUNCTION symbol — two
+        different symbols on the same path. The named main() is canonical;
+        the guard marker is redundant and dropped.
+        """
+        file_sym = Symbol(
+            id="python:app.py:1-1:file:file", name="app.py", kind="file",
+            path="app.py", language="python", span=Span(1, 20, 0, 0),
+            meta={"concepts": [{"concept": "main_guard", "framework": "python"}]},
+        )
+        fn_sym = Symbol(
+            id="python:app.py:4-6:main:function", name="main", kind="function",
+            path="app.py", language="python", span=Span(4, 6, 0, 0),
+            meta={"concepts": [{"concept": "main_function", "framework": "python"}]},
+        )
+
+        entrypoints = detect_entrypoints([file_sym, fn_sym], [])
+
+        fn_eps = [e for e in entrypoints if e.kind == EntrypointKind.MAIN_FUNCTION]
+        guard_eps = [e for e in entrypoints if e.kind == EntrypointKind.MAIN_GUARD]
+        assert len(fn_eps) == 1
+        assert fn_eps[0].symbol_id == "python:app.py:4-6:main:function"
+        assert guard_eps == []  # guard dropped in favor of the named main()
+
+    def test_main_guard_in_kind_catalog(self) -> None:
+        """WI-tuvun: MAIN_GUARD is a recognized entrypoint-kind axis value."""
+        assert "main_guard" in all_known_entrypoint_kinds()
 
     def test_main_guard_deduplicated_with_main_function(self) -> None:
         """main_guard and main_function concepts on same symbol don't create duplicates."""
@@ -2012,8 +2120,9 @@ class TestConnectivityBasedRanking:
 
         route_eps = {ep.symbol_id: ep for ep in entrypoints if ep.kind == EntrypointKind.HTTP_ROUTE}
 
-        # Connected route should have higher confidence than isolated one
-        assert route_eps[route_connected.id].confidence > route_eps[route_isolated.id].confidence
+        # Connected route should have higher ranking prominence than isolated
+        # one (ADR-0039 ruling 3: the connectivity boost lives on rank_score).
+        assert route_eps[route_connected.id].rank_score > route_eps[route_isolated.id].rank_score
 
     def test_all_entrypoints_still_returned(self) -> None:
         """Connectivity ranking should not filter out any entrypoints."""
@@ -2319,7 +2428,11 @@ class TestEntrypointSerialization:
     """Tests for Entrypoint serialization methods."""
 
     def test_to_dict(self) -> None:
-        """Entrypoint.to_dict() returns correct dictionary structure."""
+        """Entrypoint.to_dict() returns correct dictionary structure.
+
+        WI-rukam: the record now carries a ``meta`` dict mirroring
+        ``Edge.meta``; ``meta.id`` is auto-stamped on every record.
+        """
         ep = Entrypoint(
             symbol_id="python:app.py:1-5:handler:function",
             kind=EntrypointKind.HTTP_ROUTE,
@@ -2329,12 +2442,42 @@ class TestEntrypointSerialization:
 
         result = ep.to_dict()
 
-        assert result == {
-            "symbol_id": "python:app.py:1-5:handler:function",
-            "kind": "http_route",
-            "confidence": 0.95,
-            "label": "HTTP GET /users",
+        assert set(result.keys()) == {
+            "symbol_id", "kind", "confidence", "rank_score", "label", "meta",
         }
+        assert result["symbol_id"] == "python:app.py:1-5:handler:function"
+        assert result["kind"] == "http_route"
+        assert result["confidence"] == 0.95
+        # ADR-0039 R3: rank_score mirrors confidence until adjustments relocate.
+        assert result["rank_score"] == 0.95
+        assert result["label"] == "HTTP GET /users"
+        # Direct construction stamps only the derived id (no source /
+        # evidence_type — those come from the producer via .create()).
+        assert result["meta"]["id"].startswith("entrypoint:sha256:")
+        assert set(result["meta"].keys()) == {"id"}
+
+    def test_rank_score_defaults_to_confidence(self) -> None:
+        """ADR-0039 R3: Entrypoint.rank_score syncs to confidence via __post_init__."""
+        ep = Entrypoint(
+            symbol_id="python:app.py:1-5:handler:function",
+            kind=EntrypointKind.MAIN_FUNCTION,
+            confidence=0.65,
+            label="main",
+        )
+        assert ep.rank_score == 0.65
+
+    def test_rank_score_explicit_is_preserved(self) -> None:
+        """A producer may set rank_score independently of confidence."""
+        ep = Entrypoint(
+            symbol_id="python:app.py:1-5:handler:function",
+            kind=EntrypointKind.LIBRARY_EXPORT,
+            confidence=0.95,
+            label="export",
+            rank_score=0.10,
+        )
+        assert ep.confidence == 0.95
+        assert ep.rank_score == 0.10
+        assert ep.to_dict()["rank_score"] == 0.10
 
     def test_to_dict_all_kinds(self) -> None:
         """to_dict() correctly serializes all EntrypointKind values."""
@@ -2347,6 +2490,198 @@ class TestEntrypointSerialization:
             )
             result = ep.to_dict()
             assert result["kind"] == kind.value
+            assert result["meta"]["id"].startswith("entrypoint:sha256:")
+
+
+class TestEntrypointProvenance:
+    """WI-rukam: every Entrypoint carries id/source/evidence_type under meta.
+
+    The record grows a ``meta`` dict mirroring ``Edge.meta``: a stable
+    content-hash ``id`` (auto-stamped), the producer-pass ``source``, and
+    the inference-pathway ``evidence_type`` (both set by ``.create()``).
+    """
+
+    def test_id_auto_stamped_on_direct_construction(self) -> None:
+        ep = Entrypoint(
+            symbol_id="python:app.py:1-5:h:function",
+            kind=EntrypointKind.HTTP_ROUTE,
+            confidence=0.9,
+            label="HTTP GET /x",
+        )
+        assert ep.meta["id"].startswith("entrypoint:sha256:")
+
+    def test_id_deterministic_for_same_inputs(self) -> None:
+        kwargs = {
+            "symbol_id": "python:app.py:1-5:h:function",
+            "kind": EntrypointKind.HTTP_ROUTE,
+            "confidence": 0.9,
+            "label": "HTTP GET /x",
+        }
+        assert Entrypoint(**kwargs).meta["id"] == Entrypoint(**kwargs).meta["id"]
+
+    def test_id_varies_by_kind_symbol_and_label(self) -> None:
+        base = {
+            "symbol_id": "python:app.py:1-5:h:function",
+            "kind": EntrypointKind.HTTP_ROUTE,
+            "confidence": 0.9,
+            "label": "HTTP GET /x",
+        }
+        base_id = Entrypoint(**base).meta["id"]
+        assert Entrypoint(**{**base, "kind": EntrypointKind.CONTROLLER}).meta["id"] != base_id
+        assert Entrypoint(**{**base, "symbol_id": "other"}).meta["id"] != base_id
+        assert Entrypoint(**{**base, "label": "HTTP POST /x"}).meta["id"] != base_id
+
+    def test_confidence_excluded_from_id(self) -> None:
+        """id is identity (kind/symbol/label) — confidence is a ranking
+        value, not part of the record's identity."""
+        a = Entrypoint(symbol_id="s", kind=EntrypointKind.HTTP_ROUTE,
+                       confidence=0.9, label="L")
+        b = Entrypoint(symbol_id="s", kind=EntrypointKind.HTTP_ROUTE,
+                       confidence=0.1, label="L")
+        assert a.meta["id"] == b.meta["id"]
+
+    def test_create_sets_source_evidence_and_id(self) -> None:
+        ep = Entrypoint.create(
+            symbol_id="python:app.py:1-5:h:function",
+            kind=EntrypointKind.HTTP_ROUTE,
+            confidence=0.95,
+            label="HTTP GET /x",
+            source="concept_detector",
+            evidence_type="framework_pattern",
+        )
+        assert ep.meta["source"] == "concept_detector"
+        assert ep.meta["evidence_type"] == "framework_pattern"
+        assert ep.meta["id"].startswith("entrypoint:sha256:")
+        # to_dict round-trips the full provenance.
+        assert ep.to_dict()["meta"] == ep.meta
+
+    def test_create_rejects_unknown_source(self) -> None:
+        with pytest.raises(ValueError, match="source"):
+            Entrypoint.create(
+                symbol_id="s", kind=EntrypointKind.HTTP_ROUTE,
+                confidence=0.9, label="L",
+                source="not_a_source", evidence_type="framework_pattern",
+            )
+
+    def test_create_rejects_unknown_evidence_type(self) -> None:
+        with pytest.raises(ValueError, match="evidence_type"):
+            Entrypoint.create(
+                symbol_id="s", kind=EntrypointKind.HTTP_ROUTE,
+                confidence=0.9, label="L",
+                source="concept_detector", evidence_type="not_a_pathway",
+            )
+
+    def test_vocabulary_constants_are_frozensets(self) -> None:
+        assert isinstance(ENTRYPOINT_SOURCES, frozenset)
+        assert isinstance(ENTRYPOINT_EVIDENCE_TYPES, frozenset)
+        assert "concept_detector" in ENTRYPOINT_SOURCES
+        assert "framework_pattern" in ENTRYPOINT_EVIDENCE_TYPES
+
+    # --- Behavioral / production-path coverage (closure evidence) ---
+
+    def _provenance_fixture(self):
+        """Symbols + edges exercising every concept_detector evidence
+        pathway plus the script_module_detector producer."""
+        route = make_symbol(
+            "get_users", path="src/api/users.py",
+            meta={"concepts": [
+                {"concept": "route", "path": "/users", "method": "GET"}]},
+        )
+        manifest_cli = make_symbol(
+            "mycli", path="src/cli.py",
+            meta={"concepts": [{"concept": "npm_bin"}]},
+        )
+        main_fn = make_symbol(
+            "main", path="src/main.py",
+            meta={"concepts": [{"concept": "main_function"}]},
+        )
+        controller = make_symbol(
+            "FooController", path="src/foo.py",
+            meta={"concepts": [{"concept": "controller_by_name"}]},
+        )
+        shell = make_symbol(
+            "deploy.sh", path="scripts/deploy.sh", kind="file",
+            language="bash",
+            meta={"concepts": [{"concept": "shell_script"}]},
+        )
+        # script_module: TS file with an outbound call and no inbound import.
+        ts_file = make_symbol(
+            "app.ts", path="src/app.ts", kind="file", language="typescript",
+        )
+        callee = make_symbol("helper", path="src/helper.ts", language="typescript")
+        call_edge = Edge.create(
+            src=ts_file.id, dst=callee.id, edge_type="calls", line=1,
+            origin="test", origin_run_id="uuid:test",
+        )
+        nodes = [route, manifest_cli, main_fn, controller, shell, ts_file, callee]
+        return nodes, [call_edge]
+
+    def test_detect_entrypoints_all_carry_provenance(self) -> None:
+        """Every entrypoint emitted by detect_entrypoints has a valid
+        id/source/evidence_type — the structural invariant (WI-rukam)."""
+        nodes, edges = self._provenance_fixture()
+        eps = detect_entrypoints(nodes, edges)
+        assert eps  # fixture must produce some
+        for ep in eps:
+            assert ep.meta["id"].startswith("entrypoint:sha256:")
+            assert ep.meta["source"] in ENTRYPOINT_SOURCES
+            assert ep.meta["evidence_type"] in ENTRYPOINT_EVIDENCE_TYPES
+
+    def test_evidence_type_per_representative_kind(self) -> None:
+        nodes, edges = self._provenance_fixture()
+        eps = detect_entrypoints(nodes, edges)
+        by_kind = {ep.kind: ep for ep in eps}
+        assert by_kind[EntrypointKind.HTTP_ROUTE].meta["evidence_type"] == "framework_pattern"
+        assert by_kind[EntrypointKind.CLI_COMMAND].meta["evidence_type"] == "manifest_declared"
+        assert by_kind[EntrypointKind.MAIN_FUNCTION].meta["evidence_type"] == "language_convention"
+        assert by_kind[EntrypointKind.CONTROLLER].meta["evidence_type"] == "naming_heuristic"
+        assert by_kind[EntrypointKind.SHELL_SCRIPT].meta["evidence_type"] == "structural"
+        assert by_kind[EntrypointKind.SCRIPT_MODULE].meta["evidence_type"] == "structural"
+        # source: concept-detected vs structural script-module producer.
+        assert by_kind[EntrypointKind.HTTP_ROUTE].meta["source"] == "concept_detector"
+        assert by_kind[EntrypointKind.SCRIPT_MODULE].meta["source"] == "script_module_detector"
+
+    def test_connectivity_fallback_carries_provenance(self) -> None:
+        """The connectivity fallback (no concepts matched) stamps its own
+        source + evidence_type."""
+        a = make_symbol("a", path="src/a.py")
+        b = make_symbol("b", path="src/b.py")
+        c = make_symbol("c", path="src/c.py")
+        edges = [
+            Edge.create(src=a.id, dst=b.id, edge_type="calls", line=1,
+                        origin="test", origin_run_id="uuid:test"),
+            Edge.create(src=a.id, dst=c.id, edge_type="calls", line=2,
+                        origin="test", origin_run_id="uuid:test"),
+        ]
+        eps = detect_entrypoints([a, b, c], edges)
+        conn = [e for e in eps if e.kind == EntrypointKind.CONNECTIVITY_BASED]
+        assert conn
+        for ep in conn:
+            assert ep.meta["source"] == "connectivity_fallback"
+            assert ep.meta["evidence_type"] == "connectivity_heuristic"
+            assert ep.meta["id"].startswith("entrypoint:sha256:")
+
+
+class TestEntrypointKindCatalog:
+    """WI-pupiz: entrypoint-kind as a lightweight catalog-derived axis."""
+
+    def test_returns_every_enum_value(self) -> None:
+        assert all_known_entrypoint_kinds() == frozenset(
+            k.value for k in EntrypointKind
+        )
+
+    def test_is_nonempty_frozenset(self) -> None:
+        kinds = all_known_entrypoint_kinds()
+        assert isinstance(kinds, frozenset)
+        assert kinds  # non-empty — a meaningless axis otherwise
+
+    def test_known_canonical_kinds_present(self) -> None:
+        kinds = all_known_entrypoint_kinds()
+        # Spot-check representative kinds across the producer families.
+        assert {
+            "http_route", "cli_command", "main_function", "library_export",
+            "connectivity_based", "websocket_handler",
+        } <= kinds
 
 
 class TestEntrypointRankingPenalties:
@@ -2428,6 +2763,57 @@ class TestEntrypointRankingPenalties:
         assert entrypoints[0].symbol_id == prod_main.id
         assert entrypoints[0].confidence == pytest.approx(0.80, rel=0.01)
 
+    def test_support_dir_entrypoint_penalized_via_broad_path_heuristic(
+        self, tmp_path
+    ) -> None:
+        """WI-popok KEEP verdict: the ranker penalizes on the BROAD
+        ``paths.is_test_file`` ("test-or-support" code), NOT the narrow
+        supply-chain ``Symbol.is_test_file`` role flag.
+
+        A ``main()`` in a ``mocks/`` dir must stay deprioritized even though the
+        canonical supply-chain verdict does NOT flag it as test code — otherwise
+        mock/fixture/testdata entrypoints would flood the entry list on repos
+        that have them. This guards against a naive "consume ``sym.is_test_file``"
+        swap (WI-popok): that field is ``False`` for ``mocks/``, so the swap
+        would drop the penalty and this test would go red.
+
+        Executable re-evaluation trigger (per the fundamental-concept-audit KEEP
+        rule): the divergence-pinning assertion below fails if canonical
+        ``supply_chain.is_test`` is ever broadened to cover ``mocks/`` — the
+        signal to re-open the audit and reconsider consolidating the two
+        predicates.
+        """
+        # The divergence the KEEP verdict rests on: the broad ranking heuristic
+        # flags mocks/ as test-support; the narrow supply-chain classifier does
+        # not. If the second assertion ever flips, the two predicates have
+        # converged and the swap becomes safe — re-run the concept audit.
+        assert is_test_file("src/mocks/server.py") is True
+        mock_file = tmp_path / "src/mocks/server.py"
+        mock_file.parent.mkdir(parents=True, exist_ok=True)
+        mock_file.write_text("def main():\n    pass\n")
+        assert classify_file(mock_file, tmp_path).is_test is False
+
+        prod_main = make_symbol(
+            "main",
+            path="src/app.py",
+            meta={"concepts": [{"concept": "main_function"}]},
+        )
+        mock_main = make_symbol(
+            "main",
+            path="src/mocks/server.py",
+            start_line=10,
+            meta={"concepts": [{"concept": "main_function"}]},
+        )
+        # The mock symbol's canonical role-flag verdict is False — the ranker
+        # must not rely on it, or this entrypoint escapes the penalty.
+        assert mock_main.is_test_file is False
+
+        entrypoints = detect_entrypoints([prod_main, mock_main], [])
+
+        # Broad-heuristic penalty (0.80 * 0.1 = 0.08 < 0.10) filters the mock main.
+        assert len(entrypoints) == 1
+        assert entrypoints[0].symbol_id == prod_main.id
+
     def test_vendor_tier_penalty(self) -> None:
         """Entrypoints in vendor code (tier >= 3) receive a 70% penalty."""
         # First-party main function (tier 1)
@@ -2454,17 +2840,143 @@ class TestEntrypointRankingPenalties:
         # Both should be detected
         assert len(entrypoints) == 2
 
-        # First-party should have higher confidence
+        # First-party should have higher ranking prominence (ADR-0039 ruling 3:
+        # the vendor penalty lives on rank_score; detection confidence is the base).
         fp_ep = next(e for e in entrypoints if "src/main.go" in e.symbol_id)
         vendor_ep = next(e for e in entrypoints if "vendor/" in e.symbol_id)
 
-        # Base confidence is 0.80 for main_function
-        # Vendor gets 70% penalty: 0.80 * 0.3 = 0.24
+        # Base confidence is 0.80 for main_function (both); the 70% vendor
+        # penalty (0.80 * 0.3 = 0.24) is a ranking signal -> rank_score.
         assert fp_ep.confidence == pytest.approx(0.80, rel=0.01)
-        assert vendor_ep.confidence == pytest.approx(0.24, rel=0.01)
+        assert vendor_ep.confidence == pytest.approx(0.80, rel=0.01)
+        assert fp_ep.rank_score == pytest.approx(0.80, rel=0.01)
+        assert vendor_ep.rank_score == pytest.approx(0.24, rel=0.01)
 
         # First-party should rank first
         assert entrypoints[0].symbol_id == first_party.id
+
+    def _bash_helpers(self, host_path: str, n: int = 15):
+        """N bash function symbols in ``host_path`` (out-degree fodder)."""
+        return [
+            make_symbol(
+                f"step{i}", path=host_path, kind="function", language="bash",
+                start_line=10 + i, end_line=11 + i,
+            )
+            for i in range(n)
+        ]
+
+    def test_build_wrapper_shell_script_demoted(self) -> None:
+        """WI-batit: Maven/Gradle build-wrapper scripts (mvnw/gradlew) are
+        demoted so they don't seed forward slices over the real API surface.
+
+        A checked-in mvnw/gradlew sits at the repo root at tier 1, so NONE of
+        the existing penalties (test / utility-dir / vendor-tier) fire — its
+        0.85 base plus a large out-degree connectivity boost climbs to ~0.98,
+        outranking the actual controllers in ``--entry auto``. The build-wrapper
+        demotion (x0.1) plus a connectivity-boost skip pushes it below the noise
+        floor.
+        """
+        mvnw = make_symbol(
+            "mvnw", path="mvnw", kind="file", language="bash",
+            meta={"concepts": [{"concept": "shell_script"}]},
+            supply_chain_tier=1,
+        )
+        helpers = self._bash_helpers("mvnw")
+        nodes = [mvnw, *helpers]
+        edges = [
+            Edge.create(src=mvnw.id, dst=h.id, edge_type="calls", line=2,
+                        origin="test", origin_run_id="test")
+            for h in helpers
+        ]
+        entrypoints = detect_entrypoints(nodes, edges)
+        # Demoted 0.85 * 0.1 = 0.085 with the connectivity boost skipped, so it
+        # lands below MIN_ENTRYPOINT_CONFIDENCE (0.10) instead of climbing back
+        # toward ~0.98 — and is filtered out, exactly the treatment test-file
+        # entrypoints get. It never seeds --entry auto. (A genuine, non-wrapper
+        # shell script is NOT demoted — see
+        # test_non_build_wrapper_shell_script_not_demoted.)
+        assert mvnw.id not in {e.symbol_id for e in entrypoints}
+
+    def test_route_outranks_build_wrapper(self) -> None:
+        """WI-batit: after the demotion a real HTTP route (the API surface)
+        outranks a mvnw/gradlew wrapper, so ``slice --entry auto`` seeds from
+        the controller, not the build script."""
+        gradlew = make_symbol(
+            "gradlew", path="gradlew", kind="file", language="bash",
+            meta={"concepts": [{"concept": "shell_script"}]},
+            supply_chain_tier=1,
+        )
+        # Non-"samples" controller path so is_utility_file does NOT fire.
+        route = make_symbol(
+            "checkout",
+            path="src/main/java/com/app/web/CheckoutController.java",
+            language="java",
+            meta={"concepts": [
+                {"concept": "route", "method": "POST", "path": "/checkout"},
+            ]},
+            supply_chain_tier=1,
+        )
+        helpers = self._bash_helpers("gradlew")
+        nodes = [gradlew, route, *helpers]
+        edges = [
+            Edge.create(src=gradlew.id, dst=h.id, edge_type="calls", line=2,
+                        origin="test", origin_run_id="test")
+            for h in helpers
+        ]
+        entrypoints = detect_entrypoints(nodes, edges)
+        # The wrapper is demoted below the floor and filtered out; the route
+        # survives and is the top-ranked auto-slice seed (was: gradlew at ~1.0
+        # outranked the route at 0.95 before the WI-batit demotion).
+        assert gradlew.id not in {e.symbol_id for e in entrypoints}
+        assert entrypoints[0].symbol_id == route.id
+
+    def test_non_build_wrapper_shell_script_not_demoted(self) -> None:
+        """WI-batit precision: only mvnw/gradlew wrappers are demoted; a genuine
+        repo-root tool/CLI shell script keeps its full ranking (a shell-first
+        repo's real entrypoint must not be suppressed)."""
+        tool = make_symbol(
+            "run.sh", path="run.sh", kind="file", language="bash",
+            meta={"concepts": [{"concept": "shell_script"}]},
+            supply_chain_tier=1,
+        )
+        entrypoints = detect_entrypoints([tool], [])
+        shell_ep = next(
+            e for e in entrypoints if e.kind == EntrypointKind.SHELL_SCRIPT
+        )
+        # Not a build wrapper -> no demotion; rank_score stays at the 0.85 base.
+        assert shell_ep.rank_score == pytest.approx(0.85, rel=0.01)
+
+    def test_adr0039_confidence_in_band_ranking_on_rank_score(self) -> None:
+        """ADR-0039 ruling 3 (WI-lutad, WI-dojor): entrypoint detection
+        confidence stays at the in-band construction base [0.70, 0.99] — no
+        ceiling breach from boosts, no sub-floor from penalties — while every
+        ranking adjustment lives on rank_score, which the sort and the
+        MIN_ENTRYPOINT_CONFIDENCE filter key on."""
+        prod = make_symbol(
+            "main", path="src/main.go", language="go",
+            meta={"concepts": [{"concept": "main_function"}]}, supply_chain_tier=1,
+        )
+        vendor = make_symbol(
+            "main", path="vendor/x/main.go", language="go", start_line=10,
+            meta={"concepts": [{"concept": "main_function"}]}, supply_chain_tier=3,
+        )
+        test_main = make_symbol(
+            "main", path="tests/main_test.go", language="go", start_line=20,
+            meta={"concepts": [{"concept": "main_function"}]}, supply_chain_tier=1,
+        )
+        entrypoints = detect_entrypoints([prod, vendor, test_main], [])
+
+        by_id = {e.symbol_id: e for e in entrypoints}
+        # The test main (base 0.80 * 0.1 = rank 0.08 < MIN 0.10) is filtered out
+        # BY rank_score, even though its detection confidence (0.80) is high.
+        assert test_main.id not in by_id
+        # Surviving entrypoints: confidence is the in-band base for BOTH...
+        for ep in entrypoints:
+            assert 0.70 <= ep.confidence <= 0.99, ep.symbol_id
+        # ...and the vendor penalty shows up only on rank_score.
+        assert by_id[prod.id].confidence == pytest.approx(0.80, rel=0.01)
+        assert by_id[vendor.id].confidence == pytest.approx(0.80, rel=0.01)
+        assert by_id[prod.id].rank_score > by_id[vendor.id].rank_score
 
     def test_test_and_vendor_penalties_stack(self) -> None:
         """Stacked penalties filter out vendor test entries entirely.
@@ -2551,8 +3063,10 @@ class TestEntrypointRankingPenalties:
         derived_ep = next(e for e in entrypoints if "dist/main.js" in e.symbol_id)
 
         # Derived (tier 4) should also get the vendor penalty (tier >= 3)
-        assert source_ep.confidence > derived_ep.confidence
-        assert derived_ep.confidence == pytest.approx(0.80 * 0.3, rel=0.01)
+        # ADR-0039 ruling 3: the derived/vendor penalty lives on rank_score.
+        assert source_ep.rank_score > derived_ep.rank_score
+        assert derived_ep.confidence == pytest.approx(0.80, rel=0.01)
+        assert derived_ep.rank_score == pytest.approx(0.80 * 0.3, rel=0.01)
 
     def test_test_file_main_no_connectivity_boost(self) -> None:
         """MAIN_FUNCTION in test files skips connectivity boost.
@@ -2687,7 +3201,8 @@ class TestGoUtilityMainDemotion:
         plugin_ep = next(e for e in entrypoints if "builtin" in e.symbol_id)
 
         # Server main should rank higher than plugin shim main
-        assert server_ep.confidence > plugin_ep.confidence
+        # ADR-0039 ruling 3: the nested-cmd demotion lives on rank_score.
+        assert server_ep.rank_score > plugin_ep.rank_score
 
     def test_pkg_cmd_not_demoted(self) -> None:
         """Main in pkg/cmd/grafana/ is NOT demoted (standard Go layout)."""
@@ -2737,9 +3252,11 @@ class TestGoUtilityMainDemotion:
         server_ep = next(e for e in entrypoints if "cmd/server" in e.symbol_id)
 
         # Codegen should be demoted below server
-        assert server_ep.confidence > codegen_ep.confidence
+        # ADR-0039 ruling 3: the utility/codegen demotion lives on rank_score.
+        assert server_ep.rank_score > codegen_ep.rank_score
         # Utility penalty: 0.80 * 0.5 = 0.40
-        assert codegen_ep.confidence == pytest.approx(0.40, rel=0.01)
+        assert codegen_ep.confidence == pytest.approx(0.80, rel=0.01)
+        assert codegen_ep.rank_score == pytest.approx(0.40, rel=0.01)
 
     def test_non_go_main_not_affected_by_nested_cmd(self) -> None:
         """The nested-cmd penalty only applies to Go main_function entries."""
@@ -3082,6 +3599,144 @@ class TestRouteKindEntrypointDetection:
         ep_ids = {ep.symbol_id for ep in route_eps}
         assert sym1.id in ep_ids
         assert sym2.id in ep_ids
+
+
+class TestWebSocketRouteClassification:
+    """WI-kuvig/WI-lomoz: a route whose method is the synthetic "WS" marker
+    classifies as EntrypointKind.WEBSOCKET_HANDLER, not HTTP_ROUTE+method=WS.
+
+    The WS marker (``meta.http_method == "WS"`` / concept ``method == "WS"``)
+    is RETAINED on the symbol; only the entrypoint *kind* reflects the
+    protocol. Path-bearing WS routes get a ``"WS <path>"`` label so the
+    handler-concept entrypoint and the minted route-symbol entrypoint dedup
+    to one (mirroring HTTP routes), while pathless concept WebSocket handlers
+    (NestJS gateways, etc.) keep their ``"<Framework> WebSocket handler"``
+    label and are not collapsed.
+    """
+
+    def test_route_symbol_with_ws_method_is_websocket_handler(self) -> None:
+        """Pass 2: a direct route symbol with http_method=='WS' → WEBSOCKET_HANDLER."""
+        sym = make_symbol(
+            "starlette:ws_handler",
+            path="src/app.py",
+            meta={
+                "framework_role": "route",
+                "http_method": "WS",
+                "route_path": "/ws",
+                "route_class": "WebSocketRoute",
+                "framework": "starlette",
+            },
+        )
+        entrypoints = detect_entrypoints([sym], [])
+        ws_eps = [e for e in entrypoints if e.kind == EntrypointKind.WEBSOCKET_HANDLER]
+        http_eps = [e for e in entrypoints if e.kind == EntrypointKind.HTTP_ROUTE]
+        assert len(ws_eps) == 1
+        assert len(http_eps) == 0
+        assert "/ws" in ws_eps[0].label
+        assert not ws_eps[0].label.startswith("HTTP ")
+
+    def test_route_symbol_with_ws_method_retains_http_method_on_node(self) -> None:
+        """RETAIN: classification does not mutate the symbol's meta.http_method."""
+        sym = make_symbol(
+            "starlette:ws_handler",
+            path="src/app.py",
+            meta={"framework_role": "route", "http_method": "WS", "route_path": "/ws"},
+        )
+        detect_entrypoints([sym], [])
+        assert sym.meta["http_method"] == "WS"
+
+    def test_route_concept_with_ws_method_is_websocket_handler(self) -> None:
+        """Pass 1: a concept 'route' carrying method 'WS' → WEBSOCKET_HANDLER,
+        never an 'HTTP WS …' label (defense-in-depth structural guard)."""
+        sym = make_symbol(
+            "ws_handler",
+            path="src/app.py",
+            meta={"concepts": [{"concept": "route", "method": "WS", "path": "/ws"}]},
+        )
+        entrypoints = detect_entrypoints([sym], [])
+        ws_eps = [e for e in entrypoints if e.kind == EntrypointKind.WEBSOCKET_HANDLER]
+        assert len(ws_eps) == 1
+        assert all(not e.label.startswith("HTTP ") for e in entrypoints)
+
+    def test_symbol_with_two_ws_route_concepts_dedups_per_symbol(self) -> None:
+        """A symbol carrying two WS route concepts yields one WEBSOCKET_HANDLER
+        (per-symbol added_kinds dedup, mirroring the HTTP_ROUTE guard)."""
+        sym = make_symbol(
+            "ws_handler",
+            path="src/app.py",
+            meta={"concepts": [
+                {"concept": "route", "method": "WS", "path": "/ws"},
+                {"concept": "route", "method": "WS", "path": "/ws2"},
+            ]},
+        )
+        entrypoints = detect_entrypoints([sym], [])
+        ws_eps = [e for e in entrypoints if e.kind == EntrypointKind.WEBSOCKET_HANDLER]
+        assert len(ws_eps) == 1
+
+    def test_websocket_handler_concept_with_path_includes_path_in_label(self) -> None:
+        """Pass 1: a websocket_handler concept that carries a path labels as
+        'WS <path>' so it dedups with the minted route symbol."""
+        sym = make_symbol(
+            "ws_handler",
+            path="src/app.py",
+            meta={"concepts": [{"concept": "websocket_handler", "framework": "starlette", "path": "/ws"}]},
+        )
+        entrypoints = detect_entrypoints([sym], [])
+        ws_eps = [e for e in entrypoints if e.kind == EntrypointKind.WEBSOCKET_HANDLER]
+        assert len(ws_eps) == 1
+        assert ws_eps[0].label == "WS /ws"
+
+    def test_pathless_websocket_handler_keeps_framework_label(self) -> None:
+        """A pathless concept WebSocket handler (NestJS gateway) keeps the
+        framework label and is NOT relabeled/collapsed."""
+        a = make_symbol(
+            "GatewayA", path="src/a.ts",
+            meta={"concepts": [{"concept": "websocket_handler", "framework": "nestjs"}]},
+        )
+        b = make_symbol(
+            "GatewayB", path="src/b.ts",
+            meta={"concepts": [{"concept": "websocket_handler", "framework": "nestjs"}]},
+        )
+        entrypoints = detect_entrypoints([a, b], [])
+        ws_eps = [e for e in entrypoints if e.kind == EntrypointKind.WEBSOCKET_HANDLER]
+        assert len(ws_eps) == 2  # distinct symbols, pathless → not deduped
+        assert all(e.label == "Nestjs WebSocket handler" for e in ws_eps)
+
+    def test_starlette_ws_handler_and_route_symbol_dedup_to_one(self) -> None:
+        """The handler concept entrypoint (Pass 1) and the minted route-symbol
+        entrypoint (Pass 2) for the same WS route collapse to ONE
+        WEBSOCKET_HANDLER (mirrors HTTP route dedup), zero HTTP_ROUTE."""
+        handler = make_symbol(
+            "ws_handler", path="src/app.py", start_line=1, end_line=2,
+            meta={"concepts": [{"concept": "websocket_handler", "framework": "starlette", "path": "/ws"}]},
+        )
+        route_sym = make_symbol(
+            "starlette:ws_handler", path="src/app.py", start_line=5, end_line=5,
+            meta={
+                "framework_role": "route", "http_method": "WS", "route_path": "/ws",
+                "route_class": "WebSocketRoute", "framework": "starlette",
+                "handler_ref": handler.id,
+            },
+        )
+        entrypoints = detect_entrypoints([handler, route_sym], [])
+        ws_eps = [e for e in entrypoints if e.kind == EntrypointKind.WEBSOCKET_HANDLER]
+        http_eps = [e for e in entrypoints if e.kind == EntrypointKind.HTTP_ROUTE]
+        assert len(ws_eps) == 1
+        assert len(http_eps) == 0
+        assert ws_eps[0].label == "WS /ws"
+
+    def test_http_route_with_real_method_still_http_route(self) -> None:
+        """Regression guard: a non-WS route is unaffected."""
+        sym = make_symbol(
+            "starlette:health", path="src/app.py",
+            meta={"framework_role": "route", "http_method": "GET", "route_path": "/health"},
+        )
+        entrypoints = detect_entrypoints([sym], [])
+        http_eps = [e for e in entrypoints if e.kind == EntrypointKind.HTTP_ROUTE]
+        ws_eps = [e for e in entrypoints if e.kind == EntrypointKind.WEBSOCKET_HANDLER]
+        assert len(http_eps) == 1
+        assert len(ws_eps) == 0
+        assert http_eps[0].label == "HTTP GET /health"
 
 
 class TestLanguageDominanceRanking:
@@ -3699,8 +4354,9 @@ class TestInvHosuhMainFunctionDedup:
 
     def test_main_guard_kept_when_no_main_function(self) -> None:
         """When the script has only the main_guard (no separate main() function),
-        keep the module-level entry — this is the canonical entrypoint for
-        __main__.py-style scripts."""
+        keep the module-level entry — the canonical entrypoint for
+        __main__.py-style scripts. WI-tuvun: this now carries the distinct
+        MAIN_GUARD kind (file target), not the overloaded MAIN_FUNCTION."""
         module_sym = make_symbol(
             "<module:scripts/bare.py>", path="scripts/bare.py", kind="module",
             start_line=1, end_line=10,
@@ -3708,9 +4364,10 @@ class TestInvHosuhMainFunctionDedup:
         )
         entrypoints = detect_entrypoints([module_sym], [])
 
-        main_eps = [ep for ep in entrypoints if ep.kind.value == "main_function"]
-        assert len(main_eps) == 1
-        assert main_eps[0].symbol_id == module_sym.id
+        guard_eps = [ep for ep in entrypoints if ep.kind.value == "main_guard"]
+        assert len(guard_eps) == 1
+        assert guard_eps[0].symbol_id == module_sym.id
+        assert not [ep for ep in entrypoints if ep.kind.value == "main_function"]
 
     def test_main_function_kept_when_no_guard(self) -> None:
         """A bare main() function (no __main__ block) still produces an entry."""

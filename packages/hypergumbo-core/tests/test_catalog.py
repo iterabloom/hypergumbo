@@ -646,3 +646,76 @@ class TestINVHujogClosureCriterion:
                 if p is None:
                     continue
                 assert isinstance(p.depends_on, list)
+
+
+class TestSyntheticPassIds:
+    """ADR-0044: synthesis/import values in Symbol.origin are legitimate
+    synthetic pass IDs, not a separate synthesis-mechanism axis."""
+
+    def test_synthetic_pass_ids_set(self) -> None:
+        from hypergumbo_core.catalog import _SYNTHETIC_PASS_IDS
+        assert _SYNTHETIC_PASS_IDS == frozenset({
+            "orchestrator_file_symbol_synthesis",
+            "boundary_external_symbol_synthesis",
+            "scip",
+        })
+        # The stale 'inheritance' phantom was dropped (zero producers).
+        assert "inheritance" not in _SYNTHETIC_PASS_IDS
+
+    def test_synthetic_pass_ids_are_known_pass_ids(self) -> None:
+        from hypergumbo_core.catalog import (
+            _SYNTHETIC_PASS_IDS,
+            all_known_pass_ids,
+        )
+        known = all_known_pass_ids()
+        assert _SYNTHETIC_PASS_IDS <= known
+        assert "inheritance" not in known  # no producer → not a known pass id
+
+    def test_old_synthesis_mechanisms_name_is_gone(self) -> None:
+        import hypergumbo_core.catalog as cat
+        assert not hasattr(cat, "_SYNTHESIS_MECHANISMS")
+
+    def test_known_pass_ids_include_divergent_linker_emitted_pass_id(self) -> None:
+        """WI-gobip: a linker's EMITTED pass_id (its module-level ``PASS_ID``)
+        can diverge from its registration name — the view_template family
+        registers under ``view_template`` / ``view_template_phoenix`` / … but all
+        EMIT ``view-template-linker`` via ``_view_template_core.PASS_ID``. The
+        pass-id axis validates the EMITTED value (``Symbol.origin`` /
+        ``Edge.origin`` / ``AnalysisRun.pass_id``), so ``all_known_pass_ids()``
+        must include it, or every view-template edge/symbol trips
+        axis_conformance. Non-divergent linkers add nothing new (``make_pass_id``
+        is identity, so their emitted pass_id equals their registration name)."""
+        import hypergumbo_core.cli  # registers linkers (import side effect)
+        from hypergumbo_core.catalog import all_known_pass_ids
+
+        known = all_known_pass_ids()
+        assert "view-template-linker" in known
+
+    def test_known_languages_include_taxonomy_languages(self) -> None:
+        """WI-kunut: the language axis catalog is analyzer/linker languages UNION
+        the taxonomy's recognized LanguageSpecs. Discovery and the orchestrator
+        file-anchor synthesis label file nodes with taxonomy languages (a
+        ``.adoc`` → ``asciidoc``, a ``Makefile`` → ``makefile``) that have a
+        LanguageSpec but no dedicated ``@register_analyzer`` — so they were
+        absent from the registration-only catalog and every such file-anchor
+        tripped axis_conformance. ``all_known_languages()`` now unions the
+        taxonomy names, so the catalog is the complete recognized-language set."""
+        from hypergumbo_core.catalog import all_known_languages
+
+        known = all_known_languages()
+        assert "asciidoc" in known
+        assert "makefile" in known
+
+    def test_known_languages_include_rails_view_templates(self) -> None:
+        """WI-novob: erb/haml/slim are Rails view-template languages that the
+        view-template linker stamps as ``Symbol.language`` (``.html.erb`` →
+        ``erb``), but they had no ``@register_analyzer`` and no LanguageSpec,
+        so every such file-anchor tripped axis_conformance (19 on chatwoot).
+        Registered as taxonomy LanguageSpecs (human ruling: roles=CONFIG, like
+        html), so the language-axis catalog now recognizes them."""
+        from hypergumbo_core.catalog import all_known_languages
+
+        known = all_known_languages()
+        assert "erb" in known
+        assert "haml" in known
+        assert "slim" in known

@@ -53,3 +53,20 @@
   clock: 5  # 8989
   nonce: '8989'  # 8989
   message: "2026-06-10 design-interview ruling (decision recorded, no ADR): the connectivity-aware path stops being compact's default — centrality-ranked becomes the default and connectivity moves behind an explicit --connectivity flag labeled 'connected core' — so the --coverage dead-flag interaction must be reworked under that new flag topology rather than patched in place. Waits on the default-switch implementation."  # 8989
+- op: update  # b38f
+  at: '2026-07-09T23:02:44Z'  # b38f
+  by: agent  # b38f
+  actor: jgstern_agent  # b38f
+  clock: 6  # b38f
+  nonce: b38f  # b38f
+  set:  # b38f
+    status: done  # b38f
+  add:  # b38f
+    tags: [wave4]  # b38f
+- op: discuss  # 8027
+  at: '2026-07-09T23:02:44Z'  # 8027
+  by: agent  # 8027
+  actor: jgstern_agent  # 8027
+  clock: 7  # 8027
+  nonce: '8027'  # 8027
+  message: "Fixed + merged (selfh/dev 4c8a8f66c1, with WI-zulij). --coverage was structurally dead-code under the old connectivity-aware default (select_by_connectivity ignores target_coverage). Resolved BY CONSTRUCTION by the WI-zulij flip: the new centrality-ranked default routes through select_by_coverage, which reads config.target_coverage — so --coverage is now effective in the default path (matches its --help). Its dead-code inverts (now inert only WITH --connectivity, the opt-in path). Behavioral evidence: covered by the WI-zulij flip validation (3467 tests). Wave-4 projection."  # 8027

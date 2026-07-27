@@ -401,6 +401,44 @@ assignments:
         assert result[0].meta is not None
         assert result[0].meta.get("access_mode") == "write"
 
+    def test_instantiates_edge_gated_tree_sitter(self, tmp_path: Path) -> None:
+        """ADR-0038 ruling 2 / WI-hapab: an ``instantiates`` edge is
+        Declared-N/A — a constructor call is not an access — so the Tier-1
+        classifier must not stamp it, even when it sits in a write position."""
+        yaml_content = """\
+language: python
+
+assignments:
+  - node_type: assignment
+    write: left
+    read: right
+"""
+        yaml_file = tmp_path / "python.yaml"
+        yaml_file.write_text(yaml_content)
+        config = load_dataflow_config(yaml_file)
+
+        edge = Edge.create(
+            src="py:a.py:5:x:variable",
+            dst="py:a.py:5:Foo:class",
+            edge_type="instantiates",
+            line=5,
+            origin="test", origin_run_id="test",
+        )
+        # Same write-position tree as test_assignment_lhs_gets_write — the
+        # LHS identifier would classify 'write' if the edge type were applicable.
+        tree = self._make_positional_tree(
+            line=5,
+            parent_type="assignment",
+            children={
+                "right": ("call_expression", 4, 7),
+                "left": ("identifier", 0, 1),
+            },
+        )
+        result = annotate_dataflow([edge], tree, b"x = Foo()", config)
+
+        assert len(result) == 1
+        assert (result[0].meta or {}).get("access_mode") is None
+
     def test_skips_edges_with_existing_access_mode(self, tmp_path: Path) -> None:
         """Edges that already have access_mode should not be overwritten."""
         yaml_content = "language: python\nassignments:\n  - node_type: assignment\n    write: left\n    read: right\n"
@@ -414,7 +452,6 @@ assignments:
             edge_type="event_publishes",
             line=5,
             access_mode="write",
-            dest_access_mode="read",
             channel="user.created",
 
             origin="test", origin_run_id="test",
@@ -1969,6 +2006,58 @@ class TestAnnotateDataflowAst:
         assert result[0].meta is not None
         assert result[0].meta["access_mode"] == "write"
 
+    def test_name_read_reference_on_assignment_gets_read(self) -> None:
+        """INV-kudug: a bare-name read (ast_name_read) on an assignment line is
+        the RHS value being read, not a write — even though the line is an
+        ast.Assign (line-mode 'write')."""
+        import ast
+        tree = ast.parse("x = y")
+        edge = Edge.create(
+            src="py:a.py:1:scope:function",
+            dst="py:a.py:1:y:variable",
+            edge_type="references",
+            line=1,
+            evidence_type="ast_name_read",
+            origin="test", origin_run_id="test",
+        )
+        result = annotate_dataflow_ast([edge], tree)
+        assert result[0].meta is not None
+        assert result[0].meta["access_mode"] == "read"
+
+    def test_module_attr_ref_on_assignment_gets_read(self) -> None:
+        """INV-kudug: a module-attribute dereference (module_attribute_reference)
+        on an assignment line is a read of the imported attribute."""
+        import ast
+        tree = ast.parse("x = os.environ")
+        edge = Edge.create(
+            src="py:a.py:1:scope:function",
+            dst="py:os:0-0:os.environ:attribute",
+            edge_type="module_attr_ref",
+            line=1,
+            evidence_type="module_attribute_reference",
+            origin="test", origin_run_id="test",
+        )
+        result = annotate_dataflow_ast([edge], tree)
+        assert result[0].meta is not None
+        assert result[0].meta["access_mode"] == "read"
+
+    def test_function_reference_on_assignment_gets_read(self) -> None:
+        """INV-kudug: a function reference (function_reference) on an assignment
+        line is a read (the function object is referenced, not written)."""
+        import ast
+        tree = ast.parse("x = handler")
+        edge = Edge.create(
+            src="py:a.py:1:scope:function",
+            dst="py:a.py:9:handler:function",
+            edge_type="references",
+            line=1,
+            evidence_type="function_reference",
+            origin="test", origin_run_id="test",
+        )
+        result = annotate_dataflow_ast([edge], tree)
+        assert result[0].meta is not None
+        assert result[0].meta["access_mode"] == "read"
+
     def test_call_on_augmented_assignment_gets_read(self) -> None:
         """Call edge on augmented assignment line gets read."""
         import ast
@@ -2165,14 +2254,12 @@ class TestAnnotateDataflowAst:
             edge_type="event_publishes",
             line=1,
             access_mode="write",
-            dest_access_mode="read",
 
             origin="test", origin_run_id="test",
         )
         result = annotate_dataflow_ast([edge], tree)
-        # Should preserve original
+        # Should preserve original access_mode (Tier-2 precedence)
         assert result[0].meta["access_mode"] == "write"
-        assert result[0].meta["dest_access_mode"] == "read"
 
     def test_empty_edges_returns_empty(self) -> None:
         """Empty edge list should return empty."""
@@ -2313,3 +2400,100 @@ class TestCrossLanguageLibraryPatterns:
             assert "match" in pattern, (
                 f"{lang}: pattern missing match: {pattern}"
             )
+
+
+class TestMutatorAccessModePythonYaml:
+    """INV-kudug symptom 3: collection-mutator calls classify as 'mutate'
+    (in-place modification); file/stream/socket writes stay 'write'; the
+    element-removal family stays 'delete'. Exercised through the REAL
+    python.yaml library_patterns via annotate_dataflow_ast (not a synthetic
+    config), so the assertions pin the production mapping.
+    """
+
+    def _mode_for_call(self, source: str, method: str) -> "str | None":
+        import ast
+        from hypergumbo_core.dataflow import (
+            annotate_dataflow_ast,
+            get_dataflow_config,
+        )
+        tree = ast.parse(source)
+        edge = Edge.create(
+            src="py:a.py:1:scope:function",
+            dst=f"py:a.py:1:{method}:method",
+            edge_type="calls",
+            line=1,
+            origin="test", origin_run_id="test",
+        )
+        config = get_dataflow_config("python")
+        result = annotate_dataflow_ast(
+            [edge], tree, source=source, config=config
+        )
+        return (result[0].meta or {}).get("access_mode")
+
+    def test_append_is_mutate(self) -> None:
+        assert self._mode_for_call("items.append(x)", "append") == "mutate"
+
+    def test_add_is_mutate(self) -> None:
+        assert self._mode_for_call("s.add(x)", "add") == "mutate"
+
+    def test_extend_is_mutate(self) -> None:
+        assert self._mode_for_call("items.extend(xs)", "extend") == "mutate"
+
+    def test_insert_is_mutate(self) -> None:
+        assert self._mode_for_call("items.insert(0, x)", "insert") == "mutate"
+
+    def test_setdefault_is_mutate(self) -> None:
+        assert self._mode_for_call("d.setdefault(k, v)", "setdefault") == "mutate"
+
+    def test_update_stays_mutate(self) -> None:
+        assert self._mode_for_call("d.update(other)", "update") == "mutate"
+
+    def test_file_write_stays_write(self) -> None:
+        # Decision B: external-sink writes are writes, not mutations.
+        assert self._mode_for_call("f.write(data)", "write") == "write"
+
+    def test_socket_send_stays_write(self) -> None:
+        assert self._mode_for_call("sock.send(data)", "send") == "write"
+
+    def test_pop_stays_delete(self) -> None:
+        # Decision C: element removal stays 'delete' (the more specific cell).
+        assert self._mode_for_call("items.pop()", "pop") == "delete"
+
+    def test_remove_stays_delete(self) -> None:
+        assert self._mode_for_call("items.remove(x)", "remove") == "delete"
+
+
+class TestAccessModeApplicabilityGateAst:
+    """ADR-0038 ruling 2 / WI-hapab (INV-tibob PR 1): the Python-AST Tier-1
+    classifier must skip Declared-N/A edge types (``instantiates`` + the 12
+    structural types) so a constructor call never gets a spurious ``write``,
+    while applicable edge types (``calls``) are unaffected."""
+
+    def test_ast_gate_skips_instantiates(self) -> None:
+        import ast
+
+        tree = ast.parse("x = Foo()")
+        edge = Edge.create(
+            src="py:a.py:1:x:variable",
+            dst="py:a.py:1:Foo:class",
+            edge_type="instantiates",
+            line=1,
+            origin="test", origin_run_id="test",
+        )
+        result = annotate_dataflow_ast([edge], tree)
+        assert (result[0].meta or {}).get("access_mode") is None
+
+    def test_ast_gate_keeps_applicable_calls(self) -> None:
+        import ast
+
+        tree = ast.parse("x = f()")
+        edge = Edge.create(
+            src="py:a.py:1:x:variable",
+            dst="py:a.py:1:f:function",
+            edge_type="calls",
+            line=1,
+            origin="test", origin_run_id="test",
+        )
+        result = annotate_dataflow_ast([edge], tree)
+        # calls on an assignment line is the RHS value being read.
+        assert (result[0].meta or {}).get("access_mode") == "read"

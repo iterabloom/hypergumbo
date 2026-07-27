@@ -44,3 +44,18 @@
     tags: [dogfood_tranche_03]  # e0ad
   remove:  # e0ad
     tags: [dogfood_tranch_03]  # e0ad
+- op: update  # 9fc7
+  at: '2026-06-30T01:59:26Z'  # 9fc7
+  by: agent  # 9fc7
+  actor: jgstern_agent  # 9fc7
+  clock: 5  # 9fc7
+  nonce: 9fc7  # 9fc7
+  set:  # 9fc7
+    status: done  # 9fc7
+- op: discuss  # 13a7
+  at: '2026-06-30T01:59:27Z'  # 13a7
+  by: agent  # 13a7
+  actor: jgstern_agent  # 13a7
+  clock: 6  # 13a7
+  nonce: 13a7  # 13a7
+  message: "Done (PR auto-merged to dev). Added metrics.by_supply_chain_tier.{tier}.edges_incident (either-endpoint count) alongside the existing source-tier 'edges'. The existing 'edges' is source-tier so external-dep tiers (2/3) — graph sinks — read ~0; edges_incident exposes their real contribution (counts each edge once per distinct resolved endpoint tier). Double-counts cross-tier edges by design; does NOT sum to total_edges (source-tier 'edges' remains the reconciling view, summing to the source-resolved total). Spec section metrics updated; INV-jukok preserved (unresolved endpoints skipped). Behavioral evidence: test_metrics.py::test_by_tier_edges_src_vs_edges_incident — a tier-1->tier-3 sink graph yields external_dep edges=0 but edges_incident=2 (was: only 0 visible). Full affected suite 2767 passed, metrics.py 100%."  # 13a7

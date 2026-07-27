@@ -14,7 +14,6 @@ by the main test suite. Focuses on:
 from pathlib import Path
 
 from hypergumbo_lang_common.rst import (
-    _make_symbol_id,
     analyze_rst,
     find_rst_files,
 )
@@ -25,14 +24,12 @@ def make_rst_file(tmp_path: Path, name: str, content: str) -> None:
     (tmp_path / name).write_text(content)
 
 
-class TestRSTHelperFunctions:
-    """Branch coverage for helper functions."""
-
-    def test_make_symbol_id_format(self) -> None:
-        """Test symbol ID format."""
-        from pathlib import Path
-        symbol_id = _make_symbol_id(Path("docs/index.rst"), "Introduction", "section")
-        assert symbol_id == "rst:docs/index.rst:section:Introduction"
+# Note: the per-analyzer _make_symbol_id raw-id builder was removed in the
+# INV-dulah DRY refactor (node.id + stable_id now minted together by the shared
+# make_doc_symbol_ids helper, tested in hypergumbo-core's test_base.py). The
+# former TestRSTHelperFunctions::test_make_symbol_id_format is retired with it;
+# the rst node.id (now lang:path:kind:start_line:name) is asserted via the
+# analyze_rst integration tests below.
 
 
 class TestSectionExtraction:

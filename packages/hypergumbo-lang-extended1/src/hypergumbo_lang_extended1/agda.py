@@ -59,6 +59,7 @@ from hypergumbo_core.analyze.base import (
     node_text,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -172,6 +173,12 @@ def _extract_symbols_from_file(
             end_col=node.end_point[1],
         )
         sym_id = make_symbol_id("agda", file_path, start_line, end_line, name, kind)
+        # INV-loguk: CC only for callables. Agda's grammar has no decision-point
+        # node types (control flow is mixfix identifiers), so compute_cyclomatic_
+        # complexity returns base 1 here — non-null, which is the honest value
+        # for the emitted type-signature node. Gated so package/data/record/field
+        # (non-callables sharing this helper) keep CC/LOC None.
+        _is_callable = kind == "function"
         sym = Symbol(
             id=sym_id,
             name=name,
@@ -182,6 +189,10 @@ def _extract_symbols_from_file(
             origin=PASS_ID,
             origin_run_id=run_id,
             signature=signature,
+            cyclomatic_complexity=(
+                compute_cyclomatic_complexity(node, "agda") if _is_callable else None
+            ),
+            line_span=(end_line - start_line + 1) if _is_callable else None,
         )
         if meta:
             sym.meta = meta
@@ -341,7 +352,6 @@ def _extract_edges_from_file(
                         origin=PASS_ID,
                         origin_run_id=run_id,
                         evidence_type="open_import",
-                        confidence=0.95,
                     )
                     edges.append(edge)
 
@@ -367,7 +377,6 @@ def _extract_edges_from_file(
                         origin=PASS_ID,
                         origin_run_id=run_id,
                         evidence_type="import",
-                        confidence=0.95,
                     )
                     edges.append(edge)
 

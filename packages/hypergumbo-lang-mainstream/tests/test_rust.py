@@ -123,10 +123,10 @@ fn private_helper() {}
 
 
 class TestRustLinesOfCode:
-    """Tests for lines_of_code on Rust symbols."""
+    """Tests for line_span on Rust symbols."""
 
-    def test_function_lines_of_code(self, tmp_path: Path) -> None:
-        """Function symbols have lines_of_code set from span."""
+    def test_function_line_span(self, tmp_path: Path) -> None:
+        """Function symbols have line_span set from span."""
         from hypergumbo_lang_mainstream.rust import analyze_rust
 
         rs_file = tmp_path / "main.rs"
@@ -147,11 +147,11 @@ fn medium(x: i32) -> i32 {
         small = next(s for s in result.symbols if s.name == "small")
         medium = next(s for s in result.symbols if s.name == "medium")
 
-        assert small.lines_of_code == 3  # lines 1-3
-        assert medium.lines_of_code == 5  # lines 5-9
+        assert small.line_span == 3  # lines 1-3
+        assert medium.line_span == 5  # lines 5-9
 
-    def test_struct_lines_of_code(self, tmp_path: Path) -> None:
-        """Struct symbols have lines_of_code set from span."""
+    def test_struct_line_span(self, tmp_path: Path) -> None:
+        """Struct symbols have line_span set from span."""
         from hypergumbo_lang_mainstream.rust import analyze_rust
 
         rs_file = tmp_path / "models.rs"
@@ -165,7 +165,7 @@ struct Point {
         result = analyze_rust(tmp_path)
 
         point = next(s for s in result.symbols if s.name == "Point")
-        assert point.lines_of_code == 4  # lines 1-4
+        assert point.line_span == 4  # lines 1-4
 
 
 class TestRustIsExported:
@@ -748,6 +748,51 @@ fn main() {
         # Verify we have method symbols
         methods = [s for s in result.symbols if s.kind == "method"]
         assert len(methods) >= 1
+
+
+class TestRustQualifiedReceiverMarking:
+    """INV-fahub Phase A — a scoped ``Type::method()`` call names the target type
+    at the call site, so its resolved edge must carry ``meta.receiver="qualified"``.
+
+    Such a call is a *correct* resolution (the type is explicit), NOT a
+    receiver-blind magnet. Without the marker the language-agnostic detector
+    (``find_receiver_blind_magnets``) counts every qualified associated-function
+    call to a method-kind symbol as a cross-class magnet — e.g. rodio's
+    ``SamplesBuffer::new`` <- 26 callers, all correct. The marker (which the
+    detector already excludes) is the producer half the reframe left open.
+    """
+
+    def test_scoped_call_stamps_qualified_and_is_not_a_magnet(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+        from hypergumbo_core.receiver_blind_magnets import find_receiver_blind_magnets
+
+        rs = tmp_path / "q.rs"
+        # ``caller`` is a free function (no owner); ``Foo::make`` is a method on
+        # ``Foo`` — a cross-owner target. Without the qualified marker this
+        # scoped call is a receiver-blind magnet by the detector's rule.
+        rs.write_text(
+            "struct Foo;\n"
+            "impl Foo { fn make() -> Self { Foo } }\n"
+            "fn caller() { let _f = Foo::make(); }\n"
+        )
+        result = analyze_rust(tmp_path)
+        by_id = {s.id: s for s in result.symbols}
+
+        scoped = [
+            e for e in result.edges
+            if e.edge_type == "calls" and e.is_resolved
+            and by_id.get(e.dst) is not None
+            and by_id[e.dst].name.endswith("make")
+        ]
+        assert scoped, "expected a resolved calls edge to Foo::make"
+        for e in scoped:
+            assert (e.meta or {}).get("receiver") == "qualified", e.meta
+
+        # End-to-end: the detector (fixture-gate mode, any confidence) finds no
+        # receiver-blind magnet — the qualified marker excludes the scoped bind.
+        assert find_receiver_blind_magnets(
+            result.symbols, result.edges, min_confidence=0.0
+        ) == []
 
 
 class TestRustFileReadErrors:
@@ -1376,6 +1421,152 @@ class TestRustVarTypesExtraction:
         )
         var_types = _extract_var_types_rust(tree.root_node, src, None)
         assert var_types == {"x": "Foo"}
+
+
+class TestRustEnumMatchDispatch:
+    """WI-kodap: a binding destructured from a tuple-struct enum variant adopts
+    the variant's field type, so a subsequent method call on it resolves to the
+    concrete impl instead of a short-name collision / external stub.
+
+    Zoxide's subcommand tree is the canonical shape: ``enum Cmd { Query(Query),
+    Add(Add) }`` dispatched by ``match self { Cmd::Query(q) => q.run() }``. The
+    match-arm binding ``q`` was untyped, so ``q.run()`` fell to short-name
+    resolution and every arm bound to the same (last-registered) ``run`` method,
+    leaving the concrete handlers with 0 incoming calls.
+    """
+
+    def _parse(self, source_text: str):
+        import tree_sitter_rust as ts_rust
+        from tree_sitter import Language, Parser
+        lang = Language(ts_rust.language())
+        parser = Parser(lang)
+        tree = parser.parse(source_text.encode("utf-8"))
+        return tree, source_text.encode("utf-8")
+
+    def test_match_arm_binding_adopts_variant_field_type(self) -> None:
+        """Unit: match-arm tuple-struct patterns bind their locals to the
+        enum variant's field type."""
+        from hypergumbo_lang_mainstream.rust import _extract_var_types_rust
+        tree, src = self._parse(
+            "enum Cmd { Query(Query), Add(Add) }\n"
+            "fn dispatch(c: Cmd) {\n"
+            "    match c {\n"
+            "        Cmd::Query(q) => q.run(),\n"
+            "        Cmd::Add(a) => a.run(),\n"
+            "    }\n"
+            "}\n"
+        )
+        var_types = _extract_var_types_rust(tree.root_node, src, None)
+        assert var_types.get("q") == "Query"
+        assert var_types.get("a") == "Add"
+
+    def test_if_let_binding_adopts_variant_field_type(self) -> None:
+        """Unit: ``if let`` destructuring binds too (same pattern node)."""
+        from hypergumbo_lang_mainstream.rust import _extract_var_types_rust
+        tree, src = self._parse(
+            "enum Msg { Text(Payload) }\n"
+            "fn handle(m: Msg) {\n"
+            "    if let Msg::Text(p) = m { p.process(); }\n"
+            "}\n"
+        )
+        var_types = _extract_var_types_rust(tree.root_node, src, None)
+        assert var_types.get("p") == "Payload"
+
+    def test_match_dispatch_resolves_to_concrete_impls(self, tmp_path: Path) -> None:
+        """End-to-end: each match arm's ``.run()`` resolves to the correct
+        concrete impl, not a single shared method."""
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+        (tmp_path / "main.rs").write_text(
+            "pub enum Cmd { Query(Query), Add(Add) }\n"
+            "impl Cmd {\n"
+            "    pub fn run(self) {\n"
+            "        match self {\n"
+            "            Cmd::Query(q) => q.run(),\n"
+            "            Cmd::Add(a) => a.run(),\n"
+            "        }\n"
+            "    }\n"
+            "}\n"
+            "pub struct Query;\n"
+            "impl Query { pub fn run(self) {} }\n"
+            "pub struct Add;\n"
+            "impl Add { pub fn run(self) {} }\n"
+        )
+        result = analyze_rust(tmp_path)
+        by_id = {s.id: s for s in result.symbols}
+        # calls edges out of Cmd::run
+        cmd_run = next(
+            s for s in result.symbols if s.name == "Cmd::run"
+        )
+        dsts = {
+            by_id[e.dst].name
+            for e in result.edges
+            if e.edge_type == "calls" and e.src == cmd_run.id and e.dst in by_id
+        }
+        assert "Query::run" in dsts
+        assert "Add::run" in dsts
+
+    def test_binding_skips_builtin_fields_and_untracked_variants(self) -> None:
+        """Builtin-typed fields (i32) bind nothing; unit variants and
+        non-enum tuple patterns (Option::Some) are ignored; only the
+        user-typed positional field binds."""
+        from hypergumbo_lang_mainstream.rust import _extract_var_types_rust
+        tree, src = self._parse(
+            "enum Mixed { Pair(i32, Payload), Unit }\n"
+            "fn f(m: Mixed, opt: Option<Thing>) {\n"
+            "    match m {\n"
+            "        Mixed::Pair(n, p) => { p.go(); }\n"
+            "        Mixed::Unit => {}\n"
+            "    }\n"
+            "    if let Some(x) = opt { x.run(); }\n"
+            "}\n"
+        )
+        var_types = _extract_var_types_rust(tree.root_node, src, None)
+        assert var_types.get("p") == "Payload"   # user-typed field binds
+        assert "n" not in var_types              # builtin i32 field skipped
+        assert "x" not in var_types              # Option::Some not indexed
+
+
+class TestRustChainedReturnDispatch:
+    """WI-lohup: a method call whose receiver is itself a chained call —
+    ``Cmd::parse().run()`` — resolves the outer method against the receiver
+    call's inferred return type, so main's forward slice reaches the correct
+    dispatcher (``Cmd::run``) instead of a short-name-ambiguous sibling.
+
+    Left unfixed, ``Cmd::parse().run()`` typed nothing for the receiver
+    (no intermediate variable for the let-binding var_types walker), so
+    ``.run()`` fell to short-name resolution and bound to the last-registered
+    ``run`` — leaving the forward slice from main stranded at the parse call.
+    """
+
+    def test_chained_associated_fn_call_resolves_to_receiver_type_method(
+        self, tmp_path: Path
+    ) -> None:
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+        (tmp_path / "main.rs").write_text(
+            "pub enum Cmd { Query(Query), Add(Add) }\n"
+            "impl Cmd {\n"
+            "    pub fn parse() -> Cmd { Cmd::Query(Query) }\n"
+            "    pub fn run(self) {}\n"
+            "}\n"
+            "pub struct Query;\n"
+            "impl Query { pub fn run(self) {} }\n"
+            "pub struct Add;\n"
+            "impl Add { pub fn run(self) {} }\n"
+            "fn main() { Cmd::parse().run(); }\n"
+        )
+        result = analyze_rust(tmp_path)
+        by_id = {s.id: s for s in result.symbols}
+        mainf = next(s for s in result.symbols if s.name == "main")
+        dsts = {
+            by_id[e.dst].name
+            for e in result.edges
+            if e.edge_type == "calls" and e.src == mainf.id and e.dst in by_id
+        }
+        # The chained .run() resolves against Cmd (Cmd::parse's inferred type).
+        assert "Cmd::run" in dsts
+        # ...and not to a same-short-name sibling.
+        assert "Add::run" not in dsts
+        assert "Query::run" not in dsts
 
 
 class TestRustReturnTypeRegistryIntegration:
@@ -4690,7 +4881,7 @@ impl Server {
         run_sym = next(s for s in result.symbols if s.name == "App::run")
         assert edge.src == start_sym.id
         assert edge.dst == run_sym.id
-        assert edge.confidence == 0.88
+        assert edge.confidence == 0.85
         assert edge.edge_type == "calls"
 
     def test_box_field_call(self, tmp_path: Path) -> None:
@@ -4722,7 +4913,7 @@ impl Server {
             if (e.evidence_type == "ast_call" and e.meta.get("call_construct") == "method" and e.meta.get("receiver") == "typed_field")
         ]
         assert len(typed_edges) == 1
-        assert typed_edges[0].confidence == 0.88
+        assert typed_edges[0].confidence == 0.85
 
     def test_nested_field_chain(self, tmp_path: Path) -> None:
         """self.inner.app.run() resolves through Outer→Inner→App."""
@@ -4966,7 +5157,7 @@ impl Server {
         typed_edges = [e for e in edges if (e.evidence_type == "ast_call" and e.meta.get("call_construct") == "method" and e.meta.get("receiver") == "typed_field")]
         assert len(typed_edges) == 1
         assert typed_edges[0].dst == target.id
-        assert typed_edges[0].confidence == 0.88
+        assert typed_edges[0].confidence == 0.85
 
 
     def test_scoped_type_field_call(self, tmp_path: Path) -> None:
@@ -5397,6 +5588,38 @@ fn caller() {
         ]
         assert len(compute_edges) >= 1, f"Should find caller->compute: {call_edges}"
 
+    def test_bare_use_aliased_external_call_attributes_source_module(
+        self, tmp_path: Path
+    ) -> None:
+        """A bare call to a name imported via ``use std::fs::write`` resolves to
+        an unresolved-external edge whose module is split from the alias target
+        (``std::fs``), via the terminal-name ``use_aliases`` branch.
+
+        Co-locates coverage of that branch with rust.py: the polyglot call-site
+        suite covers it, but the smart-test slicer does not associate that suite
+        with rust.py, so a rust.py change would otherwise drop the only coverage
+        of these lines and fail the changed-file 100% gate.
+        """
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        code = """\
+use std::fs::write;
+
+fn save(data: &[u8]) {
+    write("out.bin", data).unwrap();
+}
+"""
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "main.rs").write_text(code)
+        result = analyze_rust(tmp_path)
+
+        write_edges = [
+            e
+            for e in result.edges
+            if e.edge_type == "calls" and "write" in str(e.dst)
+        ]
+        assert write_edges, "expected an unresolved-external edge for write()"
+
     def test_macro_call_cross_file_resolver(self, tmp_path: Path) -> None:
         """Call in macro body resolved via cross-file resolver."""
         from hypergumbo_lang_mainstream.rust import analyze_rust
@@ -5740,3 +5963,148 @@ class TestRustCyclomaticComplexity:
         assert branchy.cyclomatic_complexity is not None
         assert branchy.cyclomatic_complexity >= 4
         assert branchy.cyclomatic_complexity > simple.cyclomatic_complexity
+
+
+class TestRustBareMethodMagnetGate:
+    """INV-fahub: a bare identifier call (``foo()``) must NOT bind a
+    high-confidence ``calls`` edge to a DIFFERENT impl's same-named method on
+    weak short-name (suffix) evidence — the cross-language "magnet" misbind
+    (dozens of bare call sites collapsing onto one arbitrary ``Type::foo``).
+
+    The gate (shared ``defer_bare_method_call`` helper, ``separator="::"``)
+    withholds such a match and instead emits an unresolved edge carrying
+    ``meta.enclosing_class`` (the enclosing impl type) so the inherited_calls
+    Site-1 walker can later recover a genuine inherited implicit-``self``
+    call. Free functions and SAME-impl methods still bind directly.
+    """
+
+    @staticmethod
+    def _parse(source_text: bytes):
+        import tree_sitter
+        import tree_sitter_rust
+
+        lang = tree_sitter.Language(tree_sitter_rust.language())
+        parser = tree_sitter.Parser(lang)
+        return parser.parse(source_text)
+
+    @staticmethod
+    def _caller_symbol():
+        from hypergumbo_core.ir import Span, Symbol
+
+        return Symbol(
+            id="rust:w.rs:1-5:Widget::caller:method",
+            name="Widget::caller", kind="method", language="rust",
+            path="w.rs",
+            span=Span(start_line=1, end_line=5, start_col=0, end_col=1),
+            origin="test", origin_run_id="run",
+        )
+
+    def _run(self, source_text: bytes, registry):
+        from hypergumbo_lang_mainstream.rust import (
+            _extract_edges_from_file,
+            is_rust_tree_sitter_available,
+        )
+        from hypergumbo_core.symbol_resolution import NameResolver
+
+        if not is_rust_tree_sitter_available():
+            pytest.skip("tree-sitter-rust not available")
+
+        tree = self._parse(source_text)
+        caller = self._caller_symbol()
+        edges = _extract_edges_from_file(
+            tree, source_text, "w.rs", {"caller": caller}, {},
+            "run", NameResolver(registry), {},
+        )
+        return [e for e in edges if e.edge_type == "calls"]
+
+    def test_cross_impl_method_magnet_deferred(self) -> None:
+        """Bare ``foo()`` in ``impl Widget`` must not misbind to ``Gadget::foo``."""
+        from hypergumbo_core.ir import Span, Symbol
+
+        source_text = (
+            b"impl Widget {\n"
+            b"    fn caller(&self) {\n"
+            b"        foo();\n"
+            b"    }\n"
+            b"}\n"
+        )
+        # `foo` exists ONLY as a method of an unrelated impl, reachable purely
+        # by a weak short-name suffix match ("foo" -> "Gadget::foo").
+        gadget_foo = Symbol(
+            id="rust:g.rs:9-9:Gadget::foo:method",
+            name="Gadget::foo", kind="method", language="rust",
+            path="g.rs",
+            span=Span(start_line=9, end_line=9, start_col=0, end_col=1),
+            origin="test", origin_run_id="run",
+        )
+        calls = self._run(source_text, {"Gadget::foo": gadget_foo})
+
+        misbound = [
+            e for e in calls if e.is_resolved and e.dst == gadget_foo.id
+        ]
+        assert misbound == [], (
+            f"bare foo() misbound to unrelated Gadget::foo (magnet): {misbound}"
+        )
+        deferred = [
+            e for e in calls
+            if not e.is_resolved
+            and (e.meta or {}).get("enclosing_class") == "Widget"
+        ]
+        assert len(deferred) == 1, (
+            "expected exactly one deferred unresolved edge carrying "
+            f"enclosing_class=Widget for Site-1 recovery; got {calls}"
+        )
+
+    def test_same_impl_method_still_binds(self) -> None:
+        """Bare call to a SAME-impl method (implicit self) still resolves."""
+        from hypergumbo_core.ir import Span, Symbol
+
+        source_text = (
+            b"impl Widget {\n"
+            b"    fn caller(&self) {\n"
+            b"        helper();\n"
+            b"    }\n"
+            b"}\n"
+        )
+        widget_helper = Symbol(
+            id="rust:w.rs:9-9:Widget::helper:method",
+            name="Widget::helper", kind="method", language="rust",
+            path="w.rs",
+            span=Span(start_line=9, end_line=9, start_col=0, end_col=1),
+            origin="test", origin_run_id="run",
+        )
+        calls = self._run(source_text, {"Widget::helper": widget_helper})
+
+        resolved = [
+            e for e in calls if e.is_resolved and e.dst == widget_helper.id
+        ]
+        assert len(resolved) == 1, (
+            f"same-impl bare helper() should still bind to Widget::helper; got {calls}"
+        )
+
+    def test_free_function_still_binds(self) -> None:
+        """Bare call to a free function (not a method) still resolves."""
+        from hypergumbo_core.ir import Span, Symbol
+
+        source_text = (
+            b"impl Widget {\n"
+            b"    fn caller(&self) {\n"
+            b"        compute();\n"
+            b"    }\n"
+            b"}\n"
+        )
+        compute = Symbol(
+            id="rust:f.rs:9-9:compute:function",
+            name="compute", kind="function", language="rust",
+            path="f.rs",
+            span=Span(start_line=9, end_line=9, start_col=0, end_col=1),
+            origin="test", origin_run_id="run",
+        )
+        calls = self._run(source_text, {"compute": compute})
+
+        resolved = [
+            e for e in calls if e.is_resolved and e.dst == compute.id
+        ]
+        assert len(resolved) == 1, (
+            f"bare compute() to a free function should still bind; got {calls}"
+        )

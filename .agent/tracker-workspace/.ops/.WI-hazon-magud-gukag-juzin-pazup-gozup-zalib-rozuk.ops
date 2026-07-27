@@ -19,3 +19,34 @@
     pr_ref:  # f4d8
     description: "py.py defines its own _compute_stable_id (py.py:1574-1625), used at py.py:2338/2392/2526, diverging from the canonical stable_id factories in analyze/base.py (make_typed_stable_id etc.). A producer of the identity-hash-coarseness family the original investigation did not list. Must be unified with the canonical formula as part of the STABLE_ID_SCHEME v5->v6 train (ADR-0035/0036); the v6 train plan names this 'B2 producer'. Strategy Wave-0 B2."  # f4d8
     fields: {}  # f4d8
+- op: update  # dadb
+  at: '2026-07-09T01:43:18Z'  # dadb
+  by: agent  # dadb
+  actor: jgstern_agent  # dadb
+  clock: 2  # dadb
+  nonce: dadb  # dadb
+  set: {}  # dadb
+  add:  # dadb
+    tags: [wave5]  # dadb
+- op: discuss  # 3167
+  at: '2026-07-09T01:43:18Z'  # 3167
+  by: agent  # 3167
+  actor: jgstern_agent  # 3167
+  clock: 3  # 3167
+  nonce: '3167'  # 3167
+  message: "Wave-5 assignment (2026-07-08): identity factory-consolidation residual (py.py divergent _compute_stable_id vs base.py factories; Wave-0 B2). Empty isbefore; feeds mypy:F3 NewType 'post factory consolidation' → terminal wave."  # 3167
+- op: update  # 8f26
+  at: '2026-07-15T21:17:19Z'  # 8f26
+  by: agent  # 8f26
+  actor: jgstern_agent  # 8f26
+  clock: 4  # 8f26
+  nonce: 8f26  # 8f26
+  set:  # 8f26
+    status: done  # 8f26
+- op: discuss  # 6217
+  at: '2026-07-15T21:17:20Z'  # 6217
+  by: agent  # 6217
+  actor: jgstern_agent  # 6217
+  clock: 5  # 6217
+  nonce: '6217'  # 6217
+  message: "Done — stale (2026-07-15). py.py:1607 _compute_stable_id now delegates to the shared assemble_stable_id (ADR-0035 §1) — byte-identical formula to BaseAnalyzer.compute_stable_id; the function's own docstring states 'the v5 divergence is gone (WI-gitun/INV-tazaj)'. The premise (a divergent local hasher) no longer holds; 0 collisions corroborates. INV-bazij family."  # 6217

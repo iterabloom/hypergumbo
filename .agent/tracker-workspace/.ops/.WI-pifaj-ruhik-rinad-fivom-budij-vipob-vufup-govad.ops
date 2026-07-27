@@ -30,3 +30,40 @@
     tags: [dogfood_tranche_04]  # ca98
   remove:  # ca98
     tags: [dogfood_tranch_04]  # ca98
+- op: update  # bf26
+  at: '2026-07-21T21:22:23Z'  # bf26
+  by: agent  # bf26
+  actor: jgstern_agent  # bf26
+  clock: 3  # bf26
+  nonce: bf26  # bf26
+  set:  # bf26
+    title: "byte-repro: execution_id (uuid4) + wall-clock timestamps defeat whole-file diff, and spec:321 still wrongly claims analysis_runs[] is 'byte-stable'; the analysis_runs[] ORDER nondeterminism is FIXED (WI-haguz)"  # bf26
+- op: discuss  # 7c06
+  at: '2026-07-21T21:22:23Z'  # 7c06
+  by: agent  # 7c06
+  actor: jgstern_agent  # 7c06
+  clock: 4  # 7c06
+  nonce: 7c06  # 7c06
+  message: "Staleness audit 2026-07-21: source (2) FIXED -- finalize.py:462-467 (WI-haguz) now sorts analysis_runs by (started_at, pass), so the as_completed() completion-order race the item cited is gone; the spec 'same input->same output' promise also moved §10->§13 scoped to ordering determinism. Live residuals: (a) source (1) -- ir.py:361 execution_id=uuid4 + 370 wall-clock started_at/duration still churn the whole-file byte diff; (b) spec:321 still asserts analysis_runs[] is 'byte-stable across runs', which is inaccurate given the fresh per-run uuid/timestamps. Re-scoped to those two."  # 7c06
+- op: discuss  # e627
+  at: '2026-07-23T01:26:29Z'  # e627
+  by: agent  # e627
+  actor: jgstern_agent  # e627
+  clock: 5  # e627
+  nonce: e627  # e627
+  message: "Byte-repro MODE split out to new items per the G8 \"Reproducibility semantics\" scout (g8_reproducibility_scout_findings_07212026.md, 2026-07-21): WI-sazap (--reproducible mode; flag-gated: deterministic execution_id + wall-clock omission) -> WI-situf (canonical digest) -> WI-zomuk (survey diff). The residual here is now just the docs-honesty spec fix (PR-A: correct the false \"byte-stable\" claim at spec:321; soften :72 and :1649) -- close this item on that. Digest/diff are demand-gated on aijo. G8 other three items (WI-fonod / INV-nogom / WI-sijug) are distinct fingerprints, not part of this split."  # e627
+- op: update  # 160a
+  at: '2026-07-26T05:31:54Z'  # 160a
+  by: agent  # 160a
+  actor: jgstern_agent  # 160a
+  clock: 6  # 160a
+  nonce: 160a  # 160a
+  set:  # 160a
+    status: done  # 160a
+- op: discuss  # d2ad
+  at: '2026-07-26T05:31:54Z'  # d2ad
+  by: agent  # d2ad
+  actor: jgstern_agent  # d2ad
+  clock: 7  # d2ad
+  nonce: d2ad  # d2ad
+  message: "(b) spec byte-stability overclaim FIXED in GitHub PR #7 (dev f291a9ce92). Behavioral evidence (two-run survey diff on a fixture): 65/65 analysis_runs entries carry a different execution_id (per-run uuid:) + fresh wall-clock started_at/duration_ms, whole-file sha256 differs, while the node stable_id SET is identical (L2 semantic graph reproduces). Corrected spec:321 (analysis_runs 'byte-stable across runs'), :72 (UX 'deterministic and reproducible'), :1649 (checklist 'same input->same output') to the L2 posture. (a) byte-repro MODE (deterministic execution_id + omit wall-clock) tracked separately as WI-sazap. VERIFY-THE-PREMISE finding: this item's own note claimed 'analysis_runs[] ORDER nondeterminism is FIXED (WI-haguz)' -- INACCURATE. started_at is microsecond wall-clock (65/65 distinct), so the sort reflects real-time completion order and the pass ORDER still varies run-to-run (first divergence: gitignore@.292398 vs properties@.976737). WI-haguz removed the random dict-order but did NOT make the order reproducible; folded into WI-sazap. Closing done: docs-honesty deliverable landed; the byte-repro-mode feature lives on as WI-sazap."  # d2ad

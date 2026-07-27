@@ -38,3 +38,20 @@
     tags: [dogfood]  # 95c8
   remove:  # 95c8
     tags: [dogfooding]  # 95c8
+- op: update  # 700e
+  at: '2026-07-10T08:55:57Z'  # 700e
+  by: agent  # 700e
+  actor: jgstern_agent  # 700e
+  clock: 4  # 700e
+  nonce: 700e  # 700e
+  set:  # 700e
+    status: done  # 700e
+  add:  # 700e
+    tags: [wave4]  # 700e
+- op: discuss  # b19f
+  at: '2026-07-10T08:55:57Z'  # b19f
+  by: agent  # b19f
+  actor: jgstern_agent  # b19f
+  clock: 5  # b19f
+  nonce: b19f  # b19f
+  message: "DONE — PR #538 (selfh/dev 8711a6c935). load_substrate rejects a dict lacking the structural 'nodes' key with a typed SubstrateError -> rc=2, instead of the consumer doing data.get('nodes',[]) -> empty -> silent rc=0 'No X found'. BEHAVIORAL EVIDENCE (live): 'symbols --input noshape.json' (a dict with schema_version but no nodes) -> rc=2, stderr 'Error: ...: not a hypergumbo behavior map — missing required key(s): nodes' (WAS: rc=0 'No symbols found'). Reconciliation note: WI-jukah listed schema_version+nodes as required keys, but co-bundled WI-marul governs schema_version as a warn-first signal, so 'nodes' is the hard-required structural discriminator (the silent-empty root cause) and schema_version warns. Core 100% coverage."  # b19f

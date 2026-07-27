@@ -47,3 +47,18 @@
   clock: 4  # 3d46
   nonce: 3d46  # 3d46
   message: "root-cause family cross-link (t1); keeps existing parent (connections-sweep 2026-06-08T1900Z)"  # 3d46
+- op: update  # ae07
+  at: '2026-07-12T08:27:45Z'  # ae07
+  by: agent  # ae07
+  actor: jgstern_agent  # ae07
+  clock: 5  # ae07
+  nonce: ae07  # ae07
+  set:  # ae07
+    status: done  # ae07
+- op: discuss  # 21ea
+  at: '2026-07-12T08:27:45Z'  # 21ea
+  by: agent  # 21ea
+  actor: jgstern_agent  # 21ea
+  clock: 6  # 21ea
+  nonce: 21ea  # 21ea
+  message: "Documented in PR (selfh dev a4bad5897e): spec supply_chain object now lists the 5 relocated booleans (is_test_file/is_example_file/is_config_file/is_generated_file/is_exported) + updated JSON example, matching ir.py:539-547 to_dict relocation. Wave-4 contract-accuracy."  # 21ea

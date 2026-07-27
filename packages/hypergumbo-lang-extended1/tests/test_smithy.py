@@ -23,6 +23,12 @@ def make_smithy_file(tmp_path: Path, name: str, content: str) -> Path:
     return file_path
 
 
+def _role(sym, role: str) -> bool:
+    """A folded framework symbol carries its role in ``meta['framework_role']``
+    (WI-rilal / audit-0013: ``service`` -> ``interface``)."""
+    return (sym.meta or {}).get("framework_role") == role
+
+
 class TestFindSmithyFiles:
     """Tests for find_smithy_files function."""
 
@@ -82,9 +88,11 @@ service Weather {
 }
 """)
         result = analyze_smithy(tmp_path)
-        svc = next((s for s in result.symbols if s.kind == "service"), None)
+        # WI-rilal / audit-0013 fold: service -> interface + meta['framework_role']='service'
+        svc = next((s for s in result.symbols if _role(s, "service")), None)
         assert svc is not None
         assert svc.name == "example#Weather"
+        assert svc.kind == "interface"
 
     def test_extracts_operations(self, tmp_path: Path) -> None:
         make_smithy_file(tmp_path, "test.smithy", """
@@ -110,7 +118,8 @@ structure User {
 }
 """)
         result = analyze_smithy(tmp_path)
-        struct = next((s for s in result.symbols if s.kind == "structure"), None)
+        # WI-zipis / audit-0015: Smithy `structure` folds to canonical `struct`.
+        struct = next((s for s in result.symbols if s.kind == "struct"), None)
         assert struct is not None
         assert struct.name == "example#User"
 
@@ -247,7 +256,7 @@ namespace example
 service Weather {}
 """)
         result = analyze_smithy(tmp_path)
-        svc = next((s for s in result.symbols if s.kind == "service"), None)
+        svc = next((s for s in result.symbols if _role(s, "service")), None)
         assert svc is not None
         assert svc.origin == ["smithy"]
 
@@ -273,7 +282,7 @@ namespace example
 service MyService {}
 """)
         result = analyze_smithy(tmp_path)
-        svc = next((s for s in result.symbols if s.kind == "service"), None)
+        svc = next((s for s in result.symbols if _role(s, "service")), None)
         assert svc is not None
         assert svc.id != svc.stable_id
         assert svc.id.startswith("smithy:test.smithy:")
@@ -286,7 +295,7 @@ namespace example
 service MyService {}
 """)
         result = analyze_smithy(tmp_path)
-        svc = next((s for s in result.symbols if s.kind == "service"), None)
+        svc = next((s for s in result.symbols if _role(s, "service")), None)
         assert svc is not None
         assert svc.span is not None
         assert svc.span.start_line >= 1

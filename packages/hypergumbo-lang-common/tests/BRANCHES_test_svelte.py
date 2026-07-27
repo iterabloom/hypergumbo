@@ -14,7 +14,6 @@ by the main test suite. Focuses on:
 from pathlib import Path
 
 from hypergumbo_lang_common.svelte import (
-    _make_symbol_id,
     analyze_svelte,
     find_svelte_files,
 )
@@ -25,14 +24,10 @@ def make_svelte_file(tmp_path: Path, name: str, content: str) -> None:
     (tmp_path / name).write_text(content)
 
 
-class TestSvelteHelperFunctions:
-    """Branch coverage for helper functions."""
-
-    def test_make_symbol_id_format(self) -> None:
-        """Test symbol ID format."""
-        from pathlib import Path
-        symbol_id = _make_symbol_id(Path("src/App.svelte"), "Button", "component_ref", 10)
-        assert symbol_id == "svelte:src/App.svelte:component_ref:10:Button"
+# The per-analyzer _make_symbol_id builder was folded into the shared
+# make_doc_symbol_ids helper (tested in hypergumbo-core test_base.py), so the
+# former TestSvelteHelperFunctions::test_make_symbol_id_format unit test was
+# retired here.
 
 
 class TestComponentRefExtraction:

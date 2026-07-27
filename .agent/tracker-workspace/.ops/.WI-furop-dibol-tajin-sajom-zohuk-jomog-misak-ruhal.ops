@@ -71,3 +71,18 @@
     tags: [dogfood]  # 21e1
   remove:  # 21e1
     tags: [dogfooding]  # 21e1
+- op: update  # 4c6a
+  at: '2026-06-28T11:12:43Z'  # 4c6a
+  by: agent  # 4c6a
+  actor: jgstern_agent  # 4c6a
+  clock: 7  # 4c6a
+  nonce: 4c6a  # 4c6a
+  set:  # 4c6a
+    status: done  # 4c6a
+- op: discuss  # d78c
+  at: '2026-06-28T11:12:43Z'  # d78c
+  by: agent  # d78c
+  actor: jgstern_agent  # d78c
+  clock: 8  # d78c
+  nonce: d78c  # d78c
+  message: "DONE — fixed in PR merged to selfh (commit 28250227b5) and verified behaviorally by re-running all three of the item's OWN filed repros on the production CLI (validation fires BEFORE analysis, so exit 2 is immediate):\n\n  • `hypergumbo sketch <dir> --require-section NONEXISTENT`  → exit 2: \"hypergumbo sketch: error: 'NONEXISTENT' is not a known section.\"   (WAS: exit 0, full sketch, no required section)\n  • `--require-section \"key symbols\"` (wrong case, the filed typo class) → exit 2 + \"Did you mean: Key Symbols?\"\n  • `hypergumbo search \"main\" <dir> --language klingon`  → exit 2: \"is not a known language.\" + \"Did you mean: kotlin?\"   (WAS: exit 0 \"No symbols found\")\n  • `hypergumbo search \"main\" <dir> --kind nonexistent_kind`  → exit 2: \"is not a known symbol kind.\" + \"Did you mean: constant?\"   (WAS: exit 0)\n  • CONTROL: `search --language python` (valid) → exit 0 (no false rejection); existing valid-filter tests (kind=class, language=python) still pass.\n\nFix-class = the INV-fabov silent-CLI-accept umbrella, implemented the same way as INV-gufod (config <language>): validate against the canonical enumerable set, error with exit 2 + difflib did-you-mean. Sources of truth: new VALID_SKETCH_SECTIONS frozenset (sketch.py) for --require-section; all_known_languages() for search --language; all_symbol_kind_names() for search --kind. Shared _reject_unknown_choice helper + _validate_require_sections wrapper (cli.py). The 7 section names — previously triplicated across the CLI help text, the sketch docstring, and the _has_required_analysis_section gate set — now derive from the single VALID_SKETCH_SECTIONS constant (the gate set folded onto it). Validation runs before the (auto-running) analysis so bad input fails fast. All three filed-repro faces closed; this discharges WI-furop's full stated scope (the title's --require-section plus the reproduction's search --language/--kind siblings)."  # d78c

@@ -8,7 +8,8 @@ prioritized) and noise reduction (derived artifacts excluded).
 Tiers
 -----
 - FIRST_PARTY (1): Project's own source code (highest priority)
-- INTERNAL_DEP (2): Internal libraries, monorepo packages
+- INTERNAL_DEP (2): Org-internal dependency packages (configured
+  internal_package_roots only)
 - EXTERNAL_DEP (3): Third-party dependencies in readable form
 - DERIVED (4): Build artifacts, transpiled/bundled output (skip analysis)
 
@@ -19,19 +20,28 @@ checked in order; first match wins:
 
 1. Derived artifact detection (tier 4) - path patterns + content heuristics
 2. External dependency detection (tier 3) - node_modules/, vendor/, etc.
-3. Example/demo detection (tier 2) - examples/, demos/, samples/, tutorials/
+3. Example/demo detection (tier 1, is_example=True) - examples/, demos/,
+   samples/, tutorials/ (in-repo → first-party; the role is on is_example)
 4. Workspace package detection:
    - If file matches a test directory pattern → tier 1 with is_test=True
    - Otherwise → tier 1 (workspace IS the project)
-5. Test code detection (tier 1 with is_test=True) - tests/, spec/,
-   __tests__/, _test.go, .test.js, etc. Tier 2 is reserved for in-repo
-   non-test code (examples, fuzz harnesses, vendored deps); routing
-   tests through tier 2 historically made tier 2 a synonym for is_test
-   and drowned out the real internal-dep signal (INV-tisid).
-6. First-party detection (tier 1) - src/, lib/, app/ or default
+5. Configured internal_package_roots → tier 2 (the only tier-2 producer
+   *within* ``classify_file``; ``cli._classify_symbols`` additionally tiers a
+   workspace-sibling *dependency declaration* tier-2 via
+   :func:`collect_workspace_package_names` — INV-nuzas / ADR-0041 D8a)
+6. Test code detection (tier 1 with is_test=True) - tests/, spec/,
+   __tests__/, _test.go, .test.js, etc. Routing tests through tier 2
+   historically made tier 2 a synonym for is_test and drowned out the
+   real internal-dep signal (INV-tisid).
+7. Documentation / notebook (.ipynb) / fuzz-bench detection (tier 1) -
+   in-repo role files; the role is carried by the reason string (INV-naduh).
+8. First-party detection (tier 1) - src/, lib/, app/ or default
 
-This ensures library monorepos classify workspace source code as tier 1,
-while examples outside workspaces are tier 2 (lower priority).
+Per INV-naduh / ADR-0041 §1 the tier names supply-chain DISTANCE only: all
+in-repo files are first-party (distance 0), and tier 2 is reserved for
+org-internal *dependency* packages declared via config. Role files
+(examples, docs, notebooks, fuzz/bench, tests) carry their role on a
+separate axis (is_example / is_test / reason), not by tier.
 
 See §14 of the hypergumbo spec for full details.
 """
@@ -61,43 +71,58 @@ class DependencyManifest:
 
     Maps module paths (e.g., Go module paths from go.mod, npm package names
     from package.json) to dependency metadata. Used by ``create_boundary_nodes``
-    to assign tier 2 (direct dependency) vs tier 3 (indirect/stdlib) to
-    synthetic boundary nodes that represent unresolved external references.
+    to classify synthetic boundary nodes that represent unresolved external
+    references — all tier 3 (``EXTERNAL_DEP``) per ADR-0041 (see below), with the
+    direct/transitive distinction recorded on the ``directness`` meta key.
 
     Entries map module path strings to dicts with at least a ``direct`` bool key.
-    Direct dependencies get tier 2 (INTERNAL_DEP) because they are explicit
-    project dependencies the developer chose; indirect and stdlib get tier 3.
+
+    ADR-0041 §1/§2 (supply:F5): the manifest no longer influences *tier*. Tier
+    names supply-chain distance only, so every third-party import is tier 3
+    (``classify_import`` is now constant ``EXTERNAL_DEP``). The direct/transitive
+    declaration relationship the old mapping burned into tier 2 is exposed by
+    ``classify_directness`` and recorded on the ``directness`` meta key instead.
+    Tier 2 (``internal_dep``) is reserved for workspace/org-internal packages,
+    assigned by file classification — never by this manifest classifier.
     """
 
     entries: dict[str, dict] = field(default_factory=dict)
 
     def classify_import(self, import_path: str) -> "Tier":
-        """Classify an import path using this manifest.
+        """Classify the supply-chain *tier* of an external import path.
 
-        Matching uses longest-prefix-first: ``github.com/foo/bar/pkg``
-        matches entry ``github.com/foo/bar``.  Go stdlib paths (no dots
-        in the first path segment, e.g., ``encoding/json``, ``fmt``)
-        always return EXTERNAL_DEP regardless of manifest contents.
+        ADR-0041 §1: tier names supply-chain distance and nothing else, so
+        every third-party / external import — direct, transitive, stdlib, or
+        unknown alike — is :data:`Tier.EXTERNAL_DEP` (3). Boundary nodes are
+        external by construction; first-party (tier 1) and workspace-internal
+        (tier 2) code is assigned by file classification, not here.
+
+        The direct/transitive/undeclared *declaration relationship* this method
+        used to fold into tier 2 now lives on :meth:`classify_directness`.
 
         Returns:
-            Tier.INTERNAL_DEP (2) for direct dependencies,
-            Tier.EXTERNAL_DEP (3) for indirect, stdlib, or unknown.
+            Tier.EXTERNAL_DEP (3), always.
         """
-        if not import_path:
-            return Tier.EXTERNAL_DEP
+        return Tier.EXTERNAL_DEP
 
-        # Go stdlib detection: first path segment has no dots AND path
-        # contains a slash (Go convention). Single-segment dotless paths
-        # like "junit" or "javax" are valid Java/Kotlin groupIds that
-        # should fall through to prefix matching.
-        if "/" in import_path:
-            first_segment = import_path.split("/")[0]
-            if "." not in first_segment:
-                return Tier.EXTERNAL_DEP
+    def classify_directness(self, import_path: str) -> str:
+        """Classify the declaration relationship of an external import (ADR-0041 §2).
 
-        # Longest-prefix match against manifest entries.
-        # Supports both slash-separated (Go: github.com/foo/bar) and
-        # dot-separated (Java/Kotlin: com.fasterxml.jackson.core) paths.
+        Records how the project's manifests relate to an external dependency:
+
+        * ``"direct"`` — declared in a project manifest (longest-prefix match
+          carries ``direct: True``);
+        * ``"transitive"`` — present in the manifest but not declared direct
+          (pulled in by another dependency);
+        * ``"undeclared"`` — imported but declared in no manifest (a phantom
+          dependency; also the bucket the language runtime's stdlib falls into,
+          since stdlib is declared nowhere — the stdlib-vs-third_party split is
+          the separate ``ecosystem`` axis, ADR-0041 §3).
+
+        Matching mirrors the old tier classifier's longest-prefix logic across
+        slash-separated (Go: ``github.com/foo/bar``) and dot-separated
+        (Java/Kotlin: ``com.fasterxml.jackson.core``) module paths.
+        """
         best_match = ""
         for module_path in self.entries:
             if (
@@ -108,10 +133,9 @@ class DependencyManifest:
                 if len(module_path) > len(best_match):
                     best_match = module_path
 
-        if best_match and self.entries[best_match].get("direct", False):
-            return Tier.INTERNAL_DEP
-
-        return Tier.EXTERNAL_DEP
+        if not best_match:
+            return "undeclared"
+        return "direct" if self.entries[best_match].get("direct", False) else "transitive"
 
     @classmethod
     def merge(cls, manifests: list["DependencyManifest"]) -> "DependencyManifest":
@@ -132,13 +156,11 @@ class SupplyChainConfig:
     Allows customizing tier classification via capsule plan.
 
     Attributes:
-        analysis_tiers: Which tiers to include in analysis (default: [1, 2, 3])
         first_party_patterns: Additional patterns to classify as tier 1
         derived_patterns: Additional patterns to classify as tier 4
         internal_package_roots: Explicit internal package paths
     """
 
-    analysis_tiers: list[int] = field(default_factory=lambda: [1, 2, 3])
     first_party_patterns: list[str] = field(default_factory=list)
     derived_patterns: list[str] = field(default_factory=list)
     internal_package_roots: list[str] = field(default_factory=list)
@@ -146,7 +168,6 @@ class SupplyChainConfig:
     def to_dict(self) -> dict:
         """Serialize to dict for JSON output."""
         return {
-            "analysis_tiers": self.analysis_tiers,
             "first_party_patterns": self.first_party_patterns,
             "derived_patterns": self.derived_patterns,
             "internal_package_roots": self.internal_package_roots,
@@ -156,7 +177,6 @@ class SupplyChainConfig:
     def from_dict(cls, data: dict) -> "SupplyChainConfig":
         """Parse from dict."""
         return cls(
-            analysis_tiers=data.get("analysis_tiers", [1, 2, 3]),
             first_party_patterns=data.get("first_party_patterns", []),
             derived_patterns=data.get("derived_patterns", []),
             internal_package_roots=data.get("internal_package_roots", []),
@@ -172,14 +192,15 @@ class FileClassification:
     WI-jobuj). Per INV-tisid, test code is tier 1 with is_test=True —
     tests are first-party code, and routing them through tier 2 made
     tier 2 a synonym for is_test (~99% of self-analysis tier-2 entries
-    were tests, drowning out actual internal-dep signal). Tier 2 is
-    reserved for in-repo non-test code: examples, fuzz harnesses,
-    vendored-but-in-tree deps, monorepo subpackages used as deps.
+    were tests, drowning out actual internal-dep signal). Per INV-naduh /
+    ADR-0041 §1, tier 2 is reserved for org-internal *dependency* packages
+    (configured ``internal_package_roots`` only); other in-repo role files
+    — examples, docs, notebooks, fuzz/bench harnesses — are first-party
+    (tier 1) with the role carried by the flag/reason, not by tier.
 
-    Within tier 2 (INTERNAL_DEP), at most one of `is_example`,
-    `is_config` is True per file (mutual exclusion preserved by the
-    classifier order). `is_test` is now mutually exclusive with the
-    other tier-2 role flags because is_test routes the file to tier 1.
+    At most one of `is_test`, `is_example`, `is_config` is True per file
+    (mutual exclusion preserved by the classifier order); the property is
+    tier-independent now that role files are first-party.
     """
 
     tier: Tier
@@ -286,6 +307,17 @@ EXTERNAL_DEP_DEEP_PATTERNS = [
     (r"(?:^|/)[^/]+-go-sdk/", "vendored Go SDK"),
     (r"(?:^|/)[^/]+-sdk-golang/", "vendored Go SDK"),
     (r"(?:^|/)vendor-internal/", "vendor-internal/"),
+    # INV-kokik: vendored third-party front-end assets nested under a
+    # first-party root (typically src/.../static/). These marker directory
+    # names are unambiguous vendoring signals (same rationale as
+    # vendor-internal/ above), so they fire even under a src/ prefix and
+    # demote un-minified vendored JS/CSS out of tier-1. Deliberately NOT a
+    # blanket static/ rule — many projects keep first-party JS/CSS under
+    # static/; only explicit vendored-marker dirs are demoted. (Minified
+    # bundles are already caught upstream by the DERIVED filename patterns.)
+    (r"(?:^|/)vendored/", "vendored assets"),
+    (r"(?:^|/)npm_mirror/", "vendored npm mirror"),
+    (r"(?:^|/)bower_components/", "bower_components/"),
 ]
 
 FIRST_PARTY_PATTERNS = [
@@ -347,7 +379,7 @@ CONFIG_FILE_NAMES = frozenset({
     "mix.lock",
 })
 
-# Patterns for documentation directories (tier 2) — not production code.
+# Patterns for documentation directories — first-party (tier 1), not production code.
 # Checked with re.search to match at any depth (e.g., Sources/Lib/Documentation.docc/).
 # Swift DocC (.docc) bundles contain tutorial fragments, articles, and extension files
 # that look like code but are documentation content (not importable modules).
@@ -356,7 +388,7 @@ DOCUMENTATION_PATTERNS = [
     r"(?:^|/)Documentation\.docc/",  # Documentation.docc/ (conventional name)
 ]
 
-# Patterns for fuzz targets and benchmarks (tier 2) — not production code.
+# Patterns for fuzz targets and benchmarks — first-party (tier 1), not production code.
 # Checked with re.search to match at any depth (e.g., crates/core/fuzz/).
 FUZZ_BENCH_PATTERNS = [
     r"(?:^|/)fuzz(?:ing)?/",       # fuzz/ or fuzzing/ at any level
@@ -385,6 +417,9 @@ TEST_FILE_PATTERNS = [
     r"\.spec\.[jt]sx?$",         # JS/TS: service.spec.ts, component.spec.tsx
     r"_spec\.rb$",               # Ruby: user_spec.rb
     r"/test_[^/]+\.(?:cpp|cc|cxx|c|h|hpp)$",  # C/C++: test_utils.cpp (GTest convention)
+    r"(?:^|/)test_[^/]+\.py$",   # Python: test_foo.py (pytest/unittest, WI-mozum)
+    r"_test\.py$",               # Python: foo_test.py (WI-mozum)
+    r"(?:^|/)test_[^/]+\.sh$",   # Bash: test_hooks.sh (WI-mozum)
     r"(?:^|/)tests\.rs$",        # Rust: co-located test module (src/consensus/tests.rs)
     r"(?:^|/)testonly\.rs$",     # Rust: test-only helpers (src/vm_executor/testonly.rs)
 ]
@@ -595,17 +630,22 @@ def _classify_file_core(
             pkg = _extract_package_name(rel, label)
             return FileClassification(Tier.EXTERNAL_DEP, f"in {label}", pkg)
 
-    # 4. Check example/demo patterns (lower priority than workspace packages)
+    # 4. Check example/demo patterns (lower priority than workspace packages).
+    # INV-naduh / ADR-0041 §1: tier names supply-chain DISTANCE only. In-repo
+    # example/demo files are the project's OWN code (distance 0) → tier 1
+    # first_party; their role is carried by is_example, NOT by tier 2 (which is
+    # reserved for org-internal *dependency* packages).
     for pattern in EXAMPLE_PATTERNS:
         if re.match(pattern, rel):
             return FileClassification(
-                Tier.INTERNAL_DEP, f"path matches {pattern}", is_example=True
+                Tier.FIRST_PARTY, f"path matches {pattern}", is_example=True
             )
 
-    # 4b. Check documentation patterns (DocC bundles, etc.)
+    # 4b. Check documentation patterns (DocC bundles, etc.). INV-naduh: in-repo
+    # docs are first-party (tier 1); the role is captured by the reason string.
     for pattern in DOCUMENTATION_PATTERNS:
         if re.search(pattern, rel):
-            return FileClassification(Tier.INTERNAL_DEP, f"documentation path matches {pattern}")
+            return FileClassification(Tier.FIRST_PARTY, f"documentation path matches {pattern}")
 
     # 5a. Check custom internal_package_roots from config
     if config and config.internal_package_roots:
@@ -694,12 +734,16 @@ def _classify_file_core(
 
     # 5c. Jupyter notebooks are exploratory, not part of the import namespace
     if rel.endswith(".ipynb"):
-        return FileClassification(Tier.INTERNAL_DEP, "notebook file (.ipynb)")
+        # INV-naduh: in-repo notebooks are first-party (tier 1), not a tier-2
+        # dependency; the role is captured by the reason string.
+        return FileClassification(Tier.FIRST_PARTY, "notebook file (.ipynb)")
 
-    # 5d. Check fuzz/benchmark patterns (not production code)
+    # 5d. Check fuzz/benchmark patterns (not production code). INV-naduh: in-repo
+    # fuzz/bench harnesses are first-party (tier 1); "not production" is captured
+    # by the reason string, not by mislabeling them as a tier-2 dependency.
     for pattern in FUZZ_BENCH_PATTERNS:
         if re.search(pattern, rel):
-            return FileClassification(Tier.INTERNAL_DEP, f"fuzz/bench path matches {pattern}")
+            return FileClassification(Tier.FIRST_PARTY, f"fuzz/bench path matches {pattern}")
 
     # 5e. Check custom first_party_patterns from config
     if config and config.first_party_patterns:
@@ -718,11 +762,30 @@ def _classify_file_core(
     return FileClassification(Tier.FIRST_PARTY, "default (no matching pattern)")
 
 
+# INV-lukop: the average-line-length minification heuristic (Heuristic 1 in
+# ``is_likely_minified``) only makes sense for WEB ASSETS — JS/CSS/HTML bundles
+# are the artifacts that get minified into long single lines. A dense-but-real
+# source file in another language (a Python data/lookup/i18n module, a very long
+# function signature, generated protobuf) legitimately has a high average line
+# length and must NOT be misclassified as minified: doing so classifies its whole
+# file tier-4 (derived), and the default tier filter then drops EVERY symbol and
+# edge for that file with no diagnostic. Gating the heuristic to these extensions
+# closes that silent-whole-file-drop vector; the @generated / sourcemap / webpack
+# heuristics stay universal because they are language-agnostic generation signals.
+_MINIFIABLE_WEB_EXTENSIONS = frozenset({
+    ".js", ".mjs", ".cjs", ".jsx", ".ts", ".tsx",
+    ".css", ".scss", ".sass", ".less",
+    ".html", ".htm", ".xhtml",
+    ".vue", ".svelte",
+})
+
+
 def is_likely_minified(path: Path) -> bool:
     """Detect likely minified/bundled/generated files via content heuristics.
 
     Checks:
-    1. Average line length > 150 chars (minified code)
+    1. Average line length > 150 chars (minified code) — WEB ASSETS ONLY
+       (``_MINIFIABLE_WEB_EXTENSIONS``); see the INV-lukop note above.
     2. Source map reference in last 3 lines (transpiled)
     3. "Generated by" or "@generated" in first 5 lines
     4. Webpack bootstrap pattern in first 10 lines
@@ -742,10 +805,12 @@ def is_likely_minified(path: Path) -> bool:
     if not lines:
         return False
 
-    # Heuristic 1: Average line length > 150 chars
-    avg_line_len = len(content) / len(lines)
-    if avg_line_len > 150:
-        return True
+    # Heuristic 1: Average line length > 150 chars, but only for web assets that
+    # actually get minified (INV-lukop) — a dense non-web source file is not.
+    if path.suffix.lower() in _MINIFIABLE_WEB_EXTENSIONS:
+        avg_line_len = len(content) / len(lines)
+        if avg_line_len > 150:
+            return True
 
     # Heuristic 2: Source map reference in last 3 lines
     tail = "\n".join(lines[-3:])
@@ -903,3 +968,94 @@ def _extract_package_name(rel_path: str, pattern_label: str) -> Optional[str]:
         return parts[0]
 
     return None
+
+
+# INV-nuzas / ADR-0041 D8a — workspace-sibling dependency recognition.
+#
+# A monorepo sibling that another workspace member declares as a *dependency*
+# is workspace-INTERNAL (tier 2 ``internal_dep``), not a third-party external
+# (tier 3). ``cli._classify_symbols`` stamps every ``kind='dependency'`` symbol
+# tier-3 by default; consulting the set of in-repo package distribution names
+# below lets it tier a matching declaration tier-2 instead. This parallels the
+# workspace-member *subtraction* in
+# ``hypergumbo_lang_mainstream.py_deps.parse_python_dependencies`` (same
+# ADR-0041 D8a rule, applied there to imported boundary nodes). The two cannot
+# share code: ``hypergumbo-core`` is the base package and must not import a
+# language-analyzer package, so the small name-collection logic is duplicated.
+_WORKSPACE_NAME_NORMALIZE_RE = re.compile(r"[-_.]+")
+
+
+def _normalize_pep503(name: str) -> str:
+    """PEP 503 distribution-name normalization: lower-case and collapse runs
+    of ``-``/``_``/``.`` into a single ``-`` (so ``My_Cool.Pkg`` and
+    ``my-cool-pkg`` compare equal)."""
+    return _WORKSPACE_NAME_NORMALIZE_RE.sub("-", name).lower()
+
+
+def _own_distribution_name(data: dict) -> Optional[str]:
+    """Read a package's OWN distribution name from parsed ``pyproject.toml``
+    data. PEP 621 ``[project].name`` is preferred; Poetry
+    ``[tool.poetry].name`` is the fallback. Returns ``None`` when neither is
+    a non-empty string."""
+    project = data.get("project")
+    if isinstance(project, dict):
+        name = project.get("name")
+        if isinstance(name, str) and name.strip():
+            return name.strip()
+    tool = data.get("tool")
+    if isinstance(tool, dict):
+        poetry = tool.get("poetry")
+        if isinstance(poetry, dict):
+            name = poetry.get("name")
+            if isinstance(name, str) and name.strip():
+                return name.strip()
+    return None
+
+
+def collect_workspace_package_names(repo_root: Path) -> set:
+    """Collect the PEP 503-normalized distribution names of every in-repo
+    Python package (workspace member).
+
+    Walks ``repo_root`` for every ``pyproject.toml`` (the root manifest and any
+    ``packages/<pkg>/pyproject.toml`` at any depth), skipping
+    ``discovery.DEFAULT_EXCLUDES`` and dot-prefixed directories so a vendored
+    ``.venv/site-packages/<pkg>/pyproject.toml`` cannot leak in, and reads each
+    package's own distribution name (``[project].name`` /
+    ``[tool.poetry].name``).
+
+    The result is the workspace-sibling recognizer for
+    :func:`cli._classify_symbols`: a ``kind='dependency'`` symbol whose
+    normalized name is in this set is a workspace-internal dependency
+    declaration (tier 2), not a third-party external (tier 3) —
+    INV-nuzas / ADR-0041 D8a. Returns an empty set when no ``pyproject.toml``
+    is present (non-Python repo → all deps stay tier 3, unchanged behavior).
+    """
+    from .profile import _load_toml
+    from .discovery import DEFAULT_EXCLUDES
+
+    skip = set(DEFAULT_EXCLUDES)
+    names: set = set()
+    stack = [repo_root]
+    while stack:
+        cur = stack.pop()
+        try:
+            entries = list(cur.iterdir())
+        except (PermissionError, OSError):  # pragma: no cover - unreadable dir
+            continue
+        for entry in entries:
+            if entry.is_file() and entry.name == "pyproject.toml":
+                try:
+                    content = entry.read_text(encoding="utf-8", errors="ignore")
+                except (OSError, IOError):  # pragma: no cover - unreadable file
+                    continue
+                data = _load_toml(content)
+                if not isinstance(data, dict):
+                    continue
+                own = _own_distribution_name(data)
+                if own:
+                    names.add(_normalize_pep503(own))
+            elif entry.is_dir():
+                if entry.name in skip or entry.name.startswith("."):
+                    continue
+                stack.append(entry)
+    return names

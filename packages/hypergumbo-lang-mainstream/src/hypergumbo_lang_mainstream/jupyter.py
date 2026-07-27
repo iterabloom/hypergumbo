@@ -24,9 +24,10 @@ full Python analyzer, this module handles the notebook-specific concerns
 to Python's built-in ast module directly.
 
 Symbols get language="jupyter" (not "python") because notebook code typically
-lives outside the project's import namespace. Supply chain classification
-places notebooks at Tier 2 (INTERNAL_DEP) — useful context but not core
-architecture.
+lives outside the project's import namespace. Supply chain classification places
+notebooks at Tier 1 (FIRST_PARTY) since INV-naduh — an in-repo notebook is the
+project's own code (distance 0); "useful context but not core architecture" is a
+role/context signal, not a tier-2 (internal_dep) downgrade.
 
 Limitations
 -----------
@@ -49,6 +50,13 @@ from hypergumbo_core.analyze.base import AnalysisResult
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
+# INV-loguk: notebook code cells are Python, so reuse py.py's language-agnostic
+# Python-AST complexity walkers (the tree-sitter `compute_cyclomatic_complexity`
+# dispatcher operates on tree-sitter nodes, not `ast.AST`). Same package.
+from hypergumbo_lang_mainstream.py import (
+    _compute_cyclomatic_complexity,
+    _compute_line_span,
+)
 
 PASS_ID = make_pass_id("jupyter")
 
@@ -218,6 +226,9 @@ def _analyze_notebook_file(
                 span=span,
                 origin=PASS_ID,
                 origin_run_id="",
+                # INV-loguk: Python-AST CC/LOC over the function node.
+                cyclomatic_complexity=_compute_cyclomatic_complexity(node),
+                line_span=_compute_line_span(node),
             )
             symbols.append(symbol)
             symbol_by_name[name] = symbol
@@ -268,6 +279,9 @@ def _analyze_notebook_file(
                         span=m_span,
                         origin=PASS_ID,
                         origin_run_id="",
+                        # INV-loguk: Python-AST CC/LOC over the method node.
+                        cyclomatic_complexity=_compute_cyclomatic_complexity(item),
+                        line_span=_compute_line_span(item),
                     )
                     symbols.append(method_symbol)
                     symbol_by_name[method_name] = method_symbol

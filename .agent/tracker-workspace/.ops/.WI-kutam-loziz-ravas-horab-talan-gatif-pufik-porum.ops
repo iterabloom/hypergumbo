@@ -57,3 +57,11 @@
     tags: [dogfood]  # e331
   remove:  # e331
     tags: [dogfooding]  # e331
+- op: update  # 7e5c
+  at: '2026-07-15T03:42:52Z'  # 7e5c
+  by: agent  # 7e5c
+  actor: jgstern_agent  # 7e5c
+  clock: 6  # 7e5c
+  nonce: 7e5c  # 7e5c
+  set:  # 7e5c
+    description: "When 'hypergumbo slice --entry <name>' has multiple matches with the SAME language (e.g., real symbol vs python:external:0-0:<name>:unresolved synthetic), the error message says 'Use a full node ID to disambiguate, or filter with --language.' --language python doesn't disambiguate when both are python. Better hint: suggest --list-entries (which works and shows IDs) or copy-paste the full ID from the error message. Reproduce: hypergumbo slice --input survey.json --entry find_files → 2 python candidates listed; --language python on retry → same ambiguity error."  # 7e5c

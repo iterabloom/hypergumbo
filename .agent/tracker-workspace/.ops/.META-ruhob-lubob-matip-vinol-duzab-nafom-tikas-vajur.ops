@@ -27,3 +27,18 @@
   clock: 2  # 4ec2
   nonce: 4ec2  # 4ec2
   message: "Scope clarification (provenance): the finalize stage briefly had a no-op '_finalize_confidence_aggregates' sub-step (7) reserved for 'confidence:F1/F2'. A fill-vs-remove recon (2026-06-15) found that a MISATTRIBUTION — confidence:F1 (per-edge evidence→confidence derivation layer) and F2 (ranking/detection separation into rank_score) are PRODUCER-SIDE work owned by THIS family (INV-suvil et al.) and governed by ADR-0039, which explicitly keeps per-edge confidence OUT of finalize. The 'aggregate over the final EP/datamodel set' the slot described already exists over the final substrate (metrics.avg_confidence, computed AFTER finalize; sketch.confidence_mass) with no reconcile gap and no consumer. The finalize stub was REMOVED (not stubbed) in PR #244 (ADR-0043 §6.1 amended #7); this family remains the home for the actual confidence-derivation work. No status change."  # 4ec2
+- op: update  # 7ec3
+  at: '2026-07-19T22:18:39Z'  # 7ec3
+  by: agent  # 7ec3
+  actor: jgstern_agent  # 7ec3
+  clock: 3  # 7ec3
+  nonce: 7ec3  # 7ec3
+  set:  # 7ec3
+    status: satisfied  # 7ec3
+- op: discuss  # 2fa6
+  at: '2026-07-19T22:18:40Z'  # 2fa6
+  by: agent  # 2fa6
+  actor: jgstern_agent  # 2fa6
+  clock: 4  # 2fa6
+  nonce: 2fa6  # 2fa6
+  message: "SATISFIED (META-jalur gate-5 crush, 2026-07-19). Clean full drain after WI-humok reparented to parent=null (release-gated quality.* removal, sibling WI-riguh): direct members WI-gifat/WI-vakuh/WI-botif/WI-fuhof done, WI-motug wont_do; cross-linked INV-suvil satisfied, WI-suvat done. MECHANISM: ADR-0039 confidence separation fully materialized — derive_confidence(evidence_type, is_resolved) at Edge.create, the confidence_source bounded-enum (evidence_derived/emitter_constant/composite), per the EVIDENCE_CONFIDENCE_MATRIX/0.30-default/linker-floor; ranking dampeners relocated to rank_score. BEHAVIORAL EVIDENCE (fresh self-survey, corpus scale 136269 edges): 8 DISTINCT confidence values keyed to evidence bands (0.85=71122, 0.4=23423, 0.95=23224, 0.9=14691, 0.8, 0.5, 0.7, 0.75); confidence_source = evidence_derived 120845 (88.7%) / emitter_constant 15424 — a hardcoded-per-emitter world would show ~1-2 values. This is the non-reproduction of the filed repro (WI-suvat: 'EVIDENCE_CONFIDENCE_MATRIX 1/10 rows match observed'). Also DEEP-bakeoff-validated across 8 repos (register pt.3, all confidence items 'moved'). WI-humok's confidence-band concern (reason's tier-names) is resolved by confidence_source; its residual is the release-gated deprecated-quality.reason removal (D9b), tracked standalone."  # 2fa6

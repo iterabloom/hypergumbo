@@ -320,3 +320,31 @@ result
             f"language slot must be 'jsonnet', got {parts[0]!r}: {dst!r}"
         )
         assert parts[3] == "some_undefined_function"
+
+
+class TestJsonnetCyclomaticComplexity:
+    """INV-loguk slice C: callable jsonnet symbols carry non-null CC + LOC.
+    Real-grammar verification (conditional + comprehension forspec/ifspec + &&/|| (named and/or nodes))."""
+
+    def test_branchy_callables_have_expected_cc(self, tmp_path) -> None:
+        from hypergumbo_lang_extended1.jsonnet import analyze_jsonnet
+        (tmp_path / 'f.jsonnet').write_text('local pick(xs, lo, hi) =\n  if std.length(xs) == 0 && lo < hi then\n    []\n  else if lo > hi || hi < 0 then\n    null\n  else\n    [x for x in xs if x >= lo];\n')
+        result = analyze_jsonnet(tmp_path)
+        assert not result.skipped
+        by = {s.name: s for s in result.symbols if s.kind in ('function', 'method')}
+        m = by.get('pick') or next(s for n, s in by.items() if n.split('.')[-1] == 'pick' or n.endswith('pick'))
+        assert m.cyclomatic_complexity == 7, m.cyclomatic_complexity
+        assert m.line_span is not None
+
+    def test_callables_non_null_non_callables_null(self, tmp_path) -> None:
+        from hypergumbo_lang_extended1.jsonnet import analyze_jsonnet
+        (tmp_path / 'f.jsonnet').write_text('local pick(xs, lo, hi) =\n  if std.length(xs) == 0 && lo < hi then\n    []\n  else if lo > hi || hi < 0 then\n    null\n  else\n    [x for x in xs if x >= lo];\n')
+        result = analyze_jsonnet(tmp_path)
+        callables = [s for s in result.symbols if s.kind in ('function', 'method')]
+        assert callables
+        for s in callables:
+            assert s.cyclomatic_complexity is not None, (s.kind, s.name)
+            assert s.line_span is not None, (s.kind, s.name)
+        for s in result.symbols:
+            if s.kind not in ('function', 'method'):
+                assert s.cyclomatic_complexity is None, (s.kind, s.name)

@@ -31,3 +31,25 @@
   set: {}  # bc21
   add:  # bc21
     isbefore: [WI-gapig-dujab-pipiz-kitaj-koniz-zakur-bonih-fajub]  # bc21
+- op: update  # 11bb
+  at: '2026-07-15T03:42:53Z'  # 11bb
+  by: agent  # 11bb
+  actor: jgstern_agent  # 11bb
+  clock: 3  # 11bb
+  nonce: 11bb  # 11bb
+  set:  # 11bb
+    description: "Escalate the [tool.mypy] config to strict + pyright-resonant error codes. Add: strict=true, warn_unreachable=true, warn_unused_ignores=true, warn_redundant_casts=true, strict_equality=true, extra_checks=true. enable_error_code = [redundant-expr, truthy-bool, truthy-iterable, ignore-without-code, possibly-undefined, explicit-override, mutable-override, unused-awaitable, narrowed-type-not-subtype, redundant-self, unimported-reveal]. Per-package override blocks may be needed initially for packages that haven't been cleaned. The pyright-resonant rationale: this combination closes ~6-8% of the dogfood-66 corpus categories that the super-META INV-sugat names as a missing validator stage, at the code (not data) layer. Complementary to WI-rolol Phase B (survey.json property tests) — different abstraction layer."  # 11bb
+- op: discuss  # 5c0d
+  at: '2026-07-19T23:44:49Z'  # 5c0d
+  by: agent  # 5c0d
+  actor: jgstern_agent  # 5c0d
+  clock: 4  # 5c0d
+  nonce: 5c0d  # 5c0d
+  message: "Design input from the 2026-07-19 crush session: the strict-config flip must ALSO switch the CI mypy job from the per-package loop (ci.yml:242-249) to a single WHOLE-TREE invocation over all package src dirs — otherwise strict mode reports the per-package-isolated surface (cross-package imports as Any: phantom untyped-decorator/no-any-return + hidden arg-type), not INV-zogud's 'mypy <repo>' target. Safe to flip the global [tool.mypy] to strict: the only other mypy invocations are ci.yml (rewrite target) and release-check:277 'mypy src/' (dead — no repo-root src/ dir). No pre-commit mypy hook. Current whole-tree strict surface after the origin fix = 888. Suggest a count-based ratchet baseline in the (still non-blocking) mypy job now; teeth via WI-rabum's blocking flip."  # 5c0d
+- op: discuss  # ef5f
+  at: '2026-07-20T01:41:46Z'  # ef5f
+  by: agent  # ef5f
+  actor: jgstern_agent  # ef5f
+  clock: 5  # ef5f
+  nonce: ef5f  # ef5f
+  message: "KEYSTONE LANDED (2026-07-19, PR merged f56ca6a23c). The strict + pyright-resonant [tool.mypy] flip is DONE: strict=true + warn_unreachable/unused_ignores/redundant_casts + strict_equality + extra_checks + the 11 enable_error_code entries (redundant-expr, truthy-bool, truthy-iterable, ignore-without-code, possibly-undefined, explicit-override, mutable-override, unused-awaitable, narrowed-type-not-subtype, redundant-self, unimported-reveal) + namespace_packages for whole-tree resolution. The whole-tree ratchet mechanism is built: scripts/check-mypy-ratchet (one invocation over all packages/*/src/<pkg> roots + shrink-only per-error-code baseline .ci/mypy-strict-baseline.json = 1431) with --mode=warning|strict + --update-baseline + --input/--baseline test hooks (test_check_mypy_ratchet.py, 8 tests). CI mypy job rewritten from the per-package loop to the ratchet, still NON-BLOCKING (--mode=warning); full editable install so mypy resolves cross-package + third-party types. STILL OPEN: the drain to zero (this item's 'ratchet each package to zero (the L bulk)'). Baseline breakdown: type-arg 447, explicit-override 289, mutable-override 105, arg-type 104, no-untyped-def 69, truthy-bool 67, assignment 65, unused-awaitable 48 (all Textual AwaitComplete in tracker/tui.py), no-any-return 39, unreachable 32, union-attr 30, others. SCOPE FLAG for owner: ~440 of 1431 are the most aggressive/stylistic codes — explicit-override 289 (needs @override decorators + a typing_extensions dep on 3.10), mutable-override 105, unused-awaitable 48 (framework pattern) — candidates to grind OR to relax (removing a code lowers the target). isbefore WI-rabum's blocking flip (--mode=strict) still holds."  # ef5f

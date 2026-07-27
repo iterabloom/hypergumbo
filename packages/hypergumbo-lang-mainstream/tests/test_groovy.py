@@ -914,6 +914,91 @@ def execute() {
         assert len(run_calls) >= 1, "2 candidates should still resolve"
 
 
+class TestGroovyBareMethodMagnetGate:
+    """INV-fahub: a BARE call must not confidently bind to an unrelated
+    class's same-named method on weak short-name suffix evidence.
+
+    A bare / implicit-``this`` call (``frobnicate()`` inside ``Beta.run``)
+    resolves through the shared ``NameResolver`` by a short-name SUFFIX match.
+    Binding that to an arbitrary same-named method in a DIFFERENT class is the
+    cross-language magnet misbind (dozens of call sites → one arbitrary def).
+    The gate withholds such matches (emitting an unresolved edge stamped with
+    the enclosing class so the inherited_calls Site-1 walker can later recover
+    a genuine inherited implicit-``this`` call), while free functions and
+    same-class methods still bind directly.
+    """
+
+    def test_bare_call_to_other_class_method_defers(
+        self, tmp_path: Path,
+    ) -> None:
+        """Bare call reachable only by a weak cross-class suffix match defers."""
+        from hypergumbo_lang_mainstream.groovy import analyze_groovy
+
+        (tmp_path / "Alpha.groovy").write_text("""
+class Alpha {
+    void frobnicate() {
+        println "frob"
+    }
+}
+""")
+        # Beta has NO frobnicate() of its own — the bare call is a magnet that
+        # only a cross-class short-name suffix match can reach.
+        (tmp_path / "Beta.groovy").write_text("""
+class Beta {
+    void run() {
+        frobnicate()
+    }
+}
+""")
+
+        result = analyze_groovy(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        frob = [e for e in call_edges if "frobnicate" in e.dst]
+        assert len(frob) == 1, f"expected one frobnicate call edge, got {frob}"
+        edge = frob[0]
+        # Must NOT confidently bind to Alpha.frobnicate.
+        assert edge.is_resolved is False, (
+            "bare cross-class method magnet must be withheld, not resolved "
+            f"(got dst={edge.dst})"
+        )
+        # Deferred edge carries the enclosing class for Site-1 recovery.
+        assert edge.meta is not None
+        assert edge.meta.get("enclosing_class") == "Beta"
+
+    def test_bare_call_to_free_function_still_resolves(
+        self, tmp_path: Path,
+    ) -> None:
+        """A bare call to a free (top-level) function still binds resolved."""
+        from hypergumbo_lang_mainstream.groovy import analyze_groovy
+
+        (tmp_path / "Helpers.groovy").write_text("""
+def sharedHelper() {
+    println "help"
+}
+""")
+        (tmp_path / "Caller.groovy").write_text("""
+class Caller {
+    void run() {
+        sharedHelper()
+    }
+}
+""")
+
+        result = analyze_groovy(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        helper = [e for e in call_edges if "sharedHelper" in e.dst]
+        assert len(helper) == 1, f"expected one sharedHelper edge, got {helper}"
+        edge = helper[0]
+        # kind=function → not a cross-class method magnet → still resolves.
+        assert edge.is_resolved is True, (
+            "bare call to a free function must still resolve "
+            f"(got dst={edge.dst}, resolved={edge.is_resolved})"
+        )
+        assert "sharedHelper" in edge.dst
+
+
 class TestGroovyVisibilityModifiers:
     """Tests for visibility modifier extraction into Symbol.modifiers."""
 
@@ -1277,3 +1362,59 @@ class TestGroovyShapeId:
         cls = next(s for s in result.symbols if s.kind == "class")
         assert cls.shape_id is not None
         assert cls.shape_id.startswith("sha256:")
+
+
+class TestGroovyCyclomaticComplexity:
+    """INV-loguk slice C: callable Groovy symbols carry non-null CC + LOC.
+    Real-grammar verification (if/for/while/do/switch_label/catch/ternary +
+    &&/|| short-circuit)."""
+
+    def test_branchy_method_has_cc_and_loc(self, tmp_path) -> None:
+        from hypergumbo_lang_mainstream.groovy import analyze_groovy
+        (tmp_path / "Calc.groovy").write_text("""class Calc {
+    int classify(int a, int b) {
+        if (a > 0 && b > 0) { return 1 }
+        else if (a < 0 || b < 0) { return -1 }
+        for (int i = 0; i < a; i++) { println i }
+        int j = 0
+        while (j < b) { j++ }
+        switch (a) {
+            case 1: return 10
+            case 2: return 20
+            default: return 0
+        }
+        try { risky() } catch (Exception e) { handle(e) }
+        return a > b ? a : b
+    }
+}
+""")
+        result = analyze_groovy(tmp_path)
+        fn = next(s for s in result.symbols if s.name == "Calc.classify")
+        # base 1 + if x2 + for + while + 3 switch_label + catch + ternary + && + || = 12
+        assert fn.cyclomatic_complexity == 12
+        assert fn.line_span is not None and fn.line_span >= 4
+
+    def test_straight_line_top_level_function_cc_is_one(self, tmp_path) -> None:
+        from hypergumbo_lang_mainstream.groovy import analyze_groovy
+        (tmp_path / "T.groovy").write_text("def plain(int x) { return x }\n")
+        result = analyze_groovy(tmp_path)
+        fn = next(s for s in result.symbols if s.kind == "function" and s.name == "plain")
+        assert fn.cyclomatic_complexity == 1
+        assert fn.line_span is not None
+
+    def test_callables_non_null_non_callables_null(self, tmp_path) -> None:
+        from hypergumbo_lang_mainstream.groovy import analyze_groovy
+        (tmp_path / "M.groovy").write_text("""class Box {
+    int get(int x) { if (x > 0) { return x }; return 0 }
+}
+""")
+        result = analyze_groovy(tmp_path)
+        callable_kinds = ("function", "method")
+        callables = [s for s in result.symbols if s.kind in callable_kinds]
+        assert callables
+        for s in callables:
+            assert s.cyclomatic_complexity is not None, (s.kind, s.name)
+            assert s.line_span is not None, (s.kind, s.name)
+        for s in result.symbols:
+            if s.kind not in callable_kinds:
+                assert s.cyclomatic_complexity is None, (s.kind, s.name)

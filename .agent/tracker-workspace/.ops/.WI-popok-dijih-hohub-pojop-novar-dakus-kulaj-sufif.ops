@@ -54,3 +54,34 @@
   clock: 5  # 73b4
   nonce: 73b4  # 73b4
   message: "2026-06-10 design-interview ruling (ADR-0041, merged in PR #4181): the supply-chain redesign reaffirms supply_chain as the single-source verdict surface (tier, directness meta key, and ecosystem axis all derive from one classification), so the conformant fix here is for the entrypoint detector to consume Symbol.supply_chain.is_test_file rather than re-deriving a test_*.py filename heuristic. Waits on the implementing fix after the ADR merges."  # 73b4
+- op: update  # 4a68
+  at: '2026-07-12T08:14:50Z'  # 4a68
+  by: agent  # 4a68
+  actor: jgstern_agent  # 4a68
+  clock: 6  # 4a68
+  nonce: 4a68  # 4a68
+  set: {}  # 4a68
+  add:  # 4a68
+    tags: [wave5]  # 4a68
+- op: discuss  # 6037
+  at: '2026-07-12T08:14:50Z'  # 6037
+  by: agent  # 6037
+  actor: jgstern_agent  # 6037
+  clock: 7  # 6037
+  nonce: '6037'  # 6037
+  message: "Wave-4 triage 2026-07-12: MIGRATE to Wave 5. The motivating behavioral divergence is GONE -- supply_chain.py:420 (WI-mozum) now classifies src test_*.py as is_test, so the canonical verdict agrees with the entrypoint heuristic. Residual is a pure DRY/purity refactor (consume sym.is_test_file)."  # 6037
+- op: update  # 54d7
+  at: '2026-07-17T20:14:54Z'  # 54d7
+  by: agent  # 54d7
+  actor: jgstern_agent  # 54d7
+  clock: 8  # 54d7
+  nonce: 54d7  # 54d7
+  set:  # 54d7
+    status: wont_do  # 54d7
+- op: discuss  # f05e
+  at: '2026-07-17T20:14:54Z'  # f05e
+  by: agent  # f05e
+  actor: jgstern_agent  # f05e
+  clock: 9  # f05e
+  nonce: f05e  # f05e
+  message: "WONT_DO per fundamental-concept-audit KEEP verdict (2026-07-17; owner-approved Option A after a 3-lens ADR/spec/spirit investigation). The premise INVERTED since filing: the entrypoint detector no longer uses a private narrow test_*.py check but the SHARED BROAD paths.is_test_file heuristic (test-OR-support: also mocks/fixtures/testdata/benches/_test.<any-ext>/spec_*), while canonical Symbol.is_test_file is the NARROW supply-chain role flag (test *code* only, spec §14; ADR-0041 §1 deliberately excludes fuzz/bench). The two are distinct-purpose predicates -- all four leakage tests pass -> KEEP -- NOT a coarse-vs-granular pair. The entrypoint predicate is BROADER, so it is OUTSIDE META-bifif's 're-derive coarser' invariant; swapping onto is_test_file would silently stop deprioritizing mock/fixture/benchmark entrypoints (empirical divergence at mocks/, foo_test.ts, etc.). Behavioral evidence: guard test test_support_dir_entrypoint_penalized_via_broad_path_heuristic (merged 47878acd82) -- a mocks/ main STAYS penalized; its classify_file(...).is_test is False assertion is the executable re-eval trigger. Documented at the penalty site + both boundary docstrings (disambiguated the two 'canonical' labels), ADR-0041 §2 annotated in place (directness ruling unaffected), CHANGELOG. Full audit: ~/hypergumbo_lab_notebook/concept-audit-is_test_file_07172026.md. Re-eval triggers: (1) canonical is_test broadens to the support breadth; (2) a consumer needs the two to agree and divergence causes a measured misclassification; (3) >5 entrypoint-bearing divergent files on a single repo. Advances INV-numat drain; removes a false META-bifif member."  # f05e

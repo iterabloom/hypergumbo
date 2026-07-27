@@ -298,7 +298,6 @@ def _process_make_tree(
                     dst=f"make:{include_file}:1-1:file:file",
                     edge_type="includes",
                     line=start_line,
-                    confidence=0.85,
                     origin=PASS_ID,
                     evidence_type="include",
                     meta={"include_file": include_file},

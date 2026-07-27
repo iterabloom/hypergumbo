@@ -2155,3 +2155,65 @@ class TestCStdioIdentifierRefs:
         assert in_edge.meta.get("io_boundary") == "ipc_recv"
         assert in_edge.meta.get("io_primitive") == "stdio.stdin"
 
+
+class TestCComplexityAndLoc:
+    """INV-loguk: every C function-kind Symbol populates
+    cyclomatic_complexity and line_span.
+
+    Function *definitions* get a real McCabe count and a span-derived LOC;
+    function *prototypes* (bodyless ``declaration`` nodes) get CC == 1
+    (straight-line) and the single declaration line as LOC — so the
+    invariant "no function-kind Symbol carries a null analytical field"
+    holds across both emit sites.
+    """
+
+    def test_function_definition_has_cc_and_loc(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.c import analyze_c
+
+        (tmp_path / "f.c").write_text(
+            "int classify(int x) {\n"
+            "  if (x > 10) { return 1; } else if (x > 5) { return 2; }\n"
+            "  for (int i = 0; i < x; i++) { if (i % 2 == 0 && i > 0) return i; }\n"
+            "  return 0;\n"
+            "}\n"
+        )
+        result = analyze_c(tmp_path)
+        assert not result.skipped
+        fn = next(
+            s for s in result.symbols
+            if s.name == "classify" and s.kind == "function"
+        )
+        # if + else-if + for + inner-if + && → >= 4 above base
+        assert fn.cyclomatic_complexity is not None
+        assert fn.cyclomatic_complexity >= 4
+        assert fn.line_span == 5
+
+    def test_prototype_declaration_has_cc_and_loc(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.c import analyze_c
+
+        (tmp_path / "f.h").write_text("int helper(int a, int b);\n")
+        result = analyze_c(tmp_path)
+        assert not result.skipped
+        proto = next(
+            s for s in result.symbols
+            if s.name == "helper" and s.kind == "function"
+        )
+        # No body → straight-line → CC == 1; single declaration line → LOC == 1.
+        assert proto.cyclomatic_complexity == 1
+        assert proto.line_span == 1
+
+    def test_no_c_function_has_null_cc_or_loc(self, tmp_path: Path) -> None:
+        """Property: every C function-kind Symbol has non-null CC and LOC."""
+        from hypergumbo_lang_mainstream.c import analyze_c
+
+        (tmp_path / "f.c").write_text(
+            "int add(int a, int b) { return a + b; }\n"
+            "void noop(void) {}\n"
+        )
+        result = analyze_c(tmp_path)
+        funcs = [s for s in result.symbols if s.kind == "function"]
+        assert funcs
+        for fn in funcs:
+            assert fn.cyclomatic_complexity is not None, fn.name
+            assert fn.line_span is not None, fn.name
+

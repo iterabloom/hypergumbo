@@ -110,3 +110,19 @@
     tags: [dogfood]  # 6d5e
   remove:  # 6d5e
     tags: [dogfooding]  # 6d5e
+- op: update  # c5da
+  at: '2026-06-22T01:47:09Z'  # c5da
+  by: agent  # c5da
+  actor: jgstern_agent  # c5da
+  clock: 13  # c5da
+  nonce: c5da  # c5da
+  set: {}  # c5da
+  remove:  # c5da
+    tags: [awaits_bakeoff_validation]  # c5da
+- op: discuss  # 136a
+  at: '2026-06-22T01:47:09Z'  # 136a
+  by: agent  # 136a
+  actor: jgstern_agent  # 136a
+  clock: 14  # 136a
+  nonce: 136a  # 136a
+  message: "Drain audit: D-stale. Dead-code-maybe FP-reduction heuristics (polymorphic-dispatch demotion + view_func cross-ref) validated on chatwoot cohort 2026-05-21 (demoted_view_func / demoted_dispatch_inherited documented); PR #3862 (41484d271c). The upstream Rails entrypoint-detection coverage gap is a separate item, not this claim. Stripping stale tag."  # 136a

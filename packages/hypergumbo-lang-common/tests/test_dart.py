@@ -447,6 +447,125 @@ void main() {
         assert len(helper_calls) >= 1
 
 
+class TestDartBareMethodMagnetGate:
+    """INV-fahub: a bare call must not misbind to an unrelated class's method.
+
+    A bare / implicit-``this`` call resolves via the shared resolver's weak
+    short-name SUFFIX match. Without a gate, that match confidently binds a
+    ``calls`` edge to an arbitrary same-named method in an UNRELATED class (a
+    magnet: dozens of call sites -> one def). The gate defers such a match to an
+    unresolved edge carrying ``enclosing_class`` (so the inherited_calls Site-1
+    walker can later recover a genuine inherited call), while still binding
+    free functions and same-class implicit-``this`` calls directly.
+    """
+
+    def test_bare_cross_class_method_call_defers_not_misbind(
+        self, tmp_path: Path
+    ) -> None:
+        """Bare ``persist()`` in one class must not bind to another class's method."""
+        from hypergumbo_lang_common.dart import analyze_dart
+
+        make_dart_file(tmp_path, "main.dart", """
+class Repository {
+  void persist() {
+    print('persisting');
+  }
+}
+
+class JobRunner {
+  void execute() {
+    persist();
+  }
+}
+""")
+
+        result = analyze_dart(tmp_path)
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+
+        # Must NOT confidently bind to the unrelated Repository.persist method.
+        misbinds = [
+            e
+            for e in call_edges
+            if e.is_resolved and e.dst.endswith("Repository.persist:method")
+        ]
+        assert misbinds == [], (
+            "bare persist() magnet-bound to unrelated Repository.persist"
+        )
+
+        # Instead: an unresolved edge whose meta.enclosing_class names the call
+        # site's class, so the inherited_calls Site-1 walker can recover it.
+        deferred = [
+            e
+            for e in call_edges
+            if not e.is_resolved
+            and "persist" in e.dst
+            and (e.meta or {}).get("enclosing_class") == "JobRunner"
+        ]
+        assert len(deferred) == 1, (
+            f"expected one deferred unresolved persist() edge, got {deferred}"
+        )
+
+    def test_bare_same_class_method_call_still_resolves(
+        self, tmp_path: Path
+    ) -> None:
+        """Bare call to a SAME-class method (implicit ``this``) still binds."""
+        from hypergumbo_lang_common.dart import analyze_dart
+
+        make_dart_file(tmp_path, "main.dart", """
+class Service {
+  void helper() {
+    print('helping');
+  }
+
+  void run() {
+    helper();
+  }
+}
+""")
+
+        result = analyze_dart(tmp_path)
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+
+        binds = [
+            e
+            for e in call_edges
+            if e.is_resolved and e.dst.endswith("Service.helper:method")
+        ]
+        assert len(binds) == 1, (
+            f"same-class helper() should resolve to Service.helper, got {binds}"
+        )
+
+    def test_bare_free_function_call_still_resolves(
+        self, tmp_path: Path
+    ) -> None:
+        """Bare call to a free (top-level) function still binds (kind != method)."""
+        from hypergumbo_lang_common.dart import analyze_dart
+
+        make_dart_file(tmp_path, "main.dart", """
+void greet() {
+  print('hi');
+}
+
+class Widget {
+  void build() {
+    greet();
+  }
+}
+""")
+
+        result = analyze_dart(tmp_path)
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+
+        binds = [
+            e
+            for e in call_edges
+            if e.is_resolved and e.dst.endswith("greet:function")
+        ]
+        assert len(binds) == 1, (
+            f"free function greet() should still resolve, got {binds}"
+        )
+
+
 class TestDartEdgeCases:
     """Edge case tests for Dart analyzer."""
 
@@ -1102,4 +1221,258 @@ class TestNormalizeDartSignature:
     def test_none(self) -> None:
         from hypergumbo_lang_common.dart import normalize_dart_signature
         assert normalize_dart_signature(None) is None
+
+
+class TestDartCyclomaticComplexity:
+    """INV-loguk slice C: callable Dart symbols carry non-null
+    cyclomatic_complexity and line_span. Real-grammar verification of the
+    dart BRANCH_NODE_TYPES entry (if/for/while/do/switch arms/catch/ternary +
+    logical_and/or_expression). Short-circuit &&/|| are counted via the
+    dedicated logical_*_expression branch nodes."""
+
+    def test_branchy_top_level_function(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_common.dart import analyze_dart
+        make_dart_file(tmp_path, "f.dart", """int classify(int x, bool flag) {
+  if (x > 0 && flag) {
+    for (int i = 0; i < x; i++) {
+      if (i % 2 == 0 || i == 5) { print(i); }
+    }
+  } else if (x < 0) {
+    while (x < 100) { x++; }
+  }
+  switch (x) {
+    case 1: return 1;
+    case 2: return 2;
+    default: return 0;
+  }
+}
+""")
+        result = analyze_dart(tmp_path)
+        fn = next(s for s in result.symbols
+                  if s.kind == "function" and s.name == "classify")
+        # base 1 + if x3 + for + while + 2 case + default + && + || = 11
+        assert fn.cyclomatic_complexity == 11
+        assert fn.line_span is not None and fn.line_span >= 4
+
+    def test_methods_getters_setters_have_cc(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_common.dart import analyze_dart
+        make_dart_file(tmp_path, "c.dart", """class Counter {
+  int _n = 0;
+  int get value => _n > 0 ? _n : 0;
+  set value(int v) { if (v > 0) { _n = v; } }
+  int bump(int by) {
+    if (by > 0) { _n += by; }
+    return _n;
+  }
+}
+""")
+        result = analyze_dart(tmp_path)
+        callables = [s for s in result.symbols
+                     if s.kind in ("method", "getter", "setter")]
+        assert callables
+        for s in callables:
+            assert s.cyclomatic_complexity is not None, (s.kind, s.name)
+            assert s.line_span is not None, (s.kind, s.name)
+
+    def test_callables_non_null_non_callables_null(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_common.dart import analyze_dart
+        make_dart_file(tmp_path, "m.dart", """class Widget {
+  int build(int x) {
+    if (x > 0) { return 1; }
+    return 0;
+  }
+}
+
+int top(int x) => x;
+""")
+        result = analyze_dart(tmp_path)
+        callable_kinds = ("function", "method", "getter", "setter", "constructor")
+        callables = [s for s in result.symbols if s.kind in callable_kinds]
+        assert callables
+        for s in callables:
+            assert s.cyclomatic_complexity is not None, (s.kind, s.name)
+            assert s.line_span is not None, (s.kind, s.name)
+        # class (non-callable) keeps null CC
+        for s in result.symbols:
+            if s.kind not in callable_kinds:
+                assert s.cyclomatic_complexity is None, (s.kind, s.name)
+
+
+class TestDartFieldVariableEmission:
+    """WI-jusus (emission-parity): dart emits kind='field' for class/mixin/
+    extension/enum-body value declarations and kind='variable' for top-level
+    declarations, mirroring the Kotlin/Scala tail slices. Function-/method-/
+    block-local declarations are NOT emitted (distinct grammar node), and
+    field/variable symbols are kept out of the call-resolution registry so
+    they can never become spurious call/instantiate targets.
+    """
+
+    def _analyze(self, tmp_path: Path, src: str):
+        from hypergumbo_lang_common.dart import analyze_dart
+
+        make_dart_file(tmp_path, "s.dart", src)
+        return analyze_dart(tmp_path)
+
+    def _by_kind(self, result, kind):
+        return [s for s in result.symbols if s.kind == kind]
+
+    def test_class_fields_emitted_owner_qualified(self, tmp_path: Path) -> None:
+        result = self._analyze(tmp_path, """
+class Widget {
+  String name;
+  final int size = 10;
+  int _private = 3;
+}
+""")
+        fields = {s.name: s for s in self._by_kind(result, "field")}
+        assert "Widget.name" in fields
+        assert "Widget.size" in fields
+        assert "Widget._private" in fields
+        # typed field carries the type as signature
+        assert fields["Widget.name"].signature == "String"
+        # underscore-prefixed field is private / not exported
+        assert "private" in fields["Widget._private"].modifiers
+        assert fields["Widget._private"].is_exported is False
+        assert fields["Widget.name"].is_exported is True
+        # stable_id present (typed) and language set
+        assert fields["Widget.name"].stable_id is not None
+        assert fields["Widget.name"].language == "dart"
+
+    def test_multi_name_field_one_symbol_each(self, tmp_path: Path) -> None:
+        result = self._analyze(tmp_path, "class C { int x = 1, y = 2; }\n")
+        names = {s.name for s in self._by_kind(result, "field")}
+        assert {"C.x", "C.y"} <= names
+
+    def test_static_const_field_emitted(self, tmp_path: Path) -> None:
+        result = self._analyze(tmp_path, "class C { static const kMax = 100; }\n")
+        names = {s.name for s in self._by_kind(result, "field")}
+        assert "C.kMax" in names
+
+    def test_field_in_mixin_extension_enum(self, tmp_path: Path) -> None:
+        result = self._analyze(tmp_path, """
+mixin M { int mixinField = 1; }
+extension E on String { static const kExt = 9; }
+enum Season {
+  spring, summer;
+  final int idx = 0;
+}
+""")
+        names = {s.name for s in self._by_kind(result, "field")}
+        assert "M.mixinField" in names
+        assert "E.kExt" in names
+        assert "Season.idx" in names
+
+    def test_top_level_variables_emitted(self, tmp_path: Path) -> None:
+        result = self._analyze(tmp_path, """
+const int maxDelay = 5000;
+var currentItems = 1;
+final String appName = "hg";
+int counter = 0;
+""")
+        variables = {s.name: s for s in self._by_kind(result, "variable")}
+        assert {"maxDelay", "currentItems", "appName", "counter"} <= set(variables)
+        # top-level variable identity via make_variable_stable_id (always present)
+        assert variables["counter"].stable_id is not None
+        assert variables["appName"].is_exported is True
+
+    def test_locals_not_emitted(self, tmp_path: Path) -> None:
+        """The INV-lanaz/INV-sidab local-leak guard: fn/method/for/lambda/if
+        locals use local_variable_declaration, never the field/variable nodes."""
+        result = self._analyze(tmp_path, """
+void doWork() {
+  var localVar = 1;
+  final localFinal = 2;
+  for (var i = 0; i < 3; i++) {}
+  final cb = () { var inLambda = 9; };
+  if (true) { const kIf = 2; }
+}
+class C {
+  void m() {
+    var inMethod = 7;
+  }
+}
+""")
+        leaked = {
+            s.name for s in result.symbols if s.kind in ("field", "variable")
+        }
+        for bad in ("localVar", "localFinal", "i", "inLambda", "kIf", "inMethod"):
+            assert not any(bad == n or n.endswith("." + bad) for n in leaked), (
+                bad, leaked
+            )
+
+    def test_getters_setters_not_fields(self, tmp_path: Path) -> None:
+        result = self._analyze(tmp_path, """
+class C {
+  int _v = 0;
+  int get value => _v;
+  set value(int x) => _v = x;
+}
+""")
+        fields = {s.name for s in self._by_kind(result, "field")}
+        assert "C._v" in fields          # the backing field is captured
+        assert "C.value" not in fields   # get/set are not fields
+
+    def test_destructuring_not_emitted_as_symbol(self, tmp_path: Path) -> None:
+        """A record/list/map pattern declaration mis-parses under this grammar
+        and would salvage the RHS/first-binding as a spurious symbol; the ERROR
+        guard drops it (fails-safe: miss, never emit a wrong symbol)."""
+        result = self._analyze(tmp_path, """
+var (a, b) = pair;
+class C {
+  final [x, y] = list;
+}
+""")
+        bad = {s.name for s in result.symbols if s.kind in ("field", "variable")}
+        # the record-RHS "pair" and the list-pattern bindings must not appear
+        assert "pair" not in bad
+        assert not any(n in ("a", "b", "C.x", "C.y", "x", "y") for n in bad)
+
+    def test_variable_does_not_clobber_function_call_resolution(
+        self, tmp_path: Path
+    ) -> None:
+        """A top-level variable sharing a name with a called function must NOT
+        be registered as a resolvable call target (registry-clobber / bogus-edge
+        guard): the call resolves to the function, and no calls edge targets the
+        variable."""
+        from hypergumbo_lang_common.dart import analyze_dart
+
+        make_dart_file(tmp_path, "a.dart", "int config = 42;\n")
+        make_dart_file(tmp_path, "b.dart", """
+int config() => 1;
+void run() { config(); }
+""")
+        result = analyze_dart(tmp_path)
+        calls = [e for e in result.edges if e.edge_type == "calls"]
+        var_ids = {
+            s.id for s in result.symbols if s.kind == "variable"
+        }
+        # no calls edge points at the variable symbol
+        assert not any(e.dst in var_ids for e in calls)
+        # the real function->function call still resolves
+        assert any("config" in e.dst and "function" in e.dst for e in calls)
+
+    def test_field_not_a_call_target(self, tmp_path: Path) -> None:
+        """A field must not be a suffix-matched spurious call target."""
+        result = self._analyze(tmp_path, """
+class C {
+  int compute = 0;
+  void run() { compute(); }
+}
+""")
+        field_ids = {s.id for s in result.symbols if s.kind == "field"}
+        calls = [e for e in result.edges if e.edge_type == "calls"]
+        assert not any(e.dst in field_ids for e in calls)
+
+    def test_instantiation_edges_preserved(self, tmp_path: Path) -> None:
+        """Adding field/variable symbols must not drop constructor/instantiation
+        edges (the reviewer's regression check)."""
+        result = self._analyze(tmp_path, """
+class Person {
+  String name;
+  Person(this.name);
+}
+void main() { var p = new Person('John'); }
+""")
+        inst = [e for e in result.edges if e.edge_type == "instantiates"]
+        assert len(inst) >= 1
 

@@ -1,0 +1,39 @@
+- op: create  # 6d22
+  at: '2026-07-20T19:50:46Z'  # 6d22
+  by: agent  # 6d22
+  actor: jgstern_agent  # 6d22
+  clock: 1  # 6d22
+  nonce: 6d22  # 6d22
+  data:  # 6d22
+    kind: work_item  # 6d22
+    title: "Resume the dormant endpoint_shape->relationship fold tail (ADR-0023): 25 unfolded + 4 unaudited, no open owner"  # 6d22
+    status: todo_soft  # 6d22
+    priority: 3  # 6d22
+    parent:  # 6d22
+    tags:  # 6d22
+    - edge_vocab  # 6d22
+    - axis_conformance  # 6d22
+    - adr_0023  # 6d22
+    - vocab  # 6d22
+    isbefore:  # 6d22
+    - WI-pusuv-sazus-lihah-rugal-tanum-rugoz-pamum-sinus  # 6d22
+    duplicate_of: []  # 6d22
+    not_duplicate_of: []  # 6d22
+    pr_ref:  # 6d22
+    description: "ADR-0023's endpoint_shape->relationship fold — the archetype worked example of the ADR-0024 CANONICAL/FOLD/DEPRECATE axis methodology — is ~57% complete and DORMANT with no open tracker owner. Verified 2026-07-20 against the live registry (imported EDGE_TYPES) + the full 1695-item tracker dump.\n\nSTATE: EDGE_TYPES has 54 entries — 25 `relationship` (canonical), 25 `endpoint_shape` (unfolded leak-candidates), 4 `pending_classification`. 33 endpoint_shape values were folded + removed by the ADR-0023 §6 Phase 2/3/4 chain (all done: WI-sahab-fatoz Phase-2 consumers, WI-mokam-jalig Phase-3 producers, WI-vomoj-suhaz Phase-4 removal, WI-vumum-juvil protocol-call, WI-mifor-vabul bridge, WI-vasik-jofiv publish/dispatch, WI-hahap-farid IPC, + the dispatch/publish/IPC family audits). BUT WI-tavas-voror (done) later re-populated the axis with 19 more endpoint_shape registry-completeness fills and DEFERRED their fold \"to a future per-language/per-pattern audit\" that was never filed. So the registry still carries 25 endpoint_shape + 4 pending_classification values with no owner.\n\nCLOSURE-ACCURACY NOTE (benign but confusing): several done items' titles overstate. WI-vomoj-suhaz (\"Phase 4: remove endpoint_shape values from EDGE_TYPES\") and WI-vumum-juvil (\"protocol-call fold\") are done, yet http_calls/grpc_calls/graphql_calls + script_src/base_image/kernel_launch still sit at axis=endpoint_shape. Each closure was correct for its cohort (Phase-4b first ship = the 33-value bakeoff-validated cohort; protocol-call = producers migrated, registry prune deferred to an unfiled \"Phase-4b-prime\"), but the aggregate leaves the axis non-empty with no tracked continuation.\n\nENFORCEMENT CONTEXT (why nothing pressures completion): the strict edge-type drift linter (pre-commit, WI-mumok, `check-edge-type-drift --strict`) is satisfied — it bars CONSUMERS from referencing endpoint_shape values in *EDGE_TYPE* sets, but does NOT force the registry to drop the endpoint_shape entries themselves. The CI property test (test_edge_types.py:142) runs find_axis_drift NON-strict (membership only). So there is zero automated pressure to complete the fold; it will stay dormant until owned.\n\nDECOMPOSITION (children): (1) protocol-call registry prune / Phase-4b-prime (3 values, producers already migrated — cheap); (2) long-tail endpoint_shape fold (~19 values, heterogeneous targets per registry docstrings, per-pattern subsets); (3) resolver/OpenAPI/RPC pending_classification audit (4 values, per-family audit never filed).\n\nPROVENANCE: discovered while investigating WI-pusuv (access_mode census), which is gated on this fold (WI-pusuv's total census is unreachable while 23 in-scope edge types remain endpoint_shape). This item makes the fold a tracked, owned body of work rather than a dormant untracked remainder, so WI-pusuv is gated on something real. Filed per owner directive 2026-07-20 (Option C). isbefore=[WI-pusuv]."  # 6d22
+    fields: {}  # 6d22
+- op: update  # d541
+  at: '2026-07-21T08:41:04Z'  # d541
+  by: agent  # d541
+  actor: jgstern_agent  # d541
+  clock: 2  # d541
+  nonce: d541  # d541
+  set:  # d541
+    status: done  # d541
+- op: discuss  # cdcc
+  at: '2026-07-21T08:41:04Z'  # cdcc
+  by: agent  # cdcc
+  actor: jgstern_agent  # cdcc
+  clock: 3  # cdcc
+  nonce: cdcc  # cdcc
+  message: "DONE (2026-07-21). Umbrella complete: all 3 sub-items resolved — WI-hirud (protocol-call registry prune, done), WI-sumik (resolver/OpenAPI/RPC per-family audit -> audit-findings 0016, done), WI-pumav (long-tail fold -> audit-findings 0017 + Batches 1a-7 + the consolidated Phase-4b prune #791, done). The dormant endpoint_shape->relationship fold this umbrella was filed to resume (Option C, the WI-pusuv canary) is now COMPLETE: the endpoint_shape axis of Edge.edge_type is drained to empty (ADR-0023 §6 fold done, SCHEMA_VERSION 0.17.0)."  # cdcc

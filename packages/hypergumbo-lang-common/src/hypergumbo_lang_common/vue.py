@@ -49,6 +49,7 @@ from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, ma
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     TreeSitterAnalyzer,
+    make_doc_symbol_ids,
     make_file_id,
     populate_docstrings_from_tree,
 )
@@ -69,11 +70,6 @@ def find_vue_files(repo_root: Path) -> list[Path]:
 def _get_node_text(node: "tree_sitter.Node") -> str:
     """Get the text content of a node."""
     return node.text.decode("utf-8", errors="replace") if node.text else ""
-
-
-def _make_symbol_id(path: Path, name: str, kind: str, line: int) -> str:
-    """Create a stable symbol ID."""
-    return f"vue:{path}:{kind}:{line}:{name}"
 
 
 # Identifiers that are Vue runtime built-ins, not component methods.
@@ -353,17 +349,22 @@ class VueAnalyzer(TreeSitterAnalyzer):
                 prop_pattern = re.compile(r"['\"](\w+)['\"]")
                 for match in prop_pattern.finditer(props_content):
                     prop_name = match.group(1)
-                    symbol_id = _make_symbol_id(rel_path, prop_name, "prop", line_num)
                     span = Span(
                         start_line=line_num,
                         start_col=0,
                         end_line=line_num,
                         end_col=len(prop_name),
                     )
+                    # node.id and stable_id are minted together by the shared
+                    # make_doc_symbol_ids helper (INV-dulah).
+                    symbol_id, stable_id = make_doc_symbol_ids(
+                        "vue", rel_path, "prop", prop_name,
+                        span.start_line, span.end_line,
+                    )
 
                     symbol = Symbol(
                         id=symbol_id,
-                        stable_id=symbol_id,
+                        stable_id=stable_id,
                         name=prop_name,
                         kind="prop",
                         language="vue",
@@ -411,17 +412,22 @@ class VueAnalyzer(TreeSitterAnalyzer):
                     key_match = re.search(r"(\w+)\s*$", key_text)
                     if key_match:
                         prop_name = key_match.group(1)
-                        symbol_id = _make_symbol_id(rel_path, prop_name, "prop", line_num)
                         span = Span(
                             start_line=line_num,
                             start_col=0,
                             end_line=line_num,
                             end_col=len(prop_name),
                         )
+                        # node.id and stable_id are minted together by the
+                        # shared make_doc_symbol_ids helper (INV-dulah).
+                        symbol_id, stable_id = make_doc_symbol_ids(
+                            "vue", rel_path, "prop", prop_name,
+                            span.start_line, span.end_line,
+                        )
 
                         symbol = Symbol(
                             id=symbol_id,
-                            stable_id=symbol_id,
+                            stable_id=stable_id,
                             name=prop_name,
                             kind="prop",
                             language="vue",
@@ -579,12 +585,17 @@ class VueAnalyzer(TreeSitterAnalyzer):
         # Record directives
         for i, directive in enumerate(directives):
             directive_name = directive.split(":")[0] if ":" in directive else directive
-            symbol_id = _make_symbol_id(rel_path, f"{tag_name}:{directive}", "directive", line)
             span = Span(
                 start_line=line,
                 start_col=node.start_point[1],
                 end_line=node.end_point[0] + 1,
                 end_col=node.end_point[1],
+            )
+            # node.id and stable_id are minted together by the shared
+            # make_doc_symbol_ids helper (INV-dulah).
+            symbol_id, stable_id = make_doc_symbol_ids(
+                "vue", rel_path, "directive", f"{tag_name}:{directive}",
+                span.start_line, span.end_line,
             )
 
             meta: dict[str, str | bool] = {
@@ -597,7 +608,7 @@ class VueAnalyzer(TreeSitterAnalyzer):
 
             symbol = Symbol(
                 id=symbol_id,
-                stable_id=symbol_id,
+                stable_id=stable_id,
                 name=directive,
                 kind="directive",
                 language="vue",
@@ -624,17 +635,22 @@ class VueAnalyzer(TreeSitterAnalyzer):
                     if attr_name == "name" and attr_value:
                         slot_name = attr_value
 
-            symbol_id = _make_symbol_id(rel_path, slot_name, "slot", line)
             span = Span(
                 start_line=line,
                 start_col=node.start_point[1],
                 end_line=node.end_point[0] + 1,
                 end_col=node.end_point[1],
             )
+            # node.id and stable_id are minted together by the shared
+            # make_doc_symbol_ids helper (INV-dulah).
+            symbol_id, stable_id = make_doc_symbol_ids(
+                "vue", rel_path, "slot", slot_name,
+                span.start_line, span.end_line,
+            )
 
             symbol = Symbol(
                 id=symbol_id,
-                stable_id=symbol_id,
+                stable_id=stable_id,
                 name=slot_name,
                 kind="slot",
                 language="vue",
@@ -677,17 +693,22 @@ class VueAnalyzer(TreeSitterAnalyzer):
                             lang = attr_value
                 break
 
-        symbol_id = _make_symbol_id(rel_path, "style", "style_block", line)
         span = Span(
             start_line=line,
             start_col=node.start_point[1],
             end_line=node.end_point[0] + 1,
             end_col=node.end_point[1],
         )
+        # node.id and stable_id are minted together by the shared
+        # make_doc_symbol_ids helper (INV-dulah).
+        symbol_id, stable_id = make_doc_symbol_ids(
+            "vue", rel_path, "style_block", "style",
+            span.start_line, span.end_line,
+        )
 
         symbol = Symbol(
             id=symbol_id,
-            stable_id=symbol_id,
+            stable_id=stable_id,
             name="style",
             kind="style_block",
             language="vue",

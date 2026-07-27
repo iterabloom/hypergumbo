@@ -106,13 +106,20 @@ ambiguous_names:
 # ---------------------------------------------------------------------------
 fs_read:
   - module: scala.io.Source
-    methods: [fromFile, fromURL, fromInputStream, fromResource, getLines, mkString]
-    notes: "Scala stdlib file/URL reading"
+    # from* are companion-object static factories (Source.fromFile(p)) — no
+    # value receiver, so they are function-style at the AST level. getLines /
+    # mkString ARE genuine instance methods on a Source value (Source.fromFile
+    # (p).getLines) and stay methods: so io-boundary:F3 suppresses bare
+    # untyped `.mkString` / collection mkString (test_scala_mkstring_*).
+    functions: [fromFile, fromURL, fromInputStream, fromResource]
+    methods: [getLines, mkString]
+    notes: "Scala stdlib file/URL reading (from* are companion-object factories)"
   - module: scala.io.StdIn
     functions: [readLine, readInt, readDouble, readFloat, readLong, readBoolean, readChar, readShort, readByte, readf]
     notes: "Scala stdlib stdin reading"
   - module: scala.io.Codec
-    methods: [fromFile]
+    # Codec.fromFile is a companion-object factory (no value receiver).
+    functions: [fromFile]
 
 fs_write:
   - module: scala.sys.process.Process

@@ -278,3 +278,30 @@ class TestUnresolvedCalls:
         assert call_edges[0].confidence == 0.50
         assert ":unresolved" in call_edges[0].dst
         assert "unknown_proc" in call_edges[0].dst
+
+
+class TestTclCyclomaticComplexity:
+    """INV-loguk slice C: callable tcl symbols carry non-null CC + LOC.
+    Real-grammar verification (if/elseif/while/foreach/catch + &&/|| (for/switch are generic commands, uncounted))."""
+
+    def test_branchy_callables_have_expected_cc(self, tmp_path) -> None:
+        from hypergumbo_lang_extended1.tcl import analyze_tcl
+        (tmp_path / 'c.tcl').write_text('proc classify {x y} {\n    if {$x > 0 && $y > 0} {\n        puts positive\n    } elseif {$x < 0} {\n        puts negative\n    } else {\n        if {$y == 0} {\n            puts zero_y\n        }\n    }\n    for {set i 0} {$i < 10} {incr i} {\n        puts $i\n    }\n    while {$x > 0 || $y < 5} {\n        incr x -1\n    }\n    foreach item {a b c} {\n        puts $item\n    }\n    switch $x {\n        1 { puts one }\n        2 { puts two }\n        default { puts other }\n    }\n    return $x\n}')
+        result = analyze_tcl(tmp_path)
+        assert not result.skipped
+        by = {s.name: s for s in result.symbols if s.kind in ('function',)}
+        assert by['classify'].cyclomatic_complexity == 8, by['classify'].cyclomatic_complexity
+        assert by['classify'].line_span is not None
+
+    def test_callables_non_null_non_callables_null(self, tmp_path) -> None:
+        from hypergumbo_lang_extended1.tcl import analyze_tcl
+        (tmp_path / 'c.tcl').write_text('proc classify {x y} {\n    if {$x > 0 && $y > 0} {\n        puts positive\n    } elseif {$x < 0} {\n        puts negative\n    } else {\n        if {$y == 0} {\n            puts zero_y\n        }\n    }\n    for {set i 0} {$i < 10} {incr i} {\n        puts $i\n    }\n    while {$x > 0 || $y < 5} {\n        incr x -1\n    }\n    foreach item {a b c} {\n        puts $item\n    }\n    switch $x {\n        1 { puts one }\n        2 { puts two }\n        default { puts other }\n    }\n    return $x\n}')
+        result = analyze_tcl(tmp_path)
+        callables = [s for s in result.symbols if s.kind in ('function',)]
+        assert callables
+        for s in callables:
+            assert s.cyclomatic_complexity is not None, (s.kind, s.name)
+            assert s.line_span is not None, (s.kind, s.name)
+        for s in result.symbols:
+            if s.kind not in ('function',):
+                assert s.cyclomatic_complexity is None, (s.kind, s.name)

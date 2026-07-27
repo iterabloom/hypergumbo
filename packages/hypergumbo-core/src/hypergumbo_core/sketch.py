@@ -70,7 +70,10 @@ from __future__ import annotations
 import os
 from enum import Enum
 from pathlib import Path
-from typing import Any, Callable, Iterator, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, Iterator, List, Optional
+
+if TYPE_CHECKING:
+    from .discovery import FileIndex
 
 from .discovery import find_files, DEFAULT_EXCLUDES
 from .profile import detect_profile, RepoProfile
@@ -136,6 +139,27 @@ class SketchStats:
     has_additional_files_content: bool = False
     has_entrypoints: bool = False
     has_datamodels: bool = False
+
+    def to_dict(self) -> dict:
+        """Serialize to a JSON-safe dict of the flat scalar fields.
+
+        Used to cache the 4x/16x comparison-sketch stats alongside their
+        already-cached text so a warm sketch can render the representativeness
+        table without regenerating them (WI-ribag).
+        """
+        import dataclasses
+        return dataclasses.asdict(self)
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "SketchStats":
+        """Reconstruct from :meth:`to_dict` output, tolerating schema drift.
+
+        Unknown keys are ignored and missing keys take their field default, so
+        a stats cache written by a different build reloads without error.
+        """
+        import dataclasses
+        known = {f.name for f in dataclasses.fields(cls)}
+        return cls(**{k: v for k, v in data.items() if k in known})
 
     def symbol_mass(self, in_degree_sum: int) -> float:
         """Compute symbol mass percentage."""
@@ -252,6 +276,23 @@ def display_representativeness_table(
         console.print(table)
 
 
+# Canonical vocabulary of sketch section names (WI-furop / INV-fabov). The
+# single source of truth for what `--require-section` accepts and what the
+# `_has_required_analysis_section` gate below checks against -- the names were
+# previously duplicated across the CLI help text, this module's docstring, and
+# the gate set, so a typo in one drifted silently from the others. The renderer
+# compares section names by exact (case-sensitive) string, so this set is too.
+VALID_SKETCH_SECTIONS: frozenset[str] = frozenset({
+    "Entry Points",
+    "Data Models",
+    "Source Files",
+    "Key Symbols",
+    "Additional Files",
+    "Source Files Content",
+    "Additional Files Content",
+})
+
+
 # Boilerplate patterns to exclude from Additional Files section (ADR-0004 Phase 4)
 # Binary files are now filtered by is_additional_file_candidate() which excludes
 # files without CONFIG or DOCUMENTATION role. This list catches low-value boilerplate
@@ -269,7 +310,9 @@ ADDITIONAL_FILES_EXCLUDES = [
     "PATENTS",
     "NOTICE",
     "NOTICE.*",
-    # Hypergumbo output artifacts
+    # Hypergumbo output artifacts (canonical survey.json + legacy names, ADR-0042)
+    "survey.json",
+    "survey.*.json",
     "hypergumbo.results.json",
     "hypergumbo.results.*.json",
     ".hypergumbo_cache",
@@ -884,6 +927,34 @@ def _section_header(title: str, exclude_tests: bool = False) -> str:
     return f"## {title}"
 
 
+def _detect_license_type(content_upper: str) -> Optional[str]:
+    """Classify a LICENSE file's (upper-cased, head-truncated) text into a short
+    license tag, or None if unrecognized.
+
+    Order matters: AGPL is checked before GPL, and LGPL (GPL + LESSER) before
+    plain GPL, so the most specific family wins.
+    """
+    if "AGPL" in content_upper or "AFFERO" in content_upper:
+        return "AGPL"
+    if "GPL" in content_upper and "LESSER" in content_upper:
+        return "LGPL"
+    if "GPL" in content_upper:
+        return "GPL"
+    if "MIT LICENSE" in content_upper or "PERMISSION IS HEREBY GRANTED" in content_upper:
+        return "MIT"
+    if "APACHE LICENSE" in content_upper:
+        return "Apache"
+    if "BSD" in content_upper:
+        return "BSD"
+    if "MOZILLA PUBLIC LICENSE" in content_upper:
+        return "MPL"
+    if "ISC LICENSE" in content_upper:
+        return "ISC"
+    if "UNLICENSE" in content_upper:
+        return "Unlicense"
+    return None
+
+
 def _extract_config_heuristic(repo_root: Path) -> list[str]:
     """Extract config metadata using heuristic pattern matching.
 
@@ -903,7 +974,7 @@ def _extract_config_heuristic(repo_root: Path) -> list[str]:
 
     def _extract_package_json(path: Path, prefix: str) -> list[str]:
         """Extract key fields from package.json."""
-        result = []
+        result: list[str] = []
         try:
             data = json.loads(path.read_text(encoding="utf-8", errors="replace"))
             # Skip non-dict package.json files
@@ -1100,67 +1171,101 @@ def _extract_config_heuristic(repo_root: Path) -> list[str]:
             pass  # pragma: no cover
         return result
 
-    # Scan config files in root and common subdirectories
+    # Manifest-name → structured extractor. Defined once and reused by both
+    # the flat root/subdir scan and the monorepo glob below, so a new manifest
+    # kind is wired in exactly one place (and the two scans can't drift).
+    _extractors: dict[str, Callable[[Path, str], list[str]]] = {
+        "package.json": _extract_package_json,
+        "go.mod": _extract_go_mod,
+        "pom.xml": _extract_pom_xml,
+        "Cargo.toml": _extract_cargo_toml,
+        "pyproject.toml": _extract_pyproject_toml,
+        "mix.exs": _extract_mix_exs,
+        "build.gradle": _extract_build_gradle,
+        "build.gradle.kts": _extract_build_gradle,
+        "Gemfile": _extract_gemfile,
+    }
+    seen_manifest_paths: set[Path] = set()
+
+    # Scan config files in root and common subdirectories.
     for config_name in CONFIG_FILES:
+        extractor = _extractors.get(config_name)
+        if extractor is None:
+            continue
         for subdir in CONFIG_SUBDIRS:
             config_path = repo_root / subdir / config_name if subdir else repo_root / config_name
             if not config_path.exists():
                 continue
-
             prefix = f"{subdir}/" if subdir else ""
+            lines.extend(extractor(config_path, prefix))
+            seen_manifest_paths.add(config_path.resolve())
 
-            if config_name == "package.json":
-                lines.extend(_extract_package_json(config_path, prefix))
-            elif config_name == "go.mod":
-                lines.extend(_extract_go_mod(config_path, prefix))
-            elif config_name == "pom.xml":
-                lines.extend(_extract_pom_xml(config_path, prefix))
-            elif config_name == "Cargo.toml":
-                lines.extend(_extract_cargo_toml(config_path, prefix))
-            elif config_name == "pyproject.toml":
-                lines.extend(_extract_pyproject_toml(config_path, prefix))
-            elif config_name == "mix.exs":
-                lines.extend(_extract_mix_exs(config_path, prefix))
-            elif config_name in ("build.gradle", "build.gradle.kts"):
-                lines.extend(_extract_build_gradle(config_path, prefix))
-            elif config_name == "Gemfile":
-                lines.extend(_extract_gemfile(config_path, prefix))
+    # Monorepo discovery: scan depth 1-2 for the same manifest kinds under
+    # arbitrary sub-package dirs (packages/core/pyproject.toml,
+    # services/api/package.json, …) that the flat CONFIG_SUBDIRS set misses.
+    # Mirrors _collect_config_content's glob so heuristic (and HYBRID-fallback)
+    # config_info reports every sub-package's identity on a monorepo (WI-lirub).
+    # Matches are sorted and grouped by manifest kind for deterministic output.
+    _manifest_exclude = _CONFIG_EXCLUDE_DIRS | frozenset(DEFAULT_EXCLUDES)
+    for manifest_name, extractor in _extractors.items():
+        matches: list[Path] = []
+        for pattern in (f"*/{manifest_name}", f"*/*/{manifest_name}"):
+            matches.extend(repo_root.glob(pattern))
+        for match in sorted(matches):
+            if not match.is_file():
+                continue  # pragma: no cover - glob rarely yields a dir named like a manifest
+            resolved = match.resolve()
+            if resolved in seen_manifest_paths:
+                continue
+            rel = match.relative_to(repo_root)
+            if any(p.startswith(".") or p in _manifest_exclude for p in rel.parts[:-1]):
+                continue
+            prefix = f"{rel.parent.as_posix()}/"
+            lines.extend(extractor(match, prefix))
+            seen_manifest_paths.add(resolved)
 
-    # Detect license type from LICENSE files
+    # Detect license type(s) from LICENSE files at the repo root AND in monorepo
+    # package dirs (depth 1-2). A dual-licensed monorepo — e.g. an AGPL root plus
+    # an MPL sub-package — must report every distinct license rather than
+    # collapsing to the first file found (WI-gojuz).
+    _license_exclude = _CONFIG_EXCLUDE_DIRS | frozenset(DEFAULT_EXCLUDES)
+    license_paths: list[Path] = []
+    seen_license_paths: set[Path] = set()
     for license_name in LICENSE_FILES:
-        license_path = repo_root / license_name
-        if license_path.exists():
-            try:
-                # Read just enough to detect license type
-                content = license_path.read_text(encoding="utf-8", errors="replace")[:500]
-                license_type = None
+        root_license = repo_root / license_name
+        if root_license.exists():
+            license_paths.append(root_license)
+            seen_license_paths.add(root_license.resolve())
+        for pattern in (f"*/{license_name}", f"*/*/{license_name}"):
+            for match in repo_root.glob(pattern):
+                if not match.is_file():
+                    continue  # pragma: no cover
+                resolved = match.resolve()
+                if resolved in seen_license_paths:
+                    continue  # pragma: no cover
+                if any(
+                    p.startswith(".") or p in _license_exclude
+                    for p in match.relative_to(repo_root).parts[:-1]
+                ):
+                    continue
+                license_paths.append(match)
+                seen_license_paths.add(resolved)
 
-                # Check for common license types (order matters: AGPL before GPL)
-                content_upper = content.upper()
-                if "AGPL" in content_upper or "AFFERO" in content_upper:
-                    license_type = "AGPL"
-                elif "GPL" in content_upper and "LESSER" in content_upper:
-                    license_type = "LGPL"
-                elif "GPL" in content_upper:
-                    license_type = "GPL"
-                elif "MIT LICENSE" in content_upper or "PERMISSION IS HEREBY GRANTED" in content_upper:
-                    license_type = "MIT"
-                elif "APACHE LICENSE" in content_upper:
-                    license_type = "Apache"
-                elif "BSD" in content_upper:
-                    license_type = "BSD"
-                elif "MOZILLA PUBLIC LICENSE" in content_upper:
-                    license_type = "MPL"
-                elif "ISC LICENSE" in content_upper:
-                    license_type = "ISC"
-                elif "UNLICENSE" in content_upper:
-                    license_type = "Unlicense"
+    detected_licenses: list[str] = []
+    for license_path in license_paths:
+        try:
+            # Read just enough to detect license type
+            content_upper = license_path.read_text(
+                encoding="utf-8", errors="replace"
+            )[:500].upper()
+        except OSError:  # pragma: no cover
+            continue  # pragma: no cover
+        license_type = _detect_license_type(content_upper)
+        if license_type and license_type not in detected_licenses:
+            detected_licenses.append(license_type)
 
-                if license_type:
-                    lines.append(f"LICENSE: {license_type}")
-                break  # Only process first found license file
-            except OSError:  # pragma: no cover
-                pass  # pragma: no cover
+    if detected_licenses:
+        lines.append(f"LICENSE: {', '.join(sorted(detected_licenses))}")
 
     return lines
 
@@ -2366,6 +2471,20 @@ def _demote_markdown_headings(content: str, levels: int = 2) -> str:
     return "\n".join(out_lines)
 
 
+def _content_is_binary(content: str) -> bool:
+    """Return True if ``content`` looks like binary (non-text) data.
+
+    Uses the presence of a NUL byte (U+0000) as the sniff — the same heuristic
+    git uses to classify a blob as binary. Text files never contain NUL, so
+    this has no false positives on real source/docs. It matters because file
+    content is read with ``read_text(errors="replace")``, which substitutes
+    only *invalid* encoding sequences; U+0000 is a valid code point, so a
+    binary file's NULs survive the read and would otherwise flow verbatim into
+    rendered markdown (WI-pubar).
+    """
+    return "\x00" in content
+
+
 def _format_file_content_block(rel_path: str, content: str) -> list[str]:
     """Format file content with visible START/END markers.
 
@@ -2379,7 +2498,26 @@ def _format_file_content_block(rel_path: str, content: str) -> list[str]:
 
     Returns:
         List of lines including START marker, code block, and END marker.
+        Binary content is omitted with an explanatory placeholder instead.
     """
+    # Build visually distinctive markers (shared by the normal and the
+    # binary-omitted return paths). Pad to ~60 chars for visual balance.
+    start_marker = f"------------------- START of {rel_path} "
+    start_marker += "-" * max(0, 60 - len(start_marker))
+    end_marker = f"------------------- END of {rel_path} "
+    end_marker += "-" * max(0, 60 - len(end_marker))
+
+    # WI-pubar: never embed binary/NUL content into rendered markdown. A file
+    # with NUL bytes has no useful text to show, and read via
+    # ``read_text(errors="replace")`` it carries its NULs straight through — a
+    # cold-cache ``sketch -t 4000`` once emitted 12,792 raw NULs here, choking
+    # tokenizers and JSON wrappers. This is the single render chokepoint every
+    # content section (Additional Files, Source Files) funnels through, so
+    # guarding here omits binary content with an explanatory note across all of
+    # them, at any token budget.
+    if _content_is_binary(content):
+        return [start_marker, "[binary content omitted]", end_marker, ""]
+
     # WI-bilul: demote ATX headings inside markdown-like content so the
     # embedded ``## Section`` lines don't read as structural sections of
     # the sketch itself. Code-fenced markdown content is technically
@@ -2388,13 +2526,6 @@ def _format_file_content_block(rel_path: str, content: str) -> list[str]:
     rel_lower = rel_path.lower()
     if any(rel_lower.endswith(ext) for ext in _MARKDOWN_HEADING_BLEED_EXTS):
         content = _demote_markdown_headings(content)
-
-    # Build visually distinctive markers
-    # Pad to ~60 chars total for visual balance
-    start_marker = f"------------------- START of {rel_path} "
-    start_marker += "-" * max(0, 60 - len(start_marker))
-    end_marker = f"------------------- END of {rel_path} "
-    end_marker += "-" * max(0, 60 - len(end_marker))
 
     # Choose a fence delimiter longer than any backtick run in the content
     # so inner code blocks don't close the outer fence.
@@ -2670,6 +2801,80 @@ def _normalize_name_excludes(excludes: list[str]) -> list[str]:
     return out
 
 
+def _dir_children_from_index(dir_path: Path) -> Optional[list[tuple[str, bool]]]:
+    """Immediate child ``(name, is_dir)`` pairs under ``dir_path`` derived from
+    the global :class:`FileIndex`, or ``None`` when no index covers ``dir_path``.
+
+    INV-jumim: when the sketch read-path is scoped to a behavior map (the
+    ``--input`` case installs a synthetic ``FileIndex`` from the map's node
+    paths), the Structure section must reflect the MAP's universe — its
+    directory listing and "(N items)" / "[and N other items]" counts — rather
+    than a re-walk of the working tree. Each indexed file contributes its first
+    path component under ``dir_path`` as a child; a component with deeper parts
+    is a directory. Returns ``None`` (caller falls back to ``iterdir()``) when
+    no index is set, or it does not cover ``dir_path``.
+    """
+    from .discovery import get_file_index
+
+    index = get_file_index()
+    if index is None:
+        return None
+    try:
+        dir_path.relative_to(index.repo_root)
+    except ValueError:
+        return None
+    children: dict[str, bool] = {}
+    for f in index.all_files():
+        try:
+            rel = f.relative_to(dir_path)
+        except ValueError:
+            continue
+        parts = rel.parts
+        if not parts:  # pragma: no cover - index stores files, not dir_path itself
+            continue
+        name = parts[0]
+        is_dir = len(parts) > 1
+        children[name] = children.get(name, False) or is_dir
+    return sorted(children.items())
+
+
+def _count_dir_items(
+    dir_path: Path,
+    repo_root: Path,
+    name_excludes: list[str],
+    exclude_tests: bool = False,
+) -> int:
+    """Count immediate non-excluded children of ``dir_path``.
+
+    Honors a map-scoped :class:`FileIndex` when one covers ``dir_path``
+    (INV-jumim: a ``--input`` sketch must count the MAP's items, not the
+    working tree's), else falls back to ``iterdir()``. When ``exclude_tests``
+    is set, test source files are dropped but CONFIG/DOC test-adjacent files
+    are kept (mirroring the pre-existing Structure-section semantics).
+    """
+    from fnmatch import fnmatch
+
+    children = _dir_children_from_index(dir_path)
+    if children is None:
+        try:
+            children = [(it.name, it.is_dir()) for it in dir_path.iterdir()]
+        except (PermissionError, OSError):  # pragma: no cover
+            return 0
+    count = 0
+    for name, is_dir in children:
+        if any(fnmatch(name, p) for p in name_excludes):
+            continue
+        if exclude_tests:
+            rel_path = str((dir_path / name).relative_to(repo_root))
+            if _is_test_path(rel_path):
+                if is_dir:
+                    continue  # Skip test directory
+                if not is_additional_file_candidate(dir_path / name):
+                    continue  # Skip test source file (keep CONFIG/DOC)
+        count += 1
+    return count
+
+
 def _count_root_items(repo_root: Path, excludes: list[str]) -> int:
     """Count all non-excluded items (files and directories) at root level.
 
@@ -2683,15 +2888,7 @@ def _count_root_items(repo_root: Path, excludes: list[str]) -> int:
     Returns:
         Number of non-excluded items at root level.
     """
-    from fnmatch import fnmatch
-
-    name_excludes = _normalize_name_excludes(excludes)
-    count = 0
-    for item in repo_root.iterdir():
-        if any(fnmatch(item.name, pat) for pat in name_excludes):
-            continue
-        count += 1
-    return count
+    return _count_dir_items(repo_root, repo_root, _normalize_name_excludes(excludes))
 
 
 def _format_structure_tree_fallback(
@@ -2723,16 +2920,6 @@ def _format_structure_tree_fallback(
     lines = [_section_header("Structure", exclude_tests), "", "```"]
     lines.append(f"{repo_root.name}/")
 
-    # Get top-level directories, filtering out excluded ones
-    dirs = []
-    for d in repo_root.iterdir():
-        if not d.is_dir():
-            continue
-        excluded = any(fnmatch(d.name, pattern) for pattern in name_excludes)
-        if not excluded:
-            dirs.append(d.name)
-
-    # Also get root-level files (source and config/doc files)
     # Build set of all source file patterns from SOURCE_EXTENSIONS
     source_patterns: set[str] = set()
     for patterns in SOURCE_EXTENSIONS.values():
@@ -2742,18 +2929,42 @@ def _format_structure_tree_fallback(
         """Check if filename matches any source file pattern."""
         return any(fnmatch(filename, pat) for pat in source_patterns)
 
+    # INV-jumim: when a map-scoped FileIndex is installed (--input), derive the
+    # top-level dir/file listing from the MAP's universe rather than re-walking
+    # the working tree.
+    root_children = _dir_children_from_index(repo_root)
+    dirs = []
     root_files = []
-    for f in repo_root.iterdir():
-        if not f.is_file():
-            continue
-        if any(fnmatch(f.name, pattern) for pattern in name_excludes):
-            continue
-        # Include source files and additional file candidates (CONFIG/DOCUMENTATION)
-        if is_source_file(f.name) or is_additional_file_candidate(f):
-            # When excluding tests, skip test files
-            if exclude_tests and _is_test_path(f.name):
+    if root_children is not None:
+        for name, is_dir in root_children:
+            if any(fnmatch(name, pattern) for pattern in name_excludes):
                 continue
-            root_files.append(f.name)
+            if is_dir:
+                dirs.append(name)
+            elif is_source_file(name) or is_additional_file_candidate(repo_root / name):
+                if exclude_tests and _is_test_path(name):
+                    continue
+                root_files.append(name)
+    else:
+        # Get top-level directories, filtering out excluded ones
+        for d in repo_root.iterdir():
+            if not d.is_dir():
+                continue
+            excluded = any(fnmatch(d.name, pattern) for pattern in name_excludes)
+            if not excluded:
+                dirs.append(d.name)
+        # Also get root-level files (source and config/doc files)
+        for f in repo_root.iterdir():
+            if not f.is_file():
+                continue
+            if any(fnmatch(f.name, pattern) for pattern in name_excludes):
+                continue
+            # Include source files and additional file candidates (CONFIG/DOC)
+            if is_source_file(f.name) or is_additional_file_candidate(f):
+                # When excluding tests, skip test files
+                if exclude_tests and _is_test_path(f.name):
+                    continue
+                root_files.append(f.name)
 
     root_files = sorted(root_files)
     dirs = sorted(dirs)
@@ -2763,29 +2974,9 @@ def _format_structure_tree_fallback(
         lines.append("```")
         return "\n".join(lines)
 
-    # Count items in each directory
+    # Count items in each directory (map-scoped FileIndex aware, INV-jumim)
     def count_items(dir_path: Path) -> int:
-        count = 0
-        try:
-            for item in dir_path.iterdir():
-                # Skip excluded items
-                if any(fnmatch(item.name, p) for p in name_excludes):
-                    continue
-                # When excluding tests, skip test files but keep config/doc files
-                if exclude_tests:
-                    rel_path = str(item.relative_to(repo_root))
-                    if _is_test_path(rel_path):
-                        if item.is_file():
-                            # Keep config/documentation files (Additional Files candidates)
-                            if not is_additional_file_candidate(item):
-                                continue  # Skip test source file
-                        else:
-                            # Skip test directories
-                            continue
-                count += 1
-        except PermissionError:  # pragma: no cover
-            pass
-        return count
+        return _count_dir_items(dir_path, repo_root, name_excludes, exclude_tests)
 
     # Combine dirs and files, showing dirs first (max 10 total items)
     all_items = [(d, True) for d in dirs] + [(f, False) for f in root_files]
@@ -2866,8 +3057,6 @@ def _format_structure_tree(
             └── test_main.py
         ```
     """
-    from fnmatch import fnmatch
-
     # Combine default and extra excludes for counting
     excludes = list(DEFAULT_EXCLUDES)
     if extra_excludes:
@@ -2915,18 +3104,12 @@ def _format_structure_tree(
             node = node["children"][part]
 
     def count_items(path: Path) -> int:
-        """Count items in a directory, excluding patterns."""
-        if not path.is_dir():  # pragma: no cover
-            return 0
-        count = 0
-        try:
-            for item in path.iterdir():
-                if any(fnmatch(item.name, pat) for pat in name_excludes):
-                    continue
-                count += 1
-        except OSError:  # pragma: no cover
-            pass
-        return count
+        """Count items in a directory, excluding patterns.
+
+        INV-jumim: honors a map-scoped FileIndex (the ``--input`` case) so the
+        "[and N other items]" annotations reflect the MAP, not the working tree.
+        """
+        return _count_dir_items(path, repo_root, name_excludes)
 
     def render_tree(node: dict, path: Path, prefix: str = "") -> list[str]:
         """Render tree node and its children."""
@@ -3124,10 +3307,10 @@ def _collect_important_files(
         test_files.sort(key=get_file_size, reverse=True)
         add_file(test_files[0])
 
-    # 3. Entry point files (highest confidence)
+    # 3. Entry point files (highest ranking prominence — ADR-0039 ruling 3)
     symbol_by_id = {s.id: s for s in symbols}
     if entrypoints:
-        sorted_eps = sorted(entrypoints, key=lambda e: -e.confidence)
+        sorted_eps = sorted(entrypoints, key=lambda e: -(e.rank_score or 0.0))
         for ep in sorted_eps[:3]:  # Top 3 entry points
             sym = symbol_by_id.get(ep.symbol_id)
             if sym and sym.path:
@@ -3172,7 +3355,9 @@ def _collect_important_files(
     # 5b. Root-level source files (even without symbols)
     # For flat repos (all files at root), collect source files directly.
     # This ensures repos like qemu-sgabios show all root-level .c/.h/.S files,
-    # not just those with symbols detected.
+    # not just those with symbols detected. INV-jumim: honor a map-scoped
+    # FileIndex (the --input case) so a sketch does not pull in root files that
+    # are absent from the map's universe.
     if len(seen_root_files) < max_root_files:
         from fnmatch import fnmatch
 
@@ -3181,12 +3366,19 @@ def _collect_important_files(
         for patterns in SOURCE_EXTENSIONS.values():
             source_patterns.update(patterns)
 
-        for item in sorted(repo_root.iterdir(), key=lambda x: x.name):
-            if not item.is_file():
-                continue
+        root_children = _dir_children_from_index(repo_root)
+        if root_children is not None:
+            root_file_names = sorted(
+                name for name, is_dir in root_children if not is_dir
+            )
+        else:
+            root_file_names = sorted(
+                item.name for item in repo_root.iterdir() if item.is_file()
+            )
+        for name in root_file_names:
             # Check if it matches a source file pattern
-            if any(fnmatch(item.name, pat) for pat in source_patterns):
-                add_file(item.name)
+            if any(fnmatch(name, pat) for pat in source_patterns):
+                add_file(name)
             if len(seen_root_files) >= max_root_files:
                 break
 
@@ -3363,7 +3555,7 @@ def _extract_readme_description_heuristic(
 
     # Find the first non-empty paragraph (stop at next header or empty line)
     # Skip common non-description content: badges, images, HTML comments
-    paragraph_lines = []
+    paragraph_lines: list[str] = []
     for line in lines[start_idx:]:
         stripped = line.strip()
         # Stop at headers (markdown ## or RST underlines)
@@ -3383,6 +3575,11 @@ def _extract_readme_description_heuristic(
             continue
         # Skip lines that are just links (often badge URLs)
         if re.match(r"^\[.*\]\(https?://.*\)$", stripped):
+            continue
+        # Skip markdown blockquote notes/callouts (INV-modor): a '> ' aside is
+        # not description prose; embedding it leaks the raw '> ' prefix and can
+        # leave the visible text cut mid-blockquote.
+        if stripped.startswith(">"):
             continue
         if stripped:
             paragraph_lines.append(stripped)
@@ -3410,8 +3607,9 @@ def _extract_readme_description_heuristic(
             next_line = lines[next_line_idx].strip()
             # Strip HTML tags from the line
             next_line = re.sub(r"<[^>]+>", "", next_line)
-            # Only continue if it's a regular text line (not a header/image/etc)
-            if next_line and not next_line.startswith(("#", "!", "[", "<", "-")):
+            # Only continue if it's a regular text line (not a header/image/
+            # blockquote/etc)
+            if next_line and not next_line.startswith(("#", "!", "[", "<", "-", ">")):
                 # Append words until we hit a period or end of line
                 words = next_line.split()
                 for word in words:
@@ -3953,120 +4151,6 @@ def _extract_readme_internal_links(
     return resolved
 
 
-# Common programming terms to exclude from domain vocabulary
-_COMMON_TERMS = frozenset({
-    # English stopwords
-    "the", "and", "for", "not", "with", "this", "that", "from", "have", "has",
-    "are", "was", "were", "been", "being", "will", "would", "could", "should",
-    "all", "any", "each", "every", "both", "few", "more", "most", "other",
-    "some", "such", "than", "too", "very", "when", "where", "which", "while",
-    "who", "why", "how", "what", "then", "also", "just", "only",
-    # Generic programming terms
-    "get", "set", "add", "remove", "delete", "update", "create", "read", "write",
-    "init", "start", "stop", "open", "close", "run", "call", "return", "value",
-    "name", "type", "data", "item", "items", "list", "array", "object",
-    "key", "keys", "val", "var", "vars", "arg", "args", "param", "params",
-    "result", "results", "output", "input", "index", "idx", "len", "length",
-    "count", "num", "number", "str", "string", "int", "integer", "float", "bool",
-    "true", "false", "null", "none", "void", "use", "using", "used",
-    "new", "old", "first", "last", "next", "prev", "current", "default",
-    "error", "errors", "log", "console", "print", "debug", "info", "warn",
-    "text", "msg", "message", "callback", "handler", "listener", "event",
-    "async", "await", "promise", "resolve", "reject", "load", "save", "fetch",
-    "send", "receive", "process", "handle", "path", "file", "config", "option",
-    "options", "state", "props", "ref", "self", "super", "base", "parent",
-    "child", "node", "tree", "root", "body", "head", "main", "temp", "util",
-    "helper", "wrapper", "manager", "service", "factory", "builder", "module",
-    "component", "context", "scope", "global", "local", "instance", "static",
-    "public", "private", "protected", "virtual", "abstract", "final", "const",
-    # Testing-related terms
-    "test", "tests", "expect", "mock", "stub", "spy", "fixture",
-    "logger", "logging", "describe", "spec", "suite", "setup",
-    "teardown", "before", "after", "given", "verify",
-})
-
-# Programming language keywords to exclude
-_KEYWORDS = frozenset({
-    "class", "function", "return", "import", "export", "const", "else", "elif",
-    "while", "break", "continue", "finally", "catch", "throw", "extends",
-    "implements", "interface", "static", "public", "private", "protected",
-    "super", "switch", "case", "yield", "assert", "raise", "pass", "lambda",
-    "struct", "enum", "impl", "match", "trait", "package", "include", "define",
-    "ifdef", "ifndef", "endif", "extern", "typedef", "sizeof", "typeof",
-})
-
-
-def _extract_domain_vocabulary(
-    repo_root: Path, profile: "RepoProfile", max_terms: int = 12
-) -> list[str]:
-    """Extract domain-specific vocabulary from source code.
-
-    Analyzes identifiers in source files to find domain-specific terms.
-    Filters out common programming terms and language keywords to highlight
-    terms unique to this codebase's domain.
-
-    Args:
-        repo_root: Path to the repository root.
-        profile: Repository profile with language info.
-        max_terms: Maximum number of domain terms to return (default 12).
-
-    Returns:
-        List of domain-specific terms, ordered by frequency.
-    """
-    import re
-    from collections import Counter
-
-    word_counts: Counter[str] = Counter()
-
-    # File extensions to analyze
-    extensions = ["*.py", "*.js", "*.ts", "*.jsx", "*.tsx", "*.java", "*.c", "*.h",
-                  "*.go", "*.rs", "*.rb", "*.php", "*.cpp", "*.cc", "*.hpp"]
-
-    # Directories to exclude
-    excludes = {"node_modules", "__pycache__", "dist", "build", ".venv", "vendor",
-                ".git", "target", "coverage", "htmlcov", ".pytest_cache"}
-
-    from hypergumbo_core.discovery import get_file_index
-    file_index = get_file_index()
-    for ext in extensions:
-        if file_index is not None and file_index.repo_root == repo_root:
-            ext_files = file_index.match_pattern(ext)
-        else:
-            ext_files = repo_root.rglob(ext)
-        for f in ext_files:
-            # Skip excluded directories
-            if any(excl in f.parts for excl in excludes):
-                continue
-            try:
-                text = f.read_text(encoding="utf-8", errors="replace")
-                # Extract identifiers
-                for match in re.finditer(r'\b[a-zA-Z_][a-zA-Z0-9_]*\b', text):
-                    word = match.group()
-                    if len(word) <= 3:
-                        continue
-                    if word.lower() in _KEYWORDS:
-                        continue
-                    # Split compound words (camelCase, PascalCase, snake_case)
-                    # First try to find camelCase/PascalCase parts
-                    parts = re.findall(r'[A-Z]?[a-z]+|[A-Z]+(?=[A-Z]|$)', word)
-                    if parts:
-                        for p in parts:
-                            p_lower = p.lower()
-                            if len(p_lower) > 3 and p_lower not in _COMMON_TERMS:
-                                word_counts[p_lower] += 1
-                    # Also split by underscore for snake_case (including UPPER_CASE)
-                    for part in word.split('_'):
-                        p_lower = part.lower()
-                        if len(p_lower) > 3 and p_lower not in _COMMON_TERMS:
-                            word_counts[p_lower] += 1
-            except OSError:
-                continue
-
-    # Return top terms by frequency
-    return [word for word, _ in word_counts.most_common(max_terms)]
-
-
-
 # SOURCE_EXTENSIONS is imported from taxonomy module (ADR-0004 Phase 3)
 
 # Common source directories
@@ -4131,15 +4215,23 @@ def _format_source_files(
     max_files: int = 50,
     density_scores: dict[str, float] | None = None,
     exclude_tests: bool = False,
+    docstrings: dict[str, str] | None = None,
 ) -> str:
     """Format source files as a Markdown section.
 
     When density_scores is provided, files are sorted by symbol importance
     density (sum of raw in-degrees of symbols / LOC) in descending order.
     Otherwise, files are displayed in their original order.
+
+    WI-kipod: when ``docstrings`` (a relative-path → module-summary map,
+    built by :func:`_file_docstrings` from the file-anchor Symbols) has an
+    entry for a file, its module docstring is rendered after the path so
+    the section reports what each file is for, not just a bare path list.
     """
     if not files:
         return ""
+
+    docstrings = docstrings or {}
 
     # Sort by density if scores are provided
     if density_scores:
@@ -4153,12 +4245,40 @@ def _format_source_files(
 
     for f in files[:max_files]:
         rel_path = f.relative_to(repo_root)
-        lines.append(f"- `{rel_path}`")
+        docstring = docstrings.get(str(rel_path))
+        if docstring:
+            lines.append(f"- `{rel_path}` — {docstring}")
+        else:
+            lines.append(f"- `{rel_path}`")
 
     if len(files) > max_files:
         lines.append(f"- ... and {len(files) - max_files} more files")
 
     return "\n".join(lines)
+
+
+def _file_docstrings(symbols: list[Symbol], repo_root: Path) -> dict[str, str]:
+    """Map relative file path → module docstring for ``kind="file"`` symbols.
+
+    WI-kipod: threads the module summary captured on file-anchor Symbols
+    (WI-kazob, which populates ``kind="file"`` docstrings — 845/908 file
+    nodes on the self-corpus) into the Source Files section. Keyed by the
+    same relative path :func:`_format_source_files` derives from its
+    ``files`` list (``str(Path.relative_to(repo_root))``), so absolute
+    file-node paths are relativized here to match. File nodes without a
+    captured docstring (e.g. non-Python file anchors, whose languages lack
+    a uniform module-docstring construct), and every non-file symbol, are
+    excluded.
+    """
+    repo_root_str = str(repo_root)
+    result: dict[str, str] = {}
+    for sym in symbols:
+        if sym.kind == "file" and sym.docstring:
+            path = sym.path
+            if path.startswith(repo_root_str):
+                path = path[len(repo_root_str) + 1:]
+            result[path] = sym.docstring
+    return result
 
 
 
@@ -5144,6 +5264,7 @@ _ENTRYPOINT_GROUPS: list[tuple[str, set[str]]] = [
         EntrypointKind.CLI_MAIN.value,
         EntrypointKind.CLI_COMMAND.value,
         EntrypointKind.MAIN_FUNCTION.value,
+        EntrypointKind.MAIN_GUARD.value,  # WI-tuvun: module-guard script entry
         EntrypointKind.ELECTRON_MAIN.value,
         EntrypointKind.ELECTRON_PRELOAD.value,
         EntrypointKind.ELECTRON_RENDERER.value,
@@ -5234,7 +5355,7 @@ def _format_entrypoints(
     # Bucket entrypoints by group
     grouped: dict[str, list[Entrypoint]] = {}
     ungrouped: list[Entrypoint] = []
-    for ep in sorted(non_test_eps, key=lambda e: -e.confidence):
+    for ep in sorted(non_test_eps, key=lambda e: -(e.rank_score or 0.0)):
         placed = False
         for group_name, kinds in _ENTRYPOINT_GROUPS:
             if ep.kind.value in kinds:
@@ -5263,10 +5384,17 @@ def _format_entrypoints(
         for ep in shown:
             sym = symbol_by_id.get(ep.symbol_id)
             if sym:
-                rel_path = sym.path
-                if rel_path.startswith(repo_root_str):
-                    rel_path = rel_path[len(repo_root_str) + 1:]
-                lines.append(f"- `{sym.name}` ({ep.label}) — `{rel_path}`")
+                # WI-kipod: prefer the captured docstring (what the entry
+                # point does) over the path (where it lives). The path is
+                # recoverable via `explain` / the Source Files section, but
+                # the human-written intent was previously never surfaced.
+                if sym.docstring:
+                    lines.append(f"- `{sym.name}` ({ep.label}) — {sym.docstring}")
+                else:
+                    rel_path = sym.path
+                    if rel_path.startswith(repo_root_str):
+                        rel_path = rel_path[len(repo_root_str) + 1:]
+                    lines.append(f"- `{sym.name}` ({ep.label}) — `{rel_path}`")
             else:
                 lines.append(f"- `{ep.symbol_id}` ({ep.label})")
 
@@ -5804,7 +5932,136 @@ def _format_symbols(
     return "\n".join(lines)
 
 
+# Node "path" values that name no filesystem file (e.g. "<external>").
+_NON_FILE_PATH_PREFIX = "<"
+
+
+def _map_source_paths(repo_root: Path, cached_results: Optional[dict]) -> list[Path]:
+    """Distinct absolute source paths named by a behavior map's nodes.
+
+    INV-jumim: the read-path scoping (and the ``cmd_sketch`` staleness check)
+    need the file universe a ``--input`` map describes. Each node's ``path`` is
+    relative to ``repo_root``; synthetic non-filesystem paths (``<external>``
+    and friends) are skipped, and duplicates (multiple symbols per file) are
+    collapsed. Returns ``[]`` when no map is given or it names no real files.
+    """
+    if not cached_results:
+        return []
+    seen: set[Path] = set()
+    out: list[Path] = []
+    for node in cached_results.get("nodes", []):
+        path = node.get("path")
+        if not path or path.startswith(_NON_FILE_PATH_PREFIX):
+            continue
+        abs_path = repo_root / path
+        if abs_path in seen:
+            continue
+        seen.add(abs_path)
+        out.append(abs_path)
+    return out
+
+
+def _file_index_from_map(
+    repo_root: Path, cached_results: Optional[dict]
+) -> "FileIndex | None":
+    """Synthesize a :class:`FileIndex` scoped to a behavior map's file universe.
+
+    Returns ``None`` when the map names no real files, so callers leave the
+    global index untouched and keep their normal filesystem read-path.
+    """
+    from .discovery import FileIndex
+
+    paths = _map_source_paths(repo_root, cached_results)
+    if not paths:
+        return None
+    return FileIndex.from_paths(repo_root, paths)
+
+
+def _peek_cached_results(repo_root: Path) -> Optional[dict]:
+    """Read an existing on-disk behavior map for ``repo_root`` WITHOUT running
+    analysis.
+
+    Mirrors :func:`_generate_sketch_impl`'s read-only auto-discovery so the
+    read-path can be map-scoped even when ``--input`` was not passed but a warm
+    cache exists. Never triggers ``run_behavior_map`` (the impl owns the
+    cold-cache auto-run). Returns ``None`` on any miss/error.
+    """
+    from .survey_io import find_survey_in_dir
+    from .sketch_embeddings import _get_results_cache_dir
+
+    try:
+        cache_dir = _get_results_cache_dir(repo_root)
+        # ADR-0042: resolve the canonical survey.json (or any legacy alias) in
+        # the cache dir instead of hardcoding the pre-rename basename.
+        cached_path = find_survey_in_dir(cache_dir)
+        if cached_path is not None:
+            import json
+            return json.loads(cached_path.read_text())
+    except Exception:  # pragma: no cover - cache discovery errors shouldn't block
+        pass
+    return None
+
+
 def generate_sketch(
+    repo_root: Path,
+    max_tokens: Optional[int] = None,
+    exclude_tests: bool = False,
+    first_party_priority: bool = True,
+    extra_excludes: Optional[List[str]] = None,
+    config_extraction_mode: ConfigExtractionMode = ConfigExtractionMode.HEURISTIC,
+    verbose: bool = False,
+    max_config_files: int = 15,
+    fleximax_lines: int = 100,
+    max_chunk_chars: int = 800,
+    language_proportional: bool = True,
+    progress: bool = False,
+    cached_results: Optional[dict] = None,
+    with_source: bool = False,
+    stats_out: Optional[SketchStats] = None,
+    require_sections: Optional[List[str]] = None,
+) -> str:
+    """Generate a token-budgeted Markdown sketch of the repository.
+
+    Thin wrapper around :func:`_generate_sketch_impl` that scopes the
+    filesystem read-path to a behavior map's own file universe when one is
+    available (INV-jumim). When ``cached_results`` is provided (``--input``) or
+    a warm on-disk map is found, a synthetic :class:`FileIndex` built from the
+    map's node paths is installed for the duration of the call so test-file
+    counting, language detection, source-file discovery, and the Structure tree
+    summarize the MAP — not a re-walk of the working tree (which hung 60+s and
+    produced whole-repo sketches from package-scoped maps). The prior global
+    index is always restored. See :func:`_generate_sketch_impl` for the full
+    section-by-section contract and argument docs.
+    """
+    from .discovery import get_file_index, set_file_index
+
+    repo_root = Path(repo_root).resolve()
+    map_for_scope = (
+        cached_results if cached_results is not None
+        else _peek_cached_results(repo_root)
+    )
+    map_index = _file_index_from_map(repo_root, map_for_scope)
+    kwargs = {
+        "max_tokens": max_tokens, "exclude_tests": exclude_tests,
+        "first_party_priority": first_party_priority, "extra_excludes": extra_excludes,
+        "config_extraction_mode": config_extraction_mode, "verbose": verbose,
+        "max_config_files": max_config_files, "fleximax_lines": fleximax_lines,
+        "max_chunk_chars": max_chunk_chars,
+        "language_proportional": language_proportional, "progress": progress,
+        "cached_results": cached_results, "with_source": with_source,
+        "stats_out": stats_out, "require_sections": require_sections,
+    }
+    if map_index is None:
+        return _generate_sketch_impl(repo_root, **kwargs)
+    prev_index = get_file_index()
+    set_file_index(map_index)
+    try:
+        return _generate_sketch_impl(repo_root, **kwargs)
+    finally:
+        set_file_index(prev_index)
+
+
+def _generate_sketch_impl(
     repo_root: Path,
     max_tokens: Optional[int] = None,
     exclude_tests: bool = False,
@@ -5861,7 +6118,7 @@ def generate_sketch(
             to ensure multi-language projects have proportional representation.
         progress: If True, show progress indicator with ETA to stderr.
         cached_results: If provided, use this behavior map instead of running
-            analysis. Should be the parsed JSON from hypergumbo.results.json.
+            analysis. Should be the parsed JSON from the survey map (survey.json).
             Skips profile detection and analysis phases for faster generation.
             If None, auto-discovers cached results from ~/.cache/hypergumbo/.
         with_source: If True, append full source file contents after the sketch.
@@ -5921,11 +6178,13 @@ def generate_sketch(
     # Auto-discover cached results from cache directory if not explicitly provided
     # If no cache exists, run analysis first to populate it
     if cached_results is None:
+        from .survey_io import find_survey_in_dir
         from .sketch_embeddings import _get_results_cache_dir
         try:
             cache_dir = _get_results_cache_dir(repo_root)
-            cached_path = cache_dir / "hypergumbo.results.json"
-            if cached_path.exists():
+            # ADR-0042: canonical survey.json (or a legacy alias) in the cache.
+            cached_path = find_survey_in_dir(cache_dir)
+            if cached_path is not None:
                 import json
                 _log(f"Auto-discovered cached results: {cached_path}")
                 cached_results = json.loads(cached_path.read_text())
@@ -5934,11 +6193,17 @@ def generate_sketch(
                 _log("No cached results found, running analysis...")
                 from .cli import run_behavior_map
                 run_behavior_map(repo_root)
-                # Now load the freshly generated cache
-                if cached_path.exists():
+                # Now load the freshly generated cache. RE-DISCOVER: the pre-run
+                # lookup returned None (nothing existed yet), so we must resolve
+                # the just-written survey.json rather than reuse the None handle
+                # (ADR-0042 — an earlier `cached_path.exists()` here NPE'd on the
+                # None, silently falling back to a full re-walk of the now-
+                # populated cache dir and mis-reporting it as source).
+                fresh_path = find_survey_in_dir(cache_dir)
+                if fresh_path is not None:
                     import json
-                    _log(f"Using freshly generated results: {cached_path}")
-                    cached_results = json.loads(cached_path.read_text())
+                    _log(f"Using freshly generated results: {fresh_path}")
+                    cached_results = json.loads(fresh_path.read_text())
         except Exception:  # pragma: no cover - cache discovery errors shouldn't block sketch
             pass
 
@@ -6109,11 +6374,7 @@ def generate_sketch(
     # passed ``require_sections``, run analysis regardless of remaining
     # budget so any required symbol-based section (Entry Points, Key
     # Symbols, Data Models) has data to render.
-    _has_required_analysis_section = bool(_required & {
-        "Entry Points", "Data Models", "Key Symbols", "Source Files",
-        "Additional Files", "Source Files Content",
-        "Additional Files Content",
-    })
+    _has_required_analysis_section = bool(_required & VALID_SKETCH_SECTIONS)
     using_cached_analysis = (
         cached_results is not None
         and "nodes" in cached_results
@@ -6131,6 +6392,9 @@ def generate_sketch(
 
     if remaining_tokens > 50 or _has_required_analysis_section:  # WI-nakam: force analysis when a required section depends on it
         if using_cached_analysis:
+            # using_cached_analysis is only True when cached_results is not
+            # None (see its definition above); narrow it for mypy.
+            assert cached_results is not None
             # Use cached symbols and edges from behavior map
             _log("Using cached analysis results...")
             symbols = [Symbol.from_dict(n) for n in cached_results.get("nodes", [])]
@@ -6161,7 +6425,7 @@ def generate_sketch(
         # (canonical pipeline: edge filtering, hub saturation, full dampening).
         # Also compute raw in-degree for stats tracking.
         # Additionally compute per-symbol weighted centrality for truncation elbow.
-        raw_in_degree: dict[str, int] = {}  # Initialize for structure tree update
+        raw_in_degree = {}  # Initialize for structure tree update
         if symbols and edges:
             raw_in_degree = compute_raw_in_degree(symbols, edges)
             ranked_files = rank_files(symbols, edges)
@@ -6233,9 +6497,11 @@ def generate_sketch(
             )
             if ep_section:
                 sections.append(ep_section)
-                # Track stats: compute confidence sum of selected entrypoints
+                # Track stats: the SELECTION of top entrypoints is a ranking
+                # decision (rank_score, ADR-0039 ruling 3); the summed mass is
+                # their detection reliability (confidence).
                 if stats_out is not None:
-                    sorted_eps = sorted(entrypoints, key=lambda e: -e.confidence)
+                    sorted_eps = sorted(entrypoints, key=lambda e: -(e.rank_score or 0.0))
                     stats_out.entrypoints_confidence = sum(
                         ep.confidence for ep in sorted_eps[:max_eps]
                     )
@@ -6335,6 +6601,7 @@ def generate_sketch(
             max_files=max_source_files,
             density_scores=density_scores if density_scores else None,
             exclude_tests=exclude_tests,
+            docstrings=_file_docstrings(symbols, repo_root),
         )
         if source_section:
             sections.append(source_section)
@@ -6457,9 +6724,9 @@ def generate_sketch(
         if (
             cached_results is not None
             and "sketch_precomputed" in cached_results
-            and cached_results["sketch_precomputed"].get("centrality_scores") is not None
+            and cached_results["sketch_precomputed"].get("additional_file_centrality_scores") is not None
         ):
-            cached_centrality = cached_results["sketch_precomputed"].get("centrality_scores")
+            cached_centrality = cached_results["sketch_precomputed"].get("additional_file_centrality_scores")
 
         additional_files_section, additional_files_selected, additional_centrality = _format_additional_files(
             repo_root,
@@ -6607,11 +6874,11 @@ def generate_sketch(
             if (
                 cached_results is not None
                 and "sketch_precomputed" in cached_results
-                and cached_results["sketch_precomputed"].get("centrality_scores")
+                and cached_results["sketch_precomputed"].get("additional_file_centrality_scores")
                 is not None
             ):
                 cached_centrality = cached_results["sketch_precomputed"].get(
-                    "centrality_scores"
+                    "additional_file_centrality_scores"
                 )
 
             # Render content for the already-selected additional files

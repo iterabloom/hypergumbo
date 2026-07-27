@@ -1,10 +1,18 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for the hypergumbo search command."""
+import argparse
 import json
 from pathlib import Path
 
+import pytest
+
 from hypergumbo_core.schema import SCHEMA_VERSION
-from hypergumbo_core.cli import cmd_search, main
+from hypergumbo_core.cli import (
+    cmd_search,
+    main,
+    _positive_result_limit,
+    _reject_unknown_choice,
+)
 
 
 class FakeArgs:
@@ -56,6 +64,78 @@ def test_cmd_search_finds_exact_match(tmp_path: Path, capsys) -> None:
     out, _ = capsys.readouterr()
     assert "foo" in out
     assert "src/main.py" in out
+
+
+_SEARCH_FIXTURE = {
+    "schema_version": SCHEMA_VERSION,
+    "nodes": [
+        {
+            "id": "python:src/main.py:1-5:load_config:function",
+            "name": "load_config",
+            "kind": "function",
+            "language": "python",
+            "path": "src/main.py",
+            "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
+        },
+    ],
+    "edges": [],
+}
+
+
+def _search_args(tmp_path: Path, pattern, **over) -> "FakeArgs":
+    (tmp_path / "hypergumbo.results.json").write_text(json.dumps(_SEARCH_FIXTURE))
+    args = FakeArgs()
+    args.pattern = pattern
+    args.path = str(tmp_path)
+    args.input = None
+    args.kind = None
+    args.language = None
+    args.limit = 20
+    for k, v in over.items():
+        setattr(args, k, v)
+    return args
+
+
+def test_cmd_search_language_filter_case_insensitive(
+    tmp_path: Path, capsys,
+) -> None:
+    """WI-runos: --language is now case-insensitive (uniform with the
+    documented case-insensitive positional pattern) — an upper-case value is
+    folded to the registry's canonical lowercase and matches, rather than
+    rejecting as 'not a known language'."""
+    args = _search_args(tmp_path, "load", language="PYTHON")
+
+    assert cmd_search(args) == 0
+    assert "load_config" in capsys.readouterr().out
+
+
+def test_cmd_search_kind_filter_case_insensitive(
+    tmp_path: Path, capsys,
+) -> None:
+    """WI-runos: --kind is likewise case-insensitive."""
+    args = _search_args(tmp_path, "load", kind="FUNCTION")
+
+    assert cmd_search(args) == 0
+    assert "load_config" in capsys.readouterr().out
+
+
+def test_cmd_search_empty_pattern_rejected(tmp_path: Path, capsys) -> None:
+    """WI-kopon: an empty search pattern is rejected with rc=2, not silently
+    matched against every symbol (consistent with the cli-input validation
+    umbrella — fail fast on a degenerate input)."""
+    args = _search_args(tmp_path, "")
+
+    assert cmd_search(args) == 2
+    assert "empty" in capsys.readouterr().err.lower()
+
+
+def test_cmd_search_whitespace_pattern_rejected(tmp_path: Path, capsys) -> None:
+    """WI-kopon: a whitespace-only pattern (e.g. a shell-eaten arg) is also
+    rejected with rc=2."""
+    args = _search_args(tmp_path, "   ")
+
+    assert cmd_search(args) == 2
+    assert "empty" in capsys.readouterr().err.lower()
 
 
 def test_cmd_search_excludes_external_boundary_nodes(tmp_path: Path, capsys) -> None:
@@ -387,6 +467,101 @@ def test_cmd_search_respects_limit(tmp_path: Path, capsys) -> None:
     assert out.count("function") <= 3
 
 
+def test_cmd_search_header_reports_total_not_post_limit(
+    tmp_path: Path, capsys
+) -> None:
+    """INV-toniv: the header reports the TOTAL number of matches, not the
+    post-limit count, and discloses how many are shown when truncated."""
+    nodes = [
+        {
+            "id": f"python:src/f{i}.py:1-5:func{i}:function",
+            "name": f"func{i}", "kind": "function", "language": "python",
+            "path": f"src/f{i}.py",
+            "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
+        }
+        for i in range(10)
+    ]
+    behavior_map = {"schema_version": SCHEMA_VERSION, "nodes": nodes, "edges": []}
+    (tmp_path / "hypergumbo.results.json").write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.pattern = "func"
+    args.path = str(tmp_path)
+    args.input = None
+    args.kind = None
+    args.language = None
+    args.limit = 3
+
+    assert cmd_search(args) == 0
+    out, _ = capsys.readouterr()
+    assert "Found 10 symbol(s)" in out, "header must report the total (10), not 3"
+    assert "showing 3" in out, "truncation must be disclosed"
+
+
+def test_cmd_search_header_no_showing_qualifier_when_under_limit(
+    tmp_path: Path, capsys
+) -> None:
+    """When matches <= limit the header omits the '(showing …)' qualifier."""
+    nodes = [
+        {
+            "id": f"python:src/f{i}.py:1-5:func{i}:function",
+            "name": f"func{i}", "kind": "function", "language": "python",
+            "path": f"src/f{i}.py",
+            "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
+        }
+        for i in range(2)
+    ]
+    behavior_map = {"schema_version": SCHEMA_VERSION, "nodes": nodes, "edges": []}
+    (tmp_path / "hypergumbo.results.json").write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.pattern = "func"
+    args.path = str(tmp_path)
+    args.input = None
+    args.kind = None
+    args.language = None
+    args.limit = 20
+
+    assert cmd_search(args) == 0
+    out, _ = capsys.readouterr()
+    assert "Found 2 symbol(s) matching 'func':" in out
+    assert "showing" not in out
+
+
+def test_positive_result_limit_type_factory() -> None:
+    """INV-toniv: --limit type factory accepts positives, rejects <=0 and junk."""
+    assert _positive_result_limit("5") == 5
+    assert _positive_result_limit("1") == 1
+    for bad in ("0", "-1", "-5"):
+        with pytest.raises(argparse.ArgumentTypeError):
+            _positive_result_limit(bad)
+    with pytest.raises(argparse.ArgumentTypeError):
+        _positive_result_limit("abc")
+
+
+def test_main_search_negative_limit_rejected(tmp_path: Path, capsys) -> None:
+    """INV-toniv: a negative --limit is rejected at the CLI (exit 2), not
+    silently interpreted as Python tail-drop slicing."""
+    behavior_map = {
+        "schema_version": SCHEMA_VERSION,
+        "nodes": [
+            {
+                "id": "python:src/main.py:1-5:test:function", "name": "test",
+                "kind": "function", "language": "python", "path": "src/main.py",
+                "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
+            },
+        ],
+        "edges": [],
+    }
+    (tmp_path / "hypergumbo.results.json").write_text(json.dumps(behavior_map))
+
+    with pytest.raises(SystemExit) as exc:
+        main(["search", "test", "--path", str(tmp_path), "--limit", "-5"])
+    assert exc.value.code == 2
+    _, err = capsys.readouterr()
+    assert "limit" in err.lower()
+
+
 def test_main_with_search(tmp_path: Path, capsys) -> None:
     """Main with search command."""
     behavior_map = {
@@ -449,3 +624,72 @@ def test_cmd_search_prints_output_summary(tmp_path: Path, capsys) -> None:
     # With auto-discovery, uses cached results
     assert "[hypergumbo search] Using 1 cached" in out
     assert "Output: stdout" in out
+
+
+# --- WI-furop: CLI filter-value validation (INV-fabov family) ---
+
+
+def test_reject_unknown_choice_accepts_valid() -> None:
+    """A value in the enumerable set returns None (no error)."""
+    valid = frozenset({"python", "java"})
+    assert _reject_unknown_choice(
+        "python", valid, subcommand="search", noun="language"
+    ) is None
+
+
+def test_reject_unknown_choice_rejects_with_suggestion(capsys) -> None:
+    """A near-miss is rejected (rc=2) with a did-you-mean suggestion."""
+    valid = frozenset({"python", "java"})
+    rc = _reject_unknown_choice(
+        "pythn", valid, subcommand="search", noun="language"
+    )
+    assert rc == 2
+    _, err = capsys.readouterr()
+    assert "is not a known language" in err
+    assert "Did you mean: python" in err
+
+
+def test_reject_unknown_choice_rejects_without_suggestion(capsys) -> None:
+    """A value with no close match is rejected (rc=2), no suggestion line."""
+    valid = frozenset({"python", "java"})
+    rc = _reject_unknown_choice(
+        "zzzzzzzz", valid, subcommand="search", noun="language"
+    )
+    assert rc == 2
+    _, err = capsys.readouterr()
+    assert "is not a known language" in err
+    assert "Did you mean" not in err
+
+
+def test_cmd_search_rejects_unknown_language(tmp_path: Path, capsys) -> None:
+    """WI-furop: --language with a non-language errors (exit 2), not silent."""
+    args = FakeArgs()
+    args.pattern = "main"
+    args.path = str(tmp_path)
+    args.input = None
+    args.kind = None
+    args.language = "klingon"
+    args.limit = 20
+
+    result = cmd_search(args)
+
+    assert result == 2
+    _, err = capsys.readouterr()
+    assert "is not a known language" in err
+
+
+def test_cmd_search_rejects_unknown_kind(tmp_path: Path, capsys) -> None:
+    """WI-furop: --kind with an unregistered kind errors (exit 2)."""
+    args = FakeArgs()
+    args.pattern = "main"
+    args.path = str(tmp_path)
+    args.input = None
+    args.kind = "nonexistent_kind"
+    args.language = None
+    args.limit = 20
+
+    result = cmd_search(args)
+
+    assert result == 2
+    _, err = capsys.readouterr()
+    assert "is not a known symbol kind" in err

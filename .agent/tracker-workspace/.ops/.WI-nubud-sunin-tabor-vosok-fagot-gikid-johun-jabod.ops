@@ -19,3 +19,18 @@
     pr_ref:  # b3d9
     description: "The sketch-cache family of the 2026-06-10 analysis claimed warm centrality is recomputed unconditionally (sketch.py:~4313-4320), making the cached_centrality plumbing at sketch.py:~6606-6629 dead. A current quick read shows cached_centrality IS fetched and passed (sketch.py:4202/4325-4329/6456-6473/6606+), so deadness is NOT confirmed on inspection. Action: determine whether the cached value influences output; if the warm recompute overrides it, remove the dead plumbing; else reclassify. Strategy Wave-0 B5 (filed WITH a deadness caveat - the 'dead' claim did not reproduce on quick inspection)."  # b3d9
     fields: {}  # b3d9
+- op: update  # 7b6f
+  at: '2026-07-12T08:14:47Z'  # 7b6f
+  by: agent  # 7b6f
+  actor: jgstern_agent  # 7b6f
+  clock: 2  # 7b6f
+  nonce: 7b6f  # 7b6f
+  set:  # 7b6f
+    status: wont_do  # 7b6f
+- op: discuss  # 9cb7
+  at: '2026-07-12T08:14:47Z'  # 9cb7
+  by: agent  # 9cb7
+  actor: jgstern_agent  # 9cb7
+  clock: 3  # 9cb7
+  nonce: 9cb7  # 9cb7
+  message: "Wave-4 triage 2026-07-12: premise (cached_centrality is dead code to remove) is FALSE. cached_centrality_scores is live -- sketch.py:4320 param, 4443-4451 populates centrality_scores from the cache -> centrality_ranked -> selection. Nothing to remove."  # 9cb7

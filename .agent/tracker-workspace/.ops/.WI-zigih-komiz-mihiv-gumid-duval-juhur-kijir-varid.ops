@@ -1,0 +1,21 @@
+- op: create  # 16e5
+  at: '2026-06-30T13:50:37Z'  # 16e5
+  by: agent  # 16e5
+  actor: jgstern_agent  # 16e5
+  clock: 1  # 16e5
+  nonce: '16e5'  # 16e5
+  data:  # 16e5
+    kind: work_item  # 16e5
+    title: "Harden L3 producer-coherence walker for dict-indirection / tuple-unpack edge_type emits"  # 16e5
+    status: todo_hard  # 16e5
+    priority: 3  # 16e5
+    parent:  # 16e5
+    tags:  # 16e5
+    - vocabulary  # 16e5
+    - analysis_quality  # 16e5
+    isbefore: []  # 16e5
+    duplicate_of: []  # 16e5
+    not_duplicate_of: []  # 16e5
+    pr_ref:  # 16e5
+    description: "Extend the L3 producer-coherence walker (packages/hypergumbo-core/src/hypergumbo_core/producer_coherence.py) to statically resolve dict-indirection / tuple-unpack edge_type emit sites. Currently find_emitted_edge_types / _resolve_function_local / _resolve_simple_rhs handle ast.Name targets + literal/ternary RHS but SKIP (a) ast.Tuple unpack targets (e.g. 'a, b = MAP[k]') and (b) Subscript RHS ('MAP[k]'). This was the blind-spot behind WI-rorul: the OTP linker shipped otp_call/otp_cast via 'handler_suffix, edge_type = CALL_TYPE_MAP[call_type]', unregistered yet invisible to the static gate (test_no_strict_producer_violations_for_edge_type stayed green). WI-rorul FOLDED the OTP values to dispatches_to + meta['mechanism'] (PR set post-merge), removing the only known exploiter (the scope-sweep's claimed SCIP has_type/defined_by could NOT be reproduced). So this is now PREVENTIVE hardening with ZERO current exploiter. Implement: resolve a tuple-unpack 'x, y = <dict-subscript>' by (1) resolving the dict literal (module/local constant via _resolve_module_constant), (2) taking the union of the i-th tuple element across all dict values for unpack position i; conservatively return None (silent skip, no false positives) if any value is not a resolvable literal tuple of strings. Add a fixture-based test: a synthetic emitter using 'et = SOME_MAP[k]' with an UNregistered edge_type value must now be FLAGGED by the gate. Keep the conservative posture (any unresolvable RHS poisons resolution → None). Per wave3 plan §A WI-rorul 'extend the L3 gate walker to resolve dict-indirection (the execution half)'. Split from WI-rorul to keep the fold (vocabulary half) and the static-analyzer hardening (execution half) as separate reviewable PRs."  # 16e5
+    fields: {}  # 16e5

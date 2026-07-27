@@ -36,6 +36,7 @@
 - developer.mozilla.org
 - rfc-editor.org
 - tree-sitter.github.io
+- woodpecker-ci.org
 
 ## Package registries (lookup + installs, depending on language)
 # Container artifacts

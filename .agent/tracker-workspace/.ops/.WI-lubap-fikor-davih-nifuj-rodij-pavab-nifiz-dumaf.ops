@@ -30,3 +30,34 @@
     tags: [dogfood_tranche_03]  # 05c4
   remove:  # 05c4
     tags: [dogfood_tranch_03]  # 05c4
+- op: update  # b88c
+  at: '2026-07-02T00:44:49Z'  # b88c
+  by: agent  # b88c
+  actor: jgstern_agent  # b88c
+  clock: 3  # b88c
+  nonce: b88c  # b88c
+  set:  # b88c
+    status: done  # b88c
+  add:  # b88c
+    tags: [awaits_bakeoff_validation]  # b88c
+- op: discuss  # 0794
+  at: '2026-07-02T00:44:50Z'  # 0794
+  by: agent  # 0794
+  actor: jgstern_agent  # 0794
+  clock: 4  # 0794
+  nonce: '0794'  # 0794
+  message: "DONE (argparse) via dev 2e9611808f. Root cause was deeper than the filed 'cli.yaml mis-keys concept under decorator': the subprocess linker joins subcommand-string -> command-symbol BY NAME, and argparse subcommands are add_parser('name') string LITERALS + set_defaults(func=handler) — not symbols — so re-keying the YAML could never help (the analyzer emits no usage_contexts for the constructor either; verified: 0 concepts on an argparse fixture). Fix: made the linker itself argparse-aware — _scan_argparse_commands walks each Python file's AST, pairs add_parser/set_defaults by parser-var, resolves func= to its module symbol, and merges {subcommand: handler} into command_by_name. Behavioral evidence (full pipeline via the registered linker): a fixture with add_parser('serve')+set_defaults(func=cmd_serve) and subprocess.run(['myapp','serve']) now emits subprocess_calls -> cmd_serve (meta.subcommand='serve'); BEFORE = no edge (0 concept=command symbols). Non-resolvable forms skipped (dynamic name, lambda/absent func, unresolved handler). Requirement diagnostic now counts both sources (concept=command + argparse handlers) — the machine-checkable prerequisite the item asked for. hypergumbo's own argparse CLI (~20 subcommands) is now joinable (self-dogfood). 100% coverage on subprocess_cli.py. Fire's reflective surface deferred -> follow-up filed. awaits_bakeoff_validation: a DEEP cohort with real argparse CLIs should confirm correct joins + no false positives."  # 0794
+- op: discuss  # a1af
+  at: '2026-07-06T20:07:02Z'  # a1af
+  by: agent  # a1af
+  actor: jgstern_agent  # a1af
+  clock: 5  # a1af
+  nonce: a1af  # a1af
+  message: "INCONCLUSIVE via BROAD drain broad-20260706-153915. No cohort repo exercises the claim (a Python project with an argparse CLI that shells out to its own subcommands via subprocess). The 11-repo cohort has no such construct. Keep tagged; unblock = a self-analysis run (hypergumbo own argparse CLI is the canonical example) or a targeted repo. Verdict inconclusive."  # a1af
+- op: discuss  # c609
+  at: '2026-07-16T04:10:43Z'  # c609
+  by: agent  # c609
+  actor: jgstern_agent  # c609
+  clock: 6  # c609
+  nonce: c609  # c609
+  message: "INCONCLUSIVE via DEEP bakeoff deep-20260623-134237 cohort-001 iter-004 (8 repos, code e5a019c2): no Python-argparse-CLI target in the cohort (pretix=Django/Celery, express=JS, caddy=Go, others non-Python). Cannot validate the argparse subprocess-linker fix here. Keep tag; needs a targeted cohort with a Python argparse CLI (e.g. a click-vs-argparse repo)."  # c609

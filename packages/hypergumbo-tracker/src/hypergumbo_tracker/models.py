@@ -23,7 +23,7 @@ from __future__ import annotations
 import fnmatch
 import os
 import pwd
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 from enum import Enum
 from pathlib import Path
 from typing import Any
@@ -329,8 +329,11 @@ def dict_to_op(d: dict[str, Any]) -> Op:
 
     cls = OP_TYPE_MAP[op_type]
 
-    # Extract only fields the dataclass expects
-    field_names = {f.name for f in cls.__dataclass_fields__.values()}
+    # Extract only fields the dataclass expects. dataclasses.fields is the
+    # public API (OP_TYPE_MAP values are all dataclasses with no ClassVar/
+    # InitVar, so this is exactly __dataclass_fields__.values() minus the
+    # attr-defined false positive on the dict[str, type] element type).
+    field_names = {f.name for f in fields(cls)}
     kwargs = {k: v for k, v in d.items() if k in field_names}
     return cls(**kwargs)
 

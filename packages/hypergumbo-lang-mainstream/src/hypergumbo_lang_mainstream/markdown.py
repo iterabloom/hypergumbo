@@ -272,7 +272,7 @@ class MarkdownAnalyzer(TreeSitterAnalyzer):
             signature=f"```{language}" if language else "```",
             meta={
                 "code_language": language,
-                "lines_of_code": loc,
+                "line_span": loc,
                 "is_example": loc > 0,
             },
         )
@@ -353,12 +353,12 @@ class MarkdownAnalyzer(TreeSitterAnalyzer):
                 edge = Edge.create(
                     src=symbol_id,
                     dst=_make_link_dst_id(url),
-                    edge_type="links_to",
+                    edge_type="references",
                     line=line,
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     evidence_type="link",
-                    confidence=0.95,
+                    meta={"ref_construct": "markdown_link"},
                 )
                 self._pending_edges.append(edge)
 

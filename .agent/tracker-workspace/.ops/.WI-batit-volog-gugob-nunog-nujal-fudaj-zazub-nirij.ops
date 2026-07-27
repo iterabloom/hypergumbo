@@ -47,3 +47,40 @@
   clock: 5  # b7a8
   nonce: b7a8  # b7a8
   message: "Closing as done (P4 backlog). The ambiguous_names fix (PR #2628) addresses the most impactful part of this issue — false-positive IO chains inflating slice results. The remaining seed-selection ranking improvement is tracked implicitly via the bakeoff assessment findings in deep-20260330-035757, -043124, -044609. Reopen if prioritized."  # b7a8
+- op: discuss  # 5450
+  at: '2026-07-16T04:12:38Z'  # 5450
+  by: agent  # 5450
+  actor: jgstern_agent  # 5450
+  clock: 6  # 5450
+  nonce: '5450'  # 5450
+  message: "REPRODUCES on the cohort (DEEP bakeoff deep-20260623-134237 cohort-001 iter-004) despite status=done — flagging for re-verification (closure-evidence discipline: do not close on non-repro, and this IS reproducing). The slice/compact seed selection still picks trivial build-wrappers / vendored / test code over real API surfaces: spring-petclinic seeds slice.0/1 from mvnw/gradlew (rank_score 0.98) over HTTP controllers (0.725, conf 0.95) — a rank-score INVERSION; pretix picks vendored JS (pdf.worker.js/d3/vue.js) as slice+rslice seeds; express's #1 symbol is a test-file example callback createApp (in=202). This is HIGH impact — it's the dominant driver of the LOW_AVG_SLICE_NODES WARNs AND the WI-zulij compact-not-centrality no_move. Recommend re-open + re-prioritize (P4->P2?). Per-repo evidence in reflect/cohort-001/iter-004/{spring-petclinic,pretix,express}.assessment.yaml."  # 5450
+- op: update  # 4eaf
+  at: '2026-07-16T07:56:35Z'  # 4eaf
+  by: agent  # 4eaf
+  actor: jgstern_agent  # 4eaf
+  clock: 7  # 4eaf
+  nonce: 4eaf  # 4eaf
+  set:  # 4eaf
+    status: todo_hard  # 4eaf
+    priority: 2  # 4eaf
+- op: discuss  # 81f8
+  at: '2026-07-16T07:56:36Z'  # 81f8
+  by: agent  # 81f8
+  actor: jgstern_agent  # 81f8
+  clock: 8  # 81f8
+  nonce: 81f8  # 81f8
+  message: "REOPENED + reprioritized P4->P2 (per this item 2026-07-16 reproduction note). BUILD-WRAPPER FACET FIXED (dev 471bb5a779): mvnw/gradlew are demoted below the ranking floor in detect_entrypoints (x0.1 + connectivity-boost skip, keyed on EntrypointKind.SHELL_SCRIPT + a build-wrapper basename allowlist {mvnw,mvnw.cmd,gradlew,gradlew.bat}), so they no longer seed forward slices. BEHAVIORAL EVIDENCE: live spring-petclinic survey — mvnw/gradlew were the top-2 of 44 entrypoints at rank_score 0.98 (above the real controllers at ~0.54); after the fix both are filtered out (44->42) and slice --entry auto no longer seeds from them. 3 unit tests + entrypoints.py 100% cov.\n\nREMAINING FACETS (item stays open as the seed-quality umbrella):\n1. is_utility_file over-matches samples/example/demo in SOURCE paths. On spring-petclinic (org.springframework.samples.petclinic) the real controllers get the x0.5 utility penalty (~0.54) AND are excluded from langs_with_semantic, so entity library_exports (Owner/Pet at 0.90) are NOT demoted and now win the seed after the mvnw fix. Demo-repo-specific: a real Spring app path -> is_utility_file False -> controllers win. Debatable (a sample repo IS demo code) but degrades intra-sample ranking.\n2. pretix seeds slice+rslice from vendored JS (pdf.worker.js/d3/vue.js) despite the tier-3 x0.3 penalty (0.80x0.3=0.24 > 0.10 floor). Vendored code may warrant a harder demotion or should not be a library_export entrypoint. Also folds in the original fix-sketch rslice-tier-1-constraint facet.\n3. express #1 symbol = test-file callback createApp (in=202) is COMPACT/centrality ranking (ranking.py symbol centrality), a DIFFERENT subsystem from entrypoint seed selection — belongs with WI-zulij, not this entrypoint fix."  # 81f8
+- op: discuss  # cc6e
+  at: '2026-07-21T21:22:50Z'  # cc6e
+  by: agent  # cc6e
+  actor: jgstern_agent  # cc6e
+  clock: 9  # cc6e
+  nonce: cc6e  # cc6e
+  message: "Staleness audit 2026-07-21: this is a seed-quality UMBRELLA; the build-wrapper facet is FIXED (commit 471bb5a779; entrypoints.py:1435-1672 BUILD_WRAPPER_BASENAMES {mvnw,gradlew,...} x0.1 rank demotion gated on SHELL_SCRIPT). Residual facets still reproduce: no rslice tier-1 seed constraint (SliceQuery.max_tier defaults None), no harder vendored-JS demotion beyond tier-3 x0.3 (pdf.worker.js/d3/vue.js still qualify as seeds), and is_utility_file over-match on samples/example/demo (entrypoints.py:1651). The express test-callback facet belongs to WI-zulij. Title left as the umbrella; kept open for the vendored-JS / rslice-tier / is_utility_file facets."  # cc6e
+- op: discuss  # 65cd
+  at: '2026-07-21T23:06:05Z'  # 65cd
+  by: agent  # 65cd
+  actor: jgstern_agent  # 65cd
+  clock: 10  # 65cd
+  nonce: 65cd  # 65cd
+  message: "G12 attack (2026-07-21): WI-kikis (the group's P1) closed done. WI-batit STAYS OPEN — its remaining facets are bakeoff-gated ranking TUNING, not self-corpus-closeable: (1) harder vendored-JS demotion — tier>=3 library_export seeds get 0.80x0.3=0.24 > the 0.10 exclusion floor, so pdf.worker.js/d3/vue.js still seed slices; the *magnitude* of a harder demotion is a judgment call validated by DEEP bakeoff (the item's own note: 'Affects all 3 bakeoffs'); (2) rslice tier-seed constraint — reverse-slice --entry auto uses the same detect_entrypoints ranking (cli.py:1651), so constraining seeds to tier-1 is the same ranking knob; (3) is_utility_file over-match on samples/example/demo — the item itself flags this DEBATABLE ('a sample repo IS demo code'); (4) express test-callback belongs to WI-zulij (centrality/compact ranking), not this. Decision: do NOT land an unvalidated wide-blast-radius ranking change to dev bundled with the clean WI-kikis close (dev stays deployable); fold WI-batit's prep+validation into a consolidated DEEP bakeoff at a later checkpoint. Build-wrapper facet remains FIXED (471bb5a779)."  # 65cd

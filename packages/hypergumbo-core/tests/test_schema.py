@@ -86,6 +86,42 @@ class TestSchemaValidation:
         # Should not raise
         jsonschema.validate(behavior_map, schema)
 
+    def test_not_captured_description_marks_it_universal_static(self):
+        """WI-togop: limits.not_captured is a universal static disclaimer, NOT a
+        per-repo measurement of constructs THIS repo contains-but-skipped. Its
+        schema description must say so, so a consumer never misreads it as a
+        repo-specific finding."""
+        schema = load_schema()
+        desc = schema["$defs"]["Limits"]["properties"]["not_captured"]["description"]
+        low = desc.lower()
+        assert "universal" in low or "not a per-repo" in low, desc
+
+    def test_edge_meta_has_no_evidence_spans_property(self):
+        """WI-vozar / ADR-0040: the published schema drops the evidence_spans
+        sub-property under Edge.meta (a dead, never-populated field); evidence_lang
+        stays (kept + central-stamped)."""
+        schema = load_schema()
+        meta_props = schema["$defs"]["Edge"]["properties"]["meta"]["properties"]
+        assert "evidence_spans" not in meta_props
+        assert "evidence_lang" in meta_props
+
+    def test_view_enum_accepts_all_projected_views(self):
+        """WI-tagaj: the published schema pins ``view`` to an enum of all
+        projected view names, so compact/tiered outputs validate (it was a
+        ``const`` of 'behavior_map', which rejected the projections)."""
+        from hypergumbo_core.schema import VIEW_NAMES
+
+        schema = load_schema()
+        view_schema = schema["properties"]["view"]
+        assert "const" not in view_schema, "view must be an enum, not a const"
+        assert set(view_schema["enum"]) == set(VIEW_NAMES)
+        # every projected view name validates against the view sub-schema
+        for name in ("behavior_map", "compact", "tiered"):
+            jsonschema.validate(name, view_schema)
+        # a bogus view is rejected
+        with pytest.raises(jsonschema.ValidationError):
+            jsonschema.validate("bogus_view", view_schema)
+
     @pytest.mark.skipif(
         not _has_hypergumbo_meta(),
         reason="requires hypergumbo meta-package"
@@ -198,7 +234,6 @@ class TestSchemaValidation:
             evidence_type="ast_call_direct",
             confidence=0.95,
             evidence_lang="python",
-            evidence_spans=[{"line": 3, "col": 4}],
         )
         edge.meta = {"call_style": "direct"}
 
@@ -322,17 +357,14 @@ class TestSchemaUpToDate:
             # From analyzers
             "calls", "imports", "instantiates", "extends", "implements",
             "references", "depends_on", "links", "sources",
-            "script_src", "base_image", "kernel_launch",
-            # From linkers (still endpoint_shape — pending future Phase-3-style
-            # migrations of their respective protocol-specialized linkers)
-            "grpc_calls",  # gRPC
-            "http_calls",  # HTTP
-            "graphql_calls",  # GraphQL
-            # Canonical Phase-3 fold targets
+            # Canonical Phase-3 fold targets (endpoint_shape fully drained by
+            # WI-pumav Batches 1a-7; the long-tail values fold onto these)
             "event_publishes",  # async producer→consumer
             "dispatches_to",   # runtime dispatch indirection
-            # GraphQL Resolver — pending_classification per-family audit
-            "resolver_implements", "resolver_for_type",
+            "includes", "contains", "data_flows_to",
+            # The resolver/OpenAPI/RPC family (the last pending_classification
+            # values) folded to canonical implements/references + meta and was
+            # pruned per audit-findings 0016 (WI-sumik / WI-pusuv Option B).
         }
 
         missing = known_edge_types - edge_types_in_schema
@@ -504,21 +536,31 @@ class TestSchemaDataclassSync:
 
         schema = load_schema()
         span = Span(start_line=1, end_line=2, start_col=0, end_col=1)
+        # INV-virik: the AnalysisRun reporting lists are conditional (omitted when
+        # empty), so populate them for the fully-populated key-set comparison.
+        run_sample = AnalysisRun.create(pass_id="python", version="1.0")
+        run_sample.skipped_passes = [{"pass": "p", "reason": "r"}]
+        run_sample.failed_files = [{"path": "x.py", "reason": "boom"}]
+        run_sample.warnings = ["w"]
+        # INV-nuzal: node.quality is conditional (omitted when None), so populate
+        # it for the fully-populated key-set comparison.
+        symbol_sample = Symbol(
+            id="python:a.py:1-2:f:function", name="f", kind="function",
+            language="python", path="a.py", span=span,
+            origin=["python"], origin_run_id="uuid:1",
+        )
+        symbol_sample.quality = {"score": 0.9, "reason": "sample"}
         samples = {
             "Span": span,
-            "Symbol": Symbol(
-                id="python:a.py:1-2:f:function", name="f", kind="function",
-                language="python", path="a.py", span=span,
-                origin=["python"], origin_run_id="uuid:1",
-            ),
+            "Symbol": symbol_sample,
             "Edge": Edge.create(
                 src="a", dst="b", edge_type="calls", line=1,
                 origin="python", origin_run_id="uuid:1",
-                evidence_lang="python", evidence_spans=[{"line": 1}],
+                evidence_lang="python",
                 dst_ref=ExternalRef(lang="python", module_path="os", name="getcwd"),
                 derived_from=["sym:1"],
             ),
-            "AnalysisRun": AnalysisRun.create(pass_id="python", version="1.0"),
+            "AnalysisRun": run_sample,
         }
         for def_name, instance in samples.items():
             schema_keys = set(schema["$defs"][def_name]["properties"])
@@ -633,7 +675,14 @@ class TestTopLevelBlockTyping:
             max_tier_applied=2,
             max_files_per_analyzer=10,
             test_files_excluded=True,
+            partial_results_reason="one or more passes crashed; results are partial",
+            # INV-virik: the diagnostic reporting lists are conditional (omitted
+            # when empty), so populate them for the fully-populated comparison.
+            truncated_files=["big.py"],
+            skipped_languages=["haskell"],
         )
+        lim.add_failed_file(path="broken.py", reason="SyntaxError", analyzer="python")
+        lim.add_tier_filtered_file("dist/bundle.min.js")
         assert set(lim.to_dict()) == set(limits_def["properties"])
 
     def test_limits_block_validates_real_output(self):
@@ -653,6 +702,28 @@ class TestTopLevelBlockTyping:
         lim.add_ambiguous_path("vendor/x.py", 3, "vendored?")
         validator = make_validator(schema, "Limits")
         validator.validate(lim.to_dict())
+
+    def test_supply_chain_summary_has_no_phantom_by_tier(self):
+        """WI-vafid: supply_chain_summary must not declare a `by_tier` wrapper the
+        producer never emits — `_compute_supply_chain_summary` keys tiers
+        (first_party / internal_dep / external_dep, plus derived_skipped) at the
+        top level, each carrying {files, symbols} (external_dep also an
+        `ecosystem` sub-bucket)."""
+        schema = load_schema()
+        scs = schema["properties"]["supply_chain_summary"]
+        assert "by_tier" not in scs.get("properties", {}), (
+            "phantom by_tier wrapper: producer emits tier names at the top level"
+        )
+        # A real producer-shaped summary validates against the declared schema.
+        real = {
+            "first_party": {"files": 3, "symbols": 10},
+            "internal_dep": {"files": 0, "symbols": 0},
+            "external_dep": {
+                "files": 1, "symbols": 2, "ecosystem": {"stdlib": 2},
+            },
+            "derived_skipped": {"files": 0, "paths": []},
+        }
+        jsonschema.Draft202012Validator(scs).validate(real)
 
     def test_metrics_properties_match_compute_metrics(self):
         """The metrics block's property set equals compute_metrics() output."""

@@ -39,6 +39,7 @@ from __future__ import annotations
 
 import pytest
 
+from hypergumbo_core.analyze.base import _short_sha256
 from hypergumbo_core.ir import Span, Symbol
 from hypergumbo_core.scip._generated import scip_pb2
 from hypergumbo_core.scip.index import (
@@ -123,7 +124,10 @@ def test_single_definition_becomes_symbol() -> None:
     assert s.path == "mod.py"
     assert s.span == Span(start_line=6, end_line=9, start_col=0, end_col=0)
     assert s.origin == ["scip"]
-    assert s.stable_id == sym
+    # INV-hunup: stable_id is the canonical sha256 of the SCIP moniker; the raw
+    # moniker is preserved in meta["scip_symbol"].
+    assert s.stable_id == _short_sha256(sym)
+    assert s.stable_id.startswith("sha256:")
     assert s.meta and s.meta.get("scip_symbol") == sym
 
 

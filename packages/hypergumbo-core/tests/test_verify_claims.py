@@ -11,6 +11,7 @@ import pytest
 import yaml
 
 from hypergumbo_core.verify_claims import (
+    _MAX_EVIDENCE_ROWS,
     BoundaryCoverage,
     Claim,
     ClaimsFileError,
@@ -496,6 +497,114 @@ class TestVerifyTaintClaim:
         assert verdict.verdict == "violated"
         assert verdict.evidence_count == 7
         assert "and 2 more" in verdict.details
+
+
+def _flow(
+    *,
+    source_symbol: str,
+    sink_symbol: str,
+    source_prim: str = "cmd_run",
+    sink_prim: str = "replace",
+    path: list[str] | None = None,
+) -> TaintFlowFinding:
+    """A violating (unsanitized plaintext -> host_fs) finding with explicit
+    symbol identity, for the WI-kikis drill-down evidence tests."""
+    return TaintFlowFinding(
+        taint_label="plaintext",
+        source_symbol=source_symbol,
+        source_primitive=source_prim,
+        sink_symbol=sink_symbol,
+        sink_primitive=sink_prim,
+        sink_zone="host_fs",
+        sanitized=False,
+        confidence="approximate",
+        analysis_method="structural",
+        path=path if path is not None else [],
+    )
+
+
+class TestViolatedFlowEvidence:
+    """WI-kikis: a violated taint claim must surface per-flow drill-down
+    evidence (symbol IDs + call-graph path) and deduplicate identical-looking
+    rows, instead of collapsing every flow to a bare ``primitive -> primitive``
+    pair (which, at high counts, rendered as verbatim duplicates hiding 99%+
+    of the evidence)."""
+
+    def _claim(self) -> Claim:
+        return Claim(
+            id="TF-001",
+            text="No plaintext to host_fs",
+            constraint_taint_flow=TaintFlowConstraint(
+                source_taint="plaintext",
+                prohibited_sink_zone="host_fs",
+            ),
+        )
+
+    def test_details_row_carries_symbol_ids(self) -> None:
+        verdict = verify_taint_claim(
+            self._claim(),
+            [_flow(source_symbol="pkg.a:cmd_run", sink_symbol="pkg.b:replace")],
+        )
+        assert "pkg.a:cmd_run" in verdict.details
+        assert "pkg.b:replace" in verdict.details
+
+    def test_identical_primitive_rows_distinguished_by_symbol(self) -> None:
+        # Same primitive names, DIFFERENT symbols: these are distinct flows that
+        # previously rendered as verbatim duplicates ("cmd_run -> replace" x N).
+        findings = [
+            _flow(source_symbol=f"s{i}", sink_symbol=f"d{i}") for i in range(3)
+        ]
+        verdict = verify_taint_claim(self._claim(), findings)
+        for i in range(3):
+            assert f"s{i}" in verdict.details
+            assert f"d{i}" in verdict.details
+
+    def test_verbatim_duplicate_flows_collapse(self) -> None:
+        # Truly identical findings (same symbols + path) are one distinct flow.
+        f = _flow(source_symbol="s", sink_symbol="d")
+        verdict = verify_taint_claim(self._claim(), [f, f, f, f, f])
+        assert verdict.evidence_count == 5          # total flows still reported
+        assert len(verdict.evidence) == 1           # one distinct flow
+        assert "(1 distinct)" in verdict.details    # honest total-vs-distinct
+
+    def test_structured_evidence_has_drilldown_keys(self) -> None:
+        verdict = verify_taint_claim(
+            self._claim(),
+            [_flow(source_symbol="s", sink_symbol="d", path=["s", "mid", "d"])],
+        )
+        assert verdict.evidence == [
+            {
+                "source_symbol": "s",
+                "source_primitive": "cmd_run",
+                "sink_symbol": "d",
+                "sink_primitive": "replace",
+                "path": ["s", "mid", "d"],
+            }
+        ]
+
+    def test_path_hops_shown_in_details(self) -> None:
+        verdict = verify_taint_claim(
+            self._claim(),
+            [_flow(source_symbol="s", sink_symbol="d", path=["s", "m1", "m2", "d"])],
+        )
+        assert "via 2 hop(s)" in verdict.details
+
+    def test_structured_evidence_is_bounded(self) -> None:
+        findings = [
+            _flow(source_symbol=f"s{i}", sink_symbol=f"d{i}")
+            for i in range(_MAX_EVIDENCE_ROWS + 25)
+        ]
+        verdict = verify_taint_claim(self._claim(), findings)
+        assert verdict.evidence_count == _MAX_EVIDENCE_ROWS + 25
+        assert len(verdict.evidence) == _MAX_EVIDENCE_ROWS
+
+    def test_to_dict_includes_evidence(self) -> None:
+        d = verify_taint_claim(
+            self._claim(), [_flow(source_symbol="s", sink_symbol="d")]
+        ).to_dict()
+        assert "evidence" in d
+        assert d["evidence"][0]["source_symbol"] == "s"
+        assert d["evidence"][0]["sink_symbol"] == "d"
 
 
 class TestVerifyClaimsMixed:

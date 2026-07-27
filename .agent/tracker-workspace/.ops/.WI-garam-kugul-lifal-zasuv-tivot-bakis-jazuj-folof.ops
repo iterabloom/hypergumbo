@@ -47,3 +47,18 @@
   clock: 4  # b95e
   nonce: b95e  # b95e
   message: "RELATED_BUT_DISTINCT to INV-gizik: files_analyzed semantics+nodes_emitted: gizik=IR-consuming passes show 0; garam=11 ARs scan files but emit 0 nodes; both propose nodes_emitted field. Distinct fix; cross-link not fold. (tracker-hygiene-sweep 2026-06-08T174504Z)"  # b95e
+- op: update  # 4813
+  at: '2026-07-12T08:14:47Z'  # 4813
+  by: agent  # 4813
+  actor: jgstern_agent  # 4813
+  clock: 5  # 4813
+  nonce: '4813'  # 4813
+  set:  # 4813
+    status: done  # 4813
+- op: discuss  # 3d06
+  at: '2026-07-12T08:14:47Z'  # 3d06
+  by: agent  # 3d06
+  actor: jgstern_agent  # 3d06
+  clock: 6  # 3d06
+  nonce: 3d06  # 3d06
+  message: "Wave-4 triage 2026-07-12: nodes_emitted field + files_analyzed contract shipped -- ir.py:269-275 (nodes_emitted:int; files_analyzed contractually == profile.languages[L].files per ADR-0043, do NOT overload). Trivial residual: spec sec 302 AR listing omits nodes_emitted/edges_emitted."  # 3d06

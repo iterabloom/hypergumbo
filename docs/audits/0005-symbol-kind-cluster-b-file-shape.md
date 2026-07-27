@@ -185,7 +185,7 @@ verdicts:
     diagnostic_test:
       cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"script\" and s.axis == \"endpoint_shape\" for s in SYMBOL_KINDS)'"
       expect: exit_code:0
-    rationale: "pyproject.toml [project.scripts] / package.json scripts entries — file with executable-script role. Fold to file + meta['entry_role']='script'."
+    rationale: "pyproject.toml [project.scripts] / package.json scripts entries — file with executable-script role. Fold to file + meta['entry_role']='script'. NOTE (WI-papag): this KIND fold does not mandate noise-filtering every entry_role=script node — downstream, the default-view noise filter is subset-refined per ADR-0043 §5: bare npm run-scripts (meta['command'], no entry_point) are filtered as noise, but entrypoint-bearing pyproject/console-scripts (meta['entry_point'], detected as CLI_COMMAND @0.99) are exempt and survive into detect_entrypoints."
   - value: tsconfig
     verdict: DEPRECATE-NO-FOLD
     fold_target: null

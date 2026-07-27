@@ -53,6 +53,7 @@ from hypergumbo_core.analyze.base import (
     TreeSitterAnalyzer,
     find_child_by_type,
     iter_tree,
+    defer_bare_method_call,
     make_file_id,
     make_file_stable_id,
     make_symbol_id,
@@ -231,12 +232,33 @@ def _extract_subscript_signature(
     return sig
 
 
+# Node types whose DIRECT ``property_declaration`` children are stored properties
+# of a type body (struct/class/actor/extension -> ``class_body``; enum ->
+# ``enum_class_body``). A binding whose direct parent is anything else — most
+# importantly ``statements`` (a method/init/closure body) — is a LOCAL, not a
+# field. Keying field-eligibility off this direct parent (rather than merely
+# "has some enclosing type") is what distinguishes a stored property from a
+# method-local ``let``/``var``, which also parses as ``property_declaration`` and
+# also has an enclosing type (INV-lanaz).
+_STORED_PROPERTY_BODY_TYPES = frozenset({"class_body", "enum_class_body"})
+
+
 def _get_enclosing_type(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
-    """Walk up the tree to find the enclosing class/struct/enum/protocol name."""
+    """Walk up the tree to find the enclosing type name.
+
+    tree-sitter-swift models struct/class/enum/actor AND ``extension`` all as
+    ``class_declaration``. Read the grammar's ``name`` field rather than
+    scanning direct children for a ``type_identifier``: an ``extension``'s
+    extended type is wrapped in a ``user_type`` node, so a direct-child
+    ``type_identifier`` search returns None (WI-kudir) — which silently demoted
+    every extension member to a bare file-level symbol (method->function, and
+    names/qualified-names lost their ``Type.`` prefix). The ``name`` field
+    points at the right node for both plain types and extensions.
+    """
     current = node.parent
     while current is not None:
         if current.type in ("class_declaration", "protocol_declaration"):
-            name_node = find_child_by_type(current, "type_identifier")
+            name_node = current.child_by_field_name("name")
             if name_node:
                 return node_text(name_node, source)
         current = current.parent
@@ -255,7 +277,9 @@ def _get_swift_type_ancestors(
     current = node.parent
     while current is not None:
         if current.type in ("class_declaration", "protocol_declaration"):
-            name_node = find_child_by_type(current, "type_identifier")
+            # ``name`` field (not a direct ``type_identifier`` scan) so that
+            # ``extension T``'s user_type-wrapped name resolves (WI-kudir).
+            name_node = current.child_by_field_name("name")
             if name_node:
                 chain.append(node_text(name_node, source))
         current = current.parent
@@ -485,7 +509,7 @@ def _extract_symbols_from_file(
                     signature=signature,
                     docstring=extract_preceding_doc_comment(node, source, "swift"),
                     modifiers=modifiers,
-                    lines_of_code=end_line - start_line + 1,
+                    line_span=end_line - start_line + 1,
                     is_exported=any(m in modifiers for m in ("public", "open")),
                     qualified_name=_make_swift_qualified_name(type_ancestors, func_name),
                     cyclomatic_complexity=compute_cyclomatic_complexity(node, "swift"),
@@ -544,7 +568,7 @@ def _extract_symbols_from_file(
                     origin_run_id=run_id,
                     meta=meta,
                     modifiers=type_modifiers,
-                    lines_of_code=end_line - start_line + 1,
+                    line_span=end_line - start_line + 1,
                     is_exported=any(m in type_modifiers for m in ("public", "open")),
                     qualified_name=_make_swift_qualified_name(type_ancestors, type_name),
                 )
@@ -582,7 +606,7 @@ def _extract_symbols_from_file(
                     origin_run_id=run_id,
                     meta=meta,
                     modifiers=proto_modifiers,
-                    lines_of_code=end_line - start_line + 1,
+                    line_span=end_line - start_line + 1,
                     is_exported=any(m in proto_modifiers for m in ("public", "open")),
                     qualified_name=_make_swift_qualified_name(type_ancestors, type_name),
                 )
@@ -616,7 +640,7 @@ def _extract_symbols_from_file(
                     ),
                     origin=PASS_ID,
                     origin_run_id=run_id,
-                    lines_of_code=end_line - start_line + 1,
+                    line_span=end_line - start_line + 1,
                     qualified_name=_make_swift_qualified_name(type_ancestors, type_name),
                 )
                 analysis.symbols.append(symbol)
@@ -667,13 +691,93 @@ def _extract_symbols_from_file(
                         origin_run_id=run_id,
                         signature=signature,
                         modifiers=modifiers,
-                        lines_of_code=end_line - start_line + 1,
+                        line_span=end_line - start_line + 1,
                         is_exported=any(m in modifiers for m in ("public", "open")),
                         qualified_name=_make_swift_qualified_name(type_ancestors, prop_name),
                     )
                     analysis.symbols.append(symbol)
                     analysis.node_for_symbol[symbol.id] = node
                     analysis.symbol_by_name[full_name] = symbol
+
+        # WI-jusus (emission-parity F5): STORED properties / top-level bindings.
+        # A non-computed property_declaration (no computed_property child; those
+        # matched the branch above as kind="property") is either a STORED
+        # property of a type body -> kind="field", or a top-level let/var ->
+        # kind="variable". Swift reuses one property_declaration node for both AND
+        # for method-/init-/closure-local bindings; the DIRECT parent
+        # discriminates. A stored property's parent is a type body
+        # (class_body/enum_class_body); a top-level binding's parent is
+        # source_file; a local binding's parent is `statements`. We must gate on
+        # the direct parent — NOT merely on `_get_enclosing_type` being truthy,
+        # because a local inside a *method* also has an enclosing type and would
+        # otherwise leak in as a field (INV-lanaz). Locals are skipped
+        # (module-level-only contract).
+        elif node.type == "property_declaration":
+            pat = find_child_by_type(node, "pattern")
+            id_node = find_child_by_type(pat, "simple_identifier") if pat else None
+            parent_type = node.parent.type if node.parent is not None else ""
+            is_top_level = parent_type == "source_file"
+            enclosing_type = (
+                _get_enclosing_type(node, source)
+                if parent_type in _STORED_PROPERTY_BODY_TYPES
+                else None
+            )
+            if id_node is not None and (enclosing_type or is_top_level):
+                prop_name = node_text(id_node, source)
+                if enclosing_type:
+                    kind = "field"
+                    full_name = f"{enclosing_type}.{prop_name}"
+                else:
+                    kind = "variable"
+                    full_name = prop_name
+
+                start_line = node.start_point[0] + 1
+                end_line = node.end_point[0] + 1
+                modifiers = _extract_modifiers_swift(node)
+
+                # Declared type from type_annotation (None for inferred `let x = 5`).
+                type_ann = find_child_by_type(node, "type_annotation")
+                prop_type = None
+                if type_ann:
+                    for tc in type_ann.children:
+                        if tc.type in (
+                            "user_type", "array_type", "dictionary_type",
+                            "optional_type", "tuple_type", "function_type",
+                        ):
+                            prop_type = node_text(tc, source)
+                            break
+
+                type_ancestors = _get_swift_type_ancestors(node, source)
+                qualified = _make_swift_qualified_name(type_ancestors, prop_name)
+                sym = Symbol(
+                    id=make_symbol_id("swift", str(file_path), start_line, end_line, full_name, kind),
+                    name=full_name,
+                    kind=kind,
+                    language="swift",
+                    path=str(file_path),
+                    span=Span(
+                        start_line=start_line,
+                        end_line=end_line,
+                        start_col=node.start_point[1],
+                        end_col=node.end_point[1],
+                    ),
+                    origin=PASS_ID,
+                    origin_run_id=run_id,
+                    signature=prop_type,
+                    modifiers=modifiers,
+                    stable_id=make_typed_stable_id(
+                        kind, prop_type or "",
+                        visibility_from_modifiers(modifiers),
+                        name=prop_name, qualified_name=qualified,
+                        file_stable_id=file_stable_id,
+                    ),
+                    line_span=end_line - start_line + 1,
+                    is_exported=any(m in modifiers for m in ("public", "open")),
+                    qualified_name=qualified,
+                )
+                analysis.symbols.append(sym)
+                analysis.node_for_symbol[sym.id] = node
+                analysis.symbol_by_name[full_name] = sym
 
         # Subscript declaration
         elif node.type == "subscript_declaration":
@@ -703,7 +807,7 @@ def _extract_symbols_from_file(
                 origin_run_id=run_id,
                 signature=signature,
                 modifiers=modifiers,
-                lines_of_code=end_line - start_line + 1,
+                line_span=end_line - start_line + 1,
                 is_exported=any(m in modifiers for m in ("public", "open")),
                 qualified_name=_make_swift_qualified_name(type_ancestors, sub_label),
                 cyclomatic_complexity=compute_cyclomatic_complexity(node, "swift"),
@@ -835,6 +939,15 @@ def _extract_edges_from_file(
             vname, vtype = _extract_var_type(node, source)
             if vname and vtype:
                 var_types[vname] = vtype
+        elif node.type == "parameter":
+            # INV-fahub / WI-votar recall recovery: thread function/method
+            # parameter types (previously dropped) into the receiver map so a
+            # param-typed receiver (`func handle(client: Client)` → its
+            # ``client.foo()`` calls) resolves via the type-qualified path
+            # instead of misbinding to an arbitrary same-named def below.
+            pname, ptype = _swift_param_name_and_type(node, source)
+            if pname and ptype:
+                var_types[pname] = ptype
 
     for node in iter_tree(tree.root_node):
         if node.type == "import_declaration":
@@ -847,7 +960,6 @@ def _extract_edges_from_file(
                     edge_type="imports",
                     line=node.start_point[0] + 1,
                     evidence_type="import_statement",
-                    confidence=0.95,
                     origin=PASS_ID,
                     origin_run_id=run_id,
                 ))
@@ -855,6 +967,11 @@ def _extract_edges_from_file(
         elif node.type == "call_expression":
             current_function = _get_enclosing_function(node, source, local_symbols)
             if current_function is not None:
+                # INV-fahub Site-1: enclosing type short name for a bare /
+                # implicit-``self`` call, so a deferred bare→method call can be
+                # recovered by the inherited_calls MRO walker (inherited) or left
+                # external (cross-class magnet).
+                _enclosing_type = _get_enclosing_type(node, source)
                 callee_name, receiver_hint = _extract_call_target(
                     node, source,
                 )
@@ -873,7 +990,6 @@ def _extract_edges_from_file(
                                 edge_type="calls",
                                 line=node.start_point[0] + 1,
                                 evidence_type="ast_call",
-                                confidence=0.90,
                                 origin=PASS_ID,
                                 origin_run_id=run_id,
                                 meta={"call_construct": "function"},
@@ -887,14 +1003,67 @@ def _extract_edges_from_file(
                                 edge_type="calls",
                                 line=node.start_point[0] + 1,
                                 evidence_type="ast_call",
-                                confidence=0.90,
                                 origin=PASS_ID,
                                 origin_run_id=run_id,
                                 meta={"call_construct": "function"},
                             ))
                             resolved = True
 
+                    if not resolved and receiver_hint is not None:
+                        # INV-fahub (WI-votar): a method call `recv.m()` whose
+                        # receiver type could not be resolved MUST NOT fall
+                        # through to the bare short-name binds below and bind to
+                        # an arbitrary same-named internal def (the
+                        # create/delete/run @0.80 funnel). Emit an honest
+                        # unresolved external edge instead, mirroring py.py:
+                        # `calls` / external-unresolved dst / `is_resolved=False`
+                        # / `evidence_type="ast_call"` (→ 0.40) /
+                        # `call_construct="method"`. Stamp `receiver_type_hint`
+                        # when the receiver's TYPE is known (its method just was
+                        # not found in-repo) so the shared inherited_calls linker
+                        # can recover it (Site-2 Step-1); an untyped/duck
+                        # receiver gets no hint (bias to unresolved). The linker
+                        # is the sole minter of the resolved edge (INV-nilud).
+                        gate_meta: dict = {"call_construct": "method"}
+                        receiver_type = var_types.get(receiver_hint)
+                        if receiver_type:
+                            gate_meta["receiver_type_hint"] = receiver_type
+                        # Preserve the WI-huzuv external dst_ref (module_path from
+                        # the receiver's known type / import alias / receiver name,
+                        # matching make_unresolved_edge) so a module-qualified
+                        # external call (`HelpersModule.doWork()`) keeps its
+                        # structured reference even while suppressed. `receiver_hint`
+                        # is non-None here, so the fallback is always a real value.
+                        gate_path_hint = (
+                            receiver_type
+                            or import_aliases.get(callee_name)
+                            or receiver_hint
+                        )
+                        edges.append(Edge.create(
+                            src=current_function.id,
+                            dst=f"swift:external:0-0:{callee_name}:unresolved",
+                            edge_type="calls",
+                            line=node.start_point[0] + 1,
+                            evidence_type="ast_call",
+                            is_resolved=False,
+                            origin=PASS_ID,
+                            origin_run_id=run_id,
+                            meta=gate_meta,
+                            dst_ref=ExternalRef(
+                                lang="swift",
+                                module_path=gate_path_hint,
+                                name=callee_name,
+                            ),
+                        ))
+                        resolved = True
+
                     if not resolved and callee_name in local_symbols:
+                        # Swift keys ``local_symbols`` by full name (``Type.method``),
+                        # so a bare short name resolves here only to a same-file
+                        # top-level FUNCTION — never a class-member method (those go
+                        # through the resolver path below, which is INV-fahub-gated).
+                        # A free-function bind is legitimate (callable bare), so no
+                        # magnet gate is needed on this branch.
                         callee = local_symbols[callee_name]
                         edges.append(Edge.create(
                             src=current_function.id,
@@ -902,7 +1071,6 @@ def _extract_edges_from_file(
                             edge_type="calls",
                             line=node.start_point[0] + 1,
                             evidence_type="ast_call",
-                            confidence=0.85,
                             origin=PASS_ID,
                             origin_run_id=run_id,
                             meta={"call_construct": "function"},
@@ -910,20 +1078,23 @@ def _extract_edges_from_file(
                         resolved = True
 
                     if not resolved:
-                        # Build path hint: try type name first, then import alias, then receiver
-                        path_hint = None
-                        if receiver_hint and receiver_hint in var_types:
-                            path_hint = var_types[receiver_hint]
-                        if not path_hint:
-                            path_hint = (
-                                import_aliases.get(callee_name)
-                                or receiver_hint
-                            )
+                        # Bare call only — a receiver call is gated above (which
+                        # sets resolved=True), so receiver_hint is None here.
+                        # Resolve by short name via the resolver, else emit an
+                        # honest external edge. INV-fahub: a bare call resolving
+                        # only to a DIFFERENT type's method on weak short-name
+                        # evidence is a magnet — defer to Site-1 (enclosing_class).
+                        path_hint = import_aliases.get(callee_name)
                         lookup_result = resolver.lookup(callee_name, path_hint=path_hint, caller_path=_caller_path)
-                        if lookup_result.found and lookup_result.symbol is not None:
+                        _sym = lookup_result.symbol
+                        _defer = _sym is not None and defer_bare_method_call(
+                            _sym.kind, _sym.name,
+                            lookup_result.match_type, _enclosing_type,
+                        )
+                        if lookup_result.found and _sym is not None and not _defer:
                             edges.append(Edge.create(
                                 src=current_function.id,
-                                dst=lookup_result.symbol.id,
+                                dst=_sym.id,
                                 edge_type="calls",
                                 line=node.start_point[0] + 1,
                                 evidence_type="ast_call",
@@ -941,6 +1112,7 @@ def _extract_edges_from_file(
                                     ExternalRef(lang="swift", module_path=path_hint, name=callee_name)
                                     if path_hint else None
                                 ),
+                                enclosing_class=_enclosing_type,
                             ))
 
         # Function references in non-call contexts (INV-dinur).
@@ -965,7 +1137,6 @@ def _extract_edges_from_file(
                             edge_type="references",
                             line=node.start_point[0] + 1,
                             evidence_type="function_reference",
-                            confidence=0.80,
                             origin=PASS_ID,
                             origin_run_id=run_id,
                         ))
@@ -1000,7 +1171,6 @@ def _extract_edges_from_file(
                                 edge_type="references",
                                 line=node.start_point[0] + 1,
                                 evidence_type="function_reference",
-                                confidence=0.80,
                                 origin=PASS_ID,
                                 origin_run_id=run_id,
                             ))
@@ -1014,6 +1184,164 @@ def _extract_edges_from_file(
 
 _VAPOR_HTTP_METHODS = frozenset({"get", "post", "put", "delete", "patch"})
 _VAPOR_RECEIVERS = frozenset({"app", "routes", "router"})
+# Methods that RETURN a RoutesBuilder (chainable prefix / closure group).
+_VAPOR_GROUP_METHODS = frozenset({"grouped", "group"})
+# Valid HTTP methods for the explicit ``.on(.VERB, …)`` form — gates against
+# generic ``.on(.someEvent)`` DSLs that are not routes.
+_VAPOR_ON_HTTP_METHODS = frozenset({
+    "GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS", "TRACE", "CONNECT",
+})
+# The extractor only runs on files that import a supported web framework —
+# the root anchor is a bare name (`app`/`routes`/`router`), so this import gate
+# is what keeps a same-named non-builder variable from fabricating routes.
+_VAPOR_FRAMEWORK_IMPORTS = frozenset({"Vapor", "Hummingbird"})
+
+
+def _swift_imports_vapor(root_node: "tree_sitter.Node", source: bytes) -> bool:
+    """True when the file imports Vapor or Hummingbird (the route-pass gate)."""
+    for node in iter_tree(root_node):
+        if node.type == "import_declaration":
+            id_node = find_child_by_type(node, "identifier")
+            if id_node is not None and node_text(id_node, source) in _VAPOR_FRAMEWORK_IMPORTS:
+                return True
+    return False
+
+
+def _swift_nav_receiver_method(
+    nav_node: "tree_sitter.Node", source: bytes,
+) -> tuple[Optional["tree_sitter.Node"], Optional[str]]:
+    """Split a ``navigation_expression`` (``RECEIVER.method``) into (receiver, method).
+
+    The receiver is the sole non-suffix child — a ``simple_identifier`` for a
+    bare receiver, or a nested ``call_expression`` / ``navigation_expression``
+    for a grouped chain. The ``.`` token and interleaved comments are skipped.
+    """
+    method: Optional[str] = None
+    suffix = find_child_by_type(nav_node, "navigation_suffix")
+    if suffix is not None:
+        method_id = find_child_by_type(suffix, "simple_identifier")
+        if method_id is not None:
+            method = node_text(method_id, source)
+    receiver = next(
+        (child for child in nav_node.children
+         if child.type not in ("navigation_suffix", ".", "comment", "multiline_comment")),
+        None,
+    )
+    return receiver, method
+
+
+def _swift_string_segments(
+    call_suffix: Optional["tree_sitter.Node"], source: bytes,
+) -> list[str]:
+    """Unlabeled string-literal path segments of a call (skips ``use:``/middleware)."""
+    segments: list[str] = []
+    if call_suffix is None:  # pragma: no cover - well-formed Swift always has one
+        return segments
+    value_args = find_child_by_type(call_suffix, "value_arguments")
+    if value_args is None:
+        return segments
+    for arg in value_args.children:
+        if arg.type != "value_argument":
+            continue
+        if find_child_by_type(arg, "value_argument_label") is not None:
+            continue
+        str_lit = find_child_by_type(arg, "line_string_literal")
+        if str_lit is None:
+            continue
+        text_node = find_child_by_type(str_lit, "line_str_text")
+        if text_node is None:  # pragma: no cover - empty string literal
+            continue
+        seg = node_text(text_node, source).strip("/")
+        if seg:
+            segments.append(seg)
+    return segments
+
+
+def _swift_on_verb_and_segments(
+    call_suffix: Optional["tree_sitter.Node"], source: bytes,
+) -> tuple[Optional[str], list[str]]:
+    """Parse a Vapor ``.on(.VERB, "path"…, use:)`` call into (verb, path segments)."""
+    verb: Optional[str] = None
+    segments: list[str] = []
+    if call_suffix is None:  # pragma: no cover - well-formed Swift always has one
+        return verb, segments
+    value_args = find_child_by_type(call_suffix, "value_arguments")
+    if value_args is None:  # pragma: no cover - `.on()` always has arguments
+        return verb, segments
+    for arg in value_args.children:
+        if arg.type != "value_argument":
+            continue
+        if find_child_by_type(arg, "value_argument_label") is not None:
+            continue
+        prefix_expr = find_child_by_type(arg, "prefix_expression")
+        if prefix_expr is not None:
+            if verb is None:
+                verb_id = find_child_by_type(prefix_expr, "simple_identifier")
+                if verb_id is not None:
+                    verb = node_text(verb_id, source).upper()
+            continue
+        str_lit = find_child_by_type(arg, "line_string_literal")
+        if str_lit is not None:
+            text_node = find_child_by_type(str_lit, "line_str_text")
+            if text_node is not None:
+                seg = node_text(text_node, source).strip("/")
+                if seg:
+                    segments.append(seg)
+    return verb, segments
+
+
+def _swift_lambda_param_name(
+    call_suffix: Optional["tree_sitter.Node"], source: bytes,
+) -> Optional[str]:
+    """Name of a trailing closure's first parameter (the sub-builder), if any."""
+    if call_suffix is None:  # pragma: no cover - callers pass a real suffix
+        return None
+    lam = find_child_by_type(call_suffix, "lambda_literal")
+    if lam is None:
+        return None
+    lft = find_child_by_type(lam, "lambda_function_type")
+    if lft is None:
+        return None
+    for node in iter_tree(lft):
+        if node.type == "lambda_parameter":
+            id_node = find_child_by_type(node, "simple_identifier")
+            if id_node is not None:
+                return node_text(id_node, source)
+    return None  # pragma: no cover - a lambda_parameter always wraps an identifier
+
+
+def _swift_param_name_and_type(
+    param_node: "tree_sitter.Node", source: bytes,
+) -> tuple[Optional[str], Optional[str]]:
+    """Internal parameter name (last identifier before the type) and its type text."""
+    idents = [c for c in param_node.children if c.type == "simple_identifier"]
+    name = node_text(idents[-1], source) if idents else None
+    ptype: Optional[str] = None
+    user_type = find_child_by_type(param_node, "user_type")
+    if user_type is not None:
+        type_id = find_child_by_type(user_type, "type_identifier")
+        ptype = node_text(type_id, source) if type_id is not None else node_text(user_type, source)
+    return name, ptype
+
+
+def _swift_is_builder_type(ptype: Optional[str]) -> bool:
+    """True when a parameter type denotes a Vapor route builder root."""
+    if ptype is None:
+        return False
+    return "RoutesBuilder" in ptype or ptype == "Application"
+
+
+def _swift_rhs_after_equals(
+    node: "tree_sitter.Node",
+) -> Optional["tree_sitter.Node"]:
+    """The initializer expression following the last ``=`` in a binding node."""
+    eq_index: Optional[int] = None
+    for i, child in enumerate(node.children):
+        if child.type == "=":
+            eq_index = i
+    if eq_index is None or eq_index + 1 >= len(node.children):
+        return None
+    return node.children[eq_index + 1]
 
 
 def _extract_vapor_usage_contexts(
@@ -1025,10 +1353,25 @@ def _extract_vapor_usage_contexts(
 ) -> tuple[list[UsageContext], list[Symbol]]:
     """Extract UsageContext records and route symbols for Vapor/Hummingbird routes.
 
-    Detects patterns like:
-    - ``app.get("hello") { req in ... }``
-    - ``routes.post("users") { req in ... }``
-    - ``app.get("users", use: controller.index)``
+    Handles the full grouped-builder surface a RouteCollection controller uses
+    (INV-povit), not just a bare receiver + verb:
+
+    - bare verb: ``app.get("hello") { req in ... }`` / ``routes.post("users", use: h)``
+    - method-chained groups: ``app.grouped("api").grouped("users").get(use: h)``
+      (a ``.grouped(<Middleware>)`` link contributes no path segment)
+    - closure groups: ``routes.group("todos") { todos in todos.get(use: h) }``
+    - variable-bound builders: ``let g = routes.grouped("x"); g.get(use: h)``
+      (tracked forward through the block; reassignment updates/invalidates)
+    - explicit method: ``app.on(.GET, "stream", use: h)``
+    - the ``Application.routes`` property and a differently-named
+      ``RoutesBuilder`` parameter as builder roots.
+
+    The receiver chain is resolved recursively to an accumulated group-path
+    prefix (``resolve_builder``); the root anchor is a reserved receiver name
+    (``app``/``routes``/``router``) or a bound builder variable, and the pass
+    only runs on files that import Vapor/Hummingbird — together these gate out
+    ``.grouped``/``.get`` chains on unrelated types. Non-literal path segments
+    and un-tracked builder aliases fail safe (a miss, never a wrong route).
 
     Creates both UsageContext records (for framework pattern matching) and
     route Symbol objects (kind="route") so routes appear in ``hypergumbo routes``.
@@ -1039,84 +1382,89 @@ def _extract_vapor_usage_contexts(
     contexts: list[UsageContext] = []
     route_symbols: list[Symbol] = []
 
-    for node in iter_tree(root_node):
-        if node.type != "call_expression":
-            continue
+    # Root-anchored on a framework import: the whole extractor is gated so a
+    # same-named non-builder variable (`app`/`routes`/`router`) in a non-web
+    # file cannot fabricate routes.
+    if not _swift_imports_vapor(root_node, source):
+        return contexts, route_symbols
 
-        # Look for navigation_expression (receiver.method pattern)
-        nav_node = find_child_by_type(node, "navigation_expression")
-        if nav_node is None:
-            continue
+    def resolve_builder(
+        node: Optional["tree_sitter.Node"], bindings: dict[str, Optional[list[str]]],
+    ) -> Optional[list[str]]:
+        """Accumulated group-path prefix if ``node`` is a Vapor RoutesBuilder.
 
-        # Extract receiver and method from navigation chain
-        receiver_name: str | None = None
-        method_name: str | None = None
+        Returns ``None`` when ``node`` is not a builder rooted at a reserved
+        receiver / bound builder variable — that ``None`` is the false-positive
+        guard for arbitrary ``.grouped``/``.group`` chains on other types.
+        """
+        if node is None:  # pragma: no cover - defensive
+            return None
+        if node.type == "simple_identifier":
+            name = node_text(node, source)
+            if name in bindings:  # a binding wins over the reserved names
+                # ``None`` is an explicit shadow — the name was rebound to a
+                # non-builder in this scope, so it is no longer a route builder.
+                bound = bindings[name]
+                return list(bound) if bound is not None else None
+            if name in _VAPOR_RECEIVERS:
+                return []
+            return None
+        if node.type == "navigation_expression":
+            # `app.routes` — the Application's RoutesBuilder (no path segment).
+            recv, method = _swift_nav_receiver_method(node, source)
+            if method == "routes":
+                return resolve_builder(recv, bindings)
+            return None
+        if node.type == "call_expression":
+            nav = find_child_by_type(node, "navigation_expression")
+            if nav is None:
+                return None
+            recv, method = _swift_nav_receiver_method(nav, source)
+            if method not in _VAPOR_GROUP_METHODS:
+                return None
+            base = resolve_builder(recv, bindings)
+            if base is None:
+                return None
+            call_suffix = find_child_by_type(node, "call_suffix")
+            return base + _swift_string_segments(call_suffix, source)
+        return None
 
-        id_node = find_child_by_type(nav_node, "simple_identifier")
-        if id_node:
-            receiver_name = node_text(id_node, source)
-
-        nav_suffix = find_child_by_type(nav_node, "navigation_suffix")
-        if nav_suffix:
-            suffix_id = find_child_by_type(nav_suffix, "simple_identifier")
-            if suffix_id:
-                method_name = node_text(suffix_id, source)
-
-        if (
-            receiver_name is None
-            or method_name is None
-            or receiver_name not in _VAPOR_RECEIVERS
-            or method_name not in _VAPOR_HTTP_METHODS
-        ):
-            continue
-
-        # Extract route path segments from string literal arguments
-        call_suffix = find_child_by_type(node, "call_suffix")
-        if call_suffix is None:  # pragma: no cover - well-formed Swift
-            continue
-
-        value_args = find_child_by_type(call_suffix, "value_arguments")
-        if value_args is None:  # pragma: no cover - well-formed Swift
-            continue
-
-        path_segments: list[str] = []
-        for arg in value_args.children:
-            if arg.type != "value_argument":
+    def receiver_display(receiver: Optional["tree_sitter.Node"]) -> str:
+        """A readable ``<name>`` for context_name — the root anchor of a chain."""
+        node = receiver
+        while node is not None:
+            if node.type == "simple_identifier":
+                return node_text(node, source)
+            if node.type == "navigation_expression":
+                node, _ = _swift_nav_receiver_method(node, source)
                 continue
-            # Skip labeled arguments (like use: handler)
-            if find_child_by_type(arg, "value_argument_label") is not None:
+            if node.type == "call_expression":
+                nav = find_child_by_type(node, "navigation_expression")
+                node = nav
                 continue
-            str_lit = find_child_by_type(arg, "line_string_literal")
-            if str_lit:
-                text_node = find_child_by_type(str_lit, "line_str_text")
-                if text_node:
-                    path_segments.append(node_text(text_node, source))
+            return "route"  # pragma: no cover - defensive
+        return "route"  # pragma: no cover - defensive
 
-        route_path = "/".join(path_segments) if path_segments else ""
-        context_name = f"{receiver_name}.{method_name}"
-
+    def emit_route(
+        segments: list[str], http_method: str,
+        receiver: Optional["tree_sitter.Node"], method_name: str,
+        node: "tree_sitter.Node",
+    ) -> None:
+        route_path = "/".join(segments)
         span = Span(
             start_line=node.start_point[0] + 1,
             start_col=node.start_point[1],
             end_line=node.end_point[0] + 1,
             end_col=node.end_point[1],
         )
-        http_method = method_name.upper()
-
-        ctx = UsageContext.create(
+        contexts.append(UsageContext.create(
             kind="call",
-            context_name=context_name,
+            context_name=f"{receiver_display(receiver)}.{method_name}",
             position="args[last]",
             path=str(file_path),
             span=span,
-            metadata={
-                "route_path": route_path,
-                "http_method": http_method,
-            },
-        )
-        contexts.append(ctx)
-
-        # Create route symbol so routes appear in `hypergumbo routes`
+            metadata={"route_path": route_path, "http_method": http_method},
+        ))
         route_name = f"{http_method} /{route_path}" if route_path else f"{http_method} /"
         route_id = make_symbol_id(
             "swift",
@@ -1140,10 +1488,134 @@ def _extract_vapor_usage_contexts(
             },
             origin=PASS_ID,
             origin_run_id=run_id,
-            lines_of_code=span.end_line - span.start_line + 1,
+            line_span=span.end_line - span.start_line + 1,
             is_exported=True,
         ))
 
+    def handle_call(call: "tree_sitter.Node", bindings: dict[str, Optional[list[str]]]) -> None:
+        # A trailing-closure call ``f(args) { }`` parses two ways depending on
+        # position: as one call_expression (nav + call_suffix holding BOTH the
+        # value_arguments and the lambda), or — in an initializer — as a nested
+        # call_expression (inner ``f(args)`` + an outer call_suffix holding just
+        # the lambda). Normalize to (nav, path_suffix, closure_suffix).
+        outer_suffix = find_child_by_type(call, "call_suffix")
+        nav = find_child_by_type(call, "navigation_expression")
+        if nav is not None:
+            path_suffix = outer_suffix
+            closure_suffix = outer_suffix
+        else:
+            inner = find_child_by_type(call, "call_expression")
+            if inner is not None:
+                nav = find_child_by_type(inner, "navigation_expression")
+                path_suffix = find_child_by_type(inner, "call_suffix")
+            else:
+                path_suffix = outer_suffix
+            closure_suffix = outer_suffix
+        # Bindings used when descending into a trailing closure — extended only
+        # for a `.group(...) { param in … }` sub-builder closure.
+        descend_bindings = bindings
+        if nav is not None:
+            receiver, method = _swift_nav_receiver_method(nav, source)
+            if method in _VAPOR_HTTP_METHODS:
+                prefix = resolve_builder(receiver, bindings)
+                if prefix is not None:
+                    emit_route(
+                        prefix + _swift_string_segments(path_suffix, source),
+                        method.upper(), receiver, method, call,
+                    )
+            elif method == "on":
+                prefix = resolve_builder(receiver, bindings)
+                if prefix is not None:
+                    verb, on_segs = _swift_on_verb_and_segments(path_suffix, source)
+                    if verb in _VAPOR_ON_HTTP_METHODS:
+                        emit_route(prefix + on_segs, verb, receiver, method, call)
+            elif method in _VAPOR_GROUP_METHODS:
+                prefix = resolve_builder(receiver, bindings)
+                if prefix is not None:
+                    param = _swift_lambda_param_name(closure_suffix, source)
+                    if param is not None:
+                        this_prefix = prefix + _swift_string_segments(path_suffix, source)
+                        descend_bindings = {**bindings, param: this_prefix}
+        # `handle_call` OWNS this call: descend into its trailing closure exactly
+        # once (with any group binding) so nested route calls are found without
+        # double-processing.
+        if closure_suffix is not None:
+            walk(closure_suffix, descend_bindings)
+
+    def process_stmt(
+        child: "tree_sitter.Node", bindings: dict[str, Optional[list[str]]],
+    ) -> dict[str, Optional[list[str]]]:
+        """Process one node, returning bindings visible to LATER siblings.
+
+        A ``None`` value means a builder-capable name was shadowed/invalidated
+        (see the reassignment cases below); the return type mirrors the
+        ``bindings`` param, which already carries that Optional.
+        """
+        kind = child.type
+        if kind == "property_declaration":
+            result = bindings
+            pattern = find_child_by_type(child, "pattern")
+            name_id = (
+                find_child_by_type(pattern, "simple_identifier")
+                if pattern is not None else None
+            )
+            if name_id is not None:
+                name = node_text(name_id, source)
+                rhs = _swift_rhs_after_equals(child)
+                prefix = resolve_builder(rhs, bindings) if rhs is not None else None
+                if prefix is not None:
+                    result = {**bindings, name: prefix}
+                elif name in bindings or name in _VAPOR_RECEIVERS:
+                    # A `let`/`var` binding a builder-capable name to a
+                    # non-builder shadows it (kills the reserved-name anchor).
+                    result = {**bindings, name: None}
+            # Descend into the initializer/computed body so a route registered
+            # there (e.g. `let route = app.get(...)`) is still found.
+            walk(child, bindings)
+            return result
+        if kind == "assignment":
+            result = bindings
+            target = find_child_by_type(child, "directly_assignable_expression")
+            name_id = (
+                find_child_by_type(target, "simple_identifier")
+                if target is not None else None
+            )
+            if name_id is not None:
+                name = node_text(name_id, source)
+                if name in bindings or name in _VAPOR_RECEIVERS:
+                    rhs = _swift_rhs_after_equals(child)
+                    # ``None`` when reassigned to a non-builder — invalidate /
+                    # shadow (fail safe), never keep a stale prefix.
+                    result = {
+                        **bindings,
+                        name: resolve_builder(rhs, bindings) if rhs is not None else None,
+                    }
+            walk(child, bindings)
+            return result
+        if kind == "function_declaration":
+            # Seed a differently-named RoutesBuilder/Application parameter as a
+            # builder root; seeds are scoped to this function's body.
+            seeds = dict(bindings)
+            for param in child.children:
+                if param.type != "parameter":
+                    continue
+                pname, ptype = _swift_param_name_and_type(param, source)
+                if pname is not None and pname != "_" and _swift_is_builder_type(ptype):
+                    seeds[pname] = []
+            walk(child, seeds)
+            return bindings
+        if kind == "call_expression":
+            handle_call(child, bindings)
+            return bindings
+        walk(child, bindings)
+        return bindings
+
+    def walk(node: "tree_sitter.Node", bindings: dict[str, Optional[list[str]]]) -> None:
+        current = bindings
+        for child in node.children:
+            current = process_stmt(child, current)
+
+    walk(root_node, {})
     return contexts, route_symbols
 
 

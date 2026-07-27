@@ -32,3 +32,18 @@
     tags: [dogfood]  # 35d4
   remove:  # 35d4
     tags: [dogfooding]  # 35d4
+- op: update  # f2e2
+  at: '2026-06-30T05:20:46Z'  # f2e2
+  by: agent  # f2e2
+  actor: jgstern_agent  # f2e2
+  clock: 3  # f2e2
+  nonce: f2e2  # f2e2
+  set:  # f2e2
+    status: done  # f2e2
+- op: discuss  # 283a
+  at: '2026-06-30T05:20:46Z'  # 283a
+  by: agent  # 283a
+  actor: jgstern_agent  # 283a
+  clock: 4  # 283a
+  nonce: 283a  # 283a
+  message: "Resolved via REFRAME (doc-only), the path-2 option the item itself proposed. Merged spec change (dev fde06b3522): spec §9 (line 840-841) no longer claims io_boundary/io_primitive are 'stamped on every call edge' — it now states the behavior map's calls edges carry no io_boundary key, the classification is derived at consumer time by io_boundary.compute_boundary_map, and the io-boundaries CLI is canonical. The '0 producer-stamped' fact is now the documented contract rather than spec drift. axis_meta_keys already described the key as set by compute_boundary_map (no code change needed)."  # 283a

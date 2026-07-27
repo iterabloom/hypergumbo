@@ -5,8 +5,7 @@ This analyzer uses tree-sitter to parse VHDL files and extract:
 - Entity declarations
 - Architecture definitions
 - Package declarations
-- Library/use clauses
-- Component instantiations
+- Component declarations (rare; uncovered path)
 
 If tree-sitter-vhdl is not installed, the analyzer
 gracefully degrades and returns an empty result.
@@ -15,11 +14,17 @@ How It Works
 ------------
 Uses TreeSitterAnalyzer base class for two-pass orchestration:
 1. Pass 1: Parse all files, extract all entity/architecture/package definitions
-2. Pass 2: Resolve component instantiations and create edges
+2. Pass 2: Resolve each architecture to its entity (kind-preferring entity over
+   same-named symbols) and emit architecture->entity implements edges
 
 The base class handles grammar checking, parser creation, file discovery,
 and result assembly. This module provides only the VHDL-specific extraction
 logic.
+
+Symbols are registered by lowercased name in a multi-value registry
+(resolver_class = ListNameResolver); architecture->entity implements-edge
+resolution kind-prefers an entity over a same-named package/architecture/
+component (WI-morud).
 
 Why This Design
 ---------------

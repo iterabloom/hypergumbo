@@ -29,3 +29,41 @@
   clock: 2  # cbf6
   nonce: cbf6  # cbf6
   message: "2026-06-10 design-interview ruling (ADR-0042, merged in PR #4181): survey.json is confirmed as the canonical artifact name, with the concept renamed behavior map -> survey, the verb migrating to hypergumbo survey (run as deprecated alias for one minor version), and a loader alias list for legacy filenames. Stays violated until the implementing rename PRs land across CLI, code, tests, docs, and tracker; re-validate then."  # cbf6
+- op: update  # d6a1
+  at: '2026-07-12T05:36:58Z'  # d6a1
+  by: agent  # d6a1
+  actor: jgstern_agent  # d6a1
+  clock: 3  # d6a1
+  nonce: d6a1  # d6a1
+  set: {}  # d6a1
+  add:  # d6a1
+    tags: [wave5]  # d6a1
+- op: discuss  # d76a
+  at: '2026-07-12T05:36:58Z'  # d76a
+  by: agent  # d76a
+  actor: jgstern_agent  # d76a
+  clock: 4  # d76a
+  nonce: d76a  # d76a
+  message: "Owner decision 2026-07-12 (design walkthrough): DEFER the entire ADR-0042 survey-rename campaign (S2-S8: constant+import shim, WI-vatuf CLI default+verb, docs sweep, test/scripts sweep, tracker sweep) to the END of Wave 5. Rationale: (1) the campaign full forward isbefore-closure blocks ZERO P1 items -- verified, the closure is 5 self-contained P2/P3 nodes with nothing outside the campaign -- so deferring has no critical-path cost. (2) Ratified-but-unstarted P3 mechanical churn (~65 script refs + docs + fixtures + ~52 tracker items); payoff is naming coherence, not correctness. (3) Executing it LAST is strictly better than now: ADR-0042 sec.4 merges the two divergent resolvers (_discover_input_file + find_behavior_map) and touches cli.py heavily, which would collide with the P1 cli.py/resolver structural work; doing it after that settles avoids the overlap. The 7 todo_soft leaves set to someday + tagged wave5. ADR-0042 stays Accepted and banked; INV-firuh stays violated until S1-S8 land at end of Wave 5."  # d76a
+- op: discuss  # 4ded
+  at: '2026-07-14T17:57:32Z'  # 4ded
+  by: agent  # 4ded
+  actor: jgstern_agent  # 4ded
+  clock: 5  # 4ded
+  nonce: 4ded  # 4ded
+  message: "S2/S3 FOUNDATION LANDED (2026-07-14, PR merged to dev @ f094e027c7). The canonical-name constant + merged discovery resolver shipped: behavior_map_io.CANONICAL_SURVEY_FILENAME='survey.json' + LEGACY_SURVEY_FILENAMES (hypergumbo.results.json / hg.json / bm.json / behavior_map.json) + SURVEY_FILENAMES + find_survey_in_dir() (canonical-first, plain-over-gz, name-major); cli._discover_input_file rewired onto it (widens auto-discovery to the canonical name + all legacy aliases; no user-facing change). find_behavior_map's single-basename signature + its bakeoff-script callers deliberately left untouched (the bakeoff-side resolver merge is a separate PR to isolate the editable-install shim-first hazard). 11 TDD tests, 100% coverage.\n\nCOLLISION-RISK VERIFICATION (2026-07-14): the 2026-07-12 deferral cited collision with 'the P1 cli.py/resolver structural work'. ADR-0042 §4 names that work: the resolver-merge is the joint deliverable with cli-input:F3 under the INV-fabov umbrella. INV-fabov is SATISFIED (2026-07-10, PR #538); load_substrate + SubstrateError shipped; no open P1 cli.py/resolver-structural item. So the collision premise is resolved and the campaign is unblocked. Resumed at owner request with the foundational internal PR first, reassessing before the outward-facing WI-vatuf change.\n\nREMAINING (INV-firuh stays violated until S1-S8 all land): WI-vatuf (CLI default filename + survey verb, OUTWARD-FACING), WI-didif (legacy-filename acceptance + deprecation warnings), WI-kisoj (run_behavior_map->run_survey + behavior_map_io.py->survey_io.py rename), WI-gakih (test fixtures / bm.json), WI-rivuj (docs sweep; .agent/ portion = separate human-approved PR), WI-zaviv (spec stability-commitment language), WI-goril (tracker sweep). The ~100+ hardcoded refs the sweeps target: bakeoff-deep 27, bakeoff-broad 18, cli.py 16, analyze-artifacts 7, sketch.py 4, hypergumbo_diag.py 5, + docs/tests/~52 tracker items."  # 4ded
+- op: update  # 52ae
+  at: '2026-07-15T03:43:50Z'  # 52ae
+  by: agent  # 52ae
+  actor: jgstern_agent  # 52ae
+  clock: 6  # 52ae
+  nonce: 52ae  # 52ae
+  set:  # 52ae
+    status: satisfied  # 52ae
+- op: discuss  # 4025
+  at: '2026-07-15T03:43:50Z'  # 4025
+  by: agent  # 4025
+  actor: jgstern_agent  # 4025
+  clock: 7  # 4025
+  nonce: '4025'  # 4025
+  message: "SATISFIED — ADR-0042 S1-S8 all landed. Per-facet BEHAVIORAL evidence (not proxy): (1) CLI defaults: 'hypergumbo survey <repo>' writes survey.json; 'run' is a deprecated alias emitting a stderr warning (WI-vatuf PR #643; live repro banked on that close). (2) Legacy acceptance: '--input <bm.json>' loads + one-line stderr deprecation warning (WI-didif #644; live repro). (3) Internal code + concept: survey_io module + run_survey function are canonical; behavior_map_io / run_behavior_map survive as deprecation shims (WI-kisoj #647/#650; import + alias-identity evidence). (4) Test fixtures: survey.json convention (WI-gakih #646; + the loader test's fixtures under WI-kisoj). (5) Documentation: README (+meta), spec, USE-CASES, CACHE, concept-axes concept-renamed behavior map->survey with survey verb/filename (WI-rivuj #651), and the .agent/ playbooks + hook (PR #652, human-merged). (6) v0.x stability commitment names the survey view (WI-zaviv #651). (7) Active tracker item descriptions: 7 propagated legacy-filename refs swept to survey.json (WI-goril); WI-goril itself keeps them (names the targets). DESIGN NOTE: the on-disk 'view' discriminator VALUE stays 'behavior_map' by ADR-0042 ruling (schema bytes unchanged; consumers parsing JSON see no change) — that is NOT a violation of the canonical-FILENAME invariant. WINDOW RESIDUAL (does NOT gate this flip per ADR-0042 Migration-plan step 7): removal of the run alias + legacy filename aliases + the behavior_map_io/run_behavior_map shims at the one-minor-version window close."  # 4025

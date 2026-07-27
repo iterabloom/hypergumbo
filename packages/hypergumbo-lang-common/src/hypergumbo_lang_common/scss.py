@@ -41,10 +41,12 @@ from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, ma
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     TreeSitterAnalyzer,
+    make_doc_symbol_ids,
     make_file_id,
     populate_docstrings_from_tree,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -61,11 +63,6 @@ def find_scss_files(repo_root: Path) -> list[Path]:
 def _get_node_text(node: "tree_sitter.Node") -> str:
     """Get the text content of a node."""
     return node.text.decode("utf-8", errors="replace") if node.text else ""
-
-
-def _make_symbol_id(path: Path, name: str, kind: str, line: int) -> str:
-    """Create a stable symbol ID."""
-    return f"scss:{path}:{kind}:{line}:{name}"
 
 
 def _categorize_variable(name: str) -> str:
@@ -172,7 +169,6 @@ def _extract_variable(
     rel_path = path.relative_to(repo_root)
     line = node.start_point[0] + 1
 
-    symbol_id = _make_symbol_id(rel_path, var_name, "variable", line)
     span = Span(
         start_line=line,
         start_col=node.start_point[1],
@@ -180,12 +176,20 @@ def _extract_variable(
         end_col=node.end_point[1],
     )
 
+    # INV-dulah: node.id and canonical stable_id minted together from one
+    # arg set (make_doc_symbol_ids) so they can never drift. node.id is
+    # byte-identical to the historical raw composite for this analyzer.
+    symbol_id, stable_id = make_doc_symbol_ids(
+        "scss", rel_path, "variable", var_name,
+        span.start_line, span.end_line,
+    )
+
     # Categorize variable by name
     category = _categorize_variable(var_name)
 
     symbol = Symbol(
         id=symbol_id,
-        stable_id=symbol_id,
+        stable_id=stable_id,
         name=var_name,
         kind="variable",
         language="scss",
@@ -221,12 +225,19 @@ def _extract_mixin(
     rel_path = path.relative_to(repo_root)
     line = node.start_point[0] + 1
 
-    symbol_id = _make_symbol_id(rel_path, mixin_name, "mixin", line)
     span = Span(
         start_line=line,
         start_col=node.start_point[1],
         end_line=node.end_point[0] + 1,
         end_col=node.end_point[1],
+    )
+
+    # INV-dulah: node.id and canonical stable_id minted together from one
+    # arg set (make_doc_symbol_ids) so they can never drift. node.id is
+    # byte-identical to the historical raw composite for this analyzer.
+    symbol_id, stable_id = make_doc_symbol_ids(
+        "scss", rel_path, "mixin", mixin_name,
+        span.start_line, span.end_line,
     )
 
     # Track mixin for edge creation
@@ -237,7 +248,7 @@ def _extract_mixin(
 
     symbol = Symbol(
         id=symbol_id,
-        stable_id=symbol_id,
+        stable_id=stable_id,
         name=mixin_name,
         kind="mixin",
         language="scss",
@@ -249,6 +260,8 @@ def _extract_mixin(
             "params": params,
             "param_count": len(params),
         },
+        cyclomatic_complexity=compute_cyclomatic_complexity(node, "scss"),
+        line_span=node.end_point[0] - node.start_point[0] + 1,
     )
     symbols.append(symbol)
 
@@ -273,7 +286,6 @@ def _extract_function(
     rel_path = path.relative_to(repo_root)
     line = node.start_point[0] + 1
 
-    symbol_id = _make_symbol_id(rel_path, func_name, "function", line)
     span = Span(
         start_line=line,
         start_col=node.start_point[1],
@@ -281,12 +293,20 @@ def _extract_function(
         end_col=node.end_point[1],
     )
 
+    # INV-dulah: node.id and canonical stable_id minted together from one
+    # arg set (make_doc_symbol_ids) so they can never drift. node.id is
+    # byte-identical to the historical raw composite for this analyzer.
+    symbol_id, stable_id = make_doc_symbol_ids(
+        "scss", rel_path, "function", func_name,
+        span.start_line, span.end_line,
+    )
+
     param_str = ", ".join(params) if params else ""
     signature = f"@function {func_name}({param_str})"
 
     symbol = Symbol(
         id=symbol_id,
-        stable_id=symbol_id,
+        stable_id=stable_id,
         name=func_name,
         kind="function",
         language="scss",
@@ -298,6 +318,8 @@ def _extract_function(
             "params": params,
             "param_count": len(params),
         },
+        cyclomatic_complexity=compute_cyclomatic_complexity(node, "scss"),
+        line_span=node.end_point[0] - node.start_point[0] + 1,
     )
     symbols.append(symbol)
 
@@ -320,7 +342,6 @@ def _extract_rule_set(
     rel_path = path.relative_to(repo_root)
     line = node.start_point[0] + 1
 
-    symbol_id = _make_symbol_id(rel_path, selector[:30], "rule_set", line)
     span = Span(
         start_line=line,
         start_col=node.start_point[1],
@@ -328,12 +349,20 @@ def _extract_rule_set(
         end_col=node.end_point[1],
     )
 
+    # INV-dulah: node.id and canonical stable_id minted together from one
+    # arg set (make_doc_symbol_ids) so they can never drift. node.id is
+    # byte-identical to the historical raw composite for this analyzer.
+    symbol_id, stable_id = make_doc_symbol_ids(
+        "scss", rel_path, "rule_set", selector[:30],
+        span.start_line, span.end_line,
+    )
+
     # Categorize selector
     selector_type = _categorize_selector(selector)
 
     symbol = Symbol(
         id=symbol_id,
-        stable_id=symbol_id,
+        stable_id=stable_id,
         name=selector,
         kind="rule_set",
         language="scss",
@@ -379,13 +408,13 @@ def _extract_include(
     edge = Edge.create(
         src=stylesheet_id,
         dst=dst,
-        edge_type="uses_mixin",
+        edge_type="includes",
         line=line,
         origin=PASS_ID,
         origin_run_id=execution_id,
         evidence_type="include",
         confidence=0.95 if mixin_name in mixin_definitions else 0.6,
-        meta={"mixin_name": mixin_name},
+        meta={"mixin_name": mixin_name, "ref_construct": "sass_mixin"},
     )
     edges.append(edge)
 

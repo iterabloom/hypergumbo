@@ -11,6 +11,7 @@ from hypergumbo_core.slice import (
     SliceQuery,
     find_entry_nodes,
     AmbiguousEntryError,
+    raise_if_ambiguous,
     rank_slice_nodes,
     SliceResult,
 )
@@ -46,9 +47,10 @@ def make_edge(
     dst: Symbol,
     edge_type: str = "calls",
     confidence: float = 0.85,
+    meta: dict | None = None,
 ) -> Edge:
     """Helper to create test edges."""
-    return Edge.create(
+    edge = Edge.create(
         src=src.id,
         dst=dst.id,
         edge_type=edge_type,
@@ -57,6 +59,9 @@ def make_edge(
         origin_run_id="uuid:test",
         confidence=confidence,
     )
+    if meta is not None:
+        edge.meta = meta
+    return edge
 
 
 class TestFindEntryNodes:
@@ -274,6 +279,23 @@ class TestAmbiguousEntryDetection:
         assert "src/app.py" in error_msg
         assert "web/client.ts" in error_msg
         assert "cmd/server.go" in error_msg
+
+    def test_raise_if_ambiguous_exact_id_among_multiple(self) -> None:
+        """INV-nogof: an exact-ID entry spec is NOT ambiguous even when multiple
+        candidates (spanning files) are passed — the ID names one identity.
+
+        This branch is unreachable via slice_graph (find_entry_nodes returns a
+        single node for a unique exact-ID match), so it is exercised directly on
+        the shared helper that `explain` also consumes."""
+        py_ping = make_symbol("ping", path="src/app.py", language="python")
+        ts_ping = make_symbol("ping", path="web/client.ts", language="typescript")
+        # entry_spec is py_ping's exact id; the presence of a >1-file candidate
+        # list must NOT raise because an exact ID is unambiguous.
+        raise_if_ambiguous(py_ping.id, [py_ping, ts_ping])  # no raise
+
+    def test_raise_if_ambiguous_single_candidate_noop(self) -> None:
+        """A single candidate is never ambiguous."""
+        raise_if_ambiguous("ping", [make_symbol("ping")])  # no raise
 
 
 class TestSliceGraph:
@@ -804,6 +826,39 @@ class TestSliceQuery:
         d = query.to_dict()
         assert d["hub_threshold"] == 50
 
+    def test_query_to_dict_includes_min_confidence_when_nonzero(self) -> None:
+        """INV-rakot: a non-zero min_confidence is echoed in feature.query."""
+        query = SliceQuery(entrypoint="bar", min_confidence=0.5)
+        d = query.to_dict()
+        assert d["min_confidence"] == 0.5
+
+    def test_query_to_dict_omits_min_confidence_at_default(self) -> None:
+        """min_confidence is omitted at the 0.0 default (did not influence the
+        slice) — keeps the feature_id stable for confidence-unfiltered slices."""
+        query = SliceQuery(entrypoint="bar")
+        d = query.to_dict()
+        assert "min_confidence" not in d
+
+    def test_query_to_dict_echoes_all_influential_params_invrakot(self) -> None:
+        """INV-rakot round-trip guard: every CLI-influential param set to a
+        non-default value must appear in the feature.query echo, so the slice
+        is reproducible from its JSON alone. This catches the drift class where
+        a newly-added flag is forgotten in to_dict()."""
+        query = SliceQuery(
+            entrypoint="e", max_hops=4, max_files=7, min_confidence=0.5,
+            exclude_tests=True, exclude_utility=True, method="bfs", reverse=True,
+            max_tier=2, language="python", hub_threshold=3, exclude_imports=True,
+            dataflow=True,
+        )
+        d = query.to_dict()
+        for key in (
+            "method", "entrypoint", "hops", "max_files", "min_confidence",
+            "exclude_tests", "exclude_utility", "reverse", "max_tier",
+            "language", "hub_threshold", "exclude_imports", "pass_through_kinds",
+            "dataflow",
+        ):
+            assert key in d, f"{key} missing from feature.query echo (INV-rakot)"
+
 
 class TestIsTestFile:
     """Tests for test file detection patterns."""
@@ -995,69 +1050,85 @@ class TestSliceEdgeCases:
         assert len(result.edge_ids) == 0
         assert result.entry_nodes == []
 
-    def test_slice_includes_file_level_imports(self) -> None:
-        """Slice from function should include import edges from the containing file.
-
-        Import edges source from file nodes (e.g., python:path:1-1:file:file),
-        not function nodes. When slicing from a function, we should include
-        the import edges from that function's file.
-        """
-        # Create a function node in main.py
-        func = make_symbol("main", path="src/main.py")
-
-        # Create the file node for main.py (this is what import edges source from)
+    def _make_file_and_os_import(self, path: str):
+        """Helper: a file node for ``path`` plus an os-import edge sourced from it."""
         file_node = Symbol(
-            id="python:src/main.py:1-1:file:file",
-            name="file",
-            kind="file",
-            language="python",
-            path="src/main.py",
+            id="python:" + path + ":1-1:file:file",
+            name="file", kind="file", language="python", path=path,
             span=Span(start_line=1, end_line=1, start_col=0, end_col=0),
-            origin="python",
-            origin_run_id="uuid:test",
+            origin="python", origin_run_id="uuid:test",
         )
-
-        # Create a module node (the import target)
         module_node = Symbol(
             id="python:os:0-0:module:module",
-            name="module",
-            kind="module",
-            language="python",
-            path="os",
+            name="module", kind="module", language="python", path="os",
             span=Span(start_line=0, end_line=0, start_col=0, end_col=0),
-            origin="python",
-            origin_run_id="uuid:test",
+            origin="python", origin_run_id="uuid:test",
         )
-
-        # Create an import edge from file node to module
-        import_edge = Edge.create(
-            src=file_node.id,
-            dst=module_node.id,
-            edge_type="imports",
-            line=1,
-            evidence_type="ast_import",
-            confidence=0.95,
-
-            origin="test", origin_run_id="test",
+        file_import = Edge.create(
+            src=file_node.id, dst=module_node.id, edge_type="imports", line=1,
+            evidence_type="ast_import", origin="test", origin_run_id="test",
         )
+        return file_node, module_node, file_import
 
-        nodes = [func, file_node, module_node]
-        edges = [import_edge]
+    def test_function_entry_excludes_containing_file_imports(self) -> None:
+        """INV-tarol: a FUNCTION-entry slice must NOT absorb its containing
+        file's import edges (src=file-node). Those edges are not reachable from
+        the function and would break subgraph closure; the function's OWN edges
+        are still captured.
+        """
+        func = make_symbol("main", path="src/main.py")
+        callee = make_symbol("helper", path="src/main.py")
+        file_node, module_node, file_import = self._make_file_and_os_import("src/main.py")
+        call_edge = make_edge(func, callee, "calls")
+        nodes = [func, callee, file_node, module_node]
+        edges = [call_edge, file_import]
 
-        # Slice from the function, not the file
-        query = SliceQuery(entrypoint="main", max_hops=3)
-        result = slice_graph(nodes, edges, query)
+        result = slice_graph(nodes, edges, SliceQuery(entrypoint="main", max_hops=3))
 
-        # The function should be included
+        # The function's own edge is captured...
         assert func.id in result.node_ids
+        assert call_edge.id in result.edge_ids
+        # ...but the containing file's import edge is NOT.
+        assert file_import.id not in result.edge_ids, (
+            "A function-entry slice must not include its containing file's imports"
+        )
+        # Subgraph closure: every emitted edge's endpoints are in the node set.
+        for eid in result.edge_ids:
+            edge = next(e for e in edges if e.id == eid)
+            assert edge.src in result.node_ids and edge.dst in result.node_ids
 
-        # The import edge from the file should also be included
-        assert import_edge.id in result.edge_ids, (
-            "Import edges from the containing file should be included in the slice"
+    def test_function_entry_max_hops_0_not_reduced_to_file_imports(self) -> None:
+        """INV-tarol repro: at --max-hops 0 a function-entry slice must not be
+        reduced to ONLY its containing file's imports (the original symptom).
+        """
+        func = make_symbol("main", path="src/main.py")
+        file_node, module_node, file_import = self._make_file_and_os_import("src/main.py")
+        result = slice_graph(
+            [func, file_node, module_node], [file_import],
+            SliceQuery(entrypoint="main", max_hops=0),
+        )
+        assert file_import.id not in result.edge_ids
+
+    def test_container_entry_includes_file_level_imports(self) -> None:
+        """The preserved half of the INV-tarol contract: a CONTAINER/FILE-entry
+        slice DOES include that file's import edges (the container's file IS the
+        slice scope).
+        """
+        cls = make_symbol("Service", path="src/app.py", kind="class")
+        file_node, module_node, file_import = self._make_file_and_os_import("src/app.py")
+        result = slice_graph(
+            [cls, file_node, module_node], [file_import],
+            SliceQuery(entrypoint="Service", max_hops=3),
+        )
+        assert cls.id in result.node_ids
+        assert file_import.id in result.edge_ids, (
+            "A container/file-entry slice should include its file's imports"
         )
 
-    def test_slice_includes_imports_from_multiple_files(self) -> None:
-        """Slice should include import edges from all visited files."""
+    def test_function_slice_excludes_multifile_file_imports(self) -> None:
+        """INV-tarol (multi-file): a function-entry slice traverses the
+        cross-file call but does NOT pull in the file-level imports of the
+        files it visits (none of those file nodes are in scope)."""
         # main.py: main() calls helper()
         main_func = make_symbol("main", path="src/main.py")
         main_file = Symbol(
@@ -1135,13 +1206,15 @@ class TestSliceEdgeCases:
         query = SliceQuery(entrypoint="main", max_hops=3)
         result = slice_graph(nodes, edges, query)
 
-        # Both function nodes should be visited
+        # Both function nodes should be visited (cross-file call traversal)
         assert main_func.id in result.node_ids
         assert helper_func.id in result.node_ids
+        assert call_edge.id in result.edge_ids
 
-        # Import edges from both files should be included
-        assert import_os.id in result.edge_ids, "Import from main.py should be included"
-        assert import_json.id in result.edge_ids, "Import from utils.py should be included"
+        # INV-tarol: the file-level imports of the visited files are NOT
+        # included in a function-entry slice.
+        assert import_os.id not in result.edge_ids, "main.py file-import must be excluded"
+        assert import_json.id not in result.edge_ids, "utils.py file-import must be excluded"
 
 
 class TestReverseSlice:
@@ -1892,6 +1965,58 @@ class TestForwardSliceInheritanceEdges:
         assert iface.id not in result.node_ids
         # Other impl should NOT be reachable
         assert other_impl.id not in result.node_ids
+
+    def test_forward_slice_skips_inherits_edge(self) -> None:
+        """WI-lobif: `inherits` (Solidity-style class inheritance) must behave
+        like `extends` in forward slices — skipped, not followed to the parent.
+
+        `inherits` and `extends` are the same relationship axis; the consumer's
+        structural-edge set previously hardcoded {extends, implements} and
+        omitted `inherits`, so it leaked into forward slices as a normal edge.
+        """
+        child = make_symbol(
+            "Token", kind="contract",
+            path="src/Token.sol", start_line=1, end_line=50, language="solidity",
+        )
+        parent = make_symbol(
+            "ERC20", kind="contract",
+            path="src/ERC20.sol", start_line=1, end_line=30, language="solidity",
+        )
+        service = make_symbol(
+            "SafeMath", kind="contract",
+            path="src/SafeMath.sol", start_line=1, end_line=20, language="solidity",
+        )
+
+        edges = [
+            make_edge(child, parent, "inherits"),   # child -> parent (is-a)
+            make_edge(child, service, "calls"),      # child -> service
+        ]
+
+        query = SliceQuery(entrypoint="Token", max_hops=3)
+        result = slice_graph([child, parent, service, ], edges, query)
+
+        # Service reachable via calls; parent NOT reachable (inherits skipped fwd)
+        assert service.id in result.node_ids
+        assert parent.id not in result.node_ids
+
+    def test_reverse_slice_still_follows_inherits(self) -> None:
+        """WI-lobif: reverse slice follows `inherits` (like `extends`) —
+        "who inherits from this contract?"."""
+        parent = make_symbol(
+            "ERC20", kind="contract",
+            path="src/ERC20.sol", start_line=1, end_line=30, language="solidity",
+        )
+        child = make_symbol(
+            "Token", kind="contract",
+            path="src/Token.sol", start_line=1, end_line=50, language="solidity",
+        )
+
+        edges = [make_edge(child, parent, "inherits")]
+
+        query = SliceQuery(entrypoint="ERC20", max_hops=3, reverse=True)
+        result = slice_graph([parent, child], edges, query)
+
+        assert child.id in result.node_ids
 
     def test_reverse_slice_still_follows_extends(self) -> None:
         """Reverse slice should still follow extends edges."""
@@ -2848,7 +2973,10 @@ class TestPassThroughSyntheticNodes:
         edges = [
             make_edge(func_a, stub, edge_type="uses"),
             make_edge(stub, server, edge_type="grpc"),
-            make_edge(server, impl, edge_type="implements_rpc"),
+            # implements_rpc folded to implements + meta['protocol']='grpc'
+            # (audit-findings 0016); the grpc-rpc predicate keeps it forward-
+            # traversable in slices so cross-service reachability is preserved.
+            make_edge(server, impl, edge_type="implements", meta={"protocol": "grpc"}),
         ]
 
         # Include grpc_stub and grpc_server in pass-through
@@ -2879,7 +3007,7 @@ class TestDataflowSlice:
         reader = make_symbol("reader", path="src/b.py")
         edge = Edge.create(
             src=writer.id, dst=reader.id, edge_type="data_flows_to", line=10,
-            access_mode="write", dest_access_mode="read", channel="config.key",
+            access_mode="write", channel="config.key",
 
             origin="test", origin_run_id="test",
         )
@@ -3255,10 +3383,10 @@ class TestAdmissionStatsTelemetry:
 
     These tests verify that each BFS admission path increments the correct
     counter in ``SliceResult.admission_stats``. The telemetry is the baseline
-    instrumentation for the forward-dataflow option-2-vs-3 decision gate: by
-    comparing per-rule admission counts on real repos, we can measure option
-    2's predictive impact (``would_admit_dst_reader``) before implementing it,
-    and quantify option 1's coverage on the existing corpus.
+    instrumentation for the forward-dataflow option-1 admission law: by
+    comparing per-rule admission counts on real repos, we quantify option 1's
+    coverage on the existing corpus. (The option-2 ``would_admit_dst_reader``
+    predictive counter was retired with ``dest_access_mode`` — ADR-0038 ruling 3.)
     """
 
     def test_stats_empty_when_dataflow_false(self) -> None:
@@ -3289,7 +3417,6 @@ class TestAdmissionStatsTelemetry:
         result = slice_graph([writer, target], [edge], query)
         assert result.admission_stats["admitted_writer_src"] == 1
         assert result.admission_stats["admitted_downstream_read"] == 0
-        assert result.admission_stats["would_admit_dst_reader"] == 0
 
     def test_stats_downstream_read_counter(self) -> None:
         """WI-saful option 1 terminal admissions increment
@@ -3361,51 +3488,6 @@ class TestAdmissionStatsTelemetry:
         result = slice_graph([func_a, func_b], [edge], query)
         assert result.admission_stats["rejected_other"] == 1
         assert result.admission_stats["rejected_read_from_non_writer"] == 0
-
-    def test_stats_would_admit_dst_reader_counter(self) -> None:
-        """Rejected edges with dest_access_mode in {read, mutate} increment
-        the predictive option-2 counter.
-
-        This edge is rejected under option 1 (source is not a writer) but
-        would be admitted under option 2 (dst_mode is read). The counter lets
-        us measure option 2's impact before implementing it.
-        """
-        func_a = make_symbol("func_a", path="src/a.py")
-        func_b = make_symbol("func_b", path="src/b.py")
-        edge = Edge.create(
-            src=func_a.id, dst=func_b.id, edge_type="calls", line=10,
-            access_mode="delete",
-            dest_access_mode="read",
-
-            origin="test", origin_run_id="test",
-        )
-        query = SliceQuery(entrypoint="func_a", dataflow=True, max_hops=3)
-        result = slice_graph([func_a, func_b], [edge], query)
-        assert result.admission_stats["rejected_other"] == 1
-        assert result.admission_stats["would_admit_dst_reader"] == 1
-
-    def test_stats_would_admit_dst_reader_only_on_rejection(self) -> None:
-        """Option-2 predictive counter does not count edges already admitted
-        by option 1.
-
-        A write-mode edge with dest_access_mode=read is admitted by the
-        writer_src rule and should NOT be counted in would_admit_dst_reader
-        (the counter measures option 2's UNIQUE additional contribution, not
-        double-counted overlap).
-        """
-        writer = make_symbol("writer", path="src/a.py")
-        target = make_symbol("target", path="src/b.py")
-        edge = Edge.create(
-            src=writer.id, dst=target.id, edge_type="calls", line=10,
-            access_mode="write",
-            dest_access_mode="read",
-
-            origin="test", origin_run_id="test",
-        )
-        query = SliceQuery(entrypoint="writer", dataflow=True, max_hops=3)
-        result = slice_graph([writer, target], [edge], query)
-        assert result.admission_stats["admitted_writer_src"] == 1
-        assert result.admission_stats["would_admit_dst_reader"] == 0
 
     def test_stats_reverse_read_counter(self) -> None:
         """Reverse-mode read admissions increment admitted_reverse_read."""

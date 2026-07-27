@@ -54,6 +54,7 @@ from hypergumbo_core.analyze.base import (
     node_text,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -163,6 +164,11 @@ def _extract_symbols_from_file(
             end_col=node.end_point[1],
         )
         sym_id = make_symbol_id("wolfram", file_path, start_line, end_line, name, kind)
+        # INV-loguk: CC only for callables. Wolfram's grammar has no control-flow
+        # node types (If/While/etc. are call nodes), so CC derives solely from
+        # short-circuit &&/|| — base 1 for a branchless function. Gated so
+        # variable-kind symbols stay None.
+        _is_callable = kind == "function"
         sym = Symbol(
             id=sym_id,
             name=name,
@@ -173,6 +179,10 @@ def _extract_symbols_from_file(
             origin=PASS_ID,
             origin_run_id=run_id,
             signature=signature,
+            cyclomatic_complexity=(
+                compute_cyclomatic_complexity(node, "wolfram") if _is_callable else None
+            ),
+            line_span=(end_line - start_line + 1) if _is_callable else None,
         )
         if meta:  # pragma: no cover - meta rarely used
             sym.meta = meta  # pragma: no cover
@@ -278,7 +288,6 @@ def _extract_edges_from_file(
                                     origin=PASS_ID,
                                     origin_run_id=run_id,
                                     evidence_type="import",
-                                    confidence=0.95,
                                 )
                                 edges.append(edge)
                     else:
@@ -302,7 +311,6 @@ def _extract_edges_from_file(
                                 origin=PASS_ID,
                                 origin_run_id=run_id,
                                 evidence_type="ast_call",
-                                confidence=0.9,
                             )
                             edges.append(edge)
 

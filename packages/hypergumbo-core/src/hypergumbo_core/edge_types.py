@@ -31,6 +31,7 @@ Axis taxonomy:
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
@@ -92,11 +93,18 @@ EDGE_TYPES: Final[tuple[EdgeTypeSpec, ...]] = (
     ),
     EdgeTypeSpec(
         "depends_on", AXIS_RELATIONSHIP,
-        "Generic dependency relationship.",
+        "A package/build manifest DECLARES a dependency on another "
+        "(package.json, Dockerfile, Makefile, meson, ...): a declaration "
+        "edge from the manifest/project to its dependency. Distinct from "
+        "depends_on_manifest (the import-resolution bridge) -- see WI-dinih.",
     ),
     EdgeTypeSpec(
         "depends_on_manifest", AXIS_RELATIONSHIP,
-        "Dependency declared in a package or build manifest.",
+        "An importing source file RESOLVED to a manifest-declared "
+        "dependency (the dependency linker's import->declared-dep bridge; "
+        "evidence_type=import_to_manifest): a resolution edge from the file "
+        "to the dependency. Distinct from depends_on (the manifest's own "
+        "declaration) -- see WI-dinih.",
     ),
     EdgeTypeSpec(
         "sources", AXIS_RELATIONSHIP,
@@ -182,174 +190,22 @@ EDGE_TYPES: Final[tuple[EdgeTypeSpec, ...]] = (
         "to extends/implements; the override declaration itself).",
     ),
 
-    # Deprecation candidates per ADR-0023 §6. Endpoint properties
-    # leaked into the edge_type label; migration folds these back into
-    # relationship-shaped names with kind/language metadata on the
-    # endpoint nodes.
-    EdgeTypeSpec(
-        "script_src", AXIS_ENDPOINT_SHAPE,
-        "HTML ``<script src=...>`` reference.",
-    ),
-    EdgeTypeSpec(
-        "base_image", AXIS_ENDPOINT_SHAPE,
-        "Dockerfile ``FROM`` base image reference.",
-    ),
-    EdgeTypeSpec(
-        "kernel_launch", AXIS_ENDPOINT_SHAPE,
-        "GPU kernel invocation.",
-    ),
-    EdgeTypeSpec(
-        "grpc_calls", AXIS_ENDPOINT_SHAPE,
-        "gRPC call (use 'calls' + protocol meta).",
-    ),
-    EdgeTypeSpec(
-        "http_calls", AXIS_ENDPOINT_SHAPE,
-        "HTTP call (use 'calls' + protocol meta).",
-    ),
-    EdgeTypeSpec(
-        "graphql_calls", AXIS_ENDPOINT_SHAPE,
-        "GraphQL call (use 'calls' + protocol meta).",
-    ),
-
-    # Dispatch-family fold targets per audit-findings 0001. Each was a deprecation
-    # candidate where the family-specific name encoded a mechanism /
-    # protocol / declaration-vs-runtime distinction, not a separate
-    # relationship. Phase 3 producer migration renames these to the
-    # canonical fold target with the differentiating fact in edge.meta.
-
-    # Publish-family fold targets per audit-findings 0001.
-
-    # Registry-completeness fills per WI-tavas-voror sweep —
-    # endpoint_shape values producers were already emitting that
-    # the original ADR-0023 deprecation list missed. Each carries a
-    # plausible canonical fold target to seed a future per-language
-    # or per-pattern audit; the actual Phase-3-style migration is
-    # deferred until that audit picks the meta-key shape.
-    EdgeTypeSpec(
-        "abi_call", AXIS_ENDPOINT_SHAPE,
-        "Solidity contract ABI call (cross-contract method invocation); "
-        "likely fold to 'calls' + meta['protocol']='abi'.",
-    ),
-    EdgeTypeSpec(
-        "association", AXIS_ENDPOINT_SHAPE,
-        "Ruby ActiveRecord association declaration (has_many, belongs_to, "
-        "etc.); likely fold to 'references' + meta['construct']='association'.",
-    ),
-    EdgeTypeSpec(
-        "build_tag_alternative_of", AXIS_ENDPOINT_SHAPE,
-        "Go build-tag-conditional alternative implementation of a symbol; "
-        "likely fold to 'references' + meta['construct']='build_tag_alternative'.",
-    ),
-    EdgeTypeSpec(
-        "caller_invokes", AXIS_ENDPOINT_SHAPE,
-        "Tauri-style cross-language invoke (caller → bound command); "
-        "likely fold to 'calls' + meta['protocol']='ipc' (parallel to "
-        "ipc_calls per audit-findings 0002).",
-    ),
-    EdgeTypeSpec(
-        "contains_routes", AXIS_ENDPOINT_SHAPE,
-        "Controller / module containing route handlers; likely fold "
-        "to 'contains' (already canonical) — pure dst-kind leakage.",
-    ),
-    EdgeTypeSpec(
-        "crypto_flow", AXIS_ENDPOINT_SHAPE,
-        "Crypto-related dataflow (key/secret reaches sink); likely fold "
-        "to 'data_flows_to' + meta['construct']='crypto'.",
-    ),
-    EdgeTypeSpec(
-        "depends", AXIS_ENDPOINT_SHAPE,
-        "Package depends on another (Bitbake, requirements.txt); likely "
-        "fold to 'depends_on' (already canonical) or 'depends_on_manifest' "
-        "depending on declaration site.",
-    ),
-    EdgeTypeSpec(
-        "extends_template", AXIS_ENDPOINT_SHAPE,
-        "Twig/Jinja template extends a parent template; likely fold to "
-        "'extends' + meta['construct']='template' or stay as canonical "
-        "if templates' extension semantics differ enough.",
-    ),
-    EdgeTypeSpec(
-        "includes_class", AXIS_ENDPOINT_SHAPE,
-        "Puppet manifest includes a class declaration; likely fold to "
-        "'includes' (now canonical) + meta['construct']='puppet_class'.",
-    ),
-    EdgeTypeSpec(
-        "includes_template", AXIS_ENDPOINT_SHAPE,
-        "Twig/Jinja template includes a partial; likely fold to "
-        "'includes' (now canonical) + meta['construct']='template'.",
-    ),
-    EdgeTypeSpec(
-        "invokes_callback", AXIS_ENDPOINT_SHAPE,
-        "Erlang/Elixir/Ruby callback invocation (gen_server callback, "
-        "framework lifecycle hook); likely fold to 'dispatches_to' or "
-        "'calls' + meta['mechanism']='callback'.",
-    ),
-    EdgeTypeSpec(
-        "links_to", AXIS_ENDPOINT_SHAPE,
-        "Markdown link from one document to another; likely fold to "
-        "'references' + meta['construct']='markdown_link'.",
-    ),
-    EdgeTypeSpec(
-        "notifies_resource", AXIS_ENDPOINT_SHAPE,
-        "Puppet/Chef resource notify directive (trigger another resource "
-        "on change); likely fold to 'event_publishes' + "
-        "meta['channel_kind']='puppet_notify' (configuration-management "
-        "pub-sub shape).",
-    ),
-    EdgeTypeSpec(
-        "renders", AXIS_ENDPOINT_SHAPE,
-        "Controller renders a view template; likely fold to 'references' "
-        "+ meta['construct']='view_render' (parallel to renders_component "
-        "for JSX).",
-    ),
-    EdgeTypeSpec(
-        "requires_resource", AXIS_ENDPOINT_SHAPE,
-        "Puppet/Chef resource require directive (this resource depends "
-        "on another); likely fold to 'depends_on' + "
-        "meta['construct']='puppet_require'.",
-    ),
-    EdgeTypeSpec(
-        "signal_receiver", AXIS_ENDPOINT_SHAPE,
-        "Django signal receiver registration; likely fold to "
-        "'event_publishes' + meta['channel_kind']='django_signal' (signals "
-        "are pub-sub via Django's dispatch module).",
-    ),
-    EdgeTypeSpec(
-        "template_calls", AXIS_ENDPOINT_SHAPE,
-        "Vue / template-engine method call from template into "
-        "component logic; likely fold to 'calls' + "
-        "meta['mechanism']='template'.",
-    ),
-    EdgeTypeSpec(
-        "uses_mixin", AXIS_ENDPOINT_SHAPE,
-        "Sass/SCSS @include of a mixin; likely fold to 'references' + "
-        "meta['construct']='sass_mixin'.",
-    ),
-    EdgeTypeSpec(
-        "uses_vocabulary", AXIS_ENDPOINT_SHAPE,
-        "SPARQL/RDF query references a vocabulary/ontology; likely "
-        "fold to 'references' + meta['construct']='rdf_vocabulary'.",
-    ),
-
-    # Per-family audit pending per ADR-0023 §5. The dispatch and
-    # publish families were resolved by audit-findings 0001; the resolver /
-    # OpenAPI / RPC family awaits its own audit.
-    EdgeTypeSpec(
-        "resolver_implements", AXIS_PENDING,
-        "GraphQL resolver pattern — pending per-family audit.",
-    ),
-    EdgeTypeSpec(
-        "resolver_for_type", AXIS_PENDING,
-        "GraphQL resolver-type binding — pending per-family audit.",
-    ),
-    EdgeTypeSpec(
-        "openapi_implements", AXIS_PENDING,
-        "OpenAPI handler pattern — pending per-family audit.",
-    ),
-    EdgeTypeSpec(
-        "implements_rpc", AXIS_PENDING,
-        "RPC implementation binding — pending per-family audit.",
-    ),
+    # ADR-0023 Phase 4b' COMPLETE (WI-pumav): all 21 long-tail
+    # endpoint_shape values were producer-migrated to canonical relationship
+    # types + meta discriminators (audit-findings 0017, Batches 1a-7) and
+    # their dead registry entries pruned. Together with the earlier
+    # dst-kind / bridge / IPC / publish / dispatch closures and the
+    # protocol-call (WI-hirud) + script_src (Batch 0) prunes, the
+    # endpoint_shape axis of Edge.edge_type is now EMPTY — the fold declared
+    # by ADR-0023 §6 is complete.
+    #
+    # The pending_classification axis is now ALSO empty (WI-sumik / WI-pusuv
+    # Option B): the resolver/OpenAPI/RPC family (resolver_implements,
+    # resolver_for_type, openapi_implements, implements_rpc) was producer-
+    # migrated to canonical implements/references + meta per audit-findings
+    # 0016 (Batches A/B) and its dead registry entries pruned here. The
+    # AXIS_PENDING constant is retained (a future edge type may land pending
+    # its per-family audit per ADR-0023 §5), but no value occupies it today.
 )
 
 
@@ -375,6 +231,35 @@ def find_edge_type(name: str) -> EdgeTypeSpec | None:
         if spec.name == name:
             return spec
     return None
+
+
+def is_grpc_rpc_implementation(
+    edge_type: str, meta: Mapping[str, object] | None
+) -> bool:
+    """True for a folded gRPC RPC-implementation edge (audit-findings 0016).
+
+    ``implements_rpc`` folded to canonical ``implements`` +
+    ``meta['protocol']='grpc'`` (a Go method satisfying a proto RPC IS a
+    Go interface implementation). But ``implements_rpc`` carried call-like
+    consumer coupling — traceable for taint (``taint.TAINT_CALL_EDGE_TYPES``),
+    I/O-boundary reachability (``io_boundary._TRACEABLE_EDGE_TYPES`` /
+    ``verify_claims._COVERAGE_CALL_EDGE_TYPES``), ranked at call weight
+    (``ranking`` weight 1.0), and forward-traversable in slices — whereas
+    canonical ``implements`` is a *structural* (reverse-only, weight-0.5)
+    edge. This predicate lets those consumers keep matching the folded
+    form WITHOUT wholesale-including every structural ``implements`` edge,
+    so gRPC reachability / taint / ranking / slice coupling is preserved
+    (audit-findings 0016 finding 3). It is the single source of truth for
+    "is this the folded gRPC edge", shared by every consumer so they can
+    never drift. Callers pass primitives so it works on both dict-shaped
+    edges (``edge['type']`` / ``edge['meta']``) and ``Edge`` objects
+    (``edge.edge_type`` / ``edge.meta``).
+    """
+    return (
+        edge_type == "implements"
+        and meta is not None
+        and meta.get("protocol") == "grpc"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -411,6 +296,26 @@ from both the registry and this set; consumers querying by
 component-import-specific behavior directly."""
 
 
+INHERITANCE_EDGE_TYPES: Final[frozenset[str]] = frozenset({
+    "extends",
+    "inherits",
+    "implements",
+})
+"""Class is-a (structural inheritance) edges, regardless of the language's
+spelling. ``extends`` (Python/Java/TypeScript/...) and ``inherits`` (Solidity,
+and any language where "inherits" reads more naturally) are the *same*
+relationship; ``implements`` covers interface is-a. All three are
+``AXIS_RELATIONSHIP``.
+
+Replaces hand-rolled consumer literals like
+``_STRUCTURAL_EDGE_TYPES = {"extends", "implements"}`` (WI-lobif) that silently
+omitted ``inherits`` — making Solidity / ``inherits``-language inheritance
+invisible to slice forward-BFS structural handling and ranking's
+structural-edge preservation. Method-level ``overrides`` is deliberately NOT
+included: it is a distinct method→parent-method relationship, and neither
+consumer treated it as structural before."""
+
+
 PROTOCOL_KINDS: Final[frozenset[str]] = frozenset({
     "ipc",      # Tauri-style command bus, OS-level inter-process channels
     "http",     # HTTP / HTTPS client-server calls
@@ -419,10 +324,11 @@ PROTOCOL_KINDS: Final[frozenset[str]] = frozenset({
 })
 """Closed enumeration of values for ``edge.meta['protocol']``.
 
-Per ADR-0023 §6 Phase 3 (WI-vumum-juvil): Phase 3 folds the
-protocol-call family endpoint_shape values (``http_calls``,
-``grpc_calls``, ``graphql_calls``) into the canonical ``calls``
-relationship plus ``meta['protocol']`` carrying the wire protocol.
+Per ADR-0023 §6 (WI-vumum-juvil Phase 3 + WI-hirud Phase 4b'): the
+protocol-call family (``http_calls``, ``grpc_calls``, ``graphql_calls``)
+was folded into the canonical ``calls`` relationship plus
+``meta['protocol']`` carrying the wire protocol, and its ``endpoint_shape``
+registry entries were then pruned.
 ``ipc`` is already in flight (audit-findings 0002 / WI-hahap-farid:
 the Tauri IPC linker emits ``calls`` + ``meta['protocol']='ipc'``).
 The enumeration is closed: adding a new wire protocol requires an
@@ -518,10 +424,14 @@ def find_axis_drift(
     sets are flagged if they contain any registry value whose axis is
     not in ``{relationship, pending_classification}``. Pending values
     stay allowed by design — they are real edges produced by GraphQL/
-    OpenAPI/RPC analyzers awaiting per-family audit, and consumers
-    legitimately reference them today (e.g., ``implements_rpc`` in
-    ``io_boundary._TRACEABLE_EDGE_TYPES``). When the per-family audits
-    move pending values to canonical-relationship, the existing
+    OpenAPI/RPC analyzers awaiting per-family audit, and a consumer set
+    may legitimately reference one. (The resolver/OpenAPI/RPC family —
+    the last pending values — has since been folded to canonical
+    relationships per audit-findings 0016: the folded gRPC edge is now
+    matched by ``is_grpc_rpc_implementation`` rather than by a set
+    membership, so no consumer set names a pending value today; the
+    registry prune that drains the axis follows.) When the per-family
+    audits move pending values to canonical-relationship, the existing
     membership check catches any consumer that didn't follow the
     rename.
 

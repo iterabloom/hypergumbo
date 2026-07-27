@@ -23,7 +23,7 @@ def test_run_behavior_map_writes_behavior_map_json(tmp_path):
 
     assert data["schema_version"] == SCHEMA_VERSION
     assert data["view"] == "behavior_map"
-    assert data["confidence_model"] == "hypergumbo-evidence-v1"
+    assert data["confidence_model"] == "hypergumbo-evidence-v2"
     assert data["analysis_incomplete"] is False
     assert isinstance(data["nodes"], list)
     assert isinstance(data["edges"], list)
@@ -51,7 +51,13 @@ def test_run_behavior_map_stamps_repo_fingerprint_on_every_run(tmp_path):
     assert runs, "expected at least one AnalysisRun in output"
     for run in runs:
         fp = run.get("repo_fingerprint")
-        assert isinstance(fp, str) and len(fp) == 64, (
+        # WI-bosog: the field is sha256:<64hex> (scheme-prefixed, uniform with
+        # run_signature / config_fingerprint).
+        assert (
+            isinstance(fp, str)
+            and fp.startswith("sha256:")
+            and len(fp[len("sha256:"):]) == 64
+        ), (
             f"AnalysisRun pass={run.get('pass')!r} has invalid "
             f"repo_fingerprint={fp!r}"
         )
@@ -61,7 +67,39 @@ def test_run_behavior_map_stamps_repo_fingerprint_on_every_run(tmp_path):
     fps = {run["repo_fingerprint"] for run in runs}
     assert len(fps) == 1, f"runs produced divergent fingerprints: {fps}"
 
-    assert data["repo_fingerprint_scheme"] == "hypergumbo-repofp-v1"
+    assert data["repo_fingerprint_scheme"] == "hypergumbo-repofp-v2"
+    # WI-bosog: the field is now sha256:-prefixed, uniform with the sibling
+    # run_signature / config_fingerprint identity fields.
+    assert all(fp.startswith("sha256:") for fp in fps)
+
+
+def test_sketch_precomputed_omits_vocabulary(tmp_path):
+    """INV-padoz: the sketch_precomputed cache must not carry a ``vocabulary``
+    field.
+
+    It had no consumer anywhere (``compact`` strips ``sketch_precomputed``
+    entirely; no reader in any package's ``src``) and, per the Wave-4
+    typed-SketchPrecomputed direction, was resolved by DELETION rather than
+    lemmatization. The retained cache fields stay populated — the deletion is
+    surgical, not a removal of the whole precompute payload.
+    """
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    (repo_root / "a.py").write_text("def helper(): return 1\n")
+
+    out_path = tmp_path / "hypergumbo.results.json"
+    run_behavior_map(
+        repo_root=repo_root, out_path=out_path,
+        include_sketch_precomputed=True,
+    )
+    data = json.loads(out_path.read_text())
+    sp = data["sketch_precomputed"]
+
+    assert "vocabulary" not in sp, "deleted sketch_precomputed.vocabulary reappeared"
+    # Retained cache fields remain (surgical deletion).
+    assert "config_info" in sp
+    assert "readme_description" in sp
+    assert "additional_file_centrality_scores" in sp
 
 
 def test_run_behavior_map_no_symbol_has_absolute_path_in_name(tmp_path):
@@ -182,6 +220,124 @@ def test_run_behavior_map_includes_supply_chain_summary(tmp_path):
     # derived_skipped should have paths list
     assert "paths" in summary["derived_skipped"]
     assert isinstance(summary["derived_skipped"]["paths"], list)
+
+
+def test_find_derived_skipped_enumerates_derived_dirs_and_prunes_deps(tmp_path):
+    """WI-jafoz: ``_find_derived_skipped`` walks the tree and records files
+    under derived dirs (dist/__pycache__, top-level and nested) while pruning
+    dependency dirs (so a dep's *own* build output is never misattributed)."""
+    from hypergumbo_core.cli import _find_derived_skipped
+
+    repo = tmp_path / "repo"
+    (repo / "src").mkdir(parents=True)
+    (repo / "src" / "a.py").write_text("x = 1\n")
+    # Top-level derived dir, with a nested subdir.
+    (repo / "dist" / "assets").mkdir(parents=True)
+    (repo / "dist" / "bundle.js").write_text("//\n")
+    (repo / "dist" / "assets" / "chunk.js").write_text("//\n")
+    # Top-level and nested __pycache__ (matches both ^__pycache__/ and /__pycache__/).
+    (repo / "__pycache__").mkdir()
+    (repo / "__pycache__" / "mod.pyc").write_text("\n")
+    (repo / "pkg" / "__pycache__").mkdir(parents=True)
+    (repo / "pkg" / "__pycache__" / "x.pyc").write_text("\n")
+    # A dependency dir with its OWN dist/ inside — must be pruned, not recorded.
+    (repo / "node_modules" / "dep" / "dist").mkdir(parents=True)
+    (repo / "node_modules" / "dep" / "dist" / "dep.js").write_text("//\n")
+    (repo / "node_modules" / "dep" / "index.js").write_text("//\n")
+
+    result = _find_derived_skipped(repo)
+
+    # Derived files (top-level + nested) are recorded.
+    assert "dist/bundle.js" in result
+    assert "dist/assets/chunk.js" in result
+    assert "__pycache__/mod.pyc" in result
+    assert "pkg/__pycache__/x.pyc" in result
+    # First-party source is not derived.
+    assert "src/a.py" not in result
+    # node_modules is pruned: neither its files nor its own dist/ are recorded.
+    assert not any(p.startswith("node_modules/") for p in result)
+    # Output is deterministic (sorted).
+    assert result == sorted(result)
+
+
+def test_run_behavior_map_derived_skipped_accounts_for_excluded_dirs(tmp_path):
+    """WI-jafoz behavioral evidence: a repo whose only build artifacts live in a
+    discovery-excluded derived dir previously reported ``derived_skipped`` as
+    ``{files: 0, paths: []}`` (a silent lie). It must now enumerate them."""
+    repo_root = tmp_path / "repo"
+    (repo_root / "src").mkdir(parents=True)
+    (repo_root / "src" / "app.py").write_text("def main(): pass\n")
+    # A derived dir discovery gitignore-excludes before the tier-4 classifier.
+    (repo_root / "build").mkdir()
+    (repo_root / "build" / "artifact.o").write_text("\n")
+    (repo_root / "build" / "artifact.js").write_text("//\n")
+
+    out_path = tmp_path / "hypergumbo.results.json"
+    run_behavior_map(
+        repo_root=repo_root, out_path=out_path, include_sketch_precomputed=False
+    )
+    derived_skipped = json.loads(out_path.read_text())["supply_chain_summary"][
+        "derived_skipped"
+    ]
+
+    # No longer a silent {files: 0, paths: []}: the build/ artifacts are counted.
+    assert derived_skipped["files"] >= 2
+    assert "build/artifact.o" in derived_skipped["paths"]
+    assert "build/artifact.js" in derived_skipped["paths"]
+
+
+def test_make_ecosystem_classifier_stdlib_third_party_and_unknown():
+    """ADR-0041 §3: the ecosystem classifier maps stdlib/third_party from the
+    single-source io_boundary catalog, and returns None for languages with no
+    enumerated stdlib."""
+    from hypergumbo_core.cli import _make_ecosystem_classifier
+
+    classify = _make_ecosystem_classifier()
+    # Python has an enumerated stdlib catalog (python.yaml stdlib_modules).
+    assert classify("python", "os") == "stdlib"
+    assert classify("python", "json") == "stdlib"
+    assert classify("python", "requests") == "third_party"
+    # A language with no catalog / no enumerated stdlib → None (cannot tell).
+    assert classify("no_such_language_xyz", "whatever") is None
+
+
+def test_run_behavior_map_stamps_ecosystem_on_boundary_nodes(tmp_path):
+    """ADR-0041 §3 end-to-end: stdlib imports stamp ecosystem=stdlib, declared
+    third-party imports stamp ecosystem=third_party, and supply_chain_summary
+    sub-buckets tier-3 externals by ecosystem."""
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    (repo_root / "pyproject.toml").write_text(
+        '[project]\nname = "demo"\ndependencies = ["requests>=2"]\n'
+    )
+    (repo_root / "main.py").write_text(
+        "import os\n"
+        "import requests\n"
+        "\n"
+        "def run():\n"
+        "    os.getcwd()\n"
+        "    requests.get('x')\n"
+    )
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=repo_root, out_path=out_path, include_sketch_precomputed=False)
+    data = json.loads(out_path.read_text())
+
+    def eco_for(modtoken):
+        nodes = [
+            n for n in data["nodes"]
+            if n.get("kind") == "external_symbol" and modtoken in (n.get("id") or "")
+        ]
+        return {(n.get("meta") or {}).get("ecosystem") for n in nodes}, len(nodes)
+
+    os_eco, os_n = eco_for(":os:")
+    req_eco, req_n = eco_for(":requests:")
+    assert os_n >= 1 and os_eco == {"stdlib"}, f"os should be stdlib; got {os_eco}"
+    assert req_n >= 1 and req_eco == {"third_party"}, f"requests should be third_party; got {req_eco}"
+
+    # supply_chain_summary tier-3 ecosystem sub-bucket present and counted.
+    eco_summary = data["supply_chain_summary"]["external_dep"]["ecosystem"]
+    assert eco_summary.get("stdlib", 0) >= 1
+    assert eco_summary.get("third_party", 0) >= 1
 
 
 def test_run_behavior_map_compact_mode(tmp_path):
@@ -730,3 +886,192 @@ def test_synthesis_runs_absent_when_no_synthetic_nodes(tmp_path):
     passes = {r.get("pass") for r in data["analysis_runs"]}
     assert "orchestrator_file_symbol_synthesis" not in passes
     assert "boundary_external_symbol_synthesis" not in passes
+
+
+def test_node_bearing_path_gets_file_anchor_wi_dagif(tmp_path):
+    """WI-dagif (file-anchor:F1, node-bearing slice): a file with content nodes
+    but no imports/calls (hence no make_file_id edge) still gets a kind="file"
+    anchor at the orchestrator chokepoint, and the containment linker's
+    span-based pass roots its top-level members at it (rootful contains tree)."""
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    # Class-only Java file: class + fields, NO imports/calls -> no make_file_id
+    # edge endpoint -> the dangling-edge synthesizer alone would not anchor it.
+    (repo_root / "Data.java").write_text(
+        "public class Data {\n    int x;\n    String name;\n}\n"
+    )
+    out_path = tmp_path / "hypergumbo.results.json"
+    run_behavior_map(repo_root=repo_root, out_path=out_path, include_sketch_precomputed=False)
+    data = json.loads(out_path.read_text())
+    nodes = data["nodes"]
+
+    # The node-bearing path now carries exactly one file anchor.
+    anchors = [n for n in nodes if n.get("kind") == "file" and n["path"] == "Data.java"]
+    assert len(anchors) == 1, f"expected one file anchor for Data.java, got {anchors}"
+    anchor_id = anchors[0]["id"]
+
+    # Closure (scoped to the real source path): the class node's path has a
+    # file anchor — i.e. the contains tree is no longer rootless.
+    cls = next(n for n in nodes if n.get("kind") == "class" and n["path"] == "Data.java")
+    contains = {(e["src"], e["dst"]) for e in data["edges"] if e["type"] == "contains"}
+    assert (anchor_id, cls["id"]) in contains, (
+        "file anchor does not contain its top-level class — the containment "
+        "linker's span-based pass should root members at the synthesized anchor"
+    )
+
+
+def test_additional_file_candidate_anchored_and_subset_invariant_f1_f4(tmp_path):
+    """file-anchor:F1+F4: every Additional-File candidate (config/doc) gets a
+    kind="file" anchor even with NO content nodes (F1), and every
+    additional_file_centrality_scores key is a real file-anchor node path —
+    the WI-rajod subset invariant (F4)."""
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    # `helper` is called twice -> in_degree 2 -> qualifies for mention centrality;
+    # README mentions it, so the Additional-Files surface scores non-empty.
+    (repo_root / "app.py").write_text(
+        "def helper():\n    return 1\n\n"
+        "def a():\n    return helper()\n\n"
+        "def b():\n    return helper()\n"
+    )
+    (repo_root / "README.md").write_text(
+        "# App\n\nThe `helper` function is the core utility.\n"
+    )
+    (repo_root / "config.yaml").write_text("name: app\nversion: 1\n")
+    out_path = tmp_path / "hypergumbo.results.json"
+    run_behavior_map(
+        repo_root=repo_root, out_path=out_path, include_sketch_precomputed=True
+    )
+    data = json.loads(out_path.read_text())
+    nodes = data["nodes"]
+
+    file_paths = {n["path"] for n in nodes if n.get("kind") == "file"}
+    # F1: config/doc candidates are anchored even though they carry no content nodes.
+    assert "README.md" in file_paths
+    assert "config.yaml" in file_paths
+
+    # F4 + WI-rajod subset invariant: the producer ran (non-empty surface) and
+    # every centrality key is a real file-anchor node path.
+    scores = data["sketch_precomputed"]["additional_file_centrality_scores"]
+    assert "README.md" in scores, (
+        f"expected README.md in the additional-file centrality surface, got {scores}"
+    )
+    assert set(scores) <= file_paths, (
+        f"centrality keys not subset of file-anchor node paths: "
+        f"{set(scores) - file_paths}"
+    )
+
+
+def _files_analyzed_by_pass(out_path: Path) -> dict:
+    """Map pass-id -> sorted list of that pass's AnalysisRun.files_analyzed
+    values (set-wise per pass, so the as-completed collection ORDER does not
+    matter — only whether the COUNTS are stable)."""
+    data = json.loads(out_path.read_text())
+    from collections import defaultdict
+
+    m: dict = defaultdict(list)
+    for ar in data.get("analysis_runs", []):
+        m[ar.get("pass_id") or ar.get("name")].append(ar.get("files_analyzed"))
+    return {k: sorted(v, key=lambda x: (x is None, x)) for k, v in m.items()}
+
+
+def test_files_analyzed_is_deterministic_across_runs(tmp_path):
+    """WI-bijad: ``AnalysisRun.files_analyzed`` must be identical across
+    repeated runs of the same tree.
+
+    Analyzer and linker passes run concurrently (``ThreadPoolExecutor`` +
+    ``as_completed`` in ``analyze.all_analyzers``), so a per-pass file-discovery
+    race — each pass doing its own ``os.walk`` under threads — historically made
+    ``files_analyzed`` vary run-to-run (the filing: 18 of 84 ARs, several scanning
+    100+ files). The shared, sorted ``discovery.FileIndex`` (one ``os.walk`` at
+    startup, deterministically ordered, consulted by every pass) is what keeps
+    each pass's file set stable; this test guards that determinism structurally
+    rather than by chance. The fixture spans multiple languages (→ multiple
+    concurrent analyzers) and a Flask route + a DB ``execute`` (→ the scan-heavy
+    route/db linkers the filing named), then runs the pipeline three times.
+    """
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    (repo_root / "app.py").write_text(
+        "import sqlite3\n"
+        "from flask import Flask\n"
+        "app = Flask(__name__)\n"
+        "@app.route('/items')\n"
+        "def items():\n"
+        "    conn = sqlite3.connect('x.db')\n"
+        "    return conn.execute('SELECT * FROM items').fetchall()\n"
+    )
+    (repo_root / "helper.py").write_text("def helper(x):\n    return x + 1\n")
+    (repo_root / "main.go").write_text(
+        "package main\n"
+        "func Add(a int, b int) int { return a + b }\n"
+        "func main() { _ = Add(1, 2) }\n"
+    )
+    (repo_root / "index.js").write_text(
+        "function greet(name) { return 'hi ' + name; }\n"
+        "module.exports = { greet };\n"
+    )
+
+    maps = []
+    for i in range(3):
+        out = tmp_path / f"out{i}.json"
+        run_behavior_map(
+            repo_root=repo_root, out_path=out, include_sketch_precomputed=False,
+        )
+        maps.append(_files_analyzed_by_pass(out))
+
+    assert maps[0] == maps[1] == maps[2], (
+        "files_analyzed varied across runs — determinism regression (WI-bijad); "
+        f"run0 vs run1 delta: "
+        f"{ {k: (maps[0].get(k), maps[1].get(k)) for k in set(maps[0]) | set(maps[1]) if maps[0].get(k) != maps[1].get(k)} }"
+    )
+
+
+def test_pyproject_console_script_survives_and_is_detected_wi_papag(tmp_path):
+    """WI-papag: a pyproject ``[project.scripts]`` console-script is
+    entrypoint-bearing — it must survive the default (non ``--include-docs``)
+    noise filter AND be detected as a manifest-declared CLI_COMMAND, while an
+    npm ``package.json`` run-script (no ``entry_point``) is correctly filtered
+    as noise. Regression guard for the ADR-0043 §5 C3 / audit-findings 0005
+    reconciliation."""
+    repo_root = tmp_path / "repo"
+    (repo_root / "mypkg").mkdir(parents=True)
+    (repo_root / "pyproject.toml").write_text(
+        '[project]\nname = "mypkg"\nversion = "0.1.0"\n\n'
+        '[project.scripts]\nmycli = "mypkg.cli:main"\n'
+    )
+    (repo_root / "mypkg" / "__init__.py").write_text('"""pkg."""\n')
+    (repo_root / "mypkg" / "cli.py").write_text(
+        '"""CLI."""\n\n\ndef main():\n    """entry."""\n    return 0\n'
+    )
+    (repo_root / "package.json").write_text(
+        '{\n  "name": "x",\n  "version": "1.0.0",\n'
+        '  "scripts": {"build": "webpack", "test": "jest"}\n}\n'
+    )
+    out_path = tmp_path / "out.json"
+    run_behavior_map(
+        repo_root=repo_root, out_path=out_path, include_sketch_precomputed=False,
+    )
+    data = json.loads(out_path.read_text())
+
+    def script_nodes(has_entry_point):
+        return [
+            n for n in data["nodes"]
+            if n.get("kind") == "file"
+            and (n.get("meta") or {}).get("entry_role") == "script"
+            and bool((n.get("meta") or {}).get("entry_point")) is has_entry_point
+        ]
+
+    # The pyproject console-script (has entry_point) survives the noise filter...
+    assert script_nodes(True), \
+        "pyproject [project.scripts] console-script was wrongly filtered as noise"
+    # ...and is detected as a manifest-declared CLI_COMMAND entrypoint.
+    cli_eps = [
+        ep for ep in data["entrypoints"]
+        if ep.get("kind") == "cli_command"
+        and (ep.get("meta") or {}).get("evidence_type") == "manifest_declared"
+    ]
+    assert cli_eps, "pyproject console-script not detected as a CLI_COMMAND entrypoint"
+    # npm run-scripts (no entry_point) remain noise-filtered.
+    assert not script_nodes(False), \
+        "npm package.json run-scripts should be noise-filtered"

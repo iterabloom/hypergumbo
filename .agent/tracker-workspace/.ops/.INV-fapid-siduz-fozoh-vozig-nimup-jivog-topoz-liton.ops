@@ -72,3 +72,20 @@
     tags: [dogfood]  # 106d
   remove:  # 106d
     tags: [dogfooding]  # 106d
+- op: update  # e8de
+  at: '2026-07-10T09:51:32Z'  # e8de
+  by: agent  # e8de
+  actor: jgstern_agent  # e8de
+  clock: 7  # e8de
+  nonce: e8de  # e8de
+  set:  # e8de
+    status: satisfied  # e8de
+  add:  # e8de
+    tags: [wave4]  # e8de
+- op: discuss  # d561
+  at: '2026-07-10T09:51:32Z'  # d561
+  by: agent  # d561
+  actor: jgstern_agent  # d561
+  clock: 8  # d561
+  nonce: d561  # d561
+  message: "SATISFIED — PR #541 (selfh/dev, slice fix 4240a7a4e1). slice --out defaulted to the literal string 'slice.json', indistinguishable from a user explicitly passing --out slice.json, so an explicit slice.json was silently overridden by entry-name auto-detection (written to the cache dir, not the requested path). The default sentinel is now None; the auto-name branch keys on 'out_path_arg is None' rather than the '== \"slice.json\"' string collision, so an explicit --out slice.json is honored and auto-naming triggers only when --out is omitted. EVIDENCE: test_cmd_slice_explicit_out_slice_json_is_honored (monkeypatch.chdir + args.out='slice.json' -> tmp/slice.json exists — was auto-renamed to cache/slice.<entry>.json before) + test_cmd_slice_omitted_out_auto_generates_from_entry (args.out=None -> 'slice.hello' auto-name); two pre-existing default-behavior tests (test_cmd_slice_default_output_includes_entry_name, ..._reverse_uses_distinct_filename) migrated from the 'slice.json' sentinel to None. cli-input sub-B (INV-dunof) member. Core 100% coverage."  # d561

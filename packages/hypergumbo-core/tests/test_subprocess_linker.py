@@ -590,3 +590,407 @@ class TestLinkerRegistration:
         ctx = LinkerContext(repo_root=tmp_path, symbols=[cli_symbol, non_cli_symbol])
         count = _count_cli_command_symbols(ctx)
         assert count == 1  # Only the CLI command, not the route
+
+
+class TestArgparseSubcommandLinking:
+    """WI-lubap: the subprocess linker joins subprocess subcommands to argparse
+    handlers, not just decorator-based (Click/Typer) concept=command symbols.
+
+    argparse exposes its command surface as ``<p> = sub.add_parser("name")`` +
+    ``<p>.set_defaults(func=handler)`` string literals, NOT as per-command
+    symbols — so the linker scans for that idiom and joins the subprocess
+    subcommand to the resolved handler function symbol.
+    """
+
+    def _project(self, tmp_path: Path) -> Symbol:
+        (tmp_path / "pyproject.toml").write_text(
+            '[project]\nname = "myapp"\n'
+        )
+        src = tmp_path / "myapp"
+        src.mkdir()
+        (src / "cli.py").write_text(
+            "import argparse\n"
+            "def cmd_serve(args):\n"
+            "    pass\n"
+            "def main():\n"
+            "    parser = argparse.ArgumentParser()\n"
+            "    sub = parser.add_subparsers()\n"
+            "    p = sub.add_parser('serve')\n"
+            "    p.set_defaults(func=cmd_serve)\n"
+        )
+        tests = tmp_path / "tests"
+        tests.mkdir()
+        (tests / "test_cli.py").write_text(
+            "import subprocess\n"
+            "subprocess.run(['myapp', 'serve'])\n"
+        )
+        return Symbol(
+            id="python:myapp/cli.py:2-3:cmd_serve:function",
+            name="cmd_serve",
+            kind="function",
+            language="python",
+            path="myapp/cli.py",
+            span=Span(2, 3, 0, 0),
+        )
+
+    def test_links_subprocess_to_argparse_handler(self, tmp_path: Path) -> None:
+        handler = self._project(tmp_path)
+        # No concept=command symbols at all — only the plain handler function,
+        # passed via all_symbols (as the registry provides ctx.symbols).
+        result = link_subprocess(tmp_path, [], all_symbols=[handler])
+        edges = [e for e in result.edges if e.edge_type == "subprocess_calls"]
+        assert len(edges) == 1, edges
+        assert edges[0].dst == handler.id
+
+    def test_argparse_command_without_handler_not_linked(self, tmp_path: Path) -> None:
+        """An add_parser without a resolvable set_defaults(func=...) has no
+        join target and must not create an edge — even though the scan runs
+        (all_symbols is non-empty)."""
+        (tmp_path / "pyproject.toml").write_text('[project]\nname = "myapp"\n')
+        src = tmp_path / "myapp"
+        src.mkdir()
+        (src / "cli.py").write_text(
+            "import argparse\n"
+            "def cmd_serve(args):\n"
+            "    pass\n"
+            "def main():\n"
+            "    sub = argparse.ArgumentParser().add_subparsers()\n"
+            "    p = sub.add_parser('serve')\n"
+        )
+        tests = tmp_path / "tests"
+        tests.mkdir()
+        (tests / "test_cli.py").write_text(
+            "import subprocess\n"
+            "subprocess.run(['myapp', 'serve'])\n"
+        )
+        handler = Symbol(
+            id="python:myapp/cli.py:2-3:cmd_serve:function",
+            name="cmd_serve", kind="function", language="python",
+            path="myapp/cli.py", span=Span(2, 3, 0, 0),
+        )
+        result = link_subprocess(tmp_path, [], all_symbols=[handler])
+        edges = [e for e in result.edges if e.edge_type == "subprocess_calls"]
+        assert edges == []
+
+    def test_argparse_handler_name_without_symbol_not_linked(self, tmp_path: Path) -> None:
+        """set_defaults(func=<name>) where <name> resolves to no Symbol has no
+        join target."""
+        (tmp_path / "pyproject.toml").write_text('[project]\nname = "myapp"\n')
+        src = tmp_path / "myapp"
+        src.mkdir()
+        (src / "cli.py").write_text(
+            "import argparse\n"
+            "def main():\n"
+            "    sub = argparse.ArgumentParser().add_subparsers()\n"
+            "    p = sub.add_parser('serve')\n"
+            "    p.set_defaults(func=missing_handler)\n"
+        )
+        tests = tmp_path / "tests"
+        tests.mkdir()
+        (tests / "test_cli.py").write_text(
+            "import subprocess\n"
+            "subprocess.run(['myapp', 'serve'])\n"
+        )
+        unrelated = Symbol(
+            id="python:other.py:1-1:other:function",
+            name="other", kind="function", language="python",
+            path="other.py", span=Span(1, 1, 0, 0),
+        )
+        result = link_subprocess(tmp_path, [], all_symbols=[unrelated])
+        edges = [e for e in result.edges if e.edge_type == "subprocess_calls"]
+        assert edges == []
+
+    def test_argparse_dynamic_and_non_name_forms_ignored(self, tmp_path: Path) -> None:
+        """Non-statically-resolvable forms are skipped: add_parser(<var>) (name
+        not a string literal) with set_defaults(func=<lambda>) (func not a bare
+        Name), and set_defaults(dest=...) (no func kwarg)."""
+        (tmp_path / "pyproject.toml").write_text('[project]\nname = "myapp"\n')
+        src = tmp_path / "myapp"
+        src.mkdir()
+        (src / "cli.py").write_text(
+            "import argparse\n"
+            "def main():\n"
+            "    name = 'serve'\n"
+            "    sub = argparse.ArgumentParser().add_subparsers()\n"
+            "    p = sub.add_parser(name)\n"
+            "    p.set_defaults(func=lambda a: None)\n"
+            "    q = sub.add_parser('deploy')\n"
+            "    q.set_defaults(dest='x')\n"
+        )
+        tests = tmp_path / "tests"
+        tests.mkdir()
+        (tests / "test_cli.py").write_text(
+            "import subprocess\n"
+            "subprocess.run(['myapp', 'serve'])\n"
+            "subprocess.run(['myapp', 'deploy'])\n"
+        )
+        dummy = Symbol(
+            id="python:other.py:1-1:other:function",
+            name="other", kind="function", language="python",
+            path="other.py", span=Span(1, 1, 0, 0),
+        )
+        result = link_subprocess(tmp_path, [], all_symbols=[dummy])
+        edges = [e for e in result.edges if e.edge_type == "subprocess_calls"]
+        assert edges == []
+
+    def test_argparse_and_concept_command_coexist(self, tmp_path: Path) -> None:
+        """A concept=command symbol and an argparse handler both populate the
+        index; each joins its own subcommand."""
+        (tmp_path / "pyproject.toml").write_text('[project]\nname = "myapp"\n')
+        src = tmp_path / "myapp"
+        src.mkdir()
+        (src / "cli.py").write_text(
+            "import argparse\n"
+            "def cmd_serve(args):\n"
+            "    pass\n"
+            "def main():\n"
+            "    sub = argparse.ArgumentParser().add_subparsers()\n"
+            "    p = sub.add_parser('serve')\n"
+            "    p.set_defaults(func=cmd_serve)\n"
+        )
+        tests = tmp_path / "tests"
+        tests.mkdir()
+        (tests / "test_cli.py").write_text(
+            "import subprocess\n"
+            "subprocess.run(['myapp', 'serve'])\n"
+            "subprocess.run(['myapp', 'deploy'])\n"
+        )
+        handler = Symbol(
+            id="python:myapp/cli.py:2-3:cmd_serve:function",
+            name="cmd_serve", kind="function", language="python",
+            path="myapp/cli.py", span=Span(2, 3, 0, 0),
+        )
+        deploy = Symbol(
+            id="python:myapp/cli.py:30-40:deploy:function",
+            name="deploy", kind="function", language="python",
+            path="myapp/cli.py", span=Span(30, 40, 0, 0),
+            meta={"concepts": [{"concept": "command"}]},
+        )
+        result = link_subprocess(tmp_path, [deploy], all_symbols=[handler, deploy])
+        dsts = {e.dst for e in result.edges if e.edge_type == "subprocess_calls"}
+        assert handler.id in dsts
+        assert deploy.id in dsts
+
+    def test_requirement_counts_argparse_commands(self, tmp_path: Path) -> None:
+        """The linker's requirement diagnostic counts argparse subcommand
+        handlers, not just concept=command symbols (WI-lubap)."""
+        from hypergumbo_core.linkers.subprocess_cli import (
+            _count_cli_command_symbols,
+        )
+        from hypergumbo_core.linkers.registry import LinkerContext
+
+        src = tmp_path / "myapp"
+        src.mkdir()
+        (src / "cli.py").write_text(
+            "import argparse\n"
+            "def cmd_serve(a):\n"
+            "    pass\n"
+            "def main():\n"
+            "    sub = argparse.ArgumentParser().add_subparsers()\n"
+            "    p = sub.add_parser('serve')\n"
+            "    p.set_defaults(func=cmd_serve)\n"
+        )
+        handler = Symbol(
+            id="python:myapp/cli.py:2-3:cmd_serve:function",
+            name="cmd_serve", kind="function", language="python",
+            path="myapp/cli.py", span=Span(2, 3, 0, 0),
+        )
+        ctx = LinkerContext(repo_root=tmp_path, symbols=[handler])
+        # No concept=command symbols, but one argparse handler -> count >= 1.
+        assert _count_cli_command_symbols(ctx) >= 1
+
+
+class TestFireSubcommandLinking:
+    """WI-sigam: the subprocess linker joins subprocess subcommands to the
+    public methods of a class exposed via ``fire.Fire(<Class>)``.
+
+    python-fire turns each public method of the object passed to ``fire.Fire``
+    into a CLI subcommand whose name IS the method name — there is no
+    ``add_parser``/``set_defaults`` idiom (WI-lubap) and no per-subcommand
+    Symbol, so the linker derives the surface from the class's method symbols.
+    """
+
+    def _project(self, tmp_path: Path, subcmd: str = "add") -> list[Symbol]:
+        (tmp_path / "pyproject.toml").write_text('[project]\nname = "myapp"\n')
+        src = tmp_path / "myapp"
+        src.mkdir()
+        (src / "cli.py").write_text(
+            "import fire\n"
+            "class Calc:\n"
+            "    def add(self, a, b):\n"
+            "        return a + b\n"
+            "    def _private(self):\n"
+            "        return 0\n"
+            "def main():\n"
+            "    fire.Fire(Calc)\n"
+        )
+        tests = tmp_path / "tests"
+        tests.mkdir()
+        (tests / "test_cli.py").write_text(
+            "import subprocess\n"
+            f"subprocess.run(['myapp', '{subcmd}'])\n"
+        )
+        return [
+            Symbol(
+                id="python:myapp/cli.py:2-6:Calc:class", name="Calc",
+                kind="class", language="python", path="myapp/cli.py",
+                span=Span(2, 6, 0, 0),
+            ),
+            Symbol(
+                id="python:myapp/cli.py:3-4:Calc.add:method", name="Calc.add",
+                kind="method", language="python", path="myapp/cli.py",
+                span=Span(3, 4, 0, 0),
+            ),
+            Symbol(
+                id="python:myapp/cli.py:5-6:Calc._private:method",
+                name="Calc._private", kind="method", language="python",
+                path="myapp/cli.py", span=Span(5, 6, 0, 0),
+            ),
+        ]
+
+    def test_links_subprocess_to_fire_method(self, tmp_path: Path) -> None:
+        symbols = self._project(tmp_path, subcmd="add")
+        add_method = next(s for s in symbols if s.name == "Calc.add")
+        result = link_subprocess(tmp_path, [], all_symbols=symbols)
+        edges = [e for e in result.edges if e.edge_type == "subprocess_calls"]
+        assert len(edges) == 1, edges
+        assert edges[0].dst == add_method.id
+        # Single unambiguous candidate → full literal-command confidence.
+        assert edges[0].confidence == 0.85
+
+    def test_fire_private_method_not_linked(self, tmp_path: Path) -> None:
+        """python-fire hides underscore-prefixed members, so ``_private`` is not
+        a subcommand and must not join."""
+        symbols = self._project(tmp_path, subcmd="_private")
+        result = link_subprocess(tmp_path, [], all_symbols=symbols)
+        edges = [e for e in result.edges if e.edge_type == "subprocess_calls"]
+        assert edges == []
+
+    def test_fire_non_name_arg_ignored(self, tmp_path: Path) -> None:
+        """``fire.Fire(build())`` — a non-bare-Name first arg — is a deferred
+        form and must not join any method."""
+        (tmp_path / "pyproject.toml").write_text('[project]\nname = "myapp"\n')
+        src = tmp_path / "myapp"
+        src.mkdir()
+        (src / "cli.py").write_text(
+            "import fire\n"
+            "class Calc:\n"
+            "    def add(self, a, b):\n"
+            "        return a + b\n"
+            "def build():\n"
+            "    return Calc()\n"
+            "def main():\n"
+            "    fire.Fire(build())\n"
+        )
+        tests = tmp_path / "tests"
+        tests.mkdir()
+        (tests / "test_cli.py").write_text(
+            "import subprocess\n"
+            "subprocess.run(['myapp', 'add'])\n"
+        )
+        add_method = Symbol(
+            id="python:myapp/cli.py:3-4:Calc.add:method", name="Calc.add",
+            kind="method", language="python", path="myapp/cli.py",
+            span=Span(3, 4, 0, 0),
+        )
+        result = link_subprocess(tmp_path, [], all_symbols=[add_method])
+        edges = [e for e in result.edges if e.edge_type == "subprocess_calls"]
+        assert edges == []
+
+    def test_fire_target_class_mismatch_not_linked(self, tmp_path: Path) -> None:
+        """A method on a DIFFERENT class than the one passed to fire.Fire must
+        not join — the subcommand surface is the fired class's methods only.
+        The unrelated ``Other`` class exists (so the class-existence guard
+        passes) but was not fired, isolating the fire-target check."""
+        self._project(tmp_path, subcmd="add")  # fires Calc
+        other_cls = Symbol(
+            id="python:myapp/cli.py:20-25:Other:class", name="Other",
+            kind="class", language="python", path="myapp/cli.py",
+            span=Span(20, 25, 0, 0),
+        )
+        other_add = Symbol(
+            id="python:myapp/cli.py:21-22:Other.add:method", name="Other.add",
+            kind="method", language="python", path="myapp/cli.py",
+            span=Span(21, 22, 0, 0),
+        )
+        result = link_subprocess(tmp_path, [], all_symbols=[other_cls, other_add])
+        edges = [e for e in result.edges if e.edge_type == "subprocess_calls"]
+        assert edges == []
+
+    def test_fire_target_without_class_symbol_not_linked(self, tmp_path: Path) -> None:
+        """The class-existence guard: fire.Fire(<Name>) where <Name> has no
+        ``kind=class`` Symbol (a bare local/instance sharing a method's class
+        prefix) must not join — only real classes expose a method surface."""
+        symbols = self._project(tmp_path, subcmd="add")
+        # Provide only the method symbol, NOT the Calc class symbol.
+        add_method = next(s for s in symbols if s.name == "Calc.add")
+        result = link_subprocess(tmp_path, [], all_symbols=[add_method])
+        edges = [e for e in result.edges if e.edge_type == "subprocess_calls"]
+        assert edges == []
+
+    def test_requirement_counts_fire_methods(self, tmp_path: Path) -> None:
+        """The linker's requirement diagnostic counts fire-exposed public
+        methods, so a fire-only project is not reported as zero sources."""
+        from hypergumbo_core.linkers.subprocess_cli import (
+            _count_cli_command_symbols,
+        )
+        from hypergumbo_core.linkers.registry import LinkerContext
+
+        symbols = self._project(tmp_path, subcmd="add")
+        ctx = LinkerContext(repo_root=tmp_path, symbols=symbols)
+        # Exactly one public fire method (Calc.add; Calc._private excluded), no
+        # argparse/concept sources — so the count is exactly 1, not just >= 1
+        # (guards the over-count direction: a private-method leak would fail).
+        assert _count_cli_command_symbols(ctx) == 1
+
+    def test_fire_same_name_class_in_other_module_not_joined(
+        self, tmp_path: Path
+    ) -> None:
+        """WI-sigam INV-fahub (D1): fire.Fire(Calc) in cli.py harvests ONLY
+        cli.py's Calc methods. A same-named ``Calc`` defined in another module,
+        whose method ``reset`` is never a subcommand of the fired class, must
+        NOT join — a name-only match would mint a confidently-wrong edge to the
+        unrelated class's method."""
+        (tmp_path / "pyproject.toml").write_text('[project]\nname = "myapp"\n')
+        src = tmp_path / "myapp"
+        src.mkdir()
+        (src / "cli.py").write_text(
+            "import fire\n"
+            "class Calc:\n"
+            "    def add(self, a, b):\n"
+            "        return a + b\n"
+            "def main():\n"
+            "    fire.Fire(Calc)\n"
+        )
+        (src / "models.py").write_text(
+            "class Calc:\n"
+            "    def reset(self):\n"
+            "        return None\n"
+        )
+        tests = tmp_path / "tests"
+        tests.mkdir()
+        (tests / "test_cli.py").write_text(
+            "import subprocess\n"
+            "subprocess.run(['myapp', 'reset'])\n"
+        )
+        symbols = [
+            Symbol(id="python:myapp/cli.py:2-4:Calc:class", name="Calc",
+                   kind="class", language="python", path="myapp/cli.py",
+                   span=Span(2, 4, 0, 0)),
+            Symbol(id="python:myapp/cli.py:3-4:Calc.add:method", name="Calc.add",
+                   kind="method", language="python", path="myapp/cli.py",
+                   span=Span(3, 4, 0, 0)),
+            Symbol(id="python:myapp/models.py:1-3:Calc:class", name="Calc",
+                   kind="class", language="python", path="myapp/models.py",
+                   span=Span(1, 3, 0, 0)),
+            Symbol(id="python:myapp/models.py:2-3:Calc.reset:method",
+                   name="Calc.reset", kind="method", language="python",
+                   path="myapp/models.py", span=Span(2, 3, 0, 0)),
+        ]
+        result = link_subprocess(tmp_path, [], all_symbols=symbols)
+        edges = [e for e in result.edges if e.edge_type == "subprocess_calls"]
+        # 'reset' lives only on the NEVER-fired models.Calc -> no join at all.
+        assert edges == [], (
+            "a same-named class in another module must not be harvested; "
+            f"got {[(e.dst, e.confidence) for e in edges]}"
+        )

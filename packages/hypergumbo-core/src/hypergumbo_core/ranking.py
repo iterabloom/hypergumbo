@@ -44,27 +44,42 @@ Ranking uses multiple signals combined:
    to ~106.
 
 5. **Trivial Sink Dampening**: Symbols with out_degree <= 1 AND
-   lines_of_code <= 5 get 90% centrality reduction.  These are trivial
+   line_span <= 5 get 90% centrality reduction.  These are trivial
    accessors/stubs that accumulate high in-degree through ubiquitous use
    but have no architectural significance.  Addresses bakeoff cohorts 16-17
    findings: Timer.Duration (in=98, LoC=3), noopMetric.Inc (in=109, LoC=1),
    CheckError (in=195, LoC=3), syncTask.name (in=109, LoC=2) all dominated
    rankings despite being plumbing.
 
-6. **Sibling Implementation Dampening**: When many methods share the same
-   name (e.g., 19 ``Notifier.Notify`` variants — one per notification
-   channel in alertmanager), they flood top rankings even after common
-   method name dampening.  Within each name group of 6+ methods, the top 3
-   by score keep full weight; the rest get a 0.15x multiplier.  This
-   ensures users see 2-3 representative implementations, not 19 variants
-   of the same interface method.
+6. **Noise Path Dampening**: Symbols in database-migration / noise paths
+   (e.g. ``db/migrate/``, ``migrations/``) get a 0.1x multiplier
+   (``apply_noise_weights``).  Migrations are structurally connected but
+   run once and are irrelevant to runtime architecture.
 
-7. **Edge Confidence Filtering**: Low-confidence edges (e.g., inferred
-   method calls with confidence <0.5) are excluded from centrality
-   computation. This prevents method name collisions from inflating
-   in-degree: DirLocker.Lock gets 255 false in-degree from unrelated
-   .Lock() calls, MemoryCache.get gets 228 from unrelated .get() calls.
-   Filtering at confidence 0.5 eliminates these artifacts.
+7. **Common Method Name Dampening**: Method/function names defined on more
+   than ``name_threshold`` (default 10) distinct symbols get a
+   ``max(floor, name_threshold / count)`` multiplier
+   (``apply_common_method_name_weights``).  This suppresses false in-degree
+   from ``receiver_call`` name collisions (e.g., every unresolved
+   ``.execute()`` call attributed to one ``execute``).
+
+8. **Generated Code Dampening**: Symbols with ``is_generated_file=True``
+   (OpenAPI models, protobuf stubs, Kubernetes code-gen) get a 0.05x
+   multiplier (``apply_generated_code_weights``).  These are structurally
+   central but have near-zero developer relevance.
+
+9. **File-Kind Suppression**: ``kind="file"`` pseudo-symbols are zeroed
+   (default 0.0x) unless the language opts in via
+   ``_FILE_KIND_RANKING_ALLOWED_LANGUAGES`` (``apply_file_kind_weights``,
+   WI-ramuv).  Their in-degree equals each file's import count, which would
+   otherwise displace real functions/classes.
+
+10. **Edge Confidence Filtering**: Low-confidence edges (e.g., inferred
+    method calls with confidence <0.5) are excluded from centrality
+    computation. This prevents method name collisions from inflating
+    in-degree: DirLocker.Lock gets 255 false in-degree from unrelated
+    .Lock() calls, MemoryCache.get gets 228 from unrelated .get() calls.
+    Filtering at confidence 0.5 eliminates these artifacts.
 
 Why These Heuristics
 --------------------
@@ -102,7 +117,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Dict, List
 
-from .edge_types import IMPORT_EDGE_TYPES
+from .edge_types import (
+    IMPORT_EDGE_TYPES,
+    INHERITANCE_EDGE_TYPES,
+    is_grpc_rpc_implementation,
+)
 from .ir import Symbol, Edge
 from .paths import is_test_file, is_test_node
 from .selection.filters import is_test_path
@@ -185,12 +204,18 @@ class RankedFile:
 
 DEFAULT_EDGE_TYPE_WEIGHTS: Dict[str, float] = {
     "calls": 1.0,
-    "implements_rpc": 1.0,
     # Post WI-vumum-juvil: gRPC client→server edges are emitted as
     # canonical 'calls' (weight 1.0); the prior 'grpc_calls' weight
-    # entry was dead after the protocol-call family fold.
+    # entry was dead after the protocol-call family fold. implements_rpc
+    # folded to 'implements' + meta['protocol']='grpc' (audit-findings
+    # 0016); it keeps its call-like 1.0 weight via the grpc-rpc predicate
+    # at the lookup below (NOT a plain 'implements' 0.5), so gRPC
+    # centrality is not silently demoted.
     "event_publishes": 0.8,
-    "crypto_flow": 0.8,
+    # crypto_flow folded to canonical data_flows_to (ADR-0023 Batch 7 /
+    # audit-findings 0017); the crypto linker is data_flows_to's only
+    # producer, so this preserves the prior 0.8 weight for those edges.
+    "data_flows_to": 0.8,
     "dispatches_to": 0.6,
     "imports": 0.3,
     "module_exports": 0.1,
@@ -301,7 +326,13 @@ def compute_centrality(
             # Base weight from edge type (if edge_type_weights provided)
             type_weight = 1.0
             if edge_type_weights is not None:
-                type_weight = edge_type_weights.get(edge.edge_type, 0.5)
+                if is_grpc_rpc_implementation(edge.edge_type, edge.meta):
+                    # Folded gRPC RPC-implementation ranks like a call
+                    # (audit-findings 0016 finding 3), not a structural
+                    # 'implements' (0.5).
+                    type_weight = edge_type_weights.get("calls", 1.0)
+                else:
+                    type_weight = edge_type_weights.get(edge.edge_type, 0.5)
 
             if use_file_weighting:
                 src_path = symbol_path.get(edge.src, "")
@@ -708,7 +739,7 @@ def apply_trivial_sink_weights(
 
     Args:
         centrality: Centrality scores to weight.
-        symbols: Symbol list (used for lines_of_code).
+        symbols: Symbol list (used for line_span).
         edges: Edge list (used to compute out-degree).
         sink_weight: Multiplier for trivial sinks (default 0.1).
         max_out_degree: Maximum out-degree to qualify as sink (default 1).
@@ -731,7 +762,7 @@ def apply_trivial_sink_weights(
     # Build lines-of-code lookup
     symbol_loc: Dict[str, int] = {}
     for s in symbols:
-        loc = s.lines_of_code
+        loc = s.line_span
         if loc is None and s.span is not None:
             loc = s.span.end_line - s.span.start_line + 1
         symbol_loc[s.id] = loc if loc is not None else 0
@@ -985,9 +1016,11 @@ def filter_edges_for_ranking(
     Returns:
         Filtered list of edges.
     """
-    # Both extends and implements live on the relationship axis (ADR-0023);
-    # this set was audited as already-canonical at Phase 2 (WI-sahab-fatoz).
-    _STRUCTURAL_EDGE_TYPES = {"extends", "implements"}
+    # WI-lobif: class is-a edges come from the registry's INHERITANCE_EDGE_TYPES
+    # (extends/inherits/implements) instead of a hardcoded {extends, implements}
+    # literal that omitted the registered `inherits` edge type — so inherits
+    # edges from test files are now preserved (architectural importance) too.
+    _STRUCTURAL_EDGE_TYPES = INHERITANCE_EDGE_TYPES
 
     if exclude_test_edges:
         symbol_by_id = {s.id: s for s in symbols}
@@ -1023,9 +1056,17 @@ def filter_edges_for_ranking(
         ]
 
     if min_edge_confidence > 0:
+        # ADR-0039 ruling 3: this is a RANKING filter (filter_edges_for_RANKING),
+        # so it keys on ``rank_score`` — the ranking-prominence quantity — not the
+        # detection-reliability ``confidence``. For every edge whose producer has
+        # not relocated a ranking adjustment, rank_score == confidence, so the
+        # filtered set is unchanged; the one edge family that differs is the
+        # type_hierarchy ``dispatches_to`` fan-out (rank_score carries the 1/sqrt(N)
+        # dampener + test penalty), which is exactly the WI-kabom demotion this
+        # filter is meant to apply.
         filtered = [
             e for e in filtered
-            if e.confidence >= min_edge_confidence
+            if e.rank_score >= min_edge_confidence
         ]
 
     return filtered
@@ -1212,8 +1253,8 @@ def rank_symbols(
     )
 
     # WI-tahum: dampener stack via shared internal helper. Order:
-    # tier → noise → utility → common-method → sibling-impl →
-    # trivial-sink → generated → file-kind.
+    # tier → noise → utility → common-method → trivial-sink →
+    # generated → file-kind.
     weighted_centrality = _apply_canonical_dampeners(
         raw_centrality, symbols, filtered_edges,
         first_party_priority=first_party_priority,
@@ -1507,8 +1548,13 @@ class CentralityResult:
     """Result from symbol mention centrality computation.
 
     Attributes:
-        normalized_scores: Dict mapping file paths to normalized centrality scores
-            (in-degree sum / file size). Used for ranking files.
+        normalized_scores: Dict mapping file paths to a symbol-mention DENSITY
+            score = Σ(in-degree of mentioned symbols) ÷ file length in characters.
+            The name is historical: it is normalized *by file size*, NOT to a
+            [0,1] range — the value is unbounded ≥ 0 (a short file naming
+            high-in-degree symbols exceeds 1.0) and is meaningful only as a
+            relative ranking key within one run, never as a probability or a
+            cross-repo-comparable centrality (WI-sigof). Used for ranking files.
         symbols_per_file: Dict mapping file paths to sets of symbol names mentioned
             in that file. Used for accurate representativeness (unique symbols).
         name_to_in_degree: Dict mapping symbol names to their in-degree values.
@@ -1634,6 +1680,9 @@ def _compute_centrality_with_python(
             name_to_in_degree.get(name, 0) for name in matched_names
         )
 
+        # WI-sigof: density = Σ in-degree of mentioned symbols ÷ file length.
+        # This is normalized by file size, NOT to [0,1] — it is unbounded ≥ 0
+        # and is only a relative ranking key (see CentralityResult docstring).
         score = total_in_degree / len(content) if content else 0.0
         return (f, score, matched_names)
 

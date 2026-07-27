@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for the Astro component analyzer."""
 
+import re
 from pathlib import Path
 from unittest.mock import patch
 
@@ -474,3 +475,39 @@ const description = 'A test page';
         # Check edges: 3 frontmatter imports + 3 component-ref imports = 6 total.
         edges = [e for e in result.edges if e.edge_type == "imports"]
         assert len(edges) == 6
+
+    def test_all_symbols_have_canonical_stable_id(self, tmp_path: Path) -> None:
+        # WI-rijup: stable_id must be the canonical sha256 form
+        # (``sha256:<16hex>``), produced by make_doc_stable_id — not the raw
+        # composite Symbol.id. Reuse the complete-component fixture so the
+        # variable, slot, and directive sites are all exercised.
+        make_astro_file(tmp_path, "Page.astro", """---
+import Header from '../components/Header.astro';
+import Footer from '../components/Footer.astro';
+import Counter from '../components/Counter.astro';
+
+const title = 'My Page';
+const description = 'A test page';
+---
+
+<html>
+  <head>
+    <title>{title}</title>
+  </head>
+  <body>
+    <Header title={title}/>
+    <main>
+      <slot name="content"/>
+      <Counter client:load/>
+      <slot/>
+    </main>
+    <Footer/>
+  </body>
+</html>
+""")
+        result = analyze_astro(tmp_path)
+        assert not result.skipped
+        assert len(result.symbols) >= 1
+        canonical = re.compile(r"^sha256:[0-9a-f]{16}$")
+        for symbol in result.symbols:
+            assert canonical.match(symbol.stable_id), symbol.stable_id

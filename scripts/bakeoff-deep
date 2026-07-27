@@ -273,11 +273,11 @@ def _find_hg_json(repo_out: str) -> "str | None":
     """Find hg.json or hg.json.gz in a repo output directory.
 
     Local string-returning wrapper around the library helper
-    ``hypergumbo_core.behavior_map_io.find_behavior_map`` (WI-mokim).
+    ``hypergumbo_core.survey_io.find_behavior_map`` (WI-mokim).
     Kept as-is for callsite stability (this script's many call sites
     expect ``str`` paths, not ``pathlib.Path``).
     """
-    from hypergumbo_core.behavior_map_io import find_behavior_map
+    from hypergumbo_core.survey_io import find_behavior_map
     match = find_behavior_map(repo_out)
     return str(match) if match is not None else None
 
@@ -290,10 +290,10 @@ def _has_hg_json(repo_out: str) -> bool:
 def _open_hg_json(path: str) -> dict:
     """Read and parse hg.json or hg.json.gz transparently.
 
-    Thin wrapper around ``hypergumbo_core.behavior_map_io.load_behavior_map``
+    Thin wrapper around ``hypergumbo_core.survey_io.load_behavior_map``
     (WI-mokim); kept for callsite stability.
     """
-    from hypergumbo_core.behavior_map_io import load_behavior_map
+    from hypergumbo_core.survey_io import load_behavior_map
     return load_behavior_map(path)
 
 

@@ -31,3 +31,20 @@
     tags: [dogfood]  # 8461
   remove:  # 8461
     tags: [dogfooding]  # 8461
+- op: update  # 4b26
+  at: '2026-07-09T20:20:58Z'  # 4b26
+  by: agent  # 4b26
+  actor: jgstern_agent  # 4b26
+  clock: 3  # 4b26
+  nonce: 4b26  # 4b26
+  set:  # 4b26
+    status: done  # 4b26
+  add:  # 4b26
+    tags: [wave4]  # 4b26
+- op: discuss  # ca63
+  at: '2026-07-09T20:20:59Z'  # ca63
+  by: agent  # ca63
+  actor: jgstern_agent  # ca63
+  clock: 4  # ca63
+  nonce: ca63  # ca63
+  message: "Fixed + merged (selfh/dev c4f87c6a77, bundled with WI-vusaf). compact/tiered now recompute their metrics block from the PROJECTED nodes/edges via a shared _recompute_view_metrics helper (was echoing full-repo totals via the shallow copy). RESCOPED per the scope-audit finding: the item's sub-invariant 3 (flip analysis_incomplete=true on truncation) CONTRADICTS spec §726 — analysis_incomplete is analyzer-scope (early termination/errors/resource-limits), NOT a view-truncation signal — so it is deliberately left untouched (guardrail test asserts it stays False on a truncated view). Behavioral evidence: new tests assert metrics.total_nodes/total_edges == len(projected arrays) < inflated source (9999) across both compact branches + tiered; 3413 affected tests green; core 100%. Wave-4 projection."  # ca63

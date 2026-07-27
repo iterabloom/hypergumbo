@@ -84,6 +84,28 @@ def get_recent_commit_shas(n: int = RECENT_COMMIT_WINDOW) -> list[str]:
     return []
 
 
+def get_commit_count() -> int | None:
+    """Return the number of commits reachable from HEAD (rebase-stable).
+
+    Unlike a commit SHA, this survives GitHub's rebase-merge — which REWRITES the
+    merged commits' SHAs, orphaning any recorded branch SHA — because the count of
+    ancestors is preserved. ``--check`` uses it to measure doc staleness as
+    ``current_count - recorded_count`` instead of SHA membership.
+    """
+    try:
+        result = subprocess.run(
+            ["git", "rev-list", "--count", "HEAD"],
+            capture_output=True,
+            text=True,
+            cwd=REPO_ROOT,
+        )
+        if result.returncode == 0:
+            return int(result.stdout.strip())
+    except Exception:
+        pass
+    return None
+
+
 def get_hypergumbo_version() -> str:
     """Get the hypergumbo package version from pyproject.toml.
 
@@ -1478,12 +1500,14 @@ def generate_architecture_md() -> str:
         lines.append("")
 
     # ── Generation Metadata ──────────────────────────────────────
+    commit_count = get_commit_count()
     lines.extend([
         "---",
         "",
         "<!--",
         "GENERATION METADATA (for drift detection):",
         f"  commit: {commit_sha or 'unknown'}",
+        f"  commit_count: {commit_count if commit_count is not None else 'unknown'}",
         f"  hypergumbo: {hypergumbo_version}",
         f"  python: {python_version}",
         "-->",
@@ -1505,40 +1529,54 @@ def main() -> int:
             print("Run: ./scripts/generate-architecture")
             return 1
 
-        # Strict freshness check via the recorded commit SHA.
-        # We don't byte-compare regenerated content (as generate-schema does)
-        # because architecture generation runs hypergumbo on itself, and the
-        # output varies by Python version and tree-sitter build — not
-        # reproducible in CI without installing the tool. Instead, the doc
-        # records the HEAD it was generated against; we require that SHA to
-        # be one of the RECENT_COMMIT_WINDOW most recent commits reachable
-        # from HEAD. That window absorbs the doc-regeneration commit itself
-        # (which moves HEAD past the recorded SHA) while still failing once
-        # the doc rots past a small number of follow-on commits.
+        # Freshness check. We don't byte-compare regenerated content (as
+        # generate-schema does) because architecture generation runs hypergumbo
+        # on itself — output varies by Python version and tree-sitter build,
+        # not reproducible in CI. Instead the doc records how far HEAD had
+        # advanced when it was generated, and we require the doc to be within
+        # RECENT_COMMIT_WINDOW commits of the current HEAD.
+        #
+        # PRIMARY signal: ``commit_count`` (rebase-stable). GitHub's rebase-merge
+        # REWRITES the merged commits' SHAs, so any recorded branch ``commit:``
+        # SHA is orphaned on ``dev`` the moment the PR merges — a SHA-membership
+        # check then false-fails on the very next code PR (it did, twice). The
+        # count of ancestors survives rebase, so staleness = current - recorded.
         content = output_path.read_text(encoding="utf-8")
         if "Auto-generated" not in content:
             print("ERROR: docs/ARCHITECTURE.md doesn't appear to be auto-generated")
             return 1
+
+        count_match = re.search(r"commit_count:\s+(\d+)", content)
+        if count_match:
+            recorded_count = int(count_match.group(1))
+            current_count = get_commit_count()
+            if current_count is None:
+                print("ERROR: could not count commits (git rev-list failed)")
+                return 1
+            distance = current_count - recorded_count
+            if distance <= RECENT_COMMIT_WINDOW:
+                print(f"OK: docs/ARCHITECTURE.md was generated {distance} commit(s) "
+                      f"ago (window {RECENT_COMMIT_WINDOW})")
+                return 0
+            print(f"ERROR: docs/ARCHITECTURE.md is out of date: generated {distance} "
+                  f"commits ago, exceeds the {RECENT_COMMIT_WINDOW}-commit window")
+            print("Run: ./scripts/generate-architecture")
+            return 1
+
+        # Legacy fallback: a doc predating commit_count records only a SHA. The
+        # SHA-membership window is rebase-fragile (see above), but keeps an old
+        # doc checkable until it is regenerated with a commit_count.
         sha_match = re.search(r"commit:\s+([0-9a-f]{6,})", content)
-        if not sha_match:
-            print("ERROR: docs/ARCHITECTURE.md is missing commit hash")
+        if not sha_match:  # pragma: no cover - a generated doc always has commit metadata
+            print("ERROR: docs/ARCHITECTURE.md is missing commit metadata")
             return 1
-        doc_sha = sha_match.group(1)
-
         recent = get_recent_commit_shas()
-        if not recent:
-            print("ERROR: could not enumerate recent commits (git log failed)")
-            return 1
-
-        if doc_sha in recent:
-            print(f"OK: docs/ARCHITECTURE.md recorded commit {doc_sha} "
-                  f"is within the last {len(recent)} commits")
+        if recent and sha_match.group(1) in recent:
+            print(f"OK: docs/ARCHITECTURE.md recorded commit {sha_match.group(1)} "
+                  f"is within the last {len(recent)} commits (legacy SHA path)")
             return 0
-
-        print(f"ERROR: docs/ARCHITECTURE.md is out of date")
-        print(f"  recorded commit: {doc_sha}")
-        print(f"  HEAD: {recent[0]}")
-        print(f"  last {len(recent)} commits: {', '.join(recent)}")
+        print("ERROR: docs/ARCHITECTURE.md is out of date (legacy SHA path)")
+        print(f"  recorded commit: {sha_match.group(1)}")
         print("Run: ./scripts/generate-architecture")
         return 1
 

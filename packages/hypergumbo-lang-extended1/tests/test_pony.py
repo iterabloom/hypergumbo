@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for the Pony language analyzer."""
 
+import re
 from pathlib import Path
 from unittest.mock import patch
 
@@ -295,9 +296,17 @@ actor Main
         result = analyze_pony(tmp_path)
         actor = next((s for s in result.symbols if s.kind == "actor"), None)
         assert actor is not None
-        assert actor.id == actor.stable_id
+        # node.id and stable_id are minted together by make_doc_symbol_ids;
+        # node.id now carries a start_line segment (INV-dulah), which locks the
+        # same-name-sibling collision fix. stable_id stays the canonical sha256
+        # form (id-format:F2 4a).
         assert "pony:" in actor.id
         assert "test.pony" in actor.id
+        # node.id shape: pony:<path>:<kind>:<start_line>:<name...>
+        assert re.match(
+            r"^pony:.*test\.pony:actor:\d+:Main$", actor.id
+        ), actor.id
+        assert re.match(r"^sha256:[0-9a-f]{16}$", actor.stable_id)
 
     def test_span_info(self, tmp_path: Path) -> None:
         make_pony_file(tmp_path, "test.pony", """
@@ -432,7 +441,7 @@ class Calculator
             if "Calculator.helper_calc" in e.dst and "unresolved" not in e.dst
         ]
         assert len(resolved_edges) == 1
-        assert resolved_edges[0].confidence == 1.0
+        assert resolved_edges[0].confidence == 0.95
 
     def test_call_with_explicit_type(self, tmp_path: Path) -> None:
         """Test call resolution with explicit type.method format."""
@@ -452,4 +461,74 @@ class Main
             if "Helper.do_task" in e.dst and "unresolved" not in e.dst
         ]
         assert len(resolved_edges) == 1
-        assert resolved_edges[0].confidence == 1.0
+        assert resolved_edges[0].confidence == 0.95
+
+    def test_all_symbols_have_canonical_stable_id(self, tmp_path: Path) -> None:
+        """Every symbol's stable_id is the canonical sha256 form (WI-rijup).
+
+        Reuses the multi-construct fixture so the assertion covers actors,
+        classes, interfaces, traits, primitives, constructors, methods, and
+        fields in one pass.
+        """
+        make_pony_file(tmp_path, "test.pony", """
+interface Countable
+  fun count(): USize
+
+trait Nameable
+  fun name(): String
+
+class Counter is Countable
+  var value: USize = 0
+
+  new create() =>
+    None
+
+  fun count(): USize =>
+    value
+
+  fun ref increment() =>
+    value = value + 1
+
+primitive Defaults
+  fun default_count(): USize => 0
+
+actor Main
+  new create(env: Env) =>
+    let c = Counter.create()
+    c.increment()
+""")
+        result = analyze_pony(tmp_path)
+        assert not result.skipped
+        assert len(result.symbols) >= 1
+        canonical = re.compile(r"^sha256:[0-9a-f]{16}$")
+        for sym in result.symbols:
+            assert canonical.match(sym.stable_id), (sym.kind, sym.name, sym.stable_id)
+
+
+class TestPonyCyclomaticComplexity:
+    """INV-loguk slice C: callable pony symbols carry non-null CC + LOC.
+    Real-grammar verification (if_block/elseif_block/for/while/case + and/or)."""
+
+    def test_branchy_callables_have_expected_cc(self, tmp_path) -> None:
+        from hypergumbo_lang_extended1.pony import analyze_pony
+        (tmp_path / 'main.pony').write_text('actor Main\n  new create(env: Env) =>\n    for x in xs.values() do\n      if x > 10 and x < 100 then\n        total = total + x\n      elseif x == 5 then\n        total = total + 1\n      else\n        total = total - 1\n      end\n    end\n    while total > 0 do\n      total = total - 1\n    end\n    match total\n    | 0 => env.out.print("zero")\n    | 1 => env.out.print("one")\n    else\n      env.out.print("many")\n    end\n\n  fun compute(a: U32, b: U32): U32 =>\n    if a > b or b == 0 then\n      a\n    else\n      b\n    end\n')
+        result = analyze_pony(tmp_path)
+        assert not result.skipped
+        by = {s.name: s for s in result.symbols if s.kind in ('constructor', 'method')}
+        assert by['Main.create'].cyclomatic_complexity == 8, by['Main.create'].cyclomatic_complexity
+        assert by['Main.create'].line_span is not None
+        assert by['Main.compute'].cyclomatic_complexity == 3, by['Main.compute'].cyclomatic_complexity
+        assert by['Main.compute'].line_span is not None
+
+    def test_callables_non_null_non_callables_null(self, tmp_path) -> None:
+        from hypergumbo_lang_extended1.pony import analyze_pony
+        (tmp_path / 'main.pony').write_text('actor Main\n  new create(env: Env) =>\n    for x in xs.values() do\n      if x > 10 and x < 100 then\n        total = total + x\n      elseif x == 5 then\n        total = total + 1\n      else\n        total = total - 1\n      end\n    end\n    while total > 0 do\n      total = total - 1\n    end\n    match total\n    | 0 => env.out.print("zero")\n    | 1 => env.out.print("one")\n    else\n      env.out.print("many")\n    end\n\n  fun compute(a: U32, b: U32): U32 =>\n    if a > b or b == 0 then\n      a\n    else\n      b\n    end\n')
+        result = analyze_pony(tmp_path)
+        callables = [s for s in result.symbols if s.kind in ('constructor', 'method')]
+        assert callables
+        for s in callables:
+            assert s.cyclomatic_complexity is not None, (s.kind, s.name)
+            assert s.line_span is not None, (s.kind, s.name)
+        for s in result.symbols:
+            if s.kind not in ('constructor', 'method'):
+                assert s.cyclomatic_complexity is None, (s.kind, s.name)

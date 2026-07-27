@@ -77,3 +77,46 @@
     tags: [dogfood]  # 7a86
   remove:  # 7a86
     tags: [dogfooding]  # 7a86
+- op: discuss  # ad77
+  at: '2026-06-25T08:40:23Z'  # ad77
+  by: agent  # ad77
+  actor: jgstern_agent  # ad77
+  clock: 8  # ad77
+  nonce: ad77  # ad77
+  message: "Scoped + verified: reproduces. Root cause: dependency.py:158-169 + html.py:155-166 emit cross-language edges without meta.cross_language; websocket/http compute it but synthetic dst nodes have language=None making it unverifiable; field is both under- and over-populated. DECISION NEEDED (architecture): (a) DELETE meta.cross_language and derive at query time from src/dst node languages (one source of truth), or (b) centralize via a post-linker stamping pass (backward-compat, more complexity) — plus the language=None synthetic-node question (ADR-0031). Awaiting your delete-vs-centralize call."  # ad77
+- op: discuss  # 557b
+  at: '2026-06-25T16:57:31Z'  # 557b
+  by: agent  # 557b
+  actor: jgstern_agent  # 557b
+  clock: 9  # 557b
+  nonce: 557b  # 557b
+  message: "HUMAN RULING (2026-06-25 interview): cross_language IS an edge.meta key (free-form meta dict; not in docs/schema.json today). PRODUCE via (b) STAMP-ONCE at a finalize chokepoint (mirror ADR-0037's _finalize_edge_resolution; per-linker values become advisory), deriving from the FINAL node set's endpoint languages. Follow the sparse-meta convention (consistent with cross_file/framework_dispatch/protocol etc.): emit cross_language=true when both endpoint languages are known and differ; emit null when an endpoint language is None (undeterminable — synthetic nodes); OMIT the key for determinably-same-language edges (no redundant False — false is recoverable as 'absent and not null'). ADD cross_language to docs/schema.json documenting this tri-state-omit-false convention (defining the contract for the first time). ADD a validator: cross_language is null exactly when a stamped edge has an endpoint with language=None. AUDIT BASIS for safety of tri-state None: ZERO internal consumers read the stored field (write-only + JSON-emitted; only read-shaped match is a code comment; _compute_cross_language_hits / cross_language_hits is a DIFFERENT dead-code string-collision concept), so None has no internal blast radius. The deeper fix of giving synthetic nodes real languages (ADR-0031) stays a SEPARATE item, NOT a blocker. Decision-gate cleared; remains violated until implemented."  # 557b
+- op: discuss  # c4b7
+  at: '2026-06-25T18:46:37Z'  # c4b7
+  by: agent  # c4b7
+  actor: jgstern_agent  # c4b7
+  clock: 10  # c4b7
+  nonce: c4b7  # c4b7
+  message: "IMPLEMENTATION SCOPING (2026-06-25): the finalize-stamp approach is confirmed tractable WITHOUT a 7-linker refactor — mirror finalize.py::_finalize_edge_resolution (sub-step 7; node_kind_by_id={s.id:s.kind}; mutates edge fields before _finalize_commit_dicts). Add _finalize_cross_language as a sub-step that overwrites the linkers' (now-advisory, ADR-0037-style) inline values from a node_lang_by_id map. The 7 linkers + their ~10 unit tests stay UNTOUCHED (they assert the pre-finalize inline value; finalize doesn't run in isolation). BUT two design nuances surfaced that the 'stamp from the final node set' ruling did not resolve: (1) NULL-SPAM — 'stamp every edge' puts cross_language=null on EVERY unresolved-external-call edge (dst is an external_symbol placeholder / has no language), which is the same noise class as the redundant-False we just eliminated. Fix: scope stamping to in-repo-to-in-repo edges (both endpoints non-external real nodes); for those, true if langs differ, omit if same, null only when a REAL endpoint has language=None (the genuine synthetic-bridge case INV-zigup targets). Edges to external placeholders -> not stamped (absent). (2) INFO-LOSS RISK — the 7 bridge linkers compute cross_language from their own link-time endpoint info, which may be RICHER than the final node set (a linker may know an endpoint's language even when the final node is a placeholder with language=None). Overwriting/deleting could lose that. Need to confirm finalize's node-set languages are equal-or-better before making producer values advisory, OR have finalize only FILL (not overwrite) where the linker left it unset. RECOMMENDATION: scope to in-repo-to-in-repo (nuance 1 -> rule a), and resolve nuance 2 by checking linker-vs-finalize language fidelity before overwrite. Staying ruled+scoped; surfaced to human for the edge-population + overwrite-vs-fill call before implementing on the every-edge chokepoint."  # c4b7
+- op: discuss  # 9828
+  at: '2026-06-25T18:59:36Z'  # 9828
+  by: agent  # 9828
+  actor: jgstern_agent  # 9828
+  clock: 11  # 9828
+  nonce: '9828'  # 9828
+  message: "HUMAN RULING (2026-06-25 interview, REVISES the earlier stamp-once scoping): DELETE cross_language as a stored edge.meta field; derive on demand. Rationale: cross_language is purely derivable from endpoints (src_node.language != dst_node.language), and both node languages are already in the output — so per ADR-0023's core rule (a property 'not derivable from endpoints alone' earns a field; derivable ones are folded out) it should NOT be stored. This is cleaner than option (b) stamp-once AND eliminates every nuance the stamp approach raised (null-spam on unresolved externals; overwrite-vs-fill vs richer linker link-time info; the finalize sub-step; the validator; the schema field). Resolves all 3 INV-zigup faces: under-detection (derive is always correct where langs known), unreliability (you get honest unknown/null when a node lacks a language), redundant-False (nothing stored). The language=None synthetic-node issue cleanly reduces to a node-language-completeness concern (ADR-0031), no longer cross_language's problem. SCOPE: remove the inline cross_language meta entry from 7 bridge linkers (websocket/graphql_resolver x2/http/graphql/event_sourcing/database_query/message_queue) — KEEP the local is_cross_language where it adjusts confidence at link time (http:1488, message_queue:528); drop the ~14 linker-test assertions of meta['cross_language']; document that cross-language-ness is derived from endpoint node languages. cross_language_hits (dead-code) is a DIFFERENT concept, untouched. NOT registered in axis_meta_keys (not stored). Decision-gate cleared; implementing now."  # 9828
+- op: update  # ae70
+  at: '2026-06-25T20:07:01Z'  # ae70
+  by: agent  # ae70
+  actor: jgstern_agent  # ae70
+  clock: 12  # ae70
+  nonce: ae70  # ae70
+  set:  # ae70
+    status: satisfied  # ae70
+- op: discuss  # fc90
+  at: '2026-06-25T20:07:01Z'  # fc90
+  by: agent  # fc90
+  actor: jgstern_agent  # fc90
+  clock: 13  # fc90
+  nonce: fc90  # fc90
+  message: "Implemented in commit d624311970 (origin/dev) per the 2026-06-25 human ruling (DELETE/derive, not stamp). cross_language removed as a stored edge.meta field from all 7 bridge linkers (http/websocket/graphql/graphql_resolver/event_sourcing/database_query/message_queue); the local is_cross_language confidence adjustment kept in http+message_queue. Behavioral evidence — live repro on a 2-language repo (app.py + helper.js): the generated map has 0 edges carrying cross_language meta (was: set inline by 7 linkers, under-populated, false-on-same-lang, garbage on synthetic language=None dst), while node languages are present (6/7 nodes) as the derivation source — so cross-language-ness is derivable on demand, not stored. Grep confirms 0 cross_language writes remain in linkers/. Production-path tests: the 6 linker test files' test_cross_language_* still pass (cross-language LINKING still works — the edge is created between different-language endpoints; only the redundant flag assertion was dropped), 514 passed locally; full affected suite 10858 passed, 100% coverage. Rationale: ADR-0023 derivable-from-endpoints rule + zero internal consumers. The language=None synthetic-node gap is now cleanly a node-language-completeness concern (ADR-0031), no longer a cross_language bug."  # fc90

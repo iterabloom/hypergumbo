@@ -1,0 +1,37 @@
+- op: create  # 6a63
+  at: '2026-07-08T03:40:17Z'  # 6a63
+  by: agent  # 6a63
+  actor: jgstern_agent  # 6a63
+  clock: 1  # 6a63
+  nonce: 6a63  # 6a63
+  data:  # 6a63
+    kind: invariant  # 6a63
+    title: "function/method nodes emitted with language=None (id encodes the lang) are ~100% flagged dead-code — a language-stamping gap + some spurious extractions"  # 6a63
+    status: violated  # 6a63
+    priority: 3  # 6a63
+    parent:  # 6a63
+    tags:  # 6a63
+    - dead_code  # 6a63
+    isbefore: []  # 6a63
+    duplicate_of: []  # 6a63
+    not_duplicate_of: []  # 6a63
+    pr_ref:  # 6a63
+    description: "Surfaced by the WI-tosul dead-code re-measure (2026-07-07, lab notebook wi_tosul_deadcode_remeasure_07072026.md). Across 4 polyglot repos the ONLY consistent dead-code over-flagger is the '?' (no-language) cohort at ~100% dead: kserve 60, prometheus 180, killbill 49. Concentrated in .go (142/180 on prometheus) + .ts/.tsx (38). Two sub-issues: (1) LANGUAGE-STAMP GAP — the node id encodes the language but Symbol.language is None (an axis/identity inconsistency: the id-slot language and the language field disagree); (2) SPURIOUS EXTRACTION — some are non-functions mis-emitted as kind=function (Go 'case', inline closures with names like 'r'/'ctx', single-line spans). Fix (1): find the producer(s) emitting language=None function/method nodes and stamp the language (derivable from the id-slot / file extension), + a validator that Symbol.language is non-None for any node whose kind is function/method. Fix (2) is a separate go/ts extraction-precision concern. Small volume (~50-180/repo) but systematic. NOT the WI-tosul monoculture (that is discharged) — a distinct data-quality gap."  # 6a63
+    fields:  # 6a63
+      statement: "Every function/method node whose id encodes a language carries a non-None Symbol.language, so dead-code/reachability can match it to seeds."  # 6a63
+      root_cause: "Some function/method nodes are emitted with Symbol.language=None even though their id embeds the language (e.g. id 'go:web/api/v1/api.go:1982:notifications:function' but language field is None). Nodes without a language can't be matched to language-scoped seeds/entrypoints, so dead-code-maybe flags them ~100% dead. Producer(s) unknown — likely a secondary pass / linker / specific construct (inline funcs, closures) that skips the language stamp. A subset are also spurious extractions (Go 'case' keyword, one-line closures named 'r'/'ctx')."  # 6a63
+- op: update  # 8e89
+  at: '2026-07-08T22:34:15Z'  # 8e89
+  by: agent  # 8e89
+  actor: jgstern_agent  # 8e89
+  clock: 2  # 8e89
+  nonce: '8e89'  # 8e89
+  set:  # 8e89
+    status: satisfied  # 8e89
+- op: discuss  # 107f
+  at: '2026-07-08T22:34:15Z'  # 107f
+  by: agent  # 107f
+  actor: jgstern_agent  # 107f
+  clock: 3  # 107f
+  nonce: 107f  # 107f
+  message: "Merged 4f6dade424 (bundle). production_callables now skips nodes with truthy protocol_origin (ADR-0031 Class-B synthetic linker stand-ins) before adding to dead-code candidates — they were ~100% flagged dead (language=None can't match language-scoped seeds). Keyed on protocol_origin (NOT framework_role, which marks Class-A route callables; NOT language-is-None). The item's 'language-stamping producer gap' premise was corrected by triage — the stand-ins are intentionally language=None, so the fix is consumer-side. RED/GREEN + positive control (Class-A route marker stays a candidate). Core 100%."  # 107f

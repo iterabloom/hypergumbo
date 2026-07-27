@@ -1,0 +1,67 @@
+- op: create  # 5a5b
+  at: '2026-07-18T03:36:36Z'  # 5a5b
+  by: agent  # 5a5b
+  actor: jgstern_agent  # 5a5b
+  clock: 1  # 5a5b
+  nonce: 5a5b  # 5a5b
+  data:  # 5a5b
+    kind: work_item  # 5a5b
+    title: "INV-fahub Scala facet: gate unresolvable-receiver calls (copy/setTo @0.68) to unresolved + thread annotated-val types"  # 5a5b
+    status: todo_hard  # 5a5b
+    priority: 2  # 5a5b
+    parent: INV-fahub-himis-zuzug-zijus-sahof-kabol-nolad-kakit  # 5a5b
+    tags:  # 5a5b
+    - cross_language_parity  # 5a5b
+    - wave5  # 5a5b
+    - analysis_quality  # 5a5b
+    isbefore: []  # 5a5b
+    duplicate_of: []  # 5a5b
+    not_duplicate_of: []  # 5a5b
+    pr_ref:  # 5a5b
+    description: "INV-fahub Scala facet. scala.py misbinds an unresolvable-receiver call (e.g. x.copy()) to an arbitrary same-named internal def: Record.copy @0.68 (= 0.80 base x 0.85 suffix). Misbind sites: scala.py:853-864 (local_symbols bare bind @0.85 — methods registered under both short+qualified name at 498-499) and scala.py:865-890 (resolver.lookup bare bind @0.68). Root cause: when receiver_name is present but NOT in var_types, edge_added stays False and the receiver is silently dropped -> bare short-name binds (treats x.copy() like bare copy()).\n\nFIX (atomic, INV-nilud-conform; mirrors WI-noham Part A / py.py): when a receiver is present but its type is unresolvable, emit py.py's unresolved shape instead of the bare-name bind — edge_type=calls, dst=scala:external:0-0:{name}:unresolved, is_resolved=False, evidence_type=ast_call (-> 0.40 derived per ADR-0039), meta={call_construct:method, + receiver_type_hint when a type is establishable}. THREAD annotated vals (val x: Foo = f(), currently dropped — only params + `val x = new Foo()` tracked) into var_types so a typed receiver still resolves (recall recovery: the hint the shared inherited_calls linker Site-2 Step-1 consumes). ADD 'scala' to the inherited_calls Site-2 language set for Step-1 direct (method-on-typed-receiver) resolution. Defer the Scala trait-linearization MRO walker (_walk_linearization, marked FUTURE in inherited_calls.py) to a later incremental PR (as Python deferred its C3 walker).\n\nTests: test_inherited_calls_linker.py template (swap lang=scala) + a scala.py producer test (untyped/duck receiver -> no hint -> external unresolved; annotated-val receiver -> resolves). Blast radius: scala.py leaf + one linker Site-2 lang-set entry; no CORE resolver change. Recall-regression severity: MODERATE. Reproduces on current code (verified 2026-07-17)."  # 5a5b
+    fields: {}  # 5a5b
+- op: update  # b4fb
+  at: '2026-07-18T04:14:17Z'  # b4fb
+  by: agent  # b4fb
+  actor: jgstern_agent  # b4fb
+  clock: 2  # b4fb
+  nonce: b4fb  # b4fb
+  set:  # b4fb
+    status: done  # b4fb
+- op: discuss  # ea79
+  at: '2026-07-18T04:14:17Z'  # ea79
+  by: agent  # ea79
+  actor: jgstern_agent  # ea79
+  clock: 3  # ea79
+  nonce: ea79  # ea79
+  message: "Closed done (PR b2d0a1347d). BEHAVIORAL EVIDENCE — end-to-end dogfood of the reproduction funnel (hypergumbo survey on a 2-file scala repo): rec.copy() + dev.setTo() on untyped receivers now emit unresolved external calls edges @0.40 (evidence_type=ast_call, meta.call_construct=method, dst scala:external:0-0:{name}:external_symbol after the ADR-0037-ruling-4 finalize remap), with 0 misbinds to Record.copy / Device.setTo (was @0.68 each); a typed-param receiver r.copy() (r: Record) still resolves to Record.copy @0.85 (recall preserved). Unit tests: TestScalaInvFahubReceiverGating (4 tests: no-misbind / canonical-unresolved-shape / annotated-val-resolves / typed-unresolvable-stamps-hint) + full 118-test scala suite green; scala.py 100% coverage. FIX (leaf-only, INV-nilud-conform): gate the bare-name binds behind receiver_name is None; a method call with an unresolvable-in-file receiver emits py.py's unresolved shape (+ receiver_type_hint when the receiver TYPE is known, for the shared inherited_calls linker Site-2 Step-1; untyped receiver -> no hint). RECALL RECOVERY: threaded previously-dropped receiver types into var_types — annotation-typed vals (val x: Foo = f()) AND class-constructor parameters (class C(val svc: Service), which surfaced as a regression in test_detects_method_call_on_object and is now recovered). No CORE/linker change (scala is strict-by-default in the linker; Step-1 works without an MRO walker). DEFERRED (separate incremental item, per the WI-noham precedent): the Scala trait-linearization MRO walker (_walk_linearization, marked FUTURE) for Step-2 inherited-method recovery. INV-fahub stays violated (umbrella, bakeoff-gated); Swift (WI-votar) + D (WI-situj) facets remain."  # ea79
+- op: update  # 7503
+  at: '2026-07-18T21:53:51Z'  # 7503
+  by: agent  # 7503
+  actor: jgstern_agent  # 7503
+  clock: 4  # 7503
+  nonce: '7503'  # 7503
+  set:  # 7503
+    status: todo_hard  # 7503
+- op: discuss  # 8cb0
+  at: '2026-07-18T21:53:51Z'  # 8cb0
+  by: agent  # 8cb0
+  actor: jgstern_agent  # 8cb0
+  clock: 5  # 8cb0
+  nonce: 8cb0  # 8cb0
+  message: "Reopened (real-repro validation 2026-07-18, docspell=~/ALL_REPOS/repos_Apr12_2026/docspell): Scala funnels wide open. 242 copy/setTo calls resolve @0.85 (ast_call) to internal defs; 65 suppressed; 0 legit. Magnet: copy<-71 src files->FileCopyTask.copy, setTo<-46->ColumnOps.setTo. Ground truth: InputEnv.addEnv does `copy(env=env.add(...))` = the case-class .copy() (returns InputEnv), misbound to the unrelated FileCopyTask.copy. Case-class .copy() is ubiquitous. Cause: gate only extracts receiver types from annotated-vals + ctor-params; misses .copy() on method-returns/for-bindings/expressions. Design pending 3-lens investigation."  # 8cb0
+- op: update  # 39b1
+  at: '2026-07-18T23:17:50Z'  # 39b1
+  by: agent  # 39b1
+  actor: jgstern_agent  # 39b1
+  clock: 6  # 39b1
+  nonce: 39b1  # 39b1
+  set:  # 39b1
+    status: done  # 39b1
+- op: discuss  # 3fbc
+  at: '2026-07-18T23:17:50Z'  # 3fbc
+  by: agent  # 3fbc
+  actor: jgstern_agent  # 3fbc
+  clock: 7  # 3fbc
+  nonce: 3fbc  # 3fbc
+  message: "Scala facet DONE (PR merged c123bb2760). Real-repro docspell (~/ALL_REPOS/repos_Apr12_2026/docspell): cross-class copy/setTo funnel 242->0; ~3000 fabricated magnet call-edges (map<-315 files, flatMap<-159, ...) externalized; 38 genuine inherited implicit-this calls recovered via inherited_calls Site-1 (ast_call_inherited). Fix: withhold any bare call resolving only to a class-member method without scope evidence (weak suffix/ambiguous resolver match OR same-file local_symbols match to a DIFFERENT class), emit unresolved + enclosing_class; Site-1 MRO walker recovers inherited implicit-this; same-class implicit-this + free funcs/objects + typed receivers still resolve. 100% cov, 1993 tests green. INV-nilud/INV-nogof. INV-fahub stays violated (Swift WI-votar + D WI-situj + fleet-wide rollout remain)."  # 3fbc

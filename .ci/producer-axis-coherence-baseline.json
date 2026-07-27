@@ -1,0 +1,6 @@
+{
+  "_comment": "WI-zipis producer-side ratchet baseline (INV-numat closure gate). Shrink-only: a NEW unregistered value emitted by any producer (direct constructor, module-level helper, or nested-closure helper) fails the gate; a baselined value that is no longer emitted must be removed. Keyed by axis value, not file:line. Drain by registering the value (ADR-0027) or folding the producer, then remove it here. See scripts/check-producer-axis-coherence and test_producer_coherence.py::test_live_tree_producer_axis_ratchet.",
+  "Symbol.kind": [],
+  "Edge.evidence_type": [],
+  "Edge.edge_type": []
+}

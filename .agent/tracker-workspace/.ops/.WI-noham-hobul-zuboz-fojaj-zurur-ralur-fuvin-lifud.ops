@@ -1,0 +1,74 @@
+- op: create  # 061d
+  at: '2026-06-26T18:35:22Z'  # 061d
+  by: agent  # 061d
+  actor: jgstern_agent  # 061d
+  clock: 1  # 061d
+  nonce: 061d  # 061d
+  data:  # 061d
+    kind: work_item  # 061d
+    title: "Call graph misses obj.method()/property short-name resolution: in-repo methods resolve to :unresolved, inflating dead-code FPs"  # 061d
+    status: todo_hard  # 061d
+    priority: 2  # 061d
+    parent:  # 061d
+    tags:  # 061d
+    - analysis_quality  # 061d
+    isbefore: []  # 061d
+    duplicate_of: []  # 061d
+    not_duplicate_of: []  # 061d
+    pr_ref:  # 061d
+    description: "Surfaced during dispatch:F8 PR-B. Instance method calls (obj.method()) and @property/@staticmethod/@classmethod access resolve to python:external:0-0:<name>:unresolved instead of the in-repo method/property symbol, so production methods/properties appear unreachable in the call graph and are flagged as dead-code false positives. Measured on the repo under dead-code-maybe --seeds all: @property/@staticmethod/@classmethod methods dead at 34/57 (60%) vs plain undecorated methods 486/909 (53%) — comparable, i.e. the decorator is NOT load-bearing in the deadness; it is the GENERAL short-name method-call resolution gap. Properties like Symbol.end_line (260 refs) / ValidationResult.ok (47 refs) are dead for the same reason undecorated methods are. This is the RESIDUAL after INV-pohik's three named dispatch families (route->handler [F1], closure-factory [F8 PR-A], descriptor-protocol [shown vacuous]) were resolved, and is DISTINCT from them — INV-pohik did not name general method-call resolution as one of its families. Likely shares the py.py call-resolution substrate (the flat last-write-wins symbol_by_name dict / the not-yet-landed scope-stack rewrite identity:F1/F4a) and overlaps dispatch:F3 (alias/builtin/reference resolution, currently BLOCKED on the same rewrite + INV-nilud). Fix requires receiver-type / method resolution so obj.method() edges land on the real in-repo symbol rather than an :unresolved external. Evidence: gate test packages/hypergumbo-core/tests/test_dispatch_closure_gate.py TestDescriptorProtocolFamilyIsVacuousOnCorpus docstring."  # 061d
+    fields: {}  # 061d
+- op: update  # 538f
+  at: '2026-07-03T10:23:37Z'  # 538f
+  by: agent  # 538f
+  actor: jgstern_agent  # 538f
+  clock: 2  # 538f
+  nonce: 538f  # 538f
+  set: {}  # 538f
+  add:  # 538f
+    tags: [awaits_bakeoff_validation]  # 538f
+- op: discuss  # bf21
+  at: '2026-07-03T10:23:38Z'  # bf21
+  by: agent  # bf21
+  actor: jgstern_agent  # bf21
+  clock: 3  # bf21
+  nonce: bf21  # bf21
+  message: "WI-noham Part A shipped in PR #404 (dev 3fbdf0d0d3). py.py now stamps meta['receiver_type_hint'] on unresolved method-call edges when the receiver type is inferred (var_types, or a bare local class name — scope-guarded against a local var/param shadowing a module class per INV-fahub); the inherited_calls linker resolves them via a new strict INV-fahub Site-2 mode (Step-3 type-symbol fallback gated off + same-name-class ambiguity guard for non-legacy langs; _LEGACY_SITE2_LANGS={java}, decoupled from _MRO_WALKERS). Taint-safe (analyzer never flips is_resolved; linker is sole minter). Designed + adversarially reviewed via Workflow; the review caught a shadowed-class false-resolution blocker (fixed + locked). Part A closes ONLY the walker-independent recall: local Class.staticmethod()/classmethod() + typed-receiver-DIRECT (linker Step-1). STAYS OPEN — the flagship @property deadness (Symbol.end_line 260 refs, ValidationResult.ok 47 refs — attribute READS, not calls) is deferred to WI-gubar (D2); the inherited-method mass (needs a Python MRO walker) to WI-hiziz (D1); concrete-class-id precision to WI-supat (D3). Per closure-evidence discipline, do NOT mark satisfied until the flagship repros clear under dead-code-maybe --seeds all (that evidence lives on WI-gubar). Tagged awaits_bakeoff_validation: re-measure the INV-nuzas 283-twin residual + the decorated/plain deadness deltas."  # bf21
+- op: discuss  # a580
+  at: '2026-07-03T17:34:19Z'  # a580
+  by: agent  # a580
+  actor: jgstern_agent  # a580
+  clock: 4  # a580
+  nonce: a580  # a580
+  message: "Part B (D2 / WI-gubar) landed in PR #407 (dev 3e11c3ca17): @property attribute reads (obj.prop on a var_types-typed instance) now resolve to the in-repo getter via the receiver_type_hint -> inherited_calls Site-2 chain. Behavioral evidence: ValidationResult.ok (a flagship repro) now has an incoming resolved calls edge (was dead). WI-noham STAYS OPEN — the inherited-method mass still needs the Python MRO walker (WI-hiziz/D1), which is the last piece before the 283-twin residual fully clears; read-write getter+setter properties are deferred to WI-sizut. Session arc: WI-noham Part A (PR #404) + WI-gubar/D2 (PR #407) landed; remaining to close = WI-hiziz/D1 (+ WI-supat/D3 precision)."  # a580
+- op: discuss  # 17e5
+  at: '2026-07-03T23:57:06Z'  # 17e5
+  by: agent  # 17e5
+  actor: jgstern_agent  # 17e5
+  clock: 5  # 17e5
+  nonce: '17e5'  # 17e5
+  message: "WI-hiziz D1 COMPLETE (PR-1/2/3, last landed dev 7109758f92): the full inherited-method + inherited-field resolution mass now lands for Python — Site-2 typed-receiver-inherited (C3 walker, PR-1), Site-1 self.method() inherited (PR-2), Site-3 self.field.method() inherited (PR-3). Combined with Part A (typed-receiver-direct / local static+classmethod) and D2 (WI-gubar @property reads), the walker-independent + walker-dependent recall for obj.method()/self.method()/self.field.method()/@property is all landed. The SOLE remaining WI-noham residual is WI-supat/D3 — concrete-class-id precision (thread a concrete enclosing/receiver class id so the _SITE1_STRICT_LANGS ambiguity guards recover the same-short-name + cross-language recall they currently sacrifice). WI-noham stays OPEN pending WI-supat + bakeoff re-measurement of the INV-nuzas 283-twin residual and the decorated/plain deadness deltas."  # 17e5
+- op: discuss  # ba6c
+  at: '2026-07-04T04:29:01Z'  # ba6c
+  by: agent  # ba6c
+  actor: jgstern_agent  # ba6c
+  clock: 6  # ba6c
+  nonce: ba6c  # ba6c
+  message: "WI-supat/D3 (the SOLE remaining engineering residual) COMPLETE + CLOSED (done) — PR-A (dev ef2544220c) + PR-B (dev 0ca939118f). So the FULL receiver/self/field-inherited resolution mass is now landed: Part A (typed-receiver-direct + local static/classmethod), D2/WI-gubar (@property reads), D1/WI-hiziz (Site-2 C3 inherited, Site-1 self.method(), Site-3 self.field.method()), D3/WI-supat (concrete-class-id collision precision).\n\nCRITICAL CONTEXT for the bakeoff re-measure: WI-supat's concrete-id path was INERT end-to-end until PR-B's finalize.py fix (_relativize_ir_paths didn't relativize Edge.meta / dict-shaped Symbol.meta, so the ids stayed absolute and missed the relativized class_symbols index -> silent name-path fallback). IMPORTANT: this affected ONLY WI-supat (id-based). The earlier pieces (Part A/B, WI-gubar, WI-hiziz) use NAME hints (receiver_type_hint / enclosing_class / inherited_field_receiver — strings without embedded paths), so they were NEVER affected and fire correctly. So the deadness-delta from the name-based recall is real; WI-supat added collision precision on top (real self-analysis delta +94 calls edges once the finalize fix landed).\n\nWI-noham STAYS OPEN per its own closure-evidence discipline: the flagship deadness repros (Symbol.end_line, ValidationResult.ok) + the INV-nuzas 283-twin residual + the decorated/plain deadness deltas must be re-measured under a bakeoff / dead-code-maybe --seeds all before marking satisfied. All engineering is done; the remaining gate is that quantitative re-measure (awaits_bakeoff_validation)."  # ba6c
+- op: update  # f13e
+  at: '2026-07-04T05:35:09Z'  # f13e
+  by: agent  # f13e
+  actor: jgstern_agent  # f13e
+  clock: 7  # f13e
+  nonce: f13e  # f13e
+  set:  # f13e
+    status: done  # f13e
+  remove:  # f13e
+    tags: [awaits_bakeoff_validation]  # f13e
+- op: discuss  # 4a26
+  at: '2026-07-04T05:35:09Z'  # 4a26
+  by: agent  # 4a26
+  actor: jgstern_agent  # 4a26
+  clock: 8  # 4a26
+  nonce: 4a26  # 4a26
+  message: "DONE — bakeoff re-measure, dev @ 371adbe47c (WI-supat PR-A+PR-B + the finalize relativization fix that made the concrete-id path actually fire). BEHAVIORAL EVIDENCE (re-ran WI-noham's own filed repro, dead-code-maybe --seeds all on hypergumbo self-analysis): the flagship deadness repros CLEAR — Symbol.end_line and ValidationResult.ok are NOT in the dead-code list (both reachable; Symbol.end_line 1 incoming resolved calls edge, ValidationResult.ok 7, all ast_call_type_inferred via the WI-gubar @property->Site-2 chain). Dead python methods ~486->153 (dead_candidates 381/4597, 8.3%); demoted_dispatch_inherited=0 (inherited resolution DIRECT). RECALL fires on two large real-world Python repos: hypergumbo self 243 inherited_calls edges (81 Site-1 + 60 Site-2-MRO + 102 Site-2-direct); pretix (119MB Django) 533 (405 Site-1 + 56 Site-2-direct + 49 Site-2-MRO + 23 Site-3 ast_call_inherited_field). NO REGRESSIONS across 4 cohorts / 19 repos / 9 languages. All pieces landed: Part A + D1/WI-hiziz + D2/WI-gubar + D3/WI-supat. NOTE: INV-nuzas is NOT closed by this — its phantom-workspace-external residual (107) is dispatch:F3 (cross-module function calls + module_attr_ref), a distinct mechanism WI-noham does not own."  # 4a26

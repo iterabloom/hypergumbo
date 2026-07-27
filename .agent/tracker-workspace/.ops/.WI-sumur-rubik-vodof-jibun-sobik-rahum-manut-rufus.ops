@@ -18,3 +18,18 @@
     pr_ref:  # 4ac1
     description: "`limits.max_tier_applied=3` is emitted and present in docs/schema.json but has zero mentions in docs/hypergumbo-spec.md and no documented value vocabulary. A consumer reading the spec to understand the limits block has no contract for this field. Fix: document max_tier_applied (and its value range) in the spec. Surfaced via dogfooding; blinded severity 2/5."  # 4ac1
     fields: {}  # 4ac1
+- op: update  # c4b1
+  at: '2026-07-11T09:32:00Z'  # c4b1
+  by: agent  # c4b1
+  actor: jgstern_agent  # c4b1
+  clock: 2  # c4b1
+  nonce: c4b1  # c4b1
+  set:  # c4b1
+    status: done  # c4b1
+- op: discuss  # cb67
+  at: '2026-07-11T09:32:00Z'  # cb67
+  by: agent  # cb67
+  actor: jgstern_agent  # cb67
+  clock: 3  # cb67
+  nonce: cb67  # cb67
+  message: "Fixed in PR (jgstern-agent/docs/limits-max-tier-applied). limits.max_tier_applied is now documented in docs/hypergumbo-spec.md, in the section-9 limits block right after partial_results_reason: it records the supply-chain tier ceiling in effect when a --max-tier N filter was applied (null/absent when unfiltered), cross-referencing section 14 (tier definitions) and section 3 (the flag). EVIDENCE: grep -c max_tier_applied docs/hypergumbo-spec.md -> 1 (was 0). Schema already carried it (docs/schema.json max_tier_applied, description 'Max supply-chain tier filter applied, when any')."  # cb67

@@ -37,6 +37,7 @@ from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
     TreeSitterAnalyzer,
+    make_doc_stable_id,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 
@@ -193,7 +194,12 @@ def _extract_section(
 
     symbol = Symbol(
         id=symbol_id,
-        stable_id=symbol_id,
+        # WI-banod: canonical sha256:<16hex> stable_id via the shared doc
+        # factory (node.id stays the composite location key).
+        stable_id=make_doc_stable_id(
+            "ini", str(rel_path_obj), "section", section_name,
+            span.start_line, span.end_line,
+        ),
         name=section_name,
         kind="section",
         language="ini",
@@ -249,7 +255,11 @@ def _extract_setting(
 
     symbol = Symbol(
         id=symbol_id,
-        stable_id=symbol_id,
+        # WI-banod: canonical sha256:<16hex> stable_id via the shared doc factory.
+        stable_id=make_doc_stable_id(
+            "ini", str(rel_path_obj), "setting", key_name,
+            span.start_line, span.end_line,
+        ),
         name=key_name,
         kind="setting",
         language="ini",

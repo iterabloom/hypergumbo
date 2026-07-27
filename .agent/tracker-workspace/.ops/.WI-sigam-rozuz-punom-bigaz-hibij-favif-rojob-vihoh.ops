@@ -1,0 +1,36 @@
+- op: create  # 1500
+  at: '2026-07-02T00:44:47Z'  # 1500
+  by: agent  # 1500
+  actor: jgstern_agent  # 1500
+  clock: 1  # 1500
+  nonce: '1500'  # 1500
+  data:  # 1500
+    kind: work_item  # 1500
+    title: "subprocess linker: join fire.Fire() reflective CLI subcommands (WI-lubap fire tail)"  # 1500
+    status: todo_soft  # 1500
+    priority: 3  # 1500
+    parent:  # 1500
+    tags:  # 1500
+    - dogfood  # 1500
+    - framework_dispatch_linkers  # 1500
+    isbefore: []  # 1500
+    duplicate_of: []  # 1500
+    not_duplicate_of: []  # 1500
+    pr_ref:  # 1500
+    description: "WI-lubap (dev 2e9611808f) made the subprocess->CLI linker argparse-aware (add_parser/set_defaults -> handler join). Fire was explicitly deferred: fire.Fire(obj) exposes obj's METHODS as subcommands reflectively — there is no add_parser/set_defaults idiom to scan, so the subcommand->handler mapping must be derived from the class/dict passed to fire.Fire() (its public methods become subcommands, method name = subcommand name). Scope: detect fire.Fire(<name>) calls, resolve <name> to a class/module symbol, and register its public methods as subcommand->handler entries in the subprocess linker's command_by_name (mirroring _scan_argparse_commands). Lower priority than argparse (fire is rarer). Behavioral close-check: a subprocess.run(['tool','method']) against a fire.Fire(Cls) whose Cls has a method 'method' emits a subprocess_calls edge to Cls.method."  # 1500
+    fields: {}  # 1500
+- op: update  # 3686
+  at: '2026-07-04T13:50:48Z'  # 3686
+  by: agent  # 3686
+  actor: jgstern_agent  # 3686
+  clock: 2  # 3686
+  nonce: '3686'  # 3686
+  set:  # 3686
+    status: done  # 3686
+- op: discuss  # d757
+  at: '2026-07-04T13:50:48Z'  # d757
+  by: agent  # d757
+  actor: jgstern_agent  # d757
+  clock: 3  # d757
+  nonce: d757  # d757
+  message: "LANDED — PR merged, dev e3dc463098. The subprocess->CLI linker now joins subprocess.run(['tool','method']) to the public methods of a class exposed via fire.Fire(<Class>), mirroring the WI-lubap argparse pattern (_scan_fire_commands + _fire_target_name). The fire map shares command_by_name (inherits the INV-zuhub multi-candidate fallback; coexists with argparse + concept=command) and is counted by the requirement diagnostic.\n\nAdversarial review (4 refuters) returned GO_WITH_FIXES; the one MAJOR (D1) was an INV-fahub over-join: name-only class matching harvested methods of ANY class named <target> repo-wide, so a method unique to a never-fired same-named class became the SOLE candidate -> a confidently-wrong 0.85 edge (the INV-zuhub fallback only catches multi-candidate collisions; live repro confirmed). FIXED structurally: a fire target now resolves ONLY to a kind=class Symbol DEFINED IN the same file as the fire.Fire() call ((rel_path, name) match), so a same-named class in another module is never harvested. Added a regression test (two same-name Calc classes in different files -> the never-fired one's method does not join). Minor fixes: docstring now documents the func-shape deferrals + instance form; count test tightened to ==1; positive test asserts confidence==0.85.\n\nAdditive only (new subprocess_calls edges to existing method symbols; taint- and coherence-neutral). Deferred forms (module/instance/dict target, a class IMPORTED from another module, bare 'from fire import Fire') fail SAFE to no join. Behavioral (end-to-end): fire.Fire(Calc) with add/multiply/_private + subprocess.run(['tool','add']/['tool','multiply']) -> subprocess_calls to Calc.add + Calc.multiply; _private never exposed. 100% cov; smart-test 3931 passed."  # d757

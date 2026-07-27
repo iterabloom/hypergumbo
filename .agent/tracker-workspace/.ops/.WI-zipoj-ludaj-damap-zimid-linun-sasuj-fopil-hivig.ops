@@ -59,3 +59,18 @@
   clock: 6  # 00ec
   nonce: 00ec  # 00ec
   message: "Cross-ref backfill (2026-05-30, linked-pile investigation): the May-30 backfill on this item names the cluster correctly. L8 review confirms a fourth co-member is INV-dadaf-zozih-janid-kupag-zukag-balun-tapab-jivog. Candidate sub-META framing for all four (this item + INV-jumim + WI-ribag + INV-dadaf): \"sketch read-path does redundant computation when authoritative data is already on bm.json or disk.\" This item is the scale face — at >1M LOC the recompute cost in WI-ribag's centrality/embedding loops dominates."  # 00ec
+- op: update  # 2ae8
+  at: '2026-06-29T09:14:58Z'  # 2ae8
+  by: agent  # 2ae8
+  actor: jgstern_agent  # 2ae8
+  clock: 7  # 2ae8
+  nonce: 2ae8  # 2ae8
+  set:  # 2ae8
+    status: done  # 2ae8
+- op: discuss  # a9e4
+  at: '2026-06-29T09:14:58Z'  # a9e4
+  by: agent  # a9e4
+  actor: jgstern_agent  # a9e4
+  clock: 8  # a9e4
+  nonce: a9e4  # a9e4
+  message: "Done (human ruling 2026-06-29: close on self-corpus + scale-invariant evidence, file the analysis-phase obstacle separately). WI-zipoj's concern is warm-sketch RENDERING at >1M LOC (14-22min). The dominant rendering cost — 4x/16x comparison sketches regenerating every invocation — was fixed by PR #321 (WI-ribag): they now read from a .stats.json sidecar cache instead of regenerating. BEHAVIORAL before/after on the real artifact (self-corpus, 728 files / ~320k LOC): fully-warm 'hypergumbo . -t 8000' WITH the representativeness table dropped from ~155s to ~28s (== the --no-comparison-sketches baseline). The saving is STRUCTURAL and scale-invariant: PR-B skips 2 of every 3 sketch generations regardless of repo size, and reading a cached file is O(file size) while the avoided regeneration grows with the graph — so the ~2/3 saving can only grow at larger scale, never shrink. HONEST GAP: the >1M-LOC ABSOLUTE warm-sketch time was NOT measured — the intended flink validation (14.6k Java files) was blocked because 'hypergumbo run' itself does not complete within 60min (analysis + sketch_precomputed embedding bottleneck), so no warm cache could be produced. That analysis-phase obstacle is distinct from sketch rendering and is filed as WI-rukaz. Cluster: PR-A (INV-jumim) + PR-B (WI-ribag) deliver the read-path short-circuit; INV-papuj closing next."  # a9e4

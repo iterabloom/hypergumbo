@@ -25,3 +25,18 @@
   clock: 2  # 334b
   nonce: 334b  # 334b
   message: "Related to WI-gupod (distinct fix; dogfood)."  # 334b
+- op: update  # abc4
+  at: '2026-07-11T00:12:22Z'  # abc4
+  by: agent  # abc4
+  actor: jgstern_agent  # abc4
+  clock: 3  # abc4
+  nonce: abc4  # abc4
+  set:  # abc4
+    status: done  # abc4
+- op: discuss  # eef4
+  at: '2026-07-11T00:12:22Z'  # eef4
+  by: agent  # eef4
+  actor: jgstern_agent  # eef4
+  clock: 4  # eef4
+  nonce: eef4  # eef4
+  message: "Fixed (bundled PR, merged as ed2d17de35). Root cause: the config heuristic's license loop read only repo_root/LICENSE and broke after the first found file ('Only process first found license file'), collapsing a dual-licensed monorepo to the first license. Fix: scan root LICENSE files AND monorepo package LICENSE files (depth 1-2, excluding hidden/vendored dirs), classify each via a new _detect_license_type helper, and emit every DISTINCT license ('LICENSE: AGPL, MPL'); no early break. Reproduced first: a repo with root AGPL LICENSE + packages/tracker/LICENSE (MPL) yielded only 'LICENSE: AGPL'; after the fix it yields both AGPL and MPL, while a LICENSE under an excluded/hidden dir is ignored. Test: test_license_aggregates_all_distinct_including_packages. 100% coverage. (Note: WI-lirub — the sibling monorepo *manifest* scan gap — is deferred to a follow-up bundle with the embedding-path config items.)"  # eef4

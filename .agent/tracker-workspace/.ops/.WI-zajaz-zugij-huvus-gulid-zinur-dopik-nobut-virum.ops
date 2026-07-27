@@ -1,0 +1,54 @@
+- op: create  # 36c2
+  at: '2026-07-01T14:34:13Z'  # 36c2
+  by: agent  # 36c2
+  actor: jgstern_agent  # 36c2
+  clock: 1  # 36c2
+  nonce: 36c2  # 36c2
+  data:  # 36c2
+    kind: work_item  # 36c2
+    title: "Class fields (kind=field) not rooted by containment linker → 1862 orphan field symbols on self-analysis (99.6% of all field symbols)"  # 36c2
+    status: todo_hard  # 36c2
+    priority: 1  # 36c2
+    parent:  # 36c2
+    tags:  # 36c2
+    - infrastructure_linkers  # 36c2
+    - analysis_quality  # 36c2
+    isbefore: []  # 36c2
+    duplicate_of: []  # 36c2
+    not_duplicate_of: []  # 36c2
+    pr_ref:  # 36c2
+    description: "dispatch:F4 added function/variable to linkers/containment.py CONTAINABLE_KINDS, rooting top-level members at their file/class anchor. But 'field' was never added, so kind=field symbols (real class-body attributes, emitted with dotted names like 'Widget.name' via emission-parity F5/WI-jusus) get NO contains edge and are orphans. Self-analysis (/tmp/warm_vuzur.json): 1862 field orphans of 1870 total field symbols (99.6% orphan), 1846 Python + a few ts/rust/java/swift/go/csharp/js; these DOMINATE the orphan-ratchet ratio (6.18% overall). Fix (F4-analogous): add 'field' to CONTAINABLE_KINDS so the containment linker roots fields at their class via Phase-1 dotted-name parent extraction (verified on a fixture: 'Widget.name'/'Widget.size' -> Widget contains field, exactly like method 'Widget.area'). Per the containment module docstring the dead-code reachability BFS does NOT traverse contains, so this de-orphaning does not move the dead-code-maybe FP rate; it affects centrality (fields gain an inbound contains edge from their class) and reverse-slice class-expansion. Discovered while investigating WI-logon (file-anchor orphan-ratchet breach); field orphans are the larger, distinct root cause. Pairs with WI-logon (exempt kind=file) to restore the env-gated orphan ratchet."  # 36c2
+    fields: {}  # 36c2
+- op: update  # 55ab
+  at: '2026-07-01T16:01:10Z'  # 55ab
+  by: agent  # 55ab
+  actor: jgstern_agent  # 55ab
+  clock: 2  # 55ab
+  nonce: 55ab  # 55ab
+  set:  # 55ab
+    status: done  # 55ab
+  add:  # 55ab
+    tags: [awaits_bakeoff_validation]  # 55ab
+- op: discuss  # 66c1
+  at: '2026-07-01T16:01:10Z'  # 66c1
+  by: agent  # 66c1
+  actor: jgstern_agent  # 66c1
+  clock: 3  # 66c1
+  nonce: 66c1  # 66c1
+  message: "Fixed in PR (dev f92f26691c), Wave-3 Phase-2 §C. Added 'field' to linkers/containment.py CONTAINABLE_KINDS so class-body attributes (kind=field, dotted names) root at their class via Phase-1 dotted-name parent extraction (same path as method). Behavioral evidence (editable binary): fixture class Widget{name,size} — before both field symbols orphaned; after 'Widget contains Widget.name' + 'Widget contains Widget.size' (orphan=False). Self-analysis (re-warmed map /tmp/warm_logon.json): field orphans 1862 -> 0 (99.6% of all 1870 field symbols were orphaned). Production-path test: test_containment_linker.py::test_dot_separated_field. smart-test 5139 passed, containment.py 100% coverage. Dead-code BFS does not traverse contains (per module note), so no dead-code-maybe FP change. Tagged awaits_bakeoff_validation for the centrality/reverse-slice shift from ~1862 new class->field contains edges + the orphan-count claim."  # 66c1
+- op: update  # 4a4d
+  at: '2026-07-06T20:05:27Z'  # 4a4d
+  by: agent  # 4a4d
+  actor: jgstern_agent  # 4a4d
+  clock: 4  # 4a4d
+  nonce: 4a4d  # 4a4d
+  set: {}  # 4a4d
+  remove:  # 4a4d
+    tags: [awaits_bakeoff_validation]  # 4a4d
+- op: discuss  # 8d47
+  at: '2026-07-06T20:05:27Z'  # 8d47
+  by: agent  # 8d47
+  actor: jgstern_agent  # 8d47
+  clock: 5  # 8d47
+  nonce: 8d47  # 8d47
+  message: "MOVED (original Python/self claim) via BROAD drain broad-20260706-153915. Field nodes rooted by an incoming contains edge: pretix python 5507/5587 (98 pct), java/TS/swift/elixir 100 pct — the 99.6-pct-orphan self-analysis symptom is resolved. Verdict moved. NEW cross-language gap filed WI-sakug: the WI-jusus field slices for solidity (0 pct rooted), nim (8 pct), scala (69 pct), D (78 pct) emit fields the containment linker does not root — a distinct language-coverage gap, not a regression of this Python claim."  # 8d47

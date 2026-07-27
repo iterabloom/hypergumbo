@@ -34,6 +34,40 @@ class TestComputeMetrics:
         assert metrics["total_nodes"] == 3
         assert metrics["total_edges"] == 2
 
+    def test_by_tier_edges_src_vs_edges_incident(self) -> None:
+        """WI-modom: per-tier ``edges`` is source-tier (sinks read ~0); the new
+        ``edges_incident`` exposes each tier's graph contribution (either-endpoint).
+        """
+        nodes = [
+            {"id": "a", "language": "python",
+             "supply_chain": {"tier_name": "first_party"}},
+            {"id": "a2", "language": "python",
+             "supply_chain": {"tier_name": "first_party"}},
+            {"id": "dep", "language": "python",
+             "supply_chain": {"tier_name": "external_dep"}},
+        ]
+        # Two first-party -> external_dep calls (dep is a pure SINK), one
+        # first-party -> first-party call.
+        edges = [
+            {"id": "e1", "src": "a", "dst": "dep"},
+            {"id": "e2", "src": "a2", "dst": "dep"},
+            {"id": "e3", "src": "a", "dst": "a2"},
+        ]
+        tiers = compute_metrics(nodes=nodes, edges=edges)["by_supply_chain_tier"]
+
+        # ``edges`` (source-tier): all 3 originate in first_party; external_dep
+        # is a pure sink -> 0 (the misleading "no contribution" reading).
+        assert tiers["first_party"]["edges"] == 3
+        assert tiers["external_dep"]["edges"] == 0
+        # ``edges_incident`` (either-endpoint, distinct): external_dep is incident
+        # on e1+e2 -> 2; first_party on all 3 (e3 same-tier counts once).
+        assert tiers["external_dep"]["edges_incident"] == 2
+        assert tiers["first_party"]["edges_incident"] == 3
+        # ``edges`` reconciles to the source-resolved total; ``edges_incident``
+        # does not (cross-tier edges double-count by design).
+        assert sum(t["edges"] for t in tiers.values()) == 3
+        assert sum(t["edges_incident"] for t in tiers.values()) == 5
+
     def test_computes_avg_confidence(self) -> None:
         """Computes average edge confidence."""
         nodes = [{"id": "1", "language": "python"}]
@@ -64,6 +98,24 @@ class TestComputeMetrics:
 
         assert metrics["languages"]["python"]["nodes"] == 2
         assert metrics["languages"]["javascript"]["nodes"] == 1
+
+    def test_files_counted_per_language(self) -> None:
+        """WI-ninaj: metrics.languages.<lang>.files == count of file-kind nodes
+        for that language (per-language rollup of the node-derived total_files),
+        not an always-0 placeholder."""
+        nodes = [
+            {"id": "1", "language": "python", "kind": "file", "path": "a.py"},
+            {"id": "2", "language": "python", "kind": "function", "path": "a.py"},
+            {"id": "3", "language": "python", "kind": "file", "path": "b.py"},
+            {"id": "4", "language": "javascript", "kind": "file", "path": "c.js"},
+            {"id": "5", "language": "javascript", "kind": "class", "path": "c.js"},
+        ]
+        metrics = compute_metrics(nodes=nodes, edges=[])
+
+        assert metrics["languages"]["python"]["files"] == 2  # a.py, b.py
+        assert metrics["languages"]["javascript"]["files"] == 1  # c.js
+        # per-language files sum to the total file-kind node count
+        assert sum(l["files"] for l in metrics["languages"].values()) == 3
 
     def test_handles_missing_confidence(self) -> None:
         """Handles edges without confidence field."""
@@ -123,6 +175,22 @@ class TestComputeMetrics:
         metrics = compute_metrics(nodes=nodes, edges=[])
 
         assert metrics["total_files"] == 2
+
+    def test_total_files_excludes_external_sentinel(self) -> None:
+        """INV-mozaf: the ``<external>`` sentinel path carried by
+        external_symbol boundary nodes is not a real file — total_files (and
+        debug.unique_paths_in_analysis) count only path-bearing source files,
+        not the external placeholder."""
+        nodes = [
+            {"id": "1", "language": "python", "path": "src/a.py", "kind": "file"},
+            {"id": "2", "language": "python", "path": "src/b.py", "kind": "file"},
+            {"id": "3", "language": "python", "path": "<external>", "kind": "external_symbol"},
+            {"id": "4", "language": "python", "path": "<external>", "kind": "external_symbol"},
+        ]
+        metrics = compute_metrics(nodes=nodes, edges=[])
+
+        assert metrics["total_files"] == 2  # a.py, b.py — NOT <external>
+        assert metrics["debug"]["unique_paths_in_analysis"] == 2
         # Debug block is still populated so consumers can introspect.
         assert metrics["debug"]["unique_paths_in_analysis"] == 2
 

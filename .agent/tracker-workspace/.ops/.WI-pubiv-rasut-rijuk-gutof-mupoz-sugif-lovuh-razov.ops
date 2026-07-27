@@ -84,3 +84,52 @@
   clock: 9  # ab4c
   nonce: ab4c  # ab4c
   message: "2026-06-10 design-interview ruling (ADR-0036, merged in PR #4181): the node.id kind slot must always equal node.kind; use-site reference syntax moves to a registered meta key instead of overloading the kind slot. That settles the design question here — the ~1645 external_symbol disagreements are nonconforming under the new grammar, not arguably-expected normalization. Item now waits on the implementing fix (emit node.kind in the slot, reference syntax via the meta key)."  # ab4c
+- op: update  # 1310
+  at: '2026-07-02T19:50:13Z'  # 1310
+  by: agent  # 1310
+  actor: jgstern_agent  # 1310
+  clock: 10  # 1310
+  nonce: '1310'  # 1310
+  set: {}  # 1310
+  add:  # 1310
+    isbefore: [WI-popak-gugoz-kibah-dugur-hopif-dutor-zopud-tamak]  # 1310
+- op: update  # 3e08
+  at: '2026-07-02T19:50:13Z'  # 3e08
+  by: agent  # 3e08
+  actor: jgstern_agent  # 3e08
+  clock: 11  # 3e08
+  nonce: '3e08'  # 3e08
+  set: {}  # 3e08
+  add:  # 3e08
+    isbefore: [INV-dulah-kisiz-gobak-jafov-soduj-tomim-dufut-kinil]  # 3e08
+- op: update  # 97e5
+  at: '2026-07-02T19:50:39Z'  # 97e5
+  by: agent  # 97e5
+  actor: jgstern_agent  # 97e5
+  clock: 12  # 97e5
+  nonce: '97e5'  # 97e5
+  set: {}  # 97e5
+  add:  # 97e5
+    isbefore: [WI-vodin-jugin-kugib-fizab-sobun-sivub-tohim-guzat]  # 97e5
+- op: discuss  # b6bf
+  at: '2026-07-02T19:51:02Z'  # b6bf
+  by: agent  # b6bf
+  actor: jgstern_agent  # b6bf
+  clock: 13  # b6bf
+  nonce: b6bf  # b6bf
+  message: "Core atomic train (co-ships with WI-jopil). Fix at the single chokepoint: rebuild the boundary-node id from its FINAL kind (external_symbol) in _canonical_external_id/create_boundary_nodes (ir.py:1094/1357-1405) instead of the reference kind; move the reference kind to a NEW registered meta.reference_syntax key (ADR-0024 lightweight; currently UNregistered). One chokepoint flips WI-pubiv (~1645 external_symbol) AND the attribute/module/namespace/function->external_symbol tails together. HAZARD to guard with a property test: uniformizing the id kind-slot can collapse two references onto one id via _dedupe_key (ir.py:1349) — keep kind in the dedupe key while dropping it from the id kind-slot."  # b6bf
+- op: update  # 346f
+  at: '2026-07-02T21:47:23Z'  # 346f
+  by: agent  # 346f
+  actor: jgstern_agent  # 346f
+  clock: 14  # 346f
+  nonce: 346f  # 346f
+  set:  # 346f
+    status: done  # 346f
+- op: discuss  # 12c9
+  at: '2026-07-02T21:47:23Z'  # 12c9
+  by: agent  # 12c9
+  actor: jgstern_agent  # 12c9
+  clock: 15  # 12c9
+  nonce: 12c9  # 12c9
+  message: "DONE via PR #391 (dev df8e1e60da, ADR-0036 Ruling 2 kind-slot purity). BEHAVIORAL EVIDENCE (live 'hypergumbo run .' self-analysis, 38417 symbols): 1399 external_symbol nodes, 0 with id kind-slot != external_symbol (was 1399 — the exact filed defect), 1399/1399 now carry meta.reference_syntax so nothing is lost (distribution: unresolved 1150 / attribute 226 / module 15 / namespace 2 / package 2 / function 2 / script 1 / file 1). Self-tree id_format|warning 2596 -> 46; the residual 46 is the route/event, npm_package, and tsconfig kind-slot cohorts from OTHER producers (WI-kugaj/WI-zugob + fast-follows), NOT external_symbol nodes. Chokepoint fix at create_boundary_nodes/_canonical_external_id; identity dedupes on (lang,path,name); dedupe-collision guard property test added; 100% coverage all 5 packages; 9 cross-package test assertions migrated off the brittle ':unresolved in dst' proxy."  # 12c9

@@ -61,3 +61,34 @@
   clock: 6  # 5b04
   nonce: 5b04  # 5b04
   message: "RELATED_BUT_DISTINCT to WI-ziror: profile.languages vs metrics.languages mismatch family; ninaj=files key absent on metrics side, ziror=disjoint language SETS; complementary shared fix-site. Distinct fix; cross-link not fold. (tracker-hygiene-sweep 2026-06-08T174504Z)"  # 5b04
+- op: update  # 4a39
+  at: '2026-07-12T08:14:49Z'  # 4a39
+  by: agent  # 4a39
+  actor: jgstern_agent  # 4a39
+  clock: 7  # 4a39
+  nonce: 4a39  # 4a39
+  set: {}  # 4a39
+  add:  # 4a39
+    tags: [wave5]  # 4a39
+- op: discuss  # 4c7c
+  at: '2026-07-12T08:14:49Z'  # 4c7c
+  by: agent  # 4c7c
+  actor: jgstern_agent  # 4c7c
+  clock: 8  # 4c7c
+  nonce: 4c7c  # 4c7c
+  message: "Wave-4 triage 2026-07-12: MIGRATE to Wave 5. metrics.languages never contracted a files key (spec sec 971 = nodes/edges only); profile.languages already carries files (spec sec 798). Wiring a 3rd file-count risks new semantics divergence -- low value."  # 4c7c
+- op: update  # aad3
+  at: '2026-07-15T09:37:46Z'  # aad3
+  by: agent  # aad3
+  actor: jgstern_agent  # aad3
+  clock: 9  # aad3
+  nonce: aad3  # aad3
+  set:  # aad3
+    status: done  # aad3
+- op: discuss  # b70c
+  at: '2026-07-15T09:37:47Z'  # b70c
+  by: agent  # b70c
+  actor: jgstern_agent  # b70c
+  clock: 10  # b70c
+  nonce: b70c  # b70c
+  message: "DONE (2026-07-15, PR #660, dev @ post-merge). metrics.languages.<lang>.files is now populated. BEHAVIORAL EVIDENCE (self-analysis `hypergumbo survey .` with the fix live): all 21/21 language entries carry files>0 (python 948, yaml 173, markdown 121, bash 43, typescript 9, toml 8, ...); per-language files EXACTLY equals count(node.kind=='file' AND node.language==lang) with 0 mismatches across every language; sum(metrics.languages[*].files)=1332 == total file-kind node count. The writer-contract gap is closed: files is node-derived (file-kind node count per language), consistent with total_files rather than the over-counting profile.languages sum. INV-luhur writer-contract member."  # b70c

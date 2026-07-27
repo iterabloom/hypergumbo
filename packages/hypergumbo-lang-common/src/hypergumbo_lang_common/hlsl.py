@@ -4,8 +4,11 @@
 Detects:
 - Function definitions (vertex, pixel, compute shaders)
 - Struct definitions (input/output structures)
-- Constant buffer declarations (cbuffer)
-- Resource declarations (Texture, Sampler, Buffer)
+- Variable declarations (including the fields inside cbuffer blocks; the
+  cbuffer block itself is not captured as a distinct symbol)
+- Variable declarations (including textures, samplers, and buffers, all
+  emitted as kind='variable')
+- Call edges (function-to-function 'calls' edges)
 
 HLSL is Microsoft's High Level Shading Language for DirectX.
 The tree-sitter-hlsl parser handles .hlsl, .hlsli, and .fx files.
@@ -21,7 +24,12 @@ and result assembly. This module provides only the HLSL-specific extraction logi
 3. Parse all .hlsl, .hlsli, and .fx files
 4. Extract function definitions with signatures
 5. Extract struct definitions
-6. Track constant buffer and resource declarations
+6. Extract variable declarations as kind='variable' (constant buffers and
+   resource declarations are not distinctly tracked).
+7. Extract call edges (pass 2): for each call_expression, resolve the callee
+   via the NameResolver and emit a 'calls' edge — to the resolved symbol
+   (confidence 0.85 * resolver confidence) or to an
+   'hlsl:external:<name>:function' target at 0.70 confidence.
 
 Why This Design
 ---------------
@@ -48,6 +56,7 @@ from hypergumbo_core.analyze.base import (
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -139,6 +148,12 @@ def _make_symbol(analyzer: "TreeSitterAnalyzer", rel_path: str, run_id: str,
         ),
         signature=signature,
         meta=meta,
+        # INV-loguk: CC only for callables (kind=="function"); struct/variable
+        # share this helper and would otherwise aggregate their subtree.
+        cyclomatic_complexity=(
+            compute_cyclomatic_complexity(node, "hlsl") if kind == "function" else None
+        ),
+        line_span=(end_line - start_line + 1) if kind == "function" else None,
     )
 
 

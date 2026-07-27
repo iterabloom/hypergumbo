@@ -40,3 +40,18 @@
   clock: 4  # c624
   nonce: c624  # c624
   message: "Dogfooding re-confirmed (blinded severity 2/5): limits.analysis_depth='syntax_only' has zero mentions in docs/hypergumbo-spec.md and no documented value vocabulary. Same document-and-enumerate fix this item already tracks. [dogfood]"  # c624
+- op: update  # f228
+  at: '2026-07-11T04:20:38Z'  # f228
+  by: agent  # f228
+  actor: jgstern_agent  # f228
+  clock: 5  # f228
+  nonce: f228  # f228
+  set:  # f228
+    status: done  # f228
+- op: discuss  # 2724
+  at: '2026-07-11T04:20:38Z'  # 2724
+  by: agent  # 2724
+  actor: jgstern_agent  # 2724
+  clock: 6  # 2724
+  nonce: '2724'  # 2724
+  message: "Removed limits.analysis_depth (PR merged as 9f5f24251b), per the project owner's explicit ruling on 2026-07-11 ('remove it'). Root cause: the field was a hardcoded 'syntax_only' constant never reassigned in any production path (grep: 0 assignment sites outside the dataclass default), factually FALSE for the semantic maps hypergumbo produces (it resolves calls / dispatch / dataflow / taint), undocumented, and read by ZERO consumers (only limits.py internals + one unit test). Resolution = REMOVE (not populate, not document): a single map-level analysis_depth scalar cannot honestly represent per-language depth (a polyglot repo has semantic Python + syntax-only Haskell), 'is the call graph semantic?' is directly answerable from the presence of calls/dispatches_to edges, and the value is redundant with reproducibility_context.level. Dropped the dataclass field + its merge() copy + its to_dict() emission (limits.py), the _limits_spec decoration (generate_schema_lib.py -> regenerated docs/schema.json, 4 lines), and the module-docstring 'scalar honesty signals' mention. BEHAVIORAL EVIDENCE: test_limits.py::test_analysis_depth_field_removed asserts 'analysis_depth' not in Limits().to_dict() AND that Limits(analysis_depth='syntax_only') raises TypeError (the kwarg is rejected, so a stale writer cannot silently reintroduce it). No SCHEMA_VERSION bump (the property was non-required under permissive additionalProperties). 100% coverage. Aligns with the D9b delete-zero-entropy-re-encoded-field precedent."  # 2724

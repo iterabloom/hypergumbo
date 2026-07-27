@@ -21,6 +21,12 @@ from hypergumbo_lang_common.proto import (
 )
 
 
+def _role(sym, role: str) -> bool:
+    """A folded framework symbol carries its role in ``meta['framework_role']``
+    (WI-rilal / audit-0013: ``service`` -> ``interface``, ``rpc`` -> ``method``)."""
+    return (sym.meta or {}).get("framework_role") == role
+
+
 @pytest.fixture
 def temp_repo(tmp_path: Path) -> Path:
     """Create a temporary repository for testing."""
@@ -82,7 +88,10 @@ service UserService {
         result = analyze_proto(temp_repo)
 
         assert not result.skipped
-        assert any(s.kind == "service" and s.name == "UserService" for s in result.symbols)
+        # WI-rilal / audit-0013 fold: service -> interface + meta['framework_role']='service'
+        svc = next(s for s in result.symbols
+                   if _role(s, "service") and s.name == "UserService")
+        assert svc.kind == "interface"
 
     def test_analyzes_rpc_methods(self, temp_repo: Path) -> None:
         """Detects RPC method definitions within services."""
@@ -98,10 +107,13 @@ service UserService {
 
         result = analyze_proto(temp_repo)
 
-        rpc_names = {s.name for s in result.symbols if s.kind == "rpc"}
+        # WI-rilal / audit-0013 fold: rpc -> method + meta['framework_role']='rpc'
+        rpc_syms = [s for s in result.symbols if _role(s, "rpc")]
+        rpc_names = {s.name for s in rpc_syms}
         assert "GetUser" in rpc_names
         assert "CreateUser" in rpc_names
         assert "ListUsers" in rpc_names
+        assert all(s.kind == "method" for s in rpc_syms)
 
     def test_analyzes_message(self, temp_repo: Path) -> None:
         """Detects message declarations."""
@@ -209,7 +221,7 @@ service UserService {
 
         result = analyze_proto(temp_repo)
 
-        rpc_sym = next(s for s in result.symbols if s.kind == "rpc" and s.name == "GetUser")
+        rpc_sym = next(s for s in result.symbols if _role(s, "rpc") and s.name == "GetUser")
         # The signature should include the request and response types
         assert rpc_sym.signature is not None
         assert "GetUserRequest" in rpc_sym.signature
@@ -229,7 +241,7 @@ service StreamService {
 
         result = analyze_proto(temp_repo)
 
-        rpcs = {s.name: s for s in result.symbols if s.kind == "rpc"}
+        rpcs = {s.name: s for s in result.symbols if _role(s, "rpc")}
         assert "ServerStream" in rpcs
         assert "ClientStream" in rpcs
         assert "BiDirectional" in rpcs
@@ -251,7 +263,7 @@ service UserService {
 
         result = analyze_proto(temp_repo)
 
-        service = next(s for s in result.symbols if s.kind == "service")
+        service = next(s for s in result.symbols if _role(s, "service"))
         assert "myservice.v1" in service.qualified_name
 
     def test_multiple_services_in_file(self, temp_repo: Path) -> None:
@@ -270,7 +282,7 @@ service ProductService {
 
         result = analyze_proto(temp_repo)
 
-        services = {s.name for s in result.symbols if s.kind == "service"}
+        services = {s.name for s in result.symbols if _role(s, "service")}
         assert "UserService" in services
         assert "ProductService" in services
 
@@ -306,8 +318,8 @@ service UserService {
         result = analyze_proto(temp_repo)
 
         # Find service and RPC
-        service = next(s for s in result.symbols if s.kind == "service")
-        rpc = next(s for s in result.symbols if s.kind == "rpc")
+        service = next(s for s in result.symbols if _role(s, "service"))
+        rpc = next(s for s in result.symbols if _role(s, "rpc"))
 
         # There should be a contains edge from service to rpc
         contains_edges = [e for e in result.edges if e.edge_type == "contains"]

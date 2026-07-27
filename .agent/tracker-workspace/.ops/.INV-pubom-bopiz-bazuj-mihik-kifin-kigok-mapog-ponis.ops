@@ -72,3 +72,19 @@
   clock: 7  # 156c
   nonce: 156c  # 156c
   message: "[Wave-0 hygiene re-verify] Fixed in commit 98533c0fff. The io_boundaries metric now has a single canonical definition (post-external_potential chain count) established in BoundaryMap construction (io_boundary.py:1307) and applied consistently: unfiltered path via BoundaryMap.to_dict() (io_boundary.py:977), filtered path via cmd_io_boundaries (cli.py:3873). Both writers use sum(len(e.chains) for e in entries.values()). Writer contract documented at io_boundary.py:1283-1290. All 293 tests in test_io_boundary.py pass."  # 156c
+- op: update  # 2bd7
+  at: '2026-06-22T01:48:05Z'  # 2bd7
+  by: agent  # 2bd7
+  actor: jgstern_agent  # 2bd7
+  clock: 8  # 2bd7
+  nonce: 2bd7  # 2bd7
+  set: {}  # 2bd7
+  remove:  # 2bd7
+    tags: [awaits_bakeoff_validation]  # 2bd7
+- op: discuss  # afe7
+  at: '2026-06-22T01:48:05Z'  # afe7
+  by: agent  # afe7
+  actor: jgstern_agent  # afe7
+  clock: 9  # afe7
+  nonce: afe7  # afe7
+  message: "Drain audit: E-misapplied. Correctness/consistency fix (single io-boundaries metric definition across code paths) with no quantitative bakeoff-improvement claim (no FP% / count delta). Validated structurally; tracked by satisfied status. Stripping misapplied tag."  # afe7

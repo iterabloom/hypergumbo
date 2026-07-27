@@ -123,6 +123,33 @@ contract Token {
         functions = [s for s in result.symbols if s.kind == "function"]
         assert any("transfer" in s.name for s in functions)
 
+    def test_body_bearing_symbols_carry_shape_id(self, temp_repo: Path) -> None:
+        """WI-lutob: Solidity body-bearing symbols (function / constructor /
+        contract) carry an auto-stamped structural shape_id — populated via
+        ``node_for_symbol`` + the base-class auto-stamp loop (base.py) — so
+        Solidity functions are visible to the ``repeat-finder`` structural-clone
+        detector, which groups by ``(language, shape_id)`` and drops any
+        ``shape_id`` of None. Before this, Solidity never populated
+        node_for_symbol, so shape_id stayed None on 100% of body-bearing
+        symbols (invisible to clone detection)."""
+        (temp_repo / "C.sol").write_text("""
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+contract C {
+    function f(uint256 x) public pure returns (uint256) {
+        if (x > 0) { return x; }
+        return 0;
+    }
+}
+""")
+        result = analyze_solidity(temp_repo)
+
+        functions = [s for s in result.symbols if s.kind == "function"]
+        assert functions
+        for s in functions:
+            assert s.shape_id, f"solidity function {s.name} has no shape_id"
+
     def test_analyzes_constructor(self, temp_repo: Path) -> None:
         """Detects constructor definitions."""
         (temp_repo / "Token.sol").write_text("""
@@ -554,6 +581,13 @@ contract Token is Base {
 
         inherit_edges = [e for e in result.edges if e.edge_type == "inherits"]
         assert len(inherit_edges) >= 1
+        # vocab:F2 (WI-lojug): inherits is AST-derived from the `is`
+        # (inheritance_specifier) clause, NOT a direct call — evidence_type
+        # must be ast_extends, not the call-specific ast_call_direct default.
+        assert all(e.evidence_type == "ast_extends" for e in inherit_edges), (
+            f"inherits edges must carry ast_extends evidence; "
+            f"got {[e.evidence_type for e in inherit_edges]}"
+        )
         # Token inherits from Base
         token = next(s for s in result.symbols if s.name == "Token" and s.kind == "contract")
         base = next(s for s in result.symbols if s.name == "Base" and s.kind == "contract")
@@ -718,6 +752,13 @@ contract Token {
 
         emit_edges = [e for e in result.edges if e.edge_type == "references"]
         assert len(emit_edges) >= 1, "Expected at least one 'emits' edge"
+        # vocab:F2 (WI-lojug): an `emit Event(...)` is a name-resolved reference
+        # to the event symbol, not a direct call — evidence_type must be
+        # reference, not the call-specific ast_call_direct default.
+        assert all(e.evidence_type == "reference" for e in emit_edges), (
+            f"event-emit references edges must carry reference evidence; "
+            f"got {[e.evidence_type for e in emit_edges]}"
+        )
 
         transfer_func = next(s for s in result.symbols if "transfer" in s.name and s.kind == "function")
         transfer_event = next(s for s in result.symbols if "Transfer" in s.name and s.kind == "event")
@@ -973,6 +1014,13 @@ contract Token is ERC165 {
 
         override_edges = [e for e in result.edges if e.edge_type == "overrides"]
         assert len(override_edges) >= 1, f"Expected override edges, found {len(override_edges)}"
+        # vocab:F2 (WI-lojug): override edges are resolved by name-matching child
+        # functions against the inheritance hierarchy, not from a direct call —
+        # evidence_type must be type_hierarchy, not the ast_call_direct default.
+        assert all(e.evidence_type == "type_hierarchy" for e in override_edges), (
+            f"override edges must carry type_hierarchy evidence; "
+            f"got {[e.evidence_type for e in override_edges]}"
+        )
 
         # Token.supportsInterface overrides ERC165.supportsInterface
         token_fn = next(
@@ -1390,3 +1438,259 @@ contract Test {
         ]
         # msg.sender.call is a member access that can't be resolved
         assert any("call" in e.dst or "sender" in e.dst for e in unresolved)
+
+
+class TestSolidityComplexityAndLoc:
+    """INV-loguk slice B: callable Solidity symbols carry non-null
+    cyclomatic_complexity and line_span (CC table relocated to
+    hypergumbo_core.analyze.cyclomatic). Real-grammar verification of the
+    solidity BRANCH_NODE_TYPES entry."""
+
+    def test_branchy_function_has_cc_and_loc(self, temp_repo: Path) -> None:
+        (temp_repo / "C.sol").write_text("""
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+contract C {
+    function classify(uint x) public pure returns (uint) {
+        if (x > 10) { return 1; } else if (x > 5) { return 2; }
+        for (uint i = 0; i < x; i++) { if (i % 2 == 0 && i > 0) { return i; } }
+        return 0;
+    }
+}
+""")
+        result = analyze_solidity(temp_repo)
+        fn = next(s for s in result.symbols
+                  if s.kind == "function" and "classify" in s.name)
+        # base 1 + 3 if + 1 for + 1 short-circuit (&&) = 6
+        assert fn.cyclomatic_complexity is not None
+        assert fn.cyclomatic_complexity >= 5
+        assert fn.line_span is not None
+        assert fn.line_span >= 4
+
+    def test_straight_line_function_cc_is_one(self, temp_repo: Path) -> None:
+        (temp_repo / "C.sol").write_text("""
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+contract C {
+    function noop(uint x) public pure returns (uint) {
+        return x;
+    }
+}
+""")
+        result = analyze_solidity(temp_repo)
+        fn = next(s for s in result.symbols
+                  if s.kind == "function" and "noop" in s.name)
+        assert fn.cyclomatic_complexity == 1
+        assert fn.line_span is not None
+
+    def test_constructor_and_modifier_have_cc_and_loc(self, temp_repo: Path) -> None:
+        (temp_repo / "C.sol").write_text("""
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+contract C {
+    address owner;
+    constructor(uint x) {
+        if (x > 0) { owner = msg.sender; }
+    }
+    modifier onlyOwner(uint x) {
+        if (x > 0) { require(msg.sender == owner); }
+        _;
+    }
+}
+""")
+        result = analyze_solidity(temp_repo)
+        for kind in ("constructor", "modifier"):
+            sym = next(s for s in result.symbols if s.kind == kind)
+            assert sym.cyclomatic_complexity is not None, kind
+            assert sym.cyclomatic_complexity >= 2, kind
+            assert sym.line_span is not None, kind
+
+    def test_all_callables_have_non_null_cc_and_loc(self, temp_repo: Path) -> None:
+        (temp_repo / "C.sol").write_text("""
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+contract C {
+    constructor() {}
+    modifier m() { _; }
+    function f() public {}
+    function g(uint x) public pure returns (uint) { return x; }
+}
+""")
+        result = analyze_solidity(temp_repo)
+        callables = [s for s in result.symbols
+                     if s.kind in ("function", "constructor", "modifier")]
+        assert callables
+        for s in callables:
+            assert s.cyclomatic_complexity is not None, s.name
+            assert s.line_span is not None, s.name
+
+    def test_non_callable_symbols_have_null_cc(self, temp_repo: Path) -> None:
+        # Contracts/events are not callables; CC must stay None (we gate the
+        # computation on callable kinds so a contract's CC does not silently
+        # aggregate every branch in its body).
+        (temp_repo / "C.sol").write_text("""
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+contract C {
+    event Transfer(address indexed from, uint256 value);
+    function f(uint x) public pure returns (uint) {
+        if (x > 0) { return 1; }
+        return 0;
+    }
+}
+""")
+        result = analyze_solidity(temp_repo)
+        contract = next(s for s in result.symbols if s.kind == "contract")
+        assert contract.cyclomatic_complexity is None
+
+
+class TestSolidityFieldVariableEmission:
+    """WI-jusus (emission-parity): Solidity emits kind='field' for contract
+    state variables (the security-critical persistent storage) and struct
+    members, and kind='variable' for file-level constants. Function locals
+    (a distinct grammar node) are not emitted, and field/variable symbols are
+    kept out of the call-resolution registry.
+    """
+
+    def _by_kind(self, result, kind):
+        return [s for s in result.symbols if s.kind == kind]
+
+    def test_state_variables_emitted_as_fields(self, temp_repo: Path) -> None:
+        (temp_repo / "Token.sol").write_text("""
+contract Token {
+    uint256 public totalSupply;
+    mapping(address => uint256) balances;
+    address private _owner;
+}
+""")
+        result = analyze_solidity(temp_repo)
+        fields = {s.name: s for s in self._by_kind(result, "field")}
+        assert "Token.totalSupply" in fields
+        assert "Token.balances" in fields
+        assert "Token._owner" in fields
+        # public state var is exported; private is not
+        assert fields["Token.totalSupply"].is_exported is True
+        assert fields["Token._owner"].is_exported is False
+        # type recorded as signature; stable_id present
+        assert fields["Token.totalSupply"].signature == "uint256"
+        assert fields["Token.totalSupply"].stable_id is not None
+        assert fields["Token.balances"].language == "solidity"
+
+    def test_struct_members_emitted_as_fields(self, temp_repo: Path) -> None:
+        (temp_repo / "S.sol").write_text("""
+contract C {
+    struct Account { uint256 balance; address addr; }
+}
+""")
+        names = {s.name for s in self._by_kind(analyze_solidity(temp_repo), "field")}
+        assert "Account.balance" in names
+        assert "Account.addr" in names
+
+    def test_file_level_constant_emitted_as_variable(self, temp_repo: Path) -> None:
+        (temp_repo / "K.sol").write_text("""
+uint256 constant MAX_SUPPLY = 1000;
+contract C {}
+""")
+        variables = {s.name: s for s in self._by_kind(analyze_solidity(temp_repo), "variable")}
+        assert "MAX_SUPPLY" in variables
+        assert variables["MAX_SUPPLY"].stable_id is not None
+        assert variables["MAX_SUPPLY"].is_exported is True
+
+    def test_contract_level_constant_is_field_not_variable(self, temp_repo: Path) -> None:
+        (temp_repo / "D.sol").write_text("""
+contract C {
+    uint8 constant DECIMALS = 18;
+}
+""")
+        result = analyze_solidity(temp_repo)
+        fields = {s.name for s in self._by_kind(result, "field")}
+        variables = {s.name for s in self._by_kind(result, "variable")}
+        assert "C.DECIMALS" in fields
+        assert "DECIMALS" not in variables
+
+    def test_function_locals_not_emitted(self, temp_repo: Path) -> None:
+        (temp_repo / "L.sol").write_text("""
+contract C {
+    function transfer(address to, uint256 amt) public {
+        uint256 local = amt;
+        address recipient = to;
+    }
+}
+""")
+        leaked = {
+            s.name for s in analyze_solidity(temp_repo).symbols
+            if s.kind in ("field", "variable")
+        }
+        for bad in ("local", "recipient", "amt", "to"):
+            assert not any(bad == n or n.endswith("." + bad) for n in leaked), (
+                bad, leaked
+            )
+
+    def test_state_variable_not_a_call_target(self, temp_repo: Path) -> None:
+        """A state variable must not be a spurious call/resolution target: a
+        function sharing its name is not clobbered, and no calls edge points at
+        the field (register_symbol chokepoint)."""
+        (temp_repo / "a.sol").write_text("""
+contract A {
+    uint256 config;
+    function config2() public { helper(); }
+    function helper() public {}
+}
+""")
+        result = analyze_solidity(temp_repo)
+        field_ids = {s.id for s in result.symbols if s.kind in ("field", "variable")}
+        calls = [e for e in result.edges if e.edge_type == "calls"]
+        assert not any(e.dst in field_ids for e in calls)
+        # the real function->function call still resolves
+        assert any("helper" in e.dst for e in calls)
+
+
+# WI-vibad: callable-kind declarations (function / constructor / modifier /
+# event) must carry a typed producer stable_id. They are deliberately excluded
+# from the name-scoped WI-rihob backstop because a name-only key collides on
+# overloads, so the producer must mint the signature-bearing typed id.
+
+
+def test_callable_kinds_carry_stable_id(tmp_path: Path) -> None:
+    (tmp_path / "Token.sol").write_text(
+        "// SPDX-License-Identifier: MIT\n"
+        "pragma solidity ^0.8.0;\n"
+        "contract Token {\n"
+        "    event Transfer(address indexed from, address indexed to, uint256 value);\n"
+        "    constructor(uint256 supply) {}\n"
+        "    modifier onlyOwner() { _; }\n"
+        "    function mint(address to) public {}\n"
+        "}\n"
+    )
+    result = analyze_solidity(tmp_path)
+    for kind in ("function", "constructor", "modifier", "event"):
+        syms = [s for s in result.symbols if s.kind == kind]
+        assert syms, f"no {kind} symbols emitted"
+        for s in syms:
+            assert (
+                s.stable_id is not None and s.stable_id.startswith("sha256:")
+            ), f"{kind} {s.name} has stable_id={s.stable_id!r}"
+
+
+def test_function_overloads_get_distinct_stable_ids(tmp_path: Path) -> None:
+    (tmp_path / "Token.sol").write_text(
+        "// SPDX-License-Identifier: MIT\n"
+        "pragma solidity ^0.8.0;\n"
+        "contract Token {\n"
+        "    function mint(address to) public {}\n"
+        "    function mint(address to, uint256 amount) public {}\n"
+        "}\n"
+    )
+    result = analyze_solidity(tmp_path)
+    mints = [
+        s for s in result.symbols
+        if s.kind == "function" and s.name.endswith("mint")
+    ]
+    assert len(mints) == 2
+    assert mints[0].stable_id is not None
+    assert mints[0].stable_id != mints[1].stable_id

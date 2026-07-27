@@ -408,6 +408,37 @@ def test_axis_conformance_run_pass_id_required() -> None:
     assert matched[0].axis == "pass-id"
 
 
+def test_axis_conformance_confidence_source_bounded_enum() -> None:
+    """ADR-0039 R2: Edge.confidence_source is checked against the bounded enum."""
+    from hypergumbo_core.catalog import all_known_pass_ids
+    from hypergumbo_core.evidence_types import all_evidence_type_names
+
+    a_pass = next(iter(all_known_pass_ids()))
+    an_evidence = next(iter(all_evidence_type_names()))
+
+    good = _FakeSym(
+        id="edge:good", edge_type="calls", evidence_type=an_evidence,
+        evidence_lang=None, origin=[a_pass], confidence_source="evidence_derived",
+    )
+    bad = _FakeSym(
+        id="edge:bad", edge_type="calls", evidence_type=an_evidence,
+        evidence_lang=None, origin=[a_pass], confidence_source="bogus_source",
+    )
+    violations = validate_ir([], [good, bad], [])
+    matched = [v for v in violations if v.field_name == "Edge.confidence_source"]
+    assert len(matched) == 1
+    assert matched[0].record_id == "edge:bad"
+    assert matched[0].axis == "bounded-enum"
+
+
+def test_confidence_source_bounded_enum_matches_ir_vocabulary() -> None:
+    """Drift guard: the validator's bounded-enum set == ir.VALID_CONFIDENCE_SOURCES."""
+    from hypergumbo_core.ir import VALID_CONFIDENCE_SOURCES
+    from hypergumbo_core.spec_validator import _BOUNDED_ENUMS
+
+    assert _BOUNDED_ENUMS[("Edge", "confidence_source")] == VALID_CONFIDENCE_SOURCES
+
+
 def test_axis_conformance_none_for_required_field_emits_violation() -> None:
     """A required (allow_none=False) axis-tagged field being None emits
     a violation. Symbol.kind is the canonical example — None is illegal
@@ -1172,6 +1203,49 @@ def test_wired_checks_manifest_matches_validate_ir() -> None:
         f"{wired_in_code - wired_in_manifest}; disclosed-but-unwired="
         f"{wired_in_manifest - wired_in_code}"
     )
+
+
+# ----------------------------------------------------------------------
+# INV-fahub — no un-demoted harmful receiver-blind magnet survives
+# ----------------------------------------------------------------------
+
+def _magnet_edge(src, dst):
+    from types import SimpleNamespace
+    return SimpleNamespace(
+        id="edge:1", src=src, dst=dst, edge_type="calls", is_resolved=True,
+        evidence_type="ast_call", confidence=0.85, meta={"call_construct": "function"},
+    )
+
+
+def test_harmful_magnet_survivor_is_flagged() -> None:
+    # A production->test-helper magnet that was NOT demoted (simulating a
+    # demotion regression) is caught by the durable gate.
+    from hypergumbo_core.spec_validator import _check_no_harmful_receiver_blind_magnets
+    src = _FakeSym(id="s", name="App.run", kind="method", path="app/main.go", language="go")
+    dst = _FakeSym(id="d", name="Collector.Add", kind="method",
+                   path="test/testutils/collector.go", language="go")
+    edges = [_magnet_edge("s", "d")]
+    violations = _check_no_harmful_receiver_blind_magnets([src, dst], edges)
+    assert len(violations) == 1
+    assert violations[0].severity == "error"
+    assert violations[0].validator_class == "cross_field"
+    assert violations[0].record_id == "edge:1"
+
+
+def test_kept_correct_but_unprovable_bind_is_not_flagged() -> None:
+    # The correct-but-unprovable trait-dispatch residual (ADR-0012 scope) is a
+    # receiver-blind magnet but NOT harmful — the durable gate must not flag it.
+    from hypergumbo_core.spec_validator import _check_no_harmful_receiver_blind_magnets
+    src = _FakeSym(id="s", name="App.run", kind="method", path="src/lib.rs", language="rust")
+    dst = _FakeSym(id="d", name="Red::next", kind="method",
+                   path="src/source/noise.rs", language="rust")
+    edges = [_magnet_edge("s", "d")]
+    assert _check_no_harmful_receiver_blind_magnets([src, dst], edges) == []
+
+
+def test_no_harmful_magnet_check_empty_is_noop() -> None:
+    from hypergumbo_core.spec_validator import _check_no_harmful_receiver_blind_magnets
+    assert _check_no_harmful_receiver_blind_magnets([], []) == []
 
 
 # ----------------------------------------------------------------------
@@ -2277,3 +2351,134 @@ def test_id_roundtrip_wired_into_validate_ir() -> None:
         and "start" in v.message
         for v in violations
     )
+
+
+def test_confidence_range_flags_out_of_band_edge() -> None:
+    """WI-nurun step 4: an edge whose confidence is outside its evidence
+    pathway's derived band emits an advisory cross_field/info violation."""
+    from hypergumbo_core.ir import Edge
+    # ast_import band is [0.30, 0.95]; 1.0 breaches the reserved ceiling.
+    edge = Edge.create(
+        src="python:a.py:1-1:f:function", dst="python:b.py:1-1:g:function",
+        edge_type="imports", line=1, evidence_type="ast_import",
+        confidence=1.0, origin="test", origin_run_id="test",
+    )
+    conf = [
+        v for v in validate_ir([], [edge], [])
+        if v.field_name == "confidence"
+    ]
+    assert len(conf) == 1
+    assert conf[0].validator_class == "cross_field"
+    assert conf[0].severity == "info"
+    assert conf[0].record_id == edge.id
+    assert conf[0].observed == "1.0"
+
+
+def test_confidence_range_clean_for_in_band_edge() -> None:
+    """An in-band (derived) confidence emits no range violation."""
+    from hypergumbo_core.ir import Edge
+    edge = Edge.create(
+        src="python:a.py:1-1:f:function", dst="python:b.py:1-1:g:function",
+        edge_type="imports", line=1, evidence_type="ast_import",
+        confidence=0.95, origin="test", origin_run_id="test",
+    )
+    assert [
+        v for v in validate_ir([], [edge], [])
+        if v.field_name == "confidence"
+    ] == []
+
+
+# ----------------------------------------------------------------------
+# INV-vokak — route-marker single-home coherence check
+# ----------------------------------------------------------------------
+
+
+def test_route_marker_single_home_flags_dual_carry() -> None:
+    """A route marker (framework_role=='route') that ALSO carries a redundant
+    path-less concept=route is the INV-vokak dual-carry — one violation."""
+    from hypergumbo_core import spec_validator
+
+    sym = _FakeSym(
+        id="ruby:app/users.rb:10-20:index:function",
+        meta={
+            "framework_role": "route",
+            "route_path": "/users",
+            "http_method": "GET",
+            "concepts": [{"concept": "route", "framework": "rails"}],
+        },
+    )
+    violations = spec_validator._check_route_marker_single_home([sym])
+    assert len(violations) == 1
+    v = violations[0]
+    assert v.severity == "error"
+    assert v.validator_class == "cross_field"
+    assert v.field_name == "meta.concepts"
+    assert v.record_id == "ruby:app/users.rb:10-20:index:function"
+
+
+def test_route_marker_single_home_clean_on_single_homed_marker() -> None:
+    """A route marker whose framework lives on route_framework (no redundant
+    concept), and a marker carrying only a *pathed* route concept, are both
+    coherent — no violation."""
+    from hypergumbo_core import spec_validator
+
+    single_home = _FakeSym(
+        id="ruby:app/users.rb:10-20:index:function",
+        meta={
+            "framework_role": "route",
+            "route_path": "/users",
+            "http_method": "GET",
+            "route_framework": "rails",
+        },
+    )
+    pathed_concept = _FakeSym(
+        id="python:app.py:1-3:home:function",
+        meta={
+            "framework_role": "route",
+            "concepts": [{"concept": "route", "framework": "flask", "path": "/x"}],
+        },
+    )
+    assert spec_validator._check_route_marker_single_home(
+        [single_home, pathed_concept],
+    ) == []
+
+
+def test_route_marker_single_home_ignores_non_marker_symbols() -> None:
+    """A symbol WITHOUT the route marker is out of scope even if it carries a
+    path-less route concept (that is the legitimate manifest-gated upstream
+    projection, not a dual-carry)."""
+    from hypergumbo_core import spec_validator
+
+    non_marker = _FakeSym(
+        id="python:app.py:1-3:home:function",
+        meta={"concepts": [{"concept": "route", "framework": "flask"}]},
+    )
+    assert spec_validator._check_route_marker_single_home([non_marker]) == []
+
+
+def test_route_marker_single_home_wired_into_validate_ir() -> None:
+    """The predicate flows through validate_ir (so the ratchet gate sees it):
+    a fully axis-conformant symbol carrying the dual-carry meta surfaces the
+    meta.concepts violation among validate_ir's output."""
+    from hypergumbo_core.catalog import all_known_languages
+    from hypergumbo_core.symbol_kinds import all_symbol_kind_names
+
+    a_kind = next(iter(all_symbol_kind_names()))
+    a_lang = next(iter(all_known_languages()))
+    sym = _FakeSym(
+        id=f"python:test/fake.py:1-1:sym:{a_kind}",
+        kind=a_kind,
+        language=a_lang,
+        discovery_language=None,
+        protocol_origin=None,
+        origin=[],
+        qualified_name=None,
+        meta={
+            "framework_role": "route",
+            "concepts": [{"concept": "route", "framework": "rails"}],
+        },
+    )
+    dual_carry = [
+        v for v in validate_ir([sym], [], []) if v.field_name == "meta.concepts"
+    ]
+    assert len(dual_carry) == 1

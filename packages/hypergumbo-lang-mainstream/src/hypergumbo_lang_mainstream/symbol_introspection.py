@@ -1,10 +1,34 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""Shared per-language dispatchers for Symbol.signature and Symbol.docstring.
+"""Shared per-language dispatchers for Symbol introspection fields.
 
 This module provides a uniform entry point so analyzer code does not have
 to know the per-language extraction logic at every Symbol() emit site.
 The dispatcher routes to per-language extractors based on the language
 string passed at call time.
+
+Two distinct capability axes
+----------------------------
+There are *two* independent sets of supported languages here, because the
+fields they back are independent capabilities:
+
+- ``SUPPORTED_LANGUAGES`` — languages with a ``signature``/``docstring``
+  extractor (the 10 ADR-0033-Phase-4 languages). Gates
+  :func:`extract_signature` and :func:`extract_preceding_doc_comment`.
+  This set is owned by *this* module.
+- ``BRANCH_NODE_TYPES`` — languages with a ``cyclomatic_complexity``
+  decision-point table. Gates ``compute_cyclomatic_complexity``. The table
+  and the walker now live in
+  :mod:`hypergumbo_core.analyze.cyclomatic` (relocated there per INV-loguk
+  slice B so analyzer packages outside ``hypergumbo-lang-mainstream`` —
+  ``solidity`` in extended1, ``wgsl`` in common — can reach them). They are
+  re-exported here for back-compat with the 13 mainstream analyzers that
+  ``from ...symbol_introspection import compute_cyclomatic_complexity``.
+
+``BRANCH_NODE_TYPES`` is a *superset*: every signature/docstring language
+also computes complexity, but ``bash``/``c``/``cpp``/``solidity``/``wgsl``
+compute complexity (INV-loguk) without having a signature/docstring
+extractor in this module. Do not conflate the two sets — they are
+different questions, and they no longer even live in the same package.
 
 Why centralized
 ---------------
@@ -47,12 +71,33 @@ may visit nodes from multiple grammars.
 """
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Final, Optional
+from typing import TYPE_CHECKING, Optional
 
 from hypergumbo_core.analyze.base import extract_doc_comment
 
+# The cyclomatic-complexity table + walker were relocated to hypergumbo-core
+# (INV-loguk slice B) so analyzer packages outside this one — ``solidity``
+# (extended1), ``wgsl`` (common) — can reach them. Re-exported here (see
+# ``__all__``) for back-compat with the mainstream analyzers and tests that
+# import these names from this module.
+from hypergumbo_core.analyze.cyclomatic import (
+    BRANCH_NODE_TYPES,
+    SHORT_CIRCUIT_OPS,
+    compute_cyclomatic_complexity,
+)
+
 if TYPE_CHECKING:  # pragma: no cover - import-time only
     import tree_sitter
+
+
+__all__ = [
+    "BRANCH_NODE_TYPES",
+    "SHORT_CIRCUIT_OPS",
+    "SUPPORTED_LANGUAGES",
+    "compute_cyclomatic_complexity",
+    "extract_preceding_doc_comment",
+    "extract_signature",
+]
 
 
 # Language strings recognised by the dispatchers. Kept as a module-level
@@ -68,100 +113,6 @@ SUPPORTED_LANGUAGES = frozenset({
     "ruby",
     "kotlin",
     "swift",
-})
-
-
-# Per-language decision-point node types from each tree-sitter grammar.
-# Each occurrence of one of these node types inside a callable subtree
-# adds 1 to McCabe cyclomatic complexity (base complexity is 1, the
-# implicit entry path). The node-type lists are derived from each
-# grammar's ``node-types.json`` / source.c — see ADR-0033 Phase 4 PR5
-# (INV-? cyclomatic_complexity sweep).
-#
-# Conservative scope: we count canonical control-flow constructs
-# (if / for / while / do-while / switch-case-default / try-catch /
-# ternary / loop / match-arm). Logical short-circuit operators
-# (``&&`` / ``||`` / ``??``) are counted via the SHORT_CIRCUIT_OPS
-# table below — each occurrence adds 1, matching the "and/or each
-# create a new path" rule used by ``py.py`` for ``ast.BoolOp``.
-BRANCH_NODE_TYPES: Final[dict[str, frozenset[str]]] = {
-    "go": frozenset({
-        "if_statement", "for_statement", "expression_case", "type_case",
-        "communication_case", "default_case",
-    }),
-    "rust": frozenset({
-        "if_expression", "for_expression", "while_expression",
-        "loop_expression", "match_arm", "try_expression",
-    }),
-    "java": frozenset({
-        "if_statement", "for_statement", "enhanced_for_statement",
-        "while_statement", "do_statement", "switch_label", "catch_clause",
-        "ternary_expression",
-    }),
-    "csharp": frozenset({
-        "if_statement", "for_statement", "foreach_statement",
-        "while_statement", "do_statement", "switch_section", "catch_clause",
-        "conditional_expression",
-    }),
-    "php": frozenset({
-        "if_statement", "for_statement", "foreach_statement",
-        "while_statement", "do_statement", "case_statement",
-        "catch_clause", "conditional_expression",
-    }),
-    "javascript": frozenset({
-        "if_statement", "for_statement", "for_in_statement",
-        "while_statement", "do_statement", "switch_case", "switch_default",
-        "catch_clause", "ternary_expression",
-    }),
-    "typescript": frozenset({
-        "if_statement", "for_statement", "for_in_statement",
-        "while_statement", "do_statement", "switch_case", "switch_default",
-        "catch_clause", "ternary_expression",
-    }),
-    "ruby": frozenset({
-        "if", "unless", "while", "until", "for", "case", "when",
-        "rescue", "ternary",
-    }),
-    "kotlin": frozenset({
-        "if_expression", "for_statement", "while_statement",
-        "do_while_statement", "when_entry", "catch_block",
-    }),
-    "swift": frozenset({
-        "if_statement", "for_statement", "while_statement",
-        "repeat_while_statement", "switch_statement",
-        "case_statement", "catch_block", "ternary_expression",
-        "guard_statement",
-    }),
-}
-
-
-# Short-circuit logical operators per language. Each occurrence inside a
-# callable subtree adds 1 to cyclomatic complexity (mirrors the
-# ``ast.BoolOp`` rule in ``py.py``: each ``and``/``or`` introduces a
-# new short-circuit branch).
-SHORT_CIRCUIT_OPS: Final[dict[str, frozenset[str]]] = {
-    "go": frozenset({"&&", "||"}),
-    "rust": frozenset({"&&", "||"}),
-    "java": frozenset({"&&", "||"}),
-    "csharp": frozenset({"&&", "||"}),
-    "php": frozenset({"&&", "||", "and", "or"}),
-    "javascript": frozenset({"&&", "||", "??"}),
-    "typescript": frozenset({"&&", "||", "??"}),
-    "ruby": frozenset({"&&", "||", "and", "or"}),
-    "kotlin": frozenset({"&&", "||"}),
-    "swift": frozenset({"&&", "||"}),
-}
-
-
-# Node types known to wrap a binary boolean expression across grammars.
-# The cyclomatic walker inspects each such node's anonymous (unnamed)
-# operator child and bumps complexity when its text matches the
-# language's SHORT_CIRCUIT_OPS set.
-_BINARY_EXPR_NODE_TYPES: Final[frozenset[str]] = frozenset({
-    "binary_expression",  # Go / Rust / C# / PHP / JS / TS / Kotlin / Swift
-    "boolean_operator",   # (Python-only — not actually reached here,
-                          #  kept defensive)
-    "binary",             # Ruby (tree-sitter-ruby names it ``binary``)
 })
 
 
@@ -241,55 +192,3 @@ def extract_preceding_doc_comment(
     if language not in SUPPORTED_LANGUAGES:
         return None
     return extract_doc_comment(node, source)
-
-
-def compute_cyclomatic_complexity(
-    node: "tree_sitter.Node",
-    language: str,
-) -> Optional[int]:
-    """Compute McCabe cyclomatic complexity for a callable subtree.
-
-    Iteratively walks the subtree rooted at *node* and counts decision
-    points per the language's tree-sitter grammar. The base complexity
-    is 1 (the implicit entry path); each branch node and each
-    short-circuit operator occurrence adds 1.
-
-    Returns ``None`` for unsupported languages so callers can wire the
-    dispatcher into every callable Symbol emit site without per-call
-    language gating.
-
-    The walker is iterative (not recursive) to avoid ``RecursionError``
-    on deeply nested code — matching the pattern used by every other
-    tree-walking helper in this package (see ``iter_tree`` /
-    ``populate_docstrings_from_tree``).
-    """
-    if language not in BRANCH_NODE_TYPES:
-        return None
-    branch_types = BRANCH_NODE_TYPES[language]
-    short_circuit_ops = SHORT_CIRCUIT_OPS.get(language, frozenset())
-    complexity = 1
-    stack = [node]
-    while stack:
-        current = stack.pop()
-        current_type = current.type
-        if current_type in branch_types:
-            complexity += 1
-        elif current_type in _BINARY_EXPR_NODE_TYPES and short_circuit_ops:
-            # Short-circuit operator detection. tree-sitter exposes the
-            # operator as an anonymous (unnamed) child of the binary
-            # expression — its text is the literal operator string
-            # (e.g. ``&&``). We scan the immediate children and bump
-            # complexity once per matching operator child. Decoding is
-            # best-effort: a non-UTF-8 source slice is skipped silently
-            # so the walker never raises on malformed input.
-            for child in current.children:
-                if child.is_named:
-                    continue
-                try:
-                    op_text = child.text.decode("utf-8", errors="ignore")
-                except (AttributeError, UnicodeDecodeError):  # pragma: no cover - defensive
-                    continue
-                if op_text in short_circuit_ops:
-                    complexity += 1
-        stack.extend(current.children)
-    return complexity

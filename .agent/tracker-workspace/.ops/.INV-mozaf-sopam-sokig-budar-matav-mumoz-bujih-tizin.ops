@@ -159,3 +159,41 @@
   clock: 18  # 0b45
   nonce: 0b45  # 0b45
   message: "RELATED_BUT_DISTINCT to WI-garam: files-counted-but-no-path-bearing-nodes; mozaf=global 296-file gap, garam=per-AR 11 zero-node-yield passes; overlapping symptom, distinct granularity. Distinct fix; cross-link not fold. (tracker-hygiene-sweep 2026-06-08T174504Z)"  # 0b45
+- op: discuss  # 7a46
+  at: '2026-06-22T02:24:15Z'  # 7a46
+  by: agent  # 7a46
+  actor: jgstern_agent  # 7a46
+  clock: 19  # 7a46
+  nonce: 7a46  # 7a46
+  message: "DEEP cohort deep-20260621-215349/cohort-002/iter-001 verdict: INCONCLUSIVE. metrics.total_files == distinct path-bearing-node count EXACTLY on all 4 repos (apollo 180, jedis 913, pretix 1461, chatwoot 3314) -- no counted-but-nodeless files observed -- and formerly-nodeless extensions (.yaml/.rst/.scss/.html/.erb/.jbuilder) now emit path-bearing nodes, consistent with the original 296-file gap (yaml 174, md 107) closing via analyzer emission gains. BUT cannot distinguish genuine gap-closure from a total_files redefinition (counting only node-bearing files) without the raw discovery-file count (files walked incl. nodeless ones). Tag RETAINED. To unblock: instrument discovery-vs-emission file counts, or expose a metrics field for walked-but-nodeless files, then re-verify the original total_files>distinct-paths direction."  # 7a46
+- op: discuss  # 84e7
+  at: '2026-07-06T20:07:02Z'  # 84e7
+  by: agent  # 84e7
+  actor: jgstern_agent  # 84e7
+  clock: 20  # 84e7
+  nonce: '84e7'  # 84e7
+  message: "BROAD drain broad-20260706-153915: not re-attempted. A BROAD cohort hits the same wall as the prior DEEP inconclusive (2026-06-22): total_files matches the path-bearing-node count on the cohort, but genuine gap-closure cannot be distinguished from a total_files redefinition without a raw walked-but-nodeless file count, which is not instrumented. Tag retained; unblock is the discovery-vs-emission instrumentation (a code change), not a cohort run."  # 84e7
+- op: update  # 0325
+  at: '2026-07-15T09:37:47Z'  # 0325
+  by: agent  # 0325
+  actor: jgstern_agent  # 0325
+  clock: 21  # 0325
+  nonce: '0325'  # 0325
+  set:  # 0325
+    status: satisfied  # 0325
+- op: discuss  # d0dc
+  at: '2026-07-15T09:37:47Z'  # d0dc
+  by: agent  # d0dc
+  actor: jgstern_agent  # d0dc
+  clock: 22  # d0dc
+  nonce: d0dc  # d0dc
+  message: "SATISFIED (2026-07-15, PR #661, dev @ post-merge). metrics.total_files now equals the number of real path-bearing source files. BEHAVIORAL EVIDENCE (self-analysis `hypergumbo survey .` with the fix live): metrics.total_files=1335 == distinct real (non-<external>) node paths=1335 → gap=0 (debug.unique_paths_in_analysis=1335 in lockstep). The '<external>' sentinel path (carried by external_symbol boundary nodes) is still present in the graph but correctly EXCLUDED from the file count. This closes the last residual of the accounting gap: original 296 (1198 vs 902) → 1 (the '<external>' sentinel over-count) → 0. The awaits_bakeoff_validation tag is moot — this is a deterministic structural accounting fix (exclude a sentinel), self-corpus-verified gap=0, not a corpus-dependent bakeoff-improvement claim. INV-luhur metric-consistency member."  # d0dc
+- op: update  # 4980
+  at: '2026-07-15T09:38:14Z'  # 4980
+  by: agent  # 4980
+  actor: jgstern_agent  # 4980
+  clock: 23  # 4980
+  nonce: '4980'  # 4980
+  set: {}  # 4980
+  remove:  # 4980
+    tags: [awaits_bakeoff_validation]  # 4980

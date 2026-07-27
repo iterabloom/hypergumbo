@@ -1,0 +1,21 @@
+- op: create  # f363
+  at: '2026-07-26T17:35:08Z'  # f363
+  by: agent  # f363
+  actor: jgstern_agent  # f363
+  clock: 1  # f363
+  nonce: f363  # f363
+  data:  # f363
+    kind: work_item  # f363
+    title: "Convert chmod-based permission tests to read_text/open mocks (root-fragile coverage under CI)"  # f363
+    status: todo_hard  # f363
+    priority: 3  # f363
+    parent:  # f363
+    tags:  # f363
+    - testing  # f363
+    - ci  # f363
+    isbefore: []  # f363
+    duplicate_of: []  # f363
+    not_duplicate_of: []  # f363
+    pr_ref:  # f363
+    description: "CI runs pytest as ROOT, where os.chmod(path, 0o000) does NOT block reads, so any test that simulates an unreadable file via chmod SKIPS its except-OSError branch under CI root. Locally (non-root) the branch is covered, so the affected-only 100% coverage gate passes locally but fails in CI at 99% the moment a PR touches the enclosing source file. PR #19 hit exactly this at supply_chain.py:891-892 (Cargo OSError branch) -- fixed by converting test_unreadable_cargo_toml to the read_text-mock pattern (test_unreadable_settings_gradle is the correct template; its comment names the gotcha). REMAINING: audit test files for os.chmod(..., 0o000) guarding except-OSError/PermissionError branches (at least test_supply_chain.py ~L1553) and convert each to a read_text/open mock so the branch is covered under root regardless of user."  # f363
+    fields: {}  # f363

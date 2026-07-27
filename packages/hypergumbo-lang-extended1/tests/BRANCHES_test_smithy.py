@@ -16,6 +16,12 @@ from hypergumbo_lang_extended1.smithy import (
 )
 
 
+def _role(sym, role: str) -> bool:
+    """A folded framework symbol carries its role in ``meta['framework_role']``
+    (WI-rilal / audit-0013: ``service`` -> ``interface``)."""
+    return (sym.meta or {}).get("framework_role") == role
+
+
 def make_smithy_file(tmp_path: Path, name: str, content: str) -> None:
     """Create a Smithy file with given content."""
     (tmp_path / name).write_text(content)
@@ -36,7 +42,7 @@ service WeatherService {
 """)
         result = analyze_smithy(tmp_path)
         assert not result.skipped
-        services = [s for s in result.symbols if s.kind == "service"]
+        services = [s for s in result.symbols if _role(s, "service")]
         assert any("WeatherService" in svc.name for svc in services)
 
 
@@ -73,7 +79,7 @@ structure GetCurrentTimeOutput {
 }
 """)
         result = analyze_smithy(tmp_path)
-        structures = [s for s in result.symbols if s.kind == "structure"]
+        structures = [s for s in result.symbols if s.kind == "struct"]
         assert any("GetCurrentTimeOutput" in st.name for st in structures)
 
 

@@ -34,3 +34,18 @@
   clock: 3  # 6137
   nonce: '6137'  # 6137
   message: "related-but-distinct cross-link (connections-sweep 2026-06-08T1900Z)"  # 6137
+- op: update  # 5a31
+  at: '2026-07-11T08:52:48Z'  # 5a31
+  by: agent  # 5a31
+  actor: jgstern_agent  # 5a31
+  clock: 4  # 5a31
+  nonce: 5a31  # 5a31
+  set:  # 5a31
+    status: done  # 5a31
+- op: discuss  # c028
+  at: '2026-07-11T08:52:48Z'  # c028
+  by: agent  # c028
+  actor: jgstern_agent  # c028
+  clock: 5  # c028
+  nonce: c028  # c028
+  message: "Fixed in PR (jgstern-agent/fix/config-info-monorepo-heuristic, commit 32d1a16ba0). Root cause: _extract_config_heuristic scanned only CONFIG_FILES x CONFIG_SUBDIRS (['', server, client, backend, frontend, src, app, api]) — a flat set with no packages/, so monorepo sub-package manifests (packages/core/pyproject.toml, services/api/package.json, …) never reached config_info. The LICENSE detection right below was already monorepo-aware (WI-gojuz glob) but the name/version/deps manifest extraction was not. Fix: refactored the 8-branch if/elif dispatch into one manifest-name->extractor dict reused by BOTH the flat root/subdir scan AND a new depth-1-2 monorepo glob (mirrors _collect_config_content), with excluded/hidden-dir filtering and deterministic sorted output. HYBRID (the production config_info mode) starts from this heuristic base and also degrades entirely to it when sentence-transformers is absent, so this improves config_info on every monorepo in every environment. BEHAVIORAL EVIDENCE (production path _extract_config_info(<hypergumbo repo>, mode=HEURISTIC)): now surfaces 8 sub-package manifests — packages/hypergumbo-core/pyproject.toml, packages/hypergumbo-tracker/pyproject.toml, packages/hypergumbo-lang-{common,mainstream,extended1,rust-analyzer}/pyproject.toml, packages/hypergumbo/pyproject.toml, packages/htrac-frontend/package.json — all previously absent (only the root pyproject.toml appeared); node_modules/ excluded. Test: tests/test_sketch.py::TestConfigExtraction::test_monorepo_packages_dir_manifests (RED->GREEN). Distinct siblings still open: WI-gupod (pure-EMBEDDING chunk selection) and WI-samif (embedding preview mid-token truncation + spec doc) are separate mechanisms, untouched here."  # c028

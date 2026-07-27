@@ -26,3 +26,18 @@
   clock: 2  # 3da6
   nonce: 3da6  # 3da6
   message: "Dogfooding re-confirmed (blinded severity 4/5): the lit `reactive_property` framework pattern (bare `^property$` decorator matcher, no language gate) fires on 31 Python builtin `@property` getters in self-analysis (SliceResult.feature_id, DiResolver getters, etc.). lit's other concepts (component/render_method/lifecycle_hook) correctly target TS — only the bare `property` matcher leaks cross-language. Same language-gate fix this item already tracks. [dogfood]"  # 3da6
+- op: update  # c048
+  at: '2026-07-01T14:23:37Z'  # c048
+  by: agent  # c048
+  actor: jgstern_agent  # c048
+  clock: 3  # c048
+  nonce: c048  # c048
+  set:  # c048
+    status: done  # c048
+- op: discuss  # 1e36
+  at: '2026-07-01T14:23:37Z'  # 1e36
+  by: agent  # 1e36
+  actor: jgstern_agent  # 1e36
+  clock: 4  # 1e36
+  nonce: '1e36'  # 1e36
+  message: "Fixed in PR (dev 6da5a7cd38), Wave-3 Phase-2 §C linker F3. Root cause: framework-pattern matcher consults only per-pattern language filter, never the file-level FrameworkPatternDef.language, so lit.yaml's 'language: javascript' was inert and reactive_property (decorator '^property$') fired on Python's builtin @property (@state/@query ungated too). Fix: gate the 3 common-word decorator patterns (reactive_property/internal_state/dom_query-query) on language '^(javascript|typescript)$'; camelCase Lit decorators (queryAll/queryAsync/eventOptions/customElement) are ecosystem-unique, no gate. Global file-level gate across 107 YAMLs remains deferred (multi/list/comment-suffixed forms). Behavioral evidence (editable binary, re-ran filed match_patterns repro on merged dev): python @property vs lit reactive_property = [] (was [reactive_property]); js @property vs lit = [reactive_property] (positive control intact). Production-path tests: test_framework_patterns.py::TestFrameworkPatternEcosystemGating (lit cases). 861 framework_patterns tests pass, 100% coverage."  # 1e36

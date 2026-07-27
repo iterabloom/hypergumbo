@@ -301,6 +301,76 @@ def test_detects_express_framework(tmp_path: Path) -> None:
     assert "express" in data["profile"]["frameworks"]
 
 
+def _import_promotes(tmp_path: Path, filename: str, source: str, framework: str) -> bool:
+    """Run analysis on a single import-only source file (NO manifest) and
+    report whether ``framework`` was import-promoted into profile.frameworks."""
+    (tmp_path / filename).write_text(source)
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+    data = json.loads(out_path.read_text())
+    return framework in data["profile"]["frameworks"]
+
+
+def test_detects_scala_play_from_import_namespace(tmp_path: Path) -> None:
+    """Play promotes from the ``play.api`` import namespace, NO manifest (WI-nizuv).
+
+    The build coordinate ``com.typesafe.play`` never matches the real
+    ``play.api.*`` import namespace, so import promotion was dark.
+    """
+    assert _import_promotes(
+        tmp_path, "Routes.scala", "import play.api.mvc._\nimport play.api.routing.Router\n", "play"
+    )
+
+
+def test_detects_scala_akka_http_from_import_namespace(tmp_path: Path) -> None:
+    """akka-http promotes from the ``akka.http`` namespace, NO manifest (WI-nizuv).
+
+    The coordinate ``com.typesafe.akka`` never matches ``akka.http.scaladsl.*``.
+    """
+    assert _import_promotes(
+        tmp_path,
+        "Server.scala",
+        "import akka.http.scaladsl.server.Directives._\nimport akka.http.scaladsl.Http\n",
+        "akka-http",
+    )
+
+
+def test_detects_scala_zio_http_from_import_namespace(tmp_path: Path) -> None:
+    """zio-http promotes from the ``zio.http`` namespace, NO manifest (WI-nizuv).
+
+    The coordinate ``dev.zio`` never matches ``zio.http.*`` (and ``zio.http`` is
+    specific enough not to fire on the base ``zio.*`` library).
+    """
+    assert _import_promotes(
+        tmp_path, "App.scala", "import zio.http._\nimport zio.http.Server\n", "zio-http"
+    )
+
+
+def test_detects_haskell_scotty_from_import_namespace(tmp_path: Path) -> None:
+    """scotty promotes from the ``Web.Scotty`` module import, NO manifest (WI-nizuv).
+
+    The bare pattern ``scotty`` never matches the ``Web.Scotty`` module path.
+    """
+    assert _import_promotes(
+        tmp_path, "Main.hs", "import Web.Scotty\n\nmain = scotty 3000 (get \"/\" (text \"hi\"))\n", "scotty"
+    )
+
+
+def test_akka_http_not_promoted_from_base_akka_import(tmp_path: Path) -> None:
+    """The ``akka.http`` namespace must NOT fire on base-akka (``akka.actor``)
+    imports — the specificity guard the WI-nizuv fix relies on (WI-tolap lesson)."""
+    assert not _import_promotes(
+        tmp_path, "Actor.scala", "import akka.actor.Actor\nimport akka.actor.Props\n", "akka-http"
+    )
+
+
+def test_zio_http_not_promoted_from_base_zio_import(tmp_path: Path) -> None:
+    """The ``zio.http`` namespace must NOT fire on base-ZIO (``zio.ZIO``) imports."""
+    assert not _import_promotes(
+        tmp_path, "Core.scala", "import zio.ZIO\nimport zio.Chunk\n", "zio-http"
+    )
+
+
 def test_detects_django_framework(tmp_path: Path) -> None:
     """Should detect Django from setup.py or pyproject.toml."""
     (tmp_path / "manage.py").write_text("#!/usr/bin/env python\nimport django\n")
@@ -389,7 +459,10 @@ def test_wi_himas_requirements_under_venv_is_skipped(tmp_path: Path) -> None:
     vendor/ etc. are NOT part of the project manifest set. Shadowed deps in
     an installed virtualenv would otherwise create framework-detection FPs.
     """
-    (tmp_path / "manage.py").write_text("import django\n")
+    # App code imports a stdlib module, NOT django: WI-tosul Phase 2 promotes an
+    # allowlisted framework on a bare import, which would mask the manifest-skip
+    # this test verifies. Django can only enter via the (skipped) manifest here.
+    (tmp_path / "manage.py").write_text("import os\n")
     # Real project layout: no Django in any project-level manifest.
     venv_req = tmp_path / ".venv" / "site-packages" / "somepkg" / "requirements"
     venv_req.mkdir(parents=True)
@@ -409,7 +482,9 @@ def test_wi_himas_dash_r_outside_repo_does_not_escape(tmp_path: Path) -> None:
     Bounding the resolution at repo_root prevents directory traversal that
     would parse arbitrary host files.
     """
-    (tmp_path / "manage.py").write_text("import django\n")
+    # App code imports stdlib, NOT django (WI-tosul Phase 2 would import-promote
+    # an allowlisted framework and mask the dash-r escape this test verifies).
+    (tmp_path / "manage.py").write_text("import os\n")
     # -r ../outside.txt — would escape repo if followed.
     (tmp_path / "requirements.txt").write_text("-r ../outside.txt\n")
     # Simulate a sibling file that should NOT be read.
@@ -440,7 +515,7 @@ def test_profile_empty_when_no_source_files(tmp_path: Path) -> None:
     assert data["profile"]["frameworks"] == []
 
 
-def test_counts_lines_of_code_correctly(tmp_path: Path) -> None:
+def test_counts_line_span_correctly(tmp_path: Path) -> None:
     """Behavior map has correct LOC (non-empty lines only)."""
     (tmp_path / "app.py").write_text("def main():\n    # comment\n    pass\n\n\n")
 
@@ -2861,6 +2936,62 @@ def test_refine_frameworks_prod_import_stays() -> None:
     assert "flask" not in result.dev_frameworks
 
 
+def test_refine_frameworks_populates_framework_evidence() -> None:
+    """A framework with a prod importer records that importer's node id (WI-napuj)."""
+    from hypergumbo_core.profile import refine_frameworks
+
+    profile = _make_profile(["flask"])
+    src_id = "python:src/app.py:1-5:handler:function"
+    edges = [_make_edge(src=src_id, dst="python:flask:0-0:module:module")]
+    symbols = [_make_symbol(src_id, "src/app.py")]
+
+    result = refine_frameworks(profile, edges, symbols)
+    assert result.framework_evidence.get("flask") == [src_id]
+
+
+def test_refine_frameworks_framework_without_import_edges_has_no_evidence() -> None:
+    """A manifest framework kept confirmed but with no import edge is absent from
+    framework_evidence — 'evidence where the graph supports it' (WI-napuj)."""
+    from hypergumbo_core.profile import refine_frameworks
+
+    profile = _make_profile(["flask"])
+    result = refine_frameworks(profile, [], [])
+    assert "flask" in result.frameworks  # kept (no import edges in its langs)
+    assert result.framework_evidence == {}
+
+
+def test_refine_frameworks_test_only_import_has_no_evidence() -> None:
+    """A framework imported only in test code (demoted to dev) carries no
+    prod evidence (WI-napuj)."""
+    from hypergumbo_core.profile import refine_frameworks
+
+    profile = _make_profile(["pytest"])
+    src_id = "python:tests/test_app.py:1-5:test_foo:function"
+    edges = [_make_edge(src=src_id, dst="python:pytest:0-0:module:module")]
+    symbols = [_make_symbol(src_id, "tests/test_app.py")]
+
+    result = refine_frameworks(profile, edges, symbols)
+    assert "pytest" not in result.framework_evidence
+
+
+def test_repo_profile_framework_evidence_roundtrip() -> None:
+    """framework_evidence survives to_dict/from_dict when non-empty (WI-napuj)."""
+    from hypergumbo_core.profile import RepoProfile
+
+    ev = {"flask": ["python:src/app.py:1-5:h:function"]}
+    profile = RepoProfile(frameworks=["flask"], framework_evidence=ev)
+    d = profile.to_dict()
+    assert d["framework_evidence"] == ev
+    assert RepoProfile.from_dict(d).framework_evidence == ev
+
+
+def test_repo_profile_to_dict_omits_empty_framework_evidence() -> None:
+    """Empty framework_evidence is omitted (INV-virik honesty pattern, WI-napuj)."""
+    from hypergumbo_core.profile import RepoProfile
+
+    assert "framework_evidence" not in RepoProfile(frameworks=["flask"]).to_dict()
+
+
 def test_refine_frameworks_test_only_import_moves_to_dev() -> None:
     """Framework imported only in test code moves to dev_frameworks."""
     from hypergumbo_core.profile import refine_frameworks
@@ -2898,6 +3029,60 @@ def test_refine_frameworks_no_imports_moves_to_dev() -> None:
     result = refine_frameworks(profile, edges, symbols)
     assert "transformers" not in result.frameworks
     assert "transformers" in result.dev_frameworks
+
+
+# --- WI-tosul Phase 2: bare-exact-import promotion for allowlisted route frameworks ---
+
+def test_refine_frameworks_bare_exact_import_promotes_allowlisted() -> None:
+    """A manifest-silent web app (`from flask import Flask` → bare EXACT import edge
+    ``python:flask``) now promotes an allowlisted route framework. Before Phase 2
+    the bare arm required a compound submodule (require_prefix_arm) and this stayed
+    dark — the dead-code route-monoculture root."""
+    from hypergumbo_core.profile import refine_frameworks
+
+    profile = _make_profile([])  # manifest-silent: nothing detected
+    edges = [_make_edge(
+        src="python:src/app.py:1-5:handler:function",
+        dst="python:flask:0-0:module:module",
+    )]
+    symbols = [_make_symbol("python:src/app.py:1-5:handler:function", "src/app.py")]
+
+    result = refine_frameworks(profile, edges, symbols)
+    assert "flask" in result.frameworks
+
+
+def test_refine_frameworks_bare_exact_import_non_allowlisted_stays_gated() -> None:
+    """A NON-allowlisted bare framework must NOT promote on a bare exact import —
+    the WI-rofiz FP guard (``import graphql`` for typedefs; ``import react`` for
+    build tooling) stays intact."""
+    from hypergumbo_core.profile import refine_frameworks
+
+    for fw in ("react", "graphql"):
+        profile = _make_profile([])
+        edges = [_make_edge(
+            src="javascript:src/app.js:1-5:h:function",
+            dst=f"javascript:{fw}:0-0:module:module",
+        )]
+        symbols = [_make_symbol("javascript:src/app.js:1-5:h:function", "src/app.js", language="javascript")]
+        result = refine_frameworks(profile, edges, symbols)
+        assert fw not in result.frameworks, f"{fw} must stay gated on a bare exact import"
+
+
+def test_bare_exact_promote_allowlist_membership() -> None:
+    """The allowlist covers the high-confidence dedicated web frameworks and excludes
+    every FP-prone bare name (WI-tosul Phase-2 scout tiers)."""
+    from hypergumbo_core.profile import (
+        LANGUAGE_FRAMEWORKS,
+        _BARE_EXACT_PROMOTE_ROUTE_FRAMEWORKS,
+    )
+
+    allowlist = _BARE_EXACT_PROMOTE_ROUTE_FRAMEWORKS
+    assert {"flask", "fastapi", "express", "django"} <= allowlist  # highest-confidence core
+    # FP-prone / dual-purpose / frontend / middleware names stay OUT.
+    assert not (allowlist & {"graphql", "plug", "solid", "react", "aiohttp", "nex", "next"})
+    # Every member is a real LANGUAGE_FRAMEWORKS detection key (else it is a no-op).
+    all_keys = {fw for d in LANGUAGE_FRAMEWORKS.values() for fw in d}
+    assert allowlist <= all_keys
 
 
 def test_refine_frameworks_explicit_mode_unchanged() -> None:
@@ -4672,3 +4857,42 @@ class TestInvVunafParserUnits:
     def test_parse_dub_json_deps_non_dict_returns_empty(self) -> None:
         from hypergumbo_core.profile import _parse_dub_json_deps
         assert _parse_dub_json_deps('"just-a-string"') == set()
+
+
+# INV-naguv — PHP namespace (`use ...`) import-promotion chain
+def test_module_match_kind_php_backslash_prefix() -> None:
+    """INV-naguv: the matcher must recognize PHP's `\\` namespace separator so a
+    framework pattern (`illuminate`) prefix-matches an imported namespace
+    (`Illuminate\\Http`)."""
+    from hypergumbo_core.profile import _module_match_kind
+    assert _module_match_kind("Illuminate\\Http\\Request", "illuminate") == "prefix"
+    assert _module_match_kind("illuminate", "illuminate") == "exact"
+
+
+def test_is_specific_pattern_php_backslash() -> None:
+    """INV-naguv: a backslashed namespace pattern is structurally specific
+    (bare-name FP gate)."""
+    from hypergumbo_core.profile import _is_specific_pattern
+    assert _is_specific_pattern("symfony\\component") is True
+
+
+def test_refine_frameworks_promotes_laravel_from_php_use_edge() -> None:
+    """INV-naguv: a prod PHP `imports` edge for an Illuminate namespace promotes
+    laravel into profile.frameworks."""
+    from hypergumbo_core.profile import RepoProfile, refine_frameworks
+    from hypergumbo_core.ir import Edge, Symbol, Span
+
+    profile = RepoProfile()
+    profile.languages = {"php": {"files": 1, "loc": 10}}
+    file_sym = Symbol(
+        id="php:app/Http/routes.php:0-0:file:file", name="routes.php", kind="file",
+        language="php", path="app/Http/routes.php", span=Span(0, 0, 0, 0),
+    )
+    edge = Edge.create(
+        src="php:app/Http/routes.php:0-0:file:file",
+        dst="php:Illuminate\\Support\\Facades\\Route:0-0:package:package",
+        edge_type="imports", line=1, evidence_type="import_statement",
+        origin="test", origin_run_id="test",
+    )
+    result = refine_frameworks(profile, [edge], [file_sym])
+    assert "laravel" in (result.frameworks if hasattr(result, "frameworks") else profile.frameworks)

@@ -1,0 +1,51 @@
+- op: create  # 632e
+  at: '2026-07-07T00:11:28Z'  # 632e
+  by: agent  # 632e
+  actor: jgstern_agent  # 632e
+  clock: 1  # 632e
+  nonce: 632e  # 632e
+  data:  # 632e
+    kind: work_item  # 632e
+    title: "erb/haml/slim Rails view-template languages absent from taxonomy.LANGUAGES (language-axis leak)"  # 632e
+    status: needs_human_review  # 632e
+    priority: 3  # 632e
+    parent: INV-numat-judoj-dogal-misuj-divuf-kajus-buban-dihuj  # 632e
+    tags:  # 632e
+    - vocab_axis  # 632e
+    - axis_conformance  # 632e
+    isbefore: []  # 632e
+    duplicate_of: []  # 632e
+    not_duplicate_of: []  # 632e
+    pr_ref:  # 632e
+    description: "Fresh BROAD cohort (chatwoot) found 19 Symbol.language='erb' violations. _view_template_core.py:251 stamps language from view_template.py's _EXTENSION_LANGUAGE map ('.html.erb'->erb, also 'haml','slim'). erb/haml/slim are real Rails view-template languages (like markdown/asciidoc) but are neither registered analyzer languages nor taxonomy.LANGUAGES LanguageSpecs, so the WI-kunut taxonomy-union does not cover them. FIX: add LanguageSpec(name='erb'|'haml'|'slim', extensions=[...], roles=...) to taxonomy.py. NEEDS HUMAN CALL: the roles= choice (CONFIG like html vs DOCUMENTATION) has file-discovery/LOC side-effects; and confirm batching haml/slim. FOLD-to-ruby rejected (an .html.erb is an HTML template with embedded Ruby, not Ruby source)."  # 632e
+    fields: {}  # 632e
+- op: update  # 0397
+  at: '2026-07-08T07:23:35Z'  # 0397
+  by: agent  # 0397
+  actor: jgstern_agent  # 0397
+  clock: 2  # 0397
+  nonce: '0397'  # 0397
+  set:  # 0397
+    status: todo_hard  # 0397
+- op: discuss  # 0523
+  at: '2026-07-08T07:23:35Z'  # 0523
+  by: agent  # 0523
+  actor: jgstern_agent  # 0523
+  clock: 3  # 0523
+  nonce: '0523'  # 0523
+  message: "HUMAN RULING (2026-07-08): roles=FileRole.CONFIG (like html/makefile), batch erb+haml+slim in ONE PR. Rationale: view templates are structural HTML markup with embedded logic, not prose; matches the html CONFIG precedent; CONFIG vs DOCUMENTATION give identical LOC/Additional-Files behavior so the choice is semantic and CONFIG is the correct label. Fold-to-ruby remains rejected. Now unblocked for agent implementation (add 3 LanguageSpecs to taxonomy.py + test that Symbol.language in {erb,haml,slim} passes axis_conformance)."  # 0523
+- op: update  # 97fa
+  at: '2026-07-08T08:06:55Z'  # 97fa
+  by: agent  # 97fa
+  actor: jgstern_agent  # 97fa
+  clock: 4  # 97fa
+  nonce: 97fa  # 97fa
+  set:  # 97fa
+    status: done  # 97fa
+- op: discuss  # 96ec
+  at: '2026-07-08T08:06:55Z'  # 96ec
+  by: agent  # 96ec
+  actor: jgstern_agent  # 96ec
+  clock: 5  # 96ec
+  nonce: 96ec  # 96ec
+  message: "Merged ab742da70c. Registered erb/haml/slim as taxonomy.LANGUAGES LanguageSpecs with roles=FileRole.CONFIG per the human ruling. Behavioral: all_known_languages() now contains erb/haml/slim, so view-template file-anchors (Symbol.language stamped by the view-template linker) pass axis_conformance. Core 100% coverage; taxonomy+catalog+view_template_linker suites green."  # 96ec

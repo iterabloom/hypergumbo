@@ -53,8 +53,11 @@ What this carrier (run-lifecycle:F1) implements vs. defers
   (not stubbed) — the ratified "recompute files_analyzed by origin_run_id" mechanism is unsound
   (files_analyzed is contractually a file count == profile.files; the recompute yields a
   node/path count and does not close INV-gizik, whose real fix is a new provenance field). The
-  config_fingerprint backstop-with-violation is deferred to WI-mipul's producer-side work. All
-  are tracked (INV-gizik, WI-mipul, WI-libib, INV-zotip, INV-suvil); git carries the history.
+  config_fingerprint backstop-with-violation landed in WI-mipul's producer-side work (done). Of
+  the tracked work, INV-gizik (satisfied — closed by the new nodes_emitted/edges_emitted
+  provenance field), WI-mipul (done), and INV-zotip (satisfied) are resolved; WI-libib
+  (per-(kind,field) writer-contract validator) and INV-suvil (evidence-derived confidence) remain
+  open. git carries the history.
   See the ADR-0043 §6.1 amendment chain (#4/#5/#7/#9).
 
 `FinalizedMap` is a shallow ``frozen=True`` handle (ratified §6 #6): rebinding a field
@@ -73,7 +76,13 @@ from typing import TYPE_CHECKING, Optional
 
 from .ir import ExternalRef, _compute_run_signature, _parse_dangling_id
 from .pass_metadata import PassMetadataLookup
-from .repo_fingerprint import compute_repo_fingerprint
+from .receiver_blind_magnets import demote_harmful_magnets
+from .repo_fingerprint import compute_repo_fingerprint_field
+from .visibility import (
+    VISIBILITY_MODIFIER_TERMS,
+    VISIBILITY_PUBLIC,
+    compute_visibility,
+)
 from .spec_validator import (
     build_validation_report,
     compute_stable_id_stats,
@@ -106,21 +115,73 @@ def _relativize_ir_paths(
     ``path:start_line:context_name:position``; because ``path`` is part of the preimage we
     recompute the id from the relativized path so the hash is stable across machines.
 
+    ID-embedding values in ``Symbol.meta`` AND ``Edge.meta`` are relativized the same way
+    (dispatch:F1 / INV-pohik symptom 2), covering both string values and one level of
+    ``dict`` values. The original case is a route symbol's ``handler_ref`` (a string):
+    the route_handler linker runs *after* this pass and resolves the direct case by ID
+    against the relativized id index, so an un-relativized ``handler_ref`` misses every
+    lookup and the route → handler ``dispatches_to`` edge never lands. WI-supat adds two
+    more shapes with the SAME failure mode: the concrete-class ids threaded for
+    inherited-call resolution — ``enclosing_class_id`` / ``receiver_type_id`` on **Edge**
+    meta (which was formerly not relativized at all — only ``src``/``dst`` were), and
+    ``field_type_ids`` (a ``{field: id}`` **dict**) on a class Symbol's meta — are compared
+    against the relativized ``class_symbols`` index by the inherited_calls linker (also run
+    after this pass), so an un-relativized id silently falls back to the name path and the
+    concrete-id collision-recovery never fires. Short-name refs (Express ``handler_ref``,
+    ``view_name``) and values that don't carry the prefix are left untouched.
+
     Runs once at Phase B (``cli``) and again as finalize sub-step 1 — the second call is an
-    idempotent backstop catching any absolute path minted after Phase B (e.g. by a linker
-    or boundary synthesis); on already-relative paths it is a no-op.
+    idempotent backstop (the prefix-guarded ``str.replace`` is a no-op on already-relative
+    values) catching any absolute path minted after Phase B in a *string* or one-level
+    *dict-of-str* meta value (e.g. by a linker or boundary synthesis). SHAPE SCOPE: only
+    ``sym.id``/``sym.path``/``edge.src``/``edge.dst`` and string + one-level dict-of-str
+    ``meta`` values are relativized; **list-valued and nested-dict meta shapes are
+    intentionally out of scope** because no current producer mints a repo-root-absolute path
+    in those shapes (``edge.meta['referring_paths']``, the only list-of-paths meta, is minted
+    AFTER this pass from already-relative ``edge.src`` slots — see ``_relativize_meta``).
     """
     prefix = str(repo_root) + "/"
+
+    def _relativize_meta(meta: "dict | None") -> None:
+        """Relativize prefix-bearing ID strings in a meta dict, in place.
+
+        SHAPE CONTRACT (load-bearing — read before threading a new id-embedding
+        meta key): an id/path-embedding meta value MUST be either a top-level
+        ``str`` (``handler_ref``, ``enclosing_class_id``, ``receiver_type_id``) or
+        a one-level ``{key: id_str}`` ``dict`` (``field_type_ids``). Those two
+        shapes are relativized here; LIST values and NESTED dicts are deliberately
+        NOT (no current producer mints a repo-root-absolute path in them). If you
+        add a concrete symbol id to meta as a list element or a two-level dict,
+        this helper will SILENTLY SKIP it — the stale absolute id then misses the
+        relativized ``class_symbols`` index and the consumer inertly falls back
+        (the exact name-path masking that hid the original WI-supat bug). So:
+        extend this helper to that shape AND add a POSITIVE end-to-end assertion
+        (a resolved edge, not just "no wrong edge") that fails on revert.
+        Non-string / non-dict values and short-name refs are untouched (they never
+        carry the ``repo_root`` prefix).
+        """
+        if not meta:
+            return
+        for key, value in list(meta.items()):
+            if isinstance(value, str) and prefix in value:
+                meta[key] = value.replace(prefix, "")
+            elif isinstance(value, dict):
+                for k2, v2 in list(value.items()):
+                    if isinstance(v2, str) and prefix in v2:
+                        value[k2] = v2.replace(prefix, "")
+
     for sym in symbols:
         if prefix in sym.id:
             sym.id = sym.id.replace(prefix, "")
         if sym.path and prefix in sym.path:
             sym.path = sym.path.replace(prefix, "")
+        _relativize_meta(sym.meta)
     for edge in edges:
         if prefix in edge.src:
             edge.src = edge.src.replace(prefix, "")
         if prefix in edge.dst:
             edge.dst = edge.dst.replace(prefix, "")
+        _relativize_meta(edge.meta)
     for uc in usage_contexts:
         path_was_absolute = prefix in uc.path
         if path_was_absolute:
@@ -202,23 +263,74 @@ def _finalize_recompute_run_signature(ctx: FinalizeContext) -> None:
 
 
 def _finalize_repo_fingerprint(ctx: FinalizeContext) -> None:
-    """Sub-step 4 — stamp the spec-defined repo_fingerprint into every AR (INV-tofur)."""
-    repo_fp = compute_repo_fingerprint(ctx.repo_root)
+    """Sub-step 4 — stamp the spec-defined repo_fingerprint into every AR (INV-tofur).
+
+    Uses the ``sha256:``-prefixed FIELD rendering (WI-bosog) so the AR-record
+    identity fields (run_signature / config_fingerprint / repo_fingerprint) all
+    carry a uniform scheme prefix; the bare digest stays reserved for the
+    colon-free cache-dir path segment.
+    """
+    repo_fp = compute_repo_fingerprint_field(ctx.repo_root)
     ctx.repo_fingerprint = repo_fp
     for run in ctx.analysis_runs:
         if run.get("repo_fingerprint") is None:
             run["repo_fingerprint"] = repo_fp
 
 
-def _finalize_skipped_into_limits(ctx: FinalizeContext) -> None:
-    """Sub-step 6 — drain skipped-file counts into limits.partial_results_reason.
+def _detected_unanalyzed_languages(ctx: FinalizeContext) -> list[str]:
+    """Code languages the profile detected but no analyzer pass covered (WI-nihir).
 
-    Don't clobber a reason already set by ``record_crashed_pass`` (WI-madal L3): a crashed
-    pass is the more severe signal; the file-skip note only fills an otherwise-empty summary.
+    Detected = ``behavior_map["profile"]["languages"]`` keys minus the config-only
+    languages (JSON/YAML/… have no code analyzer by design, so they are never
+    "skipped"). Analyzed = the union of languages covered by the analyzer whose
+    ``pass`` id appears in ``analysis_runs`` — a skipped or grammar-failed analyzer
+    never appends a run (``all_analyzers.collect_analyzer_result`` routes it to
+    ``limits.skipped_passes`` instead), so its language falls out of this set and
+    surfaces as skipped. The pass_id→languages map mirrors the analyzer's own
+    ``set(languages) if languages else {name}`` convention (all_analyzers.py:202);
+    non-analyzer passes (linkers, synthesis) simply don't appear in the map and
+    contribute nothing. The difference is returned sorted for deterministic output.
+    """
+    from .analyze.registry import ensure_discovered, get_all_analyzers
+    from .catalog import CONFIG_LANGUAGES
+
+    profile = ctx.behavior_map.get("profile", {})
+    detected = set(profile.get("languages", {})) - CONFIG_LANGUAGES
+    if not detected:
+        return []
+    ensure_discovered()
+    pass_to_langs = {
+        a.name: (set(a.languages) if a.languages else {a.name})
+        for a in get_all_analyzers()
+    }
+    analyzed: set[str] = set()
+    for run in ctx.analysis_runs:
+        analyzed.update(pass_to_langs.get(run.get("pass", ""), ()))
+    return sorted(detected - analyzed)
+
+
+def _finalize_skipped_into_limits(ctx: FinalizeContext) -> None:
+    """Sub-step 6 — drain skipped-file counts + unanalyzed languages into limits.
+
+    Two honesty signals are reconciled at this single pre-serialization chokepoint:
+
+    * ``partial_results_reason`` — set from any run's ``files_skipped`` count, but
+      never clobbering a reason already set by ``record_crashed_pass`` (WI-madal L3):
+      a crashed pass is the more severe signal; the file-skip note only fills an
+      otherwise-empty summary.
+    * ``skipped_languages`` (WI-nihir) — the ``add_skipped_language`` setter had zero
+      callers, so a language the profile DETECTED but for which no analyzer pass ran
+      (grammar unavailable / unsupported / crashed) was silently absent. This is the
+      one stage holding both the detected set (profile) and the analyzed set
+      (analysis_runs), so the "detected minus analyzed" diff is drained here once —
+      covering every cause without any per-analyzer edit. See
+      ``_detected_unanalyzed_languages``.
     """
     for run in ctx.analysis_runs:
         if run.get("files_skipped", 0) > 0 and not ctx.limits.partial_results_reason:
             ctx.limits.partial_results_reason = "some files skipped during analysis"
+    for language in _detected_unanalyzed_languages(ctx):
+        ctx.limits.add_skipped_language(language)
     ctx.behavior_map["limits"] = ctx.limits.to_dict()
 
 
@@ -238,6 +350,28 @@ def _derive_dst_ref_from_id(dst_id: str) -> Optional[ExternalRef]:
     if path in ("<unknown>", "external"):
         return None
     return ExternalRef(lang=language, module_path=path, name=name)
+
+
+def _finalize_demote_receiver_blind_magnets(ctx: FinalizeContext) -> None:
+    """Sub-step 6c — INV-fahub: demote cleanly-harmful receiver-blind magnets.
+
+    A receiver-blind method magnet is a high-confidence ``calls`` edge that bound
+    an unresolvable-receiver call to an *arbitrary* same-named internal method
+    (``Peer.removeFailedPeers`` → a *test* ``Collector.Add``; ``tmpl.Parse()`` →
+    a local ``Template.Parse`` instead of ``text/template``). This gate demotes
+    only the two sub-classes where the internal target is almost-certainly wrong
+    — a production→test-helper misbind and a stdlib-interface-method shadow — by
+    **redirecting** the edge's ``dst`` to an ``external:unresolved`` id. The
+    correct-but-unprovable trait-method funnel (Rust ``x.next()``) is left intact
+    (ADR-0012 scope; owner ruling) — see ``demote_harmful_magnets``.
+
+    Runs on the RESOLVED graph (producer/linker binds in place) but BEFORE
+    sub-step 7 ``_finalize_edge_resolution``, which then re-derives
+    ``is_resolved=False`` + ``dst_ref`` from the now-external dst — so this
+    sub-step never hand-sets a resolution surface. R1-safe: mutates edge fields
+    only, adds/removes no node or edge.
+    """
+    demote_harmful_magnets(ctx.symbols, ctx.edges)
 
 
 def _finalize_edge_resolution(ctx: FinalizeContext) -> None:
@@ -275,8 +409,68 @@ def _finalize_edge_resolution(ctx: FinalizeContext) -> None:
                 edge.dst_ref = _derive_dst_ref_from_id(edge.dst)
 
 
+def _finalize_compute_visibility(ctx: FinalizeContext) -> None:
+    """INV-jusot: fold the per-symbol visibility signals into one canonical
+    ``Symbol.visibility`` level and record the deciding signal, retiring the
+    legacy ``meta['visibility']`` key.
+
+    Single computation point: a language ``modifiers`` term wins over the
+    legacy ``meta['visibility']`` term (Apex / Clojure), which wins over the
+    Python leading-underscore name convention, which wins over the public
+    default. The legacy ``meta['visibility']`` key is removed once folded — the
+    typed field is its canonical home.
+
+    Reconciliation of the two remaining visibility encodings (INV-jusot
+    follow-up):
+
+    - ``is_exported`` — a public API cannot be non-public, so language
+      visibility is a **necessary but not sufficient** condition:
+      ``is_exported`` is downgraded to False for any non-public symbol, but is
+      NOT set True merely because a symbol is language-public. (A pure
+      ``is_exported = visibility=='public'`` alias would flip 58% of the
+      self-corpus — 19k of them test-file symbols — from not-exported to
+      exported, redefining ``is_exported`` from "public API member" (29%) to
+      "language-public" (87%) and turning every public test function into an
+      exported dead-code root. The `and`-with-visibility keeps ``is_exported``'s
+      public-API-membership meaning and only resolves the real disagreement:
+      the 5 self-corpus ``src/_foo`` symbols the path heuristic marked exported
+      despite being private.) The publishedness/test-penalty inputs remain on
+      ``supply_chain`` (``is_test_file`` / ``tier``).
+    - ``modifiers`` — the visibility terms (now on the ``visibility`` field)
+      are stripped, so ``modifiers`` keeps only non-visibility terms
+      (``static`` / ``native`` / ``abstract`` / …).
+    """
+    for sym in ctx.symbols:
+        meta = sym.meta if sym.meta is not None else {}
+        level, signal = compute_visibility(
+            modifiers=sym.modifiers,
+            name=sym.name,
+            language=sym.language,
+            meta_visibility=meta.get("visibility"),
+        )
+        sym.visibility = level
+        if sym.meta is None:
+            sym.meta = {}
+        sym.meta["visibility_signal"] = signal
+        sym.meta.pop("visibility", None)
+        # is_exported requires public visibility (necessary, not sufficient).
+        if level != VISIBILITY_PUBLIC:
+            sym.is_exported = False
+        # modifiers keeps only non-visibility terms.
+        if sym.modifiers:
+            sym.modifiers = [
+                m for m in sym.modifiers if m not in VISIBILITY_MODIFIER_TERMS
+            ]
+
+
 def _finalize_commit_dicts(ctx: FinalizeContext) -> None:
     """Sub-step 8 — commit the reconciled IR into behavior_map as one view."""
+    # WI-haguz: serialize analysis_runs in a documented, deterministic order —
+    # ascending started_at, ties broken by pass id — rather than the accidental
+    # pass-completion order, so the array has a stable ordering contract. Sort
+    # in place so behavior_map["analysis_runs"] stays the same list object as
+    # ctx.analysis_runs (an identity other sub-steps and tests rely on).
+    ctx.analysis_runs.sort(key=lambda r: (r.get("started_at") or "", r.get("pass") or ""))
     ctx.behavior_map["analysis_runs"] = ctx.analysis_runs
     ctx.behavior_map["nodes"] = [s.to_dict() for s in ctx.symbols]
     ctx.behavior_map["edges"] = [e.to_dict() for e in ctx.edges]
@@ -323,6 +517,65 @@ def _freeze(ctx: FinalizeContext) -> FinalizedMap:
     )
 
 
+def _prune_grammars_to_used(
+    analysis_runs: list[dict], seed: dict[str, str]
+) -> dict[str, str]:
+    """Return only the grammar dists actually exercised by node-producing passes.
+
+    Keyed by dist name (dash form). ``analysis_runs`` are ``AnalysisRun.to_dict()``
+    dicts; ``_extend_toolchain`` (analyze/base.py) stamps a tree-sitter analyzer's
+    run with ``toolchain.grammar_module`` (``tree_sitter_go`` for a standalone
+    grammar, or ``language_pack:<lang>`` for a pack-backed one) and, for standalone
+    grammars, ``toolchain.grammar_version``. A run is "used" iff it emitted >=1 node.
+    ast-based analyzers (python) and synthesis / linker passes carry no
+    ``grammar_module`` and contribute nothing (WI-fonod: no grammar is captured for
+    a language that produced zero nodes). Pack-backed grammars surface as distinct
+    ``tree-sitter-language-pack:<lang>`` entries (WI-givad) at the shared pack dist
+    version (the pack exposes no per-grammar version), taken from ``seed`` — the
+    init-time all-installed capture. Standalone grammars carry their own toolchain
+    version, falling back to the seed's dist version. Pure (no ctx / IO) for testing.
+    """
+    pack_version = seed.get("tree-sitter-language-pack")
+    used: dict[str, str] = {}
+    for run in analysis_runs:
+        if run.get("nodes_emitted", 0) <= 0:
+            continue
+        grammar_module = run.get("toolchain", {}).get("grammar_module")
+        if not grammar_module:
+            continue
+        if grammar_module.startswith("language_pack:"):
+            lang = grammar_module.split(":", 1)[1]
+            if pack_version is not None:
+                used[f"tree-sitter-language-pack:{lang}"] = pack_version
+        else:
+            dist = grammar_module.replace("_", "-")
+            version = run.get("toolchain", {}).get("grammar_version") or seed.get(dist)
+            if version is not None:
+                used[dist] = version
+    return dict(sorted(used.items()))
+
+
+def _finalize_prune_repro_grammars(ctx: FinalizeContext) -> None:
+    """WI-fonod / WI-givad: replace ``reproducibility_context.captured.grammars`` —
+    seeded at map-init by ``build_reproducibility_context`` with EVERY installed
+    ``tree-sitter-*`` dist, before any node exists — with only the grammars whose
+    analyzer pass actually emitted nodes. Runs at the ADR-0043 finalize chokepoint,
+    after nodes are final. When no grammar was used (e.g. a python-only repo, whose
+    ``ast`` analyzer needs no tree-sitter grammar) the key is dropped, matching the
+    builder's "present only when non-empty" convention. ``_detect_tree_sitter_versions``
+    stays unscoped for ``analyzer_identity`` (cache correctness / INV-nofof).
+    """
+    captured = ctx.behavior_map.get("reproducibility_context", {}).get("captured", {})
+    seed = captured.get("grammars")
+    if not seed:
+        return
+    used = _prune_grammars_to_used(ctx.analysis_runs, seed)
+    if used:
+        captured["grammars"] = used
+    else:
+        captured.pop("grammars", None)
+
+
 def finalize(ctx: FinalizeContext) -> FinalizedMap:
     """ADR-0043 §6 single pre-serialization reconcile point. Body IS the order contract."""
     ctx.violations.clear()
@@ -331,7 +584,10 @@ def finalize(ctx: FinalizeContext) -> FinalizedMap:
     _finalize_recompute_run_signature(ctx)  # 3  META-hufaz (R2: after 2)
     _finalize_repo_fingerprint(ctx)         # 4  repo_fingerprint stamp
     _finalize_skipped_into_limits(ctx)      # 6  skipped → limits
+    _finalize_demote_receiver_blind_magnets(ctx)  # 6c INV-fahub magnet demote (before 7)
     _finalize_edge_resolution(ctx)          # 7  edge-resolution verdict (ADR-0037; before 8)
+    _finalize_compute_visibility(ctx)       # 7b visibility fold (INV-jusot; before 8)
+    _finalize_prune_repro_grammars(ctx)     # 7c repro grammars → used-only (WI-fonod/WI-givad; before 8)
     _finalize_commit_dicts(ctx)             # 8  commit reconciled view
     _finalize_referential_integrity(ctx)    # 10 validate_ir — LAST (R3)
     ctx.violations.sort(key=_violation_sort_key)  # §6 determinism: stable serialized order

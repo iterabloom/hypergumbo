@@ -315,3 +315,65 @@ class TestPowerShellShapeId:
         func = next(s for s in result.symbols if s.kind == "function" and s.name == "Get-Greeting")
         assert func.shape_id is not None
         assert func.shape_id.startswith("sha256:")
+
+
+class TestPowerShellCyclomaticComplexity:
+    """INV-loguk slice C: callable PowerShell symbols carry non-null CC + LOC.
+    Real-grammar verification (if/elseif/for/foreach/while/do/switch_clause/
+    catch + -and/-or short-circuit via logical_expression)."""
+
+    def test_branchy_function_has_cc_and_loc(self, tmp_path) -> None:
+        from hypergumbo_lang_mainstream.powershell import analyze_powershell
+        (tmp_path / "f.ps1").write_text("""function Get-Thing {
+    param([int]$x)
+    if ($x -gt 0 -and $x -lt 10) { Write-Output "small" }
+    elseif ($x -ge 10) { Write-Output "big" }
+    else { Write-Output "neg" }
+    foreach ($i in 1..$x) { Write-Output $i }
+    for ($j = 0; $j -lt $x; $j++) { Write-Output $j }
+    while ($x -gt 0) { $x = $x - 1 }
+    do { $x = $x + 1 } while ($x -lt 5)
+    switch ($x) {
+        1 { Write-Output "one" }
+        2 { Write-Output "two" }
+        default { Write-Output "other" }
+    }
+    try { Get-Item "foo" } catch { Write-Output "err" }
+    if ($x -eq 1 -or $x -eq 2) { Write-Output "ok" }
+}
+""")
+        result = analyze_powershell(tmp_path)
+        fn = next(s for s in result.symbols
+                  if s.kind == "function" and s.name == "Get-Thing")
+        # base 1 + if x2 + elseif + foreach + for + while + do + 3 switch_clause
+        #   + catch + -and + -or = 14
+        assert fn.cyclomatic_complexity == 14
+        assert fn.line_span is not None and fn.line_span >= 4
+
+    def test_straight_line_function_cc_is_one(self, tmp_path) -> None:
+        from hypergumbo_lang_mainstream.powershell import analyze_powershell
+        (tmp_path / "g.ps1").write_text("function Get-Plain { param([int]$x) return $x }\n")
+        result = analyze_powershell(tmp_path)
+        fn = next(s for s in result.symbols
+                  if s.kind == "function" and s.name == "Get-Plain")
+        assert fn.cyclomatic_complexity == 1
+        assert fn.line_span is not None
+
+    def test_callables_non_null_non_callables_null(self, tmp_path) -> None:
+        from hypergumbo_lang_mainstream.powershell import analyze_powershell
+        (tmp_path / "m.ps1").write_text("""function Test-It {
+    param([int]$n)
+    if ($n -gt 0) { return 1 }
+    return 0
+}
+""")
+        result = analyze_powershell(tmp_path)
+        callable_kinds = ("function", "filter", "workflow")
+        callables = [s for s in result.symbols if s.kind in callable_kinds]
+        assert callables
+        for s in callables:
+            assert s.cyclomatic_complexity is not None, (s.kind, s.name)
+            assert s.line_span is not None, (s.kind, s.name)
+        for s in result.symbols:
+            if s.kind not in callable_kinds:
+                assert s.cyclomatic_complexity is None, (s.kind, s.name)

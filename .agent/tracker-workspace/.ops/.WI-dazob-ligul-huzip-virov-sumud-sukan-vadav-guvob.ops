@@ -30,3 +30,20 @@
     tags: [dogfood_tranche_04]  # b300
   remove:  # b300
     tags: [dogfood_tranch_04]  # b300
+- op: update  # 35db
+  at: '2026-07-10T04:45:42Z'  # 35db
+  by: agent  # 35db
+  actor: jgstern_agent  # 35db
+  clock: 3  # 35db
+  nonce: 35db  # 35db
+  set:  # 35db
+    status: done  # 35db
+  add:  # 35db
+    tags: [wave4]  # 35db
+- op: discuss  # 00ef
+  at: '2026-07-10T04:45:42Z'  # 00ef
+  by: agent  # 00ef
+  actor: jgstern_agent  # 00ef
+  clock: 4  # 00ef
+  nonce: 00ef  # 00ef
+  message: "Done in PR #529 (selfh/dev fbdfe8c77a), cli-output F3. Three guards in the explain renderer: (a) an edge type registered nowhere is labelled 'unrecognized edge type <type>' via _explain_edge_labels (was: 'Incoming <type>', indistinguishable from a legit relationship); (b) a registered-but-unstyled edge type surfaces its EdgeTypeSpec.description sub-line (F80.A1 — the 54 registry descriptions existed but 0/18 were rendered); (c) a substrate whose schema_version differs from this build's prints a field-presence drift warning to stderr, so absent consumer fields (supply_chain/origin/docstring) read as schema drift, not silent inapplicability. Landmine #5 (field-presence false-positive) closed by gating (c) on schema_version, NOT per-node absence — it never fires on a normal run. Core package 100% coverage."  # 00ef

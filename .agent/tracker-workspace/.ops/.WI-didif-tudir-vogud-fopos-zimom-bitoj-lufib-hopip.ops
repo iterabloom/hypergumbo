@@ -21,3 +21,34 @@
     pr_ref:  # d4be
     description: "Backward-compatibility layer: every `--input` consumer accepts `hypergumbo.results.json`, `hg.json`, `bm.json`, `behavior_map.json` as legacy aliases with a one-line deprecation warning to stderr. Warning text references the ADR (S1) and indicates the deprecation removal version (next major bump). Removes friction for users with scripts pinned to the old names. Document the deprecation in CHANGELOG.md."  # d4be
     fields: {}  # d4be
+- op: update  # 372e
+  at: '2026-07-12T05:42:59Z'  # 372e
+  by: agent  # 372e
+  actor: jgstern_agent  # 372e
+  clock: 2  # 372e
+  nonce: 372e  # 372e
+  set: {}  # 372e
+  add:  # 372e
+    tags: [wave5]  # 372e
+- op: discuss  # 1064
+  at: '2026-07-12T05:42:59Z'  # 1064
+  by: agent  # 1064
+  actor: jgstern_agent  # 1064
+  clock: 3  # 1064
+  nonce: '1064'  # 1064
+  message: "Deferred to end of Wave 5 per owner decision 2026-07-12 (see INV-firuh discussion for full rationale: ADR-0042 campaign blocks zero P1s transitively; execute last to avoid cli.py resolver-merge overlap with P1 structural work). Tagged wave5; status stays todo_soft per project future-wave convention. ADR-0042 remains Accepted."  # 1064
+- op: update  # 1017
+  at: '2026-07-14T21:18:09Z'  # 1017
+  by: agent  # 1017
+  actor: jgstern_agent  # 1017
+  clock: 4  # 1017
+  nonce: '1017'  # 1017
+  set:  # 1017
+    status: done  # 1017
+- op: discuss  # 4919
+  at: '2026-07-14T21:18:09Z'  # 4919
+  by: agent  # 4919
+  actor: jgstern_agent  # 4919
+  clock: 5  # 4919
+  nonce: '4919'  # 4919
+  message: "Done — merged PR #644 (7fa9e84e5e), ADR-0042. Every --input consumer routes through load_substrate, which now warns to stderr when the loaded file uses a legacy survey basename (hypergumbo.results.json / hg.json / bm.json / behavior_map.json, incl. .gz) — naming the alias found + canonical survey.json — while still loading it. BEHAVIORAL REPRO (live): `hypergumbo search f --input <bm.json>` -> exit 0 + stderr \"Warning: <path>/bm.json: 'bm.json' is a deprecated survey filename (ADR-0042); rename to 'survey.json'. The legacy aliases are accepted for one minor version, then removed.\" New _warn_if_legacy_survey_name helper (strips a trailing .gz) called once after a successful parse in load_substrate — the single read chokepoint for explicit --input and auto-discovered paths. 1526 tests / 100% coverage on changed files. Alias removal at window-close is a separate follow-up."  # 4919

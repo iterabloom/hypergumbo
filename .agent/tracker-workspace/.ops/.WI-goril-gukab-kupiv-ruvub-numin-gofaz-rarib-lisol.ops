@@ -20,3 +20,34 @@
     pr_ref:  # 5595
     description: "Find/replace `bm.json` in active tracker items where the original 2026-05-30 campaigns propagated the substrate-file name. Targets: INV-luhur, INV-jifus, INV-fanur, INV-rotup, WI-himas, INV-tazaj, INV-jahiv, INV-papuj, INV-somut, INV-dunof, INV-fivar, INV-murig, INV-pikob, INV-rugah, INV-sugat, WI-rolol, and W5 from the mypy_adoption campaign. Add discussion notes pointing at the ADR (S1); update description text where the rename will not muddle the historical context. Lab notebook entries are left as historical record."  # 5595
     fields: {}  # 5595
+- op: update  # a3f8
+  at: '2026-07-12T05:43:01Z'  # a3f8
+  by: agent  # a3f8
+  actor: jgstern_agent  # a3f8
+  clock: 2  # a3f8
+  nonce: a3f8  # a3f8
+  set: {}  # a3f8
+  add:  # a3f8
+    tags: [wave5]  # a3f8
+- op: discuss  # dacf
+  at: '2026-07-12T05:43:01Z'  # dacf
+  by: agent  # dacf
+  actor: jgstern_agent  # dacf
+  clock: 3  # dacf
+  nonce: dacf  # dacf
+  message: "Deferred to end of Wave 5 per owner decision 2026-07-12 (see INV-firuh discussion for full rationale: ADR-0042 campaign blocks zero P1s transitively; execute last to avoid cli.py resolver-merge overlap with P1 structural work). Tagged wave5; status stays todo_soft per project future-wave convention. ADR-0042 remains Accepted."  # dacf
+- op: update  # 05ae
+  at: '2026-07-15T03:43:22Z'  # 05ae
+  by: agent  # 05ae
+  actor: jgstern_agent  # 05ae
+  clock: 4  # 05ae
+  nonce: 05ae  # 05ae
+  set:  # 05ae
+    status: done  # 05ae
+- op: discuss  # da9e
+  at: '2026-07-15T03:43:22Z'  # da9e
+  by: agent  # da9e
+  actor: jgstern_agent  # da9e
+  clock: 5  # da9e
+  nonce: da9e  # da9e
+  message: "Done — S8 tracker sweep. Re-grepped active items for the propagated substrate-file names; the 2026-06-10 '52 items' figure was stale — 7 active items carried a legacy filename (bm.json/hg.json/behavior_map.json) in their DESCRIPTIONS (INV-jahiv, INV-luhur, WI-fozoh, WI-kobot, WI-kutam, WI-rokup, WI-sirid), all swept to survey.json. WI-goril itself keeps bm.json (it NAMES the sweep targets). The ~9 'behavior map' CONCEPT refs in active descriptions are out of the filename-facet scope (INV-firuh's concept requirement is 'functions/docstrings', satisfied by WI-kisoj)."  # da9e

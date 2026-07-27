@@ -76,3 +76,18 @@
     tags: [dogfood]  # 30f6
   remove:  # 30f6
     tags: [dogfooding]  # 30f6
+- op: update  # 233e
+  at: '2026-06-29T03:54:40Z'  # 233e
+  by: agent  # 233e
+  actor: jgstern_agent  # 233e
+  clock: 8  # 233e
+  nonce: 233e  # 233e
+  set:  # 233e
+    status: satisfied  # 233e
+- op: discuss  # de05
+  at: '2026-06-29T03:54:40Z'  # de05
+  by: agent  # de05
+  actor: jgstern_agent  # de05
+  clock: 9  # de05
+  nonce: de05  # de05
+  message: "Satisfied by PR #320 (merged to selfh/dev as f6087587c3). INV-papuj cluster PR-A. Root cause: generate_sketch sourced its file universe from repo_root filesystem walks regardless of --input. Fix: generate_sketch now synthesizes a FileIndex from the --input map's node paths (FileIndex.from_paths) and installs it as the global index for the call (restoring the prior after), so find_files/_analyze_test_files, language detection, config discovery, source-file collection, and the Structure tree (made FileIndex-aware via _count_dir_items/_dir_children_from_index) summarize the MAP's universe instead of re-walking the CWD. BEHAVIORAL REPRO (the item's own scenario): built a 90-file package map via 'hypergumbo run --path packages/hypergumbo-tracker --out /tmp/hg-tracker-map.json', then 'hypergumbo sketch --input /tmp/hg-tracker-map.json -t 2000' from the repo root -> completed in 9.6s (was >30s hang) and the Overview/Structure summarize the tracker package (91 files; src/hypergumbo_tracker + its tests/ + package configs), NOT the whole hypergumbo repo (was '1,218 files' rooted at CWD); no packages//docs//scripts//.agent leak. Known limitation (documented, not a regression): for a frozen map whose package-relative paths do not resolve under the sketch CWD, content-dependent fields (test LOC + framework detection) degrade to 0 because _analyze_test_files reads file content; structure/universe stay correct and the hang is gone. For a map fed from its real root (warm-cache/same-cwd) test counting works (unit test test_test_count_from_map_not_disk). Full suite 19,753 passed, 100% coverage."  # de05

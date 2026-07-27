@@ -32,3 +32,43 @@
     tags: [dogfood]  # b0f4
   remove:  # b0f4
     tags: [dogfooding]  # b0f4
+- op: update  # 8d77
+  at: '2026-06-26T03:29:49Z'  # 8d77
+  by: agent  # 8d77
+  actor: jgstern_agent  # 8d77
+  clock: 3  # 8d77
+  nonce: 8d77  # 8d77
+  set:  # 8d77
+    status: done  # 8d77
+- op: discuss  # 4b1d
+  at: '2026-06-26T03:29:49Z'  # 4b1d
+  by: agent  # 4b1d
+  actor: jgstern_agent  # 4b1d
+  clock: 4  # 4b1d
+  nonce: 4b1d  # 4b1d
+  message: "Fixed by dispatch:F7 (PR merged as 39cc8e6c3d). dead-code-maybe now consumes cross_language_hits as a DEMOTER: a candidate whose name appears in >= --cross-lang-threshold (default 3) other-language files is excluded from the dead set (near-certain cross-language dispatch / missing-edge FP, e.g. Lit *.render at CLH~94), and the count is reported as summary.demoted_cross_language. Behavioral evidence (production-path tests in test_cli_dead_code.py): test_demoter_excludes_at_threshold_1 asserts a CLH=1 candidate (ProcessPayment, name in a Python file) is NOT in dead_candidates and demoted_cross_language==1 when threshold=1; test_demoter_disabled_at_zero_keeps_candidate asserts threshold<=0 disables (candidate stays, count 0); test_default_threshold_keeps_low_clh asserts CLH=1 < default 3 is kept. WI-gavub recommended graded confidence-demotion (path 2) but no per-candidate dead-confidence score exists, so a thresholded hard exclusion (mirroring the dispatch_inherited_ids demoter) realizes the intent (low-CLH dead code preserved by threshold>1) at S effort."  # 4b1d
+- op: update  # 2f00
+  at: '2026-06-26T03:29:50Z'  # 2f00
+  by: agent  # 2f00
+  actor: jgstern_agent  # 2f00
+  clock: 5  # 2f00
+  nonce: 2f00  # 2f00
+  set: {}  # 2f00
+  add:  # 2f00
+    tags: [awaits_bakeoff_validation]  # 2f00
+- op: update  # 4cfc
+  at: '2026-07-06T20:06:38Z'  # 4cfc
+  by: agent  # 4cfc
+  actor: jgstern_agent  # 4cfc
+  clock: 6  # 4cfc
+  nonce: 4cfc  # 4cfc
+  set: {}  # 4cfc
+  remove:  # 4cfc
+    tags: [awaits_bakeoff_validation]  # 4cfc
+- op: discuss  # 0967
+  at: '2026-07-06T20:06:38Z'  # 0967
+  by: agent  # 0967
+  actor: jgstern_agent  # 0967
+  clock: 7  # 0967
+  nonce: '0967'  # 0967
+  message: "MOVED via BROAD drain broad-20260706-153915 (cohort-002/pretix). dead-code-maybe --format json summary carries demoted_cross_language=3217 — cross_language_hits consumed as an FP demoter (was populated but unconsumed); demoted_view_func/demoted_dispatch_inherited buckets also present. Verdict moved."  # 0967

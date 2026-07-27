@@ -8,6 +8,7 @@ from pathlib import Path
 from hypergumbo_core.cli import run_behavior_map
 from hypergumbo_core.supply_chain import DependencyManifest, Tier
 from hypergumbo_lang_mainstream.py_deps import (
+    _extract_distribution_name,
     _extract_pep621_distribution_names,
     _extract_poetry_distribution_names,
     _normalize_dist_name,
@@ -182,6 +183,34 @@ class TestParsePythonDependencies:
         assert "os" not in manifest.entries
         assert "sys" not in manifest.entries
 
+    def test_stdlib_carve_out_follows_catalog_not_sys(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        # ADR-0041 §3 single-source (WI-bifih): the stdlib carve-out must follow
+        # the python.yaml ``stdlib_modules`` catalog, NOT the live interpreter's
+        # ``sys.stdlib_module_names`` (the second source §3 forbids). Prove it by
+        # making the catalog declare a name that is NOT in sys.stdlib_module_names
+        # ("clicklib") as stdlib: it must be carved out (only possible via the
+        # catalog), while a name the catalog omits is kept.
+        import sys
+
+        from hypergumbo_core.io_boundary import IoBoundaryCatalog
+        from hypergumbo_lang_mainstream import py_deps as _py_deps
+
+        assert "clicklib" not in getattr(sys, "stdlib_module_names", frozenset())
+        fake = IoBoundaryCatalog(
+            language="python", stdlib_modules=frozenset({"clicklib"})
+        )
+        monkeypatch.setattr(_py_deps, "load_catalog", lambda lang: fake)
+        (tmp_path / "pyproject.toml").write_text(
+            "[project]\n"
+            'name = "demo"\n'
+            'dependencies = ["clicklib", "keepme"]\n'
+        )
+        manifest = parse_python_dependencies(tmp_path)
+        assert "clicklib" not in manifest.entries  # carved by the catalog
+        assert "keepme" in manifest.entries  # absent from catalog -> kept
+
     def test_unknown_dist_falls_through_to_dist_name(self, tmp_path: Path) -> None:
         # An unknown PyPI dist name (not installed in dev env) falls
         # through to the dist name verbatim with hyphens → underscores.
@@ -214,11 +243,15 @@ class TestParsePythonDependencies:
         assert manifest.entries == {}
 
 
-class TestPyprojectClassifiesAsTier2:
-    """End-to-end: a Python boundary node referencing a pyproject-declared
-    dep is classified as tier 2 (direct dependency)."""
+class TestPyprojectClassifiesDirectness:
+    """End-to-end: a Python boundary node referencing a pyproject-declared dep
+    is tier 3 (external — distance only) and carries directness 'direct'.
 
-    def test_direct_dep_classified_tier2(self, tmp_path: Path) -> None:
+    ADR-0041 §1/§2 (supply:F5): declared third-party deps no longer get tier 2;
+    the declaration relationship moves to the `directness` meta stamp.
+    """
+
+    def test_direct_dep_is_tier3_with_directness_direct(self, tmp_path: Path) -> None:
         (tmp_path / "pyproject.toml").write_text(
             "[project]\n"
             'name = "demo"\n'
@@ -245,9 +278,15 @@ class TestPyprojectClassifiesAsTier2:
             and "click" in (n.get("id") or "")
         ]
         assert len(click_externals) >= 1
+        # All third-party boundary nodes are tier 3 (distance only).
         sc_tiers = {(n.get("supply_chain") or {}).get("tier") for n in click_externals}
-        assert 2 in sc_tiers, (
-            f"Expected at least one tier-2 click boundary node; saw tiers={sc_tiers}"
+        assert sc_tiers == {3}, (
+            f"Expected click boundary nodes all tier 3; saw tiers={sc_tiers}"
+        )
+        # The direct-dependency relationship is recorded on `directness`.
+        directness = {(n.get("meta") or {}).get("directness") for n in click_externals}
+        assert directness == {"direct"}, (
+            f"Expected directness 'direct' on declared click dep; saw {directness}"
         )
 
     def test_unknown_import_stays_tier3(self, tmp_path: Path) -> None:
@@ -390,3 +429,86 @@ class TestParsePythonDependenciesMonorepo:
         manifest = parse_python_dependencies(tmp_path)
         assert "click" in manifest.entries
         assert "hidden" not in manifest.entries
+
+
+class TestExtractDistributionName:
+    """supply-verdict F3: a package's own distribution name is read so it can
+    be subtracted from the tier-2 set when a sibling declares it as a dep."""
+
+    def test_pep621_project_name(self) -> None:
+        assert _extract_distribution_name({"project": {"name": "demo-pkg"}}) == "demo-pkg"
+
+    def test_pep621_project_name_stripped(self) -> None:
+        assert _extract_distribution_name({"project": {"name": "  demo  "}}) == "demo"
+
+    def test_poetry_name_when_no_project(self) -> None:
+        data = {"tool": {"poetry": {"name": "poetry-pkg"}}}
+        assert _extract_distribution_name(data) == "poetry-pkg"
+
+    def test_project_present_without_name_falls_through_to_poetry(self) -> None:
+        # [project] exists but has no name; the poetry name is the fallback.
+        data = {"project": {"dependencies": ["click"]}, "tool": {"poetry": {"name": "p"}}}
+        assert _extract_distribution_name(data) == "p"
+
+    def test_project_name_non_string_ignored(self) -> None:
+        # A non-string name is not a usable distribution name.
+        assert _extract_distribution_name({"project": {"name": 123}}) is None
+
+    def test_no_name_anywhere_returns_none(self) -> None:
+        # Shared-config-only pyproject (e.g. [tool.pytest]) has no own name.
+        assert _extract_distribution_name({"tool": {"pytest": {"x": 1}}}) is None
+
+    def test_poetry_subsection_without_name_returns_none(self) -> None:
+        # [tool.poetry] exists but declares no name.
+        assert _extract_distribution_name({"tool": {"poetry": {"version": "1.0"}}}) is None
+
+
+class TestWorkspaceMemberSubtraction:
+    """supply-verdict F3 / INV-nuzas (ADR-0041 D8a): a monorepo sibling that
+    another workspace package declares as a dependency is first-party source,
+    not a third-party direct dependency — it must NOT land in the tier-2
+    direct-dependency manifest (the "tier-2 direct dependency lie")."""
+
+    def test_workspace_sibling_dep_subtracted(self, tmp_path: Path) -> None:
+        # pkg-a depends on its sibling pkg-b AND on a real third party (click).
+        (tmp_path / "packages" / "pkg-a").mkdir(parents=True)
+        (tmp_path / "packages" / "pkg-a" / "pyproject.toml").write_text(
+            "[project]\nname = \"pkg-a\"\ndependencies = [\"pkg-b\", \"click\"]\n",
+        )
+        (tmp_path / "packages" / "pkg-b").mkdir(parents=True)
+        (tmp_path / "packages" / "pkg-b" / "pyproject.toml").write_text(
+            "[project]\nname = \"pkg-b\"\n",
+        )
+        manifest = parse_python_dependencies(tmp_path)
+        # Third-party dep is retained as tier-2 direct.
+        assert "click" in manifest.entries
+        # Workspace sibling is subtracted (would otherwise be "pkg_b").
+        assert "pkg_b" not in manifest.entries
+        assert "pkg-b" not in manifest.entries
+
+    def test_poetry_workspace_sibling_subtracted(self, tmp_path: Path) -> None:
+        # Poetry-style monorepo: own name lives under [tool.poetry].name.
+        (tmp_path / "packages" / "lib-core").mkdir(parents=True)
+        (tmp_path / "packages" / "lib-core" / "pyproject.toml").write_text(
+            "[tool.poetry]\nname = \"lib-core\"\n"
+            "[tool.poetry.dependencies]\nlib-util = \"*\"\nrich = \"*\"\n",
+        )
+        (tmp_path / "packages" / "lib-util").mkdir(parents=True)
+        (tmp_path / "packages" / "lib-util" / "pyproject.toml").write_text(
+            "[tool.poetry]\nname = \"lib-util\"\n",
+        )
+        manifest = parse_python_dependencies(tmp_path)
+        assert "rich" in manifest.entries
+        assert "lib_util" not in manifest.entries
+
+    def test_third_party_not_subtracted_when_no_sibling_shadows_it(
+        self, tmp_path: Path
+    ) -> None:
+        # Regression guard: a normal third-party dep with no matching workspace
+        # package name stays in the manifest (subtraction is workspace-only).
+        (tmp_path / "pyproject.toml").write_text(
+            "[project]\nname = \"solo\"\ndependencies = [\"click\", \"rich\"]\n",
+        )
+        manifest = parse_python_dependencies(tmp_path)
+        assert "click" in manifest.entries
+        assert "rich" in manifest.entries

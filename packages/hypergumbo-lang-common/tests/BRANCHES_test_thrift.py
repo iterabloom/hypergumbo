@@ -18,6 +18,12 @@ from pathlib import Path
 from hypergumbo_core.analyze.base import make_file_id, make_symbol_id
 from hypergumbo_lang_common.thrift import analyze_thrift, find_thrift_files
 
+def _role(sym, role: str) -> bool:
+    """A folded framework symbol carries its role in ``meta['framework_role']``
+    (WI-rilal / audit-0013: ``service`` -> ``interface``)."""
+    return (sym.meta or {}).get("framework_role") == role
+
+
 def make_thrift_file(tmp_path: Path, name: str, content: str) -> None:
     """Create a Thrift file with given content."""
     (tmp_path / name).write_text(content)
@@ -48,7 +54,7 @@ service UserService {
         result = analyze_thrift(tmp_path)
         assert not result.skipped
 
-        services = [s for s in result.symbols if s.kind == "service"]
+        services = [s for s in result.symbols if _role(s, "service")]
         assert len(services) >= 1
         assert any(s.name == "UserService" for s in services)
 
@@ -62,7 +68,7 @@ service UserService {
 }
 """)
         result = analyze_thrift(tmp_path)
-        services = [s for s in result.symbols if s.kind == "service"]
+        services = [s for s in result.symbols if _role(s, "service")]
         assert len(services) >= 1
         # Canonical name should include namespace
         assert any("UserService" in s.qualified_name for s in services)

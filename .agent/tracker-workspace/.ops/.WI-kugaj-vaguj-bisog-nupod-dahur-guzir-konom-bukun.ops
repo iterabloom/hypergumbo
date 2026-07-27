@@ -34,3 +34,36 @@
   clock: 3  # 2c86
   nonce: 2c86  # 2c86
   message: "2026-06-10 design-interview ruling (ADR-0036, merged in PR #4181): kind slot == node.kind always; the role these 22 synthetic nodes encode (route/event_subscriber/event_publisher) moves to a registered meta key rather than living in the id's kind slot. Item waits on the implementing fix, not further design."  # 2c86
+- op: update  # 5136
+  at: '2026-07-02T19:50:13Z'  # 5136
+  by: agent  # 5136
+  actor: jgstern_agent  # 5136
+  clock: 4  # 5136
+  nonce: '5136'  # 5136
+  set: {}  # 5136
+  add:  # 5136
+    isbefore: [WI-popak-gugoz-kibah-dugur-hopif-dutor-zopud-tamak]  # 5136
+- op: update  # ad69
+  at: '2026-07-02T19:50:14Z'  # ad69
+  by: agent  # ad69
+  actor: jgstern_agent  # ad69
+  clock: 5  # ad69
+  nonce: ad69  # ad69
+  set: {}  # ad69
+  add:  # ad69
+    isbefore: [INV-dulah-kisiz-gobak-jafov-soduj-tomim-dufut-kinil]  # ad69
+- op: update  # fc17
+  at: '2026-07-15T21:17:20Z'  # fc17
+  by: agent  # fc17
+  actor: jgstern_agent  # fc17
+  clock: 6  # fc17
+  nonce: fc17  # fc17
+  set:  # fc17
+    status: done  # fc17
+- op: discuss  # 18b8
+  at: '2026-07-15T21:17:20Z'  # 18b8
+  by: agent  # 18b8
+  actor: jgstern_agent  # 18b8
+  clock: 7  # 18b8
+  nonce: 18b8  # 18b8
+  message: "Done — stale (v5, 2026-07-15). 0 nodes carry a kind-slot in {route, event_subscriber, event_publisher}; node.id kind-slot == node.kind on all 39831 nodes. ADR-0036's ruling (kind-slot is the real kind; role → meta key) is implemented; no role survives in the id kind-slot. The 22-node cohort is 0."  # 18b8

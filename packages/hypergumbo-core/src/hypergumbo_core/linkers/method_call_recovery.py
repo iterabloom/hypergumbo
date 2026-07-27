@@ -70,7 +70,7 @@ from .registry import LinkerContext, LinkerResult, register_linker
 if TYPE_CHECKING:
     from ..ir import Symbol
 
-PASS_ID = make_pass_id("method-call-recovery")
+PASS_ID = make_pass_id("method-call-recovery-linker")
 
 # Edge types that signal "this caller refers to this class" — could be a
 # fallback ``calls`` (Java/Kotlin/Python) or an explicit ``instantiates``
@@ -105,14 +105,14 @@ def parse_unresolved_name(dst: str) -> str | None:
 
 
 # Backward-compat aliases for callers that imported the private names before
-# WI-gifar (PR-1 of INV-nilud) promoted them so the upcoming inherited_calls
-# linker can share the unresolved-dst parsing and short-form helpers.
+# WI-gifar (PR-1 of INV-nilud) promoted them so the inherited_calls linker
+# (priority 18) can share the unresolved-dst parsing and short-form helpers.
 _short_name = short_name
 _parse_unresolved_name = parse_unresolved_name
 
 
 @register_linker(
-    "method-call-recovery",
+    "method-call-recovery-linker",
     priority=35,  # After containment (12) + inheritance (15); before rollups.
     description=(
         "Rewrites chained calls=Class + unresolved-call(name) pairs to a "

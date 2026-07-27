@@ -100,7 +100,7 @@ The spec-vs-data validator (ADR-0033) gains the rule: **`evidence_type=ast_name_
 
 - The non-Python language analyzers gain the same per-edge derivation obligation as their dataflow support matures; the applicability matrix is language-independent but the emission quality is per-analyzer work.
 - `event_publishes` edges keep `access_mode="write"` — publishing an event IS a write to a channel; the 100%-coverage population was correct and is unaffected.
-- The exact `data_direction` value vocabulary (e.g. `src_to_dst` / `dst_to_src` / `bidirectional`) is declared in the implementing PR per the ADR-0024 template; this ADR fixes the key's existence and semantic, not its enumeration.
+- The `data_direction` value vocabulary is `src_to_dst` / `dst_to_src` / `bidirectional` — declared as `ir.VALID_DATA_DIRECTIONS`, validated by the `Edge.create(data_direction=…)` kwarg, and registered in `axis_meta_keys.py` (vocab F4 PR2, ruling 3). This ADR fixed the key's existence and semantic; the enumeration landed with the implementing PR per the ADR-0024 template. `dest_access_mode` and its sole consumer (slice.py's `would_admit_dst_reader` predictive counter) were removed in the same PR.
 
 ## Tracker items
 

@@ -2,9 +2,13 @@
 """I/O boundary analysis — catalog loading and edge matching (ADR-0016).
 
 Provides a per-language catalog of I/O primitive functions/methods, each
-classified by boundary type (fs_read, fs_write, net_send, net_recv,
-ipc_recv, ipc_send, env_read, subprocess). Catalogs are YAML files in
-the ``io_primitives/`` directory alongside this module.
+classified by boundary type. The closed set of catalog-declarable boundary
+tags is ``CATALOG_BOUNDARY_TYPES`` below (fs_read/fs_write, net_send/net_recv,
+ipc_recv/ipc_send, env_read/env_write, subprocess, db_read/db_write,
+process_send, logging, browser_storage_read/browser_storage_write); the
+synthesized ``external_potential`` and disclosed ``command_launch`` complete
+``KNOWN_IO_BOUNDARIES``. Catalogs are YAML files in the ``io_primitives/``
+directory alongside this module.
 
 How It Works
 ------------
@@ -30,9 +34,11 @@ from __future__ import annotations
 import urllib.parse
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
+from typing import Any, Iterable, Optional
 
 import yaml
+
+from .edge_types import is_grpc_rpc_implementation
 
 
 # ---------------------------------------------------------------------------
@@ -58,7 +64,7 @@ import yaml
 #     (1.0 -> 2.0).
 #   - Changes to ``BoundaryMapEntry.to_dict()`` / ``IoChain.to_dict()``
 #     shape are part of this same contract — they share the version.
-IO_BOUNDARIES_SCHEMA_VERSION: str = "1.0"
+IO_BOUNDARIES_SCHEMA_VERSION: str = "2.1"  # WI-javoh: command_launch_edges added (command-mediated launches disclosed, excluded from total_io_edges). 2.0: WI-huhit/WI-foduh total_io_edges redefined + external_potential_edges added
 
 
 # ---------------------------------------------------------------------------
@@ -98,7 +104,17 @@ CATALOG_BOUNDARY_TYPES: tuple[str, ...] = (
     "browser_storage_read",
 )
 KNOWN_IO_BOUNDARIES: frozenset[str] = frozenset(
-    CATALOG_BOUNDARY_TYPES + ("external_potential",),
+    CATALOG_BOUNDARY_TYPES + ("external_potential", "command_launch"),
+)
+
+# Boundaries that are DISCLOSED but EXCLUDED from the ``total_io_edges``
+# headline (the verified/curated I/O surface). ``external_potential`` is
+# receiver-unresolved speculative noise (WI-huhit/WI-foduh); ``command_launch``
+# is the high-volume, definite-but-uncurated command-mediated launch cohort
+# (WI-javoh). Both are surfaced in their own ``BoundaryMap`` count fields so a
+# consumer sees them without them inflating the headline.
+_DISCLOSED_ONLY_BOUNDARIES: frozenset[str] = frozenset(
+    {"external_potential", "command_launch"},
 )
 
 
@@ -203,14 +219,34 @@ def _validate_catalog_dict(
 
 
 # ---------------------------------------------------------------------------
-# High-risk primitives
+# High-risk primitives (subprocess-scoped display refinement)
 # ---------------------------------------------------------------------------
-
+#
+# ``high_risk`` is a DISPLAY-ONLY triage marker on the ``io-boundaries``
+# output (the CLI ``*** HIGH RISK ***`` markers + the ``high_risk`` /
+# ``has_high_risk`` JSON keys). It has NO verify-claims / taint / slice
+# consumer, so a wrong classification is an audit-UX false negative, not a
+# soundness bug.
+#
+# It is deliberately SCOPED TO ``subprocess``: launching an external program
+# is arbitrary code execution, the one boundary with a clean "always risky"
+# invariant (ratcheted by ``TestHighRiskPrimitivesDriftGuard``). It is NOT a
+# net/fs risk taxonomy. The canonical, ADR-backed risk model for I/O
+# boundaries is the taint source/sink model in ``taint.py``
+# (``AUTO_SINK_ZONE_MAP`` / ``AUTO_SOURCE_LABEL_MAP``; ADR-0017 §2b; spec
+# §"Taint sinks/sources") — write-side/egress boundaries are untrusted
+# sinks, read-side sensitive boundaries are untrusted sources — and that is
+# what verify-claims actually consumes. Destructive-filesystem and
+# network-egress risk are carried there (network risk additionally at the
+# chain ``dst_tier`` level), NOT curated here. Curating them here was a
+# deliberately-rejected idea (WI-gitad 2026-05-28, WI-sugav, WI-jihuj): a
+# hand-maintained net/fs ``high_risk`` set duplicated the taint taxonomy,
+# disagreed with it on ``fs_write`` (taint: every write is a sink;
+# ``high_risk``: only destructive writes), and could never be principled.
 HIGH_RISK_PRIMITIVES: frozenset[str] = frozenset({
-    # Destructive filesystem
-    "shutil.rmtree", "os.rmdir", "os.remove", "os.unlink",
-    "pathlib.Path.unlink", "pathlib.Path.rmdir",
-    # Subprocess / code execution — Python
+    # Subprocess / code execution — Python. Every boundary=subprocess
+    # catalog entry across the 14 languages must appear here or in
+    # HIGH_RISK_EXEMPTIONS_SUBPROCESS (TestHighRiskPrimitivesDriftGuard).
     "subprocess.Popen", "subprocess.run", "subprocess.call",
     "subprocess.check_call", "subprocess.check_output",
     "os.system", "os.popen", "os.execv", "os.execve", "os.execvp",
@@ -218,9 +254,6 @@ HIGH_RISK_PRIMITIVES: frozenset[str] = frozenset({
     "os.fork", "os.forkpty",
     "os.spawnl", "os.spawnle", "os.spawnlp", "os.spawnlpe",
     "os.spawnv", "os.spawnve", "os.spawnvp", "os.spawnvpe",
-    # Network outbound — Python
-    "urllib.request.urlopen", "urllib.request.Request",
-    "socket.socket.connect", "socket.socket.send", "socket.socket.sendall",
     # Go
     "os/exec.Command", "os/exec.CommandContext",
     "os/exec.Cmd.CombinedOutput", "os/exec.Cmd.Output",
@@ -305,17 +338,56 @@ HIGH_RISK_EXEMPTIONS_SUBPROCESS: frozenset[str] = frozenset({
 
 
 def is_high_risk(primitive_name: str) -> bool:
-    """Check whether a primitive is classified as high-risk.
+    """Whether a primitive gets the subprocess ``high_risk`` display marker.
 
-    High-risk primitives include destructive filesystem operations
-    (rmtree, unlink), subprocess / code execution (Popen, exec*, NSTask
-    launch, JVM ProcessBuilder, BEAM Port spawning, Haskell
-    System.Process spawn family, …), and outbound network calls
-    (urlopen, socket.send). The classification covers all 14 catalog
-    languages (Python, Go, Java, Rust, JavaScript, C, C++, Elixir,
-    Erlang, Kotlin, Scala, Swift, Objective-C, Haskell).
+    This is a DISPLAY-ONLY triage flag scoped to ``subprocess`` — launching
+    an external program (Popen, exec*, NSTask launch, JVM ProcessBuilder,
+    BEAM Port spawning, Haskell System.Process spawn family, …) across all
+    14 catalog languages, the one boundary with a clean "always risky"
+    invariant. It is NOT a net/fs risk taxonomy: destructive-filesystem and
+    network-egress risk are carried by the taint source/sink model
+    (``AUTO_SINK_ZONE_MAP`` in ``taint.py``; ADR-0017 §2b) and, for network,
+    the chain ``dst_tier`` — see the ``HIGH_RISK_PRIMITIVES`` module comment.
     """
     return primitive_name in HIGH_RISK_PRIMITIVES
+
+
+def gate_named_entry(hits, name, module_hint, ambiguous_names,
+                     *, call_construct=None):
+    """Kind-aware no-module-context fallback (io-boundary:F3, INV-tapat/INV-maluk).
+
+    The single shared decision for the *no usable module hint* case across all
+    three catalog consumers — :meth:`IoBoundaryCatalog.lookup_with_module`
+    (io-boundaries) and taint.py's ``_lookup_named_entry`` (taint match + the
+    production propagation path). Duck-typed over ``IoPrimitive`` /
+    ``TaintSink`` / ``TaintSource``: each ``hit`` exposes ``.module`` /
+    ``.name`` / ``.kind``.
+
+    This is reached only when there is no usable module hint (``module_hint``
+    is ``None`` or ``"external"``); callers handle the qualified-name and
+    module-filter branches *before* delegating here. With no receiver/module
+    evidence:
+
+    * an untyped *method* call (``call_construct == "method"``) cannot be
+      verified against the catalogued receiver type, so it never matches — this
+      is what closes INV-tapat (no receiver verification) and INV-maluk
+      (``str.replace`` matching ``pathlib.Path.replace``);
+    * a free-function call may still match, but only a *function*-kind hit —
+      a method-kind primitive needs a module hint it does not have here, so
+      method-kind hits are filtered out;
+    * the ``ambiguous_names`` short-name set is retained as the meta-absent /
+      non-Python safety net (the gate is additive — it does not replace it).
+
+    See ``io_boundary_f3_impl_design_06272026.md``.
+    """
+    if call_construct == "method":
+        return None
+    non_method = [h for h in hits if h.kind != "method"]
+    if not non_method:
+        return None
+    if ambiguous_names and name in ambiguous_names:
+        return None
+    return non_method[0]
 
 
 # ---------------------------------------------------------------------------
@@ -463,6 +535,7 @@ class IoBoundaryCatalog:
 
     def lookup_with_module(
         self, name: str, module_hint: str | None = None,
+        *, call_construct: str | None = None,
     ) -> Optional[IoPrimitive]:
         """Look up a primitive with optional module context for disambiguation.
 
@@ -471,9 +544,15 @@ class IoBoundaryCatalog:
         in the hint (or vice versa).  This prevents false positives like
         ``crypto/rand.Read`` matching ``net.Conn.Read``.
 
-        Falls back to unfiltered short-name matching when:
+        Falls back to the kind-aware no-module-context gate
+        (:func:`gate_named_entry`, io-boundary:F3) when:
         - ``module_hint`` is None or ``"external"`` (no module info available)
         - No filtered match is found (defensive fallback)
+
+        ``call_construct`` (when threaded from the edge's ``meta``) lets the
+        no-module gate reject untyped *method* calls outright — a bare
+        ``something.replace(...)`` cannot be verified against the catalogued
+        receiver type (INV-tapat/INV-maluk).
         """
         # Qualified-name match always wins (exact)
         hit = self._by_qualified.get(name)
@@ -496,10 +575,13 @@ class IoBoundaryCatalog:
             # primitive (e.g., crypto/rand.Read is not net.Conn.Read)
             return None
 
-        # No module context — fall back to first match unless ambiguous
-        if self.ambiguous_names and name in self.ambiguous_names:
-            return None
-        return hits[0]
+        # No module context — kind-aware gate (io-boundary:F3): an untyped
+        # method call has no receiver evidence here, so a method-kind primitive
+        # must not match; a free-function call may match a function-kind hit.
+        return gate_named_entry(
+            hits, name, module_hint, self.ambiguous_names,
+            call_construct=call_construct,
+        )
 
     def is_stdlib_module(self, module: str) -> bool:
         """Return True when ``module`` is a recognised stdlib module.
@@ -512,6 +594,15 @@ class IoBoundaryCatalog:
           ``prefix + "."`` or ``prefix + "/"``. The two separators
           cover dot-namespaced languages (Python, Java) and slash-
           namespaced languages (Go's encoding/json).
+        - Top-level-package fallback: a *submodule* of an enumerated
+          top-level stdlib package is itself stdlib (``os.path``,
+          ``unittest.mock``, ``urllib.request``). The Python catalog
+          enumerates only top-level module names and declares no
+          ``stdlib_prefixes``, so without this fallback every stdlib
+          *submodule* import was mis-stamped ``ecosystem=third_party``
+          (WI-bifih). Keyed on the first dotted/slashed segment, so a
+          third-party ``requests.sessions`` (head ``requests`` not
+          enumerated) correctly stays non-stdlib.
 
         Returns False when both sets are empty (the default state —
         before a catalog populates them).
@@ -526,6 +617,10 @@ class IoBoundaryCatalog:
             for sep in (".", "/"):
                 if module.startswith(prefix + sep):
                     return True
+        for sep in (".", "/"):
+            head = module.partition(sep)[0]
+            if head != module and head in self.stdlib_modules:
+                return True
         return False
 
     def is_stdlib_module_complete(self, module: str) -> bool:
@@ -819,6 +914,28 @@ def load_catalog(language: str) -> IoBoundaryCatalog:
     return catalog
 
 
+def in_progress_languages(languages: Iterable[str]) -> list[str]:
+    """Return the subset of ``languages`` whose io_primitives catalog is
+    marked ``status: in_progress`` (WI-najil).
+
+    A consumer of the io-boundary catalog (``hypergumbo io-boundaries`` /
+    ``verify-claims`` / ``slice --io-boundary``) uses this to disclose that
+    boundary results for those languages may be incomplete: an ``in_progress``
+    catalog's zero-match outcome is otherwise indistinguishable from a genuine
+    "no I/O in this code". Unsupported languages (no catalog file, even via
+    alias) are excluded — :func:`load_catalog` returns a fallback object whose
+    ``status`` defaults to ``"complete"`` (they carry the separate
+    ``is_supported=False`` signal, INV-javam), so the ``status == "in_progress"``
+    test cleanly drops them. Aliases and parents resolve through
+    :func:`load_catalog` (e.g. ``typescript`` reports the ``javascript``
+    catalog's status). The result is sorted and de-duplicated.
+    """
+    return sorted({
+        lang for lang in languages
+        if load_catalog(lang).status == "in_progress"
+    })
+
+
 # ---------------------------------------------------------------------------
 # Edge matching
 # ---------------------------------------------------------------------------
@@ -952,16 +1069,38 @@ class BoundaryMap:
 
     Attributes:
         entries: Mapping from boundary type to aggregated entry.
-        total_io_edges: Total number of distinct I/O chains across every
-            boundary entry (INV-pubom canonical definition: post-
-            external_potential chain count, i.e. ``sum(len(e.chains) for
-            e in entries.values())``). Both the unfiltered serializer
-            (``BoundaryMap.to_dict``) and the filtered ``cmd_io_boundaries``
-            JSON path agree on this definition.
+        total_io_edges: The REAL/verified I/O surface — chain count across
+            confirmed boundary categories, EXCLUDING the ``external_potential``
+            bucket. INV-pubom canonical definition (amended 2026-06-30 per the
+            wave-3 ruling, WI-huhit/WI-foduh): ``sum(len(e.chains) for k, e in
+            entries.items() if k != "external_potential")``. The prior
+            definition INCLUDED external_potential, which on self-analysis is
+            ~96% receiver-unresolved builtin method calls (append/get/split…) —
+            not real I/O — so a consumer reading the headline as "I/O surface"
+            over-counted ~28x. external_potential is now disclosed separately in
+            ``external_potential_edges``. The unfiltered serializer
+            (``BoundaryMap.to_dict``), the filtered ``cmd_io_boundaries`` JSON
+            path, AND the text headline all agree on this real-categories count.
+        external_potential_edges: Chain count of the ``external_potential``
+            bucket (receiver-unresolved calls — potential, unverified I/O),
+            disclosed separately so it does not inflate ``total_io_edges``.
+        command_launch_edges: Chain count of the ``command_launch`` bucket
+            (WI-javoh) — command-mediated external-program launches (a shell
+            ``curl``/``git``/``rm`` etc.). Every launch IS a subprocess crossing
+            (ADR-0016 §1 "all launches risky"), but the population is
+            high-volume-and-low-per-command-signal on devops repos, so — by the
+            same count-vs-disclose doctrine that excludes ``external_potential``
+            — it is DISCLOSED here and EXCLUDED from ``total_io_edges`` rather
+            than inflating the curated stdlib subprocess headline. Unlike
+            ``external_potential`` these are NOT speculative: a lexed ``curl`` is
+            a definite launch, just deliberately not counted in the verified
+            catalog surface.
     """
 
     entries: dict[str, BoundaryMapEntry] = field(default_factory=dict)
     total_io_edges: int = 0
+    external_potential_edges: int = 0
+    command_launch_edges: int = 0
 
     def to_dict(self) -> dict:
         """Serialize to JSON-friendly dict.
@@ -975,20 +1114,23 @@ class BoundaryMap:
         return {
             "schema_version": IO_BOUNDARIES_SCHEMA_VERSION,
             "total_io_edges": self.total_io_edges,
+            "external_potential_edges": self.external_potential_edges,
+            "command_launch_edges": self.command_launch_edges,
             "boundaries": {
                 k: v.to_dict() for k, v in sorted(self.entries.items())
             },
         }
 
 
-# ADR-0023 §6 Phase 2 audit (WI-sahab-fatoz): this set mixes axes —
+# ADR-0023 §6 Phase 2 audit (WI-sahab-fatoz): this set holds
 # relationship-axis values (``calls``, ``instantiates``, ``references``,
-# ``module_attr_ref``), pending_classification values (``dispatches_to``,
-# ``implements_rpc``), and endpoint_shape FFI/IPC bridges. Forward-
-# compatible through Phase 3 because ``calls`` is already a member, so
-# when bridges fold into ``calls`` + ``meta["bridge_kind"]`` the set
-# still matches; the bridge entries become dead-but-harmless and get
-# pruned in Phase 4.
+# ``module_attr_ref``, ``dispatches_to``). Forward-compatible through the
+# endpoint_shape fold because ``calls`` is already a member, so when
+# bridges fold into ``calls`` + ``meta["bridge_kind"]`` the set still
+# matches. The folded gRPC RPC-implementation edge (``implements`` +
+# ``meta['protocol']='grpc'``, audit-findings 0016) is matched by the
+# is_grpc_rpc_implementation predicate (``_is_traceable_edge``), not by
+# membership.
 _TRACEABLE_EDGE_TYPES = frozenset({
     "calls", "instantiates", "dispatches_to", "references",
     # WI-guhok: attribute reads of imported modules (e.g. os.environ, sys.argv)
@@ -1000,12 +1142,27 @@ _TRACEABLE_EDGE_TYPES = frozenset({
     # name in keeps the reverse-graph traversal crossing async-channel
     # boundaries after the IPC family rename.
     "event_publishes",
-    # pending_classification entries awaiting per-family audit
-    # (implements_rpc). Protocol-call family (WI-vumum-juvil) folds
-    # to 'calls' + meta['protocol'], so HTTP/gRPC/GraphQL traversals
-    # transfer via the canonical 'calls' member.
-    "implements_rpc",
+    # Protocol-call family (WI-vumum-juvil) folds to 'calls' +
+    # meta['protocol'], so HTTP/gRPC/GraphQL call traversals transfer via
+    # the canonical 'calls' member. implements_rpc folded to 'implements'
+    # + meta['protocol']='grpc' (audit-findings 0016) — matched by the
+    # is_grpc_rpc_implementation predicate via _is_traceable_edge below,
+    # NOT a set member (that would include every structural 'implements').
 })
+
+
+def _is_traceable_edge(edge: Any) -> bool:
+    """True if *edge* (an ``Edge``) is traceable for I/O-boundary reachability.
+
+    Membership in :data:`_TRACEABLE_EDGE_TYPES`, OR the folded gRPC
+    RPC-implementation edge (``implements`` + ``meta['protocol']='grpc'``,
+    audit-findings 0016) — the one place io_boundary recognizes the folded
+    form, preserving gRPC reachability without over-including structural
+    ``implements`` edges.
+    """
+    return edge.edge_type in _TRACEABLE_EDGE_TYPES or is_grpc_rpc_implementation(
+        edge.edge_type, edge.meta
+    )
 
 
 def _build_reverse_graph(edges: list) -> dict[str, set[str]]:
@@ -1016,7 +1173,7 @@ def _build_reverse_graph(edges: list) -> dict[str, set[str]]:
     """
     reverse_graph: dict[str, set[str]] = {}
     for edge in edges:
-        if edge.edge_type in _TRACEABLE_EDGE_TYPES:
+        if _is_traceable_edge(edge):
             reverse_graph.setdefault(edge.dst, set()).add(edge.src)
     return reverse_graph
 
@@ -1081,7 +1238,7 @@ def _compute_external_potential(
         meta = edge.meta
         if meta and meta.get("io_boundary"):
             continue
-        if edge.edge_type not in _TRACEABLE_EDGE_TYPES:
+        if not _is_traceable_edge(edge):
             continue
         dst_node = nodes_by_id.get(edge.dst)
         if dst_node is None:
@@ -1280,14 +1437,16 @@ def compute_boundary_map(
             by_boundary["external_potential"] = ext_chains
 
     # Build boundary map entries, including WI-darad leaf-caller roll-ups.
-    # INV-pubom canonical definition: ``total_io_edges`` is the
-    # post-external_potential chain count — i.e., the number of distinct
-    # I/O chains the consumer sees in the artifact. The pre-external_potential
-    # ``tagged_count`` carries a different (and less consumer-meaningful)
-    # number of boundary-tagged edges before the second-pass external_potential
-    # bucket lands. Both the unfiltered (``BoundaryMap.to_dict``) and the
-    # filtered (``cmd_io_boundaries``) paths agree on this definition; see
-    # the writer-contract validator for the runtime check.
+    # INV-pubom canonical definition (amended 2026-06-30 per the wave-3 ruling,
+    # WI-huhit/WI-foduh): ``total_io_edges`` is the REAL/verified I/O surface —
+    # the chain count across confirmed boundary categories, EXCLUDING the
+    # ``external_potential`` bucket (receiver-unresolved calls; ~96% builtin
+    # method noise on self-analysis, not real I/O). ``external_potential_edges``
+    # discloses that bucket separately so it no longer inflates the headline.
+    # Both the unfiltered (``BoundaryMap.to_dict``) and the filtered
+    # (``cmd_io_boundaries``) JSON paths — and the text headline — agree on this
+    # real-categories count; see the writer-contract validator for the runtime
+    # check.
     leaf_ep_cache: dict[str, set[str]] = {}
     entries: dict[str, BoundaryMapEntry] = {}
     for boundary, chains in by_boundary.items():
@@ -1302,9 +1461,24 @@ def compute_boundary_map(
             leaf_callers=leaf_callers,
             entry_points_per_leaf=entry_points_per_leaf,
         )
+    ep_edges = (
+        len(entries["external_potential"].chains)
+        if "external_potential" in entries
+        else 0
+    )
+    cl_edges = (
+        len(entries["command_launch"].chains)
+        if "command_launch" in entries
+        else 0
+    )
     bmap = BoundaryMap(
         entries=entries,
-        total_io_edges=sum(len(e.chains) for e in entries.values()),
+        total_io_edges=sum(
+            len(e.chains) for k, e in entries.items()
+            if k not in _DISCLOSED_ONLY_BOUNDARIES
+        ),
+        external_potential_edges=ep_edges,
+        command_launch_edges=cl_edges,
     )
 
     return bmap
@@ -1489,8 +1663,10 @@ def tag_io_boundaries(
         "ipc_calls", "ipc_event",
         # Protocol-call family (WI-vumum-juvil) folds to canonical
         # 'calls' + meta['protocol']; HTTP/gRPC/GraphQL traversals
-        # transfer via 'calls'.
-        "implements_rpc",
+        # transfer via 'calls'. implements_rpc folded to 'implements' +
+        # meta['protocol']='grpc' (audit-findings 0016) — matched by the
+        # is_grpc_rpc_implementation predicate at the loop below, not a
+        # set member.
     }),
 ) -> int:
     """Tag edges that reach I/O primitives with boundary metadata.
@@ -1517,7 +1693,9 @@ def tag_io_boundaries(
     """
     tagged = 0
     for edge in edges:
-        if edge.edge_type not in call_types:
+        if edge.edge_type not in call_types and not is_grpc_rpc_implementation(
+            edge.edge_type, edge.meta
+        ):
             continue
 
         # Extract language from dst ID (first colon-delimited segment)
@@ -1543,7 +1721,12 @@ def tag_io_boundaries(
         if catalog is None:
             continue
 
-        match = catalog.lookup_with_module(callee, adjusted_hint)
+        # io-boundary:F3 — thread the edge's call construct so the no-module
+        # gate can reject untyped method calls (no receiver evidence).
+        cc = (getattr(edge, "meta", None) or {}).get("call_construct")
+        match = catalog.lookup_with_module(
+            callee, adjusted_hint, call_construct=cc,
+        )
         if match is None:
             continue
 

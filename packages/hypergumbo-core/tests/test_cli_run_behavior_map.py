@@ -372,9 +372,8 @@ def test_run_behavior_map_stores_sketch_precomputed(tmp_path: Path) -> None:
     assert "config_info" in precomputed
     assert "testproj" in precomputed["config_info"]
 
-    # Check vocabulary (should be a list)
-    assert "vocabulary" in precomputed
-    assert isinstance(precomputed["vocabulary"], list)
+    # INV-padoz: the consumer-less `vocabulary` field is deleted.
+    assert "vocabulary" not in precomputed
 
     # Check readme_description (should have extracted text)
     assert "readme_description" in precomputed
@@ -432,7 +431,7 @@ def test_run_behavior_map_cbv_expansion(tmp_path: Path, monkeypatch: pytest.Monk
 
     original_expand = None
 
-    def mock_expand(symbols):
+    def mock_expand(symbols, origin_run_id=""):
         return fake_expanded, fake_removed
 
     import hypergumbo_core.framework_patterns as fp_mod
@@ -492,16 +491,22 @@ def test_run_behavior_map_tolerates_unreadable_file_end_to_end(
         tmp_path, out_path, include_sketch_precomputed=False,
     )
 
-    # Output is valid JSON and the readable file was analyzed.
+    # Output is valid JSON and the readable file was analyzed (the readable
+    # good.py, a node-bearing path, also gets a WI-dagif file anchor — filter it
+    # out to assert on the content node).
     data = json.loads(real_read_text(out_path))
-    assert len(data["nodes"]) == 1
-    assert data["nodes"][0]["name"] == "works"
+    content = [n for n in data["nodes"] if n["kind"] != "file"]
+    assert len(content) == 1
+    assert content[0]["name"] == "works"
 
     # The fingerprint was still computed and stamped despite the unreadable
     # file (proves the fail-open guard reached the non-git fingerprint walk).
     runs = data["analysis_runs"]
     assert runs
-    assert all(len(r["repo_fingerprint"]) == 64 for r in runs)
+    # WI-bosog: the AR-record field carries the ``sha256:`` scheme prefix
+    # (uniform with run_signature / config_fingerprint) over the full 64-hex.
+    assert all(r["repo_fingerprint"].startswith("sha256:") for r in runs)
+    assert all(len(r["repo_fingerprint"][len("sha256:"):]) == 64 for r in runs)
 
     # §17: the unreadable file is surfaced in limits.failed_files.
     py_failed = [
@@ -510,3 +515,102 @@ def test_run_behavior_map_tolerates_unreadable_file_end_to_end(
     assert len(py_failed) == 1
     assert py_failed[0]["path"].endswith("bad.py")
     assert "PermissionError" in py_failed[0]["reason"]
+
+
+def test_get_or_run_analysis_returns_generated_main_map_on_cold_cache(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """INV-somup: on a cold cache, ``_get_or_run_analysis`` runs the analysis and
+    must return the map ``run_behavior_map`` actually WROTE (from
+    ``generated_files``), not re-derive it via ``_discover_input_file``. That
+    helper recomputes the ``<state_hash>`` cache-dir segment from live git-dirty
+    content, so if the repo's dirty content changes during the multi-second run
+    (concurrent tracker ``.ops`` / ``.ci`` writes in the self-analysis +
+    smart-test scenario) the recomputed segment drifts from the write-time value,
+    the freshly written map becomes undiscoverable, and the caller reported
+    "Input file not found: None" (smart-test then fell back to a full-suite
+    manifest). The main map is selected BY NAME so a budget side-output
+    (``survey.<tier>.json``) or a handler-slice file is never returned
+    in its place."""
+    from hypergumbo_core import cli
+
+    # Empty XDG cache + a bare non-git dir => _discover_input_file misses both
+    # before AND after the run (cold cache; the fake writes the map to a dir
+    # _discover_input_file never checks, mimicking the state_hash drift).
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "xdg"))
+    repo = tmp_path / "repo"
+    repo.mkdir()
+
+    written = tmp_path / "written"
+    (written / "survey.slices").mkdir(parents=True)
+    main_map = written / "survey.json"
+    side_4k = written / "survey.4k.json"
+    slice_idx = written / "survey.slices" / "slice.handler.index.json"
+    for p in (main_map, side_4k, slice_idx):
+        p.write_text("{}")
+
+    def fake_run(*args: object, **kwargs: object) -> list[Path]:
+        # main map deliberately NOT last -> proves name-based (not positional) select
+        return [slice_idx, side_4k, main_map]
+
+    monkeypatch.setattr(cli, "run_survey", fake_run)
+
+    path, was_cached, generated = cli._get_or_run_analysis(repo, show_progress=False)
+
+    assert path == main_map
+    assert was_cached is False
+    assert generated == [slice_idx, side_4k, main_map]
+
+
+def test_discover_input_file_returns_cache_dir_hit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``_discover_input_file`` returns the cache-dir map when one exists there
+    (the warm-cache-hit path). This branch used to be covered incidentally by
+    ``_get_or_run_analysis``'s now-removed post-run re-discovery (INV-somup); it
+    is exercised directly here so the warm cache-dir hit stays covered."""
+    from hypergumbo_core import cli
+    from hypergumbo_core.sketch_embeddings import _get_results_cache_dir
+
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "xdg"))
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    cache_dir = _get_results_cache_dir(repo)  # materializes the cache dir tree
+    cached = cache_dir / "hypergumbo.results.json"
+    cached.write_text("{}")
+
+    assert cli._discover_input_file(repo) == cached
+
+
+def test_discover_input_file_finds_canonical_survey_json_at_repo_root(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """ADR-0042: ``_discover_input_file`` (now on the merged ``find_survey_in_dir``
+    resolver) discovers the canonical ``survey.json`` at the repo root, not only
+    the legacy ``hypergumbo.results.json``."""
+    from hypergumbo_core import cli
+
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "xdg"))
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    survey = repo / "survey.json"
+    survey.write_text("{}")
+
+    assert cli._discover_input_file(repo) == survey
+
+
+def test_discover_input_file_still_finds_legacy_results_json_at_repo_root(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Backward compat: the legacy ``hypergumbo.results.json`` at the repo root is
+    still discovered after the resolver merge (the merged resolver widens, never
+    narrows, discovery)."""
+    from hypergumbo_core import cli
+
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "xdg"))
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    legacy = repo / "hypergumbo.results.json"
+    legacy.write_text("{}")
+
+    assert cli._discover_input_file(repo) == legacy

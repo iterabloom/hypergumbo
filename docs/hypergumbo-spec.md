@@ -47,7 +47,7 @@ Status: living document.
 | D | [Capsule system history](#appendix-d-capsule-system-history) |
 
 ## 0) One-sentence summary
-A local-first CLI that helps developers and AI agents understand an unfamiliar codebase by analyzing its structure and emitting a **repo behavior map**—a JSON graph of symbols, call edges, routes, and framework patterns with confidence scores and provenance tracking.
+A local-first CLI that helps developers and AI agents understand an unfamiliar codebase by analyzing its structure and emitting a **repo survey**—a JSON graph of symbols, call edges, routes, and framework patterns with confidence scores and provenance tracking.
 
 ## 1) Goals
 * 🟩 **Internal IR with views**: Parsers emit to an internal representation; public outputs are compiled views (enables future typed passes without breaking schema).
@@ -69,7 +69,7 @@ For goals that were considered and rejected, see [Appendix D](#appendix-d-capsul
 
 ## 3) User experience (CLI)
 
-**Key principle:** Analysis execution requires no network or API keys (by default). Output is deterministic and reproducible given the same repo state. See [Appendix B](#appendix-b-telemetry--privacy) for the full privacy and telemetry policy.
+**Key principle:** Analysis execution requires no network or API keys (by default). Output is reproducible at the **L2** level — the semantic graph (nodes, edges, `stable_id`s, `run_signature`) is stable given the same repo state; per-run metadata (`execution_id`, wall-clock timestamps, and the `analysis_runs[]` ordering) is not byte-identical (see the `reproducibility_context` block). See [Appendix B](#appendix-b-telemetry--privacy) for the full privacy and telemetry policy.
 
 ### Install
 * `pipx install hypergumbo` (primary, includes all language analyzers)
@@ -85,7 +85,7 @@ Generates a token-budgeted Markdown sketch to stdout. Optimized for pasting into
 * `-t N` limits output to approximately N tokens.
 * `--with-source` appends full source file contents after the sketch (ordered by symbol importance density, skips files under 5 LOC)
 
-🟩 **`hypergumbo explain <symbol> [--with-source] [-t tokens] [-x] [--provenance]`**
+🟩 **`hypergumbo explain <symbol> [--with-source] [-t tokens] [-x] [--provenance] [--language L] [--file SUFFIX] [--first] [--limit N]`**
 Shows detailed info about a symbol (function, class, etc.) and its callers/callees.
 * Always shows `Origin:` line with the pass(es) that created the symbol (PROV wasAttributedTo)
 * Caller/callee lines annotated with edge type (e.g., `[imported_call]`, `[calls]`)
@@ -98,9 +98,11 @@ Shows detailed info about a symbol (function, class, etc.) and its callers/calle
   - Deduplicates when same symbol appears as both caller and callee
 * `-t N` limits source output to approximately N tokens. When budget exceeded, omits sources one-at-a-time in priority order: module-level first, then ascending in-degree (least important first)
 * `-x` excludes callers/callees from test files
+* A name matching symbols in more than one file is **ambiguous**: `explain` errors and lists the candidates on stderr (matching `slice`'s policy, INV-nogof), instead of silently dumping every match. `--language L` / `--file SUFFIX` narrow the match pool to disambiguate; `--first` accepts the top match; `--limit N` caps how many sections print for non-ambiguous same-file duplicates (WI-nanut)
+* Registered-but-unstyled edge types surface their registry description; an edge type registered nowhere is labelled `unrecognized edge type '<type>'`; a substrate whose `schema_version` differs from this build prints a field-presence drift warning (WI-dazob)
 
-🟩 **`hypergumbo run [path] [--out hypergumbo.results.json]`**
-Analyzes the repo and emits a behavior map. No initialization required—works directly on any repo.
+🟩 **`hypergumbo survey [path] [--out survey.json]`**
+Analyzes the repo and emits a survey. No initialization required—works directly on any repo.
 
 🟩 **`hypergumbo slice --entry <symbol|file|route> [--out slice.<entry>.json]`**
 Produces a reduced subgraph suitable for LLM context. Default output filename includes a sanitized entry name to prevent overwrites when slicing different symbols.
@@ -109,17 +111,20 @@ Produces a reduced subgraph suitable for LLM context. Default output filename in
 Shows available language analyzers and which ones are suggested for the current repo. Useful for discovering what hypergumbo can analyze.
 
 🟩 **`hypergumbo test-coverage [path] [--format text|json]`**
-Estimates test coverage via static analysis (no code execution). Reports hot spots (functions called by many tests, ranked by tests/LOC) and cold spots (untested functions). Filter with `--min-tests`, `--max-tests`, `--top`.
+Estimates test coverage via static analysis (no code execution). Reports hot spots (functions called by many tests, ranked by tests/LOC) and cold spots (untested functions). Filter with `--min-tests`, `--max-tests`, `--top`. The candidate universe is the *production functions* — non-test function/method symbols, excluding ADR-0031 synthetic linker stand-ins — the same `production_callables` denominator `dead-code-maybe` uses (`dead = production - reachable`).
 
-🟩 **`hypergumbo io-boundaries [path] [--json]`** (ADR-0016)
-Identifies call edges that reach I/O primitives (filesystem, network, subprocess, environment) and groups them by boundary type. Loads a cached behavior map or auto-runs analysis if needed. Supports 16 languages (14 dedicated catalogs + 2 via aliases) with 150+ framework IO entries. When entrypoints are available, traces backward from IO edges to show which entrypoints can reach each IO operation.
+🟩 **`hypergumbo io-boundaries [path] [--format text|json]`** (ADR-0016)
+Identifies call edges that reach I/O primitives (filesystem, network, subprocess, environment) and groups them by boundary type. Loads a cached survey or auto-runs analysis if needed. Supports 16 languages (14 dedicated catalogs + 2 via aliases) with 150+ framework IO entries. When entrypoints are available, traces backward from IO edges to show which entrypoints can reach each IO operation. Output format is `--format text|json` (default `text`), the canonical read-view spelling shared with `routes` / `catalog` / `config` / `cache-status` / `dead-code-maybe` / `test-coverage`; the historical `--json` boolean is kept as a back-compat alias (WI-kitud).
 
-🟩 **`hypergumbo verify-claims --claims <file> [--json]`** (ADR-0016, ADR-0017)
-Verifies security claims against the IO boundary map and taint-flow analysis. Supports boundary constraints (e.g., "no network I/O", "max 3 filesystem chains") and taint-flow constraints (e.g., "plaintext data must not reach host_fs zone"). Claims are specified in YAML format (`hypergumbo verify-claims --help` documents the shape). The claims file is validated up front: a malformed YAML, an unexpected root/claim/constraint shape, an unknown field name, or a `constraint.boundary` outside the io-boundaries vocabulary produces a clear error rather than a traceback or a silent false "confirmed". A `must_not_exist` / `max_chains` boundary claim is only `confirmed` when the I/O analysis could actually have seen the I/O: if the analysis produced no call edges at all, or a supported language was analyzed but produced none (so its I/O is invisible), the verdict is `inconclusive` rather than a false clean (WI-kajil / INV-bitig). Exit codes: `0` = all confirmed; `1` = at least one violated; `2` = at least one inconclusive, or the claims file failed validation. Useful for CI enforcement of IO and data-flow security policies.
+🟩 **`hypergumbo verify-claims --claims <file> [--format text|json]`** (ADR-0016, ADR-0017)
+Verifies security claims against the IO boundary map and taint-flow analysis. Supports boundary constraints (e.g., "no network I/O", "max 3 filesystem chains") and taint-flow constraints (e.g., "plaintext data must not reach host_fs zone"). Claims are specified in YAML format (`hypergumbo verify-claims --help` documents the shape). The claims file is validated up front: a malformed YAML, an unexpected root/claim/constraint shape, an unknown field name, or a `constraint.boundary` outside the io-boundaries vocabulary produces a clear error rather than a traceback or a silent false "confirmed". A `must_not_exist` / `max_chains` boundary claim is only `confirmed` when the I/O analysis could actually have seen the I/O: if the analysis produced no call edges at all, or a supported language was analyzed but produced none (so its I/O is invisible), the verdict is `inconclusive` rather than a false clean (WI-kajil / INV-bitig). Exit codes: `0` = all confirmed; `1` = at least one violated; `2` = at least one inconclusive, or the claims file failed validation. Output format is `--format text|json` (default `text`), the canonical read-view spelling; the historical `--json` boolean is kept as a back-compat alias (WI-kitud). Useful for CI enforcement of IO and data-flow security policies.
 
 Taint-flow analysis operates at two precision levels depending on language support:
 * **Structural** (all languages): Call-graph BFS with dominance-based sanitizer checking. Catches missing sanitizers on entire call paths. Findings labeled `confidence: approximate`.
 * **DDG-backed** (languages with def/use extractors — currently Python, Rust, TypeScript): Variable-level taint tracking within functions via intraprocedural reaching definitions. Eliminates false positives where two variables in the same function take different paths. Findings labeled `confidence: precise` when both the source and sink functions have DDG coverage; `approximate` otherwise (see ADR-0017 §3c–3d for mixed-coverage rules).
+
+🟩 **`hypergumbo repeat-finder [path] [--format text|json] [--min-complexity N] [--include-tests] [--limit N]`** (ADR-0014, ADR-0035 §1)
+Finds structural clones — refactoring leads. Groups symbols by `(language, shape_id)`: a cluster of ≥2 nodes is a set of structurally-identical implementations (same control-flow/nesting skeleton, differing only in identifiers and literals), within-language per ADR-0014. This is the consumer that activates `shape_id`'s one non-redundant capability over `fingerprint` — duplicate-code / extract-helper detection (see the `shape_id` Purpose in [§6 Identity field semantics](#identity-field-semantics)). Trivial clusters (shared cyclomatic complexity below `--min-complexity`, default 2 — a straight-line stub is not a refactoring lead) are dropped; only production clones (≥2 non-test members) are the headline, with test-only clone clusters (parametrized tests are structurally identical by design) counted as a labeled disclosure bucket shown via `--include-tests`. Clusters rank by duplication burden (member count × representative LOC). `--min-complexity 1` includes straight-line clones. Output format is `--format text|json` (default `text`), the canonical read-view spelling; the JSON envelope is `{schema_version, view: "repeat_finder", summary, clusters}` sharing `READ_VIEW_SCHEMA_VERSION`.
 
 ### Analysis options
 
@@ -224,7 +229,7 @@ def analyze_go(repo_root: Path, max_files: int | None = None) -> AnalysisResult:
 Each analyzer returns an `AnalysisResult` containing symbols, edges, and usage contexts — the data types defined in [§6 Internal representation](#6-internal-representation). Analyzers are embarrassingly parallel — each scans the repo independently and returns a bag of symbols and edges. They do not see each other's output.
 
 **Tier 2 — Linkers and enrichment (context-dependent refiners):**
-After all analyzers run, the orchestrator (`run_behavior_map`) collects the unified symbol graph and runs post-processing:
+After all analyzers run, the orchestrator (`run_survey`) collects the unified symbol graph and runs post-processing:
 1. Deferred symbol reference resolution (cross-file call targets)
 2. Framework pattern enrichment (YAML-driven concept metadata)
 3. Linkers (registered via `@register_linker` decorator, receiving `LinkerContext` with the full symbol graph; see [LINKERS.md](LINKERS.md) for the full list, grouped by subcategory — Protocol, Bridge, Framework, Infrastructure — per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md))
@@ -264,6 +269,7 @@ class Symbol:
     # canonical_name removed per ADR-0032; superseded by the typed sibling fields below
     display_label: Optional[str]   # human-readable label
     qualified_name: Optional[str]  # scope-qualified name
+    visibility: Optional[str]      # INV-jusot: one canonical level (public/private/protected/internal/package), computed in finalize; signal in meta['visibility_signal']
     fingerprint: str           # 🟪 code: Optional[str] = None
     kind: str                  # language construct only (function/class/module/method/...): per ADR-0027 the kind axis names the source-language syntactic construct; framework-role / dispatch / entrypoint facts live in meta (see Multi-value field axes below)
     name: str
@@ -298,7 +304,7 @@ class AnalysisRun:
     config_fingerprint: str    # sha256 of effective config
     files_analyzed: int
     files_skipped: int
-    skipped_passes: List[Dict] # passes that couldn't run
+    skipped_passes: List[Dict] # legacy per-run mirror (unpopulated); pass-level skips live in limits.skipped_passes
     warnings: List[str]
     started_at: str
     duration_ms: int
@@ -311,6 +317,8 @@ class AnalysisIR:
     relationships: List[Relationship]  # typed edges with quality scores
 ```
 🟪 `AnalysisIR`, `Reference`, `Relationship` are spec names; code uses `AnalysisResult`, `Symbol`, `Edge`.
+
+🟩 The serialized `analysis_runs[]` array is sorted by ascending `started_at`, ties broken by `pass` id (WI-haguz), so within a run consumers see passes in chronological completion order. It is **not** byte-stable across runs: every entry stamps a fresh `execution_id` (a per-run `uuid:` value) plus wall-clock `started_at`/`duration_ms`, and because the sort key is wall-clock, even the pass *ordering* is not reproducible run-to-run (WI-haguz removed the old random dict-order; it did not make the order reproducible). Only the L2 semantic content (nodes, edges, `stable_id`s, `run_signature`) is reproducible — see the `reproducibility_context` block (§ below).
 
 ### Multi-value field axes
 
@@ -355,12 +363,13 @@ Future axis declarations (possible `supply_chain.tier`, `Edge.meta` key vocabula
   - 🟩 Python: implemented via `_compute_shape_id()` using Python's `ast` module
   - 🟩 Tree-sitter languages: implemented via generic CST walker in `TreeSitterAnalyzer.compute_shape_id()`. Two wiring paths: (1) analyzers that populate `node_for_symbol` get automatic shape_id computation in the base class `analyze()` method, (2) analyzers that call `compute_shape_id(node)` directly at symbol construction time.
   - Coverage: ~41 of ~70 code-language analyzers — 20 mainstream (via `node_for_symbol`, direct `compute_shape_id()`, or Python's `ast` override) + 19 extended1 + 1 common (HLSL). Remaining gaps are niche languages (13 extended1 without, 10 common without, Dart not yet wired). See ADR-0014 status line for the live coverage table.
+  - `None` when: (a) the node is a **synthetic node with no source body to hash** — e.g. a framework route registration (`starlette:<handler>`, `kind="function"` but representing a path→handler *mapping*, not a code body — its real handler carries the shape_id), an `external_symbol` (no in-repo source), or any node whose declaring construct is not a hashable code structure; or (b) the node's language/analyzer is outside the coverage set above; or (c) the symbol kind is non-structural (no meaningful control-flow skeleton). A null `shape_id` is therefore **not** by itself a defect — it may be an honest "no body to hash" (as for `fingerprint`, see below) *regardless of the kind label*, so a consumer must treat null as "not clusterable" rather than infer a gap. (WI-lutob closed the real code-body gaps: C#/Solidity/WGSL `class`/`function`/`method`/`struct`/`interface`/`enum` now populate it.)
 * `fingerprint` (structural content hash): `hgfp2:` + `sha256(subtree_walk)[:16]`
   - Hash of the symbol's parse subtree — shape + identifiers + literals — computed by the central post-pass in `hypergumbo_core/fingerprint.py`, which parses each file once and hashes the subtree covering the symbol's span (scheme tag declared top-level as `symbol_fingerprint_scheme`)
   - **Does NOT change** when: blank lines, indentation choices, or comments change (whitespace/comment-invariant — deliberately NOT a raw `sha256(source_bytes)`)
   - **DOES change** when: an identifier is renamed, a literal's value changes, or structure changes
   - Purpose: Detect meaningful modifications; duplicate-code detection; per-symbol cache invalidation
-  - `None` when: the language has no grammar in the language pack (bash, regex-only analyzers), the span has no parseable content, or the located subtree contains parse errors — an honest null, never a degenerate constant (enforced by the spec validator's fingerprint-degeneracy umbrella check). Synthetic boundary / `external_symbol` nodes (span `0-0`, no in-repo source bytes) are `None` for the same reason — there is no content to hash (WI-lisog facet b)
+  - `None` when: the language has no grammar in the language pack (regex-only analyzers), the span has no parseable content, or the located subtree contains parse errors — an honest null, never a degenerate constant (enforced by the spec validator's fingerprint-degeneracy umbrella check). Synthetic boundary / `external_symbol` nodes (span `0-0`, no in-repo source bytes) are `None` for the same reason — there is no content to hash (WI-lisog facet b)
   - **Single producer, single shape.** The central post-pass solely owns this field for source-code nodes (`language is not None`): it recomputes any non-canonical value an analyzer may have stamped — a producer-side bare-hex `sha256(source[start:end])[:16]` leak — so only the canonical `hgfp2:` form (or `None`) ever reaches the output (WI-lisog). The **one** documented second shape is an identity-derived bare 16-hex fingerprint on `language is None` Class-B synthetic stand-ins (e.g. protocol-linker synthesized nodes): they have no source to hash, so the producer stamps `sha256(symbol_id)[:16]` as a stable identity marker and the post-pass preserves it (it is not a source-content hash and carries no `hgfp2:` prefix by design)
 
 **Route and entry-point stable_id variants** (ADR-0014 §4). Symbols that name framework endpoints rather than language constructs use distinct, smaller-input hash bases. Per ADR-0035 §3/§4, route and entry identity now fold in the declaring file (and language for routes), so the same logical route or entry in different files or languages is distinct:
@@ -390,7 +399,7 @@ def authenticate(username: str, password: str) -> User:
 
 The exact algorithms for identity and provenance fields are governed by scheme identifiers in the output:
 * `stable_id_scheme`: identifies the algorithm/normalization used to compute `stable_id`. Current value: `hypergumbo-stableid-v8`. The scheme has shipped eight values (`v1 → v2 → v3 → v4 → v5 → v6 → v7 → v8`); each transition changed every affected `stable_id` value with no in-place migration, so outputs from an older hypergumbo must be re-analyzed against the current binary before they can be compared. See [§ Algorithm-identification fields and `stable_id_scheme` version history](#algorithm-identification-fields-and-stable_id_scheme-version-history) for the per-transition record (driver, hash-basis change, and collision impact).
-* `shape_id_scheme`: identifies the algorithm used to compute `shape_id`
+* `shape_id_scheme`: identifies the algorithm used to compute `shape_id`. Current value: `hypergumbo-shapeid-v3`. v3 (WI-linon) folds the symbol kind (`class`/`method`/`function`) and the concrete AST node type into the Python shape hash, so structurally-trivial symbols of different kinds no longer share a `shape_id` — a module-level function vs a class method (both `ast.FunctionDef`, with `self` absent from the body), and — via the node type — an `async def` vs a `class` (`ast.AsyncFunctionDef` previously mis-branched into the ClassDef path). Every Python `shape_id` value changed relative to v2; the tree-sitter path (other languages) is unchanged but the identifier is global, so it bumps per the mandate below.
 * `repo_fingerprint_scheme`: identifies the algorithm used to compute `analysis_runs[].repo_fingerprint`
 
 Any change that would alter computed values MUST bump the corresponding scheme identifier.
@@ -411,6 +420,7 @@ Any change that would alter computed values MUST bump the corresponding scheme i
     - `dirty file`: tracked file whose working tree content differs from HEAD OR untracked file included in analysis
     - Purpose: ensures repo_fingerprint changes when dirty file contents change, not just when paths change
   - Non-git: `sha256(sorted([(path, content_hash) for all files]))`
+  - **Field rendering (WI-bosog, `repofp-v2`):** the AnalysisRun field carries the `sha256:` scheme prefix over the full 64-hex digest (`sha256:<64hex>`), uniform with the sibling identity fields `run_signature` / `config_fingerprint` (`sha256:<16hex>`). The bare (un-prefixed) digest is retained only where the value doubles as the colon-free analysis-cache path segment.
   - Purpose: Cache invalidation, provenance tracking
 
 ### Output views
@@ -679,18 +689,18 @@ where `kind_boost` is 2.0 for main/CLI-main entrypoints (the canonical applicati
 
 ## 9) Behavior map JSON
 
-The behavior map is a JSON file produced by `hypergumbo run`. It is a compiled view of the IR (see [§6 Output views](#output-views)) designed for programmatic consumption by agents and tooling. Field *semantics* (`id`, `stable_id`, `origin`, etc.) are defined once in [§6 Internal representation](#6-internal-representation) and not repeated here; this section covers serialization rules and output-specific fields.
+The survey is a JSON file produced by `hypergumbo survey`. It is a compiled view of the IR (see [§6 Output views](#output-views)) designed for programmatic consumption by agents and tooling. Field *semantics* (`id`, `stable_id`, `origin`, etc.) are defined once in [§6 Internal representation](#6-internal-representation) and not repeated here; this section covers serialization rules and output-specific fields.
 
-Single file: `hypergumbo.results.json`
+Single file: `survey.json`
 
 ### Top-level structure
 ```json
 {
-  "schema_version": "0.14.2",
-  "confidence_model": "hypergumbo-evidence-v1",
+  "schema_version": "0.14.4",
+  "confidence_model": "hypergumbo-evidence-v2",
   "stable_id_scheme": "hypergumbo-stableid-v8",
-  "shape_id_scheme": "hypergumbo-shapeid-v2",
-  "repo_fingerprint_scheme": "hypergumbo-repofp-v1",
+  "shape_id_scheme": "hypergumbo-shapeid-v3",
+  "repo_fingerprint_scheme": "hypergumbo-repofp-v2",
   "view": "behavior_map",
   "generated_at": "2026-01-15T10:30:00Z",
   "analysis_incomplete": false,
@@ -730,7 +740,7 @@ The schema follows JSON Schema Draft 2020-12 and can be used for:
 
 ### Confidence scoring
 
-The `confidence` field on edges (0.0-1.0) indicates detection reliability. The `confidence_model` field (`hypergumbo-evidence-v1`) identifies the scoring algorithm. See [§12 Confidence scoring](#12-confidence-scoring) for the full confidence model and [Appendix C](#appendix-c-schema-compatibility-contract) for consumer obligations.
+The `confidence` field on edges (0.0-1.0) indicates detection reliability. The `confidence_model` field (`hypergumbo-evidence-v2`) identifies the scoring algorithm. See [§12 Confidence scoring](#12-confidence-scoring) for the full confidence model and [Appendix C](#appendix-c-schema-compatibility-contract) for consumer obligations.
 
 ### analysis_runs[] — provenance tracking
 
@@ -738,7 +748,7 @@ Each entry records provenance for one analyzer pass. Field semantics are defined
 
 **Output-specific note:** The IR field `pass_id` is serialized as `pass` in JSON output.
 
-**skipped_passes** (array, optional): Lists passes that did not run. Each entry includes pass ID and reason. Two reasons are emitted today: missing optional dependencies (e.g., `{"pass": "lean", "reason": "tree-sitter-lean grammar not available"}`) and the WI-jadig file-presence pre-filter — an analyzer whose declared languages all have `files == 0` in `profile.languages` is short-circuited at the dispatcher with `{"pass": "<lang>", "reason": "no files matched"}`, saving the wall-clock cost of opening a parser for a pass that has no input.
+**skipped_passes** (array, optional; per-run): a legacy field mirroring the top-level `limits.skipped_passes` shape. Pass-level skips never appear here — a skipped pass never ran, so it has no `analysis_runs[]` record — so this per-run field has no current producer and is omitted when empty (INV-virik). For skip provenance, read the authoritative `limits.skipped_passes` (documented under [§9 limits — explicit gaps](#limits--explicit-gaps)). (INV-nihug.)
 
 **pass_version** (string, INV-morag option A): real per-pass version derived from `sha256(inspect.getsource(<pass module>))`. Replaces the fake `-v1` suffix that previously lived inside `pass_id` with a value that actually changes when the pass implementation changes. INV-morag PR 2 propagated non-empty values to every registration site automatically via the `@register_analyzer` / `@register_linker` decorators and dropped the `-v1` / `-ts-v1` suffix from `pass_id` entirely.
 
@@ -746,7 +756,7 @@ Each entry records provenance for one analyzer pass. Field semantics are defined
 
 ### reproducibility_context — what's captured, what's explicitly not
 
-Top-level block introduced in INV-morag (option B) that documents the level of reproducibility this behavior map asserts. Reproducibility is a spectrum, not a yes/no claim; this block captures the L2 level (direct dependencies + runtime identity) and explicitly disclaims higher levels.
+Top-level block introduced in INV-morag (option B) that documents the level of reproducibility this survey asserts. Reproducibility is a spectrum, not a yes/no claim; this block captures the L2 level (direct dependencies + runtime identity) and explicitly disclaims higher levels.
 
 ```json
 {
@@ -758,9 +768,8 @@ Top-level block introduced in INV-morag (option B) that documents the level of r
       "python_implementation": "CPython",
       "tree_sitter_version": "0.21.0",
       "grammars": {
-        "tree-sitter-language-pack": "0.4.0",
-        "tree-sitter-python": "0.21.0",
-        ...
+        "tree-sitter-go": "0.23.4",
+        "tree-sitter-language-pack:nim": "0.13.0"
       }
     },
     "not_captured": [
@@ -773,11 +782,13 @@ Top-level block introduced in INV-morag (option B) that documents the level of r
 }
 ```
 
+**Grammars captured are those actually used.** `captured.grammars` lists only the tree-sitter grammars whose analyzer pass produced ≥1 node (WI-fonod), pruned at the finalize chokepoint — grammars for detected-but-empty languages, and every installed-but-unexercised grammar, are dropped, and a repo analyzed only by ast-based analyzers (python) carries no `grammars` key at all. Pack-backed grammars appear as distinct `tree-sitter-language-pack:<lang>` entries at the shared pack version (WI-givad; the pack exposes no per-grammar version). (`analyzer_identity`'s cache key still folds in every installed grammar — that surface is deliberately install-scoped, not run-scoped.)
+
 **Levels:** L0 (source content), L1 (pass logic via `AnalysisRun.pass_version`), L2 (direct deps — captured here), L3 (transitive deps), L4 (OS / libc), L5 (hardware). Hypergumbo commits to L2 and disclaims L3-L5.
 
 **Cache correctness:** any change to a captured field invalidates the run signature. Diffs not explained by captured fields suggest a not_captured factor — file as a tracker item if isolatable.
 
-**Consumer guidance:** when comparing two behavior maps, attribute differences along this priority: (1) `pass_version` change → analyzer logic changed; (2) `grammars[*]` change → grammar upgrade; (3) `tree_sitter_version` / `python_version` change → runtime upgrade; (4) unexplained → likely a not_captured factor.
+**Consumer guidance:** when comparing two surveys, attribute differences along this priority: (1) `pass_version` change → analyzer logic changed; (2) `grammars[*]` change → grammar upgrade; (3) `tree_sitter_version` / `python_version` change → runtime upgrade; (4) unexplained → likely a not_captured factor.
 
 ### profile — repo characteristics
 
@@ -796,29 +807,86 @@ Top-level block introduced in INV-morag (option B) that documents the level of r
 
 **LOC definition:** Lines of code counts non-empty lines in files matching language extensions — the SLOC convention shared with `cloc` and `tokei`'s "code" tally. Whitespace-only lines are excluded; comments are NOT stripped. Expect the number to run ~10-20% lower than raw `wc -l` for typical source files (the gap is blank lines). Lock files (poetry.lock, package-lock.json, etc.) are excluded. See [§15 File role classification](#15-file-role-classification) for the proposed taxonomy that would also exclude pure data files from LOC counts.
 
+This per-file `loc` is the **authoritative** lines-of-code figure, counted once per file. It is distinct from the per-symbol `line_span` field on `nodes[]` (a physical `end_line - start_line + 1` span, blank/comment lines included, attached to each function/class/method). Because nested symbols overlap — a method span sits inside its class span sits inside its file span — `line_span` is **not summable**: `Σ(node.line_span)` overcounts physical lines (empirically ~1.66× the per-file total) and is not a meaningful quantity. Use `profile.languages[L].loc` for repo/language LOC; use `line_span` only per symbol (centrality dampening, test-density, dead-code ranking, slicing). (WI-palon.)
+
 ### nodes[] — definitions, files, endpoints
 
 Field semantics (`id`, `stable_id`, `shape_id`, `fingerprint`, `origin`, `quality`, etc.) are defined in [§6 Internal representation](#6-internal-representation). See `docs/schema.json` for the full field list. This section documents output-specific serialization rules.
 
 **Presence rule:** `stable_id` and `shape_id` keys MUST be present on every node. If unavailable, they MUST be set to `null` (not omitted). This supports forward-compatible consumers without forcing every pass to compute every field.
 
-**supply_chain** (object, required): Compiled from the IR's flat `supply_chain_tier` and `supply_chain_reason` fields into a nested object with an added `tier_name` field (e.g., `first_party`, `internal_dep`), computed from the numeric `tier` at serialization time. See [§14 Supply chain classification](#14-supply-chain-classification) for tier definitions.
+**signature** (string, optional — functions/methods): a human-readable *display* rendering of the parameter list and return type, e.g. `(a: int, b: str='hello') -> None`. Default values are shown verbatim (bounded per value so a pathological default cannot blow up the line — over-long or unparseable defaults render as `…`); for a rare over-length signature the parameter list is truncated with a `…)` marker while the **return type is preserved** (WI-hopiz). This display string is distinct from the structural signature that feeds `stable_id` (param count / arity flags — see [§6](#6-internal-representation)), so its width never affects identity.
+
+**supply_chain** (object, required): Compiled from the IR's flat `supply_chain_tier` and `supply_chain_reason` fields into a nested object with an added `tier_name` field (e.g., `first_party`, `internal_dep`), computed from the numeric `tier` at serialization time. `Symbol.to_dict()` also **relocates** five top-level boolean flags into this object: `is_test_file`, `is_example_file`, `is_config_file`, and `is_generated_file` (file-role classifications, each independent of `tier`), plus `is_exported` (whether the symbol is part of the package's public API). See [§14 Supply chain classification](#14-supply-chain-classification) for tier definitions.
 
 ```json
-"supply_chain": {"tier": 1, "tier_name": "first_party", "reason": "matches ^src/"}
+"supply_chain": {"tier": 1, "tier_name": "first_party", "reason": "matches ^src/", "is_test_file": false, "is_example_file": false, "is_config_file": false, "is_generated_file": false, "is_exported": true}
 ```
 
 **Node kinds:** `file`, `module`, `function` (function/method), `class`, plus the rest of the canonical language-construct vocabulary (`method`, `interface`, `struct`, `enum`, `trait`, `contract`, …). Per ADR-0027, `Symbol.kind` names the source-language syntactic construct **only**; framework-endpoint participation (HTTP route, IPC handler, CLI entrypoint, etc.) is queried from `entrypoints[]` (see [§8](#8-entrypoint-detection)) and from `meta.concepts` on the node, not from `kind` itself. The pre-closure `endpoint` kind was retired in the SCHEMA_VERSION 0.6.0 fold (audit-findings 0009).
 
+**Node.meta (`Symbol.meta`) fields.** Analyzer- and linker-emitted attributes of a node whose canonical `Symbol.kind` names only the source-language construct (ADR-0027). The registered vocabulary is the `symbol_meta` axis in `axis_meta_keys.py` (47 keys); language analyzers may additionally stamp unregistered per-language keys (sustained use of one is an ADR-0024 promotion signal). Values are strings unless noted; boolean-flag keys are present only when true. The dominant semantic key, `meta.concepts`, is documented separately at [§ meta.concepts Structure](#metaconcepts-structure).
+
+*Framework role & routing:*
+- `framework_role` (optional): framework-specific role of a generic-kind symbol (e.g. `event_publisher`, `route`, `graphql_resolver`); stamped by analyzers and framework-dispatch linkers (audit-findings 0013 fold residue).
+- `route_path` (optional): URL path a `framework_role == "route"` handler registers (e.g. `/users`).
+- `http_method` (optional): HTTP method of a route marker (`GET`, `POST`, `ANY`); some producers also carry transport sentinels (`WS`, `LIVE`, `RPC`) that `routes.route_of` lifts into `route_protocol`.
+- `route_framework` (optional): framework name of a route marker (`flask`, `rails`); additive home read by `routes.route_of` (direct emission deferred, INV-vokak).
+- `route_protocol` (optional): transport of a route endpoint (`http` | `websocket` | …), split from `http_method` (producer migration deferred, INV-tibap).
+- `is_class_based_view` (optional, bool): Django class-based-view marker; set by the Django dispatch linker.
+
+*External-boundary & supply-chain provenance:*
+- `reference_syntax` (optional): use-site reference syntax of an `external_symbol` boundary node (`unresolved` / `attribute` / `module` / `namespace`; ADR-0036).
+- `external_boundary` (optional, bool): `True` on synthetic boundary nodes minted for unresolved-but-referenced names.
+- `ecosystem` (optional): distribution provenance of a tier-3 boundary dependency — `stdlib` vs `third_party` (ADR-0041 §3); absent when the language has no enumerated stdlib.
+- `directness` (optional): manifest declaration relationship of an external dependency — `direct` / `transitive` / `undeclared` (ADR-0041 §2).
+
+*File / build shape (synthetic file / package / dependency nodes):*
+- `module_system` (optional): `esm` / `commonjs` (JS/TS).
+- `component_framework` (optional): single-file-component framework (`vue`, `svelte`, `astro`).
+- `package_ecosystem` (optional): package-manager registry on package nodes (`npm`, `composer`) — distinct from the `ecosystem` provenance key above.
+- `entry_role` (optional): entry-point role on file nodes (`main`, `script`).
+- `dependency_scope` (optional): dependency scope (`dev`).
+- `install_mode` / `install_source` (optional): requirement install mode (`editable`) / source (`url`).
+- `config_format` (optional): config-shape format (`tsconfig`).
+- `task_implementation` (optional): task implementation language.
+- `test_dialect` (optional): test-framework dialect (`robot`).
+- `block_type` (optional): sub-classification of a generic `block` node (`datasource`, `generator`).
+
+*Declaration & visibility shape:*
+- `base_classes` / `parent_base_classes` (optional, list): direct / transitive ancestor base-class names (the latter from the `type_hierarchy` linker).
+- `decorators` / `annotations` (optional, list): Python-style decorators / Java-Kotlin annotations (kept distinct).
+- `visibility_signal` (optional): which signal set the typed `Symbol.visibility` — `language_modifier` / `name_convention` / `default` (INV-jusot).
+- `exported` (optional, bool): exported from its file (ES `export`, Go capitalized name).
+- `export_scope` (optional): finer export visibility (`module` / `package` / `public`) — **reserved; not currently emitted by any producer.**
+- `export_source` (optional): originating source for re-exported symbols (resolves ES re-export chains).
+- `override` / `virtual` / `abstract` / `static` (optional, bool): method/class modifiers (`static` affects call resolution — no implicit receiver).
+- `is_local` / `is_recursive` / `is_native` (optional, bool): locally-scoped / recursive / native-bridge (JNI, N-API) markers.
+
+*Signature & language annotations:*
+- `parameters` (optional, list): structured parameter list (name/type/default); `params` is the short-form name-only variant.
+- `return_type` / `inferred_return_type` (optional): declared / inferred return type.
+- `display_name` (optional): human-readable name overriding the default.
+- `scope` (optional): lexical scope qualifier (`workgroup`, `thread_local`), distinct from `visibility` / `static`.
+- `import_path` (optional): source-language import path when it differs from the identifier.
+- `documentation` (optional): docstring / leading-comment text.
+
+*SCIP index round-trip (`scip/`):*
+- `symbol_roles` (optional, int bitset): SCIP symbol-role bitset.
+- `scip_kind` (optional): SCIP-native kind label kept alongside canonical `Symbol.kind`.
+
+*Escape hatch:*
+- `tags` (optional, list): free-form annotations not yet promoted to a named key.
+
 ### edges[] — relationships
 
-Each edge carries `id`, `edge_key`, `type`, `src`, `dst`, `confidence`, provenance fields (`origin`, `origin_run_id`, `derived_from`), `quality`, and a `meta` object with structured evidence. See `docs/schema.json` for the full field list.
+Each edge carries `id`, `edge_key`, `type`, `src`, `dst`, `confidence` (evidence-derived detection reliability), `confidence_source`, `rank_score` (ranking prominence), provenance fields (`origin`, `origin_run_id`, `derived_from`), `quality` (DEPRECATED — ADR-0039 ruling 4), and a `meta` object with structured evidence. See `docs/schema.json` for the full field list.
 
 **origin (INV-jidat):** `origin: list[str]` records which pass IDs contributed to this Edge (or Symbol), ordered chronologically. Single-element lists are the common case; multi-element lists support multi-pass attribution. Schema-breaking change from scalar string (SCHEMA_VERSION 0.10.0). `from_dict()` auto-normalizes legacy scalar JSON to single-element list for backward compatibility.
 
 **derived_from (INV-rukor):** `derived_from: list[str] | null` records which Symbol (or Edge) IDs the producer consumed to construct this Edge. Populated by linkers (always non-null); null for analyzer-originated edges whose derivation is the AST itself. Enables answering "why does this edge exist?" without re-reading linker source code.
 
-**Multi-pass evidence (optional):** When multiple analysis passes observe the same relationship, `meta.evidence[]` accumulates their individual observations. The top-level `meta.evidence_type`, `meta.evidence_lang`, and `meta.evidence_spans` always reflect the primary (highest-confidence) record.
+**Evidence provenance:** Each edge's `meta` carries the primary inference record via `meta.evidence_type` (the inference pathway, ADR-0028) and `meta.evidence_lang` (the source language, central-stamped at `Edge.create` per ADR-0040). (The `meta.evidence[]` multi-pass accumulator and `meta.evidence_spans` were descoped per ADR-0040 — never populated by any producer.)
 
 **edge_key:**
 - `edge_key` is a canonical identity used to deduplicate/merge multiple observations of the “same” relationship across passes.
@@ -831,14 +899,14 @@ Each edge carries `id`, `edge_key`, `type`, `src`, `dst`, `confidence`, provenan
 
 **Meta fields**:
 - `evidence_lang` (optional): Language used for confidence scoring. Defaults to `src` node's language if omitted. Required for cross-language edges (HTTP, IPC) where src/dst languages differ.
-- `evidence_spans[]`: Structured locations of evidence. Each span includes file path and line/column range.
 - `protocol` (optional): Wire protocol for cross-language linker edges — `"http"`, `"grpc"`, `"graphql"`, etc. Set by Protocol-subcategory linkers (see [§7](#7-linkers)).
 - `bridge_kind` (optional): FFI/bridge mechanism for Bridge-subcategory linker edges — `"native"` (JNI), `"wasm_bindgen"`, `"tauri_ipc"`, etc.
 - `channel_kind` (optional): Channel discriminator for `event_publishes` edges — `"ipc"`, `"websocket"`, `"queue"`, `"message_bus"`, `"crdt"`. See [§7 IPC/Message Channel Detection](#ipcmessage-channel-detection).
-- `framework_dispatch` (optional): Framework-dispatch convention name when the inference was driven by a framework rather than language semantics (e.g., `"django_third_party"`, `"phoenix_view"`). Replaces the per-framework `evidence_type` peers retired in ADR-0028 (audit-findings 0008/0012).
-- `call_construct` / `receiver` / `resolution_quality` (optional): For Cluster-27C call-shape facts on `ast_call`-family edges. `call_construct` names the source-language call construct under `ast_call` (e.g. `method` / `function` / `pipe` / `application`); `receiver` classifies the call-site receiver (e.g. `bare` / `external` / `typed`); `resolution_quality` is a pathway-quality label (e.g. `recovery` / `ambiguous`) orthogonal to `Edge.is_resolved`.
-- `io_boundary` (optional, ADR-0016): IO category this call reaches, drawn from the controlled vocabulary `fs_read` / `fs_write` / `net_send` / `net_recv` / `ipc_send` / `ipc_recv` / `env_read` / `env_write` / `subprocess` / `browser_storage_read` / `browser_storage_write` / `db_read` / `db_write` / `process_send` / `logging` (with `external_potential` as a known boundary). The source of truth is `io_boundary.CATALOG_BOUNDARY_TYPES`. Stamped on every call edge whose target is (or transitively reaches) a primitive in `io_primitives/*.yaml`. Used by `hypergumbo io-boundaries` (see [§11 Slicing behavior](#11-slicing-behavior)). Value `unknown_dynamic` indicates the call target is computed at runtime.
-- `io_primitive` (optional, ADR-0016): Fully-qualified primitive name (e.g., `"pathlib.Path.read_text"`) when `io_boundary` is set. Used for fine-grained provenance — exactly which built-in primitive this edge funnels through.
+- `framework_dispatch` (optional): The dispatch convention that produced the edge — a framework-specific convention (`"django_orm"`, `"django_third_party"`, `"phoenix_view"`) or a framework-agnostic dispatch mechanism (`"registry_dispatch"`, `"npm_package"`). One coherent "which dispatch convention recovered this edge" axis (ADR-0028 Cluster 28C), **not** a bare framework name (INV-junid); distinct from `detection_pattern` (pattern-shape match heuristics — how an edge was string/name/URL-matched). Replaces the per-framework `evidence_type` peers retired in ADR-0028 (audit-findings 0008/0012).
+- `call_construct` / `receiver` / `resolution_quality` (optional): For Cluster-27C call-shape facts on `ast_call`-family edges. `call_construct` names the source-language call construct under `ast_call` (e.g. `method` / `function` / `pipe` / `application`); `receiver` classifies the call-site receiver — a per-language fold-residue label emitted only by analyzers whose call syntax carries receiver flavor (Ruby / Go / C# / Rust / C++), so it is absent on corpora that lack those languages (e.g. a pure-Python tree); the complete current producer vocabulary is `bare` / `external` / `constant_external` / `stdlib` / `typed_field` / `typed_var` / `field_chain` / `generic` (no consumer branches on it, and it mixes a resolution class with the `field_chain` expression shape — see `MetaKeySpec` for the re-evaluation trigger); `resolution_quality` is a pathway-quality label (e.g. `recovery` / `ambiguous`) orthogonal to `Edge.is_resolved`.
+- `access_mode` / `data_direction` (optional, ADR-0038): Data-flow facts on data-carrying edges. `access_mode` classifies the source node's access at the edge — `read` / `write` / `mutate`. It is **applicable only to** the four data-carrying edge types `calls` / `references` / `module_attr_ref` / `event_publishes`; on the other edge types (structural relationships such as `contains` / `extends` / `imports` / `instantiates`) the question **does not arise** and the key is absent by design — so a 0% population rate on those types is intended N/A, not a coverage gap (INV-tibob; ADR-0038 ruling 2). The applicability matrix is the schema of record in `MetaKeySpec` (`axis_meta_keys.py`; resolvers `access_mode_applicable_edge_types()` / `access_mode_na_edge_types()` / `is_access_mode_not_applicable()`), which distinguishes "None = missing data on an applicable type, fix the emitter" from "None = does not arise on an N/A type". `data_direction` is the ADR-0038 bridge-constant direction key (the former `dest_access_mode` sibling was removed per ADR-0038 ruling 3).
+- `io_boundary` (optional, ADR-0016): IO category a call reaches, drawn from the controlled vocabulary `fs_read` / `fs_write` / `net_send` / `net_recv` / `ipc_send` / `ipc_recv` / `env_read` / `env_write` / `subprocess` / `browser_storage_read` / `browser_storage_write` / `db_read` / `db_write` / `process_send` / `logging` (with `external_potential` and `command_launch` as known boundaries). The source of truth is `io_boundary.CATALOG_BOUNDARY_TYPES`. **Derived at consumer time, not persisted by producers — with one command-mediated exception:** the survey's catalog `calls` edges carry no `io_boundary` key; that classification is computed on demand from the `io_primitives/*.yaml` catalogs by `io_boundary.compute_boundary_map`, which the canonical surface `hypergumbo io-boundaries` invokes (see [§11 Slicing behavior](#11-slicing-behavior)). The exception is `command_launch` (WI-javoh): a command-mediated language like bash has no data-I/O catalog to match at consumer time — only the analyzer knows the shell grammar well enough to tell a program launch (`curl`, `git`) from a builtin (`echo`, `cd`) or an in-tree function call — so the bash producer *prestamps* `meta["io_boundary"] = "command_launch"` on each launch edge (`is_resolved=False`, an `ExternalRef` dst; deduped per caller/command), and the consumer-time aggregation loop picks it up structurally. This is the ADR-0016 impl-note ruling-A shape ("command-mediated languages populate the subprocess boundary by emitting unresolved external-command edges — not via an io_primitives data-I/O catalog"). The emitted/derivable vocabulary is exactly `io_boundary.KNOWN_IO_BOUNDARIES` (the 15 `CATALOG_BOUNDARY_TYPES` above + `external_potential` + `command_launch`); `hypergumbo io-boundaries` and `verify-claims` boundary constraints accept these and nothing else. `unknown_dynamic` is **reserved** by [ADR-0016](adr/0016-io-boundary-analysis.md) for runtime-computed call targets (`getattr(obj, name)()`) but is **not currently emitted** by any producer and is **not** in `KNOWN_IO_BOUNDARIES` — it is documented here only as the ADR-sanctioned name should that classification later be implemented (WI-datoz). (WI-fakuv / WI-puvun: the earlier "stamped on every call edge" contract was never realized in any producer — 0 of 110,533 self-corpus edges carried the key — so the consumer-time CLI, not a persisted field, is canonical for catalog boundaries. The key still appears on the *derived* edges that consumer-time views emit, and on `command_launch` producer edges per the exception above.)
+- `io_primitive` (optional, ADR-0016): Fully-qualified primitive name (e.g., `"pathlib.Path.read_text"`) when `io_boundary` is set. Used for fine-grained provenance — exactly which built-in primitive a derived boundary funnels through. Like `io_boundary`, it is computed at consumer time, not persisted on the survey's edges.
 - `taint_labels` (optional, ADR-0017): List of active taint tags on this edge (e.g., `["plaintext", "host_secret"]`). Populated only when `verify-claims` runs taint propagation.
 - `taint_sanitized_by` (optional, ADR-0017): Name of the sanitizer that transformed taint on this edge (e.g., `"aes_gcm_encrypt"`). Present only when a sanitizer-categorized call sits on this edge.
 
@@ -846,7 +914,6 @@ Each edge carries `id`, `edge_key`, `type`, `src`, `dst`, `confidence`, provenan
 
 * `ast_call` — Call resolved from AST surface form (canonical for what was previously `ast_call_direct` / `ast_call_method` / `ast_getattr_call`; the syntactic shape moves into `meta["call_construct"]`)
 * `ast_call_direct` — Direct function call in AST (retained for back-compat where the call_construct is unambiguous)
-* `ast_call_method` — Method call with receiver (retained for back-compat; canonical fold target is `ast_call_direct` + `meta["call_construct"]="method"`)
 * `import_static` — Static import statement
 * `import_dynamic` — Dynamic import (importlib, require with variable)
 * `script_src` — HTML script tag src attribute
@@ -855,7 +922,7 @@ Each edge carries `id`, `edge_key`, `type`, `src`, `dst`, `confidence`, provenan
 
 The axis is open: the registry at `packages/hypergumbo-core/src/hypergumbo_core/evidence_types.py` is the live source of truth. See [§6 Multi-value field axes](#multi-value-field-axes).
 
-**quality.reason** remains for human debugging but is NOT relied upon for programmatic logic.
+**quality (`{score, reason}`) is DEPRECATED** (ADR-0039 ruling 4; WI-humok / WI-riguh). It carries zero independent signal: `quality.score` is `round(clamp(confidence), 3)` on 110,533/110,533 verification-corpus edges, and `quality.reason` encodes the emitter mechanism, not a confidence tier. Read `confidence` + `confidence_source` + `is_resolved` instead. The field is still emitted for one deprecation release and removed the next; `quality.reason` remains for human debugging in the interim but is NOT relied upon for programmatic logic.
 
 **Edge types** — per ADR-0023, `Edge.edge_type` names the **relationship** that produced the edge (canonical: `calls`, `imports`, `renders`, `event_publishes`, …), not the endpoint shape. Evidence-type and meta-key facts are queried separately (see Evidence types above and Meta fields above):
 
@@ -864,7 +931,7 @@ The axis is open: the registry at `packages/hypergumbo-core/src/hypergumbo_core/
 * `defines_target` — definition relationship
 * ✅ `renders` — template rendering (Rails / Django / Phoenix / Spring MVC / Laravel Blade controllers → view templates)
 * `implements` — class implements interface (Java, TypeScript, Go via `var _ Interface = &Struct{}`)
-* `extends` — class extends base class
+* `extends` — class extends base class. External/stdlib bases (`Enum`, `Exception`, `argparse.ArgumentParser`, Kotlin/Ruby library superclasses, …) are represented as unresolved-external edges (`is_resolved=False`, an `external_symbol` boundary dst), not dropped — recovered uniformly for every OO language by the framework-agnostic inheritance-linker chokepoint (WI-jubag Approach C) when the per-analyzer resolver leaves a base unresolved
 * JNI Java native method → C implementation: canonical `calls` + `meta["bridge_kind"] = "native"` (see [§7 JNI bridge detection](#java-jni-cross-language-detection)); pre-WI-mifor-vabul this was a distinct edge_type `native_bridge`, retained as a deprecated registry entry until Phase 4b'
 * IPC send (Electron / WebSocket / EventEmitter / message queue): canonical `event_publishes` + `meta["channel_kind"]` in `{"ipc", "websocket", "queue", "message_bus", "crdt"}` (see [§7 IPC/Message Channel Detection](#ipcmessage-channel-detection)); pre-WI-hahap-farid this was a distinct edge_type `message_send`, retained as a deprecated registry entry until Phase 4b'
 * IPC receive: **dropped** (DEPRECATE-NO-FOLD per audit-findings 0002) — the forward `event_publishes` already captures the relationship; pre-WI-hahap-farid this was a distinct edge_type `message_receive`
@@ -874,13 +941,15 @@ The axis is open: the registry at `packages/hypergumbo-core/src/hypergumbo_core/
 
 ### features[] — named slices
 
-Each feature contains `id`, `name`, `entry_nodes[]`, `node_ids[]`, `edge_ids[]`, a `query` object (method, entrypoint, hops, max_files, exclude_tests), `limits_hit[]`, and `summary`. See `docs/schema.json` for the full structure.
+Each feature contains `id`, `name`, `entry_nodes[]`, `node_ids[]`, `edge_ids[]`, a `query` object, `limits_hit[]`, and — when non-empty — `node_depths`, `node_tiers`, and `admission_stats` (per-node BFS depth/tier maps and, for dataflow slices, edge-admission counters). The `query` object echoes the slice spec that produced the feature: `method`, `entrypoint`, `hops`, `max_files`, `exclude_tests`, `exclude_utility`, and `reverse` are always present, and `min_confidence`, `max_tier`, `language`, `hub_threshold`, `exclude_imports`, `pass_through_kinds`, and `dataflow` are echoed only when set to a non-default value (so the feature is reproducible from its JSON and its `id` hash stays stable). See `docs/schema.json` for the full structure.
 
 **Feature ID:** Stable identifier based on query spec: `sha256(json.dumps(query, sort_keys=True))`. Same query on same code → same feature ID → enables diff across commits.
 
-**Index, not content (WI-bujim).** The `node_ids[]` and `edge_ids[]` arrays are graph-ID pointers into the top-level `nodes[]` and `edges[]` arrays, NOT inline denormalized symbols/edges. This keeps the behavior map agent-readable in a single file without duplicating slice content. Full denormalized slice payloads (with `nodes`, `edges`, and `meta` keys per feature) are written separately as `slice.handler.<METHOD>.<path>.json` files under the `<out-stem>.slices/` subdirectory, plus a `slice.handler.index.json` companion. Consumers wanting just the discovery view read `features[]`; consumers wanting per-handler portability read the individual slice files.
+**Index, not content (WI-bujim).** The `node_ids[]` and `edge_ids[]` arrays are graph-ID pointers into the top-level `nodes[]` and `edges[]` arrays, NOT inline denormalized symbols/edges. This keeps the survey agent-readable in a single file without duplicating slice content. Full denormalized slice payloads (with `nodes`, `edges`, and `meta` keys per feature) are written separately as `slice.handler.<METHOD>.<path>.json` files under the `<out-stem>.slices/` subdirectory, plus a `slice.handler.index.json` companion. Consumers wanting just the discovery view read `features[]`; consumers wanting per-handler portability read the individual slice files.
 
-**Producer (default).** `hypergumbo run` populates `features[]` from `_emit_handler_slices`: one entry per detected route handler, forward-slice with `exclude_tests=True` / `exclude_imports=True` / `hub_threshold=50`. Handlers over the cap (default 25) do not contribute to `features[]` but still appear in the index file with `emitted=False` so consumers can re-derive on demand. Other entrypoint kinds (CLI, main, websocket, etc.) are not yet wired in but follow the same shape when added.
+**Compact-view re-projection (INV-titid).** Because the pointers index the same view's `nodes[]`/`edges[]`, the `compact` **and tiered** views re-project `features[]` onto their budget-limited selection rather than copying them wholesale: each surviving feature's `entry_nodes[]`/`node_ids[]`/`edge_ids[]` (and `node_depths`/`node_tiers`) are filtered to the retained sets, and a feature whose every entry node was pruned is dropped — mirroring how the views filter `entrypoints[]`. The index-pointer invariant therefore holds in *every* view: a feature's id pointers always resolve within that view's own `nodes[]`/`edges[]` (no dangling references). (WI-pohuf: the tiered view previously copied `features[]` wholesale — frequently the single largest field, e.g. ~25k tokens on a monorepo — which kept a small-budget tier far over budget because the shrink loop only removes nodes; re-projecting it is what lets a 4k/16k tier fit more than ~1 symbol.)
+
+**Producer (default).** `hypergumbo survey` populates `features[]` from `_emit_handler_slices`: one entry per detected route handler, forward-slice with `exclude_tests=True` / `exclude_imports=True` / `hub_threshold=50`. Handlers over the cap (default 25) do not contribute to `features[]` but still appear in the index file with `emitted=False` so consumers can re-derive on demand. A framework route *marker* (`meta.framework_role == "route"`) whose forward slice recovers nothing beyond itself is likewise excluded from `features[]` as a content-free twin of its concept-handler feature (WI-rijop); its per-slice file and index entry are still written. Other entrypoint kinds (CLI, main, websocket, etc.) are not yet wired in but follow the same shape when added.
 
 ### entrypoints[] — detected entry points
 
@@ -893,7 +962,12 @@ Each feature contains `id`, `name`, `entry_nodes[]`, `node_ids[]`, `edge_ids[]`,
       "symbol_id": "python:src/app.py:10-25:get_users:function",
       "kind": "http_route",
       "confidence": 0.95,
-      "label": "HTTP GET /users"
+      "label": "HTTP GET /users",
+      "meta": {
+        "id": "entrypoint:sha256:1a2b3c4d5e6f7a8b",
+        "source": "concept_detector",
+        "evidence_type": "framework_pattern"
+      }
     }
   ]
 }
@@ -901,9 +975,13 @@ Each feature contains `id`, `name`, `entry_nodes[]`, `node_ids[]`, `edge_ids[]`,
 
 **Fields:**
 - `symbol_id`: Reference to a node (matches `nodes[].id`)
-- `kind`: Entry point type (`http_route`, `cli_command`, `main_function`, `background_task`, `websocket_handler`, `library_export`, `shell_script`, `html_entry`, `script_module`, `connectivity_based`, etc.). The `shell_script` kind (INV-tajap) marks bash/sh executable scripts; emitted on the file-kind Symbol whenever the bash analyzer parses a file (every parsed bash file qualifies — `find_bash_files` already requires either a shebang or `.sh`/`.bash` extension). The `html_entry` kind (INV-tajap) marks SPA roots / convention-named `index.html` files; emitted on the file-kind Symbol when the filename is `index.html` (case-insensitive). The `script_module` kind (INV-tajap) marks TS/JS standalone-script files — file-kind Symbols in `typescript` / `javascript` that have **no inbound `imports` edges** (nobody imports the file) **and at least one outbound `calls` edge** (the file does work at module load). Unlike `shell_script` / `html_entry`, this rule requires the full edge set, so the detection runs in `detect_entrypoints` itself instead of via an analyzer-stamped `meta.concepts` entry.
+- `kind`: Entry point type (`http_route`, `cli_command`, `main_function`, `background_task`, `websocket_handler`, `library_export`, `shell_script`, `html_entry`, `script_module`, `connectivity_based`, etc.). The canonical, complete list is the `EntrypointKind` catalog, exposed as the lightweight catalog-derived `entrypoint-kind` axis via `entrypoints.all_known_entrypoint_kinds()` (WI-pupiz) — the single source the schema `Entrypoint.kind` enumeration is generated from. A *known* kind can be dark on a given corpus when no triggering construct is present (e.g. `cli_command` for argparse CLIs is a detection gap tracked under WI-lubap; `background_task` / `connectivity_based` are absent on a repo with no async-task decorators / where concept-based entrypoints were already found). The `shell_script` kind (INV-tajap) marks bash/sh executable scripts; emitted on the file-kind Symbol whenever the bash analyzer parses a file (every parsed bash file qualifies — `find_bash_files` already requires either a shebang or `.sh`/`.bash` extension). The `html_entry` kind (INV-tajap) marks SPA roots / convention-named `index.html` files; emitted on the file-kind Symbol when the filename is `index.html` (case-insensitive). The `script_module` kind (INV-tajap) marks TS/JS standalone-script files — file-kind Symbols in `typescript` / `javascript` that have **no inbound `imports` edges** (nobody imports the file) **and at least one outbound `calls` edge** (the file does work at module load). Unlike `shell_script` / `html_entry`, this rule requires the full edge set, so the detection runs in `detect_entrypoints` itself instead of via an analyzer-stamped `meta.concepts` entry. The `main_guard` kind (WI-tuvun) marks a Python module-level `if __name__ == "__main__":` script guard with no separate `main()` function — a **file**-target entrypoint, distinct from the **function**-target `main_function`, so `kind` alone disambiguates the target type (previously both were `main_function` and only the free-text label distinguished the file-vs-function target). When a script has both a `def main()` and the guard, the function-level `main_function` is canonical and supersedes the redundant same-path `main_guard` (INV-hosuh dedup). The `websocket_handler` kind (WI-kuvig) covers WebSocket endpoints — both definition-based handlers (NestJS gateways, Phoenix channels, etc., via a `websocket_handler` concept) and path-registered WebSocket routes (Starlette `WebSocketRoute`, whose minted route symbol carries the synthetic `meta.http_method == "WS"`); a route whose method is the `WS` marker classifies as `websocket_handler`, **not** `http_route` + `method=WS`, and the `WS` value is retained on the node's `meta.http_method` for backward-compat. Path-bearing WS routes use a `"WS <path>"` label (parallel to `"HTTP <method> <path>"`) so the handler-concept entrypoint and the route-symbol entrypoint for one route dedup to one.
 - `confidence`: Detection confidence (0.0–1.0), reflecting pattern strength, penalties for test/vendor code, and connectivity boost
 - `label`: Human-readable description
+- `meta`: Provenance dict mirroring `Edge.meta` (WI-rukam) so a consumer can interpret an entrypoint's `confidence` the way it interprets an edge's. Keys (registered on the `entrypoint_meta` axis in `axis_meta_keys.py`):
+  - `id`: stable content-hash identity `entrypoint:sha256:<16hex>` of (kind, symbol_id, label) — always present, auto-stamped. Confidence is **not** part of the identity (it is a ranking value, not a record key). Mirrors `Edge.id`.
+  - `source`: producer pass that emitted the record — `concept_detector` (YAML-concept matches), `connectivity_fallback` (the no-patterns-matched top-N-by-out-degree fallback), or `script_module_detector` (the edge-set-dependent TS/JS standalone-script rule). Mirrors `Edge.origin`.
+  - `evidence_type`: inference pathway, **aligned 1:1 with the confidence tiers below** — `manifest_declared` (0.99), `framework_pattern` (0.95), `structural` (0.85), `language_convention` (0.80, incl. library exports), `naming_heuristic` (0.70), `connectivity_heuristic` (0.50). A separate vocabulary from the edge inference-pathway registry (`evidence_types.py`); entrypoint detection methods do not overlap edge inference pathways. Mirrors `Edge.evidence_type`.
 
 **Confidence tiers** (see [§8](#8-entrypoint-detection) and [§12](#12-confidence-scoring)):
 - 0.99: Manifest-declared (package.json `bin`, Cargo.toml `[[bin]]`, pyproject.toml `[project.scripts]`)
@@ -952,11 +1030,17 @@ Penalties on the entrypoint `confidence` field: test files −90% (×0.1), vendo
 
 **Role in the pipeline:** Usage contexts feed into framework pattern matching (`enrich_symbols()`), which adds concepts to symbols, which in turn drive entrypoint detection and linker behavior. Most consumers should use the enriched `nodes` and `entrypoints` rather than processing `usage_contexts` directly.
 
-**Stripped from compact/tiered views** to reduce payload size.
+**Slim node projection (WI-pohuf).** The compact and tiered views emit a **slim per-node projection**, not the full survey node: each node carries only `id`, `name`, `qualified_name`, `kind`, `language`, `path`, `span`, `signature`, `docstring` (null-valued optionals omitted) plus the annotated `centrality`. The identity hashes (`stable_id`/`shape_id`/`fingerprint`), provenance (`origin`/`origin_run_id`), the `supply_chain` block, and `meta` are dropped — they cost ~250 tokens/node and, at small budgets, forced the shrink loop to trim a tier down to a single symbol. Consumers needing identity/provenance/supply-chain detail read the full survey.
+
+**Stripped from compact/tiered views** to reduce payload size, alongside `sketch_precomputed` (an internal cache artifact). The two budget-limited projections differ deliberately on provenance/quality signals: the more aggressive **tiered** view additionally drops `analysis_runs` and the `validation_report`, whereas the **compact** view *preserves* those two (finalize provenance + quality signals, per ADR-0033/ADR-0043) while still dropping `usage_contexts` and `sketch_precomputed`.
 
 ### metrics — optional counts
 
-Aggregate statistics: `total_nodes`, `total_edges`, `total_files`, `avg_confidence`, per-language breakdowns (`languages.*`), and per-tier breakdowns (`by_supply_chain_tier.*`). Each breakdown includes `nodes` and `edges` counts.
+Aggregate statistics: `total_nodes`, `total_edges`, `total_files`, `avg_confidence`, per-language breakdowns (`languages.*`), and per-tier breakdowns (`by_supply_chain_tier.*`). Each per-tier breakdown includes `nodes`, `edges`, and `edges_incident` counts. `edges` counts each edge once by its **source** node's tier, so the per-tier `edges` sum reconciles to the source-resolved edge total; because external-dependency tiers (2/3) are graph **sinks**, not sources, their `edges` typically reads ~0. `edges_incident` (WI-modom) counts an edge once per **distinct endpoint tier** (either-endpoint), exposing each tier's actual graph contribution (a tier-3 dependency referenced by N edges shows N incident, not 0); it double-counts cross-tier edges by design and so does **not** sum to `total_edges`. `by_supply_chain_tier` enumerates only the tiers present in the **analyzed** node set — in practice the analyzed tiers `first_party` / `internal_dep` / `external_dep` (1-3). Tier 4 (`derived`) is excluded from analysis ([§14](#14-supply-chain-classification)), emits no nodes, and so never appears here; it surfaces solely as [`supply_chain_summary.derived_skipped`](#supply_chain_summary--classification-overview). The two summary surfaces therefore carry **different tier sets by design** (WI-nibul) — an always-empty `derived` bucket here would be a structurally-always-0 field, which ADR-0040 forbids (cf. the identical rationale for `derived_skipped` carrying `{files, paths}` rather than `{files, symbols}`).
+
+**Per-language attribution (`languages.<lang>`).** Each node is bucketed by `node.language`, falling back to its `discovery_language` when `node.language` is `None`: ADR-0031 Class-B synthetic stand-ins (linker-emitted protocol/host symbols) carry no primary language and are attributed to their host discovery language so cross-language metrics stay meaningful; a node with neither falls to `unknown`. Consequently `languages.<lang>.nodes` counts both native-`<lang>` nodes and these heuristically-attributed synthetic nodes, so its value can exceed the number of nodes whose `node.language == <lang>`. `languages.<lang>.edges` counts each edge once by its source node's so-attributed language.
+
+**Relationship to `profile.languages` (WI-ziror).** `metrics.languages` and `profile.languages` are **complementary views over different populations**, so their key-sets legitimately differ — do not expect them to match or to be joinable by language key. `profile.languages` is a **file inventory** (`{files, loc}`) keyed by the language whose analyzer *enumerates* each file (extension / `find_files`); `metrics.languages` is an **extracted-graph inventory** (`{nodes, edges}`) keyed by each symbol's analyzer-assigned `node.language`. Three structural reasons the sets diverge: (1) a language with files but no graph nodes appears only in `profile` — e.g. `markdown`, whose symbols feed `sketch_precomputed` centrality rather than the main `nodes[]`; (2) a **content-detected specialization** appears under its *extension* language in `profile` and its *analyzer-detected* language in `metrics` — e.g. an Ansible playbook is a `.yaml` file counted under `yaml` in `profile` but emits `ansible` symbols in `metrics`; (3) synthetic linker stand-ins with no source language appear only in `metrics`, bucketed as `unknown`. The two surfaces are intentionally not unified: forcing agreement would either erase the analyzer's finer classification or require the pre-parse file scan to parse every file.
 
 **`total_files`** is the canonical "how many files in this repo?" answer: `sum(profile.languages[L].files)`. It agrees with `profile`'s per-language counts (which in turn agree with `analysis_runs[L].files_analyzed` for languages whose analyzer registered a canonical `find_files`).
 
@@ -964,21 +1048,24 @@ Aggregate statistics: `total_nodes`, `total_edges`, `total_files`, `avg_confiden
 - `unique_paths_in_analysis` — distinct `node.path` values across every symbol kind. Excludes files that contributed no symbols (binary, unparseable, unsupported language), so it under-counts repos with many file types relative to `total_files`.
 - `analyzed_file_symbols` — count of `nodes[*]` with `kind == "file"`. Only analyzers that emit file pseudo-nodes contribute, so this can lag the true file count if some language analyzers don't yet stamp them.
 
-When the headline `total_files` is computed without a profile (e.g., by callers outside the full `run_behavior_map` pipeline), it falls back to `unique_paths_in_analysis` for backward compatibility — the same value still rides in `metrics.debug` so consumers can tell which definition they're looking at.
+When the headline `total_files` is computed without a profile (e.g., by callers outside the full `run_survey` pipeline), it falls back to `unique_paths_in_analysis` for backward compatibility — the same value still rides in `metrics.debug` so consumers can tell which definition they're looking at.
 
 ### supply_chain_summary — classification overview
 
-Per-tier file and symbol counts (`first_party`, `internal_dep`, `external_dep`), plus a `derived_skipped` object listing files excluded from analysis. `derived_skipped.paths` is capped at 10 entries; full list available via `--verbose`.
+Per-tier file and symbol counts (`first_party`, `internal_dep`, `external_dep`), plus a `derived_skipped` object listing files excluded from analysis. Each tier's `files` counts distinct paths of that tier's **`kind=="file"` nodes only** (not distinct paths across all tier nodes — a symbol-level count would fold in function paths and the `<external>` sentinel path of `external_symbol` nodes, inflating the count with phantom "files"; WI-mutuv); `symbols` counts every node of the tier regardless of kind. `derived_skipped.paths` is capped at 10 entries; full list available via `--verbose`. Unlike the analyzed tiers, `derived_skipped` intentionally carries `{files, paths}` rather than `{files, symbols}`: tier-4 derived artifacts are excluded from analysis entirely (§14), so they emit no symbols and a `symbols` count would be a structurally-always-0 field carrying no signal (cf. ADR-0040's declared-⇒-populated discipline). In its place `paths` is a genuinely different quantity — a capped sample of *which* derived files were skipped, a diagnostic for spotting a source file misclassified as derived — and per ADR-0039 ("a new quantity gets a new name") it is named for what it is rather than forced into the sibling shape. `derived_skipped` is thus an exclusion-disclosure bucket, not a peer tier: its `files` counts files *excluded from* analysis, not files *classified into* a tier (WI-gabos). The `external_dep` tier carries an `ecosystem` sub-object counting tier-3 symbols by provenance class (`stdlib` / `third_party` / `unknown`), per the ADR-0041 §3 ecosystem axis.
 
 ### limits — explicit gaps
 
 Documents what the analysis *didn't* capture. Key arrays:
-- `not_captured[]`: Categories of constructs not analyzed (e.g., dynamic imports, eval, complex decorators)
+- `not_captured[]`: A **universal static disclaimer** — the fixed set of construct categories static analysis never captures anywhere (e.g., dynamic imports, eval, complex decorators). Identical for every repo; NOT a per-repo measurement of constructs this repo contains-but-skipped. (Distinct from `reproducibility_context.not_captured`, which lists reproducibility factors.)
 - `truncated_files[]`: Files skipped due to size, with path, size, and reason
 - `skipped_languages[]`: Languages with unavailable grammars
 - `failed_files[]`: Files that caused parse errors, with path, reason, and analyzer ID
+- `skipped_passes[]`: the single authoritative record of **pass-level** skips — an analyzer pass that produced no `analysis_runs[]` entry. Every registered analyzer resolves to exactly one of an AR **or** a skip record (WI-didil — completeness across the analyzer catalog); the reasons emitted are: missing optional dependencies (e.g., `{"pass": "lean", "reason": "tree-sitter-lean grammar not available"}`); `no files matched` — either the WI-jadig file-presence pre-filter (an analyzer whose declared languages all have `files == 0` in `profile.languages` is short-circuited at the dispatcher, saving the wall-clock cost of opening a parser for a pass with no input) **or** an analyzer whose declared language is absent from the taxonomy (so the pre-filter cannot see its file count and dispatches it defensively) that then finds no matching files, recorded `{"pass": "<lang>", "reason": "no files matched"}` either way; an opt-in backend that stayed off, e.g. `{"pass": "rust_analyzer", "reason": "rust-analyzer backend not enabled"}` (distinguished from `no files matched` precisely because the repo may contain the language's files — the backend simply did not run); and a contained pass crash, recorded as `{"pass": "<lang>", "reason": "crashed: <ExcType>: <msg>"}` (§17). Non-analyzer passes (linkers, synthesis) are **not** enumerated here — a linker with no applicable targets is a correct no-op, not a "pass that did not run"; only the analyzer catalog carries the AR-or-skip completeness contract. Because a skipped pass produces no `analysis_runs[]` entry, this top-level list — not the per-run `analysis_runs[].skipped_passes` — is where pass-level skips live; it is always present (empty list = "no pass was skipped"). (INV-nihug.)
 
 **partial_results_reason** (string, optional): Present only when `analysis_incomplete: true`. Human-readable explanation (e.g., `"Timeout: Analysis exceeded 300 seconds"`, `"User interrupted: Ctrl-C received"`).
+
+**max_tier_applied** (integer, optional): The supply-chain tier ceiling that was in effect for this run, recorded when a `--max-tier N` filter was applied (e.g. `--max-tier 1` restricts analysis to first-party code). `null`/absent when no tier filter was applied and every tier was analyzed. See [§14](#14-supply-chain-classification) for the tier definitions and [§3](#3-user-experience-cli) for the `--max-tier` flag. (`analyzer_version` — the other scalar recorded in this block — is documented under [Version fields: three independent axes](#version-fields-three-independent-axes); it carries a `hypergumbo-` prefix and is a tool/package version, not a schema version.)
 
 ## 10) Sketch output
 
@@ -1078,7 +1165,7 @@ Entry sources (HTTP routes, CLI mains, IPC handlers, etc.) are detected by the p
 2. **One-hop downstream-read terminal.** Edge terminates at a read site one hop downstream of an admitted writer — captures the immediate read of newly-written state and stops there to avoid the whole-program closure.
 3. **Graceful degradation.** Edges with no `access_mode` annotation are admitted unconditionally so that linker coverage gaps don't silently truncate slices.
 
-Option 2 (symmetric `dst_mode` OR-check) was evaluated and deferred per ADR-0015 §6.1 on empirical evidence (the `SliceResult.admission_stats.would_admit_dst_reader` telemetry counter measured zero additional admissions on the audit corpus); option 3 (full dataflow) is deferred indefinitely. The telemetry counter stays live so the decision is re-evaluable.
+Option 2 (symmetric `dst_mode` OR-check) was evaluated and deferred per ADR-0015 §6.1 on empirical evidence (the former `SliceResult.admission_stats.would_admit_dst_reader` telemetry counter measured zero additional admissions on the audit corpus); option 3 (full dataflow) is deferred indefinitely. That telemetry counter has since been **removed** (ADR-0038 ruling 3 / vocab F4 PR2 deleted the `dest_access_mode` edge-meta key it read); re-evaluating option 2 would require re-deriving destination access from AST role per ADR-0038 ruling 1, not the retired sibling field.
 
 Reverse slices follow read edges (no per-edge admission rule — every read edge backward is admitted).
 
@@ -1134,13 +1221,13 @@ Feature comparison across commits: same query → compare `node_ids`/`edge_ids` 
 |---------|---------|
 | **Confirmed** | No taint-flow path exists from source to prohibited sink. |
 | **Confirmed (sanitized)** | Paths exist, but every source→sink path passes through an allowed sanitizer. |
-| **Violated** | Taint flows from source to sink without sanitization — exact path reported. |
+| **Violated** | Taint flows from source to sink without sanitization. The verdict carries per-flow drill-down evidence (WI-kikis): `details` renders up to five *distinct* flows with their source/sink symbol IDs and a `via N hop(s)` path indicator (deduplicated on the full flow identity, so identical-looking rows collapse and the honest total-vs-distinct count is shown), and the `--format json` envelope adds a bounded structured `evidence` array (`source_symbol` / `sink_symbol` / primitives / `path`, ≤100 distinct flows) for programmatic triage even at high evidence counts. |
 | **Inconclusive (no DDG)** | A critical path segment (source, sink, or sanitizer function — see ADR-0017 §3c) lacks DDG coverage (language not supported, bail-out, or budget cap). |
 | **Inconclusive (opaque)** | Path crosses an opaque boundary (native code without source). |
 
 Pass-through functions without DDG coverage do **not** force "Inconclusive" — their function summaries (above) carry argument-to-return flow regardless of intraprocedural coverage. "Inconclusive (no DDG)" is reserved for gaps on *critical* path segments. CLI exit code is 1 on any `Violated` verdict; `Inconclusive` verdicts exit 0 but are surfaced in the report.
 
-**IO-boundary reporting (ADR-0016).** `hypergumbo io-boundaries --boundary <category>` reports call edges that reach the named IO boundary (`fs_read`, `net_send`, …), with `--by-file` and `--primitive` filters. Boundary categories match the `meta["io_boundary"]` vocabulary documented in [§9](#9-behavior-map-json). (There is no `slice --io-boundary` flag; the shipping capability is the `io-boundaries` subcommand.)
+**IO-boundary reporting (ADR-0016).** `hypergumbo io-boundaries --boundary <category>` reports call edges that reach the named IO boundary (`fs_read`, `net_send`, …), with `--by-file` and `--primitive` filters — the canonical, whole-graph view. Boundary categories match the `meta["io_boundary"]` vocabulary documented in [§9](#9-behavior-map-json). `hypergumbo slice --entry <X> --io-boundary <category>` is the slice-scoped twin: it filters an entry's slice to the edges that reach the named boundary, classifying them ephemerally at slice time (the same consumer-time derivation — no persisted field). An unknown category exits 2 with the valid list. **Headline count (WI-huhit/WI-foduh).** The `--json` envelope's `total_io_edges` is the **real/verified I/O surface** — the chain count across confirmed boundary categories, **excluding** the disclosed-only buckets `external_potential` (receiver-unresolved calls — on self-analysis ~96% builtin method noise like `append`/`get`/`split`, not real I/O) and `command_launch` (WI-javoh: bash program launches — a real subprocess crossing, but an invocation-count multiplicity that would swamp the curated stdlib subprocess entries if summed into the headline). Each disclosed-only bucket is surfaced separately: `external_potential_edges` and `command_launch_edges`. Text and JSON report the **same canonical count**, and text discloses the suppressed counts. The envelope is pinned by `IO_BOUNDARIES_SCHEMA_VERSION` (`2.1` since the `command_launch` cohort was added; `2.0` redefined the headline to exclude `external_potential`; the `1.0` headline included external_potential and over-counted the surface ~28×). INV-pubom (amended 2026-06-30): the unfiltered, filtered, and text paths all agree on this definition. The `_DISCLOSED_ONLY_BOUNDARIES` frozenset in `io_boundary.py` is the single source of truth for which buckets are held out of the headline. **High-risk marker.** Each boundary/primitive additionally carries a display-only flag — `high_risk` per chain and `has_high_risk` per boundary in the `--json` envelope, ` *** HIGH RISK ***` / ` [HIGH RISK]` in text. It is a narrow triage cue scoped to `subprocess` (launching an external program is arbitrary code execution — the one boundary with a clean "always risky" invariant, completeness-ratcheted per language), **not** a net/fs risk taxonomy: destructive-filesystem and network-egress risk are carried by the taint source/sink model (auto-derived from the `io_primitives` write-side categories; [ADR-0017](adr/0017-taint-zone-dataflow.md) §2b) and, for network, by supply-chain `dst_tier`. `io_boundary.HIGH_RISK_PRIMITIVES` is subprocess-only, and `verify-claims` does not consume `high_risk`. **Catalog completeness disclosure (WI-najil).** Each `io_primitives/<language>.yaml` carries a `status` field — `complete` (the stdlib I/O surface is enumerated, with `stdlib_provenance.source_url` pointing at the official docs, validated at load time) or `in_progress` (partial, no provenance required). Because an `in_progress` catalog's zero-match outcome is otherwise indistinguishable from a genuine "no I/O in this code", every consumer that queries the catalog — `hypergumbo io-boundaries`, `verify-claims`, and `slice --io-boundary` — emits a one-line stderr warning per queried `in_progress` language (`io_primitives catalog for '<lang>' is in_progress — io-boundary results for '<lang>' may be incomplete`); the shared helper is `io_boundary.in_progress_languages`. Unsupported languages (no catalog file) carry the separate `is_supported=False` signal (INV-javam), not this warning. Catalogs currently `complete`: python, rust, erlang; the remaining eleven (c, cpp, elixir, go, haskell, java, javascript, kotlin, objc, scala, swift) are `in_progress`.
 
 **Project-local catalog extension (WI-votan).** `verify-claims` accepts three repeatable flags — `--taint-sources PATH`, `--taint-sinks PATH`, `--taint-sanitizers PATH` — where each PATH is either a single YAML file or a directory of YAMLs (globbed as `*.yaml` in sorted order). The claims YAML may carry the same paths under a top-level `extra_catalogs:` key with `sources:` / `sinks:` / `sanitizers:` sub-lists; entries given relative paths resolve against the claims-file directory so a repo can keep its extra catalogs beside the claims document. The public helper `load_full_taint_catalog(extra_source_paths, extra_sink_paths, extra_sanitizer_paths, *, cli_source_paths, cli_sink_paths, cli_sanitizer_paths)` stacks four layers: (1) auto-derived from `io_primitives/*.yaml`, (2) built-in YAML shipped in `taint_sources/` / `taint_sanitizers/`, (3) claims-file extras, (4) CLI extras. Per INV-hukug, layers 3 and 4 are distinct, so a CLI flag replaces a claims-file entry on a matching `(module, name, kind)`. User source and sink entries whose `(module, name, kind)` triple matches a lower-layer entry replace it; user sanitizer entries concatenate. `verify-claims` prints a one-line summary to stderr when any extra catalog paths were loaded so users know their override took effect. This is the supported way for a repo to raise `trust_level` on a sink that is safe in context, declare a sanitizer so tainted data can legitimately reach a sink, add a domain-specific taint source label, or introduce a new trust zone beyond the built-in `host_fs`, `subprocess`, `network`, `host_env`, `ipc`, `browser_storage`, `database`, `logging`.
 
@@ -1160,33 +1247,54 @@ Hypergumbo assigns confidence scores (0.0–1.0) in three independent categories
 
 | Category | What it scores | Scoring basis | Score range | Defined in |
 |----------|---------------|---------------|-------------|------------|
-| **Analyzer edge confidence** | Intra-language relationships (calls, imports) | 🟪 Per-producer hardcoded value (0.85 dataclass default); the deterministic evidence→score derivation is planned, not implemented ([ADR-0039](adr/0039-confidence-separation.md)) | 0.85 default | [Below](#edge-confidence-analyzer-evidence) |
+| **Analyzer edge confidence** | Intra-language relationships (calls, imports) | 🟩 Derived from the inference pathway (`evidence_type`) via the registry `base_confidence` table, `is_resolved`-conditioned for call types ([ADR-0039](adr/0039-confidence-separation.md) / WI-nurun) | 0.30–0.95 | [Below](#edge-confidence-analyzer-evidence) |
 | **Linker edge confidence** | Linker-recovered relationships across all four subcategories — Bridge/Protocol examples include JNI, IPC, HTTP | Match quality (literal vs. dynamic, naming convention vs. annotation) | 0.40–0.95 | [Below](#edge-confidence-linker-edges), details in [§7](#7-linkers) |
 | **Entrypoint confidence** | Whether a symbol is an entry point | Detection method (manifest, decorator, convention, naming) | 0.70–0.99 | [Below](#entrypoint-confidence-tiers), details in [§8](#8-entrypoint-detection) |
 
-All scores use the same 0.0–1.0 scale and the same semantic contract: higher means more certain. The `confidence_model` field in output (`hypergumbo-evidence-v1`) identifies the scoring algorithm version. There is no normative default-mapping for unknown `evidence_type` values — the deterministic evidence→confidence model is planned but unimplemented ([ADR-0039](adr/0039-confidence-separation.md)); consumers should read `confidence` purely as detection reliability on the 0.0–1.0 scale.
+All scores use the same 0.0–1.0 scale and the same semantic contract: higher means more certain. The `confidence_model` field in output (`hypergumbo-evidence-v2`) identifies the scoring algorithm version — `v2` marks the deterministic evidence→confidence derivation now in effect for analyzer edges ([ADR-0039](adr/0039-confidence-separation.md) / WI-nurun): the base score is a registry lookup keyed on `evidence_type`, `is_resolved`-conditioned for call types. Unregistered/unseeded pathways and dynamically-computed sites fall back to the caller's value; consumers should read `confidence` purely as detection reliability on the 0.0–1.0 scale.
 
 ### Edge confidence: analyzer evidence
 
-🟪 **Planned, not implemented.** The intended model is a deterministic mapping
-from structured evidence `(language, evidence_type)` to a base confidence score,
-with contextual adjustments (`dynamic_dispatch`, `missing_types`,
-`has_type_annotation`). **None of this exists in code today** — there is no
-`(language, evidence_type)` lookup table, no contextual adjustment, and no
-normative default for unknown evidence types.
+🟩 **Implemented (ADR-0039 / WI-nurun).** `Edge.confidence` for
+analyzer-produced edges is *derived* from the inference pathway, not hardcoded
+per emitter: `Edge.create` looks up the edge's `evidence_type` in the registry
+`base_confidence` table (`evidence_types.py`) via
+`derive_confidence(evidence_type, is_resolved=…)`. The two multimodal call
+types (`ast_call` / `ast_call_direct`) are `is_resolved`-conditioned (a
+name-resolved call scores higher than an unresolved one); all other pathways
+are single-valued. Each base is the **edge-weighted modal** confidence the
+pathway's producers historically hardcoded, so the migration that dropped the
+~259 literal `confidence=` sites preserved the dominant cohort and collapsed
+per-emitter outliers to the single canonical value (the INV-suvil fix).
 
-**Current behaviour:** analyzer-produced edges carry per-producer *hardcoded*
-`confidence` values (hundreds of literal `confidence=` sites across the
-analyzers), and the modal value is the `Edge.confidence` dataclass default of
-**0.85**. Treat that as the contract until the derived model lands.
+**Bands.** Base confidences live in the analyzer/linker band **0.30–0.95**;
+1.0 is a reserved ceiling (a detection method is never *certain*). Three
+pathways whose producers still emit 1.0 (`build_dependency`, `subdir_include`,
+`tree_sitter`) are not yet derived — that over-claim is a pending producer-side
+fix, so those sites retain an explicit `confidence=`. (`naming_convention` was
+the fourth; ADR-0039 ruling 1 seeded it at 0.85 and the containment producer now
+derives it — see [ADR-0039](adr/0039-confidence-separation.md).)
 
-The redesign — `confidence` as pure detection reliability with a
-`confidence_source` discriminator, and ranking adjustments relocated to a
-separate `rank_score` — is specified in
-[ADR-0039](adr/0039-confidence-separation.md). The registry-generated
-evidence→score table that will replace this section is a later stage of the
-confidence-derivation work; this section will be regenerated from the
-implemented model when it exists.
+**Not yet derived (retain explicit `confidence=`):** sites that *compute*
+confidence dynamically (linker match-strength scores) and the three ceiling-breach
+pathways above. Only literal hardcoded constants on seeded inference pathways were
+migrated. The `type_hierarchy` linker no longer retains an explicit dynamic
+confidence: ADR-0039 ruling 3 relocated its `1/√N` fan-out dampener + test penalty
+to `rank_score`, so its detection confidence now derives the flat in-band 0.85
+`type_hierarchy` base.
+
+**Confidence provenance & ranking separation (ADR-0039 rulings 2 & 3, implemented).**
+Every `Edge` carries a `confidence_source` discriminator — `evidence_derived` (the
+value came through `derive_confidence`), `emitter_constant` (a declared hardcoded
+producer value, incl. the unseeded 0.85 fallback), or `composite` (still fuses a
+ranking adjustment) — so the migration off per-emitter constants is machine-readable.
+Post-detection **ranking** adjustments (the type-hierarchy fan-out dampener, the
+entrypoint penalties/demotions/degree-boosts) no longer contaminate `confidence`;
+they accumulate on a sibling `Edge.rank_score` / `Entrypoint.rank_score` field
+(ranking prominence, 0.0–1.0, initialized from `confidence`). Ranking consumers
+(centrality edge-filter `filter_edges_for_ranking`, entrypoint sort +
+`MIN_ENTRYPOINT_CONFIDENCE` filter, sketch entrypoint ordering, slice auto-entry)
+key on `rank_score`; `confidence` is now purely detection reliability.
 
 ### Edge confidence: linker edges
 
@@ -1207,9 +1315,9 @@ Linkers (Tier 2 passes — all four subcategories) produce their own confidence 
 
 ### Entrypoint confidence tiers
 
-Entrypoint confidence scores how reliably a symbol was identified as an entry point (route, CLI main, task handler, etc.). This is independent of edge confidence — a function detected as a route at 0.95 confidence may have call edges at any confidence level.
+Entrypoint confidence scores how reliably a symbol was identified as an entry point (route, CLI main, task handler, etc.). This is independent of edge confidence — a function detected as a route at 0.95 confidence may have call edges at any confidence level. Per ADR-0039 ruling 3, entrypoint `confidence` is now **pure detection reliability** (the construction-time tier); the ranking penalties, library-export demotion, and connectivity boosts that used to move it off-tier live on `Entrypoint.rank_score`, which the entrypoint ordering and the `MIN_ENTRYPOINT_CONFIDENCE` filter key on.
 
-See [§8 Entrypoint detection](#8-entrypoint-detection) for the detection architecture and the full tier table. The four tiers: Declared (0.99), Decorator/Annotation (0.95), Structural (0.85), Naming (0.70).
+See [§8 Entrypoint detection](#8-entrypoint-detection) for the detection architecture and the full tier table. The four standard tiers span [0.70, 0.99]: Declared (0.99), Decorator/Annotation (0.95), Structural (0.85), Naming (0.70). Two deliberate low-confidence kinds sit **below** that band by design and are not among the four tiers: `connectivity_based` (0.50 — a last-resort fallback used only when no concept-based entrypoint is found; §8 lists it as the `connectivity_heuristic` tier) and frontend-route suppression (0.05, filtered out by `MIN_ENTRYPOINT_CONFIDENCE`).
 
 ## 13) Output reproducibility
 
@@ -1226,7 +1334,7 @@ Reproducibility has two dimensions: **caching** ensures that re-running analysis
       └── results/
           └── <state-hash>/
               └── <analyzer-identity>/
-                  └── hypergumbo.results.json
+                  └── survey.json
   ```
 * Keying strategy:
   * **Repo fingerprint** (stable identity): hash of remote origin URL + first commit SHA (git repos) or absolute path (non-git). Shared across checkouts of the same repo.
@@ -1238,7 +1346,7 @@ Reproducibility has two dimensions: **caching** ensures that re-running analysis
 * Management:
   * `hypergumbo cache-status [--per-repo]` — total size, age range, and (with `--per-repo`) per-repo size / entry-count / last-used breakdown sorted by size desc.
   * `hypergumbo cache-clear [--older-than N] [--dry-run] [--repo FINGERPRINT [--keep-latest N]]` — `--repo` restricts deletion to one repo's subtree; `--repo` + `--keep-latest N` keeps the N newest state-hash entries under `<repo>/results/` and prunes the rest.
-* Lifecycle policy (INV-padum): **honk-threshold-with-retention.** No automatic eviction at any size. When total cache size exceeds the configured threshold (default 1.0 GiB), `cache-status` and `hypergumbo run` emit a loud stderr warning naming the top consumer and the prune commands. Configure or silence via the `HYPERGUMBO_CACHE_HONK_GB` environment variable (set to `0` / `off` / `none` / `false` to silence). The user owns the prune decision; hypergumbo never throws away cache entries unprompted.
+* Lifecycle policy (INV-padum): **honk-threshold-with-retention.** No automatic eviction at any size. When total cache size exceeds the configured threshold (default 1.0 GiB), `cache-status` and `hypergumbo survey` emit a loud stderr warning naming the top consumer and the prune commands. Configure or silence via the `HYPERGUMBO_CACHE_HONK_GB` environment variable (set to `0` / `off` / `none` / `false` to silence). The user owns the prune decision; hypergumbo never throws away cache entries unprompted.
 
 ### Deterministic ordering
 
@@ -1269,10 +1377,33 @@ Code is classified into four tiers based on its relationship to the project:
 
 | Tier | Name | Description | Examples | Status |
 |------|------|-------------|----------|--------|
-| 1 | `first_party` | Project's own source code | `src/`, `lib/`, `app/` | 🟩 |
-| 2 | `internal_dep` | Internal libraries, monorepo packages | Workspace packages, local forks | 🟩 |
-| 3 | `external_dep` | Third-party dependencies (readable form) | `node_modules/lodash/`, `vendor/` | 🟩 |
+| 1 | `first_party` | Project's own source code (including its tests) | `src/`, `lib/`, `app/` | 🟩 |
+| 2 | `internal_dep` | Org-internal *dependency* packages: config-declared `internal_package_roots`, **and** a workspace-sibling *dependency declaration* (a monorepo package that another workspace member lists as a dependency). Workspace member *source files* stay tier 1. | Local forks; `hypergumbo-core` listed in a sibling package's `pyproject.toml` | 🟩 |
+| 3 | `external_dep` | **All** third-party code — direct, transitive, undeclared, and stdlib alike | `node_modules/lodash/`, `vendor/`, declared PyPI deps, `os`/`json` | 🟩 |
 | 4 | `derived` | Build artifacts, transpiled/bundled output | `dist/`, `*.min.js`, source-mapped files | 🟩 |
+
+**Tier names supply-chain distance and nothing else (ADR-0041 §1).** A *declared*
+(direct) third-party package is **not** promoted to tier 2 — distance, not
+declaration status, is what `tier` records, and a declared PyPI package is no
+closer to the project than an undeclared one. The direct/transitive/undeclared
+*declaration relationship* lives on the registered `directness` meta key
+(`direct` / `transitive` / `undeclared`); the stdlib-vs-third_party *provenance*
+distinction lives on the registered `ecosystem` axis (ADR-0041 §3). Both are
+stamped once, at classification time, on boundary/dependency nodes.
+
+(History: ADR-0041 §1 retired the *manifest* direct-dependency → tier-2
+mapping. File classification independently still routed some in-repo non-source
+*role* files — examples, documentation bundles, notebooks, fuzz/bench harnesses
+— to tier 2 (INV-naduh); these are the project's own code (distance 0) and now
+classify as **tier 1** with their role on the `is_example` / `is_test` / reason
+axis, not by tier. Tier 2 has **two** producers: config-declared
+`internal_package_roots`, and a workspace-sibling *dependency declaration* — a
+`kind=dependency` symbol naming an in-repo package that another workspace member
+lists as a dependency (INV-nuzas / ADR-0041 §1 tier table + D8a; this is the
+"populate tier 2 with the workspace packages" end-state ADR-0041 §1 anticipated
+for the workspace-resolution fix, not a re-admission of the retired *third-party*
+direct-dependency → tier-2 mapping). Workspace member *source* stays tier 1, and
+in-repo generated *routes* promote from tier 4 to tier 1, not tier 2.)
 
 **Default behavior:**
 - Tiers 1-3: Analyzed, with tier used for ranking/filtering
@@ -1350,45 +1481,55 @@ def extract_package_name(rel_path: str) -> str | None:
 
 #### 3. Internal dependency detection (tier 2)
 
-Detected via workspace/monorepo configuration files.
+Tier 2 (`internal_dep`) has **two** producers, both representing an org-internal
+*dependency* (never the project's own source, which is tier 1):
 
-**npm/yarn/pnpm workspaces:**
+1. **Config-declared `internal_package_roots`** — org-internal dependency
+   packages (local forks, vendored-but-internal libs). No *path* heuristic
+   produces tier 2 for source files: workspace member source is tier 1, and
+   in-repo role files carry their role on a flag/reason (ADR-0041 §1 / INV-naduh).
+2. **Workspace-sibling dependency declarations** — a `kind=dependency` symbol
+   whose PEP 503-normalized name matches an in-repo package's distribution name
+   (`collect_workspace_package_names` reads every `pyproject.toml`'s
+   `[project].name` / `[tool.poetry].name`). A monorepo sibling that another
+   workspace package lists as a dependency is a workspace-**internal** dependency
+   (tier 2), not a third-party external (tier 3) — INV-nuzas / ADR-0041 §1 (tier
+   table + the anticipated "populate tier 2 with the workspace packages"
+   end-state) / D8a. This is orthogonal to the retired *third-party*
+   direct-dependency → tier-2 mapping (§1): a genuine third-party declaration
+   stays tier 3. Python `pyproject.toml`-scoped; Cargo/npm sibling analogues are
+   a documented follow-up (still tier 3).
+
+**Config-declared internal package roots:**
+```yaml
+# capsule plan supply_chain config
+internal_package_roots: ["custom_packages/shared", "libs/common"]
+```
+Files under a declared root are tier 2 (`internal_dep`).
+
+**Workspace / monorepo detection → tier 1.** Workspace configuration files
+(npm/yarn/pnpm `workspaces`, Cargo `[workspace] members`, Maven `<modules>`,
+Python monorepo path-deps) are read to detect package roots, but their member
+files classify as **tier 1** (the workspace IS the project), with `is_test=True`
+on co-located tests (INV-tisid):
 ```json
-// package.json
-{
-  "workspaces": ["packages/*", "apps/*"]
-}
-```
-Files under matched workspace globs are tier 2.
-
-**Cargo workspaces:**
-```toml
-# Cargo.toml
-[workspace]
-members = ["crates/*"]
+// package.json — members of packages/* and apps/* are tier 1
+{ "workspaces": ["packages/*", "apps/*"] }
 ```
 
-**Python monorepos:**
-```toml
-# pyproject.toml (using hatch, pdm, or similar)
-[tool.hatch.envs.default]
-dependencies = ["./packages/core", "./packages/utils"]
+**Role files → tier 1, role on a flag (not tier).** Example/demo, documentation,
+notebook, and fuzz/bench paths classify as **tier 1** (the project's own code),
+with the role carried by `is_example_file` / `is_test_file` / the reason string —
+independent of `supply_chain_tier` (INV-naduh / INV-tisid / ADR-0041 §1):
 ```
-
-**Example/demo, test, and fuzz/bench patterns:**
+examples/, demos/, samples/, tutorials/     # → tier 1, is_example_file=True
+tests/, test/, __tests__/, spec/            # → tier 1, is_test_file=True
+_test.go, .test.js, .spec.ts, _spec.rb     # → tier 1, is_test_file=True
+fuzz/, fuzzing/, fuzz_targets/              # → tier 1 (fuzz/bench role in reason)
+benches/, benchmarks/, benchmark/           # → tier 1 (fuzz/bench role in reason)
+*.ipynb                                     # → tier 1 (notebook role in reason)
+Documentation.docc/ bundles                 # → tier 1 (documentation role in reason)
 ```
-examples/, demos/, samples/, tutorials/     # Example/demo code
-tests/, test/, __tests__/, spec/            # Test directories
-_test.go, .test.js, .spec.ts, _spec.rb     # Test file suffixes
-fuzz/, fuzzing/, fuzz_targets/              # Fuzz targets
-benches/, benchmarks/, benchmark/           # Benchmarks
-```
-
-**Role flags, not tier.** These example/test/fuzz/bench patterns set the
-`is_example_file` / `is_test_file` role flags (and the fuzz/bench role), which
-are **independent of `supply_chain_tier`**. A test or example file co-located in
-first-party source resolves to **tier 1**, not tier 2 (INV-tisid) — the patterns
-appear under tier-2 detection only because role-flagging runs in the same pass.
 
 #### 4. First-party detection (tier 1)
 
@@ -1424,7 +1565,7 @@ This ensures first-party symbols appear first even when third-party utilities ha
 
 **What supply chain classification does NOT do:**
 
-1. **Resolve transitive dependencies**: Classification is based on file location, not the full dependency graph. A file in `node_modules/a/` that imports from `node_modules/b/` doesn't affect tier assignment. 🟩 **Exception:** Boundary nodes (unresolved external references) are classified using dependency manifest data when available: direct dependencies get tier 2, indirect/unknown get tier 3. Supported manifests: Go (`go.mod` — direct vs indirect), Java/Kotlin (`build.gradle`, `build.gradle.kts`, `pom.xml` — groupId-based prefix matching against import paths). The language-agnostic `DependencyManifest` infrastructure supports future extension to npm, Cargo, and pip manifests.
+1. **Resolve transitive dependencies**: Classification is based on file location, not the full dependency graph. A file in `node_modules/a/` that imports from `node_modules/b/` doesn't affect tier assignment. 🟩 **Boundary-node directness:** Boundary nodes (unresolved external references) are **all** tier 3 (external) — declaration status no longer influences tier (ADR-0041 §1). When dependency-manifest data is available, the declaration relationship is recorded on the `directness` meta key instead: `direct` (declared in a project manifest), `transitive` (in the manifest but not declared direct), or `undeclared` (imported but declared nowhere — also where stdlib lands). Supported manifests: Go (`go.mod` — direct vs indirect), Java/Kotlin (`build.gradle`, `build.gradle.kts`, `pom.xml` — groupId-based prefix matching), Python (`pyproject.toml`). The language-agnostic `DependencyManifest` infrastructure supports future extension to npm and Cargo manifests. 🟩 **Boundary-node ecosystem (ADR-0041 §3):** orthogonally, each tier-3 boundary node is also stamped with an `ecosystem` meta key (`stdlib` vs `third_party`) when the language has an enumerated stdlib catalog — sourced from the single-source `io_boundary` stdlib catalog (the same one the io-boundary closed-world gates use), so a vuln in a `third_party` dependency (pin/update the package) is distinguishable from a `stdlib` one (upgrade the runtime).
 
 2. **Detect vendored copies**: If you copy `lodash.js` into `src/utils/lodash.js`, it's classified as tier 1 (first-party).
 
@@ -1482,7 +1623,7 @@ Tier and Role compose for analysis decisions:
 | Decision | Tier constraint | Role constraint |
 |----------|----------------|-----------------|
 | Count in LOC | Tiers 1-2 | CODE roles |
-| Extract symbols | analysis_tiers | ANALYZABLE only |
+| Extract symbols | Tiers 1-2 | ANALYZABLE only |
 | Additional Files | Tiers 1-2 | CONFIG + DOCUMENTATION |
 
 **Status:** 🟩 Implemented (ADR-0004). The `taxonomy.py` module provides the unified file classification system with `FileRole` enum and `LanguageSpec` dataclass for 86 languages.
@@ -1506,7 +1647,7 @@ Tier and Role compose for analysis decisions:
 - 🟩 Every symbol has a non-empty name
 - 🟩 Output matches the JSON schema
 - 🟩 Analysis completes without errors
-- 🟩 Determinism: same input → same output
+- 🟩 Determinism: same input → same **semantic** output (nodes/edges/`stable_id`s/`run_signature` reproduce at L2; per-run `execution_id`/timestamps and `analysis_runs[]` order are not byte-identical)
 
 **Benefits:**
 - No need to know "correct" answer upfront
@@ -1530,13 +1671,13 @@ Tier and Role compose for analysis decisions:
 ### Schema validation tests
 * 🟩 Output validates against published JSON Schema
 * 🟩 Forward compatibility: v0.1 output readable by v0.2+ (if backward compatible)
-* 🟩 Required field presence (execution_id, run_signature, evidence_lang, evidence_spans)
+* 🟩 Required field presence (execution_id, run_signature, evidence_lang)
 * 🟩 ID format conformance (both `id` and `stable_id` when present)
 * 🟩 Evidence type presence in all edges
 * 🟩 Toolchain capture in analysis_runs
 
 ### Smoke test
-* 🟩 `hypergumbo run` on a fixture repo yields valid JSON schema
+* 🟩 `hypergumbo survey` on a fixture repo yields valid JSON schema
 * 🟩 All expected nodes/edges present
 * 🟩 No crashes, warnings logged appropriately
 * 🟩 `hypergumbo catalog` displays available passes
@@ -1568,12 +1709,12 @@ Tier and Role compose for analysis decisions:
 ### Missing dependencies
 
 * 🟩 **Behavior**: If pass requires unavailable grammar (e.g., tree-sitter), skip pass
-* 🟩 **Output**: Add to `analysis_runs[].skipped_passes[]` (see [§9 Behavior map JSON](#9-behavior-map-json) for field format)
+* 🟩 **Output**: Add to `limits.skipped_passes[]` (see [§9 limits — explicit gaps](#limits--explicit-gaps) for field format — pass-level skips live in top-level `limits`, not the per-run record)
 
 ### Analyzer crashes
 
-* 🟩 **Behavior**: Catch the exception per-pass, record a `skipped_passes[]` entry with reason `crashed: <ExcType>: <msg>`, set top-level `partial_results_reason`, and continue (fail-open, WI-madal L3). No stack-trace file is written.
-* 🟩 **Output**: `skipped_passes[]` entry + `partial_results_reason`; `analysis_incomplete` is not set and no entry is added to `warnings[]`.
+* 🟩 **Behavior**: Catch the exception per-pass, record a `limits.skipped_passes[]` entry with reason `crashed: <ExcType>: <msg>`, set top-level `partial_results_reason`, and continue (fail-open, WI-madal L3). No stack-trace file is written.
+* 🟩 **Output**: `limits.skipped_passes[]` entry + `partial_results_reason`; `analysis_incomplete` is not set and no entry is added to `warnings[]`.
 
 ### File size limits
 
@@ -1781,8 +1922,8 @@ This appendix defines the **technical contract** for output consumers: which fie
 - `analysis_runs[].run_signature`: Deterministic fingerprint of pass configuration
 
 **4. Confidence scoring:**
-- `confidence_model` field identifies the scoring algorithm (`hypergumbo-evidence-v1`)
-- `confidence` is detection reliability (0.0–1.0); there is no normative default for unknown `evidence_type` (the deterministic evidence→confidence model is planned, not implemented — [ADR-0039](adr/0039-confidence-separation.md))
+- `confidence_model` field identifies the scoring algorithm (`hypergumbo-evidence-v2`)
+- `confidence` is detection reliability (0.0–1.0); there is no normative default for unknown `evidence_type` (the deterministic evidence→confidence model is **implemented** for seeded pathways — [ADR-0039](adr/0039-confidence-separation.md) / WI-nurun; unseeded/dynamically-computed sites fall back to the caller's value). Ranking prominence lives in the sibling `rank_score` field, and `confidence_source` records how each `confidence` was produced.
 
 ### Extensible Contracts (can add in minor versions)
 
@@ -1808,6 +1949,14 @@ This appendix defines the **technical contract** for output consumers: which fie
 - `view: "behavior_map"` schema remains stable across v0.x, v1.x
 - Consumers check `view` field, skip unknown views
 
+**Consumer-side substrate loading (`--input`).** Every read subcommand that consumes a `--input` survey routes through one strict loader (`survey_io.load_substrate`), which enforces four guards so a bad input fails loudly instead of silently (INV-sozop / WI-jukah / INV-gapib / WI-marul):
+- **Parse:** malformed or empty JSON, or a non-object root, raises a typed `SubstrateError` → clean exit code `2` + stderr message (was an unhandled traceback).
+- **Shape:** a dict lacking the structural `nodes` key is rejected → exit `2` (was a silent `rc=0` "No X found", because a `nodes`-less dict reads as an empty map).
+- **View discriminator:** a document whose `view` field is *present and different* from the consumer's expected view (e.g. feeding a `slice`/`tiered` projection to a behavior-map consumer) is rejected → exit `2`. A *missing* `view` is accepted (legacy/minimal maps omit it — the guard rejects a *wrong* view, not an absent one).
+- **Version (warn-first):** an absent or mismatched `schema_version` prints a stderr `Warning:` but still loads — an older/newer map is usually still readable, so rejecting would be over-strict. (The `nodes` key, not `schema_version`, is the hard-required structural discriminator; `schema_version` is a compatibility *signal*.)
+
+`load_behavior_map` remains the permissive low-level reader for auxiliary artifacts (e.g. compact outputs) that are not the main survey.
+
 ### Breaking Changes (only in major version bumps)
 
 **1. Changing field semantics without renaming:**
@@ -1823,9 +1972,19 @@ This appendix defines the **technical contract** for output consumers: which fie
 **4. Changing confidence semantics:**
 - Example: Redefining what evidence types mean or changing the scoring algorithm
 
+### Version fields: three independent axes
+
+Output carries version numbers along **three deliberately independent axes** (WI-bobog / WI-romup). Consumers must not conflate them, and producers must not consolidate them onto one number or rename the wire fields (each has consumers, so a rename is a breaking change):
+
+1. **Top-level format version** — `schema_version` (currently `0.14.4`, the `SCHEMA_VERSION` constant). The version of the survey (`view: "behavior_map"`) JSON format. Breaking output changes bump minor.
+2. **Tool/package version** — `__version__`, surfaced under two aliases that are **not** schema versions: `reproducibility_context.hypergumbo_version` and `limits.analyzer_version` (`hypergumbo-<__version__>`). Increments every release; says nothing about output format.
+3. **Per-view / per-sub-schema versions** — several JSON surfaces version their own wire shape independently of axes 1–2:
+   - The CLI **read-view** envelopes (`routes`, `test-coverage`, `config`, `catalog`, `cache-status`, `dead-code-maybe`, `repeat-finder`) share `READ_VIEW_SCHEMA_VERSION` (currently `0.1.0`), a single placeholder until one view needs to evolve independently — at which point it promotes to its own named constant.
+   - `io-boundaries` carries `IO_BOUNDARIES_SCHEMA_VERSION` (`2.1`), `verify-claims` carries `VERIFY_CLAIMS_SCHEMA_VERSION` (`1.1`), and the embedded `validation_report` block carries `VALIDATION_REPORT_SCHEMA_VERSION` (`0.3`) — each with its own changelog. A change to one of these bumps only that surface's version, **not** the top-level `schema_version`. (So `validation_report.schema_version` legitimately differs from the enclosing map's `schema_version` — they are different schemas.)
+
 ### Algorithm-identification fields and `stable_id_scheme` version history
 
-`stable_id_scheme`, `shape_id_scheme`, and `repo_fingerprint_scheme` (top-level fields in the behavior map) identify the algorithm used to compute the corresponding hash. They are **not** schema-version fields; the schema-version is `schema_version` and changes independently.
+`stable_id_scheme`, `shape_id_scheme`, and `repo_fingerprint_scheme` (top-level fields in the survey) identify the algorithm used to compute the corresponding hash. They are **not** schema-version fields; the schema-version is `schema_version` and changes independently.
 
 * Current value: `stable_id_scheme = "hypergumbo-stableid-v8"`.
 
@@ -1853,7 +2012,7 @@ Bumping a scheme identifier is not by itself a major-version event — the outpu
 - New `evidence_type` values
 - New `kind` values for nodes
 
-**Commitment:** No breaking changes to `behavior_map.json` view within v0.x series.
+**Commitment:** No breaking changes to the survey view within the v0.x series. (The on-disk `view` discriminator value stays `"behavior_map"` for schema compatibility — only the concept name and default filename became "survey"/`survey.json` per ADR-0042; consumers parsing the JSON see no change.)
 
 ## Appendix D: Capsule system history
 

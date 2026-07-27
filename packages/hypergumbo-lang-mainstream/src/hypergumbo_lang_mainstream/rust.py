@@ -54,6 +54,7 @@ from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
     TreeSitterAnalyzer,
+    defer_bare_method_call,
     emit_module_attribute_refs,
     find_child_by_type,
     iter_tree,
@@ -331,6 +332,48 @@ def _extract_param_types_rust(
     return out
 
 
+def _extract_enum_variant_field_types_rust(
+    root_node: "tree_sitter.Node", source: bytes
+) -> dict[str, list[str | None]]:
+    """Map ``EnumName::Variant`` -> positional tuple-field types.
+
+    Feeds match-arm / ``if let`` / ``while let`` / destructuring-``let`` binding
+    inference (WI-kodap): a local destructured from a tuple-struct enum variant
+    (``Cmd::Query(q)``) adopts the variant's field type, so a later
+    ``q.method()`` resolves to the concrete impl instead of collapsing to a
+    short-name-ambiguous method (zoxide's subcommand dispatch left every
+    concrete handler with 0 incoming calls). A position whose type is a builtin
+    / opaque / non-identifier normalizes to ``None`` (skipped at bind time, but
+    the slot is kept so multi-field patterns stay positionally aligned). Unit
+    and struct-like (``Named { x: Foo }``) variants are not indexed — their
+    bindings are field-named, not positional.
+    """
+    result: dict[str, list[str | None]] = {}
+    for node in iter_tree(root_node):
+        if node.type != "enum_item":
+            continue
+        enum_name_node = _find_child_by_field(node, "name")
+        if enum_name_node is None:  # pragma: no cover - grammar invariant
+            continue
+        enum_name = node_text(enum_name_node, source)
+        for variant in iter_tree(node):
+            if variant.type != "enum_variant":
+                continue
+            v_name_node = find_child_by_type(variant, "identifier")
+            ofdl = find_child_by_type(variant, "ordered_field_declaration_list")
+            if v_name_node is None or ofdl is None:
+                continue  # unit variant or struct-like variant
+            field_types = [
+                _normalize_rust_type_to_bare_name(node_text(c, source))
+                for c in ofdl.children
+                if c.is_named and c.type != "visibility_modifier"
+            ]
+            if field_types:
+                variant_name = node_text(v_name_node, source)
+                result[f"{enum_name}::{variant_name}"] = field_types
+    return result
+
+
 def _extract_var_types_rust(
     root_node: "tree_sitter.Node",
     source: bytes,
@@ -368,11 +411,39 @@ def _extract_var_types_rust(
     """
     var_types: dict[str, str] = {}
     registry = method_return_type_registry or {}
+    enum_variant_field_types = _extract_enum_variant_field_types_rust(
+        root_node, source
+    )
 
     for node in iter_tree(root_node):
         if node.type == "function_item":
             for k, v in _extract_param_types_rust(node, source).items():
                 var_types.setdefault(k, v)
+        elif node.type == "tuple_struct_pattern":
+            # WI-kodap: a tuple-struct enum-variant pattern (match arm, if/while
+            # let, or destructuring let) binds each positional local to the
+            # variant's field type, so a later `local.method()` resolves to the
+            # concrete impl. First-writer-wins, file-scoped (the documented
+            # var_types trade-off: extra edges, never missing).
+            type_node = _find_child_by_field(node, "type")
+            if type_node is None:  # pragma: no cover - grammar invariant
+                continue
+            field_types = enum_variant_field_types.get(
+                node_text(type_node, source)
+            )
+            if not field_types:
+                continue
+            # NB: compare by stable node id — child_by_field_name returns a
+            # distinct Python wrapper than the same node in ``node.children``,
+            # so an ``is`` check would fail to exclude the variant-path node.
+            sub_patterns = [
+                c
+                for c in node.children
+                if c.id != type_node.id and c.type not in ("(", ")", ",")
+            ]
+            for sub, field_type in zip(sub_patterns, field_types, strict=False):
+                if field_type is not None and sub.type == "identifier":
+                    var_types.setdefault(node_text(sub, source), field_type)
         elif node.type == "let_declaration":
             pattern_node = _find_child_by_field(node, "pattern")
             if pattern_node is None or pattern_node.type != "identifier":
@@ -882,6 +953,23 @@ def _extract_struct_field_types(
     return result
 
 
+def _is_rust_module_level_const(node: "tree_sitter.Node") -> bool:
+    """True when a ``const_item`` / ``static_item`` is a MODULE-level value
+    binding — directly at file scope (``source_file``) or inside a ``mod`` block
+    (``declaration_list`` of a ``mod_item``). Excludes function-body locals
+    (parent ``block``) and impl-/trait-associated consts (``declaration_list`` of
+    an ``impl_item`` / ``trait_item``), mirroring the module-level-only contract
+    of the other variable emitters (WI-jusus F5)."""
+    parent = node.parent
+    if parent is None:  # pragma: no cover - items always have a parent
+        return False
+    if parent.type == "source_file":
+        return True
+    if parent.type == "declaration_list" and parent.parent is not None:
+        return parent.parent.type == "mod_item"
+    return False
+
+
 def _extract_symbols_from_file(
     tree: "tree_sitter.Tree",
     source: bytes,
@@ -980,7 +1068,7 @@ def _extract_symbols_from_file(
                     docstring=extract_preceding_doc_comment(node, source, "rust"),
                     meta=meta,
                     modifiers=modifiers,
-                    lines_of_code=end_line - start_line + 1,
+                    line_span=end_line - start_line + 1,
                     is_exported="pub" in modifiers,
                     qualified_name=_make_rust_qualified_name(mod_path, impl_target, func_name),
                     cyclomatic_complexity=compute_cyclomatic_complexity(node, "rust"),
@@ -1035,13 +1123,108 @@ def _extract_symbols_from_file(
                     origin_run_id=run_id,
                     meta=meta,
                     modifiers=struct_modifiers,
-                    lines_of_code=end_line - start_line + 1,
+                    line_span=end_line - start_line + 1,
                     is_exported="pub" in struct_modifiers,
                     qualified_name=_make_rust_qualified_name(mod_path, None, struct_name),
                 )
                 analysis.symbols.append(symbol)
                 analysis.node_for_symbol[symbol.id] = node
                 analysis.symbol_by_name[struct_name] = symbol
+
+                # WI-jusus (emission-parity F5): emit a kind="field" Symbol per
+                # NAMED struct field. Tuple structs (`struct W(i32)`) have no
+                # field_declaration_list (positional fields) -> no field symbols.
+                body = find_child_by_type(node, "field_declaration_list")
+                for fdecl in body.children if body else ():
+                    if fdecl.type != "field_declaration":
+                        continue
+                    fname_node = fdecl.child_by_field_name("name")
+                    if fname_node is None:
+                        continue  # pragma: no cover - a named field always has a name
+                    ftype_node = fdecl.child_by_field_name("type")
+                    fname = node_text(fname_node, source)
+                    ftype = node_text(ftype_node, source) if ftype_node is not None else None
+                    f_modifiers = _extract_modifiers_rust(fdecl, source)
+                    # Rust member names use ``::`` (like impl methods,
+                    # ``MyStruct::method``); the id name-segment collapses
+                    # ``::``->``.`` (canonical ids forbid ``:`` in the name slot).
+                    f_full = f"{struct_name}::{fname}"
+                    f_start = fdecl.start_point[0] + 1
+                    f_end = fdecl.end_point[0] + 1
+                    f_qualified = _make_rust_qualified_name(mod_path, struct_name, fname)
+                    f_sym = Symbol(
+                        id=make_symbol_id("rust", str(file_path), f_start, f_end, f_full.replace("::", "."), "field"),
+                        name=f_full,
+                        kind="field",
+                        language="rust",
+                        path=str(file_path),
+                        span=Span(
+                            start_line=f_start,
+                            end_line=f_end,
+                            start_col=fdecl.start_point[1],
+                            end_col=fdecl.end_point[1],
+                        ),
+                        origin=PASS_ID,
+                        origin_run_id=run_id,
+                        modifiers=f_modifiers,
+                        signature=ftype,
+                        stable_id=make_typed_stable_id(
+                            "field", ftype or "",
+                            visibility_from_modifiers(f_modifiers),
+                            name=fname, qualified_name=f_full,
+                            file_stable_id=file_stable_id,
+                        ),
+                        line_span=f_end - f_start + 1,
+                        is_exported="pub" in f_modifiers,
+                        qualified_name=f_qualified,
+                    )
+                    analysis.symbols.append(f_sym)
+                    analysis.node_for_symbol[f_sym.id] = node
+                    analysis.symbol_by_name[f_full] = f_sym
+
+        # Module-level const / static — WI-jusus (emission-parity F5): a
+        # kind="variable" Symbol for each top-level or mod-level value binding.
+        # Function-body locals and impl-/trait-associated consts are excluded
+        # (see _is_rust_module_level_const).
+        elif node.type in ("const_item", "static_item") and _is_rust_module_level_const(node):
+            name_node = _find_child_by_field(node, "name")
+            if name_node:
+                var_name = node_text(name_node, source)
+                type_node = _find_child_by_field(node, "type")
+                var_type = node_text(type_node, source) if type_node is not None else None
+                start_line = node.start_point[0] + 1
+                end_line = node.end_point[0] + 1
+                v_modifiers = _extract_modifiers_rust(node, source)
+                mod_path = _get_rust_mod_path(node, source)
+                v_qualified = _make_rust_qualified_name(mod_path, None, var_name)
+                v_sym = Symbol(
+                    id=make_symbol_id("rust", str(file_path), start_line, end_line, var_name, "variable"),
+                    name=var_name,
+                    kind="variable",
+                    language="rust",
+                    path=str(file_path),
+                    span=Span(
+                        start_line=start_line,
+                        end_line=end_line,
+                        start_col=node.start_point[1],
+                        end_col=node.end_point[1],
+                    ),
+                    origin=PASS_ID,
+                    origin_run_id=run_id,
+                    modifiers=v_modifiers,
+                    signature=var_type,
+                    stable_id=make_typed_stable_id(
+                        "variable", var_type or "",
+                        visibility_from_modifiers(v_modifiers),
+                        name=var_name, qualified_name=v_qualified,
+                        file_stable_id=file_stable_id,
+                    ),
+                    line_span=end_line - start_line + 1,
+                    is_exported="pub" in v_modifiers,
+                    qualified_name=v_qualified,
+                )
+                analysis.symbols.append(v_sym)
+                analysis.symbol_by_name[var_name] = v_sym
 
         # Enum declaration
         elif node.type == "enum_item":
@@ -1079,7 +1262,7 @@ def _extract_symbols_from_file(
                     origin_run_id=run_id,
                     meta=meta,
                     modifiers=enum_modifiers,
-                    lines_of_code=end_line - start_line + 1,
+                    line_span=end_line - start_line + 1,
                     is_exported="pub" in enum_modifiers,
                     qualified_name=_make_rust_qualified_name(mod_path, None, enum_name),
                 )
@@ -1117,7 +1300,7 @@ def _extract_symbols_from_file(
                     origin=PASS_ID,
                     origin_run_id=run_id,
                     meta=meta,
-                    lines_of_code=end_line - start_line + 1,
+                    line_span=end_line - start_line + 1,
                     is_exported="pub" in trait_modifiers,
                     qualified_name=_make_rust_qualified_name(mod_path, None, trait_name),
                 )
@@ -1566,7 +1749,6 @@ def _extract_edges_from_file(
                             edge_type="implements",
                             line=node.start_point[0] + 1,
                             evidence_type="trait_impl",
-                            confidence=0.95,
                             origin=PASS_ID,
                             origin_run_id=run_id,
                         ))
@@ -1592,6 +1774,10 @@ def _extract_edges_from_file(
                                 line=node.start_point[0] + 1,
                                 evidence_type="trait_impl",
                                 is_resolved=False,
+                                # WI-nurun: confidence kept explicit — trait_impl
+                                # is single-valued in the derivation table (0.95),
+                                # so it cannot express the lower reliability of an
+                                # *unresolved* trait impl.
                                 confidence=0.70,
                                 origin=PASS_ID,
                                 origin_run_id=run_id,
@@ -1616,7 +1802,6 @@ def _extract_edges_from_file(
                     edge_type="imports",
                     line=node.start_point[0] + 1,
                     evidence_type="use_declaration",
-                    confidence=0.95,
                     origin=PASS_ID,
                     origin_run_id=run_id,
                 ))
@@ -1720,7 +1905,6 @@ def _extract_edges_from_file(
                                                 edge_type="calls",
                                                 line=node.start_point[0] + 1,
                                                 evidence_type="async_spawn",
-                                                confidence=0.85,
                                                 origin=PASS_ID,
                                                 origin_run_id=run_id,
                                             ))
@@ -1729,6 +1913,18 @@ def _extract_edges_from_file(
 
                         # Strategy 1: Try full scoped name first (e.g., "Diff::compute")
                         # This gives precise resolution for qualified calls.
+                        #
+                        # INV-fahub Phase A: every bind in this branch resolves a
+                        # ``Type::method`` scoped call whose target type the CALL
+                        # SITE named explicitly, so the edge carries
+                        # ``meta.receiver="qualified"``. Without it the
+                        # language-agnostic magnet detector counts a qualified
+                        # associated-function call to a method-kind symbol
+                        # (rodio's ``SamplesBuffer::new`` <- 26 callers) as a
+                        # receiver-blind cross-class magnet even though every one
+                        # is correct — the reframe left the detector-side
+                        # ``qualified`` exclusion ready and this stamps the
+                        # producer half.
                         if not resolved and full_scoped_name and full_scoped_name != callee_name:
                             if full_scoped_name in local_symbols:
                                 callee = local_symbols[full_scoped_name]
@@ -1738,10 +1934,9 @@ def _extract_edges_from_file(
                                     edge_type="calls",
                                     line=node.start_point[0] + 1,
                                     evidence_type="ast_call",
-                                    confidence=0.90,
                                     origin=PASS_ID,
                                     origin_run_id=run_id,
-                                    meta={"call_construct": "function"},
+                                    meta={"call_construct": "function", "receiver": "qualified"},
                                 ))
                                 resolved = True
                             else:
@@ -1759,7 +1954,7 @@ def _extract_edges_from_file(
                                         confidence=0.80 * lookup_result.confidence,
                                         origin=PASS_ID,
                                         origin_run_id=run_id,
-                                        meta={"call_construct": "function"},
+                                        meta={"call_construct": "function", "receiver": "qualified"},
                                     ))
                                     resolved = True
 
@@ -1781,10 +1976,9 @@ def _extract_edges_from_file(
                                                 edge_type="calls",
                                                 line=node.start_point[0] + 1,
                                                 evidence_type="ast_call",
-                                                confidence=0.85,
                                                 origin=PASS_ID,
                                                 origin_run_id=run_id,
-                                                meta={"call_construct": "function"},
+                                                meta={"call_construct": "function", "receiver": "qualified"},
                                             ))
                                             resolved = True
                                             break
@@ -1801,7 +1995,7 @@ def _extract_edges_from_file(
                                                 confidence=0.80 * lr.confidence,
                                                 origin=PASS_ID,
                                                 origin_run_id=run_id,
-                                                meta={"call_construct": "function"},
+                                                meta={"call_construct": "function", "receiver": "qualified"},
                                             ))
                                             resolved = True
                                             break
@@ -1846,7 +2040,6 @@ def _extract_edges_from_file(
                                             edge_type="calls",
                                             line=node.start_point[0] + 1,
                                             evidence_type="ast_call",
-                                            confidence=0.88,
                                             origin=PASS_ID,
                                             origin_run_id=run_id,
                                             meta={"call_construct": "method", "receiver": "typed_field"},
@@ -1894,7 +2087,57 @@ def _extract_edges_from_file(
                                             edge_type="calls",
                                             line=node.start_point[0] + 1,
                                             evidence_type="ast_call_type_inferred",
-                                            confidence=0.85,
+                                            origin=PASS_ID,
+                                            origin_run_id=run_id,
+                                            meta={
+                                                "call_construct": "method",
+                                                "receiver": "typed_var",
+                                            },
+                                        ))
+                                        resolved = True
+
+                        # Strategy 1.9: receiver is itself a call expression —
+                        # infer its return type and resolve the outer method
+                        # against it. `Cmd::parse().run()`: the receiver
+                        # `Cmd::parse()` yields `Cmd` (associated-fn path), so
+                        # `.run()` resolves to `Cmd::run` (WI-lohup). Reuses the
+                        # let-binding RHS type-inference helper, so it also
+                        # covers `obj.foo().bar()` when foo's return type is
+                        # known. These chained calls leave no intermediate
+                        # variable for the var_types walker to type, so the
+                        # typed_var strategy above misses them.
+                        if not resolved and is_method_call:
+                            chained_recv = inner.child_by_field_name("value")
+                            if (
+                                chained_recv is not None
+                                and chained_recv.type == "call_expression"
+                            ):
+                                recv_type = _infer_type_from_rust_rhs(
+                                    chained_recv, source, _var_types,
+                                    getattr(
+                                        analyzer,
+                                        "_method_return_type_registry", None,
+                                    ) or {},
+                                )
+                                if recv_type:
+                                    # The inferred receiver type is a concrete
+                                    # in-tree type, so its method is keyed by the
+                                    # qualified `Type::method` name in the local
+                                    # (same-file) or global registry — no resolver
+                                    # disambiguation needed (unlike the typed_var
+                                    # strategy, which may face short-name ambiguity).
+                                    typed_name = f"{recv_type}::{callee_name}"
+                                    target = (
+                                        local_symbols.get(typed_name)
+                                        or global_symbols.get(typed_name)
+                                    )
+                                    if target is not None:
+                                        edges.append(Edge.create(
+                                            src=current_function.id,
+                                            dst=target.id,
+                                            edge_type="calls",
+                                            line=node.start_point[0] + 1,
+                                            evidence_type="ast_call_type_inferred",
                                             origin=PASS_ID,
                                             origin_run_id=run_id,
                                             meta={
@@ -1914,7 +2157,6 @@ def _extract_edges_from_file(
                                     edge_type="calls",
                                     line=node.start_point[0] + 1,
                                     evidence_type="ast_call",
-                                    confidence=0.85,
                                     origin=PASS_ID,
                                     origin_run_id=run_id,
                                     meta={"call_construct": "function"},
@@ -1927,6 +2169,15 @@ def _extract_edges_from_file(
                                 # full "Type::new" wasn't found).  Both are
                                 # method-like calls that should not resolve to
                                 # arbitrary same-name symbols.
+                                # INV-fahub bare->method magnet gate: track
+                                # whether this candidate came from the bare
+                                # (non-method, non-scoped) ``resolver.lookup``
+                                # path, plus the enclosing impl type, so a weak
+                                # short-name hit on a DIFFERENT impl's method
+                                # can be deferred to the inherited_calls Site-1
+                                # walker instead of misbound (see below).
+                                _used_bare_resolver = False
+                                _bare_enclosing_type: str | None = None
                                 use_method_guard = (
                                     is_method_call or full_scoped_name is not None
                                 )
@@ -1955,18 +2206,72 @@ def _extract_edges_from_file(
                                 else:
                                     import_hint = use_aliases.get(callee_name)
                                     lookup_result = resolver.lookup(callee_name, path_hint=import_hint, caller_path=_caller_path)
-                                if lookup_result.found and lookup_result.symbol is not None:
+                                    # The magnet gate applies only to genuinely
+                                    # BARE identifier calls (``foo()``). Method /
+                                    # scoped calls that fall through here purely
+                                    # because no ``method_resolver`` was supplied
+                                    # keep their existing suffix resolution —
+                                    # production guards those via the
+                                    # method_resolver ambiguity threshold.
+                                    _used_bare_resolver = not use_method_guard
+                                    _bare_enclosing_type = _get_impl_target(node, source)
+                                _sym = lookup_result.symbol
+                                # INV-fahub: a BARE call (``foo()``) that resolved
+                                # only to a DIFFERENT impl's method on weak
+                                # short-name (suffix / ambiguous) evidence is a
+                                # magnet — withhold it and defer to the
+                                # inherited_calls Site-1 walker via
+                                # ``enclosing_class`` rather than binding a
+                                # high-confidence false edge. Free functions,
+                                # same-impl methods, and exact / import-scoped
+                                # hits still bind. Same-impl ``self.m()`` /
+                                # ``Type::m()`` calls take the method_resolver
+                                # guard path, and same-file free functions are
+                                # caught by the ``local_symbols`` check above, so
+                                # this gate only fires on the cross-impl magnet.
+                                _defer = (
+                                    _used_bare_resolver
+                                    and _sym is not None
+                                    and defer_bare_method_call(
+                                        _sym.kind, _sym.name,
+                                        lookup_result.match_type,
+                                        _bare_enclosing_type,
+                                        separator="::",
+                                    )
+                                )
+                                if (
+                                    lookup_result.found
+                                    and _sym is not None
+                                    and not _defer
+                                ):
                                     confidence = 0.80 * lookup_result.confidence
+                                    # WI-fazaj: a scoped ``Type::method()`` call that
+                                    # resolves *here* (Strategy 1 missed it; the
+                                    # cross-package survey ``method_resolver`` / bare-name
+                                    # fallback bound it) still named its target type at the
+                                    # call site, so it is a *qualified* call, not a
+                                    # receiver-blind magnet — stamp ``receiver="qualified"``
+                                    # (mirroring the Strategy-1 sites) so
+                                    # ``find_receiver_blind_magnets`` excludes it. The
+                                    # branch is reachable only through the full-survey
+                                    # method_resolver (verified unreachable across 8
+                                    # isolated ``analyze_rust`` scenarios — cross-file,
+                                    # nested modules, ``use`` aliases, generics, ``::new``
+                                    # ambiguity, re-exports — which all bind via Strategy 1),
+                                    # so it carries ``# pragma: no cover``.
+                                    _meta = {"call_construct": "function"}
+                                    if full_scoped_name is not None:  # pragma: no cover
+                                        _meta["receiver"] = "qualified"
                                     edges.append(Edge.create(
                                         src=current_function.id,
-                                        dst=lookup_result.symbol.id,
+                                        dst=_sym.id,
                                         edge_type="calls",
                                         line=node.start_point[0] + 1,
                                         evidence_type="ast_call",
                                         confidence=confidence,
                                         origin=PASS_ID,
                                         origin_run_id=run_id,
-                                        meta={"call_construct": "function"},
+                                        meta=_meta,
                                     ))
                                 else:
                                     # WI-volob / WI-mafik: consult use_aliases
@@ -2025,6 +2330,13 @@ def _extract_edges_from_file(
                                             node.start_point[0] + 1, PASS_ID, run_id,
                                             module_hint=module_hint,
                                             dst_ref=ext_ref,
+                                            # INV-fahub: carry the enclosing impl
+                                            # type on the deferred magnet so the
+                                            # Site-1 inherited_calls walker can
+                                            # recover a genuine inherited call.
+                                            enclosing_class=(
+                                                _bare_enclosing_type if _defer else None
+                                            ),
                                         ))
 
         # Detect calls inside macro bodies (tokio::select!, assert!, etc.).
@@ -2062,7 +2374,6 @@ def _extract_edges_from_file(
                                 edge_type="calls",
                                 line=call_line,
                                 evidence_type="ast_call",
-                                confidence=0.75,
                                 origin=PASS_ID,
                                 origin_run_id=run_id,
                                 meta={"call_construct": "macro_body"},
@@ -2087,7 +2398,7 @@ def _extract_edges_from_file(
         span=Span(start_line=0, end_line=0, start_col=0, end_col=0),
         origin=PASS_ID,
         origin_run_id=run_id,
-        lines_of_code=1,
+        line_span=1,
     )
     emit_module_attribute_refs(
         tree.root_node,
@@ -2333,7 +2644,6 @@ def _extract_attribute_edges(
                     dst=attr_sym.id,
                     edge_type="decorated_by",
                     line=line,
-                    confidence=0.95,
                     origin=PASS_ID,
                     origin_run_id=run_id,
                     evidence_type="ast_attribute",
@@ -2347,7 +2657,6 @@ def _extract_attribute_edges(
                     dst=dst_id,
                     edge_type="decorated_by",
                     line=line,
-                    confidence=0.80,
                     origin=PASS_ID,
                     origin_run_id=run_id,
                     evidence_type="ast_attribute",
@@ -2403,8 +2712,12 @@ class RustAnalyzer(TreeSitterAnalyzer):
         global_symbols[symbol.name] = symbol
         cache = getattr(self, "_kind_index_cache", None)
         if cache is None or cache[0] is not global_symbols:
-            cache = (global_symbols, {})
-            self._kind_index_cache = cache
+            # Annotate the empty kind-index and assign the tuple directly to the
+            # attribute so mypy can infer _kind_index_cache's type (the `cache`
+            # local is Any, coming from getattr).
+            kind_index: dict[str, list[Symbol]] = {}
+            self._kind_index_cache = (global_symbols, kind_index)
+            cache = self._kind_index_cache
         cache[1].setdefault(symbol.name, []).append(symbol)
 
     def extract_edges_from_file(

@@ -60,9 +60,8 @@ from pathlib import Path
 from typing import Iterator
 
 from ..analyze.base import make_protocol_stable_id
-from ..discovery import find_files
+from ..discovery import find_non_test_files
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
-from ..paths import is_test_file
 from ._text_filters import js_ts_language_from_path
 from .registry import LinkerContext, LinkerResult, register_linker
 from ._text_filters import read_masked_source
@@ -283,10 +282,8 @@ def _find_source_files(root: Path) -> Iterator[Path]:
     of orphan ``event_publisher`` nodes from test assertions.
     """
     patterns = ["**/*.py", "**/*.js", "**/*.ts", "**/*.java", "**/*.go"]
-    for path in find_files(root, patterns):
+    for path in find_non_test_files(root, patterns):
         if path.stem.endswith(".min"):
-            continue
-        if is_test_file(str(path)):
             continue
         yield path
 
@@ -368,13 +365,23 @@ def _scan_javascript_events(file_path: Path, content: str) -> list[EventPattern]
     return patterns
 
 
-def _scan_python_events(file_path: Path, content: str) -> list[EventPattern]:
-    """Scan Python file for event patterns."""
+def _scan_python_events(
+    file_path: Path, content: str, detected_frameworks: set[str] | None = None
+) -> list[EventPattern]:
+    """Scan Python file for event patterns.
+
+    WI-pitit: the Django-signal sub-scans (``.send`` / ``.connect`` /
+    ``@receiver``) match framework-blind identifiers (``sqlite3.connect``,
+    ``sock.send``), so they are gated on Django actually being detected.
+    ``detected_frameworks is None`` means "no framework info supplied" and stays
+    permissive (unit callers testing the raw patterns); the production linker
+    passes ``ctx.detected_frameworks`` (a real, possibly-empty set)."""
     patterns: list[EventPattern] = []
+    _django = detected_frameworks is None or "django" in detected_frameworks
 
     # Django signal.send patterns (publishers)
     # Uses identifier matching - signal names are always "variable" type
-    for match in DJANGO_SIGNAL_SEND_PATTERN.finditer(content):
+    for match in (DJANGO_SIGNAL_SEND_PATTERN.finditer(content) if _django else []):
         signal_name = match.group(1)
         line = content[: match.start()].count("\n") + 1
         patterns.append(EventPattern(
@@ -388,7 +395,7 @@ def _scan_python_events(file_path: Path, content: str) -> list[EventPattern]:
         ))
 
     # Django signal.connect patterns (subscribers)
-    for match in DJANGO_SIGNAL_CONNECT_PATTERN.finditer(content):
+    for match in (DJANGO_SIGNAL_CONNECT_PATTERN.finditer(content) if _django else []):
         signal_name = match.group(1)
         line = content[: match.start()].count("\n") + 1
         patterns.append(EventPattern(
@@ -402,7 +409,7 @@ def _scan_python_events(file_path: Path, content: str) -> list[EventPattern]:
         ))
 
     # Django @receiver decorator patterns (subscribers)
-    for match in DJANGO_RECEIVER_DECORATOR_PATTERN.finditer(content):
+    for match in (DJANGO_RECEIVER_DECORATOR_PATTERN.finditer(content) if _django else []):
         signal_name = match.group(1)
         line = content[: match.start()].count("\n") + 1
         patterns.append(EventPattern(
@@ -631,11 +638,13 @@ def _scan_go_events(file_path: Path, content: str) -> list[EventPattern]:
     return patterns
 
 
-def _scan_file(file_path: Path, content: str) -> list[EventPattern]:
+def _scan_file(
+    file_path: Path, content: str, detected_frameworks: set[str] | None = None
+) -> list[EventPattern]:
     """Scan a file for event patterns."""
     language = _detect_language(file_path)
     if language == "python":
-        return _scan_python_events(file_path, content)
+        return _scan_python_events(file_path, content, detected_frameworks)
     elif language == "javascript":
         return _scan_javascript_events(file_path, content)
     elif language == "java":
@@ -650,9 +659,14 @@ def _create_event_symbol(pattern: EventPattern, root: Path) -> Symbol:
 
     ADR-0027 Phase 3 / audit-findings 0013: event_publisher / event_subscriber
     are framework-role values that fold to canonical kind="function" +
-    meta["framework_role"]. The role suffix is preserved in the Symbol ID
-    string for stable identity (the ID format `<lang>:<path>:<span>:<name>:<kind>`
-    used :event_publisher / :event_subscriber as the disambiguator).
+    meta["framework_role"]. ADR-0036 Ruling 2 completes the fold: the id
+    kind-slot is the node's own kind ("function"), not the role (which the id
+    format `<lang>:<path>:<span>:<name>:<kind>` used to smuggle as a
+    disambiguator). The role no longer disambiguates in the id —
+    (path, line, event_name) is unique per pattern on all measured corpora (a
+    line publishes XOR subscribes a given event), and cross-run identity lives
+    in ``stable_id`` (``make_protocol_stable_id``), independent of the id-slot;
+    a per-file id-uniqueness validator backstops the rare pub+sub-same-line case.
     """
     try:
         rel_path = Path(pattern.file_path).relative_to(root)
@@ -664,7 +678,9 @@ def _create_event_symbol(pattern: EventPattern, root: Path) -> Symbol:
     )
 
     return Symbol(
-        id=f"{pattern.language}:{rel_path}:{pattern.line}-{pattern.line}:{pattern.event_name}:{framework_role}",
+        # ADR-0036 Ruling 2: kind slot == Symbol.kind ("function"); the role
+        # lives on meta["framework_role"] (stamped below), not the id-slot.
+        id=f"{pattern.language}:{rel_path}:{pattern.line}-{pattern.line}:{pattern.event_name}:function",
         name=f"{pattern.event_name}",
         kind="function",
         path=pattern.file_path,
@@ -699,11 +715,16 @@ def _create_event_symbol(pattern: EventPattern, root: Path) -> Symbol:
     )
 
 
-def link_events(root: Path) -> EventSourcingLinkResult:
+def link_events(
+    root: Path, detected_frameworks: set[str] | None = None
+) -> EventSourcingLinkResult:
     """Link event publishers to subscribers.
 
     Args:
         root: Repository root path.
+        detected_frameworks: frameworks detected for this repo. Threaded to the
+            Python scan so the framework-blind Django-signal patterns only fire
+            when Django is present (WI-pitit). ``None`` = permissive (no info).
 
     Returns:
         EventSourcingLinkResult with edges linking publishers to subscribers.
@@ -719,7 +740,7 @@ def link_events(root: Path) -> EventSourcingLinkResult:
         try:
             content = read_masked_source(file_path, encoding="utf-8", errors="ignore")
             files_scanned += 1
-            patterns = _scan_file(file_path, content)
+            patterns = _scan_file(file_path, content, detected_frameworks)
             all_patterns.extend(patterns)
         except (OSError, IOError):  # pragma: no cover
             pass
@@ -769,9 +790,6 @@ def link_events(root: Path) -> EventSourcingLinkResult:
                 # emitted by Class-B linker producers; fall back to language
                 # for real-source declarations and for Symbols that haven't
                 # migrated yet (double-write absorbs the Phase 1 window).
-                _pub_lang = pub_symbol.discovery_language or pub_symbol.language
-                _sub_lang = sub_symbol.discovery_language or sub_symbol.language
-                is_cross_language = _pub_lang != _sub_lang
                 is_variable_event = (
                     publisher.event_type == "variable"
                     or sub_pattern.event_type == "variable"
@@ -782,8 +800,8 @@ def link_events(root: Path) -> EventSourcingLinkResult:
 
                 # Pass linker-specific meta via Edge.create's meta= kwarg so
                 # Edge.create merges it with the dataflow fields — assigning
-                # to edge.meta after construction would wipe access_mode and
-                # dest_access_mode set by the kwargs above (INV-forim).
+                # to edge.meta after construction would wipe the dataflow
+                # meta fields set by the kwargs above (INV-forim).
                 #
                 # ADR-0028 Phase 3 / audit-findings 0014: pattern-detection leak
                 # (event_name_match was a regex/naming-pattern shape).
@@ -799,13 +817,11 @@ def link_events(root: Path) -> EventSourcingLinkResult:
                     origin_run_id=run.execution_id,
                     evidence_type="naming_convention",
                     access_mode="write",
-                    dest_access_mode="read",
                     channel=publisher.event_name,
                     meta={
                         "event_name": publisher.event_name,
                         "publisher_framework": publisher.framework,
                         "subscriber_framework": sub_pattern.framework,
-                        "cross_language": is_cross_language,
                         "publisher_event_type": publisher.event_type,
                         "subscriber_event_type": sub_pattern.event_type,
                         "detection_pattern": "event_name",
@@ -946,7 +962,7 @@ def event_sourcing_linker(ctx: LinkerContext) -> LinkerResult:
     by ``link_events()``. The helper call is preserved as a documented
     no-op so the deprecation rationale stays adjacent to the code.
     """
-    result = link_events(ctx.repo_root)
+    result = link_events(ctx.repo_root, detected_frameworks=ctx.detected_frameworks)
 
     # Tombstone for the dropped subscriber → enclosing-method edge
     # (DEPRECATE-NO-FOLD per audit-findings 0001 / WI-vasik-jofiv;

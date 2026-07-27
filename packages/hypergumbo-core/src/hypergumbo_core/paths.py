@@ -1,9 +1,13 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Centralized path handling utilities for hypergumbo.
 
-This module provides consistent path normalization and comparison functions
-used throughout the codebase. All paths stored in Symbol IDs, Symbol.path,
-and UsageContext.path should be normalized using these utilities.
+This module provides (1) path normalization and comparison (normalize_path,
+to_relative_path, paths_match, path_ends_with, get_filename,
+is_under_directory), and (2) heuristic path/node classification used by
+entrypoint ranking and production-slice filtering (is_utility_file,
+is_infrastructure_path, is_test_file, is_test_node). All paths stored in
+Symbol IDs, Symbol.path, and UsageContext.path should be normalized using
+the normalization utilities.
 
 Key design decisions:
 - Paths use forward slashes (/) regardless of OS
@@ -266,6 +270,16 @@ def is_test_file(path: str) -> bool:
     """Check if a path looks like a test file.
 
     Used for filtering and deprioritizing test code in analysis results.
+
+    This is the BROAD "test-OR-support" ranking/scan predicate: beyond test
+    code it also flags mocks/, fakes/, fixtures/, testdata/, benches/, ``t/``,
+    ``_test.<any-ext>``, ``spec_*``, ``test-*``, ``*_mock`` and friends. It is
+    the single shared chokepoint for entrypoint ranking and slice/linker
+    filtering, and is DELIBERATELY distinct from the narrow supply-chain role
+    flag ``Symbol.is_test_file`` ("test *code*" only, spec §14). The two answer
+    different questions ("deprioritize as a non-production entrypoint?" vs
+    "is this test code for tier classification?") and diverge in both
+    directions — see the WI-popok fundamental-concept-audit KEEP verdict.
 
     Matches:
     - Files starting with test_ or test- or ending with _test.* (py/js/ts/go)

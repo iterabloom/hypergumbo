@@ -32,7 +32,11 @@ How It Works
 2. Parse spec and extract path operations
 3. Create openapi_operation symbols for each operation
 4. Match to route symbols by path pattern and HTTP method
-5. Create openapi_implements edges linking handlers to specs
+5. Create ``references`` edges (spec operation → handler, tagged
+   ``meta.ref_construct="openapi_operation"``). The bespoke
+   ``openapi_implements`` type was folded onto ``references`` per the
+   audit-findings 0016 relationship-axis consolidation; the spec→handler
+   direction is preserved deliberately to power the forward-slice-from-spec.
 
 Why This Design
 ---------------
@@ -51,9 +55,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterator
 
-from ..discovery import find_files
+from ..discovery import find_non_test_files
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
-from ._concept_utils import get_concept, has_concept
+from ..routes import is_route, method_token, route_of
 from ._text_filters import language_from_path
 from .registry import (
     LinkerActivation,
@@ -154,7 +158,7 @@ def _find_openapi_files(root: Path) -> Iterator[Path]:
     """Find OpenAPI spec files in the repository."""
     # First, try specific filenames
     for pattern in OPENAPI_FILE_PATTERNS:
-        for file_path in find_files(root, [pattern]):
+        for file_path in find_non_test_files(root, [pattern]):
             if file_path.suffix.lower() in (".yaml", ".yml", ".json"):
                 yield file_path
 
@@ -252,35 +256,30 @@ def _paths_match(openapi_path: str, route_path: str) -> bool:
     return bool(re.match(pattern, norm_route))
 
 
-def _has_route_concept(symbol: Symbol) -> bool:
-    """Check if symbol has a route concept in meta.concepts."""
-    return has_concept(symbol, "route")
-
-
 def _get_route_info_from_concept(symbol: Symbol) -> tuple[str | None, str | None]:
-    """Extract route path and method from concept metadata.
+    """Extract ``(route_path, http_method)`` for OpenAPI operation matching.
 
-    Returns:
-        Tuple of (route_path, http_method) from the first route concept,
-        or (None, None) if no route concept exists.
+    Delegates to the canonical MARKER-FIRST ``routes.route_of`` (WI-tosul
+    Phase-1b-alpha). The prior concept-first duplicate had NO meta-fallback at
+    all, so a marker-only route (Go net/http, Express — ``framework_role`` +
+    ``route_path``/``http_method``, no concept) returned ``(None, None)`` and was
+    silently dropped from OpenAPI matching (BUG-2). The ``'WS'`` sentinel is
+    reconstructed from ``route_of``'s normalized ``protocol``.
     """
-    route = get_concept(symbol, "route")
-    if route is None:
+    info = route_of(symbol)
+    if info is None:
         return None, None
-    return route.get("path"), route.get("method")
+    method = method_token(info)
+    return info["path"], method
 
 
 def _get_route_symbols(ctx: LinkerContext) -> list[Symbol]:
-    """Extract route symbols from context.
+    """Extract route symbols (marker OR ``concept == 'route'``) from context.
 
-    Route symbols are either:
-    - kind="route" (Ruby, Go, Rust, Express analyzers)
-    - have route concept in meta.concepts (FRAMEWORK_PATTERNS enrichment)
+    Exactly ``routes.is_route``'s disjunction, folded onto the canonical
+    accessor (WI-tosul Phase-1b-alpha).
     """
-    return [
-        s for s in ctx.symbols
-        if (s.meta or {}).get("framework_role") == "route" or _has_route_concept(s)
-    ]
+    return [s for s in ctx.symbols if is_route(s)]
 
 
 def link_openapi(root: Path, route_symbols: list[Symbol]) -> OpenApiLinkResult:
@@ -365,10 +364,14 @@ def link_openapi(root: Path, route_symbols: list[Symbol]) -> OpenApiLinkResult:
 
                 # Create edge linking spec to implementation
                 # ADR-0028 Phase 3 / audit-findings 0014: framework-dispatch leak.
+                # audit-findings 0016 FOLD: openapi_implements -> references +
+                # meta['ref_construct']='openapi_operation', direction-preserving
+                # (spec->handler is deliberate — powers the forward-slice-from-
+                # spec; folding to impl->contract 'implements' would flip it).
                 edge = Edge.create(
                     src=symbol.id,
                     dst=route.id,
-                    edge_type="openapi_implements",
+                    edge_type="references",
                     line=op.line,
                     confidence=0.85,
                     evidence_type="ast_call_direct",
@@ -377,6 +380,7 @@ def link_openapi(root: Path, route_symbols: list[Symbol]) -> OpenApiLinkResult:
                         "route_path": route_path,
                         "method": op.method,
                         "framework_dispatch": "openapi_path",
+                        "ref_construct": "openapi_operation",
                     },
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
@@ -391,11 +395,13 @@ def link_openapi(root: Path, route_symbols: list[Symbol]) -> OpenApiLinkResult:
                 # Check if operationId matches function name
                 if route.name == op.operation_id:
                     # ADR-0028 Phase 3 / audit-findings 0014: framework-dispatch
-                    # leak.
+                    # leak. audit-findings 0016 FOLD: openapi_implements ->
+                    # references + meta['ref_construct']='openapi_operation'
+                    # (direction-preserving; see the path-match site above).
                     edge = Edge.create(
                         src=symbol.id,
                         dst=route.id,
-                        edge_type="openapi_implements",
+                        edge_type="references",
                         line=op.line,
                         confidence=0.9,  # Higher confidence for operationId match
                         evidence_type="ast_call_direct",
@@ -403,6 +409,7 @@ def link_openapi(root: Path, route_symbols: list[Symbol]) -> OpenApiLinkResult:
                             "operation_id": op.operation_id,
                             "route_name": route.name,
                             "framework_dispatch": "openapi_operation_id",
+                            "ref_construct": "openapi_operation",
                         },
                         origin=PASS_ID,
                         origin_run_id=run.execution_id,

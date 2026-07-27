@@ -1,0 +1,74 @@
+- op: create  # ff7b
+  at: '2026-07-03T03:35:54Z'  # ff7b
+  by: agent  # ff7b
+  actor: jgstern_agent  # ff7b
+  clock: 1  # ff7b
+  nonce: ff7b  # ff7b
+  data:  # ff7b
+    kind: invariant  # ff7b
+    title: "Unresolved method/function calls confidently misbind to arbitrary same-named internal defs (cross-language)"  # ff7b
+    status: violated  # ff7b
+    priority: 2  # ff7b
+    parent:  # ff7b
+    tags:  # ff7b
+    - cross_language_parity  # ff7b
+    - analysis_quality  # ff7b
+    - structural  # ff7b
+    isbefore: []  # ff7b
+    duplicate_of: []  # ff7b
+    not_duplicate_of: []  # ff7b
+    pr_ref:  # ff7b
+    description: ""  # ff7b
+    fields:  # ff7b
+      statement: "A call whose receiver/target type cannot be resolved MUST emit an ambiguous/external edge, not a high-confidence calls edge to an arbitrary same-named internal definition. Observed cross-language on the Apr12 cohort: Scala copy/setTo @0.68, D exists/startsWith/toString @0.85, Swift create/delete/run funnels @0.8. The Python instance is addressed by the scope-stack rewrite (identity:F1/F4a) + WI-noham; this umbrella tracks the cross-language generalization."  # ff7b
+      root_cause: "Call resolution falls back to a global by-short-name index without receiver-type gating, so an unresolvable receiver binds to the first same-named internal definition instead of emitting an ambiguous/external edge. Cross-language manifestation of the Python var_types/flat-dict resolution gap."  # ff7b
+- op: discuss  # 7a46
+  at: '2026-07-18T21:54:17Z'  # 7a46
+  by: agent  # 7a46
+  actor: jgstern_agent  # 7a46
+  clock: 2  # 7a46
+  nonce: 7a46  # 7a46
+  message: "Real-repro validation 2026-07-18 (the Apr12 cohort named in the repro): funnels wide open across ALL THREE languages on the real repos — Scala 242 misbinds (docspell), Swift 302 (VernissageServer), D 107 (dub). WI-bihit/WI-votar/WI-situj built only a narrow receiver-type slice (annotated-vals+ctor-params / function-params / typed-params); the dominant patterns (case-class .copy(), Vapor route builders, free-function-form, calls on locals/loop-vars/fields) still bare-lookup-misbind @0.85. All 3 reopened todo_hard. CLOSURE-EVIDENCE LESSON: WI-bihit/WI-votar were closed done on \"0 misbinds, funnels closed end-to-end\" via unit tests + the zero-baseline SwiftyJSON cohort, NOT the real repro corpus — an open-ended behavioral invariant treated as closed without its own filed repro. Validation harness + surveys in scratchpad. Design approach: owner chose 3-lens investigation first."  # 7a46
+- op: discuss  # d70d
+  at: '2026-07-19T03:04:16Z'  # d70d
+  by: agent  # d70d
+  actor: jgstern_agent  # d70d
+  clock: 3  # d70d
+  nonce: d70d  # d70d
+  message: "FLEET GATE LANDED (PR merged 86a58ce952). The bare->method magnet gate is now wired across ALL method-dispatch analyzers: the 3 funnel langs (Scala/Swift/D, merged earlier) + 11 more via a verified multi-agent workflow (go, rust, php, js_ts, csharp, groovy, dart, lua, zig, cpp, objc). Shared defer_bare_method_call helper (analyze/base.py, generalized with a separator param for Owner::method langs). Each analyzer withholds a weak-suffix/ambiguous bind to a cross-class method, emitting unresolved + enclosing_class instead of a false high-confidence calls edge; free funcs/objects, same-class implicit this/self, and exact/import-scoped matches still resolve. 21020 tests green, 100% coverage; every wiring TDD-red-confirmed + adversarially verified. ruby (already had its own INV-fahub cascade) and nim (no cross-class magnet) correctly excluded. REMAINING for the flip: (1) Site-1 MRO walkers for the fleet langs to RECOVER inherited implicit-this/self calls (PR-2, needs per-language inheritance-edge validation); (2) D free-form nested-local residual (WI-situj); (3) the cross-language validation bakeoff."  # d70d
+- op: discuss  # 5cb5
+  at: '2026-07-19T03:56:48Z'  # 5cb5
+  by: agent  # 5cb5
+  actor: jgstern_agent  # 5cb5
+  clock: 4  # 5cb5
+  nonce: 5cb5  # 5cb5
+  message: "FLEET WALKERS LANDED (PR merged eb572f99a7). Site-1 MRO walkers registered for the 8 inheriting fleet langs (go/rust/php/javascript/typescript/csharp/cpp/objc), reusing the proven walker functions; dart/lua/zig unregistered (no class-inheritance model -> nothing recoverable). Parametrized Site-1 test confirms recovery for all 8. Real-repro ghostfolio(TS): gate fires 84 deferred, 0 recovered = CORRECT (none call a concrete-ancestor method; all are genuine cross-class magnets). GATE+WALKERS COMPLETE across all 14 method-dispatch analyzers. REMAINING for the flip: (1) D free-form nested-local residual (WI-situj, distinct free-call-scoping mechanism); (2) the cross-language validation bakeoff (the final DEEP confirmation on real Scala/D/Swift/+ repos). No code gate work remains for the 14 analyzers."  # 5cb5
+- op: discuss  # 785a
+  at: '2026-07-19T04:50:04Z'  # 785a
+  by: agent  # 785a
+  actor: jgstern_agent  # 785a
+  clock: 5  # 785a
+  nonce: 785a  # 785a
+  message: "VALIDATION BAKEOFF (2026-07-19) — gate is REAL but INCOMPLETE on real code; stays violated. Surveyed real repos w/ final merged code (scratchpad/inv-fahub/*.json). CLEAN: Scala(docspell) 0 magnets, gate fired 5692, 38 recovered. NEAR-CLEAN: Swift(vernissage) 6 candidate magnets/100 binds (need legit-vs-real check), gate fired 2084, 81 recovered. NOT CLEAN: Go(caddy) 41 magnets/666 binds gate-fired-1 (Dispenser.Val<-53, Next<-46 = d.Val() UNTYPED-RECEIVER method calls @0.85); Rust(ripgrep) 23 magnets gate-fired-2; D(dub) 9 FREE-FORM magnets (writeln<-70/to<-33/execute<-15 stdlib calls misbinding to internal methods). ROOT CAUSE: the fleet workflow gated each analyzer BARE-IDENTIFIER free-call path; synthetic+adversarial tests validated THAT path; but INV-fahub funnel is UNTYPED-RECEIVER method calls, which for Go/Rust resolve via a SEPARATE method/selector path never gated. D free-form path also ungated (D excluded from fleet PR as done). Scala/Swift clean because WI-bihit/votar gated the untyped-receiver path directly. Owner: CHECKPOINT/bank finding. See follow-up WI for the corrective per-language pass."  # 785a
+- op: discuss  # 967c
+  at: '2026-07-19T09:30:48Z'  # 967c
+  by: agent  # 967c
+  actor: jgstern_agent  # 967c
+  clock: 6  # 967c
+  nonce: 967c  # 967c
+  message: "REFRAME + DEFER (2026-07-19, autonomous). The bakeoff's magnet counts (Rust 439 / D 266 / Go 41 / ...) were substantially MEASUREMENT ARTIFACTS. The receiver-blind-magnet detector over-counted three FP classes: (1) typed-receiver resolutions (go.py: every internal method-resolution requires a typed receiver -> the '41' were typed_receiver FPs); (2) scoped/static calls (Rust Type::new/from - explicit target type, correctly resolved); (3) same-class generic/template calls (C++ AP4_Array<T>::x -> AP4_Array::x, flagged only on the <T> notation mismatch). Detector hardened this session: hypergumbo_core/receiver_blind_magnets.py excludes receiver-marker + resolution_quality edges, adds a receiver='qualified' exclusion for explicit-type calls (detector-side ready; per-analyzer marking is the remaining accuracy work), and normalizes generic/template owner names.\n\nRe-measured (current detector, min_conf 0.80): D=0 high-conf (all binds <=0.77); Go~0 genuine; Rust=dominated by scoped Type::new FPs + a macro path (Rust is rust-analyzer's PARKED domain, WI-gojum); C++(bento4)=285 GENUINE cross-class receiver-blind binds BUT ALL fanout-1 (no target with >=2 callers) -> NO magnet concentration.\n\nCONCLUSION: the 'magnet crisis' (dozens of sites collapsing onto one arbitrary method, poisoning centrality) does NOT occur in the fleet - that severity was artifact. Genuine residual = scattered single-call-site receiver-blind binds (mild precision issue). INV-fahub stays 'violated' (per-edge letter IS violated) but practical severity is low.\n\nDECISION: fully crushing = gating the scattered residual across 8+ tree-sitter analyzers (large, low-value grind), and ADR-0012 (multi-fidelity / type-resolved) is the documented RIGHT fix, deliberately deferred. So INV-fahub is DEFERRED to the very end of Wave 5. Remaining work when resumed: per-analyzer receiver='qualified' marking (detector honesty) + optional residual gating. Merged this session: the scip-edge endpoint fix (9266762d4b) + detector hardening + template normalization."  # 967c
+- op: update  # b512
+  at: '2026-07-20T18:41:23Z'  # b512
+  by: agent  # b512
+  actor: jgstern_agent  # b512
+  clock: 7  # b512
+  nonce: b512  # b512
+  set:  # b512
+    status: satisfied  # b512
+- op: discuss  # 020e
+  at: '2026-07-20T18:41:23Z'  # 020e
+  by: agent  # 020e
+  actor: jgstern_agent  # 020e
+  clock: 8  # 020e
+  nonce: 020e  # 020e
+  message: "FLIPPED violated->satisfied (2026-07-20, owner twenty-pass convergence call) on the REFINED owner-ruled criterion: no external/test-helper/stdlib-interface receiver-blind magnet survives finalization. The correct-but-unprovable trait-dispatch residual (Rust x.next()->Red::next; Scala Db.fold; Go URL.Copy) is documented ADR-0012 (real-type-resolution) scope and deliberately KEPT (owner chose recall-preservation over a blanket gate). 4 PRs (all TDD/100% cov/CI-green): #762 detector route-honesty; #763 Rust Type::method scoped-call receiver=qualified marking (-247 FP magnets, zero recall); #765 finalize sub-step 6c demotes production->test-helper (Collector.Add) + stdlib-interface (Template.Parse) magnets to external:unresolved before the ADR-0037 verdict; #766 durable spec_validator gate _check_no_harmful_receiver_blind_magnets (shared find_harmful_magnets predicate, wired-checks-disclosed) asserts 0 harmful survive on every survey + the self-tree gate. BEHAVIORAL EVIDENCE: finalized-state harmful-magnet count = 0 across 11 languages (Go alertmanager 9 demoted->0 survive, Rust rodio 6 demoted->0, Scala docspell 0, D dub 0, TS ghostfolio 0, Python self-corpus 0 [3645 kept], C++ bento4 0 [269 kept, the cont.10 reframe's exact case], ObjC AFNetworking 0, PHP koel 0, C# grpc 0, Lua vernemq 0), each surveyed with the gate live; durable spec_validator gate green on the self-corpus. Corrective pass WI-makiz done. Disclosed residuals: Scala Logger.info build-tool-boundary (~5 edges, ungated fuzzy class); Rust Red::new/Decoder::try_from correct-but-unmarked qualified binds (raw-count FPs, not harmful)."  # 020e

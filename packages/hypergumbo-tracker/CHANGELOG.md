@@ -7,6 +7,8 @@ This package is independently versioned from the main hypergumbo tool and licens
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-07-27
+
 ### Added
 
 - **Out-of-repo write-ahead journal makes pending ops durable; new `tracker recover` command.** Every tracker op is mirror-appended to an out-of-repo journal git cannot see, and `tracker recover` union-restores journalled ops back into the worktree — closing the op-durability class structurally instead of per-path whack-a-mole.
@@ -15,7 +17,17 @@ This package is independently versioned from the main hypergumbo tool and licens
 
 - **Single canonical op-block `.ops` restore primitive shared by `recover` and `do_sync`.** Both now share one op-block-granularity union primitive (`journal._union_op_blocks`), deleting `do_sync`'s duplicate private `_union_lines`; deduping whole ops rather than lines so one implementation serves both restorers.
 
+#### Codeberg → GitHub migration
+
+The tracker's auto-sync gained a GitHub write path (dormant dual-mode), now live after the cutover — auto-sync targets GitHub, with the Forgejo/AGit path byte-identical for rollback.
+
+- **`_poll_ci` is forge-backend-aware.** A `backend` parameter (defaulting to `forgejo`) makes `_poll_ci` read a status element's state under GitHub's `state` key or Forgejo's `status` key and treat GitHub's single combined commit-status — which stays `pending` for the whole build — as "started" rather than firing the Forgejo multi-job stale-pending recovery.
+- **`sync.py` resolves the forge backend and threads it through preflight → `_poll_ci`.** `_detect_api_base` gains a `github.com` arm (`https://api.github.com/repos/...`), `PreflightResult` carries a `backend` field (forced `forgejo` under CI failover), and `_api_call` adds GitHub's `Accept` + pinned `X-GitHub-Api-Version` headers, so the single-status fix activates automatically when `origin` re-points to GitHub.
+- **`do_sync`'s write path is GitHub-aware.** On the github backend `do_sync` pushes a normal branch (no AGit push options), opens the PR via `POST /pulls` (idempotent on a 422-already-exists), merges via `PUT /pulls/{n}/merge` with `{merge_method: rebase}`, and deletes the server-side head branch. The local post-sync cleanup is unchanged and backend-agnostic — local `dev` never leaves `base`, so `origin/dev` is always a fast-forward even after GitHub's rebase-merge rewrites the SHA. The Forgejo/AGit path is byte-identical.
+
 ### Fixed
+
+- **`sync.py` preflight resolves the GitHub credential for the github backend (dormant).** The dormant github write path authenticated with `preflight.forgejo_token` (populated only from `FORGEJO_TOKEN`), so after cutover it would have presented the Codeberg token to `github.com` and 401'd on the first sync. `preflight_check` now also resolves `HG_GITHUB_TOKEN` and selects the credential by backend (github → `HG_GITHUB_TOKEN`, forgejo → `FORGEJO_TOKEN`), failing preflight with a clear message when a github origin has no PAT.
 
 - **Bump `starlette` floor to `>=1.3.1` (CVE-2026-54282, CVE-2026-54283).** The `>=1.0` constraint resolved to a vulnerable 1.2.1; 1.3.1 patches both starlette advisories. starlette is the tracker's remote/federation transport dependency (ADR-0019/ADR-0021).
 - **`recover` serializes its `.ops` rewrite with concurrent Store appends via a shared lock.** `recover`'s per-file rewrite now takes the same `LOCK_EX` as Store appends around read/union/rewrite and rewrites in place, fixing a race where a concurrent append landing mid-recover was clobbered (or left a torn `.ops`); exposure rose after the hook made recover fire on every committed ref transaction.

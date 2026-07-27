@@ -118,10 +118,16 @@ patterns:
       component_type: "^provider$"
 
   # ====== Cargo/Rust (toml_config.py) ======
+  # WI-vifun: cargo_* and poetry_* dependency patterns share the identical
+  # symbol_kind + language ("^dependency$" in "^toml$") — but TOML is a FORMAT,
+  # not an ecosystem, so both fired on every pyproject.toml AND Cargo.toml dep
+  # (bare and dev variants alike). Discriminate by file: cargo_* → Cargo.toml,
+  # poetry_* → pyproject.toml.
   # Cargo dependencies
   - concept: cargo_dependency
     symbol_kind: "^dependency$"
     language: "^toml$"
+    symbol_path: "Cargo\\.toml$"
 
   # Cargo dev dependencies (WI-limas: producer toml_config.py emits
   # kind="dependency" + meta["dependency_scope"]="dev" for [dev-dependencies];
@@ -129,6 +135,7 @@ patterns:
   - concept: cargo_dev_dependency
     symbol_kind: "^dependency$"
     language: "^toml$"
+    symbol_path: "Cargo\\.toml$"
     meta_match:
       dependency_scope: "^dev$"
 
@@ -137,6 +144,7 @@ patterns:
   - concept: cargo_build_dependency
     symbol_kind: "^dependency$"
     language: "^toml$"
+    symbol_path: "Cargo\\.toml$"
     meta_match:
       dependency_scope: "^build$"
 
@@ -172,10 +180,13 @@ patterns:
     meta_match:
       entry_role: "^script$"
 
-  # Poetry (Python) dependencies
+  # Poetry (Python) dependencies (WI-vifun: gated to pyproject.toml — see the
+  # cargo block above; without this both cargo_dependency and poetry_dependency
+  # fired on every TOML dependency regardless of ecosystem.)
   - concept: poetry_dependency
     symbol_kind: "^dependency$"
     language: "^toml$"
+    symbol_path: "pyproject\\.toml$"
 
   # Poetry dev dependencies (WI-limas: see cargo_dev_dependency rationale —
   # the toml_config producer routes both Cargo and Poetry dev tables through
@@ -183,6 +194,7 @@ patterns:
   - concept: poetry_dev_dependency
     symbol_kind: "^dependency$"
     language: "^toml$"
+    symbol_path: "pyproject\\.toml$"
     meta_match:
       dependency_scope: "^dev$"
 

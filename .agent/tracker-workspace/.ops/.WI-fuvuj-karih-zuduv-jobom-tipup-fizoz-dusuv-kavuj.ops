@@ -30,3 +30,25 @@
     tags: [dogfood_tranche_04]  # 5f67
   remove:  # 5f67
     tags: [dogfood_tranch_04]  # 5f67
+- op: update  # ee82
+  at: '2026-06-27T03:55:10Z'  # ee82
+  by: agent  # ee82
+  actor: jgstern_agent  # ee82
+  clock: 3  # ee82
+  nonce: ee82  # ee82
+  set:  # ee82
+    status: done  # ee82
+- op: discuss  # 012c
+  at: '2026-06-27T03:55:10Z'  # 012c
+  by: agent  # 012c
+  actor: jgstern_agent  # 012c
+  clock: 4  # 012c
+  nonce: 012c  # 012c
+  message: "Fixed in PR #4322 (dev e9be75116b). py.py now infers I/O-constructor-typed locals (open->file, socket.socket->socket, incl. with/async-with) via a new external_var_types map and emits a MODULE-QUALIFIED dst + dst_ref for method calls on them; io_primitives/python.yaml gains a synthetic 'file' module (fs_read read/readline/readlines; fs_write write/writelines).\n\nBehavioral evidence (end-to-end on a fixture with open()/socket.socket() idioms, dev install): the 5 method/bare-receiver I/O sites WI-fuvuj filed now classify correctly via lookup_with_module instead of falling into external_potential: read->fs_read, write->fs_write (with-form), connect->net_send, send->net_send, recv->net_recv. Untyped receivers (x.frobnicate()) still emit python:external:0-0:...:unresolved (no dst_ref) and stay ambiguous_names-suppressed (regression guard test). Production-path tests: TestExternalConstructorReceiverTypeInference (hypergumbo-lang-mainstream, extract_nodes asserting qualified dst+dst_ref) + 3 catalog tests (hypergumbo-core test_io_boundary: file.read->fs_read, file.write->fs_write, read+external->None, socket.socket send/recv pin). 100% coverage; the dst module is carried in BOTH the dst-id slot and dst_ref (the io-boundaries CLI drops dst_ref on serialize/reload).\n\nSCOPE: bounded to open + socket.socket + with-form per the design (EXTERNAL_CONSTRUCTOR_TYPES is the extension point). Other constructor-returning types (sqlite3.connect, http.client, tempfile, etc.), aliased constructors, and binary/text-mode precision are deferred to WI-vunad (filed). UNBLOCKS io-boundary:F3 (INV-tapat/INV-maluk): F3's receiver-tuple gate can now close those invariants AND advance WI-ropob recall (real typed I/O recovered) rather than only suppressing — per the 2026-06-26 sequencing ruling."  # 012c
+- op: discuss  # 1be4
+  at: '2026-06-27T03:56:28Z'  # 1be4
+  by: agent  # 1be4
+  actor: jgstern_agent  # 1be4
+  clock: 5  # 1be4
+  nonce: 1be4  # 1be4
+  message: "Correction: the deferred constructor-expansion follow-up referenced above is filed as WI-higaj-rimig-kujaz-hamun-vugul-vugob-borar-mabov (the earlier 'WI-vunad' placeholder was a pre-filing typo)."  # 1be4

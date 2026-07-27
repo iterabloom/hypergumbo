@@ -7,6 +7,7 @@ Detects:
 - Load statements as imports
 - Variable assignments
 - Dependency edges between targets
+- Function call edges (resolved via NameResolver, with load-alias path hints for cross-file calls)
 
 Starlark is a Python-like language used for Bazel, Buck, and other build systems.
 The tree-sitter-starlark parser handles BUILD, BUILD.bazel, BUCK, and .bzl files.
@@ -19,6 +20,7 @@ Uses TreeSitterAnalyzer base class for grammar checking and parser creation.
 3. Extract build targets with rule types
 4. Track load statements as import edges
 5. Track target dependencies as depends_on edges
+6. Build a NameResolver from the global symbol registry and run a second pass to resolve function calls into `calls` edges, using load aliases as path hints for cross-file resolution.
 
 Why This Design
 ---------------

@@ -19,3 +19,18 @@
     pr_ref:  # f4c7
     description: "**Mechanism.** config-conventions.yaml:122-126 (cargo_dependency) and :175-178 (poetry_dependency) are byte-identical on their discriminators: both gate on symbol_kind '^dependency$' + language '^toml$'. The language gate is the FILE FORMAT (toml), not the dependency ECOSYSTEM; both Cargo.toml and pyproject.toml are TOML, so the gate cannot separate them and BOTH labels co-fire on every TOML dependency node. The YAML even acknowledges the producer routes both Cargo and Poetry tables through _extract_cargo_dependencies.\n\n**Evidence (frozen + live matcher).** meta.concepts census: config-conventions {cargo_dependency: 76, poetry_dependency: 76}. All 76 pyproject.toml dependency nodes carry BOTH (carry both 76 / only cargo 0 / only poetry 0); dependency nodes from Cargo.toml = 0; ZERO Cargo.toml files in the repo (it is a Python monorepo, 7 pyproject.toml). So all 76 cargo_dependency tags are false positives. Live: match_patterns(Symbol(kind=dependency, language=toml, name=rich, path=.../pyproject.toml), load_framework_patterns('config-conventions')) -> [cargo_dependency, poetry_dependency]. Symmetric: a genuine Cargo dep would equally get falsely tagged poetry_dependency.\n\n**Consequence.** A consumer reading meta.concepts to learn a package's ecosystem ('does this repo have Rust/Cargo deps?') is told YES (76 cargo_dependency) on a pure-Python repo; the two concepts carry zero discriminating info for TOML. A discriminator would need the filename (Cargo.toml vs pyproject.toml) or a meta key.\n\n**Related (distinct).** Same CLASS as WI-vuzur (framework-pattern language-gate causing concept FPs) but a DISTINCT framework (config-conventions), concept (cargo_dependency), and root: WI-vuzur is a MISSING per-pattern language gate; here the gate IS present but at the wrong granularity. Source: dogfood_tranche_07 F130.A1, frozen read + live-matcher repro."  # f4c7
     fields: {}  # f4c7
+- op: update  # 233a
+  at: '2026-07-01T14:24:02Z'  # 233a
+  by: agent  # 233a
+  actor: jgstern_agent  # 233a
+  clock: 2  # 233a
+  nonce: 233a  # 233a
+  set:  # 233a
+    status: done  # 233a
+- op: discuss  # 2ef4
+  at: '2026-07-01T14:24:02Z'  # 2ef4
+  by: agent  # 2ef4
+  actor: jgstern_agent  # 2ef4
+  clock: 3  # 2ef4
+  nonce: 2ef4  # 2ef4
+  message: "Fixed in PR (dev 6da5a7cd38), Wave-3 Phase-2 §C linker F3. Root cause: cargo_* and poetry_* TOML-dependency patterns in config-conventions.yaml were byte-identical (symbol_kind '^dependency$' + language '^toml$') — TOML is a FORMAT not an ecosystem, so both fired on every pyproject.toml AND Cargo.toml dependency; the co-firing spanned the whole family (bare + dev + build), since the toml_config producer routes both ecosystems' dev tables through one kind+dependency_scope shape (verified: pyproject dev-dep fired cargo_dependency+cargo_dev_dependency+poetry_dependency+poetry_dev_dependency). Fix: symbol_path discriminator on all 5 patterns — cargo_* -> 'Cargo\\.toml$', poetry_* -> 'pyproject\\.toml$'. Behavioral evidence (editable binary, re-ran filed match_patterns repro on merged dev): pyproject.toml dep vs config-conventions = ['poetry_dependency'] (was ['cargo_dependency','poetry_dependency']); Cargo.toml dep = ['cargo_dependency']. Production-path tests: test_framework_patterns.py::TestFrameworkPatternEcosystemGating (4 cargo/poetry cases incl. dev variants). 861 framework_patterns tests pass, 100% coverage. No bakeoff tag: deterministic FP elimination verified by the match_patterns repro + tests, not an uncertain bakeoff-corpus metric movement."  # 2ef4

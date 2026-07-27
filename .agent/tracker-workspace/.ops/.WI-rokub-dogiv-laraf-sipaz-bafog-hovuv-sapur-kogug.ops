@@ -19,3 +19,50 @@
     pr_ref:  # f4fa
     description: "**Defect.** 22 null-`shape_id` nodes are on structural kinds in real languages, contradicting the claim that null shape_ids only fall on non-structural kinds.\n\n**Mechanic.** The tree-sitter analyzers do not compute shape_id for several real-language structural-kind nodes, so those nodes are NULL even though they are class/function/method/interface/struct/enum — not the non-structural kinds null shape_ids were assumed to be confined to.\n\n**Scope.** Symbol shape_id field. shape_id_scheme=hypergumbo-shapeid-v2; 29862/34396 nodes have shape_id, 4534 NULL. Of those, 22 are real-language structural-kind nodes: csharp interface/method(x2)/class/enum/struct, solidity interface/function(x2), wgsl struct(x2)/function(x3), python function(x8) (route synthetics, kind=function with a `route` kind-slot, at serve.py:426-433). 7 of the 22 have BOTH stable_id and shape_id NULL (csharp class/struct/enum, solidity function x2, wgsl struct x2). csharp is among the spec's mainstream shape_id analyzers (§342-343) yet 0/6 csharp constructs get shape_id.\n\n**Expectation.** Structural-kind nodes in real languages would carry a shape_id, and any claim that null shape_ids fall only on non-structural kinds would hold.\n\n**Fix.** Compute shape_id for these structural-kind nodes across the affected tree-sitter analyzers; correct any documentation asserting null shape_ids are confined to non-structural kinds.\n\n**Consequence.** A consumer using shape_id to cluster or track structural declarations silently drops these 22 class/function/method/interface/struct/enum nodes (7 of which have no identity hash at all beyond span-bearing id), and any documentation asserting null shape_ids are confined to non-structural kinds is false.\n\n**Cross-refs.** This corrects a prior characterization (the WI-ziguk ledger facet had described the null-shape_id nodes as confined to non-structural kinds). NOTE FOR OPERATOR: the tracker item WI-ziguk is status=wont_do and is about a different topic (validation_report undocumented in spec), so it was NOT auto-reopened; this shape_id structural-kind-null finding is filed as its own row. Adjacent to WI-rihob (container/declaration stable_id null) on the structural-identity-gap theme."  # f4fa
     fields: {}  # f4fa
+- op: update  # 9e8a
+  at: '2026-07-09T01:52:17Z'  # 9e8a
+  by: agent  # 9e8a
+  actor: jgstern_agent  # 9e8a
+  clock: 2  # 9e8a
+  nonce: 9e8a  # 9e8a
+  set: {}  # 9e8a
+  add:  # 9e8a
+    tags: [wave5]  # 9e8a
+- op: discuss  # 4b9e
+  at: '2026-07-09T01:52:17Z'  # 4b9e
+  by: agent  # 4b9e
+  actor: jgstern_agent  # 4b9e
+  clock: 3  # 4b9e
+  nonce: 4b9e  # 4b9e
+  message: "Wave-5 sweep (2026-07-08): identity:F5 shape_id residual (22 null-shape_id nodes on structural kinds in real languages: csharp/solidity/wgsl/py route-synth). Empty isbefore -> terminal wave."  # 4b9e
+- op: update  # 8a3f
+  at: '2026-07-15T21:18:59Z'  # 8a3f
+  by: agent  # 8a3f
+  actor: jgstern_agent  # 8a3f
+  clock: 4  # 8a3f
+  nonce: 8a3f  # 8a3f
+  set: {}  # 8a3f
+  add:  # 8a3f
+    isbefore: [WI-vogij-jubit-podog-galug-humag-rovuh-jahan-rozug]  # 8a3f
+- op: discuss  # 26cb
+  at: '2026-07-15T21:18:59Z'  # 26cb
+  by: agent  # 26cb
+  actor: jgstern_agent  # 26cb
+  clock: 5  # 26cb
+  nonce: 26cb  # 26cb
+  message: "Identity triage 2026-07-15: shape_id-coverage prerequisite for WI-vogij. Re-run: 27 real-language structural-kind shape_id nulls on v5 (csharp 10 + solidity 4 + wgsl 5 + python route-synth 8), 9 with BOTH stable_id and shape_id null. Union of WI-lutob + route-synth; falsifies 'nulls only on non-structural kinds'."  # 26cb
+- op: update  # 3a25
+  at: '2026-07-18T02:22:19Z'  # 3a25
+  by: agent  # 3a25
+  actor: jgstern_agent  # 3a25
+  clock: 6  # 3a25
+  nonce: 3a25  # 3a25
+  set:  # 3a25
+    status: done  # 3a25
+- op: discuss  # 38b0
+  at: '2026-07-18T02:22:19Z'  # 38b0
+  by: agent  # 38b0
+  actor: jgstern_agent  # 38b0
+  clock: 7  # 38b0
+  nonce: 38b0  # 38b0
+  message: "Closed done — verified 2026-07-17. WI-rokub = the WI-lutob structural gaps (csharp/solidity/wgsl) UNION the python route-synth nulls. VERIFICATION: (1) The real code-body gaps (csharp interface/method/class/enum/struct; solidity interface/function; wgsl struct/function — 19 of the 27 re-measured nodes) are FIXED by WI-lutob (csharp PR #704; solidity+wgsl PR 7a2efee53f). Live repro: fresh survey shows csharp 105/105 shapeable (bakeoff deep-20260717-200119), wgsl 3/3 + solidity 2/2 (this session). (2) The remaining 8 nodes are the python route-synthetics at serve.py:425-433 — self-corpus re-measure (hypergumbo survey packages/hypergumbo-tracker) confirms they are ALL 'starlette:<handler>' route-registration nodes (name starlette:_health/_api_list_items/... ; single-line spans 426-433 at the Route(...) declarations; kind=function). These are SYNTHETIC route registrations with no implementation body of their own — the real handlers (_health, _api_list_items, ...) are SEPARATE nodes that carry their own shape_id. shape_id=None on them is a LEGITIMATE synthetic-node absence (there is no control-flow/nesting body to hash), exactly like external_symbol and synthetic-boundary fingerprint nulls — NOT a structural gap. So WI-rokub's expectation ('all real-language structural-KIND nodes carry shape_id') is corrected: it holds for real code bodies (now fixed) but not for synthetic nodes that merely carry a kind=function label. (3) DOC-CORRECTION (item ask b): no committed doc actually asserted 'nulls only on non-structural kinds' (that lived in a ledger), but the spec shape_id section was SILENT on when shape_id is null — added a 'None when:' bullet (spec §365, PR ad049f6402) documenting the synthetic-node / coverage-scope / non-structural cases, mirroring the fingerprint §371 precedent, so a consumer treats null as 'not clusterable' rather than inferring a gap. Adjacent WI-luzut (Python variable-kind shape_id) remains a separate, distinct scope question."  # 38b0

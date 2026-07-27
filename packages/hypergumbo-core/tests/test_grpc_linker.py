@@ -259,7 +259,7 @@ class TestTtrpcPatterns:
 
         result = link_grpc(tmp_path, existing_symbols=go_method_syms)
 
-        impl_edges = [e for e in result.edges if e.edge_type == "implements_rpc"]
+        impl_edges = [e for e in result.edges if e.edge_type == "implements" and (e.meta or {}).get("protocol") == "grpc"]
         assert len(impl_edges) == 2
         src_methods = sorted(e.src.split(":")[-2] for e in impl_edges)
         assert src_methods == [
@@ -334,7 +334,7 @@ class TestTtrpcPatterns:
 
         result = link_grpc(tmp_path, existing_symbols=go_syms)
 
-        impl_edges = [e for e in result.edges if e.edge_type == "implements_rpc"]
+        impl_edges = [e for e in result.edges if e.edge_type == "implements" and (e.meta or {}).get("protocol") == "grpc"]
         assert len(impl_edges) == 1
         assert "mockHealth.Check" in impl_edges[0].src
 
@@ -387,7 +387,7 @@ class TestTtrpcPatterns:
 
         result = link_grpc(tmp_path, existing_symbols=go_syms)
 
-        impl_edges = [e for e in result.edges if e.edge_type == "implements_rpc"]
+        impl_edges = [e for e in result.edges if e.edge_type == "implements" and (e.meta or {}).get("protocol") == "grpc"]
         # Should still create 1 edge via the Unimplemented path
         assert len(impl_edges) == 1
         assert "cacheServer.Config" in impl_edges[0].src
@@ -459,7 +459,7 @@ class TestTtrpcPatterns:
 
         result = link_grpc(tmp_path, existing_symbols=go_syms)
 
-        impl_edges = [e for e in result.edges if e.edge_type == "implements_rpc"]
+        impl_edges = [e for e in result.edges if e.edge_type == "implements" and (e.meta or {}).get("protocol") == "grpc"]
         assert len(impl_edges) == 2
         src_methods = sorted(e.src.split(":")[-2] for e in impl_edges)
         assert src_methods == [
@@ -508,7 +508,7 @@ class TestTtrpcPatterns:
 
         result = link_grpc(tmp_path, existing_symbols=go_syms)
 
-        impl_edges = [e for e in result.edges if e.edge_type == "implements_rpc"]
+        impl_edges = [e for e in result.edges if e.edge_type == "implements" and (e.meta or {}).get("protocol") == "grpc"]
         # Should still create 1 edge via the NodeServer interface
         assert len(impl_edges) == 1
         assert "nodeImpl.NodePublish" in impl_edges[0].src
@@ -1009,7 +1009,8 @@ class TestGrpcProtoRouteSymbols:
         route = route_symbols[0]
         assert route.meta is not None
         assert route.meta["route_path"] == "/shop.v1.OrderService/PlaceOrder"
-        assert route.meta["http_method"] == "RPC"
+        assert route.meta["http_method"] is None
+        assert route.meta["route_protocol"] == "grpc"
         assert route.meta["rpc_service"] == "OrderService"
 
     def test_proto_rpc_route_without_package(self, tmp_path: Path) -> None:
@@ -1553,7 +1554,7 @@ class TestGrpcProtoToGoImplementation:
         result = link_grpc(tmp_path, existing_symbols=go_method_syms)
 
         # Should have implements_rpc edges from Go methods to proto routes
-        impl_edges = [e for e in result.edges if e.edge_type == "implements_rpc"]
+        impl_edges = [e for e in result.edges if e.edge_type == "implements" and (e.meta or {}).get("protocol") == "grpc"]
         assert len(impl_edges) == 2
 
         # Check edge targets are proto RPC route symbols
@@ -1647,7 +1648,7 @@ class TestGrpcProtoToGoImplementation:
 
         result = link_grpc(tmp_path, existing_symbols=non_matching)
 
-        impl_edges = [e for e in result.edges if e.edge_type == "implements_rpc"]
+        impl_edges = [e for e in result.edges if e.edge_type == "implements" and (e.meta or {}).get("protocol") == "grpc"]
         assert len(impl_edges) == 0
 
     def test_no_link_without_unimplemented_embedding(self, tmp_path: Path) -> None:
@@ -1689,7 +1690,7 @@ class TestGrpcProtoToGoImplementation:
 
         result = link_grpc(tmp_path, existing_symbols=go_method_syms)
 
-        impl_edges = [e for e in result.edges if e.edge_type == "implements_rpc"]
+        impl_edges = [e for e in result.edges if e.edge_type == "implements" and (e.meta or {}).get("protocol") == "grpc"]
         assert len(impl_edges) == 0
 
     def test_no_link_when_struct_pattern_not_extractable(self, tmp_path: Path) -> None:
@@ -1730,7 +1731,7 @@ class TestGrpcProtoToGoImplementation:
         ]
 
         result = link_grpc(tmp_path, existing_symbols=go_syms)
-        impl_edges = [e for e in result.edges if e.edge_type == "implements_rpc"]
+        impl_edges = [e for e in result.edges if e.edge_type == "implements" and (e.meta or {}).get("protocol") == "grpc"]
         assert len(impl_edges) == 0
 
     def test_same_struct_name_in_multiple_files_resolves_per_file(
@@ -1819,7 +1820,7 @@ class TestGrpcProtoToGoImplementation:
         result = link_grpc(tmp_path, existing_symbols=go_method_syms)
 
         impl_edges = [
-            e for e in result.edges if e.edge_type == "implements_rpc"
+            e for e in result.edges if e.edge_type == "implements" and (e.meta or {}).get("protocol") == "grpc"
         ]
         # Each method should produce exactly one edge to its own service's
         # Create RPC route (not to the unrelated service's Create).
@@ -1872,7 +1873,7 @@ class TestGrpcProtoToGoImplementation:
         ]
 
         result = link_grpc(tmp_path, existing_symbols=go_syms)
-        impl_edges = [e for e in result.edges if e.edge_type == "implements_rpc"]
+        impl_edges = [e for e in result.edges if e.edge_type == "implements" and (e.meta or {}).get("protocol") == "grpc"]
         assert len(impl_edges) == 0
 
     def test_multiple_services_link_correctly(self, tmp_path: Path) -> None:
@@ -1934,7 +1935,7 @@ class TestGrpcProtoToGoImplementation:
 
         result = link_grpc(tmp_path, existing_symbols=go_method_syms)
 
-        impl_edges = [e for e in result.edges if e.edge_type == "implements_rpc"]
+        impl_edges = [e for e in result.edges if e.edge_type == "implements" and (e.meta or {}).get("protocol") == "grpc"]
         assert len(impl_edges) == 2
 
         # userServer.GetUser → GetUser RPC, orderServer.PlaceOrder → PlaceOrder RPC
@@ -1998,7 +1999,7 @@ class TestGrpcNestedStructBraces:
 
         result = link_grpc(tmp_path, existing_symbols=go_method_syms)
 
-        impl_edges = [e for e in result.edges if e.edge_type == "implements_rpc"]
+        impl_edges = [e for e in result.edges if e.edge_type == "implements" and (e.meta or {}).get("protocol") == "grpc"]
         assert len(impl_edges) == 1
         assert "cacheServer.Config" in impl_edges[0].src
 
@@ -2045,7 +2046,7 @@ class TestGrpcNestedStructBraces:
 
         result = link_grpc(tmp_path, existing_symbols=go_method_syms)
 
-        impl_edges = [e for e in result.edges if e.edge_type == "implements_rpc"]
+        impl_edges = [e for e in result.edges if e.edge_type == "implements" and (e.meta or {}).get("protocol") == "grpc"]
         assert len(impl_edges) == 1
         assert "cacheServer.Status" in impl_edges[0].src
 
@@ -2106,7 +2107,7 @@ class TestGrpcNestedStructBraces:
 
         result = link_grpc(tmp_path, existing_symbols=go_method_syms)
 
-        impl_edges = [e for e in result.edges if e.edge_type == "implements_rpc"]
+        impl_edges = [e for e in result.edges if e.edge_type == "implements" and (e.meta or {}).get("protocol") == "grpc"]
         assert len(impl_edges) == 2
         src_methods = sorted(e.src.split(":")[-2] for e in impl_edges)
         assert src_methods == ["agentHandler.Start", "agentHandler.Stop"]
@@ -2463,7 +2464,7 @@ class TestTransitiveStructEmbedding:
             existing_symbols=[base_struct, leaf_struct, check],
             existing_edges=[edge],
         )
-        impl_edges = [e for e in result.edges if e.edge_type == "implements_rpc"]
+        impl_edges = [e for e in result.edges if e.edge_type == "implements" and (e.meta or {}).get("protocol") == "grpc"]
         assert any(check.id == e.src for e in impl_edges), (
             f"UserHealth.Check should implement Health.Check transitively; got "
             f"{[(e.src, e.dst) for e in impl_edges]}"
@@ -2519,7 +2520,7 @@ class TestTransitiveStructEmbedding:
             existing_symbols=[base_struct, mid_struct, leaf_struct, check],
             existing_edges=edges,
         )
-        impl_edges = [e for e in result.edges if e.edge_type == "implements_rpc"]
+        impl_edges = [e for e in result.edges if e.edge_type == "implements" and (e.meta or {}).get("protocol") == "grpc"]
         assert any(check.id == e.src for e in impl_edges)
 
     def test_diamond_inheritance_cycle_guarded(self, tmp_path: Path) -> None:
@@ -2581,7 +2582,7 @@ class TestTransitiveStructEmbedding:
             existing_symbols=[base_struct, left_struct, right_struct, leaf_struct, check],
             existing_edges=edges,
         )
-        impl_edges = [e for e in result.edges if e.edge_type == "implements_rpc"]
+        impl_edges = [e for e in result.edges if e.edge_type == "implements" and (e.meta or {}).get("protocol") == "grpc"]
         # Exactly one edge from UserHealth.Check (no double-emit through diamond).
         edges_from_check = [e for e in impl_edges if e.src == check.id]
         assert len(edges_from_check) == 1
@@ -2613,5 +2614,5 @@ class TestTransitiveStructEmbedding:
             origin="go", origin_run_id="test",
         )
         result = link_grpc(tmp_path, existing_symbols=[leaf_struct, check])
-        impl_edges = [e for e in result.edges if e.edge_type == "implements_rpc"]
+        impl_edges = [e for e in result.edges if e.edge_type == "implements" and (e.meta or {}).get("protocol") == "grpc"]
         assert any(check.id == e.src for e in impl_edges)

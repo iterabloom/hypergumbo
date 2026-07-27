@@ -57,6 +57,7 @@ from hypergumbo_core.analyze.base import (
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -140,8 +141,15 @@ def _make_gd_symbol(
     file_path: str,
     run_id: str,
     signature: Optional[str] = None,
+    complexity: bool = False,
 ) -> Symbol:
-    """Create a Symbol from a tree-sitter node."""
+    """Create a Symbol from a tree-sitter node.
+
+    ``complexity=True`` (callable kinds — function) populates
+    cyclomatic_complexity + line_span per INV-loguk. Gated so non-callable
+    kinds (variable/signal/class) that flow through this same helper don't
+    aggregate their whole subtree.
+    """
     start_line = node.start_point[0] + 1
     end_line = node.end_point[0] + 1
     start_col = node.start_point[1]
@@ -164,6 +172,10 @@ def _make_gd_symbol(
         origin=PASS_ID,
         origin_run_id=run_id,
         signature=signature,
+        cyclomatic_complexity=(
+            compute_cyclomatic_complexity(node, "gdscript") if complexity else None
+        ),
+        line_span=(end_line - start_line + 1) if complexity else None,
     )
 
 
@@ -192,7 +204,7 @@ class GDScriptAnalyzer(TreeSitterAnalyzer):
                 if name_node:
                     func_name = node_text(name_node, source).strip()
                     sig = _extract_function_signature(node, source)
-                    sym = _make_gd_symbol(node, func_name, "function", rel_path, run.execution_id, signature=sig)
+                    sym = _make_gd_symbol(node, func_name, "function", rel_path, run.execution_id, signature=sig, complexity=True)
                     analysis.symbols.append(sym)
                     analysis.symbol_by_name[func_name] = sym
 
