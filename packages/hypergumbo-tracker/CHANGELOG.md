@@ -15,7 +15,9 @@ This package is independently versioned from the main hypergumbo tool and licens
 
 - **Single canonical op-block `.ops` restore primitive shared by `recover` and `do_sync`.** Both now share one op-block-granularity union primitive (`journal._union_op_blocks`), deleting `do_sync`'s duplicate private `_union_lines`; deduping whole ops rather than lines so one implementation serves both restorers.
 
-#### Codeberg → GitHub migration (dormant while Codeberg is origin)
+#### Codeberg → GitHub migration
+
+The tracker's auto-sync gained a GitHub write path (dormant dual-mode), now live after the cutover — auto-sync targets GitHub, with the Forgejo/AGit path byte-identical for rollback.
 
 - **`_poll_ci` is forge-backend-aware.** A `backend` parameter (defaulting to `forgejo`) makes `_poll_ci` read a status element's state under GitHub's `state` key or Forgejo's `status` key and treat GitHub's single combined commit-status — which stays `pending` for the whole build — as "started" rather than firing the Forgejo multi-job stale-pending recovery.
 - **`sync.py` resolves the forge backend and threads it through preflight → `_poll_ci`.** `_detect_api_base` gains a `github.com` arm (`https://api.github.com/repos/...`), `PreflightResult` carries a `backend` field (forced `forgejo` under CI failover), and `_api_call` adds GitHub's `Accept` + pinned `X-GitHub-Api-Version` headers, so the single-status fix activates automatically when `origin` re-points to GitHub.
