@@ -7,6 +7,8 @@ This package is independently versioned from the main hypergumbo tool and licens
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-07-27
+
 ### Added
 
 - **Out-of-repo write-ahead journal makes pending ops durable; new `tracker recover` command.** Every tracker op is mirror-appended to an out-of-repo journal git cannot see, and `tracker recover` union-restores journalled ops back into the worktree — closing the op-durability class structurally instead of per-path whack-a-mole.
