@@ -1,0 +1,21 @@
+Original commit body from ea7a428c49fbb4729e008e4ffbffe1d26de0b6f5:
+
+Brings the release publish gate and the local go/no-go check in line with the
+live Woodpecker CI audit (which per-PR CI already passes), and clears two
+pre-existing release-check strictness blockers that gated prepare-release.
+
+- release.yml security-audit: pin setuptools + click>=8.3.3 (fixable transitive
+  CVEs pinned away, matching .woodpecker/woodpecker.yml) and adopt Woodpecker's
+  full pip-audit --ignore-vuln list verbatim, so the release gate accepts
+  exactly the CVEs per-PR CI does — no more, no less.
+- release-check: mirror that posture — upgrade the fixable deps to fixed
+  versions before auditing, sync the ignore list to Woodpecker's, and add two
+  LOCAL-ONLY carve-outs (CVE-2025-69872 diskcache, PYSEC-2026-597 nltk) the dev
+  box pulls via local tools but the published packages don't depend on.
+- .gitleaks.toml: durable path allowlist for the gitignored .env (rotating
+  maintainer tokens; per-finding fingerprints broke when HG_GITHUB_TOKEN was
+  provisioned at the cutover).
+- Fix two pre-existing ruff nits in top-level tests/ (RUF002 x-vs-multiply-sign
+  docstring; F541 stray f-prefix) outside Woodpecker's ruff scope.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
