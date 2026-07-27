@@ -1,0 +1,28 @@
+Original commit body from f4c6644f4091954bdfaa285b70dcde0a536e339d:
+
+Rewires the release pipeline for the post-cutover GitHub backend so a tagged
+release builds + publishes on GitHub instead of the retired self-hosted
+Forgejo/Codeberg path. Lands dormant — it only fires once GitHub Actions is
+enabled and a v* tag is pushed (Phase 4 human steps). Ref:
+migration-phase2-5-design.md Part 3.6.
+
+- release.yml: every `runs-on: self-hosted` -> `ubuntu-latest`; the
+  "Create Forgejo Release" step becomes `gh release create` (Actions-injected
+  GITHUB_TOKEN + `permissions: contents: write`); drop the Codeberg
+  nightly-status pre-check job and the self-hosted post-publish
+  matrix/integration jobs (multi-Python + integration now run on the
+  Woodpecker `nightly` cron); keep build/checksums/SBOM/twine->PyPI.
+  FORGEJO_TOKEN reaches zero refs. Delete the obsolete release-mirror.yml
+  (it mirrored a release *from* Codeberg — nothing to mirror from now).
+- prepare-release: Step 7 (dev->main PR) is backend-aware. The Codeberg AGit
+  `refs/for/main` push stays byte-identical (both push-option guard tests
+  preserved); the GitHub backend creates the PR from the already-pushed `dev`
+  via the approved forge lib (`create_pr dev main`), never a raw API call,
+  with an honest manual fallback. Handoff strings de-Codeberg'd.
+- tag-release: advisory URLs are backend-aware (the tag push already targets
+  origin=GitHub; only the human-facing links were stale).
+- RELEASE_SOP.md: pipeline-topology + secrets table updated to the two-job
+  GitHub-Actions workflow.
+- Add a guard test locking the GitHub Step-7 `create_pr` path.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
