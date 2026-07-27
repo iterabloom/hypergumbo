@@ -27,3 +27,18 @@
   clock: 2  # 7367
   nonce: '7367'  # 7367
   message: "PARTIAL in PR #19 (dev 11b50fd980). F5 (dead analysis_tiers config) DONE: removed the SupplyChainConfig field + its to_dict/from_dict + docstring + 3 round-trip test assertions; the ADR-0004 should_extract_symbols consumer was never built (symbol extraction gates on Tiers 1-2 + ANALYZABLE via file classification). Also fixed adjacent tier-2 docstring drift NOT originally enumerated in F6/F7: DependencyManifest boundary-node summary (all external refs tier 3 EXTERNAL_DEP), DOCUMENTATION_PATTERNS/FUZZ_BENCH_PATTERNS headers (FIRST_PARTY tier 1 per INV-naduh), taxonomy.py + spec symbol-extraction rows (analysis_tiers -> Tiers 1-2). STILL OPEN: F6 exact sites (ranking.py:394 'internal deps tier 2 get 1.5x', cfg.py:1686-1687, supply_chain.py:10-14 module docstring) + F7 (jupyter.py:28 notebooks 'Tier 2', py_deps.py:313-322 retired 'external tier-2' semantics). Keeping todo_soft until F6/F7 land."  # 7367
+- op: update  # 7836
+  at: '2026-07-26T19:30:09Z'  # 7836
+  by: agent  # 7836
+  actor: jgstern_agent  # 7836
+  clock: 3  # 7836
+  nonce: '7836'  # 7836
+  set:  # 7836
+    status: done  # 7836
+- op: discuss  # bd17
+  at: '2026-07-26T19:30:09Z'  # bd17
+  by: agent  # bd17
+  actor: jgstern_agent  # bd17
+  clock: 4  # bd17
+  nonce: bd17  # bd17
+  message: "COMPLETE. F5 (dead analysis_tiers config) removed in PR #19 (dev 11b50fd980). F7 (jupyter.py 'Tier 2 (INTERNAL_DEP)' for notebooks -> Tier 1 FIRST_PARTY per INV-naduh; py_deps.py 'external tier-2 direct dependency' -> 'external (tier-3)' per ADR-0041 §1) fixed in PR #24 (dev be7334c235). F6 RESOLVED without edits: its concern was that tier-2 was polluted by six synthetic linkers so the weight-table category 'rarely existed' — INV-bonup (dev b78866f964) dropped exactly those 14 tier-2 stamps, leaving tier-2 a clean narrow internal_dep category, so the live ranking.py / cfg.py / supply_chain.py tier-2 docstrings are accurate as written (verified: ranking '(tier 2) get 1.5x' = correct weight; cfg 'default 2 = first-party + internal deps' = correct filter; supply_chain 'INTERNAL_DEP (2) ... internal_package_roots only' = correct narrow scope). No stale text remained to fix."  # bd17
