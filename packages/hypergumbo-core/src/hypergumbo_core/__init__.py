@@ -57,6 +57,6 @@ the output format changes; the tool version changes with any release.
 See ADR-0010 for the modular package architecture.
 """
 __all__ = ["PASS_VERSION", "__version__", "make_pass_id"]
-__version__ = "6.1.0"
+__version__ = "7.0.0"
 
 from .ir import PASS_VERSION, make_pass_id
