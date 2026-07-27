@@ -434,7 +434,9 @@ META_KEYS: Final[tuple[MetaKeySpec, ...]] = (
     # route-surfacing concept audit found route_path / http_method read as
     # the authoritative payload at ~12 consumer sites yet unregistered —
     # closed here; route_framework / route_protocol are the additive homes
-    # target-D(ii) mandates (producer emission deferred to INV-vokak/INV-tibap).
+    # target-D(ii) mandated — producer emission has since landed (route_framework
+    # via the framework-pattern route enrichment, INV-vokak; route_protocol via
+    # ``routes.transport_meta``, INV-tibap).
     # ------------------------------------------------------------------
     MetaKeySpec("route_path", AXIS_SYMBOL_META,
                 "URL path a ``framework_role == 'route'`` marker handler is "
@@ -449,19 +451,20 @@ META_KEYS: Final[tuple[MetaKeySpec, ...]] = (
                 "and INV-tibap folds LIVE/RPC out of."),
     MetaKeySpec("route_framework", AXIS_SYMBOL_META,
                 "Framework name uniform across a route marker (e.g. 'flask', "
-                "'rails'). The canonical additive home for the framework that "
-                "today lives only on the ``concept == 'route'`` dict (and "
-                "Starlette's legacy ``meta['framework']``); read by "
-                "``routes.route_of`` so the marker branch stops dropping it "
-                "(WI-tosul target-D(ii); producer emission deferred to "
-                "INV-vokak)."),
+                "'rails'). The canonical additive home for the route marker's "
+                "framework: stamped by the framework-pattern route enrichment "
+                "(first-wins, never clobbering an existing value) and read by "
+                "``routes.route_of``, which unions it with the legacy "
+                "``concept == 'route'`` dict and Starlette's "
+                "``meta['framework']`` (INV-vokak)."),
     MetaKeySpec("route_protocol", AXIS_SYMBOL_META,
                 "Transport protocol of a route endpoint ('http' | 'websocket' "
-                "| …), split out of the ``http_method`` verb field. A "
-                "producer-persisted value wins in ``routes.route_of`` over the "
-                "'WS'-sentinel derivation (WI-tosul target-D(ii); full "
-                "producer migration + protocol_origin reconciliation deferred "
-                "to INV-tibap)."),
+                "| …), split out of the ``http_method`` verb field. Producers "
+                "persist it by spreading ``routes.transport_meta(method)`` into "
+                "the route marker's meta (the py/elixir analyzers, the grpc "
+                "linker, and framework-pattern enrichment); a persisted value "
+                "wins in ``routes.route_of`` over the 'WS'-sentinel derivation "
+                "(INV-tibap)."),
     MetaKeySpec("reference_syntax", AXIS_SYMBOL_META,
                 "Use-site reference syntax of an external boundary Symbol "
                 "(e.g. 'unresolved', 'attribute', 'module', 'namespace') "
