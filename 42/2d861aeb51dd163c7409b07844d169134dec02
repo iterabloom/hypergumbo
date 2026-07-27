@@ -1,0 +1,36 @@
+Original commit body from 631fd776a91c7674de411ac8aea3c7eae6e78545:
+
+Follow-up to the A+B+D staleness-audit PR. These are the Severity-C findings —
+module docstrings that silently omitted substantial functionality the code
+grew since they were written. Each addition was verified against the code path
+it describes.
+
+- cli: subcommand list covered 7 of the 27 registered verbs; rewritten to name
+  the full set grouped by purpose, with `survey` as the primary analysis verb
+  (`run` a deprecated alias, ADR-0042) and a pointer to the authoritative
+  `subcommands` set in main().
+- all_analyzers: was framed as a thin "facade"; it also houses the
+  `run_all_analyzers` orchestrator (parallel dispatch, fingerprint stamp,
+  file-presence filter, synthesis passes, edge dedup, manifest merge).
+- tauri_ipc: added the 4th detection phase (Rust->TS emit/listen events ->
+  event_publishes).
+- wasm_bindgen: added the dynamic-WASM-load phase (WebAssembly.instantiate /
+  .wasm URL imports / Emscripten -> imports edges to synthetic wasm modules);
+  fixed the internal _create_wasm_load_edges docstring (wasm_load -> imports).
+- di_resolution: documented the NestJS @Module registration edges (references,
+  meta.mechanism=di_registration); fixed the stale link_di_resolution docstring.
+- dataflow: documented the parallel Python-ast Tier-1 path annotate_dataflow_ast().
+- crypto_flow: added ChaCha20Poly1305 to the Rust crate/write lists.
+- annotation_convention: noted the 0.5 disambiguation_fallback for ambiguous
+  @hg:dispatches targets (INV-zuhub), not just the 0.95 headline.
+- d_lang: added field/variable/enum-member extraction and UFCS call-recovery
+  (WI-situj / INV-vigaf) to the Detects list.
+- rust_analyzer: added a Diagnostics section for the WI-todon UserWarning
+  (zero scip-origin edges despite .rs files present).
+- spec_validator: item-3 cross_field now names the other wired checks (ADR-0037
+  is_resolved<->dst FK, origin_run_id FK, dangling-endpoint, confidence range,
+  route-marker single-home, receiver-blind-magnet gate).
+
+Docstring/comment-only; no behavior change.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
