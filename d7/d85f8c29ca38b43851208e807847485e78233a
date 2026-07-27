@@ -1,0 +1,13 @@
+Original commit body from 5cf7edfe987bd4021d733ee38860dcf808bb4778:
+
+- Fix the [Unreleased] Summary's stale schema-version headline: it read
+  "advances 0.14.2 → 0.18.0" but the section body already documents the
+  0.18.0 → 0.19.0 directness/tier-filtered-files bump — the cycle's final
+  schema is 0.19.0.
+- De-"dormant" the Codeberg → GitHub migration subsections (main + tracker
+  changelogs) now that the cutover is live, with a one-line lead tying the
+  dormant dual-mode landing to the completed cutover.
+- Record the Phase-4 release-pipeline move to GitHub Actions as an
+  [Unreleased] item.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
