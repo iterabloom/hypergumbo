@@ -1,0 +1,41 @@
+Original commit body from a7aefaef9dcf4b39e66fa718f98105dc693885c8:
+
+Docstring-staleness audit (playbook): 29 module docstrings reviewed via parallel
+read-only review; 24 drifted. This PR fixes the A/B/D findings; the C
+silent-omission rewrites follow in a separate PR.
+
+Dominant cluster — the audit-findings 0001/0014/0016 edge-type folds left ~13
+linker docstrings naming bespoke edge types that were consolidated onto the
+canonical types, with the distinction moved to meta:
+- controller_routes: contains_routes -> contains (meta.framework_dispatch)
+- openapi: openapi_implements -> references
+- graphql_resolver: resolver_implements -> implements / references
+- tauri_ipc: ipc_calls / caller_invokes -> calls (meta.protocol / framework_dispatch)
+- wasm_bindgen: wasm_bridge -> calls (meta.bridge_kind)
+- solidity_abi: abi_call -> calls; constructors are INCLUDED, not excluded
+- message_dispatch: message_dispatch -> event_publishes
+- annotation_convention: annotated_publishes/dispatches -> event_publishes/dispatches_to; route kind="function"
+- yjs_crdt: crdt_publishes -> event_publishes (+ completed read-pattern list)
+- crypto_flow: crypto_flow -> data_flows_to
+- ruby_ffi: ffi_bridge -> calls; drop the false "extend FFI::Library" scoping claim
+- phoenix_ipc: message_send/message_receive -> event_publishes (publish-direction only)
+- di_resolution: di_resolves -> dispatches_to; drop the now-false "why not dispatches_to" rationale
+
+Other:
+- framework_patterns (A): fix the broken enrich_symbols(symbols, patterns) usage
+  example (real signature takes a detected_frameworks set and loads patterns
+  internally); fix pre-rename path src/hypergumbo/ -> src/hypergumbo_core/
+- rust_analyzer: gate-off returns AnalysisResult(skipped=True), not an "empty" result
+- dataflow: dataflow/ -> dataflow_patterns/ YAML path (module + get_dataflow_config)
+- spec_validator: the WI-niluv paragraph now distinguishes the two umbrellas'
+  opposite None-cohort denominator treatments (stable_id includes it; fingerprint
+  excludes it) instead of conflating them
+- requirements: depends -> depends_on; axis_meta_keys: name the 3rd axis
+  entrypoint_meta; schema: reproducibility_context.captured.hypergumbo_version;
+  compact: example-output block now matches OmittedSummary.to_dict
+
+Docstring/comment-only; no behavior change. smart-test: 6155 passed, 100%
+coverage on all 21 changed sources. Regenerated docs/ARCHITECTURE.md (recency
+window; diff is self-analysis count drift only).
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
