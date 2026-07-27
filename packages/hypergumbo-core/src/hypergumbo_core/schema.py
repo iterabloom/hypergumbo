@@ -19,7 +19,7 @@ Version Distinction
   with every release (new analyzers, bug fixes, performance improvements,
   CLI changes, etc.). It does NOT indicate output format changes. It surfaces
   in output under TWO field names that are both aliases of it, not schema
-  versions: `reproducibility_context.hypergumbo_version` and
+  versions: `reproducibility_context.captured.hypergumbo_version` and
   `limits.analyzer_version` (`f"hypergumbo-{__version__}"`).
 
 - **Per-view / per-sub-schema versions** (the third axis — WI-bobog / WI-romup):

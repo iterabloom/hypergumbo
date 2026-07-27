@@ -2,20 +2,23 @@
 """Framework linker: Phoenix Channels IPC for detecting Elixir IPC patterns.
 
 This linker detects Phoenix Channel patterns in Elixir code and creates
-message_send and message_receive edges for cross-process communication.
+``event_publishes`` edges (tagged ``meta.channel_kind="ipc"``) for
+cross-process communication. Only publish-direction edges are emitted; the
+bespoke ``message_send``/``message_receive`` types were folded onto
+``event_publishes`` per the audit-findings 0001 consolidation.
 
 Detected Patterns
 -----------------
 Phoenix Channels:
-- broadcast!(socket, "event", payload) -> message_send
-- broadcast(socket, "event", payload) -> message_send
-- Endpoint.broadcast!("topic", "event", payload) -> message_send
-- push(socket, "event", payload) -> message_send
-- handle_in("event", payload, socket) -> message_receive
+- broadcast!(socket, "event", payload) — send site
+- broadcast(socket, "event", payload) — send site
+- Endpoint.broadcast!("topic", "event", payload) — send site
+- push(socket, "event", payload) — send site
+- handle_in("event", payload, socket) — receive site
 
 Phoenix LiveView:
-- handle_event("event", params, socket) -> message_receive
-- push_event(socket, "event", payload) -> message_send
+- handle_event("event", params, socket) — receive site
+- push_event(socket, "event", payload) — send site
 
 How It Works
 ------------

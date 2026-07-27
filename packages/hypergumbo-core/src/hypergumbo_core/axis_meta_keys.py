@@ -4,8 +4,8 @@
 Per WI-runod Wave 9 and the four-part axis-declaration template in
 [ADR-0024](../../docs/adr/0024-axis-declaration-template.md), every
 *meta key* used by producers / consumers across the codebase is
-declared once here with its axis (``symbol_meta`` or ``edge_meta``)
-and a short description of what the key encodes.
+declared once here with its axis (``symbol_meta``, ``edge_meta``, or
+``entrypoint_meta``) and a short description of what the key encodes.
 
 This module is the structural sibling of
 :mod:`hypergumbo_core.symbol_kinds` and

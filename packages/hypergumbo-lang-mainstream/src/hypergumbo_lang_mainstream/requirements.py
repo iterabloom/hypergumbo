@@ -7,8 +7,9 @@ It's used by pip to install packages with specific version constraints.
 How It Works
 ------------
 Uses the TreeSitterAnalyzer base class with the tree-sitter-requirements grammar
-from tree-sitter-language-pack. Single-pass for symbols; edges (depends, includes,
-constrains) are collected during symbol extraction and flushed via post_process.
+from tree-sitter-language-pack. Single-pass for symbols; edges (depends_on,
+includes, constrains) are collected during symbol extraction and flushed via
+post_process.
 
 1. extract_symbols_from_file: walks AST to find requirements, URLs, global options
 2. post_process: flushes accumulated dependency/include/constraint edges
@@ -24,7 +25,7 @@ Edges Extracted
 ---------------
 - **includes**: References to other requirements files (-r)
 - **constrains**: References to constraints files (-c)
-- **depends**: Package dependency edges
+- **depends_on**: Package dependency edges
 
 Why This Design
 ---------------

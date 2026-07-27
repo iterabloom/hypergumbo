@@ -8,8 +8,8 @@ access modes (read, write, mutate, delete).
 
 How It Works
 ------------
-1. Each language has a dataflow YAML (e.g., dataflow/python.yaml) defining
-   which AST node types represent assignments, deletions, and calls.
+1. Each language has a dataflow YAML (e.g., dataflow_patterns/python.yaml)
+   defining which AST node types represent assignments, deletions, and calls.
 2. ``annotate_dataflow()`` takes a batch of edges and a parsed AST tree,
    finds the AST node at each edge's line, looks up the node type in the
    language config, and stamps ``access_mode`` into the edge's ``meta`` dict.
@@ -201,7 +201,7 @@ _DATAFLOW_DIR = Path(__file__).parent / "dataflow_patterns"
 def get_dataflow_config(language: str) -> Optional[DataflowConfig]:
     """Get the dataflow config for a language, loading from YAML if needed.
 
-    Looks for a YAML file at ``<package>/dataflow/<language>.yaml``.
+    Looks for a YAML file at ``<package>/dataflow_patterns/<language>.yaml``.
     Returns None if no config exists for the language. Caches results
     so each YAML is loaded at most once per process.
 

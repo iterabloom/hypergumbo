@@ -1,16 +1,17 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Framework linker: multi-language dependency injection resolution.
 
-Creates ``di_resolves`` edges from interface methods to implementation methods
-when DI bindings can be determined with high confidence.
+Creates ``dispatches_to`` edges (tagged ``meta.mechanism="di"``) from interface
+methods to implementation methods when DI bindings can be determined with high
+confidence.
 
-Why ``di_resolves`` Instead of ``dispatches_to``
--------------------------------------------------
-``dispatches_to`` is in ``_STRUCTURAL_EDGE_TYPES`` (slice.py), so forward BFS
-excludes it to avoid fan-out explosion (an interface with 50 implementations
-pollutes the slice). ``di_resolves`` is *not* structural, so forward slices
-follow it—correct behavior when DI configuration narrows the binding to one
-high-confidence implementation.
+Edge Type (folded to ``dispatches_to``)
+---------------------------------------
+This linker previously emitted a bespoke ``di_resolves`` edge type. Per the
+audit-findings 0001 relationship-axis consolidation it now emits the canonical
+``dispatches_to`` with ``meta.mechanism="di"`` — a high-confidence DI binding
+resolves an interface method to a single implementation method, which is a
+dispatch relationship. The DI-specific distinction is carried in ``meta``.
 
 How It Works
 ------------
@@ -27,8 +28,8 @@ How It Works
    - SPI ``META-INF/services/`` → 0.85
    - Naming convention (``DefaultX``/``XImpl``) → 0.75
    - Single implementation → 0.70
-4. **Create ``di_resolves`` edges** from interface methods to implementation
-   methods (method-level, not class-level).
+4. **Create ``dispatches_to`` edges** (``meta.mechanism="di"``) from interface
+   methods to implementation methods (method-level, not class-level).
 
 Supported Frameworks
 --------------------

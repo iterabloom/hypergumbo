@@ -97,10 +97,14 @@ violations as informational warnings; CI catches regressions; downstream
 producer fixes ratchet each substrate's baseline toward zero.
 
 WI-niluv denominator disclosure: the cross-field collision/degeneracy
-umbrellas exclude records with no stable_id / fingerprint from their
-non-null denominators (a rate is undefined without a key), but the firing
-violation discloses ``denominator_scope=non_null`` plus the excluded
-cohort over the full population, so the encoding is biconditional.
+umbrellas both disclose their keyless cohort so a clean non-null rate can
+never silently hide a large no-key cohort, but they treat the denominator
+oppositely. The stable_id collision umbrella INCLUDES the no-stable_id cohort
+in its denominator (the rate is over ALL Symbols) and discloses the count as
+``none_cohort=N/population``. The fingerprint degeneracy twin keeps a non-null
+denominator (a rate is undefined without a key) and discloses
+``denominator_scope=non_null`` plus the excluded cohort. Either way the
+encoding is biconditional.
 
 See ADR-0033 for the full architectural decision.
 """

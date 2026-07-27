@@ -3,8 +3,10 @@
 
 Detects data-mediated coupling through cryptographic APIs where key material
 flows between derivation, encryption, and decryption sites across files.
-Creates ``crypto_flow`` edges enabling ``slice --dataflow`` to trace through
-encryption boundaries.
+Creates ``data_flows_to`` edges (tagged ``meta.detection_pattern="crypto_api"``)
+enabling ``slice --dataflow`` to trace through encryption boundaries. (The
+bespoke ``crypto_flow`` type was folded onto ``data_flows_to`` per the
+audit-findings 0014 consolidation.)
 
 Two API surfaces are covered:
 
@@ -208,9 +210,10 @@ def link_crypto_flow(
 ) -> LinkerResult:
     """Link crypto write sites to crypto read sites across files.
 
-    Creates ``crypto_flow`` edges between encryption/key-derivation sites
-    (writers) and decryption/key-extraction sites (readers) in different
-    files within the same API surface.
+    Creates ``data_flows_to`` edges (``meta.detection_pattern="crypto_api"``)
+    between encryption/key-derivation sites (writers) and decryption/
+    key-extraction sites (readers) in different files within the same API
+    surface.
 
     Args:
         repo_root: Repository root path.

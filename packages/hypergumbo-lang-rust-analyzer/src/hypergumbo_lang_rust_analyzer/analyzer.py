@@ -27,8 +27,9 @@ convention.
 
 When the opt-in gate returns False (the default for every session
 that hasn't set ``HYPERGUMBO_RUST_ANALYZER=1`` or passed
-``--backend rust-analyzer``), this analyzer returns an empty
-:class:`AnalysisResult` immediately. No file walk, no subprocess.
+``--backend rust-analyzer``), this analyzer returns an
+:class:`AnalysisResult` marked ``skipped=True`` (``skip_reason="rust-analyzer
+backend not enabled"``) immediately. No file walk, no subprocess.
 ``rust.py`` takes care of Rust analysis in that case.
 
 Provenance
