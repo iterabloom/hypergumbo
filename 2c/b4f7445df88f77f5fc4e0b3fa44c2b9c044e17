@@ -1,0 +1,24 @@
+Original commit body from 3282d9b7d7c2b578fef971e605c0c257028cb81d:
+
+ADR-0039 ruling 4: the Edge.quality {score, reason} block carried zero
+independent signal — quality.score was round(clamp(confidence), 3) (110,533/
+110,533 corpus edges) and quality.reason encoded the emitter mechanism, not a
+confidence tier. The one-version deprecation window (opened at schema 0.14.6)
+has elapsed; the human flagged removal ready.
+
+Removed: the Edge.quality field, its __post_init__ auto-derivation, the
+_derive_edge_quality() helper, and the to_dict/from_dict wiring. Edge.from_dict
+still tolerates a legacy "quality" key on pre-0.20.0 cached artifacts (ignored,
+not resurrected). The stale "quality" schema decoration in generate_schema_lib
+is removed and docs/schema.json regenerated.
+
+SCHEMA_VERSION 0.19.0 -> 0.20.0 (breaking output-format change). Consumers read
+confidence + confidence_source + is_resolved (and rank_score for ranking)
+instead — no src code outside ir.py read edge.quality. Spec §12/§9 updated.
+
+The unrelated Symbol.quality (Node-level, INV-nuzal declared-but-empty) is
+untouched.
+
+Closes WI-riguh + WI-humok (G4 / ADR-0039 confidence tail).
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
