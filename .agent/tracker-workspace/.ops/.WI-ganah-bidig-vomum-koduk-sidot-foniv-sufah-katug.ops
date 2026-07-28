@@ -1,0 +1,21 @@
+- op: create  # 9232
+  at: '2026-07-28T21:39:56Z'  # 9232
+  by: agent  # 9232
+  actor: jgstern_agent  # 9232
+  clock: 1  # 9232
+  nonce: '9232'  # 9232
+  data:  # 9232
+    kind: work_item  # 9232
+    title: "Elixir module @attributes as kind=variable (WI-jusus residual; 2026-07-08 Option-C ruling)"  # 9232
+    status: todo_hard  # 9232
+    priority: 3  # 9232
+    parent:  # 9232
+    tags:  # 9232
+    - dogfood  # 9232
+    - wave5  # 9232
+    isbefore: []  # 9232
+    duplicate_of: []  # 9232
+    not_duplicate_of: []  # 9232
+    pr_ref:  # 9232
+    description: "Split from WI-jusus's residual language tail. Per the 2026-07-08 human ruling: emit kind=variable for an Elixir module @attr ONLY when (a) it is referenced as @attr in a value position elsewhere in the module (positive fails-safe signal) AND (b) it is not in a merged reserved-attribute YAML catalog (base elixir-reserved-attributes.yaml extended by framework YAMLs on detection). Build TDD. Distinct from INV-sinah (quote-block mis-attribution, satisfied)."  # 9232
+    fields: {}  # 9232
