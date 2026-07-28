@@ -1,0 +1,21 @@
+Original commit body from c04ddad59347a8d7c58cbfc0692ebbc89ff09bd2:
+
+The __init__ field scan matched only ast.Assign, so an annotated
+`self.x: T = v` (or bare `self.x: T`) was skipped entirely — the field was
+captured neither into the class's meta["fields"] type map nor into
+own_field_names. An annotated own field therefore stayed eligible for a
+confidently-wrong Site-3 hint to a same-named PARENT field of a different type.
+
+The scan now normalizes ast.Assign and ast.AnnAssign to a common
+(targets, value) shape before the self-attribute check, so annotated own fields
+are captured identically.
+
+Scope: WI-sajub Issue 1 (AnnAssign). Issue 2 — the same-name-class short-name
+clobber in the meta["fields"] attach (two classes, one short name -> recall
+loss) — remains the deferred id-keyed follow-up already documented in-code
+(py.py class_own_field_names comment); it needs a class_symbol_by_node_id map
+and re-keying the name-keyed consumer dicts.
+
+WI-sajub (G5). Advances; Issue 2 residual remains.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
