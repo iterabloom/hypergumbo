@@ -530,6 +530,7 @@
             "query": "language_construct",
             "mutation": "language_construct",
             "subscription": "language_construct",
+            "scalar": "language_construct",
             "entry": "language_construct",
             "entity": "language_construct",
             "architecture": "language_construct",

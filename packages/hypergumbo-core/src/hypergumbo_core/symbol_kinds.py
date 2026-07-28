@@ -428,6 +428,22 @@ SYMBOL_KINDS: Final[tuple[SymbolKindSpec, ...]] = (
                    "Subscription symbol (GraphQL operation). Top-level construct, "
                    "sibling to query/fragment (audit-findings 0007 omission; "
                    "registered per id-format:F3)."),
+    # GraphQL type-system sibling of type/input/interface/enum/union — all
+    # five of which are registered, and all six of which the GraphQL
+    # analyzer emits from one `type_kinds` dict (graphql.py
+    # `_process_graphql_tree`). `scalar` was the sole omission, and the
+    # cause is instructive: the corpus enumeration the audits were built
+    # from could not see dict-indirected `kind=` emits at all, so this
+    # value was structurally invisible until WI-zigih taught the L3
+    # walker to resolve `MAP[k]`. Registered, not folded: `scalar Date`
+    # is its own GraphQL construct, and `type` is already taken by
+    # `object_type_definition` in that same dict — conflating them would
+    # fuse two distinct constructs (ADR-0027 apex/peer).
+    SymbolKindSpec("scalar", AXIS_LANGUAGE_CONSTRUCT,
+                   "Scalar type-definition symbol (GraphQL `scalar Date`). "
+                   "Top-level type-system construct, sibling to "
+                   "type/input/interface/enum/union (audit-findings 0007 "
+                   "omission, surfaced by the WI-zigih dict-indirection gate)."),
     SymbolKindSpec("entry", AXIS_LANGUAGE_CONSTRUCT,
                    "Entry symbol. CANONICAL per audit-findings 0007."),
     SymbolKindSpec("entity", AXIS_LANGUAGE_CONSTRUCT,
