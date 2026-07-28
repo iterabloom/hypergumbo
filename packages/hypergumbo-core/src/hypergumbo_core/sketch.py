@@ -5431,8 +5431,8 @@ def _format_datamodels(
     # Build symbol lookup for path info
     symbol_by_id = {s.id: s for s in symbols}
 
-    # Sort by confidence (highest first) - already sorted but ensure
-    sorted_models = sorted(datamodels, key=lambda m: -m.confidence)
+    # Sort by rank_score (highest first) - already sorted but ensure
+    sorted_models = sorted(datamodels, key=lambda m: -m.rank_score)
 
     # Truncate to max_entries first, then group
     shown = sorted_models[:max_entries]
@@ -6534,7 +6534,7 @@ def _generate_sketch_impl(
                 sections.append(dm_section)
                 # Track stats: compute confidence sum of selected datamodels
                 if stats_out is not None:
-                    sorted_models = sorted(datamodels, key=lambda m: -m.confidence)
+                    sorted_models = sorted(datamodels, key=lambda m: -m.rank_score)
                     stats_out.datamodels_confidence = sum(
                         dm.confidence for dm in sorted_models[:max_models]
                     )
