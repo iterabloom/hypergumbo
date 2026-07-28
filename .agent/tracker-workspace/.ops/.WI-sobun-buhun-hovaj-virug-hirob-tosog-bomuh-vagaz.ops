@@ -1,0 +1,21 @@
+- op: create  # 2f78
+  at: '2026-07-28T21:39:59Z'  # 2f78
+  by: agent  # 2f78
+  actor: jgstern_agent  # 2f78
+  clock: 1  # 2f78
+  nonce: 2f78  # 2f78
+  data:  # 2f78
+    kind: work_item  # 2f78
+    title: "Ruby method-body instance variables (@ivar) not emitted as field symbols (WI-jusus residual)"  # 2f78
+    status: todo_hard  # 2f78
+    priority: 4  # 2f78
+    parent:  # 2f78
+    tags:  # 2f78
+    - dogfood  # 2f78
+    - wave5  # 2f78
+    isbefore: []  # 2f78
+    duplicate_of: []  # 2f78
+    not_duplicate_of: []  # 2f78
+    pr_ref:  # 2f78
+    description: "Split from WI-jusus's residual tail. Ruby class-level CONSTANTS, @@class-vars, and attr_accessor/reader/writer already emit (699239d969). Method-body instance variables (def foo; @x = 1; end) are not emitted as field symbols. Needs a design call on whether per-instance @ivars set in methods should be fields (cf. Python self.x own-field emission); fails-safe: emit none rather than wrong."  # 2f78
+    fields: {}  # 2f78

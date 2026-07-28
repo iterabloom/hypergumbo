@@ -91,3 +91,10 @@
   clock: 11  # 21be
   nonce: 21be  # 21be
   message: "Staleness audit 2026-07-21: the filed DROP bug is fixed and verified. inheritance.py Approach-C chokepoint _external_base_edge (PR 70d0cc067e) mints '{lang}:external:0-0:{name}:unresolved' extends edges for EVERY OO language instead of dropping (item's own note: 'FULLY FIXED for all OO languages', production-path tests). Python external instantiates fixed: py.py:5097-5186 types external constructors as instantiates/ast_new/is_resolved=False; self-analysis recovered ~1918 external constructions (was 0). Every Python falsifiable claim in the filing is discharged. RESIDUAL retitled: non-Python instantiates is greenfield feature work (Kotlin/Ruby emit ZERO instantiates edges — nothing is being 'dropped'), not the filed 'no external fallback' bug. Consider splitting the greenfield emission into its own feature item; close-substantially-done is defensible on owner's call."  # 21be
+- op: discuss  # 415c
+  at: '2026-07-28T21:40:22Z'  # 415c
+  by: agent  # 415c
+  actor: jgstern_agent  # 415c
+  clock: 12  # 415c
+  nonce: 415c  # 415c
+  message: "Closeable-verification (2026-07-28): NOT closeable — this item was RETITLED past its filed bug. The FILED extends + Python-instantiates external-DROP bug IS fixed & verified (js/ts EXTENDS+IMPLEMENTS via PR #4255/WI-dutov; Python external extends/instantiates landed 5d787c9250/41f3a0e930). But the item now represents the still-OPEN GREENFIELD residual: Kotlin/Ruby emit 0 external-constructor 'instantiates' edges. That is legitimate open feature work — a per-analyzer fix (kotlin.py/ruby.py route external constructors to external_symbol placeholders) or the Approach-C core inheritance-linker chokepoint (analyzers carry import-module + clause-kind into base_classes meta; the linker emits import-aware unresolved edges for every OO lang). Staying todo_hard/P3."  # 415c
