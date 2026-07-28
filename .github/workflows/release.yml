@@ -199,7 +199,20 @@ jobs:
 
       - name: Generate SBOM
         run: |
-          cyclonedx-py environment -o dist/sbom.json --format json || true
+          # Best-effort SBOM of the build environment — never fail the release on
+          # it. Try the current cyclonedx-py flags, fall back to the minimal form
+          # (JSON is the default), then DROP a missing/empty/invalid file so the
+          # release step can't try to upload a 0-byte asset (GitHub rejects that
+          # with "HTTP 400: Bad Content-Length" — which failed the v7.0.0 run).
+          cyclonedx-py environment --output-format JSON --output-file dist/sbom.json \
+            || cyclonedx-py environment -o dist/sbom.json \
+            || true
+          if [[ -s dist/sbom.json ]] && python3 -c "import json; json.load(open('dist/sbom.json'))" 2>/dev/null; then
+            echo "SBOM generated ($(wc -c < dist/sbom.json) bytes)."
+          else
+            echo "::warning::SBOM generation produced no valid output — omitting it from the release."
+            rm -f dist/sbom.json
+          fi
 
       - name: Verify wheels
         run: |
@@ -250,9 +263,10 @@ jobs:
             PRERELEASE_FLAG="--prerelease"
           fi
 
-          # Attach the wheels, sdists, checksums, and (when present) the SBOM.
+          # Attach the wheels, sdists, checksums, and — only when it's non-empty
+          # (the Generate SBOM step drops a bad one) — the SBOM.
           ASSETS=(dist/*.whl dist/*.tar.gz dist/SHA256SUMS)
-          if [[ -f dist/sbom.json ]]; then
+          if [[ -s dist/sbom.json ]]; then
             ASSETS+=(dist/sbom.json)
           fi
 
