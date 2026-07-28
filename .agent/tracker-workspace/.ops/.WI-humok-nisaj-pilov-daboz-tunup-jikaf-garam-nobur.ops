@@ -77,3 +77,18 @@
   clock: 9  # 12e0
   nonce: '12e0'  # 12e0
   message: "Staleness audit 2026-07-21: half (a) 'undocumented' is now FALSE -- quality.reason IS documented as DEPRECATED (ADR-0039 ruling 4) at docs/schema.json:1036 and docs/hypergumbo-spec.md:923 ('encodes the emitter mechanism, not a confidence tier'); the 'rename to emitter names' remedy was superseded by the ADR-0039 DELETION path, with emitter-provenance moved to the new confidence_source enum. Residual keeping it open: the field + tier-named values are STILL EMITTED (ir.py:1083-1091 _derive_edge_quality, serialized 1001/1016). Release-gated: closes at the D9b one-version-window removal of Edge.quality, which has not happened. Do NOT close yet."  # 12e0
+- op: update  # 75f7
+  at: '2026-07-28T21:33:17Z'  # 75f7
+  by: agent  # 75f7
+  actor: jgstern_agent  # 75f7
+  clock: 10  # 75f7
+  nonce: 75f7  # 75f7
+  set:  # 75f7
+    status: done  # 75f7
+- op: discuss  # dd82
+  at: '2026-07-28T21:33:17Z'  # dd82
+  by: agent  # dd82
+  actor: jgstern_agent  # dd82
+  clock: 11  # dd82
+  nonce: dd82  # dd82
+  message: "Co-resolved with WI-riguh by the same Edge.quality removal (PR #53, ADR-0039 ruling 4 / D9b). The edge quality.reason field is gone — the entire deprecated Edge.quality {score,reason} block was removed from ir.py + schema (SCHEMA_VERSION 0.19.0->0.20.0). The item's 'undocumented' premise was already FALSE (documented as DEPRECATED in schema + spec); the sole residual was removal of the same field, now done. DUP of WI-riguh's closure condition."  # dd82

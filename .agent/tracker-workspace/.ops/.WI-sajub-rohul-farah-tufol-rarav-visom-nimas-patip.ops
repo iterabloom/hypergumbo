@@ -19,3 +19,18 @@
     pr_ref:  # a746
     description: "Two deferred residuals from the WI-hiziz PR-3 (Site-3) adversarial review (wf_d812238a-fad), both recall (not wrong-edge) issues. (1) meta['fields'] SAME-NAME-CLASS CLOBBER (meta-fields-attach finding): the PR-3 producer attaches meta['fields'] via local_symbols.get(node.name) (short-name, last-write-wins), so with two same-short-name classes in one file the fields land on whichever class the last-write registered; the OTHER class's Site-3 resolution silently misses (recall loss; the extends edge and the misattributed meta land on different name-vs-id keys). A PR-3 stopgap already gates the write on _cls_sym.kind=='class' (prevents a spurious inert attach to a same-name METHOD). Full fix: capture a class_symbol_by_node_id map in the registration walk (mirror the existing func_symbol_by_node_id / WI-jafat pattern in py.py) and key the meta-attach on id(node) so each ClassDef's fields land on its own emitted Symbol. (2) AnnAssign OWN-FIELD gap (emit-gate finding tail): the PR-3 own-field exclusion (class_own_field_names) captures only ast.Assign __init__ self.X targets; an AnnAssign self.x: T = ... own field is not captured, so if it shadows a same-named parent field of a different type it can still emit a wrong Site-3 hint. Extend the class_own_field_names scan to also collect AnnAssign self-targets (with a test covering the AnnAssign self-target + non-self-target branches). Both are precision refinements on the Site-3 producer, lower priority than the BFS-vs-C3 wrong-edge item."  # a746
     fields: {}  # a746
+- op: update  # 94fc
+  at: '2026-07-28T20:11:01Z'  # 94fc
+  by: agent  # 94fc
+  actor: jgstern_agent  # 94fc
+  clock: 2  # 94fc
+  nonce: 94fc  # 94fc
+  set:  # 94fc
+    status: done  # 94fc
+- op: discuss  # 228a
+  at: '2026-07-28T20:11:01Z'  # 228a
+  by: agent  # 228a
+  actor: jgstern_agent  # 228a
+  clock: 3  # 228a
+  nonce: 228a  # 228a
+  message: "PR #51 (dev d43bd4056d): fixed. The __init__ own-field scan now normalizes ast.Assign and ast.AnnAssign to a common (targets, value) shape, so an annotated self.x: T = v own field is captured into meta['fields'] + own_field_names (previously only plain Assign was scanned, leaving an annotated own field eligible for a confidently-wrong Site-3 hint to a same-named parent field). Evidence: test_annassign_self_field_captured (self.x: Foo = x -> meta['fields']=={'x':'Foo'}); full slice green, 100% cov. Scope = Issue 1 (AnnAssign). Issue 2 (same-name-class short-name clobber in the meta['fields'] attach) remains the deferred id-keyed follow-up documented in-code; needs a class_symbol_by_node_id map + re-keying the name-keyed consumer dicts."  # 228a

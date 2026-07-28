@@ -61,3 +61,18 @@
   clock: 7  # 6426
   nonce: '6426'  # 6426
   message: "Staleness audit 2026-07-21: the original divergence premise is INVALIDATED by ADR-0039 R3 -- type_hierarchy.py:544-582 now omits confidence= (edges derive the flat in-band 0.85 base) and the 1/sqrt(N) dampener moved to rank_score:582, so quality.score=round(0.85,3)=0.85 matches confidence and the filed repro no longer reproduces. The re-scoped closure condition (removal of Edge.quality) is UNMET: the field is still declared (ir.py:822), auto-derived (ir.py:851-852), and emitted (ir.py:1016) at SCHEMA_VERSION 0.18.0 -- many releases past the 0.14.6 one-version-window promise. Re-scoped to the Edge.quality removal; do not cite the 257-edge divergence as live."  # 6426
+- op: update  # 4a6e
+  at: '2026-07-28T21:33:17Z'  # 4a6e
+  by: agent  # 4a6e
+  actor: jgstern_agent  # 4a6e
+  clock: 8  # 4a6e
+  nonce: 4a6e  # 4a6e
+  set:  # 4a6e
+    status: done  # 4a6e
+- op: discuss  # 48f6
+  at: '2026-07-28T21:33:17Z'  # 48f6
+  by: agent  # 48f6
+  actor: jgstern_agent  # 48f6
+  clock: 9  # 48f6
+  nonce: 48f6  # 48f6
+  message: "Edge.quality field REMOVED (PR #53, ADR-0039 ruling 4). The deprecated {score,reason} block is gone from ir.py (field + __post_init__ auto-derivation + _derive_edge_quality helper + to_dict/from_dict wiring); SCHEMA_VERSION 0.19.0->0.20.0 (breaking). quality.score was round(clamp(confidence),3) and quality.reason encoded the emitter mechanism — zero independent signal; consumers read confidence + confidence_source + is_resolved (+ rank_score for ranking). Edge.from_dict tolerates a legacy 'quality' key on pre-0.20.0 cached artifacts (ignored). No src outside ir.py read edge.quality. Owner-flagged ready (one-version deprecation window from 0.14.6 elapsed). Behavioral evidence: test_edge_to_dict_has_no_quality + test_edge_from_dict_tolerates_legacy_quality; full slice 16170 passed, 100% cov. The original 257-edge quality.score-vs-confidence divergence was already resolved by ADR-0039 R3; this closes the removal residual."  # 48f6
