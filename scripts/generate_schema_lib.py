@@ -741,18 +741,6 @@ def _edge_spec() -> ClassSpec:
                     "Cluster B fold targets."
                 ),
             },
-            "quality": {
-                "deprecated": True,
-                "description": (
-                    "DEPRECATED (ADR-0039 ruling 4; WI-humok / WI-riguh). "
-                    "quality.score is a pure function of confidence "
-                    "(round(clamp(confidence), 3)) and quality.reason encodes "
-                    "the emitter mechanism, not a confidence tier — it carries "
-                    "zero independent signal. Read confidence + confidence_source "
-                    "+ is_resolved instead. Still emitted for one deprecation "
-                    "release; removed the next."
-                ),
-            },
         },
         conditional={"dst_ref", "derived_from"},
         # confidence has a producer default (0.85) but is contractually
