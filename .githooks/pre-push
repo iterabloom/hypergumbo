@@ -72,6 +72,45 @@ while read -r local_ref local_sha remote_ref remote_sha; do
         fi
     done
 
+    # ── DCO sign-off check ──────────────────────────────────────────────────
+    # Every commit being pushed must carry a `Signed-off-by:` trailer (git
+    # commit -s). Mirrors the Woodpecker per-PR DCO gate but fires HERE — before
+    # the push — so an unsigned commit never reaches dev/main and never has to be
+    # grandfathered onto the release-gate DCO allowlist (.woodpecker/woodpecker.yml).
+    # Merge commits are exempt. Bypass (not recommended): git push --no-verify.
+    zero="0000000000000000000000000000000000000000"
+    if [[ "$local_sha" != "$zero" ]]; then          # skip branch deletions
+        if [[ "$remote_sha" == "$zero" ]]; then
+            # New branch: the commits it introduces are those not yet on any
+            # remote-tracking branch.
+            dco_range=$(git rev-list --no-merges "$local_sha" --not --remotes 2>/dev/null || true)
+        else
+            # Existing branch: only the newly-pushed commits.
+            dco_range=$(git rev-list --no-merges "${remote_sha}..${local_sha}" 2>/dev/null || true)
+        fi
+        dco_unsigned=""
+        for sha in $dco_range; do
+            if ! git log -1 --format='%B' "$sha" | grep -q '^Signed-off-by:'; then
+                dco_unsigned+="    $(git log -1 --format='%h  %s' "$sha")"$'\n'
+            fi
+        done
+        if [[ -n "$dco_unsigned" ]]; then
+            echo ""
+            echo -e "${RED}========================================================${NC}"
+            echo -e "${RED}  BLOCKED: commit(s) missing a DCO Signed-off-by trailer${NC}"
+            echo -e "${RED}========================================================${NC}"
+            echo ""
+            echo "$dco_unsigned"
+            echo -e "${YELLOW}  Every commit must be signed off (DCO), matching the CI gate.${NC}"
+            echo "  Fix the latest commit:  git commit --amend -s"
+            echo "  Fix a range:            git rebase --signoff <base>"
+            echo ""
+            echo "  To bypass (not recommended):  git push --no-verify"
+            echo ""
+            exit 1
+        fi
+    fi
+
     # Warn if workspace tracker files are being pushed to upstream remote
     if [[ "$remote" == "upstream" ]]; then
         # Use the zero sha for new branches (no remote_sha yet)

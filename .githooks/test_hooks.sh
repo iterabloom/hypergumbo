@@ -353,7 +353,56 @@ if [[ -f "$PRE_PUSH_HOOK" ]]; then
 
   rm -rf "$CLEAN_GIT_DIR"
 
-  # 7c. Failover remote verification tests
+  # 7c. Pre-push DCO sign-off tests
+  # --------------------------------------------------------------------------
+  echo ""
+  echo "========================================================"
+  echo "PRE-PUSH DCO SIGN-OFF TESTS"
+  echo "========================================================"
+
+  DCO_REPO="$(mktemp -d -t hypergumbo-dco-test.XXXXXX)"
+  git -C "$DCO_REPO" init -q
+  git -C "$DCO_REPO" config user.name "Test"
+  git -C "$DCO_REPO" config user.email "test@example.com"
+  git -C "$DCO_REPO" config commit.gpgsign false
+  # hooks off in the fixture so prepare-commit-msg doesn't auto-add the sign-off
+  git -C "$DCO_REPO" -c core.hooksPath=/dev/null commit -q --allow-empty -s -m "signed root"
+  dco_root=$(git -C "$DCO_REPO" rev-parse HEAD)
+  git -C "$DCO_REPO" -c core.hooksPath=/dev/null commit -q --allow-empty -s -m "signed second"
+  dco_signed=$(git -C "$DCO_REPO" rev-parse HEAD)
+  git -C "$DCO_REPO" -c core.hooksPath=/dev/null commit -q --allow-empty -m "unsigned commit"
+  dco_unsigned=$(git -C "$DCO_REPO" rev-parse HEAD)
+
+  # Run the pre-push hook inside the fixture repo with a given stdin line.
+  dco_hook() { ( cd "$DCO_REPO" && echo "$1" | "$PRE_PUSH_HOOK" origin "https://example.com" >/dev/null 2>&1 ); }
+
+  echo "--------------------------------------------------------"
+  echo "TEST: Pre-push DCO: allow a signed-only range"
+  if dco_hook "refs/heads/t $dco_signed refs/heads/t $dco_root"; then
+    echo "  PASS (signed range allowed)"; ((PASS_COUNT++))
+  else
+    echo "  FAIL (signed range should be allowed)"; ((FAIL_COUNT++))
+  fi
+
+  echo "--------------------------------------------------------"
+  echo "TEST: Pre-push DCO: block a range containing an unsigned commit"
+  if dco_hook "refs/heads/t $dco_unsigned refs/heads/t $dco_signed"; then
+    echo "  FAIL (unsigned commit should be blocked)"; ((FAIL_COUNT++))
+  else
+    echo "  PASS (unsigned commit blocked)"; ((PASS_COUNT++))
+  fi
+
+  echo "--------------------------------------------------------"
+  echo "TEST: Pre-push DCO: block a new branch (zero base) with an unsigned commit"
+  if dco_hook "refs/heads/t $dco_unsigned refs/heads/t 0000000000000000000000000000000000000000"; then
+    echo "  FAIL (unsigned commit on a new branch should be blocked)"; ((FAIL_COUNT++))
+  else
+    echo "  PASS (unsigned commit on a new branch blocked)"; ((PASS_COUNT++))
+  fi
+
+  rm -rf "$DCO_REPO"
+
+  # 7d. Failover remote verification tests
   # --------------------------------------------------------------------------
   echo ""
   echo "========================================================"
