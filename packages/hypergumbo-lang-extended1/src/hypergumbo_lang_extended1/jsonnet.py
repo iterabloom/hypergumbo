@@ -303,8 +303,11 @@ def _extract_edges_recursive(
                 line=node.start_point[0] + 1,
                 origin=PASS_ID,
                 origin_run_id=run_id,
-                evidence_type="tree_sitter",
-                confidence=1.0,
+                # WI-radim: a jsonnet `import` statement is the "import" inference
+                # pathway (already seeded 0.95), not the generic mechanism-label
+                # "tree_sitter"; dropping confidence= derives the in-band value
+                # (confidence_source=evidence_derived) instead of reserved 1.0.
+                evidence_type="import",
                 evidence_lang="jsonnet",
             )
             edges.append(edge)
