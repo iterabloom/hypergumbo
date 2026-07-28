@@ -389,8 +389,10 @@ class TestDetectDatamodels:
         assert len(models) == 1
         assert models[0].confidence >= 0.95
 
-    def test_boosts_confidence_by_centrality(self) -> None:
-        """Boosts confidence for highly-referenced models."""
+    def test_centrality_boosts_rank_score_not_confidence(self) -> None:
+        """ADR-0039 (WI-gozik): centrality is a ranking signal, so it boosts
+        rank_score and leaves confidence at the pure detection-reliability seed
+        (which also keeps confidence off the reserved 1.0 ceiling)."""
         sym = _make_class_symbol(
             "UserModel",
             meta={"concepts": [{"concept": "model"}]},
@@ -401,8 +403,11 @@ class TestDetectDatamodels:
         models = detect_datamodels([sym], edges)
 
         assert len(models) == 1
-        # Should have boost above base 0.95
-        assert models[0].confidence > 0.95
+        # confidence stays the pure seed — NOT inflated by centrality.
+        assert models[0].confidence == 0.95
+        # rank_score carries the centrality boost.
+        assert models[0].rank_score > 0.95
+        assert models[0].rank_score > models[0].confidence
 
     def test_sorts_by_confidence(self) -> None:
         """Sorts results by confidence (highest first)."""
@@ -448,6 +453,7 @@ class TestDataModelSerialization:
             confidence=0.95,
             label="Django model",
             framework="Django",
+            rank_score=0.98,
         )
 
         result = model.to_dict()
@@ -457,3 +463,4 @@ class TestDataModelSerialization:
         assert result["confidence"] == 0.95
         assert result["label"] == "Django model"
         assert result["framework"] == "Django"
+        assert result["rank_score"] == 0.98
