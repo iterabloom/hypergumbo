@@ -94,10 +94,15 @@ struct Outer {
         _write(tmp_path, '''
 enum Color { red, green = 2, blue }
 ''')
-        fields = _names(analyze_d(tmp_path), "field")
+        result = analyze_d(tmp_path)
+        fields = _names(result, "field")
         assert "Color.red" in fields
         assert "Color.green" in fields
         assert "Color.blue" in fields
+        # WI-pujiz: the enum itself is emitted as a kind="enum" owner so the
+        # containment linker (enum in CONTAINER_KINDS) can root Color.red /
+        # green / blue under Color instead of leaving them orphaned.
+        assert "Color" in _names(result, "enum")
 
 
 class TestDUnionFields:
