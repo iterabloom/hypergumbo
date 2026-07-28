@@ -343,6 +343,26 @@ def _process_enum_member(
     )
 
 
+def _process_enum_declaration(
+    source: bytes, rel_path: str, run_id: str, node: "tree_sitter.Node",
+    analyzer: "DAnalyzer",
+) -> Optional[Symbol]:
+    """Emit a named ``enum_declaration`` as a ``kind="enum"`` owner symbol.
+
+    The owner anchors the enum's ``kind="field"`` members (``Color.red``,
+    emitted by :func:`_process_enum_member`) under the containment linker —
+    ``enum`` is a CONTAINER_KIND, so a member whose dotted name is
+    ``<enum>.<member>`` roots to this symbol once it exists (WI-pujiz /
+    WI-sakug Part B). An anonymous enum parses to a distinct
+    ``anonymous_enum_declaration`` node and never reaches this branch.
+    """
+    name_node = find_child_by_type(node, "identifier")
+    if name_node is None:
+        return None  # pragma: no cover - a named enum_declaration always names
+    name = node_text(name_node, source)
+    return _make_symbol(rel_path, run_id, node, name, "enum", source, analyzer)
+
+
 # ---------------------------------------------------------------------------
 # Import alias and edge extraction helpers
 # ---------------------------------------------------------------------------
@@ -795,6 +815,10 @@ class DAnalyzer(TreeSitterAnalyzer):
                 pairs.extend(_process_value_declaration(source, rel_path, run.execution_id, node, self))
             elif node.type == "enum_member":
                 sym = _process_enum_member(source, rel_path, run.execution_id, node, self)
+                if sym:
+                    pairs.append((sym, node))
+            elif node.type == "enum_declaration":
+                sym = _process_enum_declaration(source, rel_path, run.execution_id, node, self)
                 if sym:
                     pairs.append((sym, node))
 

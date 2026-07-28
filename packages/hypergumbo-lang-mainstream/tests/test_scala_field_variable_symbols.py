@@ -252,6 +252,9 @@ def test_enum_body_val_emits_field(tmp_path: Path) -> None:
     )
     assert _fields(syms) == {"Color.rgb"}
     assert not any(s.kind == "variable" and s.name == "rgb" for s in syms)
+    # WI-pujiz: the enum is emitted as a kind="enum" owner (in CONTAINER_KINDS)
+    # so the containment linker roots Color.rgb under Color.
+    assert any(s.kind == "enum" and s.name == "Color" for s in syms)
 
 
 def test_given_body_val_emits_field(tmp_path: Path) -> None:
