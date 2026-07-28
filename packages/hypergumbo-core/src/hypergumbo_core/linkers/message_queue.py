@@ -58,7 +58,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterator
 
-from ..analyze.base import make_protocol_stable_id, make_symbol_id
+from ..analyze.base import (
+    make_protocol_stable_id,
+    make_symbol_id,
+    sanitize_id_name_segment,
+)
 from ..discovery import find_non_test_files
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from .registry import LinkerContext, LinkerResult, register_linker
@@ -410,13 +414,16 @@ def _create_symbol(pattern: MessageQueuePattern, root: Path) -> Symbol:
 
     # ADR-0027 Phase 3 / audit-findings 0013 (WI-nitil): framework-role
     # leak. Fold to canonical kind="function" + meta["framework_role"].
-    # The framework-role string remains the ID disambiguator so cross-PR
-    # identity is stable.
+    # framework_role remains the meta role; the id name slot now carries the
+    # specific Symbol.name (queue:type:topic, colon-sanitized via
+    # sanitize_id_name_segment) per ADR-0036 Ruling 1 / WI-vuzaf — more
+    # disambiguating than the shared role token and still deterministic.
     framework_role = "mq_publisher" if pattern.type == "publish" else "mq_subscriber"
+    mq_name = f"{pattern.queue_type}:{pattern.type}:{pattern.topic}"
 
     return Symbol(
-        id=make_symbol_id(pattern.language, str(rel_path), pattern.line, pattern.line, framework_role, "function"),
-        name=f"{pattern.queue_type}:{pattern.type}:{pattern.topic}",
+        id=make_symbol_id(pattern.language, str(rel_path), pattern.line, pattern.line, sanitize_id_name_segment(mq_name), "function"),
+        name=mq_name,
         kind="function",
         path=pattern.file_path,
         span=Span(

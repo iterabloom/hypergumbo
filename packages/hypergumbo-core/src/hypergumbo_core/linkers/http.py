@@ -92,7 +92,11 @@ from pathlib import Path
 from typing import Iterator
 from urllib.parse import urlparse
 
-from ..analyze.base import make_site_stable_id, make_symbol_id
+from ..analyze.base import (
+    make_site_stable_id,
+    make_symbol_id,
+    sanitize_id_name_segment,
+)
 from ..discovery import find_non_test_files
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from ..routes import is_route, method_token, route_of
@@ -1319,10 +1323,11 @@ def _create_client_symbol(call: HttpClientCall, root: Path) -> Symbol:
     encountering pseudo-function names like ``"GET event.request"``.
     """
     rel_path = Path(call.file_path).relative_to(root) if root else Path(call.file_path)
+    call_name = f"{call.method} {call.url}"
 
     return Symbol(
-        id=make_symbol_id(call.language, str(rel_path), call.line, call.line, "http_client", "call_site"),
-        name=f"{call.method} {call.url}",
+        id=make_symbol_id(call.language, str(rel_path), call.line, call.line, sanitize_id_name_segment(call_name), "call_site"),
+        name=call_name,
         kind="call_site",
         path=call.file_path,
         span=Span(
