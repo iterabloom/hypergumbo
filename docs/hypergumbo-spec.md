@@ -1268,20 +1268,33 @@ pathway's producers historically hardcoded, so the migration that dropped the
 per-emitter outliers to the single canonical value (the INV-suvil fix).
 
 **Bands.** Base confidences live in the analyzer/linker band **0.30–0.95**;
-1.0 is a reserved ceiling (a detection method is never *certain*). Three
-pathways whose producers still emit 1.0 (`build_dependency`, `subdir_include`,
-`tree_sitter`) are not yet derived — that over-claim is a pending producer-side
-fix, so those sites retain an explicit `confidence=`. (`naming_convention` was
-the fourth; ADR-0039 ruling 1 seeded it at 0.85 and the containment producer now
-derives it — see [ADR-0039](adr/0039-confidence-separation.md).)
+1.0 is a reserved ceiling (a detection method is never *certain*). The
+ceiling-breach cohort is now **closed**: `naming_convention` was seeded at 0.85
+by ADR-0039 ruling 1, and WI-radim seeded the two meson pathways
+(`build_dependency`, `subdir_include`) at 0.95 with their literals dropped, so
+all three derive. The fourth site, a jsonnet import edge, carried the generic
+mechanism-type `evidence_type="tree_sitter"` and was relabelled to the
+semantically-correct (already-seeded) `import`. One residual reserved-1.0 emit
+remains — the jsonnet *calls* edge, whose confidence arrives through a computed
+variable — tracked as WI-rafut.
+
+**The per-pathway values are generated, not transcribed here.** The full
+`base_confidence` projection — every seeded pathway with its derived value, the
+two `is_resolved`-conditioned call pathways, and the explicit unseeded list —
+lives in [`docs/concept-axes.md`](concept-axes.md#derived-confidence--base_confidence-projection-adr-0039),
+emitted directly from `evidence_types.EVIDENCE_TYPES` and kept honest by the
+`generate-concept-axes --check` freshness gate (WI-limom). This section owns the
+*model*; that table owns the *values*, so the two cannot drift.
 
 **Not yet derived (retain explicit `confidence=`):** sites that *compute*
-confidence dynamically (linker match-strength scores) and the three ceiling-breach
-pathways above. Only literal hardcoded constants on seeded inference pathways were
-migrated. The `type_hierarchy` linker no longer retains an explicit dynamic
-confidence: ADR-0039 ruling 3 relocated its `1/√N` fan-out dampener + test penalty
-to `rank_score`, so its detection confidence now derives the flat in-band 0.85
-`type_hierarchy` base.
+confidence dynamically (linker match-strength scores), and the pathways
+registered without a seeded `base_confidence` — `derive_confidence` returns
+`None` for those, so the producer keeps its literal and `confidence_source`
+stays `emitter_constant`. Only literal hardcoded constants on seeded inference
+pathways were migrated. The `type_hierarchy` linker no longer retains an
+explicit dynamic confidence: ADR-0039 ruling 3 relocated its `1/√N` fan-out
+dampener + test penalty to `rank_score`, so its detection confidence now derives
+the flat in-band 0.85 `type_hierarchy` base.
 
 **Confidence provenance & ranking separation (ADR-0039 rulings 2 & 3, implemented).**
 Every `Edge` carries a `confidence_source` discriminator — `evidence_derived` (the
