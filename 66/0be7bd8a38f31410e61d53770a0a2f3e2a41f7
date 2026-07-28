@@ -1,0 +1,23 @@
+Original commit body from cd9788ab7b48e2f610dc972d861195762b8c8a4d:
+
+Six linker families (subprocess, database-query, HTTP-client, GraphQL-client,
+GraphQL-resolver, message-queue publish/subscribe) minted synthetic
+call_site/function stand-ins whose id {name} slot held a generic linker-category
+constant (subprocess_call / db_query / http_client / graphql_client / resolver /
+mq_publisher) while Symbol.name carried the specific value -- so a consumer
+reconstructing a node's name from its documented stable id got a different
+string (collapsing e.g. all subprocess call-sites under one label).
+
+Each factory now routes Symbol.name through the new sanitize_id_name_segment
+helper (colons ':' -> '.', ADR-0036 Ruling 1; round-trip documented-lossy, full
+fidelity in Symbol.name) into the id name slot. The helper is scoped to these
+synthetic stand-ins rather than folded into make_symbol_id globally, because an
+always-on chokepoint would also rewrite colon-bearing source identifiers (Obj-C
+selectors removeItemAtPath:error:) -- that broader landing is WI-sikar.
+
+Deferred (recorded on WI-vuzaf): websocket (route-vs-URL naming nuance in its
+sanitizing wrapper) and gRPC (separate non-canonical grpc: id format).
+
+WI-vuzaf Pattern A. Advances INV-dulah / INV-kurup (G1).
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
