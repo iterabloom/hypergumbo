@@ -1,0 +1,20 @@
+- op: create  # ed39
+  at: '2026-07-28T07:20:19Z'  # ed39
+  by: agent  # ed39
+  actor: jgstern_agent  # ed39
+  clock: 1  # ed39
+  nonce: ed39  # ed39
+  data:  # ed39
+    kind: work_item  # ed39
+    title: "jsonnet calls edge emits confidence=1.0 for resolved calls, breaching the 0.95 ceiling"  # ed39
+    status: todo_hard  # ed39
+    priority: 4  # ed39
+    parent:  # ed39
+    tags:  # ed39
+    - wave5  # ed39
+    isbefore: []  # ed39
+    duplicate_of: []  # ed39
+    not_duplicate_of: []  # ed39
+    pr_ref:  # ed39
+    description: "The jsonnet analyzer's calls edge (jsonnet.py ~line 283, evidence_type='tree_sitter') passes a computed confidence that is 1.0 for a resolved local call (0.6 for unresolved), breaching the 0.95 evidence-derived ceiling (ADR-0039). Surfaced adjacent to WI-radim (which fixed the three literal-1.0 sites: meson build_dependency/subdir_include + the jsonnet import edge). DIFFERENT mechanism: the calls confidence is a computed variable, not a dropped literal, so the fix is to cap/derive the resolved-call value in-band (and consider relabeling evidence_type='tree_sitter' to a specific pathway, as WI-radim did for the import edge). Repro: test_extracts_call_edges in packages/hypergumbo-lang-extended1/tests/test_jsonnet.py asserts edge.confidence == 1.0."  # ed39
+    fields: {}  # ed39

@@ -167,3 +167,10 @@
   clock: 19  # 0fbb
   nonce: 0fbb  # 0fbb
   message: "G1 progress (PR #808): WI-banod T0 (ini/requirements/properties canonical stable_id) landed; WI-bosog (repo_fingerprint field format, adjacent) landed earlier this session. Residual children still open: WI-zugob (route-marker id-slot + provenance, make_route_symbol chokepoint), WI-vuzaf (synthetic-node id name-slot vs node.name — Pattern A 6 linkers + Pattern B Starlette), WI-banod T1 (bitbake/bibtex, scheme-gated). Umbrella stays violated until those land. WI-kapul (related-but-distinct external node.path facet) resolved wont_do by-design (ADR-0036 Ruling 3 sentinel)."  # 0fbb
+- op: discuss  # c625
+  at: '2026-07-28T04:18:08Z'  # c625
+  by: agent  # c625
+  actor: jgstern_agent  # c625
+  clock: 20  # c625
+  nonce: c625  # c625
+  message: "WI-vuzaf Pattern A landed (PR #44, dev 660be7bd8a): the 'linker name-slot constants' child advanced — 6 synthetic-node families now write sanitize(Symbol.name) into the id name-slot via the new sanitize_id_name_segment helper. Residual on this child = websocket + grpc (see WI-vuzaf). INV-dulah stays violated: WI-zugob (route id kind-slot + provenance), WI-banod-T1, the doc-family slot ORDER at base.py, and the WI-vuzaf ws/grpc residual remain."  # c625

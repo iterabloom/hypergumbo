@@ -20,3 +20,18 @@
     pr_ref:  # 7f16
     description: "PR #689 (WI-fagit) retargets C# 'new X(...)' instantiation edges to the constructor node via the Type.Type key, but register_symbol keys the global registry by name, so overloaded constructors (all named Type.Type) collapse to the last-registered one. Every 'new X(...)' of an overloaded type therefore shares one ctor anchor; a reverse-slice on a NON-last overload still misses its callers. Single-ctor classes (the dominant case) are fully correct. Fix: build a class->[ctors] multi-map (like global_methods) and match the object_creation_expression's argument count against each ctor's parameter count; fall back to the first ctor on no arity match."  # 7f16
     fields: {}  # 7f16
+- op: update  # e95a
+  at: '2026-07-28T05:08:18Z'  # e95a
+  by: agent  # e95a
+  actor: jgstern_agent  # e95a
+  clock: 2  # e95a
+  nonce: e95a  # e95a
+  set:  # e95a
+    status: done  # e95a
+- op: discuss  # 8e01
+  at: '2026-07-28T05:08:18Z'  # 8e01
+  by: agent  # 8e01
+  actor: jgstern_agent  # 8e01
+  clock: 3  # 8e01
+  nonce: '8e01'  # 8e01
+  message: "PR #45 (dev 2a2fb48463): fixed. new X(...) no longer collapses onto the last-registered ctor — the C# analyzer builds a global_ctors multi-map (parallel to global_methods) and binds the instantiates edge to the overload whose parameter count matches the arg count. Behavioral evidence: test_overloaded_ctor_resolves_by_arity (production path) — two overloaded Widget ctors (1-arg/2-arg), each new Widget(...) now targets its arity-matching ctor node (before: both collapsed onto the 2-arg ctor). Scope: arity-precise matching as filed; exact param==arg count, optional/params args not modeled and SAME-arity overloads (Foo(int) vs Foo(string)) still fall back to the collapsed pick — full type-based C# overload resolution is out of scope. Object-initializer new X { } (no arglist) falls back gracefully (tested)."  # 8e01

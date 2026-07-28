@@ -19,3 +19,18 @@
     pr_ref:  # 0bc5
     description: "Deferred follow-up of WI-gubar (WI-noham D2). WI-gubar resolves READ-ONLY @property reads (obj.prop -> getter) but a read-WRITE property (a @property getter PLUS an @x.setter) yields ZERO edges — the getter still looks dead, which is exactly what D2 claims to fix.\n\nROOT CAUSE (verified single-file AND full-pipeline): global_symbols[(key, symbol.name)] = symbol (py.py ~4554) is LAST-WINS; the setter, defined after the getter and sharing the qualified name C.val, overwrites the getter. _sym_by_path_name (first-wins over the already-collapsed dict, py.py ~4603) then holds the SETTER, whose recorded decorator name is the dotted 'val.setter' (not 'property'), so _resolve_property_getter returns None. In single-file extract_nodes the short-name symbol_by_name['val'] is likewise last-wins -> the setter.\n\nSAFE (emits nothing, never a wrong edge) but the feature delivers materially less than its stated goal: read-write properties are a common mutable-attribute idiom. Surfaced by the WI-gubar adversarial review (workflow wf_b1e410fd-9d9); locked as a known-gap test (test_read_write_property_getter_not_resolved in test_py_property_read.py). The flagship repros (Symbol.end_line, ValidationResult.ok) are read-ONLY, so they are unaffected.\n\nFIX OPTIONS: (a) when resolving C.attr, scan ALL symbols with that qualified name for the one carrying the bare 'property' decorator (requires the symbol tables to retain both getter and setter, not collapse them); (b) key getters/setters distinctly; (c) record on the collapsed symbol that a 'property' decorator was seen on some same-named def. Needs its own adversarial suite (getter/setter/deleter triples, cached_property)."  # 0bc5
     fields: {}  # 0bc5
+- op: update  # 63b1
+  at: '2026-07-28T07:56:42Z'  # 63b1
+  by: agent  # 63b1
+  actor: jgstern_agent  # 63b1
+  clock: 2  # 63b1
+  nonce: 63b1  # 63b1
+  set:  # 63b1
+    status: done  # 63b1
+- op: discuss  # 6a9a
+  at: '2026-07-28T07:56:42Z'  # 6a9a
+  by: agent  # 6a9a
+  actor: jgstern_agent  # 6a9a
+  clock: 3  # 6a9a
+  nonce: 6a9a  # 6a9a
+  message: "PR #47 (dev a26410666a): fixed. Read-write @property (getter + @x.setter/@x.deleter) now resolves the READ. Root cause: getter+setter share qualified name C.x; the name-keyed registries (symbol_by_name, the (path,qualified) index) are last-write-wins so they retain the setter, whose decorator is the dotted 'x.setter', failing _resolve_property_getter's bare-'property' gate. Fix: _build_property_getter_index builds a (path,qualified_name)->getter map from the PRE-collapse per-file symbols, wired into both the full-pipeline main loop and the single-file extract_nodes path + threaded through _extract_edges; _resolve_property_getter consults it first. Behavioral evidence: TestReadWritePropertyResolves.test_read_write_property_getter_resolves + test_getter_setter_deleter_property_read_resolves (production path via extract_nodes) — c.val read emits its receiver_type_hint='C' read edge (before: 0 edges); + 2 unit tests (dedicated-index-beats-setter, present-but-empty fall-through). Full affected slice green, 100% cov. NOTE: cached_property is a separate decorator (not @property), out of scope/unchanged."  # 6a9a
