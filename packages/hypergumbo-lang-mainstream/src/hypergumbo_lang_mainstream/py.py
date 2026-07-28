@@ -3214,11 +3214,37 @@ def _collect_call_func_attr_ids(block_nodes: list[ast.AST]) -> set[int]:
     return ids
 
 
+def _build_property_getter_index(
+    symbols: list[Symbol],
+) -> dict[tuple[str, str], Symbol]:
+    """Index ``@property`` getters by ``(path, qualified_name)``, first-getter-wins.
+
+    Built from the per-file symbols BEFORE the name-keyed registries
+    (``symbol_by_name`` / the ``(path, qualified)`` index) collapse a getter and
+    its same-qualified-name ``@x.setter`` / ``@x.deleter`` to a single last-write
+    entry. That collapse retains the setter/deleter, whose recorded decorator is
+    the dotted ``x.setter`` / ``x.deleter``; it fails
+    :func:`_resolve_property_getter`'s bare-``property`` gate, masking the getter
+    and dropping the read edge for a read-write property. This dedicated index,
+    consulted first, recovers the getter (WI-sizut).
+    """
+    index: dict[tuple[str, str], Symbol] = {}
+    for sym in symbols:
+        if sym.kind != "method":
+            continue
+        for dec in (sym.meta or {}).get("decorators", []):
+            if isinstance(dec, dict) and dec.get("name") == "property":
+                index.setdefault((sym.path, sym.name), sym)
+                break
+    return index
+
+
 def _resolve_property_getter(
     class_symbol: Symbol,
     attr_name: str,
     local_symbols: dict[str, Symbol],
     sym_by_path_name: dict[tuple[str, str], Symbol] | None,
+    property_getter_by_path_name: dict[tuple[str, str], Symbol] | None = None,
 ) -> Symbol | None:
     """Return the class's ``@property`` getter Symbol for ``attr_name``, else None.
 
@@ -3236,6 +3262,13 @@ def _resolve_property_getter(
     a call) emits a ``calls`` edge.
     """
     qualified_name = f"{class_symbol.name}.{attr_name}"
+    # WI-sizut: the dedicated getter index (built pre-collapse) is authoritative
+    # — it survives a same-qualified-name @x.setter/@x.deleter that would
+    # otherwise mask the getter out of the name-keyed indexes below.
+    if property_getter_by_path_name is not None:
+        pg = property_getter_by_path_name.get((class_symbol.path, qualified_name))
+        if pg is not None:
+            return pg
     getter: Symbol | None = None
     if sym_by_path_name is not None:
         getter = sym_by_path_name.get((class_symbol.path, qualified_name))
@@ -3358,6 +3391,7 @@ def _extract_edges(
     local_names_by_func_id: dict[str, frozenset[str]] | None = None,
     method_to_enclosing_class_id: dict[str, str] | None = None,
     module_to_file_id: dict[str, str] | None = None,
+    property_getter_by_path_name: dict[tuple[str, str], Symbol] | None = None,
 ) -> list[Edge]:
     """Extract call and instantiation edges from an AST.
 
@@ -4071,6 +4105,7 @@ def _extract_edges(
                 _getter = _resolve_property_getter(
                     var_types[node.value.id], node.attr,
                     local_symbols, _sym_by_path_name,
+                    property_getter_by_path_name,
                 )
                 if _getter is not None:
                     _prop_recv = var_types[node.value.id]
@@ -5635,6 +5670,9 @@ def extract_nodes(py_file: Path, global_symbols: dict[str, Symbol] | None = None
         enclosing_func_id=file_analysis.enclosing_func_id,
         local_names_by_func_id=file_analysis.local_names_by_func_id,
         method_to_enclosing_class_id=file_analysis.method_to_enclosing_class_id,
+        property_getter_by_path_name=_build_property_getter_index(
+            file_analysis.symbols
+        ),
     )
     return AnalysisResult(
         symbols=file_analysis.symbols,
@@ -5800,6 +5838,13 @@ def analyze_python(
         if key not in _sym_by_path_name:
             _sym_by_path_name[key] = sym
 
+    # WI-sizut: property-getter index built from the pre-collapse per-file
+    # symbols (global_symbols above is already collapsed last-write-wins, so a
+    # read-write property's getter is masked there by its @x.setter/@x.deleter).
+    _property_getter_by_path_name = _build_property_getter_index(
+        [s for a in file_analyses.values() for s in a.symbols]
+    )
+
     # Second pass: extract edges with cross-file resolution
     all_symbols: list[Symbol] = []
     all_edges: list[Edge] = []
@@ -5822,6 +5867,7 @@ def analyze_python(
             analysis.tree, analysis.symbol_by_name, analysis.imports, global_symbols,
             analysis.module_imports, resolver, _sym_by_path_name,
             run_id=run.execution_id,
+            property_getter_by_path_name=_property_getter_by_path_name,
             nested_by_parent_id=analysis.nested_by_parent_id,
             func_symbol_by_node_id=analysis.func_symbol_by_node_id,
             enclosing_func_id=analysis.enclosing_func_id,
