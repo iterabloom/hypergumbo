@@ -215,6 +215,7 @@ Values that name the source-language syntactic construct the symbol represents. 
 - **`requirement`** — Requirement / pip requirement. CANONICAL per audit-findings 0006.
 - **`resource`** — Resource symbol (Terraform / k8s). CANONICAL per audit-findings 0007.
 - **`rule_set`** — CSS / shader rule-set symbol. CANONICAL per audit-findings 0007.
+- **`scalar`** — Scalar type-definition symbol (GraphQL `scalar Date`). Top-level type-system construct, sibling to type/input/interface/enum/union (audit-findings 0007 omission, surfaced by the WI-zigih dict-indirection gate).
 - **`section`** — Section symbol (markdown / config). CANONICAL per audit-findings 0007.
 - **`setter`** — Property setter accessor.
 - **`setting`** — Setting / option symbol. CANONICAL per audit-findings 0006.

@@ -206,17 +206,156 @@ def _resolve_simple_rhs(value: ast.expr) -> frozenset[str] | None:
     return None
 
 
+def _binding_index(target: ast.expr, name: str) -> tuple[bool, int | None]:
+    """Return ``(binds_name, unpack_index)`` for an assignment *target*.
+
+    A bare ``ast.Name`` target binds *name* directly, so the RHS value is
+    taken whole (index ``None``). A tuple/list target binds it at the
+    position of the matching element — that position is the index the
+    RHS's dict values must be indexed at (the ``a, b = MAP[k]`` shape).
+
+    A starred element (``a, *rest = ...``) makes every later position
+    ambiguous, so such a target never matches: guessing an index there
+    would be exactly the kind of false positive the conservative posture
+    exists to prevent.
+    """
+    if isinstance(target, ast.Name):
+        return (target.id == name, None)
+    if isinstance(target, (ast.Tuple, ast.List)):
+        if any(isinstance(element, ast.Starred) for element in target.elts):
+            return (False, None)
+        for index, element in enumerate(target.elts):
+            if isinstance(element, ast.Name) and element.id == name:
+                return (True, index)
+    return (False, None)
+
+
+def _resolve_dict_literal(
+    name: str, tree: ast.Module | None, func_scope: _FuncScope | None,
+) -> ast.Dict | None:
+    """Resolve *name* to a dict *display* — function-local first (LEGB).
+
+    Returns the ``ast.Dict`` node only when *name* is bound exactly once
+    in the nearest scope that binds it at all. A name bound twice, or
+    bound to anything that is not a dict literal, returns ``None`` so the
+    caller keeps its silent skip. The "nearest scope that binds it at
+    all" rule matters: if the function rebinds the name to a non-dict we
+    must NOT fall through to a same-named module constant, since that
+    would attribute the module dict's values to a local that never holds
+    them.
+    """
+    def _lookup(
+        assigns: Iterable[ast.Assign | ast.AnnAssign],
+    ) -> tuple[ast.Dict | None, bool]:
+        found: ast.Dict | None = None
+        saw_binding = False
+        for assign in assigns:
+            if isinstance(assign, ast.Assign):
+                targets: list[ast.expr] = list(assign.targets)
+                value: ast.expr | None = assign.value
+            else:  # ast.AnnAssign
+                if assign.value is None:
+                    continue
+                targets = [assign.target]
+                value = assign.value
+            for target in targets:
+                if isinstance(target, ast.Name) and target.id == name:
+                    saw_binding = True
+                    if not isinstance(value, ast.Dict) or found is not None:
+                        return (None, True)
+                    found = value
+        return (found, saw_binding)
+
+    if func_scope is not None:
+        local, saw_local = _lookup(_iter_same_scope_assignments(func_scope))
+        if saw_local:
+            return local
+    if tree is None:
+        return None
+    module_level = (
+        node for node in tree.body if isinstance(node, (ast.Assign, ast.AnnAssign))
+    )
+    return _lookup(module_level)[0]
+
+
+def _dict_string_values(
+    dict_node: ast.Dict, tuple_index: int | None,
+) -> frozenset[str] | None:
+    """Collect *dict_node*'s literal string values (WI-zigih ext C).
+
+    With *tuple_index* set, every value must be a literal tuple/list
+    whose element at that index is a string constant — the
+    ``suffix, edge_type = MAP[k]`` unpack shape. Without it, every value
+    must itself be a string constant.
+
+    All-or-nothing on purpose: one unresolvable value poisons the whole
+    dict. A partial candidate set would understate the emit surface,
+    which is worse than a silent skip — the gate would then report
+    "clean" on a map whose unresolvable branch is precisely the one
+    shipping an unregistered value.
+    """
+    out: set[str] = set()
+    for value in dict_node.values:
+        if tuple_index is None:
+            if isinstance(value, ast.Constant) and isinstance(value.value, str):
+                out.add(value.value)
+                continue
+            return None
+        if not isinstance(value, (ast.Tuple, ast.List)):
+            return None
+        if tuple_index >= len(value.elts):
+            return None
+        element = value.elts[tuple_index]
+        if isinstance(element, ast.Constant) and isinstance(element.value, str):
+            out.add(element.value)
+            continue
+        return None
+    return frozenset(out)
+
+
+def _resolve_subscript_values(
+    value: ast.expr,
+    tree: ast.Module | None,
+    func_scope: _FuncScope | None,
+    *,
+    tuple_index: int | None = None,
+) -> frozenset[str] | None:
+    """Resolve ``SOME_MAP[k]`` to its literal string values (WI-zigih).
+
+    This is the dict-indirection blind spot behind WI-rorul: the OTP
+    linker shipped unregistered ``otp_call`` / ``otp_cast`` through
+    ``handler_suffix, edge_type = CALL_TYPE_MAP[call_type]`` and the L3
+    gate stayed green, because a Subscript RHS resolved to ``None`` and a
+    Tuple target was never even inspected. The *key* is deliberately not
+    resolved — every value the map can yield is a candidate, which is the
+    sound over-approximation for a gate (it can only add candidates to
+    check, never drop one).
+    """
+    if not isinstance(value, ast.Subscript):
+        return None
+    if not isinstance(value.value, ast.Name):
+        return None
+    dict_node = _resolve_dict_literal(value.value.id, tree, func_scope)
+    if dict_node is None:
+        return None
+    return _dict_string_values(dict_node, tuple_index)
+
+
 def _resolve_function_local(
-    name: str, func_node: _FuncScope,
+    name: str, func_node: _FuncScope, tree: ast.Module | None = None,
 ) -> frozenset[str] | None:
     """Resolve a function-local name to its candidate literal values.
 
     Walks every Assign / AnnAssign in *func_node*'s scope (excluding
-    nested function and class bodies) that targets *name*. If every
-    such assignment's RHS resolves via :func:`_resolve_simple_rhs`,
-    returns the union of all candidate literals. Otherwise — or if no
-    matching assignment exists — returns ``None``, signalling the
-    caller to keep its existing silent-skip behaviour.
+    nested function and class bodies) that binds *name*. If every such
+    assignment's RHS resolves — via :func:`_resolve_simple_rhs`, or (when
+    *tree* is supplied) :func:`_resolve_subscript_values` for the
+    dict-indirection shape — returns the union of all candidate literals.
+    Otherwise — or if no matching assignment exists — returns ``None``,
+    signalling the caller to keep its existing silent-skip behaviour.
+
+    Tuple-unpack targets (``suffix, edge_type = MAP[k]``) bind *name* at
+    a position; see :func:`_binding_index`.
 
     The conservative posture (any unresolvable assignment poisons the
     whole resolution) keeps false positives out of the L3 gate: a
@@ -238,12 +377,18 @@ def _resolve_function_local(
             targets = [assign.target]
             value = assign.value
         for target in targets:
-            if isinstance(target, ast.Name) and target.id == name:
-                found_target = True
-                resolved = _resolve_simple_rhs(value)
-                if resolved is None:
-                    return None
-                candidates |= resolved
+            binds, unpack_index = _binding_index(target, name)
+            if not binds:
+                continue
+            found_target = True
+            resolved = _resolve_simple_rhs(value) if unpack_index is None else None
+            if resolved is None:
+                resolved = _resolve_subscript_values(
+                    value, tree, func_node, tuple_index=unpack_index,
+                )
+            if resolved is None:
+                return None
+            candidates |= resolved
     if not found_target:
         return None
     return frozenset(candidates)
@@ -417,7 +562,7 @@ def _classify_value(
         return ("unresolvable", "IfExp")
     if isinstance(value, ast.Name):
         if func_scope is not None:
-            local = _resolve_function_local(value.id, func_scope)
+            local = _resolve_function_local(value.id, func_scope, tree)
             if local is not None and local:
                 if len(local) == 1:
                     return ("literal", next(iter(local)))
@@ -426,6 +571,17 @@ def _classify_value(
         if resolved is not None:
             return ("literal", resolved)
         return ("unresolvable", f"Name({value.id})")
+    if isinstance(value, ast.Subscript):
+        # ``edge_type=MAP[k]`` at the kwarg site itself — the same
+        # dict-indirection family as the assignment form, resolved here
+        # too so the gate's coverage doesn't depend on whether the
+        # producer bound the value to a local first (WI-zigih).
+        subscript = _resolve_subscript_values(value, tree, func_scope)
+        if subscript:
+            if len(subscript) == 1:
+                return ("literal", next(iter(subscript)))
+            return ("literals", subscript)
+        return ("unresolvable", "Subscript")
     return ("unresolvable", type(value).__name__)
 
 
@@ -987,13 +1143,22 @@ def find_emitted_literal_values(
       module-level AND nested-closure emit helpers, positional + keyword,
       via the WI-zipis fixpoint; off by default to preserve the enumerator's
       original contract for existing callers).
-    - dict-subscript-target (no — ext C scope; banning the variable
-      form structurally is the corresponding gate, not enumeration).
+    - dict-subscript-target: covered (WI-zigih ext C — ``et = MAP[k]``,
+      the ``suffix, et = MAP[k]`` tuple-unpack, and the bare ``MAP[k]``
+      kwarg site, for module-level and function-local dict displays; see
+      :func:`_resolve_subscript_values`). Non-literal map values, starred
+      unpack targets, and non-Name subscript bases remain silent skips.
 
     Any DEPRECATE-NO-FOLD verdict that ships through one of the
     uncovered shapes will not be flagged by callers using this map; the
     playbook's per-value manual grep at audit-write time is the
     compensating control.
+
+    **Historical note.** This gap was not hypothetical: the GraphQL
+    analyzer's ``type_kinds`` dict emitted an unregistered
+    ``Symbol.kind="scalar"`` that no audit enumeration could see, so the
+    value went unregistered for as long as the walker was blind to
+    ``MAP[k]``. Closing the gap surfaced it on the first run.
     """
     excluded_tuple = tuple(excluded_path_substrings)
     emit_sites: dict[str, list[str]] = {}
