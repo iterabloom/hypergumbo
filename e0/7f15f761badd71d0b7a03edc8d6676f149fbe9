@@ -1,0 +1,26 @@
+Original commit body from 74be41487a00a0227d27a7f921e50db8d97dbfa4:
+
+Resolves the WI-pujiz `given` residual via a three-lens ADR/spec/spirit audit
+(recorded in the lab notebook). Scala 3 `given` instances emitted body fields
+(intOrd.cached) with no owner symbol, so they orphaned.
+
+The named given owner is now emitted as kind="instance" — the cross-language
+typeclass-instance canonical the Haskell/Lean/PureScript analyzers already emit —
+rather than minting a new `given` kind (which would fragment that canonical, the
+ADR-0027 Cluster-27C apex/peer anti-pattern: same construct under multiple labels
+because analyzers each chose their own) or conflating with `object` (a distinct
+`object_definition` construct; Test-2 apex/peer fires). Anonymous givens have no
+identifier child and are skipped, matching _scala_property_scope.
+
+`instance` is added to CONTAINER_KINDS (one line) so the given body's val/var
+fields root under the owner; this also roots Haskell/Lean/PureScript instance
+bodies (a coverage gain, bounded by the same-language + same-file/unique
+_find_parent gate). The `instance` kind description is broadened to name its
+spellings (mirroring object's "(Scala/Kotlin)"); concept-axes.md regenerated.
+
+No new symbol-kind value, no ADR, no SCHEMA_VERSION bump — a document-and-reuse
+outcome. Re-eval trigger recorded in the audit.
+
+WI-pujiz (G7). Closes the given residual.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
