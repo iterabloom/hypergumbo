@@ -1,0 +1,7 @@
+Original commit body from 0decd75a5d9989fa4f4e17e66986891f10097e83:
+
+The 15-commit recency gate (generate-architecture --check, CI verify-generated
+step) went stale as WI-vuzaf/WI-mivav merged, tipping the recorded generation
+commit past the window. Routine regen; no code change.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
