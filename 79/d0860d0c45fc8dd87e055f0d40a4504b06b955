@@ -1,0 +1,8 @@
+Original commit body from 4f4c7ccb8a710e33a71c7b02da3c7af97842dea1:
+
+`.ci/.gitignore` said "logs are ignored" but only listed full-suite.log, so
+release-check's `.ci/release-check-pytest.log` was untracked-and-unignored and
+tripped prepare-release's clean-tree gate during the 7.0.0 release. Glob `*.log`
+covers every current + future .ci log; no tracked .ci file is a .log, so it's safe.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
