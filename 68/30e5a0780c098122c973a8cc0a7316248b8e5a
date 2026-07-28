@@ -1,0 +1,19 @@
+Original commit body from 59c1f75459ea3a9e489d0f0ec50095a3eda34329:
+
+The v7.0.0 build-and-publish job went red at "Create GitHub Release" with
+"HTTP 400: Bad Content-Length" while uploading a 0-byte dist/sbom.json — the
+release + PyPI publish had already succeeded, so this was cosmetic, but it
+marked the run failed. Two causes:
+
+- Generate SBOM used `cyclonedx-py environment -o … --format json`; `--format`
+  is not a valid flag for the installed cyclonedx-bom, so it errored under
+  `|| true` and left an empty file. Now tries `--output-format JSON
+  --output-file` (with a minimal `-o` fallback), and DROPS a missing/empty/
+  invalid SBOM with a warning instead of leaving a 0-byte file.
+- Create GitHub Release attached the SBOM on `-f` (exists) rather than `-s`
+  (exists and non-empty), so it tried to upload the 0-byte asset. Now gated on
+  `-s`.
+
+The release never fails on the SBOM again; a valid SBOM still attaches.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
