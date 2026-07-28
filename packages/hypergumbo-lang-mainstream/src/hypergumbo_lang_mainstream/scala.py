@@ -650,10 +650,9 @@ def _extract_symbols_from_file(
         elif node.type == "enum_definition":
             # WI-pujiz: emit the Scala 3 enum owner (kind="enum", in
             # CONTAINER_KINDS) so the containment linker roots the enum body's
-            # val/var fields (Color.rgb -> Color). Enum CASES and the `given`
-            # owner remain out of scope — `given` has no registered symbol kind
-            # (WI-pujiz residual: it needs an ADR-0027 kind or an explicit
-            # ruling rather than being conflated with `object`).
+            # val/var fields (Color.rgb -> Color). Enum CASES (not val/var
+            # definitions) remain out of scope; the `given` owner is emitted
+            # below.
             name_node = find_child_by_type(node, "identifier")
             if name_node:
                 type_name = node_text(name_node, source)
@@ -664,6 +663,43 @@ def _extract_symbols_from_file(
                     id=make_symbol_id("scala", str(file_path), start_line, end_line, type_name, "enum"),
                     name=type_name,
                     kind="enum",
+                    language="scala",
+                    path=str(file_path),
+                    span=Span(
+                        start_line=start_line,
+                        end_line=end_line,
+                        start_col=node.start_point[1],
+                        end_col=node.end_point[1],
+                    ),
+                    origin=PASS_ID,
+                    origin_run_id=run_id,
+                    modifiers=_extract_modifiers_scala(node),
+                )
+                analysis.symbols.append(symbol)
+                analysis.node_for_symbol[symbol.id] = node
+                analysis.symbol_by_name[type_name] = symbol
+
+        elif node.type == "given_definition":
+            # WI-pujiz (REUSE-INSTANCE — 3-lens ADR/spec/spirit audit): a Scala 3
+            # `given` is a typeclass / interface INSTANCE, the same construct
+            # Haskell/Lean/PureScript already emit as kind="instance" (the
+            # cross-language canonical). Per ADR-0027 a distinct source keyword
+            # does NOT earn a new kind when a canonical role already fits (that
+            # would fragment the canonical — Cluster-27C apex/peer), so the NAMED
+            # given owner is emitted as kind="instance"; `instance` is in
+            # CONTAINER_KINDS, so the given body's val/var fields
+            # (intOrd.cached -> intOrd) root under it. Anonymous givens have no
+            # identifier child -> skipped (matches _scala_property_scope).
+            name_node = find_child_by_type(node, "identifier")
+            if name_node:
+                type_name = node_text(name_node, source)
+                start_line = node.start_point[0] + 1
+                end_line = node.end_point[0] + 1
+
+                symbol = Symbol(
+                    id=make_symbol_id("scala", str(file_path), start_line, end_line, type_name, "instance"),
+                    name=type_name,
+                    kind="instance",
                     language="scala",
                     path=str(file_path),
                     span=Span(

@@ -141,6 +141,12 @@ CONTAINER_KINDS = frozenset({
     # SYMBOL_KINDS; `_find_parent`'s same-language + same-file/unique gate bounds
     # false positives for the widely-emitted `type` kind.
     "contract", "library", "type", "object", "union",
+    # WI-pujiz (REUSE-INSTANCE): typeclass / interface INSTANCE declarations
+    # (Haskell / Lean / PureScript `instance`, and the Scala 3 `given` owner)
+    # have body members that root under them — the same one-line pattern as the
+    # WI-sakug kinds above. `_find_parent`'s same-language + same-file/unique
+    # gate isolates e.g. Haskell's space-separated `instance` names from Scala's.
+    "instance",
     # INV-hojus: file-kind Symbols are the canonical file representation
     # (orchestrator synthesis + py.py for Python with module-level code,
     # js_module linker for TS, etc.). Including them here lets Phase 2's

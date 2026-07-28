@@ -168,7 +168,7 @@ Values that name the source-language syntactic construct the symbol represents. 
 - **`index`** — Index symbol (SQL / DSL). CANONICAL per audit-findings 0007.
 - **`inductive`** — Lean ``inductive`` type declaration (``lean.py:247``). CANONICAL per audit-findings 0007 (reclassified Wave 6 PR 4 — the original DEPRECATE-NO-FOLD verdict was a literal-grep blind-spot miss; ``lean.py`` emits via ``add_symbol(..., 'inductive')`` indirection).
 - **`input`** — Input symbol (Terraform / shader). CANONICAL per audit-findings 0007.
-- **`instance`** — Typeclass / interface instance declaration.
+- **`instance`** — Typeclass / interface instance declaration (Haskell / Lean / PureScript `instance`, Scala 3 `given`).
 - **`interface`** — Interface declaration.
 - **`keyframes`** — CSS @keyframes symbol. CANONICAL per audit-findings 0007.
 - **`keyword`** — Keyword-shaped construct (configuration languages).

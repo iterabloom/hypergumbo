@@ -198,7 +198,8 @@ SYMBOL_KINDS: Final[tuple[SymbolKindSpec, ...]] = (
     SymbolKindSpec("abstract", AXIS_LANGUAGE_CONSTRUCT,
                    "Abstract class / member declaration."),
     SymbolKindSpec("instance", AXIS_LANGUAGE_CONSTRUCT,
-                   "Typeclass / interface instance declaration."),
+                   "Typeclass / interface instance declaration "
+                   "(Haskell / Lean / PureScript `instance`, Scala 3 `given`)."),
     SymbolKindSpec("subroutine", AXIS_LANGUAGE_CONSTRUCT,
                    "Subroutine / sub declaration (Fortran / Perl)."),
     SymbolKindSpec("procedure", AXIS_LANGUAGE_CONSTRUCT,
