@@ -1,0 +1,21 @@
+Original commit body from 35422974b6de1679331b39e2ea47101ca85587b1:
+
+The D and Scala 3 analyzers emitted enum members / enum-body fields
+(Color.red, Color.rgb) but never emitted the enum itself as a symbol, so the
+containment linker — with `enum` in CONTAINER_KINDS — had no owner to root them
+under and they stayed orphaned (WI-sakug Part B remainder).
+
+Both analyzers now emit the enum as a kind="enum" owner: d_lang.py gains
+_process_enum_declaration + an enum_declaration dispatch case; scala.py gains an
+enum_definition case mirroring class/object/trait. `enum` is a CONTAINER_KIND,
+so a member whose dotted name is <enum>.<member> roots to the owner.
+
+Deferred (WI-pujiz residual): the Scala `given` owner. `given` has no
+registered symbol kind, so rooting its body fields needs an ADR-0027 kind or an
+explicit ruling rather than conflating it with `object` — left as a residual to
+respect the one-construct-per-kind discipline. Enum CASES (not val/var) also
+stay out of scope.
+
+WI-pujiz (G7). Advances; given residual remains.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
