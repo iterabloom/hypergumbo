@@ -138,7 +138,11 @@ myapp = executable('myapp', 'main.c', dependencies : [mylib])
         )
         assert edge is not None
         assert edge.edge_type == "depends_on"
-        assert edge.confidence == 1.0
+        # WI-radim: build_dependency confidence is evidence-derived and in-band
+        # (0.95 ceiling), not the reserved-1.0 literal it used to emit.
+        assert edge.evidence_type == "build_dependency"
+        assert edge.confidence == 0.95
+        assert edge.confidence_source == "evidence_derived"
 
     def test_extracts_subdir_includes(self, tmp_path: Path) -> None:
         make_meson_file(tmp_path, "meson.build", """project('test', 'c')
@@ -151,6 +155,10 @@ subdir('src')
         )
         assert edge is not None
         assert edge.edge_type == "includes"
+        # WI-radim: subdir_include confidence is evidence-derived and in-band.
+        assert edge.evidence_type == "subdir_include"
+        assert edge.confidence == 0.95
+        assert edge.confidence_source == "evidence_derived"
 
     def test_pass_id(self, tmp_path: Path) -> None:
         make_meson_file(tmp_path, "meson.build", """project('test', 'c')

@@ -125,6 +125,13 @@ local utils = import "utils.libsonnet";
         imp_edge = next((e for e in result.edges if e.edge_type == "imports"), None)
         assert imp_edge is not None
         assert "utils.libsonnet" in imp_edge.dst
+        # WI-radim: the import edge carried the generic mechanism-label
+        # evidence_type="tree_sitter" with a reserved-1.0 confidence; it is now
+        # the semantically-correct "import" pathway (already seeded 0.95) so the
+        # confidence is in-band and evidence-derived.
+        assert imp_edge.evidence_type == "import"
+        assert imp_edge.confidence == 0.95
+        assert imp_edge.confidence_source == "evidence_derived"
 
     def test_extracts_call_edges(self, tmp_path: Path) -> None:
         make_jsonnet_file(tmp_path, "test.jsonnet", """
@@ -169,7 +176,7 @@ local utils = import "utils.libsonnet";
         )
         assert edge is not None
         assert "utils.libsonnet" in edge.dst
-        assert edge.confidence == 1.0
+        assert edge.confidence == 0.95  # WI-radim: in-band, evidence-derived
 
     def test_filters_builtins(self, tmp_path: Path) -> None:
         make_jsonnet_file(tmp_path, "test.jsonnet", """

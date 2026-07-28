@@ -300,7 +300,10 @@ def _extract_edges_recursive(
                                         origin=PASS_ID,
                                         origin_run_id=run_id,
                                         evidence_type="build_dependency",
-                                        confidence=1.0,
+                                        # WI-radim: no confidence= — Edge.create
+                                        # derives the in-band 0.95 seed
+                                        # (confidence_source=evidence_derived),
+                                        # not the reserved-1.0 ceiling breach.
                                         evidence_lang="meson",
                                     )
                                     edges.append(edge)
@@ -326,7 +329,7 @@ def _extract_edges_recursive(
                             origin=PASS_ID,
                             origin_run_id=run_id,
                             evidence_type="subdir_include",
-                            confidence=1.0,
+                            # WI-radim: evidence-derived in-band confidence.
                             evidence_lang="meson",
                         )
                         edges.append(edge)
