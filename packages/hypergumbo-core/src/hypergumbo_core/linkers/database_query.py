@@ -55,7 +55,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterator
 
-from ..analyze.base import make_site_stable_id, make_symbol_id
+from ..analyze.base import (
+    make_site_stable_id,
+    make_symbol_id,
+    sanitize_id_name_segment,
+)
 from ..discovery import find_non_test_files
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from ._text_filters import js_ts_language_from_path
@@ -348,10 +352,11 @@ def _create_query_symbol(pattern: DatabaseQueryPattern, root: Path) -> Symbol:
         rel_path = Path(pattern.file_path)
 
     tables_str = ", ".join(pattern.tables)
+    query_name = f"{pattern.query_type} {tables_str}"
 
     return Symbol(
-        id=make_symbol_id(pattern.language, str(rel_path), pattern.line, pattern.line, "db_query", "call_site"),
-        name=f"{pattern.query_type} {tables_str}",
+        id=make_symbol_id(pattern.language, str(rel_path), pattern.line, pattern.line, sanitize_id_name_segment(query_name), "call_site"),
+        name=query_name,
         kind="call_site",
         path=pattern.file_path,
         span=Span(

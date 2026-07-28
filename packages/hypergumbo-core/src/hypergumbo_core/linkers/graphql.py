@@ -45,7 +45,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterator
 
-from ..analyze.base import make_symbol_id
+from ..analyze.base import make_symbol_id, sanitize_id_name_segment
 from ..discovery import find_non_test_files
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from .registry import LinkerActivation, LinkerContext, LinkerResult, LinkerRequirement, register_linker
@@ -206,7 +206,7 @@ def _create_client_symbol(call: GraphQLClientCall, root: Path) -> Symbol:
     # ADR-0027 Phase 3 / audit-findings 0013: framework-role leak.
     # Fold to canonical kind="function" + meta["framework_role"].
     return Symbol(
-        id=make_symbol_id(call.language, str(rel_path), call.line, call.line, "graphql_client", "function"),
+        id=make_symbol_id(call.language, str(rel_path), call.line, call.line, sanitize_id_name_segment(name), "function"),
         name=name,
         kind="function",
         path=call.file_path,

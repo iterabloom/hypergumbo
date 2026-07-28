@@ -492,7 +492,7 @@ class TestSchemaDataclassSync:
         validator = make_validator(schema, "Symbol")
 
         class_b_node = {
-            "id": "python:app.py:3-3:db_query:call_site",
+            "id": "python:app.py:3-3:SELECT users:call_site",
             "name": "SELECT users",
             "kind": "call_site",
             "language": None,

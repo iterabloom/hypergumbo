@@ -303,8 +303,29 @@ def make_symbol_id(
 
     Returns:
         A unique, location-based symbol ID.
+
+    Note: this does NOT sanitize colons in ``name`` — the global producer-side
+    ``':' -> '.'`` chokepoint (id-changing for every colon-named symbol, e.g.
+    Objective-C selectors ``removeItemAtPath:error:``) is the deferred ADR-0036
+    Ruling-1 landing (WI-sikar), not done here. Callers whose name may fold a
+    protocol address (the synthetic linker stand-ins per WI-vuzaf) route the
+    name slot through :func:`sanitize_id_name_segment` first.
     """
     return f"{lang}:{path}:{start_line}-{end_line}:{name}:{kind}"
+
+
+def sanitize_id_name_segment(name: str) -> str:
+    """Colon-free ``{name}`` slot for a canonical symbol id (ADR-0036 Ruling 1).
+
+    A literal ``':'`` in the name slot would push the id past its five anchored
+    segments and defeat the from-both-ends round-trip parser, so colons are
+    sanitized ``':' -> '.'`` (the round-trip is documented-lossy — full fidelity
+    lives in ``Symbol.name``). Scoped for now to the synthetic linker stand-ins
+    whose name folds a protocol address, e.g. message-queue ``kafka:publish:topic``
+    → ``kafka.publish.topic`` (WI-vuzaf Pattern A). The broader always-on landing
+    inside :func:`make_symbol_id` is WI-sikar.
+    """
+    return name.replace(":", ".")
 
 
 def make_file_id(lang: str, path: str) -> str:
