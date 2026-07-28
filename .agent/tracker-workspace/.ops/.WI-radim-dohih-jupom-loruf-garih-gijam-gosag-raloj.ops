@@ -26,3 +26,18 @@
   clock: 2  # 48fa
   nonce: 48fa  # 48fa
   message: "Surfaced during the ADR-0039 R5 spec reconciliation. After naming_convention (WI-vakuh) and type_hierarchy (WI-botif) were seeded/derived, three inference pathways still emit a hardcoded confidence=1.0 that breaches the 0.95 reserved ceiling: build_dependency, subdir_include, tree_sitter. Same fix shape as naming_convention: seed a principled in-band base_confidence in _CONFIDENCE_SEEDS and drop the producer literal so Edge.create derives it (confidence_source=evidence_derived). Not part of the WI-lutad/WI-vakuh/WI-botif P1s; separate ceiling-breach cleanup."  # 48fa
+- op: update  # 51da
+  at: '2026-07-28T07:20:42Z'  # 51da
+  by: agent  # 51da
+  actor: jgstern_agent  # 51da
+  clock: 3  # 51da
+  nonce: 51da  # 51da
+  set:  # 51da
+    status: done  # 51da
+- op: discuss  # 8960
+  at: '2026-07-28T07:20:42Z'  # 8960
+  by: agent  # 8960
+  actor: jgstern_agent  # 8960
+  clock: 4  # 8960
+  nonce: '8960'  # 8960
+  message: "PR #46 (dev 01a62db625): fixed. The three literal confidence=1.0 sites breaching the 0.95 evidence-derived ceiling (ADR-0039) are resolved: meson build_dependency + subdir_include seeded 0.95 in _CONFIDENCE_SEEDS with literals dropped (Edge.create derives confidence_source=evidence_derived); jsonnet import edge relabeled from generic evidence_type='tree_sitter' to the correct 'import' pathway (already seeded 0.95) + literal dropped. Behavioral evidence: test_meson.py (build_dependency + subdir_include assert confidence==0.95 + evidence_derived) + test_jsonnet.py (import edge asserts evidence_type=='import', 0.95, evidence_derived); full affected slice green, 100% cov. FOLLOW-UP FILED WI-rafut: the jsonnet *calls* edge still emits 1.0 for resolved calls (computed variable, different mechanism, out of literal scope). PROCESS: first CI attempt failed on the generate-architecture 15-commit recency gate (verify-generated), not on this change — routine ARCHITECTURE.md regen fixed it. Confirms WI-solob: ci-debug could NOT fetch the Woodpecker step log (Cloudflare Access) and the single combined status hid the failing step, so diagnosis needed local --check reproduction."  # 8960

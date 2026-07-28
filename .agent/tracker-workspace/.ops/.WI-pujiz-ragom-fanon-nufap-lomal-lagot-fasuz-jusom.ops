@@ -20,3 +20,18 @@
     pr_ref:  # beea
     description: "WI-sakug Part A (c3d67eda28) added container kinds to CONTAINER_KINDS, rooting the bulk of WI-jusus tail fields. Remainder: D enum members and scala enum/given fields need per-analyzer OWNER-symbol emission (d_lang.py enum->member, scala.py enum/given) — the containment linker alone can't root them because the owner relationship isn't expressible via a dotted-name + container-kind match. Small precision tail."  # beea
     fields: {}  # beea
+- op: update  # b8d3
+  at: '2026-07-28T08:32:34Z'  # b8d3
+  by: agent  # b8d3
+  actor: jgstern_agent  # b8d3
+  clock: 2  # b8d3
+  nonce: b8d3  # b8d3
+  set:  # b8d3
+    status: needs_human_review  # b8d3
+- op: discuss  # 0891
+  at: '2026-07-28T08:32:34Z'  # 0891
+  by: agent  # 0891
+  actor: jgstern_agent  # 0891
+  clock: 3  # 0891
+  nonce: '0891'  # 0891
+  message: "D-enum + scala-enum owner emission LANDED (PR #48, dev f4fecdb613): d_lang.py _process_enum_declaration + enum_declaration dispatch; scala.py enum_definition case -> both emit kind='enum' owners so the containment linker (enum in CONTAINER_KINDS) roots the enum members/body-fields (Color.red, Color.rgb) instead of orphaning them. Evidence: test_enum_members_emitted_as_fields (D) + test_enum_body_val_emits_field (scala) assert the 'Color' kind='enum' owner is emitted; rooting follows from the established enum-container behavior (WI-sakug). RESIDUAL NEEDS OWNER DECISION: the Scala 3 'given' owner. 'given' has no registered symbol kind, so rooting its body fields (intOrd.cached) requires EITHER registering a 'given' symbol kind (ADR-0027 axis addition) OR an explicit ruling to emit it as kind='object' (conflates two constructs, deliberately avoided per one-construct-per-kind). Enum CASES also out of scope. Set needs_human_review pending that ruling."  # 0891
