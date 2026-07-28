@@ -1,0 +1,17 @@
+Original commit body from 9fd36652c51a666830e4759a145d8ada8700728b:
+
+detect_datamodels mutated each model's `confidence` with a centrality boost
+(up to +0.15, and the min(1.0, ...) sum could reach the reserved 1.0 ceiling),
+conflating a ranking signal with detection reliability — the exact pattern
+ADR-0039 ruling 3 relocates to rank_score for Edge and entrypoints.
+
+DataModel now carries a `rank_score` float: `confidence` stays the pure
+evidence-derived seed, `rank_score` starts at confidence and absorbs the
+centrality boost, and both the detection ordering and the sketch data-model
+rendering sort by rank_score. Confidence stats (total/selected-sum) still sum
+confidence. No schema change (DataModel is not a schema-validated output;
+generate-schema --check clean).
+
+WI-gozik (G4 / ADR-0039 confidence tail).
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
