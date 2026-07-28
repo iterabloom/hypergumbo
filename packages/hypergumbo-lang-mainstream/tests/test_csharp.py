@@ -418,6 +418,28 @@ public class UserController : Controller {
         assert e.dst_ref is None
 
 
+class TestCountSignatureParams:
+    """Unit tests for the arity-count helper backing overloaded-ctor matching."""
+
+    @pytest.mark.parametrize(
+        "signature, expected",
+        [
+            (None, None),
+            ("", None),
+            ("no parens", None),
+            ("(int a", None),                     # unbalanced: no closing paren
+            ("()", 0),
+            ("(int a)", 1),
+            ("(int a, string b)", 2),
+            ("(Dict<int, string> m, int n)", 2),  # comma inside <> not a separator
+            ("((int, int) t, int n)", 2),         # comma inside () not a separator
+            ("(a)b)", 1),                         # stray closer at depth 0 in inner
+        ],
+    )
+    def test_count(self, signature, expected) -> None:
+        assert csharp_module._count_signature_params(signature) == expected
+
+
 class TestCSharpEdgeExtraction:
     """Tests for edge extraction from C# files."""
 
@@ -1413,6 +1435,93 @@ public class Factory
         result = analyze_csharp(tmp_path)
         by_id = {s.id: s for s in result.symbols}
         inst = [e for e in result.edges if e.edge_type == "instantiates"]
+        assert len(inst) == 1
+        assert by_id[inst[0].dst].kind == "constructor"
+
+    def test_overloaded_ctor_resolves_by_arity(self, tmp_path: Path) -> None:
+        """WI-mivav: ``new X(...)`` binds to the overloaded constructor whose
+        parameter count matches the argument count, rather than collapsing
+        every instantiation onto the last-registered ctor (global_symbols is
+        keyed by name and is last-write-wins)."""
+        (tmp_path / "W.cs").write_text(
+            """namespace N
+{
+    public class Widget
+    {
+        public Widget(int a) { }
+        public Widget(int a, string b) { }
+    }
+
+    public class App
+    {
+        public void Run()
+        {
+            var w1 = new Widget(1);
+            var w2 = new Widget(1, "x");
+        }
+    }
+}
+"""
+        )
+
+        result = analyze_csharp(tmp_path)
+        by_id = {s.id: s for s in result.symbols}
+        ctors = [
+            s for s in result.symbols
+            if s.kind == "constructor" and s.name == "Widget.Widget"
+        ]
+        assert len(ctors) == 2  # both overloads emitted as distinct symbols
+        one_param = next(c for c in ctors if (c.signature or "").count(",") == 0)
+        two_param = next(c for c in ctors if (c.signature or "").count(",") == 1)
+
+        inst = [
+            e for e in result.edges
+            if e.edge_type == "instantiates"
+            and by_id.get(e.dst) is not None
+            and by_id[e.dst].name == "Widget.Widget"
+        ]
+        # Both overloads are targeted — not collapsed onto a single anchor.
+        assert {e.dst for e in inst} == {one_param.id, two_param.id}
+        # Each call resolves to its arity-matching ctor (new Widget(1) is the
+        # earlier line; new Widget(1, "x") the later).
+        by_line = {e.line: e.dst for e in inst}
+        assert by_line[min(by_line)] == one_param.id
+        assert by_line[max(by_line)] == two_param.id
+
+    def test_overloaded_ctor_object_initializer_falls_back(
+        self, tmp_path: Path
+    ) -> None:
+        """WI-mivav: an object-initializer ``new X { }`` (no argument list) on an
+        overloaded type has no arity match, so it falls back to the collapsed
+        ctor pick — still one constructor edge, never a crash."""
+        (tmp_path / "W.cs").write_text(
+            """namespace N
+{
+    public class Widget
+    {
+        public Widget(int a) { }
+        public Widget(int a, string b) { }
+    }
+
+    public class App
+    {
+        public void Run()
+        {
+            var w = new Widget { };
+        }
+    }
+}
+"""
+        )
+
+        result = analyze_csharp(tmp_path)
+        by_id = {s.id: s for s in result.symbols}
+        inst = [
+            e for e in result.edges
+            if e.edge_type == "instantiates"
+            and by_id.get(e.dst) is not None
+            and by_id[e.dst].name == "Widget.Widget"
+        ]
         assert len(inst) == 1
         assert by_id[inst[0].dst].kind == "constructor"
 
