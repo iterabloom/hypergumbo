@@ -621,6 +621,23 @@ class TestClassFieldsMetaAttach:
         res = _analyze(tmp_path, src)
         assert _class_meta(res, "C").get("fields") == {"a": "A", "b": "B"}
 
+    def test_annassign_self_field_captured(self, tmp_path: Path) -> None:
+        # WI-sajub: an annotated ``self.x: T = param`` (AnnAssign) is scanned
+        # like the plain ``self.x = param`` (Assign) form. The __init__ scan
+        # previously matched only ast.Assign, so an annotated own field was
+        # captured neither into meta["fields"] nor into own_field_names (leaving
+        # it eligible for a confidently-wrong Site-3 hint to a same-named parent
+        # field of a different type).
+        src = (
+            "class Foo:\n"
+            "    pass\n"
+            "class C:\n"
+            "    def __init__(self, x: Foo):\n"
+            "        self.x: Foo = x\n"
+        )
+        res = _analyze(tmp_path, src)
+        assert _class_meta(res, "C").get("fields") == {"x": "Foo"}
+
 
 class TestSelfFieldMethodHint:
     """WI-hiziz PR-3 part (b): self.field.method() that Case 2f could not

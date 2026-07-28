@@ -4420,9 +4420,21 @@ def _extract_edges(
         field_types: dict[str, Symbol] = {}
         own_field_names: set[str] = set()
         for stmt in ast.walk(init_method):
-            if not isinstance(stmt, ast.Assign):
+            # WI-sajub: scan both ``self.x = v`` (Assign) and ``self.x: T = v`` /
+            # ``self.x: T`` (AnnAssign). The annotated form was previously skipped
+            # entirely, so an annotated own field was captured neither into
+            # own_field_names (leaving it eligible for a confidently-wrong Site-3
+            # hint to a same-named PARENT field of a different type) nor into
+            # field_types.
+            if isinstance(stmt, ast.Assign):
+                assign_targets: list[ast.expr] = list(stmt.targets)
+                assign_value: ast.expr | None = stmt.value
+            elif isinstance(stmt, ast.AnnAssign):
+                assign_targets = [stmt.target]
+                assign_value = stmt.value  # None for a bare ``self.x: T``
+            else:
                 continue
-            for target in stmt.targets:
+            for target in assign_targets:
                 if (
                     isinstance(target, ast.Attribute)
                     and isinstance(target.value, ast.Name)
@@ -4430,13 +4442,13 @@ def _extract_edges(
                 ):
                     field_name = target.attr
                     own_field_names.add(field_name)
-                    # self.field = param where param has type annotation
-                    if isinstance(stmt.value, ast.Name) and stmt.value.id in init_param_types:
-                        field_types[field_name] = init_param_types[stmt.value.id]
+                    # self.field = param where param has a type annotation
+                    if isinstance(assign_value, ast.Name) and assign_value.id in init_param_types:
+                        field_types[field_name] = init_param_types[assign_value.id]
                     # self.field = ClassName()
-                    elif isinstance(stmt.value, ast.Call):
+                    elif isinstance(assign_value, ast.Call):
                         assigned_class = _resolve_call_target(
-                            stmt.value, local_symbols, imports, global_symbols,
+                            assign_value, local_symbols, imports, global_symbols,
                             module_imports, resolver
                         )
                         if assigned_class and assigned_class.kind == "class":
