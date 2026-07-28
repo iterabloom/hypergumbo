@@ -1,0 +1,52 @@
+Original commit body from 3c7f5a1e4f38026099faac19d967de397ac826fb:
+
+The producer-side axis walker resolved a kind= / edge_type= / evidence_type=
+argument only when it reached a literal, a ternary, an f-string, or a Name
+bound to one. A Subscript RHS poisoned resolution outright, and a tuple
+assignment target was never inspected at all -- so both
+
+    edge_type = MAP[k]
+    suffix, edge_type = MAP[k]
+
+shipped values the gate could not see. That is the exact blind spot behind
+WI-rorul, whose OTP linker sent unregistered otp_call/otp_cast through
+`handler_suffix, edge_type = CALL_TYPE_MAP[call_type]` while
+test_no_strict_producer_violations_for_edge_type stayed green.
+
+The walker now resolves a subscript over a module-level or function-local
+dict display (LEGB order, nearest binding scope wins) to the union of its
+literal string values, indexing per-position for tuple-unpack targets --
+at the assignment form and at the bare `edge_type=MAP[k]` kwarg site, so
+gate coverage no longer depends on whether the producer bound a local
+first. The key is deliberately not resolved: every value the map can yield
+is a candidate, the sound over-approximation for a gate.
+
+The conservative posture is unchanged and load-bearing. One non-literal map
+value, a starred unpack target, a value tuple shorter than the unpack index,
+a non-Name subscript base, or an empty map is a silent skip -- never a
+partial candidate set, which would let the gate report "clean" on a map
+whose unresolvable branch is precisely the one shipping an unregistered
+value.
+
+NOT preventive-only as filed. The item recorded "ZERO current exploiter"
+(WI-rorul having folded the only known one). On its first run the hardened
+gate flagged Symbol.kind="scalar", emitted by the GraphQL analyzer's
+type_kinds dict -- the sole unregistered member of a six-way sibling set
+(type/input/interface/enum/union all registered). The cause is
+self-referential: the corpus enumeration audit-findings 0007 was built from
+could not see dict-indirected emits, so the value was structurally
+invisible for exactly as long as the walker was blind to MAP[k].
+
+scalar is registered as a language_construct rather than folded: `scalar Date`
+is its own GraphQL type-system construct, and `type` is already taken by
+object_type_definition in that same dict, so conflating them would fuse two
+distinct constructs (ADR-0027 apex/peer). This follows the mutation /
+subscription precedent -- same analyzer, same audit-omission cause.
+
+Also: spec section 6's registry count corrected 143 -> 152 (drifted
+independently of this change); schema.json and concept-axes.md regenerated;
+the schema-coverage baseline picks up scalar and sheds 29 dead entries left
+behind by the endpoint_shape prune (shrink-only, no toleration loosened).
+
+Refs: WI-zigih, WI-rorul, ADR-0027, audit-findings 0007
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
