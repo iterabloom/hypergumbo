@@ -1,0 +1,21 @@
+Original commit body from 7b17b2ce4af606d7440b6d1fe4dd069fab1a5829:
+
+A read-write property (a @property getter + a same-named @x.setter/@x.deleter)
+dropped the read edge. Getter and setter share the qualified name C.x, and the
+name-keyed symbol registries (symbol_by_name, the (path, qualified) index) are
+last-write-wins, so they retain the SETTER — whose recorded decorator is the
+dotted "x.setter" (not the bare "property"), failing the property-read
+producer's gate in _resolve_property_getter. The getter was masked and c.x
+emitted no edge (a documented D2 known gap).
+
+Fix: _build_property_getter_index builds a dedicated (path, qualified_name) ->
+getter map from the PRE-collapse per-file symbols, wired into both the
+full-pipeline main loop and the single-file extract_nodes path and threaded
+through _extract_edges. _resolve_property_getter consults it first, so a
+read-write property's read now emits its receiver-type-hinted read edge
+(resolvable via the inherited-calls linker) exactly as read-only properties do.
+Covers getter+setter and getter+setter+deleter.
+
+WI-sizut (G5). Flips the TestReadWritePropertyResolves gap tests to resolved.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
