@@ -15,13 +15,13 @@ for focused LLM context.
 
 hypergumbo analyzed its own source code and found:
 - **297** Python modules (133 analyzers, 59 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 30, Infrastructure 8; 68 core, 4 CLI, 33 tracker)
-- **37546** symbols (functions, classes, methods)
-- **128044** edges by type:
-  - calls: 64698
-  - contains: 34680
-  - imports: 11387
-  - instantiates: 10513
-  - references: 4279
+- **37566** symbols (functions, classes, methods)
+- **128135** edges by type:
+  - calls: 64727
+  - contains: 34699
+  - imports: 11409
+  - instantiates: 10520
+  - references: 4293
   - module_attr_ref: 1160
   - other: 1327
 
@@ -85,7 +85,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 37546 Symbols + 128044 Edges + UsageContexts           │
+│  Output: 37566 Symbols + 128135 Edges + UsageContexts           │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -279,12 +279,12 @@ These symbols have the highest bidirectional centrality
 | `Edge.create` | method | 2106.7 | ir.py |
 | `TrackerApp` | class | 1946.9 | tui.py |
 | `load_framework_patterns` | function | 1875.9 | framework_patterns.py |
-| `Path` | external_symbol | 1628.0 | <external> |
+| `Path` | external_symbol | 1630.0 | <external> |
 | `main` | function | 1563.1 | cli.py |
 | `clear_pattern_cache` | function | 1336.8 | framework_patterns.py |
 | `Edge` | class | 1282.0 | ir.py |
 | `append` | external_symbol | 1250.0 | <external> |
-| `get` | external_symbol | 1144.0 | <external> |
+| `get` | external_symbol | 1146.0 | <external> |
 | `TreeSitterAnalyzer` | class | 1074.7 | base.py |
 | `find_files` | function | 997.1 | discovery.py |
 
@@ -603,7 +603,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 ### Analyzers
 
-- **`hypergumbo_core.analyze.all_analyzers`**: Facade for analyzer dispatch — delegates to the decorator-based reg...
+- **`hypergumbo_core.analyze.all_analyzers`**: Analyzer orchestration + the stable analyzer-dispatch import points.
 - **`hypergumbo_core.analyze.base`**: Base classes and utilities for language analyzers.
 - **`hypergumbo_core.analyze.cyclomatic`**: Grammar-agnostic McCabe cyclomatic-complexity walker + decision-poi...
 - **`hypergumbo_core.analyze.registry`**: Analyzer registry for decorator-based dynamic dispatch.
@@ -846,8 +846,8 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: c13cafc4030b
-  commit_count: 6299
-  hypergumbo: 6.1.0
+  commit: bb1822247a91
+  commit_count: 6315
+  hypergumbo: 7.0.0
   python: 3.12.3
 -->
