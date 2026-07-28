@@ -1,0 +1,20 @@
+Original commit body from c7edf1285b4f6225201726539dc8f6cd62c261a8:
+
+`new X(...)` instantiation edges collapsed onto the last-registered constructor
+when X had overloaded ctors: global_symbols/local_symbols are keyed by name and
+last-write-wins, so every `new X(...)` shared one ctor anchor regardless of
+arguments (the bug was self-documented at csharp.py:1534-1537).
+
+The analyzer now builds a multi-value ctor registry (global_ctors, keyed by the
+`Type.Type` name, mirroring the existing global_methods multi-map) and threads
+it into edge extraction. At each object_creation site, when several ctors share
+the key it counts the `new X(...)` arguments and binds the `instantiates` edge
+to the overload whose parameter count matches, falling back to the collapsed
+pick on a tie/miss. A new _count_signature_params helper counts top-level params
+in a signature (commas nested in <>/()/[]/{} are not separators). This is an
+arity heuristic, not full C# overload resolution (optional/params args are not
+modeled -- those fall back).
+
+WI-mivav (G7). Advances per-language emission precision.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
