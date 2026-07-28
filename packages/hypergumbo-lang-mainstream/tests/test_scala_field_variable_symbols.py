@@ -266,6 +266,24 @@ def test_given_body_val_emits_field(tmp_path: Path) -> None:
     )
     assert _fields(syms) == {"intOrd.cached"}
     assert not any(s.kind == "variable" and s.name == "cached" for s in syms)
+    # WI-pujiz (REUSE-INSTANCE, 3-lens ADR/spec/spirit audit): the named given
+    # owner is emitted as kind="instance" — a Scala 3 given IS a typeclass
+    # instance, the same construct Haskell/Lean/PureScript already emit as
+    # kind="instance" (ADR-0027 canonical; a new `given` kind would fragment
+    # it). `instance` is in CONTAINER_KINDS, so intOrd.cached roots under intOrd.
+    assert any(s.kind == "instance" and s.name == "intOrd" for s in syms)
+
+
+def test_anonymous_given_emits_no_instance_owner(tmp_path: Path) -> None:
+    """An anonymous ``given Ord[Int] with ...`` (no name) emits no instance
+    owner — the fails-safe skip that mirrors _scala_property_scope dropping
+    anonymous-given members (never a wrong-named phantom owner)."""
+    syms = _symbols(
+        tmp_path,
+        "given Ord[Int] with\n"
+        "  val cached = 1\n",
+    )
+    assert not any(s.kind == "instance" for s in syms)
 
 
 def test_field_not_resolved_as_call_target(tmp_path: Path) -> None:

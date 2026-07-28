@@ -83,6 +83,34 @@ class TestContainmentLinker:
         assert edge.dst == field.id
         assert edge.edge_type == "contains"
 
+    def test_instance_owner_roots_field(self) -> None:
+        """WI-pujiz (REUSE-INSTANCE): a typeclass / interface ``instance`` owner
+        (a Scala 3 ``given``, or a Haskell / Lean / PureScript instance) roots
+        its body's dotted-name fields — ``instance`` is in CONTAINER_KINDS.
+        Without that membership the owner is never indexed into
+        ``container_by_name`` and the field (``intOrd.cached``) stays orphaned.
+        """
+        owner = _sym(
+            "scala:app.scala:1-4:intOrd:instance", "intOrd", "instance",
+            language="scala", path="app.scala",
+        )
+        field = _sym(
+            "scala:app.scala:2-2:intOrd.cached:field", "intOrd.cached", "field",
+            language="scala", path="app.scala", start=2, end=2,
+        )
+        ctx = LinkerContext(
+            repo_root=Path("/test"),
+            symbols=[owner, field],
+            edges=[],
+        )
+        result = link_containment(ctx)
+
+        assert len(result.edges) == 1
+        edge = result.edges[0]
+        assert edge.src == owner.id
+        assert edge.dst == field.id
+        assert edge.edge_type == "contains"
+
     def test_swift_struct_body_subscript(self) -> None:
         """WI-fokag: a struct-body subscript (Type.subscript(key:)) roots at its type.
 
