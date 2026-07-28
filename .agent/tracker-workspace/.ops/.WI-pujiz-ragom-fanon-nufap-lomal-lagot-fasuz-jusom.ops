@@ -35,3 +35,18 @@
   clock: 3  # 0891
   nonce: '0891'  # 0891
   message: "D-enum + scala-enum owner emission LANDED (PR #48, dev f4fecdb613): d_lang.py _process_enum_declaration + enum_declaration dispatch; scala.py enum_definition case -> both emit kind='enum' owners so the containment linker (enum in CONTAINER_KINDS) roots the enum members/body-fields (Color.red, Color.rgb) instead of orphaning them. Evidence: test_enum_members_emitted_as_fields (D) + test_enum_body_val_emits_field (scala) assert the 'Color' kind='enum' owner is emitted; rooting follows from the established enum-container behavior (WI-sakug). RESIDUAL NEEDS OWNER DECISION: the Scala 3 'given' owner. 'given' has no registered symbol kind, so rooting its body fields (intOrd.cached) requires EITHER registering a 'given' symbol kind (ADR-0027 axis addition) OR an explicit ruling to emit it as kind='object' (conflates two constructs, deliberately avoided per one-construct-per-kind). Enum CASES also out of scope. Set needs_human_review pending that ruling."  # 0891
+- op: update  # d2c2
+  at: '2026-07-28T20:45:15Z'  # d2c2
+  by: agent  # d2c2
+  actor: jgstern_agent  # d2c2
+  clock: 4  # d2c2
+  nonce: d2c2  # d2c2
+  set:  # d2c2
+    status: done  # d2c2
+- op: discuss  # 3a59
+  at: '2026-07-28T20:45:15Z'  # 3a59
+  by: agent  # 3a59
+  actor: jgstern_agent  # 3a59
+  clock: 5  # 3a59
+  nonce: 3a59  # 3a59
+  message: "GIVEN RESIDUAL RESOLVED via REUSE-INSTANCE (PR #52, dev e07f15f761). Human-directed 3-lens ADR/spec/spirit investigation (lab notebook concept-audit-scala-given-symbol-kind_07282026.md) verdict: emit the NAMED Scala 3 given owner as kind='instance' (the cross-language typeclass-instance canonical Haskell/Lean/PureScript already emit) — NOT a new 'given' kind (would fragment the canonical: ADR-0027 Cluster-27C apex/peer, same construct under multiple labels because analyzers each chose their own), and NOT kind='object' (conflation; four-leakage Test-2 fires). Added 'instance' to CONTAINER_KINDS (also roots Haskell/Lean/PureScript instance bodies). Broadened the instance kind description; regenerated concept-axes. Behavioral evidence: test_given_body_val_emits_field (named given -> kind='instance' owner 'intOrd' + intOrd.cached field), test_anonymous_given_emits_no_instance_owner, test_instance_owner_roots_field (containment linker roots a dotted field under an instance owner). Full slice green, 100% cov. No new kind value, no ADR, no schema bump. Re-eval trigger recorded. WI-pujiz COMPLETE: D-enum + scala-enum owners (PR #48) + scala-given owner (PR #52)."  # 3a59

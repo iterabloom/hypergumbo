@@ -26,3 +26,18 @@
   clock: 2  # a343
   nonce: a343  # a343
   message: "Filed as the explicit scope-out from ADR-0039 R3 (thread A). datamodels.py:377/394/397 dedups by confidence, mutates model.confidence via a centrality_boost, and sorts by confidence — the identical ranking-injected-into-confidence pattern that R3 relocated to rank_score for entrypoints/type_hierarchy. sketch.py:5433/6519-6521 sorts datamodels by confidence too. R3 names ONLY entrypoints + type_hierarchy, so extending mid-thread would have violated ADR scope; deferred here. Fix shape: add a DataModel.rank_score (or reuse the pattern), move centrality_boost + dedup + sort onto it, leaving DataModel.confidence as detection reliability — mirroring PR-4. Verify no consumer reads DataModel.confidence as a ranking value elsewhere first."  # a343
+- op: update  # 9787
+  at: '2026-07-28T09:08:06Z'  # 9787
+  by: agent  # 9787
+  actor: jgstern_agent  # 9787
+  clock: 3  # 9787
+  nonce: '9787'  # 9787
+  set:  # 9787
+    status: done  # 9787
+- op: discuss  # b01b
+  at: '2026-07-28T09:08:06Z'  # b01b
+  by: agent  # b01b
+  actor: jgstern_agent  # b01b
+  clock: 4  # b01b
+  nonce: b01b  # b01b
+  message: "PR #50 (dev b8d6e3f8c9): fixed. DataModel gains a rank_score field separating the centrality ranking signal from confidence (ADR-0039 ruling 3). detect_datamodels no longer mutates confidence with the centrality boost (which conflated detection reliability with importance and via min(1.0,...) could reach the reserved 1.0 ceiling); rank_score = confidence + boost, and both the detection ordering and the sketch data-model rendering sort by rank_score (confidence stats still sum confidence). Evidence: test_centrality_boosts_rank_score_not_confidence (confidence stays the 0.95 seed, rank_score>0.95>confidence) + test_to_dict (rank_score serialized); full affected slice green, 100% cov. No schema change (DataModel is not a schema-validated output; generate-schema --check clean). Mirrors the Edge/entrypoint confidence/rank_score split."  # b01b
