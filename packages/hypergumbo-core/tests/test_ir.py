@@ -681,109 +681,35 @@ def test_deduplicate_edges_preserves_different_types() -> None:
     assert len(result) == 2
 
 
-def test_edge_has_quality() -> None:
-    """Edge should have quality field with score and reason."""
-    edge = Edge.create(
-        src="python:a.py:1-2:foo:function",
-        dst="python:b.py:3-4:bar:function",
-        edge_type="calls",
-        line=5,
-
-        origin="test", origin_run_id="test",
-    )
-    edge.quality = {"score": 0.85, "reason": "Direct AST call"}
-
-    assert edge.quality["score"] == 0.85
-    assert edge.quality["reason"] == "Direct AST call"
-
-
-def test_edge_quality_auto_derived_high_confidence() -> None:
-    """WI-lonoz / Phase 6 PR2: Edge.quality is auto-derived at construction
-    when the producer doesn't set it. confidence >= 0.95 gets the
-    ``high_confidence_direct`` reason tag."""
+def test_edge_to_dict_has_no_quality() -> None:
+    """WI-riguh / WI-humok (ADR-0039 ruling 4): the deprecated Edge.quality
+    field is REMOVED — edges no longer carry a ``quality`` block (it was a pure
+    function of confidence + an emitter-mechanism reason, zero independent
+    signal). Read confidence + confidence_source + is_resolved (and rank_score
+    for ranking) instead."""
     edge = Edge.create(
         src="python:a.py:1-2:foo:function",
         dst="python:b.py:3-4:bar:function",
         edge_type="calls",
         line=5,
         origin="test", origin_run_id="test",
-        confidence=0.97,
     )
-    assert edge.quality == {"score": 0.97, "reason": "high_confidence_direct"}
+    assert not hasattr(edge, "quality")
+    assert "quality" not in edge.to_dict()
 
 
-def test_edge_quality_auto_derived_resolved_call_site() -> None:
-    """Confidence in [0.8, 0.95) with is_resolved=True gets
-    ``resolved_call_site``."""
-    edge = Edge.create(
-        src="python:a.py:1-2:foo:function",
-        dst="python:b.py:3-4:bar:function",
-        edge_type="calls",
-        line=5,
-        origin="test", origin_run_id="test",
-        confidence=0.85,
-        is_resolved=True,
-    )
-    assert edge.quality["reason"] == "resolved_call_site"
-
-
-def test_edge_quality_auto_derived_low_confidence() -> None:
-    """Confidence < 0.5 gets ``low_confidence_fallback``."""
-    edge = Edge.create(
-        src="python:a.py:1-2:foo:function",
-        dst="python:b.py:3-4:bar:function",
-        edge_type="calls",
-        line=5,
-        origin="test", origin_run_id="test",
-        confidence=0.3,
-    )
-    assert edge.quality["reason"] == "low_confidence_fallback"
-
-
-def test_edge_quality_auto_derived_derived_from() -> None:
-    """Mid-confidence with derived_from populated gets
-    ``derived_from_linker_evidence``."""
-    edge = Edge.create(
-        src="python:a.py:1-2:foo:function",
-        dst="python:b.py:3-4:bar:function",
-        edge_type="calls",
-        line=5,
-        origin="test", origin_run_id="test",
-        confidence=0.7,
-        derived_from=["python:c.py:1-1:src:function"],
-    )
-    assert edge.quality["reason"] == "derived_from_linker_evidence"
-
-
-def test_edge_quality_auto_derived_medium_confidence() -> None:
-    """Mid-confidence (~0.7), unresolved, no derived_from — gets
-    ``medium_confidence``."""
-    edge = Edge.create(
-        src="python:a.py:1-2:foo:function",
-        dst="python:b.py:3-4:bar:function",
-        edge_type="calls",
-        line=5,
-        origin="test", origin_run_id="test",
-        confidence=0.7,
-        is_resolved=False,
-    )
-    assert edge.quality["reason"] == "medium_confidence"
-
-
-def test_edge_quality_producer_set_wins(tmp_path: Path) -> None:
-    """When the producer pre-populates ``quality``, the auto-derivation
-    does NOT overwrite it. The producer's value wins."""
-    from hypergumbo_core.ir import Edge as _Edge
-    edge = _Edge(
-        id="edge:1", src="a", dst="b", edge_type="calls", line=1,
-        edge_key="edgekey:sha256:0123",
-        confidence=0.85,
-        origin=["test"],
-        origin_run_id="test",
-        evidence_type="ast_call_direct",
-        quality={"score": 0.99, "reason": "producer-set"},
-    )
-    assert edge.quality == {"score": 0.99, "reason": "producer-set"}
+def test_edge_from_dict_tolerates_legacy_quality() -> None:
+    """A pre-removal cached artifact may carry a ``quality`` key; from_dict
+    ignores it (no crash, no resurrected attribute)."""
+    edge = Edge.from_dict({
+        "id": "edge:1", "src": "a", "dst": "b", "type": "calls", "line": 1,
+        "edge_key": "edgekey:sha256:0123",
+        "confidence": 0.85, "origin": ["test"], "origin_run_id": "test",
+        "meta": {"evidence_type": "ast_call_direct"},
+        "quality": {"score": 0.99, "reason": "legacy"},
+    })
+    assert not hasattr(edge, "quality")
+    assert "quality" not in edge.to_dict()
 
 
 def test_edge_has_evidence_lang() -> None:
@@ -812,11 +738,10 @@ def test_edge_to_dict_includes_new_fields() -> None:
 
         origin="test", origin_run_id="test",
     )
-    edge.quality = {"score": 0.85, "reason": "Direct AST call"}
     d = edge.to_dict()
 
     assert "edge_key" in d
-    assert "quality" in d
+    assert "quality" not in d
     assert "evidence_lang" in d["meta"]
 
 
