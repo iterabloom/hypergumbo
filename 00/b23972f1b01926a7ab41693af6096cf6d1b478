@@ -1,0 +1,51 @@
+Original commit body from 708a18f762d5094363896d88374924f1873e6647:
+
+Producer batch 2: the two SYNTHETIC (ADR-0031 Class B) route-marker producers.
+Both are name-preserving; what changes is node.id, which in both cases was not a
+parseable ADR-0036 record.
+
+make_route_symbol gains `protocol_origin`: when set, the marker is a synthetic
+stand-in, so Symbol.language becomes None and the protocol moves to the typed
+protocol_origin field, while the id lang-slot still names a language and the id
+stays five canonical segments.
+
+`discovery_language` is an EXPLICIT parameter, not derived from `language`. My
+first cut derived it whenever protocol_origin was set, which would have flipped
+grpc's discovery_language from None to "proto" -- and grpc carries an in-code
+comment stating it leaves that field None on purpose, because a gRPC route is
+fabricated from a service definition rather than discovered inside a host file.
+Deriving it would have silently reversed a recorded decision from a factory two
+packages away. The factory owns identity; it does not get to make semantic
+classifications for the caller.
+
+grpc:
+  * id kind-slot was the literal `route` fossil (unregistered; kind was already
+    `function`)
+  * id lang-slot was the PROTOCOL `grpc`, not a language -- protocol now lives
+    in protocol_origin, lang-slot names the host file's language like every
+    other Class-B linker id
+  * grpc:user.proto:5:RPC /x:route -> proto:user.proto:5-5:RPC /x:function
+  * deletes the local _make_route_stable_id, a copy of the core function kept
+    "to avoid a cross-package import" -- a reason that evaporates once this
+    module imports the factory from analyze.base anyway. The core function has
+    its own test (test_spec_validator_smoke).
+
+annotation_convention:
+  * id was a raw f-string with FOUR segments and no language slot, plus an
+    unregistered `annotated_route` kind-slot -- an id that could not be parsed
+    back into its slots at all, strictly worse than a wrong slot
+  * svc.js:1:GET /users:annotated_route -> javascript:svc.js:1-1:GET /users:function
+  * gains a stable_id it previously left None (null->value gap-fill: additive,
+    no scheme bump, per the scheme-bump principle / WI-rihob precedent)
+  * `@hg:route <method> <path>` splits on the first whitespace run, so both
+    tested forms ("POST join", "POST /api/users") keep byte-identical names; a
+    single-token argument reads as a method with the root path via the factory's
+    existing ""->"/" normalization rather than a second naming rule
+
+Ratchet: 72 passed / 11 xfailed -> 76 passed / 7 xfailed.
+Tests: 11658 passed, 100% coverage on changed sources. mypy neutral (1087).
+
+Remaining holes are all name-CHANGING and land as one batch: django, starlette,
+go-mount, js-named, play-routes(include).
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
