@@ -790,6 +790,7 @@ def make_route_symbol(
     framework_role: str = "route",
     handler_ref: Optional[str] = None,
     extra_meta: Optional[dict] = None,
+    is_exported: bool = False,
 ) -> Symbol:
     """Mint a route-marker Symbol with canonical identity + provenance (WI-zugob).
 
@@ -823,8 +824,15 @@ def make_route_symbol(
         origin_run_id: ``execution_id`` of the producing AnalysisRun — MUST be
             non-empty and join a real run (cross_field).
         framework_role: ``route`` (default), ``route_mount`` or ``route_include``.
-        handler_ref: Handler name, preserved in meta for the route_handler linker.
-        extra_meta: Producer-specific meta merged last (e.g. ``view_name``).
+        handler_ref: Handler name, preserved in meta for the route_handler
+            linker. Producers whose linker branch keys on a different meta key
+            (go reads ``handler_name``) pass theirs via ``extra_meta`` instead.
+        extra_meta: Producer-specific meta merged last (e.g. ``view_name``,
+            ``wrapper_name``). Callers should NOT re-supply ``route_path`` /
+            ``http_method`` / ``framework_role`` here — the factory owns those,
+            and re-supplying ``http_method`` would undo the transport split.
+        is_exported: Whether the route's handler is part of the public API
+            (go derives it from the handler's leading capital).
 
     Returns:
         A route-marker ``Symbol`` with ``kind="function"`` (the ADR-0027 Phase-3
@@ -858,6 +866,7 @@ def make_route_symbol(
         stable_id=make_route_stable_id(method, normalized_path),
         meta=meta,
         line_span=span.end_line - span.start_line + 1,
+        is_exported=is_exported,
     )
 
 

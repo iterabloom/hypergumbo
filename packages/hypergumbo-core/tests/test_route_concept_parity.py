@@ -251,13 +251,13 @@ def test_route_marker_symbols_are_validator_clean(route_maps: dict) -> None:
 # handler rather than a standalone marker, so they have no marker to check here
 # and their direct producers (py.py Django / Starlette / Flask-RESTful) need
 # their own fixtures to be gated — tracked on WI-zugob.
-NAME_SLOT_HOLES: dict[str, str] = {
-    "go": (
-        "WI-zugob: go.py mints route markers inline (net/http, gorilla chain, "
-        "chi/gorilla Mount) with name=handler_name but the id name-slot built "
-        "from '{METHOD} {path}' — migrate to analyze.base.make_route_symbol"
-    ),
-}
+# Empty: go was promoted out on migration (its four inline minting sites now
+# route through make_route_symbol), which is exactly how the ratchet is meant to
+# drain — the strict xfail XPASSed and failed the suite until promoted. The
+# remaining producers are not listed here because the corpus has no fixture that
+# exercises them; adding one (django/, starlette/, rails/, …) is what puts the
+# next producer under this gate. Tracked on WI-zugob.
+NAME_SLOT_HOLES: dict[str, str] = {}
 
 
 def _name_slot_param(lang: str):

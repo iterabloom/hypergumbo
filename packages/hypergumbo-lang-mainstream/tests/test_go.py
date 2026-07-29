@@ -687,7 +687,7 @@ func createUser(c *gin.Context) {}
 
 
         routes = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
-        route_names = [s.name for s in routes]
+        route_names = [(s.meta or {}).get("handler_name") for s in routes]
 
         assert "listUsers" in route_names
         assert "createUser" in route_names
@@ -718,7 +718,7 @@ func deleteUser(c echo.Context) error { return nil }
 
 
         routes = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
-        route_names = [s.name for s in routes]
+        route_names = [(s.meta or {}).get("handler_name") for s in routes]
 
         assert "home" in route_names
         assert "updateUser" in route_names
@@ -754,7 +754,7 @@ func postData(c *fiber.Ctx) error { return nil }
 
 
         routes = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
-        route_names = [s.name for s in routes]
+        route_names = [(s.meta or {}).get("handler_name") for s in routes]
 
         assert "home" in route_names
         assert "postData" in route_names
@@ -838,7 +838,7 @@ func main() {
         routes, _mount_edges = _extract_go_routes(tree.root_node, source, go_file, run)
 
         assert len(routes) == 1
-        assert routes[0].name == "submitHandler"
+        assert (routes[0].meta or {}).get("handler_name") == "submitHandler"
         assert (routes[0].meta or {}).get("framework_role") == "route"
         assert len(routes[0].stable_id) == 23  # sha256 hex digest (ADR-0014 §4)
 
@@ -883,7 +883,7 @@ func main() {
 
         routes = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
         assert len(routes) >= 1
-        assert routes[0].name == "handlers.GetAPI"
+        assert (routes[0].meta or {}).get("handler_name") == "handlers.GetAPI"
 
     def test_handler_picked_over_middleware(self, tmp_path: Path) -> None:
         """When multiple non-string arguments are passed, handler is the last one.
@@ -911,7 +911,7 @@ func GetRawFile() {}
         routes = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
         assert len(routes) >= 1
         # Handler is the LAST argument, not the first middleware
-        assert routes[0].name == "GetRawFile"
+        assert (routes[0].meta or {}).get("handler_name") == "GetRawFile"
 
     def test_handler_picked_over_middleware_with_selector(self, tmp_path: Path) -> None:
         """Middleware with selector expressions (context.ReferencesGitRepo)."""
@@ -929,7 +929,7 @@ func main() {
         routes = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
         assert len(routes) >= 1
         # Last arg is the handler, not the middleware
-        assert routes[0].name == "repo.GetRawFile"
+        assert (routes[0].meta or {}).get("handler_name") == "repo.GetRawFile"
 
     def test_handler_skips_closure_to_find_named(self, tmp_path: Path) -> None:
         """When the last arg is an anonymous closure, skip it for a named handler.
@@ -956,7 +956,7 @@ func authMiddleware() {}
         routes = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
         assert len(routes) >= 1
         # The closure can't be named, so the named identifier before it is used
-        assert routes[0].name == "authMiddleware"
+        assert (routes[0].meta or {}).get("handler_name") == "authMiddleware"
 
     def test_anonymous_closure_handler_creates_route(self, tmp_path: Path) -> None:
         """Routes with anonymous closure handlers should still be detected.
@@ -1036,7 +1036,7 @@ func healthCheck(c *gin.Context) {}
         result = analyze_go(tmp_path)
 
         routes = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
-        route_paths = {s.meta["route_path"]: s.name for s in routes if s.meta}
+        route_paths = {s.meta["route_path"]: s.meta.get("handler_name") for s in routes if s.meta}
 
         # Routes inside Group should have prefix
         assert "/api/v1/users" in route_paths, (
@@ -1494,13 +1494,16 @@ func getUser(w http.ResponseWriter, r *http.Request) {}
         result = analyze_go(tmp_path)
 
         routes = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
-        route_names = {s.name for s in routes}
+        route_names = {(s.meta or {}).get("handler_name") for s in routes}
 
         assert "listUsers" in route_names
         assert "getUser" in route_names
 
         # Check metadata
-        users_route = next(s for s in routes if s.name == "listUsers")
+        users_route = next(
+                s for s in routes
+                if (s.meta or {}).get("handler_name") == "listUsers"
+            )
         assert users_route.meta["route_path"] == "/users"
         assert users_route.meta["http_method"] == "ANY"
         assert users_route.meta["handler_name"] == "listUsers"
@@ -1527,7 +1530,7 @@ func apiHandler() {}
 
         routes = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
         assert len(routes) >= 1
-        assert routes[0].name == "apiHandler"
+        assert (routes[0].meta or {}).get("handler_name") == "apiHandler"
         assert routes[0].meta["route_path"] == "/api"
         assert routes[0].meta["http_method"] == "ANY"
 
@@ -1553,7 +1556,7 @@ func apiV1Handler() {}
 
         routes = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
         assert len(routes) >= 1
-        assert routes[0].name == "apiV1Handler"
+        assert (routes[0].meta or {}).get("handler_name") == "apiV1Handler"
         assert routes[0].meta["route_path"] == "/api/v1"
         assert routes[0].meta["http_method"] == "ANY"
 
@@ -1580,7 +1583,7 @@ func createUser() {}
         result = analyze_go(tmp_path)
 
         routes = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
-        route_by_name = {s.name: s for s in routes}
+        route_by_name = {(s.meta or {}).get("handler_name"): s for s in routes}
 
         assert "listUsers" in route_by_name
         assert "createUser" in route_by_name
@@ -1612,7 +1615,7 @@ func fileServer() {}
 
         routes = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
         assert len(routes) >= 1
-        assert routes[0].name == "fileServer"
+        assert (routes[0].meta or {}).get("handler_name") == "fileServer"
         assert routes[0].meta["route_path"] == "/static/"
 
     def test_handler_from_call_expression(self, tmp_path: Path) -> None:
@@ -1659,7 +1662,7 @@ func main() {
 
         routes = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
         assert len(routes) >= 1
-        assert routes[0].name == "handlers.GetAPI"
+        assert (routes[0].meta or {}).get("handler_name") == "handlers.GetAPI"
         assert routes[0].meta["route_path"] == "/api"
 
     def test_handlefunc_stable_id(self, tmp_path: Path) -> None:
@@ -1752,7 +1755,7 @@ func main() {
         routes = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
         assert len(routes) == 1
         assert routes[0].meta["route_path"] == "/health"
-        assert routes[0].name == "<closure>"
+        assert (routes[0].meta or {}).get("handler_name") == "<closure>"
 
 
     def test_handlefunc_string_concat_path(self, tmp_path: Path) -> None:

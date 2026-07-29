@@ -100,6 +100,7 @@ from hypergumbo_core.analyze.base import (
     make_file_id,
     make_file_stable_id,
     make_route_stable_id,
+    make_route_symbol,
     make_symbol_id,
     make_typed_stable_id,
     make_unresolved_edge,
@@ -3513,11 +3514,11 @@ def _extract_go_routes(
                                 end_line = n.end_point[0] + 1
 
                                 # Detect wrapper pattern
+                                # WI-zugob: route_path / http_method /
+                                # framework_role are owned by make_route_symbol
+                                # below; only producer-specific keys go here.
                                 route_meta: dict[str, str] = {
-                                    "route_path": route_path,
-                                    "http_method": normalized_method,
                                     "handler_name": handler_name,
-                                    "framework_role": "route",
                                 }
                                 if handler_arg_node is not None:
                                     w_name, corrected = _extract_wrapper_info(
@@ -3555,14 +3556,7 @@ def _extract_go_routes(
                                                         origin_run_id=run.execution_id,
                                                     ))
 
-                                route_sym = Symbol(
-                                    id=make_symbol_id(
-                                        "go", str(file_path), start_line, end_line,
-                                        f"{normalized_method} {route_path}", "function"
-                                    ),
-                                    stable_id=make_route_stable_id(normalized_method, route_path),
-                                    name=handler_name,
-                                    kind="function",
+                                route_sym = make_route_symbol(
                                     language="go",
                                     path=str(file_path),
                                     span=Span(
@@ -3571,10 +3565,11 @@ def _extract_go_routes(
                                         start_col=n.start_point[1],
                                         end_col=n.end_point[1],
                                     ),
+                                    method=normalized_method,
+                                    route_path=route_path,
                                     origin=PASS_ID,
                                     origin_run_id=run.execution_id,
-                                    meta=route_meta,
-                                    line_span=end_line - start_line + 1,
+                                    extra_meta=route_meta,
                                     is_exported=bool(handler_name) and handler_name.rsplit(".", 1)[-1][:1].isupper(),
                                 )
                                 routes.append(route_sym)
@@ -3636,11 +3631,10 @@ def _extract_go_routes(
                                 end_line = n.end_point[0] + 1
 
                                 # Detect wrapper pattern
+                                # WI-zugob: canonical route keys are owned by
+                                # make_route_symbol below.
                                 route_meta_g: dict[str, str] = {
-                                    "route_path": route_path,
-                                    "http_method": handle_http_method,
                                     "handler_name": handler_name,
-                                    "framework_role": "route",
                                 }
                                 if handler_arg_node is not None:
                                     w_name, corrected = _extract_wrapper_info(
@@ -3676,16 +3670,7 @@ def _extract_go_routes(
                                                         origin_run_id=run.execution_id,
                                                     ))
 
-                                route_sym = Symbol(
-                                    id=make_symbol_id(
-                                        "go", str(file_path), start_line, end_line,
-                                        f"{handle_http_method} {route_path}", "function"
-                                    ),
-                                    stable_id=make_route_stable_id(
-                                        handle_http_method, route_path,
-                                    ),
-                                    name=handler_name,
-                                    kind="function",
+                                route_sym = make_route_symbol(
                                     language="go",
                                     path=str(file_path),
                                     span=Span(
@@ -3694,10 +3679,11 @@ def _extract_go_routes(
                                         start_col=n.start_point[1],
                                         end_col=n.end_point[1],
                                     ),
+                                    method=handle_http_method,
+                                    route_path=route_path,
                                     origin=PASS_ID,
                                     origin_run_id=run.execution_id,
-                                    meta=route_meta_g,
-                                    line_span=end_line - start_line + 1,
+                                    extra_meta=route_meta_g,
                                     is_exported=bool(handler_name) and handler_name.rsplit(".", 1)[-1][:1].isupper(),
                                 )
                                 routes.append(route_sym)
@@ -3721,14 +3707,7 @@ def _extract_go_routes(
                             start_line = n.start_point[0] + 1
                             end_line = n.end_point[0] + 1
 
-                            route_sym = Symbol(
-                                id=make_symbol_id(
-                                    "go", str(file_path), start_line, end_line,
-                                    f"{normalized_method} {route_path}", "function"
-                                ),
-                                stable_id=make_route_stable_id(normalized_method, route_path),
-                                name=handler_name,
-                                kind="function",
+                            route_sym = make_route_symbol(
                                 language="go",
                                 path=str(file_path),
                                 span=Span(
@@ -3737,15 +3716,11 @@ def _extract_go_routes(
                                     start_col=n.start_point[1],
                                     end_col=n.end_point[1],
                                 ),
+                                method=normalized_method,
+                                route_path=route_path,
                                 origin=PASS_ID,
                                 origin_run_id=run.execution_id,
-                                meta={
-                                    "route_path": route_path,
-                                    "http_method": normalized_method,
-                                    "handler_name": handler_name,
-                                    "framework_role": "route",
-                                },
-                                line_span=end_line - start_line + 1,
+                                extra_meta={"handler_name": handler_name},
                                 is_exported=bool(handler_name) and handler_name.rsplit(".", 1)[-1][:1].isupper(),
                             )
                             routes.append(route_sym)
@@ -3938,23 +3913,11 @@ def _extract_go_routes(
             start_line = n.start_point[0] + 1
             end_line = n.end_point[0] + 1
 
-            meta: dict[str, str] = {
-                "route_path": route_path,
-                "http_method": normalized_method,
-                "handler_name": handler_name,
-                "framework_role": "route",
-            }
+            meta: dict[str, str] = {"handler_name": handler_name}
             if handler_field:
                 meta["handler_field"] = handler_field
 
-            route_sym = Symbol(
-                id=make_symbol_id(
-                    "go", str(file_path), start_line, end_line,
-                    f"{normalized_method} {route_path}", "function",
-                ),
-                stable_id=make_route_stable_id(normalized_method, route_path),
-                name=handler_name,
-                kind="function",
+            route_sym = make_route_symbol(
                 language="go",
                 path=str(file_path),
                 span=Span(
@@ -3963,10 +3926,11 @@ def _extract_go_routes(
                     start_col=n.start_point[1],
                     end_col=n.end_point[1],
                 ),
+                method=normalized_method,
+                route_path=route_path,
                 origin=PASS_ID,
                 origin_run_id=run.execution_id,
-                meta=meta,
-                line_span=end_line - start_line + 1,
+                extra_meta=meta,
             )
             routes.append(route_sym)
 
