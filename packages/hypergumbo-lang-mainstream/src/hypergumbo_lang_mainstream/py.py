@@ -3439,6 +3439,23 @@ def _extract_edges(
     if method_to_enclosing_class_id is None:  # pragma: no cover
         method_to_enclosing_class_id = {}
 
+    # WI-luhah residual: the per-function STATEMENT-bound shadow set that
+    # `_enclosing_shadow` unions alongside the LEGB `local_names_by_func_id`.
+    # Built here rather than threaded through FileAnalysis because everything
+    # it needs (the tree + the node->symbol map) is already in scope, and the
+    # set is a shadow concern local to edge extraction — the LEGB set it sits
+    # beside must keep excluding def/class names for the lookup to work.
+    _stmt_shadow_by_func_id: dict[str, frozenset[str]] = {}
+    if func_symbol_by_node_id:
+        for _snode in ast.walk(tree):
+            if not isinstance(_snode, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            _ssym = func_symbol_by_node_id.get(id(_snode))
+            if _ssym is not None:
+                _stmt_shadow_by_func_id[_ssym.id] = _collect_statement_binding_names(
+                    list(ast.iter_child_nodes(_snode)),
+                )
+
     # WI-supat (D3): per-file class SHORT-NAME multiplicity. A receiver-type id
     # is only trustworthy when its short name resolves to a SINGLE in-file class:
     # with >=2 same-short-name classes the bare-name inference (symbol_by_name is
@@ -3597,17 +3614,21 @@ def _extract_edges(
         stays phantom rather than resolving — an accepted, INV-fahub-safe
         over-approximation (a missed retarget, never a confidently-wrong edge).
         The union also over-shadows an enclosing ``global``/``nonlocal``-declared
-        name (another INV-fahub-safe missed retarget). Documented residual: this
-        set (``_collect_scope_local_names``) omits enclosing ``def``/``class``
-        statement names and ``except E as X`` handler names, so the pathological
-        case of one of those *colliding with a module import alias* keeps its
-        confidently-wrong retarget — closing it would require a dedicated
-        per-function shadow collector distinct from the LEGB local_names set.
+        name (another INV-fahub-safe missed retarget).
+
+        The LEGB set alone omits enclosing ``def``/``class`` statement names and
+        ``except E as X`` handler names — deliberately, since the lookup resolves
+        those to their ``NestedDef`` bindings directly — so each is also unioned
+        from the dedicated ``_stmt_shadow_by_func_id`` shadow collector this
+        residual called for. Without it, an enclosing ``def cfg(): ...`` whose
+        name collides with a module import alias left a nested ``cfg.CONFIG``
+        read confidently-wrong-RESOLVED against the module symbol.
         """
         names: set[str] = set()
         cur = enclosing_func_id.get(caller_id)
         while cur is not None:
             names |= local_names_by_func_id.get(cur, frozenset())
+            names |= _stmt_shadow_by_func_id.get(cur, frozenset())
             cur = enclosing_func_id.get(cur)
         return frozenset(names)
 
@@ -4715,6 +4736,50 @@ def _collect_module_local_names(tree: ast.Module) -> frozenset[str]:
     return frozenset(bound - nonlocals)
 
 
+def _collect_statement_binding_names(child_nodes: list[ast.AST]) -> frozenset[str]:
+    """Names a scope binds by STATEMENT rather than by an assignment target.
+
+    Three forms, all invisible to a ``ast.Name`` + ``ast.Store`` walk:
+
+    - ``def X`` / ``class X`` — the statement binds ``X`` in the *enclosing*
+      scope even though its body is a new one, so the name is collected and
+      the body is not descended into.
+    - ``except E as X`` — ``ExceptHandler.name`` is a bare ``str``, not a
+      ``Name`` node.
+    - ``X := ...`` — a walrus target binds in the enclosing scope, including
+      when it sits inside a comprehension (which is why comprehensions are
+      descended into here, unlike in the Store-walk that must skip them).
+
+    This is deliberately NOT folded into ``_collect_scope_local_names``: that
+    set feeds the LEGB *lookup*, which resolves ``def``/``class`` names to
+    their ``NestedDef`` bindings directly and would break if they were
+    treated as opaque locals. This is a *shadow* set — the distinct
+    per-function collector WI-luhah's residual note called for. Every name it
+    adds can only turn a retarget resolved -> phantom (a missed retarget),
+    never phantom -> resolved, so it is INV-fahub-safe by construction.
+    """
+    names: set[str] = set()
+    own_scopes = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
+
+    def _walk(nodes: list[ast.AST]) -> None:
+        for node in nodes:
+            if isinstance(node, own_scopes):
+                names.add(node.name)  # binds HERE; its body is another scope
+                continue
+            if isinstance(node, ast.Lambda):
+                continue  # own scope, binds no name in this one
+            if isinstance(node, ast.ExceptHandler) and node.name:
+                names.add(node.name)
+            if isinstance(node, ast.NamedExpr) and isinstance(
+                node.target, ast.Name,
+            ):
+                names.add(node.target.id)
+            _walk(list(ast.iter_child_nodes(node)))
+
+    _walk(child_nodes)
+    return frozenset(names)
+
+
 def _collect_module_rebound_names(tree: ast.Module) -> frozenset[str]:
     """Module-level names REASSIGNED via an assignment target (``ast.Store``),
     skipping nested function/class scopes.
@@ -4736,12 +4801,14 @@ def _collect_module_rebound_names(tree: ast.Module) -> frozenset[str]:
     Nested function / class / comprehension / lambda scopes are skipped: a
     comprehension for-target (``[cfg for cfg in ...]``) is comprehension-local
     under Python-3 scoping and must NOT be treated as a module-scope rebind (it
-    would over-suppress a valid ``cfg.attr`` retarget). Documented residual (not
-    a rebind form handled here — matching the assignment/param scope of the
-    WI-luhah gaps): a ``def cfg(): ...`` / ``class cfg: ...`` / ``except E as
-    cfg:`` whose statement name *collides with an import alias* is not collected,
-    so that pathological case keeps its confidently-wrong retarget (a walrus
-    ``:=`` target that leaks from a comprehension is likewise not caught).
+    would over-suppress a valid ``cfg.attr`` retarget).
+
+    The statement-bound forms — ``def cfg`` / ``class cfg`` / ``except E as
+    cfg`` / a leaking walrus — bind the name without an ``ast.Store`` target,
+    so they are collected by :func:`_collect_statement_binding_names` and
+    unioned in. They were WI-luhah's documented pathological residual: each
+    genuinely shadows the import alias, and leaving them out minted a
+    confidently-wrong RESOLVED retarget to the module symbol.
     """
     own_scopes = (
         ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef,
@@ -4759,7 +4826,9 @@ def _collect_module_rebound_names(tree: ast.Module) -> frozenset[str]:
                 _walk([child])
 
     _walk(list(ast.iter_child_nodes(tree)))
-    return frozenset(names)
+    return frozenset(names) | _collect_statement_binding_names(
+        list(ast.iter_child_nodes(tree)),
+    )
 
 
 def _collect_module_import_aliases(tree: ast.Module) -> frozenset[str]:
