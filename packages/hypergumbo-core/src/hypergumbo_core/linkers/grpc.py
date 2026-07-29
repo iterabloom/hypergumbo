@@ -64,8 +64,8 @@ from pathlib import Path
 from typing import Iterator
 
 from ..discovery import find_files, find_non_test_files
+from ..analyze.base import make_route_symbol
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
-from ..routes import transport_meta
 from ._transitive_bases import (
     build_inheritance_index,
     collect_transitive_base_names,
@@ -417,17 +417,6 @@ def _scan_ts_file(file_path: Path, content: str) -> list[GrpcPattern]:
 def _make_symbol_id(file_path: str, line: int, name: str, kind: str) -> str:
     """Generate unique symbol ID."""
     return f"grpc:{file_path}:{line}:{name}:{kind}"
-
-
-def _make_route_stable_id(method: str, path: str) -> str:
-    """Compute a collision-free stable_id for gRPC route symbols.
-
-    Mirrors ``make_route_stable_id`` from ``analyze.base`` but avoids a
-    cross-package import.  Uses sha256("route:{method}:{path}").
-    """
-    import hashlib
-    digest = hashlib.sha256(f"route:{method}:{path}".encode()).hexdigest()[:16]
-    return f"sha256:{digest}"
 
 
 # Regex to find "type <Name> struct {" declarations.
@@ -938,36 +927,32 @@ def link_grpc(
     for rpc in all_rpc_defs:
         prefix = f"{rpc.package}.{rpc.service_name}" if rpc.package else rpc.service_name
         route_path = f"/{prefix}/{rpc.rpc_name}"
-        route_name = f"RPC {route_path}"
-        stable_id = _make_route_stable_id("RPC", route_path)
 
-        route_id = _make_symbol_id(
-            rpc.file_path, rpc.line, route_name, "route"
-        )
-        # ADR-0027 Phase 3 / audit-findings 0013: route Symbol.kind fold
-        # ships in this PR (Wave 5 PR #6) coordinated with all consumers.
-        symbols.append(Symbol(
-            id=route_id,
-            name=route_name,
-            kind="function",
-            # ADR-0031 Class B: Route synthetic has no host discovery
-            # context (it's derived from the proto service definition);
-            # language=None, discovery_language=None, protocol_origin="grpc".
-            language=None,
+        # WI-zugob: minted through the shared chokepoint. Two id-format fixes
+        # ride along with the migration: the kind-slot was the literal ``route``
+        # fossil (unregistered; Symbol.kind was already ``function``), and the
+        # lang-slot was the PROTOCOL ``grpc`` rather than a language — the
+        # protocol now lives in the typed ``protocol_origin`` field, and the
+        # lang-slot names the host file's language like every other Class-B
+        # linker id. ``discovery_language`` stays None deliberately: a gRPC
+        # route is fabricated from a service definition, not discovered inside
+        # a host file, which is why the factory takes it explicitly.
+        route_sym = make_route_symbol(
+            language="proto",
             path=rpc.file_path,
             span=Span(rpc.line, rpc.line, 0, 0),
+            method="RPC",
+            route_path=route_path,
             origin=PASS_ID,
             origin_run_id=run.execution_id,
-            stable_id=stable_id,
             protocol_origin="grpc",
-            meta={
-                "route_path": route_path,
-                **transport_meta("RPC"),
+            extra_meta={
                 "rpc_service": rpc.service_name,
                 "rpc_method": rpc.rpc_name,
-                "framework_role": "route",
             },
-        ))
+        )
+        route_id = route_sym.id
+        symbols.append(route_sym)
 
         # Create routes_to edge from route to the service symbol.
         # WI-patiz: when multiple .proto files declare the same service
