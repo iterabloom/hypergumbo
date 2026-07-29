@@ -239,9 +239,7 @@ MANIFEST_GATED_CASES = {"java", "javascript"}
 # ``annotated_route`` kind-slot is the ADR-0027 Phase-3 fossil: the fold set
 # ``kind="function"`` but left the role in the id.
 KIND_SLOT_HOLES: dict[str, str] = {
-    "annotation": "annotation_convention linker mints an 'annotated_route' id kind-slot (WI-zugob)",
     "go-mount": "go.py r.Mount() mints a 'route_mount' id kind-slot fossil (WI-zugob)",
-    "grpc": "grpc linker mints a 'route' id kind-slot fossil (WI-zugob)",
     "js-named": "js_ts.py mints a 'route' id kind-slot fossil (WI-zugob)",
     "play-routes": "play_routes.py mints 'route'/'route_include' id kind-slot fossils (WI-zugob)",
 }
@@ -273,9 +271,7 @@ NAME_SLOT_HOLES: dict[str, str] = {
 # grammar" — and splitting them would just be another unchecked-property blind
 # spot.
 CANONICAL_ID_HOLES: dict[str, str] = {
-    "annotation": "annotation_convention mints a raw 4-segment f-string id with no language slot (WI-zugob)",
     "django": "the CBV expander concatenates a colon-bearing name into the name slot -> 6 segments (WI-javag)",
-    "grpc": "grpc linker mints a bare line number in the span slot instead of {start}-{end} (WI-zugob)",
 }
 
 # Every Symbol carries producer provenance: a non-empty ``origin`` naming

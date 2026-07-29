@@ -791,6 +791,8 @@ def make_route_symbol(
     handler_ref: Optional[str] = None,
     extra_meta: Optional[dict] = None,
     is_exported: bool = False,
+    protocol_origin: Optional[str] = None,
+    discovery_language: Optional[str] = None,
 ) -> Symbol:
     """Mint a route-marker Symbol with canonical identity + provenance (WI-zugob).
 
@@ -833,6 +835,25 @@ def make_route_symbol(
             and re-supplying ``http_method`` would undo the transport split.
         is_exported: Whether the route's handler is part of the public API
             (go derives it from the handler's leading capital).
+        protocol_origin: ADR-0031 Class B discriminator. Set it when the marker
+            is a SYNTHETIC stand-in fabricated from a protocol definition rather
+            than a real source declaration (the grpc linker reading a ``.proto``,
+            the annotation linker reading an ``@hg:route`` directive). When set,
+            ``Symbol.language`` becomes ``None`` and the ``language`` argument
+            moves to ``discovery_language`` — the host source language the
+            pattern was discovered in — matching what the other Class-B linkers
+            (message_queue / database_query / subprocess_cli) already emit. The
+            id lang-slot still uses ``language`` either way, so the id stays a
+            parseable five-segment ADR-0036 record for synthetic and real
+            markers alike.
+        discovery_language: Host source language for a synthetic marker, stated
+            EXPLICITLY rather than derived from ``language``. The two are not
+            always the same judgement: the grpc linker deliberately leaves it
+            ``None`` (a gRPC route is fabricated from a service definition, not
+            discovered inside a host file), while the annotation linker sets it
+            to the language of the file carrying the directive. Deriving it here
+            would silently overturn that per-linker decision, so the caller owns
+            it.
 
     Returns:
         A route-marker ``Symbol`` with ``kind="function"`` (the ADR-0027 Phase-3
@@ -858,7 +879,11 @@ def make_route_symbol(
         ),
         name=name,
         kind="function",
-        language=language,
+        # ADR-0031 Class B: a synthetic stand-in has no host language of its
+        # own, so `language` names where it was DISCOVERED, not what it is.
+        language=None if protocol_origin else language,
+        discovery_language=discovery_language,
+        protocol_origin=protocol_origin,
         path=path,
         span=span,
         origin=origin,
