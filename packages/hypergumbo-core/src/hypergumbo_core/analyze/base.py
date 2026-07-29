@@ -778,6 +778,89 @@ def make_route_stable_id(method: str, path: str) -> str:
     return _short_sha256(f"route:{method.upper()}:{normalized}")
 
 
+def make_route_symbol(
+    *,
+    language: str,
+    path: str,
+    span: Span,
+    method: str,
+    route_path: str,
+    origin: str,
+    origin_run_id: str,
+    framework_role: str = "route",
+    handler_ref: Optional[str] = None,
+    extra_meta: Optional[dict] = None,
+) -> Symbol:
+    """Mint a route-marker Symbol with canonical identity + provenance (WI-zugob).
+
+    Every route-marker producer previously hand-rolled this record, and they
+    drifted apart in three ways the validators catch — an id kind-slot left as
+    the literal ``route`` fossil (``route`` is not a registered symbol kind, so
+    ``id_format`` fails), an absent ``origin_run_id`` (``cross_field``), and an
+    unregistered ``origin`` pass-id (``axis_conformance``). This is the shared
+    minting chokepoint the WI-tufil producer scout found did not exist; it
+    encapsulates the shape ``framework_patterns.materialize_route_symbols``
+    already proved for the go/js/java trio.
+
+    **Naming.** ``Symbol.name`` is ``"{METHOD} {path}"`` and the id name-slot is
+    derived from it, so ADR-0036 Ruling 1 (``id name-slot == sanitized(name)``)
+    holds by construction. The handler's own name is NOT the record name — it
+    lives in ``meta['handler_ref']``, which is what ``linkers/route_handler``
+    already resolves against. That direction is forced, not stylistic: a
+    multi-method registration (Starlette ``methods=['GET','POST']``, a Django
+    class-based view expanded per verb) emits several markers at the SAME span,
+    so a handler-derived name-slot would collide their ids, while the
+    method+path pair is unique by construction.
+
+    Args:
+        language: Producer language for the id lang-slot.
+        path: File path the registration appears in.
+        span: Registration span (the marker is anchored at the call site).
+        method: HTTP verb, or a transport sentinel (``WS``/``LIVE``/``RPC``) —
+            split out of the verb field by :func:`routes.transport_meta`.
+        route_path: Route path; empty normalizes to ``"/"`` (INV-nimik).
+        origin: Producing pass-id — MUST be registered (axis_conformance).
+        origin_run_id: ``execution_id`` of the producing AnalysisRun — MUST be
+            non-empty and join a real run (cross_field).
+        framework_role: ``route`` (default), ``route_mount`` or ``route_include``.
+        handler_ref: Handler name, preserved in meta for the route_handler linker.
+        extra_meta: Producer-specific meta merged last (e.g. ``view_name``).
+
+    Returns:
+        A route-marker ``Symbol`` with ``kind="function"`` (the ADR-0027 Phase-3
+        route→function fold; the route signal lives in ``meta.framework_role``).
+    """
+    from ..routes import transport_meta
+
+    normalized_path = route_path if route_path else "/"
+    name = f"{method} {normalized_path}"
+    meta: dict = {
+        "route_path": normalized_path,
+        **transport_meta(method),
+        "framework_role": framework_role,
+    }
+    if handler_ref:
+        meta["handler_ref"] = handler_ref
+    if extra_meta:
+        meta.update(extra_meta)
+    return Symbol(
+        id=make_symbol_id(
+            language, path, span.start_line, span.end_line,
+            sanitize_id_name_segment(name), "function",
+        ),
+        name=name,
+        kind="function",
+        language=language,
+        path=path,
+        span=span,
+        origin=origin,
+        origin_run_id=origin_run_id,
+        stable_id=make_route_stable_id(method, normalized_path),
+        meta=meta,
+        line_span=span.end_line - span.start_line + 1,
+    )
+
+
 def make_site_stable_id(protocol_origin: str, rel_path: str, target: str) -> str:
     """ADR-0035 §3 SITE-axis identity for ``call_site`` stand-ins (v8, WI-napoh).
 

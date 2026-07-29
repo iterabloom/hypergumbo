@@ -223,3 +223,70 @@ def test_route_marker_symbols_are_validator_clean(route_maps: dict) -> None:
         "analyzer-direct net/http marker should always be present (grammar "
         "regression?)"
     )
+
+
+# ---------------------------------------------------------------------------
+# WI-zugob / WI-vuzaf Pattern B — the route-marker id NAME-slot round-trip
+# ---------------------------------------------------------------------------
+#
+# ADR-0036 Ruling 1: a node id's ``{name}`` slot must equal
+# ``sanitize_id_name_segment(Symbol.name)``. Route-marker producers drifted here
+# in the INVERTED direction from WI-vuzaf Pattern A: the id carries the specific
+# ``"{METHOD} {path}"`` while ``Symbol.name`` carries the handler name, so a
+# consumer reconstructing a node's name from its documented id gets a different
+# string. `analyze.base.make_route_symbol` is the chokepoint that derives one
+# from the other; a producer is fixed by routing through it.
+#
+# This is the GATE, landed before the producer sweep so each migration provably
+# shrinks a measured number instead of being swept blind. It is separate from
+# the WI-tufil aggregate above because it needs a per-language strict-xfail:
+# ``NAME_SLOT_HOLES`` records producers not yet migrated, and a migration
+# XPASSes (strict), failing the suite and forcing promotion — the same ratchet
+# idiom as ROUTE_HOLES at the top of this file.
+#
+# Baseline measured 2026-07-29 over the whole route-parity corpus: java and
+# javascript are already clean (they mint via
+# ``framework_patterns.materialize_route_symbols``, whose shape make_route_symbol
+# generalizes); python and rust surface routes as a ``concept=route`` tag on the
+# handler rather than a standalone marker, so they have no marker to check here
+# and their direct producers (py.py Django / Starlette / Flask-RESTful) need
+# their own fixtures to be gated — tracked on WI-zugob.
+NAME_SLOT_HOLES: dict[str, str] = {
+    "go": (
+        "WI-zugob: go.py mints route markers inline (net/http, gorilla chain, "
+        "chi/gorilla Mount) with name=handler_name but the id name-slot built "
+        "from '{METHOD} {path}' — migrate to analyze.base.make_route_symbol"
+    ),
+}
+
+
+def _name_slot_param(lang: str):
+    """Strict-xfail the languages in NAME_SLOT_HOLES.
+
+    Deliberately a MARKER, not an imperative ``pytest.xfail()`` call: the
+    imperative form always reports xfail and can never XPASS, so it would record
+    the hole while silently disabling the ratchet that makes the hole close.
+    """
+    if lang in NAME_SLOT_HOLES:
+        return pytest.param(
+            lang,
+            marks=pytest.mark.xfail(strict=True, reason=NAME_SLOT_HOLES[lang]),
+        )
+    return pytest.param(lang)
+
+
+@pytest.mark.parametrize(
+    "lang", [_name_slot_param(lang) for lang in ROUTE_MARKER_LANGS]
+)
+def test_route_marker_id_name_slot_round_trips(lang: str, route_maps: dict) -> None:
+    """Every route-marker's id name-slot equals ``sanitize(Symbol.name)``."""
+    from hypergumbo_core.analyze.base import sanitize_id_name_segment
+
+    for m in _route_marker_nodes(route_maps[lang]):
+        mid = m["id"]
+        # The id is anchored from both ends: {name} is second-from-last.
+        name_slot = mid.rsplit(":", 2)[-2]
+        assert name_slot == sanitize_id_name_segment(m.get("name") or ""), (
+            f"{lang}: route-marker id name-slot {name_slot!r} != "
+            f"sanitized(Symbol.name) {m.get('name')!r} ({mid})"
+        )
