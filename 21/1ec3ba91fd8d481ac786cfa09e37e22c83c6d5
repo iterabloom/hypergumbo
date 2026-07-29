@@ -1,0 +1,37 @@
+Original commit body from 32e017d1afca5a429eeadf110bf040c996bf6f33:
+
+A tier>=3 VENDORED library_export could still be the top `slice --entry
+auto` / `--reverse` seed, so a slice of a Django app started from a
+bundled pdf.worker.js instead of a view. Two structural causes, neither
+a tuning threshold:
+
+1. The library_export demotion is gated on the entry's own language
+   having semantic entrypoints -- a carve-out built to protect
+   FIRST-PARTY API surface (a Lean library's exports must not be
+   suppressed by incidental Python helper scripts). Vendored third-party
+   code is never the analyzed repo's API surface in any language, so the
+   carve-out no longer extends to tier>=3. Scoped by supply-chain tier,
+   not by a second hand-curated vendor-path list.
+
+2. The demotion alone was NOT enough -- the half the filed
+   "0.75 * 0.3 = 0.225 > the 0.10 floor" framing missed. The
+   connectivity boost is ADDITIVE, so x0.1 -> 0.0225 plus an in-degree
+   boost of up to +0.35 climbs back over the ranking floor. The codebase
+   had already learned this twice (infra_export_ids, build_wrapper_ids),
+   so all three now share one `boost_suppressed_ids` set and one skip
+   check instead of a third parallel set.
+
+Behavioral evidence (zellij, real repo, identical nodes/edges -- only
+the ranking function differs): the two vendored termwiz exports go from
+surviving at rank 0.60 / 0.57 to filtered out entirely, other top seeds
+unchanged.
+
+The reverse slice resolves `--entry auto` through the same
+detect_entrypoints call and is covered by the same fix. The item's
+proposed blanket "constrain reverse-slice seeds to tier 1" is
+deliberately NOT implemented: tier 2 is internal_dep, genuinely
+first-party monorepo code and a legitimate seed, and --max-tier already
+exists as the explicit user knob.
+
+Refs: WI-batit-volog-gugob-nunog-nujal-fudaj-zazub-nirij
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
