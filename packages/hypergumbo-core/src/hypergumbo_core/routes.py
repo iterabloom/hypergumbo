@@ -31,7 +31,7 @@ needs the historical raw method reconstructs it from ``protocol``.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any, Final, Optional
 
 if TYPE_CHECKING:
     from .ir import Symbol
@@ -114,6 +114,53 @@ def route_of(symbol: Symbol) -> Optional[dict[str, Any]]:
 def is_route(symbol: Symbol) -> bool:
     """Return True iff *symbol* is a route (marker OR ``concept == 'route'``)."""
     return route_of(symbol) is not None
+
+
+WILDCARD_HTTP_METHODS: Final[frozenset[str]] = frozenset({"ANY", "ALL", "*"})
+"""Method tokens on a route that match *every* HTTP verb.
+
+Three spellings, because three producer families chose differently and none
+is wrong: ``ANY`` (Laravel ``Route::any``, Phoenix), ``ALL`` (the node-http
+framework YAML's catch-all `http.createServer` handler), and ``*``.
+
+``*`` currently has **zero producers** — it is recognition kept deliberately,
+not an oversight. It is the conventional HTTP wildcard spelling, it costs one
+frozenset member, and dropping it would narrow matching for any hand-authored
+route meta or future producer that uses it. Recorded here rather than left as
+an unexplained literal in a single consumer (WI-zunal).
+"""
+
+
+def method_matches(route_method: Optional[str], spec_method: str) -> bool:
+    """Return True iff a route's ``http_method`` covers *spec_method*.
+
+    The one place that decides HTTP-verb coverage, so consumers stop
+    re-implementing a partial version of it. Handles the three shapes the
+    verb field actually carries in production:
+
+    - **absent** (``None`` / empty) — an unconstrained route matches any
+      verb. Callers previously spelled this as ``if route_method and ...``.
+    - **wildcard** — any of :data:`WILDCARD_HTTP_METHODS`.
+    - **comma-joined list** — ``"GET,POST"``. A framework YAML whose
+      ``method`` key holds a list is joined for transport by
+      ``framework_patterns`` (``",".join``), and only the route-materializer
+      splits it back; every other consumer sees the joined string. Matching
+      the whole string against a single verb can never succeed, which
+      silently dropped multi-method routes from OpenAPI linking (WI-zunal).
+
+    Comparison is case-insensitive and whitespace-tolerant, since the joined
+    form and hand-authored YAML both vary.
+    """
+    if not route_method:
+        return True
+    wanted = spec_method.strip().upper()
+    for part in route_method.split(","):
+        token = part.strip().upper()
+        if not token:
+            continue
+        if token in WILDCARD_HTTP_METHODS or token == wanted:
+            return True
+    return False
 
 
 def method_token(route_info: dict[str, Any]) -> Optional[str]:

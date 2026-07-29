@@ -948,8 +948,16 @@ Route::any('/catchall', [CatchAllController::class, 'handle']);
         assert any_ctx is not None
         assert any_ctx.metadata.get("http_method") == "ANY"
 
-    def test_match_route_with_array_first_arg_skipped(self, tmp_path: Path) -> None:
-        """Route::match() with array first arg is skipped (path not extractable)."""
+    def test_match_route_recovers_verbs_path_and_controller(
+        self, tmp_path: Path,
+    ) -> None:
+        """WI-zunal: ``Route::match`` is no longer dropped.
+
+        Its args[0] is the verb array, so reading the path from args[0]
+        found no string and skipped the route entirely — the whole route
+        vanished from the map, not merely its verb. Every positional
+        argument shifts right by one.
+        """
         from hypergumbo_lang_mainstream.php import analyze_php
 
         routes_file = tmp_path / "web.php"
@@ -959,14 +967,73 @@ Route::match(['get', 'post'], '/form', [FormController::class, 'handle']);
 
         result = analyze_php(tmp_path)
 
-        # Route::match first arg is an array of methods, not a path
-        # The current implementation expects first string arg to be path
-        # so this gets skipped (no UsageContext created)
         match_ctx = next(
             (c for c in result.usage_contexts if c.context_name == "match"), None
         )
-        # Currently skipped because first arg isn't a string
-        assert match_ctx is None
+        assert match_ctx is not None
+        # The real verbs, comma-joined — the shape routes.method_matches
+        # understands — not the lossy `MATCH` aggregate.
+        assert match_ctx.metadata.get("http_method") == "GET,POST"
+        assert match_ctx.metadata.get("route_path") == "/form"
+        # The controller sits at args[2] for `match`; the offset must shift it too.
+        assert match_ctx.metadata.get("controller_action") == "FormController@handle"
+
+        route = next(
+            (
+                s for s in result.symbols
+                if (s.meta or {}).get("framework_role") == "route"
+                and (s.meta or {}).get("route_path") == "/form"
+            ),
+            None,
+        )
+        assert route is not None
+        assert (route.meta or {}).get("http_method") == "GET,POST"
+
+    def test_match_route_skips_empty_and_non_literal_verbs(
+        self, tmp_path: Path,
+    ) -> None:
+        """Only literal, non-empty verbs contribute.
+
+        An empty string literal carries no ``string_content`` child, and a
+        variable element is not a literal at all — both are skipped rather
+        than emitted as a blank verb that would match nothing.
+        """
+        from hypergumbo_lang_mainstream.php import analyze_php
+
+        routes_file = tmp_path / "web.php"
+        routes_file.write_text("""<?php
+Route::match(['', 'get', $dynamic], '/mixed', [MixedController::class, 'handle']);
+?>""")
+
+        result = analyze_php(tmp_path)
+
+        match_ctx = next(
+            (c for c in result.usage_contexts if c.context_name == "match"), None
+        )
+        assert match_ctx is not None
+        assert match_ctx.metadata.get("http_method") == "GET"
+        assert match_ctx.metadata.get("route_path") == "/mixed"
+
+    def test_match_route_with_dynamic_verbs_falls_back_to_aggregate(
+        self, tmp_path: Path,
+    ) -> None:
+        """A verb list built dynamically has no literals to read — fall back
+        to the `MATCH` aggregate rather than inventing verbs."""
+        from hypergumbo_lang_mainstream.php import analyze_php
+
+        routes_file = tmp_path / "web.php"
+        routes_file.write_text("""<?php
+Route::match($verbs, '/dyn', [DynController::class, 'handle']);
+?>""")
+
+        result = analyze_php(tmp_path)
+
+        match_ctx = next(
+            (c for c in result.usage_contexts if c.context_name == "match"), None
+        )
+        assert match_ctx is not None
+        assert match_ctx.metadata.get("http_method") == "MATCH"
+        assert match_ctx.metadata.get("route_path") == "/dyn"
 
     def test_skips_non_route_scoped_calls(self, tmp_path: Path) -> None:
         """Doesn't extract UsageContext for non-Route scoped calls."""
