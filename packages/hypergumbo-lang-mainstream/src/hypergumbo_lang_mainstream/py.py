@@ -92,12 +92,11 @@ from typing import TYPE_CHECKING, Iterator
 from hypergumbo_core.dataflow import annotate_dataflow_ast, get_dataflow_config
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, ExternalRef, PASS_VERSION, Span, Symbol, UsageContext, make_pass_id
-from hypergumbo_core.routes import transport_meta
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     assemble_stable_id,
     make_file_stable_id,
-    make_route_stable_id,
+    make_route_symbol,
     make_typed_stable_id,
     visibility_from_modifiers,
 )
@@ -3041,27 +3040,26 @@ def _extract_file_analysis(
         view_name = ctx.metadata.get("view_name")
         is_cbv = bool(ctx.metadata.get("is_class_based_view"))
         http_method = "ANY" if is_cbv else "GET"
-        meta = {
-            "route_path": route_path,
-            "http_method": http_method,
-            "view_name": view_name,
-            "framework_role": "route",
-        }
+        extra: dict[str, object] = {"view_name": view_name}
         if is_cbv:
-            meta["is_class_based_view"] = True
-        symbol = Symbol(
-            # ADR-0036 Ruling 2: id kind-slot == Symbol.kind ("function"); the
-            # route role lives on meta.framework_role, not the id-slot.
-            id=_make_symbol_id(str(py_file), ctx.span.start_line, ctx.span.end_line, route_path, "function"),
-            name=f"django:{view_name or 'unknown'}",
-            kind="function",
+            extra["is_class_based_view"] = True
+        # WI-zugob: minted through the shared chokepoint. Symbol.name changes
+        # from "django:{view}" to "{METHOD} {path}"; the view identity stays in
+        # meta["view_name"], which is what every consumer already read.
+        symbols.append(make_route_symbol(
             language="python",
             path=str(py_file),
             span=ctx.span,
-            stable_id=make_route_stable_id(http_method, route_path),
-            meta=meta,
-        )
-        symbols.append(symbol)
+            method=http_method,
+            route_path=route_path,
+            origin=PASS_ID,
+            # _extract_file_analysis has no AnalysisRun in scope; py.py backfills
+            # origin_run_id for every symbol in analyze()
+            # (`symbol.origin_run_id = run.execution_id`) — which is how these
+            # markers were provenance-stamped before this migration too.
+            origin_run_id="",
+            extra_meta=extra,
+        ))
 
     # Create route symbols from Starlette Route/WebSocketRoute usage contexts.
     # Starlette routes are constructor calls, not method calls on app/router,
@@ -3080,29 +3078,25 @@ def _extract_file_analysis(
             # name segment (the same character is the segment separator).
             # The method-disambiguated route name embeds the method and
             # path via ``" "`` so the canonical 5-segment shape holds.
-            symbol = Symbol(
-                id=_make_symbol_id(
-                    str(py_file), ctx.span.start_line, ctx.span.end_line,
-                    # ADR-0036 Ruling 2: kind-slot "function" (role on meta).
-                    f"{method} {route_path}", "function",
-                ),
-                name=f"starlette:{view_name or 'unknown'}",
-                kind="function",
+            symbols.append(make_route_symbol(
                 language="python",
                 path=str(py_file),
                 span=ctx.span,
-                stable_id=make_route_stable_id(method, route_path),
-                meta={
-                    "route_path": route_path,
-                    **transport_meta(method),
+                method=method,
+                route_path=route_path,
+                origin=PASS_ID,
+                # _extract_file_analysis has no AnalysisRun in scope; py.py backfills
+                # origin_run_id for every symbol in analyze()
+                # (`symbol.origin_run_id = run.execution_id`) — which is how these
+                # markers were provenance-stamped before this migration too.
+                origin_run_id="",
+                handler_ref=ctx.symbol_ref,
+                extra_meta={
                     "view_name": view_name,
-                    "handler_ref": ctx.symbol_ref,
                     "framework": "starlette",
                     "route_class": receiver,
-                    "framework_role": "route",
                 },
-            )
-            symbols.append(symbol)
+            ))
 
     # Create route symbols from Flask-RESTful add_resource usage contexts.
     # add_resource registers all HTTP methods the Resource class defines,
@@ -3113,25 +3107,21 @@ def _extract_file_analysis(
             continue
         route_path = ctx.metadata.get("route_path", "")
         view_name = ctx.metadata.get("view_name")
-        symbol = Symbol(
-            # ADR-0036 Ruling 2: id kind-slot == Symbol.kind ("function"); the
-            # route role lives on meta.framework_role, not the id-slot.
-            id=_make_symbol_id(str(py_file), ctx.span.start_line, ctx.span.end_line, route_path, "function"),
-            name=f"{view_name or 'unknown'}",
-            kind="function",
+        symbols.append(make_route_symbol(
             language="python",
             path=str(py_file),
             span=ctx.span,
-            stable_id=make_route_stable_id("ANY", route_path),
-            meta={
-                "route_path": route_path,
-                "http_method": "ANY",
-                "view_name": view_name,
-                "handler_ref": ctx.symbol_ref,
-                "framework_role": "route",
-            },
-        )
-        symbols.append(symbol)
+            method="ANY",
+            route_path=route_path,
+            origin=PASS_ID,
+            # _extract_file_analysis has no AnalysisRun in scope; py.py backfills
+            # origin_run_id for every symbol in analyze()
+            # (`symbol.origin_run_id = run.execution_id`) — which is how these
+            # markers were provenance-stamped before this migration too.
+            origin_run_id="",
+            handler_ref=ctx.symbol_ref,
+            extra_meta={"view_name": view_name},
+        ))
 
     # Compute module name for import resolution
     if repo_root is not None:

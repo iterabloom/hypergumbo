@@ -89,6 +89,7 @@ from hypergumbo_core.analyze.base import (
     make_file_id,
     make_file_stable_id,
     make_route_stable_id,
+    make_route_symbol,
     make_typed_stable_id,
     make_variable_stable_id,
     node_text as _node_text,
@@ -3535,21 +3536,20 @@ def _extract_symbols(
                             start_col=handler_node.start_point[1],
                             end_col=handler_node.end_point[1],
                         )
-                        name = handler_name or f"_{http_method}_handler"
-                        symbol = Symbol(
-                            id=_make_symbol_id(str(file_path), span.start_line, span.end_line, name, "route", lang),
-                            name=name,
-                            kind="function",
+                        # WI-zugob: Symbol.name changes from the handler name
+                        # to "{METHOD} {path}". Handler identity is preserved in
+                        # meta["handler_ref"] — the key linkers/route_handler
+                        # already resolved against; it never read Symbol.name.
+                        symbols.append(make_route_symbol(
                             language=lang,
                             path=str(file_path),
                             span=span,
+                            method=http_method,
+                            route_path=route_path or "",
                             origin=PASS_ID,
                             origin_run_id=run.execution_id,
-                            stable_id=make_route_stable_id(http_method, route_path) if route_path else None,
-                            meta={"route_path": route_path, "http_method": http_method, "handler_ref": handler_name, "framework_role": "route"},
-                            line_span=span.end_line - span.start_line + 1,
-                        )
-                        symbols.append(symbol)
+                            handler_ref=handler_name,
+                        ))
                     else:
                         # Inline handler: router.get('/path', (req, res) => {})
                         name = None
@@ -3633,25 +3633,16 @@ def _extract_symbols(
                     start_col=node.start_point[1],
                     end_col=node.end_point[1],
                 )
-                route_meta: dict[str, object] = {
-                    "route_path": rpath,
-                    "http_method": "GET",
-                    "handler_ref": comp,
-                    "framework_role": "route",
-                }
-                route_meta.update(extra_meta)
-                symbols.append(Symbol(
-                    id=_make_symbol_id(str(file_path), span.start_line, span.end_line, handler_name, "route", lang),
-                    name=handler_name,
-                    kind="function",
+                symbols.append(make_route_symbol(
                     language=lang,
                     path=str(file_path),
                     span=span,
+                    method="GET",
+                    route_path=rpath,
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
-                    stable_id=make_route_stable_id("GET", rpath),
-                    meta=route_meta,
-                    line_span=span.end_line - span.start_line + 1,
+                    handler_ref=comp,
+                    extra_meta=dict(extra_meta),
                 ))
 
         # Function declarations, incl. generators ``function* g() {}`` (WI-zavad
@@ -5124,17 +5115,17 @@ def _extract_edges(
                             if lookup_result.found and lookup_result.symbol is not None:
                                 target = lookup_result.symbol
                         # Route symbols can shadow function symbols in
-                        # global_symbols (last-one-wins).  When target is
-                        # a route, prefer the function symbol with the
-                        # same name via symbols_by_name, so the edge
-                        # points to the function definition.
-                        if target is not None and (target.meta or {}).get("framework_role") == "route" and symbols_by_name:
-                            fn_candidates = [
-                                s for s in symbols_by_name.get(arg_name, [])
-                                if s.kind in ("function", "method")
-                            ]
-                            if fn_candidates:
-                                target = fn_candidates[0]
+                        # global_symbols (last-one-wins).
+                        #
+                        # WI-zugob: a route-marker disambiguation used to live
+                        # here — when this name lookup returned a route rather
+                        # than the handler, it preferred the function with the
+                        # same name. That collision was only possible because
+                        # route markers were NAMED AFTER THEIR HANDLER, which is
+                        # the defect the make_route_symbol migration removed: a
+                        # marker is now "{METHOD} {path}", which is never a valid
+                        # identifier, so an identifier lookup can no longer
+                        # return one. The branch became unreachable and is gone.
                         if (
                             target is not None
                             and target.kind in ("function", "method", "route")
@@ -5185,14 +5176,11 @@ def _extract_edges(
                         resolved: Symbol | None = None
                         if arg.type == "identifier":
                             arg_name = _node_text(arg, source)
+                            # WI-zugob: the sibling route-marker
+                            # disambiguation is gone for the same reason as
+                            # above — "{METHOD} {path}" cannot collide with an
+                            # identifier.
                             resolved = global_symbols.get(arg_name)
-                            if resolved is not None and (resolved.meta or {}).get("framework_role") == "route" and symbols_by_name:
-                                fn_cands = [
-                                    s for s in symbols_by_name.get(arg_name, [])
-                                    if s.kind in ("function", "method")
-                                ]
-                                if fn_cands:
-                                    resolved = fn_cands[0]
                         elif arg.type == "call_expression":
                             # Factory call like need('txt') — resolve the
                             # factory function itself.

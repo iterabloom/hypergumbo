@@ -2970,11 +2970,16 @@ router.delete('/users/:id', userController.deleteUser);
 
         assert len(routes) == 3
 
-        # Verify routes have correct metadata
-        route_names = {r.name for r in routes}
-        assert "userController.register" in route_names
-        assert "userController.getUsers" in route_names
-        assert "userController.deleteUser" in route_names
+        # WI-zugob: Symbol.name is now "{METHOD} {path}" fleet-wide; handler
+        # identity moved to meta["handler_ref"] (what route_handler resolves
+        # against). Same assertion, read from where the handler now lives.
+        handlers = {(r.meta or {}).get("handler_ref") for r in routes}
+        assert "userController.register" in handlers
+        assert "userController.getUsers" in handlers
+        assert "userController.deleteUser" in handlers
+        assert {r.name for r in routes} == {
+            "POST /register", "GET /users", "DELETE /users/:id",
+        }
 
         # Verify HTTP methods via meta
         methods = {r.meta["http_method"] for r in routes}
@@ -2984,15 +2989,16 @@ router.delete('/users/:id', userController.deleteUser);
         assert len(set(stable_ids)) == 3
 
         # Verify route paths
+        expected_path = {
+            "userController.register": "/register",
+            "userController.getUsers": "/users",
+            "userController.deleteUser": "/users/:id",
+        }
         for route in routes:
             assert route.meta is not None
             assert "handler_ref" in route.meta
-            if route.name == "userController.register":
-                assert route.meta.get("route_path") == "/register"
-            elif route.name == "userController.getUsers":
-                assert route.meta.get("route_path") == "/users"
-            elif route.name == "userController.deleteUser":
-                assert route.meta.get("route_path") == "/users/:id"
+            handler = route.meta["handler_ref"]
+            assert route.meta.get("route_path") == expected_path[handler]
 
     def test_express_external_identifier_handler(self, tmp_path: Path) -> None:
         """Express routes with identifier (non-member) handlers are detected."""
@@ -3012,7 +3018,8 @@ router.get('/users', handleUsers);
         routes = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
 
         assert len(routes) == 1
-        assert routes[0].name == "handleUsers"
+        # WI-zugob: name is "{METHOD} {path}"; the handler is in handler_ref.
+        assert routes[0].name == "GET /users"
         assert routes[0].meta.get("http_method") == "GET"
         assert routes[0].stable_id is not None
         assert len(routes[0].stable_id) == 23  # sha256 hex digest

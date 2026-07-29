@@ -85,6 +85,7 @@ ROUTE_GREEN = [
     "annotation",
     "django",
     "elixir",
+    "flask-restful",
     "go",
     "grpc",
     "java",
@@ -217,6 +218,7 @@ ROUTE_MARKER_CASES = [
     "annotation",
     "django",
     "elixir",
+    "flask-restful",
     "go",
     "go-mount",
     "grpc",
@@ -238,11 +240,7 @@ MANIFEST_GATED_CASES = {"java", "javascript"}
 # registered symbol kind. A ``route`` / ``route_mount`` / ``route_include`` /
 # ``annotated_route`` kind-slot is the ADR-0027 Phase-3 fossil: the fold set
 # ``kind="function"`` but left the role in the id.
-KIND_SLOT_HOLES: dict[str, str] = {
-    "go-mount": "go.py r.Mount() mints a 'route_mount' id kind-slot fossil (WI-zugob)",
-    "js-named": "js_ts.py mints a 'route' id kind-slot fossil (WI-zugob)",
-    "play-routes": "play_routes.py mints 'route'/'route_include' id kind-slot fossils (WI-zugob)",
-}
+KIND_SLOT_HOLES: dict[str, str] = {}
 
 # ADR-0036 Ruling 1: a node id's ``{name}`` slot must equal
 # ``sanitize_id_name_segment(Symbol.name)``. Route-marker producers drifted here
@@ -256,11 +254,7 @@ KIND_SLOT_HOLES: dict[str, str] = {
 # route through the chokepoint. Its FIFTH site (``r.Mount()``) was missed by that
 # PR and is the ``go-mount`` case here, which is exactly why the fixture exists:
 # the original go fixture is net/http only and never exercised the mount path.
-NAME_SLOT_HOLES: dict[str, str] = {
-    "django": "py.py mints name='django:{view}' against a route-path id name-slot (WI-zugob)",
-    "go-mount": "go.py r.Mount() mints name=handler_ref against a 'MOUNT {prefix}' id name-slot (WI-zugob)",
-    "starlette": "py.py mints name='starlette:{view}' against a '{METHOD} {path}' id name-slot (WI-zugob)",
-}
+NAME_SLOT_HOLES: dict[str, str] = {}
 
 # ADR-0036: the canonical node id is FIVE anchored segments,
 # ``{lang}:{path}:{start}-{end}:{name}:{kind}``, whose third slot is a
@@ -270,9 +264,7 @@ NAME_SLOT_HOLES: dict[str, str] = {
 # here because both are the same property — "this id conforms to the documented
 # grammar" — and splitting them would just be another unchecked-property blind
 # spot.
-CANONICAL_ID_HOLES: dict[str, str] = {
-    "django": "the CBV expander concatenates a colon-bearing name into the name slot -> 6 segments (WI-javag)",
-}
+CANONICAL_ID_HOLES: dict[str, str] = {}
 
 # Every Symbol carries producer provenance: a non-empty ``origin`` naming
 # registered pass-ids, and an ``origin_run_id`` joining a real AnalysisRun.
