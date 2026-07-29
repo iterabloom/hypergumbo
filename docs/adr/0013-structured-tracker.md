@@ -1735,6 +1735,10 @@ When `packages/hypergumbo-tracker/` code changes, `code=true` fires and the exis
 git config diff.tracker.textconv scripts/tracker-textconv
 ```
 
+**One driver name, everywhere — and it is `tracker`.** Three places must agree: the `diff=` attribute in the repo-root `.gitattributes`, the `diff=` attribute in the nested `.ops/.gitattributes` files, and the `diff.<name>.textconv` git-config key. The nested files are **not** redundant — they carry `merge=union` for standalone `pip install hypergumbo-tracker` deployments that have no hypergumbo root `.gitattributes` — but because git resolves attributes **most-specific-path-first**, a nested file naming a *different* driver silently overrides the root declaration. The root's `diff=` then becomes live-looking dead configuration, and a fix applied there has no effect.
+
+This is not hypothetical: `tracker setup` once configured a second name (`diff.tracker-ops`) pointing at `python -m hypergumbo_tracker.cli textconv`, an invocation that did not exist because only the `hypergumbo-tracker-textconv` console script had been built. The nested attribute won, so the broken driver was always the one git used. Because git **aborts a diff whose textconv driver writes to stderr**, argparse's usage dump made `git log -p`, `git diff`, and `git blame` exit 128 on any `.ops` path — which in turn silently truncated every history-walking tool run against the repo. Both surfaces named in this ADR now exist and share one implementation (`_render_textconv`), and `tracker setup` **executes** the configured driver rather than merely checking that the config key is set: presence of configuration is a proxy, running it is the behaviour. Setup also never writes `--global` — a per-repo driver in machine-wide config applies to unrelated repos and outlives the checkout.
+
 **`scripts/tracker-textconv`** — a thin AGPL-3.0 bash shim that delegates to the MPL-2.0 `hypergumbo-tracker-textconv` entry point, with graceful fallback:
 ```bash
 #!/usr/bin/env bash

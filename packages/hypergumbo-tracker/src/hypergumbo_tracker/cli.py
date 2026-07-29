@@ -2567,6 +2567,13 @@ def _build_parser() -> argparse.ArgumentParser:
     # --- cache-rebuild ---
     sub.add_parser("cache-rebuild", help="Rebuild SQLite read cache")
 
+    # --- textconv (git diff driver; see ADR-0013 §"Local diff declutter") ---
+    p_textconv = sub.add_parser(
+        "textconv",
+        help="Emit compiled state for a .ops file (git textconv diff driver)",
+    )
+    p_textconv.add_argument("file", help="Path to .ops file")
+
     # --- reconcile-reset ---
     p_recon = sub.add_parser("reconcile-reset",
                              help="Reset cross-tier conflict (human only)")
@@ -3247,7 +3254,11 @@ def main(argv: list[str] | None = None) -> None:
         parser.print_help()
         raise SystemExit(EXIT_USER_ERROR)
 
-    # Commands that don't need TrackerSet
+    # Commands that don't need TrackerSet.
+    # textconv comes FIRST: git calls it once per blob while rendering a diff,
+    # so it must stay a pure, fast read with no tracker-set construction.
+    if args.command == "textconv":
+        raise SystemExit(_cmd_textconv(args))
     if args.command == "init":
         raise SystemExit(_cmd_init(args))
     if args.command == "setup":
@@ -3416,28 +3427,22 @@ def main(argv: list[str] | None = None) -> None:
 # ---------------------------------------------------------------------------
 
 
-def textconv_main(argv: list[str] | None = None) -> None:
-    """Git textconv driver: reads an ops file, prints compiled state.
+def _render_textconv(path: str) -> str:
+    """Compile an ops file and return its one-line-per-field text rendering.
 
-    Output format:
-    <ID>  <title>
-      status: <status>  priority: P<N>  tags: [tag1, tag2]
-      parent: <parent-ID or null>  isbefore: [ID, ...]  pr_ref: <ref or null>
-      fields.<key>: <value>
-      discussion: <N> entries
-      locked: [field1, field2]
-      ops: <N>  updated: <timestamp>
+    Shared by BOTH textconv entry points — the ``hypergumbo-tracker-textconv``
+    console script (:func:`textconv_main`) and the ``textconv`` subcommand
+    (:func:`_cmd_textconv`). ADR-0013 documents both surfaces; holding the body
+    in one place is what keeps them from drifting, which is how the subcommand
+    came to be documented-but-absent in the first place.
+
+    Raises ``SystemExit(1)`` after writing to stderr on a missing or corrupt
+    file. Note for callers: git ABORTS a diff whose textconv driver writes
+    anything to stderr, so on the success path this must stay silent there.
     """
-    parser = argparse.ArgumentParser(
-        prog="hypergumbo-tracker-textconv",
-        description="Git textconv driver for .ops files",
-    )
-    parser.add_argument("file", help="Path to .ops file")
-    args = parser.parse_args(argv)
-
-    filepath = Path(args.file)
+    filepath = Path(path)
     if not filepath.exists():
-        print(f"error: file not found: {args.file}", file=sys.stderr)
+        print(f"error: file not found: {path}", file=sys.stderr)
         raise SystemExit(1)
 
     # Extract ID from filename
@@ -3469,8 +3474,42 @@ def textconv_main(argv: list[str] | None = None) -> None:
         lines.append(f"  locked: [{', '.join(sorted(item.locked_fields))}]")
     lines.append(f"  ops: {len(ops)}  updated: {item.updated_at}")
 
-    print("\n".join(lines))
+    return "\n".join(lines)
+
+
+def textconv_main(argv: list[str] | None = None) -> None:
+    """``hypergumbo-tracker-textconv`` console-script entry point (ADR-0013).
+
+    Output format:
+    <ID>  <title>
+      status: <status>  priority: P<N>  tags: [tag1, tag2]
+      parent: <parent-ID or null>  isbefore: [ID, ...]  pr_ref: <ref or null>
+      fields.<key>: <value>
+      discussion: <N> entries
+      locked: [field1, field2]
+      ops: <N>  updated: <timestamp>
+    """
+    parser = argparse.ArgumentParser(
+        prog="hypergumbo-tracker-textconv",
+        description="Git textconv driver for .ops files",
+    )
+    parser.add_argument("file", help="Path to .ops file")
+    args = parser.parse_args(argv)
+
+    print(_render_textconv(args.file))
     raise SystemExit(0)
+
+
+def _cmd_textconv(args: argparse.Namespace) -> int:
+    """``hypergumbo-tracker textconv <FILE>`` — the subcommand ADR-0013 §CLI documents.
+
+    Dispatched EARLY in :func:`main`, before ``TrackerSet`` construction and
+    before any auto-sync consideration. Git invokes this once per blob per diff,
+    so it must be fast and free of side effects; loading the tracker set would
+    make ``git log -p`` quadratic in op-log size for no benefit.
+    """
+    print(_render_textconv(args.file))
+    return 0
 
 
 # ``main`` already raises ``SystemExit`` for its own exit codes, so the guard
