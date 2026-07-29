@@ -778,8 +778,17 @@ class TestObjCSelectorExtraction:
 """)
         result = analyze_objc(tmp_path)
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
-        # The call should resolve to "delete:" method, not include arg text
-        assert any("delete:" in e.dst for e in call_edges)
+        # Resolve each edge to its target Symbol and assert on Symbol.name:
+        # the id name-slot is sanitized ':' -> '.' (ADR-0036 Ruling 1 / WI-sikar)
+        # while Symbol.name keeps full selector fidelity. Checking the resolved
+        # symbol is also stronger than a substring match on the id — it proves
+        # the edge points at a real node, not just at a string containing "delete:".
+        by_id = {s.id: s for s in result.symbols}
+        targets = [by_id[e.dst].name for e in call_edges if e.dst in by_id]
+        assert "FileOps.delete:" in targets
+        assert not any("/tmp/foo" in t for t in targets), (
+            f"argument text leaked into the selector: {targets}"
+        )
 
     def test_keyword_message_send_correct_selector(self, tmp_path: Path) -> None:
         """Multi-keyword message sends produce correct selectors with colons."""
@@ -800,11 +809,13 @@ class TestObjCSelectorExtraction:
 """)
         result = analyze_objc(tmp_path)
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
-        # Should resolve to the method with correct colon selector
-        resolved = [e for e in call_edges if "removeItemAtPath:error:" in e.dst]
-        assert len(resolved) == 1, (
-            f"Expected 1 edge to removeItemAtPath:error:, got {len(resolved)}. "
-            f"All call dsts: {[e.dst for e in call_edges]}"
+        # Assert on the resolved Symbol.name, not on the id: the id name-slot is
+        # sanitized ':' -> '.' (WI-sikar) while Symbol.name is the fidelity home.
+        by_id = {s.id: s for s in result.symbols}
+        targets = [by_id[e.dst].name for e in call_edges if e.dst in by_id]
+        assert targets.count("Manager.removeItemAtPath:error:") == 1, (
+            f"Expected exactly 1 edge resolving to Manager.removeItemAtPath:error:, "
+            f"got {targets}"
         )
 
     def test_unresolved_keyword_message_has_correct_selector(self, tmp_path: Path) -> None:

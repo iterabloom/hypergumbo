@@ -304,21 +304,31 @@ def make_symbol_id(
     Returns:
         A unique, location-based symbol ID.
 
-    Note: this does NOT sanitize colons in ``name`` — the global producer-side
-    ``':' -> '.'`` chokepoint (id-changing for every colon-named symbol, e.g.
-    Objective-C selectors ``removeItemAtPath:error:``) is the deferred ADR-0036
-    Ruling-1 landing (WI-sikar), not done here. Callers whose name may fold a
-    protocol address (the synthetic linker stand-ins per WI-vuzaf) or an
-    ecosystem coordinate (Maven ``groupId:artifactId``, INV-dulah) route the
-    name slot through :func:`sanitize_id_name_segment` first.
+    The ``name`` slot is sanitized ``':' -> '.'`` here — the always-on ADR-0036
+    Ruling-1 chokepoint (WI-sikar). Why the name slot specifically: the
+    canonical parse is anchored from the RIGHT (``span, name, kind =
+    parts[-3:]``), so a colon in the name slot shifts every anchor left by one
+    and the id stops parsing, while colons in the ``path`` slot are harmless and
+    stay verbatim (Rust's ``std::cmp`` module ids depend on that).
 
-    Why the name slot specifically: the canonical parse is anchored from the
-    RIGHT (``span, name, kind = parts[-3:]``), so a colon in the name slot
-    shifts every anchor left by one and the id stops parsing — while colons in
-    the ``path`` slot are harmless and stay verbatim (Rust's ``std::cmp``
-    module ids depend on that).
+    This fold was deferred for a long time on the premise that it would "churn"
+    colon-bearing source identifiers such as Objective-C selectors
+    (``removeItemAtPath:error:``). Measurement reversed that premise: those ids
+    were ALREADY unparseable seven-segment strings, so sanitizing repairs them
+    rather than churning them. Selector-style and coordinate-style names are the
+    beneficiaries.
+
+    The substitution is documented-lossy (full fidelity lives in ``Symbol.name``)
+    and idempotent, so producers that already route through
+    :func:`sanitize_id_name_segment` — the synthetic linker stand-ins per
+    WI-vuzaf, the Maven manifest sites per INV-dulah — are unaffected. Those
+    explicit calls stay: they pin the right *value* into the slot, whereas this
+    only guarantees the slot is colon-free.
     """
-    return f"{lang}:{path}:{start_line}-{end_line}:{name}:{kind}"
+    return (
+        f"{lang}:{path}:{start_line}-{end_line}"
+        f":{sanitize_id_name_segment(name)}:{kind}"
+    )
 
 
 def sanitize_id_name_segment(name: str) -> str:
@@ -327,13 +337,15 @@ def sanitize_id_name_segment(name: str) -> str:
     A literal ``':'`` in the name slot would push the id past its five anchored
     segments and defeat the from-both-ends round-trip parser, so colons are
     sanitized ``':' -> '.'`` (the round-trip is documented-lossy — full fidelity
-    lives in ``Symbol.name``). Scoped to producers whose name slot folds a
-    value that legitimately contains colons: the synthetic linker stand-ins
-    whose name folds a protocol address, e.g. message-queue
-    ``kafka:publish:topic`` → ``kafka.publish.topic`` (WI-vuzaf Pattern A), and
-    the Maven manifest producers whose name folds an ecosystem coordinate,
-    ``org.springframework.boot:spring-boot-starter-web`` (INV-dulah). The
-    broader always-on landing inside :func:`make_symbol_id` is WI-sikar.
+    lives in ``Symbol.name``), e.g. the synthetic linker stand-ins whose name
+    folds a protocol address — message-queue ``kafka:publish:topic`` →
+    ``kafka.publish.topic`` (WI-vuzaf Pattern A) — and the Maven manifest
+    producers whose name folds an ecosystem coordinate,
+    ``org.springframework.boot:spring-boot-starter-web`` (INV-dulah).
+
+    :func:`make_symbol_id` applies this to every name slot (WI-sikar), so
+    calling it explicitly is no longer required for correctness. Producers keep
+    doing so where it documents intent, and the substitution is idempotent.
     """
     return name.replace(":", ".")
 
