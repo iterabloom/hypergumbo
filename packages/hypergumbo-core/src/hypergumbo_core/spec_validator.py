@@ -1762,6 +1762,18 @@ def _classify_id_format_problem(id_str: str) -> str:
     if not re.match(r"^[a-z][a-z0-9_]*$", lang):
         return f"non_canonical_language_prefix ({lang!r})"
     if not re.match(r"^\d+-\d+$", span):
+        # INV-dulah: when there are MORE than 5 segments and the span slot is
+        # not a span, the cause is almost always a colon in the NAME slot —
+        # the right-anchored parse shifts every slot left by one, so the span
+        # position holds a fragment of the name. Reporting "malformed span"
+        # here names the symptom and sends the reader to the span code; it
+        # cost one real investigation, so the diagnosis is separated out.
+        if len(parts) > 5:
+            return (
+                f"colon_in_name_slot (span slot resolved to {span!r}; a ':' in "
+                "the name shifts the right-anchored slots — route the name "
+                "through sanitize_id_name_segment)"
+            )
         return f"malformed_span_segment ({span!r})"
     if not re.match(r"^[a-z][a-z0-9_]*$", kind):
         return f"non_canonical_kind_suffix ({kind!r})"

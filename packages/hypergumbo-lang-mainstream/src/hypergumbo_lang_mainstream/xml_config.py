@@ -44,6 +44,7 @@ from hypergumbo_core.analyze.base import (
     TreeSitterAnalyzer,
     make_symbol_id,
     node_text,
+    sanitize_id_name_segment,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 
@@ -173,7 +174,13 @@ def _process_maven_dependency(
         start_line = dep_node.start_point[0] + 1
         end_line = dep_node.end_point[0] + 1
         dep_name = f"{group_id}:{artifact_id}"
-        symbol_id = make_symbol_id("xml", rel_path, start_line, end_line, dep_name, "dependency")
+        # INV-dulah: a Maven coordinate carries a colon, which would shift the
+        # right-anchored id slots and break the ADR-0036 grammar. Full fidelity
+        # stays on Symbol.name (and in meta groupId/artifactId below).
+        symbol_id = make_symbol_id(
+            "xml", rel_path, start_line, end_line,
+            sanitize_id_name_segment(dep_name), "dependency",
+        )
 
         meta = {"groupId": group_id, "artifactId": artifact_id}
         if version:
@@ -280,7 +287,11 @@ def _process_maven_pom(
         start_line = project_node.start_point[0] + 1
         end_line = project_node.end_point[0] + 1
         project_name = f"{group_id}:{artifact_id}" if group_id else artifact_id
-        project_id = make_symbol_id("xml", rel_path, start_line, end_line, project_name, "module")
+        # INV-dulah: same coordinate-colon break as the dependency site above.
+        project_id = make_symbol_id(
+            "xml", rel_path, start_line, end_line,
+            sanitize_id_name_segment(project_name), "module",
+        )
 
         meta = {"artifactId": artifact_id}
         if group_id:
