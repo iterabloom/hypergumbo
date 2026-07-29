@@ -82,6 +82,7 @@ from hypergumbo_core.analyze.base import (
     TreeSitterAnalyzer,
     defer_bare_method_call,
     emit_module_attribute_refs,
+    make_symbol_id,
     make_unresolved_edge,
     populate_docstrings_from_tree,
     find_child_by_field,
@@ -311,8 +312,14 @@ class _ParsedFile:
 
 
 def _make_symbol_id(path: str, start_line: int, end_line: int, name: str, kind: str, lang: str) -> str:
-    """Generate location-based ID."""
-    return f"{lang}:{path}:{start_line}-{end_line}:{name}:{kind}"
+    """Generate a location-based ID via the shared ADR-0036 minter.
+
+    Delegates rather than re-implementing the grammar as an f-string: a private
+    copy silently opts out of the minter's name-slot sanitization (WI-sikar).
+    The argument order differs from ``make_symbol_id`` (``lang`` last) because
+    every call site in this module passes it that way.
+    """
+    return make_symbol_id(lang, path, start_line, end_line, name, kind)
 
 
 def _get_language_for_file(file_path: Path) -> str:

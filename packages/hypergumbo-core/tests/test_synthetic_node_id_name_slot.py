@@ -15,14 +15,17 @@ call-sites under the single label ``subprocess_call``.
 
 ADR-0036 Ruling 1 fixes the contract: the id name slot MUST equal
 ``Symbol.name`` sanitized ``':' -> '.'`` (the round-trip is documented-lossy —
-full fidelity lives in ``Symbol.name``). The producer-side landing here is
-scoped: each factory routes ``Symbol.name`` (not the category constant) through
-``sanitize_id_name_segment`` into the id name slot. The helper is deliberately
-NOT folded into ``make_symbol_id`` globally — an always-on chokepoint would also
-rewrite colon-bearing source identifiers (Objective-C selectors
-``removeItemAtPath:error:``); that broader landing is WI-sikar. This module
-locks the scoped behavior so a future producer can't regress the name slot back
-to a category constant or drop the sanitization.
+full fidelity lives in ``Symbol.name``). The producer-side landing here is that
+each factory routes ``Symbol.name`` (not the category constant) through
+``sanitize_id_name_segment`` into the id name slot.
+
+As of WI-sikar the sanitization is ALSO always-on inside ``make_symbol_id``, so
+the two layers agree and the substitution is idempotent. The earlier decision to
+keep the fold out of the chokepoint rested on a premise measurement overturned —
+see ``test_make_symbol_id_sanitizes_the_name_slot_globally``. The per-factory
+routing stays because it is what pins the *right value* into the slot
+(``Symbol.name``, not a category constant); the chokepoint only guarantees the
+slot is colon-free. This module locks both.
 """
 
 from __future__ import annotations
@@ -75,14 +78,44 @@ def test_sanitize_id_name_segment_replaces_colons():
     assert sanitize_id_name_segment("no-colons here") == "no-colons here"
 
 
-def test_make_symbol_id_does_not_sanitize_globally():
-    """The chokepoint leaves colons intact — global sanitization is WI-sikar.
+def test_make_symbol_id_sanitizes_the_name_slot_globally():
+    """The chokepoint sanitizes ``':' -> '.'`` in the name slot (WI-sikar).
 
-    Guards against re-introducing an always-on ``make_symbol_id`` colon rewrite,
-    which would silently churn colon-bearing source ids like Obj-C selectors.
+    This REPLACES an earlier guard that asserted the opposite. That guard's
+    stated reason was that an always-on rewrite "would silently churn
+    colon-bearing source ids like Obj-C selectors" — which reads as
+    *currently-good ids become churned*. Measuring the objc analyzer showed the
+    reverse: those ids were **already** broken, because the canonical parse is
+    anchored from the right and a colon in the name slot shifts every anchor.
+
+        name  'Manager.removeItemAtPath:error:'
+        before objc:M.m:4-5:Manager.removeItemAtPath:error::method   -> 7 segments
+        after  objc:M.m:4-5:Manager.removeItemAtPath.error.:method   -> 5, canonical
+
+    So selector-style languages are the largest beneficiaries of the fold, not
+    its casualties. Colons in the ``path`` slot stay verbatim — Rust's
+    ``std::cmp`` ids depend on that, and the right-anchored parse tolerates them.
     """
     sid = make_symbol_id("objc", "M.m", 4, 5, "Manager.removeItemAtPath:error:", "method")
-    assert "removeItemAtPath:error:" in sid
+    assert sid == "objc:M.m:4-5:Manager.removeItemAtPath.error.:method"
+    assert len(sid.split(":")) == 5
+
+
+def test_make_symbol_id_leaves_path_slot_colons_intact():
+    """Only the NAME slot is sanitized; a colon-bearing path is legal."""
+    sid = make_symbol_id("rust", "std::cmp", 0, 0, "min", "external_symbol")
+    assert sid == "rust:std::cmp:0-0:min:external_symbol"
+    # Right-anchored parse still recovers the three trailing slots.
+    span, name, kind = sid.split(":")[-3:]
+    assert (span, name, kind) == ("0-0", "min", "external_symbol")
+
+
+def test_make_symbol_id_sanitization_is_idempotent():
+    """Producers that already sanitize (WI-vuzaf stand-ins) are unaffected."""
+    pre = sanitize_id_name_segment("kafka:publish:topic")
+    assert make_symbol_id("python", "p.py", 1, 1, pre, "call_site") == (
+        make_symbol_id("python", "p.py", 1, 1, "kafka:publish:topic", "call_site")
+    )
 
 
 def _subprocess_symbol():

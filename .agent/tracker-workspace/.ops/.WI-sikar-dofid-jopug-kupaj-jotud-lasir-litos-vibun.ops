@@ -18,3 +18,26 @@
     pr_ref:  # 2d8b
     description: "make_symbol_id (packages/hypergumbo-core/src/hypergumbo_core/analyze/base.py:306) is a raw f-string; a Symbol name containing ':' injects extra colon-separated slots and breaks the canonical 5-segment shape (the name slot must be colon-free). Add lossy ':'->'.' sanitization at construction (ADR-0036 Ruling-1) plus a sibling validator sub-check that the id name-slot == sanitized(Symbol.name); mirror the producer fix in js_ts.py if it has its own id builder. IDENTITY-CHANGING (T1): changes node.id for any symbol whose name currently contains ':', so it must ride the v6 stable_id bump, NOT land pre-v6. Deferred follow-up of id-format:F3 (PR #227)."  # 2d8b
     fields: {}  # 2d8b
+- op: discuss  # 80f7
+  at: '2026-07-29T18:32:37Z'  # 80f7
+  by: agent  # 80f7
+  actor: jgstern_agent  # 80f7
+  clock: 2  # 80f7
+  nonce: 80f7  # 80f7
+  message: "EVIDENCE: this item's deferral rationale is measurably BACKWARDS, which changes the cost/benefit but not the decision (that is the owner's).\n\nThe guard test test_make_symbol_id_does_not_sanitize_globally (test_synthetic_node_id_name_slot.py:77) states the reason for deferring: an always-on make_symbol_id colon rewrite 'would silently churn colon-bearing source ids like Obj-C selectors.' That reads as 'currently-good ids become churned.' Probed the objc analyzer directly on a one-method fixture:\n\n  Symbol.name = 'FileManager.removeItemAtPath:error:'\n  id today    = objc:T.m:2-4:FileManager.removeItemAtPath:error::method   -> SEVEN segments, unparseable\n  id if folded= objc:T.m:2-4:FileManager.removeItemAtPath.error.:method   -> five, canonical\n\nSo Objective-C is not a casualty of the fold, it is the largest beneficiary: every colon-bearing selector id in the fleet is ALREADY broken. The same holds for any selector-style or coordinate-style name reaching the slot. The fold FIXES a correctness gap rather than churning good values.\n\nTwo facts that bound the change: (1) blast radius on the self-corpus is near-zero -- of 40841 nodes, exactly 7 carry a colon in Symbol.name and all 7 already route through sanitize_id_name_segment explicitly, so their ids are unchanged; (2) the whole-suite consequence is small -- when I trialled the fold, exactly two tests failed: this guard, and one objc call-edge assertion matching on the raw selector.\n\nI did NOT land it. It is an enforced decision with its own item, and reversing it inside INV-dulah's PR would be scope creep regardless of the evidence; INV-dulah instead used the scoped sanitize_id_name_segment call at the two Maven producers, matching the six synthetic-linker families. Recording this so whoever picks WI-sikar up starts from the measurement rather than re-deriving it -- and so the guard's docstring is not taken at face value.\n\nOpen question for whoever schedules it: the P3/todo_soft priority was set against the 'churns good ids' reading. Under the 'fixes broken ids' reading the priority is a judgement about how much selector-style-language code users point hypergumbo at. Not proposing a re-prioritisation unilaterally."  # 80f7
+- op: update  # fb97
+  at: '2026-07-29T18:45:23Z'  # fb97
+  by: agent  # fb97
+  actor: jgstern_agent  # fb97
+  clock: 3  # fb97
+  nonce: fb97  # fb97
+  set:  # fb97
+    status: todo_hard  # fb97
+    priority: 1  # fb97
+- op: discuss  # 1cbd
+  at: '2026-07-29T18:45:23Z'  # 1cbd
+  by: agent  # 1cbd
+  actor: jgstern_agent  # 1cbd
+  clock: 4  # 1cbd
+  nonce: 1cbd  # 1cbd
+  message: "PRIORITY P1 + todo_hard (owner directive 2026-07-29: 'bump WI-sikar to P1 and do it next'), following the evidence in the preceding entry that the deferral rationale was backwards -- colon-bearing selector ids are ALREADY unparseable, so the fold fixes a live correctness gap rather than churning good values.\n\nSTALE RELEASE GATE CORRECTED. The description says the change 'must ride the v6 stable_id bump, NOT land pre-v6.' Written 2026-06-13; STABLE_ID_SCHEME is now hypergumbo-stableid-v8, so v6 shipped two bumps ago and the gate is discharged by time. Recording this explicitly because 'must ride a bump' is exactly what a future session reads as 'still blocked' (the same trap WI-banod T1 carries, register pt.33).\n\nNO COLLISION WITH THE WI-talos v9/v10 SEQUENCING. WI-sikar changes node.id (the ADR-0036 composite). v9's unqualified digest-compatibility claim is about the four *_scheme digests (stable_id / shape_id / repo_fingerprint / symbol_fingerprint). assemble_stable_id hashes the raw Symbol.name, not the sanitized id name-slot, so no digest moves and v9's claim stays true. Consistent with the scheme-bump principle (correctness pt.34): node.id is not a *_scheme field, and WI-zugob's route sweep changed node.id kind-slots fleet-wide last session with no bump and no release gate. To be re-verified empirically before relying on it."  # 1cbd
