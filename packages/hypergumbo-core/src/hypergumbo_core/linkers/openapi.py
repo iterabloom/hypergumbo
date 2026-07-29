@@ -57,7 +57,7 @@ from typing import Any, Iterator
 
 from ..discovery import find_non_test_files
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
-from ..routes import is_route, method_token, route_of
+from ..routes import is_route, method_matches, method_token, route_of
 from ._text_filters import language_from_path
 from .registry import (
     LinkerActivation,
@@ -358,8 +358,13 @@ def link_openapi(root: Path, route_symbols: list[Symbol]) -> OpenApiLinkResult:
 
             # Match by path and method
             if _paths_match(op.path, route_path):
-                # Method must match (or be wildcard)
-                if route_method and route_method.upper() not in (op.method, "ANY", "*"):
+                # Method must match, allowing for the wildcard spellings and
+                # the comma-joined multi-method form. Delegated to the routes
+                # chokepoint (WI-zunal): the inline check here knew only
+                # ANY / *, so a node-http `ALL` catch-all and every
+                # YAML-enriched multi-method route (`"GET,POST"`, which can
+                # never equal a single verb) silently failed to link.
+                if not method_matches(route_method, op.method):
                     continue
 
                 # Create edge linking spec to implementation

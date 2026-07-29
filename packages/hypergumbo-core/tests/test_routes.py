@@ -5,7 +5,12 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from hypergumbo_core.routes import is_route, route_of
+from hypergumbo_core.routes import (
+    WILDCARD_HTTP_METHODS,
+    is_route,
+    method_matches,
+    route_of,
+)
 
 
 def _sym(meta):
@@ -186,3 +191,46 @@ def test_transport_never_leaks_into_http_method():
     # A real HTTP verb is never split out.
     keep = route_of(_sym({"framework_role": "route", "route_path": "/x", "http_method": "GET"}))
     assert keep["method"] == "GET" and keep["protocol"] == "http"
+
+
+# --- WI-zunal: HTTP-verb coverage vocabulary ---
+
+def test_method_matches_exact_and_case_insensitive():
+    assert method_matches("GET", "GET")
+    assert method_matches("get", "GET")
+    assert method_matches("GET", "get")
+    assert not method_matches("GET", "POST")
+
+
+def test_method_matches_absent_method_is_unconstrained():
+    """A route with no declared verb matches anything — the behaviour the
+    old inline ``if route_method and ...`` guard expressed."""
+    assert method_matches(None, "GET")
+    assert method_matches("", "POST")
+
+
+def test_method_matches_every_wildcard_spelling():
+    """ANY (Laravel/Phoenix), ALL (node-http YAML), and * must all match."""
+    for wildcard in WILDCARD_HTTP_METHODS:
+        assert method_matches(wildcard, "GET"), wildcard
+        assert method_matches(wildcard, "DELETE"), wildcard
+        assert method_matches(wildcard.lower(), "PATCH"), wildcard
+
+
+def test_method_matches_comma_joined_list():
+    """The framework-YAML list form (``",".join``) must match each member —
+    matching the joined string against a single verb never succeeds, which
+    is what silently dropped multi-method routes from OpenAPI linking."""
+    assert method_matches("GET,POST", "GET")
+    assert method_matches("GET,POST", "POST")
+    assert not method_matches("GET,POST", "DELETE")
+
+
+def test_method_matches_comma_joined_tolerates_whitespace_and_blanks():
+    assert method_matches("GET, POST", "POST")
+    assert method_matches("GET,,POST", "POST")
+    assert not method_matches(" , ", "GET")
+
+
+def test_method_matches_wildcard_inside_a_list():
+    assert method_matches("GET,ANY", "DELETE")

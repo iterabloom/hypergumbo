@@ -439,14 +439,68 @@ def normalize_php_signature(
     return normalize_signature_php(signature, type_params)
 
 
-def _extract_controller_action(
-    args_node: "tree_sitter.Node", source: bytes
+def _php_string_value(
+    string_node: "tree_sitter.Node", source: bytes
 ) -> str | None:
-    """Extract controller@action from Laravel route second argument.
+    """Return the text inside a PHP ``string`` literal node.
+
+    Prefers the grammar's ``string_content`` child; falls back to stripping
+    the surrounding quotes when the grammar does not expose one (an empty
+    string literal has no content child).
+    """
+    for child in string_node.children:
+        if child.type == "string_content":
+            return node_text(child, source)
+    return node_text(string_node, source).strip("'\"") or None
+
+
+def _laravel_match_methods(
+    node: "tree_sitter.Node", source: bytes
+) -> str | None:
+    """Return the comma-joined verb list from ``Route::match([...], ...)``.
+
+    Laravel's ``match`` declares its verbs as the FIRST argument
+    (``Route::match(['get','post'], '/path', ...)``), which the generic
+    Route:: handler previously discarded in favour of the lossy ``MATCH``
+    aggregate. Returns e.g. ``"GET,POST"`` — the comma-joined shape
+    ``routes.method_matches`` understands — or ``None`` when the verb list
+    is absent or built dynamically (a variable), so the caller can fall back
+    to the aggregate rather than inventing verbs (WI-zunal).
+    """
+    args_node = node.child_by_field_name("arguments")
+    if args_node is None:  # pragma: no cover - defensive
+        return None
+    for child in args_node.children:
+        if child.type != "argument":
+            continue
+        methods: list[str] = []
+        for arg_child in child.children:
+            if arg_child.type != "array_creation_expression":
+                continue
+            for arr_child in arg_child.children:
+                if arr_child.type != "array_element_initializer":
+                    continue
+                for element in arr_child.children:
+                    if element.type != "string":
+                        continue
+                    value = _php_string_value(element, source)
+                    if value:
+                        methods.append(value.strip().upper())
+        return ",".join(methods) if methods else None
+    return None  # pragma: no cover - defensive
+
+
+def _extract_controller_action(
+    args_node: "tree_sitter.Node", source: bytes, *, arg_offset: int = 0
+) -> str | None:
+    """Extract controller@action from a Laravel route's controller argument.
 
     Supports two syntaxes:
     - Array: [Controller::class, 'action']
     - String: 'Controller@action'
+
+    *arg_offset* shifts which positional argument holds the path, for the
+    ``Route::match`` shape whose args[0] is the verb array (WI-zunal).
 
     Returns:
         String like 'UserController@index' or None if not extractable.
@@ -456,12 +510,12 @@ def _extract_controller_action(
         if child.type != "argument":
             continue
 
-        if arg_index == 0:
-            # First arg is route path, skip
+        if arg_index <= arg_offset:
+            # Positional args up to and including the path — skip.
             arg_index += 1
             continue
 
-        if arg_index == 1:
+        if arg_index == arg_offset + 1:
             # Second arg is controller reference
             for arg_child in child.children:
                 # Array syntax: [Controller::class, 'action']
@@ -661,33 +715,42 @@ def _extract_laravel_routes(
             # below can drop the HTML-form `create` and `edit` actions.
             http_method = "API_RESOURCE"
         elif method_name == "match":
-            http_method = "MATCH"
+            # `Route::match(['get','post'], '/path', ...)` — the verbs are
+            # args[0] and the path is args[1]. Read the real verb list rather
+            # than stamping the lossy `MATCH` aggregate: the comma-joined form
+            # is what `routes.method_matches` understands, so a matched route
+            # links to an OpenAPI GET *and* POST operation (WI-zunal).
+            http_method = _laravel_match_methods(node, source) or "MATCH"
         elif method_name == "any":
             http_method = "ANY"
         else:  # pragma: no cover - unknown Route:: method
             continue
 
-        # Extract route path from first argument
+        # `Route::match` shifts every positional argument right by one: its
+        # args[0] is the verb array, so the path is args[1] and the controller
+        # args[2]. Reading the path from args[0] unconditionally is why every
+        # `Route::match` route was silently DROPPED (WI-zunal).
+        arg_offset = 1 if method_name == "match" else 0
+
         route_path = None
         controller_action = None
         args_node = node.child_by_field_name("arguments")
         if args_node:
+            arg_index = 0
             for child in args_node.children:
-                if child.type == "argument":
+                if child.type != "argument":
+                    continue
+                if arg_index == arg_offset:
                     for arg_child in child.children:
                         if arg_child.type == "string":
-                            for str_child in arg_child.children:
-                                if str_child.type == "string_content":
-                                    route_path = node_text(str_child, source)
-                                    break
-                            if route_path is None:  # pragma: no cover
-                                raw = node_text(arg_child, source)
-                                route_path = raw.strip("'\"")
+                            route_path = _php_string_value(arg_child, source)
                             break
                     break
+                arg_index += 1
 
-            # Extract controller@action from second argument
-            controller_action = _extract_controller_action(args_node, source)
+            controller_action = _extract_controller_action(
+                args_node, source, arg_offset=arg_offset,
+            )
 
         if not route_path:
             continue
