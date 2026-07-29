@@ -1,0 +1,55 @@
+Original commit body from c2b39f4d6cb0400fb6eb7cf83b9097e269085f0a:
+
+Producer batch 3, the last one: the sites whose migration CHANGES node.name.
+The route-marker identity ratchet reaches zero -- 89 passed, 0 xfailed, all four
+properties holding for every producer in the fleet.
+
+Migrated: py.py (Django / Starlette / Flask-RESTful), the Django class-based-view
+expander, go.py's r.Mount(), js_ts.py (both route paths), play_routes.py's
+module include.
+
+Route markers had drifted into FIVE naming conventions -- the handler's own name
+(go mount, js/ts), a framework-prefixed view name (django:list_users,
+starlette:list_users), a bare view name (Flask-RESTful), a dotted expansion
+(django:AdminView.get), and a bespoke include form (-> /admin admin.Routes) --
+while their IDs mostly carried method+path, so reconstructing a name from a
+documented id gave a different string (ADR-0036 Ruling 1). All now derive name
+and id name-slot from one method+path pair.
+
+Nothing is lost: handler identity is in meta["handler_ref"]/["handler_name"],
+view identity in meta["view_name"], the included module in meta["module_ref"] --
+the keys linkers/route_handler already resolved against. It never read
+Symbol.name. Blast radius, measured: 8884 tests passed and exactly TWO
+assertions in the tree read a route marker's name, both using it as a proxy for
+the handler; rewritten same-intent against handler_ref (and strengthened -- the
+old form used name as an if/elif dispatch key, which passes vacuously once no
+branch matches).
+
+Three defects close with it:
+
+  * WI-javag, a SIX-segment node.id. The CBV expander built names by
+    concatenation -- f"{sym.name}.{method_name}" -- inheriting py.py's
+    colon-bearing "django:{view}", so the colon went unsanitized into
+    make_symbol_id: python:urls.py:6-6:django:AdminView.get:function, an id that
+    cannot be parsed back into its slots at all. Fixed by deriving the name from
+    method+path, which removes the class rather than the instance.
+  * go's FIFTH minting site (chi/gorilla r.Mount()), violating both slots and
+    invisible because the go fixture is net/http only.
+  * a new flask-restful fixture case puts py.py's third site under the gate at
+    all -- the existing python fixture is Flask @app.route, which surfaces
+    concept=route and mints no standalone marker.
+
+Also DELETES two now-unreachable blocks in js_ts.py that disambiguated a name
+lookup returning a route marker instead of a function. That collision existed
+only because markers were named after their handlers, so the naming fix made
+both branches dead ("GET /users" is not a valid identifier). The scoped coverage
+gate surfaced them. This is the chokepoint argument paying off concretely: the
+ambiguity the naming created had forced a workaround two thousand lines away.
+
+py.py note: its route markers never set origin/origin_run_id -- there is no
+AnalysisRun in _extract_file_analysis's scope and analyze() backfills every
+symbol afterwards. origin_run_id="" preserves that exactly, with the reason at
+each call site.
+
+Tests: 8886 passed, 100% coverage on changed sources. mypy neutral (1087).
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
