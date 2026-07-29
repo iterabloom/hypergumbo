@@ -1,0 +1,63 @@
+Original commit body from 8825dca181acda957932151ee7a70413a63d72a5:
+
+make_symbol_id now applies the ADR-0036 Ruling-1 ':' -> '.' substitution to the
+name slot. The canonical parse is anchored from the RIGHT (span, name, kind =
+parts[-3:]), so a colon in the name slot shifts every anchor left by one and the
+id stops parsing; colons in the path slot are harmless and stay verbatim, which
+is why Rust's std::cmp module ids are canonical.
+
+PREMISE REVERSED BY MEASUREMENT. This fold was deferred since 2026-06-13 and a
+guard test enforced the deferral, on the stated ground that an always-on rewrite
+"would silently churn colon-bearing source identifiers like Obj-C selectors."
+That reads as "currently-good ids become churned." Probing the objc analyzer on
+one keyword-selector method:
+
+  Symbol.name  FileManager.removeItemAtPath:error:
+  before       objc:T.m:2-4:FileManager.removeItemAtPath:error::method  (7 segs)
+  after        objc:T.m:2-4:FileManager.removeItemAtPath.error.:method  (5 segs)
+
+Those ids were ALREADY unparseable. Selector-style languages are the largest
+beneficiaries of the fold, not its casualties. The guard test is inverted rather
+than deleted, and carries the before/after in its docstring so the reversal is
+self-documenting.
+
+js_ts.py's private _make_symbol_id was an f-string copy of the grammar -- the
+mirror the item predicted -- and now delegates, so it stops opting out of the
+minter's guarantees.
+
+The two objc assertions that matched the raw selector as a substring of the id
+are rewritten to resolve the edge to its target Symbol and assert on
+Symbol.name (the fidelity home). That is stronger than the original: it proves
+the edge points at a real node rather than at a string that happens to contain
+the selector text.
+
+PART 4 NOT BUILT, ON A MEASURED FALSE PREMISE. The item also specifies "a
+sibling validator sub-check that the id name-slot == sanitized(Symbol.name)".
+That equality is not an invariant this codebase holds: it fails on 1430 of
+40855 canonical ids (3.50%), of which 1398 are the documented make_file_id
+sentinel {lang}:{path}:1-1:file:file, and the residual 32 are four further
+deliberate conventions -- Rust's '::' -> '.' COLLAPSE (not a per-colon
+replace), the js/ts '@NN' occurrence suffix, the synthetic websocket route
+normalization, and the Maven coordinate fold. The weaker requirement the
+grammar actually states -- name slot colon-free -- is already enforced:
+_CANONICAL_ID_PATTERN defines that slot as [^:]*, so a colon-bearing name fails
+the shape check and is caught by _check_id_format (which since e32d074d2c
+reports it as colon_in_name_slot). _check_id_roundtrip only runs on ids that
+already matched, so the sub-check would be unreachable code.
+
+Evidence: 11742 tests pass, 100% coverage on changed sources. Fresh
+self-analysis over 40857 symbols holds id_format at 0 and shows all 7
+colon-bearing Symbol.names carrying colon-free id slots. Note the self-corpus
+does NOT exercise the new behaviour -- those 7 already routed through the
+explicit helper -- so the corpus evidence is no-regression; the ObjC probe is
+what demonstrates the repair.
+
+Stale gate corrected on the item: the description said this "must ride the v6
+stable_id bump", written when v6 was upcoming; STABLE_ID_SCHEME is now v8. No
+collision with the WI-talos v9/v10 sequencing either -- the only five sites
+that alias stable_id to a composite node.id are the bitbake/bibtex sites that
+ARE WI-banod T1, and both analyzers build ids with their own f-strings that
+never reach make_symbol_id, so no digest moves and v9's unqualified
+compatibility claim stays true.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
