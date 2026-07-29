@@ -1,0 +1,21 @@
+- op: create  # 9dfc
+  at: '2026-07-29T07:35:01Z'  # 9dfc
+  by: agent  # 9dfc
+  actor: jgstern_agent  # 9dfc
+  clock: 1  # 9dfc
+  nonce: 9dfc  # 9dfc
+  data:  # 9dfc
+    kind: work_item  # 9dfc
+    title: "php: double-quoted Laravel route paths silently undetected (encapsed_string vs string)"  # 9dfc
+    status: todo_hard  # 9dfc
+    priority: 2  # 9dfc
+    parent:  # 9dfc
+    tags:  # 9dfc
+    - wave5  # 9dfc
+    - route  # 9dfc
+    isbefore: []  # 9dfc
+    duplicate_of: []  # 9dfc
+    not_duplicate_of: []  # 9dfc
+    pr_ref:  # 9dfc
+    description: "php.py `_extract_laravel_routes` extracts the route path only from tree-sitter `string`\nnodes and never from `encapsed_string`, so every DOUBLE-QUOTED Laravel route path is\nsilently undetected. Single quotes work.\n\nLive repro (2026-07-29), PHPAnalyzer directly on a 3-line fixture:\n\n    <?php\n    Route::get(\"/users\", [UserController::class, \"index\"]);   // NOT detected\n    Route::post('/users', [UserController::class, 'store']);  // detected\n\n  symbols: 2\n    php:routes.php:1-1:file:file            (the file node)\n    php:routes.php:3-3:POST /users:route    (only the single-quoted one)\n\nParse tree confirms the cause: a double-quoted PHP literal is `encapsed_string`\n(children: `\"`, `string_content`, `\"`), a single-quoted one is `string`. The arg\nwalk tests `arg_child.type == \"string\"` and falls through on `encapsed_string`.\nThe docstring's own examples are all single-quoted, so the gap was never visible\nfrom the module's own documentation.\n\nDouble-quoted paths are idiomatic and common in Laravel, so this is a real\nroute-detection coverage hole (WI-tosul family), not a cosmetic one. Same class of\ndefect as WI-zunal's `Route::match` drop: an unsupported literal shape silently\ndrops the whole route rather than degrading it.\n\nFix shape: accept `encapsed_string` wherever `string` is accepted for route-path\nand controller-action args. Check the shared helper `_php_string_value` first --\nif it already handles both, the call sites are bypassing it, which makes this a\nchokepoint fix rather than a per-site one. Also sweep the other php arg walks\n(resource/apiResource/match) for the same literal-type assumption.\n\nFound while building route-parity fixtures for WI-zugob (the php fixture emitted\nzero markers, which is what surfaced it)."  # 9dfc
+    fields: {}  # 9dfc
