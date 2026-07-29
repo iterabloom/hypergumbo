@@ -2946,6 +2946,92 @@ class TestEntrypointRankingPenalties:
         # Not a build wrapper -> no demotion; rank_score stays at the 0.85 base.
         assert shell_ep.rank_score == pytest.approx(0.85, rel=0.01)
 
+    def _vendored_js_export(self):
+        """A tier-3 vendored JS bundle export (pretix's pdf.worker.js)."""
+        return make_symbol(
+            "getDocument",
+            path="pretix/static/vendored/pdf.worker.js",
+            language="javascript",
+            visibility="public",
+            meta={"concepts": [{"concept": "library_export",
+                                "export_name": "getDocument"}]},
+            supply_chain_tier=3,
+        )
+
+    def _python_route(self):
+        """A first-party Django view — the repo's real API surface.
+
+        Deliberately NOT under a ``views/`` directory: that path fires the
+        WI-ronik ``_is_frontend_file`` suppression (confidence 0.05), which
+        would filter the control out and make this test vacuous.
+        """
+        return make_symbol(
+            "checkout",
+            path="pretix/api/checkout.py",
+            language="python",
+            meta={"concepts": [
+                {"concept": "route", "method": "POST", "path": "/checkout"},
+            ]},
+            supply_chain_tier=1,
+        )
+
+    def test_vendored_library_export_not_a_seed(self) -> None:
+        """WI-batit: a tier-3 VENDORED library export must never seed a slice,
+        even when its language has no semantic entrypoints of its own.
+
+        The per-language ``langs_with_semantic`` carve-out exists to protect
+        FIRST-PARTY API surface (the ArkLib case: Python helper scripts must not
+        suppress a Lean library's 163 exports).  Vendored third-party code is
+        never this repo's API surface, so the carve-out must not extend to it —
+        otherwise a Django repo (semantic entrypoints in python only) leaves its
+        bundled JS at 0.75 * 0.3 = 0.225, comfortably above the 0.10 floor, and
+        ``slice --entry auto`` seeds from pdf.worker.js instead of a view.
+        """
+        vendored = self._vendored_js_export()
+        route = self._python_route()
+        # A well-connected bundle export: 13 callers is the real in-degree of
+        # zellij's vendored ``InputParser::parse``.  This is what makes the test
+        # non-vacuous — the x0.1 demotion alone leaves 0.0225, but the ADDITIVE
+        # connectivity boost (in-degree, cap +0.35) re-inflates that back over
+        # the 0.10 floor.  Suppressing the boost is the other half of the fix.
+        callers = [
+            make_symbol(f"caller{i}", path="pretix/api/callers.py",
+                        language="python", start_line=10 + i, end_line=11 + i)
+            for i in range(13)
+        ]
+        edges = [
+            Edge.create(src=c.id, dst=vendored.id, edge_type="calls", line=1,
+                        origin="test", origin_run_id="test")
+            for c in callers
+        ]
+        entrypoints = detect_entrypoints([vendored, route, *callers], edges)
+        # 0.75 * 0.3 (vendor tier) * 0.1 (library-export demotion) = 0.0225 and
+        # the connectivity boost is skipped -> stays below
+        # MIN_ENTRYPOINT_CONFIDENCE -> filtered out entirely.
+        assert vendored.id not in {e.symbol_id for e in entrypoints}
+        assert entrypoints[0].symbol_id == route.id
+
+    def test_first_party_export_keeps_carve_out_protection(self) -> None:
+        """WI-batit precision (the ArkLib guard): the fix above narrows the
+        carve-out by SUPPLY-CHAIN TIER only.  A FIRST-PARTY export in a language
+        with no semantic entrypoints of its own keeps full ranking prominence —
+        exactly what the carve-out was built to protect."""
+        lean_export = make_symbol(
+            "Polynomial.eval",
+            path="Mathlib/Algebra/Polynomial.lean",
+            language="lean",
+            visibility="public",
+            meta={"concepts": [{"concept": "library_export",
+                                "export_name": "Polynomial.eval"}]},
+            supply_chain_tier=1,
+        )
+        route = self._python_route()
+        entrypoints = detect_entrypoints([lean_export, route], [])
+        lean_ep = next(e for e in entrypoints if e.symbol_id == lean_export.id)
+        # Undemoted: the 0.75 library_export base survives (no tier penalty, and
+        # the carve-out still shields it from the cross-language x0.1).
+        assert lean_ep.rank_score == pytest.approx(0.75, rel=0.01)
+
     def test_adr0039_confidence_in_band_ranking_on_rank_score(self) -> None:
         """ADR-0039 ruling 3 (WI-lutad, WI-dojor): entrypoint detection
         confidence stays at the in-band construction base [0.70, 0.99] — no
