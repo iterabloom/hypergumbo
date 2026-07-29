@@ -41,7 +41,7 @@ from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
-from hypergumbo_core.analyze.base import AnalysisResult, TreeSitterAnalyzer
+from hypergumbo_core.analyze.base import AnalysisResult, TreeSitterAnalyzer, make_symbol_id
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
@@ -90,8 +90,14 @@ def is_json_tree_sitter_available() -> bool:
 
 
 def _make_symbol_id(path: str, start_line: int, end_line: int, name: str, kind: str) -> str:
-    """Generate location-based ID."""
-    return f"json:{path}:{start_line}-{end_line}:{name}:{kind}"
+    """Generate a location-based ID via the shared ADR-0036 minter.
+
+    Delegates rather than re-implementing the grammar as an f-string: this
+    module was the last of the three manifest analyzers holding its own copy,
+    which meant it silently opted out of the minter's name-slot sanitization
+    (INV-dulah).
+    """
+    return make_symbol_id("json", path, start_line, end_line, name, kind)
 
 
 def _make_edge_id(src: str, dst: str, edge_type: str) -> str:
@@ -250,7 +256,9 @@ def _process_scripts(
             if script_name:
                 start_line = child.start_point[0] + 1
                 end_line = child.end_point[0] + 1
-                symbol_id = _make_symbol_id(rel_path, start_line, end_line, script_name, "script")
+                # INV-dulah: the id kind-slot carries the symbol's own kind, not
+                # its role — the role's home is meta["entry_role"] below.
+                symbol_id = _make_symbol_id(rel_path, start_line, end_line, script_name, "file")
 
                 meta: dict = {
                     "script_name": script_name,
@@ -424,7 +432,9 @@ def _process_main_entry(
     entry_name = pkg_name or "main"
     start_line = main_node.start_point[0] + 1
     end_line = main_node.end_point[0] + 1
-    symbol_id = _make_symbol_id(rel_path, start_line, end_line, entry_name, "main_entry")
+    # INV-dulah: the id kind-slot carries the symbol's own kind, not its role —
+    # the role's home is meta["entry_role"] = "main" below.
+    symbol_id = _make_symbol_id(rel_path, start_line, end_line, entry_name, "file")
 
     sym = Symbol(
         id=symbol_id,
@@ -839,7 +849,9 @@ def _process_composer_json(
     if pkg_name:
         start_line = obj_node.start_point[0] + 1
         end_line = obj_node.end_point[0] + 1
-        project_id = _make_symbol_id(rel_path, start_line, end_line, pkg_name, "composer_package")
+        # INV-dulah: the id kind-slot carries the symbol's own kind, not its
+        # ecosystem — that lives in meta["package_ecosystem"] = "composer".
+        project_id = _make_symbol_id(rel_path, start_line, end_line, pkg_name, "package")
 
         sym = Symbol(
             id=project_id,

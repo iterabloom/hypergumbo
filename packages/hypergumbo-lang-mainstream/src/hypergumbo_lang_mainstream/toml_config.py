@@ -599,7 +599,9 @@ def _extract_pyproject_scripts(
             if script_name:
                 start_line = child.start_point[0] + 1
                 end_line = child.end_point[0] + 1
-                symbol_id = _make_toml_symbol_id(rel_path, start_line, end_line, script_name, "script")
+                # INV-dulah: the id kind-slot carries the symbol's own kind, not
+                # its role — the role's home is meta["entry_role"] below.
+                symbol_id = _make_toml_symbol_id(rel_path, start_line, end_line, script_name, "file")
 
                 meta: dict = {"entry_role": "script"}
                 if entry_point:
