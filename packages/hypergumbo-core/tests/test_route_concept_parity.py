@@ -240,14 +240,10 @@ MANIFEST_GATED_CASES = {"java", "javascript"}
 # ``kind="function"`` but left the role in the id.
 KIND_SLOT_HOLES: dict[str, str] = {
     "annotation": "annotation_convention linker mints an 'annotated_route' id kind-slot (WI-zugob)",
-    "elixir": "elixir.py mints a 'route' id kind-slot fossil (WI-zugob)",
     "go-mount": "go.py r.Mount() mints a 'route_mount' id kind-slot fossil (WI-zugob)",
     "grpc": "grpc linker mints a 'route' id kind-slot fossil (WI-zugob)",
     "js-named": "js_ts.py mints a 'route' id kind-slot fossil (WI-zugob)",
-    "php": "php.py mints a 'route' id kind-slot fossil (WI-zugob)",
     "play-routes": "play_routes.py mints 'route'/'route_include' id kind-slot fossils (WI-zugob)",
-    "ruby": "ruby.py mints a 'route' id kind-slot fossil (WI-zugob)",
-    "swift": "swift.py mints a 'route' id kind-slot fossil (WI-zugob)",
 }
 
 # ADR-0036 Ruling 1: a node id's ``{name}`` slot must equal
@@ -287,9 +283,7 @@ CANONICAL_ID_HOLES: dict[str, str] = {
 # WI-tufil closed the ``origin_run_id`` half for the trio; an EMPTY ``origin``
 # list passed its "for elem in origin" check vacuously, which is how elixir's
 # total absence of provenance survived.
-ORIGIN_HOLES: dict[str, str] = {
-    "elixir": "elixir.py route markers carry an empty Symbol.origin (WI-zugob)",
-}
+ORIGIN_HOLES: dict[str, str] = {}
 
 
 def _route_marker_nodes(behavior_map: dict) -> list[dict]:

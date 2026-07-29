@@ -56,6 +56,7 @@ from hypergumbo_core.analyze.base import (
     defer_bare_method_call,
     make_file_id,
     make_file_stable_id,
+    make_route_symbol,
     make_symbol_id,
     make_typed_stable_id,
     make_unresolved_edge,
@@ -1465,30 +1466,18 @@ def _extract_vapor_usage_contexts(
             span=span,
             metadata={"route_path": route_path, "http_method": http_method},
         ))
-        route_name = f"{http_method} /{route_path}" if route_path else f"{http_method} /"
-        route_id = make_symbol_id(
-            "swift",
-            path=str(file_path),
-            start_line=span.start_line,
-            end_line=span.end_line,
-            name=route_name,
-            kind="route",
-        )
-        route_symbols.append(Symbol(
-            id=route_id,
-            name=route_name,
-            kind="function",
+        route_symbols.append(make_route_symbol(
             language="swift",
             path=str(file_path),
             span=span,
-            meta={
-                "http_method": http_method,
-                "route_path": f"/{route_path}" if route_path else "/",
-                "framework_role": "route",
-            },
+            method=http_method,
+            # Vapor route components arrive without the leading slash; the
+            # factory normalizes an EMPTY path to "/", so the leading slash is
+            # supplied here to keep the name and route_path byte-identical to
+            # what this producer emitted before the migration.
+            route_path=f"/{route_path}" if route_path else "/",
             origin=PASS_ID,
             origin_run_id=run_id,
-            line_span=span.end_line - span.start_line + 1,
             is_exported=True,
         ))
 
