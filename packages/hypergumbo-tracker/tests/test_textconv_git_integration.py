@@ -172,6 +172,45 @@ def test_git_diff_and_blame_succeed_through_the_driver(repo_with_ops: Path) -> N
     assert blame.returncode == 0, f"git blame exited {blame.returncode}: {blame.stderr}"
 
 
+def test_uncompilable_op_log_does_not_break_the_diff(repo_with_ops: Path) -> None:
+    """An op log git cannot compile must still produce a clean ``git log -p``.
+
+    This is the case the first version of this gate MISSED: every fixture here
+    was a well-formed op log, so the driver's own failure path was never
+    exercised against git. On the real repo it aborted the scan after 1086 of
+    6343 commits with "Op log has no create op".
+
+    That shape is NORMAL history, not corruption: promoting or demoting an item
+    moves its op log between tiers, so the pre-move segment has ops without
+    their ``create``. Because git aborts a whole diff when the driver writes to
+    stderr, one such blob breaks ``git log -p`` for the entire repository.
+    """
+    ops_dir = repo_with_ops / ".agent" / "tracker" / ".ops"
+    orphan = ops_dir / ".WI-orphan-aaaaa-bbbbb-ccccc-ddddd-eeeee-fffff-ggggg.ops"
+    # An update op with no preceding create — exactly a post-tier-move segment.
+    orphan.write_text(
+        "- op: update  # 9z9z\n"
+        "  at: '2026-01-02T00:00:00Z'  # 9z9z\n"
+        "  by: agent  # 9z9z\n"
+        "  clock: 2  # 9z9z\n"
+        "  nonce: 9z9z  # 9z9z\n"
+        "  set:  # 9z9z\n"
+        "    status: done  # 9z9z\n"
+    )
+    _git(repo_with_ops, "add", "-A")
+    _git(repo_with_ops, "commit", "-m", "op log with no create op")
+    _configure_driver(repo_with_ops, _driver_command())
+
+    proc = _git(repo_with_ops, "log", "-p", "-2", check=False)
+    assert proc.returncode == 0, (
+        f"git log -p exited {proc.returncode} on an un-compilable op log — one "
+        f"such blob breaks history for the whole repo; stderr:\n{proc.stderr}"
+    )
+    assert "not compilable at this revision" in proc.stdout, (
+        "expected a degradation marker in the patch output"
+    )
+
+
 def test_a_stderr_writing_driver_is_detected_as_broken(repo_with_ops: Path) -> None:
     """Positive control: the gate must FAIL for a driver that writes to stderr.
 
