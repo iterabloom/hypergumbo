@@ -1,0 +1,51 @@
+Original commit body from 1608ea88a8a629b14fd0a2c3c243f45f9ba8bdbe:
+
+Six sites across the three manifest analyzers escaped the canonical
+{lang}:{path}:{start}-{end}:{name}:{kind} grammar, in two families that are
+both the class the route sweep drained: N producers, no shared minting
+contract.
+
+Kind-slot ROLE fossils (4 sites). toml_config (pyproject [project.scripts])
+and json_config (package.json scripts, package.json main, composer.json
+project) wrote the symbol's role or ecosystem -- script, main_entry,
+composer_package -- into the id kind-slot while Symbol.kind was file or
+package. The id therefore round-tripped to the wrong record and named an
+unregistered kind. Each role already had a home consumers read
+(meta["entry_role"], meta["package_ecosystem"]), so the fold is lossless.
+Only the toml site fired on the self-corpus; the other three were found by
+auditing all three producers rather than reading the violation list.
+
+Maven coordinate name-slots (2 sites). xml_config's dependency and project
+symbols put a groupId:artifactId coordinate into the name slot verbatim. The
+canonical parse is anchored from the RIGHT (span, name, kind = parts[-3:]),
+so that colon shifts every anchor left by one and the id stops parsing --
+colons in the path slot are harmless, which is why Rust's std::cmp ids are
+canonical. Both now route the name through sanitize_id_name_segment, the
+scoped pattern the six synthetic-linker families already use.
+
+The always-on fold into make_symbol_id is deliberately NOT done here: it is
+WI-sikar, and test_make_symbol_id_does_not_sanitize_globally enforces that
+boundary. Recorded on WI-sikar: its stated rationale (an always-on rewrite
+would churn Objective-C selector ids) is measurably backwards -- probing the
+objc analyzer shows those ids are ALREADY 7-segment and unparseable, so the
+fold would fix them. That is an argument for revisiting WI-sikar on its own
+terms, not for reversing an enforced decision inside another item's PR.
+
+Also: json_config's private _make_symbol_id was an f-string copy of the
+canonical format -- the last of the three analyzers holding its own, and
+precisely how it opted out of the shared minter's guarantees. It now
+delegates. And _classify_id_format_problem reported malformed_span_segment
+for >5-segment ids, which is true of the parse but not of the defect; it
+pointed this investigation at the wrong producer, so those now report
+colon_in_name_slot with the remedy named.
+
+Evidence (behavioral, not a proxy): fresh self-analysis over 40841 symbols
+goes 9 id_format violations -> 0 (8 warnings + the 1 error the ratchet
+baseline had carried as a known open Ruling-1 follow-up since 2026-07-02).
+Both baseline cells ratchet to 0. Gated by a new 17-case property test over
+all three analyzers with a non-vacuity guard.
+
+Scope limit: measured on this repo plus targeted fixtures. A corpus with
+heavy Maven or selector-style-language use would exercise more sites.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
