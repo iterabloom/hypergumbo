@@ -3456,8 +3456,19 @@ def _render_textconv(path: str) -> str:
         ops = _parse_ops_file(filepath)
         item = compile_ops(ops, item_id)
     except CorruptFileError as e:
-        print(f"error: {e}", file=sys.stderr)
-        raise SystemExit(1) from e
+        # A textconv driver must NEVER write to stderr or exit non-zero on
+        # content it cannot compile: git aborts the ENTIRE diff in that case,
+        # so one un-compilable blob anywhere in history breaks `git log -p`
+        # for the whole repo.
+        #
+        # And un-compilable blobs are NORMAL in history, not corruption. An
+        # item promoted or demoted between tiers moves its op log file, so the
+        # segment of history before the move has ops without their `create`
+        # ("Op log has no create op"); a mid-append snapshot can be transiently
+        # unparseable too. Degrade to a marker on STDOUT and exit 0 — the same
+        # philosophy as scripts/tracker-textconv, which falls back to raw
+        # content rather than failing when the package is not installed.
+        return f"# {item_id}: op log not compilable at this revision — {e}"
 
     # Output textconv format
     lines: list[str] = []

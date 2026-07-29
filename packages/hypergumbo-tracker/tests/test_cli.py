@@ -3474,12 +3474,26 @@ class TestTextconv:
             textconv_main(["/nonexistent/file.ops"])
         assert exc.value.code == 1
 
-    def test_textconv_corrupt(self, tmp_path: Path) -> None:
+    def test_textconv_corrupt_degrades_to_a_marker_and_exits_zero(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        """Un-compilable content must NOT fail: git aborts diffs on stderr.
+
+        Changed deliberately from asserting exit 1. Git aborts the entire diff
+        when a textconv driver writes to stderr or exits non-zero, so a single
+        un-compilable blob anywhere in history broke `git log -p` for the whole
+        repo — and un-compilable blobs are normal in history (an op log moved
+        between tiers has pre-move segments with no `create` op).
+        """
         ops_file = tmp_path / ".WI-bad.ops"
         ops_file.write_text("{{{{bad yaml")
         with pytest.raises(SystemExit) as exc:
             textconv_main([str(ops_file)])
-        assert exc.value.code == 1
+        assert exc.value.code == 0
+        out = capsys.readouterr()
+        assert out.err == "", "wrote to stderr; git would abort the diff"
+        assert "not compilable at this revision" in out.out
+        assert "WI-bad" in out.out
 
     def test_textconv_non_ops_filename(self, tmp_path: Path,
                                        capsys: pytest.CaptureFixture) -> None:
