@@ -1,2 +1,13 @@
+# Tracker op logs. Kept here (not only at the repo root) so a standalone
+# `pip install hypergumbo-tracker` in a repo without hypergumbo's root
+# .gitattributes still gets union-merge and readable diffs.
+#
+# merge=union is load-bearing per ADR-0013: append-only ops + nonce-on-every-line
+# make concurrent appends conflict-free.
+#
+# diff=tracker MUST match the repo-root declaration. These nested files win over
+# the root pattern by path specificity, so naming a different driver here makes
+# the root one dead configuration -- which is exactly how the driver stayed
+# broken while looking configured.
 *.ops merge=union
-*.ops diff=tracker-ops
+*.ops diff=tracker

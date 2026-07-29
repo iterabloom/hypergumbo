@@ -669,11 +669,16 @@ def migrate(
     workspace_ops.mkdir(parents=True, exist_ok=True)
     stealth_dir.mkdir(parents=True, exist_ok=True)
 
-    # .gitattributes for merge=union
+    # .gitattributes for merge=union + the textconv diff driver.
+    #
+    # ``diff=tracker`` must be the SAME name used by the repo-root
+    # .gitattributes and by ``diff.tracker.textconv`` in git config: these
+    # nested files win over the root pattern by path specificity, so a
+    # different name here makes the root declaration dead configuration.
     for ops_dir in [canonical_ops, workspace_ops]:
         ga = ops_dir / ".gitattributes"
         if not ga.exists():
-            ga.write_text("*.ops merge=union\n")
+            ga.write_text("*.ops merge=union\n*.ops diff=tracker\n")
 
     # .gitignore for stealth
     gi = stealth_dir / ".gitignore"
