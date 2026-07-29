@@ -1,3 +1,50 @@
 Original commit body from f9e56d1509a0405ce61debcb5c4f5770c1aead8a:
 
 Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
+
+fix(routes): mint ruby/php/elixir/swift route markers via the chokepoint (WI-zugob)
+
+Producer batch 1 of the route-marker fleet sweep, scoped deliberately to the
+producers whose migration does NOT change node.name.
+
+All four already set Symbol.name to "{METHOD} {path}" -- the exact string
+make_route_symbol mints -- so the only output change is the node.id KIND-SLOT:
+the ADR-0027 Phase-3 fossil where the id carried the literal `route` while
+Symbol.kind was already `function` (and `route` is not a registered symbol kind,
+so id_format flagged every one). Measured before/after on the route-parity
+fixtures: names byte-identical, ids `...:GET /users:route` -> `...:GET /users:function`.
+
+  ruby   3 sites (Rails resources / resource / plain-verb)
+  php    2 sites (Laravel resource + single-verb)
+  elixir 2 sites (Phoenix resources + single/LiveView)
+  swift  1 site  (Vapor)
+
+Also fixes elixir's EMPTY Symbol.origin. The cause was not in the route code:
+TreeSitterAnalyzer.pass_id defaults to "" and the effective id is resolved
+downstream as `self.pass_id or make_pass_id(self.lang)`, so elixir threading
+self.pass_id into its route extractor stamped the empty string -- while every
+other elixir symbol got the right id from the fallback. The route path was the
+one place bypassing the resolution. Now passes the module PASS_ID, with the
+reason recorded at the call site so it does not get "tidied" back.
+
+Swift needed an explicit leading slash to stay name-preserving: Vapor route
+components arrive without one and the old producer built its name as
+f"{http_method} /{route_path}", while the factory normalizes only the EMPTY path
+to "/". Passing the raw component would have silently renamed GET /users to
+GET users. Noted at the call site.
+
+Ratchet: 67 passed / 16 xfailed -> 72 passed / 11 xfailed (4 kind-slot holes +
+the origin hole drained).
+
+mypy: whole-tree strict 1090 -> 1087 on this branch (-3; collapsing the
+hand-rolled Symbol constructions also removed 3 [index] errors). Note the
+committed baseline records 1083 while clean dev measures 1090, so the ratchet
+reports a REGRESSION on every PR regardless of the PR -- filed as WI-basat with
+the per-code evidence; the +2 [type-arg] that WAS mine (two bare `dict`
+annotations) is fixed here.
+
+Remaining holes and why they are not in this batch: grpc and annotation are
+name-preserving but are ADR-0031 synthetic nodes (language=None) with
+non-canonical ids, so the chokepoint has to admit a synthetic language slot
+first; django, starlette, go-mount, js-named and play-routes(include) all change
+node.name and belong in one consolidated batch.
