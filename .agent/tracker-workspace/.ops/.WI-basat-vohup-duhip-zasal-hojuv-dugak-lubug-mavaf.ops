@@ -1,0 +1,21 @@
+- op: create  # 1dda
+  at: '2026-07-29T08:15:48Z'  # 1dda
+  by: agent  # 1dda
+  actor: jgstern_agent  # 1dda
+  clock: 1  # 1dda
+  nonce: 1dda  # 1dda
+  data:  # 1dda
+    kind: work_item  # 1dda
+    title: "mypy strict baseline is stale (1083 recorded vs 1090 on clean dev) — every PR sees a REGRESSION it did not cause"  # 1dda
+    status: todo_hard  # 1dda
+    priority: 2  # 1dda
+    parent:  # 1dda
+    tags:  # 1dda
+    - wave5  # 1dda
+    - mypy  # 1dda
+    isbefore: []  # 1dda
+    duplicate_of: []  # 1dda
+    not_duplicate_of: []  # 1dda
+    pr_ref:  # 1dda
+    description: "`.ci/mypy-strict-baseline.json` records 1083 whole-tree strict errors, but a clean\n`dev` tree measures **1090**. The ratchet is shrink-only and NON-BLOCKING\n(`--mode=warning` until WI-rabum), so seven errors landed without the baseline\nbeing updated and nothing stopped them.\n\nMeasured 2026-07-29 on dev at `a1d83f5e6d`, using the ratchet's own invocation\n(every `packages/*/src/<pkg>` root except htrac-frontend):\n\n    clean dev                       1090 errors in 212 files\n    .ci/mypy-strict-baseline.json   1083  (total)\n\nConsequence, and the reason this is worth a item rather than a baseline bump:\n**every PR now gets a REGRESSION banner it did not cause.** On the WI-zugob\nproducer migration the ratchet reported\n\n    REGRESSION — these codes grew:\n      arg-type: 104 -> 106\n      type-arg: 445 -> 452\n\nOf that, only the +2 type-arg was actually the PR's (two bare `dict`\nannotations, fixed before commit). `arg-type` measures **106 on clean dev too** —\nit is pre-existing drift being re-attributed to whoever is holding the branch.\nEstablishing that took a stash / full-tree baseline re-measure / per-code diff,\nwhich is a lot of work to answer \"is this mine?\" and will be repeated by every\nfuture PR until the baseline is honest.\n\nThis is the same failure mode as WI-rumis (the 17-line `severity` op warning):\na permanent warning block trains readers to skim the warnings, and the ratchet's\nwhole value is that a real regression is legible.\n\nFork:\n  (a) Re-baseline to the measured 1090 and record WHY the seven arrived (git\n      log the codes that grew). Cheapest, but rewards the drift.\n  (b) Find and fix the seven, holding the baseline at 1083. Correct, but the\n      seven are spread across unrelated modules and are a mixed bag.\n  (c) Re-baseline AND make the ratchet fail loudly enough to be noticed while\n      still non-blocking, so the next seven cannot accumulate silently.\n\nRecommend (c) — the drift happened *because* the only signal was a warning\nnobody had to act on, so re-baselining alone reproduces the condition.\n\nNote this does NOT change INV-zogud's target (zero errors) or its status; it is\nabout the honesty of the instrument measuring the drain."  # 1dda
+    fields: {}  # 1dda

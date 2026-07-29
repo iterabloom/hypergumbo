@@ -1,0 +1,19 @@
+- op: create  # ecf6
+  at: '2026-07-29T05:27:46Z'  # ecf6
+  by: agent  # ecf6
+  actor: jgstern_agent  # ecf6
+  clock: 1  # ecf6
+  nonce: ecf6  # ecf6
+  data:  # ecf6
+    kind: work_item  # ecf6
+    title: "17 invariant items carry an undeclared 'severity' field — declare it or migrate it out (permanent tracker-validate warning block)"  # ecf6
+    status: todo_soft  # ecf6
+    priority: 4  # ecf6
+    parent:  # ecf6
+    tags: []  # ecf6
+    isbefore: []  # ecf6
+    duplicate_of: []  # ecf6
+    not_duplicate_of: []  # ecf6
+    pr_ref:  # ecf6
+    description: "`scripts/tracker validate` (and the pre-commit tracker hook) emits a warning on\n17 invariant items:\n\n    .INV-<id>.ops: op 0: unknown field 'severity'\n\nThe field is NOT in the declared field-schema for the invariant kind, so\nvalidation.py's unknown-field branch fires (no close match, so no \"did you\nmean\").\n\nIMPORTANT -- this is a schema-DECLARATION gap, not data loss. Verified against\nthe compiled state: `tracker --json show INV-dulah-...` returns\nfields = {'severity': 'medium', 'statement': ..., 'root_cause': ...,\n'dogfood_anon_id': ...}. The value survives compilation and is readable. The\nonly consequences are (a) a permanent 17-line warning block on every tracker\nvalidate / pre-commit run, which trains readers to skim past tracker warnings,\nand (b) the value is unvalidated -- nothing constrains it to a vocabulary, so a\ntypo'd severity would pass silently.\n\nAffected (all kind=invariant, all carrying 'severity' on op 0): INV-bikaj,\nINV-dadaf, INV-dinuh, INV-dulah, INV-hunup, INV-jumim, INV-kimut, INV-kovob,\nINV-lajov, INV-lokok, INV-ludob, INV-raguv, INV-tarol, INV-vagaj, INV-vufov,\nINV-vutat, INV-zigup. The co-occurring 'dogfood_anon_id' field suggests these\nwere materialized by a dogfood-tranche import that wrote a field the schema\nnever declared.\n\nFORK (needs a call, which is why this is filed rather than fixed):\n (a) DECLARE 'severity' in the invariant field-schema with a bounded vocabulary\n     -- correct if severity is meaningful and something reads it. Nothing in\n     src/ currently does (the only `severity` hits are Textual notify() calls in\n     tui.py, unrelated).\n (b) MIGRATE the 17 items to drop it -- correct if it is vestigial import\n     residue. Note severity duplicates `priority`, which every item already has\n     and which `tracker ready` actually sorts on, so (b) is the likely answer.\n\nDeliberately NOT fixed here: .ops files must not be hand-edited, so either\ndirection needs a tracker-side migration or a schema change, and choosing\nbetween them is a judgment about whether the field ever meant anything.\n\nFound incidentally during the G12->G1 backlog crush (2026-07-29); not part of\nany of the 15 items in that sequence, so it had no owner."  # ecf6
+    fields: {}  # ecf6

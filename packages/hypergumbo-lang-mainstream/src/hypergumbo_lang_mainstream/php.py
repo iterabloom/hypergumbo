@@ -54,6 +54,7 @@ from hypergumbo_core.analyze.base import (
     iter_tree,
     make_file_id,
     make_file_stable_id,
+    make_route_symbol,
     make_symbol_id,
     make_typed_stable_id,
     make_unresolved_edge,
@@ -818,63 +819,35 @@ def _extract_laravel_routes(
                     if action in allowed_actions
                 ]
                 for http_meth, route_pth, action in restful_routes:
-                    route_name = f"{http_meth} {route_pth}"
-                    route_id = make_symbol_id("php",
-                        path=str(file_path),
-                        start_line=span.start_line,
-                        end_line=span.end_line,
-                        name=route_name,
-                        kind="route",
-                    )
-                    route_symbol = Symbol(
-                        id=route_id,
-                        name=route_name,
-                        kind="function",
+                    route_symbols.append(make_route_symbol(
                         language="php",
                         path=str(file_path),
                         span=span,
-                        meta={
-                            "http_method": http_meth,
-                            "route_path": route_pth,
-                            "controller_action": f"{controller}@{action}",
-                            "framework_role": "route",
-                        },
+                        method=http_meth,
+                        route_path=route_pth,
                         origin=run.pass_id,
                         origin_run_id=run.execution_id,
-                        line_span=span.end_line - span.start_line + 1,
+                        extra_meta={
+                            "controller_action": f"{controller}@{action}",
+                        },
                         is_exported=True,
-                    )
-                    route_symbols.append(route_symbol)
+                    ))
         else:
             # Single HTTP method route
-            route_name = f"{http_method} {normalized_path}"
-            route_id = make_symbol_id("php",
-                path=str(file_path),
-                start_line=span.start_line,
-                end_line=span.end_line,
-                name=route_name,
-                kind="route",
-            )
-            route_symbol = Symbol(
-                id=route_id,
-                name=route_name,
-                kind="function",
+            route_extra: dict[str, str] = {}
+            if controller_action:
+                route_extra["controller_action"] = controller_action
+            route_symbols.append(make_route_symbol(
                 language="php",
                 path=str(file_path),
                 span=span,
-                meta={
-                    "http_method": http_method,
-                    "route_path": normalized_path,
-                    "framework_role": "route",
-                },
+                method=http_method,
+                route_path=normalized_path,
                 origin=run.pass_id,
                 origin_run_id=run.execution_id,
-                line_span=span.end_line - span.start_line + 1,
+                extra_meta=route_extra,
                 is_exported=True,
-            )
-            if controller_action:
-                route_symbol.meta["controller_action"] = controller_action
-            route_symbols.append(route_symbol)
+            ))
 
     return contexts, route_symbols
 

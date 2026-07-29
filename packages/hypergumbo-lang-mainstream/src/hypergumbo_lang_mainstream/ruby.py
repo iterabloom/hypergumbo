@@ -63,6 +63,7 @@ from hypergumbo_core.analyze.base import (
     find_child_by_type,
     iter_tree,
     make_file_id,
+    make_route_symbol,
     make_symbol_id,
     make_unresolved_edge,
     node_text,
@@ -1143,33 +1144,19 @@ def _extract_rails_routes(
                 f"{module_prefix}/{resource_name}" if module_prefix else resource_name
             )
             for http_meth, route_pth, action in restful_routes:
-                route_name = f"{http_meth} {route_pth}"
-                route_id = make_symbol_id("ruby",
-                    path=str(file_path),
-                    start_line=span.start_line,
-                    end_line=span.end_line,
-                    name=route_name,
-                    kind="route",
-                )
-                route_symbol = Symbol(
-                    id=route_id,
-                    name=route_name,
-                    kind="function",
+                route_symbols.append(make_route_symbol(
                     language="ruby",
                     path=str(file_path),
                     span=span,
-                    meta={
-                        "http_method": http_meth,
-                        "route_path": route_pth,
-                        "controller_action": f"{controller_name}#{action}",
-                        "framework_role": "route",
-                    },
+                    method=http_meth,
+                    route_path=route_pth,
                     origin=PASS_ID,
                     origin_run_id=run_id,
-                    line_span=span.end_line - span.start_line + 1,
+                    extra_meta={
+                        "controller_action": f"{controller_name}#{action}",
+                    },
                     is_exported=True,
-                )
-                route_symbols.append(route_symbol)
+                ))
         elif method_name == "resource":
             # resource :profile creates 6 RESTful routes (no index)
             # Singular resource uses singular path but plural controller
@@ -1194,65 +1181,35 @@ def _extract_rails_routes(
                 f"{module_prefix}/{base_name}" if module_prefix else base_name
             )
             for http_meth, route_pth, action in restful_routes:
-                route_name = f"{http_meth} {route_pth}"
-                route_id = make_symbol_id("ruby",
-                    path=str(file_path),
-                    start_line=span.start_line,
-                    end_line=span.end_line,
-                    name=route_name,
-                    kind="route",
-                )
-                route_symbol = Symbol(
-                    id=route_id,
-                    name=route_name,
-                    kind="function",
+                route_symbols.append(make_route_symbol(
                     language="ruby",
                     path=str(file_path),
                     span=span,
-                    meta={
-                        "http_method": http_meth,
-                        "route_path": route_pth,
-                        "controller_action": f"{controller_name}#{action}",
-                        "framework_role": "route",
-                    },
+                    method=http_meth,
+                    route_path=route_pth,
                     origin=PASS_ID,
                     origin_run_id=run_id,
-                    line_span=span.end_line - span.start_line + 1,
+                    extra_meta={
+                        "controller_action": f"{controller_name}#{action}",
+                    },
                     is_exported=True,
-                )
-                route_symbols.append(route_symbol)
+                ))
         else:
             # Regular HTTP method route (get, post, etc.)
-            route_name = f"{http_method} {normalized_path}"
-            route_id = make_symbol_id("ruby",
-                path=str(file_path),
-                start_line=span.start_line,
-                end_line=span.end_line,
-                name=route_name,
-                kind="route",
-            )
-            route_meta: dict[str, str | bool] = {
-                "http_method": http_method,
-                "route_path": normalized_path,
-                "has_block": has_block,
-                "framework_role": "route",
-            }
+            route_meta: dict[str, str | bool] = {"has_block": has_block}
             if controller_action:
                 route_meta["controller_action"] = controller_action
-            route_symbol = Symbol(
-                id=route_id,
-                name=route_name,
-                kind="function",
+            route_symbols.append(make_route_symbol(
                 language="ruby",
                 path=str(file_path),
                 span=span,
-                meta=route_meta,
+                method=http_method,
+                route_path=normalized_path,
                 origin=PASS_ID,
                 origin_run_id=run_id,
-                line_span=span.end_line - span.start_line + 1,
+                extra_meta=route_meta,
                 is_exported=True,
-            )
-            route_symbols.append(route_symbol)
+            ))
 
     return contexts, route_symbols
 
