@@ -29,6 +29,7 @@ from hypergumbo_core.analyze.base import (
     make_file_id,
     make_protocol_stable_id,
     make_route_stable_id,
+    make_route_symbol,
     make_site_stable_id,
     make_symbol_id,
     make_typed_stable_id,
@@ -257,6 +258,94 @@ class TestMakeFileId:
         result = make_file_id("python", "src/main.py")
 
         assert result == "python:src/main.py:1-1:file:file"
+
+
+class TestMakeRouteSymbol:
+    """Tests for make_route_symbol — the WI-zugob route-marker chokepoint."""
+
+    @staticmethod
+    def _span(start: int = 8, end: int = 8):
+        from hypergumbo_core.ir import Span
+
+        return Span(start_line=start, end_line=end, start_col=0, end_col=5)
+
+    def _mint(self, **kw):
+        base = {
+            "language": "go", "path": "main.go", "span": self._span(),
+            "method": "GET", "route_path": "/users", "origin": "go",
+            "origin_run_id": "uuid:test",
+        }
+        base.update(kw)
+        return make_route_symbol(**base)
+
+    def test_id_name_slot_round_trips_against_symbol_name(self) -> None:
+        """ADR-0036 Ruling 1 holds by construction — the whole point of the
+        chokepoint (the invariant every hand-rolled producer drifted from)."""
+        sym = self._mint()
+        assert sym.name == "GET /users"
+        assert sym.id.rsplit(":", 2)[-2] == sym.name
+
+    def test_kind_is_function_not_the_route_fossil(self) -> None:
+        """ADR-0027 Phase-3 route->function fold: `route` is not a registered
+        symbol kind, so an id kind-slot of `route` fails id_format."""
+        sym = self._mint()
+        assert sym.kind == "function"
+        assert sym.id.rsplit(":", 1)[-1] == "function"
+
+    def test_provenance_is_stamped(self) -> None:
+        """cross_field + axis_conformance: the defects WI-zugob filed alongside
+        the id fossil were an absent origin_run_id and an unregistered origin."""
+        sym = self._mint(origin="go", origin_run_id="uuid:abc")
+        assert sym.origin == ["go"]
+        assert sym.origin_run_id == "uuid:abc"
+
+    def test_handler_ref_goes_to_meta_not_the_name(self) -> None:
+        """The handler name must NOT become Symbol.name: a multi-method
+        registration emits several markers at one span, so a handler-derived
+        name-slot would collide their ids. route_handler resolves meta."""
+        sym = self._mint(handler_ref="listUsers")
+        assert sym.meta["handler_ref"] == "listUsers"
+        assert sym.name == "GET /users"
+
+    def test_multi_method_same_span_ids_do_not_collide(self) -> None:
+        """The collision this naming direction exists to prevent."""
+        get_sym = self._mint(method="GET")
+        post_sym = self._mint(method="POST")
+        assert get_sym.id != post_sym.id
+        assert get_sym.stable_id != post_sym.stable_id
+
+    def test_transport_sentinel_splits_out_of_the_verb_field(self) -> None:
+        """INV-tibap: WS/LIVE/RPC are transports, not HTTP verbs."""
+        sym = self._mint(method="WS", route_path="/ws")
+        assert sym.meta["http_method"] is None
+        assert sym.meta["route_protocol"] == "websocket"
+
+    def test_empty_path_normalizes_to_root(self) -> None:
+        """INV-nimik: an empty extracted path hashes as '/'."""
+        sym = self._mint(route_path="")
+        assert sym.meta["route_path"] == "/"
+        assert sym.name == "GET /"
+        assert sym.stable_id == make_route_stable_id("GET", "/")
+
+    def test_colon_bearing_path_is_sanitized_in_the_id_only(self) -> None:
+        """A path parameter like /posts/:id would otherwise push the id past
+        its five anchored segments; Symbol.name keeps full fidelity."""
+        sym = self._mint(route_path="/posts/:id")
+        assert sym.name == "GET /posts/:id"
+        assert sym.id.rsplit(":", 2)[-2] == "GET /posts/.id"
+
+    def test_extra_meta_merges_and_role_is_overridable(self) -> None:
+        """Producer-specific keys (view_name, wrapper_name) survive, and
+        route_mount / route_include reuse the same chokepoint."""
+        sym = self._mint(
+            framework_role="route_mount", extra_meta={"view_name": "HomeView"},
+        )
+        assert sym.meta["framework_role"] == "route_mount"
+        assert sym.meta["view_name"] == "HomeView"
+
+    def test_line_span_is_derived(self) -> None:
+        sym = self._mint(span=self._span(10, 14))
+        assert sym.line_span == 5
 
 
 class TestMakeRouteStableId:

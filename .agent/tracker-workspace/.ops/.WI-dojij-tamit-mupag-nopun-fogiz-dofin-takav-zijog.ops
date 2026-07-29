@@ -1,0 +1,20 @@
+- op: create  # 7b43
+  at: '2026-07-29T04:15:17Z'  # 7b43
+  by: agent  # 7b43
+  actor: jgstern_agent  # 7b43
+  clock: 1  # 7b43
+  nonce: 7b43  # 7b43
+  data:  # 7b43
+    kind: work_item  # 7b43
+    title: "is_utility_file over-matches samples/example/demo inside first-party SOURCE package paths (spring-petclinic controllers demoted)"  # 7b43
+    status: todo_soft  # 7b43
+    priority: 3  # 7b43
+    parent:  # 7b43
+    tags:  # 7b43
+    - wave5  # 7b43
+    isbefore: []  # 7b43
+    duplicate_of: []  # 7b43
+    not_duplicate_of: []  # 7b43
+    pr_ref:  # 7b43
+    description: "`paths.is_utility_file` matches the substrings samples/example/demo anywhere in\na path, including inside a first-party SOURCE tree, so a real production file\ntakes the x0.5 entrypoint ranking penalty because its PACKAGE name happens to\ncontain one of them.\n\nLive instance (from WI-batit's DEEP-bakeoff evidence): spring-petclinic's\ncontrollers live under `org/springframework/samples/petclinic/...`. The\n`samples` path component fires `is_utility_file`, so every real HTTP controller\nis demoted to ~0.54 AND excluded from `langs_with_semantic` (entrypoints.py, the\n\"skip entrypoints from example/utility files\" guard) -- which in turn means the\nrepo's entity `library_export` symbols (Owner/Pet at 0.90) are never demoted and\noutrank the controllers as the `--entry auto` seed.\n\nWI-batit noted this as a facet and flagged it DEBATABLE in its own words (\"a\nsample repo IS demo code\"), which is why it is split out rather than fixed\nthere: the seed-ranking facets WI-batit owned are structural (a carve-out\napplying outside its rationale; an additive boost undoing a demotion), whereas\nthis is a PATH-PREDICATE PRECISION question with a genuine design fork.\n\nThe fork, stated honestly:\n (a) The penalty is CORRECT for a demo repo taken as a whole -- spring-petclinic\n     really is sample code -- and the only loss is INTRA-repo ranking quality.\n (b) The penalty is WRONG as a path-substring test: `samples` as a Java package\n     segment is not the same signal as a top-level `examples/` or `demo/`\n     directory, and no other language puts demo code in a package path this way.\n\nPossible directions (not a recommendation -- needs a steer):\n - Anchor the predicate to a directory ROLE (top-level or repo-relative\n   `examples/`, `demo/`, `samples/`) rather than any path component.\n - Keep the penalty but stop excluding utility-file entrypoints from\n   `langs_with_semantic`, so a demo repo's routes still demote its exports.\n - Accept as by-design and document (the WI-batit position).\n\nClose-check: on a spring-petclinic-shaped fixture, the HTTP controllers must be\nthe top `--entry auto` seed rather than the entity library_exports; and a\ngenuine top-level `examples/` tree must still be penalized.\n\nSplit from WI-batit-volog-gugob-nunog-nujal-fudaj-zazub-nirij (closed 2026-07-29\nfor its vendored + build-wrapper + reverse-slice-seed facets)."  # 7b43
+    fields: {}  # 7b43
