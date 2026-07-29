@@ -99,7 +99,6 @@ from hypergumbo_core.analyze.base import (
     iter_tree,
     make_file_id,
     make_file_stable_id,
-    make_route_stable_id,
     make_route_symbol,
     make_symbol_id,
     make_typed_stable_id,
@@ -3752,18 +3751,18 @@ def _extract_go_routes(
                                     start_line = n.start_point[0] + 1
                                     end_line = n.end_point[0] + 1
 
-                                    mount_sym = Symbol(
-                                        id=make_symbol_id(
-                                            "go", str(file_path), start_line,
-                                            end_line,
-                                            f"MOUNT {mount_prefix}",
-                                            "route_mount",
-                                        ),
-                                        stable_id=make_route_stable_id("MOUNT", mount_prefix),
-                                        name=handler_ref,
-                                        # ADR-0027 Phase 3 / audit-findings 0013:
-                                        # framework-role leak.
-                                        kind="function",
+                                    # WI-zugob: the FIFTH go minting site. The
+                                    # earlier go migration moved the four
+                                    # net/http + mux + chi Handle paths and
+                                    # missed this one, because the go
+                                    # route-parity fixture is net/http only and
+                                    # never exercised a Mount — so the gate
+                                    # could not see that it violated BOTH the id
+                                    # kind-slot (unregistered "route_mount") and
+                                    # the id name-slot (name was the handler,
+                                    # the slot was "MOUNT {prefix}"). The
+                                    # go-mount fixture case now covers it.
+                                    mount_sym = make_route_symbol(
                                         language="go",
                                         path=str(file_path),
                                         span=Span(
@@ -3772,14 +3771,13 @@ def _extract_go_routes(
                                             start_col=n.start_point[1],
                                             end_col=n.end_point[1],
                                         ),
+                                        method="MOUNT",
+                                        route_path=mount_prefix,
                                         origin=PASS_ID,
                                         origin_run_id=run.execution_id,
-                                        meta={
-                                            "mount_prefix": mount_prefix,
-                                            "handler_ref": handler_ref,
-                                            "framework_role": "route_mount",
-                                        },
-                                        line_span=end_line - start_line + 1,
+                                        framework_role="route_mount",
+                                        handler_ref=handler_ref,
+                                        extra_meta={"mount_prefix": mount_prefix},
                                         is_exported=bool(handler_ref) and handler_ref.rsplit(".", 1)[-1][:1].isupper(),
                                     )
                                     routes.append(mount_sym)

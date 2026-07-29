@@ -2024,8 +2024,8 @@ def expand_class_based_view_routes(
           should be dropped (only populated when expansion succeeded for
           that route).
     """
-    from .analyze.base import make_route_stable_id, make_symbol_id
-    from .ir import Span, Symbol as SymbolCls, make_pass_id
+    from .analyze.base import make_route_symbol
+    from .ir import Span, make_pass_id
 
     # Build view_class_name -> set of declared HTTP method names.
     # Method symbols are named "ClassName.method"; a class can define a
@@ -2067,42 +2067,34 @@ def expand_class_based_view_routes(
         route_path = meta.get("route_path") or "/"
         for method_name in sorted(methods):
             http_method = method_name.upper()
-            new_meta = {
-                "route_path": route_path,
-                "http_method": http_method,
-                "view_name": view_name,
-                "view_method": method_name,
-                "expanded_from": sym.id,
-                "framework_role": "route",
-            }
-            # WI-tufil: id kind-slot = the symbol's own kind ("function"), name
-            # slot = the symbol's name, so the id round-trips against Symbol.kind
-            # (the route signal is in meta["framework_role"]).
-            new_name = f"{sym.name}.{method_name}"
-            new_id = make_symbol_id(
-                sym.language, sym.path,
-                sym.span.start_line, sym.span.end_line,
-                new_name, "function",
-            )
-            new_routes.append(
-                SymbolCls(
-                    id=new_id,
-                    name=new_name,
-                    kind="function",
-                    language=sym.language,
-                    path=sym.path,
-                    span=Span(
-                        start_line=sym.span.start_line,
-                        end_line=sym.span.end_line,
-                        start_col=sym.span.start_col,
-                        end_col=sym.span.end_col,
-                    ),
-                    origin=pass_id,
-                    origin_run_id=origin_run_id,
-                    stable_id=make_route_stable_id(http_method, route_path),
-                    meta=new_meta,
-                )
-            )
+            # WI-javag / WI-zugob: mint through the shared chokepoint rather
+            # than deriving a name by string concatenation. The old
+            # f"{sym.name}.{method_name}" inherited whatever the parent marker
+            # was called, and py.py's Django markers were named
+            # "django:{view}" — so the COLON went straight into
+            # make_symbol_id's name slot and produced a SIX-segment id that
+            # could not be parsed back into its ADR-0036 slots at all. Deriving
+            # the name from method+path removes the whole class of problem
+            # instead of sanitizing one instance of it.
+            new_routes.append(make_route_symbol(
+                language=sym.language or "python",
+                path=sym.path,
+                span=Span(
+                    start_line=sym.span.start_line,
+                    end_line=sym.span.end_line,
+                    start_col=sym.span.start_col,
+                    end_col=sym.span.end_col,
+                ),
+                method=http_method,
+                route_path=route_path,
+                origin=pass_id,
+                origin_run_id=origin_run_id,
+                extra_meta={
+                    "view_name": view_name,
+                    "view_method": method_name,
+                    "expanded_from": sym.id,
+                },
+            ))
         removed_ids.add(sym.id)
 
     return new_routes, removed_ids
