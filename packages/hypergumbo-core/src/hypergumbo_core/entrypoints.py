@@ -1616,7 +1616,16 @@ def detect_entrypoints(
     # it less certainly an entrypoint — so they mutate ``rank_score``, leaving
     # detection ``confidence`` at the construction base. rank_score initialized
     # from confidence, so the accumulated ranking value is unchanged).
-    build_wrapper_ids: set[str] = set()
+    # Entrypoints whose rank_score was deliberately demoted and which must NOT
+    # be re-inflated by the ADDITIVE connectivity boost below. Three categories
+    # populate it (infrastructure-path exports, build wrappers, vendored
+    # exports); each learned the same lesson independently, so the skip-set is
+    # shared rather than a fourth parallel set the next category has to
+    # rediscover. Without it a x0.1 demotion to 0.0225 is undone by an
+    # in-degree boost of up to +0.35 and the entry climbs back over the
+    # MIN_ENTRYPOINT_CONFIDENCE floor — the demotion looks applied but the
+    # entry still seeds `--entry auto`.
+    boost_suppressed_ids: set[str] = set()
     for ep in unique_entrypoints:
         sym = symbol_lookup.get(ep.symbol_id)
         if sym is None:
@@ -1661,15 +1670,15 @@ def detect_entrypoints(
         # the penalties above fire and its large out-degree would otherwise
         # boost it above the real API surface, making it the default
         # --entry auto seed. It is build tooling, never the code a developer
-        # wants to slice from. Tracked so the connectivity boost skips it too
-        # (same pattern as infra_export_ids), otherwise the boost re-inflates it.
+        # wants to slice from. Tracked so the connectivity boost skips it too,
+        # otherwise the boost re-inflates it.
         if (
             ep.kind == EntrypointKind.SHELL_SCRIPT
             and sym.path
             and sym.path.rsplit("/", 1)[-1] in _BUILD_WRAPPER_BASENAMES
         ):
             ep.rank_score *= 0.1
-            build_wrapper_ids.add(ep.symbol_id)
+            boost_suppressed_ids.add(ep.symbol_id)
 
         # Penalty for Go main()s in deeply nested cmd/ directories (50%).
         # In Go repos, top-level cmd/<name>/ holds the primary application
@@ -1742,6 +1751,17 @@ def detect_entrypoints(
     # problem: 6 Python helper scripts (with main()) should NOT suppress
     # 163 Lean library_export entries.  Lean exports ARE the right
     # entrypoints for a Lean library — Python main() is incidental tooling.
+    #
+    # WI-batit: that carve-out protects FIRST-PARTY API surface, so it must not
+    # extend to VENDORED code.  A tier>=3 export is third-party code the repo
+    # merely carries; it is never the API surface a developer slices from, in
+    # any language.  Without this the carve-out shielded pretix's bundled JS
+    # (no JS semantic entrypoints -> js not in langs_with_semantic) at
+    # 0.75 * 0.3 = 0.225, above the 0.10 floor, so pdf.worker.js/d3/vue.js
+    # seeded both `slice --entry auto` and the reverse slice (which ranks with
+    # the same detect_entrypoints call) ahead of the real Django views.
+    # Scoped by TIER, not by a vendor-path allowlist, so it is the supply-chain
+    # axis doing the work rather than a second hand-curated basename set.
     langs_with_semantic: set[str] = set()
     for ep in unique_entrypoints:
         if ep.kind in _SEMANTIC_KINDS:
@@ -1755,19 +1775,23 @@ def detect_entrypoints(
                 if sym.path and is_utility_file(sym.path):
                     continue
                 langs_with_semantic.add(sym.language)
-    infra_export_ids: set[str] = set()
-    if langs_with_semantic:
-        for ep in unique_entrypoints:
-            if ep.kind == EntrypointKind.LIBRARY_EXPORT:
-                sym = symbol_lookup.get(ep.symbol_id)
-                lang = sym.language if sym else None
-                if lang and lang in langs_with_semantic:
-                    ep.rank_score *= 0.1  # 90% ranking reduction, same as test penalty
-                    # Infrastructure-path exports (telemetry/, metrics/, logging/)
-                    # are internal plumbing, not developer-facing API.  Track
-                    # them so connectivity boost skips them (like tests).
-                    if sym and sym.path and is_infrastructure_path(sym.path):
-                        infra_export_ids.add(ep.symbol_id)
+    for ep in unique_entrypoints:
+        if ep.kind == EntrypointKind.LIBRARY_EXPORT:
+            sym = symbol_lookup.get(ep.symbol_id)
+            lang = sym.language if sym else None
+            is_vendored = sym is not None and sym.supply_chain_tier >= 3
+            if is_vendored or (lang and lang in langs_with_semantic):
+                ep.rank_score *= 0.1  # 90% ranking reduction, same as test penalty
+                # A vendored export is third-party code in every repo, so the
+                # demotion must stick — suppress the boost unconditionally.
+                # Infrastructure-path exports (telemetry/, metrics/, logging/)
+                # are internal plumbing, not developer-facing API, and get the
+                # same treatment (in gemini-cli, 77 telemetry exports survived
+                # at ~0.14 purely on the boost).
+                if is_vendored or (
+                    sym and sym.path and is_infrastructure_path(sym.path)
+                ):
+                    boost_suppressed_ids.add(ep.symbol_id)
 
     # Language dominance: prefer entrypoints from the dominant language.
     # In a repo that's 95% C and 5% Python, a C main() should rank above
@@ -1831,17 +1855,12 @@ def detect_entrypoints(
         sym = symbol_lookup.get(ep.symbol_id)
         if sym and sym.path and is_test_file(sym.path):
             continue
-        # Skip connectivity boost for infrastructure-path library exports
-        # (telemetry/, metrics/, logging/).  Like test functions, these are
-        # already demoted and the additive boost would bring them back above
-        # the confidence threshold.  In gemini-cli, 77 telemetry exports
-        # survived at ~0.14 confidence via connectivity boost.
-        if ep.symbol_id in infra_export_ids:
-            continue
-        # WI-batit: skip the connectivity boost for demoted build wrappers
-        # (mvnw/gradlew) — their large out-degree would otherwise re-inflate
-        # the x0.1 demotion above, same rationale as infra_export_ids.
-        if ep.symbol_id in build_wrapper_ids:
+        # Skip the connectivity boost for deliberately-demoted entries
+        # (infrastructure-path exports, build wrappers, vendored exports).
+        # Like test functions, these are already demoted and the ADDITIVE boost
+        # would bring them back above the ranking floor. See
+        # ``boost_suppressed_ids`` for why all three share one set.
+        if ep.symbol_id in boost_suppressed_ids:
             continue
         effective_edges = _effective_out_degree(ep.symbol_id)
         in_degree = incoming_counts.get(ep.symbol_id, 0)

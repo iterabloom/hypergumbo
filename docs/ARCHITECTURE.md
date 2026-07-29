@@ -15,14 +15,14 @@ for focused LLM context.
 
 hypergumbo analyzed its own source code and found:
 - **297** Python modules (133 analyzers, 59 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 30, Infrastructure 8; 68 core, 4 CLI, 33 tracker)
-- **37566** symbols (functions, classes, methods)
-- **128135** edges by type:
-  - calls: 64727
-  - contains: 34699
-  - imports: 11409
-  - instantiates: 10520
-  - references: 4293
-  - module_attr_ref: 1160
+- **37619** symbols (functions, classes, methods)
+- **128233** edges by type:
+  - calls: 64741
+  - contains: 34751
+  - imports: 11413
+  - instantiates: 10523
+  - references: 4294
+  - module_attr_ref: 1184
   - other: 1327
 
 ## Package Architecture
@@ -85,7 +85,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 37566 Symbols + 128135 Edges + UsageContexts           │
+│  Output: 37619 Symbols + 128233 Edges + UsageContexts           │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -240,7 +240,6 @@ A relationship between two symbols (e.g., function calls).
 - `confidence`: Detection-reliability score (0.0-1.0) — the producer's evidence-derived estimate that the relationship EXISTS (ADR-0039 ruling 1). NOT a ranking value; post-detection ranking boosts/penalties live in ``rank_score``.
 - `confidence_source`: Provenance of the ``confidence`` value (ADR-0039 ruling 2), one of ``VALID_CONFIDENCE_SOURCES`` — ``evidence_derived`` / ``emitter_constant`` / ``composite``. See ``VALID_CONFIDENCE_SOURCES`` for the enumeration and re-evaluation trigger.
 - `rank_score`: Ranking prominence (0.0-1.0). Initializes from ``confidence`` and accumulates the ranking adjustments ADR-0039 ruling 3 relocates off ``confidence`` (e.g. the type-hierarchy fan-out dampener). Equal to ``confidence`` until a producer relocates its adjustment. Ranking consumers key on this; reliability consumers key on ``confidence``.
-- `quality`: Score and reason dict for quality assessment
 - `meta`: Optional metadata dict. Dataflow edges store access_mode (ADR-0015) and channel here; cross-boundary edges store data_direction (ADR-0038 ruling 3).
 
 
@@ -272,19 +271,19 @@ These symbols have the highest bidirectional centrality
 
 | Symbol | Kind | Score | Location |
 |--------|------|-------|----------|
-| `Symbol` | class | 9455.8 | ir.py |
-| `Span` | class | 6342.5 | ir.py |
-| `write_text` | external_symbol | 3299.0 | <external> |
-| `LinkerContext` | class | 3268.5 | registry.py |
-| `Edge.create` | method | 2106.7 | ir.py |
+| `Symbol` | class | 9460.4 | ir.py |
+| `Span` | class | 6345.5 | ir.py |
+| `write_text` | external_symbol | 3301.0 | <external> |
+| `LinkerContext` | class | 3272.5 | registry.py |
+| `Edge.create` | method | 2093.1 | ir.py |
 | `TrackerApp` | class | 1946.9 | tui.py |
 | `load_framework_patterns` | function | 1875.9 | framework_patterns.py |
-| `Path` | external_symbol | 1630.0 | <external> |
+| `Path` | external_symbol | 1631.0 | <external> |
 | `main` | function | 1563.1 | cli.py |
 | `clear_pattern_cache` | function | 1336.8 | framework_patterns.py |
-| `Edge` | class | 1282.0 | ir.py |
-| `append` | external_symbol | 1250.0 | <external> |
-| `get` | external_symbol | 1146.0 | <external> |
+| `Edge` | class | 1264.1 | ir.py |
+| `append` | external_symbol | 1226.0 | <external> |
+| `get` | external_symbol | 1123.0 | <external> |
 | `TreeSitterAnalyzer` | class | 1074.7 | base.py |
 | `find_files` | function | 997.1 | discovery.py |
 
@@ -846,8 +845,8 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: bb1822247a91
-  commit_count: 6315
+  commit: 4c1d0438fa34
+  commit_count: 6331
   hypergumbo: 7.0.0
   python: 3.12.3
 -->
