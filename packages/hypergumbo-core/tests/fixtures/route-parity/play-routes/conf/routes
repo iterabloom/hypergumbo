@@ -1,0 +1,4 @@
+# Play routes
+GET     /users          controllers.UserController.index
+POST    /users          controllers.UserController.create
+->      /admin          admin.Routes
