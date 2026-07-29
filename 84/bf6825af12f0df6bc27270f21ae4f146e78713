@@ -1,0 +1,67 @@
+Original commit body from 48bafe8c86a01e7538dd0811b17e326590d28548:
+
+`git log -p`, `git diff` and `git blame` exited 128 on any .ops path, which
+silently truncated every history-walking tool run against this repo: a
+full-history gitleaks scan stopped after 1 commit / 3.66 KB and still printed
+"no leaks found".
+
+TWO DRIVER NAMES, ONE CONCERN. The repo root .gitattributes declared
+`diff=tracker` (installed by scripts/install-hooks, pointing at the working
+scripts/tracker-textconv). The nested .agent/*/.ops/.gitattributes declared
+`diff=tracker-ops` (installed by `tracker setup`, pointing at
+`python -m hypergumbo_tracker.cli textconv`). Git resolves attributes
+most-specific-path-first, so the nested name always won and the root
+declaration was live-looking dead configuration -- and the winning driver did
+not exist.
+
+ROOT CAUSE IS A SPEC/IMPLEMENTATION DIVERGENCE, NOT A TYPO. ADR-0013 documents
+a `textconv` SUBCOMMAND in two places (the CLI table and section "Local Diff
+Declutter"), but only the hypergumbo-tracker-textconv console script was built.
+setup.py's invocation was a faithful reading of the spec against a surface that
+was never implemented. Git aborts any diff whose textconv driver writes to
+stderr, so argparse's "invalid choice" usage dump broke every patch-producing
+walk -- including plain `git log -p`, which only needs to reach one .ops file.
+
+FIXES (chokepoint, not per-site):
+- `textconv` is now a genuine subcommand, sharing one `_render_textconv` body
+  with the console script so the two documented surfaces cannot drift. It
+  dispatches early in main(), before TrackerSet construction: git invokes it
+  once per blob per diff, so it must stay a pure, fast read.
+- One name everywhere: root .gitattributes, nested .gitattributes, and the
+  git-config key all use `diff=tracker` (the ADR's name, hardened by
+  5d7d294e1b "address ADR-0013 divergences" and silently overridden since).
+- migration.py writes the driver line for fresh repos.
+- `tracker setup` now EXECUTES the configured driver against a real op log and
+  asserts exit 0 AND empty stderr. It previously checked only that the config
+  key was set, so it reported "Git textconv driver ok" while the command did
+  not exist. Presence of configuration is a proxy; running it is the behaviour.
+- setup.py's `git config --global` fallback is REMOVED. It leaked a per-repo
+  diff driver into machine-wide config, where it applied to unrelated repos and
+  outlived the checkout; it had fired in practice. It now warns with the exact
+  local command instead.
+- ADR-0013 gains the one-driver-name invariant and the specificity hazard.
+
+The nested .gitattributes are KEPT, not deleted: they carry merge=union for
+standalone `pip install hypergumbo-tracker` repos that have no hypergumbo root
+.gitattributes. Only the conflicting `diff=` line was accretion.
+
+TESTS. `_check_textconv` already had extensive coverage, and every test mocked
+the subprocess while asserting the broken string was correct -- the suite
+encoded the defect as expected behaviour at 100% coverage. Three tests
+rewritten (including one asserting the --global fallback). Two new files split
+the concerns: test_textconv_git_integration.py drives real git (attribute
+resolution reaches the configured driver; log -p / diff / blame succeed; plus a
+POSITIVE CONTROL that fails on a stderr-writing driver, so a green run cannot
+mean the gate never fired), and test_textconv_wiring.py covers the same
+branches in-process, because subprocess tests contribute no coverage and
+mocking is exactly what hid this.
+
+Evidence: 1915 passed, 100% coverage on changed sources. On this repo
+`git log -p` and `git blame` over .ops paths now exit 0 (both were 128).
+Stale unreferenced diff.tracker-ops entries were also cleared from .git/config
+and ~/.gitconfig.
+
+Governance: touches .agent/**, scripts/-adjacent config and docs/adr/.
+Human approval given explicitly for this change, including self-merge.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
