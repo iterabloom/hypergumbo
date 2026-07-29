@@ -1,0 +1,47 @@
+Original commit body from aff49a7407e0fd3d1eeebf7b025259d0a4e46f08:
+
+Every route-marker producer hand-rolls its Symbol record, and they drifted
+apart in the four ways the validators check: an id kind-slot left as the
+literal `route` fossil (`route` is not a registered symbol kind ->
+id_format), an absent origin_run_id (cross_field), an unregistered origin
+pass-id (axis_conformance), and -- newly measured here -- an id NAME-slot
+that does not round-trip against Symbol.name (ADR-0036 Ruling 1).
+
+`analyze.base.make_route_symbol` encapsulates the shape that
+framework_patterns.materialize_route_symbols already proved for the
+go/js/java trio, so a producer is fixed by routing through it rather than
+by re-deriving the invariant.
+
+Naming is FORCED, not stylistic: Symbol.name is "{METHOD} {path}" with the
+handler in meta.handler_ref (what linkers/route_handler already resolves
+against). A multi-method registration -- Starlette methods=['GET','POST'],
+a Django CBV expanded per verb -- emits several markers at the SAME span,
+so only the method+path pair keeps their ids distinct; a handler-derived
+name-slot would collide them. Pinned by a regression test.
+
+GATE BEFORE SWEEP. test_route_marker_id_name_slot_round_trips asserts the
+round-trip per language; not-yet-migrated producers sit in NAME_SLOT_HOLES
+as a STRICT xfail so a migration XPASSes and forces promotion (the
+ROUTE_HOLES idiom). Deliberately a marker, not an imperative
+pytest.xfail() -- the imperative form always reports xfail and can never
+XPASS, which would record the hole while silently disabling the ratchet
+meant to close it.
+
+Measured baseline over the route-parity corpus:
+  java, javascript  -- clean (already mint via the materializer)
+  python, rust      -- 0 markers (routes surface as concept=route; their
+                       direct producers need their own fixtures)
+  go                -- LIVE VIOLATION: mints inline with name=handler_name
+                       against an id name-slot of "{METHOD} {path}" -- the
+                       same inverted Pattern B WI-vuzaf filed as
+                       Starlette-specific, inside the cohort WI-tufil had
+                       declared clean.
+
+No producer is migrated in this commit; the fleet (go, py.py Django/
+Starlette/Flask-RESTful, ruby, php, elixir, swift, play_routes, js_ts,
+grpc, annotation_convention) stays tracked on WI-zugob, which describes
+itself as batchable one-producer-per-PR.
+
+Refs: WI-zugob-rafal-turav-nasaj-fakam-dukup-juzad-votaj
+Refs: WI-vuzaf-fitar-dubid-gusut-mobud-rigin-vifod-pahas
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
