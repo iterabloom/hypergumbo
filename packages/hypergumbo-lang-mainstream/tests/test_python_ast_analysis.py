@@ -8828,3 +8828,166 @@ def test_run_module_attr_ref_module_scope_read_resolves(
     assert "u.py" in nodes[refs[0]["src"]].get("path", ""), (
         f"the module-scope read must be attributed to u.py; got src={refs[0]['src']}"
     )
+
+
+# --- WI-luhah residual: STATEMENT-bound shadows colliding with an import alias ---
+
+def _assert_no_resolved_config_ref(tmp_path: Path, body: str) -> None:
+    """Run the pipeline over *body* and assert nothing resolves to the real
+    in-tree ``CONFIG`` variable node.
+
+    The suppressed shape still emits the generic ``module_attr_ref`` to the
+    synthetic ``0-0`` attribute stand-in — that is the pre-retarget baseline
+    and is exactly what "no confidently-wrong edge to a first-party symbol"
+    means here.
+    """
+    _build_nuzas_monorepo(tmp_path)
+    auth = tmp_path / "packages" / "auth" / "src" / "authpkg"
+    (auth / "config.py").write_text("CONFIG = {'a': 1}\n")
+    (tmp_path / "packages" / "api" / "src" / "apipkg" / "u.py").write_text(body)
+    out_path = tmp_path / "out.json"
+    run_behavior_map(
+        repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False
+    )
+    data = json.loads(out_path.read_text())
+    config_var = next(
+        (n["id"] for n in data["nodes"]
+         if n["kind"] == "variable" and n.get("name") == "CONFIG"
+         and "config.py" in n.get("path", "")), None
+    )
+    assert config_var is not None, "fixture CONFIG variable node must exist"
+    # Only the RETARGET edge types, and only from the reading file — the
+    # containment linker legitimately emits `contains` from config.py's own
+    # file node to the variable it declares.
+    wrong = [
+        e for e in data["edges"]
+        if e.get("dst") == config_var
+        and e.get("type") in ("references", "module_attr_ref")
+        and "u.py" in str(e.get("src", ""))
+    ]
+    assert wrong == [], (
+        "a statement-bound name shadowing the import alias must not retarget "
+        f"to the module constant; got {wrong}"
+    )
+
+
+def test_run_module_attr_ref_module_def_shadow_no_references(
+    tmp_path: Path,
+) -> None:
+    """WI-luhah residual: a module-level ``def cfg`` shadows the import alias.
+
+    ``def``/``class`` bind their name without an ``ast.Store`` target, so the
+    module-scope rebind walk never saw them and the read stayed
+    confidently-wrong-RESOLVED against the real ``CONFIG`` node.
+    """
+    _assert_no_resolved_config_ref(
+        tmp_path,
+        "import authpkg.config as cfg\n"
+        "def cfg():\n"
+        "    return None\n"
+        "X = cfg.CONFIG\n",
+    )
+
+
+def test_run_module_attr_ref_module_class_shadow_no_references(
+    tmp_path: Path,
+) -> None:
+    """WI-luhah residual: a module-level ``class cfg`` shadows the alias."""
+    _assert_no_resolved_config_ref(
+        tmp_path,
+        "import authpkg.config as cfg\n"
+        "class cfg:\n"
+        "    pass\n"
+        "Y = cfg.CONFIG\n",
+    )
+
+
+def test_run_module_attr_ref_except_as_shadow_no_references(
+    tmp_path: Path,
+) -> None:
+    """WI-luhah residual: ``except E as cfg`` binds via ``ExceptHandler.name``,
+    a bare ``str`` rather than a ``Name`` node, so the Store-walk missed it."""
+    _assert_no_resolved_config_ref(
+        tmp_path,
+        "import authpkg.config as cfg\n"
+        "try:\n"
+        "    pass\n"
+        "except ValueError as cfg:\n"
+        "    pass\n"
+        "W = cfg.CONFIG\n",
+    )
+
+
+def test_run_module_attr_ref_enclosing_nested_def_shadow_no_references(
+    tmp_path: Path,
+) -> None:
+    """WI-luhah residual, enclosing half: a nested ``def cfg`` in an ENCLOSING
+    function shadows the alias for the inner read.
+
+    The LEGB ``local_names_by_func_id`` set deliberately omits def/class names
+    (the lookup resolves them as ``NestedDef`` bindings), so this needed the
+    dedicated statement-shadow collector the item called for.
+    """
+    _assert_no_resolved_config_ref(
+        tmp_path,
+        "import authpkg.config as cfg\n"
+        "def outer():\n"
+        "    def cfg():\n"
+        "        return None\n"
+        "    def inner():\n"
+        "        return cfg.CONFIG\n"
+        "    return inner\n",
+    )
+
+
+def test_run_module_attr_ref_walrus_leak_shadow_no_references(
+    tmp_path: Path,
+) -> None:
+    """WI-luhah residual: a walrus target inside a comprehension binds in the
+    ENCLOSING scope (PEP 572), so it shadows the alias even though the
+    comprehension's own for-target would not.
+
+    This is why the statement-shadow walk descends into comprehensions while
+    the Store-walk beside it must skip them.
+    """
+    _assert_no_resolved_config_ref(
+        tmp_path,
+        "import authpkg.config as cfg\n"
+        "VALS = [y for y in range(3) if (cfg := y)]\n"
+        "Q = cfg.CONFIG\n",
+    )
+
+
+def test_run_module_attr_ref_unshadowed_alias_still_retargets(
+    tmp_path: Path,
+) -> None:
+    """The shadow additions must not over-suppress: with no colliding
+    statement name the retarget to the real in-tree CONFIG still fires."""
+    _build_nuzas_monorepo(tmp_path)
+    auth = tmp_path / "packages" / "auth" / "src" / "authpkg"
+    (auth / "config.py").write_text("CONFIG = {'a': 1}\n")
+    (tmp_path / "packages" / "api" / "src" / "apipkg" / "u.py").write_text(
+        "import authpkg.config as cfg\n"
+        "Z = cfg.CONFIG\n"
+    )
+    out_path = tmp_path / "out.json"
+    run_behavior_map(
+        repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False
+    )
+    data = json.loads(out_path.read_text())
+    config_var = next(
+        (n["id"] for n in data["nodes"]
+         if n["kind"] == "variable" and n.get("name") == "CONFIG"
+         and "config.py" in n.get("path", "")), None
+    )
+    assert config_var is not None
+    retargets = [
+        e for e in data["edges"]
+        if e.get("dst") == config_var
+        and e.get("type") in ("references", "module_attr_ref")
+        and "u.py" in str(e.get("src", ""))
+    ]
+    assert retargets, (
+        "an unshadowed in-tree module alias must still retarget to the real "
+        "CONFIG variable — the shadow set must not over-approximate"
+    )
