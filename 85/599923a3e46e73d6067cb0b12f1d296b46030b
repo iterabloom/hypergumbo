@@ -1,0 +1,54 @@
+Original commit body from cfb477485845eb4b1f989f4d5edc81a0cddf5c9c:
+
+Three http_method value-space defects, each of which silently LOST a link
+or an entire route. A premise-check against live code before coding
+confirmed three of the filed defects, found one materially worse than
+filed, and found two that no longer reproduce.
+
+1. Route::match routes vanished entirely (worse than filed).
+
+Laravel declares its verbs as args[0] -- Route::match(['get','post'],
+'/path', ...) -- but the PHP analyzer read the route path from args[0]
+unconditionally, found an array rather than a string, and skipped the
+call. So this was never the filed "lossy MATCH aggregate persists in
+http_method": the whole route was absent from the map, and an existing
+test pinned that as expected behaviour ("currently skipped because first
+arg isn't a string"). Every positional argument now shifts by one for
+match (path args[1], controller args[2]) and the real verb list is
+emitted comma-joined as GET,POST. A dynamically-built verb list still
+falls back to the MATCH token rather than inventing verbs.
+
+2. ALL was an unrecognized wildcard.
+
+node-http.yaml emits literal:ALL for http.createServer catch-alls, but
+the OpenAPI linker's inline check knew only ANY and *, so an ALL route
+never linked where an equivalent ANY route would.
+
+3. Comma-joined multi-method routes could never link.
+
+framework_patterns joins a list-valued YAML method key with "," and only
+the route-materializer splits it back, so the linker compared "GET,POST"
+against a single verb -- never equal. This is what made fix 1's output
+useful rather than merely present.
+
+All three now route through routes.method_matches() /
+WILDCARD_HTTP_METHODS in the canonical route accessor, which understands
+the absent, wildcard (ANY/ALL/*) and comma-joined forms. The OpenAPI
+linker delegates rather than re-implementing a partial version -- the
+chokepoint shape, and the same module that already consolidated route_of
+/ is_route.
+
+The * spelling has zero producers. Kept deliberately, not removed: it is
+the conventional HTTP wildcard, costs one frozenset member, and dropping
+it would narrow matching for any hand-authored meta or future producer.
+Now documented in the vocabulary rather than sitting as an unexplained
+literal inside one consumer.
+
+TWO FILED DEFECTS DO NOT REPRODUCE (recorded, not silently dropped):
+Laravel RESOURCE / API_RESOURCE already expands to 7/5 real-verb route
+symbols -- the aggregate token only labels the call-site UsageContext,
+which honestly names the call that was made -- and Phoenix `resources`
+already expands to its 7 routes. Both verified by live probe.
+
+Refs: WI-zunal, WI-jorim, INV-tibap
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
