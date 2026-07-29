@@ -1,0 +1,42 @@
+Original commit body from f6f755d5df4b9862496ce54b6ecb83bb6b586e43:
+
+First producer migration onto the WI-zugob chokepoint. All four inline
+minting sites in go.py -- net/http HandleFunc, the gorilla-mux builder
+chain, chi/gorilla Handle, and the framework route path -- now call
+analyze.base.make_route_symbol instead of hand-rolling the Symbol record.
+
+CONSUMER-VISIBLE: a go route marker's Symbol.name changes from the handler
+name ("submitHandler") to the method+path pair ("POST /submit"). That is
+what java and javascript route markers have emitted since WI-tufil -- go
+was the odd one out, and its id name-slot ALREADY carried "{METHOD} {path}"
+while Symbol.name carried the handler, which is the ADR-0036 Ruling 1
+violation this closes.
+
+Handler identity is not lost: it stays in meta["handler_name"], the key
+linkers/route_handler already resolved against (it never read Symbol.name),
+so route->handler edge recovery is unchanged. 15 test assertions that read
+routes[N].name are rewritten same-intent onto meta["handler_name"] -- they
+still pin handler identification, they just read it where it now lives.
+
+The change is forced rather than cosmetic: a multi-method registration
+emits several markers at one span, so only the method+path pair keeps their
+ids distinct.
+
+RATCHET DRAINED. The strict xfail for `go` XPASSed on migration and failed
+the suite until promoted out of NAME_SLOT_HOLES -- the gate working as
+designed, and the reason it was landed before the sweep.
+
+Behavioral evidence, real repo (~/ALL_REPOS/curriculum_repos/caddy):
+3 route markers, 0 violations across all four properties -- id name-slot
+round-trip, id kind-slot == Symbol.kind, non-empty origin_run_id joining a
+real AnalysisRun, registered origin pass-id. Fixture corpus: go/java/
+javascript all clean.
+
+Remaining producers (py.py Django/Starlette/Flask-RESTful, ruby, php,
+elixir, swift, play_routes, js_ts, grpc, annotation_convention) stay on
+WI-zugob. py.py additionally needs new route-parity fixtures before it can
+be gated -- the existing python fixture is Flask and produces no standalone
+marker.
+
+Refs: WI-zugob-rafal-turav-nasaj-fakam-dukup-juzad-votaj
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
