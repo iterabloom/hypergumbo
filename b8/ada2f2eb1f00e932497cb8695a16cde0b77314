@@ -1,0 +1,44 @@
+Original commit body from aac78ff5a03b01a56c6151c02e55c328ed5540be:
+
+The module-attr / variable-ref retarget resolves `cfg.CONFIG` to a real
+first-party symbol when `cfg` is an in-tree module alias, guarded by a
+shadow set so a local that rebinds the alias stays phantom. That set was
+built from ast.Name/ast.Store assignment targets only -- but four forms
+bind a name WITHOUT one:
+
+  - a module-level `def cfg` / `class cfg` (the statement binds in the
+    enclosing scope, even though its body opens a new one)
+  - `except E as cfg` (ExceptHandler.name is a bare str, not a Name node)
+  - a walrus `(cfg := ...)` inside a comprehension, which per PEP 572
+    binds in the CONTAINING scope
+  - the same def/class collision one scope out, where a nested function's
+    read closes over an enclosing statement name
+
+Each left a confidently-wrong RESOLVED edge pointing at the module's real
+symbol -- the INV-fahub failure class -- and each was documented in-code
+as an accepted residual, with the fix shape named ("a dedicated
+per-function shadow collector distinct from the LEGB local_names set").
+
+All four reproduced on a live probe before any code changed; the fix is
+_collect_statement_binding_names, unioned into the module-scope rebind
+walk and into _enclosing_shadow via a per-function map built inside
+_extract_edges (which already has the tree and the node->symbol map, so
+no FileAnalysis field is threaded).
+
+Kept deliberately SEPARATE from _collect_scope_local_names: that set
+feeds the LEGB lookup, which resolves def/class names to their NestedDef
+bindings directly and would break if they were treated as opaque locals.
+This one is a shadow set, not a lookup set.
+
+Safety: every name it adds can only turn a retarget resolved -> phantom
+(a missed retarget), never phantom -> resolved. A non-vacuous control
+test asserts an UNSHADOWED alias still retargets to the real CONFIG
+variable, so the shadow cannot silently over-approximate.
+
+Note for future readers: the first draft of these tests asserted "no edge
+anywhere targets CONFIG" and failed on the containment linker's entirely
+correct `contains` file->variable edge. The assertion must be scoped to
+the retarget edge types AND to the reading file.
+
+Refs: WI-luhah, INV-fahub, INV-nuzas, WI-huhum
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
