@@ -1,0 +1,55 @@
+Original commit body from 05863dd566a771d87bce06f063b8c993e0e1cc23:
+
+The route-parity corpus held five one-per-language cases and gated route-marker
+identity with ONE aggregate test over go/java/javascript. Eleven of the thirteen
+route-marker producers were therefore never measured, and the three that were
+got checked on three properties out of four -- which is how PR #64 was able to
+report go clean while go's fifth minting site was violating two of them.
+
+Adds ten fixture cases (django, starlette, go-mount, ruby, php, elixir, swift,
+grpc, play-routes, js-named, annotation) and replaces the aggregate with four
+per-case property tests, each with its own strict-xfail hole set so the producer
+sweep drains one measured number at a time:
+
+  id kind-slot     == Symbol.kind, registered kind (ADR-0036 R2)  --  9 holes
+  id name-slot     == sanitize_id_name_segment(Symbol.name) (R1)  --  3 holes
+  canonical id     5 anchored segments, {start}-{end} span slot   --  3 holes
+  origin provenance non-empty registered origin + a real run id   --  1 hole
+
+A fifth test asserts each analyzer/linker-direct case actually mints a marker,
+so none of the above can pass vacuously if a producer regresses. Every hole was
+MEASURED by running the full pipeline over the fixtures, not inferred from
+reading the producers.
+
+Three of the holes are defects no existing gate could see:
+
+  * go.py's chi/gorilla r.Mount() site was missed by the PR #64 migration and
+    violates BOTH slots (route_mount kind-slot fossil, name=handler_ref against
+    a "MOUNT {prefix}" name-slot). Invisible because the go fixture is net/http
+    only and never exercised a mount. The changelog entry for #64 is corrected
+    in place rather than left standing.
+  * The Django CBV expander concatenates the colon-bearing name "django:{view}"
+    straight into make_symbol_id, emitting a SIX-segment id -- a hard ADR-0036
+    grammar break, strictly worse than a wrong slot. Split out as WI-javag.
+  * elixir route markers carry an EMPTY Symbol.origin. WI-tufil's check iterated
+    origin and so passed vacuously on the empty list -- the "missing provenance"
+    half of WI-zugob's own title, hidden by the same mechanism it describes.
+
+Fixtures are now staged to a temp dir before analysis instead of being analyzed
+in place. Under tests/fixtures/ the pipeline's own test-path heuristics suppress
+the grpc linker outright (byte-identical .proto: 4 markers at an ordinary path,
+0 under the fixture path), so an in-place grpc case would have measured the
+suppression rather than the producer and passed green.
+
+Two related route-detection defects found while building the fixtures are filed,
+not fixed here: php silently drops double-quoted route paths (WI-fadip, the arg
+walk accepts tree-sitter `string` but not `encapsed_string`), and grpc mints a
+bare line number in its span slot.
+
+No producer changes -- this is the gate, landed before the sweep.
+
+Test module cost rises from 5 to 15 full-pipeline runs (~6 min under coverage
+instrumentation, 22s without); that is the price of measuring the fleet rather
+than a third of it.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
