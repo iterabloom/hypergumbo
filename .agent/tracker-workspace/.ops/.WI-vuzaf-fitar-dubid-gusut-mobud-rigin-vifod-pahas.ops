@@ -72,3 +72,18 @@
   clock: 8  # 71bc
   nonce: 71bc  # 71bc
   message: "PATTERN B PREMISE CORRECTED (PR #63, dev 7f285e1102) -- it is NOT Starlette-\nspecific, and it does NOT need a naming decision.\n\n(1) NOT STARLETTE-SPECIFIC. The 2026-07-22 note scoped Pattern B to\n\"Starlette route, py.py:3060-3066 (INVERTED -- id name-slot has the specific\nmethod+path, node.name has a generic 'starlette:<view>')\". A measured sweep of\nthe route-parity corpus found the SAME inversion in go.py, which mints route\nmarkers inline with name=handler_name against an id name-slot built from\n\"{METHOD} {path}\" (live: go:main.go:8-8:ANY /users:function, name='listUsers').\nDjango (py.py:3052) has it too (name=f\"django:{view_name}\"). So Pattern B is the\nfleet-wide route-marker shape, not one producer -- and go sits INSIDE the trio\nWI-tufil certified clean, because that gate never checked the name-slot.\n\n(2) THE NAMING DECISION ALREADY EXISTS. This item deferred Pattern B pending a\n\"route-naming decision\"; framework_patterns.materialize_route_symbols (the\nWI-tufil landing) already set the convention: name = \"{METHOD} {path}\", id\nderived from it. Adopted into the new `analyze.base.make_route_symbol`\nchokepoint. It is also FORCED, not a style pick: multi-method registrations emit\nseveral markers at one span, so a handler-derived name-slot collides their ids.\nNo owner call was needed.\n\nFIX DIRECTION for Pattern B is therefore: route the producer through\nmake_route_symbol (name = \"{METHOD} {path}\", handler into meta[\"handler_ref\"]),\nNOT \"align the id name-slot to the existing node.name\". Tracked as the producer\nsweep on WI-zugob.\n\nRESIDUAL (a) ws-endpoint -- unchanged, still open here.\nRESIDUAL (b) grpc CONFIRMED and sharpened: linkers/grpc.py:417 `_make_symbol_id`\nemits \"grpc:{file_path}:{line}:{name}:{kind}\". Two independent id_format breaks,\nnot one: 'grpc' occupies the {lang} slot (not a language), and {line} is a BARE\nLINE where the canonical grammar wants {start}-{end}. Both are INV-dulah\nviolations reachable without touching route semantics -- the cheapest remaining\nslice of this item."  # 71bc
+- op: update  # 1a38
+  at: '2026-07-29T11:04:22Z'  # 1a38
+  by: agent  # 1a38
+  actor: jgstern_agent  # 1a38
+  clock: 9  # 1a38
+  nonce: 1a38  # 1a38
+  set:  # 1a38
+    status: done  # 1a38
+- op: discuss  # ffe8
+  at: '2026-07-29T11:04:22Z'  # ffe8
+  by: agent  # ffe8
+  actor: jgstern_agent  # ffe8
+  clock: 10  # ffe8
+  nonce: ffe8  # ffe8
+  message: "DONE. Pattern A shipped at pt.38 (PR #44, 6 linker families via sanitize_id_name_segment). Pattern B — the INVERTED case where the id carried \"{METHOD} {path}\" while Symbol.name carried the handler — is closed by the WI-zugob sweep: every route producer now derives name and id name-slot from one method+path pair via make_route_symbol, so ADR-0036 Ruling 1 holds by construction rather than by a sanitize call at each site. Behavioral evidence: caddy 3 markers / 0 violations, express 10 / 0, name-slot round-trip checked per marker; gate test_route_marker_id_name_slot_round_trips at 0 holes. NOTE the item's filed scoping was wrong and is worth recording: Pattern B was filed as Starlette-specific and measured fleet-wide (go's mount, py.py Django+Starlette+Flask-RESTful, js_ts, play_routes include). The ws-endpoint and grpc residuals named on this item are also closed — grpc migrated in 00b23972f1 (its non-canonical id: a bare line number in the span slot, plus a PROTOCOL 'grpc' in the lang slot, both fixed)."  # ffe8

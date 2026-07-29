@@ -1,0 +1,20 @@
+- op: create  # 72be
+  at: '2026-07-29T08:46:52Z'  # 72be
+  by: agent  # 72be
+  actor: jgstern_agent  # 72be
+  clock: 1  # 72be
+  nonce: 72be  # 72be
+  data:  # 72be
+    kind: work_item  # 72be
+    title: "tracker auto-sync amended a feature-branch commit and destroyed its message; auto-pr's git-note net captured the post-loss body"  # 72be
+    status: todo_hard  # 72be
+    priority: 1  # 72be
+    parent:  # 72be
+    tags:  # 72be
+    - infra  # 72be
+    isbefore: []  # 72be
+    duplicate_of: []  # 72be
+    not_duplicate_of: []  # 72be
+    pr_ref:  # 72be
+    description: "The tracker auto-sync ran `git commit --amend` on a FEATURE-BRANCH commit it did\nnot author, replacing that commit's message with its own. The code survived; the\ncommit message was destroyed, and the git-notes safety net captured the wrong\nthing because it ran afterwards.\n\nLive instance 2026-07-29, PR #67 (WI-zugob producer batch 1):\n\n  reflog (bottom-up)\n    HEAD@{3}  checkout: dev -> jgstern-agent/fix/route-kind-slot-sweep-batch1\n    HEAD@{2}  commit (amend): tracker: 6 files (104 ops) - WI-tugab, WI-zugob...\n    HEAD@{1}  checkout: route-kind-slot-sweep-batch1 -> dev\n\n  result on dev\n    4062aa43b8  tracker: 6 files (104 ops)   <- 6 .ops files (correct, the sync's own)\n    cf955a0be1  tracker: 6 files (104 ops)   <- MY 7 CODE FILES, wearing the sync's message\n\n`cf955a0be1` contains .ci/affected-tests.txt, CHANGELOG.md, the route-parity\ngate and the four migrated analyzers -- and its subject claims it is a tracker\nop sync. `git log` for this change is now actively misleading: searching the\nhistory for the route migration finds a \"tracker:\" commit.\n\nContents are NOT mixed (ops in one commit, code in the other) and dev is\ncorrect: 72 passed / 11 xfailed, both CHANGELOG entries present, all four\nmigrations in place. This is a HISTORY-LEGIBILITY defect, not a correctness one.\n\nSECOND-ORDER FAILURE -- the git-notes recovery captured nothing useful.\nauto-pr's \"attach the original commit body\" step reads the body at merge time,\nby which point the amend had already replaced it, so the note reads:\n\n    Original commit body from f9e56d1509...:\n    Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>\n\ni.e. the exact mechanism that exists to survive message loss recorded the\npost-loss state. The real message was recoverable only because it happened to\nstill exist in a scratch file; it has since been appended to the note by hand.\n\nAGENTS.md documents the OPPOSITE direction of this hazard (\"auto-pr rebase\ncopies the .ops dirs and restores them afterwards, silently overwriting any\ntracker mutation performed during the run\") and prescribes \"do not perform\ntracker mutations while an auto-pr run is in flight.\" That rule was FOLLOWED\nhere -- the `tracker add` for WI-basat completed before auto-pr started. The\nauto-sync fired on its own schedule (the 80-line pending-ops threshold) once\nauto-pr was already running. So the documented mitigation does not cover this\ncase, because the agent does not control when auto-sync fires.\n\nCandidate fixes, roughly in order of directness:\n  (a) auto-sync must never `--amend`. If HEAD is not a commit auto-sync itself\n      authored, it should create a NEW commit. An amend of someone else's commit\n      is never the intent.\n  (b) auto-sync should refuse to run while `.git/PR_PENDING` exists -- the gate\n      file auto-pr already maintains -- and defer until it clears. This is the\n      symmetric partner of the existing \"don't mutate the tracker during\n      auto-pr\" rule, enforced in code instead of by agent discipline.\n  (c) auto-pr should capture the commit body BEFORE it begins, not at merge\n      time, so the notes net cannot record a post-corruption state.\n(a) and (c) are independent and both worth doing; (c) makes the class of failure\nsurvivable even if some other mechanism rewrites a message.\n\nCannot be repaired in history: dev is protected and force-push is forbidden. The\nrationale now lives in the git note on cf955a0be1 and in CHANGELOG.md."  # 72be
+    fields: {}  # 72be
