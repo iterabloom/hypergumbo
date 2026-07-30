@@ -1,0 +1,41 @@
+Original commit body from 0e2d51f6a1d57284eb6635d9a182192e2135518e:
+
+WI-logad, WI-hofav, WI-sohov. Three items, one spec section, each claim
+wrong in a different way.
+
+WI-logad — the tier table omitted the base most entrypoints carry. It
+listed 0.99/0.95/0.85/0.80/0.70/0.50 and named neither 0.75 nor 0.90.
+library_export emits 0.75 and is the single most common entrypoint kind on
+the self-corpus (45 of 118, 38%), so the table was missing the plurality
+case; 0.90 (FORM, SERIALIZER) was missing too. Both rows added, each
+annotated with the evidence_type carrying it. The 0.70 and 0.50 rows are
+KEPT despite being unexercised here — they are live producer constants
+(naming_heuristic :1062, connectivity_heuristic :1368), and deleting a tier
+because one corpus does not exercise it is the INV-lifik mistake.
+
+WI-hofav — the claimed 1:1 mapping between evidence_type and confidence
+does not hold. Measured, it fails for three of four emitted pathways:
+framework_pattern {0.95, 0.90}, structural {0.85, 0.80},
+language_convention {0.80, 0.75}; only manifest_declared {0.99} is
+single-valued. The base is chosen per DETECTOR and several detectors share
+a pathway at different bases, so evidence_type is documented as a coarser
+grouping and consumers are told to read confidence directly.
+
+WI-sohov — the discrete-vs-continuous contradiction was two descriptions
+of what are now two different fields. The section still said penalties
+apply to confidence and that ADR-0039's move to rank_score was "slated";
+it shipped. confidence is pure detection reliability holding only the base;
+rank_score takes the adjustments (test x0.1, vendor tier>=3 x0.3, utility
+x0.5, plus an additive min(0.25, log(1+out_edges)/10) boost from which
+deliberately demoted entries are excluded so an additive boost cannot undo
+a multiplicative demotion).
+
+Also: sorting was documented on the wrong key. The spec said "ranked by
+confidence"; entrypoints.py:1600 sorts by rank_score, and the emitted array
+is verifiably ordered by rank_score and NOT by confidence. The spec and the
+two producer docstrings that repeated the stale claim are corrected, so the
+contradiction cannot be restored from the code side.
+
+Docs only; no emitted value changed. 2003 passed across the 42-file set.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
