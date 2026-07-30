@@ -1,0 +1,40 @@
+Original commit body from 193b703c508229cd0e9514998d8740333eea3690:
+
+WI-solob. The previous attempt could never have worked, whatever the
+credentials: it built the logs path from the UI url's trailing number, and
+that number is the WORKFLOW INDEX, not the step. The logs endpoint keys on
+the step's GLOBAL id. Measured against the live instance:
+
+  /api/repos/1/logs/290/9      (pid)      -> 404
+  /api/repos/1/logs/290/1653   (step id)  -> 200, 116 KB
+
+So a fetch is two calls. Resolve the step from
+  GET /api/repos/{repo}/pipelines/{number}
+then fetch
+  GET /api/repos/{repo}/logs/{number}/{step_id}
+
+Step selection prefers a step whose name matches the requested job, and
+otherwise picks the FAILED step, so `ci-debug logs` with no arguments lands
+on whatever actually broke instead of the first step.
+
+Two decoding details, both taken from a real response rather than guessed,
+and both of which silently corrupt output if assumed away: entries can carry
+`data: null` (naive joining raises TypeError), and each entry is ONE line
+carrying a `line` ordinal, so they must be sorted by it and joined with
+newlines rather than concatenated.
+
+BEHAVIORAL EVIDENCE, end to end on the live instance:
+  `ci-debug logs "" 6435792229c5`               -> auto-picks the failed step
+                                                   and ends with the real
+                                                   ERROR from PR #92
+  `ci-debug logs verify-generated 6435792229c5` -> same ERROR
+  `ci-debug logs pytest 6435792229c5`           -> a DIFFERENT step's log
+                                                   (TOTAL 183 0 100%), which
+                                                   proves selection actually
+                                                   discriminates rather than
+                                                   always returning the failure
+
+The fallback also gains a 404 line, since "past both gates but wrong path" is
+now a distinguishable state and was exactly the one that bit here.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
