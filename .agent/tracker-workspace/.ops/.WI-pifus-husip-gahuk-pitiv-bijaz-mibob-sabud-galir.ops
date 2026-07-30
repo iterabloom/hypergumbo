@@ -1,0 +1,20 @@
+- op: create  # e3f0
+  at: '2026-07-30T07:14:35Z'  # e3f0
+  by: agent  # e3f0
+  actor: jgstern_agent  # e3f0
+  clock: 1  # e3f0
+  nonce: e3f0  # e3f0
+  data:  # e3f0
+    kind: work_item  # e3f0
+    title: "astro relativizes Symbol.path against the analysis root's PARENT, so every astro path-keyed join mismatches"  # e3f0
+    status: todo_hard  # e3f0
+    priority: 2  # e3f0
+    parent:  # e3f0
+    tags:  # e3f0
+    - dogfood  # e3f0
+    isbefore: []  # e3f0
+    duplicate_of: []  # e3f0
+    not_duplicate_of: []  # e3f0
+    pr_ref:  # e3f0
+    description: "Every astro Symbol carries a path with one extra leading directory component, so both Symbol.path and the id path-slot disagree with every other analyzer analyzing the SAME tree.\n\nIsolated repro (one tmp dir, one analysis root, two analyzers, same call shape):\n\n    astro   path='tmp.XXXX/src/Page.astro'   id=astro:tmp.XXXX/src/Page.astro:2-2:title:variable\n    scss    path='src/a.scss'                id=scss:src/a.scss:1-1:body:rule_set\n\nastro relativizes against the analysis root's PARENT; every sibling analyzer relativizes against the root. This is not an artifact of test staging -- the two calls above share a root.\n\nCONSEQUENCE: any path-keyed join breaks for astro symbols -- the file-anchor join, per-path centrality, and the D15 invariant \"additional_file_centrality_scores subset-of node paths\". It also makes astro's own file anchor (astro:<root>/src/Page.astro:1-1:file:file) inconsistent with every sibling analyzer's anchor for the same tree.\n\nInvisible on the self-corpus: no .astro files are tracked in this repo. Found while building the INV-dulah doc-family id gate (PR #78), which is also why it is filed rather than fixed there -- it is a path-relativization defect, not an id-grammar one."  # e3f0
+    fields: {}  # e3f0

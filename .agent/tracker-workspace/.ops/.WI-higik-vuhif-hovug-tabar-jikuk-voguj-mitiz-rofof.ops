@@ -1,0 +1,20 @@
+- op: create  # fafb
+  at: '2026-07-30T07:14:50Z'  # fafb
+  by: agent  # fafb
+  actor: jgstern_agent  # fafb
+  clock: 1  # fafb
+  nonce: fafb  # fafb
+  data:  # fafb
+    kind: work_item  # fafb
+    title: "pony emits an unregistered Symbol.kind='actor' (ADR-0027 register-vs-fold; registering is identity-neutral, folding is scheme-gated)"  # fafb
+    status: todo_hard  # fafb
+    priority: 3  # fafb
+    parent:  # fafb
+    tags:  # fafb
+    - dogfood  # fafb
+    isbefore: []  # fafb
+    duplicate_of: []  # fafb
+    not_duplicate_of: []  # fafb
+    pr_ref:  # fafb
+    description: "pony.py emits kind=\"actor\" for a Pony actor declaration. \"actor\" is absent from the symbol-kind catalog, so it fires BOTH axis_conformance (error: \"Symbol.kind ... has value 'actor' which is not in the symbol-kind catalog\") and -- now that the doc-family id carries the kind in its last slot (INV-dulah, PR #78) -- id_format (warning: kind-slot is not a registered symbol-kind).\n\nHeld as a measured strict-xfail hole:\n  test_doc_family_id_parity.py::test_doc_family_id_kind_slot[pony]\nso registering or folding will XPASS(strict) and force the hole's removal.\n\nThis is an ADR-0027 VOCABULARY call, not an id defect. Under the composed rule from the given->instance and scalar precedents -- reuse when a canonical fits, register when the fit is already taken by a peer -- REGISTER looks correct: `class` is the nearest canonical, but pony emits `class` from the SAME analyzer for a different construct, so reuse would fuse two distinct constructs (the ADR-0027 Cluster-27C apex/peer break).\n\nIMPORTANT ASYMMETRY, measured: REGISTERING is purely additive -- it changes no node.id and no stable_id, only the catalog. FOLDING to a canonical would change the `kind` argument that feeds make_doc_stable_id, hence stable_id, which puts that option behind the WI-talos v9/v10 scheme sequencing while registration is not gated at all.\n\nRegistration needs the ADR-0024 four-artifact scaffolding: symbol_kinds registry + docs/schema.json regen + docs/concept-axes.md regen + .ci/schema-coverage-baseline.json (an inert value emitted by no fixture stays uncovered and trips verify-generated)."  # fafb
+    fields: {}  # fafb

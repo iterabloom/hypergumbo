@@ -1,0 +1,22 @@
+- op: create  # 6eb7
+  at: '2026-07-30T07:14:22Z'  # 6eb7
+  by: agent  # 6eb7
+  actor: jgstern_agent  # 6eb7
+  clock: 1  # 6eb7
+  nonce: 6eb7  # 6eb7
+  data:  # 6eb7
+    kind: invariant  # 6eb7
+    title: "Self-tree validation ratchet is breached on dev by a pre-existing cross_field|info:9 cell; the hard full-suite gate step is red"  # 6eb7
+    status: violated  # 6eb7
+    priority: 2  # 6eb7
+    parent:  # 6eb7
+    tags:  # 6eb7
+    - ci  # 6eb7
+    isbefore: []  # 6eb7
+    duplicate_of: []  # 6eb7
+    not_duplicate_of: []  # 6eb7
+    pr_ref:  # 6eb7
+    description: ""  # 6eb7
+    fields:  # 6eb7
+      statement: "The full-suite self-tree-validation job is RED on dev, and has been since before 2026-07-30. scripts/check-self-tree-validation exits 1 on a clean tree:\n\n    self-tree violation matrix: {'cross_field|info': 9}\n    SELF-TREE VALIDATION RATCHET BREACHED (WI-jigup):\n      cross_field|info: 9 > baseline 0\n\n.ci/self-tree-validation-baselines.json contains only \"id_format|warning\": 0, and validation_ratchet.matrix_breaches treats an UNBASELINED cell as ceiling 0 -- with no severity filter, so `info` ratchets exactly like `error` and `warning`. The baseline's own comment says \"cross_field|info:9 is a separate class and remains unbaselined\", which reads as an assumption that unbaselined means untracked; the code says the opposite. The job (.github/workflows/full-suite.yml, self-tree-validation) runs the gate as a hard step with no continue-on-error."  # 6eb7
+      root_cause: "The 9 violations are all \"Edge.confidence <x> for evidence_type 'ast_call_direct' is outside the derived band [0.5, 0.85]\" -- the ADR-0039 confidence-band family (sibling of WI-rafut), edge-keyed (edge:sha256:...), and unrelated to node.id or any analyzer this session touched. Verified NOT caused by the INV-dulah doc/config-family work: measured on a clean tree with that change's fixture corpus generated to tmp instead of committed, the matrix is exactly {'cross_field|info': 9} and id_format does not appear at all.\n\nNOT fixable by baselining: the gate's own guidance is \"ratchet the baseline DOWN when it shrinks (never UP)\", so adding a cross_field|info: 9 cell would be raising a ceiling. Two honest paths: (a) seed/derive the nine offending producer confidences so the cell drains to 0, or (b) an explicit owner ruling on whether `info` severity belongs in the shrink-only matrix at all (the docstring's rationale for a per-cell matrix is about preventing signed cancellation between classes, which does not obviously require advisory-info cells to be gated)."  # 6eb7
