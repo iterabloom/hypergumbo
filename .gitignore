@@ -57,6 +57,15 @@ autonomous_intent.txt
 .agent/.last_injection_history.jsonl
 .agent/.second_to_last_injection_history.jsonl
 .agent/.archived-transcripts/
+
+# Plaintext secret list consumed by .agent/hooks/_shared/scrub-secrets.py at
+# every transcript-retention point. Holds real credentials -- never commit it.
+# A committed .example sibling documents the format.
+.secrets_for_scrubbing_upon_archive.txt
+
+# Atomic-replace temp files from scrub_secrets.py. A SIGKILL mid-scrub leaves
+# one behind holding transcript content; never commit it.
+.agent/.scrub-*
 .agent/.rotation.lock
 # Legacy paths from before the per-session amendment (ignored for one-time
 # upgrade-cleanup safety; may be removed once no repo still has these).
