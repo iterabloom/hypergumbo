@@ -1,0 +1,9 @@
+Original commit body from a68ca69c6b95166071d43e27c22c783f9694b9f1:
+
+verify-generated enforces a 15-commit recency window on docs/ARCHITECTURE.md.
+Today's four merges pushed it to 16, failing PR #77's CI on a staleness check
+rather than on anything in that PR. Regenerating also picks up PR 1's
+scripts/scrub-transcript-corpus in the scripts table, so the doc now reflects
+the tree rather than merely being re-stamped.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
