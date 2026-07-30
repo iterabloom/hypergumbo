@@ -34,3 +34,18 @@
   clock: 3  # 0a97
   nonce: 0a97  # 0a97
   message: "Wave-5 sweep (2026-07-08): synthetic-node residual (enclosure-linker 'uses' edges propagate phantom MQ/WS/event synthetic nodes into the call graph; 102/119 test-rooted). Empty isbefore -> terminal wave."  # 0a97
+- op: update  # cc36
+  at: '2026-07-30T16:39:29Z'  # cc36
+  by: agent  # cc36
+  actor: jgstern_agent  # cc36
+  clock: 4  # cc36
+  nonce: cc36  # cc36
+  set:  # cc36
+    status: done  # cc36
+- op: discuss  # 3f50
+  at: '2026-07-30T16:39:29Z'  # 3f50
+  by: agent  # 3f50
+  actor: jgstern_agent  # 3f50
+  clock: 5  # 3f50
+  nonce: 3f50  # 3f50
+  message: "DONE — drained by upstream work, verified by direct re-measurement rather than inferred.\n\nThe filed claim: 119 `uses` edges from enclosure-linker, of which 102 (85.7%) have their src in a test file, materializing \"the phantom-from-test synthetics (WI-nitob / WI-zurig populations)\" into the real call graph.\n\nMEASURED on a fresh self-survey (2026-07-30, 40979 nodes / 138626 edges): enclosure-linker emits **13** edges, of which **0** have a test-file src and **0** have a test-file dst. The dst framework_role split is websocket_endpoint 3 / event_subscriber 8 / event_publisher 2 — i.e. the surviving edges are exactly the legitimate production synthetics, and the mq_publisher 44 / mq_subscriber 31 population the filing counted is gone entirely.\n\nWHY, and why this is a real close rather than a coincidence: the filing correctly identified enclosure-linker as DOWNSTREAM — it attaches a `uses` edge to whatever function encloses each synthetic's emit line, so it faithfully materializes whatever synthetics exist. The upstream fix was linker-evidence-gating:F1 (af0b573ea1, 2026-06-26), which routed the message-queue / websocket / event-sourcing linkers through discovery.find_non_test_files. No test-fixture synthetics are minted, so enclosure-linker has none to attach to. The item's own mechanic section predicted this dependency; it just post-dates the item.\n\nNo code change was required or made. Closed on the measurement, not on adjacency to the F1 commit — the numbers above are from running the pipeline, not from reading the fix."  # 3f50

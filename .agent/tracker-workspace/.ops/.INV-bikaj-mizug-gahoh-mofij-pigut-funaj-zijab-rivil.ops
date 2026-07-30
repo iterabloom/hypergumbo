@@ -138,3 +138,10 @@
     tags: [dogfood]  # a4ce
   remove:  # a4ce
     tags: [dogfooding]  # a4ce
+- op: discuss  # fb6b
+  at: '2026-07-30T16:40:07Z'  # fb6b
+  by: agent  # fb6b
+  actor: jgstern_agent  # fb6b
+  clock: 17  # fb6b
+  nonce: fb6b  # fb6b
+  message: "Re-measured 2026-07-30 on a fresh self-survey (40979 nodes / 138626 edges). The premise HOLDS and the figures move:\n\n  filed:    61 of 84 passes emit 0 edges; 8 of those analyze 100+ files each\n  measured: 67 of 95 passes emit 0 edges;  6 of those analyze >=100 files\n\nThe six, with cost:\n  subprocess-linker        991 files  15947ms  0 edges\n  event-sourcing-linker    339 files   1467ms  0 edges\n  message-queue-linker     339 files   1345ms  0 edges\n  graphql-resolver-linker  339 files   1874ms  0 edges\n  http-linker              339 files   1893ms  0 edges\n  database-query-linker    339 files    988ms  0 edges\n\nsubprocess-linker alone is ~16s and dominates. Investigated it specifically to check whether the zero is data LOSS or correct inactivity, because those need opposite fixes: the only file in this repo matching `subprocess.*hypergumbo` is the linker's OWN test file, and the root pyproject.toml declares no [project.scripts], so there is no project CLI for it to link subprocess calls to. The zero is CORRECT. That makes it the cleanest available activation-gate target — a pass that could decide it has nothing to do BEFORE walking 991 files, from the manifest alone.\n\nNot acted on this session; recorded so the eventual fix starts from measured costs and a confirmed no-data-loss reading rather than re-deriving them."  # fb6b

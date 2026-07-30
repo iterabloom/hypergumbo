@@ -68,3 +68,18 @@
     tags: [dogfood]  # 100d
   remove:  # 100d
     tags: [dogfooding]  # 100d
+- op: update  # ca10
+  at: '2026-07-30T16:39:16Z'  # ca10
+  by: agent  # ca10
+  actor: jgstern_agent  # ca10
+  clock: 7  # ca10
+  nonce: ca10  # ca10
+  set:  # ca10
+    status: satisfied  # ca10
+- op: discuss  # 8d7f
+  at: '2026-07-30T16:39:16Z'  # 8d7f
+  by: agent  # 8d7f
+  actor: jgstern_agent  # 8d7f
+  clock: 8  # 8d7f
+  nonce: 8d7f  # 8d7f
+  message: "SATISFIED on the correctness face — PR #81, dev c14ce3af9e. Sibling WI-razib (same defect, WI form) closed done with the same evidence.\n\nThe statement has two claims; they resolve differently and both are measured on a fresh self-survey of the fixed tree.\n\n(1) \"emits 10 edges ALL from test_pyffi_linker.py ... zero production-code coverage\" — RESOLVED. pyffi-linker now emits 0 edges. The AnalysisRun still executes (2116ms), so this is not the vacuous zero a skipped pass would produce. The gate is paths.is_test_file on the symbol path, applied to BOTH emit phases (Phase 1 ctypes/cffi scan; Phase 2 PyO3, which matches edge.src against test-file symbol ids since it never sees a path).\n\n(2) \"4570ms for self-test edges\" — REDUCED, NOT ELIMINATED, and deliberately left to the umbrella. Measured 2116ms after the fix (the linker no longer scans the large test fixture). But a pass that costs ~2s to emit nothing is precisely the INV-nanon \"executes and consumes resources but emits no edges, with no activation gate\" pattern — this item's parent. Closing that face here would be scope creep into the umbrella's own remedy, and closing THIS item on the CPU number would be a proxy closure of the correctness claim it actually states.\n\nThe 2026-05-30 cross-ref note called this correctly in advance: \"an activation-gate-only fix would not close this ... needs either a self-test-exclusion rule or a test-fixture quarantine convention.\" That is what shipped — the self-test-exclusion rule. The activation gate remains the umbrella's.\n\nRELATED MEASUREMENT, recorded for INV-nanon/INV-bikaj rather than acted on here: on the same survey, 67 of 95 passes emit 0 edges, 6 of them after analyzing >=100 files. The largest is subprocess-linker — 991 files, 15947ms, 0 edges — which is CORRECT behaviour, not data loss: the only file in this repo matching subprocess.*hypergumbo is the linker's own test file, and the root pyproject.toml declares no [project.scripts], so there is no project CLI for it to link to. That makes it a clean activation-gate candidate (short-circuit before the scan when the project declares no CLI), not a bug."  # 8d7f
