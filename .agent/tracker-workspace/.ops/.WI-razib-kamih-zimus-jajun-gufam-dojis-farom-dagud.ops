@@ -18,3 +18,18 @@
     pr_ref:  # 3deb
     description: "The pyffi linker (pyffi.py, 544 lines) has zero test-file awareness: all 10 C_stdlib FFI `calls` edges it emits in self-analysis (fopen/fwrite/popen/etc.) originate from the linker's OWN test file test_pyffi_linker.py, not from production code. Fix: add an is_test_file gate to pyffi.py so it skips test files. Same root FAMILY as the broader 'linkers/patterns scan test files' theme but a DISTINCT producer with its own fix site (pyffi.py); cross-linked, not folded. Surfaced via dogfooding; blinded severity 3/5."  # 3deb
     fields: {}  # 3deb
+- op: update  # a199
+  at: '2026-07-30T16:38:59Z'  # a199
+  by: agent  # a199
+  actor: jgstern_agent  # a199
+  clock: 2  # a199
+  nonce: a199  # a199
+  set:  # a199
+    status: done  # a199
+- op: discuss  # edf5
+  at: '2026-07-30T16:38:59Z'  # edf5
+  by: agent  # edf5
+  actor: jgstern_agent  # edf5
+  clock: 3  # edf5
+  nonce: edf5  # edf5
+  message: "DONE — PR #81, dev c14ce3af9e.\n\nBEHAVIORAL EVIDENCE (fresh self-survey, 40979 nodes / 138626 edges, run on the fixed tree): the pyffi-linker AnalysisRun still EXECUTES (duration 2116ms) and now emits 0 edges, down from the filed 10. The pass running is the point — it guards against a vacuous zero, which is what \"the linker was skipped entirely\" would have looked like in the same measurement.\n\nFIX: gate on the shared paths.is_test_file chokepoint, the convention ~22 sibling linkers already follow. Worth recording for the next person: pyffi could NOT adopt discovery.find_non_test_files the way the 2026-06-27 linker-evidence-gating:F1 sweep did for its siblings, because it never walks the repo — it consumes in-memory symbol lists. A census of \"linkers that scan files without test-awareness\" does not contain pyffi at all, so the family framing that would find its siblings would have missed it. The gate belongs on the symbol path instead.\n\nBOTH emit phases are gated, not just the measured one. Phase 1 (the ctypes/cffi file scan) filters the scanned path set. Phase 2 (PyO3) never sees a path — it walks existing edges keyed on edge.dst — so it matches edge.src against the ids of Python symbols living in test files. Fixing only Phase 1 would have closed the half the filing measured and left the identical defect open on the other half.\n\nEach phase has a test, each paired with a POSITIVE CONTROL asserting production ctypes calls still link — without which a too-broad gate that silently deleted the linker's real output would pass as a fix. Verified separately that pytest tmp_path directories (test_foo0/) do NOT read as test paths under is_test_file, so the controls are not accidentally self-defeating."  # edf5

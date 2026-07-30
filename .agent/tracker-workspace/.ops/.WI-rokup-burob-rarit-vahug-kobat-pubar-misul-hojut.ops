@@ -53,3 +53,18 @@
   clock: 5  # ef5f
   nonce: ef5f  # ef5f
   message: "KEYSTONE LANDED (2026-07-19, PR merged f56ca6a23c). The strict + pyright-resonant [tool.mypy] flip is DONE: strict=true + warn_unreachable/unused_ignores/redundant_casts + strict_equality + extra_checks + the 11 enable_error_code entries (redundant-expr, truthy-bool, truthy-iterable, ignore-without-code, possibly-undefined, explicit-override, mutable-override, unused-awaitable, narrowed-type-not-subtype, redundant-self, unimported-reveal) + namespace_packages for whole-tree resolution. The whole-tree ratchet mechanism is built: scripts/check-mypy-ratchet (one invocation over all packages/*/src/<pkg> roots + shrink-only per-error-code baseline .ci/mypy-strict-baseline.json = 1431) with --mode=warning|strict + --update-baseline + --input/--baseline test hooks (test_check_mypy_ratchet.py, 8 tests). CI mypy job rewritten from the per-package loop to the ratchet, still NON-BLOCKING (--mode=warning); full editable install so mypy resolves cross-package + third-party types. STILL OPEN: the drain to zero (this item's 'ratchet each package to zero (the L bulk)'). Baseline breakdown: type-arg 447, explicit-override 289, mutable-override 105, arg-type 104, no-untyped-def 69, truthy-bool 67, assignment 65, unused-awaitable 48 (all Textual AwaitComplete in tracker/tui.py), no-any-return 39, unreachable 32, union-attr 30, others. SCOPE FLAG for owner: ~440 of 1431 are the most aggressive/stylistic codes — explicit-override 289 (needs @override decorators + a typing_extensions dep on 3.10), mutable-override 105, unused-awaitable 48 (framework pattern) — candidates to grind OR to relax (removing a code lowers the target). isbefore WI-rabum's blocking flip (--mode=strict) still holds."  # ef5f
+- op: update  # 54b2
+  at: '2026-07-30T16:39:50Z'  # 54b2
+  by: agent  # 54b2
+  actor: jgstern_agent  # 54b2
+  clock: 6  # 54b2
+  nonce: 54b2  # 54b2
+  set:  # 54b2
+    status: done  # 54b2
+- op: discuss  # e589
+  at: '2026-07-30T16:39:50Z'  # e589
+  by: agent  # e589
+  actor: jgstern_agent  # e589
+  clock: 7  # e589
+  nonce: e589  # e589
+  message: "DONE — status correction, not new work. This item's own 2026-07-20 discussion entry opens \"KEYSTONE LANDED (2026-07-19, PR merged f56ca6a23c)\" while its status stayed todo_soft, so `tracker ready` has been surfacing it as actionable ever since.\n\nIts titled deliverable IS shipped: [tool.mypy] is strict + the 11 pyright-resonant enable_error_code entries + namespace_packages, and scripts/check-mypy-ratchet runs one whole-tree invocation against a shrink-only per-error-code baseline (.ci/mypy-strict-baseline.json), with the CI job rewritten off the per-package loop.\n\nThe residual its note names — \"the drain to zero (this item's 'ratchet each package to zero (the L bulk)')\" — is verbatim INV-zogud's statement (\"running mypy <repo> with the strict config from a clean tree must produce zero errors\"). Keeping this item open therefore duplicates INV-zogud rather than tracking anything INV-zogud does not, and the ordered remainder already has owners: the drain is INV-zogud, the blocking flip is WI-rabum (--mode=strict), the type:ignore audit is WI-gapig (already this item's isbefore).\n\nRe-homed rather than re-scoped, so the ready queue stops offering a landed keystone as available work."  # e589
