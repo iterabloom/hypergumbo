@@ -47,7 +47,7 @@ from hypergumbo_core.analyze.base import (
     FileAnalysis,
     TreeSitterAnalyzer,
     iter_tree,
-    make_doc_stable_id,
+    make_doc_symbol_ids,
     node_text,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
@@ -77,9 +77,6 @@ def find_requirements_files(repo_root: Path) -> list[Path]:
     return sorted(set(files))
 
 
-def _make_symbol_id(path: str, name: str, kind: str) -> str:
-    """Create a stable symbol ID for requirements."""
-    return f"requirements:{path}:{kind}:{name}"
 
 
 class RequirementsAnalyzer(TreeSitterAnalyzer):
@@ -185,13 +182,23 @@ class RequirementsAnalyzer(TreeSitterAnalyzer):
         if not package_name:
             return  # pragma: no cover
 
-        symbol_id = _make_symbol_id(rel_path, package_name, "requirement")
-
         span = Span(
             start_line=node.start_point[0] + 1,
             start_col=node.start_point[1],
             end_line=node.end_point[0] + 1,
             end_col=node.end_point[1],
+        )
+
+        # INV-dulah: both ids minted together by the shared factory, so node.id
+        # carries the canonical ADR-0036 grammar instead of the local
+        # "requirements:{path}:{kind}:{name}" composite (four segments, no span,
+        # kind in the span slot — it did not parse, and the comment below used to
+        # note it could not distinguish same-named requirements on different
+        # lines). stable_id is byte-identical: the factory calls
+        # make_doc_stable_id with exactly these arguments.
+        symbol_id, stable_id = make_doc_symbol_ids(
+            "requirements", str(rel_path), "requirement", package_name,
+            span.start_line, span.end_line,
         )
 
         sig = package_name
@@ -202,14 +209,7 @@ class RequirementsAnalyzer(TreeSitterAnalyzer):
 
         symbol = Symbol(
             id=symbol_id,
-            # WI-banod: canonical sha256:<16hex> stable_id via the shared doc
-            # factory (node.id stays the composite key). The span fold also
-            # distinguishes same-named requirements on different lines, which
-            # the line-less composite id could not.
-            stable_id=make_doc_stable_id(
-                "requirements", str(rel_path), "requirement", package_name,
-                span.start_line, span.end_line,
-            ),
+            stable_id=stable_id,
             name=package_name,
             kind="requirement",
             language="requirements",
@@ -263,15 +263,23 @@ class RequirementsAnalyzer(TreeSitterAnalyzer):
                 if "@" in package_name:
                     package_name = package_name.split("@")[0]
 
-        symbol_id = _make_symbol_id(
-            rel_path, package_name or url_text[:40], "url_requirement",
-        )
-
         span = Span(
             start_line=node.start_point[0] + 1,
             start_col=node.start_point[1],
             end_line=node.end_point[0] + 1,
             end_col=node.end_point[1],
+        )
+
+        # INV-dulah: as the requirement site above. This site additionally
+        # dropped a ROLE fossil — the local id put "url_requirement" in the kind
+        # slot while Symbol.kind is "requirement" (and make_doc_stable_id was
+        # already passed "requirement", so stable_id is unchanged). The role is
+        # not lost: it stays in meta["source_type"] below, the same lossless fold
+        # the three manifest analyzers used for their entry_role fossils.
+        symbol_id, stable_id = make_doc_symbol_ids(
+            "requirements", str(rel_path), "requirement",
+            package_name or url_text[:40],
+            span.start_line, span.end_line,
         )
 
         source_type = "url"
@@ -284,12 +292,7 @@ class RequirementsAnalyzer(TreeSitterAnalyzer):
 
         symbol = Symbol(
             id=symbol_id,
-            # WI-banod: canonical sha256:<16hex> stable_id via the shared doc factory.
-            stable_id=make_doc_stable_id(
-                "requirements", str(rel_path), "requirement",
-                package_name or url_text[:40],
-                span.start_line, span.end_line,
-            ),
+            stable_id=stable_id,
             name=package_name or url_text[:40],
             kind="requirement",
             language="requirements",
@@ -358,8 +361,6 @@ class RequirementsAnalyzer(TreeSitterAnalyzer):
 
         # Handle -e (editable)
         if option in ("-e", "--editable") and option_path:
-            symbol_id = _make_symbol_id(rel_path, option_path, "editable")
-
             span = Span(
                 start_line=node.start_point[0] + 1,
                 start_col=node.start_point[1],
@@ -367,13 +368,18 @@ class RequirementsAnalyzer(TreeSitterAnalyzer):
                 end_col=node.end_point[1],
             )
 
+            # INV-dulah: as above. This site also dropped an "editable" ROLE
+            # fossil from the id kind slot (Symbol.kind is "requirement", and
+            # make_doc_stable_id already received "requirement"); the role stays
+            # in meta["editable"] / meta["install_mode"] below.
+            symbol_id, stable_id = make_doc_symbol_ids(
+                "requirements", str(rel_path), "requirement", option_path,
+                span.start_line, span.end_line,
+            )
+
             symbol = Symbol(
                 id=symbol_id,
-                # WI-banod: canonical sha256:<16hex> stable_id via the shared doc factory.
-                stable_id=make_doc_stable_id(
-                    "requirements", str(rel_path), "requirement", option_path,
-                    span.start_line, span.end_line,
-                ),
+                stable_id=stable_id,
                 name=option_path,
                 kind="requirement",
                 language="requirements",

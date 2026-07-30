@@ -244,11 +244,13 @@ Title
         result = analyze_rst(tmp_path)
         section = next((s for s in result.symbols if s.kind == "section"), None)
         assert section is not None
-        # INV-dulah: node.id and stable_id are now minted together by
-        # make_doc_symbol_ids. node.id GAINED a start_line segment (was the
-        # line-less "rst:path:kind:name"), so same-name sections no longer
-        # collide on id. Shape: "rst:<path>:section:<start_line>:section_<n>".
-        assert re.match(r"^rst:test\.rst:section:\d+:section_\d+$", section.id), section.id
+        # INV-dulah: node.id and stable_id are minted together by
+        # make_doc_symbol_ids. node.id is the canonical ADR-0036
+        # "{lang}:{path}:{start}-{end}:{name}:{kind}"; the span slot is what
+        # keeps same-name sections from colliding on id (rst was line-less
+        # before that segment was added). It was previously kind-third/name-last,
+        # which put the kind word where the span belongs.
+        assert re.match(r"^rst:test\.rst:\d+-\d+:section_\d+:section$", section.id), section.id
         assert section.stable_id != section.id
         assert re.compile(r"^sha256:[0-9a-f]{16}$").match(section.stable_id)
 

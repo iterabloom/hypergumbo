@@ -12,7 +12,6 @@ by the main test suite. Focuses on:
 from pathlib import Path
 
 from hypergumbo_lang_mainstream.properties import (
-    _make_symbol_id,
     analyze_properties,
     find_properties_files,
     KNOWN_PREFIXES,
@@ -24,13 +23,9 @@ def make_properties_file(tmp_path: Path, name: str, content: str) -> None:
     (tmp_path / name).write_text(content)
 
 
-class TestPropertiesHelperFunctions:
-    """Branch coverage for helper functions."""
-
-    def test_make_symbol_id_format(self) -> None:
-        """Test symbol ID format."""
-        symbol_id = _make_symbol_id(Path("config.properties"), "db.url", "property")
-        assert symbol_id == "properties:config.properties:property:db.url"
+# The per-analyzer _make_symbol_id builder was folded into the shared
+# make_doc_symbol_ids helper (tested in hypergumbo-core test_base.py), so the
+# former TestPropertiesHelperFunctions format test was retired here (INV-dulah).
 
 
 class TestPropertyExtraction:

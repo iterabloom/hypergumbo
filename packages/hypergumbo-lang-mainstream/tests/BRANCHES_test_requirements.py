@@ -14,7 +14,6 @@ by the main test suite. Focuses on:
 from pathlib import Path
 
 from hypergumbo_lang_mainstream.requirements import (
-    _make_symbol_id,
     analyze_requirements,
     find_requirements_files,
 )
@@ -25,13 +24,9 @@ def make_requirements_file(tmp_path: Path, name: str, content: str) -> None:
     (tmp_path / name).write_text(content)
 
 
-class TestRequirementsHelperFunctions:
-    """Branch coverage for helper functions."""
-
-    def test_make_symbol_id_format(self) -> None:
-        """Test symbol ID format."""
-        symbol_id = _make_symbol_id(Path("requirements.txt"), "requests", "requirement")
-        assert symbol_id == "requirements:requirements.txt:requirement:requests"
+# The per-analyzer _make_symbol_id builder was folded into the shared
+# make_doc_symbol_ids helper (tested in hypergumbo-core test_base.py), so the
+# former TestRequirementsHelperFunctions format test was retired here (INV-dulah).
 
 
 class TestPackageRequirementExtraction:

@@ -302,9 +302,14 @@ actor Main
         # form (id-format:F2 4a).
         assert "pony:" in actor.id
         assert "test.pony" in actor.id
-        # node.id shape: pony:<path>:<kind>:<start_line>:<name...>
+        # node.id is the canonical ADR-0036
+        # "{lang}:{path}:{start}-{end}:{name}:{kind}" (INV-dulah). It was
+        # previously kind-third/name-last, which put the kind word where the span
+        # belongs. NB the kind word here is 'actor', which is not in the
+        # symbol-kind catalog — a separate, pre-existing axis_conformance defect
+        # held as a measured hole in test_doc_family_id_parity.
         assert re.match(
-            r"^pony:.*test\.pony:actor:\d+:Main$", actor.id
+            r"^pony:.*test\.pony:\d+-\d+:Main:actor$", actor.id
         ), actor.id
         assert re.match(r"^sha256:[0-9a-f]{16}$", actor.stable_id)
 

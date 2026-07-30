@@ -219,7 +219,14 @@ WHERE {
             and (e.meta or {}).get("ref_construct") == "rdf_vocabulary"
         ]
         assert len(edges) >= 2
-        dst_prefixes = {e.dst.split(":")[-1] for e in edges}
+        # Resolve each dst to its Symbol and read the NAME off the record, rather
+        # than slicing a slot out of the id. This previously took id.split(":")
+        # [-1], which was the prefix name only because the doc-family id put the
+        # name last; under the canonical ADR-0036 order that slot is the kind
+        # (INV-dulah). Resolving the node asserts the intent — "the edge points
+        # at the foaf prefix symbol" — and cannot be broken by a slot reorder.
+        name_by_id = {s.id: s.name for s in result.symbols}
+        dst_prefixes = {name_by_id.get(e.dst, e.dst) for e in edges}
         assert "foaf" in dst_prefixes
         assert "rdf" in dst_prefixes
 
@@ -260,11 +267,13 @@ SELECT * WHERE { ?s ?p ?o }
         assert prefix.id != prefix.stable_id
         assert "sparql:" in prefix.id
         assert "test.sparql" in prefix.id
-        # INV-dulah: node.id now carries a numeric start_line segment between
-        # the kind and the name (sparql:<path>:<kind>:<line>:<name>), so
-        # same-name siblings on different lines no longer collide.
+        # INV-dulah: node.id is the canonical ADR-0036
+        # "{lang}:{path}:{start}-{end}:{name}:{kind}"; the span slot is what
+        # keeps same-name siblings on different lines from colliding. It was
+        # previously kind-third/name-last, which put the kind word where the span
+        # belongs and so did not parse at all.
         assert re.match(
-            r"^sparql:test\.sparql:prefix:\d+:foaf$", prefix.id
+            r"^sparql:test\.sparql:\d+-\d+:foaf:prefix$", prefix.id
         ), prefix.id
         assert _CANONICAL_STABLE_ID_PATTERN.match(prefix.stable_id)
         # Every emitted symbol carries a canonical stable_id (prefix/base/query).

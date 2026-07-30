@@ -345,11 +345,15 @@ $spacing: 16px;
         var = next((s for s in result.symbols if s.kind == "variable"), None)
         assert var is not None
         # INV-dulah: node.id and stable_id are minted together by
-        # make_doc_symbol_ids; node.id is "scss:{path}:{kind}:{start_line}:{name}".
-        # Pin the 5-slot shape (numeric start_line in slot 4) so a slot reorder
-        # or a dropped line segment regresses loudly.
-        _slots = var.id.split(":", 4)
-        assert len(_slots) == 5 and _slots[0] == "scss" and _slots[3].isdigit(), var.id
+        # make_doc_symbol_ids; node.id is the canonical ADR-0036
+        # "{lang}:{path}:{start}-{end}:{name}:{kind}" (was the doc-family
+        # kind-third/name-last order, which put the kind word in the span slot).
+        # Parsed RIGHT-anchored, the way the canonical parser does
+        # (span, name, kind = parts[-3:]), so a colon in the path cannot shift it.
+        _head, _span, _name, _kind = var.id.rsplit(":", 3)
+        assert _head.startswith("scss:"), var.id
+        assert re.match(r"^\d+-\d+$", _span), var.id
+        assert _kind == var.kind, var.id
         assert var.stable_id != var.id
         assert re.match(r"^sha256:[0-9a-f]{16}$", var.stable_id)
 

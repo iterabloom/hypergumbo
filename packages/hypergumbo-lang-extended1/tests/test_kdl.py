@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for the KDL configuration analyzer."""
 
+import re
 from pathlib import Path
 from unittest.mock import patch
 
@@ -197,11 +198,16 @@ class TestAnalyzeKdl:
         node = next((s for s in result.symbols if s.kind == "node"), None)
         assert node is not None
         # INV-dulah: node.id and stable_id are minted together by
-        # make_doc_symbol_ids; node.id is "kdl:{path}:{kind}:{start_line}:{name}".
-        # Pin the 5-slot shape (numeric start_line in slot 4).
+        # make_doc_symbol_ids; node.id is the canonical ADR-0036
+        # "{lang}:{path}:{start}-{end}:{name}:{kind}" (was the doc-family
+        # kind-third/name-last order, which put the kind word in the span slot).
+        # Parsed RIGHT-anchored, the way the canonical parser does
+        # (span, name, kind = parts[-3:]), so a colon in the path cannot shift it.
         assert node.id != node.stable_id
-        _slots = node.id.split(":", 4)
-        assert len(_slots) == 5 and _slots[0] == "kdl" and _slots[3].isdigit(), node.id
+        _head, _span, _name, _kind = node.id.rsplit(":", 3)
+        assert _head.startswith("kdl:"), node.id
+        assert re.match(r"^\d+-\d+$", _span), node.id
+        assert _kind == node.kind, node.id
         assert _CANONICAL_STABLE_ID_PATTERN.match(node.stable_id)
         # Every emitted symbol carries a canonical stable_id.
         assert result.symbols
