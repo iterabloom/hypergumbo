@@ -1,0 +1,25 @@
+Original commit body from ee30fa9ccf993077562d47c61fdb6ec4a206a1f1:
+
+INV-vilag. run_pytest ended its captured invocation with `|| true`, after
+which PIPESTATUS reports the `true` — so `exit_code=${PIPESTATUS[0]}` was
+always 0 and pytest's real status was discarded. The verdict was then
+reconstructed from the log, which cannot see a collection-error run: pytest
+prints ERROR/N errors, never 'FAILED ', so neither failure clause fires while
+the affirmative-green clause (N passed && ! N failed) matches. run_pytest
+returned 0, the caller's TEST_EXIT -eq 0 gate ran the scoped coverage check
+over modules that never imported, and smart-test exited 0 printing a green
+checkmark plus a 100%-coverage verdict.
+
+Capture pytest's own status with `|| exit_code=$?` and DELETE the
+affirmative-green clause: it was a no-op while exit_code started at 0 and
+would mask a real failure now that it does not — the 'latent landmine' the
+WI-kalub comment beside it named. The corrective clauses may now only
+escalate to failure.
+
+Tests: two behavioral guards sed-extract the real run_pytest from the shipped
+script and drive it against a stub pytest, with a positive control proving a
+genuinely green run still returns 0. WI-kalub's Step-1b guard is rewritten to
+the successor property (exit code sourced from pytest; no PIPESTATUS in code)
+because the clause it protected no longer exists.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
