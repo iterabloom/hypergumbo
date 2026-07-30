@@ -982,19 +982,29 @@ Each feature contains `id`, `name`, `entry_nodes[]`, `node_ids[]`, `edge_ids[]`,
 - `meta`: Provenance dict mirroring `Edge.meta` (WI-rukam) so a consumer can interpret an entrypoint's `confidence` the way it interprets an edge's. Keys (registered on the `entrypoint_meta` axis in `axis_meta_keys.py`):
   - `id`: stable content-hash identity `entrypoint:sha256:<16hex>` of (kind, symbol_id, label) — always present, auto-stamped. Confidence is **not** part of the identity (it is a ranking value, not a record key). Mirrors `Edge.id`.
   - `source`: producer pass that emitted the record — `concept_detector` (YAML-concept matches), `connectivity_fallback` (the no-patterns-matched top-N-by-out-degree fallback), or `script_module_detector` (the edge-set-dependent TS/JS standalone-script rule). Mirrors `Edge.origin`.
-  - `evidence_type`: inference pathway, **aligned 1:1 with the confidence tiers below** — `manifest_declared` (0.99), `framework_pattern` (0.95), `structural` (0.85), `language_convention` (0.80, incl. library exports), `naming_heuristic` (0.70), `connectivity_heuristic` (0.50). A separate vocabulary from the edge inference-pathway registry (`evidence_types.py`); entrypoint detection methods do not overlap edge inference pathways. Mirrors `Edge.evidence_type`.
+  - `evidence_type`: the inference pathway — `manifest_declared`, `framework_pattern`, `structural`, `language_convention`, `naming_heuristic`, `connectivity_heuristic`. It is a **coarser grouping than the confidence bases, NOT a 1:1 mapping** (WI-sohov/WI-hofav): the base is chosen per *detector*, and several detectors share one `evidence_type` at different bases. Measured on the self-corpus, three of the four emitted pathways carry two bases each — `framework_pattern` {0.95, 0.90}, `structural` {0.85, 0.80}, `language_convention` {0.80, 0.75} — and only `manifest_declared` {0.99} is single-valued. Consumers must read `confidence` directly and must not infer it from `evidence_type`, or the reverse. A separate vocabulary from the edge inference-pathway registry (`evidence_types.py`); entrypoint detection methods do not overlap edge inference pathways. Mirrors `Edge.evidence_type`.
 
 **Confidence tiers** (see [§8](#8-entrypoint-detection) and [§12](#12-confidence-scoring)):
-- 0.99: Manifest-declared (package.json `bin`, Cargo.toml `[[bin]]`, pyproject.toml `[project.scripts]`)
-- 0.95: Framework patterns (decorators, base classes)
-- 0.85: Structural (Python `if __name__ == "__main__"`)
-- 0.80: Language conventions (`main()` function)
-- 0.70: Naming heuristics (`*Controller`, `*Handler`)
-- 0.50: Connectivity-based fallback (top 5 most-connected callables when no patterns match)
+- 0.99: Manifest-declared (package.json `bin`, Cargo.toml `[[bin]]`, pyproject.toml `[project.scripts]`) — `manifest_declared`
+- 0.95: Framework patterns (decorators, base classes; routes, websocket handlers) — `framework_pattern`
+- 0.90: Framework patterns whose match is a *shape* rather than a registration — forms, serializers — `framework_pattern`
+- 0.85: Structural (Python `if __name__ == "__main__"`, shebang scripts, HTML entries) — `structural`
+- 0.80: Language conventions (`main()` function) and standalone script modules — `language_convention` / `structural`
+- 0.75: **Library exports** — a module's public surface, inferred from the export convention rather than from any call site — `language_convention`
+- 0.70: Naming heuristics (`*Controller`, `*Handler`, `cmd_*`) — `naming_heuristic`
+- 0.50: Connectivity-based fallback (top-N most-connected callables when no patterns match) — `connectivity_heuristic`
 
-Penalties on the entrypoint `confidence` field: test files −90% (×0.1), vendor/external deps at tier ≥ 3 −70% (×0.3), utility files −50% (×0.5). Connectivity boost: up to +0.25 for entrypoints with many outgoing edges. (Per [ADR-0039](adr/0039-confidence-separation.md) these are ranking adjustments mixed into the detection-`confidence` field; they are slated to move to a separate `rank_score`.)
+The 0.90 and 0.75 rows were absent from this table until WI-logad, which is
+worth noting because 0.75 is not a rare corner: `library_export` is the single
+most common entrypoint kind on hypergumbo's own corpus (45 of 118, 38%), so the
+documented table omitted the base that the plurality of entrypoints actually
+carry. The 0.70 and 0.50 rows are real but unexercised on this corpus — they are
+producer constants (`naming_heuristic`, `connectivity_heuristic`), not
+deletions-in-waiting.
 
-**Sorting:** Ranked by confidence (highest first).
+**Penalties and boosts apply to `rank_score`, not to `confidence`** — the move [ADR-0039](adr/0039-confidence-separation.md) described as "slated" has shipped (WI-lutad / WI-dojor). `confidence` is now pure detection reliability and carries only the base above; `rank_score` starts from that base and then takes the ranking adjustments: test files ×0.1, vendor/external deps at tier ≥ 3 ×0.3, utility files ×0.5, plus an additive connectivity boost of `min(0.25, log(1 + out_edges) / 10)`. Deliberately demoted entries — build wrappers, vendored exports, infrastructure-path exports — are excluded from that boost, because an additive boost otherwise undoes a multiplicative demotion and the entry climbs back over the `MIN_ENTRYPOINT_CONFIDENCE` floor. Both fields are emitted on every entrypoint (measured: 118 of 118 carry `rank_score`, spanning 0.345–1.000, while `confidence` holds the discrete bases). This resolves the contradiction WI-sohov filed between the discrete-tier and continuous descriptions of the same field: they were describing what are now two different fields.
+
+**Sorting:** Ranked by `rank_score` (highest first), not by `confidence` — ranking prominence is what ordering is for, and the two diverge whenever a penalty or boost applies (ADR-0039).
 
 **Not redundant with nodes:** While nodes carry `meta.concepts` metadata from framework pattern matching, the `entrypoints` array provides pre-computed confidence (with penalties and boosts), ranking, and labeled kinds. Consumers would otherwise need to iterate all nodes, check concepts, apply scoring logic, and sort. Used by sketch generation, slicing, and compact output.
 

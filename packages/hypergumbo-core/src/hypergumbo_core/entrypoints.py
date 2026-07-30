@@ -35,10 +35,12 @@ Confidence Scores
 - 0.95: All semantic detection (based on actual pattern matching)
 
 Connectivity Boost (concept-based only):
-- Entrypoints with outgoing edges get a confidence boost (up to +0.25)
+- Entrypoints with outgoing edges get a RANK_SCORE boost (up to +0.25)
 - Boost formula: min(0.25, log(1 + out_edges) / 10)
 - This ranks "interesting" entrypoints higher (those that call many functions)
-- Entrypoints are sorted by final confidence (highest first)
+- Entrypoints are sorted by final RANK_SCORE (highest first). Post-ADR-0039
+  `confidence` is pure detection reliability and carries only the base; the
+  penalties and the boost live on `rank_score`, which is what ordering uses.
 - CONNECTIVITY_BASED fallback entrypoints skip the boost to avoid double-counting
 
 Connectivity-Based Fallback:
@@ -1474,7 +1476,9 @@ def detect_entrypoints(
         edges: All edges (used for connectivity boost).
 
     Returns:
-        List of detected entrypoints with confidence scores, sorted by confidence.
+        List of detected entrypoints carrying both `confidence` (detection
+        reliability) and `rank_score` (ranking prominence), sorted by
+        `rank_score` descending — not by `confidence` (ADR-0039).
     """
     # Semantic detection from concept metadata (YAML patterns)
     # This includes both framework patterns (routes, commands) and
