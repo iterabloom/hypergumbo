@@ -1,0 +1,19 @@
+Original commit body from 6aaa44070d3756102ed10c5d2716b49f92c6ef26:
+
+PR #92's CI failed on:
+  ERROR: docs/ARCHITECTURE.md is out of date: generated 17 commits ago,
+  exceeds the 15-commit window
+
+Not a defect in the change under review. The five verify-generated --check
+gates were pre-flighted green BEFORE pushing, but auto-pr then rebased this
+branch onto a dev that had advanced (tracker sync + the WI-gapir merge), and
+the check keys on commit-count DISTANCE — so the window moved underneath the
+pre-flight and the recorded commit fell outside it.
+
+Worth recording because the standing mitigation ('pre-flight the
+verify-generated gates before every auto-pr') is necessary but NOT sufficient:
+it is invalidated by auto-pr's own rebase whenever dev moves between the
+pre-flight and the push, which a tracker auto-sync makes routine. The reliable
+form is to re-check AFTER the rebase, or to regenerate as part of recovery.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
