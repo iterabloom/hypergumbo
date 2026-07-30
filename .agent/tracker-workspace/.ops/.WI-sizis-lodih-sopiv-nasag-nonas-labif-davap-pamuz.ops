@@ -19,3 +19,18 @@
     pr_ref:  # 7226
     description: "**Defect.** The schema declares `profile.total_files` and `profile.total_lines`, but the producer emits neither at profile scope.\n\n**Evidence.** The auto-generated docs/schema.json lists total_files and total_lines as profile sub-fields, but the producer never emits them inside the profile object (a total-files figure lives at metrics scope instead). Both are declared in the schema and absent from the emitted profile block.\n\n**Contract.** The producer and schema should agree on the profile field set — either the fields are emitted at profile scope or removed from the schema.\n\n**Consequence.** A consumer reading the schema and looking for total files/lines inside the profile object finds neither and must discover that one total lives in a different block while the other is unavailable."  # 7226
     fields: {}  # 7226
+- op: update  # 29bc
+  at: '2026-07-30T16:48:47Z'  # 29bc
+  by: agent  # 29bc
+  actor: jgstern_agent  # 29bc
+  clock: 2  # 29bc
+  nonce: 29bc  # 29bc
+  set:  # 29bc
+    status: done  # 29bc
+- op: discuss  # e98c
+  at: '2026-07-30T16:48:47Z'  # e98c
+  by: agent  # e98c
+  actor: jgstern_agent  # e98c
+  clock: 3  # e98c
+  nonce: e98c  # e98c
+  message: "DONE — same PR as WI-sirir (the mirror-image half of the same profile/schema disagreement).\n\nThe schema declared profile.total_files and profile.total_lines; a fresh self-survey confirms the producer emits NEITHER (profile keys are exactly dev_frameworks, framework_evidence, framework_mode, frameworks, languages).\n\nREMOVED rather than populated, on two grounds. (1) Direct precedent in the SAME FILE: the profile.languages[*].loc description already records WI-bozid removing the phantom 'lines'/'percentage' keys the producer never emitted — identical defect, identical remedy, already applied once here. (2) Populating them would mint a SECOND home for a derivable fact: per-language counts already live in profile.languages[*].{files, loc} and repo-wide counts in metrics. That is exactly the duplicate home the WI-palon ruling declined for profile.loc vs node.line_span.\n\nNo SCHEMA_VERSION bump: removing an optional property that nothing ever emitted changes no artifact and no validation outcome (INV-padoz precedent, where deleting an EMITTED field also did not bump)."  # e98c
