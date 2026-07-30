@@ -1,0 +1,36 @@
+Original commit body from e8c559f7a32c916ec5eb22830446bbad5e7f746c:
+
+WI-vuton, WI-liruk, WI-mikin, WI-latip / WI-tubim. Each is a place a
+consumer following the spec would have been wrong.
+
+WI-vuton: nodes[].origin was documented twice, incompatibly. Section 6
+defines origin: list[str] (INV-jidat; schema-breaking change from a scalar
+at SCHEMA_VERSION 0.10.0), while the output-fields appendix still said
+"String, pass ID that created this node". The appendix now describes the
+list and defers to section 6 as canonical.
+
+WI-liruk: the profile example documented a repo_kind field no code
+produces (absent from a fresh self-survey, and appearing nowhere else in
+the tree), so it is removed rather than implemented.
+
+WI-mikin: metrics.debug was described as carrying "two" counts while
+emitting three. profile_files_sum is now documented, with the property
+that makes it non-interchangeable with its neighbour: it sums
+profile.languages[*].files and so counts a file once per claiming
+language, over-counting relative to the path-deduplicated
+unique_paths_in_analysis.
+
+WI-latip / WI-tubim (the same defect filed twice): not_captured names two
+disjoint fields under two parents — limits.not_captured (analysis-coverage
+categories) and reproducibility_context.not_captured (determinism factors,
+the disclaimed L3-L5 levels). The spec disambiguated only the limits side;
+the reciprocal note is added. Documented rather than renamed: both are
+already declared in docs/schema.json with distinct descriptions, each name
+is correct within its own block, and a rename would be a breaking change
+purchasing no disambiguation the parent path does not already provide —
+the same verdict as edge_key vs stable_id (WI-niboh) and the sha256:
+surface shared by stable_id/shape_id (WI-tisar).
+
+Docs only; no schema, code or emitted-output change.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
