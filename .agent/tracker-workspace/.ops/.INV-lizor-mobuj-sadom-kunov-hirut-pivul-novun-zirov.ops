@@ -1,0 +1,23 @@
+- op: create  # 8268
+  at: '2026-07-30T04:02:10Z'  # 8268
+  by: agent  # 8268
+  actor: jgstern_agent  # 8268
+  clock: 1  # 8268
+  nonce: '8268'  # 8268
+  data:  # 8268
+    kind: invariant  # 8268
+    title: "smart-test skips changes confined to .agent/hooks/ or scripts/ — the per-PR gate is structurally blind to them"  # 8268
+    status: violated  # 8268
+    priority: 2  # 8268
+    parent:  # 8268
+    tags:  # 8268
+    - developer_experience  # 8268
+    - ci_infrastructure  # 8268
+    isbefore: []  # 8268
+    duplicate_of: []  # 8268
+    not_duplicate_of: []  # 8268
+    pr_ref:  # 8268
+    description: ""  # 8268
+    fields:  # 8268
+      statement: "Every change that can break a test is exercised by the per-PR gate. VIOLATED: smart-test's first check is 'did any Python source file change?', scoped to packages/*/src. A change confined to .agent/hooks/, scripts/ or tests/ makes it print 'No Python source files changed - skipping tests' and run NOTHING. Demonstrated 2026-07-29 on the transcript-scrubber branch: smart-test ran zero tests while the tree contained a genuinely red test (test_watcher_lifecycle::test_orphan_sweep_archives_dead_session_files). The red test was found only by an adversarial review; the gate would have let it reach dev, where it would surface in the twice-daily full-suite run. This is worse for governance paths than ordinary ones, because .agent/hooks/** and scripts/{auto-pr,install-hooks,...} are exactly the files AGENTS.md marks as requiring extra care."  # 8268
+      root_cause: "scripts/smart-test gates on a changed-file predicate limited to packages/*/src before it ever consults the test map. Separately, .agent/hooks/_shared/top_level_test_map.py maps <name>.py -> tests/test_<name>.py with no hyphen normalisation (its docstring assumes those filenames are snake_case), so a kebab-case hook module maps to nothing even when the gate does run; and .sh files under _shared/ are excluded outright by an .endswith('.py') guard, so no shell hook change can ever select a test."  # 8268
