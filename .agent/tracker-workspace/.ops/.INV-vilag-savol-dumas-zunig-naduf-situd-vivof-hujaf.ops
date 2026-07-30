@@ -1,0 +1,23 @@
+- op: create  # a1e8
+  at: '2026-07-30T07:14:01Z'  # a1e8
+  by: agent  # a1e8
+  actor: jgstern_agent  # a1e8
+  clock: 1  # a1e8
+  nonce: a1e8  # a1e8
+  data:  # a1e8
+    kind: invariant  # a1e8
+    title: "smart-test exits 0 with a green verdict when test modules fail to COLLECT (false green; the coverage verdict is computed without them)"  # a1e8
+    status: violated  # a1e8
+    priority: 1  # a1e8
+    parent:  # a1e8
+    tags:  # a1e8
+    - ci  # a1e8
+    - dogfood  # a1e8
+    isbefore: []  # a1e8
+    duplicate_of: []  # a1e8
+    not_duplicate_of: []  # a1e8
+    pr_ref:  # a1e8
+    description: ""  # a1e8
+    fields:  # a1e8
+      statement: "scripts/smart-test must not report success when any test module fails to collect. Observed 2026-07-30: it printed \"11756 passed, 1 skipped, 2 xfailed, 380 warnings, 3 errors\", then \"All changed source files are at 100% coverage\", and exited 0 -- while THREE test modules failed to import and were never run (BRANCHES_test_{ini,properties,requirements}.py, ImportError on a helper deleted in the same change). pytest itself exits 2 on a collection error. The coverage verdict printed in the same breath was therefore computed WITHOUT those modules, so a green local pre-push gate can assert both \"all tests pass\" and \"100% coverage\" while three modules never executed."  # a1e8
+      root_cause: "run_pytest re-derives the exit code from the log at scripts/smart-test:406-416 with three clauses: (1) \"FAIL Required test coverage\" -> 1; (2) \"^FAILED \" -> 1; (3) \"[0-9]+ passed\" && NOT \"[0-9]+ failed\" -> 0. A collection error emits \"ERROR <module>\" lines and an \"N errors\" summary token, matching NEITHER failure clause, so clause (3) fires and FORCES exit 0 over PIPESTATUS's real 2. The branch has no errors case.\n\nPROVENANCE: this is the branch WI-kalub ADDED, whose own in-code comment says it \"never fired (it was masked only by the PIPESTATUS default of 0 above; a latent landmine)\". Activating the branch inherited its missing-errors gap -- the pt.39(a) shape, where a fix that turns a dormant path on also turns on that path's blind spots.\n\nPROPOSED FIX (not implemented): add an errors clause ahead of the affirmative-green one, e.g. `elif grep -qE '^ERROR |[0-9]+ errors?\\b' \"$PYTEST_LOG\"; then exit_code=1`, or conjoin `&& ! grep -qE '[0-9]+ errors?\\b'` onto clause (3). The regression test should assert a synthetic log carrying \"N passed\" plus \"N errors\" yields a NON-zero exit -- a positive control that fails before the fix. scripts/smart-test is NOT on the AGENTS.md governance list, so this needs no human approval."  # a1e8
