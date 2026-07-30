@@ -1785,11 +1785,17 @@ def _compute_cyclomatic_complexity(node: ast.AST) -> int:
     - for loops
     - while loops
     - except handlers
-    - with statements
     - boolean operators (and, or)
     - conditional expressions (ternary)
     - match/case statements (Python 3.10+)
     - comprehensions with if clauses
+
+    NOT counted: `with` / `async with` (WI-gapir). A context manager is not a
+    branch — it introduces no alternative path through the function, so counting
+    it inflates the score above the McCabe definition this docstring, the spec
+    and the schema all name, and above what the reference implementations
+    (flake8's `mccabe`, radon) report. It had been counted, and on the
+    self-corpus that inflated 7.9% of Python functions.
 
     Returns 1 for straight-line code (no branches).
     """
@@ -1804,9 +1810,6 @@ def _compute_cyclomatic_complexity(node: ast.AST) -> int:
             complexity += 1
         # Exception handlers (each except clause adds a branch)
         elif isinstance(child, ast.ExceptHandler):
-            complexity += 1
-        # With statements
-        elif isinstance(child, (ast.With, ast.AsyncWith)):
             complexity += 1
         # Boolean operators in conditions
         elif isinstance(child, ast.BoolOp):

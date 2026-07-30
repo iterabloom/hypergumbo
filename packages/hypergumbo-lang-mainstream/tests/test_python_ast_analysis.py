@@ -3539,7 +3539,20 @@ def with_exceptions():
 
 
 def test_cyclomatic_complexity_with_context_managers() -> None:
-    """with statements add 1 each."""
+    """WI-gapir: `with` is NOT a decision point, so context managers add nothing.
+
+    This assertion is inverted from its original form, which pinned "with
+    statements add 1 each" and encoded the defect as expected behaviour. A
+    context manager introduces no alternative path through the function — it is
+    setup/teardown, not a branch — so counting it inflates the score above the
+    McCabe definition that this function's docstring, the spec and the schema
+    all name, and above what the reference implementations of that definition
+    (flake8's ``mccabe``, radon) report. On the self-corpus it inflated 7.9% of
+    Python functions.
+
+    Two nested `with` blocks and no branch of any kind, so complexity is the
+    straight-line base of 1.
+    """
     code = """
 def with_context():
     with open('file.txt') as f:
@@ -3549,7 +3562,28 @@ def with_context():
 """
     tree = ast.parse(code)
     func = tree.body[0]
-    # Base 1 + 2 with statements = 3
+    assert _compute_cyclomatic_complexity(func) == 1
+
+
+def test_cyclomatic_complexity_with_still_counts_real_branches_inside() -> None:
+    """Positive control for the exclusion above.
+
+    Removing `with` from the decision-point set must not make the walker skip
+    the body it introduces — a too-broad change (e.g. not descending into the
+    `with` block) would satisfy the assertion above while silently dropping real
+    branches, and the test would still pass.
+    """
+    code = """
+def with_branches(items):
+    with open('f') as fh:
+        for item in items:
+            if item:
+                fh.write(item)
+    return fh
+"""
+    tree = ast.parse(code)
+    func = tree.body[0]
+    # base 1 + for 1 + if 1 = 3; the two `with`-introduced levels add nothing.
     assert _compute_cyclomatic_complexity(func) == 3
 
 
