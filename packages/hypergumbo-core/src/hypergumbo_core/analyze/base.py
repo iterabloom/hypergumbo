@@ -811,7 +811,7 @@ def make_route_symbol(
     origin_run_id: str,
     framework_role: str = "route",
     handler_ref: Optional[str] = None,
-    extra_meta: Optional[dict] = None,
+    extra_meta: Optional[dict[str, Any]] = None,
     is_exported: bool = False,
     protocol_origin: Optional[str] = None,
     discovery_language: Optional[str] = None,
@@ -885,7 +885,7 @@ def make_route_symbol(
 
     normalized_path = route_path if route_path else "/"
     name = f"{method} {normalized_path}"
-    meta: dict = {
+    meta: dict[str, Any] = {
         "route_path": normalized_path,
         **transport_meta(method),
         "framework_role": framework_role,

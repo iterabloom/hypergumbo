@@ -1261,6 +1261,11 @@ def _extract_symbols_from_file(
                                 _m_norm_sig = normalize_go_signature(
                                     _extract_go_signature(iface_child, source)
                                 )
+                                # Guard exactly as the two concrete-method sites
+                                # do: a signature-less method mints NO typed
+                                # stable_id rather than one built from an empty
+                                # signature, which would be the name-only key
+                                # the typed id exists to avoid colliding on.
                                 m_stable_id = make_typed_stable_id(
                                     "method",
                                     _m_norm_sig,
@@ -1270,7 +1275,7 @@ def _extract_symbols_from_file(
                                         package_name, type_name, mname
                                     ),
                                     file_stable_id=file_stable_id,
-                                )
+                                ) if _m_norm_sig else None
                                 m_sym = Symbol(
                                     id=make_symbol_id(
                                         "go", str(file_path),
