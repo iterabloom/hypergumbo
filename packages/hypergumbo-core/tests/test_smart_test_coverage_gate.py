@@ -96,18 +96,49 @@ def test_baseline_detection_still_failover_aware() -> None:
     )
 
 
-def test_failed_grep_is_word_bounded() -> None:
-    """1b: the pass/fail re-derivation must not match 'xfailed' when testing for
-    'failed'."""
+def test_exit_code_is_sourced_from_pytest_not_re_derived() -> None:
+    """1b, superseded by INV-vilag: the run's verdict comes from pytest itself.
+
+    WI-kalub Step 1b hardened an affirmative-green re-derivation clause (``N
+    passed`` && ! ``N failed`` -> 0) so its ``failed`` match could not be
+    satisfied by the always-present ``N xfailed`` token. INV-vilag removed that
+    clause outright: it could only ever de-escalate to success, which is exactly
+    how a collection-error run (``N passed`` + ``N errors``, no ``FAILED``) was
+    reported green. The 1b property is now satisfied STRUCTURALLY — there is no
+    ``failed``-matching green clause left to mis-word-bound — so this guard pins
+    the stronger successor property instead of the clause it protected.
+    """
     text = _text()
     assert '! grep -q "failed"' not in text, (
-        "smart-test still uses the bare `! grep -q \"failed\"`, which matches the "
-        "always-present '4 xfailed' summary and defeats the green re-confirmation. "
-        "Use `! grep -qE \"[0-9]+ failed\"` (WI-kalub Step 1b)."
+        "smart-test reintroduced the bare `! grep -q \"failed\"`, which matches the "
+        "always-present '4 xfailed' summary token (WI-kalub Step 1b)."
     )
-    assert re.search(r'grep -qE "\[0-9\]\+ failed"', text), (
-        "expected a word/count-bounded failed match (`grep -qE \"[0-9]+ failed\"`) "
-        "in the pass/fail re-derivation."
+    cap = [
+        ln for ln in text.splitlines()
+        if "pytest " in ln
+        and '"$PYTEST_LOG" 2>&1' in ln
+        and not ln.lstrip().startswith("#")
+    ]
+    assert cap, "could not find the captured pytest invocation (writes $PYTEST_LOG)"
+    for ln in cap:
+        assert "|| exit_code=$?" in ln, (
+            "the captured pytest run does not preserve pytest's OWN exit status. "
+            "With `|| true`, PIPESTATUS reflects the `true` and the real status is "
+            "discarded, so a collection-error run (pytest exits 2, prints `N errors` "
+            "and no `FAILED`) reconstructs as green and the caller then computes a "
+            "coverage verdict over modules that never imported (INV-vilag). Capture "
+            f"it with `|| exit_code=$?`. Line:\n  {ln}"
+        )
+    # Scope to CODE lines: the fix's own explanatory comment names PIPESTATUS.
+    code_pipestatus = [
+        ln for ln in text.splitlines()
+        if "PIPESTATUS" in ln and not ln.lstrip().startswith("#")
+    ]
+    assert not code_pipestatus, (
+        "smart-test derives the pytest verdict from PIPESTATUS again. After "
+        "`cmd || true` PIPESTATUS reports the `true`, so it is always 0 — the "
+        "masking that made INV-vilag invisible. Use `|| exit_code=$?`. Line(s):\n  "
+        + "\n  ".join(code_pipestatus)
     )
 
 
@@ -174,3 +205,139 @@ def test_summarize_result_grep_cannot_abort() -> None:
             "log aborts smart-test under set -e+pipefail before it can report the "
             f"result (WI-kalub). Line:\n  {ln}"
         )
+
+
+# ---------------------------------------------------------------------------
+# INV-vilag: run_pytest must not report green when modules fail to COLLECT.
+#
+# The preceding guards are source-level (smart-test is bash and contributes no
+# pytest coverage, so that is the file's established convention). These two are
+# BEHAVIORAL: they sed-extract the real `summarize_pytest_output` + `run_pytest`
+# out of the shipped script and drive them against a stub `pytest`, so they
+# exercise the actual code rather than pinning its text.
+#
+# The defect: `pytest … > "$PYTEST_LOG" 2>&1 || true` makes PIPESTATUS[0] always
+# 0, so the re-derivation started from 0 and the affirmative-green clause
+# (`N passed` && ! `N failed`) could only ever HOLD it at 0 — a collection-error
+# run satisfies neither failure clause, because pytest reports `ERROR`/`N errors`
+# and not `FAILED`. run_pytest returned 0, the caller's `TEST_EXIT -eq 0` gate
+# then ran the scoped coverage check WITHOUT the modules that never imported, and
+# smart-test exited 0 printing "✅ … 11756 passed, 3 errors".
+# ---------------------------------------------------------------------------
+
+_STUB_PYTEST = """#!/usr/bin/env bash
+cat <<'LOG'
+{log_body}
+LOG
+exit {rc}
+"""
+
+_DRIVER = """set -euo pipefail
+export PATH="$PWD/bin:$PATH"
+RAW_OUTPUT=false
+SMART_TEST_MODE=targeted
+TARGETED_TEST_COUNT=1
+TOTAL_TEST_COUNT=1
+TARGETED_SOURCE_COUNT=1
+TOTAL_SOURCE_COUNT=1
+CHANGED_SOURCE_FILES=""
+BASE_BRANCH=dev
+MANIFEST_DIR="$PWD/.ci"
+PYTEST_LOG="$MANIFEST_DIR/pytest-output.log"
+JUNIT_XML="$MANIFEST_DIR/pytest-results.xml"
+COV_PATHS=()
+mkdir -p "$MANIFEST_DIR"
+source ./fns.sh
+set +e
+run_pytest "sometests/"
+echo "RUN_PYTEST_RETURNED=$?"
+"""
+
+
+def _drive_run_pytest(tmp_path: Path, log_body: str, stub_rc: int) -> tuple[int, str]:
+    """Run the REAL run_pytest from scripts/smart-test against a stub pytest.
+
+    Returns ``(return_code_of_run_pytest, combined_output)``.
+    """
+    import shutil
+    import subprocess
+
+    bash = shutil.which("bash")
+    assert bash, "bash is required to drive smart-test's own functions"
+
+    (tmp_path / "bin").mkdir()
+    stub = tmp_path / "bin" / "pytest"
+    stub.write_text(_STUB_PYTEST.format(log_body=log_body, rc=stub_rc))
+    stub.chmod(0o755)
+
+    text = _text()
+    lines = text.splitlines()
+
+    def _extract(name: str) -> str:
+        start = next(i for i, ln in enumerate(lines) if ln.startswith(f"{name}() {{"))
+        end = next(i for i in range(start + 1, len(lines)) if lines[i] == "}")
+        return "\n".join(lines[start:end + 1])
+
+    (tmp_path / "fns.sh").write_text(
+        _extract("summarize_pytest_output") + "\n" + _extract("run_pytest") + "\n"
+    )
+    (tmp_path / "drive.sh").write_text(_DRIVER)
+
+    proc = subprocess.run(
+        [bash, "drive.sh"],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+    )
+    out = proc.stdout + proc.stderr
+    marker = "RUN_PYTEST_RETURNED="
+    assert marker in out, f"driver did not reach the end; output:\n{out}"
+    rc = int(out.rsplit(marker, 1)[1].split()[0])
+    return rc, out
+
+
+def test_run_pytest_reports_failure_when_modules_fail_to_collect(
+    tmp_path: Path,
+) -> None:
+    """INV-vilag: a collection-error run must NOT be reported as green.
+
+    pytest exits 2 and prints ``N passed, N errors`` with no ``FAILED`` line. If
+    run_pytest returns 0 here, the caller's ``TEST_EXIT -eq 0`` gate computes the
+    scoped coverage verdict over a run whose erroring modules never imported —
+    the coverage claim is made about tests that did not execute.
+    """
+    rc, out = _drive_run_pytest(
+        tmp_path,
+        log_body=(
+            "ERROR packages/hypergumbo-lang-mainstream/tests/BRANCHES_test_ini.py\n"
+            "ERROR packages/hypergumbo-lang-mainstream/tests/BRANCHES_test_properties.py\n"
+            "=========== 11756 passed, 2 errors in 214.44s ==========="
+        ),
+        stub_rc=2,
+    )
+    assert rc != 0, (
+        "run_pytest returned 0 for a run in which test modules failed to COLLECT "
+        "(pytest exited 2). The exit code must come from pytest itself, not from a "
+        "log re-derivation whose affirmative-green clause matches `N passed` while "
+        "`N errors` satisfies neither failure clause (INV-vilag).\n" + out
+    )
+    assert "✅" not in out, (
+        "run_pytest printed a green checkmark for a collection-error run; the "
+        "summary line's error count is the signal, not the checkmark.\n" + out
+    )
+
+
+def test_run_pytest_still_reports_green_on_a_clean_run(tmp_path: Path) -> None:
+    """Positive control for the guard above.
+
+    Without this, a harness that always returned non-zero would make the
+    INV-vilag test pass while proving nothing (pt.39b: establish a positive
+    control before believing a null result).
+    """
+    rc, out = _drive_run_pytest(
+        tmp_path,
+        log_body="=========== 11756 passed, 2 xfailed in 214.44s ===========",
+        stub_rc=0,
+    )
+    assert rc == 0, f"run_pytest must still return 0 on a genuinely green run\n{out}"
+    assert "✅" in out, f"a genuinely green run should still print the ✅\n{out}"

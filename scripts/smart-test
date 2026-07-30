@@ -400,19 +400,28 @@ run_pytest() {
         # grep aborts smart-test under `set -e + pipefail` with a false exit 1 on a
         # GREEN run. CI has no FORCE_COLOR, so this only bit the local dev loop;
         # neutralizing here aligns local with CI.
-        env -u FORCE_COLOR -u COLORTERM pytest $test_targets "${COV_PATHS[@]}" --junit-xml="$JUNIT_XML" "${extra_args[@]}" > "$PYTEST_LOG" 2>&1 || true
-        local exit_code=${PIPESTATUS[0]}
-        # Re-check exit code from log file if PIPESTATUS doesn't work
+        # INV-vilag: capture pytest's OWN exit code as the primary signal.
+        # The previous form was `… || true` + `exit_code=${PIPESTATUS[0]}`, but
+        # after `cmd || true` PIPESTATUS reflects the `true`, so exit_code was
+        # ALWAYS 0 and pytest's real status was discarded. The re-derivation below
+        # then had to reconstruct the verdict from the log — and could not, for
+        # runs where modules fail to COLLECT: pytest prints `ERROR …` / `N errors`
+        # (never `FAILED `) alongside `N passed`, which satisfies neither failure
+        # clause. run_pytest returned 0, so the caller's `TEST_EXIT -eq 0` gate
+        # computed the scoped coverage verdict over a run whose erroring modules
+        # never imported, and smart-test exited 0 printing "✅ … N passed, 3 errors".
+        local exit_code=0
+        env -u FORCE_COLOR -u COLORTERM pytest $test_targets "${COV_PATHS[@]}" --junit-xml="$JUNIT_XML" "${extra_args[@]}" > "$PYTEST_LOG" 2>&1 || exit_code=$?
+        # Corrective re-derivation: these may only ESCALATE to failure, never
+        # de-escalate to success. An affirmative-green clause (`N passed` && !
+        # `N failed` -> 0) used to live here; it was a no-op while exit_code
+        # started at 0, and would actively mask a real non-zero status now that it
+        # does not. Deleted rather than repaired — it is the WI-kalub "latent
+        # landmine" the comment there predicted.
         if grep -q "FAIL Required test coverage" "$PYTEST_LOG"; then
             exit_code=1
         elif grep -qE "^FAILED " "$PYTEST_LOG"; then
             exit_code=1
-        elif grep -qE "[0-9]+ passed" "$PYTEST_LOG" && ! grep -qE "[0-9]+ failed" "$PYTEST_LOG"; then
-            # WI-kalub (Step 1b): word/count-bound the failed match. The bare
-            # `grep -q "failed"` matched the always-present "N xfailed" summary
-            # token, so this affirmative green re-confirmation never fired (it was
-            # masked only by the PIPESTATUS default of 0 above; a latent landmine).
-            exit_code=0
         fi
         summarize_pytest_output "$PYTEST_LOG" "$exit_code"
 
