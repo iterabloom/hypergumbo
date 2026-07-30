@@ -119,7 +119,16 @@ VIEW_NAMES = ("behavior_map", "compact", "tiered")
 # tool version). See the "Version Distinction" module docstring for the three
 # version axes.
 READ_VIEW_SCHEMA_VERSION = "0.1.0"
-CONFIDENCE_MODEL = "hypergumbo-evidence-v2"
+# WI-huhin: spec Appendix C mandates `hypergumbo-evidence-vMAJOR.MINOR`. This
+# emitted a bare `v2`, which did not match that grammar and left MINOR
+# unexpressible — so ADR-0039's refinement (new evidence types, precisely what
+# MINOR is defined to signal) had no way to announce itself, and the next
+# refinement would have had to pick between a misleading MAJOR bump and silence.
+# `v2.0` is the first CONFORMING rendering of the SAME model: MAJOR unchanged,
+# no scoring behaviour differs. Bump MINOR for a refinement, MAJOR for an
+# incompatible change. `test_confidence_model_matches_documented_grammar` pins
+# the format.
+CONFIDENCE_MODEL = "hypergumbo-evidence-v2.0"
 STABLE_ID_SCHEME = "hypergumbo-stableid-v8"
 # v3 (WI-linon): the Python shape_id hash now folds the symbol kind
 # (class/method/function) and the concrete AST node type into its prefix, so
