@@ -19,3 +19,18 @@
     pr_ref:  # da6d
     description: "**Defect.** The spec describes `nodes[].origin` as a scalar string in one place while framing it as a list elsewhere.\n\n**Evidence.** Spec §1775-1776 documents nodes[].origin as \"String, pass ID that created this node,\" while §259/§795 describe origin as a list supporting multi-pass attribution. The two descriptions of the same field contradict each other; the data model emits a list.\n\n**Contract.** The spec should describe `origin` with a single consistent type (list framing, matching the migrated data model).\n\n**Consequence.** A consumer reading the spec to learn the origin type encounters two incompatible descriptions; one following the scalar-string section writes parsing code that breaks on the list-typed field the map actually emits.\n\n**Related (not duplicate).** This is the docs-fix facet split out from the origin-list defect (INV-jidat tracks the data/producer side: list-typed but singleton). Editing the spec does not fix attribution; the producer fix does not fix the spec."  # da6d
     fields: {}  # da6d
+- op: update  # eeb1
+  at: '2026-07-30T17:20:25Z'  # eeb1
+  by: agent  # eeb1
+  actor: jgstern_agent  # eeb1
+  clock: 2  # eeb1
+  nonce: eeb1  # eeb1
+  set:  # eeb1
+    status: done  # eeb1
+- op: discuss  # a0a6
+  at: '2026-07-30T17:20:25Z'  # a0a6
+  by: agent  # a0a6
+  actor: jgstern_agent  # a0a6
+  clock: 3  # a0a6
+  nonce: a0a6  # a0a6
+  message: "DONE — spec-only. The output-fields appendix described nodes[].origin as \"String, pass ID that created this node\" while §6 defines origin: list[str] (INV-jidat; schema-breaking change from a scalar at SCHEMA_VERSION 0.10.0) and §7 documents the multi-pass attribution semantics. Two incompatible definitions of one field.\n\nVerified against a fresh self-survey before editing: nodes[0].origin is ['python'] — a list. So §6 is the correct one and the appendix was the stale copy; the appendix now describes the list and defers to §6 as canonical, rather than repeating the definition a third time where it can drift again."  # a0a6

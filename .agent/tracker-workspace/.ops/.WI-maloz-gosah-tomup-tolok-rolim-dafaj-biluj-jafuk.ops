@@ -45,3 +45,18 @@
   clock: 4  # 3a2f
   nonce: 3a2f  # 3a2f
   message: "PREMISE CORRECTION (verified on merged dev 2026-07-01, Wave-3 Phase-2 sweep). The item's headline — '14118 edges silently get 0.0 centrality weight' and '1790 nodes invisible to centrality' — is FACTUALLY WRONG. ranking.py:319 reads `edge_type_weights.get(edge.edge_type, 0.5)` — a 0.5 fallback, NOT 0.0; git-blame shows 0.5 since the feature commit 3b5746e186 (2026-03-18), and `git log -S 'get(edge.edge_type, 0.0)'` returns nothing (it was never 0.0). The correctness-strategy skeptic independently states 'the weight fallback is 0.5, not zero — uncalibrated, not invisible.' So missing edge types get a non-zero 0.5 and nodes reached only by instantiates/references/module_attr_ref are NOT centrality-invisible. SURVIVING (real, lesser) issue: DEFAULT_EDGE_TYPE_WEIGHTS (ranking.py:201-217) covers only 12 of ~54 registered edge types, so the 42 missing types get an UNDIFFERENTIATED 0.5 (calibration gap) and there is no registry-completeness gate to catch drift. Re-scoped: this is a calibration + missing-gate quality item, not a silent-zeroing bug. Downgraded P1->P3 accordingly. Cleanest future fix: (a) assign calibrated weights to high-volume missing types (instantiates/references/module_attr_ref); (b) add a test asserting DEFAULT_EDGE_TYPE_WEIGHTS is total over edge_types.all_edge_type_names() (or lists intentional defaults)."  # 3a2f
+- op: update  # 319a
+  at: '2026-07-30T17:20:26Z'  # 319a
+  by: agent  # 319a
+  actor: jgstern_agent  # 319a
+  clock: 5  # 319a
+  nonce: 319a  # 319a
+  set:  # 319a
+    status: wont_do  # 319a
+- op: discuss  # bcca
+  at: '2026-07-30T17:20:26Z'  # bcca
+  by: agent  # bcca
+  actor: jgstern_agent  # bcca
+  clock: 6  # bcca
+  nonce: bcca  # bcca
+  message: "WONT_DO — the premise is FALSE, established by reading the lookup rather than by a bakeoff.\n\nFiled claim: 'DEFAULT_EDGE_TYPE_WEIGHTS covers 12/54 types; 14118 edges silently get 0.0 centrality weight.'\n\nThe coverage half re-measures (numbers moved because the edge-type registry shrank 54->25 in the endpoint_shape fold): the weights map covers 11 types, the self-corpus emits 17, so 8 emitted types have no entry, spanning 18241 of 138626 edges (13.2%) — references, instantiates, inherits, overrides, module_attr_ref, uses, decorated_by, defines_target. So the gap is real and slightly larger than filed.\n\nBut the CONSEQUENCE claim is wrong. ranking.py:335 is 'type_weight = edge_type_weights.get(edge.edge_type, 0.5)'. An unlisted type gets 0.5, never 0.0 — and 0.5 is not an arbitrary fallback, it is the same weight the map assigns structural 'implements' (named in the comment two lines above). With no weights map at all the default is 1.0. Nothing is silently zeroed, so no edge is silently excluded from centrality.\n\nRESIDUAL, stated honestly rather than folded into a close: whether 0.5 is the RIGHT weight for those 8 types — particularly 'references', which is high-volume — is a genuine ranking-TUNING question. It is not this item, which is filed as a silent-zero data-loss bug. Tuning centrality weights shifts every centrality score and therefore slice/compact/sketch output, so it needs a real-repo A/B rather than a unit test (the WI-batit lesson: a unit test can pass while the live behaviour is unmoved). Anyone picking that up should file it as a tuning item with a before/after, not reopen this one."  # bcca

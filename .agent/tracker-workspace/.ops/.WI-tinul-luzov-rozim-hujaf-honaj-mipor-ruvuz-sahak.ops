@@ -51,3 +51,18 @@
   clock: 5  # c5a9
   nonce: c5a9  # c5a9
   message: "related-but-distinct cross-link (connections-sweep 2026-06-08T1900Z)"  # c5a9
+- op: update  # 78a5
+  at: '2026-07-30T17:20:50Z'  # 78a5
+  by: agent  # 78a5
+  actor: jgstern_agent  # 78a5
+  clock: 6  # 78a5
+  nonce: 78a5  # 78a5
+  set:  # 78a5
+    status: done  # 78a5
+- op: discuss  # 65cc
+  at: '2026-07-30T17:20:50Z'  # 65cc
+  by: agent  # 65cc
+  actor: jgstern_agent  # 65cc
+  clock: 7  # 65cc
+  nonce: 65cc  # 65cc
+  message: "DONE — spec-only; no emitted value changed. dev 43ab282663.\n\nRe-measured all three surfaces on a fresh self-survey (the item's figures were from 5.0.1; the disagreement is unchanged at 7.0.0):\n  analysis_runs[].version                        = '7.0.0'            (bare)\n  reproducibility_context.captured.hypergumbo_version = '7.0.0'       (bare)\n  limits.analyzer_version                        = 'hypergumbo-7.0.0' (prefixed)\n\nTwo problems, both fixed. (1) The Version-fields taxonomy named only TWO of the three surfaces — it omitted analysis_runs[].version entirely, so the surface the item is about was undocumented. (2) Worse, the AnalysisRun and AnalysisPass field examples showed \"hypergumbo-0.1.0\", a prefixed form the producer has NEVER emitted. So a consumer joining analysis_runs[].version against limits.analyzer_version failed on a prefix the spec told them to expect on BOTH — the exact failed join this item filed.\n\nThe examples now show the bare emitted form and the taxonomy names all three, with the discriminator stated rather than left implicit: only analyzer_version carries the prefix, deliberately, because it is the one surface naming the PRODUCING TOOL rather than reporting the version of a record the tool already authored. Consumers joining them must strip it.\n\nThe emitted values were NOT changed. The prefix on analyzer_version is documented-intentional (the Version-fields taxonomy, reaffirmed by the WI-sumur/WI-zugof/WI-kozuz limits-doc cluster), so unifying would have discarded a deliberate distinction to fix a documentation gap."  # 65cc
