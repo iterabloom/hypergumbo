@@ -4574,6 +4574,42 @@ public class Child extends Parent {
         assert len(call_edges) == 1
         assert call_edges[0].evidence_type == "ast_call_direct"
 
+    def test_direct_call_confidence_within_derived_band(
+        self, tmp_path: Path
+    ) -> None:
+        """INV-zatug: a resolved direct call must sit inside the ADR-0039
+        band for ``ast_call_direct``.
+
+        The producer scaled a hardcoded 0.95 by the resolver multiplier, so a
+        fully-resolved call published 0.95 — above the pathway's 0.85 ceiling.
+        The multiplier is meaningful and is kept; only its *base* moves to the
+        registry seed, so the value tracks the inference pathway instead of a
+        per-emitter literal. Asserted against ``confidence_within_band`` rather
+        than a golden number so the test follows the registry if the seed
+        changes.
+        """
+        from hypergumbo_core.confidence import confidence_within_band
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        (tmp_path / "Main.java").write_text(
+            "public class Main {\n"
+            "    private int helper() { return 1; }\n"
+            "    public int process() { return helper(); }\n"
+            "}\n"
+        )
+        result = analyze_java(tmp_path)
+        direct = [
+            e for e in result.edges
+            if e.edge_type == "calls"
+            and e.evidence_type == "ast_call_direct"
+            and e.is_resolved
+        ]
+        assert direct, "expected a resolved direct call edge"
+        for edge in direct:
+            assert confidence_within_band("ast_call_direct", edge.confidence), (
+                f"{edge.confidence} outside the ast_call_direct band"
+            )
+
     def test_inherited_field_method_call(self, tmp_path: Path) -> None:
         """Call on field declared in parent class resolves via inheritance."""
         from hypergumbo_lang_mainstream.java import analyze_java

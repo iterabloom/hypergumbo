@@ -211,6 +211,48 @@ my-tool = "mypackage.tool:run"
     assert cli_edge.dst == "python:mypackage.cli:0-0:main:unresolved"
 
 
+def test_pyproject_scripts_declare_build_target_main_evidence(tmp_path):
+    """INV-zatug: a [project.scripts] entry is a build target's main entry
+    point, so it must DECLARE that pathway rather than inherit Edge.create's
+    ``ast_call_direct`` default.
+
+    The default silently labelled these manifest declarations as "inferred
+    from a direct (non-method) call site", which is not what a
+    ``console = "pkg.cli:main"`` line is. The mislabel was load-bearing: the
+    ADR-0039 range check then judged the edge against the *call-site* band
+    [0.5, 0.85] and flagged its (entirely justified) high confidence as an
+    over-claim. Fixing the confidence instead of the label would have encoded
+    the lie — a manifest entry that literally names its target is not a
+    low-confidence inference.
+    """
+    from hypergumbo_core.confidence import confidence_within_band
+
+    toml_file = tmp_path / "pyproject.toml"
+    toml_file.write_text("""
+[project]
+name = "mypackage"
+
+[project.scripts]
+my-cli = "mypackage.cli:main"
+""")
+    result = analyze_toml_files(tmp_path)
+
+    dt_edges = [e for e in result.edges if e.edge_type == "defines_target"]
+    assert dt_edges, "expected a defines_target edge for the console script"
+    for edge in dt_edges:
+        assert edge.evidence_type == "build_target_main", (
+            f"declared pathway expected, got {edge.evidence_type!r}"
+        )
+        assert confidence_within_band(edge.evidence_type, edge.confidence), (
+            f"{edge.confidence} outside the band for {edge.evidence_type}"
+        )
+    # Derived at the ir.py chokepoint, not hand-written: 1.0 is a reserved
+    # ceiling (no detection method is certain), which is what the old literal
+    # breached.
+    assert all(e.confidence_source == "evidence_derived" for e in dt_edges)
+    assert all(e.confidence < 1.0 for e in dt_edges)
+
+
 def test_pyproject_scripts_dst_is_well_formed_id(tmp_path):
     """INV-nodij regression: every pyproject script defines_target dst
     parses cleanly into 5 colon-separated id slots, so the boundary

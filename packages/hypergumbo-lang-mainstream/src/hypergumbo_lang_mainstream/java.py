@@ -97,6 +97,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Iterator, Optional, TypeAlias
 
+from hypergumbo_core.confidence import derive_confidence
 from hypergumbo_core.dataflow import annotate_dataflow as _annotate_dataflow, get_dataflow_config as _get_dataflow_config
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import (
@@ -1659,8 +1660,22 @@ def _extract_edges(
                             candidate = f"{current_class}.{method_name}"
                             lookup_result = resolver.lookup(candidate, caller_path=_caller_path)
                             if lookup_result.found:
-                                # Scale confidence by resolver's confidence multiplier
-                                edge_confidence = 0.95 * lookup_result.confidence
+                                # Scale the pathway's derived reliability by the
+                                # resolver's confidence multiplier.
+                                #
+                                # INV-zatug: the base was a hardcoded 0.95, so a
+                                # fully-resolved call published 0.95 — above the
+                                # ast_call_direct ceiling of 0.85. The multiplier
+                                # is meaningful and stays; only the base moves to
+                                # the ADR-0039 registry seed, so the value tracks
+                                # the inference pathway instead of a per-emitter
+                                # literal that drifted from it.
+                                edge_confidence = (
+                                    derive_confidence(
+                                        "ast_call_direct", is_resolved=True
+                                    )
+                                    or 0.85
+                                ) * lookup_result.confidence
                                 edge = Edge.create(
                                     src=current_method.id,
                                     dst=lookup_result.symbol.id,

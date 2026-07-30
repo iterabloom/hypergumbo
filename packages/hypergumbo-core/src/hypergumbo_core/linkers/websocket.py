@@ -896,7 +896,11 @@ def link_websocket(
             edge_type="references",
             line=ep.line,
             evidence_type="ast_call_direct",
-            confidence=0.90,
+            # INV-zatug: the declaration above is deliberate (the ADR-0028
+            # Phase-3 fold), so the value follows the pathway rather than the
+            # reverse — 0.90 over-claimed against its 0.85 ceiling. Dropping
+            # the literal lets the ir.py chokepoint derive it and stamps
+            # confidence_source=evidence_derived.
             origin=PASS_ID,
             origin_run_id=run.execution_id,
             data_direction="src_to_dst",
