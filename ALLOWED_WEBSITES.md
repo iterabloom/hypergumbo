@@ -23,6 +23,13 @@
 - bitbucket.org
 - codeberg.org
 
+## CI
+# This project's own Woodpecker instance. Needed because CI logs are NOT
+# retrievable through the API (`ci-debug logs` reports them as sitting behind
+# Cloudflare Access), so a failing pipeline is undiagnosable from the agent side
+# without opening the run URL that `ci-debug` itself prints — see WI-solob.
+- ci.revolving-tactile.com.de
+
 ## Papers / scholarly
 - arxiv.org
 - openreview.net

@@ -111,10 +111,71 @@ except Exception:
     pass
 " 2>/dev/null || echo "")
 	fi
+	# WI-solob: try a real fetch before falling back to "open it yourself".
+	#
+	# Measured 2026-07-30: allowlisting the CI host is NOT sufficient — an
+	# unauthenticated GET of the run URL returns 403, because Cloudflare Access
+	# fronts the instance. Two independent credentials are required, both read
+	# from .env alongside FORGEJO_TOKEN/HG_GITHUB_TOKEN and never echoed:
+	#   CF_ACCESS_CLIENT_ID / CF_ACCESS_CLIENT_SECRET  - Cloudflare service
+	#     token, sent as CF-Access-Client-* headers; gets past the edge.
+	#   WOODPECKER_TOKEN                                - Woodpecker API token,
+	#     sent as Bearer; authenticates to the app itself.
+	# Absent either, we degrade to exactly the previous message plus a line
+	# naming what to set, so this is strictly more capable and never less.
+	# .env is already sourced by load_env() in forgejo-api.sh before any api_*
+	# call, so these are simply read from the environment here — no second
+	# source, and nothing is echoed.
+	local wp_host wp_repo wp_pipeline wp_step
+	if [[ "$target_url" =~ ^(https://[^/]+)/repos/([0-9]+)/pipeline/([0-9]+)/?([0-9]*) ]]; then
+		wp_host="${BASH_REMATCH[1]}"
+		wp_repo="${BASH_REMATCH[2]}"
+		wp_pipeline="${BASH_REMATCH[3]}"
+		wp_step="${BASH_REMATCH[4]:-1}"
+	fi
+
+	if [[ -n "${wp_host:-}" && -n "${WOODPECKER_TOKEN:-}" \
+	      && -n "${CF_ACCESS_CLIENT_ID:-}" && -n "${CF_ACCESS_CLIENT_SECRET:-}" ]]; then
+		local api="$wp_host/api/repos/$wp_repo/logs/$wp_pipeline/$wp_step"
+		local body http
+		body=$(curl -sS -w $'\n%{http_code}' \
+			-H "Authorization: Bearer $WOODPECKER_TOKEN" \
+			-H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" \
+			-H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET" \
+			"$api" 2>/dev/null || true)
+		http="${body##*$'\n'}"
+		body="${body%$'\n'*}"
+		if [[ "$http" == "200" && -n "$body" ]]; then
+			# Woodpecker returns [{"data": "<base64 or plain line>"}, ...]
+			echo "$body" | python3 -c "
+import sys, json, base64
+try:
+    for entry in json.load(sys.stdin):
+        d = entry.get('data', '')
+        try:
+            d = base64.b64decode(d).decode('utf-8', 'replace')
+        except Exception:
+            pass
+        sys.stdout.write(d if d.endswith('\n') else d + '\n')
+except Exception:
+    sys.stdout.write(sys.stdin.read() if not sys.stdin.closed else '')
+" 2>/dev/null || echo "$body"
+			return 0
+		fi
+		echo "Woodpecker log fetch failed (HTTP ${http:-000}); falling back." >&2
+	fi
+
 	{
 		echo "CI logs are hosted in Woodpecker (behind Cloudflare Access) and are"
-		echo "not retrievable via the API. Open the run directly:"
+		echo "not retrievable via the API without credentials. Open the run directly:"
 		echo "  ${target_url:-<Woodpecker UI>}"
+		echo ""
+		echo "To make this fetchable (WI-solob), set in .env:"
+		echo "  WOODPECKER_TOKEN         - Woodpecker API token (app auth)"
+		echo "  CF_ACCESS_CLIENT_ID      - Cloudflare Access service token id"
+		echo "  CF_ACCESS_CLIENT_SECRET  - Cloudflare Access service token secret"
+		echo "Allowlisting the host alone is NOT enough: an unauthenticated GET"
+		echo "returns 403 at the Cloudflare edge before Woodpecker is reached."
 	} >&2
 	return 1
 }
