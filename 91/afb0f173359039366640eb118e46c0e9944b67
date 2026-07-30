@@ -1,0 +1,35 @@
+Original commit body from a6a9eb7226bfe753fd120ad94a400e7c0cc968ab:
+
+WI-gapir. _compute_cyclomatic_complexity counted `with` / `async with`, and
+its own docstring listed "with statements" among the decision points — the
+deviation was stated rather than hidden, which is what made it decidable.
+
+A context manager introduces no alternative path through the function; it is
+setup/teardown, not a branch. Both the schema description and the spec commit
+to "McCabe cyclomatic complexity (decision points + 1)", and the reference
+implementations of that definition (flake8's mccabe, radon) do not count it.
+So the code deviated from the standard it names.
+
+CONSUMER-VISIBLE: this lowers Symbol.cyclomatic_complexity on any Python
+function using a context manager (7.9% of them on the self-corpus) and
+therefore shifts which clusters `repeat-finder --min-complexity` treats as
+trivial. That is the correct consequence — a straight-line function whose
+only "branch" was a `with` genuinely is a trivial cluster.
+
+Python-only by construction: BRANCH_NODE_TYPES["python"] is empty, so Python
+uses this AST path exclusively and no tree-sitter language shares the change.
+Every other cyclomatic_complexity assertion in the tree belongs to a language
+with its own computation (cmake, C, erlang, commonlisp, r, elm, nix).
+
+Blast radius in tests was measured before changing anything and came to
+exactly one assertion: test_cyclomatic_complexity_with_context_managers,
+which pinned "with statements add 1 each" and so encoded the defect as
+expected behaviour — the same shape as the WI-kalub guard that had to be
+rewritten rather than resurrected when its clause was deleted. It is
+inverted, and paired with a positive control asserting that real branches
+INSIDE a `with` block still count, so a too-broad change that stopped
+descending into the block would fail rather than pass.
+
+2375 passed across the 58-file affected set.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
