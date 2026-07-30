@@ -19,3 +19,18 @@
     pr_ref:  # 6748
     description: "**Defect.** The reproducibility guarantee text references a field that is absent from the captured block and null on the dominant pass.\n\n**Evidence.** `reproducibility_context.implications` says maps with matching `pass_versions` (among other fields) should be functionally identical. But the captured keys are {grammars, hypergumbo_version, python_implementation, python_version, tree_sitter_version} — `pass_versions` is NOT among them, so a consumer cannot find it in the block the text describes; the per-pass version must be dug out of analysis_runs, where it is empty for 14 of 84 runs — including the dominant Python pass (~852 files).\n\n**Contract.** The reproducibility contract should reference fields that are actually captured in the reproducibility block and populated for the passes that matter.\n\n**Consequence.** The documented reproducibility guarantee rests on a field a consumer cannot use as written; reproducibility comparison is unreliable for the dominant pass.\n\n**Related (not duplicate).** WI-mifok (wont_do) covers pass_version being empty on 14/84 runs; INV-pitab the broader provenance-field-set defect. This is the distinct surface: the implications text references pass_versions absent from `reproducibility_context.captured`."  # 6748
     fields: {}  # 6748
+- op: update  # f5b1
+  at: '2026-07-30T19:28:26Z'  # f5b1
+  by: agent  # f5b1
+  actor: jgstern_agent  # f5b1
+  clock: 2  # f5b1
+  nonce: f5b1  # f5b1
+  set:  # f5b1
+    status: wont_do  # f5b1
+- op: discuss  # 5fd3
+  at: '2026-07-30T19:28:26Z'  # 5fd3
+  by: agent  # 5fd3
+  actor: jgstern_agent  # 5fd3
+  clock: 3  # 5fd3
+  nonce: 5fd3  # 5fd3
+  message: "WONT_DO — both halves fail on measurement. Re-measured on a fresh self-survey (95 analysis_runs).\n\nHALF 1, 'null on dominant Python pass': FALSE. The python AR's pass_version is a real digest (sha256:cd47efcb5056...), and across ALL 95 ARs, ZERO have a null or empty pass_version. There is no null to fix.\n\nHALF 2, 'implications text references pass_versions absent from captured block': the absence is real — reproducibility_context.captured holds {grammars, hypergumbo_version, python_implementation, python_version, tree_sitter_version} and no pass_versions — but the text is NOT wrong about it. It reads 'matching per-pass code hashes (analysis_runs[].pass_version), hypergumbo_version, ...', i.e. it explicitly cites analysis_runs[] as the location. That IS where the data lives and where it belongs: pass_version is per-run, captured is a single run-wide block, and copying 95 per-run digests into it would mint a second home for the same fact (the duplicate-home the WI-palon ruling declined).\n\nThe residual is a LEGIBILITY nit, not a defect: pass_version is listed alongside four fields that DO live in captured, so a reader skimming may expect all five to be co-located. That justifies neither moving data nor rewriting a citation that is already correct, and it is well below a P1 bar.\n\nClosing wont_do rather than done because there is nothing to fix. Reopening would need a real null pass_version on a real run, which this measurement rules out for the self-corpus."  # 5fd3
