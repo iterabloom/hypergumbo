@@ -25,3 +25,18 @@
   clock: 2  # 14b0
   nonce: 14b0  # 14b0
   message: "Related to WI-logad (distinct fix; dogfood)."  # 14b0
+- op: update  # 2f4a
+  at: '2026-07-30T17:47:10Z'  # 2f4a
+  by: agent  # 2f4a
+  actor: jgstern_agent  # 2f4a
+  clock: 3  # 2f4a
+  nonce: 2f4a  # 2f4a
+  set:  # 2f4a
+    status: done  # 2f4a
+- op: discuss  # 6542
+  at: '2026-07-30T17:47:10Z'  # 6542
+  by: agent  # 6542
+  actor: jgstern_agent  # 6542
+  clock: 4  # 6542
+  nonce: '6542'  # 6542
+  message: "DONE — spec-only. The item said the producer's bases match neither the spec's tiers nor each other. Measuring showed the sharper, more useful statement: the spec's claim that evidence_type is 'aligned 1:1 with the confidence tiers' is FALSE for three of the four emitted pathways.\n\nCross-tabbed on a fresh self-survey (118 entrypoints):\n  manifest_declared    {0.99}         spec says 0.99   OK\n  framework_pattern    {0.95, 0.90}   spec says 0.95   MISMATCH\n  structural           {0.85, 0.80}   spec says 0.85   MISMATCH\n  language_convention  {0.80, 0.75}   spec says 0.80   MISMATCH\n\nSo the base is chosen per DETECTOR, and several detectors share one evidence_type at different bases. The spec now states that evidence_type is a COARSER GROUPING than the confidence bases and that consumers must read confidence directly rather than infer it from evidence_type or the reverse.\n\nFixed the SPEC rather than the constants: the bases are individually deliberate (library_export at 0.75 carries an in-code comment reasoning about where it sits relative to routes and main()), and there is no independent standard saying a pathway must map to exactly one base. It was the 1:1 CLAIM that was invented, not the values."  # 6542

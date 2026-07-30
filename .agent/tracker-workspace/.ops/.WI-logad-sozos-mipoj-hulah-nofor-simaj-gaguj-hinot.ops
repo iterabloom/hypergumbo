@@ -33,3 +33,18 @@
   clock: 3  # 0da0
   nonce: 0da0  # 0da0
   message: "Related dogfood finding filed as WI-hofav-rovum-tokok-nipal-movap-potad-vunap-jolup (distinct fix)."  # 0da0
+- op: update  # ef3f
+  at: '2026-07-30T17:47:09Z'  # ef3f
+  by: agent  # ef3f
+  actor: jgstern_agent  # ef3f
+  clock: 4  # ef3f
+  nonce: ef3f  # ef3f
+  set:  # ef3f
+    status: done  # ef3f
+- op: discuss  # 8e8b
+  at: '2026-07-30T17:47:09Z'  # 8e8b
+  by: agent  # 8e8b
+  actor: jgstern_agent  # 8e8b
+  clock: 5  # 8e8b
+  nonce: 8e8b  # 8e8b
+  message: "DONE — spec-only, measured. The tier table listed 0.99/0.95/0.85/0.80/0.70/0.50 and named neither 0.75 nor 0.90.\n\nMeasured on a fresh self-survey (118 entrypoints): library_export emits 0.75 and is the SINGLE MOST COMMON entrypoint kind (45 of 118, 38%) — so the documented table was missing the base that the plurality of entrypoints actually carry, which is the item's point and it re-measures true. 0.90 was also missing (FORM at entrypoints.py:~735, SERIALIZER at ~772, both framework_pattern). Both rows added, each annotated with the evidence_type that carries it.\n\nKind census for the record: library_export 45, shell_script 38, http_route 13, main_function 12, cli_command 4, main_guard 2, script_module 2, websocket_handler 1, html_entry 1.\n\nThe 0.70 and 0.50 rows are KEPT even though this corpus exercises neither. They are live producer constants (naming_heuristic entrypoints.py:1062, connectivity_heuristic :1368), and deleting a documented tier because one corpus happens not to hit it is precisely the unsound inference INV-lifik's rejected 'zero-entropy' guard was built on — corpus-absence is not non-existence."  # 8e8b
