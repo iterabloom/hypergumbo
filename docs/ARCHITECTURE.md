@@ -15,15 +15,15 @@ for focused LLM context.
 
 hypergumbo analyzed its own source code and found:
 - **297** Python modules (133 analyzers, 59 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 30, Infrastructure 8; 68 core, 4 CLI, 33 tracker)
-- **37619** symbols (functions, classes, methods)
-- **128233** edges by type:
-  - calls: 64741
-  - contains: 34751
-  - imports: 11413
-  - instantiates: 10523
-  - references: 4294
-  - module_attr_ref: 1184
-  - other: 1327
+- **37763** symbols (functions, classes, methods)
+- **128609** edges by type:
+  - calls: 64880
+  - contains: 34864
+  - imports: 11463
+  - instantiates: 10535
+  - references: 4344
+  - module_attr_ref: 1186
+  - other: 1337
 
 ## Package Architecture
 
@@ -85,7 +85,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 37619 Symbols + 128233 Edges + UsageContexts           │
+│  Output: 37763 Symbols + 128609 Edges + UsageContexts           │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -271,19 +271,19 @@ These symbols have the highest bidirectional centrality
 
 | Symbol | Kind | Score | Location |
 |--------|------|-------|----------|
-| `Symbol` | class | 9460.4 | ir.py |
-| `Span` | class | 6345.5 | ir.py |
-| `write_text` | external_symbol | 3301.0 | <external> |
+| `Symbol` | class | 9432.9 | ir.py |
+| `Span` | class | 6348.4 | ir.py |
+| `write_text` | external_symbol | 3305.0 | <external> |
 | `LinkerContext` | class | 3272.5 | registry.py |
 | `Edge.create` | method | 2093.1 | ir.py |
 | `TrackerApp` | class | 1946.9 | tui.py |
 | `load_framework_patterns` | function | 1875.9 | framework_patterns.py |
-| `Path` | external_symbol | 1631.0 | <external> |
-| `main` | function | 1563.1 | cli.py |
+| `Path` | external_symbol | 1634.0 | <external> |
+| `main` | function | 1578.2 | cli.py |
 | `clear_pattern_cache` | function | 1336.8 | framework_patterns.py |
 | `Edge` | class | 1264.1 | ir.py |
-| `append` | external_symbol | 1226.0 | <external> |
-| `get` | external_symbol | 1123.0 | <external> |
+| `append` | external_symbol | 1227.0 | <external> |
+| `get` | external_symbol | 1125.0 | <external> |
 | `TreeSitterAnalyzer` | class | 1074.7 | base.py |
 | `find_files` | function | 997.1 | discovery.py |
 
@@ -488,6 +488,7 @@ The `scripts/` directory contains operational tooling. Descriptions are extracte
 | `measure-playbook-overlap.py` | Measure read-then-injected playbook overlap (waste signal). |
 | `per_package_fallback.py` | Per-package fallback for ``scripts/smart-test``'s test selection. |
 | `refresh-stdlib-modules` | Refresh the ``stdlib_modules`` section of an IO-primitive YAML catalog. |
+| `scrub-transcript-corpus` | Backfill: redact known secrets across the whole retained transcript corpus. |
 | `tracker-path-linter` | Scan tracker items for stale file-path references. |
 | `verify-tracker-pr` | Check if a tracker sync PR's ops data is already |
 | `yaml-catalog-index` | Index hypergumbo's YAML catalogs (canonical-registry view). |
@@ -845,8 +846,8 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: 4c1d0438fa34
-  commit_count: 6331
+  commit: 19f760bb6c9d
+  commit_count: 6347
   hypergumbo: 7.0.0
   python: 3.12.3
 -->
