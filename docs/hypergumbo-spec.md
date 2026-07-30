@@ -786,6 +786,8 @@ Top-level block introduced in INV-morag (option B) that documents the level of r
 
 **Levels:** L0 (source content), L1 (pass logic via `AnalysisRun.pass_version`), L2 (direct deps — captured here), L3 (transitive deps), L4 (OS / libc), L5 (hardware). Hypergumbo commits to L2 and disclaims L3-L5.
 
+**`not_captured` here is the REPRODUCIBILITY disclaimer, and is a different field from `limits.not_captured`** (WI-latip / WI-tubim). The two share a name under different parents and their contents are disjoint: this one lists determinism factors hypergumbo does not record (transitive deps, OS/libc/locale, hardware and floating-point), i.e. the L3-L5 levels disclaimed above; `limits.not_captured` lists *analysis-coverage* categories static analysis never captures anywhere (dynamic imports, eval, complex decorators) and is a universal static disclaimer identical for every repo. Both are declared in `docs/schema.json` with distinct descriptions. The shared name is documented rather than renamed: each is correct in its own block, both have consumers keyed to their current path, and a rename would be a breaking change purchasing no disambiguation the parent does not already provide — the same verdict as `edge_key` vs `stable_id` (WI-niboh) and the `sha256:` surface shared by `stable_id`/`shape_id` (WI-tisar).
+
 **Cache correctness:** any change to a captured field invalidates the run signature. Diffs not explained by captured fields suggest a not_captured factor — file as a tracker item if isolatable.
 
 **Consumer guidance:** when comparing two surveys, attribute differences along this priority: (1) `pass_version` change → analyzer logic changed; (2) `grammars[*]` change → grammar upgrade; (3) `tree_sitter_version` / `python_version` change → runtime upgrade; (4) unexplained → likely a not_captured factor.
@@ -798,8 +800,7 @@ Top-level block introduced in INV-morag (option B) that documents the level of r
     "python": {"files": 42, "loc": 15230},
     "javascript": {"files": 18, "loc": 8420}
   },
-  "frameworks": ["fastapi", "react"],
-  "repo_kind": "web_api"
+  "frameworks": ["fastapi", "react"]
 }
 ```
 
@@ -1044,9 +1045,10 @@ Aggregate statistics: `total_nodes`, `total_edges`, `total_files`, `avg_confiden
 
 **`total_files`** is the canonical "how many files in this repo?" answer: `sum(profile.languages[L].files)`. It agrees with `profile`'s per-language counts (which in turn agree with `analysis_runs[L].files_analyzed` for languages whose analyzer registered a canonical `find_files`).
 
-**`metrics.debug`** carries two non-canonical file counts for introspection:
+**`metrics.debug`** carries three non-canonical file counts for introspection:
 - `unique_paths_in_analysis` — distinct `node.path` values across every symbol kind. Excludes files that contributed no symbols (binary, unparseable, unsupported language), so it under-counts repos with many file types relative to `total_files`.
 - `analyzed_file_symbols` — count of `nodes[*]` with `kind == "file"`. Only analyzers that emit file pseudo-nodes contribute, so this can lag the true file count if some language analyzers don't yet stamp them.
+- `profile_files_sum` — the sum of `profile.languages[*].files`. Counts a file once per language that claims it, so a file two analyzers both enumerate is counted twice; it therefore over-counts relative to `unique_paths_in_analysis`, which de-duplicates by path. Emitted since the profile-based `total_files` landed and documented here from WI-mikin.
 
 When the headline `total_files` is computed without a profile (e.g., by callers outside the full `run_survey` pipeline), it falls back to `unique_paths_in_analysis` for backward compatibility — the same value still rides in `metrics.debug` so consumers can tell which definition they're looking at.
 
@@ -1929,7 +1931,12 @@ This appendix defines the **technical contract** for output consumers: which fie
 - `features[]`: Array of objects, each with `id`, `name`, `entry_nodes[]`
 
 **3. Provenance fields:**
-- `nodes[].origin`: String, pass ID that created this node
+- `nodes[].origin`: **List of strings**, the pass IDs that contributed to this node,
+  ordered chronologically (`list[str]`, INV-jidat; schema-breaking change from a scalar
+  string at SCHEMA_VERSION 0.10.0). Single-element lists are the common case;
+  `from_dict()` normalizes a legacy scalar to a one-element list. See
+  [§6 Internal representation](#6-internal-representation) for the canonical definition —
+  this appendix previously described it as a scalar, contradicting §6 (WI-vuton).
 - `nodes[].origin_run_id`: String, references `analysis_runs[].execution_id`
 - `edges[].origin`, `edges[].origin_run_id`: Same semantics
 - `analysis_runs[].run_signature`: Deterministic fingerprint of pass configuration
