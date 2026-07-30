@@ -1,0 +1,85 @@
+Original commit body from 777a5f8f0f6baa98d92bfa5a8807c13666d18285:
+
+Session transcripts record every command the agent runs, so an ordinary
+`git remote -v` banks a credential-bearing URL on disk permanently. Measured on
+this repo: 584 occurrences of four live .env credentials across 35 retained
+files, in four stores no session hook can reach:
+
+  27 gzipped archives            384
+  .agent/.training-data.jsonl    122   (1.19 GB, maintained for finetuning)
+  .deprecated-datasets/           78
+  live + demoted slots            12
+  PID-less orphan (Jul 12)         8
+  current session                 12
+
+The training-data corpus matters most: a credential there is on a path into
+model weights. The PID-less orphan is structurally unreachable by the existing
+orphan sweep, which iterates .transcript-sync.<sid>.pid files and derives the
+transcript name from them -- a transcript whose PID file is gone is invisible
+forever. The backfill globs transcripts instead.
+
+WHAT THIS SHIPS
+- .agent/hooks/_shared/scrub_secrets.py -- the redaction primitive.
+- scripts/scrub-transcript-corpus -- the backfill. Dry-run by DEFAULT; --apply
+  required. Gzip members swap in only after the replacement validates as a
+  non-empty stream.
+- .secrets_for_scrubbing_upon_archive.txt gitignored, with a committed .example.
+  .agent/.scrub-* gitignored (atomic-replace temps hold transcript content).
+
+WHAT THIS DELIBERATELY DOES NOT SHIP: THE HOOK WIRING.
+An earlier revision wired the scrubber into rotate-on-session-end.sh and
+launch-transcript-sync.sh. Three adversarial reviews independently refuted the
+resulting claim, and two demonstrated DATA LOSS I introduced: the old pipeline
+was `gzip -c <readable file>`, which essentially cannot fail, so inserting a
+fallible Python process between the bytes and their only copy converted "archive
+succeeded" into "archive is a 20-byte empty gzip and the source is gone" -- at
+exit 0, with 2>/dev/null swallowing the traceback. It also turned an existing
+in-tree test red (test_watcher_lifecycle::test_orphan_sweep_archives_dead_
+session_files), which I had not run. Both hook files are reverted to HEAD; that
+test is green. Wiring is a follow-up requiring fail-safe archive writes (temp +
+gzip -t + rename, source removed only after validation), --repo-root at every
+call site, orphan sweep by glob not PID, and an end-to-end test -- no existing
+rotation test would notice if the scrubber did nothing at all.
+
+DESIGN, EACH POINT FROM A DEMONSTRATED DEFECT
+- Binary, chunked, overlap-carrying; never decodes. The first version used text
+  mode with errors="replace" and universal newlines: it rewrote non-UTF-8 bytes
+  to U+FFFD, collapsed CRLF, and split a record on a lone CR -- with NO secret
+  present. Being line-based it also let a secret straddling a \r evade redaction
+  AND rewrote the \r, making that credential permanently immune to re-scrubbing.
+  Chunking fixes the mutation, the newline translation, the straddle evasion and
+  the memory profile together.
+- Conservative .env harvesting. A false positive is worse than a miss: a miss
+  leaves one credential in a gitignored file; redacting an ordinary string
+  rewrites the corpus irreversibly. A plausible CACHE_KEY=packages/hypergumbo-core
+  would have replaced 376,928 occurrences across 265 files. So a bare *_KEY/*_PAT
+  suffix is rejected AND the value must be credential-shaped. The 16-char floor
+  applies to explicit entries too.
+- Deterministic (-length, lexicographic) ordering + fixpoint replacement:
+  length alone left a different fragment per run (set iteration order).
+- Inline `# comment` stripped from .env values -- folding it in meant the real
+  token never matched while the tool reported clean.
+- ns-precision mtime (rotation reads it), symlinks resolved, hard links warned,
+  group ownership restored so a privacy tool cannot widen a transcript's audience
+  under a setgid directory.
+- No secret ever reaches stdout, stderr, a log or a filename; counts and .env
+  KEY names only, with a test asserting it.
+
+TESTING NOTE, HONESTLY. smart-test SKIPPED this change entirely ("No Python
+source files changed") because nothing here lives under packages/*/src -- so the
+per-PR gate is structurally blind to .agent/hooks/ and scripts/. I ran the
+top-level suite directly: 1387 passed, 3 failed. All 3 pre-exist on clean
+origin/dev (verified in a detached worktree): test_check_edge_type_drift x2 and
+test_contribute_github x1. scrub_secrets.py is at 100% coverage over 35 tests.
+.ci/affected-tests.txt is left unchanged on purpose -- a regenerated marker
+would assert per-PR coverage this change does not have. Filing the smart-test
+blindness separately; it is a scripts/smart-test change and does not belong in
+this PR.
+
+Rotating the credential remains the actual remediation: scrubbing cannot
+un-disclose a value that has already been on disk. --apply has NOT been run.
+
+Governance: touches .agent/** and .gitignore. Human approval given explicitly,
+including self-merge without --gov.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
