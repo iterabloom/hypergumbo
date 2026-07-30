@@ -15,11 +15,11 @@ for focused LLM context.
 
 hypergumbo analyzed its own source code and found:
 - **297** Python modules (133 analyzers, 59 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 30, Infrastructure 8; 68 core, 4 CLI, 33 tracker)
-- **37782** symbols (functions, classes, methods)
-- **128713** edges by type:
-  - calls: 64941
-  - contains: 34888
-  - imports: 11475
+- **37785** symbols (functions, classes, methods)
+- **128729** edges by type:
+  - calls: 64949
+  - contains: 34891
+  - imports: 11480
   - instantiates: 10532
   - references: 4354
   - module_attr_ref: 1185
@@ -85,7 +85,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 37782 Symbols + 128713 Edges + UsageContexts           │
+│  Output: 37785 Symbols + 128729 Edges + UsageContexts           │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -273,7 +273,7 @@ These symbols have the highest bidirectional centrality
 |--------|------|-------|----------|
 | `Symbol` | class | 9432.9 | ir.py |
 | `Span` | class | 6348.4 | ir.py |
-| `write_text` | external_symbol | 3309.0 | <external> |
+| `write_text` | external_symbol | 3310.0 | <external> |
 | `LinkerContext` | class | 3272.5 | registry.py |
 | `Edge.create` | method | 2096.5 | ir.py |
 | `TrackerApp` | class | 1946.9 | tui.py |
@@ -846,8 +846,8 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: 6435792229c5
-  commit_count: 6364
+  commit: ab16ce768165
+  commit_count: 6380
   hypergumbo: 7.0.0
   python: 3.12.3
 -->
