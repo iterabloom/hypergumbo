@@ -1,0 +1,33 @@
+Original commit body from 523509fa230f5c9bdf36e22ca2059fefb89ce2e9:
+
+WI-razib / INV-kodan. The pyffi linker had no test-file awareness, and on
+the self-corpus that made its entire observable output its own fixtures:
+all 10 C_stdlib FFI `calls` edges (fopen/fwrite/popen/...) originated from
+test_pyffi_linker.py, because no production code here uses ctypes or cffi.
+Phantom edges in the graph, plus (per INV-kodan) seconds of CPU per analysis
+spent validating the pass against itself.
+
+The fix is the convention ~22 sibling linkers already follow: the shared
+paths.is_test_file chokepoint. Worth recording is why pyffi could NOT simply
+adopt discovery.find_non_test_files as the 2026-06-27 linker-evidence-gating
+sweep did for its siblings — pyffi never walks the repo, it consumes
+in-memory symbol lists, so the "non-adopter" framing does not fit it and the
+gate belongs on the symbol path instead.
+
+Both emit phases are covered, not just the one the filing measured:
+  Phase 1 (ctypes/cffi file scan) filters the scanned path set.
+  Phase 2 (PyO3) never sees a path — it walks existing edges keyed on
+    edge.dst — so it matches edge.src against the ids of Python symbols
+    that live in test files.
+Gating only Phase 1 would have closed the measured half and left the same
+defect open on the other.
+
+Each phase has a test, paired with a positive control asserting production
+ctypes calls still link, so a too-broad gate that silently deleted the
+linker's real output could not pass as a fix.
+
+Behavioral evidence (fresh self-survey, 40979 nodes / 138626 edges): the
+pyffi-linker AnalysisRun still executes (2116ms) and now emits 0 edges,
+down from the filed 10 — the pass ran, so the zero is not vacuous.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
