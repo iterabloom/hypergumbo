@@ -1,0 +1,41 @@
+Original commit body from f64e7c41eefbd53a3e3c011d71950a7c177df7c9:
+
+WI-zisig, WI-zamum, WI-sirir, WI-sizis, WI-mitob. Five filed items, one root
+cause on each side of the same contract: the schema was hand-authored where a
+registry already existed.
+
+(1) The meta blocks described 2 of 79 registered keys. axis_meta_keys
+registers 32 edge-axis and 47 symbol-axis keys; Edge.meta hand-listed 2 and
+Symbol.meta (a bare Dict[str, Any], so the generator emitted a contentless
+{"type": "object"}) listed 0. Registered, emitted, spec-documented keys were
+therefore absent from docs/schema.json: resolution_quality (1076 self-corpus
+edges, WI-zisig) and channel (145 edges, WI-zamum). Both blocks now derive
+their properties from the registry. Edge.meta 2 -> 34, Symbol.meta 0 -> 47.
+
+Entries carry a description and deliberately NO type: MetaKeySpec records
+none, and the values are genuinely mixed (refresh/disambiguation_fallback are
+booleans, referring_paths a list, most strings), so emitting "type": "string"
+across the board would turn a documentation gap into a wrong constraint.
+additionalProperties stays open, so validation is unchanged and no
+SCHEMA_VERSION bump is owed. The two curated entries keep their richer text.
+
+(2) profile disagreed with its producer in both directions: it declared
+total_files/total_lines, which nothing emits (WI-sizis), and omitted
+dev_frameworks/framework_mode/framework_evidence, which it does (WI-sirir).
+The phantom pair is REMOVED rather than populated — the same file already
+records WI-bozid removing phantom lines/percentage keys from languages[*] for
+this reason, and populating them would mint a second home for a derivable
+fact (profile.languages[*].{files,loc}; metrics), which WI-palon declined.
+
+(3) The spec documented a usage_contexts[].id prefix never emitted: "uc:..."
+against the producer's usage:sha256:<16hex> (ir.py:1080), so a consumer
+following the spec matched 0 (WI-mitob). The SPEC is corrected, not the
+value: nothing in code or tests expects uc:, and churning a serialized
+identity value to adopt the less readable prefix would invert WI-talos
+Ruling 4.
+
+Two ratchets: every registered key must appear in the schema for its axis,
+and registry-derived entries must stay description-only with
+additionalProperties open, so documenting can never become a whitelist.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
