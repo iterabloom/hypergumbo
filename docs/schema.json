@@ -80,11 +80,26 @@
             "type": "string"
           }
         },
-        "total_files": {
-          "type": "integer"
+        "dev_frameworks": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Frameworks detected only in development/test dependencies, kept separate from `frameworks` (production surface) so a consumer can tell a test harness from an application framework."
         },
-        "total_lines": {
-          "type": "integer"
+        "framework_mode": {
+          "type": "string",
+          "description": "How `frameworks` was resolved (e.g. manifest declaration vs import-based promotion)."
+        },
+        "framework_evidence": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "description": "WI-napuj: {framework: [node_ids]} \u2014 where each declared framework is actually imported, so a framework claim traces to evidence. Omitted when empty (INV-virik present-when-populated)."
         }
       }
     },
@@ -669,15 +684,151 @@
           "description": "Node-level quality assessment ({score, reason}). Has no producer (INV-nuzal): unlike edge.quality it is not derived from confidence, so it is omitted when null (INV-virik omit-when-empty) and appears only if a future pass populates it."
         },
         "meta": {
-          "oneOf": [
-            {
-              "type": "object"
+          "type": "object",
+          "description": "Symbol metadata",
+          "properties": {
+            "abstract": {
+              "description": "True on abstract class / method Symbols. Distinguishes interface-like classes from concrete classes in languages with explicit ``abstract`` keywords."
             },
-            {
-              "type": "null"
+            "annotations": {
+              "description": "Java / Kotlin / Python decorator-equivalent annotations on a Symbol. Distinct from ``decorators`` (Python-style) where the syntax carries different semantics."
+            },
+            "base_classes": {
+              "description": "List of base-class names on class / interface Symbols. Used by framework_patterns to identify Django Model, SQLAlchemy Base, etc."
+            },
+            "block_type": {
+              "description": "Block subtype for generic ``block`` Symbols where the construct admits sub-classification (e.g. 'datasource', 'generator' in Prisma). Fold residue per WI-runod Wave 6 PR 4."
+            },
+            "component_framework": {
+              "description": "Framework on single-file-component symbols (e.g. 'vue', 'svelte', 'astro'). Fold residue for the ``component_file`` \u2192 ``file`` migration per audit-findings 0011."
+            },
+            "config_format": {
+              "description": "Configuration format on config-shape Symbols (e.g. 'tsconfig'). Fold residue per audit-findings 0005."
+            },
+            "decorators": {
+              "description": "List of decorator names on function / method / class Symbols. Used by framework_patterns to identify Flask routes, FastAPI handlers, etc."
+            },
+            "dependency_scope": {
+              "description": "Dependency scope on dependency Symbols (e.g. 'dev'). Fold residue for the ``devDependency`` \u2192 ``dependency`` migration."
+            },
+            "directness": {
+              "description": "Declaration relationship between the project's manifests and an external dependency (ADR-0041 \u00a72): 'direct' (declared in a project manifest), 'transitive' (in the manifest but not declared direct), or 'undeclared' (imported but declared nowhere \u2014 a phantom dependency, and the bucket stdlib falls into). Stamped once at classification time on boundary/dependency Symbols by ``ir.create_boundary_nodes`` via ``DependencyManifest.classify_directness``. A SEPARATE axis from supply-chain ``tier`` (distance) and from the ``ecosystem`` provenance axis (stdlib vs third_party, ADR-0041 \u00a73)."
+            },
+            "display_name": {
+              "description": "Human-readable display name overriding the default. Set by analyzers where the source name is mechanical (e.g. ``__call__`` displayed as the containing class)."
+            },
+            "documentation": {
+              "description": "Docstring / leading-comment text on documented Symbols. Extracted by analyzers that parse docstrings."
+            },
+            "ecosystem": {
+              "description": "Provenance class of an external dependency's distribution channel (ADR-0041 \u00a73): 'stdlib' (shipped with the language runtime) vs 'third_party' (fetched from a package registry). Stamped on tier-3 boundary Symbols by ``ir.create_boundary_nodes`` from the single-source language stdlib catalog (``io_boundary.IoBoundaryCatalog.is_stdlib_module``); absent when the language has no enumerated stdlib. A SEPARATE axis from supply-chain ``tier`` (distance), ``directness`` (declaration relationship), and \u2014 crucially \u2014 from ``package_ecosystem`` (which names the package-MANAGER registry, e.g. 'npm'/'composer', of package-shaped Symbols; this key names provenance CLASS, a different question)."
+            },
+            "entry_role": {
+              "description": "Entry-point role on file-shape Symbols (e.g. 'main', 'script'). Fold residue for the ``main_entry`` / ``script`` \u2192 ``file`` migration."
+            },
+            "export_scope": {
+              "description": "Export visibility scope (e.g. 'module', 'package', 'public'). Finer-grained than the boolean ``exported`` for languages with multi-level visibility."
+            },
+            "export_source": {
+              "description": "Originating source for re-exported symbols (e.g. ES re-export chains). Resolves ``export { foo } from './bar'`` to the underlying definition site."
+            },
+            "exported": {
+              "description": "True if the Symbol is exported from its file (e.g. ES module ``export``, Go capitalized name). Read by reachability / dead-code passes."
+            },
+            "external_boundary": {
+              "description": "True on synthetic boundary Symbols emitted by ``ir._canonical_external_id`` for unresolved-but-referenced names. Read by ``is_external_boundary`` helper."
+            },
+            "framework_role": {
+              "description": "Framework-specific role of a symbol whose canonical ``Symbol.kind`` is a generic language construct (e.g. 'event_publisher', 'route', 'graphql_resolver'). Fold residue per audit-findings 0013 / WI-habut Wave 5."
+            },
+            "http_method": {
+              "description": "HTTP method a route marker handles (e.g. 'GET', 'POST', 'ANY'). Older producers also smuggle transport sentinels ('WS', 'LIVE', 'RPC') into this key \u2014 a mechanism-vs-category leak ``routes.route_of`` lifts 'WS' out into ``route_protocol`` and INV-tibap folds LIVE/RPC out of."
+            },
+            "import_path": {
+              "description": "Source-language import path on Symbols whose primary identifier doesn't match (e.g. ``from foo.bar import baz`` makes ``baz``'s import_path ``foo.bar.baz``)."
+            },
+            "inferred_return_type": {
+              "description": "Inferred return type for Symbols whose declared type is missing. Set by the limited type-inference passes (Python ``typing.get_type_hints``, etc.)."
+            },
+            "install_mode": {
+              "description": "Install mode on requirement Symbols (e.g. 'editable'). Fold residue per audit-findings 0006 build-config cluster."
+            },
+            "install_source": {
+              "description": "Install source on requirement Symbols (e.g. 'url'). Fold residue per audit-findings 0006."
+            },
+            "is_class_based_view": {
+              "description": "Django class-based-view marker on class Symbols. Set by the Django framework-dispatch linker."
+            },
+            "is_local": {
+              "description": "True on locally-scoped Symbols (e.g. nested function definitions). Read by containment / slice filters."
+            },
+            "is_native": {
+              "description": "True on native-bridge declarations (e.g. JNI method, N-API binding). Set by FFI analyzers."
+            },
+            "is_recursive": {
+              "description": "True on recursive function / method Symbols. Detected by call-graph self-loop analysis."
+            },
+            "module_system": {
+              "description": "Module system on synthetic file-shape Symbols (e.g. 'esm', 'commonjs'). Fold residue for the ``module_file`` \u2192 ``file`` migration per audit-findings 0005."
+            },
+            "override": {
+              "description": "True if the method overrides a superclass / interface method. Set by analyzers that parse ``override`` / ``@Override`` keywords."
+            },
+            "package_ecosystem": {
+              "description": "Package-manager ecosystem on package-shaped Symbols (e.g. 'npm', 'composer'). Fold residue for the ``npm_package`` / ``composer_package`` \u2192 ``package`` migration per audit-findings 0005."
+            },
+            "parameters": {
+              "description": "Structured parameter list on function / method Symbols (name + type + default). Used by signature-shape matching."
+            },
+            "params": {
+              "description": "Short-form parameter-name list on function / method Symbols. Lighter-weight alternative to ``parameters`` for analyzers that don't extract types."
+            },
+            "parent_base_classes": {
+              "description": "Transitive ancestor base classes on class Symbols. Populated by the type_hierarchy linker."
+            },
+            "reference_syntax": {
+              "description": "Use-site reference syntax of an external boundary Symbol (e.g. 'unresolved', 'attribute', 'module', 'namespace') whose canonical ``Symbol.kind`` is 'external_symbol'. Per ADR-0036 Ruling 2 the id kind-slot is a pure copy of ``Symbol.kind``, so the reference syntax that used to live there moves to this registered home. WI-pubiv."
+            },
+            "return_type": {
+              "description": "Declared return type on function / method Symbols. Populated by typed-language analyzers."
+            },
+            "route_framework": {
+              "description": "Framework name uniform across a route marker (e.g. 'flask', 'rails'). The canonical additive home for the route marker's framework: stamped by the framework-pattern route enrichment (first-wins, never clobbering an existing value) and read by ``routes.route_of``, which unions it with the legacy ``concept == 'route'`` dict and Starlette's ``meta['framework']`` (INV-vokak)."
+            },
+            "route_path": {
+              "description": "URL path a ``framework_role == 'route'`` marker handler is registered at (e.g. '/users', '/api/v1/orders'). Analyzer-level (fires with no manifest); normalized by ``routes.route_of``."
+            },
+            "route_protocol": {
+              "description": "Transport protocol of a route endpoint ('http' | 'websocket' | \u2026), split out of the ``http_method`` verb field. Producers persist it by spreading ``routes.transport_meta(method)`` into the route marker's meta (the py/elixir analyzers, the grpc linker, and framework-pattern enrichment); a persisted value wins in ``routes.route_of`` over the 'WS'-sentinel derivation (INV-tibap)."
+            },
+            "scip_kind": {
+              "description": "SCIP-native kind label on Symbols sourced from SCIP indexes. Kept alongside the canonical ``Symbol.kind`` for index round-trip fidelity."
+            },
+            "scope": {
+              "description": "Lexical scope qualifier (e.g. 'workgroup' in WGSL, 'thread_local' in C++). Distinct from ``visibility`` (which is access control) and ``static`` (which is binding-time)."
+            },
+            "static": {
+              "description": "True on static method / field Symbols. Affects method-call resolution (no implicit ``self`` receiver)."
+            },
+            "symbol_roles": {
+              "description": "SCIP-style symbol-role bitset for Symbols sourced from SCIP indexes (definition / reference / import / etc.)."
+            },
+            "tags": {
+              "description": "Free-form tag list for analyzer-specific annotations not (yet) elevated to a named meta key. Use sparingly \u2014 sustained use of a tag is an ADR-0024 promotion signal."
+            },
+            "task_implementation": {
+              "description": "Task implementation language on task Symbols (e.g. 'python'). Fold residue for the ``python_task`` \u2192 ``task`` migration."
+            },
+            "test_dialect": {
+              "description": "Test framework dialect on test Symbols (e.g. 'robot'). Fold residue per audit-findings 0006."
+            },
+            "virtual": {
+              "description": "True on virtual / abstract method Symbols. Distinct from ``override`` (a virtual method may or may not also override)."
+            },
+            "visibility_signal": {
+              "description": "Which signal determined the canonical ``Symbol.visibility`` level (INV-jusot) \u2014 one of 'language_modifier' (an explicit ``modifiers`` term or the legacy Apex/Clojure ``meta['visibility']``), 'name_convention' (Python leading-underscore), or 'default' (public). Provenance for the computed visibility field; set by the finalize visibility pass. Replaces the retired ``meta['visibility']`` key, whose language-syntactic value is now folded into the typed ``Symbol.visibility`` field (the meta key collided with the field under the cross-axis hygiene test)."
             }
-          ],
-          "description": "Language-specific metadata"
+          }
         },
         "supply_chain": {
           "type": "object",
@@ -1034,6 +1185,102 @@
           "type": "object",
           "description": "Edge metadata",
           "properties": {
+            "access_mode": {
+              "description": "The effect the edge's source has on its destination, from the four-cell vocabulary 'read' / 'write' / 'mutate' / 'delete' (ADR-0015 + ADR-0038 ruling 1) \u2014 derived per-edge from AST role at emission (read-evidence \u2192 read; store position \u2192 write; augmented-assignment / receiver-mutating call \u2192 mutate; delete target \u2192 delete), NOT from the line's statement kind. Applicability is per-edge-type (ADR-0038 ruling 2 / INV-tibob): populated on calls / references / module_attr_ref / event_publishes; Declared-N/A on the structural edge types AND on instantiates (a constructor call is not an access). See ``access_mode_applicable_edge_types`` / ``access_mode_na_edge_types``. Set by the ``dataflow`` annotate passes."
+            },
+            "bridge_kind": {
+              "description": "FFI / native-bridge mechanism on ``calls`` edges that absorb the bridge family (e.g. 'cgo', 'napi', 'wasm', 'ffi'). Value vocabulary tracked at ``edge_types.BRIDGE_KINDS``."
+            },
+            "call_construct": {
+              "description": "Source-language call construct collapsed under ``ast_call`` apex (e.g. 'method', 'function', 'pipe', 'application'). Fold residue per audit-findings 0012 / WI-nibis Wave 4."
+            },
+            "call_kind": {
+              "description": "Specialized call type for Cluster E sub-case (a) reclassifications (e.g. 'abi', 'subprocess', 'db_query'). Fold residue per audit-findings 0010."
+            },
+            "call_locality": {
+              "description": "File-locality of a call edge \u2014 whether caller and callee live in the same source file ('same_file') or different files ('cross_file'). A SEPARATE axis from ``call_construct`` (which names the syntactic call shape): INV-vakaf split this out after bash/objc were found smuggling 'cross_file' through ``call_construct``. Sparse by convention: set to 'cross_file' on boundary-crossing calls; ABSENT means same-file (the common case)."
+            },
+            "channel": {
+              "description": "Logical dataflow channel / conduit the data flows through on a dataflow-family edge \u2014 a message topic (``event_publishes``), IPC channel, CRDT document, crypto primitive, etc. The CONDUIT referent ONLY (WI-pozom): a WebSocket route path uses ``url_path`` and a dispatch target is the edge ``dst`` \u2014 never ``channel``. The transport family is on the co-occurring ``channel_kind`` key."
+            },
+            "channel_kind": {
+              "description": "Channel shape on event / message edges (e.g. 'websocket', 'message_queue', 'crdt')."
+            },
+            "client_framework": {
+              "description": "Client-side framework of a WebSocket edge, from the websocket linker's pattern\u2192framework map (e.g. 'socketio', 'ws', 'native_websocket', 'django_channels', 'fastapi', 'starlette')."
+            },
+            "data_direction": {
+              "description": "Dataflow DIRECTION across a cross-boundary edge \u2014 the way data moves between src and dst, from the closed vocabulary 'src_to_dst' / 'dst_to_src' / 'bidirectional' (``ir.VALID_DATA_DIRECTIONS``). ADR-0038 ruling 3: the post-eviction home of the FFI-bridge / protocol-linker direction semantic that ``access_mode='write'`` + ``dest_access_mode='read'`` used to smuggle (the cgo docstring said it outright \u2014 'Go caller passes data to C'). DIRECTION, not ACCESS \u2014 a SEPARATE axis from ``access_mode`` (ADR-0038 ruling 1). ``dest_access_mode`` is removed entirely (it was observed zero-entropy \u2014 'read' on every populated record). ``event_publishes`` edges do NOT carry this key: publishing IS a genuine write, so they keep ``access_mode='write'`` (ADR-0038 \u00a7Neutral/acknowledged)."
+            },
+            "detection_pattern": {
+              "description": "Pattern-shape inference heuristic that produced this edge (e.g. 'abi_name_match', 'jni_naming', 'implicit_convention') \u2014 names HOW the edge was string/name/URL/regex-matched. Distinct from 'framework_dispatch' (which dispatch convention produced the edge, not how it was matched). Fold residue per audit-findings 0014 \u00a7'detection_pattern partition'."
+            },
+            "disambiguation_fallback": {
+              "description": "True when the edge's destination was resolved by simple-name fallback (no fully-qualified module / namespace / kind disambiguator available). Carries with it the contract that ``confidence <= 0.5`` on the same edge \u2014 see INV-zuhub. Consumers filter the fallback population from the precision-resolved one by checking this flag. Currently set by ``linkers/inheritance.py``; per-linker conformance for the four remaining edge-type families (calls / dispatches_to / references / module_exports) tracked under INV-zuhub items 1-3."
+            },
+            "dispatch_kind": {
+              "description": "Dispatch shape on ``dispatches_to`` edges (e.g. 'route', 'di_register', 'di_resolve', 'annotated'). Fold residue from ADR-0023 Phase 4b dispatch / publish family."
+            },
+            "ffi_mechanism": {
+              "description": "FFI mechanism for cross-language bridges where ``bridge_kind`` is too coarse (e.g. specific JNI / WASM-bindgen / luajit-ffi variants)."
+            },
+            "framework_dispatch": {
+              "description": "The framework-or-generic dispatch convention that produced this edge \u2014 ONE coherent axis ('which dispatch convention recovered this edge'), per ADR-0028 Cluster 28C ('framework-dispatch convention') and spec \u00a79. Values are convention identifiers: framework-specific compounds ('django_orm', 'kafka_streams', 'vue_component', 'tauri_invoke') AND framework-agnostic dispatch mechanisms ('registry_dispatch', 'middleware_chain', 'npm_package'). NOT a bare-framework-name axis \u2014 that reading misreads audit-findings 0014's '<framework_name>' shorthand (INV-junid). Distinct from 'detection_pattern' (pattern-shape match heuristics \u2014 HOW an edge was string/name/URL-matched, not which convention dispatches it). Pure provenance: zero production consumers read this key; promote to a typed Edge.framework field ONLY if a consumer materializes (ADR-0028 OQ2, declined 2026-07-05; ADR-0024 rule 3 threshold = \u22653 distinct values OR \u22652 producers). Fold residue per audit-findings 0014 / WI-kagik Wave 5."
+            },
+            "handler_name": {
+              "description": "Handler function name a route/command edge dispatches to (route_handler and go_cobra linkers) \u2014 the callable servicing the route or CLI subcommand."
+            },
+            "io_boundary": {
+              "description": "Boundary classification on edges that cross an IO primitive (e.g. 'net_send', 'fs_read', 'process_spawn'). Two-source field per the WI-fakuv / WI-puvun io-boundary REFRAME: the full value-space is CONSUMER-TIME-derived by ``io_boundary.compute_boundary_map`` from the ``io_primitives`` YAML catalogs and is NOT persisted (it is stamped in memory only by the ``io-boundaries`` / ``verify-claims`` / ``slice --io-boundary`` paths). What survives into a persisted behavior map is only the analyzer producer-hints \u2014 currently just bash's ``command_launch`` (``bash.py``; bash has no ``io_primitives`` catalog so the analyzer stamps it directly), which is why the persisted field reads as ``command_launch``-only. Consumers that need the full classification must run ``compute_boundary_map`` rather than read the persisted meta key."
+            },
+            "io_primitive": {
+              "description": "Fully-qualified IO primitive matched at the boundary (e.g. 'os.open', 'socket.socket'). Set on io_boundary edges by ``io_boundary.compute_boundary_map``."
+            },
+            "mechanism": {
+              "description": "Dispatch/call mechanism on a ``dispatches_to`` or ``calls`` edge \u2014 names HOW the dispatch/call is wired when the canonical ``edge_type`` alone is too coarse. Current value space: 'otp_call' / 'otp_cast' (Elixir/Erlang GenServer synchronous call vs asynchronous cast, folded from the former otp_call/otp_cast edge_types per WI-rorul); 'callback' (Elixir/Erlang behaviour + Rails callbacks, folded from ``invokes_callback`` per audit-findings 0017); 'kernel_launch' (CUDA kernel launch, folded from ``kernel_launch``); 'template' (Vue template\u2192method call, folded from ``template_calls``). Distinct from ``framework_dispatch`` (framework name, e.g. 'otp_genserver') and ``call_construct`` (call-edge syntactic shape)."
+            },
+            "protocol": {
+              "description": "Wire-level protocol on ``calls`` edges that absorb the IPC family (e.g. 'abi', 'ipc', 'ipc_event'), and on ``implements`` edges for protocol-contract implementations folded from the resolver/OpenAPI/RPC family (audit-findings 0016, WI-sumik): a GraphQL resolver satisfying a schema field carries 'graphql'; a Go method satisfying a proto RPC carries 'grpc'. Value vocabulary tracked at ``edge_types.PROTOCOL_KINDS``; per ADR-0023 Phase 4b precedent."
+            },
+            "query_type": {
+              "description": "SQL operation of a database-query edge: 'SELECT', 'INSERT', 'UPDATE', or 'DELETE' (database_query linker)."
+            },
+            "queue_type": {
+              "description": "Message-queue family/pattern that produced a publish/subscribe edge, from the message_queue linker's queue classification."
+            },
+            "receiver": {
+              "description": "Call-site receiver classification: a per-language fold-residue label (audit-findings 0012) emitted only by analyzers whose call syntax carries receiver flavor (Ruby / Go / C# / Rust / C++), hence ABSENT on corpora that lack those languages (e.g. a pure-Python tree). Complete current producer vocabulary (no consumer branches on it yet): 'bare' (implicit / self receiver), 'external' / 'constant_external' / 'stdlib' (receiver resolves outside the module), 'typed_field' / 'typed_var' (receiver has a known type), 'field_chain' (chained field-access receiver), 'generic' (receiver present but unclassified). NOTE: this key mixes a resolution CLASS (bare / external / typed / generic) with an expression SHAPE (field_chain); kept as one key because no consumer distinguishes them \u2014 re-evaluate (split into receiver_class + receiver_shape) if one ever needs to query them independently. Disambiguates ``ast_call`` + ``call_construct=method`` edges."
+            },
+            "receiver_type_hint": {
+              "description": "Inferred type of a call edge's receiver, stamped by the analyzer receiver-type inference to aid cross-file method resolution (e.g. an external constructor's return type)."
+            },
+            "ref_construct": {
+              "description": "Source-language construct on a reference-FAMILY (non-call) edge (``references`` / ``includes`` / ``extends`` / ``depends_on`` / ``contains`` / ``data_flows_to``) where the canonical ``edge_type`` alone is too coarse. Value space: 'jsx' (JSX render), 'script_src' (HTML ``<script src=...>``), 'websocket_endpoint' (WebSocket endpoint connectivity), 'event_emit' (Solidity event emission), 'dispatch_table' (C/C++ dispatch-table reference); and \u2014 from the ADR-0023 endpoint_shape fold-tail (audit-findings 0017, WI-pumav) \u2014 'markdown_link', 'rdf_vocabulary', 'association' (Ruby ActiveRecord), 'build_tag_alternative' (Go build tags), 'view_render' (controller\u2192template), 'template' (Twig/Blade extends/includes), 'puppet_class', 'sass_mixin', 'dockerfile_stage' (Docker FROM..AS), 'puppet_require', 'puppet_notify', 'crypto' (crypto write\u2192read on ``data_flows_to``); and \u2014 from the resolver/OpenAPI/RPC family fold (audit-findings 0016, WI-sumik) \u2014 'graphql_resolver_type' (a GraphQL ``@Resolver(() => Type)`` declaration-time association) and 'openapi_operation' (an OpenAPI spec operation referencing its realizing route handler, direction-preserving). Renamed from ``construct`` per INV-lajov to disambiguate from the sibling ``call_construct`` (which names the call SHAPE on ``calls`` edges): distinct vocabularies, distinct edge families, zero overlap."
+            },
+            "referring_paths": {
+              "description": "The list of source file paths that referred to a deduplicated edge \u2014 the only list-of-paths meta value, minted at the edge-dedup merge in ir.py so one canonical edge retains every referring site."
+            },
+            "refresh": {
+              "description": "Boolean flag on a ``depends_on`` edge marking an ordering dependency that ALSO triggers a refresh-on-change of the dst (Puppet ``notify``, folded from the former ``notifies_resource`` edge_type per audit-findings 0017). Present-and-true only on the refresh subset; a plain ordering ``depends_on`` (e.g. Puppet ``require``, ``ref_construct='puppet_require'``) omits it. Makes the require-vs-notify distinction queryable without a distinct edge type; no consumer branches on it yet."
+            },
+            "resolution_quality": {
+              "description": "Pathway-quality label on ``ast_call`` edges (e.g. 'recovery', 'ambiguous'), ORTHOGONAL to ``Edge.is_resolved``. It names uncertainty in the resolution *pathway* (heuristic line-proximity vs. direct binding), NOT target locality \u2014 in-repo-ness lives on ``is_resolved`` (ADR-0037 ruling 1/3), and resolution certainty proper lives in ``confidence`` / ``evidence_type`` (ADR-0028). A recovery edge to a real in-repo method is correctly ``is_resolved=True`` with ``resolution_quality='recovery'``."
+            },
+            "server_framework": {
+              "description": "Server-side framework of a WebSocket edge \u2014 same vocabulary as ``client_framework``, naming the endpoint that accepts the connection."
+            },
+            "table_name": {
+              "description": "Database table a database-query edge reads or writes, extracted from the query by the database_query linker."
+            },
+            "topic": {
+              "description": "Message-queue / pub-sub topic (or channel) a message_publish / message_subscribe edge targets \u2014 the literal topic string, or the variable's identifier name when the topic is dynamic (see ``topic_type``)."
+            },
+            "topic_type": {
+              "description": "Whether the message-queue ``topic`` was a string 'literal' or a 'variable' reference resolved to its identifier name."
+            },
+            "url_path": {
+              "description": "URL / route path on a protocol-boundary edge (e.g. a WebSocket endpoint path, or a cross-language WS client\u2192server route). Distinct from ``channel`` (the dataflow conduit/topic) per WI-pozom."
+            },
             "evidence_type": {
               "type": "string",
               "description": "Inference pathway by which the analyzer concluded this edge exists. Per ADR-0028, the canonical axiom is 'Edge.evidence_type names the inference pathway by which the analyzer concluded this edge exists.' The x-axis-of-values map documents the canonical registry from packages/hypergumbo-core/src/hypergumbo_core/evidence_types.py::EVIDENCE_TYPES. The schema enum is intentionally open (type: string without enum constraint) until Phase 4b producer migrations land per-cluster \u2014 current production includes dynamic f-string emits (websocket.py, di_resolution.py, inheritance.py) that produce values outside the static registry. The L3 producer-coherence linter gates literal additions; the open enum honestly reflects the producer-side leak the ADR is fixing.",

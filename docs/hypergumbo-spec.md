@@ -1005,7 +1005,7 @@ Penalties on the entrypoint `confidence` field: test files −90% (×0.1), vendo
 {
   "usage_contexts": [
     {
-      "id": "uc:...",
+      "id": "usage:sha256:<16hex>",
       "kind": "call",
       "context_name": "app.get",
       "symbol_ref": "javascript:src/routes.js:10-25:listUsers:function",
