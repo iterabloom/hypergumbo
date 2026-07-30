@@ -1,0 +1,54 @@
+Original commit body from 86b2fcdd95da8481b6d4eba104c57b3abcb5bbf9:
+
+`analyze.base.make_doc_symbol_ids` emitted `{lang}:{path}:{kind}:{start_line}:
+{name}` — kind third, no span, name last — and its docstring recorded the
+deferral on the premise that conformance "would re-key every node and is a
+separate, larger decision." Measurement retired that framing rather than the
+work: against the canonical right-anchored parse (`span, name, kind =
+parts[-3:]`) the kind word landed in the span slot, so every id from all eleven
+adopters failed id_format with `malformed_span_segment` and did not parse at all.
+These were not ids in a different-but-workable convention; they were unparseable.
+
+The helper now DELEGATES to `make_symbol_id` rather than re-implementing the
+format — an f-string copy of the grammar is exactly how js_ts.py and
+json_config.py each opted out of the shared minter's guarantees. Delegating also
+inherits the WI-sikar name-slot sanitization, repairing a genuine six-segment
+break: svelte's `on:click` symbols carried an id name-slot of `button:click`.
+
+Identity-safe: stable_id is computed from the same argument set either way, so it
+is byte-identical and no *_scheme bumps (the scheme-bump principle). No
+SCHEMA_VERSION change; node.id is consumer-visible for these languages, matching
+how the route-marker sweep treated the same class of change.
+
+The config family folded on too, found by grep rather than by the gate: ini,
+requirements and properties each carried a PRIVATE COPY of the same broken shape
+(requirements/properties at only four segments, no span), so they were invisible
+to any measurement scoped to the shared helper's callers. Two requirements sites
+also dropped a kind-slot ROLE fossil (`url_requirement` / `editable` while
+Symbol.kind is `requirement`); the roles keep their existing meta homes.
+
+Deliberately NOT folded: bibtex and bitbake. Their five sites (bitbake
+192/302/342/382, bibtex 125 — exactly the set WI-talos Ruling 3 enumerates) set
+`stable_id = symbol_id`, so correcting node.id would change stable_id and
+falsify v9's unqualified digest-compatibility claim. That is WI-banod T1,
+blocked on a release.
+
+New gate `test_doc_family_id_parity.py`: 14 generated single-language cases
+through the full pipeline, two properties each with measured strict-xfail holes —
+canonical grammar (14/14 green, was 14/14 red) and id kind-slot equals a
+registered Symbol.kind (12 green, 2 held). Two suppressions had to be defeated to
+see anything: no such file types are tracked here, and the default pipeline
+filters these node kinds so include_docs=True is load-bearing. The corpus is
+generated into tmp_path rather than committed, because committing it added 1
+axis_conformance error and 3 id_format warnings to the self-tree ratchet — a gate
+that deliberately preserves a defect cannot host its corpus inside the tree the
+project ratchets against itself.
+
+The two held holes are scheme-gated, not merely unfixed: pony emits an
+unregistered `kind="actor"` and robot passes `kind="test_case"` while building a
+`kind="test"` Symbol; the kind argument feeds make_doc_stable_id, so correcting
+either churns stable_id.
+
+INV-dulah stays violated — the statement is fleet-wide, and two limbs remain.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
