@@ -19,3 +19,18 @@
     pr_ref:  # 5613
     description: "**Defect.** The spec's profile example documents a `repo_kind` field that no code produces and no map emits.\n\n**Evidence.** docs/hypergumbo-spec.md's profile example (line ~769) shows a repo_kind field with example value \"web_api\", but the field appears in no producer source (grep repo_kind packages/*/src/ = 0 hits) and in no emitted map — a phantom documented in the spec example only.\n\n**Contract.** Fields shown in the spec's profile example should correspond to fields the producer actually emits.\n\n**Consequence.** A consumer reading the spec example to learn the profile shape codes against a repo_kind field that never appears and gets a missing-field result."  # 5613
     fields: {}  # 5613
+- op: update  # df56
+  at: '2026-07-30T17:20:25Z'  # df56
+  by: agent  # df56
+  actor: jgstern_agent  # df56
+  clock: 2  # df56
+  nonce: df56  # df56
+  set:  # df56
+    status: done  # df56
+- op: discuss  # 56ba
+  at: '2026-07-30T17:20:25Z'  # 56ba
+  by: agent  # 56ba
+  actor: jgstern_agent  # 56ba
+  clock: 3  # 56ba
+  nonce: 56ba  # 56ba
+  message: "DONE — spec-only. The profile example documented a repo_kind field.\n\nVerified absent two ways before removing: a fresh self-survey's profile carries exactly {dev_frameworks, framework_evidence, framework_mode, frameworks, languages} and no repo_kind, and a tree-wide grep finds the token nowhere outside that one example. So it is a phantom in the documentation rather than an unimplemented feature with a producer waiting on it, and it is removed rather than implemented.\n\nSame class as WI-sizis (profile.total_files/total_lines declared and never emitted), arriving from the prose side instead of the schema side — both closed in this session's contract-accuracy sweep."  # 56ba

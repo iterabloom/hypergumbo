@@ -33,3 +33,18 @@
   clock: 3  # 9d9e
   nonce: 9d9e  # 9d9e
   message: "Re-surfaced in dogfooding tranche 10 (U19, F193.A2, severity 2). confidence_model='hypergumbo-evidence-v1' omits the spec-§1706-mandated .MINOR component — exactly this item. Fix: emit ...-vMAJOR.MINOR per §1706 (schema.py:74)."  # 9d9e
+- op: update  # dbd8
+  at: '2026-07-30T17:20:50Z'  # dbd8
+  by: agent  # dbd8
+  actor: jgstern_agent  # dbd8
+  clock: 4  # dbd8
+  nonce: dbd8  # dbd8
+  set:  # dbd8
+    status: done  # dbd8
+- op: discuss  # 2d04
+  at: '2026-07-30T17:20:51Z'  # 2d04
+  by: agent  # 2d04
+  actor: jgstern_agent  # 2d04
+  clock: 5  # 2d04
+  nonce: 2d04  # 2d04
+  message: "DONE — dev 43ab282663. CONSUMER-VISIBLE value change, disclosed as such.\n\nSpec Appendix C mandates 'hypergumbo-evidence-vMAJOR.MINOR' and assigns MINOR a job: 'Refinements (new evidence types, score adjustments)'. The emitted value was a bare 'hypergumbo-evidence-v2' (the item filed it at v1; it had since become v2 without gaining the MINOR). It now emits 'hypergumbo-evidence-v2.0'.\n\nWHY THE VALUE AND NOT THE GRAMMAR — this was the real decision, and both sides were defensible. A bare MAJOR makes the MINOR channel unexpressible, and that channel is not hypothetical: ADR-0039 added evidence types, which is precisely what MINOR is defined to signal, and it had no way to say so. The next refinement would have faced the same choice between a misleading MAJOR bump and silence. Relaxing the grammar to vMAJOR[.MINOR] would have conformed too, but by permanently giving up a distinction the contract was written to provide.\n\nThe principle applied: reconcile toward whichever artifact carries the CONSIDERED DECISION. Appendix C is a structured versioning taxonomy defining MAJOR/MINOR across three separate version families; the bare constant is one nobody revisited. So the constant is the accident.\n\nv2.0 IS v2 — the first CONFORMING rendering of the same model, MAJOR unchanged and no scoring behaviour different — and the spec now says that explicitly so no consumer reads v2.0 as a refinement of v2.\n\nBlast radius measured before committing: one producer constant (schema.py) and two assertions; swept the tree for stragglers, none. Guarded by test_confidence_model_matches_documented_grammar, which pins the FORMAT via regex rather than the literal, so a legitimate future MAJOR or MINOR bump passes and only a malformed value fails."  # 2d04

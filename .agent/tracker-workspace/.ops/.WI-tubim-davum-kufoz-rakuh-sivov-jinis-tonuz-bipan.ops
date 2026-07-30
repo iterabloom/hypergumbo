@@ -18,3 +18,18 @@
     pr_ref:  # ebe7
     description: "- **Subject:** A single field name `not_captured` carries two disjoint semantics under two different parents.\n- **Mechanic:** `not_captured` appears under two top-level parents with completely different meanings: under `limits` it lists analysis-coverage gaps (dynamic imports, eval/exec, metaprogramming, …); under `reproducibility_context` it lists reproducibility/determinism gaps (transitive package versions, OS/locale, hardware/floating-point). The two sets are disjoint. Neither is declared in the schema.\n- **Expectation:** One of the two fields should be renamed or otherwise disambiguated so a single name does not denote two unrelated concepts.\n- **Scope:** `limits.not_captured` (6 entries, analysis-coverage gaps) vs `reproducibility_context.not_captured` (3 entries, determinism gaps); the intersection is empty.\n- **Exposure:** A consumer dereferencing `behavior_map.<X>.not_captured` without tracking which parent it came from.\n- **Consequence:** The consumer gets analysis-coverage gaps or reproducibility gaps depending on which parent it dereferenced, with no key in common — silently conflating two unrelated kinds of \"not captured.\"\n\n---\n\n(Filed from dogfooding.)"  # ebe7
     fields: {}  # ebe7
+- op: update  # 8ae4
+  at: '2026-07-30T17:20:26Z'  # 8ae4
+  by: agent  # 8ae4
+  actor: jgstern_agent  # 8ae4
+  clock: 2  # 8ae4
+  nonce: 8ae4  # 8ae4
+  set:  # 8ae4
+    status: done  # 8ae4
+- op: discuss  # 2a62
+  at: '2026-07-30T17:20:26Z'  # 2a62
+  by: agent  # 2a62
+  actor: jgstern_agent  # 2a62
+  clock: 3  # 2a62
+  nonce: 2a62  # 2a62
+  message: "DONE — DOCUMENT verdict, and the item was partly stale on inspection.\n\nIts stated expectation was 'one of the two fields should be renamed or otherwise disambiguated', and its evidence line said 'Neither is declared in the schema.' That second claim is STALE: both ARE declared, with distinct descriptions — Limits.not_captured and reproducibility_context.not_captured are each present in docs/schema.json. The spec had also already disambiguated the limits side, with an explicit cross-reference to the other.\n\nWhat genuinely remained was the ASYMMETRY: a reader arriving at the reproducibility_context side got no pointer back. That reciprocal note is added, so either entry point now lands on the distinction — limits.not_captured lists analysis-coverage categories static analysis never captures anywhere (a universal static disclaimer, identical for every repo), reproducibility_context.not_captured lists determinism factors, i.e. the disclaimed L3-L5 levels.\n\nRENAME DECLINED, on precedent: each name is correct within its own block, both are declared with distinct descriptions, and a rename is a breaking change purchasing no disambiguation the parent path does not already provide. Same verdict as edge_key vs stable_id (WI-niboh, cross-ref added, rename declined as breaking) and the sha256: surface shared by stable_id/shape_id (WI-tisar, documented rather than reformatted).\n\nWI-latip is the same defect filed twice and is closed alongside."  # 2a62
