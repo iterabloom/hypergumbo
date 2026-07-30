@@ -1,0 +1,39 @@
+Original commit body from b74670a6f9afa449acab6bbf405e4f9bf6fbed98:
+
+Owner request: the CI host should not be written into a public repo.
+
+The server now comes from WOODPECKER_SERVER in .env. Only the pipeline
+COORDINATES are read off the commit status' target_url, and only its path is
+matched — the scheme/host portion is discarded even when present, so a
+target_url cannot reintroduce a hard-coded host. ALLOWED_WEBSITES.md records
+the permission as "$WOODPECKER_SERVER (see .env)", documenting the policy
+without publishing the host, and the CHANGELOG entry is scrubbed likewise.
+
+HONEST LIMIT: this is forward-only. The hostname already landed in public
+history via PR #94 (ALLOWED_WEBSITES.md + CHANGELOG.md), and removing it from
+history would need a force-push, which is forbidden. This reduces further
+exposure; it does not un-publish.
+
+Two corrections folded in, both from measuring the live endpoint rather than
+from the previous session's error text:
+
+  - It is a 302 redirect to the Cloudflare Access login, NOT a 403. The
+    effect is the same (blocked at the edge, Woodpecker never reached) but
+    the code was wrong; some clients merely surface it as 403.
+  - The fallback now tells the operator how to READ the failure, because
+    the three codes have different causes and different fixes:
+      302 -> not recognised as a service token at all (usually a truncated
+             Client ID; the full value ends .access.<team>.cloudflareaccess.com
+             and is ~70 chars, not ~39)
+      403 -> token recognised but no policy with ACTION 'Service Auth'
+             admits it — creating the token is not sufficient on its own
+      401 -> past Access; the Woodpecker token is the problem
+    That triage came from diagnosing a real failure against the live host.
+
+Verified end to end on the merged tree: with all four vars set, the fetch is
+genuinely ATTEMPTED (it reports "Woodpecker log fetch failed (HTTP 302);
+falling back"), which proves the WOODPECKER_SERVER path, the coordinate
+parse and the header assembly all work — the remaining 302 is the Client ID
+value, not the code.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
