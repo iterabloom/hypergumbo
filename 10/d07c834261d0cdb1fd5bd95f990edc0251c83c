@@ -1,0 +1,45 @@
+Original commit body from e0a0acc7c9c0a1326b63a4be7413e50d89131536:
+
+Follow-up to 84bf6825af, which fixed the driver's INVOCATION and took a
+full-history walk from 1 commit to 1086 of 6343 -- then it aborted again on a
+different error: "Op log has no create op".
+
+That shape is NORMAL HISTORY, not corruption. Promoting or demoting a tracker
+item moves its op log file between tiers, so the history segment before the move
+holds ops whose `create` lives in the other tier's file. _render_textconv
+treated that as fatal, printed to stderr and exited 1 -- and git aborts ANY diff
+whose textconv driver writes to stderr, so one such blob anywhere in history
+broke `git log -p` for the entire repository.
+
+Un-compilable content now degrades to a marker on STDOUT with exit 0:
+
+  # <id>: op log not compilable at this revision -- <reason>
+
+which is the same philosophy scripts/tracker-textconv already used for its
+"package not installed" fallback (emit something, never fail). A genuinely
+missing FILE stays an error, because git cannot produce that case -- it always
+hands the driver an existing blob.
+
+test_textconv_corrupt is deliberately INVERTED: it asserted exit 1 for bad YAML
+and now asserts exit 0 with empty stderr, with the reason in its docstring so
+the change does not read as someone weakening a check.
+
+THE GATE I WROTE AN HOUR AGO MISSED THIS, and the reason is worth recording.
+It had a positive control -- a deliberately broken driver -- which proves the
+assertions CAN fire. It does not prove the inputs were enumerated: every fixture
+was a well-formed op log, so the real driver's own failure path was never
+exercised against git. The new e2e case commits an op log with no `create` op,
+which is what production history actually contains.
+
+Evidence: 1915 passed, 100% coverage on changed sources. A full-history gitleaks
+scan now completes 6241 commits / 66.18 MB, where before 84bf6825af it stopped
+at 1 commit / 3.66 KB while printing "no leaks found". Its 4 findings are all
+false positives (3x a 40-hex git SHA in a CHANGELOG sentence near the word
+"Sourcegraph"; 1x `api_key = sk_live_12345` in an INI test fixture) -- triaging
+them into .gitleaksignore is deliberately left to the human.
+
+Known cost, not addressed here: the driver spawns an interpreter per blob, so a
+whole-history `git log -p` takes ~15 minutes. Correct but slow.
+
+Governance: human approval given explicitly for this fix, including self-merge.
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
