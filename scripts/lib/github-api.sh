@@ -126,15 +126,21 @@ except Exception:
 	# .env is already sourced by load_env() in forgejo-api.sh before any api_*
 	# call, so these are simply read from the environment here — no second
 	# source, and nothing is echoed.
+	# The SERVER comes from WOODPECKER_SERVER in .env, never from this file: the
+	# repo is public, so the CI host is configuration rather than source. Only
+	# the pipeline COORDINATES are read off the commit status' target_url, and
+	# only its path is used — the scheme/host portion is deliberately discarded
+	# even when present, so a target_url can never reintroduce a hard-coded host.
 	local wp_host wp_repo wp_pipeline wp_step
-	if [[ "$target_url" =~ ^(https://[^/]+)/repos/([0-9]+)/pipeline/([0-9]+)/?([0-9]*) ]]; then
-		wp_host="${BASH_REMATCH[1]}"
-		wp_repo="${BASH_REMATCH[2]}"
-		wp_pipeline="${BASH_REMATCH[3]}"
-		wp_step="${BASH_REMATCH[4]:-1}"
+	wp_host="${WOODPECKER_SERVER:-}"
+	wp_host="${wp_host%/}"
+	if [[ "$target_url" =~ /repos/([0-9]+)/pipeline/([0-9]+)/?([0-9]*) ]]; then
+		wp_repo="${BASH_REMATCH[1]}"
+		wp_pipeline="${BASH_REMATCH[2]}"
+		wp_step="${BASH_REMATCH[3]:-1}"
 	fi
 
-	if [[ -n "${wp_host:-}" && -n "${WOODPECKER_TOKEN:-}" \
+	if [[ -n "${wp_host:-}" && -n "${wp_repo:-}" && -n "${WOODPECKER_TOKEN:-}" \
 	      && -n "${CF_ACCESS_CLIENT_ID:-}" && -n "${CF_ACCESS_CLIENT_SECRET:-}" ]]; then
 		local api="$wp_host/api/repos/$wp_repo/logs/$wp_pipeline/$wp_step"
 		local body http
@@ -171,11 +177,22 @@ except Exception:
 		echo "  ${target_url:-<Woodpecker UI>}"
 		echo ""
 		echo "To make this fetchable (WI-solob), set in .env:"
+		echo "  WOODPECKER_SERVER        - https://<your woodpecker host>"
 		echo "  WOODPECKER_TOKEN         - Woodpecker API token (app auth)"
-		echo "  CF_ACCESS_CLIENT_ID      - Cloudflare Access service token id"
+		echo "  CF_ACCESS_CLIENT_ID      - Cloudflare Access service token id,"
+		echo "                             the FULL value, which ends in"
+		echo "                             .access.<team>.cloudflareaccess.com"
 		echo "  CF_ACCESS_CLIENT_SECRET  - Cloudflare Access service token secret"
-		echo "Allowlisting the host alone is NOT enough: an unauthenticated GET"
-		echo "returns 403 at the Cloudflare edge before Woodpecker is reached."
+		echo ""
+		echo "Reaching the host is NOT enough: an unauthenticated GET is 302-"
+		echo "redirected to the Cloudflare Access login and never reaches"
+		echo "Woodpecker. The Access application also needs a policy whose"
+		echo "ACTION IS 'Service Auth' including that token — a valid token with"
+		echo "no such policy still fails. Diagnose from the code you get back:"
+		echo "  302 -> credentials not recognised as a service token at all"
+		echo "         (usually a truncated Client ID: it is ~70 chars, not ~39)"
+		echo "  403 -> token recognised but no Service Auth policy admits it"
+		echo "  401 -> past Access; the Woodpecker token is the problem"
 	} >&2
 	return 1
 }
