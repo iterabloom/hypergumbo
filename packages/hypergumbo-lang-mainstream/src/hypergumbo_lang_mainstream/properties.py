@@ -43,7 +43,7 @@ from hypergumbo_core.analyze.base import (
     FileAnalysis,
     TreeSitterAnalyzer,
     iter_tree,
-    make_doc_stable_id,
+    make_doc_symbol_ids,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 
@@ -69,9 +69,6 @@ def _get_node_text(node: "tree_sitter.Node") -> str:
     return node.text.decode("utf-8", errors="replace") if node.text else ""
 
 
-def _make_symbol_id(path: Path, name: str, kind: str) -> str:
-    """Create a stable symbol ID."""
-    return f"properties:{path}:{kind}:{name}"
 
 
 # Common property prefixes and their meanings
@@ -131,13 +128,21 @@ def _extract_property_symbols(
         if not key:
             continue  # pragma: no cover
 
-        symbol_id = _make_symbol_id(Path(rel_path), key, "property")
-
         span = Span(
             start_line=node.start_point[0] + 1,
             start_col=node.start_point[1],
             end_line=node.end_point[0] + 1,
             end_col=node.end_point[1],
+        )
+
+        # INV-dulah: both ids minted together by the shared factory, so node.id
+        # carries the canonical ADR-0036 grammar instead of the local
+        # "properties:{path}:{kind}:{name}" composite (four segments, kind in the
+        # span slot — it did not parse). stable_id is byte-identical: the factory
+        # calls make_doc_stable_id with exactly these arguments.
+        symbol_id, stable_id = make_doc_symbol_ids(
+            "properties", str(rel_path), "property", key,
+            span.start_line, span.end_line,
         )
 
         # Extract prefix/namespace from key
@@ -157,13 +162,7 @@ def _extract_property_symbols(
 
         symbol = Symbol(
             id=symbol_id,
-            # WI-banod: canonical sha256:<16hex> stable_id via the shared doc
-            # factory (node.id stays the composite key; the span fold also
-            # distinguishes same-named properties on different lines).
-            stable_id=make_doc_stable_id(
-                "properties", str(rel_path), "property", key,
-                span.start_line, span.end_line,
-            ),
+            stable_id=stable_id,
             name=key,
             kind="property",
             language="properties",

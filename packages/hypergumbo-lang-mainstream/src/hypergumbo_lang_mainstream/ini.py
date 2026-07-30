@@ -37,7 +37,7 @@ from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
     TreeSitterAnalyzer,
-    make_doc_stable_id,
+    make_doc_symbol_ids,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 
@@ -76,9 +76,6 @@ def _get_node_text(node: "tree_sitter.Node") -> str:
     return node.text.decode("utf-8", errors="replace") if node.text else ""
 
 
-def _make_symbol_id(path: Path, name: str, kind: str, line: int) -> str:
-    """Create a stable symbol ID."""
-    return f"ini:{path}:{kind}:{line}:{name}"
 
 
 # Keywords that indicate sensitive values
@@ -180,12 +177,21 @@ def _extract_section(
     line = node.start_point[0] + 1
     rel_path_obj = Path(rel_path)
 
-    symbol_id = _make_symbol_id(rel_path_obj, section_name, "section", line)
     span = Span(
         start_line=line,
         start_col=node.start_point[1],
         end_line=node.end_point[0] + 1,
         end_col=node.end_point[1],
+    )
+
+    # INV-dulah: both ids minted together by the shared factory, so node.id
+    # carries the canonical ADR-0036 grammar instead of the local
+    # "ini:{path}:{kind}:{line}:{name}" composite (which put the kind word in the
+    # span slot, so the id did not parse). stable_id is byte-identical: the
+    # factory calls make_doc_stable_id with exactly these arguments.
+    symbol_id, stable_id = make_doc_symbol_ids(
+        "ini", str(rel_path_obj), "section", section_name,
+        span.start_line, span.end_line,
     )
 
     # Count settings in this section
@@ -194,12 +200,7 @@ def _extract_section(
 
     symbol = Symbol(
         id=symbol_id,
-        # WI-banod: canonical sha256:<16hex> stable_id via the shared doc
-        # factory (node.id stays the composite location key).
-        stable_id=make_doc_stable_id(
-            "ini", str(rel_path_obj), "section", section_name,
-            span.start_line, span.end_line,
-        ),
+        stable_id=stable_id,
         name=section_name,
         kind="section",
         language="ini",
@@ -238,12 +239,17 @@ def _extract_setting(
     rel_path_obj = Path(rel_path)
     line = node.start_point[0] + 1
 
-    symbol_id = _make_symbol_id(rel_path_obj, key_name, "setting", line)
     span = Span(
         start_line=line,
         start_col=node.start_point[1],
         end_line=node.end_point[0] + 1,
         end_col=node.end_point[1],
+    )
+
+    # INV-dulah: see the section site above — both ids from one factory call.
+    symbol_id, stable_id = make_doc_symbol_ids(
+        "ini", str(rel_path_obj), "setting", key_name,
+        span.start_line, span.end_line,
     )
 
     # Check if value is sensitive
@@ -255,11 +261,7 @@ def _extract_setting(
 
     symbol = Symbol(
         id=symbol_id,
-        # WI-banod: canonical sha256:<16hex> stable_id via the shared doc factory.
-        stable_id=make_doc_stable_id(
-            "ini", str(rel_path_obj), "setting", key_name,
-            span.start_line, span.end_line,
-        ),
+        stable_id=stable_id,
         name=key_name,
         kind="setting",
         language="ini",

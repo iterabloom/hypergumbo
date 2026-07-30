@@ -1118,18 +1118,35 @@ def make_doc_symbol_ids(
     ``(language, path, kind, name, start_line, end_line)`` tuple, makes that
     divergence unrepresentable, and dedups the eleven copies onto one definition.
 
-    ``node.id`` shape: ``"{language}:{path}:{kind}:{start_line}:{name}"`` — the
-    historical doc-family shape the six line-bearing adopters
-    (scss/vue/svelte/puppet/astro/twig, plus kdl) already emit, so they migrate
-    byte-for-byte. This is deliberately NOT the documented ADR-0036 node.id
-    grammar (``lang:path:span:name:kind`` — span third, kind last): full grammar
-    conformance for the doc family would re-key every node and is a separate,
-    larger decision (the markdown/gitignore analyzers, which already use the
-    span-third/kind-last shape, are NOT folded onto this helper for that reason).
-    The line-less adopters (rst/robot/pony/sparql) GAIN the ``start_line`` segment
-    here, which both moves their id TOWARD the grammar and resolves their latent
-    same-name-sibling id collision (two ``section`` nodes of the same name in one
-    file previously shared an id).
+    ``node.id`` is the canonical ADR-0036 grammar, minted by delegating to
+    :func:`make_symbol_id` — this helper does NOT re-implement the format. The
+    delegation is the point: an f-string copy of the grammar is exactly how
+    ``js_ts.py`` and ``json_config.py`` each opted out of the shared minter's
+    guarantees, and it is what let the doc family drift for months.
+
+    **This shape changed (INV-dulah, doc-family slot-ORDER limb).** The helper
+    previously emitted ``"{language}:{path}:{kind}:{start_line}:{name}"`` — kind
+    third, no span, name last — deliberately not the documented grammar, on the
+    recorded premise that "full grammar conformance for the doc family would
+    re-key every node and is a separate, larger decision." Measurement retired
+    that framing rather than the work: against the canonical right-anchored parse
+    (``span, name, kind = parts[-3:]``) the *kind word landed in the span slot*,
+    so every id from all eleven adopters failed ``id_format`` with
+    ``malformed_span_segment`` and could not be parsed back into its slots at
+    all. These were not ids in a different-but-workable convention; they were
+    unparseable. The re-key is consumer-visible for ``node.id`` and identity-safe:
+    ``stable_id`` below is computed from the same argument set either way, so it
+    is byte-identical, and no ``*_scheme`` bumps (the scheme-bump principle — a
+    bump follows an ALTERED existing computed value, and none is altered here).
+
+    Delegating also inherits the WI-sikar always-on name-slot sanitization
+    (``':' -> '.'``), which repairs a real six-segment break the old f-string
+    shipped: svelte's ``on:click`` event symbols carried an id name-slot of
+    ``button:click``, whose colon shifted every right-anchored slot.
+
+    The markdown/gitignore analyzers were excluded from this helper *because* it
+    diverged from the grammar; they already mint the canonical shape, so that
+    reason is now spent and folding them on is a clean follow-up.
 
     ``stable_id`` is the canonical ``sha256:<16hex>`` from
     :func:`make_doc_stable_id` — unchanged for every adopter (they already called
@@ -1140,7 +1157,7 @@ def make_doc_symbol_ids(
     interpolation the analyzers previously used produced the identical string.
     """
     spath = str(path)
-    symbol_id = f"{language}:{spath}:{kind}:{start_line}:{name}"
+    symbol_id = make_symbol_id(language, spath, start_line, end_line, name, kind)
     stable_id = make_doc_stable_id(language, spath, kind, name, start_line, end_line)
     return symbol_id, stable_id
 

@@ -2596,12 +2596,42 @@ class TestMakeDocSymbolIds:
         assert isinstance(result, tuple) and len(result) == 2
 
     def test_node_id_format(self) -> None:
-        # node.id is the doc-family historical shape
-        # f"{language}:{path}:{kind}:{start_line}:{name}" (NOT the ADR-0036
-        # lang:path:span:name:kind grammar — see the function docstring). This
-        # exact string is what the six line-bearing analyzers already emit.
+        # node.id is the canonical ADR-0036 grammar
+        # {lang}:{path}:{start}-{end}:{name}:{kind}. It was previously the
+        # doc-family shape {lang}:{path}:{kind}:{start_line}:{name}, which put
+        # the kind word in the span slot and so did not parse at all
+        # (INV-dulah, doc-family slot-ORDER limb).
         node_id, _ = make_doc_symbol_ids("scss", "styles/main.scss", "variable", "$primary-color", 1, 1)
-        assert node_id == "scss:styles/main.scss:variable:1:$primary-color"
+        assert node_id == "scss:styles/main.scss:1-1:$primary-color:variable"
+
+    def test_node_id_delegates_to_make_symbol_id(self) -> None:
+        # The helper must not re-implement the grammar in a local f-string: an
+        # f-string copy is precisely how js_ts.py and json_config.py each opted
+        # out of the shared minter's guarantees, and it is what let this family
+        # drift from ADR-0036 for months. Pinning equality with the canonical
+        # minter means a future edit to the grammar reaches this family too.
+        node_id, _ = make_doc_symbol_ids("twig", "t/page.twig", "macro", "field", 6, 8)
+        assert node_id == make_symbol_id("twig", "t/page.twig", 6, 8, "field", "macro")
+
+    def test_node_id_name_slot_colon_sanitized(self) -> None:
+        # Delegating inherits the WI-sikar always-on name-slot sanitization,
+        # which repairs a real defect the old f-string shipped: svelte's
+        # on:click event symbols carried an id name-slot of "button:click",
+        # whose colon shifted every right-anchored slot and pushed the id to six
+        # segments. The round-trip is documented-lossy (fidelity lives in
+        # Symbol.name); what matters is that the id parses.
+        node_id, _ = make_doc_symbol_ids("svelte", "W.svelte", "event", "button:click", 8, 8)
+        assert node_id == "svelte:W.svelte:8-8:button.click:event"
+        assert len(node_id.split(":")) == 5
+
+    def test_stable_id_unaffected_by_the_node_id_reorder(self) -> None:
+        # The slot-ORDER fix is identity-SAFE: stable_id is computed from the
+        # same argument set regardless of how node.id is laid out, so it stays
+        # byte-identical and no *_scheme bumps (the scheme-bump principle — a
+        # bump follows an ALTERED existing computed value). These digests are
+        # the pre-reorder values.
+        _, scss_sid = make_doc_symbol_ids("scss", "styles/main.scss", "variable", "$primary-color", 1, 1)
+        assert scss_sid == make_doc_stable_id("scss", "styles/main.scss", "variable", "$primary-color", 1, 1)
 
     def test_stable_id_is_canonical_and_matches_factory(self) -> None:
         import re

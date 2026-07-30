@@ -260,13 +260,15 @@ My Test Keyword
         keyword = next((s for s in result.symbols if s.kind == "keyword"), None)
         assert keyword is not None
         # node.id and stable_id are minted together by make_doc_symbol_ids
-        # (INV-dulah). node.id now carries a numeric start_line segment between
-        # kind and name (shape "robot:<path>:<kind>:<line>:<name>"), which locks
-        # the same-name-sibling collision fix.
+        # (INV-dulah). node.id is the canonical ADR-0036
+        # "{lang}:{path}:{start}-{end}:{name}:{kind}" — the span slot carries a
+        # real range (which still locks the same-name-sibling collision fix) and
+        # the kind is last. It was previously kind-third/name-last, which put the
+        # kind word where the span belongs and so did not parse at all.
         assert "robot:" in keyword.id
         assert "test.robot" in keyword.id
         assert re.match(
-            r"^robot:[^:]*test\.robot:keyword:\d+:My Test Keyword$", keyword.id
+            r"^robot:[^:]*test\.robot:\d+-\d+:My Test Keyword:keyword$", keyword.id
         ), keyword.id
         # stable_id is the canonical sha256 form, distinct from the raw id.
         assert keyword.stable_id != keyword.id
