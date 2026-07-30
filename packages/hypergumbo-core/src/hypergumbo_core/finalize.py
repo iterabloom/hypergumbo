@@ -314,10 +314,27 @@ def _finalize_skipped_into_limits(ctx: FinalizeContext) -> None:
 
     Two honesty signals are reconciled at this single pre-serialization chokepoint:
 
-    * ``partial_results_reason`` — set from any run's ``files_skipped`` count, but
-      never clobbering a reason already set by ``record_crashed_pass`` (WI-madal L3):
-      a crashed pass is the more severe signal; the file-skip note only fills an
+    * ``partial_results_reason`` — set from EITHER soft file-drop channel, never
+      clobbering a reason already set by ``record_crashed_pass`` (WI-madal L3):
+      a crashed pass is the more severe signal; the file-drop note only fills an
       otherwise-empty summary.
+
+      WI-zafid: it used to key on a run's ``files_skipped`` count alone, so the two
+      equivalent soft drops were asymmetric — a parse-error drop increments
+      ``files_skipped`` and set the reason, while an oversize drop lands only in
+      ``limits.truncated_files`` (``add_truncated_file`` never touches
+      ``files_skipped``) and set nothing. Same user-visible outcome, one signalled
+      and one silent. Both now trigger it.
+
+      NOTE on ``analysis_incomplete``, which WI-zafid also flagged as never
+      tripping: that is CORRECT and is deliberately not changed here. §735 defines
+      it as "analysis terminated *early*", and every drop reaching this function is
+      fail-open — analysis ran to completion over the remaining files, and even the
+      crash path is specified to "continue" (§ Analyzer crashes). The genuine defect
+      the item found on that side is a SPEC self-contradiction, fixed in the spec
+      rather than the code: §1078 claimed the reason is "present only when
+      ``analysis_incomplete: true``", which the 🟩 crash behaviour directly
+      contradicts by prescribing a reason with the flag unset.
     * ``skipped_languages`` (WI-nihir) — the ``add_skipped_language`` setter had zero
       callers, so a language the profile DETECTED but for which no analyzer pass ran
       (grammar unavailable / unsupported / crashed) was silently absent. This is the
@@ -326,9 +343,11 @@ def _finalize_skipped_into_limits(ctx: FinalizeContext) -> None:
       covering every cause without any per-analyzer edit. See
       ``_detected_unanalyzed_languages``.
     """
-    for run in ctx.analysis_runs:
-        if run.get("files_skipped", 0) > 0 and not ctx.limits.partial_results_reason:
-            ctx.limits.partial_results_reason = "some files skipped during analysis"
+    dropped_files = any(
+        run.get("files_skipped", 0) > 0 for run in ctx.analysis_runs
+    ) or bool(ctx.limits.truncated_files)
+    if dropped_files and not ctx.limits.partial_results_reason:
+        ctx.limits.partial_results_reason = "some files skipped during analysis"
     for language in _detected_unanalyzed_languages(ctx):
         ctx.limits.add_skipped_language(language)
     ctx.behavior_map["limits"] = ctx.limits.to_dict()
