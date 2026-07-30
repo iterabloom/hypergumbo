@@ -46,6 +46,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Symbol, make_pass_id
+from ..paths import is_test_file
 from .registry import (
     LinkerActivation,
     LinkerContext,
@@ -293,10 +294,25 @@ def link_pyffi(
         if sym.kind == "function":
             c_lookup.setdefault(sym.name, []).append(sym)
 
+    # WI-razib / INV-kodan: this pass had NO test-file awareness, and on the
+    # self-corpus that made its entire observable output its own fixtures — all
+    # 10 C_stdlib FFI edges originated from test_pyffi_linker.py, because no
+    # production code here uses ctypes/cffi. Sibling linkers gate through the
+    # shared `paths.is_test_file` chokepoint; pyffi cannot use
+    # `discovery.find_non_test_files` as most of them do, because it never walks
+    # the repo — it consumes in-memory symbol lists — so the gate sits on the
+    # symbol path instead. Both emit phases are covered: Phase 1 filters the
+    # scanned file set, Phase 2 filters by the source symbol's id.
+    test_symbol_ids = {sym.id for sym in python_symbols if is_test_file(sym.path)}
+
     # --- Phase 1: Scan Python files for ctypes/cffi calls ---
     python_files: set[str] = set()
     for sym in python_symbols:
-        if sym.language == "python" and sym.path.endswith(".py"):
+        if (
+            sym.language == "python"
+            and sym.path.endswith(".py")
+            and not is_test_file(sym.path)
+        ):
             python_files.add(sym.path)
 
     for py_path_str in python_files:
@@ -421,6 +437,8 @@ def link_pyffi(
 
     if pyo3_lookup:
         for edge in edges:
+            if edge.src in test_symbol_ids:
+                continue
             if not edge.dst.endswith(":unresolved"):
                 continue
             # Extract the function name from the unresolved dst

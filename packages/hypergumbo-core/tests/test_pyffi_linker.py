@@ -1657,3 +1657,146 @@ class TestInvZuhubPyFFIFallback:
         assert edge.meta is not None
         assert edge.meta.get("disambiguation_fallback") is True
         assert edge.meta.get("bridge_kind") == "ffi"
+
+
+class TestPyFFILinkerTestFileExclusion:
+    """WI-razib / INV-kodan: the linker must not mint FFI edges out of test code.
+
+    On the self-corpus every one of the 10 ``C_stdlib`` FFI ``calls`` edges the
+    pass emitted originated from ``test_pyffi_linker.py`` — this file — because
+    production hypergumbo code uses no ctypes/cffi at all. So the pass's entire
+    observable output was its own fixtures: phantom edges in the graph, and (per
+    INV-kodan) 4.6s of CPU per analysis validating nothing but itself.
+
+    The fix is the linker convention the shared ``paths.is_test_file`` chokepoint
+    already serves for ~22 sibling linkers. Note that pyffi could NOT adopt
+    ``discovery.find_non_test_files`` like most of them: it never walks the repo,
+    it consumes in-memory symbol lists, so the gate belongs on the symbol path.
+    """
+
+    def test_ctypes_call_from_a_test_file_emits_no_edge(self, tmp_path: Path) -> None:
+        """The filed defect: a ctypes call inside a test file must not link."""
+        from hypergumbo_core.linkers.pyffi import link_pyffi
+
+        tests_dir = tmp_path / "tests"
+        tests_dir.mkdir()
+        py_file = tests_dir / "test_ffi.py"
+        py_file.write_text(
+            "import ctypes\n"
+            "lib = ctypes.CDLL('./libmath.so')\n"
+            "result = lib.fast_add(1, 2)\n"
+        )
+
+        py_func = _make_python_symbol(
+            "test_ffi", kind="module", path=str(py_file), start_line=1, end_line=3
+        )
+        c_func = _make_c_symbol("fast_add", path="math.c")
+
+        result = link_pyffi(
+            repo_root=tmp_path,
+            python_symbols=[py_func],
+            c_symbols=[c_func],
+            rust_symbols=[],
+            edges=[],
+        )
+
+        assert result.edges == [], (
+            "pyffi linked an FFI call that lives in a test file. Every edge the "
+            "pass emits on the self-corpus came from its own fixtures this way "
+            "(WI-razib / INV-kodan). Gate the Phase-1 scan on paths.is_test_file."
+        )
+
+    def test_ctypes_call_from_production_still_links(self, tmp_path: Path) -> None:
+        """Positive control for the exclusion above.
+
+        Without this, gating too broadly — or a tmp_path that itself reads as a
+        test directory — would satisfy the guard while silently deleting the
+        linker's real output. Same shape as the fixture-suppression trap where a
+        byte-identical file yields 4 markers at an ordinary path and 0 under
+        ``tests/``.
+        """
+        from hypergumbo_core.linkers.pyffi import link_pyffi
+
+        py_file = tmp_path / "app.py"
+        py_file.write_text(
+            "import ctypes\n"
+            "lib = ctypes.CDLL('./libmath.so')\n"
+            "result = lib.fast_add(1, 2)\n"
+        )
+
+        py_func = _make_python_symbol(
+            "app", kind="module", path=str(py_file), start_line=1, end_line=3
+        )
+        c_func = _make_c_symbol("fast_add", path="math.c")
+
+        result = link_pyffi(
+            repo_root=tmp_path,
+            python_symbols=[py_func],
+            c_symbols=[c_func],
+            rust_symbols=[],
+            edges=[],
+        )
+
+        assert len(result.edges) == 1, (
+            "production ctypes calls must still link; the test-file gate is "
+            "scoped to test paths only."
+        )
+
+    def test_pyo3_call_from_a_test_file_emits_no_edge(self, tmp_path: Path) -> None:
+        """Phase 2 (PyO3) is gated too, not just the Phase-1 ctypes scan.
+
+        Phase 2 never sees a path — it walks existing ``edges`` and keys on
+        ``edge.dst`` — so the gate matches ``edge.src`` against the ids of the
+        Python symbols that live in test files. Gating only Phase 1 would have
+        left the same defect open on the PyO3 half and forced a disclosed gap.
+        """
+        from hypergumbo_core.linkers.pyffi import link_pyffi
+
+        rs_file = tmp_path / "src" / "lib.rs"
+        rs_file.parent.mkdir(parents=True)
+        rs_file.write_text(
+            '#[pyfunction]\n'
+            'fn fast_compute(x: i32) -> i32 {\n'
+            '    x * 2\n'
+            '}\n'
+        )
+
+        tests_dir = tmp_path / "tests"
+        tests_dir.mkdir()
+        py_file = tests_dir / "test_bridge.py"
+        py_file.write_text(
+            "from mymod import fast_compute\n"
+            "result = fast_compute(42)\n"
+        )
+
+        py_func = _make_python_symbol(
+            "test_bridge", kind="module", path=str(py_file), start_line=1, end_line=2
+        )
+        rust_func = _make_rust_symbol(
+            "fast_compute",
+            path=str(rs_file),
+            annotations=[{"name": "pyfunction", "args": [], "kwargs": {}}],
+        )
+        call_edge = Edge.create(
+            src=py_func.id,
+            dst=f"python:{py_file}:0-0:fast_compute:unresolved",
+            edge_type="calls",
+            line=2,
+            evidence_type="function_call",
+            confidence=0.50,
+            origin="python",
+            origin_run_id="test",
+        )
+
+        result = link_pyffi(
+            repo_root=tmp_path,
+            python_symbols=[py_func],
+            c_symbols=[],
+            rust_symbols=[rust_func],
+            edges=[call_edge],
+        )
+
+        assert result.edges == [], (
+            "pyffi minted a PyO3 bridge edge out of a test file; Phase 2 must "
+            "skip edges whose source symbol lives in test code (WI-razib)."
+        )
