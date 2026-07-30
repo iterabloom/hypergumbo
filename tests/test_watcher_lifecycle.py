@@ -131,6 +131,13 @@ def _isolate_shared_scripts(tmp_path: Path) -> Path:
         "rotate-on-session-end.sh",
         "poll-transcript-change.sh",
         "session_id_helpers.sh",
+        # Required by launch-transcript-sync.sh and rotate-on-session-end.sh,
+        # which source archive_scrubbed.sh and invoke scrub_secrets.py. Omitting
+        # them made this sandbox a repo where the scrubber is MISSING, which is
+        # one of the demonstrated data-loss modes -- that is how
+        # test_orphan_sweep_archives_dead_session_files went red.
+        "archive_scrubbed.sh",
+        "scrub_secrets.py",
     ):
         src_file = SHARED_DIR / name
         dest_file = shared_dir / name
