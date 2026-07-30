@@ -301,7 +301,16 @@ def _process_toml_tree(
                 )
             )
 
-            # Create edge from build target to source file
+            # Create edge from build target to source file.
+            #
+            # INV-zatug: declare the pathway. Without an explicit
+            # evidence_type this inherited Edge.create's ``ast_call_direct``
+            # default — "inferred from a direct (non-method) call site" — which
+            # a Cargo [[bin]]/[[test]] target naming its source path plainly is
+            # not, and which then had the edge judged against the call-site
+            # band. Confidence is dropped so the ir.py chokepoint derives it
+            # from the pathway seed; the old 1.0 literal breached the reserved
+            # ceiling (no detection method is certain).
             if target_path:
                 edges.append(
                     Edge.create(
@@ -309,7 +318,7 @@ def _process_toml_tree(
                         dst=target_path,
                         edge_type="defines_target",
                         line=start_line,
-                        confidence=1.0,
+                        evidence_type="build_target_main",
                         origin=PASS_ID,
                         origin_run_id=run_id,
                     )
@@ -644,13 +653,18 @@ def _extract_pyproject_scripts(
                         target_path, target_func = parsed
                         module_dotted = entry_point.rsplit(":", 1)[0]
                         dst_id = f"python:{module_dotted}:0-0:{target_func}:unresolved"
+                        # INV-zatug: a [project.scripts] entry IS a build
+                        # target's main entry point, so declare that pathway
+                        # instead of inheriting the ast_call_direct default.
+                        # Confidence derives at the ir.py chokepoint (the 1.0
+                        # literal breached the reserved ceiling).
                         edges.append(
                             Edge.create(
                                 src=symbol_id,
                                 dst=dst_id,
                                 edge_type="defines_target",
                                 line=start_line,
-                                confidence=1.0,
+                                evidence_type="build_target_main",
                                 origin=PASS_ID,
                                 meta={
                                     "target_function": target_func,

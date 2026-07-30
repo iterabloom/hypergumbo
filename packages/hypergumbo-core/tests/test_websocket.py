@@ -648,7 +648,40 @@ socket.on('message', handleMessage);
             if edge.edge_type == "event_publishes":
                 assert edge.confidence == 0.85
             elif edge.edge_type == "references":
-                assert edge.confidence == 0.90
+                assert edge.confidence == 0.85
+
+    def test_every_edge_confidence_within_its_derived_band(
+        self, tmp_path: Path
+    ) -> None:
+        """INV-zatug: every edge this linker emits sits inside the ADR-0039
+        band for its own declared evidence_type.
+
+        The endpoint ``references`` edge hand-wrote 0.90 while declaring
+        ``ast_call_direct`` (whose ceiling is 0.85) — an over-claim relative
+        to the pathway it named. The declaration is correct and deliberate
+        (the ADR-0028 Phase-3 fold collapsed ``f"{pattern_type}_endpoint"``
+        into ``ast_call_direct`` + ``meta["framework_dispatch"]``), so the
+        value moves to the pathway, not the other way around.
+
+        Written as a sweep over *all* emitted edges rather than the one known
+        site: a per-site assertion only catches the site it names, and this
+        linker emits several edge families.
+        """
+        from hypergumbo_core.confidence import confidence_within_band
+
+        (tmp_path / "sender.js").write_text("socket.emit('event', data);")
+        (tmp_path / "receiver.js").write_text("socket.on('event', handler);")
+        (tmp_path / "server.js").write_text("wss.on('connection', handler);")
+        result = link_websocket(tmp_path)
+
+        assert result.edges, "non-vacuity: the linker must emit edges here"
+        for edge in result.edges:
+            assert confidence_within_band(
+                edge.evidence_type, edge.confidence
+            ), (
+                f"{edge.edge_type} edge confidence {edge.confidence} is "
+                f"outside the band for {edge.evidence_type}"
+            )
 
     def test_symbol_origin(self, tmp_path: Path) -> None:
         """Should set origin on symbols."""
