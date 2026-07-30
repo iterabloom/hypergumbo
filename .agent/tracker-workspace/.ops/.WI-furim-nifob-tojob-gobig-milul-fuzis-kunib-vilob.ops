@@ -1,0 +1,21 @@
+- op: create  # a40c
+  at: '2026-07-30T04:02:38Z'  # a40c
+  by: agent  # a40c
+  actor: jgstern_agent  # a40c
+  clock: 1  # a40c
+  nonce: a40c  # a40c
+  data:  # a40c
+    kind: work_item  # a40c
+    title: "104 stale .transcript-injection-state.*.lock files accumulate in .agent/ with nothing that cleans them"  # a40c
+    status: todo_hard  # a40c
+    priority: 4  # a40c
+    parent:  # a40c
+    tags:  # a40c
+    - developer_experience  # a40c
+    isbefore: []  # a40c
+    duplicate_of: []  # a40c
+    not_duplicate_of: []  # a40c
+    pr_ref:  # a40c
+    description: ""  # a40c
+    fields:  # a40c
+      description: "Measured 2026-07-29: 104 zero-byte .agent/.transcript-injection-state.<sid>.lock files, earliest 2026-04-24, newest today. rotate-on-session-end.sh step 4 removes the ENDING session's per-session state files (.transcript-sync.<sid>.pid, -sync-state, -poll-state, -injection-state.json) but NOT the .lock, and launch-transcript-sync.sh's orphan sweep removes the same four names for a crashed session, also excluding the .lock. So every session leaves one behind either way. Zero-byte, so this is clutter rather than a defect: cost is a noisier .agent/ listing and one inode per session. Two candidate fixes -- add the .lock to both cleanup lists, or move the locks to a subdirectory so the top level stays legible. Worth pairing with the retention item (WI-nubik) since both are .agent/ housekeeping and a single sweep could cover both."  # a40c
