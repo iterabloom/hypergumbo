@@ -72,7 +72,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 from .ir import ExternalRef, _compute_run_signature, _parse_dangling_id
 from .pass_metadata import PassMetadataLookup
@@ -537,7 +537,7 @@ def _freeze(ctx: FinalizeContext) -> FinalizedMap:
 
 
 def _prune_grammars_to_used(
-    analysis_runs: list[dict], seed: dict[str, str]
+    analysis_runs: list[dict[str, Any]], seed: dict[str, str]
 ) -> dict[str, str]:
     """Return only the grammar dists actually exercised by node-producing passes.
 

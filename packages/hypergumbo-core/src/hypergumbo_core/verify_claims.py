@@ -816,8 +816,8 @@ def verify_taint_claim(
     # (and path-hop count) so distinct flows are visibly distinct and drillable;
     # (c) attach the bounded structured ``evidence`` list to the verdict so a
     # consumer can triage programmatically even at high evidence counts.
-    distinct_violations: list = []
-    _seen_flows: set = set()
+    distinct_violations: list["TaintFlowFinding"] = []
+    _seen_flows: set[tuple[Any, ...]] = set()
     for v in violations:
         identity = _flow_identity(v)
         if identity in _seen_flows:

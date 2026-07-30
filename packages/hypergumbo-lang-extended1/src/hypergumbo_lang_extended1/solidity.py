@@ -170,11 +170,18 @@ def _get_enclosing_function_solidity(
 
 def _extract_solidity_signature(
     node: "tree_sitter.Node", source: bytes
-) -> Optional[str]:
+) -> str:
     """Extract function signature from a Solidity function definition.
 
     Solidity syntax: function name(type1 param1, type2 param2) returns (type3)
     Returns signature like "(address to, uint256 amount) returns (bool)".
+
+    Always returns a string: the parameter list degrades to ``"()"`` when the
+    node carries no ``parameter`` children, so there is no failure path. The
+    return type was ``Optional[str]`` until WI-basat, which was over-broad —
+    the single ``return sig`` is unconditional — and that annotation was what
+    made the WI-vibad ``make_typed_stable_id`` call read as a ``str | None``
+    argument.
     """
     params: list[str] = []
     return_type: Optional[str] = None
