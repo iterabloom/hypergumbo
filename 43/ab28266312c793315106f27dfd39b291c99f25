@@ -1,0 +1,39 @@
+Original commit body from cc6f2715024e939d381dafd9976ddf1eecd62522:
+
+WI-tinul, WI-huhin.
+
+WI-tinul (docs only). __version__ surfaces under THREE names and the spec
+named two. reproducibility_context.hypergumbo_version and
+analysis_runs[].version emit it bare (7.0.0); limits.analyzer_version emits
+it prefixed (hypergumbo-7.0.0). Worse, the AnalysisRun/AnalysisPass field
+examples showed "hypergumbo-0.1.0" — a prefixed form the producer has never
+emitted — so a consumer joining analysis_runs[].version against
+limits.analyzer_version failed on a prefix the spec told them to expect on
+both. The examples now show the bare emitted form, and the Version-fields
+taxonomy names all three with the discriminator stated: only
+analyzer_version carries the prefix, deliberately, because it is the one
+surface naming the PRODUCING TOOL rather than reporting the version of a
+record the tool already authored. No emitted value changed.
+
+WI-huhin (consumer-visible value change). confidence_model emitted
+"hypergumbo-evidence-v2" against a documented grammar of
+hypergumbo-evidence-vMAJOR.MINOR (Appendix C), which assigns MINOR the job
+"Refinements (new evidence types, score adjustments)". A bare MAJOR makes
+that channel unexpressible — ADR-0039's refinement added evidence types,
+exactly what MINOR signals, and had no way to say so; the next refinement
+would have had to choose between a misleading MAJOR bump and silence.
+
+The field now emits "hypergumbo-evidence-v2.0": the first CONFORMING
+rendering of the SAME model. MAJOR unchanged, no scoring behaviour differs,
+and the spec now says so explicitly so v2.0 is not misread as a refinement
+of v2. The value was fixed rather than the grammar because the grammar is a
+considered taxonomy defining MAJOR/MINOR across three version families
+while the bare constant is one nobody revisited — reconcile toward the
+artifact carrying the decision. Blast radius: one producer constant, two
+assertions, swept for stragglers.
+
+test_confidence_model_matches_documented_grammar pins the FORMAT, not the
+literal, so a legitimate future bump passes and only a malformed value
+fails. 2011 passed across the 45-file affected set.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
