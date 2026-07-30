@@ -1,0 +1,46 @@
+Original commit body from 0f1521564b0b895cbc23d5cddd882f9f54441e1c:
+
+The full-suite self-tree-validation job has been RED on dev on a matrix of
+exactly {'cross_field|info': 9} -- nine ADR-0039 confidence-band violations,
+all over-claims above the ast_call_direct ceiling of 0.85, four at exactly
+1.0, the value confidence.py reserves on the principle that no detection
+method is certain.
+
+Three producers, and the obvious fix was wrong for one of them. The four 1.0
+edges are toml_config's [project.scripts] defines_target edges, which never
+passed an evidence_type and so inherited Edge.create's ast_call_direct
+default -- "inferred from a direct (non-method) call site", which a
+my-cli = "pkg.cli:main" line is not. The range check then judged a manifest
+declaration against a call-site band. Lowering their confidence to fit would
+have encoded the mislabel as truth: an entry that literally names its target
+is not a low-confidence inference. Both toml sites now declare the registered
+build_target_main pathway and drop the literal, deriving 0.95 at the ir.py
+chokepoint with confidence_source=evidence_derived. The Cargo [[bin]]/[[test]]
+site is unexercised by the self-corpus and was found by auditing the producer
+rather than the violation list.
+
+The other two declarations were already correct, so there the value moved to
+the pathway instead: websocket.py's endpoint references edge hand-wrote 0.90
+under a deliberate ADR-0028 fold, and java.py scaled a hardcoded 0.95 base by
+the resolver multiplier (the multiplier is kept; only its base moves to the
+registry seed).
+
+Self-tree measured 9 -> 0; the matrix is now empty. The gate passes with NO
+baseline change -- cross_field|info stays unbaselined at ceiling 0, since
+baselining it at 9 would raise a ceiling the gate's own guidance says may
+only ratchet down.
+
+Scope, stated plainly: this fixes the three producers that fire, not the
+class. A static producer audit found 32 out-of-band sites tree-wide; the
+self-corpus exercises three. The remaining 29 (plus a computed-multiplier
+cohort) are the unfinished ADR-0039 ruling-1 migration and are filed as
+WI-famiv-gumof rather than left implicit -- most never declared a pathway at
+all, so each needs a per-site judgment and some need new registrations.
+
+Tests assert band membership via confidence_within_band against the registry
+rather than golden numbers; the websocket one sweeps every emitted edge with
+a non-vacuity guard. The pre-existing test_edge_confidence pinned
+references == 0.90 -- the defect as expected behaviour -- and is corrected.
+
+Refs: INV-zatug, WI-famiv-gumof
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
