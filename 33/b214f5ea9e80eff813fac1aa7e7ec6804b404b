@@ -1,0 +1,46 @@
+Original commit body from 43be54ba55d68abbe870cc1808da14a0ef4c0e3a:
+
+The mapper exists because a PR touching only scripts/* or
+.agent/hooks/_shared/* produces no reverse-slice, so ci.yml skips pytest
+entirely. Its rule was 1:1 and exact -- scripts/<name> ->
+tests/test_<name>.py with hyphens collapsed -- which reached one test per
+script and left every sibling selected by nothing.
+
+The rule is now a separator-insensitive prefix match. scripts/auto-pr
+goes from 1 test to 11, bakeoff-deep from 1 to 6, agent-supervisor 1 to 2.
+
+Both halves are load-bearing and the obvious one is wrong. Plain
+prefix-matching -- the fix as filed, asserted to "pick up all ten
+immediately" -- picks up zero: auto-pr collapses to auto_pr while its
+tests are named test_autopr_*, and test_autopr_x does not start with
+test_auto_pr. Prefix alone moves 27 -> 43 and leaves the motivating case
+at 0. Dropping separators before comparing is what fixes it.
+
+_shared/ now accepts .sh as well as .py. That directory holds 13 shell
+helpers against 8 Python ones, so requiring .py left most of a covered
+directory unreachable -- test_touch_heartbeat.py was dark despite
+_shared/touch_heartbeat.sh sitting beside it. scripts/lib/ stays
+unmapped; that one IS a recorded decision in the module docstring.
+
+Severity stated accurately: this is a feedback-latency gap, not a
+coverage hole. full-suite.yml's test-agent-infra job runs `pytest tests/`
+twice daily, so these tests were never unrun -- they were unrun BEFORE
+merge, so a regression could sit on dev for ~12 hours.
+
+Testing: five tmp-tree tests for the new rule, plus a two-sided
+reachability ratchet measured against the real tree -- a new unreachable
+test fails, and an exempt test that becomes reachable also fails so the
+list cannot rot. The 18 exemptions carry a verified reason each. The
+mapper's existing tests deliberately use isolated tmp trees, which is
+exactly why this survived: nothing ever compared the mapping against the
+repo's real filenames, so the unit was correct while the wiring was inert.
+
+Widening surfaces latent tests: scripts/contribute previously mapped to
+nothing and now reaches test_contribute_github.py, which fails wherever
+gh is installed (its harness prepends to PATH instead of replacing it, so
+"WhenGhAbsent" never makes gh absent and the real binary hits the live
+API). Verified pre-existing on clean dev in an isolated worktree; CI
+runners have no gh so this does not break CI. Filed as WI-kahoj.
+
+Governance: .agent/** change approved by the owner in-session.
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
