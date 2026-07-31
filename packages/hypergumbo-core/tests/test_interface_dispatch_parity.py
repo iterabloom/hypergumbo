@@ -108,14 +108,6 @@ CASES: dict[str, tuple[str, str]] = {
 # of them. Three of the eight are producer gaps, three are vocabulary gaps in
 # a consumer, one is an unrelated analyzer crash, one is an anchoring choice.
 KNOWN_HOLES: dict[str, str] = {
-    "rust": (
-        "COARSE, not absent. linkers/type_hierarchy splits qualified member "
-        "names on '#' and '.' but not '::', while linkers/containment's "
-        "_SEPARATORS knows all three — so the shared linker cannot see Rust at "
-        "all, and linkers/rust_trait_dispatch covers the gap by anchoring "
-        "dispatch at the TRAIT (trait:Shape -> Square::area) rather than at the "
-        "trait's method requirement. INV-tihim."
-    ),
     "php": (
         "PRODUCER. A same-file `interface` is emitted as kind='external_symbol' "
         "(the analyzer treats it as third-party), its method is emitted BARE "

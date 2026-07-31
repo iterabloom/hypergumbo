@@ -48,6 +48,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
+from ..member_names import MEMBER_NAME_SEPARATORS
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Symbol, make_pass_id
 from .registry import LinkerContext, LinkerResult, LinkerRequirement, register_linker
 
@@ -107,7 +108,7 @@ class _RailsIndex:
         by_action: dict[str, list[tuple[str, str, str, Symbol]]] = {}
         by_action_class_lower: dict[tuple[str, str], tuple[str, Symbol]] = {}
         for name, sym in symbol_by_name.items():
-            for sep in ("#", "."):
+            for sep in MEMBER_NAME_SEPARATORS:
                 if sep not in name:
                     continue
                 sym_class_part, sym_action = name.rsplit(sep, 1)
@@ -233,7 +234,7 @@ def _resolve_rails_handler_scan(
 
     # Reverse suffix matching
     for name, sym in symbol_by_name.items():
-        for sep in ("#", "."):
+        for sep in MEMBER_NAME_SEPARATORS:
             if sep not in name:
                 continue
             sym_class_part, sym_action = name.rsplit(sep, 1)
@@ -248,7 +249,7 @@ def _resolve_rails_handler_scan(
     # Case-insensitive fallback
     controller_lower = controller_class.lower()
     for name, sym in symbol_by_name.items():
-        for sep in ("#", "."):
+        for sep in MEMBER_NAME_SEPARATORS:
             if sep not in name:
                 continue
             sym_class_part, sym_action = name.rsplit(sep, 1)
