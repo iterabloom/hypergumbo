@@ -389,6 +389,13 @@ KNOWN_UNREACHABLE = {
     # Assert over governance/workflow artifacts, not a single source file.
     "test_codeowners_governance.py",
     "test_full_suite_coverage_teeth.py",
+    # Covers tests/_forge_github_harness.py -- a TEST HELPER, which is a third
+    # category this mapper does not claim: it maps scripts/ and
+    # .agent/hooks/_shared/, not tests/. Extending it to tests/_<name>.py
+    # would be a rule for a category of exactly one (that helper is the only
+    # underscore-prefixed module under tests/), so this is an exemption rather
+    # than a mapping. Revisit if a second test helper acquires a test.
+    "test_forge_github_harness.py",
 }
 
 

@@ -13,6 +13,25 @@ boundary, so centralizing it removes ~4x duplication and gives one place to
 evolve the stubs. Bash contributes no Python coverage (Tier B), so nothing here
 counts toward the 100% gate — these are pure behavioral subprocess assertions.
 
+The network boundary is stubbed by *replacing* ``PATH``, not prepending to it.
+That distinction is the whole point: a prepended stub dir intercepts only the
+tools it remembers to fake and passes everything else through to the real
+binary, which is an allowlist implemented as a blocklist and fails silently
+because the un-faked tool simply works. ``bindir_with_fakes(gh=False)`` used to
+leave ``/usr/bin/gh`` reachable, so ``scripts/contribute``'s ``command -v gh``
+probe succeeded and ``TestGitHubFallbackWhenGhAbsent`` exercised the gh branch
+while calling the live ``api.github.com`` — passing on CI only because those
+runners have no ``gh`` installed.
+
+No prepend-side trick fixes it: a shim satisfies ``command -v``; a directory or
+dangling symlink named ``gh`` is skipped and the search continues; and ``gh``
+sits in ``/usr/bin`` alongside ``git``, ``sed`` and ``awk``, so dropping its
+directory would take the script's real dependencies with it. Hence
+``_gh_free_path()`` — a shadow directory holding one symlink per executable on
+the inherited ``PATH``, minus ``gh``. Scripts run with the fake bindir followed
+by that shadow, so the only ``gh`` a harnessed script can reach is one a test
+explicitly asked for.
+
 The network boundary is stubbed two ways, both placed on ``PATH``:
 
 * a fake ``curl`` (Python) that records every invocation to ``$CURL_LOG`` and
@@ -30,10 +49,45 @@ sources the lib and runs a snippet (for lib-level functions like
 
 from __future__ import annotations
 
+import functools
 import json
 import os
 import subprocess
+import tempfile
 from pathlib import Path
+
+
+@functools.lru_cache(maxsize=1)
+def _gh_free_path() -> str:
+    """A ``PATH`` carrying every executable the environment had, minus ``gh``.
+
+    Built once per process — a few hundred milliseconds of symlinking, reused
+    by every harnessed subprocess — so that "no fake gh was requested" and "gh
+    cannot be found" are the same statement. Replacing ``PATH`` wholesale is
+    what makes that true; see the module docstring for why every cheaper trick
+    fails.
+    """
+    shadow = Path(tempfile.mkdtemp(prefix="hg-gh-free-path-")) / "bin"
+    shadow.mkdir()
+    seen: set[str] = set()
+    for directory in os.environ.get("PATH", "").split(os.pathsep):
+        source = Path(directory)
+        if not source.is_dir():
+            continue
+        try:
+            entries = sorted(source.iterdir())
+        except OSError:  # pragma: no cover - unreadable dir on PATH
+            continue
+        for entry in entries:
+            # Earlier PATH entries win, exactly as a real lookup would.
+            if entry.name == "gh" or entry.name in seen:
+                continue
+            if entry.is_dir() or not os.access(entry, os.X_OK):
+                continue
+            (shadow / entry.name).symlink_to(entry)
+            seen.add(entry.name)
+    return str(shadow)
+
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 LIB = REPO_ROOT / "scripts" / "lib" / "forgejo-api.sh"
@@ -197,12 +251,22 @@ def _base_env(bindir: Path | None, repo: Path, fixtures: list | None) -> tuple[d
         "SELFHOSTED_FORGEJO_TOKEN",
         "HYPERGUMBO_FORGE_BACKEND",
         "HG_GITHUB_TOKEN",
+        # ``gh`` reads none of the four above; it reads these. Omitting them
+        # meant a live, privileged token reached any un-faked gh the old
+        # PATH-prepend left resolvable.
+        "GH_TOKEN",
+        "GITHUB_TOKEN",
+        "GH_ENTERPRISE_TOKEN",
     ):
         env.pop(k, None)
     env["FORGEJO_TOKEN"] = "tok"
     logs: dict[str, Path] = {}
+    # Replace PATH rather than prepend, so an un-faked tool is genuinely
+    # unresolvable instead of silently real. Applied even without a bindir:
+    # no harnessed subprocess should ever reach the operator's gh.
+    env["PATH"] = _gh_free_path()
     if bindir is not None:
-        env["PATH"] = f"{bindir}:{env['PATH']}"
+        env["PATH"] = f"{bindir}{os.pathsep}{env['PATH']}"
         logs["curl"] = repo / "curl.log"
         env["CURL_LOG"] = str(logs["curl"])
         env["CURL_FIXTURES"] = json.dumps(fixtures or [])
