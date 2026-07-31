@@ -250,7 +250,11 @@ def test_enum_body_val_emits_field(tmp_path: Path) -> None:
         "  case Red\n"
         "  val rgb = 0\n",
     )
-    assert _fields(syms) == {"Color.rgb"}
+    # WI-dorop: `Color.Red` joins the set — the enum's CASES are now emitted as
+    # fields too, alongside the body `val` this test was written for. The
+    # fixture always contained `case Red`; before WI-dorop it produced no
+    # symbol at all, which is the defect that item fixed.
+    assert _fields(syms) == {"Color.rgb", "Color.Red"}
     assert not any(s.kind == "variable" and s.name == "rgb" for s in syms)
     # WI-pujiz: the enum is emitted as a kind="enum" owner (in CONTAINER_KINDS)
     # so the containment linker roots Color.rgb under Color.

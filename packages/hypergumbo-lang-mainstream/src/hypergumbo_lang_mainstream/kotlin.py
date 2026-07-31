@@ -876,6 +876,78 @@ def _extract_symbols_from_file(
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[type_name] = symbol
 
+                # WI-dorop: one kind="field" per enum ENTRY, named `Color.RED`
+                # — the `.` separator kotlin already uses for its fields
+                # (`f"{enclosing_class}.{prop_name}"`) and one the containment
+                # linker splits on.
+                #
+                # NOTE THE CONTAINER'S KIND. Kotlin emits an `enum class` as
+                # kind="class" carrying an "enum" modifier; there is no
+                # kind="enum" anywhere in this analyzer. So the gate below is
+                # STRUCTURAL — the presence of an `enum_class_body` node —
+                # rather than a test on the modifier string or the kind. Two
+                # consequences worth knowing: `class` is in both
+                # `containment.CONTAINER_KINDS` and the slicer's set, so these
+                # members root and expand correctly without any kind change;
+                # but anything keyed on kind="enum" (including the G2
+                # emission-parity matrix's `_ENUM_CONTAINER_KINDS`) will never
+                # see a Kotlin enum at all. Verify this by contains-out or a
+                # reverse slice, never by an enum-kind query.
+                #
+                # Unlike Swift, each constant is its own `enum_entry` node, so
+                # a per-entry loop is correct here; `MERCURY(3.3)` carries its
+                # `value_arguments` after the identifier and is otherwise the
+                # same shape.
+                enum_body = find_child_by_type(node, "enum_class_body")
+                for entry in enum_body.children if enum_body else ():
+                    if entry.type != "enum_entry":
+                        continue
+                    e_name_node = find_child_by_type(entry, "identifier")
+                    if e_name_node is None:  # pragma: no cover - always names
+                        continue
+                    e_name = node_text(e_name_node, source)
+                    e_full = f"{type_name}.{e_name}"
+                    e_start = entry.start_point[0] + 1
+                    e_end = entry.end_point[0] + 1
+                    e_qualified = _make_kotlin_qualified_name(
+                        package_name, [*cls_ancestors, type_name], e_name,
+                    )
+                    entry_sym = Symbol(
+                        id=make_symbol_id(
+                            "kotlin", str(file_path), e_start, e_end,
+                            e_full, "field",
+                        ),
+                        name=e_full,
+                        kind="field",
+                        language="kotlin",
+                        path=str(file_path),
+                        span=Span(
+                            start_line=e_start,
+                            end_line=e_end,
+                            start_col=entry.start_point[1],
+                            end_col=entry.end_point[1],
+                        ),
+                        origin=PASS_ID,
+                        origin_run_id=run.execution_id,
+                        # An entry is as reachable as its enum; Kotlin has no
+                        # per-entry visibility modifier.
+                        modifiers=class_modifiers,
+                        stable_id=make_typed_stable_id(
+                            "field", "",
+                            visibility_from_modifiers(class_modifiers),
+                            name=e_name, qualified_name=e_full,
+                            file_stable_id=file_stable_id,
+                        ),
+                        line_span=e_end - e_start + 1,
+                        is_exported=not any(
+                            m in class_modifiers
+                            for m in ("private", "internal", "protected")
+                        ),
+                        qualified_name=e_qualified,
+                    )
+                    analysis.symbols.append(entry_sym)
+                    analysis.symbol_by_name[e_full] = entry_sym
+
         # Object declaration
         elif node.type == "object_declaration":
             name_node = _find_child_by_field(node, "name")
