@@ -6624,9 +6624,11 @@ def cmd_dead_code_maybe(args: argparse.Namespace) -> int:
     # Build a class-meta-index keyed by class symbol ID, then for each
     # method, also check its containing class's meta when the method's own
     # meta is empty.
+    from .symbol_kinds import type_like_kind_names
+
     class_meta_by_id: dict[str, dict] = {}
     for node in nodes:
-        if node.get("kind") in ("class", "interface", "struct", "trait", "enum"):
+        if node.get("kind") in type_like_kind_names():
             class_meta_by_id[node["id"]] = node.get("meta") or {}
     method_to_class: dict[str, str] = {}
     for edge in edges:

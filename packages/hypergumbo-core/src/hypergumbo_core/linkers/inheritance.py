@@ -42,6 +42,7 @@ import time
 from typing import TYPE_CHECKING
 
 from ..ir import PASS_VERSION, AnalysisRun, Edge, Symbol, make_pass_id
+from ..symbol_kinds import type_like_kind_names
 from .registry import LinkerContext, LinkerResult, register_linker
 
 if TYPE_CHECKING:
@@ -423,7 +424,7 @@ def _create_inheritance_edges(
     edges: list[Edge] = []
 
     for sym in symbols:
-        if sym.kind not in ("class", "interface", "struct", "trait"):
+        if sym.kind not in type_like_kind_names():
             continue
 
         base_classes = sym.meta.get("base_classes", []) if sym.meta else []

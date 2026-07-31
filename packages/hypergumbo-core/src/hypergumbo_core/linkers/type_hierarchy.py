@@ -38,10 +38,12 @@ from __future__ import annotations
 import math
 from collections import defaultdict
 from dataclasses import dataclass
+from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
 from ..ir import PASS_VERSION, AnalysisRun, Edge, Symbol, make_pass_id
 from ..paths import is_test_file
+from ..symbol_kinds import is_abstract_type, type_like_kind_names
 from .registry import (
     LinkerActivation,
     LinkerContext,
@@ -90,14 +92,16 @@ NO_VIRTUAL_EXTENDS_LANGUAGES: frozenset[str] = frozenset({
 
 
 def _extends_admits_dispatch(
-    language: str | None, child_kind: str | None = None
+    language: str | None,
+    child_kind: str | None = None,
+    child_modifiers: Sequence[str] | None = None,
 ) -> bool:
     """Return True if `extends` edges in this language imply virtual dispatch.
 
     A None or empty language is treated as default-allow (the conservative
     choice for unknown analyzers).
 
-    Override for interface-extends-interface: even in languages without
+    Override for abstract-extends-abstract: even in languages without
     virtual dispatch through concrete extends (Go, C++, Rust, C#), interface
     inheritance IS virtual dispatch via interface satisfaction. Go interface
     embedding (`type Bar interface { Foo; ... }`) and C# interface
@@ -110,9 +114,14 @@ def _extends_admits_dispatch(
         return True
     if language not in NO_VIRTUAL_EXTENDS_LANGUAGES:
         return True
-    if child_kind == "interface":
-        return True
-    return False
+    # Registry predicate, not the literal ``child_kind == "interface"`` this
+    # replaced. Audit-findings 0018: that literal named ONE of the three
+    # inherently-abstract kinds, so Rust `trait` and Swift `protocol` fell
+    # outside a rule the neighbouring inheritance linker got right — and a
+    # Swift protocol silently produced no dispatch at all while the equivalent
+    # Java interface produced one. `abstract class` reaches this too, via the
+    # modifier, which the literal could never express.
+    return is_abstract_type(child_kind or "", child_modifiers or ())
 
 
 def build_inheritance_maps(
@@ -147,7 +156,8 @@ def build_inheritance_maps(
             child_sym = symbol_by_id.get(edge.src)
             child_lang = child_sym.language if child_sym else None
             child_kind = child_sym.kind if child_sym else None
-            if not _extends_admits_dispatch(child_lang, child_kind):
+            child_mods = child_sym.modifiers if child_sym else None
+            if not _extends_admits_dispatch(child_lang, child_kind, child_mods):
                 continue
             parent_id = edge.dst
             child_id = edge.src
@@ -490,7 +500,7 @@ def link_type_hierarchy(ctx: LinkerContext) -> LinkerResult:
     # broader definition of "type with methods".
     class_symbols = {
         s.id: s for s in ctx.symbols
-        if s.kind in ("class", "interface", "struct", "trait")
+        if s.kind in type_like_kind_names()
     }
     class_ids_by_name: dict[str, list[str]] = defaultdict(list)
     for cid, csym in class_symbols.items():
