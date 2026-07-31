@@ -852,6 +852,63 @@ def _extract_symbols_from_file(
                 analysis.node_for_symbol[symbol.id] = node
                 analysis.symbol_by_name[name] = symbol
 
+                # WI-duguk: the enum's MEMBERS. Without them the enum is a
+                # container with nothing in it, so the containment linker roots
+                # nothing and `slice --reverse` from the enum returns the
+                # container alone. Named `Color.Red` to match the class-field
+                # branch below, whose `.` the containment linker splits on.
+                # An explicitly-valued member (`Green = 2`) carries the literal
+                # after its identifier and is otherwise the same node.
+                member_list = find_child_by_type(
+                    node, "enum_member_declaration_list",
+                )
+                for member in member_list.children if member_list else ():
+                    if member.type != "enum_member_declaration":
+                        continue
+                    m_name_node = find_child_by_type(member, "identifier")
+                    if m_name_node is None:  # pragma: no cover - always named
+                        continue
+                    m_name = node_text(m_name_node, source)
+                    m_full = f"{name}.{m_name}"
+                    m_start = member.start_point[0] + 1
+                    m_end = member.end_point[0] + 1
+                    m_qualified = _make_csharp_qualified_name(
+                        ns_name, [*cls_ancestors, name], m_name,
+                    )
+                    m_sym = Symbol(
+                        id=make_symbol_id(
+                            "csharp", str(file_path), m_start, m_end,
+                            m_full, "field",
+                        ),
+                        name=m_full,
+                        kind="field",
+                        language="csharp",
+                        path=str(file_path),
+                        span=Span(
+                            start_line=m_start,
+                            end_line=m_end,
+                            start_col=member.start_point[1],
+                            end_col=member.end_point[1],
+                        ),
+                        origin=PASS_ID,
+                        origin_run_id=run.execution_id,
+                        stable_id=make_typed_stable_id(
+                            "field", name,
+                            visibility_from_modifiers(enum_modifiers),
+                            name=m_name, qualified_name=m_full,
+                            file_stable_id=file_stable_id,
+                        ),
+                        modifiers=enum_modifiers,
+                        line_span=m_end - m_start + 1,
+                        # A member is as reachable as its enum; C# has no
+                        # per-member access modifier.
+                        is_exported="public" in enum_modifiers,
+                        qualified_name=m_qualified,
+                    )
+                    analysis.symbols.append(m_sym)
+                    analysis.node_for_symbol[m_sym.id] = member
+                    analysis.symbol_by_name[m_full] = m_sym
+
         # Method declaration
         elif node.type == "method_declaration":
             name = _extract_method_name(node, source)

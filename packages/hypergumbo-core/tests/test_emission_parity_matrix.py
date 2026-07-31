@@ -272,14 +272,28 @@ COLUMN_APPLICABILITY: dict[str, set[str]] = {
     },
 }
 
-# (fixture_language, column) -> xfail reason. Live holes are the WI-duguk
-# container-member cells below; every other parametrized cell is a hard lock.
+# (fixture_language, column) -> xfail reason. The ratchet has reached full
+# parity again: every parametrized cell is a hard lock, so KNOWN_HOLES is empty.
 #
-# These are strict xfails (never `pytest.xfail()`, which can't XPASS and would
-# silently disable the ratchet it records). Fixing an analyzer therefore turns
-# its cell XPASS -> failure, forcing the entry's removal in the same PR.
+# Entries here are strict xfails (never `pytest.xfail()`, which can't XPASS and
+# would silently disable the ratchet it records). Fixing an analyzer therefore
+# turns its cell XPASS -> failure, forcing the entry's removal in the same PR.
 #
 # Cells that USED to be holes, for the record:
+#   * WI-duguk (`emits_enum_members` / `emits_abstract_members`): opened at 8
+#     holes and drained to zero across four slices — rust (enum variants, trait
+#     members), typescript (enum + interface members), swift (enum cases +
+#     protocol requirements), java/csharp (enum constants). Two findings from
+#     that drain are worth carrying forward. (1) A container that already emits
+#     SOME member kind reads as healthy here while another kind is wholly
+#     invisible: java and swift enums emitted their METHODS the entire time, so
+#     the fixtures deliberately declare enums with members ONLY, which is what
+#     makes these cells measure what they claim. (2) These columns measure ONE
+#     ANALYZER IN ISOLATION via span nesting, so a green cell is NOT evidence
+#     that reverse-slice expansion works end to end — the container's kind must
+#     also be in `linkers.containment.CONTAINER_KINDS` and the slicer's own set.
+#     `protocol` was in neither, so swift went green here while the live slice
+#     was unmoved. Re-run the end-to-end repro; do not certify from this matrix.
 #   * WI-jusus emission-parity F5 (`emits_variable` / `emits_field`): closed by
 #     eight per-language slices; every applicable cell is a hard lock.
 #   * ('python','qualified_name'): WI-fagab populated Symbol.qualified_name on
@@ -290,29 +304,7 @@ COLUMN_APPLICABILITY: dict[str, set[str]] = {
 #     (WI-tosul correction) — entrypoint detection is a pipeline property, so
 #     these cells are no longer parametrized (see COLUMN_APPLICABILITY) and the
 #     real invariant moved to `test_entrypoint_parity.py`.
-_ENUM_HOLE = (
-    "WI-duguk: analyzer emits the `enum` container but no Symbol for any of its "
-    "named members, so the containment linker has nothing to root and "
-    "`slice --reverse` from the enum returns the container alone. Not by design "
-    "— no ADR/spec passage excludes enum members, and the niche D and Nim "
-    "analyzers already emit them as kind='field' with dotted names (verified "
-    "live: D `enum Color` -> field Color.red, field Color.green)."
-)
-_ABSTRACT_HOLE = (
-    "WI-duguk: analyzer emits the abstract-type container but no Symbol for any "
-    "of its member signatures. Sibling analyzers go/java/csharp already emit "
-    "these as kind='method' with dotted names, so this is a per-analyzer gap "
-    "rather than a property of the construct."
-)
-
-KNOWN_HOLES: dict[tuple[str, str], str] = {
-    # Was 5 of 5; rust, typescript and swift drained, so 2 of the 5 analyzers
-    # that emit an `enum` still emit none of its members.
-    ("java", "emits_enum_members"): _ENUM_HOLE,
-    ("csharp", "emits_enum_members"): _ENUM_HOLE,
-    # `emits_abstract_members` is FULLY DRAINED (was 3 of 6 holes: typescript,
-    # rust, swift). Every applicable cell is a hard lock again.
-}
+KNOWN_HOLES: dict[tuple[str, str], str] = {}
 
 
 @pytest.fixture(scope="module")
