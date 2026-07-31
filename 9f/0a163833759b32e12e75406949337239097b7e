@@ -1,0 +1,57 @@
+Original commit body from 77b3c327af3a1102f052010cab6132c445b68d58:
+
+Each analyzer emitted the enum CONTAINER and none of its members, so the
+containment linker had nothing to root and a reverse slice from the enum
+returned the container alone. Same defect WI-duguk drained for the eight
+analyzers the G2 parity matrix gates; these three sit outside that matrix
+by construction, so nothing caught it. scala.py's own comment recorded
+the gap as deliberate: "Enum CASES ... remain out of scope".
+
+Measured end-to-end, not from the analyzer tests:
+
+  contains_out                  0 -> 3   (all three)
+  slice --entry Color --reverse 1 -> 4   (all three)
+
+Member naming follows each analyzer's OWN convention, because the
+containment linker splits on the first separator it finds:
+scala Color.Red, cpp Color::Red, kotlin Color.RED.
+
+KOTLIN'S CONTAINER IS A CLASS, NOT AN ENUM. `enum class` is emitted as
+kind="class" carrying an "enum" modifier; there is no kind="enum"
+anywhere in that analyzer. The member loop therefore gates STRUCTURALLY
+on the presence of an `enum_class_body` node rather than on the kind or
+the modifier string. `class` is in both containment.CONTAINER_KINDS and
+the slicer's set, so members root and expand with no kind change — but
+anything keyed on the enum kind (including the parity matrix's own
+_ENUM_CONTAINER_KINDS) will never see a Kotlin enum, which is why this
+was verified by containment count and not by an enum-kind query.
+
+TWO PER-LANGUAGE TRAPS, each of which would have shipped a partial fix:
+
+  * scala has TWO member node types (simple_enum_case, full_enum_case),
+    and `case Green, Blue` is ONE enum_case_definitions holding TWO
+    siblings — so the walk iterates CASES, not groups. A per-group loop
+    drops every case after a comma while leaving the container looking
+    populated.
+  * cpp's emission sits deliberately INSIDE the `if name_node:` guard.
+    An anonymous `typedef enum { P, Q } Anon;` emits no container, so
+    emitting its members would produce symbols whose dotted owner does
+    not exist — orphans by construction, worse than the recall miss.
+
+ONE EXISTING TEST CHANGED, and it was pinning the defect:
+test_enum_body_val_emits_field asserted `_fields(syms) == {"Color.rgb"}`
+over a fixture that has always contained `case Red`. The exact-set
+assertion did not merely permit the missing case, it encoded it as the
+expected answer — anyone fixing scala enum members would have seen this
+go red and had to decide whether their fix was wrong.
+
+Standing enforcement is a dedicated test file rather than a matrix cell:
+the G2 matrix gates eight core-availability fixture languages and its
+docstring names scala/kotlin/cpp as ungated, citing this item. 15 tests
+across the three languages, including the comma-separated,
+parameterised, anonymous and forward-declaration edge cases.
+
+mypy delta +0 — pure recall improvement, no type-surface cost.
+6886 tests pass, scoped coverage clean.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
