@@ -560,7 +560,14 @@ func main() {
 """)
         data = analyze(tmp_path)
         routes = [n for n in data["nodes"] if (n.get("meta") or {}).get("framework_role") == "route"]
-        assert any("GetUser" in n["name"] for n in routes)
+        # WI-zugob moved handler identity off Symbol.name (now "{METHOD} {path}",
+        # so multi-method registrations at one span keep distinct ids) and into
+        # meta.handler_name. Assert on the field that carries the handler, not on
+        # the name that no longer does.
+        assert any(
+            "GetUser" in ((n.get("meta") or {}).get("handler_name") or "")
+            for n in routes
+        )
 
     def test_route_all_http_methods(self, tmp_path: Path) -> None:
         """Test all supported HTTP methods create routes."""

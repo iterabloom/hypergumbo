@@ -125,14 +125,37 @@ def link_rust_trait_dispatch(ctx: LinkerContext) -> LinkerResult:
     For every ``implements`` edge ``struct_sym → trait_sym``, walks the
     Rust method symbols under ``struct_sym``'s name and file and emits a
     ``dispatches_to`` edge ``trait_sym → method_sym``. Methods that
-    aren't part of the trait's declared interface still receive edges —
-    hypergumbo's Rust analyzer does not emit the trait's required-method
-    list, so distinguishing trait-required methods from inherent
-    methods would require SCIP-level information (which is WI-duzul
-    territory, not this linker's). The resulting edge set may include
-    a few inherent methods that weren't actually dispatched through the
-    trait; the false-positive cost is well below the false-negative
-    cost of leaving every trait-required method looking dead.
+    aren't part of the trait's declared interface still receive edges,
+    so the resulting edge set may include a few inherent methods that
+    weren't actually dispatched through the trait; the false-positive
+    cost is well below the false-negative cost of leaving every
+    trait-required method looking dead.
+
+    **The original rationale for that over-approximation is SUPERSEDED
+    (INV-fimon, 2026-07-31).** It read: "hypergumbo's Rust analyzer does
+    not emit the trait's required-method list, so distinguishing
+    trait-required methods from inherent methods would require
+    SCIP-level information." WI-duguk made that false — the analyzer now
+    emits ``function_signature_item`` as ``kind="method"`` named
+    ``"{Trait}::{method}"``, so the requirement list *is* available and
+    the filter is now possible without SCIP.
+
+    Two consequences are tracked on **INV-tihim** rather than fixed here,
+    because each changes dead-code reachability and deserves its own
+    validation:
+
+    1. The precise anchor for the dispatch is the trait's *requirement*
+       (``MyTrait::method → MyStruct::method``), which is what the
+       framework-agnostic ``linkers/type_hierarchy`` already does for
+       every other language. Re-anchoring would also dissolve the
+       ``(trait, rust, method, rust)`` allow-list entry that this
+       linker's current shape made necessary (ADR-0023 §3, INV-fimon).
+    2. ``type_hierarchy`` cannot see Rust at all today: its
+       ``_get_method_short_name`` / ``_get_class_name_from_method``
+       helpers split on ``#`` and ``.`` but not ``::``, while the
+       containment linker's ``_SEPARATORS`` knows all three. That
+       divergence — one fact about member-name qualification, recorded
+       in two places — is why this Rust-specific linker exists at all.
     """
     start_time = time.time()
     run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)
