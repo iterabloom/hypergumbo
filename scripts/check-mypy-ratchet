@@ -104,6 +104,27 @@ def _count_errors(text: str) -> Counter[str]:
     return counts
 
 
+def _mypy_version() -> str | None:
+    """Version of the mypy that produces (or produced) these counts.
+
+    WI-rabum: the instrument is part of the measurement. A shrink-only
+    baseline is only meaningful against a FIXED mypy — a categorisation change
+    between releases moves counts with no code change at all, and the ratchet
+    would render that as several unrelated error codes "growing", which is
+    both wrong and the most confusing possible way to fail.
+
+    Returns None when mypy is not importable, in which case the version is
+    neither recorded nor checked. That is a real degradation and is reported
+    rather than silently tolerated, but it does not break a run that would
+    otherwise work.
+    """
+    try:
+        import mypy.version
+    except ImportError:  # pragma: no cover - mypy is a hard dev dependency
+        return None
+    return str(mypy.version.__version__)
+
+
 def _load_baseline(path: Path) -> dict:
     if not path.exists():
         print(
@@ -125,11 +146,23 @@ def _save_baseline(path: Path, counts: Counter[str]) -> None:
             "Whole-tree `mypy <repo>` strict surface, shrink-only ratchet "
             "(WI-rokup / INV-zogud). Regenerate with "
             "`scripts/check-mypy-ratchet --update-baseline`. The ramp lowers "
-            "these numbers; they must never grow (see check-mypy-ratchet)."
+            "these numbers; they must never grow (see check-mypy-ratchet). "
+            "`mypy_version` records the instrument these counts were measured "
+            "with — comparing them against a different mypy is not a ratchet "
+            "reading, so a mismatch is reported and blocks in --mode=strict."
         ),
         "total": sum(counts.values()),
         "by_code": dict(sorted(counts.items())),
     }
+    version = _mypy_version()
+    if version is not None:
+        body["mypy_version"] = version
+    else:  # pragma: no cover - mypy is a hard dev dependency
+        print(
+            "check-mypy-ratchet: mypy not importable — baseline written WITHOUT "
+            "a version; the instrument check is disabled for it.",
+            file=sys.stderr,
+        )
     path.write_text(json.dumps(body, indent=2) + "\n")
 
 
@@ -180,6 +213,34 @@ def main() -> None:
     baseline = _load_baseline(args.baseline)
     base_total = int(baseline.get("total", 0))
     base_by_code: dict[str, int] = dict(baseline.get("by_code", {}))
+
+    # WI-rabum: the instrument check, BEFORE any count comparison. A baseline
+    # written by a different mypy cannot be compared against this run — a
+    # release that recategorises errors moves the numbers with no code change,
+    # so both "regression" and "shrink" verdicts would be fabrications. Note
+    # this blocks even when the counts went DOWN: a shrink measured by a
+    # different instrument is not evidence of progress, and banking it as one
+    # would ratify tooling drift as a drain (the shrink-only baseline may only
+    # ratchet down for REASONS, not by accident).
+    base_version = baseline.get("mypy_version")
+    live_version = _mypy_version()
+    if base_version and live_version and base_version != live_version:
+        print(
+            "check-mypy-ratchet: INSTRUMENT MISMATCH — baseline was measured "
+            f"with mypy {base_version}, this run uses mypy {live_version}. "
+            "The counts are not comparable. Re-measure with "
+            "`scripts/check-mypy-ratchet --update-baseline` in the same change "
+            "that bumps mypy, so the delta you read afterwards is code and not "
+            "tooling.",
+            file=sys.stderr,
+        )
+        if args.mode == "strict":
+            sys.exit(1)
+        print(
+            "check-mypy-ratchet: mode=warning — not blocking on the mismatch, "
+            "but the numbers below mean nothing until the baseline is remeasured.",
+            file=sys.stderr,
+        )
 
     grown = {
         code: (n, base_by_code.get(code, 0))

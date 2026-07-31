@@ -39,15 +39,17 @@ def _mypy_output(codes: dict[str, int]) -> str:
     return "\n".join(lines) + "\n"
 
 
-def _run(tmp_path, *, codes, baseline_codes, mode="warning", update=False):
+def _run(
+    tmp_path, *, codes, baseline_codes, mode="warning", update=False,
+    baseline_version=None,
+):
     out_file = tmp_path / "mypy.txt"
     out_file.write_text(_mypy_output(codes))
     base_file = tmp_path / "baseline.json"
-    base_file.write_text(
-        json.dumps(
-            {"total": sum(baseline_codes.values()), "by_code": dict(baseline_codes)}
-        )
-    )
+    body = {"total": sum(baseline_codes.values()), "by_code": dict(baseline_codes)}
+    if baseline_version is not None:
+        body["mypy_version"] = baseline_version
+    base_file.write_text(json.dumps(body))
     argv = [
         sys.executable,
         str(SCRIPT),
@@ -145,3 +147,82 @@ def test_invalid_baseline_json_is_infra_error(tmp_path):
         capture_output=True, text=True,
     )
     assert proc.returncode == 2
+
+
+class TestInstrumentVersionIsPartOfTheMeasurement:
+    """WI-rabum: a shrink-only baseline is only meaningful against a FIXED mypy.
+
+    The counts in the baseline were produced by one mypy version. Comparing
+    them against counts from a different version is not a ratchet reading at
+    all — a categorisation change moves numbers with no code change, and the
+    ratchet would report it as several unrelated error codes "growing", which
+    is both wrong and the single most confusing way to fail.
+
+    So the version is recorded with the counts and checked on every read. The
+    check is skipped when the baseline carries no version, so baselines
+    written before this existed keep working rather than hard-failing.
+    """
+
+    def test_update_baseline_records_the_mypy_version(self, tmp_path):
+        """The instrument is part of the measurement, so it is written down."""
+        proc, base_file = _run(
+            tmp_path, codes={"arg-type": 2}, baseline_codes={}, update=True,
+        )
+        assert proc.returncode == 0, proc.stderr
+        body = json.loads(base_file.read_text())
+        assert body["mypy_version"], "baseline must record the mypy that produced it"
+
+    def test_matching_version_compares_normally(self, tmp_path):
+        """A version match is silent — it is the ordinary case."""
+        import mypy.version
+
+        proc, _ = _run(
+            tmp_path,
+            codes={"arg-type": 2},
+            baseline_codes={"arg-type": 5},
+            mode="strict",
+            baseline_version=mypy.version.__version__,
+        )
+        assert proc.returncode == 0, proc.stderr
+        assert "instrument" not in proc.stderr.lower()
+
+    def test_version_mismatch_is_reported_in_warning_mode(self, tmp_path):
+        """Non-blocking rung still says the comparison is invalid."""
+        proc, _ = _run(
+            tmp_path,
+            codes={"arg-type": 2},
+            baseline_codes={"arg-type": 5},
+            mode="warning",
+            baseline_version="0.0.1-not-a-real-version",
+        )
+        assert proc.returncode == 0, proc.stderr
+        combined = proc.stdout + proc.stderr
+        assert "0.0.1-not-a-real-version" in combined
+        assert "--update-baseline" in combined
+
+    def test_version_mismatch_blocks_in_strict_mode(self, tmp_path):
+        """Strict mode refuses to render a verdict from two instruments.
+
+        It fails even though the counts SHRANK (2 vs 5): a shrink measured by
+        a different mypy is not evidence of progress, and silently accepting
+        it would let a categorisation change be banked as a drain.
+        """
+        proc, _ = _run(
+            tmp_path,
+            codes={"arg-type": 2},
+            baseline_codes={"arg-type": 5},
+            mode="strict",
+            baseline_version="0.0.1-not-a-real-version",
+        )
+        assert proc.returncode == 1
+        assert "0.0.1-not-a-real-version" in proc.stderr
+
+    def test_versionless_baseline_still_compares(self, tmp_path):
+        """Backward compatibility: no recorded version means no check."""
+        proc, _ = _run(
+            tmp_path,
+            codes={"arg-type": 2},
+            baseline_codes={"arg-type": 5},
+            mode="strict",
+        )
+        assert proc.returncode == 0, proc.stderr
