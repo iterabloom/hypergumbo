@@ -1,0 +1,48 @@
+Original commit body from 1b478165c3f11a543b0e224a7c780851e846cc46:
+
+linkers/type_hierarchy — the language-neutral linker that emits
+interface-method -> impl-method dispatches_to for every language — split
+qualified member names on '#' and '.' but NOT '::', so
+_get_method_short_name("MyTrait::method") returned the whole string and
+_get_class_name_from_method returned None. It was structurally incapable
+of firing for Rust, which is why a Rust-specific dispatch linker exists
+at all.
+
+Rust now emits dispatches_to: Shape::area -> Square::area, matching every
+other language. Its parity-column cell is promoted from strict-xfail hole
+to hard pass in the same PR — the XPASS failed the run and forced it,
+which is the whole point of the strict marker.
+
+THE FACT NOW HAS ONE HOME, AND IT WAS RECORDED IN SIX PLACES.
+hypergumbo_core.member_names owns MEMBER_NAME_SEPARATORS plus
+split_member_name / member_owner / member_short_name. Swept:
+containment, method_call_recovery, type_hierarchy, receiver_blind_magnets
+(whose private copy was ordered ("::", "#", ".") — wrong, since Ruby's
+Foo::Bar#baz splits at the '#'), and three route_handler sites that knew
+only ("#", ".") and so could not index a Type::handler route. A live-tree
+linter with a planted-offender test prevents a seventh copy.
+
+NOT folded into qualified_name_axis: that maps a language to its
+module-path separator (php -> backslash), this is the owner/member
+separator in Symbol.name. They coincide for Rust and diverge for PHP,
+whose members are dotted — folding would mis-split every PHP member. The
+linter exempts literals containing a separator outside this vocabulary,
+and exempts per-language analyzer packages.
+
+rust_trait_dispatch NARROWED, NOT RETIRED, AND NO EDGE IS LOST. It fanned
+dispatch from a trait to every method of implementing structs —
+deliberate over-approximation, since the alternative was declaring ~3000
+live functions dead. It now skips the trait-required methods the shared
+linker covers precisely and keeps only the inherent ones. An EMPTY
+requirement set means "cover everything", not "cover nothing": an
+external trait, or an analyzer that failed to emit members, falls back to
+the old behaviour. Measured on three fixtures — trait method precise,
+inherent method retained, marker trait with zero requirements retained.
+
+The ADR-0023 §3 allow-list entry from INV-fimon STAYS and is now
+permanently legitimate: the (trait,rust)->(method,rust) partition still
+carries contains + dispatches_to because inherent dispatch keeps the
+trait anchor. The ADR's caveat that its removal was conditional is the
+condition failing, as written.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
