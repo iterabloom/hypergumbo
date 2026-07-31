@@ -192,7 +192,7 @@ class Span:
     start_col: int
     end_col: int
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "start_line": self.start_line,
             "end_line": self.end_line,
@@ -201,7 +201,7 @@ class Span:
         }
 
     @classmethod
-    def from_dict(cls, d: dict) -> "Span":
+    def from_dict(cls, d: dict[str, Any]) -> "Span":
         return cls(
             start_line=d.get("start_line", 0),
             end_line=d.get("end_line", 0),
@@ -371,8 +371,8 @@ class AnalysisRun:
             pass_version=pass_version,
         )
 
-    def to_dict(self) -> dict:
-        result: dict = {
+    def to_dict(self) -> dict[str, Any]:
+        result: dict[str, Any] = {
             "execution_id": self.execution_id,
             "run_signature": self.run_signature,
             "repo_fingerprint": self.repo_fingerprint,
@@ -604,7 +604,7 @@ class Symbol:
     def end_line(self) -> int:
         return self.span.end_line
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
         result = {
             "id": self.id,
@@ -649,7 +649,7 @@ class Symbol:
         return result
 
     @classmethod
-    def from_dict(cls, d: dict) -> "Symbol":
+    def from_dict(cls, d: dict[str, Any]) -> "Symbol":
         """Reconstruct a Symbol from its dict representation (e.g., from cached results)."""
         span_data = d.get("span", {})
         supply_chain = d.get("supply_chain", {})
@@ -968,7 +968,7 @@ class Edge:
             meta=meta,
         )
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
         meta: Dict[str, Any] = {
             "evidence_type": self.evidence_type,
@@ -1001,7 +1001,7 @@ class Edge:
         return out
 
     @classmethod
-    def from_dict(cls, d: dict) -> "Edge":
+    def from_dict(cls, d: dict[str, Any]) -> "Edge":
         """Reconstruct an Edge from its dict representation (e.g., from cached results).
 
         WI-higap: ``__post_init__`` hard-raises on empty ``origin`` /
@@ -1434,7 +1434,7 @@ def create_boundary_nodes(
     # (``rust:external:0-0:fs::read_to_string:unresolved`` parsed as
     # ``path="external:0-0:fs"`` and re-emitted with a fabricated extra
     # ``0-0`` slot).
-    dangling_ids: set = set()
+    dangling_ids: set[str] = set()
     dangling_refs: Dict[str, ExternalRef] = {}
     for edge in edges:
         if edge.src not in symbol_ids:
@@ -1452,7 +1452,7 @@ def create_boundary_nodes(
     # Group dangling ids by dedupe key. The key collapses file-id
     # pseudo-symbols per language; other kinds keep full identity.
     groups: Dict[tuple[str, str, str], List[str]] = {}
-    group_ref_kinds: Dict[tuple[str, str, str], set] = {}
+    group_ref_kinds: Dict[tuple[str, str, str], set[str]] = {}
     for dangling_id in dangling_ids:
         ref = dangling_refs.get(dangling_id)
         if ref is not None:
@@ -1514,7 +1514,7 @@ def create_boundary_nodes(
         ):
             directness = dependency_manifest.classify_directness(key_path)
 
-        boundary_meta: dict = {"external_boundary": True}
+        boundary_meta: dict[str, Any] = {"external_boundary": True}
         if directness is not None:
             boundary_meta["directness"] = directness
         # ADR-0036 Ruling 2: preserve the use-site reference syntax that used to

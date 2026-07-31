@@ -1,6 +1,6 @@
 {
   "_comment": "Whole-tree `mypy <repo>` strict surface, shrink-only ratchet (WI-rokup / INV-zogud). Regenerate with `scripts/check-mypy-ratchet --update-baseline`. The ramp lowers these numbers; they must never grow (see check-mypy-ratchet). `mypy_version` records the instrument these counts were measured with \u2014 comparing them against a different mypy is not a ratchet reading, so a mismatch is reported and blocks in --mode=strict.",
-  "total": 957,
+  "total": 832,
   "by_code": {
     "arg-type": 104,
     "assignment": 62,
@@ -15,9 +15,8 @@
     "index": 18,
     "list-item": 3,
     "misc": 2,
-    "mutable-override": 105,
     "name-defined": 7,
-    "no-any-return": 37,
+    "no-any-return": 36,
     "no-redef": 2,
     "no-untyped-call": 15,
     "no-untyped-def": 68,
@@ -29,7 +28,7 @@
     "str-bytes-safe": 1,
     "str-unpack": 1,
     "truthy-bool": 66,
-    "type-arg": 326,
+    "type-arg": 307,
     "type-var": 1,
     "union-attr": 30,
     "unreachable": 30,

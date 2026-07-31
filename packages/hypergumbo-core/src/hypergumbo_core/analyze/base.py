@@ -1422,7 +1422,7 @@ def populate_synthetic_class_b_identity(symbols: list[Symbol]) -> None:
         if s.language is None and s.protocol_origin is not None
         and s.stable_id is None
     ]
-    counters: dict[tuple, int] = {}
+    counters: dict[tuple[str | None, str, str, str], int] = {}
     for s in sorted(
         null_class_b,
         key=lambda s: (
@@ -1467,7 +1467,7 @@ def populate_synthetic_class_b_identity(symbols: list[Symbol]) -> None:
 _LOGICAL_DEDUP_PROTOCOL_ORIGINS = frozenset({"message_queue", "event_sourcing"})
 
 
-def _occurrence_sort_key(sym: Symbol) -> tuple:
+def _occurrence_sort_key(sym: Symbol) -> tuple[int, int, int, int, str]:
     """Deterministic within-group order (ADR-0043 §6): span position, then id."""
     sp = sym.span
     return (sp.start_line, sp.start_col, sp.end_line, sp.end_col, sym.id)
@@ -1953,7 +1953,7 @@ def normalize_generic_params(
         return text
     mapping = {tp: f"${i}" for i, tp in enumerate(type_params)}
 
-    def _replace(m: _re.Match) -> str:
+    def _replace(m: _re.Match[str]) -> str:
         name = m.group(1)
         return mapping.get(name, name)
 
@@ -2611,11 +2611,45 @@ class TreeSitterAnalyzer:
     """Glob patterns for source files (e.g., ["*.go"], ["*.rs"])."""
 
     # -- Grammar source: exactly one of these should be set ----------------
-    grammar_module: Optional[str] = None
-    """Direct grammar package name (e.g., "tree_sitter_go")."""
+    #
+    # Read-only PROPERTIES rather than the `Optional[str] = None` class
+    # attributes they replace. Subclasses still declare them the same way —
+    # `grammar_module = "tree_sitter_go"` in the class body — and nothing about
+    # that changes: a subclass class-attribute precedes this base in the MRO, so
+    # `self.grammar_module` returns the string, while a subclass that declares
+    # neither falls through to the property and gets `None`, exactly as before.
+    #
+    # Why: 105 analyzer subclasses across the three language packages each
+    # narrowed one of these from `str | None` to `str`, which mypy reports as
+    # `mutable-override` — a covariant override of a MUTABLE attribute. That was
+    # 105 of the ~957 strict errors, 11% of the whole surface, from these two
+    # declarations. An attribute that is only ever *read* has no business being
+    # declared mutable, so the fix is the declaration, not 105 subclass edits.
+    #
+    # The tempting alternative — `ClassVar[str] = ""`, matching the `lang` /
+    # `pass_id` sentinels a few lines up — is a LIVE BEHAVIOUR CHANGE and was
+    # rejected: five `is not None` checks below (`_check_grammar_available`,
+    # `_create_parser`) would become permanently true, so every language-pack
+    # analyzer would call `importlib.import_module("")`; and `_get_config_dict`
+    # feeds `compute_config_fingerprint`, a PERSISTED cache key, so every
+    # analyzer's `config_fingerprint` would change. `ClassVar` alone does not
+    # silence the error, and `Final` makes it worse (it adds
+    # "cannot assign to final name" at all 105 sites).
+    #
+    # Residual sharp edge, unexercised today and grepped to confirm it: a
+    # CLASS-level read (`TreeSitterAnalyzer.grammar_module`) now yields the
+    # property object rather than `None`, and `self.grammar_module = ...` would
+    # raise. Every read in `packages/*/src/` is `self.`-qualified and there are
+    # zero such assignments anywhere in the repo.
+    @property
+    def grammar_module(self) -> Optional[str]:
+        """Direct grammar package name (e.g., "tree_sitter_go")."""
+        return None
 
-    language_pack_name: Optional[str] = None
-    """Language-pack grammar name (e.g., "nim")."""
+    @property
+    def language_pack_name(self) -> Optional[str]:
+        """Language-pack grammar name (e.g., "nim")."""
+        return None
 
     # -- Optional configuration --------------------------------------------
     resolver_class: type = NameResolver
@@ -2637,7 +2671,7 @@ class TreeSitterAnalyzer:
 
     # -- Template methods: grammar setup -----------------------------------
 
-    def _get_config_dict(self) -> dict:
+    def _get_config_dict(self) -> dict[str, Any]:
         """Return the analyzer's effective configuration dict for
         ``config_fingerprint`` derivation.
 
@@ -2830,7 +2864,7 @@ class TreeSitterAnalyzer:
         file_path: Path,
         rel_path: str,
         local_symbols: dict[str, Symbol],
-        global_symbols: dict,
+        global_symbols: dict[str, Symbol],
         run: AnalysisRun,
         import_aliases: dict[str, str],
         resolver: NameResolver,
@@ -2956,7 +2990,7 @@ class TreeSitterAnalyzer:
     def register_symbol(
         self,
         symbol: Symbol,
-        global_symbols: dict,
+        global_symbols: dict[str, Symbol],
     ) -> None:
         """Add a symbol to the global registry for cross-file resolution.
 
@@ -3531,7 +3565,7 @@ class TreeSitterAnalyzer:
             files_analyzed += 1
 
         # 4. Build global symbol registry
-        global_symbols: dict = {}
+        global_symbols: dict[str, Symbol] = {}
         for analysis, _, _source in file_analyses.values():
             for symbol in analysis.symbols:
                 self.register_symbol(symbol, global_symbols)
@@ -3616,7 +3650,7 @@ class TreeSitterAnalyzer:
 
     # -- Registration helper -----------------------------------------------
 
-    def as_registered_analyzer(self) -> Callable:
+    def as_registered_analyzer(self) -> "Callable[..., AnalysisResult]":
         """Return a function suitable for use with @register_analyzer.
 
         Returns a function with signature
