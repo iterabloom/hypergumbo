@@ -1,0 +1,42 @@
+Original commit body from ef36e45560734095453d8f2a2cb8df3bc3097499:
+
+Drains 35 type-arg errors across four peripheral modules. Clean on the
+FIRST whole-tree run: zero hidden errors revealed, zero follow-up rounds.
+
+That is the interesting result. The three batches so far:
+
+  batch 1  compact                                44 drained,  3 revealed, 2 rounds
+  batch 2  taint / sketch / io_boundary           43 drained, 37 revealed, 4 rounds
+  batch 3  framework_patterns / finalize /
+           supply_chain / profile                 35 drained,  0 revealed, 1 round
+
+The variable is not file count or size -- batch 3 is four files. It is how
+POLYMORPHIC the module's own interfaces are. taint.py had a genuine
+TaintSource|TaintSink union flowing through read-only helpers, a
+type-preserving merge, and one loop variable bound to two element types.
+These four modules had re.Pattern, set[str], and serialized-dict payloads:
+one defensible answer each, so nothing was being masked.
+
+Usable rule for the rest of the drain: type-arg COUNT does not predict
+cost; INTERFACE POLYMORPHISM does.
+
+One near-miss worth recording. `FinalizedMap.nodes: tuple` sits in a
+dataclass whose neighbouring fields are list[Symbol] and list[Edge], so
+both the name and the context argue for tuple[Symbol, ...]. It is built
+from `tuple(ctx.behavior_map.get("nodes", []))` -- the SERIALIZED map's
+arrays, i.e. dicts. Annotated tuple[dict[str, Any], ...] after reading the
+constructor. Inferring from the name would have been the fourth instance
+of the mistake that cost batch 2 three extra rounds: the name tells you
+what someone meant, only the construction tells you what is there.
+
+Other measured types, not assumed: re.Pattern[str] / re.Match[str] for the
+compiled-pattern fields; list[ValidationViolation] for FinalizeContext.
+violations (populated by validate_ir); tuple[str, str, str, str, str] for
+_violation_sort_key (five string fields); set[str] for the workspace
+package-name collector. profile.py gains a TYPE_CHECKING import for Edge /
+Symbol -- no cycle exists, but the runtime import graph stays unchanged for
+a module the CLI loads on every invocation.
+
+Baseline ratcheted 992 -> 957.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
