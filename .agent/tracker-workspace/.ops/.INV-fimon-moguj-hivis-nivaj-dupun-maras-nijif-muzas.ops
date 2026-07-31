@@ -1,0 +1,33 @@
+- op: create  # de16
+  at: '2026-07-31T13:18:40Z'  # de16
+  by: agent  # de16
+  actor: jgstern_agent  # de16
+  clock: 1  # de16
+  nonce: de16  # de16
+  data:  # de16
+    kind: invariant  # de16
+    title: "G1 validator ratchet BREACHED on dev — 2 runtime_coherence offenders vs baseline 1, plus a stale go route test, both masked by test selection"  # de16
+    status: violated  # de16
+    priority: 1  # de16
+    parent:  # de16
+    tags:  # de16
+    - infra  # de16
+    - validator  # de16
+    - dogfood  # de16
+    isbefore: []  # de16
+    duplicate_of: []  # de16
+    not_duplicate_of: []  # de16
+    pr_ref:  # de16
+    description: "**Mechanic**: The G1 validator ratchet (`test_validation_report_empty.py::test_substrate_within_ratchet_baseline`) is BREACHED on dev across all four substrates, and has been for some time. `RUNTIME_COHERENCE_BASELINES` pins 1 un-allow-listed ADR-0023 §3 offender per substrate; there are 2.\n\n    runtime_coherence: 2 un-allow-listed offenders > baseline 1:\n      ('file', 'rust', 'external_symbol', 'rust')  types=['imports', 'module_attr_ref']  edges=3\n      ('trait', 'rust', 'method', 'rust')          types=['contains', 'dispatches_to']   edges=2\n\nThe FIRST is the declared one — the baseline's own comment names it: *\"One un-allow-listed offender today on every substrate: the (file/rust -> external_symbol/rust) partition carries both `imports` and `module_attr_ref`. Pinned in-test rather than allow-listed, to avoid a governance-touching ADR-0023 allow-list amendment in this PR.\"*\n\nThe SECOND, `('trait','rust','method','rust')`, is UNDECLARED. Nothing in the test, the allow-list, or ADR-0023 accounts for it.\n\n**Also failing on dev, same masking**: `BRANCHES_test_go.py::TestGoRouteExtraction::test_route_handler_as_selector` asserts `any(\"GetUser\" in n[\"name\"] for n in routes)`. Route markers were renamed to `\"{METHOD} {path}\"` with handler identity moved to `meta.handler_ref` (WI-zugob, in the current Unreleased section), so the assertion tests a naming convention that no longer exists. The test needs to read `meta[\"handler_ref\"]`.\n\n**Confirmed pre-existing, not introduced by the WI-duguk / INV-zogud work of this session.** Both failures reproduce identically at the session-start commit `1cb6c50d04` — same two offenders, byte-identical message — verified in a clean `git worktree`, not inferred.\n\n**WHY NOBODY NOTICED — this is INV-kinin's consequence, made concrete.** `test_validation_report_empty.py` is selected only when a file it imports changes. The manifest committed on dev does NOT contain it. Every PR merged this session passed CI with these tests red, because none of them touched an importing file — until an annotation batch touched `cli.py`, which pulled both tests into the manifest and turned a silent breach into a blocked PR. A gate whose selection is content-dependent is a gate that reports green for the wrong reason. The twice-daily full suite should in principle catch it; it evidently has not been acted on.\n\n**WHY IT IS BLOCKING AND WHAT WAS NOT DONE ABOUT IT**: an otherwise-clean 31-error `cli.py` annotation batch (INV-zogud 766 -> 735, whole-tree ratchet green, no reveals) cannot merge, because its manifest now includes the red tests. Three remedies and why none was taken unilaterally:\n\n1. **Raise the baseline 1 -> 2.** FORBIDDEN. The ratchet is shrink-only; raising it to accept a breach ratifies the drift and reproduces the condition that caused it (the standing lesson from INV-zatug and the mypy baseline).\n2. **Add an allow-list entry.** ADR-0023 §3 mandates that allow-list growth requires an ADR amendment, and the previous author explicitly declined to do it in-band for exactly this reason. More importantly it would be premature: admitting a partition asserts the variance is LEGITIMATE, and that has not been established for the trait partition (see below). Allow-listing an unexamined offender is the \"fix the number, ratify the mislabel\" failure — rule on the label first.\n3. **Fix the producer.** Correct if the variance is illegitimate, but that requires the analysis in the next paragraph first.\n\n**THE OPEN QUESTION, which is a real one**: is `(trait, rust) --contains--> (method, rust)` alongside `dispatches_to` a legitimate variance or a defect? On its face it looks legitimate and directly parallel to the admitted file-anchor entry — containment and dispatch are genuinely distinct relationships between the same endpoints, not one leaking into the other. But the mechanism is not obvious and was not run to ground: before this session rust traits emitted no members at all, so it is not clear what was producing a trait->method `contains` edge at the session-start commit. Establishing that is prerequisite to choosing between remedies 2 and 3, and it is the actual work this item asks for.\n\n**Suggested sequence**: (a) determine what produces the trait->method `contains` edge on the schema-coverage-corpus rust fixture; (b) rule legitimate-or-defect; (c) if legitimate, ADR-0023 §3 amendment + allow-list entry, and ratchet the in-test baseline back DOWN to 0 for that partition; if a defect, fix the producer. Separately and independently, (d) fix the go route test to read `meta[\"handler_ref\"]`.\n\n**Related**: INV-kinin (the selection holes that hid this — this is its first measured consequence with a blocked PR attached); ADR-0023 §3 (the allow-list contract); INV-zatug (the G1 ratchet this belongs to, previously closed)."  # de16
+    fields:  # de16
+      statement: "The G1 four-substrate validator ratchet passes on dev: runtime_coherence offenders stay at or below their committed shrink-only baseline, and every test that guards it is selected by the per-PR gate when its inputs change."  # de16
+      root_cause: "Two independent causes. (1) An undeclared second ADR-0023 3 offender, (trait,rust)->(method,rust) carrying both contains and dispatches_to, exceeds the in-test baseline of 1 which was pinned for the (file,rust)->(external_symbol,rust) partition only. (2) The tests are only selected when a file they import changes, so the per-PR gate reported green on every PR this session while they were red; the committed manifest on dev does not contain test_validation_report_empty.py at all."  # de16
+- op: update  # 3d22
+  at: '2026-07-31T16:38:48Z'  # 3d22
+  by: agent  # 3d22
+  actor: jgstern_agent  # 3d22
+  clock: 2  # 3d22
+  nonce: 3d22  # 3d22
+  set:  # 3d22
+    status: satisfied  # 3d22
+    pr_ref: '#126'  # 3d22
