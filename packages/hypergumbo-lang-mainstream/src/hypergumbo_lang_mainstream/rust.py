@@ -124,11 +124,19 @@ def _extract_rust_signature(
     Returns a signature string like "(x: i32, y: String) -> bool" or None
     if extraction fails.
 
+    WI-duguk: also accepts ``function_signature_item`` — a trait method with no
+    default body. That node carries the same ``parameters`` / ``return_type``
+    fields as ``function_item`` and differs only in having no ``body``, which
+    this extractor never reads. Nothing else changes: for a trait contract the
+    signature is the entire content of the member, so declining to extract it
+    would make the emitted symbol strictly less useful than its impl-side
+    counterpart.
+
     Args:
-        node: A tree-sitter function_item node.
+        node: A tree-sitter function_item or function_signature_item node.
         source: Source bytes of the file.
     """
-    if node.type != "function_item":
+    if node.type not in ("function_item", "function_signature_item"):
         return None  # pragma: no cover
 
     params_node = _find_child_by_field(node, "parameters")
@@ -621,6 +629,31 @@ def _get_impl_target(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
     return None
 
 
+def _get_trait_owner(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
+    """Name of the enclosing ``trait_item``, for a member DECLARED in the trait.
+
+    Deliberately separate from :func:`_get_impl_target` rather than folded into
+    it. That helper has six callers, most of them in call/receiver resolution
+    (``impl_target`` answers "what type is `self` here?"), and a trait is not a
+    type a receiver can be — widening it would silently change how those sites
+    resolve. This one is used only by the symbol-emission paths, where the
+    question is the different one of "what container owns this member?".
+
+    Stops at the first ``impl_item`` and returns ``None``: in
+    ``impl Drawable for Service`` the methods belong to **Service**, not to
+    Drawable, which is what the impl path has always emitted.
+    """
+    current = node.parent
+    while current is not None:
+        if current.type == "impl_item":
+            return None
+        if current.type == "trait_item":
+            name_node = _find_child_by_field(current, "name")
+            return node_text(name_node, source) if name_node else None
+        current = current.parent
+    return None
+
+
 def _extract_rust_annotations(
     node: "tree_sitter.Node", source: bytes
 ) -> list[dict[str, object]]:
@@ -995,8 +1028,15 @@ def _extract_symbols_from_file(
             if name_node:
                 func_name = node_text(name_node, source)
                 impl_target = _get_impl_target(node, source)
-                if impl_target:
-                    full_name = f"{impl_target}::{func_name}"
+                # WI-duguk: a trait method with a DEFAULT BODY parses as a
+                # `function_item` inside the `trait_item`, so it reached here
+                # with no impl target and was emitted as a bare `function` —
+                # indistinguishable from a module-level free function, and
+                # unrooted by the containment linker (whose parent extraction
+                # needs a separator in the name). The trait owns it.
+                owner = impl_target or _get_trait_owner(node, source)
+                if owner:
+                    full_name = f"{owner}::{func_name}"
                     kind = "method"
                 else:
                     full_name = func_name
@@ -1070,7 +1110,7 @@ def _extract_symbols_from_file(
                     modifiers=modifiers,
                     line_span=end_line - start_line + 1,
                     is_exported="pub" in modifiers,
-                    qualified_name=_make_rust_qualified_name(mod_path, impl_target, func_name),
+                    qualified_name=_make_rust_qualified_name(mod_path, owner, func_name),
                     cyclomatic_complexity=compute_cyclomatic_complexity(node, "rust"),
                 )
                 analysis.symbols.append(symbol)
@@ -1269,6 +1309,136 @@ def _extract_symbols_from_file(
                 analysis.symbols.append(symbol)
                 analysis.node_for_symbol[symbol.id] = node
                 analysis.symbol_by_name[enum_name] = symbol
+
+                # WI-duguk: emit a kind="field" Symbol per enum variant, the
+                # same shape the struct-field loop above uses and the same
+                # choice the D and Nim analyzers already made. Without these
+                # the enum is a container with nothing in it, so the
+                # containment linker roots nothing and `slice --reverse` from
+                # the enum returns the container alone. All three variant
+                # shapes (unit `Red`, tuple `Green(i32)`, struct
+                # `Blue { hue: u8 }`) are the same `enum_variant` node type
+                # and differ only in the body they carry, which is why one
+                # branch covers them.
+                variant_list = find_child_by_type(node, "enum_variant_list")
+                for variant in variant_list.children if variant_list else ():
+                    if variant.type != "enum_variant":
+                        continue
+                    vname_node = variant.child_by_field_name("name")
+                    if vname_node is None:
+                        continue  # pragma: no cover - a variant always names
+                    vname = node_text(vname_node, source)
+                    v_modifiers = _extract_modifiers_rust(variant, source)
+                    # ``::`` matches the impl-method convention and is one of
+                    # the containment linker's separators; the id name-segment
+                    # collapses ``::``->``.`` (canonical ids forbid ``:``
+                    # in the name slot).
+                    v_full = f"{enum_name}::{vname}"
+                    v_start = variant.start_point[0] + 1
+                    v_end = variant.end_point[0] + 1
+                    v_sym = Symbol(
+                        id=make_symbol_id(
+                            "rust", str(file_path), v_start, v_end,
+                            v_full.replace("::", "."), "field",
+                        ),
+                        name=v_full,
+                        kind="field",
+                        language="rust",
+                        path=str(file_path),
+                        span=Span(
+                            start_line=v_start,
+                            end_line=v_end,
+                            start_col=variant.start_point[1],
+                            end_col=variant.end_point[1],
+                        ),
+                        origin=PASS_ID,
+                        origin_run_id=run_id,
+                        modifiers=v_modifiers,
+                        stable_id=make_typed_stable_id(
+                            "field", "",
+                            visibility_from_modifiers(v_modifiers),
+                            name=vname, qualified_name=v_full,
+                            file_stable_id=file_stable_id,
+                        ),
+                        line_span=v_end - v_start + 1,
+                        # A variant is as public as its enum: Rust has no
+                        # per-variant visibility modifier.
+                        is_exported="pub" in enum_modifiers,
+                        qualified_name=_make_rust_qualified_name(
+                            mod_path, enum_name, vname,
+                        ),
+                    )
+                    analysis.symbols.append(v_sym)
+                    analysis.node_for_symbol[v_sym.id] = variant
+                    analysis.symbol_by_name[v_full] = v_sym
+
+        # WI-duguk: a trait method with NO default body parses as a
+        # `function_signature_item`, a node type the walk never handled, so a
+        # pure trait contract produced no members at all. Emitted as a
+        # `method` owned by the trait, matching both the impl path
+        # (`Service::run`) and the default-bodied trait method handled in the
+        # `function_item` branch. Associated `const`/`type` items are distinct
+        # node types and are deliberately not swept in — this is the callable
+        # surface.
+        elif node.type == "function_signature_item":
+            name_node = _find_child_by_field(node, "name")
+            trait_owner = _get_trait_owner(node, source)
+            if name_node and trait_owner:
+                sig_name = node_text(name_node, source)
+                sig_full = f"{trait_owner}::{sig_name}"
+                s_start = node.start_point[0] + 1
+                s_end = node.end_point[0] + 1
+                s_modifiers = _extract_modifiers_rust(node, source)
+                mod_path = _get_rust_mod_path(node, source)
+                # Identity is computed exactly as the `function_item` branch
+                # does — normalized signature in the type slot, `stable_id=None`
+                # when normalization fails — because `rust_scip` recomputes
+                # these ids from source for SCIP dedup and the two must be
+                # byte-identical (WI-zakub parity, gated by
+                # test_rust_scip_stable_id.py).
+                s_signature = _extract_rust_signature(node, source)
+                s_norm_sig = (
+                    normalize_rust_signature(s_signature)
+                    if s_signature is not None
+                    else None
+                )
+                sig_sym = Symbol(
+                    id=make_symbol_id(
+                        "rust", str(file_path), s_start, s_end,
+                        sig_full.replace("::", "."), "method",
+                    ),
+                    name=sig_full,
+                    kind="method",
+                    language="rust",
+                    path=str(file_path),
+                    span=Span(
+                        start_line=s_start,
+                        end_line=s_end,
+                        start_col=node.start_point[1],
+                        end_col=node.end_point[1],
+                    ),
+                    origin=PASS_ID,
+                    origin_run_id=run_id,
+                    modifiers=s_modifiers,
+                    # The signature IS the whole content of a trait contract.
+                    signature=s_signature,
+                    stable_id=make_typed_stable_id(
+                        "method", s_norm_sig,
+                        visibility_from_modifiers(s_modifiers),
+                        name=sig_name, qualified_name=sig_full,
+                        file_stable_id=file_stable_id,
+                    ) if s_norm_sig else None,
+                    line_span=s_end - s_start + 1,
+                    # Reachable exactly when the trait is; a trait method
+                    # carries no visibility modifier of its own.
+                    is_exported=True,
+                    qualified_name=_make_rust_qualified_name(
+                        mod_path, trait_owner, sig_name,
+                    ),
+                )
+                analysis.symbols.append(sig_sym)
+                analysis.node_for_symbol[sig_sym.id] = node
+                analysis.symbol_by_name[sig_full] = sig_sym
 
         # Trait declaration
         elif node.type == "trait_item":
