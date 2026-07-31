@@ -43,6 +43,49 @@ load_env
 QUEUE_FILE="$REPO_ROOT/.git/PR_QUEUE"
 
 # ------------------------------------------------------------------
+# Amend-ownership guard (WI-libok)
+#
+# `git checkout -b feature dev` leaves HEAD pointing at dev's tip.  Until
+# the branch makes a commit of its own, `git commit --amend` does not amend
+# "my work" — it rewrites the INHERITED base commit, folding whatever is
+# staged into it while keeping that commit's message, author and
+# author-date.  The work then merges impersonating whatever the base tip
+# happened to be.  On 2026-07-29 that tip was a tracker sync commit, so
+# seven files of analyzer work landed on dev under the subject
+# "tracker: 6 files (104 ops)".  The reflog for that branch reads
+# checkout -> commit (amend) -> checkout, with the plain `commit:` entry
+# conspicuously absent — that absence is the signature of the failure.
+#
+# `merge-base --is-ancestor` is the predicate rather than a `rev-list
+# --count` of base..HEAD because it asks the question that actually
+# matters ("is HEAD already contained in the base?") and stays correct
+# after a rebase onto a moved base.
+#
+# Accepts one or more candidate base refs and checks each that resolves.
+# When none resolve it returns 0 (fail-open): a guard that cannot locate a
+# base ref must not block an otherwise-valid PR.
+#
+# Returns 0 (branch owns HEAD, amending is safe) or 1 (refuse to amend).
+# ------------------------------------------------------------------
+_assert_branch_owns_head() {
+	local base_ref
+	for base_ref in "$@"; do
+		[[ -n "$base_ref" ]] || continue
+		git rev-parse --verify --quiet "${base_ref}^{commit}" \
+			>/dev/null 2>&1 || continue
+		if git merge-base --is-ancestor HEAD "$base_ref" 2>/dev/null; then
+			echo "❌ Refusing to amend: HEAD is already contained in $base_ref."
+			echo "   This branch has no commits of its own, so 'git commit --amend'"
+			echo "   would rewrite the inherited base commit — folding your staged"
+			echo "   work into it and keeping its message and author (WI-libok)."
+			echo "   Commit your work first:  git commit -s -m \"<subject>\""
+			return 1
+		fi
+	done
+	return 0
+}
+
+# ------------------------------------------------------------------
 # Sync gate check (WI-nutin)
 #
 # The tracker sync workflow holds an OS-level fcntl flock on
@@ -1027,6 +1070,7 @@ Individual commits are preserved in the history."
 				git rm --cached --quiet "$f" 2>/dev/null || true
 			fi
 		done <<<"$ops_files"
+		_assert_branch_owns_head "$ops_diff_base" || exit 1
 		git commit --amend --no-edit -s
 		tip_sha=$(git rev-parse HEAD)
 		echo "🔑 Commit: ${tip_sha:0:7} (tracker ops excluded)"
@@ -1427,6 +1471,8 @@ do_pr() {
 		elif ! git diff --quiet -- .ci/affected-tests.txt 2>/dev/null; then
 			echo "   Manifest updated — amending commit"
 			git add .ci/affected-tests.txt
+			_assert_branch_owns_head "$BASE_BRANCH" \
+				"origin/$BASE_BRANCH" || exit 1
 			git commit --amend --no-edit -s
 			LOCAL_SHA="$(git rev-parse HEAD)"
 			echo "🔑 Commit: ${LOCAL_SHA:0:7} (manifest refreshed)"
@@ -1466,6 +1512,7 @@ do_pr() {
 				git rm --cached --quiet "$f" 2>/dev/null || true
 			fi
 		done <<<"$ops_files"
+		_assert_branch_owns_head "$ops_diff_base" || exit 1
 		git commit --amend --no-edit -s
 		LOCAL_SHA="$(git rev-parse HEAD)"
 		echo "🔑 Commit: ${LOCAL_SHA:0:7} (tracker ops excluded)"
