@@ -47,7 +47,7 @@ dev = [
   "pytest-asyncio>=1.0",
   "pytest-textual-snapshot~=1.1",
   "hypothesis~=6.100",
-  "mypy~=2.1",
+  "mypy~=2.1.0",
   "types-PyYAML~=6.0.12",
 ]
 
