@@ -114,21 +114,21 @@ from ._concept_utils import has_concept
 from .registry import LinkerContext, LinkerResult, register_linker
 
 if TYPE_CHECKING:
-    from ..ir import Symbol
+    from ..ir import Span, Symbol
 
 logger = logging.getLogger(__name__)
 
 PASS_ID = make_pass_id("router-routes-linker")
 
 
-def _encloses(container_span, member_span) -> bool:
+def _encloses(container_span: "Span", member_span: "Span") -> bool:
     return (
         container_span.start_line <= member_span.start_line
         and container_span.end_line >= member_span.end_line
     )
 
 
-def _span_size(span) -> int:
+def _span_size(span: "Span") -> int:
     return span.end_line - span.start_line
 
 
