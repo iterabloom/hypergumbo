@@ -1,0 +1,53 @@
+Original commit body from 8f1333ae59a0d3351c635bd837fd1a1a585a1827:
+
+TWO DECLARATION LINES ACCOUNTED FOR 11% OF THE STRICT SURFACE.
+
+All 105 mutable-override errors carried a byte-identical message naming
+the same base class: 105 analyzer subclasses across all three language
+packages each narrowed TreeSitterAnalyzer.grammar_module or
+.language_pack_name from `str | None` to `str`, which mypy reports as a
+covariant override of a MUTABLE attribute. One error per file, 33 in
+mainstream + 39 in extended1 + 33 in common.
+
+The error is reported at each SUBCLASS while the defect lives in the
+BASE, so reading any individual one tells you nothing; it only resolves
+on noticing that all 105 messages are identical. Both attributes are now
+read-only properties returning `str | None`. Zero subclass edits. An
+attribute that is only ever read stops claiming to be mutable.
+
+RUNTIME-NEUTRAL BY MRO, VERIFIED RATHER THAN ARGUED. A subclass
+class-body assignment precedes this base in the MRO, so
+`self.grammar_module` still returns the string; a subclass declaring
+neither falls through to the property and gets None. Checked live on
+real analyzers: CppAnalyzer -> 'tree_sitter_cpp', IniTreeSitterAnalyzer
+-> language-pack 'ini', base -> None for both. 16446 tests pass; the
+change touches the base class of every tree-sitter analyzer in the tool
+and _check_grammar_available / _create_parser both branch on these
+values, so a silent grammar-disabling regression was the risk under test.
+
+THE TEMPTING FIX WOULD HAVE BROKEN 60 ANALYZERS. `ClassVar[str] = ""` is
+tidier and matches the lang / pass_id sentinels a few lines above -- and
+it is a live behaviour change: five `is not None` checks become
+permanently true, so every language-pack analyzer would call
+importlib.import_module(""); and _get_config_dict feeds
+compute_config_fingerprint, a PERSISTED cache key, so every analyzer's
+fingerprint would change. ClassVar alone does not silence the error, and
+Final makes it worse (adds "cannot assign to final name" at all 105
+sites). Residual sharp edges of the property form, both grepped before
+committing: a CLASS-level read now yields the property object rather
+than None, and `self.grammar_module = ...` would raise -- every read in
+packages/*/src/ is self.-qualified and there are zero such assignments
+anywhere in the repo.
+
+Also in this commit: 20 type-arg errors in ir.py and analyze/base.py,
+types read off the construction site rather than the name.
+global_symbols is dict[str, Symbol] because register_symbol does
+`global_symbols[symbol.name] = symbol`; the occurrence-counter key tuple
+leads with `str | None` because protocol_origin is declared Optional.
+Both are CORE modules and both revealed zero hidden errors -- which
+refutes the centrality hypothesis the earlier batches suggested. The
+predictor of cascade risk is interface polymorphism, not centrality.
+
+Baseline ratcheted 957 -> 832.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
