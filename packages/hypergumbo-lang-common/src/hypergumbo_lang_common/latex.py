@@ -33,7 +33,7 @@ LaTeX documents are structured differently from programming languages:
 """
 
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar, Iterator
+from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
@@ -60,7 +60,9 @@ def _extract_text(node: "tree_sitter.Node", source_bytes: bytes) -> str:
     return source_bytes[node.start_byte : node.end_byte].decode("utf-8", errors="ignore")
 
 
-def _find_child(node: "tree_sitter.Node", child_type: str):
+def _find_child(
+    node: "tree_sitter.Node", child_type: str,
+) -> "tree_sitter.Node | None":
     """Find first child of given type."""
     for child in node.children:
         if child.type == child_type:
@@ -68,7 +70,9 @@ def _find_child(node: "tree_sitter.Node", child_type: str):
     return None  # pragma: no cover
 
 
-def _find_all_descendants(node: "tree_sitter.Node", target_types: set):
+def _find_all_descendants(
+    node: "tree_sitter.Node", target_types: set[str],
+) -> list["tree_sitter.Node"]:
     """Find all descendant nodes of given types."""
     results = []
     for n in iter_tree(node):
@@ -404,7 +408,9 @@ class LatexAnalyzer(TreeSitterAnalyzer):
                   if isinstance(sym, Symbol) and sym.kind == "label"}
         return _extract_edges_from_file(rel_path, source, tree, labels, run_id=run.execution_id)
 
-    def analyze(self, repo_root: Path, max_files=None) -> AnalysisResult:
+    def analyze(
+        self, repo_root: Path, max_files: Optional[int] = None,
+    ) -> AnalysisResult:
         """Override analyze to use custom file discovery."""
         import time
         import warnings

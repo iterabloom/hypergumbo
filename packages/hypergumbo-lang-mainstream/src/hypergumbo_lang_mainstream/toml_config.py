@@ -57,8 +57,8 @@ from hypergumbo_core.analyze.base import (
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 
-if TYPE_CHECKING:
-    pass
+if TYPE_CHECKING:  # pragma: no cover - typing only
+    import tree_sitter
 
 
 def _make_toml_symbol_id(
@@ -87,12 +87,12 @@ def find_toml_files(root: Path) -> Iterator[Path]:
     yield from find_files(root, ["*.toml"])
 
 
-def _get_key_text(node) -> str:
+def _get_key_text(node: "tree_sitter.Node") -> str:
     """Extract key text from a key node."""
     if node.type == "bare_key":
-        return node.text.decode("utf-8", errors="replace")
+        return node.text.decode("utf-8", errors="replace") if node.text else ""
     elif node.type == "quoted_key":  # pragma: no cover - rare in practice
-        text = node.text.decode("utf-8", errors="replace")  # pragma: no cover - rare in practice
+        text = node.text.decode("utf-8", errors="replace") if node.text else ""  # pragma: no cover - rare in practice
         return text.strip('"').strip("'")  # pragma: no cover - rare in practice
     elif node.type == "dotted_key":
         # Join dotted key parts
@@ -104,7 +104,7 @@ def _get_key_text(node) -> str:
     return node.text.decode("utf-8", errors="replace") if node.text else ""  # pragma: no cover
 
 
-def _get_string_value(node) -> str:
+def _get_string_value(node: "tree_sitter.Node | None") -> str:
     """Extract string value from a string node."""
     if node is None:  # pragma: no cover - defensive
         return ""  # pragma: no cover - defensive
@@ -121,7 +121,7 @@ def _get_string_value(node) -> str:
     return text  # pragma: no cover - fallback
 
 
-def _extract_table_name(node) -> str:
+def _extract_table_name(node: "tree_sitter.Node") -> str:
     """Extract the full table name from a table or table_array_element."""
     # Find the key nodes between [ ] or [[ ]]
     parts = []
@@ -131,7 +131,7 @@ def _extract_table_name(node) -> str:
     return ".".join(parts)
 
 
-def _find_pair_value(table_node, key: str) -> str | None:
+def _find_pair_value(table_node: "tree_sitter.Node", key: str) -> str | None:
     """Find the value of a specific key in a table."""
     for child in table_node.children:
         if child.type == "pair":
@@ -148,7 +148,7 @@ def _find_pair_value(table_node, key: str) -> str | None:
 
 
 def _process_toml_tree(
-    root,
+    root: "tree_sitter.Node",
     symbols: list[Symbol],
     edges: list[Edge],
     rel_path: str,
@@ -442,9 +442,9 @@ def analyze_toml_files(root: Path) -> AnalysisResult:
 
 
 def _extract_cargo_dependencies(
-    table_node, rel_path: str, symbols: list[Symbol], content: str,
-    scope: str | None = None,
-):
+    table_node: "tree_sitter.Node", rel_path: str, symbols: list[Symbol],
+    content: str, scope: str | None = None,
+) -> None:
     """Extract dependencies from a Cargo.toml dependencies table.
 
     ``scope`` carries the axis-meta value that the YAML
@@ -510,8 +510,9 @@ def _parse_pyproject_dependency(dep_str: str) -> str:
 
 
 def _extract_pyproject_dependencies(
-    table_node, rel_path: str, symbols: list[Symbol], content: str
-):
+    table_node: "tree_sitter.Node", rel_path: str, symbols: list[Symbol],
+    content: str,
+) -> None:
     """Extract dependencies from a pyproject.toml [project] table.
 
     Looks for:
@@ -579,7 +580,7 @@ def _python_entry_point_to_path(entry_point: str) -> tuple[str, str] | None:
 
 
 def _extract_pyproject_scripts(
-    table_node, rel_path: str, symbols: list[Symbol],
+    table_node: "tree_sitter.Node", rel_path: str, symbols: list[Symbol],
     edges: list[Edge], content: str,
     *,
     run_id: str,
