@@ -1,0 +1,21 @@
+- op: create  # 93b0
+  at: '2026-07-31T06:51:40Z'  # 93b0
+  by: agent  # 93b0
+  actor: jgstern_agent  # 93b0
+  clock: 1  # 93b0
+  nonce: 93b0  # 93b0
+  data:  # 93b0
+    kind: work_item  # 93b0
+    title: "scala, cpp and kotlin emit enum containers with no members — the WI-duguk defect in three analyzers the parity matrix cannot see"  # 93b0
+    status: todo_hard  # 93b0
+    priority: 2  # 93b0
+    parent:  # 93b0
+    tags:  # 93b0
+    - dogfood  # 93b0
+    - analyzer  # 93b0
+    isbefore: []  # 93b0
+    duplicate_of: []  # 93b0
+    not_duplicate_of: []  # 93b0
+    pr_ref:  # 93b0
+    description: "**Mechanic**: The container-member emission defect WI-duguk drained for the eight core-availability analyzers is still live in three more: scala, cpp and kotlin emit an enum container and none of its members, so the containment linker roots nothing and reverse-slice expansion from the enum is a no-op. Same root cause, same fix shape (emit each member as a dotted-name symbol under its container), different analyzers.\n\n**Why these three are not covered by the existing gate**: the G2 emission-parity matrix (`packages/hypergumbo-core/tests/test_emission_parity_matrix.py`) is scoped to the eight fixture languages whose analyzers are availability=\"core\" and need no grammar wheel. scala, cpp and kotlin are not in `FIXTURE_ANALYZER`, so the `emits_enum_members` column cannot see them. That column is now fully drained and reports full parity, which is accurate for what it measures and would be a misreading if taken as fleet-wide.\n\n**Measured** (re-verified on dev 5eb051e8c7, multi-language probe corpus generated into /tmp, one enum per language with members only, `contains`-out counted per container):\n- scala `enum Color` (Scala 3 `case` members): 0 contains-out\n- cpp `enum class Color`: 0 contains-out\n- kotlin `enum class Color`: 0 contains-out\n- in the same run, every drained language reports non-zero: rust enum 3 / trait 2, typescript enum 3 / interface 3, csharp enum 3 / interface 2, swift protocol 2\n\n**Kotlin is the subtle one and should not be scoped as \"the enum kind\"**: `enum class Color` is emitted as `kind=\"class\"`, not `kind=\"enum\"` (kotlin.py treats `enum` as a class modifier and lists it alongside `data`/`inner`/`annotation`/`value`). So a query or gate written against the enum kind will not surface it at all, and the fix has to key off the modifier rather than the kind. Whether that emission is itself correct is a separate question this item does not decide.\n\n**Exposure**: any consumer reverse-slicing from an enum in a Scala, C++ or Kotlin codebase, to find switch/when branches or usages. The consequence is the one WI-duguk documented: an empty reverse slice reads as \"this enum is dead\" when it is not.\n\n**Suggested close condition**: each of the three emits its enum members as dotted-name symbols under the container, verified by the end-to-end repro (`slice --entry <Enum> --language <lang> --reverse` returns more than the container alone) rather than by a unit test. Note WI-duguk's finding that member emission is necessary but NOT sufficient: the container's `kind` must also be in `linkers.containment.CONTAINER_KINDS` and in the slicer's `_CONTAINER_KINDS`. `class` and `enum` are both already in both sets, so this specific trap is unlikely here — but that is a prediction, not a measurement, and it cost a whole extra fix when it was wrong for `protocol`.\n\n**Open scope question for the human, not decided here**: whether the parity matrix should grow beyond core-availability languages at all. Doing so would make it depend on grammar wheels it deliberately avoids; not doing so means every non-core analyzer's emission parity stays ungated by construction. WI-duguk's drain is evidence the gate is worth having; it is not evidence about where its boundary belongs."  # 93b0
+    fields: {}  # 93b0
