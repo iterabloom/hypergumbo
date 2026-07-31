@@ -1,0 +1,48 @@
+Original commit body from 6db4fe28af17aa1c1e35aa65388ce75f43e42612:
+
+The JS/TS analyzer emitted the `enum` and `interface` CONTAINERS but
+nothing inside them, while emitting CLASS members (`Sq.side`, `Sq.draw`)
+correctly -- so the gap was per-container, not per-analyzer. Without
+member symbols the containment linker has nothing to root and a reverse
+slice from an enum or interface returns the container alone, which a
+consumer reads as "this type has no users". Drains both of typescript's
+container-member parity holes.
+
+Members follow the analyzer's own class-member shape, `Owner.member`
+with `.` (the JS/TS separator the containment linker splits on, where
+Rust uses `::`):
+
+  * `enum_assignment` (`Red = 'red'`) or a bare `property_identifier`
+    (`Green`) in an `enum_body` -> kind="field" named `Color.Red`
+  * interface `method_signature` -> kind="method"
+  * interface `property_signature` -> kind="field", mirroring the class
+    `public_field_definition` branch
+
+Measured end-to-end:
+
+  slice --entry Color    --language typescript --reverse  1 node  -> 4
+  slice --entry Drawable --language typescript --reverse  2 nodes -> 4
+
+Two interface members are deliberately NOT emitted. `construct_signature`
+(`new (x: number): D`) and `index_signature` (`[key: string]: unknown`)
+carry no `property_identifier`, so there is no name to anchor them to.
+Skipping them is a fails-safe recall miss; inventing a name would be a
+wrong-name phantom, which is worse. A test asserts the interface's ONLY
+owned member is the named one, so a later change that starts minting
+names for these fails rather than passing quietly.
+
+Members are emitted from INSIDE the container's own branch rather than as
+top-level node-type cases, so the owner name is already in hand and no
+span- or ancestor-walk is needed to find it. That is what keeps an
+interface and an implementing class in the same file -- same member
+names -- from claiming each other's members, which is exactly where a
+span-based owner lookup slips. Pinned by a regression test asserting
+`Drawable.draw` and `Sq.draw` both exist and are distinct.
+
+Ratchet promotion was forced, not remembered: both typescript cells
+XPASSed and FAILED the run until removed from KNOWN_HOLES in this same
+commit. Remaining after this: 3 of 5 analyzers still emit no enum
+members (java, csharp, swift); 1 of 6 still misses abstract-type members
+(swift). The spec's scope note is updated to match.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
