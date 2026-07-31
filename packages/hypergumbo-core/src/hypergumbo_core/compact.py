@@ -73,7 +73,7 @@ from __future__ import annotations
 import re
 from collections import Counter
 from dataclasses import dataclass, field
-from typing import Dict, List, Tuple
+from typing import Any, Dict, List, Tuple
 
 from .ir import Symbol, Edge, is_external_boundary
 from .ranking import (
@@ -191,7 +191,7 @@ _COMPACT_NODE_FIELDS: tuple[str, ...] = (
 )
 
 
-def compact_node(symbol: Symbol) -> dict:
+def compact_node(symbol: Symbol) -> dict[str, Any]:
     """Project a ``Symbol`` to the slim compact/tiered-view node representation.
 
     Keeps only the LLM-meaningful navigation/understanding fields
@@ -204,7 +204,7 @@ def compact_node(symbol: Symbol) -> dict:
     return {k: full[k] for k in _COMPACT_NODE_FIELDS if full.get(k) is not None}
 
 
-def _recompute_view_metrics(view_map: dict) -> None:
+def _recompute_view_metrics(view_map: dict[str, Any]) -> None:
     """Recompute a projected view's ``metrics`` block from its OWN nodes/edges.
 
     A budget-limited projection (compact/tiered) shallow-copies the source map,
@@ -263,7 +263,7 @@ class IncludedSummary:
     coverage: float
     symbols: List[Symbol]
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         """Serialize to dictionary."""
         return {
             "count": self.count,
@@ -284,7 +284,7 @@ class OmittedSummary:
     kinds: Dict[str, int]
     tiers: Dict[int, int]
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         """Serialize to dictionary."""
         return {
             "count": self.count,
@@ -310,7 +310,7 @@ class CompactResult:
     # serialized in to_dict.
     centrality: Dict[str, float] = field(default_factory=dict)
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         """Serialize to dictionary."""
         return {
             "included": self.included.to_dict(),
@@ -334,7 +334,7 @@ class ConnectivityResult:
     # serialized in to_dict.
     centrality: Dict[str, float] = field(default_factory=dict)
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         """Serialize to dictionary."""
         return {
             "included": self.included.to_dict(),
@@ -355,7 +355,7 @@ class UnionFind:
     Uses path compression and union by rank for near-O(1) operations.
     """
 
-    def __init__(self, elements: list | None = None):
+    def __init__(self, elements: list[str] | None = None):
         """Initialize Union-Find with optional initial elements.
 
         Args:
@@ -542,7 +542,7 @@ def extract_path_pattern(path: str) -> str:
     return parts[0]
 
 
-def compute_word_frequencies(symbols: List[Symbol]) -> Counter:
+def compute_word_frequencies(symbols: List[Symbol]) -> Counter[str]:
     """Compute word frequencies across symbol names.
 
     Args:
@@ -551,14 +551,14 @@ def compute_word_frequencies(symbols: List[Symbol]) -> Counter:
     Returns:
         Counter of word frequencies.
     """
-    counter: Counter = Counter()
+    counter: Counter[str] = Counter()
     for sym in symbols:
         tokens = tokenize_name(sym.name)
         counter.update(tokens)
     return counter
 
 
-def compute_path_frequencies(symbols: List[Symbol]) -> Counter:
+def compute_path_frequencies(symbols: List[Symbol]) -> Counter[str]:
     """Compute path pattern frequencies.
 
     Args:
@@ -567,7 +567,7 @@ def compute_path_frequencies(symbols: List[Symbol]) -> Counter:
     Returns:
         Counter of path pattern frequencies.
     """
-    counter: Counter = Counter()
+    counter: Counter[str] = Counter()
     for sym in symbols:
         pattern = extract_path_pattern(sym.path)
         counter[pattern] += 1
@@ -583,7 +583,7 @@ def compute_kind_distribution(symbols: List[Symbol]) -> Dict[str, int]:
     Returns:
         Dictionary mapping kind to count.
     """
-    counter: Counter = Counter()
+    counter: Counter[str] = Counter()
     for sym in symbols:
         counter[sym.kind] += 1
     return dict(counter)
@@ -598,7 +598,9 @@ def compute_tier_distribution(symbols: List[Symbol]) -> Dict[int, int]:
     Returns:
         Dictionary mapping tier to count.
     """
-    counter: Counter = Counter()
+    # Keyed by `supply_chain_tier`, an int — NOT str like its sibling
+    # distribution helpers above. The declared return type says so.
+    counter: Counter[int] = Counter()
     for sym in symbols:
         tier = getattr(sym, 'supply_chain_tier', 1)
         counter[tier] += 1
@@ -607,7 +609,7 @@ def compute_tier_distribution(symbols: List[Symbol]) -> Dict[int, int]:
 
 def _build_adjacency_list(
     edges: List[Edge],
-) -> Tuple[Dict[str, set], Dict[str, set]]:
+) -> Tuple[Dict[str, set[str]], Dict[str, set[str]]]:
     """Build bidirectional adjacency lists from edges.
 
     Args:
@@ -618,8 +620,8 @@ def _build_adjacency_list(
         outgoing[src] = set of dst nodes
         incoming[dst] = set of src nodes
     """
-    outgoing: Dict[str, set] = {}
-    incoming: Dict[str, set] = {}
+    outgoing: Dict[str, set[str]] = {}
+    incoming: Dict[str, set[str]] = {}
 
     for edge in edges:
         # Skip self-loops — they don't represent useful connectivity
@@ -641,10 +643,10 @@ def _build_adjacency_list(
 
 def _compute_connectivity_score(
     node_id: str,
-    selected_ids: set,
+    selected_ids: set[str],
     uf: UnionFind,
-    outgoing: Dict[str, set],
-    incoming: Dict[str, set],
+    outgoing: Dict[str, set[str]],
+    incoming: Dict[str, set[str]],
     centrality: Dict[str, float],
 ) -> Tuple[int, int, float]:
     """Compute score for adding a node to the selected set.
@@ -707,7 +709,7 @@ def _compute_connectivity_score(
 def select_by_connectivity(
     symbols: List[Symbol],
     edges: List[Edge],
-    seed_ids: set,
+    seed_ids: set[str],
     max_additional: int,
     centrality: Dict[str, float] | None = None,
 ) -> ConnectivityResult:
@@ -749,7 +751,7 @@ def select_by_connectivity(
         centrality = compute_dampened_centrality(symbols, edges)
 
     # Initialize selected set with seeds
-    selected_ids: set = set()
+    selected_ids: set[str] = set()
     selected_symbols: List[Symbol] = []
 
     # WI-nivuj: iterate seeds in sorted order so the seed prefix of the output
@@ -780,7 +782,7 @@ def select_by_connectivity(
                 uf.union(sid, src)
 
     # Build initial frontier: nodes adjacent to selected set
-    frontier: set = set()
+    frontier: set[str] = set()
     for sid in selected_ids:
         for dst in outgoing.get(sid, set()):
             if dst not in selected_ids and dst in symbol_by_id:
@@ -889,7 +891,7 @@ def select_by_coverage(
     symbols: List[Symbol],
     edges: List[Edge],
     config: CompactConfig,
-    force_include_ids: set | None = None,
+    force_include_ids: set[str] | None = None,
 ) -> CompactResult:
     """Select symbols by centrality coverage with residual summarization.
 
@@ -972,7 +974,7 @@ def select_by_coverage(
     # Select by coverage from the (possibly pre-filtered) candidates
     included: List[Symbol] = []
     included_centrality = 0.0
-    included_ids: set = set()
+    included_ids: set[str] = set()
 
     # First, force-include any must-include symbols (e.g., entrypoints)
     # These are semantically important and should always be included
@@ -1041,10 +1043,10 @@ def select_by_coverage(
 
 
 def _reproject_features(
-    features: List[dict],
-    included_node_ids: set,
-    included_edge_ids: set,
-) -> List[dict]:
+    features: List[dict[str, Any]],
+    included_node_ids: set[str],
+    included_edge_ids: set[str],
+) -> List[dict[str, Any]]:
     """Re-project feature slices onto the compacted node/edge set (INV-titid).
 
     The compact pass selects a budget-limited subset of nodes and edges, but
@@ -1059,7 +1061,7 @@ def _reproject_features(
     feature scope is re-derived from the emitted graph rather than copied
     wholesale. ``admission_stats`` (not node-keyed) passes through unchanged.
     """
-    reprojected: List[dict] = []
+    reprojected: List[dict[str, Any]] = []
     for feat in features:
         entry_nodes = [
             n for n in feat.get("entry_nodes", []) if n in included_node_ids
@@ -1090,7 +1092,9 @@ def _reproject_features(
     return reprojected
 
 
-def _annotate_node_centrality(nodes: list, centrality: Dict[str, float]) -> None:
+def _annotate_node_centrality(
+    nodes: list[dict[str, Any]], centrality: Dict[str, float],
+) -> None:
     """Stamp each projected node dict with its centrality score (WI-zotam).
 
     A budget-limited projection previously emitted no per-node centrality, so a
@@ -1099,10 +1103,16 @@ def _annotate_node_centrality(nodes: list, centrality: Dict[str, float]) -> None
     centrality (rounded), so ``nodes`` and ``nodes_summary`` agree.
     """
     for n in nodes:
-        n["centrality"] = round(centrality.get(n.get("id"), 0.0), 4)
+        # `n.get("id")` alone is `Any | None`, and a None key can never be in
+        # `centrality` — so an id-less node silently scored 0.0 rather than
+        # being distinguishable from a node genuinely at 0.0. Defaulting to ""
+        # keeps that behaviour identical while making the lookup key well-typed;
+        # the ambiguity itself is a projection concern, not one this helper can
+        # resolve.
+        n["centrality"] = round(centrality.get(n.get("id", ""), 0.0), 4)
 
 
-def _array_projection_summary(original_len: int, emitted_len: int) -> dict:
+def _array_projection_summary(original_len: int, emitted_len: int) -> dict[str, Any]:
     """Included/omitted counts for a top-level array truncated by the compact
     projection — the entrypoints/features analogue of ``nodes_summary``
     (WI-kulan). The compact view filters entrypoints to retained nodes and drops
@@ -1116,13 +1126,13 @@ def _array_projection_summary(original_len: int, emitted_len: int) -> dict:
 
 
 def format_compact_behavior_map(
-    behavior_map: dict,
+    behavior_map: dict[str, Any],
     symbols: List[Symbol],
     edges: List[Edge],
     config: CompactConfig,
     force_include_entrypoints: bool = True,
     connectivity_aware: bool = False,
-) -> dict:
+) -> dict[str, Any]:
     """Format a behavior map in compact mode.
 
     Replaces the full nodes list with a compact selection plus summary.
@@ -1144,7 +1154,7 @@ def format_compact_behavior_map(
         Modified behavior map with compact output.
     """
     # Extract entrypoint symbol_ids to force-include them
-    force_include_ids: set = set()
+    force_include_ids: set[str] = set()
     if force_include_entrypoints:
         symbol_ids = {s.id for s in symbols}
         entrypoints_with_ids = []
@@ -1181,7 +1191,7 @@ def format_compact_behavior_map(
     # drops peripheral nodes (route definitions, dispatch targets, FFI endpoints)
     # that are endpoints of these high-value edges.
     symbol_id_set = {s.id for s in symbols}
-    cross_cutting_ids: set = set()
+    cross_cutting_ids: set[str] = set()
     for e in behavior_map.get("edges", []):
         # Edge dicts use "type" key (from Edge.to_dict()), not "edge_type"
         if e.get("type") in CROSS_CUTTING_EDGE_TYPES:
@@ -1197,7 +1207,7 @@ def format_compact_behavior_map(
     remaining_seed_budget = max(0, config.max_symbols // 2 - len(force_include_ids))
     if len(cross_cutting_ids) > remaining_seed_budget:
         # Prefer endpoints with higher edge count (more cross-cutting connections)
-        cc_edge_count: Counter = Counter()
+        cc_edge_count: Counter[str] = Counter()
         for e in behavior_map.get("edges", []):
             if e.get("type") in CROSS_CUTTING_EDGE_TYPES:
                 src, dst = e.get("src"), e.get("dst")
@@ -1306,12 +1316,12 @@ def format_compact_behavior_map(
 
 
 # Backwards compatibility aliases for functions that were moved
-def estimate_node_tokens(node_dict: dict) -> int:
+def estimate_node_tokens(node_dict: dict[str, Any]) -> int:
     """Estimate tokens for a serialized node. Alias for estimate_json_tokens."""
     return estimate_json_tokens(node_dict)
 
 
-def estimate_behavior_map_tokens(behavior_map: dict) -> int:
+def estimate_behavior_map_tokens(behavior_map: dict[str, Any]) -> int:
     """Estimate total tokens for a behavior map. Alias for estimate_json_tokens."""
     return estimate_json_tokens(behavior_map)
 
@@ -1327,7 +1337,7 @@ def select_by_tokens(
     exclude_examples: bool = True,
     language_proportional: bool = True,
     min_per_language: int = 1,
-    force_include_ids: set | None = None,
+    force_include_ids: set[str] | None = None,
 ) -> CompactResult:
     """Select symbols to fit within a token budget.
 
@@ -1444,7 +1454,7 @@ def select_by_tokens(
     included_centrality = 0.0
     tokens_used = 0
     seen_names: set[str] = set()  # For deduplication
-    included_ids: set = set()
+    included_ids: set[str] = set()
 
     # First, force-include any must-include symbols (e.g., entrypoints)
     # These are semantically important but still subject to the token budget.
@@ -1528,7 +1538,7 @@ def select_by_tokens(
 
 
 def recompute_view_summary(
-    view_map: dict,
+    view_map: dict[str, Any],
     population: List[Symbol],
     centrality: Dict[str, float],
     *,
@@ -1593,12 +1603,12 @@ def recompute_view_summary(
 
 
 def format_tiered_behavior_map(
-    behavior_map: dict,
+    behavior_map: dict[str, Any],
     symbols: List[Symbol],
     edges: List[Edge],
     target_tokens: int,
     force_include_entrypoints: bool = True,
-) -> dict:
+) -> dict[str, Any]:
     """Format a behavior map for a specific token tier.
 
     Args:
@@ -1624,7 +1634,7 @@ def format_tiered_behavior_map(
     # Cap total force-includes to half the estimated node capacity so
     # bridge nodes always get budget, mirroring compact mode (line ~900).
     _FORCE_INCLUDE_CONFIDENCE_THRESHOLD = 0.7
-    force_include_ids: set = set()
+    force_include_ids: set[str] = set()
     if force_include_entrypoints:
         symbol_ids = {s.id for s in symbols}
         avg_tokens_per_symbol = 75
