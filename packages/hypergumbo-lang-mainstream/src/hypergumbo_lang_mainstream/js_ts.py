@@ -3230,6 +3230,133 @@ def _extract_field_type(node: "tree_sitter.Node", source: bytes) -> Optional[str
     return None
 
 
+def _method_signature_text(
+    node: "tree_sitter.Node", source: bytes
+) -> Optional[str]:
+    """TS-idiomatic signature of an interface ``method_signature``: ``"(): string"``.
+
+    Built from the node's own ``formal_parameters`` plus its return
+    ``type_annotation``, the same two slots the class ``method_definition`` path
+    reads. Returns None when there are no parameters to read, which is the
+    signal the caller uses to leave ``Symbol.signature`` unset rather than
+    storing an empty string.
+    """
+    params = next(
+        (c for c in node.children if c.type == "formal_parameters"), None
+    )
+    if params is None:  # pragma: no cover - a method_signature always has them
+        return None
+    text = _node_text(params, source)
+    ret = next((c for c in node.children if c.type == "type_annotation"), None)
+    if ret is not None:
+        text += ": " + _node_text(ret, source).lstrip(": ").strip()
+    return text
+
+
+def _container_member_specs(
+    body: "tree_sitter.Node", source: bytes
+) -> list[tuple["tree_sitter.Node", str, str, Optional[str]]]:
+    """``(node, member_name, kind, signature)`` per NAMED member of a TS
+    ``enum_body`` / ``interface_body`` (WI-duguk).
+
+    Kinds mirror the class-member branches so a consumer sees one vocabulary:
+    a callable member is a ``method``, a value member is a ``field``. Enum
+    members are ``field`` for the same reason the D and Nim analyzers chose it
+    — they are named values of the type.
+
+    Members with no ``property_identifier`` are skipped and thereby left out of
+    the graph: ``construct_signature`` (``new (x: number): D``) and
+    ``index_signature`` (``[key: string]: unknown``) have no name to anchor, and
+    inventing one would be a wrong-name phantom — strictly worse than the
+    fails-safe recall miss of omitting them.
+    """
+    specs: list[tuple["tree_sitter.Node", str, str, Optional[str]]] = []
+    for child in body.children:
+        if child.type == "enum_assignment":
+            # ``Red = 'red'`` — the name is the assignment's own identifier.
+            name = _find_field_name(child, source)
+            if name:
+                specs.append((child, name, "field", None))
+        elif child.type == "property_identifier":
+            # A bare ``Green`` member sits directly under the enum body.
+            specs.append((child, _node_text(child, source), "field", None))
+        elif child.type == "method_signature":
+            name = _find_field_name(child, source)
+            if name:
+                specs.append(
+                    (child, name, "method", _method_signature_text(child, source))
+                )
+        elif child.type == "property_signature":
+            name = _find_field_name(child, source)
+            if name:
+                specs.append(
+                    (child, name, "field", _extract_field_type(child, source))
+                )
+    return specs
+
+
+def _make_container_member_symbols(
+    container: "tree_sitter.Node",
+    body_type: str,
+    source: bytes,
+    container_name: str,
+    file_path: object,
+    lang: str,
+    run_id: str,
+    line_offset: int,
+    file_stable_id: str,
+) -> list["Symbol"]:
+    """Symbols for an enum's / interface's named members (WI-duguk).
+
+    Emitted from inside the container's own branch rather than as a top-level
+    node-type case, so the owner name is already in hand and no span- or
+    ancestor-walk is needed to find it — which is what keeps an interface and an
+    implementing class in the same file from claiming each other's members.
+    """
+    body = next((c for c in container.children if c.type == body_type), None)
+    if body is None:  # pragma: no cover - a named container always has a body
+        return []
+    out: list["Symbol"] = []
+    for member, member_name, kind, signature in _container_member_specs(
+        body, source
+    ):
+        span = Span(
+            start_line=member.start_point[0] + 1 + line_offset,
+            end_line=member.end_point[0] + 1 + line_offset,
+            start_col=member.start_point[1],
+            end_col=member.end_point[1],
+        )
+        # ``Owner.member`` — ``.`` is the JS/TS separator the containment
+        # linker splits on, matching the class-member branches.
+        full_name = f"{container_name}.{member_name}"
+        qualified_name = _make_jsts_qualified_name(
+            [container_name], member_name, lang,
+        )
+        out.append(Symbol(
+            id=_make_symbol_id(
+                str(file_path), span.start_line, span.end_line,
+                full_name, kind, lang,
+            ),
+            name=full_name,
+            kind=kind,
+            language=lang,
+            path=str(file_path),
+            span=span,
+            origin=PASS_ID,
+            origin_run_id=run_id,
+            signature=signature,
+            stable_id=make_typed_stable_id(
+                kind, signature or "",
+                name=member_name,
+                qualified_name=qualified_name,
+                file_stable_id=file_stable_id,
+            ),
+            qualified_name=qualified_name,
+            line_span=span.end_line - span.start_line + 1,
+        ))
+    return out
+
+
 def _is_module_level_declaration(node: "tree_sitter.Node") -> bool:
     """True when a ``lexical_declaration`` / ``variable_declaration`` sits at
     module (program) scope — directly under ``program``, or under a top-level
@@ -3888,6 +4015,11 @@ def _extract_symbols(
                     ),
                 )
                 symbols.append(symbol)
+                # WI-duguk: the interface's own member signatures.
+                symbols.extend(_make_container_member_symbols(
+                    node, "interface_body", source, name, file_path, lang,
+                    run.execution_id, line_offset, file_stable_id,
+                ))
 
         # TypeScript type alias declarations
         elif node.type == "type_alias_declaration":
@@ -3943,6 +4075,11 @@ def _extract_symbols(
                     ),
                 )
                 symbols.append(symbol)
+                # WI-duguk: the enum's own named members.
+                symbols.extend(_make_container_member_symbols(
+                    node, "enum_body", source, name, file_path, lang,
+                    run.execution_id, line_offset, file_stable_id,
+                ))
 
         # Method definitions inside classes (including getters/setters)
         elif node.type == "method_definition":
