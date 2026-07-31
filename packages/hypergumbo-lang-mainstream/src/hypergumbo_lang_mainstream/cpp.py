@@ -664,6 +664,62 @@ def _extract_symbols_from_tree(
                 analysis.node_for_symbol[symbol.id] = node
                 analysis.symbol_by_name[name] = symbol
 
+                # WI-dorop: one kind="field" per enumerator, named
+                # `Color::Red` — the `::` separator cpp already uses for its
+                # fields (`f"{owner_name}::{field_name}"`) and methods, and one
+                # the containment linker splits on. Without these the enum is a
+                # container with nothing in it and a reverse slice from it
+                # returns the container alone.
+                #
+                # Deliberately INSIDE the `if name_node:` guard. An anonymous
+                # enum (`typedef enum { P, Q } Anon;`) has no `type_identifier`
+                # and emits no container, so emitting its members here would
+                # produce symbols whose dotted owner does not exist — orphans by
+                # construction, which is worse than the recall miss. Scoped
+                # (`enum class`) and unscoped enums are the same
+                # `enum_specifier` node; the scope keyword is just a token, so
+                # both are covered. A forward declaration has no
+                # `enumerator_list` and is already excluded by `has_body`.
+                member_list = _find_child_by_type(node, "enumerator_list")
+                for member in member_list.children if member_list else ():
+                    if member.type != "enumerator":
+                        continue
+                    m_name_node = _find_child_by_type(member, "identifier")
+                    if m_name_node is None:  # pragma: no cover - always names
+                        continue
+                    m_name = _node_text(m_name_node, source)
+                    m_full = f"{name}::{m_name}"
+                    m_start = member.start_point[0] + 1
+                    m_end = member.end_point[0] + 1
+                    m_sym = Symbol(
+                        id=_make_symbol_id(
+                            str(file_path), m_start, m_end, m_full, "field",
+                        ),
+                        name=m_full,
+                        kind="field",
+                        language="cpp",
+                        path=str(file_path),
+                        span=Span(
+                            start_line=m_start,
+                            end_line=m_end,
+                            start_col=member.start_point[1],
+                            end_col=member.end_point[1],
+                        ),
+                        origin=PASS_ID,
+                        origin_run_id=run.execution_id,
+                        # An enumerator is as reachable as its enum; C++ has no
+                        # per-enumerator access specifier.
+                        modifiers=["public"],
+                        is_exported=True,
+                        stable_id=_analyzer.compute_stable_id(
+                            member, kind="field", name=m_full,
+                            file_stable_id=file_stable_id,
+                        ),
+                        line_span=m_end - m_start + 1,
+                    )
+                    analysis.symbols.append(m_sym)
+                    analysis.node_for_symbol[m_sym.id] = member
+
         # Function definition
         elif node.type == "function_definition":
             result = _extract_function_name(node, source)
