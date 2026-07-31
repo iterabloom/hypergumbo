@@ -1,0 +1,45 @@
+Original commit body from 330014b721bf3b7e7baa4a24e29e3166acef0244:
+
+test_validation_report_empty.py failed on all four substrates with 2
+un-allow-listed ADR-0023 §3 runtime_coherence offenders against a
+shrink-only baseline of 1, plus a stale go route assertion. Both were
+invisible because smart-test selects that file only when a module it
+imports changes, and dev's committed manifest did not contain it — so
+every merged PR passed CI over a red gate (INV-kinin's first measured
+consequence).
+
+Provenance measured, not inferred: at 9baaa9afbd^ (the parent of
+WI-duguk's "emit enum variants and trait members") the corpus yields
+exactly 1 offender. WI-duguk introduced the second by rooting a trait
+over its own required methods.
+
+Ruled LEGITIMATE and allow-listed via an ADR-0023 §3 amendment. The two
+edge types do not share a destination — contains names the trait's own
+requirement (MyTrait::method), dispatches_to names the implementation
+(MyStruct::method) — so this is two distinct relationships over one
+endpoint shape, the same reasoning that admitted the file-anchor
+entries. The baseline was NOT raised: a shrink-only baseline lifted to
+accept a breach ratifies the drift.
+
+The entry rules on the partition only and explicitly does not ratify the
+anchoring that made it necessary. Root cause is filed as INV-tihim:
+linkers/type_hierarchy is the framework-agnostic linker that emits
+interface-method -> impl-method dispatches_to, and it cannot fire for
+Rust because its name-splitting knows "#" and "." but not "::" — while
+linkers/containment's _SEPARATORS knows all three. One fact, two homes.
+Measured on the corpus, every other language already anchors dispatch
+method->method; Rust is the sole outlier.
+
+Two stale rationales removed rather than worked around: the linker
+docstring's "the Rust analyzer does not emit the trait's required-method
+list" (false since WI-duguk), and the in-test claim that amending the
+allow-list would be "governance-touching" (neither docs/adr/** nor the
+allowlist yaml is on the AGENTS.md governance list) — that sentence is
+what made the breach look unfixable in-band.
+
+Go fix: route markers moved to "{METHOD} {path}" with handler identity
+in meta (WI-zugob). The assertion now reads meta["handler_name"] —
+measured; the item proposed meta["handler_ref"], which other producers
+use but the go path does not emit.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
