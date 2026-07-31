@@ -1020,7 +1020,7 @@ def _load_toml(content: str) -> dict[str, Any] | None:
         import tomllib
     except ImportError:  # pragma: no cover - py3.10 fallback
         try:
-            import tomli as tomllib  # type: ignore[no-redef]
+            import tomli as tomllib
         except ImportError:  # pragma: no cover
             return None
     try:

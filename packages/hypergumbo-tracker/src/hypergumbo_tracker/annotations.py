@@ -116,7 +116,7 @@ def annotation_from_dict(data: dict[str, object]) -> Annotation:
         ValueError: If the ``kind`` field is missing or unrecognized.
     """
     kind = data.get("kind")
-    cls = _ANNOTATION_KINDS.get(kind)  # type: ignore[arg-type]
+    cls = _ANNOTATION_KINDS.get(kind)
     if cls is None:
         raise ValueError(f"Unknown annotation kind: {kind!r}")
     fields = {k: v for k, v in data.items() if k != "kind"}

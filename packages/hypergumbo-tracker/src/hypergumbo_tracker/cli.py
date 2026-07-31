@@ -1697,7 +1697,7 @@ def _cmd_tags_deprecate(args: argparse.Namespace, ts: TrackerSet) -> int:
 
 
 def _warn_deprecated_tags(
-    tracker_root: "Path",  # type: ignore[name-defined]
+    tracker_root: "Path",
     tags: list[str],
 ) -> None:
     """Emit one stderr warning per deprecated tag being applied.

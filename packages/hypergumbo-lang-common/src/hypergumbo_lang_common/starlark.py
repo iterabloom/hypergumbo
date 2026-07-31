@@ -523,7 +523,7 @@ class StarlarkAnalyzer(TreeSitterAnalyzer):
                 load_aliases=load_aliases,
             )
 
-            _extract_starlark_edges(ctx, tree.root_node, local_symbols, resolver, load_aliases)  # type: ignore
+            _extract_starlark_edges(ctx, tree.root_node, local_symbols, resolver, load_aliases)
 
         duration_ms = int((_time.time() - start_time) * 1000)
         return AnalysisResult(
