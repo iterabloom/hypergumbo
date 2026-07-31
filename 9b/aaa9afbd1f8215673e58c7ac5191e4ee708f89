@@ -1,0 +1,79 @@
+Original commit body from 92d74c9bea99b116041578cdcedfbd3a28ae3c35:
+
+Rust emitted the `enum` and `trait` CONTAINERS but nothing inside them,
+so the containment linker had nothing to root and a reverse slice from
+either returned the container alone -- which a consumer reads as "this
+enum is dead" / "this trait has no users". Drains both of rust's
+container-member parity holes.
+
+Three distinct gaps behind one symptom, each measured:
+
+  * an `enum_variant` produced no symbol at all;
+  * a `function_signature_item` (trait method, no default body) produced
+    no symbol at all;
+  * a `function_item` INSIDE a `trait_item` (a method WITH a default
+    body) DID produce one -- but as kind="function" with a BARE name
+    (`area`, not `Drawable::area`), indistinguishable from a
+    module-level free function and unrooted by the containment linker,
+    whose parent extraction needs a separator in the name.
+
+The third is the one a naive fix misses: it was already emitting a
+symbol inside the trait's span, so a test asserting only "the container
+has a member" would have passed against the bug.
+
+Naming follows what the file already does -- `rust.py` builds
+`{impl_target}::{func_name}` for impl methods and already keys enum
+variant field types as `{enum_name}::{variant_name}`. `::` is one of the
+containment linker's separators, so a member named `Owner::member` roots
+for free. Variants are kind="field" (the shape rust.py's own struct-field
+loop uses, and the choice D and Nim already made); trait members are
+kind="method".
+
+Measured end-to-end:
+
+  slice --entry Color    --language rust --reverse   1 node  -> 4
+  slice --entry Drawable --language rust --reverse   2 nodes -> 4
+
+The old 2 for Drawable came via `implements` edges, not class expansion,
+so a node-count check on a trait would have read as a false pass.
+
+The trait owner is a SEPARATE lookup from the impl target, deliberately.
+`_get_impl_target` has six callers, most in call/receiver resolution
+where it answers "what type is `self` here?" -- and a trait is not a type
+a receiver can be, so widening it would silently change how those sites
+resolve. `_get_trait_owner` is used only by the emission paths and stops
+at the first `impl_item`, because in `impl Drawable for Service` the
+methods belong to Service. Pinned by a regression test (`Service::draw`
+present, `Drawable::run` absent) plus a direct white-box test of the
+impl-stops-the-walk branch, which the production caller short-circuits
+(`owner = impl_target or _get_trait_owner(...)`) and which is
+load-bearing rather than decorative.
+
+An existing gate caught a real cross-module break, which is why this
+touches two source files. `rust_scip.compute_rust_stable_id_from_source`
+recomputes rust.py's identities from source so the SCIP-backed
+rust-analyzer pass and the tree-sitter pass can dedup (WI-zakub parity).
+It walked `function_item` only, so the moment rust.py emitted a
+trait-signature method the parity test failed with `helper=None`.
+rust-analyzer's SCIP emit DOES index trait method declarations, so these
+are exactly the symbols both passes see. Node-type filter and owner
+resolution are now mirrored there, and the new branch computes identity
+exactly as the `function_item` branch does (normalized signature in the
+type slot, stable_id=None when normalization fails).
+
+`_extract_rust_signature` also accepts `function_signature_item`: that
+node carries the same parameters/return_type fields and differs only in
+having no body, which the extractor never read. For a trait contract the
+signature is the member's entire content, so declining to extract it
+would make the emitted symbol strictly less useful than its impl-side
+counterpart.
+
+Ratchet promotion was forced, not remembered: the G2 holes are
+xfail(strict=True), so both rust cells XPASSed and FAILED the run until
+removed from KNOWN_HOLES in this same commit. Remaining: 4 of 5
+analyzers still emit no enum variants (typescript, java, csharp, swift);
+2 of 6 still miss abstract-type members (typescript, swift). The spec's
+scope note is updated to match -- it named rust as vacuous as of the
+previous commit.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
