@@ -22,3 +22,10 @@
     pr_ref:  # 44c6
     description: "Add a mypy job to .forgejo/workflows or analogous CI workflow. Phase 1: report-only annotations; PR doesn't fail on mypy errors. Phase 2 (after W4 clean): blocking. Coordinate with smart-test affected-tests selection — only re-run mypy on changed packages if feasible. Capture output to .ci/mypy-output.log per the output-capture-long-running playbook."  # 44c6
     fields: {}  # 44c6
+- op: discuss  # 117b
+  at: '2026-07-31T00:08:18Z'  # 117b
+  by: agent  # 117b
+  actor: jgstern_agent  # 117b
+  clock: 2  # 117b
+  nonce: 117b  # 117b
+  message: "FINDING from WI-basat (PR #101), recorded as a decision input, deliberately NOT executed from another item's scope.\n\n--mode=strict DOES NOT REQUIRE A DRAINED SURFACE. The ramp is documented across the notebooks and the plan as \"grind 1083 -> 0, THEN WI-rabum flips CI blocking\", which reads as a hard sequencing dependency. Mechanically it is not one: check-mypy-ratchet fails in strict mode only when a code GROWS against the baseline, never on the absolute count. Verified on merged dev at 1080 — mode=strict exits 0 today.\n\nWHY IT MATTERS HERE. WI-basat existed because seven errors accumulated silently between 07-20 and 07-30. The cause was not that anyone ignored a failure; it is that the only signal is a NON-BLOCKING warning, which is by definition a signal nobody must act on. A blocking ratchet is the mechanism that prevents this class, and it is available now rather than after the drain.\n\nWHAT IS NOT SETTLED, AND WHY THIS IS NOT BEING FLIPPED UNILATERALLY. Blocking is a real behavioural change to every PR, and the ratchet compares counts produced by whatever mypy the CI image installs — a mypy release that changes categorisation could shift counts and block every PR at once, independent of any code change. The CI job does a full editable install for parity, but parity across a mypy upgrade is not guaranteed. That risk is WI-rabum's to weigh; ci.yml is not a governance file, so this is a judgment call rather than an approval gate."  # 117b
