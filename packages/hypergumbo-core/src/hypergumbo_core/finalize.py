@@ -84,6 +84,7 @@ from .visibility import (
     compute_visibility,
 )
 from .spec_validator import (
+    ValidationViolation,
     build_validation_report,
     compute_stable_id_stats,
     validate_ir,
@@ -142,7 +143,7 @@ def _relativize_ir_paths(
     """
     prefix = str(repo_root) + "/"
 
-    def _relativize_meta(meta: "dict | None") -> None:
+    def _relativize_meta(meta: "dict[str, Any] | None") -> None:
         """Relativize prefix-bearing ID strings in a meta dict, in place.
 
         SHAPE CONTRACT (load-bearing — read before threading a new id-embedding
@@ -207,12 +208,12 @@ class FinalizeContext:
     symbols: "list[Symbol]"
     edges: "list[Edge]"
     usage_contexts: "list[UsageContext]"
-    analysis_runs: list[dict]
-    behavior_map: dict
+    analysis_runs: list[dict[str, Any]]
+    behavior_map: dict[str, Any]
     limits: "Limits"
     repo_root: Path
     pass_metadata: PassMetadataLookup
-    violations: list = field(default_factory=list)
+    violations: list[ValidationViolation] = field(default_factory=list)
     repo_fingerprint: str = ""  # set by sub-step 4; surfaced by _freeze
 
 
@@ -220,11 +221,11 @@ class FinalizeContext:
 class FinalizedMap:
     """The single reconciled view §8's round-trip test asserts on (shallow ``frozen``)."""
 
-    behavior_map: dict
-    nodes: tuple
-    edges: tuple
+    behavior_map: dict[str, Any]
+    nodes: tuple[dict[str, Any], ...]
+    edges: tuple[dict[str, Any], ...]
     repo_fingerprint: str
-    validation_report: dict
+    validation_report: dict[str, Any]
 
 
 def _finalize_re_relativize(ctx: FinalizeContext) -> None:
@@ -509,7 +510,7 @@ def _finalize_referential_integrity(ctx: FinalizeContext) -> None:
     ctx.violations.extend(validate_ir(ctx.symbols, ctx.edges, ctx.analysis_runs))
 
 
-def _violation_sort_key(v) -> tuple:
+def _violation_sort_key(v: ValidationViolation) -> tuple[str, str, str, str, str]:
     """Total, deterministic order for validation violations (ADR-0043 §6 determinism).
 
     Sorting before the report is built makes the emitted ``validation_report.violations``

@@ -98,9 +98,9 @@ class UsagePatternSpec:
     position: str | None = None
 
     # Compiled regex patterns
-    _kind_re: re.Pattern | None = field(default=None, repr=False, compare=False)
-    _name_re: re.Pattern | None = field(default=None, repr=False, compare=False)
-    _position_re: re.Pattern | None = field(default=None, repr=False, compare=False)
+    _kind_re: re.Pattern[str] | None = field(default=None, repr=False, compare=False)
+    _name_re: re.Pattern[str] | None = field(default=None, repr=False, compare=False)
+    _position_re: re.Pattern[str] | None = field(default=None, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         """Compile regex patterns for efficiency."""
@@ -282,7 +282,7 @@ class Pattern:
         # WI-limas: compile per-key meta_match regexes. Values that don't
         # appear on Symbol.meta (or whose values fail to match) yield no
         # match, mirroring framework_role semantics.
-        self._meta_match_re: dict[str, re.Pattern] | None = (
+        self._meta_match_re: dict[str, re.Pattern[str]] | None = (
             {key: re.compile(pat) for key, pat in self.meta_match.items()}
             if self.meta_match
             else None
@@ -619,7 +619,7 @@ class Pattern:
         return None
 
     def _extract_http_method(
-        self, metadata: dict[str, Any] | str, match: re.Match, dec_name: str
+        self, metadata: dict[str, Any] | str, match: re.Match[str], dec_name: str
     ) -> str | None:
         """Extract HTTP method from decorator match.
 
@@ -660,7 +660,7 @@ class Pattern:
         return None
 
     def _extract_http_method_from_annotation(
-        self, metadata: dict[str, Any] | str, match: re.Match, ann_name: str
+        self, metadata: dict[str, Any] | str, match: re.Match[str], ann_name: str
     ) -> str | None:
         """Extract HTTP method from annotation match.
 
@@ -1992,8 +1992,8 @@ _HTTP_METHOD_NAMES: frozenset[str] = frozenset(
 
 
 def expand_class_based_view_routes(
-    symbols: list, origin_run_id: str = "",
-) -> tuple[list, set[str]]:
+    symbols: "list[Symbol]", origin_run_id: str = "",
+) -> "tuple[list[Symbol], set[str]]":
     """Expand CBV routes into one route per declared HTTP method.
 
     WI-lojoh: when a Django ``re_path``/``path``/``url`` registers a view via
@@ -2041,7 +2041,7 @@ def expand_class_based_view_routes(
             cls_methods.setdefault(cls_name, set()).add(method_name)
 
     pass_id = make_pass_id("django-cbv-method-expander")
-    new_routes: list = []
+    new_routes: "list[Symbol]" = []
     removed_ids: set[str] = set()
 
     for sym in symbols:

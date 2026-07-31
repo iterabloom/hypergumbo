@@ -53,7 +53,7 @@ import re
 from dataclasses import dataclass, field
 from enum import IntEnum
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 
 class Tier(IntEnum):
@@ -86,7 +86,7 @@ class DependencyManifest:
     assigned by file classification — never by this manifest classifier.
     """
 
-    entries: dict[str, dict] = field(default_factory=dict)
+    entries: dict[str, dict[str, Any]] = field(default_factory=dict)
 
     def classify_import(self, import_path: str) -> "Tier":
         """Classify the supply-chain *tier* of an external import path.
@@ -143,7 +143,7 @@ class DependencyManifest:
 
         Later entries override earlier ones for the same module path.
         """
-        merged: dict[str, dict] = {}
+        merged: dict[str, dict[str, Any]] = {}
         for m in manifests:
             merged.update(m.entries)
         return cls(entries=merged)
@@ -165,7 +165,7 @@ class SupplyChainConfig:
     derived_patterns: list[str] = field(default_factory=list)
     internal_package_roots: list[str] = field(default_factory=list)
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         """Serialize to dict for JSON output."""
         return {
             "first_party_patterns": self.first_party_patterns,
@@ -174,7 +174,7 @@ class SupplyChainConfig:
         }
 
     @classmethod
-    def from_dict(cls, data: dict) -> "SupplyChainConfig":
+    def from_dict(cls, data: dict[str, Any]) -> "SupplyChainConfig":
         """Parse from dict."""
         return cls(
             first_party_patterns=data.get("first_party_patterns", []),
@@ -992,7 +992,7 @@ def _normalize_pep503(name: str) -> str:
     return _WORKSPACE_NAME_NORMALIZE_RE.sub("-", name).lower()
 
 
-def _own_distribution_name(data: dict) -> Optional[str]:
+def _own_distribution_name(data: dict[str, Any]) -> Optional[str]:
     """Read a package's OWN distribution name from parsed ``pyproject.toml``
     data. PEP 621 ``[project].name`` is preferred; Poetry
     ``[tool.poetry].name`` is the fallback. Returns ``None`` when neither is
@@ -1012,7 +1012,7 @@ def _own_distribution_name(data: dict) -> Optional[str]:
     return None
 
 
-def collect_workspace_package_names(repo_root: Path) -> set:
+def collect_workspace_package_names(repo_root: Path) -> set[str]:
     """Collect the PEP 503-normalized distribution names of every in-repo
     Python package (workspace member).
 
@@ -1034,7 +1034,7 @@ def collect_workspace_package_names(repo_root: Path) -> set:
     from .discovery import DEFAULT_EXCLUDES
 
     skip = set(DEFAULT_EXCLUDES)
-    names: set = set()
+    names: set[str] = set()
     stack = [repo_root]
     while stack:
         cur = stack.pop()
