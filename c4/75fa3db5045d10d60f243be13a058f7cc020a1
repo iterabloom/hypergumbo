@@ -1,0 +1,47 @@
+Original commit body from 7f43c94bb9c47cc37a6bc1b94c96693e24e1b473:
+
+Span helpers in router_routes/controller_routes, tree-cursor walkers in
+fingerprint, **kwargs: Any in the analyzer registry, RegisteredLinker in
+pass_metadata, and the two view-template linkers.
+
+OPTIONAL-DEPENDENCY ANNOTATIONS. view_template_laravel and
+view_template_spring import tree-sitter INSIDE A TRY, because these
+linkers degrade gracefully when the optional grammar is absent. Their
+annotations therefore name Optional["tree_sitter.Parser"] under
+TYPE_CHECKING and the runtime import graph is untouched. A module-scope
+import added to satisfy an annotation would convert "this linker quietly
+does nothing" into "the tool fails to start". Same reasoning for css.py
+and toml_config.py in the previous batch.
+
+FOUR MORE UNGUARDED Node.text DEREFERENCES, AND THE FIX DIFFERS PER SITE.
+tree_sitter.Node.text is `bytes | None`. Annotating the node parameters
+exposed four bare .text.decode(...) calls in view_template_spring:
+
+  * two decode text that is immediately COMPARED (== method_short_name,
+    != "ModelAndView"). An empty-string default is correct there — the
+    comparison fails and existing logic handles the non-match.
+  * two decode text that BECOMES A VIEW NAME emitted as an edge. An
+    empty-string default would mint a reference to a view whose name
+    could not be read: a silent wrong-value bug, strictly worse than the
+    crash it replaces. Those bail (return None / continue).
+
+A blanket `if X.text else ""` across all four would have satisfied mypy,
+passed every test, and introduced empty-named edges. Same shape as the
+Counter[int]-on-string-keys error earlier in this campaign: the pattern
+is uniform, the correct answer is not.
+
+THIS IS NOW A MEASURED CLASS: 34 .text.decode( sites in packages/*/src/,
+27 guarded, ~7 not. The unguarded ones are INVISIBLE to mypy until their
+receiver is annotated, because an untyped parameter makes node.text an
+Any. Two files found so far, each by annotating something else, and each
+half-guarding its own idiom. They surface one batch at a time, which the
+blocking whole-tree ratchet turns into a forcing function rather than a
+leak.
+
+pass_metadata takes RegisteredLinker as a DIRECT runtime import, not a
+type-only one: the module already imports get_all_linkers from that same
+module, so the cycle a TYPE_CHECKING import would avoid does not exist.
+
+Baseline ratcheted 797 -> 766. 15903 tests pass.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
