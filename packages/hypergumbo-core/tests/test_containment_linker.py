@@ -294,6 +294,45 @@ class TestContainmentLinker:
         assert result.edges[0].src == iface.id
         assert result.edges[0].dst == method.id
 
+    def test_protocol_contains_requirement(self) -> None:
+        """WI-duguk: `protocol` is a container exactly like `interface`.
+
+        Its absence from CONTAINER_KINDS made Swift/Obj-C protocol containment
+        structurally impossible: with the requirements emitted and correctly
+        named `Drawable.draw`, the protocol still scored `contains_out=0` while
+        a sibling `enum` and `struct` in the same file each rooted 3 members.
+        No analyzer-side change could have fixed that — which is why the
+        emission-parity column (span nesting, one analyzer in isolation) can
+        read green while the pipeline outcome stays broken.
+        """
+        proto = _sym(
+            "swift:Shapes.swift:1-10:Drawable:protocol",
+            "Drawable",
+            "protocol",
+            language="swift",
+            path="Shapes.swift",
+        )
+        requirement = _sym(
+            "swift:Shapes.swift:2-2:Drawable.draw:method",
+            "Drawable.draw",
+            "method",
+            language="swift",
+            path="Shapes.swift",
+            start=2,
+            end=2,
+        )
+
+        ctx = LinkerContext(
+            repo_root=Path("/test"),
+            symbols=[proto, requirement],
+            edges=[],
+        )
+        result = link_containment(ctx)
+
+        assert len(result.edges) == 1
+        assert result.edges[0].src == proto.id
+        assert result.edges[0].dst == requirement.id
+
     def test_nested_class_method(self) -> None:
         """Handles nested class: OuterClass.InnerClass.method -> InnerClass contains method."""
         outer = _sym("py:app.py:1-30:Outer:class", "Outer", "class")

@@ -553,13 +553,23 @@ def slice_graph(
     #
     # ADR-0027 Phase-2 audit (WI-jukav): every member is AXIS_LANGUAGE_CONSTRUCT
     # (Cluster A) and stable across Phase 3. Intentionally narrower than
-    # ``linkers.containment.CONTAINER_KINDS`` (which adds ``service``, ``message``
-    # for proto IDL nesting) — slice expansion targets ``contains`` edges from
-    # OOP-style class containers, not RPC service nodes. Forward-compatible.
+    # ``linkers.containment.CONTAINER_KINDS`` (which adds ``message`` for proto
+    # IDL nesting, plus the ``contract``/``library``/``type``/``object``/
+    # ``union``/``instance`` language-construct kinds) — slice expansion targets
+    # ``contains`` edges from OOP-style containers, not IDL nesting nodes.
+    # Forward-compatible. (This comment also named ``service``; that was a
+    # pre-ADR-0027-fold fossil — no producer emits ``kind="service"``.)
     # INV-hojus: ``file`` is the canonical "this file" Symbol (orchestrator
     # synthesis + py.py for Python's executable-code files); include it so
     # slice traversal can expand from a file node into its top-level members.
-    _CONTAINER_KINDS = {"class", "interface", "module", "struct", "trait", "enum", "file"}
+    # WI-duguk: `protocol` (Swift, Objective-C) belongs here for the same
+    # reason `interface` does — reverse-slicing from a protocol should reach
+    # the callers of its requirements. Its absence meant a protocol entry was
+    # never expanded even once the containment linker rooted its members.
+    _CONTAINER_KINDS = {
+        "class", "interface", "module", "struct", "trait", "enum", "protocol",
+        "file",
+    }
 
     # Initialize with entry nodes
     for entry in entry_nodes:
