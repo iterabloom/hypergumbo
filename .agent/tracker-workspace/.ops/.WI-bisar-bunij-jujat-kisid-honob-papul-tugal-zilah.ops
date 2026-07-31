@@ -1,0 +1,21 @@
+- op: create  # 7737
+  at: '2026-07-31T00:52:34Z'  # 7737
+  by: agent  # 7737
+  actor: jgstern_agent  # 7737
+  clock: 1  # 7737
+  nonce: '7737'  # 7737
+  data:  # 7737
+    kind: work_item  # 7737
+    title: "top-level test mapper is 1:1, so 10 of 11 auto-pr test files are never selected per-PR"  # 7737
+    status: todo_hard  # 7737
+    priority: 1  # 7737
+    parent:  # 7737
+    tags:  # 7737
+    - infra  # 7737
+    - testing  # 7737
+    isbefore: []  # 7737
+    duplicate_of: []  # 7737
+    not_duplicate_of: []  # 7737
+    pr_ref:  # 7737
+    description: "The WI-jozan top-level test mapper is 1:1, so nearly every top-level test file\nit was built to reach is still selected by nothing.\n\n`.agent/hooks/_shared/top_level_test_map.py` maps a changed `scripts/<name>` to\nexactly one candidate: `tests/test_<name, hyphens->underscores>.py`. Any other\ntest file covering that script is invisible to per-PR selection.\n\nMEASURED on scripts/auto-pr (2026-07-30):\n\n  ten test files exist   tests/test_autopr_closure_guard.py\n                         tests/test_autopr_desync_fallback.py\n                         tests/test_autopr_exit2_retry.py\n                         tests/test_autopr_github_arm.py\n                         tests/test_autopr_merge_ground_truth.py\n                         tests/test_autopr_ops_union_restore.py\n                         tests/test_autopr_rahib_convergence.py\n                         tests/test_autopr_result_sentinel.py\n                         tests/test_autopr_title_desc_flags.py\n                         tests/test_autopr_tracker_id.py\n  mapper looks for       tests/test_auto_pr.py   (did not exist until WI-libok)\n  therefore selected     0 of 141 tests\n\nThe whole chain then goes quiet: a change touching only `scripts/auto-pr`\nproduces no reverse-slice (that walks packages/*/src/**), smart-test's TDD\nfallback scans only `packages/*/tests/` so root-level tests cannot rescue it,\nthe manifest is written with \"Selected tests: 0\", and ci.yml:811 prints\n\"No Python source files changed - skipping pytest\". A regression in the script\nthat merges every PR in this repo ships with no per-PR test signal at all.\n\nWI-libok worked around it for one file by naming its suite `tests/test_auto_pr.py`\nto match the mapper's contract. That makes the new guard's ratchet execute, and\ndoes nothing for the other ten.\n\nThis is the mechanism's own stated purpose unmet: the module docstring says it\nexists because \"a PR that only touches .agent/hooks/_shared/*.py or scripts/*\nproduced an empty slice and the per-PR CI gate was silent.\"\n\nWHY THIS WAS INVISIBLE. The mapper's tests (tests/test_top_level_test_map.py)\nbuild an isolated tmp tree \"so they do not depend on the repo's current test\nlayout\" -- a deliberate and defensible choice that also means no test compares\nthe mapping against the real tests/ directory. The unit is correct; the wiring\ninto this repo's actual filenames is what is unmeasured. Same shape as the\nINV-fahub lesson that a component correct at unit level can be inert in the\npipeline.\n\nCANDIDATE FIXES\n\n  (a) Prefix-match: map `scripts/<name>` to `tests/test_<name>*.py`, i.e. glob\n      rather than exact-match. Cheap, and it picks up all ten immediately.\n      Risk: over-matching where a short script name prefixes an unrelated test.\n  (b) Keep 1:1 but add a coverage gate -- a test asserting every\n      `tests/test_*.py` is reachable from some top-level source path, so an\n      unreachable test file fails CI rather than sitting dark.\n  (c) Rename the ten files to a mapped prefix. Rejected as churn that the next\n      contributor re-introduces; it fixes instances, not the class.\n\n(a) and (b) compose: (a) closes today's gap, (b) prevents the next one and is\nthe structural half. Worth checking whether `.agent/hooks/_shared/*.py` has the\nsame shape before choosing.\n\nGOVERNANCE: `.agent/**` requires human approval; do not self-merge."  # 7737
+    fields: {}  # 7737
