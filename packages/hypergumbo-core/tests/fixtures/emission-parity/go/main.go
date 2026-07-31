@@ -36,6 +36,12 @@ func (s Service) Run() string {
 	return Process([]int{1, 2, 3}, true)
 }
 
+// Drawable is an abstract type whose member signatures are container members.
+type Drawable interface {
+	Draw() string
+	Area() float64
+}
+
 func main() {
 	Service{}.Run()
 }
