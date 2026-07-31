@@ -1,0 +1,55 @@
+Original commit body from b2765825c7745a2919bfb9362e2e3f00fc7407e6:
+
+A prepended stub dir is an allowlist implemented as a blocklist: it
+intercepts the tools it remembered to fake and passes everything else
+through to the real binary, silently, because the un-faked tool works.
+
+bindir_with_fakes(gh=False) placed no fake gh, but /usr/bin/gh stayed
+reachable, so scripts/contribute:240's `command -v gh` probe succeeded
+and the class named TestGitHubFallbackWhenGhAbsent ran with gh present --
+the real binary calling api.github.com/graphql and failing on HTTP 401.
+It passed on CI only because those runners have no gh: a green that
+measured the runner image rather than the code.
+
+No prepend-side trick fixes it. A shim satisfies `command -v`; a
+directory or dangling symlink named gh is skipped and the lookup
+continues; and gh sits in /usr/bin beside git, sed and awk, so filtering
+its directory would take the script's real dependencies with it. The
+harness now builds a shadow dir -- one symlink per executable on the
+inherited PATH, minus gh, built once per process (~400ms) -- and runs
+scripts with the fake bindir followed by that shadow.
+
+An env seam in scripts/contribute was the alternative and was rejected:
+it puts a test-only branch in production code, and that file is
+governance. The harness-only fix needs neither.
+
+Credential exposure closed too: the scrub list popped FORGEJO_TOKEN,
+SELFHOSTED_FORGEJO_TOKEN and HG_GITHUB_TOKEN -- none of which gh reads --
+while omitting GH_TOKEN, GITHUB_TOKEN and GH_ENTERPRISE_TOKEN, which it
+does. All were unset where this was found, so the observed failure was an
+unauthenticated 401; on a box with `gh auth login` the same test would
+have driven an authenticated client.
+
+Scope corrected downward from the filing: there is exactly ONE
+`command -v gh` probe in scripts/, ONE failing test, and the fixture
+upstream is the placeholder github.com/up/r, so an authenticated run
+would have produced an API error, not a real PR. The filed "19 call
+sites" counted uses of the helper, not exposure.
+
+Also fixed, because this change could not otherwise be verified in CI:
+smart-test now always runs a test file you edited, root tests included.
+The changed-test pattern covered only packages/*/tests/, AND the check
+sat inside the TDD fallback that fires only when nothing else was
+selected -- so an edited root test alongside any mapped source was
+silently dropped. Now computed once and unioned unconditionally.
+scripts/smart-test had no tests at all; tests/test_smart_test.py starts
+that coverage by extracting the live regex from the script rather than
+restating it.
+
+The WI-bisar ratchet caught this change's own new harness test one commit
+after shipping; recorded in KNOWN_UNREACHABLE with reasoning, since it
+covers a test helper -- a category of exactly one.
+
+Full root suite: 1427 passed.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
