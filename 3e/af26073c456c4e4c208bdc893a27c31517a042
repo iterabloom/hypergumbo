@@ -1,0 +1,14 @@
+Original commit body from ed71632401ae450d960df0d05462c13d7c9a5b59:
+
+The recency check keys on commit-count distance, and this branch's own two
+commits pushed the recorded generation point to 16 commits ago, one past
+the 15-commit window. Not a content change in the doc's subject matter.
+
+Recorded because the mitigation is not the obvious one: all five
+verify-generated --check gates were pre-flighted GREEN before the first
+push. Pre-flighting is necessary but NOT sufficient — any commit added
+after the pre-flight (here, the manifest fix; more usually auto-pr's own
+rebase onto a moved dev) shifts the window underneath it. Re-check after
+the last commit, not before the first.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
