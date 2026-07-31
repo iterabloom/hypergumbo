@@ -38,11 +38,15 @@ from __future__ import annotations
 from collections import defaultdict, deque
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Optional
+from collections.abc import Mapping, Sequence
+from typing import TYPE_CHECKING, Any, Optional, TypeVar, Union
 
 import yaml
 
 from .edge_types import is_grpc_rpc_implementation
+
+if TYPE_CHECKING:
+    from .cfg import DdgEdge
 
 
 # ---------------------------------------------------------------------------
@@ -149,6 +153,18 @@ class TaintSanitizer:
         return self.qualified_name
 
 
+# Catalog entries that flow through the callee index and the user-override
+# merge. Both expose the (module, name, kind) triple those helpers key on.
+# Deliberately NOT widened to TaintSanitizer: every call site passes a
+# source or sink list, and widening would claim a capability untested here.
+TaintEntry = Union[TaintSource, TaintSink]
+
+# The user-override merge is type-PRESERVING: hand it sources and you get
+# sources back. Widening its return to TaintEntry would let a merged
+# source+sink mapping be assigned onto a sources-only catalog field.
+TEntry = TypeVar("TEntry", bound=TaintEntry)
+
+
 @dataclass
 class TaintFlowFinding:
     """A reported taint-flow violation or confirmed path.
@@ -182,7 +198,7 @@ class TaintFlowFinding:
         """Return verdict string based on sanitization status."""
         return "confirmed_safe" if self.sanitized else "violated"
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         """Serialize to JSON-friendly dict."""
         return {
             "taint_label": self.taint_label,
@@ -205,7 +221,7 @@ class TaintFlowFinding:
 
 
 def _lookup_named_entry(
-    hits: list | None,
+    hits: Sequence[TaintEntry] | None,
     callee_name: str,
     module_hint: str | None,
     ambiguous_names: frozenset[str],
@@ -259,7 +275,9 @@ def _lookup_named_entry(
     )
 
 
-def _build_callee_index(entries: list) -> dict[str, list]:
+def _build_callee_index(
+    entries: Sequence[TaintEntry],
+) -> dict[str, list[TaintEntry]]:
     """Index source/sink entries by short name, qualified name, and bare
     method name (last dotted component), each mapping to the LIST of entries
     registered under that key.
@@ -268,7 +286,7 @@ def _build_callee_index(entries: list) -> dict[str, list]:
     :func:`_lookup_named_entry` can disambiguate by module / ambiguity when
     several catalog entries share a short name (WI-razol).
     """
-    idx: dict[str, list] = defaultdict(list)
+    idx: dict[str, list[TaintEntry]] = defaultdict(list)
     for entry in entries:
         idx[entry.name].append(entry)
         idx[entry.qualified_name].append(entry)
@@ -278,7 +296,7 @@ def _build_callee_index(entries: list) -> dict[str, list]:
 
 
 def _match_propagation_entry(
-    index: dict[str, list],
+    index: Mapping[str, Sequence[TaintEntry]],
     edge_dst: str,
     ambiguous_names: frozenset[str],
     call_construct: str | None = None,
@@ -487,7 +505,7 @@ class TaintCatalogError(Exception):
 
 def _safe_load_catalog_yaml(
     path: Path, section: str, section_type: type,
-) -> dict:
+) -> dict[str, Any]:
     """Parse a taint-catalog YAML file with shape validation.
 
     Raises :class:`TaintCatalogError` (never a raw ``yaml.YAMLError`` or
@@ -802,9 +820,9 @@ def _derive_auto_imports_from_io_primitives(
 
 
 def _merge_with_user_override(
-    auto_by_lang: dict[str, list],
-    user_by_lang: dict[str, list],
-) -> dict[str, list]:
+    auto_by_lang: Mapping[str, Sequence[TEntry]],
+    user_by_lang: Mapping[str, Sequence[TEntry]],
+) -> dict[str, list[TEntry]]:
     """Merge auto-derived entries with user entries; user entries win on
     (module, name, kind) match.
 
@@ -812,7 +830,7 @@ def _merge_with_user_override(
     (module, name, kind) triple is not already declared by the user.
     Works for both TaintSource and TaintSink (both expose those fields).
     """
-    merged: dict[str, list] = {}
+    merged: dict[str, list[TEntry]] = {}
     all_langs = set(auto_by_lang) | set(user_by_lang)
     for lang in all_langs:
         user_list = user_by_lang.get(lang, [])
@@ -1140,7 +1158,7 @@ def _is_taint_call_edge(edge: dict[str, Any]) -> bool:
 
 
 def _build_adjacency(
-    edges: list[dict],
+    edges: list[dict[str, Any]],
 ) -> tuple[dict[str, set[str]], dict[str, set[str]]]:
     """Build forward and reverse adjacency lists from edge dicts.
 
@@ -1191,7 +1209,7 @@ def _build_sanitizer_index_multi(
 
 
 def _register_sanitizer_callers(
-    edges: list[dict],
+    edges: list[dict[str, Any]],
     sanitizer_by_callee: dict[str, list[TaintSanitizer]],
     sanitizer_callers: "dict[str, dict[str, TaintSanitizer]]",
     ambiguous_names: frozenset[str] = frozenset(),
@@ -1242,7 +1260,7 @@ def _register_sanitizer_callers(
 
 
 def propagate_taint_structural(
-    edges: list[dict],
+    edges: list[dict[str, Any]],
     sources: list[TaintSource],
     sinks: list[TaintSink],
     sanitizers: list[TaintSanitizer],
@@ -1449,8 +1467,8 @@ def is_field_tainted(variable: str, tainted_vars: set[str]) -> bool:
 
 
 def propagate_taint_ddg(
-    ddg_edges: list,
-    call_edges: list[dict],
+    ddg_edges: list[DdgEdge],
+    call_edges: list[dict[str, Any]],
     sources: list[TaintSource],
     sinks: list[TaintSink],
     sanitizers: list[TaintSanitizer],
@@ -1501,10 +1519,10 @@ def propagate_taint_ddg(
 
     # Index DDG edges by (def_block, def_line, variable) for forward walk
     # Actually, index by (def_block, variable) → list of use locations
-    ddg_forward: dict[tuple[str, str], list] = defaultdict(list)
-    for edge in ddg_edges:
-        key = (edge.def_block, edge.variable)
-        ddg_forward[key].append(edge)
+    ddg_forward: dict[tuple[str, str], list[DdgEdge]] = defaultdict(list)
+    for ddg_edge in ddg_edges:
+        key = (ddg_edge.def_block, ddg_edge.variable)
+        ddg_forward[key].append(ddg_edge)
 
     # Index sources, sinks, sanitizers by name (same as structural) — a list
     # per name so _lookup_named_entry can disambiguate by module/ambiguity.
@@ -1573,9 +1591,9 @@ def propagate_taint_ddg(
         if source_has_ddg:
             # Find DDG edges originating from the source call site's block
             # Mark all variables defined at the source call as tainted
-            for edge in ddg_edges:
-                if edge.def_block == seed_id:
-                    tainted_at.add((edge.def_block, edge.variable))
+            for ddg_edge in ddg_edges:
+                if ddg_edge.def_block == seed_id:
+                    tainted_at.add((ddg_edge.def_block, ddg_edge.variable))
 
         # Structural BFS for reachability (used for mixed-coverage)
         reachable: set[str] = set()
