@@ -506,7 +506,7 @@ class RAnalyzer(TreeSitterAnalyzer):
             local_symbols = {s.name: s for s in symbols if s.path == rel_path and s.kind == "function"}
 
             _extract_r_edges(
-                tree.root_node,  # type: ignore
+                tree.root_node,
                 source,
                 edges,
                 local_symbols,

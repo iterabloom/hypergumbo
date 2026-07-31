@@ -584,7 +584,7 @@ def _load_source_yaml(path: Path) -> tuple[str, dict[str, list[TaintSource]]]:
                 ))
         sources_by_lang[lang] = lang_sources
 
-    return label, sources_by_lang  # type: ignore[return-value]
+    return label, sources_by_lang
 
 
 def _load_sink_yaml(path: Path) -> dict[str, list[TaintSink]]:

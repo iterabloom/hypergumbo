@@ -152,9 +152,9 @@ def _detect_project_cli_name(repo_root: Path) -> set[str]:
             import tomllib  # pragma: no cover
         except ImportError:  # pragma: no cover
             try:
-                import tomli as tomllib  # type: ignore[no-redef]
+                import tomli as tomllib
             except ImportError:
-                tomllib = None  # type: ignore[assignment]
+                tomllib = None
 
         data: dict | None = None
         if tomllib is not None:

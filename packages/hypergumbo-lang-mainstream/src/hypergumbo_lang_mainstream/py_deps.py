@@ -76,7 +76,7 @@ def _load_pyproject(pyproject_path: Path) -> dict | None:
         import tomllib
     except ImportError:  # pragma: no cover  # Python 3.10 fallback path
         try:
-            import tomli as tomllib  # type: ignore[no-redef]
+            import tomli as tomllib
         except ImportError:
             return None
     try:

@@ -460,7 +460,7 @@ def backfill_from_op_log(tracker_root: Path) -> dict[str, dict[str, str]]:
     out: dict[str, dict[str, str]] = {}
     for name, bucket in per_tag.items():
         out[name] = {
-            k: v for k, v in bucket.items() if v is not None  # type: ignore[misc]
+            k: v for k, v in bucket.items() if v is not None
         }
     return out
 
