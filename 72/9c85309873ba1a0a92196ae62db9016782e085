@@ -1,0 +1,23 @@
+Original commit body from f2025fed3c32793b2ad60cf30a5792c5adad5299:
+
+Two follow-ups to the blocking flip, both surfaced by its own CI run.
+
+INSTRUMENT DRIFT WAS ALREADY LIVE. The dev extras in hypergumbo-core and
+hypergumbo-tracker declared `mypy~=2.1`, which admits 2.2 and 2.3. A fresh
+CI install resolved mypy 2.3.0 while the committed baseline was measured
+locally at 2.1.0 — so the instrument already differed between a developer
+machine and a clean install, silently, with the ratchet comparing counts
+across the two and attributing the difference to code. The mypy job's own
+explicit pin was the only thing keeping that job honest. Both dev extras
+are now pinned to ~=2.1.0 so one series is used everywhere, and adopting a
+newer mypy becomes a deliberate change that must carry its own re-measured
+baseline — which is exactly what the new mismatch check exists to force.
+
+This is the risk WI-rabum was holding the flip for, found to be not
+hypothetical but already in effect.
+
+RECENCY WINDOW. docs/ARCHITECTURE.md was 16 commits stale against a
+15-commit window — six merges today moved it past the edge. Regenerated;
+the check reports 0 commits ago.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
