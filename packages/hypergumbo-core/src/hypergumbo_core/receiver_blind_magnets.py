@@ -47,6 +47,7 @@ from __future__ import annotations
 
 from typing import Any, Iterable, List, Optional
 
+from .member_names import member_owner, member_short_name
 from .paths import is_test_file
 
 __all__ = [
@@ -80,7 +81,6 @@ _RECEIVER_MARKERS = frozenset(
     }
 )
 
-_OWNER_SEPARATORS = ("::", "#", ".")
 
 
 def _get(obj: Any, key: str, default: Any = None) -> Any:
@@ -140,10 +140,7 @@ def owner_of(name: Optional[str]) -> Optional[str]:
     if not name:
         return None
     name = _strip_generics(name)
-    for sep in _OWNER_SEPARATORS:
-        if sep in name:
-            return name.rsplit(sep, 1)[0]
-    return None
+    return member_owner(name)
 
 
 def _evidence_type(edge: Any, meta: "dict[str, Any]") -> Optional[str]:
@@ -280,10 +277,7 @@ def _method_short_name(name: Optional[str]) -> Optional[str]:
     """
     if not name:
         return None
-    for sep in _OWNER_SEPARATORS:
-        if sep in name:
-            return name.rsplit(sep, 1)[1]
-    return name
+    return member_short_name(name)
 
 
 def _harmful_magnet_reason(edge: Any, by_id: "dict[Any, Any]") -> Optional[str]:

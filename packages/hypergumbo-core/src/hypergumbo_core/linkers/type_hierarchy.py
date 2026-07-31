@@ -43,6 +43,7 @@ from typing import TYPE_CHECKING
 
 from ..ir import PASS_VERSION, AnalysisRun, Edge, Symbol, make_pass_id
 from ..paths import is_test_file
+from ..member_names import member_owner, member_short_name
 from ..symbol_kinds import is_abstract_type, type_like_kind_names
 from .registry import (
     LinkerActivation,
@@ -225,13 +226,11 @@ def _get_method_short_name(method_name: str) -> str:
     Returns:
         Short method name (last component)
     """
-    # Handle Ruby-style Class#method
-    if "#" in method_name:
-        return method_name.split("#")[-1]
-    # Handle dot-separated qualified names
-    if "." in method_name:
-        return method_name.split(".")[-1]
-    return method_name
+    # INV-tihim: this hand-rolled `#`/`.` split knew nothing of `::`, so a
+    # Rust `MyTrait::method` returned ITSELF as its short name and could
+    # never name-match an implementor's `Square::area`. The vocabulary now
+    # has one home.
+    return member_short_name(method_name)
 
 
 def _get_class_name_from_method(method_symbol: Symbol) -> str | None:
@@ -251,18 +250,10 @@ def _get_class_name_from_method(method_symbol: Symbol) -> str | None:
     if method_symbol.meta and "class" in method_symbol.meta:
         return method_symbol.meta["class"]
 
-    # Extract from qualified name
-    name = method_symbol.name
-    # Ruby style: Class#method
-    if "#" in name:
-        return name.split("#")[0]
-    # Dot style: Class.method
-    if "." in name:
-        parts = name.rsplit(".", 1)
-        if len(parts) == 2:
-            return parts[0]
-
-    return None
+    # INV-tihim: same defect on the owner side — `::` was absent, so every
+    # Rust member resolved to owner=None and this linker was structurally
+    # incapable of firing for the language.
+    return member_owner(method_symbol.name)
 
 
 def _resolve_method_class_id(

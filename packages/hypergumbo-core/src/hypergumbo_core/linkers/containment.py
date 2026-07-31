@@ -58,6 +58,7 @@ from __future__ import annotations
 import time
 from typing import TYPE_CHECKING
 
+from ..member_names import member_owner
 from ..ir import PASS_VERSION, AnalysisRun, Edge, make_pass_id
 from .registry import LinkerContext, LinkerResult, register_linker
 
@@ -169,10 +170,8 @@ CONTAINER_KINDS = frozenset({
     "file",
 })
 
-# Separators used in method names, ordered by specificity
-# Ruby `#` and Rust `::` are checked before `.` to avoid
-# mis-splitting on languages that use both
-_SEPARATORS = ("#", "::", ".")
+# Separator vocabulary lives in ``member_names`` (INV-tihim): it was
+# recorded in three consumers and they disagreed.
 
 
 def _extract_parent_name(method_name: str) -> str | None:
@@ -192,13 +191,7 @@ def _extract_parent_name(method_name: str) -> str | None:
     Returns:
         The parent name, or None if there is no parent.
     """
-    for sep in _SEPARATORS:
-        if sep in method_name:
-            # rsplit with maxsplit=1 to get the immediate parent
-            parent, _method = method_name.rsplit(sep, 1)
-            if parent:
-                return parent
-    return None
+    return member_owner(method_name)
 
 
 def _find_parent(

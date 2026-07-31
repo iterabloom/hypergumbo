@@ -56,6 +56,7 @@ import time
 from collections import defaultdict
 from typing import TYPE_CHECKING
 
+from ..member_names import member_owner, member_short_name
 from ..ir import PASS_VERSION, AnalysisRun, Edge, make_pass_id
 from .registry import LinkerContext, LinkerResult, register_linker
 
@@ -75,6 +76,27 @@ def _rust_method_owner(name: str) -> str | None:
     if "::" not in name:
         return None
     return name.rsplit("::", 1)[0]
+
+
+def _trait_requirement_short_names(
+    trait_sym: "Symbol", symbols: list["Symbol"],
+) -> frozenset[str]:
+    """Short names of the methods a trait itself declares.
+
+    WI-duguk taught the Rust analyzer to emit `function_signature_item` as
+    ``kind="method"`` named ``"{Trait}::{method}"``, so a trait's required
+    methods are recoverable. Empty when the trait declares none, or when the
+    analyzer failed to emit them — which is why the caller treats empty as
+    "cover everything" rather than "cover nothing".
+    """
+    return frozenset(
+        member_short_name(sym.name)
+        for sym in symbols
+        if sym.language == "rust"
+        and sym.kind == "method"
+        and member_owner(sym.name) == trait_sym.name
+        and (sym.path or "") == (trait_sym.path or "")
+    )
 
 
 def _build_struct_method_index(
@@ -187,7 +209,20 @@ def link_rust_trait_dispatch(ctx: LinkerContext) -> LinkerResult:
         if trait_sym.language != "rust":
             continue
         methods = method_index.get((struct_sym.path or "", struct_sym.name), [])
+        # INV-tihim: linkers/type_hierarchy now emits the PRECISE
+        # requirement->implementation edge for every trait method (it learned
+        # the `::` separator), so re-emitting those here would duplicate it at
+        # a coarser anchor. What it does NOT cover is inherent methods, which
+        # this linker exists to keep reachable. Narrow to exactly those.
+        #
+        # An EMPTY requirement set means "cover everything", not "cover
+        # nothing": the trait may be external, or the analyzer may have failed
+        # to emit its members. Dropping edges there would resurrect the
+        # dead-code false positives this linker was built to prevent.
+        required = _trait_requirement_short_names(trait_sym, ctx.symbols)
         for method in methods:
+            if required and member_short_name(method.name) in required:
+                continue
             key = (trait_sym.id, method.id, "dispatches_to")
             if key in existing_keys:
                 continue
