@@ -46,7 +46,7 @@ from dataclasses import dataclass
 
 from .analyze.registry import ensure_discovered, get_all_analyzers
 from .ir import _get_python_toolchain, compute_pass_version, make_pass_id
-from .linkers.registry import get_all_linkers
+from .linkers.registry import RegisteredLinker, get_all_linkers
 
 # Passes that create an AnalysisRun directly and so appear in neither registry:
 # (pass_id, defining module). Their pass_version is the module's code-hash.
@@ -76,7 +76,7 @@ class PassMeta:
     pass_version: str
 
 
-def _resolve_linker_pass_id(linker) -> str:
+def _resolve_linker_pass_id(linker: RegisteredLinker) -> str:
     """Return the ``pass_id`` a linker emits — its module ``PASS_ID``, else its name."""
     try:
         mod = importlib.import_module(linker.func.__module__)
@@ -102,7 +102,7 @@ class PassMetadataLookup:
         return self.entries.get(pass_id)
 
     @staticmethod
-    def linker_pass_id(linker) -> str:
+    def linker_pass_id(linker: RegisteredLinker) -> str:
         """Expose the linker→pass_id keying rule (the ``PASS_ID`` introspection)."""
         return _resolve_linker_pass_id(linker)
 

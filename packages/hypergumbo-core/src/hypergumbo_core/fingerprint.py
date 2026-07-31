@@ -92,6 +92,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Iterable
 
 if TYPE_CHECKING:
+    import tree_sitter
+
     from .ir import Span, Symbol
 
 
@@ -397,7 +399,9 @@ def _child_gap_texts(node: Any, source: bytes) -> list[str]:
     return gaps
 
 
-def _walk_tree_sitter(cursor, source: bytes, parts: list[str]) -> bool:
+def _walk_tree_sitter(
+    cursor: "tree_sitter.TreeCursor", source: bytes, parts: list[str],
+) -> bool:
     """Iterative pre-order walk producing tokens for the fingerprint.
 
     The cursor is rooted at the located subtree; ``goto_parent`` from
@@ -446,7 +450,7 @@ def _walk_tree_sitter(cursor, source: bytes, parts: list[str]) -> bool:
     return visited > 0
 
 
-def _advance_skip_subtree(cursor) -> bool:
+def _advance_skip_subtree(cursor: "tree_sitter.TreeCursor") -> bool:
     """Move past the current subtree without descending into it."""
     while not cursor.goto_next_sibling():
         if not cursor.goto_parent():

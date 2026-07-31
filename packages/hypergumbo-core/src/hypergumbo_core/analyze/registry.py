@@ -40,7 +40,7 @@ import importlib.metadata
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable, Iterator
+from typing import Any, Callable, Iterator
 
 from .base import AnalysisResult
 from ..ir import compute_pass_version
@@ -242,7 +242,7 @@ def get_all_analyzers() -> Iterator[RegisteredAnalyzer]:
 def run_analyzer(
     name: str,
     repo_root: Path,
-    **kwargs,
+    **kwargs: Any,
 ) -> AnalysisResult:
     """Run a specific analyzer by name.
 
@@ -266,7 +266,7 @@ def run_analyzer(
 
 def run_all_analyzers(
     repo_root: Path,
-    **kwargs,
+    **kwargs: Any,
 ) -> list[tuple[str, AnalysisResult]]:
     """Run all registered analyzers in priority order.
 

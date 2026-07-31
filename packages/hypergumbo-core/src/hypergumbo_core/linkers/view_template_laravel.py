@@ -35,7 +35,10 @@ from __future__ import annotations
 
 from functools import lru_cache
 from pathlib import Path
-from typing import Iterable, Iterator, Optional, Tuple
+from typing import TYPE_CHECKING, Iterable, Iterator, Optional, Tuple
+
+if TYPE_CHECKING:  # pragma: no cover - typing only
+    import tree_sitter
 
 from ..ir import Symbol
 from ._transitive_bases import (
@@ -71,7 +74,7 @@ _TEMPLATE_EXTENSIONS: tuple[tuple[str, str], ...] = (
 
 
 @lru_cache(maxsize=64)
-def _get_php_parser():
+def _get_php_parser() -> Optional["tree_sitter.Parser"]:
     try:  # pragma: no cover - exercised only when tree-sitter is installed
         from tree_sitter import Parser
         from tree_sitter_language_pack import get_language
@@ -92,7 +95,7 @@ def _is_controller_path(path: str) -> bool:
     return False
 
 
-def _parse_php_source(view_path: Path):
+def _parse_php_source(view_path: Path) -> Optional["tree_sitter.Tree"]:
     """Best-effort tree-sitter parse of a PHP source file."""
     parser = _get_php_parser()
     if parser is None:  # pragma: no cover - dep import failure
@@ -104,7 +107,7 @@ def _parse_php_source(view_path: Path):
     return parser.parse(source_bytes)
 
 
-def _walk(node):
+def _walk(node: "tree_sitter.Node") -> Iterator["tree_sitter.Node"]:
     stack = [node]
     while stack:
         n = stack.pop()
@@ -112,7 +115,9 @@ def _walk(node):
         stack.extend(n.children)
 
 
-def _extract_string_arg(node, source_bytes: bytes) -> Optional[str]:
+def _extract_string_arg(
+    node: "tree_sitter.Node", source_bytes: bytes,
+) -> Optional[str]:
     """Extract the first string literal argument from a PHP call node."""
     args_node = node.child_by_field_name("arguments")
     if args_node is None:
@@ -142,8 +147,9 @@ def _strip_php_string_quotes(text: str) -> str:
 
 
 def _find_method_by_short_name_and_line(
-    root, method_short_name: str, body_line: int, source_bytes: bytes
-):
+    root: "tree_sitter.Node", method_short_name: str, body_line: int,
+    source_bytes: bytes,
+) -> Optional["tree_sitter.Node"]:
     """Find a ``method_declaration`` whose name matches and that contains the line."""
     for n in _walk(root):
         if n.type != "method_declaration":
@@ -163,7 +169,9 @@ def _find_method_by_short_name_and_line(
     return None  # pragma: no cover — symbol-to-tree alignment always succeeds
 
 
-def _walk_view_calls_in_method(method_node, source_bytes: bytes):
+def _walk_view_calls_in_method(
+    method_node: "tree_sitter.Node", source_bytes: bytes,
+) -> Iterator[Tuple[str, str, int]]:
     """Yield (detection_pattern, view_name, line) for each ``view(...)`` or
     ``View::make(...)`` call inside the method body."""
     body = method_node.child_by_field_name("body")
