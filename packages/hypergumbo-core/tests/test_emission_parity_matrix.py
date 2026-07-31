@@ -8,6 +8,20 @@ regress silently (the `INV-jahiv` / `INV-loguk` reopen cycles were exactly
 "a sweep claimed parity, nothing kept it honest"). It is the analyzer-side
 complement of the G1 validator ratchet (`test_validation_report_empty.py`).
 
+**Scope — read this before quoting "full parity".** This gate covers 7 of the
+mainstream analyzers (`FIXTURE_ANALYZER`); it **does not gate** the other
+mainstream code languages (php, ruby, scala, kotlin, cpp, groovy, objc, c,
+bash, lua, perl, powershell, sql, jupyter), nor anything in the `extended1` /
+`common` packages. An empty `KNOWN_HOLES` therefore means "every *gated* cell
+is a hard lock", not "the fleet is at parity" — the same distinction the spec
+draws when it reports identity coverage as "~41 of ~70" rather than as done
+(`docs/hypergumbo-spec.md:365`, delegating to ADR-0014's census). The boundary
+is historical: it is 7 analyzers someone picked, not a tier any ADR argues
+for, and `UNGATED_CODE_LANGUAGES` below names what it excludes so the omission
+cannot be mistaken for a claim. `WI-dorop` records three measured
+container-member defects (scala, cpp, kotlin) sitting in that ungated set,
+which is what the gap costs in practice rather than in principle.
+
 Design (see `tests/fixtures/emission-parity/README.md` for the rationale):
 
 * **Injected, uniform fixtures.** Each language fixture deliberately contains
@@ -91,7 +105,11 @@ from typing import Callable
 import pytest
 
 from hypergumbo_core.analyze.base import AnalysisResult
-from hypergumbo_core.analyze.registry import ensure_discovered, run_analyzer
+from hypergumbo_core.analyze.registry import (
+    ensure_discovered,
+    get_all_analyzers,
+    run_analyzer,
+)
 from hypergumbo_core.cli import run_behavior_map
 
 CORPUS = Path(__file__).resolve().parent / "fixtures" / "emission-parity"
@@ -100,7 +118,25 @@ CORPUS = Path(__file__).resolve().parent / "fixtures" / "emission-parity"
 # analyzer; the `javascript` analyzer handles
 # ['javascript', 'typescript', 'vue', 'svelte'], so the `typescript` row
 # exercises the same analyzer over TS syntax (the js-vs-ts contrast INV-golap
-# is about). All eight are availability="core" (no grammar wheel needed).
+# is about).
+#
+# CORRECTION (WI-duguk follow-up): this comment previously read "All eight are
+# availability='core' (no grammar wheel needed)". That was FALSE and it was
+# load-bearing — it was read as the *reason* this matrix stops at eight
+# languages, and it made extending the gate look like it would drag in
+# optional dependencies. Measured against the live catalog, only `python` is
+# availability="core" (it parses with the stdlib `ast`); java, javascript, go,
+# rust, csharp and swift are all availability="extra", the SAME tier as the
+# scala / kotlin / cpp analyzers that are NOT gated here. Their grammars are
+# hard dependencies of `hypergumbo-lang-mainstream` (see its pyproject), so
+# they are installed wherever that package is, CI included.
+#
+# Two unrelated senses of "core" had collided: the catalog's
+# `availability="core"` means "needs no extra dependency", while this file's
+# prose meant "the important ones". There is no dependency barrier to widening
+# this matrix. The real boundary — 7 of the mainstream analyzers, chosen
+# historically and never argued for in an ADR — is declared and enforced by
+# `test_matrix_scope_is_declared_and_exhaustive` below.
 FIXTURE_ANALYZER: dict[str, str] = {
     "python": "python",
     "javascript": "javascript",
@@ -117,6 +153,75 @@ FIXTURE_ANALYZER: dict[str, str] = {
 # tolerating minor per-analyzer shape differences; it fails loudly on a
 # silently-empty (skipped / mis-resolved) run rather than passing vacuously.
 _MIN_SYMBOLS = 3
+
+# ---------------------------------------------------------------------------
+# Declared scope (WI-duguk follow-up)
+#
+# This gate reports "full parity" whenever KNOWN_HOLES is empty. That claim is
+# scoped to FIXTURE_ANALYZER, and nothing used to say so — which is exactly the
+# standing lesson that a gate's "0 violations" is bounded by what its fixtures
+# execute, and that reporting it unscoped is an overstatement even when every
+# number in it is accurate.
+#
+# The spec already has a house convention for this situation: it does not claim
+# complete identity coverage, it says "~41 of ~70" and delegates to ADR-0014's
+# live census (docs/hypergumbo-spec.md:365). The three maps below are the same
+# convention applied to emission parity — every mainstream analyzer is
+# accounted for as gated, an admitted gap, or out of construct scope, and
+# `test_matrix_scope_is_declared_and_exhaustive` fails when a new one appears
+# in none of them. The point is not to bless the boundary; it is to make the
+# boundary VISIBLE and unable to drift silently.
+_MAINSTREAM_PACKAGE = "hypergumbo_lang_mainstream"
+
+# Mainstream CODE-language analyzers this matrix does not gate. These are real
+# coverage gaps, not exemptions — each is a language whose analyzer could carry
+# the uniform construct set and does not have a fixture yet. WI-dorop records
+# three of them (scala, cpp, kotlin) with a measured container-member defect,
+# which is direct evidence that this list is where defects live rather than a
+# theoretical concern.
+UNGATED_CODE_LANGUAGES: dict[str, str] = {
+    "bash": "shell; has functions, no type constructs",
+    "c": "no class/interface; struct + function only",
+    "cpp": "WI-dorop: measured enum-member gap, ungated",
+    "groovy": "full OOP surface (class/interface/trait/enum) — the strongest candidate",
+    "jupyter": "notebook container; emits class/function from code cells",
+    "kotlin": "WI-dorop: measured enum-member gap, ungated",
+    "lua": "dynamic; tables rather than declared types",
+    "objc": "emits class/method/protocol; shares the swift protocol path",
+    "perl": "emits function/module",
+    "php": "full OOP surface incl. traits and enums",
+    "powershell": "emits module/function",
+    "ruby": "full OOP surface incl. modules and mixins",
+    "scala": "WI-dorop: measured enum-member gap, ungated",
+    "sql": "procedures/functions only; no type-member nesting",
+}
+
+# Mainstream analyzers that are OUT OF SCOPE for this matrix by construct, not
+# by priority. The gate's methodology needs every fixture to carry the SAME
+# construct set (a documented callable, a class with a method, a field, an
+# enum with members, an abstract type with members). A config, data, markup or
+# build-manifest format has no such surface, so a row for it would be almost
+# entirely COLUMN_APPLICABILITY exemptions — and an exemption is precisely
+# where a real gap can hide behind a plausible-sounding excuse.
+NON_CONSTRUCT_FORMATS: dict[str, str] = {
+    "cmake": "build script",
+    "css": "stylesheet",
+    "dockerfile": "build manifest",
+    "gitignore": "ignore patterns",
+    "html": "markup",
+    "ini": "config",
+    "json": "data",
+    "make": "build script; its `function` kind is a Makefile target, not a callable",
+    "manifest_targets": "manifest cross-ecosystem targets, not a language",
+    "markdown": "prose",
+    "play-routes": "framework route table, not a language",
+    "properties": "config",
+    "requirements": "dependency manifest",
+    "toml": "config",
+    "xml": "markup",
+    "yaml": "data",
+    "yaml_ansible": "config (Ansible playbooks)",
+}
 
 
 def _callables(res: AnalysisResult) -> list:
@@ -371,6 +476,83 @@ def test_emission_parity_cell(
         f"[{fix_lang}] analyzer emitted no `{col}` over the injected fixture "
         f"(symbols={len(res.symbols)}, edges={len(res.edges)}); the construct "
         "is present in the fixture, so this is an analyzer-emission gap"
+    )
+
+
+def test_matrix_scope_is_declared_and_exhaustive() -> None:
+    """Every mainstream analyzer is gated here, an admitted gap, or out of scope.
+
+    This does NOT assert the boundary is correct — it asserts the boundary is
+    written down. Two failure modes it closes:
+
+    * A new mainstream analyzer lands and silently joins neither the gate nor
+      any declared gap, so "full parity" quietly covers a smaller fraction of
+      the fleet than the day before. The claim degrades with nobody deciding
+      anything.
+    * A reader takes an empty `KNOWN_HOLES` for a fleet-wide guarantee. It is a
+      guarantee about 7 of the mainstream analyzers; `UNGATED_CODE_LANGUAGES`
+      names the ones it says nothing about.
+
+    Adding an analyzer therefore forces a one-line classification, which is the
+    cheapest moment to make that call.
+    """
+    ensure_discovered()
+    mainstream = {
+        a.name for a in get_all_analyzers()
+        if (a.module_path or "").startswith(_MAINSTREAM_PACKAGE)
+    }
+    assert mainstream, "no mainstream analyzers discovered — registry not loaded"
+
+    gated = set(FIXTURE_ANALYZER.values())
+    declared = gated | set(UNGATED_CODE_LANGUAGES) | set(NON_CONSTRUCT_FORMATS)
+
+    unclassified = mainstream - declared
+    assert not unclassified, (
+        "mainstream analyzer(s) absent from this matrix's declared scope: "
+        f"{sorted(unclassified)}. Add each to FIXTURE_ANALYZER (with a fixture "
+        "carrying the uniform construct set), to UNGATED_CODE_LANGUAGES (a real "
+        "coverage gap), or to NON_CONSTRUCT_FORMATS (no class/enum/callable "
+        "surface to be uniform about). Leaving it unclassified silently shrinks "
+        "what this gate's 'full parity' covers."
+    )
+
+    stale = declared - mainstream
+    assert not stale, (
+        f"declared scope names analyzer(s) that no longer exist: {sorted(stale)}"
+    )
+
+    overlap = (
+        (gated & set(UNGATED_CODE_LANGUAGES))
+        | (gated & set(NON_CONSTRUCT_FORMATS))
+        | (set(UNGATED_CODE_LANGUAGES) & set(NON_CONSTRUCT_FORMATS))
+    )
+    assert not overlap, f"analyzer(s) in more than one scope bucket: {sorted(overlap)}"
+
+
+def test_gated_share_of_mainstream_is_disclosed() -> None:
+    """The gated fraction is a minority, and the module docstring says so.
+
+    A guard against the specific way this claim rots: someone drains the last
+    hole, the matrix reports full parity, and the disclosure that it covers a
+    minority of the fleet quietly stops being written down anywhere.
+    """
+    ensure_discovered()
+    mainstream = {
+        a.name for a in get_all_analyzers()
+        if (a.module_path or "").startswith(_MAINSTREAM_PACKAGE)
+    }
+    gated = set(FIXTURE_ANALYZER.values())
+    assert gated < mainstream, "gated set should be a strict subset of mainstream"
+    # Not a quality bar — a tripwire. If this ever stops holding, the docstring's
+    # scope paragraph is describing a world that no longer exists.
+    assert len(UNGATED_CODE_LANGUAGES) >= 1, (
+        "no ungated code languages declared — if the gate really did reach "
+        "every mainstream code language, rewrite the scope paragraph in the "
+        "module docstring instead of emptying this map"
+    )
+    assert "does not gate" in __doc__ or "7 of" in __doc__, (
+        "module docstring no longer discloses that this gate covers a subset "
+        "of the mainstream analyzers"
     )
 
 
