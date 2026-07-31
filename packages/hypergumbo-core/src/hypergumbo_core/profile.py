@@ -54,11 +54,15 @@ Why This Design
 import json
 import re
 from collections.abc import Callable, Iterable
+from typing import TYPE_CHECKING, Any
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 
 from .discovery import find_files
+
+if TYPE_CHECKING:
+    from .ir import Edge, Symbol
 from .taxonomy import LANGUAGE_EXTENSIONS
 
 # Framework detection patterns
@@ -756,11 +760,11 @@ class LanguageStats:
     files: int = 0
     loc: int = 0
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         return {"files": self.files, "loc": self.loc}
 
     @classmethod
-    def from_dict(cls, d: dict) -> "LanguageStats":
+    def from_dict(cls, d: dict[str, Any]) -> "LanguageStats":
         return cls(files=d.get("files", 0), loc=d.get("loc", 0))
 
 
@@ -782,7 +786,7 @@ class RepoProfile:
     # keyed to an empty list — "evidence where the graph supports it".
     framework_evidence: dict[str, list[str]] = field(default_factory=dict)
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         result = {
             "languages": {k: v.to_dict() for k, v in self.languages.items()},
             "frameworks": sorted(self.frameworks),
@@ -801,7 +805,7 @@ class RepoProfile:
         return result
 
     @classmethod
-    def from_dict(cls, d: dict) -> "RepoProfile":
+    def from_dict(cls, d: dict[str, Any]) -> "RepoProfile":
         """Reconstruct a RepoProfile from a dict (e.g., from cached results)."""
         languages = {
             k: LanguageStats.from_dict(v)
@@ -1006,7 +1010,7 @@ def _manifest_has_package(content: str, package: str) -> bool:
 # ---------------------------------------------------------------------------
 
 
-def _load_toml(content: str) -> dict | None:
+def _load_toml(content: str) -> dict[str, Any] | None:
     """Parse TOML content; return None on failure.
 
     Resolves a TOML loader (tomllib on 3.11+, tomli fallback) following the
@@ -3269,8 +3273,8 @@ def _framework_evidence_nodes(
 
 def refine_frameworks(
     profile: "RepoProfile",
-    edges: list,
-    symbols: list,
+    edges: "list[Edge]",
+    symbols: "list[Symbol]",
 ) -> "RepoProfile":
     """Validate and supplement detected frameworks using import edges.
 
