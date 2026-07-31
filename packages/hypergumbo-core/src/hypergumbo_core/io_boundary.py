@@ -34,11 +34,14 @@ from __future__ import annotations
 import urllib.parse
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Iterable, Optional
+from typing import TYPE_CHECKING, Any, Iterable, Optional
 
 import yaml
 
 from .edge_types import is_grpc_rpc_implementation
+
+if TYPE_CHECKING:
+    from .ir import Edge
 
 
 # ---------------------------------------------------------------------------
@@ -170,7 +173,7 @@ ALLOWED_PROVENANCE_HOSTNAME_SUFFIXES: frozenset[str] = frozenset({
 
 
 def _validate_catalog_dict(
-    language: str, status: str, provenance: Optional[dict],
+    language: str, status: str, provenance: Optional[dict[str, Any]],
 ) -> None:
     """Validate a catalog dict against the Plan C, PR B governance rules.
 
@@ -449,7 +452,7 @@ class IoBoundaryCatalog:
     # ``status: in_progress``; required (and validated) for
     # ``status: complete``. Shape: ``{source_url, version, retrieved,
     # notes?}``.
-    stdlib_provenance: Optional[dict] = None
+    stdlib_provenance: Optional[dict[str, Any]] = None
     # Plan C, PR B: stdlib qualified names that are NOT I/O primitives
     # (e.g., ``math.sqrt``). Used by the PR C ``external_potential``
     # filter to drop "first-party calls a stdlib non-IO symbol" from
@@ -686,7 +689,7 @@ class IoBoundaryCatalog:
         return cls._from_dict(data)
 
     @classmethod
-    def _from_dict(cls, data: dict) -> IoBoundaryCatalog:
+    def _from_dict(cls, data: dict[str, Any]) -> IoBoundaryCatalog:
         """Build a catalog from a parsed YAML dict.
 
         Plan C, PR B: validates ``status`` + ``stdlib_provenance`` and
@@ -996,7 +999,7 @@ class IoChain:
     dst_external_boundary: bool = False
     dst_classification_unreliable: bool = False
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         """Serialize to JSON-friendly dict including high-risk flag."""
         return {
             "boundary": self.boundary,
@@ -1032,7 +1035,7 @@ class BoundaryMapEntry:
     leaf_callers: list[str] = field(default_factory=list)
     entry_points_per_leaf: dict[str, list[str]] = field(default_factory=dict)
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         """Serialize to JSON-friendly dict.
 
         Includes per-primitive counts, per-chain detail, and a
@@ -1102,7 +1105,7 @@ class BoundaryMap:
     external_potential_edges: int = 0
     command_launch_edges: int = 0
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         """Serialize to JSON-friendly dict.
 
         Top-level keys form the io-boundaries wire contract pinned by
@@ -1165,7 +1168,7 @@ def _is_traceable_edge(edge: Any) -> bool:
     )
 
 
-def _build_reverse_graph(edges: list) -> dict[str, set[str]]:
+def _build_reverse_graph(edges: list[Edge]) -> dict[str, set[str]]:
     """Build reverse adjacency list (callee → callers) over traceable edge types.
 
     Includes FFI bridge edges so upstream walks cross language boundaries
@@ -1200,9 +1203,9 @@ def _reachable_entry_points(
 
 
 def _compute_external_potential(
-    edges: list,
+    edges: list[Edge],
     catalogs: dict[str, IoBoundaryCatalog],
-    nodes_by_id: dict[str, dict],
+    nodes_by_id: dict[str, dict[str, Any]],
     ep_map: dict[str, set[str]],
 ) -> list[IoChain]:
     """Synthesize ``external_potential`` IoChains for unmatched boundary edges.
@@ -1330,11 +1333,11 @@ def _compute_external_potential(
 
 
 def compute_boundary_map(
-    edges: list,
+    edges: list[Edge],
     catalogs: dict[str, IoBoundaryCatalog],
     *,
     entrypoint_ids: set[str] | None = None,
-    nodes_by_id: dict[str, dict] | None = None,
+    nodes_by_id: dict[str, dict[str, Any]] | None = None,
 ) -> BoundaryMap:
     """Compute the I/O boundary map from a set of edges.
 
@@ -1642,7 +1645,7 @@ def _resolve_ffi_catalog(
 
 
 def tag_io_boundaries(
-    edges: list,
+    edges: list[Edge],
     catalogs: dict[str, IoBoundaryCatalog],
     *,
     call_types: frozenset[str] = frozenset({

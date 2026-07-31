@@ -1596,7 +1596,11 @@ def recompute_view_summary(
         tiers=compute_tier_distribution(omitted),
     )
 
-    summary = {"included": included.to_dict(), "omitted": omitted_summary.to_dict()}
+    # Heterogeneous by construction: two nested summaries plus an optional
+    # int edge count added below.
+    summary: dict[str, Any] = {
+        "included": included.to_dict(), "omitted": omitted_summary.to_dict(),
+    }
     if emit_edge_count:
         summary["included_edges_count"] = len(view_map["edges"])
     view_map["nodes_summary"] = summary

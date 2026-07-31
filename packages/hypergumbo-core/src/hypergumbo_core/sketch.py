@@ -140,7 +140,7 @@ class SketchStats:
     has_entrypoints: bool = False
     has_datamodels: bool = False
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         """Serialize to a JSON-safe dict of the flat scalar fields.
 
         Used to cache the 4x/16x comparison-sketch stats alongside their
@@ -151,7 +151,7 @@ class SketchStats:
         return dataclasses.asdict(self)
 
     @classmethod
-    def from_dict(cls, data: dict) -> "SketchStats":
+    def from_dict(cls, data: dict[str, Any]) -> "SketchStats":
         """Reconstruct from :meth:`to_dict` output, tolerating schema drift.
 
         Unknown keys are ignored and missing keys take their field default, so
@@ -3073,7 +3073,7 @@ def _format_structure_tree(
 
     # Build a tree from paths
     # Tree node: {"name": str, "children": dict, "is_file": bool, "shown": bool}
-    def make_node(name: str, is_file: bool = False) -> dict:
+    def make_node(name: str, is_file: bool = False) -> dict[str, Any]:
         return {"name": name, "children": {}, "is_file": is_file, "shown": False}
 
     root = make_node(repo_root.name)
@@ -3111,7 +3111,7 @@ def _format_structure_tree(
         """
         return _count_dir_items(path, repo_root, name_excludes)
 
-    def render_tree(node: dict, path: Path, prefix: str = "") -> list[str]:
+    def render_tree(node: dict[str, Any], path: Path, prefix: str = "") -> list[str]:
         """Render tree node and its children."""
         lines: list[str] = []
 
@@ -4969,7 +4969,7 @@ def _is_test_symbol(symbol: Symbol) -> bool:
 
 
 def _estimate_test_coverage(
-    symbols: list[Symbol], edges: list
+    symbols: list[Symbol], edges: list[Edge]
 ) -> tuple[int, int, float] | None:
     """Estimate test coverage from call graph using transitive BFS.
 
@@ -5152,7 +5152,7 @@ def _run_analysis(
     profile: RepoProfile,
     exclude_tests: bool = False,
     progress_callback: Callable[..., Any] | None = None,
-) -> tuple[list[Symbol], list, tuple[int, int, float] | None]:
+) -> tuple[list[Symbol], list[Edge], tuple[int, int, float] | None]:
     """Run static analysis to get symbols and edges.
 
     Only runs analysis for detected languages to avoid unnecessary work.
@@ -5173,7 +5173,7 @@ def _run_analysis(
     from .supply_chain import classify_file, detect_package_roots
 
     all_symbols: list[Symbol] = []
-    all_edges: list = []
+    all_edges: list[Edge] = []
 
     # Find which analyzers need to run based on detected languages
     detected_langs = set(profile.languages)
@@ -5521,7 +5521,7 @@ def _select_symbols_two_phase(
         return []
 
     # Track per-file state: next symbol index and pick count
-    file_state: dict[str, dict] = {
+    file_state: dict[str, dict[str, Any]] = {
         f: {"next_idx": 0, "picks": 0, "symbols": syms}
         for f, syms in eligible_by_file.items()
     }
@@ -5626,7 +5626,7 @@ def _select_symbols_two_phase(
 
 def _format_symbols(
     symbols: list[Symbol],
-    edges: list,
+    edges: list[Edge],
     repo_root: Path,
     max_symbols: int = 100,
     first_party_priority: bool = True,
@@ -5936,7 +5936,7 @@ def _format_symbols(
 _NON_FILE_PATH_PREFIX = "<"
 
 
-def _map_source_paths(repo_root: Path, cached_results: Optional[dict]) -> list[Path]:
+def _map_source_paths(repo_root: Path, cached_results: Optional[dict[str, Any]]) -> list[Path]:
     """Distinct absolute source paths named by a behavior map's nodes.
 
     INV-jumim: the read-path scoping (and the ``cmd_sketch`` staleness check)
@@ -5962,7 +5962,7 @@ def _map_source_paths(repo_root: Path, cached_results: Optional[dict]) -> list[P
 
 
 def _file_index_from_map(
-    repo_root: Path, cached_results: Optional[dict]
+    repo_root: Path, cached_results: Optional[dict[str, Any]]
 ) -> "FileIndex | None":
     """Synthesize a :class:`FileIndex` scoped to a behavior map's file universe.
 
@@ -5977,7 +5977,7 @@ def _file_index_from_map(
     return FileIndex.from_paths(repo_root, paths)
 
 
-def _peek_cached_results(repo_root: Path) -> Optional[dict]:
+def _peek_cached_results(repo_root: Path) -> Optional[dict[str, Any]]:
     """Read an existing on-disk behavior map for ``repo_root`` WITHOUT running
     analysis.
 
@@ -6015,7 +6015,7 @@ def generate_sketch(
     max_chunk_chars: int = 800,
     language_proportional: bool = True,
     progress: bool = False,
-    cached_results: Optional[dict] = None,
+    cached_results: Optional[dict[str, Any]] = None,
     with_source: bool = False,
     stats_out: Optional[SketchStats] = None,
     require_sections: Optional[List[str]] = None,
@@ -6074,7 +6074,7 @@ def _generate_sketch_impl(
     max_chunk_chars: int = 800,
     language_proportional: bool = True,
     progress: bool = False,
-    cached_results: Optional[dict] = None,
+    cached_results: Optional[dict[str, Any]] = None,
     with_source: bool = False,
     stats_out: Optional[SketchStats] = None,
     require_sections: Optional[List[str]] = None,
@@ -6514,7 +6514,7 @@ def _generate_sketch_impl(
 
     # Section 5: Data Models (if we have analysis results and budget)
     # ADR-0005: Data Models come after Entry Points, before Source Files
-    datamodels: list = []  # Initialize for structure tree update
+    datamodels: list[DataModel] = []  # Initialize for structure tree update
     if _section_ok("Data Models", remaining_tokens) and symbols:
         datamodels = detect_datamodels(symbols, edges)
         if datamodels:
