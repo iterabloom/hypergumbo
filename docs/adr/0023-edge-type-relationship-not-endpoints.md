@@ -403,6 +403,45 @@ function, javascript function) rather than folded. This is the first non-empty
 state of the allow-list; the superset check still flags any *third*,
 genuinely-anomalous edge type that later appears in one of these partitions.
 
+**Allow-list amendment — Rust trait requirement/dispatch variance (INV-fimon,
+2026-07-31).** WI-duguk taught the Rust analyzer to emit trait members
+(`function_signature_item` → `kind="method"`, named `"{Trait}::{method}"`), so
+the containment linker now roots a trait over its own required methods. The
+`(trait, rust, method, rust)` partition consequently carries `contains`
+alongside the `dispatches_to` that `linkers/rust_trait_dispatch` (WI-kivut)
+emits from a trait to the concrete methods of its impls. The two edges do not
+even share a destination — `contains` names the trait's *own* requirement
+(`MyTrait::method`), `dispatches_to` names the *implementation*
+(`MyStruct::method`) — so this is two genuinely distinct relationships over one
+endpoint shape, the same reasoning that admitted the file-anchor entries above,
+and not an endpoint property leaking into `edge_type`. Admitted rather than
+folded.
+
+*Scope of what this entry does and does not ratify.* It rules on the **partition
+variance only**. It does **not** ratify `rust_trait_dispatch`'s choice to anchor
+the dispatch at the *trait* rather than at the trait's method requirement. That
+anchoring is a Phase-1 approximation whose stated rationale — "hypergumbo's Rust
+analyzer does not emit the trait's required-method list" — became false with
+WI-duguk, and it is separately tracked as **INV-tihim** (the framework-agnostic
+`linkers/type_hierarchy` cannot fire for Rust at all: its member-name splitting
+knows `#` and `.` but not `::`, so the Rust-specific linker exists to cover a gap
+the shared one should have covered). Re-anchoring would dissolve this partition;
+this entry is written so that outcome shrinks the allow-list rather than
+contradicting it.
+
+*Corroboration, and the caveat that goes with it.* Measured on the same corpus
+run, every other language already uses the method→method anchoring — `(interface,
+csharp|go|java|typescript) → (method, …)` carries `contains` alone and `(method,
+csharp|go|java|typescript) → (method, …)` carries `dispatches_to` alone. Rust is
+the only language that anchors dispatch at the *type*, which is what makes it the
+only offender here. The caveat: those method→method partitions are single-valued
+**on this fixture corpus, which contains no intra-language method calls**. On a
+substrate that has them, `(method, L) → (method, L)` would carry `calls`
+alongside `dispatches_to` and need a ruling of its own — for every language, not
+just Rust. So re-anchoring Rust removes this entry rather than relocating it only
+so long as that broader partition stays un-offending; do not treat "the fix
+deletes an allow-list entry" as unconditional.
+
 **3. Cadence — landed.** Static and runtime checks catch known
 offender shapes; the fundamental-concept audit playbook
 (`.agent/agent_playbooks_protocols_sops_skills/what-if-we-dont-know-what-the-fuck-we-are-talking-about-audit-aka-fundamental-concept-audit.md`)
