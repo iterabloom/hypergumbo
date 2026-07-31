@@ -1,0 +1,51 @@
+Original commit body from c04a7cf8e797af7c0ca516b31abfafeca5dbd217:
+
+Both analyzers emitted the `enum` CONTAINER and none of its constants, so
+the containment linker had nothing to root and a reverse slice from an
+enum returned the container alone. Java additionally emitted an enum's
+METHODS (`Color.label`), which is what made the gap easy to miss: an enum
+with one method looks populated to any "does this container have a
+member" probe while every constant is invisible.
+
+Constants become kind="field" named `Color.RED`, matching each analyzer's
+existing class-field naming, whose `.` the containment linker splits on.
+Only the node types differ -- Java parses constants as `enum_constant`
+under an `enum_body`, C# as `enum_member_declaration` under an
+`enum_member_declaration_list`. Java reads only the DIRECT enum_constant
+children, leaving the sibling `enum_body_declarations` (the enum's
+methods and fields) to their own branches. A Java constant with arguments
+(`RED("r")`) and a C# member with an explicit value (`Green = 2`) each
+carry extra children after the identifier and are otherwise the same node.
+
+Measured end-to-end:
+
+  slice --entry Color --language java   --reverse   2 nodes -> 5
+  slice --entry Color --language csharp --reverse   1 node  -> 4
+
+Both languages ship together because the change is one shape applied
+twice, and because this is the last slice: KNOWN_HOLES is now EMPTY and
+every parametrized cell is a hard lock again. The WI-duguk drain ran
+8 holes -> 0 across four slices (rust, typescript, swift, java/csharp).
+
+Two findings are recorded in the gate's own comment rather than only in
+the changelog, because they generalize past this item:
+
+  1. A container that already emits SOME member kind reads as healthy
+     here while another kind is wholly invisible -- java and swift enums
+     emitted their methods the whole time. The parity fixtures therefore
+     declare enums with members ONLY, which is what makes these cells
+     measure what they claim.
+
+  2. These columns measure ONE ANALYZER IN ISOLATION via span nesting, so
+     a green cell is NOT evidence that reverse-slice expansion works end
+     to end -- the container's kind must also be in
+     linkers.containment.CONTAINER_KINDS and in the slicer's own set.
+     `protocol` was in neither, so swift read green here while the live
+     slice was unmoved. Re-run the end-to-end repro; do not certify from
+     this matrix.
+
+The now-dead _ENUM_HOLE / _ABSTRACT_HOLE reason strings are deleted
+rather than left as unreferenced module state; the history they carried
+lives in the KNOWN_HOLES comment.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
