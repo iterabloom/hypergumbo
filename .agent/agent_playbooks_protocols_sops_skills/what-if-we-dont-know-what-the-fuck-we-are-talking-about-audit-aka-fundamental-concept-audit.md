@@ -729,6 +729,46 @@ runs can find prior work:
   F1–F6 fixed in one docs PR; no axis declaration / new ADR needed. Full
   write-up: `~/hypergumbo_lab_notebook/concept-audit-identity-vocabulary_07152026.md`.
 
+- **2026-07-31 — `Symbol.kind` type family (the abstract-type predicate).**
+  Trigger: INV-tihim — seven language-agnostic consumers hand-rolling
+  inconsistent "type-like kind" sets, and `type_hierarchy.py:113` gating
+  virtual dispatch on `child_kind == "interface"` alone. Hypothesis: `class`
+  is apex/peer overloaded, naming both a concrete class and an abstract type.
+  **Outcome: REJECTED on axis-correctness, CONFIRMED on
+  enumeration-completeness.** Measured over 11 languages, every analyzer emits
+  `class` for a class *declaration*; abstract-ness rides on a different field
+  (`modifiers == ['abstract']` in java/csharp/php/scala/kotlin, derivable from
+  `meta.base_classes` in python). All six values CANONICAL — no fold, no
+  ADR-0027 amendment, and therefore no `stable_id` churn behind the v9/v10
+  scheme gate. The defect is the missing *predicate layer*: `Symbol.kind`
+  carries 138 values on one axis, so `symbol_kinds_on_axis()` cannot express
+  "the abstract types" (contrast `Edge.edge_type`, whose ADR tells consumers
+  to call `edge_types_on_axis()` instead of keeping their own list), and every
+  consumer writes a literal. **Three methodological notes worth carrying:**
+  (1) the automated pass beat the manual one again and by more than usual —
+  manual sweep 7 sets, AST walk **47 sites / 24 vocabularies** (26 strict);
+  (2) the first AST heuristic *over*-matched, pulling in Racket special forms
+  and Python builtins because they contain `class`/`struct`/`type` — a
+  membership filter against the live registry was required to make the
+  population honest; (3) **per-language analyzer sets are legitimately
+  incomplete** (java has no traits, swift no interfaces), so only
+  language-agnostic sites can be defects — conflating the two would have
+  turned the whole finding into noise. Proven consequence: a java `interface`
+  yields `implements` AND `dispatches_to`; a swift `protocol` yields
+  `implements` and no dispatch. The propagation mechanism is recorded in a
+  comment (`type_hierarchy.py:493`: the set was copied "to match the
+  inheritance linker's broader definition" — and inherited its omission), and
+  the most recent instance was **the auditing agent's own WI-duguk work the
+  previous day**, which added `protocol` to two of seven sites and swept none
+  of the rest. Second, orthogonal gap: `modifiers` is the right home but is
+  under-populated (typescript and cpp emit `[]` for abstract types; cpp drops
+  abstract method declarations entirely). Incidental find, unrelated to the
+  axis: the Kotlin analyzer emits **zero** type symbols when a file holds 2+
+  bodied type declarations (pre-existing, filed separately). Remedy is a
+  registry-backed type-family predicate + consumer sweep + linter, **not** a
+  new axis under ADR-0024. Full write-up:
+  `docs/audits/0018-symbol-kind-type-family-abstract-predicate.md`.
+
 (Future audits append here.)
 
 ## Relationship to other playbooks
