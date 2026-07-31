@@ -1,0 +1,43 @@
+Original commit body from 7d9b8b23c8ec068609834630a8bd6e00c3623e3a:
+
+Audit-findings 0018 established that Symbol.kind's vocabulary is sound —
+`class` is not apex/peer overloaded; abstract-ness rides on
+Symbol.modifiers — and that the real defect is a missing PREDICATE: 138
+values on one flat axis, so symbol_kinds_on_axis() cannot express "the
+abstract types" and every consumer writes a literal instead.
+
+SymbolKindSpec now carries type_family (abstract_type for
+interface/trait/protocol; concrete_type for class/struct/enum/record/
+object/union/contract), with type_like_kind_names(),
+abstract_type_kind_names() and is_abstract_type(kind, modifiers) as the
+Symbol.kind analogue of edge_types_on_axis(). NOT a new axis under
+ADR-0024: no IR field changes, no value reclassified, so nothing touches
+stable_id or the v9/v10 scheme sequencing.
+
+Measured behaviour change. type_hierarchy gated virtual dispatch on
+`child_kind == "interface"` — one of three inherently-abstract kinds —
+so a Swift protocol produced `implements` and NO dispatches_to, while
+the byte-equivalent Java interface produced both. That gate is now
+is_abstract_type(...), which also reaches `abstract class` via the
+modifier. End-to-end, Swift goes from no dispatch edge to
+`dispatches_to: Shape.area -> Square.area`, matching Java exactly.
+
+Four sites swept: type_hierarchy, inheritance (which held a CORRECT
+abstract set at line 91 and an incorrect one at 426), _transitive_bases
+(mutable-default literal -> None sentinel resolved from the registry),
+and cli.py's class-meta index.
+
+A linter prevents recurrence, with two principled exemptions rather than
+an allow-list: expressions guarded by a sibling `language` comparison,
+and modules whose declared depends_on languages cannot produce the
+missing kind. That second rule is what separates a defect from a correct
+set — jackson_dispatch and kafka_streams_dispatch declare
+depends_on=[["java"]] and omit trait/protocol CORRECTLY, while
+type_hierarchy declares scala/rust/swift and its omission is the bug. Of
+eleven literals the naive rule flagged, exactly five are real defects.
+The backing kind->language map carries a written R10 re-eval trigger.
+
+Non-vacuity: the linter has a planted-offender test, plus tests for each
+exemption, so a green live tree cannot pass because the walker is broken.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
