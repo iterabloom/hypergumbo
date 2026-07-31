@@ -655,6 +655,21 @@ if [[ -n "$TOP_LEVEL_TESTS" ]]; then
     AFFECTED_TESTS=$(printf '%s\n%s\n' "$AFFECTED_TESTS" "$TOP_LEVEL_TESTS" | sed '/^$/d' | sort -u)
 fi
 
+# A test file you edited always runs.  Root-level tests/ counts here as well
+# as packages/*/tests/: omitting it meant a PR touching ONLY root tests
+# selected nothing and ci.yml skipped pytest, so a new top-level test could
+# merge having never run in CI -- green locally, vacuous in the gate.  The
+# reverse-slice cannot rescue those; it walks packages/*/src/**.
+#
+# Unioned here rather than left to the TDD-mode fallback below, because that
+# fallback only fires when NOTHING else was selected.  A change that edits a
+# root test AND touches any mapped source would otherwise have the source's
+# tests selected and the edited test silently dropped.
+CHANGED_TEST_FILES=$(echo "$CHANGED_FILES" | grep -E '^(packages/.*/tests/(test_|BRANCHES_test_)|tests/test_).*\.py$' || echo "")
+if [[ -n "$CHANGED_TEST_FILES" ]]; then
+    AFFECTED_TESTS=$(printf '%s\n%s\n' "$AFFECTED_TESTS" "$CHANGED_TEST_FILES" | sed '/^$/d' | sort -u)
+fi
+
 # Check if any Python source files changed. Top-level sources (.agent/hooks/_shared/*.py,
 # scripts/*) are included via a separate check so the "no source files" skip
 # path respects them: a PR that only touches scripts/foo with a matching
@@ -665,10 +680,11 @@ CHANGED_TOP_LEVEL_SOURCES=$(echo "$CHANGED_FILES" | grep -E '^(\.agent/hooks/_sh
 if [[ -z "$AFFECTED_TESTS" ]]; then
     # No affected tests found. Check why:
     if [[ -z "$CHANGED_SOURCE_FILES" ]]; then
-        # No Python source files changed. Check for changed test files
-        # (TDD Red phase: test written before implementation exists)
-        CHANGED_TEST_FILES=$(echo "$CHANGED_FILES" | grep -E '^packages/.*/tests/(test_|BRANCHES_test_).*\.py$' || echo "")
-
+        # No Python source files changed. CHANGED_TEST_FILES was computed
+        # above (TDD Red phase: test written before implementation exists);
+        # reaching here with it non-empty is not possible, since the union
+        # above would have populated AFFECTED_TESTS -- the branch is kept so
+        # the TDD-mode log line still fires if that union is ever narrowed.
         if [[ -n "$CHANGED_TEST_FILES" ]]; then
             # TDD mode: test files changed but no source files to slice from.
             # Run the changed test files directly.
