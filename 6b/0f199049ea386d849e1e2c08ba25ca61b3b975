@@ -1,0 +1,46 @@
+Original commit body from 118be982aa4d4e68ea2c1c600eaf3991ddb130d4:
+
+Drains all 44 type-arg errors in compact.py, the second-largest single
+concentration in the strict surface.
+
+FILLING IN BARE GENERICS REVEALS ERRORS, IT DOES NOT JUST ANNOTATE. A bare
+`dict` is implicitly `dict[Any, Any]`, which silences every downstream
+type error inside it. Parameterising this one file dropped the total by 44
+AND GREW THREE OTHER CODES (arg-type, index, return-value) as genuine
+mismatches came out from behind the Any. Consequences worth recording for
+the rest of the drain:
+
+  * the type-arg class is not 445 annotation chores, it is 445 lifted
+    rocks, and nobody knows what is under one until it moves;
+  * the drain is NOT monotonic -- draining type-arg RAISES other codes,
+    which the strict ratchet correctly refuses;
+  * a per-file mypy run is not a check. It reported this file clean while
+    the whole-tree run found all three, which is the measurement error
+    ADR-0014's whole-tree correction exists to prevent.
+
+TWO OF THE THREE WERE REAL; ONE WAS MINE. compute_tier_distribution is
+keyed by supply_chain_tier -- an int, as its own -> Dict[int, int] return
+type states -- and a blanket Counter -> Counter[str] substitution across
+five sites got the fifth wrong. A per-site sweep, in a codebase that keeps
+proving them wrong. The blocking ratchet merged hours earlier caught it
+before it reached a PR.
+
+The genuine finding: _annotate_node_centrality looked up
+`centrality.get(n.get("id"), 0.0)`, where n.get("id") is `Any | None`
+and a None key can never be present in a Dict[str, float] -- so an id-less
+projected node silently scored 0.0, indistinguishable from a node
+genuinely at 0.0. Behaviour is preserved (the default is still 0.0) and
+the lookup key is now well-typed; whether an id-less node should be
+distinguishable at all is a projection concern this helper cannot settle.
+
+Annotations are the measured types, not blanket Any: Dict[str, set[str]]
+for adjacency of node ids, list[str] for UnionFind elements, Counter[str]
+for word/path/kind frequencies and Counter[int] for tiers. dict[str, Any]
+appears only where the value really is heterogeneous projected JSON -- a
+blanket [Any, Any] fill would satisfy the checker while laundering unknown
+types as declared ones, which is worse than the missing annotation.
+
+Baseline ratcheted down 1080 -> 1036 (shrink-only; it may never grow).
+1749 tests pass, scoped coverage clean.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
