@@ -1,0 +1,49 @@
+Original commit body from 2bc0a83d267b61baf8c808136efd2e0fe6141be8:
+
+Injects the same fixture into every language — one abstract type
+declaring one required method, one concrete implementor — and asserts on
+the EMITTED ARTIFACT after the full pipeline: does a dispatches_to edge
+run from the abstract type's method to the implementor's method?
+Uniform fixtures mean an empty cell is an analyzer or linker gap, never
+construct-absence.
+
+Measured: 8 hard passes (java, csharp, go, typescript, scala, swift,
+groovy, python) and 8 strict-xfail holes, each with its measured cause
+and an owning tracker item.
+
+THE ITEM THAT PRODUCED THIS COLUMN NAMED ONE OF THE EIGHT CAUSES.
+INV-tihim was filed as "one fact, two homes" — the '::' separator
+divergence — which is real and is Rust's cause alone. Four languages
+gave three causes; sixteen gave eight: three producer gaps (php, cpp,
+elixir), two consumer-vocabulary gaps (solidity, ruby), one anchoring
+choice (rust), one missing edge (dart), one unrelated analyzer crash
+(kotlin — this fixture has two bodied type declarations, exactly the
+shape that makes that analyzer emit zero type symbols).
+
+Two holes are audit-findings 0018's disease one layer over, on
+Edge.edge_type. edge_types.py exports INHERITANCE_EDGE_TYPES =
+{extends, implements, inherits}; only slice.py and ranking.py consume
+it. cli.py hand-rolls a complete copy, _transitive_bases.py omits
+inherits, inherited_calls.py has includes but omits inherits, and
+type_hierarchy.py branches inline on two literals and never consults the
+registry — five vocabularies, all disagreeing, against an ADR-0023 §3
+instruction to call edge_types_on_axis() instead. Solidity emits
+`inherits`, Ruby emits `includes`; both invisible. Filed as INV-nosoz.
+
+Built to resist the ways this kind of gate goes quiet: end-to-end rather
+than analyzer-only (WI-duguk's column read green for Swift while the
+live slice was unmoved); corpus generated into tmp_path_factory rather
+than tests/fixtures/ (the pipeline suppresses linkers under fixture
+paths); strict xfail markers, never imperative pytest.xfail() —
+mutation-tested, marking a passing language as a hole XPASSes and fails
+the run; plus a liveness floor, a non-vacuity floor (>=6 hard passes so
+the column cannot go green by becoming all-xfail), a scope-disjointness
+check, and a declared not-applicable map with reasons.
+
+One pipeline run over a polyglot corpus rather than 16 runs: 0.7s
+instead of ~30s, per-language xfail granularity preserved.
+
+New items filed: INV-nosoz (inheritance edge vocabulary), WI-lahub
+(dart), WI-vitas (elixir).
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
