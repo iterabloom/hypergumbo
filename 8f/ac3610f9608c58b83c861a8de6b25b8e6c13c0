@@ -1,0 +1,15 @@
+Original commit body from e4fe275ac613004a83d2c720a5e0a0c80123dfa1:
+
+Whole-tree strict ratchet clean at 735 (baseline ratcheted 766 -> 735,
+delta +0 after the drain), no reveals — every error this batch removed
+stayed removed rather than uncovering a hidden one behind a bare generic.
+
+This batch was authored and validated in a previous session but could not
+merge: touching cli.py pulls test_validation_report_empty.py into the
+manifest, and that gate was red on dev (INV-fimon). Rather than raise a
+shrink-only baseline, allow-list an unexamined offender, or ship an
+unanalysed producer fix, the batch was parked and INV-fimon was fixed on
+its own merits first (PR #126). Both previously-red tests now run in this
+branch's manifest and pass.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
