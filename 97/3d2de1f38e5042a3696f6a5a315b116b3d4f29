@@ -1,0 +1,30 @@
+Original commit body from 4339458425c782660cfd283200dab1735d8b0127:
+
+Each was written because someone hit a real error at that line, and every
+one has since been fixed by something else: taint.py's return-value,
+serve.py's type-arg, cli.py's name-defined forward-ref, tag_catalog's
+misc, annotations' arg-type, and three no-redef suppressions on the
+Python 3.10 tomli fallback imports. The directives outlived the problems.
+
+TWO WERE BARE `# type: ignore` (r_lang.py:509, starlark.py:526), which
+suppress EVERY error on their line rather than a named one. Those are the
+more valuable removals: an unused bare ignore is a standing invitation for
+an unrelated error to appear at that line and be swallowed silently, where
+the specific-code form at least fails loudly when the error changes.
+
+SELF-VERIFYING BY CONSTRUCTION. A type: ignore is inert at runtime, so the
+only way removing one can matter is if it was suppressing a live error --
+in which case mypy reports that error immediately and the now-blocking
+ratchet refuses the change. Delta was exactly -11, one per directive, so
+none were load-bearing.
+
+THE TOMLI TRIO LOOKED VERSION-DEPENDENT AND IS NOT. tomllib is stdlib on
+3.11+ with tomli as the 3.10 fallback, so an ignore unused on one
+interpreter could in principle be required on another. Checked: mypy runs
+only in ci.yml, only on Python 3.11 -- the nightly 3.10-3.13 matrix runs
+tests, not the type checker -- so a version-dependent directive cannot
+affect the type gate whichever branch an interpreter takes.
+
+Baseline ratcheted 832 -> 821. 11128 tests pass.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
