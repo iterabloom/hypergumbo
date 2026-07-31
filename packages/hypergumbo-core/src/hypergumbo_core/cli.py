@@ -49,7 +49,18 @@ import shutil
 import subprocess  # nosec B404 - subprocess needed for pip commands
 import sys
 from pathlib import Path
-from typing import Any, Callable, Dict, Iterable, List, Optional, Set
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Dict,
+    Iterable,
+    List,
+    Mapping,
+    Optional,
+    Sequence,
+    Set,
+)
 
 from rich.console import Console
 from rich.table import Table
@@ -205,6 +216,22 @@ from .framework_patterns import (
     strip_test_file_only_concepts,
 )
 from .partial_install_warnings import check_partial_install_warnings
+
+# cli.py imports .cfg / .io_boundary / .taint only INSIDE function bodies —
+# deliberate, for startup cost and cycle avoidance — so their types are
+# TYPE_CHECKING-only and the runtime import graph is unchanged.
+if TYPE_CHECKING:  # pragma: no cover - typing only
+    from .cfg import DdgEdge
+    from .io_boundary import IoChain
+    from .taint import TaintSanitizer, TaintSink, TaintSource
+
+# One row of the explain edge table: (depth, src_id, dst_id, line,
+# edge_type, meta, group_key, edge_dict). Written out at three sites
+# otherwise.
+_ExplainEdgeRow = tuple[
+    int, str, str, int, str, Optional[Dict[str, Any]], str, Dict[str, Any],
+]
+
 
 # ADR-0042: glob patterns for the survey map + its budget-tier side-outputs in a
 # cache dir, canonical (``survey.json`` / ``survey.<tier>.json``) and legacy
@@ -369,7 +396,7 @@ class GroupedSubcommandHelpFormatter(argparse.RawDescriptionHelpFormatter):
 
 
 def _set_subparser_group(
-    subparsers: argparse._SubParsersAction,
+    subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]",
     name: str,
     group: str,
     group_order: int,
@@ -400,8 +427,8 @@ def _set_subparser_group(
 
 
 def _get_subparsers_by_group(
-    subparsers_action: argparse._SubParsersAction,
-) -> List[tuple]:
+    subparsers_action: "argparse._SubParsersAction[argparse.ArgumentParser]",
+) -> List[tuple[str, argparse.ArgumentParser, str, bool]]:
     """Get subparser names ordered by group.
 
     Returns:
@@ -691,7 +718,7 @@ def _get_or_generate_comparison_sketch(
     *,
     exclude_tests: bool,
     with_source: bool,
-    gen_kwargs: dict,
+    gen_kwargs: Mapping[str, Any],
 ) -> SketchStats:
     """Return the representativeness :class:`SketchStats` for a comparison-budget
     sketch, reusing the on-disk cache when present (WI-ribag).
@@ -1534,8 +1561,8 @@ def _apply_io_boundary_filter(
 
 
 def add_schema_envelope(
-    payload: dict, *, view: str, schema_version: str
-) -> dict:
+    payload: Mapping[str, Any], *, view: str, schema_version: str
+) -> dict[str, Any]:
     """Wrap a read-view JSON payload in the canonical top-level envelope.
 
     The single source of the CLI read-view wire shape (WI-gogif / cli-output
@@ -1848,7 +1875,7 @@ def cmd_slice(args: argparse.Namespace) -> int:
 
         if group_by_module:
             # Group nodes by file path
-            modules: dict[str, list[dict]] = {}
+            modules: dict[str, list[dict[str, Any]]] = {}
             for node in inline_nodes:
                 path = node.get("path", "<unknown>")
                 modules.setdefault(path, []).append(node)
@@ -1870,7 +1897,7 @@ def cmd_slice(args: argparse.Namespace) -> int:
                 for path, mod_nodes in sorted_modules.items()
                 for n in mod_nodes
             }
-            module_edge_counts: dict[tuple[str, str], dict] = {}
+            module_edge_counts: dict[tuple[str, str], dict[str, Any]] = {}
             for e in feature_dict.get("edges", []):
                 src_mod = node_to_module.get(e.get("src", ""))
                 dst_mod = node_to_module.get(e.get("dst", ""))
@@ -2076,7 +2103,7 @@ _RELATED_ENDPOINT_KINDS: tuple[str, ...] = (
 
 
 def _count_related_endpoint_kinds(
-    nodes: list[dict],
+    nodes: Sequence[Mapping[str, Any]],
 ) -> list[tuple[str, int]]:
     """Count nodes by kind for the endpoint-shaped fallback hint.
 
@@ -2103,7 +2130,7 @@ def _count_related_endpoint_kinds(
     return [(k, c) for k in _RELATED_ENDPOINT_KINDS if (c := counts[k]) > 0]
 
 
-def _route_json_record(route: dict) -> dict:
+def _route_json_record(route: Mapping[str, Any]) -> dict[str, Any]:
     """Build a structured route record for ``routes --format json`` (INV-jutuj).
 
     Mirrors the field-extraction the text renderer does (kind="route" symbols
@@ -2165,7 +2192,7 @@ def cmd_routes(args: argparse.Namespace) -> int:
     # The legacy --exclude-tests flag is preserved as a no-op alias for
     # backward compatibility with existing scripts.
     exclude_tests = not getattr(args, "include_tests", False)
-    routes: list[dict] = []
+    routes: list[dict[str, Any]] = []
     for node in nodes:
         is_route = False
 
@@ -2198,7 +2225,7 @@ def cmd_routes(args: argparse.Namespace) -> int:
     # go-swagger handlers).  Within a file, only the first entry for each
     # (method, path) is shown.
     seen_route_keys: set[str] = set()
-    deduped_routes: list[dict] = []
+    deduped_routes: list[dict[str, Any]] = []
     for node in routes:
         meta = node.get("meta") or {}
         route_path = None
@@ -2264,7 +2291,7 @@ def cmd_routes(args: argparse.Namespace) -> int:
         return 0
 
     # Group routes by path
-    routes_by_path: dict[str, list[dict]] = {}
+    routes_by_path: dict[str, list[dict[str, Any]]] = {}
     for route in routes:
         path = route.get("path", "unknown")
         if path not in routes_by_path:
@@ -2275,7 +2302,7 @@ def cmd_routes(args: argparse.Namespace) -> int:
     total_routes = len(routes)
     print(f"Found {total_routes} API route(s):\n")
 
-    def _route_sort_key(route: dict) -> tuple:
+    def _route_sort_key(route: Mapping[str, Any]) -> tuple[Any, str, Any]:
         # WI-jajas: stable within-file order. Sort by (start_line, method,
         # route_path) so the same logical routes render identically across
         # full vs compact behavior maps (compact reorders nodes by
@@ -2401,7 +2428,7 @@ def _estimate_tokens(text: str) -> int:
 # count must mean callers, not callers+containers+instantiators summed). Maps
 # edge_type -> (incoming label, outgoing label). Unmapped types fall back to a
 # direction-qualified canonical-name label.
-_EXPLAIN_EDGE_LABELS: Dict[str, tuple] = {
+_EXPLAIN_EDGE_LABELS: Dict[str, tuple[str, str]] = {
     "calls": ("Called by", "Calls"),
     "contains": ("Contained by", "Contains"),
     "instantiates": ("Instantiated by", "Instantiates"),
@@ -2418,7 +2445,7 @@ _EXPLAIN_EDGE_LABELS: Dict[str, tuple] = {
 }
 
 
-def _explain_edge_labels(etype: str) -> tuple:
+def _explain_edge_labels(etype: str) -> tuple[str, str]:
     """Return ``(incoming_label, outgoing_label)`` for an edge type (WI-dazob).
 
     Three cases, in order: a hand-curated friendly label wins; a type that is
@@ -2443,7 +2470,7 @@ def _explain_edge_labels(etype: str) -> tuple:
 
 
 def _render_explain_edge_sections(
-    items: list,
+    items: Sequence[_ExplainEdgeRow],
     direction: str,
     default_label: str,
     show_provenance: bool,
@@ -2462,7 +2489,7 @@ def _render_explain_edge_sections(
     if not items:
         print(f"  {default_label}: (none)")
         return
-    by_type: Dict[str, list] = {}
+    by_type: Dict[str, list[_ExplainEdgeRow]] = {}
     for it in items:
         by_type.setdefault(it[6] or "", []).append(it)
     for etype in sorted(by_type):
@@ -3529,14 +3556,14 @@ def _get_honk_threshold_bytes() -> float | None:
     return value * (1024 ** 3)
 
 
-def _list_repo_breakdown(cache_dir: Path) -> list[dict]:
+def _list_repo_breakdown(cache_dir: Path) -> list[dict[str, Any]]:
     """Per-repo cache breakdown, sorted by size descending.
 
     Each row carries ``fingerprint`` (top-level subdir name), ``size``
     (bytes), ``entries`` (count of state-hash subdirs under ``results/``),
     and ``last_used`` (mtime of the repo subdir).
     """
-    rows: list[dict] = []
+    rows: list[dict[str, Any]] = []
     for entry in cache_dir.iterdir():
         if not entry.is_dir():
             continue
@@ -4784,7 +4811,7 @@ def _print_io_boundaries_by_type(
 
         # Per-primitive counts and call sites
         prim_counts: Dict[str, int] = {}
-        chains_by_prim: Dict[str, list] = {}
+        chains_by_prim: Dict[str, list["IoChain"]] = {}
         for chain in entry.chains:
             prim_counts[chain.primitive] = prim_counts.get(chain.primitive, 0) + 1
             chains_by_prim.setdefault(chain.primitive, []).append(chain)
@@ -4847,7 +4874,7 @@ def _print_io_boundaries_by_file(
         return
 
     # Group all chains by source file
-    chains_by_file: Dict[str, list] = defaultdict(list)
+    chains_by_file: Dict[str, list["IoChain"]] = defaultdict(list)
     for entry in entries.values():
         for chain in entry.chains:
             raw_path = _extract_path_from_symbol_id(chain.io_edge_src)
@@ -4891,7 +4918,7 @@ def _print_io_boundaries_by_file(
 
 def _build_python_ddg_for_verify_claims(
     repo_root: Path,
-) -> tuple[list, set[str], dict[str, dict[tuple[int, str], str]]]:
+) -> tuple[list["DdgEdge"], set[str], dict[str, dict[tuple[int, str], str]]]:
     """Build aggregated DDG edges + symbol set + receiver hints for taint analysis.
 
     Walks the repo for Python source files, parses each with tree-sitter,
@@ -4950,7 +4977,7 @@ def _build_python_ddg_for_verify_claims(
         return [], set(), {}
     parser = tree_sitter.Parser(lang)
 
-    ddg_edges: list = []
+    ddg_edges: list["DdgEdge"] = []
     ddg_symbols: set[str] = set()
     hints_by_caller: dict[str, dict[tuple[int, str], str]] = {}
 
@@ -5000,7 +5027,7 @@ def _collect_python_function_ddg(
     src: bytes,
     mapping: Any,
     rel_path: str,
-    ddg_edges: list,
+    ddg_edges: list["DdgEdge"],
     ddg_symbols: set[str],
     hints_by_caller: dict[str, dict[tuple[int, str], str]],
     *,
@@ -5287,9 +5314,9 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
         # collisions (e.g., elixir HTTPoison.get matching every Python
         # .get() call) that would otherwise flood the findings with
         # tens of thousands of false positives on multi-language repos.
-        per_lang_sources: dict[str, list] = {}
-        per_lang_sinks: dict[str, list] = {}
-        per_lang_sanitizers: dict[str, list] = {}
+        per_lang_sources: dict[str, list["TaintSource"]] = {}
+        per_lang_sinks: dict[str, list["TaintSink"]] = {}
+        per_lang_sanitizers: dict[str, list["TaintSanitizer"]] = {}
         for lang in sorted(languages):
             src_count = len(taint_catalog.sources_for_language(lang))
             snk_count = len(taint_catalog.sinks_for_language(lang))
@@ -8886,7 +8913,7 @@ def _compute_supply_chain_summary(
     and ``directness`` (ADR-0041 §2: direct / transitive / undeclared / unknown).
     """
     # Count unique files and symbols per tier
-    tier_files: Dict[int, set] = {1: set(), 2: set(), 3: set(), 4: set()}
+    tier_files: Dict[int, set[str]] = {1: set(), 2: set(), 3: set(), 4: set()}
     tier_symbols: Dict[int, int] = {1: 0, 2: 0, 3: 0, 4: 0}
     # ADR-0041 §3: sub-bucket tier-3 externals by ecosystem provenance class.
     ecosystem_counts: Dict[str, int] = {}
@@ -8980,7 +9007,7 @@ def _is_route_marker(symbol: Symbol) -> bool:
     return (symbol.meta or {}).get("framework_role") == "route"
 
 
-def _extract_route_info(symbol: Symbol) -> dict | None:
+def _extract_route_info(symbol: Symbol) -> dict[str, str] | None:
     """Pull (method, path) out of a route symbol's metadata.
 
     Returns None unless a complete ``(method, path)`` pair is available —
