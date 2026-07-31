@@ -1,0 +1,44 @@
+Original commit body from cdb16320d19fc65e188e386a8cbab6bc5e2b3ded:
+
+`git checkout -b feature dev` leaves HEAD at dev's tip. Until the branch
+makes a commit of its own, `git commit --amend` rewrites that INHERITED
+base commit -- folding staged work into it while keeping its message,
+author and author-date -- so the work merges impersonating whatever the
+base tip happened to be. auto-pr amends HEAD at three sites and none
+checked ownership.
+
+Live instance 2026-07-29: dev's tip was a tracker sync commit, so seven
+files of analyzer work landed on dev subjected "tracker: 6 files (104
+ops)". The decisive evidence is an absence -- that branch's reflog reads
+checkout -> commit (amend) -> checkout, while every healthy branch that
+day reads checkout -> commit -> commit (amend) -> checkout.
+
+All three sites now call _assert_branch_owns_head, which refuses when
+`git merge-base --is-ancestor HEAD <base>` holds. That predicate beats
+counting base..HEAD: it asks whether HEAD is already contained in the
+base, and stays correct after a rebase onto a moved base. It takes
+several candidate refs and fails open when none resolve.
+
+The filing blamed tracker auto-sync and proposed three fixes, all wrong:
+the tracker has zero --amend calls (do_sync has used plumbing with no
+checkout since 2026-03-06); deferring sync on PR_PENDING is orthogonal
+(the sync's ff preceded branch creation by 16s); and capturing the body
+early is already the behavior (DESC is read at :1428, the amend is at
+:1430) -- the note recorded a bare sign-off because there was never a
+good message to read.
+
+Tests extract the guard's real definition from the script rather than
+restating it, so they cannot drift from what ships. Includes a positive
+control that reproduces the damage from scratch with no tracker involved
+-- the only test green before the fix -- and a ratchet that fails if any
+`git commit --amend` in the script is left unguarded.
+
+The suite is named tests/test_auto_pr.py because the WI-jozan mapper
+selects exactly `tests/test_<script name>.py`; under any other name
+nothing selects it and ci.yml skips pytest, so the ratchet would have
+been vacuous in CI while passing locally. That the mapper is 1:1 leaves
+the ten pre-existing tests/test_autopr_*.py files unselected; filed as
+WI-bisar.
+
+Governance: scripts/auto-pr change approved by the owner in-session.
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
