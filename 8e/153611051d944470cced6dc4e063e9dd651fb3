@@ -1,0 +1,64 @@
+Original commit body from d0da67b2d673b4d1a4ea3b798daa5edf195a9a48:
+
+Two fixes to the same root problem: the gate could not say what it did
+not cover, and the comment that appeared to explain its boundary was
+wrong.
+
+THE FALSE CLAIM. The matrix carried:
+
+    All eight are availability="core" (no grammar wheel needed).
+
+It was load-bearing -- read as the REASON the gate stops at eight
+languages, making any extension look like it would drag in optional
+dependencies. Measured against the live catalog, only `python` is
+availability="core" (stdlib `ast`); java, javascript, go, rust, csharp
+and swift are all "extra" -- the SAME tier as the scala, kotlin and cpp
+analyzers this matrix does NOT gate, whose grammars are hard
+dependencies of hypergumbo-lang-mainstream and install wherever it does.
+
+Two unrelated senses of "core" had collided: the catalog's
+`availability="core"` means "needs no extra dependency"; this file's
+prose meant "the important ones". The collision manufactured a
+dependency barrier that does not exist. The real boundary is 7 of 38
+mainstream analyzers, chosen historically and never argued for in an ADR.
+
+THE DECLARED SCOPE. Three maps plus a test that they exhaust the tier:
+
+  * FIXTURE_ANALYZER      -- the 7 gated analyzers (8 fixture rows)
+  * UNGATED_CODE_LANGUAGES -- 14 mainstream code languages this gate says
+    nothing about (php, ruby, scala, kotlin, cpp, groovy, objc, c, bash,
+    lua, perl, powershell, sql, jupyter). Real coverage gaps, not
+    exemptions.
+  * NON_CONSTRUCT_FORMATS  -- 17 config/data/markup/build formats with no
+    class-or-callable surface for the uniform construct set to be uniform
+    ABOUT. A row made almost entirely of COLUMN_APPLICABILITY exemptions
+    is where a real gap hides behind a plausible excuse, which is already
+    visible in `entrypoint_concept` applying to 1 of 8 languages.
+
+`test_matrix_scope_is_declared_and_exhaustive` fails when a mainstream
+analyzer appears in none of the three, so analyzer #39 forces a one-line
+classification at the cheapest possible moment; it also fails on a stale
+entry naming a deleted analyzer, and on bucket overlap. Both directions
+were mutation-tested rather than assumed -- removing `ruby` and adding a
+nonexistent `kobol` each produce the intended failure with an actionable
+message.
+
+WHY THIS IS MORE THAN BOOKKEEPING. An empty KNOWN_HOLES reads as "the
+fleet is at parity"; it means "every GATED cell is a hard lock" -- the
+standing lesson that a gate's "0 violations" is bounded by what its
+fixtures execute, and that reporting it unscoped overstates even when
+every number is accurate. The spec already models the honest alternative:
+it reports identity coverage as "~41 of ~70" and delegates to ADR-0014's
+census rather than claiming completeness. The module docstring now states
+the scope the same way, and `test_gated_share_of_mainstream_is_disclosed`
+fails if that disclosure is ever deleted.
+
+No behavior change; test and docs only. The question of whether the
+boundary SHOULD move is deliberately left open -- this makes it visible,
+not settled. WI-kajip proposes the fixture-free alternative (a
+container-membership validator class under ADR-0033, which sees
+contains edges and so catches both the analyzer-side and pipeline-side
+failure modes WI-duguk needed two separate fixes for); WI-dorop records
+three measured defects already sitting in the ungated set.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
