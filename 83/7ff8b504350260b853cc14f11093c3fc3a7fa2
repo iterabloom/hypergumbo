@@ -1,0 +1,42 @@
+Original commit body from f566fa883c88477ed42935e61680323762983d73:
+
+Drains 43 type-arg errors across three self-contained modules. Removing
+them REVEALED 37 others across four codes, and every one was real. Four
+measure-fix rounds to converge; net -44.
+
+WHAT THE BARE GENERICS WERE HIDING:
+
+  * `list` is INVARIANT. A TaintSource|TaintSink union alias -- correct
+    about what flows through -- was wrong about the container: the helpers
+    only READ, so they take Sequence/Mapping and now accept a concrete
+    list[TaintSource] at every call site.
+  * One function bound `edge` to a DdgEdge in two loops and to a
+    call-edge DICT in three more. Invisible while both were Any; the two
+    DDG loops are renamed, since sharing a name across two element types
+    is what let the ambiguity hide.
+  * _merge_with_user_override is TYPE-PRESERVING -- hand it sources, get
+    sources back. A union return would have let a merged source+sink
+    mapping be assigned onto a sources-only catalog field, so it carries a
+    TypeVar bound to the union instead.
+  * One dict genuinely holds two nested summaries plus an int count, and
+    inference narrowed it the moment to_dict() was typed.
+
+THE PATTERN, which changes the estimate for the rest of the drain: a bare
+dict/list is not laziness, it is LOAD-BEARING AMBIGUITY. The sites hardest
+to annotate are exactly the sites where the code is polymorphic and the
+bare generic let nobody decide. Three of the reveals were our own
+annotations being wrong, each caught by the whole-tree ratchet before
+reaching a PR. So the remaining ~360 type-arg errors are a LOWER bound on
+the work, not an upper one, and the drain is not monotonic.
+
+Types are measured, not assumed: list[Edge] where the body does attribute
+access (edge.meta / edge.dst) versus dict[str, dict[str, Any]] where it
+subscripts (node.get("meta")) -- both in ONE signature in
+_compute_external_potential, which is what a blanket rule gets wrong.
+Cross-module references (DdgEdge from cfg, Edge from ir) are TYPE_CHECKING
+imports: no cycle exists either way, but the runtime import graph stays
+unchanged for modules the CLI loads on every invocation.
+
+Baseline ratcheted 1036 -> 992. 3539 tests pass, scoped coverage clean.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
