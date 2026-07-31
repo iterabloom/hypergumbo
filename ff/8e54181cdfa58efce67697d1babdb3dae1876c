@@ -1,0 +1,72 @@
+Original commit body from 338e7e1272dac20ddb8c9671721471914815a226:
+
+Reverse-slice class expansion is spec-green across seven container kinds,
+but the expansion only does anything where the ANALYZER emitted the
+container's members as symbols. Measured on a uniform probe corpus
+generated into /tmp: no analyzer that emits an `enum` emits any of its
+variants (0 of 5 -- typescript, java, rust, csharp, swift), and
+abstract-type members are missing for typescript, rust and swift while
+go, java and csharp emit them.
+
+The consumer consequence is not cosmetic:
+
+  slice --entry Color --language rust --reverse   -> 1 node
+  slice --entry Color --language java --reverse   -> 2 nodes
+
+so a consumer reads "this enum is dead" or "this trait has no users"
+when neither is true.
+
+Root cause is a MISSING NODE, not a missing edge. Neither the slicer nor
+the containment linker is at fault -- the linker has handled trait/enum/
+struct containers since 1ecae423af (2026-02-08) and roots every container
+whose members exist. The new columns therefore measure span nesting
+rather than `contains` edges, because this matrix runs one analyzer in
+isolation and `contains` is minted downstream.
+
+Two columns rather than one: the families fail independently, and a
+merged column would let a language pass on its abstract members while
+its enum variants stayed invisible.
+
+The filed framing was wrong on the scope axis. WI-duguk scoped to three
+kinds -- trait (1 node), enum (5), module (0, "untestable") -- from a
+SELF-ANALYSIS substrate, i.e. hypergumbo run on a Python repo. Module
+containment in fact works (ruby 100%; 20+ analyzers emit kind="module");
+the zero was INV-hojus collapsing Python module-kind into file-kind two
+weeks before that substrate. The real axis is (language, container-kind),
+which a per-kind scoping cannot express: scala trait works while rust
+trait does not; csharp interface works while typescript interface does
+not. Two live holes the filing never looked at -- typescript `interface`
+and swift `protocol` -- sit outside its stated scope entirely.
+
+Not by design: no ADR, spec passage or doc excludes enum variants or
+member signatures from being symbols, and the niche analyzers already
+emit them (verified live: D's `enum Color` yields `field Color.red` /
+`field Color.green`, so the containment linker roots them). The coverage
+story runs backwards from the usual one -- mainstream is the gap.
+
+Non-vacuity in both directions: 3 hard passes (csharp/go/java
+emits_abstract_members) alongside 8 strict xfails, so the check is proven
+able to yield a positive. Holes are xfail(strict=True), never imperative
+pytest.xfail(), so fixing an analyzer XPASSes its cell and forces the
+entry's removal in the same PR.
+
+Scope disclosed: the matrix covers the eight core-availability fixture
+languages, so the scala, cpp and kotlin enum gaps this investigation also
+measured are real but NOT gated here -- they need grammar wheels the
+matrix deliberately does not require. Python and JavaScript are marked
+not-applicable with a written re-eval trigger (Python's enum and Protocol
+are both classes, already locked by emits_field; JavaScript has neither
+construct), as is Go's enum (a `const` block whose members are siblings
+of the type, not nested in its body).
+
+The spec keeps its green mark on the slicer mechanism -- which genuinely
+expands all seven kinds -- and now names the vacuous cells inline, so the
+delivered-mark no longer reads as an outcome guarantee.
+
+Testing note: `test_entrypoint_parity.py` shares this fixture corpus but
+smart-test did not select it -- changes under `tests/fixtures/**` are
+data, invisible to the import-graph slicer (1045 lines of smart-test,
+zero mentions of "fixture"). Ran it by hand: 8 passed. Filed separately
+as a fifth route to the test-selection defect class.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
