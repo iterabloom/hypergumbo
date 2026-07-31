@@ -1,0 +1,40 @@
+Original commit body from ff370141fc8446f3902298d6480b409c1a96f75a:
+
+toml_config / css / latex. Net -24: 21 type-arg-adjacent errors drained,
+two REAL defects revealed and fixed, one pre-existing narrowing corrected.
+
+TWO REAL CRASH PATHS. tree_sitter.Node.text is `bytes | None`, which is
+invisible while the `node` parameter is untyped. Annotating it showed
+toml_config.py HALF-GUARDING ITS OWN IDIOM:
+
+  93:  return node.text.decode(...)                        # unguarded
+  104: return node.text.decode(...) if node.text else ""   # guarded
+  111: text  = node.text.decode(...) if node.text else ""  # guarded
+
+Same file, same pattern, and only the unguarded half can raise
+AttributeError on a text-less key node. Both now follow the file's own
+majority convention. This IS a behaviour change (crash -> empty string);
+it was chosen because two sibling lines already made exactly that call,
+so matching them is a smaller claim than inventing a policy.
+
+THE GUARD RULE MATTERS MORE THAN THE ANNOTATIONS. _get_string_value
+carries an `if node is None:  # pragma: no cover - defensive` guard, so
+it takes `Node | None` while its five siblings take plain `Node`.
+Annotating it non-Optional would turn a live guard into an [unreachable]
+error -- growing a different code and breaking the shrink-only gate, or
+forcing deletion of a real guard. A `no cover` pragma means UNTESTED, not
+UNREACHABLE. The span-ternary revert earlier in this cycle is what
+getting that distinction wrong costs.
+
+tree_sitter enters css.py and toml_config.py as a TYPE_CHECKING-only
+import. Not stylistic: tree-sitter is an optional dependency for these
+analyzers, and a module-scope import converts a graceful "grammar
+unavailable, skip" into an ImportError at startup.
+
+Also: scala.py narrows `_sym is not None` and then discarded the narrowed
+local, re-reading `lookup_result.symbol.id`. Same object at runtime; now
+uses `_sym.id`.
+
+Baseline ratcheted 821 -> 797. 6932 tests pass.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
