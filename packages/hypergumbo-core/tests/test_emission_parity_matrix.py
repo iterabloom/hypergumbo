@@ -132,6 +132,41 @@ def _max_complexity(res: AnalysisResult) -> int:
     return max(vals) if vals else 0
 
 
+# WI-duguk: container kinds whose BODY MEMBERS are themselves symbols. Split
+# into two columns because the two construct families fail independently — every
+# analyzer that emits an `enum` emits zero variants, while abstract-type members
+# are emitted by go/java/csharp and not by typescript/rust/swift. One merged
+# column would let a language pass on its abstract members while its enum
+# variants stay invisible.
+_ENUM_CONTAINER_KINDS = frozenset({"enum"})
+_ABSTRACT_CONTAINER_KINDS = frozenset({"interface", "protocol", "trait"})
+
+
+def _emits_members_of(res: AnalysisResult, container_kinds: frozenset[str]) -> bool:
+    """True when an emitted container of `container_kinds` has >=1 emitted
+    symbol nested inside its span.
+
+    Span containment (rather than a `contains` edge) is deliberate: this matrix
+    runs ONE analyzer in isolation, and `contains` is minted downstream by the
+    containment linker. The measured root cause of WI-duguk is that the member
+    SYMBOL is never emitted at all — there is no missing edge, there is a
+    missing node — so the analyzer-level property is exactly "is the member a
+    symbol". The linker then roots it for free (verified: every container whose
+    members exist does get its `contains` edges).
+    """
+    containers = [
+        s for s in res.symbols if s.kind in container_kinds and s.span is not None
+    ]
+    return any(
+        s.id != c.id
+        and s.span is not None
+        and s.span.start_line >= c.span.start_line
+        and s.span.end_line <= c.span.end_line
+        for c in containers
+        for s in res.symbols
+    )
+
+
 # Matrix column -> predicate "did the analyzer emit this?" over live dataclasses.
 COLUMNS: dict[str, Callable[[AnalysisResult], bool]] = {
     # A callable carries its source-grammar signature string.
@@ -159,6 +194,19 @@ COLUMNS: dict[str, Callable[[AnalysisResult], bool]] = {
     # WI-jusus (emission-parity F5): the analyzer emits a kind='field' Symbol
     # for the class/struct field present in every fixture.
     "emits_field": lambda res: any(s.kind == "field" for s in res.symbols),
+    # WI-duguk: the analyzer emits a Symbol for each named member of the
+    # enumerated type present in every applicable fixture. Without member
+    # symbols the containment linker has nothing to root, so `slice --reverse`
+    # from an enum returns the container alone and a consumer reads "this enum
+    # is dead" (measured: `--entry Color --language rust --reverse` -> 1 node,
+    # vs 2 for a container whose members exist).
+    "emits_enum_members": lambda res: _emits_members_of(res, _ENUM_CONTAINER_KINDS),
+    # WI-duguk: the analyzer emits a Symbol for each member signature of the
+    # abstract type (interface / protocol / trait) present in every applicable
+    # fixture. Same consumer consequence as above, reached from a trait.
+    "emits_abstract_members": lambda res: _emits_members_of(
+        res, _ABSTRACT_CONTAINER_KINDS
+    ),
     # WI-lutob / INV-jahiv: the analyzer emits the `axis: identity` structural
     # shape_id on its callables. This is the one identity-field column (the
     # semantic-field columns above are the analyzer-parity core); it exists
@@ -201,15 +249,36 @@ COLUMNS: dict[str, Callable[[AnalysisResult], bool]] = {
 #     (WI-tosul correction, 2026-06-24: the seven non-Python "holes" were a
 #     measurement artifact of analyzer isolation, not a real emission gap —
 #     every language already yields entrypoints in production.)
+#   * WI-duguk, third reason, a variant of "construct genuinely absent": the
+#     language HAS the concept but expresses it with a construct another column
+#     already locks. Python's enumerated type IS a class (`class Color(Enum)`)
+#     and its Protocol IS a class, so both would be measured through
+#     class-member emission, which `emits_field` already hard-locks — scoring
+#     them here would mint a cell that cannot distinguish the new property from
+#     the old one. JavaScript has neither construct at all (both are
+#     TypeScript-only), and Go has no enumerated type (its idiom is a `const`
+#     block whose members are siblings of the type, not nested in its body).
+#     Re-eval trigger: if py.py ever emits `kind="enum"` for an `Enum`
+#     subclass, or the go analyzer synthesizes an enum container from a typed
+#     `const` block, add that language to the corresponding set below.
 COLUMN_APPLICABILITY: dict[str, set[str]] = {
     "emits_variable": {
         "python", "javascript", "typescript", "go", "rust", "swift",
     },
     "entrypoint_concept": {"python"},
+    "emits_enum_members": {"typescript", "java", "rust", "csharp", "swift"},
+    "emits_abstract_members": {
+        "typescript", "go", "java", "rust", "csharp", "swift",
+    },
 }
 
-# (fixture_language, column) -> xfail reason. The ratchet has reached full
-# parity: every parametrized cell is now a hard lock, so KNOWN_HOLES is empty.
+# (fixture_language, column) -> xfail reason. Live holes are the WI-duguk
+# container-member cells below; every other parametrized cell is a hard lock.
+#
+# These are strict xfails (never `pytest.xfail()`, which can't XPASS and would
+# silently disable the ratchet it records). Fixing an analyzer therefore turns
+# its cell XPASS -> failure, forcing the entry's removal in the same PR.
+#
 # Cells that USED to be holes, for the record:
 #   * WI-jusus emission-parity F5 (`emits_variable` / `emits_field`): closed by
 #     eight per-language slices; every applicable cell is a hard lock.
@@ -221,7 +290,33 @@ COLUMN_APPLICABILITY: dict[str, set[str]] = {
 #     (WI-tosul correction) — entrypoint detection is a pipeline property, so
 #     these cells are no longer parametrized (see COLUMN_APPLICABILITY) and the
 #     real invariant moved to `test_entrypoint_parity.py`.
-KNOWN_HOLES: dict[tuple[str, str], str] = {}
+_ENUM_HOLE = (
+    "WI-duguk: analyzer emits the `enum` container but no Symbol for any of its "
+    "named members, so the containment linker has nothing to root and "
+    "`slice --reverse` from the enum returns the container alone. Not by design "
+    "— no ADR/spec passage excludes enum members, and the niche D and Nim "
+    "analyzers already emit them as kind='field' with dotted names (verified "
+    "live: D `enum Color` -> field Color.red, field Color.green)."
+)
+_ABSTRACT_HOLE = (
+    "WI-duguk: analyzer emits the abstract-type container but no Symbol for any "
+    "of its member signatures. Sibling analyzers go/java/csharp already emit "
+    "these as kind='method' with dotted names, so this is a per-analyzer gap "
+    "rather than a property of the construct."
+)
+
+KNOWN_HOLES: dict[tuple[str, str], str] = {
+    # 0 of the 5 analyzers that emit an `enum` emit its variants.
+    ("typescript", "emits_enum_members"): _ENUM_HOLE,
+    ("java", "emits_enum_members"): _ENUM_HOLE,
+    ("rust", "emits_enum_members"): _ENUM_HOLE,
+    ("csharp", "emits_enum_members"): _ENUM_HOLE,
+    ("swift", "emits_enum_members"): _ENUM_HOLE,
+    # 3 of the 6 applicable analyzers miss abstract-type members.
+    ("typescript", "emits_abstract_members"): _ABSTRACT_HOLE,
+    ("rust", "emits_abstract_members"): _ABSTRACT_HOLE,
+    ("swift", "emits_abstract_members"): _ABSTRACT_HOLE,
+}
 
 
 @pytest.fixture(scope="module")

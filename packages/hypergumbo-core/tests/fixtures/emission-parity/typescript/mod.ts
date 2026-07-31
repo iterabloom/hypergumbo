@@ -40,5 +40,17 @@ export class Service {
   }
 }
 
+/** Enumerated type whose named members are container members. */
+export enum Color {
+  Red = 'red',
+  Green = 'green',
+}
+
+/** Abstract type whose member signatures are container members. */
+export interface Drawable {
+  draw(): string;
+  area(): number;
+}
+
 // Entrypoint idiom: top-level executable statement (module run-on-load).
 new Service().run();

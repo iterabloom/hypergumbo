@@ -2,6 +2,19 @@
 // See tests/fixtures/emission-parity/README.md.
 import java.util.List;
 
+/** Enumerated type whose named members are container members. */
+enum Color {
+    RED,
+    GREEN;
+}
+
+/** Abstract type whose member signatures are container members. */
+interface Drawable {
+    String draw();
+
+    double area();
+}
+
 public class Main {
     /** Instance count, default zero-value. */
     int count = 0;

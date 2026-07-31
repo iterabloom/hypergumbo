@@ -1213,6 +1213,8 @@ Feature comparison across commits: same query → compare `node_ids`/`edge_ids` 
 
 🟩 When reverse-slicing from a class/interface entry (e.g., `--reverse --entry OwnerRepository`), the slicer auto-expands the BFS starting set to include all member methods (via `contains` edges). This enables finding callers of `findById`, `search`, etc. Applies to class, interface, module, struct, trait, enum, and file containers.
 
+**Scope: expansion is only as complete as member emission (WI-duguk).** The slicer expands all seven container kinds unconditionally, but the expansion has an effect only where the *analyzer* emitted the container's members as symbols — no member symbol means no `contains` edge to follow, and the reverse slice returns the container alone. That is indistinguishable, to a consumer, from "this type has no users". The property is locked per-`(language, container-kind)` by the G2 emission-parity matrix (`packages/hypergumbo-core/tests/test_emission_parity_matrix.py`, columns `emits_enum_members` / `emits_abstract_members`). **Currently vacuous:** enum members for every analyzer that emits an `enum` (typescript, java, rust, csharp, swift — 0 of 5); abstract-type members for typescript, rust and swift (go, java and csharp emit them). Measured example: `slice --entry Color --language rust --reverse` returns 1 node, versus 2 for a container whose members exist.
+
 ### Taint-flow analysis (ADR-0017)
 
 🟩 Taint-flow analysis tracks labeled data (e.g., `plaintext`, `key_material`) from sources through the call graph to sinks, checking whether prohibited flows exist and whether sanitizers (e.g., encryption) intervene. It is the engine behind `verify-claims` taint-flow constraints.

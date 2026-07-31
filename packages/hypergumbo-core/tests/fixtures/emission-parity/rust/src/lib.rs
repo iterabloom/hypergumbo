@@ -39,6 +39,18 @@ impl Service {
     }
 }
 
+/// Enumerated type whose named members are container members.
+pub enum Color {
+    Red,
+    Green,
+}
+
+/// Abstract type whose member signatures are container members.
+pub trait Drawable {
+    fn draw(&self) -> String;
+    fn area(&self) -> f64;
+}
+
 fn main() {
     Service.run();
 }

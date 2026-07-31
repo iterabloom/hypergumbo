@@ -33,4 +33,16 @@ public class Service {
     }
 }
 
+/// Enumerated type whose named members are container members.
+public enum Color {
+    case red
+    case green
+}
+
+/// Abstract type whose member signatures are container members.
+public protocol Drawable {
+    func draw() -> String
+    func area() -> Double
+}
+
 let _ = Service().run()
