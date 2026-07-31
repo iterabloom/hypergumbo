@@ -1079,6 +1079,68 @@ def _extract_symbols(
                 )
                 symbols.append(symbol)
 
+                # WI-duguk: the enum's CONSTANTS. Without them the enum is a
+                # container with nothing in it, so the containment linker roots
+                # nothing and `slice --reverse` from the enum returns the
+                # container alone. The gap was easy to miss because an enum's
+                # METHODS were already emitted (`Color.label`), so an enum
+                # carrying one method looked populated to any "does this
+                # container have a member" probe.
+                #
+                # Only DIRECT `enum_constant` children of the `enum_body` are
+                # read: the body's other child is `enum_body_declarations`,
+                # holding the enum's methods and fields, which keep flowing
+                # through their own branches. A constant with arguments
+                # (`RED("r")`) carries an argument_list after its identifier and
+                # is otherwise the same node.
+                enum_body = next(
+                    (c for c in node.children if c.type == "enum_body"), None,
+                )
+                const_ancestors = ancestors + [name]
+                for const in enum_body.children if enum_body else ():
+                    if const.type != "enum_constant":
+                        continue
+                    const_name_node = const.child_by_field_name("name")
+                    if const_name_node is None:  # pragma: no cover - always named
+                        continue
+                    const_name = _node_text(const_name_node, source)
+                    const_full = f"{'.'.join(const_ancestors)}.{const_name}"
+                    const_span = Span(
+                        start_line=const.start_point[0] + 1,
+                        end_line=const.end_point[0] + 1,
+                        start_col=const.start_point[1],
+                        end_col=const.end_point[1],
+                    )
+                    const_qualified = _make_java_qualified_name(
+                        package_name, const_ancestors, const_name,
+                    )
+                    symbols.append(Symbol(
+                        id=_make_symbol_id(
+                            str(file_path), const_span.start_line,
+                            const_span.end_line, const_full, "field",
+                        ),
+                        name=const_full,
+                        kind="field",
+                        language="java",
+                        path=str(file_path),
+                        span=const_span,
+                        origin=PASS_ID,
+                        origin_run_id=run.execution_id,
+                        stable_id=make_typed_stable_id(
+                            "field", name,
+                            visibility_from_modifiers(modifiers),
+                            name=const_name,
+                            qualified_name=const_qualified,
+                            file_stable_id=file_stable_id,
+                        ),
+                        # A constant is implicitly `public static final` and is
+                        # as reachable as its enum; Java has no per-constant
+                        # access modifier.
+                        is_exported="public" in modifiers,
+                        qualified_name=const_qualified,
+                        line_span=const_span.end_line - const_span.start_line + 1,
+                    ))
+
         # Method declarations
         elif node.type == "method_declaration":
             name = _get_method_name(node, source)
