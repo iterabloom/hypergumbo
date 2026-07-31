@@ -1,0 +1,22 @@
+- op: create  # c515
+  at: '2026-07-31T21:05:42Z'  # c515
+  by: agent  # c515
+  actor: jgstern_agent  # c515
+  clock: 1  # c515
+  nonce: c515  # c515
+  data:  # c515
+    kind: work_item  # c515
+    title: "Elixir behaviours unmodelled: @callback emits no symbol and @behaviour emits no edge"  # c515
+    status: todo_hard  # c515
+    priority: 2  # c515
+    parent:  # c515
+    tags:  # c515
+    - elixir  # c515
+    - analyzer  # c515
+    - linker_gap  # c515
+    isbefore: []  # c515
+    duplicate_of: []  # c515
+    not_duplicate_of: []  # c515
+    pr_ref:  # c515
+    description: "**Elixir behaviours are the language's interface mechanism and are wholly unmodelled.** Measured by the interface-dispatch parity column on:\n\n    defmodule Shape do\n      @callback area() :: integer\n    end\n\n    defmodule Square do\n      @behaviour Shape\n      def area, do: 1\n    end\n\nEmitted:\n\n    module 'Shape'      <- no members\n    module 'Square'\n    function 'Square.area'\n\nTwo independent gaps:\n\n1. **`@callback area() :: integer` produces no symbol at all.** The behaviour's required function does not exist in the graph, so there is nothing to dispatch FROM. (Directly parallel to rust traits before WI-duguk, and to cpp's dropped abstract methods.)\n2. **`@behaviour Shape` produces no edge.** No `implements`, `extends` or `inherits` links the implementing module to the behaviour, so even with (1) fixed there would be no relationship to traverse.\n\nBoth are needed; either alone leaves the cell red.\n\n**Why this matters more than one parity cell.** `@behaviour` is how Elixir/OTP expresses `GenServer`, `Supervisor`, `Application` and every custom contract. A codebase's entire OTP structure is currently invisible as a type relationship. `linkers/otp.py` exists and covers OTP dispatch by other means — check what it already recovers before scoping this, since the overlap may be substantial and the gap smaller than it looks.\n\nHole recorded as a strict xfail in `test_interface_dispatch_parity.py`."  # c515
+    fields: {}  # c515

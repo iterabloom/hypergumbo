@@ -1,0 +1,22 @@
+- op: create  # 1643
+  at: '2026-07-31T21:05:39Z'  # 1643
+  by: agent  # 1643
+  actor: jgstern_agent  # 1643
+  clock: 1  # 1643
+  nonce: '1643'  # 1643
+  data:  # 1643
+    kind: work_item  # 1643
+    title: "Dart analyzer emits no inheritance edge for 'implements'/'extends'; all symbols correct, relationship absent"  # 1643
+    status: todo_hard  # 1643
+    priority: 2  # 1643
+    parent:  # 1643
+    tags:  # 1643
+    - dart  # 1643
+    - analyzer  # 1643
+    - linker_gap  # 1643
+    isbefore: []  # 1643
+    duplicate_of: []  # 1643
+    not_duplicate_of: []  # 1643
+    pr_ref:  # 1643
+    description: "**Measured** by the interface-dispatch parity column (`test_interface_dispatch_parity.py`), on:\n\n    abstract class Shape { int area(); }\n    class Square implements Shape { int area() => 1; }\n\nThe analyzer emits **all four symbols correctly**, with dot-qualified member names that every shared linker can parse:\n\n    class   'Shape'         method  'Shape.area'\n    class   'Square'        method  'Square.area'\n\nand **no inheritance edge whatsoever** — no `implements`, no `extends`, no `inherits`. So `linkers/type_hierarchy` has nothing to build its inheritance maps from and Dart gets no `dispatches_to` edge.\n\nThis is the cleanest of the parity column's eight holes: nothing about naming, nothing about vocabulary, nothing about kinds. One missing producer emission. Contrast php (three stacked defects) and solidity (correct emission, consumer blindness).\n\n**Consequence beyond dispatch.** `implements`/`extends` edges feed inheritance-based reachability, so a Dart class that is only ever used through its interface reads as dead code. Not measured on a real Dart corpus — quantifying it is the first step of the fix, not a claim being made here.\n\nHole recorded as a strict xfail; fixing the analyzer XPASSes the cell and forces the entry's removal in the same PR."  # 1643
+    fields: {}  # 1643

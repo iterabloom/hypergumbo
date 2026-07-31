@@ -1,0 +1,23 @@
+- op: create  # 0f3b
+  at: '2026-07-31T23:09:25Z'  # 0f3b
+  by: agent  # 0f3b
+  actor: jgstern_agent  # 0f3b
+  clock: 1  # 0f3b
+  nonce: 0f3b  # 0f3b
+  data:  # 0f3b
+    kind: work_item  # 0f3b
+    title: "_extends_admits_dispatch tests the CHILD for abstractness; C++/C# abstract-base hierarchies have the abstract PARENT, so they never dispatch"  # 0f3b
+    status: todo_hard  # 0f3b
+    priority: 2  # 0f3b
+    parent:  # 0f3b
+    tags:  # 0f3b
+    - linker  # 0f3b
+    - protocol  # 0f3b
+    - linker_gap  # 0f3b
+    - awaits_bakeoff_validation  # 0f3b
+    isbefore: []  # 0f3b
+    duplicate_of: []  # 0f3b
+    not_duplicate_of: []  # 0f3b
+    pr_ref:  # 0f3b
+    description: "**Measured**, after the cpp producer gap was closed (pure virtuals now emitted, class marked abstract):\n\n    cpp   class:Shape  (modifiers=['abstract'])\n          method:Shape::area\n          class:Square\n          method:Square::area\n          contains  class:Shape -> method:Shape::area     <- containment works\n          extends   class:Square -> class:Shape\n          (no dispatches_to)\n\nEvery ingredient is present and the edge is still not emitted, because:\n\n    _extends_admits_dispatch(language=\"cpp\", child_kind=\"class\", child_modifiers=[])\n      -> cpp is in NO_VIRTUAL_EXTENDS_LANGUAGES\n      -> is_abstract_type(\"class\", []) is False\n      -> False\n\n**The rule asks whether the CHILD is abstract. For an abstract-base-class hierarchy the abstract one is the PARENT.** `class Square : public Shape` emits `extends: Square -> Shape` with `Square` concrete, so the child test can never pass — no matter how correct the producer becomes.\n\n**The rule is not simply wrong; it is right for the case it was written for.** Its own docstring names that case: *\"even in languages without virtual dispatch through concrete extends (Go, C++, Rust, C#), interface inheritance IS virtual dispatch via interface satisfaction. Go interface embedding (`type Bar interface { Foo; ... }`) and C# interface inheritance both produce extends edges between interface symbols.\"* Both endpoints are abstract there, so testing the child is equivalent to testing the parent and nobody had to choose. C++ abstract-base inheritance is the case where they differ.\n\n**Scope, and why this is filed rather than fixed in-band.** `NO_VIRTUAL_EXTENDS_LANGUAGES` is `{go, cpp, rust, csharp}` and the gate is shared, so changing the predicate changes dead-code reachability for four languages at once. Each needs its own ruling:\n\n* **cpp** — dispatch through an abstract base is real. But the deny-list exists because *non-virtual* cpp methods resolve statically, and the honest discriminant is per-method `virtual`, which the analyzer only now records (and only for pure virtuals). Admitting on \"parent is abstract\" is a closer approximation than today's \"never\", but it is still an approximation.\n* **csharp** — same shape: `abstract class` + `override`. The analyzer already emits `modifiers=['abstract']` for the parent, so the data is there.\n* **go** — has no abstract base classes; struct embedding is composition. Almost certainly unaffected, but confirm rather than assume.\n* **rust** — no inheritance at all; trait dispatch flows through `implements`, which this gate never touches.\n\n**Suggested shape.** Widen to \"admit when the child is abstract **or** the parent is\", keeping the deny-list, and gate the change behind the interface-dispatch parity column so each language's cell moves visibly. Do NOT reach for per-method `virtual` tracking as a prerequisite — that is a larger producer campaign and the parent-abstract test is independently defensible.\n\n**Carries a dead-code claim if it lands**, so tag `awaits_bakeoff_validation`.\n\n**Related:** INV-tihim (the parity column that surfaced it; cpp's cell is now red on THIS cause alone, its producer gap having been closed) · WI-sukav A1 (which introduced `NO_VIRTUAL_EXTENDS_LANGUAGES`) · audit-findings 0018 (the `is_abstract_type` predicate the rule now calls)."  # 0f3b
+    fields: {}  # 0f3b
