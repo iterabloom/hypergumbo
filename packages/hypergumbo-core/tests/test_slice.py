@@ -1588,6 +1588,41 @@ class TestReverseSliceClassExpansion:
         assert controller.id in result.node_ids
         assert calls1.id in result.edge_ids
 
+    def test_protocol_entry_expands_to_requirements(self) -> None:
+        """WI-duguk: a `protocol` entry expands like an `interface` entry.
+
+        `protocol` was absent from the slicer's container set, so reverse-slicing
+        from a Swift/Obj-C protocol never expanded to its requirements and
+        returned the container alone — indistinguishable, to a consumer, from
+        "this protocol has no users".
+        """
+        drawable = make_symbol(
+            "Drawable", kind="protocol",
+            path="src/Shapes.swift", start_line=1, end_line=10, language="swift",
+        )
+        draw_req = make_symbol(
+            "Drawable.draw", kind="method",
+            path="src/Shapes.swift", start_line=2, end_line=2, language="swift",
+        )
+        caller = make_symbol(
+            "Renderer.run", kind="method",
+            path="src/Renderer.swift", start_line=1, end_line=8, language="swift",
+        )
+
+        contains1 = make_edge(drawable, draw_req, "contains")
+        calls1 = make_edge(caller, draw_req, "calls")
+
+        nodes = [drawable, draw_req, caller]
+        edges = [contains1, calls1]
+
+        query = SliceQuery(entrypoint="Drawable", max_hops=3, reverse=True)
+        result = slice_graph(nodes, edges, query)
+
+        assert drawable.id in result.node_ids
+        assert draw_req.id in result.node_ids
+        assert caller.id in result.node_ids
+        assert calls1.id in result.edge_ids
+
     def test_class_entry_expansion_multi_hop(self) -> None:
         """Reverse slice from class should follow multiple hops from methods."""
         # Class with one method

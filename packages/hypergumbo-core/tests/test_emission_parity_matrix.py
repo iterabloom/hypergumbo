@@ -306,14 +306,12 @@ _ABSTRACT_HOLE = (
 )
 
 KNOWN_HOLES: dict[tuple[str, str], str] = {
-    # Was 5 of 5; rust and typescript drained, so 3 of the 5 analyzers that
-    # emit an `enum` still emit none of its members.
+    # Was 5 of 5; rust, typescript and swift drained, so 2 of the 5 analyzers
+    # that emit an `enum` still emit none of its members.
     ("java", "emits_enum_members"): _ENUM_HOLE,
     ("csharp", "emits_enum_members"): _ENUM_HOLE,
-    ("swift", "emits_enum_members"): _ENUM_HOLE,
-    # Was 3 of 6; rust and typescript drained, so 1 of the 6 applicable
-    # analyzers still misses abstract-type members.
-    ("swift", "emits_abstract_members"): _ABSTRACT_HOLE,
+    # `emits_abstract_members` is FULLY DRAINED (was 3 of 6 holes: typescript,
+    # rust, swift). Every applicable cell is a hard lock again.
 }
 
 
