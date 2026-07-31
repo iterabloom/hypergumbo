@@ -1,0 +1,64 @@
+Original commit body from f33a6d8b035f4524879bfdbc75c4efbfdd339a3a:
+
+Drains both of swift's container-member parity holes AND fixes a
+structural gap underneath them that no analyzer change could reach.
+
+ANALYZER. The Swift analyzer emitted an enum's methods and computed
+properties (`Color.label`, `Color.name`) but never its CASES, and emitted
+nothing at all inside a `protocol`. The enum half is a worked example of
+why "the container has a member" is not a safe check: an enum carrying
+one method already looked healthy on a span-nesting probe while every one
+of its cases was invisible. Cases become kind="field"; a
+protocol_function_declaration becomes kind="method"; a
+protocol_property_declaration becomes kind="property" rather than
+"field", because `{ get }` is a computed-access contract and never
+storage -- the same field-vs-property distinction the analyzer already
+draws for stored and computed members of a struct.
+
+`case green, blue` is a SINGLE enum_entry carrying TWO simple_identifier
+children, so emission iterates identifiers, not entries. A per-entry loop
+would have silently dropped every case after the first comma -- the kind
+of partial-recall bug that leaves the container looking populated. An
+associated-value case (`case rgb(Int, Int)`) keeps its types in a sibling
+enum_type_parameters node, so the direct-child scan reads the bare case
+name and nothing else.
+
+LINKER + SLICER, which is the part that mattered. After the analyzer
+change the isolated-analyzer tests were green and the parity column read
+green -- and the end-to-end reverse slice from a protocol was UNCHANGED
+at 2 nodes. In the full pipeline the requirements existed and were
+correctly named (`Drawable.draw`, `Drawable.area`) while the protocol
+scored contains_out=0, with a sibling enum and struct in the same file
+each rooting 3 members. Cause: `protocol` was absent from
+linkers.containment.CONTAINER_KINDS and from the slicer's own container
+set, so Swift/Obj-C protocol containment was structurally impossible
+regardless of emission. It is a registered Symbol.kind emitted by both
+swift.py and objc.py and belongs in both sets for exactly the reason
+`interface` does. With it added:
+
+  slice --entry Drawable --language swift --reverse   2 nodes -> 4
+  slice --entry Color    --language swift --reverse   2 nodes -> 4
+
+This is the concrete instance of a standing hazard: a component correct
+at unit level can be INERT in the pipeline, and an emission-parity column
+that measures one analyzer in isolation is blind to it by construction.
+Found only by re-running the end-to-end repro instead of certifying from
+the passing unit test.
+
+STALE COMMENTS. Checking for analogues turned up three comments naming
+`service` as a container kind; none was true. The linker's module
+docstring listed "services", its CONTAINER_KINDS comment said "service
+for proto (contains RPCs)", and slice.py cited containment's set as one
+that "adds `service`, `message`" -- using that as the stated
+justification for the slicer's set being narrower. The ADR-0027 Cluster-D
+fold made `interface` + meta["framework_role"]="service" canonical years
+earlier and proto.py emits exactly that today, so no producer emits
+kind="service" at all. Corrected in all three places rather than left to
+send the next reader through the same audit.
+
+Ratchet: both swift cells XPASSed and FAILED the run until removed from
+KNOWN_HOLES here. `emits_abstract_members` is now FULLY DRAINED -- every
+applicable cell is a hard lock again. Remaining: enum members for java
+and csharp.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
