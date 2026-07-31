@@ -46,6 +46,7 @@ from hypergumbo_lang_mainstream.rust import (
     _extract_rust_signature,
     _find_child_by_field,
     _get_impl_target,
+    _get_trait_owner,
     is_rust_tree_sitter_available,
     normalize_rust_signature,
 )
@@ -108,7 +109,12 @@ def compute_rust_stable_id_from_source(
     from hypergumbo_core.analyze.base import iter_tree
 
     for node in iter_tree(tree.root_node):
-        if node.type != "function_item":
+        # WI-duguk: `function_signature_item` (a trait method with no default
+        # body) is now emitted by rust.py as a `method` owned by its trait, so
+        # it must be recomputable here too or the dedup contract breaks for
+        # every trait declaration — rust-analyzer's SCIP emit indexes trait
+        # method declarations, so these are exactly the symbols both passes see.
+        if node.type not in ("function_item", "function_signature_item"):
             continue
         node_start = node.start_point[0] + 1
         node_end = node.end_point[0] + 1
@@ -125,7 +131,11 @@ def compute_rust_stable_id_from_source(
         modifiers = _extract_modifiers_rust(node, source)
         visibility = visibility_from_modifiers(modifiers)
         impl_target = _get_impl_target(node, source)
-        kind = "method" if impl_target else "function"
+        # WI-duguk: mirrors rust.py's owner resolution — an impl block wins, a
+        # trait owns its own declared members, and only a genuinely free
+        # function stays unowned.
+        owner = impl_target or _get_trait_owner(node, source)
+        kind = "method" if owner else "function"
 
         # Dedup contract (WI-zakub): name/qualified_name must be byte-identical
         # to what rust.py:_analyze_rust computes for the same function_item, so
@@ -134,7 +144,7 @@ def compute_rust_stable_id_from_source(
         # impl methods, else func_name).
         name_node = _find_child_by_field(node, "name")
         func_name = node_text(name_node, source) if name_node else ""
-        full_name = f"{impl_target}::{func_name}" if impl_target else func_name
+        full_name = f"{owner}::{func_name}" if owner else func_name
 
         return make_typed_stable_id(
             kind, norm_sig, visibility,
