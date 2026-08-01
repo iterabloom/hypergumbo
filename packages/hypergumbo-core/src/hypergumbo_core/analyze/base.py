@@ -286,6 +286,82 @@ def find_child_by_field(
 # ---------------------------------------------------------------------------
 
 
+# Node types that mean "a value is produced by calling something", and the
+# field each grammar uses for the callee. Shared rather than re-derived per
+# analyzer: WI-nopod's whole point is that a fact recorded in N places
+# diverges, and the parity column
+# (``test_constructed_from_parity``) enforces the semantics uniformly.
+_CALL_NODE_CALLEE_FIELDS: "tuple[str, ...]" = (
+    "function", "constructor", "callee",
+)
+# Name-shaped nodes that can stand in for an unnamed callee field.
+_CALLEE_NAME_NODE_TYPES: frozenset[str] = frozenset({
+    "identifier", "simple_identifier", "scoped_identifier",
+    "member_expression", "navigation_expression", "field_expression",
+    "qualified_name", "selector_expression",
+})
+_CALL_NODE_TYPES: frozenset[str] = frozenset({
+    "call_expression", "new_expression", "call", "constructor_invocation",
+})
+
+
+def constructed_from_callee(
+    value_node: "Optional[tree_sitter.Node]", source: bytes,
+) -> Optional[str]:
+    """Render the callee of a binding's initializer, or None (WI-nopod).
+
+    ``var app = NewC()`` -> ``"NewC"``; ``let app = pkg.Build()`` ->
+    ``"pkg.Build"``. Used to stamp ``Symbol.meta["constructed_from"]`` so a
+    framework YAML can key on a *construction site* — the surface used by
+    every framework you configure by building an object rather than by
+    decorating or subclassing one.
+
+    Three deliberate narrowings, uniform across languages and pinned by the
+    parity column:
+
+    * only a call-valued initializer qualifies (``x = 30`` records nothing,
+      or the key stops being a useful filter);
+    * a constructor and a factory are treated identically, because static
+      analysis cannot distinguish them and claiming otherwise would be a
+      guess dressed as data;
+    * a **computed** callee (``registry[k]()``) records nothing rather than a
+      partial name — a YAML matching a fiction fails silently, so absence is
+      the honest signal.
+
+    Qualification is KEPT: stripping it would make ``orm.declarative_base``
+    indistinguishable from a same-named local, which is unrecoverable
+    downstream rather than merely inconvenient.
+    """
+    if value_node is None or value_node.type not in _CALL_NODE_TYPES:
+        return None
+    callee = None
+    for field_name in _CALL_NODE_CALLEE_FIELDS:
+        callee = value_node.child_by_field_name(field_name)
+        if callee is not None:
+            break
+    if callee is None:
+        # Not every grammar names the callee. Swift's `call_expression` is
+        # simply `(simple_identifier, call_suffix)` with no fields at all, so
+        # fall back to a leading name-shaped child. Restricted to name shapes
+        # so an argument list or an operator can never be mistaken for a
+        # callee — silence is the correct output for anything else.
+        first = value_node.children[0] if value_node.children else None
+        if first is None or first.type not in _CALLEE_NAME_NODE_TYPES:
+            return None
+        callee = first
+    text = node_text(callee, source).strip()
+    if not text:  # pragma: no cover - a callee node always spans source text;
+        # the guard exists so a zero-width node from a damaged parse cannot
+        # produce an empty key that a YAML regex would then match on.
+        return None
+    # Accept a static dotted / scoped path only. `a[k].b` and generics are
+    # computed or parameterised and cannot be keyed on reliably.
+    parts = text.replace("::", ".").split(".")
+    if not all(part.isidentifier() for part in parts):
+        return None
+    return text
+
+
 def make_symbol_id(
     lang: str, path: str, start_line: int, end_line: int, name: str, kind: str
 ) -> str:

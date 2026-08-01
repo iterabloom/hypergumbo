@@ -48,6 +48,7 @@ from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import Edge, ExternalRef, Span, Symbol, UsageContext, make_pass_id
 from hypergumbo_core.qualified_name_axis import separator_for_language
 from hypergumbo_core.analyze.base import (
+    constructed_from_callee,
     AnalysisResult,
     FileAnalysis,
     TreeSitterAnalyzer,
@@ -906,6 +907,12 @@ def _extract_symbols_from_file(
                     origin_run_id=run_id,
                     signature=prop_type,
                     modifiers=modifiers,
+                    meta=(
+                        {"constructed_from": _sw_cf}
+                        if (_sw_cf := constructed_from_callee(
+                            find_child_by_type(node, "call_expression"), source))
+                        else None
+                    ),
                     stable_id=make_typed_stable_id(
                         kind, prop_type or "",
                         visibility_from_modifiers(modifiers),

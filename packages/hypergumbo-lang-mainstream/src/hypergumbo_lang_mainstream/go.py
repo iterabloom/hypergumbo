@@ -88,6 +88,7 @@ from hypergumbo_core.ir import (
 )
 from hypergumbo_core.qualified_name_axis import separator_for_language
 from hypergumbo_core.analyze.base import (
+    constructed_from_callee,
     AnalysisResult,
     FileAnalysis,
     TreeSitterAnalyzer,
@@ -996,6 +997,27 @@ def _make_go_qualified_name(
     return sep.join(parts)
 
 
+
+def _go_init_value(
+    var_spec: "tree_sitter.Node", value_node: "tree_sitter.Node | None",
+) -> "tree_sitter.Node | None":
+    """The initializer expression of a Go ``var_spec``.
+
+    Go wraps it in an ``expression_list`` (``var a, b = f(), g()``), so the
+    ``value`` field is absent for the common single-binding case and the
+    expression sits one level down. Returns the first element, which is the
+    initializer for a single-name spec.
+    """
+    node = value_node or find_child_by_type(var_spec, "expression_list")
+    if node is None:
+        return None
+    # The `value` field itself resolves to the expression_list, so unwrap
+    # whichever we got rather than assuming the field is absent.
+    if node.type == "expression_list":
+        return node.children[0] if node.children else None
+    return node
+
+
 def _go_visibility_modifiers(name: str) -> list[str]:
     """Derive visibility modifiers from Go naming convention.
 
@@ -1465,6 +1487,12 @@ def _extract_symbols_from_file(
                         origin=PASS_ID,
                         origin_run_id=run.execution_id,
                         modifiers=modifiers,
+                        meta=(
+                            {"constructed_from": _go_cf}
+                            if (_go_cf := constructed_from_callee(
+                                _go_init_value(child, vvalue_node), source))
+                            else None
+                        ),
                         line_span=end_line - start_line + 1,
                         shape_id=_analyzer.compute_shape_id(child),
                         is_exported=bool(vname) and vname[0].isupper(),
