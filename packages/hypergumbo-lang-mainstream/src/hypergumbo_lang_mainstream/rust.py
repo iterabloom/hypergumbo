@@ -51,6 +51,7 @@ from hypergumbo_core.ir import (
 )
 from hypergumbo_core.qualified_name_axis import separator_for_language
 from hypergumbo_core.analyze.base import (
+    constructed_from_callee,
     AnalysisResult,
     FileAnalysis,
     TreeSitterAnalyzer,
@@ -1252,6 +1253,12 @@ def _extract_symbols_from_file(
                     origin=PASS_ID,
                     origin_run_id=run_id,
                     modifiers=v_modifiers,
+                    meta=(
+                        {"constructed_from": _rs_cf}
+                        if (_rs_cf := constructed_from_callee(
+                            _find_child_by_field(node, "value"), source))
+                        else None
+                    ),
                     signature=var_type,
                     stable_id=make_typed_stable_id(
                         "variable", var_type or "",

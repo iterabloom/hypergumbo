@@ -28,7 +28,7 @@ Total concepts: **319** (live: 43, inert: 276, ghost: 0).
 | `api_route` | inert | nextjs | _(none)_ |
 | `api_view` | inert | flask-appbuilder | _(none)_ |
 | `app_bootstrap` | live | react, solid | `entrypoints.py` |
-| `application` | live | aiohttp, giraffe, http4s, hummingbird, javalin, openresty, padrino, plumber, qt, roda, scotty, servant, shiny, swiftui, tornado, yesod, zio | `entrypoints.py` |
+| `application` | live | aiohttp, fastapi, flask, giraffe, http4s, hummingbird, javalin, openresty, padrino, plumber, qt, roda, scotty, servant, shiny, swiftui, tornado, yesod, zio | `entrypoints.py` |
 | `argument` | inert | cli, cli-js, cli-ruby, cli-rust | _(none)_ |
 | `asset` | inert | yii | _(none)_ |
 | `async` | inert | jax-rs, quarkus, remix, spring-boot, tornado | _(none)_ |
@@ -243,7 +243,7 @@ Total concepts: **319** (live: 43, inert: 276, ghost: 0).
 | `route_registration` | inert | pyramid | _(none)_ |
 | `route_segment` | inert | roda | _(none)_ |
 | `route_terminal` | inert | roda | _(none)_ |
-| `router` | live | cowboy, giraffe, http4k, http4s, laminas, nuxt, pedestal, phoenix, plumber, remix, ring-compojure, router_routes.py, sveltekit, vertx, yesod | `linkers/router_routes.py` |
+| `router` | live | cowboy, fastapi, flask, giraffe, http4k, http4s, laminas, nuxt, pedestal, phoenix, plumber, remix, ring-compojure, router_routes.py, sveltekit, vertx, yesod | `linkers/router_routes.py` |
 | `runtime` | inert | tornado | _(none)_ |
 | `scheduled` | inert | micronaut | _(none)_ |
 | `scheduled_task` | live | celery, go-web, rails | `entrypoints.py` |

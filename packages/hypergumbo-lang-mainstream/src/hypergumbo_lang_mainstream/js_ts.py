@@ -3218,6 +3218,42 @@ def _extract_field_modifiers(node: "tree_sitter.Node", source: bytes) -> list[st
     return mods
 
 
+def _jsts_constructed_from(
+    declarator: "tree_sitter.Node", source: bytes,
+) -> "str | None":
+    """The callee of a declarator's initializer, for ``meta['constructed_from']``.
+
+    ``const app = new Koa()`` -> ``"Koa"``; ``const r = express.Router()`` ->
+    ``"express.Router"``. Both ``new_expression`` and a plain
+    ``call_expression`` count: JS frameworks use each (``new Koa()`` vs
+    ``express()``), and a YAML author keying on the framework's export does
+    not care which. Qualification is kept so a namespaced callee stays
+    distinguishable from a same-named local.
+
+    A computed callee (``registry[k]()``) has no static name and yields None
+    rather than a guess — a pattern matching a fiction would fail silently.
+    """
+    value = declarator.child_by_field_name("value")
+    if value is None or value.type not in ("new_expression", "call_expression"):
+        return None
+    callee = value.child_by_field_name(
+        "constructor" if value.type == "new_expression" else "function",
+    )
+    if callee is None:  # pragma: no cover - the JS/TS grammar always fills
+        # the callee slot: `new (f())()` and `(0,f)()` yield a
+        # `parenthesized_expression` rather than nothing, and those fall
+        # through to the name-shape check below. Kept as a guard against a
+        # damaged parse.
+        return None
+    if callee.type == "identifier":
+        return _node_text(callee, source)
+    if callee.type == "member_expression":
+        text = _node_text(callee, source)
+        # Only a dotted static path qualifies; `a[b].c` is computed.
+        return text if all(part.isidentifier() for part in text.split(".")) else None
+    return None
+
+
 def _extract_field_type(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
     """Return the type-annotation text (without the leading ``: ``, e.g.
     ``"string[]"``) of a class field (``public_field_definition``) or a variable
@@ -3945,6 +3981,11 @@ def _extract_symbols(
                                 # collision post-pass (ADR-0035).
                                 stable_id=make_variable_stable_id(lang, normalize_path(file_name), var_name),
                                 signature=_extract_field_type(child, source),
+                                meta=(
+                                    {"constructed_from": _jsts_cf}
+                                    if (_jsts_cf := _jsts_constructed_from(child, source))
+                                    else None
+                                ),
                                 is_exported=node.parent is not None and node.parent.type == "export_statement",
                                 line_span=vspan.end_line - vspan.start_line + 1,
                             ))

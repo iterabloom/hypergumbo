@@ -80,5 +80,27 @@ patterns:
   - concept: model
     base_class: "^SQLModel$"
 
+
+  # ============ CONSTRUCTION-BASED PATTERNS (WI-nopod) ============
+  # FastAPI's application object is CONSTRUCTED (`app = FastAPI()`), not
+  # subclassed or decorated — so neither the decorator surface above nor a
+  # base_class rule can reach it. Contrast aiohttp, whose Application IS
+  # subclassed and is matched with `base_class: "^Application$"`.
+  #
+  # The producer records the callee on the bound variable as
+  # meta["constructed_from"], keeping any qualification. meta_match applies
+  # re.match (NOT re.search), so `(.*\.)?` is required to accept the
+  # qualified form — `(^|\.)FastAPI$` silently misses `fastapi.FastAPI`.
+  - concept: application
+    symbol_kind: "^variable$"
+    meta_match:
+      constructed_from: "(.*\\.)?FastAPI$"
+
+  # APIRouter instances are the sub-application unit; same construction shape.
+  - concept: router
+    symbol_kind: "^variable$"
+    meta_match:
+      constructed_from: "(.*\\.)?APIRouter$"
+
 linkers:
   - http

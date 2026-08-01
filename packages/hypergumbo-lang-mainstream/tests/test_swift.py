@@ -2151,3 +2151,51 @@ class TestSwiftInvFahubReceiverGating:
         assert len(hinted) == 1, [e.dst for e in result.edges if "go" in e.src]
         assert hinted[0].is_resolved is False
         assert (hinted[0].meta or {}).get("receiver_type_hint") == "UnknownType"
+
+
+class TestSwiftProtocolRequirements:
+    """Protocol requirements are symbols (WI-duguk), covered by a DIRECT import.
+
+    These branches were previously reachable only through
+    ``BRANCHES_test_swift.py``, which drives the analyzer via
+    ``run_behavior_map`` and therefore imports ``hypergumbo_core.cli`` rather
+    than ``swift``. smart-test resolves affected tests through the import
+    graph, so that file is selected when ``cli.py`` changes and **not** when
+    ``swift.py`` changes alone — leaving the sole coverer of this code
+    invisible exactly when it matters. A direct-import test makes the
+    coverage independent of that.
+
+    A property requirement is ``kind="property"`` rather than ``field``
+    because ``{ get }`` is a computed-access contract and never storage.
+    """
+
+    def test_function_and_property_requirements_are_emitted(
+        self, tmp_path: Path,
+    ) -> None:
+        from hypergumbo_lang_mainstream.swift import analyze_swift
+
+        (tmp_path / "s.swift").write_text(
+            "protocol Shape {\n"
+            "    func area() -> Int\n"
+            "    var name: String { get }\n"
+            "}\n",
+        )
+        by_name = {s.name: s for s in analyze_swift(tmp_path).symbols}
+        assert by_name["Shape"].kind == "protocol"
+        assert by_name["Shape.area"].kind == "method"
+        assert by_name["Shape.name"].kind == "property", (
+            "a `{ get }` requirement is a computed-access contract, not storage"
+        )
+
+    def test_requirement_signature_is_read_from_the_annotation(
+        self, tmp_path: Path,
+    ) -> None:
+        """A property requirement has no initializer to infer a type from."""
+        from hypergumbo_lang_mainstream.swift import analyze_swift
+
+        (tmp_path / "s.swift").write_text(
+            "protocol P {\n    var items: [String] { get }\n}\n",
+        )
+        by_name = {s.name: s for s in analyze_swift(tmp_path).symbols}
+        assert by_name["P.items"].kind == "property"
+        assert by_name["P.items"].signature is not None
