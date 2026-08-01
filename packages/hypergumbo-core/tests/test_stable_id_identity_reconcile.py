@@ -80,6 +80,20 @@ def test_dedup_collapses_logical_duplicates_to_one_hub() -> None:
     assert symbols[0].id == s1.id
 
 
+def test_dedup_none_span_duplicate_sorts_as_position_zero() -> None:
+    """WI-hafap: a span=None duplicate sorts as position (0, 0, 0, 0) in
+    ``_occurrence_sort_key`` — identical to the degenerate zero Span that
+    ``Symbol.from_dict`` used to fabricate — so it wins survivor selection
+    over a line-10 sibling instead of crashing inside ``sorted()``."""
+    s_none = _mq(5)
+    s_none.span = None
+    s_real = _mq(10)
+    symbols = [s_real, s_none]  # out of span order: survivor choice is span-driven
+    dropped = dedup_logical_synthetic_identities(symbols, [])
+    assert dropped == 1
+    assert symbols[0].id == s_none.id
+
+
 def test_dedup_preserves_all_publisher_connectivity() -> None:
     """Every distinct publisher's ``uses`` edge is rewired onto the one hub
     (the §3 reason dedup must run AFTER the enclosure pass, not at-mint)."""

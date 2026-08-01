@@ -147,18 +147,23 @@ def link_router_routes(ctx: LinkerContext) -> LinkerResult:
         version=PASS_VERSION,
     )
 
-    routers_by_file: dict[str, list[Symbol]] = {}
-    routes_by_file: dict[str, list[Symbol]] = {}
+    # (Symbol, Span) tuples: the entry filter establishes span presence, and
+    # carrying the narrowed Span in the bucket lets the type system hold that
+    # invariant across the collection boundary (mypy cannot re-derive it from
+    # dict[str, list[Symbol]] downstream).
+    routers_by_file: dict[str, list[tuple[Symbol, Span]]] = {}
+    routes_by_file: dict[str, list[tuple[Symbol, Span]]] = {}
 
     for sym in ctx.symbols:
-        if sym.span is None:
+        span = sym.span
+        if span is None:
             continue
         if is_test_file(sym.path):
             continue
         if has_concept(sym, "router"):
-            routers_by_file.setdefault(sym.path, []).append(sym)
+            routers_by_file.setdefault(sym.path, []).append((sym, span))
         if has_concept(sym, "route"):
-            routes_by_file.setdefault(sym.path, []).append(sym)
+            routes_by_file.setdefault(sym.path, []).append((sym, span))
 
     edges: list[Edge] = []
 
@@ -166,11 +171,17 @@ def link_router_routes(ctx: LinkerContext) -> LinkerResult:
         routes = routes_by_file.get(path, [])
         if not routes:
             continue
-        for route in routes:
-            enclosing = [r for r in routers if _encloses(r.span, route.span)]
+        for route, route_span in routes:
+            enclosing = [
+                (r, r_span)
+                for r, r_span in routers
+                if _encloses(r_span, route_span)
+            ]
             if not enclosing:
                 continue
-            winner = min(enclosing, key=lambda r: _span_size(r.span))
+            winner, winner_span = min(
+                enclosing, key=lambda pair: _span_size(pair[1])
+            )
             # ADR-0023 §6 Phase 3 / audit-findings 0001 (WI-vasik-jofiv):
             # Router declares routes (declaration-time, not dispatch).
             # Canonical 'references' +
@@ -179,7 +190,7 @@ def link_router_routes(ctx: LinkerContext) -> LinkerResult:
                 src=winner.id,
                 dst=route.id,
                 edge_type="references",
-                line=winner.span.start_line,
+                line=winner_span.start_line,
                 origin=PASS_ID,
                 evidence_type="ast_call_direct",
                 confidence=0.80,

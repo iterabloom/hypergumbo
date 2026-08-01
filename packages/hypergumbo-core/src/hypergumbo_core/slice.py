@@ -153,7 +153,11 @@ class AmbiguousEntryError(Exception):
             f"in different files:",
         ]
         for sym in candidates:
-            lines.append(f"  [{sym.language}] {sym.path}:{sym.span.start_line}")
+            # Deserialized symbols may carry span=None (legacy maps without a
+            # span key); render the line-0 convention rather than crash the
+            # very error message the user needs to disambiguate.
+            start = sym.span.start_line if sym.span else 0
+            lines.append(f"  [{sym.language}] {sym.path}:{start}")
             lines.append(f"    ID: {sym.id}")
         lines.append("")
         lines.append("Use a full node ID to disambiguate, or filter with --language.")

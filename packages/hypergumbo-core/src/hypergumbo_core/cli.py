@@ -2060,7 +2060,7 @@ def cmd_search(args: argparse.Namespace) -> int:
         kind = node.get("kind", "")
         lang = node.get("language", "")
         path = node.get("path", "")
-        span = node.get("span", {})
+        span = node.get("span") or {}
         line = span.get("start_line", 0)
 
         print(f"  {name} ({kind})")
@@ -2159,7 +2159,7 @@ def _route_json_record(route: Mapping[str, Any]) -> dict[str, Any]:
         "name": route.get("name", ""),
         "path": route.get("path", ""),
         "language": route.get("language"),
-        "span": route.get("span", {}),
+        "span": route.get("span") or {},
         "method": (method or "").upper(),
         "route_path": route_path,
         "controller_action": controller_action,
@@ -2307,7 +2307,7 @@ def cmd_routes(args: argparse.Namespace) -> int:
         # route_path) so the same logical routes render identically across
         # full vs compact behavior maps (compact reorders nodes by
         # centrality, which previously leaked into the routes display).
-        span = route.get("span", {}) or {}
+        span = route.get("span") or {}
         meta = route.get("meta", {}) or {}
         method = (meta.get("http_method") or protocol_method_token(meta.get("route_protocol")) or "") if meta.get("framework_role") == "route" else ""
         route_path = meta.get("route_path") or ""
@@ -2324,7 +2324,7 @@ def cmd_routes(args: argparse.Namespace) -> int:
         print(f"{file_path}:")
         for route in file_routes:
             name = route.get("name", "")
-            span = route.get("span", {})
+            span = route.get("span") or {}
             line = span.get("start_line", 0)
             meta = route.get("meta", {}) or {}
 
@@ -2669,7 +2669,7 @@ def cmd_explain(args: argparse.Namespace) -> int:
         kind = node.get("kind", "")
         lang = node.get("language", "")
         path = node.get("path", "")
-        span = node.get("span", {})
+        span = node.get("span") or {}
         start_line = span.get("start_line", 0)
         end_line = span.get("end_line", 0)
 
@@ -2806,7 +2806,7 @@ def cmd_explain(args: argparse.Namespace) -> int:
                 if is_module_level:
                     start, end = caller_line, caller_line
                 elif caller_node:
-                    caller_span = caller_node.get("span", {})
+                    caller_span = caller_node.get("span") or {}
                     start = caller_span.get("start_line", 0)
                     end = caller_span.get("end_line", 0)
                     if not (start and end):  # pragma: no cover
@@ -2834,7 +2834,7 @@ def cmd_explain(args: argparse.Namespace) -> int:
                 if is_module_level:
                     start, end = callee_line, callee_line
                 elif callee_node:
-                    callee_span = callee_node.get("span", {})
+                    callee_span = callee_node.get("span") or {}
                     start = callee_span.get("start_line", 0)
                     end = callee_span.get("end_line", 0)
                     if not (start and end):  # pragma: no cover
@@ -4738,7 +4738,7 @@ def _format_io_caller(
     if node:
         name = node.get("name", "?")
         fpath = node.get("path", "")
-        line = node.get("span", {}).get("start_line", "")
+        line = (node.get("span") or {}).get("start_line", "")
         display_path = _relativize(fpath, repo_root)
         if display_path and line:
             return f"{name} ({display_path}:{line})"
@@ -5815,7 +5815,7 @@ def cmd_test_coverage(args: argparse.Namespace) -> int:
         )
 
         for density, test_count, loc, target, test_names in test_dense[:top_n] if top_n else test_dense:
-            span = target.get("span", {})
+            span = target.get("span") or {}
             output["test_dense"].append({
                 "id": target["id"],
                 "name": target.get("name", ""),
@@ -5828,7 +5828,7 @@ def cmd_test_coverage(args: argparse.Namespace) -> int:
             })
 
         for target, loc, complexity in cold_spots[:top_n] if top_n else cold_spots:
-            span = target.get("span", {})
+            span = target.get("span") or {}
             entry: dict[str, object] = {
                 "id": target["id"],
                 "name": target.get("name", ""),
@@ -5864,7 +5864,7 @@ def cmd_test_coverage(args: argparse.Namespace) -> int:
             for density, test_count, loc, target, _ in display_hot:
                 name = _format_symbol_display_name(target, target.get("id", ""))
                 path = target.get("path", "")
-                span = target.get("span", {})
+                span = target.get("span") or {}
                 start = span.get("start_line", 0)
                 end = span.get("end_line", 0)
                 print(
@@ -5884,7 +5884,7 @@ def cmd_test_coverage(args: argparse.Namespace) -> int:
             for target, loc, complexity in display_cold:
                 name = _format_symbol_display_name(target, target.get("id", ""))
                 path = target.get("path", "")
-                span = target.get("span", {})
+                span = target.get("span") or {}
                 start = span.get("start_line", 0)
                 end = span.get("end_line", 0)
                 metrics = []
@@ -6505,7 +6505,7 @@ def cmd_dead_code_maybe(args: argparse.Namespace) -> int:
         # Convert dict nodes/edges to IR objects for detect_entrypoints
         ir_nodes = []
         for n in nodes:
-            span_data = n.get("span", {})
+            span_data = n.get("span") or {}
             sym = Symbol(
                 id=n["id"],
                 name=n.get("name", ""),

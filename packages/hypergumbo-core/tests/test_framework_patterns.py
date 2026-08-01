@@ -19598,6 +19598,28 @@ class TestMaterializeRouteSymbols:
         routes = materialize_route_symbols([sym])
         assert len(routes) == 0
 
+    def test_none_span_handler_anchors_route_at_zero_span(self) -> None:
+        """WI-hafap: a span-less handler still materializes its route,
+        anchored at the degenerate zero span (the line-0 convention) —
+        pinned so a future rewrite cannot silently change the fallback."""
+        handler = Symbol(
+            id="java:src/Api.java:0-0:doThing:method",
+            name="doThing", kind="method", language="java",
+            path="src/Api.java",
+            span=None,
+            meta={
+                "concepts": [
+                    {"concept": "route", "method": "GET", "path": "/x"},
+                ],
+            },
+        )
+        routes = materialize_route_symbols([handler])
+        assert len(routes) == 1
+        assert routes[0].span == Span(
+            start_line=0, end_line=0, start_col=0, end_col=0,
+        )
+        assert routes[0].meta["handler_ref"] == "doThing"
+
     def test_existing_route_kind_skipped(self) -> None:
         """Symbols already with kind='route' are not duplicated."""
         sym = Symbol(
@@ -19952,6 +19974,20 @@ class TestExpandClassBasedViewRoutes:
         new_routes, removed = expand_class_based_view_routes([route])
         assert new_routes == []
         assert removed == set()
+
+    def test_none_span_any_route_expands_at_zero_span(self) -> None:
+        """WI-hafap: a span-less ANY route still expands per-method,
+        anchored at the degenerate zero span (make_route_symbol requires
+        a concrete Span; line-0 is the fallback convention)."""
+        route = self._make_route("RevokeKeyView", "/revoke/")
+        route.span = None
+        m_post = self._make_method("RevokeKeyView", "post")
+        new_routes, removed = expand_class_based_view_routes([route, m_post])
+        assert len(new_routes) == 1
+        assert new_routes[0].span == Span(
+            start_line=0, end_line=0, start_col=0, end_col=0,
+        )
+        assert removed == {route.id}
 
     def test_non_cbv_route_untouched(self) -> None:
         """Routes without is_class_based_view flag are not expanded."""

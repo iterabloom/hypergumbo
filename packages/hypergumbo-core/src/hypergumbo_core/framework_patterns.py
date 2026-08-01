@@ -1949,13 +1949,20 @@ def materialize_route_symbols(
                 stable_id = make_route_stable_id(method, route_path_normalized)
 
                 # Create route symbol at the same location as the handler.
+                # WI-hafap: Symbol.span is Optional. A span-less handler
+                # anchors its route marker at the degenerate zero span —
+                # the line-0 fallback convention, and the same shape
+                # from_dict used to fabricate for span-less artifact symbols.
+                handler_span = sym.span if sym.span is not None else Span(
+                    start_line=0, end_line=0, start_col=0, end_col=0,
+                )
                 # WI-tufil: build the id via make_symbol_id with the symbol's
                 # own kind ("function", the ADR-0027 Phase-3 route->function
                 # fold) so the id kind-slot round-trips against Symbol.kind. The
                 # route signal lives in meta["framework_role"], not the id-slot.
                 route_id = make_symbol_id(
                     sym.language, sym.path,
-                    sym.span.start_line, sym.span.end_line,
+                    handler_span.start_line, handler_span.end_line,
                     route_name, "function",
                 )
                 route_sym = SymbolCls(
@@ -1965,10 +1972,10 @@ def materialize_route_symbols(
                     language=sym.language,
                     path=sym.path,
                     span=Span(
-                        start_line=sym.span.start_line,
-                        end_line=sym.span.end_line,
-                        start_col=sym.span.start_col,
-                        end_col=sym.span.end_col,
+                        start_line=handler_span.start_line,
+                        end_line=handler_span.end_line,
+                        start_col=handler_span.start_col,
+                        end_col=handler_span.end_col,
                     ),
                     origin=pass_id,
                     origin_run_id=origin_run_id,
@@ -2065,6 +2072,12 @@ def expand_class_based_view_routes(
             continue
 
         route_path = meta.get("route_path") or "/"
+        # WI-hafap: Symbol.span is Optional. A span-less ANY route anchors
+        # its per-method expansions at the degenerate zero span (line-0
+        # fallback convention); make_route_symbol requires a concrete Span.
+        src_span = sym.span if sym.span is not None else Span(
+            start_line=0, end_line=0, start_col=0, end_col=0,
+        )
         for method_name in sorted(methods):
             http_method = method_name.upper()
             # WI-javag / WI-zugob: mint through the shared chokepoint rather
@@ -2080,10 +2093,10 @@ def expand_class_based_view_routes(
                 language=sym.language or "python",
                 path=sym.path,
                 span=Span(
-                    start_line=sym.span.start_line,
-                    end_line=sym.span.end_line,
-                    start_col=sym.span.start_col,
-                    end_col=sym.span.end_col,
+                    start_line=src_span.start_line,
+                    end_line=src_span.end_line,
+                    start_col=src_span.start_col,
+                    end_col=src_span.end_col,
                 ),
                 method=http_method,
                 route_path=route_path,
