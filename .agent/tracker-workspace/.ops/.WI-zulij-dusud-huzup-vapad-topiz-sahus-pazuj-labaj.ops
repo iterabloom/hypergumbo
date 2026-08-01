@@ -107,3 +107,10 @@
   clock: 12  # 2823
   nonce: '2823'  # 2823
   message: "The WI-pohuf compact-node fix (PR de2fb3717c) directly improves the centrality-coverage face flagged in iter-004: the tiered views now fit far more symbols per budget (apollo 4k/16k/64k 1/1/59 -> 4/31/142; pretix 1/1/83 -> 5/38/190), so the compact selection covers much more of the centrality mass. The ORDERING/noise-contamination face (compact leading with build-wrappers/generated/entrypoint nodes over centrality-top real code) is the seed-ranking issue tracked on WI-batit (reproduces) — orthogonal to compact-node size. Keep tag; re-validate ordering after WI-batit."  # 2823
+- op: discuss  # 00a2
+  at: '2026-08-01T05:34:34Z'  # 00a2
+  by: agent  # 00a2
+  actor: jgstern_agent  # 00a2
+  clock: 13  # 00a2
+  nonce: 00a2  # 00a2
+  message: "BAKEOFF VALIDATION: INCONCLUSIVE — tag KEPT. Two datasets, neither decisive:\n  1. Reflect assessments (deep-20260717-200119): no_move=7 / moved=1 — but\n     measured on the hg.4k/16k/64k budget views, the instrument the\n     2026-07-16 correction on WI-kolal established as the wrong path for\n     compact-subcommand claims. Not actionable alone.\n  2. Right-instrument probe (dev 54a5f34bcc, compact --max-symbols 10,\n     default = centrality-ranked per the fix): overlap between the selected\n     10 and the input map's top-10 by the stored node `centrality` field is\n     only 20-50% across the eight 07-17 maps (caddy 50%, express 30%,\n     apollo 20%, SwiftyJSON 40%, zoxide 40%, petclinic 30%, sherpa 30%,\n     pretix 40%). CAVEAT preventing a no_move verdict: compact's ranking\n     key may legitimately differ from the stored per-node centrality field\n     (kind filtering, internal recomputation, coverage mechanics) — the\n     probe measures key disagreement, not necessarily defect. Deciding\n     needs the item's intended key stated and checked, and the ordering\n     face is still blocked on WI-batit.\nThe aggregate's auto-plan would have spawned a regression item from dataset\n1 alone; withheld. Next validation step: state compact's intended ranking\nkey, then re-run the 10-symbol probe against THAT key."  # 00a2
