@@ -987,23 +987,34 @@ def select_by_coverage(
                 included_centrality += centrality.get(sym.id, 0)
                 included_ids.add(sid)
 
-    # Then fill remaining budget with highest-centrality symbols
-    for sym in sorted_symbols:
+    # Then fill remaining budget with highest-centrality symbols.
+    #
+    # WI-vofud: the stop rule must be BUDGET-INDEPENDENT or containment
+    # breaks a third way — the old rule counted force-included (seed)
+    # centrality toward coverage, so a larger budget's bigger seed set
+    # inflated the starting coverage and stopped this fill EARLIER,
+    # dropping ranked symbols the smaller budget had kept.  stop_pos is
+    # computed from the fixed global order alone (positions and cumulative
+    # ranked mass), so it is one number for every budget; the walk below is
+    # then a prefix of a fixed list truncated by the budget — nested by
+    # construction.  min_symbols is positional for the same reason; the
+    # included COUNT is always >= the positions walked (a union with the
+    # seeds), so the "at least min_symbols included" guarantee still holds.
+    stop_pos = len(sorted_symbols)
+    walked_mass = 0.0
+    for pos, sym in enumerate(sorted_symbols):
+        walked_mass += centrality.get(sym.id, 0)
+        if (pos + 1 >= config.min_symbols
+                and walked_mass / total_centrality >= config.target_coverage):
+            stop_pos = pos + 1
+            break
+
+    for sym in sorted_symbols[:stop_pos]:
+        if len(included) >= config.max_symbols:
+            break
         # Skip if already included (force-included)
         if sym.id in included_ids:
             continue
-
-        # Check if we've met all stopping conditions
-        coverage = included_centrality / total_centrality
-        at_min = len(included) >= config.min_symbols
-        at_coverage = coverage >= config.target_coverage
-        at_max = len(included) >= config.max_symbols
-
-        if at_max:
-            break
-        if at_min and at_coverage:
-            break
-
         included.append(sym)
         included_centrality += centrality.get(sym.id, 0)
         included_ids.add(sym.id)
@@ -1153,73 +1164,90 @@ def format_compact_behavior_map(
     Returns:
         Modified behavior map with compact output.
     """
-    # Extract entrypoint symbol_ids to force-include them
-    force_include_ids: set[str] = set()
+    # Extract entrypoint symbol_ids to force-include them, ranked by
+    # (-confidence, symbol_id) for a stable, budget-independent order.
+    symbol_id_set = {s.id for s in symbols}
+    sorted_eps: list[str] = []
     if force_include_entrypoints:
-        symbol_ids = {s.id for s in symbols}
         entrypoints_with_ids = []
         for ep in behavior_map.get("entrypoints", []):
             sid = ep.get("symbol_id")
-            if sid and sid in symbol_ids:
+            if sid and sid in symbol_id_set:
                 entrypoints_with_ids.append(ep)
-
-        # Cap entrypoints to leave room for bridge nodes in connectivity mode.
-        # Without this cap, repos with many entrypoints (e.g., keycloak with
-        # 500 JAX-RS handlers) consume most of the node budget, leaving
-        # insufficient room for frontier expansion.  This causes fragmentation:
-        # keycloak had 30 components and 19 singletons in 100-node compact.
-        #
-        # Use adaptive cap: when entrypoints exceed max_symbols (indicating a
-        # large repo with many entry points), cap aggressively (1/3) to leave
-        # room for bridging.  Otherwise use the gentler 1/2 cap.
-        if len(entrypoints_with_ids) > config.max_symbols:
-            max_forced = max(1, config.max_symbols // 3)
-        else:
-            max_forced = max(1, config.max_symbols // 2)
-        if len(entrypoints_with_ids) > max_forced:
-            # Sort by confidence (descending) and take top entries
-            sorted_eps = sorted(
+        sorted_eps = [
+            ep.get("symbol_id")
+            for ep in sorted(
                 entrypoints_with_ids,
                 key=lambda ep: (-ep.get("confidence", 0), ep.get("symbol_id", ""))
             )
-            entrypoints_with_ids = sorted_eps[:max_forced]
+        ]
 
-        force_include_ids = {ep.get("symbol_id") for ep in entrypoints_with_ids}
-
-    # Seed cross-cutting edge endpoints so linker-produced edges survive
-    # the induced-subgraph filter.  Without this, centrality-based selection
-    # drops peripheral nodes (route definitions, dispatch targets, FFI endpoints)
-    # that are endpoints of these high-value edges.
-    symbol_id_set = {s.id for s in symbols}
-    cross_cutting_ids: set[str] = set()
+    # Cross-cutting edge endpoints, ranked by (-edge_count, id): seeded so
+    # linker-produced edges survive the induced-subgraph filter.  Without
+    # this, centrality-based selection drops peripheral nodes (route
+    # definitions, dispatch targets, FFI endpoints) that are endpoints of
+    # these high-value edges.
+    cc_edge_count: Counter[str] = Counter()
     for e in behavior_map.get("edges", []):
         # Edge dicts use "type" key (from Edge.to_dict()), not "edge_type"
         if e.get("type") in CROSS_CUTTING_EDGE_TYPES:
             src, dst = e.get("src"), e.get("dst")
             if src in symbol_id_set:
-                cross_cutting_ids.add(src)
+                cc_edge_count[src] += 1
             if dst in symbol_id_set:
-                cross_cutting_ids.add(dst)
+                cc_edge_count[dst] += 1
+    ranked_cc = sorted(cc_edge_count, key=lambda x: (-cc_edge_count[x], x))
 
-    # Cap cross-cutting seeds to avoid dominating the budget.  The combined
-    # total of entrypoints + cross-cutting seeds must leave at least half of
-    # max_symbols for frontier expansion.
-    remaining_seed_budget = max(0, config.max_symbols // 2 - len(force_include_ids))
-    if len(cross_cutting_ids) > remaining_seed_budget:
-        # Prefer endpoints with higher edge count (more cross-cutting connections)
-        cc_edge_count: Counter[str] = Counter()
-        for e in behavior_map.get("edges", []):
-            if e.get("type") in CROSS_CUTTING_EDGE_TYPES:
-                src, dst = e.get("src"), e.get("dst")
-                if src in cross_cutting_ids:
-                    cc_edge_count[src] += 1
-                if dst in cross_cutting_ids:
-                    cc_edge_count[dst] += 1
-        # Sort by edge count descending, then alphabetically for stability
-        ranked = sorted(cross_cutting_ids, key=lambda x: (-cc_edge_count[x], x))
-        cross_cutting_ids = set(ranked[:remaining_seed_budget])
-
-    force_include_ids |= cross_cutting_ids
+    force_include_ids: set[str] = set()
+    if connectivity_aware:
+        # Connectivity mode keeps the original budget-adaptive policy: the
+        # aggressive 1/3 entrypoint cap exists for THIS mode (keycloak with
+        # 500 JAX-RS handlers fragmented into 30 components when entrypoints
+        # consumed the budget needed for frontier bridging), and the
+        # bridge-expansion selection is not a ranked prefix anyway, so
+        # budget-containment is not this mode's contract.
+        if len(sorted_eps) > config.max_symbols:
+            max_forced = max(1, config.max_symbols // 3)
+        else:
+            max_forced = max(1, config.max_symbols // 2)
+        force_include_ids = set(sorted_eps[:max_forced])
+        remaining_seed_budget = max(
+            0, config.max_symbols // 2 - len(force_include_ids)
+        )
+        cc_pool = [x for x in ranked_cc if x not in force_include_ids]
+        force_include_ids |= set(cc_pool[:remaining_seed_budget])
+    else:
+        # WI-vofud (WI-kolal regression): the DEFAULT path's contract is
+        # --max-symbols containment monotonicity (nodes(K1) ⊆ nodes(K2) for
+        # K1 <= K2), and the old seed policy broke it two ways — the
+        # entrypoint cap switched regimes on len(eps) > max_symbols, and the
+        # cross-cutting budget (max//2 - len(forced)) SHRANK as the forced
+        # set grew, so a larger budget could drop seeds a smaller budget
+        # kept (measured on 6 of 8 real maps: caddy 50->100 lost its
+        # Dispenser dispatch endpoints).  The monotone replacement: ONE
+        # fixed-order seed list (entrypoints by confidence, then
+        # cross-cutting endpoints by edge count) and ONE quota that can
+        # only grow with the budget.  A prefix of a fixed list under a
+        # monotone quota is nested by construction; the half-budget intent
+        # ("seeds never crowd out the centrality frontier") survives as the
+        # quota itself.
+        seed_order = list(sorted_eps)
+        seen = set(seed_order)
+        for x in ranked_cc:
+            if x not in seen:
+                seed_order.append(x)
+                seen.add(x)
+        # The floor-of-one slot belongs to ENTRYPOINT seeds only (a semantic
+        # anchor survives even max_symbols=1); a pure cross-cutting seed
+        # list gets no floor, matching the old cc budget (max//2, which
+        # floors to zero at tiny budgets) so the top-centrality symbol still
+        # wins the last slot.  The branch condition is budget-independent,
+        # so quota stays monotone in max_symbols either way.
+        if sorted_eps:
+            seed_quota = max(1, config.max_symbols // 2)
+        else:
+            seed_quota = config.max_symbols // 2
+        force_include_ids = set(seed_order[:seed_quota])
 
     if connectivity_aware:
         # Use connectivity-aware selection

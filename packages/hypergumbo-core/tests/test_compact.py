@@ -4408,3 +4408,129 @@ class TestCompactNodeSlimProjection:
         for n in tiered["nodes"]:
             for f in self._HEAVY_FIELDS:
                 assert f not in n
+
+
+class TestSeededContainment:
+    """WI-vofud (WI-kolal regression): the SEED machinery must not break
+    --max-symbols containment monotonicity.
+
+    The prior containment test passed with ``entrypoints: []`` and
+    ``force_include_entrypoints=False`` — it never exercised the seeds, and
+    the seeds were exactly where the budget-dependence lived (measured
+    2026-08-01: containment violated on 6 of 8 real bakeoff maps). Three
+    mechanisms, all covered here:
+
+    1. The entrypoint cap switched REGIMES on ``len(eps) > max_symbols``
+       (1/3 vs 1/2), so growing the budget past the entrypoint count jumped
+       the forced set discontinuously.
+    2. The cross-cutting seed budget was ``max//2 - len(forced)``, which
+       SHRINKS as the forced set grows — at a larger budget the
+       cross-cutting seeds could vanish entirely (caddy 50->100 dropped
+       fmt.Errorf and the Dispenser dispatch endpoints).
+    3. The coverage stop counted seed centrality, so a larger budget's
+       bigger seed set inflated start coverage and stopped the centrality
+       fill EARLIER.
+    """
+
+    def _seeded_map(self):
+        symbols: list[Symbol] = []
+        edges: list[Edge] = []
+        # 12 entrypoint symbols (moderate centrality via a few call edges).
+        eps = []
+        for i in range(12):
+            s = make_symbol(f"ep_{i:02d}", path=f"src/ep/{i}.py")
+            symbols.append(s)
+            eps.append({"symbol_id": s.id, "confidence": 1.0 - i * 0.05})
+        # 10 LOW-centrality dispatch endpoints: reachable only via the
+        # cross-cutting seeding (few call edges point at them, so the
+        # centrality prefix does not rescue them at mid budgets).
+        cc_nodes = []
+        for i in range(10):
+            s = make_symbol(f"cc_{i:02d}", path=f"src/cc/{i}.py")
+            symbols.append(s)
+            cc_nodes.append(s)
+        # 40 ordinary symbols with graded centrality (in-degree ladder).
+        core = []
+        for i in range(40):
+            s = make_symbol(f"core_{i:02d}", path=f"src/core/{i}.py")
+            symbols.append(s)
+            core.append(s)
+        # The ladder uses a NON-cross-cutting edge type deliberately:
+        # "calls" is in CROSS_CUTTING_EDGE_TYPES, so a calls-ladder would
+        # make every core node a seed candidate and swamp the isolation
+        # this fixture exists for (the first draft of this test passed
+        # vacuously for exactly that reason).
+        for i, s in enumerate(core):
+            for j in range(min(i, 12)):
+                edges.append(make_edge(core[(i + j + 1) % 40].id, s.id,
+                                       edge_type="references"))
+        # Cross-cutting edges: dispatches_to onto the cc nodes, with a
+        # cc-edge-count gradient so the ranked cc truncation is exercised.
+        for i, s in enumerate(cc_nodes):
+            for j in range(1 + (10 - i) // 3):
+                edges.append(
+                    make_edge(core[(i * 3 + j) % 40].id, s.id,
+                              edge_type="dispatches_to")
+                )
+        behavior_map = {
+            "nodes": [s.to_dict() for s in symbols],
+            "edges": [e.to_dict() for e in edges],
+            "entrypoints": eps,
+        }
+        return behavior_map, symbols, edges
+
+    @pytest.mark.parametrize("coverage", [0.8, 0.3])
+    def test_containment_across_budgets_with_seeds(self, coverage):
+        """Budgets straddle the entrypoint count (12), so the old regime
+        switch fires between 8 and 16; the low coverage target exercises
+        the coverage-stop interaction."""
+        behavior_map, symbols, edges = self._seeded_map()
+        prev_ids: set[str] | None = None
+        for budget in (4, 8, 16, 24, 40, 62):
+            config = CompactConfig(
+                min_symbols=1, max_symbols=budget,
+                target_coverage=coverage, language_proportional=False,
+            )
+            result = format_compact_behavior_map(
+                behavior_map, symbols, edges, config,
+                connectivity_aware=False,
+            )
+            ids = {n["id"] for n in result["nodes"]}
+            if prev_ids is not None:
+                assert prev_ids <= ids, (
+                    f"containment violated at budget {budget} "
+                    f"(coverage={coverage}): dropped {sorted(prev_ids - ids)}"
+                )
+            prev_ids = ids
+
+    def test_seeds_still_present_at_generous_budget(self):
+        """The fix must not win containment by deleting the seed features:
+        at a budget covering everything, entrypoints and cross-cutting
+        endpoints are all included."""
+        behavior_map, symbols, edges = self._seeded_map()
+        config = CompactConfig(
+            min_symbols=1, max_symbols=62, target_coverage=1.0,
+            language_proportional=False,
+        )
+        result = format_compact_behavior_map(
+            behavior_map, symbols, edges, config, connectivity_aware=False,
+        )
+        ids = {n["id"] for n in result["nodes"]}
+        assert {ep["symbol_id"] for ep in behavior_map["entrypoints"]} <= ids
+        assert {s.id for s in symbols if s.name.startswith("cc_")} <= ids
+
+    def test_seed_share_stays_bounded(self):
+        """The half-budget intent survives: at a tight budget with many
+        entrypoints, at least some slots go to the centrality prefix."""
+        behavior_map, symbols, edges = self._seeded_map()
+        config = CompactConfig(
+            min_symbols=1, max_symbols=16, target_coverage=1.0,
+            language_proportional=False,
+        )
+        result = format_compact_behavior_map(
+            behavior_map, symbols, edges, config, connectivity_aware=False,
+        )
+        names = {n["name"] for n in result["nodes"]}
+        assert any(n.startswith("core_") for n in names), (
+            "seeds consumed the whole budget; the half-budget cap is gone"
+        )
