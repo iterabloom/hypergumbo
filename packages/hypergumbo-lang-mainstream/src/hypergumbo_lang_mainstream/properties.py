@@ -46,6 +46,7 @@ from hypergumbo_core.analyze.base import (
     make_doc_symbol_ids,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.analyze.base import node_own_text as _get_node_text
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -59,14 +60,6 @@ def find_properties_files(repo_root: Path) -> list[Path]:
     """Find all properties files in the repository."""
     return sorted(find_files(repo_root, ["*.properties"]))
 
-
-def _get_node_text(node: "tree_sitter.Node") -> str:
-    """Get the text content of a node.
-
-    Uses errors="replace" because .properties files commonly use Latin-1/
-    ISO-8859-1 encoding (Java default), not UTF-8.
-    """
-    return node.text.decode("utf-8", errors="replace") if node.text else ""
 
 
 

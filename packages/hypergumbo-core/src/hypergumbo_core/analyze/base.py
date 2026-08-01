@@ -248,6 +248,24 @@ def node_text(node: "tree_sitter.Node", source: bytes) -> str:
     return source[node.start_byte:node.end_byte].decode("utf-8", errors="replace")
 
 
+def node_own_text(node: "tree_sitter.Node") -> str:
+    """Decoded ``node.text``, None-safe — the ONE home for this fact.
+
+    ``tree_sitter.Node.text`` is ``bytes | None``, and 35 analyzers carried
+    a byte-similar private ``_get_node_text`` copy of this two-liner
+    (WI-sarag) — with the None guard present in some copies and absent in
+    others, the half-guarded-population tell (WI-vokiz) that means there
+    is no contract, only local habit. Analyzers import this under their
+    historical local name (``import ... as _get_node_text``); a
+    recurrence test fails if a new private copy appears.
+
+    Distinct from :func:`node_text`, which slices the SOURCE by byte
+    range — that one exists for callers that hold the file bytes and may
+    face nodes from re-parsed sub-trees where ``.text`` is unavailable.
+    """
+    return (node.text or b"").decode("utf-8", errors="replace")
+
+
 def find_child_by_type(
     node: "tree_sitter.Node", type_name: str
 ) -> Optional["tree_sitter.Node"]:

@@ -40,6 +40,7 @@ from hypergumbo_core.analyze.base import (
     make_doc_symbol_ids,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.analyze.base import node_own_text as _get_node_text
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -66,14 +67,6 @@ def find_ini_files(repo_root: Path) -> list[Path]:
     ]
     return sorted(set(find_files(repo_root, patterns)))
 
-
-def _get_node_text(node: "tree_sitter.Node") -> str:
-    """Get the text content of a node.
-
-    Uses errors="replace" because INI files may use Windows CP-1252 or
-    Latin-1 encoding, not UTF-8.
-    """
-    return node.text.decode("utf-8", errors="replace") if node.text else ""
 
 
 

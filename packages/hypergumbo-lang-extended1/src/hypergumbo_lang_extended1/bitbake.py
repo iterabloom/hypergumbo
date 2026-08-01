@@ -46,6 +46,7 @@ from hypergumbo_core.analyze.base import (
     TreeSitterAnalyzer,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.analyze.base import node_own_text as _get_node_text
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -63,10 +64,6 @@ def find_bitbake_files(repo_root: Path) -> list[Path]:
         files.extend(find_files(repo_root, [pattern]))
     return sorted(files)
 
-
-def _get_node_text(node: "tree_sitter.Node") -> str:
-    """Get the text content of a node."""
-    return node.text.decode("utf-8", errors="replace") if node.text else ""
 
 
 def _make_symbol_id(path: Path, name: str, kind: str) -> str:
