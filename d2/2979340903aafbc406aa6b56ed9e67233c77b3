@@ -1,0 +1,10 @@
+Original commit body from 33bb75064b13397b25f2711e1f41860a42f67b68:
+
+Regenerated from the post-drain whole-tree run (mypy 2.1.0, pinned):
+union-attr 71->29, arg-type 111->105, every other cell unchanged —
+exactly the 48 flip-surfaced span sites, zero reveals. CHANGELOG
+records the per-site fix shapes and the honest-carry chokepoint.
+Commit the smart-test manifest for CI selection (480 test files,
+16998 passed, all changed files at 100% coverage).
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
