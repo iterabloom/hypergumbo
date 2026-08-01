@@ -588,10 +588,16 @@ _autopr_pr_web_url() {
 #   PR for idempotency, matching C10). Sets FALLBACK_PR_NUM — the SAME variable
 #   the WI-hubod desync fallback sets — so the do_pr/flush push-result plumbing
 #   (PR_NUM/HEAD_SHA/AUTOPR_FALLBACK_USED) is unchanged. Returns 1 on a genuine
-#   push/create failure (caller queues a vPR).
-#   Test seam: AUTO_PR_SIMULATE_GH_PUSH=ok|fail bypasses the real push (and the
-#   live idempotency lookup); create_pr is driven by the fake curl / its own
-#   AUTOPR_TEST_CREATE_PR seam.
+#   push/create failure (caller queues a vPR); returns 2 on a NON-FAST-FORWARD
+#   REJECTION with a diverged remote branch (WI-buniz) — the remote is
+#   demonstrably reachable, so the caller must NOT queue a vPR (a queued
+#   duplicate of a remote branch is how phantom vPRs are born; observed live
+#   on PR #144, where the rejection was mislabeled "remote unavailable").
+#   A rejection whose remote tip already equals LOCAL_SHA is treated as a
+#   completed push (auto-pr's own hung-run re-push cycle leaves exactly that).
+#   Test seam: AUTO_PR_SIMULATE_GH_PUSH=ok|fail|reject-same|reject-diverged
+#   bypasses the real push (and the live idempotency lookup); create_pr is
+#   driven by the fake curl / its own AUTOPR_TEST_CREATE_PR seam.
 # ------------------------------------------------------------------
 _autopr_github_push_create() {
 	local remote="$1" branch="$2" base="$3" title="$4" body="$5" local_sha="$6"
@@ -609,10 +615,43 @@ _autopr_github_push_create() {
 	fail)
 		echo "   [test] simulated branch push FAILED"
 		;;
+	reject-same)
+		echo "   [test] simulated push REJECTED; remote already at local sha"
+		echo "   ↩️  Remote branch already at ${local_sha:0:8} — push is already done"
+		pushed=true
+		;;
+	reject-diverged)
+		echo "   ❌ Push REJECTED (non-fast-forward): remote branch '$branch' has diverged."
+		echo "      This is not an offline condition — NOT queueing a vPR (WI-buniz)."
+		echo "      Reconcile (fetch + rebase, or drive the open PR with merge-pr), then retry."
+		return 2
+		;;
 	*)
-		if git -c credential.helper="!f() { echo username=$USER; echo password=$FORGE_TOKEN; }; f" \
-			push "$remote" "HEAD:refs/heads/$branch" 2>&1; then
+		local _push_out=""
+		if _push_out=$(git -c credential.helper="!f() { echo username=$USER; echo password=$FORGE_TOKEN; }; f" \
+			push "$remote" "HEAD:refs/heads/$branch" 2>&1); then
+			echo "$_push_out"
 			pushed=true
+		else
+			echo "$_push_out"
+			# WI-buniz: a non-fast-forward rejection is the remote WORKING,
+			# not the remote missing. Two sub-cases: the remote branch is
+			# already at our sha (a prior push landed — proceed), or it
+			# genuinely diverged (surface it; never queue a duplicate vPR).
+			if grep -qE "\[rejected\]|non-fast-forward" <<<"$_push_out"; then
+				local _remote_tip=""
+				_remote_tip=$(git -c credential.helper="!f() { echo username=$USER; echo password=$FORGE_TOKEN; }; f" \
+					ls-remote "$remote" "refs/heads/$branch" 2>/dev/null | awk '{print $1}') || true
+				if [[ -n "$_remote_tip" && "$_remote_tip" == "$local_sha" ]]; then
+					echo "   ↩️  Remote branch already at ${local_sha:0:8} — push is already done"
+					pushed=true
+				else
+					echo "   ❌ Push REJECTED (non-fast-forward): remote '$branch' at ${_remote_tip:0:8}, local at ${local_sha:0:8}."
+					echo "      This is not an offline condition — NOT queueing a vPR (WI-buniz)."
+					echo "      Reconcile (fetch + rebase, or drive the open PR with merge-pr), then retry."
+					return 2
+				fi
+			fi
 		fi
 		;;
 	esac
@@ -727,17 +766,64 @@ queue_vpr() {
 # Best-effort fetch; if origin/$base is missing entirely, treat the
 # entry as live (return 1) so the user is never warned about a vPR
 # that we genuinely can't classify.
+# Returns: 0 = stale (content contained in origin/<base>), 1 = live,
+#          2 = broken (sha unresolvable locally — e.g. its branch was
+#              deleted after a merge; flush would die on it with git's raw
+#              "Needed a single revision").
+#
+# WI-buniz: staleness is CONTENT identity, not sha identity. A flush
+# REBUILDS commits, so a merged vPR's recorded sha never appears in the
+# base branch and the old ancestor-only check called it "live" forever.
+# Two content checks, cheap first:
+#   (a) tree-diff vs the base TIP, excluding the regenerated-every-run
+#       test manifest (measured on PR #144: the sole difference between
+#       the queued commit and the merged one was the manifest's timestamp
+#       header line);
+#   (b) a bounded patch-id scan over recent base commits, with the same
+#       manifest exclusion, for merges that are no longer at the tip.
 _autopr_vpr_is_stale() {
 	local sha="$1" base="$2"
 	if [[ -z "$sha" || -z "$base" ]]; then
 		return 1
+	fi
+	if ! git cat-file -e "$sha" 2>/dev/null; then
+		return 2
 	fi
 	# Best-effort: don't fail the whole list if fetch is offline.
 	git fetch origin "$base" --quiet 2>/dev/null || true
 	if ! git rev-parse --verify "origin/$base" >/dev/null 2>&1; then
 		return 1
 	fi
-	git merge-base --is-ancestor "$sha" "origin/$base" 2>/dev/null
+	if git merge-base --is-ancestor "$sha" "origin/$base" 2>/dev/null; then
+		return 0
+	fi
+	# An entry with NO content of its own (an empty commit) cannot be
+	# judged by content — its tree trivially equals whatever it sits on.
+	# Ancestry above is the only stale signal for it; otherwise: live.
+	if ! git rev-parse -q --verify "$sha^" >/dev/null 2>&1 \
+		|| [[ -z "$(git diff "$sha^" "$sha" 2>/dev/null)" ]]; then
+		return 1
+	fi
+	# (a) tree identity with the base tip, modulo the manifest.
+	if [[ -z "$(git diff "origin/$base" "$sha" -- . ':(exclude).ci/affected-tests.txt' 2>/dev/null)" ]]; then
+		return 0
+	fi
+	# (b) bounded filtered-patch-id scan. Needs a parent to diff against.
+	if git rev-parse -q --verify "$sha^" >/dev/null 2>&1; then
+		local want have c
+		want=$(git diff "$sha^" "$sha" -- . ':(exclude).ci/affected-tests.txt' \
+			| git patch-id --stable 2>/dev/null | cut -d' ' -f1)
+		if [[ -n "$want" ]]; then
+			while IFS= read -r c; do
+				have=$(git diff "$c^" "$c" -- . ':(exclude).ci/affected-tests.txt' 2>/dev/null \
+					| git patch-id --stable 2>/dev/null | cut -d' ' -f1)
+				if [[ -n "$have" && "$have" == "$want" ]]; then
+					return 0
+				fi
+			done < <(git rev-list "origin/$base" -100 2>/dev/null)
+		fi
+	fi
+	return 1
 }
 
 # Walk the queue and print, for each entry, "stale" or "live" plus
@@ -752,8 +838,10 @@ _autopr_vpr_is_stale() {
 _autopr_reconcile_queue() {
 	_AUTOPR_RECON_STALE_LINES=()
 	_AUTOPR_RECON_LIVE_LINES=()
+	_AUTOPR_RECON_BROKEN_LINES=()
 	_AUTOPR_RECON_STALE_COUNT=0
 	_AUTOPR_RECON_LIVE_COUNT=0
+	_AUTOPR_RECON_BROKEN_COUNT=0
 
 	if [[ ! -f "$QUEUE_FILE" ]] || [[ ! -s "$QUEUE_FILE" ]]; then
 		return 0
@@ -761,12 +849,19 @@ _autopr_reconcile_queue() {
 
 	while IFS= read -r line; do
 		[[ -z "$line" ]] && continue
-		local sha base
+		local sha base _st_rc
 		sha=$(echo "$line" | json_field "sha")
 		base=$(echo "$line" | json_field "base")
-		if _autopr_vpr_is_stale "$sha" "$base"; then
+		_st_rc=0
+		_autopr_vpr_is_stale "$sha" "$base" || _st_rc=$?
+		if [[ "$_st_rc" -eq 0 ]]; then
 			_AUTOPR_RECON_STALE_LINES+=("$line")
 			_AUTOPR_RECON_STALE_COUNT=$((_AUTOPR_RECON_STALE_COUNT + 1))
+		elif [[ "$_st_rc" -eq 2 ]]; then
+			# WI-buniz: unresolvable sha (branch deleted). Unverifiable AND
+			# unflushable — a dead entry that must be prunable, loudly.
+			_AUTOPR_RECON_BROKEN_LINES+=("$line")
+			_AUTOPR_RECON_BROKEN_COUNT=$((_AUTOPR_RECON_BROKEN_COUNT + 1))
 		else
 			_AUTOPR_RECON_LIVE_LINES+=("$line")
 			_AUTOPR_RECON_LIVE_COUNT=$((_AUTOPR_RECON_LIVE_COUNT + 1))
@@ -913,12 +1008,12 @@ prune_queue() {
 
 	_autopr_reconcile_queue
 
-	if [[ "$_AUTOPR_RECON_STALE_COUNT" -eq 0 ]]; then
+	if [[ "$_AUTOPR_RECON_STALE_COUNT" -eq 0 && "$_AUTOPR_RECON_BROKEN_COUNT" -eq 0 ]]; then
 		echo "✅ Queue clean — no stale entries to prune ($count live vPR(s))"
 		return 0
 	fi
 
-	echo "🧹 Pruning $_AUTOPR_RECON_STALE_COUNT stale vPR(s) of $count total..."
+	echo "🧹 Pruning $((_AUTOPR_RECON_STALE_COUNT + _AUTOPR_RECON_BROKEN_COUNT)) vPR(s) of $count total..."
 	# Print details of what we're about to remove for the audit trail.
 	local stale_line
 	for stale_line in "${_AUTOPR_RECON_STALE_LINES[@]}"; do
@@ -926,7 +1021,22 @@ prune_queue() {
 		vpr=$(echo "$stale_line" | json_field "vpr")
 		branch=$(echo "$stale_line" | json_field "branch")
 		sha=$(echo "$stale_line" | json_field "sha")
-		echo "  − vPR #$vpr ($branch @ ${sha:0:8})"
+		echo "  − vPR #$vpr ($branch @ ${sha:0:8}) — content already in origin"
+	done
+	# WI-buniz: broken entries (unresolvable sha, e.g. the branch was
+	# deleted after its content merged) are unverifiable AND unflushable —
+	# leaving them makes flush die on git's raw 'Needed a single revision'.
+	# Dropping unverifiable content must be LOUD.
+	local broken_line
+	for broken_line in "${_AUTOPR_RECON_BROKEN_LINES[@]}"; do
+		local vpr branch sha
+		vpr=$(echo "$broken_line" | json_field "vpr")
+		branch=$(echo "$broken_line" | json_field "branch")
+		sha=$(echo "$broken_line" | json_field "sha")
+		echo "  ⚠️  vPR #$vpr ($branch @ ${sha:0:8}) — UNRESOLVABLE sha (branch"
+		echo "      deleted?). Content cannot be verified locally; dropping the"
+		echo "      entry. If this was NOT merged, the reflog/PR history is the"
+		echo "      recovery path."
 	done
 
 	# Rewrite the queue file with only the live entries.  Empty file
@@ -934,7 +1044,7 @@ prune_queue() {
 	if [[ "$_AUTOPR_RECON_LIVE_COUNT" -eq 0 ]]; then
 		rm -f "$QUEUE_FILE"
 		echo ""
-		echo "✅ Pruned $_AUTOPR_RECON_STALE_COUNT entries — queue is now empty"
+		echo "✅ Pruned $((_AUTOPR_RECON_STALE_COUNT + _AUTOPR_RECON_BROKEN_COUNT)) entries — queue is now empty"
 		return 0
 	fi
 
@@ -946,7 +1056,7 @@ prune_queue() {
 	done
 	mv "$tmp_queue" "$QUEUE_FILE"
 	echo ""
-	echo "✅ Pruned $_AUTOPR_RECON_STALE_COUNT entries — $_AUTOPR_RECON_LIVE_COUNT live vPR(s) remain"
+	echo "✅ Pruned $((_AUTOPR_RECON_STALE_COUNT + _AUTOPR_RECON_BROKEN_COUNT)) entries — $_AUTOPR_RECON_LIVE_COUNT live vPR(s) remain"
 }
 
 # Flush all vPRs as a single atomic PR
@@ -1104,6 +1214,14 @@ Individual commits are preserved in the history."
 	local sha
 	while IFS= read -r line; do
 	  sha=$(echo "$line" | json_field "sha")
+	  # WI-buniz: an unresolvable sha (its branch was deleted) previously
+	  # surfaced here as git's raw "fatal: Not a valid object name" /
+	  # "Needed a single revision" — diagnose it and point at the remedy.
+	  if ! git cat-file -e "$sha" 2>/dev/null; then
+	    echo "❌ vPR commit $sha is UNRESOLVABLE (branch deleted?)."
+	    echo "   Run './scripts/auto-pr prune' to reconcile the queue, then re-flush."
+	    exit 1
+	  fi
 	  if ! git merge-base --is-ancestor "$sha" HEAD; then
 	    echo "❌ Queue is not a linear stack; vPR commit $sha is not included in tip $tip_branch."
 	    exit 1
@@ -1126,8 +1244,20 @@ Individual commits are preserved in the history."
 		# GitHub: plain push of the queue tip + create_pr (no AGit refs/for);
 		# the PR is identified below via find_open_pr. Failure → vPRs stay queued
 		# (the push_success check below prints the "remote unavailable" exit).
-		if _autopr_github_push_create "$push_remote" "$tip_branch" "$base_branch" "$pr_title" "$push_desc" "$tip_sha"; then
+		_gh_flush_rc=0
+		_autopr_github_push_create "$push_remote" "$tip_branch" "$base_branch" "$pr_title" "$push_desc" "$tip_sha" || _gh_flush_rc=$?
+		if [[ "$_gh_flush_rc" -eq 0 ]]; then
 			push_success=true
+		elif [[ "$_gh_flush_rc" -eq 2 ]]; then
+			# WI-buniz: the queue tip diverged from its remote branch. The
+			# vPRs stay queued (their content lives only here), but this is
+			# NOT the offline path — say so instead of "remote unavailable".
+			echo ""
+			echo "❌ Flush push rejected (non-fast-forward): the queue tip diverged"
+			echo "   from the remote branch. vPRs remain queued. Reconcile the remote"
+			echo "   branch (or prune if the content is already merged), then re-flush."
+			_autopr_state_final="flush_push_rejected"
+			exit 1
 		fi
 	else
 		while [[ $attempt -le $max_attempts ]]; do
@@ -1624,6 +1754,16 @@ do_pr() {
 				exit 0
 			fi
 		else
+			_gh_push_rc=$?
+			if [[ "$_gh_push_rc" -eq 2 ]]; then
+				# WI-buniz: rejection with a diverged remote branch — the
+				# remote is reachable, so queueing would mint a phantom
+				# duplicate of a branch that already exists there.
+				echo ""
+				echo "❌ Push rejected (remote branch diverged) — NOT queueing a vPR."
+				_autopr_state_final="push_rejected_diverged"
+				exit 1
+			fi
 			echo ""
 			echo "❌ GitHub push/PR-create failed — queueing vPR"
 			queue_vpr "$BRANCH" "$BASE_BRANCH" "$TITLE" "$DESC" "$LOCAL_SHA"
