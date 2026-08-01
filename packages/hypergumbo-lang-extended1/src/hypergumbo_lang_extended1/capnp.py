@@ -219,7 +219,9 @@ def _extract_symbols_and_edges(
                         src=interface_sym.id,
                         dst=method_sym.id,
                         edge_type="contains",
-                        line=method_sym.span.start_line,
+                        # Same value as method_sym.span.start_line: make_symbol
+                        # derives the span from this very node.
+                        line=node.start_point[0] + 1,
                         origin=PASS_ID,
                         origin_run_id=run_id,
                     ))

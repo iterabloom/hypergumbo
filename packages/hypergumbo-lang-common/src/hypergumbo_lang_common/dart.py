@@ -744,9 +744,12 @@ def _extract_edges_from_file(
     # Used for resolving method calls like db.save() to Database.save
     var_types: dict[str, str] = {}
 
-    # First pass: map lines to their symbols
+    # First pass: map lines to their symbols. A span-less symbol has no
+    # line to key on, so it is omitted from the scope map; consumers
+    # (_find_enclosing_function callers) already handle a missing scope
+    # by skipping caller attribution.
     for sym in file_symbols:
-        if sym.kind in ("function", "method"):
+        if sym.kind in ("function", "method") and sym.span is not None:
             function_scopes[sym.span.start_line] = sym
 
     for node in iter_tree(tree.root_node):

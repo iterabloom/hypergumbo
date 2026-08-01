@@ -519,7 +519,7 @@ def _extract_edges_from_tree(
     symbols_by_span: dict[tuple[int, int], Symbol] = {}
     if all_local_symbols:
         for sym in all_local_symbols:
-            if sym.kind in ("function", "constructor", "modifier"):
+            if sym.kind in ("function", "constructor", "modifier") and sym.span is not None:
                 symbols_by_span[(sym.span.start_line, sym.span.end_line)] = sym
 
     # Collect `using Library for Type` directives per contract.
@@ -777,7 +777,7 @@ def _extract_edges_from_tree(
                         src=child_sym.id,
                         dst=parent_sym.id,
                         edge_type="overrides",
-                        line=child_sym.span.start_line,
+                        line=child_sym.span.start_line if child_sym.span else 0,
                         confidence=0.85,
                         # vocab:F2 (WI-lojug): resolved by name-matching child
                         # functions against the inheritance hierarchy, not from a
