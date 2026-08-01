@@ -138,6 +138,10 @@ def _isolate_shared_scripts(tmp_path: Path) -> Path:
         # test_orphan_sweep_archives_dead_session_files went red.
         "archive_scrubbed.sh",
         "scrub_secrets.py",
+        # Required since INV-todig: every shell writer sources the
+        # permission-contract helper; a sandbox without it is a repo where
+        # the scripts die at the source line under set -e.
+        "transcript_perms.sh",
     ):
         src_file = SHARED_DIR / name
         dest_file = shared_dir / name

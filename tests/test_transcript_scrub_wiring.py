@@ -52,6 +52,8 @@ _SHARED_SCRIPTS = (
     "session_id_helpers.sh",
     "archive_scrubbed.sh",
     "scrub_secrets.py",
+    # Sourced by every shell writer since INV-todig (permission contract).
+    "transcript_perms.sh",
 )
 
 

@@ -42,6 +42,11 @@
 
 # shellcheck shell=bash
 
+# Permission contract (INV-todig): archives hold transcript content, so the
+# destination must be owner-only even when the caller's umask is permissive.
+# shellcheck source=/dev/null
+. "$(dirname -- "${BASH_SOURCE[0]}")/transcript_perms.sh"
+
 # archive_scrubbed <src> <dest.gz> <repo_root>
 # Returns 0 iff <dest.gz> is a validated archive of <src>.
 archive_scrubbed() {
@@ -89,6 +94,7 @@ archive_scrubbed() {
     fi
 
     mv -f "$tmp" "$dest" || { rm -f "$tmp"; return 1; }
+    harden_transcript_file "$dest"
     # Preserve the source mtime so `ls -la` still shows when the session ended.
     touch -r "$src" "$dest" 2>/dev/null || true
     return 0
