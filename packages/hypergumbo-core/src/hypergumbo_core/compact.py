@@ -87,6 +87,8 @@ from .selection.filters import (
     is_excluded_kind,
     is_test_path as _is_test_path,  # re-export: test_compact.py imports this  # noqa: F401
     is_example_path as _is_example_path,
+    key_symbols,
+    production_edges,
 )
 from .paths import is_test_node as _is_test_node
 from .metrics import compute_metrics
@@ -1164,6 +1166,38 @@ def format_compact_behavior_map(
     Returns:
         Modified behavior map with compact output.
     """
+    # WI-zulij: the DEFAULT path ranks the same population sketch does.
+    #
+    # Both surfaces advertise "the important symbols" and both now rank with
+    # compute_dampened_centrality — the 2026-07-09 default flip settled the
+    # ranking FUNCTION. What kept their top-10 apart was the population: sketch
+    # filtered to key symbols over test-source-free edges, this path filtered
+    # nothing. Measured on the eight 2026-07-17 bakeoff maps, top-10 agreement
+    # was 5.6/10; the symbol filter alone takes it to 7.1, the edge filter alone
+    # to 8.4, and both together to 10/10 on all eight.
+    #
+    # The edge filter being the DOMINANT clause is the counter-intuitive part
+    # and the reason both are applied rather than just the obvious one: compact
+    # was crediting symbols for being called by their own test suites.
+    #
+    # Order matters — production_edges must see the UNFILTERED symbol list,
+    # because it resolves each edge's src id to a path, and a src that was
+    # filtered out would otherwise resolve to "" and be kept as non-test.
+    # sketch builds both from the same unfiltered list for exactly this reason.
+    #
+    # Narrowing here rather than at the ranking call site is deliberate: it also
+    # constrains which symbols can become force-included SEEDS, and a seed that
+    # is not a key symbol is precisely the noise leading compact's output today
+    # (sherpa-csharp's top five emitted nodes were all run*.sh file nodes;
+    # zoxide led with a shell completion and install.sh). Connectivity mode is
+    # deliberately exempt: its contract is bridging disconnected components
+    # (see the WI-vofud note below on why it keeps the adaptive seed policy),
+    # and a file node is frequently the only thing joining two islands, so
+    # narrowing it would remove the bridges the mode exists to find.
+    if not connectivity_aware:
+        edges = production_edges(symbols, edges)
+        symbols = key_symbols(symbols)
+
     # Extract entrypoint symbol_ids to force-include them, ranked by
     # (-confidence, symbol_id) for a stable, budget-independent order.
     symbol_id_set = {s.id for s in symbols}

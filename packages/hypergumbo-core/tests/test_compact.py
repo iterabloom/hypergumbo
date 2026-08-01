@@ -4534,3 +4534,146 @@ class TestSeededContainment:
         assert any(n.startswith("core_") for n in names), (
             "seeds consumed the whole budget; the half-budget cap is gone"
         )
+
+
+class TestDefaultSelectionSharesSketchPopulation:
+    """WI-zulij: compact's default and sketch advertise the same thing —
+    "the important symbols" — so they must rank the same POPULATION.
+
+    They did not. Both surfaces already rank with ``compute_dampened_centrality``
+    (the 2026-07-09 default flip landed), but sketch filtered to key symbols over
+    test-source-free edges while compact's default filtered nothing at all. On
+    the eight 2026-07-17 bakeoff maps their top-10 agreed 5.6/10 on average.
+    Measured per clause, adopting sketch's symbol filter alone took that to
+    7.1/10 and the edge filter alone to 8.4/10; both together reach 10/10 on
+    all eight. These tests pin the population, which is the part that can
+    regress silently — the agreement number itself is a property of the corpus.
+    """
+
+    def _map(self, symbols):
+        return {
+            "schema_version": SCHEMA_VERSION,
+            "nodes": [s.to_dict() for s in symbols],
+            "edges": [],
+            "entrypoints": [],
+        }
+
+    def test_default_selection_excludes_non_key_kinds(self):
+        """A high-degree ``file`` node must not reach compact's default output.
+
+        ``file`` is the shape that actually leads compact today: sherpa-csharp's
+        top five emitted nodes were all ``run*.sh`` file nodes, and zoxide led
+        with a shell completion script and install.sh. They outrank real code
+        because every symbol in a file points at its file node.
+        """
+        real = [make_symbol(f"handler_{i}", path=f"src/h{i}.py") for i in range(4)]
+        file_node = make_symbol("src/main.py", path="src/main.py", kind="file")
+        symbols = real + [file_node]
+        # Every real symbol points at the file node: maximal in-degree.
+        edges = [make_edge(s.id, file_node.id) for s in real]
+
+        config = CompactConfig(max_symbols=10, min_symbols=1)
+        result = format_compact_behavior_map(
+            self._map(symbols), symbols, edges, config
+        )
+        selected_kinds = {n.get("kind") for n in result["nodes"]}
+        assert "file" not in selected_kinds, (
+            "compact's default selected a file-kind node; sketch's key-symbol "
+            f"predicate rejects it. Selected kinds: {sorted(selected_kinds)}"
+        )
+
+    def test_default_selection_excludes_test_symbols(self):
+        """Symbols in test files are not 'the important symbols' of a repo.
+
+        ``min_symbols`` is raised to the full population deliberately: the
+        coverage stop otherwise truncates to a single symbol and the assertion
+        passes because almost nothing was selected, not because test symbols
+        were filtered. The non-vacuity guard below pins that.
+        """
+        prod = [make_symbol(f"svc_{i}", path=f"src/s{i}.py") for i in range(3)]
+        testish = [
+            make_symbol("test_thing", path="tests/test_thing.py"),
+            make_symbol("helper", path="tests/conftest.py"),
+        ]
+        symbols = prod + testish
+        edges = [
+            make_edge(t.id, prod[0].id, edge_type="references") for t in testish
+        ]
+
+        config = CompactConfig(max_symbols=10, min_symbols=len(symbols))
+        result = format_compact_behavior_map(
+            self._map(symbols), symbols, edges, config
+        )
+        paths = {n.get("path") for n in result["nodes"]}
+        assert len(result["nodes"]) >= len(prod), (
+            "non-vacuity: the budget must admit every production symbol, or "
+            "this test passes by selecting nothing. "
+            f"Selected {len(result['nodes'])} of {len(symbols)}."
+        )
+        assert not any(p and p.startswith("tests/") for p in paths), (
+            f"compact's default selected test-file symbols: {sorted(paths)}"
+        )
+
+    def test_default_centrality_ignores_edges_from_test_files(self):
+        """The edge filter is the dominant clause — measured 8.4/10 alone.
+
+        A symbol called only by its own test suite must not outrank a symbol
+        called by production code. Without the edge filter it does, because
+        every call counts equally.
+
+        Edges are ``references``, NOT ``calls``: ``calls`` is a member of
+        ``CROSS_CUTTING_EDGE_TYPES``, so every endpoint becomes a seed
+        candidate, force-inclusion swamps the budget, and the ranking under
+        test is never exercised. That is the exact vacuity that made the first
+        draft of WI-vofud's containment test pass for the wrong reason.
+        """
+        well_tested = make_symbol("well_tested", path="src/a.py")
+        genuinely_central = make_symbol("genuinely_central", path="src/b.py")
+        callers = [make_symbol(f"caller_{i}", path=f"src/c{i}.py") for i in range(2)]
+        test_callers = [
+            make_symbol(f"test_calls_{i}", path=f"tests/test_{i}.py")
+            for i in range(6)
+        ]
+        symbols = [well_tested, genuinely_central] + callers + test_callers
+        edges = (
+            [make_edge(t.id, well_tested.id, edge_type="references")
+             for t in test_callers]
+            + [make_edge(c.id, genuinely_central.id, edge_type="references")
+               for c in callers]
+        )
+
+        # A budget of ONE is what makes this discriminating: at two, both
+        # candidates fit whatever the ranking says and the test cannot fail.
+        config = CompactConfig(max_symbols=1, min_symbols=1)
+        result = format_compact_behavior_map(
+            self._map(symbols), symbols, edges, config
+        )
+        names = [n.get("name") for n in result["nodes"]]
+        assert len(names) == 1, (
+            f"non-vacuity: the budget must bind to exactly one; selected {names}"
+        )
+        assert names == ["genuinely_central"], (
+            "a symbol called by production code was outranked by one called "
+            f"only from tests; selected: {names}"
+        )
+
+    def test_connectivity_mode_keeps_its_own_population(self):
+        """``--connectivity`` is deliberately NOT narrowed.
+
+        Its contract is bridging disconnected components (WI-vofud records why
+        it keeps the adaptive seed policy), and a file node is often the only
+        thing joining two islands. Narrowing it would remove the bridges the
+        mode exists to find.
+        """
+        real = [make_symbol(f"h_{i}", path=f"src/h{i}.py") for i in range(3)]
+        file_node = make_symbol("src/main.py", path="src/main.py", kind="file")
+        symbols = real + [file_node]
+        edges = [make_edge(s.id, file_node.id) for s in real]
+
+        config = CompactConfig(max_symbols=10, min_symbols=1)
+        result = format_compact_behavior_map(
+            self._map(symbols), symbols, edges, config, connectivity_aware=True
+        )
+        assert "file" in {n.get("kind") for n in result["nodes"]}, (
+            "connectivity mode must keep the broader population"
+        )
