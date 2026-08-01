@@ -2584,3 +2584,64 @@ class TestCppFieldVariableSymbols:
         _analyzer.register_symbol(_sym("g", "function"), registry)
         assert registry.get("g") is not None
         assert registry["g"].kind == "function"
+
+
+class TestCppPureVirtualEmission:
+    """Pure virtual methods are symbols; their class is marked abstract.
+
+    Audit-findings 0018 measured that cpp emits NO abstract methods at all —
+    the member walk filters out every function declaration, so
+    ``virtual int area() = 0;`` vanished and there was no parent method to
+    dispatch FROM. It also measured `modifiers` empty on every cpp symbol,
+    so an abstract base class was indistinguishable from a concrete one.
+
+    Scoped to PURE virtuals (``= 0``) deliberately. A non-pure declaration
+    (``virtual int perim();``) has its definition in another translation
+    unit, and hypergumbo has no decl/def merging for cpp — emitting those
+    would produce two symbols for one method across a header/source split.
+    A pure virtual has no definition anywhere by construction, so it cannot
+    duplicate.
+    """
+
+    def test_pure_virtual_is_emitted_as_a_method(self, tmp_path: Path) -> None:
+        (tmp_path / "s.cpp").write_text(
+            "class Shape {\n"
+            " public:\n"
+            "  virtual int area() = 0;\n"
+            "};\n",
+        )
+        syms = analyze_cpp(tmp_path).symbols
+        methods = {s.name: s for s in syms if s.kind == "method"}
+        assert "Shape::area" in methods, f"pure virtual missing: {[s.name for s in syms]}"
+
+    def test_non_pure_declaration_is_still_skipped(self, tmp_path: Path) -> None:
+        """The decl/def duplication guard — this is why the fix is narrow."""
+        (tmp_path / "s.cpp").write_text(
+            "class Shape {\n"
+            " public:\n"
+            "  virtual int perim();\n"
+            "  int plain();\n"
+            "};\n",
+        )
+        names = {s.name for s in analyze_cpp(tmp_path).symbols if s.kind == "method"}
+        assert "Shape::perim" not in names, "non-pure decl would duplicate its definition"
+        assert "Shape::plain" not in names
+
+    def test_class_with_a_pure_virtual_is_marked_abstract(
+        self, tmp_path: Path,
+    ) -> None:
+        """A C++ class with a pure virtual IS abstract — record it where the
+        shared predicate reads it, as java/csharp/php/scala/kotlin do."""
+        from hypergumbo_core.symbol_kinds import is_abstract_type
+
+        (tmp_path / "s.cpp").write_text(
+            "class Shape { public: virtual int area() = 0; };\n"
+            "class Square { public: int area(){ return 1; } };\n",
+        )
+        by_name = {
+            s.name: s for s in analyze_cpp(tmp_path).symbols if s.kind == "class"
+        }
+        assert "abstract" in by_name["Shape"].modifiers
+        assert is_abstract_type(by_name["Shape"].kind, by_name["Shape"].modifiers)
+        assert "abstract" not in by_name["Square"].modifiers
+        assert not is_abstract_type(by_name["Square"].kind, by_name["Square"].modifiers)

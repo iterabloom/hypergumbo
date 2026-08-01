@@ -3971,6 +3971,16 @@ def _extract_symbols(
                     if base_classes:
                         meta["base_classes"] = base_classes
 
+                # audit-findings 0018: the grammar hands us a distinct
+                # `abstract_class_declaration`, so abstractness needs no
+                # inference — but modifiers was left empty, making TS abstract
+                # classes indistinguishable from concrete ones to
+                # `is_abstract_type`. Five other languages record it here.
+                class_modifiers = (
+                    ["abstract"]
+                    if node.type == "abstract_class_declaration"
+                    else []
+                )
                 symbol = Symbol(
                     id=_make_symbol_id(str(file_path), span.start_line, span.end_line, name, "class", lang),
                     name=name,
@@ -3981,6 +3991,7 @@ def _extract_symbols(
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     meta=meta,
+                    modifiers=class_modifiers,
                     shape_id=_jsts_analyzer.compute_shape_id(node),
                     line_span=span.end_line - span.start_line + 1,
                     qualified_name=_make_jsts_qualified_name(

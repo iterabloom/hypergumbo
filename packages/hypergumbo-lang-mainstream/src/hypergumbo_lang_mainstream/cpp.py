@@ -143,6 +143,90 @@ def _make_file_id(path: str) -> str:
     return _base_make_file_id("cpp", path)
 
 
+def _cpp_pure_virtual_name(
+    field_decl: "tree_sitter.Node", source: bytes,
+) -> "str | None":
+    """The method name if *field_decl* is a PURE virtual, else None.
+
+    A pure virtual is ``virtual T f() = 0;`` — the grammar gives it a
+    ``virtual`` child, a ``function_declarator``, and an ``=`` followed by a
+    ``number_literal`` of ``0``. Scoped to pure virtuals on purpose: a
+    non-pure declaration has its definition in another translation unit and
+    hypergumbo has no decl/def merging for cpp, so emitting those would yield
+    two symbols for one method. A pure virtual has no definition anywhere by
+    construction (audit-findings 0018).
+    """
+    if not any(c.type == "virtual" for c in field_decl.children):
+        return None
+    saw_equals = False
+    for child in field_decl.children:
+        if child.type == "=":
+            saw_equals = True
+        elif saw_equals and child.type == "number_literal":
+            if _node_text(child, source).strip() != "0":
+                return None  # pragma: no cover - `virtual T f() = 1;` is not
+                # valid C++; tree-sitter parses permissively, so the guard is
+                # kept for malformed or macro-expanded input.
+            declarator = _find_child_by_type(field_decl, "function_declarator")
+            if declarator is None:
+                return None  # pragma: no cover - a `virtual` data member with
+                # an initializer (`virtual int x = 0;`) is not valid C++, so no
+                # well-formed input reaches this branch.
+            ident = _find_child_by_type(declarator, "field_identifier") or \
+                _find_child_by_type(declarator, "identifier")
+            return _node_text(ident, source) if ident is not None else None
+    return None
+
+
+def _cpp_has_pure_virtual(type_node: "tree_sitter.Node", source: bytes) -> bool:
+    """Whether a class/struct body declares any pure virtual — i.e. is abstract."""
+    body = _find_child_by_type(type_node, "field_declaration_list")
+    if body is None:
+        return False
+    return any(
+        child.type == "field_declaration"
+        and _cpp_pure_virtual_name(child, source) is not None
+        for child in body.children
+    )
+
+
+def _emit_cpp_pure_virtual(
+    field_decl: "tree_sitter.Node",
+    method_name: str,
+    owner_name: str,
+    visibility: str,
+    file_path: "Path",
+    analysis: "AnalysisResult",
+    run: AnalysisRun,
+) -> None:
+    """Emit a ``kind="method"`` Symbol for one pure virtual declaration.
+
+    Named ``Owner::method`` to match every other cpp member, so the shared
+    member-name splitter recovers the owner. Carries the ``abstract``
+    modifier, which is where ``is_abstract_type`` reads abstractness.
+    """
+    start_line = field_decl.start_point[0] + 1
+    end_line = field_decl.end_point[0] + 1
+    full_name = f"{owner_name}::{method_name}"
+    analysis.symbols.append(Symbol(
+        id=_make_symbol_id(str(file_path), start_line, end_line, full_name, "method"),
+        name=full_name,
+        kind="method",
+        language="cpp",
+        path=str(file_path),
+        span=Span(
+            start_line=start_line,
+            end_line=end_line,
+            start_col=field_decl.start_point[1],
+            end_col=field_decl.end_point[1],
+        ),
+        origin=PASS_ID,
+        origin_run_id=run.execution_id,
+        modifiers=[visibility, "virtual", "abstract"],
+        line_span=end_line - start_line + 1,
+    ))
+
+
 def _extract_base_classes_cpp(node: "tree_sitter.Node", source: bytes) -> list[str]:
     """Extract base classes from C++ class/struct declaration.
 
@@ -469,6 +553,13 @@ def _emit_cpp_field_symbols(
             continue
         if child.type != "field_declaration":
             continue
+        pure_virtual = _cpp_pure_virtual_name(child, source)
+        if pure_virtual is not None:
+            _emit_cpp_pure_virtual(
+                child, pure_virtual, owner_name, current_visibility,
+                file_path, analysis, run,
+            )
+            continue
         names, is_function, has_nested_type = _cpp_data_declarators(child, source)
         if is_function or has_nested_type or not names:
             continue
@@ -545,10 +636,18 @@ def _extract_symbols_from_tree(
                 base_classes = _extract_base_classes_cpp(node, source)
                 meta = {"base_classes": base_classes} if base_classes else None
 
+                # A cpp class declaring a pure virtual IS abstract. Recorded in
+                # modifiers, where the shared type-family predicate reads it —
+                # audit 0018 measured cpp emitting an empty modifier list on
+                # every symbol, so abstract bases read as concrete.
+                class_modifiers = (
+                    ["abstract"] if _cpp_has_pure_virtual(node, source) else []
+                )
                 symbol = Symbol(
                     id=_make_symbol_id(str(file_path), start_line, end_line, name, "class"),
                     name=name,
                     kind="class",
+                    modifiers=class_modifiers,
                     language="cpp",
                     path=str(file_path),
                     span=Span(

@@ -234,6 +234,18 @@ _PHP_TYPE_CONTAINERS = (
     "enum_declaration",
 )
 
+# INV-tihim: the symbol walk emitted ONLY `class_declaration`, so three of
+# PHP's four type containers were invisible — an in-file `interface` surfaced
+# as an `external_symbol` placeholder and PHP produced no interface dispatch
+# at all. One branch keyed off this map rather than four copies of it, so a
+# fifth container cannot be added to _PHP_TYPE_CONTAINERS and silently skipped.
+_PHP_CONTAINER_KINDS: dict[str, str] = {
+    "class_declaration": "class",
+    "interface_declaration": "interface",
+    "trait_declaration": "trait",
+    "enum_declaration": "enum",
+}
+
 
 def _enclosing_type_name(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
     """Walk up to the enclosing type declaration (class/interface/trait/enum)."""
@@ -999,8 +1011,8 @@ def _extract_symbols(
                 )
                 symbols.append(symbol)
 
-        # Class declarations
-        elif node.type == "class_declaration":
+        # Type-container declarations (class / interface / trait / enum)
+        elif node.type in _PHP_CONTAINER_KINDS:
             name = _find_name_in_children(node, source)
             if name:
                 span = Span(
@@ -1014,10 +1026,11 @@ def _extract_symbols(
                 base_classes = _extract_base_classes_php(node, source)
                 meta = {"base_classes": base_classes} if base_classes else None
 
+                container_kind = _PHP_CONTAINER_KINDS[node.type]
                 symbol = Symbol(
-                    id=make_symbol_id("php", str(file_path), span.start_line, span.end_line, name, "class"),
+                    id=make_symbol_id("php", str(file_path), span.start_line, span.end_line, name, container_kind),
                     name=name,
-                    kind="class",
+                    kind=container_kind,
                     language="php",
                     path=str(file_path),
                     span=span,
@@ -1042,7 +1055,11 @@ def _extract_symbols(
                     start_col=node.start_point[1],
                     end_col=node.end_point[1],
                 )
-                enclosing_class = _get_enclosing_class(node, source)
+                # _enclosing_type_name walks EVERY container; _get_enclosing_class
+                # recognised `class_declaration` alone, so interface and trait
+                # members were emitted BARE and no consumer could tell which
+                # type declared them.
+                enclosing_class = _enclosing_type_name(node, source)
                 full_name = f"{enclosing_class}.{name}" if enclosing_class else name
                 signature = _extract_php_signature(node, source)
                 modifiers = _extract_modifiers_php(node)
