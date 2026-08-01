@@ -2078,3 +2078,72 @@ class Controller {
             "free-function bare call should still bind: "
             f"{[(e.dst, e.is_resolved) for e in result.edges]}"
         )
+
+
+class TestPhpTypeContainerEmission:
+    """interface / trait / enum declarations are symbols (INV-tihim).
+
+    The analyzer emitted ONLY `class_declaration`, so three of PHP's four
+    type containers were invisible: an `interface` declared in the same file
+    surfaced as an `external_symbol` (the boundary synthesizer's placeholder
+    for a name with no in-tree definition), and members declared inside an
+    interface or trait were emitted BARE — `area` rather than `Shape.area` —
+    because the enclosing-owner walk recognised `class_declaration` alone.
+
+    Measured consequence: PHP produced no interface->implementation
+    `dispatches_to` edge at all, while the byte-equivalent Java produced one.
+    """
+
+    def test_interface_trait_enum_are_emitted_with_their_own_kinds(
+        self, tmp_path: Path,
+    ) -> None:
+        from hypergumbo_lang_mainstream.php import analyze_php
+
+        (tmp_path / "s.php").write_text(
+            "<?php\n"
+            "interface Shape { public function area(); }\n"
+            "trait Loggable { public function log() {} }\n"
+            "enum Suit { case Hearts; }\n"
+            "class Square implements Shape { public function area(){ return 1; } }\n",
+        )
+        by_name = {s.name: s for s in analyze_php(tmp_path).symbols}
+        assert by_name["Shape"].kind == "interface"
+        assert by_name["Loggable"].kind == "trait"
+        assert by_name["Suit"].kind == "enum"
+        assert by_name["Square"].kind == "class"
+
+    def test_members_of_non_class_containers_are_owner_qualified(
+        self, tmp_path: Path,
+    ) -> None:
+        """A bare member name cannot be matched against an implementor's.
+
+        This is what made PHP invisible to the shared dispatch linker even
+        once the interface existed: `area` has no owner, so no consumer can
+        tell which type declares it.
+        """
+        from hypergumbo_lang_mainstream.php import analyze_php
+
+        (tmp_path / "s.php").write_text(
+            "<?php\n"
+            "interface Shape { public function area(); }\n"
+            "trait Loggable { public function log() {} }\n",
+        )
+        names = {s.name for s in analyze_php(tmp_path).symbols if s.kind == "method"}
+        assert "Shape.area" in names, f"interface member not owner-qualified: {names}"
+        assert "Loggable.log" in names, f"trait member not owner-qualified: {names}"
+
+    def test_class_emission_is_unchanged(self, tmp_path: Path) -> None:
+        """Guard the path that already worked — abstract classes especially.
+
+        PHP is one of five languages that correctly records abstract-ness in
+        `modifiers`, which the type-family predicate reads.
+        """
+        from hypergumbo_lang_mainstream.php import analyze_php
+
+        (tmp_path / "s.php").write_text(
+            "<?php\nabstract class Base { abstract public function area(); }\n",
+        )
+        by_name = {s.name: s for s in analyze_php(tmp_path).symbols}
+        assert by_name["Base"].kind == "class"
+        assert "abstract" in by_name["Base"].modifiers
+        assert by_name["Base.area"].kind == "method"

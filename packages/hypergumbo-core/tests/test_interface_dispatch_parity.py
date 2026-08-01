@@ -108,19 +108,16 @@ CASES: dict[str, tuple[str, str]] = {
 # of them. Three of the eight are producer gaps, three are vocabulary gaps in
 # a consumer, one is an unrelated analyzer crash, one is an anchoring choice.
 KNOWN_HOLES: dict[str, str] = {
-    "php": (
-        "PRODUCER. A same-file `interface` is emitted as kind='external_symbol' "
-        "(the analyzer treats it as third-party), its method is emitted BARE "
-        "('area', no owner) and rooted under the file, and the relationship is "
-        "`extends`->external_symbol rather than `implements`->interface. Three "
-        "defects stacked; none of them the separator. INV-tihim."
-    ),
     "cpp": (
-        "PRODUCER. Abstract methods are not emitted at all — the analyzer keeps "
-        "only methods with a body, so `virtual int area() = 0;` vanishes and "
-        "there is no parent method to dispatch FROM. `modifiers` is also empty "
-        "on every cpp symbol, so the abstract-vs-concrete distinction the "
-        "type-family predicate reads is unavailable. INV-tihim."
+        "CONSUMER SEMANTICS — the producer half is now fixed. Pure virtuals ARE "
+        "emitted (`Shape::area`) and containment roots them, but "
+        "type_hierarchy._extends_admits_dispatch asks whether the CHILD is "
+        "abstract, and for a C++ abstract base the abstract one is the PARENT: "
+        "the edge is `extends: Square -> Shape` with Square concrete. The rule "
+        "is correct for interface-extends-interface (Go embedding, C# interface "
+        "inheritance) and wrong for abstract-base inheritance. Widening it "
+        "touches all four NO_VIRTUAL_EXTENDS languages, so it is tracked "
+        "separately rather than bundled here."
     ),
     "kotlin": (
         "ANALYZER CRASH, unrelated to dispatch. The Kotlin analyzer emits ZERO "

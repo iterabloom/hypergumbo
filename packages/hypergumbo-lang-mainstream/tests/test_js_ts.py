@@ -11045,3 +11045,39 @@ class TestJsTsBareMethodMagnetGate:
         assert len(resolved) == 1, [
             (e.dst, e.is_resolved) for e in result.edges if "run" in e.src
         ]
+
+
+class TestTypeScriptAbstractModifier:
+    """`abstract class` records its abstractness in modifiers (audit 0018).
+
+    Five languages (java, csharp, php, scala, kotlin) record an abstract
+    class as `kind="class"` plus `modifiers=["abstract"]`, which is where the
+    type-family predicate `is_abstract_type` reads it. TypeScript emitted
+    `modifiers=[]`, so its abstract classes were indistinguishable from
+    concrete ones — even though the grammar hands the analyzer a distinct
+    `abstract_class_declaration` node, so nothing had to be inferred.
+    """
+
+    def test_abstract_class_carries_the_modifier(self, tmp_path: Path) -> None:
+        (tmp_path / "s.ts").write_text(
+            "abstract class Base { abstract area(): number; }\n"
+            "class Square extends Base { area(){ return 1; } }\n",
+        )
+        by_name = {
+            s.name: s for s in js_ts_module.analyze_javascript(tmp_path).symbols
+        }
+        assert by_name["Base"].kind == "class"
+        assert "abstract" in by_name["Base"].modifiers
+        assert by_name["Square"].kind == "class"
+        assert "abstract" not in by_name["Square"].modifiers
+
+    def test_predicate_now_classifies_it(self, tmp_path: Path) -> None:
+        """The point of the fix: the shared predicate can answer correctly."""
+        from hypergumbo_core.symbol_kinds import is_abstract_type
+
+        (tmp_path / "s.ts").write_text("abstract class Base { }\nclass C { }\n")
+        by_name = {
+            s.name: s for s in js_ts_module.analyze_javascript(tmp_path).symbols
+        }
+        assert is_abstract_type(by_name["Base"].kind, by_name["Base"].modifiers)
+        assert not is_abstract_type(by_name["C"].kind, by_name["C"].modifiers)
