@@ -44,6 +44,24 @@ a directory this module claims to cover unreachable — while ``scripts/``
 already accepted ``.py``, ``.sh`` and extensionless names. The asymmetry was
 not a decision, just an omission.
 
+Vendor hook dirs (``.agent/hooks/<vendor>/<name>.(sh|py)``, INV-lizor
+re-scope 2026-08-01) map two ways at once: the name-based rule above (so
+``session-start.sh`` reaches ``test_session_start_*``), UNIONED with the
+cross-vendor parity floor ``VENDOR_HOOK_PARITY_TESTS`` — every vendor hook
+is a thin wrapper sourcing ``_shared`` logic (the AGENTS.md Vendor Parity
+table), so the tests that pin that wiring must run for ANY vendor-hook
+change, including hooks whose names match no test at all
+(``post-tool-use-transcript.sh``). The floor is existence-checked, never
+invented.
+
+``.githooks/**`` is deliberately NOT mapped — a considered decision, not an
+omission: its hooks (``reference-transaction``, ``post-checkout``) have no
+name-shaped tests, and smart-test's root-suite fallback for unmapped
+top-level sources covers them with over-selection instead. Same treatment
+as ``scripts/lib/`` (generic basenames would over-match), except that both
+now fail LOUD-AND-BROAD in smart-test rather than silently selecting
+nothing.
+
 Name-based mapping has a floor: a test named for the *behaviour* it pins
 rather than the *file* it covers cannot be reached by any rule of this
 shape, and neither can one covering several sources or a non-source
@@ -63,6 +81,16 @@ import re
 import sys
 from pathlib import Path
 from typing import Iterable, List
+
+
+#: Cross-vendor parity tests every vendor-hook change must select (the
+#: "floor"). These pin the wiring the AGENTS.md Vendor Parity table
+#: requires of every vendor: per-turn hook sources the heartbeat helper,
+#: session-start hook sources the shared session-start logic.
+VENDOR_HOOK_PARITY_TESTS = (
+    "test_touch_heartbeat.py",
+    "test_session_start_respawn.py",
+)
 
 
 def _normalized(name: str) -> str:
@@ -111,6 +139,22 @@ def _candidate_test_basename(path: str) -> str | None:
     return None
 
 
+def _vendor_hook_basename(path: str) -> str | None:
+    """``.agent/hooks/<vendor>/<name>.(sh|py)`` → ``<name>`` with hyphens
+    collapsed, or None. ``_shared/`` is not a vendor (it has its own rule),
+    and deeper nesting falls through to smart-test's root-suite fallback."""
+    if not path.startswith(".agent/hooks/"):
+        return None
+    parts = path[len(".agent/hooks/"):].split("/")
+    if len(parts) != 2 or parts[0] == "_shared":
+        return None
+    name = parts[1]
+    for ext in (".py", ".sh"):
+        if name.endswith(ext):
+            return name[: -len(ext)].replace("-", "_")
+    return None
+
+
 def map_to_tests(changed_files: Iterable[str], repo_root: Path) -> List[str]:
     """Return sorted deduplicated list of matching ``tests/test_*.py`` paths."""
     tests_dir = repo_root / "tests"
@@ -121,11 +165,16 @@ def map_to_tests(changed_files: Iterable[str], repo_root: Path) -> List[str]:
         for p in sorted(tests_dir.glob("test_*.py"))
     ]
     out: set[str] = set()
+    vendor_seen = False
     for raw in changed_files:
         path = raw.strip()
         if not path:
             continue
-        base = _candidate_test_basename(path)
+        base = _vendor_hook_basename(path)
+        if base is not None:
+            vendor_seen = True
+        else:
+            base = _candidate_test_basename(path)
         if base is None:
             continue
         prefix = _normalized(base)
@@ -135,6 +184,10 @@ def map_to_tests(changed_files: Iterable[str], repo_root: Path) -> List[str]:
             continue
         for name, stem in candidates:
             if stem.startswith(prefix):
+                out.add(f"tests/{name}")
+    if vendor_seen:
+        for name in VENDOR_HOOK_PARITY_TESTS:
+            if (tests_dir / name).is_file():
                 out.add(f"tests/{name}")
     return sorted(out)
 

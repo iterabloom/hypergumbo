@@ -88,3 +88,124 @@ class TestTddModeSelection:
         """A nested path that merely contains ``tests/`` must not match."""
         assert not _selects("vendor/foo/tests/test_bar.py")
         assert not _selects("docs/tests/test_bar.py")
+
+
+def _extract_grep_pattern(var_name: str) -> str:
+    """Pull the live ``grep -E`` regex off a ``VAR=$(...)`` assignment."""
+    for line in SMART_TEST.read_text().splitlines():
+        stripped = line.strip()
+        if stripped.startswith(f"{var_name}=") and "grep -E" in stripped:
+            match = re.search(r"grep -E '([^']+)'", stripped)
+            assert match, f"could not parse the regex out of: {stripped}"
+            return match.group(1)
+    raise AssertionError(f"{var_name} assignment not found in smart-test")
+
+
+def _pattern_selects(pattern: str, path: str) -> bool:
+    result = subprocess.run(
+        ["grep", "-E", pattern], input=path, capture_output=True, text=True
+    )
+    return result.returncode == 0
+
+
+class TestTopLevelSurfacePattern:
+    """INV-lizor: the top-level executable surface the gate must never
+    silently skip — scripts/ (any depth), .githooks/, .agent/hooks/ — with
+    the unmapped remainder routed to the root-suite fallback."""
+
+    def test_covers_the_verified_blind_spots(self) -> None:
+        pattern = _extract_grep_pattern("CHANGED_TOP_LEVEL_SOURCES")
+        assert _pattern_selects(pattern, "scripts/lib/forgejo-api.sh")
+        assert _pattern_selects(pattern, ".githooks/reference-transaction")
+        assert _pattern_selects(pattern, ".agent/hooks/cursor/session-start.sh")
+        assert _pattern_selects(pattern, ".agent/hooks/_shared/sub/helper.sh")
+        assert _pattern_selects(pattern, "scripts/smart-test")
+
+    def test_does_not_cover_non_executable_surfaces(self) -> None:
+        pattern = _extract_grep_pattern("CHANGED_TOP_LEVEL_SOURCES")
+        assert not _pattern_selects(pattern, "CHANGELOG.md")
+        assert not _pattern_selects(pattern, "docs/hypergumbo-spec.md")
+        assert not _pattern_selects(
+            pattern, "packages/hypergumbo-core/src/hypergumbo_core/ir.py"
+        )
+        assert not _pattern_selects(
+            pattern, ".agent/tracker-workspace/.ops/.WI-x.ops"
+        )
+
+    def test_dead_variable_comment_is_gone(self) -> None:
+        """The pre-fix script defined CHANGED_TOP_LEVEL_SOURCES, read it
+        nowhere, and carried a comment describing a check that did not
+        exist. The variable must now be consumed."""
+        text = SMART_TEST.read_text()
+        assert "included via a separate check" not in text
+        assert text.count("CHANGED_TOP_LEVEL_SOURCES") >= 2, (
+            "CHANGED_TOP_LEVEL_SOURCES is defined but never read — the "
+            "dead-variable defect INV-lizor documented"
+        )
+
+    def test_root_suite_fallback_is_wired(self) -> None:
+        """Unmapped top-level changes must over-select (root suite), never
+        silently skip."""
+        text = SMART_TEST.read_text()
+        assert "UNMAPPED_TOP_LEVEL" in text
+        assert "tests/test_*.py" in text
+
+    def test_skip_message_no_longer_lies(self) -> None:
+        """The 0-test manifest branch is only reachable for genuinely
+        non-executable changes now; its wording must not claim 'no Python
+        source files changed' (it printed that even when source DID
+        change)."""
+        text = SMART_TEST.read_text()
+        assert "No Python source files changed - skipping tests" not in text
+
+
+class TestUntrackedEnumeration:
+    """INV-kinin route: change enumeration was three git-diff calls, none of
+    which report untracked files — a NEW test file was invisible until
+    committed, and its absence read as 'selected: everything relevant'."""
+
+    def test_ls_files_others_is_used(self) -> None:
+        text = SMART_TEST.read_text()
+        assert "ls-files --others --exclude-standard" in text
+
+    def test_scope_covers_test_and_source_surfaces(self) -> None:
+        pattern = _extract_grep_pattern("UNTRACKED_CHANGES")
+        assert _pattern_selects(pattern, "tests/test_brand_new.py")
+        assert _pattern_selects(
+            pattern, "packages/hypergumbo-core/tests/test_new.py"
+        )
+        assert _pattern_selects(
+            pattern, "packages/hypergumbo-core/tests/fixtures/new.proto"
+        )
+        assert _pattern_selects(pattern, "scripts/new-tool")
+        assert _pattern_selects(pattern, ".agent/hooks/claude-code/new.sh")
+
+    def test_scope_excludes_tracker_ops_and_notebook_noise(self) -> None:
+        """Pending tracker .ops files are untracked by design almost
+        continuously; sweeping them in would fire the top-level fallback on
+        every run."""
+        pattern = _extract_grep_pattern("UNTRACKED_CHANGES")
+        assert not _pattern_selects(
+            pattern, ".agent/tracker-workspace/.ops/.WI-x.ops"
+        )
+        assert not _pattern_selects(pattern, ".agent/.training-data.jsonl")
+        assert not _pattern_selects(pattern, "notes.md")
+
+
+class TestFixturePattern:
+    """INV-kinin dominant route: a fixture edit changes a gate's inputs
+    without running the gate. Fixture changes select the owning suite."""
+
+    def test_fixture_paths_are_selected(self) -> None:
+        pattern = _extract_grep_pattern("CHANGED_FIXTURE_FILES")
+        assert _pattern_selects(pattern, "tests/fixtures/repo/a.py")
+        assert _pattern_selects(
+            pattern, "packages/hypergumbo-core/tests/fixtures/b/c.proto"
+        )
+
+    def test_non_fixture_paths_are_not(self) -> None:
+        pattern = _extract_grep_pattern("CHANGED_FIXTURE_FILES")
+        assert not _pattern_selects(
+            pattern, "packages/hypergumbo-core/src/hypergumbo_core/fixtures.py"
+        )
+        assert not _pattern_selects(pattern, "docs/fixtures/example.json")
