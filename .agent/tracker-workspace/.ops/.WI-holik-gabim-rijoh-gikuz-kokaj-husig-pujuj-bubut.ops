@@ -18,3 +18,34 @@
     pr_ref:  # 918d
     description: "scripts/ci-debug 'logs woodpecker' crashes instead of printing the failed\njob log: 'TypeError: NoneType object is not iterable' followed by\n'Woodpecker log fetch failed (HTTP 200)'. Observed live 2026-08-01 while\ndiagnosing PR #144's errored woodpecker run — the one situation the\nsubcommand exists for. An HTTP 200 whose body parses to None (empty JSON,\nor a shape change in the log endpoint) is treated as iterable. Effect: the\noperator is blind exactly when CI is failing; auto-pr's own '(could not\nretrieve log automatically)' fallback traces to the same fetch. NOTE:\nci-debug is a GOVERNANCE file — human approval workflow required for the\nfix."  # 918d
     fields: {}  # 918d
+- op: update  # a436
+  at: '2026-08-01T07:27:39Z'  # a436
+  by: agent  # a436
+  actor: jgstern_agent  # a436
+  clock: 2  # a436
+  nonce: a436  # a436
+  set:  # a436
+    status: todo_hard  # a436
+- op: discuss  # ceae
+  at: '2026-08-01T07:27:39Z'  # ceae
+  by: agent  # ceae
+  actor: jgstern_agent  # ceae
+  clock: 3  # ceae
+  nonce: ceae  # ceae
+  message: "Owner approval recorded: explicit chat approval 2026-08-01 (\"i approved\nWI-holik and WI-buniz\") — the governance-file change this item requires\n(per AGENTS.md approval workflow) is authorized, including merging via\nauto-pr without --gov. Flipping to todo_hard and proceeding to\nimplementation."  # ceae
+- op: update  # 17d3
+  at: '2026-08-01T07:34:53Z'  # 17d3
+  by: agent  # 17d3
+  actor: jgstern_agent  # 17d3
+  clock: 4  # 17d3
+  nonce: 17d3  # 17d3
+  set:  # 17d3
+    status: done  # 17d3
+    pr_ref: '#147'  # 17d3
+- op: discuss  # 66f9
+  at: '2026-08-01T07:34:53Z'  # 66f9
+  by: agent  # 66f9
+  actor: jgstern_agent  # 66f9
+  clock: 5  # 66f9
+  nonce: 66f9  # 66f9
+  message: "CLOSED done — PR #147, dev ae50ba3a43 (2026-08-01).\n\nFIX: the Woodpecker log parse now checks isinstance(entries, list) before\nsorting; a 200-with-null (or error-envelope object) body is diagnosed as\n\"returned NoneType, not a log-entry list (an error response with a 200\ncode)\" and degrades to the documented credential-guidance fallback.\n\nBEHAVIORAL EVIDENCE (the item own filed symptom, re-run as tests): the\nnew TestWoodpeckerLogBodyShapes suite drives the REAL _github_fetch_job_log\nend-to-end through the harness fake curl — upgraded to emulate the\nno-dash-o + -w http_code shape the Woodpecker calls use, which is WHY this\npath had no coverage before — and asserts: null body -> RC=1, no\nTraceback, shape named; error-envelope object -> same; a real entry list\nstill base64-decodes in line order (happy path pinned through the same\nharness). 21/21 green across the forge-backend and ci-debug suites."  # 66f9

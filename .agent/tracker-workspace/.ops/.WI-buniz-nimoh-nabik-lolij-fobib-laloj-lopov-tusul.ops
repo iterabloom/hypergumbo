@@ -18,3 +18,34 @@
     pr_ref:  # e0b5
     description: "Three failure modes of the auto-pr vPR machinery, all observed live\n2026-08-01 while landing PR #144 (each cost a recovery cycle; none lost\ndata):\n\n1. MISCLASSIFICATION: a git push rejected NON-FAST-FORWARD (the remote\n   branch already held the same change at a different sha, from auto-pr's\n   own hung-run close-and-repush cycle) was reported as 'remote\n   unavailable' and the change was queued as a vPR — while the PR it\n   duplicated sat open on the remote. The classifier should distinguish\n   push-rejected (ref exists, diverged) from push-unreachable (network /\n   5xx / auth), and on rejection should check whether the remote branch\n   tip already contains the queued content.\n\n2. PRUNE IS SHA-ONLY: auto-pr prune declares a vPR stale only when its\n   recorded sha is in origin/<base>. A flush REBUILDS commits, so a merged\n   change's queue entry carries a sha that will never appear in the base\n   branch — prune called it 'live' forever. Staleness needs\n   patch-identity (git patch-id / cherry), not sha identity. Measured: the\n   queued commit differed from the merged one ONLY in\n   .ci/affected-tests.txt's timestamp header line (which also defeats\n   patch-id — see the smart-test manifest-idempotency finding on\n   INV-lizor's thread; fixing that one line fixes this too).\n\n3. FRAGILE QUEUE REF: the queue references its branch by name; deleting\n   the merged local branch broke flush with 'fatal: Needed a single\n   revision'. The queue should store enough to survive branch cleanup\n   (or prune should handle an unreachable sha as prunable-with-warning).\n\nRecovery used: verified patch-equivalence by tree-diff (one manifest line),\nthen removed .git/PR_QUEUE by hand. NOTE: auto-pr is a GOVERNANCE file —\nthe fix needs the human-approval workflow (needs_human_review + discussion\nbefore any PR)."  # e0b5
     fields: {}  # e0b5
+- op: update  # 0fa0
+  at: '2026-08-01T07:27:39Z'  # 0fa0
+  by: agent  # 0fa0
+  actor: jgstern_agent  # 0fa0
+  clock: 2  # 0fa0
+  nonce: 0fa0  # 0fa0
+  set:  # 0fa0
+    status: todo_hard  # 0fa0
+- op: discuss  # c4d7
+  at: '2026-08-01T07:27:39Z'  # c4d7
+  by: agent  # c4d7
+  actor: jgstern_agent  # c4d7
+  clock: 3  # c4d7
+  nonce: c4d7  # c4d7
+  message: "Owner approval recorded: explicit chat approval 2026-08-01 (\"i approved\nWI-holik and WI-buniz\") — the governance-file change this item requires\n(per AGENTS.md approval workflow) is authorized, including merging via\nauto-pr without --gov. Flipping to todo_hard and proceeding to\nimplementation."  # c4d7
+- op: update  # af5e
+  at: '2026-08-01T07:47:12Z'  # af5e
+  by: agent  # af5e
+  actor: jgstern_agent  # af5e
+  clock: 4  # af5e
+  nonce: af5e  # af5e
+  set:  # af5e
+    status: done  # af5e
+    pr_ref: '#148'  # af5e
+- op: discuss  # 3bc5
+  at: '2026-08-01T07:47:12Z'  # 3bc5
+  by: agent  # 3bc5
+  actor: jgstern_agent  # 3bc5
+  clock: 5  # 3bc5
+  nonce: 3bc5  # 3bc5
+  message: "CLOSED done — PR #148, dev 2d6dc7803d (2026-08-01).\n\nAll three filed failure modes fixed, each pinned by a behavioral test\ndriving the REAL script (tests/test_autopr_vpr_reconcile.py):\n\n1. Non-ff rejection classified: remote-tip-equals-local -> proceed as\n   pushed; diverged -> loud NOT-queueing error (rc 2), handled at both\n   the do_pr and flush call sites. The observed phantom-vPR mint (the\n   PR #144 duplicate) is structurally impossible on this path now.\n2. prune judges CONTENT identity with .ci/affected-tests.txt excluded:\n   tree-identity vs base tip + bounded filtered-patch-id scan (100\n   commits). The measured manifest-noise-only entry now prunes; a\n   genuinely-unmerged entry stays; an EMPTY commit is exempt from\n   content judgment (ancestry only) — a refinement the pre-existing\n   allow-empty fixtures caught during the sweep.\n3. Unresolvable-sha entries are a third BROKEN reconciliation class:\n   prune drops them with an explicit unverifiable-content warning;\n   flush pre-diagnoses and points at prune instead of dying on git raw\n   \"Needed a single revision\".\n\n92/92 across the seven auto-pr suites. Closure evidence includes the\nmeta-proof: PR #148 was itself pushed and merged by the fixed script."  # 3bc5
