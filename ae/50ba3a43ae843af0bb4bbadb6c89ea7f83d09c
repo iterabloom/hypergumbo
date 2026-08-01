@@ -1,0 +1,16 @@
+Original commit body from e0614b2a4bab53df6b497c448bff035d064c7fba:
+
+The log endpoint can return HTTP 200 whose body is JSON null or an
+error-envelope object; sorted(None) raised a bare TypeError at the exact
+moment the operator needs the failed-CI log (observed live on PR #144).
+The parse now names the shape and degrades to the documented fallback.
+
+Tests drive the real _github_fetch_job_log end-to-end via an upgraded
+fake curl that emulates the no--o + -w '\n%{http_code}' shape the
+Woodpecker calls use (previously unmodeled, so this path was untestable);
+a happy-path test pins the base64 line-decode through the same harness.
+
+Governance: scripts/lib change approved by owner (WI-holik approval,
+auto-pr without --gov authorized).
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
