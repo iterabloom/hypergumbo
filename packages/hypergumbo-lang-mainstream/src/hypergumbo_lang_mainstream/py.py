@@ -265,6 +265,7 @@ def _emit_module_level_assign_symbols(
             targets.append(node.target)
         else:
             continue
+        constructed_from = _constructed_from(node)
         for tgt in targets:
             line = tgt.lineno
             end_line = node.end_lineno or line
@@ -285,11 +286,50 @@ def _emit_module_level_assign_symbols(
                     origin="",
                     origin_run_id="",
                     shape_id=_compute_value_shape_id(node, "variable"),
+                    meta=(
+                        {"constructed_from": constructed_from}
+                        if constructed_from
+                        else None
+                    ),
                     modifiers=_python_visibility_modifiers(tgt.id),
                     is_exported=_is_python_top_level_exported(tgt.id, module_all),
                 )
             )
     return out
+
+
+def _callee_dotted_name(node: ast.AST) -> "str | None":
+    """Render a call's callee as a dotted name, or None if it is not one.
+
+    ``FastAPI()`` -> ``"FastAPI"``; ``fastapi.FastAPI()`` ->
+    ``"fastapi.FastAPI"``. Qualification is KEPT (WI-nopod): a framework YAML
+    keying on a namespaced callee needs it, and stripping it would make
+    ``sqlalchemy.orm.declarative_base`` indistinguishable from a same-named
+    local. A computed callee (``factories[k]()``) has no dotted name and
+    yields None rather than a guess.
+    """
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute):
+        base = _callee_dotted_name(node.value)
+        return f"{base}.{node.attr}" if base else None
+    return None
+
+
+def _constructed_from(node: ast.AST) -> "str | None":
+    """The callee a binding's value comes from, for ``meta['constructed_from']``.
+
+    Only an ``ast.Call`` value counts — ``TIMEOUT = 30`` is not a
+    construction, and stamping the key on every variable would make it
+    useless as a filter. Static analysis cannot tell a constructor from a
+    factory (``declarative_base()``), and this deliberately does not try:
+    it names the callee, which is what the AST supports and what a framework
+    integration author actually keys on.
+    """
+    value = getattr(node, "value", None)
+    if not isinstance(value, ast.Call):
+        return None
+    return _callee_dotted_name(value.func)
 
 
 def _make_file_id(path: str) -> str:

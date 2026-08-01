@@ -421,6 +421,23 @@ META_KEYS: Final[tuple[MetaKeySpec, ...]] = (
     # Audit-findings 0013 folded 29 framework-role Symbol.kind values
     # to canonical + this key.
     # ------------------------------------------------------------------
+    MetaKeySpec("constructed_from", AXIS_SYMBOL_META,
+                "The callee whose result a variable is bound to — the "
+                "``FastAPI`` in ``app = FastAPI()``, the "
+                "``sqlalchemy.orm.declarative_base`` in "
+                "``Base = declarative_base()``. Recorded verbatim, keeping "
+                "any attribute qualification, so a framework YAML can "
+                "distinguish a namespaced callee from a same-named local "
+                "one. WI-nopod: a whole class of frameworks is configured "
+                "by CONSTRUCTING an object rather than decorating or "
+                "subclassing one, and nothing recorded that binding — "
+                "``instantiates`` is anchored at the file (\"this file "
+                "instantiated FastAPI somewhere\"), never at the variable. "
+                "Sibling of ``base_classes``: both record what type a "
+                "symbol relates to, as metadata a linker can later promote "
+                "to edges. Static analysis cannot distinguish a constructor "
+                "from a factory and the key does not try to — it names the "
+                "callee, which is what the AST supports."),
     MetaKeySpec("framework_role", AXIS_SYMBOL_META,
                 "Framework-specific role of a symbol whose canonical "
                 "``Symbol.kind`` is a generic language construct "
