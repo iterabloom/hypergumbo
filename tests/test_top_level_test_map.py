@@ -367,12 +367,12 @@ KNOWN_UNREACHABLE = {
     "test_resolve_forge_token_github.py",
     "test_ci_status_endpoints_failover_aware.py",
     "test_hg_github_token_documented.py",
-    # Cover hook paths outside .agent/hooks/_shared/ (vendor dirs and the
-    # transcript pipeline), which the mapper does not claim to reach.
-    "test_session_start_respawn.py",
-    "test_session_start_agent_notes.py",
+    # Cover the transcript pipeline across several sources at once, which no
+    # name-based rule reaches. (Vendor hook dirs are no longer exempt: the
+    # 2026-08-01 INV-lizor extension maps them by name + parity floor, which
+    # is what removed test_session_start_respawn / _agent_notes and
+    # test_stop_hook_state_write_discipline from this list.)
     "test_watcher_lifecycle.py",
-    "test_stop_hook_state_write_discipline.py",
     "test_transcript_scrub_wiring.py",
     "test_transcript_pipeline_properties.py",
     "test_training_log_parse_misses.py",
@@ -411,6 +411,17 @@ def _real_top_level_sources() -> list[str]:
         for p in sorted((REPO_ROOT / ".agent" / "hooks" / "_shared").iterdir())
         if p.is_file() and p.suffix in (".py", ".sh")
     ]
+    # Vendor hook dirs are part of the claimed domain since the INV-lizor
+    # extension; enumerating them keeps the two-sided ratchet honest about
+    # what the map can actually reach.
+    hooks_dir = REPO_ROOT / ".agent" / "hooks"
+    for vendor in sorted(hooks_dir.iterdir()):
+        if vendor.is_dir() and vendor.name != "_shared":
+            out += [
+                f".agent/hooks/{vendor.name}/{p.name}"
+                for p in sorted(vendor.iterdir())
+                if p.is_file() and p.suffix in (".py", ".sh")
+            ]
     return out
 
 
@@ -452,3 +463,77 @@ def test_the_motivating_case_is_actually_fixed() -> None:
     assert len(hits) >= 11, hits
     assert "tests/test_auto_pr.py" in hits
     assert "tests/test_autopr_tracker_id.py" in hits
+
+
+# ---------------------------------------------------------------------------
+# Vendor hook dirs (INV-lizor re-scope, 2026-08-01). The mapper now claims
+# .agent/hooks/<vendor>/<name>.(sh|py): every vendor hook is a thin wrapper
+# sourcing _shared logic (the AGENTS.md Vendor Parity table), so any change
+# there must at minimum select the cross-vendor parity tests — the "floor" —
+# plus whatever the name-based rule reaches. Before this, a change confined
+# to a vendor dir selected NOTHING and ci.yml skipped pytest.
+# ---------------------------------------------------------------------------
+
+
+def test_vendor_hook_selects_the_parity_floor() -> None:
+    """Any direct vendor-hook file reaches the parity tests, even when its
+    own name matches no test (post-tool-use-transcript has none)."""
+    mod = _import_module()
+    root = Path(__file__).parent.parent  # real repo: floor files must exist
+    hits = mod.map_to_tests(
+        [".agent/hooks/claude-code/post-tool-use-transcript.sh"], root
+    )
+    assert "tests/test_touch_heartbeat.py" in hits
+    assert "tests/test_session_start_respawn.py" in hits
+
+
+def test_vendor_hook_name_match_unions_with_the_floor(tmp_path: Path) -> None:
+    """session-start.sh reaches its name-matched tests AND the floor."""
+    mod = _import_module()
+    root = _make_tree(
+        tmp_path,
+        [
+            "test_session_start_respawn.py",
+            "test_session_start_agent_notes.py",
+            "test_touch_heartbeat.py",
+            "test_unrelated.py",
+        ],
+    )
+    hits = mod.map_to_tests([".agent/hooks/codex-cli/session-start.sh"], root)
+    assert "tests/test_session_start_respawn.py" in hits
+    assert "tests/test_session_start_agent_notes.py" in hits
+    assert "tests/test_touch_heartbeat.py" in hits
+    assert "tests/test_unrelated.py" not in hits
+
+
+def test_vendor_floor_is_existence_checked(tmp_path: Path) -> None:
+    """The floor never invents paths: a tree without the parity tests gets
+    only what exists."""
+    mod = _import_module()
+    root = _make_tree(tmp_path, ["test_touch_heartbeat.py"])
+    hits = mod.map_to_tests([".agent/hooks/gemini-cli/before-model-transcript.sh"], root)
+    assert hits == ["tests/test_touch_heartbeat.py"]
+
+
+def test_vendor_subdir_depth_is_skipped(tmp_path: Path) -> None:
+    """Only direct <vendor>/<file> entries map; deeper paths fall through to
+    smart-test's root-suite fallback."""
+    mod = _import_module()
+    root = _make_tree(tmp_path, ["test_touch_heartbeat.py"])
+    assert mod.map_to_tests([".agent/hooks/claude-code/sub/x.sh"], root) == []
+
+
+def test_shared_dir_is_not_treated_as_a_vendor() -> None:
+    """_shared/ keeps its own (name-only, no-floor) rule."""
+    mod = _import_module()
+    assert mod._candidate_test_basename(".agent/hooks/_shared/foo.sh") == "foo"
+
+
+def test_githooks_stays_unmapped_by_decision() -> None:
+    """.githooks/** is deliberately NOT name-mapped (recorded in the module
+    docstring): its hooks have no name-shaped tests, and smart-test's
+    root-suite fallback for unmapped top-level sources covers it. This test
+    pins the decision so a silent mapping change is visible."""
+    mod = _import_module()
+    root = Path(__file__).parent.parent
+    assert mod.map_to_tests([".githooks/reference-transaction"], root) == []

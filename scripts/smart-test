@@ -563,8 +563,17 @@ COMMITTED_CHANGES=$(git diff --name-only "$BASELINE"..HEAD 2>/dev/null || echo "
 STAGED_CHANGES=$(git diff --name-only --cached 2>/dev/null || echo "")
 UNSTAGED_CHANGES=$(git diff --name-only 2>/dev/null || echo "")
 
+# INV-kinin: the three git-diff calls above cannot see UNTRACKED files, so a
+# brand-new test file was invisible to selection until committed — the sole
+# coverer of a new branch could be dropped while its siblings ran, and the
+# gate reported the changed source green with the missing lines being
+# exactly what that file covers. Scoped to the test/source surfaces:
+# pending tracker .ops files are untracked by design almost continuously
+# and must not leak in (they would fire the top-level fallback every run).
+UNTRACKED_CHANGES=$(git ls-files --others --exclude-standard 2>/dev/null | grep -E '^(packages/|tests/|scripts/|\.githooks/|\.agent/hooks/)' || echo "")
+
 # Combine and deduplicate
-CHANGED_FILES=$(printf "%s\n%s\n%s" "$COMMITTED_CHANGES" "$STAGED_CHANGES" "$UNSTAGED_CHANGES" | sort -u | grep -v '^$' || echo "")
+CHANGED_FILES=$(printf "%s\n%s\n%s\n%s" "$COMMITTED_CHANGES" "$STAGED_CHANGES" "$UNSTAGED_CHANGES" "$UNTRACKED_CHANGES" | sort -u | grep -v '^$' || echo "")
 
 # If no changes detected, run full suite
 # (This also writes a full-suite manifest, which CI will reject - that's intentional
@@ -670,12 +679,60 @@ if [[ -n "$CHANGED_TEST_FILES" ]]; then
     AFFECTED_TESTS=$(printf '%s\n%s\n' "$AFFECTED_TESTS" "$CHANGED_TEST_FILES" | sed '/^$/d' | sort -u)
 fi
 
-# Check if any Python source files changed. Top-level sources (.agent/hooks/_shared/*.py,
-# scripts/*) are included via a separate check so the "no source files" skip
-# path respects them: a PR that only touches scripts/foo with a matching
-# tests/test_foo.py should run that test, not skip pytest entirely.
+# INV-kinin: a fixture edit changes a gate's INPUTS without running the
+# gate — the import-graph slice cannot see data files, so a change confined
+# to tests/fixtures/** selected nothing and ci.yml skipped pytest. Fixture
+# changes select their OWNING suite: the package's tests, or the root suite
+# for root fixtures.
+CHANGED_FIXTURE_FILES=$(echo "$CHANGED_FILES" | grep -E '^(tests/fixtures/|packages/[^/]+/tests/fixtures/)' || echo "")
+if [[ -n "$CHANGED_FIXTURE_FILES" ]]; then
+    FIXTURE_TESTS=""
+    while IFS= read -r fx; do
+        [[ -z "$fx" ]] && continue
+        if [[ "$fx" == tests/fixtures/* ]]; then
+            FIXTURE_TESTS+="$(cd "$REPO_ROOT" && ls tests/test_*.py 2>/dev/null || true)"$'\n'
+        else
+            pkg_tests="${fx%%/fixtures/*}"
+            FIXTURE_TESTS+="$(cd "$REPO_ROOT" && ls "$pkg_tests"/test_*.py "$pkg_tests"/BRANCHES_test_*.py 2>/dev/null || true)"$'\n'
+        fi
+    done <<< "$CHANGED_FIXTURE_FILES"
+    if [[ -n "$(echo "$FIXTURE_TESTS" | sed '/^$/d')" ]]; then
+        log "Fixture changes select their owning suite (INV-kinin)"
+        AFFECTED_TESTS=$(printf '%s\n%s\n' "$AFFECTED_TESTS" "$FIXTURE_TESTS" | sed '/^$/d' | sort -u)
+    fi
+fi
+
+# Check if any Python source files changed (drives the version-only and
+# no-affected-tests branches below).
 CHANGED_SOURCE_FILES=$(echo "$CHANGED_FILES" | grep -E '^packages/.*/src/.*\.py$' || echo "")
-CHANGED_TOP_LEVEL_SOURCES=$(echo "$CHANGED_FILES" | grep -E '^(\.agent/hooks/_shared/.*\.py|scripts/[^/]+)$' || echo "")
+
+# INV-lizor: the top-level executable surface — scripts/ at any depth,
+# .githooks/, .agent/hooks/ — is exactly where the per-PR gate was
+# structurally blind. Vendor hook dirs and .githooks are deliberately not
+# name-mapped (top_level_test_map.py records both decisions), so any
+# changed file here the map cannot reach gets the conservative treatment:
+# union the whole root suite, disclosed. Over-select, never under-select.
+CHANGED_TOP_LEVEL_SOURCES=$(echo "$CHANGED_FILES" | grep -E '^(scripts/|\.githooks/|\.agent/hooks/)' || echo "")
+UNMAPPED_TOP_LEVEL=""
+if [[ -n "$CHANGED_TOP_LEVEL_SOURCES" ]]; then
+    if [[ -f "$TOP_LEVEL_MAP_HELPER" ]] && command -v python3 &>/dev/null; then
+        while IFS= read -r tls; do
+            [[ -z "$tls" ]] && continue
+            if [[ -z "$(echo "$tls" | python3 "$TOP_LEVEL_MAP_HELPER" "$REPO_ROOT" 2>/dev/null)" ]]; then
+                UNMAPPED_TOP_LEVEL+="$tls"$'\n'
+            fi
+        done <<< "$CHANGED_TOP_LEVEL_SOURCES"
+    else
+        # No helper to judge with — treat every top-level change as unmapped.
+        UNMAPPED_TOP_LEVEL="$CHANGED_TOP_LEVEL_SOURCES"
+    fi
+fi
+if [[ -n "$(echo "$UNMAPPED_TOP_LEVEL" | sed '/^$/d')" ]]; then
+    log "Top-level sources with no mapped test — unioning the root suite:"
+    log "$(echo "$UNMAPPED_TOP_LEVEL" | sed '/^$/d;s/^/  /')"
+    ROOT_SUITE=$(cd "$REPO_ROOT" && ls tests/test_*.py 2>/dev/null || echo "")
+    AFFECTED_TESTS=$(printf '%s\n%s\n' "$AFFECTED_TESTS" "$ROOT_SUITE" | sed '/^$/d' | sort -u)
+fi
 
 if [[ -z "$AFFECTED_TESTS" ]]; then
     # No affected tests found. Check why:
@@ -691,16 +748,21 @@ if [[ -z "$AFFECTED_TESTS" ]]; then
             AFFECTED_TESTS="$CHANGED_TEST_FILES"
             log "TDD mode: running changed test files (no source files to slice from)"
         else
-            # No Python source files AND no test files changed (only configs, YAML, etc.)
-            # Write a targeted manifest with 0 tests - CI will skip pytest
-            log "No Python source files changed - writing empty targeted manifest"
+            # Nothing test-relevant changed: no package source, no tests, no
+            # fixtures, and every top-level source (if any) was mapped —
+            # only docs/configs remain. Write a targeted manifest with 0
+            # tests - CI will skip pytest. The wording is deliberate: the
+            # old "no Python source files changed" printed even when source
+            # HAD changed (INV-lizor), which made the blindness read as a
+            # legitimate skip.
+            log "No test-relevant files changed - writing empty targeted manifest"
             mkdir -p "$MANIFEST_DIR"
             {
                 echo "# Test selection manifest"
                 echo "# Generated by smart-test at $(date -Iseconds)"
                 echo "# Mode: targeted"
                 echo "# Baseline: $BASELINE"
-                echo "# Reason: no Python source files changed"
+                echo "# Reason: no test-relevant files changed (docs/config only)"
                 echo "# Changed files: $(echo "$CHANGED_FILES" | wc -l)"
                 echo "# Changed source files: 0"
                 echo "# Selected tests: 0"
@@ -715,7 +777,7 @@ if [[ -z "$AFFECTED_TESTS" ]]; then
                 exit 0
             fi
 
-            echo "No Python source files changed - skipping tests"
+            echo "No test-relevant files changed (docs/config only) - skipping tests"
             exit 0
         fi
     else
