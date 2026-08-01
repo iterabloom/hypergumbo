@@ -43,9 +43,12 @@ forcing every consumer to switch in the same release.
 from __future__ import annotations
 
 import os
-from typing import Any, Dict, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from ..paths import is_test_file
+
+if TYPE_CHECKING:  # pragma: no cover - import cycle guard, types only
+    from ..ir import Edge, Symbol
 
 # Symbol kinds to exclude from tiered output.
 # These have high centrality but don't represent useful code.
@@ -244,6 +247,137 @@ def is_test_path(path: str) -> bool:
             return True
 
     return False
+
+
+# Symbol kinds that count as a "key symbol" — the declaration kinds a reader
+# is asking about when they ask what a repository contains.
+#
+# WI-zulij: this set and the four-clause predicate below were previously a
+# frozenset declared INSIDE ``sketch._format_symbols``'s body, with the clauses
+# as an inline comprehension beneath it. Nothing outside that one function could
+# reach either, so "what counts as a key symbol" had no home — and compact's
+# default selection, which advertises the same thing, filtered nothing at all.
+# The two surfaces disagreed on their top-10 for exactly that reason: not the
+# ranking function (both now rank with ``compute_dampened_centrality``) but the
+# POPULATION each ranks over. This module's own header already named sketch,
+# compact and tiered JSON as its consumers; the policy just never landed here.
+#
+# Include OOP kinds (function, class, method) plus language-specific
+# equivalents:
+# - Nix: binding, derivation, input (core abstractions)
+# - Terraform/HCL: resource, data, module, variable, output, provider, local
+# - Elixir/Erlang: module, macro, record, type
+# - Elm/F#: module, type, port, record, union, value
+# - SQL: table, view, procedure, trigger
+# - Dockerfile: stage
+# - Lean: theorem, structure, inductive, instance
+# - Agda: data (algebraic data types)
+# - Fortran/COBOL: program, subroutine
+# - VHDL: entity, architecture, component
+# - Other: struct, enum, trait, interface, protocol, object
+#
+# ADR-0027 Phase-2 audit (WI-jukav): MIXED axis membership.
+# - AXIS_LANGUAGE_CONSTRUCT (Cluster A): ``function``, ``class``, ``method``,
+#   ``constructor``, ``struct``, ``enum``, ``type``, ``union``, ``interface``,
+#   ``trait``, ``module``, ``namespace``, ``object``, ``macro``, ``binding`` —
+#   stable across Phase 3.
+# - AXIS_PENDING (Clusters B/G/H — domain long-tail): ``record``, ``abstract``,
+#   ``protocol``, ``instance``, ``derivation``, ``input``, ``resource``,
+#   ``data``, ``variable``, ``output``, ``provider``, ``local``, ``port``,
+#   ``table``, ``view``, ``procedure``, ``trigger``, ``stage``, ``value``,
+#   ``theorem``, ``inductive``, ``program``, ``subroutine``, ``entity``,
+#   ``architecture``, ``component``, ``structure``. Audit-findings 0006/0007
+#   (Cluster G/H) recommend canonical promotions for many of these; the registry
+#   update is Wave 6 follow-through per WI-runod. Until then, none of these
+#   values is scheduled for fold/rename in Phase 3, so this set is
+#   forward-compatible — it captures the intent "key declaration kinds across
+#   all languages" and Phase 3 doesn't change which values populate that intent.
+#
+# NOTE the deliberate asymmetry with ``EXCLUDED_KINDS`` above: this is an
+# ALLOWLIST and that is a DENYLIST, and they are not complements. ``variable``
+# appears in both — here because Terraform/HCL variables are a real declaration
+# surface, there because CSS custom properties and SCSS variables are zero-edge
+# noise. Whichever a consumer applies is a policy choice about its own output,
+# not a fact about the kind, which is why both sets survive.
+KEY_SYMBOL_KINDS = frozenset({
+    # OOP languages
+    "function", "class", "method", "constructor",
+    # Structs and data types
+    "struct", "enum", "type", "record", "union", "abstract",
+    # Interfaces and traits
+    "interface", "trait", "protocol",
+    # Modules and namespaces
+    "module", "object", "namespace", "instance",
+    # Nix
+    "binding", "derivation", "input",
+    # Terraform/HCL
+    "resource", "data", "variable", "output", "provider", "local",
+    # Elixir/Erlang
+    "macro",
+    # Elm
+    "port",
+    # SQL
+    "table", "view", "procedure", "trigger",
+    # Dockerfile
+    "stage",
+    # F#
+    "value",
+    # Lean (theorem prover)
+    "theorem", "inductive",
+    # Fortran/COBOL
+    "program", "subroutine",
+    # VHDL (hardware design)
+    "entity", "architecture", "component",
+})
+
+
+def is_key_symbol(symbol: "Symbol") -> bool:
+    """The four-clause "is this worth showing a reader" predicate.
+
+    A key symbol is a declaration of a kind in :data:`KEY_SYMBOL_KINDS`, not in
+    a test file, not named like a test function, and not a derived artifact.
+
+    The ``"test_" not in symbol.name`` clause is deliberately a SUBSTRING test
+    rather than a prefix test, and it is kept verbatim from the sketch original
+    rather than tightened here: it also catches ``helper_test_case`` and the
+    like. Narrowing it would change sketch's output, which this extraction is
+    specifically not doing — the whole point is that both surfaces now share one
+    definition, so any change to the definition is a separate, visible decision
+    that moves both together instead of one drifting from the other.
+    """
+    return (
+        symbol.kind in KEY_SYMBOL_KINDS
+        and not is_test_path(symbol.path)
+        and "test_" not in symbol.name
+        and symbol.supply_chain_tier != 4
+    )
+
+
+def key_symbols(symbols: List["Symbol"]) -> List["Symbol"]:
+    """Filter *symbols* to the key-symbol population. See :func:`is_key_symbol`."""
+    return [s for s in symbols if is_key_symbol(s)]
+
+
+def production_edges(
+    symbols: List["Symbol"], edges: List["Edge"]
+) -> List["Edge"]:
+    """Drop edges ORIGINATING in a test file.
+
+    Centrality computed over test-sourced edges credits a symbol for being
+    called by its own test suite, which inflates well-tested internals over
+    genuinely central code. Filtering by source only (not destination) is
+    deliberate: an edge INTO a test file is still evidence about the target.
+
+    Extracted alongside :func:`key_symbols` because the two are one policy —
+    sketch applied both and compact's default applied neither, so adopting the
+    symbol filter without the edge filter would leave the two surfaces ranking
+    the same population with different weights.
+    """
+    path_by_id = {s.id: s.path for s in symbols}
+    return [
+        e for e in edges
+        if not is_test_path(path_by_id.get(getattr(e, "src", ""), ""))
+    ]
 
 
 def is_example_path(path: str) -> bool:

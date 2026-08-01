@@ -94,6 +94,10 @@ from .selection.language_proportional import (
     allocate_language_budget as _allocate_language_budget,
     group_files_by_language as _group_files_by_language,
 )
+from .selection.filters import (
+    key_symbols as select_key_symbols,
+    production_edges as select_production_edges,
+)
 from .selection.token_budget import (
     estimate_tokens,
     truncate_to_tokens,
@@ -5709,52 +5713,13 @@ def _format_symbols(
     #   it captures the intent "key declaration kinds across all
     #   languages" and Phase 3 doesn't change which values populate
     #   that intent.
-    KEY_SYMBOL_KINDS = frozenset({
-        # OOP languages
-        "function", "class", "method", "constructor",
-        # Structs and data types
-        "struct", "enum", "type", "record", "union", "abstract",
-        # Interfaces and traits
-        "interface", "trait", "protocol",
-        # Modules and namespaces
-        "module", "object", "namespace", "instance",
-        # Nix
-        "binding", "derivation", "input",
-        # Terraform/HCL
-        "resource", "data", "variable", "output", "provider", "local",
-        # Elixir/Erlang
-        "macro",
-        # Elm
-        "port",
-        # SQL
-        "table", "view", "procedure", "trigger",
-        # Dockerfile
-        "stage",
-        # F#
-        "value",
-        # Lean (theorem prover)
-        "theorem", "inductive",
-        # Fortran/COBOL
-        "program", "subroutine",
-        # VHDL (hardware design)
-        "entity", "architecture", "component",
-    })
-    key_symbols = [
-        s for s in symbols
-        if s.kind in KEY_SYMBOL_KINDS
-        and not _is_test_path(s.path)
-        and "test_" not in s.name  # Exclude test functions
-        and s.supply_chain_tier != 4  # Exclude derived artifacts (bundles, etc.)
-    ]
-
-    # Build lookup: symbol ID -> path (for filtering edges by source)
-    symbol_path_by_id = {s.id: s.path for s in symbols}
-
-    # Filter edges: exclude edges originating from test files
-    production_edges = [
-        e for e in edges
-        if not _is_test_path(symbol_path_by_id.get(getattr(e, 'src', ''), ''))
-    ]
+    # WI-zulij: the kind set and the four filter clauses used to be declared
+    # here, in this function's body, reachable by nothing else — which is how
+    # compact's default came to advertise "important symbols" while filtering a
+    # different population. Both surfaces now read one definition in
+    # selection.filters; changing it moves them together.
+    key_symbols = select_key_symbols(symbols)
+    production_edges = select_production_edges(symbols, edges)
 
     if not key_symbols:
         return ""
