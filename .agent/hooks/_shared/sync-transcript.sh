@@ -31,6 +31,13 @@ PID_FILE="$REPO_ROOT/.agent/.transcript-sync.${SESSION_ID}.pid"
 FILTER_SCRIPT="$REPO_ROOT/.agent/hooks/_shared/filter-transcript.py"
 STATE_FILE="$REPO_ROOT/.agent/.transcript-sync-state.${SESSION_ID}.json"
 
+# Permission contract (INV-todig): everything this watcher creates — the
+# per-session DEST via the filter, the state file, the PID file — is
+# owner-only, because transcripts republish command output verbatim.
+# shellcheck source=/dev/null
+. "$REPO_ROOT/.agent/hooks/_shared/transcript_perms.sh"
+harden_transcript_umask
+
 mkdir -p "$REPO_ROOT/.agent"
 
 # Write the per-session PID file. Because the PID file path encodes
@@ -85,6 +92,10 @@ do_sync() {
 # filter drops every new line as noise (bash_progress dedup, snapshots),
 # which is common in real Claude Code sessions.
 do_sync || true
+
+# Heal a DEST/state pair a pre-contract session left at 664 (mv and the
+# scrubber both preserve modes, so nothing else ever tightens them).
+harden_transcript_file "$DEST" "$STATE_FILE"
 
 # Phase 2: Watch for changes and filter on each write.
 # The downstream hook (on_transcript_change.sh) is NOT called from here.

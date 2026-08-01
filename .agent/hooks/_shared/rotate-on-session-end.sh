@@ -49,6 +49,12 @@ ARCHIVE_DIR="$AGENT_DIR/.archived-transcripts"
 _HOOK_SHARED_DIR="$(CDPATH= cd -P -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=/dev/null
 . "$_HOOK_SHARED_DIR/archive_scrubbed.sh"
+# Permission contract (INV-todig): rotation moves transcript bytes with mv,
+# which preserves whatever mode the source had — so rotation must both
+# create owner-only and explicitly heal the global slots it populates.
+# shellcheck source=/dev/null
+. "$_HOOK_SHARED_DIR/transcript_perms.sh"
+harden_transcript_umask
 
 mkdir -p "$AGENT_DIR"
 
@@ -66,6 +72,9 @@ _do_rotation() {
         STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
         DEST_DIR="$ARCHIVE_DIR/$STAMP"
         mkdir -p "$DEST_DIR" || echo "warn: could not mkdir $DEST_DIR" >&2
+        # 0700 on the root also strips the legacy setgid bit (2775) that
+        # propagated group access onto every archive subdir.
+        harden_transcript_dir "$ARCHIVE_DIR" "$DEST_DIR"
         # If the archive does not validate, RESCUE the source instead of
         # leaving it to be clobbered by the demote below. `mv` within .agent/ is
         # same-filesystem and atomic, so it cannot truncate: the bytes always
@@ -80,6 +89,7 @@ _do_rotation() {
                      "UNSCRUBBED to $DEST_DIR/transcript.jsonl.rescued" >&2
                 mv -f "$SECOND_TR" "$DEST_DIR/transcript.jsonl.rescued" || \
                     echo "warn: rescue FAILED for $SECOND_TR" >&2
+                harden_transcript_file "$DEST_DIR/transcript.jsonl.rescued"
             fi
         fi
         if [[ -f "$SECOND_INJ" ]]; then
@@ -90,6 +100,7 @@ _do_rotation() {
                 mv -f "$SECOND_INJ" \
                     "$DEST_DIR/injection_history.jsonl.rescued" || \
                     echo "warn: rescue FAILED for $SECOND_INJ" >&2
+                harden_transcript_file "$DEST_DIR/injection_history.jsonl.rescued"
             fi
         fi
     fi
@@ -118,6 +129,11 @@ _do_rotation() {
     else
         rm -f "$CURRENT_INJ"
     fi
+
+    # Step 3c (ordered before the scrub, which preserves modes): heal the
+    # global slots. mv carried over whatever mode the source files had, and
+    # months of pre-contract sessions left 664 — every rotation tightens.
+    harden_transcript_file "$LAST_TR" "$LAST_INJ" "$SECOND_TR" "$SECOND_INJ"
 
     # Step 3b: scrub the two GLOBAL slots in place.
     #

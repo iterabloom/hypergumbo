@@ -787,6 +787,9 @@ def log_training_example(
     try:
         with open(log_path, "a") as f:
             f.write(entry + "\n")
+        # Owner-only (INV-todig): training examples quote transcript
+        # content, and this file is explicitly on a path into model weights.
+        os.chmod(log_path, 0o600)
     except OSError:
         pass  # Best-effort — don't break the pipeline for logging failures
 
@@ -853,6 +856,9 @@ def log_injection_history(
             os.makedirs(agent_dir, exist_ok=True)
         with open(log_path, "a") as f:
             f.write(json.dumps(record, ensure_ascii=False) + "\n")
+        # Owner-only (INV-todig): injection history quotes transcript
+        # content. chmod on every write also heals pre-contract 664 files.
+        os.chmod(log_path, 0o600)
     except OSError:
         pass  # Best-effort — never break the pipeline for logging failures
 

@@ -38,6 +38,12 @@ REPO_ROOT="${REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")"/../../.. && pwd)}"
 SCRIPT_DIR="$(CDPATH= cd -P -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=/dev/null
 . "$SCRIPT_DIR/archive_scrubbed.sh"
+# Permission contract (INV-todig): the orphan/stray sweeps below create
+# archive subdirs, and the watcher launched at the bottom inherits this
+# process's umask — owner-only for both.
+# shellcheck source=/dev/null
+. "$SCRIPT_DIR/transcript_perms.sh"
+harden_transcript_umask
 AGENT_DIR="$REPO_ROOT/.agent"
 DEST="$AGENT_DIR/.current_session_transcript.${SESSION_ID}.jsonl"
 
@@ -168,6 +174,7 @@ for orphan_pid_file in "$AGENT_DIR"/.transcript-sync.*.pid; do
         STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
         ARCHIVE_SUBDIR="$AGENT_DIR/.archived-transcripts/crashed-${STAMP}-${orphan_sid}"
         mkdir -p "$ARCHIVE_SUBDIR" || true
+        harden_transcript_dir "$AGENT_DIR/.archived-transcripts" "$ARCHIVE_SUBDIR"
         # The `rm` is now CONDITIONAL on a validated archive. Previously it sat
         # outside the `if`, so a scrubber failure produced a 20-byte empty gzip
         # and deleted the only copy -- silently, since this path had no `else`
@@ -222,6 +229,7 @@ for stray in "$AGENT_DIR"/.current_session_transcript.*.jsonl; do
     STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
     STRAY_DIR="$AGENT_DIR/.archived-transcripts/stray-${STAMP}-${stray_sid}"
     mkdir -p "$STRAY_DIR" || true
+    harden_transcript_dir "$AGENT_DIR/.archived-transcripts" "$STRAY_DIR"
     if archive_scrubbed "$stray" "$STRAY_DIR/transcript.jsonl.gz" "$REPO_ROOT"; then
         rm -f "$stray"
     else
