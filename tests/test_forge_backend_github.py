@@ -17,6 +17,7 @@ endpoints, and payloads without a live GitHub.
 
 from __future__ import annotations
 
+import base64
 import json
 import os
 import subprocess
@@ -39,6 +40,7 @@ outfile = None
 url = None
 headers = []
 data = None
+w_fmt = None
 i = 0
 while i < len(args):
     a = args[i]
@@ -50,7 +52,9 @@ while i < len(args):
         headers.append(args[i + 1]); i += 2; continue
     if a == "-d":
         data = args[i + 1]; i += 2; continue
-    if a in ("-w", "--max-time"):
+    if a == "-w":
+        w_fmt = args[i + 1]; i += 2; continue
+    if a == "--max-time":
         i += 2; continue
     if a.startswith("-"):
         i += 1; continue
@@ -70,9 +74,16 @@ for fx in fixtures:
         body = fx.get("body", "{}")
         break
 if outfile:
+    # Real curl: body to the file, -w format (the http code) to stdout.
     with open(outfile, "w") as fh:
         fh.write(body)
-sys.stdout.write(code)
+    sys.stdout.write(code)
+else:
+    # Real curl without -o: body to stdout; a trailing -w '\n%{http_code}'
+    # appends the code on its own line (the Woodpecker log-fetch shape).
+    sys.stdout.write(body)
+    if w_fmt is not None:
+        sys.stdout.write("\n" + code)
 '''
 
 
@@ -355,3 +366,76 @@ class TestPollCiNormalization:
         assert "RC=1" in r.stdout, r.stdout + r.stderr
         assert "Woodpecker" in r.stderr
         assert "https://ci.example/run/1" in r.stderr
+
+
+class TestWoodpeckerLogBodyShapes:
+    """WI-holik: an HTTP 200 whose body is not a log-entry LIST (JSON null,
+    or an error-envelope object) crashed the parse with
+    'TypeError: NoneType object is not iterable' — a raw traceback at the
+    exact moment the operator needs the failed-CI log. The parse must
+    treat a non-list body as a diagnosed failure, never a crash."""
+
+    _ENV = {
+        "WOODPECKER_SERVER": "https://wp.example",
+        "WOODPECKER_TOKEN": "wtok",
+        "CF_ACCESS_CLIENT_ID": "cfid",
+        "CF_ACCESS_CLIENT_SECRET": "cfsecret",
+    }
+
+    def _fixtures(self, log_body: str) -> list:
+        combined = {
+            "state": "failure",
+            "statuses": [
+                {"state": "failure",
+                 "context": "ci/woodpecker/pr/woodpecker",
+                 "target_url": "https://wp.example/repos/42/pipeline/7"},
+            ],
+        }
+        pipeline = {"workflows": [{"children": [
+            {"id": 99, "name": "woodpecker", "state": "failure",
+             "exit_code": 1},
+        ]}]}
+        return [
+            {"match": "GET https://api.github.com/repos/o/r/commits/deadbeef/status",
+             "code": 200, "body": json.dumps(combined)},
+            {"match": "GET https://wp.example/api/repos/42/pipelines/7",
+             "code": 200, "body": json.dumps(pipeline)},
+            {"match": "GET https://wp.example/api/repos/42/logs/7/99",
+             "code": 200, "body": log_body},
+        ]
+
+    def _fetch(self, tmp_path: Path, log_body: str):
+        repo = _fake_repo(tmp_path, "https://github.com/o/r.git")
+        bindir = _bindir_with_fake_curl(tmp_path)
+        r, _ = _run_lib(
+            repo,
+            'detect_api_base; _github_fetch_job_log deadbeef; echo "RC=$?"',
+            fixtures=self._fixtures(log_body), bindir=bindir, env=self._ENV,
+        )
+        return r
+
+    def test_null_body_is_diagnosed_not_a_traceback(self, tmp_path: Path) -> None:
+        r = self._fetch(tmp_path, "null")
+        assert "RC=1" in r.stdout, r.stdout + r.stderr
+        assert "Traceback" not in r.stderr, (
+            "a 200-with-null body must be diagnosed, not crash the parser:\n"
+            + r.stderr
+        )
+        assert "not a log-entry list" in r.stderr, r.stderr
+
+    def test_error_envelope_object_is_diagnosed(self, tmp_path: Path) -> None:
+        r = self._fetch(tmp_path, '{"error": "gone"}')
+        assert "RC=1" in r.stdout, r.stdout + r.stderr
+        assert "Traceback" not in r.stderr, r.stderr
+        assert "not a log-entry list" in r.stderr, r.stderr
+
+    def test_real_entry_list_still_decodes(self, tmp_path: Path) -> None:
+        """The happy path must survive the hardening."""
+        entries = [
+            {"line": 2, "data": base64.b64encode(b"second\n").decode()},
+            {"line": 1, "data": base64.b64encode(b"first\n").decode()},
+            {"line": 3, "data": None},
+        ]
+        r = self._fetch(tmp_path, json.dumps(entries))
+        assert "RC=0" in r.stdout, r.stdout + r.stderr
+        assert "first\nsecond" in r.stdout

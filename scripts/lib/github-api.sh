@@ -180,6 +180,17 @@ try:
     entries = json.load(sys.stdin)
 except Exception:
     sys.exit(1)
+if not isinstance(entries, list):
+    # WI-holik: an HTTP 200 whose body is JSON null (or an error-envelope
+    # object) is an error response wearing a success code. sorted(None)
+    # raised a bare TypeError here — a traceback at the exact moment the
+    # operator needs the failed-CI log. Diagnose the shape instead.
+    sys.stderr.write(
+        'woodpecker log endpoint returned '
+        + type(entries).__name__
+        + ', not a log-entry list (an error response with a 200 code)\n'
+    )
+    sys.exit(1)
 out = []
 for e in sorted(entries, key=lambda x: x.get('line') or 0):
     d = e.get('data')
