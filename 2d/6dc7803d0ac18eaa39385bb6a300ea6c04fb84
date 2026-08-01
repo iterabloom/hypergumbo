@@ -1,0 +1,33 @@
+Original commit body from c526b425de45c1c111675f02cbfd3aff12477eba:
+
+Three vPR-machinery failure modes, all observed live landing PR #144:
+
+1. A non-fast-forward REJECTION (remote branch already held the change
+   from auto-pr's own hung-run re-push cycle) was reported 'remote
+   unavailable' and queued a duplicate vPR while the real PR sat open.
+   The classifier now checks the remote tip: already at local sha ->
+   push is done, proceed; genuinely diverged -> loud NOT-queueing error
+   (rc 2, handled distinctly at the do_pr and flush call sites).
+
+2. prune judged staleness by sha ancestry only; flush REBUILDS commits,
+   so a merged vPR's sha never lands in base and the entry read 'live'
+   forever (measured: the sole tree difference was the manifest's
+   timestamp header). Staleness now checks content identity with
+   .ci/affected-tests.txt excluded: tree-identity vs the base tip, then
+   a bounded filtered-patch-id scan (last 100 base commits). Carve-out:
+   an EMPTY commit cannot be judged by content (its tree equals whatever
+   it sits on) - ancestry remains its only stale signal.
+
+3. An unresolvable sha (branch deleted post-merge) made flush die on
+   git's raw 'Needed a single revision' and prune call it live.
+   Reconciliation gains a BROKEN class: prune drops it with an explicit
+   unverifiable-content warning; flush pre-diagnoses and points at prune.
+
+Test seam AUTO_PR_SIMULATE_GH_PUSH gains reject-same / reject-diverged.
+tests/test_autopr_vpr_reconcile.py drives the real script through all
+three shapes; 92 tests green across the seven auto-pr suites.
+
+Governance: scripts/auto-pr change approved by owner (WI-buniz approval,
+auto-pr without --gov authorized).
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
