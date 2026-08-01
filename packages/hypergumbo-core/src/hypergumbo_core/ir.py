@@ -565,7 +565,15 @@ class Symbol:
     kind: str  # axis: symbol-kind
     language: Optional[str]  # axis: language
     path: str  # axis: free-text — filesystem path; consumers display/sort/group, never branch on the value itself EXCEPT the documented "<external>" sentinel (ADR-0036 Ruling 3) — the no-file-anchor marker for external/boundary pseudo-symbols, whose module identity lives in the id path-slot + stable_id, NOT here (WI-kapul: by-design; path is the filesystem axis, the id path-slot is the module-identity axis).
-    span: Span
+    # Optional since WI-hafap: ten test files construct Symbol(span=None) and
+    # ~42 production sites dereference .span unguarded — the old non-Optional
+    # declaration made 52 live truthiness guards read as "always true" and 7
+    # is-None guard bodies as "unreachable", laundering the checker's verdict
+    # on every one of them (the 832->789 rewrite deleted 43 live guards on
+    # that basis and only the test suite caught it). The declaration now
+    # matches reality; surfaced unguarded dereferences drain per-site
+    # (guard vs assert decided individually), never as a blanket sweep.
+    span: Optional[Span]
     origin: str | List[str] = field(default_factory=list)  # axis: pass-id
     origin_run_id: str = ""  # axis: identity
     stable_id: Optional[str] = None  # axis: identity

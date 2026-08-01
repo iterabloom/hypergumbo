@@ -798,12 +798,16 @@ def find_partial_abstract_family_literals(repo_root: Path) -> list[str]:
             seen: set[int] = set()
             for node in ast.walk(tree):
                 names = _string_literal_members(node)
-                if names is None or node.lineno in seen:
+                # ast.walk yields bare ast.AST, which has no lineno in
+                # typeshed; every node that yields member literals has one
+                # at runtime, so narrow via getattr rather than a cast.
+                lineno: int | None = getattr(node, "lineno", None)
+                if names is None or lineno is None or lineno in seen:
                     continue
                 present = names & full
                 if not present or present == full:
                     continue
-                if any(lo <= node.lineno <= hi for lo, hi in guarded):
+                if any(lo <= lineno <= hi for lo, hi in guarded):
                     continue
                 missing = sorted(
                     k for k in full - present
@@ -812,9 +816,9 @@ def find_partial_abstract_family_literals(repo_root: Path) -> list[str]:
                 )
                 if not missing:
                     continue
-                seen.add(node.lineno)
+                seen.add(lineno)
                 offenders.append(
-                    f"{path.relative_to(repo_root)}:{node.lineno}: "
+                    f"{path.relative_to(repo_root)}:{lineno}: "
                     f"{sorted(names)} omits {missing} — call "
                     f"abstract_type_kind_names() or is_abstract_type()",
                 )
