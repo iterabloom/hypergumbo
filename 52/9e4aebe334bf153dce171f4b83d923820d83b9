@@ -1,0 +1,26 @@
+Original commit body from 1c55973134d37845581e53010cc7bd25648d533b:
+
+The WI-hafap Stage 2 entry claimed "all 14 raw-dict get("span") readers
+in cli.py normalized". No reading of the file yields 14. Measured
+against the commit itself (478f838c25):
+
+  13  reader lines converted (12 genuine null-crash sites of the old
+      get("span", {}) shape + 1 already-safe get("span", {}) or {}
+      collapsed to the canonical form)
+  15  sites now carry the convention (2 predate the change, from
+      c7826c11fc / WI-vogij)
+   0  old-shape readers remain
+   2  bare pass-through emissions that never dereference, untouched
+
+Nothing about the fix changes — every null-crash site IS converted and
+the ratchet and test evidence stand. Only the count was wrong, and it
+was wrong because I never counted it: the figure was asserted in five
+places on the strength of eyeballing a post-change grep listing, and
+was found by a post-merge verification sweep. Recorded as a calibration
+instance in the lab notebook; the WI-hafap tracker note carries the
+same correction.
+
+Manifest: 0 tests selected, docs-only change (reason recorded in the
+manifest header).
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
