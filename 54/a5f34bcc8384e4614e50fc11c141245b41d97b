@@ -1,0 +1,33 @@
+Original commit body from 0d452bc4a57f183e93db14a579381833212b072e:
+
+The per-PR gate was structurally blind to vendor hook dirs, .githooks/**,
+_shared subdirs, scripts/lib/**, untracked files, and fixture-only edits,
+and printed 'No Python source files changed' in every blind case. Four
+closures, all over-select-never-under-select:
+
+1. Untracked files enter change enumeration (git ls-files --others
+   --exclude-standard), scoped to test/source surfaces so pending tracker
+   .ops files cannot leak in and fire the fallback every run.
+2. Fixture edits select their owning suite (tests/fixtures -> root suite;
+   packages/X/tests/fixtures -> that package's tests). A fixture changes a
+   gate's inputs without running the gate.
+3. Unmapped top-level changes union the whole root suite, disclosed -
+   replacing the dead CHANGED_TOP_LEVEL_SOURCES variable (defined, never
+   read, documented by a comment describing a check that never existed).
+4. top_level_test_map.py claims .agent/hooks/<vendor>/** via name-match
+   unioned with an existence-checked parity floor (test_touch_heartbeat,
+   test_session_start_respawn). .githooks/** deliberately unmapped,
+   decision recorded in the docstring; the fallback covers it.
+
+The two-sided KNOWN_UNREACHABLE ratchet now enumerates vendor dirs; three
+exemptions retired. The ratchet caught its own author: the day-old
+test_transcript_permissions.py was name-unreachable ('perms' is not a
+prefix of 'permissions') and is renamed test_transcript_perms.py.
+
+Route 7 (CLI-driven sole-coverer tests) stays open by design - it needs
+coverage-map selection, recorded as the accepted residual on INV-kinin.
+
+Governance: .agent/** change explicitly approved by owner (auto-pr without
+--gov authorized).
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
