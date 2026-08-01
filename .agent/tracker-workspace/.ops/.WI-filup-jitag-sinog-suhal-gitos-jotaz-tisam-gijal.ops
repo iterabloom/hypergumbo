@@ -1,0 +1,21 @@
+- op: create  # 894c
+  at: '2026-08-01T22:18:38Z'  # 894c
+  by: agent  # 894c
+  actor: jgstern_agent  # 894c
+  clock: 1  # 894c
+  nonce: 894c  # 894c
+  data:  # 894c
+    kind: work_item  # 894c
+    title: "subprocess scanner is regex-over-raw-text: subprocess.run([...]) inside a string literal mints a call site (2 of 4 edges on the self-corpus)"  # 894c
+    status: needs_human_review  # 894c
+    priority: 3  # 894c
+    parent:  # 894c
+    tags:  # 894c
+    - linker  # 894c
+    - linker_gap  # 894c
+    isbefore: []  # 894c
+    duplicate_of: []  # 894c
+    not_duplicate_of: []  # 894c
+    pr_ref:  # 894c
+    description: "Surfaced by the WI-gadus fix (PR #154, dev 226823c4c8), which made it observable rather than\nintroducing it.\n\nThe subprocess scanner is regex-over-raw-text: SUBPROCESS_CALL_PATTERN matches\n\"subprocess.(run|call|Popen)(\" followed by a bracketed list ANYWHERE in the file's characters,\nwith no awareness of whether those characters are code or the contents of a string literal.\n\nMEASURED on this repository after the WI-gadus fix: of the 4 subprocess_calls edges the pipeline\nnow emits, 2 originate inside string literals in a test fixture --\npackages/hypergumbo-core/tests/test_subprocess_linker.py:77 and :285, both of which are\n'subprocess.run([\"python3\", \"-m\", \"hypergumbo\", \"sketch\", \".\"])' written as fixture SOURCE TEXT\ninside a triple-quoted block, not executed calls. They join to cmd_sketch at confidence 0.80. The\nother 2 edges are genuine.\n\nSo the current false-positive rate on this repo's own corpus is 2 of 4. That ratio is not\ngeneralizable -- this repo is unusual in containing a test suite FOR the subprocess linker, which\nis exactly the file most likely to hold subprocess-call-shaped strings -- but the mechanism is\ngeneral: any project whose tests, docs-in-docstrings, or code-generation templates embed a\nsubprocess invocation as text will mint call sites for text that never runs.\n\nWHY THIS IS A DECISION AND NOT AUTOMATICALLY A FIX. Three options, with different costs:\n  (a) Parse with ast and match ast.Call nodes instead of regex. Correct by construction, and it\n      would also subsume the B2 element-wise argv walk (WI-gadus) since the elements would\n      already be AST nodes. Costs a rewrite of the scanner and loses the ability to see calls in\n      files that do not parse -- currently a syntax-error file still yields matches.\n  (b) Keep the regex but skip ranges that ast reports as string literals. Cheaper, keeps the\n      unparseable-file behavior, but means running ast anyway on every file that parses.\n  (c) Accept it and disclose. A subprocess call written in a fixture IS evidence that the project\n      invokes its own CLI that way; whether that counts as a real edge is arguably a question\n      about what the map is FOR.\nDeliberately not pre-deciding among these. Note that the linker's own docstring already declares\nthat test-file invocations are IN scope by design (\"a subprocess.run([...]) call in an\nintegration test is a *real* CLI invocation\"), so the boundary being drawn here is\nliteral-vs-executed, NOT test-vs-production, and (c) is a live option rather than a cop-out.\n\nNOT tagged awaits_bakeoff_validation: no quantitative bakeoff claim has been made, and per the\n2026-08-01 owner ruling the queue is a worklist for the next cohort rather than a ledger of\nunvalidated claims. Validate whichever option ships with the same directed probe WI-gadus used."  # 894c
+    fields: {}  # 894c
