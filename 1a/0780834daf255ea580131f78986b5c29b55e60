@@ -1,0 +1,51 @@
+Original commit body from 3d44c8f9be7278096ada8cabee5da8c02b0f2ac4:
+
+The Python pilot proved the fact could be recorded; this makes it usable.
+fastapi.yaml and flask.yaml now tag `app = FastAPI()` / `Flask(__name__)`
+as concept: application and APIRouter()/Blueprint() as concept: router —
+the first framework integrations written against a CONSTRUCTION site.
+The contrast is the point: aiohttp.yaml reaches its Application with a
+plain base_class rule because you subclass it; FastAPI's is constructed,
+and until now no rule could reach it at all. docs/CONCEPTS.md regenerated:
+fastapi and flask now appear under both concepts.
+
+A PARITY COLUMN FIRST, AND IT CHANGED THE PLAN. "Eight analyzers need the
+key" was the scope until test_constructed_from_parity measured it. There
+are TWO hole shapes: six languages were KEY MISSING (the analyzer emits
+the binding and just doesn't stamp the callee — javascript, typescript,
+go, swift, rust, clojure, all now closed) and three are NO SYMBOL (ruby,
+php, elixir emit no module-level variable at all, so there is nothing to
+stamp). The second is a prerequisite gap of a different size, filed
+separately rather than bundled. Holes are strict xfails carrying which
+shape they are.
+
+ONE SHARED HELPER, NOT SIX COPIES. analyze.base.constructed_from_callee
+owns the rule and its three narrowings for every tree-sitter analyzer;
+Clojure's s-expression form is the one genuine exception. The helper
+falls back to a leading name-shaped child when a grammar names no callee
+field — which is how Swift works without a special case, since its
+call_expression is simply (simple_identifier, call_suffix) with no fields
+at all. Go needed its own unwrap: the `value` field resolves to an
+expression_list rather than being absent, and assuming absence is why Go
+silently recorded nothing on the first attempt.
+
+The expected callee is PER-LANGUAGE. Rust's idiom is an associated
+function (C::new), Go's a constructor function (NewC), JS uses new C().
+A single shared expectation quietly mis-passed Rust until it was split.
+
+CAUGHT BY MEASURING END-TO-END, NOT BY REVIEW: the first version of the
+YAML patterns was appended to the end of fastapi.yaml, which put them
+inside the `linkers:` list rather than `patterns:`. yamllint passed, the
+file parsed, and load_framework_patterns returned ZERO of them. A
+regression test now asserts the loader sees them.
+
+Swift's coverage exposed a new smart-test selection route (recorded on
+INV-kinin): BRANCHES_test_swift.py drives the analyzer through the CLI,
+so the import-graph selector links it to cli.py and not to swift.py — it
+was the sole coverer of the protocol-requirement branch and was absent
+from the manifest. Worked around with a direct-import test in
+test_swift.py; the class stays open.
+
+New item: WI-kavam (ruby/php/elixir emit no module-level variable).
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
