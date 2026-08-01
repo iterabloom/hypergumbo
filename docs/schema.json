@@ -705,6 +705,9 @@
             "config_format": {
               "description": "Configuration format on config-shape Symbols (e.g. 'tsconfig'). Fold residue per audit-findings 0005."
             },
+            "constructed_from": {
+              "description": "The callee whose result a variable is bound to \u2014 the ``FastAPI`` in ``app = FastAPI()``, the ``sqlalchemy.orm.declarative_base`` in ``Base = declarative_base()``. Recorded verbatim, keeping any attribute qualification, so a framework YAML can distinguish a namespaced callee from a same-named local one. WI-nopod: a whole class of frameworks is configured by CONSTRUCTING an object rather than decorating or subclassing one, and nothing recorded that binding \u2014 ``instantiates`` is anchored at the file (\"this file instantiated FastAPI somewhere\"), never at the variable. Sibling of ``base_classes``: both record what type a symbol relates to, as metadata a linker can later promote to edges. Static analysis cannot distinguish a constructor from a factory and the key does not try to \u2014 it names the callee, which is what the AST supports."
+            },
             "decorators": {
               "description": "List of decorator names on function / method / class Symbols. Used by framework_patterns to identify Flask routes, FastAPI handlers, etc."
             },
