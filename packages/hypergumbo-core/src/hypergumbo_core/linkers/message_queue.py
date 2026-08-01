@@ -503,7 +503,7 @@ def link_message_queues(root: Path) -> MessageQueueLinkResult:
 
     # Build (file_path, line) -> symbol index for fast lookup
     symbol_by_location: dict[tuple[str, int], Symbol] = {
-        (s.path, s.span.start_line): s for s in symbols
+        (s.path, s.span.start_line): s for s in symbols if s.span
     }
 
     # Create edges from publishers to subscribers

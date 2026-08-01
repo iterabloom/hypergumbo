@@ -38,6 +38,60 @@ def test_symbol_has_required_fields() -> None:
     assert symbol.span.end_col == 10
 
 
+def test_symbol_line_properties_none_span() -> None:
+    """WI-hafap: a span-less Symbol reports line 0 through the compat
+    properties — the codebase-wide line-0 convention, matching the 0 these
+    properties already returned for the degenerate ``Span(0, 0, 0, 0)``.
+
+    Pins the convention at the IR chokepoint so a future blanket rewrite
+    cannot silently change it (the failure mode of the reverted 43-guard
+    deletion recorded on WI-hafap).
+    """
+    symbol = Symbol(
+        id="python:test.py:0-0:ghost:function",
+        name="ghost",
+        kind="function",
+        language="python",
+        path="test.py",
+        span=None,
+    )
+    assert symbol.line == 0
+    assert symbol.end_line == 0
+
+
+def test_symbol_none_span_roundtrip() -> None:
+    """WI-hafap honest-carry: span=None serializes to an explicit null
+    (schema-legal — the node schema declares span as oneOf [Span, null])
+    and deserializes back to None, not a fabricated ``Span(0, 0, 0, 0)``."""
+    sym = Symbol(
+        id="python:test.py:0-0:ghost:function",
+        name="ghost",
+        kind="function",
+        language="python",
+        path="test.py",
+        span=None,
+    )
+    d = sym.to_dict()
+    assert d["span"] is None
+    back = Symbol.from_dict(d)
+    assert back.span is None
+
+
+def test_symbol_from_dict_missing_span_is_none() -> None:
+    """WI-hafap honest-carry: a record with NO span key deserializes to
+    span=None rather than a fabricated degenerate ``Span(0, 0, 0, 0)`` —
+    the zero-span passed every guard while claiming to occupy line 0,
+    which is the exact hole the WI-hafap filing named."""
+    back = Symbol.from_dict({
+        "id": "python:test.py:0-0:ghost:function",
+        "name": "ghost",
+        "kind": "function",
+        "language": "python",
+        "path": "test.py",
+    })
+    assert back.span is None
+
+
 def test_analyze_python_returns_symbols(tmp_path: Path) -> None:
     """analyze_python should return AnalysisResult with Symbol objects."""
     py_file = tmp_path / "hello.py"

@@ -771,7 +771,7 @@ def link_events(
     # Post-fold: filter on meta["framework_role"] since kind is now "function".
     publisher_symbol_index: dict[tuple[str, int], Symbol] = {}
     for s in symbols:
-        if (s.meta or {}).get("framework_role") == "event_publisher":
+        if (s.meta or {}).get("framework_role") == "event_publisher" and s.span:
             publisher_symbol_index[(s.path, s.span.start_line)] = s
 
     # Create edges from publishers to matching subscribers

@@ -1521,7 +1521,9 @@ def populate_synthetic_class_b_identity(symbols: list[Symbol]) -> None:
         null_class_b,
         key=lambda s: (
             s.protocol_origin, s.kind, s.path, s.name,
-            s.span.start_line, s.span.start_col, s.id,
+            s.span.start_line if s.span else 0,
+            s.span.start_col if s.span else 0,
+            s.id,
         ),
     ):
         key = (s.protocol_origin, s.kind, s.path, s.name)
@@ -1562,8 +1564,15 @@ _LOGICAL_DEDUP_PROTOCOL_ORIGINS = frozenset({"message_queue", "event_sourcing"})
 
 
 def _occurrence_sort_key(sym: Symbol) -> tuple[int, int, int, int, str]:
-    """Deterministic within-group order (ADR-0043 §6): span position, then id."""
+    """Deterministic within-group order (ADR-0043 §6): span position, then id.
+
+    A span-less Symbol sorts as position zero — identical to the degenerate
+    ``Span(0, 0, 0, 0)`` that ``Symbol.from_dict`` used to fabricate for a
+    missing span — with ``sym.id`` as the deterministic tie-breaker.
+    """
     sp = sym.span
+    if sp is None:
+        return (0, 0, 0, 0, sym.id)
     return (sp.start_line, sp.start_col, sp.end_line, sp.end_col, sym.id)
 
 

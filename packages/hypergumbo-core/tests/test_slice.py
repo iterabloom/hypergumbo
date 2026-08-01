@@ -215,6 +215,24 @@ class TestAmbiguousEntryDetection:
         assert py_ping.id in [c.id for c in error.candidates]
         assert ts_ping.id in [c.id for c in error.candidates]
 
+    def test_ambiguous_entry_error_none_span_renders_line_zero(self) -> None:
+        """WI-hafap: a span-less candidate renders ``path:0`` in the
+        disambiguation message instead of crashing the very error the
+        user needs (deserialized symbols may carry span=None)."""
+        s1 = Symbol(
+            id="python:a.py:0-0:ping:function",
+            name="ping", kind="function", language="python",
+            path="a.py", span=None,
+        )
+        s2 = Symbol(
+            id="python:b.py:0-0:ping:function",
+            name="ping", kind="function", language="python",
+            path="b.py", span=None,
+        )
+        with pytest.raises(AmbiguousEntryError) as exc_info:
+            raise_if_ambiguous("ping", [s1, s2])
+        assert "a.py:0" in str(exc_info.value)
+
     def test_no_error_when_exact_id_used(self) -> None:
         """Should not raise error when entry is specified by exact node ID."""
         py_ping = make_symbol("ping", path="src/app.py", language="python")

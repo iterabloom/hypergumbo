@@ -604,13 +604,15 @@ class Symbol:
             self.origin = [self.origin] if self.origin else []
 
     # Keep line/end_line for backwards compatibility during transition
+    # (span=None falls back to the codebase-wide line-0 convention, matching
+    # the 0 these properties already returned for fabricated Span(0,0,0,0)).
     @property
     def line(self) -> int:
-        return self.span.start_line
+        return self.span.start_line if self.span else 0
 
     @property
     def end_line(self) -> int:
-        return self.span.end_line
+        return self.span.end_line if self.span else 0
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
@@ -620,7 +622,10 @@ class Symbol:
             "kind": self.kind,
             "language": self.language,
             "path": self.path,
-            "span": self.span.to_dict(),
+            # Schema-legal: docs/schema.json declares node span as oneOf
+            # [Span, null]. Emitting null (not a fabricated zero-Span dict)
+            # keeps the WI-hafap honesty invariant through serialization.
+            "span": self.span.to_dict() if self.span else None,
             "origin": self.origin,
             "origin_run_id": self.origin_run_id,
             "stable_id": self.stable_id,
@@ -659,7 +664,10 @@ class Symbol:
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> "Symbol":
         """Reconstruct a Symbol from its dict representation (e.g., from cached results)."""
-        span_data = d.get("span", {})
+        # WI-hafap honest-carry: a missing or null span deserializes to None
+        # rather than a fabricated degenerate Span(0,0,0,0) that passes every
+        # truthiness guard while claiming to occupy line 0.
+        span_data = d.get("span")
         supply_chain = d.get("supply_chain", {})
         return cls(
             id=d["id"],
@@ -667,7 +675,7 @@ class Symbol:
             kind=d["kind"],
             language=d["language"],
             path=d["path"],
-            span=Span.from_dict(span_data),
+            span=Span.from_dict(span_data) if span_data is not None else None,
             origin=_normalize_origin(d.get("origin", "")),
             origin_run_id=d.get("origin_run_id", ""),
             stable_id=d.get("stable_id"),
