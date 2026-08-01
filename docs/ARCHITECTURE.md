@@ -14,16 +14,16 @@ for focused LLM context.
 ## Self-Analysis Summary (auto)
 
 hypergumbo analyzed its own source code and found:
-- **297** Python modules (133 analyzers, 59 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 30, Infrastructure 8; 68 core, 4 CLI, 33 tracker)
-- **37975** symbols (functions, classes, methods)
-- **129182** edges by type:
-  - calls: 65140
-  - contains: 35072
-  - imports: 11537
-  - instantiates: 10538
-  - references: 4369
-  - module_attr_ref: 1186
-  - other: 1340
+- **298** Python modules (133 analyzers, 59 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 30, Infrastructure 8; 69 core, 4 CLI, 33 tracker)
+- **38109** symbols (functions, classes, methods)
+- **129660** edges by type:
+  - calls: 65339
+  - contains: 35195
+  - imports: 11619
+  - instantiates: 10554
+  - references: 4405
+  - module_attr_ref: 1206
+  - other: 1342
 
 ## Package Architecture
 
@@ -85,7 +85,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 37975 Symbols + 129182 Edges + UsageContexts           │
+│  Output: 38109 Symbols + 129660 Edges + UsageContexts           │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -271,19 +271,19 @@ These symbols have the highest bidirectional centrality
 
 | Symbol | Kind | Score | Location |
 |--------|------|-------|----------|
-| `Symbol` | class | 9442.0 | ir.py |
-| `Span` | class | 6357.3 | ir.py |
+| `Symbol` | class | 9455.8 | ir.py |
+| `Span` | class | 6360.2 | ir.py |
 | `write_text` | external_symbol | 3310.0 | <external> |
 | `LinkerContext` | class | 3276.5 | registry.py |
 | `Edge.create` | method | 2096.5 | ir.py |
 | `TrackerApp` | class | 1946.9 | tui.py |
-| `load_framework_patterns` | function | 1875.9 | framework_patterns.py |
-| `Path` | external_symbol | 1636.0 | <external> |
+| `load_framework_patterns` | function | 1882.5 | framework_patterns.py |
+| `Path` | external_symbol | 1649.0 | <external> |
 | `main` | function | 1578.2 | cli.py |
 | `clear_pattern_cache` | function | 1336.8 | framework_patterns.py |
 | `Edge` | class | 1272.3 | ir.py |
-| `append` | external_symbol | 1231.0 | <external> |
-| `get` | external_symbol | 1129.0 | <external> |
+| `append` | external_symbol | 1236.0 | <external> |
+| `get` | external_symbol | 1139.0 | <external> |
 | `TreeSitterAnalyzer` | class | 1074.7 | base.py |
 | `find_files` | function | 997.1 | discovery.py |
 
@@ -558,6 +558,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 - **`hypergumbo_core.ir`**: Internal Representation (IR) for code analysis.
 - **`hypergumbo_core.limits`**: Limits tracking for behavior map output.
 - **`hypergumbo_core.linkers.registry`**: Linker registry for dynamic dispatch.
+- **`hypergumbo_core.member_names`**: Single home for the owner/member separator vocabulary in ``Symbol.n...
 - **`hypergumbo_core.metrics`**: Metrics computation for behavior map output.
 - **`hypergumbo_core.multi_value_field_axis`**: Multi-value field axis declaration linter (WI-busij).
 - **`hypergumbo_core.name_matcher`**: Name-form normalization at matcher boundaries (Level 2 of WI-zigah).
@@ -846,8 +847,8 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: d6f6fdf71183
-  commit_count: 6410
+  commit: 4b9d40ecf4a9
+  commit_count: 6427
   hypergumbo: 7.0.0
   python: 3.12.3
 -->
