@@ -1,0 +1,35 @@
+Original commit body from 1833e2e42ff0694e06da537c96362bc2348353de:
+
+A secret's copy is never more readable than its origin. .env is 0600 but
+every file the transcript pipeline created inherited umask 002: transcripts,
+injection history and the training log landed at 664 inside a 2775 setgid
+archive dir, silently republishing credential-bearing command output from
+owner-only to group-and-world-readable. Scrubbing removed occurrences but
+could not change the invariant - the next session wrote 664 again.
+
+Fix at creation, one home per language layer:
+- transcript_perms.sh: umask 077 + idempotent hardening helpers, sourced by
+  every shell writer (sync-transcript, rotate-on-session-end,
+  launch-transcript-sync, archive_scrubbed), parity-tested so a new writer
+  cannot skip the wiring silently
+- filter-transcript.py / on_transcript_change.py: 0o600 at creation plus
+  re-chmod on every write (dest, injection history, training log), so
+  pre-contract 664 files self-heal on next touch
+- rotation hardens the four global slots explicitly (mv preserves modes)
+  and strips the archive root's legacy setgid with an explicit g-s: GNU
+  chmod preserves directory setgid under numeric modes, so plain chmod 700
+  leaves 2700 with group propagation intact (measured live)
+- live artifacts remediated: 241 archive dirs to 0700, archived transcripts
+  to 0600, the 1.2 GB training log to 0600
+
+Testing: tests/test_transcript_permissions.py (12 tests) drives the real
+scripts under umask 002 - the exact failure condition - and re-verifies the
+fail-safe archive contract is undisturbed. Sandbox copy-lists in
+test_watcher_lifecycle.py / test_transcript_scrub_wiring.py gain the new
+helper (a sandbox without it is a repo where writers die at the source
+line).
+
+Governance: .agent/** changes explicitly approved by owner (auto-pr without
+--gov authorized).
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
