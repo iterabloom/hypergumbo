@@ -85,3 +85,19 @@
   clock: 9  # 1e83
   nonce: '1e83'  # 1e83
   message: "CORRECTION to the iter-004 no_move: the bakeoff measured containment on the TIERED token-budget artifacts (survey.4k/16k/64k.json = the connectivity-aware select_by_connectivity path, a connected-subgraph selection that is NOT a monotonic prefix by design). WI-kolal's ACTUAL claim is about 'compact --max-symbols' (format_compact_behavior_map / select_by_coverage — the centrality-ranked prefix). Verified directly on pretix's survey: compact --max-symbols 10/25/50/100 IS containment-monotonic (10⊆25⊆50⊆100). So WI-kolal's fix HOLDS on its own path. Separately, the WI-pohuf compact-node fix (PR de2fb3717c) fixed the tiered COLLAPSE (1/1/59 -> 4/31/142 on apollo) and as a side effect restored tiered monotonicity on apollo/spring. Recommend re-validating with a fresh bakeoff pointed at the --max-symbols path (not the tiered files); the tiered non-monotonicity on pretix is a distinct connectivity-selection property, not a WI-kolal regression."  # 1e83
+- op: update  # e6ef
+  at: '2026-08-01T05:34:33Z'  # e6ef
+  by: agent  # e6ef
+  actor: jgstern_agent  # e6ef
+  clock: 10  # e6ef
+  nonce: e6ef  # e6ef
+  set: {}  # e6ef
+  remove:  # e6ef
+    tags: [awaits_bakeoff_validation]  # e6ef
+- op: discuss  # 6adf
+  at: '2026-08-01T05:34:33Z'  # 6adf
+  by: agent  # 6adf
+  actor: jgstern_agent  # 6adf
+  clock: 11  # 6adf
+  nonce: 6adf  # 6adf
+  message: "BAKEOFF VALIDATION COMPLETE — verdict NO_MOVE on the right instrument; tag\nstripped per the lifecycle; regression sub-item filed UNTAGGED:\nWI-vofud-toniz-bagun-kodil-surap-sofig-jizud-gajot.\n\nTWO INSTRUMENTS, OPPOSITE VERDICTS — recorded so nobody re-litigates this:\n  1. The 8 reflect assessments (deep-20260717-200119, cohort-001/iter-001,\n     summary.yaml in that session's reflect dir) returned plurality\n     moved=6 / no_move=1 / inconclusive=1 — but they measured the\n     hg.4k/16k/64k BUDGET VIEWS, the sketch-side artifacts this item's\n     2026-07-16 correction already established mismeasure it. Their\n     auto-apply mutation plan (strip tag on 'moved') was deliberately NOT\n     executed.\n  2. The item's OWN subcommand on current dev (54a5f34bcc), swept at\n     --max-symbols 10/25/50/100 against all eight 07-17 maps: containment\n     VIOLATED on 6/8 repos, deterministic (two identical caddy runs, stable\n     5-node c50-minus-c100 difference). pretix and express clean — fully\n     consistent with the 07-16 pretix-only hand verification.\n\nThe 2026-07-09 fix (4c8a8f66c1) was real and pretix validated it; the\nproperty does not hold across the wider corpus. Details, repro, and the\nfull violation table are on the sub-item."  # 6adf

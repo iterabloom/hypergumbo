@@ -61,3 +61,10 @@
   clock: 6  # c609
   nonce: c609  # c609
   message: "INCONCLUSIVE via DEEP bakeoff deep-20260623-134237 cohort-001 iter-004 (8 repos, code e5a019c2): no Python-argparse-CLI target in the cohort (pretix=Django/Celery, express=JS, caddy=Go, others non-Python). Cannot validate the argparse subprocess-linker fix here. Keep tag; needs a targeted cohort with a Python argparse CLI (e.g. a click-vs-argparse repo)."  # c609
+- op: discuss  # 97b2
+  at: '2026-08-01T05:34:34Z'  # 97b2
+  by: agent  # 97b2
+  actor: jgstern_agent  # 97b2
+  clock: 7  # 97b2
+  nonce: 97b2  # 97b2
+  message: "BAKEOFF VALIDATION: INCONCLUSIVE — tag KEPT, structural cohort gap, third\nconsecutive time. All 8 reflect assessments (deep-20260717-200119) returned\ninconclusive with the same reason: this cohort contains ZERO Python\nargparse CLI targets (go/js/ts/python-django/csharp/java/swift/rust — the\none Python repo, pretix, uses Django management commands, already detected\nas cli_command). No cohort rerun can validate this claim; it needs a\nDIRECTED probe: run the pipeline on a repo with a real argparse CLI (any\npython package exposing console_scripts + argparse subcommands) and check\nthe subprocess linker's concept keying per the item's fix (dev 2e9611808f,\nmerged 2026-07-02). That is minutes of work against a purpose-picked repo,\nnot a bakeoff slot."  # 97b2
