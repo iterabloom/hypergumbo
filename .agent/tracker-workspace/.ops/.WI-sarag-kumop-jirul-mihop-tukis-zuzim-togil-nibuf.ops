@@ -20,3 +20,19 @@
     pr_ref:  # 5d3a
     description: "Surfaced during the WI-gotaf None-safety sweep: 14 analyzers each define a\nbyte-identical local helper\n\n    def _get_node_text(node) -> str:\n        return node.text.decode(\"utf-8\", errors=\"replace\")\n\n(scheme, meson, matlab, racket, purescript in hypergumbo-lang-common;\nv_lang, tcl, prisma, pascal, odin, janet, haxe, gleam, fennel in\nhypergumbo-lang-extended1). The None-safety fix — (node.text or b\"\") — had\nto be applied 14 times, one per copy, which is exactly the smell: a single\nnode.text-is-bytes|None guard should live in ONE shared helper.\n\nProposed: extract a shared _get_node_text(node) -> str into analyze/base.py\n(or hypergumbo-lang-common) and import it in all 14 analyzers, deleting the\nlocal copies. NOTE: lang_common already has node_text(node, source) but with\na different signature (takes source bytes, slices by byte offset rather than\nusing node.text) — the new helper is the .text-based variant, so reconcile\nthe two (or document why both exist).\n\nLow priority: the duplication is stable and mechanical, but consolidating\nprevents future N-times-fix events like the one that produced this item.\nRoot cause: copy-paste analyzer scaffolding predating a shared text helper."  # 5d3a
     fields: {}  # 5d3a
+- op: update  # 6378
+  at: '2026-08-01T08:18:18Z'  # 6378
+  by: agent  # 6378
+  actor: jgstern_agent  # 6378
+  clock: 2  # 6378
+  nonce: '6378'  # 6378
+  set:  # 6378
+    status: done  # 6378
+    pr_ref: '#149'  # 6378
+- op: discuss  # 0123
+  at: '2026-08-01T08:18:18Z'  # 0123
+  by: agent  # 0123
+  actor: jgstern_agent  # 0123
+  clock: 3  # 0123
+  nonce: '0123'  # 0123
+  message: "CLOSED done — PR #149, dev 009dd31c3d (2026-08-01).\n\nThe filed 14 copies were 35 by sweep time (L1: filings decay; the count\ngrew 2.5x since filing). 34 spliced via AST-anchored per-file asserts\ninto an aliased import of analyze.base.node_own_text — one None-safe\nhome, every historical call site untouched. css.py deliberately kept:\nits (node, source) variant is the OTHER contract (source-slice for\nre-parsed sub-trees), matching the pre-existing analyze.base.node_text.\nRecurrence linter in test_node_own_text.py fails the build on any new\nprivate copy (member_names enforcement shape), with css exempt by\nsignature.\n\nEVIDENCE: 2235 tests green across both swept packages;\ncheck-package-coverage all-green in isolation; mypy ratchet delta +0\n(720); net diff -163/+115."  # 0123
