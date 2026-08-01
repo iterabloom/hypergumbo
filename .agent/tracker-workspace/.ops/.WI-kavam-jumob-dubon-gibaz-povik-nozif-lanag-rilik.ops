@@ -1,0 +1,22 @@
+- op: create  # 35ef
+  at: '2026-08-01T01:49:09Z'  # 35ef
+  by: agent  # 35ef
+  actor: jgstern_agent  # 35ef
+  clock: 1  # 35ef
+  nonce: 35ef  # 35ef
+  data:  # 35ef
+    kind: work_item  # 35ef
+    title: "ruby, php and elixir emit no module-level variable symbol, so a binding has nothing to carry constructed_from (or resolve against)"  # 35ef
+    status: todo_hard  # 35ef
+    priority: 2  # 35ef
+    parent:  # 35ef
+    tags:  # 35ef
+    - analyzer  # 35ef
+    - linker_gap  # 35ef
+    - dogfood  # 35ef
+    isbefore: []  # 35ef
+    duplicate_of: []  # 35ef
+    not_duplicate_of: []  # 35ef
+    pr_ref:  # 35ef
+    description: "**Measured** by the `constructed_from` parity column\n(`test_constructed_from_parity.py`), which separates two hole shapes. Six\nlanguages were *KEY MISSING* — the analyzer emitted the binding and simply did\nnot stamp the callee, a bounded fix, all six now closed. These three are the\nother shape:\n\n    ruby     APP = C.new              -> no variable/constant symbol at all\n    php      $app = new C();          -> no variable symbol at file scope\n    elixir   @app C.new()             -> no symbol for a module attribute\n\nThere is nothing to stamp. This is a prerequisite gap and a materially larger\nchange than adding a meta key, which is why it is filed rather than bundled\ninto the sweep — \"eight analyzers need the key\" was the plan until the column\nwas built, and it was wrong.\n\n**Consequence beyond `constructed_from`.** A module-level binding is a real\nprogram entity: it participates in dead-code reachability, in cross-file\nresolution (a `from x import APP` has nothing to resolve to), and in\ncentrality. Python's own variable emission was added for exactly that reason\n— WI-gafog E2 measured 151 ALL-CAPS constants being synthesised as tier-3\n`external_symbol` placeholders because no in-tree symbol existed to match.\nThe same shape almost certainly exists for these three; NOT measured here,\nand measuring it is the first step of the fix rather than a claim being made.\n\n**Per-language notes.**\n\n* **ruby** — `APP = C.new` at file scope is an ordinary constant assignment\n  and the idiomatic way Ruby defines module-level values. Emitting it looks\n  like the Python change (a top-level assignment walk).\n* **php** — `$app = new C();` at file scope. PHP's analyzer gained\n  interface/trait/enum emission in the same INV-tihim campaign; this is the\n  variable-shaped sibling of that gap.\n* **elixir** — genuinely a design question, not an oversight. Elixir has no\n  module-level mutable bindings; the construction sites are module attributes\n  (`@app C.new()`) and function bodies. Deciding *which* to model, and what\n  `Symbol.kind` it takes, needs a ruling before any code. Do not treat this as\n  the same task as ruby/php.\n\n**Close condition.** Each language's cell in the parity column flips from\nstrict-xfail to hard pass. A fix XPASSes and forces its `KNOWN_HOLES` entry\nout in the same PR.\n\n**Related:** WI-nopod (the item this came out of; its six KEY MISSING\nlanguages are done) · WI-gafog E2 (the Python precedent and the measured cost\nof not emitting module-level bindings)."  # 35ef
+    fields: {}  # 35ef
