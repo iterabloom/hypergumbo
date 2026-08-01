@@ -98,7 +98,10 @@ import platform
 from datetime import datetime, timezone
 from typing import Any, Dict
 
-SCHEMA_VERSION = "0.20.0"
+SCHEMA_VERSION = "0.20.1"  # 0.20.1: Symbol.span nullable in the schema (WI-hafap
+# Optional[Span] flip). Relaxation only — no producer emits a span-less symbol
+# today, so emitted artifacts are unchanged; consumers that assumed presence
+# should treat span as optional going forward.
 # Canonical ``view`` field values a behavior map (or its budget-limited
 # projections) may carry: the base analysis emits ``behavior_map``; the compact
 # and tiered projections emit their own view name. Single-sourced here so the

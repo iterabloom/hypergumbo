@@ -8,7 +8,7 @@
     "schema_version": {
       "type": "string",
       "description": "Schema version (semver)",
-      "const": "0.20.0"
+      "const": "0.20.1"
     },
     "confidence_model": {
       "type": "string",
@@ -625,7 +625,14 @@
           "description": "File path"
         },
         "span": {
-          "$ref": "#/$defs/Span",
+          "oneOf": [
+            {
+              "$ref": "#/$defs/Span"
+            },
+            {
+              "type": "null"
+            }
+          ],
           "description": "Source location"
         },
         "origin": {
@@ -1000,8 +1007,7 @@
         "id",
         "name",
         "kind",
-        "path",
-        "span"
+        "path"
       ]
     },
     "Edge": {
