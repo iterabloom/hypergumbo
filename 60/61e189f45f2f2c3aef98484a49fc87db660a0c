@@ -1,0 +1,50 @@
+Original commit body from 870478c9d0052be2573ef54ecf8c592bb865ee37:
+
+PHP EMITTED ONLY CLASSES. Three of four type containers had no branch in
+the symbol walk, so an in-file `interface` surfaced as an
+`external_symbol` and members of an interface or trait were emitted BARE
+(`area`, not `Shape.area`) because the enclosing-owner walk recognised
+`class_declaration` alone — while the sibling _enclosing_type_name helper
+already walked all four. Fixed with ONE branch keyed off a
+container->kind map rather than three copies of the class branch, so a
+fifth container cannot be added to _PHP_TYPE_CONTAINERS and silently
+skipped.
+
+All three of PHP's stacked defects fall out of that one change: the
+interface becomes a real node, its member is owner-qualified, and the
+relationship self-corrects from extends->external_symbol to
+implements->interface — because the inheritance linker classifies by the
+TARGET's kind, which is why Java gets this right despite lumping extends
+and implements into one base_classes meta. PHP now emits
+dispatches_to: Shape.area -> Square.area; its parity cell is promoted
+from hole to hard pass in the same PR.
+
+TYPESCRIPT records `abstract` on abstract classes. Five languages mark it
+in modifiers, which is where is_abstract_type reads it; TS emitted an
+empty list. Nothing had to be inferred — the grammar hands us a distinct
+abstract_class_declaration node and the Symbol never set the field.
+
+C++ EMITS PURE VIRTUALS, and a class declaring one is marked abstract.
+The member walk filtered out every function declaration, so
+`virtual int area() = 0;` vanished and an abstract base had no method to
+dispatch FROM. Scoped to pure virtuals deliberately: a non-pure
+declaration has its definition in another translation unit and there is
+no decl/def merging for cpp, so emitting those would yield two symbols
+for one method. A pure virtual has no definition anywhere by
+construction. Guarded by a test asserting non-pure decls stay skipped.
+
+C++'s cell STAYS RED on a different cause. Every ingredient is now
+present and no edge appears, because _extends_admits_dispatch asks
+whether the CHILD is abstract while a C++ abstract-base hierarchy has the
+abstract PARENT (extends: Square -> Shape, Square concrete). The rule is
+correct for the case it was written for (Go embedding, C# interface
+inheritance — both endpoints abstract, so the tests coincide) and wrong
+for abstract-base inheritance. Widening it changes dead-code reachability
+across all four NO_VIRTUAL_EXTENDS languages, so it is filed as WI-nizug
+rather than bundled here.
+
+Two defensive branches in the pure-virtual detector carry pragmas with
+reasons: `virtual T f() = 1;` and a virtual data member are both invalid
+C++, so no well-formed input reaches them.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
