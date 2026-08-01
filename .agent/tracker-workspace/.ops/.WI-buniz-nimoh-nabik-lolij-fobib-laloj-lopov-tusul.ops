@@ -1,0 +1,20 @@
+- op: create  # e0b5
+  at: '2026-08-01T06:28:03Z'  # e0b5
+  by: agent  # e0b5
+  actor: jgstern_agent  # e0b5
+  clock: 1  # e0b5
+  nonce: e0b5  # e0b5
+  data:  # e0b5
+    kind: work_item  # e0b5
+    title: "auto-pr vPR machinery: non-ff push misclassified as remote-unavailable; prune is sha-only (misses patch-equivalent merged vPRs); queue ref breaks on branch deletion"  # e0b5
+    status: needs_human_review  # e0b5
+    priority: 3  # e0b5
+    parent:  # e0b5
+    tags:  # e0b5
+    - infra  # e0b5
+    isbefore: []  # e0b5
+    duplicate_of: []  # e0b5
+    not_duplicate_of: []  # e0b5
+    pr_ref:  # e0b5
+    description: "Three failure modes of the auto-pr vPR machinery, all observed live\n2026-08-01 while landing PR #144 (each cost a recovery cycle; none lost\ndata):\n\n1. MISCLASSIFICATION: a git push rejected NON-FAST-FORWARD (the remote\n   branch already held the same change at a different sha, from auto-pr's\n   own hung-run close-and-repush cycle) was reported as 'remote\n   unavailable' and the change was queued as a vPR — while the PR it\n   duplicated sat open on the remote. The classifier should distinguish\n   push-rejected (ref exists, diverged) from push-unreachable (network /\n   5xx / auth), and on rejection should check whether the remote branch\n   tip already contains the queued content.\n\n2. PRUNE IS SHA-ONLY: auto-pr prune declares a vPR stale only when its\n   recorded sha is in origin/<base>. A flush REBUILDS commits, so a merged\n   change's queue entry carries a sha that will never appear in the base\n   branch — prune called it 'live' forever. Staleness needs\n   patch-identity (git patch-id / cherry), not sha identity. Measured: the\n   queued commit differed from the merged one ONLY in\n   .ci/affected-tests.txt's timestamp header line (which also defeats\n   patch-id — see the smart-test manifest-idempotency finding on\n   INV-lizor's thread; fixing that one line fixes this too).\n\n3. FRAGILE QUEUE REF: the queue references its branch by name; deleting\n   the merged local branch broke flush with 'fatal: Needed a single\n   revision'. The queue should store enough to survive branch cleanup\n   (or prune should handle an unreachable sha as prunable-with-warning).\n\nRecovery used: verified patch-equivalence by tree-diff (one manifest line),\nthen removed .git/PR_QUEUE by hand. NOTE: auto-pr is a GOVERNANCE file —\nthe fix needs the human-approval workflow (needs_human_review + discussion\nbefore any PR)."  # e0b5
+    fields: {}  # e0b5

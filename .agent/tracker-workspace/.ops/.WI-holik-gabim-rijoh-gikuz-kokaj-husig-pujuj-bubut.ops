@@ -1,0 +1,20 @@
+- op: create  # 918d
+  at: '2026-08-01T06:28:06Z'  # 918d
+  by: agent  # 918d
+  actor: jgstern_agent  # 918d
+  clock: 1  # 918d
+  nonce: 918d  # 918d
+  data:  # 918d
+    kind: work_item  # 918d
+    title: "ci-debug logs: TypeError on HTTP-200-with-empty-body from woodpecker log endpoint (operator blind exactly when CI fails)"  # 918d
+    status: needs_human_review  # 918d
+    priority: 3  # 918d
+    parent:  # 918d
+    tags:  # 918d
+    - infra  # 918d
+    isbefore: []  # 918d
+    duplicate_of: []  # 918d
+    not_duplicate_of: []  # 918d
+    pr_ref:  # 918d
+    description: "scripts/ci-debug 'logs woodpecker' crashes instead of printing the failed\njob log: 'TypeError: NoneType object is not iterable' followed by\n'Woodpecker log fetch failed (HTTP 200)'. Observed live 2026-08-01 while\ndiagnosing PR #144's errored woodpecker run — the one situation the\nsubcommand exists for. An HTTP 200 whose body parses to None (empty JSON,\nor a shape change in the log endpoint) is treated as iterable. Effect: the\noperator is blind exactly when CI is failing; auto-pr's own '(could not\nretrieve log automatically)' fallback traces to the same fetch. NOTE:\nci-debug is a GOVERNANCE file — human approval workflow required for the\nfix."  # 918d
+    fields: {}  # 918d
