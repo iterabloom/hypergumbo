@@ -1,0 +1,44 @@
+Original commit body from 7d17deacfaa1dd793ab721af8dc25259f83bb005:
+
+A whole class of frameworks is configured by CONSTRUCTING an object
+rather than decorating or subclassing one (app = FastAPI(),
+Base = declarative_base(), runner = CliRunner()), and a YAML author had
+no key to write a pattern against. Python now stamps the callee on the
+bound variable, qualification intact, so a namespaced callee stays
+distinguishable from a same-named local.
+
+THE ITEM'S DIAGNOSIS WAS WRONG IN A WAY THAT CHANGED THE FIX'S MODULE.
+It reported the matcher "lacks call/instantiates/constructor_call entry
+families". The matcher has had a call surface since 2026-01-30 —
+UsagePatternSpec matches UsageContext on (kind, name, position) — four
+months before the filing. But ADR-3ccc models "a first-party symbol
+appears INSIDE a framework call", and every position it defines is an
+input slot; WI-nopod's cases invert that, since the symbol to tag is the
+call's RESULT. The item's own alternative ("~7,939 instantiates edges
+already exist") fails for a related reason: measured, those are anchored
+at the FILE and the variable carried no link to the callee at all. Both
+proposed fixes matched nothing because the binding was never recorded.
+
+Chosen home is Symbol.meta, mirroring meta.base_classes — both record
+what type a symbol relates to, as metadata a linker can later promote to
+edges. The decisive property: THE MATCHER NEEDS NO CHANGE, since
+meta_match already takes a {key: regex} map over Symbol.meta. Asserted by
+test, not inferred. Each alternative costs an ADR ruling: a
+result-position UsageContext widens symbol_ref and adds a fifth pattern
+category to an ADR already marked Implemented; a new edge type is
+ADR-0023's territory.
+
+Narrow in three ways, each guarded by a test: only a call result is
+stamped, so the key stays useful as a filter; factory and constructor
+calls are treated identically, because static analysis cannot
+distinguish them and claiming otherwise would be a guess; a computed
+callee (factories[key]()) records NOTHING rather than a partial name,
+since a YAML matching a fiction would fail silently.
+
+Found while testing: meta_match applies regex.match, not search, so
+(^|\.)FastAPI$ silently fails on fastapi.FastAPI while (.*\.)?FastAPI$
+works. Pinned with an explicit tripwire.
+
+docs/schema.json regenerated for the new registered meta key.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
