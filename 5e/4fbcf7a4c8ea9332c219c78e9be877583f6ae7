@@ -1,0 +1,61 @@
+Original commit body from 6af04fb895bcccd83eea6fd498b642a9a133a4c8:
+
+sketch and compact both advertise "the important symbols" and both already
+ranked with compute_dampened_centrality -- the 2026-07-09 default flip
+settled the ranking FUNCTION -- yet their top-10 lists disagreed. The cause
+was never the ranking. sketch filtered to key declaration kinds over
+test-source-free edges; compact's default select_by_coverage filtered
+nothing at all.
+
+The policy that made sketch's list good was a frozenset declared INSIDE
+sketch._format_symbols, with its four clauses as an inline comprehension
+beneath it, reachable by nothing else. There was no shared definition to
+drift from -- only one function's private opinion. KEY_SYMBOL_KINDS,
+is_key_symbol, key_symbols and production_edges now live in
+selection/filters.py, the module whose own header already named sketch,
+compact and tiered JSON as its consumers.
+
+MEASURED through the production entry points on both sides, on the eight
+2026-07-17 bakeoff maps: top-10 agreement 31.2% -> 55.0%, and at the
+shipped default budget of 100, 42.8% -> 73.0%. 8/8 repos improved or held
+at K=10, 8/8 improved at K=100 (SwiftyJSON 16.7 -> 100, express 18 -> 74.7,
+sherpa-csharp 25 -> 76.1). The 31.2% before-figure independently reproduces
+the 32% the item recorded.
+
+The EDGE filter is the dominant clause, which is the opposite of the
+obvious guess: against sketch's ranked top-10, the symbol filter alone
+reaches 7.1/10, the edge filter alone 8.4/10, both together 10/10 on all
+eight. compact had been crediting symbols for being called by their own
+test suites. That is why both clauses apply and why a denylist-only variant
+-- which would have subsumed WI-fadab -- was rejected at 9.4/10 with two
+repos missed.
+
+Scope held deliberately. --connectivity is exempt and keeps the broader
+population: its contract is bridging disconnected components and a file
+node is often the only thing joining two islands, so narrowing it would
+remove the bridges the mode exists to find (pinned by an over-reach guard).
+Narrowing runs before seed extraction rather than at the ranking call, so
+it also constrains force-inclusion -- which is the point, since a seed that
+is not a key symbol is exactly the noise leading compact today
+(sherpa-csharp's top five were all run*.sh file nodes). `variable` sits in
+both KEY_SYMBOL_KINDS and EXCLUDED_KINDS and stays in both: a Terraform
+variable is a real declaration surface, a CSS custom property is zero-edge
+noise, and which set a consumer applies is its own policy choice.
+
+RESIDUAL, stated rather than implied: 55%, not 100%. With the population
+shared the ranked orders match exactly; what remains is that the two use
+different SELECTION policies over that shared ranking -- compact reserves
+half its budget for entrypoint and cross-cutting seeds, sketch uses
+two-phase coverage-first selection with per-file caps. Separate design
+difference, not a filter divergence; WI-zulij still tracks it.
+
+Two of the three new property tests were VACUOUS on first draft and are
+documented as such in place: one passed because the coverage stop had
+truncated the selection to a single symbol, the other because its fixture
+used `calls`, a CROSS_CUTTING_EDGE_TYPES member, so every endpoint became a
+seed candidate and the ranking under test was never exercised. Both now
+carry explicit non-vacuity assertions. The sketch extraction is
+behavior-preserving, pinned by its existing 526 tests passing unchanged.
+
+Refs: WI-zulij
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
