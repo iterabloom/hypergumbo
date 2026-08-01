@@ -1,0 +1,21 @@
+Original commit body from ea683b3a76c402375caee3b96f40e062b3c785a6:
+
+The filing counted 14 byte-identical private _get_node_text copies; the
+sweep found 35 - 18 None-guarded one way, 14 another, plus drift: the
+half-guarded-population tell (no contract, only local habit; the same
+shape Symbol.span had). 34 copies spliced via AST-anchored per-file
+asserts into an aliased import of analyze.base.node_own_text, the single
+None-safe home - every historical call site untouched. css.py's
+(node, source) source-slice variant deliberately stays: it matches the
+node_text(node, source) contract for re-parsed sub-trees whose .text is
+unavailable, and the recurrence linter exempts it by signature.
+
+test_node_own_text.py pins: real-node decode, None -> '' (the WI-vokiz
+guard), and a recurrence linter that fails the build on any new private
+copy (member_names' enforcement shape).
+
+Verified: 2235 tests green across lang-common + lang-extended1; all
+packages 100% coverage in isolation (check-package-coverage); mypy
+ratchet delta +0 (720).
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
