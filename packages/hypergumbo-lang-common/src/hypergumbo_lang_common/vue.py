@@ -54,6 +54,7 @@ from hypergumbo_core.analyze.base import (
     populate_docstrings_from_tree,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.analyze.base import node_own_text as _get_node_text
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -66,10 +67,6 @@ def find_vue_files(repo_root: Path) -> list[Path]:
     """Find all Vue component files in the repository."""
     return sorted(find_files(repo_root, ["*.vue"]))
 
-
-def _get_node_text(node: "tree_sitter.Node") -> str:
-    """Get the text content of a node."""
-    return node.text.decode("utf-8", errors="replace") if node.text else ""
 
 
 # Identifiers that are Vue runtime built-ins, not component methods.

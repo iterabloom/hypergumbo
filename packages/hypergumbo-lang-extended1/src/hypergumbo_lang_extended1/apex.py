@@ -45,6 +45,7 @@ from hypergumbo_core.analyze.base import (
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
+from hypergumbo_core.analyze.base import node_own_text as _get_node_text
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -72,10 +73,6 @@ APEX_BUILTINS = frozenset({
     "enqueue", "abortJob", "getErrorMessage",
 })
 
-
-def _get_node_text(node: "tree_sitter.Node") -> str:
-    """Get the text content of a node."""
-    return node.text.decode("utf-8", errors="replace") if node.text else ""
 
 
 def _extract_base_classes_apex(node: "tree_sitter.Node") -> list[str]:

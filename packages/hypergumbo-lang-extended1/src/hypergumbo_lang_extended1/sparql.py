@@ -46,6 +46,7 @@ from hypergumbo_core.analyze.base import (
     make_doc_symbol_ids,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.analyze.base import node_own_text as _get_node_text
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -68,10 +69,6 @@ def is_sparql_tree_sitter_available() -> bool:
     """Check if tree-sitter-sparql is available."""
     return _analyzer._check_grammar_available()
 
-
-def _get_node_text(node: "tree_sitter.Node") -> str:
-    """Get the text content of a node."""
-    return node.text.decode("utf-8", errors="replace") if node.text else ""
 
 
 # Well-known SPARQL vocabulary prefixes
