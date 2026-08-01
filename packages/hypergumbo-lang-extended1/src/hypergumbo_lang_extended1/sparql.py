@@ -382,7 +382,7 @@ class SPARQLAnalyzer(TreeSitterAnalyzer):
                 query_sym = None
                 for sym in local_symbols.values():
                     if sym.kind == "query" and sym.meta.get("query_type") == query_type:
-                        if (sym.span.start_line == node.start_point[0] + 1):
+                        if sym.span is not None and sym.span.start_line == node.start_point[0] + 1:
                             query_sym = sym
                             break
 

@@ -5915,8 +5915,11 @@ def _analyze_javascript_impl(
         if sym.name not in symbols_by_name:
             symbols_by_name[sym.name] = []
         symbols_by_name[sym.name].append(sym)
-        # Index by position for inline handler lookup in UsageContext creation
-        symbol_by_position[(sym.path, sym.span.start_line, sym.span.start_col)] = sym
+        # Index by position for inline handler lookup in UsageContext creation.
+        # A symbol without a span has no position to index; consumers fall
+        # back to name-based lookup in global_symbols.
+        if sym.span is not None:
+            symbol_by_position[(sym.path, sym.span.start_line, sym.span.start_col)] = sym
         if sym.kind == "method":
             method_name = sym.name.split(".")[-1] if "." in sym.name else sym.name
             if method_name not in global_methods:

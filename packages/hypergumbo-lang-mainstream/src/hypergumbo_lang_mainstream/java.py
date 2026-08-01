@@ -2363,7 +2363,10 @@ def _analyze_java_impl(repo_root: Path) -> JavaAnalysisResult:
 
     for sym in all_symbols:
         global_symbols[sym.name] = sym
-        symbol_by_position[(sym.path, sym.span.start_line, sym.span.start_col)] = sym
+        # A symbol without a span has no position to index; consumers fall
+        # back to name-based lookup in global_symbols.
+        if sym.span is not None:
+            symbol_by_position[(sym.path, sym.span.start_line, sym.span.start_col)] = sym
         if sym.kind in ("class", "interface", "enum"):
             class_symbols[sym.name] = sym
             if sym.name not in class_by_name:
