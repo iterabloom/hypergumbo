@@ -1,0 +1,33 @@
+Original commit body from 847e816125071bca12cd422198a460e808868837:
+
+--max-symbols containment (nodes(K1) subset-of nodes(K2)) was violated on
+6 of 8 real bakeoff maps, deterministically. Three budget-dependent
+mechanisms, all in the seed machinery the prior containment test never
+exercised (entrypoints: [], force-include off):
+
+1. The entrypoint cap switched regimes on len(eps) > max_symbols
+   (1/3 vs 1/2), so growing the budget past the entrypoint count jumped
+   the forced set discontinuously.
+2. The cross-cutting seed budget (max//2 - len(forced)) SHRANK as the
+   forced set grew - at a larger budget the cross-cutting seeds could
+   vanish entirely (caddy 50->100 dropped its Dispenser dispatch
+   endpoints and fmt.Errorf).
+3. The coverage stop counted seed centrality, so a larger budget's bigger
+   seed set inflated start coverage and stopped the centrality fill
+   earlier.
+
+Fix (default path only): ONE fixed-order seed list (entrypoints by
+-confidence, then cross-cutting endpoints by -edge_count) under ONE
+monotone quota (max//2; floor-of-one reserved for entrypoint seeds), plus
+a budget-independent positional stop in select_by_coverage computed from
+the global centrality order alone. A prefix of a fixed list under a
+monotone quota is nested by construction. Connectivity mode keeps the old
+adaptive policy - bridging is not a ranked prefix and containment was
+never its contract.
+
+Verified: real-map sweep 8/8 OK (was 2/8); TestSeededContainment pins the
+property across budgets straddling the regime boundary at two coverage
+targets, with feature-preservation guards. 226 compact + 207 CLI tests
+green.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
