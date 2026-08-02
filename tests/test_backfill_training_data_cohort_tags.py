@@ -501,17 +501,33 @@ class TestRealV0WindowBoundaries:
     # 7310783e1 — 2026-04-08T12:57:57  (injection-history sidecar)
     # 9ac06cc88 — 2026-04-08T15:58:46  (per-session isolation)
 
-    def test_timeline_includes_known_shas(self, bf_mod) -> None:
+    @pytest.fixture(scope="class")
+    def timeline(self, bf_mod):
+        """The real-history walk, computed ONCE for the whole class (WI-fodad).
+
+        Every test here needs the same timeline and each used to recompute it.
+        That walk is `git log --reverse` over full history with a pathspec — the
+        only full-history walk in the suite, and the one thing paying the cold
+        object-read cost. Measured in CI: 1,185,559 ms on the first invocation
+        against a fresh checkout, 19 ms on every one after. Recomputing it five
+        times turned one slow command into five red tests and burned 5 x the
+        30 s subprocess cap before failing.
+
+        prepare-git now warms that read (and writes a changed-path commit-graph),
+        so the cost is paid before pytest starts. This fixture is the other half:
+        even when the walk IS slow, it happens once and fails once, legibly.
+        """
+        return bf_mod.get_commit_timeline(self.REPO_ROOT, bf_mod.INFRA_PATH)
+
+    def test_timeline_includes_known_shas(self, bf_mod, timeline) -> None:
         """The timeline includes the four boundary commits."""
-        timeline = bf_mod.get_commit_timeline(self.REPO_ROOT, bf_mod.INFRA_PATH)
         shas = {sha for _, sha in timeline}
         for short in ["75596a4153d4", "704548fe1e90", "7310783e1b26", "9ac06cc88a00"]:
             matches = [s for s in shas if s.startswith(short)]
             assert matches, f"SHA starting with {short} not found in timeline"
 
-    def test_entry_before_75596a_resolves_to_earlier(self, bf_mod) -> None:
+    def test_entry_before_75596a_resolves_to_earlier(self, bf_mod, timeline) -> None:
         """Entry before the initial sparse-selection commit."""
-        timeline = bf_mod.get_commit_timeline(self.REPO_ROOT, bf_mod.INFRA_PATH)
         ts_only = [t for t, _ in timeline]
         sha = bf_mod.resolve_sha_at_timestamp(
             timeline, ts_only, "2026-04-03T01:56:54",
@@ -519,18 +535,16 @@ class TestRealV0WindowBoundaries:
         # Should resolve to a commit before 75596a415
         assert not sha.startswith("75596a4153d4")
 
-    def test_entry_at_75596a_resolves_correctly(self, bf_mod) -> None:
+    def test_entry_at_75596a_resolves_correctly(self, bf_mod, timeline) -> None:
         """Entry at the 75596a415 boundary resolves to that commit."""
-        timeline = bf_mod.get_commit_timeline(self.REPO_ROOT, bf_mod.INFRA_PATH)
         ts_only = [t for t, _ in timeline]
         sha = bf_mod.resolve_sha_at_timestamp(
             timeline, ts_only, "2026-04-03T01:56:55",
         )
         assert sha.startswith("75596a4153d4")
 
-    def test_entry_between_704548_and_7310783(self, bf_mod) -> None:
+    def test_entry_between_704548_and_7310783(self, bf_mod, timeline) -> None:
         """Entry between dynamic-count and injection-history commits."""
-        timeline = bf_mod.get_commit_timeline(self.REPO_ROOT, bf_mod.INFRA_PATH)
         ts_only = [t for t, _ in timeline]
         # Between 704548fe1 (2026-04-05T16:32:43) and next commit
         sha = bf_mod.resolve_sha_at_timestamp(
@@ -540,9 +554,8 @@ class TestRealV0WindowBoundaries:
         # The key invariant: it must NOT be 7310783e1 (which is Apr 8)
         assert not sha.startswith("7310783e1b26")
 
-    def test_entry_after_9ac06cc_resolves_to_it_or_later(self, bf_mod) -> None:
+    def test_entry_after_9ac06cc_resolves_to_it_or_later(self, bf_mod, timeline) -> None:
         """Entry after per-session isolation commit."""
-        timeline = bf_mod.get_commit_timeline(self.REPO_ROOT, bf_mod.INFRA_PATH)
         ts_only = [t for t, _ in timeline]
         sha = bf_mod.resolve_sha_at_timestamp(
             timeline, ts_only, "2026-04-08T16:00:00",
