@@ -1,0 +1,9 @@
+Original commit body from aeb35e1b0a44ff131cb69960ce46837318eb0976:
+
+The pre-flight reported 15 commits of 15, exactly on the boundary. auto-pr's
+rebase adds a commit, which would push the recorded point to 16 and fail
+verify-generated in CI after a full pipeline (L35: the recency check keys on
+commit-count DISTANCE, so a clean pre-flight is necessary but not sufficient
+when the rebase itself moves the window).
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
