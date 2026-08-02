@@ -1448,6 +1448,130 @@ class TestModuleMatches:
         assert _module_matches("FileManager", "logger") is False
 
 
+class TestModuleMatchesIsComponentAware:
+    """WI-zazul: the predicate must not substring-match module paths.
+
+    It used to normalise ``::`` and ``/`` to ``.`` and then ask
+    ``cm in em or em in cm`` -- bidirectional, case-insensitive SUBSTRING
+    containment. 25 of the 210 catalog sink modules are four characters or
+    fewer (``os``, ``io``, ``fs``, ``net``, ``log``, ``http``, ``sys``, ...), so
+    each matched ANY module whose normalised path merely contained it.
+
+    Found by the 2026-08-01 taint cohort over 9 fresh external repos, which is
+    what moved INV-karud to ``violated``. Measured on hypergumbo's own tree the
+    predicate looked clean -- 110 flows, 110 realizable, 0 suspect -- and every
+    defect below is Go or JavaScript. It is a language-coverage gap that only
+    fresh substrate exposes.
+
+    The replacement is component-aware: normalise separators, split on ``.``,
+    and require one component sequence to be a PREFIX of the other. Where the
+    prefix is strict, the first EXTRA component decides -- capitalised means a
+    type inside the matched package (``os/exec`` + ``Cmd``), lowercase means a
+    sibling or sub-package (``net/http`` + ``fcgi``), which is a different
+    module and must not match. That discriminant is needed because the Go
+    analyzer emits ``os.exec.Cmd`` for what the catalog spells ``os/exec``, so
+    the separator itself cannot be trusted to mark the package boundary.
+    """
+
+    # (catalog_module, edge_module_hint, why) — every one of these returned
+    # True under substring containment.
+    @pytest.mark.parametrize(
+        "catalog,hint,why",
+        [
+            ("os", "chaos", "'os' is a substring of 'chaos'"),
+            ("io", "audio", "'io' is a substring of 'audio'"),
+            ("log", "dialog", "'log' is a substring of 'dialog'"),
+            ("fs", "dfs.client", "'fs' is a substring of 'dfs'"),
+            ("net/http", "net/http/fcgi", "fcgi is a SIBLING package, not a type"),
+            ("net/http", "net/http/httptest",
+             "httptest.NewRequest builds a request and performs NO network IO"),
+            ("net/smtp.Client", "net", "'net' is a prefix component only"),
+            ("grpc",
+             "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc",
+             "the module path merely ENDS in 'grpc'"),
+        ],
+    )
+    def test_substring_collisions_no_longer_match(
+        self, catalog: str, hint: str, why: str,
+    ) -> None:
+        assert _module_matches(catalog, hint) is False, (
+            f"{catalog!r} still matches {hint!r} — {why}"
+        )
+
+    def test_zone_flipping_collision(self) -> None:
+        """The one catalog-internal pair that changes the ZONE, not just the primitive.
+
+        ``sys.process.Process`` is host_fs and ``sys.process.ProcessBuilder`` is
+        subprocess, and the former is literally a substring of the latter, so a
+        Scala ``run`` could be attributed to the wrong zone entirely rather than
+        merely to the wrong primitive.
+        """
+        assert _module_matches(
+            "sys.process.Process", "sys.process.ProcessBuilder",
+        ) is False
+
+    @pytest.mark.parametrize(
+        "catalog,hint",
+        [
+            ("os", "os"),                          # identical
+            ("net.Conn", "net.Conn"),
+            ("java.io", "java.io.FileInputStream"),  # type within package
+            ("std::fs", "std::fs::File"),            # Rust path separator
+            ("os/exec", "os.exec.Cmd"),              # slash catalog, dotted hint
+            ("net/http", "net/http.Client"),         # exported type, not a package
+            # Dropped qualification — the hint is the unqualified tail. This is
+            # how source actually spells these, so it is load-bearing rather
+            # than lenient: Go writes `http.Get` after importing `net/http`,
+            # and Java writes `System.in` for `java.lang.System.in`.
+            ("java.lang.System", "System"),
+            ("net/http", "http"),
+            ("net.Conn", "Conn"),
+        ],
+    )
+    def test_legitimate_matches_survive(self, catalog: str, hint: str) -> None:
+        """Non-vacuity floor (L17): the fix must not be 'return False'.
+
+        Without these, deleting the predicate's body would satisfy every
+        assertion above.
+        """
+        assert _module_matches(catalog, hint) is True, (
+            f"{catalog!r} should still match {hint!r}"
+        )
+
+    @pytest.mark.parametrize(
+        "catalog,hint",
+        [
+            ("Channel", "channel"),
+            ("ChannelHandlerContext", "context"),
+            ("NonBlockingFileIO", "fileIO"),
+        ],
+    )
+    def test_swift_receiver_variable_carve_out_survives(
+        self, catalog: str, hint: str,
+    ) -> None:
+        """Swift hints are receiver VARIABLE names, so they need their own rule.
+
+        The analyzer extracts a camelCase variable where the catalog names a
+        PascalCase type, and the variable is frequently the type's trailing
+        word(s). Component matching cannot express that, so it is an explicit
+        carve-out — and its DIRECTION is the safety property: the catalog name
+        may end with the hint (a variable named after its type), never the
+        reverse. ``'chaos'.endswith('os')`` is the bug; ``'NonBlockingFileIO'
+        .endswith('fileIO')`` is the feature, and only one direction is allowed.
+        """
+        assert _module_matches(catalog, hint) is True
+
+    def test_swift_carve_out_requires_a_word_boundary(self) -> None:
+        """The carve-out is bounded, so it cannot re-admit the bug it excludes.
+
+        A suffix that starts mid-word is not a receiver variable named after
+        its type; requiring the split to land on a capital keeps the carve-out
+        from degenerating back into substring containment for short names.
+        """
+        assert _module_matches("os", "s") is False
+        assert _module_matches("Channel", "nel") is False
+
+
 class TestExtractModuleHint:
     """Tests for _extract_module_hint helper."""
 
