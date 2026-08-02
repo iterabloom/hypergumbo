@@ -273,6 +273,12 @@ steps:
       - path: *code_paths
     environment:
       SMART_TEST_ACTIVE: "1"
+      # WI-fodad (TEMPORARY): trace every git invocation in this step to a file
+      # so the one that blows its 30s cap INSIDE a test is measured at the
+      # loaded moment it fails. A file sink (not stderr) keeps it out of the
+      # tests' captured output, so no assertion that reads git stderr changes
+      # behaviour. Remove with the probe below once the cause is established.
+      GIT_TRACE2_PERF: "/tmp/git-trace2.txt"
     commands:
       # The smart-test manifest can select top-level agent-infra tests/ (e.g.
       # test_session_start_agent_notes.py) whose bash hooks shell out to jq;
@@ -359,9 +365,84 @@ steps:
           WORKERS=$(nproc)
         fi
 
+        # ── WI-fodad diagnostic probe (TEMPORARY — remove once the cause is known) ──
+        # tests/test_backfill_training_data_cohort_tags.py blew a 30s subprocess
+        # cap on `git log --reverse -- <one path>`. That command measures
+        # 0.03-0.10s on a dev box in EVERY repo state we could reproduce: warm
+        # clone, fresh full clone, and the exact CI shape (shallow clone then
+        # --unshallow, no commit-graph). Ruled out by measurement: shallow
+        # history, missing commit-graph, auto-gc, a gitattributes textconv
+        # driver, over-parallelism, and runner starvation (CI ran the suite
+        # FASTER than the dev box: 359s vs 572s). So the process was almost
+        # certainly BLOCKED rather than computing, and the surviving hypothesis
+        # is per-read latency on this shared workspace volume.
+        #
+        # Two measurements, because one is not enough: the failure struck at 99%
+        # of the run (loaded), so a quiet pre-pytest probe alone could come back
+        # fast and mislead. The BASELINE below runs quiet; GIT_TRACE2_PERF (set
+        # in the step environment) captures the same command from INSIDE the
+        # test at the loaded moment it actually fails.
+        echo "=== WI-fodad probe: workspace + repo state ==="
+        df -PT "$PWD" 2>/dev/null | tail -1 || true
+        stat -f -c 'statfs_type=%T bsize=%s' .git 2>/dev/null || true
+        _packs=$(ls .git/objects/pack/*.pack 2>/dev/null | wc -l)
+        _loose=$(find .git/objects -type f -not -path '*/pack/*' 2>/dev/null | wc -l)
+        echo "packs=$_packs loose=$_loose"
+        _cg=$([ -f .git/objects/info/commit-graph ] && echo yes || echo no)
+        _sh=$([ -f "$(git rev-parse --git-dir)/shallow" ] && echo yes || echo no)
+        echo "commit_graph=$_cg shallow=$_sh"
+        echo "commits=$(git rev-list --count HEAD 2>/dev/null || echo '?') git=$(git --version)"
+
+        # NB: neither pass is genuinely cold -- prepare-git already walked this
+        # .git in an earlier step -- so these are run1/run2, not cold/warm. A
+        # large run1-vs-run2 gap still implicates page-cache/volume latency.
+        echo "=== WI-fodad probe: baseline timing, QUIET (run1 then run2) ==="
+        for _pass in run1 run2; do
+          _t0=$(date +%s%N)
+          git log --pretty=format:'%aI %H' --reverse -- \
+            .agent/hooks/_shared/on_transcript_change.py > /tmp/fodad.out 2>/tmp/fodad.err || true
+          _t1=$(date +%s%N)
+          echo "  $_pass: elapsed_ms=$(( (_t1 - _t0) / 1000000 )) lines=$(wc -l < /tmp/fodad.out)"
+        done
+        head -3 /tmp/fodad.err 2>/dev/null || true
+
         echo "=== pytest ($(echo "$SELECTED_TESTS" | wc -w) selected files, -n $WORKERS) ==="
-        pytest --rootdir=. -n "$WORKERS" --tb=short $COV_PATHS $SELECTED_TESTS
-        TEST_EXIT=$?
+        # `|| TEST_EXIT=$?` rather than a bare call: `set -e` is active, so a
+        # failing pytest would abort this block before the trace summary below
+        # -- i.e. exactly on the run we need the diagnostic from. Final exit
+        # code is unchanged (`exit $TEST_EXIT` still runs).
+        TEST_EXIT=0
+        pytest --rootdir=. -n "$WORKERS" --tb=short $COV_PATHS $SELECTED_TESTS || TEST_EXIT=$?
+
+        # ── WI-fodad: what did git actually spend its time on, under load? ──
+        # Quiet baseline AGAIN, now that the load is gone. The before/after pair
+        # is the decisive datum: quiet-fast + loaded-timeout => load-correlated
+        # (the shared-volume latency hypothesis). Quiet-SLOW even once => the
+        # cause is structural and every local control used so far was invalid.
+        echo "=== WI-fodad probe: baseline timing, QUIET AGAIN (post-pytest) ==="
+        _t0=$(date +%s%N)
+        git log --pretty=format:'%aI %H' --reverse -- \
+          .agent/hooks/_shared/on_transcript_change.py > /tmp/fodad.out 2>/dev/null || true
+        _t1=$(date +%s%N)
+        echo "  post: elapsed_ms=$(( (_t1 - _t0) / 1000000 )) lines=$(wc -l < /tmp/fodad.out)"
+
+        if [ -s /tmp/git-trace2.txt ]; then
+          echo "=== WI-fodad probe: traced invocations of the timing-out command ==="
+          # NOTE: a subprocess killed at its 30s cap never reaches git's atexit,
+          # so it emits a `start` line with NO matching `exit`. An unmatched
+          # start is therefore the signature of the kill, not missing data.
+          _starts=$(grep -ac "on_transcript_change" /tmp/git-trace2.txt || echo 0)
+          _exits=$(grep -a "on_transcript_change" /tmp/git-trace2.txt | grep -ac "| exit " || echo 0)
+          echo "  invocations_started=$_starts  with_recorded_exit=$_exits"
+          echo "  (started > exited => processes were KILLED mid-run, i.e. blocked)"
+          grep -a "on_transcript_change" /tmp/git-trace2.txt | tail -10 || true
+          echo "--- top elapsed values across ALL traced git processes ---"
+          awk '{ for (i = 1; i <= NF; i++) if ($i ~ /^[0-9]+\.[0-9]{6}$/) { print $i, $0; break } }' \
+            /tmp/git-trace2.txt 2>/dev/null | sort -rn -k1 | head -15 || true
+          echo "--- trace size: $(wc -l < /tmp/git-trace2.txt) lines ---"
+        else
+          echo "=== WI-fodad probe: NO trace2 output captured (check GIT_TRACE2_PERF) ==="
+        fi
 
         # 100% coverage gate for changed source files only.
         if [ $TEST_EXIT -eq 0 ] && [ -n "$COVERABLE" ]; then
