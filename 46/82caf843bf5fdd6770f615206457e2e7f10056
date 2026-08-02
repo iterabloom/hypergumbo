@@ -1,0 +1,51 @@
+Original commit body from d81de97dc959a3660cb76023f01062de0f3f2f56:
+
+tests/test_backfill_training_data_cohort_tags.py intermittently failed five
+tests at once on subprocess.TimeoutExpired, all from one command:
+
+    git log --pretty=format:'%aI %H' --reverse -- <one path>
+
+MEASURED IN CI by a purpose-built probe, same step, seconds apart:
+
+    run1: elapsed_ms=1185559   (19m46s)
+    run2: elapsed_ms=19
+    post: elapsed_ms=27        (after the whole suite)
+
+run2 is a FRESH git process, so the expense is I/O -- reading the pack -- not
+computation. With --reverse plus a pathspec over 6,445 commits, no commit-graph
+(fresh clone) and 7 packs, git reads essentially the whole object store. It is
+the ONLY full-history walk in the suite, so it alone pays that cold cost, every
+run, inside a 30s cap.
+
+FIX, two halves:
+  - prepare-git runs `git commit-graph write --reachable --changed-paths` in
+    BOTH workflows that execute the root tests/ tree (per-PR gate + full-suite;
+    nightly runs packages/*/tests/ only). Absorbs the cold read outside any
+    timeout AND leaves changed-path Bloom filters so the walk is structurally
+    cheap. Local: walk 0.044s -> build 0.268s -> walk 0.010s.
+  - the five tests share a class-scoped `timeline` fixture instead of
+    recomputing the identical walk five times -- which is what turned one slow
+    command into five red tests and burned 5 x 30s before failing.
+
+BOUNDED (300s) AND NON-FATAL ON PURPOSE. The 1,185s was measured while four
+nightly matrix legs competed for the same disk, so the cold read is unbounded
+and load-dependent; relocating an unbounded cost into every pipeline would
+trade a flaky test for a slow one. On timeout we are exactly where we were --
+and the reading it did still warmed the cache.
+
+Eight hypotheses died by measurement before this one: runner starvation (CI ran
+the suite FASTER than the dev box, 359s vs 572s), shallow history, missing
+commit-graph alone (0.095s forced cold), over-parallelism (-n 8), fresh-clone
+and shallow-then-unshallow repo states (0.026s / 0.041s), a gitattributes
+textconv driver, and auto-gc.
+
+Probe trimmed to the three timing lines as a regression guard; GIT_TRACE2_PERF
+removed (359,742 lines for no payoff, and its kill-detection summary was wrong
+-- trace2 repeats the command line only on `start`, so an `exit` can never
+match a command-line grep).
+
+NOTE ON LANDING: auto-pr will hit WI-ninar on this PR (poll_ci declares "hung
+runner" on every pipeline over 300s on this backend), so it is pushed with
+CI_STALE_PENDING_SECONDS raised. That is a workaround, not a fix; WI-ninar is.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
