@@ -1,0 +1,46 @@
+Original commit body from 66737979dee9a56daeebf55731181ddf057ac53c:
+
+The suite's only full-history git walk took 1,185,559 ms in CI and 27 ms on a
+dev box. The command was never the problem; the checkout was.
+
+woodpeckerci/plugin-git defaults `partial: true`, and its own defaults.go then
+sets Depth=1 and filter="tree:0", so the workspace was a promisor repository
+holding no tree objects beyond the single commit it checked out. `git fetch
+--unshallow` in prepare-git restores the commit history but INHERITS the
+configured filter, so the trees stayed missing. Commit-only reads never noticed
+(dco's rev-list, merge-base, the recency window); a pathspec walk needs a tree
+from every commit, so ~26,000 of them came back from origin one HTTPS round
+trip at a time.
+
+That is why every local reproduction failed: a locally-made shallow clone has
+no filter, so it has all its trees. It is also why the reverted commit-graph
+warm-up made CI worse rather than better — `--changed-paths` diffs every commit,
+so it demanded the identical trees on every pipeline.
+
+All three workflows now pin `settings: {partial: false}`. The trade is one
+~264 MB bulk clone against ~26,000 round trips, which is the shape the file's
+comment already claimed to have.
+
+Guarded twice, because there are two failure modes:
+  * tests/test_ci_clone_is_complete.py asserts statically that every clone step
+    declares partial:false (absent IS the bug — the plugin default is true),
+    covering both of Woodpecker's accepted `clone:` spellings.
+  * prepare-git reads remote.origin.partialclonefilter at run time and fails the
+    pipeline, because no static check can see the declaration silently ceasing
+    to take effect after a plugin bump or a server-side override.
+Both default-deny (L54): they require the safe value to be stated rather than
+enumerating the filters known to hurt. Mutation-tested — removing either half
+turns the corresponding test red.
+
+Also reverts the 1800 s subprocess cap to 120 s. Raising it was worse than the
+30 s it replaced: it let the walk finish, which pushed the pytest step past the
+agent's task deadline and got the pipeline CANCELLED, trading a fast legible red
+for an unattributable infrastructure error.
+
+The new gate is registered in KNOWN_UNREACHABLE with its consequence stated: its
+subject is YAML, the top-level mapper is a governance file, so editing a
+workflow does not select it per-PR. The runtime half covers that gap.
+
+Refs WI-fodad
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
