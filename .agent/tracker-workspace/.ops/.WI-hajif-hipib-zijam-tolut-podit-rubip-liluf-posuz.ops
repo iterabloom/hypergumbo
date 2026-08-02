@@ -1,0 +1,31 @@
+- op: create  # c729
+  at: '2026-08-02T02:21:21Z'  # c729
+  by: agent  # c729
+  actor: jgstern_agent  # c729
+  clock: 1  # c729
+  nonce: c729  # c729
+  data:  # c729
+    kind: work_item  # c729
+    title: "Codeberg-to-GitHub TOOLING migration: settle retire-vs-repoint for ci-failover/AGit/forgejo-api.sh, then sweep ~40 coupled files"  # c729
+    status: needs_human_review  # c729
+    priority: 2  # c729
+    parent:  # c729
+    tags:  # c729
+    - ci_infrastructure  # c729
+    - developer_experience  # c729
+    isbefore:  # c729
+    - INV-rahib-gobop-zozum-kopil-noguh-tifof-nibol-dudup  # c729
+    duplicate_of: []  # c729
+    not_duplicate_of: []  # c729
+    pr_ref:  # c729
+    description: "Materializes the deferred bucket from the 2026-07-26 lab notebook entry\n(codeberg-github-doc-sweep-and-deferred-tooling_07262026.md), which until now\nexisted ONLY in that notebook -- no tracker item covered it. Filed 2026-08-01\nafter a search of the open corpus for migrat/codeberg/failover/github/AGit\nreturned nothing.\n\nSTATE OF THE MIGRATION. It is LIVE: origin is github.com, codeberg.org is now\nonly a 'mirror' remote, FORGE_BACKEND resolves to 'github', CI is the self-hosted\nWoodpecker. Three PRs shipped the user-facing, release-critical references\n(791a0fb30c READMEs, 30b9328cc2 CONTRIBUTING/SECURITY/CONTRIBUTOR_MODE,\nc13cafc403 schema.json $id). What remains is the TOOLING migration.\n\nTHE DECISION THIS ITEM EXISTS TO SETTLE (everything else is downstream):\nretire the ci-failover / AGit / forgejo-api.sh machinery per migration.md, OR\nkeep-and-repoint it. The owner's doc-sweep answer was 'keep the self-hosted\nForgejo failover, repoint it to GitHub', but the notebook records that as an\nexplicit INTERIM choice made to avoid ripping out code immediately before a\nrelease, and flags it as in tension with the standing end-state in migration.md /\nmigration-phase2-5-design.md (retire the machinery in favour of portable GitHub\nActions YAML + a pull-mirror + act for local CI; see also\ngithub-outage-ci-continuity-sop.md). Resolve the tension before touching code.\n\nSCOPE (~40 files, all coupled to the decision above):\n  Bucket A -- governance files, human approval required, NO self-merge:\n    scripts/ci-failover (79 refs), scripts/lib/forgejo-api.sh (24),\n    scripts/auto-pr (9), scripts/merge-pr (2), scripts/ci-debug (2),\n    scripts/contribute (3), CODEOWNERS (2), ALLOWED_WEBSITES.md (1),\n    .githooks/pre-push (1). This is the load-bearing code change the docs wait on.\n  Bucket B -- CI workflows: .github/workflows/release-mirror.yml is now OBSOLETE\n    (it mirrors a release FROM Codeberg; nothing to mirror from) -- clearest quick\n    win, likely delete. The disabled GHA workflows are retained for portability;\n    .woodpecker/* is the active CI and its Codeberg refs are failover-level.\n  Bucket C -- deep-mechanics docs, rewrite WITH the script change: CONTRIBUTING.md\n    (8, incl. the AGit sections + the FORGEJO_USER/FORGEJO_TOKEN credential table\n    -- on the GitHub backend the primary credential is HG_GITHUB_TOKEN),\n    .env.template (5), docs/sops/RELEASE_SOP.md (11), docs/sops/CI_FAILOVER.md\n    (12), and the pre-work / release-workflow playbooks (1 each).\n  Bucket D -- tracker package: sync.py (5), setup.py (1), comments/URLs only.\n  Bucket E -- REGENERATE after the above, do not hand-edit: docs/ARCHITECTURE.md\n    line 399 (derived from the ci-failover script description) and\n    docs/example-output.md (a captured tool-output snapshot; hand-editing it would\n    be doctoring a snapshot).\n\nCONFIRMED KEEP -- do NOT sweep these: both CHANGELOGs (migration history);\nADRs 0010/0011/0013 and audits 0013/0014 (historical records citing real past\nCodeberg PR numbers); sketch.py:3937 + docs/hypergumbo-spec.md:1105 (forge-host\nRECOGNITION -- the tool parses GitHub/GitLab/Codeberg URLs in ANALYZED repos, so\nremoving codeberg.org regresses a feature); the forge-backend test fixtures, which\nmust change WITH Bucket A rather than before it.\n\nWHY THIS BLOCKS INV-rahib (recorded as isbefore). INV-rahib is a P1 invariant on\nauto-pr convergence whose evidence base is substantially Forgejo-specific -- e.g.\nWI-hubod's entire failure mode (Codeberg DB desync breaking AGit's proc-receive\nhook) CANNOT occur on GitHub, which has no AGit. Re-scoping that invariant now\nwould be work against machinery this item may delete. A concrete instance of the\nsame coupling, probed 2026-08-01: _pre_scenario_b_gate (INV-rahib Surface 1) has\nNO FORGE_BACKEND branch, and json_field collapses a JSON null to the empty string,\nso a GitHub-shaped 'mergeable: null' makes the gate decline and fall through to\nclose-and-repush even with CI green. github-api.sh overrides only three functions\n(_github_delete_pr_head_branch, _github_do_merge, _github_fetch_job_log).\n\nGOVERNANCE. Bucket A is governance-listed. Per AGENTS.md do NOT open a preemptive\nPR: keep this needs_human_review, post the proposed diff for approval, then\nauto-pr. Status is needs_human_review because the FIRST step is an owner decision,\nnot implementation.\n\nRE-ENUMERATE the live surface at any time with:\n  grep -rIil 'codeberg' . --exclude-dir=.git --exclude='*.ops' | grep -v '/\\.agent/tracker'"  # c729
+    fields: {}  # c729
+- op: update  # 0c56
+  at: '2026-08-02T02:21:42Z'  # 0c56
+  by: agent  # 0c56
+  actor: jgstern_agent  # 0c56
+  clock: 2  # 0c56
+  nonce: 0c56  # 0c56
+  set: {}  # 0c56
+  add:  # 0c56
+    not_duplicate_of: [INV-fimon-moguj-hivis-nivaj-dupun-maras-nijif-muzas]  # 0c56
