@@ -1,0 +1,20 @@
+- op: create  # e7a5
+  at: '2026-08-02T06:29:58Z'  # e7a5
+  by: agent  # e7a5
+  actor: jgstern_agent  # e7a5
+  clock: 1  # e7a5
+  nonce: e7a5  # e7a5
+  data:  # e7a5
+    kind: work_item  # e7a5
+    title: "poll_ci hung-runner heuristic is backend-incompatible: Woodpecker posts ONE aggregate context that never goes non-pending mid-run, so every pipeline over 300s is declared hung"  # e7a5
+    status: todo_hard  # e7a5
+    priority: 1  # e7a5
+    parent:  # e7a5
+    tags:  # e7a5
+    - ci_infrastructure  # e7a5
+    isbefore: []  # e7a5
+    duplicate_of: []  # e7a5
+    not_duplicate_of: []  # e7a5
+    pr_ref:  # e7a5
+    description: "Observed live 2026-08-02 while landing PR #160.\n\nMECHANISM. poll_ci (scripts/lib/forgejo-api.sh) decides \"has any CI job started?\"\nby asking whether ANY status context has gone NON-pending:\n\n    non_pending = [s for s in statuses if (s.get('state') or s.get('status')) != 'pending']\n    print('yes' if non_pending else 'no')\n\nThat test was written for Forgejo Actions, which posted ONE STATUS CONTEXT PER\nJOB -- so as individual jobs finished, non-pending contexts appeared while the\nrest still ran, and any_job_started flipped true.\n\nWoodpecker on GitHub posts exactly ONE AGGREGATE context\n(ci/woodpecker/pr/woodpecker), and it stays `pending` for the ENTIRE pipeline,\nflipping to success/failure only when the whole pipeline finishes. So\n\"has any job started\" is FALSE for the entire duration of every run, and any\npipeline that outlives stale_pending_threshold (CI_STALE_PENDING_SECONDS,\ndefault 300s) is declared a hung runner and returns exit 3.\n\nOur per-PR suite takes ~360s. THE HEURISTIC THEREFORE FIRES ON ESSENTIALLY\nEVERY RUN. It is not detecting anything; it is structurally incapable of\nbeing satisfied on this backend.\n\nTHIS IS INV-rahib SURFACE 2'S ACTUAL ROOT CAUSE, and it retires the\nexplanations we had been carrying. Not runner contention, not a competing\nnightly, not shared-volume latency. Verified in the same session that the\nnightly was NOT running during the first failing run (dev showed Overall:\nsuccess with only the push context at 04:51:58 UTC, before the nightly legs\nappeared).\n\nCONSEQUENCE OBSERVED, not theorised: auto-pr's hung-run retry cascade fires,\ncloses the PR, re-pushes, and re-queues -- so under a genuinely busy agent the\ncascade can prevent the job from ever being serviced (a livelock in which the\nrecovery mechanism defeats the recovery). On GitHub the close-and-repush\nreopens the SAME PR number rather than minting a new one, which is why the\nblast radius has been survivable since the migration and the bug stayed hidden.\n\nFIX SHAPE (not implemented, needs a ruling): the \"did anything start\" question\nmust be asked of the BACKEND, not inferred from context transitions. Options:\n(a) treat the presence of a pending context for our SHA as proof the pipeline\nwas accepted (it is -- Woodpecker only posts it once the run is created), and\nreserve the hung verdict for the case where NO context exists at all;\n(b) raise the threshold far above the longest expected pipeline, which is a\nplaster and re-breaks whenever the suite grows;\n(c) query the Woodpecker API for run state, which needs a new approved script.\n(a) looks correct and is the smallest change; it also restores the ORIGINAL\nintent (catch a dispatch failure, not a slow run).\n\nDO NOT CLOSE by raising CI_STALE_PENDING_SECONDS. That is what was done by hand\nto get PR #160 through, and it moved the false verdict from 300s to 2700s\nwithout removing it."  # e7a5
+    fields: {}  # e7a5

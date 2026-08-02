@@ -1,0 +1,20 @@
+- op: create  # e117
+  at: '2026-08-02T06:30:25Z'  # e117
+  by: agent  # e117
+  actor: jgstern_agent  # e117
+  clock: 1  # e117
+  nonce: e117  # e117
+  data:  # e117
+    kind: work_item  # e117
+    title: "merge-pr merges on poll_ci exit 3 (fails OPEN on unenumerated codes) and branch protection did not block it - PR #160 merged with CI pending"  # e117
+    status: todo_hard  # e117
+    priority: 1  # e117
+    parent:  # e117
+    tags:  # e117
+    - ci_infrastructure  # e117
+    isbefore: []  # e117
+    duplicate_of: []  # e117
+    not_duplicate_of: []  # e117
+    pr_ref:  # e117
+    description: "Observed live 2026-08-02: PR #160 was MERGED while its CI status was still\n`pending`. Nothing caught it.\n\nMECHANISM, two independent holes that compose:\n\n(1) merge-pr does not handle poll_ci exit 3. scripts/merge-pr:297-303 reads:\n\n      poll_ci \"$HEAD_SHA\" || poll_result=$?\n      if   [[ $poll_result -eq 1 ]]; then exit 1   # CI failed\n      elif [[ $poll_result -eq 2 ]]; then exit 2   # timeout\n      fi\n      ... falls through to the merge ...\n\n    poll_ci's exit 3 (hung runner) matches NEITHER branch, so a hung verdict\n    silently becomes \"proceed to merge\". Live transcript:\n      \"No CI jobs have started after 2700s -- possible hung runner (exit code 3)\"\n      \"Merging PR #160...\"  ->  \"Merged via rebase! (GitHub)\"\n    Given WI-ninar (poll_ci declares hung on EVERY run over 300s on this\n    backend), this is not an exotic path -- it is reachable on any slow run.\n\n(2) GitHub branch protection did NOT block the merge. The working assumption\n    when this gap was first spotted (an hour before it fired) was that the\n    required-status-check would refuse a merge on a pending context. It did\n    not. Whether the required check is unconfigured, named differently from\n    ci/woodpecker/pr/woodpecker, or bypassable by the token in use is UNKNOWN\n    and must be established -- do not assume the protection exists.\n\nAGGRAVATOR (separate, worth its own thought): the post-merge push pipeline did\nnot re-test the code either. woodpecker.yml computes the push-event diff base as\n${CI_PREV_COMMIT_SHA:-HEAD~1} and skips pytest when that diff contains no .py\nfiles. A rebase-merge that lands N commits leaves the push pipeline diffing only\nthe LAST one; #160's last commit was YAML-only, so pytest was skipped and dev\nwent GREEN having run no tests for the .py changes in the earlier commit. So the\nPR pipeline (cancelled at merge) and the push pipeline (skipped) between them\nvalidated nothing.\n\nBLAST RADIUS THIS TIME: nil, verified rather than assumed. The merged tree was\nrun locally at 16495 passed / 100pct coverage, and `git diff 59bba2247d\norigin/dev` shows the ONLY differences are .ci/affected-tests.txt and\n.woodpecker/woodpecker.yml -- no Python at all. The danger is the general case:\na PR can merge with tests unrun and dev can display green afterwards.\n\nFIX SHAPE (not implemented): merge-pr must treat any non-zero poll_ci result as\nrefusal-to-merge (default-deny), not just the two codes it enumerates. An\nenumerate-the-bad-cases guard fails open by construction every time a new code\nis added, which is exactly what happened when exit 3 was introduced for the\nhung-runner path. Separately, confirm what branch protection is actually\nconfigured to require."  # e117
+    fields: {}  # e117
