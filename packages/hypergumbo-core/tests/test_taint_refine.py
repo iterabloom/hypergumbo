@@ -6,9 +6,10 @@ The pass consumes a function's tree-sitter AST and DDG and rewrites the
 ``python:external:0-0:NAME:unresolved`` placeholder is replaced with a
 module-resolved form like ``python:os.environ:0-0:NAME:unresolved``.
 
-This lets ``_sink_module_compatible`` reject cross-module short-name
-collisions (e.g., ``dict.get`` vs ``multiprocessing.Queue.get``) that
-currently fall through its ``external`` exemption.
+This lets the sink matcher (``_lookup_named_entry`` filtering with
+``io_boundary._module_matches``) reject cross-module short-name collisions
+(e.g., ``dict.get`` vs ``multiprocessing.Queue.get``) that otherwise fall
+through the ``external`` exemption.
 
 Scope: applies only to languages with a §1c def/use extractor — Python
 today, Rust / TypeScript when those extractors land.
@@ -213,9 +214,9 @@ def test_wi_dozon_param_annotation_str_pins_receiver(py_parser, py_mapping):
     Pre-WI-dozon, ``def f(name: str): name.replace(...)`` left ``name.replace``
     as an ``external:replace:unresolved`` edge that collided with
     ``pathlib.Path.replace`` (a fs_write sink) under the ``external``
-    exemption in ``_sink_module_compatible``. With param-annotation
-    pinning, the edge's module segment becomes ``builtins.str`` and the
-    sink match fails on the prefix check.
+    exemption. With param-annotation pinning, the edge's module segment
+    becomes ``builtins.str`` and the sink match fails on the component
+    comparison in ``_module_matches``.
     """
     from hypergumbo_core.taint_refine import extract_python_param_annotations
     src = b"""def f(name: str):

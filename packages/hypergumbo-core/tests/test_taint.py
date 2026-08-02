@@ -2231,47 +2231,20 @@ class TestTaintMultiLabelSanitizer:
         assert "label_b" in callers[caller_id]
 
 
-class TestSinkModuleCompatibility:
-    """Module-aware sink matching avoids the most flagrant short-name
-    false positives — e.g., a Python edge to ``socket.socket.write``
-    should NOT match a sink declared on ``asyncio.StreamWriter.write``
-    just because both share the short name ``write``.
+class TestCalleeModuleExtraction:
+    """The module-hint extractor that feeds sink matching.
+
+    Was ``TestSinkModuleCompatibility``, covering
+    ``_sink_module_compatible`` -- a predicate with ZERO production
+    callers, for which these tests were the SOLE reachability. That is
+    what kept it at 100% coverage and invisible. Retired (WI-jozah
+    records that hypergumbo's own dead-code-maybe did flag it). The live
+    module filter is ``_lookup_named_entry`` + ``_module_matches``,
+    covered by ``TestModuleMatchesIsComponentAware`` and
+    ``TestResolvedFirstPartyIsNotACatalogPrimitive``; the dead
+    predicate's ``<external>`` exemption was HARVESTED before deletion,
+    not discarded.
     """
-
-    def test_external_callee_module_is_permissive(self) -> None:
-        """When the analyzer couldn't resolve the module
-        (``callee_module == "external"``), short-name matching falls
-        back to permissive (legacy) behavior.
-        """
-        from hypergumbo_core.taint import _sink_module_compatible
-        assert _sink_module_compatible("multiprocessing.Queue", "external")
-        assert _sink_module_compatible("multiprocessing.Queue", "<external>")
-
-    def test_exact_module_match(self) -> None:
-        from hypergumbo_core.taint import _sink_module_compatible
-        assert _sink_module_compatible("os.environ", "os.environ")
-
-    def test_prefix_match(self) -> None:
-        """Callee path ``os.environ`` is compatible with parent module ``os``."""
-        from hypergumbo_core.taint import _sink_module_compatible
-        assert _sink_module_compatible("os", "os.environ")
-        assert _sink_module_compatible("os.environ", "os")
-
-    def test_unrelated_modules_rejected(self) -> None:
-        """Different modules with the same short name reject the match."""
-        from hypergumbo_core.taint import _sink_module_compatible
-        assert not _sink_module_compatible(
-            "asyncio.StreamWriter", "io.BufferedWriter",
-        )
-        assert not _sink_module_compatible(
-            "multiprocessing.Queue", "dict",
-        )
-
-    def test_empty_inputs_are_permissive(self) -> None:
-        """Empty module strings on either side fall back to permissive."""
-        from hypergumbo_core.taint import _sink_module_compatible
-        assert _sink_module_compatible("", "anything")
-        assert _sink_module_compatible("anything", "")
 
     def test_extract_callee_module(self) -> None:
         from hypergumbo_core.taint import _extract_callee_module
@@ -2803,6 +2776,36 @@ class TestResolvedFirstPartyIsNotACatalogPrimitive:
         index = {"Remove": [self._sink("os", "Remove")]}
         assert _match_propagation_entry(
             index, "go:os:0-0:Remove:external_symbol",
+            frozenset(), is_resolved=False,
+        ) is not None
+
+    def test_angle_bracket_external_degrades_to_short_name(self) -> None:
+        """ADR-0017 §3a exempts BOTH `external` and `<external>`.
+
+        The live path tested only the bare spelling, so an ``<external>`` hint
+        fell into the module-FILTER branch and was compared as if it were a real
+        module name -- matching nothing and SUPPRESSING the finding, the exact
+        opposite of the ADR's "degrade to short-name matching, because rejecting
+        outright would suppress legitimate findings".
+
+        ``<external>`` is not hypothetical: the pretix cohort emits
+        ``javascript:<external>:0-0:file:external_symbol`` for receivers no DDG
+        resolution can recover. The retired ``_sink_module_compatible`` had this
+        right; the behaviour was harvested from it before deleting it, so the
+        deletion loses nothing. Both spellings now live in one frozenset, which
+        is what stops the pair drifting apart again.
+        """
+        index = {"warn": [self._sink("console", "warn")]}
+        assert _match_propagation_entry(
+            index, "javascript:<external>:0-0:warn:external_symbol",
+            frozenset(), is_resolved=False,
+        ) is not None
+
+    def test_bare_external_exemption_still_works(self) -> None:
+        """Non-vacuity companion: the spelling that already worked must keep working."""
+        index = {"warn": [self._sink("console", "warn")]}
+        assert _match_propagation_entry(
+            index, "javascript:external:0-0:warn:external_symbol",
             frozenset(), is_resolved=False,
         ) is not None
 

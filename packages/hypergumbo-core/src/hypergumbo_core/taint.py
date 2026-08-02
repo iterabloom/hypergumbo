@@ -220,6 +220,14 @@ class TaintFlowFinding:
 # ---------------------------------------------------------------------------
 
 
+# The two spellings the analyzers use for "receiver module could not be
+# recovered". ADR-0017 §3a exempts both from module filtering; keeping them in
+# one frozenset is what stops the pair drifting apart again — the live sink
+# matcher tested only the bare spelling for months while the (never-wired)
+# _sink_module_compatible tested both.
+_UNRESOLVED_MODULE_PLACEHOLDERS = frozenset({"external", "<external>"})
+
+
 def _lookup_named_entry(
     hits: Sequence[TaintEntry] | None,
     callee_name: str,
@@ -256,7 +264,15 @@ def _lookup_named_entry(
     """
     if not hits:
         return None
-    if module_hint and module_hint != "external":
+    # Both spellings of the unresolved-receiver placeholder are exempted, per
+    # ADR-0017 §3a: when the analyzer could not recover module information,
+    # degrade to short-name matching rather than reject, because rejecting
+    # outright suppresses legitimate findings. `<external>` was missing here
+    # (only the bare `external` was tested), so it fell into the module-FILTER
+    # branch below and was compared as though it were a real module name —
+    # matching nothing and silently dropping the finding. Harvested from the
+    # retired `_sink_module_compatible`, which had it right.
+    if module_hint and module_hint not in _UNRESOLVED_MODULE_PLACEHOLDERS:
         from .io_boundary import _module_matches
         for h in hits:
             if _module_matches(h.module, module_hint):
@@ -1141,7 +1157,7 @@ def _module_from_symbol_path(symbol_id: str) -> str:
                                                      (does NOT match console)
     """
     raw = _extract_callee_module(symbol_id)
-    if not raw or raw in ("external", "<external>"):
+    if not raw or raw in _UNRESOLVED_MODULE_PLACEHOLDERS:
         return ""
     head, sep, tail = raw.rpartition(".")
     # Strip a trailing SOURCE-FILE EXTENSION, matched against an explicit list.
@@ -1155,47 +1171,6 @@ def _module_from_symbol_path(symbol_id: str) -> str:
     if sep and head and tail.lower() in _SOURCE_FILE_EXTENSIONS:
         raw = head
     return raw
-
-
-def _sink_module_compatible(
-    sink_module: str, callee_module: str,
-) -> bool:
-    """Return True if a sink with declared module is compatible with the
-    callee module hint.
-
-    Rules:
-    - ``callee_module == "external"`` → True. The analyzer couldn't pin
-      the module down; we don't have enough info to disambiguate. Falls
-      back to short-name-only matching (legacy behavior).
-    - ``callee_module`` and ``sink_module`` share a prefix → True. E.g.,
-      callee path ``os.environ`` is compatible with sink module
-      ``os.environ`` or with ``os`` (parent module).
-    - Otherwise → False. Short-name collision; reject the match.
-
-    The "external" exemption is necessary because for some languages /
-    construct types the resolver can't recover the module, and a strict
-    rule would suppress LEGITIMATE sink findings on those calls. The
-    surface is narrowed by the post-DDG IR refinement pass
-    (:mod:`hypergumbo_core.taint_refine` — WI-dilih), which rewrites
-    ``external`` to a real module path when the DDG can prove the
-    receiver's binding. After refinement, ``external`` only remains for
-    receivers no DDG-resolution can recover (call-RHS bindings,
-    parameter receivers, closure captures) and for languages without a
-    §1c def/use extractor.
-    """
-    if not sink_module or not callee_module:
-        return True
-    if callee_module == "external" or callee_module == "<external>":
-        return True
-    # Direct or prefix match.
-    if sink_module == callee_module:
-        return True
-    if (
-        callee_module.startswith(sink_module + ".")
-        or sink_module.startswith(callee_module + ".")
-    ):
-        return True
-    return False
 
 
 # Edge types that represent call-like relationships for taint propagation.

@@ -7,9 +7,12 @@ call's receiver type, the resulting edge's ``dst`` is
 ``python:external:0-0:NAME:unresolved`` — a placeholder that collides
 with any sink declared on the bare name ``NAME`` (``dict.get`` looks
 the same as ``os.environ.get`` looks the same as
-``multiprocessing.Queue.get``). The ``_sink_module_compatible`` filter
-exempts ``external``-module edges from the short-name-collision check,
-because rejecting them outright would suppress legitimate findings.
+``multiprocessing.Queue.get``). The sink matcher
+(``taint._lookup_named_entry``, which filters with
+``io_boundary._module_matches``) exempts BOTH placeholder spellings —
+``external`` and ``<external>``, held together in
+``taint._UNRESOLVED_MODULE_PLACEHOLDERS`` — from the short-name-collision
+check, because rejecting them outright would suppress legitimate findings.
 
 This module's job is to *replace* the ``external`` placeholder with a
 real module path whenever the DDG can prove what the receiver was bound
@@ -56,8 +59,9 @@ WI-dozon parameter-annotation pinning (in scope)
 Parameter-receiver type pinning is supported when the parameter carries
 a type annotation. ``def f(name: str): name.replace(...)`` is resolved
 by reading the ``str`` annotation: the receiver hint at the call site
-becomes ``builtins.str``, which makes ``_sink_module_compatible`` reject
-the short-name match against ``pathlib.Path.replace``. Supported
+becomes ``builtins.str``, which makes the sink matcher's
+``_module_matches`` filter reject the short-name match against
+``pathlib.Path.replace``. Supported
 annotation shapes: bare builtin names (``str``, ``bytes``, ``list``,
 ``dict``, ``int``, ``float``, ``bool``, ``tuple``, ``set``,
 ``frozenset``, ``bytearray``, ``memoryview``, ``complex``, ``range``,

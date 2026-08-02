@@ -4946,8 +4946,9 @@ def _build_python_ddg_for_verify_claims(
     because it couldn't pin a receiver, the DDG plus file-scope imports
     are often enough to rewrite that to e.g.
     ``python:os.environ:0-0:NAME:unresolved``, letting
-    ``_sink_module_compatible`` reject the cross-module short-name
-    collision that previously fell through its ``external`` exemption.
+    the sink matcher's ``_module_matches`` filter reject the cross-module
+    short-name collision that previously fell through the ``external``
+    exemption.
 
     Returns ``([], set(), {})`` if tree-sitter / cfg-mapping isn't
     available — the caller falls back to the structural pass in that
