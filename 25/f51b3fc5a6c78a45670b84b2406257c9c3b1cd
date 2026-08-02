@@ -1,0 +1,48 @@
+Original commit body from 0973c09fa245922860e16b42378ed7594dc1bbcb:
+
+The per-PR gate decided "should pytest run?" from the set of changed
+packages/*/src/**.py files. Anything else produced an empty source set, so it
+printed "No Python source files changed" and exited 0 — and the pipeline went
+GREEN having run nothing.
+
+PR CLASSES THAT RAN NO TESTS AND REPORTED GREEN:
+  - test-only changes (every test fix, including a fix TO a broken test)
+  - scripts/*.py            (the whole CLI/tooling tree, incl. auto-pr)
+  - .agent/hooks/**.py      (agent infrastructure)
+  - any mix of the above with docs or CI YAML
+
+Caught on the WI-fodad PR, whose committed manifest carried 0 changed source
+files and 1 selected test: smart-test had correctly selected the changed test
+and CI threw the answer away. That PR — a fix for a flaky test — never ran the
+test it fixes.
+
+This is L48's family one level up. The recorded lesson is "a test that cannot be
+SELECTED is indistinguishable from a test that passes"; this was an entire CLASS
+OF PULL REQUEST for which the suite never ran, reported as a pass.
+
+FIX: skip only when the manifest's SELECTED_TESTS section is empty — the
+question the gate actually means to ask. Changed-source files still size the
+COVERAGE target, which legitimately needs them; the two concerns were conflated
+in one condition and are now separate.
+
+PINNED BY TESTS THAT EXECUTE THE GATE RATHER THAN READ IT. The shell block is
+extracted from the YAML and RUN against a fabricated manifest with stub binaries
+on a REPLACED PATH (L49), asserting on whether pytest was actually invoked. A
+source-text assertion would have been worthless here: the old broken condition
+also mentioned the manifest, so "the string SELECTED_TESTS appears near the
+skip" would have passed while the behaviour was broken.
+
+MUTATION-TESTED: reintroducing the original condition turns 3 of the 4 tests
+red; restoring the fix turns them green. Two harness bugs were caught this way
+before shipping (a printf '%s' with a Python repr wrote a literal backslash-n so
+the diff never matched, and a docs-only fixture exercised the earlier skip
+rather than the one under test), and a `set -e` hazard on the now-reachable
+empty-COV_PATHS line was checked directly and found harmless.
+
+The new test is added to KNOWN_UNREACHABLE with its consequence stated: its
+subject is a YAML file, so no Python source maps to it and an edit to that
+workflow does not select it per-PR. The gate that detects unselectable tests is
+itself unselectable when a test is added — the same "who guards the guard" gap
+that list keeps recording.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
