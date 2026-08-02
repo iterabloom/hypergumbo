@@ -207,22 +207,6 @@ steps:
     commands:
       - '[ -f "$(git rev-parse --git-dir)/shallow" ] && git fetch --unshallow origin || echo "repo already complete"'
       - git fetch --no-tags origin "$CI_COMMIT_TARGET_BRANCH"
-      # WI-fodad: build a commit-graph (with changed-path Bloom filters) so the
-      # first full-history PATH-LIMITED walk is cheap. Measured in CI: `git log
-      # --reverse -- <one path>` cost 1,185,559 ms on its FIRST invocation and
-      # 19 ms on every one after. A fresh git process paid the 19 ms, so the
-      # expense is I/O (reading the pack), not computation. The only consumer of
-      # that walk runs behind a 30 s subprocess cap and was failing on it.
-      #
-      # BOUNDED AND NON-FATAL ON PURPOSE. That 1,185 s was measured while four
-      # nightly matrix legs competed for the same disk, so the cold read is
-      # unbounded and load-dependent; relocating an unbounded cost into every
-      # run would trade a flaky test for a slow pipeline. If the build does not
-      # finish in 300 s we are exactly where we were before -- and the reading
-      # it did still warmed the page cache.
-      - >
-        timeout 300 git commit-graph write --reachable --changed-paths
-        || echo "commit-graph write skipped (>300s or unsupported) -- not fatal"
 
   # ── DCO sign-off check (PRs only; tracker-sync commits are already do_sync-signed) ──
   - name: dco
@@ -384,63 +368,12 @@ steps:
           WORKERS=$(nproc)
         fi
 
-        # ── WI-fodad regression telemetry (the cause IS known; kept as a guard) ──
-        # tests/test_backfill_training_data_cohort_tags.py blew a 30s subprocess
-        # cap on `git log --reverse -- <one path>`. CAUSE, measured by this probe
-        # in CI: run1 = 1,185,559 ms, run2 = 19 ms, post-suite = 27 ms. run2 is a
-        # FRESH git process, so the expense is I/O (reading the pack), not
-        # computation -- once the page cache holds it, every later walk is free.
-        # It is the only full-history path-limited walk in the suite, so it alone
-        # pays that cold cost, and a 30s cap is a bet on an unbounded read.
-        #
-        # prepare-git now builds a commit-graph with changed-path Bloom filters,
-        # which absorbs the cold read outside any timeout AND makes the walk
-        # structurally cheap. These three numbers stay so a regression is visible:
-        # if run1 climbs back into the seconds, the warm-up stopped working.
-        echo "=== WI-fodad probe: workspace + repo state ==="
-        df -PT "$PWD" 2>/dev/null | tail -1 || true
-        stat -f -c 'statfs_type=%T bsize=%s' .git 2>/dev/null || true
-        _packs=$(ls .git/objects/pack/*.pack 2>/dev/null | wc -l)
-        _loose=$(find .git/objects -type f -not -path '*/pack/*' 2>/dev/null | wc -l)
-        echo "packs=$_packs loose=$_loose"
-        _cg=$([ -f .git/objects/info/commit-graph ] && echo yes || echo no)
-        _sh=$([ -f "$(git rev-parse --git-dir)/shallow" ] && echo yes || echo no)
-        echo "commit_graph=$_cg shallow=$_sh"
-        echo "commits=$(git rev-list --count HEAD 2>/dev/null || echo '?') git=$(git --version)"
-
-        # NB: neither pass is genuinely cold -- prepare-git already walked this
-        # .git in an earlier step -- so these are run1/run2, not cold/warm. A
-        # large run1-vs-run2 gap still implicates page-cache/volume latency.
-        echo "=== WI-fodad probe: baseline timing, QUIET (run1 then run2) ==="
-        for _pass in run1 run2; do
-          _t0=$(date +%s%N)
-          git log --pretty=format:'%aI %H' --reverse -- \
-            .agent/hooks/_shared/on_transcript_change.py > /tmp/fodad.out 2>/tmp/fodad.err || true
-          _t1=$(date +%s%N)
-          echo "  $_pass: elapsed_ms=$(( (_t1 - _t0) / 1000000 )) lines=$(wc -l < /tmp/fodad.out)"
-        done
-        head -3 /tmp/fodad.err 2>/dev/null || true
-
         echo "=== pytest ($(echo "$SELECTED_TESTS" | wc -w) selected files, -n $WORKERS) ==="
         # `|| TEST_EXIT=$?` rather than a bare call: `set -e` is active, so a
-        # failing pytest would abort this block before the trace summary below
-        # -- i.e. exactly on the run we need the diagnostic from. Final exit
-        # code is unchanged (`exit $TEST_EXIT` still runs).
+        # bare failing pytest aborts the block before the coverage gate and the
+        # explicit `exit $TEST_EXIT` below. Final exit code is unchanged.
         TEST_EXIT=0
         pytest --rootdir=. -n "$WORKERS" --tb=short $COV_PATHS $SELECTED_TESTS || TEST_EXIT=$?
-
-        # ── WI-fodad: confirm the warm-up held across the run ──
-        # Quiet baseline AGAIN, now that the load is gone. The before/after pair
-        # is the decisive datum: quiet-fast + loaded-timeout => load-correlated
-        # (the shared-volume latency hypothesis). Quiet-SLOW even once => the
-        # cause is structural and every local control used so far was invalid.
-        echo "=== WI-fodad probe: baseline timing, QUIET AGAIN (post-pytest) ==="
-        _t0=$(date +%s%N)
-        git log --pretty=format:'%aI %H' --reverse -- \
-          .agent/hooks/_shared/on_transcript_change.py > /tmp/fodad.out 2>/dev/null || true
-        _t1=$(date +%s%N)
-        echo "  post: elapsed_ms=$(( (_t1 - _t0) / 1000000 )) lines=$(wc -l < /tmp/fodad.out)"
-
 
         # 100% coverage gate for changed source files only.
         if [ $TEST_EXIT -eq 0 ] && [ -n "$COVERABLE" ]; then
