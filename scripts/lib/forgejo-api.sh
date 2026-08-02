@@ -514,7 +514,13 @@ for item in data:
 # poll_ci HEAD_SHA
 #   CI polling with timeout and ci-complete bypass (Scenario A/B).
 #   Uses API_BASE and FORGEJO_TOKEN from environment.
-#   Returns: 0 = success, 1 = failure, 2 = timeout
+#   Returns: 0 = success, 1 = failure, 2 = timeout, 3 = never dispatched
+#
+#   The "3" above was missing from this comment for as long as exit 3 existed,
+#   and four call sites omitted it from their handling — see WI-ditav and
+#   ci_verdict_permits_merge below. Any new verdict added here MUST be added to
+#   this list, but callers are no longer allowed to depend on that: they route
+#   through ci_verdict_permits_merge, which permits ONLY zero.
 # ------------------------------------------------------------------
 poll_ci() {
 	local head_sha="$1"
@@ -552,8 +558,24 @@ poll_ci() {
 	local poll_count=0
 	local prev_summary=""
 
-	# Track whether any job has left pending state (stale-pending detection)
-	local any_job_started=false
+	# WI-ninar. Track whether the pipeline was ever DISPATCHED — which is a
+	# different question from "has any job finished", and the confusion between
+	# the two made this check structurally unsatisfiable on Woodpecker.
+	#
+	# The original predicate asked whether any status context had gone
+	# NON-pending. That was correct for Forgejo Actions, which posted one
+	# context PER JOB: as individual jobs finished, non-pending contexts
+	# appeared while the rest still ran. Woodpecker posts exactly ONE AGGREGATE
+	# context (ci/woodpecker/pr/woodpecker) and it stays `pending` for the
+	# entire pipeline, flipping only when the whole run ends — so "has anything
+	# gone non-pending" was FALSE for the full duration of every run, and any
+	# pipeline outliving stale_pending_threshold (300s default, against a ~360s
+	# suite) was declared a hung runner. It was not detecting anything.
+	#
+	# The right question is whether a context EXISTS AT ALL. Woodpecker posts it
+	# when it creates the run, so its presence is proof of dispatch and its
+	# absence is the dispatch failure this check was written to catch.
+	local run_dispatched=false
 
 	# INV-rahib (confirmation re-poll): a single failure snapshot during
 	# concurrent CI activity can be transiently inconsistent — e.g. a cancelled
@@ -593,42 +615,32 @@ poll_ci() {
 		local state
 		state=$(echo "$API_RESPONSE" | json_field "state")
 
-		# Stale-pending detection: if no job has ever left pending state
-		# and we've been waiting longer than the threshold, the CI run
-		# likely never started (hung runner, dispatch failure).
-		if [[ "$any_job_started" == "false" && $elapsed -ge $stale_pending_threshold ]]; then
-			local has_non_pending
-			has_non_pending=$(echo "$API_RESPONSE" | python3 -c "
+		# Dispatch detection (WI-ninar). Once a context exists for this SHA the
+		# run was accepted and we stop asking; if NOTHING has been posted by the
+		# time the threshold elapses, the run was never created.
+		#
+		# 'unknown' (a parse failure) deliberately matches neither arm: we keep
+		# polling rather than declare a hung runner on a malformed payload. The
+		# overall CI_TIMEOUT_SECONDS still bounds the wait, so an unparseable
+		# backend surfaces as an honest timeout (2) instead of a fabricated
+		# dispatch failure (3).
+		if [[ "$run_dispatched" == "false" ]]; then
+			local _has_context
+			_has_context=$(echo "$API_RESPONSE" | python3 -c "
 import sys, json
 try:
     data = json.load(sys.stdin)
-    statuses = data.get('statuses', [])
-    non_pending = [s for s in statuses if (s.get('state') or s.get('status')) != 'pending']
-    print('yes' if non_pending else 'no')
+    print('yes' if data.get('statuses') else 'no')
 except Exception:
     print('unknown')
 " 2>/dev/null || echo "unknown")
-			if [[ "$has_non_pending" == "yes" ]]; then
-				any_job_started=true
-			elif [[ "$has_non_pending" == "no" ]]; then
+			if [[ "$_has_context" == "yes" ]]; then
+				run_dispatched=true
+			elif [[ "$_has_context" == "no" && $elapsed -ge $stale_pending_threshold ]]; then
 				echo ""
-				echo "⚠️  No CI jobs have started after ${stale_pending_threshold}s — possible hung runner (exit code 3)"
+				echo "⚠️  No CI status context exists for $head_sha after ${stale_pending_threshold}s"
+				echo "    — the pipeline was never dispatched (exit code 3)."
 				return 3
-			fi
-		elif [[ "$any_job_started" == "false" ]]; then
-			# Check if any job has started (so we don't re-check after it's set)
-			local _check_started
-			_check_started=$(echo "$API_RESPONSE" | python3 -c "
-import sys, json
-try:
-    data = json.load(sys.stdin)
-    non_pending = [s for s in data.get('statuses', []) if (s.get('state') or s.get('status')) != 'pending']
-    print('yes' if non_pending else 'no')
-except Exception:
-    print('no')
-" 2>/dev/null || echo "no")
-			if [[ "$_check_started" == "yes" ]]; then
-				any_job_started=true
 			fi
 		fi
 
@@ -792,6 +804,67 @@ except Exception:
 
 		_poll_sleep 10
 	done
+}
+
+# ------------------------------------------------------------------
+# ci_verdict_permits_merge RC
+#   The ONE place that decides whether a poll_ci verdict allows a merge.
+#   Returns 0 only when RC is 0. Every other value — allocated or not —
+#   is a refusal, and RC is preserved as this function's exit status so
+#   callers can keep propagating it. Sets CI_VERDICT_STATE to the
+#   auto-pr state name for the verdict.
+#
+#   WHY THIS EXISTS (WI-ditav). Four call sites each hand-rolled the same
+#   decision by enumerating the codes that BLOCK:
+#       if [[ $rc -eq 1 ]] ... elif [[ $rc -eq 2 ]] ... ; then merge
+#   Exit 3 was added later, by a different fix, for the hung-runner path.
+#   Every one of those guards was correct the day it was written and became
+#   a PERMIT the moment the producer learned a new verdict — merge-pr and
+#   auto-pr's post-rebase path fell through to the merge on exit 3 as
+#   shipped, and PR #160 merged with CI still pending. Branch protection did
+#   not stop it either (the repo's "do not allow bypassing" was unticked, so
+#   the rules did not apply to the merging account).
+#
+#   The fix is not "also handle 3" — that reproduces the same shape one code
+#   later. A guard must enumerate the PERMITTING case and deny by default
+#   (L54). Two sites already did this correctly and needed no change, which is
+#   the argument for making it the only available spelling.
+#
+#   Per-site RECOVERY TEXT deliberately stays at the call sites: the flush
+#   path, the main path and the post-rebase path legitimately advise different
+#   next steps. This owns the field that must be uniform (may we merge?) and
+#   leaves the ones that legitimately differ to the callers (ADR-0027 / L27).
+# ------------------------------------------------------------------
+ci_verdict_permits_merge() {
+	local rc="${1-}"
+
+	if ! [[ "$rc" =~ ^[0-9]+$ ]]; then
+		CI_VERDICT_STATE="ci_unknown"
+		echo ""
+		echo "⚠️  CI verdict is not a number ('$rc') — refusing to merge."
+		return 1
+	fi
+
+	if [[ "$rc" -eq 0 ]]; then
+		CI_VERDICT_STATE=""
+		return 0
+	fi
+
+	case "$rc" in
+		1) CI_VERDICT_STATE="ci_failed" ;;
+		2) CI_VERDICT_STATE="ci_timeout" ;;
+		3) CI_VERDICT_STATE="ci_hung" ;;
+		*)
+			CI_VERDICT_STATE="ci_unknown"
+			echo ""
+			echo "⚠️  poll_ci returned an unrecognised verdict ($rc) — refusing to merge."
+			echo "    A guard that enumerates the codes it knows about fails OPEN the"
+			echo "    moment a new one is added; that is exactly how exit 3 became a"
+			echo "    permit and merged PR #160 with CI pending. If this code is real,"
+			echo "    add it to poll_ci's header comment and to this case block."
+			;;
+	esac
+	return "$rc"
 }
 
 # ------------------------------------------------------------------

@@ -296,10 +296,13 @@ if [[ "$WAIT_FOR_CI" == "true" ]]; then
 	poll_result=0
 	poll_ci "$HEAD_SHA" || poll_result=$?
 
-	if [[ $poll_result -eq 1 ]]; then
-		exit 1
-	elif [[ $poll_result -eq 2 ]]; then
-		exit 2
+	# WI-ditav: DEFAULT-DENY. This used to enumerate 1 and 2 and fall through
+	# to the merge on anything else — so exit 3 (never dispatched), added later
+	# by a different fix, silently became a permit. Live consequence: PR #160
+	# merged with CI still pending. Refuse on every non-zero verdict; the
+	# decision lives in ci_verdict_permits_merge so it cannot drift per site.
+	if ! ci_verdict_permits_merge "$poll_result"; then
+		exit "$poll_result"
 	fi
 else
 	# Verify CI has already passed (don't merge without CI)

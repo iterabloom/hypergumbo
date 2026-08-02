@@ -364,6 +364,15 @@ KNOWN_UNREACHABLE = {
     # over-match). These test scripts/lib/pool_utils.py and forgejo-api.sh.
     "test_pool_utils.py",
     "test_forge_backend_github.py",
+    # WI-ditav/WI-ninar. Its primary subject is scripts/lib/forgejo-api.sh
+    # (ci_verdict_permits_merge + poll_ci's dispatch test), which falls under
+    # the scripts/lib/* exemption above. Unlike the other entries in this list
+    # the per-PR gap is CLOSED rather than merely disclosed: the file is named
+    # explicitly in the `forge-arms` step of .woodpecker/woodpecker.yml, which
+    # runs on any `scripts/**` change — so editing the forge library, merge-pr
+    # or auto-pr does execute it before merge, just via a dedicated job instead
+    # of the smart-test manifest.
+    "test_ci_verdict_default_deny.py",
     "test_resolve_forge_token_github.py",
     "test_ci_status_endpoints_failover_aware.py",
     "test_hg_github_token_documented.py",

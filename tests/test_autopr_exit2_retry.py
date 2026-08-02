@@ -108,7 +108,19 @@ def test_autopr_exit2_retry_block_present() -> None:
     assert "timeout_retries=1" in text
     assert "CI_TIMEOUT_SECONDS=300" in text
     assert "Timeout soft-retry" in text
-    assert 'exit 2' in text, "Scenario B exit 2 must remain as the final escalation"
+    # WI-ditav changed the SPELLING of the escalation, not its behaviour. The
+    # final merge decisions now route through ci_verdict_permits_merge and
+    # propagate the verdict (`exit "$poll_result"`), so a literal `exit 2` no
+    # longer appears anywhere in the file. Status 2 still escapes on a
+    # Scenario-B escalation; that is now asserted BEHAVIOURALLY in
+    # tests/test_ci_verdict_default_deny.py (verdict 2 refuses and preserves
+    # its exit code), which is a stronger claim than this file could make by
+    # grepping. What remains this test's job is that the escalation propagates
+    # the verdict rather than swallowing it into a bare success.
+    assert 'exit "$poll_result"' in text, (
+        "the Scenario B escalation must still propagate the CI verdict "
+        "(see ci_verdict_permits_merge; a literal `exit 2` was replaced)"
+    )
 
 
 def test_autopr_exit3_retry_loop_unchanged() -> None:

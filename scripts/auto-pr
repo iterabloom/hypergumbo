@@ -1346,22 +1346,19 @@ Individual commits are preserved in the history."
 	local poll_result=0
 	poll_ci "$HEAD_SHA" || poll_result=$?
 
-	if [[ $poll_result -eq 3 ]]; then
+	# WI-ditav: default-deny. ci_verdict_permits_merge owns the decision; this
+	# site owns only the recovery text, which legitimately differs from the
+	# other call sites (flush resumes via `auto-pr flush`, not merge-pr).
+	if ! ci_verdict_permits_merge "$poll_result"; then
 		echo ""
-		echo "⚠️  CI hung (no jobs started). For flush, retry manually:"
-		echo "  ./scripts/merge-pr $PR_NUM --wait-for-ci"
-		_autopr_state_final="ci_hung"
-		exit 3
-	elif [[ $poll_result -eq 1 ]]; then
-		echo ""
-		echo "Fix the issues, amend commits, then run: ./scripts/auto-pr flush"
-		_autopr_state_final="ci_failed"
-		exit 1
-	elif [[ $poll_result -eq 2 ]]; then
-		echo ""
-		echo "Recovery: ./scripts/merge-pr $PR_NUM --wait-for-ci"
-		_autopr_state_final="ci_timeout"
-		exit 2
+		case $poll_result in
+			3) echo "⚠️  CI was never dispatched. For flush, retry manually:"
+			   echo "  ./scripts/merge-pr $PR_NUM --wait-for-ci" ;;
+			1) echo "Fix the issues, amend commits, then run: ./scripts/auto-pr flush" ;;
+			*) echo "Recovery: ./scripts/merge-pr $PR_NUM --wait-for-ci" ;;
+		esac
+		_autopr_state_final="$CI_VERDICT_STATE"
+		exit "$poll_result"
 	fi
 
 	# Merge PR using fast-forward (default) or squash (if --squash flag)
@@ -1993,28 +1990,23 @@ do_pr() {
 		poll_ci "$HEAD_SHA" || poll_result=$?
 	done
 
-	if [[ $poll_result -eq 3 ]]; then
+	# WI-ditav: default-deny. The three arms below are RECOVERY TEXT only —
+	# whether we may merge is ci_verdict_permits_merge's call, so a verdict
+	# nobody anticipated stops the merge instead of authorising it.
+	if ! ci_verdict_permits_merge "$poll_result"; then
 		echo ""
-		echo "⚠️  CI hung on all $hung_retries retries (exit code 3)"
-		echo ""
-		echo "Scenario C: CI runners may be down. Recovery steps:"
-		echo "  1. Do NOT accumulate more changes to hypergumbo code"
-		echo "  2. Check runner health: ssh ci-runner systemctl status forgejo-runner-*"
-		echo "  3. When runners recover: ./scripts/merge-pr $PR_NUM --wait-for-ci"
-		_autopr_state_final="ci_hung"
-		exit 3
-	fi
-
-	if [[ $poll_result -eq 1 ]]; then
-		echo ""
-		echo "Recovery: fix CI, then ./scripts/merge-pr $PR_NUM --wait-for-ci"
-		_autopr_state_final="ci_failed"
-		exit 1
-	elif [[ $poll_result -eq 2 ]]; then
-		echo ""
-		echo "Recovery: ./scripts/merge-pr $PR_NUM --wait-for-ci"
-		_autopr_state_final="ci_timeout"
-		exit 2
+		case $poll_result in
+			3) echo "⚠️  CI never dispatched on any of $hung_retries retries (exit code 3)"
+			   echo ""
+			   echo "Scenario C: CI runners may be down. Recovery steps:"
+			   echo "  1. Do NOT accumulate more changes to hypergumbo code"
+			   echo "  2. Check runner health on the Woodpecker agent"
+			   echo "  3. When runners recover: ./scripts/merge-pr $PR_NUM --wait-for-ci" ;;
+			1) echo "Recovery: fix CI, then ./scripts/merge-pr $PR_NUM --wait-for-ci" ;;
+			*) echo "Recovery: ./scripts/merge-pr $PR_NUM --wait-for-ci" ;;
+		esac
+		_autopr_state_final="$CI_VERDICT_STATE"
+		exit "$poll_result"
 	fi
 
 	# Governance mode: stop after CI passes, don't auto-merge
@@ -2063,14 +2055,17 @@ do_pr() {
 					sleep 3  # Give Forgejo a moment to update PR head
 					poll_result=0
 					poll_ci "$HEAD_SHA" || poll_result=$?
-					if [[ $poll_result -eq 1 ]]; then
-						echo "Recovery: fix CI, then ./scripts/merge-pr $PR_NUM --wait-for-ci"
-						_autopr_state_final="ci_failed"
-						exit 1
-					elif [[ $poll_result -eq 2 ]]; then
-						echo "Recovery: ./scripts/merge-pr $PR_NUM --wait-for-ci"
-						_autopr_state_final="ci_timeout"
-						exit 2
+					# WI-ditav: default-deny. This site enumerated 1 and 2 and
+					# fell through to the merge on exit 3 — and it is the
+					# POST-REBASE merge path, i.e. the one auto-pr takes
+					# whenever the base moved under it.
+					if ! ci_verdict_permits_merge "$poll_result"; then
+						case $poll_result in
+							1) echo "Recovery: fix CI, then ./scripts/merge-pr $PR_NUM --wait-for-ci" ;;
+							*) echo "Recovery: ./scripts/merge-pr $PR_NUM --wait-for-ci" ;;
+						esac
+						_autopr_state_final="$CI_VERDICT_STATE"
+						exit "$poll_result"
 					fi
 				else
 					echo "   ⚠️  Force-push failed after rebase — do_merge will retry"
