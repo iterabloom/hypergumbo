@@ -47,6 +47,7 @@
     "--input",
     "--max-symbols",
     "--min-symbols",
+    "--no-connectivity",
     "--out",
     "-h"
   ],
@@ -160,6 +161,7 @@
     "--max-files",
     "--max-handler-slices",
     "--max-tier",
+    "--no-connectivity",
     "--no-handler-slices",
     "--no-progress",
     "--no-sketch-fan-out",
@@ -250,6 +252,7 @@
     "--max-files",
     "--max-handler-slices",
     "--max-tier",
+    "--no-connectivity",
     "--no-handler-slices",
     "--no-progress",
     "--no-sketch-fan-out",

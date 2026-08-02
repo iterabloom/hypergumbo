@@ -1174,7 +1174,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     max_file_bytes = getattr(args, "max_file_bytes", None)
     compact = getattr(args, "compact", False)
     coverage = getattr(args, "coverage", 0.8)
-    connectivity = getattr(args, "connectivity", False)
+    connectivity = getattr(args, "connectivity", True)
     budgets = getattr(args, "budgets", None)
     extra_excludes = getattr(args, "extra_excludes", [])
     frameworks = getattr(args, "frameworks", None)
@@ -4439,9 +4439,16 @@ def cmd_compact(args: argparse.Namespace) -> int:
         language_proportional=False,
     )
 
-    # Centrality-ranked selection is the default (D12); --connectivity opts into
-    # the "connected core" connectivity-aware selection.
-    connectivity_aware = getattr(args, "connectivity", False)
+    # WI-zulij: connectivity-aware "connected core" is the DEFAULT;
+    # --no-connectivity opts into centrality-ranked selection. This reverses the
+    # 2026-06-10 D12 reading ("centrality-ranked everywhere") for compact only,
+    # on measured grounds: compact's output is consumed as a GRAPH (its one
+    # in-tree diagnostic, hypergumbo_diag.analyze_compact, scores it on connected
+    # components), and centrality-ranked crops were shipping 42% isolated nodes
+    # at a 25-symbol budget against 8.5% for connectivity, with fragmentation
+    # WORSENING as the budget grew. sketch keeps centrality-ranked — it is a
+    # reading surface, not a graph.
+    connectivity_aware = getattr(args, "connectivity", True)
 
     # Generate compact behavior map
     compact_map = format_compact_behavior_map(
@@ -7406,9 +7413,19 @@ Cache location:
         "--connectivity",
         action="store_true",
         dest="connectivity",
+        default=True,
         help="'connected core' for --compact mode: connectivity-aware selection "
-             "that bridges disconnected entrypoints. The default is "
-             "centrality-ranked (most-important-first), matching the sketch.",
+             "that bridges disconnected entrypoints. This is the DEFAULT; the "
+             "flag is retained as an explicit no-op because it shipped in "
+             "v7.0.0. Pass --no-connectivity for centrality-ranked selection.",
+    )
+    p_run.add_argument(
+        "--no-connectivity",
+        action="store_false",
+        dest="connectivity",
+        help="centrality-ranked (most-important-first) --compact selection, "
+             "matching the sketch. Trades a connected crop for an importance "
+             "ordering; see the compact section of the spec.",
     )
     p_run.add_argument(
         "--budgets",
@@ -8403,10 +8420,11 @@ Auto-discovers cached results from 'hypergumbo survey', or specify --input."""
 Examples:
   hypergumbo compact --input hg.json --out hg.compact.json
   hypergumbo compact --input hg.json --max-symbols 50 --coverage 0.9
-  hypergumbo compact --input hg.json --connectivity
+  hypergumbo compact --input hg.json --no-connectivity
 
 Converts an existing behavior map to compact form with:
-- Top symbols by centrality coverage (centrality-ranked by default; pass --connectivity for connectivity-aware selection)
+- Top symbols selected as a 'connected core' by default (connectivity-aware,
+  so the crop is a usable graph); pass --no-connectivity for centrality-ranked
 - Summary of omitted symbols (bag-of-words, path patterns, kinds)
 - Induced subgraph edges (only edges between included symbols)
 
@@ -8455,8 +8473,17 @@ without re-running the full analysis."""
         "--connectivity",
         action="store_true",
         dest="connectivity",
+        default=True,
         help="'connected core': connectivity-aware selection that bridges "
-             "disconnected entrypoints (default: centrality-ranked)",
+             "disconnected entrypoints (the DEFAULT; retained as an explicit "
+             "no-op because it shipped in v7.0.0)",
+    )
+    p_compact.add_argument(
+        "--no-connectivity",
+        action="store_false",
+        dest="connectivity",
+        help="centrality-ranked (most-important-first) selection, matching "
+             "the sketch",
     )
     p_compact.set_defaults(func=cmd_compact)
 
