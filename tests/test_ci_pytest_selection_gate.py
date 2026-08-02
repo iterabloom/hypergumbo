@@ -23,6 +23,16 @@ is on what actually happened: did pytest get invoked?
 PATH handling follows L49: the stub directory REPLACES ``$PATH`` rather than
 being prepended, so "not stubbed" and "not findable" are the same statement and
 a forgotten stub cannot silently fall through to the real binary.
+
+WI-vilor: a SECOND fail-open hole in the same block. WI-modur fixed which
+*question* the gate asks; this covers what it does when it cannot get an answer.
+``git diff`` against a base that does not exist writes nothing to stdout, which
+is byte-identical to a successful diff finding no Python files -- so the gate
+skipped the suite and reported green. It was reached systematically, not by bad
+luck: ``CI_PREV_COMMIT_SHA`` is the previous *pipeline's* commit, and auto-pr
+merges by rebase, so on every post-merge push that SHA names a rewritten object
+absent from the clone. Both halves (fail-closed diff, validated base) are
+mutation-tested here.
 """
 from __future__ import annotations
 
@@ -48,8 +58,22 @@ def _pytest_step_script() -> str:
     return blocks[0]
 
 
-def _sandbox(tmp_path: Path, *, manifest_body: str, changed_files: list[str]) -> tuple[Path, Path]:
-    """A fake repo + a REPLACED PATH holding only the stubs we intend (L49)."""
+def _sandbox(
+    tmp_path: Path,
+    *,
+    manifest_body: str,
+    changed_files: list[str],
+    diff_fails: bool = False,
+    prev_sha_resolvable: bool = True,
+) -> tuple[Path, Path]:
+    """A fake repo + a REPLACED PATH holding only the stubs we intend (L49).
+
+    `diff_fails` makes `git diff` behave the way it does against a rewritten
+    base: a `fatal:` on stderr, nothing on stdout, non-zero exit.
+    `prev_sha_resolvable` controls whether `git cat-file -e <sha>^{commit}`
+    succeeds, which is how the block decides whether to trust
+    CI_PREV_COMMIT_SHA.
+    """
     repo = tmp_path / "repo"
     (repo / ".ci").mkdir(parents=True)
     (repo / ".ci" / "affected-tests.txt").write_text(manifest_body)
@@ -63,10 +87,20 @@ def _sandbox(tmp_path: Path, *, manifest_body: str, changed_files: list[str]) ->
     # which wrote a literal backslash-n, so `grep -E '\.py$'` never matched and
     # every case fell into the earlier "no .py files" skip -- the harness, not
     # the gate, was producing the result.
-    diff_lines = "\n".join(f"echo {f!r}" for f in changed_files)
+    if diff_fails:
+        diff_lines = (
+            '    echo "fatal: bad object deadbeefdeadbeefdeadbeefdeadbeef" >&2\n'
+            "    exit 128"
+        )
+    else:
+        diff_lines = "\n".join(f"echo {f!r}" for f in changed_files)
+    catfile_rc = "0" if prev_sha_resolvable else "1"
+    # `cat-file` must be matched BEFORE the generic arms; the block calls it as
+    # `git cat-file -e <sha>^{commit}`.
     (bindir / "git").write_text(textwrap.dedent("""\
         #!/usr/bin/env bash
         case "$*" in
+          *"cat-file -e"*) exit __CATFILE_RC__ ;;
           *"merge-base"*) echo "basesha" ;;
           *"diff --name-only"*)
         __DIFF__
@@ -74,7 +108,7 @@ def _sandbox(tmp_path: Path, *, manifest_body: str, changed_files: list[str]) ->
           *) : ;;
         esac
         exit 0
-    """).replace("__DIFF__", diff_lines))
+    """).replace("__DIFF__", diff_lines).replace("__CATFILE_RC__", catfile_rc))
     # `pytest` stub: records that it ran, and passes.
     (bindir / "pytest").write_text(textwrap.dedent(f"""\
         #!/usr/bin/env bash
@@ -96,10 +130,16 @@ def _sandbox(tmp_path: Path, *, manifest_body: str, changed_files: list[str]) ->
     return repo, marker
 
 
-def _run(script: str, repo: Path, bindir: Path) -> subprocess.CompletedProcess:
+def _run(
+    script: str,
+    repo: Path,
+    bindir: Path,
+    *,
+    event: str = "pull_request",
+) -> subprocess.CompletedProcess:
     env = {
         "PATH": str(bindir),                 # REPLACED, not prepended (L49)
-        "CI_PIPELINE_EVENT": "pull_request",
+        "CI_PIPELINE_EVENT": event,
         "CI_COMMIT_TARGET_BRANCH": "dev",
         "CI_COMMIT_SOURCE_BRANCH": "feature/x",
         "CI_COMMIT_BRANCH": "feature/x",
@@ -162,6 +202,76 @@ def test_skip_only_when_nothing_is_selected(tmp_path: Path) -> None:
     result = _run(_pytest_step_script(), repo, tmp_path / "bin")
     assert not marker.exists(), "pytest ran despite an empty selection"
     assert "selects no tests" in result.stdout, result.stdout
+
+
+def test_failed_diff_does_not_skip_the_suite(tmp_path: Path) -> None:
+    """WI-vilor: a git error must never read as "nothing changed".
+
+    Observed live on the dev push pipeline for 6e92792a34, which printed
+    `fatal: bad object 66737979de...` and then "PR changes no .py files —
+    skipping pytest", reporting SUCCESS having run nothing on a commit that
+    changed four Python files. A failed `git diff` writes nothing to stdout,
+    which is byte-identical to a successful diff that found no Python files.
+    """
+    repo, marker = _sandbox(
+        tmp_path,
+        manifest_body=MANIFEST_TEST_ONLY,
+        changed_files=["tests/test_something.py"],
+        diff_fails=True,
+    )
+    result = _run(_pytest_step_script(), repo, tmp_path / "bin")
+    assert marker.exists(), (
+        "pytest was NOT invoked after `git diff` failed — the gate is treating "
+        "an ERROR as an empty changed-file set and skipping the suite.\n"
+        f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+    )
+    assert "cannot diff" in result.stdout, (
+        "the diff failure was swallowed silently; it must be reported so a "
+        f"green pipeline is not mistaken for a tested one.\n{result.stdout}"
+    )
+
+
+def test_push_event_falls_back_when_prev_sha_was_rewritten(tmp_path: Path) -> None:
+    """WI-vilor: CI_PREV_COMMIT_SHA is the previous PIPELINE's commit.
+
+    auto-pr merges by rebase, which rewrites the commit, so on every post-merge
+    push that SHA names an object absent from the clone. Trusting it produced a
+    guaranteed-failing diff on every rebase-merged push -- not intermittently.
+    """
+    repo, marker = _sandbox(
+        tmp_path,
+        manifest_body=MANIFEST_TEST_ONLY,
+        changed_files=["packages/hypergumbo-core/src/hypergumbo_core/x.py"],
+        prev_sha_resolvable=False,
+    )
+    result = _run(_pytest_step_script(), repo, tmp_path / "bin", event="push")
+    assert "using HEAD^" in result.stdout, (
+        "an unresolvable CI_PREV_COMMIT_SHA was used as the diff base instead "
+        f"of falling back to HEAD^.\nstdout:\n{result.stdout}"
+    )
+    assert marker.exists(), (
+        f"pytest did not run on the fallback range.\nstdout:\n{result.stdout}"
+    )
+
+
+def test_push_event_keeps_a_resolvable_prev_sha(tmp_path: Path) -> None:
+    """The fallback is scoped: a valid previous commit is still used.
+
+    Without this the fix would be indistinguishable from "always diff HEAD^",
+    which silently undercounts a push that lands more than one commit.
+    """
+    repo, marker = _sandbox(
+        tmp_path,
+        manifest_body=MANIFEST_TEST_ONLY,
+        changed_files=["packages/hypergumbo-core/src/hypergumbo_core/x.py"],
+        prev_sha_resolvable=True,
+    )
+    result = _run(_pytest_step_script(), repo, tmp_path / "bin", event="push")
+    assert "using HEAD^" not in result.stdout, (
+        "fell back to HEAD^ despite CI_PREV_COMMIT_SHA resolving cleanly.\n"
+        f"stdout:\n{result.stdout}"
+    )
+    assert marker.exists(), result.stdout
 
 
 def test_no_skip_condition_keys_on_changed_source(tmp_path: Path) -> None:
