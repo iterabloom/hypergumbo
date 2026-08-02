@@ -1,0 +1,21 @@
+- op: create  # 7a72
+  at: '2026-08-02T07:02:15Z'  # 7a72
+  by: agent  # 7a72
+  actor: jgstern_agent  # 7a72
+  clock: 1  # 7a72
+  nonce: 7a72  # 7a72
+  data:  # 7a72
+    kind: work_item  # 7a72
+    title: "per-PR CI skips pytest entirely unless packages/*/src/**.py changed - test-only, scripts/, and .agent/hooks/ PRs run NO tests and report green"  # 7a72
+    status: todo_hard  # 7a72
+    priority: 1  # 7a72
+    parent:  # 7a72
+    tags:  # 7a72
+    - ci_infrastructure  # 7a72
+    - testing  # 7a72
+    isbefore: []  # 7a72
+    duplicate_of: []  # 7a72
+    not_duplicate_of: []  # 7a72
+    pr_ref:  # 7a72
+    description: "Observed live 2026-08-02 on the WI-fodad warm-up PR, which changed a TEST file\nplus two CI YAMLs. CI printed:\n\n    \"No Python source files changed -- skipping pytest\"\n\nand reported the pipeline GREEN. The PR that fixes a flaky test therefore never\nran that test.\n\nMECHANISM (.woodpecker/woodpecker.yml, pytest step):\n\n    ACTUAL_SOURCE_FILES=$(git diff --name-only \"$BASE\" \"$HEAD\" \\\n        | grep -E '^packages/.*/src/.*\\.py$')\n    CHANGED_SOURCE_FILES=<from the committed manifest>\n    if [ -z \"$ACTUAL_SOURCE_FILES\" ] && [ -z \"$CHANGED_SOURCE_FILES\" ]; then\n      echo \"No Python source files changed -- skipping pytest\"; exit 0\n    fi\n\nThe gate keys on CHANGED **SOURCE** files. It should key on SELECTED **TESTS**.\nProof from this very PR's committed manifest: the CHANGED_SOURCE_FILES section\nis EMPTY while the SELECTED_TESTS section holds 1 entry -- smart-test correctly\nselected the changed test file, and CI threw that selection away.\n\nTHE PR CLASSES THAT GET NO TESTS AT ALL, and still go green:\n  - changes only under tests/ or packages/*/tests/   (i.e. every test-only fix)\n  - changes only under scripts/*.py                  (the whole CLI/tooling tree)\n  - changes only under .agent/hooks/**.py            (agent infrastructure)\n  - any mix of the above with docs/CI YAML\nOnly a change touching packages/*/src/**.py runs anything.\n\nWHY THIS IS THE WORST OF THE SELECTION DEFECTS SO FAR. L48's family has been\n\"a test that cannot be SELECTED is indistinguishable from a test that passes\".\nThis is one level up: an entire CLASS OF PULL REQUEST for which the suite never\nruns, reported as a pass. A PR that breaks a test by editing that test is\ngreen. A PR that rewrites scripts/auto-pr is green. The signal is not weak, it\nis absent, and nothing in the summary says so.\n\nCONFIRMED NOT-AFFECTED for contrast: the failover-retirement PR (#160) DID run\npytest (16443 passed) because it touched packages/*/src (sync.py,\nevidence_types.py). So the hole is invisible exactly when you are not looking\nfor it.\n\nFIX SHAPE (not implemented): skip only when the manifest's SELECTED_TESTS\nsection is empty -- that is the question actually being asked (\"is there\nanything to run?\"). Keep the ACTUAL_SOURCE_FILES diff for the COVERAGE gate,\nwhich legitimately needs changed source to compute a 100pct target; the two\nconcerns are currently conflated in one condition. A test asserting that a\ntest-only diff still runs pytest belongs with the fix.\n\nIMMEDIATE CONSEQUENCE for the migration sequence: step 2 of WI-hajif (renaming\nscripts/lib/forgejo-api.sh -> forge-api.sh, touching shell + tests only) would\nALSO skip pytest under this rule, landing a 21-file refactor with zero CI test\ncoverage. Fix this first."  # 7a72
+    fields: {}  # 7a72
