@@ -389,6 +389,16 @@ KNOWN_UNREACHABLE = {
     # Assert over governance/workflow artifacts, not a single source file.
     "test_codeowners_governance.py",
     "test_full_suite_coverage_teeth.py",
+    # WI-modur: drives the per-PR pytest gate extracted from
+    # .woodpecker/woodpecker.yml. Its subject is a YAML file, so no Python
+    # source can map to it by name — the mapper covers scripts/ and
+    # .agent/hooks/_shared/, not CI config. Consequence, stated rather than
+    # hidden by the exemption: an edit to that workflow does NOT select this
+    # test per-PR, so a reintroduction of the source-keyed skip is caught by
+    # full-suite rather than before merge. That is the same "who guards the
+    # guard" gap this list keeps recording, and it wants the declarative
+    # "covers:" marker rather than another rename.
+    "test_ci_pytest_selection_gate.py",
     # WI-hajif: a recurrence guard over the ABSENCE of the retired CI-failover
     # layer. It scans scripts/, .githooks/, .agent/hooks/ and packages/*/src for
     # failover tokens, so it maps to no single source by construction — the

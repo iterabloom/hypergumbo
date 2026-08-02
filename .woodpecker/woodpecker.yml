@@ -337,17 +337,28 @@ steps:
           exit 1
         fi
 
-        # Affected packages come from the PR diff's changed source files.
+        # WI-modur: the ONLY question that decides whether tests run is "did the
+        # manifest select any?". This used to key on CHANGED **SOURCE** files
+        # instead, which silently skipped the suite for every PR that touched no
+        # packages/*/src/**.py -- i.e. every test-only fix, every scripts/*.py
+        # change, and every .agent/hooks/**.py change -- and reported GREEN.
+        # Caught on the WI-fodad PR: its manifest carried 0 changed source files
+        # and 1 selected test, and CI ran nothing. The two concerns were
+        # conflated in one condition; they are separated below.
+        SELECTED_TESTS=$(sed -n '/^# === SELECTED_TESTS ===/,$p' "$MANIFEST" | grep -v '^#' | grep -v '^$' | tr '\n' ' ')
+        if [ -z "$SELECTED_TESTS" ]; then
+          echo "✅ manifest selects no tests — skipping pytest"; exit 0
+        fi
+
+        # Changed SOURCE files drive the COVERAGE gate ONLY: a 100%-coverage
+        # target needs changed source to aim at, and there is legitimately
+        # nothing to enforce when none changed. They must never gate execution.
         ACTUAL_SOURCE_FILES=$(git diff --name-only "$BASE" "$HEAD" | grep -E '^packages/.*/src/.*\.py$' | sort || true)
         CHANGED_SOURCE_FILES=$(sed -n '/^# === CHANGED_SOURCE_FILES ===/,/^# === SELECTED_TESTS ===/p' "$MANIFEST" | grep -v '^#' | grep -v '^$' || true)
         # Trust the actual diff when the manifest is missing files (staged-before-run drift).
         for f in $ACTUAL_SOURCE_FILES; do
           echo "$CHANGED_SOURCE_FILES" | grep -qF "$f" || CHANGED_SOURCE_FILES="$ACTUAL_SOURCE_FILES"
         done
-
-        if [ -z "$ACTUAL_SOURCE_FILES" ] && [ -z "$CHANGED_SOURCE_FILES" ]; then
-          echo "✅ No Python source files changed — skipping pytest"; exit 0
-        fi
 
         # Per-affected-package coverage, no-embeddings rcfile.
         COV_PATHS=""
@@ -364,8 +375,6 @@ steps:
             *) [ -f "$f" ] && COVERABLE="$COVERABLE $f" ;;
           esac
         done
-
-        SELECTED_TESTS=$(sed -n '/^# === SELECTED_TESTS ===/,$p' "$MANIFEST" | grep -v '^#' | grep -v '^$' | tr '\n' ' ')
 
         # Bound worker count by the cgroup CPU quota (container sees host nproc).
         if [ -f /sys/fs/cgroup/cpu.max ]; then
