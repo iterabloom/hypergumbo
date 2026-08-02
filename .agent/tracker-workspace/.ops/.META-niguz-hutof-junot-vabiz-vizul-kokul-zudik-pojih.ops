@@ -81,3 +81,18 @@
   clock: 9  # 34c0
   nonce: 34c0  # 34c0
   message: "RE-SCOPED (G2 investigation). The item hypothesized a single stamping chokepoint synthesized nodes skip; there is NO such chokepoint and by the architecture there should not be -- external/file/protocol/npm/declaration nodes each need their own identity formula, covered by THREE dispatch-by-class backstops (origin_run_id all_analyzers.py:178; stable_id-by-kind base.py:1122; Class-B identity base.py:1205) + producer-side stamps (create_boundary_nodes; file synthesizers base.py:448/535/596; js_module npm). ~95% was already built (synthetic:F1/F2, ADR-0044/0030/0031). Its ONE concrete residual family (kind='template' -> stable_id=None) is FIXED in PR #15 (META-nomiz). Set pending_validation: fix deployed; a self-analysis showing 0 synthesized-node identity gaps (spec_validator None-cohort ~0) flips it to satisfied. No chokepoint fix exists to 'complete' -- it is per-family, last known family closed."  # 34c0
+- op: update  # 853a
+  at: '2026-08-02T02:14:09Z'  # 853a
+  by: agent  # 853a
+  actor: jgstern_agent  # 853a
+  clock: 10  # 853a
+  nonce: 853a  # 853a
+  set:  # 853a
+    status: satisfied  # 853a
+- op: discuss  # 305b
+  at: '2026-08-02T02:14:10Z'  # 305b
+  by: agent  # 305b
+  actor: jgstern_agent  # 305b
+  clock: 11  # 305b
+  nonce: 305b  # 305b
+  message: "SATISFIED on behavioral evidence (2026-08-01 self-analysis, dev fa7ae4e388). Ran the flip condition named in the 2026-07-26 re-scope verbatim: a self-analysis showing 0 synthesized-node identity gaps. Instrument positively controlled BEFORE reading the number (L53): confirmed validation_report and stable_id_stats both exist in the map and the population is 41,610 symbols, so a zero would be meaningful rather than a null-predicate artifact. RESULT: none_cohort = 8 of 41,610 (0.02 pct). Of those 8, the count in THIS ITEM S SCOPE is ZERO -- 0 have protocol_origin set, 0 have path == the external sentinel, 0 have language None (the ADR-0031 stand-in marker), and 8 of 8 carry a real origin AND a real fingerprint. They are ordinary analyzer-emitted nodes, not stand-ins. So the substantive criterion (0 synthesized-node gaps) is met exactly, not merely approximately -- which matters, because the literal ~0 wording would have waved 8 through without anyone learning what they were. violations_by_class is 0 across all five classes (axis_conformance, cross_field, id_format, verdict_enum, writer_contract). Residuals named in the stale statement field are separately homed and NOT silently closed here (L15 -- the statement went stale after the 2026-07-26 re-scope): the external_symbol path facet is WI-kapul-ganan and was ruled BY-DESIGN in the decision register; derived_from provenance is INV-rukor, already satisfied; construction-time-routing-vs-post-pass was dissolved by the 2026-07-26 finding that no single chokepoint exists or should. The 8 non-synthesized None-stable_id nodes are a DIFFERENT defect family and are filed separately rather than folded in here."  # 305b

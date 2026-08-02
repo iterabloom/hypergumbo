@@ -127,3 +127,19 @@
   clock: 15  # 5cc7
   nonce: 5cc7  # 5cc7
   message: "[Wave-0 pending-validation sweep — HYGIENE OVERRIDE] Static verification confirms the taint hits[0]/realizability fix is PRESENT and correct (taint.py _match_propagation_entry/_lookup_named_entry; WI-razol PR #4147 / 997c19d646). HOWEVER, kept at pending_validation (NOT satisfied): this item was downgraded violated->pending_validation in the same-session hygiene batch precisely because closure requires FRESH-SUBSTRATE BAKEOFF evidence that the live taint-chain noise is actually reduced (a behavioral/quantitative claim, not code presence). That bakeoff (Wave-0 R0 / a directed taint cohort) has not been run. Upgrade to satisfied only on that evidence."  # 5cc7
+- op: update  # e005
+  at: '2026-08-02T02:02:42Z'  # e005
+  by: agent  # e005
+  actor: jgstern_agent  # e005
+  clock: 16  # e005
+  nonce: e005  # e005
+  set: {}  # e005
+  add:  # e005
+    tags: [awaits_bakeoff_validation]  # e005
+- op: discuss  # ab45
+  at: '2026-08-02T02:02:42Z'  # ab45
+  by: agent  # ab45
+  actor: jgstern_agent  # ab45
+  clock: 17  # ab45
+  nonce: ab45  # ab45
+  message: "Tagged awaits_bakeoff_validation (2026-08-01). Restores worklist honesty after the pt.44 owner ruling that the tag is a WORKLIST for the next cohort rather than a ledger of unvalidated claims. This item is the inverse of the two that were stripped under that ruling: its close condition is explicitly cohort-testable -- the 2026-06-11 sweep note requires FRESH-SUBSTRATE BAKEOFF evidence that live taint-chain noise is reduced (a behavioral/quantitative claim, not code presence), and no such cohort has been run. With the queue empty and this item untagged, list --tag awaits_bakeoff_validation read as no claims need bakeoff validation, which was false. Ask of the next cohort: a directed taint cohort measuring taint-chain flow counts against the pre-fix baseline (WI-razol reported 5975 to 1266 on self-claims via commit 997c19d646; that is self-tree, not fresh substrate). Flip to satisfied only on that evidence per the 2026-06-11 hygiene override."  # ab45

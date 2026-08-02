@@ -1,0 +1,21 @@
+- op: create  # d496
+  at: '2026-08-02T02:14:40Z'  # d496
+  by: agent  # d496
+  actor: jgstern_agent  # d496
+  clock: 1  # d496
+  nonce: d496  # d496
+  data:  # d496
+    kind: work_item  # d496
+    title: "stable_id is None on 8 real analyzer-emitted nodes (package/message/method/alias kinds) - by-kind dispatch likely has no default arm"  # d496
+    status: todo_hard  # d496
+    priority: 2  # d496
+    parent:  # d496
+    tags:  # d496
+    - schema  # d496
+    - analysis_quality  # d496
+    isbefore: []  # d496
+    duplicate_of: []  # d496
+    not_duplicate_of: []  # d496
+    pr_ref:  # d496
+    description: "Found by the 2026-08-01 self-analysis run that closed META-niguz (dev fa7ae4e388,\n41,610 symbols). META-niguz's criterion was 0 SYNTHESIZED-node identity gaps and\nthat is met exactly (0 of the 8 are stand-ins). These 8 are a different family and\nwould have been lost if folded into that closure.\n\nMEASURED: 8 nodes carry stable_id = None. All 8 have a real origin AND a real\nfingerprint (hgfp2:...), 0 have protocol_origin, 0 have path == the external\nsentinel, 0 have language None. They are ordinary analyzer-emitted nodes, so the\nClass-B / synthetic backstops in analyze/base.py are not the responsible path.\n\nBy (language, kind):\n   bash  / alias    x1\n   json  / package  x3\n   proto / message  x2\n   proto / method   x1\n   toml  / package  x1\n\n7 of 8 sit under test-fixture paths; 1 is a PRODUCTION path\n(packages/htrac-frontend/package.json, kind=package).\n\nWHY THIS LOOKS STRUCTURAL RATHER THAN INCIDENTAL: this is the same SHAPE as\nMETA-nomiz's residual family (kind='template' -> stable_id=None), which was fixed\nin PR #15. That suggests the stable_id-by-kind dispatch (analyze/base.py:1122)\ncovers some declaration-ish kinds and not others, and 'template' was fixed as a\nsite rather than as a class. Candidate root cause: the by-kind dispatch has no\ndefault arm, so any kind nobody thought to register silently yields None. If that\nis right, the fix is the dispatch's fallback, not five per-kind registrations, and\nthe recurrence test is a property test asserting every emitted Symbol kind resolves\nto a non-null stable_id.\n\nWHY NO GATE CAUGHT IT: validation_report.violations_by_class reads 0 across all\nfive classes (axis_conformance, cross_field, id_format, verdict_enum,\nwriter_contract), and stable_id_stats reports collision_rate_pct 0.0 with\nnone_cohort_pct 0.02. The none_cohort is DISCLOSED (per ADR-0035 / WI-niluv, which\nexist precisely so a None cohort cannot hide behind a clean collision rate) but it\nis not RATCHETED, so 8 nulls sit under a report that otherwise reads all-clear.\n\nREPRO:\n  hypergumbo survey . --out /tmp/selfmap.json\n  then read validation_report.stable_id_stats.none_cohort (expect 8), and filter\n  nodes for a falsy stable_id to see the list.\n\nDo NOT close on the none_cohort number alone: verify per-kind that each emitted\nkind resolves to a non-null stable_id, since a fix that registers only the five\nkinds observed here reproduces the per-site pattern this item exists to break."  # d496
+    fields: {}  # d496
