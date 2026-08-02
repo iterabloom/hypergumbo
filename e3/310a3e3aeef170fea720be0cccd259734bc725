@@ -1,0 +1,68 @@
+Original commit body from a5b3d53d7cf6cbd9e57045d2994d72397b00010c:
+
+io_boundary._module_matches normalised :: and / to . and then asked
+`cm in em or em in cm` — bidirectional, case-insensitive SUBSTRING containment.
+25 of the 210 catalog sink modules are four characters or fewer (os, io, fs,
+net, log, sys, rpc, ssl …), so each matched ANY module whose normalised path
+merely contained it. Found by the 2026-08-01 taint cohort over 9 fresh external
+repos — the run that moved INV-karud to violated — which reported d3's `log`,
+THE LOGARITHM FUNCTION, as a logging sink, and net/http/httptest.NewRequest,
+the TEST request constructor that performs no network IO, as a network sink.
+
+Matching is now component-aware, with a different rule per direction:
+
+  * exact / component-PREFIX. Where the prefix is strict, the first EXTRA
+    component decides: capitalised means a type inside the matched module
+    (os/exec + Cmd), lowercase means a sibling or sub-package (net/http +
+    fcgi, httptest, smtp) and must not match.
+  * component-SUFFIX, unrestricted — dropped qualification. This is how source
+    actually spells these: Go writes `http.Get` after importing "net/http",
+    Java writes System.in for java.lang.System.in. Leading namespace cannot
+    turn one module into a different one the way an appended sub-package can.
+  * Swift receiver-variable carve-out, where the DIRECTION is the safety
+    property: the catalog name may end with the hint, never the reverse.
+    'chaos'.endswith('os') is the bug; 'NonBlockingFileIO'.endswith('fileIO')
+    is the feature. Bounded further to suffixes starting on a capital so it
+    cannot degenerate back into substring containment for short names.
+
+THE OBVIOUS FIX DOES NOT WORK, and an existing test said so. Keeping / distinct
+from . cleanly separates net/http.Client (a type) from net/http/fcgi (a
+package) — except the Go analyzer emits os.exec.Cmd for what the catalog spells
+os/exec, so the separator is not evidence of a package boundary. A second
+existing test then caught an over-tightening: java.lang.System against a hint of
+`System` is a component SUFFIX, not a prefix. Both regressions were caught by
+tests that predate this change, which is why the whole io-boundary and taint
+suite was run rather than only the new class.
+
+EVIDENCE. The item's own filed repro re-runs clean: all five verified-live
+collisions, all four fresh-substrate observations, and the one catalog-internal
+pair that flips a ZONE rather than a primitive (sys.process.Process is host_fs,
+sys.process.ProcessBuilder is subprocess, and the former is literally a
+substring of the latter). 3436 tests pass; changed source at 100% coverage. The
+self-tree validation ratchet is clean, so the shrink-only re-baseline the item
+anticipated was not needed.
+
+Self-tree impact is NIL and that was measured, not assumed: an A/B with the
+analysis cache cleared and a POSITIVE CONTROL on each arm — asserting the loaded
+predicate's verdict on os/chaos before measuring — gives 735 boundary calls both
+ways with a byte-identical whole output. Expected rather than suspicious: every
+observed defect was Go or JavaScript and this tree is Python, which is exactly
+why INV-karud refused to close on self-tree numbers.
+
+A first attempt at that A/B was DISCARDED as untrustworthy. It compared 735 to
+735 with its only validity check a grep for "cm in em or em in cm" — a string
+present both in the old code and in the new docstring that quotes it, so it
+could not distinguish the arms. Two identical numbers from an instrument that
+cannot tell the conditions apart is a stale read, not a null result.
+
+KNOWN TRADEOFF, in the docstring rather than left to be discovered: a lowercase
+extra component now blocks a match even in languages that do not signal types by
+case, so this can UNDER-match where it previously over-matched. For a sink
+catalog that is the safe direction — a missed sink is a gap, a spurious one is a
+false claim about the program's behaviour. The fresh-substrate cohort is the
+place that gets measured; this item is tagged awaits_bakeoff_validation because
+no self-tree number can validate it.
+
+Refs WI-zazul, INV-karud
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
