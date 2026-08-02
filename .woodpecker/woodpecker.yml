@@ -350,19 +350,46 @@ steps:
           release/*) echo "✅ Release branch — skipping pytest (full-suite covers it)"; exit 0 ;;
         esac
 
+        HEAD="$CI_COMMIT_SHA"
         if [ "$CI_PIPELINE_EVENT" = "pull_request" ]; then
           git fetch --no-tags origin "$CI_COMMIT_TARGET_BRANCH"
           BASE=$(git merge-base FETCH_HEAD HEAD)
         else
-          BASE="${CI_PREV_COMMIT_SHA:-HEAD~1}"
+          # WI-vilor: CI_PREV_COMMIT_SHA is the commit of the PREVIOUS PIPELINE,
+          # NOT the previous tip of this branch. auto-pr merges by REBASE, which
+          # rewrites the commit, so after every rebase merge that SHA names an
+          # object which does not exist in this clone (verified: 66737979de was
+          # the pre-rebase copy of 6e92792a34, reachable only from the feature
+          # branch auto-pr then deleted). It can also name a commit on an
+          # entirely unrelated branch. Validate before trusting it.
+          BASE="${CI_PREV_COMMIT_SHA:-}"
+          if [ -z "$BASE" ] || ! git cat-file -e "${BASE}^{commit}" 2>/dev/null; then
+            echo "ℹ️  CI_PREV_COMMIT_SHA='${BASE:-<unset>}' is not a commit in this"
+            echo "   clone (expected after a rebase/squash merge) — using HEAD^."
+            BASE="${HEAD}^"
+          fi
         fi
-        HEAD="$CI_COMMIT_SHA"
 
         # No .py changed anywhere in the PR (config/docs-only) → no affected tests →
         # skip cleanly instead of running a stale committed manifest's selections.
-        if [ -z "$(git diff --name-only "$BASE" "$HEAD" | grep -E '\.py$' || true)" ]; then
-          echo "✅ PR changes no .py files — skipping pytest"
-          exit 0
+        #
+        # WI-vilor: capture the diff and its EXIT STATUS separately. A failed
+        # `git diff` writes nothing to stdout, which is byte-identical to a
+        # successful diff that found no Python files — so the old one-line form
+        # could not tell "nothing changed" from "I could not find out", and
+        # resolved that ambiguity by skipping the suite and reporting green.
+        # Skip only on a SUCCESSFUL diff that genuinely reported no .py (L54:
+        # enumerate the permitting case, never the blocking ones).
+        if CHANGED_IN_RANGE=$(git diff --name-only "$BASE" "$HEAD" 2>&1); then
+          if [ -z "$(echo "$CHANGED_IN_RANGE" | grep -E '\.py$' || true)" ]; then
+            echo "✅ PR changes no .py files — skipping pytest"
+            exit 0
+          fi
+        else
+          echo "⚠️  cannot diff $BASE..$HEAD: $CHANGED_IN_RANGE"
+          echo "    Running the committed manifest anyway — a failed diff is NOT"
+          echo "    evidence that nothing changed."
+          CHANGED_IN_RANGE=""
         fi
 
         if [ ! -f "$MANIFEST" ]; then
@@ -386,7 +413,10 @@ steps:
         # Changed SOURCE files drive the COVERAGE gate ONLY: a 100%-coverage
         # target needs changed source to aim at, and there is legitimately
         # nothing to enforce when none changed. They must never gate execution.
-        ACTUAL_SOURCE_FILES=$(git diff --name-only "$BASE" "$HEAD" | grep -E '^packages/.*/src/.*\.py$' | sort || true)
+        # Reuse the range computed above rather than re-running the diff: when it
+        # failed, re-running it just fails again silently and this would size the
+        # coverage gate off an empty set (WI-vilor).
+        ACTUAL_SOURCE_FILES=$(echo "$CHANGED_IN_RANGE" | grep -E '^packages/.*/src/.*\.py$' | sort || true)
         CHANGED_SOURCE_FILES=$(sed -n '/^# === CHANGED_SOURCE_FILES ===/,/^# === SELECTED_TESTS ===/p' "$MANIFEST" | grep -v '^#' | grep -v '^$' || true)
         # Trust the actual diff when the manifest is missing files (staged-before-run drift).
         for f in $ACTUAL_SOURCE_FILES; do
