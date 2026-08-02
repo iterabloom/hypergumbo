@@ -571,9 +571,7 @@ _autopr_branch_push_fallback() {
 # ------------------------------------------------------------------
 _autopr_pr_web_url() {
 	local pr_num="$1"
-	if [[ "${FAILOVER_ACTIVE:-false}" == "true" ]]; then
-		echo "$FAILOVER_URL/$FAILOVER_REPO/pulls/$pr_num"
-	elif [[ "${FORGE_BACKEND:-forgejo}" == "github" ]]; then
+	if [[ "${FORGE_BACKEND:-forgejo}" == "github" ]]; then
 		echo "https://github.com/$REPO_SLUG/pull/$pr_num"
 	else
 		echo "https://codeberg.org/$REPO_SLUG/pulls/$pr_num"
@@ -1157,16 +1155,7 @@ Individual commits are preserved in the history."
 	# IMPORTANT: Use index-only operations to avoid overwriting the working
 	# tree. `git checkout <base> -- <file>` would destroy locally-appended
 	# ops (status updates, discussion entries) that haven't synced yet.
-	#
-	# When failover is active, diff against the self-hosted remote's dev
-	# (which may be ahead due to tracker auto-sync) so CI's base matches.
 	local ops_diff_base="$base_branch"
-	local failover_file="$REPO_ROOT/.git/CI_FAILOVER_ACTIVE"
-	if [[ -f "$failover_file" ]]; then
-		if git fetch selfh "$base_branch" --quiet 2>/dev/null; then
-			ops_diff_base="selfh/$base_branch"
-		fi
-	fi
 	local ops_files
 	ops_files=$(git diff --name-only "$ops_diff_base"..HEAD -- '.agent/tracker*/.ops/' 2>/dev/null || true)
 	if [[ -n "$ops_files" ]]; then
@@ -1187,17 +1176,8 @@ Individual commits are preserved in the history."
 	fi
 
 	detect_api_base
-	apply_failover_overrides
-	if [[ "$FAILOVER_ACTIVE" == "true" ]]; then
-		USER="${SELFHOSTED_FORGEJO_USER:-$USER}"
-		TOKEN="${SELFHOSTED_FORGEJO_TOKEN:-$TOKEN}"
-		echo "[SELF-HOSTED] Failover active — targeting self-hosted Forgejo"
-	fi
 
 	local push_remote="origin"
-	if [[ "$FAILOVER_ACTIVE" == "true" ]]; then
-		push_remote="selfh"
-	fi
 
 	local max_attempts=3
 	local attempt=1
@@ -1442,9 +1422,6 @@ Individual commits are preserved in the history."
 	# Switch to base and pull
 	git checkout "$base_branch"
 	local flush_remote="origin"
-	if [[ "$FAILOVER_ACTIVE" == "true" ]]; then
-		flush_remote="selfh"
-	fi
 	git pull "$flush_remote" "$base_branch" || true
 
 	# Delete local branches
@@ -1540,12 +1517,6 @@ do_pr() {
 	fi
 
 	detect_api_base
-	apply_failover_overrides
-	if [[ "$FAILOVER_ACTIVE" == "true" ]]; then
-		USER="${SELFHOSTED_FORGEJO_USER:-$USER}"
-		TOKEN="${SELFHOSTED_FORGEJO_TOKEN:-$TOKEN}"
-		echo "[SELF-HOSTED] Failover active — targeting self-hosted Forgejo"
-	fi
 	LOCAL_SHA="$(git rev-parse HEAD)"
 
 	# Resolution per slot: flag form (TITLE_FLAG / DESC_FLAG) wins; any
@@ -1622,12 +1593,6 @@ do_pr() {
 	# of local origin/dev (tracker auto-sync merges happen there).  Diff
 	# against the actual PR target so CI's base matches what we exclude.
 	local ops_diff_base="$BASE_BRANCH"
-	if [[ "$FAILOVER_ACTIVE" == "true" ]]; then
-		local selfh_remote="${push_remote:-selfh}"
-		if git fetch "$selfh_remote" "$BASE_BRANCH" --quiet 2>/dev/null; then
-			ops_diff_base="$selfh_remote/$BASE_BRANCH"
-		fi
-	fi
 	local ops_files
 	ops_files=$(git diff --name-only "$ops_diff_base"..HEAD -- '.agent/tracker*/.ops/' 2>/dev/null || true)
 	if [[ -n "$ops_files" ]]; then
@@ -1707,9 +1672,6 @@ do_pr() {
 	local PUSH_DESC="${DESC//$'\n'/\\n}"
 
 	local push_remote="origin"
-	if [[ "$FAILOVER_ACTIVE" == "true" ]]; then
-		push_remote="selfh"
-	fi
 
 	# --- INV-rahib fix: create gate BEFORE push ---
 	# Previously PR_PENDING was created after push + PR identification,
@@ -2161,23 +2123,6 @@ do_pr() {
 	_autopr_append_tracker_discussion "$TRACKER_ID" "$PR_NUM" "$_merged_sha"
 
 	# Record merged PR in failover state
-	if [[ "$FAILOVER_ACTIVE" == "true" ]] && [[ -f "$REPO_ROOT/.git/CI_FAILOVER_ACTIVE" ]]; then
-		_FAILOVER_PR_TITLE="$TITLE" python3 -c "
-import json, os
-fpath = os.path.join('$REPO_ROOT', '.git', 'CI_FAILOVER_ACTIVE')
-with open(fpath) as f:
-    data = json.load(f)
-data.setdefault('prs_merged_locally', []).append({
-    'branch': '$BRANCH',
-    'pr_num': int('$PR_NUM'),
-    'sha': '$LOCAL_SHA',
-    'title': os.environ.get('_FAILOVER_PR_TITLE', '')
-})
-with open(fpath, 'w') as f:
-    json.dump(data, f, indent=2)
-    f.write('\n')
-" 2>/dev/null || true
-	fi
 
 	echo "---------------------------------------------------"
 	echo "🧹 Cleaning up local branch..."
@@ -2191,9 +2136,6 @@ cleanup_local() {
 	local branch="$1"
 	local base="$2"
 	local remote="origin"
-	if [[ "${FAILOVER_ACTIVE:-false}" == "true" ]]; then
-		remote="selfh"
-	fi
 
 	rm -f "$REPO_ROOT/.git/PR_PENDING"
 
@@ -2320,12 +2262,8 @@ gov_cleanup() {
 	local pr_num="${1:?Usage: auto-pr gov-cleanup <PR_NUM>}"
 	load_env
 	detect_api_base
-	apply_failover_overrides
 
 	local token="${FORGEJO_TOKEN:-}"
-	if [[ "$FAILOVER_ACTIVE" == "true" ]]; then
-		token="${SELFHOSTED_FORGEJO_TOKEN:-$token}"
-	fi
 
 	_autopr_state_pr_num="$pr_num"
 

@@ -1,12 +1,16 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Tier-B tests for ``resolve_forge_token``'s GitHub token source (PR-C2).
 
-PR-C landed ``resolve_forge_token`` failover-aware but not github-aware: for the
+PR-C landed ``resolve_forge_token`` but not github-aware: for the
 github backend it fell through to ``FORGEJO_TOKEN``, which won't authenticate
 against GitHub. PR-C2 closes that: github reads a dedicated local PAT
 (``HG_GITHUB_TOKEN``, provisioned/documented in PR-D), falling back to
-``FORGEJO_TOKEN`` so an unset env stays dormant-safe. Failover precedence
-(self-hosted token wins) is preserved. Forgejo path stays byte-identical.
+``FORGEJO_TOKEN`` so an unset env stays dormant-safe. Forgejo path stays
+byte-identical.
+
+WI-hajif removed the third arm: under the retired CI failover the self-hosted
+Forgejo token used to take precedence over both. There is no failover any more,
+so that precedence — and its test — are gone.
 """
 
 from __future__ import annotations
@@ -19,11 +23,8 @@ _SNIPPET = (
 )
 
 
-def _resolve(repo, *, backend, failover=False, env=None):
-    pre = ""
-    if failover:
-        pre += "FAILOVER_ACTIVE=true\n"
-    pre += f"FORGE_BACKEND={backend}\n"
+def _resolve(repo, *, backend, env=None):
+    pre = f"FORGE_BACKEND={backend}\n"
     r, _ = run_lib(repo, pre + _SNIPPET, env=env)
     return r
 
@@ -47,10 +48,3 @@ def test_forgejo_uses_forgejo_token(tmp_path):
     assert "TOKEN=[tok]" in r.stdout
 
 
-def test_failover_selfhosted_token_wins_over_github(tmp_path):
-    repo = fake_repo(tmp_path, "https://github.com/o/r.git")
-    r = _resolve(
-        repo, backend="github", failover=True,
-        env={"SELFHOSTED_FORGEJO_TOKEN": "sh_tok", "HG_GITHUB_TOKEN": "ghp_x"},
-    )
-    assert "TOKEN=[sh_tok]" in r.stdout

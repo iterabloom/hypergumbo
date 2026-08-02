@@ -110,11 +110,9 @@ def _extract_func(name: str) -> str:
     return m.group(0)
 
 
-def _pr_web_url(*, backend="forgejo", failover=False) -> str:
+def _pr_web_url(*, backend="forgejo") -> str:
     fn = _extract_func("_autopr_pr_web_url")
     pre = "REPO_SLUG=o/r\n"
-    if failover:
-        pre += "FAILOVER_ACTIVE=true\nFAILOVER_URL=https://selfh.test\nFAILOVER_REPO=x/y\n"
     pre += f"FORGE_BACKEND={backend}\n"
     r = subprocess.run(
         ["bash", "-c", fn + "\n" + pre + '_autopr_pr_web_url 5\n'],
@@ -129,9 +127,6 @@ class TestPrWebUrl:
 
     def test_forgejo_uses_pulls_plural(self):
         assert _pr_web_url(backend="forgejo") == "https://codeberg.org/o/r/pulls/5"
-
-    def test_failover_wins_over_backend(self):
-        assert _pr_web_url(backend="github", failover=True) == "https://selfh.test/x/y/pulls/5"
 
 
 class TestStructuralGates:

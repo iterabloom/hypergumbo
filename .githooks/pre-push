@@ -23,29 +23,9 @@ PROTECTED_BRANCHES="main dev"
 remote="$1"
 url="$2"
 
-# Failover remote verification (INV-bifud)
-# During CI failover, selfh is the authoritative remote. Pushing to origin
-# would target a stale Codeberg mirror, wasting CI cycles and causing
-# divergence. Block pushes to origin when failover is active, except for
-# the disengage script's repatriation push (announced via CI_FAILOVER_DISENGAGING=1).
-git_dir="${GIT_DIR:-$(git rev-parse --git-dir 2>/dev/null || true)}"
-if [[ -n "$git_dir" && -f "$git_dir/CI_FAILOVER_ACTIVE" && "$remote" == "origin" \
-        && -z "${CI_FAILOVER_DISENGAGING:-}" ]]; then
-    echo ""
-    echo -e "${RED}========================================================${NC}"
-    echo -e "${RED}  BLOCKED: Push to 'origin' during CI failover${NC}"
-    echo -e "${RED}========================================================${NC}"
-    echo ""
-    echo -e "${YELLOW}  CI failover is active — 'selfh' is the authoritative remote.${NC}"
-    echo -e "${YELLOW}  Pushing to 'origin' targets a stale mirror and will cause divergence.${NC}"
-    echo ""
-    echo "  Use selfh instead:"
-    echo ""
-    echo "    git push selfh HEAD"
-    echo "    ./scripts/auto-pr   (auto-detects authoritative remote)"
-    echo ""
-    exit 1
-fi
+# WI-hajif: the failover remote verification (INV-bifud) is retired with the
+# self-hosted-Forgejo failover. There is no second authoritative remote to
+# guard against any more — origin is always it.
 
 while read -r local_ref local_sha remote_ref remote_sha; do
     # Extract the branch name from the remote ref (e.g., refs/heads/dev -> dev)

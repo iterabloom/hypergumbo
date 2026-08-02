@@ -34,9 +34,9 @@ source "${BASH_SOURCE[0]%/*}/github-api.sh"
 # detect_forge_backend [REMOTE_URL]
 #   Set FORGE_BACKEND ("github" or "forgejo").  The HYPERGUMBO_FORGE_BACKEND
 #   env var overrides (used by the forced-backend CI job + tests); otherwise a
-#   github.com origin → "github", anything else → "forgejo" (the dormant
-#   default while Codeberg is origin).  apply_failover_overrides forces
-#   "forgejo" afterward — CI failover always targets the self-hosted Forgejo.
+#   github.com origin → "github", anything else → "forgejo".  Since the
+#   GitHub migration, origin IS github.com, so "github" is the live backend
+#   and the forgejo arm is the dormant one (WI-hajif).
 # ------------------------------------------------------------------
 detect_forge_backend() {
 	local remote_url="${1:-$(git remote get-url origin 2>/dev/null)}"
@@ -51,14 +51,11 @@ detect_forge_backend() {
 
 # ------------------------------------------------------------------
 # resolve_forge_token
-#   Single, failover-aware source of truth for the API/push credential (C9):
-#   under CI failover the self-hosted Forgejo token wins, matching
-#   apply_failover_overrides' precedence.  Sets FORGE_TOKEN.
+#   Single source of truth for the API/push credential (C9): on the github
+#   backend HG_GITHUB_TOKEN wins, else FORGEJO_TOKEN.  Sets FORGE_TOKEN.
 # ------------------------------------------------------------------
 resolve_forge_token() {
-	if [[ "${FAILOVER_ACTIVE:-false}" == "true" ]]; then
-		FORGE_TOKEN="${SELFHOSTED_FORGEJO_TOKEN:-${FORGEJO_TOKEN:-}}"
-	elif [[ "${FORGE_BACKEND:-forgejo}" == "github" ]]; then
+	if [[ "${FORGE_BACKEND:-forgejo}" == "github" ]]; then
 		# GitHub maintainer tooling uses a dedicated local PAT (HG_GITHUB_TOKEN,
 		# provisioned + documented in PR-D). Falls back to FORGEJO_TOKEN so an
 		# unset env stays dormant-safe rather than erroring while Codeberg is
@@ -109,27 +106,6 @@ detect_api_base() {
 }
 
 # ------------------------------------------------------------------
-# apply_failover_overrides: Override API_BASE / REPO_SLUG / FORGEJO_TOKEN
-# when CI failover is active. Call after detect_api_base().
-# Sets FAILOVER_ACTIVE=true/false for callers to check.
-# ------------------------------------------------------------------
-apply_failover_overrides() {
-	local failover_file="$REPO_ROOT/.git/CI_FAILOVER_ACTIVE"
-	FAILOVER_ACTIVE=false
-	if [[ -f "$failover_file" ]]; then
-		FAILOVER_ACTIVE=true
-		# CI failover always targets the self-hosted Forgejo — force the
-		# backend regardless of the origin host (C2/C9).
-		FORGE_BACKEND="forgejo"
-		FAILOVER_URL=$(python3 -c "import json,sys; print(json.load(open('$failover_file'))['selfhosted_forgejo_url'])")
-		FAILOVER_REPO=$(python3 -c "import json,sys; print(json.load(open('$failover_file'))['selfhosted_forgejo_repo'])")
-		API_BASE="$FAILOVER_URL/api/v1/repos/$FAILOVER_REPO"
-		REPO_SLUG="$FAILOVER_REPO"
-		export FORGEJO_TOKEN="${SELFHOSTED_FORGEJO_TOKEN:-$FORGEJO_TOKEN}"
-	fi
-}
-
-# ------------------------------------------------------------------
 # api_call METHOD URL [DATA]
 #   Safe HTTP wrapper. Sets $API_RESPONSE and $API_HTTP_CODE.
 #   Returns: 0 = 2xx, 1 = non-2xx, 2 = curl failure or non-JSON response
@@ -140,7 +116,7 @@ api_call() {
 	local tmp_file
 	tmp_file="$(mktemp)"
 
-	# Failover-aware credential (C9); FORGE_TOKEN == FORGEJO_TOKEN off failover.
+	# Backend-aware credential (C9).
 	resolve_forge_token
 
 	local curl_args=(
@@ -377,11 +353,6 @@ _attempt_desync_resync_push() {
 	fi
 
 	local push_remote="origin" push_user="${FORGEJO_USER:-}" push_token="${FORGEJO_TOKEN:-}"
-	if [[ "${FAILOVER_ACTIVE:-false}" == "true" ]]; then
-		push_remote="selfh"
-		push_user="${SELFHOSTED_FORGEJO_USER:-$push_user}"
-		push_token="${SELFHOSTED_FORGEJO_TOKEN:-$push_token}"
-	fi
 
 	echo "   🔁 WI-hubod: plain branch push to resync Codeberg DB, then retry merge..." >&2
 	if ! git -c credential.helper="!f() { echo username=$push_user; echo password=$push_token; }; f" \
@@ -868,11 +839,8 @@ except Exception:
 #   Fetch plain-text log for a CI job. Uses the web route; the REST API
 #   /actions/jobs endpoint returns 404 on Codeberg's Forgejo v14.
 #
-#   The log URL path depends on the Forgejo version:
-#   - Codeberg (Forgejo v14+) requires /attempt/1/logs
-#   - Self-hosted older Forgejo uses /logs directly
-#   We detect failover state via FAILOVER_ACTIVE (set by
-#   apply_failover_overrides) to pick the right path.
+#   The log URL path is /attempt/1/logs (Forgejo v14+).  The older
+#   self-hosted /logs variant went away with the failover (WI-hajif).
 #
 #   Strategy (2 API calls + 1 web route):
 #     1. GET /actions/runs?head_sha=<full-sha> → index_in_repo (run number)
@@ -942,12 +910,8 @@ fetch_job_log() {
 	echo "Fetching log for job '$job_name' (run #$run_number, index $job_index)..." >&2
 
 	# Step 3: Download log via web route.
-	# Pick URL path by Forgejo version: self-hosted (failover active) uses
-	# /logs directly; Codeberg Forgejo v14+ requires /attempt/1/logs.
+	# Forgejo v14+ requires /attempt/1/logs.
 	local log_path="attempt/1/logs"
-	if [[ "${FAILOVER_ACTIVE:-false}" == "true" ]]; then
-		log_path="logs"
-	fi
 
 	# Use -w to capture HTTP status so a 404 body ("Not found.") is not
 	# silently printed as if it were log content.

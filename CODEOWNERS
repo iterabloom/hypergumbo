@@ -29,5 +29,4 @@
 /scripts/merge-pr               @jgstern
 /scripts/contribute            @jgstern
 /scripts/ci-debug              @jgstern
-/scripts/ci-failover           @jgstern
 /scripts/lib/forgejo-api.sh    @jgstern

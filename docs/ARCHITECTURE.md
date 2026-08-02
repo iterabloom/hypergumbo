@@ -15,15 +15,15 @@ for focused LLM context.
 
 hypergumbo analyzed its own source code and found:
 - **298** Python modules (133 analyzers, 59 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 30, Infrastructure 8; 69 core, 4 CLI, 33 tracker)
-- **38109** symbols (functions, classes, methods)
-- **129660** edges by type:
-  - calls: 65339
-  - contains: 35195
-  - imports: 11619
-  - instantiates: 10554
-  - references: 4405
-  - module_attr_ref: 1206
-  - other: 1342
+- **38141** symbols (functions, classes, methods)
+- **129859** edges by type:
+  - calls: 65431
+  - contains: 35212
+  - imports: 11675
+  - instantiates: 10576
+  - references: 4407
+  - module_attr_ref: 1214
+  - other: 1344
 
 ## Package Architecture
 
@@ -85,7 +85,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 38109 Symbols + 129660 Edges + UsageContexts           │
+│  Output: 38141 Symbols + 129859 Edges + UsageContexts           │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -271,21 +271,21 @@ These symbols have the highest bidirectional centrality
 
 | Symbol | Kind | Score | Location |
 |--------|------|-------|----------|
-| `Symbol` | class | 9455.8 | ir.py |
-| `Span` | class | 6360.2 | ir.py |
-| `write_text` | external_symbol | 3310.0 | <external> |
+| `Symbol` | class | 9506.2 | ir.py |
+| `Span` | class | 6380.8 | ir.py |
+| `write_text` | external_symbol | 3306.0 | <external> |
 | `LinkerContext` | class | 3276.5 | registry.py |
 | `Edge.create` | method | 2096.5 | ir.py |
 | `TrackerApp` | class | 1946.9 | tui.py |
 | `load_framework_patterns` | function | 1882.5 | framework_patterns.py |
-| `Path` | external_symbol | 1649.0 | <external> |
+| `Path` | external_symbol | 1651.0 | <external> |
 | `main` | function | 1578.2 | cli.py |
 | `clear_pattern_cache` | function | 1336.8 | framework_patterns.py |
-| `Edge` | class | 1272.3 | ir.py |
-| `append` | external_symbol | 1236.0 | <external> |
-| `get` | external_symbol | 1139.0 | <external> |
+| `Edge` | class | 1284.6 | ir.py |
+| `append` | external_symbol | 1239.0 | <external> |
+| `get` | external_symbol | 1144.0 | <external> |
 | `TreeSitterAnalyzer` | class | 1074.7 | base.py |
-| `find_files` | function | 997.1 | discovery.py |
+| `find_files` | function | 1000.7 | discovery.py |
 
 ## Pattern System
 
@@ -395,7 +395,6 @@ The `scripts/` directory contains operational tooling. Descriptions are extracte
 |--------|-------------|
 | `auto-pr` | Push branch, poll CI, merge PR (with vPR queue for offline resilience) |
 | `ci-debug` | CI Debug Helper - Fetch and analyze Forgejo/Gitea Actions run logs |
-| `ci-failover` | Switch CI targeting between Codeberg and self-hosted Forgejo |
 | `merge-pr` | Focused recovery script for merging (or closing) existing PRs |
 | `prepare-release` | Prepare a release for human approval. |
 | `release` | Release script - creates a new release. |
@@ -847,8 +846,8 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: 4b9d40ecf4a9
-  commit_count: 6427
+  commit: 1d5ded585109
+  commit_count: 6443
   hypergumbo: 7.0.0
   python: 3.12.3
 -->

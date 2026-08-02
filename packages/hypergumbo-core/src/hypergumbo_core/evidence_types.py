@@ -376,7 +376,7 @@ _RAW_EVIDENCE_TYPES: tuple[EvidenceTypeSpec, ...] = (
 
     # ----------------------------------------------------------------
     # Cluster C (framework-specific dispatch conventions) — Phase 4b
-    # removal complete. Wave 5 (WI-kagik, PRs #3572 + selfh #162-166)
+    # removal complete. Wave 5 (WI-kagik, PRs #3572 + self-hosted-forge #162-166)
     # folded all 65 framework-prefixed values to canonical inference +
     # ``meta['framework_dispatch']`` / ``meta['detection_pattern']`` per
     # audit-findings 0014; deprecated registry entries removed in

@@ -389,6 +389,15 @@ KNOWN_UNREACHABLE = {
     # Assert over governance/workflow artifacts, not a single source file.
     "test_codeowners_governance.py",
     "test_full_suite_coverage_teeth.py",
+    # WI-hajif: a recurrence guard over the ABSENCE of the retired CI-failover
+    # layer. It scans scripts/, .githooks/, .agent/hooks/ and packages/*/src for
+    # failover tokens, so it maps to no single source by construction — the
+    # thing it guards is a property of the tree, not a file. Consequence stated
+    # plainly rather than hidden by the exemption: it therefore runs in the full
+    # suite and not per-PR, so a PR that reintroduces failover machinery is
+    # caught after merge rather than before it. Fixing that needs the
+    # declarative "covers:" marker this list keeps asking for, not a rename.
+    "test_ci_failover_retired.py",
     # Covers tests/_forge_github_harness.py -- a TEST HELPER, which is a third
     # category this mapper does not claim: it maps scripts/ and
     # .agent/hooks/_shared/, not tests/. Extending it to tests/_<name>.py
