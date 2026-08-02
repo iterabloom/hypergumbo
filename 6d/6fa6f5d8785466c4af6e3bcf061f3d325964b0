@@ -1,0 +1,46 @@
+Original commit body from 80c9f47bf3c4929013b09242fe30d8df107c3178:
+
+TEMPORARY probe. tests/test_backfill_training_data_cohort_tags.py blew a 30s
+subprocess cap on `git log --reverse -- <one path>` in CI, five times on one
+xdist worker across ~150s. The same command measures 0.03-0.10s on a dev box
+in EVERY repo state reproducible locally.
+
+Ruled out by measurement, not argument, before adding this:
+  - runner starvation  : CI ran the suite in 359s; the dev box took 572s
+  - shallow history    : pytest depends_on [prepare-git], which unshallows
+  - missing commit-graph: forced cold locally = 0.095s
+  - over-parallelism   : -n 8, bounded by cgroup CPU quota
+  - repo state         : fresh full clone = 0.026s; shallow-then-unshallow
+                         with no commit-graph (the exact CI shape) = 0.041s
+  - gitattributes driver: check-attr returns nothing for that path
+  - auto-gc            : 0 loose objects, 2 packs; both thresholds unmet
+
+So the process was almost certainly BLOCKED, not computing. The surviving
+hypothesis is per-read latency on the shared workspace volume, which would
+hammer a full-history path walk (thousands of small object reads) while
+barely touching the CPU-bound tests that dominate the suite.
+
+What this adds:
+  - workspace + repo-state facts (fs type via df -T/statfs, packs, loose
+    objects, commit-graph, shallow marker, commit count, git version)
+  - a QUIET baseline before pytest and again after it. The before/after pair
+    is the decisive datum: quiet-fast + loaded-timeout => load-correlated;
+    quiet-slow even once => structural, and every local control was invalid.
+  - GIT_TRACE2_PERF to a FILE (not stderr, so no test that reads git stderr
+    changes behaviour), summarised after the run.
+
+Two details that matter for reading the output:
+  - `pytest ... || TEST_EXIT=$?` replaces the bare call because `set -e` is
+    active: a failing pytest would otherwise abort the block before the
+    summary prints, on precisely the run we need it from. Final exit code is
+    unchanged.
+  - a subprocess killed at its 30s cap never reaches git's atexit, so it
+    logs a `start` with no matching `exit`. started > exited is therefore the
+    signature of the kill, and the probe reports both counts.
+
+The probe itself was positive-controlled locally before shipping: trace file
+parses, the path grep matches, the awk elapsed-column sort works, and the
+baseline block emits real numbers (26ms, 52 lines). Adds no yamllint
+violations (9 before, 9 after).
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
