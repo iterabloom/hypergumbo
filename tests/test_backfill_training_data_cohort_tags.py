@@ -507,15 +507,19 @@ class TestRealV0WindowBoundaries:
 
         Every test here needs the same timeline and each used to recompute it.
         That walk is `git log --reverse` over full history with a pathspec — the
-        only full-history walk in the suite, and the one thing paying the cold
-        object-read cost. Measured in CI: 1,185,559 ms on the first invocation
-        against a fresh checkout, 19 ms on every one after. Recomputing it five
-        times turned one slow command into five red tests and burned 5 x the
-        30 s subprocess cap before failing.
+        only full-history walk in the suite, and so the only thing in the suite
+        that needed a tree object from every commit. Measured in CI once:
+        1,185,559 ms on the first invocation, 19 ms on every one after.
+        Recomputing it five times turned one slow command into five red tests
+        and burned 5 x the subprocess cap before failing.
 
-        prepare-git now warms that read (and writes a changed-path commit-graph),
-        so the cost is paid before pytest starts. This fixture is the other half:
-        even when the walk IS slow, it happens once and fails once, legibly.
+        The cost itself is gone — it was never this command's fault. CI was
+        cloning with `--filter=tree:0` (plugin-git's `partial: true` default), so
+        the walk re-fetched every tree from origin one at a time; the clone is
+        now pinned complete and gated in prepare-git (WI-fodad). Sharing one
+        walk across the class is kept anyway: it is strictly less work, and it
+        means any future environment regression fails ONCE and legibly instead
+        of five times in a way that reads like a flaky assertion.
         """
         walked = bf_mod.get_commit_timeline(self.REPO_ROOT, bf_mod.INFRA_PATH)
         # NON-VACUITY FLOOR (L17). Without this, an empty timeline makes four of

@@ -52,25 +52,31 @@ def get_commit_timeline(
     compared directly to the entry timestamps in the corpus (which
     are naive local times from ``datetime.now().isoformat()``).
     """
-    # WI-fodad: the timeout is generous, and deliberately so. `git log --reverse`
-    # with a pathspec must walk the WHOLE history before emitting a line, which
-    # on a cold checkout means reading most of the object store. Measured on the
-    # CI agent: 1,185,559 ms and 852,661 ms on the FIRST invocation against a
-    # fresh clone (25 packs, no usable commit-graph, random reads across all of
-    # them), then 17-19 ms on every invocation after — the cost is I/O, and it is
-    # paid once. On a warm dev checkout the same command is ~30 ms.
+    # WI-fodad, RESOLVED — and the resolution was NOT in this file.
     #
-    # The old 30 s cap was a bet that an unbounded, environment-dependent cold
-    # read finishes in 30 seconds, and it lost intermittently in CI, surfacing as
-    # five simultaneous TimeoutExpired failures in a file the PR hadn't touched —
-    # indistinguishable, from the CI summary, from a real regression. This is a
-    # backfill/maintenance tool with no latency requirement, so the cap's only
-    # real job is to stop a genuinely wedged git from hanging a run forever.
-    # 30 minutes does that without gambling on disk conditions.
+    # This walk once took 1,185,559 ms in CI against 27 ms on a dev box, which
+    # produced two wrong theories in a row (cold object-store I/O; runner
+    # contention) and two "fixes" that each made CI worse. The actual cause was
+    # the CI CHECKOUT, not the command: `woodpeckerci/plugin-git` defaults
+    # `partial: true` and clones with `--depth=1 --filter=tree:0`, so the repo
+    # held no tree objects. `git fetch --unshallow` restores commits but inherits
+    # the filter, so a pathspec walk lazily re-fetched ~26,000 trees from origin
+    # one at a time over HTTPS. The 44,000x was network round trips; the volume
+    # was a local SSD the whole time. `.woodpecker/*.yml` now pin
+    # `settings: {partial: false}`, and `prepare-git` fails the pipeline if a
+    # partial-clone filter is ever configured again.
+    #
+    # So the cap does not need to absorb a pathological environment any more,
+    # and it should not try to. The 1800 s cap that briefly lived here was worse
+    # than the 30 s one it replaced: it let the walk run to completion, which
+    # pushed the pytest step past the agent's task deadline and got the whole
+    # pipeline CANCELLED — trading a fast, legible red for an unattributable
+    # infrastructure error. A cap's only job is to stop a genuinely wedged git;
+    # 120 s is ~4,000x headroom over the real cost and still fails fast.
     result = subprocess.run(
         ["git", "log", "--pretty=format:%aI %H", "--reverse", "--",
          file_path],
-        capture_output=True, text=True, cwd=repo_root, timeout=1800,
+        capture_output=True, text=True, cwd=repo_root, timeout=120,
     )
     if result.returncode != 0:
         # Surface WHY. Returning a bare [] here is load-bearing for callers (a
