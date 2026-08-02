@@ -327,9 +327,43 @@ def _match_propagation_entry(
     if not hits:
         return None
     if is_resolved:
-        # Resolved first-party symbol — exact-name match; the qualified name
-        # also keys into the index, so this honors precise resolution.
-        return hits[0]
+        # WI-damir. This used to be an ungated `return hits[0]`, justified as
+        # "the symbol is already disambiguated by resolution". That premise is
+        # FALSE, and it was the single largest source of non-realizable sinks
+        # on fresh substrate. Resolution establishes WHICH IN-REPO SYMBOL is
+        # called; it says nothing about whether that symbol IS the catalogued
+        # primitive. The built-in catalogs describe stdlib and third-party
+        # surfaces, so a first-party definition matching one BY NAME ALONE is a
+        # category error — measured 30 of 30 false on the 9-repo cohort:
+        # caddy's `func Log() *zap.Logger` (which RETURNS a logger and writes
+        # nothing) reported as a logging sink 18 times, and d3's `function
+        # log()` — the LOGARITHM, building d3.scaleLog — reported as
+        # console.log. The latter is INV-karud's headline example and survived
+        # WI-zazul because it was never a substring defect.
+        #
+        # The gate cannot be "resolved edges never match": a user-supplied
+        # catalog may legitimately name a first-party symbol, which is what the
+        # old comment was protecting. So compare the entry's declared module
+        # against the symbol's own PATH, normalised to module shape. The
+        # component-aware predicate's SUFFIX arm is what makes that work —
+        # a catalog module of `hypergumbo_core.cli` matches a path of
+        # `packages/…/hypergumbo_core/cli.py` because the trailing components
+        # agree, while `log/slog` does not match `logging.go`.
+        path_module = _module_from_symbol_path(edge_dst)
+        if not path_module:
+            # No path evidence to judge on (synthetic or external-shaped id) —
+            # keep the legacy exact-name behaviour rather than silently
+            # dropping the finding.
+            return hits[0]
+        from .io_boundary import _module_matches
+        for h in hits:
+            # An entry that declares no module carries no evidence to
+            # contradict the match; legacy behaviour is preserved for it.
+            if not getattr(h, "module", None) or _module_matches(
+                h.module, path_module,
+            ):
+                return h
+        return None
     return _lookup_named_entry(
         hits, callee_name, _extract_callee_module(edge_dst), ambiguous_names,
         call_construct=call_construct,
@@ -1068,6 +1102,59 @@ def _extract_callee_module(symbol_id: str) -> str:
     if len(parts) < 5:
         return ""
     return parts[1] if len(parts) > 1 else ""
+
+
+# Source-file extensions stripped when reading a symbol id's PATH segment as a
+# module (WI-damir). Named explicitly rather than inferred by length: `net.ws`
+# is a real module whose trailing component is two characters, and a heuristic
+# that treats short tails as extensions silently rewrites it to `net`.
+_SOURCE_FILE_EXTENSIONS = frozenset({
+    "py", "pyi", "js", "mjs", "cjs", "jsx", "ts", "tsx", "go", "rs", "rb",
+    "java", "kt", "kts", "swift", "scala", "sc", "php", "cs", "c", "h", "cc",
+    "cpp", "hpp", "cxx", "m", "mm", "ex", "exs", "erl", "hrl", "sh", "bash",
+    "zsh", "pl", "pm", "lua", "dart", "sol", "vue", "svelte",
+})
+
+
+def _module_from_symbol_path(symbol_id: str) -> str:
+    """Normalise an in-repo symbol id's PATH segment to a module-shaped string.
+
+    An in-repo symbol id carries a file path where an external one carries a
+    module (``go:logging.go:779-783:Log:function`` vs
+    ``go:os:0-0:Remove:external_symbol``). To judge a resolved symbol against a
+    catalog entry's declared module (WI-damir) the two have to be comparable,
+    so the trailing file extension is dropped and the rest is handed to
+    :func:`io_boundary._module_matches`, which normalises ``/`` to ``.`` and
+    compares whole components.
+
+    Returns ``""`` when there is no usable path evidence — an ``external``
+    placeholder or a malformed id — so the caller can fall back rather than
+    reject on the strength of nothing.
+
+    Examples::
+
+        packages/hypergumbo-core/src/hypergumbo_core/cli.py
+            -> packages/hypergumbo-core/src/hypergumbo_core/cli   (suffix-matches
+                                                                   hypergumbo_core.cli)
+        logging.go                    -> logging     (does NOT match log/slog)
+        src/pretix/static/d3/d3.v6.js -> src/pretix/static/d3/d3.v6
+                                                     (does NOT match console)
+    """
+    raw = _extract_callee_module(symbol_id)
+    if not raw or raw in ("external", "<external>"):
+        return ""
+    head, sep, tail = raw.rpartition(".")
+    # Strip a trailing SOURCE-FILE EXTENSION, matched against an explicit list.
+    #
+    # The first draft used a length heuristic — "a short alphanumeric segment
+    # after a dot is an extension" — and an existing test refuted it
+    # immediately: the module `net.ws` had its real trailing component `ws`
+    # stripped to `net`, which then failed to match a catalog entry declared as
+    # `net.ws`. A short component is not evidence of an extension, and no
+    # length threshold can separate the two; the set has to be named.
+    if sep and head and tail.lower() in _SOURCE_FILE_EXTENSIONS:
+        raw = head
+    return raw
 
 
 def _sink_module_compatible(

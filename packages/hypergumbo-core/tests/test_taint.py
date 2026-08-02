@@ -25,6 +25,8 @@ from hypergumbo_core.taint import (
     TaintSanitizer,
     TaintSink,
     TaintSource,
+    _match_propagation_entry,
+    _module_from_symbol_path,
     is_field_tainted,
     load_builtin_taint_catalog,
     load_taint_catalog,
@@ -2723,3 +2725,105 @@ class TestClaimsVsCliExtraLayers:
         names = {s.qualified_name for s in catalog.sanitizers_for_language("python")}
         assert "claims_sanitize" in names
         assert "cli_sanitize" in names
+
+
+class TestResolvedFirstPartyIsNotACatalogPrimitive:
+    """WI-damir: resolution does not make an in-repo symbol an external primitive.
+
+    ``_match_propagation_entry`` short-circuited every *resolved* edge to
+    ``hits[0]`` -- an ungated exact-name match -- justified in a comment as
+    "the symbol is already disambiguated by resolution". That premise is false.
+    Resolution establishes WHICH IN-REPO SYMBOL is called; it says nothing about
+    whether that symbol IS the catalogued external primitive. The catalog
+    describes stdlib and third-party primitives, so a first-party definition
+    matching one by name alone is a category error.
+
+    Measured on the 9-repo fresh-substrate cohort: **30 of 30** sinks that
+    resolved to an in-repo definition were false matches. Two, verified against
+    the source:
+
+    * caddy ``logging.go:779`` -- ``func Log() *zap.Logger``, whose doc comment
+      reads "Log returns the current default logger". It RETURNS a logger; it
+      writes nothing. Reported as a logging sink 18 times.
+    * pretix's vendored ``d3.v6.js:14596`` -- ``function log()``, which builds
+      ``d3.scaleLog``. The LOGARITHM. This is INV-karud's headline example, and
+      it survived WI-zazul because it was never a substring defect.
+
+    The gate cannot simply be "resolved edges never match": a user-supplied
+    catalog may legitimately name a first-party symbol, which is the case the
+    original comment was protecting. So the symbol's PATH is normalised to a
+    module-shaped string and compared with the same component-aware predicate
+    WI-zazul installed -- whose suffix arm is what lets a catalog module of
+    ``hypergumbo_core.cli`` match a path of ``.../hypergumbo_core/cli.py``.
+    """
+
+    def _sink(self, module: str, name: str) -> TaintSink:
+        return TaintSink(
+            zone="logging", trust_level="untrusted",
+            module=module, name=name, kind="function",
+        )
+
+    def test_caddy_log_accessor_is_not_a_logging_sink(self) -> None:
+        """A first-party Log() that RETURNS a logger is not log/slog.Log."""
+        index = {"Log": [self._sink("log/slog", "Log")]}
+        assert _match_propagation_entry(
+            index, "go:logging.go:779-783:Log:function",
+            frozenset(), is_resolved=True,
+        ) is None
+
+    def test_d3_logarithm_is_not_console_log(self) -> None:
+        """INV-karud's headline false positive, which WI-zazul did not remove."""
+        index = {"log": [self._sink("console", "log")]}
+        assert _match_propagation_entry(
+            index, "javascript:src/pretix/static/d3/d3.v6.js:14596-14606:log:function",
+            frozenset(), is_resolved=True,
+        ) is None
+
+    def test_first_party_catalog_entry_still_matches(self) -> None:
+        """Non-vacuity floor (L17), and the case the old comment defended.
+
+        A catalog that names a first-party module must still match the resolved
+        symbol whose PATH corresponds to it -- otherwise this fix is
+        indistinguishable from "resolved edges never match", which would break
+        every user-supplied catalog.
+        """
+        index = {"cmd_sketch": [self._sink("hypergumbo_core.cli", "cmd_sketch")]}
+        got = _match_propagation_entry(
+            index,
+            "python:packages/hypergumbo-core/src/hypergumbo_core/cli.py:100-110:cmd_sketch:function",
+            frozenset(), is_resolved=True,
+        )
+        assert got is not None, (
+            "a catalog entry naming a first-party module no longer matches the "
+            "resolved symbol at the corresponding path"
+        )
+
+    def test_unresolved_externals_are_unaffected(self) -> None:
+        """The unresolved path is WI-razol's and must keep working untouched."""
+        index = {"Remove": [self._sink("os", "Remove")]}
+        assert _match_propagation_entry(
+            index, "go:os:0-0:Remove:external_symbol",
+            frozenset(), is_resolved=False,
+        ) is not None
+
+    def test_short_module_component_is_not_an_extension(self) -> None:
+        """`net.ws` must keep its trailing component.
+
+        The first draft stripped "a short alphanumeric segment after a dot" as
+        a file extension, which rewrote the real module `net.ws` to `net` and
+        broke a pre-existing test. Pinned here so the extension list cannot
+        quietly become a heuristic again.
+        """
+        assert _module_from_symbol_path(
+            "python:net.ws:0-0:send:unresolved",
+        ) == "net.ws"
+        assert _module_from_symbol_path(
+            "python:os.environ:0-0:get:unresolved",
+        ) == "os.environ"
+        # ...while real source-file extensions ARE stripped.
+        assert _module_from_symbol_path(
+            "go:logging.go:779-783:Log:function",
+        ) == "logging"
+        assert _module_from_symbol_path(
+            "javascript:src/pretix/static/d3/d3.v6.js:1-2:log:function",
+        ) == "src/pretix/static/d3/d3.v6"
