@@ -1,0 +1,58 @@
+Original commit body from 5b2670cda4e10e9a7628771106fa627707710642:
+
+A filter ADR-0017 specified, four docstrings described as live, and nothing ever
+called. Added 2026-05-14 with ZERO production callers; its only reachability was
+five unit tests, which is precisely what held it at 100% coverage and kept it
+invisible. The contract it was written for was implemented by a DIFFERENT
+function — _lookup_named_entry filtering with io_boundary._module_matches — and
+the two drifted: the live one was bidirectional SUBSTRING containment until
+WI-zazul and ungated resolved first-party edges entirely until WI-damir.
+
+HARVESTED BEFORE DELETING. The dead function was MORE CORRECT on one point: it
+exempted both `external` and `<external>` from module filtering, per ADR-0017
+§3a, while the live path tested only the bare spelling. So an `<external>` hint
+fell into the module-FILTER branch and was compared as though it were a real
+module name — matching nothing and SUPPRESSING the finding, the opposite of the
+ADR's "degrade to short-name matching, because rejecting outright would suppress
+legitimate findings". Both spellings now live in one
+_UNRESOLVED_MODULE_PLACEHOLDERS frozenset, which is what stops the pair drifting
+apart again.
+
+MEASURED: zero cohort change (272 flows / 13 non-realizable, 0 added, 0 removed
+across the same 9 repos). The instrument check asserts the exemption is ACTIVE
+before measuring, so this is a real null and not a stale read — `<external>`
+occurs in that corpus as flow SEED symbols rather than as callee module hints
+reaching the matcher. Practical impact on real corpora is UNMEASURED, NOT ZERO.
+This PR rests on ADR conformance, a unit test, and deleting a filter that never
+ran — not on a measured improvement.
+
+FOUR DOCSTRINGS DESCRIBED A MECHANISM THAT DOES NOT RUN, including
+taint_refine.py's MODULE docstring, whose stated reason for that pass existing
+was "the rewritten dst then participates in _sink_module_compatible directly".
+The pass has a real effect, through a different consumer with different
+semantics, so anyone reading it to learn what module strings must look like
+reasoned about the wrong predicate. L50 at the largest scale it has appeared:
+not a comment justifying a boundary, but a module's stated purpose.
+
+ADR-0017 AMENDED IN PLACE at three sites (docs/adr/README.md: ADRs are edited in
+place, git history is the record): §3a names the real filter and carries a dated
+correction; the per-language section no longer attributes the work to the dead
+function; and §"Production deployments" no longer claims hypergumbo's own
+self-audit runs "sink-module-compatibility filtering", which was false.
+
+The real ADR-0037 debt is now filed rather than implied (WI-lonad): both
+invalidation markers say "implementing fixes will re-key sink matching and
+refinement on dst_ref", and dst_ref appears 14 times in ir.py and ZERO times in
+taint.py.
+
+DOGFOODING (WI-jozah): `hypergumbo dead-code-maybe` on its own tree DOES flag
+this function, vindicating D7's production-seed default — but reports
+test_only_reachable as a summary COUNT only (1851 of 2094), with no
+per-candidate cohort label in json or text, so the highest-value bucket is
+unselectable.
+
+4169 passed; changed source at 100% coverage.
+
+Refs WI-jozah, WI-lonad
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
