@@ -45,13 +45,6 @@ steps:
     depends_on: []
     commands:
       - '[ -f "$(git rev-parse --git-dir)/shallow" ] && git fetch --unshallow origin || echo "repo already complete"'
-      # WI-fodad: same warm-up as the per-PR gate's prepare-git. full-suite is
-      # the ONLY workflow that runs the root `tests/` tree (nightly covers
-      # packages/*/tests/ only), so it is the other place the 30 s-capped
-      # full-history walk executes. Bounded + non-fatal for the same reason.
-      - >
-        timeout 300 git commit-graph write --reachable --changed-paths
-        || echo "commit-graph write skipped (>300s or unsupported) -- not fatal"
 
   - name: build-grammars
     image: python:3.11-bookworm

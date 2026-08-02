@@ -52,10 +52,25 @@ def get_commit_timeline(
     compared directly to the entry timestamps in the corpus (which
     are naive local times from ``datetime.now().isoformat()``).
     """
+    # WI-fodad: the timeout is generous, and deliberately so. `git log --reverse`
+    # with a pathspec must walk the WHOLE history before emitting a line, which
+    # on a cold checkout means reading most of the object store. Measured on the
+    # CI agent: 1,185,559 ms and 852,661 ms on the FIRST invocation against a
+    # fresh clone (25 packs, no usable commit-graph, random reads across all of
+    # them), then 17-19 ms on every invocation after — the cost is I/O, and it is
+    # paid once. On a warm dev checkout the same command is ~30 ms.
+    #
+    # The old 30 s cap was a bet that an unbounded, environment-dependent cold
+    # read finishes in 30 seconds, and it lost intermittently in CI, surfacing as
+    # five simultaneous TimeoutExpired failures in a file the PR hadn't touched —
+    # indistinguishable, from the CI summary, from a real regression. This is a
+    # backfill/maintenance tool with no latency requirement, so the cap's only
+    # real job is to stop a genuinely wedged git from hanging a run forever.
+    # 30 minutes does that without gambling on disk conditions.
     result = subprocess.run(
         ["git", "log", "--pretty=format:%aI %H", "--reverse", "--",
          file_path],
-        capture_output=True, text=True, cwd=repo_root, timeout=30,
+        capture_output=True, text=True, cwd=repo_root, timeout=1800,
     )
     if result.returncode != 0:
         return []
