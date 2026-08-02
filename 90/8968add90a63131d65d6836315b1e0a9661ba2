@@ -1,0 +1,43 @@
+Original commit body from 5eae01425d767db5fabc09ae5a47b0e871413f6f:
+
+Caught on the dev push pipeline for 6e92792a34 — the WI-fodad merge itself —
+which printed
+
+    fatal: bad object 66737979dee9a56daeebf55731181ddf057ac53c
+    ✅ PR changes no .py files — skipping pytest
+
+and reported SUCCESS having run zero tests, on a commit changing nine files
+including four Python ones.
+
+Two defects compounding.
+
+(1) A FAILED git diff IS BYTE-IDENTICAL TO A CLEAN ONE. The condition was
+    [ -z "$(git diff --name-only "$BASE" "$HEAD" | grep -E '\.py$' || true)" ].
+    A diff that errors writes nothing to stdout, so the gate could not tell
+    "nothing changed" from "I could not find out", and resolved that ambiguity
+    by skipping the suite. Now the diff and its exit status are captured
+    separately and the skip fires only on a SUCCESSFUL diff that genuinely
+    reported no .py files. Same block WI-modur repaired, different hole: that
+    fix changed which question the gate asks, this changes what it does when it
+    cannot get an answer (L54, default-deny).
+
+(2) THE BASE WAS A REWRITTEN COMMIT, SYSTEMATICALLY. CI_PREV_COMMIT_SHA is the
+    previous PIPELINE's commit, not the previous tip of this branch. auto-pr
+    merges by rebase, which rewrites the commit, so after every rebase merge
+    that SHA names an object absent from the clone. Verified: 66737979de is the
+    pre-rebase copy of 6e92792a34, reachable only from the feature branch
+    auto-pr had just deleted, and NOT an ancestor of dev. This fired on every
+    rebase-merged push, not intermittently. The base is now validated with
+    git cat-file -e before use, falling back to HEAD^ only when it does not
+    resolve — scoped deliberately, since always diffing HEAD^ would undercount
+    a push landing more than one commit.
+
+Mutation-tested both ways against the extracted shell block (which is executed,
+not read): reinstating either the one-line diff or the unvalidated base turns
+exactly the corresponding new test red.
+
+Fifth distinct route in the L48 family and the second inside this one block.
+
+Refs WI-vilor
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
