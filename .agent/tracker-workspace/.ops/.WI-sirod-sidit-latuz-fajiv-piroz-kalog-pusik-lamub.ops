@@ -1,0 +1,21 @@
+- op: create  # 9dd1
+  at: '2026-08-02T21:17:40Z'  # 9dd1
+  by: agent  # 9dd1
+  actor: jgstern_agent  # 9dd1
+  clock: 1  # 9dd1
+  nonce: 9dd1  # 9dd1
+  data:  # 9dd1
+    kind: work_item  # 9dd1
+    title: "taint does not propagate through first-party THIN WRAPPERS around catalogued primitives (kserve run() -> subprocess.run) - 3 real flows lost to WI-damir's gate"  # 9dd1
+    status: todo_hard  # 9dd1
+    priority: 2  # 9dd1
+    parent:  # 9dd1
+    tags:  # 9dd1
+    - analysis_quality  # 9dd1
+    - adr_0017  # 9dd1
+    isbefore: []  # 9dd1
+    duplicate_of: []  # 9dd1
+    not_duplicate_of: []  # 9dd1
+    pr_ref:  # 9dd1
+    description: "FOUND BY THE WI-damir VALIDATION COHORT 2026-08-02, as the one class of flow\nthat fix legitimately loses. Filed rather than folded in, because the fix\nbelongs in propagation, not in the matching gate.\n\nWHAT HAPPENS. kserve/hack/setup/scripts/generate-versions-from-gomod.py:52:\n\n    def run(cmd):\n        return subprocess.run(cmd, shell=True, capture_output=True,\n                              text=True, check=True).stdout\n\nA first-party ONE-LINE WRAPPER around the catalogued primitive. Before WI-damir\nthe engine matched the wrapper `run` to the catalog's `subprocess.run` BY NAME\nand reported flows through it. That was accidentally right in effect -- data\nreally does reach subprocess -- and wrong in mechanism: the wrapper is not the\nprimitive, and the same name-only match is what reported caddy's\n`func Log() *zap.Logger` as a logging sink and d3's logarithm as console.log.\n\nWI-damir correctly refuses to call the wrapper the primitive. The flow is then\nlost because nothing propagates THROUGH the wrapper body to the real\nsubprocess.run call inside it. Measured cost on the 9-repo cohort: 3 flows of\nthe 23 removed (kserve subprocess.run x2, json.dump x1). The other 20 removals\nwere verified false against the source.\n\nTHIS IS THE SAME SHAPE AS WI-nibav (defusedcsv), and the pair is the point: both\nare cases where substring/name-only matching produced a right-ish answer by a\nwrong mechanism, and tightening the mechanism exposes a real gap that has to be\nclosed somewhere else. WI-nibav's home is the catalog; this one's is\ninterprocedural propagation.\n\nFIX SHAPE (not implemented). The call graph already contains\nget_helm_versions -> run -> subprocess.run, so the information is present; what\nis missing is that a first-party function which reaches a catalogued sink should\nmake its own CALLERS reach it too. Options to weigh, not a decision:\n  (a) transitive closure -- treat a first-party function that calls a sink as a\n      sink for its callers. Simple; risks a very wide blast radius.\n  (b) propagate only through THIN wrappers (single-statement bodies that return\n      or forward the primitive's result). Narrow, matches the observed shape,\n      and is checkable from the AST.\n  (c) leave it, and disclose that flows through first-party wrappers are not\n      reported.\nPrefer (b) on current evidence, but MEASURE the blast radius of (a) on the\ncohort before choosing -- the cohort A/B harness for this exists\n(scratchpad cohort-after.sh / ab2.py) and gives a per-flow diff.\n\nDO NOT close this by relaxing WI-damir's gate. That gate removed 20 verified\nfalse positives including INV-karud's headline example; restoring 3 real flows\nby readmitting 20 false ones is a bad trade and reproduces the defect."  # 9dd1
+    fields: {}  # 9dd1
