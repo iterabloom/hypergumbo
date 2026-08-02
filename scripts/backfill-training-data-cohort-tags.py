@@ -73,6 +73,18 @@ def get_commit_timeline(
         capture_output=True, text=True, cwd=repo_root, timeout=1800,
     )
     if result.returncode != 0:
+        # Surface WHY. Returning a bare [] here is load-bearing for callers (a
+        # path with no history legitimately yields an empty timeline), but the
+        # silence made a CI failure undiagnosable: an empty timeline makes
+        # `resolve_sha_at_timestamp` return "", every `not sha.startswith(...)`
+        # assertion pass vacuously, and exactly one test fail — which reads as
+        # "one flaky assertion" rather than "git failed". Keep the [], print the
+        # cause. (WI-fodad)
+        print(
+            f"[get_commit_timeline] git log failed for {file_path!r} in "
+            f"{repo_root!r}: rc={result.returncode} stderr={result.stderr.strip()!r}",
+            file=sys.stderr,
+        )
         return []
 
     timeline: list[tuple[str, str]] = []

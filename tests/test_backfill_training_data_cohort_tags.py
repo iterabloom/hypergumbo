@@ -517,14 +517,45 @@ class TestRealV0WindowBoundaries:
         so the cost is paid before pytest starts. This fixture is the other half:
         even when the walk IS slow, it happens once and fails once, legibly.
         """
-        return bf_mod.get_commit_timeline(self.REPO_ROOT, bf_mod.INFRA_PATH)
+        walked = bf_mod.get_commit_timeline(self.REPO_ROOT, bf_mod.INFRA_PATH)
+        # NON-VACUITY FLOOR (L17). Without this, an empty timeline makes four of
+        # this class's five tests pass for free: resolve_sha_at_timestamp returns
+        # "" and every `not sha.startswith(...)` assertion holds trivially. CI hit
+        # exactly that and reported 1 failed / 4 passed, which reads as one flaky
+        # assertion instead of "the git walk produced nothing".
+        assert walked, (
+            "get_commit_timeline returned an EMPTY timeline for "
+            f"{bf_mod.INFRA_PATH} in {self.REPO_ROOT}. git failed (its stderr is "
+            "now printed by get_commit_timeline) or the checkout's history for "
+            "this path is missing. Every test in this class is vacuous without it."
+        )
+        return walked
 
     def test_timeline_includes_known_shas(self, bf_mod, timeline) -> None:
-        """The timeline includes the four boundary commits."""
+        """The timeline includes the four boundary commits.
+
+        The failure message is deliberately verbose. This assertion failed once
+        in CI with a bare "SHA not found", which is indistinguishable between
+        "the walk returned a DIFFERENT history" (a truncated/partial clone) and
+        "the walk returned NOTHING" (git errored and get_commit_timeline
+        swallowed it into []). Those need opposite fixes, and the bare message
+        cost a whole CI round-trip to disambiguate.
+        """
         shas = {sha for _, sha in timeline}
-        for short in ["75596a4153d4", "704548fe1e90", "7310783e1b26", "9ac06cc88a00"]:
-            matches = [s for s in shas if s.startswith(short)]
-            assert matches, f"SHA starting with {short} not found in timeline"
+        missing = [
+            short for short in
+            ["75596a4153d4", "704548fe1e90", "7310783e1b26", "9ac06cc88a00"]
+            if not [s for s in shas if s.startswith(short)]
+        ]
+        assert not missing, (
+            f"boundary SHAs absent from the timeline: {missing}\n"
+            f"timeline length: {len(timeline)} (expected ~52)\n"
+            f"first entry: {timeline[0] if timeline else '<EMPTY>'}\n"
+            f"last entry:  {timeline[-1] if timeline else '<EMPTY>'}\n"
+            "An EMPTY timeline means git failed and get_commit_timeline "
+            "returned [] (it swallows a non-zero returncode). A SHORT timeline "
+            "means the checkout's history for this path is incomplete."
+        )
 
     def test_entry_before_75596a_resolves_to_earlier(self, bf_mod, timeline) -> None:
         """Entry before the initial sparse-selection commit."""
