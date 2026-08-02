@@ -304,10 +304,9 @@ class PreflightResult:
         forgejo_token: Effective forge credential for the resolved ``backend`` —
             FORGEJO_TOKEN on forgejo, HG_GITHUB_TOKEN on github (the two are NOT
             interchangeable: the Codeberg token would 401 against github.com).
-        push_remote: Git remote to push to (``origin`` or ``selfh`` during failover).
+        push_remote: Git remote to push to (always ``origin``).
         backend: Forge backend, ``"forgejo"`` or ``"github"``, derived from the
-            resolved ``api_base`` (forced to ``"forgejo"`` while CI failover is
-            active).
+            resolved ``api_base``.
     """
 
     ok: bool
@@ -377,60 +376,6 @@ def _load_env(repo_root: Path) -> dict[str, str]:
         result[key] = value
 
     return result
-
-
-@dataclass
-class _FailoverState:
-    """CI failover state parsed from ``.git/CI_FAILOVER_ACTIVE``."""
-
-    active: bool = False
-    api_base: str = ""
-    push_remote: str = "origin"
-    token: str = ""
-    user: str = ""
-
-
-def _detect_failover(git_dir: Path, env_vars: dict[str, str]) -> _FailoverState:
-    """Detect active CI failover and return override state.
-
-    Reads the ``.git/CI_FAILOVER_ACTIVE`` JSON flag file written by
-    ``ci-failover engage``. When active, overrides API base, credentials,
-    and push remote to target the self-hosted Forgejo instance.
-    """
-    flag_file = git_dir / "CI_FAILOVER_ACTIVE"
-    if not flag_file.is_file():
-        return _FailoverState()
-
-    try:
-        data = json.loads(flag_file.read_text())
-    except (json.JSONDecodeError, OSError):
-        return _FailoverState()
-
-    local_url = data.get("selfhosted_forgejo_url", "")
-    local_repo = data.get("selfhosted_forgejo_repo", "")
-    if not local_url or not local_repo:
-        return _FailoverState()
-
-    token = (
-        env_vars.get("SELFHOSTED_FORGEJO_TOKEN")
-        or os.environ.get("SELFHOSTED_FORGEJO_TOKEN", "")
-        or env_vars.get("FORGEJO_TOKEN")
-        or os.environ.get("FORGEJO_TOKEN", "")
-    )
-    user = (
-        env_vars.get("SELFHOSTED_FORGEJO_USER")
-        or os.environ.get("SELFHOSTED_FORGEJO_USER", "")
-        or env_vars.get("FORGEJO_USER")
-        or os.environ.get("FORGEJO_USER", "")
-    )
-
-    return _FailoverState(
-        active=True,
-        api_base=f"{local_url}/api/v1/repos/{local_repo}",
-        push_remote="selfh",
-        token=token,
-        user=user,
-    )
 
 
 def _api_base_for(host: str, owner: str, repo: str) -> str:
@@ -1119,13 +1064,10 @@ def pending_sync_lines(repo_root: Path) -> int:
     """
     total = 0
 
-    # 0. Determine diff base: prefer the authoritative remote's dev branch.
-    #    During failover (.git/CI_FAILOVER_ACTIVE exists), selfh is
-    #    authoritative and origin is stale — diffing against origin/dev
-    #    inflates the pending count with ops already synced via selfh.
+    # 0. Determine diff base: origin/dev is the only authoritative remote
+    #    (WI-hajif retired the CI failover remote).
     diff_base = "HEAD"
-    failover_active = (repo_root / ".git" / "CI_FAILOVER_ACTIVE").is_file()
-    remotes = ["selfh/dev", "origin/dev"] if failover_active else ["origin/dev"]
+    remotes = ["origin/dev"]
     for remote_ref in remotes:
         rev_result = _git(
             repo_root, "rev-parse", "--verify", remote_ref, check=False,
@@ -1282,16 +1224,7 @@ def preflight_check(repo_root: Path) -> PreflightResult:
         "HG_GITHUB_TOKEN", ""
     )
 
-    # 6a. Failover detection — override credentials, API base, push remote.
-    #     Failover always targets the self-hosted Forgejo, so it overrides only
-    #     the Forgejo credential (the backend is forced to "forgejo" at step 9).
-    failover = _detect_failover(git_dir, env_vars)
     push_remote = "origin"
-    if failover.active:
-        forgejo_token = failover.token
-        forgejo_user = failover.user
-        push_remote = failover.push_remote
-        _log("[SELF-HOSTED] Failover active — targeting self-hosted Forgejo")
 
     # Fail fast only when NO forge credential exists at all; the backend-specific
     # requirement (which token this origin actually needs) is enforced at step 9.
@@ -1324,24 +1257,16 @@ def preflight_check(repo_root: Path) -> PreflightResult:
             ok=False, error=f"no remote '{target_remote}' configured",
         )
 
-    # 9. API base — failover overrides origin-based detection
-    if failover.active:
-        api_base = failover.api_base
-    else:
-        api_base = _detect_api_base(repo_root)
+    # 9. API base from the origin remote.
+    api_base = _detect_api_base(repo_root)
     if not api_base:
         return PreflightResult(
             ok=False,
             error="could not parse Forgejo API URL from origin remote",
         )
 
-    # Forge backend follows the resolved api_base (i.e. the origin host);
-    # failover always targets the self-hosted Forgejo regardless of origin.
-    backend = (
-        "github"
-        if not failover.active and "api.github.com" in api_base
-        else "forgejo"
-    )
+    # Forge backend follows the resolved api_base (i.e. the origin host).
+    backend = "github" if "api.github.com" in api_base else "forgejo"
 
     # Select the effective push/API credential by backend.  For GitHub, the PAT
     # authenticates as the password and the username is ignored, so the

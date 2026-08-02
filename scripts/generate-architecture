@@ -861,7 +861,7 @@ def extract_tracker_architecture() -> str:
 SCRIPT_CATEGORIES: dict[str, list[str]] = {
     "CI & Release": [
         "auto-pr", "merge-pr", "prepare-release", "release-check",
-        "ci-debug", "ci-failover", "tag-release", "release",
+        "ci-debug", "tag-release", "release",
     ],
     "Testing & Quality": [
         "smart-test", "check-package-coverage", "integration-test",

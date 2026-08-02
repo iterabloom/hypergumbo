@@ -235,16 +235,9 @@ write_fallback_diagnostic() {
 get_baseline() {
     local base_branch="${1:-origin/dev}"
 
-    # WI-tolil / INV-bifud: failover-aware baseline. Under permanent CI failover
-    # the authoritative remote is selfh and origin/dev is stale — anchoring the
-    # merge-base on origin/dev would span the whole tree and force a slow,
-    # failure-prone whole-repo slice on every run. Mirror the auto-pr/pre-work
-    # failover detection. Guarded on selfh/dev resolving so a missing ref can
-    # never drop us to a HEAD~1 under-select.
-    if [[ -f "$REPO_ROOT/.git/CI_FAILOVER_ACTIVE" ]] && \
-       git rev-parse --verify selfh/dev &>/dev/null; then
-        base_branch="selfh/dev"
-    fi
+    # WI-hajif: the failover-aware baseline (WI-tolil / INV-bifud) is retired
+    # along with the self-hosted-Forgejo failover — origin is now the only
+    # authoritative remote, so there is no second remote to re-anchor onto.
 
     # WI-kalub (Step 1a/1d): anchor the per-PR baseline on the MERGE-BASE with the
     # authoritative dev — i.e. the branch's OWN changes. We deliberately do NOT
