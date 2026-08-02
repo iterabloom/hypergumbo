@@ -1,0 +1,78 @@
+Original commit body from 8f9312f0f76a3a7865d7518213958015ee83b781:
+
+Two defects that compose into "a PR merges while CI is pending". PR #160 did
+exactly that. They ship together because neither is safe alone: fixing only the
+gates makes every pipeline over 300s refuse to merge, and fixing only the check
+leaves the fail-open path live for every other verdict.
+
+WI-ninar — poll_ci asked a question its backend can never answer yes to.
+It decided "has any job started?" by testing whether any status context had gone
+NON-pending. That was correct for Forgejo Actions, which posted one context PER
+JOB, so contexts flipped as individual jobs finished. Woodpecker posts exactly
+ONE AGGREGATE context that stays pending for the entire pipeline, so the answer
+was "no" for the whole run and every pipeline outliving CI_STALE_PENDING_SECONDS
+(300s default, against a ~360s suite) was declared a hung runner. It was not
+detecting anything; it was structurally unsatisfiable.
+
+Now it asks whether a context EXISTS AT ALL. Woodpecker posts it when it creates
+the run, so presence proves dispatch and absence is the dispatch failure the
+check was written to catch. any_job_started -> run_dispatched. A parse failure
+keeps polling rather than fabricating a hung verdict, so an unreadable backend
+surfaces as an honest timeout (2), not a fake dispatch failure (3). The
+threshold is deliberately NOT raised — that was the by-hand workaround that
+forced #160 through, and it moves the false verdict instead of removing it.
+
+WI-ditav — four merge gates enumerated the codes that BLOCK.
+The filing named one site; the audit found four. merge-pr and auto-pr's
+POST-REBASE merge path fell through to the merge on exit 3 as shipped; auto-pr's
+flush and main paths would fall through on any code added later. Exit 3 was
+introduced AFTER those guards were written, by a different fix, so a guard that
+was correct the day it was authored silently became permission. poll_ci's own
+header comment listed only 0/1/2 and never mentioned 3, which is plausibly how
+four call sites came to omit it; the comment is fixed and now says callers may
+not depend on it being complete.
+
+The fix is a chokepoint, not "also handle 3" — that reproduces the same shape
+one code later. ci_verdict_permits_merge is the single home for "may we merge on
+this verdict?": 0 permits, everything else refuses and preserves its code, and
+an unrecognised verdict says so rather than refusing silently. The two sites
+that were ALREADY safe were safe for exactly the reason L54 gives — they branch
+on rc==0 — which is the argument for making that the only spelling. Per-site
+recovery text stays at the call sites, because flush/main/post-rebase
+legitimately advise different next steps (L27). Retry-loop conditions are
+untouched: "should we retry?" is a different question from "may we merge?".
+
+Behavioural tests, no forge required: poll_ci is driven with api_get overridden
+in the sourced shell, so the WI-ninar change is distinguished from the bug it
+replaces on identical input — one pending aggregate context past the threshold
+must NOT yield 3, while an empty status list still must (without that second
+assertion the fix is indistinguishable from deleting the check). Mutation-tested
+three ways; each turns exactly the corresponding test red.
+
+Two notes on the tests themselves. The first recurrence guard was too strict and
+false-positived on auto-pr's exit-2 RECOVERY branch (which compares against 2,
+then re-polls); rather than add an exemption it is scoped to merge-pr, where the
+absence of retry/recovery logic means any such comparison IS the merge gate, and
+the reasoning is recorded in place. And test_autopr_exit2_retry asserted the
+literal string "exit 2", which no longer appears now that escalations propagate
+exit "$poll_result"; that assertion now checks propagation and defers the
+stronger behavioural claim to the new suite.
+
+Per-PR coverage is CLOSED, not merely disclosed: the new test's subject is
+scripts/lib/*, which the top-level mapper deliberately does not map, so it is
+named in the forge-arms step of .woodpecker/woodpecker.yml, which runs on any
+scripts/** change.
+
+Governance: scripts/lib/forgejo-api.sh, scripts/merge-pr and scripts/auto-pr are
+governance files. Design was filed on WI-ninar and approved by the human, along
+with merging via auto-pr without --gov.
+
+Branch protection is now an actual backstop too: the required check was
+configured correctly on dev and main, but "Do not allow bypassing the above
+settings" was unticked, so the rules did not apply to the merging account —
+which is the only way a merge succeeds against a pending required check. The
+human has ticked it on both.
+
+Refs WI-ninar, WI-ditav
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
