@@ -56,9 +56,39 @@ when:
 # failed merge-base + "last 1 commits"). Full clone — cheap on the self-hosted agent,
 # and it kills that whole class of shallow-history bugs. (GHA used fetch-depth:50 only
 # because GitHub's hosted runners bill bandwidth; we don't.)
+#
+# `partial: false` IS LOAD-BEARING (WI-fodad). It is NOT a synonym for the depth
+# rationale above — shallow and partial are two independent axes, and until this
+# line existed the comment's "Full clone" claim was simply false. plugin-git
+# defaults `partial: true`, and its own defaults.go then sets:
+#     p.Config.Depth  = 1
+#     p.Config.filter = "tree:0"
+# so the checkout is a PROMISOR repo carrying no tree objects beyond the one
+# commit it checked out. `git fetch --unshallow` (prepare-git, below) deepens the
+# COMMIT history but inherits the configured filter, so the trees stay missing.
+# Consequence: every command needing trees across history lazily fetches them
+# from origin ONE OBJECT AT A TIME over HTTPS. Commit-only reads (dco's rev-list,
+# merge-base, the recency window) never notice; a history-wide tree walk pays a
+# network round trip per object. Measured on this agent, `git log --reverse -- <1
+# path>` over 6,445 commits: 1,185,559 ms on first run, 19 ms on the second (the
+# objects are local by then) — against 27 ms on a dev box with a complete clone.
+# That 44,000x is not disk (the volume is a local ext4 SSD) and not contention;
+# it is ~26,000 sequential HTTPS fetches. It is also why the reverted
+# commit-graph warm-up made CI *worse*: `--changed-paths` diffs every commit, so
+# it triggered the identical stampede on every pipeline.
+#
+# THE COST, stated so nobody has to rediscover it: a complete clone transfers the
+# whole pack set (~264 MB today) instead of one commit, and it happens serially
+# in the clone step rather than in prepare-git alongside lint/mypy/audit. That is
+# one bulk transfer on one connection, traded against ~26,000 round trips — and
+# it is the shape this file always claimed to have. The `--unshallow` in
+# prepare-git becomes a no-op ("repo already complete") and is kept as the
+# backstop for a server-side clone override.
 clone:
   git:
     image: woodpeckerci/plugin-git
+    settings:
+      partial: false
 
 steps:
   # ── ruff + bandit ─────────────────────────────────────────────────────────
@@ -205,6 +235,25 @@ steps:
     when:
       - path: *non_tracker_paths       # tracker-sync PRs need no history (only tracker-validate runs)
     commands:
+      # WI-fodad gate. `partial: false` in the clone block is the fix; this
+      # asserts it actually TOOK. Worth a gate rather than trust because the
+      # failure it prevents is SILENT and expensive — not an error, just a
+      # 20-minute history walk that reads as a hung runner — and the setting can
+      # stop taking effect without anyone editing this file (a plugin-git bump,
+      # a server-side clone override). DEFAULT-DENY per L54: refuse on the
+      # PRESENCE of any filter rather than enumerating the ones known to hurt.
+      - |
+        _filter=$(git config --get remote.origin.partialclonefilter || true)
+        _promisor=$(git config --get remote.origin.promisor || true)
+        if [ -n "$_filter" ] || [ "$_promisor" = "true" ]; then
+          echo "❌ PARTIAL CLONE ACTIVE — filter='$_filter' promisor='$_promisor'"
+          echo "   This checkout is missing tree objects. Every history-wide git"
+          echo "   walk will fetch them from origin ONE AT A TIME (measured:"
+          echo "   1,185,559 ms for a single 6,445-commit pathspec walk)."
+          echo "   Fix: the clone block must carry 'settings: {partial: false}'."
+          exit 1
+        fi
+        echo "✅ clone carries no partial-clone filter (trees are local)"
       - '[ -f "$(git rev-parse --git-dir)/shallow" ] && git fetch --unshallow origin || echo "repo already complete"'
       - git fetch --no-tags origin "$CI_COMMIT_TARGET_BRANCH"
 

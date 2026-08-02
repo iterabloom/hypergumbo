@@ -33,9 +33,17 @@ when:
   - event: cron
     cron: full-suite
 
+# `partial: false` is load-bearing — see the per-PR gate's clone block for the
+# full rationale (WI-fodad). plugin-git defaults to `--depth=1 --filter=tree:0`,
+# which leaves the checkout without tree objects; `--unshallow` restores commits
+# but NOT trees, so any history-wide tree walk fetches them from origin one at a
+# time. This workflow is the most exposed of the three: it runs the whole
+# `pytest tests/` suite AND self-tree-validation.
 clone:
   git:
     image: woodpeckerci/plugin-git
+    settings:
+      partial: false
 
 steps:
   # Unshallow the shared .git once (self-tree-validation + tests/ do history /
@@ -44,6 +52,17 @@ steps:
     image: python:3.11-bookworm
     depends_on: []
     commands:
+      # WI-fodad gate — see the per-PR gate's prepare-git for the rationale.
+      # DEFAULT-DENY (L54): refuse on the presence of any filter.
+      - |
+        _filter=$(git config --get remote.origin.partialclonefilter || true)
+        _promisor=$(git config --get remote.origin.promisor || true)
+        if [ -n "$_filter" ] || [ "$_promisor" = "true" ]; then
+          echo "❌ PARTIAL CLONE ACTIVE — filter='$_filter' promisor='$_promisor'"
+          echo "   Fix: the clone block must carry 'settings: {partial: false}'."
+          exit 1
+        fi
+        echo "✅ clone carries no partial-clone filter (trees are local)"
       - '[ -f "$(git rev-parse --git-dir)/shallow" ] && git fetch --unshallow origin || echo "repo already complete"'
 
   - name: build-grammars

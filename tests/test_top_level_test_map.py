@@ -399,6 +399,20 @@ KNOWN_UNREACHABLE = {
     # guard" gap this list keeps recording, and it wants the declarative
     # "covers:" marker rather than another rename.
     "test_ci_pytest_selection_gate.py",
+    # WI-fodad: asserts every .woodpecker/*.yml clone step sets
+    # `partial: false` (plugin-git's default produces a --filter=tree:0
+    # promisor checkout, which made one history walk take 1,185,559 ms).
+    # Same shape as the entry above and the SECOND of its kind: the subject is
+    # YAML, the mapper covers scripts/ and .agent/hooks/_shared/, and the
+    # mapper itself is a governance file. Consequence, stated rather than
+    # hidden: editing a workflow does NOT select this test per-PR.
+    # What makes that tolerable HERE and not merely tolerated: the regression
+    # this guards is also caught at RUN TIME by prepare-git, which inspects
+    # remote.origin.partialclonefilter on every pipeline and exits non-zero.
+    # So the per-PR hole costs the static gate, not the protection. Removing
+    # the runtime half would make this exemption load-bearing, which is why
+    # test_ci_clone_is_complete.py asserts that half exists.
+    "test_ci_clone_is_complete.py",
     # WI-hajif: a recurrence guard over the ABSENCE of the retired CI-failover
     # layer. It scans scripts/, .githooks/, .agent/hooks/ and packages/*/src for
     # failover tokens, so it maps to no single source by construction — the
