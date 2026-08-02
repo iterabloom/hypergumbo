@@ -222,6 +222,7 @@ steps:
         tests/test_*github*.py
         tests/test_autopr_*.py
         tests/test_merge_pr_close.py
+        tests/test_ci_verdict_default_deny.py
         tests/test_codeowners_governance.py
 
   # ── unshallow the SHARED workspace .git ONCE ───────────────────────────────
