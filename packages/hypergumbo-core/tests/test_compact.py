@@ -4222,14 +4222,39 @@ class TestCompactSeedBudget:
                 adj[dst].add(src)
         singletons = sum(1 for nid in adj if not adj[nid])
 
-        # Key assertion: zero singletons.  With proper seed budget, every
-        # forced entrypoint has room for its helper to be pulled in by
-        # the frontier, so no node is disconnected.
-        assert singletons == 0, (
+        # Key assertion: essentially zero singletons — every seed has room for
+        # its helper to be pulled in by the frontier, so no node is disconnected.
+        #
+        # WI-zulij relaxed this from `== 0` to "at most the final emitted node",
+        # and the relaxation is a real (small) weakening that deserves its
+        # reasoning in place rather than a silent edit. Seeds are no longer
+        # preloaded; they are metered into a budget-independent stream so that a
+        # smaller budget's node list is an ordered prefix of a larger one's
+        # (containment went 55/120 -> 120/120 budget pairs on the eight
+        # 2026-07-17 maps). Truncating any such stream can land on a seed, and
+        # the node in the LAST slot has no remaining budget for a bridge to
+        # serve it. Measured here: exactly one singleton, at index 99 of 100.
+        #
+        # It cannot be special-cased away: "don't take a seed in the final slot"
+        # is a budget-DEPENDENT decision, and reintroducing budget-dependence
+        # into the stream is exactly what broke containment in the first place.
+        #
+        # The bound still catches the regression it was written for: at a 1:1
+        # seed:bridge ratio this fixture strands 14 of 100 (a seed's neighbours
+        # get out-scored globally right after it is admitted), which is why the
+        # shipped ratio is 1:2.
+        assert singletons <= 1, (
             f"Singletons: {singletons}/{len(nodes)} = "
             f"{singletons / len(nodes):.0%}. "
-            f"Every forced seed should have at least one edge."
+            f"At most the final emitted node may lack an edge."
         )
+        if singletons:
+            stranded = [n["id"] for n in nodes if not adj[n["id"]]]
+            assert stranded == [nodes[-1]["id"]], (
+                "the only permitted singleton is the LAST emitted node (a "
+                "stream-truncation boundary); a singleton anywhere else means "
+                f"the ratio is stranding seeds mid-stream. Stranded: {stranded}"
+            )
 
     def test_total_forced_seeds_capped(self):
         """Total forced seeds (entrypoints + cross-cutting) don't exceed
@@ -4677,3 +4702,153 @@ class TestDefaultSelectionSharesSketchPopulation:
         assert "file" in {n.get("kind") for n in result["nodes"]}, (
             "connectivity mode must keep the broader population"
         )
+
+
+class TestConnectivityContainmentMonotonicity:
+    """WI-vofud's containment property, for CONNECTIVITY mode.
+
+    ``nodes(K1) subset-of nodes(K2)`` for ``K1 <= K2``. WI-vofud established this
+    on the centrality path and recorded that connectivity could not have it:
+    "bridge expansion is not a ranked prefix, so budget-containment was never
+    that mode's contract."
+
+    Measured, that justification is false. ``select_by_connectivity``'s greedy
+    loop never reads the budget — ``max_additional`` appears only in the ``while``
+    guard — so with a budget-independent seed set the K1 node list is a literal
+    ordered PREFIX of the K2 list: 120/120 pairs contained across the eight
+    2026-07-17 bakeoff maps, pretix included, versus 55/120 today.
+
+    The break is the en-bloc, budget-SIZED seed preload. Every seed is admitted
+    before the first greedy pick, so a larger budget hands the scorer a different
+    union-find state and produces a different SEQUENCE of picks rather than a
+    longer one — a node the small budget spent a pick on gets displaced by a
+    bridge that only scores well because an extra seed exists. Porting WI-vofud's
+    monotone seed QUOTA does not help (measured 65 -> 66 violations on the real
+    corpus): the order was never the problem, the en-bloc admission was.
+    """
+
+    def _map(self, symbols, eps):
+        return {
+            "schema_version": SCHEMA_VERSION,
+            "nodes": [s.to_dict() for s in symbols],
+            "edges": [],
+            "entrypoints": eps,
+        }
+
+    def _fixture(self):
+        """Two entrypoints joined only by ``zbridge``, plus a higher-centrality cluster.
+
+        Tuned so the displacement actually fires — an untuned version of this
+        shape does NOT reproduce it, which is worth stating because it is the
+        difference between a red test and a green one that proves nothing:
+
+        * ``zbridge`` must LOSE while one seed is present. Score order is
+          (component_growth, edges_added, centrality); with a single seed every
+          frontier node has growth 1, so centrality decides — and ``zbridge``'s
+          two in-edges would beat a bare leaf's one. The ``fan_*`` admirers exist
+          solely to lift the cluster's centrality above the bridge's.
+        * ``zbridge`` must WIN once both are seeded, which it does on the PRIMARY
+          key: joining ``ep_a``'s and ``ep_z``'s components scores growth 2.
+        * The entrypoint cap ``max(1, K // 2)`` must cross 1 -> 2 inside the budget
+          range, which is why 3 and 4 are adjacent budgets here.
+
+        Result: at K=3 the seed set is ``{ep_a}`` and both picks go to leaves; at
+        K=4 ``ep_z`` joins, ``zbridge`` takes the first pick, and ``leaf_1`` is
+        displaced by a LARGER budget.
+        """
+        ep_a = make_symbol("ep_a", path="src/aaa.py")
+        ep_z = make_symbol("ep_z", path="src/aaz.py")
+        bridge = make_symbol("zbridge", path="src/zzz.py")
+        cluster = [make_symbol(f"leaf_{i}", path=f"src/leaf{i}.py") for i in range(4)]
+        admirers = [make_symbol(f"fan_{i}", path=f"src/fan{i}.py") for i in range(9)]
+        symbols = [ep_a, ep_z, bridge] + cluster + admirers
+        edges = [make_edge(ep_a.id, c.id, edge_type="references") for c in cluster]
+        edges += [
+            make_edge(ep_a.id, bridge.id, edge_type="references"),
+            make_edge(ep_z.id, bridge.id, edge_type="references"),
+        ]
+        for i, fan in enumerate(admirers):
+            edges.append(
+                make_edge(fan.id, cluster[i % len(cluster)].id, edge_type="references")
+            )
+        eps = [
+            {"symbol_id": ep_a.id, "confidence": 0.99},
+            {"symbol_id": ep_z.id, "confidence": 0.50},
+        ]
+        return symbols, edges, eps
+
+    def test_connectivity_selection_is_containment_monotone(self):
+        symbols, edges, eps = self._fixture()
+        budgets = [2, 3, 4, 6, 8]
+        sel = {}
+        for K in budgets:
+            result = format_compact_behavior_map(
+                self._map(symbols, eps), symbols, edges,
+                CompactConfig(max_symbols=K, min_symbols=1),
+                connectivity_aware=True,
+            )
+            sel[K] = {n["id"] for n in result["nodes"]}
+
+        assert len({frozenset(v) for v in sel.values()}) > 1, (
+            "non-vacuity: the budgets must produce different selections, or "
+            f"containment holds trivially. Got {[(k, len(v)) for k, v in sel.items()]}"
+        )
+        violations = [
+            (k1, k2, sorted(sel[k1] - sel[k2]))
+            for i, k1 in enumerate(budgets) for k2 in budgets[i + 1:]
+            if not sel[k1] <= sel[k2]
+        ]
+        assert violations == [], (
+            "connectivity selection dropped nodes as the budget GREW: "
+            + "; ".join(f"K={k1}->{k2} lost {len(lost)}" for k1, k2, lost in violations)
+        )
+
+
+class TestConnectivityDefaultFlip:
+    """WI-zulij: `compact`'s default selection is the CONNECTED CORE.
+
+    This reverses the 2026-06-10 D12 reading ("centrality-ranked everywhere")
+    for compact only, on measured grounds: compact's output is consumed as a
+    graph — it emits induced-subgraph edges, and its one in-tree diagnostic
+    (`hypergumbo_diag.analyze_compact`) scores it on connected components — and a
+    centrality-ranked prefix of a graph is frequently not connected. Measured
+    across the eight 2026-07-17 maps: centrality shipped 42% isolated nodes at a
+    25-symbol budget and got MORE fragmented as the budget grew (12.6 -> 42.1
+    components), against 3-4 components and <=8.5% isolated for connectivity.
+
+    `sketch` keeps centrality-ranked. The two surfaces therefore disagree on
+    their top symbols BY DESIGN — different jobs, not a defect.
+    """
+
+    def _parser(self):
+        from hypergumbo_core.cli import build_parser
+        return build_parser()
+
+    def test_compact_defaults_to_connectivity(self):
+        args = self._parser().parse_args(["compact", "--input", "hg.json"])
+        assert args.connectivity is True, (
+            "compact's default selection must be the connected core"
+        )
+
+    def test_no_connectivity_opts_into_centrality(self):
+        args = self._parser().parse_args(
+            ["compact", "--input", "hg.json", "--no-connectivity"]
+        )
+        assert args.connectivity is False
+
+    def test_connectivity_flag_still_accepted_as_explicit_noop(self):
+        """`--connectivity` shipped in v7.0.0, so it stays accepted.
+
+        Removing it would break every caller that passed it to opt IN to the
+        behavior that is now the default — a silent argparse error for a request
+        the tool is already honoring.
+        """
+        args = self._parser().parse_args(
+            ["compact", "--input", "hg.json", "--connectivity"]
+        )
+        assert args.connectivity is True
+
+    def test_run_subcommand_carries_the_same_pair(self):
+        p = self._parser()
+        assert p.parse_args(["run", "."]).connectivity is True
+        assert p.parse_args(["run", ".", "--no-connectivity"]).connectivity is False

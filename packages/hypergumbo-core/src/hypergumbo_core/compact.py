@@ -73,7 +73,7 @@ from __future__ import annotations
 import re
 from collections import Counter
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Sequence, Tuple
 
 from .ir import Symbol, Edge, is_external_boundary
 from .ranking import (
@@ -711,9 +711,11 @@ def _compute_connectivity_score(
 def select_by_connectivity(
     symbols: List[Symbol],
     edges: List[Edge],
-    seed_ids: set[str],
+    seed_ids: "set[str] | Sequence[str]",
     max_additional: int,
     centrality: Dict[str, float] | None = None,
+    interleave: bool = False,
+    bridges_per_seed: int = 2,
 ) -> ConnectivityResult:
     """Select symbols to maximize connectivity of the induced subgraph.
 
@@ -732,9 +734,28 @@ def select_by_connectivity(
     Args:
         symbols: All symbols to consider.
         edges: All edges for building adjacency.
-        seed_ids: Initial nodes to include (e.g., entrypoint IDs).
-        max_additional: Maximum additional nodes to add beyond seeds.
+        seed_ids: Initial nodes to include (e.g., entrypoint IDs). A SET is
+            sorted for reproducibility; a SEQUENCE is consumed in the given
+            order, which is what ``interleave`` needs.
+        max_additional: Maximum additional nodes beyond the seeds — except
+            under ``interleave``, where seeds are part of the metered stream
+            and this is the TOTAL emission budget.
         centrality: Optional pre-computed centrality. If None, computes it.
+        bridges_per_seed: greedy picks taken after each seed under
+            ``interleave``. TUNED, not arbitrary: at 1:1 a seed can be admitted
+            and then have both its neighbours out-scored globally, stranding it
+            with no edge in the induced subgraph — measured 14 singletons per
+            100 nodes on the keycloak-shaped fixture. 1:2 drops that to 1 (the
+            final emitted node, a boundary artifact of truncating any stream)
+            and 1:3 / 1:4 buy nothing further. Any FIXED ratio preserves
+            containment, since the stream stays budget-independent; the ratio is
+            therefore a pure quality knob.
+        interleave: When True, alternate seed / greedy-pick instead of
+            preloading every seed first, making the emitted list at a smaller
+            budget an ordered prefix of the list at a larger one (WI-zulij
+            containment). Requires an ordered ``seed_ids``. The default
+            preserves the original preload policy for callers that need every
+            seed present regardless of budget.
 
     Returns:
         ConnectivityResult with selected symbols and induced edges.
@@ -756,53 +777,52 @@ def select_by_connectivity(
     selected_ids: set[str] = set()
     selected_symbols: List[Symbol] = []
 
-    # WI-nivuj: iterate seeds in sorted order so the seed prefix of the output
-    # node list is reproducible (seed_ids is a set — its iteration order is
-    # PYTHONHASHSEED-dependent).
-    for sid in sorted(seed_ids):
-        if sid in symbol_by_id:
-            selected_ids.add(sid)
-            selected_symbols.append(symbol_by_id[sid])
+    # WI-nivuj: a SET's iteration order is PYTHONHASHSEED-dependent, so a set
+    # is sorted to keep the seed prefix reproducible. A SEQUENCE is taken in the
+    # caller's order — that is the interleaved policy's fixed, budget-independent
+    # seed order (WI-zulij), and sorting it would destroy exactly the property it
+    # is there to provide.
+    seed_seq: List[str] = (
+        sorted(seed_ids) if isinstance(seed_ids, (set, frozenset))
+        else list(seed_ids)
+    )
 
-    # Handle empty seed case: start with highest-centrality node
-    if not selected_ids and symbols:
-        best_sym = max(symbols, key=lambda s: centrality.get(s.id, 0))
-        selected_ids.add(best_sym.id)
-        selected_symbols.append(best_sym)
-        max_additional -= 1
-
-    # Initialize Union-Find with selected nodes
-    uf = UnionFind(list(selected_ids))
-
-    # Connect seeds that share edges
-    for sid in selected_ids:
-        for dst in outgoing.get(sid, set()):
-            if dst in selected_ids:
-                uf.union(sid, dst)
-        for src in incoming.get(sid, set()):
-            if src in selected_ids:
-                uf.union(sid, src)
-
-    # Build initial frontier: nodes adjacent to selected set
+    uf = UnionFind([])
     frontier: set[str] = set()
-    for sid in selected_ids:
-        for dst in outgoing.get(sid, set()):
-            if dst not in selected_ids and dst in symbol_by_id:
-                frontier.add(dst)
-        for src in incoming.get(sid, set()):
-            if src not in selected_ids and src in symbol_by_id:
-                frontier.add(src)
 
-    # Greedy selection loop
-    added = 0
-    while added < max_additional and frontier:
-        # Score all frontier nodes
+    def _admit(node_id: str) -> None:
+        """Select *node_id*, union it into its components, extend the frontier.
+
+        One admission step for seeds and greedy picks alike. Previously the two
+        were separate code blocks that had to agree; the interleaved policy makes
+        them strictly alternate, so a single step is both simpler and the only
+        way they cannot drift.
+        """
+        selected_ids.add(node_id)
+        selected_symbols.append(symbol_by_id[node_id])
+        uf.add(node_id)
+        for dst in outgoing.get(node_id, set()):
+            if dst in selected_ids:
+                uf.union(node_id, dst)
+            elif dst in symbol_by_id:
+                frontier.add(dst)
+        for src in incoming.get(node_id, set()):
+            if src in selected_ids:
+                uf.union(node_id, src)
+            elif src in symbol_by_id:
+                frontier.add(src)
+        frontier.discard(node_id)
+
+    def _best_frontier_node() -> str | None:
+        """Argmax over the frontier by (component_growth, edges_added, centrality).
+
+        WI-nivuj: the frontier is iterated in SORTED order with a strict ``>``, so
+        a score tie resolves to the lexicographically-smallest id rather than to
+        whatever PYTHONHASHSEED put first. Both halves of that pair are
+        load-bearing — keep them together.
+        """
         best_node = None
         best_score = (-1, -1, -1.0)
-
-        # WI-nivuj: iterate the frontier in sorted order so a SCORE TIE resolves
-        # to the lexicographically-smallest node deterministically (frontier is a
-        # set; without sorting the winner depends on PYTHONHASHSEED).
         for node_id in sorted(frontier):
             score = _compute_connectivity_score(
                 node_id, selected_ids, uf, outgoing, incoming, centrality
@@ -810,34 +830,76 @@ def select_by_connectivity(
             if score > best_score:
                 best_score = score
                 best_node = node_id
+        return best_node
 
-        if best_node is None:  # pragma: no cover
-            # Defensive: frontier should always have scoreable nodes
-            break
+    if interleave:
+        # WI-zulij: the budget is pure TRUNCATION of one budget-independent
+        # stream — next seed, best bridge, next seed, best bridge — so step t
+        # depends only on the first t-1 emissions and a fixed seed order. The
+        # emitted list at a smaller budget is therefore a literal ordered PREFIX
+        # of the list at a larger one, which is containment by construction.
+        #
+        # Why this is the fix and the obvious one is not: the greedy loop never
+        # read the budget in the first place (`max_additional` appears only in
+        # its guard), so bridge expansion was ALREADY prefix-nested. What broke
+        # containment was admitting the whole budget-SIZED seed set before the
+        # first pick — a larger budget handed the scorer a different union-find
+        # state and produced a different SEQUENCE of picks, not a longer one.
+        # Measured on the eight 2026-07-17 maps: 55/120 budget pairs contained
+        # under the old policy, 120/120 with a budget-independent seed set.
+        # Porting WI-vofud's monotone seed QUOTA instead moves 65 violations to
+        # 66 — the seed ORDER was never the problem.
+        #
+        # ``max_additional`` is the TOTAL emission budget here, not a count of
+        # additions beyond free seeds: seeds are part of the stream now, so they
+        # are metered like anything else.
+        # Same bootstrap the preload path uses: with no seeds at all there is no
+        # frontier to grow from and the stream would emit nothing. The
+        # highest-centrality node is budget-independent, so seeding with it costs
+        # containment nothing.
+        if not seed_seq and symbols:
+            _admit(max(symbols, key=lambda s: centrality.get(s.id, 0)).id)
 
-        # Add best node
-        selected_ids.add(best_node)
-        selected_symbols.append(symbol_by_id[best_node])
-        uf.add(best_node)
+        seed_cursor = 0
+        while len(selected_ids) < max_additional:
+            progressed = False
+            while seed_cursor < len(seed_seq):
+                sid = seed_seq[seed_cursor]
+                seed_cursor += 1
+                if sid in symbol_by_id and sid not in selected_ids:
+                    _admit(sid)
+                    progressed = True
+                    break
+            for _ in range(bridges_per_seed):
+                if len(selected_ids) >= max_additional:
+                    break
+                best_node = _best_frontier_node()
+                if best_node is None:
+                    break
+                _admit(best_node)
+                progressed = True
+            if not progressed:
+                # Both streams dry: no seeds left and no reachable frontier.
+                break
+    else:
+        for sid in seed_seq:
+            if sid in symbol_by_id and sid not in selected_ids:
+                _admit(sid)
 
-        # Connect to existing components
-        for dst in outgoing.get(best_node, set()):
-            if dst in selected_ids:
-                uf.union(best_node, dst)
-        for src in incoming.get(best_node, set()):
-            if src in selected_ids:
-                uf.union(best_node, src)
+        # Handle empty seed case: start with highest-centrality node
+        if not selected_ids and symbols:
+            best_sym = max(symbols, key=lambda s: centrality.get(s.id, 0))
+            _admit(best_sym.id)
+            max_additional -= 1
 
-        # Update frontier
-        frontier.discard(best_node)
-        for dst in outgoing.get(best_node, set()):
-            if dst not in selected_ids and dst in symbol_by_id:
-                frontier.add(dst)
-        for src in incoming.get(best_node, set()):
-            if src not in selected_ids and src in symbol_by_id:
-                frontier.add(src)
-
-        added += 1
+        added = 0
+        while added < max_additional and frontier:
+            best_node = _best_frontier_node()
+            if best_node is None:  # pragma: no cover
+                # Defensive: frontier should always have scoreable nodes
+                break
+            _admit(best_node)
+            added += 1
 
     # Compute induced subgraph edges. Iterate the edge LIST (not a
     # (src, dst)-keyed dict) so PARALLEL edges between the same node pair are
@@ -1232,24 +1294,33 @@ def format_compact_behavior_map(
                 cc_edge_count[dst] += 1
     ranked_cc = sorted(cc_edge_count, key=lambda x: (-cc_edge_count[x], x))
 
+    # The fixed, budget-independent seed order both policies draw from:
+    # entrypoints by (-confidence, id), then cross-cutting endpoints by
+    # (-edge_count, id). Building it once, above the branch, is what lets the
+    # connectivity path hand the WHOLE order to the interleave and the
+    # centrality path take a monotone prefix of it.
+    seed_order: List[str] = list(sorted_eps)
+    _seen_seeds = set(seed_order)
+    for _cc in ranked_cc:
+        if _cc not in _seen_seeds:
+            seed_order.append(_cc)
+            _seen_seeds.add(_cc)
+
     force_include_ids: set[str] = set()
     if connectivity_aware:
-        # Connectivity mode keeps the original budget-adaptive policy: the
-        # aggressive 1/3 entrypoint cap exists for THIS mode (keycloak with
-        # 500 JAX-RS handlers fragmented into 30 components when entrypoints
-        # consumed the budget needed for frontier bridging), and the
-        # bridge-expansion selection is not a ranked prefix anyway, so
-        # budget-containment is not this mode's contract.
-        if len(sorted_eps) > config.max_symbols:
-            max_forced = max(1, config.max_symbols // 3)
-        else:
-            max_forced = max(1, config.max_symbols // 2)
-        force_include_ids = set(sorted_eps[:max_forced])
-        remaining_seed_budget = max(
-            0, config.max_symbols // 2 - len(force_include_ids)
-        )
-        cc_pool = [x for x in ranked_cc if x not in force_include_ids]
-        force_include_ids |= set(cc_pool[:remaining_seed_budget])
+        # WI-zulij: NO cap here any more. The old adaptive policy capped
+        # entrypoints (1/3 or 1/2 of the budget, switching regimes on
+        # len(eps) > max_symbols) and then preloaded that whole set before the
+        # first greedy pick — which is precisely what broke containment, since a
+        # larger budget seeded MORE nodes and so changed the union-find state the
+        # scorer reads, producing a different SEQUENCE of picks rather than a
+        # longer one. The interleave meters seeds against the budget instead, so
+        # the cap is redundant: a small budget simply never reaches the tail of
+        # the order. The keycloak concern the cap was written for (500 JAX-RS
+        # handlers crowding out the bridging budget) is served better by
+        # alternating than by a ratio, because bridges are now guaranteed every
+        # other slot rather than whatever is left over.
+        force_include_ids = set()
     else:
         # WI-vofud (WI-kolal regression): the DEFAULT path's contract is
         # --max-symbols containment monotonicity (nodes(K1) ⊆ nodes(K2) for
@@ -1265,12 +1336,7 @@ def format_compact_behavior_map(
         # monotone quota is nested by construction; the half-budget intent
         # ("seeds never crowd out the centrality frontier") survives as the
         # quota itself.
-        seed_order = list(sorted_eps)
-        seen = set(seed_order)
-        for x in ranked_cc:
-            if x not in seen:
-                seed_order.append(x)
-                seen.add(x)
+        # (seed_order is built once above the branch — same fixed order.)
         # The floor-of-one slot belongs to ENTRYPOINT seeds only (a semantic
         # anchor survives even max_symbols=1); a pure cross-cutting seed
         # list gets no floor, matching the old cc budget (max//2, which
@@ -1284,11 +1350,13 @@ def format_compact_behavior_map(
         force_include_ids = set(seed_order[:seed_quota])
 
     if connectivity_aware:
-        # Use connectivity-aware selection
-        # Budget is remaining slots after entrypoints
-        max_additional = max(0, config.max_symbols - len(force_include_ids))
+        # WI-zulij: hand over the WHOLE ordered seed list and the TOTAL budget.
+        # The interleave truncates the stream, so seeds are metered rather than
+        # preloaded — which is what makes a smaller budget's node list an ordered
+        # prefix of a larger one's (measured 55/120 -> 120/120 budget pairs
+        # contained across the eight 2026-07-17 maps, pretix included).
         conn_result = select_by_connectivity(
-            symbols, edges, force_include_ids, max_additional
+            symbols, edges, seed_order, config.max_symbols, interleave=True
         )
 
         # Create compact output
