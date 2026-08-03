@@ -1,0 +1,21 @@
+- op: create  # 367a
+  at: '2026-08-03T05:31:36Z'  # 367a
+  by: agent  # 367a
+  actor: jgstern_agent  # 367a
+  clock: 1  # 367a
+  nonce: 367a  # 367a
+  data:  # 367a
+    kind: work_item  # 367a
+    title: "smart-test explicit mode wipes the committed test manifest to zero selections (L48 route 10)"  # 367a
+    status: todo_hard  # 367a
+    priority: 2  # 367a
+    parent:  # 367a
+    tags:  # 367a
+    - ci_infrastructure  # 367a
+    - test_selection  # 367a
+    isbefore: []  # 367a
+    duplicate_of: []  # 367a
+    not_duplicate_of: []  # 367a
+    pr_ref:  # 367a
+    description: "A tenth route on the L48 test-selection family, found 2026-08-03 while preparing PR #180, and it is at the INSTRUCTION level rather than inside the selector.\n\nWHAT HAPPENS. Running smart-test with an explicit test target -- pytest tests/test_foo.py, which AGENTS.md itself recommends for fast feedback (\"During development, run only relevant tests\") -- makes smart-test OVERWRITE .ci/affected-tests.txt with a stub:\n\n    # Mode: explicit\n    # Reason: caller specified test targets directly\n    # === CHANGED_SOURCE_FILES ===\n    # === SELECTED_TESTS ===\n    # (explicit -- see pytest args)\n\nZero selected tests. The previous, correct manifest is gone.\n\nWHY THAT IS A TRAP RATHER THAN A COSMETIC ISSUE. AGENTS.md instructs, unconditionally, \"Commit .ci/affected-tests.txt with every PR for CI smart test selection.\" An agent that follows the documented dev loop (targeted run for fast feedback, then stage the manifest as instructed) ships a manifest that selects NOTHING, and ci.yml then runs nothing and reports green. The two instructions are individually correct and compose into a false green.\n\nOBSERVED. On this branch the explicit-mode run wiped a 34-test manifest to 0 and the changed test file was absent from it. Caught only by grepping the manifest for the file I had just edited; the local run was green and said \"20 passed, 1 xfailed\", which is exactly what a correct run looks like. Re-running bare pytest regenerated Mode: targeted with the right selection (1 test, baseline = dev tip), so the selector itself is fine -- the defect is that the explicit path is destructive to a committed artifact.\n\nDISTINCT FROM THE NINE RECORDED ROUTES. Routes 1-8 are about which tests the selector resolves; route 9 (WI-modur) is about an entire PR class for which the gate never ran. This one is about a DEVELOPER ACTION silently invalidating the artifact the gate depends on -- the manifest is not wrong, it is emptied, and emptied by the command the docs recommend.\n\nTHE EXISTING GATE DOES NOT CATCH IT -- VERIFIED, not assumed. .githooks/pre-commit:442-463 has a \"Test manifest\" check, and it rejects exactly one thing: Mode: full-suite (because CI has a 5-minute timeout). Mode: explicit falls into the else arm and prints a GREEN check. So a zero-selection manifest passes the pre-commit gate and commits cleanly. The check that exists to protect this artifact is blind to the emptier failure: full-suite runs too much, explicit runs nothing, and only the first is guarded.\n\nCANDIDATE FIXES (not chosen -- scripts/smart-test and .githooks/pre-commit differ in governance status; the hook IS governance, smart-test is not):\n  (a) explicit mode does not write the manifest at all, leaving the prior one intact. Smallest, and matches the intent: an explicit run is not a selection computation, so it has no business publishing one.\n  (b) the pre-commit manifest check refuses a staged Mode: explicit manifest the same way it refuses full-suite, telling the agent to re-run bare pytest.\n  (c) both -- (a) prevents the loss, (b) catches it if some other path reintroduces one.\n\nPreference is (c), with (a) as the load-bearing half; (b) alone leaves the destroyed manifest sitting in the working tree for the next command to trip over. Note this is L54 again at a different altitude: the guard enumerates the one bad mode it knew about rather than asserting the one good one (Mode: targeted)."  # 367a
+    fields: {}  # 367a
