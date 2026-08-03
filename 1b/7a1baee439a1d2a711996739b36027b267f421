@@ -1,0 +1,42 @@
+Original commit body from 1394ee8037720e3dc2032ae043cb1d347a1db847:
+
+AUTO_SOURCE_LABEL_MAP is many-to-one: net_recv, ipc_recv and db_read all
+become the label `untrusted_input`, and which one it was got discarded at
+the moment of derivation. So "a request body reached the database" and "a
+row read from the database reached the database" were the same fact
+downstream -- and on an ORM-backed application the second dominates. All
+140 flows on pretix's largest violated claim are database-read to
+database-write.
+
+TaintSource and TaintFlowFinding now carry `source_boundary`; each taint
+verdict carries a `flow_origins` breakdown keyed by it; each evidence row
+carries it for drill-down. Envelope schema 1.2 -> 1.3.
+
+THE LABEL IS DELIBERATELY UNTOUCHED, and that is the design. Giving
+database reads their own label was the alternative, and it would have been
+a SILENT semantic change to every claim already written against
+`untrusted_input`: those flows would simply stop matching. Measured, that
+would have flipped 3 of 16 violated cohort claims to `confirmed` with
+nobody told (all pretix: untrusted-input-no-database, -no-host-fs,
+-no-subprocess). Reporting the split instead changes ZERO verdicts and
+ZERO evidence rows (270 -> 270), asserted in both directions by the arm's
+instrument before measuring -- a run where db_read flows quietly stopped
+matching would produce a cleaner-LOOKING number while measuring the
+option that was declined. A test pins that a db_read-sourced flow still
+matches an untrusted_input claim.
+
+No new vocabulary minted: the distinction already existed as io_boundary's
+controlled categories and was being thrown away, so this carries the
+existing axis through rather than promoting a new db_at_rest/external one
+(ADR-0024 / R1, "the fact already has a home"). `declared` buckets
+YAML-declared sources, which have no boundary.
+
+This measurement corrected two of my own earlier claims, and the feature
+is what caught them. Both "dropping ORM reads changes zero verdicts" and
+its later "correction" (that 7 non-ORM flows remained) came from a
+hand-rolled ORM predicate whose read-set omitted exclude, none, annotate
+and select_related -- all genuine Django reads. Production classifies 100
+of 100 shown rows as db_read where the ad-hoc predicate found 93. Name the
+instrument, then verify it is the one production runs (L53).
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
