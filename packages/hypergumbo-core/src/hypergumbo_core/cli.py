@@ -4953,6 +4953,7 @@ def _build_ddg_for_verify_claims(
     from .ddg_build import build_repo_ddg, registered_ddg_languages
 
     try:
+        import hypergumbo_lang_mainstream.go_def_use
         import hypergumbo_lang_mainstream.py_def_use  # noqa: F401
     except ImportError:  # pragma: no cover - lang package is a hard dep but defend
         return [], set(), {}
@@ -5233,6 +5234,26 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
                 # bare ambiguous callee (str.replace, dict.get) with no module
                 # hint is not falsely matched to a sink/source.
                 lang_ambiguous = taint_catalog.ambiguous_names_for_language(lang)
+                # This literal is NOT a considered scoping decision — say so,
+                # because a bare `lang == "python"` reads like one and a wrong
+                # rationale forecloses options nobody re-measures (L50, which
+                # this module has already paid for twice).
+                #
+                # The truth: routing a language here buys nothing today.
+                # propagate_taint_ddg cannot remove a flow — it builds
+                # `ddg_forward` and `tainted_at` and never reads either, and
+                # the DDG's only effect is selecting the confidence LABEL. So
+                # widening this predicate would stamp analysis_method="ddg"
+                # on structurally-derived findings: a security tool asserting
+                # a precision it did not use. Widen it only together with the
+                # real forward walk (ADR-0017 §3a).
+                #
+                # Go DDG edges ARE built above and are deliberately left
+                # unread rather than gated off at the builder. That costs
+                # ~1.9s per caddy-sized repo and buys attributability: when
+                # §3a lands it changes exactly one variable — the propagator
+                # starts reading data already present — instead of widening a
+                # predicate and adding an algorithm in the same measurement.
                 if lang == "python" and ddg_edges:
                     taint_findings.extend(propagate_taint_ddg(
                         ddg_edges, lang_edges, lang_sources, lang_sinks,
