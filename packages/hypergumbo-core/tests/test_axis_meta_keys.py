@@ -119,7 +119,7 @@ def test_linker_vocabulary_keys_registered_on_edge_meta():
     assert {
         "client_framework", "server_framework", "topic", "topic_type",
         "queue_type", "query_type", "table_name", "handler_name",
-        "receiver_type_hint", "referring_paths",
+        "receiver_type_hint", "referring_paths", "call_lines",
     } <= edge_keys
 
 

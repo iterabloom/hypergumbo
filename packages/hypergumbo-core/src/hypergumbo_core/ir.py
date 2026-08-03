@@ -815,7 +815,7 @@ class Edge:
         confidence: Detection-reliability score (0.0-1.0) — the producer's evidence-derived estimate that the relationship EXISTS (ADR-0039 ruling 1). NOT a ranking value; post-detection ranking boosts/penalties live in ``rank_score``.
         confidence_source: Provenance of the ``confidence`` value (ADR-0039 ruling 2), one of ``VALID_CONFIDENCE_SOURCES`` — ``evidence_derived`` / ``emitter_constant`` / ``composite``. See ``VALID_CONFIDENCE_SOURCES`` for the enumeration and re-evaluation trigger.
         rank_score: Ranking prominence (0.0-1.0). Initializes from ``confidence`` and accumulates the ranking adjustments ADR-0039 ruling 3 relocates off ``confidence`` (e.g. the type-hierarchy fan-out dampener). Equal to ``confidence`` until a producer relocates its adjustment. Ranking consumers key on this; reliability consumers key on ``confidence``.
-        meta: Optional metadata dict. Dataflow edges store access_mode (ADR-0015) and channel here; cross-boundary edges store data_direction (ADR-0038 ruling 3).
+        meta: Optional metadata dict. Dataflow edges store access_mode (ADR-0015) and channel here; cross-boundary edges store data_direction (ADR-0038 ruling 3). An edge that survived a collapse of two or more call sites stores the union of their lines in ``call_lines`` (see :func:`deduplicate_edges`); its absence means the one call site is ``line``.
     """
 
     id: str  # axis: identity
@@ -1051,6 +1051,45 @@ class Edge:
         )
 
 
+# Cap for ``Edge.meta.call_lines`` — the sibling of
+# :data:`_REFERRING_PATHS_CAP`, same value for the same reason. Generated
+# code can call one target hundreds of times from one function; an uncapped
+# list would put that whole tail in the serialized map. Truncation is
+# CONSERVATIVE for every consumer of this field: knowing fewer call sites can
+# only narrow what a dataflow walk adjudicates, never broaden it (see
+# ``taint._ddg_taint_reaches``, which needs a call site to seed from and a
+# later one to reach). The retained set is the LOWEST ``_CALL_LINES_CAP``
+# lines, so it is a deterministic function of the input, not of encounter
+# order.
+_CALL_LINES_CAP = 50
+
+
+def _edge_call_lines(edge: Edge) -> list[int]:
+    """The call sites known for *edge*: its recorded set, else its own line.
+
+    The single-site case deliberately carries no ``meta["call_lines"]`` key
+    (see :func:`deduplicate_edges`), so "absent" has to read as ``[edge.line]``
+    here rather than as "no call sites".
+    """
+    recorded = (edge.meta or {}).get("call_lines")
+    if isinstance(recorded, list):
+        return [ln for ln in recorded if isinstance(ln, int)]
+    return [edge.line]
+
+
+def _absorb_call_lines(kept: Edge, absorbed: Edge) -> None:
+    """Union *absorbed*'s call sites into *kept*'s ``meta["call_lines"]``.
+
+    Copy-on-write on ``meta`` (matching the ``referring_paths`` collapse in
+    :func:`apply_external_id_remap`) so an edge whose meta dict is shared with
+    another record does not gain call sites by aliasing.
+    """
+    lines = set(_edge_call_lines(kept)) | set(_edge_call_lines(absorbed))
+    meta = dict(kept.meta or {})
+    meta["call_lines"] = sorted(lines)[:_CALL_LINES_CAP]
+    kept.meta = meta
+
+
 def deduplicate_edges(
     edges: list[Edge],
     *,
@@ -1063,13 +1102,30 @@ def deduplicate_edges(
     ``edge_key`` values (line-insensitive).  For a call graph, one edge
     per (src, dst, type) relationship is the correct model.
 
+    **The collapsed call sites are preserved, not discarded.** When two or
+    more edges share a key, the survivor gains ``meta["call_lines"]`` — the
+    sorted union of every collapsed site's line, its own included. One edge
+    per relationship stays the call-graph model (emitting one edge per call
+    site would multiply the graph: a single Go function's ``fmt.Printf`` calls
+    alone turn 1 edge into 12, inflating every centrality and fan-out metric
+    downstream). What changes is that ``edge.line`` stops being the *only*
+    recoverable site. ADR-0017 §4 needs this: to decide what a DDG use at line
+    U flows into, it has to know which callee is called at line U, and with
+    one line per relationship every call site but the first was unrecoverable.
+
+    A single-site edge carries NO ``call_lines`` key — absence is the contract
+    for "exactly one site, and it is ``edge.line``". Emitting a one-element
+    list on every edge would add a list to every edge of every behavior map
+    while saying nothing ``edge.line`` does not already say.
+
     When *remove_self_loops* is True, also drops edges where src == dst.
     Self-loops inflate centrality without adding useful connectivity;
-    common sources include visitor patterns and name collisions.
+    common sources include visitor patterns and name collisions. A dropped
+    self-loop never becomes a survivor, so it records no call sites.
 
     Preserves encounter order: the first edge for each key is kept.
     """
-    seen: set[str] = set()
+    seen: dict[str, Edge] = {}
     result: list[Edge] = []
     for edge in edges:
         key = edge.edge_key
@@ -1079,11 +1135,13 @@ def deduplicate_edges(
         # all None-keyed edges collapse to one — silently dropping edges.
         if key is None:
             key = _compute_edge_key(edge.src, edge.dst, edge.edge_type)
-        if key in seen:
+        kept = seen.get(key)
+        if kept is not None:
+            _absorb_call_lines(kept, edge)
             continue
         if remove_self_loops and edge.src == edge.dst:
             continue
-        seen.add(key)
+        seen[key] = edge
         result.append(edge)
     return result
 
@@ -1602,6 +1660,13 @@ def apply_external_id_remap(
     convention) and the colliding edges' original src paths union into
     its ``referring_paths``.
 
+    This runs AFTER :func:`deduplicate_edges` in the pipeline, so a collapse
+    here can absorb an edge that already carries ``meta["call_lines"]`` — two
+    edges that were genuinely distinct at dedup time (distinct external dsts)
+    become the same edge once both dsts remap to one boundary node. The
+    collapse therefore unions call sites the same way it unions referring
+    paths; without that, whichever edge loses takes its call sites with it.
+
     Mutates edges in place. Returns the surviving edge list (subset of
     input).
     """
@@ -1629,7 +1694,11 @@ def apply_external_id_remap(
             out.append(edge)
             continue
 
-        # Collapse case — union referring_paths into the kept edge.
+        # Collapse case — union call_lines and referring_paths into the kept
+        # edge. call_lines is unconditional: unlike referring_paths it does
+        # not depend on the src having been remapped (a dst-only remap
+        # collapses edges just as effectively).
+        _absorb_call_lines(kept, edge)
         if orig_src_path:
             kept.meta = dict(kept.meta or {})
             existing = list(kept.meta.get("referring_paths") or [])
