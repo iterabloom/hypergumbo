@@ -1382,6 +1382,14 @@ class DdgEdge:
     Represents the fact that the value assigned at ``def_line`` (in
     ``def_block``) can reach the use at ``use_line`` (in ``use_block``)
     through the variable ``variable``.
+
+    ``symbol_id`` names the function this edge belongs to. Block ids are
+    only unique *within* one function's CFG — ``bb_5`` occurs in every
+    function — so once edges from many functions are aggregated into one
+    repo-level list, a block id alone identifies nothing. Consumers that
+    ask "does this function have DDG data" or index edges per function
+    must key on ``symbol_id``; comparing a block id against a symbol id
+    is a namespace error that silently never matches.
     """
 
     variable: str
@@ -1389,6 +1397,7 @@ class DdgEdge:
     def_line: int
     use_block: str
     use_line: int
+    symbol_id: str = ""
 
 
 @dataclass
@@ -1595,6 +1604,7 @@ def solve_reaching_defs(cfg: FunctionCfg) -> ReachingDefResult:
                             def_line=d.line,
                             use_block=block.id,
                             use_line=stmt.line,
+                            symbol_id=cfg.symbol_id,
                         ))
 
             # Update reaching set: this statement's definitions kill/gen

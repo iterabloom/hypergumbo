@@ -35,3 +35,33 @@ switch:
     # Cases are direct children of the switch node (no wrapper)
 
 try_catch: []
+
+# Atomic statement node types — the CFG builder treats these as a single
+# CfgStatement and stops descending into their children. Without this the
+# builder recurses past short_var_declaration/assignment_statement down to
+# bare identifiers, so a def/use extractor keyed on statement node types is
+# never called with one: correct in isolation, inert in the pipeline. The
+# reachability tests cannot see that, because a CFG of leaf tokens is still
+# fully reachable.
+#
+# Listed types are the def/use-carrying children of a `statement_list`.
+# Deliberately EXCLUDED because `classify()` already owns them (listing a
+# type in both would make the atomic check shadow its control-flow role):
+# return_statement (return), defer_statement (deferred), if_statement /
+# for_statement / expression_switch_statement.
+#
+# Known gap, disclosed: the `initializer` of an if_statement
+# (`if err := do(); err != nil`) and of a for_clause (`for i := 0; ...`)
+# is not reached by the conditional/loop hooks, which name only
+# condition/body/consequence/alternative children. Those bindings are
+# therefore still invisible to def/use. Tracked separately.
+atomic_statement:
+  - short_var_declaration
+  - var_declaration
+  - const_declaration
+  - assignment_statement
+  - expression_statement
+  - inc_statement
+  - dec_statement
+  - send_statement
+  - go_statement
