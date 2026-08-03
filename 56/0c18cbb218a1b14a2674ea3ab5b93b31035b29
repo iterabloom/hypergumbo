@@ -1,0 +1,51 @@
+Original commit body from b5fb436cb41bd0d1637221bc6cbef1711fb0a1b6:
+
+INV-rahib Surface 1. `_pre_scenario_b_gate` stops the timeout and hung-run
+paths from closing-and-repushing a PR that already merged or is about to.
+Its second sub-case read `mergeable` through `json_field`, which prints the
+empty string for a JSON null exactly as it does for a missing key -- so
+`mergeable: null` was indistinguishable from `false` and the gate silently
+ordered the close.
+
+GitHub computes mergeability asynchronously and reports null until that
+background job finishes, i.e. null is the expected value in the seconds
+after a push, which is exactly when this gate fires. The sub-case was
+therefore inert on the live backend for as long as it existed, and the
+PR-churn cycle it exists to prevent is the one WI-buniz was downstream of.
+
+- json_bool_state reads a JSON boolean as a tri-state (true/false/null/
+  absent/other/unreadable). Unknown mergeability re-queries /pulls/<n> once,
+  then defers to a green CI rather than destroying a PR on an unread field.
+  false, absent and unreadable still fall through to the close.
+- Measured against the pre-fix library in both directions: null 1 -> 0,
+  true 0 -> 0, false 1 -> 1. Exactly one cell moves; `false` holding is the
+  control that this is not a blanket "never close".
+- ci-debug pr-status now prints `Mergeable:` as a tri-state. It was
+  unobservable through any approved script, which is why this went
+  unverified against the real backend for as long as it did.
+- The 19 existing tests fed the gate only true/false, and one asserted the
+  literal source line the fix had to change -- so it broke exactly when the
+  bug was fixed and pointed the fixer at keeping it. Loosened to the
+  dependency it was really guarding.
+
+Refines the invariant, which was unsatisfiable as written (owner ruling
+2026-08-03): it demanded "no third state" while auto-pr has 20 terminal
+states, three of them deliberate non-merge outcomes -- queued_vpr (the vPR
+queue was re-affirmed under WI-hajif Ruling 2), governance_pending and
+noop_empty_queue. Replaced by a declared closed set with `unknown` as the
+violation signal, enforced in both directions: no emitted state undeclared,
+no declared state unreachable, plus a non-vacuity floor.
+
+Adds .git/AUTOPR_HISTORY.jsonl, because the invariant had no instrument.
+AUTOPR_LAST_RESULT.json is overwritten every run -- correct for WI-miriz's
+"did my backgrounded run succeed?" sentinel, and pinned by its own test --
+so the 2026-06-17 validation criterion had nothing to evaluate and went
+unexamined across 579 commits. Convergence is a property of the sequence of
+runs, so it gets its own append-only artifact rather than a second meaning
+bolted onto the sentinel. Best-effort: an observability artifact must never
+turn a successful run into a failed one.
+
+Governance files touched with explicit human approval (auto-pr, ci-debug,
+lib/forgejo-api.sh), approved without --gov.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
