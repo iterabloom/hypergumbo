@@ -713,6 +713,30 @@ class CfgBuilder:
 
         return result
 
+    def _contains_classified_descendant(self, node: Any) -> bool:
+        """Does this subtree hold a node the mapping treats as control flow?
+
+        Used to decide whether an ``atomic_statement`` declaration may be
+        honoured for a particular occurrence. ``atomic_statement`` exists so a
+        def/use extractor receives whole statements instead of decomposed
+        leaves, and that is safe exactly when the statement is straight-line.
+        In an expression-oriented grammar the same node type is sometimes
+        straight-line and sometimes a branch in disguise — Rust's
+        ``expression_statement`` wraps a bare call in one function and an
+        ``if_expression`` in the next — so the decision cannot be made from the
+        node *type* alone, which is all a YAML mapping can express.
+
+        Only named children are walked: anonymous nodes are punctuation and
+        keywords, which no mapping classifies. The walk runs only for a node
+        already known to be atomic, so it is not on the common path.
+        """
+        for child in node.named_children:
+            if self._mapping.classify(child.type) is not None:
+                return True
+            if self._contains_classified_descendant(child):
+                return True
+        return False
+
     def _process_node(self, node: Any, source: bytes) -> Optional[_PartialCfg]:
         """Process a single AST node and return its partial CFG.
 
@@ -765,10 +789,27 @@ class CfgBuilder:
         # node type as an atomic statement, treat it as a single block —
         # def/use extractors operate at the statement level and want the
         # full expression/assignment node, not its decomposed leaves.
+        #
+        # ...UNLESS the atomic node CONTAINS control flow, which is why the
+        # descendant check is here rather than in each mapping. In a
+        # statement-oriented grammar (Go, Python) an atomic type never wraps a
+        # branch: `if_statement` is its own statement. In an EXPRESSION-oriented
+        # grammar it routinely does — Rust parses `if c { } else { }` as
+        # `expression_statement > if_expression` and `let x = f()?;` as
+        # `let_declaration > try_expression`. Declaring the wrapper atomic
+        # there stops the descent before the branch is ever classified, so the
+        # CFG silently loses its true/false edges while every def/use test
+        # still passes, because def/use is exactly what the wrapper was
+        # declared for. Keeping the rule per-mapping would make each new
+        # expression-oriented language rediscover that; making it a property of
+        # the builder closes it once.
         if (
             node.named_child_count > 0
             and self._mapping.classify(node.type) is None
-            and node.type not in self._mapping.atomic_statements
+            and (
+                node.type not in self._mapping.atomic_statements
+                or self._contains_classified_descendant(node)
+            )
         ):
             # Track unmapped compound types
             if node.type not in _SKIP_UNMAPPED_TYPES:
@@ -1666,9 +1707,28 @@ def select_ddg_targets(
 ) -> DdgTargetSet:
     """Select functions for DDG analysis based on IO, taint, and centrality.
 
-    Implements ADR-0017 §1c targeted analysis selection. DDG analysis is
-    expensive, so only 2-10% of functions are analyzed — those most likely
-    to benefit from intraprocedural precision.
+    .. warning::
+
+       **NOT WIRED — this function has zero production callers.** It is
+       reached only by its own unit tests, which is what holds it at 100%
+       coverage. ``build_repo_ddg`` walks and solves **every** function in
+       every file of a registered language, with no sampling, no budget and
+       no cache.
+
+       The previous wording here — "DDG analysis is expensive, so only 2-10%
+       of functions are analyzed" — described an intended design as though it
+       were current behaviour, and a reader sizing DDG cost from it would be
+       wrong by more than an order of magnitude. Corrected 2026-08-03 rather
+       than deleted, because the selection policy below is still the intended
+       one and is worth keeping until it is either wired or withdrawn.
+
+       Wiring it is deliberately sequenced *after* ADR-0017 §3a lands: it
+       reduces which functions carry DDG data, so switching it on before the
+       forward walk exists would move two variables in one measurement and
+       make §3a's effect unreadable.
+
+    Implements ADR-0017 §1c targeted analysis selection — the *design*, not
+    the running behaviour.
 
     Selection criteria (in priority order):
     1. **IO-critical**: Functions on IO boundary chains (callers of IO

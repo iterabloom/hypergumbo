@@ -666,6 +666,36 @@ class TestCfgBuilderRust:
                 found_branch = True
         assert found_branch
 
+    def test_atomic_statement_with_nested_branch_still_decomposes(self) -> None:
+        """A branch buried inside an atomic statement is still control flow.
+
+        ``let_declaration`` is declared ``atomic_statement`` so the def/use
+        extractor is handed whole bindings rather than decomposed leaves. But
+        Rust is expression-oriented, so a binding can *contain* a branch — here
+        ``let_declaration > call_expression > arguments > if_expression``, three
+        levels down. Honouring the atomic declaration unconditionally would
+        stop the descent and erase the branch from the CFG while every def/use
+        measurement kept working, because the declaration exists for def/use.
+
+        The direct-child case (``expression_statement > if_expression``) is
+        covered by ``test_if_else``; this one is deliberately *nested*, since
+        the containment check recurses and a one-level fixture leaves that
+        recursion unexercised.
+        """
+        cfg = self._build(
+            "fn foo(c: bool) -> i32 {\n"
+            "    let x = compute(if c { 1 } else { 2 });\n"
+            "    x\n"
+            "}\n"
+        )
+        branching = [
+            block for block in cfg.blocks.values()
+            if {"true", "false"} <= {e.edge_type for e in block.successors}
+        ]
+        assert branching, (
+            "a branch nested inside an atomic let_declaration was swallowed"
+        )
+
     def test_while_loop(self) -> None:
         cfg = self._build(
             "fn foo() {\n"
