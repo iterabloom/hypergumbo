@@ -1,0 +1,22 @@
+- op: create  # 40a3
+  at: '2026-08-03T12:08:10Z'  # 40a3
+  by: agent  # 40a3
+  actor: jgstern_agent  # 40a3
+  clock: 1  # 40a3
+  nonce: 40a3  # 40a3
+  data:  # 40a3
+    kind: work_item  # 40a3
+    title: "JavaScript has 83 taint sinks and no DDG wiring at all: cfg mapping, extractor and spec are all keyed to typescript"  # 40a3
+    status: todo_hard  # 40a3
+    priority: 2  # 40a3
+    parent:  # 40a3
+    tags:  # 40a3
+    - adr_0017  # 40a3
+    - taint  # 40a3
+    - analysis_quality  # 40a3
+    isbefore: []  # 40a3
+    duplicate_of: []  # 40a3
+    not_duplicate_of: []  # 40a3
+    pr_ref:  # 40a3
+    description: "FOUND WHILE WIRING WI-tohuk, 2026-08-03. Measured, and it inverts the\npriority that item implied.\n\nTHE NUMBERS, from load_builtin_taint_catalog() itself:\n    javascript   50 sources,  83 SINKS\n    typescript    6 sources,   0 sinks\n\nSo JavaScript is the largest unwired taint surface in the tree -- more sinks\nthan java (69) or rust (30) -- while TypeScript, which now has full DDG\nwiring, cannot move a single taint verdict because it has no sinks to reach.\n\nWHAT IS MISSING. All three layers are keyed to the string typescript:\n  * no cfg_nodes/javascript.yaml. typescript.yaml states in its own header\n    that it \"also covers JavaScript (same node types in\n    tree-sitter-javascript)\" -- but load_cfg_mapping is keyed by language, so\n    a .js file never reaches it. A comment that explains a boundary is a\n    decision input and decays like a filing (L50); this one reads as though\n    JavaScript were covered.\n  * ts_def_use registers via @register_def_use_extractor(\"typescript\") only.\n  * the LanguageDdgSpec globs *.ts.\n\nMEASURED CONSEQUENCE: express (all .js) yields ZERO DDG edges, against\napollo-server (.ts) at 1176 edges / 91 symbols.\n\nWHY IT IS CHEAP. The grammars share node types -- that is what\ntypescript.yaml already asserts -- and ts_def_use._HANDLERS keys on\nlexical_declaration / variable_declaration / assignment_expression /\naugmented_assignment_expression / expression_statement, all present in\ntree-sitter-javascript. The work is registering a javascript key for the\nmapping, the extractor and the spec, NOT writing an extractor.\n\nDO NOT fold into another PR. It changes which flows exist for a language with\n83 sinks, so it needs its own 9-repo A/B (express and apollo-server are\nalready in the cohort) with the delta read per-flow against source rather\nthan tallied (L55).\n\nNOT COVERED BY THE NEW GATE, by construction: test_ddg_language_wiring\nquantifies over languages that HAVE a registered extractor, and javascript\nhas none, so nothing currently fails. That scope is declared in the gate\ndocstring rather than implied."  # 40a3
+    fields: {}  # 40a3
