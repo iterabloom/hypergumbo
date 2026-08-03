@@ -1,0 +1,44 @@
+Original commit body from 9531d6c6e384ddafb904f01385d8108fcb80acb3:
+
+One edge per (src, dst, edge_type) is the right call-graph model and is
+unchanged -- emitting one edge per call site would multiply the graph (a
+single Go function's fmt.Printf calls alone turn 1 edge into 12, inflating
+every centrality and fan-out metric downstream). What was wrong is that
+edge.line -- whichever site happened to be encountered FIRST -- was the only
+site any consumer could recover.
+
+ADR-0017 section 4 cannot work without the rest: deciding what a dataflow use
+at line U flows into requires knowing which callee is invoked at line U, and
+with one line per relationship that question was unanswerable for every call
+site but one. This is the sixth prerequisite of WI-kabif, absent from its
+filed list of four.
+
+The survivor now carries the sorted union of collapsed sites, its own line
+included -- so a consumer never has to remember to union edge.line, which is
+a silent single-site regression waiting to happen. A single-site edge carries
+NO call_lines key: absence is the contract for "exactly one site, and it is
+line", and a one-element list on every edge would add a list to every edge of
+every behavior map while saying nothing line does not already say.
+
+Both collapse sites, not just the obvious one. apply_external_id_remap runs
+AFTER deduplicate_edges and collapses again -- two edges genuinely distinct at
+dedup time (distinct external dsts) become one once both dsts remap to a single
+boundary node. It unions call_lines the way it already unions referring_paths.
+
+Capped at 50 (sibling of _REFERRING_PATHS_CAP), because generated code can call
+one target hundreds of times from one function. Truncation keeps the lowest N
+and is conservative for every consumer: knowing fewer call sites can only
+narrow what a dataflow walk adjudicates, never broaden it.
+
+Measured on hypergumbo's own repo and verified in both directions rather than
+counted: 13,121 of 141,312 edges (9.29%) record more than one site -- median 2,
+p95 7, 28 at the cap -- adding 0.22% to the artifact (411 KB of 186 MB). Every
+line recorded for catalog.py:file -> _ts is a genuine _ts(...) call site, and
+the UNRECORDED lines inside the same caller's span (cli.py:2559-2568) contain
+no .get( -- so the field records call sites, not "every line in the caller".
+
+Registered in axis_meta_keys (the Edge.meta vocabulary registry) and
+regenerated into docs/schema.json; a meta key producers write and consumers
+read without a registry entry is the drift that registry exists to police.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
