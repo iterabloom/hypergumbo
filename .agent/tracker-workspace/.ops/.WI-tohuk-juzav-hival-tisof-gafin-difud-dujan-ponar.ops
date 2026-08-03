@@ -1,0 +1,21 @@
+- op: create  # 0386
+  at: '2026-08-03T01:16:22Z'  # 0386
+  by: agent  # 0386
+  actor: jgstern_agent  # 0386
+  clock: 1  # 0386
+  nonce: '0386'  # 0386
+  data:  # 0386
+    kind: work_item  # 0386
+    title: "cfg_nodes rust/typescript/java lack atomic_statement, so their def/use extractors emit zero DDG edges"  # 0386
+    status: todo_hard  # 0386
+    priority: 2  # 0386
+    parent:  # 0386
+    tags:  # 0386
+    - adr_0017  # 0386
+    - taint  # 0386
+    isbefore: []  # 0386
+    duplicate_of: []  # 0386
+    not_duplicate_of: []  # 0386
+    pr_ref:  # 0386
+    description: "cfg_nodes/rust.yaml, typescript.yaml and java.yaml do not declare\natomic_statement, so CfgBuilder recurses past their statement nodes down to\nleaf tokens and their def/use extractors are never called with a statement\nnode. Measured on one fixture: python 2 DDG edges, rust/typescript/go/java 0.\ngo.yaml was fixed in the Go PR; these three remain.\n\nRust and TypeScript additionally have no LanguageDdgSpec registered, so even\nwith the mapping fixed nothing would invoke them. Both halves belong here.\n\nREMEDY IS A GATE, NOT A SWEEP: for every language with a registered def/use\nextractor, assert (a) its mapping declares atomic_statement and (b) a fixture\nyields at least one DDG edge. That closes this for every future language at\nonce. ADR-0017 section 1d already documents atomic_statement as load-bearing\nand even predicts this failure -- the invariant was declared and unenforced."  # 0386
+    fields: {}  # 0386

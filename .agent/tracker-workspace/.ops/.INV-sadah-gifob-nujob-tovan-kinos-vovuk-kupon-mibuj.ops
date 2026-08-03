@@ -1,0 +1,24 @@
+- op: create  # f8ed
+  at: '2026-08-03T01:16:01Z'  # f8ed
+  by: agent  # f8ed
+  actor: jgstern_agent  # f8ed
+  clock: 1  # f8ed
+  nonce: f8ed  # f8ed
+  data:  # f8ed
+    kind: invariant  # f8ed
+    title: "A taint finding labeled with an analysis method must have been produced by that method"  # f8ed
+    status: violated  # f8ed
+    priority: 1  # f8ed
+    parent:  # f8ed
+    tags:  # f8ed
+    - adr_0017  # f8ed
+    - taint  # f8ed
+    isbefore: []  # f8ed
+    duplicate_of: []  # f8ed
+    not_duplicate_of: []  # f8ed
+    pr_ref:  # f8ed
+    description: "MEASURED 2026-08-02, behavioural, both directions.\n\npropagate_taint_ddg stamps analysis_method=\"ddg\" and confidence=\"precise\" on\nfindings produced by a plain call-graph BFS. The DDG is never consulted to\ndecide WHICH flows are reported:\n\n  - ddg_forward (the DDG index) is built at taint.py:1584-1587 and never read.\n  - tainted_at (\"which variables carry taint\") is created at 1651, populated\n    at 1658, and never read.\n  - ddg_symbols selects only the confidence/analysis_method label.\n\nIts docstring claims it \"uses variable-level precision instead of symbol-level\nBFS\" and enumerates a forward walk in steps 2-3 whose results are discarded.\n\nFOLDED LIMB (not a separate item): ddg_edge.def_block == seed_id compares a\nfunction-local basic-block id against a symbol id. Block ids are reused across\nfunctions -- 306 distinct values across 1306 functions on hypergumbo's own\ncore -- so the namespaces never overlap and the branch cannot fire. DdgEdge\ngained a symbol_id field in the Go PR; that is the PREREQUISITE, not the fix.\n\nREPRO: same call graph, one deliberately unrelated DDG edge, ddg_symbols\ncontaining the seed. Structural returns [(approximate, structural)]; the DDG\npath returns [(precise, ddg)] on the identical path. Negative arm: an empty\nddg_edges list returns [] (the argument is load-bearing for reaching the code).\n\nCONSEQUENCE: ADR-0017 Phase 2 has never affected which flows are reported, for\nany language, since 2026-03-26. INV-karud clause (a) has never been satisfiable."  # f8ed
+    fields:  # f8ed
+      statement: "Every TaintFlowFinding whose analysis_method is \"ddg\" and confidence is \"precise\" must have had its inclusion decided by data-dependence information. Today propagate_taint_ddg decides inclusion by call-graph BFS alone and uses the DDG only to select the label."  # f8ed
+      root_cause: "ADR-0017 section 3a was specified and never implemented. propagate_taint_ddg builds ddg_forward (taint.py:1584-1587) and tainted_at (1651/1658) and reads neither; ddg_symbols selects only the confidence label. A second, independent blocker: ddg_edge.def_block is a function-local block id compared against a symbol id, so that branch can never fire."  # f8ed
+      fix: "Implement the section 3a forward walk (tracked as its own work item), indexing DDG edges by symbol_id. Until then the honest label for every finding is approximate/structural."  # f8ed

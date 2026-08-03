@@ -103,3 +103,10 @@
     tags: [adr_0017]  # dcee
   remove:  # dcee
     tags: [adr-0017]  # dcee
+- op: discuss  # e1c1
+  at: '2026-08-03T01:16:57Z'  # e1c1
+  by: agent  # e1c1
+  actor: jgstern_agent  # e1c1
+  clock: 12  # e1c1
+  nonce: e1c1  # e1c1
+  message: "CORRECTION, 2026-08-02: this item's deliverable has been inert since it merged.\n\nClosed on \"54 tests, 100% coverage\". Measured today: propagate_taint_ddg builds\nddg_forward (taint.py:1584-1587) and tainted_at (1651/1658) and reads neither.\nThe DDG's only effect on output is selecting the confidence/analysis_method\nlabel. Phase 2 has never changed which flows are reported, for any language.\n\nNot reopening a four-month-closed item; recording the proxy closure here\nbecause a future reader greps this status and believes it. The live work is\ntracked as the section 3a implementation item and its umbrella invariant."  # e1c1

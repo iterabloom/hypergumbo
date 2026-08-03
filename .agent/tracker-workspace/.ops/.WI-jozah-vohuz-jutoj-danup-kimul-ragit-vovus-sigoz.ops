@@ -1,0 +1,21 @@
+- op: create  # ba29
+  at: '2026-08-02T22:06:05Z'  # ba29
+  by: agent  # ba29
+  actor: jgstern_agent  # ba29
+  clock: 1  # ba29
+  nonce: ba29  # ba29
+  data:  # ba29
+    kind: work_item  # ba29
+    title: "dead-code-maybe computes test_only_reachable (1851 of 2094 candidates) but emits it only as a summary COUNT - no per-candidate cohort label, so the highest-value bucket is unselectable"  # ba29
+    status: todo_hard  # ba29
+    priority: 2  # ba29
+    parent:  # ba29
+    tags:  # ba29
+    - analysis_quality  # ba29
+    - developer_experience  # ba29
+    isbefore: []  # ba29
+    duplicate_of: []  # ba29
+    not_duplicate_of: []  # ba29
+    pr_ref:  # ba29
+    description: "FOUND BY DOGFOODING 2026-08-02, while deciding what to do about a dead function\nin hypergumbo's own taint.py (_sink_module_compatible: zero production callers,\nsix unit tests, named as live in four other docstrings).\n\nTHE GOOD NEWS FIRST, because it is the premise: hypergumbo DOES find it.\n`dead-code-maybe .` on the self-tree lists _sink_module_compatible in\ndead_candidates. D7's production-seed default is doing exactly its job — the\nfunction is reachable only from tests, and seeding on production\n(entrypoints + exports) is what makes it visible at all. 100% line coverage\nhid it completely.\n\nTHE DEFECT. The run reports:\n    Production functions: 4806\n    Reachable:            2522\n    Potentially dead:     2094 (43.6%)\n      entrypoint-only view would flag: 4268\n      reachable only from tests:       1851\n\n`test_only_reachable: 1851` is computed and reported AS AN AGGREGATE COUNT ONLY.\nNothing on the per-candidate record says which cohort a candidate is in. Every\none of the 2094 records carries an identical field set:\n    name, path, language, kind, line_span, span, id,\n    cross_language_hits, path_shape_boost, ffi_signature\nNo bucket, no reason, no reachable-from-tests flag. Same in --format text, where\nthe list is ranked BY LOC and carries no annotation.\n\nWHY THAT MATTERS. \"Reachable only from tests\" is the highest-value cohort in the\nwhole output: it means the function has tests but no production caller, so the\ntests are load-bearing for nothing and the coverage gate is actively concealing\nthe deadness. That is 1851 of 2094 candidates — 88% — and a consumer cannot\nselect them. A 43.6%-dead list ranked by LOC is not actionable; an 1851-item\n\"has tests, no production caller\" list is a worklist. The tool computed the\ndiscriminator and dropped it on the way out.\n\nThe CLI's own note states the intent and the gap in one sentence: \"the summary's\nentrypoint_only_dead / test_only_reachable buckets disclose both cohorts the\ndefault folds away.\" Disclosure as a count is not disclosure a consumer can act\non.\n\nTHIS IS THE SAME SHAPE AS THE TAINT LABELLING RESIDUAL from the same session:\n13 net/http+Do sink matches that are CORRECT but record the package where the\ncatalog records package.Type, so no consumer can verify them by lookup. Correct\ncomputation, lossy emission. Worth noting the recurrence — it may be a family\nrather than two incidents.\n\nFIX SHAPE (not implemented). Attach the cohort to each candidate rather than\nonly to the summary — e.g. a `reachability` field with values like\n`test_only` / `entrypoint_only` / `unreachable`, mirroring the buckets the\nsummary already computes. Consider ranking by cohort before LOC, since\n`test_only` is the cohort with an unambiguous action attached. Check whether the\ninformation is still available at emission time or whether the bucket counts are\ncomputed from a set that is discarded before the records are built — those need\ndifferent fixes.\n\nDO NOT close this by adding a --seeds all flag or documentation. The counts are\nalready documented; what is missing is per-item attribution."  # ba29
+    fields: {}  # ba29
