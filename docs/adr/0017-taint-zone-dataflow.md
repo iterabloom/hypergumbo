@@ -2,7 +2,7 @@
 # ADR-0017: Taint-Zone Dataflow Analysis
 
 Date: 2026-03-22
-Status: Partially superseded by ADR-0037 (§3a dst-string sink machinery), ADR-0038 (dest_access_mode reliance); core taint analysis in force
+Status: Partially superseded by ADR-0037 (§3a dst-string sink machinery), ADR-0038 (dest_access_mode reliance); core STRUCTURAL taint analysis in force; §3a DDG-backed propagation, §3c–3d mixed-coverage verdicts, §4 function summaries and §7a field-sensitivity are SPECIFIED BUT NOT IMPLEMENTED — each has no production consumer (measured 2026-08-02); see Phased Implementation
 
 > Amended in place — see the 2026-06-11 amendment banner below and the inline pointer markers in §3a and the "Interaction with ADR-0015 `access_mode` metadata" subsection.
 
@@ -547,7 +547,34 @@ transforms:
 
 #### 3a. On native DDG (primary path)
 
-When a function has been analyzed by the native CFG builder + reaching-def solver (i.e., a def/use extractor exists for its language), taint propagation is a forward graph walk on the computed DDG edges:
+> **NOT IMPLEMENTED — this subsection is a TARGET DESIGN, not a description of
+> current behaviour.** Stated up front rather than as a trailing note, because a
+> fragment read of the numbered steps below would otherwise be indistinguishable
+> from a description of what the code does.
+>
+> **What `propagate_taint_ddg` actually does today** (measured 2026-08-02): it
+> runs the same call-graph BFS as `propagate_taint_structural` and uses DDG data
+> only to choose a label. It builds the forward index `ddg_forward` and the
+> tainted-variable set `tainted_at` and **reads neither**; `ddg_symbols` selects
+> `confidence="precise"` vs `"approximate"` and nothing else. So no step below
+> influences which flows are reported, for any language, and has not since this
+> ADR's Phase 2 landed in March 2026.
+>
+> A second, independent blocker: step 2's walk keys on `DdgEdge.def_block`, a
+> **function-local** basic-block id (`bb_5` recurs in every function — 306
+> distinct values across 1,306 functions on hypergumbo's own core), compared
+> against a *symbol* id. Those namespaces never intersect. `DdgEdge.symbol_id`
+> was added later to make the comparison expressible; that is a prerequisite,
+> not the fix.
+>
+> Implementing this is tracked, together with the four prerequisites and a
+> pre-registered expectation of its effect size. Note also that **step 5 as
+> written is underspecified in the load-bearing way**: "if tainted data reaches
+> a sink" must mean *a tainted variable is an argument at the sink call site*.
+> Read as "a tainted definition reaches the sink's block" it removes almost
+> nothing.
+
+The target design: when a function has been analyzed by the native CFG builder + reaching-def solver (i.e., a def/use extractor exists for its language), taint propagation is a forward graph walk on the computed DDG edges:
 
 1. **Identify taint sources.** For each DDG-analyzed function, match call sites against the taint source catalogs (§2a). If a call site's callee is a taint source, mark the variables receiving its return value with the corresponding taint label.
 2. **Propagate through DDG edges.** Walk forward: if variable `v` is tainted at statement S, and a DDG edge connects S's definition of `v` to a use of `v` at statement T, then T inherits the taint.
@@ -859,20 +886,20 @@ ADR-0015's `access_mode` field (read/write/mutate/delete) classifies what an edg
 
 ## Phased Implementation
 
-All originally-planned phases have shipped. The phasing is preserved here as a guide to what each phase delivered and where to find its anchor commits, not as a forward-looking roadmap.
+**Not all planned phases run.** Phase 1 (structural taint) is live and is what every production verdict rests on. Several Phase 2–4 deliverables were implemented, tested to 100% coverage, closed `done` — and have no production consumer. Measured 2026-08-02; each is tracked. The phasing below records what each phase *delivered* and where its anchor commits are, with a Runs column stating whether it affects output today.
 
-| Phase | Scope | Status |
-|-------|-------|--------|
-| 1 | Taint catalogs + structural taint flow | Shipped (Phase 1 commit `d7f43332d7`) |
-| 1b | Precision measurement against synthetic + open-source fixtures (§9) | Carried out; informed Phase 2 prioritization |
-| 2 | Language-parameterized CFG builder + reaching-def solver + Python / Rust / TypeScript def/use extractors (core patterns) + field-sensitivity lite (§7) | Shipped (CFG builder `6afcd40b03`, solver `7a0728b3c2`, Python `509de245f1`, Rust `b8fc35d173`, TypeScript `7e2ee83a90`) |
-| 2b | Rust hard patterns: borrow aliases, `ref`/`ref mut` bindings | Shipped (`03dee372c3`) |
-| 3 | Function summaries (inferred from DDG + YAML-declared) | Shipped (inferred `942100377c`, declared `2df1ec8bf0`) |
-| 4 | Cross-language taint propagation via existing linkers | Shipped (`749a73b47f`) |
+| Phase | Scope | Status | Runs? |
+|-------|-------|--------|-------|
+| 1 | Taint catalogs + structural taint flow | Shipped (Phase 1 commit `d7f43332d7`) | **Yes** — every production verdict |
+| 1b | Precision measurement against synthetic + open-source fixtures (§9) | Carried out; informed Phase 2 prioritization | n/a |
+| 2 | Language-parameterized CFG builder + reaching-def solver + Python / Rust / TypeScript def/use extractors (core patterns) + field-sensitivity lite (§7) | Shipped (CFG builder `6afcd40b03`, solver `7a0728b3c2`, Python `509de245f1`, Rust `b8fc35d173`, TypeScript `7e2ee83a90`) | **Split.** CFG builder + solver + Python extractor: yes (they feed `taint_refine`'s dst-module recovery). Go extractor: yes, added later. **Rust and TypeScript extractors: NO production caller**, and `rust.yaml` / `typescript.yaml` do not declare `atomic_statement`, so they would emit zero DDG edges even if invoked. **§7a field-sensitivity: NO production caller** (`is_field_tainted`). **§3a propagation: does not decide flow inclusion** — see §3a. |
+| 2b | Rust hard patterns: borrow aliases, `ref`/`ref mut` bindings | Shipped (`03dee372c3`) | No — downstream of the Rust extractor, which has no production caller |
+| 3 | Function summaries (inferred from DDG + YAML-declared) | Shipped (inferred `942100377c`, declared `2df1ec8bf0`) | **No.** `infer_summary` and `load_function_summaries` have zero production callers; the only in-tree reference is a catalog-directory listing. |
+| 4 | Cross-language taint propagation via existing linkers | Shipped (`749a73b47f`) | **Partly.** The bridge edge-types are admitted to the BFS, which is live. The §5 mechanism that looks up a callee's *summary* is dead with Phase 3. |
 
 The original ordering had Rust first (motivated by PlazaFlow's trust-boundary verification needs) with Python as a fallback if PlazaFlow code was delayed; the actual landing order put Python first via the accepted-ADR revision (see `fad503239213` and the "Python is the first extractor" rationale in Context). Phase 1 and Phase 2 together produce structural and DDG-precise taint analysis; Phase 2b extends Rust precision for borrow-mediated mutation; Phase 3 enables interprocedural taint flow via summaries; Phase 4 extends propagation across language boundaries via the existing linker edge types.
 
-**Production deployments.** PlazaFlow (the motivating use case in Context) consumes Phase 1 through Phase 4 once its codebase exists. The first in-tree deployment is hypergumbo's own self-audit: `docs/hypergumbo.claims.yaml` declares per-CLI-entry-point taint-flow claims (every runtime subcommand prohibited from reaching `host_fs` / `network` / `subprocess` / `install_artifact` / `dev_zone`), `docs/hypergumbo-self-catalog/` declares the project-local sources / sinks / sanitizers those claims reference, and `hypergumbo verify-claims docs/hypergumbo.claims.yaml` runs the full pipeline (per-language outer loop → CFG → def/use post-pass → reaching-def → DDG-backed propagation with module filtering — see the §3a correction: the named `_sink_module_compatible` never ran). The wrapper-discipline pattern documented in `SECURITY.md` (`safety_zones.py`'s `cache_write`, `user_out_write`, `install_artifact_copy`, …) is the project-local artifact that makes path-bounded zone claims expressible against this ADR's sink-by-callee-name matching model.
+**Production deployments.** PlazaFlow (the motivating use case in Context) consumes Phase 1 through Phase 4 once its codebase exists. The first in-tree deployment is hypergumbo's own self-audit: `docs/hypergumbo.claims.yaml` declares per-CLI-entry-point taint-flow claims (every runtime subcommand prohibited from reaching `host_fs` / `network` / `subprocess` / `install_artifact` / `dev_zone`), `docs/hypergumbo-self-catalog/` declares the project-local sources / sinks / sanitizers those claims reference, and `hypergumbo verify-claims docs/hypergumbo.claims.yaml` runs the full pipeline (per-language outer loop → CFG → def/use post-pass → reaching-def → **structural** propagation with module filtering). Two corrections to what that sentence used to claim: the module filter named `_sink_module_compatible` never ran (see §3a), and the propagation is structural — `propagate_taint_ddg` decides inclusion by call-graph BFS and uses DDG data only to select a confidence label. The wrapper-discipline pattern documented in `SECURITY.md` (`safety_zones.py`'s `cache_write`, `user_out_write`, `install_artifact_copy`, …) is the project-local artifact that makes path-bounded zone claims expressible against this ADR's sink-by-callee-name matching model.
 
 ### 8. Testing strategy
 
