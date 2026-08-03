@@ -1,0 +1,30 @@
+- op: create  # d0be
+  at: '2026-08-03T04:50:56Z'  # d0be
+  by: agent  # d0be
+  actor: jgstern_agent  # d0be
+  clock: 1  # d0be
+  nonce: d0be  # d0be
+  data:  # d0be
+    kind: work_item  # d0be
+    title: "Should taint sources in test/fixture/migration code be in scope? 27.7% of cohort findings originate there"  # d0be
+    status: needs_human_review  # d0be
+    priority: 1  # d0be
+    parent:  # d0be
+    tags:  # d0be
+    - adr_0017  # d0be
+    - taint  # d0be
+    - analysis_quality  # d0be
+    isbefore: []  # d0be
+    duplicate_of: []  # d0be
+    not_duplicate_of: []  # d0be
+    pr_ref:  # d0be
+    description: "MEASURED BY ME on the 9-repo cohort (cohort-joruv arm, 354 evidence rows),\n2026-08-03.\n\n98 of 354 rows (27.7%) have a SOURCE inside test, fixture or migration code:\n\n     64  caddytest/integration/reverseproxy_test.go        Listen\n      6  notify/email/email_test.go\n      4  caddytest/integration/listener_test.go\n      4  modules/caddyhttp/reverseproxy/fastcgi/client_test.go\n      2  python/huggingfaceserver/tests/server.py\n      2  src/pretix/base/migrations/0097_auto_20180722_0804.py\n\nA test that opens a listener is not a network-exposure finding about the\nproduct. A migration that writes to the database is not an untrusted-input\nfinding. Yet these sit in the same verdict as production flows and, because a\nclaim verdict is a disjunction over its flows, a single test-sourced flow is\nenough to hold a claim at violated.\n\nTHE MACHINERY ALREADY EXISTS. The codebase carries an is_test_file predicate\n(and a separate, broader paths-level notion of test files -- the two are\ndeliberately KEPT DISTINCT per a standing fold-vs-keep ruling, so pick which\none applies rather than assuming). Nobody decided taint should ignore test\ncode; it simply was never wired, which is the tell that this is an unmade\ndecision rather than a considered scope.\n\nTHE QUESTION. Should taint-flow analysis exclude test/fixture/migration\nsources by default? And if excluded, disclosed how -- silently dropped, or\nreported in a labelled bucket the way dead-code seeds are (per the D7\npattern of a default plus labelled disclosure buckets)?\n\nDO NOT simply filter and move on. A silent drop would make the tool quieter\nwithout making it more honest, and the count that disappears is exactly the\nkind of thing a future session would rediscover as a regression."  # d0be
+    fields: {}  # d0be
+- op: update  # 8d7f
+  at: '2026-08-03T05:07:41Z'  # 8d7f
+  by: human  # 8d7f
+  actor: jgstern  # 8d7f
+  clock: 2  # 8d7f
+  nonce: 8d7f  # 8d7f
+  set:  # 8d7f
+    status: todo_hard  # 8d7f

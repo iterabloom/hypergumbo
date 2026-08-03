@@ -1,0 +1,30 @@
+- op: create  # f1a0
+  at: '2026-08-03T04:50:53Z'  # f1a0
+  by: agent  # f1a0
+  actor: jgstern_agent  # f1a0
+  clock: 1  # f1a0
+  nonce: f1a0  # f1a0
+  data:  # f1a0
+    kind: work_item  # f1a0
+    title: "Is an ORM read an untrusted_input source? 28.2% of cohort findings are database-read reaching database-write"  # f1a0
+    status: needs_human_review  # f1a0
+    priority: 1  # f1a0
+    parent:  # f1a0
+    tags:  # f1a0
+    - adr_0017  # f1a0
+    - taint  # f1a0
+    - analysis_quality  # f1a0
+    isbefore: []  # f1a0
+    duplicate_of: []  # f1a0
+    not_duplicate_of: []  # f1a0
+    pr_ref:  # f1a0
+    description: "MEASURED BY ME on the 9-repo cohort (cohort-joruv arm, 354 evidence rows),\n2026-08-03. Not a bug report -- a question about what the catalog should mean.\n\nTHE NUMBERS\n  100 of 354 rows (28.2%) have a django.db.models SINK:\n        create 61 · bulk_create 33 · get_or_create 3 · bulk_update 3\n  Their SOURCES are django.db.models reads:\n        filter 64 · get 45 · all 11\n\nSo better than a quarter of everything the tool reports on this cohort is\n\"data read from the database reaches the database\". For an ORM-backed\napplication that is not a security finding; it is the application working.\n\nTHE QUESTION. Is QuerySet.filter() / .get() / .all() genuinely an\nuntrusted_input SOURCE? The argument for: data in the database may have\narrived from an untrusted client, so it is untrusted at rest. The argument\nagainst: under that reading every read-modify-write in every ORM application\nis a violation, which makes the verdict uninformative -- and the verdict is a\ndisjunction, so a single such flow flips a whole claim to violated and no\namount of precision work elsewhere can flip it back.\n\nOPTIONS, none of which I am choosing here:\n  (1) leave as-is and treat the volume as expected\n  (2) drop ORM reads as sources, keeping genuinely external inputs\n      (request bodies, env, argv, sockets)\n  (3) keep them but give the ORM-read-to-ORM-write pair its own zone or\n      trust_level so it is separable in the output rather than mixed in\n  (4) require a taint LABEL distinction: data from the DB is a different\n      category from data off the wire\n\nWHY IT MATTERS MORE THAN ANY DATAFLOW WORK QUEUED. The section 3a\nimplementation is estimated at ~13% fewer evidence rows and ZERO claim-verdict\nchanges. This class is 28.2% of rows on its own and is the reason several\nclaims are saturated at violated. Precision work cannot make a saturated\ndisjunction informative; scoping decisions can.\n\nNOTE ON A PRIOR FIGURE: a review of the earlier cohort arm reported \"42.2% of\n192 distinct flows\". I measure 28.2% of 354 evidence rows on the current arm.\nDifferent denominator (distinct flows vs evidence rows) and a different arm\n(the PR-179 predecessor added 47 flows). Both point the same way; the number\nhere is the one I verified myself."  # f1a0
+    fields: {}  # f1a0
+- op: update  # 4180
+  at: '2026-08-03T05:07:33Z'  # 4180
+  by: human  # 4180
+  actor: jgstern  # 4180
+  clock: 2  # 4180
+  nonce: '4180'  # 4180
+  set:  # 4180
+    status: todo_hard  # 4180
