@@ -867,6 +867,34 @@ class TestCfgBuilderGo:
                     found_case = True
         assert found_case
 
+    def test_statements_are_statement_level_not_leaf_tokens(self) -> None:
+        """CFG statements must be Go statement nodes, not decomposed leaves.
+
+        Without ``atomic_statement`` in go.yaml the builder recurses past
+        ``short_var_declaration`` down to bare identifiers. A def/use
+        extractor keyed on statement node types is then never called with
+        one, so it is correct in isolation and inert in the pipeline —
+        the failure mode the sibling reachability tests cannot see,
+        because a CFG of leaf tokens is still fully reachable.
+        """
+        cfg = self._build(
+            "package main\n"
+            "func foo(req *Request) {\n"
+            "    secret := req.Password\n"
+            "    total += 1\n"
+            "    send(secret)\n"
+            "}\n"
+        )
+        types = {s.node_type for b in cfg.blocks.values() for s in b.statements}
+        assert "short_var_declaration" in types
+        assert "assignment_statement" in types
+        assert "expression_statement" in types
+        # Non-vacuity: the leaf decomposition must be GONE, not merely
+        # accompanied by the statement nodes. Asserting only the positives
+        # would pass on a CFG that emits both.
+        assert "identifier" not in types
+        assert "field_identifier" not in types
+
 
 class TestCfgBuilderTypeScript:
     """Test CFG construction from TypeScript tree-sitter ASTs."""
