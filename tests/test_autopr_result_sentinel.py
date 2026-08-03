@@ -705,3 +705,104 @@ class TestVprQueueReconciliation:
         result = _run_autopr(fake, "prune", sentinel=sentinel)
         assert result.returncode == 0
         assert not sentinel.exists()
+
+
+# ---------------------------------------------------------------------------
+# INV-rahib convergence ledger
+#
+# The sentinel above answers "did my last run succeed?" and is deliberately
+# overwritten (see TestSentinelOverwrite). Convergence is a property of the
+# SEQUENCE of runs, so it gets its own append-only artifact rather than a
+# second meaning bolted onto the sentinel — one fact, one home. Without it
+# the invariant's 2026-06-17 validation criterion had nothing to evaluate,
+# which is how it went unexamined across 579 commits.
+# ---------------------------------------------------------------------------
+
+
+class TestConvergenceLedger:
+    """`.git/AUTOPR_HISTORY.jsonl` accumulates one record per invocation."""
+
+    def test_two_runs_append_two_distinguishable_records(
+        self, tmp_path: Path
+    ) -> None:
+        """Two runs with DIFFERENT terminal states produce two ledger lines.
+
+        Deliberately not two identical runs: two lines of identical content
+        would also be produced by a bug that wrote the same record twice, so
+        the states are made to differ (protected-branch refusal, then an auth
+        error on a feature branch) and both must appear, in order.
+        """
+        fake = _init_fake_repo(tmp_path, branch="dev")
+        sentinel = tmp_path / "sentinel.json"
+        ledger = tmp_path / "history.jsonl"
+        env = {
+            "AUTOPR_HISTORY_FILE": str(ledger),
+            "FORGEJO_USER": "u",
+            "FORGEJO_TOKEN": "t",
+        }
+
+        first = _run_autopr(fake, sentinel=sentinel, extra_env=env)
+        assert first.returncode == 1, first.stdout + first.stderr
+
+        subprocess.run(
+            ["git", "checkout", "-q", "-b", "feature"],
+            cwd=str(fake), check=True, capture_output=True,
+        )
+        second = _run_autopr(
+            fake, sentinel=sentinel,
+            extra_env={"AUTOPR_HISTORY_FILE": str(ledger)},
+        )
+        assert second.returncode == 1, second.stdout + second.stderr
+
+        lines = [ln for ln in ledger.read_text().splitlines() if ln.strip()]
+        assert len(lines) == 2, f"ledger must accumulate, got {lines}"
+        records = [json.loads(ln) for ln in lines]
+        assert records[0]["final_state"] == "failed_protected_branch"
+        assert records[1]["final_state"] == "auth_error"
+        for record in records:
+            _assert_schema(record)
+
+    def test_ledger_does_not_disturb_the_sentinel(self, tmp_path: Path) -> None:
+        """The sentinel still holds exactly one object: the LAST run.
+
+        Guards the boundary between the two artifacts. If the ledger were ever
+        implemented by making the sentinel append-only, this fails — and so
+        would every consumer that json.loads() it.
+        """
+        fake = _init_fake_repo(tmp_path, branch="dev")
+        sentinel = tmp_path / "sentinel.json"
+        ledger = tmp_path / "history.jsonl"
+        env = {
+            "AUTOPR_HISTORY_FILE": str(ledger),
+            "FORGEJO_USER": "u",
+            "FORGEJO_TOKEN": "t",
+        }
+        _run_autopr(fake, sentinel=sentinel, extra_env=env)
+        _run_autopr(fake, sentinel=sentinel, extra_env=env)
+
+        payload = _read_sentinel(sentinel)
+        _assert_schema(payload)
+        assert len(ledger.read_text().strip().splitlines()) == 2
+
+    def test_unwritable_ledger_never_fails_the_run(self, tmp_path: Path) -> None:
+        """A ledger that cannot be written degrades silently.
+
+        The ledger is an observability artifact. Letting it turn a successful
+        auto-pr into a failed one would trade a measurement gap for an outage,
+        so the write is best-effort by construction.
+        """
+        fake = _init_fake_repo(tmp_path, branch="dev")
+        sentinel = tmp_path / "sentinel.json"
+        result = _run_autopr(
+            fake, sentinel=sentinel,
+            extra_env={
+                "AUTOPR_HISTORY_FILE": str(tmp_path / "no" / "such" / "dir.jsonl"),
+                "FORGEJO_USER": "u",
+                "FORGEJO_TOKEN": "t",
+            },
+        )
+        assert result.returncode == 1, result.stdout + result.stderr
+        payload = _read_sentinel(sentinel)
+        _assert_schema(payload)
+        assert payload["final_state"] == "failed_protected_branch"
+        assert not (tmp_path / "no").exists()
