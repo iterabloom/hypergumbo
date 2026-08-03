@@ -89,6 +89,22 @@ class TaintSource:
     return_tainted: bool = True
     argument_tainted: tuple[int, ...] = ()
     start_at: str = "caller"  # "caller" or "callee"
+    # WI-vazal: the io_primitives boundary this source was auto-derived from,
+    # drawn from io_boundary.CATALOG_BOUNDARY_TYPES. Empty string for a
+    # YAML-DECLARED source (crypto, key_material, project-local catalogs),
+    # which has no boundary because it did not come from an io_primitives
+    # entry.
+    #
+    # WHY IT IS CARRIED. AUTO_SOURCE_LABEL_MAP collapses THREE boundaries —
+    # net_recv, ipc_recv and db_read — into the single label
+    # `untrusted_input`, and until now discarded which one it was. So "a
+    # request body reached the database" and "a row read from the database
+    # reached the database" were the same fact downstream, and on an
+    # ORM-backed application the second dominates: 93 of the 100 displayed
+    # rows on pretix's largest violated claim are database-read to
+    # database-write. Keeping the boundary makes them separable WITHOUT
+    # changing the label, so no already-published claim changes meaning.
+    source_boundary: str = ""
 
     @property
     def qualified_name(self) -> str:
@@ -200,6 +216,13 @@ class TaintFlowFinding:
     path: list[str] = field(default_factory=list)
     source_module: str = ""
     sink_module: str = ""
+    # WI-vazal: the io_primitives boundary the SOURCE was derived from
+    # (io_boundary.CATALOG_BOUNDARY_TYPES), carried through from the matched
+    # TaintSource. Empty for a YAML-declared source, which has no boundary.
+    # Lets a consumer separate "data off the wire reached the database" from
+    # "a row read from the database reached the database" without either
+    # flow's taint_label changing — so no published claim changes meaning.
+    source_boundary: str = ""
 
     @property
     def verdict(self) -> str:
@@ -863,6 +886,11 @@ def _derive_auto_imports_from_io_primitives(
                     module=prim.module,
                     name=prim.name,
                     kind=prim.kind,
+                    # The map above is many-to-one: net_recv, ipc_recv and
+                    # db_read all become `untrusted_input`. Carry the
+                    # boundary so the collapse is reversible downstream
+                    # (WI-vazal) instead of information the label ate.
+                    source_boundary=prim.boundary,
                 ))
             if prim.boundary in AUTO_SINK_ZONE_MAP:
                 zone, trust = AUTO_SINK_ZONE_MAP[prim.boundary]
@@ -1491,6 +1519,7 @@ def propagate_taint_structural(
                     source_symbol=seed_id,
                     source_primitive=taint_source.name,
                     source_module=taint_source.module,
+                    source_boundary=taint_source.source_boundary,
                     sink_symbol=sink_callee_id,
                     sink_primitive=taint_sink.name,
                     sink_module=taint_sink.module,
@@ -1737,6 +1766,7 @@ def propagate_taint_ddg(
                 source_symbol=seed_id,
                 source_primitive=taint_source.name,
                 source_module=taint_source.module,
+                source_boundary=taint_source.source_boundary,
                 sink_symbol=sink_callee_id,
                 sink_primitive=taint_sink.name,
                 sink_module=taint_sink.module,

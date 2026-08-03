@@ -581,6 +581,12 @@ class TestViolatedFlowEvidence:
                 # matcher. Empty here because the fixture builds a finding
                 # directly rather than through a propagator.
                 "source_module": "",
+                # WI-vazal: the io_primitives boundary the source came from,
+                # so a reader can separate a database read from a socket read
+                # when both carry the label `untrusted_input`. Empty here for
+                # the same reason as source_module — the fixture builds the
+                # finding directly rather than through a propagator.
+                "source_boundary": "",
                 "sink_symbol": "d",
                 "sink_primitive": "replace",
                 "sink_module": "",
@@ -1227,3 +1233,101 @@ class TestNonProductionExclusion:
             _network_claim(), [_finding_from("src/tests/e2e/conftest.py")]
         )
         assert verdict.to_dict()["excluded_flows"] == {SOURCE_SCOPE_TEST: 1}
+
+
+# ---------------------------------------------------------------------------
+# WI-vazal — report WHICH boundary a flow entered through, without relabelling
+#
+# AUTO_SOURCE_LABEL_MAP collapses net_recv, ipc_recv and db_read into the one
+# label `untrusted_input`. On an ORM-backed app the db_read arm dominates: 93
+# of the 100 displayed rows on pretix's largest violated claim are
+# database-read to database-write. The owner ruling was to keep the flows and
+# make them SEPARABLE, not to relabel them — relabelling would silently change
+# what every already-published `untrusted_input` claim means.
+# ---------------------------------------------------------------------------
+
+
+def _finding_with_boundary(boundary: str, path: str = "src/app/views.py"):
+    f = _finding_from(path)
+    f.source_boundary = boundary
+    return f
+
+
+class TestFlowOrigins:
+    """The label stays put; the breakdown is reported alongside it."""
+
+    def test_splits_counted_flows_by_source_boundary(self) -> None:
+        verdict = verify_taint_claim(
+            _network_claim(),
+            [
+                _finding_with_boundary("db_read"),
+                _finding_with_boundary("db_read"),
+                _finding_with_boundary("net_recv"),
+            ],
+        )
+        assert verdict.verdict == "violated"
+        assert verdict.flow_origins == {"db_read": 2, "net_recv": 1}
+
+    def test_taint_label_is_unchanged_by_the_split(self) -> None:
+        """The whole point: no flow is relabelled, so no claim changes meaning.
+
+        A `db_read`-sourced flow must still match a claim written against
+        `untrusted_input`. If this ever fails, the change has become the
+        relabelling option the owner declined.
+        """
+        findings = [_finding_with_boundary("db_read")]
+        assert findings[0].taint_label == "untrusted_input"
+        verdict = verify_taint_claim(_network_claim(), findings)
+        assert verdict.verdict == "violated"
+        assert verdict.evidence_count == 1
+
+    def test_yaml_declared_sources_bucket_as_declared(self) -> None:
+        """A source with no boundary is `declared`, not silently uncounted.
+
+        Built-in YAML sources (crypto, key_material) and project-local
+        catalogs have no io_primitives boundary. They still need a bucket, or
+        flow_origins would not sum to the flows the verdict is about.
+        """
+        verdict = verify_taint_claim(
+            _network_claim(), [_finding_with_boundary("")]
+        )
+        assert verdict.flow_origins == {"declared": 1}
+
+    def test_origins_sum_to_the_counted_flows(self) -> None:
+        """Non-vacuity floor (L17): the breakdown must account for everything.
+
+        A bucket that silently drops a category would still produce a
+        plausible-looking dict.
+        """
+        findings = [
+            _finding_with_boundary("db_read"),
+            _finding_with_boundary("net_recv"),
+            _finding_with_boundary("ipc_recv"),
+            _finding_with_boundary(""),
+        ]
+        verdict = verify_taint_claim(_network_claim(), findings)
+        assert sum(verdict.flow_origins.values()) == verdict.evidence_count == 4
+
+    def test_excluded_flows_are_not_counted_in_origins(self) -> None:
+        """Origins describe the flows the verdict IS about.
+
+        A test-sourced flow is excluded from the verdict (WI-bifob), so
+        counting it here would make the two disclosures contradict each other.
+        """
+        verdict = verify_taint_claim(
+            _network_claim(),
+            [
+                _finding_with_boundary("db_read", "src/app/views.py"),
+                _finding_with_boundary("net_recv", "src/tests/e2e/conftest.py"),
+            ],
+        )
+        assert verdict.flow_origins == {"db_read": 1}
+        assert verdict.excluded_flows == {SOURCE_SCOPE_TEST: 1}
+
+    def test_serialized_for_consumers(self) -> None:
+        verdict = verify_taint_claim(
+            _network_claim(), [_finding_with_boundary("db_read")]
+        )
+        d = verdict.to_dict()
+        assert d["flow_origins"] == {"db_read": 1}
+        assert d["evidence"][0]["source_boundary"] == "db_read"

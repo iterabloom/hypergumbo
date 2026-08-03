@@ -75,7 +75,13 @@ from .paths import is_migration_file, is_test_file
 # when nothing was excluded, so a 1.1 consumer that ignores it still reads a
 # correct verdict — but it would UNDERSTATE what the analysis saw, which is
 # why this is a version change rather than a silent field addition.
-VERIFY_CLAIMS_SCHEMA_VERSION = "1.2"
+# 1.3 adds the per-verdict ``flow_origins`` breakdown and a per-evidence-row
+# ``source_boundary`` (WI-vazal). Also additive, and deliberately so: the
+# alternative considered was RELABELLING database reads away from
+# ``untrusted_input``, which would have been a silent semantic change to every
+# claim already written against that label. Reporting the split instead means
+# no published claim changes meaning and no verdict moves.
+VERIFY_CLAIMS_SCHEMA_VERSION = "1.3"
 # WI-kikis: cap on the per-verdict structured drill-down evidence list. A
 # violated claim can have thousands of flows (3,969 on the self-corpus); the
 # deduplicated ``evidence`` list is bounded to this many DISTINCT flows so the
@@ -166,6 +172,17 @@ class ClaimVerdict:
             the tool quieter without making it more honest, and the vanished
             count is exactly what a later session rediscovers as a mystery
             regression. Keys are ``test_sourced`` and ``migration_sourced``.
+        flow_origins: Counts of the flows this verdict IS about, keyed by the
+            io_primitives boundary their source came from (WI-vazal). Empty
+            when there are no flows. The taint label alone cannot express
+            this: ``AUTO_SOURCE_LABEL_MAP`` collapses ``net_recv``,
+            ``ipc_recv`` and ``db_read`` into the single label
+            ``untrusted_input``, so "a request body reached the database" and
+            "a row read from the database reached the database" were
+            indistinguishable — and on an ORM-backed application the second
+            dominates. This reports the split WITHOUT relabelling anything,
+            so no already-published claim changes meaning. ``declared`` is the
+            bucket for YAML-declared sources, which have no boundary.
     """
 
     claim_id: str
@@ -175,6 +192,7 @@ class ClaimVerdict:
     details: str = ""
     evidence: list[dict[str, Any]] = field(default_factory=list)
     excluded_flows: dict[str, int] = field(default_factory=dict)
+    flow_origins: dict[str, int] = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         """Serialize to JSON-friendly dict."""
@@ -186,6 +204,7 @@ class ClaimVerdict:
             "details": self.details,
             "evidence": self.evidence,
             "excluded_flows": self.excluded_flows,
+            "flow_origins": self.flow_origins,
         }
 
 
@@ -761,6 +780,7 @@ def _flow_evidence_dict(v: "TaintFlowFinding") -> dict[str, Any]:
         "source_symbol": v.source_symbol,
         "source_primitive": v.source_primitive,
         "source_module": v.source_module,
+        "source_boundary": v.source_boundary,
         "sink_symbol": v.sink_symbol,
         "sink_primitive": v.sink_primitive,
         # WI-joruv: the MODULE the matched catalog entry declares, which is
@@ -958,6 +978,13 @@ def verify_taint_claim(
     if len(distinct_violations) < len(violations):
         distinct_clause = f" ({len(distinct_violations)} distinct)"
 
+    # WI-vazal: report WHICH boundary each counted flow entered through.
+    # The label cannot carry it — three boundaries share `untrusted_input`.
+    flow_origins: dict[str, int] = {}
+    for finding in violations:
+        origin = getattr(finding, "source_boundary", "") or "declared"
+        flow_origins[origin] = flow_origins.get(origin, 0) + 1
+
     return ClaimVerdict(
         claim_id=claim.id,
         claim_text=claim.text,
@@ -975,6 +1002,7 @@ def verify_taint_claim(
             f"{paths_desc}{suffix}"
         ),
         excluded_flows=excluded_flows,
+        flow_origins=flow_origins,
     )
 
 
