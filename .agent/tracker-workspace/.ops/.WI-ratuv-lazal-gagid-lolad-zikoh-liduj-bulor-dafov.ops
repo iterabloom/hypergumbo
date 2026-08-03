@@ -1,0 +1,20 @@
+- op: create  # 4716
+  at: '2026-08-03T01:16:25Z'  # 4716
+  by: agent  # 4716
+  actor: jgstern_agent  # 4716
+  clock: 1  # 4716
+  nonce: '4716'  # 4716
+  data:  # 4716
+    kind: work_item  # 4716
+    title: "Gate: a production symbol reachable only from its own test module must fail CI"  # 4716
+    status: todo_hard  # 4716
+    priority: 1  # 4716
+    parent:  # 4716
+    tags:  # 4716
+    - adr_0017  # 4716
+    isbefore: []  # 4716
+    duplicate_of: []  # 4716
+    not_duplicate_of: []  # 4716
+    pr_ref:  # 4716
+    description: "THE CLASS ITEM. Six ADR-0017 artifacts were closed done on \"N tests, 100%\ncoverage\" while having no production caller:\n\n  - section 3a DDG propagation (results computed, discarded)\n  - section 4a infer_summary -- zero production callers\n  - section 4b load_function_summaries -- zero production callers\n  - section 7a is_field_tainted -- zero production callers\n  - the Rust and TypeScript def/use extractors -- zero production callers\n  - section 3c mixed-coverage verdict -- confidence is write-only\n\n_sink_module_compatible, retired 2026-08-01, was the first found member of this\nfamily, not an isolated case. Every reference in all seven was PROSE: an ADR\nsection, a sibling module docstring, a CLI docstring, test docstrings. None of\nit is checkable by any gate the project has. Each parsed, linted, and sat at\n100% coverage held there by its own tests.\n\nREMEDY: an executable gate. A production symbol whose only reachability is its\nown test module fails CI. This is the code-reachability twin of the\nclosure-evidence guard, and the recurrence-prevention for the whole family.\nWithout it, the individual items above are the next site rather than the class\n(R8: file the CLASS, not the next site)."  # 4716
+    fields: {}  # 4716

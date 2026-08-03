@@ -1,0 +1,21 @@
+- op: create  # c76f
+  at: '2026-08-03T01:16:18Z'  # c76f
+  by: agent  # c76f
+  actor: jgstern_agent  # c76f
+  clock: 1  # c76f
+  nonce: c76f  # c76f
+  data:  # c76f
+    kind: work_item  # c76f
+    title: "Implement ADR-0017 section 3a: make the DDG forward walk decide flow inclusion"  # c76f
+    status: todo_hard  # c76f
+    priority: 1  # c76f
+    parent:  # c76f
+    tags:  # c76f
+    - adr_0017  # c76f
+    - taint  # c76f
+    isbefore: []  # c76f
+    duplicate_of: []  # c76f
+    not_duplicate_of: []  # c76f
+    pr_ref:  # c76f
+    description: "Implement the ADR-0017 section 3a forward walk so the DDG actually adjudicates\nflows instead of labelling them.\n\nPREREQUISITES, all now known and each independently sufficient to keep it inert:\n  1. atomic_statement missing from cfg_nodes/{rust,typescript,java}.yaml, so\n     those extractors emit zero DDG edges (separate item).\n  2. cli.py gates propagation on the literal lang == \"python\".\n  3. Index DDG edges by symbol_id, not def_block (block ids are function-local).\n  4. TaintFlowFinding.confidence has no consumer -- verify_claims.py:853\n     hardcodes the string \"approximate\", and _flow_evidence_dict omits both\n     confidence and analysis_method entirely.\n\nSPEC GAP FOUND WHILE MEASURING: step 5 as written (\"if tainted data reaches a\nsink, record a finding\") must be implemented as \"a tainted variable is an\nARGUMENT AT THE SINK CALL SITE\". Implemented as \"a tainted def reaches the sink\nblock\" it kills almost nothing.\n\nPRE-REGISTERED EXPECTATION, from adjudicating the 9-repo cohort (192 distinct\nflows): roughly 13 percent fewer evidence rows and ZERO of 17 violated claim\nverdicts change. 69 percent of flows have source and sink in different\nfunctions, which intraprocedural DDG cannot connect by construction; a further\n26 of the 60 intraprocedural flows have no analyzable function at all (Django\nmigration pseudo-symbols with 0-0 spans, and JS taint attributed at file\ngranularity). Addressable domain is therefore about 18 percent of flows.\nIf a future measurement reports a much larger number, suspect the measurement.\n\nKNOWN TRADE TO OWN IN WRITING: without alias analysis (excluded by ADR-0017\nsection 7b) this introduces FALSE NEGATIVES on container/alias mutation. For a\nsecurity tool that is the expensive direction."  # c76f
+    fields: {}  # c76f

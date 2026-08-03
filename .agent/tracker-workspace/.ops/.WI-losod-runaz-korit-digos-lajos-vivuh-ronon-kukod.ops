@@ -1,0 +1,21 @@
+- op: create  # 4e2f
+  at: '2026-08-03T01:16:28Z'  # 4e2f
+  by: agent  # 4e2f
+  actor: jgstern_agent  # 4e2f
+  clock: 1  # 4e2f
+  nonce: 4e2f  # 4e2f
+  data:  # 4e2f
+    kind: work_item  # 4e2f
+    title: "Go if/for-clause initializers and range clauses are invisible to def/use"  # 4e2f
+    status: todo_soft  # 4e2f
+    priority: 3  # 4e2f
+    parent:  # 4e2f
+    tags:  # 4e2f
+    - adr_0017  # 4e2f
+    - taint  # 4e2f
+    isbefore: []  # 4e2f
+    duplicate_of: []  # 4e2f
+    not_duplicate_of: []  # 4e2f
+    pr_ref:  # 4e2f
+    description: "Disclosed gap from the Go def/use PR, filed because go.yaml's own comment says\n\"Tracked separately\" and an untracked \"tracked separately\" is a fresh L50\ninstance the day it ships.\n\nThe CFG mapping's conditional and loop hooks name only condition/body/\nconsequence/alternative children, never the initializer. So these Go bindings\nare invisible to def/use:\n\n  if err := do(a); err != nil { ... }     -- if-statement initializer\n  for j := 0; j < n; j++ { ... }          -- for-clause initializer\n  for i, v := range items { ... }         -- range clause\n\nEach is a real definition that no reaching-def chain can start from. Same class\nof gap exists for any language whose CFG mapping uses those hooks."  # 4e2f
+    fields: {}  # 4e2f

@@ -1,0 +1,21 @@
+- op: create  # 2285
+  at: '2026-08-02T22:13:44Z'  # 2285
+  by: agent  # 2285
+  actor: jgstern_agent  # 2285
+  clock: 1  # 2285
+  nonce: '2285'  # 2285
+  data:  # 2285
+    kind: work_item  # 2285
+    title: "taint sink matching still string-parses edge.dst; ADR-0037's re-key onto dst_ref is unimplemented (dst_ref: 14 refs in ir.py, 0 in taint.py)"  # 2285
+    status: todo_hard  # 2285
+    priority: 2  # 2285
+    parent:  # 2285
+    tags:  # 2285
+    - adr_0017  # 2285
+    - analysis_quality  # 2285
+    isbefore: []  # 2285
+    duplicate_of: []  # 2285
+    not_duplicate_of: []  # 2285
+    pr_ref:  # 2285
+    description: "ADR-0017 carries TWO invalidation markers (its 2026-06-11 amendment and the\n[Invalidated by ADR-0037] banner above §3a) that say the same thing:\n\n    \"implementing fixes will re-key sink matching and refinement on dst_ref\"\n\nThat is unimplemented. Measured 2026-08-02: `dst_ref` appears 14 times in\nir.py and ZERO times in taint.py. Sink matching still string-parses the dst id:\n\n    _extract_callee_name(edge_dst)     # symbol_id.split(\":\")\n    _extract_callee_module(edge_dst)   # symbol_id.split(\":\")[1]\n\nADR-0037 made `dst_ref` unconditionally derived PRECISELY so consumers stop\nparsing `dst` strings, and folded the `unresolved` kind-slot token into\n`external_symbol`. Both taint predicates predate that and still read the string.\n\nWHY IT MATTERS BEYOND TIDINESS, with evidence from the same session:\n * `_extract_callee_module` returns `parts[1]`, which is a MODULE for an\n   external symbol and a FILE PATH for an in-repo one. Nothing in the name or\n   the signature says which. WI-damir's whole defect was a consumer treating\n   the path-shaped value as a module; the fix has to re-derive module-ness from\n   the path by stripping a file extension, which is a heuristic forced by the\n   string-parsing.\n * The 13 residual `net/http`+`Do` non-realizable matches are the same family:\n   the emitted module records the PACKAGE while the catalog records\n   PACKAGE.TYPE, so a consumer cannot verify the match by lookup. A typed\n   reference would carry that distinction instead of encoding it in a slot.\n\nSCOPE: taint.py's `_extract_callee_name` / `_extract_callee_module` and\ntaint_refine.py's dst module-segment REWRITES (which mutate the string in\nplace — the thing ADR-0037 most directly targets).\n\nDO NOT fold this into a bug fix. It is a contract migration with its own\nbefore/after: the cohort harness (scratchpad cohort-after.sh + ab2.py, 9 repos,\nper-flow diff) exists and should be run across it, because re-keying changes\nwhich edges match and the failure mode is silent."  # 2285
+    fields: {}  # 2285
