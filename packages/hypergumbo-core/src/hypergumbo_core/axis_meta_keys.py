@@ -798,6 +798,16 @@ META_KEYS: Final[tuple[MetaKeySpec, ...]] = (
                 "edge — the only list-of-paths meta value, minted at the "
                 "edge-dedup merge in ir.py so one canonical edge retains every "
                 "referring site."),
+    MetaKeySpec("call_lines", AXIS_EDGE_META,
+                "Sorted union of every call-site line that collapsed into this "
+                "edge, its own ``line`` included — the sibling of "
+                "``referring_paths``, minted at the same edge-dedup merge in "
+                "ir.py. Present only when two or more sites collapsed, so its "
+                "absence means the single site is ``line``. The call graph "
+                "keeps one edge per (src, dst, type); this retains the sites "
+                "that model discards, which ADR-0017 §4 needs to map a "
+                "dataflow use at line U onto the callee invoked at line U. "
+                "Capped at ``ir._CALL_LINES_CAP`` (lowest N retained)."),
 )
 
 

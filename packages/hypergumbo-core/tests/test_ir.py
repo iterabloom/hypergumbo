@@ -735,6 +735,181 @@ def test_deduplicate_edges_preserves_different_types() -> None:
     assert len(result) == 2
 
 
+# ---------------------------------------------------------------------------
+# meta["call_lines"] — the call sites deduplication would otherwise discard.
+#
+# ADR-0017 §4 needs to map "a DDG use at line U" onto "which callee is called
+# at line U". The call graph keeps one edge per (src, dst, type) and that
+# edge's ``line`` is whichever call site happened to be encountered first, so
+# every other site's line was unrecoverable. These tests pin the additive
+# remedy: the survivor carries the full set.
+# ---------------------------------------------------------------------------
+
+
+def _call_edge(line: int, dst: str = "python:b.py:3-4:bar:function") -> Edge:
+    """A calls-edge from one fixed caller, varying only the call site line."""
+    return Edge.create(
+        src="python:a.py:1-20:foo:function",
+        dst=dst,
+        edge_type="calls",
+        line=line,
+        origin="test",
+        origin_run_id="test",
+    )
+
+
+def test_deduplicate_edges_records_every_collapsed_call_line() -> None:
+    """The survivor carries all collapsed call sites, its own line included.
+
+    Including the survivor's own line is the point: a consumer must not have
+    to union ``edge.line`` with ``meta["call_lines"]`` to get the call sites,
+    because forgetting that union is a silent single-site regression.
+    """
+    from hypergumbo_core.ir import deduplicate_edges
+
+    result = deduplicate_edges([_call_edge(10), _call_edge(20), _call_edge(15)])
+
+    assert len(result) == 1
+    assert (result[0].meta or {}).get("call_lines") == [10, 15, 20]
+
+
+def test_deduplicate_edges_omits_call_lines_for_a_single_call_site() -> None:
+    """One call site emits no ``call_lines`` key at all.
+
+    Absence is the contract for "exactly one site, and it is ``edge.line``".
+    Emitting a one-element list on every edge in the graph would put a list
+    on every edge of every behavior map for no added information.
+    """
+    from hypergumbo_core.ir import deduplicate_edges
+
+    result = deduplicate_edges([_call_edge(10)])
+
+    assert len(result) == 1
+    assert "call_lines" not in (result[0].meta or {})
+
+
+def test_deduplicate_edges_call_lines_dedupes_repeated_lines() -> None:
+    """Two calls to the same target on one physical line collapse to one entry."""
+    from hypergumbo_core.ir import deduplicate_edges
+
+    result = deduplicate_edges([_call_edge(10), _call_edge(10), _call_edge(12)])
+
+    assert (result[0].meta or {}).get("call_lines") == [10, 12]
+
+
+def test_deduplicate_edges_call_lines_is_capped() -> None:
+    """A pathological caller cannot put an unbounded list on one edge.
+
+    Truncation is conservative for every consumer of this field: fewer known
+    call sites can only *narrow* what a dataflow walk will adjudicate, never
+    broaden it. The cap protects artifact size in generated code.
+    """
+    from hypergumbo_core.ir import _CALL_LINES_CAP, deduplicate_edges
+
+    edges = [_call_edge(line) for line in range(1, _CALL_LINES_CAP + 20)]
+    result = deduplicate_edges(edges)
+
+    lines = (result[0].meta or {})["call_lines"]
+    assert len(lines) == _CALL_LINES_CAP
+    assert lines == sorted(lines)
+
+
+def test_deduplicate_edges_call_lines_preserves_other_meta() -> None:
+    """Recording call sites must not clobber the survivor's existing meta."""
+    from hypergumbo_core.ir import deduplicate_edges
+
+    first = _call_edge(10)
+    first.meta = {"call_kind": "direct"}
+
+    result = deduplicate_edges([first, _call_edge(20)])
+
+    assert (result[0].meta or {})["call_kind"] == "direct"
+    assert (result[0].meta or {})["call_lines"] == [10, 20]
+
+
+def test_deduplicate_edges_call_lines_survives_serialization() -> None:
+    """``call_lines`` must round-trip: taint reads edges as serialized dicts."""
+    from hypergumbo_core.ir import deduplicate_edges
+
+    edge = deduplicate_edges([_call_edge(10), _call_edge(20)])[0]
+
+    revived = Edge.from_dict(edge.to_dict())
+    assert (revived.meta or {})["call_lines"] == [10, 20]
+
+
+def test_deduplicate_edges_self_loop_contributes_no_call_lines() -> None:
+    """A dropped self-loop leaves no survivor, so it records nothing."""
+    from hypergumbo_core.ir import deduplicate_edges
+
+    self_loop = Edge.create(
+        src="python:a.py:1-20:foo:function",
+        dst="python:a.py:1-20:foo:function",
+        edge_type="calls",
+        line=10,
+        origin="test",
+        origin_run_id="test",
+    )
+    other = Edge.create(
+        src="python:a.py:1-20:foo:function",
+        dst="python:a.py:1-20:foo:function",
+        edge_type="calls",
+        line=20,
+        origin="test",
+        origin_run_id="test",
+    )
+
+    result = deduplicate_edges([self_loop, other], remove_self_loops=True)
+
+    assert result == []
+    assert "call_lines" not in (self_loop.meta or {})
+
+
+def test_apply_external_id_remap_unions_call_lines() -> None:
+    """The post-dedup remap collapses edges too — it must not lose call sites.
+
+    ``apply_external_id_remap`` runs *after* ``deduplicate_edges`` in the
+    pipeline, so two edges that were distinct at dedup time (distinct external
+    dsts) can become the same edge here. Without the union, whichever one lost
+    takes its call sites with it.
+    """
+    from hypergumbo_core.ir import apply_external_id_remap
+
+    first = _call_edge(10, dst="external:pkg:old_a:function")
+    first.meta = {"call_lines": [10, 11]}
+    second = _call_edge(30, dst="external:pkg:old_b:function")
+    second.meta = {"call_lines": [30, 31]}
+
+    result = apply_external_id_remap(
+        [first, second],
+        {
+            "external:pkg:old_a:function": "external:pkg:merged:function",
+            "external:pkg:old_b:function": "external:pkg:merged:function",
+        },
+    )
+
+    assert len(result) == 1
+    assert (result[0].meta or {})["call_lines"] == [10, 11, 30, 31]
+
+
+def test_apply_external_id_remap_seeds_call_lines_from_edge_line() -> None:
+    """A collapsing edge with no ``call_lines`` still contributes its own line."""
+    from hypergumbo_core.ir import apply_external_id_remap
+
+    result = apply_external_id_remap(
+        [
+            _call_edge(10, dst="external:pkg:old_a:function"),
+            _call_edge(30, dst="external:pkg:old_b:function"),
+        ],
+        {
+            "external:pkg:old_a:function": "external:pkg:merged:function",
+            "external:pkg:old_b:function": "external:pkg:merged:function",
+        },
+    )
+
+    assert len(result) == 1
+    assert (result[0].meta or {})["call_lines"] == [10, 30]
+
+
 def test_edge_to_dict_has_no_quality() -> None:
     """WI-riguh / WI-humok (ADR-0039 ruling 4): the deprecated Edge.quality
     field is REMOVED — edges no longer carry a ``quality`` block (it was a pure
