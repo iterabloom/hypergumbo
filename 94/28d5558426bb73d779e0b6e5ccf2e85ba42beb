@@ -1,0 +1,23 @@
+Original commit body from 25f33aff64cab3985e3eed81ff5db26121e65913:
+
+The window closed mid-PR on a change that touched no architecture at all: a
+taint-analysis branch was in flight while two feature merges and three
+tracker auto-syncs landed, and the doc hit 17 commits of distance. The gate
+then failed a PR whose own diff was entirely unrelated to it.
+
+Pre-flighting cannot prevent that. The check measures commit DISTANCE, so it
+goes stale after your LAST commit rather than before your first (L35) -- the
+failure lands on whoever happens to be holding an open PR when the counter
+rolls over, which is a scheduling accident rather than a signal.
+
+30 commits is roughly 6 days of headroom at dev's cadence, against ~3 before.
+
+NOT FIXED HERE, and filed separately rather than widened into this change:
+the counter is also advanced by commits that CANNOT invalidate the doc.
+Tracker auto-sync commits touch only .agent/tracker*/.ops and never any
+analyzed source, yet each one consumes window. Excluding them addresses the
+cause; this addresses the symptom cheaply and buys room to do that properly.
+
+No test or doc pinned the old value.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
