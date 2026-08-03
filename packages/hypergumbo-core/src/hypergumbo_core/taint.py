@@ -1587,6 +1587,105 @@ def is_field_tainted(variable: str, tainted_vars: set[str]) -> bool:
 # ---------------------------------------------------------------------------
 
 
+def _ddg_taint_reaches(
+    symbol_id: str,
+    source_lines: list[int],
+    sink_lines: list[int],
+    ddg_uses: dict[tuple[str, int], set[int]],
+) -> bool | None:
+    """Does a value defined at a source call reach a use at a sink call?
+
+    THREE-VALUED, and that is the load-bearing part. ``True`` means a data
+    dependence was found; ``False`` means the walk ran to completion without
+    finding one AND accounted for the tainted value at every step; ``None``
+    means the value escaped somewhere the DDG cannot follow, so nothing is
+    known either way.
+
+    Collapsing ``None`` into ``False`` — the obvious implementation — silently
+    converts ADR-0017 §7b's exclusion of alias analysis into false negatives.
+    Measured on pretix: ``vouchers_send`` does
+    ``voucher_list.append(vouchers.pop(0))`` and later
+    ``bulk_update(voucher_list, ...)``; the taint leaves the tracked definition
+    chain the moment it enters the list, and a two-valued walk "proves" the
+    flow absent. Three of nine verified removals in the first cohort arm were
+    this shape.
+
+    WHY NOTHING IS REMOVED TODAY, EVEN ON ``False``. Distinguishing a use that
+    *terminates* the taint (``fmt.Printf(cwd)`` — argument consumed, result
+    discarded) from one that *propagates* it (``lst.append(x)`` — argument
+    escapes into the receiver) requires knowing whether the callee mutates its
+    arguments. That is precisely ADR-0017 §4 function summaries, and §3a's own
+    step 3 says so: "At call sites, apply function summaries (§4)." §4a
+    (``infer_summary``) and §4b (``load_function_summaries``) have zero
+    production callers, so the information does not exist at runtime and every
+    ``False`` here is really an unverified ``None``. The walk therefore
+    CONFIRMS and never refutes: it earns the ``precise`` label where it finds
+    a dependence and leaves inclusion to call-graph reachability everywhere
+    else. Removal becomes sound once §4 runs — that is the fifth prerequisite,
+    absent from WI-kabif's filed list of four.
+
+    The ADR-0017 §3a forward walk, over one function's reaching-definition
+    edges. Seeds at the lines where the taint source is called — the value it
+    returns is defined there — and follows def→use edges transitively: if a
+    tainted value is used at line U, then whatever is *defined* at U inherits
+    the taint, so U becomes a new seed.
+
+    Returns True as soon as a tainted value is used at a line where the sink is
+    called, which is the ADR's step 5 read correctly. The ADR words it "if
+    tainted data reaches a sink", and implemented as "a tainted definition
+    reaches the sink's basic block" it removes almost nothing: the definition
+    and the sink call routinely share a block, so the test passes for a
+    function that calls a source and a sink on unrelated data. The load-bearing
+    reading is that a tainted variable is an ARGUMENT AT THE SINK CALL SITE,
+    and a use recorded at the sink's line is exactly that.
+
+    Intraprocedural by construction — every edge belongs to one function, so
+    this can only adjudicate a flow whose source and sink share a function.
+    Callers must fall back to call-graph reachability for everything else,
+    which is not a shortcut but ADR-0017 §7b's exclusion of alias and
+    whole-program analysis.
+
+    Args:
+        symbol_id: The function whose DDG is being walked.
+        source_lines: Lines where the taint source is called.
+        sink_lines: Lines where the sink is called.
+        ddg_uses: ``(symbol_id, def_line) -> {use_line, ...}``.
+
+    Returns:
+        True if the taint reaches a sink call site.
+    """
+    targets = set(sink_lines)
+    frontier = list(source_lines)
+    seen: set[int] = set()
+    escaped = False
+    while frontier:
+        line = frontier.pop()
+        if line in seen:
+            continue
+        seen.add(line)
+        uses = ddg_uses.get((symbol_id, line))
+        if not uses:
+            continue
+        if uses & targets:
+            return True
+        for use_line in uses:
+            if (symbol_id, use_line) in ddg_uses:
+                # Something is defined here and we can follow it: the taint
+                # continues along a chain we still understand.
+                if use_line not in seen:
+                    frontier.append(use_line)
+            else:
+                # The tainted value is consumed at a line that defines nothing
+                # the DDG tracked — it went into a container, a call argument,
+                # a field, or a closure. ADR-0017 §7b excludes alias analysis,
+                # so we cannot say where it went next. That is unknown, not
+                # absent.
+                escaped = True
+    if escaped:
+        return None
+    return False
+
+
 def propagate_taint_ddg(
     ddg_edges: list[DdgEdge],
     call_edges: list[dict[str, Any]],
@@ -1638,12 +1737,30 @@ def propagate_taint_ddg(
 
     analyzed = ddg_symbols or set()
 
-    # Index DDG edges by (def_block, def_line, variable) for forward walk
-    # Actually, index by (def_block, variable) → list of use locations
-    ddg_forward: dict[tuple[str, str], list[DdgEdge]] = defaultdict(list)
+    # Forward index for the §3a walk: (function, def line) → lines that use
+    # the value defined there.
+    #
+    # Keyed on ``symbol_id``, NOT ``def_block``. Block ids are function-local —
+    # ``bb_5`` occurs in every function — so once edges from a whole repo are
+    # aggregated into one list a block id identifies nothing. The predecessor
+    # of this index was keyed ``(def_block, variable)`` and compared a block id
+    # against a symbol id, which cannot match; it was also never read.
+    #
+    # Lines rather than variables because that is what makes the index
+    # composable with call sites: a call edge records the LINE it occurs on, so
+    # "is the tainted value an argument here" becomes a set membership test.
+    ddg_uses: dict[tuple[str, int], set[int]] = defaultdict(set)
     for ddg_edge in ddg_edges:
-        key = (ddg_edge.def_block, ddg_edge.variable)
-        ddg_forward[key].append(ddg_edge)
+        ddg_uses[(ddg_edge.symbol_id, ddg_edge.def_line)].add(ddg_edge.use_line)
+
+    # (caller, callee) → every line that call occurs on. A caller may invoke
+    # the same callee more than once, and a flow is real if the taint reaches
+    # ANY of those call sites, so this is a list rather than a single line.
+    call_lines: dict[tuple[str, str], list[int]] = defaultdict(list)
+    for edge in call_edges:
+        line = edge.get("line")
+        if isinstance(line, int):
+            call_lines[(edge.get("src", ""), edge.get("dst", ""))].append(line)
 
     # Index sources, sinks, sanitizers by name (same as structural) — a list
     # per name so _lookup_named_entry can disambiguate by module/ambiguity.
@@ -1708,17 +1825,13 @@ def propagate_taint_ddg(
             if taint_source.start_at == "callee"
             else caller_id
         )
-        source_has_ddg = seed_id in analyzed
-
-        # DDG-aware forward walk: track tainted variables per DDG edge
-        tainted_at: set[tuple[str, str]] = set()  # (block_id, variable)
-
-        if source_has_ddg:
-            # Find DDG edges originating from the source call site's block
-            # Mark all variables defined at the source call as tainted
-            for ddg_edge in ddg_edges:
-                if ddg_edge.def_block == seed_id:
-                    tainted_at.add((ddg_edge.def_block, ddg_edge.variable))
+        # The function the source is called FROM, which is what the DDG is
+        # keyed on. This is ``caller_id`` regardless of ``start_at``: a
+        # ``callee`` seed relocates where the BFS begins, not where the call
+        # physically occurs.
+        source_fn = caller_id
+        source_call_lines = call_lines.get((caller_id, source_callee_id), [])
+        fn_has_ddg = source_fn in analyzed
 
         # Structural BFS for reachability (used for mixed-coverage)
         reachable: set[str] = set()
@@ -1750,10 +1863,75 @@ def propagate_taint_ddg(
             if sink_node not in reachable:
                 continue
 
-            sink_has_ddg = sink_node in analyzed
+            # ADR-0017 §3a. The DDG can adjudicate exactly one shape: a sink
+            # called in the SAME function as the source, where that function
+            # has reaching-definition coverage. There the walk is authoritative
+            # and may REMOVE a flow — structural reachability is trivially true
+            # for such a pair (the two callers are the same symbol), so it has
+            # no way to tell "the source's value is passed to the sink" apart
+            # from "both happen to be called here".
+            #
+            # For every other shape — different functions, or no coverage —
+            # the DDG has nothing to say, because it is intraprocedural. Those
+            # keep call-graph reachability and are labelled as such. Silently
+            # dropping them would convert ADR-0017 §7b's declared limitation
+            # into false negatives, the expensive direction for a security
+            # tool.
+            # TWO SOUNDNESS GUARDS, both of which exist because the walk may
+            # only REFUTE a flow on positive evidence. Neither is tuning; each
+            # was added after a verified false negative on real code, and a
+            # false negative is the expensive direction for a security tool.
+            #
+            # (1) The source's value must actually be tracked. If the DDG
+            #     recorded no use of whatever the source call defines, we know
+            #     nothing about where that value went — absence of evidence,
+            #     not evidence of absence. caddy's printEnvironment binds
+            #     `for _, v := range os.Environ()`; the Go CFG mapping's loop
+            #     hook never names the range clause, so `v` has no definition
+            #     in the DDG at all (WI-losod), and without this guard the
+            #     walk "proved" that a literal `fmt.Println(v)` on the next
+            #     line was unreachable.
+            #
+            # (2) A sink call site recorded BEFORE the source cannot be the
+            #     one that consumes it, and — crucially — is not necessarily
+            #     the only one. The call graph emits ONE edge per
+            #     (caller, callee) pair, so ``line`` is *a* line where that
+            #     callee is invoked, not every line. printEnvironment calls
+            #     fmt.Printf twelve times and the edge records only the first
+            #     (454); the tainted call at 469 is invisible. When the
+            #     recorded line precedes the source, later call sites we
+            #     cannot see may well receive the taint, so the absence of a
+            #     dependence to the one line we can see licenses nothing.
+            adjudicated = False
+            if fn_has_ddg and sink_node == source_fn and source_call_lines:
+                sink_call_lines = call_lines.get(
+                    (sink_node, sink_callee_id), [],
+                )
+                source_tracked = any(
+                    ddg_uses.get((source_fn, line)) for line in source_call_lines
+                )
+                sink_after_source = any(
+                    sink_line > source_line
+                    for sink_line in sink_call_lines
+                    for source_line in source_call_lines
+                )
+                if sink_call_lines and source_tracked and sink_after_source:
+                    # CONFIRM-ONLY. The walk raises confidence when it finds a
+                    # data dependence and never removes a flow, because a sound
+                    # refutation is not available on this substrate — see the
+                    # note on §4 below. ``None`` (escaped) and ``False``
+                    # (exhausted) are therefore treated alike: neither is
+                    # evidence the flow is absent.
+                    adjudicated = _ddg_taint_reaches(
+                        source_fn, source_call_lines, sink_call_lines,
+                        ddg_uses,
+                    ) is True
 
-            # Determine confidence based on DDG coverage
-            if source_has_ddg and sink_has_ddg:
+            # The label now records what actually decided inclusion, which is
+            # what INV-sadah asserts. Before §3a existed every finding here was
+            # stamped "ddg"/"precise" on the strength of a walk whose result
+            # was discarded; "precise" is now earned only where the walk ran.
+            if adjudicated:
                 confidence = "precise"
                 method = "ddg"
             else:
