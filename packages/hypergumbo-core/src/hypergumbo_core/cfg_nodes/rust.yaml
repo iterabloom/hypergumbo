@@ -50,3 +50,31 @@ switch:
 
 # Rust uses Result/? instead of try/catch
 try_catch: []
+
+# Atomic statement node types — the CFG builder treats these as a single
+# CfgStatement and stops descending. Without this the builder recurses past
+# let_declaration/assignment_expression down to bare identifiers, so a def/use
+# extractor keyed on statement node types is never called with one: correct in
+# isolation, inert in the pipeline. The reachability tests cannot see that,
+# because a CFG of leaf tokens is still fully reachable.
+#
+# These are exactly the keys of rust_def_use._HANDLERS that classify() does not
+# already own. Deliberately EXCLUDED because listing a type in both would make
+# the atomic check shadow its control-flow role: return_expression (return),
+# if_expression (conditional), for_expression (loop), match_arm (switch),
+# try_expression (early_return), break_expression, continue_expression.
+#
+# NOTE: ADR-0017 §1d's illustrative example lists `return_expression` here.
+# That example predates the convention above and would shadow the return hook;
+# go.yaml documents the rule and this mapping follows it.
+#
+# Known gap, disclosed: `closure_expression` is a _HANDLERS key but is NOT
+# atomic — a closure body carries its own control flow, so making it atomic
+# would collapse it into one statement. Closure-captured definitions therefore
+# remain invisible to def/use, matching the conservative overapproximation
+# ADR-0017 §7b already declares for capture-mediated flow.
+atomic_statement:
+  - let_declaration
+  - assignment_expression
+  - compound_assignment_expr
+  - expression_statement

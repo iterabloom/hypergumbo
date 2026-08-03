@@ -22,6 +22,7 @@ from __future__ import annotations
 from typing import Any
 
 from hypergumbo_core.cfg import DefUseResult, register_def_use_extractor
+from hypergumbo_core.ddg_build import LanguageDdgSpec, register_ddg_language
 
 
 def _node_text(node: Any, source: bytes) -> str:
@@ -245,3 +246,42 @@ _HANDLERS: dict[str, Any] = {
     "for_in_statement": _handle_for_in_statement,
     "expression_statement": _handle_expression_statement,
 }
+
+
+# Registered so that TypeScript's def/use extractor is actually reachable from
+# the repo-level DDG builder; without a spec, build_repo_ddg skips the language
+# outright and the extractor stays dead no matter how correct it is.
+#
+# SCOPE, deliberately narrow and disclosed rather than implied:
+#
+#   * Only `function_declaration`. Class methods (`method_definition`) are NOT
+#     registered, because the analyzer's kind slot for them is getter/setter
+#     sensitive (js_ts.py decides "method" / "getter" / "setter" inline) and
+#     re-deriving that classification here would put a second copy of a
+#     production judgement in a consumer — the precise shape that has produced
+#     wrong numbers in this subsystem before. Reusing the analyzer's decision
+#     requires extracting it into a shared helper first; filed separately.
+#
+#   * TypeScript currently has ZERO catalogued taint sinks (6 sources, 0 sinks),
+#     so no TypeScript DDG edge can change a taint verdict today whatever this
+#     covers. That is stated so the registration is not mistaken for a taint
+#     improvement: it makes the language conform to the wiring gate and be ready
+#     when sinks land, and nothing more.
+#
+#   * The glob is `*.ts`, so JavaScript gets nothing. Measured: apollo-server
+#     (TypeScript) yields 588 DDG edges over 93 symbols, express (all `.js`)
+#     yields ZERO. This is the larger gap of the two and it points the other
+#     way from the catalog: JavaScript carries 50 sources and 83 SINKS while
+#     TypeScript carries 6 and none. `cfg_nodes/typescript.yaml` says in its
+#     own header that it "also covers JavaScript (same node types in
+#     tree-sitter-javascript)", but it is keyed to the `typescript` language
+#     and this extractor registers only for `typescript`, so a `.js` file
+#     reaches neither. Wiring JavaScript needs a `javascript` key for the
+#     mapping, the extractor and the spec — cheap, because the grammar node
+#     types are shared, and worth more than anything in this file. Filed
+#     separately rather than folded in, so its A/B stays readable.
+register_ddg_language(LanguageDdgSpec(
+    language="typescript",
+    file_glob="*.ts",
+    function_node_types=frozenset({"function_declaration"}),
+))

@@ -27,6 +27,7 @@ from __future__ import annotations
 from typing import Any
 
 from hypergumbo_core.cfg import DefUseResult, register_def_use_extractor
+from hypergumbo_core.ddg_build import LanguageDdgSpec, register_ddg_language
 
 
 def _node_text(node: Any, source: bytes) -> str:
@@ -350,3 +351,17 @@ _HANDLERS: dict[str, Any] = {
     "expression_statement": _handle_expression_statement,
     "closure_expression": _handle_closure_expression,
 }
+
+
+# Rust has one function construct: an inherent or trait method is still a
+# `function_item`, just nested inside an `impl_item`. So neither `name_for` nor
+# `kind_for` is supplied — the defaults (the node's `name` field, kind
+# "function") already match what the Rust analyzer puts in the id, and matching
+# it is the point. A DDG symbol id that disagrees with the analyzer's id for
+# the same function attributes coverage to a symbol nothing else refers to,
+# which reads downstream as "this function has no DDG data".
+register_ddg_language(LanguageDdgSpec(
+    language="rust",
+    file_glob="*.rs",
+    function_node_types=frozenset({"function_item"}),
+))

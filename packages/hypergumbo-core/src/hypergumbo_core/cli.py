@@ -4952,9 +4952,18 @@ def _build_ddg_for_verify_claims(
     """
     from .ddg_build import build_repo_ddg, registered_ddg_languages
 
+    # Registration is an import side effect, so a def/use module nobody imports
+    # registers nothing and its language is skipped by build_repo_ddg — which
+    # is one of the two independent reasons the Rust and TypeScript extractors
+    # had no production caller for months while both shipped with tests at 100%
+    # coverage. This list is a second home for a fact the filesystem already
+    # holds; test_ddg_language_wiring.py fails when the two disagree, so a new
+    # extractor cannot be added and silently left unimported.
     try:
         import hypergumbo_lang_mainstream.go_def_use
-        import hypergumbo_lang_mainstream.py_def_use  # noqa: F401
+        import hypergumbo_lang_mainstream.py_def_use
+        import hypergumbo_lang_mainstream.rust_def_use
+        import hypergumbo_lang_mainstream.ts_def_use  # noqa: F401
     except ImportError:  # pragma: no cover - lang package is a hard dep but defend
         return [], set(), {}
 
