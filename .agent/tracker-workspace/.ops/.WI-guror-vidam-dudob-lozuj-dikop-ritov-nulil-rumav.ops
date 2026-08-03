@@ -1,0 +1,21 @@
+- op: create  # 5e8e
+  at: '2026-08-03T06:04:41Z'  # 5e8e
+  by: agent  # 5e8e
+  actor: jgstern_agent  # 5e8e
+  clock: 1  # 5e8e
+  nonce: 5e8e  # 5e8e
+  data:  # 5e8e
+    kind: work_item  # 5e8e
+    title: "ir._extract_path_slot truncates any colon-bearing path slot (dart:io -> dart), corrupting edge referring-site provenance"  # 5e8e
+    status: todo_hard  # 5e8e
+    priority: 2  # 5e8e
+    parent:  # 5e8e
+    tags:  # 5e8e
+    - analysis_quality  # 5e8e
+    - symbol_identity  # 5e8e
+    isbefore: []  # 5e8e
+    duplicate_of: []  # 5e8e
+    not_duplicate_of: []  # 5e8e
+    pr_ref:  # 5e8e
+    description: "ir._extract_path_slot (ir.py:1308) returns the WRONG path for any symbol id whose path slot contains a colon.\n\nREPRO (pure function, no fixture needed):\n    from hypergumbo_core.ir import _extract_path_slot\n    _extract_path_slot(\"dart:dart:io:0-0:module:module\")\n    -> \"dart\"        (actual)\n    -> \"dart:io\"     (correct)\n\nCAUSE. The body is parts = symbol_id.split(\":\") then return parts[1]. Per ADR-0036 D1a the path slot is the ONE colon-TOLERANT slot in the id grammar; lang, span, name and kind are colon-free, and the parse must be anchored from BOTH ENDS. Taking parts[1] assumes the path is colon-free, which is exactly the assumption the grammar declines to make.\n\nTHE CORRECT IMPLEMENTATION IS TWELVE LINES BELOW IT. ir._parse_dangling_id at ir.py:1321 does the right thing -- it joins everything between the language and the last three tokens -- and its docstring states the hazard explicitly: \"The path slot may itself contain colons (e.g. dart imports like dart:dart:io:0-0:module:module where path = dart:io)\". So the knowledge was present in the same file and the neighbouring function did not use it.\n\nCONSUMER IMPACT. The function's own docstring says it is \"used to record the original referring-site path on edges whose src was collapsed by apply_external_id_remap\" (ir.py:1618). For a symbol with a colon-bearing path the recorded provenance path is therefore a truncated fragment (dart rather than dart:io), silently, on an edge field whose entire purpose is to preserve where the reference came from.\n\nNOT MEASURED: how many symbols in a real corpus carry a colon in the path slot, so the live blast radius is unknown rather than known-small. Dart imports are the known producer. Count before downgrading this.\n\nFixed for free if the six-homes consolidation item lands; filed separately because the standalone fix is two lines plus a test and needs no refactor."  # 5e8e
+    fields: {}  # 5e8e

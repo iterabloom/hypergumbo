@@ -1,0 +1,21 @@
+- op: create  # 2818
+  at: '2026-08-03T06:04:44Z'  # 2818
+  by: agent  # 2818
+  actor: jgstern_agent  # 2818
+  clock: 1  # 2818
+  nonce: '2818'  # 2818
+  data:  # 2818
+    kind: work_item  # 2818
+    title: "profile.py module_importers fallback parses a symbol-id path with a bare split(':')[1]"  # 2818
+    status: todo_soft  # 2818
+    priority: 3  # 2818
+    parent:  # 2818
+    tags:  # 2818
+    - analysis_quality  # 2818
+    - symbol_identity  # 2818
+    isbefore: []  # 2818
+    duplicate_of: []  # 2818
+    not_duplicate_of: []  # 2818
+    pr_ref:  # 2818
+    description: "profile.py:3366 parses a symbol id path slot with a bare split(\":\")[1], inline, with no helper and no colon-tolerance.\n\nTHE CODE:\n    src_path = sym_path.get(edge.src, \"\")\n    if not src_path and \":\" in edge.src:\n        src_path = edge.src.split(\":\")[1] if len(edge.src.split(\":\")) > 1 else \"\"\n\nSame defect as ir._extract_path_slot (filed separately): per ADR-0036 D1a the path slot is the one colon-TOLERANT slot in the grammar, so parts[1] truncates any path containing a colon -- dart:dart:io:0-0:module:module yields dart rather than dart:io.\n\nDISTINCT CONSUMER, DISTINCT SYMPTOM, which is why it is its own item. This value feeds module_importers, keyed by imported module and used to attribute WHICH FILES import a module in the profile output. A truncated path attributes the import to a path that does not exist, in a report a human reads to understand dependency structure.\n\nMITIGATING: it is a FALLBACK, reached only when the sym_path lookup misses, so it fires less often than a primary parse would. That lowers frequency, not correctness, and the fallback path is exactly where nobody looks.\n\nAlso note the belt-and-braces shape of the guard -- it splits the string twice and checks the length after already testing \":\" in edge.src -- which reads as code written defensively without a contract to be defensive ABOUT. A shared helper removes both the duplication and the guesswork.\n\nFixed for free if the six-homes consolidation item lands; filed separately because the standalone fix is one line."  # 2818
+    fields: {}  # 2818

@@ -1,0 +1,21 @@
+- op: create  # 8a46
+  at: '2026-08-03T06:04:37Z'  # 8a46
+  by: agent  # 8a46
+  actor: jgstern_agent  # 8a46
+  clock: 1  # 8a46
+  nonce: 8a46  # 8a46
+  data:  # 8a46
+    kind: work_item  # 8a46
+    title: "Symbol-id path-slot extraction has SIX homes and three different correct mechanisms; two are naive and wrong"  # 8a46
+    status: todo_hard  # 8a46
+    priority: 2  # 8a46
+    parent:  # 8a46
+    tags:  # 8a46
+    - analysis_quality  # 8a46
+    - symbol_identity  # 8a46
+    isbefore: []  # 8a46
+    duplicate_of: []  # 8a46
+    not_duplicate_of: []  # 8a46
+    pr_ref:  # 8a46
+    description: "SIX independent implementations of one question: \"given a symbol id, what is its path slot?\" Enumerated 2026-08-03 while wiring the WI-bifob non-production source filter, which needed a seventh and deliberately did not add a naive one.\n\nTHE SITES, with how each parses:\n  ir.py:1308            _extract_path_slot            parts[1] after a full split      NAIVE -- WRONG\n  profile.py:3366       (inline, no function)         edge.src.split(\":\")[1]           NAIVE -- WRONG\n  ir.py:1321            _parse_dangling_id            joins between lang and last 3    correct\n  cli.py:1274           _extract_path_from_symbol_id  END-ANCHORED regex               correct\n  linkers/js_module.py:129 _extract_path_from_id      END-ANCHORED regex               correct\n  ranking.py:139        _extract_path_from_id         .search for the FIRST line-range correct-ish, third variant\n\nPlus verify_claims.py:785 _symbol_path_slot, added by WI-bifob, right-anchored, with a test pinning the colon case. That is the seventh home and it exists only because adding an eighth naive copy was the alternative.\n\nWHY IT MATTERS. Per ADR-0036 D1a the path slot is the ONE colon-TOLERANT slot in the grammar -- lang, span, name and kind are colon-free, and the parse is specified as anchored FROM BOTH ENDS. dart:dart:io:0-0:module:module has path dart:io. A parse that takes parts[1] returns dart. Two of the six get this wrong today (filed separately); the four that get it right do so by three DIFFERENT mechanisms, so there is no shared contract to drift from, only local habit -- the same shape as node.text (35 copies, half None-guarded) and Symbol.span (43 guarded / 42 not) before those were folded.\n\nTHE FIX SHAPE is the project's standard one: a single right-anchored helper in a module both ir.py and the consumers can import, every call site aliased onto it, and a recurrence linter so a naive split(\":\")[1] on a symbol id cannot come back. ir._parse_dangling_id already contains the correct logic and its docstring already explains the hazard -- the correct implementation has been sitting twelve lines below the incorrect one the whole time.\n\nRELATIONSHIP TO OTHER ITEMS. Landing this SUBSUMES the two per-site defect items, which are filed separately because each has its own repro and either can be fixed in minutes without waiting for the refactor. Distinct from INV-dulah, which governs id EMISSION conformance (do producers emit the documented grammar); this is about CONSUMPTION (do readers parse it correctly). An id can be perfectly conformant and still be misread by half its consumers.\n\nNOT YET MEASURED: how many real symbols in a corpus actually carry a colon in the path slot. Known producers are dart imports (dart:io, dart:async) and anything URI-shaped. The blast radius is therefore believed small but is NOT zero and has NOT been counted -- count it before deciding this is cosmetic."  # 8a46
+    fields: {}  # 8a46

@@ -1,0 +1,22 @@
+- op: create  # 29e9
+  at: '2026-08-03T06:04:47Z'  # 29e9
+  by: agent  # 29e9
+  actor: jgstern_agent  # 29e9
+  clock: 1  # 29e9
+  nonce: '29e9'  # 29e9
+  data:  # 29e9
+    kind: work_item  # 29e9
+    title: "ranking.py and cli.py docstrings document the symbol-id grammar with name/kind SWAPPED"  # 29e9
+    status: todo_soft  # 29e9
+    priority: 3  # 29e9
+    parent:  # 29e9
+    tags:  # 29e9
+    - analysis_quality  # 29e9
+    - symbol_identity  # 29e9
+    - documentation  # 29e9
+    isbefore: []  # 29e9
+    duplicate_of: []  # 29e9
+    not_duplicate_of: []  # 29e9
+    pr_ref:  # 29e9
+    description: "Two docstrings document the symbol-id grammar with the NAME and KIND slots SWAPPED, contradicting the canonical grammar the validator enforces.\n\nTHE CANONICAL GRAMMAR (ADR-0036 D1a) is {lang}:{path}:{span}:{name}:{kind}. spec_validator.py confirms it in code, parsing right-anchored as span = parts[-3], name = parts[-2], kind = parts[-1].\n\nTHE TWO WRONG DOCSTRINGS both say {lang}:{path}:{start}-{end}:{kind}:{name}:\n  ranking.py:139  _extract_path_from_id\n      \"Symbol ID format: {lang}:{path}:{start}-{end}:{kind}:{name}\"\n      and its worked example, python:test/e2e/test_sklearn.py:1-1:file:file, cannot\n      disambiguate the two because name and kind are BOTH \"file\" there -- an example\n      chosen from the one symbol shape where the error is invisible.\n  cli.py:1274     _extract_path_from_symbol_id\n      \"Symbol ID format: {lang}:{path}:{start}-{end}:{kind}:{name}\"\n      with example python:/home/user/project/src/main.py:1-10:foo:function, which\n      labels \"foo\" as the kind and \"function\" as the name -- exactly backwards.\n\nA third, linkers/js_module.py:129, documents the CORRECT order, so the tree currently disagrees with itself about its own id grammar in three docstrings covering the same parse.\n\nWHY THIS IS NOT COSMETIC. Neither function's BEHAVIOR is affected -- both only extract the path -- so no test can catch it and no gate will ever fire. It is a wrong fact about the present, stated as an explanation, in the exact position where the next person writing an id consumer will read it and copy it. That is the L50 shape (a comment that explains a boundary is a decision input and it decays like a filing, but nothing ever re-reads it), and R16 now makes a prose claim about another module carry the same burden as a KEEP verdict.\n\nCheap fix: correct both docstrings, and replace ranking's worked example with one whose name and kind DIFFER, so a future reader can tell the slots apart from the example alone."  # 29e9
+    fields: {}  # 29e9
