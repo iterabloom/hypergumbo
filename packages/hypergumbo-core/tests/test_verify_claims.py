@@ -576,8 +576,14 @@ class TestViolatedFlowEvidence:
             {
                 "source_symbol": "s",
                 "source_primitive": "cmd_run",
+                # WI-joruv: the catalog entry's declared module travels with
+                # the row so a match is checkable without re-running the
+                # matcher. Empty here because the fixture builds a finding
+                # directly rather than through a propagator.
+                "source_module": "",
                 "sink_symbol": "d",
                 "sink_primitive": "replace",
+                "sink_module": "",
                 "path": ["s", "mid", "d"],
             }
         ]
@@ -997,3 +1003,47 @@ class TestVerifyClaimCoverage:
             [self._net_send_must_not_exist()], bmap, coverage=cov,
         )
         assert verdicts[0].verdict == "inconclusive"
+
+
+class TestFlowEvidenceCarriesMatchProvenance:
+    """The evidence row must let a reader confirm the match by lookup.
+
+    WI-joruv: adding the fields to TaintFlowFinding is not enough — the
+    evidence dict is the boundary where they would otherwise be dropped,
+    and the dict is what a consumer actually reads.
+    """
+
+    def _finding(self) -> "TaintFlowFinding":
+        from hypergumbo_core.taint import TaintFlowFinding
+
+        return TaintFlowFinding(
+            taint_label="untrusted_input",
+            source_symbol="go:net/http:0-0:Body:external_symbol",
+            source_primitive="Body",
+            source_module="net/http",
+            sink_symbol="go:net/http:0-0:Do:external_symbol",
+            sink_primitive="Do",
+            sink_module="net/http.Client",
+            sink_zone="network",
+            sanitized=False,
+            confidence="approximate",
+            analysis_method="structural",
+            path=["go:cmd/run.go:10-40:run:function"],
+        )
+
+    def test_evidence_row_exposes_the_matched_catalog_modules(self) -> None:
+        from hypergumbo_core.verify_claims import _flow_evidence_dict
+
+        row = _flow_evidence_dict(self._finding())
+        assert row["sink_module"] == "net/http.Client"
+        assert row["source_module"] == "net/http"
+
+    def test_the_emitted_symbol_and_catalog_module_are_both_present(self) -> None:
+        """The pair is the point. Either alone cannot distinguish a correct
+        package-vs-package.Type match from a short-name collision."""
+        from hypergumbo_core.verify_claims import _flow_evidence_dict
+
+        row = _flow_evidence_dict(self._finding())
+        assert row["sink_symbol"] == "go:net/http:0-0:Do:external_symbol"
+        assert row["sink_module"] == "net/http.Client"
+        assert row["sink_module"] not in row["sink_symbol"]

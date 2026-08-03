@@ -175,6 +175,12 @@ class TaintFlowFinding:
         source_primitive: Name of the taint source function.
         sink_symbol: Symbol ID of the sink function call.
         sink_primitive: Name of the sink function.
+        source_module / sink_module: The MODULE declared by the catalog entry
+            that matched, which is not recoverable from the emitted symbol.
+            An emitted symbol may record a package (``go:net/http:0-0:Do``)
+            where the catalog records package.Type (``net/http.Client``);
+            without both, a reader cannot tell a correct match from a
+            short-name collision without re-running the matcher.
         sink_zone: Trust zone of the sink.
         sanitized: Whether all paths from source to sink are sanitized.
         confidence: "approximate" for structural, "precise" for DDG-backed.
@@ -192,6 +198,8 @@ class TaintFlowFinding:
     confidence: str  # "approximate" or "precise"
     analysis_method: str  # "structural" or "ddg"
     path: list[str] = field(default_factory=list)
+    source_module: str = ""
+    sink_module: str = ""
 
     @property
     def verdict(self) -> str:
@@ -1482,8 +1490,10 @@ def propagate_taint_structural(
                     taint_label=taint_label,
                     source_symbol=seed_id,
                     source_primitive=taint_source.name,
+                    source_module=taint_source.module,
                     sink_symbol=sink_callee_id,
                     sink_primitive=taint_sink.name,
+                    sink_module=taint_sink.module,
                     sink_zone=taint_sink.zone,
                     sanitized=False,
                     confidence="approximate",
@@ -1726,8 +1736,10 @@ def propagate_taint_ddg(
                 taint_label=taint_label,
                 source_symbol=seed_id,
                 source_primitive=taint_source.name,
+                source_module=taint_source.module,
                 sink_symbol=sink_callee_id,
                 sink_primitive=taint_sink.name,
+                sink_module=taint_sink.module,
                 sink_zone=taint_sink.zone,
                 sanitized=False,
                 confidence=confidence,
