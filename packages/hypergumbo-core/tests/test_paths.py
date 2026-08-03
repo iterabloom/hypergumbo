@@ -11,6 +11,7 @@ from hypergumbo_core.paths import (
     path_ends_with,
     get_filename,
     is_infrastructure_path,
+    is_migration_file,
     is_under_directory,
     is_test_file,
     is_test_node,
@@ -598,3 +599,56 @@ class TestIsInfrastructurePath:
         """Directory matching is case-insensitive."""
         assert is_infrastructure_path("src/Telemetry/Logger.ts")
         assert is_infrastructure_path("src/METRICS/counter.py")
+
+
+class TestIsMigrationFile:
+    """WI-bifob: migrations are production code that is not about the running app.
+
+    Deliberately NOT folded into is_test_file — a migration is not test
+    scaffolding, it ships and runs. The two are separate predicates that a
+    caller may choose to treat alike.
+    """
+
+    def test_django_migrations(self) -> None:
+        assert is_migration_file("src/pretix/base/migrations/0097_auto.py")
+        assert is_migration_file("app/migrations/0001_initial.py")
+
+    def test_rails_and_flyway(self) -> None:
+        assert is_migration_file("db/migrate/20160816_add_users.rb")
+        assert is_migration_file("db/migration/V1__init.sql")
+
+    def test_alembic_versions(self) -> None:
+        assert is_migration_file("alembic/versions/abc123_add_column.py")
+
+    def test_bare_versions_is_not_a_migration(self) -> None:
+        """`versions/` alone is usually documentation, not schema history.
+
+        The qualifier is the point: claiming a word this common on its own
+        would silently exclude real production flows from security verdicts.
+        """
+        assert not is_migration_file("docs/versions/v2.md")
+        assert not is_migration_file("versions/notes.txt")
+
+    def test_bare_migration_dir_is_not_claimed(self) -> None:
+        """`migration/` without a `db/` parent is often a runtime feature."""
+        assert not is_migration_file("src/migration/planner.go")
+        assert not is_migration_file("internal/migrate/runner.go")
+
+    def test_ordinary_production_paths(self) -> None:
+        assert not is_migration_file("src/pretix/views/order.py")
+        assert not is_migration_file("main.go")
+
+    def test_directory_only_never_the_filename(self) -> None:
+        """A file merely NAMED migrations.py is not a migration directory."""
+        assert not is_migration_file("src/app/migrations.py")
+
+    def test_is_disjoint_from_is_test_file_on_these_paths(self) -> None:
+        """The two predicates answer different questions.
+
+        Measured on the cohort: production is_test_file caught 84 of the 98
+        non-production rows and missed exactly the 14 Django migrations, which
+        is why this predicate had to exist rather than widening that one.
+        """
+        migration = "src/pretix/base/migrations/0097_auto.py"
+        assert is_migration_file(migration)
+        assert not is_test_file(migration)

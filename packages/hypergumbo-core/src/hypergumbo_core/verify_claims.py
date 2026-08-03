@@ -64,12 +64,18 @@ import yaml
 
 from .edge_types import is_grpc_rpc_implementation
 from .io_boundary import KNOWN_IO_BOUNDARIES, BoundaryMap
+from .paths import is_migration_file, is_test_file
 
 
 # Schema version for the ``verify-claims --json`` envelope (WI-nulot / INV-gatog).
 # 1.0 introduces the top-level object (schema_version + view + verdicts +
 # unsupported_taint_languages) replacing the legacy bare JSON array.
-VERIFY_CLAIMS_SCHEMA_VERSION = "1.1"
+# 1.2 adds the per-verdict ``excluded_flows`` disclosure bucket (WI-bifob).
+# Additive: every 1.1 key keeps its meaning, and the new key is an empty dict
+# when nothing was excluded, so a 1.1 consumer that ignores it still reads a
+# correct verdict — but it would UNDERSTATE what the analysis saw, which is
+# why this is a version change rather than a silent field addition.
+VERIFY_CLAIMS_SCHEMA_VERSION = "1.2"
 # WI-kikis: cap on the per-verdict structured drill-down evidence list. A
 # violated claim can have thousands of flows (3,969 on the self-corpus); the
 # deduplicated ``evidence`` list is bounded to this many DISTINCT flows so the
@@ -152,6 +158,14 @@ class ClaimVerdict:
             the full total, so ``len(evidence) < evidence_count`` signals either
             verbatim-duplicate flows collapsed away or a high-count claim
             truncated to the cap.
+        excluded_flows: Counts of flows that MATCHED the claim's constraint but
+            were not counted against it, keyed by why (WI-bifob). Empty when
+            nothing was excluded. This is a disclosure bucket in the D7 shape —
+            a production default plus a labelled, counted account of what the
+            default left out — not a silent filter. A silent drop would make
+            the tool quieter without making it more honest, and the vanished
+            count is exactly what a later session rediscovers as a mystery
+            regression. Keys are ``test_sourced`` and ``migration_sourced``.
     """
 
     claim_id: str
@@ -160,6 +174,7 @@ class ClaimVerdict:
     evidence_count: int = 0
     details: str = ""
     evidence: list[dict[str, Any]] = field(default_factory=list)
+    excluded_flows: dict[str, int] = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         """Serialize to JSON-friendly dict."""
@@ -170,6 +185,7 @@ class ClaimVerdict:
             "evidence_count": self.evidence_count,
             "details": self.details,
             "evidence": self.evidence,
+            "excluded_flows": self.excluded_flows,
         }
 
 
@@ -760,9 +776,57 @@ def _flow_evidence_dict(v: "TaintFlowFinding") -> dict[str, Any]:
     }
 
 
+#: Disclosure-bucket keys for flows excluded from a claim verdict (WI-bifob).
+SOURCE_SCOPE_PRODUCTION = "production"
+SOURCE_SCOPE_TEST = "test_sourced"
+SOURCE_SCOPE_MIGRATION = "migration_sourced"
+
+
+def _symbol_path_slot(symbol_id: str) -> str:
+    """Extract the path slot from ``{lang}:{path}:{span}:{name}:{kind}``.
+
+    RIGHT-ANCHORED deliberately. Per ADR-0036 (D1a) the path slot is the one
+    colon-TOLERANT slot in the grammar — ``dart:dart:io:0-0:module:module`` has
+    path ``dart:io`` — while lang/span/name/kind are colon-free. So the parse
+    takes the last three tokens as span/name/kind and joins everything between
+    the language and that suffix. ``ir._extract_path_slot`` returns ``parts[1]``
+    and is wrong for exactly this case; ``ir._parse_dangling_id`` right beside
+    it is correct and documents why. Not folding those two here, but this must
+    not become a third naive copy.
+
+    Returns the empty string for anything that is not a well-formed id, which
+    the callers treat as "not test, not migration" — an unparseable source is
+    not evidence for excluding a flow.
+    """
+    parts = symbol_id.split(":") if symbol_id else []
+    if len(parts) < 5:
+        return ""
+    return ":".join(parts[1:-3])
+
+
+def _source_scope(finding: "TaintFlowFinding") -> str:
+    """Classify a flow by whether its SOURCE is production code.
+
+    The SOURCE side is what is classified, not the sink. A test that reaches a
+    real network primitive is still a test doing its job; a production function
+    that reaches a primitive inside a test helper is still a production flow.
+    The question the claim asks is "does the shipped application do this", and
+    that is decided by where the data enters.
+    """
+    path = _symbol_path_slot(getattr(finding, "source_symbol", "") or "")
+    if not path:
+        return SOURCE_SCOPE_PRODUCTION
+    if is_test_file(path):
+        return SOURCE_SCOPE_TEST
+    if is_migration_file(path):
+        return SOURCE_SCOPE_MIGRATION
+    return SOURCE_SCOPE_PRODUCTION
+
+
 def verify_taint_claim(
     claim: Claim,
     findings: list,
+    include_non_production: bool = False,
 ) -> ClaimVerdict:
     """Verify a single taint-flow claim against propagation findings.
 
@@ -773,9 +837,15 @@ def verify_taint_claim(
     Args:
         claim: The claim with a taint_flow constraint.
         findings: List of TaintFlowFinding objects from propagation.
+        include_non_production: Count flows whose SOURCE is test, fixture or
+            migration code against the claim. Default False (WI-bifob): those
+            flows are excluded from the verdict and disclosed in the verdict's
+            ``excluded_flows`` bucket instead. Set True to restore the previous
+            behavior of treating every source as in scope.
 
     Returns:
-        ClaimVerdict with the result.
+        ClaimVerdict with the result. ``excluded_flows`` reports what the
+        production default set aside, on both the confirmed and violated paths.
     """
     tf = claim.constraint_taint_flow
     if tf is None:
@@ -795,14 +865,53 @@ def verify_taint_claim(
         )
 
     # Filter findings matching this claim's taint label and sink zone
-    violations = [
+    matching = [
         f for f in findings
         if f.taint_label == tf.source_taint
         and f.sink_zone == tf.prohibited_sink_zone
         and not f.sanitized
     ]
 
+    # WI-bifob: production is the default scope, and what the default leaves
+    # out is DISCLOSED rather than dropped. A test that opens a listener is not
+    # a network-exposure finding about the product, and a migration that writes
+    # to the database is not an untrusted-input finding — yet because a claim
+    # verdict is a DISJUNCTION over its flows, a single such flow was enough to
+    # hold a whole claim at `violated` forever, and no amount of precision work
+    # elsewhere could move it. Measured on the 9-repo cohort: 2 of 18 violated
+    # claims rested entirely on one test-sourced flow each (a conftest.py
+    # reading an env var, a _test.go dialling TLS).
+    #
+    # Nobody ever decided taint should count test code; it simply was never
+    # wired, which is the tell that this was an unmade decision rather than a
+    # considered scope.
+    excluded_flows: dict[str, int] = {}
+    if include_non_production:
+        violations = matching
+    else:
+        violations = []
+        for finding in matching:
+            scope = _source_scope(finding)
+            if scope == SOURCE_SCOPE_PRODUCTION:
+                violations.append(finding)
+            else:
+                excluded_flows[scope] = excluded_flows.get(scope, 0) + 1
+
     if not violations:
+        excluded_clause = ""
+        if excluded_flows:
+            # State the exclusions on the CONFIRMED path especially. This is
+            # where a silent filter would be most misleading: the claim reads
+            # as clean, and the reader has no way to learn that flows existed
+            # and were set aside by a policy they did not choose.
+            parts = ", ".join(
+                f"{count} {reason}"
+                for reason, count in sorted(excluded_flows.items())
+            )
+            excluded_clause = (
+                f" Excluded from this verdict as non-production: {parts} "
+                f"(pass --include-non-production-sources to count them)."
+            )
         return ClaimVerdict(
             claim_id=claim.id,
             claim_text=claim.text,
@@ -810,7 +919,9 @@ def verify_taint_claim(
             details=(
                 f"No unsanitized {tf.source_taint} data reaches "
                 f"{tf.prohibited_sink_zone} zone."
+                f"{excluded_clause}"
             ),
+            excluded_flows=excluded_flows,
         )
 
     # Build detailed violation message with per-flow drill-down evidence
@@ -863,6 +974,7 @@ def verify_taint_claim(
             f"[{tf.source_taint} confidence: approximate]: "
             f"{paths_desc}{suffix}"
         ),
+        excluded_flows=excluded_flows,
     )
 
 
@@ -871,6 +983,7 @@ def verify_claims(
     boundary_map: BoundaryMap,
     taint_findings: list | None = None,
     coverage: Optional[BoundaryCoverage] = None,
+    include_non_production: bool = False,
 ) -> list[ClaimVerdict]:
     """Verify all claims against boundary map and/or taint-flow findings.
 
@@ -885,6 +998,10 @@ def verify_claims(
             :func:`verify_claim` for boundary claims (WI-kajil). Taint claims
             have their own unsupported-language signal (INV-javam) and are
             unaffected.
+        include_non_production: Count test/fixture/migration-sourced taint
+            flows against taint claims (WI-bifob). Default False; excluded
+            flows are disclosed per-verdict in ``excluded_flows``. Boundary
+            claims are unaffected.
 
     Returns:
         List of ClaimVerdict objects, one per claim.
@@ -894,6 +1011,7 @@ def verify_claims(
         if claim.constraint_taint_flow is not None:
             verdicts.append(verify_taint_claim(
                 claim, taint_findings or [],
+                include_non_production=include_non_production,
             ))
         else:
             verdicts.append(verify_claim(claim, boundary_map, coverage=coverage))
