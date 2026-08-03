@@ -1,0 +1,10 @@
+Original commit body from e1a3d8ce1f572fb3ffa65091fbf16fdc84c21f51:
+
+The per-PR gate keys on commit-count DISTANCE, not content, so the doc went
+stale at 17 commits while this branch was in flight -- Phase 0, Phase 3 and
+three tracker auto-syncs all moved the window. Pre-flighting would not have
+caught it: it went stale after the last commit, not before the first (L35).
+
+No content decisions here; the generator ran on the current tree.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
