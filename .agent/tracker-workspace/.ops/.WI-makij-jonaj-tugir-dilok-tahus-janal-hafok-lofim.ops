@@ -1,0 +1,22 @@
+- op: create  # b696
+  at: '2026-08-03T04:37:59Z'  # b696
+  by: agent  # b696
+  actor: jgstern_agent  # b696
+  clock: 1  # b696
+  nonce: b696  # b696
+  data:  # b696
+    kind: work_item  # b696
+    title: "Chained method calls emit no call edge, making every Class.method catalog entry unreachable"  # b696
+    status: todo_hard  # b696
+    priority: 2  # b696
+    parent:  # b696
+    tags:  # b696
+    - adr_0017  # b696
+    - taint  # b696
+    - analysis_quality  # b696
+    isbefore: []  # b696
+    duplicate_of: []  # b696
+    not_duplicate_of: []  # b696
+    pr_ref:  # b696
+    description: "FOUND WHILE MEASURING INV-karud CLAUSE (b), 2026-08-03.\n\nThe Python analyzer emits NO call edge for a chained method call. Measured on\na two-line fixture:\n\n    plain = Fernet(key).decrypt(token)\n    Path(\"/tmp/out\").write_bytes(plain)\n\n  emitted edges: instantiates -> Fernet, instantiates -> Path, plus imports.\n  calls edges:   NONE.\n\nCONSEQUENCE FOR THE CATALOG, which is the reason this is filed rather than\nnoted: catalog entries written as Class.method are unreachable through this\nshape. That is not a corner case --\n\n  * ALL FOUR built-in python `plaintext` sources are Class.method\n    (Fernet.decrypt, AESGCM.decrypt, AESCCM.decrypt, ChaCha20Poly1305.decrypt)\n  * ALL FOUR built-in python sanitizers are Class.method (.encrypt)\n\nso the shipped crypto catalog cannot exercise a plaintext source-to-sink flow\non Python at all. Clause (b) could only be measured by declaring\nproject-local module-level FUNCTIONS.\n\nThis is the same shape INV-karud's own 2026-08-02 note recorded when its first\npositive control failed (\"a chained call Path(...).write_text(...) which the\nanalyzer does not emit at all\"). It was treated there as a probe-construction\ndetail; it is a catalog-reachability defect.\n\nSCOPE UNMEASURED: whether other languages' analyzers have the same gap, and\nhow much of each language's catalog is Class.method shaped. Count those before\nchoosing a fix."  # b696
+    fields: {}  # b696

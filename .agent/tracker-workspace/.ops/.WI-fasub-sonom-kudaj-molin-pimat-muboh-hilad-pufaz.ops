@@ -1,0 +1,21 @@
+- op: create  # 6577
+  at: '2026-08-03T04:37:56Z'  # 6577
+  by: agent  # 6577
+  actor: jgstern_agent  # 6577
+  clock: 1  # 6577
+  nonce: '6577'  # 6577
+  data:  # 6577
+    kind: work_item  # 6577
+    title: "A sanitizer called in the same function as the source does not neutralize the flow (seed exemption)"  # 6577
+    status: todo_hard  # 6577
+    priority: 2  # 6577
+    parent:  # 6577
+    tags:  # 6577
+    - adr_0017  # 6577
+    - taint  # 6577
+    isbefore: []  # 6577
+    duplicate_of: []  # 6577
+    not_duplicate_of: []  # 6577
+    pr_ref:  # 6577
+    description: "FOUND WHILE MEASURING INV-karud CLAUSE (b), 2026-08-03.\n\nA sanitizer called in the SAME function as the taint source does not\nneutralise the flow. The BFS barrier check is `node in sanitizer_callers and\nnode != seed_id` — the seed is exempt by design so it stays reachable as the\ntaint origin, but that exemption also means a barrier called from the seed\nfunction is never consulted.\n\nMEASURED, three arms, same fixture, only the call structure differing:\n    source + sanitizer + sink all in handler()      -> 1 finding (NOT neutralised)\n    sanitizer on an intermediate function           -> 0 findings (neutralised)\n\nWHY IT MATTERS: encrypt-then-write in one function is an extremely common\nreal-world shape:\n\n    def handler(token):\n        plain = decrypt(token)\n        safe = encrypt(plain)      # <- ignored\n        write(safe)\n\nEvery such site reports a false VIOLATION. For a security tool a false\npositive is the cheaper error, but this one is systematic and invisible: the\nfinding says \"unsanitized flow\" about code that visibly sanitises.\n\nNOT A SIMPLE FIX. Removing the seed exemption would break the seed's own\nreachability as the taint origin. The real fix needs statement-ordering\nwithin the seed function (did the sanitiser call precede the sink call, and\ndid the sanitised VALUE reach it), which is ADR-0017 section 3a's forward\nwalk — so this is a motivating case for 3a rather than an independent bug.\nRecorded here so 3a's value is not judged on flow-count reduction alone."  # 6577
+    fields: {}  # 6577
