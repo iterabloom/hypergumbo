@@ -2830,3 +2830,129 @@ class TestResolvedFirstPartyIsNotACatalogPrimitive:
         assert _module_from_symbol_path(
             "javascript:src/pretix/static/d3/d3.v6.js:1-2:log:function",
         ) == "src/pretix/static/d3/d3.v6"
+
+
+# ---------------------------------------------------------------------------
+# Tests — DDG propagator parity with the structural pass
+#
+# `verify-claims` routes Python through propagate_taint_ddg in production
+# (cli.py). Any place the DDG pass diverges from the structural pass is a
+# divergence on the path that actually runs, and these two both diverged in
+# the direction that LOSES findings — the expensive direction for a security
+# tool, because a suppressed flow looks exactly like a clean repo.
+# ---------------------------------------------------------------------------
+
+_SRC = "python:app.py:1-9:handler:function"
+_MID = "python:app.py:11-19:mid:function"
+_SINK_FN = "python:app.py:21-29:writer:function"
+
+
+def _plaintext_source() -> TaintSource:
+    return TaintSource(
+        taint_label="plaintext", module="os", name="getenv", kind="function",
+        return_tainted=True, argument_tainted=False, start_at="caller",
+    )
+
+
+def _fs_sink(module: str = "builtins", name: str = "open") -> TaintSink:
+    return TaintSink(
+        zone="host_fs", trust_level="untrusted", module=module,
+        name=name, kind="function",
+    )
+
+
+class TestDdgSanitizerGateParity:
+    """INV-finoh's gate must apply to the DDG pass, not only the structural one.
+
+    A bare untyped method call ``x.encrypt()`` carries no receiver evidence
+    and must not bind ``Fernet.encrypt``. The structural pass refuses it via
+    ``_register_sanitizer_callers``; the DDG pass had its own ungated copy,
+    so an unrelated call registered a phantom barrier and deleted a real
+    flow. The collision must sit on an INTERMEDIATE hop — the seed node is
+    exempt from the barrier check by design.
+    """
+
+    def _graph(self, poisoned: bool) -> list[dict]:
+        edges = [
+            {"src": _SRC, "dst": "python:os:0-0:getenv:external_symbol",
+             "type": "calls", "is_resolved": True},
+            {"src": _SRC, "dst": _MID, "type": "calls", "is_resolved": True},
+            {"src": _MID, "dst": _SINK_FN, "type": "calls", "is_resolved": True},
+            {"src": _SINK_FN, "dst": "python:builtins:0-0:open:external_symbol",
+             "type": "calls", "is_resolved": True},
+        ]
+        if poisoned:
+            edges.append({
+                "src": _MID,
+                "dst": "python:<external>:0-0:encrypt:external_symbol",
+                "type": "calls", "is_resolved": False,
+                "meta": {"call_construct": "method"},
+            })
+        return edges
+
+    def _run(self, poisoned: bool) -> tuple[int, int]:
+        sanitizers = [TaintSanitizer(
+            input_taint="plaintext", output_taint="ciphertext",
+            qualified_name="cryptography.fernet.Fernet.encrypt",
+        )]
+        args = ([_plaintext_source()], [_fs_sink()], sanitizers)
+        edges = self._graph(poisoned)
+        ddg = [DdgEdge(variable="v", def_block="bb_0", def_line=2,
+                       use_block="bb_0", use_line=3)]
+        structural = propagate_taint_structural(edges, *args)
+        ddg_findings = propagate_taint_ddg(
+            ddg, edges, *args, ddg_symbols={_SRC},
+        )
+        return len(structural), len(ddg_findings)
+
+    def test_positive_control_both_passes_find_the_flow(self) -> None:
+        """Non-vacuity: without the collision both passes report the flow.
+
+        If this were 0 the test below would pass for the wrong reason.
+        """
+        assert self._run(poisoned=False) == (1, 1)
+
+    def test_unresolved_bare_method_call_does_not_suppress_the_flow(self) -> None:
+        structural, ddg = self._run(poisoned=True)
+        assert structural == 1, "structural pass regressed"
+        assert ddg == 1, (
+            "DDG pass suppressed a real flow: an unrelated unresolved "
+            "x.encrypt() registered a phantom sanitizer barrier"
+        )
+
+
+class TestSinkCallersDoesNotOverwrite:
+    """One function calling two distinct sinks must report both.
+
+    ``sink_callers`` was a dict keyed on the CALLING symbol, so each sink
+    overwrote the previous one and only the last edge encountered survived.
+    Present in both passes; under-reports real findings.
+    """
+
+    def _edges(self) -> list[dict]:
+        return [
+            {"src": _SRC, "dst": "python:os:0-0:getenv:external_symbol",
+             "type": "calls", "is_resolved": True},
+            {"src": _SRC, "dst": "python:builtins:0-0:open:external_symbol",
+             "type": "calls", "is_resolved": True},
+            {"src": _SRC, "dst": "python:os:0-0:remove:external_symbol",
+             "type": "calls", "is_resolved": True},
+        ]
+
+    def _sinks(self) -> list[TaintSink]:
+        return [_fs_sink("builtins", "open"), _fs_sink("os", "remove")]
+
+    def test_structural_reports_both_sinks(self) -> None:
+        found = propagate_taint_structural(
+            self._edges(), [_plaintext_source()], self._sinks(), [],
+        )
+        assert {f.sink_primitive for f in found} == {"open", "remove"}
+
+    def test_ddg_reports_both_sinks(self) -> None:
+        ddg = [DdgEdge(variable="v", def_block="bb_0", def_line=2,
+                       use_block="bb_0", use_line=3)]
+        found = propagate_taint_ddg(
+            ddg, self._edges(), [_plaintext_source()], self._sinks(), [],
+            ddg_symbols={_SRC},
+        )
+        assert {f.sink_primitive for f in found} == {"open", "remove"}

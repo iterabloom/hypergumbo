@@ -39,7 +39,7 @@ from collections import defaultdict, deque
 from dataclasses import dataclass, field
 from pathlib import Path
 from collections.abc import Mapping, Sequence
-from typing import TYPE_CHECKING, Any, Optional, TypeVar, Union
+from typing import TYPE_CHECKING, Any, Iterator, Optional, TypeVar, Union
 
 import yaml
 
@@ -1270,6 +1270,22 @@ def _build_sanitizer_index_multi(
     return index
 
 
+def _iter_sink_sites(
+    sink_callers: "dict[str, list[tuple[str, TaintSink]]]",
+) -> "Iterator[tuple[str, str, TaintSink]]":
+    """Yield ``(caller, sink_callee_id, sink)`` for every sink call site.
+
+    ``sink_callers`` maps a CALLER to every sink it calls. It used to hold a
+    single tuple per caller and was populated by assignment, so a function
+    calling two different sinks reported only the last edge encountered —
+    a silent under-report present in both the structural and the DDG pass.
+    Shared by both so the two cannot drift again.
+    """
+    for caller, entries in sink_callers.items():
+        for sink_callee_id, taint_sink in entries:
+            yield caller, sink_callee_id, taint_sink
+
+
 def _register_sanitizer_callers(
     edges: list[dict[str, Any]],
     sanitizer_by_callee: dict[str, list[TaintSanitizer]],
@@ -1383,7 +1399,7 @@ def propagate_taint_structural(
             source_callers.append((edge["src"], edge["dst"], matched))
 
     # Step 2: Find sink call sites — which symbol IDs call taint sinks?
-    sink_callers: dict[str, tuple[str, TaintSink]] = {}
+    sink_callers: dict[str, list[tuple[str, TaintSink]]] = defaultdict(list)
     # Maps caller_symbol_id → (sink_callee_symbol_id, TaintSink)
     for edge in edges:
         if not _is_taint_call_edge(edge):
@@ -1394,7 +1410,9 @@ def propagate_taint_structural(
             is_resolved=edge.get("is_resolved", True),
         )
         if matched:
-            sink_callers[edge["src"]] = (edge["dst"], matched)
+            site = (edge["dst"], matched)
+            if site not in sink_callers[edge["src"]]:
+                sink_callers[edge["src"]].append(site)
 
     # Step 3: Find sanitizer call sites — multi-label-aware so one
     # caller of a barrier function picks up every input_taint label it
@@ -1454,7 +1472,9 @@ def propagate_taint_structural(
                     queue.append(neighbor)
 
         # Phase 2: Check if any sink caller or sink callee is reachable
-        for sink_node, (sink_callee_id, taint_sink) in sink_callers.items():
+        for sink_node, sink_callee_id, taint_sink in _iter_sink_sites(
+            sink_callers,
+        ):
             if sink_node in reachable:
                 # Reconstruct path
                 path = _reconstruct_path(parent, seed_id, sink_node)
@@ -1609,7 +1629,7 @@ def propagate_taint_ddg(
             source_callers.append((edge["src"], edge["dst"], matched))
 
     # Step 2: Find sink call sites (module + ambiguous_names aware — WI-razol)
-    sink_callers: dict[str, tuple[str, TaintSink]] = {}
+    sink_callers: dict[str, list[tuple[str, TaintSink]]] = defaultdict(list)
     for edge in call_edges:
         if not _is_taint_call_edge(edge):
             continue
@@ -1619,21 +1639,25 @@ def propagate_taint_ddg(
             is_resolved=edge.get("is_resolved", True),
         )
         if matched:
-            sink_callers[edge["src"]] = (edge["dst"], matched)
+            site = (edge["dst"], matched)
+            if site not in sink_callers[edge["src"]]:
+                sink_callers[edge["src"]].append(site)
 
-    # Step 3: Find sanitizer call sites — multi-label-aware to keep
-    # parity with the structural pass.
-    sanitizer_set: set[str] = set()
-    sanitizer_by_caller: dict[str, list[TaintSanitizer]] = defaultdict(list)
-    for edge in call_edges:
-        if not _is_taint_call_edge(edge):
-            continue
-        callee_name = _extract_callee_name(edge["dst"])
-        matched_list = sanitizer_by_callee.get(callee_name)
-        if matched_list:
-            sanitizer_set.add(edge["src"])
-            for matched in matched_list:
-                sanitizer_by_caller[edge["src"]].append(matched)
+    # Step 3: Find sanitizer call sites — through the SHARED helper, so the
+    # INV-finoh resolution-/kind-aware gate applies here too.
+    #
+    # This used to be a private copy that matched on bare short name with no
+    # is_resolved, call_construct or ambiguous_names filter. Because a
+    # phantom barrier PRUNES the walk, the copy did not merely miss
+    # sanitizers — an unrelated unresolved `x.encrypt()` bound
+    # `Fernet.encrypt` and silently deleted a real flow. That is a false
+    # negative, the expensive direction for a security tool, and it was live
+    # on the path verify-claims runs Python through. INV-finoh's own filing
+    # named this site; the fix landed only at the structural one.
+    sanitizer_callers: dict[str, dict[str, TaintSanitizer]] = defaultdict(dict)
+    _register_sanitizer_callers(
+        call_edges, sanitizer_by_callee, sanitizer_callers, ambiguous_names,
+    )
 
     findings: list[TaintFlowFinding] = []
 
@@ -1667,11 +1691,11 @@ def propagate_taint_ddg(
             if node in reachable:
                 continue  # pragma: no cover
 
-            # Skip sanitizers (same as structural)
-            if node in sanitizer_set and node != seed_id:
-                sans = sanitizer_by_caller.get(node, [])
-                if any(s.input_taint == taint_label for s in sans):
-                    continue
+            # Skip sanitizers — identical predicate to the structural pass,
+            # now over the identically-built index.
+            node_sanitizers = sanitizer_callers.get(node, {})
+            if taint_label in node_sanitizers and node != seed_id:
+                continue
 
             reachable.add(node)
 
@@ -1681,7 +1705,9 @@ def propagate_taint_ddg(
                     queue.append(neighbor)
 
         # Check sinks
-        for sink_node, (sink_callee_id, taint_sink) in sink_callers.items():
+        for sink_node, sink_callee_id, taint_sink in _iter_sink_sites(
+            sink_callers,
+        ):
             if sink_node not in reachable:
                 continue
 
