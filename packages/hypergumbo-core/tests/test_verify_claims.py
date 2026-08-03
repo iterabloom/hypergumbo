@@ -1047,3 +1047,183 @@ class TestFlowEvidenceCarriesMatchProvenance:
         assert row["sink_symbol"] == "go:net/http:0-0:Do:external_symbol"
         assert row["sink_module"] == "net/http.Client"
         assert row["sink_module"] not in row["sink_symbol"]
+
+
+# ---------------------------------------------------------------------------
+# WI-bifob — production is the default scope, exclusions are DISCLOSED
+#
+# A claim verdict is a DISJUNCTION over its flows, so one test-sourced flow
+# held a whole claim at `violated` and no precision work elsewhere could move
+# it. Measured on the 9-repo cohort, 2 of 18 violated claims rested entirely
+# on a single test-sourced flow each.
+# ---------------------------------------------------------------------------
+
+
+from hypergumbo_core.verify_claims import (  # noqa: E402
+    SOURCE_SCOPE_MIGRATION,
+    SOURCE_SCOPE_PRODUCTION,
+    SOURCE_SCOPE_TEST,
+    _source_scope,
+    _symbol_path_slot,
+)
+
+
+def _finding_from(path: str) -> TaintFlowFinding:
+    """A finding whose SOURCE lives at `path`."""
+    return TaintFlowFinding(
+        taint_label="untrusted_input",
+        source_symbol=f"python:{path}:10-20:handler:function",
+        source_primitive="environ",
+        sink_symbol="python:urllib.request:0-0:urlopen:external_symbol",
+        sink_primitive="urlopen",
+        sink_zone="network",
+        sanitized=False,
+        confidence="approximate",
+        analysis_method="structural",
+    )
+
+
+def _network_claim() -> Claim:
+    return Claim(
+        id="untrusted-input-no-network",
+        text="Untrusted input must not reach a network send unsanitized.",
+        constraint_taint_flow=TaintFlowConstraint(
+            source_taint="untrusted_input",
+            prohibited_sink_zone="network",
+        ),
+    )
+
+
+class TestSymbolPathSlot:
+    """The path slot is the one colon-TOLERANT slot (ADR-0036 D1a)."""
+
+    def test_ordinary_path(self) -> None:
+        assert _symbol_path_slot(
+            "python:src/app/views.py:1-2:f:function"
+        ) == "src/app/views.py"
+
+    def test_path_containing_colons_is_right_anchored(self) -> None:
+        """`dart:io` in the path slot must survive.
+
+        A naive parts[1] parse returns "dart" here and silently mis-classifies
+        the file. ir._extract_path_slot has exactly that bug; this must not
+        become a third copy of it.
+        """
+        assert _symbol_path_slot("dart:dart:io:0-0:module:module") == "dart:io"
+
+    def test_malformed_id_yields_empty(self) -> None:
+        assert _symbol_path_slot("src:1") == ""
+        assert _symbol_path_slot("") == ""
+
+
+class TestSourceScope:
+    """Classification is on the SOURCE side, by where data ENTERS."""
+
+    def test_test_file_source(self) -> None:
+        assert _source_scope(
+            _finding_from("src/tests/e2e/conftest.py")
+        ) == SOURCE_SCOPE_TEST
+        assert _source_scope(
+            _finding_from("cluster/tls_transport_test.go")
+        ) == SOURCE_SCOPE_TEST
+
+    def test_migration_source(self) -> None:
+        assert _source_scope(
+            _finding_from("src/pretix/base/migrations/0097_auto.py")
+        ) == SOURCE_SCOPE_MIGRATION
+
+    def test_production_source(self) -> None:
+        assert _source_scope(
+            _finding_from("src/pretix/base/exporters/answers.py")
+        ) == SOURCE_SCOPE_PRODUCTION
+
+    def test_unparseable_source_is_production_not_excluded(self) -> None:
+        """An id we cannot read is NOT evidence for dropping a flow.
+
+        Failing open here is deliberate: the cost of wrongly excluding a real
+        finding from a security verdict is higher than the cost of one noisy
+        row, so an unreadable source stays in scope.
+        """
+        finding = _finding_from("x")
+        finding.source_symbol = "not-an-id"
+        assert _source_scope(finding) == SOURCE_SCOPE_PRODUCTION
+
+
+class TestNonProductionExclusion:
+    """The default excludes; the disclosure is not optional."""
+
+    def test_sole_test_sourced_flow_flips_verdict_to_confirmed(self) -> None:
+        """The measured cohort case, reproduced.
+
+        pretix/host-secret-no-network and alertmanager/untrusted-input-no-
+        network each had exactly ONE evidence row, both test-sourced. Under
+        the old default a conftest.py reading an env var held the whole claim
+        at `violated`.
+        """
+        verdict = verify_taint_claim(
+            _network_claim(), [_finding_from("src/tests/e2e/conftest.py")]
+        )
+        assert verdict.verdict == "confirmed"
+        assert verdict.excluded_flows == {SOURCE_SCOPE_TEST: 1}
+
+    def test_confirmed_verdict_discloses_what_it_set_aside(self) -> None:
+        """The confirmed path is where a silent filter would mislead most.
+
+        The claim reads clean; without the disclosure the reader has no way to
+        learn flows existed and were set aside by a policy they did not pick.
+        """
+        verdict = verify_taint_claim(
+            _network_claim(), [_finding_from("src/tests/e2e/conftest.py")]
+        )
+        assert "Excluded from this verdict as non-production" in verdict.details
+        assert "1 test_sourced" in verdict.details
+        assert "--include-non-production-sources" in verdict.details
+
+    def test_production_flow_still_violates(self) -> None:
+        """Non-vacuity floor (L17): the exclusion must not swallow real flows."""
+        verdict = verify_taint_claim(
+            _network_claim(), [_finding_from("src/pretix/views/order.py")]
+        )
+        assert verdict.verdict == "violated"
+        assert verdict.evidence_count == 1
+        assert verdict.excluded_flows == {}
+
+    def test_mixed_keeps_violated_and_still_discloses(self) -> None:
+        """A claim that survives on production evidence still reports the rest.
+
+        This is the common shape on the cohort — the excluded rows are volume,
+        not verdict-changing — and reporting only on the confirmed path would
+        hide the majority of what was set aside.
+        """
+        verdict = verify_taint_claim(
+            _network_claim(),
+            [
+                _finding_from("src/pretix/views/order.py"),
+                _finding_from("src/tests/e2e/conftest.py"),
+                _finding_from("src/pretix/base/migrations/0097_auto.py"),
+            ],
+        )
+        assert verdict.verdict == "violated"
+        assert verdict.evidence_count == 1
+        assert verdict.excluded_flows == {
+            SOURCE_SCOPE_TEST: 1,
+            SOURCE_SCOPE_MIGRATION: 1,
+        }
+
+    def test_include_flag_restores_previous_behavior(self) -> None:
+        """The default is a DEFAULT, not a hard filter."""
+        verdict = verify_taint_claim(
+            _network_claim(),
+            [_finding_from("src/tests/e2e/conftest.py")],
+            include_non_production=True,
+        )
+        assert verdict.verdict == "violated"
+        assert verdict.evidence_count == 1
+        assert verdict.excluded_flows == {}
+
+    def test_excluded_flows_is_serialized(self) -> None:
+        """A disclosure a consumer cannot read is not a disclosure."""
+        verdict = verify_taint_claim(
+            _network_claim(), [_finding_from("src/tests/e2e/conftest.py")]
+        )
+        assert verdict.to_dict()["excluded_flows"] == {SOURCE_SCOPE_TEST: 1}

@@ -308,6 +308,7 @@
     "--claims",
     "--format",
     "--help",
+    "--include-non-production-sources",
     "--input",
     "--json",
     "--path",

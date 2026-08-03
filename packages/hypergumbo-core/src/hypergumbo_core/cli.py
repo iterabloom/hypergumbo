@@ -5269,6 +5269,9 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
     # Verify claims
     verdicts = _verify(
         claims, bmap, taint_findings=taint_findings, coverage=coverage,
+        include_non_production=getattr(
+            args, "include_non_production_sources", False
+        ),
     )
 
     # Output
@@ -8579,6 +8582,19 @@ inconclusive, or the claims file failed validation.
             "Project-local taint sanitizer YAML file or directory. "
             "Repeatable. User sanitizers concatenate onto the built-in "
             "list. (WI-votan)"
+        ),
+    )
+    p_vc.add_argument(
+        "--include-non-production-sources",
+        action="store_true",
+        help=(
+            "Count taint flows whose SOURCE is test, fixture or migration "
+            "code against taint claims. Off by default (WI-bifob): a test "
+            "that opens a listener is not a network-exposure finding about "
+            "the product, and because a claim verdict is a disjunction a "
+            "single such flow held whole claims at 'violated'. Excluded "
+            "flows are always disclosed per-verdict in 'excluded_flows', "
+            "never silently dropped."
         ),
     )
     p_vc.set_defaults(func=cmd_verify_claims)

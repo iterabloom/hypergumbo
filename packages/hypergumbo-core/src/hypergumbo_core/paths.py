@@ -365,6 +365,55 @@ def is_test_file(path: str) -> bool:
     return False
 
 
+def is_migration_file(path: str) -> bool:
+    """Check if a path is a schema/data MIGRATION.
+
+    Deliberately separate from :func:`is_test_file`, which does not and should
+    not match these: a migration is production code that ships and runs, just
+    once, at deploy time. It is not test scaffolding. What the two share is
+    only that neither describes the *running application's* behavior, which is
+    the question a taint-flow finding is meant to answer — a migration that
+    writes to the database is not an untrusted-input finding about the product
+    (WI-bifob).
+
+    DECLARED SCOPE, because a predicate's silence is not the same as its
+    absence (L23). This matches the directory conventions of the four
+    migration frameworks the cohort and catalogs actually exercise:
+
+    - ``**/migrations/`` — Django, and the general Python convention
+    - ``db/migrate/`` — Rails / ActiveRecord
+    - ``**/alembic/versions/`` — Alembic (SQLAlchemy)
+    - ``db/migration/`` — Flyway
+
+    ``versions/`` is matched ONLY under an ``alembic/`` parent, and ``migrate``
+    / ``migration`` ONLY under a ``db/`` parent, because each is far too common
+    a word to claim on its own — a ``versions/`` directory is usually
+    documentation and a ``migration/`` directory is often a runtime feature.
+    Anything outside these conventions is not recognised, and that is a known
+    gap rather than an implied guarantee.
+
+    Args:
+        path: File path to check
+
+    Returns:
+        True if the path is a recognised migration file
+    """
+    parts = [p.lower() for p in normalize_path(path).split("/")]
+    directories = parts[:-1]
+    if "migrations" in directories:
+        return True
+    for index, part in enumerate(directories):
+        # db/migrate (Rails) and db/migration (Flyway)
+        if part in ("migrate", "migration") and index > 0:
+            if directories[index - 1] == "db":
+                return True
+        # alembic/versions
+        if part == "versions" and index > 0:
+            if directories[index - 1] == "alembic":
+                return True
+    return False
+
+
 # Annotation names that indicate a test function/method, matched case-sensitively.
 # Covers Rust (#[test], #[cfg(test)], #[tokio::test]), Java/Kotlin (@Test,
 # @org.junit.Test, @org.junit.jupiter.api.Test), and C# ([TestMethod],
