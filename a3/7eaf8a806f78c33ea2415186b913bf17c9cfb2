@@ -1,0 +1,55 @@
+Original commit body from 2d85f730d5dcceddd9f092fb60836ed87942452a:
+
+WI-bifob, per owner ruling 2026-08-03. A taint-flow verdict is a
+DISJUNCTION over its flows, so one flow from test code held an entire
+claim at `violated` and no precision work elsewhere could move it.
+
+Measured on the 9-repo cohort: 2 of 18 violated claims rested entirely
+on a single test-sourced flow each -- pretix/host-secret-no-network on a
+tests/e2e/conftest.py reading an env var into urlopen, and
+alertmanager/untrusted-input-no-network on a tls_transport_test.go
+dialling TLS. Neither is a statement about the shipped product.
+
+Flows whose SOURCE is test, fixture or migration code are now excluded
+from taint-claim verdicts. Classification is on the source side, where
+data enters: a test reaching a real network primitive is still a test
+doing its job, and a production function reaching a primitive inside a
+test helper is still a production flow.
+
+- Exclusions are DISCLOSED, never dropped. Each verdict carries an
+  `excluded_flows` bucket keyed by reason, reported on confirmed
+  verdicts as well as violated ones -- that is where a silent filter
+  misleads most, since the claim reads clean and the reader cannot tell
+  flows existed. D7 shape: a production default plus labelled buckets.
+- --include-non-production-sources restores the previous behavior, so
+  this is a default rather than a filter.
+- paths.is_migration_file is new and deliberately NOT folded into
+  is_test_file: a migration is production code that ships and runs once
+  at deploy, not test scaffolding. Declared scope, with `versions/`
+  claimed only under alembic/ and migrate|migration only under db/ --
+  claiming words that common outright would silently drop real
+  production flows from a security verdict. Measured need: is_test_file
+  caught 84 of the 98 non-production rows and missed exactly the 14
+  Django migrations.
+- The id path slot is parsed RIGHT-ANCHORED, since it is the one
+  colon-tolerant slot in the grammar (ADR-0036 D1a). Rather than add a
+  seventh naive copy, this one is correct and pinned by a test; the six
+  existing homes and the two defective ones are filed as WI-ribuz,
+  WI-guror, WI-nukas, WI-dosir.
+
+Envelope schema 1.1 -> 1.2, additive. Spec updated with the new default
+and the schema bump; CLI flag-matrix baseline regenerated.
+
+Measured against a prediction registered before the run. Which claims
+flip and how many: exactly as predicted, no wrong-direction flips.
+Volume was predicted in the WRONG UNIT and is recorded as such: evidence
+rows fell 354 -> 270 (-84) while the underlying exclusions were 692
+flow-claim pairs (675 test, 17 migration). The gap is the evidence cap
+-- pretix/untrusted-input-no-database went 748 -> 140 flows (-81%) yet
+still displays 100 rows, because removing flows from an over-cap claim
+changes WHICH rows are shown rather than how many.
+
+Scope-axis caveat: this is not a cohort-wide property. 74 of the 98
+non-production rows are caddy, 64 of them from a single file.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
