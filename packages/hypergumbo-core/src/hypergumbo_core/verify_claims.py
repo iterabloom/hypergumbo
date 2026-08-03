@@ -744,8 +744,18 @@ def _flow_evidence_dict(v: "TaintFlowFinding") -> dict[str, Any]:
     return {
         "source_symbol": v.source_symbol,
         "source_primitive": v.source_primitive,
+        "source_module": v.source_module,
         "sink_symbol": v.sink_symbol,
         "sink_primitive": v.sink_primitive,
+        # WI-joruv: the MODULE the matched catalog entry declares, which is
+        # frequently not recoverable from ``sink_symbol``. A Go sink emits
+        # ``go:net/http:0-0:Do:external_symbol`` (package) while the catalog
+        # entry is ``net/http.Client.Do`` (package.Type). Emitting only the
+        # symbol leaves a *correct* match unverifiable — a reader cannot tell
+        # it from a short-name collision without re-running the matcher,
+        # which is precisely the "realizable by lookup" property INV-karud
+        # asks for. Pure provenance: this changes no match.
+        "sink_module": v.sink_module,
         "path": list(v.path),
     }
 

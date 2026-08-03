@@ -2956,3 +2956,77 @@ class TestSinkCallersDoesNotOverwrite:
             ddg_symbols={_SRC},
         )
         assert {f.sink_primitive for f in found} == {"open", "remove"}
+
+
+# ---------------------------------------------------------------------------
+# Tests — match provenance (WI-joruv)
+#
+# INV-karud's residual 13 are all `go net/http` + `Do`, where the match is
+# CORRECT (the catalog entry is net/http.Client and Client.Do performs
+# network IO) but the emitted symbol records the PACKAGE while the catalog
+# records PACKAGE.TYPE. Nothing in the output says which catalog entry
+# matched, so a reader cannot confirm a correct match without re-running the
+# matcher — which is the "verifiable by lookup" property the invariant asks
+# for. This is provenance, not matching: no assertion here changes which
+# flows are reported.
+# ---------------------------------------------------------------------------
+
+
+class TestMatchProvenance:
+    def _edges(self) -> list[dict]:
+        return [
+            {"src": _SRC, "dst": "python:os:0-0:getenv:external_symbol",
+             "type": "calls", "is_resolved": True},
+            {"src": _SRC, "dst": "python:builtins:0-0:open:external_symbol",
+             "type": "calls", "is_resolved": True},
+        ]
+
+    def test_structural_finding_records_the_matched_entry_module(self) -> None:
+        found = propagate_taint_structural(
+            self._edges(), [_plaintext_source()], [_fs_sink()], [],
+        )
+        assert len(found) == 1
+        assert found[0].sink_module == "builtins"
+        assert found[0].source_module == "os"
+
+    def test_ddg_finding_records_the_matched_entry_module(self) -> None:
+        ddg = [DdgEdge(variable="v", def_block="bb_0", def_line=2,
+                       use_block="bb_0", use_line=3)]
+        found = propagate_taint_ddg(
+            ddg, self._edges(), [_plaintext_source()], [_fs_sink()], [],
+            ddg_symbols={_SRC},
+        )
+        assert len(found) == 1
+        assert found[0].sink_module == "builtins"
+        assert found[0].source_module == "os"
+
+    def test_the_package_vs_package_type_case_is_now_explainable(self) -> None:
+        """INV-karud's residual shape, reproduced.
+
+        The emitted symbol says `net/http`; the catalog entry says
+        `net/http.Client`. Both must be visible on the finding, because it
+        is exactly their DIFFERENCE that a reader needs in order to confirm
+        the match is right rather than a short-name collision.
+        """
+        src = TaintSource(
+            taint_label="untrusted_input", module="net/http", name="Body",
+            kind="function", return_tainted=True, argument_tainted=False,
+            start_at="caller",
+        )
+        sink = TaintSink(zone="network", trust_level="untrusted",
+                         module="net/http.Client", name="Do", kind="method")
+        caller = "go:cmd/run.go:10-40:run:function"
+        edges = [
+            {"src": caller, "dst": "go:net/http:0-0:Body:external_symbol",
+             "type": "calls", "is_resolved": True},
+            {"src": caller, "dst": "go:net/http:0-0:Do:external_symbol",
+             "type": "calls", "is_resolved": True},
+        ]
+        found = propagate_taint_structural(edges, [src], [sink], [])
+        assert len(found) == 1
+        f = found[0]
+        assert f.sink_symbol == "go:net/http:0-0:Do:external_symbol"
+        assert f.sink_module == "net/http.Client"
+        # The emitted module and the catalog module DIFFER, and that
+        # difference is the whole point: it is now legible instead of lost.
+        assert "net/http.Client" not in f.sink_symbol
