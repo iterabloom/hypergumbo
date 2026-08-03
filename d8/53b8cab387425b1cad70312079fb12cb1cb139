@@ -1,0 +1,78 @@
+Original commit body from 701bb2172b7ae7fec3a26f5df1c013e929f3b2b2:
+
+Both shipped in March with tests and 100% coverage and have produced ZERO
+DDG edges ever since. Four independent things must all hold before an
+extractor has any effect, and each alone is enough to make it silently
+inert: the CFG mapping must declare atomic_statement; a LanguageDdgSpec
+must be registered; the registering module must be imported on the
+production path, since registration is an import side effect; and the
+chain must actually yield an edge. Rust and TypeScript failed the first
+three simultaneously.
+
+Fixing three sites by hand would leave the next language to rediscover the
+same trap, so test_ddg_language_wiring.py asserts all of it for EVERY
+language with a registered extractor. Red-first it failed 7 of 14. The
+production import list stays explicit -- greppable, import cost visible --
+but it is a second home for a fact the filesystem already holds, so an
+exhaustiveness test fails when the two disagree.
+
+Measured: rust and typescript 0 -> 2 DDG edges on the identical fixture,
+and stripping atomic_statement returns them to 0. Real repos: zoxide
+273 edges / 72 symbols, apollo-server 1176 / 91.
+
+ATOMIC_STATEMENT SWALLOWED RUST'S CONTROL FLOW, and the fix is in the
+builder rather than the mapping. Declaring expression_statement atomic --
+which Rust must, to get def/use on bare calls -- broke three CFG tests,
+because tree-sitter parses `if c {} else {}` as expression_statement >
+if_expression and `let x = f()?;` as let_declaration > try_expression. The
+declaration stopped the descent before the branch was classified, so the
+CFG lost its true/false edges while every def/use measurement kept working
+-- the wrapper had been declared FOR def/use. Statement-oriented grammars
+cannot hit this; expression-oriented ones hit it routinely. CfgBuilder now
+honours atomic_statement only when the subtree holds no control-flow
+descendant, deciding per occurrence rather than per node type, which is all
+a YAML mapping can express.
+
+Impact measured, not assumed: Python identical (61,113 edges / 6,946
+symbols on pretix), Go caddy 28,716/1,635 -> 28,650/1,678, Rust zoxide
+297/86 -> 273/72. Only Python feeds taint, so no verdict can move.
+
+The new gate did NOT catch that regression -- edge counts cannot see a
+swallowed branch -- so it gained a branch-preservation check, mutation
+proved to redden Rust alone. The containment check recurses, and a
+one-level fixture leaves that unexercised, so test_cfg gains a nested case
+(let_declaration > call_expression > arguments > if_expression).
+
+COHORT A/B, 9 repos, re-run after the builder guard: 54 verdict rows -> 54,
+270 displayed evidence rows -> 270, 311 total flows -> 311, 38 confirmed /
+16 violated unchanged, 0 cells differ across full evidence tuples. Nothing
+reads Rust or TypeScript DDG edges yet, so movement would have meant a leak
+rather than an improvement -- Python's propagator receives the whole-repo
+edge list, not a language-filtered one. The arm's instrument asserts both
+directions before measuring: that the wiring is live, and that foreign
+symbol ids stay disjoint from Python seed ids via the language prefix,
+which is WHY the null is expected by construction.
+
+DISCLOSED, because the catalog points the other way. The glob is *.ts, so
+JavaScript gets nothing (express: 0 edges) -- and JavaScript carries 50
+sources and 83 SINKS where TypeScript carries 6 and none. typescript.yaml
+claims in its own header to also cover JavaScript, but it is keyed to
+`typescript` and the extractor registers only for `typescript`, so no .js
+file reaches any of it. This registration is therefore NOT a taint
+improvement and is not presented as one. Class methods are excluded too,
+because the analyzer decides their kind slot inline and re-deriving it here
+would put a second copy of a production classification in a consumer.
+
+select_ddg_targets' docstring claimed "only 2-10% of functions are
+analyzed" while the function has zero production callers and build_repo_ddg
+walks every function with no sampling, budget or cache -- corrected, and
+its wiring deliberately sequenced after 3a, since it reduces which
+functions carry DDG data and would make 3a's effect unreadable.
+
+Scope stated as data: the gate is blind by construction to a language with
+no extractor at all, so it is a regression guard, not a coverage claim.
+javascript (83 sinks, nothing wired) and java (69 sinks, a mapping but no
+extractor) are outside its population and named in place.
+
+Refs: WI-tohuk, WI-kabif, INV-sadah, INV-karud
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
