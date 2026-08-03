@@ -1,0 +1,52 @@
+Original commit body from dba2819089c2c510a099401912649afa678c92e3:
+
+Both are on the path verify-claims runs Python through, and both fail in
+the direction that LOSES findings — for a security tool the expensive
+error, because a suppressed flow is indistinguishable from a clean repo.
+
+1. SANITIZER GATE PARITY (INV-finoh, second site). propagate_taint_ddg
+kept a private copy of sanitizer registration that matched on bare short
+name with no is_resolved, call_construct or ambiguous_names filter. Since
+a barrier PRUNES the walk, that copy did not merely over-register — an
+unrelated unresolved `x.encrypt()` bound Fernet.encrypt and deleted a
+real flow. INV-finoh's own root_cause and fix text named TWO sites, "the
+helper and its DDG mirror"; the fix landed at the helper, and the closure
+evidence was gathered on propagate_taint_structural, which is not the
+function Python routes through. Now routed through the shared
+_register_sanitizer_callers so the two cannot drift again.
+
+Repro, in the tests: identical 4-node graph, one unresolved bare method
+call added on an INTERMEDIATE hop (a collision on the source function
+does not reproduce it — the seed is exempt from the barrier check by
+design). structural=1 ddg=1 clean; structural=1 ddg=0 poisoned.
+
+2. SINK UNDER-REPORT. sink_callers was a dict keyed on the CALLING
+symbol, populated by assignment, so a function calling two different
+sinks reported only the last edge encountered. Present in BOTH passes.
+Now a list per caller, consumed through a shared _iter_sink_sites so the
+loop bodies are untouched and the two passes share one implementation.
+
+MEASURED on the 9-repo cohort, instrument asserted in both directions
+before measuring (OK on this branch, BAD:sanitizer_gate_unfixed,
+sink_overwrite_structural,sink_overwrite_ddg against dev):
+
+    flows 149 -> 193   added=47  removed=3
+    caddy 34 -> 68 (printEnvironment calls both Printf and Println;
+    only one was reported), kserve 13 -> 18, pretix 84 -> 88,
+    alertmanager 14 -> 15
+
+    ONE CLAIM VERDICT CHANGED: pretix/host-secret-no-network
+    confirmed -> violated. A security claim was being reported as
+    SATISFIED while it was violated; the under-report hid it.
+
+The 3 "removed" in pretix are NOT removals. pretix's
+untrusted-input-no-database verdict sits at exactly 100 evidence rows in
+both arms — an output cap over ~741 flows — so adding findings displaces
+which 100 are shown. Neither fix can remove a flow: both strictly add
+sink sites and strictly remove phantom barriers.
+
+Tests: 1827 passed, 100% coverage on changed files. Positive control
+asserted first in both new test classes, so the failures they guard
+against cannot pass vacuously.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
