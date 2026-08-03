@@ -1,0 +1,22 @@
+- op: create  # 8d1f
+  at: '2026-08-03T02:11:00Z'  # 8d1f
+  by: agent  # 8d1f
+  actor: jgstern_agent  # 8d1f
+  clock: 1  # 8d1f
+  nonce: 8d1f  # 8d1f
+  data:  # 8d1f
+    kind: work_item  # 8d1f
+    title: "Taint findings drop the matched catalog entry's module, so a correct match cannot be verified by lookup (INV-karud's residual 13)"  # 8d1f
+    status: todo_hard  # 8d1f
+    priority: 2  # 8d1f
+    parent:  # 8d1f
+    tags:  # 8d1f
+    - adr_0017  # 8d1f
+    - taint  # 8d1f
+    - analysis_quality  # 8d1f
+    isbefore: []  # 8d1f
+    duplicate_of: []  # 8d1f
+    not_duplicate_of: []  # 8d1f
+    pr_ref:  # 8d1f
+    description: "WI-damir's explicitly deferred residual: \"This is a labelling/provenance\ndefect, not a wrong match, and it should be adjudicated separately from the\nfile-path class.\" WI-damir is done (43 -> 13 non-realizable); these 13 are what\nis left, and they are the last thing standing between INV-karud and a closure\ndecision.\n\nTHE 13, all the same shape. go net/http + Do. The match is CORRECT: the catalog\nentry is net/http.Client and Client.Do does perform network IO. But the emitted\nsymbol records the PACKAGE (net/http) while the catalog records PACKAGE.TYPE\n(net/http.Client), so the two only line up through the component-aware prefix\narm -- and no consumer can confirm that by lookup, because nothing in the output\nsays which catalog entry was matched.\n\nWHAT A CONSUMER SEES TODAY\n    sink_symbol     go:net/http:0-0:Do:external_symbol\n    sink_primitive  Do\nThere is no way from that pair to recover net/http.Client.Do. A reader auditing\nthe finding must re-derive the match by re-running the matcher, which is exactly\nthe \"verifiable by lookup\" property INV-karud clause (a) is asking for.\n\nROOT CAUSE. TaintFlowFinding carries the matched entry's NAME (sink_primitive)\nand not its MODULE. _flow_evidence_dict emits source_symbol, source_primitive,\nsink_symbol, sink_primitive and path -- so the provenance of the match is\ndropped at the boundary, not merely unrendered.\n\nFIX SHAPE. Carry the matched catalog entry's declared module on the finding and\ninto the evidence dict, so the emitted symbol and the catalog entry sit side by\nside and the match is checkable without re-running the matcher. This changes no\nmatch and can add no flow; it is pure provenance. Do NOT \"fix\" it by making the\nGo analyzer emit package.Type -- that is a different, larger change (receiver\ntype inference at the call site) and it would churn symbol ids.\n\nCLOSE CONDITION. Re-run INV-karud's own realizability probe on the 9-repo\ncohort. Every surviving non-realizable match must be explainable from the\nemitted record alone, without re-deriving the match."  # 8d1f
+    fields: {}  # 8d1f
