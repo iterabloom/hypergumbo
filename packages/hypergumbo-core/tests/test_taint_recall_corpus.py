@@ -309,3 +309,64 @@ def test_go_corpus_recall_and_precision(tmp_path: Path, capsys) -> None:
     assert result["rc"] == 1
     assert ("ListenAndServe", "WriteFile") in _flow_pairs(verdict)
     assert _flow_pairs(verdict) == {("ListenAndServe", "WriteFile")}
+
+
+# --------------------------------------------------------------------------
+# ADR-0017 §3a — data-flow adjudication
+# --------------------------------------------------------------------------
+
+def _source_names(verdict: dict) -> set:
+    """Enclosing function name for each evidence row's source symbol."""
+    return {
+        row["source_symbol"].split(":")[-2]
+        for row in verdict.get("evidence", [])
+    }
+
+
+def test_ddg_labels_a_data_connected_flow_as_precise(
+    tmp_path: Path, capsys,
+) -> None:
+    """§3a earns the precise label on a real data dependence; both flows stay.
+
+    ``connected`` passes the source's return value to the sink; ``disconnected``
+    passes an unrelated parameter. Only the first has a data dependence, and
+    the walk finds it — but NEITHER is removed, because a sound refutation
+    needs ADR-0017 §4 function summaries (§3a step 3) and those have no
+    production caller. See ``_ddg_taint_reaches``.
+
+    Both cases live in one repo deliberately: an implementation that stopped
+    reporting would satisfy any precision claim while failing recall here.
+    """
+    src = tmp_path / "src"
+    src.mkdir()
+
+    (src / "connected.py").write_text(
+        "import asyncio\n"
+        "import os\n"
+        "\n"
+        "\n"
+        "async def connected(name):\n"
+        "    server = await asyncio.start_server(None, '0.0.0.0', 8080)\n"
+        "    os.mkdir(str(server))\n"
+        "    return server\n",
+        encoding="utf-8",
+    )
+
+    (src / "disconnected.py").write_text(
+        "import asyncio\n"
+        "import os\n"
+        "\n"
+        "\n"
+        "async def disconnected(name):\n"
+        "    server = await asyncio.start_server(None, '0.0.0.0', 8080)\n"
+        "    os.mkdir(name)\n"
+        "    return server\n",
+        encoding="utf-8",
+    )
+
+    result = _run(tmp_path, capsys)
+    verdict = _verdict(result["envelope"], "no-untrusted-to-fs")
+
+    # RECALL — both flows are still reported. Inclusion remains call-graph
+    # reachability; §3a confirms, it does not refute.
+    assert _source_names(verdict) == {"connected", "disconnected"}

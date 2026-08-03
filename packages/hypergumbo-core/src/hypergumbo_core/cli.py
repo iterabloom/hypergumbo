@@ -5249,21 +5249,17 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
                 # this module has already paid for twice).
                 #
                 # The truth: routing a language here buys nothing today.
-                # propagate_taint_ddg cannot remove a flow — it builds
-                # `ddg_forward` and `tainted_at` and never reads either, and
-                # the DDG's only effect is selecting the confidence LABEL. So
-                # widening this predicate would stamp analysis_method="ddg"
-                # on structurally-derived findings: a security tool asserting
-                # a precision it did not use. Widen it only together with the
-                # real forward walk (ADR-0017 §3a).
-                #
-                # Go DDG edges ARE built above and are deliberately left
-                # unread rather than gated off at the builder. That costs
-                # ~1.9s per caddy-sized repo and buys attributability: when
-                # §3a lands it changes exactly one variable — the propagator
-                # starts reading data already present — instead of widening a
-                # predicate and adding an algorithm in the same measurement.
-                if lang == "python" and ddg_edges:
+                # ADR-0017 §3a is implemented, so this is no longer gated on a
+                # literal language. The predicate was `lang == "python"` for as
+                # long as the DDG selected only a confidence LABEL: widening it
+                # then would have stamped analysis_method="ddg" on
+                # structurally-derived findings, a security tool asserting a
+                # precision it did not use. Now the walk decides inclusion, and
+                # `propagate_taint_ddg` labels a finding "precise" only where it
+                # actually adjudicated — so every language with reaching-def
+                # coverage benefits, and every language without one falls
+                # through to the same structural result it had before.
+                if ddg_edges:
                     taint_findings.extend(propagate_taint_ddg(
                         ddg_edges, lang_edges, lang_sources, lang_sinks,
                         lang_sans, ddg_symbols=ddg_symbols,

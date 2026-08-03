@@ -18,6 +18,7 @@ import pytest
 
 from hypergumbo_core.cfg import DdgEdge
 from hypergumbo_core.taint import (
+    _ddg_taint_reaches,
     TAINT_CALL_EDGE_TYPES,
     TaintCatalog,
     TaintCatalogError,
@@ -1036,6 +1037,59 @@ class TestEdgeCases:
 # ---------------------------------------------------------------------------
 
 
+class TestDdgTaintReaches:
+    """Direct tests of the ADR-0017 §3a forward walk.
+
+    Tested at the helper rather than only through ``propagate_taint_ddg``
+    because the walk is three-valued and the distinction between its two
+    negative results — "ran to completion and found nothing" versus "lost track
+    of the value" — is invisible from the outside: both currently produce an
+    approximate finding. Only ``False`` may ever license a removal, so the
+    boundary between them has to be pinned where it can be seen.
+    """
+
+    def test_confirmed_dependence(self) -> None:
+        assert _ddg_taint_reaches("f", [1], [2], {("f", 1): {2}}) is True
+
+    def test_transitive_dependence(self) -> None:
+        """Taint carries through an intermediate definition."""
+        uses = {("f", 1): {2}, ("f", 2): {3}}
+        assert _ddg_taint_reaches("f", [1], [3], uses) is True
+
+    def test_escaped_value_is_unknown_not_absent(self) -> None:
+        """A use that defines nothing means the value left tracked ground.
+
+        This is the pretix ``voucher_list.append(vouchers.pop(0))`` shape. It
+        must NOT report False: doing so is what deleted real flows.
+        """
+        assert _ddg_taint_reaches("f", [1], [2], {("f", 1): {5}}) is None
+
+    def test_barren_seed_line_is_skipped(self) -> None:
+        """A source line the DDG recorded nothing for contributes nothing.
+
+        Exercises the no-uses branch: seed 1 is barren while seed 3 carries the
+        chain, which is the shape when one of several source call sites was
+        never tracked.
+        """
+        uses = {("f", 3): {4}, ("f", 4): {7}}
+        assert _ddg_taint_reaches("f", [1, 3], [9], uses) is None
+
+    def test_repeated_frontier_line_is_visited_once(self) -> None:
+        """Two definitions feeding one line must not re-walk it.
+
+        A diamond — line 1 reaches both 2 and 3, and both reach 4 — queues 4
+        twice. Without the revisit guard the walk repeats work and, on a cycle,
+        does not terminate.
+        """
+        uses = {("f", 1): {2, 3}, ("f", 2): {4}, ("f", 3): {4}, ("f", 4): {2}}
+        assert _ddg_taint_reaches("f", [1], [9], uses) is False
+
+    def test_closed_walk_with_no_dependence_is_false(self) -> None:
+        """Exhausted, every step accounted for, sink never reached."""
+        uses = {("f", 1): {2}, ("f", 2): {3}, ("f", 3): {2}}
+        assert _ddg_taint_reaches("f", [1], [9], uses) is False
+
+
 class TestPropagateTaintDdg:
     """Test DDG-backed taint-flow propagation."""
 
@@ -1071,8 +1125,18 @@ class TestPropagateTaintDdg:
         result = propagate_taint_ddg(ddg, [], self._make_sources(), [], [])
         assert result == []
 
-    def test_source_to_sink_ddg(self) -> None:
-        """Source → Sink with both having DDG data → precise finding."""
+    def test_source_to_sink_without_call_lines_is_not_precise(self) -> None:
+        """DDG coverage alone does not earn "precise" — the walk must run.
+
+        Both endpoints are in ``analyzed``, which under the pre-§3a contract
+        was enough to stamp ``confidence="precise"``. It never should have
+        been: the DDG's result was discarded and inclusion was decided by
+        call-graph BFS, so the label asserted a precision the analysis had not
+        used (INV-sadah). Here the call edges carry no ``line`` and the DdgEdge
+        no ``symbol_id``, so the forward walk has nothing to key on and cannot
+        adjudicate — the finding is still reported, and is labelled for what
+        actually decided it.
+        """
         ddg = [DdgEdge(
             variable="data", def_block="caller", def_line=1,
             use_block="caller", use_line=2,
@@ -1089,10 +1153,194 @@ class TestPropagateTaintDdg:
         )
         assert len(findings) == 1
         f = findings[0]
-        assert f.confidence == "precise"
-        assert f.analysis_method == "ddg"
+        assert f.confidence == "approximate"
+        assert f.analysis_method == "ddg_mixed"
         assert f.taint_label == "plaintext"
         assert not f.sanitized
+
+    def test_source_to_sink_ddg_adjudicated_is_precise(self) -> None:
+        """With line and symbol_id present, the walk runs and earns "precise".
+
+        The source is called at line 1, defining a value used at line 2, where
+        the sink is called — i.e. the tainted value is an argument at the sink
+        call site, which is ADR-0017 §3a step 5 read correctly.
+        """
+        ddg = [DdgEdge(
+            variable="data", def_block="bb_0", def_line=1,
+            use_block="bb_0", use_line=2, symbol_id="caller",
+        )]
+        call_edges = [
+            {"src": "caller", "dst": "python:external:0-0:decrypt:unresolved",
+             "type": "calls", "line": 1},
+            {"src": "caller", "dst": "python:external:0-0:send:unresolved",
+             "type": "calls", "line": 2},
+        ]
+
+        findings = propagate_taint_ddg(
+            ddg, call_edges, self._make_sources(), self._make_sinks(), [],
+            ddg_symbols={"caller"},
+        )
+        assert len(findings) == 1
+        assert findings[0].confidence == "precise"
+        assert findings[0].analysis_method == "ddg"
+
+    def test_no_data_dependence_is_not_precise_but_is_not_removed(self) -> None:
+        """No dependence found → not "precise", and NOT removed either.
+
+        The value defined at the source call (line 1) is used at line 5 while
+        the sink is called at line 2, so the walk finds no dependence. It still
+        does not remove the flow, and that restraint is the design rather than
+        a shortfall: telling a use that TERMINATES the taint (``print(x)``)
+        from one that PROPAGATES it (``lst.append(x)``) needs ADR-0017 §4
+        function summaries, which §3a step 3 calls for and which have no
+        production caller. Without them "found no dependence" cannot be
+        distinguished from "lost track of it", and removing on that basis
+        produced verified false negatives on caddy and pretix.
+
+        What the walk does earn is the label: inclusion stays with call-graph
+        reachability, and the finding is reported as approximate rather than
+        claiming a precision the analysis did not achieve (INV-sadah).
+        """
+        ddg = [DdgEdge(
+            variable="data", def_block="bb_0", def_line=1,
+            use_block="bb_0", use_line=5, symbol_id="caller",
+        )]
+        call_edges = [
+            {"src": "caller", "dst": "python:external:0-0:decrypt:unresolved",
+             "type": "calls", "line": 1},
+            {"src": "caller", "dst": "python:external:0-0:send:unresolved",
+             "type": "calls", "line": 2},
+        ]
+
+        findings = propagate_taint_ddg(
+            ddg, call_edges, self._make_sources(), self._make_sinks(), [],
+            ddg_symbols={"caller"},
+        )
+        assert len(findings) == 1
+        assert findings[0].confidence == "approximate"
+        assert findings[0].analysis_method == "ddg_mixed"
+
+    def test_ddg_walk_is_transitive(self) -> None:
+        """Taint carries through an intermediate assignment.
+
+        Source at line 1 defines a value used at line 2; line 2 defines a value
+        used at line 3, where the sink is called. Nothing links line 1 to line
+        3 directly, so a single-hop walk would drop this real flow — the
+        expensive direction for a security tool.
+        """
+        ddg = [
+            DdgEdge(variable="a", def_block="bb_0", def_line=1,
+                    use_block="bb_0", use_line=2, symbol_id="caller"),
+            DdgEdge(variable="b", def_block="bb_0", def_line=2,
+                    use_block="bb_0", use_line=3, symbol_id="caller"),
+        ]
+        call_edges = [
+            {"src": "caller", "dst": "python:external:0-0:decrypt:unresolved",
+             "type": "calls", "line": 1},
+            {"src": "caller", "dst": "python:external:0-0:send:unresolved",
+             "type": "calls", "line": 3},
+        ]
+
+        findings = propagate_taint_ddg(
+            ddg, call_edges, self._make_sources(), self._make_sinks(), [],
+            ddg_symbols={"caller"},
+        )
+        assert len(findings) == 1
+        assert findings[0].confidence == "precise"
+
+    def test_untracked_source_definition_never_licenses_removal(self) -> None:
+        """No DDG evidence about the source's value means no refutation.
+
+        Regression for a verified false negative on caddy. Its
+        ``printEnvironment`` binds ``for _, v := range os.Environ()`` and then
+        calls ``fmt.Println(v)`` on the next line — an unmistakable flow. The
+        Go CFG mapping's loop hook never names the range clause, so ``v`` has
+        no definition in the DDG at all (WI-losod), and a walk that treats
+        "found no uses" as "there are none" concluded the literal next line was
+        unreachable.
+
+        Absence of evidence is not evidence of absence: a source whose value
+        the DDG never tracked must leave the flow to structural reachability.
+        """
+        # DDG covers the function, but records nothing defined at line 1.
+        ddg = [DdgEdge(
+            variable="unrelated", def_block="bb_0", def_line=6,
+            use_block="bb_0", use_line=7, symbol_id="caller",
+        )]
+        call_edges = [
+            {"src": "caller", "dst": "python:external:0-0:decrypt:unresolved",
+             "type": "calls", "line": 1},
+            {"src": "caller", "dst": "python:external:0-0:send:unresolved",
+             "type": "calls", "line": 2},
+        ]
+
+        findings = propagate_taint_ddg(
+            ddg, call_edges, self._make_sources(), self._make_sinks(), [],
+            ddg_symbols={"caller"},
+        )
+        assert len(findings) == 1
+        assert findings[0].confidence == "approximate"
+
+    def test_sink_recorded_before_source_never_licenses_removal(self) -> None:
+        """One edge per (caller, callee) means ``line`` is not every call site.
+
+        Regression for the second half of the same caddy false negative.
+        ``printEnvironment`` calls ``fmt.Printf`` twelve times; the call graph
+        emits a single edge carrying the FIRST line (454), while the tainted
+        call sits at 469 and is invisible. Asking "does taint from 465 reach
+        454?" answers a question about the wrong call site.
+
+        When the recorded sink line precedes the source, it cannot be the site
+        that consumes the source's value, and later sites may exist that the
+        edge model cannot express — so a failed walk against it proves nothing.
+        """
+        ddg = [DdgEdge(
+            variable="data", def_block="bb_0", def_line=10,
+            use_block="bb_0", use_line=14, symbol_id="caller",
+        )]
+        call_edges = [
+            {"src": "caller", "dst": "python:external:0-0:decrypt:unresolved",
+             "type": "calls", "line": 10},
+            # Recorded at 3, i.e. BEFORE the source. Real code may call this
+            # sink again at 14, where the taint demonstrably arrives.
+            {"src": "caller", "dst": "python:external:0-0:send:unresolved",
+             "type": "calls", "line": 3},
+        ]
+
+        findings = propagate_taint_ddg(
+            ddg, call_edges, self._make_sources(), self._make_sinks(), [],
+            ddg_symbols={"caller"},
+        )
+        assert len(findings) == 1
+        assert findings[0].confidence == "approximate"
+
+    def test_ddg_does_not_adjudicate_across_functions(self) -> None:
+        """A cross-function flow keeps structural reachability, not silence.
+
+        The walk is intraprocedural, so it has nothing to say about a sink in a
+        different function. Treating "the DDG did not confirm it" as "it did
+        not happen" would turn ADR-0017 §7b's declared limitation into false
+        negatives across the ~69% of real flows that cross a function boundary.
+        """
+        ddg = [DdgEdge(
+            variable="data", def_block="bb_0", def_line=1,
+            use_block="bb_0", use_line=9, symbol_id="caller",
+        )]
+        call_edges = [
+            {"src": "caller", "dst": "python:external:0-0:decrypt:unresolved",
+             "type": "calls", "line": 1},
+            {"src": "caller", "dst": "other", "type": "calls", "line": 2},
+            {"src": "other", "dst": "python:external:0-0:send:unresolved",
+             "type": "calls", "line": 40},
+        ]
+
+        findings = propagate_taint_ddg(
+            ddg, call_edges, self._make_sources(), self._make_sinks(), [],
+            ddg_symbols={"caller"},
+        )
+        assert len(findings) == 1
+        assert findings[0].confidence == "approximate"
+        assert findings[0].analysis_method == "ddg_mixed"
 
     def test_mixed_coverage(self) -> None:
         """Source has DDG, sink does not → approximate confidence."""
