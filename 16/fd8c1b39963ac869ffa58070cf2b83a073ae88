@@ -1,0 +1,50 @@
+Original commit body from 331f6333399ea8efdc7ccac884270eea4fae3606:
+
+Every other taint test hands verify-claims a hand-written behavior map via
+--input, so the analyzers never run. verify_taint_claim is fed hand-built
+TaintFlowFinding objects, and the single test that puts real source on disk
+asserts `rc in (0, 1)` -- a branch-touch, not a behaviour. Nothing in the
+suite would have failed if the pipeline stopped reporting an entire class of
+real flows, which is how ten ADR-0017 capabilities came to sit inert while
+each was closed done on 100% coverage.
+
+test_taint_recall_corpus.py generates Python and Go repos into tmp_path and
+runs analysis -> propagation -> claim verification, asserting which flows
+come out.
+
+Vacuity is structurally impossible rather than guarded against. A corpus of
+"must NOT be reported" assertions passes trivially when the pipeline reports
+nothing (L17) -- the exact failure mode here, since a broken propagator makes
+every precision assertion greener. Each language arm therefore puts the
+must-find and must-not-find shapes in ONE repo and asserts the whole finding
+set at once, so a pipeline emitting nothing fails the must-find half.
+
+Proven by mutation in both propagators: silencing propagate_taint_structural
+turns the Go arm red, silencing propagate_taint_ddg turns the Python arm red.
+That they fail different tests is itself the finding -- cli.py routes Python
+through the DDG pass and everything else through the structural pass, so a
+Python-only regression test could never have covered Go's path.
+
+The first positive control FAILED and shaped the corpus (L9): a source and a
+sink under a common caller report nothing, because propagation seeds at the
+source's caller and walks forward only. reverse_adj is built and never read.
+Recorded as xfail(strict=True) so it XPASSes when source-side propagation
+lands (L19); the imperative form could never XPASS and would silently
+disable the signal.
+
+Catalog entries are chosen, not assumed: every source and sink is
+module-qualified and verified absent from its language's ambiguous_names
+(asyncio.start_server -> os.mkdir; net/http.ListenAndServe -> os.WriteFile).
+INV-karud's own first control returned a clean zero for exactly that reason.
+
+Generated into tmp_path deliberately -- a fixture corpus analyzed in place
+measures the pipeline's test-path heuristics rather than the producer
+(L20/L21), and verify-claims now excludes test-sourced flows by default, so
+a corpus under a directory named fixtures would be excluded from its own
+verdicts.
+
+Also repairs a CHANGELOG bullet whose header was lost in an earlier edit,
+leaving the _sink_module_compatible retirement entry starting mid-sentence.
+
+Refs: WI-kabif, INV-sadah, INV-karud, WI-sirod
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
