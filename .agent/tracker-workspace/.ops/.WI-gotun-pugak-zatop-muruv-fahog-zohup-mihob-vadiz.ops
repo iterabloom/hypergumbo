@@ -1,0 +1,22 @@
+- op: create  # a6e8
+  at: '2026-08-03T12:08:13Z'  # a6e8
+  by: agent  # a6e8
+  actor: jgstern_agent  # a6e8
+  clock: 1  # a6e8
+  nonce: a6e8  # a6e8
+  data:  # a6e8
+    kind: work_item  # a6e8
+    title: "java has 69 taint sinks and a CFG mapping but NO def/use extractor exists, so atomic_statement alone cannot help it"  # a6e8
+    status: todo_hard  # a6e8
+    priority: 2  # a6e8
+    parent:  # a6e8
+    tags:  # a6e8
+    - adr_0017  # a6e8
+    - taint  # a6e8
+    - analysis_quality  # a6e8
+    isbefore: []  # a6e8
+    duplicate_of: []  # a6e8
+    not_duplicate_of: []  # a6e8
+    pr_ref:  # a6e8
+    description: "FOUND WHILE WIRING WI-tohuk, 2026-08-03.\n\nWI-tohuk names rust, typescript AND java as lacking atomic_statement. True for\nall three, but the remedy differs and the item does not say so: rust and\ntypescript already had extractors and needed only wiring, whereas java has NO\ndef/use extractor at all. Only four exist: py_def_use, go_def_use,\nrust_def_use, ts_def_use. Adding atomic_statement to java.yaml would therefore\nleave java emitting zero DDG edges -- the YAML key is necessary and nowhere\nnear sufficient.\n\nWHY IT IS WORTH DOING ANYWAY: java carries 45 sources and 69 SINKS, and 67 of\nthose 69 sinks are method-kind (97%, the highest ratio of any language). It\nalready has cfg_nodes/java.yaml with conditional / loop / try_catch / switch\nhooks, so the CFG half is done.\n\nSCOPE: write JavaDefUseExtractor (local_variable_declaration, assignment via\nexpression_statement, enhanced-for bindings, catch parameters), register it,\nadd atomic_statement to java.yaml, register a LanguageDdgSpec. The new\ntest_ddg_language_wiring gate will then cover it automatically once the\nextractor is registered -- add java to EXPECTED_DEF_USE_LANGUAGES in the\nsame PR so the gate does not silently keep quantifying over three languages.\n\nSEQUENCING NOTE: worth less than the javascript item (83 sinks, no extractor\nneeded) despite being closer to done."  # a6e8
+    fields: {}  # a6e8
