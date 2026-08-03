@@ -115,6 +115,42 @@ class TestStatusShapeCompat:
         assert r.returncode == 0
         assert "My PR" in r.stdout
         assert "Overall: success" in r.stdout
+        # No `mergeable` key in this fixture, so the tri-state reader must say
+        # so rather than rendering an empty value that reads as "false".
+        assert "Mergeable: absent" in r.stdout
+
+    def test_pr_status_renders_uncomputed_mergeability_as_null(self, tmp_path):
+        """A GitHub `mergeable: null` must surface as `null`, not blank.
+
+        This is the field auto-pr's Scenario B gate branches on, and GitHub
+        reports it as null while mergeability is still being computed. Until
+        pr-status carried it, the gate's live input was unobservable through
+        any approved script — which is why INV-rahib Surface 1 sat unverified
+        against the real backend. Rendering it as an empty string would put
+        the gap straight back.
+        """
+        repo = fake_repo(tmp_path, "https://github.com/o/r.git")
+        bindir = bindir_with_fakes(tmp_path)
+        pr = json.dumps({
+            "state": "open", "merged": False, "title": "Async PR",
+            "mergeable": None,
+            "head": {"sha": "abc1234567", "ref": "feature"},
+            "base": {"ref": "dev"},
+        })
+        r, _ = run_script(
+            "ci-debug", repo, ("pr-status", "42"),
+            fixtures=[
+                {"match": "/pulls/42", "code": 200, "body": pr},
+                {"match": "/commits/", "code": 200, "body": _STATUS_OK},
+            ],
+            env=_GH, bindir=bindir,
+        )
+        assert r.returncode == 0
+        assert "Mergeable: null" in r.stdout, (
+            f"uncomputed mergeability must be distinguishable from false:\n"
+            f"{r.stdout}"
+        )
+        assert "Mergeable: false" not in r.stdout
 
 
 class TestLogsDegradation:

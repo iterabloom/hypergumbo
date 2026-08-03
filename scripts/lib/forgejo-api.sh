@@ -213,6 +213,49 @@ except Exception:
 }
 
 # ------------------------------------------------------------------
+# json_bool_state FIELD_PATH   (JSON object on stdin)
+#   Print exactly one of: true | false | null | absent | other | unreadable
+#
+#   WHY THIS EXISTS (INV-rahib Surface 1). json_field cannot tell these
+#   apart: it prints the empty string for a JSON null, the empty string for
+#   a missing key, AND the empty string on a parse failure. Any caller that
+#   branches on its output therefore reads "the forge has not computed this
+#   yet" as "the forge says no" — a conflation the call site cannot detect
+#   and cannot work around.
+#
+#   That is not hypothetical. GitHub computes a pull request's mergeability
+#   ASYNCHRONOUSLY and reports `mergeable: null` until the background job
+#   finishes, which is the normal state in the seconds after a push. The
+#   Scenario B gate below fires exactly in that window, so reading null as
+#   false made it order a close-and-repush of PRs whose CI was green.
+#
+#   Use json_field for strings; use this for anything you branch on as a
+#   boolean, so that "unknown" stays a distinguishable answer.
+# ------------------------------------------------------------------
+json_bool_state() {
+	local dotpath="$1"
+	python3 -c "
+import sys, json, functools
+try:
+    data = json.load(sys.stdin)
+except Exception:
+    print('unreadable'); raise SystemExit(0)
+try:
+    val = functools.reduce(lambda d, k: d[k], '$dotpath'.split('.'), data)
+except Exception:
+    print('absent'); raise SystemExit(0)
+if val is None:
+    print('null')
+elif val is True:
+    print('true')
+elif val is False:
+    print('false')
+else:
+    print('other')
+" 2>/dev/null || echo "unreadable"
+}
+
+# ------------------------------------------------------------------
 # json_array_find FIELD_PATH VALUE
 #   Find element in JSON array (on stdin) by field match.
 #   Prints the matching JSON object. Returns 1 if not found.
@@ -1781,10 +1824,20 @@ _pr_landed_in_base() {
 #
 #     (2) About-to-merge with poll-endpoint flake: CI green, PR
 #         mergeable, but /pulls/<n>/statuses was 502'ing intermittently.
-#         Gate fetches /pulls/<n>, checks mergeable=true, then retries
-#         poll_ci once with a short timeout. If both pass, returns 0
-#         with AUTOPR_GATE_MERGED=false (caller falls through to merge
+#         Gate fetches /pulls/<n>, reads mergeability as a TRI-STATE, then
+#         retries poll_ci once with a short timeout. If both pass, returns
+#         0 with AUTOPR_GATE_MERGED=false (caller falls through to merge
 #         instead of close-and-repush).
+#
+#         Mergeability is read with json_bool_state, not json_field. This
+#         sub-case was INERT on the live backend for as long as it existed:
+#         json_field prints '' for a JSON null exactly as it does for a
+#         missing key, so GitHub's `mergeable: null` — the documented value
+#         while mergeability is still being computed asynchronously, i.e.
+#         the normal value in the seconds after a push, i.e. exactly when
+#         this gate fires — was indistinguishable from `false`, and the gate
+#         silently ordered the close it was written to prevent. An unknown
+#         mergeability now re-queries once and then defers to a green CI.
 #
 #   Returns:
 #     0 = "skip the close" (caller checks AUTOPR_GATE_MERGED to know
@@ -1804,9 +1857,36 @@ _pre_scenario_b_gate() {
 
 	if api_get "$API_BASE/pulls/$pr_num"; then
 		local mergeable
-		mergeable=$(echo "$API_RESPONSE" | json_field "mergeable")
-		if [[ "$mergeable" == "True" || "$mergeable" == "true" ]]; then
-			echo "   ℹ️  PR #$pr_num mergeable=true; retrying CI poll once with short timeout..."
+		mergeable=$(echo "$API_RESPONSE" | json_bool_state "mergeable")
+
+		# GitHub computes mergeability asynchronously, and the first read is
+		# often what SCHEDULES that computation — so a single re-query after a
+		# short delay usually turns null into a real boolean. Do it once before
+		# concluding anything, rather than deciding a PR's fate on a field the
+		# forge has not filled in yet.
+		if [[ "$mergeable" == "null" ]]; then
+			echo "   ℹ️  PR #$pr_num mergeable=null (not yet computed); re-querying once..."
+			[[ -n "${CI_POLL_NO_SLEEP:-}" ]] || sleep "${GATE_MERGEABLE_RECHECK_SECONDS:-3}"
+			if api_get "$API_BASE/pulls/$pr_num"; then
+				mergeable=$(echo "$API_RESPONSE" | json_bool_state "mergeable")
+			fi
+		fi
+
+		# `true` and a STILL-unknown `null` both reach the CI retry, for
+		# different reasons. true: the forge says this can merge, so a red poll
+		# was likely an endpoint flake. null: we still do not know, and closing
+		# and re-pushing a PR whose CI is GREEN is precisely the destructive
+		# churn this gate exists to prevent — so a green CI decides, rather
+		# than an unread field. `false`, `absent` and `unreadable` fall through
+		# to the close: the conservative direction on a payload we can read as
+		# a refusal, or cannot read at all.
+		if [[ "$mergeable" == "true" || "$mergeable" == "null" ]]; then
+			if [[ "$mergeable" == "true" ]]; then
+				echo "   ℹ️  PR #$pr_num mergeable=true; retrying CI poll once with short timeout..."
+			else
+				echo "   ⚠️  PR #$pr_num mergeability still uncomputed after a re-query;"
+				echo "       deferring to CI rather than closing a possibly-green PR..."
+			fi
 			local _saved_timeout="${CI_TIMEOUT_SECONDS:-}"
 			export CI_TIMEOUT_SECONDS=120
 			local _gate_poll_rc=0

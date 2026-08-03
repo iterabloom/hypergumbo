@@ -277,6 +277,27 @@ DESC_FLAG=""
 # ------------------------------------------------------------------
 AUTOPR_RESULT_FILE="${AUTOPR_RESULT_FILE:-$REPO_ROOT/.git/AUTOPR_LAST_RESULT.json}"
 
+# ------------------------------------------------------------------
+# INV-rahib: the convergence LEDGER, a separate artifact from the sentinel.
+#
+# The sentinel above answers "did my backgrounded run succeed?" and is
+# deliberately OVERWRITTEN every run — that is correct for its purpose and is
+# pinned by test_autopr_result_sentinel.py::test_second_run_overwrites_first.
+#
+# Convergence is not a property of one run. INV-rahib asks whether auto-pr
+# always ends in a declared terminal state, which can only be evaluated over a
+# SEQUENCE of invocations — and because the sentinel keeps no history, the
+# item's 2026-06-17 validation criterion ("observe auto-pr converge during a
+# real concurrent nightly") sat unevaluated across 579 commits. Nobody was
+# withholding the measurement; there was nothing to measure.
+#
+# So this is a second file rather than a second meaning bolted onto the first:
+# one fact, one home. Append-only, one compact JSON line per invocation, and
+# best-effort — a ledger write failure must never fail an auto-pr run.
+# Override via AUTOPR_HISTORY_FILE for tests.
+# ------------------------------------------------------------------
+AUTOPR_HISTORY_FILE="${AUTOPR_HISTORY_FILE:-$REPO_ROOT/.git/AUTOPR_HISTORY.jsonl}"
+
 # Action-state variables, mutated as auto-pr makes progress.
 # Default 'unknown' is overwritten before any deliberate exit.
 _autopr_state_final="unknown"
@@ -311,6 +332,7 @@ _autopr_write_sentinel() {
 		AUTOPR_MERGED_SHA="$_autopr_state_merged_sha" \
 		AUTOPR_FINAL_STATE="$_autopr_state_final" \
 		AUTOPR_OUT="$AUTOPR_RESULT_FILE" \
+		AUTOPR_HISTORY_OUT="$AUTOPR_HISTORY_FILE" \
 		python3 - <<'PY' 2>/dev/null || true
 import datetime
 import json
@@ -330,6 +352,17 @@ data = {
 with open(os.environ["AUTOPR_OUT"], "w") as f:
     json.dump(data, f, indent=2)
     f.write("\n")
+
+# INV-rahib convergence ledger. Append-only and best-effort: the sentinel
+# above is the contract, and a ledger failure must never turn a successful
+# auto-pr run into a failed one.
+history_path = os.environ.get("AUTOPR_HISTORY_OUT")
+if history_path and os.path.isdir(os.path.dirname(history_path)):
+    try:
+        with open(history_path, "a") as f:
+            f.write(json.dumps(data, sort_keys=True) + "\n")
+    except OSError:
+        pass
 PY
 }
 

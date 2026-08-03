@@ -193,19 +193,27 @@ cmd_pr_status() {
     exit 1
   fi
 
-  local state merged title head_sha head_branch base_branch
+  local state merged title head_sha head_branch base_branch mergeable
   state=$(echo "$API_RESPONSE" | json_field "state")
   merged=$(echo "$API_RESPONSE" | json_field "merged")
   title=$(echo "$API_RESPONSE" | json_field "title")
   head_sha=$(echo "$API_RESPONSE" | json_field "head.sha")
   head_branch=$(echo "$API_RESPONSE" | json_field "head.ref")
   base_branch=$(echo "$API_RESPONSE" | json_field "base.ref")
+  # Tri-state on purpose (INV-rahib Surface 1). auto-pr's Scenario B gate
+  # branches on this field, and GitHub reports it as null while mergeability
+  # is still being computed — so "null" and "false" being separately visible
+  # here is the whole point. Without it the gate's live input was
+  # unobservable through any approved script, which is why the defect went
+  # unverified against the real backend for as long as it did.
+  mergeable=$(echo "$API_RESPONSE" | json_bool_state "mergeable")
 
-  echo "  Title:   $title"
-  echo "  State:   $state"
-  echo "  Merged:  $merged"
-  echo "  Branch:  $head_branch → $base_branch"
-  echo "  HEAD:    ${head_sha:0:12}"
+  echo "  Title:     $title"
+  echo "  State:     $state"
+  echo "  Merged:    $merged"
+  echo "  Mergeable: $mergeable"
+  echo "  Branch:    $head_branch → $base_branch"
+  echo "  HEAD:      ${head_sha:0:12}"
 
   # Also show CI status for the PR's head commit
   if [[ -n "$head_sha" ]]; then
