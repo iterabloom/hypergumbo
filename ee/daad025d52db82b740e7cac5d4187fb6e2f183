@@ -1,0 +1,51 @@
+Original commit body from f173482aaa89fe7d98464324be8e96acaff04232:
+
+The ADR-0017 section 3a walk is three-valued, and only `False` -- "ran to
+completion AND accounted for the value at every step" -- may ever license
+removing a reported flow. It was also being returned when the index held
+nothing at all about a definition:
+
+    _ddg_taint_reaches("f", [1], [9], {})  ->  False
+
+reproduced live. The walk read `ddg_uses.get(...)` and, on an empty result,
+continued WITHOUT setting `escaped`. Every other way of losing the value
+flags itself; this one did not.
+
+Two return values, three causes. A negative walk means (1) the value goes
+nowhere near a sink, (2) it left the tracked chain into a container section
+7b excludes, or (3) the construct that defined it was never modelled, so no
+use was ever recorded. Only (1) is exhaustion. (2) leaves an escape to
+classify; (3) leaves SILENCE, so no work on the escape vocabulary would ever
+have surfaced it. cfg_nodes/go.yaml self-documents a matching gap -- `if err
+:= do(); err != nil` initializers are invisible to def/use -- and 700 of
+caddy's 6,596 `if` statements carry a call there.
+
+Behaviour-neutral today, verified not assumed: the sole production call site
+is `_ddg_taint_reaches(...) is True`, so `False` and `None` already collapse.
+The recall corpus, the only test that runs the real pipeline end to end, is
+unchanged. The change can only prevent a future false negative.
+
+The population is narrower than the item filed, and the correction is
+measured. The barren branch is reachable only for SEED lines -- every other
+frontier entry is membership-tested before being appended -- and
+propagate_taint_ddg gates the walk on `source_tracked = any(...)`, so a
+source whose only call line is untracked never reaches the walk at all. The
+production-reachable shape is a source with >=2 call sites where at least one
+is untracked. The caddy trace recorded on the item does NOT reach this path:
+run through a reimplementation of the pre-fix walk beside the current one it
+returns None on BOTH, because the intermediate line fails the membership test
+one step earlier and hits the escape branch.
+
+This is the conservative floor, not the structural fix. Refutation should be
+coverage-gated -- forfeited for any function whose CFG statement extents fail
+to cover every call node in its body -- which catches the class mechanically
+rather than by enumerating known gaps. Not implemented here.
+
+Retires test_barren_seed_line_is_skipped, which documented the defect as
+intended behaviour and whose assertion passed for an unrelated reason (the
+None came from a later escape, not the barren seed), so it never exercised
+the branch it named. Replaced by the bare repro plus an isolation pair: a
+closed cycle from a tracked seed yields False, and adding one barren seed
+degrades it to None.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
