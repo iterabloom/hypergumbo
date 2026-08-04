@@ -116,18 +116,35 @@ steps:
       - ruff check packages/*/src/ packages/*/tests/
       - bandit -r packages/*/src/ -c pyproject.toml
 
-  # ── whole-tree strict mypy ratchet (NON-BLOCKING — WI-rokup/INV-zogud) ─────
+  # ── whole-tree strict mypy ratchet (BLOCKING — WI-rokup/INV-zogud) ─────────
+  #
+  # THIS IS THE PIPELINE THAT GATES MERGES. auto-pr polls exactly one context,
+  # ci/woodpecker/pr/woodpecker, and merges on it; the GitHub Actions mypy job
+  # and its ci-complete gate are not consulted by the merge path. So while
+  # this step was `failure: ignore` + `--mode=warning`, the ratchet AGENTS.md
+  # calls "BLOCKING" could not block anything, and dev drifted 672 -> 682
+  # across sixty commits with nothing to stop it.
+  #
+  # THREE THINGS HAD TO CHANGE TOGETHER, and two of them are silent alone:
+  #   * `failure: ignore` -> removed. With it set, --mode=strict exits 1 and
+  #     Woodpecker still passes the step, so flipping the mode by itself looks
+  #     like a fix and gates exactly nothing.
+  #   * --mode=warning -> --mode=strict. Warning mode exits 0 on a regression.
+  #   * mypy~=2.1 -> mypy~=2.1.0. The baseline's counts are only comparable
+  #     against the mypy that produced them; ~=2.1 lets a fresh install
+  #     resolve 2.2/2.3, at which point the ratchet refuses to compare at all
+  #     — and under the old warning mode that refusal was silent too. ci.yml
+  #     was already pinned this way and carries the same reasoning.
   - name: mypy
     image: python:3.11-bookworm
     depends_on: []
-    failure: ignore           # == GHA continue-on-error: reported, never gates
     when:
       - path: *code_paths
     commands:
       - pip install --upgrade pip
       - pip install -e packages/hypergumbo-core -e packages/hypergumbo-lang-mainstream -e packages/hypergumbo-lang-common -e packages/hypergumbo-lang-extended1 -e packages/hypergumbo-lang-rust-analyzer -e "packages/hypergumbo-tracker[dev,tui]"
-      - pip install "mypy~=2.1" "types-PyYAML~=6.0.12"
-      - scripts/check-mypy-ratchet --mode=warning
+      - pip install "mypy~=2.1.0" "types-PyYAML~=6.0.12"
+      - scripts/check-mypy-ratchet --mode=strict
 
   # ── pip-audit (dependency CVEs) ────────────────────────────────────────────
   # The long --ignore-vuln list is a verbatim carry-over; the rationale comments

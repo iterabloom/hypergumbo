@@ -245,7 +245,14 @@ PLAYBOOKS = [
      "Always use the pytest alias (which invokes smart-test) instead of python -m pytest or "
      "direct pytest. Smart-test provides a compact ~20-line summary, saves full output to "
      ".ci/pytest-output.log, and runs only tests affected by changed files. Commit "
-     ".ci/affected-tests.txt with every PR for CI smart test selection."),
+     ".ci/affected-tests.txt with every PR for CI smart test selection. Smart-test also runs "
+     "the mypy strict ratchet FIRST, before slicing or pytest: on a regression it exits "
+     "without running pytest, and you may not run tests until it is clean EVEN IF YOU DID NOT "
+     "CAUSE THE REGRESSION -- 'not my change' is not an exit, because a shrink-only ratchet "
+     "that every agent declines to own is how the surface drifted 672 to 682 across sixty "
+     "commits. Never route around it with direct pytest or HG_SKIP_MYPY_GATE, and never 'fix' "
+     "a breach by raising .ci/mypy-strict-baseline.json (a shrink-only baseline may only "
+     "ratchet DOWN). An infrastructure failure (exit 2) warns and continues."),
     ("output-capture-long-running-playbook",
      ".agent/agent_playbooks_protocols_sops_skills/output-capture-long-running-playbook.md",
      "NEVER pipe the output of long-running commands (auto-pr, merge-pr, pytest, bakeoff-*, "

@@ -137,6 +137,86 @@ if [[ "$HAS_N_FLAG" == "false" ]] && ! is_in_container; then
     fi
 fi
 
+# ── Gate 0: the mypy strict ratchet, BEFORE anything else ──
+#
+# WHY THIS IS FIRST, AND WHY IT REFUSES TO RUN TESTS.
+#
+# INV-zogud's ratchet is shrink-only: an error code may fall and may never
+# grow. It was described in AGENTS.md and in the Wave-5 notebooks as
+# "BLOCKING", and on the pipeline that actually gates merges it was not —
+# .woodpecker ran it at --mode=warning, which reports and exits 0. Nothing ran
+# it locally at all: not .githooks/pre-commit, not pre-push, not auto-pr, not
+# the documented pre-commit checklist. So the only signal an agent ever got
+# about growing the strict surface was one it had to go looking for.
+#
+# The measured cost of that: dev drifted 672 -> 682 across sixty commits
+# touching 24 source files, and one of the ten new errors reported a LIVE
+# isinstance guard as "always true" — draining it the obvious way would have
+# deleted a guard whose own comment three lines up explains why it exists.
+# That is the same shape that once took the whole-tree ratchet to a CLEAN
+# 832 -> 789 on a rewrite deleting 43 live guards.
+#
+# Hence: run it first, and on a regression do NOT run pytest. Testing a tree
+# whose type contracts have already regressed produces a green result that
+# means less than it appears to, and "I will fix mypy after the tests pass"
+# is how a two-line drift becomes a ten-error one.
+#
+# EXIT-CODE POLICY follows check-mypy-ratchet's own documented contract:
+#   1 — regression, or an instrument mismatch (the baseline was measured with
+#       a different mypy, so the counts are not comparable and the gate cannot
+#       do its job). BLOCKS.
+#   2 — infrastructure error (mypy missing, no source roots). WARNS and
+#       continues: "an infra failure is not a type regression".
+#
+# HG_SKIP_MYPY_GATE exists for the ratchet's OWN test suite, which must be
+# able to run without recursion. It is not a workaround for a red ratchet.
+if [[ "${HG_SKIP_MYPY_GATE:-}" != "1" ]]; then
+    echo "Checking mypy strict ratchet (INV-zogud) before running tests..."
+    MYPY_GATE_LOG="$REPO_ROOT/.ci/mypy-gate.log"
+    mkdir -p "$REPO_ROOT/.ci" 2>/dev/null || true
+    set +e
+    "$REPO_ROOT/scripts/check-mypy-ratchet" --mode=strict > "$MYPY_GATE_LOG" 2>&1
+    MYPY_GATE_RC=$?
+    set -e
+    if [[ $MYPY_GATE_RC -eq 1 ]]; then
+        cat "$MYPY_GATE_LOG" >&2
+        cat >&2 <<'MYPYBLOCK'
+
+════════════════════════════════════════════════════════════════════════
+  MYPY RATCHET VIOLATED — pytest was NOT run, and MUST NOT be run.
+════════════════════════════════════════════════════════════════════════
+
+  Fix the type regression above before running any tests.
+
+  THIS APPLIES EVEN IF YOU DID NOT CAUSE IT.
+
+  "Not my change" is not an exit. The ratchet is shrink-only, so whoever
+  observes the breach owns it — and a breach that every agent in turn
+  declines to own is precisely how ten errors accumulated across sixty
+  commits with nothing stopping them. If you inherited this, you are the
+  one who found it; fix it, and say so in your PR.
+
+  Do NOT run `python -m pytest` or `pytest` directly to get around this
+  gate. Do NOT set HG_SKIP_MYPY_GATE, which exists only so the ratchet's
+  own tests can run without recursing.
+
+  Diagnose:  ./scripts/check-mypy-ratchet          (per-code deltas)
+             python3 -m mypy packages/*/src/*/     (the errors themselves)
+
+  Do NOT "fix" this by raising .ci/mypy-strict-baseline.json. A shrink-only
+  baseline may only ratchet DOWN; raising it to accept a breach ratifies
+  the drift and destroys the only record of what the surface used to be.
+
+MYPYBLOCK
+        exit 1
+    elif [[ $MYPY_GATE_RC -eq 2 ]]; then
+        echo "  ⚠ mypy ratchet could not run (infrastructure, exit 2) — continuing." >&2
+        sed 's/^/    /' "$MYPY_GATE_LOG" >&2 || true
+    else
+        echo "  ✓ mypy ratchet clean"
+    fi
+fi
+
 # Output file for full pytest log
 PYTEST_LOG="$REPO_ROOT/.ci/pytest-output.log"
 
