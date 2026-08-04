@@ -7,7 +7,25 @@
 - `.venv/bin/pytest`
 - `SMART_TEST_ACTIVE=1 pytest`
 
-These escape hatches exist for debugging but waste tokens by producing ~4000 lines of raw output.
+These escape hatches exist for debugging but waste tokens by producing ~4000 lines of raw output. **They also bypass the mypy gate below, which is the one reason not to use them that is not about token cost.**
+
+### Gate 0: the mypy strict ratchet, and why it forbids testing
+
+`smart-test` runs `scripts/check-mypy-ratchet --mode=strict` **first**, before slicing and before pytest. Outcomes:
+
+| ratchet exit | meaning | smart-test |
+|---|---|---|
+| 0 | no code's error count grew | prints `✓ mypy ratchet clean`, continues |
+| 1 | a regression, **or** an instrument mismatch (baseline measured with a different mypy, so the counts are not comparable) | prints the breach and **exits 1 without running pytest** |
+| 2 | infrastructure (mypy missing, no source roots) | warns and continues — an infra failure is not a type regression, per the ratchet's own documented contract |
+
+**The rule that matters: you may not run tests until it is clean, even if you did not cause the regression.** "Not my change" is not an exit. The ratchet is shrink-only, so whoever observes the breach owns it. This clause is the whole point of the gate rather than a stern flourish — the surface drifted **672 → 682 across sixty commits** touching 24 source files precisely because every agent in turn could see a breach it had not authored and move on. If you inherited it, you are the one who found it: fix it, and say so in your PR.
+
+**Do not route around it.** Not with direct `pytest` / `python -m pytest`, and not with `HG_SKIP_MYPY_GATE=1`, which exists solely so the ratchet's own tests can run without recursion. **Do not "fix" a breach by raising `.ci/mypy-strict-baseline.json`** — a shrink-only baseline may only ratchet DOWN, and raising it to accept a breach ratifies the drift and destroys the only record of what the surface used to be (L33).
+
+**Honest limit.** The gate lives in `smart-test`, which is what the `pytest` alias invokes, so it covers the normal path. A direct `python -m pytest` goes around it; there the enforcement is this text and the banner, not a mechanism.
+
+**Why it had to be added.** INV-zogud's ratchet was documented in AGENTS.md and the Wave-5 notebooks as "BLOCKING, instrument-pinned to mypy 2.1.x", and on the pipeline that actually gates merges it was neither. `auto-pr` polls exactly one CI context — `ci/woodpecker/pr/woodpecker` — and merges on it; that step ran `--mode=warning` *and* carried `failure: ignore`, so it could not fail a pipeline by either route, while the GitHub Actions `--mode=strict` job and its `ci-complete` gate were never consulted by the merge path. Nothing ran mypy locally either: not `.githooks/pre-commit`, not `pre-push`, not `auto-pr`, not the pre-commit checklist. All three invocations are now strict and the pin is `mypy~=2.1.0` everywhere; `tests/test_smart_test_mypy_gate.py` asserts each of those independently, because two of the three edits are silent on their own.
 
 **smart-test provides:**
 1. **Compact summary** - Only shows test result, failures, and coverage gaps (~20 lines vs ~4000)
