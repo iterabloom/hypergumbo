@@ -1,0 +1,24 @@
+- op: create  # 82f0
+  at: '2026-08-04T00:00:20Z'  # 82f0
+  by: agent  # 82f0
+  actor: jgstern_agent  # 82f0
+  clock: 1  # 82f0
+  nonce: 82f0  # 82f0
+  data:  # 82f0
+    kind: invariant  # 82f0
+    title: "TaintFlowFinding.path is not reproducible across processes (BFS over sets picks an arbitrary witness)"  # 82f0
+    status: violated  # 82f0
+    priority: 2  # 82f0
+    parent:  # 82f0
+    tags:  # 82f0
+    - taint  # 82f0
+    - determinism  # 82f0
+    - reproducibility  # 82f0
+    isbefore: []  # 82f0
+    duplicate_of: []  # 82f0
+    not_duplicate_of: []  # 82f0
+    pr_ref:  # 82f0
+    description: "TaintFlowFinding.path is NOT reproducible across processes. Two runs of the\nidentical binary, identical repo, identical claims file produced DIFFERENT\npaths for the same flow identity.\n\nREPRO (kserve, 2026-08-03, dev at 59321e8166):\n  run twice: hypergumbo verify-claims ~/repos/kserve --claims <generic> --format json\n  key each finding on (source_symbol, sink_symbol, taint_label) and compare\n  the path list.\n\n  2 of 182 distinct flows differ. Example -- same source, same sink, same\n  label, different middle hop:\n\n    source: python:test/e2e/graph/test_inference_graph.py:930-1081:\n            test_inference_graph_raw_mode:function\n    sink:   python:builtins:0-0:open:external_symbol\n\n    run 1 hop 2: python/kserve/kserve/api/kserve_client.py:166-223:\n                 KServeClient.get:method\n    run 2 hop 2: python/kserve/kserve/api/kserve_client.py:532-561:\n                 KServeClient.delete_inference_graph:method\n\nWHAT IS AND IS NOT AFFECTED. Stable across runs: the flow identity multiset\n(306 rows both times), the confidence histogram (305 approximate / 1 precise\nboth times), and the verdicts. Unstable: the reported path only. So this is a\nreproducibility defect in user-facing EVIDENCE, not a correctness defect in\nthe analysis.\n\nSUSPECTED CAUSE, not yet confirmed. propagate_taint_* builds adjacency with\nSETS, so BFS dequeue order follows set iteration order. For str elements that\norder depends on PYTHONHASHSEED, which is randomized per process. The BFS\nparent map therefore records whichever predecessor happened to reach the node\nfirst, and _reconstruct_path walks that map. Both middle hops above are\ngenuine callers, so neither path is wrong -- the analysis is picking\narbitrarily among equally-valid witnesses and not saying so.\n\nWHY IT MATTERS. A user diffing two hypergumbo runs on an unchanged repo sees\nevidence churn with no cause, which trains them to distrust the diff. It also\nmakes any path-level A/B between two builds unreliable: I hit exactly this\nwhile measuring meta.call_lines and initially mis-read it as 30 flows\nappearing and disappearing, because my comparison keyed on the path.\n\nTWO CANDIDATE FIXES, both cheap, and they are not equivalent:\n  (a) make the choice deterministic -- iterate a sorted adjacency so the same\n      input always yields the same witness. Cheapest; still reports one\n      arbitrary witness, just a stable one.\n  (b) say that a witness is arbitrary -- report the path as one of N, or\n      report the shortest by a declared tie-break. Honest about what the\n      field is.\n(a) is the minimum. Do not do (a) and describe it as \"the path\", which would\nbe the same silent-arbitrary-choice shape with a stable coat of paint.\n\nSCOPE UNMEASURED: whether the structural propagator has the same shape (it\nuses the same _build_adjacency), and whether any other BFS-derived field in\nthe codebase reports an arbitrary witness. Measure before choosing the fix."  # 82f0
+    fields:  # 82f0
+      statement: "Two runs of the same hypergumbo binary over the same repo and claims file must report the same TaintFlowFinding.path for the same flow identity (source_symbol, sink_symbol, taint_label)."  # 82f0
+      root_cause: "propagate_taint_* builds adjacency with sets, so BFS dequeue order follows str set-iteration order, which varies with the per-process PYTHONHASHSEED. The BFS parent map records whichever predecessor arrived first and _reconstruct_path walks that map, so an arbitrary witness among several valid ones is reported as THE path. Suspected, not yet confirmed by instrumenting the adjacency directly."  # 82f0
