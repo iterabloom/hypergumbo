@@ -506,6 +506,8 @@ def _flow(
     source_prim: str = "cmd_run",
     sink_prim: str = "replace",
     path: list[str] | None = None,
+    confidence: str = "approximate",
+    analysis_method: str = "structural",
 ) -> TaintFlowFinding:
     """A violating (unsanitized plaintext -> host_fs) finding with explicit
     symbol identity, for the WI-kikis drill-down evidence tests."""
@@ -517,10 +519,130 @@ def _flow(
         sink_primitive=sink_prim,
         sink_zone="host_fs",
         sanitized=False,
-        confidence="approximate",
-        analysis_method="structural",
+        confidence=confidence,
+        analysis_method=analysis_method,
         path=path if path is not None else [],
     )
+
+
+class TestConfidenceReachesTheConsumer:
+    """INV-karud (c): the adjudication a verdict rests on must be readable.
+
+    ``verify_taint_claim`` hardcoded the string ``approximate`` into every
+    violated verdict's ``details``, and ``_flow_evidence_dict`` dropped
+    ``confidence`` / ``analysis_method`` entirely. So the ADR-0017 §3a walk
+    could adjudicate a flow by data dependence and the record would still say
+    "approximate" — the label was produced and then discarded, which is the
+    same provenance discontinuity the walk itself was built to close.
+
+    The aggregation policy is STATED, not left to ``max()``: a verdict is a
+    disjunction over its flows and they can be adjudicated differently, so the
+    composition is reported rather than collapsed. Collapsing upward would
+    claim a precision most flows did not have; collapsing downward would hide
+    the flows that earned it.
+    """
+
+    def _claim(self) -> Claim:
+        return Claim(
+            id="TF-CONF",
+            text="No plaintext to host_fs",
+            constraint_taint_flow=TaintFlowConstraint(
+                source_taint="plaintext",
+                prohibited_sink_zone="host_fs",
+            ),
+        )
+
+    def test_uniform_approximate_stays_terse(self) -> None:
+        """The common case reads exactly as it did — no count noise."""
+        verdict = verify_taint_claim(
+            self._claim(), [_flow(source_symbol="s", sink_symbol="d")],
+        )
+        assert "confidence: approximate]" in verdict.details
+
+    def test_uniform_precise_says_precise(self) -> None:
+        """A verdict resting entirely on DDG-adjudicated flows says so.
+
+        This is the assertion the hardcoded literal made impossible: before,
+        a fully data-dependence-confirmed verdict still printed "approximate".
+        """
+        verdict = verify_taint_claim(
+            self._claim(),
+            [_flow(source_symbol="s", sink_symbol="d",
+                   confidence="precise", analysis_method="ddg")],
+        )
+        assert "confidence: precise]" in verdict.details
+        assert "approximate" not in verdict.details
+
+    def test_mixed_confidence_reports_the_composition(self) -> None:
+        """Neither collapsed upward nor downward — both counts are stated."""
+        findings = [
+            _flow(source_symbol="s1", sink_symbol="d1",
+                  confidence="precise", analysis_method="ddg"),
+            _flow(source_symbol="s2", sink_symbol="d2"),
+            _flow(source_symbol="s3", sink_symbol="d3"),
+        ]
+        verdict = verify_taint_claim(self._claim(), findings)
+        assert "confidence: 2 approximate, 1 precise]" in verdict.details
+
+    def test_analysis_methods_breakdown_is_machine_readable(self) -> None:
+        """A consumer must not have to parse ``details`` to get the split.
+
+        Mirrors ``flow_origins`` (WI-vazal): the structured field is the
+        contract, the prose is a courtesy. ``analysis_method`` is the finer
+        axis — it separates ``ddg_mixed`` (the walk ran and did not confirm)
+        from ``structural`` (no walk was possible), which ``confidence``
+        collapses into one bucket.
+        """
+        findings = [
+            _flow(source_symbol="s1", sink_symbol="d1",
+                  confidence="precise", analysis_method="ddg"),
+            _flow(source_symbol="s2", sink_symbol="d2",
+                  analysis_method="ddg_mixed"),
+            _flow(source_symbol="s3", sink_symbol="d3"),
+        ]
+        verdict = verify_taint_claim(self._claim(), findings)
+        assert verdict.analysis_methods == {
+            "ddg": 1, "ddg_mixed": 1, "structural": 1,
+        }
+
+    def test_breakdown_counts_every_flow_not_just_shown_rows(self) -> None:
+        """The breakdown denominator matches ``evidence_count``.
+
+        ``evidence`` is deduplicated and capped; ``details`` counts every
+        violation. A breakdown computed over the shown rows would silently
+        disagree with the count printed beside it.
+        """
+        findings = [
+            _flow(source_symbol="s", sink_symbol="d",
+                  confidence="precise", analysis_method="ddg")
+        ] * 5
+        verdict = verify_taint_claim(self._claim(), findings)
+        assert verdict.evidence_count == 5
+        assert len(verdict.evidence) == 1
+        assert verdict.analysis_methods == {"ddg": 5}
+
+    def test_confirmed_verdict_has_no_breakdown(self) -> None:
+        """No counted flows, nothing to break down — an empty dict, not zeros."""
+        verdict = verify_taint_claim(self._claim(), [])
+        assert verdict.verdict == "confirmed"
+        assert verdict.analysis_methods == {}
+
+    def test_breakdown_survives_serialization(self) -> None:
+        """``to_dict`` is the only surface the CLI emits — a field it drops
+        does not exist for any consumer.
+
+        This is the failure mode the whole clause is about: the pipeline
+        computes an adjudication and a later layer discards it. A dataclass
+        field that ``to_dict`` omits is discarded just as completely as one
+        that was never computed, and is harder to notice because every
+        in-process test still sees it.
+        """
+        verdict = verify_taint_claim(
+            self._claim(),
+            [_flow(source_symbol="s", sink_symbol="d",
+                   confidence="precise", analysis_method="ddg")],
+        )
+        assert verdict.to_dict()["analysis_methods"] == {"ddg": 1}
 
 
 class TestViolatedFlowEvidence:
@@ -591,6 +713,12 @@ class TestViolatedFlowEvidence:
                 "sink_primitive": "replace",
                 "sink_module": "",
                 "path": ["s", "mid", "d"],
+                # INV-karud (c): HOW this flow was adjudicated travels with the
+                # row. Without it the reader cannot tell a data-dependence-
+                # confirmed flow from one included by call reachability alone,
+                # and the ADR-0017 §3a walk is unobservable from the record.
+                "confidence": "approximate",
+                "analysis_method": "structural",
             }
         ]
 

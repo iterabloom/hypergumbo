@@ -199,8 +199,18 @@ class TaintFlowFinding:
             short-name collision without re-running the matcher.
         sink_zone: Trust zone of the sink.
         sanitized: Whether all paths from source to sink are sanitized.
-        confidence: "approximate" for structural, "precise" for DDG-backed.
-        analysis_method: "structural" or "ddg".
+        confidence: ``precise`` only where the ADR-0017 §3a walk actually
+            confirmed a data dependence; ``approximate`` everywhere else. NOT
+            "DDG-backed" — running the DDG is not the same as having used it,
+            and stamping ``precise`` on the strength of a walk whose result was
+            discarded is exactly what INV-sadah was filed for.
+        analysis_method: ``structural`` (no reaching-def data for the language,
+            so no walk was possible), ``ddg`` (the walk ran and confirmed a
+            dependence), or ``ddg_mixed`` (the walk ran and did not confirm
+            one, so inclusion rests on call-graph reachability). ``confidence``
+            collapses the last two into ``approximate``; this is the finer
+            axis, because "the analysis looked and found nothing" and "the
+            analysis could not look" are different facts.
         path: List of symbol IDs on the path from source to sink.
     """
 
@@ -212,7 +222,10 @@ class TaintFlowFinding:
     sink_zone: str
     sanitized: bool
     confidence: str  # "approximate" or "precise"
-    analysis_method: str  # "structural" or "ddg"
+    # "structural" / "ddg" / "ddg_mixed" — ddg_mixed was assigned by the
+    # propagator while this comment named only two values, so a reader
+    # enumerating the vocabulary from here got it wrong.
+    analysis_method: str
     path: list[str] = field(default_factory=list)
     source_module: str = ""
     sink_module: str = ""

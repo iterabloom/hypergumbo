@@ -34,7 +34,15 @@ Verdict Types
   ``confirmed`` to close the silent-confirm fall-through (ADR-0033 Phase 3;
   WI-kajil / INV-bitig).
 
-For taint-flow claims, structural analysis produces ``approximate`` confidence.
+For taint-flow claims the adjudication travels with the verdict rather than
+being asserted by this module. Structural analysis produces ``approximate``
+confidence; the ADR-0017 §3a data-dependence walk produces ``precise`` where it
+confirms a dependence and ``approximate`` / ``ddg_mixed`` where it ran without
+confirming one. A verdict's ``analysis_methods`` breakdown and each evidence
+row's ``confidence`` / ``analysis_method`` report what actually happened. This
+module previously hardcoded the literal ``approximate`` into every violated
+verdict, which made a ``precise`` finding indistinguishable from a structural
+one at the only surface a user reads.
 
 Load-time validation
 ---------------------
@@ -81,7 +89,16 @@ from .paths import is_migration_file, is_test_file
 # ``untrusted_input``, which would have been a silent semantic change to every
 # claim already written against that label. Reporting the split instead means
 # no published claim changes meaning and no verdict moves.
-VERIFY_CLAIMS_SCHEMA_VERSION = "1.3"
+# 1.4 adds the per-verdict ``analysis_methods`` breakdown and a per-evidence-row
+# ``confidence`` / ``analysis_method`` (INV-karud clause c). Additive, and a
+# version change rather than a silent field addition for the same reason 1.2
+# was: a 1.3 consumer reading a violated verdict cannot tell a flow the
+# ADR-0017 §3a walk confirmed by data dependence from one included by call
+# reachability alone, and will keep treating every flow as equally supported.
+# This release also stops hardcoding the string ``approximate`` into every
+# violated verdict's ``details`` — that literal made the label unobservable
+# from BOTH surfaces at once, so no consumer could have noticed the difference.
+VERIFY_CLAIMS_SCHEMA_VERSION = "1.4"
 # WI-kikis: cap on the per-verdict structured drill-down evidence list. A
 # violated claim can have thousands of flows (3,969 on the self-corpus); the
 # deduplicated ``evidence`` list is bounded to this many DISTINCT flows so the
@@ -183,6 +200,19 @@ class ClaimVerdict:
             dominates. This reports the split WITHOUT relabelling anything,
             so no already-published claim changes meaning. ``declared`` is the
             bucket for YAML-declared sources, which have no boundary.
+        analysis_methods: Counts of the flows this verdict IS about, keyed by
+            HOW each was adjudicated (INV-karud clause c). Empty when there
+            are no counted flows. Same shape and rationale as
+            ``flow_origins``: the pipeline computed this and the consumer
+            could not see it. ``ddg`` means the ADR-0017 §3a walk found a data
+            dependence; ``ddg_mixed`` means the walk ran and did not confirm
+            one, so inclusion rests on call-graph reachability; ``structural``
+            means no reaching-def data existed for the language and no walk
+            was possible. ``confidence`` collapses the last two into
+            ``approximate``, which is why this is the finer axis and the one
+            worth carrying — "the analysis looked and found nothing" and "the
+            analysis could not look" are different facts about a security
+            verdict.
     """
 
     claim_id: str
@@ -193,6 +223,7 @@ class ClaimVerdict:
     evidence: list[dict[str, Any]] = field(default_factory=list)
     excluded_flows: dict[str, int] = field(default_factory=dict)
     flow_origins: dict[str, int] = field(default_factory=dict)
+    analysis_methods: dict[str, int] = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         """Serialize to JSON-friendly dict."""
@@ -205,6 +236,7 @@ class ClaimVerdict:
             "evidence": self.evidence,
             "excluded_flows": self.excluded_flows,
             "flow_origins": self.flow_origins,
+            "analysis_methods": self.analysis_methods,
         }
 
 
@@ -793,6 +825,16 @@ def _flow_evidence_dict(v: "TaintFlowFinding") -> dict[str, Any]:
         # asks for. Pure provenance: this changes no match.
         "sink_module": v.sink_module,
         "path": list(v.path),
+        # INV-karud (c): HOW this flow was adjudicated. Both fields existed on
+        # the finding and neither reached the record, so a reader could not
+        # tell a flow the ADR-0017 §3a walk confirmed by data dependence from
+        # one included by call reachability alone — and the whole point of a
+        # `precise` label is that a consumer can act on it differently. This is
+        # the same "the pipeline computed it and then discarded it" shape that
+        # `source_module` (WI-joruv) and `source_boundary` (WI-vazal) closed on
+        # this very record.
+        "confidence": v.confidence,
+        "analysis_method": v.analysis_method,
     }
 
 
@@ -985,6 +1027,36 @@ def verify_taint_claim(
         origin = getattr(finding, "source_boundary", "") or "declared"
         flow_origins[origin] = flow_origins.get(origin, 0) + 1
 
+    # INV-karud (c): report HOW each counted flow was adjudicated.
+    #
+    # Both breakdowns count `violations` — every flow the verdict rests on —
+    # NOT `distinct_violations[:_MAX_EVIDENCE_ROWS]`. The shown rows are
+    # deduplicated and capped, so a breakdown over them would silently
+    # disagree with the `len(violations)` count printed beside it in `details`.
+    analysis_methods: dict[str, int] = {}
+    confidences: dict[str, int] = {}
+    for finding in violations:
+        method = getattr(finding, "analysis_method", "") or "structural"
+        analysis_methods[method] = analysis_methods.get(method, 0) + 1
+        conf = getattr(finding, "confidence", "") or "approximate"
+        confidences[conf] = confidences.get(conf, 0) + 1
+
+    # AGGREGATION POLICY, stated rather than left to `max()`. A verdict is a
+    # DISJUNCTION over its flows, and after ADR-0017 §3a those flows can be
+    # adjudicated differently — some by a data-dependence walk, some by call
+    # reachability alone. Collapsing upward would claim a precision most flows
+    # did not have; collapsing downward would erase the ones that earned it.
+    # So the composition is reported. The single-value case stays terse (the
+    # same shape as `distinct_clause` above), which keeps today's rendering
+    # byte-identical for a verdict whose flows all agree — and today they
+    # nearly all do, which is exactly why the hardcoded literal went unnoticed.
+    if len(confidences) == 1:
+        confidence_clause = next(iter(confidences))
+    else:
+        confidence_clause = ", ".join(
+            f"{count} {name}" for name, count in sorted(confidences.items())
+        )
+
     return ClaimVerdict(
         claim_id=claim.id,
         claim_text=claim.text,
@@ -998,11 +1070,12 @@ def verify_taint_claim(
             f"{len(violations)} unsanitized {tf.source_taint} flow(s)"
             f"{distinct_clause} "
             f"to {tf.prohibited_sink_zone} zone "
-            f"[{tf.source_taint} confidence: approximate]: "
+            f"[{tf.source_taint} confidence: {confidence_clause}]: "
             f"{paths_desc}{suffix}"
         ),
         excluded_flows=excluded_flows,
         flow_origins=flow_origins,
+        analysis_methods=analysis_methods,
     )
 
 
