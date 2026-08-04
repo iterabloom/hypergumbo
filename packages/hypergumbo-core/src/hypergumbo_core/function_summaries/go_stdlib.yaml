@@ -1,0 +1,168 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# ADR-0017 §4b: Function summaries for the Go stdlib and common libraries.
+#
+# SCOPE: ENUMERATION-DERIVED, NOT A STDLIB SURVEY.
+# Every entry here is a callee the ADR-0017 §3a walk was measured CONSULTING at
+# a real escape site on the nine-repo cohort (caddy, alertmanager, kserve,
+# zoxide + the Python arms), plus same-family siblings of those callees. Names
+# nobody's analysis ever reaches cannot change a verdict however well they are
+# described, and a catalogue sized to imagination rather than to measurement is
+# how the two shipped catalogues (rust, typescript) came to cover the only two
+# languages with NO working DDG.
+#
+# WHAT THE FIELDS MEAN HERE. The §3a walk closes a branch only when a callee
+# CONSUMES its arguments and passes them nowhere: `side_effect: true` with an
+# empty `param_to_return`, no `param_to_self`, no `mutates_self`, no callback
+# and no `sanitizes`. Anything else leaves the value somewhere the
+# intraprocedural walk cannot follow, so the branch stays UNKNOWN.
+#
+# A propagating entry is still worth declaring. It records that we looked and
+# the answer was "this does not terminate the taint" — which is different from
+# "nobody has checked", and stops a later reader from assuming the safe-looking
+# thing about `fmt.Sprintf`.
+#
+# ASYMMETRIC RISK, stated once. A wrong `terminates` verdict lets the walk
+# close a branch that is really open, which deletes a real security finding; a
+# wrong `propagates` verdict only leaves an unknown unknown. When unsure, do
+# not mark it terminating.
+
+summaries:
+  # --- fmt: the dominant Go escape-site callee family on the cohort ---
+  - function: "fmt.Printf"
+    param_to_return: {}       # returns (n int, err error) — args do not flow out
+    side_effect: true
+
+  - function: "fmt.Println"
+    param_to_return: {}
+    side_effect: true
+
+  - function: "fmt.Print"
+    param_to_return: {}
+    side_effect: true
+
+  - function: "fmt.Fprintf"
+    param_to_return: {}       # writes to arg 0; the formatted args do not return
+    side_effect: true
+
+  - function: "fmt.Fprintln"
+    param_to_return: {}
+    side_effect: true
+
+  # Errorf and Sprintf PROPAGATE — the formatted arguments are exactly what the
+  # returned error/string carries. Marking either terminating would delete real
+  # flows wherever a tainted value is wrapped into an error and later logged,
+  # which is a common and genuine leak shape.
+  - function: "fmt.Errorf"
+    param_to_return: {0: true, 1: true, 2: true, 3: true}
+
+  - function: "fmt.Sprintf"
+    param_to_return: {0: true, 1: true, 2: true, 3: true}
+
+  - function: "fmt.Sprint"
+    param_to_return: {0: true, 1: true, 2: true, 3: true}
+
+  # --- log ---
+  - function: "log.Print"
+    param_to_return: {}
+    side_effect: true
+
+  - function: "log.Println"
+    param_to_return: {}
+    side_effect: true
+
+  - function: "log.Printf"
+    param_to_return: {}
+    side_effect: true
+
+  - function: "log.Fatal"
+    param_to_return: {}
+    side_effect: true
+
+  - function: "log.Fatalf"
+    param_to_return: {}
+    side_effect: true
+
+  - function: "log.Fatalln"
+    param_to_return: {}
+    side_effect: true
+
+  # --- os ---
+  - function: "os.Remove"
+    param_to_return: {}       # takes a path, returns only an error
+    side_effect: true
+
+  - function: "os.RemoveAll"
+    param_to_return: {}
+    side_effect: true
+
+  # --- net/http ---
+  - function: "net/http/fcgi.Serve"
+    param_to_return: {}
+    side_effect: true
+
+  # --- testing: reached on the cohort because taint analysis sees test code
+  # --- (WI-bifob excludes such flows from VERDICTS, not from the walk) ---
+  - function: "testing.Fatal"
+    param_to_return: {}
+    side_effect: true
+
+  - function: "testing.Fatalf"
+    param_to_return: {}
+    side_effect: true
+
+  - function: "testing.Error"
+    param_to_return: {}
+    side_effect: true
+
+  - function: "testing.Errorf"
+    param_to_return: {}
+    side_effect: true
+
+  - function: "testing.Log"
+    param_to_return: {}
+    side_effect: true
+
+  - function: "testing.Logf"
+    param_to_return: {}
+    side_effect: true
+
+  # Cleanup takes a FUNC. The tainted value can be captured by the closure and
+  # run later, so this is a callback, not a consumer.
+  - function: "testing.Cleanup"
+    param_to_return: {}
+    callback:
+      param_index: 0
+      caller_to_callback_args: {}
+      callback_return_to_outer_return: false
+
+  # --- github.com/stretchr/testify/require: assertions consume their operands ---
+  - function: "github.com/stretchr/testify/require.NoError"
+    param_to_return: {}
+    side_effect: true
+
+  - function: "github.com/stretchr/testify/require.Error"
+    param_to_return: {}
+    side_effect: true
+
+  - function: "github.com/stretchr/testify/require.Contains"
+    param_to_return: {}
+    side_effect: true
+
+  - function: "github.com/stretchr/testify/require.Equal"
+    param_to_return: {}
+    side_effect: true
+
+  # --- go.uber.org/zap: the single most-consulted callee on the cohort (18) ---
+  # zap.String(key, val) returns a Field CARRYING val. It is a constructor, not
+  # a sink — the value reaches the log only when the Field is passed to a
+  # logger. Marking it terminating would silently delete every structured-log
+  # leak in a zap codebase, which is the largest single miss this catalogue
+  # could produce.
+  - function: "go.uber.org/zap.String"
+    param_to_return: {1: true}
+
+  - function: "go.uber.org/zap.Any"
+    param_to_return: {1: true}
+
+  - function: "go.uber.org/zap.Error"
+    param_to_return: {0: true}

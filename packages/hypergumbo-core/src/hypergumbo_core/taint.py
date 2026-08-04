@@ -47,6 +47,7 @@ from .edge_types import is_grpc_rpc_implementation
 
 if TYPE_CHECKING:
     from .cfg import DdgEdge
+    from .function_summaries import FunctionSummary
 
 
 # ---------------------------------------------------------------------------
@@ -1146,6 +1147,27 @@ def _extract_callee_name(symbol_id: str) -> str:
     return ":".join(name_parts)
 
 
+def _qualified_callee(symbol_id: str) -> str:
+    """``{module}.{name}`` for a callee id, or "" when either slot is missing.
+
+    The key ADR-0017 §4 summaries are declared under: ``fmt.Printf``,
+    ``net/http.Get``, ``os.getenv``. Built from the two existing production
+    extractors rather than a fresh parse of the id grammar — a third naive
+    split of a colon-tolerant format is exactly what ``_symbol_path_slot``'s
+    header warns about.
+
+    Returns "" for an id with no module evidence (``python:external:0-0:print:
+    unresolved`` yields module ``external``, which no catalogue declares), so
+    such a callee stays uncatalogued and therefore unknown. That is the safe
+    direction: an unknown callee keeps a branch open.
+    """
+    module = _extract_callee_module(symbol_id)
+    name = _extract_callee_name(symbol_id)
+    if not module or not name or name == symbol_id:
+        return ""
+    return f"{module}.{name}"
+
+
 def _extract_callee_language(symbol_id: str) -> str:
     """Extract the language prefix from a symbol ID.
 
@@ -1691,6 +1713,8 @@ def _ddg_taint_reaches(
     source_lines: list[int],
     sink_lines: list[int],
     ddg_uses: dict[tuple[str, int], set[int]],
+    callees_at: dict[tuple[str, int], frozenset[str]] | None = None,
+    summaries: dict[str, "FunctionSummary"] | None = None,
 ) -> bool | None:
     """Does a value defined at a source call reach a use at a sink call?
 
@@ -1778,11 +1802,82 @@ def _ddg_taint_reaches(
                 # the DDG tracked — it went into a container, a call argument,
                 # a field, or a closure. ADR-0017 §7b excludes alias analysis,
                 # so we cannot say where it went next. That is unknown, not
-                # absent.
+                # absent — UNLESS §4 can tell us the callee consumed it.
+                if _use_site_terminates(
+                    symbol_id, use_line, callees_at, summaries,
+                ):
+                    continue
                 escaped = True
     if escaped:
         return None
     return False
+
+
+def _summary_terminates(summary: "FunctionSummary") -> bool:
+    """Does this callee CONSUME its arguments without passing them anywhere?
+
+    True only for a side-effecting function that returns nothing derived from
+    its arguments, mutates no receiver, invokes no callback and transforms no
+    taint label — ``fmt.Printf``, ``log.Println``, ``os.Exit``. Every other
+    shape leaves the value somewhere the intraprocedural walk cannot follow.
+
+    Deliberately conservative in the SAFE direction. A false "terminates" lets
+    the walk close a branch that is really open, which (once refutation acts on
+    ``False``) deletes a real security finding; a false "does not terminate"
+    only leaves an unknown unknown. Those costs are not symmetric, so every
+    clause here is a conjunction and any doubt reads as "no".
+    """
+    return bool(
+        summary.side_effect
+        and not summary.param_to_return
+        and not summary.param_to_self
+        and not summary.mutates_self
+        and summary.callback is None
+        and not summary.sanitizes
+    )
+
+
+def _use_site_terminates(
+    symbol_id: str,
+    use_line: int,
+    callees_at: dict[tuple[str, int], frozenset[str]] | None,
+    summaries: dict[str, "FunctionSummary"] | None,
+) -> bool:
+    """Does EVERY call at this line consume the tainted value and stop?
+
+    ADR-0017 §3a step 3 — "at call sites, apply function summaries (§4)" — is
+    exactly this. Three properties, each load-bearing:
+
+    **Uncatalogued means unknown, not "assume it propagates".**
+    ``function_summaries.get_default_summary`` returns
+    ``param_to_return = {0..9: True}``, and using it here would make an EMPTY
+    catalogue change behaviour: every callee would read as passing the taint
+    on. Returning False for an unknown callee instead means a catalogue
+    covering nothing reproduces the pre-§4 output exactly, so every behaviour
+    change is attributable to an entry somebody deliberately wrote.
+
+    **All-or-nothing.** Several calls can share a line (``log(transform(x))``)
+    and the value may have gone into any of them. Closing the branch because
+    one of them terminates would be a guess dressed as an analysis.
+
+    **Qualified names only.** ``load_function_summaries`` also indexes every
+    entry under its bare last component — 11 of its 33 keys are such aliases,
+    including ``log``, ``map``, ``filter`` and ``parse``. A short-name match
+    would let ``audit.log(secret)`` resolve to ``console.log`` and read as
+    terminating. Since a false "terminates" removes a real finding, the alias
+    index is never consulted; the caller passes qualified names and the lookup
+    is exact.
+    """
+    if not callees_at or not summaries:
+        return False
+    callees = callees_at.get((symbol_id, use_line))
+    if not callees:
+        return False
+    for qualified in callees:
+        summary = summaries.get(qualified)
+        if summary is None or not _summary_terminates(summary):
+            return False
+    return True
 
 
 def propagate_taint_ddg(
@@ -1793,6 +1888,7 @@ def propagate_taint_ddg(
     sanitizers: list[TaintSanitizer],
     ddg_symbols: set[str] | None = None,
     ambiguous_names: frozenset[str] = frozenset(),
+    function_summaries: dict[str, "FunctionSummary"] | None = None,
 ) -> list[TaintFlowFinding]:
     """DDG-backed taint-flow propagation with mixed-coverage analysis.
 
@@ -1871,6 +1967,7 @@ def propagate_taint_ddg(
     # non-int member would reach the ``sink_line > source_line`` comparison
     # below as a TypeError.
     call_lines: dict[tuple[str, str], list[int]] = defaultdict(list)
+    callee_names: dict[tuple[str, int], set[str]] = defaultdict(set)
     for edge in call_edges:
         sites: list[int] = []
         recorded = (edge.get("meta") or {}).get("call_lines")
@@ -1881,6 +1978,30 @@ def propagate_taint_ddg(
             sites.append(line)
         if sites:
             call_lines[(edge.get("src", ""), edge.get("dst", ""))].extend(sites)
+            # (function, line) → the QUALIFIED names called there, for §4.
+            # This is the index `meta.call_lines` exists to make possible:
+            # "which callee is invoked at line U" was unanswerable for every
+            # call site but the first while one edge carried one line.
+            qualified = _qualified_callee(edge.get("dst", ""))
+            if qualified:
+                src_id = edge.get("src", "")
+                for site in sites:
+                    callee_names[(src_id, site)].add(qualified)
+
+    # ADR-0017 §4b declared summaries, QUALIFIED KEYS ONLY.
+    # ``load_function_summaries`` also indexes every entry under its bare last
+    # component (``console.log`` → ``log``); an entry is its own qualified key
+    # exactly when the key equals ``summary.function``, so this filter drops
+    # the alias index without re-deriving what the loader parsed. The aliases
+    # are dangerous here specifically: a false "this callee terminates the
+    # taint" removes a real finding, and ``log`` / ``map`` / ``filter`` /
+    # ``parse`` collide with almost anything.
+    if function_summaries is None:
+        from .function_summaries import load_function_summaries
+        function_summaries = load_function_summaries()
+    summaries = {
+        k: v for k, v in function_summaries.items() if k == v.function
+    }
 
     # Index sources, sinks, sanitizers by name (same as structural) — a list
     # per name so _lookup_named_entry can disambiguate by module/ambiguity.
@@ -2034,7 +2155,7 @@ def propagate_taint_ddg(
                     # evidence the flow is absent.
                     adjudicated = _ddg_taint_reaches(
                         source_fn, source_call_lines, sink_call_lines,
-                        ddg_uses,
+                        ddg_uses, callee_names, summaries,
                     ) is True
 
             # The label now records what actually decided inclusion, which is

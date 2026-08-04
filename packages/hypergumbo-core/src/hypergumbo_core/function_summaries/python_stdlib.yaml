@@ -1,0 +1,74 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# ADR-0017 §4b: Function summaries for the Python stdlib and common libraries.
+#
+# SCOPE: ENUMERATION-DERIVED, NOT A STDLIB SURVEY. See the header of
+# go_stdlib.yaml for the full rationale — every entry is a callee the §3a walk
+# was measured consulting at a real escape site on the cohort (pretix, kserve),
+# plus same-family siblings.
+#
+# PYTHON'S SHARE IS SMALL, AND THE REASON IS WORTH RECORDING. Most Python
+# escape-site callees on the cohort resolve to the module slot `external` —
+# `external.append`, `external.save`, `external.get`, `external.log_action` —
+# because the callee is an unresolved method on an untyped receiver. A declared
+# summary is keyed by QUALIFIED name, so those cannot be named here at all;
+# they need better callee resolution (WI-makij / the matching layer), not more
+# YAML. Adding speculative `list.append` / `dict.get` entries would not match
+# them and would only make this file look more complete than it is.
+
+summaries:
+  # --- builtins ---
+  # list.pop returns the removed element, so the taint moves from the list to
+  # the caller. This is the pretix `voucher_list.append(vouchers.pop(0))` shape
+  # that produced three verified FALSE NEGATIVES when an earlier §3a arm
+  # treated "lost track of it" as "it did not happen".
+  - function: "builtins.list.pop"
+    param_to_return: {}
+    # Return derives from SELF, not from a parameter — no field expresses that,
+    # and the absence of `side_effect` is what keeps this from reading as
+    # terminating. Declared explicitly so a later reader does not add
+    # `side_effect: true` on the grounds that pop() mutates the list.
+
+  - function: "builtins.print"
+    param_to_return: {}
+    side_effect: true
+
+  # --- logging: the canonical Python terminating family ---
+  - function: "logging.Logger.debug"
+    param_to_return: {}
+    side_effect: true
+
+  - function: "logging.Logger.info"
+    param_to_return: {}
+    side_effect: true
+
+  - function: "logging.Logger.warning"
+    param_to_return: {}
+    side_effect: true
+
+  - function: "logging.Logger.error"
+    param_to_return: {}
+    side_effect: true
+
+  - function: "logging.Logger.exception"
+    param_to_return: {}
+    side_effect: true
+
+  # --- decimal ---
+  # Decimal(value) is a constructor: the argument IS the returned object's
+  # value. Propagates.
+  - function: "decimal.Decimal"
+    param_to_return: {0: true}
+
+  # --- django ORM ---
+  # filter()/exclude() return a QuerySet built from the supplied lookups, so a
+  # tainted lookup value lives on in the returned queryset. Propagates — and
+  # this matters on the cohort, where pretix's largest violated claim is
+  # entirely database-read-to-database-write (WI-vazal).
+  - function: "django.db.models.filter"
+    param_to_return: {0: true, 1: true}
+
+  - function: "django.db.models.exclude"
+    param_to_return: {0: true, 1: true}
+
+  - function: "django.db.models.get"
+    param_to_return: {0: true, 1: true}
