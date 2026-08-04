@@ -1,0 +1,72 @@
+Original commit body from 3e0d71857f2fb598c868f25e3e5ac45479b70f28:
+
+AGENTS.md and the Wave-5 notebooks describe INV-zogud's ratchet as "BLOCKING,
+instrument-pinned to mypy 2.1.x". On the pipeline that gates merges it was
+neither, and nothing ran mypy locally at all.
+
+THE GATING PIPELINE IS WOODPECKER, AND ITS RATCHET STEP COULD NOT FAIL.
+auto-pr polls exactly one CI context -- ci/woodpecker/pr/woodpecker -- and
+merges on it; observed live on PR #204. The GitHub Actions --mode=strict job
+and its ci-complete gate are never consulted by the merge path. That
+Woodpecker step ran --mode=warning AND carried `failure: ignore`, so it could
+not gate by either route.
+
+THREE EDITS WERE REQUIRED AND TWO ARE SILENT ALONE.
+  * `failure: ignore` removed. With it set, --mode=strict exits 1 and
+    Woodpecker passes the step anyway -- so flipping the mode by itself reads
+    as a fix and gates exactly nothing.
+  * --mode=warning -> --mode=strict. Warning mode exits 0 on a regression.
+  * mypy~=2.1 -> mypy~=2.1.0, matching ci.yml, whose comment already explains
+    why: a baseline's counts are only comparable against the mypy that
+    produced them, and under the loose spec a fresh install can resolve
+    2.2/2.3, at which point the ratchet refuses to compare -- silently, under
+    the old warning mode.
+
+SMART-TEST RUNS THE RATCHET FIRST, and a regression forbids testing. Before
+slicing and before pytest. On a strict failure it prints the breach and exits
+1 WITHOUT running pytest. The message closes the specific exit that let this
+happen: you may not run tests until it is clean, EVEN IF YOU DID NOT CAUSE THE
+REGRESSION. "Not my change" is not an exit -- the ratchet is shrink-only, so
+whoever observes the breach owns it, and a breach every agent in turn declines
+to own is exactly how the surface drifted 672 -> 682 across sixty commits
+touching 24 source files. The banner also forbids the two known routes around
+it (direct pytest, HG_SKIP_MYPY_GATE) and forbids "fixing" a breach by raising
+the baseline, which a shrink-only ratchet may never do (L33).
+
+Exit-code policy follows check-mypy-ratchet's own documented contract: exit 1
+(regression, or an instrument mismatch, which means the gate cannot do its
+job) blocks; exit 2 (infrastructure -- mypy missing, no source roots) warns and
+continues, because "an infra failure is not a type regression".
+
+VERIFIED END TO END, NOT JUST ASSERTED. With .ci/mypy-strict-baseline.json
+doctored to zeros, smart-test exits 1, prints the block banner, and produces
+ZERO test-result lines -- pytest never runs. Baseline restored and confirmed
+clean against git afterwards.
+
+The two silent-failure assertions are MUTATION-TESTED: restoring
+`failure: ignore` fails exactly test_mypy_step_does_not_ignore_failure, and
+loosening the pin fails exactly the pin test. Neither is a passenger.
+
+TWO WRONG DRAFTS OF ONE TEST, RECORDED IN PLACE RATHER THAN QUIETLY REPLACED.
+"No invocation uses warning mode" first grepped raw file text and failed on
+all three files -- each one DOCUMENTS why warning mode is wrong, so the
+forbidden string appears in the prose explaining the prohibition. The second
+draft dropped comments and then flagged `check-schema-coverage --mode=warning`,
+a DIFFERENT tool that is legitimately advisory: that version would have
+forbidden correct configuration, which is worse than not testing at all. The
+shipped version takes the invocation as its unit, not the file.
+
+HONEST LIMIT: the gate lives in smart-test, which is what the pytest alias
+invokes, so it covers the normal path. A direct `python -m pytest` bypasses
+it; there the enforcement is the banner text, not a mechanism.
+
+AGENTS.md, the smart-test playbook and the transcript-change hook summary all
+updated, since all three described a checklist that omitted the only blocking
+gate.
+
+Verification: 16 new tests plus the existing smart-test suite, 56 passed;
+tests/test_on_transcript_change.py 24 passed; ruff clean at CI scope
+(packages/*/src, packages/*/tests) and on the new file; check-mypy-ratchet
+672, delta +0.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
