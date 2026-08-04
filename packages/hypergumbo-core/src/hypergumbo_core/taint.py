@@ -1724,6 +1724,25 @@ def _ddg_taint_reaches(
     means the value escaped somewhere the DDG cannot follow, so nothing is
     known either way.
 
+    TWO RETURN VALUES, THREE CAUSES, and the third one is why this docstring
+    is long. A negative walk means the value was never found to reach a sink,
+    and that happens because (1) it genuinely goes nowhere near one, (2) it
+    left the tracked chain into a container the DDG cannot follow, or (3) the
+    construct that defined it was never modelled, so no use was ever recorded.
+    Only (1) is exhaustion. (2) and (3) are both ignorance and both return
+    ``None``.
+
+    Cause (3) is the dangerous one and it was returning ``False`` until a
+    review panel reproduced it: ``_ddg_taint_reaches("f", [1], [9], {})`` —
+    an index holding nothing at all — reported the removal-licensing verdict.
+    (2) at least leaves an escape to classify; (3) leaves silence, so no
+    amount of work on the escape vocabulary would ever have surfaced it. The
+    principled remedy is a coverage gate — forfeit refutation for any function
+    whose CFG statement extents fail to cover every call node in its body —
+    which catches the class mechanically instead of enumerating known gaps.
+    Treating an unrecorded definition as unknown is the conservative floor
+    under that gate, not a substitute for it.
+
     Collapsing ``None`` into ``False`` — the obvious implementation — silently
     converts ADR-0017 §7b's exclusion of alias analysis into false negatives.
     Measured on pretix: ``vouchers_send`` does
@@ -1775,7 +1794,10 @@ def _ddg_taint_reaches(
         ddg_uses: ``(symbol_id, def_line) -> {use_line, ...}``.
 
     Returns:
-        True if the taint reaches a sink call site.
+        True if a tainted value is used at a line where the sink is called;
+        False if the walk exhausted every reachable definition with each step
+        accounted for; None if the value escaped tracked ground OR was never
+        recorded in the first place. Only False may ever license a removal.
     """
     targets = set(sink_lines)
     frontier = list(source_lines)
@@ -1788,6 +1810,25 @@ def _ddg_taint_reaches(
         seen.add(line)
         uses = ddg_uses.get((symbol_id, line))
         if not uses:
+            # THE DDG HOLDS NOTHING ABOUT THIS DEFINITION, which is ignorance,
+            # not absence. A source call happened here — that is how the line
+            # reached the frontier — so a value exists and the index is silent
+            # about where it went.
+            #
+            # This is the third cause of a negative walk and the only one that
+            # produces no escape of its own: "found nothing" and "lost track of
+            # it" both leave a trace to classify, while a construct the
+            # extractor never modelled leaves silence. Falling through to
+            # `return False` made that silence indistinguishable from an
+            # exhausted walk, which is the removal-licensing verdict.
+            #
+            # Not a hypothetical gap: `cfg_nodes/go.yaml` self-documents that
+            # `if err := do(); err != nil` initializers are invisible to
+            # def/use, and 700 of caddy's 6,596 `if` statements carry a call
+            # there. Only seed lines can reach this branch today — every line
+            # appended below is membership-tested first — so it is exactly the
+            # untracked-source-call-site case.
+            escaped = True
             continue
         if uses & targets:
             return True

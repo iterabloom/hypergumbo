@@ -1114,11 +1114,23 @@ class TestDdgTaintReaches:
     """Direct tests of the ADR-0017 §3a forward walk.
 
     Tested at the helper rather than only through ``propagate_taint_ddg``
-    because the walk is three-valued and the distinction between its two
-    negative results — "ran to completion and found nothing" versus "lost track
-    of the value" — is invisible from the outside: both currently produce an
+    because the walk is three-valued and the distinction between its negative
+    results is invisible from the outside: both currently produce an
     approximate finding. Only ``False`` may ever license a removal, so the
-    boundary between them has to be pinned where it can be seen.
+    boundary has to be pinned where it can be seen.
+
+    THREE causes collapse into two return values, and getting that mapping
+    right is the entire content of these tests:
+
+    - *found a dependence* → ``True``.
+    - *ran to completion, every step accounted for* → ``False``. The only
+      value that may ever license removing a flow.
+    - *lost track of it* — the value left the tracked definition chain into a
+      container, field or closure that ADR-0017 §7b excludes → ``None``.
+    - *was never given anything* — the construct is not modelled, so no use
+      was ever recorded → ``None``. Third cause, added after a review panel
+      found it returning ``False``; it is the dangerous one precisely because
+      it produces no escape and therefore no signal to classify.
     """
 
     def test_confirmed_dependence(self) -> None:
@@ -1137,15 +1149,43 @@ class TestDdgTaintReaches:
         """
         assert _ddg_taint_reaches("f", [1], [2], {("f", 1): {5}}) is None
 
-    def test_barren_seed_line_is_skipped(self) -> None:
-        """A source line the DDG recorded nothing for contributes nothing.
+    def test_unrecorded_definition_is_unknown_not_absent(self) -> None:
+        """THE THIRD CAUSE: the DDG was never given anything about this line.
 
-        Exercises the no-uses branch: seed 1 is barren while seed 3 carries the
-        chain, which is the shape when one of several source call sites was
-        never tracked.
+        Distinct from both of the walk's other negative outcomes, and worse
+        than either, because it produces no escape to classify. "Ran to
+        completion" and "lost track of it" both leave a trace; a construct the
+        extractor never modelled leaves silence, and silence read as
+        exhaustion is a confident negative built on no evidence at all.
+
+        Not hypothetical. ``cfg_nodes/go.yaml`` SELF-DOCUMENTS that
+        ``if err := do(); err != nil`` initializers are invisible to def/use,
+        and 700 of caddy's 6,596 ``if`` statements carry a call there. Every
+        one of those definitions arrives here as an empty index lookup.
+
+        The bare repro is the whole point: with an EMPTY index — the DDG
+        holding nothing whatsoever — the walk must not return the value that
+        licenses removal.
         """
-        uses = {("f", 3): {4}, ("f", 4): {7}}
-        assert _ddg_taint_reaches("f", [1, 3], [9], uses) is None
+        assert _ddg_taint_reaches("f", [1], [9], {}) is None
+
+    def test_barren_seed_poisons_an_otherwise_closed_walk(self) -> None:
+        """One unrecorded source line is enough to void the whole verdict.
+
+        The isolation pair, and it is the pair rather than either half that
+        carries the argument. Seed 3 walks a CLOSED cycle: every step is
+        accounted for and no sink is reached, so ``False`` is the correct and
+        earned answer. Adding seed 1 — a source call site the DDG recorded
+        nothing for — changes what is KNOWN, not what was found, so the
+        verdict must degrade to unknown.
+
+        This is the multi-call-site shape: a source invoked twice where only
+        one site was tracked. Reporting ``False`` here would let one modelled
+        call site vouch for an unmodelled one.
+        """
+        closed = {("f", 3): {4}, ("f", 4): {3}}
+        assert _ddg_taint_reaches("f", [3], [9], closed) is False
+        assert _ddg_taint_reaches("f", [1, 3], [9], closed) is None
 
     def test_repeated_frontier_line_is_visited_once(self) -> None:
         """Two definitions feeding one line must not re-walk it.
