@@ -4926,7 +4926,12 @@ def _print_io_boundaries_by_file(
 def _build_ddg_for_verify_claims(
     repo_root: Path,
     candidate_languages: Optional[Sequence[str]] = None,
-) -> tuple[list["DdgEdge"], set[str], dict[str, dict[tuple[int, str], str]]]:
+) -> tuple[
+    list["DdgEdge"],
+    set[str],
+    dict[str, dict[tuple[int, str], str]],
+    dict[str, list[tuple[int, tuple[str, ...], tuple[str, ...]]]],
+]:
     """Build aggregated DDG edges + symbol set + receiver hints for taint analysis.
 
     Thin adapter over :func:`hypergumbo_core.ddg_build.build_repo_ddg`; the
@@ -4947,8 +4952,13 @@ def _build_ddg_for_verify_claims(
     with the registry *after* the force-imports, since the registry is
     empty until they run. Passing None means "every registered language".
 
-    Returns ``([], set(), {})`` if tree-sitter isn't available — the caller
-    falls back to the structural pass in that case.
+    The fourth element is per-statement ``defines``/``uses`` (ADR-0017 §3a,
+    INV-sadah): the DDG edge set alone cannot say WHICH variable defined at a
+    line inherited a tainted one, and when a line defines two the walk needs
+    to know. The CFG already carries it.
+
+    Returns ``([], set(), {}, {})`` if tree-sitter isn't available — the
+    caller falls back to the structural pass in that case.
     """
     from .ddg_build import build_repo_ddg, registered_ddg_languages
 
@@ -4965,7 +4975,7 @@ def _build_ddg_for_verify_claims(
         import hypergumbo_lang_mainstream.rust_def_use
         import hypergumbo_lang_mainstream.ts_def_use  # noqa: F401
     except ImportError:  # pragma: no cover - lang package is a hard dep but defend
-        return [], set(), {}
+        return [], set(), {}, {}
 
     available = registered_ddg_languages()
     if candidate_languages is None:
@@ -4974,7 +4984,12 @@ def _build_ddg_for_verify_claims(
         languages = tuple(sorted(set(candidate_languages) & available))
 
     result = build_repo_ddg(repo_root, languages)
-    return result.ddg_edges, result.ddg_symbols, result.hints_by_caller
+    return (
+        result.ddg_edges,
+        result.ddg_symbols,
+        result.hints_by_caller,
+        result.stmt_defuse,
+    )
 
 
 def cmd_verify_claims(args: argparse.Namespace) -> int:
@@ -5213,7 +5228,7 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
             # Only languages the taint catalog actually covers for this
             # repo are worth walking; the adapter intersects that with the
             # languages that have a registered DDG spec.
-            ddg_edges, ddg_symbols, hints_by_caller = (
+            ddg_edges, ddg_symbols, hints_by_caller, stmt_defuse = (
                 _build_ddg_for_verify_claims(repo_root, sorted(per_lang_sinks))
             )
             taint_findings = []
@@ -5264,6 +5279,7 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
                         ddg_edges, lang_edges, lang_sources, lang_sinks,
                         lang_sans, ddg_symbols=ddg_symbols,
                         ambiguous_names=lang_ambiguous,
+                        stmt_defuse=stmt_defuse,
                     ))
                 else:
                     taint_findings.extend(propagate_taint_structural(

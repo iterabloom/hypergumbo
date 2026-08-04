@@ -113,6 +113,21 @@ class RepoDdg:
     ddg_edges: list["DdgEdge"] = field(default_factory=list)
     ddg_symbols: set[str] = field(default_factory=set)
     hints_by_caller: dict[str, dict[tuple[int, str], str]] = field(default_factory=dict)
+    #: ``symbol_id -> [(line, defines, uses), ...]`` for every statement the
+    #: def/use pass annotated.
+    #:
+    #: WHY THE EDGE SET IS NOT ENOUGH (INV-sadah). A ``DdgEdge`` says "variable
+    #: v defined at line D is used at line U". It does NOT say which variable
+    #: defined at U inherited v — and when one line defines two variables, the
+    #: §3a walk has to know. ``keep = str(server); path = name`` defines both
+    #: ``keep`` and ``path`` at the same line, and only the first derives from
+    #: the tainted ``server``; the edge set alone is equally consistent with
+    #: either. Statement-level ``defines``/``uses`` resolves it, and the CFG
+    #: already carries them — ``populate_def_use_for_cfg`` fills them in one
+    #: line above where this is collected, and they were simply discarded.
+    stmt_defuse: dict[str, list[tuple[int, tuple[str, ...], tuple[str, ...]]]] = field(
+        default_factory=dict,
+    )
 
 
 _DDG_LANGUAGES: dict[str, LanguageDdgSpec] = {}
@@ -203,6 +218,16 @@ def _solve_one_function(
     if result.ddg_edges:
         out.ddg_edges.extend(result.ddg_edges)
         out.ddg_symbols.add(sym_id)
+        # Collected only alongside edges: a function with no edges cannot be
+        # walked, so its statements would be dead weight in the index.
+        stmts = [
+            (s.line, tuple(s.defines), tuple(s.uses))
+            for block in cfg.blocks.values()
+            for s in block.statements
+            if s.defines or s.uses
+        ]
+        if stmts:
+            out.stmt_defuse[sym_id] = stmts
     if spec.refine is not None:
         hints = spec.refine(
             node=node,

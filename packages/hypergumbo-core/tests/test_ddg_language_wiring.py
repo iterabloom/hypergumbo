@@ -201,6 +201,46 @@ def test_language_yields_at_least_one_ddg_edge(
     assert result.ddg_symbols, f"{language}: no symbol carried DDG coverage"
 
 
+@pytest.mark.parametrize("language", sorted(EXPECTED_DEF_USE_LANGUAGES))
+def test_language_yields_statement_level_def_use(
+    language: str, tmp_path: Path,
+) -> None:
+    """(5) Edges alone are not enough to CONFIRM anything (INV-sadah).
+
+    A ``DdgEdge`` says "variable v defined at line D is used at line U". It
+    does not say which variable defined at U inherited v — and when one line
+    defines two, the §3a walk cannot tell a real dependence from an accident
+    of shared line numbers. That is how a ``precise`` label came to be stamped
+    on a flow with no data dependence at all.
+
+    The walk therefore consumes ``RepoDdg.stmt_defuse``, and a language that
+    emits edges but annotates no statements would lose every confirmation
+    SILENTLY — flows keep being reported, only the label quietly degrades.
+    That is the ADR-0017 inertness shape exactly (a capability with no
+    production effect, passing its own tests), so it gets a gate rather than a
+    note. Sibling of property (4): that one asserts the edges exist, this one
+    asserts they can be interpreted.
+    """
+    filename, source = DDG_SMOKE_SOURCES[language]
+    (tmp_path / filename).write_text(source, encoding="utf-8")
+
+    result = build_repo_ddg(tmp_path, (language,))
+
+    assert result.stmt_defuse, (
+        f"{language}: produced DDG edges but no statement-level defines/uses, "
+        f"so the §3a walk can never justify a hop and every finding in this "
+        f"language falls back to 'approximate'"
+    )
+    assert any(
+        defines and uses
+        for statements in result.stmt_defuse.values()
+        for _line, defines, uses in statements
+    ), (
+        f"{language}: statements were recorded but none both DEFINES and USES "
+        f"anything, which is the shape a taint hop is made of"
+    )
+
+
 #: A branch per language, used to prove that declaring a type
 #: ``atomic_statement`` did not swallow the language's control flow.
 CONTROL_FLOW_SOURCES: dict[str, str] = {

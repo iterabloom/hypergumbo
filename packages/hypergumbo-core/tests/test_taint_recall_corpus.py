@@ -323,6 +323,21 @@ def _source_names(verdict: dict) -> set:
     }
 
 
+def _confidence_by_source(verdict: dict) -> dict:
+    """``{source function name: (confidence, analysis_method)}``.
+
+    The label is the whole subject of INV-sadah, and until this helper existed
+    no test in the corpus read it — the one test named for the ``precise``
+    label asserted only recall.
+    """
+    return {
+        row["source_symbol"].split(":")[-2]: (
+            row.get("confidence"), row.get("analysis_method"),
+        )
+        for row in verdict.get("evidence", [])
+    }
+
+
 def test_ddg_labels_a_data_connected_flow_as_precise(
     tmp_path: Path, capsys,
 ) -> None:
@@ -370,3 +385,97 @@ def test_ddg_labels_a_data_connected_flow_as_precise(
     # RECALL — both flows are still reported. Inclusion remains call-graph
     # reachability; §3a confirms, it does not refute.
     assert _source_names(verdict) == {"connected", "disconnected"}
+
+    # AND THE LABEL ITSELF, which this test was named for and did not check.
+    # "precise" appeared only in the function name and the docstring; the sole
+    # assertion was recall, so the label §3a exists to earn had no test
+    # anywhere in the corpus. That is why an unearned one shipped (INV-sadah).
+    labels = _confidence_by_source(verdict)
+    assert labels["connected"] == ("precise", "ddg"), labels
+    assert labels["disconnected"] == ("approximate", "ddg_mixed"), labels
+
+
+def test_ddg_does_not_credit_a_dependence_across_unrelated_definitions(
+    tmp_path: Path, capsys,
+) -> None:
+    """A shared def_line must not launder taint between unrelated variables.
+
+    THE DEFECT (INV-sadah, found by a review panel). The walk's index was keyed
+    ``(symbol_id, def_line)`` with ``DdgEdge.variable`` discarded, so every
+    variable defined on one line shared a single entry and their use-sets were
+    merged. ``conflated`` below is the minimal real shape::
+
+        6   server = await asyncio.start_server(...)   # the SOURCE
+        7   keep = str(server); path = name            # uses server, defines path
+        8   os.mkdir(path)                             # the SINK, on `path`
+
+    ``path`` derives from the parameter ``name``, not from ``server`` — there
+    is no data dependence from source to sink. But the production DDG emits
+    ``server def@6 -> use@7``, ``keep def@7 -> use@9`` and
+    ``path def@7 -> use@8``, and a line-keyed index collapses the last two into
+    ``def_line 7 -> {8, 9}``. The walk steps 6 -> 7 -> 8, finds the sink line,
+    and stamps ``precise``/``ddg`` on a dependence that does not exist.
+
+    WHY VARIABLE-KEYING ALONE IS NOT THE FIX, stated because it looks like it
+    should be: ``path`` genuinely IS defined at line 7. Separating the entries
+    still leaves the walk asking which variable defined at 7 inherits taint
+    from ``server``, and the DDG edge set alone cannot say. Only the
+    statement-level pairing answers it — ``keep = str(server)`` uses
+    ``server``, ``path = name`` does not.
+
+    THE OTHER TWO ARMS ARE CONTROLS, and they are what stops a fix from
+    passing by simply labelling nothing (L57): ``connected`` has a real
+    dependence and must KEEP ``precise``; ``disconnected`` has none and must
+    stay ``approximate``, which it already did. Exactly one cell may move.
+    """
+    src = tmp_path / "src"
+    src.mkdir()
+
+    (src / "connected.py").write_text(
+        "import asyncio\n"
+        "import os\n"
+        "\n"
+        "\n"
+        "async def connected(name):\n"
+        "    server = await asyncio.start_server(None, '0.0.0.0', 8080)\n"
+        "    os.mkdir(str(server))\n"
+        "    return server\n",
+        encoding="utf-8",
+    )
+    (src / "disconnected.py").write_text(
+        "import asyncio\n"
+        "import os\n"
+        "\n"
+        "\n"
+        "async def disconnected(name):\n"
+        "    server = await asyncio.start_server(None, '0.0.0.0', 8080)\n"
+        "    os.mkdir(name)\n"
+        "    return server\n",
+        encoding="utf-8",
+    )
+    (src / "conflated.py").write_text(
+        "import asyncio\n"
+        "import os\n"
+        "\n"
+        "\n"
+        "async def conflated(name):\n"
+        "    server = await asyncio.start_server(None, '0.0.0.0', 8080)\n"
+        "    keep = str(server); path = name\n"
+        "    os.mkdir(path)\n"
+        "    return keep\n",
+        encoding="utf-8",
+    )
+
+    verdict = _verdict(_run(tmp_path, capsys)["envelope"], "no-untrusted-to-fs")
+
+    # RECALL FIRST — nothing may stop being reported. §3a confirms, it does
+    # not refute, so all three flows survive whatever the label says.
+    assert _source_names(verdict) == {"connected", "disconnected", "conflated"}
+
+    labels = _confidence_by_source(verdict)
+    # The control that must not move.
+    assert labels["connected"] == ("precise", "ddg"), labels
+    # Already correct, and must stay correct.
+    assert labels["disconnected"] == ("approximate", "ddg_mixed"), labels
+    # THE DEFECT: no data dependence exists, so no precision may be claimed.
+    assert labels["conflated"] == ("approximate", "ddg_mixed"), labels

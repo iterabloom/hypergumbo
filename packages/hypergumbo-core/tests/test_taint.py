@@ -1112,6 +1112,29 @@ class TestEdgeCases:
 # ---------------------------------------------------------------------------
 
 
+def _ddg_index(edges, stmts=()):
+    """Build the three walk indices the way ``propagate_taint_ddg`` does.
+
+    ``edges``: ``[(variable, def_line, use_line), ...]``
+    ``stmts``: ``[(line, defines, uses), ...]`` — statement-level def/use.
+
+    Mirrors production's construction deliberately rather than hand-writing
+    the dicts: a hand-made index is consistent with several different source
+    programs, and a review panel refuted an earlier diagnosis that rested on
+    exactly that (the fixture proved nothing the code did not already assume).
+    """
+    ddg_uses: dict = {}
+    defs_at: dict = {}
+    for var, dline, uline in edges:
+        ddg_uses.setdefault(("f", var, dline), set()).add(uline)
+        defs_at.setdefault(("f", dline), set()).add(var)
+    inherits: dict = {}
+    for line, defines, uses in stmts:
+        for used in uses:
+            inherits.setdefault(("f", line, used), set()).update(defines)
+    return ddg_uses, defs_at, inherits
+
+
 class TestDdgTaintReaches:
     """Direct tests of the ADR-0017 §3a forward walk.
 
@@ -1136,12 +1159,45 @@ class TestDdgTaintReaches:
     """
 
     def test_confirmed_dependence(self) -> None:
-        assert _ddg_taint_reaches("f", [1], [2], {("f", 1): {2}}) is True
+        uses, defs, inh = _ddg_index([("t", 1, 2)])
+        assert _ddg_taint_reaches(
+            "f", [1], [2], uses, defs_at=defs, inherits=inh,
+        ) is True
 
     def test_transitive_dependence(self) -> None:
-        """Taint carries through an intermediate definition."""
-        uses = {("f", 1): {2}, ("f", 2): {3}}
-        assert _ddg_taint_reaches("f", [1], [3], uses) is True
+        """Taint carries through an intermediate definition.
+
+        ``t`` defined at 1 is consumed at 2 by a statement defining ``u``,
+        and ``u`` reaches the sink at 3. The statement row is what licenses
+        the hop: without it the walk cannot know that ``u`` derives from
+        ``t`` rather than from something else also defined at line 2.
+        """
+        uses, defs, inh = _ddg_index(
+            [("t", 1, 2), ("u", 2, 3)],
+            [(2, ("u",), ("t",))],
+        )
+        assert _ddg_taint_reaches(
+            "f", [1], [3], uses, defs_at=defs, inherits=inh,
+        ) is True
+
+    def test_unrelated_definition_on_the_same_line_is_not_credited(
+        self,
+    ) -> None:
+        """THE CONFLATION (INV-sadah), at the helper.
+
+        Line 2 defines ``u`` from ``t`` AND ``v`` from something untracked;
+        ``v`` reaches the sink at 3 and ``u`` goes nowhere near it. A
+        line-keyed index merged both under ``def_line 2`` and reported True.
+        The answer is "no dependence found, and the value escaped" — never
+        True, because no tainted value reaches the sink call.
+        """
+        uses, defs, inh = _ddg_index(
+            [("t", 1, 2), ("u", 2, 9), ("v", 2, 3)],
+            [(2, ("u",), ("t",)), (2, ("v",), ("w",))],
+        )
+        assert _ddg_taint_reaches(
+            "f", [1], [3], uses, defs_at=defs, inherits=inh,
+        ) is not True
 
     def test_escaped_value_is_unknown_not_absent(self) -> None:
         """A use that defines nothing means the value left tracked ground.
@@ -1149,7 +1205,10 @@ class TestDdgTaintReaches:
         This is the pretix ``voucher_list.append(vouchers.pop(0))`` shape. It
         must NOT report False: doing so is what deleted real flows.
         """
-        assert _ddg_taint_reaches("f", [1], [2], {("f", 1): {5}}) is None
+        uses, defs, inh = _ddg_index([("t", 1, 5)])
+        assert _ddg_taint_reaches(
+            "f", [1], [2], uses, defs_at=defs, inherits=inh,
+        ) is None
 
     def test_unrecorded_definition_is_unknown_not_absent(self) -> None:
         """THE THIRD CAUSE: the DDG was never given anything about this line.
@@ -1169,7 +1228,7 @@ class TestDdgTaintReaches:
         holding nothing whatsoever — the walk must not return the value that
         licenses removal.
         """
-        assert _ddg_taint_reaches("f", [1], [9], {}) is None
+        assert _ddg_taint_reaches("f", [1], [9], {}, defs_at={}) is None
 
     def test_barren_seed_poisons_an_otherwise_closed_walk(self) -> None:
         """One unrecorded source line is enough to void the whole verdict.
@@ -1185,9 +1244,16 @@ class TestDdgTaintReaches:
         one site was tracked. Reporting ``False`` here would let one modelled
         call site vouch for an unmodelled one.
         """
-        closed = {("f", 3): {4}, ("f", 4): {3}}
-        assert _ddg_taint_reaches("f", [3], [9], closed) is False
-        assert _ddg_taint_reaches("f", [1, 3], [9], closed) is None
+        uses, defs, inh = _ddg_index(
+            [("a", 3, 4), ("b", 4, 3)],
+            [(4, ("b",), ("a",)), (3, ("a",), ("b",))],
+        )
+        assert _ddg_taint_reaches(
+            "f", [3], [9], uses, defs_at=defs, inherits=inh,
+        ) is False
+        assert _ddg_taint_reaches(
+            "f", [1, 3], [9], uses, defs_at=defs, inherits=inh,
+        ) is None
 
     def test_repeated_frontier_line_is_visited_once(self) -> None:
         """Two definitions feeding one line must not re-walk it.
@@ -1196,13 +1262,24 @@ class TestDdgTaintReaches:
         twice. Without the revisit guard the walk repeats work and, on a cycle,
         does not terminate.
         """
-        uses = {("f", 1): {2, 3}, ("f", 2): {4}, ("f", 3): {4}, ("f", 4): {2}}
-        assert _ddg_taint_reaches("f", [1], [9], uses) is False
+        uses, defs, inh = _ddg_index(
+            [("t", 1, 2), ("t", 1, 3), ("a", 2, 4), ("b", 3, 4), ("c", 4, 2)],
+            [(2, ("a",), ("t",)), (3, ("b",), ("t",)),
+             (4, ("c",), ("a", "b")), (2, ("a",), ("c",))],
+        )
+        assert _ddg_taint_reaches(
+            "f", [1], [9], uses, defs_at=defs, inherits=inh,
+        ) is False
 
     def test_closed_walk_with_no_dependence_is_false(self) -> None:
         """Exhausted, every step accounted for, sink never reached."""
-        uses = {("f", 1): {2}, ("f", 2): {3}, ("f", 3): {2}}
-        assert _ddg_taint_reaches("f", [1], [9], uses) is False
+        uses, defs, inh = _ddg_index(
+            [("t", 1, 2), ("a", 2, 3), ("b", 3, 2)],
+            [(2, ("a",), ("t",)), (3, ("b",), ("a",)), (2, ("a",), ("b",))],
+        )
+        assert _ddg_taint_reaches(
+            "f", [1], [9], uses, defs_at=defs, inherits=inh,
+        ) is False
 
 
 class TestSummariesCollapseEscapes:
@@ -1225,7 +1302,8 @@ class TestSummariesCollapseEscapes:
     """
 
     # line 5 uses the taint and defines nothing
-    _USES: ClassVar[dict] = {("f", 1): {5}}
+    _USES: ClassVar[dict] = {("f", "t", 1): {5}}
+    _DEFS: ClassVar[dict] = {("f", 1): {"t"}}
 
     def test_empty_catalogue_is_a_strict_no_op(self) -> None:
         """The safety property the whole design rests on.
@@ -1237,6 +1315,7 @@ class TestSummariesCollapseEscapes:
         callees = {("f", 5): frozenset({"fmt.Printf"})}
         assert _ddg_taint_reaches(
             "f", [1], [2], self._USES, callees_at=callees, summaries={},
+            defs_at=self._DEFS,
         ) is None
 
     def test_terminating_callee_closes_the_branch(self) -> None:
@@ -1246,7 +1325,8 @@ class TestSummariesCollapseEscapes:
         )}
         callees = {("f", 5): frozenset({"fmt.Printf"})}
         assert _ddg_taint_reaches(
-            "f", [1], [2], self._USES, callees_at=callees, summaries=summaries,
+            "f", [1], [2], self._USES, callees_at=callees,
+            summaries=summaries, defs_at=self._DEFS,
         ) is False
 
     def test_propagating_callee_still_escapes(self) -> None:
@@ -1256,7 +1336,8 @@ class TestSummariesCollapseEscapes:
         )}
         callees = {("f", 5): frozenset({"json.dumps"})}
         assert _ddg_taint_reaches(
-            "f", [1], [2], self._USES, callees_at=callees, summaries=summaries,
+            "f", [1], [2], self._USES, callees_at=callees,
+            summaries=summaries, defs_at=self._DEFS,
         ) is None
 
     def test_receiver_mutating_callee_still_escapes(self) -> None:
@@ -1267,7 +1348,8 @@ class TestSummariesCollapseEscapes:
         )}
         callees = {("f", 5): frozenset({"list.append"})}
         assert _ddg_taint_reaches(
-            "f", [1], [2], self._USES, callees_at=callees, summaries=summaries,
+            "f", [1], [2], self._USES, callees_at=callees,
+            summaries=summaries, defs_at=self._DEFS,
         ) is None
 
     def test_all_callees_must_terminate(self) -> None:
@@ -1282,7 +1364,8 @@ class TestSummariesCollapseEscapes:
         )}
         callees = {("f", 5): frozenset({"fmt.Printf", "mystery.Thing"})}
         assert _ddg_taint_reaches(
-            "f", [1], [2], self._USES, callees_at=callees, summaries=summaries,
+            "f", [1], [2], self._USES, callees_at=callees,
+            summaries=summaries, defs_at=self._DEFS,
         ) is None
 
     def test_no_callee_at_the_line_still_escapes(self) -> None:
@@ -1296,6 +1379,7 @@ class TestSummariesCollapseEscapes:
         )}
         assert _ddg_taint_reaches(
             "f", [1], [2], self._USES, callees_at={}, summaries=summaries,
+            defs_at=self._DEFS,
         ) is None
 
     def test_short_name_never_matches(self) -> None:
@@ -1320,7 +1404,8 @@ class TestSummariesCollapseEscapes:
         }
         callees = {("f", 5): frozenset({"audit.log"})}
         assert _ddg_taint_reaches(
-            "f", [1], [2], self._USES, callees_at=callees, summaries=summaries,
+            "f", [1], [2], self._USES, callees_at=callees,
+            summaries=summaries, defs_at=self._DEFS,
         ) is None
 
     def test_sanitizing_callee_is_not_terminating(self) -> None:
@@ -1333,7 +1418,8 @@ class TestSummariesCollapseEscapes:
         )}
         callees = {("f", 5): frozenset({"crypto.seal"})}
         assert _ddg_taint_reaches(
-            "f", [1], [2], self._USES, callees_at=callees, summaries=summaries,
+            "f", [1], [2], self._USES, callees_at=callees,
+            summaries=summaries, defs_at=self._DEFS,
         ) is None
 
     def test_a_terminated_branch_does_not_mask_a_real_dependence(self) -> None:
@@ -1343,13 +1429,17 @@ class TestSummariesCollapseEscapes:
         answer is True, not False — a closed branch removes an unknown, it does
         not remove evidence.
         """
-        uses = {("f", 1): {5, 6}, ("f", 6): {2}}
+        uses, defs, inh = _ddg_index(
+            [("t", 1, 5), ("t", 1, 6), ("u", 6, 2)],
+            [(6, ("u",), ("t",))],
+        )
         summaries = {"fmt.Printf": FunctionSummary(
             function="fmt.Printf", side_effect=True,
         )}
         callees = {("f", 5): frozenset({"fmt.Printf"})}
         assert _ddg_taint_reaches(
             "f", [1], [2], uses, callees_at=callees, summaries=summaries,
+            defs_at=defs, inherits=inh,
         ) is True
 
 
@@ -1600,6 +1690,47 @@ class TestPropagateTaintDdg:
         used at line 3, where the sink is called. Nothing links line 1 to line
         3 directly, so a single-hop walk would drop this real flow — the
         expensive direction for a security tool.
+
+        ``stmt_defuse`` is now required for the hop, and that is the whole
+        INV-sadah change: the edge set says ``b`` is defined at line 2, but
+        NOT that ``b`` derives from ``a`` rather than from something else the
+        same line also touched. The statement row supplies exactly that.
+        """
+        ddg = [
+            DdgEdge(variable="a", def_block="bb_0", def_line=1,
+                    use_block="bb_0", use_line=2, symbol_id="caller"),
+            DdgEdge(variable="b", def_block="bb_0", def_line=2,
+                    use_block="bb_0", use_line=3, symbol_id="caller"),
+        ]
+        call_edges = [
+            {"src": "caller", "dst": "python:external:0-0:decrypt:unresolved",
+             "type": "calls", "line": 1},
+            {"src": "caller", "dst": "python:external:0-0:send:unresolved",
+             "type": "calls", "line": 3},
+        ]
+
+        findings = propagate_taint_ddg(
+            ddg, call_edges, self._make_sources(), self._make_sinks(), [],
+            ddg_symbols={"caller"},
+            stmt_defuse={"caller": [(2, ("b",), ("a",))]},
+        )
+        assert len(findings) == 1
+        assert findings[0].confidence == "precise"
+
+    def test_missing_statement_data_degrades_to_approximate(self) -> None:
+        """No statement data means no confirmation — never a silent one.
+
+        The same graph as the test above with ``stmt_defuse`` omitted. A
+        caller that does not supply it (or a language whose def/use pass
+        annotates no statements) cannot have the hop justified, so the walk
+        must report an unknown and the finding must fall back to
+        ``approximate``.
+
+        THE FLOW IS STILL REPORTED. Only the label moves: §3a confirms and
+        never refutes, so a missing input costs precision, never recall. That
+        asymmetry is the point — the alternative reading, "no statement data
+        so assume the hop is fine", is what stamped an unearned ``precise`` in
+        the first place.
         """
         ddg = [
             DdgEdge(variable="a", def_block="bb_0", def_line=1,
@@ -1618,8 +1749,9 @@ class TestPropagateTaintDdg:
             ddg, call_edges, self._make_sources(), self._make_sinks(), [],
             ddg_symbols={"caller"},
         )
-        assert len(findings) == 1
-        assert findings[0].confidence == "precise"
+        assert len(findings) == 1, "recall must not depend on statement data"
+        assert findings[0].confidence == "approximate"
+        assert findings[0].analysis_method == "ddg_mixed"
 
     def test_untracked_source_definition_never_licenses_removal(self) -> None:
         """No DDG evidence about the source's value means no refutation.

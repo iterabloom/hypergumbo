@@ -44,7 +44,7 @@ def test_build_python_ddg_returns_edges(tmp_path: Path) -> None:
         register_def_use_extractor("python")(PythonDefUseExtractor)
 
     repo = _write_python_module(tmp_path)
-    edges, symbols, hints = _build_ddg_for_verify_claims(repo)
+    edges, symbols, hints, _stmts = _build_ddg_for_verify_claims(repo)
     assert len(edges) > 0
     assert any("mod.py" in sym for sym in symbols)
 
@@ -60,7 +60,7 @@ def test_build_python_ddg_skips_excluded_dirs(tmp_path: Path) -> None:
         "def g(x):\n    y = x\n    return y\n", encoding="utf-8",
     )
     # No files outside the skip dir.
-    edges, symbols, hints = _build_ddg_for_verify_claims(repo)
+    edges, symbols, hints, _stmts = _build_ddg_for_verify_claims(repo)
     assert edges == []
     assert symbols == set()
 
@@ -71,7 +71,7 @@ def test_build_python_ddg_handles_empty_repo(tmp_path: Path) -> None:
 
     repo = tmp_path / "fake-repo"
     repo.mkdir()
-    edges, symbols, hints = _build_ddg_for_verify_claims(repo)
+    edges, symbols, hints, _stmts = _build_ddg_for_verify_claims(repo)
     assert edges == []
     assert symbols == set()
 
@@ -98,7 +98,7 @@ def test_build_python_ddg_handles_nested_function(tmp_path: Path) -> None:
         "    return inner\n",
         encoding="utf-8",
     )
-    edges, symbols, hints = _build_ddg_for_verify_claims(repo)
+    edges, symbols, hints, _stmts = _build_ddg_for_verify_claims(repo)
     # The inner function's body has an assignment, so DDG should pick it up.
     assert len(edges) > 0
     assert any("inner" in sym for sym in symbols)
@@ -127,7 +127,7 @@ def test_build_python_ddg_collects_receiver_hints(tmp_path: Path) -> None:
         "    return x.get('FOO')\n",
         encoding="utf-8",
     )
-    edges, symbols, hints = _build_ddg_for_verify_claims(repo)
+    edges, symbols, hints, _stmts = _build_ddg_for_verify_claims(repo)
     # Exactly one function with hints (``f``). The call is at line 4
     # with attr ``get``; the receiver ``x`` was bound to ``os.environ``.
     assert len(hints) == 1
