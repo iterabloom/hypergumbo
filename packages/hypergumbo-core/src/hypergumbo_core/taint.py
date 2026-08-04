@@ -1756,11 +1756,32 @@ def propagate_taint_ddg(
     # (caller, callee) → every line that call occurs on. A caller may invoke
     # the same callee more than once, and a flow is real if the taint reaches
     # ANY of those call sites, so this is a list rather than a single line.
+    #
+    # ``edge["line"]`` alone is NOT every call site. The call graph keeps one
+    # edge per (src, dst, edge_type) and that edge carries whichever site was
+    # encountered FIRST, so asking "does the taint reach ``line``?" asks about
+    # an arbitrary one of N sites. That produced a verified false negative on
+    # caddy: ``printEnvironment`` calls ``fmt.Printf`` twelve times, the edge
+    # recorded line 454, and the tainted call sat at 469. ``meta.call_lines``
+    # (ir.deduplicate_edges) preserves the rest; read it when present and fall
+    # back to ``line`` when absent — absence is that field's contract for
+    # "exactly one site".
+    #
+    # Validated rather than trusted: ``meta`` is an open dict deserialized from
+    # an artifact that may predate the field or have been hand-edited, and a
+    # non-int member would reach the ``sink_line > source_line`` comparison
+    # below as a TypeError.
     call_lines: dict[tuple[str, str], list[int]] = defaultdict(list)
     for edge in call_edges:
+        sites: list[int] = []
+        recorded = (edge.get("meta") or {}).get("call_lines")
+        if isinstance(recorded, list):
+            sites = [ln for ln in recorded if isinstance(ln, int)]
         line = edge.get("line")
-        if isinstance(line, int):
-            call_lines[(edge.get("src", ""), edge.get("dst", ""))].append(line)
+        if isinstance(line, int) and line not in sites:
+            sites.append(line)
+        if sites:
+            call_lines[(edge.get("src", ""), edge.get("dst", ""))].extend(sites)
 
     # Index sources, sinks, sanitizers by name (same as structural) — a list
     # per name so _lookup_named_entry can disambiguate by module/ambiguity.

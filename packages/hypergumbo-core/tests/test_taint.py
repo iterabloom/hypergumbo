@@ -1314,6 +1314,96 @@ class TestPropagateTaintDdg:
         assert len(findings) == 1
         assert findings[0].confidence == "approximate"
 
+    def test_sink_call_lines_recover_the_site_the_edge_could_not_carry(
+        self,
+    ) -> None:
+        """``meta.call_lines`` supplies the later sink site ``line`` omitted.
+
+        The companion of the test above, and the reason it was written as a
+        limitation rather than a correctness claim: that caddy false negative
+        was never a walk defect, it was missing input. ``printEnvironment``
+        calls ``fmt.Printf`` twelve times and the edge carried the first line;
+        the tainted call sat at a later one. With every collapsed site
+        recorded, the walk can be asked about the right call site — and the
+        SAME shape that must stay ``approximate`` without the data becomes
+        ``precise`` with it.
+        """
+        ddg = [DdgEdge(
+            variable="data", def_block="bb_0", def_line=10,
+            use_block="bb_0", use_line=14, symbol_id="caller",
+        )]
+        call_edges = [
+            {"src": "caller", "dst": "python:external:0-0:decrypt:unresolved",
+             "type": "calls", "line": 10},
+            # Recorded line is 3 — before the source — but the dedup pass now
+            # preserves the site at 14, which is where the taint arrives.
+            {"src": "caller", "dst": "python:external:0-0:send:unresolved",
+             "type": "calls", "line": 3,
+             "meta": {"call_lines": [3, 14]}},
+        ]
+
+        findings = propagate_taint_ddg(
+            ddg, call_edges, self._make_sources(), self._make_sinks(), [],
+            ddg_symbols={"caller"},
+        )
+        assert len(findings) == 1
+        assert findings[0].confidence == "precise"
+        assert findings[0].analysis_method == "ddg"
+
+    def test_source_call_lines_seed_the_walk_from_every_site(self) -> None:
+        """A source called twice seeds the walk from both sites, not the first.
+
+        The mirror of the sink case. ``line`` is the first-encountered call
+        site; if the DDG tracks the value defined at a LATER call to the same
+        source, seeding only from the first site finds no tracked definition
+        and the walk never runs.
+        """
+        ddg = [DdgEdge(
+            variable="data", def_block="bb_0", def_line=10,
+            use_block="bb_0", use_line=14, symbol_id="caller",
+        )]
+        call_edges = [
+            {"src": "caller", "dst": "python:external:0-0:decrypt:unresolved",
+             "type": "calls", "line": 1,
+             "meta": {"call_lines": [1, 10]}},
+            {"src": "caller", "dst": "python:external:0-0:send:unresolved",
+             "type": "calls", "line": 14},
+        ]
+
+        findings = propagate_taint_ddg(
+            ddg, call_edges, self._make_sources(), self._make_sinks(), [],
+            ddg_symbols={"caller"},
+        )
+        assert len(findings) == 1
+        assert findings[0].confidence == "precise"
+
+    def test_malformed_call_lines_fall_back_to_the_edge_line(self) -> None:
+        """A junk ``call_lines`` value must not crash or fabricate sites.
+
+        ``meta`` is an open dict deserialized from an artifact that may have
+        been produced by an older version or hand-edited, so the reader
+        validates rather than trusts. Non-list values and non-int members are
+        ignored; the edge's own ``line`` still counts.
+        """
+        ddg = [DdgEdge(
+            variable="data", def_block="bb_0", def_line=10,
+            use_block="bb_0", use_line=14, symbol_id="caller",
+        )]
+        call_edges = [
+            {"src": "caller", "dst": "python:external:0-0:decrypt:unresolved",
+             "type": "calls", "line": 10, "meta": {"call_lines": "nonsense"}},
+            {"src": "caller", "dst": "python:external:0-0:send:unresolved",
+             "type": "calls", "line": 14,
+             "meta": {"call_lines": [14, None, "x"]}},
+        ]
+
+        findings = propagate_taint_ddg(
+            ddg, call_edges, self._make_sources(), self._make_sinks(), [],
+            ddg_symbols={"caller"},
+        )
+        assert len(findings) == 1
+        assert findings[0].confidence == "precise"
+
     def test_ddg_does_not_adjudicate_across_functions(self) -> None:
         """A cross-function flow keeps structural reachability, not silence.
 
