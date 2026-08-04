@@ -645,6 +645,85 @@ class TestConfidenceReachesTheConsumer:
         assert verdict.to_dict()["analysis_methods"] == {"ddg": 1}
 
 
+class TestSanitizedFlowsAreDisclosed:
+    """A sanitized flow is counted and reported, not pruned into silence.
+
+    ``TaintFlowFinding.sanitized`` was written ``False`` at both and only
+    construction sites, so ``and not f.sanitized`` here was a tautology and the
+    ``confirmed_safe`` branch of the ``verdict`` property was unreachable in
+    production. The propagators now emit sanitized flows labelled (owner ruling
+    2026-08-03), which makes the filter real — and what a filter removes has to
+    be counted, or the confirmed verdict reads identically whether the code is
+    safe by construction or safe because of one ``encrypt()`` call.
+    """
+
+    def _claim(self) -> Claim:
+        return Claim(
+            id="TF-SAN",
+            text="No plaintext to host_fs",
+            constraint_taint_flow=TaintFlowConstraint(
+                source_taint="plaintext",
+                prohibited_sink_zone="host_fs",
+            ),
+        )
+
+    def _sanitized(self) -> TaintFlowFinding:
+        f = _flow(source_symbol="s", sink_symbol="d")
+        f.sanitized = True
+        return f
+
+    def test_sanitized_flow_does_not_violate(self) -> None:
+        """Non-destructiveness: a sanitized flow still does not count."""
+        verdict = verify_taint_claim(self._claim(), [self._sanitized()])
+        assert verdict.verdict == "confirmed"
+        assert verdict.evidence_count == 0
+
+    def test_confirmed_verdict_says_what_is_holding_it(self) -> None:
+        """...and the reader learns a sanitizer is why it reads clean.
+
+        This is the case the silent prune served worst: the claim looked safe
+        by construction when it was really safe by one function call.
+        """
+        verdict = verify_taint_claim(self._claim(), [self._sanitized()])
+        assert verdict.sanitized_flows == 1
+        assert "pass through a sanitizer on every route" in verdict.details
+
+    def test_zero_when_nothing_was_sanitized(self) -> None:
+        """No sanitizer anywhere reports 0 and adds no prose."""
+        verdict = verify_taint_claim(
+            self._claim(), [_flow(source_symbol="s", sink_symbol="d")],
+        )
+        assert verdict.sanitized_flows == 0
+        assert "sanitizer on every route" not in verdict.details
+
+    def test_counted_alongside_a_real_violation(self) -> None:
+        """A claim can be violated AND have sanitized flows; both are reported."""
+        verdict = verify_taint_claim(
+            self._claim(),
+            [self._sanitized(), _flow(source_symbol="s2", sink_symbol="d2")],
+        )
+        assert verdict.verdict == "violated"
+        assert verdict.evidence_count == 1
+        assert verdict.sanitized_flows == 1
+
+    def test_count_survives_serialization(self) -> None:
+        """``to_dict`` is the only surface the CLI emits."""
+        verdict = verify_taint_claim(self._claim(), [self._sanitized()])
+        assert verdict.to_dict()["sanitized_flows"] == 1
+
+    def test_only_this_claims_flows_are_counted(self) -> None:
+        """A sanitized flow for a DIFFERENT label/zone is not this claim's.
+
+        Guards the obvious way to get this wrong — counting sanitized findings
+        over the whole list rather than over the ones the claim constrains.
+        """
+        other = _flow(source_symbol="s", sink_symbol="d")
+        other.sanitized = True
+        other.taint_label = "untrusted_input"
+        verdict = verify_taint_claim(self._claim(), [other])
+        assert verdict.sanitized_flows == 0
+
+
 class TestViolatedPathDisclosure:
     """WI-bifob's contract, on the path that never implemented it.
 

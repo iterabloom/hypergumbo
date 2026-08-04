@@ -110,7 +110,14 @@ from .paths import classify_test_file, is_migration_file
 # splices ``excluded_flows`` and ``flow_origins`` into the VIOLATED path's
 # ``details``, closing WI-bifob's stated but unimplemented contract that
 # exclusions are disclosed on both paths.
-VERIFY_CLAIMS_SCHEMA_VERSION = "1.5"
+# 1.6 adds the per-verdict ``sanitized_flows`` count. Sanitized flows now EXIST
+# — the propagators emit them labelled instead of pruning them into silence, so
+# ``TaintFlowFinding.sanitized`` stops being written ``False`` at every
+# construction site and ``verify_taint_claim``'s ``and not f.sanitized`` stops
+# being a tautology. Additive: a verdict with no sanitizer on any route reports
+# 0, exactly as before. No verdict moves — a sanitized flow was already not
+# counted, it was merely not COUNTABLE.
+VERIFY_CLAIMS_SCHEMA_VERSION = "1.6"
 # WI-kikis: cap on the per-verdict structured drill-down evidence list. A
 # violated claim can have thousands of flows (3,969 on the self-corpus); the
 # deduplicated ``evidence`` list is bounded to this many DISTINCT flows so the
@@ -218,6 +225,14 @@ class ClaimVerdict:
             dominates. This reports the split WITHOUT relabelling anything,
             so no already-published claim changes meaning. ``declared`` is the
             bucket for YAML-declared sources, which have no boundary.
+        sanitized_flows: How many flows matched this claim's label and sink
+            zone but were NOT counted against it because a sanitizer lies on
+            every route (0 when none). The sibling of ``excluded_flows``, and
+            the same D7 shape: the barrier used to prune the flow into
+            silence, so a developer reading a clean verdict could not tell "no
+            path exists" from "a path exists and your ``encrypt()`` call is
+            what makes it safe". Only the second tells them what breaks if
+            they delete that call.
         analysis_methods: Counts of the flows this verdict IS about, keyed by
             HOW each was adjudicated (INV-karud clause c). Empty when there
             are no counted flows. Same shape and rationale as
@@ -242,6 +257,7 @@ class ClaimVerdict:
     excluded_flows: dict[str, int] = field(default_factory=dict)
     flow_origins: dict[str, int] = field(default_factory=dict)
     analysis_methods: dict[str, int] = field(default_factory=dict)
+    sanitized_flows: int = 0
 
     def to_dict(self) -> dict:
         """Serialize to JSON-friendly dict."""
@@ -255,6 +271,7 @@ class ClaimVerdict:
             "excluded_flows": self.excluded_flows,
             "flow_origins": self.flow_origins,
             "analysis_methods": self.analysis_methods,
+            "sanitized_flows": self.sanitized_flows,
         }
 
 
@@ -961,13 +978,24 @@ def verify_taint_claim(
             ),
         )
 
-    # Filter findings matching this claim's taint label and sink zone
-    matching = [
+    # Filter findings matching this claim's taint label and sink zone.
+    #
+    # ``and not f.sanitized`` was a TAUTOLOGY until the propagators started
+    # emitting sanitized flows: the field was written ``False`` at both and
+    # only construction sites, so this clause removed nothing and the
+    # ``confirmed_safe`` branch of ``TaintFlowFinding.verdict`` was unreachable
+    # in production. It now filters for real — and what it filters is counted
+    # and disclosed rather than silently dropped, because "no path exists" and
+    # "a path exists and your encrypt() call is what makes it safe" are
+    # different facts, and only the second tells a reader what breaks if they
+    # remove that call.
+    constrained = [
         f for f in findings
         if f.taint_label == tf.source_taint
         and f.sink_zone == tf.prohibited_sink_zone
-        and not f.sanitized
     ]
+    matching = [f for f in constrained if not f.sanitized]
+    sanitized_flows = len(constrained) - len(matching)
 
     # WI-bifob: production is the default scope, and what the default leaves
     # out is DISCLOSED rather than dropped. A test that opens a listener is not
@@ -1009,6 +1037,16 @@ def verify_taint_claim(
                 f" Excluded from this verdict as non-production: {parts} "
                 f"(pass --include-non-production-sources to count them)."
             )
+        # The confirmed path is where a sanitized flow matters MOST: the claim
+        # reads clean, and the reason it reads clean may be a sanitizer the
+        # reader is one refactor away from removing. Saying so turns "no
+        # violation" into "no violation, and here is what is holding it".
+        sanitized_clause = ""
+        if sanitized_flows:
+            sanitized_clause = (
+                f" {sanitized_flows} flow(s) reach that zone but pass through "
+                f"a sanitizer on every route."
+            )
         return ClaimVerdict(
             claim_id=claim.id,
             claim_text=claim.text,
@@ -1016,9 +1054,10 @@ def verify_taint_claim(
             details=(
                 f"No unsanitized {tf.source_taint} data reaches "
                 f"{tf.prohibited_sink_zone} zone."
-                f"{excluded_clause}"
+                f"{sanitized_clause}{excluded_clause}"
             ),
             excluded_flows=excluded_flows,
+            sanitized_flows=sanitized_flows,
         )
 
     # Build detailed violation message with per-flow drill-down evidence
@@ -1139,6 +1178,7 @@ def verify_taint_claim(
         excluded_flows=excluded_flows,
         flow_origins=flow_origins,
         analysis_methods=analysis_methods,
+        sanitized_flows=sanitized_flows,
     )
 
 

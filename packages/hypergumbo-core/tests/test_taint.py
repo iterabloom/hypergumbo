@@ -363,8 +363,27 @@ class TestStructuralTaintPropagation:
         assert findings[0].sink_zone == "host_fs"
         assert findings[0].sanitized is False
 
-    def test_sanitized_path_no_violation(self) -> None:
-        """Source → sanitizer → sink — no violation (taint is transformed)."""
+    def test_sanitized_path_is_reported_as_sanitized(self) -> None:
+        """Source → sanitizer → sink is REPORTED, labelled ``sanitized``.
+
+        THIS TEST WAS VACUOUS AND IS FIXED HERE (L17). It asserted
+        ``len(findings) == 0`` with a bare ``py:external:0-0:write_text``
+        sink — but the sink entry is ``kind="method"`` with module
+        ``pathlib.Path``, and a bare unresolved method call carrying no module
+        context is suppressed outright (io-boundary:F3 / INV-tapat). Measured
+        on the pre-change code: the fixture yields **0 findings with the
+        sanitizer and 0 without it**, so the sanitizer barrier — the only
+        thing the test names — was never exercised. Its sibling
+        ``test_partial_sanitization_still_violates`` uses the module-qualified
+        ``py:pathlib.Path:0-0:write_text`` and does reach the sink; this
+        fixture now matches it.
+
+        The behaviour it should have been pinning is also now different: a
+        sanitized flow is emitted with ``sanitized=True`` rather than pruned
+        into silence, because "no path exists" and "a path exists and your
+        encrypt() call is what makes it safe" are different facts and only the
+        second tells a reader what happens if they delete that call.
+        """
         edges = [
             _make_edge("py:a.py:1-5:handler:function",
                        "py:external:0-0:Fernet.decrypt:unresolved"),
@@ -373,7 +392,7 @@ class TestStructuralTaintPropagation:
             _make_edge("py:a.py:10-15:encrypt_and_store:function",
                        "py:external:0-0:Fernet.encrypt:unresolved"),
             _make_edge("py:a.py:10-15:encrypt_and_store:function",
-                       "py:external:0-0:write_text:unresolved"),
+                       "py:pathlib.Path:0-0:write_text:unresolved"),
         ]
         sources = [TaintSource(
             taint_label="plaintext", module="cryptography.fernet",
@@ -390,8 +409,39 @@ class TestStructuralTaintPropagation:
         findings = propagate_taint_structural(
             edges, sources, sinks, sanitizers,
         )
-        # All paths from source to sink pass through sanitizer
-        assert len(findings) == 0
+        assert len(findings) == 1
+        assert findings[0].sanitized is True
+        assert findings[0].verdict == "confirmed_safe"
+
+    def test_sanitizer_fixture_is_not_vacuous(self) -> None:
+        """The fixture above must reach the sink when the sanitizer is absent.
+
+        The non-vacuity floor for the test above: without this, a fixture that
+        cannot reach its sink at all would satisfy any assertion about what
+        the sanitizer does to it. This is the check whose absence let the
+        previous version pass for four months while testing nothing.
+        """
+        edges = [
+            _make_edge("py:a.py:1-5:handler:function",
+                       "py:external:0-0:Fernet.decrypt:unresolved"),
+            _make_edge("py:a.py:1-5:handler:function",
+                       "py:a.py:10-15:encrypt_and_store:function"),
+            _make_edge("py:a.py:10-15:encrypt_and_store:function",
+                       "py:external:0-0:Fernet.encrypt:unresolved"),
+            _make_edge("py:a.py:10-15:encrypt_and_store:function",
+                       "py:pathlib.Path:0-0:write_text:unresolved"),
+        ]
+        sources = [TaintSource(
+            taint_label="plaintext", module="cryptography.fernet",
+            name="Fernet.decrypt", kind="function", return_tainted=True,
+        )]
+        sinks = [TaintSink(
+            zone="host_fs", trust_level="untrusted",
+            module="pathlib.Path", name="write_text", kind="method",
+        )]
+        findings = propagate_taint_structural(edges, sources, sinks, [])
+        assert len(findings) == 1
+        assert findings[0].sanitized is False
 
     def test_partial_sanitization_still_violates(self) -> None:
         """Two paths to sink, only one sanitized — violation on unsanitized."""
@@ -430,8 +480,17 @@ class TestStructuralTaintPropagation:
         findings = propagate_taint_structural(
             edges, sources, sinks, sanitizers,
         )
-        assert len(findings) == 1
-        assert findings[0].sanitized is False
+        # BOTH routes are now reported, distinguished by their label, where
+        # before only the unsanitized one survived. These are two distinct
+        # sink SITES (`encrypt_path` and `direct_path` each call write_text),
+        # so this is not the "unsanitized wins" case — it is the case where a
+        # reader needs to see that one route is protected and one is not.
+        # Reporting only the violation left them unable to tell "the other
+        # route is safe" from "there is no other route".
+        by_label = {f.sanitized: f for f in findings}
+        assert len(findings) == 2 and set(by_label) == {True, False}
+        assert "direct_path" in by_label[False].path[-1]
+        assert "encrypt_path" in by_label[True].path[-1]
 
     def test_no_path_source_to_sink(self) -> None:
         """Source and sink exist but no call path between them — no finding."""
@@ -592,7 +651,12 @@ class TestSanitizerKindGate:
         findings = propagate_taint_structural(
             edges, [self._SOURCE], [self._SINK], [self._SANITIZER],
         )
-        assert len(findings) == 0
+        # The barrier fired, which is what this test is about. It now shows up
+        # as a LABELLED finding rather than as silence: `len(findings) == 0`
+        # was indistinguishable from "the fixture never reached the sink",
+        # which is exactly how the sibling test below came to be vacuous.
+        assert len(findings) == 1
+        assert findings[0].sanitized is True
 
     def test_ambiguous_bare_name_does_not_false_sanitize(self) -> None:
         """An unresolved bare callee flagged ambiguous (no receiver evidence)
@@ -637,7 +701,10 @@ class TestSanitizerKindGate:
         findings = propagate_taint_structural(
             edges, [self._SOURCE], [self._SINK], [self._SANITIZER],
         )
-        assert len(findings) == 0
+        # As above: the barrier fired, and that is now visible as a labelled
+        # finding instead of as an absence.
+        assert len(findings) == 1
+        assert findings[0].sanitized is True
 
 
 # ---------------------------------------------------------------------------
@@ -1455,8 +1522,23 @@ class TestPropagateTaintDdg:
         assert f.confidence == "approximate"
         assert f.analysis_method == "ddg_mixed"
 
-    def test_sanitizer_blocks_path(self) -> None:
-        """Sanitizer on path → no finding."""
+    def test_sanitizer_labels_the_flow_instead_of_erasing_it(self) -> None:
+        """A sanitized flow is REPORTED as sanitized, not silently dropped.
+
+        This test used to assert ``len(findings) == 0`` — it pinned the silent
+        filter. The barrier pruned the subtree beyond a sanitizer, so a flow
+        that a developer had deliberately protected produced *the same output
+        as a flow that does not exist*: nothing. A reader could not tell "no
+        path from source to sink" from "a path exists and your encrypt() call
+        is what makes it safe", and the second is the one they want to know
+        about before deleting that call.
+
+        ``TaintFlowFinding.sanitized`` was written ``False`` at both and only
+        construction sites, so ``verify_claims``' ``and not f.sanitized`` was a
+        tautology and the ``confirmed_safe`` branch of the ``verdict`` property
+        was unreachable in production. Owner ruling 2026-08-03: emit the flow
+        labelled.
+        """
         ddg = [DdgEdge(
             variable="data", def_block="caller", def_line=1,
             use_block="caller", use_line=2,
@@ -1474,8 +1556,39 @@ class TestPropagateTaintDdg:
             ddg, call_edges, self._make_sources(), self._make_sinks(),
             self._make_sanitizers(), ddg_symbols=analyzed,
         )
-        # Sanitizer blocks the path from caller to sink_func
-        assert len(findings) == 0
+        assert len(findings) == 1
+        assert findings[0].sanitized is True
+        assert findings[0].verdict == "confirmed_safe"
+
+    def test_unsanitized_route_wins_when_both_exist(self) -> None:
+        """A sink reachable BOTH ways is not sanitized.
+
+        The taint demonstrably arrives unprotected by one route, so labelling
+        the finding ``sanitized`` because *another* route happens to encrypt
+        would be the dangerous direction of wrong.
+        """
+        ddg = [DdgEdge(
+            variable="data", def_block="caller", def_line=1,
+            use_block="caller", use_line=2,
+        )]
+        call_edges = [
+            {"src": "caller", "dst": "python:external:0-0:decrypt:unresolved", "type": "calls"},
+            # Route A: through the sanitizer.
+            {"src": "caller", "dst": "sanitizer_func", "type": "calls"},
+            {"src": "sanitizer_func", "dst": "python:external:0-0:encrypt:unresolved", "type": "calls"},
+            {"src": "sanitizer_func", "dst": "sink_func", "type": "calls"},
+            # Route B: straight there.
+            {"src": "caller", "dst": "sink_func", "type": "calls"},
+            {"src": "sink_func", "dst": "python:external:0-0:send:unresolved", "type": "calls"},
+        ]
+
+        findings = propagate_taint_ddg(
+            ddg, call_edges, self._make_sources(), self._make_sinks(),
+            self._make_sanitizers(), ddg_symbols={"caller", "sink_func"},
+        )
+        assert len(findings) == 1
+        assert findings[0].sanitized is False
+        assert findings[0].verdict == "violated"
 
     def test_no_ddg_symbols_specified(self) -> None:
         """When ddg_symbols is None, everything is approximate."""

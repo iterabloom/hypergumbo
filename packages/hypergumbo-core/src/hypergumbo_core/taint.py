@@ -1491,59 +1491,135 @@ def propagate_taint_structural(
             else caller_id
         )
 
-        # Phase 1: BFS from seed, skip nodes that are sanitizers for
-        # this taint label. Sanitizer nodes are NOT added to the
-        # reachable set — they block taint propagation entirely.
-        reachable: set[str] = set()
-        sanitized_nodes: set[str] = set()
-        parent: dict[str, str | None] = {seed_id: None}
-        queue: deque[str] = deque([seed_id])
-
-        while queue:
-            node = queue.popleft()
-            if node in reachable or node in sanitized_nodes:  # pragma: no cover
-                continue
-
-            # Check if this node is a sanitizer for our taint label.
-            # The seed node is exempt — it must always be reachable
-            # as the taint origin (whether seed is the caller or the
-            # callee per start_at).
-            node_sanitizers = sanitizer_callers.get(node, {})
-            if taint_label in node_sanitizers and node != seed_id:
-                sanitized_nodes.add(node)
-                continue
-
-            reachable.add(node)
-
-            for neighbor in forward_adj.get(node, set()):
-                if neighbor not in reachable and neighbor not in parent:
-                    parent[neighbor] = node
-                    queue.append(neighbor)
+        # Phase 1: forward reachability, split by whether a sanitizer
+        # intervened. See _reachability_past_sanitizers for why the sanitized
+        # side is retained rather than pruned into silence.
+        (
+            reachable, parent, sanitized_reachable, sanitized_parent,
+        ) = _reachability_past_sanitizers(
+            seed_id, taint_label, forward_adj, sanitizer_callers,
+        )
 
         # Phase 2: Check if any sink caller or sink callee is reachable
         for sink_node, sink_callee_id, taint_sink in _iter_sink_sites(
             sink_callers,
         ):
             if sink_node in reachable:
-                # Reconstruct path
+                is_sanitized = False
                 path = _reconstruct_path(parent, seed_id, sink_node)
-                findings.append(TaintFlowFinding(
-                    taint_label=taint_label,
-                    source_symbol=seed_id,
-                    source_primitive=taint_source.name,
-                    source_module=taint_source.module,
-                    source_boundary=taint_source.source_boundary,
-                    sink_symbol=sink_callee_id,
-                    sink_primitive=taint_sink.name,
-                    sink_module=taint_sink.module,
-                    sink_zone=taint_sink.zone,
-                    sanitized=False,
-                    confidence="approximate",
-                    analysis_method="structural",
-                    path=path,
-                ))
+            elif sink_node in sanitized_reachable:
+                is_sanitized = True
+                path = _reconstruct_path(
+                    {**parent, **sanitized_parent}, seed_id, sink_node,
+                )
+            else:
+                continue
+            findings.append(TaintFlowFinding(
+                taint_label=taint_label,
+                source_symbol=seed_id,
+                source_primitive=taint_source.name,
+                source_module=taint_source.module,
+                source_boundary=taint_source.source_boundary,
+                sink_symbol=sink_callee_id,
+                sink_primitive=taint_sink.name,
+                sink_module=taint_sink.module,
+                sink_zone=taint_sink.zone,
+                sanitized=is_sanitized,
+                confidence="approximate",
+                analysis_method="structural",
+                path=path,
+            ))
 
     return findings
+
+
+def _reachability_past_sanitizers(
+    seed_id: str,
+    taint_label: str,
+    forward_adj: dict[str, set[str]],
+    sanitizer_callers: dict[str, dict[str, "TaintSanitizer"]],
+) -> tuple[set[str], dict[str, str | None], set[str], dict[str, str | None]]:
+    """Forward reachability, split by whether a sanitizer intervened.
+
+    Returns ``(reachable, parent, sanitized_reachable, sanitized_parent)``.
+
+    WHY BOTH SETS. The barrier used to prune the subtree beyond a sanitizer,
+    which meant a protected flow produced exactly the output of a flow that
+    does not exist: nothing. A reader could not distinguish "no path from this
+    source to this sink" from "a path exists and your ``encrypt()`` call is
+    what makes it safe" — and the second is what they need before deleting
+    that call. ``TaintFlowFinding.sanitized`` existed for this and was written
+    ``False`` at both and only construction sites, so ``verify_claims``'
+    ``and not f.sanitized`` was a tautology and ``confirmed_safe`` was
+    unreachable in production (owner ruling 2026-08-03: emit it labelled).
+
+    UNSANITIZED WINS. ``sanitized_reachable`` excludes everything in
+    ``reachable``, so a sink the taint reaches by *any* unprotected route is
+    reported unsanitized even when another route encrypts. Labelling that
+    ``sanitized`` would be the dangerous direction of wrong.
+
+    ONE IMPLEMENTATION, TWO CALLERS. The structural and DDG propagators each
+    carried a copy of this walk and had already drifted (the structural one
+    tracked ``sanitized_nodes``, the DDG one dropped them on the floor). A
+    barrier that means one thing in one pass and another in the other is the
+    shape that produces "fixed in Python, still broken in Go" reports.
+
+    The seed is exempt from the barrier in both passes: it is the taint origin
+    and must be reachable whether ``start_at`` puts it at the caller or callee.
+    """
+    reachable: set[str] = set()
+    barrier_nodes: list[str] = []
+    parent: dict[str, str | None] = {seed_id: None}
+    queue: deque[str] = deque([seed_id])
+
+    while queue:
+        node = queue.popleft()
+        if node in reachable:
+            continue  # pragma: no cover
+        node_sanitizers = sanitizer_callers.get(node, {})
+        if taint_label in node_sanitizers and node != seed_id:
+            barrier_nodes.append(node)
+            continue
+        reachable.add(node)
+        for neighbor in forward_adj.get(node, set()):
+            if neighbor not in reachable and neighbor not in parent:
+                parent[neighbor] = node
+                queue.append(neighbor)
+
+    # Second pass: what the taint reaches only AFTER being transformed. Seeded
+    # at the barrier nodes themselves, since the sanitizer call site is where
+    # the protected value comes into existence. Further sanitizers are not
+    # barriers here — re-encrypting already-ciphertext changes nothing about
+    # the fact that this route is protected.
+    sanitized_reachable: set[str] = set()
+    sanitized_parent: dict[str, str | None] = {}
+    queue = deque()
+    for node in barrier_nodes:
+        if node in reachable:
+            continue  # pragma: no cover
+        sanitized_parent.setdefault(node, parent.get(node))
+        queue.append(node)
+
+    while queue:
+        node = queue.popleft()
+        if node in sanitized_reachable or node in reachable:
+            # Defensive. Both conditions are already enforced at every enqueue
+            # site — barrier seeds skip `reachable`, and neighbours are
+            # enqueued only when absent from `reachable`, `sanitized_reachable`
+            # AND `sanitized_parent` — so nothing can be queued twice today.
+            # Kept because the alternative to a redundant guard here is an
+            # infinite loop if a future edit relaxes one of those enqueue
+            # conditions.
+            continue  # pragma: no cover
+        sanitized_reachable.add(node)
+        for neighbor in forward_adj.get(node, set()):
+            if neighbor in reachable or neighbor in sanitized_reachable:
+                continue
+            if neighbor not in sanitized_parent:
+                sanitized_parent[neighbor] = node
+                queue.append(neighbor)
+
+    return reachable, parent, sanitized_reachable, sanitized_parent
 
 
 def _reconstruct_path(
@@ -1867,35 +1943,25 @@ def propagate_taint_ddg(
         source_call_lines = call_lines.get((caller_id, source_callee_id), [])
         fn_has_ddg = source_fn in analyzed
 
-        # Structural BFS for reachability (used for mixed-coverage)
-        reachable: set[str] = set()
-        parent: dict[str, str | None] = {seed_id: None}
-        queue: deque[str] = deque([seed_id])
-
-        while queue:
-            node = queue.popleft()
-            if node in reachable:
-                continue  # pragma: no cover
-
-            # Skip sanitizers — identical predicate to the structural pass,
-            # now over the identically-built index.
-            node_sanitizers = sanitizer_callers.get(node, {})
-            if taint_label in node_sanitizers and node != seed_id:
-                continue
-
-            reachable.add(node)
-
-            for neighbor in forward_adj.get(node, set()):
-                if neighbor not in reachable and neighbor not in parent:
-                    parent[neighbor] = node
-                    queue.append(neighbor)
+        # Structural BFS for reachability (used for mixed-coverage), through
+        # the SHARED helper — this pass and the structural one had already
+        # drifted on the sanitizer barrier, which is how a barrier ends up
+        # meaning one thing in Python and another in Go.
+        (
+            reachable, parent, sanitized_reachable, sanitized_parent,
+        ) = _reachability_past_sanitizers(
+            seed_id, taint_label, forward_adj, sanitizer_callers,
+        )
 
         # Check sinks
         for sink_node, sink_callee_id, taint_sink in _iter_sink_sites(
             sink_callers,
         ):
+            is_sanitized = False
             if sink_node not in reachable:
-                continue
+                if sink_node not in sanitized_reachable:
+                    continue
+                is_sanitized = True
 
             # ADR-0017 §3a. The DDG can adjudicate exactly one shape: a sink
             # called in the SAME function as the source, where that function
@@ -1972,7 +2038,10 @@ def propagate_taint_ddg(
                 confidence = "approximate"
                 method = "ddg_mixed"
 
-            path = _reconstruct_path(parent, seed_id, sink_node)
+            path = _reconstruct_path(
+                {**parent, **sanitized_parent} if is_sanitized else parent,
+                seed_id, sink_node,
+            )
             findings.append(TaintFlowFinding(
                 taint_label=taint_label,
                 source_symbol=seed_id,
@@ -1983,7 +2052,7 @@ def propagate_taint_ddg(
                 sink_primitive=taint_sink.name,
                 sink_module=taint_sink.module,
                 sink_zone=taint_sink.zone,
-                sanitized=False,
+                sanitized=is_sanitized,
                 confidence=confidence,
                 analysis_method=method,
                 path=path,
