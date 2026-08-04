@@ -1,0 +1,54 @@
+Original commit body from 4717bca3900ce7b2343e9cea2dbb6eec66d5148d:
+
+Section 3a's own step 3 says "at call sites, apply function summaries (section
+4)", and that is the branch where a tainted value is used at a line defining
+nothing: it may have been CONSUMED (fmt.Printf(cwd) returns a byte count) or
+ESCAPED INTO A RECEIVER (lst.append(x)), and only the first lets the walk close
+a branch. load_function_summaries and infer_summary had zero production
+callers; the walk now consults the catalogue at exactly that branch.
+
+AN EMPTY CATALOGUE IS A STRICT NO-OP, BY DESIGN. get_default_summary returns
+param_to_return={0..9: True} -- everything propagates -- so using it would make
+an empty catalogue CHANGE behaviour, every callee reading as passing taint on.
+An uncatalogued callee reads as unknown instead, so a catalogue covering
+nothing reproduces the pre-section-4 output exactly and every behaviour change
+is attributable to an entry somebody wrote. Pinned by its own test.
+
+QUALIFIED NAMES ONLY -- the safety property. load_function_summaries also
+indexes every entry under its bare last component; 11 of its 33 keys are such
+aliases, including log, map, filter and parse. A short-name match would let
+audit.log(secret) resolve to console.log and read as terminating. A false
+"terminates" REMOVES A REAL SECURITY FINDING, so the alias index is never
+consulted. Every clause of the terminating predicate is a conjunction for the
+same asymmetry: a wrong "terminates" costs recall silently, a wrong
+"propagates" only leaves an unknown unknown.
+
+THE CATALOGUES ARE ENUMERATION-DERIVED, NOT A STDLIB SURVEY. The two shipped
+catalogues were rust and typescript -- the two languages with NO working DDG,
+one of them with zero sinks -- while python and go, the only two that have one,
+had none. Rather than guess at stdlib breadth, the walk was instrumented on the
+cohort to enumerate the callees it actually consults at escape sites: 264
+escape sites, 47 distinct names. go_stdlib.yaml and python_stdlib.yaml name all
+18 of those a qualified-name catalogue can express; the other 29 are external.*
+(callee module unresolved) or first-party in-repo, neither addressable by YAML.
+
+MEASURED EFFECT: 25 OF 264 ESCAPE SITES CLOSE (9.5%), AND ZERO FLOWS CHANGE.
+Cohort A/B on the same binary, catalogue live vs forced empty:
+  16 confirmed / 40 unknown / 0 refuted -- IDENTICAL in both arms.
+Structural, not a coverage shortfall: a walk is unknown if ANY branch escapes,
+so a flow becomes refutable only when EVERY escape on it closes. 5 of 37
+unknown walks did close a site; every one still had another open. What holds
+them open: 81 no-call-at-line, 40 catalogued-but-propagates, 21 unresolved
+module, 12 uncatalogued. At the margin -- the 14 walks held open by exactly ONE
+site -- the single blocker is "no call at the line" in 10 of 14.
+
+SO THE BINDING CONSTRAINT ON REFUTATION IS NOT THE CATALOGUE. It is that 40.5%
+of escape sites are not calls at all: the value went into a field write, a
+container subscript or a closure capture. That is ADR-0017 section 7a
+field-sensitivity / alias analysis, which section 7b explicitly EXCLUDES.
+
+INV-sadah does NOT close and WI-kabif's removal authority stays blocked -- now
+for a reason that has been measured rather than assumed. Its filed list of four
+prerequisites was already six; this makes seven.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
