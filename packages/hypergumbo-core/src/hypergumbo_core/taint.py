@@ -211,7 +211,17 @@ class TaintFlowFinding:
             collapses the last two into ``approximate``; this is the finer
             axis, because "the analysis looked and found nothing" and "the
             analysis could not look" are different facts.
-        path: List of symbol IDs on the path from source to sink.
+        path: Symbol IDs along ONE call-graph route from source to sink —
+            a witness, not "the path". A source frequently reaches a sink by
+            several equally-valid routes and this reports one of them; the
+            others are real and are not listed. Which one is a DECLARED
+            tie-break (BFS visiting each node's callees in sorted id order),
+            not an artifact of iteration order: adjacency is set-valued, so
+            before INV-havos the winner followed ``str`` set iteration and
+            therefore ``PYTHONHASHSEED``, and two runs of the same binary on
+            an unchanged repo reported different middle hops for the same
+            flow. Reproducible now, but still one witness — a consumer that
+            needs "every route" must not read this field as if it were that.
     """
 
     taint_label: str
@@ -1581,7 +1591,7 @@ def _reachability_past_sanitizers(
             barrier_nodes.append(node)
             continue
         reachable.add(node)
-        for neighbor in forward_adj.get(node, set()):
+        for neighbor in sorted(forward_adj.get(node, set())):
             if neighbor not in reachable and neighbor not in parent:
                 parent[neighbor] = node
                 queue.append(neighbor)
@@ -1612,7 +1622,7 @@ def _reachability_past_sanitizers(
             # conditions.
             continue  # pragma: no cover
         sanitized_reachable.add(node)
-        for neighbor in forward_adj.get(node, set()):
+        for neighbor in sorted(forward_adj.get(node, set())):
             if neighbor in reachable or neighbor in sanitized_reachable:
                 continue
             if neighbor not in sanitized_parent:

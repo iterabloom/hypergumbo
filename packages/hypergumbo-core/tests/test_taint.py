@@ -3481,3 +3481,133 @@ class TestMatchProvenance:
         # The emitted module and the catalog module DIFFER, and that
         # difference is the whole point: it is now legible instead of lost.
         assert "net/http.Client" not in f.sink_symbol
+
+
+# ---------------------------------------------------------------------------
+# INV-havos — TaintFlowFinding.path must be reproducible across processes
+# ---------------------------------------------------------------------------
+
+
+class TestPathDeterminism:
+    """The reported path must not depend on ``PYTHONHASHSEED``.
+
+    Adjacency is set-valued, so BFS dequeue order followed ``str`` set
+    iteration, which varies per process. The BFS parent map recorded whichever
+    predecessor happened to arrive first, and ``_reconstruct_path`` walked that
+    map — so two runs of the identical binary on an unchanged repo reported
+    different paths for the same flow. Measured on kserve: 2 of 182 distinct
+    flows differed, same source / sink / label, different middle hop, both hops
+    genuine callers.
+
+    Confirmed rather than assumed before fixing: the same probe under a FIXED
+    seed produced an identical path twice, and under five different seeds
+    produced four distinct witnesses (midA / midF / midE / midF / midC).
+
+    Not merely a cosmetic defect. A user diffing two hypergumbo runs on an
+    unchanged repo saw evidence churn with no cause, which trains them to
+    distrust the diff — and it made any path-level A/B between two builds
+    unreliable, which cost real time during the WI-kabif measurement (a first
+    reading of "30 flows appeared and disappeared" was entirely this artifact).
+    """
+
+    @staticmethod
+    def _diamond_edges(n: int = 8) -> list[dict]:
+        """source → N equally-valid middle hops → sink. Every ``mid`` is a
+        genuine caller of the sink, so every witness is *correct*; the analysis
+        is choosing among them, and the only question is whether it chooses
+        the same one twice."""
+        edges = [_make_edge("py:a.py:1-5:handler:function",
+                            "py:external:0-0:Fernet.decrypt:unresolved")]
+        for i in range(n):
+            mid = f"py:a.py:10-15:mid{i:02d}:function"
+            edges.append(_make_edge("py:a.py:1-5:handler:function", mid))
+            edges.append(_make_edge(mid, "py:a.py:50-55:sink_fn:function"))
+        edges.append(_make_edge("py:a.py:50-55:sink_fn:function",
+                                "py:pathlib.Path:0-0:write_text:unresolved"))
+        return edges
+
+    @staticmethod
+    def _src_snk() -> tuple[list, list]:
+        return (
+            [TaintSource(taint_label="plaintext", module="cryptography.fernet",
+                         name="Fernet.decrypt", kind="function",
+                         return_tainted=True)],
+            [TaintSink(zone="host_fs", trust_level="untrusted",
+                       module="pathlib.Path", name="write_text", kind="method")],
+        )
+
+    def test_witness_is_the_declared_tie_break(self) -> None:
+        """The chosen hop is the lexicographically smallest candidate.
+
+        The tie-break is DECLARED rather than incidental — that is the whole
+        difference between "deterministic" and "happens to be stable on this
+        machine today". Asserting the specific winner (not merely "stable
+        within one process") is what makes the property checkable in-process.
+        """
+        sources, sinks = self._src_snk()
+        findings = propagate_taint_structural(
+            self._diamond_edges(), sources, sinks, [],
+        )
+        assert len(findings) == 1
+        assert findings[0].path[1] == "py:a.py:10-15:mid00:function"
+
+    def test_non_vacuity_the_fixture_really_has_alternatives(self) -> None:
+        """Floor: the diamond must actually offer competing witnesses.
+
+        Without this, a fixture with exactly one route would satisfy the
+        tie-break assertion while testing nothing about tie-breaking.
+        """
+        edges = self._diamond_edges()
+        mids = {e["dst"] for e in edges
+                if e["dst"].startswith("py:a.py:10-15:mid")}
+        assert len(mids) == 8
+
+    def test_path_is_identical_under_different_hash_seeds(self) -> None:
+        """The real property, exercised the only way it can be: subprocesses.
+
+        ``PYTHONHASHSEED`` is fixed at interpreter start, so an in-process test
+        cannot vary it. This does not contribute coverage (subprocess tests
+        never do) — the tie-break test above carries that. It exists because
+        the tie-break assertion is a PROXY for reproducibility, and this is the
+        thing itself.
+        """
+        import json
+        import subprocess
+        import sys
+        import textwrap
+
+        probe = textwrap.dedent("""
+            import json
+            from hypergumbo_core.taint import (
+                TaintSource, TaintSink, propagate_taint_structural,
+            )
+            def E(s, d):
+                return {"src": s, "dst": d, "type": "calls", "line": 1,
+                        "is_resolved": False}
+            edges = [E("py:a.py:1-5:handler:function",
+                       "py:external:0-0:Fernet.decrypt:unresolved")]
+            for i in range(8):
+                m = "py:a.py:10-15:mid%02d:function" % i
+                edges.append(E("py:a.py:1-5:handler:function", m))
+                edges.append(E(m, "py:a.py:50-55:sink_fn:function"))
+            edges.append(E("py:a.py:50-55:sink_fn:function",
+                           "py:pathlib.Path:0-0:write_text:unresolved"))
+            src = [TaintSource(taint_label="plaintext",
+                               module="cryptography.fernet",
+                               name="Fernet.decrypt", kind="function",
+                               return_tainted=True)]
+            snk = [TaintSink(zone="host_fs", trust_level="untrusted",
+                             module="pathlib.Path", name="write_text",
+                             kind="method")]
+            f = propagate_taint_structural(edges, src, snk, [])
+            print(json.dumps([list(x.path) for x in f]))
+        """)
+        seen = set()
+        for seed in ("1", "2", "3", "4", "5"):
+            out = subprocess.run(
+                [sys.executable, "-c", probe],
+                capture_output=True, text=True, check=True,
+                env={"PYTHONHASHSEED": seed, "PATH": "/usr/bin:/bin"},
+            )
+            seen.add(json.dumps(json.loads(out.stdout)))
+        assert len(seen) == 1, f"path varied across hash seeds: {seen}"
