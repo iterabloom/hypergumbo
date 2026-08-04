@@ -1,0 +1,59 @@
+Original commit body from d7f957336682e964090aa51812fc8ae0bc8a0333:
+
+verify_taint_claim hardcoded the literal string "approximate" into every
+violated verdict's details, and _flow_evidence_dict dropped confidence and
+analysis_method entirely. So the ADR-0017 section 3a walk could confirm a flow
+by data dependence and BOTH surfaces a user reads would still say the analysis
+was approximate. The label was produced and then discarded -- the same
+provenance discontinuity section 3a itself was built to close, one layer down.
+
+Two consequences worth stating. No consumer could have noticed the hardcoded
+literal, because the field it contradicted was not emitted either. And the two
+preceding commits' improvements were, until now, invisible from every CLI
+surface -- they had to be measured with an instrument wrapping the propagator.
+
+Each evidence row carries confidence + analysis_method; each verdict carries an
+analysis_methods breakdown. The breakdown mirrors flow_origins (WI-vazal): the
+structured field is the contract, the prose a courtesy. analysis_method is the
+finer axis and the one worth carrying -- confidence collapses ddg_mixed (the
+walk ran and did not confirm) and structural (no reaching-def data existed, so
+no walk was possible) into one approximate bucket, and "the analysis looked and
+found nothing" is a different fact about a security verdict from "the analysis
+could not look".
+
+THE AGGREGATION POLICY IS STATED, NOT LEFT TO max(). A verdict is a DISJUNCTION
+over its flows and after section 3a those flows can be adjudicated differently.
+Collapsing upward would claim a precision most flows did not have; collapsing
+downward would erase the ones that earned it. So the composition is reported --
+[host_secret confidence: 9 approximate, 1 precise] -- with the single-value case
+staying terse, which keeps the rendering byte-identical for a verdict whose
+flows all agree. That uniformity is precisely why the literal went unnoticed.
+
+Both breakdowns count every counted flow, not the shown rows: evidence is
+deduplicated and capped, details counts every violation, and a breakdown over
+the shown rows would silently disagree with the total printed beside it.
+
+to_dict dropped the new field on the first pass and a red test caught it. Same
+defect class in miniature -- a dataclass field the serializer omits is
+discarded as completely as one never computed, and is HARDER to notice because
+every in-process test still sees it.
+
+MEASURED, 9-repo cohort against the pre-change baseline: ZERO verdicts move.
+54 verdict rows, 0 changed on (verdict, evidence_count, shown rows); 38
+confirmed / 16 violated both arms. That null is the point of the check (L57 --
+when the correct result is "no change", a broken build looks identical to a
+correct one), so it is paired with a positive control: 16 verdicts now carry a
+populated analysis_methods, cohort-wide {ddg_mixed: 300, ddg: 8, structural: 3}.
+Live repro on caddy through the real CLI: analysis_methods {'ddg': 1,
+'ddg_mixed': 9} with the matching evidence row labelled confidence=precise /
+analysis_method=ddg.
+
+Two stale prose claims corrected in place. TaintFlowFinding.analysis_method's
+inline comment read "structural" or "ddg" while the propagator had been
+assigning ddg_mixed, so a reader enumerating the vocabulary from the field
+declaration got it wrong. The module docstring's "structural analysis produces
+approximate confidence" was equally incomplete once section 3a shipped.
+
+Envelope schema 1.3 -> 1.4, additive.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
