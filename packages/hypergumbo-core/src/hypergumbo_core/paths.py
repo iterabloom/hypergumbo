@@ -266,6 +266,141 @@ def is_infrastructure_path(path: str) -> bool:
     return any(part.lower() in _INFRASTRUCTURE_DIRS for part in parts[:-1])
 
 
+#: Reason categories returned by :func:`classify_test_file`, coarsest first.
+#: These sub-divide the population :func:`is_test_file` accepts; they do NOT
+#: change it. A consumer that only needs the boolean should keep calling
+#: ``is_test_file``.
+TEST_FILE_REASON_TEST = "test"
+TEST_FILE_REASON_MOCK = "mock"
+TEST_FILE_REASON_FIXTURE = "fixture"
+TEST_FILE_REASON_BENCHMARK = "benchmark"
+TEST_FILE_REASON_SUPPORT = "test_support"
+
+#: Directory-component → reason. Every key here is a member of the population
+#: ``is_test_file`` accepts; splitting the map is what lets a disclosure say
+#: WHICH rule fired instead of calling a benchmark directory a test.
+_TEST_DIR_REASONS = {
+    # Test directories
+    "tests": TEST_FILE_REASON_TEST,
+    "test": TEST_FILE_REASON_TEST,
+    "t": TEST_FILE_REASON_TEST,
+    "__tests__": TEST_FILE_REASON_TEST,
+    # Go/Java convention (e.g. keycloak testsuite/)
+    "testing": TEST_FILE_REASON_TEST,
+    "testsuite": TEST_FILE_REASON_TEST,
+    # Mock directories
+    "fakes": TEST_FILE_REASON_MOCK,
+    "mocks": TEST_FILE_REASON_MOCK,
+    "testfakes": TEST_FILE_REASON_MOCK,
+    "testmocks": TEST_FILE_REASON_MOCK,
+    # Fixture / static-input directories
+    "fixtures": TEST_FILE_REASON_FIXTURE,
+    "testdata": TEST_FILE_REASON_FIXTURE,
+    "testfixtures": TEST_FILE_REASON_FIXTURE,  # Gradle testFixtures convention
+    # Test support: helpers, harnesses, formal verification
+    "testutils": TEST_FILE_REASON_SUPPORT,
+    "testutil": TEST_FILE_REASON_SUPPORT,
+    "testhelper": TEST_FILE_REASON_SUPPORT,
+    "testhelpers": TEST_FILE_REASON_SUPPORT,
+    "fv": TEST_FILE_REASON_SUPPORT,
+    "harnesses": TEST_FILE_REASON_SUPPORT,
+    # Benchmark directories
+    "bench": TEST_FILE_REASON_BENCHMARK,
+    "benches": TEST_FILE_REASON_BENCHMARK,
+    "benchmark": TEST_FILE_REASON_BENCHMARK,
+    "benchmarks": TEST_FILE_REASON_BENCHMARK,
+}
+
+
+def classify_test_file(path: str) -> Optional[str]:
+    """Which rule makes *path* look like test-or-support code, if any.
+
+    This is the IMPLEMENTATION; :func:`is_test_file` is ``reason is not None``.
+    One classifier with two consumers, deliberately — a second predicate that
+    re-derived the categories beside the boolean would drift from it on the
+    first edit, and "when a production classification exists for the thing you
+    are counting, counting it yourself IS the bug" (L53) is a lesson this
+    codebase has already paid for repeatedly.
+
+    Why the reason exists at all: ``is_test_file`` is BROAD on purpose, and
+    that breadth is right for its callers (deprioritize as a non-production
+    entrypoint) but wrong for any *disclosure* keyed on it. A taint verdict
+    reporting "3 flows excluded as test_sourced" when the real cause is a
+    ``benches/`` directory tells the reader something false. The owner ruling
+    (2026-08-03) was to keep the breadth and disclose which rule fired.
+
+    Returns one of ``test`` / ``mock`` / ``fixture`` / ``benchmark`` /
+    ``test_support``, or ``None`` when the path is production code. Filename
+    rules are checked before directory rules, matching the original order, so
+    ``mocks/db_test.py`` reports ``test`` exactly as it always returned True.
+
+    Args:
+        path: File path to check
+
+    Returns:
+        The matching reason category, or None.
+    """
+    filename = get_filename(path)
+    filename_lower = filename.lower()
+
+    # Test patterns with _test suffix or test- prefix (any language)
+    if filename.startswith("test_"):
+        return TEST_FILE_REASON_TEST
+    # Hyphen-separated test prefix: test-reach.c, test-date.c, test-parse.c
+    # Common in C projects. Check for "test-" followed by non-empty string.
+    if filename_lower.startswith("test-"):
+        return TEST_FILE_REASON_TEST
+    if "_test." in filename_lower:  # Matches _test.py, _test.js, _test.ts, _test.go
+        return TEST_FILE_REASON_TEST
+
+    # Test patterns with .test. suffix (e.g., main.test.py, main.test.js)
+    if ".test." in filename_lower:
+        return TEST_FILE_REASON_TEST
+
+    # Spec patterns
+    if filename.startswith("spec_") or "_spec." in filename_lower:
+        return TEST_FILE_REASON_TEST
+    if ".spec." in filename_lower:  # Matches main.spec.js, main.spec.ts
+        return TEST_FILE_REASON_TEST
+
+    # Rust co-located test modules: tests.rs and testonly.rs live alongside
+    # production code (e.g., core/lib/dal/src/consensus/tests.rs).  These are
+    # test-only modules that should be excluded from production slices.
+    if filename_lower in ("tests.rs", "testonly.rs"):
+        return TEST_FILE_REASON_TEST
+
+    # Mock/fake filename patterns (any language)
+    name_without_ext = filename_lower.rsplit(".", 1)[0] if "." in filename_lower else filename_lower
+    if name_without_ext.endswith("_mock") or name_without_ext.endswith("_fake"):
+        return TEST_FILE_REASON_MOCK
+    if name_without_ext.startswith("mock_") or name_without_ext.startswith("fake_"):
+        return TEST_FILE_REASON_MOCK
+
+    # Directory patterns - test and mock directories
+    normalized = normalize_path(path)
+    path_parts = normalized.split("/")
+    # Also match compound names like "transportfakes" that end with "fakes"/"mocks",
+    # directories starting with "test-" (test-artifacts, test-fixtures, test-data),
+    # and directories starting with "testsuite" (testsuite-providers, etc.).
+    for part in path_parts:
+        part_lower = part.lower()
+        mapped = _TEST_DIR_REASONS.get(part_lower)
+        if mapped is not None:
+            return mapped
+        if part_lower.endswith("fakes") or part_lower.endswith("mocks"):
+            return TEST_FILE_REASON_MOCK
+        if part_lower.startswith("test-") or part_lower.startswith("testsuite"):
+            return TEST_FILE_REASON_TEST
+
+    # spec/ only matches as the first path component (Ruby RSpec convention).
+    # Nested spec/ dirs (e.g., airflow/listeners/spec/) are often production
+    # interface definitions, not tests.
+    if path_parts and path_parts[0].lower() == "spec":
+        return TEST_FILE_REASON_TEST
+
+    return None
+
+
 def is_test_file(path: str) -> bool:
     """Check if a path looks like a test file.
 
@@ -281,6 +416,12 @@ def is_test_file(path: str) -> bool:
     "is this test code for tier classification?") and diverge in both
     directions — see the WI-popok fundamental-concept-audit KEEP verdict.
 
+    Thin wrapper over :func:`classify_test_file`, which holds the rules and names
+    WHICH one fired. Consumers that only branch on test-or-not should keep
+    calling this; consumers that REPORT the exclusion to a human should call
+    the reason function, because "excluded as test" is a false statement about
+    a ``benches/`` path.
+
     Matches:
     - Files starting with test_ or test- or ending with _test.* (py/js/ts/go)
     - Files starting with spec_ or ending with _spec.* or .spec.*
@@ -295,74 +436,7 @@ def is_test_file(path: str) -> bool:
     Returns:
         True if the path appears to be a test file
     """
-    filename = get_filename(path)
-    filename_lower = filename.lower()
-
-    # Test patterns with _test suffix or test- prefix (any language)
-    if filename.startswith("test_"):
-        return True
-    # Hyphen-separated test prefix: test-reach.c, test-date.c, test-parse.c
-    # Common in C projects. Check for "test-" followed by non-empty string.
-    if filename_lower.startswith("test-"):
-        return True
-    if "_test." in filename_lower:  # Matches _test.py, _test.js, _test.ts, _test.go
-        return True
-
-    # Test patterns with .test. suffix (e.g., main.test.py, main.test.js)
-    if ".test." in filename_lower:
-        return True
-
-    # Spec patterns
-    if filename.startswith("spec_") or "_spec." in filename_lower:
-        return True
-    if ".spec." in filename_lower:  # Matches main.spec.js, main.spec.ts
-        return True
-
-    # Rust co-located test modules: tests.rs and testonly.rs live alongside
-    # production code (e.g., core/lib/dal/src/consensus/tests.rs).  These are
-    # test-only modules that should be excluded from production slices.
-    if filename_lower in ("tests.rs", "testonly.rs"):
-        return True
-
-    # Mock/fake filename patterns (any language)
-    name_without_ext = filename_lower.rsplit(".", 1)[0] if "." in filename_lower else filename_lower
-    if name_without_ext.endswith("_mock") or name_without_ext.endswith("_fake"):
-        return True
-    if name_without_ext.startswith("mock_") or name_without_ext.startswith("fake_"):
-        return True
-
-    # Directory patterns - test and mock directories
-    normalized = normalize_path(path)
-    path_parts = normalized.split("/")
-    test_dirs = {
-        "tests", "test", "t", "__tests__",  # Test directories
-        "testing", "testsuite",  # Go/Java convention (e.g., keycloak testsuite/)
-        "fakes", "mocks", "testfakes", "testmocks",  # Mock directories
-        "fixtures", "testdata", "testutils", "testutil",  # Test support directories
-        "testfixtures",  # Gradle testFixtures convention (sibling to main)
-        "testhelper", "testhelpers",  # Test helper directories
-        "fv", "harnesses",  # Formal verification / test harness directories
-        "bench", "benches", "benchmark", "benchmarks",  # Benchmark directories
-    }
-    # Also match compound names like "transportfakes" that end with "fakes"/"mocks",
-    # directories starting with "test-" (test-artifacts, test-fixtures, test-data),
-    # and directories starting with "testsuite" (testsuite-providers, etc.).
-    for part in path_parts:
-        part_lower = part.lower()
-        if part_lower in test_dirs:
-            return True
-        if part_lower.endswith("fakes") or part_lower.endswith("mocks"):
-            return True
-        if part_lower.startswith("test-") or part_lower.startswith("testsuite"):
-            return True
-
-    # spec/ only matches as the first path component (Ruby RSpec convention).
-    # Nested spec/ dirs (e.g., airflow/listeners/spec/) are often production
-    # interface definitions, not tests.
-    if path_parts and path_parts[0].lower() == "spec":
-        return True
-
-    return False
+    return classify_test_file(path) is not None
 
 
 def is_migration_file(path: str) -> bool:

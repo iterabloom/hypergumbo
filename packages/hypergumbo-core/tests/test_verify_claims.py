@@ -645,6 +645,128 @@ class TestConfidenceReachesTheConsumer:
         assert verdict.to_dict()["analysis_methods"] == {"ddg": 1}
 
 
+class TestViolatedPathDisclosure:
+    """WI-bifob's contract, on the path that never implemented it.
+
+    The item's own stated contract is that exclusions are disclosed "on the
+    CONFIRMED path as well as the violated one". Only the confirmed path did
+    it: on the violated path ``excluded_flows`` was attached to the dataclass
+    and never rendered, and ``cli.py`` prints ``details`` alone — so a
+    text-mode reader of a violated claim never learned that flows had been set
+    aside by a policy they did not choose. ``flow_origins`` (WI-vazal) reached
+    no text surface at all, on either path.
+    """
+
+    def _claim(self) -> Claim:
+        return Claim(
+            id="TF-DISC",
+            text="No plaintext to host_fs",
+            constraint_taint_flow=TaintFlowConstraint(
+                source_taint="plaintext",
+                prohibited_sink_zone="host_fs",
+            ),
+        )
+
+    def test_violated_verdict_discloses_exclusions_in_text(self) -> None:
+        """A text reader of a VIOLATED claim learns what was set aside."""
+        findings = [
+            _flow(source_symbol="python:src/app.py:1-2:f:function",
+                  sink_symbol="d"),
+            _flow(source_symbol="python:tests/test_a.py:1-2:g:function",
+                  sink_symbol="d2"),
+        ]
+        verdict = verify_taint_claim(self._claim(), findings)
+        assert verdict.verdict == "violated"
+        assert verdict.excluded_flows == {"test_sourced": 1}
+        assert "Excluded from this verdict as non-production" in verdict.details
+        assert "1 test_sourced" in verdict.details
+        assert "--include-non-production-sources" in verdict.details
+
+    def test_violated_verdict_reports_flow_origins_in_text(self) -> None:
+        """The WI-vazal breakdown reaches the only surface text mode prints.
+
+        Measured need, not a hypothetical: all 140 flows on pretix's largest
+        violated claim are database-read-to-database-write, which changes what
+        a reader does about it — and no text consumer could see that.
+        """
+        f1 = _flow(source_symbol="s1", sink_symbol="d1")
+        f1.source_boundary = "db_read"
+        f2 = _flow(source_symbol="s2", sink_symbol="d2")
+        f2.source_boundary = "net_recv"
+        verdict = verify_taint_claim(self._claim(), [f1, f2])
+        assert "[origins: 1 db_read, 1 net_recv]" in verdict.details
+
+    def test_origins_bucket_for_declared_sources(self) -> None:
+        """A YAML-declared source has no boundary and says so, not ""."""
+        verdict = verify_taint_claim(
+            self._claim(), [_flow(source_symbol="s", sink_symbol="d")],
+        )
+        assert "[origins: 1 declared]" in verdict.details
+
+    def test_benchmark_source_is_not_called_a_test(self) -> None:
+        """Owner ruling: keep ``is_test_file`` broad, disclose which rule fired.
+
+        Before the split this reported ``test_sourced``, which is a false
+        statement about a ``benches/`` path — the reader would go looking for a
+        test that does not exist.
+        """
+        findings = [
+            _flow(source_symbol="python:src/app.py:1-2:f:function",
+                  sink_symbol="d"),
+            _flow(source_symbol="rust:benches/bench_io.rs:1-2:g:function",
+                  sink_symbol="d2"),
+        ]
+        verdict = verify_taint_claim(self._claim(), findings)
+        assert verdict.excluded_flows == {"benchmark_sourced": 1}
+
+    def test_exclusion_buckets_separate_by_reason(self) -> None:
+        """Each rule gets its own bucket rather than one undifferentiated pile."""
+        findings = [
+            _flow(source_symbol="python:src/app.py:1-2:p:function", sink_symbol="d"),
+            _flow(source_symbol="python:tests/test_a.py:1-2:a:function", sink_symbol="d1"),
+            _flow(source_symbol="go:benches/b.go:1-2:b:function", sink_symbol="d2"),
+            _flow(source_symbol="go:testdata/c.go:1-2:c:function", sink_symbol="d3"),
+            _flow(source_symbol="go:mocks/d.go:1-2:d:function", sink_symbol="d4"),
+            _flow(source_symbol="python:app/migrations/0001_x.py:1-2:e:function",
+                  sink_symbol="d5"),
+        ]
+        verdict = verify_taint_claim(self._claim(), findings)
+        assert verdict.excluded_flows == {
+            "test_sourced": 1,
+            "benchmark_sourced": 1,
+            "fixture_sourced": 1,
+            "mock_sourced": 1,
+            "migration_sourced": 1,
+        }
+        # ...and the production flow is still counted, which is the control:
+        # a split that quietly widened the exclusion would look identical in
+        # the bucket dict alone.
+        assert verdict.evidence_count == 1
+
+    def test_split_does_not_change_which_flows_are_excluded(self) -> None:
+        """Non-destructiveness: the same paths are excluded, only named better.
+
+        ``classify_test_file`` IS ``is_test_file`` (the boolean is defined as
+        "reason is not None"), so the population cannot move. Asserted rather
+        than assumed, because "we only changed the label" is exactly the claim
+        that turns out to be false.
+        """
+        paths = [
+            "python:tests/a.py:1-2:f:function",
+            "rust:benches/b.rs:1-2:f:function",
+            "go:testdata/c.go:1-2:f:function",
+            "go:mocks/d.go:1-2:f:function",
+            "python:src/app.py:1-2:f:function",
+        ]
+        findings = [
+            _flow(source_symbol=p, sink_symbol=f"d{i}")
+            for i, p in enumerate(paths)
+        ]
+        verdict = verify_taint_claim(self._claim(), findings)
+        assert sum(verdict.excluded_flows.values()) == 4
+        assert verdict.evidence_count == 1
+
+
 class TestViolatedFlowEvidence:
     """WI-kikis: a violated taint claim must surface per-flow drill-down
     evidence (symbol IDs + call-graph path) and deduplicate identical-looking
