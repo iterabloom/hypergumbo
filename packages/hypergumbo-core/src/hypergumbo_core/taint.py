@@ -1726,9 +1726,11 @@ def _ddg_taint_reaches(
     symbol_id: str,
     source_lines: list[int],
     sink_lines: list[int],
-    ddg_uses: dict[tuple[str, int], set[int]],
+    ddg_uses: dict[tuple[str, str, int], set[int]],
     callees_at: dict[tuple[str, int], frozenset[str]] | None = None,
     summaries: dict[str, "FunctionSummary"] | None = None,
+    defs_at: dict[tuple[str, int], frozenset[str]] | None = None,
+    inherits: dict[tuple[str, int, str], frozenset[str]] | None = None,
 ) -> bool | None:
     """Does a value defined at a source call reach a use at a sink call?
 
@@ -1805,7 +1807,13 @@ def _ddg_taint_reaches(
         symbol_id: The function whose DDG is being walked.
         source_lines: Lines where the taint source is called.
         sink_lines: Lines where the sink is called.
-        ddg_uses: ``(symbol_id, def_line) -> {use_line, ...}``.
+        ddg_uses: ``(symbol_id, variable, def_line) -> {use_line, ...}``.
+        defs_at: ``(symbol_id, line) -> {variable, ...}`` defined at that line;
+            used to seed on the source call site's own definitions.
+        inherits: ``(symbol_id, line, used_variable) -> {variable, ...}`` —
+            the variables a statement at that line defines while consuming
+            ``used_variable``. This is what keeps two variables defined on one
+            line from laundering taint between each other.
 
     Returns:
         True if a tainted value is used at a line where the sink is called;
@@ -1814,55 +1822,80 @@ def _ddg_taint_reaches(
         recorded in the first place. Only False may ever license a removal.
     """
     targets = set(sink_lines)
-    frontier = list(source_lines)
-    seen: set[int] = set()
+    seen: set[tuple[str, int]] = set()
     escaped = False
-    while frontier:
-        line = frontier.pop()
-        if line in seen:
+
+    # SEED ON VARIABLES, NOT LINES. The source's return value is whatever the
+    # call site defines; if the DDG recorded no definition there, nothing is
+    # known about where the value went (INV-lupav).
+    frontier: list[tuple[str, int]] = []
+    for line in source_lines:
+        seeds = (defs_at or {}).get((symbol_id, line))
+        if not seeds:
+            escaped = True
             continue
-        seen.add(line)
-        uses = ddg_uses.get((symbol_id, line))
-        if not uses:
-            # THE DDG HOLDS NOTHING ABOUT THIS DEFINITION, which is ignorance,
-            # not absence. A source call happened here — that is how the line
-            # reached the frontier — so a value exists and the index is silent
-            # about where it went.
+        frontier.extend((var, line) for var in sorted(seeds))
+
+    while frontier:
+        var, line = frontier.pop()
+        if (var, line) in seen:
+            continue
+        seen.add((var, line))
+        uses = ddg_uses.get((symbol_id, var, line))
+        if not uses:  # pragma: no cover - unreachable; see below
+            # DEFENSIVE, AND UNREACHABLE AS THE CODE STANDS. Two invariants
+            # make it so: every seed comes from `defs_at`, which is built from
+            # the same edges as `ddg_uses`, and every frontier append below is
+            # membership-tested against `ddg_uses` first. So a popped
+            # `(var, line)` always has a non-empty use set.
             #
-            # This is the third cause of a negative walk and the only one that
-            # produces no escape of its own: "found nothing" and "lost track of
-            # it" both leave a trace to classify, while a construct the
-            # extractor never modelled leaves silence. Falling through to
-            # `return False` made that silence indistinguishable from an
-            # exhausted walk, which is the removal-licensing verdict.
+            # Kept rather than deleted because the alternative to a redundant
+            # guard here is a TypeError on `uses & targets` the first time a
+            # future edit appends a pair without the membership test — and the
+            # correct answer in that case is this one: a definition the DDG
+            # holds nothing about is IGNORANCE, not absence (INV-lupav), so it
+            # must escape rather than fall through to the removal-licensing
+            # `False`.
             #
-            # Not a hypothetical gap: `cfg_nodes/go.yaml` self-documents that
-            # `if err := do(); err != nil` initializers are invisible to
-            # def/use, and 700 of caddy's 6,596 `if` statements carry a call
-            # there. Only seed lines can reach this branch today — every line
-            # appended below is membership-tested first — so it is exactly the
-            # untracked-source-call-site case.
+            # The untracked-source-call-site case that INV-lupav was filed for
+            # is now caught at SEEDING instead — `if not seeds` above — which
+            # is the earlier and more precise place for it: the DDG holding no
+            # definition at a source call line is exactly "was never given
+            # anything", and `cfg_nodes/go.yaml` self-documents the extraction
+            # gap that produces it (`if err := do(); err != nil` initializers
+            # invisible to def/use; 700 of caddy's 6,596 `if` statements carry
+            # a call there).
             escaped = True
             continue
         if uses & targets:
             return True
         for use_line in uses:
-            if (symbol_id, use_line) in ddg_uses:
-                # Something is defined here and we can follow it: the taint
-                # continues along a chain we still understand.
-                if use_line not in seen:
-                    frontier.append(use_line)
-            else:
-                # The tainted value is consumed at a line that defines nothing
-                # the DDG tracked — it went into a container, a call argument,
-                # a field, or a closure. ADR-0017 §7b excludes alias analysis,
-                # so we cannot say where it went next. That is unknown, not
-                # absent — UNLESS §4 can tell us the callee consumed it.
-                if _use_site_terminates(
-                    symbol_id, use_line, callees_at, summaries,
-                ):
-                    continue
-                escaped = True
+            # WHICH VARIABLE INHERITS THE TAINT HERE? Only one defined at this
+            # line by a statement that actually CONSUMES `var`. Following the
+            # line instead of the variable is what made the label unearned:
+            # `keep = str(server); path = name` defines two variables at one
+            # line, and a line-keyed step credited the taint in `server` with
+            # reaching everything `path` later touches.
+            followed = False
+            for heir in sorted((inherits or {}).get((symbol_id, use_line, var), ())):
+                if (symbol_id, heir, use_line) in ddg_uses:
+                    if (heir, use_line) not in seen:
+                        frontier.append((heir, use_line))
+                    followed = True
+            if followed:
+                # The taint continues along a chain we still understand.
+                continue
+            # The tainted value is consumed at a line that defines nothing the
+            # DDG tracked, or defines only variables no statement derived from
+            # `var` — it went into a container, a call argument, a field, or a
+            # closure. ADR-0017 §7b excludes alias analysis, so we cannot say
+            # where it went next. That is unknown, not absent — UNLESS §4 can
+            # tell us the callee consumed it.
+            if _use_site_terminates(
+                symbol_id, use_line, callees_at, summaries,
+            ):
+                continue
+            escaped = True
     if escaped:
         return None
     return False
@@ -1952,6 +1985,9 @@ def propagate_taint_ddg(
     ddg_symbols: set[str] | None = None,
     ambiguous_names: frozenset[str] = frozenset(),
     function_summaries: dict[str, "FunctionSummary"] | None = None,
+    stmt_defuse: dict[
+        str, list[tuple[int, tuple[str, ...], tuple[str, ...]]]
+    ] | None = None,
 ) -> list[TaintFlowFinding]:
     """DDG-backed taint-flow propagation with mixed-coverage analysis.
 
@@ -2004,12 +2040,41 @@ def propagate_taint_ddg(
     # of this index was keyed ``(def_block, variable)`` and compared a block id
     # against a symbol id, which cannot match; it was also never read.
     #
-    # Lines rather than variables because that is what makes the index
+    # KEYED ON THE VARIABLE AS WELL AS THE LINE (INV-sadah). The first version
+    # keyed `(symbol_id, def_line)` and discarded `DdgEdge.variable`, which
+    # merged the use-sets of every variable defined on one line. Measured on a
+    # real fixture: `keep = str(server); path = name` emits
+    # `keep def@7 -> use@9` and `path def@7 -> use@8`, and the merged entry
+    # `def_line 7 -> {8, 9}` let a walk carrying the taint in `server` inherit
+    # `path`'s use of the sink at line 8 — stamping "precise" on a data
+    # dependence that does not exist.
+    #
+    # Lines are still HALF the key because that is what makes the index
     # composable with call sites: a call edge records the LINE it occurs on, so
-    # "is the tainted value an argument here" becomes a set membership test.
-    ddg_uses: dict[tuple[str, int], set[int]] = defaultdict(set)
+    # "is the tainted value an argument here" stays a set membership test.
+    ddg_uses: dict[tuple[str, str, int], set[int]] = defaultdict(set)
+    defs_at: dict[tuple[str, int], set[str]] = defaultdict(set)
     for ddg_edge in ddg_edges:
-        ddg_uses[(ddg_edge.symbol_id, ddg_edge.def_line)].add(ddg_edge.use_line)
+        ddg_uses[
+            (ddg_edge.symbol_id, ddg_edge.variable, ddg_edge.def_line)
+        ].add(ddg_edge.use_line)
+        defs_at[(ddg_edge.symbol_id, ddg_edge.def_line)].add(ddg_edge.variable)
+
+    # (symbol, line, consumed variable) -> variables that inherit from it.
+    #
+    # Variable-keying alone does NOT fix the conflation, and this is the half
+    # that does. `path` genuinely IS defined at line 7, so separating the index
+    # entries still leaves "which variable defined here inherits from
+    # `server`?" unanswered — and the edge set cannot answer it. The statement's
+    # own defines/uses can: `keep = str(server)` consumes `server`,
+    # `path = name` does not.
+    inherits: dict[tuple[str, int, str], set[str]] = defaultdict(set)
+    for sym_id, statements in (stmt_defuse or {}).items():
+        for line, defines, uses in statements:
+            if not defines:
+                continue
+            for used in uses:
+                inherits[(sym_id, line, used)].update(defines)
 
     # (caller, callee) → every line that call occurs on. A caller may invoke
     # the same callee more than once, and a flow is real if the taint reaches
@@ -2202,7 +2267,7 @@ def propagate_taint_ddg(
                     (sink_node, sink_callee_id), [],
                 )
                 source_tracked = any(
-                    ddg_uses.get((source_fn, line)) for line in source_call_lines
+                    defs_at.get((source_fn, line)) for line in source_call_lines
                 )
                 sink_after_source = any(
                     sink_line > source_line
@@ -2219,6 +2284,7 @@ def propagate_taint_ddg(
                     adjudicated = _ddg_taint_reaches(
                         source_fn, source_call_lines, sink_call_lines,
                         ddg_uses, callee_names, summaries,
+                        defs_at=defs_at, inherits=inherits,
                     ) is True
 
             # The label now records what actually decided inclusion, which is
