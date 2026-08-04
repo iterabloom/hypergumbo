@@ -1960,6 +1960,44 @@ class TestPropagateTaintDdg:
         assert f.confidence == "approximate"
         assert f.analysis_method == "ddg_mixed"
 
+    def test_function_the_ddg_never_saw_is_structural_not_mixed(self) -> None:
+        """No DDG coverage for the source function → ``structural``.
+
+        The field's own docstring defines ``structural`` as "no reaching-def
+        data for the language, so no walk was possible" and ``ddg_mixed`` as
+        "the walk ran and did not confirm". Those are different facts, and
+        only ``ddg_mixed`` was reachable from this propagator: the label was
+        chosen by which propagator the CLI dispatched to, and that dispatch
+        reads ``if ddg_edges:`` over the WHOLE repo. So a JavaScript flow —
+        JavaScript has no def/use extractor at all — came out ``ddg_mixed``
+        when the repo happened to contain a Python file and ``structural``
+        when it did not, with byte-identical JavaScript either way.
+
+        That is INV-karud clause (a3) failing at its own premise: the clause
+        requires a reader to tell data-flow-adjudicated flows from
+        call-reachability-only ones *from the emitted record*, and the field
+        that carries the distinction was being set by an unrelated language's
+        presence. Here the DDG has edges but knows nothing about ``caller``,
+        which is exactly that shape.
+        """
+        ddg = [DdgEdge(
+            variable="data", def_block="other_fn", def_line=1,
+            use_block="other_fn", use_line=2, symbol_id="other_fn",
+        )]
+        call_edges = [
+            {"src": "caller", "dst": "python:external:0-0:decrypt:unresolved", "type": "calls"},
+            {"src": "caller", "dst": "python:external:0-0:send:unresolved", "type": "calls"},
+        ]
+
+        findings = propagate_taint_ddg(
+            ddg, call_edges, self._make_sources(), self._make_sinks(), [],
+            ddg_symbols={"other_fn"},
+        )
+        assert len(findings) == 1
+        f = findings[0]
+        assert f.confidence == "approximate"
+        assert f.analysis_method == "structural"
+
     def test_sanitizer_labels_the_flow_instead_of_erasing_it(self) -> None:
         """A sanitized flow is REPORTED as sanitized, not silently dropped.
 

@@ -39,6 +39,7 @@ from collections import defaultdict, deque
 from dataclasses import dataclass, field
 from pathlib import Path
 from collections.abc import Mapping, Sequence
+from collections.abc import Set as AbstractSet
 from typing import TYPE_CHECKING, Any, Iterator, Optional, TypeVar, Union
 
 import yaml
@@ -205,13 +206,19 @@ class TaintFlowFinding:
             "DDG-backed" — running the DDG is not the same as having used it,
             and stamping ``precise`` on the strength of a walk whose result was
             discarded is exactly what INV-sadah was filed for.
-        analysis_method: ``structural`` (no reaching-def data for the language,
-            so no walk was possible), ``ddg`` (the walk ran and confirmed a
+        analysis_method: ``structural`` (the DDG held no reaching-def data
+            for THIS FLOW'S SOURCE FUNCTION — the language has no def/use
+            extractor, or that particular function was not analyzed — so no
+            walk was possible), ``ddg`` (the walk ran and confirmed a
             dependence), or ``ddg_mixed`` (the walk ran and did not confirm
             one, so inclusion rests on call-graph reachability). ``confidence``
             collapses the last two into ``approximate``; this is the finer
             axis, because "the analysis looked and found nothing" and "the
-            analysis could not look" are different facts.
+            analysis could not look" are different facts. The discriminant is
+            per FUNCTION. It was effectively per REPO until INV-karud (a3):
+            the CLI chose a propagator once for the whole repository, so this
+            field reported on which languages happened to be present rather
+            than on the flow it describes.
         path: Symbol IDs along ONE call-graph route from source to sink —
             a witness, not "the path". A source frequently reaches a sink by
             several equally-valid routes and this reports one of them; the
@@ -1726,11 +1733,18 @@ def _ddg_taint_reaches(
     symbol_id: str,
     source_lines: list[int],
     sink_lines: list[int],
-    ddg_uses: dict[tuple[str, str, int], set[int]],
-    callees_at: dict[tuple[str, int], frozenset[str]] | None = None,
-    summaries: dict[str, "FunctionSummary"] | None = None,
-    defs_at: dict[tuple[str, int], frozenset[str]] | None = None,
-    inherits: dict[tuple[str, int, str], frozenset[str]] | None = None,
+    ddg_uses: Mapping[tuple[str, str, int], AbstractSet[int]],
+    # Read-only, and typed as such. These were declared ``dict[..., frozenset]``
+    # while every production caller builds ``defaultdict(set)`` — and because
+    # ``dict`` is INVARIANT in its value type, that is not merely a stylistic
+    # mismatch, it is three genuine type errors at the one call site that
+    # matters. ``Mapping`` + ``AbstractSet`` says what the function actually
+    # requires (iterate and membership-test, never mutate), which is satisfied
+    # by both spellings.
+    callees_at: Mapping[tuple[str, int], AbstractSet[str]] | None = None,
+    summaries: Mapping[str, "FunctionSummary"] | None = None,
+    defs_at: Mapping[tuple[str, int], AbstractSet[str]] | None = None,
+    inherits: Mapping[tuple[str, int, str], AbstractSet[str]] | None = None,
 ) -> bool | None:
     """Does a value defined at a source call reach a use at a sink call?
 
@@ -1928,8 +1942,11 @@ def _summary_terminates(summary: "FunctionSummary") -> bool:
 def _use_site_terminates(
     symbol_id: str,
     use_line: int,
-    callees_at: dict[tuple[str, int], frozenset[str]] | None,
-    summaries: dict[str, "FunctionSummary"] | None,
+    # Read-only, and widened for the same reason as its caller's parameters:
+    # ``dict`` is invariant in its value type, so declaring ``frozenset`` here
+    # rejects the ``defaultdict(set)`` every production caller builds.
+    callees_at: Mapping[tuple[str, int], AbstractSet[str]] | None,
+    summaries: Mapping[str, "FunctionSummary"] | None,
 ) -> bool:
     """Does EVERY call at this line consume the tainted value and stop?
 
@@ -2101,9 +2118,17 @@ def propagate_taint_ddg(
         recorded = (edge.get("meta") or {}).get("call_lines")
         if isinstance(recorded, list):
             sites = [ln for ln in recorded if isinstance(ln, int)]
-        line = edge.get("line")
-        if isinstance(line, int) and line not in sites:
-            sites.append(line)
+        # NOT named ``line``: that name is bound to an ``int`` by the
+        # statement loop above, so rebinding it here made mypy infer ``int``
+        # for a value that is ``Any | None`` — and then report the isinstance
+        # guard on the next line as "always true". The guard is live and the
+        # comment above says why (a non-int reaching ``sink_line >
+        # source_line`` is a TypeError); draining that redundant-expr error
+        # the obvious way would have deleted it. L51: a checker's verdict is
+        # only as good as the annotation under it.
+        edge_line = edge.get("line")
+        if isinstance(edge_line, int) and edge_line not in sites:
+            sites.append(edge_line)
         if sites:
             call_lines[(edge.get("src", ""), edge.get("dst", ""))].extend(sites)
             # (function, line) → the QUALIFIED names called there, for §4.
@@ -2164,9 +2189,16 @@ def propagate_taint_ddg(
             is_resolved=edge.get("is_resolved", True),
         )
         if matched:
-            site = (edge["dst"], matched)
-            if site not in sink_callers[edge["src"]]:
-                sink_callers[edge["src"]].append(site)
+            # ``sink_site``, not ``site``: the call-line loop above binds
+            # ``site`` to an ``int`` in this same function, so reusing the
+            # name gave one variable two unrelated types and made mypy report
+            # the membership test below as a non-overlapping container check
+            # — i.e. as dead — when it is the deduplication this loop rests
+            # on. The structural propagator's identical block keeps ``site``,
+            # because there the name is not already taken.
+            sink_site = (edge["dst"], matched)
+            if sink_site not in sink_callers[edge["src"]]:
+                sink_callers[edge["src"]].append(sink_site)
 
     # Step 3: Find sanitizer call sites — through the SHARED helper, so the
     # INV-finoh resolution-/kind-aware gate applies here too.
@@ -2291,12 +2323,30 @@ def propagate_taint_ddg(
             # what INV-sadah asserts. Before §3a existed every finding here was
             # stamped "ddg"/"precise" on the strength of a walk whose result
             # was discarded; "precise" is now earned only where the walk ran.
+            #
+            # The ``fn_has_ddg`` arm is INV-karud clause (a3). "The walk ran
+            # and did not confirm" (``ddg_mixed``) and "no reaching-def data
+            # existed, so no walk was possible" (``structural``) are different
+            # facts, and this field's own docstring has always defined them
+            # that way — but only the first was reachable from here, because
+            # the choice of propagator is made once for the whole repo
+            # (``cli.py``: ``if ddg_edges:``). A JavaScript flow therefore came
+            # out ``ddg_mixed`` when the repo also held a Python file and
+            # ``structural`` when it did not, with identical JavaScript. A
+            # reader cannot tell data-flow-adjudicated from
+            # call-reachability-only when the distinguishing field is set by an
+            # unrelated language's presence, which is exactly what (a3)
+            # forbids. Deciding it here, on whether the DDG actually covered
+            # the source function, makes the label a property of the flow.
             if adjudicated:
                 confidence = "precise"
                 method = "ddg"
-            else:
+            elif fn_has_ddg:
                 confidence = "approximate"
                 method = "ddg_mixed"
+            else:
+                confidence = "approximate"
+                method = "structural"
 
             path = _reconstruct_path(
                 {**parent, **sanitized_parent} if is_sanitized else parent,

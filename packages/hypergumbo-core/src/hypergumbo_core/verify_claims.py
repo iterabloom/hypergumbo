@@ -117,7 +117,13 @@ from .paths import classify_test_file, is_migration_file
 # being a tautology. Additive: a verdict with no sanitizer on any route reports
 # 0, exactly as before. No verdict moves — a sanitized flow was already not
 # counted, it was merely not COUNTABLE.
-VERIFY_CLAIMS_SCHEMA_VERSION = "1.6"
+# 1.7 adds the top-level ``dataflow_coverage`` block (INV-karud clause a3):
+# per-language data-flow capability with the catalog it would serve, a
+# findings-by-analysis-method rollup, and ``inclusion_decided_by``. Additive.
+# The block answers a question no per-flow field can: ``analysis_method`` says
+# how ONE flow was adjudicated, and a reader cannot interpret "structural"
+# without knowing whether the language was capable of anything else.
+VERIFY_CLAIMS_SCHEMA_VERSION = "1.7"
 # WI-kikis: cap on the per-verdict structured drill-down evidence list. A
 # violated claim can have thousands of flows (3,969 on the self-corpus); the
 # deduplicated ``evidence`` list is bounded to this many DISTINCT flows so the

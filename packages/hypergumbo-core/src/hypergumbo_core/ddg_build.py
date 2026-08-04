@@ -59,7 +59,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, Optional, Sequence
+from typing import TYPE_CHECKING, Any, Callable, Optional, Sequence, cast
 
 from .analyze.base import make_symbol_id
 
@@ -284,7 +284,13 @@ def build_repo_ddg(
         if mapping is None:  # pragma: no cover - shipped mappings always load
             continue
         try:
-            ts_language = get_language(language)
+            # ``get_language``'s stub declares a Literal of every grammar name
+            # the pack ships; ours is a runtime string that already passed the
+            # ``_DDG_LANGUAGES`` registry lookup above. The cast records that
+            # rather than widening the stub. (``fingerprint.py`` has the same
+            # call and carries the same error in the accepted mypy baseline;
+            # it is left alone so this change stays scoped to its own drift.)
+            ts_language = get_language(cast(Any, language))
         except Exception:  # pragma: no cover - pack always provides these
             logger.debug("no tree-sitter grammar for %s; skipping", language)
             continue

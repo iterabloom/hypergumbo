@@ -479,3 +479,177 @@ def test_ddg_does_not_credit_a_dependence_across_unrelated_definitions(
     assert labels["disconnected"] == ("approximate", "ddg_mixed"), labels
     # THE DEFECT: no data dependence exists, so no precision may be claimed.
     assert labels["conflated"] == ("approximate", "ddg_mixed"), labels
+
+
+# --------------------------------------------------------------------------
+# Cross-language arm — the adjudication label must be a property of the flow
+# --------------------------------------------------------------------------
+
+_JS_LEAK = (
+    "const http = require('http');\n"
+    "const fs = require('fs');\n"
+    "\n"
+    "function leak() {\n"
+    "  const server = http.createServer();\n"
+    "  fs.writeFileSync('/tmp/out.txt', String(server));\n"
+    "}\n"
+    "\n"
+    "module.exports = { leak };\n"
+)
+
+#: A Python file with no bearing on the JavaScript flow above. It is here only
+#: so the repo contains a language that HAS a def/use extractor, which is the
+#: whole variable under test. Its own flow is ``host_secret`` -> ``host_fs``,
+#: a different taint label from the claim, so it contributes no evidence row —
+#: asserted below rather than assumed.
+_UNRELATED_PYTHON = (
+    "import os\n"
+    "import shutil\n"
+    "\n"
+    "\n"
+    "def stage_home() -> str:\n"
+    "    home = os.path.expanduser('~')\n"
+    "    target = home + '/staged'\n"
+    "    shutil.copy(home, target)\n"
+    "    return target\n"
+)
+
+
+def test_adjudication_label_does_not_depend_on_another_language(
+    tmp_path: Path, capsys,
+) -> None:
+    """Adding an unrelated-language file must not relabel a JavaScript flow.
+
+    INV-karud clause (a3) requires that a reader can tell flows adjudicated by
+    data flow from flows resting on call reachability alone, *from the emitted
+    record*. The field carrying that distinction is ``analysis_method``.
+
+    It was not a property of the flow. ``cmd_verify_claims`` builds one DDG for
+    the whole repo and then dispatches per language on ``if ddg_edges:`` — a
+    repo-global truthiness test — so every language went through
+    ``propagate_taint_ddg`` whenever ANY language produced DDG edges. A
+    JavaScript function is never in ``ddg_symbols`` (JavaScript has no def/use
+    extractor), so the walk could not run and the finding still came out
+    ``ddg_mixed``, whose documented meaning is "the walk ran and did not
+    confirm". Drop the Python file and the identical JavaScript came out
+    ``structural``.
+
+    Two arms differing by one file nobody's claim mentions. This asserts the
+    whole record is identical, not just the label, because a relabelling bug
+    and a flow-loss bug are both invisible in a single-field comparison (L57:
+    when the correct result is "no change", the broken arm can look better).
+    """
+    js_only = tmp_path / "js_only"
+    js_and_py = tmp_path / "js_and_py"
+    for repo in (js_only, js_and_py):
+        (repo / "src").mkdir(parents=True)
+        (repo / "src" / "leak.js").write_text(_JS_LEAK, encoding="utf-8")
+    (js_and_py / "src" / "util.py").write_text(
+        _UNRELATED_PYTHON, encoding="utf-8",
+    )
+
+    alone_env = _run(js_only, capsys)["envelope"]
+    mixed_env = _run(js_and_py, capsys)["envelope"]
+    alone = _verdict(alone_env, "no-untrusted-to-fs")
+    mixed = _verdict(mixed_env, "no-untrusted-to-fs")
+
+    # RECALL FIRST. A vacuous pass here is trivial — two empty evidence lists
+    # are also identical — so the flow must be present in both arms before any
+    # comparison between them means anything (L17).
+    assert _flow_pairs(alone) == {("createServer", "writeFileSync")}
+    assert _flow_pairs(mixed) == {("createServer", "writeFileSync")}
+
+    # The Python file contributes no evidence to THIS claim, so the two arms
+    # are comparable row-for-row. Stated as an assertion because the whole
+    # test rests on it.
+    assert alone["evidence_count"] == mixed["evidence_count"] == 1
+
+    # JavaScript has no def/use extractor, so no data-flow analysis bore on
+    # this flow in EITHER arm. That is what ``structural`` means.
+    assert _confidence_by_source(alone) == {"leak": ("approximate", "structural")}
+    assert _confidence_by_source(mixed) == _confidence_by_source(alone)
+    assert alone["analysis_methods"] == {"structural": 1}
+    assert mixed["analysis_methods"] == alone["analysis_methods"]
+
+    # POSITIVE CONTROL, and the point of the fix. The two repos DO differ, and
+    # that difference must still be visible — it has moved from a field where
+    # it was a lie (this flow's adjudication label) to one where it is a fact
+    # (which languages were analyzed and what each is capable of). A test that
+    # only asserted "nothing changed" would also pass if the scope block had
+    # been dropped entirely.
+    def _langs(env: dict) -> set:
+        return {r["language"] for r in env["dataflow_coverage"]["languages"]}
+
+    assert _langs(alone_env) == {"javascript"}
+    assert _langs(mixed_env) == {"javascript", "python"}
+
+
+# --------------------------------------------------------------------------
+# Published scope — INV-karud clause (a3)
+# --------------------------------------------------------------------------
+
+def _run_text(repo: Path, capsys) -> str:
+    claims_file = repo / "claims.yaml"
+    claims_file.write_text(yaml.dump(_CLAIMS), encoding="utf-8")
+    args = _Args(repo, claims_file)
+    args.format = "text"
+    cmd_verify_claims(args)
+    return capsys.readouterr().out
+
+
+def test_published_scope_distinguishes_capable_from_incapable(
+    tmp_path: Path, capsys,
+) -> None:
+    """The emitted record must state the scope, not leave it to assumption.
+
+    Per-flow ``analysis_method`` cannot answer "could this language have been
+    adjudicated at all?", and without that a ``structural`` label is
+    uninterpretable: it reads as "the walk looked and found nothing" when it
+    may mean "nothing here was capable of looking". This asserts the two
+    languages in one repo come out on opposite sides, so a table that
+    hardcoded either answer fails.
+    """
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "leak.js").write_text(_JS_LEAK, encoding="utf-8")
+    (tmp_path / "src" / "util.py").write_text(
+        _UNRELATED_PYTHON, encoding="utf-8",
+    )
+
+    scope = _run(tmp_path, capsys)["envelope"]["dataflow_coverage"]
+    by_lang = {row["language"]: row for row in scope["languages"]}
+
+    assert by_lang["python"]["dataflow_capable"] is True
+    assert by_lang["python"]["blockers"] == []
+    assert by_lang["javascript"]["dataflow_capable"] is False
+    # The blockers are the actionable half — "not covered" without saying
+    # which of the four independent prerequisites is missing is a status, not
+    # a scope.
+    assert "def_use_extractor" in by_lang["javascript"]["blockers"]
+    # The catalog the uncovered language would have served is the disclosure
+    # that matters: 83 JavaScript sinks are unreachable by data flow.
+    assert by_lang["javascript"]["catalog_sinks"] > 50
+
+    # The a2 fact, machine-readable rather than prose (R16). §3a is
+    # confirm-only, so no flow's INCLUSION was decided by data flow.
+    assert scope["inclusion_decided_by"] == "call_graph_reachability"
+    assert scope["findings_total"] == sum(
+        scope["findings_by_analysis_method"].values(),
+    )
+
+
+def test_published_scope_reaches_the_text_view(tmp_path: Path, capsys) -> None:
+    """A disclosure that exists only under ``--json`` is half shipped.
+
+    WI-bifob's exclusion bucket reached the dataclass and never the text
+    renderer, so a text reader of a violated claim never learned flows had
+    been set aside. This is the same disclosure on the same surface, pinned.
+    """
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "leak.js").write_text(_JS_LEAK, encoding="utf-8")
+
+    out = _run_text(tmp_path, capsys)
+
+    assert "Data-flow coverage" in out
+    assert "javascript" in out
+    assert "def_use_extractor" in out
+    assert "call-graph reachability" in out
