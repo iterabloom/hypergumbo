@@ -85,14 +85,31 @@ def test_baseline_uses_merge_base_not_stale_marker() -> None:
     )
 
 
-def test_baseline_detection_still_failover_aware() -> None:
-    """1a/1d must PRESERVE failover-awareness: the merge-base anchor is the
-    authoritative remote's dev (selfh under failover), not the stale origin/dev."""
+def test_baseline_anchors_on_merge_base_with_authoritative_dev() -> None:
+    """1a/1d: the merge-base anchor is the authoritative remote's dev.
+
+    THIS TEST USED TO ASSERT THE OPPOSITE (WI-kasin) — it required
+    ``get_baseline`` to keep a failover branch re-anchoring onto a second
+    remote. That was right while the failover existed; WI-hajif step 1 retired
+    it, and the retirement's own recurrence gate forbids the string this test
+    demanded. Both failed on clean dev and neither was selected by any ordinary
+    PR, so the contradiction sat in the suite unnoticed.
+
+    What survives the retirement is the anchoring property itself, which is
+    what 1a/1d was actually about: the baseline is the branch's own fork point
+    against the authoritative dev, not a stale marker. The sibling test above
+    pins the negative half (no ``last-green-sha.txt`` consumption); this pins
+    the positive half.
+    """
     body = _get_baseline_body(_text())
-    assert "CI_FAILOVER_ACTIVE" in body, (
-        "get_baseline dropped failover detection; under permanent failover the "
-        "merge-base would anchor on a stale origin/dev and over-select the whole "
-        "tree. Keep the CI_FAILOVER_ACTIVE branch selecting selfh/dev."
+    assert "git merge-base HEAD" in body, (
+        "get_baseline no longer computes a merge-base; without it the baseline "
+        "is not the branch's own fork point and the changed set inflates with "
+        "already-merged files."
+    )
+    assert "origin/dev" in body, (
+        "get_baseline does not anchor on origin/dev, the only authoritative "
+        "remote since WI-hajif retired the failover."
     )
 
 

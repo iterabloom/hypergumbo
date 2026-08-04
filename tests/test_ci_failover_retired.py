@@ -48,13 +48,61 @@ RETIRED_FILES = [
 # `apply_failover_overrides`, and the tracker package still parsed the flag file
 # into a `_FailoverState`. A gate's "0 violations" is only ever scoped to what it
 # actually scans (L23), and the failover reached further than the forge scripts.
+# TEST TREES ARE SCANNED TOO (WI-kasin), and the reason is the third instance
+# of this guard's own header lesson. The gate scanned five source trees and no
+# test tree, so it passed while TWO tests in `packages/hypergumbo-core/tests`
+# still ASSERTED the retired string was present — demanding exactly what this
+# file forbids. Both failed on clean dev and neither was ever selected by the
+# per-PR gate, because nothing but `scripts/smart-test` maps to them (L48: a
+# test that cannot be selected is indistinguishable from one that passes).
+# A retirement sweep that updates the code and the recurrence gate but leaves
+# the tests behind produces a suite that contradicts itself, with both halves
+# green in CI.
 SCANNED_DIRS = [
     "scripts",
     ".githooks",
     ".agent/hooks",
     "packages/hypergumbo-tracker/src",
     "packages/hypergumbo-core/src",
+    "packages/hypergumbo-core/tests",
+    "tests",
 ]
+
+# A test that asserts the retirement must NAME the retired tokens to assert
+# their absence, so the guard would flag itself and every sibling written to
+# check the same property. Exempt those by path, deliberately narrow: an
+# exemption keyed on "the file mentions the retirement" would let any file
+# opt out by adding a comment.
+SCAN_EXEMPT = {
+    "tests/test_ci_failover_retired.py",
+    "tests/test_top_level_test_map.py",
+}
+
+# VESTIGIAL RESIDUE, declared as data rather than left invisible (L23).
+#
+# Two KINDS of reference survive a retirement and they are not equally bad.
+# A test that ASSERTS the machinery must exist is broken the moment it is
+# retired — two of those were found failing on clean dev and are fixed.
+# A test that defensively SCRUBS a dead env var, or stubs a dead function to a
+# no-op inside a fixture, asserts nothing and cannot resurrect anything; it is
+# untidy, not wrong. The token regex cannot tell them apart, so the second kind
+# is listed here instead of silently widening the regex or quietly narrowing
+# the scan.
+#
+# THIS LIST MAY ONLY SHRINK. `test_residue_list_has_no_dead_entries` fails if an
+# entry stops referencing the tokens, so a cleanup cannot leave the list stale,
+# and a NEW offender is not covered by it and fails the main gate. Tracked for
+# removal on WI-kasin's follow-up.
+KNOWN_VESTIGIAL_RESIDUE = {
+    # env-scrub lists naming the retired forge's credential vars
+    "tests/_forge_github_harness.py",
+    "tests/test_autopr_result_sentinel.py",
+    "tests/test_autopr_title_desc_flags.py",
+    "tests/test_autopr_tracker_id.py",
+    "tests/test_forge_backend_github.py",
+    # fixture shell script stubbing apply_failover_overrides to a no-op
+    "tests/test_merge_pr_close.py",
+}
 
 # Config files that must not advertise the retired machinery.
 SCANNED_FILES = ["CODEOWNERS", ".env.template"]
@@ -82,8 +130,11 @@ def _scanned_files() -> list[Path]:
         if not root.is_dir():
             continue
         for p in sorted(root.rglob("*")):
-            if p.is_file() and not p.name.endswith((".pyc", ".json")):
-                out.append(p)
+            if not p.is_file() or p.name.endswith((".pyc", ".json")):
+                continue
+            if str(p.relative_to(REPO_ROOT)) in SCAN_EXEMPT:
+                continue
+            out.append(p)
     return out
 
 
@@ -95,6 +146,19 @@ def test_scanned_tree_is_non_empty() -> None:
     roots = {str(f.relative_to(REPO_ROOT)).split("/")[0] for f in files}
     for required in (".agent", "packages", "scripts"):
         assert required in roots, f"guard does not reach {required}: {sorted(roots)}"
+
+    # TOP-LEVEL ROOTS ARE NOT ENOUGH, and this floor learned that from its own
+    # mutation test. Checking only `packages` is satisfied by the src tree
+    # alone, so dropping `packages/hypergumbo-core/tests` from SCANNED_DIRS —
+    # the tree where two contradicting tests actually sat — left this floor
+    # green. A floor that a real regression can walk under is not a floor
+    # (L18: widen a gate by PROPERTY, not just by scope).
+    rels = {str(f.relative_to(REPO_ROOT)) for f in files}
+    for tree in ("packages/hypergumbo-core/tests", "tests"):
+        assert any(r.startswith(tree + "/") for r in rels), (
+            f"guard does not reach {tree}; a retirement sweep that updates the "
+            "code but leaves a test asserting the opposite would pass"
+        )
 
 
 def test_retired_files_are_gone() -> None:
@@ -114,11 +178,34 @@ def test_no_source_references_failover_machinery() -> None:
             text = p.read_text(encoding="utf-8", errors="ignore")
         except OSError:  # pragma: no cover - unreadable file
             continue
-        if _TOKENS.search(text):
-            offenders.append(str(p.relative_to(REPO_ROOT)))
+        rel = str(p.relative_to(REPO_ROOT))
+        if _TOKENS.search(text) and rel not in KNOWN_VESTIGIAL_RESIDUE:
+            offenders.append(rel)
     assert not offenders, (
         "the CI failover is retired (WI-hajif); these still reference its "
         f"machinery: {offenders}"
+    )
+
+
+def test_residue_list_has_no_dead_entries() -> None:
+    """The residue list may only SHRINK (L33).
+
+    A suppression list that outlives what it suppresses is worse than no list:
+    it reads as "known and accepted" while covering nothing, and the next
+    genuine offender to land at that path inherits the exemption. Fail when an
+    entry no longer references the tokens, so a cleanup has to delete its line.
+    """
+    stale: list[str] = []
+    for rel in sorted(KNOWN_VESTIGIAL_RESIDUE):
+        p = REPO_ROOT / rel
+        if not p.is_file():
+            stale.append(f"{rel} (file gone)")
+            continue
+        if not _TOKENS.search(p.read_text(encoding="utf-8", errors="ignore")):
+            stale.append(f"{rel} (cleaned)")
+    assert not stale, (
+        "these entries no longer reference the retired machinery and must be "
+        f"removed from KNOWN_VESTIGIAL_RESIDUE: {stale}"
     )
 
 
