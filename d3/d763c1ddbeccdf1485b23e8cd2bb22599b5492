@@ -1,0 +1,44 @@
+Original commit body from 7d74b656bf32210d2873a58118758cdfc87d3d21:
+
+Two runs of the identical binary on an unchanged repo reported DIFFERENT paths
+for the same flow -- same source, same sink, same label, different middle hop,
+both hops genuine callers. Adjacency is set-valued, so BFS dequeue order
+followed str set iteration and therefore PYTHONHASHSEED; the parent map
+recorded whichever predecessor happened to arrive first. Measured on kserve:
+2 of 182 distinct flows differed run to run.
+
+CAUSE CONFIRMED BEFORE FIXING, NOT ASSUMED. A direct probe with eight equally-
+valid middle hops: a fixed seed produced an identical path twice, and five
+different seeds produced four distinct witnesses (midA / midF / midE / midF /
+midC). The item was filed with the cause marked "suspected"; this is what
+promoted it.
+
+NOT COSMETIC. A user diffing two runs on an unchanged repo saw evidence churn
+with no cause, which trains them to distrust the diff. It also made any
+path-level A/B between builds unreliable -- it cost real time during the
+WI-kabif measurement, where a first reading of "30 flows appeared and
+disappeared" turned out to be entirely this artifact.
+
+FIXED BY A DECLARED TIE-BREAK, AND THE FIELD NOW SAYS WHAT IT IS. BFS visits
+each node's callees in sorted id order, so the witness is a deterministic
+function of the input. The item explicitly warned against doing only that and
+continuing to call the result "the path", so path's docstring now states it is
+ONE witness among possibly several equally-valid routes, that the others are
+real and unlisted, and that a consumer needing "every route" must not read it
+as if it were that.
+
+SCOPE MEASURED RATHER THAN ASSUMED. Both propagators shared the defect (they
+share _build_adjacency), and after the sanitizer-barrier refactor the entire
+blast radius is TWO LINES in one helper. Repo-wide sweep for the same shape
+found one other set-iterating traversal (compact.py's component-root
+accumulation), which is order-independent -- it accumulates into a set and
+reads only len().
+
+VERIFIED AGAINST THE ITEM'S OWN FILED REPRO: kserve, two runs, 0 flows with a
+differing path (was 2). Pinned by an in-process test asserting the specific
+declared winner (with a non-vacuity floor proving the fixture really offers
+competing witnesses) plus a subprocess test across five hash seeds -- the
+latter contributes no coverage, and exists because the tie-break assertion is
+a proxy while the cross-seed run is the property itself.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
