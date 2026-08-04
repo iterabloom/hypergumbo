@@ -16,6 +16,7 @@ from hypergumbo_core.paths import (
     is_test_file,
     is_test_node,
     is_utility_file,
+    classify_test_file,
 )
 
 
@@ -318,6 +319,95 @@ class TestIsTestFile:
         assert is_test_file("main.py") is False
         assert is_test_file("src/utils.py") is False
         assert is_test_file("lib/test.py") is False  # test is the filename, not dir
+
+
+class TestTestFileReason:
+    """``classify_test_file`` names WHICH rule fired, and is the single classifier.
+
+    ``is_test_file`` is deliberately BROAD — beyond test code it flags
+    ``bench/``, ``fixtures/``, ``testdata/``, ``mocks/``, ``harnesses/``,
+    ``fv/`` and more. That breadth is correct for its callers (deprioritize as
+    a non-production entrypoint) but it makes any disclosure keyed on it
+    unreadable: a taint verdict saying "3 flows excluded as test_sourced" when
+    the real reason is a benchmark directory tells the reader something false.
+    The owner ruling was to KEEP the breadth and DISCLOSE which rule fired.
+
+    The reason function is the implementation and ``is_test_file`` delegates to
+    it, so there is exactly one classifier. A second predicate that re-derived
+    the categories would drift from the boolean on the first edit — and
+    "when a production classification exists for the thing you are counting,
+    counting it yourself IS the bug" (L53) is a lesson this codebase has
+    already paid for five times.
+    """
+
+    def test_is_test_file_is_exactly_reason_is_not_none(self) -> None:
+        """The boolean and the reason cannot disagree, by construction.
+
+        Property over a corpus spanning every branch of the classifier plus
+        non-matching controls. This is the test that makes the refactor safe:
+        if any path's boolean changed, this fails.
+        """
+        corpus = [
+            "test_main.py", "src/test_utils.py", "main_test.py",
+            "utils_test.go", "main.test.js", "test-reach.c",
+            "spec_helper.rb", "main_spec.rb", "main.spec.ts",
+            "src/consensus/tests.rs", "src/testonly.rs",
+            "db_mock.py", "mock_db.py", "svc_fake.go", "fake_svc.go",
+            "tests/a.py", "test/a.py", "t/a.pl", "__tests__/a.js",
+            "testing/a.go", "testsuite/a.java", "testsuite-providers/a.java",
+            "fakes/a.go", "mocks/a.go", "transportfakes/a.go", "netmocks/a.go",
+            "fixtures/a.json", "testdata/a.json", "testfixtures/a.java",
+            "testutils/a.py", "testutil/a.go",
+            "testhelper/a.py", "testhelpers/a.py",
+            "fv/a.go", "harnesses/a.py",
+            "bench/a.rs", "benches/a.rs", "benchmark/a.go", "benchmarks/a.go",
+            "test-artifacts/a.txt", "spec/models/user.rb",
+            # Controls — none of these may be classified.
+            "main.py", "src/utils.py", "lib/test.py",
+            "airflow/listeners/spec/a.py", "src/latest.py", "contest/a.py",
+        ]
+        for path in corpus:
+            assert is_test_file(path) is (classify_test_file(path) is not None), path
+
+    def test_corpus_covers_both_outcomes(self) -> None:
+        """Non-vacuity floor: the property above must see both answers.
+
+        A corpus that happened to be all-True (or all-False) would satisfy the
+        equivalence trivially while proving nothing about either branch.
+        """
+        assert is_test_file("tests/a.py") is True
+        assert is_test_file("main.py") is False
+
+    def test_benchmark_is_not_reported_as_a_test(self) -> None:
+        """The case the owner named: a bench dir must not read as `test`."""
+        for path in ("bench/a.rs", "benches/a.rs",
+                     "benchmark/a.go", "benchmarks/a.go"):
+            assert classify_test_file(path) == "benchmark", path
+
+    def test_fixture_is_not_reported_as_a_test(self) -> None:
+        for path in ("fixtures/a.json", "testdata/a.json",
+                     "testfixtures/a.java"):
+            assert classify_test_file(path) == "fixture", path
+
+    def test_mock_is_its_own_reason(self) -> None:
+        for path in ("mocks/a.go", "fakes/a.go", "transportfakes/a.go",
+                     "db_mock.py", "fake_svc.go"):
+            assert classify_test_file(path) == "mock", path
+
+    def test_test_support_is_its_own_reason(self) -> None:
+        """Helpers and harnesses are scaffolding, not tests themselves."""
+        for path in ("testutils/a.py", "testutil/a.go", "testhelper/a.py",
+                     "testhelpers/a.py", "harnesses/a.py", "fv/a.go"):
+            assert classify_test_file(path) == "test_support", path
+
+    def test_actual_tests_report_test(self) -> None:
+        for path in ("test_main.py", "main_test.go", "tests/a.py",
+                     "spec/models/user.rb", "src/consensus/tests.rs"):
+            assert classify_test_file(path) == "test", path
+
+    def test_non_matching_path_has_no_reason(self) -> None:
+        assert classify_test_file("main.py") is None
+        assert classify_test_file("src/utils.py") is None
 
 
 class TestIsUtilityFile:

@@ -72,7 +72,7 @@ import yaml
 
 from .edge_types import is_grpc_rpc_implementation
 from .io_boundary import KNOWN_IO_BOUNDARIES, BoundaryMap
-from .paths import is_migration_file, is_test_file
+from .paths import classify_test_file, is_migration_file
 
 
 # Schema version for the ``verify-claims --json`` envelope (WI-nulot / INV-gatog).
@@ -98,7 +98,19 @@ from .paths import is_migration_file, is_test_file
 # This release also stops hardcoding the string ``approximate`` into every
 # violated verdict's ``details`` — that literal made the label unobservable
 # from BOTH surfaces at once, so no consumer could have noticed the difference.
-VERIFY_CLAIMS_SCHEMA_VERSION = "1.4"
+# 1.5 SPLITS the ``excluded_flows`` bucket keys by which rule fired. NOT purely
+# additive, and that is the point: a flow formerly counted under
+# ``test_sourced`` may now appear under ``benchmark_sourced`` /
+# ``fixture_sourced`` / ``mock_sourced`` / ``test_support_sourced``. Which
+# flows are excluded does not change at all — ``paths.classify_test_file`` IS
+# ``is_test_file``, the boolean being defined as "reason is not None" — only
+# what they are called. A 1.4 consumer summing the dict still gets the right
+# total; one keyed on the literal ``test_sourced`` now sees only genuine test
+# code, which is what that key always claimed to mean. This release also
+# splices ``excluded_flows`` and ``flow_origins`` into the VIOLATED path's
+# ``details``, closing WI-bifob's stated but unimplemented contract that
+# exclusions are disclosed on both paths.
+VERIFY_CLAIMS_SCHEMA_VERSION = "1.5"
 # WI-kikis: cap on the per-verdict structured drill-down evidence list. A
 # violated claim can have thousands of flows (3,969 on the self-corpus); the
 # deduplicated ``evidence`` list is bounded to this many DISTINCT flows so the
@@ -188,7 +200,13 @@ class ClaimVerdict:
             default left out — not a silent filter. A silent drop would make
             the tool quieter without making it more honest, and the vanished
             count is exactly what a later session rediscovers as a mystery
-            regression. Keys are ``test_sourced`` and ``migration_sourced``.
+            regression. Keys are ``migration_sourced`` plus one per rule that
+            ``paths.classify_test_file`` can fire: ``test_sourced``,
+            ``mock_sourced``, ``fixture_sourced``, ``benchmark_sourced``,
+            ``test_support_sourced``. The split exists because
+            ``is_test_file`` is deliberately broad and reporting a ``benches/``
+            path as ``test_sourced`` sends the reader looking for a test that
+            does not exist. Which flows are excluded is unchanged by the split.
         flow_origins: Counts of the flows this verdict IS about, keyed by the
             io_primitives boundary their source came from (WI-vazal). Empty
             when there are no flows. The taint label alone cannot express
@@ -839,6 +857,17 @@ def _flow_evidence_dict(v: "TaintFlowFinding") -> dict[str, Any]:
 
 
 #: Disclosure-bucket keys for flows excluded from a claim verdict (WI-bifob).
+#:
+#: ``SOURCE_SCOPE_TEST`` is no longer the only test-side bucket. ``is_test_file``
+#: is deliberately BROAD — it also matches ``bench/``, ``fixtures/``,
+#: ``testdata/``, ``mocks/``, ``harnesses/`` and ``fv/`` — and reporting all of
+#: that as ``test_sourced`` told the reader something false about, say, a
+#: benchmark directory. The owner ruling (2026-08-03) was to KEEP the breadth
+#: and DISCLOSE which rule fired, so the bucket key now carries the reason
+#: ``paths.classify_test_file`` returned. ``test_sourced`` keeps its exact
+#: former meaning for genuine test code, so a consumer keyed on it does not
+#: silently lose the case it cared about — it stops being credited with the
+#: others.
 SOURCE_SCOPE_PRODUCTION = "production"
 SOURCE_SCOPE_TEST = "test_sourced"
 SOURCE_SCOPE_MIGRATION = "migration_sourced"
@@ -878,8 +907,14 @@ def _source_scope(finding: "TaintFlowFinding") -> str:
     path = _symbol_path_slot(getattr(finding, "source_symbol", "") or "")
     if not path:
         return SOURCE_SCOPE_PRODUCTION
-    if is_test_file(path):
-        return SOURCE_SCOPE_TEST
+    # ``classify_test_file`` IS ``is_test_file`` — the boolean is defined as
+    # "reason is not None" — so asking for the reason changes which flows are
+    # excluded not at all. It changes only what the disclosure is allowed to
+    # call them. Re-deriving the categories here instead would put a second
+    # copy of a production classification in a consumer (L53).
+    reason = classify_test_file(path)
+    if reason is not None:
+        return f"{reason}_sourced"
     if is_migration_file(path):
         return SOURCE_SCOPE_MIGRATION
     return SOURCE_SCOPE_PRODUCTION
@@ -1057,6 +1092,33 @@ def verify_taint_claim(
             f"{count} {name}" for name, count in sorted(confidences.items())
         )
 
+    # WI-bifob's own stated contract is that exclusions are disclosed "on the
+    # CONFIRMED path as well as the violated one". Only the confirmed path
+    # implemented it: on the violated path `excluded_flows` was attached to the
+    # dataclass and never rendered, and `cli.py` prints `details` alone — so a
+    # TEXT-mode reader of a violated claim never learned that flows were set
+    # aside by a policy they did not choose. `flow_origins` (WI-vazal) reached
+    # no text surface at all, on either path, which mattered most exactly where
+    # it was measured: all 140 flows on pretix's largest violated claim are
+    # database-read-to-database-write, and that is decision-changing.
+    #
+    # Both are spliced into `details` rather than rendered by the CLI, because
+    # `details` is where this module already puts the confirmed-path exclusion
+    # clause — one home for the prose, not two.
+    origins_clause = ", ".join(
+        f"{count} {name}" for name, count in sorted(flow_origins.items())
+    )
+    excluded_clause = ""
+    if excluded_flows:
+        parts = ", ".join(
+            f"{count} {reason}"
+            for reason, count in sorted(excluded_flows.items())
+        )
+        excluded_clause = (
+            f" Excluded from this verdict as non-production: {parts} "
+            f"(pass --include-non-production-sources to count them)."
+        )
+
     return ClaimVerdict(
         claim_id=claim.id,
         claim_text=claim.text,
@@ -1070,8 +1132,9 @@ def verify_taint_claim(
             f"{len(violations)} unsanitized {tf.source_taint} flow(s)"
             f"{distinct_clause} "
             f"to {tf.prohibited_sink_zone} zone "
-            f"[{tf.source_taint} confidence: {confidence_clause}]: "
-            f"{paths_desc}{suffix}"
+            f"[{tf.source_taint} confidence: {confidence_clause}] "
+            f"[origins: {origins_clause}]: "
+            f"{paths_desc}{suffix}{excluded_clause}"
         ),
         excluded_flows=excluded_flows,
         flow_origins=flow_origins,
