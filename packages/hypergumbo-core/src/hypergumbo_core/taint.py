@@ -1156,12 +1156,26 @@ def _qualified_callee(symbol_id: str) -> str:
     split of a colon-tolerant format is exactly what ``_symbol_path_slot``'s
     header warns about.
 
-    Returns "" for an id with no module evidence (``python:external:0-0:print:
-    unresolved`` yields module ``external``, which no catalogue declares), so
-    such a callee stays uncatalogued and therefore unknown. That is the safe
-    direction: an unknown callee keeps a branch open.
+    THE MODULE HALF GOES THROUGH ``_module_from_symbol_path``, NOT THE RAW
+    SLOT (INV-rozaj). An in-repo id carries a *file path* where an external
+    one carries a module, so composing the raw slot embeds the source
+    extension in the middle of the key —
+    ``python:src/app/views.py:10-20:handler:function`` yielded
+    ``src/app/views.py.handler`` — which no declared summary can equal. That
+    made first-party callees structurally uncatalogueable while looking like
+    an ordinary catalogue miss. ``_module_from_symbol_path`` was added by
+    WI-damir to normalise exactly this and was sitting sixty lines below;
+    using it here is the L53 rule applied to the code rather than to a
+    measurement ("when a production classification exists for the thing you
+    are computing, computing it yourself IS the bug").
+
+    Returns "" for an id with no module evidence — ``python:external:0-0:
+    print:unresolved`` has the placeholder ``external`` in the module slot,
+    and a key built from it is a well-formed string naming nothing. An empty
+    key keeps such a callee uncatalogued and therefore unknown, which is the
+    safe direction: an unknown callee keeps a branch open.
     """
-    module = _extract_callee_module(symbol_id)
+    module = _module_from_symbol_path(symbol_id)
     name = _extract_callee_name(symbol_id)
     if not module or not name or name == symbol_id:
         return ""
@@ -1902,12 +1916,20 @@ def _use_site_terminates(
     one of them terminates would be a guess dressed as an analysis.
 
     **Qualified names only.** ``load_function_summaries`` also indexes every
-    entry under its bare last component — 11 of its 33 keys are such aliases,
-    including ``log``, ``map``, ``filter`` and ``parse``. A short-name match
-    would let ``audit.log(secret)`` resolve to ``console.log`` and read as
-    terminating. Since a false "terminates" removes a real finding, the alias
-    index is never consulted; the caller passes qualified names and the lookup
-    is exact.
+    entry under its bare last component, and those aliases include ``log``,
+    ``map``, ``filter``, ``parse``, ``get``, ``info`` and ``error`` — roughly
+    two fifths of the loaded index. A short-name match would let
+    ``audit.log(secret)`` resolve to ``console.log`` and read as terminating.
+    Since a false "terminates" removes a real finding, the alias index is
+    never consulted; the caller passes qualified names and the lookup is
+    exact.
+
+    The exact alias count is deliberately not written here: it moved 33 → 108
+    → 113 across two catalogue edits in two days, so a hardcoded figure is a
+    rationale that decays with nobody deciding anything (L50). The *property*
+    this argument rests on — that the index contains bare short names capable
+    of colliding — is pinned executably by
+    ``test_alias_index_contains_dangerous_short_names``.
     """
     if not callees_at or not summaries:
         return False

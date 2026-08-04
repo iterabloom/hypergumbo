@@ -33,6 +33,47 @@ summaries:
     side_effect: true
 
   # --- logging: the canonical Python terminating family ---
+  #
+  # DECLARED TWICE ON PURPOSE, AND ONLY ONE FORM CAN FIRE TODAY (INV-rozaj).
+  # The §4 lookup key is `{module-slot}.{name}`, so which form matches depends
+  # entirely on what the analyzer put in the callee id's module slot. Measured
+  # on a self-survey (72,822 call edges, 6,685 distinct callees): of 64
+  # logger-method call sites, the module slots present are `warnings` (51),
+  # `external` (12) and one file path. NOT ONE carries `logging.Logger`.
+  #
+  #   logging.info(msg)      -> python:logging:0-0:info:external_symbol
+  #                          -> key `logging.info`          <- CAN match
+  #   logger.info(msg)       -> python:external:0-0:info:unresolved
+  #                          -> key ``                      <- cannot match
+  #                             (receiver unresolved; `logger = getLogger(...)`
+  #                             binds from a CALL expression, which
+  #                             _resolve_receiver_hint does not follow)
+  #
+  # The bare-module entries are added because they are the form that actually
+  # occurs. The `logging.Logger.*` entries are KEPT rather than deleted: they
+  # are correct, they cost nothing (an entry that matches no key is never
+  # consulted), and they are what will fire if receiver resolution ever
+  # upgrades the slot. Recorded here rather than left as silent dead data.
+  - function: "logging.debug"
+    param_to_return: {}
+    side_effect: true
+
+  - function: "logging.info"
+    param_to_return: {}
+    side_effect: true
+
+  - function: "logging.warning"
+    param_to_return: {}
+    side_effect: true
+
+  - function: "logging.error"
+    param_to_return: {}
+    side_effect: true
+
+  - function: "logging.exception"
+    param_to_return: {}
+    side_effect: true
+
   - function: "logging.Logger.debug"
     param_to_return: {}
     side_effect: true
