@@ -82,6 +82,50 @@ run_package() {
         -q --tb=no 2>&1 > "/tmp/pkg-cov-$pkg.log"
 }
 
+# Report WHY a package failed. "pytest exited non-zero" has two very different
+# causes and this script used to print the coverage-gap explanation for both
+# (WI-kasin): a run whose real problem was two FAILED tests reported
+#
+#     [core] ❌ FAILED
+#     Coverage gaps for core:
+#     <empty>
+#     ❌ Some packages have coverage gaps when tested in isolation.
+#
+# while its own log said "TOTAL 29770 0 100%" and "Required test coverage of
+# 100% reached". Both suggested fixes — move the test to the other package, stop
+# using subprocess — were wrong advice for the actual failure, so a reader who
+# trusted the banner went hunting for a test-placement problem that did not
+# exist. Print the failing test ids when tests failed, and reserve the
+# coverage-gap advice for an actual shortfall.
+report_failure() {
+    local pkg="$1"
+    local log="/tmp/pkg-cov-$pkg.log"
+    local failed_tests
+    failed_tests=$(grep -E "^(FAILED|ERROR) " "$log" 2>/dev/null || true)
+
+    if [[ -n "$failed_tests" ]]; then
+        echo "Test failures in $pkg (NOT a coverage gap):"
+        echo "$failed_tests" | sed 's/^/  /'
+        echo ""
+        return
+    fi
+
+    echo "Coverage gaps for $pkg:"
+    grep -E "^packages/.*\s+[0-9]+\s+[1-9][0-9]*\s+[0-9]+%" "$log" || true
+    echo ""
+}
+
+# Did any failure come from failing tests rather than missing coverage?
+any_test_failures() {
+    local pkg
+    for pkg in "$@"; do
+        if grep -qE "^(FAILED|ERROR) " "/tmp/pkg-cov-$pkg.log" 2>/dev/null; then
+            return 0
+        fi
+    done
+    return 1
+}
+
 MODE="parallel"
 if [[ "$SERIAL" == "true" ]] || [[ ${#TARGETS[@]} -le 1 ]]; then
     MODE="serial"
@@ -108,9 +152,7 @@ if [[ "$MODE" == "serial" ]]; then
             echo "[$pkg] ❌ FAILED"
             FAILED+=("$pkg")
             echo ""
-            echo "Coverage gaps for $pkg:"
-            grep -E "^packages/.*\s+[0-9]+\s+[1-9][0-9]*\s+[0-9]+%" "/tmp/pkg-cov-$pkg.log" || true
-            echo ""
+            report_failure "$pkg"
         fi
         echo ""
     done
@@ -152,10 +194,14 @@ echo "  Failed: ${FAILED[*]:-none}"
 if [[ ${#FAILED[@]} -gt 0 ]]; then
     echo ""
     for pkg in "${FAILED[@]}"; do
-        echo "Coverage gaps for $pkg:"
-        grep -E "^packages/.*\s+[0-9]+\s+[1-9][0-9]*\s+[0-9]+%" "/tmp/pkg-cov-$pkg.log" || true
-        echo ""
+        report_failure "$pkg"
     done
+    if any_test_failures "${FAILED[@]}"; then
+        echo "❌ Some packages have FAILING TESTS. Coverage is a separate"
+        echo "   question and may well be fine — fix the tests first, then"
+        echo "   re-run to see whether any coverage gap remains."
+        exit 1
+    fi
     echo "❌ Some packages have coverage gaps when tested in isolation."
     echo ""
     echo "This happens when:"
