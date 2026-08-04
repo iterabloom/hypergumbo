@@ -1,0 +1,102 @@
+Original commit body from 805d5f5c8c4d1067ee87407a692d7817a48f1343:
+
+Clause (a3) requires that a reader can tell data-flow-adjudicated flows from
+call-reachability-only ones FROM THE EMITTED RECORD, and that "the scope of
+data-flow coverage may not be left to assumption". Neither half held.
+
+THE LABEL WAS NOT A PROPERTY OF THE FLOW. cmd_verify_claims builds one DDG for
+the whole repo and then dispatches per language on `if ddg_edges:` -- a
+repo-global truthiness test -- so every language ran through
+propagate_taint_ddg whenever ANY language produced DDG edges. A JavaScript
+function is never in ddg_symbols (JavaScript has no def/use extractor), so the
+walk could not run and the finding still came out `ddg_mixed`, whose documented
+meaning is "the walk ran and did not confirm". Reproduced end to end on two
+repos whose JavaScript is byte-identical and which differ by one unrelated
+util.py: `structural` without it, `ddg_mixed` with it. The label is now chosen
+on whether the DDG actually covered the source function -- which is what the
+field's own docstring has always said `structural` meant. No existing test
+moved: all five that assert `ddg_mixed` already place the source function
+inside ddg_symbols, which is exactly why nothing caught this.
+
+NEW `dataflow_coverage` BLOCK, envelope schema 1.6 -> 1.7, additive, and
+rendered on the TEXT surface too -- a disclosure that exists only under --json
+is half shipped (WI-bifob's exclusion bucket reached the dataclass and never
+the text renderer). One row per analyzed language with a taint catalog: the
+catalog it would serve, and four independent capability bits (cfg_mapping,
+atomic_statement, def_use_extractor, ddg_spec) with `dataflow_capable` their
+conjunction and `blockers` naming the missing ones. Four bits rather than one
+flag because each is INDIVIDUALLY sufficient to keep the machinery silently
+inert: Rust shipped an extractor in March and emitted zero DDG edges for
+months while failing three at once, and Java ships cfg_nodes/java.yaml while
+declaring no atomic_statement and registering no extractor.
+
+TWO CONSTANTS STATE WHAT NO PER-RUN MEASUREMENT CAN.
+  inclusion_decided_by = "call_graph_reachability" -- ADR-0017 3a is
+  confirm-only, so every reported flow INCLUDING every `ddg` one was included
+  by call-graph BFS. Reading analysis_method == "ddg" as "inclusion decided by
+  data flow" is the misreading INV-sadah exists for, made twice here already.
+  coverage_granularity = "language" -- capability is NOT a per-function
+  completeness claim; cfg_nodes/go.yaml self-documents that `if err := ...`
+  initializers are invisible to def/use, so a capable language still holds
+  functions the walk cannot see into. WI-joluk is the finer signal.
+Both are declared constants with tests on them, so neither claim can quietly
+outlive its truth (R16).
+
+MEASURED WITH PRODUCTION LOADERS, NOT RE-DERIVED (L53): 553 sources, 1062
+sinks, 12 sanitizers across 15 languages; 274 sinks (25.8%) sit in a
+data-flow-capable language. The campaign plan recorded 244/23% -- rust's 30
+joined when WI-tohuk landed atomic_statement, which is the drift a computed
+table removes. TypeScript is fully capable and has ZERO sinks.
+
+The def/use force-import list moved from cli._build_ddg_for_verify_claims to
+dataflow_scope.ensure_def_use_extractors_registered: both registries populate
+as an import side effect and the coverage table needs them at the same moment,
+and a scope table computed against an empty registry reports every language
+incapable without erroring. One home, not two; the wiring gate follows it. The
+non-vacuity floor for that failure is mutation-tested -- deleting the
+registration call turns `go` into def_use_extractor: false and the test fires.
+
+ALSO: MYPY STRICT RATCHET RESTORED, 682 -> 672 (INV-zogud).
+
+Found while pre-flighting: dev at ffbf8a5b93 produced 682 whole-tree strict
+errors against a committed shrink-only baseline of 672, which ci-complete
+treats as a merge gate. Verified as real drift rather than an instrument
+delta -- the ratchet run at the baseline commit d229793409 reproduces 672
+exactly, and local mypy is the pinned 2.1.0 the baseline records. Nine of the
+ten came from this campaign's own taint PRs.
+
+One was not cosmetic. propagate_taint_ddg binds `line` to an int in its
+statement loop and rebinds it to edge.get("line") sixty lines later, so mypy
+inferred int and reported the guard `isinstance(line, int) and line not in
+sites` as "Left operand of and is always true" -- while the comment three
+lines above states exactly why that guard exists ("a non-int member would
+reach the sink_line > source_line comparison below as a TypeError"). Draining
+that redundant-expr the obvious way deletes a live guard in security-relevant
+code, which is the shape that once took the ratchet to a CLEAN 832 -> 789 on a
+rewrite deleting 43 live guards. The same function reused `site` for both an
+int call-line and a (dst, sink) tuple, making its deduplication membership
+test read as a dead container check. Both fixed by giving the second binding
+its own name; no runtime behaviour changes.
+
+Three more were a real signature mismatch: _ddg_taint_reaches and
+_use_site_terminates declared dict[..., frozenset[str]] for parameters every
+production caller supplies as defaultdict(set). dict is INVARIANT in its value
+type, so that is three genuine errors at the one call site that matters. Both
+now declare Mapping[..., AbstractSet[str]], which is what they actually
+require. The remaining two: go_def_use's _HANDLERS is typed as the callable it
+holds rather than Any, and ddg_build's get_language call carries a documented
+cast (fingerprint.py makes the identical call and carries the identical error
+in the accepted baseline; left alone so this diff stays scoped to its own
+drift). The baseline file is NOT raised -- a shrink-only baseline may only
+ratchet down, and raising it to accept a breach ratifies the drift (L33).
+
+INV-karud stays VIOLATED. (a3) is met; (a1) is Phase 5, (a2) stays vacuously
+true while 3a is confirm-only, and (b) carries three filed limits. Closing on
+one clause would be a partition dressed as a resolution (L14).
+
+Verification: smart-test 4399 passed / 2 skipped / 16 xfailed, 100% coverage
+on changed source files; check-package-coverage 6/6 packages at 100% in
+isolation; ruff and bandit clean; all five generated-doc --check gates pass;
+check-mypy-ratchet 672, delta +0.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
