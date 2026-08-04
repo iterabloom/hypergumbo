@@ -1,0 +1,70 @@
+Original commit body from 53087a6e432511216a8b2378591cdc22b038a31b:
+
+The section 3a walk's index was keyed (symbol_id, def_line) with
+DdgEdge.variable DISCARDED, merging the use-sets of every variable defined on
+one line. Reproduced on real source through the real pipeline, not a
+hand-built dict:
+
+  6   server = await asyncio.start_server(...)   # the SOURCE
+  7   keep = str(server); path = name            # uses server, defines path
+  8   os.mkdir(path)                             # the SINK, on `path`
+
+`path` derives from the parameter `name`, so nothing flows from source to
+sink. The production DDG emits `server def@6 -> use@7`, `keep def@7 -> use@9`
+and `path def@7 -> use@8`; the line-keyed index collapses the last two into
+`def_line 7 -> {8, 9}`, the walk steps 6 -> 7 -> 8, hits the sink line, and
+reports a dependence that does not exist. A security tool asserting a
+precision it did not have is what INV-sadah forbids -- and this sat inside the
+fix FOR INV-sadah.
+
+VARIABLE-KEYING ALONE IS NOT THE FIX, which matters because it looks like it
+should be. `path` genuinely IS defined at line 7, so separating the index
+entries still leaves "which variable defined here inherits from `server`?"
+unanswered, and the edge set cannot answer it. The STATEMENT's own
+defines/uses can -- measured on the fixture, line 7 yields two rows:
+
+    defines=['keep'] uses=['server']      <- inherits
+    defines=['path'] uses=['name']        <- does not
+
+RepoDdg now carries stmt_defuse, collected where populate_def_use_for_cfg had
+already run and the values were being thrown away. The walk follows a hop only
+when a statement at the use line consumes the tainted variable.
+
+EXACTLY ONE CELL MOVES, and the other two arms are controls. Verdict
+composition {ddg: 2, ddg_mixed: 1} -> {ddg: 1, ddg_mixed: 2}: `conflated`
+demoted to approximate, `connected` (a real dependence) KEEPS precise,
+`disconnected` (no dependence, walk escapes) unchanged. RECALL IS UNTOUCHED --
+all three flows still reported, because section 3a confirms and never refutes,
+so this costs precision-of-label and never a finding.
+
+THE TEST NAMED FOR THE LABEL NEVER ASSERTED THE LABEL.
+test_ddg_labels_a_data_connected_flow_as_precise contained "precise" only in
+its name and docstring; its sole assertion was recall. The label section 3a
+exists to earn had NO test anywhere in the corpus, which is why an unearned one
+shipped in #188/#192 and survived three PRs. It now asserts both arms.
+
+MISSING STATEMENT DATA DEGRADES SAFELY, and that is pinned. A caller that omits
+stmt_defuse -- or a language whose def/use pass annotates no statements --
+cannot justify a hop, so the finding falls back to approximate rather than
+silently confirming. A companion test asserts the flow is still reported and
+only the label moves. The alternative reading ("no statement data, so assume
+the hop is fine") is precisely what produced the unearned label.
+
+A FIFTH PROPERTY JOINS THE PER-LANGUAGE DDG WIRING GATE. A language emitting
+edges but annotating no statements would lose every confirmation SILENTLY --
+findings keep arriving, only the label quietly degrades -- which is the
+ADR-0017 inertness shape. Property (4) asserts the edges exist; (5) asserts
+they can be interpreted. All four registered languages pass; Go was checked
+explicitly before this landed, since a Go-shaped gap is invisible from Python
+fixtures.
+
+ALSO: the INV-lupav guard added in #199 is now UNREACHABLE and marked so. Seeds
+come from defs_at, built from the same edges as ddg_uses, and every frontier
+append is membership-tested, so a popped pair always has uses. The protection
+did not disappear -- it moved to SEEDING, the earlier and more precise place
+for it. The branch is kept as defensive (without it, a future unvalidated
+append gets a TypeError on `uses & targets` instead of the correct conservative
+answer) and its comment rewritten, because the old one now asserted something
+false about the present.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
