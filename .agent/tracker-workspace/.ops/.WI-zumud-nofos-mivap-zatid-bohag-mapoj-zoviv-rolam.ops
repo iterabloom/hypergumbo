@@ -1,0 +1,31 @@
+- op: create  # e832
+  at: '2026-08-04T09:55:18Z'  # e832
+  by: agent  # e832
+  actor: jgstern_agent  # e832
+  clock: 1  # e832
+  nonce: e832  # e832
+  data:  # e832
+    kind: work_item  # e832
+    title: "Provenance-gate the section 4 lookup: an in-repo path can now shadow a shipped stdlib summary key"  # e832
+    status: todo_hard  # e832
+    priority: 1  # e832
+    parent:  # e832
+    tags:  # e832
+    - taint  # e832
+    - adr_0017  # e832
+    - dataflow  # e832
+    isbefore: []  # e832
+    duplicate_of: []  # e832
+    not_duplicate_of: []  # e832
+    pr_ref:  # e832
+    description: "INTRODUCED BY THE INV-rozaj FIX (PR #200), filed at the same time rather than\ndiscovered later.\n\n_qualified_callee now normalises an in-repo callee's module slot with\n_module_from_symbol_path, which strips the source file extension. That is\ncorrect -- it is what makes a first-party callee catalogueable at all -- but\nthe extension was also an ACCIDENTAL BARRIER:\n\n    before:  go:net/http.go:1-5:Get:function  ->  'net/http.go.Get'\n             'net/http.go.Get' == 'net/http.Get'  ->  False\n    after:   go:net/http.go:1-5:Get:function  ->  'net/http.Get'\n             'net/http.Get'    == 'net/http.Get'  ->  TRUE\n\nSo a repo with a root-level file named after a stdlib module now matches a\nSHIPPED stdlib summary exactly. This is the WI-damir shape (a first-party\nsymbol matching a catalog primitive by name alone) reappearing in the section 4\nlookup rather than in sink matching.\n\nSIZED, NOT ASSUMED. Measured on a hypergumbo self-survey: 42 of 69 shipped\nqualified keys are shadowable in principle, and ZERO collisions occur across\n72,822 call edges / 6,685 distinct callees. So the exposure is real but\nunrealised on this corpus. It has not been measured on the 9-repo cohort.\n\nWHY IT MATTERS ASYMMETRICALLY. A summary that says \"terminates\" lets the\nsection 3a walk CLOSE a branch. A false close removes a real security finding;\na false open only leaves an unknown unknown. This collision can only ever\nproduce false closes, which is the expensive direction.\n\nWHY IT IS NOT URGENT TODAY. Section 3a is confirm-only: the sole call site is\n`_ddg_taint_reaches(...) is True`, so False and None collapse and no branch\nclosure can reach a verdict. The exposure goes live the moment WI-kabif grants\nremoval authority, which is why this is marked isbefore WI-kabif.\n\nCANDIDATE FIXES, none chosen yet:\n  (a) Gate on callee KIND -- an in-repo callee (kind function/method) may match\n      only a PROJECT-LOCAL summary, never a shipped stdlib one. Needs catalogue\n      provenance, which load_function_summaries does not currently carry.\n  (b) Require the callee id's kind slot to be external_symbol/unresolved for\n      any shipped-catalogue match. Simplest, and gives up first-party\n      summaries entirely -- which are currently worth nothing anyway, since no\n      shipped catalogue declares one.\n  (c) Reuse the WI-damir first-party gate (taint.py first-party arm) rather\n      than inventing a third mechanism for the same question.\n\nPrefer (c) if the existing gate's predicate fits; it is the R1 \"the fact\nalready has a home\" reversal.\n\nA test currently PINS the un-guarded behaviour\n(TestQualifiedCallee.test_in_repo_path_can_shadow_a_stdlib_key_known_limitation).\nIt is written to FAIL when a guard lands, so whoever builds the guard is\nprompted to rewrite it into an assertion of the guard rather than silently\nflipping a documented limitation."  # e832
+    fields: {}  # e832
+- op: update  # ada4
+  at: '2026-08-04T09:55:52Z'  # ada4
+  by: agent  # ada4
+  actor: jgstern_agent  # ada4
+  clock: 2  # ada4
+  nonce: ada4  # ada4
+  set: {}  # ada4
+  add:  # ada4
+    isbefore: [WI-kabif-dahad-kufuz-vodoz-misaj-batut-honab-nizib]  # ada4
