@@ -22,6 +22,7 @@ from hypergumbo_core.cfg import DdgEdge
 from hypergumbo_core.function_summaries import (
     FunctionSummary,
     SanitizeEffect,
+    load_function_summaries,
 )
 from hypergumbo_core.taint import (
     _ddg_taint_reaches,
@@ -34,6 +35,7 @@ from hypergumbo_core.taint import (
     TaintSource,
     _match_propagation_entry,
     _module_from_symbol_path,
+    _qualified_callee,
     is_field_tainted,
     load_builtin_taint_catalog,
     load_taint_catalog,
@@ -1300,8 +1302,10 @@ class TestSummariesCollapseEscapes:
         """THE SAFETY TEST. Matching is on the QUALIFIED name only.
 
         ``load_function_summaries`` also indexes every entry under its bare
-        last component — 11 of its 33 keys are such aliases, including ``log``,
-        ``map``, ``filter`` and ``parse``. Accepting a short-name match here
+        last component, and those aliases include ``log``, ``map``, ``filter``
+        and ``parse`` (see
+        ``TestQualifiedCallee.test_alias_index_contains_dangerous_short_names``
+        for the live assertion). Accepting a short-name match here
         would let ``anything.log(secret)`` read as ``console.log`` and
         therefore as terminating, and the consequence of a false "terminates"
         is REMOVING A REAL SECURITY FINDING. Every other error in this walk
@@ -1347,6 +1351,116 @@ class TestSummariesCollapseEscapes:
         assert _ddg_taint_reaches(
             "f", [1], [2], uses, callees_at=callees, summaries=summaries,
         ) is True
+
+
+class TestQualifiedCallee:
+    """The ADR-0017 §4 catalogue lookup key (INV-rozaj).
+
+    A key that no catalogue entry can equal is not a miss, it is a broken
+    lookup — and the difference is invisible from the outside, because both
+    produce "uncatalogued, therefore unknown". These pin the key SHAPE
+    directly rather than inferring it from a walk result.
+    """
+
+    def test_in_repo_callee_key_has_no_file_extension(self) -> None:
+        """THE DEFECT. An in-repo id carries a FILE PATH in the module slot.
+
+        Composing the raw slot with the name embeds ``.py`` / ``.go`` in the
+        middle of the key, so no declared summary could ever equal it and no
+        first-party callee is catalogueable at all.
+        ``_module_from_symbol_path`` exists precisely to normalise this (added
+        by WI-damir for the same class of bug) and must be what builds it.
+        """
+        assert _qualified_callee(
+            "python:src/app/views.py:10-20:handler:function",
+        ) == "src/app/views.handler"
+        assert _qualified_callee(
+            "go:internal/caddyhttp/server.go:100-120:logRequest:function",
+        ) == "internal/caddyhttp/server.logRequest"
+
+    def test_external_callee_keys_are_unchanged(self) -> None:
+        """THE CONTROL, and it is the load-bearing half.
+
+        Every key the shipped catalogues actually declare is external, so a
+        normalisation that "fixed" in-repo ids by breaking these would trade a
+        dead capability for a live regression. ``rpartition(".")`` must leave
+        a dotted module (``go.uber.org/zap``) and a slashed one
+        (``net/http``) alone, and must not mistake a real trailing component
+        (``org/zap``, ``path``) for a file extension.
+        """
+        assert _qualified_callee(
+            "go:fmt:0-0:Printf:external_symbol") == "fmt.Printf"
+        assert _qualified_callee(
+            "go:net/http:0-0:Get:external_symbol") == "net/http.Get"
+        assert _qualified_callee(
+            "go:go.uber.org/zap:0-0:String:external_symbol",
+        ) == "go.uber.org/zap.String"
+        assert _qualified_callee(
+            "python:logging:0-0:info:external_symbol") == "logging.info"
+        assert _qualified_callee(
+            "python:os.path:0-0:join:external_symbol") == "os.path.join"
+
+    def test_unresolved_placeholder_yields_no_key(self) -> None:
+        """``external`` is not a module, and a key built from it is a fiction.
+
+        The old composition produced ``external.print`` — a well-formed string
+        naming nothing, which then sat in the callee index looking like
+        evidence. An empty key keeps the callee uncatalogued, which routes to
+        "unknown" and holds the branch open: the safe direction.
+        """
+        assert _qualified_callee("python:external:0-0:print:unresolved") == ""
+
+    def test_malformed_id_yields_no_key(self) -> None:
+        assert _qualified_callee("not-an-id") == ""
+        assert _qualified_callee("") == ""
+
+    def test_in_repo_path_can_shadow_a_stdlib_key_known_limitation(
+        self,
+    ) -> None:
+        """KNOWN LIMITATION, pinned so it is visible rather than latent.
+
+        The extension was an accidental barrier: ``net/http.go.Get`` could not
+        equal stdlib ``net/http.Get``, and stripping it removes that. A Go
+        repo with ``net/http.go`` at its root now produces a key that matches
+        a shipped stdlib summary exactly, and since a false "terminates"
+        CLOSES a branch, that direction deletes findings rather than adding
+        them — the expensive one.
+
+        Measured, so the risk is sized rather than hand-waved: zero collisions
+        across 72,822 call edges on a self-survey, while 42 of 69 shipped
+        qualified keys are shadowable in principle. Latent today because §3a
+        is confirm-only and nothing acts on ``False``; it goes live the moment
+        WI-kabif grants removal authority, which is why the provenance guard
+        is filed as blocking that item rather than fixed opportunistically
+        here.
+
+        This test asserts current behaviour. If a guard lands, it should FAIL
+        and be rewritten to assert the guard — that is the intended signal.
+        """
+        assert _qualified_callee(
+            "go:net/http.go:1-5:Get:function") == "net/http.Get"
+
+    def test_alias_index_contains_dangerous_short_names(self) -> None:
+        """The executable trigger for the qualified-names-only argument.
+
+        ``_use_site_terminates`` refuses to consult the alias index, and the
+        justification for that refusal is a claim about the shipped
+        catalogues: they contain bare short names that would collide. That
+        claim used to be carried by a hardcoded count in a docstring, which
+        moved 33 → 108 → 113 across two catalogue edits in two days — a
+        rationale decaying with nobody deciding anything (L50). This asserts
+        the PROPERTY instead, so the argument fails loudly if a future
+        catalogue change ever makes it untrue rather than quietly becoming
+        wrong prose.
+        """
+        summaries = load_function_summaries()
+        aliases = {k for k, v in summaries.items() if k != v.function}
+        assert aliases, "alias index is empty — the safety argument is moot"
+        colliding = {"log", "map", "filter", "parse", "get"} & aliases
+        assert colliding, (
+            f"no short colliding aliases left in {sorted(aliases)!r}; "
+            "re-examine whether qualified-only matching is still needed"
+        )
 
 
 class TestPropagateTaintDdg:
