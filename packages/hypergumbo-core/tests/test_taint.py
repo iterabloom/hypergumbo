@@ -14,9 +14,15 @@ from __future__ import annotations
 from pathlib import Path
 from textwrap import dedent
 
+from typing import ClassVar
+
 import pytest
 
 from hypergumbo_core.cfg import DdgEdge
+from hypergumbo_core.function_summaries import (
+    FunctionSummary,
+    SanitizeEffect,
+)
 from hypergumbo_core.taint import (
     _ddg_taint_reaches,
     TAINT_CALL_EDGE_TYPES,
@@ -1155,6 +1161,152 @@ class TestDdgTaintReaches:
         """Exhausted, every step accounted for, sink never reached."""
         uses = {("f", 1): {2}, ("f", 2): {3}, ("f", 3): {2}}
         assert _ddg_taint_reaches("f", [1], [9], uses) is False
+
+
+class TestSummariesCollapseEscapes:
+    """ADR-0017 §4: a catalogued callee turns "escaped" into a real verdict.
+
+    §3a's own step 3 says "at call sites, apply function summaries (§4)", and
+    this is the branch that needs them. Without a summary, a tainted value used
+    at a line that defines nothing is UNKNOWN — it may have been consumed
+    (``fmt.Printf(cwd)`` returns a byte count) or it may have escaped into a
+    receiver (``lst.append(x)``). Only the first lets the walk close a branch,
+    and telling them apart requires knowing what the callee does.
+
+    THE DEFAULT IS DELIBERATELY NOT ``get_default_summary``. That helper
+    returns ``param_to_return = {0..9: True}`` — everything propagates — so
+    using it would make an empty catalogue *change* behaviour: every callee
+    would read as passing taint through. Routing an uncatalogued callee to
+    "escaped" instead means a catalogue covering nothing reproduces today's
+    output exactly, and every behaviour change is attributable to an entry
+    somebody wrote.
+    """
+
+    # line 5 uses the taint and defines nothing
+    _USES: ClassVar[dict] = {("f", 1): {5}}
+
+    def test_empty_catalogue_is_a_strict_no_op(self) -> None:
+        """The safety property the whole design rests on.
+
+        With no summaries, the walk must return exactly what it returned
+        before §4 existed. If this is not true, every measurement of §4's
+        effect is confounded by a behaviour change nobody chose.
+        """
+        callees = {("f", 5): frozenset({"fmt.Printf"})}
+        assert _ddg_taint_reaches(
+            "f", [1], [2], self._USES, callees_at=callees, summaries={},
+        ) is None
+
+    def test_terminating_callee_closes_the_branch(self) -> None:
+        """A consumed-and-discarded argument is accounted for, not lost."""
+        summaries = {"fmt.Printf": FunctionSummary(
+            function="fmt.Printf", side_effect=True,
+        )}
+        callees = {("f", 5): frozenset({"fmt.Printf"})}
+        assert _ddg_taint_reaches(
+            "f", [1], [2], self._USES, callees_at=callees, summaries=summaries,
+        ) is False
+
+    def test_propagating_callee_still_escapes(self) -> None:
+        """``param_to_return`` means the value lives on somewhere untracked."""
+        summaries = {"json.dumps": FunctionSummary(
+            function="json.dumps", param_to_return={0: True},
+        )}
+        callees = {("f", 5): frozenset({"json.dumps"})}
+        assert _ddg_taint_reaches(
+            "f", [1], [2], self._USES, callees_at=callees, summaries=summaries,
+        ) is None
+
+    def test_receiver_mutating_callee_still_escapes(self) -> None:
+        """``lst.append(x)`` puts the argument INTO the receiver — the exact
+        pretix shape that produced verified false negatives."""
+        summaries = {"list.append": FunctionSummary(
+            function="list.append", param_to_self={0: True}, mutates_self=True,
+        )}
+        callees = {("f", 5): frozenset({"list.append"})}
+        assert _ddg_taint_reaches(
+            "f", [1], [2], self._USES, callees_at=callees, summaries=summaries,
+        ) is None
+
+    def test_all_callees_must_terminate(self) -> None:
+        """One uncatalogued callee at the line is enough to keep it unknown.
+
+        Several calls can share a line (``log(f(x))``); the value may have gone
+        into any of them. Closing the branch because ONE of them terminates
+        would be a guess.
+        """
+        summaries = {"fmt.Printf": FunctionSummary(
+            function="fmt.Printf", side_effect=True,
+        )}
+        callees = {("f", 5): frozenset({"fmt.Printf", "mystery.Thing"})}
+        assert _ddg_taint_reaches(
+            "f", [1], [2], self._USES, callees_at=callees, summaries=summaries,
+        ) is None
+
+    def test_no_callee_at_the_line_still_escapes(self) -> None:
+        """The value went somewhere that is not a call at all.
+
+        A field write, a container subscript, a closure capture. Nothing to
+        look up, so nothing is known.
+        """
+        summaries = {"fmt.Printf": FunctionSummary(
+            function="fmt.Printf", side_effect=True,
+        )}
+        assert _ddg_taint_reaches(
+            "f", [1], [2], self._USES, callees_at={}, summaries=summaries,
+        ) is None
+
+    def test_short_name_never_matches(self) -> None:
+        """THE SAFETY TEST. Matching is on the QUALIFIED name only.
+
+        ``load_function_summaries`` also indexes every entry under its bare
+        last component — 11 of its 33 keys are such aliases, including ``log``,
+        ``map``, ``filter`` and ``parse``. Accepting a short-name match here
+        would let ``anything.log(secret)`` read as ``console.log`` and
+        therefore as terminating, and the consequence of a false "terminates"
+        is REMOVING A REAL SECURITY FINDING. Every other error in this walk
+        costs precision; this one costs recall silently.
+        """
+        summaries = {
+            "console.log": FunctionSummary(
+                function="console.log", side_effect=True,
+            ),
+            # The alias the loader would also emit:
+            "log": FunctionSummary(function="console.log", side_effect=True),
+        }
+        callees = {("f", 5): frozenset({"audit.log"})}
+        assert _ddg_taint_reaches(
+            "f", [1], [2], self._USES, callees_at=callees, summaries=summaries,
+        ) is None
+
+    def test_sanitizing_callee_is_not_terminating(self) -> None:
+        """A sanitizer transforms the taint rather than consuming it."""
+        summaries = {"crypto.seal": FunctionSummary(
+            function="crypto.seal", side_effect=True,
+            sanitizes=[SanitizeEffect(
+                param_index=0, from_taint="plaintext", to_taint="ciphertext",
+            )],
+        )}
+        callees = {("f", 5): frozenset({"crypto.seal"})}
+        assert _ddg_taint_reaches(
+            "f", [1], [2], self._USES, callees_at=callees, summaries=summaries,
+        ) is None
+
+    def test_a_terminated_branch_does_not_mask_a_real_dependence(self) -> None:
+        """Closing one branch must not stop the walk finding the sink on another.
+
+        Line 1 reaches both 5 (terminated) and 6 (continues to the sink). The
+        answer is True, not False — a closed branch removes an unknown, it does
+        not remove evidence.
+        """
+        uses = {("f", 1): {5, 6}, ("f", 6): {2}}
+        summaries = {"fmt.Printf": FunctionSummary(
+            function="fmt.Printf", side_effect=True,
+        )}
+        callees = {("f", 5): frozenset({"fmt.Printf"})}
+        assert _ddg_taint_reaches(
+            "f", [1], [2], uses, callees_at=callees, summaries=summaries,
+        ) is True
 
 
 class TestPropagateTaintDdg:
