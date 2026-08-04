@@ -1,0 +1,31 @@
+- op: create  # 6e9c
+  at: '2026-08-04T08:50:15Z'  # 6e9c
+  by: agent  # 6e9c
+  actor: jgstern_agent  # 6e9c
+  clock: 1  # 6e9c
+  nonce: 6e9c  # 6e9c
+  data:  # 6e9c
+    kind: work_item  # 6e9c
+    title: "Coverage-gate section 3a refutation: forfeit False for any function whose CFG statement extents miss a call node"  # 6e9c
+    status: todo_hard  # 6e9c
+    priority: 1  # 6e9c
+    parent:  # 6e9c
+    tags:  # 6e9c
+    - taint  # 6e9c
+    - adr_0017  # 6e9c
+    - dataflow  # 6e9c
+    isbefore: []  # 6e9c
+    duplicate_of: []  # 6e9c
+    not_duplicate_of: []  # 6e9c
+    pr_ref:  # 6e9c
+    description: "THE STRUCTURAL FIX BEHIND INV-lupav. PR #199 closed the acute case -- a\ndefinition the DDG holds NO entry for now yields None instead of False. It did\nnot close the class, and the residual is verified live on merged dev:\n\n    L1  v := source()\n    L2  w := f(v)                  <- recorded by def/use\n    L5  if n := sink(v); n > 0 {   <- use of v in an if-INITIALIZER, INVISIBLE\n\n  _ddg_taint_reaches(\"f\", [1], [5], {(\"f\",1):{2}, (\"f\",2):{1}})  ->  False\n\nEvery frontier line has an entry, so nothing is barren and nothing escapes.\nThe walk returns False -- the only verdict that may ever license removing a\nreported flow -- for a definition it did not follow at every step. The true\nanswer is True: v IS an argument at the sink call site.\n\nWHY ENUMERATING GAPS CANNOT WORK. The population is whatever the def/use\nextractor does not model, per language, and that set is not knowable from\ninside the walk. cfg_nodes/go.yaml self-documents one instance (if_statement\nand for_clause initializers); there is no reason to believe it is the only\none, and the walk cannot tell a construct it was never taught about from one\nthat genuinely has no uses. Any fix shaped as \"handle the known gaps\" is a\nlist that decays silently -- exactly the shape R8 says to stop filing per-site.\n\nTHE GATE. Refutation must be COVERAGE-GATED rather than gap-enumerated: for\nthe function under walk, compare the call nodes present in its AST body\nagainst the statement extents the CFG recorded. If any call node falls outside\nevery recorded extent, the extractor demonstrably did not see part of this\nfunction, so the walk forfeits its ability to return False for that function\nand returns None instead. This is checkable from artifacts the pipeline\nalready builds, it is per-function rather than per-language, and it degrades\nto the safe direction automatically when a new language or construct arrives\nunmodelled.\n\nASYMMETRY, stated once. A wrong False deletes a real security finding; a\nwrong None leaves an unknown unknown. The gate is therefore allowed to be\nconservative and should refuse on any doubt.\n\nSEQUENCING. Behaviour-neutral today: the sole production call site is\n_ddg_taint_reaches(...) is True, so False and None already collapse and\nnothing acts on either. This becomes load-bearing the moment section 3a is\nallowed to refute, which is WI-kabif's stated purpose. Build the gate BEFORE\nremoval authority, not after -- INV-lupav exists because the reverse order was\nattempted once.\n\nMEASUREMENT TO TAKE WHEN BUILT. Report the share of cohort functions that\nforfeit refutation under the gate. If it is near 100 percent the gate is\ncorrect and section 3a refutation is not viable on this substrate, which is a\nfinding rather than a failure; if it is small, refutation is viable on the\nremainder. Either outcome is worth more than the current state, where the\nwalk refutes with no idea what it did not see."  # 6e9c
+    fields: {}  # 6e9c
+- op: update  # b799
+  at: '2026-08-04T08:50:38Z'  # b799
+  by: agent  # b799
+  actor: jgstern_agent  # b799
+  clock: 2  # b799
+  nonce: b799  # b799
+  set: {}  # b799
+  add:  # b799
+    isbefore: [WI-kabif-dahad-kufuz-vodoz-misaj-batut-honab-nizib]  # b799
