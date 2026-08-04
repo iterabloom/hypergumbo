@@ -49,7 +49,7 @@ class of gap as Rust borrow aliases.
 """
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Callable
 
 from hypergumbo_core.cfg import DefUseResult, register_def_use_extractor
 from hypergumbo_core.ddg_build import LanguageDdgSpec, register_ddg_language
@@ -258,7 +258,12 @@ def _handle_expression_statement(node: Any, source: bytes) -> DefUseResult:
     return DefUseResult(uses=uses)
 
 
-_HANDLERS: dict[str, Any] = {
+# Typed as the callable it holds rather than ``Any``: every value here is a
+# ``(node, source) -> DefUseResult`` handler, and declaring that is what lets
+# ``extract`` return the dispatch result directly instead of returning ``Any``
+# from a function annotated ``DefUseResult``. A bare ``Any`` here silenced the
+# one place the dispatch contract could be checked at all.
+_HANDLERS: dict[str, Callable[[Any, bytes], DefUseResult]] = {
     "short_var_declaration": _handle_short_var_declaration,
     "var_declaration": _handle_spec_declaration,
     "const_declaration": _handle_spec_declaration,

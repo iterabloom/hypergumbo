@@ -336,13 +336,20 @@ def test_atomic_statement_does_not_swallow_control_flow(language: str) -> None:
 def test_production_import_list_covers_every_def_use_module() -> None:
     """(3) A module nobody imports registers nothing.
 
-    ``_build_ddg_for_verify_claims`` names its imports explicitly. That is
-    worth keeping — greppable, and import cost stays visible — but it is a
-    second home for a fact the filesystem already holds, so the two are pinned
-    together here. Rust and TypeScript sat unimported for months behind exactly
-    this gap while both modules existed and both were tested.
+    ``dataflow_scope.ensure_def_use_extractors_registered`` names its imports
+    explicitly. That is worth keeping — greppable, and import cost stays
+    visible — but it is a second home for a fact the filesystem already holds,
+    so the two are pinned together here. Rust and TypeScript sat unimported for
+    months behind exactly this gap while both modules existed and both were
+    tested.
+
+    The list moved out of ``cli._build_ddg_for_verify_claims`` when the
+    INV-karud (a3) coverage table needed the same registries populated at the
+    same moment: two force-import sites would be two things to drift, and a
+    scope table computed against an empty registry reports every language
+    incapable without erroring.
     """
-    from hypergumbo_core import cli as cli_mod
+    from hypergumbo_core import dataflow_scope as scope_mod
 
     lang_pkg = Path(
         __import__("hypergumbo_lang_mainstream").__file__,
@@ -350,10 +357,10 @@ def test_production_import_list_covers_every_def_use_module() -> None:
     on_disk = {p.stem for p in lang_pkg.glob("*_def_use.py")}
     assert on_disk, "no *_def_use modules found; the glob is wrong"
 
-    cli_source = Path(cli_mod.__file__).read_text(encoding="utf-8")
+    registrar_source = Path(scope_mod.__file__).read_text(encoding="utf-8")
     not_imported = {
         module for module in on_disk
-        if f"hypergumbo_lang_mainstream.{module}" not in cli_source
+        if f"hypergumbo_lang_mainstream.{module}" not in registrar_source
     }
     assert not not_imported, (
         f"def/use modules exist but are never imported on the production "

@@ -222,6 +222,7 @@ from .partial_install_warnings import check_partial_install_warnings
 # TYPE_CHECKING-only and the runtime import graph is unchanged.
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from .cfg import DdgEdge
+    from .dataflow_scope import LanguageDataflowScope
     from .io_boundary import IoChain
     from .taint import TaintSanitizer, TaintSink, TaintSource
 
@@ -4960,21 +4961,20 @@ def _build_ddg_for_verify_claims(
     Returns ``([], set(), {}, {})`` if tree-sitter isn't available — the
     caller falls back to the structural pass in that case.
     """
+    from .dataflow_scope import ensure_def_use_extractors_registered
     from .ddg_build import build_repo_ddg, registered_ddg_languages
 
     # Registration is an import side effect, so a def/use module nobody imports
     # registers nothing and its language is skipped by build_repo_ddg — which
     # is one of the two independent reasons the Rust and TypeScript extractors
     # had no production caller for months while both shipped with tests at 100%
-    # coverage. This list is a second home for a fact the filesystem already
-    # holds; test_ddg_language_wiring.py fails when the two disagree, so a new
-    # extractor cannot be added and silently left unimported.
-    try:
-        import hypergumbo_lang_mainstream.go_def_use
-        import hypergumbo_lang_mainstream.py_def_use
-        import hypergumbo_lang_mainstream.rust_def_use
-        import hypergumbo_lang_mainstream.ts_def_use  # noqa: F401
-    except ImportError:  # pragma: no cover - lang package is a hard dep but defend
+    # coverage. The import list is a second home for a fact the filesystem
+    # already holds; test_ddg_language_wiring.py fails when the two disagree, so
+    # a new extractor cannot be added and silently left unimported. It lives in
+    # ``dataflow_scope`` because the coverage table needs the same registries
+    # populated at the same moment, and two force-import sites would be two
+    # things to drift.
+    if not ensure_def_use_extractors_registered():  # pragma: no cover - hard dep
         return [], set(), {}, {}
 
     available = registered_ddg_languages()
@@ -5118,6 +5118,10 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
     unsupported_taint_languages: list[str] = []
     has_taint_claims = any(c.constraint_taint_flow is not None for c in claims)
     taint_catalog = None
+    # INV-karud (a3): the published data-flow scope. Empty for a run with no
+    # taint claims, which is why it is initialised here rather than assumed.
+    dataflow_rows: list["LanguageDataflowScope"] = []
+    findings_by_method: dict[str, int] = {}
 
     from .taint import (
         TaintCatalogError,
@@ -5287,6 +5291,24 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
                         ambiguous_names=lang_ambiguous,
                     ))
 
+        # INV-karud (a3), PUBLISHED SCOPE. Per-flow ``analysis_method`` says
+        # how one flow was adjudicated; it cannot say what the analysis was
+        # CAPABLE of, and without that a reader cannot interpret it. "0 precise
+        # findings" reads as "the walk looked and found no data dependence"
+        # when it may mean "no language in this repo has a def/use extractor,
+        # so nothing could be looked at" — opposite consequences, identical
+        # evidence, which is L58 at the scale of a whole run.
+        #
+        # Computed here rather than inside the propagation branch above so a
+        # repo whose languages have sinks but no sources still publishes its
+        # scope: that is precisely the run where nothing is reported and the
+        # reader most needs to know why.
+        from .dataflow_scope import compute_dataflow_scope
+        dataflow_rows = compute_dataflow_scope(taint_catalog, per_lang_sinks)
+        for finding in (taint_findings or []):
+            _method = getattr(finding, "analysis_method", "") or "structural"
+            findings_by_method[_method] = findings_by_method.get(_method, 0) + 1
+
     # Verify claims
     verdicts = _verify(
         claims, bmap, taint_findings=taint_findings, coverage=coverage,
@@ -5303,11 +5325,17 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
         # machine-visible via `unsupported_taint_languages` (empty when there
         # are no taint claims or every touched language has a catalog),
         # mirroring the `io-boundaries --json` envelope.
+        from .dataflow_scope import dataflow_scope_dict
         output = add_schema_envelope(
             {
                 "verdicts": [v.to_dict() for v in verdicts],
                 "unsupported_taint_languages": (
                     unsupported_taint_languages if has_taint_claims else []
+                ),
+                # INV-karud (a3). Always present so the envelope shape is
+                # stable; empty ``languages`` on a run with no taint claims.
+                "dataflow_coverage": dataflow_scope_dict(
+                    dataflow_rows, findings_by_method,
                 ),
             },
             view="verify-claims",
@@ -5343,6 +5371,17 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
         if not violated and not inconclusive:
             summary_parts.append(f"all {len(verdicts)} CONFIRMED")
         print(f"{', '.join(summary_parts)} (of {len(verdicts)} claim(s))")
+
+        # INV-karud (a3) on the TEXT surface too. A disclosure that exists
+        # only under --json is half shipped: WI-bifob's exclusion bucket
+        # reached the dataclass and never the text renderer, so a text reader
+        # of a violated claim never learned flows had been set aside. Renders
+        # to nothing when no taint-capable language was analyzed.
+        from .dataflow_scope import render_dataflow_scope_text
+        for line in render_dataflow_scope_text(
+            dataflow_rows, findings_by_method,
+        ):
+            print(line)
 
     # INV-javam: warn to stderr when taint claims were evaluated against a
     # repo whose languages have no taint catalog coverage. Even a "all
