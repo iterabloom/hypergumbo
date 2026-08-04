@@ -1,0 +1,57 @@
+Original commit body from fc992a2b820af76d47f4a7dac00ce135bf9b55a9:
+
+The BFS barrier dropped the subtree beyond a sanitizer, so a flow a developer
+had deliberately protected produced EXACTLY the output of a flow that does not
+exist: nothing. A reader could not tell "no path from this source to this sink"
+from "a path exists and your encrypt() call is what makes it safe" -- and the
+second is what they need before deleting that call.
+
+TaintFlowFinding.sanitized existed for this and was written False at both and
+only construction sites, so verify_claims' `and not f.sanitized` was a
+TAUTOLOGY and the confirmed_safe branch of the verdict property was unreachable
+in production. Owner ruling 2026-08-03: emit the flow labelled.
+
+UNSANITIZED WINS. A sink the taint reaches by any unprotected route is reported
+unsanitized even when another route encrypts; labelling it safe because SOME
+path sanitizes is the dangerous direction of wrong. Where two distinct sink
+SITES differ (one protected, one not) both are now reported and distinguished
+by the label -- previously only the violation survived, leaving a reader unable
+to tell "the other route is safe" from "there is no other route".
+
+ONE BARRIER IMPLEMENTATION, TWO CALLERS. The structural and DDG propagators
+each carried a copy of the walk and had ALREADY DRIFTED -- the structural one
+tracked sanitized_nodes, the DDG one dropped them on the floor. That is the
+shape that produces "fixed in Python, still broken in Go", so both now share
+_reachability_past_sanitizers.
+
+The count is disclosed, not just the label. ClaimVerdict.sanitized_flows
+reports how many flows matched the claim but were not counted because a
+sanitizer lies on every route, and the CONFIRMED verdict says so in prose --
+that is where it matters most, because the claim reads clean and the reason it
+reads clean may be one function call away from deletion. Sibling of
+excluded_flows, same D7 shape. Envelope schema 1.5 -> 1.6.
+
+A TEST THAT PINNED THE SILENT DROP WAS VACUOUS (L17). test_sanitized_path_no_
+violation asserted len(findings) == 0 using a bare py:external:0-0:write_text
+sink -- but the sink entry is kind="method" with module pathlib.Path, and a
+bare unresolved method call carrying no module context is suppressed outright
+(io-boundary:F3 / INV-tapat). Measured on the pre-change code: 0 findings WITH
+the sanitizer and 0 WITHOUT it, so the barrier the test names was never
+exercised. Fixture corrected to the module-qualified form its own sibling
+already used, plus a non-vacuity floor.
+
+MEASURED, 9-repo cohort: zero verdicts move, and ZERO sanitized flows are
+produced. The null was pre-registered and its cause is structural rather than
+incidental -- the taint labels the cohort's claims constrain (host_secret,
+untrusted_input) and the labels any shipped sanitizer can transform
+(plaintext, key_material) are DISJOINT SETS. No sanitizer could fire on this
+corpus under any implementation. So this ships correct and unit-proven but
+INERT on the current cohort, and is reported that way rather than as a measured
+win. It also makes INV-karud clause (b) unverifiable on this corpus by
+construction, which is evidence Phase 6 needs rather than a gap to paper over.
+
+The coverage gate caught a defensive branch under a green summary (L34, third
+time this campaign): "1909 passed" and "(all files at 100%)" printed above
+"Coverage failure: total of 99".
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
