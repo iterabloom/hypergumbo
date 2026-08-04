@@ -1,0 +1,21 @@
+- op: create  # 45ab
+  at: '2026-08-03T21:37:00Z'  # 45ab
+  by: agent  # 45ab
+  actor: jgstern_agent  # 45ab
+  clock: 1  # 45ab
+  nonce: 45ab  # 45ab
+  data:  # 45ab
+    kind: work_item  # 45ab
+    title: "ARCHITECTURE.md recency counter is advanced by commits that cannot invalidate it (tracker auto-syncs)"  # 45ab
+    status: todo_hard  # 45ab
+    priority: 3  # 45ab
+    parent:  # 45ab
+    tags:  # 45ab
+    - ci_infrastructure  # 45ab
+    - developer_experience  # 45ab
+    isbefore: []  # 45ab
+    duplicate_of: []  # 45ab
+    not_duplicate_of: []  # 45ab
+    pr_ref:  # 45ab
+    description: "FOUND 2026-08-03 when the gate failed a taint-analysis PR whose diff touched\nno architecture at all.\n\nscripts/generate-architecture --check measures how many commits separate HEAD\nfrom the commit the doc was generated against, and fails past a window (raised\n15 -> 30 in PR #189). The counter advances on EVERY commit, including ones that\ncannot possibly invalidate the document.\n\nThe clearest class is tracker auto-sync. Those commits touch only\n.agent/tracker-workspace/.ops and .agent/tracker/.ops -- never any analyzed\nsource -- yet each one consumes window. Three landed during a single session\nhere, alongside two feature merges, taking the distance to 17 and failing an\nunrelated open PR. The failure therefore lands on whoever happens to be holding\na PR when the counter rolls over: a scheduling accident, not a signal.\n\nRaising the window makes this rarer without making it principled. The fix is to\ncount only commits that could change the generated output -- i.e. skip commits\nwhose changed paths are entirely outside what the self-analysis reads. A\nconservative first cut is to exclude commits touching only .agent/tracker*/.ops\n(the mechanically-generated class), rather than trying to model the analyzed\nfile set exactly.\n\nWHY NOT FOLDED INTO THE WINDOW BUMP: that PR was a one-line constant change\nrequested directly; changing what the counter counts is a behavioural change to\na CI gate and deserves its own diff and its own before/after (how many recent\ndev commits are inert by this definition -- measure it before choosing the\npredicate)."  # 45ab
+    fields: {}  # 45ab

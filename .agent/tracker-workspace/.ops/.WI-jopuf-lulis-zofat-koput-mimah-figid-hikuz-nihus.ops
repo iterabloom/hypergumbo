@@ -1,0 +1,22 @@
+- op: create  # b4d4
+  at: '2026-08-03T12:08:55Z'  # b4d4
+  by: agent  # b4d4
+  actor: jgstern_agent  # b4d4
+  clock: 1  # b4d4
+  nonce: b4d4  # b4d4
+  data:  # b4d4
+    kind: work_item  # b4d4
+    title: "TypeScript DDG spec covers only function_declaration; class methods excluded to avoid duplicating the analyzer kind-slot decision"  # b4d4
+    status: todo_hard  # b4d4
+    priority: 3  # b4d4
+    parent:  # b4d4
+    tags:  # b4d4
+    - adr_0017  # b4d4
+    - taint  # b4d4
+    - analysis_quality  # b4d4
+    isbefore: []  # b4d4
+    duplicate_of: []  # b4d4
+    not_duplicate_of: []  # b4d4
+    pr_ref:  # b4d4
+    description: "DISCLOSED GAP from PR #186 (WI-tohuk), filed because an undocumented\n\"tracked separately\" is a fresh L50 instance the day it ships.\n\nThe TypeScript LanguageDdgSpec registers function_node_types =\n{function_declaration}. method_definition is deliberately excluded: js_ts.py\ndecides that node kind slot INLINE -- method, or getter/setter when a get/set\nchild is present -- and re-deriving that classification inside the DDG spec\nwould put a second copy of a production judgement in a consumer. That is the\nshape the L53 sharpening names as the bug itself, and it has produced wrong\nnumbers in this subsystem before. A DDG symbol id that disagrees with the\nanalyzer id for the same function attributes coverage to a symbol nothing else\nrefers to, which reads downstream as \"this function has no DDG data\".\n\nFIX SHAPE: extract the kind-slot decision from js_ts.py into a shared helper\nand have the spec call it via kind_for, the way go_def_use imports\n_extract_receiver_type_from_node from go.py. Then widen function_node_types.\n\nPRIORITY IS LOW FOR A REASON: TypeScript has 0 catalogued taint sinks, so no\namount of TypeScript DDG coverage can move a taint verdict today. This\nbecomes worth doing when TS sinks land, or immediately if the javascript\nwiring item reuses the same spec."  # b4d4
+    fields: {}  # b4d4
