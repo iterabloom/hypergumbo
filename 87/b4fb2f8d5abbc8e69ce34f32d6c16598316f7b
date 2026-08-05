@@ -1,0 +1,17 @@
+Original commit body from dc576d991cac497092da8610b3d30793d09144c7:
+
+CI's `generate-architecture --check` failed at 33 commits against a
+30-commit window. Nothing in this branch's code change can invalidate the
+doc; the counter was advanced past the threshold by tracker auto-sync
+commits (PR #219, 6 files of .ops), which is precisely the defect filed as
+WI-kotit-kozip-zigar-bukub-kifas-rosuj-gihut-nimah — the recency counter is
+advanced by commits that cannot invalidate what it guards.
+
+Regenerated rather than widened. Raising the window to silence the error is
+the same move as raising a shrink-only baseline: it ratifies the drift and
+removes the signal. The counter's design defect stays WI-kotit's to fix, on
+its own change, rather than being buried inside a taint fix.
+
+Gate now reports: generated 0 commit(s) ago (window 30).
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
