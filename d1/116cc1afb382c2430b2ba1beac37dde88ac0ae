@@ -1,0 +1,49 @@
+Original commit body from d37a307d9df552474dd912f58b08c0381c941e40:
+
+Per ADR-0036 (D1a) the path slot is the one colon-TOLERANT slot in
+{lang}:{path}:{span}:{name}:{kind}, so the parse must be right-anchored.
+That fact had four homes and two took parts[1]:
+
+  ir._extract_path_slot            parts[1]         WRONG
+  ir._parse_dangling_id            right-anchored   correct
+  verify_claims._symbol_path_slot  right-anchored   correct
+  taint._extract_callee_module     parts[1]         WRONG
+
+The two in ir.py sit thirteen lines apart. _symbol_path_slot's docstring had
+already named _extract_path_slot as wrong and warned "this must not become a
+third naive copy" -- while a fourth copy was live in taint.py. All four now
+delegate to ir.symbol_path_slot.
+
+WHY THIS IS A DEFECT AND NOT TIDINESS. Rust is the only language whose taint
+catalogue uses :: module paths, and all nine of its distinct sink modules are
+colon-bearing (std::fs, std::process, std::io, std::net::TcpStream, ...).
+parts[1] truncated every one to 'std'; _module_matches('std::fs','std') is
+False; and _lookup_named_entry treats a present-but-mismatched module as a
+REJECTION rather than a degrade. The outcome was inverted -- the edge that
+correctly named its module lost to the edge that named none:
+
+  rust:std::fs:0-0:write:external_symbol    hits=3 -> MATCH=None
+  rust:external:0-0:write:external_symbol   hits=3 -> MATCH=std::fs.write
+
+_extract_callee_module's docstring was the tell: it claimed to mirror
+_extract_callee_name's parsing, which IS the right-anchored scan, while the
+body did another one (L50 -- a comment asserting a false fact supplies a
+rationale, and a rationale forecloses the fix).
+
+MEASURED, on a 9-repo cohort (95,950 taint call edges, population selected by
+production's own _is_taint_call_edge): +1 gained, 0 lost, 0 re-targeted,
+recovering rust:std::env:0-0:var_os -> std::env.var_os, a real
+environment-variable source. Predicted by simulation before the edit and
+reproduced exactly by the shipped code. The non-destructiveness clause was
+asserted first (L57): the correct result here is that nothing is lost, and an
+implementation that dropped matches would have looked like a precision win.
+
+The effect is small today only because Rust analyzers emit the 'external'
+sentinel for 396 of 449 unresolved taint call edges, bypassing the module
+filter, while the 53 carrying real module paths name non-catalogued callees --
+so their rejections were accidentally correct. When external-id module coverage
+rises (WI-jokij), those 396 start carrying std::fs, and an unfixed truncation
+would take Rust from 45 matched sinks to zero. WI-jokij is blocked on this.
+
+Refs: WI-lonad (re-scoped), WI-jokij, INV-karud (a1)
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
