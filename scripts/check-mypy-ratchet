@@ -46,14 +46,37 @@ Test/override flags:
 Exit codes:
     0 — no regression (or ``--mode=warning``, or ``--update-baseline``).
     1 — a regression, in ``--mode=strict``.
-    2 — infrastructure error (mypy missing, no source roots found). Never
-        blocks: an infra failure is not a type regression.
+    2 — infrastructure error (mypy missing, no source roots found, or the
+        output could not be reconciled with mypy's own tally — see below).
+        Never blocks: an infra failure is not a type regression.
+
+FAIL-OPEN INCIDENT, 2026-08-05 — why the parse is reconciled against mypy's
+own tally line. With ``FORCE_COLOR`` in the environment (agent harnesses set
+it), mypy colorizes stdout even when it is a pipe; the trailing ``[code]``
+anchor then matches nothing, and this script reported ``whole-tree strict
+errors = 0 (baseline 672, delta -672)`` with exit 0 — a fail-OPEN that also
+*recommended* ``--update-baseline``, which would have written total 0 and
+permanently disabled INV-zogud's only gate. Three defences now stack:
+
+* ``_run_mypy`` passes ``--no-color-output`` and scrubs the colour-forcing
+  env vars, so the live path cannot produce colour in the first place;
+* ANSI escapes are stripped before parsing, so colorized input (e.g. an
+  ``--input`` capture from a colour terminal) is READ rather than refused;
+* default-deny reconciliation (the structural fix): a verdict is rendered
+  only when the parsed count agrees with mypy's own ``Found N errors``
+  tally, or a ``Success`` line accompanies a parsed count of zero.
+  Everything else — truncated output, a crashed run's empty stdout, a
+  format change that defeats the regex — exits 2. A parse the tally cannot
+  vouch for is a broken instrument, and a broken instrument must never
+  report progress (the failure read as a 672-error SHRINK, which is the
+  most seductive possible lie a shrink-only gate can tell).
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import subprocess  # nosec B404 - runs mypy on our own source tree, no untrusted input
 import sys
@@ -65,6 +88,20 @@ DEFAULT_BASELINE_PATH = REPO_ROOT / ".ci" / "mypy-strict-baseline.json"
 
 # ``error: ... [code]`` — the trailing bracketed code is the category.
 _ERROR_RE = re.compile(r": error: .*\[([a-z-]+)\]\s*$")
+
+# SGR sequences (``ESC [ ... m`` and friends) plus the ``ESC ( B`` charset
+# reset mypy emits after each styled token. Stripped before parsing so a
+# colorized capture is readable; the live path additionally forbids colour
+# at the source (see ``_run_mypy``).
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]|\x1b\([0-9A-Za-z]")
+
+# mypy's own closing tally. Singular and plural both occur.
+_TALLY_RE = re.compile(r"^Found (\d+) errors? in ", re.MULTILINE)
+_SUCCESS_RE = re.compile(r"^Success: no issues found", re.MULTILINE)
+
+# Env vars that force colour onto a non-tty pipe. FORCE_COLOR is the one
+# that bit (agent harnesses export it); the others are its relatives.
+_COLOR_FORCING_ENV = ("FORCE_COLOR", "MYPY_FORCE_COLOR", "CLICOLOR_FORCE")
 
 
 def _source_roots() -> list[Path]:
@@ -81,17 +118,77 @@ def _source_roots() -> list[Path]:
 
 
 def _run_mypy(roots: list[Path]) -> str:
-    """Run whole-tree mypy and return its stdout."""
-    cmd = [sys.executable, "-m", "mypy", *[str(r) for r in roots]]
+    """Run whole-tree mypy and return its stdout.
+
+    Colour is forbidden at the source: ``--no-color-output`` on the argv AND
+    the colour-forcing env vars scrubbed from the child environment. Belt and
+    braces deliberately — either alone suffices today, but the reconciliation
+    gate downstream is what guarantees that any future colour route fails
+    LOUD (exit 2) instead of open (a parsed 0 reported as a shrink).
+    """
+    cmd = [
+        sys.executable, "-m", "mypy", "--no-color-output",
+        *[str(r) for r in roots],
+    ]
+    env = {k: v for k, v in os.environ.items() if k not in _COLOR_FORCING_ENV}
     try:
         # nosec B603 - fixed argv (python -m mypy on our own source roots), no shell.
         proc = subprocess.run(  # noqa: S603
-            cmd, capture_output=True, text=True, cwd=REPO_ROOT
+            cmd, capture_output=True, text=True, cwd=REPO_ROOT, env=env
         )
     except FileNotFoundError:  # pragma: no cover — mypy absent in the env
         print("check-mypy-ratchet: mypy is not installed", file=sys.stderr)
         sys.exit(2)
     return proc.stdout
+
+
+def _require_reconciled_tally(text: str, counted: int) -> None:
+    """Refuse to render a verdict the output itself cannot vouch for.
+
+    Default-deny (L54): enumerate the two readable shapes and exit 2 on
+    everything else. The permitted cases are exactly:
+
+    * a ``Found N errors`` tally whose N equals the parsed count, or
+    * a ``Success: no issues found`` line with a parsed count of zero.
+
+    Everything else — empty stdout from a crashed run, truncated output, a
+    format or colour change that defeats ``_ERROR_RE``, a Success line
+    contradicting parsed errors — is an INSTRUMENT failure, not a surface
+    reading. It must never be compared against the baseline in either
+    direction: reading it as growth would block on nothing, and reading it
+    as a shrink (the 2026-08-05 incident) invites ``--update-baseline`` to
+    disable the gate permanently.
+    """
+    tally = _TALLY_RE.search(text)
+    if tally:
+        declared = int(tally.group(1))
+        if declared == counted:
+            return
+        print(
+            f"check-mypy-ratchet: PARSE FAILURE — mypy's own tally says "
+            f"{declared} error(s) but the parser counted {counted}. The "
+            f"instrument is broken (output format change? partial ANSI?); "
+            f"refusing to render a verdict from it.",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+    if _SUCCESS_RE.search(text):
+        if counted == 0:
+            return
+        print(
+            "check-mypy-ratchet: PARSE FAILURE — output carries a Success "
+            f"line AND {counted} parsed error(s); refusing to pick a side.",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+    print(
+        "check-mypy-ratchet: PARSE FAILURE — output has neither a "
+        "'Found N errors' tally nor a 'Success' line (empty stdout from a "
+        "crashed run? truncated capture?); refusing to read it as a surface "
+        f"of {counted}.",
+        file=sys.stderr,
+    )
+    sys.exit(2)
 
 
 def _count_errors(text: str) -> Counter[str]:
@@ -202,8 +299,15 @@ def main() -> None:
             sys.exit(2)
         raw = _run_mypy(roots)
 
+    # Strip ANSI first so a colorized capture is READ; then refuse any
+    # output the parse cannot reconcile with mypy's own tally. The
+    # reconciliation runs before --update-baseline on purpose: the incident's
+    # sharpest edge was that unparseable output did not just misreport, it
+    # recommended baselining the misreading.
+    raw = _ANSI_RE.sub("", raw)
     current = _count_errors(raw)
     cur_total = sum(current.values())
+    _require_reconciled_tally(raw, cur_total)
 
     if args.update_baseline:
         _save_baseline(args.baseline, current)
