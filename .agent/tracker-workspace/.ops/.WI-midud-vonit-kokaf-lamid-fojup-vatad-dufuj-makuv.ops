@@ -1,0 +1,23 @@
+- op: create  # 3abd
+  at: '2026-08-05T03:26:23Z'  # 3abd
+  by: agent  # 3abd
+  actor: jgstern_agent  # 3abd
+  clock: 1  # 3abd
+  nonce: 3abd  # 3abd
+  data:  # 3abd
+    kind: work_item  # 3abd
+    title: "Taint catalogue inherited nothing from parent io_primitives: C++ ran on 3 primitives vs C 67; +531 sources+sinks across cpp/kotlin/scala/elixir"  # 3abd
+    status: done  # 3abd
+    priority: 2  # 3abd
+    parent:  # 3abd
+    tags:  # 3abd
+    - adr_0016  # 3abd
+    - adr_0017  # 3abd
+    - taint  # 3abd
+    - analysis_quality  # 3abd
+    isbefore: []  # 3abd
+    duplicate_of: []  # 3abd
+    not_duplicate_of: []  # 3abd
+    pr_ref: '209'  # 3abd
+    description: "FOUND 2026-08-04 while measuring INV-mivud's ambiguous_names gap. Filed as done\nwith PR #209 so the evidence has a durable home.\n\nio_boundary._CATALOG_PARENTS declares cpp<-c, kotlin<-java, scala<-java,\nelixir<-erlang, and io_boundary.load_catalog honours it by merging the parent.\nThe taint catalogue derives from the SAME YAML via\n_derive_auto_imports_from_io_primitives, which called\nIoBoundaryCatalog.from_yaml(path) directly and inherited NOTHING -- while its\nown docstring claimed ambiguous_by_lang lets the taint matchers \"disambiguate\nexactly as io-boundaries does\". Two consumers of one data file disagreeing about\ninheritance, with a docstring asserting the parity that did not hold (L50).\n\nMEASURED, taint sources+sinks:\n    cpp        3 ->   70   (+67)   C++ ran taint on THREE primitives\n    elixir   231 ->  469  (+238)\n    kotlin    26 ->  138  (+112)\n    scala     23 ->  137  (+114)\n    TOTAL   1588 -> 2119  (+531, a 33% increase in the whole catalogue)\nambiguous_names for the same four: cpp 0->19, kotlin 34->58, scala 73->80,\nelixir 50->54. Both a fraction of the primitive surface AND a weaker collision\nguard on what remained.\n\nTHE PUBLISHED COVERAGE PERCENTAGE DROPS, AND THAT IS THE FIX WORKING. The\ndataflow_coverage block now reports 740 sources / 1406 sinks (was 553 / 1062)\nwith data-flow-capable unchanged at 274 -- none of the four has a CFG mapping --\nso coverage reads 19.5% where it read 25.8%. The earlier figure was computed\nover a catalogue missing 344 sinks it should have been matching.\n\nALSO: `- on` in ambiguous_names is a YAML 1.1 BOOLEAN. javascript.yaml and\nscala.yaml each declared a bare `on`, parsed as True, so the string \"on\" --\nEventEmitter.on -- was never suppressed while the list looked correct. A text\ngrep cannot see this; the guard asserts against the LOADED value.\n\nHONEST SCOPE: the 9-repo cohort has no cpp, kotlin, scala or elixir source, so\nno arm of it can observe any of this (L59). Evidence is catalogue-level and\nstructural. What it predicts for real repos in those languages is UNTESTED and\nis not claimed -- that is the follow-up worth doing when such repos are added to\na cohort."  # 3abd
+    fields: {}  # 3abd
