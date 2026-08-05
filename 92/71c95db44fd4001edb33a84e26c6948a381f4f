@@ -1,0 +1,39 @@
+Original commit body from 903395a0e1d5031ebca3963b2683a53f872e01bb:
+
+WI-razol made taint propagation HONOUR ambiguous_names; this is about the LIST.
+Seven catalogued python primitives had short names that also name a builtin or a
+dict/list/set/str method and were not suppressed, so a bare unresolved call to
+them was falsely matched: all, copy, count, filter, remove, update, values.
+
+DERIVED, NOT HAND-PICKED, BECAUSE HAND-PICKING IS WHAT LEFT THE GAP. The item
+was filed for `copy` alone; the campaign plan then generalised to "all seven
+shutil peers", which is wrong in BOTH directions -- copytree / rmtree /
+make_archive collide with nothing and must stay matchable, while five Django ORM
+names that DO collide were missed entirely. The guard test asserts the RULE
+(every catalogued primitive whose short name is a builtin/container method must
+be suppressed) rather than seven literals, so a colliding primitive added later
+fails CI the day it lands. A second test asserts the converse -- distinctive
+names must NOT be suppressed -- because over-suppression costs recall silently.
+
+THE FILED REPRO IS CLOSED AND RE-RUN. python:external:0-0:copy:external_symbol
+no longer matches shutil.copy under call_construct in {None, function, method},
+and a module-qualified python:shutil:0-0:copy STILL matches -- suppression must
+not trade a false positive for a false negative. This settles the question the
+item's own June discussion left open: io-boundary:F3 DID close the method-form
+case; the function-form and meta-absent forms were the residue.
+
+MEASURED, AND IT MOVES NOTHING ON THE COHORT. 1509 python unresolved taint call
+edges carry one of the seven names, so the shape is abundant -- but 1505 of 1509
+are METHOD-form, already suppressed by F3's kind-aware gate, and the remaining 4
+carry disambiguating module hints. Prevention, not a measured improvement.
+Reported as such rather than as a win.
+
+VERIFICATION LIMIT, DISCLOSED. The only source change is a YAML data file, which
+is invisible to smart-test's import-graph slicer (L43), so the committed
+manifest selects ONE test file and the per-PR gate will exercise that alone. The
+regression evidence is a local full run of the hypergumbo-core package (10,929
+passed, 2 skipped, 12 xfailed) plus the twice-daily full-suite -- not the per-PR
+gate. Do not read this PR's green as a regression signal.
+
+Refs: INV-mivud
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
