@@ -1,0 +1,58 @@
+Original commit body from 8588f892748f904f961e0368a22b0bd6f16a69ac:
+
+Phase 5b of the taint-correctness campaign, plus WI-nibav's verified drop-in.
+
+1. CROSS-LANGUAGE POLLUTION, and the function written to prevent it had ZERO
+   production callers. cmd_verify_claims selects a language's edges with
+   src.startswith(lang:) OR dst.startswith(lang:). The OR is CORRECT and stays --
+   the propagation BFS needs both endpoints to walk a cross-language call -- but
+   it hands a bridge edge python:... -> go:... to BOTH languages' matchers, so a
+   `go:` callee can be looked up in the Python index. The guard therefore belongs
+   at the MATCH, not the selection: _match_propagation_entry now takes the
+   language whose catalogue built the index and refuses a foreign callee before
+   any lookup. _extract_callee_language's docstring has always claimed it is
+   "used by sink/source matching to filter cross-language pollution"; its only
+   reachability was its own unit test (a WI-ratuv family member). A test now
+   asserts the matcher references it so prose and code cannot drift again.
+
+   MEASURED, AND IT MOVES NOTHING TODAY: the 9-repo cohort holds 208
+   cross-language taint call edges (95% typescript<->javascript) and ZERO match a
+   sink in the wrong language's index. A latent guard, reported as one. The dead
+   docstring's "thousands of false positives" from an elixir/Python `get`
+   collision is NOT validated here -- the cohort has no elixir -- and is left as
+   an untested assertion rather than repeated as a result. The parameter defaults
+   to "" so every existing caller and test is unaffected.
+
+2. TaintFlowFinding.to_dict DROPPED THE THREE FIELDS THAT CANNOT BE RECOVERED
+   FROM THE EMITTED SYMBOL. source_module / sink_module (the module a catalog
+   entry declared, WI-joruv) and source_boundary (the io_primitives boundary the
+   source came from, WI-vazal) were absent, so a serialized finding was strictly
+   weaker than the object it came from. verify-claims survived only because it
+   reaches the dataclass directly; any consumer of the serialized form silently
+   lost the WI-vazal split that shipped specifically to be readable. The guard
+   asserts the PROPERTY -- every declared field appears in to_dict -- rather than
+   the three names, so a fourth cannot be dropped silently.
+
+3. ujson CATALOGUED, orjson DELIBERATELY NOT (WI-nibav). Both were candidates
+   from the cohort enumeration and the item's own rule is "read the package, do
+   not assume the surface". Read: ujson exposes dump/dumps/load/loads and so
+   mirrors the catalogued json.dump file-write; orjson exposes only dumps/loads,
+   has NO dump, and therefore has no file-write surface -- cataloguing it would
+   match nothing. Pinned by a test so a later completeness pass does not add it
+   by symmetry.
+
+   defusedcsv is NOT added, because the blocker is elsewhere. Its real API is the
+   defusedcsv.csv SUBMODULE, and the analyzer emits module=defusedcsv,
+   name=csv.writer for `from defusedcsv import csv; csv.writer(...)`. Verified
+   against the live pretix edge: the conventional declaration (module:
+   defusedcsv.csv, functions: [writer]) does NOT match, and only a dotted NAME
+   does -- a form used by exactly 1 of 1979 built-in primitives. The catalogue
+   should not contort to fit a malformed id; filed as an analyzer module/name
+   split defect instead.
+
+Verified: 10 tests, 9 red before the change; core package 10,939 passed; mypy
+ratchet 672 = 672 delta +0; smart-test 4,352 passed over 101 selected files;
+ruff clean; language gate asserted non-destructive on the cohort.
+
+Refs: WI-nibav, WI-ratuv, INV-karud
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
