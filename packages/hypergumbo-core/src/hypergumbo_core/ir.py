@@ -1363,17 +1363,50 @@ def _canonical_external_stable_id(
     return f"sha256:{hashlib.sha256(payload.encode()).hexdigest()[:16]}"
 
 
-def _extract_path_slot(symbol_id: str) -> Optional[str]:
-    """Extract the ``path`` slot from a ``{lang}:{path}:{span}:{name}:{kind}`` id.
+def symbol_path_slot(symbol_id: str) -> str:
+    """THE path-slot parse for ``{lang}:{path}:{span}:{name}:{kind}`` ids.
 
-    Returns ``None`` if the id doesn't have at least 5 colon-separated parts.
-    Used to record the original referring-site path on edges whose src
-    was collapsed by :func:`apply_external_id_remap`.
+    RIGHT-ANCHORED, because per ADR-0036 (D1a) the path slot is the one
+    colon-TOLERANT slot in the grammar while lang/span/name/kind are colon-free.
+    So the last three tokens are span/name/kind and everything between the
+    language and that suffix is the path — ``dart:dart:io:0-0:module:module``
+    has path ``dart:io``, and ``rust:std::fs:0-0:write:external_symbol`` has
+    path ``std::fs``.
+
+    THIS IS A CHOKEPOINT, and it exists because the fact had four homes of
+    which two took ``parts[1]``: this module's own ``_extract_path_slot`` and
+    ``taint._extract_callee_module``, against the correct ``_parse_dangling_id``
+    thirteen lines below and ``verify_claims._symbol_path_slot``. All four now
+    route here.
+
+    The naive form was not merely untidy. Rust is the only language whose taint
+    catalogue uses ``::`` module paths and ALL NINE of its sink modules are
+    colon-bearing, so ``parts[1]`` truncated every one to ``std``;
+    ``_module_matches('std::fs', 'std')`` is False; and ``_lookup_named_entry``
+    treats a present-but-mismatched module as a REJECTION rather than a
+    degrade. The net effect was inverted: an edge naming ``std::fs`` was
+    refused while an edge carrying no module at all matched.
+
+    Returns ``""`` for anything with fewer than five colon-separated parts —
+    an unparseable id is not evidence, and every caller treats "" as "no path
+    information" rather than as a path.
     """
-    parts = symbol_id.split(":")
-    if len(parts) >= 5:
-        return parts[1]
-    return None
+    parts = symbol_id.split(":") if symbol_id else []
+    if len(parts) < 5:
+        return ""
+    return ":".join(parts[1:-3])
+
+
+def _extract_path_slot(symbol_id: str) -> Optional[str]:
+    """Extract the ``path`` slot, or ``None`` for a malformed id.
+
+    Delegates to :func:`symbol_path_slot`; the ``Optional`` return is kept
+    because :func:`apply_external_id_remap` branches on ``None`` to decide
+    whether to record ``meta['referring_paths']`` at all, and "" is a value it
+    would happily store.
+    """
+    slot = symbol_path_slot(symbol_id)
+    return slot if slot else None
 
 
 def _parse_dangling_id(dangling_id: str) -> tuple[str, str, str, str]:
@@ -1381,12 +1414,15 @@ def _parse_dangling_id(dangling_id: str) -> tuple[str, str, str, str]:
 
     The path slot may itself contain colons (e.g. dart imports like
     ``dart:dart:io:0-0:module:module`` where path = ``dart:io``), so the
-    parse uses the LAST three colon-separated tokens as span / name /
-    kind, joining everything between ``lang`` and that suffix as the
-    path.
+    path half delegates to :func:`symbol_path_slot` rather than repeating
+    the right-anchored parse — this function was one of the two homes that
+    already had it right, and it is now one of four that share it.
 
     Returns ``(language, path, name, kind)``. Falls back to safe defaults
-    when the id has fewer than 5 colon-separated parts.
+    when the id has fewer than 5 colon-separated parts, and the ``<unknown>``
+    path sentinel there is load-bearing: ``_derive_dst_ref_from_id`` branches
+    on that exact value to decline building a fabricated ``ExternalRef``
+    (WI-huzuv), so it must NOT be folded into ``symbol_path_slot``'s "".
     """
     parts = dangling_id.split(":")
     if len(parts) < 5:
@@ -1395,13 +1431,7 @@ def _parse_dangling_id(dangling_id: str) -> tuple[str, str, str, str]:
         name = parts[-2] if len(parts) >= 2 else dangling_id
         kind = parts[-1] if parts else "external_symbol"
         return language, "<unknown>", name, kind
-    language = parts[0]
-    kind = parts[-1]
-    name = parts[-2]
-    # parts[-3] is the span; everything between lang and span is the path
-    # (which may contain colons).
-    path = ":".join(parts[1:-3])
-    return language, path, name, kind
+    return parts[0], symbol_path_slot(dangling_id), parts[-2], parts[-1]
 
 
 def _dedupe_key(
