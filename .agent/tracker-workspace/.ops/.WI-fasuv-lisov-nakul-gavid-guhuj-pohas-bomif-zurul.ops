@@ -1,0 +1,23 @@
+- op: create  # 7946
+  at: '2026-08-05T21:23:34Z'  # 7946
+  by: agent  # 7946
+  actor: jgstern_agent  # 7946
+  clock: 1  # 7946
+  nonce: '7946'  # 7946
+  data:  # 7946
+    kind: work_item  # 7946
+    title: "runtime CLI shells out to git via compute_repo_fingerprint, so the shipped runtime-cli-no-subprocess claim is false as written"  # 7946
+    status: todo_hard  # 7946
+    priority: 2  # 7946
+    parent:  # 7946
+    tags:  # 7946
+    - security  # 7946
+    - verify_claims  # 7946
+    - cli  # 7946
+    - self_analysis  # 7946
+    isbefore: []  # 7946
+    duplicate_of: []  # 7946
+    not_duplicate_of: []  # 7946
+    pr_ref:  # 7946
+    description: "The shipped claim runtime-cli-no-subprocess (docs/hypergumbo.claims.yaml) reads: \"Runtime CLI subcommands do not shell out. All subprocess invocations (curl, git, pip, rustup, gitleaks) happen only via extras / build-time subcommands.\" That is false as written. git is invoked at RUNTIME by every subcommand that computes a cache key.\n\nESTABLISHED BY READING CODE, NOT BY TRUSTING THE TAINT ANALYSIS. This distinction is load-bearing: the finding-generation mechanism is itself in flux (WI-votom's two verified unearned-False routes; INV-sadah S2 inclusion still decided by call-graph BFS; INV-busis at 0 refuted over 56 walks), so the 1,890-flow population from that run is deliberately NOT being adjudicated. This item is the subset that does not rest on the walk.\n\nTHE PATH (read on dev c675fc484f):\n  cmd_<runtime> -> run_survey -> _get_results_cache_dir -> _get_repo_state_hash\n  -> repo_fingerprint.compute_repo_fingerprint -> _compute_git_fingerprint\n  -> _git_head / _git_dirty_files -> subprocess.run\nrepo_fingerprint.py:109 carries the marker \"# nosec B404 - required for git inspection\" and\n\"# noqa: S603  # nosec B603 - git_path resolved via shutil.which\", so the subprocess call is\ndeliberate and acknowledged at its own site. compute_repo_fingerprint (repo_fingerprint.py:259-268)\nbranches on (repo_root / \".git\").exists(), so the git path is taken for any git checkout - which is\nthe normal case for the tool's own target repos.\n\nSCOPE OBSERVED: in the capped evidence sample of the 2026-08-05 self-run, 11 distinct runtime\nsubcommands appear as sources on this claim (cmd_sketch, cmd_run, cmd_slice, cmd_dead_code_maybe,\ncmd_explain, cmd_io_boundaries, cmd_routes, cmd_search, cmd_symbols, cmd_test_coverage,\ncmd_verify_claims). DENOMINATOR CAVEAT: 23 of 742 evidence rows were readable (3.1%) because the\narray is capped by _MAX_EVIDENCE_ROWS; whether that cap samples or head-truncates is NOT\nDETERMINED, so the 11-subcommand figure is a floor, not a distribution.\n\nTHREE CANDIDATE RESOLUTIONS, none chosen:\n  (1) Amend the claim to carve out repo inspection - cheapest, but weakens a shipped security claim\n      and needs the carve-out to be bounded (git only, read-only, no user-controlled argv).\n  (2) Declare a repo-inspection safety zone and route the git calls through a safety_zones wrapper,\n      so the claim becomes \"no subprocess except the declared repo-inspection zone\". Consistent with\n      the existing wrapper discipline (safety_zones.py) and with the zone-barrier sanitizer the\n      claims file already declares.\n  (3) Stop shelling out (pure-python git object reads). Largest change; not obviously worth it.\nPreference not recorded - this needs a decision, and (2) is the only one that keeps the claim\nstrong while remaining true.\n\nWHY THIS MATTERS BEYOND THE CLAIM FILE: SECURITY.md publishes the per-entry-point audited IO\nsurface to PyPI consumers and documents the wrapper pattern as the recommended technique for other\nprojects. A claim that is false for hypergumbo itself undercuts the pattern it is advertising.\n\nNOT DETERMINED: whether any non-git subprocess reaches a runtime subcommand; whether the same\nruntime path exists for the other named binaries (curl, pip, rustup, gitleaks)."  # 7946
+    fields: {}  # 7946

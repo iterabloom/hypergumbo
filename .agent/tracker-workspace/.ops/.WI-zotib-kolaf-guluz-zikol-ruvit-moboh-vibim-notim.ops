@@ -20,3 +20,19 @@
     pr_ref:  # 9b7a
     description: "FIXED IN PR #217 (dev d5cefd62bb) the same day it was found; filed for the\nrecord and closed on behavioral evidence.\n\nTHE DEFECT. With FORCE_COLOR exported (agent harnesses set it; CI runners do\nnot), mypy colorizes stdout even into a pipe. check-mypy-ratchet's\ntrailing-[code] regex matched nothing, so the gate reported the 672-error\nsurface as \"whole-tree strict errors = 0 (baseline 672, delta -672)\", exit 0,\nplus the advice \"surface shrank -- run --update-baseline to lock in the\nprogress\". Taking that advice writes total 0 into the shrink-only baseline\nand ends INV-zogud's enforcement with no visible event. A fabricated growth\nwould merely block; a fabricated SHRINK invites disabling the gate.\n\nENVIRONMENT-DEPENDENT, WHICH IS WHY NOTHING CAUGHT IT. CI does not set\nFORCE_COLOR, so tests/test_smart_test_mypy_gate.py::TestGateFiresForReal\n(live ratchet must fail an all-zeros baseline) passed in CI while failing on\nany harness shell. R19's smart-test refusal never fired locally for the same\nreason: the gate saw no breach.\n\nBEHAVIORAL EVIDENCE, red then green on the live path with FORCE_COLOR=3 set:\n  before (dev 5993042f18): doctored all-zeros baseline -> exit 0, no\n    REGRESSION (test requires 1); real baseline -> \"0 (baseline 672,\n    delta -672)\".\n  after  (dev d5cefd62bb): doctored all-zeros baseline -> exit 1,\n    REGRESSION; real baseline -> \"672 (baseline 672, delta +0)\".\n\nTHE FIX, three layers: _run_mypy passes --no-color-output and scrubs\nFORCE_COLOR/MYPY_FORCE_COLOR/CLICOLOR_FORCE from the child env; ANSI is\nstripped before parsing so a colorized --input capture is read; and the\nstructural layer is default-deny reconciliation -- a verdict is rendered only\nwhen the parsed count equals mypy's own \"Found N errors\" tally, or a Success\nline accompanies a parsed 0. Everything else exits 2 (infrastructure) in\nevery mode INCLUDING --update-baseline, which now refuses to bank a baseline\nfrom output it cannot reconcile. Any future route to unparseable output\n(format change, new colour knob, truncated write) fails LOUD as a broken\ninstrument instead of OPEN as a clean surface.\n\nEight tests pin the truth table in\npackages/hypergumbo-core/tests/test_check_mypy_ratchet.py::TestOutputReconciliation."  # 9b7a
     fields: {}  # 9b7a
+- op: update  # df95
+  at: '2026-08-05T19:17:31Z'  # df95
+  by: agent  # df95
+  actor: jgstern_agent  # df95
+  clock: 2  # df95
+  nonce: df95  # df95
+  set:  # df95
+    status: done  # df95
+    pr_ref: '#217'  # df95
+- op: discuss  # a43f
+  at: '2026-08-05T19:17:31Z'  # a43f
+  by: agent  # a43f
+  actor: jgstern_agent  # a43f
+  clock: 3  # a43f
+  nonce: a43f  # a43f
+  message: "Fixed in PR #217 (dev d5cefd62bb), same session as discovery. Behavioral evidence in the description: red then green on the live path with FORCE_COLOR=3 set -- doctored all-zeros baseline exit 0 -> exit 1 REGRESSION; real baseline 0/-672 -> 672/+0. Eight new tests (TestOutputReconciliation) plus the previously-environment-dependent TestGateFiresForReal now passing in both environments."  # a43f
