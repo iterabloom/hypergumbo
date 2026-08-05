@@ -222,7 +222,7 @@ from .partial_install_warnings import check_partial_install_warnings
 # TYPE_CHECKING-only and the runtime import graph is unchanged.
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from .cfg import DdgEdge
-    from .dataflow_scope import LanguageDataflowScope
+    from .dataflow_scope import LanguageDataflowScope, SanitizerScope
     from .io_boundary import IoChain
     from .taint import TaintSanitizer, TaintSink, TaintSource
 
@@ -5121,6 +5121,10 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
     # INV-karud (a3): the published data-flow scope. Empty for a run with no
     # taint claims, which is why it is initialised here rather than assumed.
     dataflow_rows: list["LanguageDataflowScope"] = []
+    # INV-karud (b): same reason. ``None`` renders as the empty scope, so the
+    # envelope carries the key on every run rather than teaching consumers to
+    # read its absence as "not applicable".
+    sanitizer_scope: "SanitizerScope | None" = None
     findings_by_method: dict[str, int] = {}
 
     from .taint import (
@@ -5314,8 +5318,14 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
         # repo whose languages have sinks but no sources still publishes its
         # scope: that is precisely the run where nothing is reported and the
         # reader most needs to know why.
-        from .dataflow_scope import compute_dataflow_scope
+        from .dataflow_scope import (
+            compute_dataflow_scope,
+            compute_sanitizer_scope,
+        )
         dataflow_rows = compute_dataflow_scope(taint_catalog, per_lang_sinks)
+        # INV-karud (b)'s scope: what the sanitizer catalogue can express at
+        # all, and which pass honours a same-function barrier (WI-fasub).
+        sanitizer_scope = compute_sanitizer_scope(taint_catalog, per_lang_sinks)
         for finding in (taint_findings or []):
             _method = getattr(finding, "analysis_method", "") or "structural"
             findings_by_method[_method] = findings_by_method.get(_method, 0) + 1
@@ -5346,7 +5356,7 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
                 # INV-karud (a3). Always present so the envelope shape is
                 # stable; empty ``languages`` on a run with no taint claims.
                 "dataflow_coverage": dataflow_scope_dict(
-                    dataflow_rows, findings_by_method,
+                    dataflow_rows, findings_by_method, sanitizer_scope,
                 ),
             },
             view="verify-claims",
@@ -5390,7 +5400,7 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
         # to nothing when no taint-capable language was analyzed.
         from .dataflow_scope import render_dataflow_scope_text
         for line in render_dataflow_scope_text(
-            dataflow_rows, findings_by_method,
+            dataflow_rows, findings_by_method, sanitizer_scope,
         ):
             print(line)
 
