@@ -129,6 +129,15 @@ fs_write:
   - module: json
     functions: [dump]
     notes: "json.dump writes to a file object; json.dumps returns a string (not I/O)"
+  - module: ujson
+    functions: [dump]
+    notes: >-
+      WI-nibav. Drop-in for stdlib json; flows through it were previously
+      reached only by the retired substring predicate ('json' in 'ujson').
+      SURFACE READ, NOT ASSUMED: ujson exposes dump/dumps/load/loads, so it
+      mirrors the catalogued json.dump file-write. orjson is deliberately NOT
+      listed beside it -- its API is dumps/loads only, with no dump, so it has
+      no file-write surface to catalogue and adding it would match nothing.
   - module: pickle
     functions: [dump]
   - module: csv

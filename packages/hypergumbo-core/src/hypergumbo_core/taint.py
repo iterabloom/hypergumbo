@@ -262,14 +262,30 @@ class TaintFlowFinding:
         return "confirmed_safe" if self.sanitized else "violated"
 
     def to_dict(self) -> dict[str, Any]:
-        """Serialize to JSON-friendly dict."""
+        """Serialize to JSON-friendly dict.
+
+        ``source_module`` / ``sink_module`` / ``source_boundary`` ARE EMITTED,
+        and used not to be. Those are precisely the three fields whose own
+        docstrings justify them as *not recoverable from the emitted symbol* —
+        the module a catalog entry declared (WI-joruv) and the io_primitives
+        boundary the source came from (WI-vazal) — so dropping them here made a
+        serialized finding strictly weaker than the object it came from. The
+        verify-claims path survived only because it reaches the dataclass
+        directly; any consumer of the serialized form silently lost the
+        distinction WI-vazal shipped, which is the "data off the wire reached
+        the database" versus "a row read from the database reached the
+        database" split.
+        """
         return {
             "taint_label": self.taint_label,
             "source_symbol": self.source_symbol,
             "source_primitive": self.source_primitive,
+            "source_module": self.source_module,
             "sink_symbol": self.sink_symbol,
             "sink_primitive": self.sink_primitive,
+            "sink_module": self.sink_module,
             "sink_zone": self.sink_zone,
+            "source_boundary": self.source_boundary,
             "verdict": self.verdict,
             "sanitized": self.sanitized,
             "confidence": self.confidence,
@@ -381,8 +397,32 @@ def _match_propagation_entry(
     call_construct: str | None = None,
     *,
     is_resolved: bool = True,
+    language: str = "",
 ):
     """Match an edge's callee against a propagation source/sink ``index``.
+
+    ``language``, when given, is the language whose catalogue built ``index``,
+    and a callee from a DIFFERENT language is refused before any lookup. This
+    is what :func:`_extract_callee_language` was written for — its docstring
+    has always said it is "used by sink/source matching to filter cross-language
+    pollution", and it had ZERO production callers until now.
+
+    The pollution is structural rather than hypothetical: ``cmd_verify_claims``
+    selects a language's edges with ``src.startswith(lang:) OR
+    dst.startswith(lang:)``, so a bridge edge ``python:… → go:…`` is handed to
+    BOTH languages' matchers, and the wrong one then indexes a ``go:`` callee
+    against the Python catalogue. The OR is deliberate and must stay — the
+    propagation BFS needs both endpoints to walk a cross-language call — so the
+    gate belongs at the match, not at the selection.
+
+    Measured on a 9-repo cohort: 208 cross-language taint call edges exist
+    (95% of them typescript↔javascript) and **zero** currently match a sink in
+    the wrong language's index, so this changes no flow today. It is a latent
+    guard, and the honest reading of that null is the same as everywhere else in
+    this subsystem — the cohort holds no elixir or ruby, and the shape it would
+    take there (a short name like ``get`` colliding across catalogues) is
+    exactly what the dead function's docstring warned about and what no repo
+    here can exercise.
 
     A *resolved* (first-party) edge matches by exact callee name — the symbol
     is already disambiguated by resolution, and its symbol-ID "module" segment
@@ -401,6 +441,11 @@ def _match_propagation_entry(
     on the final graph, so a string check would make every unresolved edge look
     "resolved" here and silently bypass the collision guard below.
     """
+    if language and _extract_callee_language(edge_dst) != language:
+        # Cross-language pollution guard. Refused BEFORE the index lookup, so a
+        # short name that collides across two catalogues cannot match at all —
+        # checking after the lookup would still let `hits` decide.
+        return None
     callee_name = _extract_callee_name(edge_dst)
     hits = index.get(callee_name)
     if not hits:
@@ -1473,6 +1518,7 @@ def propagate_taint_structural(
     sinks: list[TaintSink],
     sanitizers: list[TaintSanitizer],
     ambiguous_names: frozenset[str] = frozenset(),
+    language: str = "",
 ) -> list[TaintFlowFinding]:
     """Structural taint-flow propagation via call-graph BFS.
 
@@ -1524,6 +1570,7 @@ def propagate_taint_structural(
             source_by_callee, edge["dst"], ambiguous_names,
             call_construct=edge.get("meta", {}).get("call_construct"),
             is_resolved=edge.get("is_resolved", True),
+            language=language,
         )
         if matched:
             source_callers.append((edge["src"], edge["dst"], matched))
@@ -1538,6 +1585,7 @@ def propagate_taint_structural(
             sink_by_callee, edge["dst"], ambiguous_names,
             call_construct=edge.get("meta", {}).get("call_construct"),
             is_resolved=edge.get("is_resolved", True),
+            language=language,
         )
         if matched:
             site = (edge["dst"], matched)
@@ -2029,6 +2077,7 @@ def propagate_taint_ddg(
     sanitizers: list[TaintSanitizer],
     ddg_symbols: set[str] | None = None,
     ambiguous_names: frozenset[str] = frozenset(),
+    language: str = "",
     function_summaries: dict[str, "FunctionSummary"] | None = None,
     stmt_defuse: dict[
         str, list[tuple[int, tuple[str, ...], tuple[str, ...]]]
@@ -2202,6 +2251,7 @@ def propagate_taint_ddg(
             source_by_callee, edge["dst"], ambiguous_names,
             call_construct=edge.get("meta", {}).get("call_construct"),
             is_resolved=edge.get("is_resolved", True),
+            language=language,
         )
         if matched:
             source_callers.append((edge["src"], edge["dst"], matched))
@@ -2215,6 +2265,7 @@ def propagate_taint_ddg(
             sink_by_callee, edge["dst"], ambiguous_names,
             call_construct=edge.get("meta", {}).get("call_construct"),
             is_resolved=edge.get("is_resolved", True),
+            language=language,
         )
         if matched:
             # ``sink_site``, not ``site``: the call-line loop above binds

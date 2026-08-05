@@ -5278,17 +5278,28 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
                 # actually adjudicated — so every language with reaching-def
                 # coverage benefits, and every language without one falls
                 # through to the same structural result it had before.
+                # ``language=lang`` is the cross-language pollution guard. The
+                # ``lang_edges`` selection above is deliberately an OR over src
+                # and dst — the propagation BFS has to see both endpoints of a
+                # bridge edge to walk a cross-language call — which means a
+                # ``python:… → go:…`` edge is handed to BOTH languages' matchers.
+                # Passing the language lets the matcher refuse a callee that is
+                # not this language's, so the OR stays correct for the walk
+                # without letting a `go:` callee be indexed against the Python
+                # catalogue.
                 if ddg_edges:
                     taint_findings.extend(propagate_taint_ddg(
                         ddg_edges, lang_edges, lang_sources, lang_sinks,
                         lang_sans, ddg_symbols=ddg_symbols,
                         ambiguous_names=lang_ambiguous,
+                        language=lang,
                         stmt_defuse=stmt_defuse,
                     ))
                 else:
                     taint_findings.extend(propagate_taint_structural(
                         lang_edges, lang_sources, lang_sinks, lang_sans,
                         ambiguous_names=lang_ambiguous,
+                        language=lang,
                     ))
 
         # INV-karud (a3), PUBLISHED SCOPE. Per-flow ``analysis_method`` says
