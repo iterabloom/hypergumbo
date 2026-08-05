@@ -1,0 +1,22 @@
+- op: create  # f235
+  at: '2026-08-05T06:22:32Z'  # f235
+  by: agent  # f235
+  actor: jgstern_agent  # f235
+  clock: 1  # f235
+  nonce: f235  # f235
+  data:  # f235
+    kind: work_item  # f235
+    title: "python analyzer splits `from pkg import submodule; submodule.fn()` as module=pkg name=submodule.fn, so the conventional catalogue shape cannot match it (blocks defusedcsv)"  # f235
+    status: todo_hard  # f235
+    priority: 2  # f235
+    parent:  # f235
+    tags:  # f235
+    - analysis_quality  # f235
+    - python  # f235
+    - adr_0017  # f235
+    isbefore: []  # f235
+    duplicate_of: []  # f235
+    not_duplicate_of: []  # f235
+    pr_ref:  # f235
+    description: "FOUND 2026-08-05 while trying to catalogue defusedcsv for WI-nibav. The\ncatalogue addition is BLOCKED on this, which is why it is filed rather than\nworked around.\n\nWHAT THE ANALYZER EMITS. For the pretix source shape\n`from defusedcsv import csv` followed by `csv.writer(...)`, the python analyzer\nemits, verbatim from the cohort map:\n\n    python:defusedcsv:0-0:csv.writer:external_symbol\n\ni.e. module slot = `defusedcsv`, name slot = `csv.writer`. The real API is the\n`defusedcsv.csv` SUBMODULE (verified by installing the package and reading it:\ntop level exposes only `version`; `defusedcsv.csv` exposes reader, writer,\nDictReader, DictWriter and the rest of the stdlib csv surface). So the correct\nsplit is module `defusedcsv.csv`, name `writer` — the analyzer put the submodule\non the wrong side of the boundary.\n\nWHY IT BLOCKS THE CATALOGUE, tested rather than argued. Both candidate\ndeclarations were run through production's `_match_propagation_entry` against\nthe live edge id:\n\n    module: defusedcsv.csv   functions: [writer]   -> NO MATCH   (conventional)\n    module: defusedcsv       functions: [csv.writer] -> MATCHES  (dotted NAME)\n\nOnly the second works, and a dotted *name* is against the catalogue's own\nconvention: the built-ins express `Class.method` as `kind: method` plus a dotted\nMODULE, and exactly 1 dotted name exists across 1979 primitives. Adding a second\none to accommodate a malformed id would encode the analyzer's defect into the\ndata, where the next reader has no way to know why.\n\nSCOPE, UNMEASURED AND WORTH MEASURING FIRST. This is the general\n`from package import submodule; submodule.fn()` shape, not a defusedcsv quirk.\nEvery such call presumably splits the same way, which would mean the module hint\nis wrong for an entire import idiom — and the module hint is what\n`_lookup_named_entry` filters on, so a wrong one either rejects a real match or\nadmits a wrong one. Count the shape across the cohort before choosing a fix; do\nnot scope this to defusedcsv.\n\nONCE FIXED: add defusedcsv to python's io_primitives as a csv-equivalent in the\nCONVENTIONAL form (module `defusedcsv.csv`), and re-check WI-nibav's remaining\nenumeration. Until then WI-nibav's group-1 list is ujson (shipped) and\ndefusedcsv (blocked here); orjson was excluded on its real API, which has no\n`dump`."  # f235
+    fields: {}  # f235
