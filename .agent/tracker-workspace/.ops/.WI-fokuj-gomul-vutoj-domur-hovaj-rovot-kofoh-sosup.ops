@@ -1,0 +1,21 @@
+- op: create  # e6e0
+  at: '2026-08-05T00:59:53Z'  # e6e0
+  by: agent  # e6e0
+  actor: jgstern_agent  # e6e0
+  clock: 1  # e6e0
+  nonce: e6e0  # e6e0
+  data:  # e6e0
+    kind: work_item  # e6e0
+    title: "Some external-symbol ids carry TWO span slots, so no parser can read them and _derive_dst_ref_from_id builds a fabricated ExternalRef"  # e6e0
+    status: todo_hard  # e6e0
+    priority: 3  # e6e0
+    parent:  # e6e0
+    tags:  # e6e0
+    - adr_0036  # e6e0
+    - analysis_quality  # e6e0
+    isbefore: []  # e6e0
+    duplicate_of: []  # e6e0
+    not_duplicate_of: []  # e6e0
+    pr_ref:  # e6e0
+    description: "FOUND 2026-08-04 while measuring WI-lonad's dst_ref re-key on a 9-repo cohort.\n\nSome external-symbol ids carry TWO span slots, so they do not conform to the\nADR-0036 grammar {lang}:{path}:{span}:{name}:{kind} at all. Every parser then\nproduces garbage, and they disagree about WHICH garbage.\n\nEVIDENCE, verbatim from the cohort:\n\n    javascript:node:path:0-0:0-0:path.extname:external_symbol\n        right-anchored path slot -> 'node:path:0-0'\n        name slot                -> 'path.extname'\n    javascript:node:http:0-0:0-0:http.IncomingMessage:external_symbol\n    javascript:node:querystring:0-0:0-0:querystring.parse:external_symbol\n    rust:external:0-0:clap_complete:0-0:generate_to:external_symbol\n        right-anchored path slot -> 'external:0-0:clap_complete'\n\nThe shape is an id composed FROM an already-composed id: a well-formed\n`node:path:0-0:...` fragment appears inside the path slot of an outer id that\nadds its own `0-0` span. The javascript cases look like a `node:` module\nspecifier being run through id composition twice.\n\nSCOPE, MEASURED: 52 of 62,861 unresolved taint call edges (0.08%) -- rust 37,\njavascript 15. Restricted to those two languages on this cohort.\n\nWHY IT MATTERS. A right-anchored parse is correct for a colon-TOLERANT path\nslot (ADR-0036 D1a) but it cannot detect a second span, so it silently folds\nthe extra span into the path: 'node:path:0-0' is returned as though it were a\nmodule. That value then flows into module matching, where it can neither match\na catalogue entry nor be recognised as malformed -- it just fails quietly. The\nsame ids give _derive_dst_ref_from_id a path of 'external:0-0:clap_complete',\nwhich is NOT the `external` sentinel, so WI-huzuv's guard does not fire and a\nfabricated ExternalRef is built from it -- exactly the outcome that guard\nexists to prevent.\n\nFIX SHAPE, NOT A DECISION. Two candidates, and the cheap one may be wrong:\n  (a) validate at composition -- reject/repair an id whose path slot contains a\n      span-shaped component. Catches the class wherever it is produced.\n  (b) fix the two producers. Narrower, but the shape recurring in two unrelated\n      languages is evidence the composition site is shared, which argues for (a).\nFind the composition site before choosing; if it is shared, (b) is a per-site\nsweep over one fact with N homes, which this project's through-line rules out.\n\nRELATED: INV-dulah (node.id format escapes documented grammar) and INV-kurup\n(identifier-bearing fields emit non-canonical formats from several emission\npaths) are the umbrella family. Check whether this is a member of INV-kurup\nbefore working it standalone -- it may be an instance rather than a new item,\nin which case fold it and close this."  # e6e0
+    fields: {}  # e6e0
