@@ -1,0 +1,22 @@
+- op: create  # 9b7a
+  at: '2026-08-05T19:16:30Z'  # 9b7a
+  by: agent  # 9b7a
+  actor: jgstern_agent  # 9b7a
+  clock: 1  # 9b7a
+  nonce: 9b7a  # 9b7a
+  data:  # 9b7a
+    kind: work_item  # 9b7a
+    title: "mypy ratchet failed OPEN under FORCE_COLOR: colorized output parsed as 0 errors, reported as a -672 shrink with --update-baseline advice"  # 9b7a
+    status: todo_hard  # 9b7a
+    priority: 1  # 9b7a
+    parent:  # 9b7a
+    tags:  # 9b7a
+    - mypy  # 9b7a
+    - ci_trust  # 9b7a
+    - infra  # 9b7a
+    isbefore: []  # 9b7a
+    duplicate_of: []  # 9b7a
+    not_duplicate_of: []  # 9b7a
+    pr_ref:  # 9b7a
+    description: "FIXED IN PR #217 (dev d5cefd62bb) the same day it was found; filed for the\nrecord and closed on behavioral evidence.\n\nTHE DEFECT. With FORCE_COLOR exported (agent harnesses set it; CI runners do\nnot), mypy colorizes stdout even into a pipe. check-mypy-ratchet's\ntrailing-[code] regex matched nothing, so the gate reported the 672-error\nsurface as \"whole-tree strict errors = 0 (baseline 672, delta -672)\", exit 0,\nplus the advice \"surface shrank -- run --update-baseline to lock in the\nprogress\". Taking that advice writes total 0 into the shrink-only baseline\nand ends INV-zogud's enforcement with no visible event. A fabricated growth\nwould merely block; a fabricated SHRINK invites disabling the gate.\n\nENVIRONMENT-DEPENDENT, WHICH IS WHY NOTHING CAUGHT IT. CI does not set\nFORCE_COLOR, so tests/test_smart_test_mypy_gate.py::TestGateFiresForReal\n(live ratchet must fail an all-zeros baseline) passed in CI while failing on\nany harness shell. R19's smart-test refusal never fired locally for the same\nreason: the gate saw no breach.\n\nBEHAVIORAL EVIDENCE, red then green on the live path with FORCE_COLOR=3 set:\n  before (dev 5993042f18): doctored all-zeros baseline -> exit 0, no\n    REGRESSION (test requires 1); real baseline -> \"0 (baseline 672,\n    delta -672)\".\n  after  (dev d5cefd62bb): doctored all-zeros baseline -> exit 1,\n    REGRESSION; real baseline -> \"672 (baseline 672, delta +0)\".\n\nTHE FIX, three layers: _run_mypy passes --no-color-output and scrubs\nFORCE_COLOR/MYPY_FORCE_COLOR/CLICOLOR_FORCE from the child env; ANSI is\nstripped before parsing so a colorized --input capture is read; and the\nstructural layer is default-deny reconciliation -- a verdict is rendered only\nwhen the parsed count equals mypy's own \"Found N errors\" tally, or a Success\nline accompanies a parsed 0. Everything else exits 2 (infrastructure) in\nevery mode INCLUDING --update-baseline, which now refuses to bank a baseline\nfrom output it cannot reconcile. Any future route to unparseable output\n(format change, new colour knob, truncated write) fails LOUD as a broken\ninstrument instead of OPEN as a clean surface.\n\nEight tests pin the truth table in\npackages/hypergumbo-core/tests/test_check_mypy_ratchet.py::TestOutputReconciliation."  # 9b7a
+    fields: {}  # 9b7a
