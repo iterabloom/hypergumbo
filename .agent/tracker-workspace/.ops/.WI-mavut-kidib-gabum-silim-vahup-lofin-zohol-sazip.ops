@@ -1,0 +1,21 @@
+- op: create  # b9cb
+  at: '2026-08-05T03:26:26Z'  # b9cb
+  by: agent  # b9cb
+  actor: jgstern_agent  # b9cb
+  clock: 1  # b9cb
+  nonce: b9cb  # b9cb
+  data:  # b9cb
+    kind: work_item  # b9cb
+    title: "smart-test maps io_primitives/*.yaml to zero tests: a catalogue change that alters every taint consumer selected 1 test file in CI"  # b9cb
+    status: todo_hard  # b9cb
+    priority: 2  # b9cb
+    parent:  # b9cb
+    tags:  # b9cb
+    - ci  # b9cb
+    - test_selection  # b9cb
+    isbefore: []  # b9cb
+    duplicate_of: []  # b9cb
+    not_duplicate_of: []  # b9cb
+    pr_ref:  # b9cb
+    description: "FOUND 2026-08-04 while shipping the INV-mivud fix (PR #210).\n\nTHE GAP. smart-test selects tests by walking the IMPORT GRAPH from changed\nsource files. A change to `io_primitives/*.yaml` is behaviour-defining -- those\nfiles ARE the taint and I/O-boundary catalogues -- but they are data, so no\nmodule imports them and the slicer maps them to nothing. Observed verbatim on\nPR #210's manifest:\n\n    # Changed files: 5\n    # Changed source files: 0\n    # Selected tests: 1\n\nThe single selected test was the NEW test file added in that PR, which the\nenumeration picks up because it is a changed .py, not because anything linked\nit to the catalogue it exercises. So the per-PR gate ran one file for a change\nthat alters which primitives every taint and io-boundary consumer matches.\n\nWHY IT IS NOT ACADEMIC. Two changes this session went through io_primitives:\nPR #209 added 531 taint sources+sinks by merging parent catalogues, and #210\nadded 7 ambiguous_names entries. Either could have broken taint matching\nrepo-wide, and neither would have been caught by its own PR's CI. Both were\nverified instead by a hand-run of the whole hypergumbo-core package (~17 min,\n10,929 tests) -- a discipline that works only for as long as someone remembers\nto apply it, which is exactly the property L48's family keeps proving unreliable.\n\nRELATION TO KNOWN ROUTES. This is the DATA-FILE variant of INV-kinin's route 5\n(a change confined to tests/fixtures/** selects nothing, because fixtures are\ndata rather than importable modules). Same mechanism, different directory, and\nhigher stakes: a fixture affects the test that reads it, a catalogue affects\nevery consumer. Check whether this folds INTO INV-kinin rather than standing\nalone -- if the fix is \"the enumeration must map non-importable files to\nconsumers by a declared rule rather than by imports\", it is one item.\n\nFIX SHAPES TO WEIGH, NOT A DECISION:\n (a) a declared map from data directories to the test files that cover them,\n     checked by a test that fails when a data dir gains a file no entry names\n     (the same shape as the G2 matrix's declared-scope test);\n (b) treat any change under io_primitives/ or cfg_nodes/ as touching the module\n     that loads it (taint.py / io_boundary.py / cfg.py) and let the existing\n     import walk take it from there. Cheaper, and probably right, since the\n     loader is a real dependency edge that simply is not expressed in Python;\n (c) widen to the owning package's full suite on any data change. Safe, slow,\n     and it gives up the selection benefit precisely where changes are riskiest.\nPrefer (b) on current evidence -- it reuses the existing mechanism instead of\nadding a parallel one -- but confirm the loader-to-data mapping is 1:1 before\nrelying on it.\n\nDO NOT close this by adding the io_primitives tests to one manifest by hand.\nThat fixes one PR and leaves the class, which is R8's whole point."  # b9cb
+    fields: {}  # b9cb

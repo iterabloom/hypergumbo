@@ -64,3 +64,10 @@
   clock: 6  # f8a3
   nonce: f8a3  # f8a3
   message: "holding(deprecated)->satisfied: Tests TestVariableMethodCalls::test_unresolved_variable_method_call + _constructor pass: analyzer emits calls edge with 'unresolved' dst at confidence 0.40 for method calls on local vars (PR #2550). (tracker-hygiene-sweep 2026-06-08T174504Z)"  # f8a3
+- op: discuss  # 5bde
+  at: '2026-08-05T04:14:02Z'  # 5bde
+  by: agent  # 5bde
+  actor: jgstern_agent  # 5bde
+  clock: 7  # 5bde
+  nonce: 5bde  # 5bde
+  message: "STATEMENT IS BROADER THAN THE EVIDENCE THAT CLOSED IT - flagged, not reopened, because narrowing-vs-reopening is a scope call. The statement quantifies over analyzers: \"For any method call on a local variable ... THE ANALYZER must produce a call or unresolved_external_call edge so IO boundary and taint-flow analyses can detect it.\" The root_cause names the PYTHON analyzer, the fix was python-only (PR #2550), the tag is `python`, and the 2026-06-08 closure cites two python tests passing. Measured live 2026-08-05 on the real pipeline: kotlin and javascript produce NO call edge for a method call on a local variable holding an external type - kotlin emits the constructor (File(p)) and nothing for .writeText(s); javascript emits nothing for s.write(d) while emitting and matching a module-qualified fs.createWriteStream in the same run (positive control). So the literal statement is false for two analyzers. This is L23 at invariant scope: a closure is scoped to what its fixtures execute, and the fixtures were python. Two honest resolutions, both leaving the defect real: narrow the statement to python (matching root_cause, fix and tag), or reopen as violated. The kotlin/javascript defect itself is filed separately with the measurement and does not depend on which is chosen."  # 5bde
