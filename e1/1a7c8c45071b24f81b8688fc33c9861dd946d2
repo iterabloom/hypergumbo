@@ -1,0 +1,52 @@
+Original commit body from 7a3158f1ba8fcf952c970c674bac752466ac1bf8:
+
+io_boundary._CATALOG_PARENTS declares four inheriting languages -- cpp <- c,
+kotlin <- java, scala <- java, elixir <- erlang -- and io_boundary.load_catalog
+honours it by merging the parent. The taint catalogue is derived from the SAME
+YAML by _derive_auto_imports_from_io_primitives, which called
+IoBoundaryCatalog.from_yaml(path) directly and inherited NOTHING, while its own
+docstring claimed ambiguous_by_lang lets the taint matchers "disambiguate
+exactly as io-boundaries does" (L50: a docstring asserting a parity that does
+not hold).
+
+MEASURED, catalogue-level. Taint sources+sinks:
+
+    cpp        3  ->   70   (+67)   C++ ran taint on THREE primitives; C has 67
+    elixir   231  ->  469  (+238)
+    kotlin    26  ->  138  (+112)
+    scala     23  ->  137  (+114)
+    TOTAL   1588  -> 2119  (+531, a 33% increase in the whole catalogue)
+
+ambiguous_names, the short-name collision guard, was missing for the same four:
+cpp 0 -> 19, kotlin 34 -> 58, scala 73 -> 80, elixir 50 -> 54. So the inheriting
+languages had BOTH a fraction of their primitive surface AND a weaker guard
+against false matches on what remained.
+
+THE PUBLISHED COVERAGE PERCENTAGE GOES DOWN, AND THAT IS THE FIX WORKING.
+verify-claims' dataflow_coverage block now reports 740 sources / 1406 sinks (was
+553 / 1062) with the data-flow-capable count unchanged at 274 -- none of the four
+has a CFG mapping -- so coverage reads 19.5% where it read 25.8%. The earlier
+figure was not bad arithmetic; it was computed over a catalogue missing 344
+sinks it should have been matching. A coverage table that moves against you when
+capability is added is doing the job it was added for.
+
+ALSO FIXED: `- on` in ambiguous_names is a YAML 1.1 BOOLEAN. javascript.yaml and
+scala.yaml each declared a bare `on`, which parses as True, so the string "on"
+-- EventEmitter.on, the most common callback name in Node -- was never
+suppressed in either language while the list looked correct. Both quoted, reason
+recorded in place. A text grep cannot see this (the file reads `on` either way),
+so the guard asserts against the LOADED value and scans every catalogue file
+rather than the two known ones.
+
+HONEST SCOPE. The 9-repo cohort contains no cpp, kotlin, scala or elixir source,
+so no arm of it can observe any of this (L59 -- before running an A/B, check a
+path exists by which the difference reaches the number). Evidence here is
+catalogue-level and structural, asserted directly rather than inferred from a
+cohort blind to it. What this predicts for real repos in those languages is
+untested and is not claimed.
+
+Verified: 12 tests red-first; core package 10924 passed; all 6 packages at 100%
+in isolation; mypy ratchet clean; ruff clean.
+
+Refs: INV-mivud (adjacent -- its own 7-name gap is a separate change), INV-karud
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
