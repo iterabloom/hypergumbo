@@ -1942,14 +1942,28 @@ def _ddg_taint_reaches(
     discarded) from one that *propagates* it (``lst.append(x)`` — argument
     escapes into the receiver) requires knowing whether the callee mutates its
     arguments. That is precisely ADR-0017 §4 function summaries, and §3a's own
-    step 3 says so: "At call sites, apply function summaries (§4)." §4a
-    (``infer_summary``) and §4b (``load_function_summaries``) have zero
-    production callers, so the information does not exist at runtime and every
-    ``False`` here is really an unverified ``None``. The walk therefore
-    CONFIRMS and never refutes: it earns the ``precise`` label where it finds
-    a dependence and leaves inclusion to call-graph reachability everywhere
-    else. Removal becomes sound once §4 runs — that is the fifth prerequisite,
-    absent from WI-kabif's filed list of four.
+    step 3 says so: "At call sites, apply function summaries (§4)."
+
+    THAT PARAGRAPH USED TO END "§4a and §4b have zero production callers, so
+    the information does not exist at runtime". Half of it is now false and it
+    was load-bearing, so it is corrected rather than deleted: **§4b runs in
+    production today** — ``propagate_taint_ddg`` calls
+    ``load_function_summaries()`` on its default path, and the live index
+    holds 38 terminating summaries (``fmt.Printf``, ``log.Println``,
+    ``builtins.print``, ``console.log``, …) that this walk consults. §4a
+    (``infer_summary``) still has zero production callers.
+
+    ``False`` IS ALSO NO LONGER INERT. Since PR #214 a ``False`` from this
+    walk earns the ``sanitized`` label on the barrier arm, and a sanitized
+    flow is dropped from a claim's violation set — so an unearned ``False``
+    deletes a real finding. Any change to the escape accounting below must
+    state which direction it moves ``False``, and only the direction that
+    produces FEWER of them is safe without new evidence.
+
+    Inclusion is still decided by call-graph reachability: the walk CONFIRMS
+    and never refutes, earning the ``precise`` label where it finds a
+    dependence. Removal authority is WI-kabif's, and it remains behind
+    INV-busis.
 
     The ADR-0017 §3a forward walk, over one function's reaching-definition
     edges. Seeds at the lines where the taint source is called — the value it
@@ -2088,7 +2102,34 @@ def _ddg_taint_reaches(
                         frontier.append((heir, use_line))
                     followed = True
             if followed:
-                # The taint continues along a chain we still understand.
+                # The taint continues along a chain we still understand — but
+                # ONE STATEMENT CAN DO TWO THINGS. ``acc.append(x); y = x``
+                # both hands ``x`` to a receiver we cannot follow and derives
+                # a tracked ``y``. Following the heir accounts for the heir,
+                # not for the statement, and skipping the escape question here
+                # is how an unearned ``False`` was produced (WI-votom hole 2).
+                #
+                # Only two things license skipping it, and they are enumerated
+                # as the PERMITTING cases rather than the blocking ones, so a
+                # callee shape nobody has modelled reads as "ask the question"
+                # instead of "assume it is fine":
+                #   1. no call at this line at all — a pure rebinding, so the
+                #      heir really is the value's only exit; and
+                #   2. a catalogued callee that consumes and discards, which
+                #      is exactly what ``_use_site_terminates`` decides.
+                #
+                # Direction, deliberately: this can only produce FEWER
+                # ``False``s. Since PR #214 a ``False`` earns ``sanitized``
+                # and a sanitized flow is dropped from a claim's violation
+                # set, so fewer ``False``s means strictly MORE surviving
+                # violations. A fix here can never suppress a finding.
+                if not (callees_at or {}).get((symbol_id, use_line)):
+                    continue
+                if _use_site_terminates(
+                    symbol_id, use_line, callees_at, summaries,
+                ):
+                    continue
+                escaped = True
                 continue
             # The tainted value is consumed at a line that defines nothing the
             # DDG tracked, or defines only variables no statement derived from
