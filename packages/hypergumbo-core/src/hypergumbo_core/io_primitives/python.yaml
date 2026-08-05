@@ -67,6 +67,25 @@ ambiguous_names:
   # analysis from string-normalization sites like name.replace("-", "_").
   - replace       # pathlib.Path.replace / os.replace vs str.replace, bytes.replace
   - rename        # pathlib.Path.rename / os.rename vs DataFrame.rename, dict-like .rename()
+  # INV-mivud. The seven below were DERIVED, not hand-picked: every catalogued
+  # python primitive whose short name also names a builtin or a dict/list/set/
+  # str method, and which was not already suppressed. Hand-picking is what left
+  # the gap — the item was filed for `copy` alone, and the campaign plan then
+  # guessed "all seven shutil peers", which is wrong in both directions:
+  # copytree/rmtree/make_archive collide with nothing and must stay matchable,
+  # while five Django ORM names that DO collide were missed entirely.
+  #
+  # These fire only when the edge carries NO module hint. A resolved
+  # `from os import remove` keeps its `os` hint and still matches; what is
+  # suppressed is a bare unresolved `remove(...)`, where the analysis genuinely
+  # cannot tell os.remove from list.remove and WI-razol's policy is to decline.
+  - all           # django.db.models.all vs builtins.all()
+  - copy          # shutil.copy vs dict.copy, list.copy  (the filed INV-mivud case)
+  - count         # django.db.models.count vs list.count, str.count
+  - filter        # django.db.models.filter vs builtins.filter()
+  - remove        # os.remove vs list.remove, set.remove
+  - update        # django.db.models.update vs dict.update, set.update
+  - values        # django.db.models.values vs dict.values
 
 fs_read:
   - module: builtins
