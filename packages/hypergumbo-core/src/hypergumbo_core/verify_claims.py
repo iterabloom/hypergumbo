@@ -124,7 +124,17 @@ from .paths import classify_test_file, is_migration_file
 # The block answers a question no per-flow field can: ``analysis_method`` says
 # how ONE flow was adjudicated, and a reader cannot interpret "structural"
 # without knowing whether the language was capable of anything else.
-VERIFY_CLAIMS_SCHEMA_VERSION = "1.7"
+# 1.8 nests ``sanitizer_scope`` inside that block (INV-karud clause b): the
+# catalogue's size, the taint categories it can express, the labels a flow must
+# carry to be reportable as sanitized at all, and ``same_function_honoured_by``.
+# Additive, and it exists because clause (b)'s evidence is unreadable without
+# it — the catalogue is entirely cryptographic, so a repository-wide "0
+# sanitized flows" usually means the claims' labels and the sanitizers' labels
+# are disjoint sets rather than that nothing was protected. It also publishes
+# the one shape the call-graph pass structurally cannot honour: a sanitizer
+# called in the same function as the source (WI-fasub), which the DDG pass now
+# does honour and which every language without a def/use extractor still misses.
+VERIFY_CLAIMS_SCHEMA_VERSION = "1.8"
 # WI-kikis: cap on the per-verdict structured drill-down evidence list. A
 # violated claim can have thousands of flows (3,969 on the self-corpus); the
 # deduplicated ``evidence`` list is bounded to this many DISTINCT flows so the

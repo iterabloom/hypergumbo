@@ -1461,11 +1461,42 @@ def _iter_sink_sites(
             yield caller, sink_callee_id, taint_sink
 
 
+def _edge_call_sites(edge: dict[str, Any]) -> list[int]:
+    """Every line this call edge is known to occur on.
+
+    ``edge["line"]`` alone is NOT every call site. ``ir.deduplicate_edges``
+    keeps one edge per ``(src, dst, edge_type)`` carrying whichever site was
+    encountered FIRST, so asking "does the taint reach ``line``?" asks about an
+    arbitrary one of N. That produced a verified false negative on caddy:
+    ``printEnvironment`` calls ``fmt.Printf`` twelve times, the edge recorded
+    line 454, and the tainted call sat at 469. ``meta.call_lines`` preserves the
+    rest; absence of that field is its contract for "exactly one site".
+
+    ONE HOME, because two consumers now need it — the §3a walk's line index and
+    the sanitizer-line index that WI-fasub's fix keys on. A second copy of this
+    parse is exactly the shape that put four parsers of the symbol-id path slot
+    in the tree, two of them wrong.
+
+    Validated rather than trusted: ``meta`` is an open dict deserialized from an
+    artifact that may predate the field or have been hand-edited, and a non-int
+    member would reach a ``sink_line > source_line`` comparison as a TypeError.
+    """
+    sites: list[int] = []
+    recorded = (edge.get("meta") or {}).get("call_lines")
+    if isinstance(recorded, list):
+        sites = [ln for ln in recorded if isinstance(ln, int)]
+    edge_line = edge.get("line")
+    if isinstance(edge_line, int) and edge_line not in sites:
+        sites.append(edge_line)
+    return sites
+
+
 def _register_sanitizer_callers(
     edges: list[dict[str, Any]],
     sanitizer_by_callee: dict[str, list[TaintSanitizer]],
     sanitizer_callers: "dict[str, dict[str, TaintSanitizer]]",
     ambiguous_names: frozenset[str] = frozenset(),
+    sanitizer_lines: "dict[tuple[str, str], list[int]] | None" = None,
 ) -> None:
     """Populate sanitizer_callers from edges + multi-sanitizer index.
 
@@ -1490,6 +1521,16 @@ def _register_sanitizer_callers(
     ``kind``-filter for a free-function call matching a method-kind sanitizer
     is not applied here because the sanitizer catalog carries no explicit
     ``kind`` — a documented follow-up requiring a sanitizer-YAML schema field.)
+
+    ``sanitizer_lines``, when supplied, additionally records
+    ``(caller, input_taint) -> [line, ...]`` for every barrier call site. That
+    index is what lets the DDG pass honour a sanitizer in the SAME function as
+    the source (WI-fasub), and it is collected HERE rather than re-derived at
+    the point of use so the INV-finoh resolution-/kind-aware gate above governs
+    both. Re-matching sanitizers at a second site is how this module acquired a
+    private, ungated copy of this registration that silently deleted real flows;
+    the caller that needs lines passes a dict, the one that does not passes
+    nothing.
     """
     for edge in edges:
         if not _is_taint_call_edge(edge):
@@ -1510,6 +1551,10 @@ def _register_sanitizer_callers(
                     continue
         for matched in matched_list:
             sanitizer_callers[edge["src"]][matched.input_taint] = matched
+            if sanitizer_lines is not None:
+                sanitizer_lines.setdefault(
+                    (edge.get("src", ""), matched.input_taint), [],
+                ).extend(_edge_call_sites(edge))
 
 
 def propagate_taint_structural(
@@ -1693,8 +1738,32 @@ def _reachability_past_sanitizers(
     barrier that means one thing in one pass and another in the other is the
     shape that produces "fixed in Python, still broken in Go" reports.
 
-    The seed is exempt from the barrier in both passes: it is the taint origin
-    and must be reachable whether ``start_at`` puts it at the caller or callee.
+    THE SEED IS EXEMPT FROM THE BARRIER IN BOTH PASSES, and that exemption has
+    a consequence worth naming rather than rediscovering. The seed must stay
+    reachable — it is the taint origin, whether ``start_at`` puts it at the
+    caller or the callee — and the same exemption means a sanitizer called
+    *from* the seed function is never consulted here. So ``plain =
+    decrypt(t); safe = encrypt(plain); write(safe)`` in one function reports an
+    unsanitized flow about code that visibly sanitizes (WI-fasub).
+
+    THAT IS NOT FIXABLE IN THIS FUNCTION, AND THE REASON IS STRUCTURAL. This
+    walk sees a call GRAPH. "handler calls encrypt" and "handler calls write"
+    are two edges with no order between them, and the graph is byte-identical
+    whichever order the two calls occur in the source — so no amount of work on
+    call-graph reachability can distinguish encrypt-then-write from
+    write-then-encrypt. Answering it requires statement ordering inside the seed
+    function, which is ``stmt_defuse`` (PR #203), and that reaches
+    :func:`propagate_taint_ddg` alone. The fix therefore lives at that caller,
+    keyed on the sanitizer call lines the registrar now records.
+
+    CONSEQUENCE FOR THE STRUCTURAL PASS: it cannot honour same-function
+    sanitization at all, for any language, permanently — a scope limit rather
+    than a deferral, since :func:`propagate_taint_structural` has no statement
+    data to be given. Every language without a def/use extractor is served by
+    that pass, which is most of the catalogue. The limit is published in the
+    emitted record by ``sanitizer_scope`` (see :mod:`.dataflow_scope`) rather
+    than left in this docstring, because a reader of the OUTPUT is the one who
+    needs it.
     """
     reachable: set[str] = set()
     barrier_nodes: list[str] = []
@@ -1821,8 +1890,18 @@ def _ddg_taint_reaches(
     summaries: Mapping[str, "FunctionSummary"] | None = None,
     defs_at: Mapping[tuple[str, int], AbstractSet[str]] | None = None,
     inherits: Mapping[tuple[str, int, str], AbstractSet[str]] | None = None,
+    barrier_lines: AbstractSet[int] | None = None,
 ) -> bool | None:
     """Does a value defined at a source call reach a use at a sink call?
+
+    TWO CALLERS ASK TWO QUESTIONS OF THIS ONE WALK. With no ``barrier_lines``
+    it answers §3a's "is there a data dependence from source to sink" — the
+    confirm-only adjudication. With the sanitizer call sites as barriers it
+    answers "is there such a dependence that does NOT pass through a
+    sanitizer", and the difference between the two runs is what earns
+    ``sanitized`` for a same-function barrier (WI-fasub). Both readings rest on
+    the same three-valued discipline below, which is why they share an
+    implementation rather than growing a second walk that can drift from it.
 
     THREE-VALUED, and that is the load-bearing part. ``True`` means a data
     dependence was found; ``False`` means the walk ran to completion without
@@ -1904,6 +1983,14 @@ def _ddg_taint_reaches(
             the variables a statement at that line defines while consuming
             ``used_variable``. This is what keeps two variables defined on one
             line from laundering taint between each other.
+        barrier_lines: Lines where a SANITIZER is called. A tainted value
+            consumed at one of these is accounted for — it went into a barrier
+            and what came out carries a different taint label — so the walk
+            stops following it there WITHOUT flagging an escape. Running the
+            walk twice, once with barriers and once without, is what lets
+            :func:`propagate_taint_ddg` tell "every data route to this sink
+            passes through the sanitizer" from "some route does not" (WI-fasub).
+            Empty by default, so the §3a confirm-only walk is unaffected.
 
     Returns:
         True if a tainted value is used at a line where the sink is called;
@@ -1912,6 +1999,7 @@ def _ddg_taint_reaches(
         recorded in the first place. Only False may ever license a removal.
     """
     targets = set(sink_lines)
+    barriers = barrier_lines or frozenset()
     seen: set[tuple[str, int]] = set()
     escaped = False
 
@@ -1960,6 +2048,33 @@ def _ddg_taint_reaches(
         if uses & targets:
             return True
         for use_line in uses:
+            if use_line in barriers:
+                # ACCOUNTED FOR, NOT ESCAPED. The tainted value was consumed by
+                # a sanitizer here, so what continues from this line carries the
+                # barrier's OUTPUT label, not the one being tracked. Stopping
+                # without setting ``escaped`` is the whole point: it lets an
+                # exhausted barrier walk return ``False`` — "every route to the
+                # sink went through the sanitizer" — which is the positive
+                # evidence WI-fasub's fix requires before suppressing a
+                # violation.
+                #
+                # KNOWN RESIDUAL, stated because the alternative is folklore.
+                # Dropping every heir at this line is wrong for a statement
+                # that BOTH sanitizes and rebinds the raw value —
+                # ``safe, leak = encrypt(plain), plain`` — where ``leak`` is
+                # never followed and a later use of it would go unreported. The
+                # conservative alternative (treat >1 heir as ambiguous and
+                # escape) was measured against the idioms that actually occur
+                # and rejected: Go's ``ct, err := aead.Seal(...)`` and Rust's
+                # ``let (ct, tag) = ...`` bind two names from EVERY sanitizer
+                # call in those languages, so it would forfeit the fix wherever
+                # a multiple-return language is involved — trading a rare false
+                # negative for a systematic false positive, which is the defect
+                # being fixed here. The two heirs are indistinguishable from the
+                # DDG alone (one statement row, ``defines=(a, b) uses=(x,)`` in
+                # both cases), so closing it needs the argument-position
+                # information ADR-0017 §7b excludes.
+                continue
             # WHICH VARIABLE INHERITS THE TAINT HERE? Only one defined at this
             # line by a statement that actually CONSUMES `var`. Following the
             # line instead of the variable is what made the label unearned:
@@ -2173,39 +2288,12 @@ def propagate_taint_ddg(
     # (caller, callee) → every line that call occurs on. A caller may invoke
     # the same callee more than once, and a flow is real if the taint reaches
     # ANY of those call sites, so this is a list rather than a single line.
-    #
-    # ``edge["line"]`` alone is NOT every call site. The call graph keeps one
-    # edge per (src, dst, edge_type) and that edge carries whichever site was
-    # encountered FIRST, so asking "does the taint reach ``line``?" asks about
-    # an arbitrary one of N sites. That produced a verified false negative on
-    # caddy: ``printEnvironment`` calls ``fmt.Printf`` twelve times, the edge
-    # recorded line 454, and the tainted call sat at 469. ``meta.call_lines``
-    # (ir.deduplicate_edges) preserves the rest; read it when present and fall
-    # back to ``line`` when absent — absence is that field's contract for
-    # "exactly one site".
-    #
-    # Validated rather than trusted: ``meta`` is an open dict deserialized from
-    # an artifact that may predate the field or have been hand-edited, and a
-    # non-int member would reach the ``sink_line > source_line`` comparison
-    # below as a TypeError.
+    # ``_edge_call_sites`` owns the parse — see its docstring for why one edge
+    # does not mean one line.
     call_lines: dict[tuple[str, str], list[int]] = defaultdict(list)
     callee_names: dict[tuple[str, int], set[str]] = defaultdict(set)
     for edge in call_edges:
-        sites: list[int] = []
-        recorded = (edge.get("meta") or {}).get("call_lines")
-        if isinstance(recorded, list):
-            sites = [ln for ln in recorded if isinstance(ln, int)]
-        # NOT named ``line``: that name is bound to an ``int`` by the
-        # statement loop above, so rebinding it here made mypy infer ``int``
-        # for a value that is ``Any | None`` — and then report the isinstance
-        # guard on the next line as "always true". The guard is live and the
-        # comment above says why (a non-int reaching ``sink_line >
-        # source_line`` is a TypeError); draining that redundant-expr error
-        # the obvious way would have deleted it. L51: a checker's verdict is
-        # only as good as the annotation under it.
-        edge_line = edge.get("line")
-        if isinstance(edge_line, int) and edge_line not in sites:
-            sites.append(edge_line)
+        sites = _edge_call_sites(edge)
         if sites:
             call_lines[(edge.get("src", ""), edge.get("dst", ""))].extend(sites)
             # (function, line) → the QUALIFIED names called there, for §4.
@@ -2291,8 +2379,13 @@ def propagate_taint_ddg(
     # on the path verify-claims runs Python through. INV-finoh's own filing
     # named this site; the fix landed only at the structural one.
     sanitizer_callers: dict[str, dict[str, TaintSanitizer]] = defaultdict(dict)
+    # (caller, input_taint) → the lines the barrier is called on, for WI-fasub's
+    # same-function check. Collected by the shared registrar so it cannot
+    # disagree with the barrier set above about what counts as a sanitizer.
+    sanitizer_lines: dict[tuple[str, str], list[int]] = {}
     _register_sanitizer_callers(
         call_edges, sanitizer_by_callee, sanitizer_callers, ambiguous_names,
+        sanitizer_lines=sanitizer_lines,
     )
 
     findings: list[TaintFlowFinding] = []
@@ -2397,6 +2490,48 @@ def propagate_taint_ddg(
                         ddg_uses, callee_names, summaries,
                         defs_at=defs_at, inherits=inherits,
                     ) is True
+
+                    # WI-fasub: a sanitizer in the SAME function as the source.
+                    #
+                    # The BFS barrier cannot see this one. It exempts the seed —
+                    # it must, since the seed is the taint origin and has to
+                    # stay reachable — and a barrier called FROM the seed
+                    # function is therefore never consulted, so
+                    # `encrypt-then-write in one function`, an entirely ordinary
+                    # shape, reported a violation about code that visibly
+                    # sanitizes. Call-graph reachability cannot fix that at any
+                    # price: both calls have the same caller, so the graph is
+                    # identical whichever order they occur in. Statement
+                    # ordering is the only thing that can answer it, which is
+                    # why this lives here and NOT in the shared barrier helper.
+                    #
+                    # TWO WALKS, AND BOTH HALVES ARE LOAD-BEARING. Marking a
+                    # flow sanitized suppresses it from a claim's violation set,
+                    # so it needs positive evidence exactly as §3a's removal arm
+                    # does. `adjudicated` says a data route source→sink exists;
+                    # the guarded walk says no such route AVOIDS the barrier,
+                    # with every step accounted for. Only `False` — exhausted,
+                    # nothing unexplained — earns the label. `None` means the
+                    # value escaped tracked ground on some route, and "I lost
+                    # track of it" is not "you protected it" (L58 applied to
+                    # sanitization rather than to removal).
+                    barrier_sites = sanitizer_lines.get(
+                        (source_fn, taint_label), [],
+                    )
+                    #
+                    # ``or``, never a plain assignment: ``is_sanitized`` may
+                    # already be True from the call-graph barrier (a ``callee``
+                    # seed puts the source's own function downstream of the
+                    # seed, so it can reach this line via
+                    # ``sanitized_reachable``). This check ADDS a way to earn
+                    # the label and must never take one away.
+                    if adjudicated and barrier_sites:
+                        is_sanitized = is_sanitized or _ddg_taint_reaches(
+                            source_fn, source_call_lines, sink_call_lines,
+                            ddg_uses, callee_names, summaries,
+                            defs_at=defs_at, inherits=inherits,
+                            barrier_lines=frozenset(barrier_sites),
+                        ) is False
 
             # The label now records what actually decided inclusion, which is
             # what INV-sadah asserts. Before §3a existed every finding here was

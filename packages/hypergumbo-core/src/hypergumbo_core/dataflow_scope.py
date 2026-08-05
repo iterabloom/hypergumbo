@@ -74,6 +74,18 @@ INCLUSION_DECIDED_BY = "call_graph_reachability"
 #: the claim cannot quietly outlive its truth (R16).
 COVERAGE_GRANULARITY = "language"
 
+#: Which analysis methods honour a sanitizer called in the SAME function as the
+#: taint source. Deciding that needs statement ordering inside the seed
+#: function, so it is available to the DDG pass and structurally unavailable to
+#: the call-graph one: "handler calls encrypt" and "handler calls write" are two
+#: edges with no order between them, and the graph is identical whichever order
+#: the source actually has. ``propagate_taint_structural`` therefore cannot ever
+#: honour this shape, for any language — a scope limit, not a deferral, and one
+#: that applies to most of the catalogue because every language without a
+#: def/use extractor is served by that pass (WI-fasub). Declared as data with a
+#: test on it so the claim cannot quietly outlive its truth (R16).
+SAME_FUNCTION_SANITIZATION_HONOURED_BY = ("ddg",)
+
 #: The capability bits, in the order a reader should fix them: a mapping is
 #: prerequisite to declaring atomic statements, which is prerequisite to an
 #: extractor producing anything, which is prerequisite to a spec being useful.
@@ -129,6 +141,68 @@ class LanguageDataflowScope:
         }
 
 
+@dataclass(frozen=True)
+class SanitizerScope:
+    """What the sanitizer catalogue can say anything about — INV-karud (b).
+
+    Clause (b) asks that a sanitizer on a route actually neutralize the flow.
+    Verifying that is only meaningful for a taint label some sanitizer CLAIMS to
+    transform, and the catalogue is far narrower than the source/sink one: every
+    entry is cryptographic. So "0 sanitized flows" across a whole repository is
+    ambiguous in the way L58 is about — it may mean nothing was protected, or it
+    may mean nothing *could* be, because the claim's taint labels and the
+    catalogue's input labels are disjoint sets. That has been measured and it is
+    the latter: a nine-repo cohort produced zero sanitized flows for exactly
+    this reason. ``sanitizable_labels`` is what makes the two readable apart.
+    """
+
+    total: int
+    languages: tuple[str, ...]
+    taint_categories: tuple[str, ...]
+    sanitizable_labels: tuple[str, ...]
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "total": self.total,
+            "languages": list(self.languages),
+            "taint_categories": list(self.taint_categories),
+            "sanitizable_labels": list(self.sanitizable_labels),
+            "same_function_honoured_by": list(
+                SAME_FUNCTION_SANITIZATION_HONOURED_BY
+            ),
+        }
+
+
+def compute_sanitizer_scope(
+    catalog: Any,
+    languages: Iterable[str],
+) -> SanitizerScope:
+    """Summarise the sanitizer catalogue over the analyzed languages.
+
+    Derived from the catalogue the propagators actually loaded, never from a
+    hand-kept list — a second home for these counts would decay silently, and
+    counting something the pipeline already classifies is the bug rather than a
+    shortcut (L53).
+    """
+    entries = [
+        san
+        for language in sorted(set(languages))
+        for san in catalog.sanitizers_for_language(language)
+    ]
+    with_any = sorted({
+        language for language in set(languages)
+        if catalog.sanitizers_for_language(language)
+    })
+    return SanitizerScope(
+        total=len(entries),
+        languages=tuple(with_any),
+        taint_categories=tuple(sorted({
+            f"{san.input_taint} -> {san.output_taint}" for san in entries
+        })),
+        sanitizable_labels=tuple(sorted({san.input_taint for san in entries})),
+    )
+
+
 def ensure_def_use_extractors_registered() -> bool:
     """Import the language def/use modules for their registration side effect.
 
@@ -178,9 +252,15 @@ def compute_dataflow_scope(
     return rows
 
 
+_EMPTY_SANITIZER_SCOPE = SanitizerScope(
+    total=0, languages=(), taint_categories=(), sanitizable_labels=(),
+)
+
+
 def dataflow_scope_dict(
     rows: Sequence[LanguageDataflowScope],
     findings_by_analysis_method: Mapping[str, int],
+    sanitizer_scope: SanitizerScope | None = None,
 ) -> dict[str, Any]:
     """The machine-readable scope block.
 
@@ -198,12 +278,19 @@ def dataflow_scope_dict(
         "languages": [row.to_dict() for row in rows],
         "findings_by_analysis_method": counts,
         "findings_total": sum(counts.values()),
+        # Always present, like every other key here: a disclosure that appears
+        # only when it has something to say teaches a consumer to treat its
+        # absence as "not applicable" rather than "zero".
+        "sanitizer_scope": (
+            sanitizer_scope or _EMPTY_SANITIZER_SCOPE
+        ).to_dict(),
     }
 
 
 def render_dataflow_scope_text(
     rows: Sequence[LanguageDataflowScope],
     findings_by_analysis_method: Mapping[str, int],
+    sanitizer_scope: SanitizerScope | None = None,
 ) -> list[str]:
     """The same scope, for the text view. Empty when nothing was analyzed.
 
@@ -247,5 +334,21 @@ def render_dataflow_scope_text(
         f"  Coverage is reported per {COVERAGE_GRANULARITY}: 'wired' means the "
         "machinery runs for that language, NOT that every function in it is "
         "modelled (Go if-statement initializers, for one, are not)."
+    )
+
+    scope = sanitizer_scope or _EMPTY_SANITIZER_SCOPE
+    categories = ", ".join(scope.taint_categories) or "none"
+    lines.append(
+        f"  Sanitizers: {scope.total} entr(ies) across "
+        f"{len(scope.languages)} language(s), covering {categories}. A flow "
+        "whose taint label is not one of those CANNOT be reported sanitized, "
+        "so a zero there means 'not expressible', not 'not protected'."
+    )
+    lines.append(
+        "  A sanitizer called in the SAME function as the source is honoured "
+        f"only by: {', '.join(SAME_FUNCTION_SANITIZATION_HONOURED_BY)}. The "
+        "call-graph pass cannot order two calls that share a caller, so for a "
+        "language with no def/use extractor that shape reports UNSANITIZED "
+        "even when the code protects it."
     )
     return lines

@@ -653,3 +653,66 @@ def test_published_scope_reaches_the_text_view(tmp_path: Path, capsys) -> None:
     assert "javascript" in out
     assert "def_use_extractor" in out
     assert "call-graph reachability" in out
+
+
+# --------------------------------------------------------------------------
+# Published sanitizer scope — INV-karud clause (b)
+# --------------------------------------------------------------------------
+
+def test_sanitizer_scope_reaches_both_real_surfaces(
+    tmp_path: Path, capsys,
+) -> None:
+    """The block must arrive through the REAL CLI, on both surfaces.
+
+    ``dataflow_scope`` is unit-tested, and that is not this test's question. A
+    unit test of ``dataflow_scope_dict`` passes just as happily when
+    ``cmd_verify_claims`` forgets to compute the scope and passes ``None`` —
+    the key is still present and every field reads zero. L13: a component
+    correct at unit level can be inert in the pipeline, and the way to tell is
+    to assert a value only the real wiring can produce.
+
+    So this asserts the catalogue actually reached the emitted record: a
+    non-zero entry count and the crypto categories the shipped
+    ``taint_sanitizers/encryption.yaml`` declares. The comparison is against
+    the loaded catalogue rather than a literal, so extending the catalogue
+    moves the test with it.
+    """
+    from hypergumbo_core.dataflow_scope import (
+        SAME_FUNCTION_SANITIZATION_HONOURED_BY,
+    )
+    from hypergumbo_core.taint import load_builtin_taint_catalog
+
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "leak.js").write_text(_JS_LEAK, encoding="utf-8")
+    (tmp_path / "src" / "util.py").write_text(
+        _UNRELATED_PYTHON, encoding="utf-8",
+    )
+
+    scope = _run(tmp_path, capsys)["envelope"]["dataflow_coverage"][
+        "sanitizer_scope"
+    ]
+
+    catalog = load_builtin_taint_catalog()
+    expected = {
+        f"{s.input_taint} -> {s.output_taint}"
+        for s in catalog.sanitizers_for_language("python")
+    }
+    assert expected, "non-vacuity: python must declare sanitizers"
+    assert scope["total"] > 0, (
+        "zero here means the CLI never computed the scope — the exact "
+        "failure a unit test of the dict builder cannot see"
+    )
+    assert expected <= set(scope["taint_categories"])
+    assert "plaintext" in scope["sanitizable_labels"]
+    assert scope["same_function_honoured_by"] == list(
+        SAME_FUNCTION_SANITIZATION_HONOURED_BY
+    )
+    assert "structural" not in scope["same_function_honoured_by"]
+
+    # The text surface carries the same two limits — the vocabulary one (a
+    # zero must read as "not expressible", not "not protected") and the
+    # same-function one.
+    out = _run_text(tmp_path, capsys)
+    assert "Sanitizers:" in out
+    assert "not expressible" in out
+    assert "SAME function" in out
