@@ -1443,6 +1443,92 @@ class TestSummariesCollapseEscapes:
         ) is True
 
 
+class TestFollowedHeirStillAsksTheEscapeQuestion:
+    """WI-votom hole 2: a tracked heir must not SUPPRESS a sibling escape.
+
+    One statement can do two things at once. ``acc.append(x); y = x`` both
+    hands ``x`` to a receiver the walk cannot follow AND derives a tracked
+    ``y``. The heir loop below sets ``followed`` from the second fact and
+    ``continue``d, skipping the ``_use_site_terminates`` escape check for the
+    first — so the walk reported "everything accounted for" while an escape on
+    that very statement went unasked. Following an heir accounts for the heir,
+    not for the statement.
+
+    THE DIRECTION MATTERS AND IT IS THE SAFE ONE. Since PR #214 a ``False``
+    from this walk earns the ``sanitized`` label, and a sanitized flow is
+    dropped from a claim's violation set. So an unearned ``False`` DELETES a
+    real security finding. This fix produces strictly fewer ``False``s, i.e.
+    strictly more surviving violations; it can never suppress.
+
+    Each test below isolates one arm. The second is the control: it is the
+    defect case with the heir removed, and it must already pass on the
+    unfixed walk — without it, a blanket ``None`` would satisfy the first test
+    and look like a fix.
+    """
+
+    # `acc.append(x)` and `y = x` share line 2; `pkg.Print(y)` is at line 3.
+    _USES: ClassVar[dict] = {("f", "x", 1): {2}, ("f", "y", 2): {3}}
+    _DEFS: ClassVar[dict] = {("f", 1): {"x"}}
+    _APPEND: ClassVar[FunctionSummary] = FunctionSummary(
+        function="pkg.Append", side_effect=True, mutates_self=True,
+    )
+    _PRINT: ClassVar[FunctionSummary] = FunctionSummary(
+        function="pkg.Print", side_effect=True,
+    )
+
+    def test_dual_role_statement_escapes_despite_a_followed_heir(self) -> None:
+        """The defect. ``x`` went into the append AND into ``y``.
+
+        ``pkg.Append`` mutates its receiver, so ``_summary_terminates`` says
+        it does NOT consume-and-discard — where ``x`` went is unknown. The
+        walk must say ``None``, not ``False``.
+        """
+        assert _ddg_taint_reaches(
+            "f", [1], [9], self._USES,
+            {("f", 2): frozenset({"pkg.Append"}),
+             ("f", 3): frozenset({"pkg.Print"})},
+            {"pkg.Append": self._APPEND, "pkg.Print": self._PRINT},
+            defs_at=self._DEFS,
+            inherits={("f", 2, "x"): {"y"}},
+        ) is None
+
+    def test_the_same_line_without_an_heir_already_escaped(self) -> None:
+        """CONTROL: identical minus the heir. Passes before AND after."""
+        assert _ddg_taint_reaches(
+            "f", [1], [9], {("f", "x", 1): {2}},
+            {("f", 2): frozenset({"pkg.Append"})},
+            {"pkg.Append": self._APPEND},
+            defs_at=self._DEFS,
+        ) is None
+
+    def test_a_followed_heir_with_no_call_at_the_line_still_closes(
+        self,
+    ) -> None:
+        """A pure rebinding. No call at the line, so the heir IS the only
+        exit and the escape question has no subject."""
+        assert _ddg_taint_reaches(
+            "f", [1], [9], self._USES,
+            {("f", 3): frozenset({"pkg.Print"})},
+            {"pkg.Print": self._PRINT},
+            defs_at=self._DEFS,
+            inherits={("f", 2, "x"): {"y"}},
+        ) is False
+
+    def test_a_followed_heir_with_a_terminating_callee_still_closes(
+        self,
+    ) -> None:
+        """``pkg.Print`` consumes and discards, so the sibling arm IS
+        accounted for and the heir carries the rest."""
+        assert _ddg_taint_reaches(
+            "f", [1], [9], self._USES,
+            {("f", 2): frozenset({"pkg.Print"}),
+             ("f", 3): frozenset({"pkg.Print"})},
+            {"pkg.Print": self._PRINT},
+            defs_at=self._DEFS,
+            inherits={("f", 2, "x"): {"y"}},
+        ) is False
+
+
 class TestQualifiedCallee:
     """The ADR-0017 §4 catalogue lookup key (INV-rozaj).
 
