@@ -1,0 +1,54 @@
+Original commit body from 04bc9c61861c3340850e7215199935f9cd7b9d55:
+
+With FORCE_COLOR exported (agent harnesses set it), mypy colorizes stdout
+even into a pipe. check-mypy-ratchet's trailing-[code] regex then matches
+nothing, and the gate reported the 672-error surface as
+
+    whole-tree strict errors = 0 (baseline 672, delta -672)   exit 0
+
+plus "surface shrank — run --update-baseline to lock in the progress".
+Taking that advice writes total 0 into the shrink-only baseline and ends
+INV-zogud's enforcement with no visible event. A fabricated GROWTH would
+merely block; a fabricated SHRINK invites permanently disabling the gate,
+which is the most expensive direction a shrink-only instrument can fail.
+
+The failure was environment-dependent: CI runners do not set FORCE_COLOR,
+so TestGateFiresForReal (live ratchet must fail an all-zeros baseline)
+passed in CI while failing on any harness shell — verified red on
+unmodified dev before this fix, exit 0 where the test requires 1. R19's
+"smart-test refuses to run pytest over a breach" never fired for the same
+reason: the gate saw no breach to refuse over.
+
+Three defences, stacked:
+
+* _run_mypy passes --no-color-output and scrubs FORCE_COLOR /
+  MYPY_FORCE_COLOR / CLICOLOR_FORCE from the child env — the live path
+  cannot produce colour at all.
+* ANSI escapes are stripped before parsing, so a colorized capture fed
+  via --input is READ rather than refused.
+* Default-deny reconciliation (L54), the structural fix: a verdict is
+  rendered only when the parsed count equals mypy's own "Found N errors"
+  tally, or a Success line accompanies a parsed 0. Everything else —
+  empty stdout from a crashed run, truncated output, a future format or
+  colour change that defeats the regex — exits 2 (infrastructure) in
+  every mode INCLUDING --update-baseline, which now refuses to write a
+  baseline from output it cannot reconcile.
+
+The reconciliation is what makes this durable rather than a patch for one
+env var: any future route to unparseable output fails LOUD as a broken
+instrument instead of OPEN as a clean surface. Live A/B on this shell:
+doctored all-zeros baseline -> exit 1 REGRESSION (was exit 0); real
+baseline -> 672 (baseline 672, delta +0) with FORCE_COLOR=3 still set.
+
+Eight new tests pin the truth table: colorized output counted not zeroed
+(both the passing and the blocking direction), tally mismatch / missing
+tally / empty output / contradictory Success-plus-errors all exit 2, a
+genuine Success line still reads as the legitimate 0 the drain is aiming
+for, and --update-baseline over garbage writes nothing.
+
+Found while a "surface shrank" report contradicted a 672-delta-0 reading
+taken minutes earlier in the same session; the exactly-zero parse on data
+that obviously contains something is L53's oldest tell.
+
+Refs: INV-zogud, WI-vilaf (the gate this reopens correctly), R19, L53, L54
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
