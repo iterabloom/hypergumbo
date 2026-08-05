@@ -1,0 +1,21 @@
+- op: create  # c7d2
+  at: '2026-08-05T00:59:11Z'  # c7d2
+  by: agent  # c7d2
+  actor: jgstern_agent  # c7d2
+  clock: 1  # c7d2
+  nonce: c7d2  # c7d2
+  data:  # c7d2
+    kind: work_item  # c7d2
+    title: "Swift analyzer stamps the receiver expression into ExternalRef.module_path, so one symbol id carries different module_paths on different edges"  # c7d2
+    status: todo_hard  # c7d2
+    priority: 3  # c7d2
+    parent:  # c7d2
+    tags:  # c7d2
+    - adr_0037  # c7d2
+    - analysis_quality  # c7d2
+    isbefore: []  # c7d2
+    duplicate_of: []  # c7d2
+    not_duplicate_of: []  # c7d2
+    pr_ref:  # c7d2
+    description: "FOUND 2026-08-04 while measuring WI-lonad's dst_ref re-key against the string\nparse on a 9-repo cohort.\n\nExternalRef.module_path is documented in ir.py as \"Canonical module path in the\nlanguage's import vocabulary (e.g. urllib.request, std::fs, node:fs/promises).\nUse the value that would appear in a clean `from X import Y` statement\". The\nSwift analyzer is instead stamping the RECEIVER EXPRESSION.\n\nEVIDENCE. Three shapes, all from SwiftyJSON:\n\n    swift:array:0-0:map:external_symbol\n        dst_ref = {lang: swift, module_path: 'dict', name: 'map'}\n\n    swift:JSONSerialization:0-0:data:external_symbol\n        dst_ref = {lang: swift, module_path: 'invalidJson', name: 'data'}\n    swift:JSONSerialization:0-0:data:external_symbol        <-- SAME id\n        dst_ref = {lang: swift, module_path: 'jsonString',  name: 'data'}\n\n    swift:JSON:0-0:replacingOccurrences:external_symbol\n        dst_ref = {lang: swift, module_path: 'description', name: 'replacingOccurrences'}\n\nThe second pair is the decisive one: one identical symbol id carries TWO\nDIFFERENT module_path values on two different edges. A module path is a\nproperty of the target; a receiver variable is a property of the call site. A\nfield that varies per call site for a fixed target is not holding what its\ndocstring says it holds.\n\n'dict', 'invalidJson', 'jsonString' and 'description' are local variables in\nthe SwiftyJSON test sources, not modules.\n\nSCOPE, MEASURED. 6 edges of 37,972 dst_ref-bearing taint call edges on the\ncohort -- swift only; no other language diverges this way. That is small, and\nthe reason to file it anyway is that it is a CONTRACT violation in a field two\nsubsystems are being migrated onto (ADR-0037 wants consumers to prefer dst_ref\nover the dst string), so a field that silently means something else in one\nlanguage poisons the migration rather than merely being noisy. It is also the\none place measured where dst_ref is WORSE than the string parse it is meant to\nreplace.\n\nWHY NOT FOLDED INTO WI-lonad. That item is about the taint consumer; this is\nthe swift analyzer's emission. Folding a producer defect into a consumer\nmigration is the scope-axis error (L1) that WI-lonad's own re-scope exists to\ncorrect.\n\nBEFORE FIXING, CHECK THE OBVIOUS ALTERNATIVE: that the swift analyzer has no\nmodule information at these sites at all and is filling the field with the only\nstring it has. If so the correct fix is to emit no dst_ref (the documented\n\"unidentified reference\" cell, which _derive_dst_ref_from_id already uses for\nthe `external` sentinel per WI-huzuv) rather than to invent a module. Do not\nassume the receiver can be resolved to a module."  # c7d2
+    fields: {}  # c7d2
