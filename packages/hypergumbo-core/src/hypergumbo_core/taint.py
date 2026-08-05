@@ -45,6 +45,7 @@ from typing import TYPE_CHECKING, Any, Iterator, Optional, TypeVar, Union
 import yaml
 
 from .edge_types import is_grpc_rpc_implementation
+from .ir import symbol_path_slot
 
 if TYPE_CHECKING:
     from .cfg import DdgEdge
@@ -1205,21 +1206,28 @@ def _extract_callee_language(symbol_id: str) -> str:
 def _extract_callee_module(symbol_id: str) -> str:
     """Extract the callee module/path hint from a symbol ID.
 
-    Mirrors :func:`_extract_callee_name`'s parsing but returns the file
-    or module segment instead of the name. For unresolved externals
-    this is typically ``"external"`` (entirely ambiguous) or a module
-    path like ``"os.environ"`` / ``"subprocess"`` when the analyzer
+    Delegates to :func:`ir.symbol_path_slot`. For unresolved externals this is
+    typically ``"external"`` (entirely ambiguous) or a module path like
+    ``"os.environ"`` / ``"subprocess"`` / ``"std::fs"`` when the analyzer
     pinned it down. For in-repo dsts it's the relative file path.
 
-    Used by sink-matching to filter short-name collisions: a sink
-    declared as ``multiprocessing.Queue.get`` should NOT match an edge
-    whose dst is ``python:external:0-0:get:unresolved`` because the
-    edge could equally be ``dict.get``, ``args.get``, etc.
+    Used by sink-matching to filter short-name collisions: a sink declared as
+    ``multiprocessing.Queue.get`` should NOT match an edge whose dst is
+    ``python:external:0-0:get:unresolved`` because the edge could equally be
+    ``dict.get``, ``args.get``, etc.
+
+    THIS USED TO SAY "mirrors ``_extract_callee_name``'s parsing" AND TAKE
+    ``parts[1]``, WHICH IS NOT THAT PARSE. The path slot is colon-tolerant
+    (ADR-0036 D1a), so the naive split truncated every colon-bearing module to
+    its first component. That was fatal rather than lossy for Rust — all nine
+    of its catalogued sink modules are colon-bearing, ``std::fs`` became
+    ``std``, and because :func:`_lookup_named_entry` rejects on a
+    present-but-mismatched module rather than degrading, an edge that correctly
+    named ``std::fs`` was refused while an edge carrying no module at all
+    matched. The docstring's claim was the tell: it described the right parse
+    and the code did another one (L50).
     """
-    parts = symbol_id.split(":")
-    if len(parts) < 5:
-        return ""
-    return parts[1] if len(parts) > 1 else ""
+    return symbol_path_slot(symbol_id)
 
 
 # Source-file extensions stripped when reading a symbol id's PATH segment as a

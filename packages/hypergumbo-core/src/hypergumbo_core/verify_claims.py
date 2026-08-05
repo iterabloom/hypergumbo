@@ -72,6 +72,7 @@ import yaml
 
 from .edge_types import is_grpc_rpc_implementation
 from .io_boundary import KNOWN_IO_BOUNDARIES, BoundaryMap
+from .ir import symbol_path_slot
 from .paths import classify_test_file, is_migration_file
 
 
@@ -901,21 +902,21 @@ def _symbol_path_slot(symbol_id: str) -> str:
 
     RIGHT-ANCHORED deliberately. Per ADR-0036 (D1a) the path slot is the one
     colon-TOLERANT slot in the grammar — ``dart:dart:io:0-0:module:module`` has
-    path ``dart:io`` — while lang/span/name/kind are colon-free. So the parse
-    takes the last three tokens as span/name/kind and joins everything between
-    the language and that suffix. ``ir._extract_path_slot`` returns ``parts[1]``
-    and is wrong for exactly this case; ``ir._parse_dangling_id`` right beside
-    it is correct and documents why. Not folding those two here, but this must
-    not become a third naive copy.
+    path ``dart:io`` — while lang/span/name/kind are colon-free.
+
+    THE FOLD THIS DOCSTRING ASKED FOR HAS HAPPENED. It used to read "not
+    folding those two here, but this must not become a third naive copy",
+    naming ``ir._extract_path_slot``'s ``parts[1]`` as wrong — and a FOURTH
+    copy was already live in ``taint._extract_callee_module``, where it
+    truncated every colon-bearing Rust module and made the taint matcher reject
+    correctly-identified sinks. All four now delegate to
+    :func:`ir.symbol_path_slot`.
 
     Returns the empty string for anything that is not a well-formed id, which
     the callers treat as "not test, not migration" — an unparseable source is
     not evidence for excluding a flow.
     """
-    parts = symbol_id.split(":") if symbol_id else []
-    if len(parts) < 5:
-        return ""
-    return ":".join(parts[1:-3])
+    return symbol_path_slot(symbol_id)
 
 
 def _source_scope(finding: "TaintFlowFinding") -> str:
