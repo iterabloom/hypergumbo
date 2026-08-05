@@ -1,0 +1,23 @@
+- op: create  # 2626
+  at: '2026-08-05T21:23:45Z'  # 2626
+  by: agent  # 2626
+  actor: jgstern_agent  # 2626
+  clock: 1  # 2626
+  nonce: '2626'  # 2626
+  data:  # 2626
+    kind: work_item  # 2626
+    title: "SECURITY.md asserts a verify-claims CI gate that does not exist (0 hits across all 5 workflows); ADR-0016 s4 Phase 4 unhonoured"  # 2626
+    status: todo_hard  # 2626
+    priority: 3  # 2626
+    parent:  # 2626
+    tags:  # 2626
+    - docs  # 2626
+    - security  # 2626
+    - verify_claims  # 2626
+    - ci  # 2626
+    isbefore: []  # 2626
+    duplicate_of: []  # 2626
+    not_duplicate_of: []  # 2626
+    pr_ref:  # 2626
+    description: "SECURITY.md states, of the audited IO surface: \"Hypergumbo's safety claims are verified by\nhypergumbo verify-claims docs/hypergumbo.claims.yaml against an analysis of its own source code.\nThe per-entry-point analysis below states what each CLI subcommand is allowed to do; regressions\nland as taint-flow findings and FAIL THE GATE.\"\n\nThere is no gate. Verified on dev c675fc484f: grep -rn 'verify-claims' .github/workflows/ returns\nZERO hits across all five workflow files. The only in-suite reference is\ntest_verify_claims.py::test_shipped_self_claims_file_loads_clean, which asserts that the claims\nfile PARSES (len(claims) > 0, all entries carry ids). It never computes a verdict. So no regression\ncan fail anything, and none ever has.\n\nThis is a DOCUMENTATION defect, not an analysis finding: it holds regardless of what the taint\nmachinery does next, which is why it is filed separately from the parked self-audit adjudication\n(see the discussion entry below).\n\nRELATED UNGATED OBLIGATION: ADR-0016 section 4 Phase 4 obliges \"a GitHub Action / CI step that runs\nclaim verification on every PR\", and the ADR-0017 counterpart obliges the self-audit invocation.\nBoth are unhonoured. ADR-0016 carries an unqualified 'Status: Accepted', so per docs/adr/README.md\n(\"a grep of the status line must not lie\") that status is overclaiming on this point.\n\nTWO RESOLUTIONS, and they are NOT equivalent:\n  (a) Correct the sentence - say what is actually true (claims are verified on demand; there is no\n      CI gate). One-line docs fix. Leaves ADR-0016 section 4 Phase 4 unhonoured but stops the\n      false assertion.\n  (b) Build the gate - makes the sentence true, but gating merges on the current finding set is\n      exactly what the parked-adjudication decision declined, because the finding set is produced\n      by an instrument under active repair and a baseline seeded now would be INVERTED (fixing\n      WI-votom's unearned-False routes UN-suppresses real leaks and RAISES the unsanitized count,\n      so a shrink-only ceiling would fail on the correctness fix and read a suppression regression\n      as progress).\nThis item is scoped to (a). (b) is deliberately out of scope until the instrument is calibrated.\n\nIf (a) is taken, ADR-0016 section 4 Phase 4 should be amended in place at the same time so the\ncontract and the docs stop disagreeing - otherwise this item closes and the ADR still asserts a\ngate nobody built.\n\nMEASURED CONTEXT, for whoever picks this up: the self-run on 2026-08-05 was exit 1, 18 verdicts,\n16 confirmed, 2 violated (runtime-cli-no-host-fs 1,148 unsanitized / 1,428 sanitized;\nruntime-cli-no-subprocess 742 unsanitized / 0 sanitized), 0 inconclusive. Do NOT cite those counts\nas a baseline - see the parked-adjudication rationale."  # 2626
+    fields: {}  # 2626
