@@ -14,16 +14,16 @@ for focused LLM context.
 ## Self-Analysis Summary (auto)
 
 hypergumbo analyzed its own source code and found:
-- **300** Python modules (134 analyzers, 59 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 30, Infrastructure 8; 70 core, 4 CLI, 33 tracker)
-- **38405** symbols (functions, classes, methods)
-- **130670** edges by type:
-  - calls: 65796
-  - contains: 35466
-  - imports: 11777
-  - instantiates: 10626
-  - references: 4443
-  - module_attr_ref: 1214
-  - other: 1348
+- **301** Python modules (134 analyzers, 59 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 30, Infrastructure 8; 71 core, 4 CLI, 33 tracker)
+- **38695** symbols (functions, classes, methods)
+- **131586** edges by type:
+  - calls: 66211
+  - contains: 35736
+  - imports: 11873
+  - instantiates: 10662
+  - references: 4537
+  - module_attr_ref: 1217
+  - other: 1350
 
 ## Package Architecture
 
@@ -85,7 +85,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 38405 Symbols + 130670 Edges + UsageContexts           │
+│  Output: 38695 Symbols + 131586 Edges + UsageContexts           │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -240,7 +240,7 @@ A relationship between two symbols (e.g., function calls).
 - `confidence`: Detection-reliability score (0.0-1.0) — the producer's evidence-derived estimate that the relationship EXISTS (ADR-0039 ruling 1). NOT a ranking value; post-detection ranking boosts/penalties live in ``rank_score``.
 - `confidence_source`: Provenance of the ``confidence`` value (ADR-0039 ruling 2), one of ``VALID_CONFIDENCE_SOURCES`` — ``evidence_derived`` / ``emitter_constant`` / ``composite``. See ``VALID_CONFIDENCE_SOURCES`` for the enumeration and re-evaluation trigger.
 - `rank_score`: Ranking prominence (0.0-1.0). Initializes from ``confidence`` and accumulates the ranking adjustments ADR-0039 ruling 3 relocates off ``confidence`` (e.g. the type-hierarchy fan-out dampener). Equal to ``confidence`` until a producer relocates its adjustment. Ranking consumers key on this; reliability consumers key on ``confidence``.
-- `meta`: Optional metadata dict. Dataflow edges store access_mode (ADR-0015) and channel here; cross-boundary edges store data_direction (ADR-0038 ruling 3).
+- `meta`: Optional metadata dict. Dataflow edges store access_mode (ADR-0015) and channel here; cross-boundary edges store data_direction (ADR-0038 ruling 3). An edge that survived a collapse of two or more call sites stores the union of their lines in ``call_lines`` (see :func:`deduplicate_edges`); its absence means the one call site is ``line``.
 
 
 ## Canonical Vocabularies
@@ -273,17 +273,17 @@ These symbols have the highest bidirectional centrality
 |--------|------|-------|----------|
 | `Symbol` | class | 9506.2 | ir.py |
 | `Span` | class | 6380.8 | ir.py |
-| `write_text` | external_symbol | 3307.0 | <external> |
+| `write_text` | external_symbol | 3310.0 | <external> |
 | `LinkerContext` | class | 3276.5 | registry.py |
-| `Edge.create` | method | 2096.5 | ir.py |
+| `Edge.create` | method | 2103.3 | ir.py |
 | `TrackerApp` | class | 1946.9 | tui.py |
 | `load_framework_patterns` | function | 1882.5 | framework_patterns.py |
-| `Path` | external_symbol | 1657.0 | <external> |
+| `Path` | external_symbol | 1659.0 | <external> |
 | `main` | function | 1578.2 | cli.py |
 | `clear_pattern_cache` | function | 1336.8 | framework_patterns.py |
 | `Edge` | class | 1284.6 | ir.py |
-| `append` | external_symbol | 1244.0 | <external> |
-| `get` | external_symbol | 1152.0 | <external> |
+| `append` | external_symbol | 1250.0 | <external> |
+| `get` | external_symbol | 1158.0 | <external> |
 | `TreeSitterAnalyzer` | class | 1074.7 | base.py |
 | `find_files` | function | 1000.7 | discovery.py |
 
@@ -353,7 +353,7 @@ patterns:
 
 ## YAML Catalogs (auto)
 
-The `hypergumbo-core` package ships 153 YAML catalog files across 8 directories. Each directory holds a category of analysis data consumed by a specific loader; the registry at `hypergumbo_core.yaml_catalogs` is the canonical index. Run `scripts/yaml-catalog-index` for the same view at the CLI, or `scripts/yaml-catalog-index --check` to verify the registry matches the filesystem.
+The `hypergumbo-core` package ships 155 YAML catalog files across 8 directories. Each directory holds a category of analysis data consumed by a specific loader; the registry at `hypergumbo_core.yaml_catalogs` is the canonical index. Run `scripts/yaml-catalog-index` for the same view at the CLI, or `scripts/yaml-catalog-index --check` to verify the registry matches the filesystem.
 
 | Directory | Files | ADR | Loader | Purpose |
 |---|---:|---|---|---|
@@ -363,7 +363,7 @@ The `hypergumbo-core` package ships 153 YAML catalog files across 8 directories.
 | `cfg_nodes/` | 5 | ADR-0017 | `hypergumbo_core.cfg` | Per-language tree-sitter node mappings for the CFG builder. |
 | `taint_sources/` | 2 | ADR-0017 | `hypergumbo_core.taint` | Trust-zone source declarations for taint-flow analysis. |
 | `taint_sanitizers/` | 1 | ADR-0017 | `hypergumbo_core.taint` | Sanitizer declarations for taint-flow analysis. |
-| `function_summaries/` | 2 | ADR-0017 | `hypergumbo_core.function_summaries` | Per-language function summaries (return-type and side-effect annotations consumed by language-config). |
+| `function_summaries/` | 4 | ADR-0017 | `hypergumbo_core.function_summaries` | Per-language function summaries (return-type and side-effect annotations consumed by language-config). |
 | `url_folding/` | 2 | — | `hypergumbo_core.url_folding` | Per-idiom URL-folding declarations (string interpolation, array join, ...) wiring active route-detector languages to engine functions in hypergumbo_core.url_folding. |
 
 Adding a new catalog category: create the directory, write the loader (or extend an existing one), and register a `CatalogSpec` in `hypergumbo_core.yaml_catalogs.YAML_CATALOGS`. The drift check fails until the registry entry lands.
@@ -542,6 +542,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 - **`hypergumbo_core.compact`**: Compact output mode: budget-aware symbol selection + residual summa...
 - **`hypergumbo_core.confidence`**: Evidence -> confidence derivation (the ADR-0039 detection-reliabili...
 - **`hypergumbo_core.dataflow`**: YAML-driven dataflow classification for edges (ADR-0015).
+- **`hypergumbo_core.dataflow_scope`**: Published data-flow coverage scope for taint output — INV-karud cla...
 - **`hypergumbo_core.datamodels`**: Data model detection for code analysis.
 - **`hypergumbo_core.ddg_build`**: Repo-level DDG construction: walk a repo, build a CFG per function,...
 - **`hypergumbo_core.discovery`**: File discovery with exclude patterns, locale handling, and extensio...
@@ -848,8 +849,8 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: 15507bbc7f8e
-  commit_count: 6479
+  commit: 44933d9b8c35
+  commit_count: 6512
   hypergumbo: 7.0.0
   python: 3.12.3
 -->
