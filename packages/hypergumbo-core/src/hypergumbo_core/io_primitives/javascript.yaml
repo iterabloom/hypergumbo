@@ -19,7 +19,9 @@ ambiguous_names:
   - close         # fs.close vs any .close()
   - end           # response.end vs stream.end, any .end()
   - send          # socket.send vs express.Response.send
-  - on            # EventEmitter.on (universal in Node.js)
+  - "on"          # EventEmitter.on (universal in Node.js). QUOTED DELIBERATELY:
+                  # bare `on` is a YAML 1.1 BOOLEAN, so this entry parsed as
+                  # True and suppressed nothing at all.
   - get           # http.get vs Map.get, express.app.get (route definition)
   - post          # axios.post vs any .post()
   - put           # axios.put vs Map.set

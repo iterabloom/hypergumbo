@@ -895,8 +895,28 @@ def _derive_auto_imports_from_io_primitives(
 
     ``ambiguous_by_lang`` carries each catalog's ``ambiguous_names`` so the
     taint matchers can disambiguate exactly as io-boundaries does (WI-razol).
+
+    PARENT INHERITANCE IS APPLIED HERE, VIA ``load_catalog``, AND IT USED NOT TO
+    BE. ``io_boundary._CATALOG_PARENTS`` declares ``cpp <- c``,
+    ``kotlin <- java``, ``scala <- java`` and ``elixir <- erlang``, and
+    ``load_catalog`` merges the parent; this function called
+    ``IoBoundaryCatalog.from_yaml`` directly and inherited nothing, while the
+    paragraph above claimed parity with io-boundaries (L50 — a docstring
+    asserting a parity that does not hold). The four inheriting languages
+    therefore had BOTH a fraction of their primitive surface AND a weaker
+    short-name collision guard:
+
+        cpp        3 ->   70 taint entries   (C had 67; C++ ran on THREE)
+        elixir   231 ->  469
+        kotlin    26 ->  138
+        scala     23 ->  137
+        ambiguous_names: cpp 0->19, kotlin 34->58, scala 73->80, elixir 50->54
+
+    ``load_catalog`` takes a language rather than a path, so the glob supplies
+    the language via each file's stem; the merged catalogue keeps the CHILD's
+    ``language`` field, which is what keys the returned dicts.
     """
-    from hypergumbo_core.io_boundary import IoBoundaryCatalog
+    from hypergumbo_core.io_boundary import load_catalog
 
     sources_by_lang: dict[str, list[TaintSource]] = defaultdict(list)
     sinks_by_lang: dict[str, list[TaintSink]] = defaultdict(list)
@@ -906,7 +926,7 @@ def _derive_auto_imports_from_io_primitives(
         return dict(sources_by_lang), dict(sinks_by_lang), ambiguous_by_lang
 
     for yaml_path in sorted(io_catalog_dir.glob("*.yaml")):
-        catalog = IoBoundaryCatalog.from_yaml(yaml_path)
+        catalog = load_catalog(yaml_path.stem)
         lang = catalog.language
         ambiguous_by_lang[lang] = (
             ambiguous_by_lang.get(lang, frozenset()) | catalog.ambiguous_names

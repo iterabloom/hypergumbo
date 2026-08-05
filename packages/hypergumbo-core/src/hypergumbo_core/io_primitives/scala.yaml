@@ -95,7 +95,9 @@ ambiguous_names:
   - resource      # Resource type, generic resource
   - status        # HTTP status, generic status
   - url           # URL string, generic url variable
-  - on            # event handler, query DSL
+  - "on"          # event handler, query DSL. QUOTED DELIBERATELY: bare `on`
+                  # is a YAML 1.1 BOOLEAN, so this entry parsed as True and
+                  # suppressed nothing at all.
   - as            # type cast (asInstanceOf, etc.)
   - toList        # collection conversion
   - toSeq         # collection conversion
