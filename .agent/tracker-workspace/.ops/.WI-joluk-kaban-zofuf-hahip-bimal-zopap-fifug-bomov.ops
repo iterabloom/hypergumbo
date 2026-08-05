@@ -29,3 +29,10 @@
   set: {}  # b799
   add:  # b799
     isbefore: [WI-kabif-dahad-kufuz-vodoz-misaj-batut-honab-nizib]  # b799
+- op: discuss  # d160
+  at: '2026-08-04T19:29:35Z'  # d160
+  by: agent  # d160
+  actor: jgstern_agent  # d160
+  clock: 3  # d160
+  nonce: d160  # d160
+  message: "CROSS-LINK from PR #204 (INV-karud clause a3). The published dataflow_coverage block now emits a declared constant coverage_granularity = \"language\", whose stated meaning is that capability is reported PER LANGUAGE and is explicitly NOT a per-function completeness claim -- cfg_nodes/go.yaml self-documents that \"if err := do(); err != nil\" initializers are invisible to def/use, so a language marked dataflow_capable still holds functions the walk cannot see into.\n\nThis item is the finer signal. When the coverage gate lands (forfeit refutation for any function whose CFG statement extents miss a call node in its body), that per-function bit is exactly what the scope block should report, and the constant becomes \"function\". Its test asserts the current value, so the change cannot be forgotten silently -- the assertion fails until it is updated, which is the executable re-evaluation trigger R16 asks for.\n\nNo change to this item scope or priority. Recorded so the two are not worked independently."  # d160
