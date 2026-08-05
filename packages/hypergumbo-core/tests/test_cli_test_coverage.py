@@ -172,10 +172,14 @@ def test_cmd_test_coverage_json_output(tmp_path: Path, capsys) -> None:
     out, _ = capsys.readouterr()
     output = json.loads(out)
 
-    # WI-bobog: single-sourced from READ_VIEW_SCHEMA_VERSION (== "0.1.0"),
-    # not the top-level bm SCHEMA_VERSION.
+    # WI-bobog: single-sourced from READ_VIEW_SCHEMA_VERSION, not the
+    # top-level bm SCHEMA_VERSION. The second assertion used to pin the
+    # literal "0.1.0", which made this a THIRD home for a deliberately
+    # single-sourced value and broke here the moment an unrelated view
+    # evolved. What it was actually guarding is that the read-view
+    # version is distinct from the behavior-map one, so it now says that.
     assert output["schema_version"] == READ_VIEW_SCHEMA_VERSION
-    assert READ_VIEW_SCHEMA_VERSION == "0.1.0"
+    assert READ_VIEW_SCHEMA_VERSION != SCHEMA_VERSION
     assert output["view"] == "test-coverage"
     assert output["summary"]["total_functions"] == 2
     assert output["summary"]["tested_functions"] == 1
