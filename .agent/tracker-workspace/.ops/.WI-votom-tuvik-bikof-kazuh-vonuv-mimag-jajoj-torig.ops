@@ -1,0 +1,22 @@
+- op: create  # 21ac
+  at: '2026-08-05T19:16:34Z'  # 21ac
+  by: agent  # 21ac
+  actor: jgstern_agent  # 21ac
+  clock: 1  # 21ac
+  nonce: 21ac  # 21ac
+  data:  # 21ac
+    kind: work_item  # 21ac
+    title: "_ddg_taint_reaches: two verified routes to an unearned False (seen-set cycle drains frontier unaccounted; followed=True closes a dual-role statement with no escape check)"  # 21ac
+    status: todo_hard  # 21ac
+    priority: 1  # 21ac
+    parent:  # 21ac
+    tags:  # 21ac
+    - taint  # 21ac
+    - adr_0017  # 21ac
+    - dataflow  # 21ac
+    isbefore: []  # 21ac
+    duplicate_of: []  # 21ac
+    not_duplicate_of: []  # 21ac
+    pr_ref:  # 21ac
+    description: "TWO VERIFIED ROUTES TO AN UNEARNED False IN _ddg_taint_reaches -- the\nremoval-licensing / sanitized-earning verdict -- both reproduced on dev\n5993042f18 with a control that behaves correctly. Found by an adversarial\nreview of a section 4a design (2026-08-05); the design was abandoned but\nthese holes are in SHIPPED code and are independent of it.\n\nHOLE 1 -- A SEEN-SET CYCLE DRAINS THE FRONTIER WITH escaped=False.\nA dependence cycle among tracked variables (a -> b -> a, the shape of\n`a = src(); b = g(a); a = h(b)`) exhausts the frontier through the `seen`\nmembership test without any step ever being classified. No catalogue is\nconsulted; summaries and callees can both be EMPTY:\n\n  _ddg_taint_reaches(\"f\", [1], [9],\n      {(\"f\",\"a\",1):{2}, (\"f\",\"b\",2):{1}},\n      None, None,\n      defs_at={(\"f\",1):{\"a\"}},\n      inherits={(\"f\",2,\"a\"):{\"b\"}, (\"f\",1,\"b\"):{\"a\"}})   -> False\n\nThe docstring's contract says False means \"exhausted with every step\naccounted for\"; here nothing was accounted for -- the cycle was simply\nalready-visited. The INV-lupav floor (\"a lost trail must not license a\nnegative\") does not cover this because nothing looks lost.\n\nHOLE 2 -- followed=True CLOSES A USE LINE WITH NO ESCAPE CHECK\n(taint.py:2084-2091). When a use line defines a tracked heir, the walk\n`continue`s without asking whether the SAME statement also pushed the value\nsomewhere unmodelled. `acc.append(x); y = x` on one line: y is tracked, the\nappend is invisible, and if y's chain later exhausts (including via hole 1),\nthe verdict is False with the append escape never flagged.\n\nCONTROL (correct behaviour, same shape minus the defect): a terminal use\nwith no heir escapes and returns None.\n\nWHY THIS MATTERS TODAY, NOT HYPOTHETICALLY. Since PR #214, False has a\nsecond production consumer: the sanitizer barrier walk earns `sanitized`\non False (taint.py:2534), and a sanitized flow is suppressed from a claim's\nviolation set. Exposure today is bounded by the measured 0 registered\nsanitizer call sites across 95,950 taint call edges on the 9-repo cohort --\na corpus fact, not a structural guarantee. The population of hole-1 cycles\nand hole-2 dual-role statements on real repos is UNMEASURED; measure it\nbefore sizing the fix.\n\nFIX SHAPE, not prescribed in detail: both holes are failures to ask \"did\nthis step account for every channel\" -- hole 2 needs the followed branch to\nstill consult the escape question for the consuming statement, and hole 1\nneeds cycle exhaustion distinguished from genuine exhaustion (a visited-set\ndrain is not an accounting). Red tests first for both shapes plus the\ncontrol; the walk's four existing mutation-tested guards are the pattern."  # 21ac
+    fields: {}  # 21ac
