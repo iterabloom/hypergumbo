@@ -166,7 +166,11 @@ from .ir import (
 from .metrics import compute_metrics
 from .noise_filter import is_noise_symbol
 from .profile import detect_profile
-from .schema import new_behavior_map, READ_VIEW_SCHEMA_VERSION
+from .schema import (
+    new_behavior_map,
+    DEAD_CODE_MAYBE_SCHEMA_VERSION,
+    READ_VIEW_SCHEMA_VERSION,
+)
 from .sketch import generate_sketch, ConfigExtractionMode, SketchStats, display_representativeness_table
 from .slice import (
     SliceQuery, slice_graph, AmbiguousEntryError, raise_if_ambiguous,
@@ -6431,6 +6435,14 @@ def cmd_dead_code_maybe(args: argparse.Namespace) -> int:
     folds away: ``entrypoint_only_dead`` (the strict ~89%-dead view) and
     ``test_only_reachable`` (functions reachable only once tests are seeded —
     the WI-jufih dead-code-vs-coverage contradiction).
+
+    Each candidate additionally carries a ``reachability`` cohort (WI-jozah):
+    ``test_only`` when the symbol becomes reachable once test code is seeded,
+    ``unreachable`` when it does not, and ``null`` under a non-default seed mode
+    where no test-seeded walk ran. ``test_only`` is the cohort with an action
+    attached — the function has tests but no production caller, so its tests are
+    load-bearing for nothing and a 100% coverage gate conceals the deadness.
+    Emitting it only as a summary count made that bucket unselectable.
     """
     repo_root = Path(args.path).resolve()
 
@@ -6571,15 +6583,24 @@ def cmd_dead_code_maybe(args: argparse.Namespace) -> int:
     production_keys = set(production_symbols)
     entrypoint_only_dead: int | None = None
     test_only_reachable: int | None = None
+    # WI-jozah: the IDENTITIES, not only the count. The set was already being
+    # computed here and collapsed to a ``len()`` on the way out, which left the
+    # highest-value cohort in the whole report unselectable — "reachable only
+    # from tests" means the function has tests but no production caller, so the
+    # tests are load-bearing for nothing and a 100% coverage gate is actively
+    # concealing the deadness. On hypergumbo's own tree that is 1859 of 2107
+    # candidates: a list a consumer could count but not filter. ``None`` rather
+    # than an empty set under non-default seed modes, because "the test-seeded
+    # walk did not run" and "it ran and found nobody" are different facts.
+    test_only_ids: set[str] | None = None
     if seeds_mode == "production":
         reachable_entrypoint_only = _bfs_reachable(
             entrypoint_seed_ids | view_func_seed_ids, call_graph,
         )
         entrypoint_only_dead = len(production_keys - reachable_entrypoint_only)
         reachable_with_tests = _bfs_reachable(seed_ids | test_symbols, call_graph)
-        test_only_reachable = len(
-            (reachable_with_tests - reachable) & production_keys,
-        )
+        test_only_ids = (reachable_with_tests - reachable) & production_keys
+        test_only_reachable = len(test_only_ids)
 
     # Dead candidates = production symbols NOT reachable
     dead_candidates = []
@@ -6803,6 +6824,26 @@ def cmd_dead_code_maybe(args: argparse.Namespace) -> int:
         ),
     )
 
+    def _reachability_of(symbol_id: str) -> str | None:
+        """Which cohort a dead candidate is in — WI-jozah's per-item label.
+
+        BINARY, and the filing's suggested three-value vocabulary was one value
+        too many. It proposed ``test_only`` / ``entrypoint_only`` /
+        ``unreachable``, but a dead candidate is by definition unreachable from
+        the PRODUCTION seeds, and those are a superset of the entrypoint seeds —
+        so every dead candidate is entrypoint-only-dead by construction and that
+        label would partition nothing. ``entrypoint_only_dead`` stays a summary
+        count of a different, larger cohort (4314 against 2107 on the self-tree).
+
+        ``None`` under non-default seed modes: no test-seeded walk ran, so the
+        cohort is unknown rather than ``unreachable``. Defaulting there would
+        assert a fact the tool did not compute, which is the shape of the defect
+        this label exists to fix.
+        """
+        if test_only_ids is None:
+            return None
+        return "test_only" if symbol_id in test_only_ids else "unreachable"
+
     # Summary stats
     total_production = len(production_symbols)
     total_reachable = len(reachable & set(production_symbols.keys()))
@@ -6835,6 +6876,28 @@ def cmd_dead_code_maybe(args: argparse.Namespace) -> int:
                 # seeded (WI-jufih). null under explicit non-default modes.
                 "entrypoint_only_dead": entrypoint_only_dead,
                 "test_only_reachable": test_only_reachable,
+                # WI-jozah: the SAME cohort counted over the emitted candidate
+                # list rather than over all production symbols. The two differ
+                # and the difference is not an error — ``dead_candidates`` has
+                # the FP demoters applied (generated files, cross-language name
+                # hits, virtual-dispatch overrides, --exclude-* filters), so a
+                # test-only symbol can be demoted out of the list while still
+                # counting toward ``test_only_reachable``. Measured on the
+                # self-tree: 1859 against 1747, a 112-symbol gap.
+                #
+                # Both numbers are published because a consumer summing the
+                # per-item labels gets the second and would otherwise read the
+                # first as a contradiction. Two denominators, each stated, is
+                # the L60 discipline — the failure mode is publishing one number
+                # and letting the reader guess its scope. (My own first test
+                # here asserted the two were EQUAL and passed, because the
+                # fixture is small enough that no demoter fires.)
+                "test_only_reachable_candidates": (
+                    None if test_only_ids is None
+                    else sum(
+                        1 for n in dead_candidates if n["id"] in test_only_ids
+                    )
+                ),
                 # WI-vuton: how many symbols entered the reachable set via
                 # framework-dispatch usage_contexts (view_func position) and
                 # how many methods were demoted from dead via inheritance-
@@ -6859,13 +6922,17 @@ def cmd_dead_code_maybe(args: argparse.Namespace) -> int:
                     "cross_language_hits": cross_lang_hits.get(n["id"], 0),
                     "path_shape_boost": shape_boosts.get(n["id"], 0),
                     "ffi_signature": ffi_flags.get(n["id"], False),
+                    # WI-jozah: the cohort the summary already counted, now
+                    # attached to the record so it can be selected on.
+                    "reachability": _reachability_of(n["id"]),
                 }
                 for n in dead_candidates
             ],
         }
         print(json.dumps(
             add_schema_envelope(
-                output, view="dead_code_maybe", schema_version=READ_VIEW_SCHEMA_VERSION
+                output, view="dead_code_maybe",
+                schema_version=DEAD_CODE_MAYBE_SCHEMA_VERSION,
             ),
             indent=2,
         ))
@@ -6891,7 +6958,15 @@ def cmd_dead_code_maybe(args: argparse.Namespace) -> int:
                 name = n.get("name", "?")
                 path = n.get("path", "?")
                 loc = n.get("line_span") or "?"
-                print(f"  {name:<30} {path:<30} {loc:>5} LOC")
+                # WI-jozah: the cohort on the line itself. A disclosure that
+                # exists only under --json is half shipped, and "test-only" is
+                # the annotation with an action attached — it says the function
+                # has tests and no production caller.
+                cohort = (
+                    "  [test-only]"
+                    if _reachability_of(n["id"]) == "test_only" else ""
+                )
+                print(f"  {name:<30} {path:<30} {loc:>5} LOC{cohort}")
 
             if len(dead_candidates) > 50:  # pragma: no cover
                 print(f"  ... and {len(dead_candidates) - 50} more")

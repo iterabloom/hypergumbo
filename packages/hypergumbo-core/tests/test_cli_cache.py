@@ -8,6 +8,7 @@ from unittest.mock import patch
 import pytest
 
 from hypergumbo_core.cli import cmd_cache_status, cmd_cache_clear
+from hypergumbo_core.schema import READ_VIEW_SCHEMA_VERSION
 
 
 class FakeArgs:
@@ -76,7 +77,7 @@ class TestCacheStatus:
         with patch("hypergumbo_core.cli._get_cache_base", return_value=tmp_path / "nope"):
             assert cmd_cache_status(args) == 0
         data = json.loads(capsys.readouterr().out)
-        assert data["schema_version"] == "0.1.0"
+        assert data["schema_version"] == READ_VIEW_SCHEMA_VERSION
         assert data["view"] == "cache_status"
         assert data["total_entries"] == 0
         assert data["total_size_bytes"] == 0
