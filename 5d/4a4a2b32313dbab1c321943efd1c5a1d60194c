@@ -1,0 +1,45 @@
+Original commit body from 8d2359be54a5cda4bf8db6574a9a011c07d67d18:
+
+PR #233 reported zero barrier-arm walks and attributed them to the shipped
+sanitizer vocabulary being crypto-only, concluding that "a sanitizer catalogue
+is what arms" the removal-suppression hazard and therefore that gates should
+land before catalogue growth.
+
+The observation stands. The mechanism does not, and it was never established:
+the zero was believed without a positive control — the rule this repo has
+written down, violated the same day it was edited into the notebook.
+
+Two purpose-built fixtures both produced ZERO walks:
+
+  * `f = Fernet(key); plain = f.decrypt(tok); cipher = f.encrypt(plain)`
+    emits `python:external:0-0:decrypt:external_symbol`. The receiver type is
+    never inferred, so neither the plaintext SOURCE nor the `Fernet.encrypt`
+    SANITIZER can match. No flow exists for a barrier to guard.
+  * The same shape written module-qualified: source and sanitizer resolve, but
+    the sink `pathlib.Path(...).write_text(x)` emits NO call edge — an
+    attribute chain rooted at a CONSTRUCTOR RESULT. #231 fixed only chains
+    rooted at a local; this sub-shape is still open and is filed on INV-mumov.
+
+Every sanitizer in the catalogue is an INSTANCE METHOD (`Fernet.encrypt`,
+`AESGCM.encrypt`, `AEAD.Seal`, `Cipher.doFinal`), so registering any barrier
+needs precisely the receiver evidence that is missing. The barrier arm is
+unreachable for the same root cause as the rest of this area — INV-linub — a
+third symptom family alongside io-boundary catalogue reach and the §4 summary
+lookup inside the walk.
+
+Consequences, all filed on the items:
+
+  * RECEIVER TYPING arms the suppression hazard, not catalogue growth.
+    WI-joluk's gate landing first remains correct, for a sharper reason: the
+    arming event is a specific blocking class item, not a diffuse trend.
+  * INV-karud clause (b) is NOT independent corroboration. A sanitizer call
+    site can only register if its callee resolves, so both zeros may share one
+    upstream defect. Two instruments agreeing while sharing an upstream defect
+    is agreement about the defect.
+  * Still unresolved and stated rather than papered over: no positive control
+    shows the barrier arm can fire in ANY configuration, and no end-to-end
+    test drives it through `propagate_taint_ddg` — the one `sanitized` test
+    uses `propagate_taint_structural`.
+
+Refs: INV-busis, INV-linub, INV-mumov, WI-joluk, INV-karud, WI-zilag
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
