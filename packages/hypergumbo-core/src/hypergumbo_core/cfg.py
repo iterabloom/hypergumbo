@@ -113,9 +113,21 @@ def register_def_use_extractor(language: str) -> Any:
             language = "python"
             def extract(self, node, source):
                 ...
+
+    Stacking is supported, and is how one grammar serves two language keys::
+
+        @register_def_use_extractor("javascript")
+        @register_def_use_extractor("typescript")
+        class TypeScriptDefUseExtractor: ...
+
+    Each stacked call constructs its OWN instance and stamps ``language`` with
+    the key it was registered under, so the Protocol's ``language`` attribute
+    stays true per registration instead of merely by class-author convention.
+    Without the stamp the second registration would carry the first's name.
     """
     def decorator(cls: Any) -> Any:
         instance = cls()
+        instance.language = language
         _DEF_USE_EXTRACTORS[language] = instance
         return cls
     return decorator
@@ -403,19 +415,41 @@ def get_cfg_nodes_dir() -> Path:
     return Path(__file__).parent / "cfg_nodes"
 
 
+#: Languages whose CFG node mapping lives under ANOTHER language's key because
+#: the two share a tree-sitter grammar.
+#:
+#: ``cfg_nodes/typescript.yaml`` already ASSERTS in its own header that it "also
+#: covers JavaScript (same node types in tree-sitter-javascript)". The choice
+#: here is between copying that file to ``javascript.yaml`` — which duplicates
+#: the consequences of the assertion into a second artifact free to drift from
+#: the first — and encoding the assertion once, as this does. The alias is the
+#: cheaper of the two to keep true: a node type added for TypeScript is
+#: automatically available to JavaScript, which is exactly what "same grammar"
+#: means. If the grammars ever genuinely diverge, delete the entry and add the
+#: real file; nothing else has to change.
+_CFG_MAPPING_ALIASES: dict[str, str] = {"javascript": "typescript"}
+
+
 def load_cfg_mapping(language: str, search_dir: Optional[Path] = None) -> Optional[CfgNodeMapping]:
     """Load a CFG node mapping for the given language.
 
     Searches ``cfg_nodes/<language>.yaml`` in the package directory or
-    ``search_dir`` if provided. Returns None if no mapping file exists.
-    Caches results to avoid repeated disk I/O.
+    ``search_dir`` if provided, resolving ``_CFG_MAPPING_ALIASES`` first so a
+    language that shares another's grammar reads that one's file. Returns None
+    if no mapping file exists. Caches results to avoid repeated disk I/O.
+
+    The cache key is the REQUESTED language, not the resolved one, so a caller
+    asking for ``javascript`` and a caller asking for ``typescript`` are
+    independent cache entries that happen to parse the same bytes. Keying on
+    the resolved name would be a micro-optimisation that makes a future
+    per-language post-processing step silently wrong.
     """
     cache_key = f"{search_dir or 'default'}:{language}"
     if cache_key in _MAPPING_CACHE:
         return _MAPPING_CACHE[cache_key]
 
     search = search_dir or get_cfg_nodes_dir()
-    yaml_path = search / f"{language}.yaml"
+    yaml_path = search / f"{_CFG_MAPPING_ALIASES.get(language, language)}.yaml"
     if not yaml_path.exists():
         _MAPPING_CACHE[cache_key] = None  # type: ignore[assignment]
         return None

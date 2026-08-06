@@ -39,15 +39,27 @@ extractors. A gate whose population can silently become zero is not a gate.
 
 SCOPE, DECLARED RATHER THAN IMPLIED. This gate is blind by construction to a
 language that has *no* extractor at all, because that language is not in its
-population. Two such languages carry substantial taint catalogs today and
-neither is failed by anything here:
+population. It is worth naming what that leaves out, since the omission is
+invisible from inside the gate:
 
-  javascript   50 sources, 83 sinks — no cfg mapping under its own key, no
-               extractor, no spec. ``cfg_nodes/typescript.yaml`` states it
-               "also covers JavaScript", but it is keyed to ``typescript``,
-               so a ``.js`` file reaches none of this machinery.
   java         45 sources, 69 sinks — has a cfg mapping, but no def/use
-               extractor exists to write one for.
+               extractor exists to write one for, so it is not in the
+               population and nothing here fails for it.
+
+  javascript   WAS the other entry on this list and no longer is (WI-nonad).
+               It is now wired and IS in the population, via a second
+               registration on the TypeScript extractor, a second
+               ``LanguageDdgSpec``, and a ``cfg._CFG_MAPPING_ALIASES`` entry
+               pointing at ``typescript.yaml`` — which that file's own header
+               already asserted covers JavaScript. Being in the population
+               means these gates now hold for it; it does NOT by itself mean
+               any taint verdict changed, which is a separate A/B.
+
+  Everything else with a taint catalog and no extractor — elixir, erlang,
+  haskell, kotlin, scala, objc, swift, cpp, c and more — is equally invisible
+  here. By sink count several of them are LARGER than javascript was; it was
+  wired first because it was the only one whose mapping and extractor already
+  existed under another key, which is a cost argument and not a size one.
 
 So "every registered extractor is wired" is a regression guard, not a coverage
 claim. The complement — how much of the sink catalog is data-flow adjudicable
@@ -57,7 +69,6 @@ disclosure rather than a pass/fail.
 from pathlib import Path
 
 import pytest
-import yaml
 
 from hypergumbo_core import cfg as cfg_mod
 from hypergumbo_core.cfg import get_def_use_extractor
@@ -66,7 +77,9 @@ from hypergumbo_core.ddg_build import build_repo_ddg, get_ddg_language
 #: Languages known to ship a def/use extractor. Declared rather than derived so
 #: that a registration that silently stops happening fails loudly here instead
 #: of shrinking every quantified assertion below to a vacuous pass.
-EXPECTED_DEF_USE_LANGUAGES = frozenset({"python", "go", "rust", "typescript"})
+EXPECTED_DEF_USE_LANGUAGES = frozenset(
+    {"python", "go", "rust", "typescript", "javascript"},
+)
 
 #: One minimal function per language whose body defines a local and then uses
 #: it in a *second* definition — the smallest shape that must yield a
@@ -114,9 +127,18 @@ DDG_SMOKE_SOURCES: dict[str, tuple[str, str]] = {
         "  return z;\n"
         "}\n",
     ),
+    # Deliberately the typescript fixture with the type annotations removed:
+    # the point of the javascript wiring is that the SAME grammar handles both,
+    # so a fixture that also changed shape would not isolate the key.
+    "javascript": (
+        "mod.js",
+        "export function f(x) {\n"
+        "  const y = x + 1;\n"
+        "  const z = y * 2;\n"
+        "  return z;\n"
+        "}\n",
+    ),
 }
-
-_CFG_NODES_DIR = Path(cfg_mod.__file__).parent / "cfg_nodes"
 
 
 def _import_production_def_use_modules() -> None:
@@ -157,12 +179,20 @@ def test_cfg_mapping_declares_atomic_statement(language: str) -> None:
     ADR-0017 §1d calls this list load-bearing for any language shipping a
     def/use extractor, and predicts exactly this failure — the invariant was
     documented and unenforced.
-    """
-    mapping_path = _CFG_NODES_DIR / f"{language}.yaml"
-    assert mapping_path.is_file(), f"no cfg_nodes mapping for {language}"
 
-    mapping = yaml.safe_load(mapping_path.read_text(encoding="utf-8"))
-    atomic = mapping.get("atomic_statement")
+    ASKS PRODUCTION'S LOADER, does not re-derive the path. This used to build
+    ``_CFG_NODES_DIR / f"{language}.yaml"`` itself, which made it a second,
+    independent implementation of "where does a language's mapping live" — and
+    it went wrong the moment a language's mapping legitimately lived under
+    another key (``javascript`` reads ``typescript.yaml`` via
+    ``cfg._CFG_MAPPING_ALIASES``). A gate that re-derives what it is gating is
+    testing its own copy, so it now calls ``load_cfg_mapping`` and reads the
+    parsed field, which is also what the CFG builder actually consumes.
+    """
+    mapping = cfg_mod.load_cfg_mapping(language)
+    assert mapping is not None, f"no cfg_nodes mapping for {language}"
+
+    atomic = mapping.atomic_statements
     assert atomic, (
         f"{language}.yaml declares no atomic_statement, so CfgBuilder will "
         f"recurse past its statements to bare identifiers and the "
@@ -267,6 +297,12 @@ CONTROL_FLOW_SOURCES: dict[str, str] = {
         "}\n",
     "typescript":
         "function f(x: number): number {\n"
+        "  if (x > 0) { return 1; } else { return 2; }\n"
+        "}\n",
+    # The typescript source with its annotations removed, for the same reason
+    # the smoke fixture is: holding the shape fixed isolates the language key.
+    "javascript":
+        "function f(x) {\n"
         "  if (x > 0) { return 1; } else { return 2; }\n"
         "}\n",
 }

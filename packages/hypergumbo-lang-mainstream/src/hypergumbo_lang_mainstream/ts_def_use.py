@@ -145,9 +145,19 @@ _TS_SKIP_NAMES = frozenset({
 })
 
 
+@register_def_use_extractor("javascript")
 @register_def_use_extractor("typescript")
 class TypeScriptDefUseExtractor:
-    """Extracts variable definitions and uses from TypeScript tree-sitter AST nodes."""
+    """Extracts variable definitions and uses from TypeScript/JavaScript AST nodes.
+
+    Registered under BOTH keys off one class because ``_HANDLERS`` is keyed on
+    tree-sitter node types and tree-sitter-javascript emits the same ones. A
+    second class would be a copy whose only difference is the string it is
+    registered under — and a copy is the thing that drifts.
+
+    Each registration gets its own instance with its own ``language`` stamp;
+    see ``register_def_use_extractor``.
+    """
 
     language = "typescript"
 
@@ -268,20 +278,41 @@ _HANDLERS: dict[str, Any] = {
 #     improvement: it makes the language conform to the wiring gate and be ready
 #     when sinks land, and nothing more.
 #
-#   * The glob is `*.ts`, so JavaScript gets nothing. Measured: apollo-server
-#     (TypeScript) yields 588 DDG edges over 93 symbols, express (all `.js`)
-#     yields ZERO. This is the larger gap of the two and it points the other
-#     way from the catalog: JavaScript carries 50 sources and 83 SINKS while
-#     TypeScript carries 6 and none. `cfg_nodes/typescript.yaml` says in its
-#     own header that it "also covers JavaScript (same node types in
-#     tree-sitter-javascript)", but it is keyed to the `typescript` language
-#     and this extractor registers only for `typescript`, so a `.js` file
-#     reaches neither. Wiring JavaScript needs a `javascript` key for the
-#     mapping, the extractor and the spec — cheap, because the grammar node
-#     types are shared, and worth more than anything in this file. Filed
-#     separately rather than folded in, so its A/B stays readable.
+#   * JavaScript is now wired too (WI-nonad), which is why there are two specs
+#     below rather than one. It matters more than the TypeScript registration
+#     it rode in on, and for the opposite reason: TypeScript carries 6 sources
+#     and ZERO sinks, JavaScript carries 50 sources and 83 SINKS, so JavaScript
+#     is the half of this pair whose DDG edges can actually change a taint
+#     verdict. The three keys it needed — mapping, extractor, spec — are all
+#     aliases or second registrations rather than new logic, because
+#     `cfg_nodes/typescript.yaml` states in its own header that it "also covers
+#     JavaScript (same node types in tree-sitter-javascript)". See
+#     `cfg._CFG_MAPPING_ALIASES` for why that assertion is encoded once instead
+#     of copied into a second YAML.
+#
+#     NOT A CLAIM ABOUT RECALL. Wiring makes `.js` files reach the machinery;
+#     it does not establish that any taint verdict improves. That is an A/B on
+#     express (all `.js`) and apollo-server, read per-flow against source, and
+#     it is deliberately NOT asserted here.
+#
+#     One decayed number corrected: an earlier revision of this comment cited
+#     apollo-server at 588 DDG edges over 93 symbols and express at ZERO. The
+#     express-is-zero half is what this change addresses; the apollo-server
+#     figure was measured on an older tree and should be re-measured before
+#     being cited, not copied forward.
 register_ddg_language(LanguageDdgSpec(
     language="typescript",
     file_glob="*.ts",
+    function_node_types=frozenset({"function_declaration"}),
+))
+
+# Same grammar, same function node types, different glob. `*.js` only — `.mjs`
+# / `.cjs` / `.jsx` are deliberately NOT claimed here: each is a separate
+# question about what the discovery layer classifies as `javascript`, and
+# widening the glob on an assumption is how a spec starts lying about its own
+# coverage.
+register_ddg_language(LanguageDdgSpec(
+    language="javascript",
+    file_glob="*.js",
     function_node_types=frozenset({"function_declaration"}),
 ))
