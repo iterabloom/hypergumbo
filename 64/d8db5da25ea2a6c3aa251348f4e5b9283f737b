@@ -1,0 +1,59 @@
+Original commit body from decd0326b1b25c86b942b132ec72b01b7abee119:
+
+`File f = new File(p); f.createNewFile();` emitted
+`java:external:0-0:f.createNewFile:unresolved` — the dst named the VARIABLE.
+The type was never missing: `var_types` already infers it from four sources and
+the analyzer already threads it out as `meta["receiver_type_hint"]`, but that
+hint's only consumers are the Tier-2 `inherited_calls` / `receiver_type_dispatch`
+linkers, which resolve PROJECT-INTERNAL symbols. Nothing carried it to the
+external surface, so every catalogue consumer saw a bare method on an unknown
+receiver.
+
+That is fatal rather than lossy. `io_boundary.gate_named_entry` opens with an
+unconditional `if call_construct == "method": return None`, so with no module
+hint a method call matches NOTHING — not a method-kind entry, not even a
+function-kind one. A nine-language measurement (one instrument, production's own
+`_match_propagation_entry`, per-language positive controls) found not one
+language legitimately matching a method-kind sink: java, scala, swift,
+python-two-step, rust and objc all EMIT and all die at that gate. 67 of java's
+69 catalogued sinks are method-kind. Emitting the edge was never the missing
+piece.
+
+The typed-local branch now writes the imported fully-qualified type into the
+module slot, gated on that type being in `imports` so the slot only ever carries
+a path the file declares. An unqualifiable type is left alone rather than
+written in bare — a simple name there asserts a module that does not exist.
+
+IT OPENED A PHANTOM-BARRIER CHANNEL ON THE WAY IN, and the guard is the
+interesting half. Naming the type also SHORTENS the callee from `w.doFinal` to
+`doFinal`, and `_register_sanitizer_callers` matches sanitizers on the SHORT
+NAME while never consulting the module hint — so the shortening alone made
+`com.example.Widget.doFinal` bind the catalogued `javax.crypto.Cipher.doFinal`.
+Measured, not feared: the barrier really did register. A phantom barrier earns
+`sanitized`, and a sanitized flow is DROPPED from the claim's violation set
+(#214), so the recall win would have been paid for in silently deleted findings.
+`make_unresolved_edge` grows a `call_construct` kwarg (additive, default None,
+no existing caller affected) and this branch declares "method", which both taint
+gates already honour. It costs nothing on the sink side: `_lookup_named_entry`
+returns from its module-filter branch before `gate_named_entry` ever sees it.
+
+Direction, measured on both signs. Sinks: java's two-step form moves from
+no-match to match. Sanitizers: zero barriers register either way — not for the
+wrong receiver type (the phantom, which is the point) and not for the correct
+one either, because the sanitizer path has no module filtering to distinguish
+them. Deliberate, and it follows `_register_sanitizer_callers`'s own ruling: a
+missed barrier costs precision, an invented one costs a real finding.
+
+Scope, stated rather than implied. This moves the TYPED-LOCAL form only.
+`new File(p).createNewFile()` still emits `external` and does not match — a
+receiver-shape gap, not a typing one. A fully-qualified declaration
+(`java.io.File f = new java.io.File(p)`) also still misses, because the inferred
+type is then `java.io.File` while `imports` is keyed by simple name. Both are
+untouched and neither is claimed.
+
+Tests: 21985 passed, mypy strict ratchet clean, all six packages 100% in
+isolation. The core-package tests for `make_unresolved_edge` exist because the
+helper lives in core while its java caller lives in mainstream, and CI measures
+coverage per package.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
