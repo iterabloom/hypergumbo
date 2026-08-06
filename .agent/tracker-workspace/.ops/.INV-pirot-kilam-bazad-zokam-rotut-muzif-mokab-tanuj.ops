@@ -1,0 +1,40 @@
+- op: create  # c161
+  at: '2026-08-06T06:55:57Z'  # c161
+  by: agent  # c161
+  actor: jgstern_agent  # c161
+  clock: 1  # c161
+  nonce: c161  # c161
+  data:  # c161
+    kind: invariant  # c161
+    title: "Java sets call_construct on no unresolved edge, so the sanitizer method-guard never fires for Java at all — a Class.method callee can bind a catalogued barrier by short name"  # c161
+    status: violated  # c161
+    priority: 2  # c161
+    parent:  # c161
+    tags:  # c161
+    - taint  # c161
+    - java  # c161
+    - io_boundary  # c161
+    - analysis_quality  # c161
+    isbefore: []  # c161
+    duplicate_of: []  # c161
+    not_duplicate_of: []  # c161
+    pr_ref:  # c161
+    description: "FOUND 2026-08-06 while landing PR #227 (INV-linub's java half). PRE-EXISTING and\ndeliberately NOT folded into that PR: widening the diff to cover it would have\nmixed a measured single-branch fix with an unmeasured analyzer-wide behaviour\nchange. Filed instead of fixed silently.\n\nTHE EXPOSURE. _register_sanitizer_callers matches a sanitizer by SHORT NAME and\nthen applies three escapes, in order:\n    1. an exact qualified_name match wins;\n    2. call_construct == 'method'  -> skip;\n    3. the name is in ambiguous_names -> skip.\nFor java, escape 2 can NEVER fire, because no java edge carries the key. So the\nonly thing standing between a short-name collision and a registered barrier is\nthe ambiguous_names list.\n\nTHE LIVE SHAPE, not hypothetical. The WI-tihup branch (receiver IS an imported\nclass) emits unresolved_name = f'{receiver_name}.{method_name}', e.g.\n'Cipher.doFinal'. The sanitizer index really does hold 'Cipher.doFinal' as a key\n(verified: keys are ['Cipher.doFinal', 'doFinal',\n'javax.crypto.Cipher.doFinal']). That is NOT an exact qualified_name match --\nthe sanitizer's qualified_name is 'javax.crypto.Cipher.doFinal' -- so escape 1\nmisses, escape 2 is dead, and 'doFinal' is not in java's ambiguous_names. The\nbarrier registers on name agreement alone, with no check that the receiver is\nactually a javax.crypto.Cipher.\n\nWHY IT MATTERS IN THIS DIRECTION. A registered barrier earns , and a\nsanitized flow is DROPPED from a claim's violation set (#214). So this deletes\nfindings rather than adding false ones -- the expensive direction for a security\ntool, and the one _register_sanitizer_callers's own docstring calls out: 'a\nphantom barrier is never registered from a bare-name collision -- which would\nsilently SUPPRESS a real taint flow (a false negative, worse than a missed\nbarrier for a security tool)'. That protection is simply absent for java.\n\nNOT MEASURED, and this decides whether it is a curiosity or a headline: how many\njava edges on a real repo have a callee short name that collides with a\ncatalogued sanitizer. Java ships exactly ONE sanitizer\n(javax.crypto.Cipher.doFinal), so the blast radius is bounded by how often\n'doFinal' and 'Cipher.doFinal' appear as callee names -- plausibly near zero on\nmost repos, but the cohort holds no java repo that was successfully analysed\n(spring-petclinic timed out). SIZE IT BEFORE FIXING.\n\nTHE FIX IS NOT 'set it everywhere'. call_construct='method' is only true where\nthe call genuinely has a receiver; asserting it on a bare or static call would\nbe a different falsehood, and would also suppress legitimate function-kind sink\nmatches through gate_named_entry's kind filter. Each java emit branch needs the\nquestion answered separately. Scope that per branch, do not sweep.\n\nRELATED: INV-linub (class), and PR #227's typed-local branch which already\ncarries the flag correctly."  # c161
+    fields:  # c161
+      statement: "Every unresolved call edge emitted for a call on a receiver carries meta['call_construct'] = 'method', so that both taint gates (io_boundary.gate_named_entry and _register_sanitizer_callers) can refuse it for want of receiver evidence."  # c161
+      root_cause: "java.py emits every unresolved edge through make_unresolved_edge without a call_construct argument, so meta carries no such key. PR #227 added the kwarg and set it on the ONE branch it introduced (the typed-local receiver), because that branch shortens the callee name and would otherwise have created a phantom barrier. Every OTHER java unresolved-emit branch still passes nothing. _register_sanitizer_callers's method guard reads exactly that key, so for java it is dead code."  # c161
+- op: update  # bd44
+  at: '2026-08-06T06:56:17Z'  # bd44
+  by: agent  # bd44
+  actor: jgstern_agent  # bd44
+  clock: 2  # bd44
+  nonce: bd44  # bd44
+  set:  # bd44
+    description: "FOUND 2026-08-06 while landing PR #227 (INV-linub's java half). PRE-EXISTING and\ndeliberately NOT folded into that PR: widening the diff to cover it would have\nmixed a measured single-branch fix with an unmeasured analyzer-wide behaviour\nchange. Filed instead of fixed silently.\n\nTHE EXPOSURE. _register_sanitizer_callers matches a sanitizer by SHORT NAME and\nthen applies three escapes, in order:\n    1. an exact qualified_name match wins;\n    2. call_construct == 'method'  -> skip;\n    3. the name is in ambiguous_names -> skip.\nFor java, escape 2 can NEVER fire, because no java edge carries the key. So the\nonly thing standing between a short-name collision and a registered barrier is\nthe ambiguous_names list.\n\nTHE LIVE SHAPE, not hypothetical. The WI-tihup branch (receiver IS an imported\nclass) emits unresolved_name = f'{receiver_name}.{method_name}', e.g.\n'Cipher.doFinal'. The sanitizer index really does hold 'Cipher.doFinal' as a key\n(verified: keys are ['Cipher.doFinal', 'doFinal',\n'javax.crypto.Cipher.doFinal']). That is NOT an exact qualified_name match --\nthe sanitizer's qualified_name is 'javax.crypto.Cipher.doFinal' -- so escape 1\nmisses, escape 2 is dead, and 'doFinal' is not in java's ambiguous_names. The\nbarrier registers on name agreement alone, with no check that the receiver is\nactually a javax.crypto.Cipher.\n\nWHY IT MATTERS IN THIS DIRECTION. A registered barrier earns the sanitized label, and a\nsanitized flow is DROPPED from a claim's violation set (#214). So this deletes\nfindings rather than adding false ones -- the expensive direction for a security\ntool, and the one _register_sanitizer_callers's own docstring calls out: 'a\nphantom barrier is never registered from a bare-name collision -- which would\nsilently SUPPRESS a real taint flow (a false negative, worse than a missed\nbarrier for a security tool)'. That protection is simply absent for java.\n\nNOT MEASURED, and this decides whether it is a curiosity or a headline: how many\njava edges on a real repo have a callee short name that collides with a\ncatalogued sanitizer. Java ships exactly ONE sanitizer\n(javax.crypto.Cipher.doFinal), so the blast radius is bounded by how often\n'doFinal' and 'Cipher.doFinal' appear as callee names -- plausibly near zero on\nmost repos, but the cohort holds no java repo that was successfully analysed\n(spring-petclinic timed out). SIZE IT BEFORE FIXING.\n\nTHE FIX IS NOT 'set it everywhere'. call_construct='method' is only true where\nthe call genuinely has a receiver; asserting it on a bare or static call would\nbe a different falsehood, and would also suppress legitimate function-kind sink\nmatches through gate_named_entry's kind filter. Each java emit branch needs the\nquestion answered separately. Scope that per branch, do not sweep.\n\nRELATED: INV-linub (class), and PR #227's typed-local branch which already\ncarries the flag correctly."  # bd44
+- op: discuss  # 0dd7
+  at: '2026-08-06T06:56:27Z'  # 0dd7
+  by: agent  # 0dd7
+  actor: jgstern_agent  # 0dd7
+  clock: 3  # 0dd7
+  nonce: 0dd7  # 0dd7
+  message: "Filed while landing PR #227. Sibling of INV-linub (class), INV-fokik and INV-fazim - all four came out of the same nine-language catalogue-reach measurement, ~/hypergumbo_lab_notebook/taint-area-08052026/INV-linub-CHAIN-MEASUREMENT.md. This one is the only PRE-EXISTING member: PR #227 did not create it, it only made it visible by adding the kwarg and using it on one branch."  # 0dd7
