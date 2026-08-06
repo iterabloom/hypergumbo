@@ -128,6 +128,19 @@ class RepoDdg:
     stmt_defuse: dict[str, list[tuple[int, tuple[str, ...], tuple[str, ...]]]] = field(
         default_factory=dict,
     )
+    #: Symbol ids whose §3a walk may NOT return ``False`` (WI-joluk).
+    #:
+    #: A function lands here when the CFG's recorded statement extents do not
+    #: cover every call node in its AST body — the def/use extractor
+    #: demonstrably did not see part of it — or when the language declares no
+    #: ``call_node_types`` and coverage is unknowable. Both are the same fact
+    #: for this purpose: the walk's picture is incomplete, so an exhausted walk
+    #: over it is not evidence the flow is absent.
+    #:
+    #: Populated for every function with DDG edges, INCLUDING the unknowable
+    #: case, because the permitting case is the one being enumerated: a
+    #: language nobody configured must forfeit rather than silently qualify.
+    forfeit_refutation: set[str] = field(default_factory=set)
 
 
 _DDG_LANGUAGES: dict[str, LanguageDdgSpec] = {}
@@ -218,6 +231,12 @@ def _solve_one_function(
     if result.ddg_edges:
         out.ddg_edges.extend(result.ddg_edges)
         out.ddg_symbols.add(sym_id)
+        # WI-joluk. Computed only for functions that HAVE edges: a function the
+        # walk can never run on cannot forfeit anything, and adding it would
+        # inflate the set with entries no consumer reads.
+        uncovered = deps["uncovered_call_lines"](cfg, body_node, source, mapping)
+        if uncovered is None or uncovered:
+            out.forfeit_refutation.add(sym_id)
         # Collected only alongside edges: a function with no edges cannot be
         # walked, so its statements would be dead weight in the index.
         stmts = [
@@ -266,6 +285,7 @@ def build_repo_ddg(
             load_cfg_mapping,
             populate_def_use_for_cfg,
             solve_reaching_defs,
+            uncovered_call_lines,
         )
     except ImportError:  # pragma: no cover - tree-sitter is a hard dep but defend
         return out
@@ -274,6 +294,7 @@ def build_repo_ddg(
         "build_function_cfg": build_function_cfg,
         "populate_def_use_for_cfg": populate_def_use_for_cfg,
         "solve_reaching_defs": solve_reaching_defs,
+        "uncovered_call_lines": uncovered_call_lines,
     }
 
     for language in languages:

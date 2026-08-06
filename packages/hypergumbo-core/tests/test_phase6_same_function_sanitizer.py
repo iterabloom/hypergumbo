@@ -132,6 +132,49 @@ class TestSameFunctionSanitizer:
         assert findings[0].sanitized is False
         assert findings[0].verdict == "violated"
 
+    def test_forfeiting_function_does_NOT_earn_sanitized(self) -> None:
+        """WI-joluk, wired. An unseen call site cannot protect a flow.
+
+        This is the ONE production consumer the coverage gate changes. The
+        §3a arm tests ``is True``, so ``False`` and ``None`` already collapse
+        there; here a ``False`` earns ``sanitized`` and a sanitized flow is
+        dropped from the claim's violation set. So a ``False`` produced from a
+        function whose def/use extractor did not see part of the body
+        SUPPRESSES A REAL VIOLATION — the expensive direction for a security
+        tool.
+
+        The pair is the argument: the canonical fixture above earns
+        ``sanitized`` on identical inputs, and the only thing changed here is
+        that ``_FN`` is declared to forfeit. So the downgrade is caused by the
+        gate rather than by a fixture that stopped reaching its sink.
+
+        Direction: strictly FEWER suppressions, hence strictly MORE surviving
+        violations. That is why this could land before removal authority
+        exists.
+        """
+        findings = propagate_taint_ddg(
+            _CANON_DDG, _CANON_CALLS, SOURCES, SINKS, SANITIZERS,
+            ddg_symbols={_FN}, stmt_defuse=_CANON_STMTS,
+            forfeit_refutation={_FN},
+        )
+        assert len(findings) == 1
+        assert findings[0].sanitized is False
+        assert findings[0].verdict == "violated"
+
+    def test_forfeiting_an_UNRELATED_function_changes_nothing(self) -> None:
+        """The set is keyed by the SOURCE function, not consulted globally.
+
+        Without this, an implementation that forfeited whenever the set was
+        merely non-empty would pass the test above and silently suppress every
+        sanitizer in the repo the moment one function anywhere was uncovered.
+        """
+        findings = propagate_taint_ddg(
+            _CANON_DDG, _CANON_CALLS, SOURCES, SINKS, SANITIZERS,
+            ddg_symbols={_FN}, stmt_defuse=_CANON_STMTS,
+            forfeit_refutation={"go:other.go:1-2:somebody_else:function"},
+        )
+        assert findings[0].sanitized is True
+
     def test_confirmed_flow_keeps_its_precise_label_when_sanitized(self) -> None:
         """Sanitization relabels the flow; it does not downgrade the walk.
 

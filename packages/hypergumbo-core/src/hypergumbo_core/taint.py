@@ -2318,6 +2318,7 @@ def propagate_taint_ddg(
     stmt_defuse: dict[
         str, list[tuple[int, tuple[str, ...], tuple[str, ...]]]
     ] | None = None,
+    forfeit_refutation: set[str] | None = None,
 ) -> list[TaintFlowFinding]:
     """DDG-backed taint-flow propagation with mixed-coverage analysis.
 
@@ -2651,12 +2652,26 @@ def propagate_taint_ddg(
                     # seed, so it can reach this line via
                     # ``sanitized_reachable``). This check ADDS a way to earn
                     # the label and must never take one away.
+                    #
+                    # WI-joluk, AND ONLY ON THIS ARM. The §3a arm above tests
+                    # `is True`, so `False` and `None` already collapse there
+                    # and the gate would change nothing. HERE a `False` earns
+                    # `sanitized` and a sanitized flow is dropped from the
+                    # claim's violation set — so a `False` from a function the
+                    # extractor did not fully see suppresses a real violation.
+                    # Forfeiting downgrades that to `None`, which produces
+                    # strictly FEWER suppressions and therefore strictly MORE
+                    # surviving violations: the safe direction, and the reason
+                    # this could land before removal authority exists.
                     if adjudicated and barrier_sites:
                         is_sanitized = is_sanitized or _ddg_taint_reaches(
                             source_fn, source_call_lines, sink_call_lines,
                             ddg_uses, callee_names, summaries,
                             defs_at=defs_at, inherits=inherits,
                             barrier_lines=frozenset(barrier_sites),
+                            forfeit_refutation=(
+                                source_fn in (forfeit_refutation or set())
+                            ),
                         ) is False
 
             # The label now records what actually decided inclusion, which is
