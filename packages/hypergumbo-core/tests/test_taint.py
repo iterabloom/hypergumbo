@@ -670,6 +670,66 @@ class TestSanitizerKindGate:
         assert len(findings) == 1
         assert findings[0].sanitized is True
 
+    def test_receiver_type_in_module_slot_is_receiver_evidence(self) -> None:
+        """The PRODUCTION edge shape: an analyzer that knows the receiver's
+        type puts it in the MODULE slot — ``py:Fernet:0-0:encrypt:unresolved``
+        — never in the name slot the sibling test above uses.
+
+        That is receiver evidence exactly as strong as the name-slot form, so
+        the untyped-method gate must let it through. It did not, because the
+        permit branch compared ``qualified_name`` against
+        ``_extract_callee_name``, which reads the NAME slot only. For a
+        method-shaped sanitizer the comparison is ``'Fernet.encrypt' ==
+        'encrypt'`` — false by construction — so the branch could never fire,
+        and every shipped sanitizer is method-shaped. The gate was therefore
+        unconditional in production and the barrier arm was dead at every
+        idiomatic call site (INV-finoh's bypass verified only on synthetic
+        name-slot edges).
+        """
+        edges = [
+            _make_edge("py:a.py:1-5:handler:function",
+                       "py:external:0-0:Fernet.decrypt:unresolved"),
+            _make_edge("py:a.py:1-5:handler:function",
+                       "py:a.py:10-15:enc:function"),
+            _make_edge_cc("py:a.py:10-15:enc:function",
+                          "py:Fernet:0-0:encrypt:unresolved", "method"),
+            _make_edge("py:a.py:10-15:enc:function",
+                       "py:pathlib.Path:0-0:write_text:unresolved"),
+        ]
+        findings = propagate_taint_structural(
+            edges, [self._SOURCE], [self._SINK], [self._SANITIZER],
+        )
+        assert len(findings) == 1
+        assert findings[0].sanitized is True
+
+    def test_module_slot_naming_a_DIFFERENT_type_does_not_sanitize(
+        self,
+    ) -> None:
+        """The permit branch must key on the WHOLE qualified name, not on the
+        mere presence of a module slot.
+
+        ``py:AESGCM:0-0:encrypt:unresolved`` carries real receiver evidence,
+        and that evidence says the callee is ``AESGCM.encrypt`` — which is NOT
+        the registered ``Fernet.encrypt``. Permitting on "has a module slot"
+        alone would rebuild the phantom barrier INV-finoh closed, one level up:
+        a typed receiver of the wrong type would sanitize a real flow.
+        """
+        edges = [
+            _make_edge("py:a.py:1-5:handler:function",
+                       "py:external:0-0:Fernet.decrypt:unresolved"),
+            _make_edge("py:a.py:1-5:handler:function",
+                       "py:a.py:10-15:enc:function"),
+            _make_edge_cc("py:a.py:10-15:enc:function",
+                          "py:AESGCM:0-0:encrypt:unresolved", "method"),
+            _make_edge("py:a.py:10-15:enc:function",
+                       "py:pathlib.Path:0-0:write_text:unresolved"),
+        ]
+        findings = propagate_taint_structural(
+            edges, [self._SOURCE], [self._SINK], [self._SANITIZER],
+        )
+        assert len(findings) == 1
+        assert findings[0].sanitized is False
+
     def test_ambiguous_bare_name_does_not_false_sanitize(self) -> None:
         """An unresolved bare callee flagged ambiguous (no receiver evidence)
         must not register a phantom barrier."""
