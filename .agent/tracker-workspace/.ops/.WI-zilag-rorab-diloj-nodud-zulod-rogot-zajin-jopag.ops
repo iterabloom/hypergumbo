@@ -1,0 +1,38 @@
+- op: create  # 1937
+  at: '2026-08-06T17:21:25Z'  # 1937
+  by: agent  # 1937
+  actor: jgstern_agent  # 1937
+  clock: 1  # 1937
+  nonce: '1937'  # 1937
+  data:  # 1937
+    kind: work_item  # 1937
+    title: "python: route the tracked receiver type into the module slot so #231's edges can reach callees_at (INV-linub instance)"  # 1937
+    status: todo_hard  # 1937
+    priority: 2  # 1937
+    parent:  # 1937
+    tags:  # 1937
+    - taint  # 1937
+    - adr_0017  # 1937
+    - analysis_quality  # 1937
+    - io_boundary  # 1937
+    isbefore: []  # 1937
+    duplicate_of: []  # 1937
+    not_duplicate_of: []  # 1937
+    pr_ref:  # 1937
+    description: "INSTANCE OF THE INV-linub CLASS, for python, on the SECOND consumer of L3\n(receiver evidence) that the class statement does not name.\n\nWHAT IS WRONG. PR #231 taught py.py to emit a call edge for an attribute chain\nrooted at a local -- voucher_list.append(x), p.save(...), payment.confirm().\nIt hardcodes the dst as python:external:0-0:NAME:unresolved, and its own\ncomment explains why: \"the receiver's type is genuinely unknown here\", and\ninventing a module would assert something false. Correct at that branch.\n\nBut the \"external\" placeholder in the module slot makes the edge USELESS\ndownstream. _module_from_symbol_path returns \"\" for the placeholder BY\nDOCUMENTED DESIGN, so _qualified_callee yields no key, so\n_catalogue_key_for_edge yields None, so the (function, line) never enters\ncallees_at, so _use_site_terminates cannot decide, so the section 3a walk\nrecords an ESCAPE. The edge is emitted and then discarded.\n\nMEASURED (2026-08-06, scripts/measure-call-escape-cause.py, positive control\npassed -- pretix: 443,296 edges offered, 191,264 accepted, 69 summary entries,\n31,913 callees_at entries): on pretix, 13 of 17 call-node escape sites (76.5%)\nare exactly this, and ZERO lack an edge. save, confirm, delete, get,\nrefresh_from_db, create_external_refund, log_action, append, create.\n\nWHY THIS IS THE JAVA SHAPE. PR #227 fixed the identical defect for java: the\ninferred receiver type \"was already in var_types, routed only to meta\", and the\nfix routed it into the module slot instead. py.py carries var_types AND\nexternal_var_types. The question this item must answer FIRST is whether either\nis reachable at the #231 emit site for the chain root -- if it is not, this is a\nlarger change than #227 was and should be re-scoped before being attempted.\n\n*** DIRECTION, AND IT IS THE DANGEROUS ONE. *** Giving these calls a qualified\nkey lets _use_site_terminates return True more often, which produces MORE False\nverdicts, and since PR #214 a False earns sanitized and DROPS the flow from the\nviolation set. This is a SUPPRESSIVE change. Two measured counterweights, both\nof which must be re-checked before landing rather than taken from this note:\n  1. Of the three pretix sites that DID get a key, two hit \"no summary\" and one\n     hit \"propagates\". None closed. So the empirical suppression on this corpus\n     is small.\n  2. There are ZERO barrier-arm walks on all four repos that produce walks\n     (hypergumbo 36, pretix 35, prometheus 7, alertmanager 3 -- every\n     invocation on the 3a arm, where False and None collapse). So today this\n     change cannot move a finding in EITHER direction.\n\nCONSEQUENCE FOR PRIORITY: this is a capability fix with a measured-zero blast\nradius, which makes it cheap and safe NOW and dangerous LATER -- the hazard\narms when a sanitizer catalogue exists. It is filed at P2 rather than P1\nbecause it moves no finding today; it is filed rather than skipped because the\nwindow in which it is safe closes.\n\nACCEPTANCE, and it must be measured through the consumer, not at the analyzer:\nre-run measure-call-escape-cause.py on pretix and show stage 3a shrinking, AND\nreport what the sites moved TO (4a catalogue gap / 4b genuine propagating\nescape), AND report the finding-level delta in both directions. An emission-only\nor key-only win measured at the edge is exactly the capability-is-not-recall\nfailure this class was filed to prevent."  # 1937
+    fields: {}  # 1937
+- op: update  # 8871
+  at: '2026-08-06T18:31:06Z'  # 8871
+  by: agent  # 8871
+  actor: jgstern_agent  # 8871
+  clock: 2  # 8871
+  nonce: '8871'  # 8871
+  set:  # 8871
+    priority: 1  # 8871
+- op: discuss  # 9a98
+  at: '2026-08-06T18:31:06Z'  # 9a98
+  by: agent  # 9a98
+  actor: jgstern_agent  # 9a98
+  clock: 3  # 9a98
+  nonce: 9a98  # 9a98
+  message: "RAISED P2 -> P1 and pulled to NEXT, 2026-08-06, on evidence gathered after\nfiling. When filed this looked like a capability fix with a measured-zero blast\nradius. It is now the gate on the whole refutation question.\n\nWHAT CHANGED. Two purpose-built fixtures established that the ADR-0017\nSANITIZER BARRIER ARM cannot run at all, and the cause is this item:\n  v1  f = Fernet(key); plain = f.decrypt(tok); cipher = f.encrypt(plain)\n      -> emits python:external:0-0:decrypt:external_symbol. Receiver type\n         never inferred, so neither the plaintext SOURCE nor the Fernet.encrypt\n         SANITIZER can match. Zero walks.\n  v2  the same shape module-qualified -> source and sanitizer resolve, but the\n      SINK pathlib.Path(...).write_text(x) emits NO call edge (a chain rooted\n      at a CONSTRUCTOR RESULT -- recorded on INV-mumov as a distinct open\n      sub-shape). Zero walks again.\n\nEVERY sanitizer in the shipped catalogue is an INSTANCE METHOD --\nFernet.encrypt, AESGCM.encrypt, AEAD.Seal, Cipher.doFinal. So registering any\nbarrier at all requires exactly the receiver evidence this item supplies.\n\nCONSEQUENCE: this item now gates three things, not one -- the section 4 summary\nlookup inside the 3a walk (its filing), the sanitizer barrier arm, and through\nthat arm every proposal in this area that depends on a False verdict. Until it\nlands, every escape/refutation measurement in the taint area is confounded, and\nre-measuring INV-busis first would re-measure the confound.\n\nSCOPE NOTE, because v2 says one half is not enough: a barrier walk needs BOTH\nreceiver typing for the source/sanitizer AND an emitted edge for a\nconstructor-result sink. Landing only this item will move the fixture from\n\"zero walks\" to \"still zero walks\" unless INV-mumov's constructor-result\nsub-shape lands with it. Sequence them together or the acceptance test cannot\npass.\n\nACCEPTANCE, unchanged in spirit and now concrete: the deliverable is a WORKING\nBARRIER-ARM POSITIVE CONTROL -- a fixture that produces at least one barrier\nwalk -- plus the finding-level delta in BOTH directions on the cohort. This is\nthe first change in this area that can make an unearned False suppress a real\nfinding, so WI-joluk's gate gets its first genuine A/B here."  # 9a98
