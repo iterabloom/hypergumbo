@@ -1,0 +1,77 @@
+Original commit body from e21578b9fe9273b39d415be18b779654ca985706:
+
+THE STRUCTURAL FIX BEHIND INV-lupav, the tracker's only P0. PR #199 closed the
+acute case — a definition the DDG holds NOTHING for now yields None. It did not
+close the class: a PARTIALLY recorded definition still returns False, the one
+verdict that may license removing a reported flow, for a value the walk never
+followed to the sink. Verified live on merged dev before this change, with both
+controls passing.
+
+WHAT LANDS. `_ddg_taint_reaches` gains `forfeit_refutation` (default False, so
+no existing caller changes behaviour), and `cfg.uncovered_call_lines` computes
+the evidence: the call sites in a function's AST body that no recorded CFG
+statement covers.
+
+COVERAGE-GATED, NOT GAP-ENUMERATED. The population is whatever a language's
+def/use extractor does not model, which is not knowable from inside the walk —
+it cannot tell a construct nobody taught it about from one that genuinely has no
+uses. A fix shaped as "handle the known gaps" is a list that decays silently,
+and it decays in the direction that deletes findings.
+
+BYTE EXTENTS, NOT LINES, and that is the whole design. A line test cannot see
+the motivating case: `_process_conditional` records only the CONDITION CHILD of
+an `if`, so Go's `if err := do(); err != nil` records `err != nil` and the
+initializer becomes no statement at all. Both are on the same line, so
+line-matching reports the call as covered and the gate is vacuous exactly where
+`cfg_nodes/go.yaml` self-documents the gap (700 of caddy's 6,596 `if` statements
+carry a call there). The recorded statement's byte range does not contain the
+initializer's; an extent test catches it. Pinned by a test that would pass under
+a line-based implementation.
+
+`call_node_types` IS DECLARED PER LANGUAGE, not sniffed from node-type names —
+"does this node invoke something" is a per-grammar fact (Go `call_expression`,
+Python `call`, Rust `macro_invocation`), and a substring heuristic over type
+names is the hand-rolled predicate this subsystem keeps getting wrong. Declared
+for the four languages with def/use extractors; java is deliberately left
+undeclared (no extractor, and no `atomic_statement` either).
+
+None AND THE EMPTY SET ARE DIFFERENT FACTS. Empty means "checked, nothing
+uncovered" and permits refutation; None means "cannot check at all" and
+forfeits. Collapsing them would make every unconfigured language look fully
+covered — failing open, in the direction that deletes findings (L54
+default-deny: enumerate the PERMITTING case).
+
+BLOCKS False ONLY, NEVER True. A True is positive evidence of a dependence the
+walk actually found, and an incomplete picture cannot unmake it. Downgrading it
+would turn a safety gate into a recall regression.
+
+MEASURED, because the item asked and the answer branches the roadmap. WI-joluk:
+"If it is near 100 percent the gate is correct and §3a refutation is not viable
+on this substrate, which is a finding rather than a failure; if it is small,
+refutation is viable on the remainder." Over five repo-language pairs, counting
+only functions that produce DDG edges — the population §3a can act on at all:
+
+    alertmanager/go     445 of 1329   33.5%
+    prometheus/go      1696 of 4773   35.5%
+    kserve/go           470 of 1747   26.9%
+    kserve/python       420 of 1512   27.8%
+    hypergumbo/python  3164 of 24769  12.8%
+
+NOT near 100%. Refutation stays viable on roughly two thirds to seven eighths of
+walkable functions. Positive control passes in both directions.
+
+A FIRST RUN REPORTED hypergumbo AT 21.5% OVER 158,088 FUNCTIONS. The instrument
+was sweeping a virtualenv, so much of that share was a statement about
+third-party code. Excludes widened; the first-party figure is 24,769 functions
+at 12.8%. Recorded rather than quietly replaced.
+
+NOT WIRED INTO PRODUCTION YET — nothing passes forfeit_refutation=True.
+Measuring before wiring is deliberate: the share is what decides whether wiring
+is worth it, and the pre-state is unrecoverable afterwards. Wiring moves the
+walk in the SAFE direction (fewer False -> fewer `sanitized` -> more surviving
+violations) and gets its own finding-delta measurement.
+
+Tests: 21993 passed, mypy strict ratchet clean, all six packages 100% in
+isolation.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
