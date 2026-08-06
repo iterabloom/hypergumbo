@@ -756,6 +756,7 @@ def make_unresolved_edge(
     enclosing_class: Optional[str] = None,
     receiver_type_hint: Optional[str] = None,
     inherited_field_receiver: Optional[str] = None,
+    call_construct: Optional[str] = None,
 ) -> Edge:
     """Create an unresolved-external call edge for a callee not in the project.
 
@@ -788,6 +789,18 @@ def make_unresolved_edge(
         inherited_field_receiver: Receiver identifier when believed to be
             an inherited field (Site 3). Lands on ``Edge.meta`` under
             ``"inherited_field_receiver"``.
+        call_construct: Syntactic form of the call site — ``"method"`` for a
+            call on a receiver. Lands on ``Edge.meta`` under
+            ``"call_construct"``, where BOTH taint gates read it:
+            ``io_boundary.gate_named_entry`` (an untyped method call never
+            matches a catalogued entry) and ``_register_sanitizer_callers``
+            (an untyped method call never registers a barrier). Declaring it
+            is what stops a name-shortening improvement — putting a real
+            receiver type in ``module_hint`` also shortens ``w.doFinal`` to
+            ``doFinal`` — from turning into a PHANTOM BARRIER, since the
+            sanitizer path matches on the short name and never reads
+            ``module_hint``. Omit it only when the call genuinely has no
+            receiver.
     """
     dst_id = f"{lang}:{module_hint}:0-0:{callee_name}:unresolved"
     # ADR-0037 ruling 2: derive dst_ref from the components this helper already holds,
@@ -806,6 +819,8 @@ def make_unresolved_edge(
         hint_meta["receiver_type_hint"] = receiver_type_hint
     if inherited_field_receiver is not None:
         hint_meta["inherited_field_receiver"] = inherited_field_receiver
+    if call_construct is not None:
+        hint_meta["call_construct"] = call_construct
     return Edge.create(
         src=src_id,
         dst=dst_id,

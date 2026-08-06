@@ -2000,16 +2000,35 @@ class TestMakeUnresolvedEdge:
         edge = self._call(inherited_field_receiver="self.helper")
         assert edge.meta == {"inherited_field_receiver": "self.helper"}
 
-    def test_all_three_hints_combined(self) -> None:
+    def test_call_construct_lands_in_meta(self) -> None:
+        """``call_construct`` reaches meta, where BOTH taint gates read it.
+
+        ``io_boundary.gate_named_entry`` and ``_register_sanitizer_callers``
+        each refuse an untyped method call, and each reads this exact key. A
+        producer that names a real receiver type in ``module_hint`` also
+        shortens its callee name, which is enough on its own to bind a
+        catalogued sanitizer by short name — so the flag is what keeps that
+        improvement from registering a phantom barrier (INV-linub).
+        """
+        edge = self._call(call_construct="method")
+        assert edge.meta == {"call_construct": "method"}
+
+    def test_call_construct_omitted_stays_out_of_meta(self) -> None:
+        """A receiverless call must not claim to be a method call."""
+        assert self._call().meta is None
+
+    def test_all_four_hints_combined(self) -> None:
         edge = self._call(
             enclosing_class="Foo",
             receiver_type_hint="Bar",
             inherited_field_receiver="self.helper",
+            call_construct="method",
         )
         assert edge.meta == {
             "enclosing_class": "Foo",
             "receiver_type_hint": "Bar",
             "inherited_field_receiver": "self.helper",
+            "call_construct": "method",
         }
 
     def test_module_hint_kwarg_still_works(self) -> None:

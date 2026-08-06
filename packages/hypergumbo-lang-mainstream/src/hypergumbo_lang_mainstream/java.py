@@ -1941,6 +1941,7 @@ def _extract_edges(
                         # an unresolved edge with structured dst_ref so
                         # consumers can match on (module_path, name).
                         ext_ref: ExternalRef | None = None
+                        pr4_call_construct: str | None = None
                         if (
                             (receiver_name is None or receiver_name == "this")
                             and static_imports is not None
@@ -1973,6 +1974,70 @@ def _extract_edges(
                                 ext_ref = ExternalRef(
                                     lang="java",
                                     module_path=imports[receiver_name],
+                                    name=method_name,
+                                )
+                            # INV-linub: a typed LOCAL receiver
+                            # (``File f = new File(p); f.createNewFile()``).
+                            # The type is already inferred into ``var_types``
+                            # and threaded out as ``receiver_type_hint``, but
+                            # its only consumers were the Tier-2
+                            # ``inherited_calls`` / ``receiver_type_dispatch``
+                            # linkers, which resolve PROJECT-INTERNAL symbols.
+                            # Nothing carried it to the external surface, so
+                            # the dst named the VARIABLE
+                            # (``java:external:0-0:f.createNewFile:unresolved``)
+                            # and every catalogue consumer saw a bare method on
+                            # an unknown receiver.
+                            #
+                            # That is fatal rather than lossy for taint:
+                            # ``io_boundary.gate_named_entry`` opens with
+                            # ``if call_construct == "method": return None``,
+                            # so with no module hint a method call matches
+                            # NOTHING — not a method-kind entry, not even a
+                            # function-kind one. Measured 2026-08-06 across
+                            # nine languages: java emitted for both the
+                            # two-step and chained shapes and matched on
+                            # neither, and 67 of its 69 catalogued sinks are
+                            # method-kind. Emitting the edge was never the
+                            # missing piece; naming the receiver's TYPE is.
+                            #
+                            # Gated on the type being in ``imports`` so the
+                            # module slot only ever carries a path the file
+                            # actually declares. An unqualifiable type is left
+                            # alone rather than written in bare — a simple name
+                            # in the module slot asserts a module that does not
+                            # exist and can collide with a catalogued entry of
+                            # the same short name, which is the bare-name
+                            # category error INV-fazim documents from the other
+                            # direction.
+                            #
+                            # ``call_construct="method"`` is NOT decoration and
+                            # must not be dropped. Naming the type also SHORTENS
+                            # the callee from ``w.doFinal`` to ``doFinal``, and
+                            # ``_register_sanitizer_callers`` matches sanitizers
+                            # on the SHORT NAME while never consulting the module
+                            # hint. Without this flag the shortening alone made
+                            # ``com.example.Widget.doFinal`` bind the catalogued
+                            # ``javax.crypto.Cipher.doFinal`` — a PHANTOM BARRIER,
+                            # which earns `sanitized` and DELETES a real flow
+                            # (#214). Measured, not feared: the barrier really did
+                            # register before this flag was added. The flag costs
+                            # nothing on the sink side because
+                            # ``_lookup_named_entry`` returns from its
+                            # module-filter branch before ``gate_named_entry``
+                            # ever sees it.
+                            elif (
+                                receiver_name
+                                and receiver_name != "this"
+                                and pr4_receiver_type_hint
+                                and pr4_receiver_type_hint in imports
+                            ):
+                                module = imports[pr4_receiver_type_hint]
+                                unresolved_name = method_name
+                                pr4_call_construct = "method"
+                                ext_ref = ExternalRef(
+                                    lang="java",
+                                    module_path=module,
                                     name=method_name,
                                 )
                             # WI-tuhok: when the receiver looks like a
@@ -2013,6 +2078,7 @@ def _extract_edges(
                             inherited_field_receiver=(
                                 pr4_inherited_field_receiver
                             ),
+                            call_construct=pr4_call_construct,
                         ))
 
         # Object creation: new ClassName()
