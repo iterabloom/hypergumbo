@@ -1,0 +1,23 @@
+- op: create  # 7127
+  at: '2026-08-06T00:29:42Z'  # 7127
+  by: agent  # 7127
+  actor: jgstern_agent  # 7127
+  clock: 1  # 7127
+  nonce: '7127'  # 7127
+  data:  # 7127
+    kind: work_item  # 7127
+    title: "sink_after_source is a LEXICAL test, so a sink inside a closure that executes AFTER the source reads as sink-first (3 of 15 caddy failures) — ADR-0017 §7b-excluded, and a fix SUPPRESSES"  # 7127
+    status: todo_soft  # 7127
+    priority: 3  # 7127
+    parent:  # 7127
+    tags:  # 7127
+    - taint  # 7127
+    - adr_0017  # 7127
+    - closure  # 7127
+    - measurement  # 7127
+    isbefore: []  # 7127
+    duplicate_of: []  # 7127
+    not_duplicate_of: []  # 7127
+    pr_ref:  # 7127
+    description: "`sink_after_source` (taint.py:2517-2521) is a LEXICAL test:\n\n    sink_after_source = any(sink_line > source_line\n                            for sink_line in sink_call_lines\n                            for source_line in source_call_lines)\n\nWhen the sink call sits inside a nested function literal, its lexical position and its execution\ntime are different facts. A handler closure defined at line 173 and invoked as an HTTP handler\nruns long AFTER a `net.Listen` at line 176, but 173 < 176 so the guard reads \"sink first\" and\nblocks the walk.\n\nMEASURED (WI-vimon, 2026-08-05, dev ff5058b172). 3 of caddy's 15 `sink_after_source` failures\nare this shape, confirmed by reading each source:\n  - caddytest/integration/proxyprotocol_test.go newProxyProtoBackend: fmt.Fprint@113 inside\n    http.HandlerFunc(func(...)); source http.Serve@120\n  - caddytest/integration/proxyprotocol_test.go newTLSProxyProtoBackend: fmt.Fprint@173 inside\n    the same shape; source net.Listen@176\n  - modules/caddyhttp/reverseproxy/httptransport.go HTTPTransport.NewTransport: tls.Client@448\n    inside a nested func literal; source net.ListenUDP@507 in the enclosing method\n\nThe other 12 caddy failures are correct blocks (7 direction-reversed, where the SINK produces the\nvalue the SOURCE consumes; 2 sink-genuinely-first-no-flow; 1 flow-is-on-a-different-callee;\n2 mutually-exclusive-branches). Instruments and per-site classification:\n~/hypergumbo_lab_notebook/taint-area-08052026/WI-vimon-MEASUREMENT.md and meas/.\n\nWHY THIS IS FILED AS LOW PRIORITY AND NOT AS A BUG TO FIX NOW — three reasons, all of which\nmust be overturned before anyone codes against it:\n\n1. **ADR-0017 section 7b excludes capture-mediated closure taint BY DESIGN.** These sinks receive\n   whatever they receive through captured variables. Making the ordering test closure-aware\n   without the closure taint model behind it buys nothing sound.\n\n2. **DIRECTION: a fix here can only SUPPRESS.** Today `sink_after_source=False` blocks the walk,\n   so the flow keeps call-graph reachability and SURVIVES as a finding. Making the test\n   closure-aware lets the walk run. Per taint.py:2529-2533 `adjudicated = (walk is True)`, and\n   per taint.py:2569-2575 `adjudicated AND a same-function sanitizer` is the one route to\n   `sanitized`, which drops the flow from the claim's violation set. So the current unsound\n   verdict fails SAFE. That is the opposite direction from WI-votom and must be argued\n   explicitly if it is ever revisited.\n\n3. The population is 3 sites on one repo. pretix (Python) was not classified for this shape;\n   its 61 failures were partitioned on a different axis (recorded-vs-true call sites).\n\nRE-EVALUATION TRIGGER (required by the KEEP-verdict rule): revisit if and only if ADR-0017\nsection 7b's closure exclusion is lifted, or if a cohort measurement shows this shape exceeding\n~20% of `sink_after_source` failures on more than one repo.\n\nDO NOT CONFLATE with INV-busis's B1b split, which measured capture-mediated closure at ZERO.\nThat counted escape blockers inside walks that RAN; this counts guard2 failures where the walk\nnever ran. Different populations, different denominators."  # 7127
+    fields: {}  # 7127
