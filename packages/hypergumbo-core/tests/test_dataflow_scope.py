@@ -100,11 +100,30 @@ class TestComputeFromProduction:
         assert not java.dataflow_capable
         assert java.catalog_sinks > 0
 
-    def test_javascript_is_uncovered_despite_a_large_catalog(self) -> None:
+    def test_javascript_is_covered_via_the_shared_typescript_grammar(
+        self,
+    ) -> None:
+        """WI-nonad wired JavaScript; this used to assert the opposite.
+
+        The inversion is the point, so it is recorded rather than quietly
+        rewritten: JavaScript carries the larger catalog of the pair (>50 sinks
+        against TypeScript's zero) and was the only unwired language whose CFG
+        mapping and def/use extractor already existed under another key.
+
+        ``cfg_mapping`` is asserted true THROUGH ``compute_dataflow_scope``,
+        which reads ``load_cfg_mapping`` — so this also pins that the
+        ``_CFG_MAPPING_ALIASES`` indirection reaches this consumer, not just
+        the loader's own callers.
+
+        Coverage here means the machinery is reachable for ``.js``. It does not
+        assert any taint verdict changed; that is an A/B, not a unit test.
+        """
         catalog = load_builtin_taint_catalog()
         (js,) = compute_dataflow_scope(catalog, ["javascript"])
-        assert not js.cfg_mapping
-        assert not js.dataflow_capable
+        assert js.cfg_mapping
+        assert js.atomic_statement
+        assert js.def_use_extractor
+        assert js.dataflow_capable
         assert js.catalog_sinks > 50
 
     def test_counts_come_from_the_catalog(self) -> None:
