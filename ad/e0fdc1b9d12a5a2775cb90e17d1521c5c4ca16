@@ -1,0 +1,52 @@
+Original commit body from 4e1a55d756b0554f1b34b599b5b377f6f60a63c0:
+
+`escape_sites` recorded a bare `(symbol_id, line)`. The walk has FOUR
+`escaped = True` branches and they are not the same kind of fact: two mean the
+DDG never held it (an EXTRACTION gap, INV-lupav), two mean the walk saw the use
+and could not account for it, and only `no_heir` is the bucket ADR-0017 §7b's
+alias exclusion is invoked for. A histogram keyed on the line folds an
+extractor gap into a scope exclusion — the mechanism that priced INV-busis's
+"expression read" family at 78.6%.
+
+Sites now carry `EscapeSite(symbol_id, line, reason)` against a closed
+`ESCAPE_REASONS` vocabulary. Still purely observational; tuple-shaped so
+positional reads keep working.
+
+Two instruments land in-repo (the previous two lived in session scratchpads and
+drifted out of sync with the function they measured, which INV-busis records as
+its own durability hazard): `scripts/measure-escape-shapes.py` and
+`scripts/measure-call-escape-cause.py`.
+
+WHAT THE MEASUREMENT FOUND, on hypergumbo, pretix, prometheus and alertmanager:
+
+* ZERO barrier-arm walks anywhere (36/35/7/3 invocations, all on the §3a arm).
+  The §3a arm tests `is True`, so `False` and `None` collapse; only the barrier
+  arm reads `False`, where it earns `sanitized` and drops the flow. So every
+  proposal to reclassify escape sites — expression reads, §7a field
+  sensitivity — is STRUCTURALLY INERT: it can neither delete nor add a finding.
+  Corroborates INV-karud clause (b) from the opposite end of the pipeline.
+
+* The blocker population is ~4x smaller than the escape population. A walk
+  returns `True` on first sink hit but keeps escapes recorded before it, so
+  confirming walks report sites that blocked nothing. pretix production: 52
+  sites over all walks vs 15 over blocked walks — and the largest family
+  inverts, calls to field writes. INV-busis had already documented and fixed
+  this ("sums over UNKNOWN non-barrier walks only"); the first version of the
+  new instrument repeated it, caught by a control added for another purpose.
+
+* A call-node escape fails at different stages on different repos. pretix: 0 of
+  17 lack an edge, 13 carry the literal `external` module placeholder (receiver
+  type unknown — INV-linub). hypergumbo: 13 of 24 have no edge at all. The two
+  repos separate the two halves of INV-mumov — #231 worked for its target
+  shape, and emission is not "done".
+
+* A pre-registered prediction was refuted and is recorded as such: the rubric
+  called every call-node escape "a missing call EDGE". On pretix that is zero.
+
+Also corrects a false claim in this changelog's own S2 entry — "caddy and
+pretix are not on this machine" is false for pretix, which is a neutral corpus
+and the source of 46 of the filed 81 sites. It was read off `~/repos` (6 repos)
+rather than `~/ALL_REPOS` (271 in one subdirectory).
+
+Refs: INV-busis, INV-linub, INV-mumov, WI-joluk, INV-karud, INV-lupav
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
