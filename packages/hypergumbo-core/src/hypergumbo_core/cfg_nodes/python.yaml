@@ -51,6 +51,15 @@ switch:
 # identifiers and integers, destroying the statement-level granularity
 # that def/use extractors operate on. Listed types correspond to Python's
 # statement-level AST shapes (the children of a block / module body).
+# Node types that ARE a call in this grammar (WI-joluk). Consumed by
+# cfg.uncovered_call_lines to ask whether the CFG's recorded statement
+# extents cover every call site in a function body; a call outside every
+# extent means the def/use extractor never saw it, and the taint walk
+# forfeits its ability to return False for that function. A language that
+# declares NONE is treated as unknowable and forfeits everything.
+call_node_types:
+  - call
+
 atomic_statement:
   - expression_statement
   - assignment

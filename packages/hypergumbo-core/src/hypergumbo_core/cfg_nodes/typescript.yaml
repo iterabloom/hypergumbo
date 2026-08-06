@@ -57,6 +57,16 @@ switch:
 # only if the corresponding control-flow hook surfaces the node to the
 # extractor — a narrower path than the atomic one, and not one this mapping
 # can widen.
+# Node types that ARE a call in this grammar (WI-joluk). Consumed by
+# cfg.uncovered_call_lines to ask whether the CFG's recorded statement
+# extents cover every call site in a function body; a call outside every
+# extent means the def/use extractor never saw it, and the taint walk
+# forfeits its ability to return False for that function. A language that
+# declares NONE is treated as unknowable and forfeits everything.
+call_node_types:
+  - call_expression
+  - new_expression
+
 atomic_statement:
   - lexical_declaration
   - variable_declaration

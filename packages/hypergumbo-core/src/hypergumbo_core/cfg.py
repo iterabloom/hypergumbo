@@ -315,6 +315,18 @@ class CfgNodeMapping:
     # its children, which for Python recurses past expression_statement
     # all the way down to bare identifiers / integers — losing the
     # statement-level granularity that def/use extractors need.
+    #: Tree-sitter node types that ARE a call in this grammar. Declared here
+    #: rather than sniffed from the type name because "does this node invoke
+    #: something" is a per-grammar fact (Go ``call_expression``, Python
+    #: ``call``, Java ``method_invocation``, Rust ``macro_invocation``), and a
+    #: substring heuristic over node-type names is exactly the hand-rolled
+    #: predicate this codebase keeps getting wrong.
+    #:
+    #: Consumed by :func:`uncovered_call_lines` (WI-joluk). A language that
+    #: declares NONE cannot be checked, and the consumer treats that as
+    #: "forfeit everything" rather than "nothing uncovered" — the permitting
+    #: case is enumerated, so an unconfigured language fails CLOSED.
+    call_node_types: list[str] = field(default_factory=list)
     atomic_statements: list[str] = field(default_factory=list)
 
     def classify(self, node_type: str) -> Optional[str]:
@@ -551,6 +563,7 @@ def _parse_cfg_mapping(data: dict[str, Any]) -> CfgNodeMapping:
         context_manager=context_manager,
         deferred=deferred,
         switch=switch,
+        call_node_types=data.get("call_node_types", []),
         atomic_statements=data.get("atomic_statement", []),
     )
 
@@ -1439,6 +1452,81 @@ def populate_def_use_for_cfg(
             visit(child)
 
     visit(body_node)
+
+
+def uncovered_call_lines(
+    cfg: FunctionCfg,
+    body_node: Any,
+    source: bytes,
+    mapping: CfgNodeMapping,
+) -> Optional[frozenset[int]]:
+    """Call sites in this function's AST that no CFG statement covers (WI-joluk).
+
+    The coverage question behind INV-lupav: did the def/use extractor actually
+    SEE all of this function? If a call node sits outside every statement the
+    CFG recorded, the extractor never ran over it, so any use of a tainted
+    value at that call is invisible to the DDG — and the §3a walk will happily
+    report ``False`` ("every step accounted for") for a value it never followed
+    there. ``False`` is the one verdict that may license removing a reported
+    flow, so the caller passes ``forfeit_refutation=True`` when this returns a
+    non-empty set.
+
+    WHY BYTE EXTENTS AND NOT LINES. A line test cannot see the motivating case.
+    ``CfgBuilder._process_conditional`` records ONLY the condition child of an
+    ``if`` — for Go's ``if err := do(); err != nil`` that is ``err != nil``, and
+    the initializer ``err := do()`` becomes no statement at all. Both are on the
+    same line, so line-matching reports the call as covered and the gate is
+    vacuous exactly where ``cfg_nodes/go.yaml`` self-documents the gap. The
+    recorded statement's byte range does not contain the initializer's, so an
+    extent test catches it.
+
+    RETURNS ``None`` — NOT AN EMPTY SET — when the language declares no
+    ``call_node_types``. Those are different facts: an empty set means "checked,
+    nothing uncovered" and permits refutation, while ``None`` means "cannot
+    check at all". Collapsing them would make every unconfigured language look
+    fully covered, which fails open in the direction that deletes findings. The
+    permitting case is the one enumerated (L54 default-deny).
+
+    Args:
+        cfg: The function's CFG, after :func:`build_function_cfg`.
+        body_node: The tree-sitter node the CFG was built from.
+        source: Source bytes, for the statement-index match.
+        mapping: The language's CFG node mapping.
+
+    Returns:
+        Frozenset of 1-based lines carrying an uncovered call, empty when the
+        function is fully covered, or ``None`` when coverage is unknowable.
+    """
+    if not mapping.call_node_types:
+        return None
+
+    # Same key as populate_def_use_for_cfg builds — matching AST nodes to CFG
+    # statements is one fact, so it gets one spelling.
+    recorded: set[tuple[int, int, str]] = set()
+    for block in cfg.blocks.values():
+        for stmt in block.statements:
+            recorded.add((stmt.line, stmt.col, stmt.node_type))
+
+    call_types = frozenset(mapping.call_node_types)
+    extents: list[tuple[int, int]] = []
+    calls: list[tuple[int, int, int]] = []
+
+    def visit(node: Any) -> None:
+        key = (node.start_point[0] + 1, node.start_point[1], node.type)
+        if key in recorded:
+            extents.append((node.start_byte, node.end_byte))
+        if node.type in call_types:
+            calls.append((node.start_byte, node.end_byte, node.start_point[0] + 1))
+        for child in node.children:
+            visit(child)
+
+    visit(body_node)
+
+    return frozenset(
+        line
+        for start, end, line in calls
+        if not any(s <= start and end <= e for s, e in extents)
+    )
 
 
 # ---------------------------------------------------------------------------

@@ -1232,6 +1232,69 @@ class TestDdgTaintReaches:
         """
         assert _ddg_taint_reaches("f", [1], [9], {}, defs_at={}) is None
 
+    def test_forfeit_downgrades_an_otherwise_earned_False(self) -> None:
+        """WI-joluk. A function the extractor did not fully see cannot refute.
+
+        The isolation pair. Seed 3 walks a CLOSED cycle: every step accounted
+        for, no sink reached, so ``False`` is earned on the DDG facts alone —
+        asserted first so the downgrade below is visibly caused by the forfeit
+        flag and not by a broken fixture.
+
+        ``forfeit_refutation`` says something the DDG cannot: that the CFG
+        recorded no statement covering some call node in this function's body,
+        so the extractor demonstrably did not see part of it. Whatever the walk
+        concluded, it concluded it from an incomplete picture, and ``False`` is
+        the one verdict that may license removing a reported flow.
+        """
+        uses, defs, inh = _ddg_index(
+            [("a", 3, 4), ("b", 4, 3)],
+            [(4, ("b",), ("a",)), (3, ("a",), ("b",))],
+        )
+        assert _ddg_taint_reaches(
+            "f", [3], [9], uses, defs_at=defs, inherits=inh,
+        ) is False
+        assert _ddg_taint_reaches(
+            "f", [3], [9], uses, defs_at=defs, inherits=inh,
+            forfeit_refutation=True,
+        ) is None
+
+    def test_forfeit_does_NOT_downgrade_a_found_dependence(self) -> None:
+        """Forfeit blocks ``False`` only — never ``True``.
+
+        The asymmetry is the whole design (WI-joluk states it once): a wrong
+        ``False`` deletes a real security finding, a wrong ``None`` leaves an
+        unknown unknown. A ``True`` is positive evidence the walk actually
+        found — an incomplete picture cannot make a dependence it DID see stop
+        existing. Downgrading ``True`` here would turn a coverage gate into a
+        recall regression, which is the failure mode this test exists to pin.
+        """
+        uses, defs, inh = _ddg_index([("v", 1, 5)])
+        assert _ddg_taint_reaches(
+            "f", [1], [5], uses, defs_at=defs, inherits=inh,
+            forfeit_refutation=True,
+        ) is True
+
+    def test_forfeit_leaves_an_already_unknown_walk_unknown(self) -> None:
+        """Forfeiting an escaped walk is a no-op, not a second downgrade."""
+        assert _ddg_taint_reaches(
+            "f", [1], [9], {}, defs_at={}, forfeit_refutation=True,
+        ) is None
+
+    def test_forfeit_defaults_off_so_no_caller_changes_behaviour(self) -> None:
+        """Every existing call site keeps its verdict until wired deliberately.
+
+        The gate is only safe if turning it on is a decision. A default of
+        ``True`` would silently downgrade every ``False`` in the tree the
+        moment this lands, which is a behaviour change disguised as a guard.
+        """
+        uses, defs, inh = _ddg_index(
+            [("a", 3, 4), ("b", 4, 3)],
+            [(4, ("b",), ("a",)), (3, ("a",), ("b",))],
+        )
+        assert _ddg_taint_reaches(
+            "f", [3], [9], uses, defs_at=defs, inherits=inh,
+        ) is False
+
     def test_barren_seed_poisons_an_otherwise_closed_walk(self) -> None:
         """One unrecorded source line is enough to void the whole verdict.
 
