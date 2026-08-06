@@ -1,0 +1,60 @@
+Original commit body from 0f8e25bae35b25e05f53eabe8fbfe2c341fe33aa:
+
+`_ddg_taint_reaches` gains an optional `escape_sites` out-param recording every
+`(symbol_id, line)` at which the walk lost track. Purely observational: the
+verdict is identical whether or not it is passed.
+
+WHY THIS IS PRODUCTION CODE AND NOT AN INSTRUMENT. INV-busis's shape split
+decides whether ~79% of its blockers are genuine escapes or misclassified
+expression reads, and that split needs to know which line each walk died at. The
+instrument that produced the filed split re-derived the walk's escape logic
+OUTSIDE the walk, lives in a dead session scratchpad, and no longer matches this
+signature — which the item records as its own durability hazard. A measurement
+that re-implements the thing it measures drifts from it (L2).
+
+WHAT IT FOUND, on hypergumbo self-analysis: 150 escape sites, 66 resolved to a
+CFG statement. The largest bucket — 24 of 66 (36.4%) — has a node type of
+literally `call`, and 99 of 150 (66%) have NO callee recorded at that line.
+Positive control: `subprocess.run` IS recorded at other sites, so the empties
+are real absences rather than a dead argument.
+
+The sites name the cause themselves:
+
+    print(
+    isinstance(stderr, bytes)
+    cmd.append("-q")
+
+Those are calls. INV-mumov already measured why they carry no edge — Python
+emits ZERO call edges for attribute-chain receivers and none for a builtin bare
+`Name`. No edge means no `callees_at` entry, which means `_use_site_terminates`
+cannot decide whether the callee consumes the value, which means `escaped =
+True` and the walk returns None.
+
+SO INV-mumov IS MANUFACTURING INV-busis'S BLOCKERS. A substantial share of the
+"genuine non-call escape sites" that make the §7a/§7b scope ruling look
+load-bearing are calls made invisible by a separate, already-filed,
+false-negative defect that needs no owner ruling at all. On this sample the
+expression-read family is 42.4%, not 78.6%, and the largest single bucket is not
+an escape category. Neither item's thread mentioned the other; both now do.
+
+CAVEATS, load-bearing and recorded on the items: Python ONLY — the three Go
+repos on this machine yielded 15 resolved sites between them, far too few to
+quote as shares, and caddy/pretix (where the filed 81 came from) are not here.
+Self-analysis, not a neutral corpus. The `assignment` bucket does not separate
+plain assignment from field write, so its 19.7% is an upper bound. Raw node
+types are published beside every bucket so the histogram stands without the
+shape naming, which is the one editorial part.
+
+INSTRUMENT ERROR, recorded because it nearly became a headline: a first pass
+read positional `a[5]` for `callees_at` and got a clean 100% have-no-callee.
+`a[5]` is `summaries`; `callees_at` is `a[4]`. The flat 100% is what gave it
+away (L11: distrust clean extremes).
+
+The two branches this adds that no CORE test reached — the seeding escape (a
+source line the DDG recorded nothing for) and the followed-but-unaccounted call
+(WI-votom hole 2's shape) — now have tests. The full suite passed at 21999 while
+core sat at 99% in isolation: a mainstream test was covering core's lines, which
+`check-package-coverage` caught and CI would only have caught after a push.
+
+Tests: 21999 passed, mypy ratchet clean, all six packages 100% in isolation.
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
