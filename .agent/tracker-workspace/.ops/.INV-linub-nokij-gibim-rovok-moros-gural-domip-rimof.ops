@@ -1,0 +1,51 @@
+- op: create  # 749a
+  at: '2026-08-06T04:53:09Z'  # 749a
+  by: agent  # 749a
+  actor: jgstern_agent  # 749a
+  clock: 1  # 749a
+  nonce: 749a  # 749a
+  data:  # 749a
+    kind: invariant  # 749a
+    title: "CLASS: a catalogued I/O call site must reach its catalogue entry regardless of receiver syntax (emission + receiver evidence, measured through the F3 gate)"  # 749a
+    status: violated  # 749a
+    priority: 1  # 749a
+    parent:  # 749a
+    tags:  # 749a
+    - taint  # 749a
+    - adr_0017  # 749a
+    - analysis_quality  # 749a
+    - io_boundary  # 749a
+    - class_item  # 749a
+    isbefore: []  # 749a
+    duplicate_of: []  # 749a
+    not_duplicate_of: []  # 749a
+    pr_ref:  # 749a
+    description: "CLASS ITEM. Filed 2026-08-06 under LIVE.md rule 7 (\"third per-site item of a\nkind => file the CLASS\"). Its instances are WI-makij, INV-mumov and WI-nasuf,\nwhich are three shapes of ONE defect: a call site of a catalogued I/O primitive\ndoes not reach its catalogue entry because of the RECEIVER SYNTAX used to call\nit. None of them is a duplicate of the others; all three are per-analyzer, and\nthe class exists to hold the shared invariant, the shared measurement, and the\nchokepoint question none of them can answer alone.\n\nWHY THE INVARIANT IS ABOUT MATCHING AND NOT ABOUT EMISSION. Read in\ntaint.py::_match_propagation_entry / _lookup_named_entry, 2026-08-06. Reaching\na catalogue entry is a CHAIN, and the three filed items sit at only the first\nlink:\n\n  L1  the entry exists in io_primitives/<lang>.yaml         (completeness)\n  L2  the analyzer emits a call edge for the call site      (emission)\n  L3  the edge carries receiver evidence -- a module_hint,\n      or a qualified callee name                            (evidence)\n  L4  _lookup_named_entry accepts it                        (the F3 gate)\n\nL4 is a DELIBERATE refusal, not a bug: an untyped method call\n(call_construct == \"method\") with no usable module hint never matches a\nmethod-kind entry (io-boundary:F3, INV-tapat/INV-maluk -- str.replace must not\nmatch Path.replace), and a name in the language's ambiguous_names set is\nrefused for the same reason. go.yaml alone lists 28 ambiguous names including\nRead, Write, Close, Get and Do.\n\nCONSEQUENCE, and the reason this class is filed before any fix is written:\n**making an analyzer emit an edge for `conn.Write(buf)` buys NOTHING if the\nedge then arrives with no receiver type, because L4 correctly refuses it.**\nA fix scoped to L2 alone would be measured as a win at the analyzer and produce\nzero new findings -- the exact capability-is-not-recall failure WI-nonad's A/B\nalready recorded once (0 -> 154 DDG edges, 0 findings moved). Any fix under\nthis class must be measured through L4, on findings, not through L2 on edges.\n\nMEASURED EXPOSURE (live catalogue, re-measured 2026-08-06 -- reproduces\nWI-makij's post-#209 figures within rounding):\n\n    lang         sinks  method-kind        ambiguous_names\n    kotlin          93     89  (95%)            58\n    java            69     67  (97%)            30\n    scala           76     74  (97%)            80\n    objc            62     56  (90%)            11\n    swift           56     49  (87%)            24\n    rust            30     16  (53%)            27\n    python         113     53  (46%)            34\n    javascript      83     29  (34%)            34\n    go             132     36  (27%)            28\n    c/cpp/elixir/erlang/haskell: 0% method-kind -- NOT at risk from this class.\n\nANALYZER STATUS AT L2, from WI-nasuf's fixture measurement (2026-08-05, real\npipeline + production _match_propagation_entry, in-fixture positive control):\n\n    java, scala, swift    emit and match in BOTH forms      OK\n    python                two-step emits; chained NO EDGE   WI-makij / INV-mumov\n    kotlin, javascript    NO EDGE in either form            WI-nasuf\n    go, rust, objc        NOT MEASURED                      <- this class closes it\n\ngo is the cell that matters most for anything downstream: caddy is the Go repo\ncarrying every Go cohort taint number on record, and go sits at BOTH an\nunmeasured L2 and an in_progress L1 catalogue.\n\nL1 IS A SEPARATE AXIS AND COMES AFTER, NOT BEFORE. 11 of 14 io_primitives\ncatalogues are status: in_progress (only python, rust, erlang are complete),\nincluding go and javascript. Completeness and reachability MULTIPLY: adding\nmethod-kind entries to kotlin's catalogue returns exactly zero while 0% of\nkotlin method calls emit an edge. So L2/L3 is sequenced first and L1 follows.\n\nWHAT CLOSES THIS ITEM: a per-language table of the full L2->L4 chain for all\nnine at-risk languages, the three unmeasured cells filled, and the declining\nbranch READ (not inferred) in each failing analyzer, so that the fix can be\nsorted by shape per LIVE.md rule 5 -- one chokepoint if the branches agree, per\nanalyzer if they spread. Only kotlin's branch has been read so far (emission\ngated on resolver.lookup(...).found, which a JDK method can never satisfy).\n\nDIRECTION DISCIPLINE. Every fix under this class must state which direction it\nmoves the taint walk's False verdict. More call edges feed more callees_at,\nwhich feeds section 7a sanitizer registration, so an emission fix CAN\nmanufacture suppression (False earns `sanitized`, #214, and a sanitized flow is\ndropped). Measure it; do not assume the change is additive because the defect\nis a false negative."  # 749a
+    fields:  # 749a
+      statement: "For every language, a call site of a catalogued I/O primitive produces a call edge that carries enough receiver evidence (a module_hint or a qualified callee name) for _match_propagation_entry to return that catalogue entry, regardless of the receiver syntax used to reach the callee."  # 749a
+      root_cause: "Two distinct links fail and only the first is filed. L2 (emission): per-analyzer branches decline to emit a call edge for method-call receivers -- kotlin gates emission on resolver.lookup(...).found, which no JDK method satisfies; python declines for attribute-chain receivers; javascript declines for external instance-method calls, mechanism unread. L3/L4 (receiver evidence): an edge that IS emitted without a module_hint is correctly refused by io_boundary.gate_named_entry for method-kind entries, so an emission-only fix cannot move findings. Not localized to a single line; the class exists to establish whether the declining branches share one shape."  # 749a
+- op: update  # a15e
+  at: '2026-08-06T04:53:36Z'  # a15e
+  by: agent  # a15e
+  actor: jgstern_agent  # a15e
+  clock: 2  # a15e
+  nonce: a15e  # a15e
+  set: {}  # a15e
+  add:  # a15e
+    not_duplicate_of: [WI-nasuf-hasib-ruviz-tazah-nahah-gidiz-lolov-hahuj]  # a15e
+- op: update  # 160b
+  at: '2026-08-06T04:53:36Z'  # 160b
+  by: agent  # 160b
+  actor: jgstern_agent  # 160b
+  clock: 3  # 160b
+  nonce: 160b  # 160b
+  set: {}  # 160b
+  add:  # 160b
+    isbefore: [WI-makij-jonaj-tugir-dilok-tahus-janal-hafok-lofim, INV-mumov-linig-pidaf-mujab-jihig-dakaj-ribik-vugoz, WI-nasuf-hasib-ruviz-tazah-nahah-gidiz-lolov-hahuj]  # 160b
+- op: discuss  # 0a37
+  at: '2026-08-06T05:08:44Z'  # 0a37
+  by: agent  # 0a37
+  actor: jgstern_agent  # 0a37
+  clock: 4  # 0a37
+  nonce: 0a37  # 0a37
+  message: "MEASURED 2026-08-06. Full write-up: ~/hypergumbo_lab_notebook/taint-area-08052026/INV-linub-CHAIN-MEASUREMENT.md. Instrument meas/chain_probe.py, fixtures meas/fixtures/. HEADLINE: not one of the nine at-risk languages legitimately matches a method-kind sink. The only match in the table is go TWOSTEP, and it is a bare-name FALSE POSITIVE (is_resolved=True on an external-shaped dst routes into the ungated hits[0] fallback). VALIDATION: emission agrees with WI-nasuf published cells on all six previously-measured languages, which is what licenses the new cells. MATCHING differs on four of them because the published cell overstates what was measured (see the correction filed on WI-nasuf). THE CLASS IS TWO CHANNELS NOT ONE: false negatives (L2 emission gaps AND a universal L3 receiver-typing gap that no filed item covered) and false positives (is_resolved bypass; INV-fokik corrupted module hint). CRITICAL: fixing L2 alone moves NOTHING - java, scala, swift, python-twostep, rust and objc all emit today and all fail at L4 because gate_named_entry refuses an untyped method call unconditionally. MECHANISMS read in code: THREE shapes, not nine. kotlin = resolver-lookup gate with no unresolved fallback; python + javascript = too-narrow syntactic receiver whitelist; java = emission works but the module segment carries the VARIABLE NAME while the receiver TYPE it already computes (var_types) is routed only to meta[receiver_type_hint] for Tier-2 linkers. That last one is the cheapest fix available. STILL VOID: rust and objc cells (controls broken); java and scala have NO possible sink-based positive control because 100% of their catalogued entries are gated on receiver typing."  # 0a37
