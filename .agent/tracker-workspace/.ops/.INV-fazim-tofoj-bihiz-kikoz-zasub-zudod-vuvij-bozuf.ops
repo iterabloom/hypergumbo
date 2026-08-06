@@ -1,0 +1,33 @@
+- op: create  # c6bd
+  at: '2026-08-06T05:09:13Z'  # c6bd
+  by: agent  # c6bd
+  actor: jgstern_agent  # c6bd
+  clock: 1  # c6bd
+  nonce: c6bd  # c6bd
+  data:  # c6bd
+    kind: invariant  # c6bd
+    title: "Go marks an external instance-method call is_resolved=True on an 'external'/'unresolved' dst, routing it into the ungated hits[0] bare-name fallback and bypassing the F3 gate"  # c6bd
+    status: violated  # c6bd
+    priority: 1  # c6bd
+    parent:  # c6bd
+    tags:  # c6bd
+    - taint  # c6bd
+    - go  # c6bd
+    - io_boundary  # c6bd
+    - analysis_quality  # c6bd
+    - adr_0037  # c6bd
+    isbefore: []  # c6bd
+    duplicate_of: []  # c6bd
+    not_duplicate_of: []  # c6bd
+    pr_ref:  # c6bd
+    description: "FOUND 2026-08-06 while measuring INV-linub. This is the FALSE-POSITIVE channel of that class; the class was filed as a false-negative story and the measurement showed both directions are live.\n\nWHAT WAS MEASURED. meas/chain_probe.py over meas/fixtures/go/sites.go. Two sites\ncalling the SAME catalogued method-kind sink (net/http.Transport.RoundTrip):\n\n    site_twostep   tr := &http.Transport{}; tr.RoundTrip(req)\n                   dst=go:external:0-0:RoundTrip:unresolved  is_resolved=TRUE   -> MATCHES\n    site_chained   (&http.Transport{}).RoundTrip(req)\n                   dst=go:external:0-0:RoundTrip:unresolved  is_resolved=False  -> no match\n\nIdentical dst, identical call_construct, identical (absent) module evidence,\nopposite verdicts. The only differing input is is_resolved, and it is wrong on\nthe site that matches.\n\nWHY THIS IS THE EXPENSIVE DIRECTION. The match is correct in the fixture only\nbecause the fixture really does call net/http.Transport.RoundTrip. The same path\nmatches ANY RoundTrip() on ANY receiver type, because hits[0] is returned on\nbare-name agreement with no receiver verification at all. That is exactly the\ncategory error WI-damir's comment in _match_propagation_entry records as\nmeasured 30 of 30 FALSE on the 9-repo cohort -- caddy's own func Log() reported\nas a logging sink 18 times, d3's LOGARITHM function reported as console.log.\nThis reaches the same ungated return through a different door: not by being a\nfirst-party symbol, but by being flagged resolved while carrying no path.\n\nADR-0037 ruling 4 is what makes this load-bearing rather than cosmetic: the\nresolution verdict is read from Edge.is_resolved and NOT from the ':unresolved'\ndst suffix. So a consumer cannot defend itself by string-checking the dst -- the\nflag is authoritative by design, and here the producer sets it wrong.\n\nTWO CANDIDATE FIXES, both unmeasured, deliberately not chosen here:\n  (a) producer -- stop setting is_resolved=True when the analyzer has no\n      receiver type (the meta already says receiver='external');\n  (b) consumer -- make 'if not path_module: return hits[0]' refuse rather than\n      degrade when the dst's path segment is itself the external placeholder.\n(b) is the chokepoint and would also close any other analyzer with the same\nproducer bug; (a) is the honest producer fix. Sizing which edges each would move\nis the first step, NOT patching either.\n\nDIRECTION. Both fixes REMOVE matches. That is the safe direction for sinks (a\nfalse positive goes away) but it is the SUPPRESSIVE direction for sanitizers --\nthe same index backs sanitizer registration, and losing a sanitizer match means\nlosing a barrier, which changes flows in the opposite direction. Measure on\nfindings, both signs, before shipping either.\n\nNOT MEASURED: how many edges on a real repo carry is_resolved=True with an\n'external' path segment, in go or in any other language. That is the number that\ndecides whether this is a curiosity or a headline. The go analyzer branch that\nsets the flag was not read."  # c6bd
+    fields:  # c6bd
+      statement: "An edge whose dst carries no module evidence (path segment 'external', kind 'unresolved') must not be reported as is_resolved=True, because is_resolved selects the branch of _match_propagation_entry that can return a catalogue entry on bare-name agreement alone."  # c6bd
+      root_cause: "MEASURED, mechanism NOT yet localized to a line in go.py. The go analyzer emits, for the two-step form 'tr := &http.Transport{}; tr.RoundTrip(req)', an edge with dst 'go:external:0-0:RoundTrip:unresolved', meta {'call_construct':'method','receiver':'external'} and is_resolved=True. The chained form of the SAME call emits a byte-identical dst with is_resolved=False. In _match_propagation_entry the is_resolved=True path computes _module_from_symbol_path(dst), which finds no path evidence for an 'external' path segment, and then takes the documented legacy escape 'if not path_module: return hits[0]' -- an UNGATED bare-name match. The F3 gate (gate_named_entry, which refuses an untyped method call) is never reached."  # c6bd
+- op: discuss  # 1d5f
+  at: '2026-08-06T05:09:33Z'  # 1d5f
+  by: agent  # 1d5f
+  actor: jgstern_agent  # 1d5f
+  clock: 2  # 1d5f
+  nonce: 1d5f  # 1d5f
+  message: "Found while measuring INV-linub-nokij-gibim-rovok-moros-gural-domip-rimof (the catalogue-reach class). Sibling finding: INV-fokik (colon-bearing name corrupts the module hint). Measurement: ~/hypergumbo_lab_notebook/taint-area-08052026/INV-linub-CHAIN-MEASUREMENT.md"  # 1d5f

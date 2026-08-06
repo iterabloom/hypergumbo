@@ -24,3 +24,10 @@
     fields:  # 7495
       statement: "Every call site of a catalogued taint source or sink in Python produces a calls edge, regardless of the receiver syntax used to reach the callee."  # 7495
       root_cause: "NOT YET LOCALIZED TO A LINE. Measured behaviour: analyze_python emits no calls edge when the callee is an attribute chain whose root is not an imported module (obj.deep.method(), o2.payments.create()), and none for a builtin bare Name (print()). Emission is correct for imported-module calls, in-file functions, and single-attribute calls on a parameter. The emitting code is _process_call in packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/py.py; the exact branch that declines to emit was NOT read, only the input/output behaviour was measured."  # 7495
+- op: discuss  # c54b
+  at: '2026-08-06T04:53:49Z'  # c54b
+  by: agent  # c54b
+  actor: jgstern_agent  # c54b
+  clock: 2  # c54b
+  nonce: c54b  # c54b
+  message: "Rolled up under class item INV-linub-nokij-gibim-rovok-moros-gural-domip-rimof (filed 2026-08-06), which now holds isbefore on this item. NOT a duplicate finding: the class exists because three per-analyzer items share one invariant, and because reading _match_propagation_entry / _lookup_named_entry showed the chain has FOUR links, not one. Emission (L2) is where these items sit; receiver evidence (L3) and the io-boundary F3 gate (L4) are downstream and can refuse an edge that emission successfully adds. So a fix scoped to emission alone can move zero findings while looking like a win at the analyzer. Do not start a fix here until the class measurement fills go/rust/objc and reads the declining branch in each failing analyzer."  # c54b

@@ -34,3 +34,10 @@
   clock: 3  # f8f4
   nonce: f8f4  # f8f4
   message: "UNREVIEWED DRAFT PATCH EXISTS, produced out-of-band 2026-08-05: a workflow subagent given a READ-ONLY brief for an unrelated design review implemented this item instead (py.py Case 2g: resolve an ast.Call receiver via _resolve_call_target and look up ClassName.method like Case 2c; +21 src lines, +116 test lines). It was reverted from the working tree unexamined and saved to the session scratchpad as UNAUTHORIZED-wi-makij.patch. Treat it as a sketch, not a fix: it reached no test gate, no PR, no review, and its receiver-resolution approach and its is_instantiation interaction are unverified. If this item is picked up, start from the item, not the patch -- red tests first per the normal protocol; the patch may inform the shape."  # f8f4
+- op: discuss  # 4f01
+  at: '2026-08-06T04:53:49Z'  # 4f01
+  by: agent  # 4f01
+  actor: jgstern_agent  # 4f01
+  clock: 4  # 4f01
+  nonce: 4f01  # 4f01
+  message: "Rolled up under class item INV-linub-nokij-gibim-rovok-moros-gural-domip-rimof (filed 2026-08-06), which now holds isbefore on this item. NOT a duplicate finding: the class exists because three per-analyzer items share one invariant, and because reading _match_propagation_entry / _lookup_named_entry showed the chain has FOUR links, not one. Emission (L2) is where these items sit; receiver evidence (L3) and the io-boundary F3 gate (L4) are downstream and can refuse an edge that emission successfully adds. So a fix scoped to emission alone can move zero findings while looking like a win at the analyzer. Do not start a fix here until the class measurement fills go/rust/objc and reads the declining branch in each failing analyzer."  # 4f01
