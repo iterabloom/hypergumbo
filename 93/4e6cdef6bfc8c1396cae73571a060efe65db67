@@ -1,0 +1,64 @@
+Original commit body from 36a6bb30c7795526dcaa63ccc4108840a81e270e:
+
+`obj.bar()` has emitted `python:external:0-0:bar:unresolved` since WI-fuvuj.
+`event.organizer.issued_gift_cards.create(...)` emitted NOTHING. Measured on
+pretix: four calls to the same Django manager sink on adjacent lines, two
+emitting and two silent.
+
+ROOT CAUSE, LOCALIZED TO A LINE — which the filing said it was not. In py.py's
+catch-all `elif isinstance(func, ast.Attribute)` branch, `_unwind_attribute_chain`
+DOES return a chain for a local-rooted receiver (the root is an `ast.Name`), but
+the emit is gated on `root_name in module_imports and len(chain_attrs) >= 2`. A
+chain rooted at a local fails the first conjunct and falls through with NO
+`else`. Depth was the only difference from the single-attribute form, and
+nothing justified it.
+
+The fix is that `else`, emitting `external` as the module: the receiver's type
+is genuinely unknown, and synthesising `event.organizer.issued_gift_cards` as a
+module path would assert a module that does not exist and could collide with a
+catalogued entry of the same shape. Placed inside the module-import branch so
+the class-rooted Django marker — which emits a module-qualified
+`django.db.models` edge earlier — keeps winning; pinned by its own test.
+
+IT COSTS TWICE. A function whose sink calls are all chain-shaped has no sink
+edge, is never considered, and its flow is never reported — a false negative,
+the expensive direction. The same absence keeps the call out of `callees_at`, so
+the §3a walk cannot ask whether the callee consumes the value and records an
+ESCAPE instead: a substantial share of INV-busis's "genuine non-call escape
+sites" are calls sitting in exactly this state.
+
+ONLY THE ATTRIBUTE-CHAIN HALF IS FIXED. The builtin-bare-Name half of this item
+is deliberately left alone because the two have OPPOSITE directions: chains can
+miss a catalogued sink (recall up), while a builtin like `print` mostly turns a
+call into an escape site, and emitting it changes anything only where a
+TERMINATING summary exists — where it does, it produces more `False`, which
+since #214 earns `sanitized` and drops a flow (suppressive). Fixing both as one
+change would net two opposite effects and report the sum.
+
+A CLAIM OF MINE, CORRECTED BEFORE IT SHIPPED: this defect does NOT suppress
+`builtins.open` sink detection. `open()` emits and matches the catalogued
+`builtins.open` host_fs sink — py.py carries an `EXTERNAL_CONSTRUCTOR_TYPES`
+whitelist for it. Measured: open YES; print/len/isinstance/eval/exec/input/
+sorted NO. The builtin gap is a small whitelist, not builtins in general.
+
+DIRECTION MEASURED ON BOTH SIGNS, kserve: evidence rows 22 -> 22, sanitized
+0 -> 0, violated verdicts 4 -> 4, escape sites 3 -> 3. ZERO CHANGE, against
+2,155 new call edges at the analyzer level. Capability moved, adjudication did
+not (the WI-nonad shape). No suppression introduced, which is the half that
+mattered.
+
+The byte-identical before/after was checked against the stale-read tell rather
+than assumed: the cache key includes an analyzer-identity hash that genuinely
+differs between the arms (dfb37ba5a9bfc9f9 with the fix, 9fff4c1df3d299e5
+without), so both arms analysed fresh. The zero is real.
+
+WHY LAND A MEASURED ZERO: the new edges are logger.info, dict.get, str.replace,
+argparse.add_argument — none catalogued sinks. The population that would move is
+Django-shaped, and pretix (where this item's four-adjacent-lines measurement came
+from) is not on this machine. A false-negative route closed before a repo that
+exercises it arrives — the same reasoning as the WI-joluk gate. The size of the
+population whose sink calls are ALL chain-shaped remains UNMEASURED; this fix
+makes it measurable for the first time, it does not size it.
+
+Tests: 22004 passed, mypy ratchet clean, all six packages 100% in isolation.
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
