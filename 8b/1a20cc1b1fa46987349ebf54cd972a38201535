@@ -1,0 +1,52 @@
+Original commit body from 7cc04f66909a568e9e2bfb674a0851ef370ccd04:
+
+_register_sanitizer_callers refuses an unresolved call_construct=="method"
+edge unless the callee is qualified (INV-finoh, correct in purpose: binding a
+bare x.encrypt() to Fernet.encrypt would falsely sanitize a real flow). Its
+permit branch compared a sanitizer's qualified_name against
+_extract_callee_name(dst) -- the NAME slot. Production analyzers put an
+inferred receiver type in the MODULE slot, so the comparison was
+"cryptography.fernet.Fernet.encrypt" == "encrypt": false by construction for
+any method-shaped sanitizer, and every shipped sanitizer is method-shaped.
+The refusal was unconditional in production and the ADR-0017 barrier arm was
+dead at every idiomatic call site.
+
+Consult the module slot via _module_from_symbol_path, which returns "" for
+the `external` placeholder -- an untyped receiver still yields no candidate
+and is still refused, so INV-finoh's guarantee is preserved, not widened.
+The whole qualified name must match: a typed receiver of the WRONG type is
+evidence against this sanitizer (pinned by its own test).
+
+BEHAVIOURAL EVIDENCE, shipped catalogue, no overrides. The idiomatic probe
+  def handler(f: Fernet, token):
+      plain = f.decrypt(token); safe = f.encrypt(plain); os.remove(safe)
+reported verdict "violated" at "precise" confidence -- a false positive about
+code that visibly encrypts -- and now reports "confirmed" with
+sanitized_flows=1, the barrier arm firing (barrier_lines=frozenset({7}) ->
+False). This is the barrier-arm positive control that did not previously
+exist in any configuration.
+
+DIRECTION IS SUPPRESSIVE and was measured, not argued: more sanitizers
+register -> more barrier walks -> more False -> more sanitized, and since
+PR #214 a False drops the flow from the violation set. New in-repo instrument
+scripts/measure-sanitizer-module-slot-ab.py disables the module slot ONLY
+inside sanitizer registration so the A/B measures this change rather than a
+superset. Four predictions pre-registered before any number was read; all
+held. Corpus delta ZERO in both directions across pretix, hypergumbo, kserve
+and caddy. The load-bearing row is pretix -- the corpus's only edge that
+reaches the gate (a bare `encrypt`) -- which stays REFUSED in both arms.
+Positive control differed as required (+4 call sites, +1 barrier walk), so
+the corpus zeros are controlled nulls.
+
+Prevention, not improvement: the corpus holds zero plaintext sanitizer call
+sites, and the module slot reaches taint only for python (taint_refine's
+annotation pinning) and java (#227). Go/rust/typescript cannot present a
+module slot at all today.
+
+Also corrects two claims in CHANGELOG entries that this work falsified: the
+barrier-arm mechanism ("receiver typing arms the hazard") was the second
+wrong account of that zero and is excised in place, and the corpus claim
+"caddy and express are genuinely absent" was wrong for the same reason as
+the one it replaced -- both are present under ~/ALL_REPOS/curriculum_repos.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
