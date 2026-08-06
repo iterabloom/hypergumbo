@@ -1,0 +1,22 @@
+- op: create  # 8498
+  at: '2026-08-06T03:32:14Z'  # 8498
+  by: agent  # 8498
+  actor: jgstern_agent  # 8498
+  clock: 1  # 8498
+  nonce: '8498'  # 8498
+  data:  # 8498
+    kind: work_item  # 8498
+    title: "JavaScript DDG spec globs only *.js, so .mjs/.cjs/.jsx reach no machinery (observed: apollo-server smoke-test.mjs)"  # 8498
+    status: todo_soft  # 8498
+    priority: 3  # 8498
+    parent:  # 8498
+    tags:  # 8498
+    - taint  # 8498
+    - adr_0017  # 8498
+    - javascript  # 8498
+    isbefore: []  # 8498
+    duplicate_of: []  # 8498
+    not_duplicate_of: []  # 8498
+    pr_ref:  # 8498
+    description: "The JavaScript LanguageDdgSpec declares `file_glob=\"*.js\"`, so `.mjs`, `.cjs` and `.jsx` files\nreach no DDG machinery. Observed in the wild, not hypothesised: apollo-server's only taint finding\nis in `smoke-test/smoke-test.mjs`, and that file is not walked at all.\n\nThe glob was deliberately left narrow when JavaScript was wired (WI-nonad) rather than widened on\nan assumption -- each extension is a separate question about what the DISCOVERY layer classifies\nas `javascript`, and a spec whose glob claims files the analyzer does not treat as that language\nwould lie about its own coverage. This item is to answer the question rather than guess it.\n\nWHAT TO CHECK, in order:\n  1. What does discovery/profiling classify `.mjs` / `.cjs` / `.jsx` as? Ask production's own\n     classifier -- do NOT re-derive an extension-to-language map (L2). If they are already\n     `javascript`, the analyzers are producing symbols for them and only the DDG spec is behind.\n  2. Whether `cfg_nodes/typescript.yaml`'s node types cover JSX. `.jsx` adds `jsx_element` /\n     `jsx_expression` nodes that the shared mapping has never been checked against; `.mjs` and\n     `.cjs` are plain JavaScript syntax and are the safe half of this.\n  3. Only then widen the glob, and re-run the WI-nonad A/B to see whether anything moves.\n\nSIZE, and it is small on the current cohort: apollo-server has 6 `.mjs`/`.cjs` files under\nsmoke-test/ and 1 affected finding; express has none. Do not generalise from that -- `.mjs` is\nincreasingly common in modern Node packages and the cohort has exactly two JavaScript repos.\n\nDIRECTION: widening the glob adds walks, and a walk that runs can return False, which since\nPR #214 can earn `sanitized` and drop a flow. Argue it explicitly rather than assuming more\ncoverage is strictly better.\n\nNOTE the interaction with the sibling item on non-function source symbols: apollo-server's `.mjs`\nfinding also reads `process.env` at MODULE SCOPE, so fixing the glob alone would not change its\nadjudication. These two must not be measured as if either alone were sufficient."  # 8498
+    fields: {}  # 8498
