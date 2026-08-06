@@ -1,0 +1,57 @@
+Original commit body from 046808fbc2a94e8817702b78840a4cbefd5d64d5:
+
+FOUND LIVE. Six transcript watchers were running on this box; three were
+spinning. Between them they had burned 19.5 hours of CPU, one logging 114
+MILLION voluntary context switches and another 13.9 CPU-hours over 7 days.
+
+ROOT CAUSE, measured not inferred. fs.inotify.max_user_instances is 128 and
+all 128 were held by unrelated processes (369 stray dbus-daemons, an
+environmental leak outside this repo). inotifywait therefore failed
+instantly -- "Couldn't initialize inotify: Too many open files" -- and the
+watch loop's error path was:
+
+    inotifywait -qq -e close_write "$SRC" 2>/dev/null || {
+        if [[ ! -f "$SRC" ]]; then break; fi
+        continue        # <- no delay
+    }
+
+A retry with no delay against a call that fails in microseconds is a tight
+loop. Measured on a fake inotifywait that exits 1: 1988 invocations in 3
+seconds. Worse, the error path never reached do_sync, so while inotify was
+unavailable the mirror silently stopped updating -- the watcher burned a
+core AND published nothing.
+
+FIX. Three parts, all in the failure paths only:
+  1. Phase 2 backs off (1s doubling to 30s) and calls do_sync ANYWAY. Polling
+     is a worse watch, not no watch. The interval resets the moment a real
+     watch succeeds.
+  2. Phase 1 had the same shape hidden behind `|| true`; it now distinguishes
+     inotifywait's rc=2 (the -t timeout firing, which IS the pacing we asked
+     for) from rc=1 (inotify unavailable, returns instantly) and sleeps only
+     on the latter.
+  3. A source that exists but is not a REGULAR file -- /dev/null, passed by
+     sandboxed harnesses -- can never satisfy Phase 1's `-f` test, so the
+     watcher waited forever for a file that will never appear. That is the
+     process that ran 7 days for 13.9 CPU-hours. It now exits immediately.
+
+WHAT THIS DELIBERATELY DOES NOT DO. It does not reap orphaned watchers. The
+transcripts forever, so an orphan outlives its session -- but there is no
+sound liveness signal to reap on. Two candidates were tested and BOTH
+refuted: source-mtime idleness flags a live-but-idle session as dead (a real
+session idle 43 minutes was misclassified during this investigation), and an
+open-fd check reports EVERY session dead because the CLI appends and closes
+rather than holding the descriptor. launch-transcript-sync.sh already reached
+the same conclusion -- its sweep kills only same-session watchers, and
+test_kill_skips_sibling_session_in_same_repo pins that. So this makes an
+orphan CHEAP rather than hunting it: a backed-off orphan costs a wakeup every
+30 seconds instead of a core.
+
+TESTS: two red-first, both bounded by INVOCATION COUNT rather than CPU%
+because a CPU threshold is a race on a loaded box. Pre-fix they fail at 1988
+invocations and at a mirror that never picks up an appended line. 21/21 in
+test_watcher_lifecycle.py, 106/106 across the sibling transcript suites.
+
+Governance file under .agent/hooks/**; changed and merged with explicit human
+approval, including approval to use auto-pr without --gov.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
