@@ -4936,6 +4936,7 @@ def _build_ddg_for_verify_claims(
     set[str],
     dict[str, dict[tuple[int, str], str]],
     dict[str, list[tuple[int, tuple[str, ...], tuple[str, ...]]]],
+    set[str],
 ]:
     """Build aggregated DDG edges + symbol set + receiver hints for taint analysis.
 
@@ -4979,7 +4980,12 @@ def _build_ddg_for_verify_claims(
     # populated at the same moment, and two force-import sites would be two
     # things to drift.
     if not ensure_def_use_extractors_registered():  # pragma: no cover - hard dep
-        return [], set(), {}, {}
+        # Empty forfeit set, not a populated one: with no extractors there are
+        # no DDG edges either, so no walk runs and there is nothing to forfeit.
+        # The fail-closed default lives at the point of USE (a function absent
+        # from the set only qualifies because it was checked and covered), not
+        # here, where the whole analysis is absent rather than incomplete.
+        return [], set(), {}, {}, set()
 
     available = registered_ddg_languages()
     if candidate_languages is None:
@@ -4993,6 +4999,7 @@ def _build_ddg_for_verify_claims(
         result.ddg_symbols,
         result.hints_by_caller,
         result.stmt_defuse,
+        result.forfeit_refutation,
     )
 
 
@@ -5240,8 +5247,11 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
             # Only languages the taint catalog actually covers for this
             # repo are worth walking; the adapter intersects that with the
             # languages that have a registered DDG spec.
-            ddg_edges, ddg_symbols, hints_by_caller, stmt_defuse = (
-                _build_ddg_for_verify_claims(repo_root, sorted(per_lang_sinks))
+            (
+                ddg_edges, ddg_symbols, hints_by_caller, stmt_defuse,
+                ddg_forfeits,
+            ) = _build_ddg_for_verify_claims(
+                repo_root, sorted(per_lang_sinks),
             )
             taint_findings = []
             for lang in sorted(per_lang_sinks):
@@ -5302,6 +5312,7 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
                         ambiguous_names=lang_ambiguous,
                         language=lang,
                         stmt_defuse=stmt_defuse,
+                        forfeit_refutation=ddg_forfeits,
                     ))
                 else:
                     taint_findings.extend(propagate_taint_structural(
