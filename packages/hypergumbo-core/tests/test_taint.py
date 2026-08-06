@@ -1232,6 +1232,91 @@ class TestDdgTaintReaches:
         """
         assert _ddg_taint_reaches("f", [1], [9], {}, defs_at={}) is None
 
+    def test_escape_sites_records_where_the_walk_lost_track(self) -> None:
+        """The walk can name its own escape sites (INV-busis measurement).
+
+        WHY THIS IS IN PRODUCTION AND NOT IN AN INSTRUMENT. INV-busis's shape
+        split — which decides whether ~79% of its blockers are genuine escapes
+        or misclassified expression reads — needs to know WHICH line each walk
+        lost track at. The instrument that produced the filed split lives in a
+        session scratchpad, no longer matches this function's signature, and
+        the item records that as its own durability hazard. Re-deriving the
+        walk's escape logic outside the walk is how a measurement drifts from
+        the thing it measures (L2), so the walk reports its own sites instead.
+
+        Out-param rather than a return-shape change: every caller reads a
+        three-valued verdict, and widening that to a tuple would touch call
+        sites that have no interest in the sites.
+        """
+        uses, defs, inh = _ddg_index([("v", 1, 4)])
+        sites: list[tuple[str, int]] = []
+        assert _ddg_taint_reaches(
+            "f", [1], [9], uses, defs_at=defs, inherits=inh,
+            escape_sites=sites,
+        ) is None
+        assert sites == [("f", 4)]
+
+    def test_escape_sites_stays_empty_on_a_closed_walk(self) -> None:
+        """A walk that accounted for every step records nothing.
+
+        The non-vacuity pair: without it, an implementation that appended on
+        every use line would satisfy the test above and report every walk as
+        escaping everywhere.
+        """
+        uses, defs, inh = _ddg_index(
+            [("a", 3, 4), ("b", 4, 3)],
+            [(4, ("b",), ("a",)), (3, ("a",), ("b",))],
+        )
+        sites: list[tuple[str, int]] = []
+        assert _ddg_taint_reaches(
+            "f", [3], [9], uses, defs_at=defs, inherits=inh,
+            escape_sites=sites,
+        ) is False
+        assert sites == []
+
+    def test_escape_sites_records_an_UNSEEDED_source_line(self) -> None:
+        """A source call the DDG recorded no definition for names its own line.
+
+        The seeding escape is a different branch from the use-site one and
+        reports a different line — the SOURCE call site, not a use. INV-lupav
+        exists because that case silently produced ``False``; the site record
+        is what lets a measurement tell "never given anything" apart from
+        "followed it and lost it", which are the two facts L11 says share a
+        surface.
+        """
+        sites: list[tuple[str, int]] = []
+        assert _ddg_taint_reaches(
+            "f", [7], [9], {}, defs_at={}, escape_sites=sites,
+        ) is None
+        assert sites == [("f", 7)]
+
+    def test_escape_sites_records_a_followed_but_unaccounted_call(self) -> None:
+        """One statement can do two things (WI-votom hole 2).
+
+        ``acc.append(x); y = x`` both hands ``x`` to a receiver the walk cannot
+        follow AND derives a tracked ``y``. Following the heir accounts for the
+        heir, not for the statement — so the escape question still gets asked,
+        and when the callee is not a catalogued terminator the site is recorded
+        at the USE line. Distinct from the terminal branch below it: here the
+        taint DID continue along a chain we still understand.
+        """
+        uses, defs, inh = _ddg_index(
+            [("v", 1, 2), ("w", 2, 3)], [(2, ("w",), ("v",))],
+        )
+        sites: list[tuple[str, int]] = []
+        assert _ddg_taint_reaches(
+            "f", [1], [9], uses, {("f", 2): {"unmodelled.callee"}}, {},
+            defs_at=defs, inherits=inh, escape_sites=sites,
+        ) is None
+        assert ("f", 2) in sites
+
+    def test_escape_sites_defaults_to_None_and_costs_nothing(self) -> None:
+        """Omitting the out-param leaves every verdict identical."""
+        uses, defs, inh = _ddg_index([("v", 1, 4)])
+        assert _ddg_taint_reaches(
+            "f", [1], [9], uses, defs_at=defs, inherits=inh,
+        ) is None
+
     def test_forfeit_downgrades_an_otherwise_earned_False(self) -> None:
         """WI-joluk. A function the extractor did not fully see cannot refute.
 
