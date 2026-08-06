@@ -1575,7 +1575,17 @@ def _register_sanitizer_callers(
     edge meta) has no receiver evidence and must NOT match — ``x.encrypt()``
     must not bind ``Fernet.encrypt`` and falsely sanitize a flow (the
     INV-tapat/INV-maluk rule ``gate_named_entry`` enforces). An
-    ``ambiguous_names`` bare short name is the meta-absent safety net. (The
+    ``ambiguous_names`` bare short name is the meta-absent safety net.
+
+    That receiver evidence is read from BOTH slots it can occupy. The
+    name-slot form is the synthetic one; production analyzers put the
+    inferred type in the MODULE slot, and consulting only the name slot left
+    the permit branch unreachable for every method-shaped sanitizer — which
+    is every sanitizer shipped. The parity with ``_lookup_named_entry``
+    claimed above was therefore aspirational rather than actual, since that
+    function consults the module slot; the module-slot check below is what
+    makes it true. An untyped receiver still carries the ``external``
+    placeholder, still yields no module, and is still refused. (The
     ``kind``-filter for a free-function call matching a method-kind sanitizer
     is not applied here because the sanitizer catalog carries no explicit
     ``kind`` — a documented follow-up requiring a sanitizer-YAML schema field.)
@@ -1601,6 +1611,32 @@ def _register_sanitizer_callers(
             qualified = any(
                 s.qualified_name == callee_name for s in matched_list
             )
+            if not qualified:
+                # Receiver evidence also arrives in the MODULE slot, and in
+                # production that is the ONLY place it arrives. An analyzer
+                # that inferred the receiver's type emits
+                # ``py:Fernet:0-0:encrypt:…``; the name-slot form
+                # ``py:external:0-0:Fernet.encrypt:…`` the branch above
+                # matches is a synthetic shape no analyzer produces for a
+                # method call. Reading only the name slot made the permit
+                # branch ``"Fernet.encrypt" == "encrypt"`` — false by
+                # construction for every method-shaped sanitizer, which is
+                # the entire shipped catalogue — so the gate was
+                # unconditional in production and the barrier arm was dead
+                # at every idiomatic call site.
+                #
+                # ``_module_from_symbol_path`` returns "" for the ``external``
+                # placeholder, so an UNTYPED receiver still yields no
+                # candidate and is still refused: INV-finoh's guarantee is
+                # preserved rather than widened. The WHOLE qualified name
+                # must match — a typed receiver of the wrong type is evidence
+                # AGAINST this sanitizer, not permission to assume it.
+                module = _module_from_symbol_path(edge["dst"])
+                if module:
+                    fq = f"{module}.{callee_name}"
+                    qualified = any(
+                        s.qualified_name == fq for s in matched_list
+                    )
             if not qualified:
                 call_construct = edge.get("meta", {}).get("call_construct")
                 if call_construct == "method":
