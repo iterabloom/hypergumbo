@@ -1941,6 +1941,7 @@ def _ddg_taint_reaches(
     defs_at: Mapping[tuple[str, int], AbstractSet[str]] | None = None,
     inherits: Mapping[tuple[str, int, str], AbstractSet[str]] | None = None,
     barrier_lines: AbstractSet[int] | None = None,
+    forfeit_refutation: bool = False,
 ) -> bool | None:
     """Does a value defined at a source call reach a use at a sink call?
 
@@ -2055,6 +2056,14 @@ def _ddg_taint_reaches(
             :func:`propagate_taint_ddg` tell "every data route to this sink
             passes through the sanitizer" from "some route does not" (WI-fasub).
             Empty by default, so the §3a confirm-only walk is unaffected.
+        forfeit_refutation: The caller has established that this function's
+            CFG statement extents do not cover every call node in its AST
+            body — i.e. the def/use extractor did not see part of it. The
+            walk then may not return ``False`` for this function and returns
+            ``None`` instead (WI-joluk). Blocks ``False`` only, never
+            ``True``. Defaults to ``False`` so turning the gate on is a
+            deliberate act at each call site rather than a tree-wide
+            behaviour change on landing.
 
     Returns:
         True if a tainted value is used at a line where the sink is called;
@@ -2193,6 +2202,27 @@ def _ddg_taint_reaches(
                 continue
             escaped = True
     if escaped:
+        return None
+    if forfeit_refutation:
+        # WI-joluk. The DDG facts closed, but they are not the whole picture:
+        # the caller has evidence that the CFG recorded no statement covering
+        # some call node in this function's body, so the def/use extractor
+        # demonstrably did not see part of it. An exhausted walk over an
+        # incomplete graph is not the same fact as an exhausted walk, and
+        # ``False`` is the only verdict that may license removing a reported
+        # flow.
+        #
+        # WHY THIS IS COVERAGE-GATED AND NOT GAP-ENUMERATED. The population is
+        # whatever a language's def/use extractor does not model, which is not
+        # knowable from inside this walk — it cannot tell a construct nobody
+        # taught it about from one that genuinely has no uses. A fix shaped as
+        # "handle the known gaps" is a list that decays silently, and it
+        # decays in the direction that deletes findings.
+        #
+        # Blocks ``False`` ONLY. A ``True`` above is positive evidence of a
+        # dependence the walk actually found, and an incomplete picture cannot
+        # unmake it — downgrading that would turn a safety gate into a recall
+        # regression.
         return None
     return False
 

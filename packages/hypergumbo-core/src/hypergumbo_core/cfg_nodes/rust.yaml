@@ -73,6 +73,17 @@ try_catch: []
 # would collapse it into one statement. Closure-captured definitions therefore
 # remain invisible to def/use, matching the conservative overapproximation
 # ADR-0017 §7b already declares for capture-mediated flow.
+# Node types that ARE a call in this grammar (WI-joluk). Consumed by
+# cfg.uncovered_call_lines to ask whether the CFG's recorded statement
+# extents cover every call site in a function body; a call outside every
+# extent means the def/use extractor never saw it, and the taint walk
+# forfeits its ability to return False for that function. A language that
+# declares NONE is treated as unknowable and forfeits everything.
+call_node_types:
+  - call_expression
+  - macro_invocation
+  - method_call_expression
+
 atomic_statement:
   - let_declaration
   - assignment_expression
