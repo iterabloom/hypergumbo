@@ -1491,6 +1491,56 @@ def _edge_call_sites(edge: dict[str, Any]) -> list[int]:
     return sites
 
 
+def _catalogue_key_for_edge(edge: dict[str, Any]) -> str | None:
+    """The §4 catalogue key for *edge*, or None if it may not be catalogued.
+
+    WI-zumud, and it exists because the INV-rozaj fix removed an ACCIDENTAL
+    barrier. ``_qualified_callee`` normalises an in-repo callee's module slot
+    with ``_module_from_symbol_path``, which strips the source file extension::
+
+        before:  go:net/http.go:1-5:Get:function -> 'net/http.go.Get'  != stdlib
+        after:   go:net/http.go:1-5:Get:function -> 'net/http.Get'     == stdlib
+
+    Stripping the extension is CORRECT — it is what makes a first-party callee
+    catalogueable at all — but it also means a Go repo with a root-level
+    ``net/http.go`` now produces a key equal to a SHIPPED stdlib summary. That
+    is the WI-damir shape (a first-party symbol matching a catalogue primitive
+    by name alone) reappearing in the §4 lookup rather than in sink matching,
+    and WI-damir already recorded the verdict on that premise: resolution
+    establishes WHICH IN-REPO SYMBOL is called and says nothing about whether
+    that symbol IS the catalogued primitive.
+
+    NOT IN ``_qualified_callee``, deliberately. Gating key CONSTRUCTION would
+    also break ``test_in_repo_callee_key_has_no_file_extension``, which pins the
+    INV-rozaj fix. The key SHAPE is right; what is wrong is handing a
+    first-party key to a catalogue that describes stdlib and third-party
+    surfaces. So the provenance decision gets its own home and the key builder
+    is left alone.
+
+    ADR-0037 ruling 4: the verdict is read from ``is_resolved``, NEVER from the
+    dst string's ``:unresolved`` suffix. WI-pubiv's boundary-id remap rewrites
+    that suffix to ``:external_symbol`` on the final graph, so a string check
+    would read every unresolved edge as resolved and bypass this gate entirely.
+
+    DIRECTION, and it is why this is safe to land before the exposure is live.
+    A summary that says "terminates" lets the §3a walk CLOSE a branch, and a
+    false close REMOVES a real finding. Refusing to catalogue can only produce
+    FEWER terminations, hence more unknowns and more surviving violations. The
+    ``.get(..., True)`` default carries the same direction: an edge with no
+    resolution verdict — an older artifact, a hand-edited map — is treated as
+    first-party and is not catalogued (L54 default-deny; enumerate the
+    PERMITTING case, which here is "the callee is known to be external").
+
+    The shipped catalogue declares no first-party summaries today, so this
+    gives up nothing real. Should one ever be added, the fix is catalogue
+    PROVENANCE (match a first-party callee only against a project-local entry),
+    not weakening this gate.
+    """
+    if edge.get("is_resolved", True):
+        return None
+    return _qualified_callee(edge.get("dst", ""))
+
+
 def _register_sanitizer_callers(
     edges: list[dict[str, Any]],
     sanitizer_by_callee: dict[str, list[TaintSanitizer]],
@@ -2341,7 +2391,12 @@ def propagate_taint_ddg(
             # This is the index `meta.call_lines` exists to make possible:
             # "which callee is invoked at line U" was unanswerable for every
             # call site but the first while one edge carried one line.
-            qualified = _qualified_callee(edge.get("dst", ""))
+            #
+            # Through the PROVENANCE GATE, not `_qualified_callee` directly:
+            # this index feeds a lookup against SHIPPED stdlib summaries, and a
+            # resolved first-party callee whose key collides with one must not
+            # be allowed to close a branch (WI-zumud).
+            qualified = _catalogue_key_for_edge(edge)
             if qualified:
                 src_id = edge.get("src", "")
                 for site in sites:

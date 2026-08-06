@@ -24,7 +24,9 @@ from hypergumbo_core.function_summaries import (
     SanitizeEffect,
     load_function_summaries,
 )
+from hypergumbo_core import taint as taint_mod
 from hypergumbo_core.taint import (
+    _catalogue_key_for_edge,
     _ddg_taint_reaches,
     TAINT_CALL_EDGE_TYPES,
     TaintCatalog,
@@ -1593,25 +1595,37 @@ class TestQualifiedCallee:
     def test_in_repo_path_can_shadow_a_stdlib_key_known_limitation(
         self,
     ) -> None:
-        """KNOWN LIMITATION, pinned so it is visible rather than latent.
+        """The KEY SHAPE, which is correct and stays correct (INV-rozaj).
 
         The extension was an accidental barrier: ``net/http.go.Get`` could not
-        equal stdlib ``net/http.Get``, and stripping it removes that. A Go
-        repo with ``net/http.go`` at its root now produces a key that matches
-        a shipped stdlib summary exactly, and since a false "terminates"
-        CLOSES a branch, that direction deletes findings rather than adding
-        them — the expensive one.
+        equal stdlib ``net/http.Get``, and stripping it removes that. A Go repo
+        with ``net/http.go`` at its root therefore produces a key equal to a
+        shipped stdlib summary.
 
-        Measured, so the risk is sized rather than hand-waved: zero collisions
-        across 72,822 call edges on a self-survey, while 42 of 69 shipped
-        qualified keys are shadowable in principle. Latent today because §3a
-        is confirm-only and nothing acts on ``False``; it goes live the moment
-        WI-kabif grants removal authority, which is why the provenance guard
-        is filed as blocking that item rather than fixed opportunistically
-        here.
+        THE EXPOSURE THAT CREATED IS NOW CLOSED — elsewhere, and this test's own
+        prediction about itself was wrong (WI-zumud). It used to end "if a guard
+        lands, it should FAIL and be rewritten to assert the guard". The guard
+        landed and this test did NOT fail, because the guard is deliberately
+        NOT in ``_qualified_callee``: gating key construction would break
+        ``test_in_repo_callee_key_has_no_file_extension`` directly above, which
+        pins the INV-rozaj fix. The key shape was never the defect. Handing a
+        first-party key to a SHIPPED catalogue was, so the provenance decision
+        lives in ``_catalogue_key_for_edge`` and is asserted by
+        ``TestCatalogueKeyProvenanceGate``. This test keeps its original job:
+        pinning that an in-repo callee's key carries no file extension.
 
-        This test asserts current behaviour. If a guard lands, it should FAIL
-        and be rewritten to assert the guard — that is the intended signal.
+        Sizing, retained: zero collisions across 72,822 call edges on a
+        self-survey, while 42 of 69 shipped qualified keys are shadowable in
+        principle — never measured on the 9-repo cohort.
+
+        ONE STALE PREMISE CORRECTED. This used to say the risk was latent
+        because "§3a is confirm-only and nothing acts on ``False``". The first
+        half still holds — ``adjudicated = (walk is True)`` collapses ``False``
+        and ``None``. The second half does NOT: since PR #214 the same-function
+        sanitizer path runs a SECOND walk whose ``False`` earns ``sanitized``,
+        and a sanitized flow is dropped from a claim's violation set. So a
+        ``False`` does act today, which is why the guard was worth landing now
+        rather than deferring it to WI-kabif's removal authority.
         """
         assert _qualified_callee(
             "go:net/http.go:1-5:Get:function") == "net/http.Get"
@@ -1636,6 +1650,139 @@ class TestQualifiedCallee:
         assert colliding, (
             f"no short colliding aliases left in {sorted(aliases)!r}; "
             "re-examine whether qualified-only matching is still needed"
+        )
+
+
+class TestCatalogueKeyProvenanceGate:
+    """WI-zumud. A FIRST-PARTY callee may not match a SHIPPED stdlib summary.
+
+    The INV-rozaj fix (PR #200) made ``_qualified_callee`` normalise an in-repo
+    callee's module slot with ``_module_from_symbol_path``, which strips the
+    source file extension. That is correct and is what makes a first-party
+    callee catalogueable at all — but the extension had also been an ACCIDENTAL
+    barrier::
+
+        before:  go:net/http.go:1-5:Get:function  ->  'net/http.go.Get'  != 'net/http.Get'
+        after:   go:net/http.go:1-5:Get:function  ->  'net/http.Get'     == 'net/http.Get'
+
+    So a Go repo with a root-level ``net/http.go`` produces a key equal to a
+    shipped stdlib summary. This is the WI-damir shape — a first-party symbol
+    matching a catalogue primitive by NAME ALONE — reappearing in the §4 lookup
+    rather than in sink matching, and WI-damir's own comment already records
+    the verdict on that premise: resolution establishes WHICH IN-REPO SYMBOL is
+    called and says nothing about whether that symbol IS the catalogued
+    primitive.
+
+    WHY THE GATE IS NOT IN ``_qualified_callee``. Gating key CONSTRUCTION would
+    also break ``test_in_repo_callee_key_has_no_file_extension`` above, which
+    pins the INV-rozaj fix. The key shape is right; what is wrong is feeding a
+    first-party key to a SHIPPED catalogue. So the provenance decision gets its
+    own named home and the key builder is left alone.
+
+    DIRECTION, which is the whole reason this is worth doing. A summary that
+    says "terminates" lets the §3a walk CLOSE a branch, and a false close
+    removes a real finding. Refusing to catalogue produces FEWER terminations,
+    hence more unknowns and more surviving violations. The ``.get(..., True)``
+    default carries that: an edge with no ``is_resolved`` field is treated as
+    first-party and is NOT catalogued.
+    """
+
+    def test_a_resolved_first_party_edge_is_not_catalogued(self) -> None:
+        """THE DEFECT. ``net/http.go`` in-repo must not key a stdlib summary."""
+        assert _catalogue_key_for_edge({
+            "dst": "go:net/http.go:1-5:Get:function",
+            "is_resolved": True,
+        }) is None
+
+    def test_an_unresolved_external_edge_is_catalogued(self) -> None:
+        """POSITIVE CONTROL. Without this the gate could refuse everything and
+        still pass the test above — a §4 lookup that matches nothing is
+        indistinguishable from one that is correctly selective."""
+        assert _catalogue_key_for_edge({
+            "dst": "go:net/http:0-0:Get:external_symbol",
+            "is_resolved": False,
+        }) == "net/http.Get"
+
+    def test_a_missing_resolution_verdict_defaults_to_not_catalogued(
+        self,
+    ) -> None:
+        """Default-deny (L54). An edge from an artifact that predates the field
+        must fall to the safe side, and the safe side here is "do not close a
+        branch" — fewer terminations, more surviving findings."""
+        assert _catalogue_key_for_edge({
+            "dst": "go:net/http:0-0:Get:external_symbol",
+        }) is None
+
+    def test_the_verdict_is_read_from_the_field_not_the_dst_suffix(
+        self,
+    ) -> None:
+        """ADR-0037 ruling 4, and the reason a string check would be a bug.
+
+        WI-pubiv's boundary-id remap rewrites ``:unresolved`` to
+        ``:external_symbol`` on the final graph, so a dst-suffix test would
+        read every unresolved edge as resolved. Here the suffix says
+        ``external_symbol`` while the field says resolved; the FIELD wins.
+        """
+        assert _catalogue_key_for_edge({
+            "dst": "go:net/http:0-0:Get:external_symbol",
+            "is_resolved": True,
+        }) is None
+
+    def test_the_gate_is_wired_into_the_index_production_builds(self) -> None:
+        """A predicate nobody calls is not a fix.
+
+        Captures the ``callees_at`` index ``propagate_taint_ddg`` actually hands
+        to the walk, so this fails if the gate exists but the index site still
+        calls ``_qualified_callee`` directly.
+        """
+        captured: dict[str, object] = {}
+        real = taint_mod._ddg_taint_reaches
+
+        def _spy(*args, **kwargs):
+            # callees_at is the 5th positional parameter.
+            captured["callees_at"] = args[4]
+            return real(*args, **kwargs)
+
+        sources = [TaintSource(
+            module="external", name="decrypt", taint_label="plaintext",
+            kind="function",
+        )]
+        sinks = [TaintSink(
+            zone="host_fs", trust_level="untrusted", module="external",
+            name="send", kind="function",
+        )]
+        # Same function, DDG-covered, sink recorded AFTER the source, so guard2
+        # passes and the walk runs — which is the only path that consults the
+        # index at all.
+        ddg = [DdgEdge(
+            variable="data", def_block="bb_0", def_line=10,
+            use_block="bb_0", use_line=14, symbol_id="caller",
+        )]
+        call_edges = [
+            {"src": "caller", "dst": "python:external:0-0:decrypt:unresolved",
+             "type": "calls", "line": 10, "is_resolved": False},
+            {"src": "caller", "dst": "python:external:0-0:send:unresolved",
+             "type": "calls", "line": 14, "is_resolved": False},
+            # The shadowing edge: first-party, and its key would equal a
+            # shipped stdlib summary.
+            {"src": "caller", "dst": "python:os/path.py:1-5:join:function",
+             "type": "calls", "line": 12, "is_resolved": True},
+        ]
+
+        monkey = pytest.MonkeyPatch()
+        monkey.setattr(taint_mod, "_ddg_taint_reaches", _spy)
+        try:
+            propagate_taint_ddg(
+                ddg, call_edges, sources, sinks, [], ddg_symbols={"caller"},
+            )
+        finally:
+            monkey.undo()
+
+        index = captured.get("callees_at")
+        assert index is not None, "the walk never ran — test proves nothing"
+        keys_at_12 = set(index.get(("caller", 12), set()))
+        assert "os/path.join" not in keys_at_12, (
+            "a resolved first-party callee reached the shipped-catalogue index"
         )
 
 
