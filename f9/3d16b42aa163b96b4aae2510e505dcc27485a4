@@ -1,0 +1,57 @@
+Original commit body from e9213d0c2bc3d89b6d1d8e229ae3e7b718ca8f7d:
+
+cfg_nodes/typescript.yaml has asserted in its own header since it landed that
+it 'also covers JavaScript (same node types in tree-sitter-javascript)'. But
+the mapping, the def/use extractor and the LanguageDdgSpec were all keyed to
+'typescript' and the spec's glob was '*.ts', so a .js file reached none of it.
+
+JavaScript is the half of that pair whose edges can move a taint verdict: 50
+catalogued sources and 83 sinks, against TypeScript's 6 and zero.
+
+Three keys, no new logic: a second @register_def_use_extractor('javascript')
+on the existing class, a second LanguageDdgSpec with a '*.js' glob, and one
+entry in a new cfg._CFG_MAPPING_ALIASES. The alias encodes the shared-grammar
+assertion once instead of copying its consequences into a javascript.yaml free
+to drift from the original.
+
+Measured on a fixture: the http.createServer -> fs.writeFileSync flow in the
+recall corpus moves from approximate/structural to precise/ddg. That is the
+walk running on JavaScript and confirming a data dependence. It is a FIXTURE,
+not a cohort - no claim is made here about express or apollo-server.
+
+register_def_use_extractor now stamps 'language' on each registration, so
+stacking two decorators no longer leaves the second instance carrying the
+first's name. No-op for every existing single registration.
+
+test_cfg_mapping_declares_atomic_statement re-derived the mapping path itself
+rather than asking production's loader - a second implementation of 'where
+does a language's mapping live' that broke the moment a mapping legitimately
+lived under another key. It now calls load_cfg_mapping.
+
+Wiring a language invalidated three tests that used it as their INCAPABLE
+exemplar. Flipping their assertions to True would have left tests that
+distinguish nothing, so Java takes the role: it has a cfg mapping but no
+atomic_statement and no extractor, which also exercises the partial-blockers
+case for the first time. Its fixture contributes zero evidence rows, verified
+rather than assumed.
+
+One test lost coverage that could not be replaced, and says so in place.
+test_adjudication_label_does_not_depend_on_another_language drew its power
+from the flow's own language being incapable; JavaScript was the only language
+that both produced a fixture flow and lacked an extractor (java, c, php and
+ruby were each tried and yield zero evidence rows). The invariant stays pinned
+at unit level by test_function_the_ddg_never_saw_is_structural_not_mixed,
+which builds the shape synthetically and cannot be invalidated by wiring a
+language. What is gone is the end-to-end confirmation.
+
+Two filing claims corrected rather than propagated: 'JavaScript is the largest
+unwired taint surface' is false (fifth by sink count, behind elixir 301,
+erlang 157, haskell 131, kotlin 93); and an in-file apollo-server figure of
+588 edges / 93 symbols was measured on an older tree and is marked for
+re-measurement. The '*.js' glob deliberately does not claim .mjs/.cjs/.jsx.
+
+Refs: WI-nonad-zasoh-naloz-zavub-jogid-pomiz-vivuk-dasup
+
+21973 passed, 100% coverage, mypy ratchet clean at 672.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
