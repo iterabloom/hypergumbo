@@ -40,7 +40,15 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from collections.abc import Mapping, Sequence
 from collections.abc import Set as AbstractSet
-from typing import TYPE_CHECKING, Any, Iterator, Optional, TypeVar, Union
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Iterator,
+    NamedTuple,
+    Optional,
+    TypeVar,
+    Union,
+)
 
 import yaml
 
@@ -1924,6 +1932,52 @@ def is_field_tainted(variable: str, tainted_vars: set[str]) -> bool:
 # ---------------------------------------------------------------------------
 
 
+class EscapeSite(NamedTuple):
+    """One place the §3a walk stopped knowing where a tainted value went.
+
+    A ``NamedTuple`` rather than a bare pair because the LINE alone is not the
+    fact a consumer needs. Two of the walk's escapes are *extraction* failures
+    — the def/use graph never held the fact — and two are *classification*
+    questions about a use the walk did see. Those have different owners and
+    opposite remedies, yet a ``(symbol_id, line)`` record renders them
+    identical, so a shape histogram taken over lines silently attributes
+    extractor gaps to ADR-0017 §7b's scope exclusion. Tuple-shaped so the
+    positional reads that the original pair supported keep working.
+
+    ``reason`` is a bounded enum; see :data:`ESCAPE_REASONS`.
+    """
+
+    symbol_id: str
+    line: int
+    reason: str
+
+
+#: Why the walk lost the value, one per ``escaped = True`` site. Bounded and
+#: named here so a measurement can assert it partitions the population rather
+#: than discovering a fifth cause by finding an unfamiliar string in a bucket.
+#:
+#: * ``source_undefined`` — the DDG recorded no definition at the SOURCE call
+#:   line, so the walk was never handed anything to follow. An extraction gap
+#:   (INV-lupav), not an escape: ``if err := do(); err != nil`` initializers
+#:   are invisible to Go's def/use extractor.
+#: * ``definition_unrecorded`` — a frontier entry the DDG holds no uses for.
+#:   Defensive and unreachable as the code stands; see the branch comment.
+#: * ``call_beside_heir`` — the taint DID continue along a chain still
+#:   understood, but the same line also calls something no summary accounts
+#:   for. One statement doing two things (WI-votom hole 2).
+#: * ``no_heir`` — the use derived nothing the DDG tracked and no catalogued
+#:   callee consumed it. This is the bucket ADR-0017 §7b's alias exclusion is
+#:   invoked for, and the only one for which that invocation can be correct.
+ESCAPE_REASONS = frozenset(
+    {
+        "source_undefined",
+        "definition_unrecorded",
+        "call_beside_heir",
+        "no_heir",
+    }
+)
+
+
 def _ddg_taint_reaches(
     symbol_id: str,
     source_lines: list[int],
@@ -1942,7 +1996,7 @@ def _ddg_taint_reaches(
     inherits: Mapping[tuple[str, int, str], AbstractSet[str]] | None = None,
     barrier_lines: AbstractSet[int] | None = None,
     forfeit_refutation: bool = False,
-    escape_sites: list[tuple[str, int]] | None = None,
+    escape_sites: list[EscapeSite] | None = None,
 ) -> bool | None:
     """Does a value defined at a source call reach a use at a sink call?
 
@@ -2065,15 +2119,19 @@ def _ddg_taint_reaches(
             ``True``. Defaults to ``False`` so turning the gate on is a
             deliberate act at each call site rather than a tree-wide
             behaviour change on landing.
-        escape_sites: Optional out-param. When given, every
-            ``(symbol_id, line)`` at which the walk lost track of the value is
-            appended, in encounter order. This exists so INV-busis's shape
+        escape_sites: Optional out-param. When given, an :class:`EscapeSite`
+            is appended for every point at which the walk lost track of the
+            value, in encounter order. This exists so INV-busis's shape
             split can be taken from the walk itself rather than from a
             re-derivation of it: the instrument that produced the filed split
             lives outside the repo and no longer matches this signature, which
-            the item records as its own durability hazard. Purely
-            observational — the verdict is identical whether or not it is
-            passed.
+            the item records as its own durability hazard. Each site names
+            WHICH of the four branches below fired, because a line alone
+            cannot separate "the DDG never gave the walk anything here"
+            (extraction gap) from "the walk followed the value and lost it"
+            (the §7b classification question) — and folding those is how the
+            expression-read family was first priced. Purely observational —
+            the verdict is identical whether or not it is passed.
 
     Returns:
         True if a tainted value is used at a line where the sink is called;
@@ -2095,7 +2153,9 @@ def _ddg_taint_reaches(
         if not seeds:
             escaped = True
             if escape_sites is not None:
-                escape_sites.append((symbol_id, line))
+                escape_sites.append(
+                    EscapeSite(symbol_id, line, "source_undefined")
+                )
             continue
         frontier.extend((var, line) for var in sorted(seeds))
 
@@ -2130,7 +2190,9 @@ def _ddg_taint_reaches(
             # a call there).
             escaped = True
             if escape_sites is not None:
-                escape_sites.append((symbol_id, line))
+                escape_sites.append(
+                    EscapeSite(symbol_id, line, "definition_unrecorded")
+                )
             continue
         if uses & targets:
             return True
@@ -2204,7 +2266,9 @@ def _ddg_taint_reaches(
                     continue
                 escaped = True
                 if escape_sites is not None:
-                    escape_sites.append((symbol_id, use_line))
+                    escape_sites.append(
+                        EscapeSite(symbol_id, use_line, "call_beside_heir")
+                    )
                 continue
             # The tainted value is consumed at a line that defines nothing the
             # DDG tracked, or defines only variables no statement derived from
@@ -2218,7 +2282,9 @@ def _ddg_taint_reaches(
                 continue
             escaped = True
             if escape_sites is not None:
-                escape_sites.append((symbol_id, use_line))
+                escape_sites.append(
+                    EscapeSite(symbol_id, use_line, "no_heir")
+                )
     if escaped:
         return None
     if forfeit_refutation:

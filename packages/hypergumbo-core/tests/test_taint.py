@@ -28,6 +28,8 @@ from hypergumbo_core import taint as taint_mod
 from hypergumbo_core.taint import (
     _catalogue_key_for_edge,
     _ddg_taint_reaches,
+    ESCAPE_REASONS,
+    EscapeSite,
     TAINT_CALL_EDGE_TYPES,
     TaintCatalog,
     TaintCatalogError,
@@ -1249,12 +1251,12 @@ class TestDdgTaintReaches:
         sites that have no interest in the sites.
         """
         uses, defs, inh = _ddg_index([("v", 1, 4)])
-        sites: list[tuple[str, int]] = []
+        sites: list[EscapeSite] = []
         assert _ddg_taint_reaches(
             "f", [1], [9], uses, defs_at=defs, inherits=inh,
             escape_sites=sites,
         ) is None
-        assert sites == [("f", 4)]
+        assert sites == [EscapeSite("f", 4, "no_heir")]
 
     def test_escape_sites_stays_empty_on_a_closed_walk(self) -> None:
         """A walk that accounted for every step records nothing.
@@ -1267,7 +1269,7 @@ class TestDdgTaintReaches:
             [("a", 3, 4), ("b", 4, 3)],
             [(4, ("b",), ("a",)), (3, ("a",), ("b",))],
         )
-        sites: list[tuple[str, int]] = []
+        sites: list[EscapeSite] = []
         assert _ddg_taint_reaches(
             "f", [3], [9], uses, defs_at=defs, inherits=inh,
             escape_sites=sites,
@@ -1284,11 +1286,11 @@ class TestDdgTaintReaches:
         "followed it and lost it", which are the two facts L11 says share a
         surface.
         """
-        sites: list[tuple[str, int]] = []
+        sites: list[EscapeSite] = []
         assert _ddg_taint_reaches(
             "f", [7], [9], {}, defs_at={}, escape_sites=sites,
         ) is None
-        assert sites == [("f", 7)]
+        assert sites == [EscapeSite("f", 7, "source_undefined")]
 
     def test_escape_sites_records_a_followed_but_unaccounted_call(self) -> None:
         """One statement can do two things (WI-votom hole 2).
@@ -1303,12 +1305,12 @@ class TestDdgTaintReaches:
         uses, defs, inh = _ddg_index(
             [("v", 1, 2), ("w", 2, 3)], [(2, ("w",), ("v",))],
         )
-        sites: list[tuple[str, int]] = []
+        sites: list[EscapeSite] = []
         assert _ddg_taint_reaches(
             "f", [1], [9], uses, {("f", 2): {"unmodelled.callee"}}, {},
             defs_at=defs, inherits=inh, escape_sites=sites,
         ) is None
-        assert ("f", 2) in sites
+        assert EscapeSite("f", 2, "call_beside_heir") in sites
 
     def test_escape_sites_defaults_to_None_and_costs_nothing(self) -> None:
         """Omitting the out-param leaves every verdict identical."""
@@ -1316,6 +1318,53 @@ class TestDdgTaintReaches:
         assert _ddg_taint_reaches(
             "f", [1], [9], uses, defs_at=defs, inherits=inh,
         ) is None
+
+    def test_one_walk_separates_a_SEEDING_escape_from_a_USE_SITE_escape(
+        self,
+    ) -> None:
+        """The two causes that share a surface must not share a bucket.
+
+        This is the measurement that re-scoped ADR-0017 §7b's blocker
+        population, so it is pinned rather than trusted. A shape split taken
+        over ``(symbol_id, line)`` alone cannot tell "the DDG never gave the
+        walk anything at the source call" (INV-lupav — an EXTRACTION gap)
+        from "the walk followed the value and lost it at a use"
+        (INV-busis — an ESCAPE-CLASSIFICATION question). They are different
+        defects with different owners and OPPOSITE remedies, and a histogram
+        that folds them attributes extractor gaps to §7b's scope exclusion —
+        which is how the expression-read family was first priced at 78.6%.
+
+        One walk, both branches, so the discrimination is demonstrated
+        rather than assumed: line 7 is a source the DDG defined nothing at,
+        line 1 is a source it did define, and the value from line 1 is used
+        at line 4 by a statement deriving nothing tracked.
+        """
+        uses, defs, inh = _ddg_index([("v", 1, 4)])
+        sites: list[EscapeSite] = []
+        assert _ddg_taint_reaches(
+            "f", [1, 7], [9], uses, defs_at=defs, inherits=inh,
+            escape_sites=sites,
+        ) is None
+        assert sites == [
+            EscapeSite("f", 7, "source_undefined"),
+            EscapeSite("f", 4, "no_heir"),
+        ]
+        assert {s.reason for s in sites} <= ESCAPE_REASONS
+
+    def test_escape_site_is_tuple_compatible(self) -> None:
+        """``EscapeSite`` stays a tuple so positional readers keep working.
+
+        The out-param landed as a plain ``(symbol_id, line)`` pair and the
+        reason is an ADDITION to it, not a replacement. Anything already
+        unpacking two elements would break loudly on a widened tuple, which
+        is correct — but indexing and iteration must not change shape
+        beneath a reader that only wants the first two.
+        """
+        site = EscapeSite("f", 4, "no_heir")
+        assert isinstance(site, tuple)
+        assert site[0] == "f" and site[1] == 4
+        symbol_id, line, reason = site
+        assert (symbol_id, line, reason) == ("f", 4, "no_heir")
 
     def test_forfeit_downgrades_an_otherwise_earned_False(self) -> None:
         """WI-joluk. A function the extractor did not fully see cannot refute.
