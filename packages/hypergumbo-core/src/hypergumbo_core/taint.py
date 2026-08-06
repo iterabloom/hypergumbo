@@ -1942,6 +1942,7 @@ def _ddg_taint_reaches(
     inherits: Mapping[tuple[str, int, str], AbstractSet[str]] | None = None,
     barrier_lines: AbstractSet[int] | None = None,
     forfeit_refutation: bool = False,
+    escape_sites: list[tuple[str, int]] | None = None,
 ) -> bool | None:
     """Does a value defined at a source call reach a use at a sink call?
 
@@ -2064,6 +2065,15 @@ def _ddg_taint_reaches(
             ``True``. Defaults to ``False`` so turning the gate on is a
             deliberate act at each call site rather than a tree-wide
             behaviour change on landing.
+        escape_sites: Optional out-param. When given, every
+            ``(symbol_id, line)`` at which the walk lost track of the value is
+            appended, in encounter order. This exists so INV-busis's shape
+            split can be taken from the walk itself rather than from a
+            re-derivation of it: the instrument that produced the filed split
+            lives outside the repo and no longer matches this signature, which
+            the item records as its own durability hazard. Purely
+            observational — the verdict is identical whether or not it is
+            passed.
 
     Returns:
         True if a tainted value is used at a line where the sink is called;
@@ -2084,6 +2094,8 @@ def _ddg_taint_reaches(
         seeds = (defs_at or {}).get((symbol_id, line))
         if not seeds:
             escaped = True
+            if escape_sites is not None:
+                escape_sites.append((symbol_id, line))
             continue
         frontier.extend((var, line) for var in sorted(seeds))
 
@@ -2117,6 +2129,8 @@ def _ddg_taint_reaches(
             # invisible to def/use; 700 of caddy's 6,596 `if` statements carry
             # a call there).
             escaped = True
+            if escape_sites is not None:
+                escape_sites.append((symbol_id, line))
             continue
         if uses & targets:
             return True
@@ -2189,6 +2203,8 @@ def _ddg_taint_reaches(
                 ):
                     continue
                 escaped = True
+                if escape_sites is not None:
+                    escape_sites.append((symbol_id, use_line))
                 continue
             # The tainted value is consumed at a line that defines nothing the
             # DDG tracked, or defines only variables no statement derived from
@@ -2201,6 +2217,8 @@ def _ddg_taint_reaches(
             ):
                 continue
             escaped = True
+            if escape_sites is not None:
+                escape_sites.append((symbol_id, use_line))
     if escaped:
         return None
     if forfeit_refutation:
