@@ -1,0 +1,12 @@
+Original commit body from c0bda4c917462718dcbea8f9f553e8bab31d03a6:
+
+The correction added alongside the sanitizer-gate fix stated the retracted
+conclusion assertively and then corrected it two sentences later. That is the
+shape docs/adr/README.md forbids under 'excise-the-superseded-body' -- a
+reader who stops at the first assertion carries away the falsehood, and this
+area has now produced three successive accounts of one zero, two of them
+wrong. The fact the conclusion rested on (every shipped sanitizer is an
+instance method) is true and is kept; the inference from it is removed in
+place, with the pointer to the established mechanism left intact.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
