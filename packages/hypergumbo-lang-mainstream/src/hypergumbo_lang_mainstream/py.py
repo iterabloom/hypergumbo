@@ -5701,6 +5701,53 @@ def _process_call(
                         origin=PASS_ID,
                         origin_run_id=run_id,
                     ))
+                else:
+                    # INV-mumov. A chain whose root is NOT an imported module —
+                    # `event.organizer.issued_gift_cards.create(...)`, rooted at
+                    # a local — reached here and emitted NOTHING. The
+                    # single-attribute form `obj.bar()` has emitted an
+                    # `external`-module edge for exactly this reason since
+                    # WI-fuvuj ("emit unresolved edge using the attribute name
+                    # so that IO boundary analysis and taint-flow" can match);
+                    # depth was the only difference, and nothing justified it.
+                    #
+                    # Measured on pretix: four calls to the same Django manager
+                    # sink on adjacent lines, two emitting and two silent —
+                    # `Item.objects.create(...)` (class-rooted, handled above)
+                    # against `event.organizer.issued_gift_cards.create(...)`.
+                    #
+                    # COSTS TWICE. A function whose sink calls are all
+                    # chain-shaped has no sink edge, is never considered, and
+                    # its flow is never reported — a false negative. And the
+                    # same absence keeps the call out of `callees_at`, so the
+                    # §3a walk cannot ask whether the callee consumes the value
+                    # and records an ESCAPE instead: measured 2026-08-06, a
+                    # substantial share of INV-busis's "genuine non-call escape
+                    # sites" are calls sitting in this state.
+                    #
+                    # `external` rather than a synthesised module path: the
+                    # receiver's type is genuinely unknown here, and inventing
+                    # `event.organizer.issued_gift_cards` as a module would
+                    # assert a module that does not exist and could collide
+                    # with a catalogued entry of the same shape. `external` is
+                    # the placeholder the matcher already degrades on.
+                    #
+                    # Placed in the `else` of the module-import branch so the
+                    # class-rooted Django marker, which runs earlier and emits a
+                    # module-qualified `django.db.models` edge, keeps winning —
+                    # pinned by its own test.
+                    callee = chain_attrs[-1]
+                    edges.append(Edge.create(
+                        src=caller_symbol.id,
+                        dst=f"python:external:0-0:{callee}:unresolved",
+                        edge_type="calls",
+                        line=call_node.lineno,
+                        evidence_type="ast_call_direct",
+                        is_resolved=False,
+                        meta={"call_construct": "method"},
+                        origin=PASS_ID,
+                        origin_run_id=run_id,
+                    ))
         elif isinstance(func, ast.Name):
             # WI-zigah: bare call like `urlopen(x)` after
             # `from urllib.request import urlopen`, where Case 1 looked the
