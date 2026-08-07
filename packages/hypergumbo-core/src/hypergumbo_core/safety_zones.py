@@ -51,6 +51,81 @@ if TYPE_CHECKING:  # pragma: no cover - typing-only import
     import numpy as np
 
 
+class SafetyZoneViolation(RuntimeError):
+    """A zone wrapper was handed a path outside the zone it declares.
+
+    Raised rather than silently no-oping: a caller asking to delete
+    ``$HOME`` through the cache wrapper has a bug, and swallowing it would
+    hide the bug while still failing to do what the caller asked.
+    """
+
+
+def _cache_zone_root() -> Path:
+    """Root of the ``user_cache`` zone: ``$XDG_CACHE_HOME/hypergumbo``.
+
+    Resolved at call time, not import time, so a test (or a user) changing
+    ``XDG_CACHE_HOME`` moves the zone with it. Duplicating
+    ``sketch_embeddings._get_xdg_cache_base`` is deliberate and narrow:
+    importing it here would make this module depend on the embeddings stack
+    (and on numpy being installed) purely to learn one environment variable.
+    """
+    import os
+
+    xdg = os.environ.get("XDG_CACHE_HOME")
+    base = Path(xdg) if xdg else Path.home() / ".cache"
+    return base / "hypergumbo"
+
+
+def _tmp_zone_root() -> Path:
+    """Root of the ``tmp_artifact`` zone: the system temp directory."""
+    import tempfile
+
+    return Path(tempfile.gettempdir())
+
+
+def _install_zone_root() -> Path:
+    """Root of the ``install_artifact`` zone: ``~/.local/bin``.
+
+    Kept as a literal rather than imported from :mod:`gitleaks` (which owns
+    ``GITLEAKS_INSTALL_DIR``) so this module stays import-light and so the
+    zone boundary is stated where it is enforced. ``test_safety_zones``
+    pins the two against each other, so they cannot drift apart silently.
+    """
+    return Path.home() / ".local" / "bin"
+
+
+def _require_within_zone(path: Path, root: Path, zone: str) -> None:
+    """Refuse ``path`` unless it is inside ``root``.
+
+    THE DEFECT THIS EXISTS TO CLOSE, stated plainly because a guard whose
+    reason is forgotten gets removed: ``cmd_cache_clear`` built its target as
+    ``cache_dir / repo`` and deleted it. ``pathlib`` discards the left
+    operand when the right is ABSOLUTE, so ``--repo /home/you/thesis``
+    resolved to ``/home/you/thesis`` and was recursively deleted, reported as
+    a routine cache eviction. A relative ``../..`` escapes the same way. The
+    call site checked ``is_dir()`` — existence, not containment.
+
+    Both paths are ``resolve()``d first, so a symlink pointing out of the
+    zone is refused too; checking the unresolved path would let
+    ``<cache>/evil -> /`` through.
+
+    ``root`` itself is permitted (clearing the whole cache is legitimate);
+    anything above or beside it is not.
+    """
+    try:
+        resolved = path.resolve()
+        resolved_root = root.resolve()
+    except OSError as exc:  # pragma: no cover - unreadable path component
+        raise SafetyZoneViolation(
+            f"cannot resolve {path} to check the {zone} zone: {exc}",
+        ) from exc
+    if resolved != resolved_root and not resolved.is_relative_to(resolved_root):
+        raise SafetyZoneViolation(
+            f"refusing to operate on {resolved}: outside the {zone!r} safety "
+            f"zone rooted at {resolved_root}",
+        )
+
+
 def _safety_zone_barrier() -> None:
     """Structural-taint-pass barrier marker. Invoked by every wrapper below.
 
@@ -89,7 +164,7 @@ def cache_write_bytes(path: Path, data: bytes) -> None:
     path.write_bytes(data)
 
 
-def cache_rmtree(path: Path) -> None:
+def cache_rmtree(path: Path, zone_root: Path | None = None) -> None:
     """Recursively delete a cache directory under ``~/.cache/hypergumbo/``.
 
     SAFETY ZONE: ``user_cache``. Used by ``cmd_cache_clear`` to evict
@@ -98,8 +173,19 @@ def cache_rmtree(path: Path) -> None:
     flagged generic ``.rmtree`` reachability from runtime CLI as a
     documented overapproximation because the bare callee match couldn't
     tell cache-clear writes apart from arbitrary fs deletes.
+
+    ENFORCED, not merely declared: a path outside the cache root raises
+    :class:`SafetyZoneViolation`. See :func:`_require_within_zone` for the
+    verified escape this closes.
+
+    ``zone_root`` lets a caller that already resolved the cache base pass it
+    in, so the guard is checked against the SAME root the caller is
+    operating in rather than a second, independently-derived one. Omitting
+    it falls back to the XDG-derived default — a caller that forgets is
+    still guarded, just against the default zone.
     """
     _safety_zone_barrier()
+    _require_within_zone(path, zone_root or _cache_zone_root(), "user_cache")
     shutil.rmtree(path)
 
 
@@ -204,8 +290,12 @@ def tmp_artifact_rmtree(path: Path) -> None:
     refresh the per-grammar scaffold directory before regenerating it.
     Distinct wrapper from :func:`cache_rmtree` so verify-claims can
     distinguish cache eviction from grammar-build scaffold reset.
+
+    ENFORCED: a path outside the system temp directory raises
+    :class:`SafetyZoneViolation`.
     """
     _safety_zone_barrier()
+    _require_within_zone(path, _tmp_zone_root(), "tmp_artifact")
     shutil.rmtree(path)
 
 
@@ -266,6 +356,10 @@ def install_artifact_unlink(path: Path) -> None:
     to evict the hypergumbo-managed binary. Distinct wrapper so
     verify-claims's overapproximate ``.unlink`` matches don't conflate
     install/uninstall flows with arbitrary file removal.
+
+    ENFORCED: a path outside ``~/.local/bin`` raises
+    :class:`SafetyZoneViolation`.
     """
     _safety_zone_barrier()
+    _require_within_zone(path, _install_zone_root(), "install_artifact")
     path.unlink()

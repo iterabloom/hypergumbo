@@ -15,11 +15,13 @@ These tests confirm:
 from __future__ import annotations
 
 import json
+import tempfile
 from pathlib import Path
 
 import pytest
 
 from hypergumbo_core.safety_zones import (
+    SafetyZoneViolation,
     _safety_zone_barrier,
     cache_mkdir,
     cache_rmtree,
@@ -110,15 +112,47 @@ def test_install_artifact_copy(tmp_path: Path) -> None:
     assert dst.read_bytes() == b"executable"
 
 
-def test_cache_rmtree(tmp_path: Path) -> None:
-    """``cache_rmtree`` recursively deletes a directory tree."""
-    d = tmp_path / "cache_dir"
-    d.mkdir()
+def test_cache_rmtree(tmp_path: Path, monkeypatch) -> None:
+    """``cache_rmtree`` recursively deletes a directory tree INSIDE its zone.
+
+    The zone is now established explicitly. This test previously passed a
+    path with no relationship to the cache directory at all, which is what
+    let the wrapper ship with a documented zone it did not enforce.
+    """
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path))
+    d = tmp_path / "hypergumbo" / "cache_dir"
+    d.mkdir(parents=True)
     (d / "a.txt").write_text("a")
     (d / "sub").mkdir()
     (d / "sub" / "b.txt").write_text("b")
     cache_rmtree(d)
     assert not d.exists()
+
+
+def test_cache_rmtree_refuses_a_path_outside_its_zone(
+    tmp_path: Path, monkeypatch,
+) -> None:
+    """A wrapper whose docstring declares a SAFETY ZONE must enforce it.
+
+    VERIFIED DEFECT, not a hypothetical: ``hypergumbo cache-clear --repo
+    <absolute path>`` recursively deleted a directory outside the cache and
+    reported it as a normal cache eviction, because ``cache_dir / repo``
+    discards the left operand when ``repo`` is absolute and nothing
+    downstream re-checked containment. A relative ``../..`` traverses out the
+    same way.
+
+    The zone is the guarantee. A wrapper that documents ``user_cache`` and
+    deletes ``$HOME`` on request is a comment, not a boundary.
+    """
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cachehome"))
+    (tmp_path / "cachehome" / "hypergumbo").mkdir(parents=True)
+    victim = tmp_path / "VICTIM"
+    victim.mkdir()
+    (victim / "thesis.txt").write_text("six months of work")
+
+    with pytest.raises(SafetyZoneViolation):
+        cache_rmtree(victim)
+    assert (victim / "thesis.txt").read_text() == "six months of work"
 
 
 def test_tmp_artifact_rmtree(tmp_path: Path) -> None:
@@ -128,6 +162,53 @@ def test_tmp_artifact_rmtree(tmp_path: Path) -> None:
     (d / "setup.py").write_text("...")
     tmp_artifact_rmtree(d)
     assert not d.exists()
+
+
+def test_tmp_artifact_rmtree_refuses_a_path_outside_tmp(
+    tmp_path: Path, monkeypatch,
+) -> None:
+    """Same guarantee for the ``tmp_artifact`` zone.
+
+    Included because the fix must be the zone mechanism, not a patch to the
+    one wrapper whose escape was demonstrated — otherwise the next wrapper
+    ships the same hole.
+    """
+    monkeypatch.setattr(tempfile, "gettempdir", lambda: str(tmp_path / "fake_tmp"))
+    (tmp_path / "fake_tmp").mkdir()
+    victim = tmp_path / "NOT_TMP"
+    victim.mkdir()
+    (victim / "keep.txt").write_text("keep")
+
+    with pytest.raises(SafetyZoneViolation):
+        tmp_artifact_rmtree(victim)
+    assert (victim / "keep.txt").read_text() == "keep"
+
+
+def test_every_destructive_wrapper_enforces_a_zone() -> None:
+    """PARITY: enumerate the destructive wrappers and assert each refuses an
+    out-of-zone path, so a newly added one cannot ship unenforced.
+
+    This is the check that would have caught the original defect. The zone
+    discipline was documented per-wrapper in prose, and prose does not fail
+    a build.
+    """
+    import inspect
+
+    from hypergumbo_core import safety_zones as sz
+
+    destructive = {
+        name for name in dir(sz)
+        if name.endswith(("_rmtree", "_unlink"))
+        and callable(getattr(sz, name))
+    }
+    assert destructive, "no destructive wrappers found — check the naming rule"
+    for name in sorted(destructive):
+        fn = getattr(sz, name)
+        src = inspect.getsource(fn)
+        assert "_require_within_zone" in src, (
+            f"{name} does not enforce its declared safety zone; a wrapper "
+            f"that documents a zone and does not enforce it is a comment"
+        )
 
 
 def test_install_artifact_chmod(tmp_path: Path) -> None:
@@ -141,13 +222,40 @@ def test_install_artifact_chmod(tmp_path: Path) -> None:
     assert p.stat().st_mode & stat.S_IXUSR
 
 
-def test_install_artifact_unlink(tmp_path: Path) -> None:
-    """``install_artifact_unlink`` removes a single installed file."""
-    p = tmp_path / "binary"
+def test_install_artifact_unlink(tmp_path: Path, monkeypatch) -> None:
+    """``install_artifact_unlink`` removes a single installed file in-zone."""
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
+    bindir = tmp_path / ".local" / "bin"
+    bindir.mkdir(parents=True)
+    p = bindir / "binary"
     p.write_bytes(b"binary")
     assert p.exists()
     install_artifact_unlink(p)
     assert not p.exists()
+
+
+def test_install_artifact_unlink_refuses_outside_its_zone(
+    tmp_path: Path, monkeypatch,
+) -> None:
+    """Third destructive wrapper, same guarantee."""
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
+    (tmp_path / ".local" / "bin").mkdir(parents=True)
+    victim = tmp_path / "elsewhere" / "important"
+    victim.parent.mkdir()
+    victim.write_text("keep me")
+
+    with pytest.raises(SafetyZoneViolation):
+        install_artifact_unlink(victim)
+    assert victim.read_text() == "keep me"
+
+
+def test_install_zone_root_matches_the_module_that_owns_it() -> None:
+    """The zone root is duplicated on purpose (import-weight); pin the two
+    together so they cannot drift into disagreeing about the boundary."""
+    from hypergumbo_core.gitleaks import GITLEAKS_INSTALL_DIR
+    from hypergumbo_core.safety_zones import _install_zone_root
+
+    assert _install_zone_root() == GITLEAKS_INSTALL_DIR
 
 
 def test_cache_mkdir_inv_zudak(tmp_path: Path) -> None:

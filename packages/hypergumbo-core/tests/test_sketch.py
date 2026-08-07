@@ -8407,12 +8407,37 @@ class TestRepoFingerprint:
         # Get initial state hash
         hash1 = _get_repo_state_hash(tmp_path)
 
-        # Modify a file
-        (tmp_path / "test.txt").write_text("modified content")
+        # Modify an ANALYZED file. This used to modify test.txt, which
+        # worked only because the fingerprint derived its file set from
+        # `git status` and therefore counted every dirty file regardless of
+        # whether an analyzer would ever read it. `git status` was removed
+        # because it executes programs the target repo controls (see
+        # test_repo_fingerprint.TestNoCodeExecutionFromTargetRepo), and the
+        # file set is now the analyzer-input allowlist. A .txt change no
+        # longer invalidating is CORRECT — it cannot change any analysis
+        # output — and is pinned as intended behaviour just below.
+        (tmp_path / "mod.py").write_text("print('modified content')\n")
 
         # State hash should change
         hash2 = _get_repo_state_hash(tmp_path)
         assert hash1 != hash2
+
+    def test_state_hash_ignores_files_no_analyzer_reads(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        """A non-analyzed file must NOT bust the cache.
+
+        Companion to the test above: asserting only that "some change moves
+        the hash" would be satisfied by a fingerprint that moves on every
+        change, which would mean a cold run every time a user touched a
+        README. This pins the other side.
+        """
+        from hypergumbo_core.sketch_embeddings import _get_repo_state_hash
+
+        self._init_git_repo(tmp_path)
+        hash1 = _get_repo_state_hash(tmp_path)
+        (tmp_path / "notes.txt").write_text("scratch notes, not analysed\n")
+        assert _get_repo_state_hash(tmp_path) == hash1
 
     def test_state_hash_stable_without_changes(self, tmp_path: Path) -> None:
         """State hash is stable when no changes are made."""
@@ -8458,8 +8483,10 @@ class TestRepoFingerprint:
         cache1 = _get_results_cache_dir(tmp_path)
         assert cache1.exists()
 
-        # Modify a file
-        (tmp_path / "test.txt").write_text("modified")
+        # Modify an ANALYZED file — see the note in
+        # test_state_hash_changes_with_file_modifications for why this is a
+        # .py file now rather than test.txt.
+        (tmp_path / "mod.py").write_text("print('modified')\n")
 
         # Results cache should be different directory
         cache2 = _get_results_cache_dir(tmp_path)

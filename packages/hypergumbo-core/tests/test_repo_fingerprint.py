@@ -442,3 +442,71 @@ class TestUnreadableFileToleration:
         assert _UNREADABLE_CONTENT_SENTINEL == (
             "67d7acff712bc6477b6319b001dd00f0daf551b2c7c75705fc4fdc222becb4c2"
         )
+
+
+class TestNoCodeExecutionFromTargetRepo:
+    """A hostile target repo must not be able to run code during analysis.
+
+    VERIFIED VULNERABILITY (canary, exit 0, silent): ``hypergumbo
+    io-boundaries <repo>`` executed an attacker-supplied program 6 times,
+    because fingerprinting shelled out to ``git status`` with cwd inside the
+    target repo. Three independent vectors were demonstrated on that one
+    command:
+
+    * ``core.fsmonitor`` — a program path in the repo's own ``.git/config``.
+    * ``.git/hooks/post-index-change`` — fires with **no config keys set at
+      all**, so auditing ``.git/config`` is not a mitigation.
+    * ``filter.<driver>.clean`` armed by an in-tree ``.gitattributes`` —
+      measured to survive ``-c core.fsmonitor=false -c core.hooksPath=/dev/null
+      -c core.attributesFile=/dev/null --literal-pathspecs
+      --no-optional-locks`` simultaneously. Suppressing it requires naming the
+      driver, and the driver name is chosen by the attacker.
+
+    Because the third vector cannot be closed by hardening, the fix is to not
+    run ``git status`` at all. Its result was never load-bearing — it fed only
+    a cache-key/provenance digest, and the content-hash path already computes
+    the same class of value with no subprocess (measured cost: 0.12s on pretix,
+    1.7s on this repo, against analyses that take minutes).
+
+    This test pins the absence rather than the hardening, because a hardening
+    flag list silently rots as git gains new exec-capable keys.
+    """
+
+    def test_fingerprinting_never_runs_git_status(
+        self, git_repo: Path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """No subprocess invoked while fingerprinting may be ``git status``."""
+        from hypergumbo_core import repo_fingerprint as rf
+
+        seen: list[list[str]] = []
+        real_run = subprocess.run
+
+        def recording_run(argv, *a, **kw):  # type: ignore[no-untyped-def]
+            seen.append([str(x) for x in argv])
+            return real_run(argv, *a, **kw)
+
+        monkeypatch.setattr(rf.subprocess, "run", recording_run)
+        compute_repo_fingerprint(git_repo)
+
+        offending = [c for c in seen if "status" in c]
+        assert not offending, (
+            f"fingerprinting shelled out to git status: {offending}. That "
+            f"command executes repo-controlled programs via core.fsmonitor, "
+            f".git/hooks/post-index-change and filter.*.clean, and the last "
+            f"of those survives every hardening flag tested."
+        )
+
+    def test_dirty_content_still_changes_the_fingerprint(
+        self, git_repo: Path,
+    ) -> None:
+        """CONTROL: removing ``git status`` must not cost content sensitivity.
+
+        Without this, the security pin above could be satisfied by a
+        fingerprint that ignores the working tree entirely — which would make
+        every cached analysis stale-but-accepted, a correctness regression
+        dressed up as a security fix.
+        """
+        before = compute_repo_fingerprint(git_repo)
+        (git_repo / "tracked.py").write_text("print('changed after commit')\n")
+        after = compute_repo_fingerprint(git_repo)
+        assert before != after

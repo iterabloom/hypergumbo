@@ -768,6 +768,53 @@ class TestCacheClearKeepLatest:
         # Other repos untouched
         assert (cache_dir / "other").exists()
 
+    @pytest.mark.parametrize(
+        "hostile_repo",
+        ["/ABSOLUTE/VICTIM", "../../VICTIM", "sub/dir", "..", "a/../../VICTIM"],
+        ids=["absolute", "traversal", "separator", "dotdot", "mixed"],
+    )
+    def test_repo_flag_cannot_name_a_path_outside_the_cache(
+        self, tmp_path: Path, hostile_repo: str,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """``--repo`` names a cache subdirectory, never a filesystem path.
+
+        VERIFIED DEFECT: ``cache-clear --repo /home/you/thesis`` recursively
+        deleted that directory and printed ``Deleted repo … (36.0 B)`` as
+        though it were routine cache eviction. ``cache_dir / repo`` discards
+        the left operand when ``repo`` is absolute; ``..`` traverses out; and
+        the only downstream check was ``is_dir()``, which is existence, not
+        containment. Every other subcommand's ``--repo``-shaped flag takes a
+        path, so ``cache-clear --repo "$REPO"`` is a natural thing to script.
+
+        The safety-zone check in ``cache_rmtree`` is the backstop and is
+        tested separately; this asserts the CLI refuses at the boundary with
+        a usable error instead of surfacing an internal exception.
+        """
+        cache_dir = tmp_path / "cache"
+        (cache_dir / "abc").mkdir(parents=True)
+        victim = tmp_path / "VICTIM"
+        victim.mkdir()
+        (victim / "thesis.txt").write_text("six months of work")
+
+        args = FakeArgs()
+        args.quiet = False
+        args.older_than = None
+        args.dry_run = False
+        args.repo = hostile_repo
+        args.keep_latest = None
+
+        with patch("hypergumbo_core.cli._get_cache_base", return_value=cache_dir):
+            result = cmd_cache_clear(args)
+
+        assert result != 0, "a rejected --repo must not report success"
+        assert (victim / "thesis.txt").read_text() == "six months of work"
+        assert (cache_dir / "abc").exists()
+        err = capsys.readouterr().err
+        assert "internal error" not in err.lower(), (
+            "refusing a bad --repo is not a crash; it needs a usable message"
+        )
+
     def test_repo_unknown_returns_zero(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
