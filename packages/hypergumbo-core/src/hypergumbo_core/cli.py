@@ -3812,7 +3812,7 @@ def cmd_cache_clear(args: argparse.Namespace) -> int:
     deleted_count = 0
     for entry in entries:
         try:
-            cache_rmtree(entry)
+            cache_rmtree(entry, zone_root=cache_dir)
             deleted_count += 1
         except (OSError, PermissionError) as e:  # pragma: no cover
             if not args.quiet:  # pragma: no cover
@@ -3839,6 +3839,27 @@ def _cache_clear_repo(
 
     Either mode honors ``--dry-run`` and ``--quiet``.
     """
+    # ``--repo`` names a cache SUBDIRECTORY, never a filesystem path. Refuse
+    # anything path-shaped before it reaches ``cache_dir / repo``, because
+    # that join silently discards ``cache_dir`` when ``repo`` is absolute and
+    # ``..`` traverses out of it — and the only check downstream was
+    # ``is_dir()``, which tests existence rather than containment. Measured:
+    # ``cache-clear --repo /path/to/work`` recursively deleted that directory
+    # and reported it as a routine eviction.
+    #
+    # This is the usable-error boundary; ``cache_rmtree``'s safety-zone check
+    # is the backstop that catches any future caller bypassing this one.
+    # Enumerating what is PERMITTED (a single plain component) rather than
+    # blocklisting what is dangerous — a blocklist here would need to keep up
+    # with every separator and traversal spelling the platform accepts.
+    if repo != Path(repo).name or repo in {"", ".", ".."}:
+        print(
+            f"hypergumbo: --repo takes a cache entry name, not a path: {repo!r}\n"
+            f"           run 'hypergumbo cache-clear --list' to see the names.",
+            file=sys.stderr,
+        )
+        return 2
+
     repo_dir = cache_dir / repo
     if not repo_dir.is_dir():
         if not args.quiet:
@@ -3853,7 +3874,7 @@ def _cache_clear_repo(
                     f"Would delete repo {repo} ({_format_size(size)})"
                 )
             return 0
-        cache_rmtree(repo_dir)
+        cache_rmtree(repo_dir, zone_root=cache_dir)
         if not args.quiet:
             print(f"Deleted repo {repo} ({_format_size(size)})")
         return 0
@@ -3891,7 +3912,7 @@ def _cache_clear_repo(
     deleted = 0
     for d in to_delete:
         try:
-            cache_rmtree(d)
+            cache_rmtree(d, zone_root=cache_dir)
             deleted += 1
         except (OSError, PermissionError) as e:  # pragma: no cover
             if not args.quiet:  # pragma: no cover
