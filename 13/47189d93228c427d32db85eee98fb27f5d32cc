@@ -1,0 +1,26 @@
+Original commit body from 9de80e67a05395196de124761524cbb5dfe0b781:
+
+CI caught the previous commit hand-editing SECURITY.md, which is GENERATED
+between sentinel markers by scripts/generate-security-md. All four of my edits
+sat inside the generated block and would have been silently wiped on the next
+regeneration -- the same defect class the commit was fixing, one level up.
+
+The corrections now live in the generator, and the measured verdicts are read
+from docs/hypergumbo.claims.expected.json -- the SAME snapshot
+scripts/check-self-claims diffs the live run against. So the prose and the gate
+cannot disagree by construction: changing one without the other fails CI.
+
+Each claim is rendered with the verdict actually measured for it, and the
+section opens with the count table (2 violated / 16 inconclusive / 0 confirmed)
+rather than presenting all eighteen as assurances.
+
+Also corrected in the generator, not the artifact: the Known Limitations
+paragraph asserted 'the load-bearing claims verify cleanly'. They do not -- they
+are inconclusive. It now states that, plus the two limits that bound every
+confirmed verdict this tool emits anywhere: pathlib.Path method calls are
+invisible to the I/O catalogue, and one call edge is enough to pass the coverage
+check while the rest of a language's call structure stays unanalysable.
+
+Determinism contract re-verified: generate twice, --check clean.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
