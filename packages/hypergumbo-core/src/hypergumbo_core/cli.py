@@ -5024,6 +5024,90 @@ def _build_ddg_for_verify_claims(
     )
 
 
+def _taint_blind_reason(
+    has_taint_claims: bool,
+    unsupported_taint_languages: list[str],
+    raw_edges: list[dict[str, Any]],
+    taint_supported_languages: set[str],
+) -> str | None:
+    """Why a taint claim cannot be confirmed, or ``None`` if it can.
+
+    TWO WAYS the taint analysis fails to look, and only the first was ever
+    reported. Both were measured on live fixtures:
+
+    * **No catalogue.** PHP has no taint sources/sinks, so
+      ``file_put_contents("/tmp/out", $_GET['payload'])`` produced no findings
+      and the claim came back ``confirmed`` at exit 0. Already computed as
+      ``unsupported_taint_languages`` and already printed to stderr — as a
+      note asking the reader to downgrade the verdict themselves.
+
+    * **Catalogue but blind.** Kotlin HAS a taint catalogue, so it never
+      appears in the list above, yet it emits no call edge at all for an
+      external instance-method call — about 95% of its catalogued sinks. A
+      Kotlin file reading a socket and writing it to disk also returned
+      ``confirmed``, with nothing flagged anywhere in the output. This is the
+      worse of the two: the tool claims support, finds nothing, and reports
+      silence as safety.
+
+    The second case reuses :func:`compute_boundary_coverage` rather than
+    growing a second implementation of "did this language produce call
+    edges" — it already answers exactly that question for boundary claims,
+    which is why the boundary side never had this bug.
+
+    Deliberately conservative: a language with a catalogue and genuinely no
+    I/O also reports blind. That yields ``inconclusive`` on a clean repo,
+    which is an honest "could not tell" rather than an unearned pass.
+
+    KNOWN RESIDUAL, measured and NOT closed by this function. The second
+    check asks "did this language produce ANY call edges", and a single edge
+    is enough to look covered. The Kotlin fixture above emits exactly one
+    ``calls`` edge (plus ``imports`` and ``contains``) while missing every
+    external method call, so it still returns ``confirmed`` — 93 catalogued
+    sinks, ``dataflow_capable: False``, zero findings, and a clean verdict.
+    Closing it needs a signal with resolution finer than "any", e.g. the
+    share of method-construct call edges that resolve to something the
+    catalogue can match, and that is a measurement exercise rather than a
+    predicate change. Pinned as an xfail by
+    ``test_language_with_a_token_call_edge_still_falsely_confirms`` so the
+    gap is visible in the suite instead of living in a comment.
+    """
+    from .verify_claims import compute_boundary_coverage
+
+    if not has_taint_claims:
+        return None
+
+    # ONLY CODE-BEARING LANGUAGES COUNT. A language that produced no call
+    # edges has no call structure for a taint flow to travel through, so its
+    # missing catalogue says nothing about this claim.
+    #
+    # This narrowing is not a nicety — without it the gate is useless. The
+    # first version blocked on ``unsupported_taint_languages`` directly, and
+    # a repo containing ONE yaml file (or json, or markdown — i.e. every real
+    # repo, including one that merely keeps its own claims file in-tree) was
+    # reported inconclusive forever. `confirmed` became unreachable, which is
+    # the blanket-downgrade failure mode that makes a verdict worthless in
+    # the other direction. Caught by
+    # test_taint_recall_corpus.test_python_source_without_any_sink_confirms,
+    # whose fixture is a legitimately clean repo.
+    languages_with_calls = {
+        edge.get("src", "").split(":", 1)[0]
+        for edge in raw_edges
+        if edge.get("type") == "calls" and ":" in edge.get("src", "")
+    }
+    blind = sorted(set(unsupported_taint_languages) & languages_with_calls)
+    if blind:
+        langs = ", ".join(blind)
+        return (
+            f"this repo contains code in language(s) with no taint catalogue "
+            f"({langs}), so the analysis could not look for the flows this "
+            f"claim forbids"
+        )
+    coverage = compute_boundary_coverage(raw_edges, taint_supported_languages)
+    if not coverage.complete:
+        return coverage.reason
+    return None
+
+
 def cmd_verify_claims(args: argparse.Namespace) -> int:
     """Verify security claims against I/O boundary map and taint flow.
 
@@ -5153,6 +5237,10 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
     # INV-karud (a3): the published data-flow scope. Empty for a run with no
     # taint claims, which is why it is initialised here rather than assumed.
     dataflow_rows: list["LanguageDataflowScope"] = []
+    # Same reason, and the coverage gate below reads it on EVERY run: the
+    # languages whose taint sinks this repo could have matched. Empty when
+    # there are no taint claims.
+    per_lang_sinks: dict[str, list["TaintSink"]] = {}
     # INV-karud (b): same reason. ``None`` renders as the empty scope, so the
     # envelope carries the key on every run rather than teaching consumers to
     # read its absence as "not applicable".
@@ -5241,7 +5329,7 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
         # .get() call) that would otherwise flood the findings with
         # tens of thousands of false positives on multi-language repos.
         per_lang_sources: dict[str, list["TaintSource"]] = {}
-        per_lang_sinks: dict[str, list["TaintSink"]] = {}
+        per_lang_sinks = {}
         per_lang_sanitizers: dict[str, list["TaintSanitizer"]] = {}
         for lang in sorted(languages):
             src_count = len(taint_catalog.sources_for_language(lang))
@@ -5371,6 +5459,13 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
         claims, bmap, taint_findings=taint_findings, coverage=coverage,
         include_non_production=getattr(
             args, "include_non_production_sources", False
+        ),
+        # INV-javam's signal now REACHES THE VERDICT instead of only stderr.
+        # It was already computed and already printed as a note asking the
+        # reader to mentally downgrade 'confirmed' — which no CI gate does.
+        blind_reason=_taint_blind_reason(
+            has_taint_claims, unsupported_taint_languages,
+            raw_edges, set(per_lang_sinks),
         ),
     )
 
