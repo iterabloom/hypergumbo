@@ -1,0 +1,74 @@
+Original commit body from 9508f08a8f5e6d29d19eacff037260298e653344:
+
+A fully annotated, unambiguous receiver produced no I/O boundary at all:
+
+    import pathlib
+    def h(p: pathlib.Path, x):
+        return p.write_text(x)     # -> python:external:...:write_text, 0 boundaries
+
+The annotation names the receiver's type exactly and the catalogue holds
+pathlib.Path.write_text as fs_write, but the analyzer never routed the
+annotation into the symbol id's module slot, so the edge arrived carrying the
+`external` placeholder and gate_named_entry correctly refused it as an untyped
+method call. Same for bare-with-from-import, aliased module imports, and
+socket.socket.
+
+Measured: poetry 38 -> 52 reported boundaries (+14), sqlalchemy 43 -> 47. The
+additions are pathlib.Path.{exists,is_dir,is_file,stat,glob,iterdir,mkdir} on
+annotated parameters. Three adjudicated against source, all true positives --
+e.g. poetry's `def is_dir_writable(path: Path, create: bool = False)` calling
+path.exists() and path.mkdir(parents=True, exist_ok=True).
+
+SCOPED TO PARAMETERS, on measurement. Over six Python repos: 95,245 method-call
+edges carry the `external` placeholder; 4,160 have a receiver with a resolvable
+annotation; 63 actually reach the catalogue -- and 96% of that payload is the
+annotated-parameter shape alone. AnnAssign, return-annotated factories,
+attribute reads and generics contribute exactly zero. Both exclusions are pinned
+by tests that state why, so a later PR that routes them argues with a test
+rather than silently widening the trust surface.
+
+THE BINDING CHECK IS THE DESIGN, NOT A PRECAUTION. This is the first change in
+this subsystem that ADDS classifications. A minted hint is trusted -- it bypasses
+both gate_named_entry and the ambiguous_names net by design, and gating the
+hinted path was measured to destroy 61.5-87.2% of all reported boundaries for
+zero gain, so there is no backstop. A wrong hint is a confident false boundary
+AND a false taint sink, never silence.
+
+Emitting the RAW annotation text -- what the tree-sitter-side resolver does for
+dotted annotations -- was measured to produce confirmed false boundaries:
+`conn: Connection` matched sqlite3.Connection.execute and minted a
+database-zone taint sink, with 174 such annotations in the corpus, because
+_module_matches accepts an unqualified reference as a component suffix.
+Resolved through its import binding the same annotation yields
+sqlalchemy.engine.Connection, which does not match. All eight negative tests are
+measured FP classes (the sqlalchemy collision, `from fastapi import Path`, an
+unimported dotted root, an in-file `class Path` shadow, a forward-reference
+string, Optional[...]); all eight passed before this change and must keep
+passing.
+
+Resolution reuses _import_binding_for (INV-kipor, same release), so "does an
+import in this file rebind this name, and to what?" has one answer serving three
+callers instead of drifting into a sixth private copy. An alias expands
+(`import pathlib as pl`); an unbound name stays `external`; a parameter already
+resolved to an in-repo class wins, so a first-party `class Path` is never
+overridden by a same-named import.
+
+NOTHING IS DONE FOR GO, and that is measured rather than deferred. Go has no
+equivalent gap: 96.7% (3,618/3,741) of package-qualified-receiver catalogue-name
+call sites already reach a usable module slot. Go's residual gap is initializer
+type inference, and the candidate fix is net-harmful -- 118 of 692 moved edges
+(17.1%) land on the wrong in-repo symbol, 66 of those on a struct field, for +8
+boundaries on a 1,309 baseline (+0.61%). A single shared producer mechanism is
+the wrong factoring; the Go gap is filed with its hijack measurement.
+
+DISCLOSED GAPS: this is a cold start -- 17 of the 18 catalogue entries it
+activates fire zero times on the corpus today, so their boundary labels have
+never been validated against real output. Path.{exists,is_dir,is_file,stat} are
+catalogued fs_read though they stat rather than read contents; that is a
+catalogue-labelling question, untouched here. Relative imports, importlib,
+conditional and TYPE_CHECKING imports are unprobed. The 63-site population is a
+property of the six-repo bag, not of the tool: adding one repo moved it +20.6%,
+and per-repo the change ranges +9.3% (sqlalchemy) to +36.8% (poetry).
+
+Refs: WI-zilag, INV-linub
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
