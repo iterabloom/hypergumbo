@@ -1,0 +1,70 @@
+Original commit body from 900168ae52d5e4ae02aa73c3d48685c4bee4f9cc:
+
+`_external_constructor_module` answers "does this call construct a catalogued
+I/O object?" from two branches. The `ast.Attribute` branch (`socket.socket(...)`)
+verified its base against `module_imports` before trusting it. The `ast.Name`
+branch beside it verified nothing — it looked the identifier up in
+EXTERNAL_CONSTRUCTOR_TYPES and emitted the catalogued module as the receiver
+type of whatever the call returned.
+
+So on the shipping tree, with no configuration:
+
+    from decoy_lib import open
+    v = open(spec)
+    v.read()            # reported fs_read against `file.read`
+
+A filesystem read invented for an object that is not a file — the expensive
+direction for a security tool. The unshadowed twin reports 2 boundaries, so
+this was a false positive, not a dead analyzer.
+
+Both bare-name inferences now share `_import_binding_for`. A binding to
+anything other than the claimed module withholds the hint; the edge degrades to
+`external` and every consumer refuses it as an untyped method call. Unbound
+stays trusted, because for a bare name that means the builtin.
+
+INV-kipor's filed remedy is WITHDRAWN, not implemented. It read "a module hint
+MUST NOT bypass the ambiguous_names / gate_named_entry protection", but that
+gate vetoes every name in ambiguous_names AND every call_construct == "method",
+and 48 of python.yaml's 222 primitives (21.6%) have an ambiguous short name.
+Measured A/B over 8 repos: it destroys 61.5% of what the CLI prints by default
+(3812 -> 1468; 87.2% of JSON total_io_edges, 2689 -> 345), gains zero at every
+repo and every primitive, and drives subprocess to 0 in 5 of 8 repos. 92.9% of
+the loss is the method clause, not the ambiguity clause the item's title names.
+The gate's own docstring says it "is reached only when there is no usable module
+hint" — applying it when a hint is present is a category error.
+
+The two remedies differ on precision, not strictness: across 5 Python repos
+there are 467 bare `Path(...)` sites, all 467 import-bound to pathlib. The filed
+remedy refuses 467/467; this one refuses 0/467 and refuses only the
+`from fastapi import Path` site.
+
+io_boundary._module_matches was specified for the comparison and rejected on
+measurement — it returns True for `mylib.pathlib.Path` against `pathlib.Path`
+and for `mypkg.file` against `file`, trusting exactly the vendored bindings this
+guard exists to refuse. It is permissive by design because it answers a
+different question. Binding identity gets an exact comparison instead.
+
+Not a new rule: the identical test already lived inline in
+`_receiver_type_id_trustworthy` (WI-supat D3). Two bare-name inferences asked it
+separately and one didn't ask at all.
+
+Direction: strictly stricter; the change can only withhold. Corpus delta today
+is 0 boundaries either way (330 bare `open` sites across 5 Python repos, 0
+import-shadowed), with three positive controls proving the shadow detectors
+fire. The gain is the FP above plus the future receiver-typed population.
+
+The parity test enumerates EXTERNAL_CONSTRUCTOR_TYPES itself, deriving fixture
+method names from python.yaml, so a future key auto-generates its own shadow
+fixture. Every negative assertion is paired with a positive control — INV-kipor's
+pre-existing regression test stayed green through the entire defect because it
+hand-constructs its `external` dst instead of running the analyzer.
+
+Disclosed gaps: def/assign shadowing out of scope (import binding only, matching
+WI-supat D3). `from io import open` is refused — a conservative false negative,
+since the claimed module `file` is synthetic. Aliased imports miss the table by
+key and mint nothing. Relative imports, importlib, conditional and TYPE_CHECKING
+imports are unprobed. No other analyzer has an EXTERNAL_CONSTRUCTOR_TYPES
+analogue, so a cross-language parity test would assert nothing today.
+
+Refs: INV-kipor
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
