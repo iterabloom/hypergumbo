@@ -1199,12 +1199,55 @@ def verify_taint_claim(
     )
 
 
+def _require_coverage_to_confirm(
+    verdict: ClaimVerdict,
+    blind_reason: str | None,
+) -> ClaimVerdict:
+    """Downgrade a ``confirmed`` verdict the analysis did not earn.
+
+    ONE RULE, ONE PLACE, applied to every constraint kind on the way out of
+    :func:`verify_claims`: *a claim may only be confirmed if the analysis
+    could actually look*. A ``violated`` verdict is untouched — finding
+    something is trustworthy regardless of coverage; it is the CLEAN result
+    that depends on having looked.
+
+    THE DEFECT THIS CLOSES, measured on real input rather than reasoned
+    about: a PHP file doing ``file_put_contents("/tmp/out", $_GET['payload'])``
+    returned ``confirmed`` at exit 0 for the claim "untrusted input must not
+    reach the filesystem", because PHP has no taint catalogue and "no flows
+    found" was reported as "no flows exist". The boundary constraint kinds
+    already refused to confirm a blind analysis (WI-kajil / INV-bitig); taint
+    claims skipped the same rule and a stderr note asked the READER to apply
+    it by hand — "Treat 'confirmed' verdicts on these languages as
+    inconclusive" — which no CI gate and no hurried human does.
+
+    This is a backstop, not the only check. ``verify_claim`` keeps its own
+    per-kind coverage tests because they produce a better-worded reason; this
+    catches any constraint kind that has none, including kinds added later.
+    ``test_every_constraint_kind_is_coverage_gated`` enumerates them.
+    """
+    if verdict.verdict != "confirmed" or not blind_reason:
+        return verdict
+    return ClaimVerdict(
+        claim_id=verdict.claim_id,
+        claim_text=verdict.claim_text,
+        verdict="inconclusive",
+        evidence=verdict.evidence,
+        evidence_count=verdict.evidence_count,
+        details=(
+            f"{verdict.details} NOT CONFIRMED: {blind_reason}. Absence of "
+            f"evidence here is not evidence of absence."
+        ),
+    )
+
+
 def verify_claims(
     claims: list[Claim],
     boundary_map: BoundaryMap,
     taint_findings: list | None = None,
     coverage: Optional[BoundaryCoverage] = None,
     include_non_production: bool = False,
+    blind_reason: str | None = None,
 ) -> list[ClaimVerdict]:
     """Verify all claims against boundary map and/or taint-flow findings.
 
@@ -1230,10 +1273,17 @@ def verify_claims(
     verdicts: list[ClaimVerdict] = []
     for claim in claims:
         if claim.constraint_taint_flow is not None:
-            verdicts.append(verify_taint_claim(
+            verdict = verify_taint_claim(
                 claim, taint_findings or [],
                 include_non_production=include_non_production,
-            ))
+            )
         else:
-            verdicts.append(verify_claim(claim, boundary_map, coverage=coverage))
+            verdict = verify_claim(claim, boundary_map, coverage=coverage)
+        # Single coverage gate for EVERY constraint kind — see
+        # _require_coverage_to_confirm. Applied here rather than at each
+        # branch so a constraint kind added later cannot ship unable to
+        # distinguish "looked and found nothing" from "did not look".
+        verdicts.append(
+            _require_coverage_to_confirm(verdict, blind_reason),
+        )
     return verdicts
