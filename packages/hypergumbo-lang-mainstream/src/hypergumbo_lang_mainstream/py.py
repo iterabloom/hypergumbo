@@ -4292,6 +4292,71 @@ def _extract_edges(
 
         return param_types
 
+    def _annotation_module_hint(annotation: ast.expr) -> str | None:
+        """WI-zilag: the external module a parameter annotation names, or ``None``.
+
+        The counterpart to :func:`_extract_param_types`, which resolves annotations to
+        IN-REPO class symbols. This one answers the same question for types the repo does
+        not define, so an annotated receiver reaches the I/O catalogue.
+
+        BINDING-CHECKED, and that is the whole design rather than a precaution. A minted
+        module hint is trusted downstream — it bypasses both ``gate_named_entry`` and the
+        ``ambiguous_names`` net by design (gating the hinted path was measured to destroy
+        61.5-87.2% of all reported boundaries for zero gain), so a wrong hint is a
+        confident false boundary AND a false taint sink, never silence.
+
+        Emitting the RAW annotation text instead was measured to produce confirmed false
+        boundaries: ``conn: Connection`` matched ``sqlite3.Connection.execute`` and minted
+        a database-zone taint sink, because ``_module_matches`` accepts an unqualified
+        reference as a component suffix. Resolved through its import binding the same
+        annotation yields ``sqlalchemy.engine.Connection``, which does not match.
+
+        * ``ast.Name`` (``p: Path``) → whatever an import binds that name to, via
+          :func:`_import_binding_for` — the same predicate INV-kipor's constructor gate
+          uses. An unbound name is a builtin or a first-party class and returns ``None``.
+        * ``ast.Attribute`` (``p: pathlib.Path``) → resolved only when the ROOT is a real
+          module import, so an alias expands (``import pathlib as pl`` → ``pl.Path``
+          becomes ``pathlib.Path``) and an unimported root is refused.
+        * Everything else — ``Optional[X]`` / ``X | None`` (no single type), forward-
+          reference strings, generics — returns ``None``. They cannot be pinned to one
+          module, which is the same line ``taint_refine``'s WI-dozon pinning draws.
+        """
+        if isinstance(annotation, ast.Name):
+            return _import_binding_for(annotation.id, imports, module_imports)
+        if isinstance(annotation, ast.Attribute) and isinstance(
+            annotation.value, ast.Name,
+        ):
+            root = module_imports.get(annotation.value.id)
+            if root:
+                return f"{root}.{annotation.attr}"
+        return None
+
+    def _extract_external_param_types(
+        func_node: ast.FunctionDef | ast.AsyncFunctionDef,
+        param_types: dict[str, Symbol],
+    ) -> dict[str, str]:
+        """WI-zilag: parameters whose annotation names an external catalogued type.
+
+        Scoped to PARAMETERS deliberately. Measured over six Python repos: of 95,245
+        method-call edges carrying the ``external`` placeholder, 4,160 have a receiver
+        with a resolvable annotation and 63 actually reach the catalogue — and 96% of that
+        payload is this one shape. ``AnnAssign``, return-annotated factories, attribute
+        reads and generics contribute exactly zero, so routing them would add trust
+        surface for no recall.
+
+        ``param_types`` wins: a parameter already resolved to an in-repo class is
+        first-party and carries no catalogue meaning, so an in-file ``class Path`` is not
+        overridden by a same-named import.
+        """
+        external: dict[str, str] = {}
+        for arg in func_node.args.args + func_node.args.kwonlyargs:
+            if arg.annotation is None or arg.arg in param_types:
+                continue
+            hint = _annotation_module_hint(arg.annotation)
+            if hint is not None:
+                external[arg.arg] = hint
+        return external
+
     def _resolve_decorator_target(
         decorator: ast.expr,
     ) -> Symbol | None:
@@ -4660,7 +4725,12 @@ def _extract_edges(
                         node, include_import_aliases=False
                     ) | _enclosing,
                 )
-                process_code_block(node.body, caller_symbol, param_types, stack=stack)
+                process_code_block(
+                    node.body, caller_symbol, param_types, stack=stack,
+                    external_var_types=_extract_external_param_types(
+                        node, param_types,
+                    ),
+                )
                 _emit_variable_refs(
                     node.body, caller_symbol,
                     local_bindings=_collect_local_bindings(node) | _enclosing,
