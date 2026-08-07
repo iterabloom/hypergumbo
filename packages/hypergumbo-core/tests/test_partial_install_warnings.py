@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import warnings
+from pathlib import Path
 
 import pytest
 
@@ -12,6 +13,7 @@ from hypergumbo_core.partial_install_warnings import (
     PartialInstallWarning,
     check_partial_install_warnings,
     check_partial_linker_requirements,
+    check_rust_analyzer_disclosure,
     check_unanalyzed_files,
 )
 from hypergumbo_core.profile import LanguageStats, RepoProfile
@@ -1004,3 +1006,100 @@ class TestLanguagePackageMapping:
             assert LANGUAGE_PACKAGES.get(lang) == "hypergumbo-lang-extended1", (
                 f"{lang} should be in hypergumbo-lang-extended1"
             )
+
+
+class TestRustAnalyzerDisclosure:
+    """The Rust backend is opt-in, and the reason must be stated.
+
+    `rust-analyzer scip <workspace>` EXECUTES that workspace's build.rs and
+    expands its proc macros, as the invoking user. Verified with a canary
+    crate on three fresh, never-built projects: the bare invocation fires it,
+    and so does `--config-path` with `cargo.buildScripts.enable=false` under
+    both key spellings — the config is accepted, reports no errors, and the
+    build script runs anyway. An earlier "safe mode works" reading was Cargo
+    CACHING the first run's build-script output; on a clean crate it does not
+    hold. So there is no known way to index a Cargo project without running
+    its code.
+
+    That makes the opt-in gate load-bearing for SAFETY, not only for the
+    ~10x indexing cost its docstring cites. A user is entitled to know both
+    that the better backend exists and what enabling it means, so the
+    advisory states the trust implication rather than only the capability.
+    """
+
+    def test_advertises_the_backend_when_rust_files_are_present(self) -> None:
+        profile = RepoProfile(languages={"rust": LanguageStats(files=12, loc=900)})
+
+        warnings_list = check_rust_analyzer_disclosure(profile, available=True)
+
+        assert len(warnings_list) == 1
+        msg = warnings_list[0].message
+        assert "rust-analyzer" in msg
+        # The capability, so the user knows why they'd want it.
+        assert "precise" in msg.lower() or "precision" in msg.lower()
+
+    def test_the_message_states_the_trust_implication_not_just_capability(
+        self,
+    ) -> None:
+        """The point of the disclosure. A message that only advertises the
+        feature would have the user enable it on a repo they have not read."""
+        profile = RepoProfile(languages={"rust": LanguageStats(files=3, loc=40)})
+
+        msg = check_rust_analyzer_disclosure(profile, available=True)[0].message
+
+        assert "build script" in msg.lower()
+        assert "trust" in msg.lower()
+
+    def test_mentions_installing_it_when_absent(self) -> None:
+        """Absent is still worth advertising — with the same caveat attached,
+        so the trust implication is known BEFORE the user installs it."""
+        profile = RepoProfile(languages={"rust": LanguageStats(files=7, loc=300)})
+
+        msg = check_rust_analyzer_disclosure(profile, available=False)[0].message
+
+        assert "install" in msg.lower()
+        assert "build script" in msg.lower()
+
+    def test_silent_when_the_repo_has_no_rust(self) -> None:
+        """No advisory noise for repos the backend cannot help."""
+        profile = RepoProfile(languages={"python": LanguageStats(files=9, loc=400)})
+
+        assert check_rust_analyzer_disclosure(profile, available=True) == []
+
+
+def test_rust_disclosure_is_reachable_from_the_aggregator(
+    tmp_path: Path, monkeypatch,
+) -> None:
+    """WIRING: the disclosure must fire through the entry point users hit.
+
+    Without this the function is a WI-ratuv family member — correct, tested,
+    and called by nobody, which is how a docstring's claim about behaviour
+    drifts away from behaviour. `check_partial_install_warnings` is the entry
+    point the CLI calls, so that is where it has to appear.
+    """
+    from hypergumbo_core import partial_install_warnings as piw
+    from hypergumbo_core.linkers.registry import LinkerContext
+
+    monkeypatch.setattr(
+        piw, "is_rust_analyzer_available", lambda **_kw: True,
+    )
+    profile = RepoProfile(languages={"rust": LanguageStats(files=4, loc=120)})
+
+    # Production's own LinkerContext, not a hand-rolled stub. The first
+    # version of this test used a fake carrying only the attributes the
+    # aggregator read WHEN NO LINKERS WERE REGISTERED; under the full suite
+    # every package loads, the JNI linker registers, and it reads `symbols`,
+    # which the fake lacked. A stub whose adequacy depends on global registry
+    # state is a test-isolation trap.
+    # A REAL empty repo root, not None. The neighbouring tests pass None and
+    # survive only because they patch `check_linker_requirements`; this test
+    # deliberately exercises the real path, where the gRPC linker's
+    # requirement check globs the filesystem and None raises.
+    ctx = LinkerContext(repo_root=tmp_path, symbols=[], edges=[])
+    found = check_partial_install_warnings(
+        profile, ctx, emit_warnings=False,
+    )
+
+    rust = [w for w in found if w.category == "rust_analyzer_optin"]
+    assert len(rust) == 1
+    assert "build script" in rust[0].message.lower()
