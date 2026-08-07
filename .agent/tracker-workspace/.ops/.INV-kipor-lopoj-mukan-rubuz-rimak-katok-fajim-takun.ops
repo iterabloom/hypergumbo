@@ -1,0 +1,24 @@
+- op: create  # 5b4c
+  at: '2026-08-07T07:59:29Z'  # 5b4c
+  by: agent  # 5b4c
+  actor: jgstern_agent  # 5b4c
+  clock: 1  # 5b4c
+  nonce: 5b4c  # 5b4c
+  data:  # 5b4c
+    kind: invariant  # 5b4c
+    title: "A module hint BYPASSES the ambiguous_names gate in io_boundary lookup — a wrong receiver type yields a confident misclassification, re-opening the WI-razol FP cascade"  # 5b4c
+    status: violated  # 5b4c
+    priority: 1  # 5b4c
+    parent:  # 5b4c
+    tags:  # 5b4c
+    - io_boundary  # 5b4c
+    - analysis_quality  # 5b4c
+    - taint  # 5b4c
+    isbefore: []  # 5b4c
+    duplicate_of: []  # 5b4c
+    not_duplicate_of: []  # 5b4c
+    pr_ref:  # 5b4c
+    description: "A MODULE HINT DISABLES THE ambiguous_names GATE, so a WRONG receiver type\nproduces a CONFIDENT boundary classification instead of degrading to silence.\n\nMECHANISM (io_boundary.py:568-579): when a module hint is supplied, the lookup\nreturns filtered[0] and NEVER reaches gate_named_entry. gate_named_entry is\nwhat enforces the INV-tapat/INV-maluk rule. So the hint does not merely ENABLE\nclassification -- it BYPASSES the protection.\n\nWHY IT MATTERS NOW. pathlib.Path catalogues `replace` and `rename`, and BOTH\nare in python.yaml's ambiguous_names. Any receiver-typing work (WI-zilag and\neverything downstream of INV-linub) supplies exactly such a hint, so it\nre-opens the WI-razol \"5541-FP cascade\" that taint.py:619-621 closed:\n\n    p = Path(raw); p = str(p); p.replace(\"\\\\\", \"/\")\n\nbecomes an fs_write io-boundary AND -- because taint.py auto-derives sinks\nfrom io_primitives (WI-lokuv) -- a host_fs/untrusted TAINT SINK. A plain\nstr.replace reported as a filesystem write, in the expensive direction for a\nsecurity tool.\n\nMEASURED, adversarially, on fixtures: the bare-name dict form\n(EXTERNAL_CONSTRUCTOR_TYPES[\"Path\"]=\"pathlib.Path\", which does NO import\ncheck) turns `from fastapi import Path; item.replace(...)` into a reported\nfs_write -- base 0 boundaries, patched 1, wrong.\n\nTHE REGRESSION TEST STAYS GREEN WHILE THE INVARIANT IS DEFEATED.\ntest_io_boundary.py:1687 hand-constructs the `external` dst, so it never\nexercises the hinted path. A passing suite is NOT evidence of safety here --\nwhich is exactly the reassurance a receiver-typing PR would invite.\n\nTHIS IS PRE-EXISTING AND INDEPENDENT of any recall change. It should be fixed\nFIRST, because every planned receiver-typing improvement is unsafe until it\nis: the whole point of typing a receiver is to supply the hint that currently\nswitches the gate off.\n\nDIRECTION: fixing it makes classification STRICTER (fewer boundaries), so it\nis the safe direction, but it must be measured on findings both ways --\nsome current classifications may depend on the bypass."  # 5b4c
+    fields:  # 5b4c
+      statement: "Supplying a module hint to the io-boundary lookup MUST NOT bypass the ambiguous_names / gate_named_entry protection. A receiver type that is wrong must degrade to silence, never to a confident boundary classification."  # 5b4c
+      root_cause: "io_boundary.py:568-579 returns filtered[0] on the module-hint path and never calls gate_named_entry, so INV-tapat/INV-maluk enforcement is skipped exactly when a hint is present."  # 5b4c
