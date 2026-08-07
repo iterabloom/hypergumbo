@@ -48,7 +48,8 @@ from .taxonomy import LANGUAGE_ALIASES
 
 if TYPE_CHECKING:
     from .linkers.registry import LinkerContext
-    from .profile import RepoProfile
+from .profile import RepoProfile
+from .rust_analyzer_install import is_rust_analyzer_available
 
 # =============================================================================
 # Language -> Package Mapping (ADR-0010)
@@ -272,6 +273,71 @@ def check_unanalyzed_files(
     return warnings
 
 
+def check_rust_analyzer_disclosure(
+    profile: "RepoProfile",
+    available: bool,
+) -> list[PartialInstallWarning]:
+    """Tell the user the Rust backend exists — and what enabling it costs.
+
+    WHY THIS IS A DISCLOSURE AND NOT AN ADVERT. ``rust-analyzer scip
+    <workspace>`` **executes that workspace's ``build.rs`` and expands its
+    proc macros**, as the invoking user. That is inherent to Cargo, not a
+    hypergumbo defect: it is the same trust you extend by opening the
+    project in an editor. But hypergumbo is routinely pointed at repositories
+    the user has not read, so the capability cannot be advertised without the
+    consequence attached.
+
+    MEASURED, because an earlier attempt to make it safe FAILED and was
+    reverted: a canary crate's build script fired under the bare invocation,
+    and also under ``--config-path`` with ``cargo.buildScripts.enable=false``
+    in both key spellings — accepted, no config errors reported, script ran
+    anyway. The first reading that it worked was Cargo caching the previous
+    run's build-script output; on three fresh never-built crates it does not
+    hold. There is no known way to index a Cargo project without running its
+    code, which is why the backend stays opt-in and why this text says so.
+
+    The opt-in gate's own docstring justifies itself on indexing cost (~10x
+    slower than tree-sitter, WI-zakub §4). That reason is real but it is no
+    longer the only one, and it is the weaker one.
+
+    Emitted whether or not the binary is present: someone deciding whether to
+    install it deserves the caveat BEFORE they do, not after.
+    """
+    if not any(
+        LANGUAGE_ALIASES.get(lang, lang) == "rust" for lang in profile.languages
+    ):
+        return []
+
+    caveat = (
+        "  Indexing runs this project's build scripts (build.rs) and proc "
+        "macros as you — the same trust you extend by opening it in an "
+        "editor. Enable it only for repositories you trust."
+    )
+    if available:
+        message = (
+            "rust-analyzer is installed but NOT enabled. It resolves Rust "
+            "types and call targets far more precisely than the built-in "
+            "tree-sitter analyzer.\n"
+            "  Enable per run:  --backend rust-analyzer\n"
+            "  Or by env:       HYPERGUMBO_RUST_ANALYZER=1\n"
+            f"{caveat}"
+        )
+    else:
+        message = (
+            "rust-analyzer is not installed. Installing it gives hypergumbo "
+            "far more precise Rust type and call-target resolution.\n"
+            "  Install:  rustup component add rust-analyzer\n"
+            "  Then enable per run with --backend rust-analyzer.\n"
+            f"{caveat}"
+        )
+
+    return [PartialInstallWarning(
+        category="rust_analyzer_optin",
+        message=message,
+        language="rust",
+    )]
+
+
 def check_partial_linker_requirements(
     linker_ctx: "LinkerContext",
 ) -> list[PartialInstallWarning]:
@@ -426,6 +492,15 @@ def check_partial_install_warnings(
 
     # Check for partial linker requirements
     all_warnings.extend(check_partial_linker_requirements(linker_ctx))
+
+    # Disclose the opt-in Rust backend and what enabling it means. Availability
+    # is resolved here rather than inside the check so the check stays pure and
+    # testable in both states without shelling out.
+    all_warnings.extend(
+        check_rust_analyzer_disclosure(
+            profile, available=is_rust_analyzer_available(),
+        ),
+    )
 
     # Emit warnings if requested
     if emit_warnings:
