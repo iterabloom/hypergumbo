@@ -5,32 +5,19 @@
 
 ## Audited IO Surface
 
-Hypergumbo's safety claims are checked by running hypergumbo against its own source:
-``hypergumbo verify-claims . --claims docs/hypergumbo.claims.yaml``.
+Hypergumbo's safety claims are checked by running hypergumbo against its own source: ``hypergumbo verify-claims . --claims docs/hypergumbo.claims.yaml``, gated in CI by ``scripts/check-self-claims``.
 
-**Read the sections below as CLAIMS UNDER TEST, not as assurances.** They state what each
-entry-point category is *intended* to do. What the analysis actually reports is this, measured
-on 2026-08-07:
+**Read the claims below as CLAIMS UNDER TEST, not as assurances.** They state what each entry-point category is *intended* to do. What the analysis actually reports is:
 
 | verdict | count | meaning |
 |---|---|---|
 | **violated** | 2 | the tool found flows contradicting the claim |
 | **inconclusive** | 16 | the analysis could not see enough to confirm |
-| **confirmed** | **0** | — |
+| **confirmed** | 0 | checked and held |
 
-**Two claims below are currently FALSE and are marked inline.** ``runtime-cli-no-subprocess``
-and ``runtime-cli-no-host-fs`` are both reported ``violated``. The subprocess one was
-independently confirmed with a canary: runtime subcommands shell out to ``git``.
+The ``inconclusive`` verdicts are not near-misses. This repository contains code in languages with no taint catalogue, so the analysis declines to confirm rather than reporting silence as safety. A ``confirmed`` verdict requires every code-bearing language present to be analysable.
 
-**The sixteen ``inconclusive`` verdicts are not near-misses.** This repository contains code in
-sixteen languages with no taint catalogue (bash, sql, php, csharp, solidity, and others), so the
-analysis cannot trace flows through them and declines to confirm rather than reporting silence
-as safety. A ``confirmed`` verdict requires that every code-bearing language present be
-analysable; that is not true of this repository today.
-
-**This file previously asserted that regressions "fail the gate". There was no gate** — no
-workflow referenced ``verify-claims`` (WI-vanun). That is what let the text above drift from
-what the tool reports. The gate is being added so the two cannot diverge again.
+**A ``violated`` verdict from this tool is trustworthy; a ``confirmed`` one means “found nothing, having looked at what it could see”.** What it can see is bounded by the known limitations at the end of this section.
 
 ### Entry-point category: ``add_extras_entry``
 
@@ -39,10 +26,10 @@ Prohibited zones (claim: zero unsanitized reach):
 - ``dev_zone``
 - ``host_fs``
 
-**add-extras-no-host-fs** — add-extras / remove-extras dispatch to install_* subcommands but
+**add-extras-no-host-fs** — **INCONCLUSIVE** (the analysis could not see enough to confirm) — add-extras / remove-extras dispatch to install_* subcommands but
 do not perform writes outside the wrapper functions themselves.
 
-**add-extras-no-dev-zone** — add-extras / remove-extras do not transitively reach dev-zone code paths.
+**add-extras-no-dev-zone** — **INCONCLUSIVE** (the analysis could not see enough to confirm) — add-extras / remove-extras do not transitively reach dev-zone code paths.
 
 ### Entry-point category: ``build_grammars_entry``
 
@@ -52,14 +39,14 @@ Prohibited zones (claim: zero unsanitized reach):
 - ``host_fs``
 - ``install_artifact``
 
-**build-grammars-no-host-fs** — build-grammars writes ONLY through tmp_artifact wrappers — the
+**build-grammars-no-host-fs** — **INCONCLUSIVE** (the analysis could not see enough to confirm) — build-grammars writes ONLY through tmp_artifact wrappers — the
 build dir scaffolding goes through tmp_artifact_write, and the
 install effect is via the pip subprocess.
 
-**build-grammars-no-install-artifact** — build-grammars does not directly copy install artifacts; pip
+**build-grammars-no-install-artifact** — **INCONCLUSIVE** (the analysis could not see enough to confirm) — build-grammars does not directly copy install artifacts; pip
 handles the install side via subprocess.
 
-**build-grammars-no-dev-zone** — build-grammars does not transitively reach dev-zone code paths.
+**build-grammars-no-dev-zone** — **INCONCLUSIVE** (the analysis could not see enough to confirm) — build-grammars does not transitively reach dev-zone code paths.
 
 ### Entry-point category: ``install_embeddings_entry``
 
@@ -69,14 +56,14 @@ Prohibited zones (claim: zero unsanitized reach):
 - ``host_fs``
 - ``install_artifact``
 
-**install-embeddings-no-host-fs** — install-embeddings does not write directly to arbitrary filesystem
+**install-embeddings-no-host-fs** — **INCONCLUSIVE** (the analysis could not see enough to confirm) — install-embeddings does not write directly to arbitrary filesystem
 paths. The pip subprocess writes to site-packages on its own;
 hypergumbo's code does not write outside its wrappers.
 
-**install-embeddings-no-install-artifact** — install-embeddings does not copy install artifacts to ~/.local/bin
+**install-embeddings-no-install-artifact** — **INCONCLUSIVE** (the analysis could not see enough to confirm) — install-embeddings does not copy install artifacts to ~/.local/bin
 or similar (no install_artifact wrapper calls).
 
-**install-embeddings-no-dev-zone** — install-embeddings does not transitively reach dev-zone code paths.
+**install-embeddings-no-dev-zone** — **INCONCLUSIVE** (the analysis could not see enough to confirm) — install-embeddings does not transitively reach dev-zone code paths.
 
 ### Entry-point category: ``install_gitleaks_entry``
 
@@ -85,10 +72,10 @@ Prohibited zones (claim: zero unsanitized reach):
 - ``dev_zone``
 - ``host_fs``
 
-**install-gitleaks-no-host-fs** — install-gitleaks writes ONLY through install_artifact / tmp_artifact
+**install-gitleaks-no-host-fs** — **INCONCLUSIVE** (the analysis could not see enough to confirm) — install-gitleaks writes ONLY through install_artifact / tmp_artifact
 wrappers — never directly to arbitrary filesystem paths.
 
-**install-gitleaks-no-dev-zone** — install-gitleaks does not transitively reach dev-zone code paths.
+**install-gitleaks-no-dev-zone** — **INCONCLUSIVE** (the analysis could not see enough to confirm) — install-gitleaks does not transitively reach dev-zone code paths.
 
 ### Entry-point category: ``install_rust_analyzer_entry``
 
@@ -98,13 +85,13 @@ Prohibited zones (claim: zero unsanitized reach):
 - ``host_fs``
 - ``install_artifact``
 
-**install-rust-analyzer-no-host-fs** — install-rust-analyzer delegates entirely to the rustup subprocess —
+**install-rust-analyzer-no-host-fs** — **INCONCLUSIVE** (the analysis could not see enough to confirm) — install-rust-analyzer delegates entirely to the rustup subprocess —
 hypergumbo's code does not write to disk directly.
 
-**install-rust-analyzer-no-install-artifact** — install-rust-analyzer does not call any install_artifact wrappers
+**install-rust-analyzer-no-install-artifact** — **INCONCLUSIVE** (the analysis could not see enough to confirm) — install-rust-analyzer does not call any install_artifact wrappers
 (rustup handles install side-effects).
 
-**install-rust-analyzer-no-dev-zone** — install-rust-analyzer does not transitively reach dev-zone code paths.
+**install-rust-analyzer-no-dev-zone** — **INCONCLUSIVE** (the analysis could not see enough to confirm) — install-rust-analyzer does not transitively reach dev-zone code paths.
 
 ### Entry-point category: ``runtime_cli_entry``
 
@@ -116,10 +103,7 @@ Prohibited zones (claim: zero unsanitized reach):
 - ``network``
 - ``subprocess``
 
-**runtime-cli-no-host-fs** — ⚠ **CURRENTLY VIOLATED (1178 flows).** Also known-false in detail:
-``cmd_sketch`` contains a raw ``shutil.rmtree`` that bypasses the wrappers
-entirely, so "all writes go through the safety_zones wrappers" is not
-true as written. Claim retained as the target state. — Runtime CLI subcommands (cmd_sketch, cmd_run, cmd_slice,
+**runtime-cli-no-host-fs** — ⚠ **CURRENTLY VIOLATED** — Runtime CLI subcommands (cmd_sketch, cmd_run, cmd_slice,
 cmd_search, cmd_routes, cmd_explain, cmd_symbols, cmd_compact,
 cmd_io_boundaries, cmd_verify_claims, cmd_catalog,
 cmd_test_coverage, cmd_dead_code_maybe, cmd_config,
@@ -128,28 +112,18 @@ filesystem paths. All writes go through the safety_zones wrappers
 (cache_write / user_out_write / tmp_artifact_write) in their
 respective peer zones.
 
-**runtime-cli-no-network** — Runtime CLI subcommands do not initiate network sends. Embeddings
+**runtime-cli-no-network** — **INCONCLUSIVE** (the analysis could not see enough to confirm) — Runtime CLI subcommands do not initiate network sends. Embeddings
 downloads happen only via the install-embeddings extras subcommand
 and downstream library calls — never from the analyze-my-code path.
 
-**runtime-cli-no-subprocess** — ⚠ **CURRENTLY VIOLATED (1101 flows), and independently
-disproved with a canary.** Runtime subcommands DO shell out to ``git``
-with cwd set to the target repository. Measured invocation counts:
-``sketch`` 28, ``io-boundaries`` 10, ``survey`` 6, ``symbols`` 4,
-``dead-code-maybe`` 4. The ``git status`` call was removed because it
-executed programs the target repo controls; ``rev-parse HEAD``,
-``rev-list --max-parents=0`` and ``config --get remote.origin.url``
-remain. A 15-key config sweep fired no canary for those three, so they
-are documented rather than urgent — but the claim as written is false.
-Claim retained as the target state; eliminating them means reading
-``.git/HEAD``, ``.git/config`` and packed-refs directly. — Runtime CLI subcommands do not shell out. All subprocess invocations
+**runtime-cli-no-subprocess** — ⚠ **CURRENTLY VIOLATED** — Runtime CLI subcommands do not shell out. All subprocess invocations
 (curl, git, pip, rustup, gitleaks) happen only via extras /
 build-time subcommands.
 
-**runtime-cli-no-install-artifact** — Runtime CLI subcommands do not install software (no writes via the
+**runtime-cli-no-install-artifact** — **INCONCLUSIVE** (the analysis could not see enough to confirm) — Runtime CLI subcommands do not install software (no writes via the
 install_artifact wrappers).
 
-**runtime-cli-no-dev-zone** — Runtime CLI subcommands do not transitively reach dev-zone code
+**runtime-cli-no-dev-zone** — **INCONCLUSIVE** (the analysis could not see enough to confirm) — Runtime CLI subcommands do not transitively reach dev-zone code
 paths (tracker sync, agent supervisor, repository mutation).
 Hypergumbo's analyze-my-code path is separated from its
 development tooling by package boundaries; this claim makes the
@@ -187,7 +161,9 @@ Each claim verifies that no unsanitized data from the source entry-point categor
 
 Short-name sink matching is necessarily over-approximate at receivers the DDG cannot resolve — call-RHS bindings (``x = requests.Session(); x.get(...)``), parameter receivers, and closure captures. At those sites verify-claims may report findings on common method names (``.get`` / ``.run`` / ``.replace`` / ``.write``) that reach generic primitives the wrappers don't cover. Treat these as documented overapproximation rather than genuine safety regressions.
 
-**Corrected 2026-08-07:** this paragraph previously ended "the load-bearing claims (dev-zone unreachability from runtime CLI, install zones not reached from runtime CLI) verify cleanly." They do not. Both are ``inconclusive`` — not confirmed — because this repository contains code the taint analysis has no catalogue for. Two further limitations bear on every ``confirmed`` verdict this tool emits, here or in a user's repo: ``pathlib.Path`` method calls are invisible to the I/O catalogue (a receiver-typing gap), and a language that emits even one call edge passes the coverage check while the rest of its call structure may be unanalysable — Kotlin emits one and misses roughly 95% of its catalogued sinks. A ``violated`` verdict from this tool is trustworthy; a ``confirmed`` one means "found nothing, having looked at what it could see", and what it could see is bounded by the above.
+**This paragraph used to end “the load-bearing claims (dev-zone unreachability from runtime CLI, install zones not reached from runtime CLI) verify cleanly”. They do not** — both are ``inconclusive``, not confirmed, because this repository contains code the taint analysis has no catalogue for.
+
+Two further limitations bound EVERY ``confirmed`` verdict this tool emits, here or in a user's repository. ``pathlib.Path`` method calls are invisible to the I/O catalogue — a receiver-typing gap, so the most common way Python writes a file registers as no I/O boundary at all. And a language that emits even ONE call edge passes the coverage check while the rest of its call structure may be unanalysable: Kotlin emits one and misses roughly 95% of its catalogued sinks.
 
 The surface above is narrower than it was: the post-DDG IR refinement pass (``hypergumbo_core.taint_refine``) rewrites ``python:external:0-0:NAME:unresolved`` dsts to a module-resolved form (e.g., ``python:os.environ:0-0:NAME:unresolved``) when the data-dependence graph can prove what the receiver was bound to — typically receivers bound by file-scope imports or by local assignment to a module attribute. Sink-matching then runs against the resolved module, so the ``external``-module exemption only applies to the residual unresolvable cases above.
 
