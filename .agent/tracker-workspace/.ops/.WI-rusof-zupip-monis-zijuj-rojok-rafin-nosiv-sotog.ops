@@ -1,0 +1,27 @@
+- op: create  # 7202
+  at: '2026-08-07T08:00:40Z'  # 7202
+  by: agent  # 7202
+  actor: jgstern_agent  # 7202
+  clock: 1  # 7202
+  nonce: '7202'  # 7202
+  data:  # 7202
+    kind: work_item  # 7202
+    title: "open(p,'w') and open(p,'a') are reported as fs_READ — the lookup returns the first matching primitive without inspecting the mode argument"  # 7202
+    status: todo_soft  # 7202
+    priority: 2  # 7202
+    parent:  # 7202
+    tags:  # 7202
+    - io_boundary  # 7202
+    isbefore: []  # 7202
+    duplicate_of: []  # 7202
+    not_duplicate_of: []  # 7202
+    pr_ref:  # 7202
+    description: "MEASURED at runtime while probing receiver typing. python.yaml's own notes assert mode-dependent dual classification for builtins.open (fs_read for 'r', fs_write for 'w'/'a'), but the lookup returns the first matching IoPrimitive and never inspects the mode argument, so every open() is fs_read.\n\nWHY IT MATTERS: builtins.open is the highest-frequency file primitive in the catalogue, so this mis-buckets the largest fs population -- and it under-reports WRITES specifically, the direction that matters for a claim like 'runtime CLI does not write to arbitrary paths'. Sits on exactly the path receiver-typing work touches.\n\nNOT VERIFIED: how many corpus sites are affected, or whether any consumer compensates downstream."  # 7202
+    fields: {}  # 7202
+- op: discuss  # a1f9
+  at: '2026-08-07T10:22:39Z'  # a1f9
+  by: agent  # a1f9
+  actor: jgstern_agent  # a1f9
+  clock: 2  # a1f9
+  nonce: a1f9  # a1f9
+  message: "ROOT CAUSE LOCATED, and the obvious fix is measured to make it WORSE.\n\nSurfaced by the INV-kipor measurement sweep (LENS 3). Recorded here rather than\nfolded into INV-kipor: distinct defect, distinct fix site, distinct direction.\n\nSIZE: 273 of 273 `builtins.open` edges on the 8-repo corpus are reported\n`fs_read`. 89 of those carry a write mode. python.yaml catalogues `open` under\nBOTH fs_read and fs_write, so a hinted lookup returns whichever the catalogue\ndeclared first.\n\nNOT THE ROOT CAUSE: `filtered[0]` in io_boundary.lookup_with_module (line 574).\nIt is on the code path for 91.8% of tagged edges (5815/6333), but it ACTUALLY\nARBITRATES only 931 of them (14.7%) -- in the other 4884 the survivor list has\nexactly one element, so every tie-break rule gives the same answer. Genuine\nboundary-level arbitration is 273/6333 = 4.31%.\n\nREORDERING MAKES IT STRICTLY WORSE, measured: today's fs_read-first order is the\nbetter of the two available constant picks (89 errors vs 165 if reversed).\nReversing `catalog.primitives` in-process and re-running production's own\n_rebuild_indices() + tag_io_boundaries changes nothing for 5384/6333 (85.0%) of\ntagged edges, and on kserve the live A/B goes 12 -> 70 errors. Do NOT \"fix\" this\nby reordering the catalogue or CATALOG_BOUNDARY_TYPES.\n\nTHE ACTUAL FIX SITE: `tag_io_boundaries` holds the whole Edge and ALREADY reads\n`edge.meta[\"call_construct\"]` at io_boundary.py:1804. `meta[\"access_mode\"]` is\nsitting right beside it and carries 'write' for `open(p, \"w\")`. A constant pick\nis the wrong shape for a mode-dependent classification; the mode is available at\nthe decision point and is not consulted.\n\nA counter-claim from one adversarial verifier -- that the fix \"cannot live at\nthat site at all\" because no argument literal reaches the decision point -- is\ntrue of lookup_with_module's SIGNATURE but false of tag_io_boundaries, which is\nwhere the Edge is in scope. Verified by reading io_boundary.py:1793-1810.\n\nNOT MEASURED: whether consulting access_mode moves any taint finding (sinks are\nauto-derived from io_primitives, so an fs_read -> fs_write reclassification can\nchange a sink's boundary type). Direction must be stated and measured before it\nlands -- this one can move findings in BOTH directions, unlike INV-kipor's fix.\n\nALSO NOTED, unrelated and cosmetic: cli.py:4824's comment claims the text\nheadline matches the JSON `total_io_edges` field. It does not -- the headline\nexcludes only external_potential, while total_io_edges also excludes\ncommand_launch. That discrepancy is why the INV-kipor A/B has two sanctioned\ndenominators (61.5% vs 87.2%)."  # a1f9

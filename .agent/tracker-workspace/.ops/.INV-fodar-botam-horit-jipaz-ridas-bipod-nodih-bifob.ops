@@ -1,0 +1,24 @@
+- op: create  # f64c
+  at: '2026-08-07T10:21:27Z'  # f64c
+  by: agent  # f64c
+  actor: jgstern_agent  # f64c
+  clock: 1  # f64c
+  nonce: f64c  # f64c
+  data:  # f64c
+    kind: invariant  # f64c
+    title: "io_boundary and taint evaluate qualified-exact vs module-filter in OPPOSITE order, so one classifies what the other refuses"  # f64c
+    status: violated  # f64c
+    priority: 3  # f64c
+    parent:  # f64c
+    tags:  # f64c
+    - io_boundary  # f64c
+    - taint  # f64c
+    - analysis_quality  # f64c
+    isbefore: []  # f64c
+    duplicate_of: []  # f64c
+    not_duplicate_of: []  # f64c
+    pr_ref:  # f64c
+    description: "The two catalogue-match consumers evaluate the SAME two branches in OPPOSITE\norder, so an edge whose callee name matches a catalogue entry exactly AND\ncarries a module hint can be classified by io-boundary and refused by taint.\n\nCONFIRMED IN SOURCE, both endpoints:\n\n  io_boundary.lookup_with_module (io_boundary.py:560-587)\n      1. qualified-name exact  (`self._by_qualified.get(name)`, line 561)\n      2. module filter         (line 570)\n      3. gate_named_entry      (line 584)\n\n  taint._lookup_named_entry (taint.py:352-378)\n      1. module filter         (line 362)\n      2. qualified-name exact  (line 371)\n      3. gate_named_entry      (line 374)\n\nBoth docstrings claim parity with the other. taint's says it mirrors\n\"lookup_with_module's qualified-name-first branch, which runs before its\nkind-aware gate\" — true of the gate, false of the module filter, which is the\nbranch that actually differs.\n\nMEASURED, on pretix, on each consumer's OWN production population:\n  - 4 divergences / 11,871 io-boundary blocking sites\n  - 4 divergences / 27,069 taint blocking sites (independent replication\n    through taint's own _lookup_named_entry, not a counterfactual on\n    io_boundary's inputs)\n  - every one is `csv.writer`, module hint `defusedcsv`, call_construct\n    `method`; direction is \"taint refuses what io-boundary classifies\"\n\nWHY IT IS SMALL BUT NOT ZERO: the shapes must collide — the callee name must be\nregistered under its qualified spelling AND carry a hint that fails\n_module_matches. `defusedcsv` is a drop-in csv replacement, so the hint names a\nmodule the catalogue does not know while the name matches exactly.\n\nNOT DETERMINED: which consumer is CORRECT. Arguments exist both ways — an exact\nqualified-name match carries its own receiver evidence (io_boundary's order),\nbut a present-and-mismatched module hint is positive evidence this is a\ndifferent symbol (taint's order). No finding-level delta was measured, only\nmatch-level. Decide the semantics before changing either, and change both\ntogether or neither.\n\nPROVENANCE: surfaced by the INV-kipor measurement sweep (LENS 4). That lens's\nheadline did not survive adversarial verification (its cohort was truncated on\na cost estimate wrong by ~14x, its \"<external> is provably dead\" claim is false\n-- 3 DST-slot occurrences in kserve -- and it conflated invocations with\ndecision inputs). THIS finding did survive all three refuters and was\nindependently replicated, which is why it is filed separately rather than\ncarried on that lens's other claims.\n\nRELATED, same sweep, not yet filed as its own item: there are 14 catalogue-match\ndecision sites across packages/*/src/, SIX of which have no production caller,\nand no test in the suite enumerates them. INV-kipor's defect turned out to be\nupstream of all 14, so a consumer-parity test was NOT the right remedy there --\nbut the absence of one remains true."  # f64c
+    fields:  # f64c
+      statement: "The io-boundary and taint catalogue matchers MUST reach the same verdict for the same (callee name, module hint, call_construct) triple. Two consumers of one catalogue may not disagree on whether a call is a catalogued primitive."  # f64c
+      root_cause: "io_boundary.lookup_with_module runs its qualified-name-exact branch (line 561) BEFORE the module filter (570); taint._lookup_named_entry runs the module filter (362) BEFORE qualified-exact (371). Each docstring claims parity with the other. Measured: 4 divergences over 11871 io-boundary blocking sites and 4 over 27069 taint blocking sites on pretix, all csv.writer with hint defusedcsv."  # f64c

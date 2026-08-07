@@ -1,0 +1,21 @@
+- op: create  # 4dc3
+  at: '2026-08-07T08:00:44Z'  # 4dc3
+  by: agent  # 4dc3
+  actor: jgstern_agent  # 4dc3
+  clock: 1  # 4dc3
+  nonce: 4dc3  # 4dc3
+  data:  # 4dc3
+    kind: work_item  # 4dc3
+    title: "JS: process.send/process.on and every 'new WebSocket(...)' receiver emit NO edge despite being catalogued (JS_KNOWN_GLOBALS drift)"  # 4dc3
+    status: todo_soft  # 4dc3
+    priority: 2  # 4dc3
+    parent:  # 4dc3
+    tags:  # 4dc3
+    - io_boundary  # 4dc3
+    - analysis_quality  # 4dc3
+    isbefore: []  # 4dc3
+    duplicate_of: []  # 4dc3
+    not_duplicate_of: []  # 4dc3
+    pr_ref:  # 4dc3
+    description: "MEASURED on a fixture with positive controls firing in the same run. js_ts.py:777 carries JS_KNOWN_GLOBALS, a HAND-MAINTAINED mirror of the same class as python's EXTERNAL_CONSTRUCTOR_TYPES, and it has drifted: 'process' is absent though process.send/process.on match the bare-global Object.method() pattern its own comment describes, and 'new WebSocket(...)' receivers produce no edge at all.\n\nRELEVANT TO THE SECOND-LANGUAGE REQUIREMENT: JS/TS is the likeliest language in participants' repos (83 sinks vs TypeScript's 6). This is a recall hole in it.\n\nNOT VERIFIED whether process's absence is deliberate -- the surrounding comment reads as though it should be included."  # 4dc3
+    fields: {}  # 4dc3
