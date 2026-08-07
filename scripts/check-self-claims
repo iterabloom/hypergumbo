@@ -1,0 +1,115 @@
+#!/usr/bin/env bash
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# Run hypergumbo against its OWN security claims and fail if the result drifts
+# from the checked-in snapshot.
+#
+# WHY THIS EXISTS. SECURITY.md asserted that claim regressions "fail the gate".
+# There was no gate: no workflow referenced verify-claims (WI-vanun). With
+# nothing checking, the published text drifted until it asserted the OPPOSITE
+# of what the tool reports — "runtime CLI subcommands do not shell out" while
+# hypergumbo reported 1101 violating flows, independently confirmed with a
+# canary that caught `git` being executed 28 times by `sketch` alone.
+#
+# WHY A SNAPSHOT AND NOT "ALL MUST CONFIRM". Two claims are currently VIOLATED
+# and sixteen are INCONCLUSIVE; a gate demanding all-confirmed would fail
+# forever and be switched off within a week. A gate demanding "no worse than
+# recorded" is one a human keeps. Any change in EITHER direction fails, so an
+# improvement also has to be acknowledged by updating the snapshot — that is
+# deliberate: a verdict silently improving is how you stop noticing what the
+# tool actually says.
+#
+# NOT A RATCHET. The mypy ratchet is shrink-only because its metric is a count.
+# This one is a per-claim verdict map, and a verdict moving inconclusive ->
+# violated is a regression while confirmed -> inconclusive may be an honest
+# coverage change. Both need a human to look, so both fail here.
+#
+# Usage:
+#   scripts/check-self-claims            # verify against the snapshot
+#   scripts/check-self-claims --update   # re-record it (review the diff!)
+set -euo pipefail
+
+cd "$(git rev-parse --show-toplevel)"
+
+CLAIMS="docs/hypergumbo.claims.yaml"
+SNAPSHOT="docs/hypergumbo.claims.expected.json"
+ACTUAL="$(mktemp)"
+trap 'rm -f "$ACTUAL"' EXIT
+
+# INVOKE VIA `python -m hypergumbo_core`, NOT the bare `hypergumbo` console
+# script. That script lives in the meta-package, which CI never installs
+# (it pulls PyTorch/CUDA), so on CI the bare command is exit 127 — and an
+# earlier draft of this gate keyed on `command -v hypergumbo` and would have
+# SKIPPED WITH EXIT 0 in the only place it matters, i.e. been a gate that
+# silently does nothing. Same reasoning as the WI-jigup self-tree step and
+# the check-schema-coverage pattern.
+PY_BIN="${PYTHON:-python3}"
+if ! "$PY_BIN" -c "import hypergumbo_core" 2>/dev/null; then
+    echo "check-self-claims: hypergumbo_core not importable — INFRASTRUCTURE" >&2
+    echo "  failure (exit 2), not a claim regression." >&2
+    exit 2
+fi
+
+echo "check-self-claims: analysing hypergumbo with hypergumbo ..." >&2
+# verify-claims exits 1 for violated / 2 for inconclusive. Both are expected
+# states here — the snapshot decides pass/fail, not the exit code.
+"$PY_BIN" -m hypergumbo_core verify-claims . --claims "$CLAIMS" --json \
+    > "$ACTUAL" 2>/dev/null || true
+
+if ! python3 -c "import json,sys; json.load(open(sys.argv[1]))" "$ACTUAL" 2>/dev/null; then
+    echo "check-self-claims: verify-claims produced no parseable JSON." >&2
+    echo "  Treated as INFRASTRUCTURE failure (exit 2), not a claim regression." >&2
+    exit 2
+fi
+
+python3 - "$ACTUAL" "$SNAPSHOT" "${1:-}" <<'PY'
+import json, sys, pathlib
+
+actual_path, snapshot_path, mode = sys.argv[1], sys.argv[2], sys.argv[3]
+actual = {
+    v["claim_id"]: v["verdict"]
+    for v in json.load(open(actual_path))["verdicts"]
+}
+
+if mode == "--update":
+    pathlib.Path(snapshot_path).write_text(
+        json.dumps(actual, indent=2, sort_keys=True) + "\n",
+    )
+    print(f"check-self-claims: snapshot rewritten ({len(actual)} claims).")
+    print("  REVIEW THE DIFF. A verdict moving toward 'violated' is a "
+          "regression you are about to ratify.")
+    raise SystemExit(0)
+
+if not pathlib.Path(snapshot_path).is_file():
+    print(f"check-self-claims: no snapshot at {snapshot_path}; "
+          f"run with --update to record one.", file=sys.stderr)
+    raise SystemExit(2)
+
+expected = json.loads(pathlib.Path(snapshot_path).read_text())
+drift = [
+    (cid, expected.get(cid, "<absent>"), actual.get(cid, "<absent>"))
+    for cid in sorted(set(expected) | set(actual))
+    if expected.get(cid) != actual.get(cid)
+]
+
+if not drift:
+    counts: dict[str, int] = {}
+    for verdict in actual.values():
+        counts[verdict] = counts.get(verdict, 0) + 1
+    summary = ", ".join(f"{n} {v}" for v, n in sorted(counts.items()))
+    print(f"check-self-claims: OK — {len(actual)} claims unchanged ({summary}).")
+    raise SystemExit(0)
+
+print("check-self-claims: SELF-CLAIM DRIFT", file=sys.stderr)
+print("", file=sys.stderr)
+for cid, was, now in drift:
+    arrow = "REGRESSED" if now == "violated" else "changed"
+    print(f"  {arrow}: {cid}: {was} -> {now}", file=sys.stderr)
+print("", file=sys.stderr)
+print("  SECURITY.md describes these verdicts in prose. If this drift is", file=sys.stderr)
+print("  intended, update BOTH: re-record with", file=sys.stderr)
+print("    scripts/check-self-claims --update", file=sys.stderr)
+print("  and correct the corresponding text in SECURITY.md. Updating the", file=sys.stderr)
+print("  snapshot alone recreates the drift this gate exists to catch.", file=sys.stderr)
+raise SystemExit(1)
+PY
