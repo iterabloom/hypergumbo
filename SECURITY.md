@@ -5,7 +5,32 @@
 
 ## Audited IO Surface
 
-Hypergumbo's safety claims are verified by ``hypergumbo verify-claims docs/hypergumbo.claims.yaml`` against an analysis of its own source code. The per-entry-point analysis below states what each CLI subcommand is allowed to do; regressions land as taint-flow findings and fail the gate.
+Hypergumbo's safety claims are checked by running hypergumbo against its own source:
+``hypergumbo verify-claims . --claims docs/hypergumbo.claims.yaml``.
+
+**Read the sections below as CLAIMS UNDER TEST, not as assurances.** They state what each
+entry-point category is *intended* to do. What the analysis actually reports is this, measured
+on 2026-08-07:
+
+| verdict | count | meaning |
+|---|---|---|
+| **violated** | 2 | the tool found flows contradicting the claim |
+| **inconclusive** | 16 | the analysis could not see enough to confirm |
+| **confirmed** | **0** | — |
+
+**Two claims below are currently FALSE and are marked inline.** ``runtime-cli-no-subprocess``
+and ``runtime-cli-no-host-fs`` are both reported ``violated``. The subprocess one was
+independently confirmed with a canary: runtime subcommands shell out to ``git``.
+
+**The sixteen ``inconclusive`` verdicts are not near-misses.** This repository contains code in
+sixteen languages with no taint catalogue (bash, sql, php, csharp, solidity, and others), so the
+analysis cannot trace flows through them and declines to confirm rather than reporting silence
+as safety. A ``confirmed`` verdict requires that every code-bearing language present be
+analysable; that is not true of this repository today.
+
+**This file previously asserted that regressions "fail the gate". There was no gate** — no
+workflow referenced ``verify-claims`` (WI-vanun). That is what let the text above drift from
+what the tool reports. The gate is being added so the two cannot diverge again.
 
 ### Entry-point category: ``add_extras_entry``
 
@@ -91,7 +116,10 @@ Prohibited zones (claim: zero unsanitized reach):
 - ``network``
 - ``subprocess``
 
-**runtime-cli-no-host-fs** — Runtime CLI subcommands (cmd_sketch, cmd_run, cmd_slice,
+**runtime-cli-no-host-fs** — ⚠ **CURRENTLY VIOLATED (1178 flows).** Also known-false in detail:
+``cmd_sketch`` contains a raw ``shutil.rmtree`` that bypasses the wrappers
+entirely, so "all writes go through the safety_zones wrappers" is not
+true as written. Claim retained as the target state. — Runtime CLI subcommands (cmd_sketch, cmd_run, cmd_slice,
 cmd_search, cmd_routes, cmd_explain, cmd_symbols, cmd_compact,
 cmd_io_boundaries, cmd_verify_claims, cmd_catalog,
 cmd_test_coverage, cmd_dead_code_maybe, cmd_config,
@@ -104,7 +132,17 @@ respective peer zones.
 downloads happen only via the install-embeddings extras subcommand
 and downstream library calls — never from the analyze-my-code path.
 
-**runtime-cli-no-subprocess** — Runtime CLI subcommands do not shell out. All subprocess invocations
+**runtime-cli-no-subprocess** — ⚠ **CURRENTLY VIOLATED (1101 flows), and independently
+disproved with a canary.** Runtime subcommands DO shell out to ``git``
+with cwd set to the target repository. Measured invocation counts:
+``sketch`` 28, ``io-boundaries`` 10, ``survey`` 6, ``symbols`` 4,
+``dead-code-maybe`` 4. The ``git status`` call was removed because it
+executed programs the target repo controls; ``rev-parse HEAD``,
+``rev-list --max-parents=0`` and ``config --get remote.origin.url``
+remain. A 15-key config sweep fired no canary for those three, so they
+are documented rather than urgent — but the claim as written is false.
+Claim retained as the target state; eliminating them means reading
+``.git/HEAD``, ``.git/config`` and packed-refs directly. — Runtime CLI subcommands do not shell out. All subprocess invocations
 (curl, git, pip, rustup, gitleaks) happen only via extras /
 build-time subcommands.
 
@@ -147,7 +185,9 @@ Each claim verifies that no unsanitized data from the source entry-point categor
 
 ### Known limitations
 
-Short-name sink matching is necessarily over-approximate at receivers the DDG cannot resolve — call-RHS bindings (``x = requests.Session(); x.get(...)``), parameter receivers, and closure captures. At those sites verify-claims may report findings on common method names (``.get`` / ``.run`` / ``.replace`` / ``.write``) that reach generic primitives the wrappers don't cover. Treat these as documented overapproximation rather than genuine safety regressions; the load-bearing claims (dev-zone unreachability from runtime CLI, install zones not reached from runtime CLI) verify cleanly.
+Short-name sink matching is necessarily over-approximate at receivers the DDG cannot resolve — call-RHS bindings (``x = requests.Session(); x.get(...)``), parameter receivers, and closure captures. At those sites verify-claims may report findings on common method names (``.get`` / ``.run`` / ``.replace`` / ``.write``) that reach generic primitives the wrappers don't cover. Treat these as documented overapproximation rather than genuine safety regressions.
+
+**Corrected 2026-08-07:** this paragraph previously ended "the load-bearing claims (dev-zone unreachability from runtime CLI, install zones not reached from runtime CLI) verify cleanly." They do not. Both are ``inconclusive`` — not confirmed — because this repository contains code the taint analysis has no catalogue for. Two further limitations bear on every ``confirmed`` verdict this tool emits, here or in a user's repo: ``pathlib.Path`` method calls are invisible to the I/O catalogue (a receiver-typing gap), and a language that emits even one call edge passes the coverage check while the rest of its call structure may be unanalysable — Kotlin emits one and misses roughly 95% of its catalogued sinks. A ``violated`` verdict from this tool is trustworthy; a ``confirmed`` one means "found nothing, having looked at what it could see", and what it could see is bounded by the above.
 
 The surface above is narrower than it was: the post-DDG IR refinement pass (``hypergumbo_core.taint_refine``) rewrites ``python:external:0-0:NAME:unresolved`` dsts to a module-resolved form (e.g., ``python:os.environ:0-0:NAME:unresolved``) when the data-dependence graph can prove what the receiver was bound to — typically receivers bound by file-scope imports or by local assignment to a module attribute. Sink-matching then runs against the resolved module, so the ``external``-module exemption only applies to the residual unresolvable cases above.
 
