@@ -1,0 +1,57 @@
+Original commit body from 6899b313236e8dfb62ae327b4316758b855b8a71:
+
+A repo with Rust files now gets an advisory naming the better backend and,
+in the same breath, the trust implication of turning it on. Emitted whether
+or not the binary is installed -- someone deciding whether to install it
+deserves the caveat BEFORE they do.
+
+    rust-analyzer is installed but NOT enabled. It resolves Rust types and
+    call targets far more precisely than the built-in tree-sitter analyzer.
+      Enable per run:  --backend rust-analyzer
+      Or by env:       HYPERGUMBO_RUST_ANALYZER=1
+      Indexing runs this project's build scripts (build.rs) and proc macros
+      as you -- the same trust you extend by opening it in an editor. Enable
+      it only for repositories you trust.
+
+WHY THE CAVEAT IS THE POINT. `rust-analyzer scip <workspace>` EXECUTES that
+workspace's build.rs and expands its proc macros, as the invoking user,
+exit 0, silently. Canary-verified. That is inherent to Cargo rather than a
+hypergumbo defect -- it is the same trust model as opening the project in an
+editor -- but hypergumbo is routinely pointed at repositories the user has
+not read, so the capability must not be advertised without the consequence.
+
+A SAFE MODE WAS ATTEMPTED AND FAILED; THE FAILURE IS RECORDED SO IT IS NOT
+RE-ATTEMPTED BLIND. `--config-path` with `cargo.buildScripts.enable=false`
+and `procMacro.enable=false` was accepted, reported no config errors, and
+ran the build script anyway -- under BOTH the nested and the
+`rust-analyzer.`-prefixed key spellings. My first reading that it worked was
+Cargo CACHING the previous run's build-script output; on three fresh
+never-built crates the canary fires in every arm:
+
+    bare `rust-analyzer scip`                 -> build.rs RAN
+    cargo.buildScripts.enable=false           -> build.rs RAN
+    rust-analyzer.cargo.buildScripts.enable=false -> build.rs RAN
+
+So there is no known way to index a Cargo project without running its code,
+and the opt-in gate is load-bearing for SAFETY -- not only for the ~10x
+indexing cost its own docstring cites, which is the weaker reason. Options
+if this is ever revisited: sandbox the invocation, or generate a
+rust-project.json so cargo is bypassed (losing dependency resolution).
+
+WIRED, not merely written. `check_rust_analyzer_disclosure` is reached
+through `check_partial_install_warnings`, the entry point the CLI already
+calls, and a test asserts that -- otherwise it would be a WI-ratuv family
+member: correct, tested, and called by nobody. Verified live on a real Rust
+crate: the advisory appears on `hypergumbo survey`.
+
+TEST-ISOLATION TRAP FIXED IN PASSING. The wiring test first used a
+hand-rolled linker-context stub carrying only the attributes the aggregator
+read WHEN NO LINKERS WERE REGISTERED. It passed alone and failed under the
+full suite twice, where every package loads: first the JNI linker read
+`ctx.symbols`, then gRPC's requirement check globbed `ctx.repo_root`. The
+neighbouring tests pass `repo_root=None` and survive only because they PATCH
+`check_linker_requirements`; this one exercises the real path deliberately.
+It now uses production's own LinkerContext with a real empty directory, and
+says so, so the None idiom is not copied into another real-path test.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
