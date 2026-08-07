@@ -3930,22 +3930,45 @@ def _extract_edges(
         """WI-fuvuj: if ``call`` is a recognized I/O constructor, return the
         catalog module string for the object it constructs; else ``None``.
 
-        - ``func`` is ``ast.Name`` (e.g. ``open``) → bare constructor name.
+        - ``func`` is ``ast.Name`` (e.g. ``open``) → bare constructor name,
+          trusted only once the name is confirmed to still mean what the table
+          claims (INV-kipor, below).
         - ``func`` is ``ast.Attribute`` with an ``ast.Name`` base that is a
           known module import (e.g. ``socket.socket``) → ``module.attr``.
+
+        INV-kipor: the bare-name branch used to emit the catalogued module with
+        no check at all, while the attribute branch beside it verified its base
+        against ``module_imports``. So ``from decoy_lib import open`` still
+        produced a ``file`` receiver, and ``v.read()`` on it was reported as an
+        ``fs_read`` boundary — a filesystem read invented for an object that is
+        not a file, on the shipping tree.
+
+        A binding to something OTHER than the claimed module withholds the hint;
+        the edge then degrades to ``external`` and every consumer refuses it as an
+        untyped method call. Unbound stays trusted, because for a bare name that
+        means the builtin. The comparison is exact: ``pathlib.Path`` is trusted
+        for ``from pathlib import Path`` and refused for ``from fastapi import
+        Path``. Aliased imports (``from pathlib import Path as P``) miss the table
+        by key and so mint nothing — a false negative, in the safe direction.
         """
         func = call.func
         if isinstance(func, ast.Name):
-            name = func.id
-        elif (
+            claimed = EXTERNAL_CONSTRUCTOR_TYPES.get(func.id)
+            if claimed is None:
+                return None
+            bound = _import_binding_for(func.id, imports, module_imports)
+            if bound is not None and bound != claimed:
+                return None
+            return claimed
+        if (
             isinstance(func, ast.Attribute)
             and isinstance(func.value, ast.Name)
             and func.value.id in module_imports
         ):
-            name = f"{module_imports[func.value.id]}.{func.attr}"
-        else:
-            return None
-        return EXTERNAL_CONSTRUCTOR_TYPES.get(name)
+            return EXTERNAL_CONSTRUCTOR_TYPES.get(
+                f"{module_imports[func.value.id]}.{func.attr}",
+            )
+        return None
 
     def process_code_block(
         block_nodes: list[ast.AST],
@@ -5029,6 +5052,41 @@ def _resolve_call_target(
     return None
 
 
+def _import_binding_for(
+    name: str,
+    imports: dict[str, tuple[str, str]],
+    module_imports: dict[str, str],
+) -> str | None:
+    """The dotted path ``name`` is import-bound to in this file, else ``None``.
+
+    The single answer to "does an import in this file rebind this bare name, and
+    to what?" — the question both bare-name inferences here must ask before
+    treating an identifier as evidence: the WI-supat D3 receiver-type guard
+    (:func:`_receiver_type_id_trustworthy`) and the WI-fuvuj external-constructor
+    inference (``_external_constructor_module``). The two asked it separately and
+    one of them simply didn't (INV-kipor), which is the drift this consolidates.
+
+    ``None`` means *unbound*, which for a bare name means the builtin — that is
+    what makes plain ``open(p)`` still infer a file receiver.
+
+    WHY CALLERS COMPARE THE RESULT BY EQUALITY AND NOT VIA
+    :func:`io_boundary._module_matches`. That predicate answers a deliberately
+    permissive question — "could this module *hint* refer to the catalogued
+    module?" — and so accepts an unqualified reference as a component suffix of a
+    qualified name. Measured, it returns True for ``mylib.pathlib.Path`` against
+    ``pathlib.Path`` and for ``mypkg.file`` against ``file``, i.e. it trusts
+    exactly the vendored/shadowed bindings a binding check exists to refuse.
+    Binding identity is a different question from hint compatibility, so it gets
+    its own comparison rather than reusing one whose permissiveness is a feature
+    elsewhere.
+    """
+    binding = imports.get(name)
+    if binding is not None:
+        module, original = binding
+        return f"{module}.{original}" if module else original
+    return module_imports.get(name)
+
+
 def _receiver_type_id_trustworthy(
     recv_sym: Symbol,
     class_name_counts: dict[str, int],
@@ -5059,8 +5117,9 @@ def _receiver_type_id_trustworthy(
     name = recv_sym.name
     if class_name_counts.get(name, 0) > 1:
         return False
-    if local_symbols.get(name) is recv_sym and (
-        name in imports or name in module_imports
+    if (
+        local_symbols.get(name) is recv_sym
+        and _import_binding_for(name, imports, module_imports) is not None
     ):
         return False
     return True
