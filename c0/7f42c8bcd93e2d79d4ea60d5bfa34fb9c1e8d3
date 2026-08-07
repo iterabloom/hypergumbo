@@ -1,0 +1,72 @@
+Original commit body from e7073925659b828c2f4ff412474a137f1746dc31:
+
+MEASURED DEFECT. A PHP file containing
+`file_put_contents("/tmp/out.txt", $_GET['payload'])` -- a textbook leak --
+returned verdict `confirmed` at exit 0 for the claim "untrusted input must not
+reach the filesystem", because PHP has no taint catalogue and "found no flows"
+was reported as "no flows exist". A Kotlin file reading a socket and writing it
+to disk did the same.
+
+The rule already existed for BOUNDARY claims (WI-kajil / INV-bitig: a blind
+analysis yields `inconclusive`, never a silent confirm). Taint claims skipped
+it. INV-javam's signal was computed, and printed to stderr as a note asking the
+READER to apply the downgrade by hand -- "Treat 'confirmed' verdicts on these
+languages as inconclusive" -- which no CI gate and no hurried human does. The
+verdict word `inconclusive` and the exit code 2 both already existed.
+
+ONE RULE, ONE PLACE. `_require_coverage_to_confirm` is applied at the exit of
+`verify_claims` to EVERY constraint kind, rather than added as a third copy of
+`if not coverage.complete` beside the two in `verify_claim`. A constraint kind
+added later cannot ship unable to distinguish "looked and found nothing" from
+"did not look". The blind-language half REUSES `compute_boundary_coverage`
+rather than growing a second implementation of "did this language produce call
+edges" -- that function is precisely why the boundary side never had this bug.
+A `violated` verdict is never downgraded: finding something is trustworthy
+regardless of coverage; it is the CLEAN result that depends on having looked.
+
+THE FIRST VERSION OF THIS GATE WAS WRONG AND THE SUITE CAUGHT IT. Blocking on
+`unsupported_taint_languages` directly meant a repo containing one yaml, json
+or markdown file -- i.e. every real repo, including one that merely keeps its
+own claims file in-tree -- returned `inconclusive` forever, making `confirmed`
+unreachable. A verdict that is always inconclusive is exactly as useless as one
+that is always confirmed. The gate now keys on languages that produced CALL
+EDGES: a language with no call structure has nothing for a taint flow to travel
+through, so its missing catalogue says nothing about the claim. Caught by
+test_taint_recall_corpus::test_python_source_without_any_sink_confirms; my own
+control test missed it because its fixture was a lone .py file. Pinned by
+test_a_data_file_in_a_covered_repo_does_not_block_confirmation.
+
+VERIFIED LIVE, four cases:
+  php leak (code, no catalogue)          -> inconclusive, exit 2   [was: confirmed]
+  clean python repo containing yaml      -> confirmed              [not blanket-downgraded]
+  encrypt-then-remove control            -> confirmed
+  kotlin socket->file                    -> confirmed              [KNOWN GAP, below]
+
+KNOWN GAP, PINNED AS A STRICT XFAIL RATHER THAN LEFT IN A COMMENT.
+`test_language_with_a_token_call_edge_still_falsely_confirms`. The coverage
+check asks "did this language produce ANY call edges", and one edge is enough
+to look covered. The Kotlin fixture emits exactly one `calls` edge while every
+external method call -- ~95% of its 93 catalogued sinks (WI-nasuf) -- is
+missing, so it still confirms. Closing it needs a finer signal than "any", e.g.
+the share of method-construct call edges the catalogue can match, which is a
+measurement exercise rather than a predicate change.
+
+A TEST THAT PASSED FOR THE WRONG REASON, now fixed rather than left:
+`test_verify_claims_notice_for_unsupported_taint_language` has no edges in its
+fixture, so it goes inconclusive down the VACUOUS-ANALYSIS path; deleting the
+uncatalogued-language rule outright would leave it green. The new
+`test_uncatalogued_language_WITH_code_blocks_confirmation` puts a code-bearing
+uncatalogued language beside a covered one so only the rule under test can
+produce the verdict, and asserts the output names WHICH language was blind.
+
+Two fixtures that asserted a VACUOUS analysis (zero call edges) could confirm a
+taint claim were corrected to describe a repo the analysis actually looked at --
+the same INV-bitig reason a boundary claim never could. Their real property (no
+false notice on a supported language) is unchanged.
+
+Ratchet: the first cut of this regressed possibly-undefined 12 -> 13 by guarding
+`per_lang_sinks` at the call site instead of hoisting its declaration beside
+`dataflow_rows`, which exists six lines away for exactly this reason. Fixed at
+source; whole-tree strict back to 672, delta 0.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
