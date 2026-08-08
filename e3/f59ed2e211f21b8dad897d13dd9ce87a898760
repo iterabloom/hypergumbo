@@ -1,0 +1,57 @@
+Original commit body from b50873e3878aca798b9815df689814ef7f274d7d:
+
+Two features disagreed about who decides `is_resolved`. confidence:F1 (ADR-0039)
+derives Edge.confidence from (evidence_type, is_resolved) inside Edge.create --
+at CONSTRUCTION time -- while ADR-0037 ruling 1 makes that producer value
+ADVISORY, Edge.create defaults it to True, and ir.py's own field docstring says
+"the producer-time value ... is ADVISORY; the finalize edge-resolution
+sub-step's verdict is what serializes."
+
+_finalize_edge_resolution duly flips the flag to False for every external dst
+and left the stale number behind, so unresolved calls shipped at the RESOLVED
+base: ast_call at 0.85 where the verdict says 0.40, ast_call_direct at 0.85
+where it says 0.50. finalize.py's header even recorded "Edge.confidence
+untouched" as deliberate -- a note written before confidence depended on the
+flag at all.
+
+MEASURED with production's own create_boundary_nodes + resolution sub-step:
+caddy 6,167, mitmproxy 8,880, poetry 4,074, alertmanager 3,922 = 23,043 edges,
+four repos, two languages, two evidence types. NOT a Go producer defect: any
+producer that takes Edge.create's default and whose dst resolves external hits
+it. The correction therefore lands at the one place that knows the verdict. The
+filed remedy (pass is_resolved=False at the Go emit site) would have patched a
+slice of a language-agnostic defect.
+
+THE FILED MECHANISM IS A DIFFERENT, ALREADY-CLOSED DEFECT, AND BOTH OBVIOUS
+MEASUREMENTS OF IT ARE TAUTOLOGIES. INV-fazim describes a live taint FP channel
+-- an edge carrying is_resolved=True at an external dst reaching the ungated
+bare-name fallback. Probing AFTER finalize finds 0 of 125,007 such edges across
+9 repos, because finalize defines that predicate away. Probing BEFORE finalize
+also finds none, because the flag has not flipped yet. Neither zero is evidence.
+Closing the item on the post-finalize null would have repeated the INV-nufob
+false-close exactly; two independent adversarial re-measurements inverted that
+proposed closure.
+
+DIRECTION: strictly downward and confined to unresolved edges. Measured on
+caddy: 6,140 down, 0 UP, and 0 resolved edges changed at all.
+receiver_blind_magnets bands at 0.80 and was the obvious exposure, but its
+contract requires is_resolved to be TRUE, so this change cannot add or remove a
+magnet finding -- structurally, not merely observationally. Its 0-in-both-arms
+reading was an unexercised instrument and is reported as such rather than as
+evidence of safety. slice's min_confidence defaults to 0.0, so no default view
+loses an edge.
+
+DELIBERATELY NOT TOUCHED, each with its own test: an explicit producer
+confidence keeps its value (ADR-0039 -- re-deriving it would replace a
+considered judgement with a table lookup); rank_score is re-mirrored only while
+it still equals the old confidence, since ruling 3 says it diverges once a
+producer relocates a ranking adjustment onto it. An evidence type with no
+resolution split (ast_import, 0.95 either way) and one with no seed at all are
+both no-ops. Idempotent, so the sub-step is safe to re-enter.
+
+DOES NOT CLOSE INV-fazim. The item's own statement describes the taint FP
+channel, which is closed by different means; this fixes the defect the
+re-measurement found underneath it. The filing is refiled with this mechanism.
+
+Refs: INV-fazim
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
