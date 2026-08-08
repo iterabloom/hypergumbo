@@ -32,3 +32,10 @@
   clock: 2  # 2476
   nonce: '2476'  # 2476
   message: "Found while measuring INV-linub-nokij-gibim-rovok-moros-gural-domip-rimof (the catalogue-reach class). Sibling finding: INV-fazim (go is_resolved bypass). Both are FALSE-POSITIVE / silent-drop channels surfaced by the same nine-language measurement; INV-linub itself was filed as a false-negative class."  # 2476
+- op: discuss  # 84ac
+  at: '2026-08-08T21:03:19Z'  # 84ac
+  by: agent  # 84ac
+  actor: jgstern_agent  # 84ac
+  clock: 3  # 84ac
+  nonce: 84ac  # 84ac
+  message: "SPLIT: the objc half is TRUE AND LIVE; the rust half is FALSE AS FILED.\n\nOBJC (live): corrupt dst ids among taint call edges = 1,534 / 4,548 = 33.7%\n(AFNetworking 853/1,894 = 45.0%, CocoaLumberjack 681/2,654 = 25.7%).\nFinding-level delta of fixing symbol_path_slot: +11 sink matches, 0 losses, all\nobjc; 11/11 adjudicated in source as true class+selector calls.\n\nRUST (false as filed): the filing claims production emits\n`rust:external:0-0:std::fs::create_dir:unresolved`. It does not. For\n`use std::fs; fs::create_dir()` production emits\n`rust:std::fs:0-0:create_dir:unresolved`, which parses correctly AND MATCHES.\nReal rust corruption comes from boundary_external_symbol_synthesis re-emitting a\nfabricated extra `0-0` slot -- already named verbatim in ir.py's\ncreate_boundary_nodes comment. Rust corrupt ids = 2,041/50,731 = 4.0%; go =\n0/69,728.\n\nFIX SHAPE: span-anchor symbol_path_slot. For objc the IDS ARE WELL-FORMED and\nthe PARSER is wrong, so re-canonicalising the id is a NO-OP (measured: arm C = 0\non every repo). Rust additionally needs catalogue-key alignment (index holds\n`mod.name`, analyzer emits `mod::name`) or its 2,041 corrupt ids stay\nunmatchable regardless.\n\nEVIDENCE LIMIT, stated: NOT INDEPENDENTLY REPLICATED. Both refuters in this\nitem's measurement group attacked INV-fazim and never re-ran these counts or the\n+11/0 delta. Replicate before acting. Also: 5 of 8 AFNetworking sites are under\nTests/, so re-adjudicate the 11 gains after _source_scope test exclusion."  # 84ac

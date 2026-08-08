@@ -1,0 +1,24 @@
+- op: create  # 456f
+  at: '2026-08-08T19:24:58Z'  # 456f
+  by: agent  # 456f
+  actor: jgstern_agent  # 456f
+  clock: 1  # 456f
+  nonce: 456f  # 456f
+  data:  # 456f
+    kind: invariant  # 456f
+    title: "Swift emits the receiver VARIABLE NAME in the module slot, so the hint is a local identifier rather than a type"  # 456f
+    status: violated  # 456f
+    priority: 3  # 456f
+    parent:  # 456f
+    tags:  # 456f
+    - analysis_quality  # 456f
+    - io_boundary  # 456f
+    - cross_language_parity  # 456f
+    isbefore: []  # 456f
+    duplicate_of: []  # 456f
+    not_duplicate_of: []  # 456f
+    pr_ref:  # 456f
+    description: "Swift puts the RECEIVER VARIABLE NAME where every other analyzer puts a module\nor type, so the module slot carries a local identifier rather than evidence.\n\nOBSERVED (probe run during the WI-zilag / PR #247 measurement sweep): a Swift\ncall on a local named `fm` emitted\n\n    swift:fm:0-0:fileExists\n\n`fm` is a variable name, not a module and not a type. The io-boundary and taint\nmatchers both read that slot as a MODULE HINT and filter catalogue entries with\n`_module_matches` against it. A variable name can only ever produce a spurious\nmatch or, far more often, silence -- and because a present-but-mismatched hint\nis REFUSED outright (it never reaches gate_named_entry's no-hint path), this\nalso suppresses matches that the untyped path would otherwise have allowed.\n\nWHY IT MATTERS BEYOND SWIFT: the swift catalogue holds 104 primitives, 97 of\nthem method-kind. If the slot is a variable name for method calls generally,\nthat catalogue is largely unreachable, the same shape kotlin is in (WI-nasuf).\n\nWHY IT IS FILED RATHER THAN FIXED HERE: PR #247 was python-only and deliberately\nso. Swift was surveyed as a candidate second language and DISQUALIFIED -- not\nbecause it lacks the shape (URL.appendingPathComponent IS type-preserving in the\nlanguage) but because every catalogued swift primitive takes the URL/path as an\nARGUMENT, so there is no receiver to type. That disqualification is independent\nof this defect.\n\nSTATUS OF THE EVIDENCE, stated honestly: this is ONE probe observation from a\nsweep whose verifiers did not run (the workflow hit a usage limit). It has NOT\nbeen reproduced independently, the population has NOT been sized, and no repo\nsurvey was done. The FIRST action on this item is to reproduce the emission on a\nreal Swift repo and size how many method-kind call sites carry a variable name\nin the module slot. Do not act on the 104/97 catalogue figures as if they were\na measured blast radius -- they are catalogue counts, not site counts.\n\nRELATED: kotlin emits no unresolved method-call edge for a receiver method call\nat all (WI-nasuf). Both were found the same way -- a positive control that\nFAILED, which is what distinguishes \"measured zero\" from \"instrument null\"."  # 456f
+    fields:  # 456f
+      statement: "A call edge's module slot MUST carry a module or type identity, never a local variable name. A consumer reading it as a module hint cannot distinguish the two, and a present-but-wrong hint is refused outright rather than degrading to the no-hint path."  # 456f
+      root_cause: "UNCONFIRMED. Observed once: a swift call on a local named 'fm' emitted swift:fm:0-0:fileExists. The emission site in the swift analyzer has not been located and the population has not been sized."  # 456f

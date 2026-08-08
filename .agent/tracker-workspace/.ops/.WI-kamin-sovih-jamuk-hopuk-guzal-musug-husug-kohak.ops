@@ -1,0 +1,22 @@
+- op: create  # 31a9
+  at: '2026-08-07T20:21:12Z'  # 31a9
+  by: agent  # 31a9
+  actor: jgstern_agent  # 31a9
+  clock: 1  # 31a9
+  nonce: 31a9  # 31a9
+  data:  # 31a9
+    kind: work_item  # 31a9
+    title: "Go: close the package-stripped resolution-order hijack BEFORE carrying initializer types into the module slot (17.1% wrong-symbol rate measured)"  # 31a9
+    status: todo_hard  # 31a9
+    priority: 3  # 31a9
+    parent:  # 31a9
+    tags:  # 31a9
+    - analysis_quality  # 31a9
+    - io_boundary  # 31a9
+    - taint  # 31a9
+    isbefore: []  # 31a9
+    duplicate_of: []  # 31a9
+    not_duplicate_of: []  # 31a9
+    pr_ref:  # 31a9
+    description: "Go's receiver typing is HEALTHY; its residual gap is initializer type INFERENCE.\nThe obvious fix for it is NET-HARMFUL and must not be built as-is.\n\nFiled from the WI-zilag measurement sweep, where Go was measured as the\nsecond-language control. The valuable result is the negative one.\n\n=== GO DOES NOT HAVE PYTHON'S ANNOTATED-RECEIVER GAP ===\n\nMeasured, production analyzer, 5 Go trees: 3,618 / 3,741 = 96.7% of\npackage-qualified-receiver catalogue-name call sites already reach a usable\nmodule slot, and 430 annotated-PARAMETER sites are io_boundary-tagged by\nproduction today. Positive control:\n\n    func h(c net.Conn, b []byte) { c.Write(b) }\n        -> go:net:0-0:Write:unresolved -> net.Conn.Write / net_send\n\nSo WI-zilag's Python producer fix has NO Go counterpart to build, and a single\nshared producer mechanism across the two languages is the WRONG factoring.\n\n=== THE ACTUAL GO GAP ===\n\nInitializer type inference drops the package qualifier:\n\n    tr := &http.Transport{}       // type not carried to the module slot\n    bw := bufio.NewWriter(w)      // same\n\n=== WHY THE OBVIOUS FIX IS NET-HARMFUL (measured, do not skip this) ===\n\nA candidate producer fix that carries the initializer's type into the module\nslot was A/B'd in-process on 5 Go trees with the repo untouched:\n\n  - 118 of 692 moved edges (17.1%) point at the WRONG IN-REPO SYMBOL, because\n    Go strips the package prefix and probes the repo symbol table BEFORE the\n    import-path fallback. 66 of those 118 (55.9%) land on a struct `:field`.\n    Per repo: alertmanager 38/89, caddy and others similar.\n  - User-facing gain, cold-cache two-arm CLI A/B on `total_io_edges`:\n    caddy 228->232 (+4), kserve 253->257 (+4), alertmanager 211->211 (+0),\n    prometheus 617->617 (+0). Total +8 on a 1,309 baseline = +0.61%.\n    dnscrypt-proxy (2.5% of the corpus) not measured.\n\n17.1% hijack rate for +0.61% recall is the wrong trade for a security tool.\n\n=== DISPUTED, AND RECORDED AS DISPUTED ===\n\nOne measurement lens claimed closing this gap makes INV-fazim strictly BETTER\n(-13.6% fazim population, -406 taint sink matches, zero gains on the ungated\nhits[0] channel, +25 io tagged edges with zero losses). An adversarial verifier\nmeasured the hijacks above and inverted that verdict. Both ran production code.\nThe disagreement is NOT resolved and must be resolved before any Go work here:\nthe two are not obviously incompatible (removals on the ungated channel and\nhijacks on the resolution channel can coexist), so the open question is the NET\neffect on findings, which nobody measured.\n\n=== WHAT WOULD MAKE THIS BUILDABLE ===\n\nFix the resolution ORDER first: Go must consult the import-path fallback BEFORE\nprobing the repo symbol table for a package-stripped name. That is the defect\nproducing the 17.1% hijack rate, it is independent of initializer inference, and\nit is plausibly the same root cause as INV-fazim (go marking an external\ninstance-method call is_resolved=True on an `external` dst). Size that first.\n\nDO NOT carry initializer types into the module slot until the hijack channel is\nclosed and the disagreement above is resolved with a finding-level measurement."  # 31a9
+    fields: {}  # 31a9
