@@ -15,15 +15,15 @@ for focused LLM context.
 
 hypergumbo analyzed its own source code and found:
 - **301** Python modules (134 analyzers, 59 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 30, Infrastructure 8; 71 core, 4 CLI, 33 tracker)
-- **38695** symbols (functions, classes, methods)
-- **131586** edges by type:
-  - calls: 66211
-  - contains: 35736
-  - imports: 11873
-  - instantiates: 10662
-  - references: 4537
-  - module_attr_ref: 1217
-  - other: 1350
+- **38960** symbols (functions, classes, methods)
+- **137972** edges by type:
+  - calls: 72266
+  - contains: 35915
+  - imports: 11933
+  - instantiates: 10699
+  - references: 4579
+  - module_attr_ref: 1227
+  - other: 1353
 
 ## Package Architecture
 
@@ -85,7 +85,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 38695 Symbols + 131586 Edges + UsageContexts           │
+│  Output: 38960 Symbols + 137972 Edges + UsageContexts           │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -271,19 +271,19 @@ These symbols have the highest bidirectional centrality
 
 | Symbol | Kind | Score | Location |
 |--------|------|-------|----------|
-| `Symbol` | class | 9506.2 | ir.py |
-| `Span` | class | 6380.8 | ir.py |
-| `write_text` | external_symbol | 3310.0 | <external> |
-| `LinkerContext` | class | 3276.5 | registry.py |
-| `Edge.create` | method | 2103.3 | ir.py |
+| `Symbol` | class | 9520.0 | ir.py |
+| `Span` | class | 6386.7 | ir.py |
+| `write_text` | external_symbol | 6142.0 | <external> |
+| `LinkerContext` | class | 3280.5 | registry.py |
+| `Edge.create` | method | 2110.1 | ir.py |
 | `TrackerApp` | class | 1946.9 | tui.py |
 | `load_framework_patterns` | function | 1882.5 | framework_patterns.py |
-| `Path` | external_symbol | 1659.0 | <external> |
-| `main` | function | 1578.2 | cli.py |
+| `get` | external_symbol | 1850.0 | <external> |
+| `Path` | external_symbol | 1667.0 | <external> |
+| `main` | function | 1587.4 | cli.py |
+| `append` | external_symbol | 1353.0 | <external> |
 | `clear_pattern_cache` | function | 1336.8 | framework_patterns.py |
-| `Edge` | class | 1284.6 | ir.py |
-| `append` | external_symbol | 1250.0 | <external> |
-| `get` | external_symbol | 1158.0 | <external> |
+| `Edge` | class | 1288.7 | ir.py |
 | `TreeSitterAnalyzer` | class | 1074.7 | base.py |
 | `find_files` | function | 1000.7 | discovery.py |
 
@@ -472,6 +472,7 @@ The `scripts/` directory contains operational tooling. Descriptions are extracte
 | `check-pass-id-agreement` | Pre-commit / CI lint: catalog pass IDs agree with runtime pass IDs. |
 | `check-producer-axis-coherence` | Pre-commit lint: literal-string keyword arguments to ``Edge.create``, |
 | `check-schema-coverage` | Corpus-driven schema-coverage gate (WI-luzuh). |
+| `check-self-claims` | Run hypergumbo against its OWN security claims and fail if the result drifts |
 | `check-self-tree-validation` | Full-suite self-tree validation ratchet gate (WI-jigup). |
 | `check-symbol-kind-drift` | Pre-commit lint: ``*KIND*`` sets in packages/ must be subsets of the |
 | `concept-audit-record` | Record the completion of a Fundamental Concept Audit. |
@@ -484,7 +485,10 @@ The `scripts/` directory contains operational tooling. Descriptions are extracte
 | `generate-security-md` | Regenerate the audited-IO-surface section of SECURITY.md. |
 | `generate_schema_lib.py` | (no description) |
 | `highsev_root_review.py` | High-severity net-new root-review collator (Layer 1 of the root-review helper). |
+| `measure-call-escape-cause.py` | Why does a §3a escape site whose CFG node is a CALL still escape? |
+| `measure-escape-shapes.py` | Where does the ADR-0017 §3a walk lose a tainted value, and to what? |
 | `measure-playbook-overlap.py` | Measure read-then-injected playbook overlap (waste signal). |
+| `measure-sanitizer-module-slot-ab.py` | A/B the sanitizer registration gate's module-slot permit branch. |
 | `per_package_fallback.py` | Per-package fallback for ``scripts/smart-test``'s test selection. |
 | `refresh-stdlib-modules` | Refresh the ``stdlib_modules`` section of an IO-primitive YAML catalog. |
 | `scrub-transcript-corpus` | Backfill: redact known secrets across the whole retained transcript corpus. |
@@ -849,8 +853,8 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: 44933d9b8c35
-  commit_count: 6512
+  commit: 4cfc19b010ba
+  commit_count: 6544
   hypergumbo: 7.0.0
   python: 3.12.3
 -->
