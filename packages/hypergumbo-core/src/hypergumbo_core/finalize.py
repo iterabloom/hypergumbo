@@ -427,6 +427,45 @@ def _finalize_edge_resolution(ctx: FinalizeContext) -> None:
             edge.is_resolved = False
             if edge.dst_ref is None:
                 edge.dst_ref = _derive_dst_ref_from_id(edge.dst)
+        _rederive_confidence_from_verdict(edge)
+
+
+def _rederive_confidence_from_verdict(edge: "Edge") -> None:
+    """INV-fazim: re-derive ``evidence_derived`` confidence from the verdict above.
+
+    confidence:F1 (ADR-0039) derives ``Edge.confidence`` from
+    ``(evidence_type, is_resolved)`` inside ``Edge.create`` — at CONSTRUCTION time,
+    against a value ADR-0037 ruling 1 declares advisory. ``Edge.create`` defaults
+    ``is_resolved=True``, so every producer that does not pass the flag derives the
+    RESOLVED base; the loop above then flips the flag for external dsts and, until
+    now, left the stale number behind. ``ast_call`` shipped at 0.85 where the verdict
+    says 0.40, ``ast_call_direct`` at 0.85 where it says 0.50.
+
+    Measured before the fix, on production's own ``create_boundary_nodes`` +
+    resolution sub-step: caddy 6,167, mitmproxy 8,880, poetry 4,074,
+    alertmanager 3,922 — 23,043 edges over four repos and two languages. Not a Go
+    producer defect, which is why it is corrected here at the one place that knows
+    the verdict rather than at each analyzer's emit site.
+
+    Two things are deliberately NOT touched. An explicit producer confidence keeps
+    its value (ADR-0039: re-deriving it would replace a considered judgement with a
+    table lookup). And ``rank_score`` is only re-mirrored while it still equals the
+    old confidence — ruling 3 says it diverges once a producer relocates a ranking
+    adjustment onto it, and clobbering that would silently discard the adjustment.
+
+    Idempotent: re-deriving from the same verdict yields the same value, so the
+    sub-step is safe to re-enter.
+    """
+    if edge.confidence_source != "evidence_derived":
+        return
+    from hypergumbo_core.confidence import derive_confidence
+    derived = derive_confidence(edge.evidence_type, is_resolved=edge.is_resolved)
+    if derived is None or derived == edge.confidence:
+        return
+    was_mirroring = edge.rank_score == edge.confidence
+    edge.confidence = derived
+    if was_mirroring:
+        edge.rank_score = derived
 
 
 def _finalize_compute_visibility(ctx: FinalizeContext) -> None:
