@@ -462,6 +462,40 @@ def _lookup_symbol_by_module(
 # readline/readlines, fs_write write/writelines).
 EXTERNAL_CONSTRUCTOR_TYPES = {"open": "file", "socket.socket": "socket.socket"}
 
+#: Members that RETURN THE RECEIVER'S OWN TYPE, keyed by the exact type string the
+#: analyzer puts in a symbol id's module slot. ``__truediv__`` carries the ``/``
+#: operator under Python's own name for it, so an operator needs no separate vocabulary.
+#:
+#: DEFAULT-DENY, AND THAT IS MEASURED RATHER THAN CAUTIOUS. Most members of a typed
+#: receiver do not return that type: ``read_text`` → ``str``, ``stat`` →
+#: ``os.stat_result``, ``exists`` → ``bool``, ``open`` → a file object,
+#: ``glob``/``iterdir`` → iterators, ``name``/``stem``/``suffix``/``as_posix`` → ``str``.
+#: Propagating by default scores 25.9% precision on adversarial fixtures (7 of 27 added
+#: boundaries correct) and mints 16 false taint sinks including 2 ``database`` and 2
+#: ``network``; across 8 Python repos 1,955 of 2,296 (85.1%) hop≥1 propagations are
+#: provably wrong or unverifiable, 20 of the 21 provably-wrong ones being a Path→``str``
+#: transition. This allowlist scores 85.7% on the same fixtures and costs 3 boundaries out
+#: of 427 (0.7%). Enumerating the PERMITTING case is also the standing default-deny rule:
+#: a table of blockers fails open the moment the stdlib grows a member.
+#:
+#: KEYED BY EXACT TYPE STRING, looked up with ``dict``/``in`` and never through
+#: :func:`io_boundary._module_matches`. That predicate is permissive by design — it accepts
+#: an unqualified reference as a component suffix, so it treats a vendored
+#: ``mylib.pathlib.Path`` as the real one and mints an ``fs_write`` boundary plus a
+#: ``host_fs`` taint sink for a third-party class that merely shares a name.
+#:
+#: THE CONCEPT'S HOME IS ``FileAnalysis.method_return_types`` (INV-dihos / WI-kuroj), the
+#: language-neutral return-type registry Go and Rust already populate from parsed
+#: signatures. This table is the stdlib complement Python needs — the types here ship no
+#: source for Pass 1 to parse — so it states the same fact in the same shape (qualified
+#: member → returned type) rather than minting a new catalogue for it.
+TYPE_PRESERVING_MEMBERS: dict[str, frozenset[str]] = {
+    "pathlib.Path": frozenset({
+        "__truediv__", "joinpath", "resolve", "absolute", "expanduser",
+        "with_name", "with_suffix", "with_stem", "relative_to", "readlink",
+    }),
+}
+
 # WI-sozoj: Django ORM database-I/O visibility. Django's ORM I/O is invisible to
 # the io-boundary detector because it arrives as bare untyped method calls the
 # catalog correctly refuses (INV-tapat/INV-maluk): ``.save()``/``.filter()``/
@@ -4076,6 +4110,19 @@ def _extract_edges(
             # e.g., stub = EmailServiceStub(channel) -> var_types['stub'] = EmailServiceStub
             if isinstance(node, ast.Assign):
                 for target in node.targets:
+                    if isinstance(target, ast.Name) and not isinstance(
+                        node.value, ast.Call,
+                    ):
+                        # A derivation whose RHS is not a call at all — ``p = d / "f"``.
+                        # The Call branch below runs in-repo class resolution first and
+                        # only then asks about external types; an operator has no call
+                        # target to resolve, so it needs its own entry point rather than
+                        # loosening that branch's guard.
+                        derived = _derived_receiver_module(
+                            node.value, external_var_types,
+                        )
+                        if derived is not None:
+                            external_var_types[target.id] = derived
                     if isinstance(target, ast.Name) and isinstance(node.value, ast.Call):
                         assigned_class = _resolve_call_target(
                             node.value, local_symbols, imports, global_symbols,
@@ -4106,6 +4153,14 @@ def _extract_edges(
                             # type so method calls on this variable emit a
                             # module-qualified unresolved dst.
                             ext_module = _external_constructor_module(node.value)
+                            if ext_module is None:
+                                # A derivation from an already-typed receiver is itself
+                                # typed (``p = d / "f"``). Constructor first: that answers
+                                # "does this BUILD a catalogued object", which is a
+                                # different question from "does this PRESERVE a type".
+                                ext_module = _derived_receiver_module(
+                                    node.value, external_var_types,
+                                )
                             if ext_module is not None:
                                 external_var_types[target.id] = ext_module
 
@@ -5120,6 +5175,53 @@ def _resolve_call_target(
                 )
 
     return None
+
+
+def _derived_receiver_module(
+    value: ast.expr,
+    external_var_types: dict[str, str],
+) -> str | None:
+    """The type an expression yields when it DERIVES from an already-typed receiver.
+
+    ``d / "f.txt"`` and ``d.joinpath("f.txt")`` return a ``pathlib.Path`` when ``d`` is
+    one, so the derived value is as good a receiver as its root. PR #246 types the root
+    from its annotation; without this the type is lost at the first derivation and
+    ``p.write_text(x)`` degrades to the ``external`` placeholder.
+
+    Recursive on the receiver, so a chain works whether it is written as one expression
+    (``d / "a" / "b"``) or several statements. Only :data:`TYPE_PRESERVING_MEMBERS` rows
+    propagate — see that table for why default-deny here is a measurement rather than a
+    precaution, and why the type is compared by exact string.
+
+    Returns ``None`` for every shape that is not an allowlisted derivation of a
+    known-typed receiver, which includes numeric ``a / b`` (no hint on the root),
+    ``os.path.join`` (a module function, not a receiver derivation), and every member
+    that returns something other than the receiver's type.
+    """
+    if isinstance(value, ast.BinOp) and isinstance(value.op, ast.Div):
+        return _preserved_receiver_type(
+            value.left, "__truediv__", external_var_types,
+        )
+    if isinstance(value, ast.Call) and isinstance(value.func, ast.Attribute):
+        return _preserved_receiver_type(
+            value.func.value, value.func.attr, external_var_types,
+        )
+    return None
+
+
+def _preserved_receiver_type(
+    receiver: ast.expr,
+    member: str,
+    external_var_types: dict[str, str],
+) -> str | None:
+    """``member``'s return type when invoked on ``receiver``, if it is the same type."""
+    if isinstance(receiver, ast.Name):
+        hint = external_var_types.get(receiver.id)
+    else:
+        hint = _derived_receiver_module(receiver, external_var_types)
+    if hint is None:
+        return None
+    return hint if member in TYPE_PRESERVING_MEMBERS.get(hint, ()) else None
 
 
 def _import_binding_for(
