@@ -1,0 +1,18 @@
+Original commit body from 78bb7c336fffa2c3ec1a8994543a13ab33fbef0a:
+
+CI's `generate-architecture --check` failed on PR #250: the doc was generated 32
+commits ago against a 30-commit freshness window. Today's five merges tipped it
+over. Regenerated rather than widening the window, per the recorded rule.
+
+Not a code failure and not specific to this PR -- it is a repo-level staleness
+gate that no local check can see (smart-test and check-package-coverage both
+passed), which is precisely why the gate exists. Whoever observes a shared gate
+breach owns it, same rule as the mypy ratchet.
+
+The regen doubles as an independent confirmation of this session's receiver-
+typing work on hypergumbo's own tree: calls edges 66,211 -> 72,266 (+6,055),
+total edges 131,586 -> 137,972, and `write_text` centrality 3,310 -> 6,142. The
+inline expression-receiver emission added in this PR produces call edges that
+previously did not exist at all.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
