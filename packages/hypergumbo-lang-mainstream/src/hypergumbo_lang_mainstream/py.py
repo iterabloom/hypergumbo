@@ -4164,6 +4164,19 @@ def _extract_edges(
                             if ext_module is not None:
                                 external_var_types[target.id] = ext_module
 
+            # WI-zilag: an ANNOTATED assignment (``d: Path = raw``) types its target
+            # exactly the way an annotated parameter does. Excluded from PR #246 on a
+            # measurement showing zero payload — that measurement predates #247, and
+            # an AnnAssign root now seeds a whole derivation chain, so the exclusion
+            # was re-priced rather than re-asserted. Same binding-checked resolver as
+            # every other bare-name inference here, so the FP classes it refuses
+            # (a same-named class from another library, an in-file class) are refused
+            # at this entry point too.
+            if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+                ann_hint = _annotation_module_hint(node.annotation)
+                if ann_hint is not None:
+                    external_var_types[node.target.id] = ann_hint
+
             # Function reference in assignment RHS: callback = my_func
             if isinstance(node, ast.Assign) and isinstance(node.value, ast.Name):
                 _emit_function_ref(node.value, caller_symbol, stack=stack)
@@ -5563,6 +5576,36 @@ def _process_call(
                 },
                 dst_ref=ExternalRef(
                     lang="python", module_path=DJANGO_ORM_MODULE, name=_orm_method
+                ),
+                origin=PASS_ID,
+                origin_run_id=run_id,
+            ))
+        elif (
+            isinstance(func, ast.Attribute)
+            and not isinstance(func.value, ast.Name)
+            and _derived_receiver_module(func.value, external_var_types) is not None
+        ):
+            # WI-zilag: an INLINE expression receiver — ``(d / "f").write_text(x)``,
+            # ``d.joinpath("f").write_text(x)``. PR #247 taught derivations to keep
+            # their type but entered only from an assignment, and the typed-emit
+            # branch below is gated on a bare ``ast.Name`` receiver, so an expression
+            # receiver never reached it. Same resolver, so the allowlist and the
+            # exact-string type comparison apply identically — an expression receiver
+            # is not a back door around either.
+            ext_module = _derived_receiver_module(func.value, external_var_types)
+            edges.append(Edge.create(
+                src=caller_symbol.id,
+                dst=f"python:{ext_module}:0-0:{func.attr}:unresolved",
+                edge_type="calls",
+                line=call_node.lineno,
+                evidence_type="ast_call",
+                is_resolved=False,
+                meta={
+                    "call_construct": "method",
+                    "resolution_quality": "type_inferred",
+                },
+                dst_ref=ExternalRef(
+                    lang="python", module_path=ext_module or "", name=func.attr,
                 ),
                 origin=PASS_ID,
                 origin_run_id=run_id,

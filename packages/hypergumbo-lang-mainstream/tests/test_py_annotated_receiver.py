@@ -235,18 +235,15 @@ class TestDeliberatelyUnroutedShapes:
 
     Pinned so the exclusion is a recorded decision rather than an accident, and so a
     later PR that routes them has to change a test that says why.
-    """
 
-    def test_annassign_is_not_routed(self, tmp_path: Path) -> None:
-        edges = _edges(
-            tmp_path / "annassign",
-            "from pathlib import Path\n"
-            "\n"
-            "def h(raw, x):\n"
-            "    p: Path = raw\n"
-            "    return p.write_text(x)\n",
-        )
-        assert _slot(edges, "write_text") == "external"
+    ``AnnAssign`` USED TO BE PINNED HERE AND IS NOT ANY MORE. Its zero-payload
+    measurement was taken before derivations propagated; once a derivation from a
+    typed receiver kept its type, an annotated assignment began seeding a whole
+    chain and the payload stopped being zero. The exclusion was re-priced rather
+    than re-asserted, and this test failed — as designed — to force that argument
+    instead of allowing a silent widening. It now lives in
+    ``test_py_receiver_recall_tail.py``, which asserts the opposite and says why.
+    """
 
     def test_return_annotated_factory_is_not_routed(self, tmp_path: Path) -> None:
         edges = _edges(
