@@ -1,0 +1,78 @@
+Original commit body from d1755004678194aec5cc286a3e88700308741504:
+
+PR #246 types `d` in `def h(d: Path, x)`, and the type was then lost at the first
+derivation, so nothing downstream was visible:
+
+    p = d / "f.txt";      p.write_text(x)    # slot 'external', 0 boundaries
+    p = d.joinpath("f");  p.write_text(x)    # slot 'external', 0 boundaries
+
+Measured against a post-#246 baseline so the delta is attributable to this
+change alone: poetry 52 -> 57 (+5); sqlalchemy 47 -> 47 (+0), a real zero since
+a database library barely derives paths. All five poetry additions are true
+positives on direct source reading -- Layout._create_default does
+`package_path = path / self.package_path; package_path.mkdir(parents=True);
+package_init = package_path / "__init__.py"; package_init.touch()`. poetry's
+project scaffolder creates directories and writes files and none of it was
+visible. `tests = path / "tests"` then `tests / "__init__.py"` also confirms the
+resolver recurses through a derivation of a derivation.
+
+(mitmproxy moved 248 -> 254, but that baseline predates #246 so the +6 spans
+both changes; excluded rather than credited here. Its sites are direct
+annotated-parameter uses -- load_dhparam(path: Path) calling path.exists() and
+path.write_bytes() -- i.e. #246's work.)
+
+DEFAULT-DENY, MEASURED RATHER THAN CAUTIOUS. Most members of a typed receiver do
+NOT return that type: read_text -> str, stat -> os.stat_result, exists -> bool,
+open -> file object, glob/iterdir -> iterators, name/stem/suffix/as_posix -> str.
+Propagating by default scores 25.9% precision on adversarial fixtures (7 of 27
+added boundaries correct) and mints 16 false taint sinks including 2 database
+and 2 network. Across 8 Python repos 1,955 of 2,296 (85.1%) hop>=1 propagations
+are provably wrong or unverifiable, and 20 of the 21 provably-wrong ones are a
+Path->str transition. The allowlist scores 85.7% on the same fixtures and costs
+3 boundaries out of 427 (0.7%). Enumerating the PERMITTING case is also the
+standing default-deny rule: a blocker list fails open the moment the stdlib
+grows a member.
+
+NO BACKSTOP, which is why the allowlist carries the safety. A minted hint
+bypasses gate_named_entry and the ambiguous_names net by design. Control: the 19
+catalogued pathlib.Path member names -- 10 of them taint sinks, including
+`replace` (also str.replace) and `rename` (also DataFrame.rename) -- match ZERO
+times with no module hint, and all become reachable the instant a hint appears.
+
+Compared by exact string, never through _module_matches. That predicate is
+permissive by design and accepts an unqualified reference as a component suffix,
+so it treats a vendored mylib.pathlib.Path as the real one and mints an fs_write
+boundary plus a host_fs taint sink for a third-party class that merely shares a
+name. The table is keyed by qualified type, so the lookup is a dict miss.
+
+NOT A NEW CATALOGUE, because the concept already has a home.
+FileAnalysis.method_return_types (INV-dihos / WI-kuroj) is the language-neutral
+return-type registry Go and Rust already populate from parsed signatures; Python
+populates it zero times. A first design proposed a ninth YAML catalogue and was
+refuted 3/3 on exactly this point. TYPE_PRESERVING_MEMBERS is the stdlib
+complement -- those types ship no source for Pass 1 to parse -- stating the same
+fact in the same shape. The `/` operator rides as __truediv__, Python's own name
+for it, so an operator needs no new vocabulary and no new axis.
+
+PYTHON-SPECIFIC, MEASURED NOT ASSUMED. Only 5 of 14 io_primitives catalogues key
+any primitive on a path/file-TYPED receiver. Go, JS, Swift, ObjC, C, C++, Elixir,
+Erlang and Haskell structurally cannot have the gap (join returns a bare string,
+or the path is an argument, or the catalogue holds no method-kind entries). Rust
+has the shape but 83% of its 69-site gap is base receiver typing (the #246
+equivalent, which Rust has not done) and only 6% is derivation. Java already has
+base typing; 100% of its residual gap is chain-root receivers and 46 of 89
+name-level candidates are String.length / Mockito / Eclipse IResource, so a
+name-keyed fix there is net-negative. No second language was manufactured.
+
+DISCLOSED GAPS: .parent/.parents[n] are attribute reads (different AST shape,
+smaller population) and are not routed; nor are Path.cwd()/Path.home()
+(classmethods on the type, not derivations), interprocedural propagation,
+`for p in d.iterdir()` loop targets, or self.attr receivers -- each pinned or
+recorded as an exclusion. Kotlin and Swift populations are NOT MEASURED: both
+failed their positive control (kotlin emits no unresolved method-call edges at
+all; swift puts the receiver variable name in the module slot), so their zeros
+are instrument nulls, not absence. The prior ~464-call-site estimate for this
+family did not reproduce and is superseded.
+
+Refs: WI-zilag, INV-linub
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
