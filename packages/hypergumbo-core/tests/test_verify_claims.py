@@ -24,7 +24,12 @@ from hypergumbo_core.verify_claims import (
     verify_claims,
     verify_taint_claim,
 )
-from hypergumbo_core.io_boundary import BoundaryMap, BoundaryMapEntry, IoChain
+from hypergumbo_core.io_boundary import (
+    BoundaryMap,
+    BoundaryMapEntry,
+    IoChain,
+    load_catalog,
+)
 from hypergumbo_core.taint import TaintFlowFinding
 
 
@@ -1236,25 +1241,42 @@ _JS_CALL = {
 }
 
 
+#: Real catalogs, not ``{}``. Every dst in this class's fixtures ends in
+#: ``:function``, so the INV-fibis uncatalogued-module check skips them whatever is
+#: passed — which means passing the real thing costs nothing and makes each
+#: ``complete is True`` below a live guard against that check OVER-firing. ``{}``
+#: would have disabled it and turned those assertions into tautologies.
+_REAL_CATALOGS = {
+    "python": load_catalog("python"),
+    "javascript": load_catalog("javascript"),
+}
+
+
 class TestComputeBoundaryCoverage:
     """WI-kajil: compute_boundary_coverage decides whether the I/O analysis is
     trustworthy enough to CONFIRM a zero-chain boundary claim. A clean verdict
-    is only meaningful if the analysis could actually have seen the I/O."""
+    is only meaningful if the analysis could actually have seen the I/O.
+
+    Covers the first two blind spots. The third — calls into a module the catalog
+    cannot adjudicate (INV-fibis) — lives in
+    ``test_verify_claims_uncatalogued_module_coverage.py``."""
 
     def test_no_call_edges_is_incomplete(self) -> None:
-        cov = compute_boundary_coverage([], {"python"})
+        cov = compute_boundary_coverage([], {"python"}, _REAL_CATALOGS)
         assert cov.complete is False
         assert cov.reason  # non-empty human-readable reason
 
     def test_blind_supported_language_is_incomplete(self) -> None:
         # python produced a call edge; javascript (supported, present) did not.
-        cov = compute_boundary_coverage([_PY_CALL], {"python", "javascript"})
+        cov = compute_boundary_coverage(
+            [_PY_CALL], {"python", "javascript"}, _REAL_CATALOGS,
+        )
         assert cov.complete is False
         assert "javascript" in cov.reason
 
     def test_all_supported_languages_covered_is_complete(self) -> None:
         cov = compute_boundary_coverage(
-            [_PY_CALL, _JS_CALL], {"python", "javascript"},
+            [_PY_CALL, _JS_CALL], {"python", "javascript"}, _REAL_CATALOGS,
         )
         assert cov.complete is True
 
@@ -1265,7 +1287,9 @@ class TestComputeBoundaryCoverage:
             "src": "json:c.json:1:x:key", "dst": "json:c.json:2:y:key",
             "type": "contains",
         }
-        cov = compute_boundary_coverage([_PY_CALL, non_call], {"python"})
+        cov = compute_boundary_coverage(
+            [_PY_CALL, non_call], {"python"}, _REAL_CATALOGS,
+        )
         assert cov.complete is True
 
     def test_non_call_edge_types_do_not_count(self) -> None:
@@ -1273,13 +1297,14 @@ class TestComputeBoundaryCoverage:
             "src": "python:a.py:1:f:function",
             "dst": "python:b.py:1:g:function", "type": "contains",
         }
-        cov = compute_boundary_coverage([non_call], {"python"})
+        cov = compute_boundary_coverage([non_call], {"python"}, _REAL_CATALOGS)
         assert cov.complete is False  # no call edges at all
 
     def test_src_without_language_prefix_is_skipped(self) -> None:
         # A malformed src (no colon) must not crash or fabricate a language.
         cov = compute_boundary_coverage(
-            [{"src": "weird-no-colon", "dst": "x", "type": "calls"}], set(),
+            [{"src": "weird-no-colon", "dst": "x", "type": "calls"}],
+            set(), _REAL_CATALOGS,
         )
         assert cov.complete is True  # one call edge, no supported lang to be blind
 
