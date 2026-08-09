@@ -3986,50 +3986,8 @@ def _extract_edges(
 
     # Helper to extract edges from a code block (function body, module level, etc.)
     def _external_constructor_module(call: ast.Call) -> str | None:
-        """WI-fuvuj: if ``call`` is a recognized I/O constructor, return the
-        catalog module string for the object it constructs; else ``None``.
-
-        - ``func`` is ``ast.Name`` (e.g. ``open``) → bare constructor name,
-          trusted only once the name is confirmed to still mean what the table
-          claims (INV-kipor, below).
-        - ``func`` is ``ast.Attribute`` with an ``ast.Name`` base that is a
-          known module import (e.g. ``socket.socket``) → ``module.attr``.
-
-        INV-kipor: the bare-name branch used to emit the catalogued module with
-        no check at all, while the attribute branch beside it verified its base
-        against ``module_imports``. So ``from decoy_lib import open`` still
-        produced a ``file`` receiver, and ``v.read()`` on it was reported as an
-        ``fs_read`` boundary — a filesystem read invented for an object that is
-        not a file, on the shipping tree.
-
-        A binding to something OTHER than the claimed module withholds the hint;
-        the edge then degrades to ``external`` and every consumer refuses it as an
-        untyped method call. Unbound stays trusted, because for a bare name that
-        means the builtin. The comparison is exact: ``pathlib.Path`` is trusted
-        for ``from pathlib import Path`` and refused for ``from fastapi import
-        Path``. Aliased imports (``from pathlib import Path as P``) miss the table
-        by key and so mint nothing — a false negative, in the safe direction.
-        """
-        func = call.func
-        if isinstance(func, ast.Name):
-            claimed = EXTERNAL_CONSTRUCTOR_TYPES.get(func.id)
-            if claimed is None:
-                return None
-            bound = _import_binding_for(func.id, imports, module_imports)
-            if bound is None:
-                # Unbound. Trusted ONLY for a real builtin — see
-                # BUILTIN_CONSTRUCTOR_NAMES for why this is not "trust by default".
-                return claimed if func.id in BUILTIN_CONSTRUCTOR_NAMES else None
-            return claimed if bound == claimed else None
-        if (
-            isinstance(func, ast.Attribute)
-            and isinstance(func.value, ast.Name)
-            and func.value.id in module_imports
-        ):
-            return EXTERNAL_CONSTRUCTOR_TYPES.get(
-                f"{module_imports[func.value.id]}.{func.attr}",
-            )
-        return None
+        """This block's import maps, bound to the module-level resolver."""
+        return _external_constructor_type(call, imports, module_imports)
 
     def process_code_block(
         block_nodes: list[ast.AST],
@@ -5262,24 +5220,124 @@ def _derived_receiver_module(
     return None
 
 
+def _external_constructor_type(
+    call: ast.Call,
+    imports: dict[str, tuple[str, str]],
+    module_imports: dict[str, str],
+) -> str | None:
+    """WI-fuvuj: if ``call`` is a recognized I/O constructor, return the catalog
+    module string for the object it constructs; else ``None``.
+
+    - ``func`` is ``ast.Name`` (e.g. ``open``) → bare constructor name, trusted only
+      once the name is confirmed to still mean what the table claims (INV-kipor).
+    - ``func`` is ``ast.Attribute`` with an ``ast.Name`` base that is a known module
+      import (e.g. ``socket.socket``) → ``module.attr``.
+
+    INV-kipor: the bare-name branch used to emit the catalogued module with no check
+    at all, while the attribute branch beside it verified its base against
+    ``module_imports``. So ``from decoy_lib import open`` still produced a ``file``
+    receiver, and ``v.read()`` on it was reported as an ``fs_read`` boundary — a
+    filesystem read invented for an object that is not a file, on the shipping tree.
+
+    A binding to something OTHER than the claimed module withholds the hint; the edge
+    then degrades to ``external`` and every consumer refuses it as an untyped method
+    call. Unbound is trusted only for a genuine builtin — see
+    :data:`BUILTIN_CONSTRUCTOR_NAMES` for why that is not "trust by default". The
+    comparison is exact: ``pathlib.Path`` is trusted for ``from pathlib import Path``
+    and refused for ``from fastapi import Path``. Aliased imports (``from pathlib
+    import Path as P``) miss the table by key and so mint nothing — a false negative,
+    in the safe direction.
+
+    LIVES AT MODULE LEVEL because it has two consumers in different scopes: the
+    per-block closure that types an ASSIGNMENT (``p = Path(raw)``) and
+    :func:`_process_call`, which types a chain ROOT (``Path(raw).write_text(x)``).
+    It took its import maps from an enclosing scope while it had one consumer; making
+    them parameters is what lets the second consumer share the binding check instead
+    of growing a second copy of it.
+    """
+    func = call.func
+    if isinstance(func, ast.Name):
+        claimed = EXTERNAL_CONSTRUCTOR_TYPES.get(func.id)
+        if claimed is None:
+            return None
+        bound = _import_binding_for(func.id, imports, module_imports)
+        if bound is None:
+            return claimed if func.id in BUILTIN_CONSTRUCTOR_NAMES else None
+        return claimed if bound == claimed else None
+    if (
+        isinstance(func, ast.Attribute)
+        and isinstance(func.value, ast.Name)
+        and func.value.id in module_imports
+    ):
+        return EXTERNAL_CONSTRUCTOR_TYPES.get(
+            f"{module_imports[func.value.id]}.{func.attr}",
+        )
+    return None
+
+
+def _receiver_type(
+    receiver: ast.expr,
+    external_var_types: dict[str, str],
+    ctor_type: Callable[[ast.Call], "str | None"] | None = None,
+) -> str | None:
+    """THE single answer to "what external type does this receiver expression have?".
+
+    Three shapes carry a type, and this is the only place that enumerates them:
+
+    * a bare ``ast.Name`` the tracker already typed (``p`` after ``p = Path(raw)``);
+    * an ``ast.Call`` that IS a recognized constructor (``Path(raw)``) — the chain
+      ROOT, resolved through ``ctor_type`` so it inherits that resolver's INV-kipor
+      binding check rather than re-implementing it; and
+    * anything :func:`_derived_receiver_module` recognizes as an allowlisted
+      DERIVATION of one of the above (``d / "f"``, ``d.joinpath("f")``).
+
+    IT EXISTS BECAUSE THE ANSWER WAS BEING GIVEN IN TWO PLACES. This computation
+    lived privately inside :func:`_preserved_receiver_type`, so the emission site
+    could only ask the narrower "what does this DERIVATION preserve?" question and
+    a chain rooted directly at a constructor — ``Path(raw).write_text(x)``, which
+    is not a derivation of anything — matched no branch and emitted no call edge at
+    all. Splitting the question out is what lets both callers ask the right one.
+    Keeping it in ONE function is deliberate: four separate answers to "may I trust
+    this callee?" have already drifted in this area, with a docstring asserting a
+    parity that did not hold, so a second copy here is the failure mode rather than
+    a convenience. The behavioural parity test is
+    ``TestTheOneReceiverTypePredicate::test_inline_and_assigned_forms_agree``, which
+    compares the inline and assigned forms of the same shape — a grep-for-the-call
+    test would be satisfiable by a third copy that merely looks right.
+
+    ``ctor_type`` is a parameter rather than a direct call because the resolver needs
+    this file's per-file import maps, which live in an enclosing scope. Passing
+    ``None`` keeps the pure-derivation behaviour for any caller with no import
+    context, which is why widening the root cannot widen anything for such a caller.
+    """
+    if isinstance(receiver, ast.Name):
+        return external_var_types.get(receiver.id)
+    if isinstance(receiver, ast.Call) and ctor_type is not None:
+        # A constructor call as the chain's root. ``ctor_type`` carries the same
+        # binding check every other constructor row goes through, so a locally
+        # defined ``class Path`` is refused here exactly as it is at an assignment.
+        # Falling through to the derivation resolver keeps ``Path(x).joinpath("y")``
+        # working, where the root is a call but not itself a constructor.
+        return ctor_type(receiver) or _derived_receiver_module(
+            receiver, external_var_types, ctor_type,
+        )
+    return _derived_receiver_module(receiver, external_var_types, ctor_type)
+
+
 def _preserved_receiver_type(
     receiver: ast.expr,
     member: str,
     external_var_types: dict[str, str],
     ctor_type: Callable[[ast.Call], "str | None"] | None = None,
 ) -> str | None:
-    """``member``'s return type when invoked on ``receiver``, if it is the same type."""
-    if isinstance(receiver, ast.Name):
-        hint = external_var_types.get(receiver.id)
-    elif isinstance(receiver, ast.Call) and ctor_type is not None:
-        # A constructor call as the chain's root. ``ctor_type`` carries the same
-        # binding check every other constructor row goes through, so a locally
-        # defined ``class Path`` is refused here exactly as it is at an assignment.
-        hint = ctor_type(receiver) or _derived_receiver_module(
-            receiver, external_var_types, ctor_type,
-        )
-    else:
-        hint = _derived_receiver_module(receiver, external_var_types, ctor_type)
+    """``member``'s return type when invoked on ``receiver``, if it is the same type.
+
+    The type question is delegated to :func:`_receiver_type`; what stays here is the
+    PROPAGATION rule, which is a separate decision — widening which receivers carry a
+    type must not widen which members preserve it, so :data:`TYPE_PRESERVING_MEMBERS`
+    gates this half and nothing else.
+    """
+    hint = _receiver_type(receiver, external_var_types, ctor_type)
     if hint is None:
         return None
     return hint if member in TYPE_PRESERVING_MEMBERS.get(hint, ()) else None
@@ -5431,6 +5489,17 @@ def _process_call(
         method_to_enclosing_class_id = {}
     if class_name_counts is None:  # pragma: no cover - defensive default
         class_name_counts = {}
+
+    def _ctor_type_here(call: ast.Call) -> str | None:
+        """This call site's import maps, bound to the shared constructor resolver.
+
+        Routing through :func:`_external_constructor_type` rather than re-deciding
+        here is what keeps the INV-kipor binding check identical for a chain ROOT
+        (``Path(raw).write_text(x)``) and an assignment (``p = Path(raw)``) — the
+        two shapes are typed in different scopes and must not drift apart.
+        """
+        return _external_constructor_type(call, imports, module_imports)
+
     func = call_node.func
     callee_symbol = None
     is_instantiation = False
@@ -5631,7 +5700,9 @@ def _process_call(
         elif (
             isinstance(func, ast.Attribute)
             and not isinstance(func.value, ast.Name)
-            and _derived_receiver_module(func.value, external_var_types) is not None
+            and _receiver_type(
+                func.value, external_var_types, _ctor_type_here,
+            ) is not None
         ):
             # WI-zilag: an INLINE expression receiver — ``(d / "f").write_text(x)``,
             # ``d.joinpath("f").write_text(x)``. PR #247 taught derivations to keep
@@ -5640,7 +5711,23 @@ def _process_call(
             # receiver never reached it. Same resolver, so the allowlist and the
             # exact-string type comparison apply identically — an expression receiver
             # is not a back door around either.
-            ext_module = _derived_receiver_module(func.value, external_var_types)
+            #
+            # The CONSTRUCTOR ROOT — ``Path(raw).write_text(x)``, ``open(p,"w")
+            # .write(x)`` — arrives here too, via ``_receiver_type``. PR #253 taught
+            # the resolver that a constructor call carries a type but wired it only
+            # into the two ASSIGNMENT sites, so the identical I/O written inline
+            # emitted no call edge at all and tagged zero boundaries while the
+            # assigned form tagged one. Passing ``_external_constructor_module`` is
+            # what closes that: the root inherits its binding check, so a local
+            # ``class Path`` and a ``from decoy_lib import Path`` are refused here
+            # exactly as they are at an assignment. Measured across seven repos this
+            # types 269 of 27,354 call-result-root sites (~1%) and reaches the
+            # catalogue on 128 — the rest are receivers of genuinely unknown type,
+            # and emitting an untyped edge for those is what PR #231 measured at
+            # zero moved findings.
+            ext_module = _receiver_type(
+                func.value, external_var_types, _ctor_type_here,
+            )
             edges.append(Edge.create(
                 src=caller_symbol.id,
                 dst=f"python:{ext_module}:0-0:{func.attr}:unresolved",
