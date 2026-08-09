@@ -87,7 +87,7 @@ import hashlib
 import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Iterator
+from typing import TYPE_CHECKING, Callable, Iterator
 
 from hypergumbo_core.dataflow import annotate_dataflow_ast, get_dataflow_config
 from hypergumbo_core.discovery import find_files
@@ -460,7 +460,32 @@ def _lookup_symbol_by_module(
 # The file-object value MUST be exactly ``"file"`` — it is coordinated with
 # the synthetic ``file`` module in the python.yaml catalog (fs_read read/
 # readline/readlines, fs_write write/writelines).
-EXTERNAL_CONSTRUCTOR_TYPES = {"open": "file", "socket.socket": "socket.socket"}
+# ``pathlib.Path`` needs BOTH keys because the two call forms enter different
+# branches below: ``from pathlib import Path`` arrives as a bare ``ast.Name`` and
+# ``import pathlib`` as a dotted ``ast.Attribute``. Measured over the corpus, bare is
+# 103 of 136 constructor sites (65 reaches) and dotted is 33 (29 reaches), so a
+# one-key patch delivers roughly two thirds of the payload and looks complete.
+EXTERNAL_CONSTRUCTOR_TYPES = {
+    "open": "file",
+    "socket.socket": "socket.socket",
+    "Path": "pathlib.Path",
+    "pathlib.Path": "pathlib.Path",
+}
+
+#: Bare-name rows that are REAL BUILTINS, and therefore still trusted when no import
+#: binds them.
+#:
+#: THE DISTINCTION IS LOAD-BEARING AND IT IS WHY THIS SET EXISTS. The bare-name branch
+#: used to trust any unbound name on the reasoning "for a bare name that means the
+#: builtin". That holds for ``open``. It does not hold for ``Path``, which is not a
+#: builtin — an unbound ``Path`` is a locally defined class, a star-import, or a name
+#: from a module the analyzer never read. Trusting it would mint an ``fs_write``
+#: boundary and a ``host_fs`` taint SINK for any class in the corpus merely named
+#: ``Path``, and 254 corpus sites have a constructor name that is also an in-repo class
+#: name. So membership here is the PERMITTING case for the unbound path (default-deny);
+#: every other row must be positively bound to the module it claims, tightening
+#: INV-kipor's check from "not contradicted" to "confirmed".
+BUILTIN_CONSTRUCTOR_NAMES: frozenset[str] = frozenset({"open"})
 
 #: Members that RETURN THE RECEIVER'S OWN TYPE, keyed by the exact type string the
 #: analyzer puts in a symbol id's module slot. ``__truediv__`` carries the ``/``
@@ -3991,9 +4016,11 @@ def _extract_edges(
             if claimed is None:
                 return None
             bound = _import_binding_for(func.id, imports, module_imports)
-            if bound is not None and bound != claimed:
-                return None
-            return claimed
+            if bound is None:
+                # Unbound. Trusted ONLY for a real builtin — see
+                # BUILTIN_CONSTRUCTOR_NAMES for why this is not "trust by default".
+                return claimed if func.id in BUILTIN_CONSTRUCTOR_NAMES else None
+            return claimed if bound == claimed else None
         if (
             isinstance(func, ast.Attribute)
             and isinstance(func.value, ast.Name)
@@ -4120,6 +4147,7 @@ def _extract_edges(
                         # loosening that branch's guard.
                         derived = _derived_receiver_module(
                             node.value, external_var_types,
+                            _external_constructor_module,
                         )
                         if derived is not None:
                             external_var_types[target.id] = derived
@@ -4160,6 +4188,7 @@ def _extract_edges(
                                 # different question from "does this PRESERVE a type".
                                 ext_module = _derived_receiver_module(
                                     node.value, external_var_types,
+                                    _external_constructor_module,
                                 )
                             if ext_module is not None:
                                 external_var_types[target.id] = ext_module
@@ -5193,6 +5222,7 @@ def _resolve_call_target(
 def _derived_receiver_module(
     value: ast.expr,
     external_var_types: dict[str, str],
+    ctor_type: Callable[[ast.Call], "str | None"] | None = None,
 ) -> str | None:
     """The type an expression yields when it DERIVES from an already-typed receiver.
 
@@ -5210,14 +5240,24 @@ def _derived_receiver_module(
     known-typed receiver, which includes numeric ``a / b`` (no hint on the root),
     ``os.path.join`` (a module function, not a receiver derivation), and every member
     that returns something other than the receiver's type.
+
+    ``ctor_type`` resolves a CONSTRUCTOR CALL used as the chain's root —
+    ``Path(raw) / "out.txt"`` rather than ``d / "out.txt"``. Measured at 82 of 294
+    assign-from-``Path``-constructor sites (28%) across four repos, so it is a real
+    share of the shape rather than a rounding error. It is a parameter instead of a
+    direct call because the resolver needs this file's per-file import maps, which live
+    in an enclosing scope; passing ``None`` keeps the pure-derivation behaviour for any
+    caller that has no import context. The :data:`TYPE_PRESERVING_MEMBERS` allowlist
+    still gates which members propagate, so widening the ROOT does not widen the
+    propagation rule.
     """
     if isinstance(value, ast.BinOp) and isinstance(value.op, ast.Div):
         return _preserved_receiver_type(
-            value.left, "__truediv__", external_var_types,
+            value.left, "__truediv__", external_var_types, ctor_type,
         )
     if isinstance(value, ast.Call) and isinstance(value.func, ast.Attribute):
         return _preserved_receiver_type(
-            value.func.value, value.func.attr, external_var_types,
+            value.func.value, value.func.attr, external_var_types, ctor_type,
         )
     return None
 
@@ -5226,12 +5266,20 @@ def _preserved_receiver_type(
     receiver: ast.expr,
     member: str,
     external_var_types: dict[str, str],
+    ctor_type: Callable[[ast.Call], "str | None"] | None = None,
 ) -> str | None:
     """``member``'s return type when invoked on ``receiver``, if it is the same type."""
     if isinstance(receiver, ast.Name):
         hint = external_var_types.get(receiver.id)
+    elif isinstance(receiver, ast.Call) and ctor_type is not None:
+        # A constructor call as the chain's root. ``ctor_type`` carries the same
+        # binding check every other constructor row goes through, so a locally
+        # defined ``class Path`` is refused here exactly as it is at an assignment.
+        hint = ctor_type(receiver) or _derived_receiver_module(
+            receiver, external_var_types, ctor_type,
+        )
     else:
-        hint = _derived_receiver_module(receiver, external_var_types)
+        hint = _derived_receiver_module(receiver, external_var_types, ctor_type)
     if hint is None:
         return None
     return hint if member in TYPE_PRESERVING_MEMBERS.get(hint, ()) else None
