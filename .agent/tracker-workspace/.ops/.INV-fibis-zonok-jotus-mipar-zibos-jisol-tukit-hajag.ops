@@ -1,0 +1,68 @@
+- op: create  # 2d20
+  at: '2026-08-09T01:52:34Z'  # 2d20
+  by: agent  # 2d20
+  actor: jgstern_agent  # 2d20
+  clock: 1  # 2d20
+  nonce: 2d20  # 2d20
+  data:  # 2d20
+    kind: invariant  # 2d20
+    title: "verify-claims returns confirmed for a boundary reachable through modules the catalogue cannot adjudicate (reproduced: poetry 'never sends data over the network', 14 files import requests)"  # 2d20
+    status: violated  # 2d20
+    priority: 1  # 2d20
+    parent:  # 2d20
+    tags:  # 2d20
+    - io_boundary  # 2d20
+    - verify_claims  # 2d20
+    - adr_0016  # 2d20
+    - false_confirm  # 2d20
+    - rct_blocker  # 2d20
+    isbefore: []  # 2d20
+    duplicate_of: []  # 2d20
+    not_duplicate_of: []  # 2d20
+    pr_ref:  # 2d20
+    description: "REPRODUCED LIVE on two UNMODIFIED upstream repos, with a positive control firing in\nthe SAME run (so this is not the analysis being blind and saying so):\n\n  $ hypergumbo verify-claims ~/ALL_REPOS/curriculum_repos/poetry/src/poetry\n    x [CONTROL-FSREAD] violated - 20 fs_read chain(s) found      <- the run WORKED\n    v [NET] This service never sends data over the network.\n        Verdict: confirmed.  No net_send chains found.           <- FALSE\n\npoetry imports requests in 14 files and calls requests.Session()/.get()/.post().\nfull-stack-fastapi-template/backend reproduces the database half: `confirmed` for\n\"never writes to a database\" against crud.py:14-15 session.add(db_obj);\nsession.commit(), read directly from source.\n\nMECHANISM, read in code. compute_boundary_coverage (verify_claims.py) modelled two\nblind spots (WI-kajil / INV-bitig), both at the resolution of \"did this language\nproduce ANY call edges\". Python produces hundreds of thousands, so coverage read\ncomplete and the clean verdict was confirmable. This is EXACTLY the residual already\nrecorded in cli.py's own docstring (\"closing it needs a signal with resolution finer\nthan 'any', e.g. the share of method-construct call edges that resolve to something\nthe catalogue can match\") and pinned as the xfail\ntest_language_with_a_token_call_edge_still_falsely_confirms. That residual was filed\nas a Kotlin problem; it is not language-specific, and Python -- the best-supported\nlanguage and the likely RCT substrate -- reproduces it on real repos.\n\nRELATION TO THE FILED L1 CLAIM. Found while adjudicating INV-linub's 2026-08-08\n\"32.9% sqlalchemy / ZERO catalogue entries\" paragraph. That paragraph is a cohort\nartifact (see the correction filed on INV-linub); this is the real user-facing defect\nsitting underneath it.\n\nNOT MEASURED: any non-Python language; the false-positive direction (does the new\ngate downgrade a verdict that was genuinely earned?) beyond the fixtures and the two\nrepos above; whether the taint arm's behaviour changes on any repo other than\nhypergumbo itself."  # 2d20
+    fields:  # 2d20
+      statement: "Every clean (zero-chain) boundary verdict reported as confirmed must be backed by an analysis that could have classified the I/O -- including calls into third-party modules, whose absence from the catalogue makes them unexamined rather than examined-and-clean."  # 2d20
+      root_cause: "compute_boundary_coverage (packages/hypergumbo-core/src/hypergumbo_core/verify_claims.py) modelled exactly two blind spots, both at the resolution of 'did this language produce ANY call edges' -- zero call edges overall, or a supported language with zero. Python produces hundreds of thousands on any real repo, so both pass and a clean boundary verdict stays confirmable no matter how much of the repo's I/O left through an uncatalogued third-party module. Read in code and reproduced end-to-end on two upstream repos. cli.py's own docstring already recorded this residual and named the fix shape ('a signal with resolution finer than any'), filing it as Kotlin-specific; it is not language-specific."  # 2d20
+- op: update  # 927a
+  at: '2026-08-09T01:53:42Z'  # 927a
+  by: agent  # 927a
+  actor: jgstern_agent  # 927a
+  clock: 2  # 927a
+  nonce: 927a  # 927a
+  set: {}  # 927a
+  add:  # 927a
+    not_duplicate_of: [WI-sulij-nimir-mubig-vasop-pumuz-nokup-zisav-jusuz]  # 927a
+- op: update  # c454
+  at: '2026-08-09T03:17:40Z'  # c454
+  by: agent  # c454
+  actor: jgstern_agent  # c454
+  clock: 3  # c454
+  nonce: c454  # c454
+  set:  # c454
+    pr_ref: '251'  # c454
+- op: discuss  # c0d5
+  at: '2026-08-09T03:17:40Z'  # c0d5
+  by: agent  # c0d5
+  actor: jgstern_agent  # c0d5
+  clock: 4  # c0d5
+  nonce: c0d5  # c0d5
+  message: "PARTIAL FIX MERGED as PR #251 (dev f70cf62fa2). THE ITEM STAYS VIOLATED, and the\nreason is not caution — a named residual is still live and is pinned as a passing\ntest, so the statement does not hold.\n\nWHAT HOLDS NOW, verified by re-running this item's own filed repro rather than by a\nproxy:\n\n  poetry/src/poetry     confirmed -> INCONCLUSIVE at exit 2, naming\n                        cachecontrol, cleo..., dulwich, keyring, requests (51 modules)\n  fastapi-template      confirmed -> INCONCLUSIVE at exit 2, naming\n                        alembic, emails, fastapi... (18 modules)\n  fs_read control       violated / 20 chains, UNCHANGED in both directions\n                        (a violated verdict is not coverage-gated, by design)\n\nMECHANISM: compute_boundary_coverage gained a third blind spot. The permitting case\nis enumerated -- a module supports a clean verdict when the catalog declares a\nprimitive for it or is_stdlib_module knows it. One predicate, both the boundary and\ntaint arms; `catalogs` is a REQUIRED parameter so no caller can silently skip a\nsafety gate.\n\nWHY IT STAYS VIOLATED — the residual, stated rather than papered over. An edge\ncarrying the bare `external` placeholder (an untyped receiver,\npython:external:0-0:get:unresolved) names no module to adjudicate and is NOT counted.\nSo a repo whose I/O is reached ONLY through untyped receivers still gets `confirmed`\ntoday. That was a deliberate scope call: the placeholder population is the largest\nedge population in a Python repo, it identifies no library to report, and counting it\nwould send nearly every repo to inconclusive while telling the reader nothing. It is\nthe receiver-typing gap, INV-linub L3, and closing THIS item requires closing that.\nPinned by test_untyped_receiver_population_is_the_disclosed_residual so a later PR\nthat changes the decision has to argue with an assertion.\n\nTWO THINGS THE FIRST DRAFT GOT WRONG, both caught by measuring on a real repo and\nneither by a test:\n  * it counted `imports` edges -- 231 of the 258 modules it reported on poetry. An\n    import performs no I/O; the catalog classifies CALL SITES.\n  * it blamed poetry's own modules -- 120 of the remaining 171. An unresolved\n    first-party callee is not a catalogue gap, because its source WAS read and\n    whatever I/O it performs was examined on its own edges. supply_chain.tier cannot\n    discriminate these (it reads 3 for every external_symbol node), so first-party is\n    derived from the src side of the edge set.\n\nSTILL NOT MEASURED: any non-Python language; the false-downgrade direction beyond the\nfixtures and these two repos (does the gate ever downgrade a verdict that was\ngenuinely earned?); whether the taint arm's behaviour changes on any repo other than\nhypergumbo itself (its 18 self-claims are unchanged: 16 inconclusive, 2 violated)."  # c0d5
+- op: update  # 86a6
+  at: '2026-08-09T03:17:40Z'  # 86a6
+  by: agent  # 86a6
+  actor: jgstern_agent  # 86a6
+  clock: 5  # 86a6
+  nonce: 86a6  # 86a6
+  set: {}  # 86a6
+  add:  # 86a6
+    isbefore: [INV-linub-nokij-gibim-rovok-moros-gural-domip-rimof]  # 86a6
+- op: update  # df18
+  at: '2026-08-09T03:17:49Z'  # df18
+  by: agent  # df18
+  actor: jgstern_agent  # df18
+  clock: 6  # df18
+  nonce: df18  # df18
+  set: {}  # df18
+  remove:  # df18
+    isbefore: [INV-linub-nokij-gibim-rovok-moros-gural-domip-rimof]  # df18
