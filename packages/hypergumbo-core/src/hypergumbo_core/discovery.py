@@ -21,6 +21,7 @@ respecting exclude patterns. Also provides:
 """
 from __future__ import annotations
 
+import functools
 import re
 from dataclasses import dataclass, field
 from fnmatch import fnmatch
@@ -396,9 +397,9 @@ DEFAULT_EXCLUDES = [
     # Dependency directories
     "node_modules",
     "vendor",  # PHP (Composer), Go
-    "venv",
-    ".venv",
-    "env",
+    # NOTE: venv / .venv / env are NOT here. They are content-conditioned via
+    # VENV_DIR_NAMES + _looks_like_virtualenv — a directory is a virtualenv
+    # because of what it CONTAINS, not what it is called. See that helper.
     ".eggs",
     # Build output
     "dist",
@@ -465,6 +466,84 @@ DEFAULT_EXCLUDES = [
     "pubspec.lock",  # Dart/Flutter
     "packages.lock.json",  # NuGet (.NET)
 ]
+
+
+#: Directory names that MIGHT be a virtualenv. Membership here is not an exclusion —
+#: it only selects which names get the content test in :func:`_looks_like_virtualenv`.
+VENV_DIR_NAMES: frozenset[str] = frozenset({"venv", ".venv", "env"})
+
+#: Files whose presence identifies a directory as a virtualenv root. ``pyvenv.cfg`` is
+#: PEP 405's specified marker; older tooling wrote only ``bin/activate``, and Windows
+#: writes ``Scripts/activate``. The Windows arm has NO real-world positive control —
+#: zero hits across the 467-repo corpus and no Windows virtualenv was available — so it
+#: is asserted by fixture and is not claimed to be validated.
+_VENV_MARKERS: tuple[str, ...] = ("pyvenv.cfg", "bin/activate", "Scripts/activate")
+
+
+@functools.lru_cache(maxsize=4096)
+def _looks_like_virtualenv(directory: str) -> bool:
+    """Whether ``directory`` is a virtualenv ROOT, decided by content.
+
+    WHY CONTENT AND NOT NAME. ``venv``/``.venv``/``env`` used to sit in
+    :data:`DEFAULT_EXCLUDES` as bare names, and the matcher applies an exact name to
+    EVERY component of the relative path at any depth — so every directory named
+    ``env`` in every repository was deleted. Measured across 467 corpus repos that is
+    **427 source files in 77 directories across 39 repos, 425 of them (99.5%)
+    first-party**: RocksDB's entire POSIX I/O layer (``env_posix.cc``, ``fs_posix.cc``,
+    ``io_posix.cc``), U-Boot's environment storage subsystem, poetry's virtualenv
+    manager. The deleted code is systematically I/O-dense, which is the worst possible
+    thing for an exclusion list to remove from a boundary analysis.
+
+    WHY NOT ROOT-ANCHOR IT. ``env/*`` is already expressible in this matcher and needs
+    no new machinery, but it recovers only 379 of 427 (88.8%) and **structurally
+    cannot** recover the two worst cases — rocksdb's and U-Boot's ``env/`` are both AT
+    the repo root, exactly where a virtualenv would be. Only content separates them.
+    Conversely a virtualenv is not always at the root (``backend/venv`` is idiomatic),
+    so this test stays depth-agnostic.
+
+    DIRECTION: this ADDS analyzable source. It cannot delete a finding. The mirror
+    risk — re-including a real virtualenv and dragging in thousands of dependency
+    files — is what the markers prevent; this repo's own ``.venv`` (26,882 source
+    files) is a live positive control in the test suite.
+
+    Cached because discovery calls this once per candidate directory per walk and the
+    answer cannot change within a run. Keyed on ``str`` so the cache is hashable.
+    """
+    base = Path(directory)
+    return any((base / marker).exists() for marker in _VENV_MARKERS)
+
+
+def is_pruned_dir(
+    name: str,
+    abs_dir: Path,
+    exact: frozenset[str],
+    globs: tuple[str, ...],
+) -> bool:
+    """THE single rule for "should this directory be pruned from analysis".
+
+    ONE RULE, ONE PLACE, EVERY WALKER. This repository has two independent tree
+    walkers — :meth:`FileIndex.build`'s ``os.walk`` prune loop (the fast path every
+    real run takes) and :func:`_is_excluded_classified` (the per-path check) — and
+    they each carried their own copy of the membership test. When the venv rule below
+    was first added to only one of them, ``find_files`` excluded a virtualenv
+    correctly while a full ``run_behavior_map`` still analysed it: the same input,
+    two answers. N places that should share one rule WILL drift, so they now call
+    this. Parity is asserted behaviourally across all three public entry points by
+    ``test_all_three_walkers_agree`` — structure-free, so it cannot be satisfied by a
+    fourth copy that merely looks right.
+
+    ``abs_dir`` is the absolute path of the directory named ``name``; it is only
+    consulted for the content-conditioned venv arm.
+    """
+    if name in exact:
+        return True
+    # Content-conditioned venv names. Skipped when the caller already listed the name
+    # in ``exact`` — an explicit ``--exclude env`` is a direct instruction and is
+    # obeyed literally; second-guessing it would be a different bug from the DEFAULT
+    # this rule fixes.
+    if name in VENV_DIR_NAMES and _looks_like_virtualenv(str(abs_dir)):
+        return True
+    return any(fnmatch(name, pattern) for pattern in globs)
 
 
 def _has_glob_chars(pattern: str) -> bool:
@@ -602,12 +681,17 @@ def _is_excluded_classified(
     except ValueError:
         rel_path = path
 
-    for part in rel_path.parts:
-        if part in exact:
+    # Base for reconstructing each component's absolute path. When ``relative_to``
+    # succeeded the parts are repo-relative and must be rejoined onto ``repo_root``;
+    # when it failed ``rel_path`` IS the original absolute path, so its own prefix
+    # already reconstructs the directory. Getting this wrong silently disables the
+    # venv content arm rather than erroring, so the two cases are named explicitly.
+    base = repo_root if rel_path is not path else Path(rel_path.anchor)
+    prefix = () if rel_path is not path else rel_path.parts[:1]
+    for depth, part in enumerate(rel_path.parts):
+        abs_dir = base.joinpath(*rel_path.parts[len(prefix):depth + 1])
+        if is_pruned_dir(part, abs_dir, exact, globs):
             return True
-        for pattern in globs:
-            if fnmatch(part, pattern):
-                return True
 
     if paths:
         rel_str = rel_path.as_posix()
@@ -734,9 +818,9 @@ class FileIndex:
             # relative path for fnmatch.
             kept_dirs: list[str] = []
             for d in dirnames:
-                if d in exact_exc:
-                    continue
-                if any(fnmatch(d, g) for g in glob_exc):
+                # Shared with _is_excluded_classified — see is_pruned_dir for why
+                # this is not an inline membership test any more.
+                if is_pruned_dir(d, dirpath / d, exact_exc, glob_exc):
                     continue
                 if path_exc:
                     rel_dir = (dirpath / d).relative_to(repo_root).as_posix()
