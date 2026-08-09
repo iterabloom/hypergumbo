@@ -5029,6 +5029,7 @@ def _taint_blind_reason(
     unsupported_taint_languages: list[str],
     raw_edges: list[dict[str, Any]],
     taint_supported_languages: set[str],
+    catalogs: dict[str, Any],
 ) -> str | None:
     """Why a taint claim cannot be confirmed, or ``None`` if it can.
 
@@ -5102,7 +5103,9 @@ def _taint_blind_reason(
             f"({langs}), so the analysis could not look for the flows this "
             f"claim forbids"
         )
-    coverage = compute_boundary_coverage(raw_edges, taint_supported_languages)
+    coverage = compute_boundary_coverage(
+        raw_edges, taint_supported_languages, catalogs,
+    )
     if not coverage.complete:
         return coverage.reason
     return None
@@ -5223,7 +5226,7 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
     # edges (analyzer blind — F69.A1) downgrades a would-be "confirmed"
     # must_not_exist / max_chains verdict to "inconclusive".
     supported_present = languages & set(catalogs)
-    coverage = compute_boundary_coverage(raw_edges, supported_present)
+    coverage = compute_boundary_coverage(raw_edges, supported_present, catalogs)
 
     # Run taint-flow analysis if any claims have taint_flow constraints
     taint_findings = None
@@ -5465,7 +5468,7 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
         # reader to mentally downgrade 'confirmed' — which no CI gate does.
         blind_reason=_taint_blind_reason(
             has_taint_claims, unsupported_taint_languages,
-            raw_edges, set(per_lang_sinks),
+            raw_edges, set(per_lang_sinks), catalogs,
         ),
     )
 

@@ -71,7 +71,7 @@ if TYPE_CHECKING:
 import yaml
 
 from .edge_types import is_grpc_rpc_implementation
-from .io_boundary import KNOWN_IO_BOUNDARIES, BoundaryMap
+from .io_boundary import KNOWN_IO_BOUNDARIES, BoundaryMap, IoBoundaryCatalog
 from .ir import symbol_path_slot
 from .paths import classify_test_file, is_migration_file
 
@@ -298,14 +298,25 @@ class BoundaryCoverage:
     zero-chain ``must_not_exist`` / within-limit ``max_chains`` claim.
 
     A clean (zero-chain) boundary verdict only means "this boundary is unused"
-    if the analysis could actually have detected the I/O. Two blind spots make
+    if the analysis could actually have detected the I/O. Three blind spots make
     a clean verdict untrustworthy (WI-kajil / INV-bitig P0):
 
     * the analysis produced no call edges at all (empty repo, wrong cwd, or an
       unanalyzable input) — nothing could be traced to an I/O primitive; or
     * a *supported* language (one with an I/O catalog) was analyzed but
       produced zero call edges, so ``io_boundary`` saw none of its I/O — the
-      F69.A1 missing-edge-production case (e.g. the JS body-call gap).
+      F69.A1 missing-edge-production case (e.g. the JS body-call gap); or
+    * the analysis called out to a module the catalog has no opinion about —
+      ``requests``, ``sqlmodel``, ``boto3``. The first two spots ask "did this
+      language produce ANY call edges", and a language producing hundreds of
+      thousands passes them while every third-party I/O call goes unexamined.
+      Measured live on unmodified upstream repos: poetry's ``src/poetry``
+      returned ``confirmed`` for "never sends data over the network" (14 files
+      import ``requests``) *in the same run* that correctly reported 20
+      ``fs_read`` chains, so the analysis was demonstrably not blind — it
+      looked, could not classify ``requests``, and reported the silence as
+      safety. See :func:`_uncatalogued_external_modules` for the predicate and
+      the residual it deliberately leaves open.
 
     When ``complete`` is ``False``, :func:`verify_claim` returns
     ``inconclusive`` instead of ``confirmed`` so verify-claims never asserts a
@@ -626,9 +637,157 @@ _COVERAGE_CALL_EDGE_TYPES: frozenset[str] = frozenset({
 })
 
 
+#: How many uncatalogued modules to name in the reason string. A reason is read by
+#: a human deciding whether to trust a verdict, so it names the libraries rather
+#: than reporting a bare count — but a repo with 200 dependencies would otherwise
+#: emit an unreadable wall, so the tail is summarised.
+_MAX_REPORTED_UNCATALOGUED_MODULES = 5
+
+#: Terminal id slots that mark a ``dst`` as leaving the repo. An external call is
+#: the only thing that can BE an I/O primitive, so it is the only thing the catalog
+#: is asked to adjudicate; an in-repo callee carries no catalog question.
+#:
+#: NOT A ``Symbol.kind`` SET, which is why it is not named one. The slot carries two
+#: vocabularies: ``external_symbol`` is a registered ADR-0027 symbol kind (a minted
+#: external node), while ``unresolved`` is the terminal token
+#: :func:`ir.format_legacy_dst` hardcodes for an ``ExternalRef`` that never became a
+#: node. Naming this ``_EXTERNAL_DST_KINDS`` made ``check-symbol-kind-drift``
+#: correctly report ``unresolved`` as absent from the registry — the linter was
+#: right and the name was wrong. That one slot spells two vocabularies is a real
+#: oddity (INV-kurup's family: identifier-bearing fields emitting non-canonical
+#: formats from several paths); it is recorded here, not fixed here.
+_EXTERNAL_DST_TERMINAL_SLOTS: frozenset[str] = frozenset({
+    "external_symbol",
+    "unresolved",
+})
+
+#: Edge types that are a CALL SITE the catalog could have classified.
+#:
+#: DELIBERATELY NOT :data:`_COVERAGE_CALL_EDGE_TYPES`, which answers a different
+#: question ("did the analyzer extract call structure for this language") and
+#: therefore includes ``imports``. An import performs no I/O — ``import
+#: requests`` is not a network send, ``requests.get(...)`` is — so counting
+#: import edges here reports every module a repo merely MENTIONS as an
+#: unexamined I/O risk. Measured on poetry: import edges alone contributed 231
+#: of 258 reported modules. ``instantiates`` IS included because a constructor
+#: is a genuine classification opportunity — ``socket.socket()`` is a catalogued
+#: primitive.
+_CALL_SITE_EDGE_TYPES: frozenset[str] = frozenset({
+    "calls",
+    "module_attr_ref",
+    "instantiates",
+})
+
+
+def _analyzed_modules(raw_edges: list[dict[str, Any]]) -> set[str]:
+    """Module-shaped names whose SOURCE this analysis actually read.
+
+    Derived from the ``src`` side, which always names an in-repo symbol and so
+    always carries a file path (``python:app/config.py:3-9:load:function``);
+    the separator is normalised so ``app/config`` compares against a dotted
+    ``app.config``. Nodes are not consulted — every analyzed file that
+    participates in any edge appears here, and the function's callers already
+    hold the edges.
+    """
+    analyzed: set[str] = set()
+    from .taint import _module_from_symbol_path
+
+    for edge in raw_edges:
+        module = _module_from_symbol_path(edge.get("src", ""))
+        if module:
+            analyzed.add(module.replace("/", "."))
+    return analyzed
+
+
+def _is_analyzed_module(module: str, analyzed: set[str]) -> bool:
+    """Whether ``module`` names source this analysis read.
+
+    Tests every dotted prefix because the module slot may carry a trailing class
+    name — ``app.config.Loader`` for a callee defined in ``app/config.py``.
+    """
+    parts = module.split(".")
+    return any(".".join(parts[:i]) in analyzed for i in range(len(parts), 0, -1))
+
+
+def _uncatalogued_external_modules(
+    raw_edges: list[dict[str, Any]],
+    catalogs: dict[str, IoBoundaryCatalog],
+) -> list[str]:
+    """Return the external modules this analysis called into and cannot adjudicate.
+
+    THE PERMITTING CASE IS ENUMERATED, NOT THE BLOCKING ONE. A module supports a
+    clean verdict when the catalog can decide it either way: it declares a
+    primitive for the module (so a matching call would have been tagged), or it
+    knows the module as stdlib (:meth:`IoBoundaryCatalog.is_stdlib_module` —
+    an examined negative). Everything else is a module the catalog has never
+    heard of, where "no ``net_send`` chains" means "none I could see". A denylist
+    of known-risky libraries would fail open on the first library nobody had
+    thought of, which is exactly how ``requests`` slipped through.
+
+    SCOPE — the residual this deliberately leaves open. Only a dst that NAMES a
+    module is counted. The bare ``external`` placeholder
+    (``python:external:0-0:get:unresolved``, an untyped receiver) names none, so
+    it is skipped: it is the largest edge population in a Python repo, it
+    identifies no library to report, and counting it would downgrade nearly every
+    repo to ``inconclusive`` while telling the reader nothing about what went
+    unexamined. That population is the receiver-typing gap (INV-linub L3) and is
+    tracked there, not laundered through this gate. The honest consequence — a
+    repo reaching its I/O ONLY through untyped receivers still confirms — is
+    pinned by ``test_untyped_receiver_population_is_the_disclosed_residual``.
+
+    A language with no catalog is skipped rather than blamed here; that case is
+    already decided upstream (``is_supported`` / ``unsupported_taint_languages``)
+    and double-counting it would put the wrong cause in the reason string.
+    """
+    # REUSED, NOT REIMPLEMENTED. Symbol-id module extraction already has six
+    # homes and three different correct mechanisms (WI-ribuz), two of them naive
+    # and wrong. ``_module_from_symbol_path`` is the one written for exactly this
+    # comparison — an external dst's module against a catalog entry's declared
+    # module (WI-damir) — including the ``""``-for-placeholder contract this
+    # function's residual depends on. Adding a seventh home is how the drift
+    # WI-ribuz files gets one entry longer. Imported inside the function because
+    # ``taint`` is heavy and only this one path needs it.
+    from .taint import _module_from_symbol_path
+
+    analyzed = _analyzed_modules(raw_edges)
+    unknown: set[str] = set()
+    for edge in raw_edges:
+        if edge.get("type") not in _CALL_SITE_EDGE_TYPES:
+            continue
+        dst = edge.get("dst", "")
+        parts = dst.split(":")
+        # lang:module:span:name:kind — a well-formed id has all five.
+        if len(parts) < 5 or parts[-1] not in _EXTERNAL_DST_TERMINAL_SLOTS:
+            continue
+        catalog = catalogs.get(parts[0])
+        if catalog is None:
+            continue
+        module = _module_from_symbol_path(dst)
+        if not module:
+            continue  # the placeholder — the disclosed residual above
+        if catalog.is_stdlib_module(module):
+            continue
+        if any(
+            module == p.module or p.module.startswith(f"{module}.")
+            for p in catalog.primitives
+        ):
+            continue
+        # AN UNRESOLVED FIRST-PARTY CALLEE IS NOT A CATALOG GAP. Its source was
+        # read, so whatever I/O it performs was examined on its own edges — it
+        # is not a leaf this analysis cannot see past. Counting it would send a
+        # repo with no third-party dependency at all to ``inconclusive`` on one
+        # unresolved internal call. Measured on poetry: 120 of 171 call-site
+        # modules were poetry's own.
+        if _is_analyzed_module(module, analyzed):
+            continue
+        unknown.add(module)
+    return sorted(unknown)
+
+
 def compute_boundary_coverage(
     raw_edges: list,
     supported_languages: set,
+    catalogs: dict[str, IoBoundaryCatalog],
 ) -> BoundaryCoverage:
     """Decide whether the I/O boundary analysis can support a clean verdict.
 
@@ -641,13 +800,18 @@ def compute_boundary_coverage(
     on call edges, so it saw none of that language's I/O (F69.A1).
 
     Args:
-        raw_edges: Behavior-map edge dicts (``src`` / ``type`` keys read).
+        raw_edges: Behavior-map edge dicts (``src`` / ``dst`` / ``type`` read).
         supported_languages: Languages present in the repo that have an I/O
             catalog (and could therefore have produced boundary chains).
+        catalogs: Loaded I/O catalogs keyed by language. REQUIRED rather than
+            defaulted: a safety gate that silently skips its own check when a
+            caller forgets an argument fails open, which is the failure mode
+            this function exists to prevent.
 
     Returns:
         ``BoundaryCoverage(complete=False, reason=...)`` when no call edges
-        were produced at all, or when a supported language produced none;
+        were produced at all, when a supported language produced none, or when
+        the analysis called into modules the catalog cannot adjudicate;
         otherwise ``BoundaryCoverage(complete=True)``.
     """
     languages_with_calls: set[str] = set()
@@ -681,6 +845,20 @@ def compute_boundary_coverage(
                 f"supported language(s) {', '.join(blind)} were analyzed but "
                 f"produced no call edges, so their I/O is invisible to the "
                 f"boundary analysis"
+            ),
+        )
+
+    unknown = _uncatalogued_external_modules(raw_edges, catalogs)
+    if unknown:
+        shown = ", ".join(unknown[:_MAX_REPORTED_UNCATALOGUED_MODULES])
+        more = len(unknown) - _MAX_REPORTED_UNCATALOGUED_MODULES
+        suffix = f" (+{more} more)" if more > 0 else ""
+        return BoundaryCoverage(
+            complete=False,
+            reason=(
+                f"the analysis calls into {len(unknown)} module(s) with no I/O "
+                f"catalog coverage ({shown}{suffix}), so whether they perform "
+                f"this I/O was never examined"
             ),
         )
 
