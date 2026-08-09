@@ -1,0 +1,64 @@
+Original commit body from bdfdbcb7d93df6358696891f9e7c7fa99b068e1b:
+
+Reproduced on two UNMODIFIED upstream repos, each with a positive control
+firing in the SAME run — so this was never the analysis being blind and
+saying so:
+
+  poetry/src/poetry
+    x [CONTROL-FSREAD] violated — 20 fs_read chain(s)   <- the run WORKED
+    v [NET] never sends data over the network: confirmed <- FALSE
+    (14 files import requests; requests.Session()/.get()/.post())
+
+  full-stack-fastapi-template/backend
+    v never writes to a database: confirmed              <- FALSE
+    (crud.py:14-15 session.add(db_obj); session.commit())
+
+Both now return inconclusive at exit 2, naming the libraries.
+
+compute_boundary_coverage modelled two blind spots, both at the resolution
+of "did this language produce ANY call edges". Python answers that hundreds
+of thousands of times on any real repo, so a clean verdict stayed
+confirmable however much I/O left through an uncatalogued module. This is
+the residual cli.py already recorded and pinned as an xfail, filed there as
+Kotlin-specific; it is not language-specific.
+
+The permitting case is enumerated, not the blocking one: a module supports a
+clean verdict when the catalog declares a primitive for it or is_stdlib_module
+knows it. A denylist would fail open on the first library nobody thought of,
+which is how requests slipped through. confirmed stays reachable — a repo
+whose external calls all land in known modules still confirms.
+
+Two refinements forced by measurement, not foresight. The first draft
+reported 258 modules on poetry: 231 came from imports edges (an import
+performs no I/O — the catalog classifies call sites), and 120 of the
+remaining 171 were poetry's OWN modules (an unresolved first-party callee is
+not a catalogue gap; its source was read). supply_chain.tier cannot
+discriminate those — it reads 3 for every external_symbol node — so
+first-party is derived from the src side of the edge set. Filtered: 51, with
+requests.Session and dulwich intact and zero poetry.*.
+
+One predicate, both callers. catalogs is REQUIRED, not defaulted: a safety
+gate that silently skips itself when a caller forgets an argument fails open
+in exactly the way this exists to prevent. Module extraction reuses
+_module_from_symbol_path rather than adding a seventh home (WI-ribuz).
+
+Naming the terminal-slot set _EXTERNAL_DST_KINDS made check-symbol-kind-drift
+report `unresolved` as absent from the ADR-0027 registry. The linter was right
+and the name was wrong: external_symbol is a registered symbol kind,
+`unresolved` is the token format_legacy_dst hardcodes. Renamed and documented;
+the underlying two-vocabularies-one-slot oddity is recorded, not fixed here.
+
+DISCLOSED RESIDUAL, pinned as a test: an edge carrying the bare `external`
+placeholder names no module to adjudicate and is NOT counted. So a repo
+reaching its I/O only through untyped receivers still confirms today. That
+population is the receiver-typing gap (INV-linub L3).
+
+NOT MEASURED: any non-Python language; the false-downgrade direction beyond
+the fixtures and these two repos.
+
+Verification: full suite 22,102 passed / 100% coverage / 17 xfailed;
+check-package-coverage 6/6 in isolation; check-self-claims OK — 18 claims
+unchanged (16 inconclusive, 2 violated); mypy ratchet 672, delta +0.
+
+Refs: INV-fibis
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
