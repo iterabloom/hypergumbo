@@ -1,0 +1,72 @@
+Original commit body from 3b7207277a8b32635c8fafb38875ae85b1c35ae6:
+
+DEFAULT_EXCLUDES carried the bare names venv / .venv / env, and the matcher
+applies an exact name to EVERY component of the relative path at any depth.
+So every directory named `env` in every repository was deleted before
+analysis. Measured across 467 corpus repos:
+
+  427 source files, 77 directories, 39 repos (8.4%)
+  425 of 427 (99.5%) FIRST_PARTY per supply_chain.classify_file
+  0 of the 110 venv-NAMED dirs in the corpus carry any virtualenv marker
+
+The worst two are whole subsystems and both sit at the repo root: RocksDB's
+POSIX I/O layer (env_posix.cc, fs_posix.cc, io_posix.cc, file_system.cc) and
+U-Boot's environment storage subsystem (env.c, ext4.c, fat.c, mmc.c, nand.c).
+The deleted code is systematically I/O-dense, which is the worst thing for an
+exclusion list to hide from a boundary analysis: on poetry the dropped package
+is its virtualenv MANAGER, and re-including it takes unique I/O boundary chains
+70 -> 107 (+37, +52.9%) and total_io_edges 59 -> 96, with zero chains lost.
+Independently reproduced: 107 chains, exactly 37 anchored in an env/ path
+(env_read 24, fs_read 7, subprocess 5, fs_write 1).
+
+Exclusion is now conditioned on PEP 405's pyvenv.cfg, or bin/activate /
+Scripts/activate for older tooling.
+
+ROOT-ANCHORING WAS EVALUATED AND REJECTED ON MEASUREMENT. `env/*` already works
+in this matcher and needs no new machinery, but it recovers 379 of 427 (88.8%)
+and structurally cannot recover rocksdb's and U-Boot's env/, which are at depth
+0 -- precisely where a virtualenv would be. Only content separates them.
+Conversely `vendor` must stay unanchored: 19,251 of its 124,721 files sit below
+the root and are genuine dependencies, so that exclusion is doing correct work.
+
+ONE RULE, EVERY WALKER -- AND THE DRIFT HAPPENED DURING THE CHANGE. This module
+has two independent tree walkers: FileIndex.build's os.walk prune loop (the fast
+path every real run takes) and _is_excluded_classified. The venv rule was added
+to one, and find_files then excluded a virtualenv correctly while a full
+run_behavior_map still analysed it -- the same input, two answers. Caught by the
+suite, not by review. Both now call is_pruned_dir, and
+test_all_three_walkers_agree asserts parity BEHAVIOURALLY across all three
+public entry points rather than by grepping for the call, so a fourth copy that
+merely looks right cannot satisfy it.
+
+Three existing tests were invalidated and their FIXTURES were fixed, not their
+assertions: test_excludes_venv / test_excludes_dot_venv built a venv/ holding
+only a lib/ tree, which is no longer a virtualenv, so analysing it is correct.
+Each grew a real marker (one pyvenv.cfg, one bin/activate, so both arms run
+end-to-end) and keeps asserting its original property.
+
+SCOPE HELD. No discriminator was evaluated for build (1,965 files / 65 repos),
+coverage (246), target (1,183), out, dist, site, .cache -- two of them larger
+than env -- and they are NOT fixed here on the strength of the env result.
+The Scripts/activate arm has NO real-world positive control (zero corpus hits,
+no Windows virtualenv available); it ships pinned by fixture and is not claimed
+validated. The corpus behind "0 of 110" holds no installed virtualenvs at all
+(467 bare clones), so that zero is partly a corpus property -- the live control
+is this repository's own .venv, asserted still-excluded against the real dir.
+
+DIRECTION: this ADDS analyzable source. It can add findings and add analysis
+time; it cannot delete a finding.
+
+PRE-EXISTING FAILURES, NOT INTRODUCED HERE. The full suite reports 2 failures
+(test_taint_recall_corpus: javascript dataflow_capable reads False under -n 5
+full-suite ordering). Verified pre-existing by stashing every local edit and
+re-running on a clean tree at f70cf62fa2 -- identical 2 failures. CI is green on
+that same commit, so the trigger is a worker-distribution property CI does not
+currently produce. Filed as WI-kogop with the reproduction and with the
+mechanism hypothesis marked UNCONFIRMED (a targeted probe failed to reproduce
+it).
+
+Verification: 22,123 passed / 100% coverage / 17 xfailed, plus the 2 above;
+check-package-coverage 6/6 in isolation; mypy ratchet 672, delta +0.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
