@@ -45,12 +45,14 @@ because it hand-constructed its ``external`` dst instead of running the analyzer
 
 from pathlib import Path
 
-import pytest
-
 import hypergumbo_lang_mainstream.py as py
 from hypergumbo_core.io_boundary import load_catalog, tag_io_boundaries
 from hypergumbo_core.taint import load_full_taint_catalog
-from hypergumbo_lang_mainstream.py import EXTERNAL_CONSTRUCTOR_TYPES, analyze_python
+from hypergumbo_lang_mainstream.py import (
+    BUILTIN_CONSTRUCTOR_NAMES,
+    EXTERNAL_CONSTRUCTOR_TYPES,
+    analyze_python,
+)
 
 
 def _analyse(root: Path, source: str) -> list:
@@ -127,11 +129,15 @@ class TestBareConstructorBindingIsChecked:
 class TestBindingOwnershipDecidesTrust:
     """The ticket's own example, and the reason the filed remedy was wrong.
 
-    ``Path`` is not in ``EXTERNAL_CONSTRUCTOR_TYPES`` on the shipping tree — the
-    original filing added it to demonstrate a future risk. These tests add it the
-    same way, so the future receiver-typing case is pinned before anyone lands it.
     A binding to the module the catalogue claims must be TRUSTED; a binding to any
     other module must be WITHHELD. Refusing both is what the filed remedy did.
+
+    THESE NOW RUN AGAINST THE REAL TABLE. When INV-kipor was filed, ``Path`` was not
+    in ``EXTERNAL_CONSTRUCTOR_TYPES``, so this class monkeypatched the row in to pin
+    a risk before anyone landed it. The row shipped, the monkeypatch became a no-op
+    setting the same value, and a fixture that no longer does anything is a fixture
+    that hides whether the real table still satisfies the property. It is removed,
+    which is what the original comment ("pinned before anyone lands it") was for.
     """
 
     GOOD = (
@@ -149,9 +155,9 @@ class TestBindingOwnershipDecidesTrust:
         "    return p.replace(a, b)\n"
     )
 
-    @pytest.fixture(autouse=True)
-    def _with_path_entry(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setitem(py.EXTERNAL_CONSTRUCTOR_TYPES, "Path", "pathlib.Path")
+    def test_the_row_this_class_depends_on_is_really_in_the_table(self) -> None:
+        """Guard against the class going vacuous now that the monkeypatch is gone."""
+        assert py.EXTERNAL_CONSTRUCTOR_TYPES.get("Path") == "pathlib.Path"
 
     def test_matching_binding_is_trusted(self, tmp_path: Path) -> None:
         """POSITIVE CONTROL for the class: ``from pathlib import Path`` is the
@@ -210,6 +216,26 @@ class TestEveryBareConstructorKeyIsGuarded:
         """Guard against the table emptying and the parity test going vacuous."""
         assert self._bare_keys(), "no bare constructor keys left to guard"
 
+    @staticmethod
+    def _trusting_prelude(key: str, module: str) -> str:
+        """The import that makes ``key`` trusted, or '' when none is needed.
+
+        A REAL BUILTIN is trusted while unbound, so its control fixture must have no
+        import — adding one would test a different branch. Every other key must be
+        POSITIVELY bound, so its control fixture has to supply the binding. Deriving
+        the import from the claimed module string rather than hard-coding it is what
+        keeps this parity test growing with the table instead of with this file.
+        """
+        if key in BUILTIN_CONSTRUCTOR_NAMES:
+            return ""
+        package, _, name = module.rpartition(".")
+        assert package and name == key, (
+            f"{key!r} is not a builtin, so it must be positively bound — but its "
+            f"claimed module {module!r} is not of the form '<package>.{key}', so no "
+            f"import can be constructed and the guard below could not be exercised"
+        )
+        return f"from {package} import {key}\n\n"
+
     def test_each_bare_key_withholds_a_shadowed_binding(
         self, tmp_path: Path,
     ) -> None:
@@ -232,7 +258,9 @@ class TestEveryBareConstructorKeyIsGuarded:
             shadowed = _analyse(
                 tmp_path / f"neg_{key}", f"from decoy_lib import {key}\n\n{body}",
             )
-            control = _analyse(tmp_path / f"pos_{key}", body)
+            control = _analyse(
+                tmp_path / f"pos_{key}", self._trusting_prelude(key, module) + body,
+            )
             assert _tagged(control) >= 1, (
                 f"positive control failed for {key!r}: the unshadowed fixture "
                 f"reports no boundary, so the negative assertion proves nothing"
@@ -241,3 +269,55 @@ class TestEveryBareConstructorKeyIsGuarded:
                 f"{key!r} is import-rebound yet still minted a {module!r} "
                 f"receiver hint"
             )
+
+    def test_each_non_builtin_bare_key_withholds_when_unbound(
+        self, tmp_path: Path,
+    ) -> None:
+        """An unbound bare name is trusted ONLY for a real builtin.
+
+        The table used to hold only ``open``, so "unbound means the builtin" was
+        true of every row and the branch was written that way. It stopped being true
+        the moment a non-builtin bare key was added: an unbound ``Path`` is a local
+        class, a star-import, or a name from a module never read — and trusting it
+        mints an ``fs_write`` boundary and a ``host_fs`` taint SINK for any class
+        merely named ``Path``. Enumerated over the table so the next non-builtin key
+        inherits the guard instead of re-learning it.
+        """
+        catalog = load_catalog("python")
+        checked = 0
+        for key, module in self._bare_keys():
+            if key in BUILTIN_CONSTRUCTOR_NAMES:
+                continue
+            method = sorted(
+                p.name for p in catalog.primitives
+                if p.module == module and p.kind == "method"
+            )[0]
+            body = (
+                "def handler(spec):\n"
+                f"    v = {key}(spec)\n"
+                f"    return v.{method}()\n"
+            )
+            assert _tagged(_analyse(tmp_path / f"unbound_{key}", body)) == 0, (
+                f"{key!r} is not a builtin, yet an UNBOUND use still minted a "
+                f"{module!r} receiver hint"
+            )
+            # Control: the same fixture WITH the binding must report a boundary,
+            # or the zero above is a fixture that never worked.
+            bound = _analyse(
+                tmp_path / f"bound_{key}", self._trusting_prelude(key, module) + body,
+            )
+            assert _tagged(bound) >= 1, (
+                f"positive control failed for {key!r}: the BOUND fixture reports no "
+                f"boundary, so the unbound zero proves nothing"
+            )
+            checked += 1
+        assert checked, (
+            "no non-builtin bare keys in the table — this guard went vacuous; "
+            "delete it or add the key it was written for"
+        )
+
+    def test_builtin_names_are_a_subset_of_the_bare_keys(self) -> None:
+        """A name in ``BUILTIN_CONSTRUCTOR_NAMES`` that is not in the table grants
+        an exemption to nothing and hides a typo — the set would silently stop
+        protecting the row it was written for."""
+        assert BUILTIN_CONSTRUCTOR_NAMES <= {k for k, _ in self._bare_keys()}
