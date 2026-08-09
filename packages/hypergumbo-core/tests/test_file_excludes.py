@@ -30,7 +30,22 @@ def test_excludes_node_modules(tmp_path: Path) -> None:
 
 
 def test_excludes_venv(tmp_path: Path) -> None:
-    """Should not analyze files in venv directory."""
+    """Should not analyze files in venv directory.
+
+    THE FIXTURE GREW A ``pyvenv.cfg`` AND THAT IS THE POINT, NOT A WORKAROUND.
+    ``venv`` used to be a bare name in ``DEFAULT_EXCLUDES``, which also deleted every
+    first-party package that happened to be named ``env`` — 427 source files across
+    39 corpus repos, 99.5% first-party. Exclusion is now decided by content (PEP 405's
+    ``pyvenv.cfg``, or ``bin/activate``), so a directory called ``venv`` containing
+    nothing but a ``lib/`` tree is no longer a virtualenv as far as this tool is
+    concerned, and analyzing it is correct.
+
+    This test's PROPERTY — a virtualenv is not analyzed — is unchanged and still
+    asserted. Only the fixture had to become an actual virtualenv to state it.
+    Deleting the assertion instead would have removed the guard against the
+    regression that matters most here: dragging thousands of dependency files into
+    every analysis.
+    """
     # Create a Python file in root
     root_file = tmp_path / "app.py"
     root_file.write_text("def main(): pass")
@@ -38,6 +53,7 @@ def test_excludes_venv(tmp_path: Path) -> None:
     # Create a Python file in venv (should be excluded)
     venv_dir = tmp_path / "venv" / "lib" / "python3.12" / "site-packages"
     venv_dir.mkdir(parents=True)
+    (tmp_path / "venv" / "pyvenv.cfg").write_text("home = /usr\n")
     excluded_file = venv_dir / "some_package.py"
     excluded_file.write_text("def excluded(): pass")
 
@@ -52,12 +68,19 @@ def test_excludes_venv(tmp_path: Path) -> None:
 
 
 def test_excludes_dot_venv(tmp_path: Path) -> None:
-    """Should not analyze files in .venv directory."""
+    """Should not analyze files in .venv directory.
+
+    Uses ``bin/activate`` rather than ``pyvenv.cfg`` so the two markers are both
+    exercised end-to-end through ``run_behavior_map``, not only in the discovery
+    unit tests. See ``test_excludes_venv`` for why the fixture carries a marker.
+    """
     root_file = tmp_path / "app.py"
     root_file.write_text("def main(): pass")
 
     dot_venv = tmp_path / ".venv" / "lib"
     dot_venv.mkdir(parents=True)
+    (tmp_path / ".venv" / "bin").mkdir(parents=True)
+    (tmp_path / ".venv" / "bin" / "activate").write_text("# activate\n")
     excluded_file = dot_venv / "excluded.py"
     excluded_file.write_text("def excluded(): pass")
 
