@@ -1,0 +1,76 @@
+Original commit body from 21fbbd14ae9979b9c8dcd60ff466bd7a0610d3b7:
+
+EXTERNAL_CONSTRUCTOR_TYPES held two rows -- open and socket.socket -- so the
+most common filesystem idiom in Python produced no boundary at all, while
+pathlib.Path had been in python.yaml the whole time with 9 fs_read methods and
+10 fs_write. The catalogue entry existed and nothing could reach it.
+
+MEASURED A/B, four repos, both directions, paired on the same tree:
+
+    io boundary chains   3,977 -> 4,108   (+131)   chains LOST: 0
+    taint findings          22 ->    22   ( +0)
+    sanitized_flows          0 ->     0   ( +0)    verdicts changed: none
+
+  meson +90, poetry +19, mitmproxy +16, kserve +6.
+  fs_read 93 / fs_write 38; Path.exists 40, is_file 16, mkdir 14.
+
+The taint row is the one that mattered. Receiver typing arms the ADR-0017
+sanitizer barrier, and since PR #214 an unearned False there earns `sanitized`
+and DROPS a flow -- so the risk under measurement was suppression, not merely
+false positives. It did not fire.
+
+TWO TABLE KEYS, NOT ONE. `from pathlib import Path` arrives as a bare ast.Name
+and `import pathlib` as a dotted ast.Attribute -- different branches. Bare is
+103 of 136 corpus constructor sites, dotted 33, so a one-key patch delivers
+about two thirds and looks complete.
+
+THE UNBOUND RULE HAD TO CHANGE, and that is the safety-relevant half. The
+bare-name branch trusted an unbound name because "for a bare name that means the
+builtin". True of open; FALSE of Path, which is not a builtin -- an unbound Path
+is a local class, a star-import, or a name from a module never read, and 254
+corpus sites have a constructor name that is also an in-repo class name.
+Trusting it mints an fs_write boundary AND a host_fs taint SINK for any class
+merely named Path. BUILTIN_CONSTRUCTOR_NAMES now enumerates the permitting case;
+every other row must be POSITIVELY bound, tightening INV-kipor's check from
+"not contradicted" to "confirmed".
+
+A constructor call is now a valid derivation ROOT (`Path(raw) / "out.txt"`,
+`Path(p).expanduser()`) -- 82 of 294 assign-from-Path-ctor sites (28%).
+TYPE_PRESERVING_MEMBERS still gates which members propagate, so widening the
+root does not widen the propagation rule. The inline-receiver branch is in a
+different function and is deliberately NOT covered here.
+
+INV-kipor's parity test caught this, which is what it exists for: its positive
+control assumed unbound-is-trusted and could not pass for a non-builtin row. The
+control now DERIVES its import from the claimed module string, so it grows with
+the table, and the new rule joined the same enumerated loop -- every non-builtin
+bare key must refuse when unbound, each paired with a bound control proving the
+zero is not a dead fixture. Separately, TestBindingOwnershipDecidesTrust
+monkeypatched Path into the table ("pinned before anyone lands it"); it landed,
+the monkeypatch became a no-op setting the same value, and those tests would
+have kept passing against a patched table even if the real one lost the row.
+Removed, with a guard asserting the row is present.
+
+ADJUDICATED: 3 of 3 sampled sites genuine, including two on the new ctor-root
+path. Product/test split 91 / 40 (69.5% / 30.5%), all 40 test-path in meson. A
+first pass reported 100% product -- WRONG: classify_test_file is real (fires on
+tests/test_foo.py) but does not recognise meson's unittests/ and `test cases/`
+naming, so the clean extreme was a classifier-convention artifact.
+
+DELIBERATELY NOT ADDED: io.StringIO / io.BytesIO (160 sites; catalogue module
+`io` declares ZERO method-kind primitives, so typing them reaches nothing);
+multiprocessing.Pipe and asyncio.open_connection (both return a TUPLE -- they
+score zero only because the corpus idiom is tuple unpacking, which the
+Name-target guard already refuses, so a row is a latent wrong-type source).
+`from pathlib import Path as P` misses by key: a false negative in the safe
+direction, 0 of 136 corpus sites.
+
+NOT MEASURED: precision at scale (3 sites read is a spot check, not a figure);
+any repo outside the four A/B'd; whether taint neutrality holds on a corpus
+where the barrier arm is reachable at all.
+
+Verification: 22,138 passed / 100% coverage / 17 xfailed;
+check-package-coverage 6/6 in isolation; mypy ratchet 672, delta +0. The 2
+remaining suite failures are WI-kogop, confirmed pre-existing on a clean tree.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
