@@ -1754,12 +1754,25 @@ def _extract_go_var_types(
             # the RHS (e.g. x := e.Query()), try the return-type
             # registry.  If the RHS is a method call on a receiver
             # whose type is already known, look up the return type.
-            if (  # pragma: no cover - requires Go tree-sitter grammar
+            #
+            # WI-jolif: this used to test ``rhs.type == "call_expression"``
+            # directly, and ``rhs`` is the ``expression_list`` wrapper — a
+            # condition the node can NEVER satisfy, so the whole block was dead
+            # from the day it shipped. It now unwraps through the same helper
+            # ``_type_from_rhs`` uses, so the two consumers cannot disagree about
+            # what "the right-hand side" means. The stale
+            # ``# pragma: no cover - requires Go tree-sitter grammar`` that sat on
+            # this branch is gone with it: the grammar IS installed, and the
+            # pragma was excusing itself on the same false premise that kept the
+            # three end-to-end tests skipped.
+            _rhs_expr = _unwrap_rhs_expression(rhs)
+            if (
                 not type_name
                 and method_return_type_registry
-                and rhs.type == "call_expression"
+                and _rhs_expr is not None
+                and _rhs_expr.type == "call_expression"
             ):
-                call_func = find_child_by_field(rhs, "function")
+                call_func = find_child_by_field(_rhs_expr, "function")
                 if call_func is not None and call_func.type == "selector_expression":
                     operand = find_child_by_field(call_func, "operand")
                     field_node = find_child_by_field(call_func, "field")
@@ -1903,6 +1916,39 @@ def _extract_go_var_types(
     return scoped_var_types
 
 
+def _unwrap_rhs_expression(
+    rhs_node: "tree_sitter.Node",
+) -> "tree_sitter.Node | None":
+    """Peel the ``expression_list`` wrapper off a short-var-declaration RHS.
+
+    THE SINGLE ANSWER to "what expression is actually on the right", because two
+    consumers need it and only one had it. ``short_var_declaration``'s last child
+    is an ``expression_list``, never the expression itself — so ``x := e.Query()``
+    presents as ``expression_list``, not ``call_expression``.
+
+    :func:`_type_from_rhs` unwrapped this inline and worked. The WI-kuroj
+    return-type-registry lookup in :func:`_extract_go_var_types_from_root` did NOT,
+    and guarded on ``rhs.type == "call_expression"`` — a condition the node can
+    never satisfy. That guard was therefore DEAD CODE from the day it shipped: the
+    registry was built, threaded through three call layers, and consulted by a
+    branch nothing could reach, so ``result := e.Query(); result.Rows()`` emitted
+    ``go:external:0-0:Rows:unresolved`` (WI-jolif). Its three end-to-end tests
+    never ran to say so, because a vacuous fixture skipped them.
+
+    Returns ``None`` when the list holds no type-bearing expression, which is the
+    same answer the inline version gave.
+    """
+    node = rhs_node
+    if node.type == "expression_list":
+        for child in node.children:
+            if child.type in (
+                "unary_expression", "composite_literal", "call_expression",
+            ):
+                return child
+        return None
+    return node
+
+
 def _type_from_rhs(
     rhs_node: "tree_sitter.Node",
     source: bytes,
@@ -1921,17 +1967,9 @@ def _type_from_rhs(
 
     Returns the type name string or None.
     """
-    node = rhs_node
-    # Unwrap expression_list
-    if node.type == "expression_list":
-        for child in node.children:
-            if child.type in (
-                "unary_expression", "composite_literal", "call_expression",
-            ):
-                node = child
-                break
-        else:
-            return None
+    node = _unwrap_rhs_expression(rhs_node)
+    if node is None:
+        return None
 
     # &Server{} → unary_expression with & operator
     if node.type == "unary_expression":
