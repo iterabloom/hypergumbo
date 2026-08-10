@@ -1,0 +1,25 @@
+- op: create  # c010
+  at: '2026-08-10T06:58:27Z'  # c010
+  by: agent  # c010
+  actor: jgstern_agent  # c010
+  clock: 1  # c010
+  nonce: c010  # c010
+  data:  # c010
+    kind: invariant  # c010
+    title: "Rust emits DOUBLE-SPAN external ids (rust:external:0-0:std::env:0-0:var:...) alongside the conformant form; 483 in a 2-repo scan"  # c010
+    status: violated  # c010
+    priority: 2  # c010
+    parent:  # c010
+    tags:  # c010
+    - rust  # c010
+    - symbol_identity  # c010
+    - analysis_quality  # c010
+    - adr_0036  # c010
+    isbefore: []  # c010
+    duplicate_of: []  # c010
+    not_duplicate_of: []  # c010
+    pr_ref:  # c010
+    description: "FOUND 2026-08-10 while measuring INV-fokik's blast radius.\n\nTHE SHAPE. Rust emits external-symbol ids with TWO span tokens and the real module\njammed into the name slot:\n\n    rust:external:0-0:std::env:0-0:var:external_symbol\n    rust:external:0-0:Stdio:0-0:null:external_symbol\n    rust:external:0-0:fs:0-0:read_dir:external_symbol\n    rust:external:0-0:Vec:0-0:with_capacity:external_symbol\n\nagainst the conformant form the same analyzer also emits:\n\n    rust:std::env:0-0:var:external_symbol\n\nBoth shapes appear in the SAME map. In rage, `rust:std::` dsts split 94 conformant /\n76 double-span; scanned across rage + just there are 483 double-span ids.\n\nWHY IT IS NOT COSMETIC. ADR-0036 Ruling 1 fixes the grammar at\n{lang}:{path}:{span}:{name}:{kind} with exactly one colon-tolerant slot (path). A\ndouble-span id has no true path slot, so every consumer has to pick a wrong answer:\n\n  right-anchored (parts[1:-3])  -> 'external:0-0:std::env'\n  span-anchored  (first span)   -> 'external'\n\nThe first is NOT in taint._UNRESOLVED_MODULE_PLACEHOLDERS, so _lookup_named_entry\ncompares it as a real module name, matches nothing, and DROPS THE FINDING SILENTLY --\nthe exact fatal path INV-fokik was filed about, arrived at from the emission side\ninstead of the parser side. The second degrades to short-name matching plus the F3\ngate, which is why symbol_path_slot now anchors on the span.\n\nSO THE PARSER SIDE IS ALREADY DEFENDED and this item is about EMISSION: producers\nshould not emit the shape at all. Consumers currently survive it by failing safe.\n\nSCOPE NOT ESTABLISHED. Only rust was scanned (just, rage). Whether other analyzers\nemit a double-span id is UNMEASURED -- scripts/measure-symbol-id-colon-conformance.py\nreports the population per map and is the tool to answer it. hypergumbo's own tree has\n0 (314,904 ids, all conformant), so this needs polyglot corpora rather than\nself-analysis.\n\nRELATIONSHIP. Emission-conformance is INV-dulah's axis (node.id format escapes the\ndocumented grammar) and INV-kurup's (identifier-bearing fields emit non-canonical\nformats from several paths). Filed separately because it has its own repro, its own\npopulation count, and a specific producer to find; fold it into either if the sweep\nthat owns them gets there first."  # c010
+    fields:  # c010
+      statement: "Every emitted symbol id has exactly one span slot, so the ADR-0036 anchored parse has a unique correct answer for its path and name slots."  # c010
+      root_cause: "Some rust external-symbol emission path builds an id by embedding an already-formed inner id into the name slot, producing two spans and no true path slot. The conformant form is emitted by a different path in the same run, so both shapes coexist in one map. Producer line NOT localized."  # c010
