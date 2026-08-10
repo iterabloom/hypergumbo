@@ -1,0 +1,42 @@
+Original commit body from 8370e490e40513d324c57ed3bcd4a21360bbad2d:
+
+INV-fazim. `go:external:0-0:<callee>:unresolved` names a call the analyzer could
+not attribute to any package, and Edge.create defaults is_resolved=True, so every
+emit site that stayed silent about the flag asserted resolution it did not have.
+Under ADR-0037 ruling 4 that flag is authoritative and a consumer may not
+re-derive the verdict from the dst string, so nothing downstream could defend
+itself: taint._match_propagation_entry branches on it, finds no path evidence for
+the 'external' placeholder, and takes the legacy escape
+`if not path_module: return hits[0]` — an ungated bare-name match that never
+reaches the F3 gate.
+
+Four sites fixed. Three take a plain is_resolved=False (the ambiguity guard, the
+visibility guard, the stdlib-interface guard). The fourth, route-mount dispatch,
+takes the flag FROM ITS BRANCH: it resolves to an in-repo symbol when it can and
+falls back to the placeholder when it cannot, so a blanket False would have been
+as wrong as the inherited True. Both branches are asserted from one analysis.
+
+Each sibling is reachable only via a NON-identifier receiver, which is why they
+survived: the two guards that already stated the flag both consume a tracked
+local identifier and shadow the others for the obvious input. The first draft of
+the fixtures had all three collapse onto the already-correct WI-jopar guard and
+would have passed while testing nothing, so a non-vacuity floor now asserts they
+hit three different guards by their meta markers. Live analyzer-stage repros
+before the fix: items[0].Handle() (0.50), items[0].doWork() (0.85),
+r.Body.Close() (0.85), all is_resolved=True.
+
+BLAST RADIUS ON A SHIPPED MAP IS ZERO, stated rather than sold. A/B on
+alertmanager: 8,322 call edges both arms, 1,576 external both arms, 0 carrying
+is_resolved=True in EITHER, identical confidence distribution, 0 edges gained or
+lost. finalize's resolution sub-step already flips the flag and since PR #248
+re-derives confidence from its own verdict, so the producer bug was papered over
+downstream. This is a latent-correctness fix for consumers reading edges before
+finalize; no recall or precision win is claimed. Same shape as INV-fokik.
+
+Item stays violated: its statement is about the live taint FP channel, and the
+CONSUMER escape in taint.py is untouched — any other producer setting the flag
+wrongly still lands on it.
+
+Full suite: 22,261 passed / 0 failed / 100% coverage; mypy ratchet 672 (delta +0).
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
