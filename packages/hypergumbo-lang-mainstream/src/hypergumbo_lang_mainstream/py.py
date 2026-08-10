@@ -465,12 +465,71 @@ def _lookup_symbol_by_module(
 # ``import pathlib`` as a dotted ``ast.Attribute``. Measured over the corpus, bare is
 # 103 of 136 constructor sites (65 reaches) and dotted is 33 (29 reaches), so a
 # one-key patch delivers roughly two thirds of the payload and looks complete.
-EXTERNAL_CONSTRUCTOR_TYPES = {
-    "open": "file",
-    "socket.socket": "socket.socket",
-    "Path": "pathlib.Path",
-    "pathlib.Path": "pathlib.Path",
-}
+#
+# DERIVED FROM THE CATALOGUE, NOT CURATED (INV-linub). The four rows this table
+# held by hand were four of the SEVENTEEN receiver types ``python.yaml`` already
+# declares in the ``module`` slot of its ``kind: method`` primitives, so fifteen
+# types could never be minted and every method hanging off them was structurally
+# unreachable — measured at 83 of 215 expressible primitives (38.6%) unreachable
+# from an idiomatic call site, 78 of them method-kind
+# (``scripts/measure-catalogue-reach.py python``). Two homes for one fact is what
+# produced that, so the table now READS the catalogue instead of restating it and
+# a type added to the YAML tomorrow is mintable the same day.
+#
+# DIRECTION, MEASURED: finding-ADDING only. The fifteen newly-mintable types
+# carry 43 of 83 python taint SOURCES and 35 of 113 SINKS, and 0 of 4 sanitizers
+# — so this cannot arm the WI-fasub barrier arm, where a ``False`` earns
+# ``sanitized`` and DROPS a flow from the violation set. The one channel that can
+# still cost precision is the standing one: a typed external receiver walks into
+# the strip-to-bare-name lookup against the repo's own symbols.
+#
+# WHY ``io_primitives`` AND NOT ALSO THE TAINT CATALOGUE. The taint catalogue
+# names two module strings ``io_primitives`` does not —
+# ``cryptography.hazmat.primitives.asymmetric`` and ``...ciphers.aead`` — and
+# NEITHER IS A CONSTRUCTIBLE TYPE: their entries carry the class in the NAME slot
+# (``AESGCM.decrypt``, ``rsa.generate_private_key``), so the module slot holds a
+# module and ``asymmetric(...)`` constructs nothing. Reading that catalogue too
+# would therefore add zero usable rows today while requiring a dotted-name-slot
+# guard. RE-EVALUATION TRIGGER, so this stays a decision rather than an
+# assumption: revisit if a taint entry ever declares a receiver type in the
+# module slot with a plain method name beside it.
+def _derive_external_constructor_types() -> dict[str, str]:
+    """``{constructor key: catalog module}`` for every catalogued receiver type.
+
+    Each type yields TWO keys because the two call forms enter different branches
+    of :func:`_external_constructor_type`: ``import smtplib`` arrives as a dotted
+    ``ast.Attribute`` and ``from smtplib import SMTP`` as a bare ``ast.Name``.
+
+    A leaf name claimed by two distinct types is WITHHELD rather than resolved to
+    whichever the iteration reached first — a silently mis-typed receiver mints a
+    boundary and a taint sink for the wrong module, which is the fabricated-finding
+    direction. There are no such collisions today; the guard is here so that adding
+    a colliding type to the YAML degrades to "unreachable" (safe) instead of
+    "attributed to its namesake" (a false positive nobody would look for).
+    """
+    from hypergumbo_core.io_boundary import load_catalog
+
+    types = {
+        p.module for p in load_catalog("python").primitives
+        if p.kind == "method" and p.module and "." in p.module
+    }
+    leaves: dict[str, list[str]] = {}
+    for type_name in sorted(types):
+        leaves.setdefault(type_name.rsplit(".", 1)[1], []).append(type_name)
+    derived: dict[str, str] = {}
+    for type_name in sorted(types):
+        derived[type_name] = type_name
+    for leaf, claimants in leaves.items():
+        if len(claimants) == 1:
+            derived[leaf] = claimants[0]
+    # NOT catalogue-derived: the synthetic ``file`` module carries no dot and
+    # hangs off no constructor name the YAML names, so deriving alone would drop
+    # ``open`` and take ``f.read()`` / ``f.write()`` with it.
+    derived["open"] = "file"
+    return derived
+
+
+EXTERNAL_CONSTRUCTOR_TYPES = _derive_external_constructor_types()
 
 #: Bare-name rows that are REAL BUILTINS, and therefore still trusted when no import
 #: binds them.
@@ -6188,16 +6247,34 @@ def _process_call(
                     origin=PASS_ID,
                     origin_run_id=run_id,
                 ))
-            elif callee_name in EXTERNAL_CONSTRUCTOR_TYPES:
+            elif callee_name in BUILTIN_CONSTRUCTOR_NAMES:
                 # WI-mitul: a bare builtin I/O constructor (open) — Case 1 found
                 # no import so nothing was emitted, leaving the io_primitives/
                 # python.yaml `builtins` rows (fs_read/fs_write functions=[open])
                 # dead. Emit a calls edge to builtins so open() itself is a
-                # visible I/O call in every syntactic form. (For a bare ast.Name
-                # only the bare EXTERNAL_CONSTRUCTOR_TYPES key `open` can match;
-                # the dotted `socket.socket` entry is an ast.Attribute reached
-                # by a different branch.) The receiver's .read()/.write() edges
-                # (WI-fuvuj, module=file) are orthogonal to this open()-call edge.
+                # visible I/O call in every syntactic form. The receiver's
+                # .read()/.write() edges (WI-fuvuj, module=file) are orthogonal
+                # to this open()-call edge.
+                #
+                # GATED ON ``BUILTIN_CONSTRUCTOR_NAMES``, NOT ON THE WHOLE TABLE.
+                # This arm asserts the name IS a builtin — it writes the module
+                # slot ``builtins`` — and it consults no import binding, so the
+                # membership test is the ONLY thing standing between it and a
+                # fabricated builtin. It used to test ``EXTERNAL_CONSTRUCTOR_TYPES``
+                # under a comment claiming "only the bare key ``open`` can match",
+                # which was an unstated dependency on that table being curated
+                # down to builtins. Deriving the table from the catalogue added
+                # seventeen bare type names and falsified it immediately: pretix's
+                # ``StreamWriter = codecs.getwriter('utf-8'); StreamWriter(data)``
+                # — a LOCAL rebinding — minted
+                # ``python:builtins:0-0:StreamWriter:unresolved``. The sibling
+                # ``_external_constructor_type`` refused the very same name a few
+                # lines earlier via its INV-kipor binding check; two consumers of
+                # one table disagreeing about what membership licenses is the
+                # drift this file keeps rediscovering, so the permitting set is
+                # now named directly. ``BUILTIN_CONSTRUCTOR_NAMES`` already means
+                # exactly "bare rows that are REAL builtins", so this consolidates
+                # onto an existing rule rather than minting a third one.
                 dst_id = f"python:builtins:0-0:{callee_name}:unresolved"
                 edges.append(Edge.create(
                     src=caller_symbol.id,
