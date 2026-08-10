@@ -1,0 +1,24 @@
+- op: create  # f736
+  at: '2026-08-10T10:27:43Z'  # f736
+  by: agent  # f736
+  actor: jgstern_agent  # f736
+  clock: 1  # f736
+  nonce: f736  # f736
+  data:  # f736
+    kind: invariant  # f736
+    title: "java.nio.file.Files static methods are catalogued kind=method but emitted with no call_construct, so the entire Files sink surface can never match"  # f736
+    status: violated  # f736
+    priority: 1  # f736
+    parent:  # f736
+    tags:  # f736
+    - taint  # f736
+    - io_boundary  # f736
+    - adr_0017  # f736
+    isbefore: []  # f736
+    duplicate_of: []  # f736
+    not_duplicate_of: []  # f736
+    pr_ref:  # f736
+    description: "FOUND BY THE METHOD-STARVATION COVERAGE GATE on sherpa-onnx (real repo, 14\nlanguages, 2,924 java call edges). Not a synthetic case.\n\nTHE DEFECT. Every java.nio.file.Files entry in io_primitives/java.yaml is declared\nkind=method (readAllBytes, readAllLines, readString, write, copy, list, walk,\nfind, size, ...). But Files' methods are STATIC, and the java analyzer emits a\nstatic/class-qualified call with NO call_construct at all:\n\n    java:java.nio.file.Files:0-0:copy:external_symbol                 cc=None\n    java:java.nio.file.Files:0-0:createTempDirectory:external_symbol  cc=None\n\nContrast the same repo's genuine INSTANCE methods on java.io.File, which are\nstamped correctly and DO match:\n\n    java:java.io.File:0-0:exists:external_symbol           cc=method\n    java:java.io.File:0-0:mkdirs:external_symbol           cc=method\n    java:java.io.File:0-0:listFiles:external_symbol        cc=method\n\nCONSEQUENCE: the io-boundary F3 gate keys the no-module refusal on call_construct,\nso a method-kind catalogue entry needs a method-construct edge to match. The entire\njava.nio.file.Files SINK surface (fs_write: write, copy, move, createDirectories,\ncreateTempDirectory, ...) can therefore never be tagged. Same for\njava.net.http.HttpClient. This is a false NEGATIVE on a write-side primitive, which\nauto-derives a taint sink under ADR-0017 §2b, so it propagates into claim verdicts\nrather than staying cosmetic.\n\nTHIS IS A KNOWN SHAPE, ALREADY SOLVED ONCE, IN THE OPPOSITE DIRECTION. kotlin.yaml's\nlogging entry carries an explicit note: println/print are catalogued as `functions:`\nNOT `methods:` precisely because \"the JVM compiler synthesizes a ConsoleKt receiver\nin bytecode, but our AST-level call construct is a function call ... io-boundary:F3\nwould otherwise suppress a bare println(x)\". java.nio.file.Files is that same\nreasoning un-applied: a static call is a function call at AST level.\n\nCANDIDATE FIX (not yet measured): re-key static-method entries as `functions:` in\njava.yaml, which is what the AST-level construct actually is. Check the sibling\ncatalogues for the same shape before fixing per-site -- this is likely a CLASS\n(any language with static/class methods catalogued as methods:). Do NOT widen F3\nto accept cc=None for method entries; that re-opens the untyped-receiver hole F3\nexists to close.\n\nMEASURE BOTH DIRECTIONS BEFORE LANDING: re-keying makes these entries matchable,\nwhich ADDS boundary tags and therefore ADDS taint sinks. That is the recall\ndirection and is the point, but the FP risk is the bare-short-name fallback\n(`write`, `copy`, `list` are extremely collidable names) -- check ambiguous_names\nand the INV-sapit first-party guard before believing the delta."  # f736
+    fields:  # f736
+      statement: "A catalogued I/O primitive whose call construct differs from the analyzer's emitted construct can never be tagged; static-method entries must be catalogued as the construct the AST actually produces."  # f736
+      root_cause: "io_primitives/java.yaml declares every java.nio.file.Files entry kind=method, but Files' methods are static and the java analyzer emits them with call_construct absent. io-boundary:F3 requires a method-construct edge for a method-kind entry, so the match is refused unconditionally."  # f736

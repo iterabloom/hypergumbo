@@ -1,0 +1,24 @@
+- op: create  # 5f0d
+  at: '2026-08-10T10:27:54Z'  # 5f0d
+  by: agent  # 5f0d
+  actor: jgstern_agent  # 5f0d
+  clock: 1  # 5f0d
+  nonce: 5f0d  # 5f0d
+  data:  # 5f0d
+    kind: invariant  # 5f0d
+    title: "JS/TS analyzer populates call_construct on ZERO call edges (measured 4,872 across 3 repos), making the io-boundary F3 method gate unconditional for the second-largest sink surface"  # 5f0d
+    status: violated  # 5f0d
+    priority: 1  # 5f0d
+    parent:  # 5f0d
+    tags:  # 5f0d
+    - taint  # 5f0d
+    - io_boundary  # 5f0d
+    - javascript  # 5f0d
+    isbefore: []  # 5f0d
+    duplicate_of: []  # 5f0d
+    not_duplicate_of: []  # 5f0d
+    pr_ref:  # 5f0d
+    description: "MEASURED ON THREE REAL REPOS. The JS/TS analyzer populates meta.call_construct on\nZERO call edges, while other analyzers populate it richly:\n\n  repo            language     call edges   with call_construct\n  alertmanager    go               10,172   7,741 (6,012 `method`)\n  alertmanager    javascript           28   0\n  alertmanager    typescript           77   0\n  apollo-server   javascript          169   0\n  apollo-server   typescript        2,828   0\n  sherpa-onnx     javascript        1,749   0\n  sherpa-onnx     typescript           26   0\n  sherpa-onnx     python            9,859   5,138\n  sherpa-onnx     kotlin            2,414   0\n\nCONSEQUENCE. io-boundary:F3 gates the no-module-hint path on call_construct: a\nmethod-kind catalogue entry is refused unless the edge is a method-construct call.\nWith the field never populated, F3's method branch is UNCONDITIONAL for JS/TS,\nexactly as INV-funit found it to be for the sanitizer gate before PR #-. JS carries\n50 catalogued sources and 83 sinks -- the largest sink surface of any language after\npython -- so this is not a corner.\n\nWHAT IS NOT ESTABLISHED, stated so nobody closes this on the strength of the table:\nI have NOT measured whether JS io-boundary tags actually drop as a result. The\nsurvey map does not carry io_boundary meta (it is stamped downstream), so the\nobvious check is unavailable from these artifacts and I did not substitute a\nproxy. The next step is a direct io-boundaries run on apollo-server comparing\ntagged counts against the catalogue's method-kind vs function-kind entries.\n\nHOW IT SURFACED. The verify-claims method-starvation coverage gate keyed on\ncall_construct and reported `fs`, `console` and `process` starved on BOTH real JS\nrepos -- i.e. it would have downgraded every JavaScript repo. The gate now ABSTAINS\nfor any language that never stamps the field (None = could not check, not empty =\nchecked and found none), which preserves today's behaviour and converts this from a\nsilent hole into a filed one. When this item is fixed, that abstention should be\nrevisited: JS becomes checkable and the gate gets stricter for free."  # 5f0d
+    fields:  # 5f0d
+      statement: "Every analyzer that emits call edges consumed by the io-boundary F3 gate must populate meta.call_construct, or the gate's method branch is unconditional for that language."  # 5f0d
+      root_cause: "The JS/TS analyzer never sets meta.call_construct. F3 refuses a method-kind catalogue entry unless the edge carries call_construct=='method', so for JS/TS that refusal can never be lifted."  # 5f0d
