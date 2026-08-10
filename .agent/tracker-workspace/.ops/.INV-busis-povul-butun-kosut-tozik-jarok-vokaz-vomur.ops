@@ -85,3 +85,18 @@
   clock: 10  # 1308
   nonce: '1308'  # 1308
   message: "STATEMENT CONFIRMED. Only the root_cause EXEMPLARS are wrong. Correcting a\nprior grading error on this item.\n\nA measurement pass graded this premise \"false\"; two adversarial re-measurements\noverturned that. It graded the root_cause exemplars, not the statement. The\nstatement (\"section 3a cannot refute because a large share of escape sites are\nnot calls\") is CONFIRMED on measured substrate: non-call share of blocked-walk\nsites = 48/72 unique pretix sites (66.7%), 48/53 (90.6%) excluding\nsource_undefined, 75/127 pooled over 4 repos.\n\nEXEMPLARS THAT ARE WRONG for Python substrate:\n  container subscript = 0\n  capture-mediated closure = 3, ALL in caddy (Go func-literals), 0 in Python\nThe largest all-paths family is assert_statement expression reads (37/72, test\npaths); the largest production family on pretix is assignment (6/15) then call\n(5/15). Genuine no_heir field writes = 6/73 all-paths (8.2%), 6/16 production.\n\nPOPULATION CORRECTION: the true population is 137 blocked / 68 production sites\nover 5 repos (pretix, mitmproxy, caddy, kserve, meson). A prior run reported\n73/16 -- 23.5% of it -- having dropped caddy (which IS on this box, under\ncurriculum_repos, 9s warm) and lost kserve+meson to ENOSPC.\n\n§7b IS NOT THE BINDING CONSTRAINT and does not need to be asked. Refutation is\nblocked by the §3a arm's `is True` test, not by escape shape: §3a returns False\n0/68 walks, and the barrier arm ran 0 times on every measured repo. So NO escape\nreclassification can move a finding today.\n\nRECEIVER TYPING DID NOT SHRINK THE ESCAPE POPULATION -- but that test is\nUNDER-POWERED and must not be quoted as a null: pretix is byte-identical across\narms (the treatment does not apply there at all; total_io_edges 1051 vs 1051),\nleaving mitmproxy as the only repo with both treatment and walks, at 1 site."  # 1308
+- op: update  # ae11
+  at: '2026-08-10T02:40:17Z'  # ae11
+  by: agent  # ae11
+  actor: jgstern_agent  # ae11
+  clock: 11  # ae11
+  nonce: ae11  # ae11
+  set:  # ae11
+    title: "Section 3a cannot refute because a large share of blocked-walk escape sites are not calls (66.7-90.6% measured; the ORIGINAL '40% / section 7b excludes' framing is refuted -- see thread)"  # ae11
+- op: discuss  # 6e34
+  at: '2026-08-10T02:40:17Z'  # 6e34
+  by: agent  # 6e34
+  actor: jgstern_agent  # 6e34
+  clock: 12  # 6e34
+  nonce: '6e34'  # 6e34
+  message: "TITLE DE-STALED, 2026-08-09. It carried two claims this item's own 2026-08-08\nre-measurement had already refuted, and the title is the field every reader hits\nfirst:\n\n  \"40% of escape sites are not calls\" -- the measured non-call share of\n  BLOCKED-WALK sites is 48/72 unique pretix sites (66.7%), 48/53 (90.6%)\n  excluding source_undefined, 75/127 pooled over 4 repos. 40% is not any of\n  those, and the population it was computed over (all escape sites, including\n  those a CONFIRMING walk passed through) is the wrong one.\n\n  \"which section 7b excludes\" -- refuted. Container subscript = 0 and\n  capture-mediated closure = 3, all of them Go func-literals and 0 in Python.\n  The thread states it plainly: section 7b IS NOT THE BINDING CONSTRAINT and\n  does not need to be asked. Refutation is blocked by the section 3a arm's\n  `is True` test, not by escape shape.\n\nThe STATEMENT field is unchanged and remains confirmed. Nothing about the item's\nstatus changes; this is a stale-title fix so the causal story in the title stops\npointing at a scope ruling that was re-priced down three times and never asked."  # 6e34
