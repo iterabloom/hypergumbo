@@ -1,0 +1,106 @@
+Original commit body from 7b1fafab90621e406bdd8f580cb1a8d86585c46f:
+
+A file defining `func MkdirAll(...)` — with **no import of `os` anywhere in it** — had an
+`fs_write` boundary attributed to it, naming `os.MkdirAll` as the primitive. A local
+`Command(...)` was reported as `os/exec.Command` under **`subprocess`**, the one category
+`HIGH_RISK_PRIMITIVES` flags `*** HIGH RISK ***` on the stated invariant that launching an
+external program is arbitrary code execution. It launched nothing.
+
+This is not cosmetic: a write-side primitive auto-derives a taint sink (ADR-0017 §2b), so
+a false primitive can manufacture a violated claim.
+
+Confirmed in **python, go, javascript and typescript**, each with a passing positive
+control (the real stdlib call must still tag) and a neutral control (an unrelated
+first-party name must never tag). Filed as INV-sapit.
+
+## Found only by testing a second language, which is the point
+
+The plan's two-languages-minimum rule exists because Python-only work produces
+Python-shaped abstractions that merely look general. It paid directly here.
+
+The **first** Python probe came back clean — and that was an artifact of the name I
+tested. `remove` happens to sit in python.yaml's `ambiguous_names` (34 entries), as does
+`write` in rust's. **That list is a curated per-name blocklist, not a structural rule.**
+Pick a name outside it (`makedirs`) and Python fails exactly like Go.
+
+A Go probe is what exposed the shape. Separately, Go's ctor-root receiver typing turned
+out to be the **mirror** of Python's — inline `exec.Command(...).Run()` types correctly
+while the assigned `cmd := exec.Command(...); cmd.Run()` does not, the reverse of the
+Python case fixed in #254. A Python-shaped fix would not have transferred.
+
+## Mechanism
+
+`_extract_module_hint` returns `None` only for a module slot beginning `/` or `\`. Its
+docstring states the right intent — a file path is not a useful module hint — but
+implements only the ABSOLUTE case. With no hint, `lookup_with_module` skips the module
+filter and falls through to `gate_named_entry`, whose no-module branch permits a
+function-kind hit.
+
+This is the production path, not a fixture artifact: `cli.py:826` does
+`Path(args.path).resolve()`, so every real run carries absolute first-party paths.
+
+## The fix withholds only the ungated short-name fallback
+
+Not the edge. **My first attempt refused first-party dsts at the top of the tagging loop
+and broke 50 existing tests — correctly.** They model a *resolved external* primitive as
+`python:/stdlib/os.py:100-102:os.listdir:function`: a genuine stdlib call carrying a
+file-path module slot and a `function` kind. Kind alone cannot separate that from a
+first-party definition. The module-qualified NAME it still carries can, via the
+exact-qualified match.
+
+So exact-qualified and module-filtered lookups are untouched; only the bare, hint-less
+short name is gated.
+
+## A false negative was introduced, and the suite caught it — not my measurement
+
+Keying the predicate on the kind slot alone silently un-tagged Haskell's `readFile` and
+`writeFile`. Haskell emits external placeholders as
+`haskell:external:0-0:readFile:function` — module slot `external`, kind `function`. (The
+kind slot carrying a different vocabulary across emission paths is INV-kurup's territory.)
+
+In a security tool that is the expensive direction, and precisely the harm this predicate
+exists to prevent.
+
+**The measurement that preceded the fix was true and insufficient.** The corpus scan showed
+no tagged boundary carrying a `function` kind — true of the four repos scanned, false of
+Haskell, which was absent from the scan because it is not dataflow-capable. The predicate
+now requires BOTH a callable kind AND a filesystem module slot, and the Haskell shape is
+pinned as a regression test.
+
+## Scoped by measurement, not by caution
+
+Refusing *every* first-party dst would have deleted true positives. On express, 11 tagged
+boundaries resolve to first-party dsts of kind `variable`, and `lib/view.js` reaches them
+through `var dirname = path.dirname` — an alias to the real function, where the tag is
+CORRECT. Alias bindings are deliberately left alone as a separate, unresolved question,
+pinned by a test so a future widening has to argue with an assertion.
+
+**Blast radius, measured before the gate moved:** across hypergumbo, poetry, caddy and
+express, every currently-tagged boundary carries a dst kind of `unresolved` (12,377),
+`attribute` (691), `variable` (11) or `symbol` (3). **Not one carries `function` or
+`method`.** This removes zero boundaries that exist today. That check was not optional —
+gating the hinted path once destroyed 61.5–87.2% of real boundaries for zero gain.
+
+**Honest scope: a LATENT hole, not a live epidemic.** Zero occurrences on hypergumbo,
+poetry and caddy. The fixtures prove the mechanism; the corpora say it rarely fires today.
+
+## The parity test is the deliverable
+
+The plan requires that per-language work "ships with a parity test that enumerates every
+dataflow-capable language, so the next language fails the test rather than silently
+skipping the fix." **That requirement had no implementation before this.**
+
+`TestEveryDataflowCapableLanguage` enumerates the live DDG registry — currently python,
+go, javascript, typescript, rust — and asserts both directions per language. It forces
+registration through production's own helper rather than trusting ambient import order,
+because that order is itself a live defect (WI-kogop) and a parity test that silently
+enumerates one language is worse than none.
+
+## One gap disclosed rather than hidden
+
+A first-party dst carrying a RELATIVE path is not recognised by the predicate. Rust emits
+that shape and is currently protected by a *different* mechanism — the module filter,
+where `_module_matches("std::fs", "app.rs")` fails. Two mechanisms covering one case is
+fragile, so it ships pinned with a re-evaluation trigger: if an analyzer ever emits a
+relative first-party path AND a module slot that could pass `_module_matches`, the gap
+becomes reachable and the predicate must widen to a real path test.
