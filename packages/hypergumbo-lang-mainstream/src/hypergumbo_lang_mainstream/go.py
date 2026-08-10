@@ -2767,11 +2767,25 @@ def _extract_edges_from_file(
                                     edge_type="calls",
                                     line=node.start_point[0] + 1,
                                     evidence_type="ast_call",
-                                    # WI-nurun: confidence kept explicit — this is
-                                    # an *ambiguous* method call (resolved to 2+
-                                    # candidates). The ambiguity is encoded in meta,
-                                    # not is_resolved, so derivation would over-score
-                                    # it as a resolved ast_call (0.85).
+                                    # INV-fazim: an ``external`` path slot carries no
+                                    # module evidence and the kind slot reads
+                                    # ``unresolved``, so the edge is NOT resolved.
+                                    # Edge.create defaults the flag to True, and
+                                    # under ADR-0037 ruling 4 that flag is
+                                    # authoritative — a consumer may not re-derive
+                                    # the verdict from the dst string. Left silent,
+                                    # this minted a "resolved" edge that taint's
+                                    # propagation lookup takes into the ungated
+                                    # ``if not path_module: return hits[0]``
+                                    # bare-name fallback, never reaching the F3 gate.
+                                    is_resolved=False,
+                                    # WI-nurun: confidence stays EXPLICIT and stays
+                                    # 0.50. It is not the derived unresolved base
+                                    # (0.40) because this call did resolve — to 2+
+                                    # candidates — which is strictly more evidence
+                                    # than "no idea", and the ambiguity is carried in
+                                    # meta. An explicit value also means the
+                                    # is_resolved correction above cannot move it.
                                     confidence=0.50,
                                     origin=PASS_ID,
                                     origin_run_id=run.execution_id,
@@ -2798,6 +2812,13 @@ def _extract_edges_from_file(
                                 edge_type="calls",
                                 line=node.start_point[0] + 1,
                                 evidence_type="ast_call",
+                                # INV-fazim: the ``external`` placeholder means no
+                                # package was attributed, so the edge is unresolved.
+                                # This guard exists precisely BECAUSE resolution
+                                # would have been wrong (crossing package
+                                # boundaries), which makes claiming resolution here
+                                # self-contradictory.
+                                is_resolved=False,
                                 origin=PASS_ID,
                                 origin_run_id=run.execution_id,
                                 meta={"call_construct": "method", "visibility": "unexported"},
@@ -2826,6 +2847,12 @@ def _extract_edges_from_file(
                                 edge_type="calls",
                                 line=node.start_point[0] + 1,
                                 evidence_type="ast_call",
+                                # INV-fazim: same rule as the sibling guards. This
+                                # one fires when the receiver type is UNKNOWN and the
+                                # method name merely looks like a stdlib interface
+                                # method — the weakest evidence of the three, so
+                                # reporting it resolved was the least defensible.
+                                is_resolved=False,
                                 origin=PASS_ID,
                                 origin_run_id=run.execution_id,
                                 meta={"call_construct": "method", "receiver": "stdlib"},
@@ -3928,7 +3955,18 @@ def _extract_go_routes(
                                             # local_symbols first, then
                                             # build synthetic ID.
                                             dst_id: str | None = None
-                                            if handler_ref in local_symbols:
+                                            # INV-fazim: the flag MIRRORS THE BRANCH
+                                            # rather than being stated once for the
+                                            # whole call. This is the only external
+                                            # emit site in this file whose dst may be
+                                            # either a resolved in-repo symbol or the
+                                            # ``external`` placeholder, so a blanket
+                                            # is_resolved=False would be as wrong as
+                                            # the inherited default of True.
+                                            _handler_resolved = (
+                                                handler_ref in local_symbols
+                                            )
+                                            if _handler_resolved:
                                                 dst_id = local_symbols[
                                                     handler_ref
                                                 ].id
@@ -3944,6 +3982,7 @@ def _extract_go_routes(
                                                 dst=dst_id,
                                                 edge_type="calls",
                                                 line=start_line,
+                                                is_resolved=_handler_resolved,
                                                 origin=PASS_ID,
                                                 origin_run_id=(
                                                     run.execution_id
