@@ -108,15 +108,37 @@ def _make_go_module(tmp_path: Path, files: dict[str, str]) -> Path:
 
 @pytest.fixture()
 def go_available():
-    """Skip if Go tree-sitter grammar is not installed."""
-    try:
-        from hypergumbo_lang_mainstream.go import _analyzer
-        if not _analyzer.is_grammar_available():
-            pytest.skip("Go tree-sitter grammar not available")
-    except Exception:
-        pytest.skip("Go analyzer not available")
+    """Skip ONLY when the Go grammar is genuinely absent.
+
+    This fixture used to probe ``_analyzer.is_grammar_available()`` inside a bare
+    ``except Exception: pytest.skip``. No such method exists — ``is_grammar_available``
+    is a module function in ``hypergumbo_core.analyze.base`` — so every call raised
+    ``AttributeError``, the handler swallowed it, and all three integration tests below
+    reported as skipped on a machine where the grammar was installed and working. They
+    had never executed. A skip reachable by a typo is a green tick over a hole, so the
+    probe is now a direct call with no handler: if it breaks, the suite breaks loudly.
+    """
+    from hypergumbo_core.analyze.base import is_grammar_available
+
+    if not is_grammar_available("tree_sitter_go"):
+        pytest.skip("Go tree-sitter grammar not installed")
 
 
+@pytest.mark.xfail(
+    strict=True,
+    reason=(
+        "WI-jolif: these three tests never executed — the go_available fixture "
+        "swallowed an AttributeError and reported the grammar as unavailable on a "
+        "machine where it is installed. Repairing the fixture reveals the "
+        "return-type registry does not resolve end to end: "
+        "`result := e.Query(); result.Rows()` emits go:external:0-0:Rows:unresolved "
+        "instead of an edge to Result.Rows. Reproduced identically against "
+        "unmodified dev, so it is pre-existing rather than introduced. Marked xfail "
+        "rather than left skipped so they RUN and fail honestly; strict=True flips "
+        "the suite red the moment the feature works, which is the signal to delete "
+        "this marker."
+    ),
+)
 class TestGoReturnTypeRegistryIntegration:
     """End-to-end: analyze Go code with chained method calls and
     verify that the return-type registry enables ``typed_receiver_call``
