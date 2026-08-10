@@ -96,3 +96,10 @@
   set: {}  # 6eb0
   add:  # 6eb0
     tags: [awaits_bakeoff_validation]  # 6eb0
+- op: discuss  # 4085
+  at: '2026-08-10T07:44:05Z'  # 4085
+  by: agent  # 4085
+  actor: jgstern_agent  # 4085
+  clock: 12  # 4085
+  nonce: '4085'  # 4085
+  message: "S8 RE-MEASUREMENT, 2026-08-10: this item is now the LARGEST single cause of section 3a\nescape, measured rather than argued.\n\nscripts/measure-call-escape-cause.py on hypergumbo's own tree (dev ecb954eb05), positive\ncontrol passing (595,736 edges offered / 317,528 accepted / 29,301 callees_at entries):\nof the 26 CALL-node escape sites, **13 (50.0%) are \"NO EDGE EMITTED\"** -- this item's\nterritory. The next cause is a section 4 summary-catalogue gap at 30.8%, and receiver\ntyping (INV-linub) is down to 15.4% after seven python PRs plus the go composite-literal\nfix.\n\nWHY THAT ORDERING MATTERS FOR WHOEVER PICKS THIS UP. This item's own filing, and\nINV-linub's, both record that an L2-only emission fix measures as a win at the analyzer\nand moves ZERO findings, because an edge arriving with no receiver type is refused at\nthe F3 gate. PR #231 demonstrated exactly that. So \"50% of call escapes are missing\nedges\" is NOT a licence to emit them: it is a statement that emission and typing have to\nland together for these 13 sites, and the direction must be measured on findings.\n\nDIRECTION WARNING, unchanged and still live: emitting these edges populates callees_at,\nwhich lets _use_site_terminates decide sites it currently has to treat as escapes, which\nproduces MORE False verdicts -- and since PR #214 a False earns `sanitized` and DROPS the\nflow. WI-joluk's coverage gate exists for this and is wired to the BARRIER arm only.\n\nSAMPLE CAVEAT: one repo, python only, 26 call-node sites. Not a cohort."  # 4085
