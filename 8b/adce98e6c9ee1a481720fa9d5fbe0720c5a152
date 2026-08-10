@@ -1,0 +1,35 @@
+Original commit body from e62b294bd0ec336a8e74fd8cc3ed4aede0505baf:
+
+S10 coherence sweep. Both found by cross-reading a measurement against the
+document rather than by reading the document.
+
+VERDICT TABLE said "Inconclusive (no DDG) | *Specified, never emitted*" while
+`inconclusive` is the MAJORITY outcome — hypergumbo's own pinned verdicts are
+16 inconclusive / 2 violated / 0 confirmed. Both statements were true of
+DIFFERENT producers: verify_taint_claim still does not emit the ADR-0017 §3c
+sense, while the capability gate (_taint_blind_reason, INV-javam / WI-kajil)
+emits it constantly and is the thing that refuses to certify a claim the
+analysis could not check. The table now names both producers, quotes the
+split, and carries the known residual — a language emitting ONE token call
+edge still looks covered (pinned as
+test_language_with_a_token_call_edge_still_falsely_confirms).
+
+FUNCTION SUMMARIES said "no production consumer … no taint code path calls
+infer_summary or load_function_summaries today". Half false, and the
+load-bearing half: propagate_taint_ddg calls load_function_summaries() with 38
+live terminating summaries. taint.py:2085 already carried the correction in a
+docstring and it was never propagated here. §4a (infer_summary) genuinely has
+zero callers. The distinction is not pedantic — S8 measured 8 of 26 call-node
+escape sites (30.8%) as "summary key present, no summary entry", a CATALOGUE
+gap in a live mechanism rather than an unwired feature.
+
+FIELD-SENSITIVITY LITE was re-verified rather than inherited (is_field_tainted
+still has zero callers outside its definition) and now carries the
+re-verification date, because the sibling claim above went stale by exactly the
+route of being copied forward unchecked.
+
+ADR-0016 §4 Phase 4 deliberately NOT amended: the obligation ("a CI step that
+runs claim verification on every PR") was satisfied by BUILDING the gate, so
+reality was moved to match the doc. Softening the ADR would now make it wrong.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
