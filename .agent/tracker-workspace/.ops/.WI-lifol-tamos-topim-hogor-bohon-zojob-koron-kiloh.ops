@@ -1,0 +1,22 @@
+- op: create  # 8569
+  at: '2026-08-10T20:15:56Z'  # 8569
+  by: agent  # 8569
+  actor: jgstern_agent  # 8569
+  clock: 1  # 8569
+  nonce: '8569'  # 8569
+  data:  # 8569
+    kind: work_item  # 8569
+    title: "python: a constructor under a DOTTED module (http.client.HTTPConnection) can never be typed — the attribute branch requires a bare ast.Name base"  # 8569
+    status: todo_hard  # 8569
+    priority: 3  # 8569
+    parent:  # 8569
+    tags:  # 8569
+    - taint  # 8569
+    - io_boundary  # 8569
+    - analysis_quality  # 8569
+    isbefore: []  # 8569
+    duplicate_of: []  # 8569
+    not_duplicate_of: []  # 8569
+    pr_ref:  # 8569
+    description: "MEASURED 2026-08-10 with scripts/measure-catalogue-reach.py python, immediately\nafter the constructor table was made catalogue-derived.\n\n  form                       before     after\n  reachable BOTH forms       105        153\n  DOTTED form only            27         16\n  BARE form only               0         41     <-- this item\n  UNREACHABLE                 83          5\n\nForty-one primitives are now reachable ONLY as `from http.client import\nHTTPConnection; HTTPConnection(h).request(...)` and NOT as the equally idiomatic\n`import http.client; http.client.HTTPConnection(h).request(...)`.\n\nTHE MECHANISM, read in code. _external_constructor_type's attribute branch is:\n\n    if (isinstance(func, ast.Attribute)\n        and isinstance(func.value, ast.Name)          # <-- here\n        and func.value.id in module_imports):\n\n`func.value` must be a bare ast.Name, so a constructor under a DOTTED module is\nstructurally unreachable no matter what the table contains: for\n`http.client.HTTPConnection(h)`, func.value is itself an ast.Attribute\n(`http.client`). The five affected types are http.client.HTTPConnection,\nhttp.client.HTTPSConnection, http.server.HTTPServer,\nxmlrpc.server.SimpleXMLRPCServer and django.db.models.\n\nWHY IT IS FILED SEPARATELY rather than folded into the derivation PR: it is a\nstructural change to a resolution branch, not a data change, so it carries its\nown regression surface and belongs in its own revert. The derivation PR is pure\ndata-plus-parity-test and measured zero losses on two repos.\n\nDIRECTION: additive. It can only type receivers that are currently untyped;\nnothing that resolves today changes. Measure both ways anyway -- the standing\nreceiver-typing hazard is that an external qualified type walks into the\nstrip-to-bare-name lookup against the repo's own symbols.\n\nNOT MEASURED: how often real python writes the dotted form for these five types.\n`import http.client` is common in stdlib-only code; pretix and hypergumbo both\ngained zero from the derivation, so do not assume this one pays out either.\nRun scripts/measure-ctor-table-derivation-ab.py (or its successor) before\nclaiming a number."  # 8569
+    fields: {}  # 8569
