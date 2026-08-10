@@ -23,17 +23,31 @@ second erases it. A single-form probe reports "reachable" for a primitive that
 half of real code cannot reach. Each entry is therefore emitted twice and
 scored per form, so the output distinguishes:
 
-    BOTH     reachable either way
+    BOTH     attributed either way
     DOTTED   only ``import M; M.f()``          — the from-import path is blind
     BARE     only ``from M import f; f()``     — the dotted path is blind
-    NEITHER  no call site of either form reaches the entry
+    NEITHER  neither form is attributed to the calling function
+
+"ATTRIBUTED", NOT "REACHABLE", AND THE DISTINCTION IS NOT PEDANTIC. The verdict
+asks whether production named the CALLING FUNCTION as the chain's
+``io_edge_src``. A chain can exist and still score ``NEITHER`` when it is
+anchored somewhere else — every one of this probe's own residual entries is,
+carrying ``src=python:<external>:0-0:file:external_symbol`` with
+``entry_points=[]``. An earlier revision of this file
+called that bucket "UNREACHABLE", which reads as "hypergumbo cannot see this
+primitive" when the truth is "hypergumbo sees it and cannot say who called it".
+Those are different defects with different owners, so the run now prints the
+anchor-kind breakdown and counts the anchored-elsewhere cases separately
+instead of folding them into a gap number.
 
 WHAT THIS DOES *NOT* MEASURE, stated because the number invites over-reading.
-It is a LOWER BOUND on gaps in the idiomatic direction only. A primitive
-scoring BOTH here can still be unreachable through an alias, a re-export, a
-conditional import or a wrapped receiver; a primitive scoring NEITHER is
-unreachable for these two forms and no claim is made about others. It is a
-reachability probe, not a recall estimate on real code.
+It is a LOWER BOUND on attribution gaps in the idiomatic direction only. A
+primitive scoring BOTH here can still be missed through an alias, a re-export,
+a conditional import or a wrapped receiver; a primitive scoring NEITHER is
+unattributed for these two forms and no claim is made about others. It is an
+attribution probe, not a recall estimate on real code — the real-code number
+for the change that motivated it was ZERO edges on two repos while this probe
+moved 78 primitives.
 
 NOT EVERY ENTRY IS EXPRESSIBLE, and those are reported separately rather than
 counted as failures. ``builtins.open`` is idiomatically a bare ``open(...)``
@@ -136,8 +150,15 @@ def _write_fixture(language: str, prims: list[Any], root: pathlib.Path
     return index, skipped
 
 
-def _boundaries_for(root: pathlib.Path) -> dict[str, set[str]]:
-    """fn-name -> set of primitives production attributed to it."""
+def _boundaries_for(
+    root: pathlib.Path,
+) -> tuple[dict[str, set[str]], "collections.Counter", set[str]]:
+    """(fn-name -> primitives attributed to it, anchor-kind tally, unanchored).
+
+    The third element is the honesty term: primitives whose chain carries NO
+    entry point, so no probe function can be credited with them however the
+    attribution is written.
+    """
     from hypergumbo_core.cli import main
 
     argv = sys.argv
@@ -153,13 +174,28 @@ def _boundaries_for(root: pathlib.Path) -> dict[str, set[str]]:
     start = raw.find("{")
     report = json.loads(raw[start:]) if start >= 0 else {}
     hits: dict[str, set[str]] = collections.defaultdict(set)
+    anchors: collections.Counter = collections.Counter()
+    elsewhere: set[str] = set()
     for bucket in report.get("boundaries", {}).values():
         for chain in bucket.get("chains", []):
             src = chain.get("io_edge_src", "")
+            prim = chain.get("primitive", "")
             parts = src.split(":")
-            if len(parts) >= 2:
-                hits[parts[-2]].add(chain.get("primitive", ""))
-    return hits
+            if len(parts) < 2:
+                continue
+            # THE NAME SLOT IS THE CALLER; THE KIND SLOT IS NOT. An attributed
+            # chain reads python:probe.py:0-0:<probe_fn>:external_symbol — the
+            # caller sits in parts[-2] while parts[-1] says `external_symbol`
+            # for every chain on this fixture. Counting parts[-1] and calling it
+            # "the anchor" is what made two correct readings look contradictory
+            # for an hour; both slots are therefore reported, distinctly.
+            anchors[parts[-1]] += 1
+            hits[parts[-2]].add(prim)
+            if not parts[-2].startswith("probe_"):
+                # Anchored to something that is not a probe function at all —
+                # the residual entries all read `...:0-0:file:external_symbol`.
+                elsewhere.add(prim)
+    return hits, anchors, elsewhere
 
 
 def main() -> int:
@@ -183,8 +219,10 @@ def main() -> int:
           f"({sorted({p.qualified_name for p in skipped})[:6]}...)")
     print(f"generated probe functions: {len(index)}")
 
-    hits = _boundaries_for(root)
-    print(f"functions with a boundary: {len(hits)}")
+    hits, anchors, elsewhere = _boundaries_for(root)
+    print(f"io_edge_src KIND slot     : {dict(anchors)}")
+    print(f"io_edge_src NAME slots seen: {len(hits)}")
+    print(f"primitives anchored to a NON-caller name: {len(elsewhere)}")
     if not hits:
         print("\n!! NOTHING RESOLVED. This is a broken fixture or a broken "
               "pipeline, not a catalogue gap. Refusing to report a 100% miss.")
@@ -212,18 +250,25 @@ def main() -> int:
                      "boundary": prim.boundary, "verdict": verdict})
 
     total = sum(verdicts.values())
-    print(f"\n=== REACH over {total} expressible primitives ===")
+    print(f"\n=== ATTRIBUTION over {total} expressible primitives ===")
     for v in ("BOTH", "DOTTED", "BARE", "NEITHER"):
         n = verdicts[v]
         print(f"  {v:<9}{n:>5}{100 * n / max(total, 1):>7.1f}%")
 
     misses = [r for r in rows if r["verdict"] == "NEITHER"]
+    seen_but_unanchored = sorted(
+        r["primitive"] for r in misses if r["primitive"] in elsewhere)
+    if seen_but_unanchored:
+        print(f"\nOF THE UNATTRIBUTED, {len(seen_but_unanchored)} DO have a "
+              f"chain — anchored to a non-caller name, not missing:")
+        for q in seen_but_unanchored:
+            print(f"  {q}")
     if misses:
         by_kind = collections.Counter(r["kind"] for r in misses)
         by_bound = collections.Counter(r["boundary"] for r in misses)
-        print(f"\nUNREACHABLE by kind    : {dict(by_kind)}")
-        print(f"UNREACHABLE by boundary: {dict(by_bound.most_common(8))}")
-        print("\nfirst 25 unreachable:")
+        print(f"\nUNATTRIBUTED by kind    : {dict(by_kind)}")
+        print(f"UNATTRIBUTED by boundary: {dict(by_bound.most_common(8))}")
+        print("\nfirst 25 unattributed:")
         for r in misses[:25]:
             print(f"  {r['primitive']:<44}{r['kind']:<10}{r['boundary']}")
 
@@ -231,6 +276,8 @@ def main() -> int:
         pathlib.Path(args.out).write_text(json.dumps(
             {"language": args.language, "total": len(prims),
              "inexpressible": [p.qualified_name for p in skipped],
+             "anchor_kinds": dict(anchors),
+             "chain_without_entry_point": sorted(elsewhere),
              "verdicts": dict(verdicts), "rows": rows}, indent=2))
         print(f"\nWrote {args.out}")
     return 0
