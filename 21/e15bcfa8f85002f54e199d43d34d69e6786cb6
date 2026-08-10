@@ -1,0 +1,75 @@
+Original commit body from 036bab4894658d4693ed153d17c092c86ee6f99e:
+
+`c := &http.Client{}; c.Do(req)` — an outbound HTTP request with a
+possibly-tainted URL — produced no I/O boundary in ANY spelling. Not
+"typed one way and not another": there was no way to write it in Go
+that worked. `Do`/`Get` are in go.yaml's ambiguous_names BY DESIGN, so
+receiver typing is the only thing that can reach those rows, and the
+receiver never carried a type.
+
+A DRIFTED COPY, not a missing feature. `_type_identifier_from_node`
+already handles `qualified_type` and its docstring says returning the
+full `http.Client` is "critical for IO boundary detection".
+`_type_from_rhs` re-implemented a narrower `type_identifier`-only
+version inline, so two spellings of one declaration disagreed:
+
+    var client http.Client     -> "http.Client"   (worked)
+    client := http.Client{}    -> ""              (broken)
+    client := &http.Client{}   -> ""              (broken)
+
+The fix routes the copy through the existing predicate. The parity test
+pins AGREEMENT across the three spellings rather than pinning the new
+path to a new expectation, so a fourth spelling must join or fail.
+
+Root cause worth carrying to other languages: tree-sitter spells a
+package-qualified name by SYNTACTIC POSITION — selector_expression in
+expression position, qualified_type in type position. Handling one
+silently drops the other. The same distinction produced a bug in the
+sizing instrument, caught by its positive control.
+
+MEASURED, both directions, 6 Go repos, whole diff in two processes:
+call-edge count IDENTICAL (76,689 = 76,689), +25 I/O boundaries tagged,
+net +76 intra-repo dsts, -746 `external` placeholder slots. Positive
+control names the edge under test (PRE go:external Do tags 0, POST
+go:net/http Do tags 1) after an earlier version of the control was
+found to pass in BOTH arms because http.NewRequest tags regardless.
+
+Read edge-by-edge on caddy, because an aggregate cannot tell a removed
+FALSE edge from a removed TRUE one: of 222 distinct edges lost, 79 were
+upgraded off the `external` placeholder, ~95 re-spelled onto the
+documented repo-relative convention, and 48 were false intra-repo edges
+— 17 of them pointing from production code at a symbol defined in a
+_test.go file.
+
+The fix needed a second half. Binding the type walks these receivers
+into the branch that strips `url.Values` to bare `Values` and looks it
+up among the repo's OWN symbols — reviving the alertmanager
+13-spurious-in-edges bug the WI-jopar guard closed. The first version
+of this fix did exactly that. `_external_package_for_type` is the
+discriminator: a type whose package lies outside this go.mod module
+cannot be defined by this repo, so the local lookup is skipped. It
+ABSTAINS without a module path (in-repo and external are the same shape
+there) — a disclosed gap, not a guess.
+
+A downstream guard keyed on a proxy this change inverts. WI-jopar fired
+on `import_path_hint is None`, which stood in for "the receiver is a
+tracked local" only while qualified composite literals stayed untyped.
+It now keys on the receiver directly and terminates with the package it
+knows instead of the placeholder.
+
+INV-fazim's producer half closes at the filed line as a side effect:
+that guard called Edge.create with no is_resolved=, taking the True
+default onto a dst whose kind slot reads `unresolved`. Producer-stage
+is_resolved=True falls by 10,319. NOT claimed to change the serialized
+map — finalize sub-step 7 re-derives the verdict from the dst node kind
+(verified in code). Three sibling sites keep the same omission.
+
+Also: three Go integration tests had never executed (WI-jolif). Their
+fixture probed a non-existent method inside a bare `except Exception:
+pytest.skip`, so an AttributeError read as "grammar unavailable" on a
+machine where it is installed. Repaired, and the three now fail
+honestly as xfail(strict=True) — reproduced identically against
+unmodified dev, so pre-existing. Both repaired fixtures have no
+exception handler at all.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
