@@ -1,0 +1,21 @@
+- op: create  # 63ac
+  at: '2026-08-10T14:51:18Z'  # 63ac
+  by: agent  # 63ac
+  actor: jgstern_agent  # 63ac
+  clock: 1  # 63ac
+  nonce: 63ac  # 63ac
+  data:  # 63ac
+    kind: work_item  # 63ac
+    title: "266 Go 'calls' edges point at a dst whose kind slot is 'field' (non-callable); split by func-typed field before treating as a defect"  # 63ac
+    status: todo_hard  # 63ac
+    priority: 3  # 63ac
+    parent:  # 63ac
+    tags:  # 63ac
+    - go  # 63ac
+    - analysis_quality  # 63ac
+    isbefore: []  # 63ac
+    duplicate_of: []  # 63ac
+    not_duplicate_of: []  # 63ac
+    pr_ref:  # 63ac
+    description: "OBSERVED 2026-08-10 while measuring the WI-jolif fix on alertmanager. Filed as a\nlead with a real count, NOT as a diagnosed defect -- the mechanism was not read.\n\nA `calls` edge whose dst kind slot is `field` is incoherent on its face: a field\nis not callable. alertmanager carries 266 of them.\n\n    calls-edge dst kinds (alertmanager, go):\n        external_symbol 5427\n        function        1668\n        method           874\n        field            266   <- this\n        type              75\n        unresolved         4\n        variable           3\n        port               3\n        route              2\n\nWHY IT SURFACED. The WI-jolif return-type-registry fix added exactly ONE such edge\n(266 -> 267): InhibitRule.hasEqual -> template/template.go:345:Alert.Fingerprint:field.\nThat one is the known receiver-typing collision shape -- an external qualified type\nwalking into a lookup against the repo's own symbols -- and it is the reason this\ncount got looked at. The other 265 predate it and have no filed cause.\n\nPLAUSIBLE MECHANISMS, NONE VERIFIED (do not treat this list as a diagnosis):\n (a) a Go struct field holding a func value, where `s.handler()` genuinely calls\n     through a field -- in which case SOME of the 266 are CORRECT and the edge kind\n     is right even if it reads oddly. This must be checked FIRST, because if it is\n     the dominant case the whole item dissolves.\n (b) a method and a field sharing a name on the same type, with the lookup picking\n     the field.\n (c) embedded-struct promotion, where the real target is a method on the embedded\n     type and the outer type only has the field.\n\nWHY IT MATTERS IF (a) IS NOT DOMINANT: a calls edge to a non-callable is a false\nedge, and false edges feed centrality, dead-code reachability, and the taint call\ngraph. It is also the exact shape the INV-sapit / first-party-collision guard\nfamily exists to prevent, so a hit here suggests a door that family does not cover.\n\nFIRST STEP IS A SPLIT, NOT A FIX: classify the 266 by whether the target field's\ndeclared type is a func type. That single split decides whether this is a defect\nat all. One repo, one language -- do not generalise the 266 before measuring a\nsecond repo."  # 63ac
+    fields: {}  # 63ac
