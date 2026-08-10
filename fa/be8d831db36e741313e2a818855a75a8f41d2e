@@ -1,0 +1,61 @@
+Original commit body from 652c74a96ea8abb14bce9b4a24dea5794941407b:
+
+GO ASSIGNMENT GAP SIZED: 6 SITES ACROSS 9 REPOS. DO NOT BUILD IT.
+
+Instrument in-repo at scripts/measure-go-receiver-typing-gap.py, positive-controlled
+before use (a synthetic fixture with four known assigned sites; the control caught a real
+scanner bug first -- tree-sitter-go spells a type-position `pkg.Name` as `qualified_type`,
+not `selector_expression`, so every composite-literal constructor was being dropped and
+the fixture reported 3 of 4).
+
+Corpus: caddy, prometheus, alertmanager, kserve, cosign, act, grype, dnscrypt-proxy,
+gocryptfs.
+
+  ASSIGNED candidate sites                                   143
+    blocked today (method name in ambiguous_names)           107
+    NO boundary reported anywhere today                       27
+      reachable by the ASSIGNMENT fix                          6   <- the answer
+      rooted at a COMPOSITE LITERAL, so it is NOT               21
+
+THE DENOMINATOR DISTINCTION THAT DOES THE WORK. 116 of the 143 sites have a constructor
+that is ITSELF a catalogued row (exec.Command, net.Dial, smtp.Dial ...), so the repo
+already reports a boundary at that line. For those the method call is a second signal at
+the sink, not a missing crossing. Quoting 143, or even 107, as "the gap" would oversell
+it by 24x / 18x. The residual value in that bucket is narrow but real: a taint that
+enters AFTER construction (cmd.Args = append(cmd.Args, userInput); cmd.Run()) is only
+caught at the method call. Not measured, and not claimed.
+
+THE DOMINANT ROW IS NOT AN ASSIGNMENT GAP AT ALL, which is why the split mattered.
+net/http.Client.Do is 17 of the 27. With the positive control the earlier probe on this
+thread was missing (http.Get tags, so net/http is reachable):
+
+  (&http.Client{}).Do(r)          INLINE    -> 0 boundaries
+  c := &http.Client{}; c.Do(r)    ASSIGNED  -> 0 boundaries
+
+Unreachable in BOTH forms, because a composite literal offers no constructor CALL to
+type from. That is a composite-literal receiver-typing gap, a different mechanism.
+(This supersedes the "OPEN and unmeasured" note on this thread about whether
+net/http.Client.Do is reachable -- it is not, in any form, and now has a control.)
+
+The asked-about gap is confirmed cleanly and separately on slog, where the constructor IS
+a call:  l := slog.Default(); l.Info(m) -> 0   vs   slog.Default().Info(m) -> 1.
+
+WHAT TO BUILD INSTEAD, ranked by measured value rather than by novelty:
+
+  1. COMPOSITE-LITERAL receiver typing -- 21 sites, and the only security-relevant one.
+     `client := &http.Client{}; client.Do(req)` with a tainted URL is SSRF and is
+     invisible today in every syntactic form. net_send, not logging.
+  2. PARAM shape (typed parameter, `func h(c *gin.Context)`) -- 653 candidates, 145
+     blocked. Technically the easiest (Go parameters carry an explicit type, nothing to
+     infer) but the payoff is poor: ~136 of the 145 blocked are
+     slog.Logger.{Info,Error,Warn,Debug}, i.e. the `logging` boundary. The headline 653
+     is dominated by testing.T.TempDir, which ALREADY tags by short name.
+  3. The ASSIGNMENT gap itself -- 6 sites, 5 slog + 1 gin.Engine.Run. Same territory as
+     the python "B" mechanism that was measured at zero and recorded DO NOT BUILD.
+
+CAVEATS, load-bearing. The constructor->type map is HAND-BUILT from Go stdlib semantics,
+because the catalogue records which METHODS are I/O and not which functions RETURN the
+receiving type; a missing row undercounts. Nine repos, so this is a corpus statement and
+not a language one. And these are static-scan SITES, not production boundary CHAINS --
+the python work established those are different populations (128 sites vs 125 chains),
+so do not compare this number against a chain count without re-deriving it.
