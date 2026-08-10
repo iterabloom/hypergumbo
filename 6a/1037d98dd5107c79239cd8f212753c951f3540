@@ -1,0 +1,38 @@
+Original commit body from eb69e6a7970a6fab52be095c6f016c8a8fef4779:
+
+The verdict asks whether production named the CALLING FUNCTION in a chain's
+io_edge_src. The previous revision called the residual bucket "UNREACHABLE",
+which reads as "hypergumbo cannot see this primitive" -- and that overstates it.
+All five residuals DO produce a chain, anchored to
+`python:<external>:0-0:file:external_symbol`, a non-caller name. "Sees the
+boundary, cannot say who called it" is a different defect with a different owner
+(WI-pimun) than "cannot see the boundary", and folding them together inflates a
+gap number with someone else's bug.
+
+The run now prints the io_edge_src KIND-slot tally and the count of primitives
+anchored to a non-caller name, alongside the verdicts.
+
+A SLOT-READING ERROR OF MY OWN, fixed and documented in the file because it
+nearly shipped as a retraction. An attributed chain reads
+`python:probe.py:0-0:<probe_fn>:external_symbol` -- the caller sits in the NAME
+slot while the KIND slot says `external_symbol` for EVERY chain on this fixture.
+Counting the kind slot and calling it "the anchor" made two correct readings look
+contradictory, and I concluded the instrument was non-reproducible; two
+back-to-back runs on separate workdirs then returned identical tables
+(153/16/41/5). The instrument was fine; the reading was wrong. `entry_points` is
+likewise empty on all 476 chains here, so it cannot discriminate either and is no
+longer used as the signal -- the discriminator is now the NAME slot.
+
+VERDICTS ARE UNCHANGED by this commit (153/16/41/5), which is the point: the
+change is disclosure and vocabulary, not behaviour.
+
+WI-pimun gains a five-function reproducer: subprocess.Popen anchors to
+`python:app.py:1-1:file:file` with entry_points=[] while subprocess.run four
+lines away anchors to its caller. Two Popen call sites collapse to ONE
+file-anchored chain, so the callers are unrecoverable from the output -- for the
+boundary most likely to matter in a safety claim.
+
+CHANGELOG amended in place where it said "unreachable".
+
+Verification: smart-test targeted 1530 passed; mypy strict ratchet clean.
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
