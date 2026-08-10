@@ -1,0 +1,39 @@
+Original commit body from 70575e432f39b706e24e88cbb3f0315b6e83f271:
+
+WI-jolif. `result := e.Query(); result.Rows()` emitted
+`go:external:0-0:Rows:unresolved` instead of resolving to `Result.Rows`. The
+WI-kuroj registry lookup guarded on `rhs.type == "call_expression"`, but `rhs` is
+`node.children[-1]` of a `short_var_declaration` and that child is an
+`expression_list` WRAPPER — never the expression. The condition could not be true
+for any input, so the block was dead code from the day it shipped: the registry
+was built, threaded through three call layers, and consulted by a branch nothing
+could reach.
+
+`_type_from_rhs` unwrapped the wrapper inline and therefore worked, which is why
+var_types read {'e': 'Engine', 'result': ''} — one consumer unwrapping and one not,
+for the same question. Both now route through `_unwrap_rhs_expression`.
+
+The three end-to-end tests that would have caught this had never executed: the
+go_available fixture probed a method that does not exist inside a bare
+`except Exception: pytest.skip`, so every call raised AttributeError and all three
+reported "grammar unavailable" on a machine where it is installed. They were
+marked xfail(strict=True) rather than left skipped, and strict is what flipped the
+suite red the moment this fix worked. All three now XPASS, so the marker is gone.
+The stale `# pragma: no cover - requires Go tree-sitter grammar` on the dead
+branch goes with it — it was excusing itself on the same false premise.
+
+MEASURED BOTH DIRECTIONS, BOTH DENOMINATORS (alertmanager): 108 edges gained, 109
+lost — near 1:1, so these are upgrades not inventions. External placeholders
+1,576 -> 1,467; resolution_quality typed_receiver 577 -> 685. Sampled pairs
+confirm replacement (go:external:0-0:isEOF -> token.isEOF:method).
+BUT 102 OF THE 108 GAINED HAVE A _test.go SOURCE, so the production-path payoff is
+6, not 108 — quoting 108 alone would overstate it 18x.
+
+PRECISION RISK DISCLOSED: 107 of 108 land on a `:method` dst; one lands on a
+`:field` (Alert.Fingerprint), the known receiver-typing collision shape. Not
+introduced here — alertmanager already carries 266 calls-to-field edges and this
+takes it to 267 — but those 266 deserve their own look.
+
+Full suite: 22,264 passed / 0 failed / 100% coverage; mypy ratchet 672 (delta +0).
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
