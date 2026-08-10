@@ -539,6 +539,7 @@ class IoBoundaryCatalog:
     def lookup_with_module(
         self, name: str, module_hint: str | None = None,
         *, call_construct: str | None = None,
+        allow_short_name_fallback: bool = True,
     ) -> Optional[IoPrimitive]:
         """Look up a primitive with optional module context for disambiguation.
 
@@ -576,6 +577,19 @@ class IoBoundaryCatalog:
                 return filtered[0]
             # No match with module filtering — this is likely NOT an IO
             # primitive (e.g., crypto/rand.Read is not net.Conn.Read)
+            return None
+
+        # INV-sapit: the SHORT-NAME fallback is the only path a first-party callable
+        # can reach, and the only one it can be wrong on. The two paths above are safe
+        # for it by construction — an exact qualified-name hit (``os.listdir``) names
+        # the primitive outright, and the module filter above demands the hint agree —
+        # which is why the refusal lives HERE and not at the top of the caller's loop.
+        # Refusing the edge wholesale broke 50 tests that model a RESOLVED external
+        # primitive (``python:/stdlib/os.py:100-102:os.listdir:function``): a real
+        # stdlib call carrying a file-path module slot and a ``function`` kind, which
+        # is indistinguishable from a first-party definition by kind alone and is
+        # distinguished perfectly well by the qualified name it still carries.
+        if not allow_short_name_fallback:
             return None
 
         # No module context — kind-aware gate (io-boundary:F3): an untyped
@@ -1636,6 +1650,85 @@ def _module_matches(catalog_module: str, edge_module_hint: str) -> bool:
     return False
 
 
+#: Dst kinds meaning "this call resolved to a callable DEFINED IN THE ANALYSED REPO".
+#:
+#: SCOPED BY MEASUREMENT, NOT BY CAUTION, and the scope is the load-bearing part.
+#: ``variable`` is deliberately absent: express reaches the real ``path.dirname`` through
+#: ``var dirname = path.dirname``, an alias binding where the catalogue tag is CORRECT,
+#: and 11 of its tagged boundaries are of exactly that shape. Refusing every first-party
+#: dst would have deleted them. ``attribute`` is absent for the same reason (``os.environ``
+#: and friends reach the pipeline as ``module_attr_ref`` edges).
+#:
+#: Blast radius, measured before this gate moved rather than after: across hypergumbo,
+#: poetry, caddy and express every currently-tagged boundary carries a dst kind of
+#: ``unresolved``, ``attribute``, ``variable`` or ``symbol`` — not one carries
+#: ``function`` or ``method``. So this removes zero boundaries that exist today. That
+#: check was not optional: gating the hinted path with :func:`gate_named_entry` once
+#: destroyed 61.5-87.2% of real boundaries for zero gain.
+#:
+#: Both names are registered ADR-0027 symbol kinds, asserted by
+#: ``test_io_boundary_first_party_attribution.py``, so this cannot drift into a private
+#: vocabulary.
+FIRST_PARTY_CALLABLE_KINDS: frozenset[str] = frozenset({"function", "method"})
+
+
+def is_first_party_callable_dst(edge_dst: str) -> bool:
+    """Did this call resolve to a callable defined inside the analysed repository?
+
+    THE SINGLE ANSWER to that question, consumed by every place that maps an edge onto a
+    catalogue entry. The catalogue describes EXTERNAL primitives; a first-party function
+    that merely shares a short name with one is a different function, and attributing the
+    primitive to it is a false report — of a filesystem write, or (worse) of a subprocess
+    launch, the one boundary flagged ``*** HIGH RISK ***`` on the invariant that launching
+    an external program is arbitrary code execution. A write-side primitive also
+    auto-derives a taint sink (ADR-0017 §2b), so the false attribution propagates into
+    claim verdicts rather than staying cosmetic.
+
+    WHY THE KIND SLOT AND NOT THE PATH. The defect this closes reaches the ungated branch
+    because :func:`_extract_module_hint` returns ``None`` for a module slot beginning
+    ``/`` — its docstring has the right intent ("a file path is not a useful module
+    hint") but implements only the ABSOLUTE case, and the CLI resolves the repo root, so
+    production always takes it. Tightening that heuristic to catch relative paths too
+    would fix the symptom in a way that stays a heuristic: Rust is currently clean ONLY
+    because it emits a relative module slot, which is returned as a hint and then fails
+    ``_module_matches`` — the right outcome for the wrong reason, and one that would
+    evaporate silently if Rust ever emitted absolute paths. The kind slot answers the
+    real question directly and is language-agnostic and path-format independent.
+
+    WHAT THIS DOES *NOT* AUTHORISE, learned by getting it wrong first. A ``True`` here
+    withholds ONLY the ungated short-name fallback. It does not skip the edge, because
+    the kind slot does not by itself separate first-party from external: 50 existing
+    tests model a RESOLVED external primitive as
+    ``python:/stdlib/os.py:100-102:os.listdir:function`` — a real stdlib call with a
+    file-path module slot and a ``function`` kind — and every one of them broke when
+    this refusal was applied at the top of the tagging loop. They were right to break.
+    Such an edge still carries its module-qualified NAME, so the exact-qualified match
+    identifies it correctly; only a bare, unqualified, hint-less short name is ambiguous,
+    and that is the single path this gates.
+
+    Returns ``False`` for any dst that does not carry the five-slot shape. An unprovable
+    claim of first-partyness must not suppress a boundary — the safe default here is to
+    let the existing gates decide, not to invent a refusal.
+    """
+    parts = edge_dst.split(":")
+    if len(parts) < 5:
+        return False
+    if parts[-1] not in FIRST_PARTY_CALLABLE_KINDS:
+        return False
+    # BOTH signals are required, and the second one is not belt-and-braces — the kind
+    # slot alone is NOT a first-party marker. Haskell emits its external placeholders as
+    # ``haskell:external:0-0:readFile:function``: module slot ``external``, kind
+    # ``function``. Keying on kind alone silently un-tagged ``readFile``/``writeFile``
+    # there, which is a FALSE NEGATIVE in a security tool — the expensive direction, and
+    # exactly what this predicate exists to avoid causing. (That the kind slot carries a
+    # different vocabulary across emission paths is INV-kurup's territory, not something
+    # to paper over here.) So the module slot must also name a filesystem location, which
+    # is what a resolved in-repo symbol carries and what neither a module path (``os``,
+    # ``std::fs``) nor the ``external`` placeholder ever does.
+    module_slot = parts[1]
+    return module_slot.startswith(("/", "\\"))
+
+
 def _extract_module_hint(edge_dst: str) -> str | None:
     """Extract the module hint from an edge destination symbol ID.
 
@@ -1805,6 +1898,11 @@ def tag_io_boundaries(
         cc = (getattr(edge, "meta", None) or {}).get("call_construct")
         match = catalog.lookup_with_module(
             callee, adjusted_hint, call_construct=cc,
+            # INV-sapit: this call resolved to a callable defined in the analysed
+            # repository, so a bare short-name collision with a stdlib primitive is a
+            # different function. Exact-qualified and module-filtered matches are
+            # unaffected — only the ungated short-name fallback is withheld.
+            allow_short_name_fallback=not is_first_party_callable_dst(edge.dst),
         )
         if match is None:
             continue
