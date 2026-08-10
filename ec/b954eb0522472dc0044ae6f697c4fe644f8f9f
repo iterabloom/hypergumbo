@@ -1,0 +1,56 @@
+Original commit body from 360f5e0c83a5077d75f84642b61a6b39ad6aef77:
+
+INV-fokik. ADR-0036 Ruling 1 makes `path` the one colon-TOLERANT slot in
+{lang}:{path}:{span}:{name}:{kind}. io_boundary._extract_module_hint took
+parts[1], so rust:std::env:0-0:var:external_symbol yielded `std`;
+_module_matches("std::env","std") is False; and _lookup_named_entry treats a
+present-but-MISMATCHED module as a REJECTION rather than a degrade. Every one
+of Rust's nine colon-bearing sink modules was refused, silently.
+
+THE ITEM'S PRESCRIBED FIX WOULD HAVE TRADED ONE CORRUPTION FOR ANOTHER, and
+only a corpus count showed it. "Route the caller through symbol_path_slot" —
+but that chokepoint was RIGHT-anchored (parts[1:-3]) on the grammar's promise
+that `name` is colon-free, and the data breaks it. Counted over just, rage and
+hypergumbo itself with scripts/measure-symbol-id-colon-conformance.py:
+
+    conformant                        352,254   no-op
+    colon PATH   (LEFT-anchor wrong)      740   migration FIXES
+    colon NAME   (RIGHT-anchor wrong)     483   migration would REGRESS
+    no span token                         584   right-anchor already correct
+
+Span-anchoring is the only parse right on both, and it makes symbol_path_slot
+agree with taint._extract_callee_name, which anchored that way all along — the
+item names that disagreement between two parsers of one string as "the tell".
+
+FAILS SAFE BY CHOICE. A malformed id has no true path slot; `external` is a
+placeholder and degrades to short-name matching plus the F3 gate, whereas
+`external:0-0:std::env` is not and rejects everything in silence.
+
+THE PATH FIX ALONE MOVED ZERO, caught by a positive control. With the hint
+corrected to std::fs, tagging rust:std::fs:0-0:write:external_symbol still
+produced no boundary: io_boundary._extract_callee_name carried the MIRROR
+defect in the same file ("everything after the first three fields" assumes a
+colon-free PATH) and returned `fs:0-0:write`, missing the lookup before the
+hint could matter. New chokepoint ir.symbol_name_slot; io_boundary and taint
+both route through it so they cannot drift apart again.
+
+BLAST RADIUS ON A REAL PIPELINE IS ZERO, AND THE ZERO IS EXPLAINED. Both call
+sites prefer the structured dst_ref (WI-tihup) and finalize populates it on
+every is_resolved=False edge (ADR-0037 ruling 2). All 171 of rage's rust::std
+dsts carry dst_ref, so they bypass the legacy parse: 0 gained / 0 lost across
+10,656 legacy-parse edges on rage + just, with a positive control proving the
+detector fires on the exact shapes. This closes a LATENT hole on the paths
+dst_ref does not cover. No recall improvement is claimed; none was observed.
+
+Behavioral evidence (the failure mode is a SILENT drop, so a parser unit test
+is not enough): production tag_io_boundaries, same fixture both arms —
+PRE hint='std' tagged=0; POST hint='std::fs' tagged=1 primitive=std::fs.write.
+Pinned by TestTheEndToEndBoundaryIsActuallyRecovered.
+
+Also files INV-papih: rust emits DOUBLE-SPAN ids
+(rust:external:0-0:std::env:0-0:var:external_symbol) alongside the conformant
+form, both in one map — that is what the 483 actually are, not the objc
+selectors the item predicted. Consumers now survive it by failing safe; the
+producer is not localized.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
