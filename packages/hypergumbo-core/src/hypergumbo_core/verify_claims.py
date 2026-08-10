@@ -784,6 +784,90 @@ def _uncatalogued_external_modules(
     return sorted(unknown)
 
 
+#: Edge types that count as a repo genuinely CALLING into a module, for the
+#: method-starvation check. Deliberately excludes ``imports``: ``import
+#: java.io.File`` performs no I/O and an unused import must not be read as
+#: evidence that the analyzer went blind. The Kotlin case this check exists for
+#: is caught anyway, because its evidence is a CALL edge (the constructor).
+_STARVATION_CALL_EDGE_TYPES: frozenset[str] = frozenset({"calls"})
+
+
+def method_starved_modules(
+    raw_edges: list[dict[str, Any]],
+    catalogs: dict[str, IoBoundaryCatalog],
+) -> list[str]:
+    """External modules this analysis called into but could never have adjudicated.
+
+    THE SINGLE ANSWER to "is this language's catalogued I/O structurally
+    invisible", consumed by :func:`compute_boundary_coverage` so the boundary
+    gate and the taint gate share one rule rather than growing a second copy.
+
+    A catalogue entry declares its own call shape: ``java.io.File`` carries
+    ``methods: [writeText, ...]``, so only a METHOD-construct call edge can ever
+    match it, while ``kotlin.io.ConsoleKt`` carries ``functions: [println]``
+    precisely because that receiver is compiler-synthesised and absent at AST
+    level. So when a repo calls into a method-keyed module and the analyzer
+    produced no method-construct edge for it, the catalogue was never given
+    anything it could match — the analysis did not look.
+
+    WHY NOT THE SIMPLER PREDICATES, measured before this one was written
+    (``scripts/measure-blind-language-signal.py``, six fixtures):
+
+    * "did the language emit ANY call edge" is the predicate this replaces; a
+      Kotlin repo that writes a socket payload to disk emits five and passes.
+    * "count only non-first-party dsts" does not discriminate at all, because
+      :func:`is_first_party_callable_dst` requires an ABSOLUTE path slot and
+      Kotlin's intra-repo dsts are relative.
+    * "did the language emit any method-construct edge" catches the Kotlin case
+      but also downgrades a pure-computation Python repo that simply calls
+      nothing external — conflating "cannot see this language" with "this repo
+      has no external calls". That blanket downgrade is the failure mode that
+      made ``confirmed`` unreachable when this gate was first built, so the
+      check is anchored on modules the repo ACTUALLY CALLS.
+
+    Returns the sorted module names, so the caller can name them in a reason a
+    human can act on rather than reporting a bare "coverage incomplete".
+    """
+    method_modules: dict[str, set[str]] = {
+        language: {p.module for p in catalog.primitives if p.kind == "method"}
+        for language, catalog in catalogs.items()
+    }
+    # ABSTAIN FOR ANY LANGUAGE THAT NEVER POPULATES ``call_construct``. Measured
+    # on two real repos: Go stamps it 7,741 times (6,012 of them ``method``),
+    # while JavaScript and TypeScript stamp it ZERO times across 2,995 call
+    # edges. For those analyzers the field carries no information, so "no method
+    # call landed in this module" is absence of evidence, not evidence of
+    # blindness — and reporting it as blindness would downgrade every JS/TS repo
+    # on earth, which is the blanket-downgrade failure mode this check is built
+    # to avoid. ``None`` (could not check) is not ``empty`` (checked, found none).
+    languages_with_construct_evidence: set[str] = {
+        edge.get("src", "").split(":", 1)[0]
+        for edge in raw_edges
+        if (edge.get("meta") or {}).get("call_construct") and ":" in edge.get("src", "")
+    }
+    called: set[str] = set()
+    satisfied: set[str] = set()
+    for edge in raw_edges:
+        if edge.get("type", "") not in _STARVATION_CALL_EDGE_TYPES:
+            continue
+        src = edge.get("src", "")
+        if ":" not in src:
+            continue
+        language = src.split(":", 1)[0]
+        if language not in languages_with_construct_evidence:
+            continue
+        modules = method_modules.get(language)
+        if not modules:
+            continue
+        module = symbol_path_slot(edge.get("dst", ""))
+        if not module or module not in modules:
+            continue
+        called.add(module)
+        if (edge.get("meta") or {}).get("call_construct") == "method":
+            satisfied.add(module)
+    return sorted(called - satisfied)
+
+
 def compute_boundary_coverage(
     raw_edges: list,
     supported_languages: set,
@@ -845,6 +929,21 @@ def compute_boundary_coverage(
                 f"supported language(s) {', '.join(blind)} were analyzed but "
                 f"produced no call edges, so their I/O is invisible to the "
                 f"boundary analysis"
+            ),
+        )
+
+    starved = method_starved_modules(raw_edges, catalogs)
+    if starved:
+        shown = ", ".join(starved[:_MAX_REPORTED_UNCATALOGUED_MODULES])
+        more = len(starved) - _MAX_REPORTED_UNCATALOGUED_MODULES
+        suffix = f" (+{more} more)" if more > 0 else ""
+        return BoundaryCoverage(
+            complete=False,
+            reason=(
+                f"the analysis calls into {len(starved)} module(s) whose "
+                f"catalogued I/O is method-shaped ({shown}{suffix}) but produced "
+                f"no method call edge for any of them, so their I/O is "
+                f"structurally invisible"
             ),
         )
 
