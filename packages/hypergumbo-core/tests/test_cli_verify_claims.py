@@ -1541,37 +1541,63 @@ def test_verify_claims_cli_source_overrides_claims_file_source(
     assert json.loads(capsys.readouterr().out)["verdicts"][0]["verdict"] == "confirmed"
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "KNOWN GAP, disclosed rather than pending. The coverage gate asks "
-        "'did this language produce ANY call edges', and one edge is enough "
-        "to look covered. Measured on a real Kotlin fixture reading a socket "
-        "and writing it to disk: 93 catalogued sinks, dataflow_capable=False, "
-        "zero findings, exactly one 'calls' edge — and a 'confirmed' verdict. "
-        "Kotlin emits no call edge for an external instance-method call, "
-        "which is ~95% of its catalogued sinks (WI-nasuf). Closing this needs "
-        "a finer signal than 'any' — e.g. the share of method-construct call "
-        "edges the catalogue can match — which is a measurement exercise, not "
-        "a predicate change. Remove this xfail when that lands."
-    ),
-)
 def test_language_with_a_token_call_edge_still_falsely_confirms(
     tmp_path: Path, capsys,
 ) -> None:
-    """A catalogued-but-blind language must not yield ``confirmed``."""
+    """A catalogued-but-blind language must not yield ``confirmed``.
+
+    CLOSED by :func:`verify_claims.method_starved_modules`. Kotlin's catalogue is
+    method-shaped (30 method-keyed modules against 1 function-keyed), and Kotlin
+    emits no call edge for an external instance-method call — ~95% of its
+    catalogued sinks (WI-nasuf). The gate now asks whether any method-construct
+    call edge landed in a method-keyed module the repo actually calls, instead of
+    "did this language produce ANY call edge".
+
+    THE FIXTURE WAS CORRECTED WHEN THIS WAS CLOSED, and that matters more than the
+    marker removal. It asserted the right verdict against a map that did not model
+    the defect: its only edge went to ``kotlin:App.kt:9-12:helper:function``, a bare
+    intra-repo symbol naming no catalogued module. Running ``hypergumbo survey`` over
+    the real Kotlin source this test describes — a ``Socket`` read written to a
+    ``File`` — emits something different and more specific: the CONSTRUCTOR calls
+    ``kotlin:java.net.Socket:0-0:Socket:external_symbol`` and
+    ``kotlin:java.io.File:0-0:File:external_symbol``, with ``writeText`` and
+    ``readBytes`` producing no edge at all. The edges below are that real output.
+
+    BEHAVIOURAL EVIDENCE, since this test's failure mode is a silent pass: the live
+    fixture repo goes ``rc=0 confirmed`` -> ``rc=2 inconclusive``, while a clean
+    Kotlin repo, a pure-computation Python repo and a Python repo with a real
+    ``asyncio.start_server`` -> ``os.mkdir`` flow all keep their prior verdicts
+    (``confirmed`` / ``confirmed`` / ``violated``). The per-predicate measurement is
+    in ``scripts/measure-blind-language-signal.py``.
+    """
     bmap = _make_behavior_map(
         nodes=[
             {"id": "kotlin:App.kt:1-8:handler:function", "name": "handler",
              "kind": "function", "language": "kotlin", "path": "App.kt",
              "span": {"start_line": 1, "end_line": 8}},
         ],
-        # ONE call edge — enough for the 'produced any call edges' check to
-        # consider the language covered, while every external method call
-        # (the sinks that matter) is missing.
-        edges=[{"src": "kotlin:App.kt:1-8:handler:function",
-                "dst": "kotlin:App.kt:9-12:helper:function",
-                "type": "calls", "confidence": 0.9}],
+        # Real `survey` output: the constructors are emitted, the METHOD calls on
+        # them (writeText / readBytes) are not. Enough call edges for the old
+        # 'produced any call edges' check to consider the language covered.
+        edges=[
+            {"src": "kotlin:App.kt:1-8:handler:function",
+             "dst": "kotlin:java.io.File:0-0:File:external_symbol",
+             "type": "calls", "confidence": 0.9},
+            {"src": "kotlin:App.kt:1-8:handler:function",
+             "dst": "kotlin:java.net.Socket:0-0:Socket:external_symbol",
+             "type": "calls", "confidence": 0.9},
+            # LOAD-BEARING, and dropping it is what caught the abstention rule
+            # while this was being written. The gate abstains for any language
+            # that never stamps ``call_construct`` (JS/TS stamp it zero times),
+            # so Kotlin has to demonstrate it stamps the field at all before an
+            # unstamped external call counts as evidence of blindness. Real
+            # ``survey`` output supplies exactly this edge for the intra-repo
+            # ``main() -> Handler`` call.
+            {"src": "kotlin:App.kt:12-14:main:function",
+             "dst": "kotlin:App.kt:4-10:Handler:class",
+             "type": "calls", "confidence": 0.9,
+             "meta": {"call_construct": "function"}},
+        ],
     )
     input_file = tmp_path / "hg.json"
     input_file.write_text(json.dumps(bmap))

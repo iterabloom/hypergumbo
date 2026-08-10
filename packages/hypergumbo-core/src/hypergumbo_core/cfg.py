@@ -143,6 +143,25 @@ def clear_def_use_extractors() -> None:
     _DEF_USE_EXTRACTORS.clear()
 
 
+def registered_def_use_languages() -> frozenset[str]:
+    """Which languages currently have a def/use extractor.
+
+    Exists so :func:`dataflow_scope.ensure_def_use_extractors_registered` can
+    tell "already registered" from "registered, then CLEARED" without reaching
+    into this module's private dict. Registration is an import side effect, and
+    a bare import is a no-op once the module is in ``sys.modules`` — so after a
+    :func:`clear_def_use_extractors` the re-import restores nothing.
+
+    RETURNS THE SET, NOT A BOOLEAN, and that distinction is load-bearing. A
+    "is it non-empty" check looks equivalent and is not: a test that clears the
+    registry and then reloads only ITS OWN extractor module leaves the registry
+    populated but INCOMPLETE, and a truthiness check reports everything fine
+    while ``javascript`` is missing. That is the actual observed failure, and a
+    first attempt at this guard keyed on emptiness and did not fix it.
+    """
+    return frozenset(_DEF_USE_EXTRACTORS)
+
+
 # ---------------------------------------------------------------------------
 # Data model (ADR-0017 §1a)
 # ---------------------------------------------------------------------------

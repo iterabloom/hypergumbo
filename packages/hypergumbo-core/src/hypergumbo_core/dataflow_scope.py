@@ -203,6 +203,11 @@ def compute_sanitizer_scope(
     )
 
 
+#: What a healthy def/use registry looks like, learned from the first successful
+#: registration in this process rather than hardcoded. Empty until then.
+_EXPECTED_DEF_USE_LANGUAGES: frozenset[str] = frozenset()
+
+
 def ensure_def_use_extractors_registered() -> bool:
     """Import the language def/use modules for their registration side effect.
 
@@ -213,14 +218,60 @@ def ensure_def_use_extractors_registered() -> bool:
 
     Returns False when the language package is unavailable, in which case no
     language can be data-flow capable and the scope table says so honestly.
+
+    RE-REGISTERS AFTER A CLEAR, which a bare import cannot do. Registration is an
+    import SIDE EFFECT, so once a module sits in ``sys.modules`` the import here
+    is a no-op and the decorators never re-run — meaning this function returned
+    ``True`` while the registry was empty and every language reported
+    ``dataflow_capable: False``. That is not hypothetical: ``test_cfg.py`` calls
+    ``clear_def_use_extractors()`` five times, and ``test_ddg_build.py`` already
+    carries a hand-rolled ``importlib.reload`` guard in one test with a docstring
+    explaining exactly this hazard. Every other consumer was unguarded, so
+    whether a taint claim reported the JavaScript extractor as wired depended on
+    which tests happened to share an xdist worker — a green suite and a red one
+    from the same tree. The guard belongs here, at the one place that owns the
+    registration, rather than being copied into each test that trips over it.
     """
+    import importlib
+
+    from .cfg import registered_def_use_languages
+
+    global _EXPECTED_DEF_USE_LANGUAGES
     try:
-        import hypergumbo_lang_mainstream.go_def_use
-        import hypergumbo_lang_mainstream.py_def_use
-        import hypergumbo_lang_mainstream.rust_def_use
-        import hypergumbo_lang_mainstream.ts_def_use  # noqa: F401
+        modules = [
+            importlib.import_module(name)
+            for name in (
+                "hypergumbo_lang_mainstream.go_def_use",
+                "hypergumbo_lang_mainstream.py_def_use",
+                "hypergumbo_lang_mainstream.rust_def_use",
+                "hypergumbo_lang_mainstream.ts_def_use",
+            )
+        ]
     except ImportError:  # pragma: no cover - lang package is a hard dep
         return False
+
+    # THE EXPECTED SET IS LEARNED, NOT LISTED. Hardcoding the language names
+    # here would be a second home for a fact the decorators already hold — the
+    # drift this module's docstring warns about — so the first successful
+    # registration in the process records what a healthy registry looks like and
+    # every later call checks against that.
+    #
+    # A SUBSET CHECK, NOT A NON-EMPTY CHECK, and the difference is the whole
+    # defect. ``test_py_def_use.py`` clears the registry and reloads only its own
+    # module, leaving it populated but missing ``javascript`` — so an emptiness
+    # test reports health while the JavaScript extractor is gone. That is exactly
+    # how a full-suite run produced two JavaScript data-flow failures that every
+    # smaller scope passed.
+    current = registered_def_use_languages()
+    if not current:
+        for module in modules:
+            importlib.reload(module)
+        current = registered_def_use_languages()
+    if not _EXPECTED_DEF_USE_LANGUAGES:
+        _EXPECTED_DEF_USE_LANGUAGES = current
+    elif not _EXPECTED_DEF_USE_LANGUAGES <= current:
+        for module in modules:
+            importlib.reload(module)
     return True
 
 
