@@ -1,0 +1,48 @@
+Original commit body from 443bf5506d6198964c1b21d7a0910c616654eecb:
+
+A Kotlin repo that reads a socket and writes the bytes to disk returned rc=0
+`confirmed` with 93 catalogued sinks, dataflow_capable=False and zero findings.
+The coverage gate asked only "did this language produce ANY call edge", and one
+intra-repo call was enough to look covered.
+
+`verify_claims.method_starved_modules` now also asks whether any method-construct
+call edge landed in a method-keyed catalogue module the repo actually CALLS.
+Kotlin emits the `File(...)` constructor but no edge at all for `.writeText`, so
+`java.io.File` is starved and the verdict degrades honestly. The boundary gate and
+the taint gate share the one predicate.
+
+Four candidates were measured over six fixtures before any code changed
+(scripts/measure-blind-language-signal.py, in-repo). "Non-first-party dsts" does
+not discriminate — Kotlin's intra-repo dst path slot is RELATIVE and
+is_first_party_callable_dst requires an absolute one. "Any method-construct edge"
+catches Kotlin but downgrades a pure-computation Python repo that calls nothing
+external, which is the blanket-downgrade failure mode that made `confirmed`
+unreachable in this gate's first version.
+
+The first version of the shipped predicate was ALSO wrong and real repos caught
+it: JS/TS populate call_construct on ZERO of 4,872 call edges, so it reported fs,
+console and process starved on both JavaScript repos measured. The check now
+abstains per-language for any analyzer that never stamps the field — None (could
+not check) is not empty (checked, found none). Filed as INV-gijis.
+
+Direction on a real 14-language repo (sherpa-onnx): 12 of 14 languages pass; the
+two catches name specific modules. The java catch was new — java.nio.file.Files'
+methods are STATIC but catalogued kind=method, so the whole Files sink surface is
+unmatchable (INV-suril).
+
+Also fixes a pre-existing test-isolation defect this work exposed:
+ensure_def_use_extractors_registered restored the def/use registry by importing
+modules for their decorator side effect, which sys.modules caching makes a no-op
+after clear_def_use_extractors() — so it returned True having restored nothing and
+every language read dataflow_capable=False. Two test_taint_recall_corpus failures
+appeared only in full-suite runs and passed at every narrower scope. The first fix
+keyed on "registry empty" and did not work, because a partial restore leaves it
+populated but missing javascript; the guard now compares against the full expected
+set, learned from the first successful registration rather than hardcoded.
+Filed as INV-votoj, which also records that ddg_build.clear_ddg_languages() has
+the same unguarded shape.
+
+Full suite: 22,255 passed / 0 failed / 100% coverage; all 6 packages 100% in
+isolation; mypy strict ratchet 672 (delta +0).
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
