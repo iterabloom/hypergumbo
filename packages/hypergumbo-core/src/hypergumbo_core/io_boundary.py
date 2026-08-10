@@ -39,6 +39,7 @@ from typing import TYPE_CHECKING, Any, Iterable, Optional
 import yaml
 
 from .edge_types import is_grpc_rpc_implementation
+from .ir import symbol_name_slot, symbol_path_slot
 
 if TYPE_CHECKING:
     from .ir import Edge
@@ -1733,20 +1734,30 @@ def _extract_module_hint(edge_dst: str) -> str | None:
     """Extract the module hint from an edge destination symbol ID.
 
     For unresolved edges with format ``{lang}:{module_hint}:0-0:{name}:unresolved``,
-    returns the module_hint part (2nd colon-separated field).
+    returns the module_hint part — which is the PATH slot, so it is read through
+    :func:`ir.symbol_path_slot` rather than parsed here (INV-fokik).
+
+    THIS USED TO BE ``parts[1]``, and that is wrong whenever the path slot carries
+    colons — which ADR-0036 Ruling 1 explicitly permits, and which every one of
+    Rust's nine catalogued sink modules does. ``rust:std::env:0-0:var:...`` returned
+    ``std``; ``_module_matches("std::env", "std")`` is False; and
+    ``_lookup_named_entry`` treats a present-but-MISMATCHED module as a REJECTION
+    rather than a degrade, so the finding was dropped in silence. Measured at 740
+    ids across two Rust repos plus hypergumbo's own tree. Adding an eighth private
+    parse was the alternative — WI-ribuz counts six homes and three mechanisms
+    already, two of them naive in exactly this way.
 
     For resolved edges (file paths in position 2), returns None since the
     path is not a useful module hint.
     """
-    parts = edge_dst.split(":")
-    if len(parts) >= 5:
-        candidate = parts[1]
-        # Heuristic: file paths start with / or contain .py/.java/.go etc.
-        # Module hints are identifiers like "external", "net.Conn", "os"
-        if candidate.startswith("/") or candidate.startswith("\\"):
-            return None
-        return candidate
-    return None
+    candidate = symbol_path_slot(edge_dst)
+    if not candidate:
+        return None
+    # Heuristic: file paths start with / or contain .py/.java/.go etc.
+    # Module hints are identifiers like "external", "net.Conn", "os"
+    if candidate.startswith("/") or candidate.startswith("\\"):
+        return None
+    return candidate
 
 
 def _extract_callee_name(edge_dst: str) -> str:
@@ -1756,22 +1767,22 @@ def _extract_callee_name(edge_dst: str) -> str:
     field may itself contain colons (e.g., Objective-C selectors like
     ``removeItemAtPath:error:``).
 
-    Strategy: split off the *kind* (last field) from the right, then take
-    everything after the first three fields (lang, path, span) as the name.
+    Delegates to :func:`ir.symbol_name_slot` (INV-fokik). The previous strategy —
+    "split off kind from the right, then take everything after the first three
+    fields" — handled a colon-bearing NAME but assumed a colon-free PATH, and
+    ADR-0036 Ruling 1 makes the path the one colon-TOLERANT slot. On
+    ``rust:std::fs:0-0:write:external_symbol`` it returned ``fs:0-0:write``, so
+    every one of Rust's nine colon-bearing sink modules missed its catalogue row.
+    That miss is silent, which is why it survived a corpus A/B: correcting the
+    module hint alone moved zero boundaries because this function had already
+    destroyed the name.
     """
-    # Split off kind from the right
-    last_colon = edge_dst.rfind(":")
-    if last_colon < 0:
-        return edge_dst
-    rest = edge_dst[:last_colon]
-
-    # rest = "lang:path:span:name_possibly_with_colons"
-    # Split into at most 4 parts: lang, path, span, name(remainder)
-    parts = rest.split(":", 3)
-    if len(parts) >= 4:
-        return parts[3]
-    # Fewer fields — return the last segment (handles minimal IDs like "a:b")
-    return parts[-1] if parts else edge_dst
+    name = symbol_name_slot(edge_dst)
+    if name:
+        return name
+    # Fewer than five fields — return the last segment (handles minimal IDs
+    # like "a:b"), preserving this function's pre-chokepoint contract.
+    return edge_dst.rsplit(":", 1)[0] if ":" in edge_dst else edge_dst
 
 
 def _resolve_ffi_catalog(

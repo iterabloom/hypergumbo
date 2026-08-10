@@ -53,7 +53,7 @@ from typing import (
 import yaml
 
 from .edge_types import is_grpc_rpc_implementation
-from .ir import symbol_path_slot
+from .ir import symbol_name_slot, symbol_path_slot
 
 if TYPE_CHECKING:
     from .cfg import DdgEdge
@@ -1205,27 +1205,19 @@ def _extract_callee_name(symbol_id: str) -> str:
     Symbol ID format: {lang}:{file_or_module}:{start}-{end}:{name}:{kind}
     For unresolved externals: {lang}:external:0-0:{name}:unresolved
 
-    Handles names containing colons (ObjC selectors) by parsing from
-    both ends: language is before the first colon, kind is after the last.
-    """
-    parts = symbol_id.split(":")
-    if len(parts) < 5:
-        return symbol_id
-    # For names with colons (ObjC selectors), reconstruct from middle parts
-    # Format: lang:file:line-range:name:kind
-    # Parse from both ends
-    # Find the line range (contains a dash)
-    line_range_idx = -1
-    for i in range(1, len(parts) - 1):
-        if "-" in parts[i] and parts[i].replace("-", "").isdigit():
-            line_range_idx = i
-            break
-    if line_range_idx < 0:
-        return parts[-2] if len(parts) >= 2 else symbol_id
+    Handles names containing colons (ObjC selectors) by anchoring on the span
+    token rather than on slot count.
 
-    # Name is everything between line_range and kind
-    name_parts = parts[line_range_idx + 1: -1]
-    return ":".join(name_parts)
+    Delegates to :func:`ir.symbol_name_slot`, which is this function's own logic
+    promoted to a chokepoint (INV-fokik). It was the CORRECT of the two name
+    parsers — ``io_boundary._extract_callee_name`` assumed a colon-free path and
+    shredded every Rust sink — and the two disagreeing about one string is what
+    exposed the defect. Sharing the implementation is what stops that recurring;
+    a comment asserting they agree is exactly what this project has been burned by.
+    """
+    if len(symbol_id.split(":")) < 5:
+        return symbol_id
+    return symbol_name_slot(symbol_id)
 
 
 def _qualified_callee(symbol_id: str) -> str:

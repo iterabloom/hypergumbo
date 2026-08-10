@@ -1387,6 +1387,28 @@ def symbol_path_slot(symbol_id: str) -> str:
     degrade. The net effect was inverted: an edge naming ``std::fs`` was
     refused while an edge carrying no module at all matched.
 
+    ANCHORED ON THE SPAN, not on slot count (INV-fokik). The right-anchored form
+    ``parts[1:-3]`` is correct only while the grammar's colon-free-name rule
+    actually holds in the data, and it does not: 483 ids across two Rust repos are
+    DOUBLE-SPAN — ``rust:external:0-0:Stdio:0-0:null:external_symbol`` — for which
+    ``parts[1:-3]`` yields ``external:0-0:Stdio``. That string is not in
+    ``taint._UNRESOLVED_MODULE_PLACEHOLDERS``, so ``_lookup_named_entry`` compares
+    it as a real module name, matches nothing, and DROPS THE FINDING SILENTLY —
+    the same failure this chokepoint was created to end, reached from the other
+    side. Locating the ``\\d+-\\d+`` span token instead is right on both
+    populations, and it makes this function agree with
+    ``taint._extract_callee_name``, which has anchored on the span all along; the
+    two parsers disagreeing about one string is what exposed the defect.
+
+    FAILS SAFE BY CHOICE. A malformed id has no true path slot, so the question is
+    only which wrong answer to give: ``external`` degrades to short-name matching
+    plus the F3 gate, while ``external:0-0:Stdio`` rejects everything in silence.
+
+    Falls back to the right-anchored parse when there is no span token at all
+    (``just:examples/screenshot.just:6:build:recipe`` — a bare line number, 584
+    occurrences in the same scan), because right-anchoring is already correct
+    there and returning "" would lose a path this function used to report.
+
     Returns ``""`` for anything with fewer than five colon-separated parts —
     an unparseable id is not evidence, and every caller treats "" as "no path
     information" rather than as a path.
@@ -1394,7 +1416,46 @@ def symbol_path_slot(symbol_id: str) -> str:
     parts = symbol_id.split(":") if symbol_id else []
     if len(parts) < 5:
         return ""
+    for idx in range(1, len(parts) - 1):
+        token = parts[idx]
+        if "-" in token and token.replace("-", "").isdigit():
+            return ":".join(parts[1:idx])
     return ":".join(parts[1:-3])
+
+
+def symbol_name_slot(symbol_id: str) -> str:
+    """THE name-slot parse for ``{lang}:{path}:{span}:{name}:{kind}`` ids.
+
+    The companion to :func:`symbol_path_slot`, and filed under the same defect
+    (INV-fokik). Fixing only the path side moved NOTHING, because the name side
+    carried the mirror bug in the same module: ``io_boundary._extract_callee_name``
+    took "everything after the first three fields", which assumes the PATH slot is
+    colon-free. On ``rust:std::fs:0-0:write:external_symbol`` it returned
+    ``fs:0-0:write``, so every Rust sink missed its catalogue row before the module
+    hint could matter — and the miss is silent.
+
+    Anchored on the span for the same reason the path parse is: it is the only
+    anchor that survives colons on EITHER side. Everything between the span token
+    and the trailing kind is the name, so a colon-bearing objc selector
+    (``writeToFile:atomically:``) is returned whole rather than truncated at its
+    first colon.
+
+    ``taint._extract_callee_name`` has always parsed it this way; this function is
+    where that logic now lives so the two consumers cannot drift apart again. The
+    two disagreeing about one string is what exposed the defect in the first place.
+
+    Falls back to the second-to-last token when there is no span token, and returns
+    ``""`` for anything with fewer than five parts — matching
+    :func:`symbol_path_slot`'s contract, where "" means "no name information".
+    """
+    parts = symbol_id.split(":") if symbol_id else []
+    if len(parts) < 5:
+        return ""
+    for idx in range(1, len(parts) - 1):
+        token = parts[idx]
+        if "-" in token and token.replace("-", "").isdigit():
+            return ":".join(parts[idx + 1:-1])
+    return parts[-2]
 
 
 def _extract_path_slot(symbol_id: str) -> Optional[str]:
