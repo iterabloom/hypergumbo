@@ -250,6 +250,11 @@ def scan_repo(repo: str, method_rows: dict[str, set[str]],
     counts: Counter = Counter()
     by_type: Counter = Counter()
     examples: list[str] = []
+    # EVERY no-boundary site, untruncated. ``top_sites`` below is a ``most_common(12)``
+    # per repo, which silently drops rows -- reading the composite/ctor_call split off it
+    # under-reported the breakdown on the 9-repo cohort. The counters are authoritative;
+    # this list is what makes them auditable site by site.
+    no_boundary_sites: list[dict] = []
     for dirpath, dirnames, filenames in os.walk(repo, followlinks=True):
         dirnames[:] = [d for d in dirnames if d not in (".git", "vendor", "testdata")]
         for fname in filenames:
@@ -315,6 +320,15 @@ def scan_repo(repo: str, method_rows: dict[str, set[str]],
                                     else "ctor_call")
                             counts[f"NO_BOUNDARY_via_{kind}"] += 1
                             by_type[f"NOBOUND:{ty}.{method}"] += 1
+                            no_boundary_sites.append({
+                                "file": os.path.relpath(path, repo),
+                                "line": node.start_point[0] + 1,
+                                "receiver": recv,
+                                "method": method,
+                                "type": ty,
+                                "origin": f"{origin[0]}.{origin[1]}",
+                                "root_kind": kind,
+                            })
                         if shape == "ASSIGNED" and len(examples) < 8:
                             rel = os.path.relpath(path, repo)
                             examples.append(
@@ -330,6 +344,7 @@ def scan_repo(repo: str, method_rows: dict[str, set[str]],
     return {
         "counts": dict(counts),
         "top_sites": by_type.most_common(12),
+        "no_boundary_sites": no_boundary_sites,
         "examples": examples,
     }
 
@@ -338,6 +353,9 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("repos", nargs="+")
     ap.add_argument("--json", dest="out")
+    ap.add_argument("--sites", action="store_true",
+                    help="print every no-boundary site (file:line) to stderr, "
+                         "untruncated -- the auditable form of the headline counts")
     args = ap.parse_args()
 
     catalog = load_catalog("go")
@@ -360,6 +378,12 @@ def main() -> int:
               f"ctor_also_tagged={c.get('ASSIGNED_CTOR_ALSO_TAGGED', 0):5d} "
               f"| PARAM total={c.get('PARAM_total', 0):6d} "
               f"blocked={c.get('PARAM_BLOCKED_TODAY', 0):6d}", file=sys.stderr)
+        if args.sites:
+            for site in res["no_boundary_sites"]:
+                print(f"    [{site['root_kind']:9s}] {name}/{site['file']}:"
+                      f"{site['line']} {site['receiver']}.{site['method']}()"
+                      f" -> {site['type']}.{site['method']}"
+                      f"  [root {site['origin']}]", file=sys.stderr)
     report["TOTAL"] = dict(total)
     text = json.dumps(report, indent=2)
     if args.out:

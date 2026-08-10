@@ -548,6 +548,48 @@ def _strip_module_prefix(import_path: str, module_path: str) -> str:
     return import_path
 
 
+def _external_package_for_type(
+    type_name: str,
+    import_aliases: dict[str, str],
+    module_path: Optional[str],
+) -> Optional[str]:
+    """Import path of ``type_name``'s package, when that package is OUTSIDE this module.
+
+    A package-qualified receiver type reaches the analyzer in two flavours that look
+    identical and must be resolved oppositely. ``notify.Stage`` names a type in a
+    SIBLING PACKAGE OF THIS REPO, whose methods are in ``global_symbols`` under the
+    unqualified ``Stage.Exec`` — stripping the prefix and looking it up is correct.
+    ``http.Client`` names a type this repo does not define at all; stripping its prefix
+    yields a bare ``Client`` that can collide with any same-named local type, and the
+    resulting edge points at the wrong function while claiming
+    ``resolution_quality: typed_receiver``.
+
+    That collision is not hypothetical. go.py already carries a note that
+    ``q.Set("k","v")`` where ``q`` is a ``url.Values`` "absorbed 13 spurious in-edges
+    into one struct, poisoning the centrality ranking" on alertmanager. It was closed
+    then by a guard keyed on the receiver type being UNKNOWN — which held only for as
+    long as external composite literals stayed untyped.
+
+    The discriminator is go.mod: an import path inside this module is a prefix match on
+    the module path. Returns None when the type is unqualified, when its prefix is not
+    an imported alias, when the package IS in this module, or when no module path is
+    known — in that last case in-repo and external are genuinely indistinguishable
+    here, so the caller keeps its existing behaviour rather than guessing. That is a
+    DISCLOSED gap for a Go tree analysed without a go.mod, not a silent one.
+    """
+    if "." not in type_name:
+        return None
+    full_import_path = import_aliases.get(type_name.split(".")[0])
+    if full_import_path is None or not module_path:
+        return None
+    if (
+        full_import_path == module_path
+        or full_import_path.startswith(module_path + "/")
+    ):
+        return None
+    return full_import_path
+
+
 def _count_go_method_arity(
     node: "tree_sitter.Node",
 ) -> tuple[int, int]:
@@ -1900,11 +1942,27 @@ def _type_from_rhs(
         else:
             return None  # pragma: no cover - defensive for unrecognized unary
 
-    # Server{} → composite_literal with type_identifier
+    # Server{} / http.Client{} → composite_literal whose ``type`` field names the
+    # type. This delegates to _type_identifier_from_node rather than scanning for a
+    # ``type_identifier`` child, because tree-sitter-go spells a package-qualified
+    # name differently by SYNTACTIC POSITION: an expression gives
+    # ``selector_expression`` (exec.Command(...)), a TYPE gives ``qualified_type``
+    # (&http.Client{}). Matching only ``type_identifier`` therefore bound in-repo
+    # struct literals and silently dropped every external one, so ``client.Do(req)``
+    # emitted the bare ``external`` module placeholder and the no-module gate
+    # (io-boundary:F3) correctly refused it — ``Do`` is in go.yaml's ambiguous_names.
+    # _type_identifier_from_node already answers this question for the ``var x T``
+    # spelling (its docstring calls returning the full ``http.Client`` "critical for
+    # IO boundary detection"); the copy here had drifted narrower, so the two
+    # spellings of one declaration disagreed.
     if node.type == "composite_literal":
-        for child in node.children:
-            if child.type == "type_identifier":
-                return node_text(child, source)
+        type_node = find_child_by_field(node, "type")
+        if type_node is not None and type_node.type in (
+            "type_identifier", "qualified_type",
+        ):
+            return _type_identifier_from_node(type_node, source)
+        # map[k]v{} / []T{} / struct{}{} — composite types name no receiver type.
+        return None
 
     # NewFoo() or pkg.NewFoo() → constructor return type inference
     if node.type == "call_expression":
@@ -2288,6 +2346,14 @@ def _extract_edges_from_file(
                 if func_node:
                     callee_name = None
                     import_path_hint = None
+                    # Set only when the hint was derived from the RECEIVER's own
+                    # tracked type (``q`` is a ``url.Values``), as opposed to from a
+                    # package alias in operand position (``url.Parse(...)``). The
+                    # WI-jopar guard below needs to tell those apart: a typed local
+                    # receiver must terminate resolution either way, and the module
+                    # slot it terminates with should name the real package instead of
+                    # the ``external`` placeholder when we know it.
+                    receiver_module_hint: Optional[str] = None
                     full_import_path = None
 
                     if func_node.type == "identifier":
@@ -2318,36 +2384,34 @@ def _extract_edges_from_file(
                             # receiver-type method disambiguation
                             elif alias in var_types:
                                 receiver_type = var_types[alias]
-                                # Strip package prefix from qualified types
-                                # (e.g. "notify.Stage" → "Stage") since symbol
-                                # names in global_symbols are unqualified.
-                                bare_recv = (
-                                    receiver_type.rsplit(".", 1)[-1]
-                                    if "." in receiver_type
-                                    else receiver_type
+                                # A type from OUTSIDE this module cannot be defined
+                                # by this repo, so the unqualified lookup below would
+                                # only ever find an impostor. Take the import-path
+                                # hint directly. (_strip_module_prefix is a no-op on
+                                # an out-of-module path by construction.)
+                                _external = _external_package_for_type(
+                                    receiver_type, import_aliases, module_path,
                                 )
-                                qualified_name = f"{bare_recv}.{callee_name}"
-                                # Try qualified name in local or global symbols
-                                if qualified_name in local_symbols:
-                                    callee = local_symbols[qualified_name]
-                                    edges.append(Edge.create(
-                                        src=current_function.id,
-                                        dst=callee.id,
-                                        edge_type="calls",
-                                        line=node.start_point[0] + 1,
-                                        evidence_type="ast_call",
-                                        origin=PASS_ID,
-                                        origin_run_id=run.execution_id,
-                                        meta={"call_construct": "method", "resolution_quality": "typed_receiver"},
-                                    ))
-                                    callee_name = None  # Already resolved
-                                elif qualified_name in global_symbols:
-                                    # Direct lookup by qualified name
-                                    candidates = global_symbols[qualified_name]
-                                    if candidates:
+                                if _external is not None:
+                                    full_import_path = _external
+                                    import_path_hint = _external
+                                    receiver_module_hint = _external
+                                else:
+                                    # Strip package prefix from qualified types
+                                    # (e.g. "notify.Stage" → "Stage") since symbol
+                                    # names in global_symbols are unqualified.
+                                    bare_recv = (
+                                        receiver_type.rsplit(".", 1)[-1]
+                                        if "." in receiver_type
+                                        else receiver_type
+                                    )
+                                    qualified_name = f"{bare_recv}.{callee_name}"
+                                    # Try qualified name in local or global symbols
+                                    if qualified_name in local_symbols:
+                                        callee = local_symbols[qualified_name]
                                         edges.append(Edge.create(
                                             src=current_function.id,
-                                            dst=candidates[0].id,
+                                            dst=callee.id,
                                             edge_type="calls",
                                             line=node.start_point[0] + 1,
                                             evidence_type="ast_call",
@@ -2356,28 +2420,42 @@ def _extract_edges_from_file(
                                             meta={"call_construct": "method", "resolution_quality": "typed_receiver"},
                                         ))
                                         callee_name = None  # Already resolved
-                                # Fallback: if receiver_type is a qualified
-                                # type like "http.Client", extract the package
-                                # prefix and recover the import path.  This
-                                # sets import_path_hint so the unresolved edge
-                                # gets the correct module hint (e.g. net/http)
-                                # instead of "external", enabling IO boundary
-                                # detection to classify the call.
-                                elif "." in receiver_type:
-                                    pkg_prefix = receiver_type.split(".")[0]
-                                    if pkg_prefix in import_aliases:
-                                        full_import_path = import_aliases[
-                                            pkg_prefix
-                                        ]
-                                        if module_path:
-                                            import_path_hint = (
-                                                _strip_module_prefix(
-                                                    full_import_path,
-                                                    module_path,
+                                    elif qualified_name in global_symbols:
+                                        # Direct lookup by qualified name
+                                        candidates = global_symbols[qualified_name]
+                                        if candidates:
+                                            edges.append(Edge.create(
+                                                src=current_function.id,
+                                                dst=candidates[0].id,
+                                                edge_type="calls",
+                                                line=node.start_point[0] + 1,
+                                                evidence_type="ast_call",
+                                                origin=PASS_ID,
+                                                origin_run_id=run.execution_id,
+                                                meta={"call_construct": "method", "resolution_quality": "typed_receiver"},
+                                            ))
+                                            callee_name = None  # Already resolved
+                                    # Fallback: a qualified type whose package we
+                                    # could not classify as out-of-module (no go.mod
+                                    # module path). Recover the import path so the
+                                    # unresolved edge still gets a module hint
+                                    # instead of "external".
+                                    elif "." in receiver_type:
+                                        pkg_prefix = receiver_type.split(".")[0]
+                                        if pkg_prefix in import_aliases:
+                                            full_import_path = import_aliases[
+                                                pkg_prefix
+                                            ]
+                                            if module_path:
+                                                import_path_hint = (
+                                                    _strip_module_prefix(
+                                                        full_import_path,
+                                                        module_path,
+                                                    )
                                                 )
-                                            )
-                                        else:
-                                            import_path_hint = full_import_path
+                                            else:
+                                                import_path_hint = full_import_path
+                                            receiver_module_hint = import_path_hint
                         # Chained field access: r.integration.Notify()
                         # Walk selector chain through field_type_registry
                         # to resolve the receiver type.
@@ -2564,21 +2642,37 @@ def _extract_edges_from_file(
                         #
                         # Note: var_types may map ``alias`` to an empty string
                         # when the analyzer recognised the variable but not
-                        # its type (e.g. composite_literal of qualified_type
-                        # like ``url.Values{}``). The empty-string entry is
-                        # still meaningful — it tells us the operand is a
-                        # tracked local, not a free-floating identifier — so
-                        # the guard fires on key presence, not value truthiness.
+                        # its type. The empty-string entry is still meaningful
+                        # — it tells us the operand is a tracked local, not a
+                        # free-floating identifier — so the guard fires on key
+                        # presence, not value truthiness.
+                        #
+                        # WHY THE CONDITION IS NOT ``import_path_hint is None``.
+                        # It used to be, and that worked only while a qualified
+                        # composite literal (``url.Values{}``) left the receiver
+                        # UNTYPED: no type meant no hint, so hint-absence was an
+                        # accidental proxy for "the receiver is a tracked local".
+                        # Once such a receiver types correctly the hint is set,
+                        # the proxy inverts, and this guard stops firing exactly
+                        # where it is most needed — the alertmanager
+                        # ``AlertStore.Set`` false edge came straight back. The
+                        # guard's real subject is the RECEIVER, so it now keys on
+                        # the receiver directly and terminates with the package it
+                        # knows instead of the ``external`` placeholder.
                         if (
                             callee_name
-                            and import_path_hint is None
+                            and (
+                                import_path_hint is None
+                                or receiver_module_hint is not None
+                            )
                             and operand_node is not None
                             and operand_node.type == "identifier"
                         ):
                             _alias = node_text(operand_node, source)
                             if _alias in var_types:
+                                _slot = receiver_module_hint or "external"
                                 dst_id = (
-                                    f"go:external:0-0:{callee_name}:unresolved"
+                                    f"go:{_slot}:0-0:{callee_name}:unresolved"
                                 )
                                 edges.append(Edge.create(
                                     src=current_function.id,
@@ -2586,6 +2680,14 @@ def _extract_edges_from_file(
                                     edge_type="calls",
                                     line=node.start_point[0] + 1,
                                     evidence_type="ast_call",
+                                    # Stated, not inherited. Edge.create defaults
+                                    # is_resolved=True, so this guard was minting
+                                    # a "resolved" edge onto a dst whose kind slot
+                                    # reads ``unresolved`` — the same incoherence
+                                    # INV-fazim is filed for, latent here only
+                                    # because the guard seldom fired. It is an
+                                    # out-of-repo target by construction.
+                                    is_resolved=False,
                                     origin=PASS_ID,
                                     origin_run_id=run.execution_id,
                                     meta={"call_construct": "method", "receiver": "external"},
