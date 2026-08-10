@@ -1,0 +1,81 @@
+Original commit body from f8e06acb65fe9420946958774694bc1873c42ffd:
+
+INV-linub, python half. `io_primitives/python.yaml` declares a receiver TYPE in
+the module slot of every `kind: method` primitive -- seventeen of them. The only
+way the analyzer learns an external receiver's type is EXTERNAL_CONSTRUCTOR_TYPES,
+which was a hand-curated FOUR-row restatement naming three. Two homes for one
+fact, drifted, so fifteen types could never be minted and every method hanging
+off them was structurally unreachable:
+
+    pathlib.Path(a).write_text(b)   -> calls python:pathlib.Path:...:write_text
+    smtplib.SMTP(a).sendmail(...)   -> NO method-call edge at all
+    sqlite3.Cursor(a).execute(b)    -> NO method-call edge at all
+
+The table now READS the catalogue, and a parity test enumerates the LIVE
+catalogue rather than three examples, so a type added to the YAML tomorrow fails
+this test instead of silently going unreachable. A leaf name claimed by two types
+is withheld (default-deny) rather than resolved to whichever came first.
+
+MEASURED, and the ceiling and the floor disagree by two orders of magnitude:
+
+  scripts/measure-catalogue-reach.py python   (generated call sites -- a CEILING)
+      BOTH 105 -> 153 | DOTTED 27 -> 16 | BARE 0 -> 41 | NEITHER 83 -> 5
+      unreachable method-kind primitives: 78 -> 0
+
+  scripts/measure-ctor-table-derivation-ab.py  (real repos, analyzer-level)
+      hypergumbo  99,477 -> 99,477 call edges   gained 0   lost 0
+      pretix      62,272 -> 62,272              gained 0   lost 0
+
+*** REAL-CODE PAYOFF IS ZERO AND THAT IS THE HEADLINE, not the 83->5. *** Real
+python obtains most of these objects from FACTORY functions, not class
+constructors: sqlite3.connect(path) then conn.cursor(), never sqlite3.Cursor(...)
+-- hypergumbo's own tracker cache is exactly that shape. This closes a structural
+hole and pins it with a parity test; NO recall win is claimed. Filed as WI-jidij,
+with the note that unlike the constructor table a factory map CANNOT be
+catalogue-derived (io_primitives records which METHODS are I/O, never which
+FUNCTIONS return the receiving type).
+
+A REGRESSION THIS CHANGE INTRODUCED, caught by the direction A/B rather than by
+review, and fixed here. _process_call has a SECOND consumer of the table --
+`elif callee_name in EXTERNAL_CONSTRUCTOR_TYPES` -- that emits
+python:builtins:0-0:<name>:unresolved, i.e. asserts the name IS a builtin, under
+a comment claiming "only the bare key `open` can match". Seventeen new bare type
+names falsified that immediately: pretix's
+
+    StreamWriter = codecs.getwriter('utf-8')
+    output = StreamWriter(byte_data)
+
+-- a LOCAL rebinding -- minted builtins.StreamWriter, while the sibling
+_external_constructor_type refused the same name a few lines earlier via its
+INV-kipor binding check. Two consumers of one table disagreeing about what
+membership licenses. Now gated on BUILTIN_CONSTRUCTOR_NAMES, which already means
+exactly "bare rows that are REAL builtins" -- consolidating onto an existing rule
+rather than minting a third. This also closes the pre-existing case where an
+unimported bare Path(...) minted builtins.Path.
+
+DIRECTION MEASURED BEFORE THE CHANGE: the fifteen newly-mintable types carry 43
+of 83 python taint sources and 35 of 113 sinks, and 0 of 4 sanitizers -- so this
+cannot arm the WI-fasub barrier arm where a False earns `sanitized` and drops a
+flow. That 0 was an UNCONTROLLED zero on first measurement (sanitizer rows carry
+only qualified_name, no kind, so a kind=="method" filter matched nothing and
+intersected everything to zero); recovered by stripping the method off
+qualified_name, and now pinned executably.
+
+ALSO IN THIS PR, as instruments rather than behaviour:
+
+scripts/measure-escape-closing-ceiling.py -- prices the whole 3a escape-closing
+family at its UPPER BOUND by forcing _use_site_terminates to True. hypergumbo:
+3a walks 22T/0F/20N -> 22T/16F/4N with findings 2/1453/2279 IDENTICAL in both
+arms. Closing EVERY escape site moves ZERO findings, so no catalogue, emission or
+receiver-typing fix in that family can either -- and since only the barrier arm
+consumes a False, the only direction available to it is the finding-DELETING one.
+Recorded on INV-busis, which also loses its "4a is a catalogue gap" framing: only
+4 of its 7 distinct keys are catalogue absences (two are malformed by a doubled
+module segment, one carries a receiver variable in the module slot).
+
+CHANGELOG amended in place where it repeated the withdrawn "catalogue gap" claim.
+
+Verification: smart-test --full 22,278 passed / 6 skipped / 16 xfailed, coverage
+100%; mypy strict ratchet clean at baseline.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
