@@ -1,0 +1,51 @@
+Original commit body from 378f91d1b83c643d3ae0885aa68c17f33a4e9e96:
+
+WI-jidij proposed a declared factory->receiver-type map on the hypothesis that
+real code writes `conn = sqlite3.connect(p); conn.execute(q)` rather than
+constructing the type. The item required a corpus measurement BEFORE the map was
+built, because a generated reach probe had already been mistaken for a payoff
+once in this area. This is that measurement, and it refutes the hypothesis.
+
+METHOD. Ground truth is `ast`, deliberately NOT the analyzer: the question is
+"what does real code contain", and asking hypergumbo would answer "what can
+hypergumbo see", which is the thing under test. Import-aware; tracks local
+bindings AND `self.<attr>` bindings; splits production vs test with production's
+own is_test_file. Cohort: hypergumbo, pretix, superset, mlflow, litellm, fastapi,
+
+RESULT, three shapes counted separately because each needs a different fix:
+
+    CTOR     c = smtplib.SMTP(h); c.sendmail()      192 sites (132 production)
+    FACTORY  c = sqlite3.connect(p); c.execute()     29 sites  (21 production)
+    MANAGER  Model.objects.filter()               4,690 sites
+
+*** 22 OF THE 29 FACTORY SITES ARE HYPERGUMBO'S OWN TRACKER CACHE. *** Excluding
+self-bias: SEVEN sites across six repos, exactly ONE on a production path.
+Per-repo production factory sites: pretix 0, superset 0, mlflow 0, litellm 1,
+sqlite3.connect 4 bindings cohort-wide, asyncio.open_connection ZERO,
+multiprocessing.Pipe ZERO. A hand-written, hand-maintained map serving one
+external production site is not worth the maintenance surface. Item closed
+wont_do with the measurement attached.
+
+THE POSITIVE CONTROL FAILED ON ITS FIRST RUN, AND THAT IS WHY THE NULL IS
+BELIEVABLE. The scanner tracked only local `Name` bindings, so it could not see
+`self._conn = sqlite3.connect(...)` — an INSTANCE ATTRIBUTE, which is how a
+long-lived connection is actually written and the exact shape of the control file
+(this repo's own tracker cache). Without the control the corpus would have
+returned near-zero and a real item would have been closed on a scanner bug.
+Fixed with a two-pass class scan; the control now finds 3 bindings and 20
+catalogued method sites.
+
+A CLAIM MADE WRONG AND CORRECTED THE SAME DAY, recorded because the shape
+recurs. The first write-up called the Django MANAGER shape "not modelled at all".
+It is modelled — WI-sozoj at py.py:5734, gated on `.objects.` plus a closed
+method set — and pretix yields 846 django-attributed chains with
+`django.db.models.filter` (447) the largest single primitive in the repo. This
+scanner had reused WI-sozoj's OWN `.objects.` discriminator, so it reproduced a
+shipped feature's rule and then reported it as a gap. Also corrected: 4,690 is a
+SITE count and 846 is a CHAIN count (deduplicated per boundary/primitive/src), so
+no ratio between them is claimed — sites, chains and walks are different
+populations. Both corrections are written into the instrument's docstring so the
+next reader inherits them.
+
+Verification: smart-test targeted 1530 passed; mypy strict ratchet clean.
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
