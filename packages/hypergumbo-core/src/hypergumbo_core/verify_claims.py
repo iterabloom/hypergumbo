@@ -404,7 +404,7 @@ def _reject_unknown_keys(observed, allowed: frozenset[str], *, where: str) -> No
 
 def load_extra_catalog_paths(
     path: Path,
-) -> tuple[list[Path], list[Path], list[Path]]:
+) -> tuple[list[Path], list[Path], list[Path], list[Path]]:
     """Read ``extra_catalogs:`` from a claims YAML and return its path lists.
 
     The claims file may declare project-local taint catalog files under a
@@ -417,14 +417,24 @@ def load_extra_catalog_paths(
           sinks:
             - taint/project_sinks.yaml
           sanitizers: []
+          io_primitives:
+            - overlays/python-http-clients.yaml
 
     Each entry is a YAML file or a directory of YAML files.  Relative
     paths resolve against the claims-file directory so a repo can keep
     its extra catalogs beside the claims document.
 
-    Returns ``(sources, sinks, sanitizers)`` — each a list of ``Path``
-    values that callers can concatenate onto CLI-supplied paths and hand
-    to :func:`hypergumbo_core.taint.load_full_taint_catalog`.
+    Returns ``(sources, sinks, sanitizers, io_primitives)`` — each a list
+    of ``Path`` values that callers can concatenate onto CLI-supplied
+    paths.  The first three feed
+    :func:`hypergumbo_core.taint.load_full_taint_catalog`; the fourth
+    feeds :func:`hypergumbo_core.io_boundary.load_catalog` (INV-fotav).
+
+    ``io_primitives`` is read HERE rather than through a second loader
+    because ``extra_catalogs:`` is already the one place a claims file
+    declares project-local knowledge — the boundary arm was simply never
+    given a key in it, even though ADR-0017 established the pattern for
+    the taint arm.
     """
     content = path.read_text(encoding="utf-8")
     data = yaml.safe_load(content) or {}
@@ -450,6 +460,7 @@ def load_extra_catalog_paths(
         _resolve_rel(extras.get("sources")),
         _resolve_rel(extras.get("sinks")),
         _resolve_rel(extras.get("sanitizers")),
+        _resolve_rel(extras.get("io_primitives")),
     )
 
 

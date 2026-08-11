@@ -931,6 +931,7 @@ AUTO_SOURCE_LABEL_MAP: dict[str, str] = {
 
 def _derive_auto_imports_from_io_primitives(
     io_catalog_dir: Path,
+    overlay_paths: "Sequence[Path] | None" = None,
 ) -> tuple[
     dict[str, list[TaintSource]],
     dict[str, list[TaintSink]],
@@ -968,8 +969,25 @@ def _derive_auto_imports_from_io_primitives(
     ``load_catalog`` takes a language rather than a path, so the glob supplies
     the language via each file's stem; the merged catalogue keeps the CHILD's
     ``language`` field, which is what keys the returned dicts.
+
+    ``overlay_paths`` carries PROJECT-LOCAL io_primitive overlays (INV-fotav)
+    into this derivation, so a user declares a third-party primitive ONCE and
+    both arms see it. Without this the unification ADR-0017 §453 established for
+    built-ins — io_primitives as the single source of truth, no shipped
+    ``taint_sinks/`` directory, "without a second source of truth that could
+    drift out of sync" — would hold for hypergumbo's rows and NOT for the user's,
+    who would have to declare ``requests.post`` twice in two schemas. Overlays
+    are grouped by their declared ``language:`` and applied only to that
+    language's catalogue, because ``load_catalog`` refuses a cross-language
+    overlay rather than attributing I/O to the wrong tree.
     """
-    from hypergumbo_core.io_boundary import load_catalog
+    from hypergumbo_core.io_boundary import load_catalog, load_overlay_catalog
+
+    overlays_by_lang: dict[str, list[Path]] = defaultdict(list)
+    for overlay_path in overlay_paths or ():
+        overlays_by_lang[
+            load_overlay_catalog(Path(overlay_path)).language
+        ].append(Path(overlay_path))
 
     sources_by_lang: dict[str, list[TaintSource]] = defaultdict(list)
     sinks_by_lang: dict[str, list[TaintSink]] = defaultdict(list)
@@ -979,7 +997,10 @@ def _derive_auto_imports_from_io_primitives(
         return dict(sources_by_lang), dict(sinks_by_lang), ambiguous_by_lang
 
     for yaml_path in sorted(io_catalog_dir.glob("*.yaml")):
-        catalog = load_catalog(yaml_path.stem)
+        catalog = load_catalog(
+            yaml_path.stem,
+            overlay_paths=overlays_by_lang.get(yaml_path.stem) or None,
+        )
         lang = catalog.language
         ambiguous_by_lang[lang] = (
             ambiguous_by_lang.get(lang, frozenset()) | catalog.ambiguous_names
@@ -1076,6 +1097,7 @@ def load_full_taint_catalog(
     cli_source_paths: list[Path] | None = None,
     cli_sink_paths: list[Path] | None = None,
     cli_sanitizer_paths: list[Path] | None = None,
+    io_overlay_paths: "Sequence[Path] | None" = None,
 ) -> TaintCatalog:
     """Load built-in taint catalogs and merge in user-supplied YAML files.
 
@@ -1113,7 +1135,7 @@ def load_full_taint_catalog(
     cli_sink_paths = _resolve_catalog_paths(cli_sink_paths or [])
     cli_sanitizer_paths = _resolve_catalog_paths(cli_sanitizer_paths or [])
 
-    catalog = load_builtin_taint_catalog()
+    catalog = load_builtin_taint_catalog(io_overlay_paths)
 
     any_extra = extra_source_paths or extra_sink_paths or extra_sanitizer_paths
     any_cli = cli_source_paths or cli_sink_paths or cli_sanitizer_paths
@@ -1149,7 +1171,9 @@ def load_full_taint_catalog(
     return catalog
 
 
-def load_builtin_taint_catalog() -> TaintCatalog:
+def load_builtin_taint_catalog(
+    io_overlay_paths: "Sequence[Path] | None" = None,
+) -> TaintCatalog:
     """Load built-in taint catalogs shipped with hypergumbo.
 
     Two contributions merge into one catalog:
@@ -1179,7 +1203,9 @@ def load_builtin_taint_catalog() -> TaintCatalog:
     user_catalog = load_taint_catalog(source_paths, [], sanitizer_paths)
 
     auto_sources, auto_sinks, ambiguous_by_lang = (
-        _derive_auto_imports_from_io_primitives(_IO_PRIMITIVES_DIR)
+        _derive_auto_imports_from_io_primitives(
+            _IO_PRIMITIVES_DIR, io_overlay_paths,
+        )
     )
     user_catalog._sources = _merge_with_user_override(
         auto_sources, user_catalog._sources,
