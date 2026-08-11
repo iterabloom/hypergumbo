@@ -26,6 +26,38 @@ In managed-runtime languages (Python, Ruby, JavaScript, Java, C#, Go, etc.), **a
 
 The I/O primitive catalog for any given language is therefore **finite and stable** — a curated list of stdlib functions, not an unbounded set of library APIs.
 
+#### Amendment (INV-fotav): the transitivity step above does not hold at hypergumbo's analysis scope
+
+The paragraph above is right that `requests.get()` *eventually* calls `socket.send()`. It is wrong to infer that hypergumbo therefore sees the send. **hypergumbo analyzes the target repository, not its installed dependencies** — `site-packages` is not in the tree, so no edge reaches requests' internals and its socket call is never observed. Measured, with controls firing in the same run: a file whose body is `requests.post(url, data={"s": secret})` produced **zero `net_send` chains**, while `open()`/`file.read`/`os.environ` in the same file produced theirs. The stdlib-only catalog scope is sound and stays; the transitivity argument offered in support of it is not, and `io_primitives/python.yaml`'s header repeated the same false claim to users until it was corrected alongside this amendment.
+
+The consequence is not a false *verdict* — `verify-claims` returns `inconclusive` and names the uncovered modules (the coverage gate added for INV-fibis) rather than confirming a clean boundary. The consequence is **recall**: hypergumbo cannot positively detect the most common form of Python network egress, so a claim about `net_send` can never resolve on its merits for any repo that uses an HTTP client library.
+
+**Resolution: a project-local overlay, not more built-in rows.** Widening the shipped catalog to cover requests/httpx/urllib3 would make hypergumbo the owner of every third-party library's API surface — precisely the unbounded curation burden this ADR declined, and §300 already prices ("I/O primitive catalogs require curation... this is finite and stable work, but it is work"). Instead, the extension point ADR-0017 §370 already granted the **taint** arm ("any project can define its own taint sources, sinks, and sanitizers by writing YAML files... with project-local entries taking precedence") is extended to the **boundary** arm, which had no user-supplied channel of any kind: `load_catalog(language)` read only the packaged directory, and `extra_catalogs:` accepted only the three taint keys. ADR-0016 predates ADR-0017 and made its scoping decision before that pattern existed.
+
+An overlay is a YAML file in the same schema as a shipped catalog, declaring `status: overlay`:
+
+```bash
+hypergumbo io-boundaries . --io-primitives overlays/python-http-clients.yaml
+```
+```yaml
+# or, travelling with the claims it supports:
+extra_catalogs:
+  io_primitives:
+    - overlays/python-http-clients.yaml
+```
+
+Precedence mirrors the taint arm rather than inventing a second rule: **built-in < claims-file `extra_catalogs:` < CLI `--io-primitives`**, and a later path outranks an earlier one, all keyed on qualified name — the same key `IoBoundaryCatalog.merge` already uses for language inheritance (scala → java). Three constraints keep an overlay from laundering itself into the curated catalog's standing:
+
+- `status: overlay` is required and `status: complete` is **refused** — that status asserts a provenance-backed stdlib enumeration, which an overlay is not making.
+- `stdlib_modules` / `stdlib_prefixes` are dropped, so `is_stdlib_module` keeps answering about the actual interpreter. A `requests` overlay must not relabel a PyPI package as stdlib; that feeds the dependency classifier and the F3 filter, and would be a supply-chain misread rather than an I/O one.
+- A missing or malformed overlay path is an **error** (exit 2, inconclusive), never a silent skip — degrading to "no extra primitives" reads exactly like a clean repo.
+
+Hypergumbo ships a worked example under `docs/io-primitives-overlays/`, deliberately **not** beside the shipped catalogs: the user owns those rows.
+
+**One declaration feeds both arms — the overlay is NOT a second place to say the same thing.** ADR-0017 §453 already made `io_primitives` the single source of truth for built-in taint sinks: every write-side primitive auto-derives into a `TaintSink` through `AUTO_SINK_ZONE_MAP` (`net_send → (network, untrusted)`, `fs_write → (host_fs, untrusted)`, …), and no `taint_sinks/` directory ships at all, precisely so there is no "second source of truth that could drift out of sync." An overlay that fed only the boundary arm would have re-created that drift one layer up, with the user — not hypergumbo — paying for it by declaring `requests.post` twice in two schemas. So `--io-primitives` overlays are threaded into the same derivation: `load_full_taint_catalog(io_overlay_paths=…)` → `_derive_auto_imports_from_io_primitives`, with overlays grouped by their declared language so a Go overlay never seeds Python sinks. Measured on the shipped example: Python taint sinks 113 → 172, `requests.post` arriving as `zone=network, trust_level=untrusted`. The direction is additive-only — more sinks can add findings, never delete one — and non-destruction of the built-in sink set is asserted rather than assumed.
+
+**The formats stay separate, because only sinks overlap.** A taint *source* carries a label (`untrusted_input`, `host_secret`) and a *sanitizer* is a function that clears taint; neither is an I/O crossing and neither has an `io_primitives` counterpart. A sink additionally carries zone and trust level, which the boundary vocabulary deliberately does not model — `boundary` names *what crossing happened*, not *how trusted the destination is*. Merging the two schemas would re-conflate exactly the kind of axis the 6.0.0 concept-axis work (ADR-0023/0027/0028/0031/0032) exists to keep apart. Users who need project-local *sources* or *sanitizers* continue to use `--taint-sources` / `--taint-sanitizers`; users who need a third-party *sink* declare the primitive once, here.
+
 The exception is **native code** (C extensions, FFI, JNI, N-API, etc.). Compiled native code can call OS primitives directly, bypassing the language's stdlib. However:
 
 - Many native extensions receive data from the managed language and return results — the managed code does the I/O.

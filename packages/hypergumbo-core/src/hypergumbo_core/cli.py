@@ -4496,6 +4496,40 @@ def cmd_compact(args: argparse.Namespace) -> int:
     return 0
 
 
+def _resolve_io_overlays(
+    args: argparse.Namespace,
+    claims_paths: "list[Path] | None" = None,
+) -> "list[Path]":
+    """Project-local I/O primitive overlay paths, in ASCENDING precedence.
+
+    INV-fotav. Mirrors the taint arm's layering (INV-hukug) rather than
+    inventing a second rule: claims-file ``extra_catalogs: io_primitives:``
+    entries sit BELOW CLI ``--io-primitives`` flags, and ``load_catalog``
+    treats a later path as the winner on qualified-name collision, so the
+    concatenation order below IS the precedence order.
+    """
+    paths = list(claims_paths or [])
+    paths += [Path(p) for p in (getattr(args, "io_primitives", None) or [])]
+    return paths
+
+
+def _disclose_io_overlays(paths: "list[Path]") -> None:
+    """Say that a boundary result was computed with user-supplied primitives.
+
+    A reader comparing two runs must be able to tell that the catalogue was
+    extended; an overlay that silently changed the boundary set would make an
+    io-boundaries diff unattributable.
+    """
+    if paths:
+        print(
+            f"Loaded {len(paths)} project-local I/O primitive overlay(s): "
+            f"{', '.join(str(p) for p in paths)}. Overlay entries override "
+            f"built-in catalog entries on qualified-name match; later paths "
+            f"override earlier ones.",
+            file=sys.stderr,
+        )
+
+
 def cmd_io_boundaries(args: argparse.Namespace) -> int:
     """Display I/O boundary map for a repository (ADR-0016).
 
@@ -4529,7 +4563,11 @@ def cmd_io_boundaries(args: argparse.Namespace) -> int:
     edges = _rehydrate_io_boundary_edges(raw_edges)
 
     # Detect languages in the graph
-    from .io_boundary import compute_boundary_map, load_catalog
+    from .io_boundary import (
+        IoPrimitiveOverlayError,
+        compute_boundary_map,
+        load_catalog,
+    )
 
     languages: set[str] = set()
     for node in behavior_map.get("nodes", []):
@@ -4546,10 +4584,19 @@ def cmd_io_boundaries(args: argparse.Namespace) -> int:
     # supported-but-zero-matches languages. The former must be surfaced
     # to callers so "zero I/O detected" isn't silently indistinguishable
     # from "language has no catalog at all".
+    io_overlays = _resolve_io_overlays(args)
+    _disclose_io_overlays(io_overlays)
+
     catalogs = {}
     unsupported_languages: list[str] = []
     for lang in sorted(languages):
-        catalog = load_catalog(lang)
+        try:
+            catalog = load_catalog(lang, overlay_paths=io_overlays)
+        except IoPrimitiveOverlayError as exc:
+            # A bad overlay is NOT "no extra primitives" — that would read as a
+            # clean repo. Fail loudly, like a bad --taint-sources path does.
+            print(f"Error: {exc}", file=sys.stderr)
+            return 2
         if not catalog.is_supported:
             unsupported_languages.append(lang)
             continue
@@ -5192,7 +5239,20 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
     # WI-tihup lookup fire on the verify-claims boundary classification too.
     edges = _rehydrate_io_boundary_edges(raw_edges)
 
-    from .io_boundary import compute_boundary_map, load_catalog
+    from .io_boundary import (
+        IoPrimitiveOverlayError,
+        compute_boundary_map,
+        load_catalog,
+    )
+
+    # INV-fotav: project-local I/O primitive overlays, resolved BEFORE the
+    # per-language catalog loop that consumes them. Claims-file
+    # ``extra_catalogs: io_primitives:`` sits BELOW CLI ``--io-primitives``,
+    # the same layering the taint arm uses (INV-hukug).
+    from .verify_claims import load_extra_catalog_paths as _load_extras
+    _, _, _, _claims_io_overlays = _load_extras(claims_path)
+    io_overlays = _resolve_io_overlays(args, _claims_io_overlays)
+    _disclose_io_overlays(io_overlays)
 
     languages: set[str] = set()
     for node in behavior_map.get("nodes", []):
@@ -5205,7 +5265,13 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
 
     catalogs = {}
     for lang in languages:
-        catalog = load_catalog(lang)
+        try:
+            catalog = load_catalog(lang, overlay_paths=io_overlays)
+        except IoPrimitiveOverlayError as exc:
+            # Exit 2 = inconclusive, matching the taint arm's posture: a broken
+            # catalog config is never `confirmed` (0) and never `violated` (1).
+            print(f"Error: {exc}", file=sys.stderr)
+            return 2
         if catalog.primitives:
             catalogs[lang] = catalog
             if catalog.language != lang:
@@ -5267,7 +5333,7 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
     cli_sanitizers = [
         Path(p) for p in (getattr(args, "taint_sanitizers", None) or [])
     ]
-    claims_sources, claims_sinks, claims_sanitizers = (
+    claims_sources, claims_sinks, claims_sanitizers, _claims_io_prims = (
         load_extra_catalog_paths(claims_path)
     )
     any_taint_flags = bool(
@@ -5291,6 +5357,10 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
                 cli_source_paths=cli_sources,
                 cli_sink_paths=cli_sinks,
                 cli_sanitizer_paths=cli_sanitizers,
+                # INV-fotav: the SAME overlays that extend the boundary
+                # catalogue extend the auto-derived taint sinks, so a
+                # third-party primitive is declared once rather than twice.
+                io_overlay_paths=io_overlays,
             )
         except (FileNotFoundError, TaintCatalogError) as exc:
             print(f"Error: {exc}", file=sys.stderr)
@@ -8752,6 +8822,20 @@ are excluded by default — pass --include-tests to see them. See ADR-0016."""
             "external_potential` always include it)."
         ),
     )
+    p_io.add_argument(
+        "--io-primitives",
+        action="append",
+        default=None,
+        metavar="PATH",
+        help=(
+            "Project-local I/O primitive overlay YAML. Repeatable; a later "
+            "path outranks an earlier one, and all outrank the built-in "
+            "catalog on qualified-name match. The built-in catalog stays "
+            "stdlib-scoped by design (ADR-0016), so third-party libraries "
+            "(requests, httpx, ...) are declared here. See "
+            "docs/io-primitives-overlays/ for a worked example. (INV-fotav)"
+        ),
+    )
     p_io.set_defaults(func=cmd_io_boundaries)
 
     # hypergumbo verify-claims
@@ -8836,6 +8920,20 @@ inconclusive, or the claims file failed validation.
         action="store_true",
         dest="json_output",
         help="Alias for --format json (back-compat)",
+    )
+    p_vc.add_argument(
+        "--io-primitives",
+        action="append",
+        default=None,
+        metavar="PATH",
+        help=(
+            "Project-local I/O primitive overlay YAML. Repeatable; a later "
+            "path outranks an earlier one, and all outrank the built-in "
+            "catalog on qualified-name match. The built-in catalog stays "
+            "stdlib-scoped by design (ADR-0016), so third-party libraries "
+            "(requests, httpx, ...) are declared here. See "
+            "docs/io-primitives-overlays/ for a worked example. (INV-fotav)"
+        ),
     )
     p_vc.add_argument(
         "--taint-sources",

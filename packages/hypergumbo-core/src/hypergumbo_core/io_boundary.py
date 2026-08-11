@@ -34,7 +34,7 @@ from __future__ import annotations
 import urllib.parse
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Iterable, Optional
+from typing import TYPE_CHECKING, Any, Iterable, Optional, Sequence
 
 import yaml
 
@@ -862,6 +862,13 @@ class IoBoundaryCatalog:
 
 _CATALOG_DIR = Path(__file__).parent / "io_primitives"
 
+#: Status a PROJECT-LOCAL overlay must declare (INV-fotav). Deliberately
+#: NOT one of the shipped catalogue statuses: ``complete`` asserts a
+#: provenance-backed stdlib enumeration and ``in_progress`` asserts an
+#: incomplete one, and an overlay is making neither claim — it describes
+#: third-party surface hypergumbo does not own (ADR-0016 §27).
+_OVERLAY_STATUS = "overlay"
+
 # Languages that share an IO primitive catalog.  C++ uses C stdlib IO
 # functions (fopen, fread, fwrite, popen, etc.) so it falls back to the
 # C catalog.  TypeScript shares the JavaScript catalog.
@@ -899,7 +906,82 @@ def is_language_supported(language: str) -> bool:
     return load_catalog(language).is_supported
 
 
-def load_catalog(language: str) -> IoBoundaryCatalog:
+class IoPrimitiveOverlayError(Exception):
+    """A project-local I/O primitive overlay could not be loaded.
+
+    Its own exception type so callers can map it to the "inconclusive" exit
+    rather than to a crash or, worse, to silence: a mistyped overlay path that
+    degraded to "no extra primitives" would read exactly like a clean repo,
+    which is the failure direction this project spends most of its gates on.
+    """
+
+
+def load_overlay_catalog(path: Path) -> IoBoundaryCatalog:
+    """Load a PROJECT-LOCAL I/O primitive overlay from ``path``.
+
+    ADR-0016 scopes the built-in catalogue to the stdlib deliberately — "a
+    curated list of stdlib functions, not an unbounded set of library APIs"
+    (§27) — because owning every third-party library's API surface is an
+    unbounded maintenance burden. An overlay is how a project supplies the
+    third-party half WITHOUT hypergumbo taking ownership of it.
+
+    THE CONTRACT IS THE TAINT ARM'S, DELIBERATELY. ADR-0017 already granted
+    project-local catalogues to taint (§370: "any project can define its own
+    taint sources, sinks, and sanitizers ... with project-local entries taking
+    precedence"), shipped as ``--taint-sources`` and friends. That pattern was
+    never extended to boundaries; this is that extension, with the same
+    precedence semantics and the same error posture, rather than a second
+    mechanism that would drift from it.
+
+    An overlay declares ``status: overlay``. It may NOT declare
+    ``status: complete``: that status asserts a provenance-backed enumeration of
+    a language's stdlib, and letting an overlay claim it would launder
+    third-party rows into the standing of the curated catalogue. It carries no
+    ``stdlib_modules`` either — see :func:`load_catalog` for why that matters.
+    """
+    if not path.exists():
+        raise IoPrimitiveOverlayError(
+            f"I/O primitive overlay not found: {path}",
+        )
+    try:
+        data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    except yaml.YAMLError as exc:
+        raise IoPrimitiveOverlayError(
+            f"I/O primitive overlay {path} is not valid YAML: {exc}",
+        ) from exc
+    if not isinstance(data, dict):
+        raise IoPrimitiveOverlayError(
+            f"I/O primitive overlay {path} must be a mapping at the top level, "
+            f"got {type(data).__name__}.",
+        )
+    status = data.get("status")
+    if status != _OVERLAY_STATUS:
+        raise IoPrimitiveOverlayError(
+            f"I/O primitive overlay {path} must declare "
+            f"status: {_OVERLAY_STATUS!r}, got {status!r}. "
+            f"'complete' asserts a provenance-backed stdlib enumeration and is "
+            f"not available to a project-local overlay.",
+        )
+    # Hand ``_from_dict`` a status it accepts; the overlay marker has already
+    # done its job (refusing a completeness claim) and must not reach the
+    # stdlib-provenance validator, which exists for the shipped catalogues.
+    payload = dict(data)
+    payload["status"] = "in_progress"
+    payload.pop("stdlib_modules", None)
+    payload.pop("stdlib_prefixes", None)
+    try:
+        catalog = IoBoundaryCatalog._from_dict(payload)
+    except ValueError as exc:
+        raise IoPrimitiveOverlayError(
+            f"I/O primitive overlay {path} is invalid: {exc}",
+        ) from exc
+    return catalog
+
+
+def load_catalog(
+    language: str,
+    overlay_paths: Optional[Sequence[Path]] = None,
+) -> IoBoundaryCatalog:
     """Load the I/O primitive catalog for a language.
 
     Looks for ``io_primitives/<language>.yaml`` relative to this module.
@@ -908,6 +990,20 @@ def load_catalog(language: str) -> IoBoundaryCatalog:
     catalog is loaded first and then merged with the parent so that
     child entries take precedence while parent entries fill in gaps.
     Returns an empty catalog if no catalog is found.
+
+    ``overlay_paths`` layers project-local overlays on top (INV-fotav), in
+    ASCENDING precedence — the last path wins a qualified-name collision, so a
+    caller passes claims-file extras before CLI flags and gets the taint arm's
+    ordering for free. Merging reuses :meth:`IoBoundaryCatalog.merge`, the same
+    child-over-parent primitive language inheritance already uses; there is one
+    merge rule here, not two.
+
+    STDLIB MEMBERSHIP IS DELIBERATELY NOT WIDENED. ``load_overlay_catalog``
+    drops ``stdlib_modules`` / ``stdlib_prefixes`` from an overlay, so
+    ``is_stdlib_module`` keeps answering about the actual interpreter. A
+    ``requests`` overlay must not make ``requests`` classify as stdlib — that
+    feeds the dependency classifier and the F3 boundary filter, and relabelling
+    a PyPI package as stdlib is a supply-chain misread, not an I/O one.
     """
     path = _CATALOG_DIR / f"{language}.yaml"
     if not path.exists():
@@ -928,6 +1024,19 @@ def load_catalog(language: str) -> IoBoundaryCatalog:
         if parent_path.exists():
             parent_catalog = IoBoundaryCatalog.from_yaml(parent_path)
             catalog = catalog.merge(parent_catalog)
+
+    for overlay_path in overlay_paths or ():
+        overlay = load_overlay_catalog(Path(overlay_path))
+        if overlay.language and overlay.language != catalog.language:
+            raise IoPrimitiveOverlayError(
+                f"I/O primitive overlay {overlay_path} declares language "
+                f"{overlay.language!r} but was loaded for "
+                f"{catalog.language!r}. Applying it would attribute I/O to the "
+                f"wrong tree.",
+            )
+        # ``merge`` is self-over-argument, so the overlay is the receiver: a
+        # later overlay outranks an earlier one and both outrank the built-in.
+        catalog = overlay.merge(catalog)
 
     return catalog
 

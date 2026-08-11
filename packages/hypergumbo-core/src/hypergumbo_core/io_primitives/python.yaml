@@ -3,8 +3,24 @@
 #
 # Maps stdlib functions/methods to I/O boundary types. Used by the
 # boundary-tagging pass to identify which call edges reach system I/O.
-# Covers Python 3.10+ stdlib. Third-party libraries (requests, aiohttp,
-# etc.) are detected transitively — they ultimately call these primitives.
+# Covers Python 3.10+ stdlib.
+#
+# THIRD-PARTY LIBRARIES ARE NOT COVERED HERE, AND ARE NOT DETECTED
+# TRANSITIVELY. This header used to claim they were — "requests, aiohttp,
+# etc. ... ultimately call these primitives" — which is false in the normal
+# case and was measured as such (INV-fotav): hypergumbo analyzes YOUR
+# repository, not site-packages, so there are no edges into requests'
+# internals and its own socket calls are never seen. A file doing
+# `requests.post(url, data=secret)` produced ZERO net_send chains while
+# open()/os.environ controls fired in the same run.
+#
+# The stdlib scope itself is deliberate and stays (ADR-0016 §27: "a curated
+# list of stdlib functions, not an unbounded set of library APIs") — owning
+# every third-party API surface is the maintenance burden that ADR declined.
+# Supply third-party primitives through a PROJECT-LOCAL OVERLAY instead:
+#     hypergumbo io-boundaries . --io-primitives my-overlay.yaml
+# or `extra_catalogs: io_primitives:` in a claims file. Worked example:
+# docs/io-primitives-overlays/python-http-clients.yaml.
 language: python
 
 # Plan C, PR B: this is the worked-example catalog — Python's stdlib

@@ -125,10 +125,13 @@ class TestLoadExtraCatalogPaths:
     def test_no_extra_catalogs_returns_empty(self, tmp_path: Path) -> None:
         path = tmp_path / "claims.yaml"
         path.write_text("claims: []\n")
-        sources, sinks, sanitizers = load_extra_catalog_paths(path)
+        sources, sinks, sanitizers, io_prims = load_extra_catalog_paths(path)
         assert sources == []
         assert sinks == []
         assert sanitizers == []
+        # INV-fotav added this slot; an unasserted tuple element is a slot
+        # nobody notices going wrong.
+        assert io_prims == []
 
     def test_relative_paths_resolve_against_claims_directory(
         self, tmp_path: Path,
@@ -143,7 +146,7 @@ class TestLoadExtraCatalogPaths:
             "  sinks: [taint/sinks_dir]\n"
             "  sanitizers: [/abs/sanitizers.yaml]\n"
         )
-        sources, sinks, sanitizers = load_extra_catalog_paths(path)
+        sources, sinks, sanitizers, io_prims = load_extra_catalog_paths(path)
         assert sources == [claims_dir / "taint/project_sources.yaml"]
         assert sinks == [claims_dir / "taint/sinks_dir"]
         # Absolute paths are preserved as-is.
@@ -161,7 +164,7 @@ class TestLoadExtraCatalogPaths:
             "  sources: {not: a list}\n"
             "  sinks: null\n"
         )
-        sources, sinks, sanitizers = load_extra_catalog_paths(path)
+        sources, sinks, sanitizers, io_prims = load_extra_catalog_paths(path)
         assert sources == []
         assert sinks == []
         assert sanitizers == []
@@ -178,7 +181,7 @@ class TestLoadExtraCatalogPaths:
             "    - 42\n"
             "    - project_sources.yaml\n"
         )
-        sources, _sinks, _san = load_extra_catalog_paths(path)
+        sources, _sinks, _san, _io = load_extra_catalog_paths(path)
         assert sources == [tmp_path / "project_sources.yaml"]
 
 
@@ -1685,3 +1688,42 @@ class TestFlowOrigins:
         d = verdict.to_dict()
         assert d["flow_origins"] == {"db_read": 1}
         assert d["evidence"][0]["source_boundary"] == "db_read"
+
+
+class TestExtraCatalogsIoPrimitives:
+    """INV-fotav: ``extra_catalogs:`` grew a fourth key for boundary overlays.
+
+    It is read through the SAME loader as the three taint keys rather than a
+    second one, because ``extra_catalogs:`` is already the one place a claims
+    file declares project-local knowledge — the boundary arm was simply never
+    given a key in it.
+    """
+
+    def test_io_primitives_paths_resolve_against_the_claims_directory(
+        self, tmp_path: Path,
+    ) -> None:
+        path = tmp_path / "claims.yaml"
+        path.write_text(
+            "claims: []\n"
+            "extra_catalogs:\n"
+            "  io_primitives:\n"
+            "    - overlays/http.yaml\n",
+        )
+        _s, _k, _n, io_prims = load_extra_catalog_paths(path)
+        assert io_prims == [tmp_path / "overlays" / "http.yaml"]
+
+    def test_absent_io_primitives_key_is_empty_not_missing(
+        self, tmp_path: Path,
+    ) -> None:
+        """A claims file that declares only taint extras must still return a
+        well-formed fourth element, not raise."""
+        path = tmp_path / "claims.yaml"
+        path.write_text(
+            "claims: []\n"
+            "extra_catalogs:\n"
+            "  sources:\n"
+            "    - taint/src.yaml\n",
+        )
+        sources, _k, _n, io_prims = load_extra_catalog_paths(path)
+        assert sources == [tmp_path / "taint" / "src.yaml"]
+        assert io_prims == []
