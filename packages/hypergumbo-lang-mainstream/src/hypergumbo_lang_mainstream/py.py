@@ -4244,6 +4244,7 @@ def _extract_edges(
 
             # Process calls
             if isinstance(node, ast.Call):
+                _edges_before_call = len(edges)
                 _process_call(
                     node, caller_symbol, local_symbols, imports, global_symbols,
                     module_imports, var_types, edges, resolver,
@@ -4256,6 +4257,7 @@ def _extract_edges(
                     method_to_enclosing_class_id=method_to_enclosing_class_id,
                     class_name_counts=class_name_counts,
                 )
+                _stamp_io_mode(edges, _edges_before_call, node)
                 # Function references in call arguments: map(transform, items)
                 for arg in node.args:
                     if isinstance(arg, ast.Name):
@@ -5521,6 +5523,73 @@ def _class_directly_extends_django_model(
         return False
     bases = sym.meta.get("base_classes") or []
     return any(base in DJANGO_MODEL_BASES for base in bases)
+
+
+# Where the mode argument sits for each dual-classified primitive, as
+# ``short name -> (positional index, keyword name)``.
+#
+# WHY A TABLE AND NOT A CATALOGUE FIELD. Which names NEED discrimination is
+# derived from the catalogue (``mode_discriminated_names``) so the data stays
+# the single source of truth. Where the argument SITS is Python call-signature
+# knowledge, which belongs with the Python analyzer — a catalogue shared across
+# fourteen languages is the wrong home for "``open``'s mode is positional
+# argument 1". ``TestCatalogueParity`` enforces that this table covers every
+# name the live catalogue flags, so the two cannot drift apart silently.
+_MODE_ARG_POSITION: dict[str, tuple[int, str]] = {
+    "open": (1, "mode"),
+}
+
+
+def _io_mode_literal(call_node: ast.Call) -> str | None:
+    """The mode string of an ``open``-style call, when statically knowable.
+
+    Returns ``None`` for a computed mode (``open(p, m)``) and for an absent
+    one (``open(p)``). Both are recorded as absence rather than guessed:
+    :func:`hypergumbo_core.io_boundary.resolve_mode_boundary` applies the
+    language default, and inventing ``"w"`` on suspicion would rebuild the
+    false-positive population this machinery exists to remove.
+    """
+    func = call_node.func
+    short = (
+        func.id if isinstance(func, ast.Name)
+        else func.attr if isinstance(func, ast.Attribute)
+        else None
+    )
+    spec = _MODE_ARG_POSITION.get(short or "")
+    if spec is None:
+        return None
+    position, keyword = spec
+    for kw in call_node.keywords:
+        if kw.arg == keyword:
+            value = kw.value
+            if isinstance(value, ast.Constant) and isinstance(value.value, str):
+                return value.value
+            return None
+    if len(call_node.args) > position:
+        arg = call_node.args[position]
+        if isinstance(arg, ast.Constant) and isinstance(arg.value, str):
+            return arg.value
+    return None
+
+
+def _stamp_io_mode(
+    edges: list[Edge], first_new: int, call_node: ast.Call,
+) -> None:
+    """Record the call's mode literal on the edges that call just produced.
+
+    Applied ONCE, at ``_process_call``'s single invocation, over
+    ``edges[first_new:]`` — rather than at each of the nine ``Edge.create``
+    sites inside it, which is the shape that drifts. Keyed on the exact
+    ``ast.Call`` node, not on a line number: ADR-0038's retired classifier was
+    line-granular and that is exactly why it mis-stamped.
+    """
+    mode = _io_mode_literal(call_node)
+    if mode is None:
+        return
+    for edge in edges[first_new:]:
+        if edge.meta is None:
+            edge.meta = {}
+        edge.meta["io_mode"] = mode
 
 
 def _process_call(
