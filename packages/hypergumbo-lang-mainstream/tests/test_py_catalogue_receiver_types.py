@@ -292,3 +292,205 @@ class TestWideningDoesNotMintFakeBuiltins:
             f"open() no longer emits its builtins call edge, which is the whole "
             f"reason the arm exists: {sorted(dsts)}"
         )
+
+
+def _resolve_ctor(source: str) -> str | None:
+    """Run production's own import extraction + constructor typing over ``source``.
+
+    Using :func:`_extract_imports` rather than a hand-built dict is the point: the
+    binding rules for ``import a.b`` (which binds ``a``, not ``a.b``) live there,
+    and a test that hand-rolls them tests the hand-roll.
+
+    ``source`` must contain EXACTLY ONE call, and that is asserted rather than
+    assumed. ``ast.walk`` is breadth-first, so on the chained form
+    ``http.client.HTTPConnection(h).request(...)`` the first call it yields is
+    ``.request(...)`` — the outer one. An earlier draft took that first call and
+    reported a genuine fix as still broken. Picking the wrong node silently is
+    the failure mode; the chained shape is covered behaviourally instead, where
+    the analyzer decides which node is the constructor.
+    """
+    import ast
+
+    from hypergumbo_lang_mainstream.py import (
+        _extract_imports,
+        _external_constructor_type,
+    )
+
+    tree = ast.parse(source)
+    imports, module_imports = _extract_imports(tree, "app")
+    calls = [n for n in ast.walk(tree) if isinstance(n, ast.Call)]
+    assert len(calls) == 1, (
+        f"fixture must contain exactly one call so the subject is unambiguous; "
+        f"found {len(calls)}"
+    )
+    return _external_constructor_type(calls[0], imports, module_imports)
+
+
+class TestDottedModuleConstructorsResolve:
+    """WI-lifol: a constructor under a DOTTED module must be typable.
+
+    THE GAP. ``_external_constructor_type``'s attribute branch required
+    ``isinstance(func.value, ast.Name)``. For ``http.client.HTTPConnection(h)``
+    the base is itself an ``ast.Attribute`` (``http.client``), so the branch was
+    structurally unreachable no matter what the table held — and
+    :class:`TestEveryCatalogueReceiverTypeIsMintable` above passed the whole
+    time, because it asserts the TABLE holds a key and this is a RESOLUTION
+    defect. Table coverage was never the same claim as reachability.
+
+    WHY THE PARITY TEST ENUMERATES DEPTH RATHER THAN NAMING FOUR TYPES. The four
+    affected types today (``http.client.HTTPConnection`` / ``HTTPSConnection``,
+    ``http.server.HTTPServer``, ``xmlrpc.server.SimpleXMLRPCServer``) are an
+    accident of what ``python.yaml`` currently declares. The defect is a depth
+    assumption, so the assertion is over every catalogued type at every depth;
+    adding a five-segment type tomorrow fails here rather than going quietly
+    unreachable.
+
+    THE REAL-CODE FLOOR, measured before building, because a generated reach
+    probe is a ceiling and this project has mistaken one for a payoff three
+    times. Across the 103 corpus files naming these types, counting only the
+    JOINED shape that can actually mint a boundary (constructor assigned to a
+    name, that name later the receiver of a CATALOGUED method):
+
+        dotted  production 10     <- invisible today
+        dotted  test       21     <- invisible today
+        bare    production  4     <- works today
+        bare    test       13     <- works today
+
+    The dotted form is the MORE common of the two in real code for these types,
+    not a long tail. The ten production sites are genuine ``net_send``:
+    mitmproxy's two release scripts, envoy's ``socket_passing`` tool, ceph's
+    barbican task, ClickHouse CI.
+
+    NOT COUNTED, AND DELIBERATELY. ``django.db.models`` also sits at depth 2 and
+    supplies 29 of the 41 primitives the reach probe attributed to this item —
+    but it is a MODULE, not a constructible type, so ``models(...)`` constructs
+    nothing and no fix can make those 29 reachable through a constructor. They
+    already reach production by a different route entirely (the ``.objects.``
+    dispatch, WI-sozoj: 447 ``filter`` + 121 ``get`` chains on pretix). The
+    probe counted a call form that cannot exist; the honest scope is 12
+    primitives across 4 types, not 41.
+    """
+
+    def test_the_dotted_form_types_its_receiver(self) -> None:
+        assert _resolve_ctor(
+            "import http.client\n\n\n"
+            "def fetch(h):\n"
+            "    return http.client.HTTPConnection(h)\n"
+        ) == "http.client.HTTPConnection"
+
+    def test_every_catalogue_type_resolves_from_its_dotted_form(self) -> None:
+        """The anti-drift assertion, over the live catalogue at any depth."""
+        types = sorted(_catalogue_receiver_types())
+        assert types, "no catalogued receiver types — assertion vacuous"
+        unreachable = [
+            t for t in types
+            if _resolve_ctor(
+                f"import {t.rsplit('.', 1)[0]}\n\n\ndef f(a):\n    return {t}(a)\n"
+            ) != t
+        ]
+        assert unreachable == [], (
+            f"{len(unreachable)} catalogued receiver type(s) hold a table key but "
+            f"cannot be RESOLVED from the dotted call form, so every method on "
+            f"them stays unreachable: {unreachable}"
+        )
+
+    def test_single_segment_modules_still_resolve(self) -> None:
+        """NON-DESTRUCTION. The depth-1 case is the branch being generalized, and
+        it carries 13 of the 17 catalogued types — breaking it to fix 4 would be
+        a net loss that a green suite on the new case would happily hide."""
+        assert _resolve_ctor(
+            "import smtplib\n\n\ndef send(a):\n    return smtplib.SMTP(a)\n"
+        ) == "smtplib.SMTP"
+
+    def test_an_alias_still_resolves(self) -> None:
+        """``import http.client as hc`` binds ``hc`` directly and already worked;
+        the generalization must not regress it."""
+        assert _resolve_ctor(
+            "import http.client as hc\n\n\ndef f(h):\n    return hc.HTTPConnection(h)\n"
+        ) == "http.client.HTTPConnection"
+
+    def test_an_unimported_root_mints_nothing(self) -> None:
+        """DEFAULT-DENY. A local object that happens to expose the same attribute
+        path must not be typed as the stdlib class — the standing receiver-typing
+        hazard is an external qualified type walking into a bare-name lookup
+        against the repo's own symbols."""
+        assert _resolve_ctor(
+            "def f(http, h):\n    return http.client.HTTPConnection(h)\n"
+        ) is None
+
+    def test_a_decoy_module_of_the_same_shape_mints_nothing(self) -> None:
+        """``import mylib.client`` must not satisfy ``http.client.HTTPConnection``
+        merely by ending in the same two segments — ``_module_matches`` is
+        permissive by design and is not a guard."""
+        assert _resolve_ctor(
+            "import mylib.client\n\n\n"
+            "def f(h):\n    return mylib.client.HTTPConnection(h)\n"
+        ) is None
+
+    @pytest.mark.xfail(strict=True, reason=(
+        "KNOWN GAP, PRE-EXISTING AND WIDENED HERE — filed, not fixed in this PR. "
+        "module_imports is built by an ast.walk over the WHOLE FILE, so it is "
+        "file-scoped and knows nothing about a local binding that shadows an "
+        "imported module name. This already mistyped the depth-1 form (a local "
+        "`socket` parameter still resolves `socket.socket(h)` to the stdlib "
+        "type); chain-unwinding extends the same exposure to depth >= 2. Marked "
+        "strict so whoever makes it scope-aware gets a RED test rather than a "
+        "silently-passing one they never notice."
+    ))
+    def test_a_local_shadow_should_not_be_typed(self) -> None:
+        assert _resolve_ctor(
+            "import http.client\n\n\n"
+            "def f(http, h):\n    return http.client.HTTPConnection(h)\n"
+        ) is None
+
+
+class TestDottedConstructorsReachTheCatalogue:
+    """Behavioural, through the real analyzer — resolution is a means, not the end."""
+
+    @staticmethod
+    def _method_call_dsts(tmp_path: Path, source: str) -> set[str]:
+        from hypergumbo_lang_mainstream.py import analyze_python
+
+        repo = tmp_path / "r"
+        repo.mkdir()
+        (repo / "app.py").write_text(source)
+        analysis = analyze_python(repo)
+        return {
+            e.dst for e in analysis.edges
+            if e.edge_type == "calls" and (e.meta or {}).get(
+                "call_construct") == "method"
+        }
+
+    def test_httpconnection_request_reaches_its_catalogue_module(
+        self, tmp_path: Path,
+    ) -> None:
+        """mitmproxy's and envoy's exact shape, reduced: construct, then call."""
+        dsts = self._method_call_dsts(tmp_path, (
+            "import http.client\n\n\n"
+            "def fetch(host, path):\n"
+            "    conn = http.client.HTTPConnection(host)\n"
+            "    return conn.request('GET', path)\n"
+        ))
+        assert any(d.startswith("python:http.client.HTTPConnection:")
+                   and ":request:" in d for d in dsts), (
+            f"request did not resolve onto the catalogued receiver; method-call "
+            f"dsts were {sorted(dsts)}"
+        )
+
+    def test_the_chain_root_form_also_reaches_it(self, tmp_path: Path) -> None:
+        """``http.client.HTTPConnection(h).request(...)`` with no intervening
+        variable — a SECOND consumer of :func:`_external_constructor_type`, in a
+        different scope (``_process_call`` types a chain ROOT; the per-block
+        closure types an ASSIGNMENT). One of the two working is not evidence for
+        the other, and the unit test above cannot cover this shape because the
+        fixture then holds two calls."""
+        dsts = self._method_call_dsts(tmp_path, (
+            "import http.client\n\n\n"
+            "def fetch(host, path):\n"
+            "    return http.client.HTTPConnection(host).request('GET', path)\n"
+        ))
+        assert any(d.startswith("python:http.client.HTTPConnection:")
+                   and ":request:" in d for d in dsts), (
+            f"the chain-root form did not resolve onto the catalogued receiver; "
+            f"method-call dsts were {sorted(dsts)}"
+        )

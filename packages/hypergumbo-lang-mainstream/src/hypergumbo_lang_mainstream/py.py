@@ -5289,8 +5289,28 @@ def _external_constructor_type(
 
     - ``func`` is ``ast.Name`` (e.g. ``open``) → bare constructor name, trusted only
       once the name is confirmed to still mean what the table claims (INV-kipor).
-    - ``func`` is ``ast.Attribute`` with an ``ast.Name`` base that is a known module
-      import (e.g. ``socket.socket``) → ``module.attr``.
+    - ``func`` is ``ast.Attribute`` whose chain roots at a known module import
+      (``socket.socket``, ``http.client.HTTPConnection``) → the module the root
+      binds to, plus every intervening segment, plus the constructor name.
+
+    WI-lifol: THE ATTRIBUTE BRANCH USED TO REQUIRE A BARE ``ast.Name`` BASE, which
+    made a constructor under a DOTTED module structurally unreachable no matter
+    what the table held — ``http.client.HTTPConnection(h)`` bases at an
+    ``ast.Attribute`` (``http.client``), not a ``Name``. Table coverage and
+    reachability are different claims, and the parity test asserting the former
+    passed throughout. Generalizing via :func:`_unwind_attribute_chain` SUBSUMES
+    the single-segment case rather than sitting beside it: ``socket.socket``
+    unwinds to a one-element ``attrs`` and takes the same path, so there is one
+    rule here and not two that can drift. Depth is not special-cased anywhere —
+    a five-segment type added to the YAML tomorrow resolves without a code change.
+
+    RESIDUAL, STATED RATHER THAN IMPLIED CLOSED: ``module_imports`` is built by an
+    ``ast.walk`` over the WHOLE FILE, so it is file-scoped and cannot see a local
+    binding that shadows an imported module name. A parameter named ``socket``
+    already mistyped ``socket.socket(h)`` as the stdlib type before this change;
+    unwinding widens that same exposure to depth >= 2 rather than introducing it.
+    Pinned by an ``xfail(strict=True)`` in the receiver-type tests so a scope-aware
+    fix goes RED instead of passing unnoticed.
 
     INV-kipor: the bare-name branch used to emit the catalogued module with no check
     at all, while the attribute branch beside it verified its base against
@@ -5323,14 +5343,15 @@ def _external_constructor_type(
         if bound is None:
             return claimed if func.id in BUILTIN_CONSTRUCTOR_NAMES else None
         return claimed if bound == claimed else None
-    if (
-        isinstance(func, ast.Attribute)
-        and isinstance(func.value, ast.Name)
-        and func.value.id in module_imports
-    ):
-        return EXTERNAL_CONSTRUCTOR_TYPES.get(
-            f"{module_imports[func.value.id]}.{func.attr}",
-        )
+    if isinstance(func, ast.Attribute):
+        chain = _unwind_attribute_chain(func)
+        if chain is None:
+            return None
+        root, attrs = chain
+        if root.id not in module_imports:
+            return None
+        module = ".".join([module_imports[root.id], *attrs[:-1]])
+        return EXTERNAL_CONSTRUCTOR_TYPES.get(f"{module}.{attrs[-1]}")
     return None
 
 
