@@ -144,9 +144,21 @@ def _py_call_sites(prim: Any) -> tuple[str, str] | None:
 #: resolution paths. Other languages do NOT have that same pair, and pretending
 #: they do is how a probe reports a language-shaped result as a catalogue gap:
 #:
-#:   go          ONE form. Go has no `from M import f`; `import . "os"` exists
-#:               and is unidiomatic enough that scoring against it would
-#:               manufacture a 50% miss out of a style choice.
+#:   go          `dotted`  = `(&pkg.T{}).f(a)`   `twostep` = `var r pkg.T`
+#:               followed by `r.f(a)`. Go has no `from M import f`, so the axis
+#:               that matters is not dotted-vs-bare but HOW THE RECEIVER IS
+#:               SPELLED — and the two spellings are not equivalent to the
+#:               analyzer. go.py types a receiver only when the operand is a
+#:               bare identifier, so the parenthesized composite literal
+#:               `(&http.Client{}).Get(u)` carries NO receiver evidence and
+#:               mints `go:external:0-0:Get:unresolved`, while every idiomatic
+#:               spelling of the same call mints `go:net/http:0-0:Get`.
+#:               Scoring Go on the parenthesized form ALONE is what produced
+#:               this instrument's "100% of Go's method-kind surface is
+#:               unattributed" result — a fixture artefact, not a catalogue
+#:               gap. Both forms are kept: the parenthesized one is a real
+#:               (if rarer) Go spelling and dropping it would hide the
+#:               analyzer hole instead of measuring it.
 #:   javascript  `dotted` = `const m = require('M'); m.f()`
 #:               `bare`   = `const { f } = require('M'); f()`
 #:               A self-named global (`fetch`) has only the bare form.
@@ -159,7 +171,7 @@ def _py_call_sites(prim: Any) -> tuple[str, str] | None:
 #:               for the wrong reason.
 _FORMS: dict[str, tuple[str, ...]] = {
     "python": ("dotted", "bare"),
-    "go": ("dotted",),
+    "go": ("dotted", "twostep"),
     "javascript": ("dotted", "bare"),
     "typescript": ("dotted", "bare"),
     "java": ("instance", "static"),
@@ -193,11 +205,67 @@ def _go_call_sites(prim: Any) -> tuple[dict[str, str], set[str]] | None:
             return None
         parent, leaf = module.rsplit(".", 1)
         pkg = parent.rsplit("/", 1)[-1]
-        return {"dotted": f"\t_ = (&{pkg}.{leaf}{{}}).{name}(a)\n"}, {parent}
+        # TWO RECEIVER SPELLINGS, AND THE DIFFERENCE IS THE MEASUREMENT.
+        # `dotted` is a parenthesized composite literal. go.py only types a
+        # receiver whose operand node is a bare `identifier`, so this spelling
+        # skips receiver typing entirely and lands on the `external` module
+        # placeholder — which then fails the module filter and dies in the
+        # io-boundary F3 method gate. `twostep` declares the receiver first,
+        # which is what idiomatic Go looks like and what recovers the package.
+        # Emitting only the first form scored every method entry NEITHER and
+        # was read as a catalogue gap for a full measurement cycle.
+        return {
+            "dotted": f"\t_ = (&{pkg}.{leaf}{{}}).{name}(a)\n",
+            "twostep": f"\tvar r {pkg}.{leaf}\n\t_ = r.{name}(a)\n",
+        }, {parent}
     if kind == "attribute":
         pkg = module.rsplit("/", 1)[-1]
         return {"dotted": f"\t_ = {pkg}.{name}\n"}, {module}
     return None  # pragma: no cover - kind axis is closed
+
+
+def _report_go_import_paths(prims: list[Any]) -> None:
+    """Disclose the import paths the Go fixture synthesised, and why it matters.
+
+    THE FIXTURE'S IMPORT PATH IS THE CATALOGUE'S OWN MODULE SLOT, and for a
+    third-party entry that slot is a package IDENTIFIER rather than a module
+    PATH. ``gin.Context`` yields ``import ("gin")`` — a line no Go program
+    contains. The entry then scores reachable against a module hint production
+    can never emit, because go.py reports the real import path:
+
+        lookup_with_module("JSON", "github.com/gin-gonic/gin", cc="method")
+            -> None
+        lookup_with_module("JSON", "gin",                      cc="method")
+            -> gin.Context.JSON
+
+    So a rise in this instrument's Go number can mean the catalogue got more
+    reachable OR that the fixture got better at agreeing with itself, and the
+    two are indistinguishable from the rate alone.
+
+    THIS PRINTS THE PATHS RATHER THAN CLASSIFYING THEM, and that is deliberate.
+    Separating a real single-segment stdlib path (``os``, ``net``, ``testing``)
+    from a fabricated one (``gin``, ``echo``) needs Go's stdlib package list,
+    which is not derivable from the catalogue — go.yaml marks the framework
+    rows with a YAML COMMENT and nothing machine-readable. Shipping a guessed
+    classifier here would put a wrong verdict in the headline; showing the
+    reader the actual imports lets them see the fabrication directly.
+    """
+    single, pathlike = set(), set()
+    for prim in prims:
+        sites = _go_call_sites(prim)
+        if sites is None:
+            continue
+        for path in sites[1]:
+            (pathlike if "/" in path else single).add(path)
+    print("\n--- go fixture import paths (read before believing the rate) ---")
+    print(f"  path-shaped, faithful to real Go  : {len(pathlike)}  "
+          f"{sorted(pathlike)[:6]}...")
+    print(f"  single-segment, VERIFY BY EYE     : {len(single)}  "
+          f"{sorted(single)}")
+    print("  A single-segment entry is faithful only if it is genuinely a "
+          "stdlib package.\n  Any that is not (gin, echo, fiber, grpc ...) "
+          "scores reachable against an import\n  no Go program writes — see "
+          "this function's docstring.")
 
 
 def _js_call_sites(prim: Any, alias: str) -> dict[str, str] | None:
@@ -455,6 +523,8 @@ def main() -> int:
     print(f"  ... inexpressible      : {len(skipped)} "
           f"({sorted({p.qualified_name for p in skipped})[:6]}...)")
     print(f"generated probe functions: {len(index)}")
+    if args.language == "go":
+        _report_go_import_paths(prims)
 
     hits, anchors, elsewhere = _boundaries_for(root)
     print(f"io_edge_src KIND slot     : {dict(anchors)}")

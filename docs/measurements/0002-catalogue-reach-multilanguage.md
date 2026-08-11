@@ -1,10 +1,32 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 # Measurement 0002: Catalogue reach on Go, JavaScript and Java
 
-**Status:** Complete
+**Status:** Complete — **Go arm CORRECTED 2026-08-11; the original Go result and
+its conclusion were both wrong. See "Correction" below before reading the table.**
 **Date:** 2026-08-11
 **Instrument:** [`scripts/measure-catalogue-reach.py`](../../scripts/measure-catalogue-reach.py)
 **Tracker:** `INV-linub` (the class), `INV-suril` (java statics), `INV-gijis` (JS)
+
+## Correction (Go arm)
+
+The first Go run reported **162/210 with "100% of Go's method-kind surface
+unattributed"** and concluded Go was *"the natural next target for the same
+fix"* as Python's receiver-typing work. **Both halves are withdrawn.**
+
+- **The 45/45 miss was a fixture artefact.** The probe emitted every Go method
+  call as a parenthesized composite literal, `(&http.Client{}).Get(u)`. go.py
+  types a receiver only when the operand is a bare identifier, so that one
+  spelling carries no receiver evidence and mints `go:external:0-0:Get`. Every
+  idiomatic spelling of the same call mints `go:net/http:0-0:Get`. Verified in
+  one file, one `analyze_go` run — only the receiver spelling varies.
+- **The conclusion was the expensive part.** Go receiver typing already exists
+  and works. A session acting on that sentence would have built a mechanism the
+  analyzer already has. It is retracted, not softened.
+
+The corrected instrument probes both spellings. But the corrected rate is
+**also** partly an artefact, in the opposite direction — see "The fixture
+imports packages that do not exist" — so this arm now reports two numbers and
+says which question each answers.
 
 ## The question
 
@@ -20,7 +42,7 @@ attributed to the calling function. It had only ever been run on Python.
 | python | 215 | 210 (97.7%) | 5 | dotted, bare |
 | javascript | 187 | 182 (97.3%) | 5 | dotted, bare |
 | java | 142 | 129 (90.8%) | 13 | instance, static |
-| go | 210 | 162 (77.1%) | 48 | dotted |
+| go | 210 | **178 (84.8%)** production-faithful; 198 (94.3%) as the probe scores it | 12 unattributed + 20 fabricated-import | dotted, twostep |
 
 Per-form detail:
 
@@ -29,7 +51,13 @@ Per-form detail:
 | python | 194 (90.2%) | 16 | 0 | 5 |
 | javascript | 135 (72.2%) | 47 | 0 | 5 |
 | java | 0 | **0** | 129 (90.8%) | 13 |
-| go | — (single form) | 162 (77.1%) | — | 48 |
+| go | 0 | 162 (dotted only) | 36 (twostep only) | 12 |
+
+Go's zero in the "both forms" column is the finding, not a rounding artefact:
+**no Go entry attributes under both spellings.** Function and attribute entries
+have only the `dotted` form; every method entry attributes under `twostep` and
+none under `dotted`. The two forms partition the catalogue rather than
+overlapping on it.
 
 ## The probe was excluding its own fixture, and the first Go run reported 0%
 
@@ -66,16 +94,87 @@ file.
 
 ## Per-language findings
 
-### Go — every method-kind entry is unattributed
+### Go — the receiver spelling was the measurement
 
-162 of 210 attributed. The 48 misses are **45 method-kind entries and 3
-attributes**, i.e. *100% of Go's method-kind catalogue surface* is
-unattributed, while function-kind entries attribute at 100%. Concentrated in
-`net_send` (25), `net_recv` (9), `logging` (5) and `subprocess` (4).
+With both spellings probed, the 45 method entries split three ways:
 
-This is the same shape Python showed before its receiver-typing work — that
-run had 78 of 83 misses method-kind — which makes Go the natural next target
-for the same fix rather than a new problem.
+| bucket | n | what it is |
+|---|---:|---|
+| attributes on idiomatic Go | 16 | genuinely reachable; the original miss was the fixture |
+| attributes only via a fabricated import | 20 | **not reachable on real Go** — see below |
+| mis-credited to a same-package function | 9 | a chain exists, under the wrong primitive |
+
+Only the receiver spelling differs between these, verified in one file, one
+`analyze_go` run:
+
+| call site | emitted dst |
+|---|---|
+| `(&http.Client{}).Get(u)` | `go:external:0-0:Get:unresolved` |
+| `var c http.Client; c.Get(u)` | `go:net/http:0-0:Get:unresolved` |
+| `c := &http.Client{}; c.Get(u)` | `go:net/http:0-0:Get:unresolved` |
+| `func(c *http.Client){ c.Get(u) }` | `go:net/http:0-0:Get:unresolved` |
+
+#### The fixture imports packages that do not exist
+
+The probe's import path is the catalogue's own module slot. For a third-party
+entry that slot is a package **identifier**, not a module **path**, so the
+fixture writes `import ("gin")` — a line no Go program contains. The entry then
+scores reachable against a module hint production can never emit:
+
+```
+lookup_with_module("JSON", "github.com/gin-gonic/gin", cc="method") -> None
+lookup_with_module("JSON", "gin",                      cc="method") -> gin.Context.JSON
+```
+
+**53 of 210 entries are reachable only through such a fabricated import**
+(`unix` 27, `gin` 9, `echo` 8, `grpc` 4, `filepath` 3, `fiber` 2), 20 of them
+method-kind. That is why this arm reports 178 as well as 198: the 20 method
+entries the corrected spelling appears to "recover" produce **zero** chains on
+idiomatic Go with real module paths.
+
+**A coincidence that must not be read as a finding.** The plan separately
+records that go.yaml carries *"53 of 210 entries violating the strict-stdlib
+rule"*. Both sets number 53 and they are **not the same 53** — they overlap in
+50 and differ by `filepath` (stdlib, written unimportably) versus
+`golang.org/x/sys/execabs` (third-party, but path-shaped so faithfully
+imported). Two routes agreeing on a count is not two routes agreeing on a set.
+
+#### Semantic import versioning erases the import path outright
+
+Go's `/vN` convention defeats alias derivation. go.py takes the last path
+segment as the package identifier, so `github.com/labstack/echo/v4` yields the
+alias `v4` and `echo` is never registered:
+
+| import | emitted dst |
+|---|---|
+| `github.com/gin-gonic/gin` | `go:github.com/gin-gonic/gin:0-0:JSON` |
+| `github.com/labstack/echo/v4` | `go:external:0-0:JSON` |
+| `github.com/gofiber/fiber/v2` | `go:external:0-0:Listen` |
+
+This affects **any** call on a value from a `/vN`-imported package, not only
+catalogued ones, so its blast radius is the Go call graph rather than the
+io-boundary map. Unmeasured on any corpus, and structurally invisible to this
+instrument — the fixture writes `import ("fiber")`, which has no `/vN` element.
+
+#### The 9 mis-credits are a label defect, not a reach gap
+
+`net/http.Client.{Get,Post,Head}`, `log/slog.Logger.{Debug,Info,Warn,Error,Log}`
+and `testing.B.TempDir` each produce a chain under a *same-package function*
+row. Confirmed live through the `hypergumbo io-boundaries` CLI: a `*testing.B`
+receiver is credited `testing.T.TempDir`, and `tr := &http.Transport{};
+tr.Do(..)` is credited `net/http.Client.Do` — a false positive, since
+`Transport` has no `Do`.
+
+The instrument scores these as **false negatives** (it matches on qualified
+name) while production manifests them as **false positives** (a chain exists
+with the wrong primitive). Any accounting that consumes this reach measurement
+will mis-sign these 9.
+
+**Do not "fix" this by keying on `call_construct`.** Go stamps
+`call_construct: "method"` on *every* selector-expression call, package-level
+free functions included — verified: `http.Get(u)` and `c.Get(u)` on a
+`*http.Client` produce byte-identical `(name, module_hint, call_construct)`
+triples. The field is constant on Go and cannot separate the two rows.
 
 The 3 attribute-kind misses (`os.Stdin`, `os.Stdout`, `os.Stderr`) *do* produce
 a chain; it is anchored to a file node rather than to the calling function, so
