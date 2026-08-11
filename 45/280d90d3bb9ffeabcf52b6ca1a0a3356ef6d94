@@ -1,0 +1,95 @@
+Original commit body from 2d4efaed69c6d1868cc109087ad4f76779c3de5a:
+
+go.yaml shipped 20 method rows for gin, echo, fiber and gRPC. Two independent
+reasons to remove them, either sufficient alone.
+
+THEY ARE THIRD-PARTY, AND THE ADR ALREADY DECIDED THIS. ADR-0016 scopes the
+built-in catalogue to the stdlib -- "a curated list of stdlib functions, not an
+unbounded set of library APIs" (sec 27) -- and sec 35 resolves exactly this gap
+as "a project-local overlay, not more built-in rows", with sec 55 placing worked
+examples under docs/ because "the user owns those rows".
+
+AND THEY MATCHED NOTHING. They declared a package-IDENTIFIER module
+(`gin.Context`) while the Go analyzer emits the module PATH it read from the
+import (`github.com/gin-gonic/gin`). Those never compare equal:
+
+    lookup_with_module("JSON", "github.com/gin-gonic/gin", cc="method") -> None
+    lookup_with_module("JSON", "gin",                      cc="method")
+        -> gin.Context.JSON
+
+The second line is what a catalogue-reach probe produces when its fixture writes
+`import ("gin")` -- an import no Go program contains. That is how twenty rows
+that could never fire kept scoring as reachable.
+
+SO THIS IS A MOVE PLUS A CORRECTION, NOT A DELETION.
+docs/io-primitives-overlays/go-web-frameworks.yaml re-declares all twenty against
+the real import path, including the /vN suffix that Go's semantic import
+versioning makes part of the path (`github.com/labstack/echo/v4.Context`). It
+pairs with INV-javid in the same release: before that fix a /vN import bound the
+alias `vN`, so echo and fiber would have stayed unreachable however the catalogue
+spelled them.
+
+MEASURED on an idiomatic Go fixture, both arms, with an os.WriteFile control
+firing in each so a zero is distinguishable from a fixture that resolves nothing:
+
+    shipped catalogue alone (post-cull)   0 framework chains
+    + go-web-frameworks.yaml              6  gin Context.JSON / Engine.Run,
+                                             echo Context.JSON / Echo.Start,
+                                             fiber App.Listen, grpc Server.Serve
+
+All six attribute to the calling function. Before this change the same fixture
+produced zero in BOTH arms.
+
+NON-DESTRUCTION ASSERTED, NOT ASSUMED, because when "no change" is the correct
+answer a broken run looks better than a working one. A/B on real Go repos that
+import these frameworks, re-adding the pre-cull spellings through the overlay
+channel so the second arm reproduces the old built-in behaviour exactly:
+
+    keda      (173 framework-importing files)  105 edges / 145 chains both arms
+    swarmkit   (51 framework-importing files)  122 edges / 133 chains both arms
+    0 chains lost, 0 gained, on either.
+
+NOT MEASURED: distribution (85 framework-importing files) did not complete within
+its window -- one arm never wrote output. Two repos, not three.
+
+THE CONTRACT IS PINNED FROM BOTH ENDS, IN BOTH PACKAGES, because the defect WAS
+the two ends drifting apart unnoticed for a full measurement cycle:
+  - test_go_web_framework_overlay (core) asserts each row resolves from the
+    literal import path, AND -- the negative half -- that the old short hint
+    (gin, echo, fiber, grpc) now returns None, so the two spellings cannot
+    quietly coexist and keep a fabricated-import probe calling these reachable;
+  - TestFrameworkImportPathsReachTheModuleSlot (mainstream) asserts the analyzer
+    emits those same literal strings into the module slot.
+CI tests packages in isolation, so neither can check the other's half. Asserting
+identical literals from opposite ends is what makes a one-sided edit fail.
+
+STILL SHIPPING IN go.yaml AND DELIBERATELY NOT TOUCHED: 33 further third-party
+rows (golang.org/x/sys/unix 27, google.golang.org/grpc functions 3,
+golang.org/x/sys/execabs 3). Unlike the 20 these are REACHABLE -- _module_matches
+compares trailing components and `unix` IS the trailing component of
+golang.org/x/sys/unix -- so culling them would delete working detections rather
+than dead rows. That is a real trade-off between ADR-0016 scope compliance and
+default detection, and it is filed for a decision rather than taken here.
+
+TWO EXISTING TESTS WERE ENCODING THE DEFECT AND ARE CORRECTED, NOT DELETED.
+smart-test selected only the two new files for this change and went green, which
+was a FALSE GREEN -- go.yaml is a shipped data file whose consumers it does not
+map. Running the io-boundary suite directly found both:
+
+  test_go_catalog_tls_smtp          asserted lookup("Data", "gin") MATCHES
+  test_go_qualified_run_still_matches  asserted go:gin.Engine:...:Run MATCHES
+
+Both were asserting against a hint no Go program can emit, so each was testing
+the fixture rather than the gate. Each now makes the same point against a stdlib
+row the analyzer really does produce (net/smtp.Client.Data, os/exec.Cmd.Run), and
+the comment records why the row moved. The neighbouring docstrings and go.yaml's
+`ambiguous_names` comments named gin/echo/grpc rows that no longer ship; those
+are corrected too, with the framework names kept in `ambiguous_names` because
+they still need guarding once the overlay IS loaded.
+
+Also worth recording: the original comment on the Data case read "gin.Context
+.Data vs template.Data". There is no `template.Data` row in go.yaml and there
+never was -- the real collision is with net/smtp.Client.Data. The comment had
+been wrong independently of this change.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
